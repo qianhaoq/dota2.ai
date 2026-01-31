@@ -1,0 +1,5 @@
+{
+  "name": "Dota2.ai - AI Tactical Assistant",
+  "description": "A Google Cloud-ready DOTA 2 companion app powered by Gemini 2.5 Flash. Features draft analysis, item optimization, and lore chat.",
+  "requestFramePermissions": []
+}
