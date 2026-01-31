@@ -1,20 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '../types';
+import { ChatMessage, Language } from '../types';
 import { chatWithShopkeeper } from '../services/geminiService';
 import { Send, Scroll } from 'lucide-react';
 
-const LoreChat: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'init',
-      role: 'model',
-      text: "Greetings, traveler. What knowledge do you seek from the Secret Shop? I have wares... and stories, if you have the coin.",
-      timestamp: new Date()
-    }
-  ]);
+interface LoreChatProps {
+    lang: Language;
+}
+
+const LoreChat: React.FC<LoreChatProps> = ({ lang }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Reset welcome message when language changes
+  useEffect(() => {
+      const welcomeText = lang === 'zh' 
+        ? "你好，旅行者。你想从神秘商店里寻找什么知识？我有货物……也有故事，只要你有金币。"
+        : "Greetings, traveler. What knowledge do you seek from the Secret Shop? I have wares... and stories, if you have the coin.";
+      
+      setMessages([{
+        id: 'init',
+        role: 'model',
+        text: welcomeText,
+        timestamp: new Date()
+      }]);
+  }, [lang]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -44,7 +55,7 @@ const LoreChat: React.FC = () => {
       parts: [{ text: m.text }]
     }));
 
-    const responseText = await chatWithShopkeeper(history, userMsg.text);
+    const responseText = await chatWithShopkeeper(history, userMsg.text, lang);
 
     const modelMsg: ChatMessage = {
       id: (Date.now() + 1).toString(),
@@ -57,6 +68,12 @@ const LoreChat: React.FC = () => {
     setIsTyping(false);
   };
 
+  const t = {
+      title: lang === 'zh' ? '神秘商人' : 'The Secret Shopkeeper',
+      subtitle: lang === 'zh' ? '远古知识的守护者' : 'Keeper of Ancient Lore',
+      placeholder: lang === 'zh' ? '询问关于不朽盾、肉山或癫狂之月的故事...' : 'Ask about the Aegis, Roshan, or the Mad Moon...',
+  };
+
   return (
     <div className="h-full flex flex-col items-center justify-center max-w-4xl mx-auto">
       <div className="w-full h-[600px] glass-panel rounded-xl flex flex-col overflow-hidden relative border border-dota-gold/30">
@@ -67,8 +84,8 @@ const LoreChat: React.FC = () => {
                 <Scroll size={20} className="text-dota-gold" />
             </div>
             <div>
-                <h3 className="text-dota-gold font-display font-bold">The Secret Shopkeeper</h3>
-                <p className="text-xs text-gray-400">Keeper of Ancient Lore</p>
+                <h3 className="text-dota-gold font-display font-bold">{t.title}</h3>
+                <p className="text-xs text-gray-400">{t.subtitle}</p>
             </div>
         </div>
 
@@ -110,7 +127,7 @@ const LoreChat: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Ask about the Aegis, Roshan, or the Mad Moon..."
+            placeholder={t.placeholder}
             className="flex-grow bg-gray-900 border border-gray-700 rounded px-4 py-3 text-gray-200 focus:outline-none focus:border-dota-gold transition-colors placeholder-gray-600"
           />
           <button 

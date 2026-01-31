@@ -29,3 +29,5 @@ export interface DraftState {
   radiant: Hero[];
   dire: Hero[];
 }
+
+export type Language = 'en' | 'zh';

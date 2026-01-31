@@ -7,9 +7,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
   },
-  // Simple polyfill to allow process.env.API_KEY to work in the browser build
-  // Note: For production security, consider fetching the key from a backend endpoint instead.
-  define: {
-    'process.env': process.env
-  }
+  // REMOVED: define: { 'process.env': process.env } 
+  // SECURITY: Do not inject process.env into client code to protect API_KEY
 });

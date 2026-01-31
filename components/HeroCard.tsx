@@ -27,7 +27,7 @@ const HeroCard: React.FC<HeroCardProps> = ({ hero, isSelected, onClick, small })
       className={`
         relative group cursor-pointer transition-all duration-200 overflow-hidden border
         ${isSelected ? 'border-dota-gold shadow-[0_0_10px_rgba(212,175,55,0.6)]' : 'border-gray-700 hover:border-gray-500'}
-        ${small ? 'w-16 h-16 rounded' : 'w-24 h-32 rounded-lg'}
+        ${small ? 'w-16 h-16 rounded' : 'w-full h-full rounded-lg'}
         bg-gray-800
       `}
     >

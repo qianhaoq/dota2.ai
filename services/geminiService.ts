@@ -1,74 +1,50 @@
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { DRAFT_SYSTEM_INSTRUCTION, LORE_SYSTEM_INSTRUCTION } from '../constants';
-import { Hero } from '../types';
+import { Hero, Language } from '../types';
 
-// Initialize Gemini Client
-// NOTE: In a real production app, you should proxy these requests through a backend (like Cloud Functions)
-// to protect your API_KEY. For this demo, we use the env var directly.
-const apiKey = process.env.API_KEY || ''; 
-const ai = new GoogleGenAI({ apiKey });
+// NOTE: We now fetch from our own backend ('/api/...') to keep the API_KEY secret.
+// The backend handles the actual communication with Google Gemini.
 
-const safetySettings = [
-  {
-    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-    threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-  },
-];
-
-export const analyzeDraft = async (radiant: Hero[], dire: Hero[]): Promise<string> => {
-  if (!apiKey) return "Error: API_KEY is missing. Please set it in your environment.";
-
-  const radiantNames = radiant.map(h => h.name).join(', ');
-  const direNames = dire.map(h => h.name).join(', ');
-
-  const prompt = `
-    Analyze this DOTA 2 Matchup:
-    **Radiant:** ${radiantNames || 'None'}
-    **Dire:** ${direNames || 'None'}
-    
-    If teams are incomplete, provide general advice for the heroes present.
-  `;
-
+export const analyzeDraft = async (radiant: Hero[], dire: Hero[], lang: Language, userContext?: string): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: {
-        systemInstruction: DRAFT_SYSTEM_INSTRUCTION,
-        temperature: 0.7,
-        // Removed maxOutputTokens to rely on dynamic budgets or defaults
-        safetySettings,
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ radiant, dire, lang, userContext }),
     });
-    
-    return response.text || "Failed to generate analysis.";
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to analyze draft');
+    }
+
+    return data.text || "Failed to generate analysis.";
   } catch (error: any) {
-    console.error("Gemini Analysis Error:", error);
-    // Return the actual error message to the UI
-    return `The Ancient is under attack! (API Error: ${error.message || error.toString()})`;
+    console.error("Analysis Request Error:", error);
+    return `The Ancient is under attack! (Server Error: ${error.message})`;
   }
 };
 
-export const chatWithShopkeeper = async (history: {role: string, parts: {text: string}[]}[], message: string): Promise<string> => {
-  if (!apiKey) return "Error: API_KEY is missing.";
-
+export const chatWithShopkeeper = async (history: {role: string, parts: {text: string}[]}[], message: string, lang: Language): Promise<string> => {
   try {
-    const chat = ai.chats.create({
-      model: 'gemini-3-flash-preview',
-      config: {
-        systemInstruction: LORE_SYSTEM_INSTRUCTION,
-        temperature: 0.8,
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      history: history.map(h => ({
-        role: h.role,
-        parts: h.parts
-      }))
+      body: JSON.stringify({ history, message, lang }),
     });
 
-    const result = await chat.sendMessage({ message });
-    return result.text || "...";
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to chat');
+    }
+
+    return data.text || "...";
   } catch (error: any) {
-    console.error("Gemini Chat Error:", error);
-    return `The shop is closed. (API Error: ${error.message || error.toString()})`;
+    console.error("Chat Request Error:", error);
+    return `The shop is closed. (Server Error: ${error.message})`;
   }
 };
