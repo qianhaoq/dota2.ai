@@ -7,6 +7,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
   },
-  // REMOVED: define: { 'process.env': process.env } 
-  // SECURITY: Do not inject process.env into client code to protect API_KEY
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
 });

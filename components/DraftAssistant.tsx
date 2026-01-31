@@ -3,7 +3,7 @@ import { Hero, DraftState, Attribute, Language } from '../types';
 import HeroCard from './HeroCard';
 import { analyzeDraft } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
-import { Swords, RotateCcw, Sparkles, Search } from 'lucide-react';
+import { Swords, RotateCcw, Sparkles, Search, AlertTriangle } from 'lucide-react';
 
 interface DraftAssistantProps {
     lang: Language;
@@ -96,6 +96,8 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
       divining: lang === 'zh' ? '推演中...' : 'DIVINING...',
       contextPlaceholder: lang === 'zh' ? '添加战术背景（例如：我们想打前期推进，或者针对敌方核心...）' : 'Add context (e.g. We want to push early, or counter their carry...)',
   };
+
+  const isError = analysis.includes("The Ancient is under attack") || analysis.includes("Server Error");
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full pb-4">
@@ -242,7 +244,7 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
                 </div>
             </div>
 
-            {/* Top Input Section - Moved here */}
+            {/* Top Input Section */}
             <div className="flex-shrink-0 bg-[#0f1014]/50 rounded-lg p-2 border border-gray-700/50 mb-4">
                <textarea
                  value={userContext}
@@ -272,7 +274,9 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
             {/* Analysis Content - SCROLLABLE AREA */}
             <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 mb-4">
                 {analysis ? (
-                    <div className="space-y-4 text-gray-300 text-sm leading-relaxed pb-4">
+                    <div className={`space-y-4 text-sm leading-relaxed pb-4 ${isError ? 'text-red-400 border border-red-500/30 bg-red-900/10 p-4 rounded' : 'text-gray-300'}`}>
+                        {isError && <div className="flex items-center gap-2 font-bold mb-2"><AlertTriangle size={16}/> ERROR</div>}
+                        
                         {/* Simple rendering of markdown-like text */}
                         {analysis.split('\n').map((line, idx) => {
                             if (line.startsWith('##')) return <h3 key={idx} className="text-dota-gold font-bold text-lg mt-4 mb-2 border-b border-dota-gold/20 pb-1">{line.replace('##', '')}</h3>;
