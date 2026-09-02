@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+
+# Build output (will be created during Docker build)
+dist
+
+# Development files
+.git
+.gitignore
+*.md
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test files
+coverage
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+
+# Docker files (no need to copy these into the image)
+Dockerfile
+docker-compose*.yml
+.dockerignore
