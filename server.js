@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import OpenAI from 'openai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,13 +12,17 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(express.json());
 
-const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+const apiKey = process.env.DEEPSEEK_API_KEY;
 if (!apiKey) {
-  console.warn("WARNING: GEMINI_API_KEY is not set in the server environment.");
+  console.warn("WARNING: DEEPSEEK_API_KEY is not set in the server environment.");
 }
-const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy' });
 
-const GEMINI_MODEL = 'gemini-3.6-flash';
+const openai = apiKey ? new OpenAI({
+  baseURL: 'https://api.deepseek.com',
+  apiKey: apiKey,
+}) : null;
+
+const DEEPSEEK_MODEL = 'deepseek-chat';
 
 const DRAFT_SYSTEM_INSTRUCTION = `
 You are a professional DOTA 2 analyst and coach (like Ceb or Notail).
@@ -37,13 +41,6 @@ Answer questions about hero backstories, item lore, and the history of the world
 Speak in a slightly archaic, mystical tone.
 `;
 
-const safetySettings = [
-  {
-    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-    threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-  },
-];
-
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
@@ -56,7 +53,8 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
     apiKeyConfigured: !!apiKey,
-    model: GEMINI_MODEL
+    model: DEEPSEEK_MODEL,
+    provider: 'deepseek'
   });
 });
 
@@ -64,7 +62,7 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const { radiant, dire, lang, userContext } = req.body;
     
-    if (!apiKey) {
+    if (!apiKey || !openai) {
       return res.status(500).json({ error: "Server API Key not configured" });
     }
 
@@ -86,18 +84,17 @@ app.post('/api/analyze', async (req, res) => {
       ${langInstruction}
     `;
 
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: prompt,
-      config: {
-        systemInstruction: DRAFT_SYSTEM_INSTRUCTION,
-        safetySettings,
-      },
+    const response = await openai.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        { role: 'system', content: DRAFT_SYSTEM_INSTRUCTION },
+        { role: 'user', content: prompt }
+      ],
     });
 
-    res.json({ text: response.text });
+    res.json({ text: response.choices[0].message.content });
   } catch (error) {
-    console.error("Gemini Analysis Error:", error);
+    console.error("DeepSeek Analysis Error:", error);
     res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 });
@@ -106,7 +103,7 @@ app.post('/api/chat', async (req, res) => {
   try {
     const { history, message, lang } = req.body;
 
-    if (!apiKey) {
+    if (!apiKey || !openai) {
       return res.status(500).json({ error: "Server API Key not configured" });
     }
 
@@ -114,21 +111,25 @@ app.post('/api/chat', async (req, res) => {
       ? '请使用中文(简体)回答所有问题。' 
       : 'Please answer in English.';
 
-    const chat = ai.chats.create({
-      model: GEMINI_MODEL,
-      config: {
-        systemInstruction: `${LORE_SYSTEM_INSTRUCTION}\n${langInstruction}`,
-      },
-      history: history.map(h => ({
+    const systemContent = `${LORE_SYSTEM_INSTRUCTION}\n${langInstruction}`;
+
+    const messages = [
+      { role: 'system', content: systemContent },
+      ...history.map(h => ({
         role: h.role,
-        parts: h.parts
-      }))
+        content: h.parts.map(p => p.text).join('')
+      })),
+      { role: 'user', content: message }
+    ];
+
+    const response = await openai.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: messages,
     });
 
-    const result = await chat.sendMessage({ message });
-    res.json({ text: result.text });
+    res.json({ text: response.choices[0].message.content });
   } catch (error) {
-    console.error("Gemini Chat Error:", error);
+    console.error("DeepSeek Chat Error:", error);
     res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 });

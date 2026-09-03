@@ -11,12 +11,12 @@
 
 ## 📖 简介 | Introduction
 
-Dota2.ai 是一个基于 Google Gemini AI 的 Dota 2 战术助手应用，提供以下功能：
+Dota2.ai 是一个基于 DeepSeek AI 的 Dota 2 战术助手应用，提供以下功能：
 
 - **阵容分析 (Draft Strategy)**: 选择天辉/夜魇英雄，可选战术背景，分析对局（胜率预测、获胜条件、装备建议）
 - **传说百科 (Lore Keeper)**: 与神秘商人聊天，探索 Dota 2 的传说故事
 
-Dota2.ai is a Dota 2 tactical assistant powered by Google Gemini AI, featuring:
+Dota2.ai is a Dota 2 tactical assistant powered by DeepSeek AI, featuring:
 
 - **Draft Strategy**: Pick Radiant/Dire heroes, add optional strategy context, analyze matchup (win probability, win conditions, item suggestions)
 - **Lore Keeper**: Chat with the Secret Shopkeeper about Dota 2 lore
@@ -29,7 +29,7 @@ Dota2.ai is a Dota 2 tactical assistant powered by Google Gemini AI, featuring:
 
 - Node.js >= 18.0.0
 - npm >= 9.0.0
-- Gemini API Key ([获取地址 | Get it here](https://aistudio.google.com/apikey))
+- DeepSeek API Key ([获取地址 | Get it here](https://platform.deepseek.com/))
 
 ### 安装步骤 | Installation
 
@@ -43,8 +43,8 @@ npm install
 
 # 配置环境变量 | Configure environment variables
 cp .env.example .env
-# 编辑 .env 文件，填入你的 GEMINI_API_KEY
-# Edit .env file and add your GEMINI_API_KEY
+# 编辑 .env 文件，填入你的 DEEPSEEK_API_KEY
+# Edit .env file and add your DEEPSEEK_API_KEY
 ```
 
 ### 开发模式 | Development Mode
@@ -86,7 +86,7 @@ npm start
 docker build -t dota2-ai .
 
 # 运行容器 | Run container
-docker run -p 8080:8080 -e GEMINI_API_KEY=your_api_key dota2-ai
+docker run -p 8080:8080 -e DEEPSEEK_API_KEY=your_api_key dota2-ai
 ```
 
 ### Google Cloud Run 部署 | Deploy to Google Cloud Run
@@ -121,7 +121,7 @@ gcloud run deploy dota2-ai \
   --platform managed \
   --region asia-east1 \
   --allow-unauthenticated \
-  --set-env-vars GEMINI_API_KEY=your_api_key \
+  --set-env-vars DEEPSEEK_API_KEY=your_api_key \
   --memory 512Mi \
   --min-instances 0 \
   --max-instances 10
@@ -202,7 +202,7 @@ dota2.ai/
 
 | 变量名 | 必需 | 默认值 | 描述 |
 |--------|------|--------|------|
-| `GEMINI_API_KEY` | ✅ | - | Google Gemini API 密钥 |
+| `DEEPSEEK_API_KEY` | ✅ | - | DeepSeek API 密钥 |
 | `PORT` | ❌ | 8080 | 服务器端口 |
 | `HOST` | ❌ | 0.0.0.0 | 服务器主机地址 |
 
