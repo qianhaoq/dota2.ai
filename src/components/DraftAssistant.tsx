@@ -32,16 +32,16 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [attrFilter, setAttrFilter] = useState<Attribute | 'All'>('All');
 
-  // Load heroes on mount
+  // Load heroes on mount and when language changes
   useEffect(() => {
     const loadData = async () => {
       setIsHeroesLoading(true);
-      const data = await fetchHeroes();
+      const data = await fetchHeroes(lang);
       setAllHeroes(data);
       setIsHeroesLoading(false);
     };
     loadData();
-  }, []);
+  }, [lang]);
 
   // Fetch suggestions when draft changes
   const updateSuggestions = useCallback(async (currentDraft: DraftState, side: 'radiant' | 'dire') => {

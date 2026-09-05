@@ -10,6 +10,8 @@ export interface Hero {
   name: string;
   attribute: Attribute;
   img: string;
+  imgFallback?: string;
+  icon?: string;
 }
 
 export interface ChatMessage {
