@@ -223,6 +223,25 @@ function translateRoles(roles, lang) {
   return roles.map(r => ROLE_MAPPINGS[r] || r);
 }
 
+function getHeroName(heroId, useZh = false, heroStats = null) {
+  const cnData = HERO_NAMES_CN[heroId];
+  const stats = heroStats?.[heroId];
+  
+  if (useZh && cnData?.nameZh) {
+    return cnData.nameZh;
+  }
+  
+  if (stats?.name) {
+    return stats.name;
+  }
+  
+  if (cnData?.nameZh) {
+    return cnData.nameZh;
+  }
+  
+  return `Hero#${heroId}`;
+}
+
 // ============ OpenDota Constants Fetchers ============
 
 async function getHeroConstants() {
@@ -565,34 +584,22 @@ function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, us
     dire: isZh ? '夜魇' : 'Dire',
     none: isZh ? '无' : 'None',
     winRate: isZh ? '胜率' : 'WR',
-    games: isZh ? '场比赛' : 'games',
+    games: isZh ? '场' : 'games',
     advantage: isZh ? '优势' : 'advantage',
     vs: isZh ? '对' : 'vs',
-    statsTitle: isZh ? '来自 OpenDota 的数据统计' : 'OpenDota Statistics',
-    radiantHeroes: isZh ? '天辉英雄数据' : 'Radiant Heroes',
-    direHeroes: isZh ? '夜魇英雄数据' : 'Dire Heroes',
-    radiantAdvantages: isZh ? '天辉优势对位 (基于OpenDota历史数据)' : 'Radiant Favorable Matchups (OpenDota data)',
-    direAdvantages: isZh ? '夜魇优势对位 (基于OpenDota历史数据)' : 'Dire Favorable Matchups (OpenDota data)',
-    dataUnavailable: isZh ? '[注意: OpenDota 数据暂时不可用，以下分析未经数据验证]' : '[Note: OpenDota data unavailable, analysis unverified]',
-    userContext: isZh ? '用户补充的战术背景' : 'User-provided tactical context',
-    analysisPrompt: isZh 
-      ? '请基于以上OpenDota真实数据进行分析' 
-      : 'Analyze based on the OpenDota data above',
-    instructions: isZh ? [
-      '预测胜率时必须引用上述具体数据',
-      '分析关键对位优劣势时引用具体的胜率数据',
-      '给出天辉的取胜条件',
-      '推荐针对性装备'
-    ] : [
-      'Cite specific data when predicting win probability',
-      'Reference specific win rates when analyzing key matchups',
-      'Identify Radiant win conditions',
-      'Recommend counter items'
-    ],
-    incompleteNote: isZh ? '如果阵容不完整，请针对已选英雄给出建议。' : 'If draft is incomplete, provide suggestions for the selected heroes.',
-    langInstruction: isZh ? '请使用中文(简体)进行回答。' : 'Please respond in English.',
+    statsTitle: isZh ? 'OpenDota 真实数据' : 'OpenDota Real Data',
+    radiantHeroes: isZh ? '天辉英雄' : 'Radiant Heroes',
+    direHeroes: isZh ? '夜魇英雄' : 'Dire Heroes',
+    radiantAdvantages: isZh ? '天辉优势对位' : 'Radiant Favorable Matchups',
+    direAdvantages: isZh ? '夜魇优势对位' : 'Dire Favorable Matchups',
+    dataUnavailable: isZh ? '⚠️ OpenDota 数据暂时不可用，以下分析未经数据验证，请谨慎参考' : '⚠️ OpenDota data unavailable, analysis unverified - use with caution',
+    userContext: isZh ? '用户补充信息' : 'User Context',
+    incompleteNote: isZh ? '如果阵容不完整，请针对已选英雄给出建议。' : 'If draft is incomplete, provide suggestions for selected heroes.',
+    lowSample: isZh ? '样本较少' : 'low sample',
+    attr: isZh ? '属性' : 'Attr',
     roles: isZh ? '定位' : 'Roles',
-    attr: isZh ? '属性' : 'Attr'
+    globalWR: isZh ? '全局胜率' : 'Global WR',
+    sampleSize: isZh ? '样本' : 'sample'
   };
 
   const attrNames = {
@@ -602,107 +609,163 @@ function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, us
     all: isZh ? '全能' : 'UNI'
   };
 
-  const radiantNames = radiant.map(h => h.name).join(', ');
-  const direNames = dire.map(h => h.name).join(', ');
+  const radiantNames = radiant.map(h => {
+    const cnData = HERO_NAMES_CN[h.id];
+    return isZh && cnData?.nameZh ? cnData.nameZh : h.name;
+  }).join(', ');
   
-  // Helper to format hero info with role/attribute
-  const formatHeroWithMeta = (h) => {
+  const direNames = dire.map(h => {
+    const cnData = HERO_NAMES_CN[h.id];
+    return isZh && cnData?.nameZh ? cnData.nameZh : h.name;
+  }).join(', ');
+  
+  const formatHeroDetailed = (h) => {
     const s = heroStats[h.id];
     const c = Object.values(heroConstants).find(hc => hc.id === h.id);
-    let info = s ? `${s.name} (${t.winRate}: ${s.winRate || 'N/A'}%)` : h.name;
+    const cnData = HERO_NAMES_CN[h.id];
     
-    if (c) {
-      const roles = (c.roles || s?.roles || []).slice(0, 2).join('/');
-      const attr = attrNames[c.primary_attr] || '';
-      if (roles || attr) {
-        info += ` [${attr}${roles ? ', ' + roles : ''}]`;
-      }
-    } else if (s?.roles?.length) {
-      info += ` [${s.roles.slice(0, 2).join('/')}]`;
+    const heroName = isZh && cnData?.nameZh ? cnData.nameZh : (s?.name || h.name);
+    const attr = c?.primary_attr ? attrNames[c.primary_attr] : '';
+    const roles = (c?.roles || s?.roles || []).slice(0, 3);
+    const rolesStr = isZh ? translateRoles(roles, 'zh').join('/') : roles.join('/');
+    const wrStr = s?.winRate ? `${s.winRate}%` : 'N/A';
+    const gamesStr = s?.gamesPlayed ? `${s.gamesPlayed}${t.games}` : '';
+    
+    let info = `**${heroName}**`;
+    if (attr || rolesStr) {
+      info += ` [${attr}${attr && rolesStr ? ' ' : ''}${rolesStr}]`;
     }
+    info += ` — ${t.globalWR}: ${wrStr}`;
+    if (gamesStr) {
+      info += ` (${t.sampleSize}: ${gamesStr})`;
+    }
+    
     return info;
   };
   
   let statsSection = '';
   if (isGrounded) {
-    const radiantStats = radiant.map(formatHeroWithMeta).join('\n- ');
-    const direStats = dire.map(formatHeroWithMeta).join('\n- ');
+    const radiantStats = radiant.length > 0 
+      ? radiant.map(formatHeroDetailed).join('\n- ') 
+      : t.none;
+    const direStats = dire.length > 0 
+      ? dire.map(formatHeroDetailed).join('\n- ') 
+      : t.none;
     
     statsSection = `
-## ${t.statsTitle}:
+## 📊 ${t.statsTitle}
 
 ### ${t.radiantHeroes}:
-- ${radiantStats || t.none}
+- ${radiantStats}
 
 ### ${t.direHeroes}:
-- ${direStats || t.none}
+- ${direStats}
 `;
 
     if (matchupAnalysis.radiantAdvantages.length > 0) {
       statsSection += `
-### ${t.radiantAdvantages}:
-${matchupAnalysis.radiantAdvantages.slice(0, 5).map(a => 
-  `- ${a.hero} ${t.vs} ${a.vsHero}: +${a.advantage}% ${t.advantage} (${a.winRate}% ${t.winRate}, ${a.games} ${t.games})`
-).join('\n')}
+### ✅ ${t.radiantAdvantages}:
+${matchupAnalysis.radiantAdvantages.slice(0, 5).map(a => {
+  const sampleNote = a.games < 100 ? ` ⚠️${t.lowSample}` : '';
+  return `- ${a.hero} ${t.vs} ${a.vsHero}: **+${a.advantage}%** ${t.advantage} (${a.winRate}% ${t.winRate}, ${a.games}${t.games}${sampleNote})`;
+}).join('\n')}
 `;
     }
     
     if (matchupAnalysis.direAdvantages.length > 0) {
       statsSection += `
-### ${t.direAdvantages}:
-${matchupAnalysis.direAdvantages.slice(0, 5).map(a => 
-  `- ${a.hero} ${t.vs} ${a.vsHero}: +${a.advantage}% ${t.advantage} (${a.winRate}% ${t.winRate}, ${a.games} ${t.games})`
-).join('\n')}
+### ❌ ${t.direAdvantages}:
+${matchupAnalysis.direAdvantages.slice(0, 5).map(a => {
+  const sampleNote = a.games < 100 ? ` ⚠️${t.lowSample}` : '';
+  return `- ${a.hero} ${t.vs} ${a.vsHero}: **+${a.advantage}%** ${t.advantage} (${a.winRate}% ${t.winRate}, ${a.games}${t.games}${sampleNote})`;
+}).join('\n')}
+`;
+    }
+    
+    if (matchupAnalysis.radiantAdvantages.length === 0 && matchupAnalysis.direAdvantages.length === 0) {
+      statsSection += `
+### ${isZh ? '对位数据' : 'Matchup Data'}:
+${isZh ? '暂无显著对位优劣势数据（可能是样本不足或对位较为均衡）' : 'No significant matchup advantages found (may be insufficient samples or balanced matchups)'}
 `;
     }
   } else {
     statsSection = `\n${t.dataUnavailable}\n`;
   }
 
-  return `
-${isZh ? '分析这场 DOTA 2 对局' : 'Analyze this DOTA 2 match'}:
+  const contextSection = userContext 
+    ? `\n**${t.userContext}:** ${userContext}\n`
+    : '';
+
+  return `${isZh ? '分析这场 DOTA 2 对局' : 'Analyze this DOTA 2 match'}:
 
 **${t.radiant}:** ${radiantNames || t.none}
 **${t.dire}:** ${direNames || t.none}
-
-${statsSection}
-
-**${t.userContext}:** ${userContext || t.none}
-
-${t.analysisPrompt}:
-${t.instructions.map((instr, i) => `${i + 1}. ${instr}`).join('\n')}
-
-${t.incompleteNote}
-${t.langInstruction}
-`;
+${statsSection}${contextSection}
+${t.incompleteNote}`;
 }
 
 function getDraftSystemInstruction(lang) {
   const isZh = lang === 'zh';
   
-  const headers = isZh 
-    ? `## 胜率预测
-## 关键对位分析
-## 天辉取胜条件
-## 推荐装备`
-    : `## Win Probability
-## Key Matchup Analysis
-## Radiant Win Conditions
-## Recommended Items`;
-
   const langNote = isZh 
     ? '请使用中文(简体)回答。' 
     : 'Please respond in English.';
 
+  if (isZh) {
+    return `你是一位职业DOTA2分析师和教练（如Ceb、Notail级别）。
+你的任务是基于OpenDota统计数据分析天辉vs夜魇的阵容对抗。
+
+【核心规则】
+1. 必须引用OpenDota提供的具体数据（对位胜率、样本数）作为分析依据
+2. 禁止编造任何统计数据——如果数据不可用，明确说明"数据不足"
+3. 分析英雄时考虑其定位（核心/辅助）、属性（力量/敏捷/智力）、关键能力
+4. 样本数少于50场的对位数据，需标注"样本较少，参考价值有限"
+
+【输出格式】
+## 🧠 分析思路
+（逐步推理：阵容特点、对位关系、节奏曲线、关键时机）
+
+## 📊 数据依据
+（引用具体OpenDota数据：胜率X%，样本N场）
+
+## ⚔️ 关键对位
+（哪些英雄克制/被克制，引用具体数据）
+
+## 🎯 结论：胜率预测与取胜条件
+（明确给出预测胜率范围和取胜关键点）
+
+## 💡 推荐装备
+（基于敌方阵容的针对性装备建议）
+
+使用DOTA2术语（BKB、power spike、肉山控制等）。保持简洁专业。`;
+  }
+  
   return `You are a professional DOTA 2 analyst and coach (like Ceb or Notail).
-Your task is to analyze two team compositions (Radiant vs Dire) using the OpenDota statistics provided.
+Your task is to analyze Radiant vs Dire compositions using OpenDota statistics.
 
-IMPORTANT: You must cite the specific statistics from OpenDota data when making claims about win rates, matchups, and advantages. Do not invent statistics.
+【CORE RULES】
+1. MUST cite specific OpenDota data (matchup win rates, sample sizes) as basis for analysis
+2. NEVER invent statistics — if data unavailable, explicitly state "insufficient data"
+3. Consider hero roles (Carry/Support), attributes (STR/AGI/INT), and key abilities
+4. Mark matchups with <50 games sample as "low sample, limited reliability"
 
-Format your analysis with clear Markdown headers:
-${headers}
+【OUTPUT FORMAT】
+## 🧠 Analysis Reasoning
+(Step-by-step: lineup traits, matchups, power curves, key timings)
 
-Keep it concise, strategic, and use DOTA 2 terminology (e.g., "BKB", "power spike", "roshan control").
+## 📊 Data Evidence
+(Cite specific OpenDota data: X% win rate, N games sample)
+
+## ⚔️ Key Matchups
+(Which heroes counter/get countered, with specific data)
+
+## 🎯 Conclusion: Win Probability & Conditions
+(Clear prediction range and winning conditions)
+
+## 💡 Recommended Items
+(Counter-picks based on enemy lineup)
+
+Use DOTA 2 terminology (BKB, power spike, Roshan control). Be concise and professional.
 ${langNote}`;
 }
 
@@ -1027,10 +1090,25 @@ app.post('/api/playbook', async (req, res) => {
       games: isZh ? '场' : 'games'
     };
     
-    let statsSection = `## ${t.yourTeam}\n`;
+    const lowSampleNote = isZh ? '⚠️样本较少' : '⚠️low sample';
+    
+    let statsSection = `## 📊 ${t.yourTeam}\n`;
     for (const hero of playbookData) {
-      statsSection += `\n### ${hero.heroName} (${t.winRate}: ${hero.winRate || 'N/A'}%)\n`;
-      statsSection += `${t.itemBuild}:\n`;
+      const heroRolesStr = hero.rolesZh && isZh 
+        ? hero.rolesZh.slice(0, 2).join('/') 
+        : (hero.roles || []).slice(0, 2).join('/');
+      const heroConstant = Object.values(heroConstants).find(c => c.id === hero.heroId);
+      const attrStr = heroConstant?.primary_attr 
+        ? (isZh ? { str: '力量', agi: '敏捷', int: '智力', all: '全能' }[heroConstant.primary_attr] : heroConstant.primary_attr.toUpperCase())
+        : '';
+      
+      statsSection += `\n### ${hero.heroName}`;
+      if (attrStr || heroRolesStr) {
+        statsSection += ` [${attrStr}${attrStr && heroRolesStr ? ' ' : ''}${heroRolesStr}]`;
+      }
+      statsSection += ` — ${t.winRate}: ${hero.winRate || 'N/A'}%\n`;
+      
+      statsSection += `**${t.itemBuild}** (${isZh ? 'OpenDota职业/高分段数据' : 'OpenDota Pro/High MMR data'}):\n`;
       if (hero.items.startGame.length > 0) {
         statsSection += `- ${t.startItems}: ${hero.items.startGame.map(i => i.name).join(', ')}\n`;
       }
@@ -1045,52 +1123,116 @@ app.post('/api/playbook', async (req, res) => {
       }
       
       if (hero.vsEnemies.length > 0) {
-        statsSection += `${t.matchupData}:\n`;
+        statsSection += `**${t.matchupData}**:\n`;
         for (const vs of hero.vsEnemies) {
           const advSign = parseFloat(vs.advantage) >= 0 ? '+' : '';
-          statsSection += `- vs ${vs.enemy}: ${vs.winRate}% ${t.winRate} (${advSign}${vs.advantage}%, ${vs.gamesPlayed} ${t.games})\n`;
+          const sampleNote = vs.gamesPlayed < 100 ? ` ${lowSampleNote}` : '';
+          statsSection += `- vs ${vs.enemy}: ${vs.winRate}% ${t.winRate} (${advSign}${vs.advantage}%, ${vs.gamesPlayed}${t.games}${sampleNote})\n`;
         }
+      } else {
+        statsSection += `**${t.matchupData}**: ${isZh ? '暂无数据（敌方英雄未选或样本不足）' : 'No data (enemies not picked or insufficient samples)'}\n`;
       }
     }
     
     if (enemies.length > 0) {
-      statsSection += `\n## ${t.enemies}\n`;
-      statsSection += enemies.map(h => getHeroName(h.id, true)).join(', ');
+      statsSection += `\n## 🎯 ${t.enemies}\n`;
+      const enemyDetails = enemies.map(h => {
+        const cnData = HERO_NAMES_CN[h.id];
+        const stats = heroStats[h.id];
+        const heroConstant = Object.values(heroConstants).find(c => c.id === h.id);
+        const name = isZh && cnData?.nameZh ? cnData.nameZh : (stats?.name || h.name || `Hero#${h.id}`);
+        const roles = (heroConstant?.roles || stats?.roles || []).slice(0, 2);
+        const rolesStr = isZh ? translateRoles(roles, 'zh').join('/') : roles.join('/');
+        return `${name}${rolesStr ? ` [${rolesStr}]` : ''}`;
+      });
+      statsSection += enemyDetails.join(', ');
     }
     
     const systemPrompt = isZh 
-      ? `你是一位职业DOTA2教练,专门为玩家提供实战指导。基于OpenDota的真实数据分析"本局怎么打才能赢"。
+      ? `你是一位职业DOTA2教练，专门为玩家提供实战指导。基于OpenDota的真实数据分析"本局怎么打才能赢"。
 
-重要规则：
-1. 必须引用给出的OpenDota数据（出装、对位胜率）作为建议依据
-2. 针对敌方阵容给出具体的装备选择和时机建议
-3. 分析关键对位：哪些英雄要打哪些英雄，何时发力
-4. 给出团战站位、节奏把控建议
-5. 简洁实用，使用DOTA2术语
+【核心规则】
+1. 必须引用给出的OpenDota数据（出装流行度、对位胜率、样本数）作为建议依据
+2. 禁止编造数据——如果某数据不可用，明确说明
+3. 针对敌方阵容给出具体的装备选择和时机建议
+4. 分析关键对位：哪些英雄要打哪些英雄，何时发力
+5. 考虑英雄定位（核心/辅助）和强势期（前期/中期/后期）
 
-回答格式：
-## 核心策略
-## 出装路线 (引用数据)
-## 对位要点
-## 团战/节奏`
+【输出格式】
+## 🧠 分析思路
+（逐步推理本局的关键问题和取胜路径）
+
+## 🎯 核心策略
+（一句话概括本局核心打法）
+
+## 🛠️ 出装路线
+（引用OpenDota数据，说明为什么选这些装备）
+- 聚焦英雄：[具体出装建议]
+- 针对敌方：[反制装备]
+
+## ⚔️ 对位要点
+（引用对位胜率数据，说明谁打谁）
+
+## 📋 结论：节奏与执行
+- 前期(0-15min)：[具体任务]
+- 中期(15-30min)：[团战/推进策略]
+- 后期(30min+)：[取胜条件]
+
+使用DOTA2术语，保持简洁实用。`
       : `You are a professional DOTA 2 coach providing game-specific strategy. Analyze "how to win THIS game" based on OpenDota real data.
 
-Rules:
-1. MUST cite the provided OpenDota data (item builds, matchup winrates) as basis for advice
-2. Give specific item choices and timing based on enemy lineup
-3. Analyze key matchups: who should fight whom and when
-4. Provide teamfight positioning and tempo suggestions
-5. Be concise and practical, use DOTA 2 terminology
+【CORE RULES】
+1. MUST cite provided OpenDota data (item popularity, matchup winrates, sample sizes) as basis
+2. NEVER invent data — if unavailable, explicitly state so
+3. Give specific item choices and timing based on enemy lineup
+4. Analyze key matchups: who should fight whom and power spikes
+5. Consider hero roles (Carry/Support) and timing (early/mid/late game)
 
-Format:
-## Core Strategy
-## Item Path (cite data)
-## Matchup Notes
-## Teamfight/Tempo`;
+【OUTPUT FORMAT】
+## 🧠 Analysis Reasoning
+(Step-by-step reasoning for key issues and win conditions)
+
+## 🎯 Core Strategy
+(One sentence summary of how to win this game)
+
+## 🛠️ Item Path
+(Cite OpenDota data, explain item choices)
+- Focus Hero: [specific build]
+- Counter Items: [against enemy lineup]
+
+## ⚔️ Matchup Notes
+(Cite matchup win rates, who fights whom)
+
+## 📋 Conclusion: Tempo & Execution
+- Early (0-15min): [specific tasks]
+- Mid (15-30min): [teamfight/push strategy]
+- Late (30min+): [win conditions]
+
+Use DOTA 2 terminology, be concise and practical.`;
 
     const userPrompt = isZh 
-      ? `请基于以下OpenDota真实数据，分析本局怎么打才能赢：\n\n${statsSection}\n\n聚焦英雄: ${focusHero?.heroName || '全队'}\n\n请引用上述具体数据进行分析，给出本局取胜的具体打法建议。`
-      : `Based on the following OpenDota real data, analyze how to win this game:\n\n${statsSection}\n\nFocus Hero: ${focusHero?.heroName || 'Team'}\n\nPlease cite the specific data above and provide actionable strategy for winning this match.`;
+      ? `请基于以下OpenDota真实数据，分析本局怎么打才能赢：
+
+${statsSection}
+
+**聚焦英雄**: ${focusHero?.heroName || '全队'}
+
+【要求】
+1. 分析时必须引用上述具体数据（胜率、样本数、出装流行度）
+2. 如果某数据不可用或样本不足，请明确指出
+3. 按照输出格式给出完整的分析思路和结论
+4. 针对敌方阵容给出具体的装备和打法建议`
+      : `Based on the following OpenDota real data, analyze how to win this game:
+
+${statsSection}
+
+**Focus Hero**: ${focusHero?.heroName || 'Team'}
+
+【Requirements】
+1. MUST cite specific data above (win rates, sample sizes, item popularity)
+2. If data unavailable or low sample, explicitly state so
+3. Follow the output format with complete reasoning and conclusion
+4. Give specific item and strategy advice against enemy lineup`;
 
     if (wantsStream) {
       res.setHeader('Content-Type', 'text/event-stream');
