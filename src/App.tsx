@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { AppTab, Language } from './types';
-import DraftAssistant from './components/DraftAssistant';
+import CoachView from './components/CoachView';
 import LoreChat from './components/LoreChat';
-import { Sword, BookOpen, Menu, Globe } from 'lucide-react';
+import { MessageSquare, BookOpen, Menu, Globe } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.DRAFT);
@@ -16,17 +16,17 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case AppTab.DRAFT:
-        return <DraftAssistant lang={lang} />;
+        return <CoachView lang={lang} />;
       case AppTab.LORE:
         return <LoreChat lang={lang} />;
       default:
-        return <DraftAssistant lang={lang} />;
+        return <CoachView lang={lang} />;
     }
   };
 
   const t = {
-    draft: lang === 'zh' ? '阵容分析' : 'Draft Strategy',
-    lore: lang === 'zh' ? '传说百科' : 'Lore Keeper',
+    draft: lang === 'zh' ? 'AI 教练' : 'AI Coach',
+    lore: lang === 'zh' ? '传说百科' : 'Secret Shop',
     footerZh: '如果你对 Dota2 与 AI 感兴趣，请联系我',
     footerEn: 'If you are interested in Dota 2 and AI, please contact me'
   };
@@ -65,7 +65,7 @@ const App: React.FC = () => {
 
         {/* Desktop Nav */}
         <nav className="hidden md:flex gap-2">
-          <NavItem tab={AppTab.DRAFT} icon={Sword} label={t.draft} />
+          <NavItem tab={AppTab.DRAFT} icon={MessageSquare} label={t.draft} />
           <NavItem tab={AppTab.LORE} icon={BookOpen} label={t.lore} />
         </nav>
 
@@ -92,13 +92,13 @@ const App: React.FC = () => {
       {/* Mobile Nav Overlay */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 bg-black/95 pt-20 px-6 flex flex-col gap-4 md:hidden">
-          <NavItem tab={AppTab.DRAFT} icon={Sword} label={t.draft} />
+          <NavItem tab={AppTab.DRAFT} icon={MessageSquare} label={t.draft} />
           <NavItem tab={AppTab.LORE} icon={BookOpen} label={t.lore} />
         </div>
       )}
 
       {/* Main Content */}
-      <main className="pt-24 pb-28 px-4 md:px-8 flex-grow container mx-auto h-[calc(100vh-2rem)]">
+      <main className="pt-20 pb-24 px-3 md:px-6 flex-grow container mx-auto h-[calc(100vh-6rem)]">
         {renderContent()}
       </main>
 
