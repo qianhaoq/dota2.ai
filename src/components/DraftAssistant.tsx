@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Hero, DraftState, Attribute, Language } from '../types';
 import HeroCard from './HeroCard';
-import { analyzeDraftStream, fetchSuggestions, HeroSuggestion } from '../services/geminiService';
+import { analyzeDraftStream, fetchSuggestions, HeroSuggestion, MatchupData, MatchupAdvantage } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
-import { Swords, RotateCcw, Sparkles, Search, AlertTriangle, X, Lightbulb, TrendingUp } from 'lucide-react';
+import { Swords, RotateCcw, Sparkles, Search, AlertTriangle, X, Lightbulb, TrendingUp, Zap, Shield } from 'lucide-react';
 
 interface DraftAssistantProps {
     lang: Language;
@@ -19,6 +19,7 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isGrounded, setIsGrounded] = useState(false);
   const [userContext, setUserContext] = useState('');
+  const [matchupData, setMatchupData] = useState<MatchupData | null>(null);
   
   // Streaming controller ref
   const streamControllerRef = useRef<AbortController | null>(null);
@@ -102,6 +103,7 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
     setIsLoading(true);
     setAnalysis('');
     setIsGrounded(false);
+    setMatchupData(null);
     
     streamControllerRef.current = analyzeDraftStream(
       draft.radiant,
@@ -111,6 +113,9 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
       {
         onChunk: (text) => {
           setAnalysis(prev => prev + text);
+        },
+        onMatchupData: (data) => {
+          setMatchupData(data);
         },
         onComplete: (grounded) => {
           setIsLoading(false);
@@ -149,6 +154,7 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
     setIsLoading(false);
     setSuggestions([]);
     setIsGrounded(false);
+    setMatchupData(null);
   };
 
   const handleSuggestionClick = (suggestion: HeroSuggestion) => {
@@ -187,6 +193,11 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
       winRate: lang === 'zh' ? '胜率' : 'WR',
       grounded: lang === 'zh' ? '基于 OpenDota 数据' : 'Grounded in OpenDota',
       ungrounded: lang === 'zh' ? '数据未验证' : 'Unverified data',
+      matchupAdvantages: lang === 'zh' ? '对位优势' : 'Matchup Advantages',
+      vs: lang === 'zh' ? '对' : 'vs',
+      games: lang === 'zh' ? '场' : 'games',
+      countersPick: lang === 'zh' ? '克制' : 'counters',
+      basedOnGames: lang === 'zh' ? '基于' : 'Based on',
   };
 
   const isError = analysis.includes("The Ancient is under attack") || analysis.includes("Server Error");
@@ -389,19 +400,37 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
                     {t.suggestionsLoading}
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-col gap-1.5">
                     {suggestions.map((s) => (
                       <button
                         key={s.id}
                         onClick={() => handleSuggestionClick(s)}
-                        className="group flex items-center gap-1.5 px-2 py-1.5 bg-gray-800/80 hover:bg-gray-700 border border-gray-700 hover:border-dota-gold/50 rounded transition-all text-xs"
-                        title={s.reasons.map(r => `${t.counterTip} ${r.enemy}: ${r.winRate}%`).join('\n')}
+                        className="group flex items-center gap-2 px-2.5 py-2 bg-gray-800/80 hover:bg-gray-700 border border-gray-700 hover:border-dota-gold/50 rounded transition-all text-xs w-full text-left"
                       >
-                        <span className="text-white font-medium">{s.name}</span>
-                        {s.reasons.length > 0 && (
-                          <span className="text-dota-green text-[10px]">
-                            <TrendingUp size={10} className="inline mr-0.5" />
-                            {s.reasons[0].advantage}%
+                        <span className="text-white font-medium min-w-[80px]">{s.name}</span>
+                        {s.reasons.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 flex-1">
+                            {s.reasons.slice(0, 2).map((r, idx) => (
+                              <span 
+                                key={idx} 
+                                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-dota-green/10 border border-dota-green/30 rounded"
+                                title={`${t.basedOnGames} ${r.gamesPlayed || '50+'} ${t.games}`}
+                              >
+                                <TrendingUp size={9} className="text-dota-green" />
+                                <span className="text-gray-300">{t.countersPick}</span>
+                                <span className="text-white">{r.enemy}</span>
+                                <span className="text-dota-green font-bold">+{r.advantage}%</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : s.winRate ? (
+                          <span className="text-gray-400 text-[10px]">
+                            {t.winRate}: {s.winRate}%
+                          </span>
+                        ) : null}
+                        {s.bestAdvantage && parseFloat(s.bestAdvantage) > 0 && (
+                          <span className="text-dota-green text-[10px] font-bold ml-auto">
+                            +{s.bestAdvantage}%
                           </span>
                         )}
                       </button>
@@ -411,6 +440,44 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
                 {suggestions.length === 0 && !isSuggestionsLoading && (draft.dire.length === 0 && draft.radiant.length === 0) && (
                   <p className="text-gray-500 text-xs">{t.noSuggestions}</p>
                 )}
+              </div>
+            )}
+
+            {/* Matchup Chips - shows data-driven advantages at a glance */}
+            {matchupData && (matchupData.radiantAdvantages.length > 0 || matchupData.direAdvantages.length > 0) && (
+              <div className="flex-shrink-0 mb-3 bg-[#0f1014]/50 rounded-lg p-3 border border-gray-700/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap size={14} className="text-dota-gold" />
+                  <span className="text-dota-gold text-xs font-display tracking-wider">{t.matchupAdvantages}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {matchupData.radiantAdvantages.slice(0, 3).map((adv, idx) => (
+                    <div 
+                      key={`rad-adv-${idx}`}
+                      className="flex items-center gap-1.5 px-2 py-1 bg-dota-green/10 border border-dota-green/30 rounded text-xs"
+                      title={`${t.basedOnGames} ${adv.games} ${t.games}`}
+                    >
+                      <Shield size={10} className="text-dota-green" />
+                      <span className="text-dota-green font-medium">{adv.hero}</span>
+                      <span className="text-gray-400">{t.vs}</span>
+                      <span className="text-gray-300">{adv.vsHero}</span>
+                      <span className="text-dota-green font-bold">+{adv.advantage}%</span>
+                    </div>
+                  ))}
+                  {matchupData.direAdvantages.slice(0, 3).map((adv, idx) => (
+                    <div 
+                      key={`dire-adv-${idx}`}
+                      className="flex items-center gap-1.5 px-2 py-1 bg-dota-red/10 border border-dota-red/30 rounded text-xs"
+                      title={`${t.basedOnGames} ${adv.games} ${t.games}`}
+                    >
+                      <Swords size={10} className="text-dota-red" />
+                      <span className="text-dota-red font-medium">{adv.hero}</span>
+                      <span className="text-gray-400">{t.vs}</span>
+                      <span className="text-gray-300">{adv.vsHero}</span>
+                      <span className="text-dota-red font-bold">+{adv.advantage}%</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

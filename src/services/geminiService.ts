@@ -1,9 +1,24 @@
 import { Hero, Language } from '../types';
 
+export interface MatchupAdvantage {
+  hero: string;
+  vsHero: string;
+  advantage: number;
+  winRate: string;
+  games: number;
+}
+
+export interface MatchupData {
+  radiantAdvantages: MatchupAdvantage[];
+  direAdvantages: MatchupAdvantage[];
+  grounded: boolean;
+}
+
 export interface AnalyzeStreamCallbacks {
   onChunk: (text: string) => void;
   onComplete: (grounded: boolean) => void;
   onError: (error: string) => void;
+  onMatchupData?: (data: MatchupData) => void;
 }
 
 export const analyzeDraftStream = (
@@ -63,6 +78,9 @@ export const analyzeDraftStream = (
               if (parsed.error) {
                 callbacks.onError(parsed.error);
                 return;
+              }
+              if (parsed.matchupData && callbacks.onMatchupData) {
+                callbacks.onMatchupData(parsed.matchupData);
               }
               if (parsed.text) {
                 callbacks.onChunk(parsed.text);
@@ -129,11 +147,16 @@ export interface HeroSuggestion {
   name: string;
   score: string;
   winRate: string | null;
+  roles?: string[];
+  bestAdvantage?: string;
+  totalGames?: number;
   reasons: Array<{
     type: string;
     enemy: string;
+    enemyId?: number;
     advantage: string;
     winRate: string;
+    gamesPlayed?: number;
   }>;
 }
 
