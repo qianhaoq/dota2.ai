@@ -72,8 +72,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     dire: lang === 'zh' ? '夜魇' : 'Dire',
     coach: lang === 'zh' ? 'AI 教练' : 'AI Coach',
     welcome: lang === 'zh' 
-      ? '选择英雄后，点击下方按钮获取分析建议。' 
-      : 'Select heroes, then click a button below for analysis.',
+      ? '欢迎来到 AI 教练！选择双方英雄，然后点击下方按钮获取实时分析。' 
+      : 'Welcome to AI Coach! Pick heroes for both teams, then click a button below.',
+    welcomeHint: lang === 'zh'
+      ? '💡 提示：点击顶部的 + 号添加英雄'
+      : '💡 Tip: Click the + icons above to add heroes',
     analyzeAction: lang === 'zh' ? '分析阵容' : 'Analyze',
     playbookAction: lang === 'zh' ? '本局打法' : 'Playbook',
     suggestAction: lang === 'zh' ? '推荐下一手' : 'Next Pick',
@@ -108,6 +111,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     needAllies: lang === 'zh' ? '请先选择己方英雄' : 'Please select your heroes first',
     suggestionsTitle: lang === 'zh' ? '推荐英雄' : 'Recommended Heroes',
     metaTitle: lang === 'zh' ? '当前版本强势英雄' : 'Current Meta Heroes',
+    yourSide: lang === 'zh' ? '你的阵营' : 'Your side',
   }), [lang]);
 
   const handleHeroSelect = useCallback((hero: Hero) => {
@@ -599,18 +603,36 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       <div className="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden">
         {/* Coach Header */}
         <div className="px-4 py-3 border-b border-gray-700/50 flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-dota-gold to-amber-700 flex items-center justify-center">
+          <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-dota-gold to-amber-700 flex items-center justify-center ${isLoading ? 'animate-pulse' : ''}`}>
             <MessageSquare size={16} className="text-black" />
           </div>
           <span className="font-display text-white tracking-wider">{t.coach}</span>
+          {isLoading && (
+            <span className="text-xs text-gray-400 ml-auto flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-dota-gold rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 bg-dota-gold rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 bg-dota-gold rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+          )}
         </div>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500 opacity-60">
-              <Swords size={48} className="mb-3" />
-              <p className="text-center text-sm">{t.welcome}</p>
+            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-dota-gold/20 to-amber-700/20 flex items-center justify-center mb-4">
+                <MessageSquare size={32} className="text-dota-gold" />
+              </div>
+              <p className="text-center text-sm mb-2">{t.welcome}</p>
+              <p className="text-center text-xs text-gray-500">{t.welcomeHint}</p>
+              {!hasHeroes && (
+                <button
+                  onClick={() => setShowHeroPicker(true)}
+                  className="mt-4 px-4 py-2 bg-dota-gold/20 hover:bg-dota-gold/30 text-dota-gold text-sm rounded-lg border border-dota-gold/30 transition-colors"
+                >
+                  {t.pickHeroes}
+                </button>
+              )}
             </div>
           ) : (
             messages.map((msg) => (
@@ -837,8 +859,17 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
         {/* Quick Action Chips + Input */}
         <div className="p-2 sm:p-3 border-t border-gray-700/50 bg-black/30">
-          {/* Quick Actions */}
-          <div className="flex flex-wrap gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+          {/* Side indicator + Quick Actions */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2 sm:mb-3">
+            {hasHeroes && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full mr-1 ${
+                selectionSide === 'radiant' 
+                  ? 'bg-dota-green/20 text-dota-green border border-dota-green/30' 
+                  : 'bg-dota-red/20 text-dota-red border border-dota-red/30'
+              }`}>
+                {t.yourSide}: {selectionSide === 'radiant' ? t.radiant : t.dire}
+              </span>
+            )}
             <button
               onClick={handleAnalyze}
               disabled={isLoading || !hasHeroes}
