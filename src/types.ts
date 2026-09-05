@@ -8,7 +8,12 @@ export enum Attribute {
 export interface Hero {
   id: number;
   name: string;
+  nameZh?: string;
+  nameEn?: string;
+  aliases?: string[];
   attribute: Attribute;
+  roles?: string[];
+  rolesZh?: string[];
   img: string;
   imgFallback?: string;
   icon?: string;

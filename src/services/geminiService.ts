@@ -145,14 +145,18 @@ export const analyzeDraft = async (radiant: Hero[], dire: Hero[], lang: Language
 export interface HeroSuggestion {
   id: number;
   name: string;
+  nameZh?: string;
+  nameEn?: string;
   score: string;
   winRate: string | null;
   roles?: string[];
+  rolesZh?: string[];
   bestAdvantage?: string;
   totalGames?: number;
   reasons: Array<{
     type: string;
     enemy: string;
+    enemyZh?: string;
     enemyId?: number;
     advantage: string;
     winRate: string;
@@ -163,7 +167,9 @@ export interface HeroSuggestion {
 export const fetchSuggestions = async (
   allies: Hero[], 
   enemies: Hero[], 
-  side: 'radiant' | 'dire'
+  side: 'radiant' | 'dire',
+  role?: string,
+  lang?: string
 ): Promise<HeroSuggestion[]> => {
   try {
     const response = await fetch('/api/suggestions', {
@@ -171,7 +177,7 @@ export const fetchSuggestions = async (
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ allies, enemies, side, limit: 8 }),
+      body: JSON.stringify({ allies, enemies, side, limit: 8, role, lang }),
     });
 
     const data = await response.json();
