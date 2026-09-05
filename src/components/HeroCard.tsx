@@ -19,7 +19,16 @@ const getAttrIcon = (attr: Attribute) => {
 };
 
 const HeroCard: React.FC<HeroCardProps> = ({ hero, isSelected, onClick, small }) => {
+  const [imgSrc, setImgSrc] = useState(hero.img);
   const [imgError, setImgError] = useState(false);
+
+  const handleImageError = () => {
+    if (hero.imgFallback && imgSrc !== hero.imgFallback) {
+      setImgSrc(hero.imgFallback);
+    } else {
+      setImgError(true);
+    }
+  };
 
   return (
     <div 
@@ -33,9 +42,9 @@ const HeroCard: React.FC<HeroCardProps> = ({ hero, isSelected, onClick, small })
     >
       {!imgError ? (
         <img 
-          src={hero.img} 
+          src={imgSrc} 
           alt={hero.name} 
-          onError={() => setImgError(true)}
+          onError={handleImageError}
           className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
         />
       ) : (

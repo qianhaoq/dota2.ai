@@ -17,6 +17,13 @@ if (!apiKey) {
   console.warn("WARNING: DEEPSEEK_API_KEY is not set in the server environment.");
 }
 
+const steamApiKey = process.env.STEAM_WEB_API_KEY;
+if (steamApiKey) {
+  console.log("INFO: STEAM_WEB_API_KEY is configured, localized hero names will be available.");
+} else {
+  console.log("INFO: STEAM_WEB_API_KEY not set, using OpenDota constants only (graceful fallback).");
+}
+
 const openai = apiKey ? new OpenAI({
   baseURL: 'https://api.deepseek.com',
   apiKey: apiKey,
@@ -24,16 +31,29 @@ const openai = apiKey ? new OpenAI({
 
 const DEEPSEEK_MODEL = 'deepseek-chat';
 
-// ============ OpenDota Cache ============
+// ============ External API URLs ============
 const OPENDOTA_API = 'https://api.opendota.com/api';
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const STEAM_API = 'https://api.steampowered.com';
+const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
 
+// Cache TTLs
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for matchup data
+const CONSTANTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for constants (patch data changes rarely)
+
+// ============ Cache Storage ============
 const cache = {
   heroStats: { data: null, timestamp: 0 },
-  matchups: new Map() // Map<heroId, { data, timestamp }>
+  matchups: new Map(), // Map<heroId, { data, timestamp }>
+  // Foundation data constants
+  heroes: { data: null, timestamp: 0 },
+  items: { data: null, timestamp: 0 },
+  abilities: { data: null, timestamp: 0 },
+  // Steam localized data
+  steamHeroesZh: { data: null, timestamp: 0 },
+  steamHeroesEn: { data: null, timestamp: 0 }
 };
 
-async function fetchWithRetry(url, retries = 2) {
+async function fetchWithRetry(url, retries = 2, delay = 500) {
   for (let i = 0; i <= retries; i++) {
     try {
       const res = await fetch(url);
@@ -41,13 +61,173 @@ async function fetchWithRetry(url, retries = 2) {
       return await res.json();
     } catch (err) {
       if (i === retries) throw err;
-      await new Promise(r => setTimeout(r, 500 * (i + 1)));
+      await new Promise(r => setTimeout(r, delay * (i + 1)));
     }
   }
 }
 
 const MIN_GAMES_FOR_RELIABLE_WR = 20;
 const MIN_MATCHUP_GAMES = 50;
+
+// ============ OpenDota Constants Fetchers ============
+
+async function getHeroConstants() {
+  const now = Date.now();
+  if (cache.heroes.data && (now - cache.heroes.timestamp) < CONSTANTS_CACHE_TTL_MS) {
+    return cache.heroes.data;
+  }
+  try {
+    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/heroes`);
+    cache.heroes = { data, timestamp: now };
+    console.log(`Loaded ${Object.keys(data).length} heroes from OpenDota constants`);
+    return data;
+  } catch (err) {
+    console.error('Failed to fetch hero constants:', err.message);
+    return cache.heroes.data || {};
+  }
+}
+
+async function getItemConstants() {
+  const now = Date.now();
+  if (cache.items.data && (now - cache.items.timestamp) < CONSTANTS_CACHE_TTL_MS) {
+    return cache.items.data;
+  }
+  try {
+    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/items`);
+    cache.items = { data, timestamp: now };
+    console.log(`Loaded ${Object.keys(data).length} items from OpenDota constants`);
+    return data;
+  } catch (err) {
+    console.error('Failed to fetch item constants:', err.message);
+    return cache.items.data || {};
+  }
+}
+
+async function getAbilityConstants() {
+  const now = Date.now();
+  if (cache.abilities.data && (now - cache.abilities.timestamp) < CONSTANTS_CACHE_TTL_MS) {
+    return cache.abilities.data;
+  }
+  try {
+    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/abilities`);
+    cache.abilities = { data, timestamp: now };
+    console.log(`Loaded ${Object.keys(data).length} abilities from OpenDota constants`);
+    return data;
+  } catch (err) {
+    console.error('Failed to fetch ability constants:', err.message);
+    return cache.abilities.data || {};
+  }
+}
+
+// ============ Steam Web API Integration (Optional) ============
+
+async function getSteamHeroes(language = 'schinese') {
+  if (!steamApiKey) return null;
+  
+  const cacheKey = language === 'schinese' ? 'steamHeroesZh' : 'steamHeroesEn';
+  const now = Date.now();
+  
+  if (cache[cacheKey].data && (now - cache[cacheKey].timestamp) < CONSTANTS_CACHE_TTL_MS) {
+    return cache[cacheKey].data;
+  }
+  
+  try {
+    const url = `${STEAM_API}/IEconDOTA2_570/GetHeroes/v1/?key=${steamApiKey}&language=${language}`;
+    const data = await fetchWithRetry(url, 2, 1000);
+    
+    if (data?.result?.heroes) {
+      const heroMap = {};
+      for (const hero of data.result.heroes) {
+        heroMap[hero.id] = {
+          id: hero.id,
+          name: hero.name,
+          localizedName: hero.localized_name
+        };
+      }
+      cache[cacheKey] = { data: heroMap, timestamp: now };
+      console.log(`Loaded ${Object.keys(heroMap).length} heroes from Steam API (${language})`);
+      return heroMap;
+    }
+    return null;
+  } catch (err) {
+    console.error(`Failed to fetch Steam heroes (${language}):`, err.message);
+    return cache[cacheKey].data || null;
+  }
+}
+
+// Merge OpenDota hero data with Steam localized names
+async function getMergedHeroMeta(lang = 'zh') {
+  const [heroConstants, heroStats, steamHeroesZh, steamHeroesEn] = await Promise.all([
+    getHeroConstants(),
+    getHeroStats(),
+    getSteamHeroes('schinese'),
+    getSteamHeroes('english')
+  ]);
+  
+  const mergedHeroes = {};
+  
+  for (const [heroId, hero] of Object.entries(heroConstants)) {
+    const id = parseInt(heroId);
+    const stats = heroStats[id];
+    const steamZh = steamHeroesZh?.[id];
+    const steamEn = steamHeroesEn?.[id];
+    const shortName = hero.name?.replace('npc_dota_hero_', '') || '';
+    
+    mergedHeroes[id] = {
+      id,
+      name: hero.localized_name || hero.name,
+      nameZh: steamZh?.localizedName || hero.localized_name || hero.name,
+      nameEn: steamEn?.localizedName || hero.localized_name || hero.name,
+      internalName: hero.name,
+      shortName,
+      primaryAttr: hero.primary_attr,
+      attackType: hero.attack_type,
+      roles: hero.roles || [],
+      img: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/${shortName}.png`,
+      imgVert: `${VALVE_CDN}/apps/dota2/images/heroes/${shortName}_vert.jpg`,
+      icon: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/icons/${shortName}.png`,
+      winRate: stats?.winRate || null,
+      pickRate: stats?.pickRate || null
+    };
+  }
+  
+  return mergedHeroes;
+}
+
+// Get lean hero list for frontend
+async function getLeanHeroMeta(lang = 'zh') {
+  const heroes = await getMergedHeroMeta(lang);
+  return Object.values(heroes).map(h => ({
+    id: h.id,
+    name: lang === 'zh' ? h.nameZh : h.nameEn,
+    nameZh: h.nameZh,
+    nameEn: h.nameEn,
+    shortName: h.shortName,
+    primaryAttr: h.primaryAttr,
+    roles: h.roles,
+    img: h.img,
+    imgVert: h.imgVert,
+    icon: h.icon,
+    winRate: h.winRate
+  })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Get lean item list for frontend
+async function getLeanItemMeta() {
+  const items = await getItemConstants();
+  return Object.entries(items)
+    .filter(([key, item]) => !item.recipe && item.cost > 0)
+    .map(([key, item]) => ({
+      id: item.id,
+      key,
+      name: item.dname || key,
+      cost: item.cost,
+      img: `${VALVE_CDN}/apps/dota2/images/dota_react/items/${key}.png`,
+      components: item.components || [],
+      isNeutral: item.tier !== undefined
+    }))
+    .sort((a, b) => (a.cost || 0) - (b.cost || 0));
+}
 
 async function getHeroStats() {
   const now = Date.now();
@@ -173,7 +353,7 @@ async function aggregateMatchupData(radiantIds, direIds, heroStats) {
   return analysis;
 }
 
-function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded) {
+function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded, heroConstants = {}) {
   const isZh = lang === 'zh';
   
   const t = {
@@ -206,32 +386,52 @@ function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, us
       'Recommend counter items'
     ],
     incompleteNote: isZh ? '如果阵容不完整，请针对已选英雄给出建议。' : 'If draft is incomplete, provide suggestions for the selected heroes.',
-    langInstruction: isZh ? '请使用中文(简体)进行回答。' : 'Please respond in English.'
+    langInstruction: isZh ? '请使用中文(简体)进行回答。' : 'Please respond in English.',
+    roles: isZh ? '定位' : 'Roles',
+    attr: isZh ? '属性' : 'Attr'
+  };
+
+  const attrNames = {
+    str: isZh ? '力量' : 'STR',
+    agi: isZh ? '敏捷' : 'AGI',
+    int: isZh ? '智力' : 'INT',
+    all: isZh ? '全能' : 'UNI'
   };
 
   const radiantNames = radiant.map(h => h.name).join(', ');
   const direNames = dire.map(h => h.name).join(', ');
   
+  // Helper to format hero info with role/attribute
+  const formatHeroWithMeta = (h) => {
+    const s = heroStats[h.id];
+    const c = Object.values(heroConstants).find(hc => hc.id === h.id);
+    let info = s ? `${s.name} (${t.winRate}: ${s.winRate || 'N/A'}%)` : h.name;
+    
+    if (c) {
+      const roles = (c.roles || s?.roles || []).slice(0, 2).join('/');
+      const attr = attrNames[c.primary_attr] || '';
+      if (roles || attr) {
+        info += ` [${attr}${roles ? ', ' + roles : ''}]`;
+      }
+    } else if (s?.roles?.length) {
+      info += ` [${s.roles.slice(0, 2).join('/')}]`;
+    }
+    return info;
+  };
+  
   let statsSection = '';
   if (isGrounded) {
-    const radiantStats = radiant.map(h => {
-      const s = heroStats[h.id];
-      return s ? `${s.name} (${t.winRate}: ${s.winRate || 'N/A'}%)` : h.name;
-    }).join(', ');
-    
-    const direStats = dire.map(h => {
-      const s = heroStats[h.id];
-      return s ? `${s.name} (${t.winRate}: ${s.winRate || 'N/A'}%)` : h.name;
-    }).join(', ');
+    const radiantStats = radiant.map(formatHeroWithMeta).join('\n- ');
+    const direStats = dire.map(formatHeroWithMeta).join('\n- ');
     
     statsSection = `
 ## ${t.statsTitle}:
 
 ### ${t.radiantHeroes}:
-${radiantStats}
+- ${radiantStats || t.none}
 
 ### ${t.direHeroes}:
-${direStats}
+- ${direStats || t.none}
 `;
 
     if (matchupAnalysis.radiantAdvantages.length > 0) {
@@ -317,13 +517,89 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  const heroConstantsLoaded = cache.heroes.data !== null;
+  const itemConstantsLoaded = cache.items.data !== null;
+  const abilityConstantsLoaded = cache.abilities.data !== null;
+  
   res.status(200).json({ 
     status: 'healthy',
     apiKeyConfigured: !!apiKey,
     model: DEEPSEEK_MODEL,
-    provider: 'deepseek'
+    provider: 'deepseek',
+    opendotaConstants: {
+      heroes: heroConstantsLoaded,
+      items: itemConstantsLoaded,
+      abilities: abilityConstantsLoaded,
+      herosCacheAge: heroConstantsLoaded ? Math.round((Date.now() - cache.heroes.timestamp) / 1000) : null,
+      itemsCacheAge: itemConstantsLoaded ? Math.round((Date.now() - cache.items.timestamp) / 1000) : null
+    },
+    steamHeroesConfigured: !!steamApiKey,
+    steamHeroesLoaded: {
+      zh: cache.steamHeroesZh.data !== null,
+      en: cache.steamHeroesEn.data !== null
+    }
   });
+});
+
+// ============ Meta API Endpoints ============
+
+app.get('/api/meta/heroes', async (req, res) => {
+  try {
+    const lang = req.query.lang || 'zh';
+    const heroes = await getLeanHeroMeta(lang);
+    res.json({ 
+      heroes,
+      count: heroes.length,
+      steamLocalized: !!steamApiKey && (cache.steamHeroesZh.data !== null || cache.steamHeroesEn.data !== null),
+      cacheAge: cache.heroes.timestamp ? Math.round((Date.now() - cache.heroes.timestamp) / 1000) : null
+    });
+  } catch (err) {
+    console.error('Meta heroes error:', err);
+    res.status(500).json({ error: 'Failed to fetch hero meta', heroes: [] });
+  }
+});
+
+app.get('/api/meta/items', async (req, res) => {
+  try {
+    const items = await getLeanItemMeta();
+    res.json({ 
+      items,
+      count: items.length,
+      cacheAge: cache.items.timestamp ? Math.round((Date.now() - cache.items.timestamp) / 1000) : null
+    });
+  } catch (err) {
+    console.error('Meta items error:', err);
+    res.status(500).json({ error: 'Failed to fetch item meta', items: [] });
+  }
+});
+
+app.get('/api/meta/abilities', async (req, res) => {
+  try {
+    const abilities = await getAbilityConstants();
+    const leanAbilities = Object.entries(abilities)
+      .filter(([key, ability]) => ability.dname && !key.startsWith('special_'))
+      .map(([key, ability]) => ({
+        key,
+        name: ability.dname,
+        description: ability.desc,
+        img: ability.img ? `${VALVE_CDN}${ability.img}` : null,
+        behavior: ability.behavior,
+        dmgType: ability.dmg_type,
+        cooldown: ability.cd,
+        manaCost: ability.mc
+      }))
+      .slice(0, 500);
+    
+    res.json({ 
+      abilities: leanAbilities,
+      count: leanAbilities.length,
+      cacheAge: cache.abilities.timestamp ? Math.round((Date.now() - cache.abilities.timestamp) / 1000) : null
+    });
+  } catch (err) {
+    console.error('Meta abilities error:', err);
+    res.status(500).json({ error: 'Failed to fetch ability meta', abilities: [] });
+  }
 });
 
 app.post('/api/analyze', async (req, res) => {
@@ -349,11 +625,15 @@ app.post('/api/analyze', async (req, res) => {
     const direIds = dire.map(h => h.id).filter(Boolean);
     
     let heroStats = {};
+    let heroConstants = {};
     let matchupAnalysis = { radiantAdvantages: [], direAdvantages: [] };
     let isGrounded = false;
     
     try {
-      heroStats = await getHeroStats();
+      [heroStats, heroConstants] = await Promise.all([
+        getHeroStats(),
+        getHeroConstants()
+      ]);
       if (Object.keys(heroStats).length > 0 && (radiantIds.length > 0 || direIds.length > 0)) {
         matchupAnalysis = await aggregateMatchupData(radiantIds, direIds, heroStats);
         isGrounded = true;
@@ -362,7 +642,7 @@ app.post('/api/analyze', async (req, res) => {
       console.error('OpenDota fetch error:', err.message);
     }
     
-    const prompt = buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded);
+    const prompt = buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded, heroConstants);
 
     const systemInstruction = getDraftSystemInstruction(lang);
 
