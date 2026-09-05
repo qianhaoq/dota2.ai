@@ -25,6 +25,7 @@ export interface TierHero {
   pickRate: number;
   gamesPlayed: number;
   roles: string[];
+  rolesZh?: string[];
   img: string;
   icon: string;
   rank: number;
@@ -42,6 +43,7 @@ export interface TierResponse {
 
 // ============ Playbook Types ============
 export interface PlaybookItem {
+  id?: number;
   key: string;
   name: string;
   count: number;
@@ -52,6 +54,8 @@ export interface PlaybookItem {
 export interface PlaybookMatchup {
   enemy: string;
   enemyId: number;
+  enemyNameZh?: string;
+  enemyNameEn?: string;
   winRate: string;
   advantage: string;
   gamesPlayed: number;
@@ -60,8 +64,11 @@ export interface PlaybookMatchup {
 export interface PlaybookHero {
   heroId: number;
   heroName: string;
+  nameZh?: string;
+  nameEn?: string;
   winRate: string | null;
   roles: string[];
+  rolesZh?: string[];
   items: {
     startGame: PlaybookItem[];
     earlyGame: PlaybookItem[];

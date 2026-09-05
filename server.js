@@ -469,9 +469,13 @@ async function getHeroItemPopularity(heroId) {
     const formatItems = (itemCounts) => {
       if (!itemCounts) return [];
       return Object.entries(itemCounts)
-        .map(([itemKey, count]) => {
-          const item = itemConstants[itemKey];
+        .map(([itemIdStr, count]) => {
+          const itemId = parseInt(itemIdStr);
+          const itemEntry = Object.entries(itemConstants).find(([_, item]) => item.id === itemId);
+          const itemKey = itemEntry?.[0] || itemIdStr;
+          const item = itemEntry?.[1];
           return {
+            id: itemId,
             key: itemKey,
             name: item?.dname || itemKey,
             count: count,
@@ -809,11 +813,9 @@ app.get('/api/meta/tier', async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
     const sortBy = req.query.sortBy || 'winRate';
     
-    const [heroStats, heroConstants, steamHeroesZh, steamHeroesEn] = await Promise.all([
+    const [heroStats, heroConstants] = await Promise.all([
       getHeroStats(),
       getHeroConstants(),
-      getSteamHeroes('schinese'),
-      getSteamHeroes('english')
     ]);
     
     if (!heroStats || Object.keys(heroStats).length === 0) {
@@ -825,22 +827,22 @@ app.get('/api/meta/tier', async (req, res) => {
       .map(h => {
         const heroId = h.id;
         const constant = Object.values(heroConstants).find(c => c.id === heroId);
-        const steamZh = steamHeroesZh?.[heroId];
-        const steamEn = steamHeroesEn?.[heroId];
+        const cnData = HERO_NAMES_CN[heroId];
         const shortName = constant?.name?.replace('npc_dota_hero_', '') || h.internalName?.replace('npc_dota_hero_', '') || '';
+        const nameEn = constant?.localized_name || h.name;
+        const nameZh = cnData?.nameZh || nameEn;
         
         return {
           id: heroId,
-          name: lang === 'zh' 
-            ? (steamZh?.localizedName || h.name) 
-            : (steamEn?.localizedName || h.name),
-          nameZh: steamZh?.localizedName || h.name,
-          nameEn: steamEn?.localizedName || h.name,
+          name: lang === 'zh' ? nameZh : nameEn,
+          nameZh,
+          nameEn,
           shortName,
           winRate: parseFloat(h.winRate),
           pickRate: h.pickRate,
           gamesPlayed: h.gamesPlayed,
           roles: h.roles || constant?.roles || [],
+          rolesZh: translateRoles(h.roles || constant?.roles || [], 'zh'),
           img: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/${shortName}.png`,
           icon: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/icons/${shortName}.png`
         };
@@ -924,10 +926,9 @@ app.post('/api/playbook', async (req, res) => {
       return res.status(400).json({ error: errorMsg });
     }
     
-    const [heroStats, heroConstants, steamHeroesZh] = await Promise.all([
+    const [heroStats, heroConstants] = await Promise.all([
       getHeroStats(),
       getHeroConstants(),
-      getSteamHeroes('schinese')
     ]);
     
     const alliedIds = allies.map(h => h.id);
@@ -948,24 +949,25 @@ app.post('/api/playbook', async (req, res) => {
       matchupsMap[id] = matchups;
     }
     
-    const getHeroName = (heroId, preferZh = true) => {
-      if (preferZh && lang === 'zh') {
-        return steamHeroesZh?.[heroId]?.localizedName || heroStats[heroId]?.name || `Hero#${heroId}`;
-      }
-      return heroStats[heroId]?.name || `Hero#${heroId}`;
-    };
-    
     const playbookData = alliedIds.map(heroId => {
-      const heroName = getHeroName(heroId, true);
+      const cnData = HERO_NAMES_CN[heroId];
+      const nameEn = heroStats[heroId]?.name || `Hero#${heroId}`;
+      const nameZh = cnData?.nameZh || nameEn;
+      const heroName = lang === 'zh' ? nameZh : nameEn;
       const items = itemPopularityMap[heroId] || {};
       const matchups = matchupsMap[heroId] || {};
       
       const vsEnemies = enemyIds.map(enemyId => {
         const m = matchups[enemyId];
         if (m && m.gamesPlayed >= MIN_MATCHUP_GAMES) {
+          const enemyCnData = HERO_NAMES_CN[enemyId];
+          const enemyNameEn = heroStats[enemyId]?.name || `Hero#${enemyId}`;
+          const enemyNameZh = enemyCnData?.nameZh || enemyNameEn;
           return {
-            enemy: getHeroName(enemyId, true),
+            enemy: lang === 'zh' ? enemyNameZh : enemyNameEn,
             enemyId,
+            enemyNameZh,
+            enemyNameEn,
             winRate: m.winRate,
             advantage: m.advantage,
             gamesPlayed: m.gamesPlayed
@@ -977,8 +979,11 @@ app.post('/api/playbook', async (req, res) => {
       return {
         heroId,
         heroName,
+        nameZh,
+        nameEn,
         winRate: heroStats[heroId]?.winRate,
         roles: heroStats[heroId]?.roles || [],
+        rolesZh: translateRoles(heroStats[heroId]?.roles || [], 'zh'),
         items: {
           startGame: items.startGame?.slice(0, 5) || [],
           earlyGame: items.earlyGame?.slice(0, 5) || [],
