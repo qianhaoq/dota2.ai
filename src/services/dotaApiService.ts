@@ -17,9 +17,11 @@ interface MetaHero {
   name: string;
   nameZh?: string;
   nameEn?: string;
+  aliases?: string[];
   shortName: string;
   primaryAttr: string;
   roles?: string[];
+  rolesZh?: string[];
   img: string;
   imgVert: string;
   icon: string;
@@ -50,11 +52,16 @@ export const fetchHeroes = async (lang: string = 'zh'): Promise<Hero[]> => {
       return data.heroes.map(h => ({
         id: h.id,
         name: h.name,
+        nameZh: h.nameZh,
+        nameEn: h.nameEn,
+        aliases: h.aliases || [],
         attribute: mapPrimaryAttr(h.primaryAttr),
+        roles: h.roles || [],
+        rolesZh: h.rolesZh || [],
         img: h.imgVert,
         imgFallback: `${VALVE_CDN}/apps/dota2/images/heroes/${h.shortName}_vert.jpg`,
         icon: h.icon
-      })).sort((a, b) => a.name.localeCompare(b.name));
+      })).sort((a, b) => a.name.localeCompare(b.name, lang === 'zh' ? 'zh-CN' : 'en'));
     }
     throw new Error('Server meta API unavailable');
   } catch {

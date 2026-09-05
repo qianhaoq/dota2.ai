@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Hero, DraftState, Attribute, Language } from '../types';
 import HeroCard from './HeroCard';
 import { analyzeDraftStream, fetchSuggestions, HeroSuggestion, MatchupData, MatchupAdvantage } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
-import { Swords, RotateCcw, Sparkles, Search, AlertTriangle, X, Lightbulb, TrendingUp, Zap, Shield } from 'lucide-react';
+import { Swords, RotateCcw, Sparkles, Search, AlertTriangle, X, Lightbulb, TrendingUp, Zap, Shield, User, Users } from 'lucide-react';
 
 interface DraftAssistantProps {
     lang: Language;
@@ -31,6 +31,17 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [attrFilter, setAttrFilter] = useState<Attribute | 'All'>('All');
+  const [roleFilter, setRoleFilter] = useState<string | null>(null);
+  
+  // Role definitions for filtering
+  const ROLES = [
+    { en: 'Carry', zh: '核心' },
+    { en: 'Support', zh: '辅助' },
+    { en: 'Nuker', zh: '爆发' },
+    { en: 'Disabler', zh: '控制' },
+    { en: 'Initiator', zh: '先手' },
+    { en: 'Durable', zh: '肉盾' },
+  ];
 
   // Load heroes on mount and when language changes
   useEffect(() => {
@@ -44,7 +55,7 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
   }, [lang]);
 
   // Fetch suggestions when draft changes
-  const updateSuggestions = useCallback(async (currentDraft: DraftState, side: 'radiant' | 'dire') => {
+  const updateSuggestions = useCallback(async (currentDraft: DraftState, side: 'radiant' | 'dire', role?: string | null) => {
     const allies = side === 'radiant' ? currentDraft.radiant : currentDraft.dire;
     const enemies = side === 'radiant' ? currentDraft.dire : currentDraft.radiant;
     
@@ -59,14 +70,25 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
     }
     
     setIsSuggestionsLoading(true);
-    const result = await fetchSuggestions(allies, enemies, side);
+    const result = await fetchSuggestions(allies, enemies, side, role || undefined, lang);
     setSuggestions(result);
     setIsSuggestionsLoading(false);
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
-    updateSuggestions(draft, selectionSide);
-  }, [draft, selectionSide, updateSuggestions]);
+    updateSuggestions(draft, selectionSide, roleFilter);
+  }, [draft, selectionSide, roleFilter, updateSuggestions]);
+  
+  // Get draft phase hint
+  const getDraftPhase = useMemo(() => {
+    const allyCount = selectionSide === 'radiant' ? draft.radiant.length : draft.dire.length;
+    const enemyCount = selectionSide === 'radiant' ? draft.dire.length : draft.radiant.length;
+    const totalPicked = allyCount + enemyCount;
+    
+    if (totalPicked <= 2) return { phase: 'early', label: lang === 'zh' ? '前期选人' : 'Early Draft' };
+    if (totalPicked <= 6) return { phase: 'mid', label: lang === 'zh' ? '中期选人' : 'Mid Draft' };
+    return { phase: 'late', label: lang === 'zh' ? '后期补位' : 'Late Draft' };
+  }, [draft, selectionSide, lang]);
 
   const handleHeroSelect = (hero: Hero) => {
     // Check if hero is already picked anywhere
@@ -164,12 +186,30 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
     }
   };
 
-  // Filter Logic
-  const filteredHeroes = allHeroes.filter(hero => {
-    const matchesSearch = hero.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesAttr = attrFilter === 'All' || hero.attribute === attrFilter;
-    return matchesSearch && matchesAttr;
-  });
+  // Filter Logic with Chinese name and alias support
+  const filteredHeroes = useMemo(() => {
+    const query = searchQuery.toLowerCase().trim();
+    
+    return allHeroes.filter(hero => {
+      // Search matching: name, nameZh, nameEn, aliases
+      let matchesSearch = true;
+      if (query) {
+        const nameMatch = hero.name?.toLowerCase().includes(query);
+        const nameZhMatch = hero.nameZh?.toLowerCase().includes(query);
+        const nameEnMatch = hero.nameEn?.toLowerCase().includes(query);
+        const aliasMatch = hero.aliases?.some(alias => alias.toLowerCase().includes(query));
+        matchesSearch = nameMatch || nameZhMatch || nameEnMatch || aliasMatch || false;
+      }
+      
+      // Attribute filter
+      const matchesAttr = attrFilter === 'All' || hero.attribute === attrFilter;
+      
+      // Role filter
+      const matchesRole = !roleFilter || hero.roles?.includes(roleFilter);
+      
+      return matchesSearch && matchesAttr && matchesRole;
+    });
+  }, [allHeroes, searchQuery, attrFilter, roleFilter]);
 
   const t = {
       radiant: lang === 'zh' ? '天辉' : 'RADIANT',
@@ -177,7 +217,7 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
       select: lang === 'zh' ? '选择' : 'Select',
       selecting: lang === 'zh' ? '选择中' : 'Selecting',
       heroPool: lang === 'zh' ? '英雄池' : 'Hero Pool',
-      search: lang === 'zh' ? '搜索...' : 'Search...',
+      search: lang === 'zh' ? '搜索英雄/别名...' : 'Search hero/alias...',
       loading: lang === 'zh' ? '正在加载 Dota2 API...' : 'Loading Heroes from Valve API...',
       noHeroes: lang === 'zh' ? '未找到英雄' : 'No heroes found',
       oracle: lang === 'zh' ? '战局预言' : 'Battle Oracle',
@@ -198,6 +238,9 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
       games: lang === 'zh' ? '场' : 'games',
       countersPick: lang === 'zh' ? '克制' : 'counters',
       basedOnGames: lang === 'zh' ? '基于' : 'Based on',
+      roleFilter: lang === 'zh' ? '角色筛选' : 'Filter by Role',
+      allRoles: lang === 'zh' ? '全部' : 'All',
+      draftPhase: lang === 'zh' ? '选人阶段' : 'Draft Phase',
   };
 
   const isError = analysis.includes("The Ancient is under attack") || analysis.includes("Server Error");
@@ -266,38 +309,68 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
 
         {/* Hero Pool */}
         <div className="glass-panel p-4 rounded-xl flex-grow overflow-hidden flex flex-col min-h-[300px]">
-           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3 border-b border-gray-700 pb-3 flex-shrink-0">
-              <h4 className="text-dota-gold font-display text-sm uppercase tracking-widest whitespace-nowrap">{t.heroPool}</h4>
-              
-              <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                <div className="relative flex-grow sm:flex-grow-0">
-                  <Search className="absolute left-2 top-1.5 text-gray-500" size={14} />
-                  <input 
-                    type="text" 
-                    placeholder={t.search}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full sm:w-40 bg-gray-900 border border-gray-700 rounded pl-8 pr-2 py-1 text-xs text-white focus:outline-none focus:border-dota-gold"
-                  />
-                </div>
+           <div className="flex flex-col gap-3 border-b border-gray-700 pb-3 flex-shrink-0">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <h4 className="text-dota-gold font-display text-sm uppercase tracking-widest whitespace-nowrap">{t.heroPool}</h4>
                 
-                <div className="flex gap-1">
-                   {(['All', Attribute.STRENGTH, Attribute.AGILITY, Attribute.INTELLIGENCE, Attribute.UNIVERSAL] as const).map(attr => (
-                     <button
-                        key={attr}
-                        onClick={() => setAttrFilter(attr)}
-                        className={`
-                          p-1.5 rounded border text-[10px] font-bold uppercase transition-colors
-                          ${attrFilter === attr 
-                            ? 'bg-gray-700 border-gray-500 text-white' 
-                            : 'bg-transparent border-transparent text-gray-500 hover:text-gray-300'}
-                        `}
-                        title={attr}
-                     >
-                       {attr === 'All' ? (lang === 'zh' ? '全部' : 'ALL') : attr.substring(0,3)}
-                     </button>
-                   ))}
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                  <div className="relative flex-grow sm:flex-grow-0">
+                    <Search className="absolute left-2 top-1.5 text-gray-500" size={14} />
+                    <input 
+                      type="text" 
+                      placeholder={t.search}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full sm:w-48 bg-gray-900 border border-gray-700 rounded pl-8 pr-2 py-1 text-xs text-white focus:outline-none focus:border-dota-gold"
+                    />
+                  </div>
+                  
+                  <div className="flex gap-1">
+                     {(['All', Attribute.STRENGTH, Attribute.AGILITY, Attribute.INTELLIGENCE, Attribute.UNIVERSAL] as const).map(attr => (
+                       <button
+                          key={attr}
+                          onClick={() => setAttrFilter(attr)}
+                          className={`
+                            p-1.5 rounded border text-[10px] font-bold uppercase transition-colors
+                            ${attrFilter === attr 
+                              ? 'bg-gray-700 border-gray-500 text-white' 
+                              : 'bg-transparent border-transparent text-gray-500 hover:text-gray-300'}
+                          `}
+                          title={attr}
+                       >
+                         {attr === 'All' ? (lang === 'zh' ? '全部' : 'ALL') : attr.substring(0,3)}
+                       </button>
+                     ))}
+                  </div>
                 </div>
+              </div>
+              
+              {/* Role Filter Chips */}
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-gray-500 text-[10px] mr-1">{t.roleFilter}:</span>
+                <button
+                  onClick={() => setRoleFilter(null)}
+                  className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
+                    !roleFilter 
+                      ? 'bg-dota-gold/20 text-dota-gold border border-dota-gold/50' 
+                      : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500'
+                  }`}
+                >
+                  {t.allRoles}
+                </button>
+                {ROLES.map(role => (
+                  <button
+                    key={role.en}
+                    onClick={() => setRoleFilter(roleFilter === role.en ? null : role.en)}
+                    className={`px-2 py-0.5 rounded text-[10px] transition-colors ${
+                      roleFilter === role.en 
+                        ? 'bg-dota-gold/20 text-dota-gold border border-dota-gold/50' 
+                        : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500'
+                    }`}
+                  >
+                    {lang === 'zh' ? role.zh : role.en}
+                  </button>
+                ))}
               </div>
            </div>
 
@@ -385,21 +458,57 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
             </div>
 
             {/* Suggestions Panel */}
-            {(suggestions.length > 0 || isSuggestionsLoading) && (draft.radiant.length < 5 || draft.dire.length < 5) && (
+            {(suggestions.length > 0 || isSuggestionsLoading || (draft.radiant.length > 0 || draft.dire.length > 0)) && (draft.radiant.length < 5 || draft.dire.length < 5) && (
               <div className="flex-shrink-0 mb-4 bg-[#0f1014]/50 rounded-lg p-3 border border-dota-gold/30">
+                {/* Header with phase hint */}
                 <div className="flex items-center gap-2 mb-2">
                   <Lightbulb size={16} className="text-dota-gold" />
                   <span className="text-dota-gold text-sm font-display tracking-wider">{t.suggestions}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    getDraftPhase.phase === 'early' ? 'bg-blue-500/20 text-blue-400' :
+                    getDraftPhase.phase === 'mid' ? 'bg-yellow-500/20 text-yellow-400' :
+                    'bg-purple-500/20 text-purple-400'
+                  }`}>
+                    {getDraftPhase.label}
+                  </span>
                   <span className="text-gray-500 text-xs ml-auto">
                     {selectionSide === 'radiant' ? t.radiant : t.dire}
                   </span>
                 </div>
+                
+                {/* Role filter chips in suggestions */}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  <button
+                    onClick={() => setRoleFilter(null)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] transition-colors ${
+                      !roleFilter 
+                        ? 'bg-dota-gold/30 text-dota-gold' 
+                        : 'bg-gray-800/50 text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    {t.allRoles}
+                  </button>
+                  {ROLES.slice(0, 4).map(role => (
+                    <button
+                      key={role.en}
+                      onClick={() => setRoleFilter(roleFilter === role.en ? null : role.en)}
+                      className={`px-1.5 py-0.5 rounded text-[9px] transition-colors ${
+                        roleFilter === role.en 
+                          ? 'bg-dota-gold/30 text-dota-gold' 
+                          : 'bg-gray-800/50 text-gray-500 hover:text-gray-300'
+                      }`}
+                    >
+                      {lang === 'zh' ? role.zh : role.en}
+                    </button>
+                  ))}
+                </div>
+                
                 {isSuggestionsLoading ? (
                   <div className="flex items-center gap-2 text-gray-400 text-xs py-2">
                     <div className="w-3 h-3 border border-dota-gold border-t-transparent rounded-full animate-spin"></div>
                     {t.suggestionsLoading}
                   </div>
-                ) : (
+                ) : suggestions.length > 0 ? (
                   <div className="flex flex-col gap-1.5">
                     {suggestions.map((s) => (
                       <button
@@ -407,18 +516,27 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
                         onClick={() => handleSuggestionClick(s)}
                         className="group flex items-center gap-2 px-2.5 py-2 bg-gray-800/80 hover:bg-gray-700 border border-gray-700 hover:border-dota-gold/50 rounded transition-all text-xs w-full text-left"
                       >
-                        <span className="text-white font-medium min-w-[80px]">{s.name}</span>
+                        <span className="text-white font-medium min-w-[70px]">{s.name}</span>
+                        {/* Role tags */}
+                        {s.roles && s.roles.length > 0 && (
+                          <div className="flex gap-0.5">
+                            {(lang === 'zh' && s.rolesZh ? s.rolesZh : s.roles).slice(0, 2).map((role: string, idx: number) => (
+                              <span key={idx} className="text-[9px] px-1 py-0.5 bg-gray-700/50 text-gray-400 rounded">
+                                {role}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         {s.reasons.length > 0 ? (
-                          <div className="flex flex-wrap gap-1.5 flex-1">
+                          <div className="flex flex-wrap gap-1 flex-1">
                             {s.reasons.slice(0, 2).map((r, idx) => (
                               <span 
                                 key={idx} 
-                                className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-dota-green/10 border border-dota-green/30 rounded"
+                                className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 bg-dota-green/10 border border-dota-green/30 rounded"
                                 title={`${t.basedOnGames} ${r.gamesPlayed || '50+'} ${t.games}`}
                               >
-                                <TrendingUp size={9} className="text-dota-green" />
-                                <span className="text-gray-300">{t.countersPick}</span>
-                                <span className="text-white">{r.enemy}</span>
+                                <TrendingUp size={8} className="text-dota-green" />
+                                <span className="text-white">{lang === 'zh' && r.enemyZh ? r.enemyZh : r.enemy}</span>
                                 <span className="text-dota-green font-bold">+{r.advantage}%</span>
                               </span>
                             ))}
@@ -436,8 +554,7 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
                       </button>
                     ))}
                   </div>
-                )}
-                {suggestions.length === 0 && !isSuggestionsLoading && (draft.dire.length === 0 && draft.radiant.length === 0) && (
+                ) : (
                   <p className="text-gray-500 text-xs">{t.noSuggestions}</p>
                 )}
               </div>
