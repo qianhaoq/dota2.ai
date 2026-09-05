@@ -44,6 +44,7 @@ const CONSTANTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for constants (pat
 const cache = {
   heroStats: { data: null, timestamp: 0 },
   matchups: new Map(), // Map<heroId, { data, timestamp }>
+  itemPopularity: new Map(), // Map<heroId, { data, timestamp }>
   // Foundation data constants
   heroes: { data: null, timestamp: 0 },
   items: { data: null, timestamp: 0 },
@@ -455,6 +456,49 @@ async function getHeroMatchups(heroId) {
   }
 }
 
+async function getHeroItemPopularity(heroId) {
+  const now = Date.now();
+  const cached = cache.itemPopularity.get(heroId);
+  if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
+    return cached.data;
+  }
+  try {
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/itemPopularity`);
+    const itemConstants = await getItemConstants();
+    
+    const formatItems = (itemCounts) => {
+      if (!itemCounts) return [];
+      return Object.entries(itemCounts)
+        .map(([itemKey, count]) => {
+          const item = itemConstants[itemKey];
+          return {
+            key: itemKey,
+            name: item?.dname || itemKey,
+            count: count,
+            cost: item?.cost || 0,
+            img: `${VALVE_CDN}/apps/dota2/images/dota_react/items/${itemKey}.png`
+          };
+        })
+        .filter(i => i.count > 0)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+    };
+    
+    const popularity = {
+      startGame: formatItems(data.start_game_items),
+      earlyGame: formatItems(data.early_game_items),
+      midGame: formatItems(data.mid_game_items),
+      lateGame: formatItems(data.late_game_items)
+    };
+    
+    cache.itemPopularity.set(heroId, { data: popularity, timestamp: now });
+    return popularity;
+  } catch (err) {
+    console.error(`Failed to fetch item popularity for hero ${heroId}:`, err.message);
+    return cached?.data || { startGame: [], earlyGame: [], midGame: [], lateGame: [] };
+  }
+}
+
 async function aggregateMatchupData(radiantIds, direIds, heroStats) {
   const allMatchups = {};
   const heroIdsToFetch = [...radiantIds, ...direIds];
@@ -754,6 +798,351 @@ app.get('/api/meta/abilities', async (req, res) => {
   } catch (err) {
     console.error('Meta abilities error:', err);
     res.status(500).json({ error: 'Failed to fetch ability meta', abilities: [] });
+  }
+});
+
+// ============ Meta Tier API - 大盘数据 ============
+app.get('/api/meta/tier', async (req, res) => {
+  try {
+    const lang = req.query.lang || 'zh';
+    const role = req.query.role;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const sortBy = req.query.sortBy || 'winRate';
+    
+    const [heroStats, heroConstants, steamHeroesZh, steamHeroesEn] = await Promise.all([
+      getHeroStats(),
+      getHeroConstants(),
+      getSteamHeroes('schinese'),
+      getSteamHeroes('english')
+    ]);
+    
+    if (!heroStats || Object.keys(heroStats).length === 0) {
+      return res.json({ heroes: [], error: 'OpenDota data unavailable', source: 'opendota' });
+    }
+    
+    let heroes = Object.values(heroStats)
+      .filter(h => h.winRate && h.gamesPlayed >= MIN_GAMES_FOR_RELIABLE_WR)
+      .map(h => {
+        const heroId = h.id;
+        const constant = Object.values(heroConstants).find(c => c.id === heroId);
+        const steamZh = steamHeroesZh?.[heroId];
+        const steamEn = steamHeroesEn?.[heroId];
+        const shortName = constant?.name?.replace('npc_dota_hero_', '') || h.internalName?.replace('npc_dota_hero_', '') || '';
+        
+        return {
+          id: heroId,
+          name: lang === 'zh' 
+            ? (steamZh?.localizedName || h.name) 
+            : (steamEn?.localizedName || h.name),
+          nameZh: steamZh?.localizedName || h.name,
+          nameEn: steamEn?.localizedName || h.name,
+          shortName,
+          winRate: parseFloat(h.winRate),
+          pickRate: h.pickRate,
+          gamesPlayed: h.gamesPlayed,
+          roles: h.roles || constant?.roles || [],
+          img: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/${shortName}.png`,
+          icon: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/icons/${shortName}.png`
+        };
+      });
+    
+    if (role) {
+      heroes = heroes.filter(h => h.roles.includes(role));
+    }
+    
+    if (sortBy === 'pickRate') {
+      heroes.sort((a, b) => b.pickRate - a.pickRate);
+    } else {
+      heroes.sort((a, b) => b.winRate - a.winRate);
+    }
+    
+    const tierList = heroes.slice(0, limit).map((h, idx) => ({
+      ...h,
+      rank: idx + 1,
+      tier: idx < 5 ? 'S' : idx < 12 ? 'A' : idx < 20 ? 'B' : 'C'
+    }));
+    
+    res.json({
+      heroes: tierList,
+      count: tierList.length,
+      totalHeroes: Object.keys(heroStats).length,
+      source: 'opendota',
+      dataType: 'pro/pub',
+      cacheAge: cache.heroStats.timestamp ? Math.round((Date.now() - cache.heroStats.timestamp) / 1000) : null
+    });
+  } catch (err) {
+    console.error('Meta tier error:', err);
+    res.status(500).json({ error: 'Failed to fetch tier data', heroes: [] });
+  }
+});
+
+// ============ Item Popularity API ============
+app.get('/api/heroes/:heroId/items', async (req, res) => {
+  try {
+    const heroId = parseInt(req.params.heroId);
+    if (isNaN(heroId)) {
+      return res.status(400).json({ error: 'Invalid hero ID' });
+    }
+    
+    const popularity = await getHeroItemPopularity(heroId);
+    const heroStats = await getHeroStats();
+    const heroName = heroStats[heroId]?.name || `Hero#${heroId}`;
+    
+    res.json({
+      heroId,
+      heroName,
+      items: popularity,
+      source: 'opendota',
+      cacheAge: cache.itemPopularity.get(heroId)?.timestamp 
+        ? Math.round((Date.now() - cache.itemPopularity.get(heroId).timestamp) / 1000) 
+        : null
+    });
+  } catch (err) {
+    console.error('Item popularity error:', err);
+    res.status(500).json({ error: 'Failed to fetch item popularity' });
+  }
+});
+
+// ============ Playbook API - 本局打法 ============
+app.post('/api/playbook', async (req, res) => {
+  const acceptHeader = req.headers.accept || '';
+  const wantsStream = acceptHeader.includes('text/event-stream');
+  
+  try {
+    const { allies = [], enemies = [], focusHeroId, side = 'radiant', lang = 'zh' } = req.body;
+    
+    if (allies.length === 0) {
+      const errorMsg = lang === 'zh' ? '请先选择己方英雄' : 'Please select your heroes first';
+      if (wantsStream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.write(`data: ${JSON.stringify({ error: errorMsg })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+      return res.status(400).json({ error: errorMsg });
+    }
+    
+    const [heroStats, heroConstants, steamHeroesZh] = await Promise.all([
+      getHeroStats(),
+      getHeroConstants(),
+      getSteamHeroes('schinese')
+    ]);
+    
+    const alliedIds = allies.map(h => h.id);
+    const enemyIds = enemies.map(h => h.id).filter(Boolean);
+    
+    const [itemPopularityResults, matchupsResults] = await Promise.all([
+      Promise.all(alliedIds.map(id => getHeroItemPopularity(id).then(items => ({ id, items })))),
+      Promise.all(alliedIds.map(id => getHeroMatchups(id).then(matchups => ({ id, matchups }))))
+    ]);
+    
+    const itemPopularityMap = {};
+    for (const { id, items } of itemPopularityResults) {
+      itemPopularityMap[id] = items;
+    }
+    
+    const matchupsMap = {};
+    for (const { id, matchups } of matchupsResults) {
+      matchupsMap[id] = matchups;
+    }
+    
+    const getHeroName = (heroId, preferZh = true) => {
+      if (preferZh && lang === 'zh') {
+        return steamHeroesZh?.[heroId]?.localizedName || heroStats[heroId]?.name || `Hero#${heroId}`;
+      }
+      return heroStats[heroId]?.name || `Hero#${heroId}`;
+    };
+    
+    const playbookData = alliedIds.map(heroId => {
+      const heroName = getHeroName(heroId, true);
+      const items = itemPopularityMap[heroId] || {};
+      const matchups = matchupsMap[heroId] || {};
+      
+      const vsEnemies = enemyIds.map(enemyId => {
+        const m = matchups[enemyId];
+        if (m && m.gamesPlayed >= MIN_MATCHUP_GAMES) {
+          return {
+            enemy: getHeroName(enemyId, true),
+            enemyId,
+            winRate: m.winRate,
+            advantage: m.advantage,
+            gamesPlayed: m.gamesPlayed
+          };
+        }
+        return null;
+      }).filter(Boolean);
+      
+      return {
+        heroId,
+        heroName,
+        winRate: heroStats[heroId]?.winRate,
+        roles: heroStats[heroId]?.roles || [],
+        items: {
+          startGame: items.startGame?.slice(0, 5) || [],
+          earlyGame: items.earlyGame?.slice(0, 5) || [],
+          midGame: items.midGame?.slice(0, 5) || [],
+          lateGame: items.lateGame?.slice(0, 5) || []
+        },
+        vsEnemies
+      };
+    });
+    
+    const focusHero = focusHeroId 
+      ? playbookData.find(h => h.heroId === focusHeroId) 
+      : playbookData[0];
+    
+    if (!apiKey || !openai) {
+      if (wantsStream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.write(`data: ${JSON.stringify({ playbookData, focusHero })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: "DeepSeek API Key not configured - only data returned" })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+      return res.json({ playbookData, focusHero, error: "DeepSeek API Key not configured" });
+    }
+    
+    const isZh = lang === 'zh';
+    const t = {
+      yourTeam: isZh ? '己方阵容' : 'Your Team',
+      enemies: isZh ? '敌方阵容' : 'Enemy Team',
+      none: isZh ? '无' : 'None',
+      focusHero: isZh ? '聚焦英雄' : 'Focus Hero',
+      itemBuild: isZh ? '出装参考 (OpenDota职业/高分数据)' : 'Item Build (OpenDota Pro/High MMR)',
+      startItems: isZh ? '出门装' : 'Starting',
+      earlyItems: isZh ? '前期' : 'Early',
+      midItems: isZh ? '中期' : 'Mid',
+      lateItems: isZh ? '后期' : 'Late',
+      matchupData: isZh ? '对位数据 (OpenDota)' : 'Matchup Data (OpenDota)',
+      winRate: isZh ? '胜率' : 'WR',
+      games: isZh ? '场' : 'games'
+    };
+    
+    let statsSection = `## ${t.yourTeam}\n`;
+    for (const hero of playbookData) {
+      statsSection += `\n### ${hero.heroName} (${t.winRate}: ${hero.winRate || 'N/A'}%)\n`;
+      statsSection += `${t.itemBuild}:\n`;
+      if (hero.items.startGame.length > 0) {
+        statsSection += `- ${t.startItems}: ${hero.items.startGame.map(i => i.name).join(', ')}\n`;
+      }
+      if (hero.items.earlyGame.length > 0) {
+        statsSection += `- ${t.earlyItems}: ${hero.items.earlyGame.map(i => i.name).join(', ')}\n`;
+      }
+      if (hero.items.midGame.length > 0) {
+        statsSection += `- ${t.midItems}: ${hero.items.midGame.map(i => i.name).join(', ')}\n`;
+      }
+      if (hero.items.lateGame.length > 0) {
+        statsSection += `- ${t.lateItems}: ${hero.items.lateGame.map(i => i.name).join(', ')}\n`;
+      }
+      
+      if (hero.vsEnemies.length > 0) {
+        statsSection += `${t.matchupData}:\n`;
+        for (const vs of hero.vsEnemies) {
+          const advSign = parseFloat(vs.advantage) >= 0 ? '+' : '';
+          statsSection += `- vs ${vs.enemy}: ${vs.winRate}% ${t.winRate} (${advSign}${vs.advantage}%, ${vs.gamesPlayed} ${t.games})\n`;
+        }
+      }
+    }
+    
+    if (enemies.length > 0) {
+      statsSection += `\n## ${t.enemies}\n`;
+      statsSection += enemies.map(h => getHeroName(h.id, true)).join(', ');
+    }
+    
+    const systemPrompt = isZh 
+      ? `你是一位职业DOTA2教练,专门为玩家提供实战指导。基于OpenDota的真实数据分析"本局怎么打才能赢"。
+
+重要规则：
+1. 必须引用给出的OpenDota数据（出装、对位胜率）作为建议依据
+2. 针对敌方阵容给出具体的装备选择和时机建议
+3. 分析关键对位：哪些英雄要打哪些英雄，何时发力
+4. 给出团战站位、节奏把控建议
+5. 简洁实用，使用DOTA2术语
+
+回答格式：
+## 核心策略
+## 出装路线 (引用数据)
+## 对位要点
+## 团战/节奏`
+      : `You are a professional DOTA 2 coach providing game-specific strategy. Analyze "how to win THIS game" based on OpenDota real data.
+
+Rules:
+1. MUST cite the provided OpenDota data (item builds, matchup winrates) as basis for advice
+2. Give specific item choices and timing based on enemy lineup
+3. Analyze key matchups: who should fight whom and when
+4. Provide teamfight positioning and tempo suggestions
+5. Be concise and practical, use DOTA 2 terminology
+
+Format:
+## Core Strategy
+## Item Path (cite data)
+## Matchup Notes
+## Teamfight/Tempo`;
+
+    const userPrompt = isZh 
+      ? `请基于以下OpenDota真实数据，分析本局怎么打才能赢：\n\n${statsSection}\n\n聚焦英雄: ${focusHero?.heroName || '全队'}\n\n请引用上述具体数据进行分析，给出本局取胜的具体打法建议。`
+      : `Based on the following OpenDota real data, analyze how to win this game:\n\n${statsSection}\n\nFocus Hero: ${focusHero?.heroName || 'Team'}\n\nPlease cite the specific data above and provide actionable strategy for winning this match.`;
+
+    if (wantsStream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+      
+      res.write(`data: ${JSON.stringify({ playbookData, focusHero })}\n\n`);
+      
+      const stream = await openai.chat.completions.create({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        stream: true,
+      });
+      
+      req.on('close', () => {
+        stream.controller?.abort();
+      });
+      
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content;
+        if (content) {
+          res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
+        }
+      }
+      
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else {
+      const response = await openai.chat.completions.create({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+      });
+      
+      res.json({
+        playbookData,
+        focusHero,
+        analysis: response.choices[0].message.content,
+        source: 'opendota'
+      });
+    }
+  } catch (error) {
+    console.error("Playbook Error:", error);
+    const wantsStream = (req.headers.accept || '').includes('text/event-stream');
+    if (wantsStream) {
+      res.write(`data: ${JSON.stringify({ error: error.message || "Internal Server Error" })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } else {
+      res.status(500).json({ error: error.message || "Internal Server Error" });
+    }
   }
 });
 

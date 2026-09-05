@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Hero, DraftState, Attribute, Language } from '../types';
 import HeroCard from './HeroCard';
-import { analyzeDraftStream, fetchSuggestions, HeroSuggestion, MatchupData, MatchupAdvantage } from '../services/geminiService';
+import { 
+  analyzeDraftStream, 
+  fetchSuggestions, 
+  fetchTierList,
+  fetchPlaybookStream,
+  HeroSuggestion, 
+  MatchupData,
+  TierHero,
+  PlaybookHero
+} from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
-import { Swords, RotateCcw, Sparkles, Search, AlertTriangle, X, Lightbulb, TrendingUp, Zap, Shield, User, Users } from 'lucide-react';
+import { Swords, RotateCcw, Sparkles, Search, AlertTriangle, X, Lightbulb, TrendingUp, Zap, Shield, User, Users, Trophy, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface DraftAssistantProps {
     lang: Language;
@@ -27,6 +36,19 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
   // Suggestions state
   const [suggestions, setSuggestions] = useState<HeroSuggestion[]>([]);
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
+  
+  // Meta tier state (大盘)
+  const [tierHeroes, setTierHeroes] = useState<TierHero[]>([]);
+  const [isTierLoading, setIsTierLoading] = useState(false);
+  const [tierRole, setTierRole] = useState<string>('');
+  const [showTierPanel, setShowTierPanel] = useState(false);
+  
+  // Playbook state (本局打法)
+  const [showPlaybook, setShowPlaybook] = useState(false);
+  const [playbookData, setPlaybookData] = useState<PlaybookHero[]>([]);
+  const [playbookAnalysis, setPlaybookAnalysis] = useState('');
+  const [isPlaybookLoading, setIsPlaybookLoading] = useState(false);
+  const playbookControllerRef = useRef<AbortController | null>(null);
   
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -89,6 +111,79 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
     if (totalPicked <= 6) return { phase: 'mid', label: lang === 'zh' ? '中期选人' : 'Mid Draft' };
     return { phase: 'late', label: lang === 'zh' ? '后期补位' : 'Late Draft' };
   }, [draft, selectionSide, lang]);
+
+  // Fetch tier data when panel is opened
+  useEffect(() => {
+    if (showTierPanel && tierHeroes.length === 0) {
+      setIsTierLoading(true);
+      fetchTierList(lang, tierRole || undefined, 15)
+        .then(data => {
+          setTierHeroes(data.heroes);
+        })
+        .finally(() => setIsTierLoading(false));
+    }
+  }, [showTierPanel, lang, tierRole, tierHeroes.length]);
+
+  // Refetch tier when role filter changes
+  useEffect(() => {
+    if (showTierPanel) {
+      setIsTierLoading(true);
+      fetchTierList(lang, tierRole || undefined, 15)
+        .then(data => {
+          setTierHeroes(data.heroes);
+        })
+        .finally(() => setIsTierLoading(false));
+    }
+  }, [tierRole, lang, showTierPanel]);
+
+  const handlePlaybook = () => {
+    const allies = selectionSide === 'radiant' ? draft.radiant : draft.dire;
+    const enemies = selectionSide === 'radiant' ? draft.dire : draft.radiant;
+    
+    if (allies.length === 0) return;
+    
+    if (playbookControllerRef.current) {
+      playbookControllerRef.current.abort();
+    }
+    
+    setShowPlaybook(true);
+    setIsPlaybookLoading(true);
+    setPlaybookAnalysis('');
+    setPlaybookData([]);
+    
+    playbookControllerRef.current = fetchPlaybookStream(
+      allies,
+      enemies,
+      selectionSide,
+      lang,
+      undefined,
+      {
+        onData: (data, _focusHero) => {
+          setPlaybookData(data);
+        },
+        onChunk: (text) => {
+          setPlaybookAnalysis(prev => prev + text);
+        },
+        onComplete: () => {
+          setIsPlaybookLoading(false);
+          playbookControllerRef.current = null;
+        },
+        onError: (error) => {
+          setPlaybookAnalysis(prev => prev || `Error: ${error}`);
+          setIsPlaybookLoading(false);
+          playbookControllerRef.current = null;
+        }
+      }
+    );
+  };
+
+  const handleCancelPlaybook = () => {
+    if (playbookControllerRef.current) {
+      playbookControllerRef.current.abort();
+      playbookControllerRef.current = null;
+      setIsPlaybookLoading(false);
+    }
+  };
 
   const handleHeroSelect = (hero: Hero) => {
     // Check if hero is already picked anywhere
@@ -170,6 +265,10 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
       streamControllerRef.current.abort();
       streamControllerRef.current = null;
     }
+    if (playbookControllerRef.current) {
+      playbookControllerRef.current.abort();
+      playbookControllerRef.current = null;
+    }
     setDraft({ radiant: [], dire: [] });
     setAnalysis('');
     setUserContext('');
@@ -177,6 +276,10 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
     setSuggestions([]);
     setIsGrounded(false);
     setMatchupData(null);
+    setShowPlaybook(false);
+    setPlaybookData([]);
+    setPlaybookAnalysis('');
+    setIsPlaybookLoading(false);
   };
 
   const handleSuggestionClick = (suggestion: HeroSuggestion) => {
@@ -238,9 +341,26 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
       games: lang === 'zh' ? '场' : 'games',
       countersPick: lang === 'zh' ? '克制' : 'counters',
       basedOnGames: lang === 'zh' ? '基于' : 'Based on',
+      // Role filter (from main)
       roleFilter: lang === 'zh' ? '角色筛选' : 'Filter by Role',
       allRoles: lang === 'zh' ? '全部' : 'All',
       draftPhase: lang === 'zh' ? '选人阶段' : 'Draft Phase',
+      // Meta tier panel (大盘)
+      metaTier: lang === 'zh' ? '大盘数据' : 'Meta Tier',
+      topHeroes: lang === 'zh' ? '热门英雄' : 'Top Heroes',
+      carry: lang === 'zh' ? '核心' : 'Carry',
+      support: lang === 'zh' ? '辅助' : 'Support',
+      dataSource: lang === 'zh' ? '数据来源: OpenDota' : 'Source: OpenDota',
+      // Playbook (本局打法)
+      playbook: lang === 'zh' ? '本局打法' : 'Playbook',
+      playbookTitle: lang === 'zh' ? '本局怎么打' : 'How to Win This Game',
+      playbookPrompt: lang === 'zh' ? '选择己方英雄后点击"本局打法"获取出装和对线建议' : 'Select your heroes then click "Playbook" for item builds and lane tips',
+      itemBuild: lang === 'zh' ? '推荐出装' : 'Item Builds',
+      startItems: lang === 'zh' ? '出门' : 'Start',
+      earlyItems: lang === 'zh' ? '前期' : 'Early',
+      midItems: lang === 'zh' ? '中期' : 'Mid',
+      lateItems: lang === 'zh' ? '后期' : 'Late',
+      vsMatchup: lang === 'zh' ? '对位' : 'Matchup',
   };
 
   const isError = analysis.includes("The Ancient is under attack") || analysis.includes("Server Error");
@@ -405,8 +525,76 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
       </div>
 
       {/* Right Col: Analysis & Oracle Input */}
-      <div className="lg:col-span-4 flex flex-col h-full overflow-hidden">
-        <div className="glass-panel rounded-xl flex-grow p-6 flex flex-col h-full relative overflow-hidden">
+      <div className="lg:col-span-4 flex flex-col h-full overflow-hidden gap-4">
+        {/* Meta Tier Panel (大盘) - Collapsible */}
+        <div className="glass-panel rounded-xl p-3 flex-shrink-0">
+          <button 
+            onClick={() => setShowTierPanel(!showTierPanel)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2">
+              <Trophy size={16} className="text-dota-gold" />
+              <span className="text-dota-gold font-display text-sm tracking-wider">{t.metaTier}</span>
+            </div>
+            {showTierPanel ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+          </button>
+          
+          {showTierPanel && (
+            <div className="mt-3 pt-3 border-t border-gray-700/50">
+              {/* Role filter */}
+              <div className="flex gap-1 mb-3 flex-wrap">
+                {['', 'Carry', 'Support', 'Nuker', 'Initiator', 'Durable'].map(role => (
+                  <button
+                    key={role}
+                    onClick={() => setTierRole(role)}
+                    className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
+                      tierRole === role 
+                        ? 'bg-dota-gold/20 text-dota-gold border border-dota-gold/50' 
+                        : 'bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-500'
+                    }`}
+                  >
+                    {role || t.allRoles}
+                  </button>
+                ))}
+              </div>
+              
+              {/* Tier list */}
+              {isTierLoading ? (
+                <div className="flex items-center justify-center py-4 text-gray-400 text-xs gap-2">
+                  <div className="w-3 h-3 border border-dota-gold border-t-transparent rounded-full animate-spin"></div>
+                  {t.loading}
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                  {tierHeroes.slice(0, 10).map((hero) => (
+                    <div 
+                      key={hero.id}
+                      className="flex items-center gap-2 p-1.5 bg-gray-800/50 rounded hover:bg-gray-700/50 transition-colors cursor-pointer"
+                      onClick={() => {
+                        const h = allHeroes.find(ah => ah.id === hero.id);
+                        if (h) handleHeroSelect(h);
+                      }}
+                    >
+                      <span className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold rounded ${
+                        hero.tier === 'S' ? 'bg-dota-gold/30 text-dota-gold' :
+                        hero.tier === 'A' ? 'bg-green-500/30 text-green-400' :
+                        'bg-gray-600/30 text-gray-400'
+                      }`}>
+                        {hero.tier}
+                      </span>
+                      <img src={hero.icon} alt="" className="w-5 h-5 rounded" />
+                      <span className="text-white text-xs flex-1 truncate">{hero.name}</span>
+                      <span className="text-dota-green text-[10px] font-mono">{hero.winRate.toFixed(1)}%</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-gray-500 text-[10px] mt-2 text-center">{t.dataSource}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="glass-panel rounded-xl flex-grow p-6 flex flex-col relative overflow-hidden">
             <div className="flex justify-between items-center mb-4 flex-shrink-0">
                 <h2 className="font-display text-2xl text-white">{t.oracle}</h2>
                 <div className="flex gap-2">
@@ -433,7 +621,7 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
                  <button 
                     onClick={handleAnalyze}
                     disabled={isLoading || (draft.radiant.length === 0 && draft.dire.length === 0)}
-                    className="flex-1 py-3 bg-gradient-to-r from-dota-red to-red-900 text-white font-display font-bold text-lg tracking-widest rounded shadow-lg hover:shadow-red-900/50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 bg-gradient-to-r from-dota-red to-red-900 text-white font-display font-bold text-sm tracking-widest rounded shadow-lg hover:shadow-red-900/50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isLoading ? (
                         <>
@@ -442,16 +630,31 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
                         </>
                     ) : (
                         <>
-                            <Sparkles size={20} /> {t.analyze}
+                            <Sparkles size={18} /> {t.analyze}
                         </>
                     )}
                 </button>
-                {isLoading && (
+                <button 
+                    onClick={handlePlaybook}
+                    disabled={isPlaybookLoading || (selectionSide === 'radiant' ? draft.radiant.length === 0 : draft.dire.length === 0)}
+                    className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-blue-800 text-white font-display font-bold text-sm tracking-widest rounded shadow-lg hover:shadow-blue-900/50 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {isPlaybookLoading ? (
+                        <>
+                            <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
+                        </>
+                    ) : (
+                        <>
+                            <BookOpen size={18} /> {t.playbook}
+                        </>
+                    )}
+                </button>
+                {(isLoading || isPlaybookLoading) && (
                   <button 
-                    onClick={handleCancelAnalysis}
-                    className="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white font-display font-bold text-sm tracking-widest rounded shadow-lg transition-all flex items-center justify-center gap-1"
+                    onClick={() => { handleCancelAnalysis(); handleCancelPlaybook(); }}
+                    className="px-3 py-3 bg-gray-700 hover:bg-gray-600 text-white font-display font-bold text-sm tracking-widest rounded shadow-lg transition-all flex items-center justify-center"
                   >
-                    <X size={18} /> {t.cancel}
+                    <X size={18} />
                   </button>
                 )}
                </div>
@@ -598,9 +801,133 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
               </div>
             )}
 
-            {/* Analysis Content - SCROLLABLE AREA */}
+            {/* Content Area - SCROLLABLE */}
             <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 mb-4">
-                {analysis ? (
+                {/* Show Playbook when active */}
+                {showPlaybook ? (
+                  <div className="space-y-4 text-sm leading-relaxed pb-4">
+                    {/* Playbook Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BookOpen size={18} className="text-blue-400" />
+                        <h3 className="text-blue-400 font-display tracking-wider">{t.playbookTitle}</h3>
+                      </div>
+                      <button 
+                        onClick={() => setShowPlaybook(false)}
+                        className="text-gray-400 hover:text-white text-xs"
+                      >
+                        {t.oracle} →
+                      </button>
+                    </div>
+                    
+                    {/* Item Builds Summary */}
+                    {playbookData.length > 0 && (
+                      <div className="space-y-3">
+                        {playbookData.map((hero) => (
+                          <div key={hero.heroId} className="bg-gray-800/50 rounded-lg p-3 border border-gray-700/50">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-white font-medium">{hero.heroName}</span>
+                              {hero.winRate && (
+                                <span className="text-gray-400 text-xs">{t.winRate}: {hero.winRate}%</span>
+                              )}
+                            </div>
+                            
+                            {/* Item stages */}
+                            <div className="space-y-1.5">
+                              {hero.items.startGame.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500 text-[10px] w-8">{t.startItems}</span>
+                                  <div className="flex gap-1">
+                                    {hero.items.startGame.slice(0, 4).map((item, idx) => (
+                                      <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-6 h-6 rounded border border-gray-600" />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {hero.items.earlyGame.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500 text-[10px] w-8">{t.earlyItems}</span>
+                                  <div className="flex gap-1">
+                                    {hero.items.earlyGame.slice(0, 4).map((item, idx) => (
+                                      <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-6 h-6 rounded border border-gray-600" />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {hero.items.midGame.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500 text-[10px] w-8">{t.midItems}</span>
+                                  <div className="flex gap-1">
+                                    {hero.items.midGame.slice(0, 4).map((item, idx) => (
+                                      <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-6 h-6 rounded border border-gray-600" />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              {hero.items.lateGame.length > 0 && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500 text-[10px] w-8">{t.lateItems}</span>
+                                  <div className="flex gap-1">
+                                    {hero.items.lateGame.slice(0, 4).map((item, idx) => (
+                                      <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-6 h-6 rounded border border-gray-600" />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Matchup data */}
+                            {hero.vsEnemies.length > 0 && (
+                              <div className="mt-2 pt-2 border-t border-gray-700/50">
+                                <div className="flex flex-wrap gap-1">
+                                  {hero.vsEnemies.slice(0, 3).map((vs, idx) => {
+                                    const adv = parseFloat(vs.advantage);
+                                    return (
+                                      <span 
+                                        key={idx}
+                                        className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                          adv >= 0 ? 'bg-dota-green/10 text-dota-green' : 'bg-dota-red/10 text-dota-red'
+                                        }`}
+                                      >
+                                        vs {vs.enemy}: {adv >= 0 ? '+' : ''}{vs.advantage}%
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* DeepSeek Analysis */}
+                    {playbookAnalysis && (
+                      <div className="mt-4 pt-4 border-t border-gray-700">
+                        <div className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full w-fit bg-dota-green/20 text-dota-green mb-3">
+                          <span className="w-1.5 h-1.5 rounded-full bg-dota-green"></span>
+                          {t.grounded}
+                        </div>
+                        {playbookAnalysis.split('\n').map((line, idx) => {
+                          if (line.startsWith('##')) return <h3 key={idx} className="text-blue-400 font-bold text-lg mt-4 mb-2 border-b border-blue-400/20 pb-1">{line.replace('##', '')}</h3>;
+                          if (line.startsWith('**')) return <strong key={idx} className="block mt-2 text-white">{line.replace(/\*\*/g, '')}</strong>;
+                          if (line.startsWith('- ')) return <li key={idx} className="ml-4 list-disc marker:text-blue-400 pl-1 text-gray-300">{line.replace('- ', '')}</li>;
+                          if (line.startsWith('* ')) return <li key={idx} className="ml-4 list-disc marker:text-blue-400 pl-1 text-gray-300">{line.replace('* ', '')}</li>;
+                          return <p key={idx} className="text-gray-300">{line}</p>;
+                        })}
+                        {isPlaybookLoading && <span className="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-1"></span>}
+                      </div>
+                    )}
+                    
+                    {/* Loading state */}
+                    {isPlaybookLoading && !playbookAnalysis && playbookData.length === 0 && (
+                      <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
+                        <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                        {t.divining}
+                      </div>
+                    )}
+                  </div>
+                ) : analysis ? (
                     <div className={`space-y-4 text-sm leading-relaxed pb-4 ${isError ? 'text-red-400 border border-red-500/30 bg-red-900/10 p-4 rounded' : 'text-gray-300'}`}>
                         {isError && <div className="flex items-center gap-2 font-bold mb-2"><AlertTriangle size={16}/> ERROR</div>}
                         
