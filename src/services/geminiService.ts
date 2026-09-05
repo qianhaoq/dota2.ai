@@ -14,6 +14,70 @@ export interface MatchupData {
   grounded: boolean;
 }
 
+// ============ Meta Tier Types ============
+export interface TierHero {
+  id: number;
+  name: string;
+  nameZh: string;
+  nameEn: string;
+  shortName: string;
+  winRate: number;
+  pickRate: number;
+  gamesPlayed: number;
+  roles: string[];
+  img: string;
+  icon: string;
+  rank: number;
+  tier: 'S' | 'A' | 'B' | 'C';
+}
+
+export interface TierResponse {
+  heroes: TierHero[];
+  count: number;
+  totalHeroes: number;
+  source: string;
+  cacheAge: number | null;
+  error?: string;
+}
+
+// ============ Playbook Types ============
+export interface PlaybookItem {
+  key: string;
+  name: string;
+  count: number;
+  cost: number;
+  img: string;
+}
+
+export interface PlaybookMatchup {
+  enemy: string;
+  enemyId: number;
+  winRate: string;
+  advantage: string;
+  gamesPlayed: number;
+}
+
+export interface PlaybookHero {
+  heroId: number;
+  heroName: string;
+  winRate: string | null;
+  roles: string[];
+  items: {
+    startGame: PlaybookItem[];
+    earlyGame: PlaybookItem[];
+    midGame: PlaybookItem[];
+    lateGame: PlaybookItem[];
+  };
+  vsEnemies: PlaybookMatchup[];
+}
+
+export interface PlaybookStreamCallbacks {
+  onData: (data: PlaybookHero[], focusHero: PlaybookHero | null) => void;
+  onChunk: (text: string) => void;
+  onComplete: () => void;
+  onError: (error: string) => void;
+}
+
 export interface AnalyzeStreamCallbacks {
   onChunk: (text: string) => void;
   onComplete: (grounded: boolean) => void;
@@ -215,4 +279,116 @@ export const chatWithShopkeeper = async (history: {role: string, parts: {text: s
     console.error("Chat Request Error:", error);
     return `The shop is closed. (Server Error: ${error.message})`;
   }
+};
+
+// ============ Meta Tier API ============
+export const fetchTierList = async (
+  lang: Language = 'zh',
+  role?: string,
+  limit: number = 20,
+  sortBy: 'winRate' | 'pickRate' = 'winRate'
+): Promise<TierResponse> => {
+  try {
+    const params = new URLSearchParams({ lang, limit: limit.toString(), sortBy });
+    if (role) params.append('role', role);
+    
+    const response = await fetch(`/api/meta/tier?${params}`);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch tier list');
+    }
+    
+    return data;
+  } catch (error: any) {
+    console.error('Tier list fetch error:', error);
+    return { heroes: [], count: 0, totalHeroes: 0, source: 'error', cacheAge: null, error: error.message };
+  }
+};
+
+// ============ Playbook Streaming API ============
+export const fetchPlaybookStream = (
+  allies: Hero[],
+  enemies: Hero[],
+  side: 'radiant' | 'dire',
+  lang: Language,
+  focusHeroId?: number,
+  callbacks?: PlaybookStreamCallbacks
+): AbortController => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+  (async () => {
+    try {
+      const response = await fetch('/api/playbook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+        },
+        body: JSON.stringify({ allies, enemies, side, lang, focusHeroId }),
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to fetch playbook');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              clearTimeout(timeoutId);
+              callbacks?.onComplete();
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.error) {
+                callbacks?.onError(parsed.error);
+                return;
+              }
+              if (parsed.playbookData && callbacks?.onData) {
+                callbacks.onData(parsed.playbookData, parsed.focusHero);
+              }
+              if (parsed.text && callbacks?.onChunk) {
+                callbacks.onChunk(parsed.text);
+              }
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+      }
+
+      clearTimeout(timeoutId);
+      callbacks?.onComplete();
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        callbacks?.onError('请求已取消');
+      } else {
+        callbacks?.onError(error.message || 'Unknown error');
+      }
+    }
+  })();
+
+  return controller;
 };
