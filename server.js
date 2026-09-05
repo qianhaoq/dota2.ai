@@ -46,6 +46,9 @@ async function fetchWithRetry(url, retries = 2) {
   }
 }
 
+const MIN_GAMES_FOR_RELIABLE_WR = 20;
+const MIN_MATCHUP_GAMES = 50;
+
 async function getHeroStats() {
   const now = Date.now();
   if (cache.heroStats.data && (now - cache.heroStats.timestamp) < CACHE_TTL_MS) {
@@ -55,16 +58,28 @@ async function getHeroStats() {
     const data = await fetchWithRetry(`${OPENDOTA_API}/heroStats`);
     const statsMap = {};
     for (const hero of data) {
+      const proPick = hero.pro_pick || 0;
+      const proWin = hero.pro_win || 0;
+      const pubPick = hero['1_pick'] || 0;
+      const pubWin = hero['1_win'] || 0;
+      
+      let winRate = null;
+      let gamesPlayed = 0;
+      if (proPick >= MIN_GAMES_FOR_RELIABLE_WR) {
+        winRate = ((proWin / proPick) * 100).toFixed(1);
+        gamesPlayed = proPick;
+      } else if (pubPick >= MIN_GAMES_FOR_RELIABLE_WR) {
+        winRate = ((pubWin / pubPick) * 100).toFixed(1);
+        gamesPlayed = pubPick;
+      }
+      
       statsMap[hero.id] = {
         id: hero.id,
         name: hero.localized_name,
         internalName: hero.name,
-        winRate: hero.pro_win != null && hero.pro_pick != null && hero.pro_pick > 0
-          ? ((hero.pro_win / hero.pro_pick) * 100).toFixed(1)
-          : (hero['1_win'] != null && hero['1_pick'] != null && hero['1_pick'] > 0
-            ? ((hero['1_win'] / hero['1_pick']) * 100).toFixed(1)
-            : null),
-        pickRate: hero.pro_pick || hero['1_pick'] || 0,
+        winRate,
+        gamesPlayed,
+        pickRate: proPick || pubPick,
         roles: hero.roles || []
       };
     }
@@ -159,9 +174,40 @@ async function aggregateMatchupData(radiantIds, direIds, heroStats) {
 }
 
 function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded) {
-  const langInstruction = lang === 'zh' 
-    ? '请使用中文(简体)进行回答。' 
-    : 'Please answer in English.';
+  const isZh = lang === 'zh';
+  
+  const t = {
+    radiant: isZh ? '天辉' : 'Radiant',
+    dire: isZh ? '夜魇' : 'Dire',
+    none: isZh ? '无' : 'None',
+    winRate: isZh ? '胜率' : 'WR',
+    games: isZh ? '场比赛' : 'games',
+    advantage: isZh ? '优势' : 'advantage',
+    vs: isZh ? '对' : 'vs',
+    statsTitle: isZh ? '来自 OpenDota 的数据统计' : 'OpenDota Statistics',
+    radiantHeroes: isZh ? '天辉英雄数据' : 'Radiant Heroes',
+    direHeroes: isZh ? '夜魇英雄数据' : 'Dire Heroes',
+    radiantAdvantages: isZh ? '天辉优势对位 (基于OpenDota历史数据)' : 'Radiant Favorable Matchups (OpenDota data)',
+    direAdvantages: isZh ? '夜魇优势对位 (基于OpenDota历史数据)' : 'Dire Favorable Matchups (OpenDota data)',
+    dataUnavailable: isZh ? '[注意: OpenDota 数据暂时不可用，以下分析未经数据验证]' : '[Note: OpenDota data unavailable, analysis unverified]',
+    userContext: isZh ? '用户补充的战术背景' : 'User-provided tactical context',
+    analysisPrompt: isZh 
+      ? '请基于以上OpenDota真实数据进行分析' 
+      : 'Analyze based on the OpenDota data above',
+    instructions: isZh ? [
+      '预测胜率时必须引用上述具体数据',
+      '分析关键对位优劣势时引用具体的胜率数据',
+      '给出天辉的取胜条件',
+      '推荐针对性装备'
+    ] : [
+      'Cite specific data when predicting win probability',
+      'Reference specific win rates when analyzing key matchups',
+      'Identify Radiant win conditions',
+      'Recommend counter items'
+    ],
+    incompleteNote: isZh ? '如果阵容不完整，请针对已选英雄给出建议。' : 'If draft is incomplete, provide suggestions for the selected heroes.',
+    langInstruction: isZh ? '请使用中文(简体)进行回答。' : 'Please respond in English.'
+  };
 
   const radiantNames = radiant.map(h => h.name).join(', ');
   const direNames = dire.map(h => h.name).join(', ');
@@ -170,80 +216,91 @@ function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, us
   if (isGrounded) {
     const radiantStats = radiant.map(h => {
       const s = heroStats[h.id];
-      return s ? `${s.name} (胜率: ${s.winRate || 'N/A'}%)` : h.name;
+      return s ? `${s.name} (${t.winRate}: ${s.winRate || 'N/A'}%)` : h.name;
     }).join(', ');
     
     const direStats = dire.map(h => {
       const s = heroStats[h.id];
-      return s ? `${s.name} (胜率: ${s.winRate || 'N/A'}%)` : h.name;
+      return s ? `${s.name} (${t.winRate}: ${s.winRate || 'N/A'}%)` : h.name;
     }).join(', ');
     
     statsSection = `
-## 来自 OpenDota 的数据统计:
+## ${t.statsTitle}:
 
-### 天辉英雄数据:
+### ${t.radiantHeroes}:
 ${radiantStats}
 
-### 夜魇英雄数据:
+### ${t.direHeroes}:
 ${direStats}
 `;
 
     if (matchupAnalysis.radiantAdvantages.length > 0) {
       statsSection += `
-### 天辉优势对位 (基于OpenDota历史数据):
+### ${t.radiantAdvantages}:
 ${matchupAnalysis.radiantAdvantages.slice(0, 5).map(a => 
-  `- ${a.hero} 对 ${a.vsHero}: +${a.advantage}% 优势 (${a.winRate}% 胜率, ${a.games} 场比赛)`
+  `- ${a.hero} ${t.vs} ${a.vsHero}: +${a.advantage}% ${t.advantage} (${a.winRate}% ${t.winRate}, ${a.games} ${t.games})`
 ).join('\n')}
 `;
     }
     
     if (matchupAnalysis.direAdvantages.length > 0) {
       statsSection += `
-### 夜魇优势对位 (基于OpenDota历史数据):
+### ${t.direAdvantages}:
 ${matchupAnalysis.direAdvantages.slice(0, 5).map(a => 
-  `- ${a.hero} 对 ${a.vsHero}: +${a.advantage}% 优势 (${a.winRate}% 胜率, ${a.games} 场比赛)`
+  `- ${a.hero} ${t.vs} ${a.vsHero}: +${a.advantage}% ${t.advantage} (${a.winRate}% ${t.winRate}, ${a.games} ${t.games})`
 ).join('\n')}
 `;
     }
   } else {
-    statsSection = '\n[注意: OpenDota 数据暂时不可用，以下分析未经数据验证]\n';
+    statsSection = `\n${t.dataUnavailable}\n`;
   }
 
   return `
-分析这场 DOTA 2 对局:
+${isZh ? '分析这场 DOTA 2 对局' : 'Analyze this DOTA 2 match'}:
 
-**天辉:** ${radiantNames || '无'}
-**夜魇:** ${direNames || '无'}
+**${t.radiant}:** ${radiantNames || t.none}
+**${t.dire}:** ${direNames || t.none}
 
 ${statsSection}
 
-**用户补充的战术背景:** ${userContext || '无'}
+**${t.userContext}:** ${userContext || t.none}
 
-请基于以上OpenDota真实数据进行分析:
-1. 预测胜率时必须引用上述具体数据
-2. 分析关键对位优劣势时引用具体的胜率数据
-3. 给出天辉的取胜条件
-4. 推荐针对性装备
+${t.analysisPrompt}:
+${t.instructions.map((instr, i) => `${i + 1}. ${instr}`).join('\n')}
 
-如果阵容不完整，请针对已选英雄给出建议。
-${langInstruction}
+${t.incompleteNote}
+${t.langInstruction}
 `;
 }
 
-const DRAFT_SYSTEM_INSTRUCTION = `
-You are a professional DOTA 2 analyst and coach (like Ceb or Notail).
+function getDraftSystemInstruction(lang) {
+  const isZh = lang === 'zh';
+  
+  const headers = isZh 
+    ? `## 胜率预测
+## 关键对位分析
+## 天辉取胜条件
+## 推荐装备`
+    : `## Win Probability
+## Key Matchup Analysis
+## Radiant Win Conditions
+## Recommended Items`;
+
+  const langNote = isZh 
+    ? '请使用中文(简体)回答。' 
+    : 'Please respond in English.';
+
+  return `You are a professional DOTA 2 analyst and coach (like Ceb or Notail).
 Your task is to analyze two team compositions (Radiant vs Dire) using the OpenDota statistics provided.
 
 IMPORTANT: You must cite the specific statistics from OpenDota data when making claims about win rates, matchups, and advantages. Do not invent statistics.
 
 Format your analysis with clear Markdown headers:
-## 胜率预测
-## 关键对位分析
-## 天辉取胜条件
-## 推荐装备
+${headers}
 
 Keep it concise, strategic, and use DOTA 2 terminology (e.g., "BKB", "power spike", "roshan control").
-`;
+${langNote}`;
+}
 
 const LORE_SYSTEM_INSTRUCTION = `
 You are the Shopkeeper from the Secret Shop in DOTA 2. 
@@ -307,16 +364,25 @@ app.post('/api/analyze', async (req, res) => {
     
     const prompt = buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded);
 
+    const systemInstruction = getDraftSystemInstruction(lang);
+
     if (wantsStream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders();
 
+      const matchupSummary = {
+        radiantAdvantages: matchupAnalysis.radiantAdvantages.slice(0, 5),
+        direAdvantages: matchupAnalysis.direAdvantages.slice(0, 5),
+        grounded: isGrounded
+      };
+      res.write(`data: ${JSON.stringify({ matchupData: matchupSummary, grounded: isGrounded })}\n\n`);
+
       const stream = await openai.chat.completions.create({
         model: DEEPSEEK_MODEL,
         messages: [
-          { role: 'system', content: DRAFT_SYSTEM_INSTRUCTION },
+          { role: 'system', content: systemInstruction },
           { role: 'user', content: prompt }
         ],
         stream: true,
@@ -339,14 +405,18 @@ app.post('/api/analyze', async (req, res) => {
       const response = await openai.chat.completions.create({
         model: DEEPSEEK_MODEL,
         messages: [
-          { role: 'system', content: DRAFT_SYSTEM_INSTRUCTION },
+          { role: 'system', content: systemInstruction },
           { role: 'user', content: prompt }
         ],
       });
 
       res.json({ 
         text: response.choices[0].message.content,
-        grounded: isGrounded
+        grounded: isGrounded,
+        matchupData: {
+          radiantAdvantages: matchupAnalysis.radiantAdvantages.slice(0, 5),
+          direAdvantages: matchupAnalysis.direAdvantages.slice(0, 5)
+        }
       });
     }
   } catch (error) {
@@ -364,7 +434,7 @@ app.post('/api/analyze', async (req, res) => {
 // Next hero suggestions based on OpenDota matchup data
 app.post('/api/suggestions', async (req, res) => {
   try {
-    const { allies = [], enemies = [], side = 'radiant', limit = 8 } = req.body;
+    const { allies = [], enemies = [], side = 'radiant', limit = 8, role } = req.body;
     
     const heroStats = await getHeroStats();
     if (!heroStats || Object.keys(heroStats).length === 0) {
@@ -387,54 +457,80 @@ app.post('/api/suggestions', async (req, res) => {
       if (pickedIds.has(hid)) continue;
       
       const hero = heroStats[hid];
+      
+      if (role && hero.roles && !hero.roles.includes(role)) {
+        continue;
+      }
+      
       let score = 0;
       let reasons = [];
       let totalGames = 0;
+      let matchupCount = 0;
       
       for (const enemyId of enemyIds) {
         const enemyMatchup = enemyMatchups[enemyId];
         if (enemyMatchup && enemyMatchup[hid]) {
           const m = enemyMatchup[hid];
-          const counterAdvantage = 50 - parseFloat(m.winRate);
-          if (m.gamesPlayed >= 50) {
+          if (m.gamesPlayed >= MIN_MATCHUP_GAMES) {
+            const counterAdvantage = 50 - parseFloat(m.winRate);
+            const ourWinRate = (100 - parseFloat(m.winRate)).toFixed(1);
             score += counterAdvantage * Math.log10(m.gamesPlayed + 1);
             totalGames += m.gamesPlayed;
-            if (counterAdvantage > 2) {
-              reasons.push({
-                type: 'counter',
-                enemy: heroStats[enemyId]?.name || `Hero#${enemyId}`,
-                advantage: counterAdvantage.toFixed(1),
-                winRate: (100 - parseFloat(m.winRate)).toFixed(1)
-              });
-            }
+            matchupCount++;
+            
+            reasons.push({
+              type: 'counter',
+              enemy: heroStats[enemyId]?.name || `Hero#${enemyId}`,
+              enemyId: parseInt(enemyId),
+              advantage: counterAdvantage.toFixed(1),
+              winRate: ourWinRate,
+              gamesPlayed: m.gamesPlayed
+            });
           }
         }
       }
       
-      if (hero.winRate) {
+      if (hero.winRate && hero.gamesPlayed >= MIN_GAMES_FOR_RELIABLE_WR) {
         score += (parseFloat(hero.winRate) - 50) * 0.5;
       }
       
       reasons.sort((a, b) => parseFloat(b.advantage) - parseFloat(a.advantage));
+      
+      const bestAdvantage = reasons.length > 0 ? parseFloat(reasons[0].advantage) : 0;
+      if (enemyIds.length > 0 && matchupCount === 0) {
+        continue;
+      }
       
       heroScores.push({
         id: hid,
         name: hero.name,
         score: score,
         winRate: hero.winRate,
-        reasons: reasons.slice(0, 2),
-        totalGames: totalGames
+        roles: hero.roles,
+        reasons: reasons.slice(0, 3),
+        totalGames: totalGames,
+        matchupCount: matchupCount,
+        bestAdvantage: bestAdvantage
       });
     }
     
-    heroScores.sort((a, b) => b.score - a.score);
+    heroScores.sort((a, b) => {
+      if (b.bestAdvantage !== a.bestAdvantage) {
+        return b.bestAdvantage - a.bestAdvantage;
+      }
+      return b.score - a.score;
+    });
     
-    const suggestions = heroScores.slice(0, limit).map(h => ({
+    const topHeroes = heroScores.filter(h => h.score > 0 || h.reasons.length > 0);
+    const suggestions = topHeroes.slice(0, limit).map(h => ({
       id: h.id,
       name: h.name,
       score: h.score.toFixed(1),
       winRate: h.winRate,
-      reasons: h.reasons
+      roles: h.roles,
+      reasons: h.reasons,
+      totalGames: h.totalGames,
+      bestAdvantage: h.bestAdvantage.toFixed(1)
     }));
     
     res.json({ suggestions });
