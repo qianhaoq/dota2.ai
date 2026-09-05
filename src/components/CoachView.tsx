@@ -670,124 +670,148 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                       {/* Playbook item builds */}
                       {msg.playbookData && msg.playbookData.length > 0 && (
                         <div className="space-y-2 mb-3">
-                          {msg.playbookData.map((hero) => (
-                            <div key={hero.heroId} className="bg-gray-900/50 rounded p-2 border border-gray-700/50">
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <span className="text-white text-xs font-medium">{hero.heroName}</span>
-                                {hero.winRate && (
-                                  <span className="text-gray-400 text-[10px]">{t.winRate}: {hero.winRate}%</span>
-                                )}
-                              </div>
-                              <div className="space-y-1">
-                                {hero.items.startGame.length > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-gray-500 text-[9px] w-6">{t.start}</span>
-                                    <div className="flex gap-0.5">
-                                      {hero.items.startGame.slice(0, 4).map((item, idx) => (
-                                        <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-gray-600" />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {hero.items.earlyGame.length > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-gray-500 text-[9px] w-6">{t.early}</span>
-                                    <div className="flex gap-0.5">
-                                      {hero.items.earlyGame.slice(0, 4).map((item, idx) => (
-                                        <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-gray-600" />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {hero.items.midGame.length > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-gray-500 text-[9px] w-6">{t.mid}</span>
-                                    <div className="flex gap-0.5">
-                                      {hero.items.midGame.slice(0, 4).map((item, idx) => (
-                                        <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-gray-600" />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {hero.items.lateGame.length > 0 && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-gray-500 text-[9px] w-6">{t.late}</span>
-                                    <div className="flex gap-0.5">
-                                      {hero.items.lateGame.slice(0, 4).map((item, idx) => (
-                                        <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-gray-600" />
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                              {/* Matchup advantages */}
-                              {hero.vsEnemies.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1.5 pt-1.5 border-t border-gray-700/50">
-                                  {hero.vsEnemies.slice(0, 3).map((vs, idx) => {
-                                    const adv = parseFloat(vs.advantage);
-                                    return (
-                                      <span 
-                                        key={idx}
-                                        className={`text-[9px] px-1.5 py-0.5 rounded ${
-                                          adv >= 0 ? 'bg-dota-green/10 text-dota-green' : 'bg-dota-red/10 text-dota-red'
-                                        }`}
-                                      >
-                                        {t.vs} {vs.enemy}: {adv >= 0 ? '+' : ''}{vs.advantage}%
-                                      </span>
-                                    );
-                                  })}
+                          {msg.playbookData.map((hero) => {
+                            const heroDisplayName = lang === 'zh' ? (hero.nameZh || hero.heroName) : (hero.nameEn || hero.heroName);
+                            const heroDisplayRoles = lang === 'zh' && hero.rolesZh ? hero.rolesZh : hero.roles;
+                            return (
+                              <div key={hero.heroId} className="bg-gray-900/50 rounded p-2 border border-gray-700/50">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <span className="text-white text-xs font-medium">{heroDisplayName}</span>
+                                  {heroDisplayRoles && heroDisplayRoles.length > 0 && (
+                                    <span className="text-gray-500 text-[9px]">{heroDisplayRoles.slice(0, 2).join('/')}</span>
+                                  )}
+                                  {hero.winRate && (
+                                    <span className="text-gray-400 text-[10px] ml-auto">{t.winRate}: {hero.winRate}%</span>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          ))}
+                                <div className="space-y-1">
+                                  {hero.items.startGame.length > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-gray-500 text-[9px] w-6">{t.start}</span>
+                                      <div className="flex gap-0.5">
+                                        {hero.items.startGame.slice(0, 4).map((item, idx) => (
+                                          <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-gray-600" />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {hero.items.earlyGame.length > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-gray-500 text-[9px] w-6">{t.early}</span>
+                                      <div className="flex gap-0.5">
+                                        {hero.items.earlyGame.slice(0, 4).map((item, idx) => (
+                                          <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-gray-600" />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {hero.items.midGame.length > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-gray-500 text-[9px] w-6">{t.mid}</span>
+                                      <div className="flex gap-0.5">
+                                        {hero.items.midGame.slice(0, 4).map((item, idx) => (
+                                          <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-gray-600" />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {hero.items.lateGame.length > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-gray-500 text-[9px] w-6">{t.late}</span>
+                                      <div className="flex gap-0.5">
+                                        {hero.items.lateGame.slice(0, 4).map((item, idx) => (
+                                          <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-gray-600" />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Matchup advantages */}
+                                {hero.vsEnemies.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1.5 pt-1.5 border-t border-gray-700/50">
+                                    {hero.vsEnemies.slice(0, 3).map((vs, idx) => {
+                                      const adv = parseFloat(vs.advantage);
+                                      const enemyName = lang === 'zh' ? (vs.enemyNameZh || vs.enemy) : (vs.enemyNameEn || vs.enemy);
+                                      return (
+                                        <span 
+                                          key={idx}
+                                          className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                            adv >= 0 ? 'bg-dota-green/10 text-dota-green' : 'bg-dota-red/10 text-dota-red'
+                                          }`}
+                                        >
+                                          {t.vs} {enemyName}: {adv >= 0 ? '+' : ''}{vs.advantage}%
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
 
                       {/* Suggestions cards */}
                       {msg.suggestions && msg.suggestions.length > 0 && (
                         <div className="grid grid-cols-2 gap-2 mb-3">
-                          {msg.suggestions.slice(0, 6).map((s) => (
-                            <button
-                              key={s.id}
-                              onClick={() => {
-                                const hero = allHeroes.find(h => h.id === s.id);
-                                if (hero) handleHeroSelect(hero);
-                              }}
-                              className="flex items-center gap-2 p-2 bg-gray-900/50 hover:bg-gray-700/50 border border-gray-700/50 hover:border-dota-gold/50 rounded transition-colors text-left"
-                            >
-                              <span className="text-white text-xs font-medium">{s.name}</span>
-                              {s.bestAdvantage && parseFloat(s.bestAdvantage) > 0 && (
-                                <span className="text-dota-green text-[10px] font-bold ml-auto">+{s.bestAdvantage}%</span>
-                              )}
-                            </button>
-                          ))}
+                          {msg.suggestions.slice(0, 6).map((s) => {
+                            const suggestionName = lang === 'zh' ? (s.nameZh || s.name) : (s.nameEn || s.name);
+                            const suggestionRoles = lang === 'zh' && s.rolesZh ? s.rolesZh : s.roles;
+                            return (
+                              <button
+                                key={s.id}
+                                onClick={() => {
+                                  const hero = allHeroes.find(h => h.id === s.id);
+                                  if (hero) handleHeroSelect(hero);
+                                }}
+                                className="flex items-center gap-2 p-2 bg-gray-900/50 hover:bg-gray-700/50 border border-gray-700/50 hover:border-dota-gold/50 rounded transition-colors text-left"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-white text-xs font-medium block truncate">{suggestionName}</span>
+                                  {suggestionRoles && suggestionRoles.length > 0 && (
+                                    <span className="text-gray-500 text-[9px]">{suggestionRoles.slice(0, 2).join('/')}</span>
+                                  )}
+                                </div>
+                                {s.bestAdvantage && parseFloat(s.bestAdvantage) > 0 && (
+                                  <span className="text-dota-green text-[10px] font-bold flex-shrink-0">+{s.bestAdvantage}%</span>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
 
                       {/* Meta tier list */}
                       {msg.tierHeroes && msg.tierHeroes.length > 0 && (
                         <div className="space-y-1.5 mb-3">
-                          {msg.tierHeroes.slice(0, 10).map((hero) => (
-                            <div 
-                              key={hero.id}
-                              onClick={() => {
-                                const h = allHeroes.find(ah => ah.id === hero.id);
-                                if (h) handleHeroSelect(h);
-                              }}
-                              className="flex items-center gap-2 p-1.5 bg-gray-900/50 hover:bg-gray-700/50 rounded cursor-pointer transition-colors"
-                            >
-                              <span className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold rounded ${
-                                hero.tier === 'S' ? 'bg-dota-gold/30 text-dota-gold' :
-                                hero.tier === 'A' ? 'bg-green-500/30 text-green-400' :
-                                'bg-gray-600/30 text-gray-400'
-                              }`}>
-                                {hero.tier}
-                              </span>
-                              <img src={hero.icon} alt="" className="w-5 h-5 rounded" />
-                              <span className="text-white text-xs flex-1">{hero.name}</span>
-                              <span className="text-dota-green text-[10px] font-mono">{hero.winRate.toFixed(1)}%</span>
-                            </div>
-                          ))}
+                          {msg.tierHeroes.slice(0, 10).map((hero) => {
+                            const displayName = lang === 'zh' ? (hero.nameZh || hero.name) : (hero.nameEn || hero.name);
+                            const displayRoles = lang === 'zh' && hero.rolesZh ? hero.rolesZh : hero.roles;
+                            return (
+                              <div 
+                                key={hero.id}
+                                onClick={() => {
+                                  const h = allHeroes.find(ah => ah.id === hero.id);
+                                  if (h) handleHeroSelect(h);
+                                }}
+                                className="flex items-center gap-2 p-1.5 bg-gray-900/50 hover:bg-gray-700/50 rounded cursor-pointer transition-colors"
+                              >
+                                <span className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold rounded ${
+                                  hero.tier === 'S' ? 'bg-dota-gold/30 text-dota-gold' :
+                                  hero.tier === 'A' ? 'bg-green-500/30 text-green-400' :
+                                  'bg-gray-600/30 text-gray-400'
+                                }`}>
+                                  {hero.tier}
+                                </span>
+                                <img src={hero.icon} alt="" className="w-5 h-5 rounded" />
+                                <span className="text-white text-xs flex-1 truncate">{displayName}</span>
+                                {displayRoles && displayRoles.length > 0 && (
+                                  <span className="text-gray-500 text-[9px] hidden sm:inline">{displayRoles.slice(0, 2).join('/')}</span>
+                                )}
+                                <span className="text-dota-green text-[10px] font-mono">{hero.winRate.toFixed(1)}%</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
 
