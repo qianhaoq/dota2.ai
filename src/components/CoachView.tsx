@@ -138,7 +138,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, []);
 
   const addCoachMessage = useCallback((message: Omit<CoachMessage, 'id'>) => {
-    const id = Date.now().toString();
+    const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     setMessages(prev => [...prev, { ...message, id }]);
     return id;
   }, []);
@@ -181,12 +181,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       draft.radiant,
       draft.dire,
       lang,
-      userInput,
+      userMsg,
       {
         onChunk: (text) => {
-          updateCoachMessage(msgId, { 
-            content: (messages.find(m => m.id === msgId)?.content || '') + text 
-          });
           setMessages(prev => prev.map(msg => 
             msg.id === msgId ? { ...msg, content: msg.content + text } : msg
           ));
