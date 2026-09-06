@@ -7,7 +7,8 @@
 #
 # Gate (all required):
 #   - PR is open, not draft, base is main, no "no-auto-merge" label
-#   - Build & Test (or CI) succeeded on the head SHA
+#   - Successful Build & Test (or CI) *check run* on the head SHA
+#     (fail closed if that check run is missing; no combined-status fallback)
 #   - Relevant checks are completed and not failed (ignore Custom LLM Review
 #     and this workflow's own check name). Do NOT ignore Codex Review Gate.
 #   - If check "copilot-pull-request-reviewer" exists on the head SHA, it
@@ -192,12 +193,6 @@ jobs:
 
             const sha = pr.head.sha;
 
-            const { data: combined } = await github.rest.repos.getCombinedStatusForRef({
-              owner,
-              repo,
-              ref: sha,
-            });
-
             // listForRef returns { total_count, check_runs }. Iterate pages
             // explicitly so we never treat the wrapper object as an array.
             const checkRuns = [];
@@ -226,23 +221,13 @@ jobs:
               return;
             }
 
+            // Fail closed: never auto-merge without a successful Build & Test check run.
+            // Do not treat legacy combined commit status as a substitute for CI.
             const hasCiCheck = relevantChecks.some(
               (c) => c.conclusion === 'success' && isCiCheck(c.name)
             );
-            // Legacy commit statuses (no check runs): success combined status counts as CI.
-            const hasLegacyCombinedCi =
-              relevantChecks.length === 0 && combined.total_count > 0 && combined.state === 'success';
-
-            if (relevantChecks.length === 0 && !hasLegacyCombinedCi) {
-              core.info(
-                combined.total_count > 0
-                  ? `Combined status is ${combined.state} — skip`
-                  : 'No CI check runs or combined statuses on head SHA — skip'
-              );
-              return;
-            }
-            if (relevantChecks.length > 0 && !hasCiCheck) {
-              core.info('Build & Test (or CI) not successful on head SHA — skip');
+            if (!hasCiCheck) {
+              core.info('No successful Build & Test (or CI) check run on head SHA — skip');
               return;
             }
 

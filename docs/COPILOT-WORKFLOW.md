@@ -21,8 +21,8 @@
 2. **不必等人合并**（门槛比以前严）：`auto-merge.yml` 只在同时满足时 squash 进 `main`：
    - 不是 draft
    - 没有 `no-auto-merge` label
-   - CI（Build & Test）成功
-   - 该 head SHA 上已有 Copilot review，且不是 `CHANGES_REQUESTED`（`APPROVED` 或 `COMMENTED` 都可以；没有 review 不合）
+   - 该 head SHA 上有成功的 **Build & Test check run**（没有这条 check 不合，不用 combined status 凑）
+   - 该 head SHA 上已有 Copilot review，且不是 `CHANGES_REQUESTED`（**不要求** `APPROVED`；`COMMENTED` 可以；没有 review 不合）
    - 所有 review 线程已 resolve（`COMMENTED` + 未解决线程 = #33，不合）
 3. 需要人工把关时：给 PR 打上 `no-auto-merge`，或保持 draft。完整说明见 [`docs/MERGE_GATES.md`](MERGE_GATES.md)。
 

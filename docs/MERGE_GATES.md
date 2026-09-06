@@ -30,7 +30,7 @@ This page is the source of truth for merge policy.
 | **Require status checks to pass before merging** | 没有绿勾不能合 |
 | Required check: **`Build & Test`** | CI job 名（`.github/workflows/ci.yml`） |
 | Required check: **`copilot-pull-request-reviewer`** | Copilot 官方审查 check |
-| Required check: **`Codex Review Gate`** | 本仓库 workflow 把 Codex 评论变成原生 check（见下） |
+| Required check: **`Codex Review Gate`** | **job / check-run 名**（`.github/workflows/codex-gate.yml` 的 `jobs.*.name`），不是 workflow 展示名 |
 | **Require conversation resolution before merging** | 未解决的行内线程挡住 Merge 按钮 |
 | （可选）**Dismiss stale pull request approvals when new commits are pushed** | 新 push 后旧 APPROVED 作废 |
 
@@ -73,14 +73,14 @@ This page is the source of truth for merge policy.
 
 1. PR 打开、非 draft、base 为 `main`
 2. 没有 `no-auto-merge` label
-3. head SHA 上 **Build & Test**（或名为 CI 的检查）成功
+3. head SHA 上必须有一条**成功的 `Build & Test` check run**（或同名 CI）。没有这条 check run → **fail closed**，不用 legacy combined status 凑合
 4. 相关 check 已完成且未失败（忽略 Custom LLM Review、以及 Auto Merge 自己的 check 名）
 5. 若 head 上存在 `copilot-pull-request-reviewer`，必须已成功结束
 6. 若 head 上存在 **`Codex Review Gate`**（这是 **job / check-run 名**，不是 workflow 展示名），必须已成功结束
-7. 该 head SHA 上已有 Copilot review，且不是 `CHANGES_REQUESTED`
-   - **允许 `APPROVED` 或 `COMMENTED`**。Copilot 经常只提交 `COMMENTED`，不要要求原生 `APPROVED`。
+7. 该 head SHA 上**已有** Copilot review，且**不是** `CHANGES_REQUESTED`
+   - **`APPROVED` 或 `COMMENTED` 都可以。不要求原生 `APPROVED`。**
    - **没有 Copilot review 不会自动合。**
-   - **#33 的硬门槛：** `COMMENTED` 但还有未解决行内线程 → 不合。靠第 8 条挡，不靠拒绝 `COMMENTED`。
+   - **#33 的硬门槛：** 有 review（即使是 `COMMENTED`）但还有未解决行内线程 → 不合。靠第 8 条挡。
 8. GraphQL `reviewThreads` 全部 `isResolved: true`（解析失败且仍有 review comments 时 fail-closed）
 
 `workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。

@@ -51,7 +51,6 @@ permissions:
   pull-requests: read
   issues: read
   checks: write
-  statuses: write
 
 jobs:
   codex-review-gate:

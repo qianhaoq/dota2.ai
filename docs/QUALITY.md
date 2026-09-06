@@ -113,7 +113,7 @@ Branch name pattern: main
 - `Build & Test`、`copilot-pull-request-reviewer`、`Codex Review Gate` 都应设为必需 check
 - Copilot check **不覆盖** Codex；Codex 靠 `codex-gate.yml` + conversation resolution
 - Custom LLM Review 与 `ai-review.yml` 的 “Copilot Review”（只负责请求审查）不要设为必需
-- auto-merge 要求 Copilot 已审 head SHA 且不是 `CHANGES_REQUESTED`（`COMMENTED` 可以），且线程全部 resolve。没有 Copilot review 不会自动合。
+- auto-merge：**不要求** Copilot 原生 `APPROVED`。head 上必须有 Copilot review 且不是 `CHANGES_REQUESTED`（`APPROVED`/`COMMENTED` 均可），线程必须全部 resolve，且必须有成功的 **Build & Test check run**（没有 check run 不合）。
 
 ---
 
