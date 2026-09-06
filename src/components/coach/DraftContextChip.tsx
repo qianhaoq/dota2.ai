@@ -1,6 +1,6 @@
 import React from 'react';
 import { Hero, Language } from '../../types';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Users } from 'lucide-react';
 
 interface DraftContextChipProps {
   lang: Language;
@@ -8,6 +8,7 @@ interface DraftContextChipProps {
   selectionSide: 'radiant' | 'dire';
   onOpenPicker: () => void;
   onHeroDetail?: (heroId: number) => void;
+  variant?: 'compact' | 'prominent';
 }
 
 const DraftContextChip: React.FC<DraftContextChipProps> = ({
@@ -16,10 +17,11 @@ const DraftContextChip: React.FC<DraftContextChipProps> = ({
   selectionSide,
   onOpenPicker,
   onHeroDetail,
+  variant = 'compact',
 }) => {
   const t = {
-    noDraft: lang === 'zh' ? '未选阵容' : 'No lineup',
-    clickToSelect: lang === 'zh' ? '点击选择' : 'Click to select',
+    selectHeroes: lang === 'zh' ? '选英雄' : 'Pick Heroes',
+    editDraft: lang === 'zh' ? '编辑阵容' : 'Edit lineup',
     radiant: lang === 'zh' ? '天辉' : 'Radiant',
     dire: lang === 'zh' ? '夜魇' : 'Dire',
   };
@@ -27,18 +29,29 @@ const DraftContextChip: React.FC<DraftContextChipProps> = ({
   const hasHeroes = draft.radiant.length > 0 || draft.dire.length > 0;
 
   if (!hasHeroes) {
+    if (variant === 'prominent') {
+      return (
+        <button
+          onClick={onOpenPicker}
+          className="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-k3-primary-bg hover:bg-white text-k3-primary-text text-sm font-medium transition-all group shadow-sm"
+        >
+          <Users size={18} className="text-k3-primary-text/80" />
+          <span>{t.selectHeroes}</span>
+          <ChevronRight size={16} className="text-k3-primary-text/60 group-hover:translate-x-0.5 transition-transform" />
+        </button>
+      );
+    }
+    
     return (
       <button
         onClick={onOpenPicker}
         className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-k3-surface border border-k3-border-subtle hover:bg-k3-elevated hover:border-k3-text-tertiary/30 text-xs transition-all group"
       >
-        {/* Radiant/Dire indicator dots */}
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-k3-radiant-muted/50" />
           <span className="w-2 h-2 rounded-full bg-k3-dire-muted/50" />
         </span>
-        <span className="text-k3-text-tertiary">{t.noDraft}</span>
-        <span className="text-k3-text-secondary group-hover:text-k3-text-primary">{t.clickToSelect}</span>
+        <span className="text-k3-text-secondary group-hover:text-k3-text-primary">{t.selectHeroes}</span>
         <ChevronRight size={12} className="text-k3-text-tertiary" />
       </button>
     );

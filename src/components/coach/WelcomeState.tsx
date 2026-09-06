@@ -1,6 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { Language, Hero } from '../../types';
-import { Send, Loader2, X, BarChart3, Sparkles, TrendingUp } from 'lucide-react';
+import { Send, Loader2, X, BarChart3, Sparkles, TrendingUp, BookOpen, Users } from 'lucide-react';
 import DraftContextChip from './DraftContextChip';
 
 interface WelcomeStateProps {
@@ -44,35 +44,82 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const t = {
-    greeting: lang === 'zh' 
-      ? '有什么 Dota 问题可以帮你？' 
-      : 'What Dota question can I help with?',
+  const t = useMemo(() => ({
+    greetingEmpty: lang === 'zh' 
+      ? '选英雄，开始深度教练分析' 
+      : 'Pick heroes for deep coaching analysis',
+    greetingWithHeroes: lang === 'zh'
+      ? '阵容已就绪，开始分析'
+      : 'Lineup ready — start analysis',
     inputPlaceholder: lang === 'zh' 
-      ? '输入问题，或点击下方建议...' 
-      : 'Ask a question, or use suggestions below...',
+      ? '输入其他问题...' 
+      : 'Ask another question...',
     keyboardHint: lang === 'zh' ? '聚焦输入' : 'to focus',
-    suggestions: [
-      {
-        icon: BarChart3,
-        text: lang === 'zh' ? '当前版本哪些英雄强势？' : 'Which heroes are strong this patch?',
-        action: onMeta,
-        enabled: true,
-      },
+  }), [lang]);
+
+  const suggestions = useMemo(() => {
+    if (!hasHeroes) {
+      return [
+        {
+          icon: Users,
+          text: lang === 'zh' ? '选择双方英雄，开始深度分析' : 'Select heroes to start deep analysis',
+          action: onOpenPicker,
+          enabled: true,
+          primary: true,
+        },
+        {
+          icon: BarChart3,
+          text: lang === 'zh' ? '当前版本哪些英雄强势？' : 'Which heroes are strong this patch?',
+          action: onMeta,
+          enabled: true,
+          primary: false,
+        },
+      ];
+    }
+    
+    const items: Array<{
+      icon: typeof Sparkles;
+      text: string;
+      action: () => void;
+      enabled: boolean;
+      primary: boolean;
+    }> = [
       {
         icon: Sparkles,
-        text: lang === 'zh' ? '分析我的阵容对位' : 'Analyze my draft matchups',
+        text: lang === 'zh' ? '深度分析当前阵容' : 'Deep analyze current lineup',
         action: onAnalyze,
-        enabled: hasHeroes,
+        enabled: true,
+        primary: true,
       },
       {
+        icon: BookOpen,
+        text: lang === 'zh' ? '本局怎么打？' : 'How should we play?',
+        action: onPlaybook,
+        enabled: hasAllies,
+        primary: false,
+      },
+    ];
+    
+    if (hasAllies && !alliesFull) {
+      items.push({
         icon: TrendingUp,
         text: lang === 'zh' ? '推荐下一手选什么' : 'Recommend my next pick',
         action: onSuggest,
-        enabled: hasAllies && !alliesFull,
-      },
-    ],
-  };
+        enabled: true,
+        primary: false,
+      });
+    }
+    
+    items.push({
+      icon: BarChart3,
+      text: lang === 'zh' ? '看看当前大盘' : 'Check current meta',
+      action: onMeta,
+      enabled: true,
+      primary: false,
+    });
+    
+    return items;
+  }, [hasHeroes, hasAllies, alliesFull, lang, onOpenPicker, onMeta, onAnalyze, onPlaybook, onSuggest]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -86,6 +133,7 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
   }, []);
 
   const canSend = userInput.trim().length > 0 && !isLoading;
+  const greeting = hasHeroes ? t.greetingWithHeroes : t.greetingEmpty;
 
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 py-8 max-w-3xl mx-auto">
@@ -107,12 +155,12 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
           </svg>
         </div>
 
-        {/* Greeting */}
+        {/* Greeting - context-aware */}
         <h1 className="text-lg text-k3-text-primary mb-5 text-center font-normal">
-          {t.greeting}
+          {greeting}
         </h1>
 
-        {/* Draft Context Chip */}
+        {/* Draft Context Chip - primary CTA when empty */}
         <div className="flex justify-center mb-6">
           <DraftContextChip
             lang={lang}
@@ -120,12 +168,40 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
             selectionSide={selectionSide}
             onOpenPicker={onOpenPicker}
             onHeroDetail={onHeroDetail}
+            variant={hasHeroes ? 'compact' : 'prominent'}
           />
         </div>
 
-        {/* Unified Composer Container */}
+        {/* Suggestion Prompts - reordered based on state */}
+        <div className="w-full space-y-1.5 mb-6">
+          {suggestions.map(({ icon: Icon, text, action, enabled, primary }) => (
+            <button
+              key={text}
+              onClick={action}
+              disabled={!enabled || isLoading}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-sm transition-all ${
+                enabled && !isLoading
+                  ? primary
+                    ? 'text-k3-text-primary bg-k3-surface hover:bg-k3-elevated cursor-pointer group font-medium'
+                    : 'text-k3-text-secondary hover:bg-k3-surface hover:text-k3-text-primary cursor-pointer group'
+                  : 'text-k3-text-tertiary cursor-not-allowed opacity-60'
+              }`}
+            >
+              <Icon size={14} className={`flex-shrink-0 transition-colors ${
+                enabled && !isLoading 
+                  ? primary 
+                    ? 'text-k3-text-secondary' 
+                    : 'text-k3-text-tertiary group-hover:text-k3-text-secondary' 
+                  : ''
+              }`} />
+              <span>{text}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Secondary: Free-form input - demoted visually */}
         <form onSubmit={onSubmit} className="w-full mb-5">
-          <div className="relative flex items-center bg-k3-input border border-k3-border-subtle rounded-composer focus-within:border-k3-text-tertiary/50 transition-all">
+          <div className="relative flex items-center bg-k3-input border border-k3-border-subtle rounded-composer focus-within:border-k3-text-tertiary/50 transition-all opacity-80 focus-within:opacity-100">
             <input
               ref={inputRef}
               type="text"
@@ -133,8 +209,7 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
               onChange={(e) => setUserInput(e.target.value)}
               placeholder={t.inputPlaceholder}
               disabled={isLoading}
-              className="flex-1 bg-transparent px-4 py-3.5 pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
-              autoFocus
+              className="flex-1 bg-transparent px-4 py-3 pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
             />
             <button
               type="submit"
@@ -149,27 +224,6 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
             </button>
           </div>
         </form>
-
-        {/* Suggestion Prompts with hover affordance */}
-        <div className="w-full space-y-1.5 mb-6">
-          {t.suggestions.map(({ icon: Icon, text, action, enabled }) => (
-            <button
-              key={text}
-              onClick={action}
-              disabled={!enabled || isLoading}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-sm transition-all ${
-                enabled && !isLoading
-                  ? 'text-k3-text-secondary hover:bg-k3-surface hover:text-k3-text-primary cursor-pointer group'
-                  : 'text-k3-text-tertiary cursor-not-allowed opacity-60'
-              }`}
-            >
-              <Icon size={14} className={`flex-shrink-0 transition-colors ${
-                enabled && !isLoading ? 'text-k3-text-tertiary group-hover:text-k3-text-secondary' : ''
-              }`} />
-              <span>{text}</span>
-            </button>
-          ))}
-        </div>
 
         {/* Loading/Cancel */}
         {isLoading && (
