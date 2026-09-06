@@ -18,9 +18,11 @@ const App: React.FC = () => {
     sync();
     const vv = window.visualViewport;
     vv?.addEventListener('resize', sync);
+    window.addEventListener('resize', sync);
     window.addEventListener('orientationchange', sync);
     return () => {
       vv?.removeEventListener('resize', sync);
+      window.removeEventListener('resize', sync);
       window.removeEventListener('orientationchange', sync);
     };
   }, []);
