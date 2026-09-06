@@ -8,9 +8,13 @@
 
 | 检查 | 类型 | 合并要求 | 说明 |
 |------|------|---------|------|
-| **build-and-test** | CI | ✅ 必需 | TypeScript、构建、测试 |
-| **Copilot Review** | AI | 推荐 | GitHub Copilot 代码审查（无需 API 密钥）|
-| **Custom LLM Review** | AI | ⏭️ 可选 | DeepSeek/OpenAI/xAI（需 API 密钥）|
+| **Build & Test** | CI | ✅ 必需 | TypeScript、构建、测试 |
+| **copilot-pull-request-reviewer** | AI check | ✅ 必需 | 只覆盖 Copilot，**不覆盖 Codex**。check-run `conclusion` 必须是 `success`（不是 review state）。Copilot **review** 可以是 `COMMENTED`，不要求 `APPROVED` |
+| **Codex Review Gate** | AI check | ✅ 必需 | **job 名**必须是 `Codex Review Gate`（不要只认 workflow 展示名） |
+| **会话已解决** | 讨论 | ✅ 必需 | 未解决的 Copilot / Codex / 人类行内线程挡住合并 |
+| **Custom LLM Review** | AI | ⏭️ 可选 | DeepSeek/OpenAI/xAI（需 API 密钥）；不阻塞合并 |
+
+合并策略详见 [`docs/MERGE_GATES.md`](MERGE_GATES.md)。
 
 ---
 
@@ -70,9 +74,9 @@
 
 ---
 
-## 🔒 必需检查：build-and-test
+## 🔒 必需检查：Build & Test
 
-这是唯一的硬性合并要求。
+CI 作业名是 **Build & Test**。个人私有仓库请用**经典 branch protection**（Ruleset 可能显示 Active 但不 enforce），并要求 `copilot-pull-request-reviewer` + `Codex Review Gate` + 会话已解决。见 [`MERGE_GATES.md`](MERGE_GATES.md)。
 
 | 步骤 | 命令 | 说明 |
 |------|------|------|
@@ -96,15 +100,20 @@ Branch name pattern: main
 ✅ Require status checks to pass before merging
    ✅ Require branches to be up to date
    Required checks:
-     - build-and-test  ← 必需
+     - Build & Test
+     - copilot-pull-request-reviewer
+     - Codex Review Gate
 ✅ Require conversation resolution before merging
 ```
 
+个人私有仓库：**Ruleset 不 enforce**，用上面的经典 Branch protection。同一组 check 也写进 Ruleset，升 Team / Organization 后才会真正生效。完整清单见 [`MERGE_GATES.md`](MERGE_GATES.md)。
+
 ### 说明
 
-- `build-and-test` 是唯一的硬性要求
-- Copilot Review 和 Custom LLM Review 不设为必需检查
-- AI 审查提供建议，但不阻塞合并流程
+- `Build & Test`、`copilot-pull-request-reviewer`、`Codex Review Gate` 都应设为必需 check
+- Copilot check **不覆盖** Codex；Codex 靠 `codex-gate.yml` + conversation resolution
+- Custom LLM Review 与 `ai-review.yml` 的 “Copilot Review”（只负责请求审查）不要设为必需
+- auto-merge：**不要求** Copilot 原生 `APPROVED`。head 上必须有 Copilot review 且不是 `CHANGES_REQUESTED`（`APPROVED`/`COMMENTED` 均可），线程必须全部 resolve，且必须有成功的 **Build & Test check run**（没有 check run 不合）。
 
 ---
 
