@@ -22,6 +22,7 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
 - Reuse `src/components`, `src/services`, `src/types.ts`.
 - Respect bilingual UI defaults (中文 first).
 - Fill the PR template; call out streaming / API / deploy risk.
+- Prefer **ready-for-review** (not forever-draft) when CI should auto-merge.
 
 ## Don't
 
@@ -29,6 +30,10 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
 - Rewrite `server.js` wholesale or swap the AI provider without an explicit ask.
 - Skip TypeScript / build / tests.
 - Invent Dota lore or balance numbers not backed by repo data.
+
+## Merge policy
+
+Human merge is **optional**. When CI (Build & Test) is green and Copilot code review has completed without `CHANGES_REQUESTED`, `.github/workflows/auto-merge.yml` squash-merges into `main`. To block auto-merge, add label `no-auto-merge` or keep the PR as draft.
 
 ## Cloud agent environment
 
