@@ -333,6 +333,25 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  const handleLessonAction = useCallback((lessonMode: LessonMode) => {
+    if (lessonMode === 'review') return;
+    
+    setLesson(lessonMode);
+    
+    switch (lessonMode) {
+      case 'bp':
+        handleAnalyze();
+        break;
+      case 'match':
+        handlePlaybook();
+        break;
+      case 'items':
+      case 'mind':
+        handleAnalyze();
+        break;
+    }
+  }, [handleAnalyze, handlePlaybook]);
+
   const hasHeroes = draft.radiant.length > 0 || draft.dire.length > 0;
   const hasAllies = selectionSide === 'radiant' ? draft.radiant.length > 0 : draft.dire.length > 0;
   const alliesFull = selectionSide === 'radiant' ? draft.radiant.length >= 5 : draft.dire.length >= 5;
@@ -383,7 +402,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                   <LessonRail
                     lang={lang}
                     currentLesson={lesson}
-                    onLessonChange={setLesson}
+                    onLessonChange={handleLessonAction}
                     isLoading={isLoading}
                     compact
                   />
@@ -509,10 +528,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         isLoading={isHeroesLoading}
         currentMentor={mentor}
         onSelectMentor={(hero) => {
+          cancelStream();
           setMentor(hero);
           setMessages([]);
         }}
         onDismissMentor={() => {
+          cancelStream();
           setMentor(null);
           setMessages([]);
         }}
