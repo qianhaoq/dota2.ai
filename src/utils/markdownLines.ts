@@ -10,7 +10,7 @@ export type MarkdownSegment =
  * 连续 `- ` / `* ` 行合成一个 list，便于包进真正的 <ul>。
  */
 export function groupMarkdownSegments(text: string): MarkdownSegment[] {
-  const lines = text.split('\n');
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
   const segments: MarkdownSegment[] = [];
 
   for (const line of lines) {

@@ -31,7 +31,7 @@ const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ text, s
         }
         if (segment.type === 'list') {
           return (
-            <ul key={idx} className="list-none my-0.5 pl-0">
+            <ul key={idx} className="list-none my-0 pl-0">
               {segment.items.map((item, itemIdx) => (
                 <li key={itemIdx} className="ml-3 text-k3-text-secondary text-sm leading-relaxed flex items-start gap-2 my-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-k3-text-tertiary mt-2 flex-shrink-0" />
