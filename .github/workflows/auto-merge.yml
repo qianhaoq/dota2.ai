@@ -91,8 +91,10 @@ jobs:
               return /build\s*&\s*test/i.test(name) || /^ci$/i.test(name) || /build-and-test/i.test(name);
             }
 
+            // Queued re-runs have started_at/completed_at null until they begin.
+            // Fall back to created_at so a newer queued attempt beats an older success.
             function checkRunTime(c) {
-              const t = c.completed_at || c.started_at || '';
+              const t = c.completed_at || c.started_at || c.created_at || '';
               return t ? new Date(t).getTime() : 0;
             }
 
