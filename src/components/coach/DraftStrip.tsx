@@ -27,12 +27,10 @@ const DraftStrip: React.FC<DraftStripProps> = ({
     editDraft: lang === 'zh' ? '编辑阵容' : 'Edit Draft',
   };
 
-  const hasHeroes = draft.radiant.length > 0 || draft.dire.length > 0;
-
   const HeroSlot = ({ hero, side, index }: { hero?: Hero; side: 'radiant' | 'dire'; index: number }) => (
     <div className="relative group">
       {hero ? (
-        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-md overflow-hidden ring-1 ring-white/10 transition-transform hover:scale-110">
+        <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg overflow-hidden ring-1 ring-k3-border-subtle transition-transform hover:scale-110">
           <img 
             src={hero.img} 
             alt={hero.name}
@@ -41,72 +39,74 @@ const DraftStrip: React.FC<DraftStripProps> = ({
           />
           <button 
             onClick={(e) => { e.stopPropagation(); onRemoveHero(side, index); }}
-            className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            className="absolute -top-1 -right-1 w-4 h-4 bg-k3-dire rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
           >
-            <X size={8} className="text-white" />
+            <X size={10} className="text-white" />
           </button>
           {onHeroDetail && (
             <button
               onClick={(e) => { e.stopPropagation(); onHeroDetail(hero.id); }}
-              className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              className="absolute -bottom-1 -right-1 w-4 h-4 bg-k3-accent rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
             >
-              <Info size={7} className="text-black" />
+              <Info size={8} className="text-k3-base" />
             </button>
           )}
         </div>
       ) : (
-        <div 
+        <button 
           onClick={() => { onSideChange(side); onOpenPicker(); }}
-          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-md border border-dashed cursor-pointer flex items-center justify-center transition-colors ${
+          className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg cursor-pointer flex items-center justify-center transition-all ${
             side === 'radiant' 
-              ? 'border-emerald-500/40 hover:border-emerald-400 hover:bg-emerald-500/10' 
-              : 'border-red-500/40 hover:border-red-400 hover:bg-red-500/10'
+              ? 'bg-k3-radiant/5 hover:bg-k3-radiant/10 border border-k3-radiant/20' 
+              : 'bg-k3-dire/5 hover:bg-k3-dire/10 border border-k3-dire/20'
           }`}
         >
-          <Plus size={10} className="text-gray-500" />
-        </div>
+          <Plus size={12} className="text-k3-text-tertiary" />
+        </button>
       )}
     </div>
   );
 
   return (
-    <div className="draft-strip flex items-center gap-2 sm:gap-3 px-3 py-2 bg-[#0d0d0d] border-b border-white/5">
-      {/* Radiant heroes */}
+    <div className="h-16 flex items-center gap-3 px-4 sm:px-6 bg-k3-surface border-b border-k3-border-subtle">
+      {/* Radiant label */}
       <button
         onClick={() => onSideChange('radiant')}
-        className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded transition-colors ${
+        className={`text-[10px] sm:text-xs font-semibold uppercase tracking-wider px-2 py-1 rounded-lg transition-colors ${
           selectionSide === 'radiant'
-            ? 'bg-emerald-500/20 text-emerald-400'
-            : 'text-gray-500 hover:text-emerald-400'
+            ? 'bg-k3-radiant/15 text-k3-radiant'
+            : 'text-k3-text-tertiary hover:text-k3-radiant'
         }`}
       >
         {t.radiant}
       </button>
       
-      <div className="flex gap-1">
+      {/* Radiant slots */}
+      <div className="flex gap-1.5">
         {Array.from({ length: 5 }).map((_, i) => (
           <HeroSlot key={`rad-${i}`} hero={draft.radiant[i]} side="radiant" index={i} />
         ))}
       </div>
 
       {/* VS divider */}
-      <div className="flex items-center gap-1 px-1 sm:px-2">
-        <Swords size={14} className="text-amber-500/60" />
+      <div className="flex items-center px-2">
+        <Swords size={16} className="text-k3-text-tertiary" />
       </div>
 
-      {/* Dire heroes */}
-      <div className="flex gap-1">
+      {/* Dire slots */}
+      <div className="flex gap-1.5">
         {Array.from({ length: 5 }).map((_, i) => (
           <HeroSlot key={`dire-${i}`} hero={draft.dire[i]} side="dire" index={i} />
         ))}
       </div>
 
+      {/* Dire label */}
       <button
         onClick={() => onSideChange('dire')}
-        className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded transition-colors ${
+        className={`text-[10px] sm:text-xs font-semibold uppercase tracking-wider px-2 py-1 rounded-lg transition-colors ${
           selectionSide === 'dire'
-            ? 'bg-red-500/20 text-red-400'
-            : 'text-gray-500 hover:text-red-400'
+            ? 'bg-k3-dire/15 text-k3-dire'
+            : 'text-k3-text-tertiary hover:text-k3-dire'
         }`}
       >
         {t.dire}
@@ -118,10 +118,10 @@ const DraftStrip: React.FC<DraftStripProps> = ({
       {/* Edit button */}
       <button
         onClick={onOpenPicker}
-        className="flex items-center gap-1 text-[10px] sm:text-xs text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-white/5 transition-colors"
+        className="flex items-center gap-1.5 text-xs text-k3-text-tertiary hover:text-k3-text-primary px-2.5 py-1.5 rounded-lg hover:bg-k3-elevated transition-colors"
       >
         <span className="hidden sm:inline">{t.editDraft}</span>
-        <ChevronDown size={12} />
+        <ChevronDown size={14} />
       </button>
     </div>
   );
