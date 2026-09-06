@@ -2,236 +2,156 @@
 
 本文档说明如何配置和使用本仓库的 CI 质量门禁和 AI 代码审查功能。
 
-This guide explains how to configure and use CI quality gates and AI code review for this repository.
-
 ---
 
-## 📋 CI 工作流概览 | CI Workflow Overview
+## 📋 概览 | Overview
 
-| 工作流 | 文件 | 触发条件 | 说明 |
-|--------|------|---------|------|
-| **CI** | `ci.yml` | PR / push to main | 构建、类型检查、测试 |
-| **AI Review** | `ai-review.yml` | PR only | AI 代码审查（可选） |
-
----
-
-## 🔒 必需检查 | Required Checks
-
-### build-and-test
-
-这是核心 CI 检查，包含：
-
-| 步骤 | 命令 | 说明 |
-|------|------|------|
-| TypeScript Check | `npx tsc --noEmit` | 类型安全检查 |
-| Server Syntax | `node --check server.js` | 服务器语法验证 |
-| Build | `npm run build` | Vite 生产构建 |
-| Test | `npm test` | Vitest 单元测试 |
-
-**推荐的分支保护设置 | Recommended Branch Protection:**
-
-1. 进入 **Settings → Branches → Add rule**
-2. Branch name pattern: `main`
-3. ✅ Require status checks to pass before merging
-4. ✅ Require branches to be up to date
-5. 选择 `build-and-test` 作为必需检查
-6. ✅ Require conversation resolution before merging
+| 检查 | 类型 | 合并要求 | 说明 |
+|------|------|---------|------|
+| **build-and-test** | CI | ✅ 必需 | TypeScript、构建、测试 |
+| **Copilot Review** | AI | 推荐 | GitHub Copilot 代码审查（无需 API 密钥）|
+| **Custom LLM Review** | AI | ⏭️ 可选 | DeepSeek/OpenAI/xAI（需 API 密钥）|
 
 ---
 
 ## 🤖 AI 代码审查 | AI Code Review
 
-AI 审查是可选功能，支持多种 LLM 提供商。当配置了 API 密钥时，每个 PR 会自动收到 AI 审查评论。
+### 主要方案：GitHub Copilot（推荐）
 
-### 支持的提供商 | Supported Providers
+**无需 API 密钥** — 直接使用你的 GitHub Copilot 订阅。
 
-| 提供商 | 变量值 | Secret 名称 | 默认模型 | API 端点 |
-|--------|--------|-------------|----------|----------|
-| OpenAI | `openai` | `OPENAI_API_KEY` | gpt-4o-mini | api.openai.com |
-| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | deepseek-chat | api.deepseek.com |
-| xAI (Grok) | `xai` | `XAI_API_KEY` | grok-2-latest | api.x.ai |
+#### 启用自动审查
 
-### 配置步骤 | Configuration Steps
+1. 进入仓库 **Settings → Copilot → Code review**
+2. 在 Branch rules 下，勾选 **Automatically request Copilot review**
+3. 选择审查深度：
+   - **Lite**: 标准审查
+   - **Balanced**: 深度分析（复杂逻辑、安全敏感代码）
 
-#### 1. 添加 API 密钥 | Add API Key
+#### 工作流行为
 
-进入 **Settings → Secrets and variables → Actions → New repository secret**
+- 每个 PR 自动请求 `copilot-pull-request-reviewer` 审查
+- 若要禁用，设置变量 `DISABLE_COPILOT_REVIEW=true`
 
-```
-Name: DEEPSEEK_API_KEY  (或 OPENAI_API_KEY / XAI_API_KEY)
-Value: sk-xxxxxx...
-```
+#### 相关文档
 
-> 💡 也可以使用通用名称 `AI_REVIEW_API_KEY`，会根据 provider 自动选择端点。
-
-#### 2. 设置提供商（可选）| Set Provider (Optional)
-
-默认使用 DeepSeek。如需更换，进入 **Settings → Secrets and variables → Actions → Variables**：
-
-```
-Name: AI_REVIEW_PROVIDER
-Value: openai  (或 deepseek / xai)
-```
-
-#### 3. 自定义模型（可选）| Custom Model (Optional)
-
-```
-Name: AI_REVIEW_MODEL
-Value: gpt-4o  (或其他模型名)
-```
-
-### AI 审查内容 | What AI Reviews
-
-AI 审查会关注以下方面：
-
-- 🔒 **安全风险** - API 密钥泄露、XSS、注入攻击
-- 🐛 **Bug 风险** - 空值检查、竞态条件、React 流式展示的闭包陷阱
-- ⚡ **性能问题** - 不必要的重渲染、内存泄漏
-- 🧪 **测试覆盖** - 关键路径缺少测试
-- 📦 **部署风险** - 破坏性变更、环境变量问题
-
-### 无 API 密钥时的行为 | Behavior Without API Key
-
-当未配置 API 密钥时：
-- ✅ 工作流会成功完成（不会阻塞 CI）
-- ℹ️ Job Summary 显示配置说明
-- ❌ 不会发布审查评论
-
-这意味着你可以先合并代码，稍后再配置 AI 审查。
+- [GitHub Copilot Code Review](https://docs.github.com/en/copilot/concepts/agents/code-review)
+- [配置自动审查](https://docs.github.com/en/copilot/how-tos/copilot-on-github/set-up-copilot/configure-automatic-review)
 
 ---
 
-## 🔄 GitHub Copilot 代码审查 | GitHub Copilot Review
+### 可选方案：自定义 LLM 审查
 
-除了自定义 LLM 审查，还可以启用 GitHub 原生的 Copilot 代码审查。
+如果希望在 Copilot 之外增加额外的 LLM 审查，可配置 API 密钥。
 
-### 启用步骤 | How to Enable
+**这是可选的，不影响合并。**
 
-1. **组织/仓库级别启用 Copilot**
-   - 进入组织设置 → Copilot → Policies
-   - 或仓库设置 → General → Features
+#### 支持的提供商
 
-2. **启用 Copilot 代码审查**
-   - Settings → General → Features → Copilot code review
+| 提供商 | Secret 名称 | 默认模型 |
+|--------|-------------|----------|
+| DeepSeek | `DEEPSEEK_API_KEY` | deepseek-chat |
+| OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
+| xAI (Grok) | `XAI_API_KEY` | grok-2-latest |
 
-3. **配置工作流变量**
-   
-   进入 **Settings → Secrets and variables → Actions → Variables**：
-   ```
-   Name: ENABLE_COPILOT_REVIEW
-   Value: true
-   ```
+#### 配置步骤
 
-4. **工作流会自动请求 Copilot 审查**
+1. **Settings → Secrets and variables → Actions → New repository secret**
+2. 添加对应的 API 密钥
+3. （可选）设置变量 `AI_REVIEW_PROVIDER` = `openai` | `deepseek` | `xai`
+4. （可选）设置变量 `AI_REVIEW_MODEL` 自定义模型
 
-> ⚠️ Copilot 代码审查需要 GitHub Copilot Enterprise 或 Copilot for Business。
+#### 未配置时的行为
+
+- 工作流正常完成（SUCCESS）
+- Job Summary 显示跳过说明
+- 不发布审查评论
+- **不阻塞 CI 或合并**
 
 ---
 
-## 🛡️ 完整分支保护配置 | Full Branch Protection
+## 🔒 必需检查：build-and-test
 
-推荐的 `main` 分支保护配置：
+这是唯一的硬性合并要求。
 
-### 基础配置 | Basic Setup
+| 步骤 | 命令 | 说明 |
+|------|------|------|
+| TypeScript | `npx tsc --noEmit` | 类型安全检查 |
+| Server Syntax | `node --check server.js` | 服务器语法验证 |
+| Build | `npm run build` | Vite 生产构建 |
+| Test | `npm test` | Vitest 单元测试 |
 
-```yaml
-# Settings → Branches → Add rule
+---
+
+## 🛡️ 推荐分支保护配置
+
+### 基础配置（推荐）
+
+**Settings → Branches → Add rule**
+
+```
 Branch name pattern: main
 
 ✅ Require a pull request before merging
-  ✅ Require approvals: 1 (可选)
-  ✅ Dismiss stale pull request approvals when new commits are pushed
-
 ✅ Require status checks to pass before merging
-  ✅ Require branches to be up to date
-  Required checks:
-    - build-and-test  ← 必需
-    - ai-review       ← 可选（配置 API 密钥后启用）
-
+   ✅ Require branches to be up to date
+   Required checks:
+     - build-and-test  ← 必需
 ✅ Require conversation resolution before merging
 ```
 
-### 高级配置（可选）| Advanced Setup (Optional)
+### 说明
 
-```yaml
-✅ Require signed commits
-✅ Require linear history
-✅ Include administrators
-```
+- `build-and-test` 是唯一的硬性要求
+- Copilot Review 和 Custom LLM Review 不设为必需检查
+- AI 审查提供建议，但不阻塞合并流程
 
 ---
 
-## 🚀 本地开发检查 | Local Development Checks
+## 🚀 本地开发检查
 
-在提交 PR 前，建议在本地运行以下检查：
+提交 PR 前建议运行：
 
 ```bash
-# TypeScript 检查 | Type check
+# TypeScript 检查
 npx tsc --noEmit
 
-# 服务器语法 | Server syntax
+# 服务器语法
 node --check server.js
 
-# 构建 | Build
+# 构建
 npm run build
 
-# 测试 | Test
+# 测试
 npm test
 ```
 
-### Git Hooks（可选）| Git Hooks (Optional)
-
-可以使用 husky 配置 pre-commit hooks：
-
-```bash
-npm install -D husky
-npx husky init
-echo "npx tsc --noEmit" > .husky/pre-commit
-```
-
 ---
 
-## 📊 CI 性能优化 | CI Performance
+## 🔧 故障排查
 
-当前 CI 包含以下优化：
+### Copilot 审查不工作
 
-- **npm 缓存** - `setup-node` 自动缓存 npm 依赖
-- **并发控制** - 同一 PR 的旧工作流会被取消
-- **超时限制** - 10 分钟超时防止卡死
+1. 确认已启用 Copilot 订阅（Pro/Pro+/Business/Enterprise）
+2. 进入 **Settings → Copilot → Code review** 检查配置
+3. 确认 `copilot-pull-request-reviewer` 已启用为协作者
 
----
+### Custom LLM 审查不工作
 
-## 🔧 故障排查 | Troubleshooting
+1. 检查 Secret 是否正确配置
+2. 验证 API 密钥是否有效
+3. 查看 Job Summary 中的错误信息
 
-### CI 失败 | CI Failure
+### CI 失败
 
 1. 查看 Actions 页面的具体错误
 2. 本地复现：运行上述检查命令
-3. 常见问题：
-   - TypeScript 类型错误
-   - 测试失败
-   - 构建错误
-
-### AI 审查不工作 | AI Review Not Working
-
-1. 确认 Secret 已正确配置
-2. 检查 Job Summary 中的错误信息
-3. 验证 API 密钥是否有效
-4. 确认 API 额度是否充足
-
-### Copilot 审查不工作 | Copilot Review Not Working
-
-1. 确认已启用 Copilot for the repository
-2. 确认 `ENABLE_COPILOT_REVIEW` 变量设置为 `true`
-3. Copilot 需要 Enterprise 或 Business 订阅
+3. 常见问题：TypeScript 类型错误、测试失败
 
 ---
 
-## 📚 相关文档 | Related Documentation
+## 📚 相关链接
 
-- [GitHub Actions 文档](https://docs.github.com/en/actions)
-- [GitHub Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
-- [GitHub Copilot Code Review](https://docs.github.com/en/copilot/using-github-copilot/code-review/using-copilot-code-review)
-- [DeepSeek API](https://platform.deepseek.com/docs)
-- [OpenAI API](https://platform.openai.com/docs)
-- [xAI Grok API](https://docs.x.ai/docs)
+- [GitHub Actions](https://docs.github.com/en/actions)
+- [GitHub Copilot Code Review](https://docs.github.com/en/copilot/concepts/agents/code-review)
+- [Branch Protection](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)

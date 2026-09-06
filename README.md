@@ -240,12 +240,17 @@ dota2.ai/
 - Vite 生产构建
 - Vitest 单元测试
 
-**AI 代码审查 (可选):**
-- 支持 OpenAI / DeepSeek / xAI (Grok)
-- 自动发布中英双语审查评论
-- 关注安全风险、Bug、性能问题
+**AI 代码审查:**
 
-📖 详细配置说明：[docs/QUALITY.md](docs/QUALITY.md)
+1. **GitHub Copilot（推荐）** — 无需 API 密钥，使用 Copilot 订阅
+   - 启用：Settings → Copilot → Code review → Auto-review
+   - 每个 PR 自动请求 Copilot 审查
+
+2. **自定义 LLM（可选）** — 需配置 API 密钥
+   - 支持 DeepSeek / OpenAI / xAI (Grok)
+   - 未配置时自动跳过，不阻塞合并
+
+📖 详细配置：[docs/QUALITY.md](docs/QUALITY.md)
 
 ### 本地测试 | Local Testing
 
