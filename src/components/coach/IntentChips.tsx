@@ -65,15 +65,15 @@ const IntentChips: React.FC<IntentChipsProps> = ({
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
       {suggestions.map(({ id, label, onClick, enabled }) => (
         <button
           key={id}
           onClick={onClick}
           disabled={isLoading || !enabled}
-          className={`text-sm transition-colors ${
+          className={`text-xs sm:text-sm transition-colors whitespace-nowrap py-1.5 px-1 min-h-[36px] touch-manipulation ${
             enabled && !isLoading
-              ? 'text-k3-text-secondary hover:text-k3-text-primary hover:underline'
+              ? 'text-k3-text-secondary hover:text-k3-text-primary hover:underline active:text-k3-text-primary'
               : 'text-k3-text-tertiary cursor-not-allowed'
           }`}
         >
@@ -83,11 +83,11 @@ const IntentChips: React.FC<IntentChipsProps> = ({
 
       {isLoading && (
         <>
-          <span className="text-k3-text-tertiary">·</span>
-          <Loader2 size={14} className="text-k3-text-secondary animate-spin" />
+          <span className="text-k3-text-tertiary hidden sm:inline">·</span>
+          <Loader2 size={14} className="text-k3-text-secondary animate-spin flex-shrink-0" />
           <button
             onClick={onCancel}
-            className="text-sm text-k3-text-tertiary hover:text-k3-dire flex items-center gap-1 transition-colors"
+            className="text-xs sm:text-sm text-k3-text-tertiary hover:text-k3-dire flex items-center gap-1 transition-colors py-1.5 min-h-[36px] touch-manipulation flex-shrink-0"
           >
             <X size={12} />
             {t.cancel}
