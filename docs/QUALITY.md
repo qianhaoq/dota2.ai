@@ -9,7 +9,7 @@
 | 检查 | 类型 | 合并要求 | 说明 |
 |------|------|---------|------|
 | **Build & Test** | CI | ✅ 必需 | TypeScript、构建、测试 |
-| **copilot-pull-request-reviewer** | AI check | ✅ 必需 | 只覆盖 Copilot，**不覆盖 Codex**；结论可以是 `COMMENTED` |
+| **copilot-pull-request-reviewer** | AI check | ✅ 必需 | 只覆盖 Copilot，**不覆盖 Codex**。check-run `conclusion` 必须是 `success`（不是 review state）。Copilot **review** 可以是 `COMMENTED`，不要求 `APPROVED` |
 | **Codex Review Gate** | AI check | ✅ 必需 | **job 名**必须是 `Codex Review Gate`（不要只认 workflow 展示名） |
 | **会话已解决** | 讨论 | ✅ 必需 | 未解决的 Copilot / Codex / 人类行内线程挡住合并 |
 | **Custom LLM Review** | AI | ⏭️ 可选 | DeepSeek/OpenAI/xAI（需 API 密钥）；不阻塞合并 |
