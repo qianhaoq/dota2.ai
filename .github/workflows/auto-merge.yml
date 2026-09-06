@@ -181,12 +181,13 @@ jobs:
               ref: sha,
             });
 
-            const checkRuns = await github.paginate(github.rest.checks.listForRef, {
-              owner,
-              repo,
-              ref: sha,
-              per_page: 100,
-            });
+            // listForRef returns { total_count, check_runs }, not an array.
+            // paginate only concatenates arrays unless a mapper is provided.
+            const checkRuns = await github.paginate(
+              github.rest.checks.listForRef,
+              { owner, repo, ref: sha, per_page: 100 },
+              (response) => response.data.check_runs
+            );
 
             const relevantChecks = checkRuns.filter((c) => !isIgnoredCheck(c.name));
 
