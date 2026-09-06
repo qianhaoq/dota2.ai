@@ -55,6 +55,7 @@ permissions:
   pull-requests: read
   issues: read
   checks: write
+  actions: write
 
 jobs:
   codex-review-gate:
@@ -207,6 +208,24 @@ jobs:
               });
             }
 
+            // GITHUB_TOKEN check_run / most events do not start other workflows.
+            // workflow_dispatch is the documented exception. issue_comment runs
+            // on default branch, so workflow_run.pull_requests is empty.
+            async function dispatchAutoMerge(prNumber) {
+              try {
+                await github.rest.actions.createWorkflowDispatch({
+                  owner,
+                  repo,
+                  workflow_id: 'auto-merge.yml',
+                  ref: context.payload.repository?.default_branch || 'main',
+                  inputs: { pr_number: String(prNumber) },
+                });
+                core.info(`Dispatched Auto Merge for PR #${prNumber}`);
+              } catch (err) {
+                core.warning(`Could not dispatch Auto Merge: ${err.message}`);
+              }
+            }
+
             const prNumber = await resolvePrNumber();
             if (!prNumber) {
               core.setFailed('Could not resolve PR number');
@@ -223,6 +242,7 @@ jobs:
             if (pr.labels.some((l) => l.name === 'skip-codex-gate')) {
               core.info(`PR #${prNumber}: skip-codex-gate — passing`);
               await reportOnHeadSha(sha, 'success', 'Skipped', 'skip-codex-gate label present');
+              await dispatchAutoMerge(prNumber);
               return;
             }
 
@@ -325,3 +345,4 @@ jobs:
             const ok = `Codex review finished for ${sha.slice(0, 7)} with no unresolved Codex threads`;
             core.info(ok);
             await reportOnHeadSha(sha, 'success', 'Codex clear', ok);
+            await dispatchAutoMerge(prNumber);

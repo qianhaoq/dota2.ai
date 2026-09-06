@@ -86,7 +86,7 @@ This page is the source of truth for merge policy.
    - **#33 的硬门槛：** 有 review（即使是 `COMMENTED`）但还有未解决行内线程 → 不合。靠第 8 条挡。
 8. GraphQL `reviewThreads` 全部 `isResolved: true`（解析失败且仍有 review comments 时 fail-closed）
 
-`workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。触发源：CI 成功、`Codex Review Gate` 成功（`workflow_run`，以及非 `pull_request` 事件里 `checks.create` 产生的 **check_run**）、Copilot 提交 review、或手动 `workflow_dispatch`。
+`workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。触发源：CI 成功、`Codex Review Gate` 成功后 **`workflow_dispatch` Auto Merge**（`GITHUB_TOKEN` 的 `check_run` 不会再拉起工作流；`issue_comment` 跑在 default branch 上，`workflow_run.pull_requests` 常为空）、Copilot 提交 review、或手动 `workflow_dispatch`。`pulls.merge` 带已评估的 **head SHA**，head 变了就拒绝合入。
 
 线程被点 Resolve 后 GitHub **不会**再触发 auto-merge。到 Actions 对 **Auto Merge** 跑一次 `workflow_dispatch`。
 

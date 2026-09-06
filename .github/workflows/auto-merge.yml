@@ -383,12 +383,13 @@ jobs:
             }
 
             core.info(
-              `Merging PR #${prNumber} (CI green + Copilot ${copilotGate.reason} + threads resolved)`
+              `Merging PR #${prNumber} at ${sha.slice(0, 7)} (CI green + Copilot ${copilotGate.reason} + threads resolved)`
             );
             await github.rest.pulls.merge({
               owner,
               repo,
               pull_number: prNumber,
+              sha,
               merge_method: 'squash',
               commit_title: `${pr.title} (#${prNumber})`,
               commit_message:
