@@ -5,11 +5,13 @@ import {
   ChevronDown, ChevronUp, Check, AlertTriangle 
 } from 'lucide-react';
 import { MatchupData, HeroSuggestion, TierHero, PlaybookHero } from '../../services/geminiService';
+import type { LessonMode } from './MentorStage';
 
 interface CoachMessage {
   id: string;
   type: 'user' | 'coach';
   action?: 'analyze' | 'playbook' | 'suggest' | 'meta';
+  lesson?: LessonMode;
   content: string;
   isStreaming?: boolean;
   grounded?: boolean;
@@ -24,14 +26,27 @@ interface ChatMessageProps {
   lang: Language;
   allHeroes: Hero[];
   onSelectHero: (hero: Hero) => void;
+  mentor?: Hero | null;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onSelectHero }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onSelectHero, mentor }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const mentorName = mentor 
+    ? (lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name)
+    : (lang === 'zh' ? 'AI 教练' : 'AI Coach');
+
+  const lessonLabels: Record<LessonMode, { zh: string; en: string }> = {
+    bp: { zh: 'BP', en: 'Ban/Pick' },
+    match: { zh: '对局', en: 'This game' },
+    items: { zh: '出装', en: 'Items' },
+    mind: { zh: '思路', en: 'Game sense' },
+    review: { zh: '复盘', en: 'Replay' },
+  };
 
   const t = {
     grounded: lang === 'zh' ? '基于 OpenDota 数据' : 'Grounded in OpenDota',
-    ungrounded: lang === 'zh' ? '数据未验证' : 'Unverified',
+    ungrounded: lang === 'zh' ? '判断，数据未验证' : 'Judgment, unverified',
     vs: lang === 'zh' ? '对' : 'vs',
     winRate: lang === 'zh' ? '胜率' : 'WR',
     start: lang === 'zh' ? '出门' : 'Start',
@@ -40,6 +55,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
     late: lang === 'zh' ? '后期' : 'Late',
     showMore: lang === 'zh' ? '展开详情' : 'Show more',
     showLess: lang === 'zh' ? '收起' : 'Show less',
+    thinking: mentor 
+      ? (lang === 'zh' ? `${mentorName}在看数据` : `${mentorName} is reading the numbers`)
+      : (lang === 'zh' ? '分析中...' : 'Analyzing...'),
   };
 
   const ActionIcon = ({ action }: { action?: string }) => {
@@ -118,10 +136,32 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
   return (
     <div className="flex justify-start mb-5">
       <div className="max-w-[90%] sm:max-w-[85%] space-y-3">
-        {/* AI indicator */}
+        {/* Mentor indicator with avatar */}
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs text-k3-text-tertiary">AI Coach</span>
+          {mentor && mentor.icon ? (
+            <img 
+              src={mentor.icon} 
+              alt={mentor.name}
+              className="w-5 h-5 rounded-sm"
+            />
+          ) : null}
+          <span className="text-xs text-k3-text-secondary font-medium">{mentorName}</span>
+          {message.lesson && (
+            <>
+              <span className="text-xs text-k3-text-tertiary">·</span>
+              <span className="text-xs text-k3-text-tertiary">
+                {lang === 'zh' ? lessonLabels[message.lesson].zh : lessonLabels[message.lesson].en}
+              </span>
+            </>
+          )}
         </div>
+
+        {/* Streaming thinking indicator */}
+        {message.isStreaming && !message.content && (
+          <div className="text-sm text-k3-text-secondary italic">
+            {t.thinking}
+          </div>
+        )}
 
         {/* Grounded indicator */}
         {!message.isStreaming && message.grounded !== undefined && (
