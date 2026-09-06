@@ -30,12 +30,16 @@ const DraftContextChip: React.FC<DraftContextChipProps> = ({
     return (
       <button
         onClick={onOpenPicker}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm text-k3-text-secondary hover:text-k3-text-primary transition-colors group"
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-k3-surface border border-k3-border-subtle hover:bg-k3-elevated hover:border-k3-text-tertiary/30 text-xs transition-all group"
       >
-        <span>{t.noDraft}</span>
-        <span className="text-k3-text-tertiary">·</span>
-        <span className="group-hover:underline">{t.clickToSelect}</span>
-        <ChevronRight size={14} className="text-k3-text-tertiary" />
+        {/* Radiant/Dire indicator dots */}
+        <span className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-k3-radiant-muted/50" />
+          <span className="w-2 h-2 rounded-full bg-k3-dire-muted/50" />
+        </span>
+        <span className="text-k3-text-tertiary">{t.noDraft}</span>
+        <span className="text-k3-text-secondary group-hover:text-k3-text-primary">{t.clickToSelect}</span>
+        <ChevronRight size={12} className="text-k3-text-tertiary" />
       </button>
     );
   }
