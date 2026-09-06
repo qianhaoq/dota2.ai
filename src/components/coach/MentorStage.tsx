@@ -77,7 +77,7 @@ const MentorStage: React.FC<MentorStageProps> = ({
   return (
     <div className="flex flex-col items-center w-full max-w-xl mx-auto px-1">
       <div className="relative mb-3 sm:mb-4">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl overflow-hidden border border-k3-border-subtle bg-k3-surface">
+        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border border-k3-border-subtle bg-k3-surface">
           <img src={mentor.img} alt={mentor.name} className="w-full h-full object-cover" />
         </div>
         <span className="absolute -bottom-1 -right-1 flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-k3-elevated border border-k3-border-subtle text-[10px] text-k3-text-secondary">
@@ -91,7 +91,7 @@ const MentorStage: React.FC<MentorStageProps> = ({
 
       <button
         onClick={onOpenPracticePicker}
-        className="mt-4 sm:mt-5 px-5 py-3 bg-k3-primary-bg text-k3-primary-text font-medium rounded-lg hover:bg-white active:bg-white transition-colors min-h-[48px] w-full sm:w-auto touch-manipulation"
+        className="mt-3 sm:mt-4 px-5 py-2.5 bg-k3-primary-bg text-k3-primary-text font-medium rounded-lg hover:bg-white active:bg-white transition-colors min-h-[44px] w-full sm:w-auto touch-manipulation"
       >
         {practiceHero ? `${t.changePractice} ›` : `${t.practiceCta} ›`}
       </button>

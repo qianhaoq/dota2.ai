@@ -265,7 +265,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
         {!hasResults ? (
-          <div className="min-h-full flex flex-col items-center justify-center px-3 sm:px-4 py-4 sm:py-6">
+          <div className="min-h-full flex flex-col items-center justify-start px-3 sm:px-4 pt-4 sm:pt-6 pb-3">
             <MentorStage
               lang={lang}
               mentor={mentor}

@@ -122,6 +122,17 @@ describe('messageToBlocks', () => {
   it('returns no blocks for an empty streaming placeholder', () => {
     expect(messageToBlocks(baseCoach({ isStreaming: true, content: '' }))).toEqual([]);
   });
+
+  it('drops a short caption when a structured tier block already exists', () => {
+    const blocks = messageToBlocks(baseCoach({
+      content: '当前版本强势英雄榜：',
+      tierHeroes: [{
+        id: 2, name: 'Axe', nameZh: '斧王', nameEn: 'Axe', shortName: 'axe',
+        winRate: 53, pickRate: 12, gamesPlayed: 100, roles: [], img: '', icon: '', rank: 1, tier: 'S',
+      }],
+    }));
+    expect(blocks.map((b) => b.type)).toEqual(['tier']);
+  });
 });
 
 describe('pairCoachSessions', () => {

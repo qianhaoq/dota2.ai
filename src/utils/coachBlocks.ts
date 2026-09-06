@@ -111,7 +111,12 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A
 
   const sections = parseMarkdownSections(message.content);
   const hasTitled = sections.some((s) => Boolean(s.title));
+  const hasStructured = blocks.length > 0;
   sections.forEach((section, index) => {
+    // 已有对位/出装/推荐/梯队时，跳过短导语，避免和卡片标题重复
+    if (hasStructured && !section.title && section.markdown.length < 48) {
+      return;
+    }
     const untitled = !section.title;
     const title = section.title
       || (hasTitled && untitled ? t.brief : (blocks.length === 0 && untitled ? t.analysis : undefined));
