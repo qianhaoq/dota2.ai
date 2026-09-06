@@ -1,0 +1,347 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai-review:
+    name: AI Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
+    env:
+      AI_REVIEW_PROVIDER: ${{ vars.AI_REVIEW_PROVIDER || 'deepseek' }}
+      AI_REVIEW_MODEL: ${{ vars.AI_REVIEW_MODEL || '' }}
+    
+    steps:
+      - name: Check for API Key
+        id: check-key
+        run: |
+          # Check provider-specific key first, then fallback to generic key
+          PROVIDER="${{ env.AI_REVIEW_PROVIDER }}"
+          echo "provider=$PROVIDER" >> $GITHUB_OUTPUT
+          
+          case "$PROVIDER" in
+            openai)
+              if [ -n "${{ secrets.OPENAI_API_KEY }}" ]; then
+                echo "has_key=true" >> $GITHUB_OUTPUT
+                echo "key_name=OPENAI_API_KEY" >> $GITHUB_OUTPUT
+              elif [ -n "${{ secrets.AI_REVIEW_API_KEY }}" ]; then
+                echo "has_key=true" >> $GITHUB_OUTPUT
+                echo "key_name=AI_REVIEW_API_KEY" >> $GITHUB_OUTPUT
+              else
+                echo "has_key=false" >> $GITHUB_OUTPUT
+              fi
+              ;;
+            deepseek)
+              if [ -n "${{ secrets.DEEPSEEK_API_KEY }}" ]; then
+                echo "has_key=true" >> $GITHUB_OUTPUT
+                echo "key_name=DEEPSEEK_API_KEY" >> $GITHUB_OUTPUT
+              elif [ -n "${{ secrets.AI_REVIEW_API_KEY }}" ]; then
+                echo "has_key=true" >> $GITHUB_OUTPUT
+                echo "key_name=AI_REVIEW_API_KEY" >> $GITHUB_OUTPUT
+              else
+                echo "has_key=false" >> $GITHUB_OUTPUT
+              fi
+              ;;
+            xai|grok)
+              if [ -n "${{ secrets.XAI_API_KEY }}" ]; then
+                echo "has_key=true" >> $GITHUB_OUTPUT
+                echo "key_name=XAI_API_KEY" >> $GITHUB_OUTPUT
+              elif [ -n "${{ secrets.AI_REVIEW_API_KEY }}" ]; then
+                echo "has_key=true" >> $GITHUB_OUTPUT
+                echo "key_name=AI_REVIEW_API_KEY" >> $GITHUB_OUTPUT
+              else
+                echo "has_key=false" >> $GITHUB_OUTPUT
+              fi
+              ;;
+            *)
+              if [ -n "${{ secrets.AI_REVIEW_API_KEY }}" ]; then
+                echo "has_key=true" >> $GITHUB_OUTPUT
+                echo "key_name=AI_REVIEW_API_KEY" >> $GITHUB_OUTPUT
+              else
+                echo "has_key=false" >> $GITHUB_OUTPUT
+              fi
+              ;;
+          esac
+
+      - name: Skip Notice (No API Key)
+        if: steps.check-key.outputs.has_key != 'true'
+        run: |
+          echo "## AI Review Skipped ⏭️" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No API key configured for AI review." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### How to Enable" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Add one of these secrets in **Settings → Secrets and variables → Actions**:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Provider | Secret Name | API Endpoint |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------------|--------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| OpenAI | \`OPENAI_API_KEY\` | api.openai.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| DeepSeek | \`DEEPSEEK_API_KEY\` | api.deepseek.com |" >> $GITHUB_STEP_SUMMARY
+          echo "| xAI (Grok) | \`XAI_API_KEY\` | api.x.ai |" >> $GITHUB_STEP_SUMMARY
+          echo "| Generic | \`AI_REVIEW_API_KEY\` | (based on provider) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Set \`AI_REVIEW_PROVIDER\` variable to: \`openai\`, \`deepseek\`, or \`xai\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Checkout
+        if: steps.check-key.outputs.has_key == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR Diff
+        if: steps.check-key.outputs.has_key == 'true'
+        id: diff
+        run: |
+          # Get the diff for this PR
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+          
+          # Truncate if too large (keep first 8000 chars for context window)
+          if [ $(wc -c < pr_diff.txt) -gt 8000 ]; then
+            head -c 8000 pr_diff.txt > pr_diff_truncated.txt
+            echo "... [diff truncated, showing first 8000 chars]" >> pr_diff_truncated.txt
+            mv pr_diff_truncated.txt pr_diff.txt
+          fi
+          
+          # Get changed files list
+          git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
+          
+          echo "files_count=$(wc -l < changed_files.txt)" >> $GITHUB_OUTPUT
+
+      - name: Setup Node.js
+        if: steps.check-key.outputs.has_key == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run AI Review
+        if: steps.check-key.outputs.has_key == 'true'
+        id: review
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          AI_REVIEW_API_KEY: ${{ secrets.AI_REVIEW_API_KEY }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Determine API endpoint and model based on provider
+          PROVIDER="${{ env.AI_REVIEW_PROVIDER }}"
+          MODEL="${{ env.AI_REVIEW_MODEL }}"
+          
+          case "$PROVIDER" in
+            openai)
+              API_URL="https://api.openai.com/v1/chat/completions"
+              API_KEY="${OPENAI_API_KEY:-$AI_REVIEW_API_KEY}"
+              MODEL="${MODEL:-gpt-4o-mini}"
+              ;;
+            deepseek)
+              API_URL="https://api.deepseek.com/v1/chat/completions"
+              API_KEY="${DEEPSEEK_API_KEY:-$AI_REVIEW_API_KEY}"
+              MODEL="${MODEL:-deepseek-chat}"
+              ;;
+            xai|grok)
+              API_URL="https://api.x.ai/v1/chat/completions"
+              API_KEY="${XAI_API_KEY:-$AI_REVIEW_API_KEY}"
+              MODEL="${MODEL:-grok-2-latest}"
+              ;;
+            *)
+              echo "Unknown provider: $PROVIDER"
+              exit 1
+              ;;
+          esac
+          
+          echo "Using provider: $PROVIDER, model: $MODEL"
+          
+          # Read diff and files
+          DIFF_CONTENT=$(cat pr_diff.txt | jq -Rs .)
+          FILES_CHANGED=$(cat changed_files.txt | jq -Rs .)
+          PR_TITLE_ESCAPED=$(echo "$PR_TITLE" | jq -Rs .)
+          PR_BODY_ESCAPED=$(echo "$PR_BODY" | jq -Rs .)
+          
+          # Build the prompt
+          SYSTEM_PROMPT="You are an expert code reviewer for a Dota 2 AI assistant project (React + TypeScript + Express). Review the PR diff and provide structured feedback.
+
+          Focus on:
+          1. 🔒 Security risks (API keys, secrets, XSS, injection)
+          2. 🐛 Bug risks (null checks, race conditions, stale closures in React streaming)
+          3. ⚡ Performance issues (unnecessary re-renders, memory leaks)
+          4. 🧪 Missing tests for critical paths
+          5. 📦 Deployment risks (breaking changes, env vars)
+
+          Special attention for this codebase:
+          - Streaming responses in CoachView/DraftAssistant may have stale closure issues
+          - Check for proper AbortController cleanup
+          - Verify TypeScript types are correct
+
+          Format your response as:
+          ## 🤖 AI Code Review | AI 代码审查
+
+          ### Summary | 概要
+          (1-2 sentence overview in both languages)
+
+          ### Findings | 发现
+
+          #### 🔴 Critical | 严重 (if any)
+          - Issue description (English)
+          - 问题描述 (中文)
+
+          #### 🟡 Suggestions | 建议 (if any)
+          - Suggestion (English)
+          - 建议 (中文)
+
+          #### ✅ Good | 优点 (if any)
+          - What's done well
+
+          ### Risk Assessment | 风险评估
+          - [ ] High risk | 高风险
+          - [ ] Medium risk | 中风险
+          - [x] Low risk | 低风险
+
+          If no issues found, just confirm the code looks good with a brief note."
+
+          USER_PROMPT="Review this PR:
+
+          **Title:** $PR_TITLE_ESCAPED
+
+          **Description:** $PR_BODY_ESCAPED
+
+          **Changed files:**
+          $FILES_CHANGED
+
+          **Diff:**
+          \`\`\`diff
+          $DIFF_CONTENT
+          \`\`\`"
+
+          # Make API call
+          RESPONSE=$(curl -s -X POST "$API_URL" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $API_KEY" \
+            -d @- <<EOF
+          {
+            "model": "$MODEL",
+            "messages": [
+              {"role": "system", "content": $(echo "$SYSTEM_PROMPT" | jq -Rs .)},
+              {"role": "user", "content": "Review this PR:\n\n**Title:** ${PR_TITLE}\n\n**Description:** ${PR_BODY}\n\n**Changed files:**\n$(cat changed_files.txt)\n\n**Diff:**\n\`\`\`diff\n$(cat pr_diff.txt)\n\`\`\`"}
+            ],
+            "max_tokens": 2000,
+            "temperature": 0.3
+          }
+          EOF
+          )
+          
+          # Extract the review content
+          REVIEW_CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+          
+          if [ -z "$REVIEW_CONTENT" ]; then
+            echo "API Error Response: $RESPONSE"
+            ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error.message // "Unknown error"')
+            echo "review_error=true" >> $GITHUB_OUTPUT
+            echo "error_message=$ERROR_MSG" >> $GITHUB_OUTPUT
+          else
+            # Save review to file for the comment step
+            echo "$REVIEW_CONTENT" > review_content.md
+            echo "" >> review_content.md
+            echo "---" >> review_content.md
+            echo "_Reviewed by $PROVIDER ($MODEL) via GitHub Actions_" >> review_content.md
+            echo "review_error=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post Review Comment
+        if: steps.check-key.outputs.has_key == 'true' && steps.review.outputs.review_error == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reviewContent = fs.readFileSync('review_content.md', 'utf8');
+            
+            // Find existing AI review comment to update
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.data.find(comment => 
+              comment.body.includes('🤖 AI Code Review') && 
+              comment.user.type === 'Bot'
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: reviewContent
+              });
+              console.log('Updated existing review comment');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: reviewContent
+              });
+              console.log('Created new review comment');
+            }
+
+      - name: Handle Review Error
+        if: steps.check-key.outputs.has_key == 'true' && steps.review.outputs.review_error == 'true'
+        run: |
+          echo "## AI Review Failed ⚠️" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Error: ${{ steps.review.outputs.error_message }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The AI review encountered an error but this won't block the CI." >> $GITHUB_STEP_SUMMARY
+
+      - name: Review Summary
+        if: steps.check-key.outputs.has_key == 'true' && steps.review.outputs.review_error == 'false'
+        run: |
+          echo "## AI Review Complete ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Provider: ${{ env.AI_REVIEW_PROVIDER }}" >> $GITHUB_STEP_SUMMARY
+          echo "Files reviewed: ${{ steps.diff.outputs.files_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Review posted as PR comment." >> $GITHUB_STEP_SUMMARY
+
+  copilot-review:
+    name: Request Copilot Review
+    runs-on: ubuntu-latest
+    if: vars.ENABLE_COPILOT_REVIEW == 'true'
+    
+    steps:
+      - name: Request Copilot Review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                reviewers: ['copilot']
+              });
+              console.log('Requested Copilot review');
+            } catch (error) {
+              console.log('Could not request Copilot review:', error.message);
+              console.log('Copilot review may not be enabled for this repository.');
+            }
+
+      - name: Copilot Review Summary
+        run: |
+          echo "## Copilot Review 🤖" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Copilot review has been requested." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To enable Copilot reviews:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Enable Copilot for this repository" >> $GITHUB_STEP_SUMMARY
+          echo "2. Go to repository Settings → General → Features" >> $GITHUB_STEP_SUMMARY
+          echo "3. Enable 'Copilot code review'" >> $GITHUB_STEP_SUMMARY

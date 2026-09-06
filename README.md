@@ -226,8 +226,26 @@ dota2.ai/
 | 阶段 | 触发条件 | 说明 |
 |------|---------|------|
 | **GitHub Actions CI** | PR / push to main | TypeScript 检查、构建、单元测试 |
+| **AI Code Review** | PR only | AI 自动代码审查（可选）|
 | **Cloud Build** | merge to main | 自动构建 Docker 镜像 |
 | **Cloud Run** | Cloud Build 成功 | 自动部署到 dota2.ai |
+
+### 质量门禁 | Quality Gates
+
+本仓库配置了自动化质量检查：
+
+**必需检查 (build-and-test):**
+- TypeScript 类型检查
+- 服务器语法验证
+- Vite 生产构建
+- Vitest 单元测试
+
+**AI 代码审查 (可选):**
+- 支持 OpenAI / DeepSeek / xAI (Grok)
+- 自动发布中英双语审查评论
+- 关注安全风险、Bug、性能问题
+
+📖 详细配置说明：[docs/QUALITY.md](docs/QUALITY.md)
 
 ### 本地测试 | Local Testing
 
