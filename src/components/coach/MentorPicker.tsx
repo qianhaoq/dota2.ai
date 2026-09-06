@@ -68,7 +68,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
         onClick={onClose}
       />
 
-      <div className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4">
+      <div className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4 pt-safe pb-safe">
         <div className="px-3 sm:px-4 py-3 sm:py-4 border-b border-k3-border-subtle bg-k3-surface">
           <div className="flex items-center justify-between mb-1 sm:mb-2">
             <h2 className="font-semibold text-k3-text-primary text-base sm:text-lg">{t.title}</h2>
@@ -102,7 +102,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
                   onDismissMentor();
                   onClose();
                 }}
-                className="px-2 sm:px-3 py-1.5 text-xs text-k3-text-tertiary hover:text-k3-dire hover:bg-k3-dire/10 rounded-lg transition-colors border border-k3-border-subtle min-h-[36px] touch-manipulation flex-shrink-0"
+                className="px-2 sm:px-3 py-1.5 text-xs text-k3-text-tertiary hover:text-k3-dire hover:bg-k3-dire/10 rounded-lg transition-colors border border-k3-border-subtle min-h-[40px] touch-manipulation flex-shrink-0"
               >
                 {t.dismiss}
               </button>
@@ -118,8 +118,8 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
               placeholder={t.search}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-k3-input border border-k3-border-subtle rounded-sm pl-10 pr-3 py-2.5 sm:py-2 text-sm text-k3-text-primary focus:outline-none focus:border-k3-text-tertiary placeholder:text-k3-text-tertiary"
-              autoFocus
+              className="w-full bg-k3-input border border-k3-border-subtle rounded-sm pl-10 pr-3 py-2.5 sm:py-2 text-base sm:text-sm text-k3-text-primary focus:outline-none focus:border-k3-text-tertiary placeholder:text-k3-text-tertiary"
+              autoFocus={typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches}
             />
           </div>
           <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0">
@@ -127,7 +127,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
               <button
                 key={attr}
                 onClick={() => setAttrFilter(attr)}
-                className={`px-3 sm:px-2.5 py-2 sm:py-1.5 rounded-sm text-[11px] sm:text-[10px] font-medium uppercase transition-colors min-h-[36px] min-w-[44px] flex-shrink-0 touch-manipulation ${
+                className={`px-3 sm:px-2.5 py-2 sm:py-1.5 rounded-sm text-[11px] sm:text-[10px] font-medium uppercase transition-colors min-h-[40px] min-w-[44px] flex-shrink-0 touch-manipulation ${
                   attrFilter === attr
                     ? 'bg-k3-text-primary text-k3-base'
                     : 'text-k3-text-tertiary hover:text-k3-text-secondary hover:bg-k3-elevated'

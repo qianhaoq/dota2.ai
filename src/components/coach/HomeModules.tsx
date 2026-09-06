@@ -49,11 +49,11 @@ const HomeModules: React.FC<HomeModulesProps> = ({
   const practiceChip = practiceHero && (
     <button
       onClick={onOpenPracticePicker}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-k3-surface border border-k3-border-subtle text-xs min-h-[36px] touch-manipulation"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-k3-surface border border-k3-border-subtle text-xs min-h-[40px] max-w-full touch-manipulation"
     >
-      <img src={practiceHero.icon || practiceHero.img} alt="" className="w-5 h-5 rounded object-cover" />
-      <span className="text-k3-text-tertiary">{t.practicing}</span>
-      <span className="text-k3-text-primary font-medium">{practiceName}</span>
+      <img src={practiceHero.icon || practiceHero.img} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0" />
+      <span className="text-k3-text-tertiary flex-shrink-0">{t.practicing}</span>
+      <span className="text-k3-text-primary font-medium truncate max-w-[7.5rem] sm:max-w-[12rem]">{practiceName}</span>
     </button>
   );
 
@@ -61,7 +61,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
     <button
       onClick={onMeta}
       disabled={isLoading}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-k3-border-subtle text-xs text-k3-text-secondary hover:text-k3-text-primary min-h-[36px] touch-manipulation"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-k3-border-subtle text-xs text-k3-text-secondary hover:text-k3-text-primary min-h-[40px] flex-shrink-0 touch-manipulation"
     >
       <BarChart3 size={12} />
       {density === 'full' ? t.metaHint : t.meta}
@@ -80,7 +80,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
   ) : (
     <button
       onClick={onOpenDraftPicker}
-      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-k3-text-tertiary hover:text-k3-text-secondary min-h-[36px] touch-manipulation"
+      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs text-k3-text-tertiary hover:text-k3-text-secondary min-h-[40px] flex-shrink-0 touch-manipulation"
     >
       <Users size={12} />
       {t.draftOptional}
@@ -92,12 +92,12 @@ const HomeModules: React.FC<HomeModulesProps> = ({
       {density === 'full' && (
         <h2 className="text-[11px] uppercase tracking-wide text-k3-text-tertiary text-center">{t.lessons}</h2>
       )}
-      <div className="flex flex-wrap items-center justify-center gap-1.5">
+      <div className={`flex items-center gap-1.5 min-w-0 ${density === 'compact' ? 'overflow-x-auto scrollbar-hide justify-start' : 'flex-wrap justify-center'}`}>
         {practiceChip}
         {metaBtn}
         {draftBtn}
       </div>
-      <LessonRail lang={lang} currentLesson={lesson} onLessonChange={onLessonChange} isLoading={isLoading} />
+      <LessonRail lang={lang} currentLesson={lesson} onLessonChange={onLessonChange} isLoading={isLoading} compact={density === 'compact'} />
     </div>
   );
 };

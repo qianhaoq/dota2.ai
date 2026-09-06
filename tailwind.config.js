@@ -47,6 +47,8 @@ export default {
         'content': '768px',
         '3xl': '48rem',
       },
+      // k3 8px grid: 1–6 are 8/16/24/32/40/48px. `w-5`/`w-6` are 40/48, not Tailwind defaults (20/24).
+      // Dense mobile rows (chip avatars, picker previews) should use w-7/w-8 or arbitrary px.
       spacing: {
         '1': '8px',
         '2': '16px',

@@ -121,7 +121,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
 
   return (
     <div className="flex justify-start mb-4 sm:mb-5">
-      <div className="max-w-full sm:max-w-[90%] md:max-w-[85%] space-y-2 sm:space-y-3 min-w-0">
+      <div className="max-w-full sm:max-w-[90%] md:max-w-[85%] space-y-2 sm:space-y-3 min-w-0 overflow-x-hidden">
         {/* Mentor indicator with avatar */}
         <div className="flex items-center gap-2 mb-1">
           {mentor && mentor.icon ? (
@@ -210,10 +210,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
                       { items: hero.items.lateGame, label: t.late },
                     ].map(({ items, label }) => items.length > 0 && (
                       <div key={label} className="flex items-center gap-1 min-w-0">
-                        <span className="text-k3-text-tertiary text-[8px] sm:text-[9px] w-5 sm:w-6 flex-shrink-0">{label}</span>
+                        <span className="text-k3-text-tertiary text-[8px] sm:text-[9px] w-8 flex-shrink-0">{label}</span>
                         <div className="flex gap-0.5 overflow-hidden">
                           {items.slice(0, 4).map((item, idx) => (
-                            <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-4 h-4 sm:w-5 sm:h-5 rounded border border-k3-border-subtle flex-shrink-0" />
+                        <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-[16px] h-[16px] sm:w-8 sm:h-8 rounded border border-k3-border-subtle flex-shrink-0" />
                           ))}
                         </div>
                       </div>

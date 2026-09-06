@@ -64,7 +64,9 @@ const ResultCard: React.FC<ResultCardProps> = ({
 
   const t = useMemo(() => ({
     grounded: lang === 'zh' ? '基于 OpenDota 数据' : 'Grounded in OpenDota',
+    groundedShort: lang === 'zh' ? '数据' : 'Data',
     ungrounded: lang === 'zh' ? '判断，数据未验证' : 'Judgment, unverified',
+    ungroundedShort: lang === 'zh' ? '未验证' : 'Unverified',
     vs: lang === 'zh' ? '对' : 'vs',
     winRate: lang === 'zh' ? '胜率' : 'WR',
     start: lang === 'zh' ? '出门' : 'Start',
@@ -102,21 +104,21 @@ const ResultCard: React.FC<ResultCardProps> = ({
       ...data.direAdvantages.slice(0, 4).map((adv, idx) => ({ key: `dire-${idx}`, side: 'dire' as const, adv })),
     ];
     return (
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5 min-w-0">
         {chips.map(({ key, side, adv }) => (
           <span
             key={key}
-            className={`inline-flex items-center gap-1 text-[10px] sm:text-[11px] px-2 py-1 rounded-full whitespace-nowrap ${
+            className={`inline-flex items-center gap-1 text-[10px] sm:text-[11px] px-2 py-1 rounded-full max-w-full min-w-0 ${
               side === 'radiant'
                 ? 'bg-k3-radiant/10 border border-k3-radiant/20'
                 : 'bg-k3-dire/10 border border-k3-dire/20'
             }`}
           >
-            <Zap size={10} className={side === 'radiant' ? 'text-k3-radiant' : 'text-k3-dire'} />
-            <span className={side === 'radiant' ? 'text-k3-radiant font-medium' : 'text-k3-dire font-medium'}>{adv.hero}</span>
-            <span className="text-k3-text-tertiary">{t.vs}</span>
-            <span className="text-k3-text-secondary">{adv.vsHero}</span>
-            <span className={`${side === 'radiant' ? 'text-k3-radiant' : 'text-k3-dire'} font-bold`}>
+            <Zap size={10} className={`${side === 'radiant' ? 'text-k3-radiant' : 'text-k3-dire'} flex-shrink-0`} />
+            <span className={`${side === 'radiant' ? 'text-k3-radiant font-medium' : 'text-k3-dire font-medium'} truncate max-w-[4.5rem] sm:max-w-none`}>{adv.hero}</span>
+            <span className="text-k3-text-tertiary flex-shrink-0">{t.vs}</span>
+            <span className="text-k3-text-secondary truncate max-w-[4.5rem] sm:max-w-none">{adv.vsHero}</span>
+            <span className={`${side === 'radiant' ? 'text-k3-radiant' : 'text-k3-dire'} font-bold flex-shrink-0`}>
               +{adv.advantage.toFixed(1)}%
             </span>
           </span>
@@ -153,10 +155,10 @@ const ResultCard: React.FC<ResultCardProps> = ({
                   { items: hero.items.lateGame, label: t.late },
                 ].map(({ items, label }) => items.length > 0 && (
                   <div key={label} className="flex items-center gap-1 min-w-0">
-                    <span className="text-k3-text-tertiary text-[9px] w-6 flex-shrink-0">{label}</span>
-                    <div className="flex gap-0.5 min-w-0">
+                    <span className="text-k3-text-tertiary text-[9px] w-8 flex-shrink-0">{label}</span>
+                    <div className="flex gap-0.5 min-w-0 overflow-hidden">
                       {items.slice(0, 4).map((item, idx) => (
-                        <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-5 h-5 rounded border border-k3-border-subtle flex-shrink-0" />
+                        <img key={idx} src={item.img} alt={item.name} title={item.name} className="w-[18px] h-[18px] sm:w-8 sm:h-8 rounded border border-k3-border-subtle flex-shrink-0" />
                       ))}
                     </div>
                   </div>
@@ -245,13 +247,14 @@ const ResultCard: React.FC<ResultCardProps> = ({
           )}
         </div>
         {!message.isStreaming && message.grounded !== undefined && (
-          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full flex-shrink-0 ${
+          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full flex-shrink-0 max-w-[42%] sm:max-w-none ${
             message.grounded
               ? 'bg-k3-radiant/10 text-k3-radiant border border-k3-radiant/20'
               : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
           }`}>
-            {message.grounded ? <Check size={10} /> : <AlertTriangle size={10} />}
-            {message.grounded ? t.grounded : t.ungrounded}
+            {message.grounded ? <Check size={10} className="flex-shrink-0" /> : <AlertTriangle size={10} className="flex-shrink-0" />}
+            <span className="truncate sm:hidden">{message.grounded ? t.groundedShort : t.ungroundedShort}</span>
+            <span className="hidden sm:inline">{message.grounded ? t.grounded : t.ungrounded}</span>
           </span>
         )}
       </header>
@@ -294,7 +297,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
                 {long && (
                   <button
                     onClick={() => setOpenSections((prev) => ({ ...prev, [block.id]: !open }))}
-                    className="text-[11px] text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 min-h-[32px] touch-manipulation"
+                    className="text-[11px] text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 min-h-[40px] flex-shrink-0 touch-manipulation"
                   >
                     {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     {open ? t.showLess : t.showMore}

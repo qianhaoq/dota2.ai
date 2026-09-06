@@ -49,12 +49,12 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
     <div className="flex-shrink-0 border-t border-k3-border-subtle bg-k3-base pb-safe">
       <div className="max-w-3xl mx-auto w-full px-3 sm:px-4 py-2 sm:py-3">
         {isLoading && (
-          <div className="flex items-center justify-center gap-2 mb-2 min-h-[36px]">
-            <Loader2 size={14} className="text-k3-text-secondary animate-spin" />
-            <span className="text-xs sm:text-sm text-k3-text-secondary">{t.reading}</span>
+          <div className="flex items-center justify-center gap-2 mb-2 min-h-[40px] min-w-0">
+            <Loader2 size={14} className="text-k3-text-secondary animate-spin flex-shrink-0" />
+            <span className="text-xs sm:text-sm text-k3-text-secondary truncate min-w-0">{t.reading}</span>
             <button
               onClick={onCancel}
-              className="text-xs text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 py-1.5 px-2 min-h-[36px] touch-manipulation"
+              className="text-xs text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 py-1.5 px-2 min-h-[40px] flex-shrink-0 touch-manipulation"
             >
               <X size={12} />
               {t.stop}
@@ -70,12 +70,12 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
               onChange={(e) => setUserInput(e.target.value)}
               placeholder={t.composer}
               disabled={isLoading}
-              className="flex-1 min-w-0 bg-transparent px-3 sm:px-4 py-3 pr-12 sm:pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
+              className="flex-1 min-w-0 bg-transparent px-3 sm:px-4 py-3 pr-14 text-base sm:text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!canSend}
-              className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all touch-manipulation ${
+              className={`absolute right-2 w-10 h-10 flex items-center justify-center rounded-full transition-all touch-manipulation ${
                 canSend
                   ? 'bg-k3-primary-bg hover:bg-white active:bg-white text-k3-primary-text cursor-pointer'
                   : 'bg-k3-elevated text-k3-text-tertiary cursor-not-allowed'
