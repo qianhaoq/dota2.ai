@@ -1,5 +1,6 @@
 import { A2UIAction, A2UIBlock, Language } from '../types';
 import type { CoachMessage, CoachSession } from '../components/coach/coachMessage';
+import type { MatchFact } from '../types/matchReview';
 
 export interface MarkdownSection {
   title?: string;
@@ -47,6 +48,13 @@ function labels(lang: Language) {
     tier: lang === 'zh' ? '版本梯队' : 'Patch tier',
     analysis: lang === 'zh' ? '分析' : 'Analysis',
     brief: lang === 'zh' ? '导读' : 'Brief',
+    reviewSummary: lang === 'zh' ? '摘要' : 'Summary',
+    reviewLanes: lang === 'zh' ? '真实分路' : 'True lanes',
+    reviewEconomy: lang === 'zh' ? '经济' : 'Economy',
+    reviewTimeline: lang === 'zh' ? '时间线' : 'Timeline',
+    reviewPov: lang === 'zh' ? '你的镜头' : 'Your POV',
+    reviewHowToWin: lang === 'zh' ? '如何赢' : 'How to win',
+    laneInference: lang === 'zh' ? '根据录像站位推断' : 'Inferred from replay positioning',
   };
 }
 
@@ -64,12 +72,104 @@ function suggestionActions(message: CoachMessage, lang: Language): A2UIAction[] 
   });
 }
 
+function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnType<typeof labels>): A2UIBlock[] {
+  const fact = message.matchFact as MatchFact | null | undefined;
+  if (!fact) return [];
+
+  const blocks: A2UIBlock[] = [];
+
+  const summaryMd = lang === 'zh'
+    ? `比赛 **${fact.summary.matchId}** · ${fact.summary.durationFormatted} · ${fact.summary.winnerLabelZh}`
+    : `Match **${fact.summary.matchId}** · ${fact.summary.durationFormatted} · ${fact.summary.winnerLabelEn}`;
+
+  blocks.push({
+    id: `${message.id}-review-summary`,
+    type: 'review',
+    title: t.reviewSummary,
+    markdown: summaryMd,
+    reviewSection: 'summary',
+    matchFact: fact,
+  });
+
+  const laneLines = fact.lanes.map((lane) => {
+    const label = lang === 'zh' ? lane.laneLabelZh : lane.laneLabelEn;
+    const rad = lane.radiantNames.join(' + ');
+    const dire = lane.direNames.join(' + ');
+    return lang === 'zh'
+      ? `**${label}**：天辉 ${rad} vs 夜魇 ${dire}`
+      : `**${label}**: Radiant ${rad} vs Dire ${dire}`;
+  }).join('\n');
+
+  blocks.push({
+    id: `${message.id}-review-lanes`,
+    type: 'review',
+    title: t.reviewLanes,
+    markdown: `${t.laneInference}\n\n${laneLines}`,
+    reviewSection: 'lanes',
+    matchFact: fact,
+  });
+
+  const ecoLines = fact.economy.checkpoints.map((cp) => {
+    const sign = cp.radiantGoldLead >= 0 ? '+' : '';
+    return lang === 'zh'
+      ? `- ${cp.minute} 分钟：天辉 ${sign}${cp.radiantGoldLead}`
+      : `- ${cp.minute} min: Radiant ${sign}${cp.radiantGoldLead}`;
+  }).join('\n');
+
+  blocks.push({
+    id: `${message.id}-review-economy`,
+    type: 'review',
+    title: t.reviewEconomy,
+    markdown: ecoLines || (lang === 'zh' ? '暂无经济节点数据' : 'No economy checkpoints'),
+    reviewSection: 'economy',
+    matchFact: fact,
+  });
+
+  const timelineLines = fact.timeline.slice(0, 12).map((ev) => {
+    const min = Math.floor(ev.time / 60);
+    const sec = ev.time % 60;
+    const label = ev.type.replace('CHAT_MESSAGE_', '').replace('building_kill', lang === 'zh' ? '推塔' : 'Tower');
+    return `- ${min}:${String(sec).padStart(2, '0')} ${label}${ev.key ? ` · ${ev.key}` : ''}`;
+  }).join('\n');
+
+  blocks.push({
+    id: `${message.id}-review-timeline`,
+    type: 'review',
+    title: t.reviewTimeline,
+    markdown: timelineLines || (lang === 'zh' ? '暂无时间线' : 'No timeline'),
+    reviewSection: 'timeline',
+    matchFact: fact,
+  });
+
+  if (fact.focusLens) {
+    const f = fact.focusLens;
+    const povMd = lang === 'zh'
+      ? `**${f.displayName}** · KDA ${f.kda} · GPM ${f.gpm}\n分路：${f.laneLabel}\n对线：${f.opponents.map((o) => o.displayName).join('、') || '—'}${f.nearby.length ? `\n附近：${f.nearby.map((o) => o.displayName).join('、')}` : ''}`
+      : `**${f.displayName}** · KDA ${f.kda} · GPM ${f.gpm}\nLane: ${f.laneLabel}\nVs: ${f.opponents.map((o) => o.displayName).join(', ') || '—'}`;
+
+    blocks.push({
+      id: `${message.id}-review-pov`,
+      type: 'review',
+      title: t.reviewPov,
+      markdown: povMd,
+      reviewSection: 'pov',
+      matchFact: fact,
+    });
+  }
+
+  return blocks;
+}
+
 /**
  * 把一条教练消息映射成 A2UI 块。渲染层只吃 blocks，不解析聊天气泡。
  */
 export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A2UIBlock[] {
   const t = labels(lang);
   const blocks: A2UIBlock[] = [];
+
+  if (message.action === 'review' && message.matchFact) {
+    blocks.push(...reviewSectionBlocks(message, lang, t));
+  }
 
   const matchups = message.matchupData;
   if (matchups && (matchups.radiantAdvantages.length > 0 || matchups.direAdvantages.length > 0)) {
@@ -112,19 +212,34 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A
   const sections = parseMarkdownSections(message.content);
   const hasTitled = sections.some((s) => Boolean(s.title));
   const hasStructured = blocks.length > 0;
+
+  const reviewHowToWin = message.action === 'review';
   sections.forEach((section, index) => {
-    // 已有对位/出装/推荐/梯队时，跳过短导语，避免和卡片标题重复
     if (hasStructured && !section.title && section.markdown.length < 48) {
       return;
     }
     const untitled = !section.title;
-    const title = section.title
+    let title = section.title
       || (hasTitled && untitled ? t.brief : (blocks.length === 0 && untitled ? t.analysis : undefined));
+
+    if (reviewHowToWin && section.title) {
+      const normalized = section.title.replace(/\s+/g, '').toLowerCase();
+      if (normalized.includes('如何赢') || normalized.includes('howtowin') || normalized.includes('how to win')) {
+        title = t.reviewHowToWin;
+      }
+    }
+
+    if (reviewHowToWin && !section.title && index === sections.length - 1 && message.content.trim()) {
+      title = t.reviewHowToWin;
+    }
+
     blocks.push({
       id: `${message.id}-md-${index}`,
-      type: title ? 'section' : 'markdown',
+      type: title ? (reviewHowToWin ? 'review' : 'section') : 'markdown',
       title,
       markdown: section.markdown,
+      reviewSection: reviewHowToWin && title === t.reviewHowToWin ? 'howToWin' : undefined,
+      matchFact: reviewHowToWin ? message.matchFact : undefined,
     });
   });
 
@@ -163,6 +278,7 @@ export function sessionTitle(session: CoachSession, lang: Language): string {
     playbook: { zh: '本局打法', en: 'Playbook' },
     suggest: { zh: '推荐选人', en: 'Pick suggestion' },
     meta: { zh: '版本趋势', en: 'Patch trends' },
+    review: { zh: '比赛复盘', en: 'Match review' },
   };
   if (action && map[action]) {
     return lang === 'zh' ? map[action].zh : map[action].en;

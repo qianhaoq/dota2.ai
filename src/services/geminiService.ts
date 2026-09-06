@@ -1,4 +1,5 @@
 import { Hero, Language } from '../types';
+import type { MatchFact } from '../types/matchReview';
 
 export interface MatchupAdvantage {
   hero: string;
@@ -483,6 +484,100 @@ export const fetchPlaybookStream = (
 
       clearTimeout(timeoutId);
       callbacks?.onComplete();
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        callbacks?.onError('请求已取消');
+      } else {
+        callbacks?.onError(error.message || 'Unknown error');
+      }
+    }
+  })();
+
+  return controller;
+};
+
+// ============ Match Replay Review ============
+
+export interface ReviewStreamCallbacks {
+  onData: (matchFact: MatchFact) => void;
+  onChunk: (text: string) => void;
+  onComplete: (grounded: boolean) => void;
+  onError: (error: string) => void;
+}
+
+export const fetchMatchReviewStream = (
+  matchId: number,
+  lang: Language,
+  heroId?: number,
+  callbacks?: ReviewStreamCallbacks
+): AbortController => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+  (async () => {
+    try {
+      const params = new URLSearchParams({ lang });
+      if (heroId) params.append('heroId', String(heroId));
+
+      const response = await fetch(`/api/review/${matchId}?${params}`, {
+        method: 'GET',
+        headers: { Accept: 'text/event-stream' },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to fetch match review');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let isGrounded = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (data === '[DONE]') {
+            clearTimeout(timeoutId);
+            callbacks?.onComplete(isGrounded);
+            return;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+              callbacks?.onError(parsed.error);
+              return;
+            }
+            if (parsed.matchFact && callbacks?.onData) {
+              callbacks.onData(parsed.matchFact);
+              isGrounded = true;
+            }
+            if (parsed.text && callbacks?.onChunk) {
+              callbacks.onChunk(parsed.text);
+            }
+            if (parsed.grounded !== undefined) {
+              isGrounded = parsed.grounded;
+            }
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+
+      clearTimeout(timeoutId);
+      callbacks?.onComplete(isGrounded);
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {

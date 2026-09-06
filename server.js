@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
+import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,6 +41,7 @@ const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for matchup data
 const CONSTANTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for constants (patch data changes rarely)
 const MATCHES_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for pro/public matches
+const MATCH_DETAIL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for single match review
 
 // ============ Cache Storage ============
 const cache = {
@@ -55,7 +57,9 @@ const cache = {
   steamHeroesEn: { data: null, timestamp: 0 },
   // Pro/Public matches
   proMatches: { data: null, timestamp: 0 },
-  publicMatches: { data: null, timestamp: 0 }
+  publicMatches: { data: null, timestamp: 0 },
+  // Single match detail for replay review
+  matchDetails: new Map(), // Map<matchId, { data, timestamp }>
 };
 
 async function fetchWithRetry(url, retries = 2, delay = 500) {
@@ -2002,6 +2006,175 @@ app.post('/api/chat', async (req, res) => {
   } catch (error) {
     console.error("DeepSeek Chat Error:", error);
     res.status(500).json({ error: error.message || "Internal Server Error" });
+  }
+});
+
+// ============ Match Replay Review ============
+async function getMatchDetail(matchId) {
+  const cached = cache.matchDetails.get(matchId);
+  if (cached && Date.now() - cached.timestamp < MATCH_DETAIL_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const data = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`);
+  cache.matchDetails.set(matchId, { data, timestamp: Date.now() });
+  return data;
+}
+
+function buildHeroNamesMap(heroStats) {
+  const map = {};
+  for (const [id, stats] of Object.entries(heroStats || {})) {
+    const heroId = Number(id);
+    const cn = HERO_NAMES_CN[heroId];
+    map[heroId] = {
+      nameZh: cn?.nameZh || stats?.localized_name || stats?.name || `Hero#${heroId}`,
+      nameEn: stats?.name || stats?.localized_name || `Hero#${heroId}`,
+    };
+  }
+  return map;
+}
+
+app.get('/api/review/:matchId', async (req, res) => {
+  const acceptHeader = req.headers.accept || '';
+  const wantsStream = acceptHeader.includes('text/event-stream');
+  const lang = req.query.lang || 'zh';
+  const heroId = req.query.heroId ? Number(req.query.heroId) : undefined;
+  const matchId = Number(req.params.matchId);
+
+  if (!Number.isFinite(matchId) || matchId <= 0) {
+    const errorMsg = lang === 'zh' ? '无效的比赛 ID' : 'Invalid match ID';
+    if (wantsStream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.write(`data: ${JSON.stringify({ error: errorMsg })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+    return res.status(400).json({ error: errorMsg });
+  }
+
+  try {
+    const [matchData, heroStats] = await Promise.all([
+      getMatchDetail(matchId),
+      getHeroStats(),
+    ]);
+
+    const heroNames = buildHeroNamesMap(heroStats);
+    const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
+
+    if (!apiKey || !openai) {
+      if (wantsStream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.write(`data: ${JSON.stringify({ matchFact, grounded: true })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: lang === 'zh' ? 'DeepSeek API Key 未配置' : 'DeepSeek API Key not configured' })}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+      return res.json({ matchFact, grounded: true, error: 'DeepSeek API Key not configured' });
+    }
+
+    const isZh = lang === 'zh';
+    const groundedContext = matchFactToPrompt(matchFact, lang);
+    const focusName = matchFact.focusLens?.displayName
+      || (heroId ? `Hero#${heroId}` : (isZh ? '本局' : 'this match'));
+
+    const systemPrompt = isZh
+      ? `你是一位职业 DOTA2 教练，帮玩家复盘比赛并给出「如何赢」的实战建议。
+
+【硬性规则】
+1. 只能使用提供的 MatchFact 数据，禁止引用 OpenDota 原始 lane/lane_role 字段
+2. 分路信息以「根据录像站位推断」的聚类结果为准
+3. 禁止编造击杀、经济、出装等未提供的数据
+4. 针对玩家所选英雄给出可执行建议：对线、节奏、团战、装备思路
+5. 中文回答，语气专业但易懂
+
+【输出格式 — 使用 ## 标题】
+## 摘要
+## 真实分路
+## 经济节奏
+## 时间线解读
+## 你的镜头
+## 如何赢`
+      : `You are a pro Dota 2 coach reviewing a match for "how to win" advice.
+
+Rules:
+1. Use ONLY the provided MatchFact data — never OpenDota raw lane/lane_role
+2. Lane assignments are from replay positioning clusters
+3. Do not invent kills, economy, or items not in the data
+4. Give actionable advice for the selected hero
+
+Format with ## headings:
+## Summary
+## True lanes
+## Economy
+## Timeline
+## Your POV
+## How to win`;
+
+    const userPrompt = isZh
+      ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}`
+      : `Review this match, focus hero: ${focusName}\n\n${groundedContext}`;
+
+    if (wantsStream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+
+      res.write(`data: ${JSON.stringify({ matchFact, grounded: true })}\n\n`);
+
+      const stream = await openai.chat.completions.create({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        stream: true,
+      });
+
+      req.on('close', () => {
+        stream.controller?.abort();
+      });
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content;
+        if (content) {
+          res.write(`data: ${JSON.stringify({ text: content, grounded: true })}\n\n`);
+        }
+      }
+
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+
+    const response = await openai.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    });
+
+    return res.json({
+      matchFact,
+      text: response.choices[0].message.content,
+      grounded: true,
+    });
+  } catch (error) {
+    console.error('Match review error:', error);
+    const errorMsg = error.message || (lang === 'zh' ? '复盘失败' : 'Review failed');
+    if (wantsStream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.write(`data: ${JSON.stringify({ error: errorMsg })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      return res.end();
+    }
+    return res.status(500).json({ error: errorMsg });
   }
 });
 

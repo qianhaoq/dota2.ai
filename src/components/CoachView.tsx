@@ -6,6 +6,7 @@ import {
   fetchSuggestions,
   fetchTierList,
   fetchPlaybookStream,
+  fetchMatchReviewStream,
 } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
 import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
@@ -167,6 +168,40 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     );
   }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, t]);
 
+  const handleReview = useCallback((matchId: number, heroId?: number) => {
+    cancelStream();
+    setIsLoading(true);
+    setLesson('review');
+    const hero = heroId ? allHeroes.find((h) => h.id === heroId) : practiceHero;
+    const heroName = hero ? heroDisplayName(hero, lang) : null;
+    const userMsg = lang === 'zh'
+      ? `复盘比赛 ${matchId}${heroName ? ` · ${heroName}` : ''}`
+      : `Review match ${matchId}${heroName ? ` · ${heroName}` : ''}`;
+    addCoachMessage({ type: 'user', action: 'review', lesson: 'review', content: userMsg });
+    const msgId = addCoachMessage({
+      type: 'coach', action: 'review', lesson: 'review', content: '', isStreaming: true,
+    });
+    streamControllerRef.current = fetchMatchReviewStream(
+      matchId, lang, heroId ?? practiceHero?.id,
+      {
+        onData: (matchFact) => { updateCoachMessage(msgId, { matchFact }); },
+        onChunk: (text) => {
+          setMessages(prev => appendStreamChunk(prev, msgId, text));
+        },
+        onComplete: (grounded) => {
+          updateCoachMessage(msgId, { isStreaming: false, grounded });
+          setIsLoading(false);
+          streamControllerRef.current = null;
+        },
+        onError: (error) => {
+          updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
+          setIsLoading(false);
+          streamControllerRef.current = null;
+        },
+      }
+    );
+  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream]);
+
   const handleSuggest = useCallback(async () => {
     if (coaching.allies.length >= 5) {
       addCoachMessage({ type: 'coach', content: lang === 'zh' ? '阵容已满' : 'Lineup is full' });
@@ -219,8 +254,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [cancelStream]);
 
   const handleLessonAction = useCallback((lessonMode: LessonMode) => {
-    if (lessonMode === 'review') return;
     setLesson(lessonMode);
+    if (lessonMode === 'review') return;
     switch (lessonMode) {
       case 'bp': handleAnalyze(); break;
       case 'match': handlePlaybook(); break;
@@ -249,6 +284,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           <HomeModules
             lang={lang}
             density="compact"
+            allHeroes={allHeroes}
             practiceHero={practiceHero}
             lesson={lesson}
             onLessonChange={handleLessonAction}
@@ -259,6 +295,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onHeroDetail={setDetailHeroId}
             isLoading={isLoading}
             onMeta={handleMeta}
+            onStartReview={handleReview}
           />
         </div>
       )}
@@ -276,6 +313,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             <HomeModules
               lang={lang}
               density="full"
+              allHeroes={allHeroes}
               practiceHero={practiceHero}
               lesson={lesson}
               onLessonChange={handleLessonAction}
@@ -286,6 +324,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
               onHeroDetail={setDetailHeroId}
               isLoading={isLoading}
               onMeta={handleMeta}
+              onStartReview={handleReview}
             />
           </div>
         ) : (

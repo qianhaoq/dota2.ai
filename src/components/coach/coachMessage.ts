@@ -1,7 +1,8 @@
 import { A2UIBlock, LessonMode } from '../../types';
 import { MatchupData, HeroSuggestion, TierHero, PlaybookHero } from '../../services/geminiService';
+import type { MatchFact } from '../../types/matchReview';
 
-export type CoachAction = 'analyze' | 'playbook' | 'suggest' | 'meta';
+export type CoachAction = 'analyze' | 'playbook' | 'suggest' | 'meta' | 'review';
 
 export interface CoachMessage {
   id: string;
@@ -15,6 +16,7 @@ export interface CoachMessage {
   playbookData?: PlaybookHero[];
   suggestions?: HeroSuggestion[];
   tierHeroes?: TierHero[];
+  matchFact?: MatchFact | null;
 }
 
 export interface CoachSession {
