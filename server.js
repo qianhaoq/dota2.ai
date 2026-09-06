@@ -315,12 +315,11 @@ async function getProMatches(limit = 20) {
   }
 }
 
-async function getPublicMatches(limit = 20, mmrBracket = null) {
+async function getPublicMatches(limit = 50, mmrBracket = null) {
   const now = Date.now();
-  const cacheKey = mmrBracket ? `public_${mmrBracket}` : 'public';
   
   if (cache.publicMatches.data && (now - cache.publicMatches.timestamp) < MATCHES_CACHE_TTL_MS) {
-    return cache.publicMatches.data;
+    return cache.publicMatches.data.slice(0, limit);
   }
   try {
     let url = `${OPENDOTA_API}/publicMatches`;
@@ -328,13 +327,13 @@ async function getPublicMatches(limit = 20, mmrBracket = null) {
       url += `?mmr_ascending=${mmrBracket}`;
     }
     const data = await fetchWithRetry(url);
-    const matches = Array.isArray(data) ? data.slice(0, limit) : [];
+    const matches = Array.isArray(data) ? data : [];
     cache.publicMatches = { data: matches, timestamp: now };
     console.log(`Loaded ${matches.length} public matches from OpenDota`);
-    return matches;
+    return matches.slice(0, limit);
   } catch (err) {
     console.error('Failed to fetch public matches:', err.message);
-    return cache.publicMatches.data || [];
+    return cache.publicMatches.data?.slice(0, limit) || [];
   }
 }
 
@@ -373,9 +372,15 @@ function formatProMatch(match, heroConstants, lang = 'zh') {
 function formatPublicMatch(match, heroConstants, lang = 'zh') {
   const isZh = lang === 'zh';
   
-  const parseHeroIds = (heroIdStr) => {
-    if (!heroIdStr) return [];
-    return heroIdStr.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+  const parseHeroIds = (heroData) => {
+    if (!heroData) return [];
+    if (Array.isArray(heroData)) {
+      return heroData.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0);
+    }
+    if (typeof heroData === 'string') {
+      return heroData.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0);
+    }
+    return [];
   };
   
   const radiantHeroIds = parseHeroIds(match.radiant_team);
@@ -450,39 +455,66 @@ async function getRecentProMatchEvidence(heroIds = [], limit = 5) {
 }
 
 async function getRecentPublicMatchEvidence(heroIds = [], limit = 5) {
-  const publicMatches = await getPublicMatches(50);
-  const heroConstants = await getHeroConstants();
-  
-  if (!publicMatches || publicMatches.length === 0) {
-    return { matches: [], summary: '' };
-  }
-  
-  let relevantMatches = publicMatches;
-  if (heroIds.length > 0) {
-    relevantMatches = publicMatches.filter(match => {
-      const radiantIds = (match.radiant_team || '').split(',').map(id => parseInt(id.trim()));
-      const direIds = (match.dire_team || '').split(',').map(id => parseInt(id.trim()));
-      const allIds = [...radiantIds, ...direIds];
-      return heroIds.some(hid => allIds.includes(hid));
+  try {
+    const publicMatches = await getPublicMatches(50);
+    const heroConstants = await getHeroConstants();
+    
+    if (!publicMatches || publicMatches.length === 0) {
+      return { matches: [], summary: '' };
+    }
+    
+    const parseTeamIds = (teamData) => {
+      if (Array.isArray(teamData)) {
+        return teamData.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0);
+      }
+      if (typeof teamData === 'string') {
+        return teamData.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0);
+      }
+      return [];
+    };
+    
+    let relevantMatches = publicMatches.filter(match => {
+      const radiantIds = parseTeamIds(match.radiant_team);
+      const direIds = parseTeamIds(match.dire_team);
+      return radiantIds.length > 0 || direIds.length > 0;
     });
-  }
-  
-  const matchesToUse = relevantMatches.slice(0, limit).map(m => formatPublicMatch(m, heroConstants, 'zh'));
-  
-  if (matchesToUse.length === 0) {
+    
+    if (heroIds.length > 0) {
+      relevantMatches = relevantMatches.filter(match => {
+        const radiantIds = parseTeamIds(match.radiant_team);
+        const direIds = parseTeamIds(match.dire_team);
+        const allIds = [...radiantIds, ...direIds];
+        return heroIds.some(hid => allIds.includes(hid));
+      });
+    }
+    
+    const matchesToUse = [];
+    for (const m of relevantMatches.slice(0, limit)) {
+      try {
+        matchesToUse.push(formatPublicMatch(m, heroConstants, 'zh'));
+      } catch (formatErr) {
+        console.error('Error formatting match for evidence:', formatErr.message);
+      }
+    }
+    
+    if (matchesToUse.length === 0) {
+      return { matches: [], summary: '' };
+    }
+    
+    let summary = `最近${matchesToUse.length}场高分对局样本：\n`;
+    for (const match of matchesToUse) {
+      const winner = match.radiantWin ? '天辉' : '夜魇';
+      const durationMin = Math.floor((match.duration || 0) / 60);
+      const radiantStr = match.radiantHeroNames.slice(0, 3).join(', ');
+      const direStr = match.direHeroNames.slice(0, 3).join(', ');
+      summary += `- [${match.mmrLabel || 'N/A'}] ${radiantStr}... vs ${direStr}... - ${winner}胜 (${durationMin}分钟)\n`;
+    }
+    
+    return { matches: matchesToUse, summary };
+  } catch (err) {
+    console.error('getRecentPublicMatchEvidence error:', err.message);
     return { matches: [], summary: '' };
   }
-  
-  let summary = `最近${matchesToUse.length}场高分对局样本：\n`;
-  for (const match of matchesToUse) {
-    const winner = match.radiantWin ? '天辉' : '夜魇';
-    const durationMin = Math.floor((match.duration || 0) / 60);
-    const radiantStr = match.radiantHeroNames.slice(0, 3).join(', ');
-    const direStr = match.direHeroNames.slice(0, 3).join(', ');
-    summary += `- [${match.mmrLabel || 'N/A'}] ${radiantStr}... vs ${direStr}... - ${winner}胜 (${durationMin}分钟)\n`;
-  }
-  
-  return { matches: matchesToUse, summary };
 }
 
 // ============ Steam Web API Integration (Optional) ============
@@ -1218,7 +1250,7 @@ app.get('/api/meta/public-matches', async (req, res) => {
     const heroId = req.query.heroId ? parseInt(req.query.heroId) : null;
     
     const [publicMatches, heroConstants] = await Promise.all([
-      getPublicMatches(limit * 2),
+      getPublicMatches(100),
       getHeroConstants()
     ]);
     
@@ -1231,16 +1263,38 @@ app.get('/api/meta/public-matches', async (req, res) => {
       });
     }
     
-    let filteredMatches = publicMatches;
+    const parseTeamIds = (teamData) => {
+      if (Array.isArray(teamData)) {
+        return teamData.map(id => parseInt(id)).filter(id => !isNaN(id) && id > 0);
+      }
+      if (typeof teamData === 'string') {
+        return teamData.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0);
+      }
+      return [];
+    };
+    
+    let filteredMatches = publicMatches.filter(match => {
+      const radiantIds = parseTeamIds(match.radiant_team);
+      const direIds = parseTeamIds(match.dire_team);
+      return radiantIds.length > 0 || direIds.length > 0;
+    });
+    
     if (heroId) {
-      filteredMatches = publicMatches.filter(match => {
-        const radiantIds = (match.radiant_team || '').split(',').map(id => parseInt(id.trim()));
-        const direIds = (match.dire_team || '').split(',').map(id => parseInt(id.trim()));
+      filteredMatches = filteredMatches.filter(match => {
+        const radiantIds = parseTeamIds(match.radiant_team);
+        const direIds = parseTeamIds(match.dire_team);
         return radiantIds.includes(heroId) || direIds.includes(heroId);
       });
     }
     
-    const formattedMatches = filteredMatches.slice(0, limit).map(m => formatPublicMatch(m, heroConstants, lang));
+    const formattedMatches = [];
+    for (const m of filteredMatches.slice(0, limit)) {
+      try {
+        formattedMatches.push(formatPublicMatch(m, heroConstants, lang));
+      } catch (formatErr) {
+        console.error('Error formatting public match:', formatErr.message, 'match_id:', m.match_id);
+      }
+    }
     
     res.json({
       matches: formattedMatches,
@@ -1250,7 +1304,7 @@ app.get('/api/meta/public-matches', async (req, res) => {
     });
   } catch (err) {
     console.error('Public matches error:', err);
-    res.status(500).json({ error: 'Failed to fetch public matches', matches: [] });
+    res.json({ matches: [], count: 0, source: 'opendota', error: 'Failed to fetch public matches' });
   }
 });
 
