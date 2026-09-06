@@ -326,7 +326,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const alliesFull = selectionSide === 'radiant' ? draft.radiant.length >= 5 : draft.dire.length >= 5;
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-k3-base overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 bg-k3-base overflow-hidden">
       {/* Draft Strip - Fixed at top, ~64px */}
       <DraftStrip
         lang={lang}
