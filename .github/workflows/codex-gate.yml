@@ -12,9 +12,11 @@
 #       * head commit younger than ~20 minutes → fail (still waiting)
 #       * otherwise → fail (timeout; add skip-codex-gate or comment @codex review)
 #   - Summary still Running / in progress / queued → fail
+#   - Summary completed, but it does not mention the current head SHA
+#     (stale review of an older commit after synchronize) → fail
 #   - Summary completed, but unresolved Codex review threads remain → fail
-#   - Summary completed (or 👍 / no-findings) and zero unresolved Codex
-#     threads → success
+#   - Summary completed for this head SHA (or 👍 / no-findings) and zero
+#     unresolved Codex threads → success
 #   - GraphQL thread lookup failed + any Codex review comments exist → fail
 #
 # Re-runs when Codex posts/edits its summary or submits a review. Resolving
@@ -111,6 +113,18 @@ jobs:
               if (!isCodexLogin(login)) return false;
               const body = comment.body || '';
               return SUMMARY_MARKERS.some((m) => body.includes(m));
+            }
+
+            // Codex edits one Summary comment across pushes. A Completed
+            // table for an older SHA must not pass a newer head.
+            function summaryCoversHead(body, headSha) {
+              const head = (headSha || '').toLowerCase();
+              if (head.length < 7) return false;
+              const mentioned = [...(body || '').matchAll(/`([0-9a-f]{7,40})`/gi)]
+                .map((m) => m[1].toLowerCase());
+              return mentioned.some(
+                (sha) => sha.length >= 7 && (head.startsWith(sha) || sha.startsWith(head))
+              );
             }
 
             async function countUnresolvedCodexThreads(prNumber) {
@@ -229,6 +243,24 @@ jobs:
             if (summaryLooksRunning(latestSummary.body)) {
               const msg = 'Codex Review Summary is still Running / in progress — fail until Completed';
               await reportOnHeadSha(sha, 'failure', 'Codex running', msg);
+              core.setFailed(msg);
+              return;
+            }
+
+            if (!summaryCoversHead(latestSummary.body, sha)) {
+              const { data: commit } = await github.rest.repos.getCommit({
+                owner,
+                repo,
+                ref: sha,
+              });
+              const headTime = new Date(commit.commit.committer.date).getTime();
+              const elapsed = Date.now() - headTime;
+              const waitedMin = Math.max(0, Math.round(elapsed / 60000));
+              const msg =
+                elapsed < WAIT_MS
+                  ? `Codex Review Summary does not mention head ${sha.slice(0, 7)} (${waitedMin}m < 20m). Gate fails until Codex re-reviews this SHA.`
+                  : `Codex Review Summary still does not mention head ${sha.slice(0, 7)} after 20 minutes. Comment "@codex review" or add label skip-codex-gate.`;
+              await reportOnHeadSha(sha, 'failure', 'Stale Codex summary', msg);
               core.setFailed(msg);
               return;
             }

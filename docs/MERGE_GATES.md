@@ -60,6 +60,7 @@ This page is the source of truth for merge policy.
 | 还没有 Codex Review Summary，head 提交未满约 20 分钟 | 失败（等待；Codex 发评论会重跑） |
 | 20 分钟内从未发 Summary | 失败（超时；`@codex review` 或 `skip-codex-gate`） |
 | Summary 仍是 Running / in progress | 失败 |
+| Summary 已完成，但正文没有提到当前 head SHA（synchronize 后的旧审查） | 失败（等 Codex 重审或 `@codex review`） |
 | Summary 已完成，但仍有未解决的 Codex 行内线程 | 失败 |
 | 完成且无未解决 Codex 线程（含 👍 无 finding） | 通过 |
 
@@ -75,8 +76,8 @@ This page is the source of truth for merge policy.
 2. 没有 `no-auto-merge` label
 3. head SHA 上必须有一条**成功的 `Build & Test` check run**（或同名 CI）。没有这条 check run → **fail closed**，不用 legacy combined status 凑合
 4. 相关 check 已完成且未失败（忽略 Custom LLM Review、以及 Auto Merge 自己的 check 名）。同一 check 名只看**最新一次尝试**（含尚未 `started_at` 的 queued 重跑，用 `created_at` 区分），避免旧成功盖住新排队
-5. 若 head 上存在 `copilot-pull-request-reviewer`，必须已成功结束
-6. 若 head 上存在 **`Codex Review Gate`**（这是 **job / check-run 名**，不是 workflow 展示名），必须已成功结束
+5. 若 head 上存在 `copilot-pull-request-reviewer`，必须 **`conclusion: success`**（`skipped` / `neutral` 不算过）
+6. 若 head 上存在 **`Codex Review Gate`**（这是 **job / check-run 名**，不是 workflow 展示名），必须 **`conclusion: success`**（`skipped` / `neutral` 不算过）
 7. 该 head SHA 上**已有** Copilot review，且**不是** `CHANGES_REQUESTED`
    - **`APPROVED` 或 `COMMENTED` 都可以。不要求原生 `APPROVED`。**
    - **没有 Copilot review 不会自动合。**

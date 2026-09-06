@@ -13,9 +13,10 @@
 #     and this workflow's own check name). Do NOT ignore Codex Review Gate.
 #     Multiple runs of the same check name: only the latest attempt counts.
 #   - If check "copilot-pull-request-reviewer" exists on the head SHA, it
-#     must have completed successfully
+#     must have completed with conclusion success (not skipped/neutral)
 #   - If check "Codex Review Gate" (job name, not a workflow title) exists
-#     on the head SHA, it must have completed successfully
+#     on the head SHA, it must have completed with conclusion success
+#     (not skipped/neutral)
 #   - Latest Copilot review for the head SHA exists and is APPROVED or
 #     COMMENTED (not CHANGES_REQUESTED; missing review does not merge)
 #   - GraphQL reviewThreads: every thread isResolved (REST fallback:
@@ -258,11 +259,13 @@ jobs:
               return;
             }
 
+            // Named gates must be a real success. skipped/neutral is fail-open
+            // (conditional jobs never actually reviewed this SHA).
             function requireNamedCheck(checks, label) {
               if (checks.length === 0) return true;
               const pending = checks.filter((c) => c.status !== 'completed');
               const bad = checks.filter(
-                (c) => c.status === 'completed' && !OK_CONCLUSIONS.has(c.conclusion)
+                (c) => c.status === 'completed' && c.conclusion !== 'success'
               );
               if (pending.length > 0) {
                 core.info(`${label} pending: ${pending.map((c) => c.status).join(', ')} — skip`);
