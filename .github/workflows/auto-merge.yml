@@ -5,7 +5,7 @@
 #   - PR is open, not draft, base is main, no "no-auto-merge" label
 #   - Build & Test (or CI) succeeded on the head SHA
 #   - Relevant checks are completed and not failed (ignore Custom LLM Review
-#     and this workflow's own check name)
+#     and this workflow's own check name). Codex Review Gate is NOT ignored.
 #   - If check "copilot-pull-request-reviewer" exists on the head SHA, it
 #     must have completed successfully
 #   - Latest Copilot review for the head SHA is APPROVED

@@ -12,6 +12,7 @@
 | `.github/workflows/copilot-setup-steps.yml` | 云端 Agent 开工前装 Node 20 + `npm ci` |
 | `.github/workflows/ai-review.yml` | PR 打开时请求 Copilot review |
 | `.github/workflows/auto-merge.yml` | **CI 全绿 + Copilot 对 head SHA `APPROVED` + 线程已解决 → 自动 squash**（见 `docs/MERGE_GATES.md`） |
+| `.github/workflows/codex-gate.yml` | 把 Codex 评论变成必需 check **`Codex Review Gate`** |
 | 现有 `ci.yml` | PR 质量门禁（tsc / build / test） |
 
 ## 默认策略（你选的）
