@@ -63,7 +63,7 @@ This page is the source of truth for merge policy.
 | Summary 是 Failed / cancelled / error | 失败 |
 | Summary 没有明确 **Completed** 或 👍 | 失败（不能只靠「不是 Running」放行） |
 | Summary 已完成，但正文没有提到当前 head SHA（反引号 / 纯文本 / commit URL 均可；synchronize 后的旧审查不算） | 失败（等 Codex 重审或 `@codex review`） |
-| Summary 已完成，但仍有未解决的 Codex 行内线程 | 失败 |
+| Summary 已完成，但仍有未解决的 Codex 行内线程（含人类开帖、Codex 后跟评） | 失败 |
 | 完成且无未解决 Codex 线程（含 👍 无 finding） | 通过 |
 
 点 Resolve 不会自动重跑。清完线程后：Actions 里 **Re-run** `Codex Review Gate`，或 `workflow_dispatch` 填 PR 号。
