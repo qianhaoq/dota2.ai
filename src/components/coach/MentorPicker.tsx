@@ -127,7 +127,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
               <button
                 key={attr}
                 onClick={() => setAttrFilter(attr)}
-                className={`px-3 sm:px-2.5 py-2 sm:py-1.5 rounded-sm text-[11px] sm:text-[10px] font-medium uppercase transition-colors min-h-[40px] min-w-[44px] flex-shrink-0 touch-manipulation ${
+                className={`px-2.5 py-2 sm:py-1.5 rounded-sm text-[11px] sm:text-[10px] font-medium uppercase transition-colors min-h-[40px] min-w-[44px] flex-shrink-0 touch-manipulation ${
                   attrFilter === attr
                     ? 'bg-k3-text-primary text-k3-base'
                     : 'text-k3-text-tertiary hover:text-k3-text-secondary hover:bg-k3-elevated'
@@ -146,7 +146,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
               Loading heroes...
             </div>
           ) : (
-            <div className="grid grid-cols-4 xs:grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-8 md:grid-cols-10 gap-1.5">
               {filteredHeroes.map(hero => {
                 const isCurrentMentor = currentMentor?.id === hero.id;
                 return (
@@ -166,7 +166,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
                       loading="lazy"
                     />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent py-1 px-0.5">
-                      <span className="text-[9px] xs:text-[8px] sm:text-[9px] text-k3-text-secondary block text-center truncate">
+                      <span className="text-[9px] sm:text-[9px] text-k3-text-secondary block text-center truncate">
                         {lang === 'zh' ? (hero.nameZh || hero.name) : hero.name}
                       </span>
                     </div>
