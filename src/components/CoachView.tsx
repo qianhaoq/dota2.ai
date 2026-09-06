@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Hero, DraftState, Attribute, Language } from '../types';
+import HeroDetail from './HeroDetail';
 import { 
   analyzeDraftStream, 
   fetchSuggestions, 
@@ -14,7 +15,7 @@ import { fetchHeroes } from '../services/dotaApiService';
 import { 
   Swords, RotateCcw, Sparkles, Search, X, 
   ChevronDown, ChevronUp, MessageSquare, Zap, Target, 
-  TrendingUp, BarChart3, Send, Plus, Minus, ArrowDown
+  TrendingUp, BarChart3, Send, Plus, Minus, ArrowDown, Info
 } from 'lucide-react';
 
 interface CollapsibleSection {
@@ -62,6 +63,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const [showHeroPicker, setShowHeroPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [attrFilter, setAttrFilter] = useState<Attribute | 'All'>('All');
+  const [detailHeroId, setDetailHeroId] = useState<number | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -134,6 +136,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     vs: lang === 'zh' ? '对' : 'vs',
     counters: lang === 'zh' ? '克制' : 'counters',
     items: lang === 'zh' ? '出装' : 'Items',
+    detail: lang === 'zh' ? '详情' : 'Detail',
     start: lang === 'zh' ? '出门' : 'Start',
     early: lang === 'zh' ? '前期' : 'Early',
     mid: lang === 'zh' ? '中期' : 'Mid',
@@ -629,6 +632,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                       >
                         <Minus size={10} />
                       </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDetailHeroId(draft.radiant[i].id); }}
+                        className="absolute -bottom-1 -right-1 w-4 h-4 bg-dota-gold rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 sm:transition-opacity"
+                        title={t.detail}
+                      >
+                        <Info size={8} className="text-black" />
+                      </button>
                     </>
                   ) : (
                     <Plus size={12} className="text-gray-600 group-hover:text-dota-green" />
@@ -707,6 +717,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                         className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 sm:transition-opacity"
                       >
                         <Minus size={10} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDetailHeroId(draft.dire[i].id); }}
+                        className="absolute -bottom-1 -right-1 w-4 h-4 bg-dota-gold rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 sm:transition-opacity"
+                        title={t.detail}
+                      >
+                        <Info size={8} className="text-black" />
                       </button>
                     </>
                   ) : (
@@ -1151,6 +1168,23 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           </form>
         </div>
       </div>
+
+      {/* Hero Detail Modal */}
+      {detailHeroId && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="relative w-full max-w-4xl max-h-[90vh] bg-[#0f1014] rounded-xl border border-gray-700 overflow-hidden">
+            <button
+              onClick={() => setDetailHeroId(null)}
+              className="absolute top-4 right-4 z-10 p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <X size={20} className="text-gray-400" />
+            </button>
+            <div className="p-4 sm:p-6 overflow-y-auto max-h-[90vh]">
+              <HeroDetail heroId={detailHeroId} lang={lang} onClose={() => setDetailHeroId(null)} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

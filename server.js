@@ -868,6 +868,112 @@ app.get('/api/meta/abilities', async (req, res) => {
   }
 });
 
+// ============ Hero Detail API ============
+app.get('/api/meta/heroes/:heroId', async (req, res) => {
+  try {
+    const heroId = parseInt(req.params.heroId);
+    const lang = req.query.lang || 'zh';
+    
+    if (isNaN(heroId)) {
+      return res.status(400).json({ error: 'Invalid hero ID' });
+    }
+    
+    const [heroConstants, heroStats, abilities] = await Promise.all([
+      getHeroConstants(),
+      getHeroStats(),
+      getAbilityConstants(),
+    ]);
+    
+    const heroConstant = Object.values(heroConstants).find(h => h.id === heroId);
+    if (!heroConstant) {
+      return res.status(404).json({ error: 'Hero not found' });
+    }
+    
+    const stats = heroStats[heroId];
+    const cnData = HERO_NAMES_CN[heroId];
+    const shortName = heroConstant.name?.replace('npc_dota_hero_', '') || '';
+    const nameEn = heroConstant.localized_name || heroConstant.name;
+    const nameZh = cnData?.nameZh || nameEn;
+    
+    const heroAbilityKeys = Object.keys(abilities).filter(key => {
+      return key.startsWith(shortName + '_') && 
+             !key.includes('special_') && 
+             !key.endsWith('_empty') &&
+             abilities[key].dname;
+    });
+    
+    const heroAbilities = heroAbilityKeys.map(key => {
+      const ability = abilities[key];
+      return {
+        key,
+        name: ability.dname,
+        description: ability.desc || '',
+        lore: ability.lore || '',
+        img: ability.img ? `${VALVE_CDN}${ability.img}` : null,
+        behavior: ability.behavior,
+        dmgType: ability.dmg_type,
+        bkbPierce: ability.bkbpierce,
+        dispellable: ability.dispellable,
+        cooldown: ability.cd,
+        manaCost: ability.mc,
+        isUltimate: key.includes('ultimate') || 
+                    (ability.behavior && ability.behavior.includes('DOTA_ABILITY_BEHAVIOR_ULTIMATE'))
+      };
+    }).sort((a, b) => (a.isUltimate ? 1 : 0) - (b.isUltimate ? 1 : 0));
+    
+    const bioFromConstant = heroConstant.bio || heroConstant.hype || '';
+    
+    const heroDetail = {
+      id: heroId,
+      name: lang === 'zh' ? nameZh : nameEn,
+      nameZh,
+      nameEn,
+      aliases: cnData?.aliases || [],
+      internalName: heroConstant.name,
+      shortName,
+      primaryAttr: heroConstant.primary_attr,
+      attackType: heroConstant.attack_type,
+      roles: heroConstant.roles || [],
+      rolesZh: translateRoles(heroConstant.roles, 'zh'),
+      img: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/${shortName}.png`,
+      imgFull: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/crops/${shortName}.png`,
+      imgVert: `${VALVE_CDN}/apps/dota2/images/heroes/${shortName}_vert.jpg`,
+      icon: `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/icons/${shortName}.png`,
+      winRate: stats?.winRate || null,
+      pickRate: stats?.pickRate || null,
+      gamesPlayed: stats?.gamesPlayed || null,
+      abilities: heroAbilities,
+      bio: bioFromConstant || (lang === 'zh' ? '暂无官方背景' : 'No official lore available'),
+      baseStats: {
+        baseHealth: heroConstant.base_health,
+        baseMana: heroConstant.base_mana,
+        baseArmor: heroConstant.base_armor,
+        baseMr: heroConstant.base_mr,
+        baseAttackMin: heroConstant.base_attack_min,
+        baseAttackMax: heroConstant.base_attack_max,
+        baseStr: heroConstant.base_str,
+        baseAgi: heroConstant.base_agi,
+        baseInt: heroConstant.base_int,
+        strGain: heroConstant.str_gain,
+        agiGain: heroConstant.agi_gain,
+        intGain: heroConstant.int_gain,
+        attackRange: heroConstant.attack_range,
+        moveSpeed: heroConstant.move_speed,
+      },
+      complexity: heroConstant.complexity || null,
+    };
+    
+    res.json({
+      hero: heroDetail,
+      source: 'opendota',
+      cacheAge: cache.heroes.timestamp ? Math.round((Date.now() - cache.heroes.timestamp) / 1000) : null
+    });
+  } catch (err) {
+    console.error('Hero detail error:', err);
+    res.status(500).json({ error: 'Failed to fetch hero detail' });
+  }
+});
+
 // ============ Meta Tier API - 大盘数据 ============
 app.get('/api/meta/tier', async (req, res) => {
   try {
