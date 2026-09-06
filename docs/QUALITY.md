@@ -9,7 +9,7 @@
 | 检查 | 类型 | 合并要求 | 说明 |
 |------|------|---------|------|
 | **Build & Test** | CI | ✅ 必需 | TypeScript、构建、测试 |
-| **copilot-pull-request-reviewer** | AI check | ✅ 必需 | 只覆盖 Copilot，**不覆盖 Codex** |
+| **copilot-pull-request-reviewer** | AI check | ✅ 必需 | 只覆盖 Copilot，**不覆盖 Codex**；审查结论通常是 `COMMENTED` 不是 `APPROVED` |
 | **Codex Review Gate** | AI check | ✅ 必需 | `codex-gate.yml` 把 Codex 评论变成原生 check |
 | **会话已解决** | 讨论 | ✅ 必需 | 未解决的 Copilot / Codex / 人类行内线程挡住合并 |
 | **Custom LLM Review** | AI | ⏭️ 可选 | DeepSeek/OpenAI/xAI（需 API 密钥）；不阻塞合并 |
@@ -113,7 +113,7 @@ Branch name pattern: main
 - `Build & Test`、`copilot-pull-request-reviewer`、`Codex Review Gate` 都应设为必需 check
 - Copilot check **不覆盖** Codex；Codex 靠 `codex-gate.yml` + conversation resolution
 - Custom LLM Review 与 `ai-review.yml` 的 “Copilot Review”（只负责请求审查）不要设为必需
-- auto-merge 另要求 Copilot 对 head SHA **`APPROVED`**，仅 `COMMENTED` 不会自动合入
+- auto-merge 要求 Copilot 已审 head SHA，且不是 “Needs a closer look” / “Changes recommended”；线程必须全部 resolve。Copilot **不会**提交原生 `APPROVED`
 
 ---
 

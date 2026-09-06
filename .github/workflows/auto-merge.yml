@@ -1,5 +1,11 @@
-# Auto-merge when CI is green, Copilot APPROVED the head SHA, and
-# every review thread is resolved. Human merge is optional only then.
+# Auto-merge when CI is green, Copilot finished a non-blocking review on
+# the head SHA, and every review thread is resolved.
+#
+# Copilot code review submits COMMENTED, not APPROVED (even with no
+# findings). Requiring native APPROVED would disable auto-merge entirely.
+# Gate instead: completed Copilot review on the head SHA + zero unresolved
+# threads + reject COMMENTED bodies that are "Needs a closer look" /
+# "Changes recommended" / "Changes required".
 #
 # Gate (all required):
 #   - PR is open, not draft, base is main, no "no-auto-merge" label
@@ -8,18 +14,18 @@
 #     and this workflow's own check name). Codex Review Gate is NOT ignored.
 #   - If check "copilot-pull-request-reviewer" exists on the head SHA, it
 #     must have completed successfully
-#   - Latest Copilot review for the head SHA is APPROVED
-#     (COMMENTED and CHANGES_REQUESTED do not merge)
+#   - Latest Copilot review for the head SHA is APPROVED, or COMMENTED
+#     without a closer-look / changes-recommended title
 #   - GraphQL reviewThreads: every thread isResolved (REST fallback:
 #     fail closed if any review comments exist and resolution is unknown)
 #
 # Blocks: draft, non-main base, no-auto-merge, failed/pending relevant
-# checks, Copilot COMMENTED / CHANGES_REQUESTED / missing head-SHA review,
-# any unresolved review thread.
+# checks, Copilot CHANGES_REQUESTED / closer-look COMMENTED / missing
+# head-SHA review, any unresolved review thread.
 #
 # Note: workflow_run only runs from the default branch once this file is merged.
-# After resolving threads on an already-APPROVED PR, re-run this workflow
-# (workflow_dispatch) — thread resolution does not emit a workflow event.
+# After resolving threads, re-run this workflow (workflow_dispatch) —
+# thread resolution does not emit a workflow event.
 
 name: Auto Merge
 
@@ -56,7 +62,7 @@ jobs:
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'pull_request') ||
       (github.event_name == 'pull_request_review' &&
-        github.event.review.state == 'approved' &&
+        contains(fromJSON('["approved", "commented"]'), github.event.review.state) &&
         contains(fromJSON('["copilot-pull-request-reviewer[bot]", "copilot-pull-request-reviewer"]'), github.event.review.user.login))
     steps:
       - name: Resolve PR and decide merge
@@ -81,6 +87,29 @@ jobs:
 
             function isCiCheck(name) {
               return /build\s*&\s*test/i.test(name) || /^ci$/i.test(name) || /build-and-test/i.test(name);
+            }
+
+            // Copilot submits COMMENTED, not APPROVED. Block closer-look /
+            // changes-recommended titles so PR #33-style reviews still cannot merge.
+            function copilotReviewAllowsMerge(review) {
+              const state = review.state;
+              if (state === 'CHANGES_REQUESTED') {
+                return { ok: false, reason: 'CHANGES_REQUESTED' };
+              }
+              if (state === 'APPROVED') {
+                return { ok: true, reason: 'APPROVED' };
+              }
+              if (state !== 'COMMENTED') {
+                return { ok: false, reason: state };
+              }
+              const body = review.body || '';
+              if (/needs a closer look|changes recommended|changes required/i.test(body)) {
+                return {
+                  ok: false,
+                  reason: 'COMMENTED with closer-look / changes-recommended (not auto-mergeable)',
+                };
+              }
+              return { ok: true, reason: 'COMMENTED without closer-look / changes-recommended' };
             }
 
             async function findPrNumber() {
@@ -181,13 +210,17 @@ jobs:
               ref: sha,
             });
 
-            // listForRef returns { total_count, check_runs }, not an array.
-            // paginate only concatenates arrays unless a mapper is provided.
-            const checkRuns = await github.paginate(
-              github.rest.checks.listForRef,
-              { owner, repo, ref: sha, per_page: 100 },
-              (response) => response.data.check_runs
-            );
+            // listForRef returns { total_count, check_runs }. Iterate pages
+            // explicitly so we never treat the wrapper object as an array.
+            const checkRuns = [];
+            for await (const response of github.paginate.iterator(github.rest.checks.listForRef, {
+              owner,
+              repo,
+              ref: sha,
+              per_page: 100,
+            })) {
+              checkRuns.push(...(response.data.check_runs || []));
+            }
 
             const relevantChecks = checkRuns.filter((c) => !isIgnoredCheck(c.name));
 
@@ -266,9 +299,10 @@ jobs:
               (a, b) => new Date(b.submitted_at) - new Date(a.submitted_at)
             )[0];
 
-            if (latest.state !== 'APPROVED') {
+            const copilotGate = copilotReviewAllowsMerge(latest);
+            if (!copilotGate.ok) {
               core.info(
-                `PR #${prNumber}: latest Copilot review for head is ${latest.state} (need APPROVED, not COMMENTED) — skip`
+                `PR #${prNumber}: latest Copilot review for head is ${latest.state} (${copilotGate.reason}) — skip`
               );
               return;
             }
@@ -293,7 +327,9 @@ jobs:
               return;
             }
 
-            core.info(`Merging PR #${prNumber} (CI green + Copilot APPROVED + threads resolved)`);
+            core.info(
+              `Merging PR #${prNumber} (CI green + Copilot ${copilotGate.reason} + threads resolved)`
+            );
             await github.rest.pulls.merge({
               owner,
               repo,
@@ -301,6 +337,6 @@ jobs:
               merge_method: 'squash',
               commit_title: `${pr.title} (#${prNumber})`,
               commit_message:
-                'Auto-merged: CI green + Copilot APPROVED head SHA + all review threads resolved.',
+                'Auto-merged: CI green + Copilot review on head SHA + all review threads resolved.',
             });
             core.info(`Squash-merged PR #${prNumber}`);

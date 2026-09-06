@@ -76,20 +76,21 @@ This page is the source of truth for merge policy.
 3. head SHA 上 **Build & Test**（或名为 CI 的检查）成功
 4. 相关 check 已完成且未失败（忽略 Custom LLM Review、以及 Auto Merge 自己的 check 名；**不忽略** Codex Review Gate）
 5. 若 head SHA 上存在 `copilot-pull-request-reviewer` check，则必须已成功结束
-6. **该 head SHA 上最新一条 Copilot review 必须是 `APPROVED`**
-   - `COMMENTED`（包括 “Needs a closer look”）**不会**自动合入
-   - `CHANGES_REQUESTED` **不会**自动合入
+6. 该 head SHA 上已有 Copilot review，且不是阻塞结论
+   - GitHub Copilot **实际提交的是 `COMMENTED`，几乎从不 `APPROVED`**。只认 `APPROVED` 等于关掉自动合入。
+   - 允许：`APPROVED`，或 `COMMENTED` 且正文不是 “Needs a closer look” / “Changes recommended” / “Changes required”
+   - `CHANGES_REQUESTED` 以及 “Needs a closer look” **不会**自动合入（这是 PR #33 的情况）
 7. GraphQL `reviewThreads` 全部 `isResolved: true`（解析失败且仍有 review comments 时 fail-closed）
 
 `workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。
 
-线程被点 Resolve 后 GitHub **不会**再触发 auto-merge。若 Copilot 已是 `APPROVED`、只差线程，到 Actions 对 **Auto Merge** 跑一次 `workflow_dispatch`。
+线程被点 Resolve 后 GitHub **不会**再触发 auto-merge。到 Actions 对 **Auto Merge** 跑一次 `workflow_dispatch`。
 
 ---
 
 ## `no-auto-merge` 如何关掉自动合入
 
-给 PR 打上 **`no-auto-merge`** 后，`auto-merge.yml` 直接 skip，即使 CI 绿、Copilot 已 `APPROVED`、线程已清。
+给 PR 打上 **`no-auto-merge`** 后，`auto-merge.yml` 直接 skip，即使 CI 绿、Copilot 已审完、线程已清。
 
 其他挡自动合入的方式：保持 **draft**，或把 base 改成非 `main`。
 

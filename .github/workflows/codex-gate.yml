@@ -20,9 +20,11 @@
 # Re-runs when Codex posts/edits its summary or submits a review. Resolving
 # threads does not emit an event — Re-run this job or workflow_dispatch.
 #
-# Check name must stay "Codex Review Gate" (branch protection required check).
+# Branch protection / Ruleset required-check name is the *job* name below
+# (`Codex Review Gate`), not an arbitrary workflow title. Keep workflow
+# `name` identical so the Actions UI and required-check picker match.
 
-name: Codex Gate
+name: Codex Review Gate
 
 on:
   pull_request:
