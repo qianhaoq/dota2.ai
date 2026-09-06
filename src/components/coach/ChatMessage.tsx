@@ -44,9 +44,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
 
   const ActionIcon = ({ action }: { action?: string }) => {
     switch (action) {
-      case 'analyze': return <Sparkles size={14} className="text-k3-accent" />;
+      case 'analyze': return <Sparkles size={14} className="text-k3-text-secondary" />;
       case 'playbook': return <Target size={14} className="text-k3-text-secondary" />;
-      case 'suggest': return <TrendingUp size={14} className="text-k3-radiant" />;
+      case 'suggest': return <TrendingUp size={14} className="text-k3-text-secondary" />;
       case 'meta': return <BarChart3 size={14} className="text-k3-text-secondary" />;
       default: return null;
     }
@@ -67,7 +67,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
           if (line.startsWith('## ')) {
             return (
               <h3 key={idx} className="text-k3-text-primary font-semibold text-sm mt-4 mb-2 flex items-center gap-2">
-                <span className="w-1 h-4 bg-k3-accent/50 rounded-full" />
+                <span className="w-1 h-4 bg-k3-text-tertiary rounded-full" />
                 {line.replace('## ', '')}
               </h3>
             );
@@ -81,7 +81,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
           if (line.startsWith('- ') || line.startsWith('* ')) {
             return (
               <li key={idx} className="ml-3 text-k3-text-secondary text-sm leading-relaxed flex items-start gap-2 my-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-k3-accent/40 mt-2 flex-shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-k3-text-tertiary mt-2 flex-shrink-0" />
                 <span>{line.replace(/^[-*] /, '')}</span>
               </li>
             );
@@ -92,7 +92,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
         {shouldCollapse && (
           <button 
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="mt-3 flex items-center gap-1.5 text-xs text-k3-accent hover:text-k3-accent/80 transition-colors"
+            className="mt-3 flex items-center gap-1.5 text-xs text-k3-text-secondary hover:text-k3-text-primary transition-colors underline"
           >
             {isCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             {isCollapsed ? t.showMore : t.showLess}
@@ -105,7 +105,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
   if (message.type === 'user') {
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-[70%] bg-k3-elevated rounded-bubble rounded-tr-bubble-corner px-4 py-2.5 border border-k3-border-subtle">
+        <div className="max-w-[70%] bg-k3-elevated rounded-lg px-4 py-2.5 border border-k3-border-subtle">
           <div className="flex items-center gap-2 text-sm text-k3-text-primary">
             <ActionIcon action={message.action} />
             <span>{message.content}</span>
@@ -118,9 +118,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
   return (
     <div className="flex justify-start mb-5">
       <div className="max-w-[90%] sm:max-w-[85%] space-y-3">
-        {/* AI indicator dot - accent color */}
+        {/* AI indicator */}
         <div className="flex items-center gap-2 mb-1">
-          <span className="w-2 h-2 rounded-full bg-k3-accent" />
           <span className="text-xs text-k3-text-tertiary">AI Coach</span>
         </div>
 
@@ -167,7 +166,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
               const heroDisplayName = lang === 'zh' ? (hero.nameZh || hero.heroName) : (hero.nameEn || hero.heroName);
               const heroDisplayRoles = lang === 'zh' && hero.rolesZh ? hero.rolesZh : hero.roles;
               return (
-                <div key={hero.heroId} className="bg-k3-surface rounded-xl p-3 border border-k3-border-subtle">
+                <div key={hero.heroId} className="bg-k3-surface rounded-sm p-3 border border-k3-border-subtle">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-k3-text-primary text-sm font-medium">{heroDisplayName}</span>
                     {heroDisplayRoles && heroDisplayRoles.length > 0 && (
@@ -231,10 +230,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
                     const hero = allHeroes.find(h => h.id === s.id);
                     if (hero) onSelectHero(hero);
                   }}
-                  className="flex items-center gap-2 p-2.5 bg-k3-surface hover:bg-k3-elevated border border-k3-border-subtle hover:border-k3-accent/30 rounded-xl transition-all text-left group"
+                  className="flex items-center gap-2 p-2.5 bg-k3-surface hover:bg-k3-elevated border border-k3-border-subtle rounded-sm transition-all text-left group"
                 >
                   <div className="flex-1 min-w-0">
-                    <span className="text-k3-text-primary text-xs font-medium block truncate group-hover:text-k3-accent transition-colors">{suggestionName}</span>
+                    <span className="text-k3-text-primary text-xs font-medium block truncate">{suggestionName}</span>
                     {suggestionRoles && suggestionRoles.length > 0 && (
                       <span className="text-k3-text-tertiary text-[9px]">{suggestionRoles.slice(0, 2).join(' / ')}</span>
                     )}
@@ -261,17 +260,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
                     const h = allHeroes.find(ah => ah.id === hero.id);
                     if (h) onSelectHero(h);
                   }}
-                  className="flex items-center gap-2 p-2 bg-k3-surface hover:bg-k3-elevated rounded-lg transition-colors text-left group border border-k3-border-subtle"
+                  className="flex items-center gap-2 p-2 bg-k3-surface hover:bg-k3-elevated rounded-sm transition-colors text-left group border border-k3-border-subtle"
                 >
-                  <span className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold rounded ${
-                    hero.tier === 'S' ? 'bg-k3-accent/20 text-k3-accent' :
+                  <span className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold rounded-sm ${
+                    hero.tier === 'S' ? 'bg-k3-text-primary text-k3-base' :
                     hero.tier === 'A' ? 'bg-k3-radiant/20 text-k3-radiant' :
                     'bg-k3-elevated text-k3-text-tertiary'
                   }`}>
                     {hero.tier}
                   </span>
-                  <img src={hero.icon} alt="" className="w-5 h-5 rounded" />
-                  <span className="text-k3-text-primary text-xs flex-1 truncate group-hover:text-k3-accent transition-colors">{displayName}</span>
+                  <img src={hero.icon} alt="" className="w-5 h-5 rounded-sm" />
+                  <span className="text-k3-text-primary text-xs flex-1 truncate">{displayName}</span>
                   {displayRoles && displayRoles.length > 0 && (
                     <span className="text-k3-text-tertiary text-[9px] hidden sm:inline">{displayRoles.slice(0, 2).join('/')}</span>
                   )}
@@ -284,10 +283,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
 
         {/* Text content - lighter AI bubble */}
         {message.content && (
-          <div className="bg-k3-surface rounded-bubble rounded-tl-bubble-corner px-4 py-3 border border-k3-border-subtle">
+          <div className="bg-k3-surface rounded-lg px-4 py-3 border border-k3-border-subtle">
             {renderMarkdown(message.content)}
             {message.isStreaming && (
-              <span className="inline-block w-0.5 h-4 bg-k3-accent animate-pulse ml-0.5 -mb-0.5" />
+              <span className="inline-block w-0.5 h-4 bg-k3-text-secondary animate-pulse ml-0.5 -mb-0.5" />
             )}
           </div>
         )}

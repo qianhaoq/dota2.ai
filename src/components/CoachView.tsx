@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Hero, DraftState, Language } from '../types';
 import HeroDetail from './HeroDetail';
-import ProMatchStrip from './ProMatchStrip';
 import { 
   analyzeDraftStream, 
   fetchSuggestions, 
@@ -15,7 +14,7 @@ import {
 import { fetchHeroes } from '../services/dotaApiService';
 import { Send, X, ChevronDown } from 'lucide-react';
 import { 
-  DraftStrip, 
+  DraftContextChip,
   HeroPickerOverlay, 
   ChatMessage, 
   IntentChips, 
@@ -327,22 +326,6 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-k3-base overflow-hidden">
-      {/* Draft Strip - Fixed at top, ~64px */}
-      <DraftStrip
-        lang={lang}
-        draft={draft}
-        selectionSide={selectionSide}
-        onSideChange={setSelectionSide}
-        onOpenPicker={() => setShowHeroPicker(true)}
-        onRemoveHero={removeHero}
-        onHeroDetail={setDetailHeroId}
-      />
-
-      {/* Pro/Public Matches - Light ticker strip ~40px */}
-      <div className="max-w-content mx-auto w-full px-6 pt-2">
-        <ProMatchStrip lang={lang} />
-      </div>
-
       {/* Main Chat Area - flex-1 overflow */}
       <div 
         ref={messagesContainerRef}
@@ -352,10 +335,24 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           <WelcomeState 
             lang={lang} 
             hasHeroes={hasHeroes}
+            draft={draft}
+            selectionSide={selectionSide}
             onOpenPicker={() => setShowHeroPicker(true)}
+            onHeroDetail={setDetailHeroId}
+            isLoading={isLoading}
+            hasAllies={hasAllies}
+            alliesFull={alliesFull}
+            onAnalyze={handleAnalyze}
+            onPlaybook={handlePlaybook}
+            onSuggest={handleSuggest}
+            onMeta={handleMeta}
+            onCancel={cancelStream}
+            userInput={userInput}
+            setUserInput={setUserInput}
+            onSubmit={handleSubmit}
           />
         ) : (
-          <div className="max-w-content mx-auto w-full px-6 py-4">
+          <div className="max-w-3xl mx-auto w-full px-6 py-4">
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
@@ -369,11 +366,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           </div>
         )}
 
-        {/* Jump to latest button - accent color */}
+        {/* Jump to latest button */}
         {showJumpToLatest && (
           <button
             onClick={scrollToLatest}
-            className="fixed bottom-36 left-1/2 -translate-x-1/2 px-4 py-2 bg-k3-accent hover:bg-k3-accent/90 text-k3-base text-xs font-semibold rounded-full shadow-lg transition-all z-10 flex items-center gap-1"
+            className="fixed bottom-36 left-1/2 -translate-x-1/2 px-4 py-2 bg-k3-primary-bg hover:bg-k3-primary-bg/90 text-k3-primary-text text-xs font-medium rounded-lg shadow-lg transition-all z-10 flex items-center gap-1"
           >
             <ChevronDown size={14} />
             {t.jumpToLatest}
@@ -381,46 +378,59 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         )}
       </div>
 
-      {/* Composer Area - Fixed height at bottom */}
-      <div className="border-t border-k3-border-subtle bg-k3-surface">
-        <div className="max-w-content mx-auto w-full px-6 py-4">
-          {/* Intent Chips */}
-          <div className="mb-3">
-            <IntentChips
-              lang={lang}
-              isLoading={isLoading}
-              hasHeroes={hasHeroes}
-              hasAllies={hasAllies}
-              alliesFull={alliesFull}
-              selectionSide={selectionSide}
-              onAnalyze={handleAnalyze}
-              onPlaybook={handlePlaybook}
-              onSuggest={handleSuggest}
-              onMeta={handleMeta}
-              onCancel={cancelStream}
-            />
-          </div>
+      {/* Composer Area - Fixed at bottom, always visible */}
+      {messages.length > 0 && (
+        <div className="border-t border-k3-border-subtle bg-k3-base">
+          <div className="max-w-3xl mx-auto w-full px-6 py-3">
+            {/* Draft Context Chip */}
+            <div className="mb-2">
+              <DraftContextChip
+                lang={lang}
+                draft={draft}
+                selectionSide={selectionSide}
+                onOpenPicker={() => setShowHeroPicker(true)}
+                onHeroDetail={setDetailHeroId}
+              />
+            </div>
 
-          {/* Input Field - 24px radius, bg-input */}
-          <form onSubmit={handleSubmit} className="flex gap-3">
-            <input
-              type="text"
-              value={userInput}
-              onChange={(e) => setUserInput(e.target.value)}
-              placeholder={t.inputPlaceholder}
-              disabled={isLoading}
-              className="flex-1 bg-k3-input border border-k3-border-subtle rounded-composer px-4 py-3 text-sm text-k3-text-primary focus:outline-none focus:border-k3-accent focus:ring-1 focus:ring-k3-accent/30 transition-all placeholder:text-k3-text-tertiary disabled:opacity-50"
-            />
-            <button
-              type="submit"
-              disabled={isLoading || !userInput.trim()}
-              className="w-[36px] h-[36px] my-auto flex items-center justify-center bg-k3-accent hover:bg-k3-accent/90 rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Send size={16} className="text-k3-base" />
-            </button>
-          </form>
+            {/* Plain text suggestions */}
+            <div className="mb-3">
+              <IntentChips
+                lang={lang}
+                isLoading={isLoading}
+                hasHeroes={hasHeroes}
+                hasAllies={hasAllies}
+                alliesFull={alliesFull}
+                selectionSide={selectionSide}
+                onAnalyze={handleAnalyze}
+                onPlaybook={handlePlaybook}
+                onSuggest={handleSuggest}
+                onMeta={handleMeta}
+                onCancel={cancelStream}
+              />
+            </div>
+
+            {/* Input Field */}
+            <form onSubmit={handleSubmit} className="flex gap-3">
+              <input
+                type="text"
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                placeholder={t.inputPlaceholder}
+                disabled={isLoading}
+                className="flex-1 bg-k3-input border border-k3-border-subtle rounded-lg px-4 py-3 text-sm text-k3-text-primary focus:outline-none focus:border-k3-text-tertiary transition-all placeholder:text-k3-text-tertiary disabled:opacity-50"
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !userInput.trim()}
+                className="px-4 py-3 flex items-center justify-center bg-k3-primary-bg hover:bg-[#E8E8E8] text-k3-primary-text rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Send size={16} />
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Hero Picker Overlay - Fixed fullscreen with dim backdrop */}
       <HeroPickerOverlay
