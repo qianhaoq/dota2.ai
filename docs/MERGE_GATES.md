@@ -94,7 +94,7 @@ This page is the source of truth for merge policy.
 
 其他挡自动合入的方式：保持 **draft**，或把 base 改成非 `main`。
 
-去掉该 label 后需要一次新触发才会再评估（CI 重跑、Copilot 再次 `APPROVED`、或手动 `workflow_dispatch`）。
+去掉该 label 后需要一次新触发才会再评估（CI 重跑、Copilot 再次提交 review、或手动 `workflow_dispatch`）。
 
 ---
 
