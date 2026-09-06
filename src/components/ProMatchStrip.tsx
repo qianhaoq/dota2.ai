@@ -87,31 +87,21 @@ const ProMatchStrip: React.FC<ProMatchStripProps> = ({ lang }) => {
       href={match.opendotaUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex-shrink-0 w-[180px] sm:w-[200px] bg-gray-900/60 hover:bg-gray-800/80 border border-gray-700/50 hover:border-dota-gold/50 rounded-lg p-2 transition-all group"
+      className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-k3-surface hover:bg-k3-elevated border border-k3-border-subtle rounded-lg transition-all group"
     >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[9px] text-gray-500 truncate max-w-[100px]">{match.leagueName}</span>
-        <span className="text-[9px] text-gray-600">{formatTimeAgo(match.startTime)}</span>
-      </div>
-      <div className="flex items-center gap-1.5 mb-1">
-        <span className={`text-[10px] font-medium truncate max-w-[70px] ${match.radiantWin ? 'text-dota-green' : 'text-gray-400'}`}>
-          {match.radiantTeam}
-        </span>
-        <span className="text-[9px] text-gray-600">{t.vs}</span>
-        <span className={`text-[10px] font-medium truncate max-w-[70px] ${!match.radiantWin ? 'text-dota-red' : 'text-gray-400'}`}>
-          {match.direTeam}
-        </span>
-      </div>
-      <div className="flex items-center justify-between text-[9px]">
-        <span className={match.radiantWin ? 'text-dota-green' : 'text-dota-red'}>
-          {match.radiantWin ? t.radiant : t.dire} {t.win}
-        </span>
-        <span className="text-gray-500 flex items-center gap-0.5">
-          <Clock size={8} />
-          {formatDuration(match.duration)}
-        </span>
-        <ExternalLink size={10} className="text-gray-600 group-hover:text-dota-gold" />
-      </div>
+      <span className="text-[9px] text-k3-text-tertiary truncate max-w-[60px]">{match.leagueName}</span>
+      <span className={`text-[10px] font-medium truncate max-w-[50px] ${match.radiantWin ? 'text-k3-radiant' : 'text-k3-text-secondary'}`}>
+        {match.radiantTeam}
+      </span>
+      <span className="text-[9px] text-k3-text-tertiary">{t.vs}</span>
+      <span className={`text-[10px] font-medium truncate max-w-[50px] ${!match.radiantWin ? 'text-k3-dire' : 'text-k3-text-secondary'}`}>
+        {match.direTeam}
+      </span>
+      <span className="text-[9px] text-k3-text-tertiary flex items-center gap-0.5">
+        <Clock size={8} />
+        {formatDuration(match.duration)}
+      </span>
+      <ExternalLink size={10} className="text-k3-text-tertiary group-hover:text-k3-accent" />
     </a>
   );
 
@@ -121,85 +111,66 @@ const ProMatchStrip: React.FC<ProMatchStripProps> = ({ lang }) => {
       href={match.opendotaUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex-shrink-0 w-[180px] sm:w-[200px] bg-gray-900/60 hover:bg-gray-800/80 border border-gray-700/50 hover:border-dota-gold/50 rounded-lg p-2 transition-all group"
+      className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-k3-surface hover:bg-k3-elevated border border-k3-border-subtle rounded-lg transition-all group"
     >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded">
-          {match.mmrLabel || 'N/A'}
-        </span>
-        <span className="text-[9px] text-gray-600">{formatTimeAgo(match.startTime)}</span>
+      <span className="text-[9px] px-1.5 py-0.5 bg-k3-elevated text-k3-text-secondary rounded">
+        {match.mmrLabel || 'N/A'}
+      </span>
+      
+      <div className="flex -space-x-1">
+        {match.radiantHeroes.slice(0, 3).map((hero, idx) => (
+          hero.icon ? (
+            <img 
+              key={idx} 
+              src={hero.icon} 
+              alt={hero.name}
+              title={hero.name}
+              className={`w-4 h-4 rounded border ${match.radiantWin ? 'border-k3-radiant/40' : 'border-k3-border-subtle'}`}
+            />
+          ) : (
+            <div 
+              key={idx}
+              className={`w-4 h-4 rounded bg-k3-elevated border ${match.radiantWin ? 'border-k3-radiant/40' : 'border-k3-border-subtle'}`}
+            />
+          )
+        ))}
+      </div>
+      <span className="text-[9px] text-k3-text-tertiary">{t.vs}</span>
+      <div className="flex -space-x-1">
+        {match.direHeroes.slice(0, 3).map((hero, idx) => (
+          hero.icon ? (
+            <img 
+              key={idx} 
+              src={hero.icon} 
+              alt={hero.name}
+              title={hero.name}
+              className={`w-4 h-4 rounded border ${!match.radiantWin ? 'border-k3-dire/40' : 'border-k3-border-subtle'}`}
+            />
+          ) : (
+            <div 
+              key={idx}
+              className={`w-4 h-4 rounded bg-k3-elevated border ${!match.radiantWin ? 'border-k3-dire/40' : 'border-k3-border-subtle'}`}
+            />
+          )
+        ))}
       </div>
       
-      <div className="flex items-center gap-1 mb-1">
-        <div className="flex -space-x-1">
-          {match.radiantHeroes.slice(0, 3).map((hero, idx) => (
-            hero.icon ? (
-              <img 
-                key={idx} 
-                src={hero.icon} 
-                alt={hero.name}
-                title={hero.name}
-                className={`w-4 h-4 rounded border ${match.radiantWin ? 'border-dota-green/50' : 'border-gray-600'}`}
-              />
-            ) : (
-              <div 
-                key={idx}
-                className={`w-4 h-4 rounded bg-gray-700 border ${match.radiantWin ? 'border-dota-green/50' : 'border-gray-600'}`}
-              />
-            )
-          ))}
-          {match.radiantHeroes.length > 3 && (
-            <span className="w-4 h-4 rounded bg-gray-800 border border-gray-600 flex items-center justify-center text-[7px] text-gray-500">
-              +{match.radiantHeroes.length - 3}
-            </span>
-          )}
-        </div>
-        <span className="text-[9px] text-gray-600">{t.vs}</span>
-        <div className="flex -space-x-1">
-          {match.direHeroes.slice(0, 3).map((hero, idx) => (
-            hero.icon ? (
-              <img 
-                key={idx} 
-                src={hero.icon} 
-                alt={hero.name}
-                title={hero.name}
-                className={`w-4 h-4 rounded border ${!match.radiantWin ? 'border-dota-red/50' : 'border-gray-600'}`}
-              />
-            ) : (
-              <div 
-                key={idx}
-                className={`w-4 h-4 rounded bg-gray-700 border ${!match.radiantWin ? 'border-dota-red/50' : 'border-gray-600'}`}
-              />
-            )
-          ))}
-          {match.direHeroes.length > 3 && (
-            <span className="w-4 h-4 rounded bg-gray-800 border border-gray-600 flex items-center justify-center text-[7px] text-gray-500">
-              +{match.direHeroes.length - 3}
-            </span>
-          )}
-        </div>
-      </div>
-      
-      <div className="flex items-center justify-between text-[9px]">
-        <span className={match.radiantWin ? 'text-dota-green' : 'text-dota-red'}>
-          {match.radiantWin ? t.radiant : t.dire} {t.win}
-        </span>
-        <span className="text-gray-500 flex items-center gap-0.5">
-          <Clock size={8} />
-          {formatDuration(match.duration)}
-        </span>
-        <ExternalLink size={10} className="text-gray-600 group-hover:text-dota-gold" />
-      </div>
+      <span className={`text-[9px] ${match.radiantWin ? 'text-k3-radiant' : 'text-k3-dire'}`}>
+        {match.radiantWin ? t.radiant : t.dire} {t.win}
+      </span>
+      <span className="text-[9px] text-k3-text-tertiary flex items-center gap-0.5">
+        <Clock size={8} />
+        {formatDuration(match.duration)}
+      </span>
+      <ExternalLink size={10} className="text-k3-text-tertiary group-hover:text-k3-accent" />
     </a>
   );
 
   if (isLoading) {
     return (
-      <div className="glass-panel rounded-lg p-2 mb-3">
-        <div className="flex items-center justify-center py-2 text-gray-500 text-xs">
-          <RefreshCw size={12} className="animate-spin mr-1.5" />
-          {t.loading}
-        </div>
+      <div className="h-10 flex items-center justify-center text-k3-text-tertiary text-xs">
+        <RefreshCw size={12} className="animate-spin mr-1.5" />
+        {t.loading}
       </div>
     );
   }
@@ -209,62 +180,66 @@ const ProMatchStrip: React.FC<ProMatchStripProps> = ({ lang }) => {
   }
 
   return (
-    <div className="glass-panel rounded-lg p-2 mb-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex gap-1">
-          <button
-            onClick={() => { setActiveTab('pro'); setScrollIndex(0); }}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-              activeTab === 'pro'
-                ? 'bg-dota-gold/20 text-dota-gold border border-dota-gold/30'
-                : 'text-gray-500 hover:text-gray-300 border border-transparent'
-            }`}
-          >
-            <Trophy size={10} />
-            {t.proMatches}
-          </button>
-          <button
-            onClick={() => { setActiveTab('public'); setScrollIndex(0); }}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
-              activeTab === 'public'
-                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-                : 'text-gray-500 hover:text-gray-300 border border-transparent'
-            }`}
-          >
-            <Users size={10} />
-            {t.publicMatches}
-          </button>
-        </div>
-        
-        {currentMatches.length > 3 && (
-          <div className="flex gap-1">
-            <button
-              onClick={handleScrollLeft}
-              disabled={!canScrollLeft}
-              className="p-0.5 rounded hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronLeft size={14} className="text-gray-400" />
-            </button>
-            <button
-              onClick={handleScrollRight}
-              disabled={!canScrollRight}
-              className="p-0.5 rounded hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-            >
-              <ChevronRight size={14} className="text-gray-400" />
-            </button>
-          </div>
-        )}
+    <div className="h-10 flex items-center gap-2">
+      {/* Tab buttons */}
+      <div className="flex gap-1 flex-shrink-0">
+        <button
+          onClick={() => { setActiveTab('pro'); setScrollIndex(0); }}
+          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+            activeTab === 'pro'
+              ? 'bg-k3-surface text-k3-text-primary border border-k3-accent/30'
+              : 'text-k3-text-tertiary hover:text-k3-text-secondary border border-transparent'
+          }`}
+        >
+          <Trophy size={10} />
+          {t.proMatches}
+        </button>
+        <button
+          onClick={() => { setActiveTab('public'); setScrollIndex(0); }}
+          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+            activeTab === 'public'
+              ? 'bg-k3-surface text-k3-text-primary border border-k3-accent/30'
+              : 'text-k3-text-tertiary hover:text-k3-text-secondary border border-transparent'
+          }`}
+        >
+          <Users size={10} />
+          {t.publicMatches}
+        </button>
       </div>
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-k3-border-subtle flex-shrink-0" />
       
-      <div className="flex gap-2 overflow-hidden">
+      {/* Match cards */}
+      <div className="flex gap-2 overflow-hidden flex-1">
         {visibleMatches.length > 0 ? (
           activeTab === 'pro' 
             ? visibleMatches.map(m => renderProMatch(m as ProMatch))
             : visibleMatches.map(m => renderPublicMatch(m as PublicMatch))
         ) : (
-          <div className="flex-1 text-center py-2 text-gray-500 text-xs">{t.noData}</div>
+          <div className="flex-1 text-center text-k3-text-tertiary text-xs">{t.noData}</div>
         )}
       </div>
+      
+      {/* Navigation arrows */}
+      {currentMatches.length > 3 && (
+        <div className="flex gap-1 flex-shrink-0">
+          <button
+            onClick={handleScrollLeft}
+            disabled={!canScrollLeft}
+            className="p-1 rounded hover:bg-k3-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft size={14} className="text-k3-text-tertiary" />
+          </button>
+          <button
+            onClick={handleScrollRight}
+            disabled={!canScrollRight}
+            className="p-1 rounded hover:bg-k3-elevated disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight size={14} className="text-k3-text-tertiary" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

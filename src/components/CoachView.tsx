@@ -13,7 +13,7 @@ import {
   PlaybookHero
 } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
-import { Send, X } from 'lucide-react';
+import { Send, X, ChevronDown } from 'lucide-react';
 import { 
   DraftStrip, 
   HeroPickerOverlay, 
@@ -326,8 +326,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const alliesFull = selectionSide === 'radiant' ? draft.radiant.length >= 5 : draft.dire.length >= 5;
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a] rounded-2xl overflow-hidden border border-white/5">
-      {/* Compact Draft Strip - Always visible at top */}
+    <div className="flex flex-col h-[100dvh] bg-k3-base overflow-hidden">
+      {/* Draft Strip - Fixed at top, ~64px */}
       <DraftStrip
         lang={lang}
         draft={draft}
@@ -338,12 +338,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         onHeroDetail={setDetailHeroId}
       />
 
-      {/* Pro/Public Matches - Light visual ribbon */}
-      <div className="px-3 pt-2">
+      {/* Pro/Public Matches - Light ticker strip ~40px */}
+      <div className="max-w-content mx-auto w-full px-6 pt-2">
         <ProMatchStrip lang={lang} />
       </div>
 
-      {/* Main Chat Area - Takes up most of the viewport */}
+      {/* Main Chat Area - flex-1 overflow */}
       <div 
         ref={messagesContainerRef}
         className="flex-1 overflow-y-auto custom-scrollbar relative"
@@ -355,7 +355,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onOpenPicker={() => setShowHeroPicker(true)}
           />
         ) : (
-          <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+          <div className="max-w-content mx-auto w-full px-6 py-4">
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
@@ -369,57 +369,60 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           </div>
         )}
 
-        {/* Jump to latest button */}
+        {/* Jump to latest button - accent color */}
         {showJumpToLatest && (
           <button
             onClick={scrollToLatest}
-            className="fixed bottom-36 left-1/2 -translate-x-1/2 px-4 py-2 bg-amber-500/90 hover:bg-amber-400 text-black text-xs font-semibold rounded-full shadow-lg transition-all z-10"
+            className="fixed bottom-36 left-1/2 -translate-x-1/2 px-4 py-2 bg-k3-accent hover:bg-k3-accent/90 text-k3-base text-xs font-semibold rounded-full shadow-lg transition-all z-10 flex items-center gap-1"
           >
-            ↓ {t.jumpToLatest}
+            <ChevronDown size={14} />
+            {t.jumpToLatest}
           </button>
         )}
       </div>
 
-      {/* Composer Area - Intent chips + Input */}
-      <div className="border-t border-white/5 bg-[#0d0d0d] p-3 sm:p-4">
-        {/* Intent Chips */}
-        <div className="mb-3">
-          <IntentChips
-            lang={lang}
-            isLoading={isLoading}
-            hasHeroes={hasHeroes}
-            hasAllies={hasAllies}
-            alliesFull={alliesFull}
-            selectionSide={selectionSide}
-            onAnalyze={handleAnalyze}
-            onPlaybook={handlePlaybook}
-            onSuggest={handleSuggest}
-            onMeta={handleMeta}
-            onCancel={cancelStream}
-          />
-        </div>
+      {/* Composer Area - Fixed height at bottom */}
+      <div className="border-t border-k3-border-subtle bg-k3-surface">
+        <div className="max-w-content mx-auto w-full px-6 py-4">
+          {/* Intent Chips */}
+          <div className="mb-3">
+            <IntentChips
+              lang={lang}
+              isLoading={isLoading}
+              hasHeroes={hasHeroes}
+              hasAllies={hasAllies}
+              alliesFull={alliesFull}
+              selectionSide={selectionSide}
+              onAnalyze={handleAnalyze}
+              onPlaybook={handlePlaybook}
+              onSuggest={handleSuggest}
+              onMeta={handleMeta}
+              onCancel={cancelStream}
+            />
+          </div>
 
-        {/* Input Field */}
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <input
-            type="text"
-            value={userInput}
-            onChange={(e) => setUserInput(e.target.value)}
-            placeholder={t.inputPlaceholder}
-            disabled={isLoading}
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-gray-500 disabled:opacity-50"
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !userInput.trim()}
-            className="px-4 py-3 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-amber-500/20 disabled:shadow-none"
-          >
-            <Send size={18} />
-          </button>
-        </form>
+          {/* Input Field - 24px radius, bg-input */}
+          <form onSubmit={handleSubmit} className="flex gap-3">
+            <input
+              type="text"
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              placeholder={t.inputPlaceholder}
+              disabled={isLoading}
+              className="flex-1 bg-k3-input border border-k3-border-subtle rounded-composer px-4 py-3 text-sm text-k3-text-primary focus:outline-none focus:border-k3-accent focus:ring-1 focus:ring-k3-accent/30 transition-all placeholder:text-k3-text-tertiary disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={isLoading || !userInput.trim()}
+              className="w-[36px] h-[36px] my-auto flex items-center justify-center bg-k3-accent hover:bg-k3-accent/90 rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Send size={16} className="text-k3-base" />
+            </button>
+          </form>
+        </div>
       </div>
 
-      {/* Hero Picker Overlay */}
+      {/* Hero Picker Overlay - Fixed fullscreen with dim backdrop */}
       <HeroPickerOverlay
         lang={lang}
         isOpen={showHeroPicker}
@@ -436,12 +439,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       {/* Hero Detail Modal */}
       {detailHeroId && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="relative w-full max-w-4xl max-h-[90vh] bg-[#0f1014] rounded-xl border border-gray-700 overflow-hidden">
+          <div className="relative w-full max-w-4xl max-h-[90vh] bg-k3-surface rounded-2xl border border-k3-border-subtle overflow-hidden">
             <button
               onClick={() => setDetailHeroId(null)}
-              className="absolute top-4 right-4 z-10 p-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+              className="absolute top-4 right-4 z-10 p-2 bg-k3-elevated hover:bg-k3-border-subtle rounded-lg transition-colors"
             >
-              <X size={20} className="text-gray-400" />
+              <X size={20} className="text-k3-text-secondary" />
             </button>
             <div className="p-4 sm:p-6 overflow-y-auto max-h-[90vh]">
               <HeroDetail heroId={detailHeroId} lang={lang} onClose={() => setDetailHeroId(null)} />

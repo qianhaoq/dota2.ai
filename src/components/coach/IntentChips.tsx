@@ -47,7 +47,6 @@ const IntentChips: React.FC<IntentChipsProps> = ({
       icon: Sparkles,
       onClick: onAnalyze,
       disabled: !hasHeroes,
-      color: 'from-amber-500/80 to-orange-600/80 hover:from-amber-500 hover:to-orange-500',
     },
     {
       id: 'playbook',
@@ -55,7 +54,6 @@ const IntentChips: React.FC<IntentChipsProps> = ({
       icon: Target,
       onClick: onPlaybook,
       disabled: !hasAllies,
-      color: 'from-blue-500/80 to-indigo-600/80 hover:from-blue-500 hover:to-indigo-500',
     },
     {
       id: 'suggest',
@@ -63,7 +61,6 @@ const IntentChips: React.FC<IntentChipsProps> = ({
       icon: TrendingUp,
       onClick: onSuggest,
       disabled: alliesFull,
-      color: 'from-emerald-500/80 to-teal-600/80 hover:from-emerald-500 hover:to-teal-500',
     },
     {
       id: 'meta',
@@ -71,35 +68,34 @@ const IntentChips: React.FC<IntentChipsProps> = ({
       icon: BarChart3,
       onClick: onMeta,
       disabled: false,
-      color: 'from-purple-500/80 to-violet-600/80 hover:from-purple-500 hover:to-violet-500',
     },
   ];
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       {hasHeroes && (
-        <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${
+        <span className={`text-[10px] px-2 py-1 rounded-full font-medium border ${
           selectionSide === 'radiant' 
-            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-            : 'bg-red-500/10 text-red-400 border border-red-500/20'
+            ? 'bg-k3-radiant/10 text-k3-radiant border-k3-radiant/20' 
+            : 'bg-k3-dire/10 text-k3-dire border-k3-dire/20'
         }`}>
           {t.yourSide}: {selectionSide === 'radiant' ? t.radiant : t.dire}
         </span>
       )}
       
-      {chips.map(({ id, label, icon: Icon, onClick, disabled, color }) => (
+      {chips.map(({ id, label, icon: Icon, onClick, disabled }) => (
         <button
           key={id}
           onClick={onClick}
           disabled={isLoading || disabled}
           className={`
             flex items-center gap-1.5 px-3 py-1.5 
-            bg-gradient-to-r ${color}
-            text-white text-xs font-medium rounded-full 
-            transition-all shadow-lg shadow-black/20
-            disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
-            hover:shadow-xl hover:-translate-y-0.5
-            active:translate-y-0
+            bg-transparent border border-k3-border-subtle
+            text-k3-text-secondary text-xs font-medium rounded-full 
+            transition-all
+            hover:border-k3-accent hover:text-k3-text-primary hover:bg-k3-accent/5
+            disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-k3-border-subtle disabled:hover:bg-transparent
+            active:bg-k3-accent/10
           `}
         >
           <Icon size={13} />
@@ -110,7 +106,7 @@ const IntentChips: React.FC<IntentChipsProps> = ({
       {isLoading && (
         <button
           onClick={onCancel}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-medium rounded-full transition-all border border-white/10"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-k3-elevated border border-k3-border-subtle hover:border-k3-dire hover:bg-k3-dire/5 text-k3-text-secondary hover:text-k3-dire text-xs font-medium rounded-full transition-all"
         >
           <X size={13} />
           {t.cancel}
@@ -118,7 +114,7 @@ const IntentChips: React.FC<IntentChipsProps> = ({
       )}
 
       {isLoading && (
-        <Loader2 size={16} className="text-amber-400 animate-spin ml-1" />
+        <Loader2 size={16} className="text-k3-accent animate-spin ml-1" />
       )}
     </div>
   );

@@ -19,18 +19,19 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0a0a0a]">
-      {/* Minimal Header */}
-      <header className="h-14 border-b border-white/5 bg-[#0a0a0a] flex items-center justify-between px-4 md:px-6 flex-shrink-0">
+    <div className="min-h-screen flex flex-col bg-k3-base">
+      {/* Header - k3 design */}
+      <header className="h-14 border-b border-k3-border-subtle bg-k3-base flex items-center justify-between px-4 md:px-6 flex-shrink-0">
         {/* Logo + Tabs inline */}
         <div className="flex items-center gap-6">
-          {/* Logo */}
+          {/* Logo - subtle with accent dot */}
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-red-600 to-red-900 rounded-lg flex items-center justify-center">
-              <span className="font-bold text-sm text-white">D</span>
+            <div className="relative w-8 h-8 bg-k3-surface rounded-lg flex items-center justify-center border border-k3-border-subtle">
+              <span className="font-bold text-sm text-k3-text-primary">D</span>
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-k3-accent" />
             </div>
-            <span className="font-semibold text-white hidden sm:block">
-              DOTA2<span className="text-red-500">.AI</span>
+            <span className="font-semibold text-k3-text-primary hidden sm:block">
+              DOTA2<span className="text-k3-accent">.AI</span>
             </span>
           </div>
 
@@ -61,14 +62,14 @@ const App: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={toggleLang}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-gray-300 text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-k3-surface hover:bg-k3-elevated text-k3-text-secondary text-xs font-medium transition-colors border border-k3-border-subtle"
           >
             <Globe size={14} />
             {lang === 'en' ? 'EN' : '中'}
           </button>
           <a
             href="mailto:qianhao1229@gmail.com"
-            className="hidden md:flex items-center gap-1.5 text-gray-400 hover:text-white text-sm transition-colors"
+            className="hidden md:flex items-center gap-1.5 text-k3-text-tertiary hover:text-k3-text-primary text-sm transition-colors"
           >
             {t.contact}
           </a>
