@@ -48,3 +48,54 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #6b7280;
 }
+
+/* Coach message sections */
+.coach-section-header {
+  transition: background-color 0.2s ease;
+}
+
+.coach-section-header:hover {
+  background-color: rgba(30, 30, 30, 0.9);
+}
+
+/* Smooth collapse animation */
+.coach-section-content {
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Better list spacing in coach messages */
+.prose-sm li + li {
+  margin-top: 0.25rem;
+}
+
+.prose-sm ul, .prose-sm ol {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Ensure proper scroll behavior for nested containers */
+.coach-messages-container {
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+/* Jump to latest button animation */
+@keyframes gentleBounce {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, -4px); }
+}
+
+.jump-to-latest-btn {
+  animation: gentleBounce 1.5s ease-in-out infinite;
+}

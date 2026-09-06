@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Hero, DraftState, Attribute, Language } from '../types';
-import HeroCard from './HeroCard';
 import { 
   analyzeDraftStream, 
   fetchSuggestions, 
@@ -13,10 +12,16 @@ import {
 } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
 import { 
-  Swords, RotateCcw, Sparkles, Search, AlertTriangle, X, 
+  Swords, RotateCcw, Sparkles, Search, X, 
   ChevronDown, ChevronUp, MessageSquare, Zap, Target, 
-  TrendingUp, BarChart3, Send, Plus, Minus
+  TrendingUp, BarChart3, Send, Plus, Minus, ArrowDown
 } from 'lucide-react';
+
+interface CollapsibleSection {
+  title: string;
+  content: string[];
+  isExpanded: boolean;
+}
 
 interface CoachViewProps {
   lang: Language;
@@ -48,6 +53,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   
   const streamControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, Set<number>>>({});
   
   const [showHeroPicker, setShowHeroPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -63,9 +73,36 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     loadData();
   }, [lang]);
 
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+    setShowJumpToLatest(false);
+    setUserHasScrolledUp(false);
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    const isNearBottom = distanceFromBottom < 100;
+    
+    if (isNearBottom) {
+      setUserHasScrolledUp(false);
+      setShowJumpToLatest(false);
+    } else {
+      setUserHasScrolledUp(true);
+      if (messages.length > 0) {
+        setShowJumpToLatest(true);
+      }
+    }
+  }, [messages.length]);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (!userHasScrolledUp) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, userHasScrolledUp]);
 
   const t = useMemo(() => ({
     radiant: lang === 'zh' ? '天辉' : 'Radiant',
@@ -112,7 +149,41 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     suggestionsTitle: lang === 'zh' ? '推荐英雄' : 'Recommended Heroes',
     metaTitle: lang === 'zh' ? '当前版本强势英雄' : 'Current Meta Heroes',
     yourSide: lang === 'zh' ? '你的阵营' : 'Your side',
+    jumpToLatest: lang === 'zh' ? '跳转到最新' : 'Jump to latest',
+    expand: lang === 'zh' ? '展开' : 'Expand',
+    collapse: lang === 'zh' ? '收起' : 'Collapse',
+    expandAll: lang === 'zh' ? '展开全部' : 'Expand All',
+    collapseAll: lang === 'zh' ? '收起全部' : 'Collapse All',
   }), [lang]);
+
+  const toggleSection = useCallback((msgId: string, sectionIndex: number) => {
+    setCollapsedSections(prev => {
+      const newState = { ...prev };
+      if (!newState[msgId]) {
+        newState[msgId] = new Set();
+      }
+      const msgSections = new Set(newState[msgId]);
+      if (msgSections.has(sectionIndex)) {
+        msgSections.delete(sectionIndex);
+      } else {
+        msgSections.add(sectionIndex);
+      }
+      newState[msgId] = msgSections;
+      return newState;
+    });
+  }, []);
+
+  const toggleAllSections = useCallback((msgId: string, sections: CollapsibleSection[], expand: boolean) => {
+    setCollapsedSections(prev => {
+      const newState = { ...prev };
+      if (expand) {
+        newState[msgId] = new Set();
+      } else {
+        newState[msgId] = new Set(sections.map((_, i) => i));
+      }
+      return newState;
+    });
+  }, []);
 
   const handleHeroSelect = useCallback((hero: Hero) => {
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
@@ -361,24 +432,160 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   const hasHeroes = draft.radiant.length > 0 || draft.dire.length > 0;
 
-  const renderMarkdown = (text: string) => {
-    return text.split('\n').map((line, idx) => {
+  const parseMarkdownSections = useCallback((text: string): CollapsibleSection[] => {
+    const lines = text.split('\n');
+    const sections: CollapsibleSection[] = [];
+    let currentSection: CollapsibleSection | null = null;
+    
+    for (const line of lines) {
       if (line.startsWith('## ')) {
-        return <h3 key={idx} className="text-dota-gold font-bold text-base mt-3 mb-1.5 border-b border-dota-gold/20 pb-1">{line.replace('## ', '')}</h3>;
+        if (currentSection) {
+          sections.push(currentSection);
+        }
+        currentSection = {
+          title: line.replace('## ', ''),
+          content: [],
+          isExpanded: true
+        };
+      } else if (currentSection) {
+        currentSection.content.push(line);
+      } else {
+        if (!sections.length || sections[sections.length - 1].title !== '__intro__') {
+          sections.push({ title: '__intro__', content: [line], isExpanded: true });
+        } else {
+          sections[sections.length - 1].content.push(line);
+        }
       }
-      if (line.startsWith('### ')) {
-        return <h4 key={idx} className="text-white font-semibold text-sm mt-2 mb-1">{line.replace('### ', '')}</h4>;
-      }
-      if (line.startsWith('**') && line.endsWith('**')) {
-        return <strong key={idx} className="block mt-1.5 text-white text-sm">{line.replace(/\*\*/g, '')}</strong>;
-      }
-      if (line.startsWith('- ') || line.startsWith('* ')) {
-        return <li key={idx} className="ml-4 list-disc marker:text-dota-gold pl-1 text-gray-300 text-sm">{line.replace(/^[-*] /, '')}</li>;
-      }
-      if (line.trim() === '') return <br key={idx} />;
-      return <p key={idx} className="text-gray-300 text-sm">{line}</p>;
-    });
+    }
+    
+    if (currentSection) {
+      sections.push(currentSection);
+    }
+    
+    return sections;
+  }, []);
+
+  const renderLine = (line: string, idx: number) => {
+    if (line.startsWith('### ')) {
+      return <h4 key={idx} className="text-white font-semibold text-sm mt-2 mb-1">{line.replace('### ', '')}</h4>;
+    }
+    if (line.startsWith('**') && line.endsWith('**')) {
+      return <strong key={idx} className="block mt-1.5 text-white text-sm">{line.replace(/\*\*/g, '')}</strong>;
+    }
+    if (line.match(/^\d+\.\s/)) {
+      return <li key={idx} className="ml-4 list-decimal marker:text-dota-gold pl-1 text-gray-300 text-sm leading-relaxed">{line.replace(/^\d+\.\s/, '')}</li>;
+    }
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      return <li key={idx} className="ml-4 list-disc marker:text-dota-gold pl-1 text-gray-300 text-sm leading-relaxed">{line.replace(/^[-*] /, '')}</li>;
+    }
+    if (line.trim() === '') return <div key={idx} className="h-2" />;
+    return <p key={idx} className="text-gray-300 text-sm leading-relaxed">{line}</p>;
   };
+
+  const renderMarkdown = useCallback((text: string, msgId: string, isStreaming?: boolean) => {
+    const sections = parseMarkdownSections(text);
+    const hasMultipleSections = sections.filter(s => s.title !== '__intro__').length > 1;
+    const collapsedSet = collapsedSections[msgId] || new Set<number>();
+    
+    if (!hasMultipleSections || isStreaming) {
+      return text.split('\n').map((line, idx) => {
+        if (line.startsWith('## ')) {
+          return <h3 key={idx} className="text-dota-gold font-bold text-base mt-3 mb-1.5 border-b border-dota-gold/20 pb-1">{line.replace('## ', '')}</h3>;
+        }
+        return renderLine(line, idx);
+      });
+    }
+
+    const namedSections = sections.filter(s => s.title !== '__intro__');
+    const introSection = sections.find(s => s.title === '__intro__');
+    
+    return (
+      <div className="space-y-2">
+        {introSection && introSection.content.length > 0 && (
+          <div className="mb-3">
+            {introSection.content.map((line, idx) => renderLine(line, idx))}
+          </div>
+        )}
+        
+        {namedSections.length > 1 && (
+          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700/50">
+            <span className="text-[10px] text-gray-500">{namedSections.length} 个章节</span>
+            <button
+              onClick={() => toggleAllSections(msgId, namedSections, collapsedSet.size > 0)}
+              className="text-[10px] text-dota-gold hover:text-amber-400 transition-colors"
+            >
+              {collapsedSet.size > 0 ? t.expandAll : t.collapseAll}
+            </button>
+          </div>
+        )}
+        
+        <div className="flex flex-wrap gap-1.5 mb-3 sticky top-0 bg-gray-800/90 backdrop-blur-sm py-2 -mx-2 px-2 z-10 border-b border-gray-700/30">
+          {namedSections.map((section, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                const sectionIdx = sections.findIndex(s => s.title === section.title);
+                if (sectionIdx !== -1 && collapsedSet.has(sectionIdx)) {
+                  toggleSection(msgId, sectionIdx);
+                }
+                const el = document.getElementById(`section-${msgId}-${idx}`);
+                el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+              className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                !collapsedSet.has(sections.findIndex(s => s.title === section.title))
+                  ? 'bg-dota-gold/20 border-dota-gold/40 text-dota-gold'
+                  : 'bg-gray-700/50 border-gray-600 text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {section.title.length > 12 ? section.title.substring(0, 12) + '...' : section.title}
+            </button>
+          ))}
+        </div>
+        
+        {sections.map((section, sectionIdx) => {
+          if (section.title === '__intro__') return null;
+          const isCollapsed = collapsedSet.has(sectionIdx);
+          const displayIdx = namedSections.findIndex(s => s.title === section.title);
+          
+          return (
+            <div 
+              key={sectionIdx} 
+              id={`section-${msgId}-${displayIdx}`}
+              className="border border-gray-700/50 rounded-lg overflow-hidden"
+            >
+              <button
+                onClick={() => toggleSection(msgId, sectionIdx)}
+                className="w-full flex items-center justify-between px-3 py-2 bg-gray-900/50 hover:bg-gray-900/80 transition-colors text-left"
+              >
+                <h3 className="text-dota-gold font-bold text-sm flex items-center gap-2">
+                  <span className="w-5 h-5 flex items-center justify-center bg-dota-gold/20 rounded text-[10px]">
+                    {displayIdx + 1}
+                  </span>
+                  {section.title}
+                </h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500">
+                    {isCollapsed ? t.expand : t.collapse}
+                  </span>
+                  {isCollapsed ? (
+                    <ChevronDown size={14} className="text-gray-400" />
+                  ) : (
+                    <ChevronUp size={14} className="text-gray-400" />
+                  )}
+                </div>
+              </button>
+              
+              {!isCollapsed && (
+                <div className="px-3 py-2 space-y-1">
+                  {section.content.map((line, idx) => renderLine(line, idx))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [parseMarkdownSections, collapsedSections, toggleSection, toggleAllSections, t]);
 
   return (
     <div className="flex flex-col h-full max-w-5xl mx-auto">
@@ -617,7 +824,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+        <div 
+          ref={messagesContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 custom-scrollbar relative">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-dota-gold/20 to-amber-700/20 flex items-center justify-center mb-4">
@@ -840,7 +1050,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                       {/* Text content */}
                       {msg.content && (
                         <div className="prose prose-invert prose-sm max-w-none">
-                          {renderMarkdown(msg.content)}
+                          {renderMarkdown(msg.content, msg.id, msg.isStreaming)}
                         </div>
                       )}
 
@@ -855,6 +1065,17 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             ))
           )}
           <div ref={messagesEndRef} />
+          
+          {/* Jump to Latest Button */}
+          {showJumpToLatest && (
+            <button
+              onClick={() => scrollToBottom('smooth')}
+              className="fixed bottom-36 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-1.5 bg-dota-gold text-black text-xs font-medium rounded-full shadow-lg hover:bg-amber-400 transition-all animate-bounce"
+            >
+              <ArrowDown size={14} />
+              {t.jumpToLatest}
+            </button>
+          )}
         </div>
 
         {/* Quick Action Chips + Input */}
