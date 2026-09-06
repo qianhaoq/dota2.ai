@@ -137,27 +137,41 @@ jobs:
               return { ok: false, reason: state };
             }
 
+            function pickPrNumberForSha(prs, sha) {
+              const list = prs || [];
+              const exact = list.filter((p) => p.head?.sha === sha);
+              const openMain = exact.find((p) => p.state === 'open' && p.base?.ref === 'main');
+              if (openMain) return openMain.number;
+              const open = exact.find((p) => p.state === 'open');
+              return open?.number ?? exact[0]?.number ?? null;
+            }
+
             async function findPrNumber() {
               if (context.eventName === 'pull_request_review') {
                 return context.payload.pull_request.number;
               }
               if (context.eventName === 'workflow_dispatch') {
                 const raw = context.payload.inputs?.pr_number;
-                const n = Number(raw);
-                return Number.isInteger(n) && n > 0 ? n : null;
+                const n = Number(String(raw ?? '').trim());
+                if (!Number.isInteger(n) || n <= 0) {
+                  throw new Error(`Invalid workflow_dispatch pr_number: ${JSON.stringify(raw)}`);
+                }
+                return n;
               }
               if (context.eventName === 'check_run') {
-                const fromPayload = context.payload.check_run.pull_requests?.[0]?.number;
-                if (fromPayload) return fromPayload;
                 const sha = context.payload.check_run.head_sha;
+                const fromPayload = pickPrNumberForSha(
+                  context.payload.check_run.pull_requests,
+                  sha
+                );
+                if (fromPayload) return fromPayload;
                 if (!sha) return null;
                 const { data } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
                   owner,
                   repo,
                   commit_sha: sha,
                 });
-                const openMain = data.filter((p) => p.state === 'open' && p.base?.ref === 'main');
-                return openMain[0]?.number ?? data[0]?.number ?? null;
+                return pickPrNumberForSha(data, sha);
               }
               const run = context.payload.workflow_run;
               // Codex Gate often originates from issue_comment; pull_requests is empty.
@@ -214,6 +228,10 @@ jobs:
 
             const prNumber = await findPrNumber();
             if (!prNumber) {
+              if (context.eventName === 'workflow_dispatch') {
+                core.setFailed('workflow_dispatch pr_number did not resolve to a PR');
+                return;
+              }
               core.info('No open PR found — skip');
               return;
             }
