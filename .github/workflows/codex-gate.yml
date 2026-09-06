@@ -98,7 +98,12 @@ jobs:
             function summaryLooksRunning(body) {
               const text = body || '';
               if (/\*\*(?:Running|In progress|In-progress|Queued|Pending)\*\*/i.test(text)) return true;
-              if (/\b(?:⏳|🏃)\b/.test(text) && !/\*\*Completed\*\*/i.test(text)) return true;
+              // Emoji have no word boundaries; do not wrap them in \b.
+              if (/(?:⏳|🏃)/.test(text) && !/\*\*Completed\*\*/i.test(text)) return true;
+              if (/\|\s*[^|\n]*(?:Running|In progress|Queued|Pending)[^|\n]*\|/i.test(text)
+                && !/\*\*Completed\*\*/i.test(text)) {
+                return true;
+              }
               return false;
             }
 

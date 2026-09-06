@@ -14,8 +14,9 @@
 #     and this workflow's own check name). Codex Review Gate is NOT ignored.
 #   - If check "copilot-pull-request-reviewer" exists on the head SHA, it
 #     must have completed successfully
-#   - Latest Copilot review for the head SHA is APPROVED, or COMMENTED
-#     without a closer-look / changes-recommended title
+#   - Latest Copilot review for the head SHA is a non-blocking result:
+#     APPROVED, or COMMENTED without closer-look / changes-recommended
+#     (Copilot typically submits COMMENTED, not APPROVED)
 #   - GraphQL reviewThreads: every thread isResolved (REST fallback:
 #     fail closed if any review comments exist and resolution is unknown)
 #
@@ -238,15 +239,22 @@ jobs:
               return;
             }
 
-            if (relevantChecks.length === 0 && combined.state !== 'success' && combined.total_count > 0) {
-              core.info(`Combined status is ${combined.state} — skip`);
-              return;
-            }
-
-            const hasCi = relevantChecks.some(
+            const hasCiCheck = relevantChecks.some(
               (c) => c.conclusion === 'success' && isCiCheck(c.name)
             );
-            if (!hasCi) {
+            // Legacy commit statuses (no check runs): success combined status counts as CI.
+            const hasLegacyCombinedCi =
+              relevantChecks.length === 0 && combined.total_count > 0 && combined.state === 'success';
+
+            if (relevantChecks.length === 0 && !hasLegacyCombinedCi) {
+              core.info(
+                combined.total_count > 0
+                  ? `Combined status is ${combined.state} — skip`
+                  : 'No CI check runs or combined statuses on head SHA — skip'
+              );
+              return;
+            }
+            if (relevantChecks.length > 0 && !hasCiCheck) {
               core.info('Build & Test (or CI) not successful on head SHA — skip');
               return;
             }
