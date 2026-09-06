@@ -23,7 +23,9 @@ export default {
           'primary-bg': '#F5F5F5',
           'primary-text': '#0B0B0C',
           radiant: '#7C8F5A',
+          'radiant-muted': '#5A6B42',
           dire: '#A65F52',
+          'dire-muted': '#7A4A40',
         },
       },
       borderRadius: {

@@ -410,23 +410,29 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
               />
             </div>
 
-            {/* Input Field */}
-            <form onSubmit={handleSubmit} className="flex gap-3">
-              <input
-                type="text"
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                placeholder={t.inputPlaceholder}
-                disabled={isLoading}
-                className="flex-1 bg-k3-input border border-k3-border-subtle rounded-lg px-4 py-3 text-sm text-k3-text-primary focus:outline-none focus:border-k3-text-tertiary transition-all placeholder:text-k3-text-tertiary disabled:opacity-50"
-              />
-              <button
-                type="submit"
-                disabled={isLoading || !userInput.trim()}
-                className="px-4 py-3 flex items-center justify-center bg-k3-primary-bg hover:bg-[#E8E8E8] text-k3-primary-text rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Send size={16} />
-              </button>
+            {/* Input Field - Unified container with embedded send button */}
+            <form onSubmit={handleSubmit}>
+              <div className="relative flex items-center bg-k3-input border border-k3-border-subtle rounded-composer focus-within:border-k3-text-tertiary/50 transition-all">
+                <input
+                  type="text"
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  placeholder={t.inputPlaceholder}
+                  disabled={isLoading}
+                  className="flex-1 bg-transparent px-4 py-3 pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !userInput.trim()}
+                  className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all ${
+                    userInput.trim() && !isLoading
+                      ? 'bg-k3-primary-bg hover:bg-white text-k3-primary-text cursor-pointer'
+                      : 'bg-k3-elevated text-k3-text-tertiary cursor-not-allowed'
+                  }`}
+                >
+                  <Send size={16} />
+                </button>
+              </div>
             </form>
           </div>
         </div>
