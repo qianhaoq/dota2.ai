@@ -11,6 +11,7 @@
 #     (fail closed if that check run is missing; no combined-status fallback)
 #   - Relevant checks are completed and not failed (ignore Custom LLM Review
 #     and this workflow's own check name). Do NOT ignore Codex Review Gate.
+#     Multiple runs of the same check name: only the latest attempt counts.
 #   - If check "copilot-pull-request-reviewer" exists on the head SHA, it
 #     must have completed successfully
 #   - If check "Codex Review Gate" (job name, not a workflow title) exists
@@ -88,6 +89,29 @@ jobs:
 
             function isCiCheck(name) {
               return /build\s*&\s*test/i.test(name) || /^ci$/i.test(name) || /build-and-test/i.test(name);
+            }
+
+            function checkRunTime(c) {
+              const t = c.completed_at || c.started_at || '';
+              return t ? new Date(t).getTime() : 0;
+            }
+
+            // listForRef can return multiple runs per name (Actions re-runs).
+            // Only the latest attempt should gate merge.
+            function latestPerName(runs) {
+              const byName = new Map();
+              for (const c of runs) {
+                const key = c.name || '';
+                const prev = byName.get(key);
+                if (
+                  !prev ||
+                  checkRunTime(c) > checkRunTime(prev) ||
+                  (checkRunTime(c) === checkRunTime(prev) && (c.id || 0) > (prev.id || 0))
+                ) {
+                  byName.set(key, c);
+                }
+              }
+              return [...byName.values()];
             }
 
             function copilotReviewAllowsMerge(review) {
@@ -205,7 +229,8 @@ jobs:
               checkRuns.push(...(response.data.check_runs || []));
             }
 
-            const relevantChecks = checkRuns.filter((c) => !isIgnoredCheck(c.name));
+            const latestChecks = latestPerName(checkRuns);
+            const relevantChecks = latestChecks.filter((c) => !isIgnoredCheck(c.name));
 
             const failedChecks = relevantChecks.filter(
               (c) => c.status === 'completed' && !OK_CONCLUSIONS.has(c.conclusion)
@@ -248,11 +273,11 @@ jobs:
               return true;
             }
 
-            const copilotChecks = checkRuns.filter((c) => COPILOT_CHECK_RE.test(c.name || ''));
+            const copilotChecks = relevantChecks.filter((c) => COPILOT_CHECK_RE.test(c.name || ''));
             if (!requireNamedCheck(copilotChecks, 'copilot-pull-request-reviewer')) return;
 
             // Required-check name is the job name, not a workflow display title.
-            const codexGates = checkRuns.filter((c) => (c.name || '') === CODEX_GATE_NAME);
+            const codexGates = relevantChecks.filter((c) => (c.name || '') === CODEX_GATE_NAME);
             if (!requireNamedCheck(codexGates, CODEX_GATE_NAME)) return;
 
             const reviews = await github.paginate(github.rest.pulls.listReviews, {
