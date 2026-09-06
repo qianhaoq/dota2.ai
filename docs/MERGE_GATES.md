@@ -60,7 +60,7 @@ This page is the source of truth for merge policy.
 | 还没有 Codex Review Summary，head 提交未满约 20 分钟 | 失败（等待；Codex 发评论会重跑） |
 | 20 分钟内从未发 Summary | 失败（超时；`@codex review` 或 `skip-codex-gate`） |
 | Summary 仍是 Running / in progress | 失败 |
-| Summary 已完成，但正文没有提到当前 head SHA（synchronize 后的旧审查） | 失败（等 Codex 重审或 `@codex review`） |
+| Summary 已完成，但正文没有提到当前 head SHA（反引号 / 纯文本 / commit URL 均可；synchronize 后的旧审查不算） | 失败（等 Codex 重审或 `@codex review`） |
 | Summary 已完成，但仍有未解决的 Codex 行内线程 | 失败 |
 | 完成且无未解决 Codex 线程（含 👍 无 finding） | 通过 |
 

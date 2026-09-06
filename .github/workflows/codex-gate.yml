@@ -117,14 +117,14 @@ jobs:
 
             // Codex edits one Summary comment across pushes. A Completed
             // table for an older SHA must not pass a newer head.
+            // Match backticks, plain text, and commit URLs — not only `sha`.
             function summaryCoversHead(body, headSha) {
               const head = (headSha || '').toLowerCase();
+              const text = (body || '').toLowerCase();
               if (head.length < 7) return false;
-              const mentioned = [...(body || '').matchAll(/`([0-9a-f]{7,40})`/gi)]
-                .map((m) => m[1].toLowerCase());
-              return mentioned.some(
-                (sha) => sha.length >= 7 && (head.startsWith(sha) || sha.startsWith(head))
-              );
+              if (text.includes(head)) return true;
+              const short = head.slice(0, 7);
+              return new RegExp(`(?:^|[^0-9a-f])${short}(?![0-9a-f])`).test(text);
             }
 
             async function countUnresolvedCodexThreads(prNumber) {
