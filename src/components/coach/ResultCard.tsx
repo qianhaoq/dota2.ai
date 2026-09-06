@@ -18,7 +18,7 @@ interface ResultCardProps {
   expanded?: boolean;
 }
 
-const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ text, streaming }) => {
+export const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ text, streaming }) => {
   const segments = groupMarkdownSegments(text);
   return (
     <>
