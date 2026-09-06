@@ -38,3 +38,34 @@ export interface DraftState {
 }
 
 export type Language = 'en' | 'zh';
+
+/** 带练课表模式 */
+export type LessonMode = 'bp' | 'match' | 'items' | 'mind' | 'review';
+
+/**
+ * A2UI（agent-to-UI）生成式卡片块。
+ * 教练流式结果映射到这些块，而不是纯聊天气泡。
+ */
+export type A2UIBlockType = 'section' | 'actions' | 'matchups' | 'tier' | 'markdown';
+
+export interface A2UIAction {
+  id: string;
+  label: string;
+  subtitle?: string;
+  meta?: string;
+  heroId?: number;
+}
+
+export interface A2UIBlock {
+  id: string;
+  type: A2UIBlockType;
+  title?: string;
+  markdown?: string;
+  actions?: A2UIAction[];
+  /** analyze 流的对位数据（MatchupData） */
+  matchups?: unknown;
+  /** playbook 流出装（PlaybookHero[]） */
+  playbook?: unknown;
+  /** meta 梯队（TierHero[]） */
+  tierHeroes?: unknown;
+}
