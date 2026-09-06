@@ -4,10 +4,11 @@
 
 :root {
   --bg-primary: #0a0a0a;
-  --bg-secondary: #111111;
-  --bg-elevated: #1a1a1a;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-medium: rgba(255, 255, 255, 0.12);
+  --bg-secondary: #0d0d0d;
+  --bg-elevated: #111111;
+  --bg-surface: #161616;
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-medium: rgba(255, 255, 255, 0.10);
   --text-primary: #f5f5f5;
   --text-secondary: #a0a0a0;
   --text-muted: #666666;
@@ -17,6 +18,9 @@ body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Scrollbar - minimal and subtle */
@@ -30,16 +34,17 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.2);
 }
 
+/* Custom scrollbar for chat areas */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -47,81 +52,76 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
 }
 
-/* Glass panel - softer version */
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Glass panel - subtle glassmorphism */
 .glass-panel {
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(12px);
 }
 
-/* Chat message bubbles */
-.msg-bubble {
-  @apply rounded-2xl px-4 py-3 max-w-[85%];
+/* Draft Strip - Compact and minimal */
+.draft-strip {
+  background: linear-gradient(to bottom, var(--bg-secondary), var(--bg-primary));
 }
 
-.msg-bubble-user {
-  @apply bg-blue-600/90 text-white rounded-br-md;
+/* Animation utilities */
+@keyframes slide-in-from-bottom {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
-.msg-bubble-coach {
-  @apply bg-[#1a1a1a] border border-white/5 rounded-bl-md;
+@keyframes zoom-in-95 {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
-/* Intent chip style */
-.intent-chip {
-  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
-         transition-all duration-200 border border-transparent;
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.intent-chip:not(:disabled):hover {
-  @apply scale-[1.02];
+.animate-in {
+  animation-fill-mode: both;
 }
 
-.intent-chip:disabled {
-  @apply opacity-40 cursor-not-allowed;
+.slide-in-from-bottom {
+  animation-name: slide-in-from-bottom;
 }
 
-/* Hero picker overlay */
-.hero-picker-overlay {
-  @apply fixed inset-0 z-50 bg-black/80 backdrop-blur-sm;
+.zoom-in-95 {
+  animation-name: zoom-in-95;
 }
 
-.hero-picker-sheet {
-  @apply fixed bottom-0 left-0 right-0 z-50 bg-[#111111] border-t border-white/10
-         rounded-t-2xl max-h-[70vh] overflow-hidden;
+.fade-in {
+  animation-name: fade-in;
 }
 
-/* Draft context bar */
-.draft-context-bar {
-  @apply flex items-center gap-3 px-3 py-2 bg-[#0d0d0d] border-b border-white/5;
+.duration-300 {
+  animation-duration: 300ms;
 }
 
-.draft-slot {
-  @apply w-8 h-10 rounded-md bg-black/50 border border-dashed border-white/20 
-         flex items-center justify-center cursor-pointer transition-all duration-200;
-}
-
-.draft-slot:hover {
-  @apply border-white/40 bg-white/5;
-}
-
-.draft-slot-filled {
-  @apply border-solid border-white/10;
-}
-
-/* Composer area */
-.composer-area {
-  @apply border-t border-white/5 bg-[#0d0d0d] p-3;
-}
-
-.composer-input {
-  @apply w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3
-         text-base text-white placeholder-gray-500
-         focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/10
-         transition-all duration-200;
+.duration-200 {
+  animation-duration: 200ms;
 }
 
 /* Typing indicator */
@@ -141,26 +141,13 @@ body {
 
 /* Streaming cursor */
 .streaming-cursor {
-  @apply inline-block w-0.5 h-5 bg-white/80 ml-0.5;
+  @apply inline-block w-0.5 h-5 bg-amber-400;
   animation: blink 1s step-end infinite;
 }
 
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
-}
-
-/* Grounded badge */
-.grounded-badge {
-  @apply inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full;
-}
-
-.grounded-badge-valid {
-  @apply bg-green-500/10 text-green-400 border border-green-500/20;
-}
-
-.grounded-badge-unverified {
-  @apply bg-yellow-500/10 text-yellow-400 border border-yellow-500/20;
 }
 
 /* Hero card in picker */
@@ -177,70 +164,61 @@ body {
   @apply opacity-30 grayscale pointer-events-none;
 }
 
-/* Message content markdown */
-.msg-content h3 {
-  @apply text-lg font-semibold text-white mt-4 mb-2 first:mt-0;
+/* Smooth transitions for interactive elements */
+button, a, input {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
 }
 
-.msg-content h4 {
-  @apply text-base font-medium text-white/90 mt-3 mb-1.5;
+/* Focus ring style */
+*:focus-visible {
+  outline: 2px solid rgba(212, 175, 55, 0.5);
+  outline-offset: 2px;
 }
 
-.msg-content p {
-  @apply text-base leading-relaxed text-gray-200 my-1.5;
+/* Disable text selection on UI elements */
+button, .no-select {
+  user-select: none;
 }
 
-.msg-content ul, .msg-content ol {
-  @apply my-2 ml-4 space-y-1;
+/* Hero portrait hover effect */
+.hero-portrait {
+  transition: transform 150ms ease, box-shadow 150ms ease;
 }
 
-.msg-content li {
-  @apply text-base text-gray-200 list-disc marker:text-gray-500;
+.hero-portrait:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.msg-content strong {
-  @apply font-semibold text-white;
+/* Gradient text for emphasis */
+.gradient-text {
+  background: linear-gradient(135deg, #D4AF37 0%, #F0C850 50%, #D4AF37 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-/* Tab styles */
-.tab-item {
-  @apply px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200;
+/* Chip hover glow */
+.chip-glow:hover {
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
 }
 
-.tab-item-active {
-  @apply bg-white/10 text-white;
+/* Loading shimmer effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-.tab-item-inactive {
-  @apply text-gray-400 hover:text-white hover:bg-white/5;
-}
-
-/* Empty state */
-.empty-state {
-  @apply flex flex-col items-center justify-center h-full text-center px-6;
-}
-
-.empty-state-icon {
-  @apply w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4;
-}
-
-/* Animation utilities */
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-slide-up {
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(100%); }
-  to { opacity: 1; transform: translateY(0); }
+.shimmer {
+  background: linear-gradient(90deg, 
+    rgba(255,255,255,0) 0%, 
+    rgba(255,255,255,0.05) 50%, 
+    rgba(255,255,255,0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
 }
 
 /* Collapsible sections */
@@ -274,7 +252,21 @@ body {
   overscroll-behavior: contain;
 }
 
-/* Pro match strip styling */
+/* Pro match strip styling - light visual weight */
 .pro-match-strip {
-  @apply bg-[#0d0d0d] border border-white/5 rounded-xl p-3 mb-3;
+  @apply bg-[#0d0d0d]/50 border border-white/5 rounded-lg p-2;
+}
+
+/* Mobile touch optimization */
+@media (hover: none) {
+  button:active {
+    transform: scale(0.98);
+  }
+}
+
+/* Responsive typography */
+@media (max-width: 640px) {
+  html {
+    font-size: 14px;
+  }
 }
