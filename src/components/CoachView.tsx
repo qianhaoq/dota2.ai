@@ -361,7 +361,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       {/* Main Chat Area - flex-1 overflow */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto custom-scrollbar relative"
+        className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative"
       >
         {messages.length === 0 ? (
           <MentorStage
@@ -385,31 +385,33 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onSubmit={handleSubmit}
           />
         ) : (
-          <div className="max-w-3xl mx-auto w-full px-6 py-4">
+          <div className="max-w-3xl mx-auto w-full px-3 sm:px-6 py-3 sm:py-4">
             {/* Mentor Context Bar - pinned at top of conversation */}
             {mentor && (
-              <div className="flex items-center justify-between py-3 mb-4 border-b border-k3-border-subtle sticky top-0 bg-k3-base z-10">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 py-3 mb-3 sm:mb-4 border-b border-k3-border-subtle sticky top-0 bg-k3-base z-10">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 overflow-x-auto">
                   <img 
                     src={mentor.icon || mentor.img} 
                     alt={mentor.name}
-                    className="w-8 h-8 rounded-lg object-cover"
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-cover flex-shrink-0"
                   />
-                  <span className="text-sm text-k3-text-primary font-medium">
+                  <span className="text-xs sm:text-sm text-k3-text-primary font-medium whitespace-nowrap">
                     {lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name}
                   </span>
-                  <span className="text-xs text-k3-text-tertiary">·</span>
-                  <LessonRail
-                    lang={lang}
-                    currentLesson={lesson}
-                    onLessonChange={handleLessonAction}
-                    isLoading={isLoading}
-                    compact
-                  />
+                  <span className="text-xs text-k3-text-tertiary hidden xs:inline">·</span>
+                  <div className="hidden xs:block">
+                    <LessonRail
+                      lang={lang}
+                      currentLesson={lesson}
+                      onLessonChange={handleLessonAction}
+                      isLoading={isLoading}
+                      compact
+                    />
+                  </div>
                 </div>
                 <button
                   onClick={() => setShowMentorPicker(true)}
-                  className="text-xs text-k3-text-tertiary hover:text-k3-text-secondary transition-colors"
+                  className="text-xs text-k3-text-tertiary hover:text-k3-text-secondary transition-colors flex-shrink-0 self-end sm:self-auto"
                 >
                   {lang === 'zh' ? '换导师' : 'Change mentor'}
                 </button>
@@ -433,7 +435,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         {showJumpToLatest && (
           <button
             onClick={scrollToLatest}
-            className="fixed bottom-36 left-1/2 -translate-x-1/2 px-4 py-2 bg-k3-primary-bg hover:bg-k3-primary-bg/90 text-k3-primary-text text-xs font-medium rounded-lg shadow-lg transition-all z-10 flex items-center gap-1"
+            className="fixed bottom-32 sm:bottom-36 left-1/2 -translate-x-1/2 px-3 sm:px-4 py-2 bg-k3-primary-bg hover:bg-k3-primary-bg/90 text-k3-primary-text text-xs font-medium rounded-lg shadow-lg transition-all z-10 flex items-center gap-1"
           >
             <ChevronDown size={14} />
             {t.jumpToLatest}
@@ -443,10 +445,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
       {/* Composer Area - Fixed at bottom, always visible */}
       {messages.length > 0 && (
-        <div className="border-t border-k3-border-subtle bg-k3-base">
-          <div className="max-w-3xl mx-auto w-full px-6 py-3">
+        <div className="border-t border-k3-border-subtle bg-k3-base flex-shrink-0">
+          <div className="max-w-3xl mx-auto w-full px-3 sm:px-6 py-2 sm:py-3">
             {/* Draft Context Chip */}
-            <div className="mb-2">
+            <div className="mb-2 overflow-x-auto scrollbar-hide">
               <DraftContextChip
                 lang={lang}
                 draft={draft}
@@ -457,17 +459,17 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             </div>
 
             {/* Lesson actions or streaming controls */}
-            <div className="mb-3 flex items-center gap-3">
+            <div className="mb-2 sm:mb-3 flex items-center gap-2 sm:gap-3 overflow-x-auto scrollbar-hide">
               {isLoading ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-k3-text-secondary">
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs sm:text-sm text-k3-text-secondary whitespace-nowrap">
                     {mentor 
                       ? (lang === 'zh' ? `${mentor.nameZh || mentor.name}在看数据` : `${mentor.name} is reading the numbers`)
                       : (lang === 'zh' ? '分析中...' : 'Analyzing...')}
                   </span>
                   <button
                     onClick={cancelStream}
-                    className="px-3 py-1.5 text-sm bg-k3-primary-bg text-k3-primary-text rounded-lg hover:bg-white transition-colors"
+                    className="px-2 sm:px-3 py-1.5 text-xs sm:text-sm bg-k3-primary-bg text-k3-primary-text rounded-lg hover:bg-white transition-colors min-h-[36px] touch-manipulation"
                   >
                     {lang === 'zh' ? '停止' : 'Stop'}
                   </button>
@@ -500,14 +502,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                     ? (lang === 'zh' ? `问${mentor.nameZh || mentor.name}一个问题...` : `Ask ${mentor.name} a question...`)
                     : t.inputPlaceholder}
                   disabled={isLoading}
-                  className="flex-1 bg-transparent px-4 py-3 pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
+                  className="flex-1 bg-transparent px-3 sm:px-4 py-3 pr-12 sm:pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
                 />
                 <button
                   type="submit"
                   disabled={isLoading || !userInput.trim()}
-                  className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all ${
+                  className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all touch-manipulation ${
                     userInput.trim() && !isLoading
-                      ? 'bg-k3-primary-bg hover:bg-white text-k3-primary-text cursor-pointer'
+                      ? 'bg-k3-primary-bg hover:bg-white active:bg-white text-k3-primary-text cursor-pointer'
                       : 'bg-k3-elevated text-k3-text-tertiary cursor-not-allowed'
                   }`}
                 >
@@ -555,15 +557,15 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
       {/* Hero Detail Modal */}
       {detailHeroId && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
           <div className="relative w-full max-w-4xl max-h-[90vh] bg-k3-surface rounded-2xl border border-k3-border-subtle overflow-hidden">
             <button
               onClick={() => setDetailHeroId(null)}
-              className="absolute top-4 right-4 z-10 p-2 bg-k3-elevated hover:bg-k3-border-subtle rounded-lg transition-colors"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 p-2 bg-k3-elevated hover:bg-k3-border-subtle rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
             >
               <X size={20} className="text-k3-text-secondary" />
             </button>
-            <div className="p-4 sm:p-6 overflow-y-auto max-h-[90vh]">
+            <div className="p-3 sm:p-6 overflow-y-auto max-h-[90vh]">
               <HeroDetail heroId={detailHeroId} lang={lang} onClose={() => setDetailHeroId(null)} />
             </div>
           </div>

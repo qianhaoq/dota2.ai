@@ -106,22 +106,22 @@ const MentorStage: React.FC<MentorStageProps> = ({
 
   if (!mentor) {
     return (
-      <div className="flex flex-col items-center justify-center h-full px-6 py-8 max-w-3xl mx-auto">
+      <div className="flex flex-col items-center justify-center h-full px-4 sm:px-6 py-6 sm:py-8 max-w-3xl mx-auto overflow-x-hidden">
         <div className="flex flex-col items-center w-full max-w-xl">
           {/* Mentor Vacancy - Empty seat */}
-          <div className="w-24 h-24 rounded-lg bg-k3-surface border border-k3-border-subtle flex items-center justify-center mb-6">
-            <User size={40} className="text-k3-text-tertiary" strokeWidth={1} />
+          <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-lg bg-k3-surface border border-k3-border-subtle flex items-center justify-center mb-5 sm:mb-6">
+            <User size={32} className="sm:w-10 sm:h-10 text-k3-text-tertiary" strokeWidth={1} />
           </div>
 
           {/* Empty state title */}
-          <h1 className="text-lg text-k3-text-primary mb-2 text-center font-medium">
+          <h1 className="text-base sm:text-lg text-k3-text-primary mb-2 text-center font-medium px-4">
             {t.emptyTitle}
           </h1>
 
           {/* Primary CTA - Call mentor */}
           <button
             onClick={onOpenMentorPicker}
-            className="mt-6 px-5 py-3 bg-k3-primary-bg text-k3-primary-text font-medium rounded-lg hover:bg-white transition-colors"
+            className="mt-5 sm:mt-6 px-5 py-3 bg-k3-primary-bg text-k3-primary-text font-medium rounded-lg hover:bg-white active:bg-white transition-colors min-h-[48px] w-full sm:w-auto touch-manipulation"
           >
             {t.emptyCta} ›
           </button>
@@ -130,13 +130,13 @@ const MentorStage: React.FC<MentorStageProps> = ({
           <button
             onClick={onMeta}
             disabled={isLoading}
-            className="mt-4 text-sm text-k3-text-tertiary hover:text-k3-text-secondary transition-colors"
+            className="mt-4 text-sm text-k3-text-tertiary hover:text-k3-text-secondary transition-colors min-h-[40px] touch-manipulation"
           >
             {t.emptyMetaLink}
           </button>
 
           {/* Demoted composer */}
-          <form onSubmit={onSubmit} className="w-full mt-8 opacity-60">
+          <form onSubmit={onSubmit} className="w-full mt-6 sm:mt-8 opacity-60">
             <div className="relative flex items-center bg-k3-input border border-k3-border-subtle rounded-composer">
               <input
                 ref={inputRef}
@@ -145,12 +145,12 @@ const MentorStage: React.FC<MentorStageProps> = ({
                 onChange={(e) => setUserInput(e.target.value)}
                 placeholder={t.emptyInput}
                 disabled={isLoading}
-                className="flex-1 bg-transparent px-4 py-3 pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
+                className="flex-1 bg-transparent px-3 sm:px-4 py-3 pr-12 sm:pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
               />
               <button
                 type="submit"
                 disabled={!canSend}
-                className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all ${
+                className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all touch-manipulation ${
                   canSend
                     ? 'bg-k3-elevated text-k3-text-secondary cursor-pointer'
                     : 'bg-k3-elevated text-k3-text-tertiary cursor-not-allowed'
@@ -163,11 +163,11 @@ const MentorStage: React.FC<MentorStageProps> = ({
 
           {/* Loading/Cancel */}
           {isLoading && (
-            <div className="flex items-center justify-center gap-3 mt-4">
+            <div className="flex items-center justify-center gap-3 mt-4 min-h-[44px]">
               <Loader2 size={16} className="text-k3-text-secondary animate-spin" />
               <button
                 onClick={onCancel}
-                className="text-sm text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1"
+                className="text-sm text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 py-2 px-3 min-h-[40px] touch-manipulation"
               >
                 <X size={14} />
                 {lang === 'zh' ? '停止' : 'Stop'}
@@ -179,8 +179,8 @@ const MentorStage: React.FC<MentorStageProps> = ({
         {/* Spacer to push footer down */}
         <div className="flex-1" />
 
-        {/* Bottom Footer Hint */}
-        <div className="text-[10px] text-k3-text-tertiary/60 tracking-wide">
+        {/* Bottom Footer Hint - hidden on mobile */}
+        <div className="hidden sm:block text-[10px] text-k3-text-tertiary/60 tracking-wide">
           <kbd className="px-1.5 py-0.5 rounded bg-k3-surface border border-k3-border-subtle font-mono text-[9px]">/</kbd>
           <span className="ml-1.5">{t.keyboardHint}</span>
         </div>
@@ -191,29 +191,29 @@ const MentorStage: React.FC<MentorStageProps> = ({
   const mentorName = lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name;
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 py-8 max-w-3xl mx-auto">
+    <div className="flex flex-col items-center justify-center h-full px-4 sm:px-6 py-6 sm:py-8 max-w-3xl mx-auto overflow-x-hidden">
       <div className="flex flex-col items-center w-full max-w-xl">
         {/* Mentor Seat - Selected mentor */}
-        <div className="flex flex-col items-center mb-6">
-          <div className="w-20 h-20 rounded-lg overflow-hidden border border-k3-border-subtle mb-3">
+        <div className="flex flex-col items-center mb-5 sm:mb-6">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg overflow-hidden border border-k3-border-subtle mb-2 sm:mb-3">
             <img 
               src={mentor.img} 
               alt={mentor.name}
               className="w-full h-full object-cover"
             />
           </div>
-          <h2 className="text-lg text-k3-text-primary font-medium">{mentorName}</h2>
-          <p className="text-sm text-k3-text-secondary mt-1">{t.seatTagline}</p>
+          <h2 className="text-base sm:text-lg text-k3-text-primary font-medium">{mentorName}</h2>
+          <p className="text-xs sm:text-sm text-k3-text-secondary mt-1 text-center px-4">{t.seatTagline}</p>
           <button
             onClick={onOpenMentorPicker}
-            className="mt-2 text-xs text-k3-text-tertiary hover:text-k3-text-secondary transition-colors"
+            className="mt-2 text-xs text-k3-text-tertiary hover:text-k3-text-secondary transition-colors min-h-[36px] touch-manipulation"
           >
             {t.changeMentor}
           </button>
         </div>
 
         {/* Lesson Rail */}
-        <div className="w-full mb-6">
+        <div className="w-full mb-5 sm:mb-6 overflow-x-auto scrollbar-hide px-2">
           <LessonRail
             lang={lang}
             currentLesson={lesson}
@@ -223,7 +223,7 @@ const MentorStage: React.FC<MentorStageProps> = ({
         </div>
 
         {/* Draft Context - Optional */}
-        <div className="w-full mb-6">
+        <div className="w-full mb-5 sm:mb-6 flex justify-center">
           {hasHeroes ? (
             <DraftContextChip
               lang={lang}
@@ -236,7 +236,7 @@ const MentorStage: React.FC<MentorStageProps> = ({
           ) : (
             <button
               onClick={onOpenDraftPicker}
-              className="text-sm text-k3-text-tertiary hover:text-k3-text-secondary transition-colors"
+              className="text-sm text-k3-text-tertiary hover:text-k3-text-secondary transition-colors min-h-[40px] touch-manipulation"
             >
               {t.draftOptional}
             </button>
@@ -253,14 +253,14 @@ const MentorStage: React.FC<MentorStageProps> = ({
               onChange={(e) => setUserInput(e.target.value)}
               placeholder={t.composerPlaceholder}
               disabled={isLoading}
-              className="flex-1 bg-transparent px-4 py-3 pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
+              className="flex-1 bg-transparent px-3 sm:px-4 py-3 pr-12 sm:pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!canSend}
-              className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all ${
+              className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all touch-manipulation ${
                 canSend
-                  ? 'bg-k3-primary-bg hover:bg-white text-k3-primary-text cursor-pointer'
+                  ? 'bg-k3-primary-bg hover:bg-white active:bg-white text-k3-primary-text cursor-pointer'
                   : 'bg-k3-elevated text-k3-text-tertiary cursor-not-allowed'
               }`}
             >
@@ -271,11 +271,11 @@ const MentorStage: React.FC<MentorStageProps> = ({
 
         {/* Loading/Cancel */}
         {isLoading && (
-          <div className="flex items-center justify-center gap-3 mt-4">
+          <div className="flex items-center justify-center gap-3 mt-4 min-h-[44px]">
             <Loader2 size={16} className="text-k3-text-secondary animate-spin" />
             <button
               onClick={onCancel}
-              className="text-sm text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1"
+              className="text-sm text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 py-2 px-3 min-h-[40px] touch-manipulation"
             >
               <X size={14} />
               {lang === 'zh' ? '停止' : 'Stop'}
@@ -287,8 +287,8 @@ const MentorStage: React.FC<MentorStageProps> = ({
       {/* Spacer to push footer down */}
       <div className="flex-1" />
 
-      {/* Bottom Footer Hint */}
-      <div className="text-[10px] text-k3-text-tertiary/60 tracking-wide">
+      {/* Bottom Footer Hint - hidden on mobile */}
+      <div className="hidden sm:block text-[10px] text-k3-text-tertiary/60 tracking-wide">
         <kbd className="px-1.5 py-0.5 rounded bg-k3-surface border border-k3-border-subtle font-mono text-[9px]">/</kbd>
         <span className="ml-1.5">{t.keyboardHint}</span>
       </div>

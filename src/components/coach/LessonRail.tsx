@@ -55,7 +55,7 @@ const LessonRail: React.FC<LessonRailProps> = ({
 
   if (compact) {
     return (
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto scrollbar-hide">
         {lessons.map((lesson) => {
           const Icon = lesson.icon;
           const isActive = currentLesson === lesson.id;
@@ -65,7 +65,7 @@ const LessonRail: React.FC<LessonRailProps> = ({
               key={lesson.id}
               onClick={() => handleClick(lesson)}
               disabled={isLoading}
-              className={`text-sm transition-colors ${
+              className={`text-xs sm:text-sm transition-colors whitespace-nowrap min-h-[36px] px-1 touch-manipulation ${
                 !lesson.enabled
                   ? 'text-k3-text-tertiary/40 cursor-not-allowed'
                   : isActive
@@ -84,7 +84,7 @@ const LessonRail: React.FC<LessonRailProps> = ({
 
   return (
     <div className="relative">
-      <div className="flex items-center justify-center gap-6">
+      <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-6 overflow-x-auto scrollbar-hide pb-1">
         {lessons.map((lesson) => {
           const Icon = lesson.icon;
           const isActive = currentLesson === lesson.id;
@@ -94,17 +94,17 @@ const LessonRail: React.FC<LessonRailProps> = ({
               key={lesson.id}
               onClick={() => handleClick(lesson)}
               disabled={isLoading}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 rounded-lg transition-all whitespace-nowrap min-h-[44px] touch-manipulation flex-shrink-0 ${
                 !lesson.enabled
                   ? 'text-k3-text-tertiary/40 cursor-not-allowed'
                   : isActive
                     ? 'bg-k3-surface text-k3-text-primary font-medium border border-k3-border-subtle'
-                    : 'text-k3-text-secondary hover:text-k3-text-primary hover:bg-k3-surface/50'
+                    : 'text-k3-text-secondary hover:text-k3-text-primary hover:bg-k3-surface/50 active:bg-k3-surface/50'
               }`}
               title={!lesson.enabled ? t.reviewHint : undefined}
             >
-              <Icon size={14} />
-              <span className="text-sm">{lesson.label}</span>
+              <Icon size={14} className="flex-shrink-0" />
+              <span className="text-xs sm:text-sm">{lesson.label}</span>
             </button>
           );
         })}
@@ -112,7 +112,7 @@ const LessonRail: React.FC<LessonRailProps> = ({
 
       {/* Review hint tooltip */}
       {showReviewHint && (
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-k3-elevated border border-k3-border-subtle rounded-lg text-xs text-k3-text-secondary whitespace-nowrap z-10">
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-k3-elevated border border-k3-border-subtle rounded-lg text-xs text-k3-text-secondary whitespace-nowrap z-10 max-w-[90vw] text-center">
           {t.reviewHint}
         </div>
       )}

@@ -311,3 +311,41 @@ button, .no-select {
 .btn-ghost:hover {
   color: var(--k3-text-secondary);
 }
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe area padding for mobile devices with notches */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+/* Touch manipulation for better mobile interaction */
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+/* Prevent text selection on interactive elements on mobile */
+@media (hover: none) {
+  button, a, .touch-manipulation {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Mobile-specific input styles to prevent zoom on iOS */
+@media (max-width: 640px) {
+  input, textarea, select {
+    font-size: 16px;
+  }
+}

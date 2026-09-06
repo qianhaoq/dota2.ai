@@ -136,14 +136,14 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
   const greeting = hasHeroes ? t.greetingWithHeroes : t.greetingEmpty;
 
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 py-8 max-w-3xl mx-auto">
+    <div className="flex flex-col items-center justify-center h-full px-4 sm:px-6 py-6 sm:py-8 max-w-3xl mx-auto overflow-x-hidden">
       <div className="flex flex-col items-center w-full max-w-xl">
         {/* AI Avatar/Mark */}
-        <div className="w-12 h-12 rounded-xl bg-k3-surface border border-k3-border-subtle flex items-center justify-center mb-5">
+        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-k3-surface border border-k3-border-subtle flex items-center justify-center mb-4 sm:mb-5">
           <svg 
             viewBox="0 0 24 24" 
             fill="none" 
-            className="w-6 h-6 text-k3-text-secondary"
+            className="w-5 h-5 sm:w-6 sm:h-6 text-k3-text-secondary"
             stroke="currentColor" 
             strokeWidth="1.5"
           >
@@ -156,12 +156,12 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
         </div>
 
         {/* Greeting - context-aware */}
-        <h1 className="text-lg text-k3-text-primary mb-5 text-center font-normal">
+        <h1 className="text-base sm:text-lg text-k3-text-primary mb-4 sm:mb-5 text-center font-normal px-2">
           {greeting}
         </h1>
 
         {/* Draft Context Chip - primary CTA when empty */}
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-5 sm:mb-6 w-full px-2">
           <DraftContextChip
             lang={lang}
             draft={draft}
@@ -173,13 +173,13 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
         </div>
 
         {/* Suggestion Prompts - reordered based on state */}
-        <div className="w-full space-y-1.5 mb-6">
+        <div className="w-full space-y-1 sm:space-y-1.5 mb-5 sm:mb-6">
           {suggestions.map(({ icon: Icon, text, action, enabled, primary }) => (
             <button
               key={text}
               onClick={action}
               disabled={!enabled || isLoading}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left text-sm transition-all ${
+              className={`w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 sm:py-2.5 rounded-lg text-left text-sm transition-all min-h-[44px] ${
                 enabled && !isLoading
                   ? primary
                     ? 'text-k3-text-primary bg-k3-surface hover:bg-k3-elevated cursor-pointer group font-medium'
@@ -187,20 +187,20 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
                   : 'text-k3-text-tertiary cursor-not-allowed opacity-60'
               }`}
             >
-              <Icon size={14} className={`flex-shrink-0 transition-colors ${
+              <Icon size={16} className={`flex-shrink-0 transition-colors ${
                 enabled && !isLoading 
                   ? primary 
                     ? 'text-k3-text-secondary' 
                     : 'text-k3-text-tertiary group-hover:text-k3-text-secondary' 
                   : ''
               }`} />
-              <span>{text}</span>
+              <span className="flex-1 min-w-0">{text}</span>
             </button>
           ))}
         </div>
 
         {/* Secondary: Free-form input - demoted visually */}
-        <form onSubmit={onSubmit} className="w-full mb-5">
+        <form onSubmit={onSubmit} className="w-full mb-4 sm:mb-5">
           <div className="relative flex items-center bg-k3-input border border-k3-border-subtle rounded-composer focus-within:border-k3-text-tertiary/50 transition-all opacity-80 focus-within:opacity-100">
             <input
               ref={inputRef}
@@ -209,12 +209,12 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
               onChange={(e) => setUserInput(e.target.value)}
               placeholder={t.inputPlaceholder}
               disabled={isLoading}
-              className="flex-1 bg-transparent px-4 py-3 pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
+              className="flex-1 bg-transparent px-3 sm:px-4 py-3 pr-12 sm:pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!canSend}
-              className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all ${
+              className={`absolute right-2 w-9 h-9 flex items-center justify-center rounded-full transition-all touch-manipulation ${
                 canSend
                   ? 'bg-k3-primary-bg hover:bg-white text-k3-primary-text cursor-pointer'
                   : 'bg-k3-elevated text-k3-text-tertiary cursor-not-allowed'
@@ -227,11 +227,11 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
 
         {/* Loading/Cancel */}
         {isLoading && (
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-3 min-h-[44px]">
             <Loader2 size={16} className="text-k3-text-secondary animate-spin" />
             <button
               onClick={onCancel}
-              className="text-sm text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1"
+              className="text-sm text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 py-2 px-3 min-h-[40px]"
             >
               <X size={14} />
               {lang === 'zh' ? '停止' : 'Stop'}
@@ -243,8 +243,8 @@ const WelcomeState: React.FC<WelcomeStateProps> = ({
       {/* Spacer to push footer down */}
       <div className="flex-1" />
 
-      {/* Bottom Footer Hint */}
-      <div className="text-[10px] text-k3-text-tertiary/60 tracking-wide">
+      {/* Bottom Footer Hint - hidden on mobile to avoid soft keyboard issues */}
+      <div className="hidden sm:block text-[10px] text-k3-text-tertiary/60 tracking-wide pb-safe">
         <kbd className="px-1.5 py-0.5 rounded bg-k3-surface border border-k3-border-subtle font-mono text-[9px]">/</kbd>
         <span className="ml-1.5">{t.keyboardHint}</span>
       </div>
