@@ -219,6 +219,39 @@ dota2.ai/
 
 ---
 
+## 🔄 开发与 CI | Development & CI
+
+### CI/CD 流程 | CI/CD Pipeline
+
+| 阶段 | 触发条件 | 说明 |
+|------|---------|------|
+| **GitHub Actions CI** | PR / push to main | TypeScript 检查、构建、单元测试 |
+| **Cloud Build** | merge to main | 自动构建 Docker 镜像 |
+| **Cloud Run** | Cloud Build 成功 | 自动部署到 dota2.ai |
+
+### 本地测试 | Local Testing
+
+```bash
+# 运行测试 | Run tests
+npm test
+
+# TypeScript 检查 | Type check
+npx tsc --noEmit
+
+# 构建 | Build
+npm run build
+```
+
+### PR 规范 | PR Guidelines
+
+- 所有 PR 必须通过 CI 检查后才能合并
+- 请使用 PR 模板填写变更说明和风险评估
+- 涉及流式展示 (streaming) 的改动需特别注意闭包陷阱
+
+All PRs must pass CI before merging. Use the PR template to document changes and risk assessment.
+
+---
+
 ## 📧 联系方式 | Contact
 
 如果你对 Dota 2 与 AI 感兴趣，请联系我:
