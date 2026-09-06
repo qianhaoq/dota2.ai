@@ -11,25 +11,26 @@
 | `.github/instructions/*.instructions.md` | 按路径生效的细则 |
 | `.github/workflows/copilot-setup-steps.yml` | 云端 Agent 开工前装 Node 20 + `npm ci` |
 | `.github/workflows/ai-review.yml` | PR 打开时请求 Copilot review |
-| `.github/workflows/auto-merge.yml` | **CI 全绿 + Copilot 审完（未要求修改）→ 自动 squash 合入** |
+| `.github/workflows/auto-merge.yml` | **CI 全绿 + Copilot 对 head SHA `APPROVED` + 线程已解决 → 自动 squash**（见 `docs/MERGE_GATES.md`） |
 | 现有 `ci.yml` | PR 质量门禁（tsc / build / test） |
 
 ## 默认策略（你选的）
 
 1. **默认 Copilot review**：Ruleset / Settings 自动请求；`ai-review.yml` 再兜底请求一次。
-2. **不必等人合并**：`auto-merge.yml` 在满足下面条件时自动 squash 进 `main`：
+2. **不必等人合并**（门槛比以前严）：`auto-merge.yml` 只在同时满足时 squash 进 `main`：
    - 不是 draft
    - 没有 `no-auto-merge` label
    - CI（Build & Test）成功
-   - Copilot 已提交 review，且不是 `CHANGES_REQUESTED`（`APPROVED` 或 `COMMENTED` 都行）
-3. 需要人工把关时：给 PR 打上 `no-auto-merge`，或保持 draft。
+   - 该 head SHA 上最新 Copilot review 是 **`APPROVED`**（`COMMENTED` / “Needs a closer look” **不会**自动合）
+   - 所有 review 线程已 resolve
+3. 需要人工把关时：给 PR 打上 `no-auto-merge`，或保持 draft。完整说明见 [`docs/MERGE_GATES.md`](MERGE_GATES.md)。
 
 ## 推荐用法（Issue → Agent → CI → AI review → 自动合入）
 
 1. **开 Issue**：写清验收标准（改什么、怎么验证、不要做什么）。大需求拆小。
 2. **交给云端 Agent**：Issue 上 Assign Copilot，或 “Create a pull request with Copilot”。
 3. **等 PR**：Agent 开分支；CI 跑自测；Copilot 自动 review。
-4. **全绿即合**：通过后 `Auto Merge` workflow 会 squash；你只需在失败或 `CHANGES_REQUESTED` 时介入。
+4. **门槛过了才合**：`Auto Merge` 会 squash；CI 失败、Copilot 未 `APPROVED`、或仍有未解决线程时需要你介入。
 
 ## Credits 省着用
 

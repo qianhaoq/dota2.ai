@@ -33,7 +33,7 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
 
 ## Merge policy
 
-Human merge is **optional**. When CI (Build & Test) is green and Copilot code review has completed without `CHANGES_REQUESTED`, `.github/workflows/auto-merge.yml` squash-merges into `main`. To block auto-merge, add label `no-auto-merge` or keep the PR as draft.
+Human merge is **optional** only when every auto-merge gate passes. `.github/workflows/auto-merge.yml` squash-merges into `main` only if CI (Build & Test) is green, the latest Copilot review for the **head SHA** is `APPROVED` (not `COMMENTED` / `CHANGES_REQUESTED`), and all review threads are resolved. To block auto-merge, add label `no-auto-merge` or keep the PR as draft. See `docs/MERGE_GATES.md`.
 
 ## Cloud agent environment
 

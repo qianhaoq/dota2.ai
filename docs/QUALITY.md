@@ -8,9 +8,12 @@
 
 | 检查 | 类型 | 合并要求 | 说明 |
 |------|------|---------|------|
-| **build-and-test** | CI | ✅ 必需 | TypeScript、构建、测试 |
-| **Copilot Review** | AI | 推荐 | GitHub Copilot 代码审查（无需 API 密钥）|
-| **Custom LLM Review** | AI | ⏭️ 可选 | DeepSeek/OpenAI/xAI（需 API 密钥）|
+| **Build & Test** | CI | ✅ 必需 | TypeScript、构建、测试（Ruleset + auto-merge） |
+| **copilot-pull-request-reviewer** | AI check | ✅ 必需（仓库 Ruleset） | Copilot 官方审查 check；auto-merge 还要求该 head SHA 为 `APPROVED` |
+| **会话已解决** | 讨论 | ✅ 必需 | 未解决的 Copilot / Codex / 人类行内线程挡住合并 |
+| **Custom LLM Review** | AI | ⏭️ 可选 | DeepSeek/OpenAI/xAI（需 API 密钥）；不阻塞合并 |
+
+合并策略详见 [`docs/MERGE_GATES.md`](MERGE_GATES.md)。
 
 ---
 
@@ -70,9 +73,9 @@
 
 ---
 
-## 🔒 必需检查：build-and-test
+## 🔒 必需检查：Build & Test
 
-这是唯一的硬性合并要求。
+CI 作业名是 **Build & Test**。仓库 Ruleset 还应要求 `copilot-pull-request-reviewer` 与会话已解决，见 [`MERGE_GATES.md`](MERGE_GATES.md)。
 
 | 步骤 | 命令 | 说明 |
 |------|------|------|
@@ -96,15 +99,19 @@ Branch name pattern: main
 ✅ Require status checks to pass before merging
    ✅ Require branches to be up to date
    Required checks:
-     - build-and-test  ← 必需
+     - Build & Test
+     - copilot-pull-request-reviewer
 ✅ Require conversation resolution before merging
 ```
 
+优先用 **Settings → Rules → Rulesets** 配 `main`。完整清单见 [`MERGE_GATES.md`](MERGE_GATES.md)。
+
 ### 说明
 
-- `build-and-test` 是唯一的硬性要求
-- Copilot Review 和 Custom LLM Review 不设为必需检查
-- AI 审查提供建议，但不阻塞合并流程
+- `Build & Test` 与 `copilot-pull-request-reviewer` 应设为 Ruleset 必需 check
+- **Require conversation resolution** 是 Codex（无原生 check）的硬停止
+- Custom LLM Review 与 `ai-review.yml` 的 “Copilot Review”（只负责请求审查）不要设为必需
+- auto-merge 另要求 Copilot 对 head SHA **`APPROVED`**，仅 `COMMENTED` 不会自动合入
 
 ---
 

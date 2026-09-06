@@ -1,10 +1,25 @@
-# Auto-merge when CI is green and Copilot code review has completed
-# without CHANGES_REQUESTED. Human merge is optional.
+# Auto-merge when CI is green, Copilot APPROVED the head SHA, and
+# every review thread is resolved. Human merge is optional only then.
 #
-# Gate: Build & Test (CI) + Copilot review submitted (APPROVED or COMMENT).
-# Blocks: CI failed, Copilot CHANGES_REQUESTED, draft PR, labeled "no-auto-merge".
+# Gate (all required):
+#   - PR is open, not draft, base is main, no "no-auto-merge" label
+#   - Build & Test (or CI) succeeded on the head SHA
+#   - Relevant checks are completed and not failed (ignore Custom LLM Review
+#     and this workflow's own check name)
+#   - If check "copilot-pull-request-reviewer" exists on the head SHA, it
+#     must have completed successfully
+#   - Latest Copilot review for the head SHA is APPROVED
+#     (COMMENTED and CHANGES_REQUESTED do not merge)
+#   - GraphQL reviewThreads: every thread isResolved (REST fallback:
+#     fail closed if any review comments exist and resolution is unknown)
+#
+# Blocks: draft, non-main base, no-auto-merge, failed/pending relevant
+# checks, Copilot COMMENTED / CHANGES_REQUESTED / missing head-SHA review,
+# any unresolved review thread.
 #
 # Note: workflow_run only runs from the default branch once this file is merged.
+# After resolving threads on an already-APPROVED PR, re-run this workflow
+# (workflow_dispatch) — thread resolution does not emit a workflow event.
 
 name: Auto Merge
 
@@ -14,9 +29,15 @@ on:
     types: [completed]
   pull_request_review:
     types: [submitted]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to re-evaluate (e.g. after resolving review threads)'
+        required: true
+        type: string
 
 concurrency:
-  group: auto-merge-${{ github.event.pull_request.number || github.event.workflow_run.head_branch || github.run_id }}
+  group: auto-merge-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.event.workflow_run.head_branch || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -30,11 +51,12 @@ jobs:
     name: Squash merge when green
     runs-on: ubuntu-latest
     if: >-
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'pull_request') ||
       (github.event_name == 'pull_request_review' &&
-        github.event.review.state != 'changes_requested' &&
+        github.event.review.state == 'approved' &&
         contains(fromJSON('["copilot-pull-request-reviewer[bot]", "copilot-pull-request-reviewer"]'), github.event.review.user.login))
     steps:
       - name: Resolve PR and decide merge
@@ -47,10 +69,28 @@ jobs:
               'copilot-pull-request-reviewer[bot]',
               'copilot-pull-request-reviewer',
             ]);
+            const COPILOT_CHECK_RE = /copilot-pull-request-reviewer/i;
+            const OK_CONCLUSIONS = new Set(['success', 'neutral', 'skipped']);
+
+            function isIgnoredCheck(name) {
+              const n = (name || '').toLowerCase();
+              if (n.includes('auto merge') || n.includes('squash merge')) return true;
+              if (n.includes('custom llm')) return true;
+              return false;
+            }
+
+            function isCiCheck(name) {
+              return /build\s*&\s*test/i.test(name) || /^ci$/i.test(name) || /build-and-test/i.test(name);
+            }
 
             async function findPrNumber() {
               if (context.eventName === 'pull_request_review') {
                 return context.payload.pull_request.number;
+              }
+              if (context.eventName === 'workflow_dispatch') {
+                const raw = context.payload.inputs?.pr_number;
+                const n = Number(raw);
+                return Number.isInteger(n) && n > 0 ? n : null;
               }
               const run = context.payload.workflow_run;
               if (run.pull_requests && run.pull_requests.length > 0) {
@@ -63,6 +103,45 @@ jobs:
                 head: `${owner}:${run.head_branch}`,
               });
               return prs[0]?.number ?? null;
+            }
+
+            async function countUnresolvedThreads(prNumber) {
+              let unresolved = 0;
+              let after = null;
+              let hasNextPage = true;
+              while (hasNextPage) {
+                const result = await github.graphql(
+                  `query($owner: String!, $name: String!, $number: Int!, $after: String) {
+                    repository(owner: $owner, name: $name) {
+                      pullRequest(number: $number) {
+                        reviewThreads(first: 100, after: $after) {
+                          nodes { isResolved }
+                          pageInfo { hasNextPage endCursor }
+                        }
+                      }
+                    }
+                  }`,
+                  { owner, name: repo, number: prNumber, after }
+                );
+                const conn = result.repository?.pullRequest?.reviewThreads;
+                if (!conn) {
+                  throw new Error('GraphQL returned no reviewThreads connection');
+                }
+                unresolved += conn.nodes.filter((t) => !t.isResolved).length;
+                hasNextPage = conn.pageInfo.hasNextPage;
+                after = conn.pageInfo.endCursor;
+              }
+              return unresolved;
+            }
+
+            async function countReviewComments(prNumber) {
+              const comments = await github.paginate(github.rest.pulls.listReviewComments, {
+                owner,
+                repo,
+                pull_number: prNumber,
+                per_page: 100,
+              });
+              return comments.length;
             }
 
             const prNumber = await findPrNumber();
@@ -94,31 +173,25 @@ jobs:
               return;
             }
 
-            // CI: combined status + check runs for head SHA
             const sha = pr.head.sha;
+
             const { data: combined } = await github.rest.repos.getCombinedStatusForRef({
               owner,
               repo,
               ref: sha,
             });
 
-            const { data: checkRuns } = await github.rest.checks.listForRef({
+            const checkRuns = await github.paginate(github.rest.checks.listForRef, {
               owner,
               repo,
               ref: sha,
               per_page: 100,
             });
 
-            const relevantChecks = checkRuns.check_runs.filter((c) => {
-              const name = (c.name || '').toLowerCase();
-              // Ignore this workflow and optional custom LLM review
-              if (name.includes('auto merge') || name.includes('squash merge')) return false;
-              if (name.includes('custom llm')) return false;
-              return true;
-            });
+            const relevantChecks = checkRuns.filter((c) => !isIgnoredCheck(c.name));
 
             const failedChecks = relevantChecks.filter(
-              (c) => c.status === 'completed' && !['success', 'neutral', 'skipped'].includes(c.conclusion)
+              (c) => c.status === 'completed' && !OK_CONCLUSIONS.has(c.conclusion)
             );
             const pendingChecks = relevantChecks.filter((c) => c.status !== 'completed');
 
@@ -131,63 +204,95 @@ jobs:
               return;
             }
 
-            // Prefer check runs; if none, fall back to combined status (legacy)
             if (relevantChecks.length === 0 && combined.state !== 'success' && combined.total_count > 0) {
               core.info(`Combined status is ${combined.state} — skip`);
               return;
             }
 
-            // Must have at least the CI job somehow — require Build & Test or any successful check
             const hasCi = relevantChecks.some(
-              (c) =>
-                c.conclusion === 'success' &&
-                (/build\s*&\s*test/i.test(c.name) || /^ci$/i.test(c.name) || /build/i.test(c.name))
+              (c) => c.conclusion === 'success' && isCiCheck(c.name)
             );
-            if (!hasCi && relevantChecks.length === 0) {
-              core.info('No CI check runs found — skip');
+            if (!hasCi) {
+              core.info('Build & Test (or CI) not successful on head SHA — skip');
               return;
             }
-            if (!hasCi) {
-              // If checks exist but none look like CI, still allow if all completed success
-              const allSuccess = relevantChecks.every((c) =>
-                ['success', 'neutral', 'skipped'].includes(c.conclusion)
+
+            const copilotChecks = checkRuns.filter((c) => COPILOT_CHECK_RE.test(c.name || ''));
+            if (copilotChecks.length > 0) {
+              const pendingCopilot = copilotChecks.filter((c) => c.status !== 'completed');
+              const badCopilot = copilotChecks.filter(
+                (c) => c.status === 'completed' && !OK_CONCLUSIONS.has(c.conclusion)
               );
-              if (!allSuccess) {
-                core.info('CI-like check not found / not all green — skip');
+              if (pendingCopilot.length > 0) {
+                core.info(
+                  `copilot-pull-request-reviewer pending: ${pendingCopilot.map((c) => c.status).join(', ')} — skip`
+                );
+                return;
+              }
+              if (badCopilot.length > 0) {
+                core.info(
+                  `copilot-pull-request-reviewer not successful: ${badCopilot.map((c) => c.conclusion).join(', ')} — skip`
+                );
                 return;
               }
             }
 
-            // Copilot review gate
-            const { data: reviews } = await github.rest.pulls.listReviews({
+            const reviews = await github.paginate(github.rest.pulls.listReviews, {
               owner,
               repo,
               pull_number: prNumber,
               per_page: 100,
             });
 
-            const copilotReviews = reviews.filter((r) => COPILOT_LOGINS.has(r.user?.login || ''));
+            const copilotReviews = reviews.filter(
+              (r) => COPILOT_LOGINS.has(r.user?.login || '') && r.state !== 'DISMISSED' && r.state !== 'PENDING'
+            );
             if (copilotReviews.length === 0) {
               core.info(`PR #${prNumber}: no Copilot review yet — skip (will retry when review lands)`);
               return;
             }
 
-            // Latest Copilot review for this head commit if commit_id present
-            const forHead = copilotReviews.filter((r) => !r.commit_id || r.commit_id === sha);
-            const latest = (forHead.length ? forHead : copilotReviews).sort(
+            const withCommit = copilotReviews.filter((r) => r.commit_id);
+            const forHead = withCommit.length
+              ? withCommit.filter((r) => r.commit_id === sha)
+              : copilotReviews;
+            if (forHead.length === 0) {
+              core.info(`PR #${prNumber}: no Copilot review for head ${sha.slice(0, 7)} — skip`);
+              return;
+            }
+
+            const latest = forHead.sort(
               (a, b) => new Date(b.submitted_at) - new Date(a.submitted_at)
             )[0];
 
-            if (latest.state === 'CHANGES_REQUESTED') {
-              core.info(`PR #${prNumber}: Copilot requested changes — skip`);
-              return;
-            }
-            if (!['APPROVED', 'COMMENTED'].includes(latest.state)) {
-              core.info(`PR #${prNumber}: Copilot review state ${latest.state} — skip`);
+            if (latest.state !== 'APPROVED') {
+              core.info(
+                `PR #${prNumber}: latest Copilot review for head is ${latest.state} (need APPROVED, not COMMENTED) — skip`
+              );
               return;
             }
 
-            core.info(`Merging PR #${prNumber} (CI green + Copilot ${latest.state})`);
+            let unresolved;
+            try {
+              unresolved = await countUnresolvedThreads(prNumber);
+            } catch (err) {
+              core.warning(`GraphQL reviewThreads failed (${err.message}); REST fail-closed fallback`);
+              const commentCount = await countReviewComments(prNumber);
+              if (commentCount > 0) {
+                core.info(
+                  `PR #${prNumber}: cannot confirm thread resolution and ${commentCount} review comment(s) exist — skip`
+                );
+                return;
+              }
+              unresolved = 0;
+            }
+
+            if (unresolved > 0) {
+              core.info(`PR #${prNumber}: ${unresolved} unresolved review thread(s) — skip`);
+              return;
+            }
+
+            core.info(`Merging PR #${prNumber} (CI green + Copilot APPROVED + threads resolved)`);
             await github.rest.pulls.merge({
               owner,
               repo,
@@ -195,6 +300,6 @@ jobs:
               merge_method: 'squash',
               commit_title: `${pr.title} (#${prNumber})`,
               commit_message:
-                'Auto-merged: CI green + Copilot code review completed without changes requested.',
+                'Auto-merged: CI green + Copilot APPROVED head SHA + all review threads resolved.',
             });
             core.info(`Squash-merged PR #${prNumber}`);
