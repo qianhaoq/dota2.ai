@@ -3,18 +3,21 @@
 @tailwind utilities;
 
 :root {
-  /* Kimi k3 Design Tokens */
-  --k3-base: #0A0A0B;
-  --k3-surface: #131316;
-  --k3-elevated: #1A1A1F;
-  --k3-input: #17171B;
-  --k3-border-subtle: #26262C;
-  --k3-text-primary: #E8E8EA;
-  --k3-text-secondary: #9C9CA3;
-  --k3-text-tertiary: #5C5C64;
-  --k3-accent: #D8FF3E;
-  --k3-radiant: #3DDC84;
-  --k3-dire: #F0524F;
+  /* Kimi k3 First-Principles Design Tokens */
+  --k3-base: #0B0B0C;
+  --k3-surface: #141416;
+  --k3-elevated: #1C1C1F;
+  --k3-input: #18181B;
+  --k3-border-subtle: rgba(255, 255, 255, 0.08);
+  --k3-text-primary: #EDEDEF;
+  --k3-text-secondary: #9B9BA2;
+  --k3-text-tertiary: #63636B;
+  /* Primary action: inverted white */
+  --k3-primary-bg: #F5F5F5;
+  --k3-primary-text: #0B0B0C;
+  /* Team colors: desaturated, only for draft context */
+  --k3-radiant: #7C8F5A;
+  --k3-dire: #A65F52;
 }
 
 body {
@@ -133,10 +136,10 @@ body {
   40% { transform: scale(1); opacity: 1; }
 }
 
-/* Streaming cursor - uses accent color */
+/* Streaming cursor - subtle */
 .streaming-cursor {
   @apply inline-block w-0.5 h-5;
-  background: var(--k3-accent);
+  background: var(--k3-text-secondary);
   animation: blink 1s step-end infinite;
 }
 
@@ -167,9 +170,9 @@ button, a, input {
   transition-duration: 150ms;
 }
 
-/* Focus ring style - uses accent */
+/* Focus ring style - subtle white */
 *:focus-visible {
-  outline: 2px solid var(--k3-accent);
+  outline: 2px solid var(--k3-border-subtle);
   outline-offset: 2px;
 }
 
@@ -207,7 +210,7 @@ button, .no-select {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Jump to latest button - uses accent */
+/* Jump to latest button */
 @keyframes gentleBounce {
   0%, 100% { transform: translate(-50%, 0); }
   50% { transform: translate(-50%, -4px); }
@@ -215,6 +218,21 @@ button, .no-select {
 
 .jump-to-latest-btn {
   animation: gentleBounce 1.5s ease-in-out infinite;
+}
+
+/* Primary button - inverted white */
+.btn-primary {
+  background: var(--k3-primary-bg);
+  color: var(--k3-primary-text);
+}
+
+.btn-primary:hover {
+  background: #E8E8E8;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Coach messages container */
@@ -253,14 +271,26 @@ button, .no-select {
   }
 }
 
-/* Tab items - k3 design */
+/* Tab items - k3 first-principles: underline active, no background */
 .tab-item {
-  @apply px-3 py-2 rounded-lg text-sm font-medium transition-colors;
+  @apply px-2 py-2 text-sm transition-colors relative;
+  font-weight: 400;
 }
 
 .tab-item-active {
-  background: var(--k3-surface);
   color: var(--k3-text-primary);
+  font-weight: 500;
+}
+
+.tab-item-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--k3-text-primary);
+  border-radius: 1px;
 }
 
 .tab-item-inactive {
@@ -269,5 +299,15 @@ button, .no-select {
 
 .tab-item-inactive:hover {
   color: var(--k3-text-secondary);
-  background: var(--k3-surface);
+}
+
+/* Ghost button for tertiary actions */
+.btn-ghost {
+  color: var(--k3-text-tertiary);
+  background: transparent;
+  border: none;
+}
+
+.btn-ghost:hover {
+  color: var(--k3-text-secondary);
 }
