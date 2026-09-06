@@ -27,15 +27,15 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
   const [attrFilter, setAttrFilter] = useState<Attribute | 'All'>('All');
 
   const t = useMemo(() => ({
-    title: lang === 'zh' ? '请出导师' : 'Call your mentor',
-    hint: lang === 'zh' 
-      ? '点一位。他来教你打好这个英雄。' 
-      : 'Pick one. That hero teaches you to play them well.',
+    title: lang === 'zh' ? '选英雄练习' : 'Pick a hero to practice',
+    hint: lang === 'zh'
+      ? '拉比克在线。选一位你要练的英雄。'
+      : 'Rubick is live. Pick the hero you want to practice.',
     search: lang === 'zh' ? '搜索英雄...' : 'Search heroes...',
-    dismiss: lang === 'zh' ? '退下' : 'Dismiss',
+    dismiss: lang === 'zh' ? '清除练习' : 'Clear practice',
     all: lang === 'zh' ? '全部' : 'All',
-    currentMentor: lang === 'zh' ? '当前导师' : 'Current mentor',
-    selectHim: lang === 'zh' ? '他来教你' : 'Your mentor',
+    currentMentor: lang === 'zh' ? '当前练习' : 'Practicing',
+    selectHim: lang === 'zh' ? '跟拉比克练这个' : 'Drill this with Rubick',
   }), [lang]);
 
   const filteredHeroes = useMemo(() => {
@@ -63,15 +63,12 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
-      
-      {/* Modal - full screen on mobile */}
+
       <div className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4">
-        {/* Header */}
         <div className="px-3 sm:px-4 py-3 sm:py-4 border-b border-k3-border-subtle bg-k3-surface">
           <div className="flex items-center justify-between mb-1 sm:mb-2">
             <h2 className="font-semibold text-k3-text-primary text-base sm:text-lg">{t.title}</h2>
@@ -85,12 +82,11 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
           <p className="text-xs sm:text-sm text-k3-text-secondary">{t.hint}</p>
         </div>
 
-        {/* Current mentor preview (if any) */}
         {currentMentor && (
           <div className="px-3 sm:px-4 py-3 border-b border-k3-border-subtle bg-k3-base">
             <div className="flex items-center gap-2 sm:gap-3">
-              <img 
-                src={currentMentor.img} 
+              <img
+                src={currentMentor.img}
                 alt={currentMentor.name}
                 className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg object-cover border border-k3-border-subtle flex-shrink-0"
               />
@@ -114,12 +110,11 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
           </div>
         )}
 
-        {/* Filters - stack on mobile */}
         <div className="flex flex-col sm:flex-row gap-2 px-3 sm:px-4 py-2 border-b border-k3-border-subtle">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-k3-text-tertiary" size={16} />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder={t.search}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -133,8 +128,8 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
                 key={attr}
                 onClick={() => setAttrFilter(attr)}
                 className={`px-3 sm:px-2.5 py-2 sm:py-1.5 rounded-sm text-[11px] sm:text-[10px] font-medium uppercase transition-colors min-h-[36px] min-w-[44px] flex-shrink-0 touch-manipulation ${
-                  attrFilter === attr 
-                    ? 'bg-k3-text-primary text-k3-base' 
+                  attrFilter === attr
+                    ? 'bg-k3-text-primary text-k3-base'
                     : 'text-k3-text-tertiary hover:text-k3-text-secondary hover:bg-k3-elevated'
                 }`}
               >
@@ -143,8 +138,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
             ))}
           </div>
         </div>
-        
-        {/* Hero Grid - Single select, responsive columns */}
+
         <div className="flex-1 overflow-y-auto p-2 sm:p-3 custom-scrollbar">
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-k3-text-tertiary text-sm">
@@ -156,17 +150,17 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
               {filteredHeroes.map(hero => {
                 const isCurrentMentor = currentMentor?.id === hero.id;
                 return (
-                  <button 
-                    key={hero.id} 
+                  <button
+                    key={hero.id}
                     className={`relative group aspect-[3/4] rounded-sm overflow-hidden transition-all border touch-manipulation ${
-                      isCurrentMentor 
-                        ? 'border-k3-text-primary ring-1 ring-k3-text-primary' 
+                      isCurrentMentor
+                        ? 'border-k3-text-primary ring-1 ring-k3-text-primary'
                         : 'border-transparent hover:border-k3-text-tertiary active:scale-95 sm:hover:scale-105'
                     }`}
                     onClick={() => handleSelect(hero)}
                   >
-                    <img 
-                      src={hero.img} 
+                    <img
+                      src={hero.img}
                       alt={hero.name}
                       className="w-full h-full object-cover"
                       loading="lazy"
