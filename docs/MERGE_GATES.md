@@ -77,16 +77,16 @@ This page is the source of truth for merge policy.
 1. PR 打开、非 draft、base 为 `main`
 2. 没有 `no-auto-merge` label
 3. head SHA 上必须有一条**成功的 `Build & Test` check run**（或同名 CI）。没有这条 check run → **fail closed**，不用 legacy combined status 凑合
-4. 相关 check 已完成且未失败（忽略 Custom LLM Review、以及 Auto Merge 自己的 check 名）。同一 check 名只看**最新一次尝试**（含尚未 `started_at` 的 queued 重跑，用 `created_at` 区分），避免旧成功盖住新排队
-5. 若 head 上存在 `copilot-pull-request-reviewer`，必须 **`conclusion: success`**（`skipped` / `neutral` 不算过）
-6. 若 head 上存在 **`Codex Review Gate`**（这是 **job / check-run 名**，不是 workflow 展示名），必须 **`conclusion: success`**（`skipped` / `neutral` 不算过）
+4. 相关 check 已完成且未失败（忽略 Custom LLM Review、以及 Auto Merge 自己的 check 名）。同一 check 名只看**最新一次尝试**，按 **`created_at`** 排名（`id` 平局打破），不用 `completed_at`（旧 run 后结束不能盖住新失败）
+5. head 上必须有 `copilot-pull-request-reviewer`，且 **`conclusion: success`**（缺失 / `skipped` / `neutral` 都不合）
+6. head 上必须有 **`Codex Review Gate`**（这是 **job / check-run 名**，不是 workflow 展示名），且 **`conclusion: success`**（缺失 / `skipped` / `neutral` 都不合）
 7. 该 head SHA 上**已有** Copilot review，且**不是** `CHANGES_REQUESTED`
    - **`APPROVED` 或 `COMMENTED` 都可以。不要求原生 `APPROVED`。**
    - **没有 Copilot review 不会自动合。**
    - **#33 的硬门槛：** 有 review（即使是 `COMMENTED`）但还有未解决行内线程 → 不合。靠第 8 条挡。
 8. GraphQL `reviewThreads` 全部 `isResolved: true`（解析失败且仍有 review comments 时 fail-closed）
 
-`workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。触发源：CI 成功、`Codex Review Gate` 成功后 **`workflow_dispatch` Auto Merge**（`GITHUB_TOKEN` 的 `check_run` 不会再拉起工作流；`issue_comment` 跑在 default branch 上，`workflow_run.pull_requests` 常为空）、Copilot 提交 review、或手动 `workflow_dispatch`。`pulls.merge` 带已评估的 **head SHA**，head 变了就拒绝合入。
+`workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。触发源：CI 成功、`Codex Review Gate` 成功后的 **`workflow_dispatch`**（dispatch 失败则 Gate 记 failure，不发绿勾）、`workflow_run`（Codex Gate / CI）、Copilot 提交 review、或手动 `workflow_dispatch`。没有 `check_run` 触发。`pulls.merge` 带已评估的 **head SHA**，head 变了就拒绝合入。
 
 线程被点 Resolve 后 GitHub **不会**再触发 auto-merge。到 Actions 对 **Auto Merge** 跑一次 `workflow_dispatch`。
 

@@ -12,11 +12,11 @@
 #   - Relevant checks are completed and not failed (ignore Custom LLM Review
 #     and this workflow's own check name). Do NOT ignore Codex Review Gate.
 #     Multiple runs of the same check name: only the latest attempt counts.
-#   - If check "copilot-pull-request-reviewer" exists on the head SHA, it
-#     must have completed with conclusion success (not skipped/neutral)
-#   - If check "Codex Review Gate" (job name, not a workflow title) exists
-#     on the head SHA, it must have completed with conclusion success
-#     (not skipped/neutral)
+#   - Check "copilot-pull-request-reviewer" must exist on the head SHA
+#     and complete with conclusion success (missing / skipped / neutral skip)
+#   - Check "Codex Review Gate" (job name, not a workflow title) must exist
+#     on the head SHA and complete with conclusion success
+#     (missing / skipped / neutral skip)
 #   - Latest Copilot review for the head SHA exists and is APPROVED or
 #     COMMENTED (not CHANGES_REQUESTED; missing review does not merge)
 #   - GraphQL reviewThreads: every thread isResolved (REST fallback:
@@ -26,8 +26,8 @@
 # checks, missing Copilot review, CHANGES_REQUESTED, unresolved threads.
 #
 # Re-evaluates when CI succeeds, when Copilot submits a review, when
-# Codex Review Gate succeeds (workflow_run or the head-SHA check_run from
-# checks.create on issue_comment / review), or dispatch.
+# Codex Review Gate succeeds (workflow_run, or workflow_dispatch from
+# that workflow), or manual dispatch.
 # Note: workflow_run only runs from the default branch once this file is merged.
 # After resolving threads, re-run this workflow (workflow_dispatch) —
 # thread resolution does not emit a workflow event.
@@ -37,8 +37,6 @@ name: Auto Merge
 on:
   workflow_run:
     workflows: ["CI", "Codex Review Gate"]
-    types: [completed]
-  check_run:
     types: [completed]
   pull_request_review:
     types: [submitted]
@@ -50,7 +48,7 @@ on:
         type: string
 
 concurrency:
-  group: auto-merge-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.event.check_run.pull_requests[0].number || github.event.check_run.head_sha || github.event.workflow_run.head_branch || github.run_id }}
+  group: auto-merge-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.event.workflow_run.head_branch || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -69,9 +67,6 @@ jobs:
         github.event.workflow_run.conclusion == 'success' &&
         (github.event.workflow_run.event == 'pull_request' ||
           github.event.workflow_run.name == 'Codex Review Gate')) ||
-      (github.event_name == 'check_run' &&
-        github.event.check_run.name == 'Codex Review Gate' &&
-        github.event.check_run.conclusion == 'success') ||
       (github.event_name == 'pull_request_review' &&
         contains(fromJSON('["approved", "commented"]'), github.event.review.state) &&
         contains(fromJSON('["copilot-pull-request-reviewer[bot]", "copilot-pull-request-reviewer"]'), github.event.review.user.login))
@@ -101,10 +96,10 @@ jobs:
               return /build\s*&\s*test/i.test(name) || /^ci$/i.test(name) || /build-and-test/i.test(name);
             }
 
-            // Queued re-runs have started_at/completed_at null until they begin.
-            // Fall back to created_at so a newer queued attempt beats an older success.
+            // Rank by created_at (not completed_at): an older run can finish
+            // after a newer attempt and must not mask the newer result.
             function checkRunTime(c) {
-              const t = c.completed_at || c.started_at || c.created_at || '';
+              const t = c.created_at || '';
               return t ? new Date(t).getTime() : 0;
             }
 
@@ -137,15 +132,6 @@ jobs:
               return { ok: false, reason: state };
             }
 
-            function pickPrNumberForSha(prs, sha) {
-              const list = prs || [];
-              const exact = list.filter((p) => p.head?.sha === sha);
-              const openMain = exact.find((p) => p.state === 'open' && p.base?.ref === 'main');
-              if (openMain) return openMain.number;
-              const open = exact.find((p) => p.state === 'open');
-              return open?.number ?? exact[0]?.number ?? null;
-            }
-
             async function findPrNumber() {
               if (context.eventName === 'pull_request_review') {
                 return context.payload.pull_request.number;
@@ -157,21 +143,6 @@ jobs:
                   throw new Error(`Invalid workflow_dispatch pr_number: ${JSON.stringify(raw)}`);
                 }
                 return n;
-              }
-              if (context.eventName === 'check_run') {
-                const sha = context.payload.check_run.head_sha;
-                const fromPayload = pickPrNumberForSha(
-                  context.payload.check_run.pull_requests,
-                  sha
-                );
-                if (fromPayload) return fromPayload;
-                if (!sha) return null;
-                const { data } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                  owner,
-                  repo,
-                  commit_sha: sha,
-                });
-                return pickPrNumberForSha(data, sha);
               }
               const run = context.payload.workflow_run;
               // Codex Gate often originates from issue_comment; pull_requests is empty.
@@ -300,10 +271,12 @@ jobs:
               return;
             }
 
-            // Named gates must be a real success. skipped/neutral is fail-open
-            // (conditional jobs never actually reviewed this SHA).
+            // Required named gates: missing is fail-closed (not optional).
             function requireNamedCheck(checks, label) {
-              if (checks.length === 0) return true;
+              if (checks.length === 0) {
+                core.info(`${label} missing on head SHA — skip`);
+                return false;
+              }
               const pending = checks.filter((c) => c.status !== 'completed');
               const bad = checks.filter(
                 (c) => c.status === 'completed' && c.conclusion !== 'success'

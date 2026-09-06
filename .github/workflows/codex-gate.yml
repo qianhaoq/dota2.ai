@@ -212,18 +212,26 @@ jobs:
             // workflow_dispatch is the documented exception. issue_comment runs
             // on default branch, so workflow_run.pull_requests is empty.
             async function dispatchAutoMerge(prNumber) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id: 'auto-merge.yml',
+                ref: context.payload.repository?.default_branch || 'main',
+                inputs: { pr_number: String(prNumber) },
+              });
+              core.info(`Dispatched Auto Merge for PR #${prNumber}`);
+            }
+
+            async function reportSuccessAndDispatch(sha, title, summary, prNumber) {
               try {
-                await github.rest.actions.createWorkflowDispatch({
-                  owner,
-                  repo,
-                  workflow_id: 'auto-merge.yml',
-                  ref: context.payload.repository?.default_branch || 'main',
-                  inputs: { pr_number: String(prNumber) },
-                });
-                core.info(`Dispatched Auto Merge for PR #${prNumber}`);
+                await dispatchAutoMerge(prNumber);
               } catch (err) {
-                core.warning(`Could not dispatch Auto Merge: ${err.message}`);
+                const msg = `Auto Merge dispatch failed: ${err.message}`;
+                await reportOnHeadSha(sha, 'failure', 'Auto Merge dispatch failed', msg);
+                core.setFailed(msg);
+                return;
               }
+              await reportOnHeadSha(sha, 'success', title, summary);
             }
 
             const prNumber = await resolvePrNumber();
@@ -241,8 +249,7 @@ jobs:
 
             if (pr.labels.some((l) => l.name === 'skip-codex-gate')) {
               core.info(`PR #${prNumber}: skip-codex-gate — passing`);
-              await reportOnHeadSha(sha, 'success', 'Skipped', 'skip-codex-gate label present');
-              await dispatchAutoMerge(prNumber);
+              await reportSuccessAndDispatch(sha, 'Skipped', 'skip-codex-gate label present', prNumber);
               return;
             }
 
@@ -344,5 +351,4 @@ jobs:
 
             const ok = `Codex review finished for ${sha.slice(0, 7)} with no unresolved Codex threads`;
             core.info(ok);
-            await reportOnHeadSha(sha, 'success', 'Codex clear', ok);
-            await dispatchAutoMerge(prNumber);
+            await reportSuccessAndDispatch(sha, 'Codex clear', ok, prNumber);
