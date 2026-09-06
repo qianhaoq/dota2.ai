@@ -106,7 +106,7 @@ Branch name pattern: main
 ✅ Require conversation resolution before merging
 ```
 
-个人私有仓库：**Ruleset 不 enforce**，用上面的经典 Branch protection。完整清单见 [`MERGE_GATES.md`](MERGE_GATES.md)。
+个人私有仓库：**Ruleset 不 enforce**，用上面的经典 Branch protection。同一组 check 也写进 Ruleset，升 Team / Organization 后才会真正生效。完整清单见 [`MERGE_GATES.md`](MERGE_GATES.md)。
 
 ### 说明
 

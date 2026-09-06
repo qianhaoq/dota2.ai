@@ -15,10 +15,13 @@ This page is the source of truth for merge policy.
 1. **不要指望 Ruleset 挡合并。** 它看起来开着，Merge 按钮和 API 仍可能放行。
 2. **对 `main` 用经典 Branch protection**（Settings → Branches → Add rule），而不是只配 Ruleset。
 3. 经典保护才能把下面的 **status checks** 变成硬门槛（需要账号具备 Branch protection 权限；私有仓库通常要 GitHub Pro）。
+4. **仍然把同一套 check 写进 Ruleset**（Settings → Rules → Rulesets），以便升到 Team / Organization 后 enforce 立刻生效。现在 Ruleset 是预备，不是硬门槛。
 
 ---
 
 ## 人类必须打开的 `main` 保护 | Required protection on `main`
+
+两处都要勾同一组 check。今天真正挡合并的是经典 Branch protection；Ruleset 留给升 Team 之后。
 
 **Settings → Branches → Branch protection rule**（pattern: `main`）：
 
@@ -32,6 +35,13 @@ This page is the source of truth for merge policy.
 | （可选）**Dismiss stale pull request approvals when new commits are pushed** | 新 push 后旧 APPROVED 作废 |
 
 **Copilot 的 required check 不覆盖 Codex。** `copilot-pull-request-reviewer` 只反映 Copilot。Codex（`chatgpt-codex-connector[bot]`）从不注册那个 check。
+
+**Settings → Rules → Rulesets**（升 Team 后才会 enforce；现在也建议配好）：
+
+- Target: branch `main`
+- Require status checks: **`Build & Test`**、**`copilot-pull-request-reviewer`**、**`Codex Review Gate`**
+- Require conversation resolution before merging
+- （可选）Dismiss stale reviews
 
 不要把 **Custom LLM Review** 或 `ai-review.yml` 里的 **Copilot Review**（只负责 *request* 审查）设为必需。
 
