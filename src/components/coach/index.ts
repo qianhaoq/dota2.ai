@@ -5,3 +5,7 @@ export { default as ChatMessage } from './ChatMessage';
 export { default as IntentChips } from './IntentChips';
 export { default as TypingIndicator } from './TypingIndicator';
 export { default as WelcomeState } from './WelcomeState';
+export { default as MentorStage } from './MentorStage';
+export { default as MentorPicker } from './MentorPicker';
+export { default as LessonRail } from './LessonRail';
+export type { LessonMode } from './MentorStage';

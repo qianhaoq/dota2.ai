@@ -18,8 +18,11 @@ import {
   HeroPickerOverlay, 
   ChatMessage, 
   IntentChips, 
-  WelcomeState 
+  MentorStage,
+  MentorPicker,
+  LessonRail,
 } from './coach';
+import type { LessonMode } from './coach';
 
 interface CoachViewProps {
   lang: Language;
@@ -29,6 +32,7 @@ interface CoachMessage {
   id: string;
   type: 'user' | 'coach';
   action?: 'analyze' | 'playbook' | 'suggest' | 'meta';
+  lesson?: LessonMode;
   content: string;
   isStreaming?: boolean;
   grounded?: boolean;
@@ -42,6 +46,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const [allHeroes, setAllHeroes] = useState<Hero[]>([]);
   const [isHeroesLoading, setIsHeroesLoading] = useState(true);
   
+  const [mentor, setMentor] = useState<Hero | null>(null);
+  const [lesson, setLesson] = useState<LessonMode>('mind');
+  
   const [draft, setDraft] = useState<DraftState>({ radiant: [], dire: [] });
   const [selectionSide, setSelectionSide] = useState<'radiant' | 'dire'>('radiant');
   
@@ -53,6 +60,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   
+  const [showMentorPicker, setShowMentorPicker] = useState(false);
   const [showHeroPicker, setShowHeroPicker] = useState(false);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [detailHeroId, setDetailHeroId] = useState<number | null>(null);
@@ -148,12 +156,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     setIsLoading(true);
 
     const userMsg = userInput.trim() || (lang === 'zh' ? '分析当前阵容' : 'Analyze current lineup');
-    addCoachMessage({ type: 'user', action: 'analyze', content: userMsg });
+    addCoachMessage({ type: 'user', action: 'analyze', lesson, content: userMsg });
     setUserInput('');
 
     const msgId = addCoachMessage({ 
       type: 'coach', 
       action: 'analyze',
+      lesson,
       content: '', 
       isStreaming: true 
     });
@@ -187,7 +196,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         }
       }
     );
-  }, [draft, lang, userInput, addCoachMessage, updateCoachMessage, cancelStream, t]);
+  }, [draft, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, t]);
 
   const handlePlaybook = useCallback(() => {
     const allies = selectionSide === 'radiant' ? draft.radiant : draft.dire;
@@ -204,12 +213,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     addCoachMessage({ 
       type: 'user', 
       action: 'playbook',
+      lesson: 'match',
       content: lang === 'zh' ? '本局怎么打？' : 'How should we play this game?' 
     });
 
     const msgId = addCoachMessage({ 
       type: 'coach', 
       action: 'playbook',
+      lesson: 'match',
       content: '', 
       isStreaming: true,
       playbookData: []
@@ -260,6 +271,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     addCoachMessage({ 
       type: 'user', 
       action: 'suggest',
+      lesson: 'bp',
       content: lang === 'zh' ? '推荐下一手选什么？' : 'What should we pick next?' 
     });
 
@@ -268,6 +280,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       addCoachMessage({ 
         type: 'coach', 
         action: 'suggest',
+        lesson: 'bp',
         content: suggestions.length > 0 
           ? (lang === 'zh' ? '根据对位数据，推荐以下英雄：' : 'Based on matchup data, I recommend:')
           : (lang === 'zh' ? '暂无推荐，请先选择敌方英雄' : 'No recommendations yet, select enemy heroes first'),
@@ -332,16 +345,17 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         className="flex-1 overflow-y-auto custom-scrollbar relative"
       >
         {messages.length === 0 ? (
-          <WelcomeState 
-            lang={lang} 
-            hasHeroes={hasHeroes}
+          <MentorStage
+            lang={lang}
+            mentor={mentor}
+            lesson={lesson}
+            onLessonChange={setLesson}
             draft={draft}
             selectionSide={selectionSide}
-            onOpenPicker={() => setShowHeroPicker(true)}
+            onOpenMentorPicker={() => setShowMentorPicker(true)}
+            onOpenDraftPicker={() => setShowHeroPicker(true)}
             onHeroDetail={setDetailHeroId}
             isLoading={isLoading}
-            hasAllies={hasAllies}
-            alliesFull={alliesFull}
             onAnalyze={handleAnalyze}
             onPlaybook={handlePlaybook}
             onSuggest={handleSuggest}
@@ -353,6 +367,35 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           />
         ) : (
           <div className="max-w-3xl mx-auto w-full px-6 py-4">
+            {/* Mentor Context Bar - pinned at top of conversation */}
+            {mentor && (
+              <div className="flex items-center justify-between py-3 mb-4 border-b border-k3-border-subtle sticky top-0 bg-k3-base z-10">
+                <div className="flex items-center gap-3">
+                  <img 
+                    src={mentor.icon || mentor.img} 
+                    alt={mentor.name}
+                    className="w-8 h-8 rounded-lg object-cover"
+                  />
+                  <span className="text-sm text-k3-text-primary font-medium">
+                    {lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name}
+                  </span>
+                  <span className="text-xs text-k3-text-tertiary">·</span>
+                  <LessonRail
+                    lang={lang}
+                    currentLesson={lesson}
+                    onLessonChange={setLesson}
+                    isLoading={isLoading}
+                    compact
+                  />
+                </div>
+                <button
+                  onClick={() => setShowMentorPicker(true)}
+                  className="text-xs text-k3-text-tertiary hover:text-k3-text-secondary transition-colors"
+                >
+                  {lang === 'zh' ? '换导师' : 'Change mentor'}
+                </button>
+              </div>
+            )}
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
@@ -360,6 +403,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                 lang={lang}
                 allHeroes={allHeroes}
                 onSelectHero={handleHeroSelect}
+                mentor={mentor}
               />
             ))}
             <div ref={messagesEndRef} />
@@ -393,21 +437,37 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
               />
             </div>
 
-            {/* Plain text suggestions */}
-            <div className="mb-3">
-              <IntentChips
-                lang={lang}
-                isLoading={isLoading}
-                hasHeroes={hasHeroes}
-                hasAllies={hasAllies}
-                alliesFull={alliesFull}
-                selectionSide={selectionSide}
-                onAnalyze={handleAnalyze}
-                onPlaybook={handlePlaybook}
-                onSuggest={handleSuggest}
-                onMeta={handleMeta}
-                onCancel={cancelStream}
-              />
+            {/* Lesson actions or streaming controls */}
+            <div className="mb-3 flex items-center gap-3">
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-k3-text-secondary">
+                    {mentor 
+                      ? (lang === 'zh' ? `${mentor.nameZh || mentor.name}在看数据` : `${mentor.name} is reading the numbers`)
+                      : (lang === 'zh' ? '分析中...' : 'Analyzing...')}
+                  </span>
+                  <button
+                    onClick={cancelStream}
+                    className="px-3 py-1.5 text-sm bg-k3-primary-bg text-k3-primary-text rounded-lg hover:bg-white transition-colors"
+                  >
+                    {lang === 'zh' ? '停止' : 'Stop'}
+                  </button>
+                </div>
+              ) : (
+                <IntentChips
+                  lang={lang}
+                  isLoading={isLoading}
+                  hasHeroes={hasHeroes}
+                  hasAllies={hasAllies}
+                  alliesFull={alliesFull}
+                  selectionSide={selectionSide}
+                  onAnalyze={handleAnalyze}
+                  onPlaybook={handlePlaybook}
+                  onSuggest={handleSuggest}
+                  onMeta={handleMeta}
+                  onCancel={cancelStream}
+                />
+              )}
             </div>
 
             {/* Input Field - Unified container with embedded send button */}
@@ -417,7 +477,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                   type="text"
                   value={userInput}
                   onChange={(e) => setUserInput(e.target.value)}
-                  placeholder={t.inputPlaceholder}
+                  placeholder={mentor 
+                    ? (lang === 'zh' ? `问${mentor.nameZh || mentor.name}一个问题...` : `Ask ${mentor.name} a question...`)
+                    : t.inputPlaceholder}
                   disabled={isLoading}
                   className="flex-1 bg-transparent px-4 py-3 pr-14 text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
                 />
@@ -438,7 +500,25 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         </div>
       )}
 
-      {/* Hero Picker Overlay - Fixed fullscreen with dim backdrop */}
+      {/* Mentor Picker Overlay - Single select mentor */}
+      <MentorPicker
+        lang={lang}
+        isOpen={showMentorPicker}
+        onClose={() => setShowMentorPicker(false)}
+        allHeroes={allHeroes}
+        isLoading={isHeroesLoading}
+        currentMentor={mentor}
+        onSelectMentor={(hero) => {
+          setMentor(hero);
+          setMessages([]);
+        }}
+        onDismissMentor={() => {
+          setMentor(null);
+          setMessages([]);
+        }}
+      />
+
+      {/* Hero Picker Overlay - For draft context (radiant/dire) */}
       <HeroPickerOverlay
         lang={lang}
         isOpen={showHeroPicker}
