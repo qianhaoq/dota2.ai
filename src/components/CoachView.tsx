@@ -12,6 +12,7 @@ import {
   PlaybookHero
 } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
+import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
 import { Send, X, ChevronDown } from 'lucide-react';
 import {
   DraftContextChip,
@@ -137,19 +138,29 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     }
   }, []);
 
+  const coaching = useMemo(
+    () => resolveCoachingLineup(draft, selectionSide, practiceHero),
+    [draft, selectionSide, practiceHero]
+  );
+
   const handleAnalyze = useCallback(() => {
-    if (draft.radiant.length === 0 && draft.dire.length === 0) {
+    if (coaching.radiant.length === 0 && coaching.dire.length === 0) {
       addCoachMessage({ type: 'coach', content: t.needHeroes });
       return;
     }
     cancelStream();
     setIsLoading(true);
-    const userMsg = userInput.trim() || (lang === 'zh' ? '分析当前阵容' : 'Analyze current lineup');
+    const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
+    const defaultMsg = practiceName
+      ? (lang === 'zh' ? `分析练习英雄 ${practiceName}` : `Analyze practice hero ${practiceName}`)
+      : (lang === 'zh' ? '分析当前阵容' : 'Analyze current lineup');
+    const userMsg = userInput.trim() || defaultMsg;
+    const userContext = buildPracticeUserContext(practiceHero, lang, userMsg);
     addCoachMessage({ type: 'user', action: 'analyze', lesson, content: userMsg });
     setUserInput('');
     const msgId = addCoachMessage({ type: 'coach', action: 'analyze', lesson, content: '', isStreaming: true });
     streamControllerRef.current = analyzeDraftStream(
-      draft.radiant, draft.dire, lang, userMsg,
+      coaching.radiant, coaching.dire, lang, userContext,
       {
         onChunk: (text) => {
           setMessages(prev => prev.map(msg => msg.id === msgId ? { ...msg, content: msg.content + text } : msg));
@@ -167,21 +178,23 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         }
       }
     );
-  }, [draft, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, t]);
+  }, [coaching, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, t]);
 
   const handlePlaybook = useCallback(() => {
-    const allies = selectionSide === 'radiant' ? draft.radiant : draft.dire;
-    const enemies = selectionSide === 'radiant' ? draft.dire : draft.radiant;
-    if (allies.length === 0) {
+    if (coaching.allies.length === 0) {
       addCoachMessage({ type: 'coach', content: t.needAllies });
       return;
     }
     cancelStream();
     setIsLoading(true);
-    addCoachMessage({ type: 'user', action: 'playbook', lesson: 'match', content: lang === 'zh' ? '本局怎么打？' : 'How should we play this game?' });
+    const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
+    const playbookMsg = practiceName
+      ? (lang === 'zh' ? `本局怎么打${practiceName}？` : `How should we play ${practiceName} this game?`)
+      : (lang === 'zh' ? '本局怎么打？' : 'How should we play this game?');
+    addCoachMessage({ type: 'user', action: 'playbook', lesson: 'match', content: playbookMsg });
     const msgId = addCoachMessage({ type: 'coach', action: 'playbook', lesson: 'match', content: '', isStreaming: true, playbookData: [] });
     streamControllerRef.current = fetchPlaybookStream(
-      allies, enemies, selectionSide, lang, undefined,
+      coaching.allies, coaching.enemies, selectionSide, lang, coaching.focusHeroId,
       {
         onData: (data) => { updateCoachMessage(msgId, { playbookData: data }); },
         onChunk: (text) => {
@@ -199,19 +212,21 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         }
       }
     );
-  }, [draft, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, t]);
+  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, t]);
 
   const handleSuggest = useCallback(async () => {
-    const allies = selectionSide === 'radiant' ? draft.radiant : draft.dire;
-    const enemies = selectionSide === 'radiant' ? draft.dire : draft.radiant;
-    if (allies.length >= 5) {
+    if (coaching.allies.length >= 5) {
       addCoachMessage({ type: 'coach', content: lang === 'zh' ? '阵容已满' : 'Lineup is full' });
       return;
     }
     setIsLoading(true);
-    addCoachMessage({ type: 'user', action: 'suggest', lesson: 'bp', content: lang === 'zh' ? '推荐下一手选什么？' : 'What should we pick next?' });
+    const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
+    const suggestMsg = practiceName
+      ? (lang === 'zh' ? `围绕${practiceName}，推荐下一手选什么？` : `Around ${practiceName}, what should we pick next?`)
+      : (lang === 'zh' ? '推荐下一手选什么？' : 'What should we pick next?');
+    addCoachMessage({ type: 'user', action: 'suggest', lesson: 'bp', content: suggestMsg });
     try {
-      const suggestions = await fetchSuggestions(allies, enemies, selectionSide, undefined, lang);
+      const suggestions = await fetchSuggestions(coaching.allies, coaching.enemies, selectionSide, undefined, lang);
       addCoachMessage({
         type: 'coach', action: 'suggest', lesson: 'bp',
         content: suggestions.length > 0
@@ -223,7 +238,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       addCoachMessage({ type: 'coach', content: `Error: ${error}` });
     }
     setIsLoading(false);
-  }, [draft, selectionSide, lang, addCoachMessage]);
+  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage]);
 
   const handleMeta = useCallback(async () => {
     setIsLoading(true);
@@ -265,9 +280,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     }
   }, [handleAnalyze, handlePlaybook]);
 
-  const hasHeroes = draft.radiant.length > 0 || draft.dire.length > 0;
-  const hasAllies = selectionSide === 'radiant' ? draft.radiant.length > 0 : draft.dire.length > 0;
-  const alliesFull = selectionSide === 'radiant' ? draft.radiant.length >= 5 : draft.dire.length >= 5;
+  const hasHeroes = coaching.radiant.length > 0 || coaching.dire.length > 0;
+  const hasAllies = coaching.allies.length > 0;
+  const alliesFull = coaching.allies.length >= 5;
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-k3-base overflow-hidden">
@@ -304,6 +319,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                   <span className="text-xs sm:text-sm text-k3-text-primary font-medium whitespace-nowrap">
                     {lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name}
                   </span>
+                  {practiceHero && (
+                    <>
+                      <span className="text-xs text-k3-text-tertiary hidden xs:inline">·</span>
+                      <span className="text-xs text-k3-text-secondary whitespace-nowrap">
+                        {lang === 'zh' ? '练习' : 'Practice'} {heroDisplayName(practiceHero, lang)}
+                      </span>
+                    </>
+                  )}
                   <span className="text-xs text-k3-text-tertiary hidden xs:inline">·</span>
                   <div className="hidden xs:block">
                     <LessonRail lang={lang} currentLesson={lesson} onLessonChange={handleLessonAction} isLoading={isLoading} compact />

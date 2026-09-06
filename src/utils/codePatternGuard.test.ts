@@ -32,6 +32,16 @@ describe('CoachView streaming code patterns (regression guard)', () => {
     
     expect(hasFunctionalPattern).toBe(true);
   });
+
+  it('wires practiceHero into analyze/playbook/suggest via existing request fields', () => {
+    const content = readFileSync(coachViewPath, 'utf-8');
+
+    expect(content).toContain('resolveCoachingLineup');
+    expect(content).toContain('buildPracticeUserContext');
+    expect(content).toMatch(/analyzeDraftStream\(\s*coaching\.radiant,\s*coaching\.dire/);
+    expect(content).toMatch(/fetchPlaybookStream\(\s*coaching\.allies,\s*coaching\.enemies[\s\S]*coaching\.focusHeroId/);
+    expect(content).toMatch(/fetchSuggestions\(\s*coaching\.allies,\s*coaching\.enemies/);
+  });
 });
 
 describe('Stream callback patterns across codebase', () => {
