@@ -38,6 +38,7 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
     reset: lang === 'zh' ? '重置' : 'Reset',
     all: lang === 'zh' ? '全部' : 'All',
     selectingFor: lang === 'zh' ? '正在为' : 'Picking for',
+    close: lang === 'zh' ? '关闭' : 'Close',
   };
 
   const pickedIds = useMemo(() => 
@@ -79,14 +80,18 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
             <h2 className="font-semibold text-k3-text-primary text-sm sm:text-base truncate">{t.title}</h2>
             <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
               <button
+                type="button"
                 onClick={onReset}
                 className="p-2.5 sm:p-2 text-k3-text-tertiary hover:text-k3-text-primary hover:bg-k3-elevated rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
                 title={t.reset}
+                aria-label={t.reset}
               >
                 <RotateCcw size={18} className="sm:w-4 sm:h-4" />
               </button>
               <button
+                type="button"
                 onClick={onClose}
+                aria-label={t.close}
                 className="p-2.5 sm:p-2 text-k3-text-tertiary hover:text-k3-text-primary hover:bg-k3-elevated rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
               >
                 <X size={20} className="sm:w-[18px] sm:h-[18px]" />

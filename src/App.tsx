@@ -76,6 +76,7 @@ const App: React.FC = () => {
             <button
               onClick={toggleLang}
               className="btn-ghost flex items-center gap-1 px-2 py-1.5 min-h-[40px] min-w-[40px] justify-center text-xs transition-colors touch-manipulation"
+              aria-label={lang === 'zh' ? '切换语言' : 'Switch language'}
             >
               <Globe size={14} />
               <span className="hidden sm:inline">{lang === 'en' ? 'EN' : '中'}</span>

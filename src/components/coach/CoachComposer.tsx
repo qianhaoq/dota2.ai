@@ -26,6 +26,7 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
   const t = useMemo(() => ({
     composer: lang === 'zh' ? '直接问拉比克…' : 'Ask Rubick…',
     keyboardHint: lang === 'zh' ? '聚焦输入' : 'to focus',
+    send: lang === 'zh' ? '发送' : 'Send',
     stop: lang === 'zh' ? '停止' : 'Stop',
     reading: mentorName
       ? (lang === 'zh' ? `${mentorName}在看数据…` : `${mentorName} is reading the numbers…`)
@@ -75,6 +76,7 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
             <button
               type="submit"
               disabled={!canSend}
+              aria-label={t.send}
               className={`absolute right-2 w-10 h-10 flex items-center justify-center rounded-full transition-all touch-manipulation ${
                 canSend
                   ? 'bg-k3-primary-bg hover:bg-white active:bg-white text-k3-primary-text cursor-pointer'

@@ -36,6 +36,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
     all: lang === 'zh' ? '全部' : 'All',
     currentMentor: lang === 'zh' ? '当前练习' : 'Practicing',
     selectHim: lang === 'zh' ? '跟拉比克练这个' : 'Drill this with Rubick',
+    close: lang === 'zh' ? '关闭' : 'Close',
   }), [lang]);
 
   const filteredHeroes = useMemo(() => {
@@ -73,7 +74,9 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
           <div className="flex items-center justify-between mb-1 sm:mb-2">
             <h2 className="font-semibold text-k3-text-primary text-base sm:text-lg">{t.title}</h2>
             <button
+              type="button"
               onClick={onClose}
+              aria-label={t.close}
               className="p-2.5 sm:p-2 text-k3-text-tertiary hover:text-k3-text-primary hover:bg-k3-elevated rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
             >
               <X size={20} className="sm:w-[18px] sm:h-[18px]" />
