@@ -155,7 +155,7 @@ jobs:
                         reviewThreads(first: 100, after: $after) {
                           nodes {
                             isResolved
-                            comments(first: 1) {
+                            comments(first: 100) {
                               nodes { author { login } }
                             }
                           }
@@ -169,8 +169,13 @@ jobs:
                 const conn = result.repository?.pullRequest?.reviewThreads;
                 if (!conn) throw new Error('GraphQL returned no reviewThreads');
                 for (const thread of conn.nodes) {
-                  const login = thread.comments?.nodes?.[0]?.author?.login || '';
-                  if (!thread.isResolved && isCodexLogin(login)) unresolved += 1;
+                  if (thread.isResolved) continue;
+                  // Codex may reply in a human-started thread; do not only
+                  // look at comments(first: 1).
+                  const hasCodex = (thread.comments?.nodes || []).some((c) =>
+                    isCodexLogin(c.author?.login)
+                  );
+                  if (hasCodex) unresolved += 1;
                 }
                 hasNextPage = conn.pageInfo.hasNextPage;
                 after = conn.pageInfo.endCursor;
