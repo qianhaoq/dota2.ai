@@ -222,16 +222,23 @@ jobs:
               core.info(`Dispatched Auto Merge for PR #${prNumber}`);
             }
 
-            // Publish success first so Auto Merge's requireNamedCheck can see
-            // a green Codex Review Gate. GITHUB_TOKEN checks.create does not
-            // start other workflows — dispatch is still required. If dispatch
-            // fails, replace the success with a newer failure check.
+            // Non-pull_request events create the check run here: publish
+            // success first so Auto Merge's requireNamedCheck can see a
+            // green Codex Review Gate. pull_request jobs already attach
+            // this check name — reportOnHeadSha is a no-op there, and
+            // dispatch failure uses core.setFailed. GITHUB_TOKEN
+            // checks.create does not start other workflows — dispatch is
+            // still required. If a synthetic success was published and
+            // dispatch fails, replace it with a newer failure check.
             async function reportSuccessAndDispatch(sha, title, summary, prNumber) {
               await reportOnHeadSha(sha, 'success', title, summary);
               try {
                 await dispatchAutoMerge(prNumber);
               } catch (err) {
-                const msg = `Auto Merge dispatch failed: ${err.message}`;
+                const detail = err instanceof Error
+                  ? err.message
+                  : (typeof err === 'string' ? err : String(err));
+                const msg = `Auto Merge dispatch failed: ${detail}`;
                 await reportOnHeadSha(sha, 'failure', 'Auto Merge dispatch failed', msg);
                 core.setFailed(msg);
               }
