@@ -33,7 +33,7 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
 
 ## Merge policy
 
-Human merge is **optional** only when every auto-merge gate passes. Copilot code review submits `COMMENTED`, not `APPROVED`. `.github/workflows/auto-merge.yml` squash-merges into `main` only if CI (Build & Test) is green, the latest Copilot review for the **head SHA** is completed and not a closer-look / changes-recommended / `CHANGES_REQUESTED` result, and all review threads are resolved. Codex is gated by the **`Codex Review Gate`** check (`.github/workflows/codex-gate.yml`), not by Copilot. To block auto-merge, add label `no-auto-merge` or keep the PR as draft. See `docs/MERGE_GATES.md`.
+Human merge is **optional** only when every auto-merge gate passes. Copilot often submits `COMMENTED`, not `APPROVED` — do not require `APPROVED`. `.github/workflows/auto-merge.yml` squash-merges into `main` only if CI (Build & Test) is green, the latest Copilot review for the **head SHA** exists and is not `CHANGES_REQUESTED`, and **all review threads are resolved** (this is the #33 hard stop: COMMENTED + open threads must not merge). Missing Copilot review does not auto-merge. Codex is gated by the job/check name **`Codex Review Gate`** (`.github/workflows/codex-gate.yml`), not by Copilot. To block auto-merge, add label `no-auto-merge` or keep the PR as draft. See `docs/MERGE_GATES.md`.
 
 ## Cloud agent environment
 

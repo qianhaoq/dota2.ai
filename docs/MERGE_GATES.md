@@ -51,7 +51,7 @@ This page is the source of truth for merge policy.
 
 [Codex](https://chatgpt.com/codex) 只发 **issue comment**（`<!-- codex-pull-request-review-summary -->`）和行内 review threads，**不是** GitHub 原生 required check。
 
-`.github/workflows/codex-gate.yml` 提供名为 **`Codex Review Gate`** 的 job，供经典 branch protection 勾选：
+`.github/workflows/codex-gate.yml` 的 **job 名必须是 `Codex Review Gate`**。经典 branch protection / Ruleset 勾选的是这个 **check-run / job 名**，不要只看 workflow 文件标题。
 
 | 情况 | 结果 |
 |------|------|
@@ -74,13 +74,14 @@ This page is the source of truth for merge policy.
 1. PR 打开、非 draft、base 为 `main`
 2. 没有 `no-auto-merge` label
 3. head SHA 上 **Build & Test**（或名为 CI 的检查）成功
-4. 相关 check 已完成且未失败（忽略 Custom LLM Review、以及 Auto Merge 自己的 check 名；**不忽略** Codex Review Gate）
-5. 若 head SHA 上存在 `copilot-pull-request-reviewer` check，则必须已成功结束
-6. 该 head SHA 上已有 Copilot review，且不是阻塞结论
-   - GitHub Copilot **实际提交的是 `COMMENTED`，几乎从不 `APPROVED`**。只认 `APPROVED` 等于关掉自动合入。
-   - 允许：`APPROVED`，或 `COMMENTED` 且正文不是 “Needs a closer look” / “Changes recommended” / “Changes required”
-   - `CHANGES_REQUESTED` 以及 “Needs a closer look” **不会**自动合入（这是 PR #33 的情况）
-7. GraphQL `reviewThreads` 全部 `isResolved: true`（解析失败且仍有 review comments 时 fail-closed）
+4. 相关 check 已完成且未失败（忽略 Custom LLM Review、以及 Auto Merge 自己的 check 名）
+5. 若 head 上存在 `copilot-pull-request-reviewer`，必须已成功结束
+6. 若 head 上存在 **`Codex Review Gate`**（这是 **job / check-run 名**，不是 workflow 展示名），必须已成功结束
+7. 该 head SHA 上已有 Copilot review，且不是 `CHANGES_REQUESTED`
+   - **允许 `APPROVED` 或 `COMMENTED`**。Copilot 经常只提交 `COMMENTED`，不要要求原生 `APPROVED`。
+   - **没有 Copilot review 不会自动合。**
+   - **#33 的硬门槛：** `COMMENTED` 但还有未解决行内线程 → 不合。靠第 8 条挡，不靠拒绝 `COMMENTED`。
+8. GraphQL `reviewThreads` 全部 `isResolved: true`（解析失败且仍有 review comments 时 fail-closed）
 
 `workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。
 
