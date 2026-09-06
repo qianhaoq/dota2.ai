@@ -19,7 +19,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-k3-base overflow-x-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-k3-base overflow-hidden">
       {/* Header - k3 first-principles: quieter, minimal */}
       <header className="h-12 border-b border-k3-border-subtle bg-k3-base flex items-center justify-between px-3 sm:px-4 md:px-6 flex-shrink-0">
         {/* Logo + Tabs inline */}

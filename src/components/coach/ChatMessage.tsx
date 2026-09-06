@@ -4,22 +4,8 @@ import {
   Sparkles, Target, TrendingUp, BarChart3, Zap, 
   ChevronDown, ChevronUp, Check, AlertTriangle 
 } from 'lucide-react';
-import { MatchupData, HeroSuggestion, TierHero, PlaybookHero } from '../../services/geminiService';
-import type { LessonMode } from './MentorStage';
-
-interface CoachMessage {
-  id: string;
-  type: 'user' | 'coach';
-  action?: 'analyze' | 'playbook' | 'suggest' | 'meta';
-  lesson?: LessonMode;
-  content: string;
-  isStreaming?: boolean;
-  grounded?: boolean;
-  matchupData?: MatchupData | null;
-  playbookData?: PlaybookHero[];
-  suggestions?: HeroSuggestion[];
-  tierHeroes?: TierHero[];
-}
+import type { LessonMode } from '../../types';
+import type { CoachMessage } from './coachMessage';
 
 interface ChatMessageProps {
   message: CoachMessage;

@@ -20,6 +20,11 @@
   --k3-dire: #A65F52;
 }
 
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   background-color: var(--k3-base);
   color: var(--k3-text-primary);

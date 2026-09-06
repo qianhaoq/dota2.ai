@@ -55,7 +55,7 @@ const LessonRail: React.FC<LessonRailProps> = ({
 
   if (compact) {
     return (
-      <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto scrollbar-hide">
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
         {lessons.map((lesson) => {
           const Icon = lesson.icon;
           const isActive = currentLesson === lesson.id;
@@ -83,8 +83,8 @@ const LessonRail: React.FC<LessonRailProps> = ({
   }
 
   return (
-    <div className="relative">
-      <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-6 overflow-x-auto scrollbar-hide pb-1">
+    <div className="relative min-w-0">
+      <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 pb-1">
         {lessons.map((lesson) => {
           const Icon = lesson.icon;
           const isActive = currentLesson === lesson.id;
@@ -94,11 +94,11 @@ const LessonRail: React.FC<LessonRailProps> = ({
               key={lesson.id}
               onClick={() => handleClick(lesson)}
               disabled={isLoading}
-              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 rounded-lg transition-all whitespace-nowrap min-h-[44px] touch-manipulation flex-shrink-0 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap min-h-[40px] touch-manipulation ${
                 !lesson.enabled
                   ? 'text-k3-text-tertiary/40 cursor-not-allowed'
                   : isActive
-                    ? 'bg-k3-surface text-k3-text-primary font-medium border border-k3-border-subtle'
+                    ? 'bg-k3-elevated text-k3-text-primary font-medium border border-k3-border-subtle'
                     : 'text-k3-text-secondary hover:text-k3-text-primary hover:bg-k3-surface/50 active:bg-k3-surface/50'
               }`}
               title={!lesson.enabled ? t.reviewHint : undefined}
