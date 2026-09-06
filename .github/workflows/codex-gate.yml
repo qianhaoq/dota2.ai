@@ -12,6 +12,8 @@
 #       * head commit younger than ~20 minutes → fail (still waiting)
 #       * otherwise → fail (timeout; add skip-codex-gate or comment @codex review)
 #   - Summary still Running / in progress / queued → fail
+#   - Summary Failed / cancelled / error (and not Completed) → fail
+#   - Summary does not positively show Completed or 👍 no-findings → fail
 #   - Summary completed, but it does not mention the current head SHA
 #     (stale review of an older commit after synchronize) → fail
 #   - Summary completed, but unresolved Codex review threads remain → fail
@@ -105,6 +107,20 @@ jobs:
                 && !/\*\*Completed\*\*/i.test(text)) {
                 return true;
               }
+              return false;
+            }
+
+            function summaryLooksFailed(body) {
+              const text = body || '';
+              return /\*\*(?:Failed|Failure|Cancelled|Canceled|Error|Errored|Timed out|Timeout)\*\*/i.test(text);
+            }
+
+            // Fail closed: Running-not-true is not success. Require Completed or 👍.
+            function summaryLooksCompleted(body) {
+              const text = body || '';
+              if (summaryLooksRunning(text) || summaryLooksFailed(text)) return false;
+              if (/\*\*Completed\*\*/i.test(text)) return true;
+              if (/👍/.test(text)) return true;
               return false;
             }
 
@@ -243,6 +259,20 @@ jobs:
             if (summaryLooksRunning(latestSummary.body)) {
               const msg = 'Codex Review Summary is still Running / in progress — fail until Completed';
               await reportOnHeadSha(sha, 'failure', 'Codex running', msg);
+              core.setFailed(msg);
+              return;
+            }
+
+            if (summaryLooksFailed(latestSummary.body)) {
+              const msg = 'Codex Review Summary is Failed / cancelled / error — fail until Completed';
+              await reportOnHeadSha(sha, 'failure', 'Codex failed', msg);
+              core.setFailed(msg);
+              return;
+            }
+
+            if (!summaryLooksCompleted(latestSummary.body)) {
+              const msg = 'Codex Review Summary does not show Completed (or 👍 no-findings) — fail closed';
+              await reportOnHeadSha(sha, 'failure', 'Codex not completed', msg);
               core.setFailed(msg);
               return;
             }

@@ -25,6 +25,8 @@
 # Blocks: draft, non-main base, no-auto-merge, failed/pending relevant
 # checks, missing Copilot review, CHANGES_REQUESTED, unresolved threads.
 #
+# Re-evaluates when CI succeeds, when Copilot submits a review, when
+# Codex Review Gate succeeds (CI+Copilot often finish first), or dispatch.
 # Note: workflow_run only runs from the default branch once this file is merged.
 # After resolving threads, re-run this workflow (workflow_dispatch) —
 # thread resolution does not emit a workflow event.
@@ -33,7 +35,7 @@ name: Auto Merge
 
 on:
   workflow_run:
-    workflows: ["CI"]
+    workflows: ["CI", "Codex Review Gate"]
     types: [completed]
   pull_request_review:
     types: [submitted]
@@ -62,7 +64,8 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'workflow_run' &&
         github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'pull_request') ||
+        (github.event.workflow_run.event == 'pull_request' ||
+          github.event.workflow_run.name == 'Codex Review Gate')) ||
       (github.event_name == 'pull_request_review' &&
         contains(fromJSON('["approved", "commented"]'), github.event.review.state) &&
         contains(fromJSON('["copilot-pull-request-reviewer[bot]", "copilot-pull-request-reviewer"]'), github.event.review.user.login))
@@ -138,6 +141,7 @@ jobs:
                 return Number.isInteger(n) && n > 0 ? n : null;
               }
               const run = context.payload.workflow_run;
+              // Codex Gate often originates from issue_comment; pull_requests is empty.
               if (run.pull_requests && run.pull_requests.length > 0) {
                 return run.pull_requests[0].number;
               }

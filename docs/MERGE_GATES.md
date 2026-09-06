@@ -60,6 +60,8 @@ This page is the source of truth for merge policy.
 | 还没有 Codex Review Summary，head 提交未满约 20 分钟 | 失败（等待；Codex 发评论会重跑） |
 | 20 分钟内从未发 Summary | 失败（超时；`@codex review` 或 `skip-codex-gate`） |
 | Summary 仍是 Running / in progress | 失败 |
+| Summary 是 Failed / cancelled / error | 失败 |
+| Summary 没有明确 **Completed** 或 👍 | 失败（不能只靠「不是 Running」放行） |
 | Summary 已完成，但正文没有提到当前 head SHA（反引号 / 纯文本 / commit URL 均可；synchronize 后的旧审查不算） | 失败（等 Codex 重审或 `@codex review`） |
 | Summary 已完成，但仍有未解决的 Codex 行内线程 | 失败 |
 | 完成且无未解决 Codex 线程（含 👍 无 finding） | 通过 |
@@ -84,7 +86,7 @@ This page is the source of truth for merge policy.
    - **#33 的硬门槛：** 有 review（即使是 `COMMENTED`）但还有未解决行内线程 → 不合。靠第 8 条挡。
 8. GraphQL `reviewThreads` 全部 `isResolved: true`（解析失败且仍有 review comments 时 fail-closed）
 
-`workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。
+`workflow_run` 只从 **default branch** 上的工作流定义运行。本文件合入 `main` 之后，后续 PR 才吃到新门槛。触发源：CI 成功、`Codex Review Gate` 成功（CI/Copilot 常先结束）、Copilot 提交 review、或手动 `workflow_dispatch`。
 
 线程被点 Resolve 后 GitHub **不会**再触发 auto-merge。到 Actions 对 **Auto Merge** 跑一次 `workflow_dispatch`。
 
