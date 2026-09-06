@@ -85,6 +85,58 @@ export interface PlaybookStreamCallbacks {
   onError: (error: string) => void;
 }
 
+// ============ Pro/Public Match Types ============
+export interface ProMatch {
+  matchId: number;
+  startTime: number;
+  duration: number;
+  radiantWin: boolean;
+  radiantTeam: string;
+  direTeam: string;
+  leagueName: string;
+  radiantScore?: number;
+  direScore?: number;
+  opendotaUrl: string;
+}
+
+export interface PublicMatchHero {
+  id: number;
+  name: string;
+  nameZh?: string;
+  nameEn?: string;
+  icon: string | null;
+}
+
+export interface PublicMatch {
+  matchId: number;
+  startTime: number;
+  duration: number;
+  radiantWin: boolean;
+  avgMmr: number | null;
+  mmrLabel: string;
+  radiantHeroes: PublicMatchHero[];
+  direHeroes: PublicMatchHero[];
+  radiantHeroNames: string[];
+  direHeroNames: string[];
+  opendotaUrl: string;
+}
+
+export interface ProMatchesResponse {
+  matches: ProMatch[];
+  count: number;
+  source: string;
+  cacheAge: number | null;
+  error?: string;
+}
+
+export interface PublicMatchesResponse {
+  matches: PublicMatch[];
+  count: number;
+  source: string;
+  cacheAge: number | null;
+  error?: string;
+}
+
 export interface AnalyzeStreamCallbacks {
   onChunk: (text: string) => void;
   onComplete: (grounded: boolean) => void;
@@ -310,6 +362,50 @@ export const fetchTierList = async (
   } catch (error: any) {
     console.error('Tier list fetch error:', error);
     return { heroes: [], count: 0, totalHeroes: 0, source: 'error', cacheAge: null, error: error.message };
+  }
+};
+
+// ============ Pro/Public Matches API ============
+export const fetchProMatches = async (
+  lang: Language = 'zh',
+  limit: number = 10
+): Promise<ProMatchesResponse> => {
+  try {
+    const params = new URLSearchParams({ lang, limit: limit.toString() });
+    const response = await fetch(`/api/meta/pro-matches?${params}`);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch pro matches');
+    }
+    
+    return data;
+  } catch (error: any) {
+    console.error('Pro matches fetch error:', error);
+    return { matches: [], count: 0, source: 'error', cacheAge: null, error: error.message };
+  }
+};
+
+export const fetchPublicMatches = async (
+  lang: Language = 'zh',
+  limit: number = 10,
+  heroId?: number
+): Promise<PublicMatchesResponse> => {
+  try {
+    const params = new URLSearchParams({ lang, limit: limit.toString() });
+    if (heroId) params.append('heroId', heroId.toString());
+    
+    const response = await fetch(`/api/meta/public-matches?${params}`);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to fetch public matches');
+    }
+    
+    return data;
+  } catch (error: any) {
+    console.error('Public matches fetch error:', error);
+    return { matches: [], count: 0, source: 'error', cacheAge: null, error: error.message };
   }
 };
 

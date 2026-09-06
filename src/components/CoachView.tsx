@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Hero, DraftState, Attribute, Language } from '../types';
 import HeroDetail from './HeroDetail';
+import ProMatchStrip from './ProMatchStrip';
 import { 
   analyzeDraftStream, 
   fetchSuggestions, 
@@ -819,6 +820,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           </div>
         )}
       </div>
+
+      {/* Pro/Public Matches Strip */}
+      <ProMatchStrip lang={lang} />
 
       {/* Coach Conversation Area - Main Hero */}
       <div className="glass-panel rounded-xl flex-1 flex flex-col overflow-hidden">

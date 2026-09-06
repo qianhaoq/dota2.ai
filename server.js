@@ -39,6 +39,7 @@ const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
 // Cache TTLs
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for matchup data
 const CONSTANTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for constants (patch data changes rarely)
+const MATCHES_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for pro/public matches
 
 // ============ Cache Storage ============
 const cache = {
@@ -51,7 +52,10 @@ const cache = {
   abilities: { data: null, timestamp: 0 },
   // Steam localized data
   steamHeroesZh: { data: null, timestamp: 0 },
-  steamHeroesEn: { data: null, timestamp: 0 }
+  steamHeroesEn: { data: null, timestamp: 0 },
+  // Pro/Public matches
+  proMatches: { data: null, timestamp: 0 },
+  publicMatches: { data: null, timestamp: 0 }
 };
 
 async function fetchWithRetry(url, retries = 2, delay = 500) {
@@ -290,6 +294,195 @@ async function getAbilityConstants() {
     console.error('Failed to fetch ability constants:', err.message);
     return cache.abilities.data || {};
   }
+}
+
+// ============ Pro/Public Matches Fetchers ============
+
+async function getProMatches(limit = 20) {
+  const now = Date.now();
+  if (cache.proMatches.data && (now - cache.proMatches.timestamp) < MATCHES_CACHE_TTL_MS) {
+    return cache.proMatches.data;
+  }
+  try {
+    const data = await fetchWithRetry(`${OPENDOTA_API}/proMatches`);
+    const matches = Array.isArray(data) ? data.slice(0, limit) : [];
+    cache.proMatches = { data: matches, timestamp: now };
+    console.log(`Loaded ${matches.length} pro matches from OpenDota`);
+    return matches;
+  } catch (err) {
+    console.error('Failed to fetch pro matches:', err.message);
+    return cache.proMatches.data || [];
+  }
+}
+
+async function getPublicMatches(limit = 20, mmrBracket = null) {
+  const now = Date.now();
+  const cacheKey = mmrBracket ? `public_${mmrBracket}` : 'public';
+  
+  if (cache.publicMatches.data && (now - cache.publicMatches.timestamp) < MATCHES_CACHE_TTL_MS) {
+    return cache.publicMatches.data;
+  }
+  try {
+    let url = `${OPENDOTA_API}/publicMatches`;
+    if (mmrBracket) {
+      url += `?mmr_ascending=${mmrBracket}`;
+    }
+    const data = await fetchWithRetry(url);
+    const matches = Array.isArray(data) ? data.slice(0, limit) : [];
+    cache.publicMatches = { data: matches, timestamp: now };
+    console.log(`Loaded ${matches.length} public matches from OpenDota`);
+    return matches;
+  } catch (err) {
+    console.error('Failed to fetch public matches:', err.message);
+    return cache.publicMatches.data || [];
+  }
+}
+
+function formatProMatch(match, heroConstants, lang = 'zh') {
+  const isZh = lang === 'zh';
+  const radiantHeroes = [];
+  const direHeroes = [];
+  
+  if (match.radiant_team && match.dire_team) {
+    return {
+      matchId: match.match_id,
+      startTime: match.start_time,
+      duration: match.duration,
+      radiantWin: match.radiant_win,
+      radiantTeam: match.radiant_name || (isZh ? '天辉' : 'Radiant'),
+      direTeam: match.dire_name || (isZh ? '夜魇' : 'Dire'),
+      leagueName: match.league_name || (isZh ? '职业比赛' : 'Pro Match'),
+      radiantScore: match.radiant_score,
+      direScore: match.dire_score,
+      opendotaUrl: `https://www.opendota.com/matches/${match.match_id}`
+    };
+  }
+  
+  return {
+    matchId: match.match_id,
+    startTime: match.start_time,
+    duration: match.duration,
+    radiantWin: match.radiant_win,
+    radiantTeam: match.radiant_name || (isZh ? '天辉' : 'Radiant'),
+    direTeam: match.dire_name || (isZh ? '夜魇' : 'Dire'),
+    leagueName: match.league_name || (isZh ? '职业比赛' : 'Pro Match'),
+    opendotaUrl: `https://www.opendota.com/matches/${match.match_id}`
+  };
+}
+
+function formatPublicMatch(match, heroConstants, lang = 'zh') {
+  const isZh = lang === 'zh';
+  
+  const parseHeroIds = (heroIdStr) => {
+    if (!heroIdStr) return [];
+    return heroIdStr.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+  };
+  
+  const radiantHeroIds = parseHeroIds(match.radiant_team);
+  const direHeroIds = parseHeroIds(match.dire_team);
+  
+  const getHeroNames = (heroIds) => {
+    return heroIds.map(id => {
+      const cnData = HERO_NAMES_CN[id];
+      const constant = Object.values(heroConstants).find(h => h.id === id);
+      if (isZh && cnData?.nameZh) return cnData.nameZh;
+      return constant?.localized_name || `Hero#${id}`;
+    });
+  };
+  
+  const getHeroInfos = (heroIds) => {
+    return heroIds.map(id => {
+      const cnData = HERO_NAMES_CN[id];
+      const constant = Object.values(heroConstants).find(h => h.id === id);
+      const shortName = constant?.name?.replace('npc_dota_hero_', '') || '';
+      return {
+        id,
+        name: isZh && cnData?.nameZh ? cnData.nameZh : (constant?.localized_name || `Hero#${id}`),
+        nameZh: cnData?.nameZh || constant?.localized_name || `Hero#${id}`,
+        nameEn: constant?.localized_name || `Hero#${id}`,
+        icon: shortName ? `${VALVE_CDN}/apps/dota2/images/dota_react/heroes/icons/${shortName}.png` : null
+      };
+    });
+  };
+  
+  const avgMmr = match.avg_mmr || match.avg_rank_tier;
+  let mmrLabel = '';
+  if (avgMmr) {
+    if (avgMmr >= 7000) mmrLabel = isZh ? '万分局' : 'Immortal';
+    else if (avgMmr >= 6000) mmrLabel = isZh ? '高分局' : 'Divine+';
+    else if (avgMmr >= 5000) mmrLabel = isZh ? '中高分局' : 'Ancient+';
+    else mmrLabel = isZh ? '普通局' : 'Normal';
+  }
+  
+  return {
+    matchId: match.match_id,
+    startTime: match.start_time,
+    duration: match.duration,
+    radiantWin: match.radiant_win,
+    avgMmr: avgMmr,
+    mmrLabel,
+    radiantHeroes: getHeroInfos(radiantHeroIds),
+    direHeroes: getHeroInfos(direHeroIds),
+    radiantHeroNames: getHeroNames(radiantHeroIds),
+    direHeroNames: getHeroNames(direHeroIds),
+    opendotaUrl: `https://www.opendota.com/matches/${match.match_id}`
+  };
+}
+
+async function getRecentProMatchEvidence(heroIds = [], limit = 5) {
+  const proMatches = await getProMatches(50);
+  const heroConstants = await getHeroConstants();
+  
+  if (!proMatches || proMatches.length === 0) {
+    return { matches: [], summary: '' };
+  }
+  
+  const recentMatches = proMatches.slice(0, limit).map(m => formatProMatch(m, heroConstants, 'zh'));
+  
+  let summary = `最近${recentMatches.length}场职业比赛：\n`;
+  for (const match of recentMatches) {
+    const winner = match.radiantWin ? match.radiantTeam : match.direTeam;
+    const durationMin = Math.floor((match.duration || 0) / 60);
+    summary += `- ${match.radiantTeam} vs ${match.direTeam} (${match.leagueName}) - ${winner}胜 (${durationMin}分钟)\n`;
+  }
+  
+  return { matches: recentMatches, summary };
+}
+
+async function getRecentPublicMatchEvidence(heroIds = [], limit = 5) {
+  const publicMatches = await getPublicMatches(50);
+  const heroConstants = await getHeroConstants();
+  
+  if (!publicMatches || publicMatches.length === 0) {
+    return { matches: [], summary: '' };
+  }
+  
+  let relevantMatches = publicMatches;
+  if (heroIds.length > 0) {
+    relevantMatches = publicMatches.filter(match => {
+      const radiantIds = (match.radiant_team || '').split(',').map(id => parseInt(id.trim()));
+      const direIds = (match.dire_team || '').split(',').map(id => parseInt(id.trim()));
+      const allIds = [...radiantIds, ...direIds];
+      return heroIds.some(hid => allIds.includes(hid));
+    });
+  }
+  
+  const matchesToUse = relevantMatches.slice(0, limit).map(m => formatPublicMatch(m, heroConstants, 'zh'));
+  
+  if (matchesToUse.length === 0) {
+    return { matches: [], summary: '' };
+  }
+  
+  let summary = `最近${matchesToUse.length}场高分对局样本：\n`;
+  for (const match of matchesToUse) {
+    const winner = match.radiantWin ? '天辉' : '夜魇';
+    const durationMin = Math.floor((match.duration || 0) / 60);
+    const radiantStr = match.radiantHeroNames.slice(0, 3).join(', ');
+    const direStr = match.direHeroNames.slice(0, 3).join(', ');
+    summary += `- [${match.mmrLabel || 'N/A'}] ${radiantStr}... vs ${direStr}... - ${winner}胜 (${durationMin}分钟)\n`;
+  }
+  
+  return { matches: matchesToUse, summary };
 }
 
 // ============ Steam Web API Integration (Optional) ============
@@ -576,7 +769,7 @@ async function aggregateMatchupData(radiantIds, direIds, heroStats) {
   return analysis;
 }
 
-function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded, heroConstants = {}) {
+function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded, heroConstants = {}, proMatchEvidence = null) {
   const isZh = lang === 'zh';
   
   const t = {
@@ -599,7 +792,8 @@ function buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, us
     attr: isZh ? '属性' : 'Attr',
     roles: isZh ? '定位' : 'Roles',
     globalWR: isZh ? '全局胜率' : 'Global WR',
-    sampleSize: isZh ? '样本' : 'sample'
+    sampleSize: isZh ? '样本' : 'sample',
+    proMatchEvidence: isZh ? '近期职业比赛参考' : 'Recent Pro Match Reference'
   };
 
   const attrNames = {
@@ -696,11 +890,19 @@ ${isZh ? '暂无显著对位优劣势数据（可能是样本不足或对位较�
     ? `\n**${t.userContext}:** ${userContext}\n`
     : '';
 
+  let proMatchSection = '';
+  if (proMatchEvidence && proMatchEvidence.summary) {
+    proMatchSection = `
+## 🏆 ${t.proMatchEvidence}
+${proMatchEvidence.summary}
+`;
+  }
+
   return `${isZh ? '分析这场 DOTA 2 对局' : 'Analyze this DOTA 2 match'}:
 
 **${t.radiant}:** ${radiantNames || t.none}
 **${t.dire}:** ${direNames || t.none}
-${statsSection}${contextSection}
+${statsSection}${proMatchSection}${contextSection}
 ${t.incompleteNote}`;
 }
 
@@ -974,6 +1176,84 @@ app.get('/api/meta/heroes/:heroId', async (req, res) => {
   }
 });
 
+// ============ Pro Matches API ============
+app.get('/api/meta/pro-matches', async (req, res) => {
+  try {
+    const lang = req.query.lang || 'zh';
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    
+    const [proMatches, heroConstants] = await Promise.all([
+      getProMatches(limit),
+      getHeroConstants()
+    ]);
+    
+    if (!proMatches || proMatches.length === 0) {
+      return res.json({ 
+        matches: [], 
+        count: 0, 
+        source: 'opendota',
+        error: lang === 'zh' ? '暂无职业比赛数据' : 'No pro match data available'
+      });
+    }
+    
+    const formattedMatches = proMatches.map(m => formatProMatch(m, heroConstants, lang));
+    
+    res.json({
+      matches: formattedMatches,
+      count: formattedMatches.length,
+      source: 'opendota',
+      cacheAge: cache.proMatches.timestamp ? Math.round((Date.now() - cache.proMatches.timestamp) / 1000) : null
+    });
+  } catch (err) {
+    console.error('Pro matches error:', err);
+    res.status(500).json({ error: 'Failed to fetch pro matches', matches: [] });
+  }
+});
+
+// ============ Public Matches API (High MMR) ============
+app.get('/api/meta/public-matches', async (req, res) => {
+  try {
+    const lang = req.query.lang || 'zh';
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const heroId = req.query.heroId ? parseInt(req.query.heroId) : null;
+    
+    const [publicMatches, heroConstants] = await Promise.all([
+      getPublicMatches(limit * 2),
+      getHeroConstants()
+    ]);
+    
+    if (!publicMatches || publicMatches.length === 0) {
+      return res.json({ 
+        matches: [], 
+        count: 0, 
+        source: 'opendota',
+        error: lang === 'zh' ? '暂无高分对局数据' : 'No public match data available'
+      });
+    }
+    
+    let filteredMatches = publicMatches;
+    if (heroId) {
+      filteredMatches = publicMatches.filter(match => {
+        const radiantIds = (match.radiant_team || '').split(',').map(id => parseInt(id.trim()));
+        const direIds = (match.dire_team || '').split(',').map(id => parseInt(id.trim()));
+        return radiantIds.includes(heroId) || direIds.includes(heroId);
+      });
+    }
+    
+    const formattedMatches = filteredMatches.slice(0, limit).map(m => formatPublicMatch(m, heroConstants, lang));
+    
+    res.json({
+      matches: formattedMatches,
+      count: formattedMatches.length,
+      source: 'opendota',
+      cacheAge: cache.publicMatches.timestamp ? Math.round((Date.now() - cache.publicMatches.timestamp) / 1000) : null
+    });
+  } catch (err) {
+    console.error('Public matches error:', err);
+    res.status(500).json({ error: 'Failed to fetch public matches', matches: [] });
+  }
+});
+
 // ============ Meta Tier API - 大盘数据 ============
 app.get('/api/meta/tier', async (req, res) => {
   try {
@@ -1103,9 +1383,10 @@ app.post('/api/playbook', async (req, res) => {
     const alliedIds = allies.map(h => h.id);
     const enemyIds = enemies.map(h => h.id).filter(Boolean);
     
-    const [itemPopularityResults, matchupsResults] = await Promise.all([
+    const [itemPopularityResults, matchupsResults, publicMatchEvidence] = await Promise.all([
       Promise.all(alliedIds.map(id => getHeroItemPopularity(id).then(items => ({ id, items })))),
-      Promise.all(alliedIds.map(id => getHeroMatchups(id).then(matchups => ({ id, matchups }))))
+      Promise.all(alliedIds.map(id => getHeroMatchups(id).then(matchups => ({ id, matchups })))),
+      getRecentPublicMatchEvidence(alliedIds, 3)
     ]);
     
     const itemPopularityMap = {};
@@ -1252,6 +1533,11 @@ app.post('/api/playbook', async (req, res) => {
         return `${name}${rolesStr ? ` [${rolesStr}]` : ''}`;
       });
       statsSection += enemyDetails.join(', ');
+    }
+    
+    if (publicMatchEvidence && publicMatchEvidence.summary) {
+      statsSection += `\n\n## 🏆 ${isZh ? '高分对局参考' : 'High MMR Match Evidence'}\n`;
+      statsSection += publicMatchEvidence.summary;
     }
     
     const systemPrompt = isZh 
@@ -1425,6 +1711,7 @@ app.post('/api/analyze', async (req, res) => {
     let heroConstants = {};
     let matchupAnalysis = { radiantAdvantages: [], direAdvantages: [] };
     let isGrounded = false;
+    let proMatchEvidence = null;
     
     try {
       [heroStats, heroConstants] = await Promise.all([
@@ -1435,11 +1722,13 @@ app.post('/api/analyze', async (req, res) => {
         matchupAnalysis = await aggregateMatchupData(radiantIds, direIds, heroStats);
         isGrounded = true;
       }
+      
+      proMatchEvidence = await getRecentProMatchEvidence([], 3);
     } catch (err) {
       console.error('OpenDota fetch error:', err.message);
     }
     
-    const prompt = buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded, heroConstants);
+    const prompt = buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded, heroConstants, proMatchEvidence);
 
     const systemInstruction = getDraftSystemInstruction(lang);
 
