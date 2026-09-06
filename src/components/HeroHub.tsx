@@ -92,7 +92,7 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
 
   if (selectedHeroId) {
     return (
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col bg-[#0a0a0a] px-4 py-4">
         <button
           onClick={handleBack}
           className="flex items-center gap-2 text-gray-400 hover:text-white mb-4 transition-colors"
@@ -106,32 +106,32 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
   }
 
   return (
-    <div className="h-full flex flex-col max-w-6xl mx-auto">
-      {/* Header */}
-      <div className="glass-panel rounded-xl p-4 mb-4 flex-shrink-0">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <div className="h-full flex flex-col bg-[#0a0a0a] px-4 py-4">
+      {/* Header - Cleaner design */}
+      <div className="max-w-6xl mx-auto w-full flex-shrink-0 mb-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-dota-gold/20 to-amber-700/20 flex items-center justify-center border border-dota-gold/30">
-              <Users size={24} className="text-dota-gold" />
+            <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
+              <Users size={20} className="text-gray-300" />
             </div>
             <div>
-              <h2 className="text-xl font-display font-bold text-white tracking-wide">{t.title}</h2>
-              <p className="text-sm text-gray-400">{t.subtitle}</p>
+              <h2 className="text-lg font-semibold text-white">{t.title}</h2>
+              <p className="text-sm text-gray-500">{t.subtitle}</p>
             </div>
           </div>
           
           {onClose && (
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
             >
               <X size={20} className="text-gray-400" />
             </button>
           )}
         </div>
 
-        {/* Search and Filters */}
-        <div className="mt-4 flex flex-col sm:flex-row gap-3">
+        {/* Search and Filters - Cleaner */}
+        <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
             <input
@@ -139,7 +139,7 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
               placeholder={t.search}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-gray-900/80 border border-gray-700 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-dota-gold transition-colors placeholder-gray-500"
+              className="w-full bg-[#1a1a1a] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-white/20 transition-colors placeholder-gray-500"
             />
             {searchQuery && (
               <button
@@ -154,10 +154,10 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
           <div className="flex gap-1.5">
             <button
               onClick={() => setAttrFilter('All')}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                 attrFilter === 'All'
-                  ? 'bg-dota-gold/20 text-dota-gold border border-dota-gold/30'
-                  : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'
+                  ? 'bg-white/15 text-white'
+                  : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
               }`}
             >
               {t.all}
@@ -169,10 +169,10 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
                 <button
                   key={attr}
                   onClick={() => setAttrFilter(attr as Attribute)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${
                     isActive
-                      ? `${config.bgColor} ${config.color} border border-current/30`
-                      : 'bg-gray-800 text-gray-400 hover:text-white border border-gray-700'
+                      ? `${config.bgColor} ${config.color}`
+                      : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
                   }`}
                 >
                   <Icon size={16} />
@@ -191,11 +191,11 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
       </div>
 
       {/* Hero Grid */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
+      <div className="flex-1 overflow-y-auto custom-scrollbar max-w-6xl mx-auto w-full">
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-2 border-dota-gold border-t-transparent rounded-full animate-spin" />
+              <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
               <span className="text-gray-400 text-sm">Loading heroes...</span>
             </div>
           </div>
@@ -205,7 +205,7 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
               <p className="text-gray-400 text-lg">{t.noResults}</p>
               <button
                 onClick={() => { setSearchQuery(''); setAttrFilter('All'); }}
-                className="mt-3 text-dota-gold hover:underline text-sm"
+                className="mt-3 text-white hover:underline text-sm"
               >
                 {lang === 'zh' ? '清除筛选' : 'Clear filters'}
               </button>
@@ -218,10 +218,10 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
               const config = ATTR_CONFIG[attr as Attribute];
               const Icon = config.icon;
               return (
-                <div key={attr} className="glass-panel rounded-xl p-4">
+                <div key={attr} className="bg-[#111111] border border-white/5 rounded-xl p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <Icon size={18} className={config.color} />
-                    <h3 className={`font-display font-bold ${config.color}`}>
+                    <h3 className={`font-semibold ${config.color}`}>
                       {config.label[lang]}
                     </h3>
                     <span className="text-xs text-gray-500">({heroes.length})</span>
@@ -240,7 +240,7 @@ const HeroHub: React.FC<HeroHubProps> = ({ lang, initialHeroId, onClose }) => {
             })}
           </div>
         ) : (
-          <div className="glass-panel rounded-xl p-4">
+          <div className="bg-[#111111] border border-white/5 rounded-xl p-4">
             <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-2">
               {filteredHeroes.map(hero => (
                 <HeroGridItem
@@ -270,16 +270,16 @@ const HeroGridItem: React.FC<HeroGridItemProps> = ({ hero, onClick }) => {
       onClick={onClick}
       className="group cursor-pointer"
     >
-      <div className="relative aspect-[3/4] rounded-lg overflow-hidden border border-gray-700 group-hover:border-dota-gold transition-all duration-200 group-hover:shadow-[0_0_12px_rgba(212,175,55,0.3)]">
+      <div className="relative aspect-[3/4] rounded-lg overflow-hidden border border-white/10 group-hover:border-white/30 transition-all duration-200 group-hover:scale-105">
         {!imgError ? (
           <img
             src={hero.img}
             alt={hero.name}
             onError={() => setImgError(true)}
-            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity"
           />
         ) : (
-          <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+          <div className="w-full h-full bg-[#1a1a1a] flex items-center justify-center">
             <span className="text-xs text-gray-500 text-center px-1">{hero.name}</span>
           </div>
         )}

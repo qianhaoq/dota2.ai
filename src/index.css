@@ -2,34 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background-color: #0f1014;
-  color: #e5e7eb;
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-elevated: #1a1a1a;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.12);
+  --text-primary: #f5f5f5;
+  --text-secondary: #a0a0a0;
+  --text-muted: #666666;
 }
 
-/* Custom Scrollbar */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Scrollbar - minimal and subtle */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f2937;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
-}
-
-.glass-panel {
-  background: rgba(30, 30, 30, 0.7);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -41,56 +47,218 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 3px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+/* Glass panel - softer version */
+.glass-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
 }
 
-/* Coach message sections */
+/* Chat message bubbles */
+.msg-bubble {
+  @apply rounded-2xl px-4 py-3 max-w-[85%];
+}
+
+.msg-bubble-user {
+  @apply bg-blue-600/90 text-white rounded-br-md;
+}
+
+.msg-bubble-coach {
+  @apply bg-[#1a1a1a] border border-white/5 rounded-bl-md;
+}
+
+/* Intent chip style */
+.intent-chip {
+  @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium
+         transition-all duration-200 border border-transparent;
+}
+
+.intent-chip:not(:disabled):hover {
+  @apply scale-[1.02];
+}
+
+.intent-chip:disabled {
+  @apply opacity-40 cursor-not-allowed;
+}
+
+/* Hero picker overlay */
+.hero-picker-overlay {
+  @apply fixed inset-0 z-50 bg-black/80 backdrop-blur-sm;
+}
+
+.hero-picker-sheet {
+  @apply fixed bottom-0 left-0 right-0 z-50 bg-[#111111] border-t border-white/10
+         rounded-t-2xl max-h-[70vh] overflow-hidden;
+}
+
+/* Draft context bar */
+.draft-context-bar {
+  @apply flex items-center gap-3 px-3 py-2 bg-[#0d0d0d] border-b border-white/5;
+}
+
+.draft-slot {
+  @apply w-8 h-10 rounded-md bg-black/50 border border-dashed border-white/20 
+         flex items-center justify-center cursor-pointer transition-all duration-200;
+}
+
+.draft-slot:hover {
+  @apply border-white/40 bg-white/5;
+}
+
+.draft-slot-filled {
+  @apply border-solid border-white/10;
+}
+
+/* Composer area */
+.composer-area {
+  @apply border-t border-white/5 bg-[#0d0d0d] p-3;
+}
+
+.composer-input {
+  @apply w-full bg-[#1a1a1a] border border-white/10 rounded-xl px-4 py-3
+         text-base text-white placeholder-gray-500
+         focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/10
+         transition-all duration-200;
+}
+
+/* Typing indicator */
+.typing-dot {
+  @apply w-2 h-2 rounded-full bg-gray-400;
+  animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.typing-dot:nth-child(1) { animation-delay: 0ms; }
+.typing-dot:nth-child(2) { animation-delay: 160ms; }
+.typing-dot:nth-child(3) { animation-delay: 320ms; }
+
+@keyframes typingBounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* Streaming cursor */
+.streaming-cursor {
+  @apply inline-block w-0.5 h-5 bg-white/80 ml-0.5;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Grounded badge */
+.grounded-badge {
+  @apply inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full;
+}
+
+.grounded-badge-valid {
+  @apply bg-green-500/10 text-green-400 border border-green-500/20;
+}
+
+.grounded-badge-unverified {
+  @apply bg-yellow-500/10 text-yellow-400 border border-yellow-500/20;
+}
+
+/* Hero card in picker */
+.hero-card {
+  @apply relative cursor-pointer rounded-lg overflow-hidden
+         border border-transparent transition-all duration-200;
+}
+
+.hero-card:hover {
+  @apply border-white/30 scale-105;
+}
+
+.hero-card-picked {
+  @apply opacity-30 grayscale pointer-events-none;
+}
+
+/* Message content markdown */
+.msg-content h3 {
+  @apply text-lg font-semibold text-white mt-4 mb-2 first:mt-0;
+}
+
+.msg-content h4 {
+  @apply text-base font-medium text-white/90 mt-3 mb-1.5;
+}
+
+.msg-content p {
+  @apply text-base leading-relaxed text-gray-200 my-1.5;
+}
+
+.msg-content ul, .msg-content ol {
+  @apply my-2 ml-4 space-y-1;
+}
+
+.msg-content li {
+  @apply text-base text-gray-200 list-disc marker:text-gray-500;
+}
+
+.msg-content strong {
+  @apply font-semibold text-white;
+}
+
+/* Tab styles */
+.tab-item {
+  @apply px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200;
+}
+
+.tab-item-active {
+  @apply bg-white/10 text-white;
+}
+
+.tab-item-inactive {
+  @apply text-gray-400 hover:text-white hover:bg-white/5;
+}
+
+/* Empty state */
+.empty-state {
+  @apply flex flex-col items-center justify-center h-full text-center px-6;
+}
+
+.empty-state-icon {
+  @apply w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4;
+}
+
+/* Animation utilities */
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Collapsible sections */
 .coach-section-header {
-  transition: background-color 0.2s ease;
+  @apply flex items-center justify-between px-3 py-2 bg-white/5 rounded-lg cursor-pointer
+         hover:bg-white/10 transition-colors;
 }
 
-.coach-section-header:hover {
-  background-color: rgba(30, 30, 30, 0.9);
-}
-
-/* Smooth collapse animation */
 .coach-section-content {
   animation: slideDown 0.2s ease-out;
 }
 
 @keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Better list spacing in coach messages */
-.prose-sm li + li {
-  margin-top: 0.25rem;
-}
-
-.prose-sm ul, .prose-sm ol {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-/* Ensure proper scroll behavior for nested containers */
-.coach-messages-container {
-  scroll-behavior: smooth;
-  overscroll-behavior: contain;
-}
-
-/* Jump to latest button animation */
+/* Jump to latest button */
 @keyframes gentleBounce {
   0%, 100% { transform: translate(-50%, 0); }
   50% { transform: translate(-50%, -4px); }
@@ -98,4 +266,15 @@ body {
 
 .jump-to-latest-btn {
   animation: gentleBounce 1.5s ease-in-out infinite;
+}
+
+/* Coach messages container */
+.coach-messages-container {
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+/* Pro match strip styling */
+.pro-match-strip {
+  @apply bg-[#0d0d0d] border border-white/5 rounded-xl p-3 mb-3;
 }

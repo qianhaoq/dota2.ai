@@ -131,7 +131,7 @@ const HeroDetail: React.FC<HeroDetailProps> = ({ heroId, lang, onClose }) => {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-dota-gold border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
           <span className="text-gray-400">{t.loading}</span>
         </div>
       </div>
@@ -145,7 +145,7 @@ const HeroDetail: React.FC<HeroDetailProps> = ({ heroId, lang, onClose }) => {
           <p className="text-red-400 mb-3">{t.error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="text-dota-gold hover:underline"
+            className="text-white hover:underline"
           >
             {t.retry}
           </button>
@@ -175,7 +175,7 @@ const HeroDetail: React.FC<HeroDetailProps> = ({ heroId, lang, onClose }) => {
       {/* Left Panel - Hero Info */}
       <div className="lg:w-1/3 flex-shrink-0 space-y-4">
         {/* Hero Card */}
-        <div className="glass-panel rounded-xl overflow-hidden">
+        <div className="bg-[#111111] border border-white/5 rounded-xl overflow-hidden">
           <div className="relative h-48 sm:h-64">
             <img
               src={hero.imgVert}
@@ -253,7 +253,7 @@ const HeroDetail: React.FC<HeroDetailProps> = ({ heroId, lang, onClose }) => {
 
         {/* Base Stats */}
         {hero.baseStats && (
-          <div className="glass-panel rounded-xl p-4">
+          <div className="bg-[#111111] border border-white/5 rounded-xl p-4">
             <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
               <Target size={16} className="text-dota-gold" />
               {t.stats}
@@ -302,7 +302,7 @@ const HeroDetail: React.FC<HeroDetailProps> = ({ heroId, lang, onClose }) => {
       <div className="flex-1 space-y-4 lg:overflow-y-auto lg:h-full custom-scrollbar">
         {/* Abilities */}
         {hero.abilities?.length > 0 && (
-          <div className="glass-panel rounded-xl p-4">
+          <div className="bg-[#111111] border border-white/5 rounded-xl p-4">
             <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
               <Sparkles size={16} className="text-dota-gold" />
               {t.abilities}
@@ -393,7 +393,7 @@ const HeroDetail: React.FC<HeroDetailProps> = ({ heroId, lang, onClose }) => {
         )}
 
         {/* Background/Lore */}
-        <div className="glass-panel rounded-xl p-4">
+        <div className="bg-[#111111] border border-white/5 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
             <Book size={16} className="text-dota-gold" />
             {t.background}
