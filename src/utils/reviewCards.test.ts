@@ -91,6 +91,35 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.followups).toEqual([]);
   });
 
+  it('default followups embed first key moment timestamp and headline', () => {
+    const cards = buildFallbackAiCards(fact, 'zh') as ReviewCardsPayload;
+    const firstMoment = cards.key_moments?.[0];
+    expect(firstMoment).toBeTruthy();
+    expect(cards.followups?.[0]).toMatch(/^展开 \d+:\d{2} 节点：/);
+    expect(cards.followups?.[0]).toContain(firstMoment!.headline);
+    expect(cards.followups?.[0]).not.toBe('展开这场团');
+  });
+
+  it('synthesizes contextual default followups when LLM omits followups array', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '中期开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+      mentor_note: '拉比克结语',
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.followups?.[0]).toBe('展开 0:48 节点：一血');
+  });
+
   it('parseAiReviewCards merges LLM JSON with deterministic spine', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
@@ -143,6 +172,26 @@ describe('reviewCards gold match 8985182860', () => {
         category: 'itemisation',
         headline: '出装问题',
         explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { timestamp: 1310, evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { timestamp: 2817, evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake).toBeUndefined();
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
+  it('rejects primary mistake with non-string headline or explanation', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: { text: 'bad' },
+        explanation: {},
         evidence: [{ factKey: 'kda' }],
       },
       key_moments: [
