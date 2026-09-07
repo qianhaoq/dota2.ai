@@ -1,6 +1,7 @@
 import { A2UIAction, A2UIBlock, Language } from '../types';
 import type { CoachMessage, CoachSession } from '../components/coach/coachMessage';
 import type { MatchFact } from '../types/matchReview';
+import { formatObjectiveLabel } from '../../lib/matchReview/objectiveLabels.js';
 
 export interface MarkdownSection {
   title?: string;
@@ -131,8 +132,8 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
   const timelineLines = fact.timeline.slice(0, 12).map((ev) => {
     const min = Math.floor(ev.time / 60);
     const sec = ev.time % 60;
-    const label = ev.type.replace('CHAT_MESSAGE_', '').replace('building_kill', lang === 'zh' ? '推塔' : 'Tower');
-    return `- ${min}:${String(sec).padStart(2, '0')} ${label}${ev.key ? ` · ${ev.key}` : ''}`;
+    const label = formatObjectiveLabel(ev, lang);
+    return `- ${min}:${String(sec).padStart(2, '0')} ${label}`;
   }).join('\n');
 
   blocks.push({

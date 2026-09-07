@@ -2082,12 +2082,18 @@ function buildHeroNamesMap(heroStats) {
   return map;
 }
 
-app.get('/api/review/:matchId', async (req, res) => {
+app.get('/api/review/:matchId', handleMatchReview);
+app.post('/api/review/:matchId', handleMatchReview);
+
+async function handleMatchReview(req, res) {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
-  const lang = req.query.lang || 'zh';
-  const heroId = req.query.heroId ? Number(req.query.heroId) : undefined;
-  const followUp = typeof req.query.followUp === 'string' ? req.query.followUp.trim() : '';
+  const lang = req.body?.lang ?? req.query.lang ?? 'zh';
+  const heroIdRaw = req.body?.heroId ?? req.query.heroId;
+  const heroId = heroIdRaw != null && heroIdRaw !== '' ? Number(heroIdRaw) : undefined;
+  const followUp = typeof req.body?.followUp === 'string'
+    ? req.body.followUp.trim()
+    : (typeof req.query.followUp === 'string' ? req.query.followUp.trim() : '');
   const matchId = Number(req.params.matchId);
   const isZh = lang === 'zh';
 
@@ -2204,6 +2210,7 @@ Format with ## headings:
             { role: 'user', content: userPrompt },
           ],
           stream: true,
+        }, {
           signal: abortController.signal,
         });
 
@@ -2255,7 +2262,7 @@ Format with ## headings:
     const errorMsg = error.message || (isZh ? '复盘失败' : 'Review failed');
     return respondReviewError(res, wantsStream, errorMsg, 500);
   }
-});
+}
 
 app.use(express.static(path.join(__dirname, 'dist')));
 

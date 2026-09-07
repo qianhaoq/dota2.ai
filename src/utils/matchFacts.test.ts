@@ -77,6 +77,12 @@ describe('buildMatchFact', () => {
     expect(prompt).not.toContain('夜魇');
   });
 
+  it('prompt localizes timeline objectives in Chinese', () => {
+    const prompt = matchFactToPrompt(fact, 'zh');
+    expect(prompt).toContain('一血');
+    expect(prompt).not.toMatch(/CHAT_MESSAGE_FIRSTBLOOD/);
+  });
+
   it('is not grounded when lane_pos data is insufficient', () => {
     const noLanes = buildMatchFact({
       ...fixture,

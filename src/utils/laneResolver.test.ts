@@ -107,6 +107,17 @@ describe('resolveLanes — gold sample 8985182860', () => {
     expect(partialResolved.players.every((p) => p.laneLabel === 'unknown')).toBe(true);
   });
 
+  it('returns ungrounded when k-means does not form three meaningful clusters', () => {
+    const sameGrid = { '100': { '100': 50 } };
+    const collapsed = fixture.players.map((p: { lane_pos?: unknown }) => ({
+      ...p,
+      lane_pos: sameGrid,
+    }));
+    const collapsedResolved = resolveLanes(collapsed);
+    expect(collapsedResolved.source).toBe(LANE_FALLBACK_SOURCE);
+    expect(collapsedResolved.lanes).toHaveLength(0);
+  });
+
   it('produces three lane groups', () => {
     expect(resolved.lanes).toHaveLength(3);
     const allHeroes = resolved.lanes.flatMap((l) => [...l.radiantHeroIds, ...l.direHeroIds]);

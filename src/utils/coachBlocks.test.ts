@@ -218,6 +218,44 @@ describe('messageToBlocks', () => {
     expect(pov?.markdown).toContain('Nearby: Spirit Breaker');
     expect(pov?.markdown).not.toContain('**');
   });
+
+  it('localizes Chinese timeline objective labels', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      matchFact: {
+        summary: {
+          matchId: 8985182860,
+          duration: 2400,
+          durationFormatted: '40:00',
+          radiantWin: false,
+          winner: 'dire',
+          winnerLabelZh: '夜魇胜利',
+          winnerLabelEn: 'Dire Victory',
+        },
+        players: [],
+        lanes: [],
+        laneInferenceLabelZh: '根据录像站位推断',
+        laneInferenceLabelEn: 'Inferred from replay positioning',
+        laneSource: 'lane_pos_cluster',
+        laneDataAvailable: true,
+        economy: { radiantGoldAdv: [], checkpoints: [] },
+        timeline: [
+          { time: 48, type: 'CHAT_MESSAGE_FIRSTBLOOD', key: '5' },
+          { time: 563, type: 'building_kill', key: 'npc_dota_badguys_tower1_top' },
+          { time: 2053, type: 'CHAT_MESSAGE_ROSHAN_KILL', key: null },
+        ],
+        focusHeroId: null,
+        focusLens: null,
+        grounded: true,
+      },
+    }), 'zh');
+    const timeline = blocks.find((b) => b.reviewSection === 'timeline');
+    expect(timeline?.markdown).toContain('一血');
+    expect(timeline?.markdown).toContain('上路一塔');
+    expect(timeline?.markdown).toContain('肉山');
+    expect(timeline?.markdown).not.toContain('CHAT_MESSAGE_');
+    expect(timeline?.markdown).not.toContain('building_kill');
+  });
 });
 
 describe('pairCoachSessions', () => {
