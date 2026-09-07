@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { messageToBlocks, parseMarkdownSections, pairCoachSessions, sessionTitle, filterVisibleSessions } from './coachBlocks';
+import { shouldShowCoachFailureAlert } from './coachInflight';
 import type { CoachMessage } from '../components/coach/coachMessage';
 import { appendStreamChunk } from './streamAccumulator';
 
@@ -173,6 +174,110 @@ describe('messageToBlocks', () => {
       matchFact: null,
     }));
     expect(blocks).toEqual([]);
+  });
+
+  it('renders review insight blocks after cancel when structured review payload exists', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      content: '',
+      isStreaming: false,
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      reviewCards: {
+        match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
+        phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
+      },
+    }), 'zh');
+    expect(blocks.some((b) => b.type === 'reviewInsight')).toBe(true);
+  });
+
+  it('renders review notice alongside insight blocks when stream error is preserved', () => {
+    const message = baseCoach({
+      action: 'review',
+      content: '',
+      error: 'Request timed out, please try again',
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      reviewCards: {
+        match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
+        phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
+      },
+    });
+    const blocks = messageToBlocks(message, 'zh');
+    expect(blocks.filter((b) => b.type === 'markdown' && b.markdown?.includes('timed out'))).toHaveLength(1);
+    expect(blocks.some((b) => b.type === 'reviewInsight')).toBe(true);
+    expect(shouldShowCoachFailureAlert(message)).toBe(false);
+  });
+
+  it('renders AI-unavailable notice with fallback review cards', () => {
+    const message = baseCoach({
+      action: 'review',
+      content: '',
+      error: 'AI 洞察生成不可用（未配置 API Key），以下为基于比赛数据的默认复盘卡片。',
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      reviewCards: {
+        match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
+        phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
+      },
+    });
+    const blocks = messageToBlocks(message, 'zh');
+    expect(blocks.some((b) => b.type === 'markdown' && b.markdown?.includes('默认复盘卡片'))).toBe(true);
+    expect(blocks.some((b) => b.type === 'reviewInsight')).toBe(true);
+    expect(shouldShowCoachFailureAlert(message)).toBe(false);
+  });
+
+  it('maps reviewCards to reviewInsight blocks (Fact→Insight→Drill)', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      reviewCards: {
+        match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
+        phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
+        primary_mistake: { category: 'fight_timing', categoryLabel: '团战时机', headline: '开团过早', explanation: '解释', evidence: [] },
+        key_moments: [
+          { timestamp: 48, timestampLabel: '0:48', phase: 'lane', headline: '一血', why: '原因', evidence: [] },
+          { timestamp: 1310, timestampLabel: '21:50', phase: 'mid', headline: '推塔', why: '原因', evidence: [] },
+          { timestamp: 2817, timestampLabel: '46:57', phase: 'late', headline: '肉山', why: '原因', evidence: [] },
+        ],
+        drill: { duration: '15 分钟', title: '练一件事', steps: ['步骤1'] },
+        followups: ['展开这场团'],
+      },
+    }), 'zh');
+    expect(blocks.some((b) => b.type === 'reviewInsight' && b.reviewCardKind === 'primary_mistake')).toBe(true);
+    expect(blocks.some((b) => b.reviewCardKind === 'key_moments')).toBe(true);
+    expect(blocks.some((b) => b.reviewCardKind === 'drill')).toBe(true);
+    expect(blocks.filter((b) => b.type === 'review')).toHaveLength(0);
+  });
+
+  it('skips fact spine blocks for review follow-up messages', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      reviewFollowUp: true,
+      content: '## 回答\n具体解释。',
+      matchFact: {
+        summary: {
+          matchId: 8985182860,
+          durationFormatted: '52:05',
+          radiantWin: false,
+          winner: 'dire',
+          winnerLabelZh: '夜魇胜利',
+          winnerLabelEn: 'Dire Victory',
+          duration: 3125,
+        },
+        players: [],
+        lanes: [],
+        laneInferenceLabelZh: '',
+        laneInferenceLabelEn: '',
+        laneSource: 'lane_pos_cluster',
+        laneDataAvailable: true,
+        economy: { radiantGoldAdv: [], checkpoints: [] },
+        timeline: [],
+        focusHeroId: 54,
+        focusLens: null,
+        focusLaneGrounded: true,
+        grounded: true,
+      },
+    }), 'zh');
+    expect(blocks.filter((b) => b.type === 'review')).toHaveLength(0);
+    expect(blocks.some((b) => b.title === '回答' || b.markdown?.includes('具体解释'))).toBe(true);
   });
 
   it('does not leak inline markdown asterisks in review POV (en)', () => {

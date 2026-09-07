@@ -46,7 +46,14 @@ export type LessonMode = 'bp' | 'match' | 'items' | 'mind' | 'review';
  * A2UI（agent-to-UI）生成式卡片块。
  * 教练流式结果映射到这些块，而不是纯聊天气泡。
  */
-export type A2UIBlockType = 'section' | 'actions' | 'matchups' | 'tier' | 'markdown' | 'review';
+export type A2UIBlockType =
+  | 'section'
+  | 'actions'
+  | 'matchups'
+  | 'tier'
+  | 'markdown'
+  | 'review'
+  | 'reviewInsight';
 
 export interface A2UIAction {
   id: string;
@@ -72,4 +79,15 @@ export interface A2UIBlock {
   matchFact?: unknown;
   /** 复盘子区块 */
   reviewSection?: 'summary' | 'lanes' | 'economy' | 'timeline' | 'pov' | 'howToWin';
+  /** AI 复盘卡片子类型 */
+  reviewCardKind?:
+    | 'match_summary'
+    | 'phases'
+    | 'primary_mistake'
+    | 'key_moments'
+    | 'drill'
+    | 'followups'
+    | 'mentor_note';
+  /** 结构化复盘卡片数据 */
+  reviewCards?: import('./types/reviewCards').ReviewCardsPayload;
 }

@@ -7,7 +7,9 @@ import {
 import { MatchupData, TierHero, PlaybookHero } from '../../services/geminiService';
 import type { CoachSession } from './coachMessage';
 import { sessionTitle } from '../../utils/coachBlocks';
+import { shouldShowCoachFailureAlert } from '../../utils/coachInflight';
 import { groupMarkdownSegments } from '../../utils/markdownLines';
+import ReviewInsightCards from './ReviewInsightCards';
 
 interface ResultCardProps {
   session: CoachSession;
@@ -17,6 +19,7 @@ interface ResultCardProps {
   mentorName?: string;
   expanded?: boolean;
   onDismiss?: () => void;
+  onReviewFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
 }
 
 const TierSkeleton: React.FC = () => (
@@ -75,6 +78,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
   mentorName,
   expanded = true,
   onDismiss,
+  onReviewFollowUp,
 }) => {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const message = session.message;
@@ -305,7 +309,13 @@ const ResultCard: React.FC<ResultCardProps> = ({
           <p className="text-sm text-k3-text-secondary italic">{t.thinking}</p>
         )}
 
-        {message.error && (
+        {message.isStreaming && session.action === 'review' && message.reviewCards && !message.reviewCards.primary_mistake && !message.error && (
+          <p className="text-sm text-k3-text-secondary italic animate-pulse">
+            {lang === 'zh' ? '拉比克正在提炼关键失误…' : 'Rubick is distilling the key mistake…'}
+          </p>
+        )}
+
+        {shouldShowCoachFailureAlert(message) && (
           <div className="flex items-start gap-2 p-3 rounded-sm bg-red-500/10 border border-red-500/20">
             <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
@@ -321,9 +331,13 @@ const ResultCard: React.FC<ResultCardProps> = ({
 
         {session.blocks.map((block) => {
           const isReview = block.type === 'review';
+          const isReviewInsight = block.type === 'reviewInsight';
           const reviewDefaultOpen = block.reviewSection === 'summary'
             || block.reviewSection === 'lanes'
-            || block.reviewSection === 'howToWin';
+            || block.reviewSection === 'howToWin'
+            || block.reviewCardKind === 'match_summary'
+            || block.reviewCardKind === 'primary_mistake'
+            || block.reviewCardKind === 'drill';
 
           const body = (
             <>
@@ -331,10 +345,17 @@ const ResultCard: React.FC<ResultCardProps> = ({
               {block.type === 'actions' && block.actions && renderActions(block.actions)}
               {block.type === 'tier' && renderTier(block)}
               {block.playbook && renderPlaybook(block)}
+              {isReviewInsight && (
+                <ReviewInsightCards
+                  block={block}
+                  lang={lang}
+                  onFollowUp={onReviewFollowUp}
+                />
+              )}
               {block.reviewSection === 'lanes' && (
                 <p className="text-[10px] text-k3-text-tertiary mb-2 italic">{t.laneInference}</p>
               )}
-              {block.markdown && (
+              {block.markdown && !(isReviewInsight && block.reviewCardKind === 'mentor_note') && (
                 <MarkdownBody
                   text={block.markdown}
                   streaming={Boolean(message.isStreaming && block.id === lastTextId)}
@@ -348,16 +369,20 @@ const ResultCard: React.FC<ResultCardProps> = ({
           }
 
           const long = Boolean(block.markdown && block.markdown.length >= 900);
-          const open = isSectionOpen(block.id, block.markdown, isReview ? reviewDefaultOpen : undefined);
+          const open = isSectionOpen(
+            block.id,
+            block.markdown,
+            (isReview || isReviewInsight) ? reviewDefaultOpen : undefined,
+          );
 
           return (
-            <section key={block.id} className={`min-w-0 ${isReview ? 'rounded-lg border border-k3-border-subtle/80 bg-k3-elevated/20' : ''}`}>
-              <div className={`flex items-center justify-between gap-2 mb-1.5 ${isReview ? 'px-2.5 pt-2.5' : ''}`}>
+            <section key={block.id} className={`min-w-0 ${isReview || isReviewInsight ? 'rounded-lg border border-k3-border-subtle/80 bg-k3-elevated/20' : ''}`}>
+              <div className={`flex items-center justify-between gap-2 mb-1.5 ${isReview || isReviewInsight ? 'px-2.5 pt-2.5' : ''}`}>
                 <h3 className="text-k3-text-primary font-semibold text-sm flex items-center gap-2 min-w-0">
                   <span className="w-1 h-4 bg-k3-text-tertiary rounded-full flex-shrink-0" />
                   <span className="truncate">{block.title}</span>
                 </h3>
-                {(long || isReview) && (
+                {(long || isReview || isReviewInsight) && (
                   <button
                     onClick={() => setOpenSections((prev) => ({ ...prev, [block.id]: !open }))}
                     className="text-[11px] text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 min-h-[40px] flex-shrink-0 touch-manipulation"
@@ -368,9 +393,9 @@ const ResultCard: React.FC<ResultCardProps> = ({
                 )}
               </div>
               {open ? (
-                <div className={isReview ? 'px-2.5 pb-2.5' : undefined}>{body}</div>
+                <div className={isReview || isReviewInsight ? 'px-2.5 pb-2.5' : undefined}>{body}</div>
               ) : (
-                <p className={`text-xs text-k3-text-tertiary truncate ${isReview ? 'px-2.5 pb-2.5' : ''}`}>
+                <p className={`text-xs text-k3-text-tertiary truncate ${isReview || isReviewInsight ? 'px-2.5 pb-2.5' : ''}`}>
                   {(block.markdown || '').replace(/\n/g, ' ').slice(0, 80)}
                 </p>
               )}

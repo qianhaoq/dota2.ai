@@ -67,6 +67,33 @@ export function isCoachInflightCurrent(
   return generationRef.current === captured;
 }
 
+/** True when a review message already has structured cards worth keeping on stream end. */
+export function hasStructuredReviewPayload(msg: CoachMessage): boolean {
+  return Boolean(msg.reviewCards || (msg.action === 'review' && msg.matchFact));
+}
+
+/** True when ResultCard should render the top-level failure alert (not already in blocks). */
+export function shouldShowCoachFailureAlert(msg: CoachMessage): boolean {
+  return Boolean(msg.error)
+    && !(msg.action === 'review' && hasStructuredReviewPayload(msg));
+}
+
+/** Apply terminal review-stream updates; preserve cards and surface non-destructive errors. */
+export function finalizeReviewCoachMessage(
+  msg: CoachMessage,
+  updates: { error?: string; grounded?: boolean },
+): CoachMessage {
+  const next: CoachMessage = {
+    ...msg,
+    isStreaming: false,
+    ...(updates.grounded !== undefined ? { grounded: updates.grounded } : {}),
+  };
+  if (updates.error && !msg.error) {
+    next.error = updates.error;
+  }
+  return next;
+}
+
 /** Clear streaming flags on all in-flight coach messages (e.g. after Stop). */
 export function clearStreamingCoachMessages(
   messages: CoachMessage[],
@@ -79,7 +106,9 @@ export function clearStreamingCoachMessages(
     return {
       ...msg,
       isStreaming: false,
-      ...(cancelledLabel && !msg.content && !msg.error ? { error: cancelledLabel } : {}),
+      ...(cancelledLabel && !msg.content && !msg.error && !hasStructuredReviewPayload(msg)
+        ? { error: cancelledLabel }
+        : {}),
     };
   });
   return changed ? next : messages;

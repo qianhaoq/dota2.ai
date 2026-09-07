@@ -6,6 +6,8 @@ import {
   createTimeoutAbort,
   awaitWithTimeout,
   claimCoachInflightGeneration,
+  finalizeReviewCoachMessage,
+  shouldShowCoachFailureAlert,
   invalidateCoachInflightGeneration,
   isCoachInflightCurrent,
 } from './coachInflight';
@@ -51,6 +53,92 @@ describe('coachInflight', () => {
     expect(out[0].isStreaming).toBe(false);
     expect(out[0].error).toBeUndefined();
     expect(out[0].content).toBe('partial');
+  });
+
+  it('clearStreamingCoachMessages keeps review cards visible when cancelled mid-stream', () => {
+    const messages: CoachMessage[] = [
+      {
+        id: 'a',
+        type: 'coach',
+        action: 'review',
+        content: '',
+        isStreaming: true,
+        matchFact: { summary: { matchId: 1 } } as CoachMessage['matchFact'],
+        reviewCards: {
+          match_summary: { matchId: 1, heroName: '噬魂鬼', kda: '1/2/3', gpm: 400, result: 'loss', resultLabel: '失败', durationFormatted: '40:00' },
+          phases: [],
+        },
+      },
+    ];
+    const out = clearStreamingCoachMessages(messages, coachCancelledMessage('zh'));
+    expect(out[0].isStreaming).toBe(false);
+    expect(out[0].error).toBeUndefined();
+    expect(out[0].reviewCards?.match_summary?.heroName).toBe('噬魂鬼');
+  });
+
+  it('clearStreamingCoachMessages keeps matchFact spine when cancelled before AI cards arrive', () => {
+    const messages: CoachMessage[] = [
+      {
+        id: 'a',
+        type: 'coach',
+        action: 'review',
+        content: '',
+        isStreaming: true,
+        matchFact: { summary: { matchId: 8985182860 } } as CoachMessage['matchFact'],
+      },
+    ];
+    const out = clearStreamingCoachMessages(messages, coachCancelledMessage('en'));
+    expect(out[0].isStreaming).toBe(false);
+    expect(out[0].error).toBeUndefined();
+    expect(out[0].matchFact?.summary?.matchId).toBe(8985182860);
+  });
+
+  it('finalizeReviewCoachMessage keeps review cards on client timeout error', () => {
+    const msg: CoachMessage = {
+      id: 'a',
+      type: 'coach',
+      action: 'review',
+      content: '',
+      isStreaming: true,
+      matchFact: { summary: { matchId: 1 } } as CoachMessage['matchFact'],
+      reviewCards: {
+        match_summary: { matchId: 1, heroName: '噬魂鬼', kda: '1/2/3', gpm: 400, result: 'loss', resultLabel: '失败', durationFormatted: '40:00' },
+        phases: [],
+      },
+    };
+    const out = finalizeReviewCoachMessage(msg, { error: 'Request timed out, please try again' });
+    expect(out.isStreaming).toBe(false);
+    expect(out.error).toBe('Request timed out, please try again');
+    expect(out.reviewCards?.match_summary?.heroName).toBe('噬魂鬼');
+  });
+
+  it('finalizeReviewCoachMessage still sets error when no structured review payload', () => {
+    const msg: CoachMessage = {
+      id: 'a',
+      type: 'coach',
+      action: 'review',
+      content: '',
+      isStreaming: true,
+    };
+    const out = finalizeReviewCoachMessage(msg, { error: 'Request timed out' });
+    expect(out.error).toBe('Request timed out');
+  });
+
+  it('shouldShowCoachFailureAlert suppresses duplicate alert when review cards are preserved', () => {
+    const msg: CoachMessage = {
+      id: 'a',
+      type: 'coach',
+      action: 'review',
+      content: '',
+      error: 'Request timed out, please try again',
+      matchFact: { summary: { matchId: 1 } } as CoachMessage['matchFact'],
+      reviewCards: {
+        match_summary: { matchId: 1, heroName: '噬魂鬼', result: 'loss', resultLabel: '失败', durationFormatted: '40:00' },
+        phases: [],
+      },
+    };
+    expect(shouldShowCoachFailureAlert(msg)).toBe(false);
+    expect(shouldShowCoachFailureAlert({ ...msg, reviewCards: undefined, matchFact: null })).toBe(true);
   });
 
   it('exposes bilingual timeout copy', () => {

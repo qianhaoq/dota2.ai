@@ -8,6 +8,7 @@ import {
   isScrollPinnedNearBottom,
   shouldAutoScrollCoachTimeline,
   streamingSessionFingerprint,
+  coachSessionScrollFingerprint,
 } from '../../utils/coachScroll';
 import ResultCard from './ResultCard';
 
@@ -22,6 +23,7 @@ interface CoachCanvasProps {
   onUndoDismiss: () => void;
   mentorName?: string;
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
+  onReviewFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
 }
 
 const UndoStrip: React.FC<{
@@ -60,6 +62,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
   onUndoDismiss,
   mentorName,
   scrollContainerRef,
+  onReviewFollowUp,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<HTMLDivElement>(null);
@@ -121,7 +124,9 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
     );
 
     const streamingSession = visibleSessions.find((s) => s.message.isStreaming);
-    const fingerprint = streamingSessionFingerprint(streamingSession);
+    const reviewSession = visibleSessions.find((s) => s.message.action === 'review' && (s.message.reviewCards || s.message.matchFact));
+    const fingerprint = coachSessionScrollFingerprint(streamingSession)
+      || coachSessionScrollFingerprint(reviewSession);
     const shouldScrollBottom = shouldAutoScrollCoachTimeline({
       appendedAtTail: visibilityChange.kind === 'append',
       streamingFingerprint: fingerprint,
@@ -181,6 +186,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
                 mentorName={mentorName}
                 expanded
                 onDismiss={() => onDismissSession(session.id)}
+                onReviewFollowUp={onReviewFollowUp}
               />
             </div>
           );

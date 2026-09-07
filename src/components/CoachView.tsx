@@ -22,6 +22,7 @@ import {
   isCoachInflightCurrent,
   META_FETCH_TIMEOUT_MS,
   SUGGEST_FETCH_TIMEOUT_MS,
+  finalizeReviewCoachMessage,
 } from '../utils/coachInflight';
 import { X } from 'lucide-react';
 import {
@@ -211,11 +212,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     if (followUp) setUserInput('');
     const msgId = addCoachMessage({
       type: 'coach', action: 'review', lesson: 'review', content: '', isStreaming: true,
+      ...(followUp ? { reviewFollowUp: true } : {}),
     });
     streamControllerRef.current = fetchMatchReviewStream(
       matchId, lang, heroId ?? practiceHero?.id, followUp,
       {
         onData: (matchFact) => { updateCoachMessage(msgId, { matchFact }); },
+        onReviewCards: (reviewCards) => { updateCoachMessage(msgId, { reviewCards }); },
+        onReviewNotice: (notice) => { updateCoachMessage(msgId, { error: notice }); },
         onChunk: (text) => {
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
@@ -226,15 +230,20 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         },
         onError: (error) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
-          updateCoachMessage(msgId, { error, isStreaming: false });
+          setMessages((prev) => prev.map((msg) => (
+            msg.id === msgId ? finalizeReviewCoachMessage(msg, { error }) : msg
+          )));
           finishStream(streamGen);
         },
       }
     );
   }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream]);
 
-  const handleReviewFollowUp = useCallback((question: string) => {
-    const ctx = activeReviewRef.current;
+  const handleReviewFollowUp = useCallback((
+    question: string,
+    context?: { matchId: number; heroId?: number },
+  ) => {
+    const ctx = context ?? activeReviewRef.current;
     if (!ctx) return;
     handleReview(ctx.matchId, ctx.heroId, question);
   }, [handleReview]);
@@ -395,6 +404,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                 onUndoDismiss={undoDismissSession}
                 mentorName={mentorName}
                 scrollContainerRef={scrollContainerRef}
+                onReviewFollowUp={handleReviewFollowUp}
               />
             </div>
           )}
