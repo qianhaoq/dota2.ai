@@ -2496,7 +2496,7 @@ JSON shape:
             error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
           });
         } else {
-          const reviewCards = buildFallbackAiCards(matchFact, lang);
+          const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
           sendReviewSse(res, { reviewCards, grounded: isGrounded });
           endReviewSse(res);
         }

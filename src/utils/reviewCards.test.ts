@@ -192,6 +192,27 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.followups?.[0]).not.toMatch(/butterfly/i);
   });
 
+  it('replaces first chip when it appends an unlisted item such as BKB', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: 'Mid fight too early',
+        explanation: 'Forced a fight while behind.',
+        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: 'Mid tier 2', why: 'Extended lead.', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: 'Roshan', why: 'Dire took Roshan.', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 min', title: 'Drill', steps: ['One step'] },
+      followups: ['Break down 0:48: First Blood — why was BKB wrong?', 'What did gold lead mean?', 'One thing to practice next'],
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'en') as ReviewCardsPayload;
+    expect(cards.followups?.[0]).toBe('Break down 0:48: First Blood');
+    expect(cards.followups?.[0]).not.toMatch(/BKB/i);
+  });
+
   it('parseAiReviewCards merges LLM JSON with deterministic spine', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
