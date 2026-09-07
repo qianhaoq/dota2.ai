@@ -1,5 +1,6 @@
 import { Hero, Language } from '../types';
 import type { MatchFact } from '../types/matchReview';
+import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
 
 function cancelledMessage(lang: Language): string {
   return lang === 'zh' ? '请求已取消' : 'Request cancelled';
@@ -571,47 +572,84 @@ export const fetchMatchReviewStream = (
       const decoder = new TextDecoder();
       let buffer = '';
       let isGrounded = false;
+      let sawDone = false;
+
+      const processLine = (line: string): 'complete' | 'error' | 'continue' => {
+        if (!line.startsWith('data: ')) return 'continue';
+        const data = line.slice(6).trim();
+        if (isReviewSseTerminal(data)) {
+          sawDone = true;
+          return 'complete';
+        }
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) {
+            callbacks?.onError(parsed.error);
+            return 'error';
+          }
+          if (parsed.matchFact && callbacks?.onData) {
+            callbacks.onData(parsed.matchFact);
+            isGrounded = parsed.grounded ?? true;
+          }
+          if (parsed.text && callbacks?.onChunk) {
+            callbacks.onChunk(parsed.text);
+          }
+          if (parsed.grounded !== undefined) {
+            isGrounded = parsed.grounded;
+          }
+        } catch {
+          // skip malformed
+        }
+        return 'continue';
+      };
+
+      const drainLines = (lines: string[]): 'complete' | 'error' | 'continue' => {
+        for (const line of lines) {
+          const result = processLine(line);
+          if (result !== 'continue') return result;
+        }
+        return 'continue';
+      };
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6);
-          if (data === '[DONE]') {
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          const result = drainLines(lines);
+          if (result === 'complete') {
             await cleanup(reader);
             callbacks?.onComplete(isGrounded);
             return;
           }
-          try {
-            const parsed = JSON.parse(data);
-            if (parsed.error) {
-              await cleanup(reader);
-              callbacks?.onError(parsed.error);
-              return;
-            }
-            if (parsed.matchFact && callbacks?.onData) {
-              callbacks.onData(parsed.matchFact);
-              isGrounded = parsed.grounded ?? true;
-            }
-            if (parsed.text && callbacks?.onChunk) {
-              callbacks.onChunk(parsed.text);
-            }
-            if (parsed.grounded !== undefined) {
-              isGrounded = parsed.grounded;
-            }
-          } catch {
-            // skip malformed
+          if (result === 'error') {
+            await cleanup(reader);
+            return;
           }
+        }
+        if (done) {
+          buffer += decoder.decode();
+          const tail = buffer.split('\n').filter((line) => line.length > 0);
+          const result = drainLines(tail);
+          if (result === 'complete') {
+            await cleanup(reader);
+            callbacks?.onComplete(isGrounded);
+            return;
+          }
+          if (result === 'error') {
+            await cleanup(reader);
+            return;
+          }
+          break;
         }
       }
 
       await cleanup(reader);
+      if (!sawDone) {
+        callbacks?.onError(incompleteReviewStreamMessage(lang));
+        return;
+      }
       callbacks?.onComplete(isGrounded);
     } catch (error: any) {
       await cleanup(reader);
