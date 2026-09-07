@@ -109,6 +109,8 @@ const HomeModules: React.FC<HomeModulesProps> = ({
           allHeroes={allHeroes}
           practiceHero={practiceHero}
           isLoading={isLoading}
+          density={density}
+          defaultExpanded={density === 'full' && lesson === 'review'}
           onStartReview={onStartReview}
         />
       )}

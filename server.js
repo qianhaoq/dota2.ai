@@ -2073,8 +2073,44 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400) {
   return res.status(status).json({ error: errorMsg });
 }
 
-app.get('/api/review/:matchId', handleMatchReview);
+app.get('/api/review/:matchId', handleMatchReviewFacts);
 app.post('/api/review/:matchId', handleMatchReview);
+
+/** GET：只拉 OpenDota MatchFact，不调用 DeepSeek */
+async function handleMatchReviewFacts(req, res) {
+  const lang = req.query.lang ?? 'zh';
+  const matchId = Number(req.params.matchId);
+  const isZh = lang === 'zh';
+
+  if (!Number.isFinite(matchId) || matchId <= 0) {
+    return res.status(400).json({ error: isZh ? '无效的比赛 ID' : 'Invalid match ID' });
+  }
+
+  try {
+    const [matchData, heroStats, heroConstants] = await Promise.all([
+      getMatchDetail(matchId),
+      getHeroStats(),
+      getHeroConstants(),
+    ]);
+    const heroNames = buildHeroNamesMap(
+      heroStats,
+      matchData.players || [],
+      heroConstants,
+      HERO_NAMES_CN
+    );
+    const matchFact = buildMatchFact(matchData, { lang, heroNames });
+    return res.json({ matchFact, grounded: Boolean(matchFact.grounded) });
+  } catch (error) {
+    console.error('Match facts error:', error);
+    const errorMsg = error.message || (isZh ? '拉取比赛失败' : 'Failed to load match');
+    const status = /HTTP 404/.test(errorMsg) ? 404 : 500;
+    return res.status(status).json({
+      error: status === 404
+        ? (isZh ? '找不到这场比赛' : 'Match not found')
+        : errorMsg,
+    });
+  }
+}
 
 async function handleMatchReview(req, res) {
   const acceptHeader = req.headers.accept || '';
@@ -2090,14 +2126,6 @@ async function handleMatchReview(req, res) {
 
   if (!Number.isFinite(matchId) || matchId <= 0) {
     return respondReviewError(res, wantsStream, isZh ? '无效的比赛 ID' : 'Invalid match ID');
-  }
-
-  if (req.method === 'GET') {
-    return res.status(405).json({
-      error: isZh
-        ? '请使用 POST 并设置 Accept: text/event-stream 获取复盘'
-        : 'Use POST with Accept: text/event-stream for match review',
-    });
   }
 
   if (!wantsStream) {

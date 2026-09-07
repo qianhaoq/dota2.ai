@@ -47,10 +47,10 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
   const canSend = userInput.trim().length > 0 && !isLoading;
 
   return (
-    <div className="flex-shrink-0 border-t border-k3-border-subtle bg-k3-base pb-safe">
-      <div className="max-w-3xl mx-auto w-full px-3 sm:px-4 py-2 sm:py-3">
+    <div className="flex-shrink-0 border-t border-k3-border-subtle bg-k3-base pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
+      <div className="max-w-3xl mx-auto w-full px-3 sm:px-4 pt-2 sm:pt-3">
         {isLoading && (
-          <div className="flex items-center justify-center gap-2 mb-2 min-h-[40px] min-w-0">
+          <div data-testid="composer-status" className="flex items-center justify-center gap-2 mb-2 min-h-[40px] min-w-0">
             <Loader2 size={14} className="text-k3-text-secondary animate-spin flex-shrink-0" />
             <span className="text-xs sm:text-sm text-k3-text-secondary truncate min-w-0">{t.reading}</span>
             <button
@@ -87,7 +87,10 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
             </button>
           </div>
         </form>
-        <div className="hidden sm:block text-center text-[10px] text-k3-text-tertiary/60 tracking-wide mt-1.5">
+        <div
+          data-testid="composer-focus-hint"
+          className="hidden sm:block text-center text-[10px] leading-4 text-k3-text-tertiary/60 tracking-wide mt-1.5 pb-0.5"
+        >
           <kbd className="px-1.5 py-0.5 rounded bg-k3-surface border border-k3-border-subtle font-mono text-[9px]">/</kbd>
           <span className="ml-1.5">{t.keyboardHint}</span>
         </div>

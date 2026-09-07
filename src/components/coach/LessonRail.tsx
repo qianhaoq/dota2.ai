@@ -25,8 +25,8 @@ const LessonRail: React.FC<LessonRailProps> = ({
     mind: lang === 'zh' ? '思路' : 'Game sense',
     review: lang === 'zh' ? '复盘' : 'Replay',
     reviewHint: lang === 'zh'
-      ? '在下方输入比赛 ID 开始复盘'
-      : 'Enter a match ID below to start a review.',
+      ? '先拉取比赛，再选择本局英雄后开始复盘'
+      : 'Load the match first, then pick a hero to start the review.',
   }), [lang]);
 
   const lessons: Array<{
