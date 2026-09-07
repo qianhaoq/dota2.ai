@@ -4,6 +4,7 @@ import { RotateCcw } from 'lucide-react';
 import type { CoachSession } from './coachMessage';
 import { sessionTitle, filterVisibleSessions } from '../../utils/coachBlocks';
 import {
+  classifyTimelineVisibilityChange,
   isScrollPinnedNearBottom,
   shouldAutoScrollCoachTimeline,
   streamingSessionFingerprint,
@@ -62,8 +63,11 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<HTMLDivElement>(null);
-  const prevVisibleCountRef = useRef(0);
+  const sessionNodeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const prevVisibleIdsRef = useRef<Set<string>>(new Set());
+  const prevAllSessionIdsRef = useRef<string[]>([]);
   const prevStreamingFingerprintRef = useRef('');
+  const pinnedNearBottomRef = useRef(true);
 
   const visibleSessions = useMemo(
     () => filterVisibleSessions(sessions, dismissedSessionIds),
@@ -81,32 +85,69 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
     undo: lang === 'zh' ? '撤销' : 'Undo',
   }), [lang]);
 
-  const isPinnedNearBottom = useCallback(() => {
+  const bindSessionNode = useCallback((sessionId: string, node: HTMLDivElement | null) => {
+    if (node) {
+      sessionNodeRefs.current.set(sessionId, node);
+    } else {
+      sessionNodeRefs.current.delete(sessionId);
+    }
+  }, []);
+
+  useEffect(() => {
     const el = scrollContainerRef?.current;
-    if (!el) return true;
-    return isScrollPinnedNearBottom(el.scrollTop, el.scrollHeight, el.clientHeight);
+    if (!el) return undefined;
+
+    const updatePinnedSnapshot = () => {
+      pinnedNearBottomRef.current = isScrollPinnedNearBottom(
+        el.scrollTop,
+        el.scrollHeight,
+        el.clientHeight,
+      );
+    };
+
+    updatePinnedSnapshot();
+    el.addEventListener('scroll', updatePinnedSnapshot, { passive: true });
+    return () => el.removeEventListener('scroll', updatePinnedSnapshot);
   }, [scrollContainerRef]);
 
   useEffect(() => {
+    const visibleIds = visibleSessions.map((s) => s.id);
+    const allIds = sessions.map((s) => s.id);
+    const visibilityChange = classifyTimelineVisibilityChange(
+      prevVisibleIdsRef.current,
+      prevAllSessionIdsRef.current,
+      visibleIds,
+      allIds,
+    );
+
     const streamingSession = visibleSessions.find((s) => s.message.isStreaming);
     const fingerprint = streamingSessionFingerprint(streamingSession);
-    const prevCount = prevVisibleCountRef.current;
-    const grew = visibleSessions.length > prevCount;
-    const shouldScroll = shouldAutoScrollCoachTimeline({
-      visibleCount: visibleSessions.length,
-      prevVisibleCount: prevCount,
+    const shouldScrollBottom = shouldAutoScrollCoachTimeline({
+      appendedAtTail: visibilityChange.kind === 'append',
       streamingFingerprint: fingerprint,
       prevStreamingFingerprint: prevStreamingFingerprintRef.current,
-      pinnedNearBottom: isPinnedNearBottom(),
+      pinnedNearBottom: pinnedNearBottomRef.current,
     });
 
-    prevVisibleCountRef.current = visibleSessions.length;
+    prevVisibleIdsRef.current = new Set(visibleIds);
+    prevAllSessionIdsRef.current = allIds;
     prevStreamingFingerprintRef.current = fingerprint;
 
-    if (shouldScroll) {
-      bottomRef.current?.scrollIntoView({ behavior: grew ? 'smooth' : 'auto', block: 'nearest' });
+    if (visibilityChange.kind === 'restore' && visibilityChange.scrollTargetId) {
+      sessionNodeRefs.current.get(visibilityChange.scrollTargetId)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+      return;
     }
-  }, [visibleSessions, isPinnedNearBottom]);
+
+    if (shouldScrollBottom) {
+      bottomRef.current?.scrollIntoView({
+        behavior: visibilityChange.kind === 'append' ? 'smooth' : 'auto',
+        block: 'nearest',
+      });
+    }
+  }, [visibleSessions, sessions]);
 
   useEffect(() => {
     if (!lastDismissedSessionId) return;
@@ -127,7 +168,11 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
         const dismissed = dismissedSessionIds.has(session.id);
         if (!dismissed) {
           return (
-            <div key={session.id} className="px-0 sm:px-0">
+            <div
+              key={session.id}
+              ref={(node) => bindSessionNode(session.id, node)}
+              className="px-0 sm:px-0"
+            >
               <ResultCard
                 session={session}
                 lang={lang}

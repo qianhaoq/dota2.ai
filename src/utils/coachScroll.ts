@@ -26,21 +26,58 @@ export function streamingSessionFingerprint(session: CoachSession | undefined): 
   ].join(':');
 }
 
+export type TimelineVisibilityKind = 'none' | 'append' | 'restore';
+
+export interface TimelineVisibilityChange {
+  kind: TimelineVisibilityKind;
+  newlyVisibleIds: string[];
+  scrollTargetId: string | null;
+}
+
+/**
+ * Distinguish a brand-new session appended at the timeline tail from a previously
+ * dismissed session becoming visible again (undo restore).
+ */
+export function classifyTimelineVisibilityChange(
+  prevVisibleIds: ReadonlySet<string>,
+  prevAllSessionIds: readonly string[],
+  visibleSessionIds: readonly string[],
+  allSessionIds: readonly string[],
+): TimelineVisibilityChange {
+  const newlyVisible = visibleSessionIds.filter((id) => !prevVisibleIds.has(id));
+  if (newlyVisible.length === 0) {
+    return { kind: 'none', newlyVisibleIds: [], scrollTargetId: null };
+  }
+
+  const sessionsGrew = allSessionIds.length > prevAllSessionIds.length;
+  const tailId = allSessionIds[allSessionIds.length - 1] ?? null;
+  const appendAtTail = sessionsGrew && tailId !== null && newlyVisible.includes(tailId);
+
+  if (appendAtTail) {
+    return { kind: 'append', newlyVisibleIds: newlyVisible, scrollTargetId: tailId };
+  }
+
+  const restoreId = newlyVisible.length === 1
+    ? newlyVisible[0]
+    : newlyVisible[newlyVisible.length - 1];
+
+  return { kind: 'restore', newlyVisibleIds: newlyVisible, scrollTargetId: restoreId };
+}
+
 export interface CoachAutoScrollInput {
-  visibleCount: number;
-  prevVisibleCount: number;
+  appendedAtTail: boolean;
   streamingFingerprint: string;
   prevStreamingFingerprint: string;
   pinnedNearBottom: boolean;
 }
 
 /**
- * Auto-scroll only when a new visible session appears, or streaming content grows
- * while the user remains pinned near the bottom.
+ * Auto-scroll to timeline bottom only when a session is appended at the tail, or
+ * streaming content grows while the user was pinned near the bottom (snapshot from
+ * scroll events, not post-commit measurement).
  */
 export function shouldAutoScrollCoachTimeline(input: CoachAutoScrollInput): boolean {
-  const grew = input.visibleCount > input.prevVisibleCount;
   const contentGrew = input.streamingFingerprint !== ''
     && input.streamingFingerprint !== input.prevStreamingFingerprint;
-  return grew || (contentGrew && input.pinnedNearBottom);
+  return input.appendedAtTail || (contentGrew && input.pinnedNearBottom);
 }

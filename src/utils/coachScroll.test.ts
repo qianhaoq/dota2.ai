@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  classifyTimelineVisibilityChange,
   isScrollPinnedNearBottom,
   shouldAutoScrollCoachTimeline,
   streamingSessionFingerprint,
@@ -20,6 +21,14 @@ describe('isScrollPinnedNearBottom', () => {
   it('returns false when user scrolled up', () => {
     expect(isScrollPinnedNearBottom(100, 1000, 100, 120)).toBe(false);
   });
+
+  it('would read unpinned after a large single expansion if measured post-commit', () => {
+    // User was pinned at bottom (scrollTop 880, height 1000) before +500px content lands.
+    const scrollTopBeforeGrowth = 880;
+    const scrollHeightAfterGrowth = 1500;
+    const clientHeight = 100;
+    expect(isScrollPinnedNearBottom(scrollTopBeforeGrowth, scrollHeightAfterGrowth, clientHeight, 120)).toBe(false);
+  });
 });
 
 describe('streamingSessionFingerprint', () => {
@@ -36,41 +45,117 @@ describe('streamingSessionFingerprint', () => {
     const b = streamingSessionFingerprint(streamingSession('c1', 'ab'));
     expect(a).not.toBe(b);
   });
+
+  it('changes when matchFact arrives during review stream', () => {
+    const before = streamingSessionFingerprint({
+      id: 'c1',
+      message: { id: 'c1', type: 'coach', content: '', isStreaming: true },
+      blocks: [],
+    });
+    const after = streamingSessionFingerprint({
+      id: 'c1',
+      message: {
+        id: 'c1',
+        type: 'coach',
+        content: '',
+        isStreaming: true,
+        matchFact: { summary: { matchId: 1 } } as never,
+      },
+      blocks: [],
+    });
+    expect(before).not.toBe(after);
+  });
+});
+
+describe('classifyTimelineVisibilityChange', () => {
+  it('detects append at tail when sessions array grows', () => {
+    expect(classifyTimelineVisibilityChange(
+      new Set(['c1']),
+      ['c1'],
+      ['c1', 'c2'],
+      ['c1', 'c2'],
+    )).toEqual({
+      kind: 'append',
+      newlyVisibleIds: ['c2'],
+      scrollTargetId: 'c2',
+    });
+  });
+
+  it('detects restore when undo makes an older session visible again', () => {
+    expect(classifyTimelineVisibilityChange(
+      new Set(['c1', 'c3']),
+      ['c1', 'c2', 'c3'],
+      ['c1', 'c2', 'c3'],
+      ['c1', 'c2', 'c3'],
+    )).toEqual({
+      kind: 'restore',
+      newlyVisibleIds: ['c2'],
+      scrollTargetId: 'c2',
+    });
+  });
+
+  it('returns none when visible set is unchanged', () => {
+    expect(classifyTimelineVisibilityChange(
+      new Set(['c1', 'c2']),
+      ['c1', 'c2'],
+      ['c1', 'c2'],
+      ['c1', 'c2'],
+    )).toEqual({
+      kind: 'none',
+      newlyVisibleIds: [],
+      scrollTargetId: null,
+    });
+  });
 });
 
 describe('shouldAutoScrollCoachTimeline', () => {
-  it('scrolls when a new visible session is added', () => {
+  it('scrolls when a session is appended at the tail', () => {
     expect(shouldAutoScrollCoachTimeline({
-      visibleCount: 2,
-      prevVisibleCount: 1,
+      appendedAtTail: true,
       streamingFingerprint: '',
       prevStreamingFingerprint: '',
       pinnedNearBottom: false,
     })).toBe(true);
   });
 
-  it('scrolls on stream chunks only when pinned near bottom', () => {
+  it('does not scroll to bottom when visibility restores via undo', () => {
     expect(shouldAutoScrollCoachTimeline({
-      visibleCount: 1,
-      prevVisibleCount: 1,
-      streamingFingerprint: 'c1:10:0:0:0:0',
+      appendedAtTail: false,
+      streamingFingerprint: '',
+      prevStreamingFingerprint: '',
+      pinnedNearBottom: true,
+    })).toBe(false);
+  });
+
+  it('scrolls on stream chunks only when pinned snapshot is true', () => {
+    expect(shouldAutoScrollCoachTimeline({
+      appendedAtTail: false,
+      streamingFingerprint: 'c1:10:0:0:0:1',
       prevStreamingFingerprint: 'c1:5:0:0:0:0',
       pinnedNearBottom: true,
     })).toBe(true);
 
     expect(shouldAutoScrollCoachTimeline({
-      visibleCount: 1,
-      prevVisibleCount: 1,
-      streamingFingerprint: 'c1:10:0:0:0:0',
+      appendedAtTail: false,
+      streamingFingerprint: 'c1:10:0:0:0:1',
       prevStreamingFingerprint: 'c1:5:0:0:0:0',
       pinnedNearBottom: false,
     })).toBe(false);
   });
 
+  it('follows large single-step stream updates when user was pinned before DOM growth', () => {
+    // Simulates matchFact onData: fingerprint jumps, pinned snapshot still true from scroll listener.
+    expect(shouldAutoScrollCoachTimeline({
+      appendedAtTail: false,
+      streamingFingerprint: 'c1:0:0:0:0:1',
+      prevStreamingFingerprint: 'c1:0:0:0:0:0',
+      pinnedNearBottom: true,
+    })).toBe(true);
+  });
+
   it('does not scroll when fingerprint is unchanged', () => {
     expect(shouldAutoScrollCoachTimeline({
-      visibleCount: 1,
-      prevVisibleCount: 1,
+      appendedAtTail: false,
       streamingFingerprint: 'c1:5:0:0:0:0',
       prevStreamingFingerprint: 'c1:5:0:0:0:0',
       pinnedNearBottom: true,
