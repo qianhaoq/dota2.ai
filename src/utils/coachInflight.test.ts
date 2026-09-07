@@ -7,6 +7,7 @@ import {
   awaitWithTimeout,
   claimCoachInflightGeneration,
   finalizeReviewCoachMessage,
+  shouldShowCoachFailureAlert,
   invalidateCoachInflightGeneration,
   isCoachInflightCurrent,
 } from './coachInflight';
@@ -121,6 +122,23 @@ describe('coachInflight', () => {
     };
     const out = finalizeReviewCoachMessage(msg, { error: 'Request timed out' });
     expect(out.error).toBe('Request timed out');
+  });
+
+  it('shouldShowCoachFailureAlert suppresses duplicate alert when review cards are preserved', () => {
+    const msg: CoachMessage = {
+      id: 'a',
+      type: 'coach',
+      action: 'review',
+      content: '',
+      error: 'Request timed out, please try again',
+      matchFact: { summary: { matchId: 1 } } as CoachMessage['matchFact'],
+      reviewCards: {
+        match_summary: { matchId: 1, heroName: '噬魂鬼', result: 'loss', resultLabel: '失败', durationFormatted: '40:00' },
+        phases: [],
+      },
+    };
+    expect(shouldShowCoachFailureAlert(msg)).toBe(false);
+    expect(shouldShowCoachFailureAlert({ ...msg, reviewCards: undefined, matchFact: null })).toBe(true);
   });
 
   it('exposes bilingual timeout copy', () => {

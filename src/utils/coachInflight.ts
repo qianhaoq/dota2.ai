@@ -72,6 +72,12 @@ export function hasStructuredReviewPayload(msg: CoachMessage): boolean {
   return Boolean(msg.reviewCards || (msg.action === 'review' && msg.matchFact));
 }
 
+/** True when ResultCard should render the top-level failure alert (not already in blocks). */
+export function shouldShowCoachFailureAlert(msg: CoachMessage): boolean {
+  return Boolean(msg.error)
+    && !(msg.action === 'review' && hasStructuredReviewPayload(msg));
+}
+
 /** Apply terminal review-stream updates; preserve cards and surface non-destructive errors. */
 export function finalizeReviewCoachMessage(
   msg: CoachMessage,

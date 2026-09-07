@@ -7,6 +7,7 @@ import {
 import { MatchupData, TierHero, PlaybookHero } from '../../services/geminiService';
 import type { CoachSession } from './coachMessage';
 import { sessionTitle } from '../../utils/coachBlocks';
+import { shouldShowCoachFailureAlert } from '../../utils/coachInflight';
 import { groupMarkdownSegments } from '../../utils/markdownLines';
 import ReviewInsightCards from './ReviewInsightCards';
 
@@ -314,7 +315,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
           </p>
         )}
 
-        {message.error && (
+        {shouldShowCoachFailureAlert(message) && (
           <div className="flex items-start gap-2 p-3 rounded-sm bg-red-500/10 border border-red-500/20">
             <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
             <div className="min-w-0">

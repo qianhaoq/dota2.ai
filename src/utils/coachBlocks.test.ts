@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { messageToBlocks, parseMarkdownSections, pairCoachSessions, sessionTitle, filterVisibleSessions } from './coachBlocks';
+import { shouldShowCoachFailureAlert } from './coachInflight';
 import type { CoachMessage } from '../components/coach/coachMessage';
 import { appendStreamChunk } from './streamAccumulator';
 
@@ -190,7 +191,7 @@ describe('messageToBlocks', () => {
   });
 
   it('renders review notice alongside insight blocks when stream error is preserved', () => {
-    const blocks = messageToBlocks(baseCoach({
+    const message = baseCoach({
       action: 'review',
       content: '',
       error: 'Request timed out, please try again',
@@ -199,9 +200,11 @@ describe('messageToBlocks', () => {
         match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
         phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
       },
-    }), 'zh');
-    expect(blocks.some((b) => b.type === 'markdown' && b.markdown?.includes('timed out'))).toBe(true);
+    });
+    const blocks = messageToBlocks(message, 'zh');
+    expect(blocks.filter((b) => b.type === 'markdown' && b.markdown?.includes('timed out'))).toHaveLength(1);
     expect(blocks.some((b) => b.type === 'reviewInsight')).toBe(true);
+    expect(shouldShowCoachFailureAlert(message)).toBe(false);
   });
 
   it('maps reviewCards to reviewInsight blocks (Fact→Insight→Drill)', () => {
