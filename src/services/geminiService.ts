@@ -536,30 +536,20 @@ export const fetchMatchReviewStream = (
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       let response: Response;
-      if (followUp) {
-        response = await fetch(`/api/review/${matchId}`, {
-          method: 'POST',
-          headers: {
-            Accept: 'text/event-stream',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            lang,
-            ...(heroId ? { heroId } : {}),
-            followUp,
-          }),
-          signal: controller.signal,
-        });
-      } else {
-        const params = new URLSearchParams({ lang });
-        if (heroId) params.append('heroId', String(heroId));
-
-        response = await fetch(`/api/review/${matchId}?${params}`, {
-          method: 'GET',
-          headers: { Accept: 'text/event-stream' },
-          signal: controller.signal,
-        });
-      }
+      const reviewBody = {
+        lang,
+        ...(heroId ? { heroId } : {}),
+        ...(followUp ? { followUp } : {}),
+      };
+      response = await fetch(`/api/review/${matchId}`, {
+        method: 'POST',
+        headers: {
+          Accept: 'text/event-stream',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(reviewBody),
+        signal: controller.signal,
+      });
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));

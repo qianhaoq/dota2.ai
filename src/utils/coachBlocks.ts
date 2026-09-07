@@ -2,6 +2,7 @@ import { A2UIAction, A2UIBlock, Language } from '../types';
 import type { CoachMessage, CoachSession } from '../components/coach/coachMessage';
 import type { MatchFact } from '../types/matchReview';
 import { formatObjectiveLabel } from '../../lib/matchReview/objectiveLabels.js';
+import { selectTimelineForDisplay } from '../../lib/matchReview/matchFacts.js';
 
 export interface MarkdownSection {
   title?: string;
@@ -129,7 +130,7 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
     matchFact: fact,
   });
 
-  const timelineLines = fact.timeline.slice(0, 12).map((ev) => {
+  const timelineLines = selectTimelineForDisplay(fact.timeline).map((ev) => {
     const min = Math.floor(ev.time / 60);
     const sec = ev.time % 60;
     const label = formatObjectiveLabel(ev, lang);

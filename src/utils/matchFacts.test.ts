@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { buildMatchFact, parseMatchId, matchFactToPrompt } from '../../lib/matchReview/matchFacts.js';
+import { buildMatchFact, parseMatchId, matchFactToPrompt, selectTimelineForDisplay } from '../../lib/matchReview/matchFacts.js';
 import { LANE_CLUSTER_SOURCE } from '../../lib/matchReview/laneResolver.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -94,6 +94,41 @@ describe('buildMatchFact', () => {
     const prompt = matchFactToPrompt(fact, 'zh');
     expect(prompt).toContain('不朽之守护');
     expect(prompt).toMatch(/斯温|噬魂鬼/);
+  });
+
+  it('retains late Roshan/Aegis pairs in capped prompt timeline', () => {
+    const selected = selectTimelineForDisplay(fact.timeline);
+    const roshan = selected.filter((ev) => ev.type === 'CHAT_MESSAGE_ROSHAN_KILL');
+    const aegis = selected.filter((ev) => ev.type === 'CHAT_MESSAGE_AEGIS');
+    expect(roshan).toHaveLength(2);
+    expect(aegis).toHaveLength(2);
+
+    const prompt = matchFactToPrompt(fact, 'zh');
+    expect(prompt).toContain('46:57');
+    expect(prompt).toContain('噬魂鬼 拾取不朽之守护');
+  });
+
+  it('marks delayed enemy Aegis pickup as stolen', () => {
+    const svenLanePos = fixture.players.find((p: { player_slot: number }) => p.player_slot === 132)?.lane_pos;
+    const lsLanePos = fixture.players.find((p: { player_slot: number }) => p.player_slot === 2)?.lane_pos;
+    const delayed = buildMatchFact({
+      match_id: 1,
+      duration: 600,
+      radiant_win: true,
+      radiant_gold_adv: [],
+      players: [
+        { hero_id: 18, player_slot: 132, lane_pos: svenLanePos },
+        { hero_id: 54, player_slot: 2, lane_pos: lsLanePos },
+      ],
+      objectives: [
+        { time: 100, type: 'CHAT_MESSAGE_ROSHAN_KILL', team: 3 },
+        { time: 101, type: 'CHAT_MESSAGE_AEGIS', player_slot: 2 },
+      ],
+    }, { lang: 'zh', heroNames: HERO_NAMES_CN });
+
+    const aegis = delayed.timeline.find((ev) => ev.type === 'CHAT_MESSAGE_AEGIS');
+    expect(aegis?.aegisStolen).toBe(true);
+    expect(aegis?.carrierName).toBe('噬魂鬼');
   });
 
   it('is not grounded when lane_pos data is insufficient', () => {

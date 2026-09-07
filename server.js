@@ -2070,16 +2070,38 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400) {
   return res.status(status).json({ error: errorMsg });
 }
 
-function buildHeroNamesMap(heroStats) {
+function buildHeroNamesMap(heroStats, matchPlayers = []) {
   const map = {};
+
+  for (const [id, cn] of Object.entries(HERO_NAMES_CN)) {
+    const heroId = Number(id);
+    map[heroId] = {
+      nameZh: cn.nameZh,
+      nameEn: cn.nameZh,
+    };
+  }
+
   for (const [id, stats] of Object.entries(heroStats || {})) {
     const heroId = Number(id);
     const cn = HERO_NAMES_CN[heroId];
     map[heroId] = {
-      nameZh: cn?.nameZh || stats?.localized_name || stats?.name || `Hero#${heroId}`,
-      nameEn: stats?.name || stats?.localized_name || `Hero#${heroId}`,
+      nameZh: cn?.nameZh || stats?.localized_name || stats?.name || map[heroId]?.nameZh || `Hero#${heroId}`,
+      nameEn: stats?.name || stats?.localized_name || cn?.nameZh || map[heroId]?.nameEn || `Hero#${heroId}`,
     };
   }
+
+  for (const p of matchPlayers) {
+    const heroId = p.hero_id;
+    if (!heroId) continue;
+    const cn = HERO_NAMES_CN[heroId];
+    if (!map[heroId]) {
+      map[heroId] = {
+        nameZh: cn?.nameZh || `Hero#${heroId}`,
+        nameEn: cn?.nameZh || `Hero#${heroId}`,
+      };
+    }
+  }
+
   return map;
 }
 
@@ -2100,6 +2122,22 @@ async function handleMatchReview(req, res) {
 
   if (!Number.isFinite(matchId) || matchId <= 0) {
     return respondReviewError(res, wantsStream, isZh ? '无效的比赛 ID' : 'Invalid match ID');
+  }
+
+  if (req.method === 'GET') {
+    return res.status(405).json({
+      error: isZh
+        ? '请使用 POST 并设置 Accept: text/event-stream 获取复盘'
+        : 'Use POST with Accept: text/event-stream for match review',
+    });
+  }
+
+  if (!wantsStream) {
+    return res.status(406).json({
+      error: isZh
+        ? '复盘生成需要 Accept: text/event-stream'
+        : 'Match review generation requires Accept: text/event-stream',
+    });
   }
 
   let clientGone = false;
@@ -2143,7 +2181,7 @@ async function handleMatchReview(req, res) {
       }
     }
 
-    const heroNames = buildHeroNamesMap(heroStats);
+    const heroNames = buildHeroNamesMap(heroStats, matchData.players || []);
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const isGrounded = Boolean(matchFact.grounded);
 
@@ -2207,68 +2245,51 @@ Format with ## headings:
         ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}`
         : `Review this match, focus hero: ${focusName}\n\n${groundedContext}`);
 
-    if (wantsStream) {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.flushHeaders?.();
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
 
-      sendReviewSse(res, { matchFact, grounded: isGrounded });
+    sendReviewSse(res, { matchFact, grounded: isGrounded });
 
-      try {
-        stream = await openai.chat.completions.create({
-          model: DEEPSEEK_MODEL,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          stream: true,
-        }, {
-          signal: abortController.signal,
-        });
+    try {
+      stream = await openai.chat.completions.create({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        stream: true,
+      }, {
+        signal: abortController.signal,
+      });
 
-        if (clientGone) {
-          stream.controller?.abort();
-          return;
-        }
-
-        for await (const chunk of stream) {
-          if (clientGone || res.writableEnded) break;
-          const content = chunk.choices[0]?.delta?.content;
-          if (content) {
-            sendReviewSse(res, { text: content, grounded: isGrounded });
-          }
-        }
-        if (!res.writableEnded) {
-          endReviewSse(res);
-        }
-      } catch (streamErr) {
-        if (clientGone || streamErr.name === 'AbortError') return;
-        console.error('Match review stream error:', streamErr);
-        if (!res.writableEnded) {
-          endReviewSse(res, {
-            error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
-          });
-        }
-      } finally {
-        detachAbortListeners();
+      if (clientGone) {
+        stream.controller?.abort();
+        return;
       }
-      return;
+
+      for await (const chunk of stream) {
+        if (clientGone || res.writableEnded) break;
+        const content = chunk.choices[0]?.delta?.content;
+        if (content) {
+          sendReviewSse(res, { text: content, grounded: isGrounded });
+        }
+      }
+      if (!res.writableEnded) {
+        endReviewSse(res);
+      }
+    } catch (streamErr) {
+      if (clientGone || streamErr.name === 'AbortError') return;
+      console.error('Match review stream error:', streamErr);
+      if (!res.writableEnded) {
+        endReviewSse(res, {
+          error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
+        });
+      }
+    } finally {
+      detachAbortListeners();
     }
-
-    const response = await openai.chat.completions.create({
-      model: DEEPSEEK_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    });
-
-    return res.json({
-      matchFact,
-      text: response.choices[0].message.content,
-      grounded: isGrounded,
-    });
   } catch (error) {
     if (wantsStream) detachAbortListeners();
     if (clientGone || error.name === 'AbortError') return;
