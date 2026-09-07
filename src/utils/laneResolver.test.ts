@@ -7,6 +7,7 @@ import {
   getLaningOpponentIds,
   computeLaneCentroid,
   LANE_CLUSTER_SOURCE,
+  LANE_FALLBACK_SOURCE,
 } from '../../lib/matchReview/laneResolver.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,10 @@ describe('resolveLanes — gold sample 8985182860', () => {
     const axe = resolved.players.find((p) => p.heroId === HERO.AXE)!;
     const sb = resolved.players.find((p) => p.heroId === HERO.SB)!;
 
+    expect(ls.laneLabel).toBe('bot');
+    expect(rubick.laneLabel).toBe('bot');
+    expect(axe.laneLabel).toBe('bot');
+
     expect(ls.clusterId).toBe(rubick.clusterId);
     expect(axe.clusterId).toBe(ls.clusterId);
     expect(sb.clusterId).toBe(ls.clusterId);
@@ -67,6 +72,11 @@ describe('resolveLanes — gold sample 8985182860', () => {
     const sven = resolved.players.find((p) => p.heroId === HERO.SVEN)!;
     const mirana = resolved.players.find((p) => p.heroId === HERO.MIRANA)!;
 
+    expect(wk.laneLabel).toBe('top');
+    expect(hoodwink.laneLabel).toBe('top');
+    expect(sven.laneLabel).toBe('top');
+    expect(mirana.laneLabel).toBe('top');
+
     expect(wk.clusterId).toBe(hoodwink.clusterId);
     expect(sven.clusterId).toBe(wk.clusterId);
     expect(mirana.clusterId).toBe(wk.clusterId);
@@ -80,8 +90,21 @@ describe('resolveLanes — gold sample 8985182860', () => {
     const kotl = resolved.players.find((p) => p.heroId === HERO.KOTL)!;
     const nyx = resolved.players.find((p) => p.heroId === HERO.NYX)!;
 
+    expect(kotl.laneLabel).toBe('mid');
+    expect(nyx.laneLabel).toBe('mid');
     expect(kotl.clusterId).toBe(nyx.clusterId);
     expect(getLaningOpponentIds(resolved, HERO.KOTL)).toEqual([HERO.NYX]);
+  });
+
+  it('returns ungrounded when lane_pos coverage is too low', () => {
+    const partial = fixture.players.map((p: { lane_pos?: unknown }, i: number) => ({
+      ...p,
+      lane_pos: i < 2 ? p.lane_pos : {},
+    }));
+    const partialResolved = resolveLanes(partial);
+    expect(partialResolved.source).toBe(LANE_FALLBACK_SOURCE);
+    expect(partialResolved.lanes).toHaveLength(0);
+    expect(partialResolved.players.every((p) => p.laneLabel === 'unknown')).toBe(true);
   });
 
   it('produces three lane groups', () => {

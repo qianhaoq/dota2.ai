@@ -164,6 +164,60 @@ describe('messageToBlocks', () => {
     expect(lanes?.markdown).toContain('暂无可用录像站位数据');
     expect(lanes?.markdown).not.toBe('');
   });
+
+  it('returns no blocks when review message has an error', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      error: 'DeepSeek API Key 未配置',
+      matchFact: null,
+    }));
+    expect(blocks).toEqual([]);
+  });
+
+  it('does not leak inline markdown asterisks in review POV (en)', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      matchFact: {
+        summary: {
+          matchId: 8985182860,
+          duration: 2400,
+          durationFormatted: '40:00',
+          radiantWin: true,
+          winner: 'radiant',
+          winnerLabelZh: '天辉胜利',
+          winnerLabelEn: 'Radiant Victory',
+        },
+        players: [],
+        lanes: [],
+        laneInferenceLabelZh: '根据录像站位推断',
+        laneInferenceLabelEn: 'Inferred from replay positioning',
+        laneSource: 'lane_pos_cluster',
+        laneDataAvailable: true,
+        economy: { radiantGoldAdv: [], checkpoints: [] },
+        timeline: [],
+        focusHeroId: 54,
+        focusLens: {
+          heroId: 54,
+          displayName: 'Lifestealer',
+          kda: '2/1/3',
+          gpm: 400,
+          netWorth: 12000,
+          lane: 'bot',
+          laneLabel: 'Bot',
+          opponents: [{ heroId: 2, displayName: 'Axe', kda: '1/2/0' }],
+          nearby: [{ heroId: 71, displayName: 'Spirit Breaker' }],
+          earlyKills: [],
+          keyTimeline: [],
+          laneSource: 'lane_pos_cluster',
+          laneConfidence: 'high',
+        },
+        grounded: true,
+      },
+    }), 'en');
+    const pov = blocks.find((b) => b.reviewSection === 'pov');
+    expect(pov?.markdown).toContain('Nearby: Spirit Breaker');
+    expect(pov?.markdown).not.toContain('**');
+  });
 });
 
 describe('pairCoachSessions', () => {

@@ -49,6 +49,7 @@ describe('buildMatchFact', () => {
 
   it('builds focus lens for selected hero without OpenDota lane fields', () => {
     expect(fact.focusLens?.heroId).toBe(54);
+    expect(fact.focusLens?.laneLabel).toBe('下路');
     expect(fact.focusLens?.opponents.map((o: { heroId: number }) => o.heroId)).toEqual([2]);
     expect(fact.focusLens?.nearby.map((o: { heroId: number }) => o.heroId)).toContain(71);
   });
@@ -86,5 +87,21 @@ describe('buildMatchFact', () => {
     });
     expect(noLanes.grounded).toBe(false);
     expect(noLanes.laneDataAvailable).toBe(false);
+  });
+
+  it('is not grounded when only a few players have lane_pos', () => {
+    const partial = buildMatchFact({
+      ...fixture,
+      players: fixture.players.map((p: { lane_pos?: unknown }, i: number) => ({
+        ...p,
+        lane_pos: i < 2 ? p.lane_pos : {},
+      })),
+    }, {
+      lang: 'zh',
+      heroNames: HERO_NAMES_CN,
+    });
+    expect(partial.grounded).toBe(false);
+    expect(partial.laneDataAvailable).toBe(false);
+    expect(partial.laneSource).toBe('lane_pos_unavailable');
   });
 });

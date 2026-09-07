@@ -2184,26 +2184,34 @@ Format with ## headings:
 
       sendReviewSse(res, { matchFact, grounded: isGrounded });
 
-      const stream = await openai.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        stream: true,
-      });
-
       let clientGone = false;
+      let stream = null;
+      const abortController = new AbortController();
       const abortUpstream = () => {
-        if (!clientGone) {
-          clientGone = true;
-          stream.controller?.abort();
-        }
+        if (res.writableEnded) return;
+        clientGone = true;
+        abortController.abort();
+        stream?.controller?.abort();
       };
       res.on('close', abortUpstream);
       req.on('aborted', abortUpstream);
 
       try {
+        stream = await openai.chat.completions.create({
+          model: DEEPSEEK_MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          stream: true,
+          signal: abortController.signal,
+        });
+
+        if (clientGone) {
+          stream.controller?.abort();
+          return;
+        }
+
         for await (const chunk of stream) {
           if (clientGone || res.writableEnded) break;
           const content = chunk.choices[0]?.delta?.content;
@@ -2215,12 +2223,16 @@ Format with ## headings:
           endReviewSse(res);
         }
       } catch (streamErr) {
+        if (clientGone || streamErr.name === 'AbortError') return;
         console.error('Match review stream error:', streamErr);
         if (!res.writableEnded) {
           endReviewSse(res, {
             error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
           });
         }
+      } finally {
+        res.removeListener('close', abortUpstream);
+        req.removeListener('aborted', abortUpstream);
       }
       return;
     }

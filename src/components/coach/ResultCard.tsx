@@ -260,8 +260,22 @@ const ResultCard: React.FC<ResultCardProps> = ({
       </header>
 
       <div className="p-3 sm:p-4 space-y-3 min-w-0">
-        {message.isStreaming && session.blocks.length === 0 && (
+        {message.isStreaming && session.blocks.length === 0 && !message.error && (
           <p className="text-sm text-k3-text-secondary italic">{t.thinking}</p>
+        )}
+
+        {message.error && (
+          <div className="flex items-start gap-2 p-3 rounded-sm bg-red-500/10 border border-red-500/20">
+            <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-red-400">
+                {message.action === 'review'
+                  ? (lang === 'zh' ? '复盘失败' : 'Review failed')
+                  : (lang === 'zh' ? '请求失败' : 'Request failed')}
+              </p>
+              <p className="text-sm text-red-400/90 break-words mt-1">{message.error}</p>
+            </div>
+          </div>
         )}
 
         {session.blocks.map((block) => {

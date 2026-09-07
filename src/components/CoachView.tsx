@@ -199,7 +199,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           streamControllerRef.current = null;
         },
         onError: (error) => {
-          updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
+          updateCoachMessage(msgId, { error, isStreaming: false });
           setIsLoading(false);
           streamControllerRef.current = null;
         },

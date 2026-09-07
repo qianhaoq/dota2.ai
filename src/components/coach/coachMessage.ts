@@ -17,6 +17,8 @@ export interface CoachMessage {
   suggestions?: HeroSuggestion[];
   tierHeroes?: TierHero[];
   matchFact?: MatchFact | null;
+  /** 复盘等流式请求失败时的错误信息（不写入 content，避免误渲染为复盘正文） */
+  error?: string;
 }
 
 export interface CoachSession {

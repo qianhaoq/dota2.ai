@@ -82,8 +82,8 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
   const blocks: A2UIBlock[] = [];
 
   const summaryMd = lang === 'zh'
-    ? `比赛 **${fact.summary.matchId}** · ${fact.summary.durationFormatted} · ${fact.summary.winnerLabelZh}`
-    : `Match **${fact.summary.matchId}** · ${fact.summary.durationFormatted} · ${fact.summary.winnerLabelEn}`;
+    ? `比赛 ${fact.summary.matchId} · ${fact.summary.durationFormatted} · ${fact.summary.winnerLabelZh}`
+    : `Match ${fact.summary.matchId} · ${fact.summary.durationFormatted} · ${fact.summary.winnerLabelEn}`;
 
   blocks.push({
     id: `${message.id}-review-summary`,
@@ -99,8 +99,8 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
     const rad = lane.radiantNames.join(' + ');
     const dire = lane.direNames.join(' + ');
     return lang === 'zh'
-      ? `**${label}**：天辉 ${rad} vs 夜魇 ${dire}`
-      : `**${label}**: Radiant ${rad} vs Dire ${dire}`;
+      ? `${label}：天辉 ${rad} vs 夜魇 ${dire}`
+      : `${label}: Radiant ${rad} vs Dire ${dire}`;
   }).join('\n');
 
   blocks.push({
@@ -147,8 +147,8 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
   if (fact.focusLens) {
     const f = fact.focusLens;
     const povMd = lang === 'zh'
-      ? `**${f.displayName}** · KDA ${f.kda} · GPM ${f.gpm}\n分路：${f.laneLabel}\n对线：${f.opponents.map((o) => o.displayName).join('、') || '—'}${f.nearby.length ? `\n附近：${f.nearby.map((o) => o.displayName).join('、')}` : ''}`
-      : `**${f.displayName}** · KDA ${f.kda} · GPM ${f.gpm}\nLane: ${f.laneLabel}\nVs: ${f.opponents.map((o) => o.displayName).join(', ') || '—'}`;
+      ? `${f.displayName} · KDA ${f.kda} · GPM ${f.gpm}\n分路：${f.laneLabel}\n对线：${f.opponents.map((o) => o.displayName).join('、') || '—'}${f.nearby.length ? `\n附近：${f.nearby.map((o) => o.displayName).join('、')}` : ''}`
+      : `${f.displayName} · KDA ${f.kda} · GPM ${f.gpm}\nLane: ${f.laneLabel}\nVs: ${f.opponents.map((o) => o.displayName).join(', ') || '—'}${f.nearby.length ? `\nNearby: ${f.nearby.map((o) => o.displayName).join(', ')}` : ''}`;
 
     blocks.push({
       id: `${message.id}-review-pov`,
@@ -169,6 +169,10 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
 export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A2UIBlock[] {
   const t = labels(lang);
   const blocks: A2UIBlock[] = [];
+
+  if (message.error) {
+    return [];
+  }
 
   if (message.action === 'review' && message.matchFact) {
     blocks.push(...reviewSectionBlocks(message, lang, t));
