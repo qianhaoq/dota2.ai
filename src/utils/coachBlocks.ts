@@ -104,7 +104,7 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
     id: `${message.id}-review-lanes`,
     type: 'review',
     title: t.reviewLanes,
-    markdown: `${t.laneInference}\n\n${laneLines}`,
+    markdown: laneLines,
     reviewSection: 'lanes',
     matchFact: fact,
   });

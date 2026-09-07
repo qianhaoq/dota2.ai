@@ -39,6 +39,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
   const streamControllerRef = useRef<AbortController | null>(null);
+  const activeReviewRef = useRef<{ matchId: number; heroId?: number } | null>(null);
   const [showMentorPicker, setShowMentorPicker] = useState(false);
   const [showHeroPicker, setShowHeroPicker] = useState(false);
   const [detailHeroId, setDetailHeroId] = useState<number | null>(null);
@@ -168,21 +169,25 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     );
   }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, t]);
 
-  const handleReview = useCallback((matchId: number, heroId?: number) => {
+  const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
     cancelStream();
     setIsLoading(true);
     setLesson('review');
+    activeReviewRef.current = { matchId, heroId };
     const hero = heroId ? allHeroes.find((h) => h.id === heroId) : practiceHero;
     const heroName = hero ? heroDisplayName(hero, lang) : null;
-    const userMsg = lang === 'zh'
-      ? `复盘比赛 ${matchId}${heroName ? ` · ${heroName}` : ''}`
-      : `Review match ${matchId}${heroName ? ` · ${heroName}` : ''}`;
+    const userMsg = followUp
+      ? followUp
+      : (lang === 'zh'
+        ? `复盘比赛 ${matchId}${heroName ? ` · ${heroName}` : ''}`
+        : `Review match ${matchId}${heroName ? ` · ${heroName}` : ''}`);
     addCoachMessage({ type: 'user', action: 'review', lesson: 'review', content: userMsg });
+    if (followUp) setUserInput('');
     const msgId = addCoachMessage({
       type: 'coach', action: 'review', lesson: 'review', content: '', isStreaming: true,
     });
     streamControllerRef.current = fetchMatchReviewStream(
-      matchId, lang, heroId ?? practiceHero?.id,
+      matchId, lang, heroId ?? practiceHero?.id, followUp,
       {
         onData: (matchFact) => { updateCoachMessage(msgId, { matchFact }); },
         onChunk: (text) => {
@@ -201,6 +206,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       }
     );
   }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream]);
+
+  const handleReviewFollowUp = useCallback((question: string) => {
+    const ctx = activeReviewRef.current;
+    if (!ctx) return;
+    handleReview(ctx.matchId, ctx.heroId, question);
+  }, [handleReview]);
 
   const handleSuggest = useCallback(async () => {
     if (coaching.allies.length >= 5) {
@@ -243,11 +254,16 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim() || isLoading) return;
+    if (lesson === 'review' && activeReviewRef.current) {
+      handleReviewFollowUp(userInput.trim());
+      return;
+    }
     handleAnalyze();
-  }, [userInput, isLoading, handleAnalyze]);
+  }, [userInput, isLoading, lesson, handleAnalyze, handleReviewFollowUp]);
 
   const resetAll = useCallback(() => {
     cancelStream();
+    activeReviewRef.current = null;
     setDraft({ radiant: [], dire: [] });
     setMessages([]);
     setUserInput('');

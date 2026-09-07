@@ -65,4 +65,26 @@ describe('buildMatchFact', () => {
     expect(prompt).not.toMatch(/lane_role/);
     expect(prompt).not.toMatch(/opendotaLane/);
   });
+
+  it('prompt uses English labels when lang=en', () => {
+    const factEn = buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN });
+    const prompt = matchFactToPrompt(factEn, 'en');
+    expect(prompt).toContain('Radiant');
+    expect(prompt).toContain('Dire');
+    expect(prompt).toContain('net worth');
+    expect(prompt).not.toContain('天辉');
+    expect(prompt).not.toContain('夜魇');
+  });
+
+  it('is not grounded when lane_pos data is insufficient', () => {
+    const noLanes = buildMatchFact({
+      ...fixture,
+      players: fixture.players.map((p: { lane_pos: unknown }) => ({ ...p, lane_pos: {} })),
+    }, {
+      lang: 'zh',
+      heroNames: HERO_NAMES_CN,
+    });
+    expect(noLanes.grounded).toBe(false);
+    expect(noLanes.laneDataAvailable).toBe(false);
+  });
 });

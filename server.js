@@ -42,6 +42,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for matchup data
 const CONSTANTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for constants (patch data changes rarely)
 const MATCHES_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for pro/public matches
 const MATCH_DETAIL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for single match review
+const MATCH_DETAIL_CACHE_MAX = 50;
 
 // ============ Cache Storage ============
 const cache = {
@@ -2010,15 +2011,62 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // ============ Match Replay Review ============
+function evictMatchDetailCache() {
+  const now = Date.now();
+  for (const [id, entry] of cache.matchDetails) {
+    if (now - entry.timestamp > MATCH_DETAIL_CACHE_TTL_MS) {
+      cache.matchDetails.delete(id);
+    }
+  }
+  while (cache.matchDetails.size >= MATCH_DETAIL_CACHE_MAX) {
+    let oldestId = null;
+    let oldestTs = Infinity;
+    for (const [id, entry] of cache.matchDetails) {
+      if (entry.timestamp < oldestTs) {
+        oldestTs = entry.timestamp;
+        oldestId = id;
+      }
+    }
+    if (oldestId === null) break;
+    cache.matchDetails.delete(oldestId);
+  }
+}
+
 async function getMatchDetail(matchId) {
+  evictMatchDetailCache();
   const cached = cache.matchDetails.get(matchId);
   if (cached && Date.now() - cached.timestamp < MATCH_DETAIL_CACHE_TTL_MS) {
     return cached.data;
   }
 
   const data = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`);
+  evictMatchDetailCache();
   cache.matchDetails.set(matchId, { data, timestamp: Date.now() });
   return data;
+}
+
+function sendReviewSse(res, payload) {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function endReviewSse(res, payload) {
+  if (payload) sendReviewSse(res, payload);
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
+function respondReviewError(res, wantsStream, errorMsg, status = 400) {
+  if (wantsStream) {
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+    }
+    endReviewSse(res, { error: errorMsg });
+    return;
+  }
+  return res.status(status).json({ error: errorMsg });
 }
 
 function buildHeroNamesMap(heroStats) {
@@ -2039,19 +2087,12 @@ app.get('/api/review/:matchId', async (req, res) => {
   const wantsStream = acceptHeader.includes('text/event-stream');
   const lang = req.query.lang || 'zh';
   const heroId = req.query.heroId ? Number(req.query.heroId) : undefined;
+  const followUp = typeof req.query.followUp === 'string' ? req.query.followUp.trim() : '';
   const matchId = Number(req.params.matchId);
+  const isZh = lang === 'zh';
 
   if (!Number.isFinite(matchId) || matchId <= 0) {
-    const errorMsg = lang === 'zh' ? '无效的比赛 ID' : 'Invalid match ID';
-    if (wantsStream) {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.write(`data: ${JSON.stringify({ error: errorMsg })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      return res.end();
-    }
-    return res.status(400).json({ error: errorMsg });
+    return respondReviewError(res, wantsStream, isZh ? '无效的比赛 ID' : 'Invalid match ID');
   }
 
   try {
@@ -2060,23 +2101,36 @@ app.get('/api/review/:matchId', async (req, res) => {
       getHeroStats(),
     ]);
 
+    if (heroId !== undefined) {
+      const inMatch = (matchData.players || []).some((p) => p.hero_id === heroId);
+      if (!inMatch) {
+        return respondReviewError(
+          res,
+          wantsStream,
+          isZh ? '该英雄未参与此场比赛' : 'Hero did not play in this match'
+        );
+      }
+    }
+
     const heroNames = buildHeroNamesMap(heroStats);
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
+    const isGrounded = Boolean(matchFact.grounded);
+
+    const apiKeyError = isZh ? 'DeepSeek API Key 未配置' : 'DeepSeek API Key not configured';
 
     if (!apiKey || !openai) {
       if (wantsStream) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
-        res.write(`data: ${JSON.stringify({ matchFact, grounded: true })}\n\n`);
-        res.write(`data: ${JSON.stringify({ error: lang === 'zh' ? 'DeepSeek API Key 未配置' : 'DeepSeek API Key not configured' })}\n\n`);
-        res.write('data: [DONE]\n\n');
-        return res.end();
+        res.flushHeaders?.();
+        sendReviewSse(res, { matchFact, grounded: isGrounded });
+        endReviewSse(res, { error: apiKeyError });
+        return;
       }
-      return res.json({ matchFact, grounded: true, error: 'DeepSeek API Key not configured' });
+      return res.json({ matchFact, grounded: isGrounded, error: apiKeyError });
     }
 
-    const isZh = lang === 'zh';
     const groundedContext = matchFactToPrompt(matchFact, lang);
     const focusName = matchFact.focusLens?.displayName
       || (heroId ? `Hero#${heroId}` : (isZh ? '本局' : 'this match'));
@@ -2114,9 +2168,13 @@ Format with ## headings:
 ## Your POV
 ## How to win`;
 
-    const userPrompt = isZh
-      ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}`
-      : `Review this match, focus hero: ${focusName}\n\n${groundedContext}`;
+    const userPrompt = followUp
+      ? (isZh
+        ? `基于以下比赛数据回答追问（聚焦 ${focusName}）：${followUp}\n\n${groundedContext}`
+        : `Answer this follow-up about ${focusName}: ${followUp}\n\n${groundedContext}`)
+      : (isZh
+        ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}`
+        : `Review this match, focus hero: ${focusName}\n\n${groundedContext}`);
 
     if (wantsStream) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -2124,7 +2182,7 @@ Format with ## headings:
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders?.();
 
-      res.write(`data: ${JSON.stringify({ matchFact, grounded: true })}\n\n`);
+      sendReviewSse(res, { matchFact, grounded: isGrounded });
 
       const stream = await openai.chat.completions.create({
         model: DEEPSEEK_MODEL,
@@ -2135,19 +2193,36 @@ Format with ## headings:
         stream: true,
       });
 
-      req.on('close', () => {
-        stream.controller?.abort();
-      });
+      let clientGone = false;
+      const abortUpstream = () => {
+        if (!clientGone) {
+          clientGone = true;
+          stream.controller?.abort();
+        }
+      };
+      res.on('close', abortUpstream);
+      req.on('aborted', abortUpstream);
 
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content;
-        if (content) {
-          res.write(`data: ${JSON.stringify({ text: content, grounded: true })}\n\n`);
+      try {
+        for await (const chunk of stream) {
+          if (clientGone || res.writableEnded) break;
+          const content = chunk.choices[0]?.delta?.content;
+          if (content) {
+            sendReviewSse(res, { text: content, grounded: isGrounded });
+          }
+        }
+        if (!res.writableEnded) {
+          endReviewSse(res);
+        }
+      } catch (streamErr) {
+        console.error('Match review stream error:', streamErr);
+        if (!res.writableEnded) {
+          endReviewSse(res, {
+            error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
+          });
         }
       }
-
-      res.write('data: [DONE]\n\n');
-      return res.end();
+      return;
     }
 
     const response = await openai.chat.completions.create({
@@ -2161,20 +2236,12 @@ Format with ## headings:
     return res.json({
       matchFact,
       text: response.choices[0].message.content,
-      grounded: true,
+      grounded: isGrounded,
     });
   } catch (error) {
     console.error('Match review error:', error);
-    const errorMsg = error.message || (lang === 'zh' ? '复盘失败' : 'Review failed');
-    if (wantsStream) {
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.write(`data: ${JSON.stringify({ error: errorMsg })}\n\n`);
-      res.write('data: [DONE]\n\n');
-      return res.end();
-    }
-    return res.status(500).json({ error: errorMsg });
+    const errorMsg = error.message || (isZh ? '复盘失败' : 'Review failed');
+    return respondReviewError(res, wantsStream, errorMsg, 500);
   }
 });
 

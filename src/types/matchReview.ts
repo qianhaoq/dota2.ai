@@ -81,6 +81,7 @@ export interface MatchFact {
   laneInferenceLabelZh: string;
   laneInferenceLabelEn: string;
   laneSource: string;
+  laneDataAvailable: boolean;
   economy: {
     radiantGoldAdv: number[];
     checkpoints: Array<{ minute: number; radiantGoldLead: number }>;

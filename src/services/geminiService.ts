@@ -510,15 +510,29 @@ export const fetchMatchReviewStream = (
   matchId: number,
   lang: Language,
   heroId?: number,
+  followUp?: string,
   callbacks?: ReviewStreamCallbacks
 ): AbortController => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000);
 
+  const cleanup = async (reader?: ReadableStreamDefaultReader<Uint8Array>) => {
+    clearTimeout(timeoutId);
+    if (reader) {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore cancel errors
+      }
+    }
+  };
+
   (async () => {
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const params = new URLSearchParams({ lang });
       if (heroId) params.append('heroId', String(heroId));
+      if (followUp) params.append('followUp', followUp);
 
       const response = await fetch(`/api/review/${matchId}?${params}`, {
         method: 'GET',
@@ -531,7 +545,7 @@ export const fetchMatchReviewStream = (
         throw new Error(data.error || 'Failed to fetch match review');
       }
 
-      const reader = response.body?.getReader();
+      reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
       const decoder = new TextDecoder();
@@ -550,19 +564,20 @@ export const fetchMatchReviewStream = (
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6);
           if (data === '[DONE]') {
-            clearTimeout(timeoutId);
+            await cleanup(reader);
             callbacks?.onComplete(isGrounded);
             return;
           }
           try {
             const parsed = JSON.parse(data);
             if (parsed.error) {
+              await cleanup(reader);
               callbacks?.onError(parsed.error);
               return;
             }
             if (parsed.matchFact && callbacks?.onData) {
               callbacks.onData(parsed.matchFact);
-              isGrounded = true;
+              isGrounded = parsed.grounded ?? true;
             }
             if (parsed.text && callbacks?.onChunk) {
               callbacks.onChunk(parsed.text);
@@ -576,10 +591,10 @@ export const fetchMatchReviewStream = (
         }
       }
 
-      clearTimeout(timeoutId);
+      await cleanup(reader);
       callbacks?.onComplete(isGrounded);
     } catch (error: any) {
-      clearTimeout(timeoutId);
+      await cleanup(reader);
       if (error.name === 'AbortError') {
         callbacks?.onError('请求已取消');
       } else {
