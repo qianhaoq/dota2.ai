@@ -1,6 +1,10 @@
 import { Hero, Language } from '../types';
 import type { MatchFact } from '../types/matchReview';
 
+function cancelledMessage(lang: Language): string {
+  return lang === 'zh' ? '请求已取消' : 'Request cancelled';
+}
+
 export interface MatchupAdvantage {
   hero: string;
   vsHero: string;
@@ -224,7 +228,7 @@ export const analyzeDraftStream = (
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        callbacks.onError('请求已取消');
+        callbacks.onError(cancelledMessage(lang));
       } else {
         callbacks.onError(error.message || 'Unknown error');
       }
@@ -487,7 +491,7 @@ export const fetchPlaybookStream = (
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        callbacks?.onError('请求已取消');
+        callbacks?.onError(cancelledMessage(lang));
       } else {
         callbacks?.onError(error.message || 'Unknown error');
       }
@@ -596,7 +600,7 @@ export const fetchMatchReviewStream = (
     } catch (error: any) {
       await cleanup(reader);
       if (error.name === 'AbortError') {
-        callbacks?.onError('请求已取消');
+        callbacks?.onError(cancelledMessage(lang));
       } else {
         callbacks?.onError(error.message || 'Unknown error');
       }

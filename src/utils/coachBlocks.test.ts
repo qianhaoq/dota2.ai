@@ -133,6 +133,37 @@ describe('messageToBlocks', () => {
     }));
     expect(blocks.map((b) => b.type)).toEqual(['tier']);
   });
+
+  it('shows localized fallback when review lanes are empty', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      matchFact: {
+        summary: {
+          matchId: 1,
+          duration: 2400,
+          durationFormatted: '40:00',
+          radiantWin: true,
+          winner: 'radiant',
+          winnerLabelZh: '天辉胜利',
+          winnerLabelEn: 'Radiant Victory',
+        },
+        players: [],
+        lanes: [],
+        laneInferenceLabelZh: '根据录像站位推断',
+        laneInferenceLabelEn: 'Inferred from replay positioning',
+        laneSource: 'lane_pos_unavailable',
+        laneDataAvailable: false,
+        economy: { radiantGoldAdv: [], checkpoints: [] },
+        timeline: [],
+        focusHeroId: null,
+        focusLens: null,
+        grounded: false,
+      },
+    }), 'zh');
+    const lanes = blocks.find((b) => b.reviewSection === 'lanes');
+    expect(lanes?.markdown).toContain('暂无可用录像站位数据');
+    expect(lanes?.markdown).not.toBe('');
+  });
 });
 
 describe('pairCoachSessions', () => {

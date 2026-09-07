@@ -55,6 +55,9 @@ function labels(lang: Language) {
     reviewPov: lang === 'zh' ? '你的镜头' : 'Your POV',
     reviewHowToWin: lang === 'zh' ? '如何赢' : 'How to win',
     laneInference: lang === 'zh' ? '根据录像站位推断' : 'Inferred from replay positioning',
+    lanesUnavailable: lang === 'zh'
+      ? '本场暂无可用录像站位数据，无法推断分路。'
+      : 'No replay positioning data available; lanes could not be inferred.',
   };
 }
 
@@ -104,7 +107,7 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
     id: `${message.id}-review-lanes`,
     type: 'review',
     title: t.reviewLanes,
-    markdown: laneLines,
+    markdown: fact.lanes.length > 0 ? laneLines : t.lanesUnavailable,
     reviewSection: 'lanes',
     matchFact: fact,
   });
