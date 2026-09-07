@@ -85,6 +85,17 @@ describe('buildMatchFact', () => {
     expect(prompt).not.toMatch(/CHAT_MESSAGE_FIRSTBLOOD/);
   });
 
+  it('includes Aegis pickups in timeline with carrier and side', () => {
+    const aegisEvents = fact.timeline.filter((ev) => ev.type === 'CHAT_MESSAGE_AEGIS');
+    expect(aegisEvents.length).toBeGreaterThanOrEqual(1);
+    expect(aegisEvents.some((ev) => ev.carrierName === '斯温' && ev.team === 3)).toBe(true);
+    expect(aegisEvents.some((ev) => ev.carrierName === '噬魂鬼' && ev.team === 2)).toBe(true);
+
+    const prompt = matchFactToPrompt(fact, 'zh');
+    expect(prompt).toContain('不朽之守护');
+    expect(prompt).toMatch(/斯温|噬魂鬼/);
+  });
+
   it('is not grounded when lane_pos data is insufficient', () => {
     const noLanes = buildMatchFact({
       ...fixture,
