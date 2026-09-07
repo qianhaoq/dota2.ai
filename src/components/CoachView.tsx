@@ -17,6 +17,9 @@ import {
   coachCancelledMessage,
   coachFetchTimeoutMessage,
   awaitWithTimeout,
+  claimCoachInflightGeneration,
+  invalidateCoachInflightGeneration,
+  isCoachInflightCurrent,
   META_FETCH_TIMEOUT_MS,
   SUGGEST_FETCH_TIMEOUT_MS,
 } from '../utils/coachInflight';
@@ -98,7 +101,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, []);
 
   const cancelStream = useCallback(() => {
-    inflightTaskRef.current += 1;
+    invalidateCoachInflightGeneration(inflightTaskRef);
     if (streamControllerRef.current) {
       streamControllerRef.current.abort();
       streamControllerRef.current = null;
@@ -106,6 +109,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     setIsLoading(false);
     setMessages((prev) => clearStreamingCoachMessages(prev, coachCancelledMessage(lang)));
   }, [lang]);
+
+  const finishStream = useCallback((streamGen: number) => {
+    if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+    setIsLoading(false);
+    streamControllerRef.current = null;
+  }, []);
 
   const coaching = useMemo(
     () => resolveCoachingLineup(draft, selectionSide, practiceHero),
@@ -119,6 +128,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     }
     cancelStream();
     setIsLoading(true);
+    const streamGen = claimCoachInflightGeneration(inflightTaskRef);
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const defaultMsg = practiceName
       ? (lang === 'zh' ? `分析练习英雄 ${practiceName}` : `Analyze practice hero ${practiceName}`)
@@ -136,18 +146,18 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         },
         onMatchupData: (data) => { updateCoachMessage(msgId, { matchupData: data }); },
         onComplete: (grounded) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { isStreaming: false, grounded });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         },
         onError: (error) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         }
       }
     );
-  }, [coaching, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, t]);
+  }, [coaching, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
   const handlePlaybook = useCallback(() => {
     if (coaching.allies.length === 0) {
@@ -156,6 +166,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     }
     cancelStream();
     setIsLoading(true);
+    const streamGen = claimCoachInflightGeneration(inflightTaskRef);
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const playbookMsg = practiceName
       ? (lang === 'zh' ? `本局怎么打${practiceName}？` : `How should we play ${practiceName} this game?`)
@@ -170,22 +181,23 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
         onComplete: () => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { isStreaming: false, grounded: true });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         },
         onError: (error) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         }
       }
     );
-  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, t]);
+  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
     cancelStream();
     setIsLoading(true);
+    const streamGen = claimCoachInflightGeneration(inflightTaskRef);
     setLesson('review');
     activeReviewRef.current = { matchId, heroId };
     const hero = heroId ? allHeroes.find((h) => h.id === heroId) : practiceHero;
@@ -208,18 +220,18 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
         onComplete: (grounded) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { isStreaming: false, grounded });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         },
         onError: (error) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { error, isStreaming: false });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         },
       }
     );
-  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream]);
+  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream]);
 
   const handleReviewFollowUp = useCallback((question: string) => {
     const ctx = activeReviewRef.current;
@@ -233,9 +245,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       return;
     }
     cancelStream();
-    const taskId = inflightTaskRef.current + 1;
-    inflightTaskRef.current = taskId;
     setIsLoading(true);
+    const taskId = claimCoachInflightGeneration(inflightTaskRef);
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const suggestMsg = practiceName
       ? (lang === 'zh' ? `围绕${practiceName}，推荐下一手选什么？` : `Around ${practiceName}, what should we pick next?`)
@@ -269,9 +280,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   const handleMeta = useCallback(async () => {
     cancelStream();
-    const taskId = inflightTaskRef.current + 1;
-    inflightTaskRef.current = taskId;
     setIsLoading(true);
+    const taskId = claimCoachInflightGeneration(inflightTaskRef);
     addCoachMessage({ type: 'user', action: 'meta', content: lang === 'zh' ? '当前版本哪些英雄强势？' : 'Which heroes are strong this patch?' });
     const msgId = addCoachMessage({ type: 'coach', action: 'meta', content: '', isStreaming: true });
     try {

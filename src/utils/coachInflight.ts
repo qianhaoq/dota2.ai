@@ -47,6 +47,26 @@ export async function awaitWithTimeout<T>(promise: Promise<T>, timeoutMs: number
   }
 }
 
+/** Invalidate in-flight coach work (Stop / supersede). */
+export function invalidateCoachInflightGeneration(generationRef: { current: number }): void {
+  generationRef.current += 1;
+}
+
+/** Claim the next generation after invalidation; returned id must be checked in callbacks. */
+export function claimCoachInflightGeneration(generationRef: { current: number }): number {
+  const next = generationRef.current + 1;
+  generationRef.current = next;
+  return next;
+}
+
+/** True when `captured` is still the active coach inflight generation. */
+export function isCoachInflightCurrent(
+  generationRef: { current: number },
+  captured: number,
+): boolean {
+  return generationRef.current === captured;
+}
+
 /** Clear streaming flags on all in-flight coach messages (e.g. after Stop). */
 export function clearStreamingCoachMessages(
   messages: CoachMessage[],

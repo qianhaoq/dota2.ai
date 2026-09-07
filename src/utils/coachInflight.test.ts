@@ -5,6 +5,9 @@ import {
   coachFetchTimeoutMessage,
   createTimeoutAbort,
   awaitWithTimeout,
+  claimCoachInflightGeneration,
+  invalidateCoachInflightGeneration,
+  isCoachInflightCurrent,
 } from './coachInflight';
 import type { CoachMessage } from '../components/coach/coachMessage';
 
@@ -61,5 +64,55 @@ describe('coachInflight', () => {
     const assertion = expect(pending).rejects.toThrow('timeout');
     await vi.advanceTimersByTimeAsync(501);
     await assertion;
+  });
+
+  describe('coach inflight generation guard', () => {
+    it('invalidates captured generation on supersede', () => {
+      const generationRef = { current: 0 };
+      const first = claimCoachInflightGeneration(generationRef);
+      invalidateCoachInflightGeneration(generationRef);
+      const second = claimCoachInflightGeneration(generationRef);
+      expect(isCoachInflightCurrent(generationRef, first)).toBe(false);
+      expect(isCoachInflightCurrent(generationRef, second)).toBe(true);
+    });
+
+    it('aborted stream AbortError must not clear new stream loading state', () => {
+      const generationRef = { current: 0 };
+      let isLoading = false;
+      let activeController: string | null = null;
+
+      const finishStream = (streamGen: number) => {
+        if (!isCoachInflightCurrent(generationRef, streamGen)) return;
+        isLoading = false;
+        activeController = null;
+      };
+
+      const startStream = (controllerId: string) => {
+        invalidateCoachInflightGeneration(generationRef);
+        isLoading = false;
+        isLoading = true;
+        const streamGen = claimCoachInflightGeneration(generationRef);
+        activeController = controllerId;
+        return streamGen;
+      };
+
+      const firstGen = startStream('stream-a');
+      const secondGen = startStream('stream-b');
+
+      expect(isLoading).toBe(true);
+      expect(activeController).toBe('stream-b');
+
+      // Stale AbortError from stream-a after stream-b started
+      finishStream(firstGen);
+
+      expect(isLoading).toBe(true);
+      expect(activeController).toBe('stream-b');
+
+      // Current stream completes normally
+      finishStream(secondGen);
+
+      expect(isLoading).toBe(false);
+      expect(activeController).toBeNull();
+    });
   });
 });
