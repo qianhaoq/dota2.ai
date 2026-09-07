@@ -151,6 +151,26 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.followups?.[1]).toMatch(/^展开 \d+:\d{2} 节点：推中二塔$/);
   });
 
+  it('replaces unsupported item follow-up in any chip slot', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '中期开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+      followups: ['展开 0:48 节点：一血', '展开 34:13 节点：推中二塔', 'Why was Butterfly wrong?'],
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'en') as ReviewCardsPayload;
+    expect(cards.followups?.[2]).toBe('One thing to practice next');
+  });
+
   it('parseAiReviewCards merges LLM JSON with deterministic spine', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
@@ -381,13 +401,13 @@ describe('reviewCards gold match 8985182860', () => {
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
-  it('rejects positioning diagnosis backed only by match-wide timeline facts', () => {
+  it('rejects positioning diagnosis without death-context or position evidence', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
         category: 'positioning',
         headline: '站位太差',
         explanation: '团战站位失误。',
-        evidence: [{ factKey: 'timeline_0' }],
+        evidence: [{ factKey: 'deaths' }],
       },
       key_moments: [
         { evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
@@ -399,7 +419,8 @@ describe('reviewCards gold match 8985182860', () => {
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
     expect(cards.primary_mistake).toBeUndefined();
     expect(evidenceSupportsCategory('positioning', [{ factKey: 'timeline_0' }])).toBe(false);
-    expect(evidenceSupportsCategory('positioning', [{ factKey: 'deaths' }])).toBe(true);
+    expect(evidenceSupportsCategory('positioning', [{ factKey: 'deaths' }])).toBe(false);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
   it('rejects malformed drill steps instead of coercing null to a string', () => {
@@ -605,6 +626,20 @@ describe('localizeKillTarget', () => {
 
   it('maps spirit_breaker slug to 裂魂人 in zh', () => {
     expect(localizeKillTarget('spirit_breaker', fact, 'zh')).toBe('裂魂人');
+  });
+
+  it('maps nevermore internal slug via player internalSlug', () => {
+    const rosterFact = {
+      players: [{
+        heroId: 11,
+        nameEn: 'Shadow Fiend',
+        nameZh: '影魔',
+        displayName: '影魔',
+        internalSlug: 'nevermore',
+      }],
+    };
+    expect(localizeKillTarget('nevermore', rosterFact, 'zh')).toBe('影魔');
+    expect(localizeKillTarget('npc_dota_hero_nevermore', rosterFact, 'en')).toBe('Shadow Fiend');
   });
 });
 
