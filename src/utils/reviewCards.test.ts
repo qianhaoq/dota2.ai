@@ -281,6 +281,27 @@ describe('reviewCards gold match 8985182860', () => {
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
+  it('ignores malformed numeric factKey in moment evidence without throwing', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '失误',
+        explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { evidence: [{ factKey: 7 }, { factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    expect(() => parseAiReviewCards(llmJson, fact, 'zh')).not.toThrow();
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.key_moments).toHaveLength(3);
+    expect(cards.key_moments?.[0].evidence[0].factKey).toBe('timeline_0');
+  });
+
   it('rejects primary mistake with empty explanation', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
@@ -374,6 +395,16 @@ describe('short match late phase', () => {
     const late = cards.phases?.find((p) => p.phase === 'late');
     expect(late?.insight).toContain('未进入典型后期');
     expect(late?.insight).not.toContain('后期决策决定胜负');
+  });
+
+  it('does not prescribe mid-game tempo when match ends before 10 min', () => {
+    const shortFixture = { ...fixture, duration: 8 * 60 };
+    const fact = buildMatchFact(shortFixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
+    const cards = buildDeterministicReviewCards(fact, 'zh') as ReviewCardsPayload;
+    const mid = cards.phases?.find((p) => p.phase === 'mid');
+    expect(mid?.insight).toContain('未进入典型中期');
+    expect(mid?.insight).not.toMatch(/中期关注抱团|mid game.*tempo/i);
+    expect(mid?.evidence).toEqual([]);
   });
 });
 
