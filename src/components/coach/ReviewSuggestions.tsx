@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Language } from '../../types';
 import { fetchReviewSuggestions, ReviewSuggestion } from '../../services/dotaApiService';
 import { formatSuggestionSubtitle, formatSuggestionTitle } from '../../utils/reviewSuggestions';
+import { awaitWithTimeout, REVIEW_SUGGESTIONS_TIMEOUT_MS } from '../../utils/coachInflight';
 import { Loader2 } from 'lucide-react';
 
 interface ReviewSuggestionsProps {
@@ -31,12 +32,19 @@ const ReviewSuggestions: React.FC<ReviewSuggestionsProps> = ({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchReviewSuggestions(lang, 6).then((data) => {
-      if (cancelled) return;
-      setRecent(data.recent);
-      setHighMmr(data.highMmr);
-      setLoading(false);
-    });
+    awaitWithTimeout(fetchReviewSuggestions(lang, 6), REVIEW_SUGGESTIONS_TIMEOUT_MS)
+      .then((data) => {
+        if (cancelled) return;
+        setRecent(data.recent);
+        setHighMmr(data.highMmr);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRecent([]);
+        setHighMmr([]);
+        setLoading(false);
+      });
     return () => {
       cancelled = true;
     };

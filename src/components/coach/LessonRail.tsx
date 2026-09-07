@@ -7,7 +7,6 @@ interface LessonRailProps {
   lang: Language;
   currentLesson: LessonMode;
   onLessonChange: (lesson: LessonMode) => void;
-  isLoading: boolean;
   compact?: boolean;
 }
 
@@ -15,7 +14,6 @@ const LessonRail: React.FC<LessonRailProps> = ({
   lang,
   currentLesson,
   onLessonChange,
-  isLoading,
   compact = false,
 }) => {
   const t = useMemo(() => ({
@@ -64,7 +62,6 @@ const LessonRail: React.FC<LessonRailProps> = ({
               <button
                 key={lesson.id}
                 onClick={() => handleClick(lesson)}
-                disabled={isLoading}
                 className={`text-xs sm:text-sm transition-colors whitespace-nowrap min-h-[44px] px-2.5 flex-shrink-0 touch-manipulation ${
                   !lesson.enabled
                     ? 'text-k3-text-tertiary/40 cursor-not-allowed'
@@ -99,7 +96,6 @@ const LessonRail: React.FC<LessonRailProps> = ({
             <button
               key={lesson.id}
               onClick={() => handleClick(lesson)}
-              disabled={isLoading}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap min-h-[44px] flex-shrink-0 touch-manipulation ${
                 !lesson.enabled
                   ? 'text-k3-text-tertiary/40 cursor-not-allowed'
