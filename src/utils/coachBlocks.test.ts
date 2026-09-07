@@ -157,6 +157,7 @@ describe('messageToBlocks', () => {
         timeline: [],
         focusHeroId: null,
         focusLens: null,
+        focusLaneGrounded: true,
         grounded: false,
       },
     }), 'zh');
@@ -204,6 +205,7 @@ describe('messageToBlocks', () => {
           netWorth: 12000,
           lane: 'bot',
           laneLabel: 'Bot',
+          laneGrounded: true,
           opponents: [{ heroId: 2, displayName: 'Axe', kda: '1/2/0' }],
           nearby: [{ heroId: 71, displayName: 'Spirit Breaker' }],
           earlyKills: [],
@@ -211,6 +213,7 @@ describe('messageToBlocks', () => {
           laneSource: 'lane_pos_cluster',
           laneConfidence: 'high',
         },
+        focusLaneGrounded: true,
         grounded: true,
       },
     }), 'en');
@@ -246,6 +249,7 @@ describe('messageToBlocks', () => {
         ],
         focusHeroId: null,
         focusLens: null,
+        focusLaneGrounded: true,
         grounded: true,
       },
     }), 'zh');

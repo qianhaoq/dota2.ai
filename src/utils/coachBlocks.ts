@@ -147,9 +147,14 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
 
   if (fact.focusLens) {
     const f = fact.focusLens;
+    const laneLine = f.laneGrounded
+      ? (lang === 'zh'
+        ? `分路：${f.laneLabel}\n对线：${f.opponents.map((o) => o.displayName).join('、') || '—'}${f.nearby.length ? `\n附近：${f.nearby.map((o) => o.displayName).join('、')}` : ''}`
+        : `Lane: ${f.laneLabel}\nVs: ${f.opponents.map((o) => o.displayName).join(', ') || '—'}${f.nearby.length ? `\nNearby: ${f.nearby.map((o) => o.displayName).join(', ')}` : ''}`)
+      : (lang === 'zh' ? f.laneLabel : f.laneLabel);
     const povMd = lang === 'zh'
-      ? `${f.displayName} · KDA ${f.kda} · GPM ${f.gpm}\n分路：${f.laneLabel}\n对线：${f.opponents.map((o) => o.displayName).join('、') || '—'}${f.nearby.length ? `\n附近：${f.nearby.map((o) => o.displayName).join('、')}` : ''}`
-      : `${f.displayName} · KDA ${f.kda} · GPM ${f.gpm}\nLane: ${f.laneLabel}\nVs: ${f.opponents.map((o) => o.displayName).join(', ') || '—'}${f.nearby.length ? `\nNearby: ${f.nearby.map((o) => o.displayName).join(', ')}` : ''}`;
+      ? `${f.displayName} · KDA ${f.kda} · GPM ${f.gpm}\n${laneLine}`
+      : `${f.displayName} · KDA ${f.kda} · GPM ${f.gpm}\n${laneLine}`;
 
     blocks.push({
       id: `${message.id}-review-pov`,

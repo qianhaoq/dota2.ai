@@ -49,9 +49,11 @@ describe('buildMatchFact', () => {
 
   it('builds focus lens for selected hero without OpenDota lane fields', () => {
     expect(fact.focusLens?.heroId).toBe(54);
+    expect(fact.focusLens?.laneGrounded).toBe(true);
     expect(fact.focusLens?.laneLabel).toBe('下路');
     expect(fact.focusLens?.opponents.map((o: { heroId: number }) => o.heroId)).toEqual([2]);
     expect(fact.focusLens?.nearby.map((o: { heroId: number }) => o.heroId)).toContain(71);
+    expect(fact.focusLaneGrounded).toBe(true);
   });
 
   it('includes economy checkpoints and timeline', () => {
@@ -109,5 +111,24 @@ describe('buildMatchFact', () => {
     expect(partial.grounded).toBe(false);
     expect(partial.laneDataAvailable).toBe(false);
     expect(partial.laneSource).toBe('lane_pos_unavailable');
+  });
+
+  it('degrades focus lane when hero lacks usable lane_pos cluster', () => {
+    const stripped = buildMatchFact({
+      ...fixture,
+      players: fixture.players.map((p: { hero_id: number; lane_pos?: unknown }) => (
+        p.hero_id === 54 ? { ...p, lane_pos: {} } : p
+      )),
+    }, {
+      lang: 'zh',
+      heroId: 54,
+      heroNames: HERO_NAMES_CN,
+    });
+    expect(stripped.laneDataAvailable).toBe(true);
+    expect(stripped.focusLaneGrounded).toBe(false);
+    expect(stripped.grounded).toBe(false);
+    expect(stripped.focusLens?.laneGrounded).toBe(false);
+    expect(stripped.focusLens?.opponents).toEqual([]);
+    expect(stripped.focusLens?.laneLabel).toContain('无法推断分路');
   });
 });

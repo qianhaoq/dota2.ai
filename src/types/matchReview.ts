@@ -96,6 +96,7 @@ export interface MatchFact {
     netWorth: number;
     lane: string;
     laneLabel: string;
+    laneGrounded: boolean;
     opponents: Array<{ heroId: number; displayName: string; kda: string }>;
     nearby: Array<{ heroId: number; displayName: string }>;
     earlyKills: Array<{ time: number; target: string }>;
@@ -103,5 +104,6 @@ export interface MatchFact {
     laneSource: string;
     laneConfidence: LaneConfidence;
   } | null;
+  focusLaneGrounded: boolean;
   grounded: boolean;
 }

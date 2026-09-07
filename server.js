@@ -63,13 +63,14 @@ const cache = {
   matchDetails: new Map(), // Map<matchId, { data, timestamp }>
 };
 
-async function fetchWithRetry(url, retries = 2, delay = 500) {
+async function fetchWithRetry(url, retries = 2, delay = 500, options = {}) {
   for (let i = 0; i <= retries; i++) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, options);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err) {
+      if (options.signal?.aborted) throw err;
       if (i === retries) throw err;
       await new Promise(r => setTimeout(r, delay * (i + 1)));
     }
@@ -635,13 +636,13 @@ async function getLeanItemMeta() {
     .sort((a, b) => (a.cost || 0) - (b.cost || 0));
 }
 
-async function getHeroStats() {
+async function getHeroStats(fetchOptions = {}) {
   const now = Date.now();
   if (cache.heroStats.data && (now - cache.heroStats.timestamp) < CACHE_TTL_MS) {
     return cache.heroStats.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/heroStats`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroStats`, 2, 500, fetchOptions);
     const statsMap = {};
     for (const hero of data) {
       const proPick = hero.pro_pick || 0;
@@ -2032,14 +2033,14 @@ function evictMatchDetailCache() {
   }
 }
 
-async function getMatchDetail(matchId) {
+async function getMatchDetail(matchId, fetchOptions = {}) {
   evictMatchDetailCache();
   const cached = cache.matchDetails.get(matchId);
   if (cached && Date.now() - cached.timestamp < MATCH_DETAIL_CACHE_TTL_MS) {
     return cached.data;
   }
 
-  const data = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`);
+  const data = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 2, 500, fetchOptions);
   evictMatchDetailCache();
   cache.matchDetails.set(matchId, { data, timestamp: Date.now() });
   return data;
@@ -2101,11 +2102,35 @@ async function handleMatchReview(req, res) {
     return respondReviewError(res, wantsStream, isZh ? '无效的比赛 ID' : 'Invalid match ID');
   }
 
+  let clientGone = false;
+  let stream = null;
+  const abortController = new AbortController();
+  const abortUpstream = () => {
+    if (res.writableEnded) return;
+    clientGone = true;
+    abortController.abort();
+    stream?.controller?.abort();
+  };
+  const detachAbortListeners = () => {
+    res.removeListener('close', abortUpstream);
+    req.removeListener('aborted', abortUpstream);
+  };
+
+  if (wantsStream) {
+    res.on('close', abortUpstream);
+    req.on('aborted', abortUpstream);
+  }
+
   try {
+    if (clientGone) return;
+
+    const fetchOpts = wantsStream ? { signal: abortController.signal } : {};
     const [matchData, heroStats] = await Promise.all([
-      getMatchDetail(matchId),
-      getHeroStats(),
+      getMatchDetail(matchId, fetchOpts),
+      getHeroStats(fetchOpts),
     ]);
+
+    if (clientGone) return;
 
     if (heroId !== undefined) {
       const inMatch = (matchData.players || []).some((p) => p.hero_id === heroId);
@@ -2190,18 +2215,6 @@ Format with ## headings:
 
       sendReviewSse(res, { matchFact, grounded: isGrounded });
 
-      let clientGone = false;
-      let stream = null;
-      const abortController = new AbortController();
-      const abortUpstream = () => {
-        if (res.writableEnded) return;
-        clientGone = true;
-        abortController.abort();
-        stream?.controller?.abort();
-      };
-      res.on('close', abortUpstream);
-      req.on('aborted', abortUpstream);
-
       try {
         stream = await openai.chat.completions.create({
           model: DEEPSEEK_MODEL,
@@ -2238,8 +2251,7 @@ Format with ## headings:
           });
         }
       } finally {
-        res.removeListener('close', abortUpstream);
-        req.removeListener('aborted', abortUpstream);
+        detachAbortListeners();
       }
       return;
     }
@@ -2258,6 +2270,8 @@ Format with ## headings:
       grounded: isGrounded,
     });
   } catch (error) {
+    if (wantsStream) detachAbortListeners();
+    if (clientGone || error.name === 'AbortError') return;
     console.error('Match review error:', error);
     const errorMsg = error.message || (isZh ? '复盘失败' : 'Review failed');
     return respondReviewError(res, wantsStream, errorMsg, 500);
