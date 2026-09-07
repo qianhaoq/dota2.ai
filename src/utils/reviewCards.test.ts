@@ -14,6 +14,8 @@ import {
   isReviewAiCardsComplete,
   isValidReviewDrill,
   hasDistinctKeyMoments,
+  isGroundedDrillStep,
+  areGroundedDrillSteps,
   evidenceSupportsCategory,
 } from '../../lib/matchReview/reviewCards.js';
 import type { ReviewCardsPayload } from '../types/reviewCards';
@@ -123,7 +125,7 @@ describe('reviewCards gold match 8985182860', () => {
         { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
         { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
       ],
-      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['每局只选一个改进点'] },
       mentor_note: '拉比克结语',
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
@@ -145,7 +147,7 @@ describe('reviewCards gold match 8985182860', () => {
         { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
         { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
       ],
-      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['每局只选一个改进点'] },
       followups: ['展开 0:48 节点：一血', '为什么不该出羊刀', '下一局只练一件事'],
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
@@ -168,7 +170,7 @@ describe('reviewCards gold match 8985182860', () => {
         { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
         { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
       ],
-      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['每局只选一个改进点'] },
       followups: ['展开 0:48 节点：一血', '展开 34:13 节点：推中二塔', 'Why was Butterfly wrong?'],
     });
     const cards = parseAiReviewCards(llmJson, fact, 'en') as ReviewCardsPayload;
@@ -234,7 +236,7 @@ describe('reviewCards gold match 8985182860', () => {
         { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
         { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
       ],
-      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['每局只选一个改进点'] },
       followups: ['展开这场团'],
       mentor_note: '拉比克结语',
     });
@@ -281,7 +283,7 @@ describe('reviewCards gold match 8985182860', () => {
           evidence: [{ factKey: 'timeline_5' }],
         },
       ],
-      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['每局只选一个改进点'] },
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
     const first = cards.key_moments?.[0];
@@ -678,6 +680,70 @@ describe('buildKeyMomentsFromTimeline', () => {
     const cards = buildFallbackAiCards(factNoTimeline, 'zh') as ReviewCardsPayload;
     expect(cards.primary_mistake).toBeUndefined();
     expect(cards.key_moments?.length ?? 0).toBe(0);
+    expect(cards.followups?.[0]).not.toMatch(/关键团战|展开这场团|key fight/i);
+    expect(cards.followups?.[0]).toMatch(/经济|GPM|KDA/);
+  });
+
+  it('replaces ungrounded model drill steps with deterministic fallback drill', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '中期开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团', '出羊刀再开团'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    const fallback = buildFallbackAiCards(fact, 'zh') as ReviewCardsPayload;
+    expect(cards.drill?.title).toBe(fallback.drill?.title);
+    expect(cards.drill?.steps).toEqual(fallback.drill?.steps);
+    expect(cards.drill?.steps?.join(' ')).not.toMatch(/羊刀|10 分前|参团/);
+  });
+
+  it('rejects item-specific drill steps in English', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: 'Mid fight too early',
+        explanation: 'Forced a fight while behind.',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: 'Mid tier 2', why: 'Extended lead.', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: 'Roshan', why: 'Dire took Roshan.', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 min', title: 'Item drill', steps: ['Buy Sheepstick before fights', 'Farm lane last hits'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'en') as ReviewCardsPayload;
+    expect(cards.drill?.title).not.toBe('Item drill');
+    expect(cards.drill?.steps?.join(' ')).not.toMatch(/sheepstick|last hit/i);
+  });
+
+  it('keeps grounded generic model drill steps', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '中期开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['每局只选一个改进点', '死亡后检查信息是否足够'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.drill?.title).toBe('练节奏');
+    expect(cards.drill?.steps).toEqual(['每局只选一个改进点', '死亡后检查信息是否足够']);
   });
 });
 
