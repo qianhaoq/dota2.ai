@@ -27,7 +27,9 @@ const MentorStage: React.FC<MentorStageProps> = ({
       : 'Steal skills. Pick a hero — I will drill you.',
     loading: lang === 'zh' ? '拉比克正在入座…' : 'Rubick is taking a seat…',
     practiceCta: lang === 'zh' ? '选英雄练习' : 'Practice a hero',
+    practiceCtaShort: lang === 'zh' ? '选英雄' : 'Pick hero',
     changePractice: lang === 'zh' ? '换练习英雄' : 'Change practice hero',
+    changePracticeShort: lang === 'zh' ? '换英雄' : 'Change',
     practicing: lang === 'zh' ? '练习' : 'Practice',
   }), [lang]);
 
@@ -66,9 +68,9 @@ const MentorStage: React.FC<MentorStageProps> = ({
         </div>
         <button
           onClick={onOpenPracticePicker}
-          className="flex-shrink-0 text-xs text-k3-text-secondary hover:text-k3-text-primary min-h-[36px] px-2 touch-manipulation"
+          className="flex-shrink-0 text-xs text-k3-text-secondary hover:text-k3-text-primary min-h-[40px] px-2.5 touch-manipulation"
         >
-          {practiceHero ? t.changePractice : t.practiceCta}
+          {practiceHero ? t.changePracticeShort : t.practiceCtaShort}
         </button>
       </div>
     );

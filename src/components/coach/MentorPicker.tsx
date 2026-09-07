@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Hero, Attribute, Language } from '../../types';
 import { X, Search } from 'lucide-react';
+import { useOverlayFocus } from '../../utils/useOverlayFocus';
 
 interface MentorPickerProps {
   lang: Language;
@@ -36,6 +37,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
     all: lang === 'zh' ? '全部' : 'All',
     currentMentor: lang === 'zh' ? '当前练习' : 'Practicing',
     selectHim: lang === 'zh' ? '跟拉比克练这个' : 'Drill this with Rubick',
+    close: lang === 'zh' ? '关闭' : 'Close',
   }), [lang]);
 
   const filteredHeroes = useMemo(() => {
@@ -59,6 +61,8 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
     onClose();
   };
 
+  const { closeRef, searchRef } = useOverlayFocus(isOpen);
+
   if (!isOpen) return null;
 
   return (
@@ -68,12 +72,20 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
         onClick={onClose}
       />
 
-      <div className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mentor-picker-title"
+        className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4 pt-safe pb-safe px-safe"
+      >
         <div className="px-3 sm:px-4 py-3 sm:py-4 border-b border-k3-border-subtle bg-k3-surface">
           <div className="flex items-center justify-between mb-1 sm:mb-2">
-            <h2 className="font-semibold text-k3-text-primary text-base sm:text-lg">{t.title}</h2>
+            <h2 id="mentor-picker-title" className="font-semibold text-k3-text-primary text-base sm:text-lg">{t.title}</h2>
             <button
+              ref={closeRef}
+              type="button"
               onClick={onClose}
+              aria-label={t.close}
               className="p-2.5 sm:p-2 text-k3-text-tertiary hover:text-k3-text-primary hover:bg-k3-elevated rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
             >
               <X size={20} className="sm:w-[18px] sm:h-[18px]" />
@@ -98,11 +110,12 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
                 <span className="text-[10px] sm:text-xs text-k3-text-secondary">{t.selectHim}</span>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   onDismissMentor();
                   onClose();
                 }}
-                className="px-2 sm:px-3 py-1.5 text-xs text-k3-text-tertiary hover:text-k3-dire hover:bg-k3-dire/10 rounded-lg transition-colors border border-k3-border-subtle min-h-[36px] touch-manipulation flex-shrink-0"
+                className="px-2 sm:px-3 py-1.5 text-xs text-k3-text-tertiary hover:text-k3-dire hover:bg-k3-dire/10 rounded-lg transition-colors border border-k3-border-subtle min-h-[40px] touch-manipulation flex-shrink-0"
               >
                 {t.dismiss}
               </button>
@@ -114,12 +127,12 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-k3-text-tertiary" size={16} />
             <input
+              ref={searchRef}
               type="text"
               placeholder={t.search}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-k3-input border border-k3-border-subtle rounded-sm pl-10 pr-3 py-2.5 sm:py-2 text-sm text-k3-text-primary focus:outline-none focus:border-k3-text-tertiary placeholder:text-k3-text-tertiary"
-              autoFocus
+              className="w-full bg-k3-input border border-k3-border-subtle rounded-sm pl-10 pr-3 py-2.5 sm:py-2 text-base sm:text-sm text-k3-text-primary focus:outline-none focus:border-k3-text-tertiary placeholder:text-k3-text-tertiary"
             />
           </div>
           <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0">
@@ -127,7 +140,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
               <button
                 key={attr}
                 onClick={() => setAttrFilter(attr)}
-                className={`px-3 sm:px-2.5 py-2 sm:py-1.5 rounded-sm text-[11px] sm:text-[10px] font-medium uppercase transition-colors min-h-[36px] min-w-[44px] flex-shrink-0 touch-manipulation ${
+                className={`px-2.5 py-2 sm:py-1.5 rounded-sm text-[11px] sm:text-[10px] font-medium uppercase transition-colors min-h-[40px] min-w-[44px] flex-shrink-0 touch-manipulation ${
                   attrFilter === attr
                     ? 'bg-k3-text-primary text-k3-base'
                     : 'text-k3-text-tertiary hover:text-k3-text-secondary hover:bg-k3-elevated'
@@ -146,7 +159,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
               Loading heroes...
             </div>
           ) : (
-            <div className="grid grid-cols-4 xs:grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-8 md:grid-cols-10 gap-1.5">
               {filteredHeroes.map(hero => {
                 const isCurrentMentor = currentMentor?.id === hero.id;
                 return (
@@ -166,7 +179,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
                       loading="lazy"
                     />
                     <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent py-1 px-0.5">
-                      <span className="text-[9px] xs:text-[8px] sm:text-[9px] text-k3-text-secondary block text-center truncate">
+                      <span className="text-[9px] sm:text-[9px] text-k3-text-secondary block text-center truncate">
                         {lang === 'zh' ? (hero.nameZh || hero.name) : hero.name}
                       </span>
                     </div>
