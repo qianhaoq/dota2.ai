@@ -13,6 +13,7 @@ import {
   localizeKillTarget,
   isReviewAiCardsComplete,
   isValidReviewDrill,
+  hasDistinctKeyMoments,
 } from '../../lib/matchReview/reviewCards.js';
 import type { ReviewCardsPayload } from '../types/reviewCards';
 
@@ -174,6 +175,67 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.primary_mistake).toBeUndefined();
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
+
+  it('rejects key moments citing only non-timeline catalog facts', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '失误',
+        explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { timestamp: 500, headline: '假', why: '无', evidence: [{ factKey: 'kda' }] },
+        { timestamp: 1310, headline: 'b', why: 'b', evidence: [{ factKey: 'gold_lead_20' }] },
+        { timestamp: 2817, headline: 'c', why: 'c', evidence: [{ factKey: 'deaths' }] },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.key_moments?.length ?? 0).toBe(0);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
+  it('rejects key moments with empty headline or why', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '失误',
+        explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: '', why: '有说明' },
+        { timestamp: 1310, evidence: [{ factKey: 'timeline_2' }], headline: '有标题', why: '' },
+        { timestamp: 2817, evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.key_moments?.length ?? 0).toBe(1);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
+  it('rejects duplicate timeline key moments', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '失误',
+        explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a2', why: 'a2' },
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a3', why: 'a3' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.key_moments).toHaveLength(3);
+    expect(hasDistinctKeyMoments(cards.key_moments ?? [], 3)).toBe(false);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
 });
 
 describe('resolveEvidence', () => {
@@ -252,32 +314,40 @@ describe('short match late phase', () => {
 });
 
 describe('isReviewAiCardsComplete', () => {
-  const groundedMoment = { evidence: [{ factKey: 'timeline_0', label: '0:48', value: '一血' }] };
+  const groundedMoment = (factKey: string, ts: number, label: string) => ({
+    timestamp: ts,
+    headline: `标题 ${factKey}`,
+    why: `说明 ${factKey}`,
+    evidence: [{ factKey, label, value: label }],
+  });
   const groundedMistake = {
     category: 'fight_timing',
     evidence: [{ factKey: 'kda', label: 'KDA', value: '7/9/19' }],
   };
 
   it('requires a nonempty drill, grounded moments, and primary-mistake evidence', () => {
+    const m0 = groundedMoment('timeline_0', 48, '0:48');
+    const m1 = groundedMoment('timeline_1', 800, '13:20');
+    const m2 = groundedMoment('timeline_2', 1310, '21:50');
     expect(isReviewAiCardsComplete({
       primary_mistake: groundedMistake,
-      key_moments: [groundedMoment, groundedMoment, groundedMoment],
+      key_moments: [m0, m1, m2],
       drill: { title: '', steps: [] },
     })).toBe(false);
     expect(isValidReviewDrill({ title: '练', steps: ['一步'] })).toBe(true);
     expect(isReviewAiCardsComplete({
       primary_mistake: groundedMistake,
-      key_moments: [groundedMoment, groundedMoment, {}],
+      key_moments: [m0, m1, {}],
       drill: { title: '练', steps: ['一步'] },
     })).toBe(false);
     expect(isReviewAiCardsComplete({
       primary_mistake: { category: 'fight_timing' },
-      key_moments: [groundedMoment, groundedMoment, groundedMoment],
+      key_moments: [m0, m1, m2],
       drill: { title: '练', steps: ['一步'] },
     })).toBe(false);
     expect(isReviewAiCardsComplete({
       primary_mistake: groundedMistake,
-      key_moments: [groundedMoment, groundedMoment, groundedMoment],
+      key_moments: [m0, m1, m2],
       drill: { title: '练', steps: ['一步'] },
     })).toBe(true);
   });

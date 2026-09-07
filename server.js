@@ -2427,7 +2427,9 @@ JSON shape:
     res.flushHeaders?.();
 
     sendReviewSse(res, { matchFact, grounded: isGrounded });
-    sendReviewSse(res, { reviewCards: initialReviewCards, grounded: isGrounded });
+    if (!followUp) {
+      sendReviewSse(res, { reviewCards: initialReviewCards, grounded: isGrounded });
+    }
 
     try {
       stream = await openai.chat.completions.create({
@@ -2471,20 +2473,14 @@ JSON shape:
       } else {
         const choice = stream.choices?.[0];
         const fullText = choice?.message?.content || '';
-        const finishReason = choice?.finish_reason;
         let reviewCards = parseAiReviewCards(fullText, matchFact, lang);
-        if (!isReviewAiCardsComplete(reviewCards)) {
+        const usedFallback = !isReviewAiCardsComplete(reviewCards);
+        if (usedFallback) {
           reviewCards = buildFallbackAiCards(matchFact, lang);
         }
         if (!res.writableEnded) {
           sendReviewSse(res, { reviewCards, grounded: isGrounded });
-          if (isTerminalStreamFinish(finishReason)) {
-            endReviewSse(res);
-          } else {
-            endReviewSse(res, {
-              error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
-            });
-          }
+          endReviewSse(res);
         }
       }
     } catch (streamErr) {
