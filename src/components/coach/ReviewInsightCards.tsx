@@ -19,7 +19,6 @@ interface ReviewInsightCardsProps {
 const MISTAKE_COLORS: Record<string, string> = {
   fight_timing: 'text-orange-400 border-orange-400/30 bg-orange-400/10',
   itemisation: 'text-purple-400 border-purple-400/30 bg-purple-400/10',
-  vision: 'text-cyan-400 border-cyan-400/30 bg-cyan-400/10',
   positioning: 'text-red-400 border-red-400/30 bg-red-400/10',
   farm_route: 'text-yellow-400 border-yellow-400/30 bg-yellow-400/10',
 };

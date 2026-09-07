@@ -98,6 +98,16 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.followups?.[0]).toMatch(/^展开 \d+:\d{2} 节点：/);
     expect(cards.followups?.[0]).toContain(firstMoment!.headline);
     expect(cards.followups?.[0]).not.toBe('展开这场团');
+    expect(cards.followups?.[1]).not.toMatch(/羊刀/);
+    expect(cards.followups?.[1]).toMatch(/经济|GPM|节点：/);
+  });
+
+  it('fallback primary mistake stays neutral and does not infer positioning from deaths', () => {
+    const cards = buildFallbackAiCards(fact, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake?.category).toBe('fight_timing');
+    expect(cards.primary_mistake?.headline).not.toMatch(/站位|进场时机/);
+    expect(cards.primary_mistake?.explanation).toMatch(/不做未证实的因果推断/);
+    expect(cards.primary_mistake?.evidence?.some((e) => e.factKey.startsWith('timeline_'))).toBe(true);
   });
 
   it('synthesizes contextual default followups when LLM omits followups array', () => {
@@ -118,6 +128,27 @@ describe('reviewCards gold match 8985182860', () => {
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
     expect(cards.followups?.[0]).toBe('展开 0:48 节点：一血');
+  });
+
+  it('replaces item-specific model follow-ups with evidence-bound defaults', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '中期开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+      followups: ['展开 0:48 节点：一血', '为什么不该出羊刀', '下一局只练一件事'],
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.followups?.[1]).not.toMatch(/羊刀/);
+    expect(cards.followups?.[1]).toMatch(/^展开 \d+:\d{2} 节点：推中二塔$/);
   });
 
   it('parseAiReviewCards merges LLM JSON with deterministic spine', () => {
@@ -330,7 +361,7 @@ describe('reviewCards gold match 8985182860', () => {
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
-  it('rejects vision category when evidence lacks vision facts', () => {
+  it('rejects disallowed vision category', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
         category: 'vision',
@@ -347,7 +378,6 @@ describe('reviewCards gold match 8985182860', () => {
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
     expect(cards.primary_mistake).toBeUndefined();
-    expect(evidenceSupportsCategory('vision', [{ factKey: 'kda' }])).toBe(false);
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 

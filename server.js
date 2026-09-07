@@ -2376,16 +2376,16 @@ Format with ## headings:
 【硬性规则】
 1. 只能使用 MatchFact 与证据字段，禁止编造
 2. 分路以录像站位聚类为准，禁止引用 OpenDota lane/lane_role
-3. 只指出一个主要失误（category 四选一）
+3. 只指出一个主要失误（category 三选一：fight_timing / positioning / farm_route）
 4. 3–5 个关键时刻必须带 timestamp（秒）且引用 evidence factKey
 5. 一个具体、可执行的下一局 drill（限时）
 6. mentor_note 用拉比克口吻，2–3 句
-7. followups 第一条必须引用具体 key_moment 的时间戳与标题（勿用「这场团」等无指代词）
+7. followups 必须引用可用证据（具体时间戳节点或经济/KDA 等 factKey），禁止无依据的出装/羊刀类追问
 
 【JSON 结构】
 {
   "primary_mistake": {
-    "category": "fight_timing|vision|positioning|farm_route",
+    "category": "fight_timing|positioning|farm_route",
     "headline": "一句话标题",
     "explanation": "2–4 句解释",
     "evidence": [{"factKey": "kda"}, {"factKey": "gold_lead_20"}]
@@ -2394,7 +2394,7 @@ Format with ## headings:
     {"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}
   ],
   "drill": {"duration": "15 分钟", "title": "...", "steps": ["...", "..."]},
-  "followups": ["展开 21:50 节点：推中二塔", "为什么不该出羊刀", "下一局只练一件事"],
+  "followups": ["展开 21:50 节点：推中二塔", "20分钟经济差（-1200）对本局节奏意味着什么？", "下一局只练一件事"],
   "mentor_note": "拉比克口吻结语"
 }`
         : `You are Rubick reviewing a Dota 2 match. Output ONLY one JSON object, no prose outside JSON.
@@ -2406,14 +2406,14 @@ Rules:
 4. 3–5 key_moments with timestamp (seconds) and evidence factKeys
 5. One time-boxed drill
 6. mentor_note in Rubick voice, 2–3 sentences
-7. First followup must cite a specific key_moment timestamp and headline (no vague "that fight")
+7. Followups must cite available evidence (specific key_moment or economy/KDA factKeys); no unsupported item-build questions
 
 JSON shape:
 {
-  "primary_mistake": {"category": "fight_timing|vision|positioning|farm_route", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
+  "primary_mistake": {"category": "fight_timing|positioning|farm_route", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
   "key_moments": [{"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}],
   "drill": {"duration": "15 min", "title": "...", "steps": ["..."]},
-  "followups": ["Break down 21:50: took mid tier 2", "Why not Scythe?", "One thing to practice next"],
+  "followups": ["Break down 21:50: took mid tier 2", "What did gold lead at 20 min (-1200) mean for tempo?", "One thing to practice next"],
   "mentor_note": "..."
 }`);
 

@@ -1,7 +1,6 @@
 /** 复盘主失误分类 */
 export type MistakeCategory =
   | 'fight_timing'
-  | 'vision'
   | 'positioning'
   | 'farm_route';
 
