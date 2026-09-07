@@ -51,7 +51,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
   }
 
   return (
-    <div className="max-w-3xl mx-auto w-full px-3 sm:px-4 py-3 sm:py-4 space-y-3 min-w-0">
+    <div className="max-w-3xl mx-auto w-full px-3 sm:px-4 pt-3 sm:pt-4 pb-6 space-y-3 min-w-0">
       {older.length > 0 && (
         <div className="rounded-lg border border-k3-border-subtle bg-k3-surface/40 min-w-0">
           <button

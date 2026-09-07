@@ -1,4 +1,5 @@
-import { Hero, Attribute } from '../types';
+import { Hero, Attribute, Language } from '../types';
+import type { MatchFact } from '../types/matchReview';
 
 const OPENDOTA_API = 'https://api.opendota.com/api';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
@@ -94,4 +95,20 @@ const mapOpenDotaHero = (apiHero: OpenDotaHero): Hero => {
     attribute: attr,
     img: fullImgUrl
   };
+};
+
+/** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
+export const fetchMatchFacts = async (matchId: number, lang: Language = 'zh'): Promise<MatchFact> => {
+  const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}`, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+  });
+  const data = await response.json().catch(() => ({} as { error?: string; matchFact?: MatchFact }));
+  if (!response.ok) {
+    throw new Error(data.error || (lang === 'zh' ? '拉取比赛失败' : 'Failed to load match'));
+  }
+  if (!data.matchFact) {
+    throw new Error(lang === 'zh' ? '比赛数据为空' : 'Match data is empty');
+  }
+  return data.matchFact;
 };
