@@ -60,6 +60,7 @@ describe('server review fallback SSE patterns', () => {
     expect(content).toMatch(
       /sendReviewSse\(res,\s*\{\s*reviewCards[\s\S]*sendReviewSse\(res,\s*\{\s*reviewNotice:\s*reviewAiUnavailableNotice/,
     );
+    expect(content).toMatch(/if \(usedFallback\)[\s\S]*reviewAiUnavailableNotice\(lang,\s*'invalid'\)/);
   });
 });
 

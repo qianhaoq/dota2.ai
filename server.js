@@ -2490,6 +2490,9 @@ JSON shape:
         }
         if (!res.writableEnded) {
           sendReviewSse(res, { reviewCards, grounded: isGrounded });
+          if (usedFallback) {
+            sendReviewSse(res, { reviewNotice: reviewAiUnavailableNotice(lang, 'invalid') });
+          }
           endReviewSse(res);
         }
       }

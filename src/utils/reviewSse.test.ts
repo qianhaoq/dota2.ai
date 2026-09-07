@@ -26,6 +26,8 @@ describe('reviewSse', () => {
     expect(reviewAiUnavailableNotice('en', 'unconfigured')).toMatch(/API key not configured/i);
     expect(reviewAiUnavailableNotice('zh', 'provider')).toContain('AI 洞察生成失败');
     expect(reviewAiUnavailableNotice('en', 'provider')).toMatch(/AI insight generation failed/i);
+    expect(reviewAiUnavailableNotice('zh', 'invalid')).toContain('未通过校验');
+    expect(reviewAiUnavailableNotice('en', 'invalid')).toMatch(/failed validation/i);
   });
 
   it('reviewNotice SSE is nonterminal and preserves grounded through DONE', () => {
