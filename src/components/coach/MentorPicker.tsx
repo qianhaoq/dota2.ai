@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Hero, Attribute, Language } from '../../types';
 import { X, Search } from 'lucide-react';
+import { useOverlayFocus } from '../../utils/useOverlayFocus';
 
 interface MentorPickerProps {
   lang: Language;
@@ -60,6 +61,8 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
     onClose();
   };
 
+  const { closeRef, searchRef } = useOverlayFocus(isOpen);
+
   if (!isOpen) return null;
 
   return (
@@ -69,11 +72,17 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
         onClick={onClose}
       />
 
-      <div className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4 pt-safe pb-safe">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mentor-picker-title"
+        className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4 pt-safe pb-safe px-safe"
+      >
         <div className="px-3 sm:px-4 py-3 sm:py-4 border-b border-k3-border-subtle bg-k3-surface">
           <div className="flex items-center justify-between mb-1 sm:mb-2">
-            <h2 className="font-semibold text-k3-text-primary text-base sm:text-lg">{t.title}</h2>
+            <h2 id="mentor-picker-title" className="font-semibold text-k3-text-primary text-base sm:text-lg">{t.title}</h2>
             <button
+              ref={closeRef}
               type="button"
               onClick={onClose}
               aria-label={t.close}
@@ -101,6 +110,7 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
                 <span className="text-[10px] sm:text-xs text-k3-text-secondary">{t.selectHim}</span>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   onDismissMentor();
                   onClose();
@@ -117,12 +127,12 @@ const MentorPicker: React.FC<MentorPickerProps> = ({
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-k3-text-tertiary" size={16} />
             <input
+              ref={searchRef}
               type="text"
               placeholder={t.search}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-k3-input border border-k3-border-subtle rounded-sm pl-10 pr-3 py-2.5 sm:py-2 text-base sm:text-sm text-k3-text-primary focus:outline-none focus:border-k3-text-tertiary placeholder:text-k3-text-tertiary"
-              autoFocus={typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches}
             />
           </div>
           <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0">

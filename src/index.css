@@ -331,11 +331,35 @@ button, .no-select {
 
 /* Safe area padding for mobile devices with notches */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0);
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.px-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Absolute controls: padding on the parent does not offset `top`/`right`. */
+.top-safe-offset {
+  top: calc(env(safe-area-inset-top, 0px) + 24px);
+}
+
+.right-safe-offset {
+  right: calc(env(safe-area-inset-right, 0px) + 24px);
+}
+
+@media (min-width: 640px) {
+  .top-safe-offset {
+    top: calc(env(safe-area-inset-top, 0px) + 32px);
+  }
+
+  .right-safe-offset {
+    right: calc(env(safe-area-inset-right, 0px) + 32px);
+  }
 }
 
 /* Touch manipulation for better mobile interaction */

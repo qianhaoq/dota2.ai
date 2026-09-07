@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Hero, Attribute, Language } from '../../types';
 import { X, Search, RotateCcw } from 'lucide-react';
+import { useOverlayFocus } from '../../utils/useOverlayFocus';
 
 interface HeroPickerOverlayProps {
   lang: Language;
@@ -62,46 +63,50 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
     });
   }, [allHeroes, searchQuery, attrFilter]);
 
+  const { closeRef, searchRef } = useOverlayFocus(isOpen);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop - dim */}
       <div 
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
       
-      {/* Modal - full screen on mobile, constrained on larger screens */}
-      <div className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4 pt-safe pb-safe">
-        {/* Header: title + actions, then side toggles on their own row on narrow screens */}
-        <div className="flex flex-col gap-2 px-3 sm:px-4 py-3 border-b border-k3-border-subtle bg-k3-surface">
-          <div className="flex items-center justify-between gap-2 min-w-0">
-            <h2 className="font-semibold text-k3-text-primary text-sm sm:text-base truncate">{t.title}</h2>
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-              <button
-                type="button"
-                onClick={onReset}
-                className="p-2.5 sm:p-2 text-k3-text-tertiary hover:text-k3-text-primary hover:bg-k3-elevated rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
-                title={t.reset}
-                aria-label={t.reset}
-              >
-                <RotateCcw size={18} className="sm:w-4 sm:h-4" />
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label={t.close}
-                className="p-2.5 sm:p-2 text-k3-text-tertiary hover:text-k3-text-primary hover:bg-k3-elevated rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
-              >
-                <X size={20} className="sm:w-[18px] sm:h-[18px]" />
-              </button>
-            </div>
-          </div>
-          <div className="flex gap-1 min-w-0">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="hero-picker-title"
+        className="relative w-full h-full sm:h-auto sm:max-h-[85vh] sm:max-w-2xl bg-k3-surface sm:border sm:border-k3-border-subtle sm:rounded-lg flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 sm:m-4 pt-safe pb-safe px-safe"
+      >
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 sm:px-4 py-3 border-b border-k3-border-subtle bg-k3-surface sm:flex sm:flex-row sm:gap-3">
+          <h2 id="hero-picker-title" className="font-semibold text-k3-text-primary text-sm sm:text-base truncate min-w-0 sm:flex-shrink-0">{t.title}</h2>
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 sm:order-last">
             <button
+              type="button"
+              onClick={onReset}
+              className="p-2.5 sm:p-2 text-k3-text-tertiary hover:text-k3-text-primary hover:bg-k3-elevated rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
+              title={t.reset}
+              aria-label={t.reset}
+            >
+              <RotateCcw size={18} className="sm:w-4 sm:h-4" />
+            </button>
+            <button
+              ref={closeRef}
+              type="button"
+              onClick={onClose}
+              aria-label={t.close}
+              className="p-2.5 sm:p-2 text-k3-text-tertiary hover:text-k3-text-primary hover:bg-k3-elevated rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
+            >
+              <X size={20} className="sm:w-[18px] sm:h-[18px]" />
+            </button>
+          </div>
+          <div className="col-span-2 sm:col-auto flex gap-1 min-w-0 sm:flex-1">
+            <button
+              type="button"
               onClick={() => onSideChange('radiant')}
-              className={`flex-1 px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[40px] touch-manipulation ${
+              className={`flex-1 sm:flex-none px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[40px] touch-manipulation ${
                 selectionSide === 'radiant'
                   ? 'bg-k3-radiant/15 text-k3-radiant border border-k3-radiant/30'
                   : 'text-k3-text-tertiary hover:bg-k3-elevated border border-transparent'
@@ -110,8 +115,9 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
               {t.radiant} ({draft.radiant.length}/5)
             </button>
             <button
+              type="button"
               onClick={() => onSideChange('dire')}
-              className={`flex-1 px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[40px] touch-manipulation ${
+              className={`flex-1 sm:flex-none px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[40px] touch-manipulation ${
                 selectionSide === 'dire'
                   ? 'bg-k3-dire/15 text-k3-dire border border-k3-dire/30'
                   : 'text-k3-text-tertiary hover:bg-k3-elevated border border-transparent'
@@ -127,12 +133,12 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-k3-text-tertiary" size={16} />
             <input 
+              ref={searchRef}
               type="text" 
               placeholder={t.search}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-k3-input border border-k3-border-subtle rounded-sm pl-10 pr-3 py-2.5 sm:py-2 text-base sm:text-sm text-k3-text-primary focus:outline-none focus:border-k3-text-tertiary placeholder:text-k3-text-tertiary"
-              autoFocus={typeof window !== 'undefined' && window.matchMedia('(pointer: fine)').matches}
             />
           </div>
           <div className="flex gap-1 overflow-x-auto pb-1 sm:pb-0 -mx-1 px-1 sm:mx-0 sm:px-0">
@@ -193,13 +199,13 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
         </div>
 
         {/* Current Draft Preview - compact on mobile */}
-        <div className="px-3 sm:px-4 py-2 sm:py-3 border-t border-k3-border-subtle bg-k3-base flex-shrink-0">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 min-w-0">
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+        <div className="px-3 sm:px-4 py-2 sm:py-3 border-t border-k3-border-subtle bg-k3-base flex-shrink-0 min-w-0">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 min-w-0 overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-1.5 min-w-0">
               <span className="text-k3-radiant text-[10px] sm:text-xs font-medium flex-shrink-0">{t.radiant}</span>
-              <div className="flex gap-0.5 sm:gap-1 min-w-0">
+              <div className="flex gap-0.5 min-w-0">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={`rad-preview-${i}`} className="w-8 h-8 sm:w-10 sm:h-10 rounded-sm bg-k3-surface border border-k3-border-subtle overflow-hidden flex-shrink-0">
+                  <div key={`rad-preview-${i}`} className="w-8 h-8 rounded-sm bg-k3-surface border border-k3-border-subtle overflow-hidden flex-shrink-0">
                     {draft.radiant[i] && (
                       <img src={draft.radiant[i].img} alt="" className="w-full h-full object-cover" />
                     )}
@@ -207,18 +213,18 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-              <span className="text-k3-dire text-[10px] sm:text-xs font-medium flex-shrink-0 sm:hidden">{t.dire}</span>
-              <div className="flex gap-0.5 sm:gap-1 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-k3-dire text-[10px] sm:text-xs font-medium flex-shrink-0 md:hidden">{t.dire}</span>
+              <div className="flex gap-0.5 min-w-0">
                 {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={`dire-preview-${i}`} className="w-8 h-8 sm:w-10 sm:h-10 rounded-sm bg-k3-surface border border-k3-border-subtle overflow-hidden flex-shrink-0">
+                  <div key={`dire-preview-${i}`} className="w-8 h-8 rounded-sm bg-k3-surface border border-k3-border-subtle overflow-hidden flex-shrink-0">
                     {draft.dire[i] && (
                       <img src={draft.dire[i].img} alt="" className="w-full h-full object-cover" />
                     )}
                   </div>
                 ))}
               </div>
-              <span className="text-k3-dire text-[10px] sm:text-xs font-medium flex-shrink-0 hidden sm:inline">{t.dire}</span>
+              <span className="text-k3-dire text-[10px] sm:text-xs font-medium flex-shrink-0 hidden md:inline">{t.dire}</span>
             </div>
           </div>
         </div>

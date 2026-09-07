@@ -38,7 +38,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-k3-base overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col bg-k3-base overflow-hidden px-safe">
       {/* Header - k3 first-principles: quieter, minimal */}
       <header className="flex-shrink-0 border-b border-k3-border-subtle bg-k3-base pt-safe min-w-0">
         <div className="h-12 flex items-center justify-between px-2 sm:px-4 md:px-6 min-w-0">
@@ -52,6 +52,7 @@ const App: React.FC = () => {
             {/* Labels from sm up: xs (375px) is the phone target and overflows if both tab names show */}
             <nav className="flex items-center gap-1 sm:gap-4 min-w-0">
               <button
+                type="button"
                 onClick={() => setActiveTab(AppTab.DRAFT)}
                 className={`tab-item flex items-center gap-1 sm:gap-1.5 min-h-[40px] min-w-[40px] justify-center touch-manipulation ${
                   activeTab === AppTab.DRAFT ? 'tab-item-active' : 'tab-item-inactive'
@@ -62,6 +63,7 @@ const App: React.FC = () => {
                 <span className="hidden sm:inline text-xs sm:text-sm truncate">{t.coach}</span>
               </button>
               <button
+                type="button"
                 onClick={() => setActiveTab(AppTab.LORE)}
                 className={`tab-item flex items-center gap-1 sm:gap-1.5 min-h-[40px] min-w-[40px] justify-center touch-manipulation ${
                   activeTab === AppTab.LORE ? 'tab-item-active' : 'tab-item-inactive'
@@ -76,6 +78,7 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
             <button
+              type="button"
               onClick={toggleLang}
               className="btn-ghost flex items-center gap-1 px-2 py-1.5 min-h-[40px] min-w-[40px] justify-center text-xs transition-colors touch-manipulation"
               aria-label={lang === 'zh' ? '切换语言' : 'Switch language'}
