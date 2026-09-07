@@ -2376,7 +2376,7 @@ Format with ## headings:
 【硬性规则】
 1. 只能使用 MatchFact 与证据字段，禁止编造
 2. 分路以录像站位聚类为准，禁止引用 OpenDota lane/lane_role
-3. 只指出一个主要失误（category 二选一：fight_timing / farm_route）
+3. 只指出一个主要失误（category 仅 fight_timing；无路线数据时禁止 farm_route）
 4. 3–5 个关键时刻必须带 timestamp（秒）且引用 evidence factKey
 5. 一个具体、可执行的下一局 drill（限时）
 6. mentor_note 用拉比克口吻，2–3 句
@@ -2385,7 +2385,7 @@ Format with ## headings:
 【JSON 结构】
 {
   "primary_mistake": {
-    "category": "fight_timing|farm_route",
+    "category": "fight_timing",
     "headline": "一句话标题",
     "explanation": "2–4 句解释",
     "evidence": [{"factKey": "kda"}, {"factKey": "gold_lead_20"}]
@@ -2402,7 +2402,7 @@ Format with ## headings:
 Rules:
 1. Use ONLY MatchFact and evidence factKeys — no invented data
 2. Lanes from replay positioning clusters
-3. One primary mistake (category enum)
+3. One primary mistake (category: fight_timing only — no farm_route without route data)
 4. 3–5 key_moments with timestamp (seconds) and evidence factKeys
 5. One time-boxed drill
 6. mentor_note in Rubick voice, 2–3 sentences
@@ -2410,7 +2410,7 @@ Rules:
 
 JSON shape:
 {
-  "primary_mistake": {"category": "fight_timing|farm_route", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
+  "primary_mistake": {"category": "fight_timing", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
   "key_moments": [{"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}],
   "drill": {"duration": "15 min", "title": "...", "steps": ["..."]},
   "followups": ["Break down 21:50: took mid tier 2", "What did gold lead at 20 min (-1200) mean for tempo?", "One thing to practice next"],

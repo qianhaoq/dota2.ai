@@ -6,6 +6,7 @@ import {
   createTimeoutAbort,
   awaitWithTimeout,
   claimCoachInflightGeneration,
+  finalizeReviewCoachMessage,
   invalidateCoachInflightGeneration,
   isCoachInflightCurrent,
 } from './coachInflight';
@@ -89,6 +90,37 @@ describe('coachInflight', () => {
     expect(out[0].isStreaming).toBe(false);
     expect(out[0].error).toBeUndefined();
     expect(out[0].matchFact?.summary?.matchId).toBe(8985182860);
+  });
+
+  it('finalizeReviewCoachMessage keeps review cards on client timeout error', () => {
+    const msg: CoachMessage = {
+      id: 'a',
+      type: 'coach',
+      action: 'review',
+      content: '',
+      isStreaming: true,
+      matchFact: { summary: { matchId: 1 } } as CoachMessage['matchFact'],
+      reviewCards: {
+        match_summary: { matchId: 1, heroName: '噬魂鬼', kda: '1/2/3', gpm: 400, result: 'loss', resultLabel: '失败', durationFormatted: '40:00' },
+        phases: [],
+      },
+    };
+    const out = finalizeReviewCoachMessage(msg, { error: 'Request timed out, please try again' });
+    expect(out.isStreaming).toBe(false);
+    expect(out.error).toBeUndefined();
+    expect(out.reviewCards?.match_summary?.heroName).toBe('噬魂鬼');
+  });
+
+  it('finalizeReviewCoachMessage still sets error when no structured review payload', () => {
+    const msg: CoachMessage = {
+      id: 'a',
+      type: 'coach',
+      action: 'review',
+      content: '',
+      isStreaming: true,
+    };
+    const out = finalizeReviewCoachMessage(msg, { error: 'Request timed out' });
+    expect(out.error).toBe('Request timed out');
   });
 
   it('exposes bilingual timeout copy', () => {

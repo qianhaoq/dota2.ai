@@ -68,8 +68,29 @@ export function isCoachInflightCurrent(
 }
 
 /** True when a streaming coach message already has structured review payload worth keeping on cancel. */
-function hasStructuredReviewPayload(msg: CoachMessage): boolean {
+export function hasStructuredReviewPayload(msg: CoachMessage): boolean {
   return Boolean(msg.reviewCards || (msg.action === 'review' && msg.matchFact));
+}
+
+/** Apply terminal review-stream updates without wiping structured cards on timeout/cancel. */
+export function finalizeReviewCoachMessage(
+  msg: CoachMessage,
+  updates: { error?: string; grounded?: boolean },
+): CoachMessage {
+  const next: CoachMessage = {
+    ...msg,
+    isStreaming: false,
+    ...(updates.grounded !== undefined ? { grounded: updates.grounded } : {}),
+  };
+  if (
+    updates.error
+    && !msg.content
+    && !msg.error
+    && !hasStructuredReviewPayload(msg)
+  ) {
+    next.error = updates.error;
+  }
+  return next;
 }
 
 /** Clear streaming flags on all in-flight coach messages (e.g. after Stop). */

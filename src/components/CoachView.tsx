@@ -22,6 +22,7 @@ import {
   isCoachInflightCurrent,
   META_FETCH_TIMEOUT_MS,
   SUGGEST_FETCH_TIMEOUT_MS,
+  finalizeReviewCoachMessage,
 } from '../utils/coachInflight';
 import { X } from 'lucide-react';
 import {
@@ -228,7 +229,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         },
         onError: (error) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
-          updateCoachMessage(msgId, { error, isStreaming: false });
+          setMessages((prev) => prev.map((msg) => (
+            msg.id === msgId ? finalizeReviewCoachMessage(msg, { error }) : msg
+          )));
           finishStream(streamGen);
         },
       }

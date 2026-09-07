@@ -65,6 +65,49 @@ describe('streamingSessionFingerprint', () => {
     });
     expect(before).not.toBe(after);
   });
+
+  it('changes when AI insight cards replace deterministic review spine', () => {
+    const spine = streamingSessionFingerprint({
+      id: 'c1',
+      message: {
+        id: 'c1',
+        type: 'coach',
+        action: 'review',
+        content: '',
+        isStreaming: true,
+        matchFact: { summary: { matchId: 1 } } as never,
+        reviewCards: {
+          match_summary: { matchId: 1, heroName: '噬魂鬼', kda: '1/2/3', gpm: 400, result: 'loss', resultLabel: '失败', durationFormatted: '40:00' },
+          phases: [{ phase: 'lane', label: '对线', insight: '对线', evidence: [] }],
+        },
+      },
+      blocks: [],
+    });
+    const withInsight = streamingSessionFingerprint({
+      id: 'c1',
+      message: {
+        id: 'c1',
+        type: 'coach',
+        action: 'review',
+        content: '',
+        isStreaming: true,
+        matchFact: { summary: { matchId: 1 } } as never,
+        reviewCards: {
+          match_summary: { matchId: 1, heroName: '噬魂鬼', kda: '1/2/3', gpm: 400, result: 'loss', resultLabel: '失败', durationFormatted: '40:00' },
+          phases: [{ phase: 'lane', label: '对线', insight: '对线', evidence: [] }],
+          primary_mistake: { category: 'fight_timing', categoryLabel: '团战时机', headline: '开团过早', explanation: '解释', evidence: [] },
+          key_moments: [
+            { timestamp: 48, timestampLabel: '0:48', phase: 'lane', headline: '一血', why: '原因', evidence: [] },
+            { timestamp: 1310, timestampLabel: '21:50', phase: 'mid', headline: '推塔', why: '原因', evidence: [] },
+            { timestamp: 2817, timestampLabel: '46:57', phase: 'late', headline: '肉山', why: '原因', evidence: [] },
+          ],
+          drill: { duration: '15 分钟', title: '练一件事', steps: ['步骤1'] },
+        },
+      },
+      blocks: [],
+    });
+    expect(spine).not.toBe(withInsight);
+  });
 });
 
 describe('classifyTimelineVisibilityChange', () => {

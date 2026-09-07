@@ -312,6 +312,27 @@ describe('reviewCards gold match 8985182860', () => {
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
+  it('rejects disallowed farm_route category until route evidence exists', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'farm_route',
+        headline: '刷钱路线太贪',
+        explanation: '应该更早参团而不是继续刷野。',
+        evidence: [{ factKey: 'cs_at_10' }, { factKey: 'gpm' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { timestamp: 1310, evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { timestamp: 2817, evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake).toBeUndefined();
+    expect(evidenceSupportsCategory('farm_route', [{ factKey: 'gpm' }])).toBe(false);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
   it('rejects disallowed itemisation category instead of remapping', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
