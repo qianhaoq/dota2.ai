@@ -2321,7 +2321,15 @@ async function handleMatchReview(req, res) {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         sendReviewSse(res, { matchFact, grounded: isGrounded });
-        const fallbackCards = buildFallbackAiCards(matchFact, lang);
+        if (followUp) {
+          endReviewSse(res, {
+            error: isZh
+              ? '追问需要 AI 服务，当前未配置 API Key'
+              : 'Follow-up requires AI service; API key not configured',
+          });
+          return;
+        }
+        const fallbackCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
         sendReviewSse(res, { reviewCards: fallbackCards, grounded: isGrounded });
         endReviewSse(res);
         return;
@@ -2374,7 +2382,7 @@ Format with ## headings:
 【JSON 结构】
 {
   "primary_mistake": {
-    "category": "fight_timing|itemisation|vision|positioning|farm_route",
+    "category": "fight_timing|vision|positioning|farm_route",
     "headline": "一句话标题",
     "explanation": "2–4 句解释",
     "evidence": [{"factKey": "kda"}, {"factKey": "gold_lead_20"}]
@@ -2398,7 +2406,7 @@ Rules:
 
 JSON shape:
 {
-  "primary_mistake": {"category": "fight_timing|itemisation|vision|positioning|farm_route", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
+  "primary_mistake": {"category": "fight_timing|vision|positioning|farm_route", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
   "key_moments": [{"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}],
   "drill": {"duration": "15 min", "title": "...", "steps": ["..."]},
   "followups": ["Break down that fight", "Why not Scythe?", "One thing to practice next"],

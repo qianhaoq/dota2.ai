@@ -6,6 +6,7 @@ import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
 import {
   buildDeterministicReviewCards,
   buildFallbackAiCards,
+  buildKeyMomentsFromTimeline,
   parseAiReviewCards,
   formatTimestamp,
   resolveEvidence,
@@ -68,7 +69,7 @@ describe('reviewCards gold match 8985182860', () => {
     expect(values).toMatch(/裂魂人|斧王|斯温/);
   });
 
-  it('buildFallbackAiCards includes mistake, drill, and >=3 key moments', () => {
+  it('buildFallbackAiCards includes mistake, drill, and >=3 grounded key moments', () => {
     const cards = buildFallbackAiCards(fact, 'zh') as ReviewCardsPayload;
     expect(cards.primary_mistake?.category).toBeTruthy();
     expect(cards.primary_mistake?.headline).toBeTruthy();
@@ -77,7 +78,15 @@ describe('reviewCards gold match 8985182860', () => {
     cards.key_moments?.forEach((m) => {
       expect(m.timestamp).toBeGreaterThanOrEqual(0);
       expect(m.timestampLabel).toMatch(/^\d+:\d{2}$/);
+      expect(m.evidence.length).toBeGreaterThanOrEqual(1);
+      expect(m.headline).toBe(m.evidence[0].value);
     });
+    expect(cards.drill?.steps?.join(' ')).not.toMatch(/补刀|10 分前不主动参团|lane last hits/i);
+  });
+
+  it('omits follow-up chips on API-key fallback path', () => {
+    const cards = buildFallbackAiCards(fact, 'zh', { includeFollowups: false }) as ReviewCardsPayload;
+    expect(cards.followups).toEqual([]);
   });
 
   it('parseAiReviewCards merges LLM JSON with deterministic spine', () => {
@@ -90,8 +99,8 @@ describe('reviewCards gold match 8985182860', () => {
       },
       key_moments: [
         { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
-        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [] },
-        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [] },
+        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
       ],
       drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
       followups: ['展开这场团'],
@@ -102,10 +111,11 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.primary_mistake?.headline).toBe('中期开团过早');
     expect(cards.key_moments).toHaveLength(3);
     expect(cards.key_moments?.[0].timestamp).toBe(48);
+    expect(cards.key_moments?.every((m) => m.evidence.length >= 1)).toBe(true);
     expect(cards.drill?.title).toBe('练节奏');
   });
 
-  it('rejects key moment when timeline evidence is missing from catalog', () => {
+  it('rejects key moments without catalog evidence', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
         category: 'fight_timing',
@@ -116,12 +126,32 @@ describe('reviewCards gold match 8985182860', () => {
       key_moments: [
         { timestamp: 9999, headline: '假', why: '无', evidence: [{ factKey: 'timeline_99' }] },
         { timestamp: 1310, headline: 'b', why: 'b', evidence: [] },
-        { timestamp: 2817, headline: 'c', why: 'c', evidence: [] },
+        { timestamp: 2817, headline: 'c', why: 'c', evidence: [{ factKey: 'fake_stat' }] },
       ],
       drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
-    expect(cards.key_moments?.some((m) => m.headline === '假')).toBe(false);
+    expect(cards.key_moments?.length ?? 0).toBe(0);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
+  it('maps itemisation category to fight_timing', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'itemisation',
+        headline: '出装问题',
+        explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { timestamp: 1310, evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { timestamp: 2817, evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake?.category).toBe('fight_timing');
   });
 });
 
@@ -136,6 +166,28 @@ describe('resolveEvidence', () => {
       catalog,
     );
     expect(resolved).toEqual([{ factKey: 'kda', label: 'KDA', value: '7/9/19' }]);
+  });
+
+  it('discards unknown factKey even when model supplies label and value', () => {
+    const resolved = resolveEvidence(
+      [{ factKey: 'radiance_timing', label: '辉耀', value: '12:00' }],
+      catalog,
+    );
+    expect(resolved).toEqual([]);
+  });
+});
+
+describe('buildKeyMomentsFromTimeline', () => {
+  const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
+
+  it('pairs each moment headline with evidence from the same timeline event', () => {
+    const moments = buildKeyMomentsFromTimeline(fact, 'zh', 5);
+    expect(moments.length).toBeGreaterThanOrEqual(3);
+    moments.forEach((m) => {
+      expect(m.evidence).toHaveLength(1);
+      expect(m.headline).toBe(m.evidence[0].value);
+      expect(m.timestampLabel).toBe(m.evidence[0].label);
+    });
   });
 });
 
@@ -163,16 +215,23 @@ describe('short match late phase', () => {
 });
 
 describe('isReviewAiCardsComplete', () => {
-  it('requires a nonempty drill', () => {
+  const groundedMoment = { evidence: [{ factKey: 'timeline_0', label: '0:48', value: '一血' }] };
+
+  it('requires a nonempty drill and grounded moments', () => {
     expect(isReviewAiCardsComplete({
       primary_mistake: { category: 'fight_timing' },
-      key_moments: [{}, {}, {}],
+      key_moments: [groundedMoment, groundedMoment, groundedMoment],
       drill: { title: '', steps: [] },
     })).toBe(false);
     expect(isValidReviewDrill({ title: '练', steps: ['一步'] })).toBe(true);
     expect(isReviewAiCardsComplete({
       primary_mistake: { category: 'fight_timing' },
-      key_moments: [{}, {}, {}],
+      key_moments: [groundedMoment, groundedMoment, {}],
+      drill: { title: '练', steps: ['一步'] },
+    })).toBe(false);
+    expect(isReviewAiCardsComplete({
+      primary_mistake: { category: 'fight_timing' },
+      key_moments: [groundedMoment, groundedMoment, groundedMoment],
       drill: { title: '练', steps: ['一步'] },
     })).toBe(true);
   });
