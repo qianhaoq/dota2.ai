@@ -44,6 +44,9 @@ const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for matchup data
 const CONSTANTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for constants (patch data changes rarely)
 const MATCHES_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for pro/public matches
+const REVIEW_SUGGESTIONS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for coach review suggestions
+const REVIEW_SUGGESTIONS_DEFAULT_LIMIT = 6;
+const REVIEW_SUGGESTIONS_MAX_LIMIT = 6;
 const MATCH_DETAIL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for single match review
 const MATCH_DETAIL_CACHE_MAX = 50;
 
@@ -62,6 +65,8 @@ const cache = {
   // Pro/Public matches
   proMatches: { data: null, timestamp: 0 },
   publicMatches: { data: null, timestamp: 0 },
+  publicMatchesHighMmr: { data: null, timestamp: 0 },
+  reviewSuggestions: { data: null, timestamp: 0 },
   // Single match detail for replay review
   matchDetails: new Map(), // Map<matchId, { data, timestamp }>
 };
@@ -324,26 +329,101 @@ async function getProMatches(limit = 20) {
   }
 }
 
-async function getPublicMatches(limit = 50, mmrBracket = null) {
+async function getPublicMatches(limit = 50, options = {}) {
+  const { highMmr = false } = options;
   const now = Date.now();
-  
-  if (cache.publicMatches.data && (now - cache.publicMatches.timestamp) < MATCHES_CACHE_TTL_MS) {
-    return cache.publicMatches.data.slice(0, limit);
+  const cacheEntry = highMmr ? cache.publicMatchesHighMmr : cache.publicMatches;
+
+  if (cacheEntry.data && (now - cacheEntry.timestamp) < MATCHES_CACHE_TTL_MS) {
+    return cacheEntry.data.slice(0, limit);
   }
   try {
-    let url = `${OPENDOTA_API}/publicMatches`;
-    if (mmrBracket) {
-      url += `?mmr_ascending=${mmrBracket}`;
-    }
+    const url = highMmr
+      ? `${OPENDOTA_API}/publicMatches?mmr_descending=1`
+      : `${OPENDOTA_API}/publicMatches`;
     const data = await fetchWithRetry(url);
     const matches = Array.isArray(data) ? data : [];
-    cache.publicMatches = { data: matches, timestamp: now };
-    console.log(`Loaded ${matches.length} public matches from OpenDota`);
+    if (highMmr) {
+      cache.publicMatchesHighMmr = { data: matches, timestamp: now };
+    } else {
+      cache.publicMatches = { data: matches, timestamp: now };
+    }
+    console.log(`Loaded ${matches.length} public matches from OpenDota${highMmr ? ' (high MMR)' : ''}`);
     return matches.slice(0, limit);
   } catch (err) {
     console.error('Failed to fetch public matches:', err.message);
-    return cache.publicMatches.data?.slice(0, limit) || [];
+    return cacheEntry.data?.slice(0, limit) || [];
   }
+}
+
+function parseTeamHeroIds(teamData) {
+  if (!teamData) return [];
+  if (Array.isArray(teamData)) {
+    return teamData.map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id) && id > 0);
+  }
+  if (typeof teamData === 'string') {
+    return teamData.split(',').map((id) => parseInt(id.trim(), 10)).filter((id) => !Number.isNaN(id) && id > 0);
+  }
+  return [];
+}
+
+function filterPublicMatchesWithHeroes(matches) {
+  return matches.filter((match) => {
+    const radiantIds = parseTeamHeroIds(match.radiant_team);
+    const direIds = parseTeamHeroIds(match.dire_team);
+    return radiantIds.length > 0 || direIds.length > 0;
+  });
+}
+
+async function getReviewMatchSuggestions(lang = 'zh', limit = REVIEW_SUGGESTIONS_DEFAULT_LIMIT) {
+  const cappedLimit = Math.min(Math.max(limit, 1), REVIEW_SUGGESTIONS_MAX_LIMIT);
+  const now = Date.now();
+  const cacheKey = `${lang}:${cappedLimit}`;
+
+  if (
+    cache.reviewSuggestions.data?.[cacheKey]
+    && (now - cache.reviewSuggestions.timestamp) < REVIEW_SUGGESTIONS_CACHE_TTL_MS
+  ) {
+    return cache.reviewSuggestions.data[cacheKey];
+  }
+
+  const [proMatches, publicMatches, heroConstants] = await Promise.all([
+    getProMatches(100),
+    getPublicMatches(100, { highMmr: true }),
+    getHeroConstants(),
+  ]);
+
+  const recent = (proMatches || [])
+    .filter((match) => match.match_id && (match.duration || 0) > 0)
+    .slice(0, cappedLimit)
+    .map((match) => ({
+      ...formatProMatch(match, heroConstants, lang),
+      kind: 'recent',
+    }));
+
+  const highMmr = filterPublicMatchesWithHeroes(publicMatches || [])
+    .filter((match) => match.match_id && (match.duration || 0) > 0)
+    .slice(0, cappedLimit)
+    .map((match) => ({
+      ...formatPublicMatch(match, heroConstants, lang),
+      kind: 'highMmr',
+    }));
+
+  const payload = {
+    recent,
+    highMmr,
+    count: recent.length + highMmr.length,
+    source: 'opendota',
+    cacheAge: 0,
+  };
+
+  if (!cache.reviewSuggestions.data) {
+    cache.reviewSuggestions.data = {};
+  }
+  cache.reviewSuggestions.data[cacheKey] = payload;
+  cache.reviewSuggestions.timestamp = now;
+
+  return payload;
 }
 
 function formatProMatch(match, heroConstants, lang = 'zh') {
@@ -2072,6 +2152,34 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400) {
   }
   return res.status(status).json({ error: errorMsg });
 }
+
+app.get('/api/review/suggestions', async (req, res) => {
+  try {
+    const lang = req.query.lang || 'zh';
+    const limit = Math.min(
+      parseInt(req.query.limit, 10) || REVIEW_SUGGESTIONS_DEFAULT_LIMIT,
+      REVIEW_SUGGESTIONS_MAX_LIMIT,
+    );
+    const suggestions = await getReviewMatchSuggestions(lang, limit);
+    res.json({
+      ...suggestions,
+      cacheAge: cache.reviewSuggestions.timestamp
+        ? Math.round((Date.now() - cache.reviewSuggestions.timestamp) / 1000)
+        : null,
+    });
+  } catch (err) {
+    console.error('Review suggestions error:', err);
+    const lang = req.query.lang || 'zh';
+    res.json({
+      recent: [],
+      highMmr: [],
+      count: 0,
+      source: 'opendota',
+      cacheAge: null,
+      error: lang === 'zh' ? '暂时无法加载推荐比赛' : 'Failed to load match suggestions',
+    });
+  }
+});
 
 app.get('/api/review/:matchId', handleMatchReviewFacts);
 app.post('/api/review/:matchId', handleMatchReview);
