@@ -299,3 +299,11 @@ export function sessionTitle(session: CoachSession, lang: Language): string {
   }
   return lang === 'zh' ? '教练结果' : 'Coach result';
 }
+
+/** 过滤已收起的会话，供 A2UI 内联流使用 */
+export function filterVisibleSessions(
+  sessions: CoachSession[],
+  dismissedIds: ReadonlySet<string>,
+): CoachSession[] {
+  return sessions.filter((s) => !dismissedIds.has(s.id));
+}

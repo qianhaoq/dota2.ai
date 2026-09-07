@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Language, Hero, A2UIBlock, A2UIAction } from '../../types';
 import {
   Sparkles, Target, TrendingUp, BarChart3, Zap, Film,
-  ChevronDown, ChevronUp, Check, AlertTriangle,
+  ChevronDown, ChevronUp, Check, AlertTriangle, X,
 } from 'lucide-react';
 import { MatchupData, TierHero, PlaybookHero } from '../../services/geminiService';
 import type { CoachSession } from './coachMessage';
@@ -16,7 +16,23 @@ interface ResultCardProps {
   onSelectHero: (hero: Hero) => void;
   mentorName?: string;
   expanded?: boolean;
+  onDismiss?: () => void;
 }
+
+const TierSkeleton: React.FC = () => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5" aria-hidden="true">
+    {Array.from({ length: 6 }).map((_, i) => (
+      <div
+        key={i}
+        className="flex items-center gap-2 p-2 rounded-sm border border-k3-border-subtle bg-k3-elevated/20 animate-pulse min-h-[44px]"
+      >
+        <span className="w-5 h-5 rounded-sm bg-k3-elevated flex-shrink-0" />
+        <span className="flex-1 h-3 rounded bg-k3-elevated min-w-0" />
+        <span className="w-10 h-3 rounded bg-k3-elevated flex-shrink-0" />
+      </div>
+    ))}
+  </div>
+);
 
 export const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ text, streaming }) => {
   const segments = groupMarkdownSegments(text);
@@ -58,6 +74,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
   onSelectHero,
   mentorName,
   expanded = true,
+  onDismiss,
 }) => {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const message = session.message;
@@ -79,6 +96,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
     thinking: mentorName
       ? (lang === 'zh' ? `${mentorName}在看数据` : `${mentorName} is reading the numbers`)
       : (lang === 'zh' ? '分析中…' : 'Analyzing…'),
+    dismiss: lang === 'zh' ? '收起' : 'Dismiss',
   }), [lang, mentorName]);
 
   const ActionIcon = () => {
@@ -249,21 +267,41 @@ const ResultCard: React.FC<ResultCardProps> = ({
             <p className="text-[11px] text-k3-text-tertiary mt-0.5">{mentorName}</p>
           )}
         </div>
-        {!message.isStreaming && message.grounded !== undefined && (
-          <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full flex-shrink-0 max-w-[42%] sm:max-w-none ${
-            message.grounded
-              ? 'bg-k3-radiant/10 text-k3-radiant border border-k3-radiant/20'
-              : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
-          }`}>
-            {message.grounded ? <Check size={10} className="flex-shrink-0" /> : <AlertTriangle size={10} className="flex-shrink-0" />}
-            <span className="truncate sm:hidden">{message.grounded ? t.groundedShort : t.ungroundedShort}</span>
-            <span className="hidden sm:inline">{message.grounded ? t.grounded : t.ungrounded}</span>
-          </span>
-        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {!message.isStreaming && message.grounded !== undefined && (
+            <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full max-w-[42%] sm:max-w-none ${
+              message.grounded
+                ? 'bg-k3-radiant/10 text-k3-radiant border border-k3-radiant/20'
+                : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+            }`}>
+              {message.grounded ? <Check size={10} className="flex-shrink-0" /> : <AlertTriangle size={10} className="flex-shrink-0" />}
+              <span className="truncate sm:hidden">{message.grounded ? t.groundedShort : t.ungroundedShort}</span>
+              <span className="hidden sm:inline">{message.grounded ? t.grounded : t.ungrounded}</span>
+            </span>
+          )}
+          {onDismiss && !message.isStreaming && (
+            <button
+              type="button"
+              onClick={onDismiss}
+              aria-label={t.dismiss}
+              className="p-1.5 rounded-md text-k3-text-tertiary hover:text-k3-text-secondary hover:bg-k3-elevated/60 min-w-[36px] min-h-[36px] flex items-center justify-center touch-manipulation"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="p-3 sm:p-4 space-y-3 min-w-0">
-        {message.isStreaming && session.blocks.length === 0 && !message.error && (
+        {message.isStreaming && session.action === 'meta' && !message.tierHeroes?.length && !message.error && (
+          <div className="space-y-2">
+            <p className="text-sm text-k3-text-secondary italic">{t.thinking}</p>
+            <TierSkeleton />
+          </div>
+        )}
+
+        {message.isStreaming && session.blocks.length === 0 && !message.error
+          && session.action !== 'meta' && (
           <p className="text-sm text-k3-text-secondary italic">{t.thinking}</p>
         )}
 

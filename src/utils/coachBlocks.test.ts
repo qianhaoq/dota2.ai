@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { messageToBlocks, parseMarkdownSections, pairCoachSessions, sessionTitle } from './coachBlocks';
+import { messageToBlocks, parseMarkdownSections, pairCoachSessions, sessionTitle, filterVisibleSessions } from './coachBlocks';
 import type { CoachMessage } from '../components/coach/coachMessage';
 import { appendStreamChunk } from './streamAccumulator';
 
@@ -282,6 +282,19 @@ describe('pairCoachSessions', () => {
     expect(sessions).toHaveLength(1);
     expect(sessions[0].query).toBeUndefined();
     expect(sessionTitle(sessions[0], 'zh')).toBe('教练结果');
+  });
+});
+
+describe('filterVisibleSessions', () => {
+  it('excludes dismissed session ids', () => {
+    const sessions = pairCoachSessions([
+      { id: 'u1', type: 'user', action: 'meta', content: 'meta?' },
+      { id: 'c1', type: 'coach', action: 'meta', content: 'tier' },
+      { id: 'u2', type: 'user', action: 'review', content: 'review?' },
+      { id: 'c2', type: 'coach', action: 'review', content: 'review body' },
+    ]);
+    const visible = filterVisibleSessions(sessions, new Set(['c1']));
+    expect(visible.map((s) => s.id)).toEqual(['c2']);
   });
 });
 

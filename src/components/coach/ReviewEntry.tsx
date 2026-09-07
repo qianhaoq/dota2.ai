@@ -162,7 +162,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
       </button>
 
       {expanded && (
-        <div className={`mt-2 p-3 rounded-xl border border-k3-border-subtle bg-k3-surface space-y-3 ${density === 'compact' ? 'max-h-[46vh] overflow-y-auto custom-scrollbar' : ''}`}>
+        <div className="mt-2 p-3 rounded-xl border border-k3-border-subtle bg-k3-surface space-y-3">
           {!factsReady ? (
             <form onSubmit={(e) => handleFetchFacts(e)} className="space-y-3">
               <ReviewSuggestions
