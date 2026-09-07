@@ -17,6 +17,7 @@ import {
   isGroundedDrillStep,
   areGroundedDrillSteps,
   isGroundedMentorNote,
+  isGroundedDrillMetadata,
   defaultMentorNote,
   minRequiredKeyMoments,
   countTimelineFactsInCatalog,
@@ -811,6 +812,77 @@ describe('buildKeyMomentsFromTimeline', () => {
     expect(cards.followups?.join(' ')).not.toMatch(/经济|GPM|gold|checkpoint/i);
   });
 
+  it('rejects wrong-language mentor notes and uses localized default', () => {
+    const basePayload = {
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '中期开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['只练一件事：能不打就不打，信息不足时撤退'] },
+    };
+    const zhCards = parseAiReviewCards(JSON.stringify({ ...basePayload, mentor_note: 'Rubick sign-off' }), fact, 'zh') as ReviewCardsPayload;
+    expect(zhCards.mentor_note).toBe(defaultMentorNote('zh'));
+    expect(isGroundedMentorNote('Rubick sign-off', 'zh')).toBe(false);
+    expect(isGroundedMentorNote('拉比克结语', 'zh')).toBe(true);
+
+    const enFact = buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN });
+    const enPayload = {
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: 'Mid fight too early',
+        explanation: 'Forced a fight while behind.',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: 'Mid tier 2', why: 'Extended lead.', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: 'Roshan', why: 'Dire took Roshan.', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 min', title: 'Drill', steps: ['One focus: disengage when information is incomplete'] },
+      mentor_note: '拉比克结语',
+    };
+    const enCards = parseAiReviewCards(JSON.stringify(enPayload), enFact, 'en') as ReviewCardsPayload;
+    expect(enCards.mentor_note).toBe(defaultMentorNote('en'));
+    expect(isGroundedMentorNote('拉比克结语', 'en')).toBe(false);
+    expect(isGroundedMentorNote('Rubick sign-off', 'en')).toBe(true);
+  });
+
+  it('replaces ungrounded drill title and duration while keeping safe steps', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: 'Mid fight too early',
+        explanation: 'Forced a fight while behind.',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: 'Mid tier 2', why: 'Extended lead.', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: 'Roshan', why: 'Dire took Roshan.', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: {
+        duration: 'Rush Divine Rapier every game',
+        title: 'Rush Divine Rapier every game',
+        steps: ['One focus: disengage when information is incomplete'],
+      },
+    });
+    const enFact = buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN });
+    const cards = parseAiReviewCards(llmJson, enFact, 'en') as ReviewCardsPayload;
+    const fallback = buildFallbackAiCards(enFact, 'en') as ReviewCardsPayload;
+    expect(isGroundedDrillMetadata('Rush Divine Rapier every game')).toBe(false);
+    expect(cards.drill?.title).toBe(fallback.drill?.title);
+    expect(cards.drill?.duration).toBe(fallback.drill?.duration);
+    expect(cards.drill?.steps).toEqual(['One focus: disengage when information is incomplete']);
+    expect(cards.drill?.title).not.toMatch(/rapier/i);
+  });
+
   it('replaces mentor notes with invented balance claims', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
@@ -924,6 +996,27 @@ describe('short match late phase', () => {
     expect(late?.insight).not.toMatch(/阵亡|death/i);
     const deathEvidence = late?.evidence.find((e) => e.factKey === 'deaths');
     expect(deathEvidence).toBeUndefined();
+  });
+
+  it('does not claim late economy evidence when 30-minute checkpoint is missing', () => {
+    const lateShortFixture = {
+      ...fixture,
+      duration: 27 * 60,
+      radiant_gold_adv: (fixture.radiant_gold_adv || []).slice(0, 25),
+    };
+    const fact = buildMatchFact(lateShortFixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
+    const cards = buildDeterministicReviewCards(fact, 'zh') as ReviewCardsPayload;
+    const late = cards.phases?.find((p) => p.phase === 'late');
+    expect(late?.insight).toContain('无 30 分钟经济检查点数据');
+    expect(late?.insight).not.toContain('以下为后期经济数据');
+    expect(late?.evidence).toEqual([]);
+
+    const factEn = buildMatchFact(lateShortFixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN });
+    const cardsEn = buildDeterministicReviewCards(factEn, 'en') as ReviewCardsPayload;
+    const lateEn = cardsEn.phases?.find((p) => p.phase === 'late');
+    expect(lateEn?.insight).toMatch(/no 30-minute economy checkpoint/i);
+    expect(lateEn?.insight).not.toMatch(/see economy evidence below/i);
+    expect(lateEn?.evidence).toEqual([]);
   });
 
   it('does not prescribe mid-game tempo when match ends before 10 min', () => {
