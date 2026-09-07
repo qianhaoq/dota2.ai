@@ -11,7 +11,6 @@ interface ReviewEntryProps {
   lang: Language;
   allHeroes: Hero[];
   practiceHero: Hero | null;
-  isLoading: boolean;
   defaultExpanded?: boolean;
   density?: 'full' | 'compact';
   onStartReview: (matchId: number, heroId?: number) => void;
@@ -21,7 +20,6 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   lang,
   allHeroes,
   practiceHero,
-  isLoading,
   defaultExpanded = false,
   density = 'full',
   onStartReview,
@@ -48,10 +46,6 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   useEffect(() => {
     if (defaultExpanded) setExpanded(true);
   }, [defaultExpanded]);
-
-  useEffect(() => {
-    if (isLoading) setExpanded(false);
-  }, [isLoading]);
 
   const t = useMemo(() => ({
     title: lang === 'zh' ? '复盘一局' : 'Review a match',
@@ -88,7 +82,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const handleFetchFacts = async (e?: React.FormEvent, overrideMatchId?: number) => {
     e?.preventDefault();
     const targetId = overrideMatchId ?? parsedId;
-    if (!targetId || factsLoading || isLoading) return;
+    if (!targetId || factsLoading) return;
     const requestId = factsRequestIdRef.current + 1;
     factsRequestIdRef.current = requestId;
     setFactsLoading(true);
@@ -114,7 +108,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   };
 
   const handleSuggestionSelect = (matchId: number) => {
-    if (factsLoading || isLoading) return;
+    if (factsLoading) return;
     void handleFetchFacts(undefined, matchId);
   };
 
@@ -167,7 +161,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
             <form onSubmit={(e) => handleFetchFacts(e)} className="space-y-3">
               <ReviewSuggestions
                 lang={lang}
-                disabled={factsLoading || isLoading}
+                disabled={factsLoading}
                 selectedMatchId={parsedId}
                 onSelect={handleSuggestionSelect}
               />
@@ -192,7 +186,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
               )}
               <button
                 type="submit"
-                disabled={factsLoading || isLoading || !parsedId}
+                disabled={factsLoading || !parsedId}
                 className="w-full py-2.5 rounded-lg bg-k3-text-primary text-k3-base text-sm font-medium disabled:opacity-40 min-h-[44px] touch-manipulation inline-flex items-center justify-center gap-2"
               >
                 {factsLoading && <Loader2 size={14} className="animate-spin" />}
@@ -268,7 +262,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
 
               <button
                 type="submit"
-                disabled={isLoading || heroId === ''}
+                disabled={heroId === ''}
                 className="w-full py-2.5 rounded-lg bg-k3-text-primary text-k3-base text-sm font-medium disabled:opacity-40 min-h-[44px] touch-manipulation"
               >
                 {t.start}

@@ -12,6 +12,17 @@ import { fetchHeroes } from '../services/dotaApiService';
 import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
+import {
+  clearStreamingCoachMessages,
+  coachCancelledMessage,
+  coachFetchTimeoutMessage,
+  awaitWithTimeout,
+  claimCoachInflightGeneration,
+  invalidateCoachInflightGeneration,
+  isCoachInflightCurrent,
+  META_FETCH_TIMEOUT_MS,
+  SUGGEST_FETCH_TIMEOUT_MS,
+} from '../utils/coachInflight';
 import { X } from 'lucide-react';
 import {
   HeroPickerOverlay,
@@ -39,6 +50,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
   const streamControllerRef = useRef<AbortController | null>(null);
+  const inflightTaskRef = useRef(0);
   const activeReviewRef = useRef<{ matchId: number; heroId?: number } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showMentorPicker, setShowMentorPicker] = useState(false);
@@ -89,11 +101,19 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, []);
 
   const cancelStream = useCallback(() => {
+    invalidateCoachInflightGeneration(inflightTaskRef);
     if (streamControllerRef.current) {
       streamControllerRef.current.abort();
       streamControllerRef.current = null;
-      setIsLoading(false);
     }
+    setIsLoading(false);
+    setMessages((prev) => clearStreamingCoachMessages(prev, coachCancelledMessage(lang)));
+  }, [lang]);
+
+  const finishStream = useCallback((streamGen: number) => {
+    if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+    setIsLoading(false);
+    streamControllerRef.current = null;
   }, []);
 
   const coaching = useMemo(
@@ -108,6 +128,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     }
     cancelStream();
     setIsLoading(true);
+    const streamGen = claimCoachInflightGeneration(inflightTaskRef);
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const defaultMsg = practiceName
       ? (lang === 'zh' ? `分析练习英雄 ${practiceName}` : `Analyze practice hero ${practiceName}`)
@@ -125,18 +146,18 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         },
         onMatchupData: (data) => { updateCoachMessage(msgId, { matchupData: data }); },
         onComplete: (grounded) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { isStreaming: false, grounded });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         },
         onError: (error) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         }
       }
     );
-  }, [coaching, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, t]);
+  }, [coaching, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
   const handlePlaybook = useCallback(() => {
     if (coaching.allies.length === 0) {
@@ -145,6 +166,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     }
     cancelStream();
     setIsLoading(true);
+    const streamGen = claimCoachInflightGeneration(inflightTaskRef);
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const playbookMsg = practiceName
       ? (lang === 'zh' ? `本局怎么打${practiceName}？` : `How should we play ${practiceName} this game?`)
@@ -159,22 +181,23 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
         onComplete: () => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { isStreaming: false, grounded: true });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         },
         onError: (error) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         }
       }
     );
-  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, t]);
+  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
     cancelStream();
     setIsLoading(true);
+    const streamGen = claimCoachInflightGeneration(inflightTaskRef);
     setLesson('review');
     activeReviewRef.current = { matchId, heroId };
     const hero = heroId ? allHeroes.find((h) => h.id === heroId) : practiceHero;
@@ -197,18 +220,18 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
         onComplete: (grounded) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { isStreaming: false, grounded });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         },
         onError: (error) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { error, isStreaming: false });
-          setIsLoading(false);
-          streamControllerRef.current = null;
+          finishStream(streamGen);
         },
       }
     );
-  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream]);
+  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream]);
 
   const handleReviewFollowUp = useCallback((question: string) => {
     const ctx = activeReviewRef.current;
@@ -221,14 +244,20 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       addCoachMessage({ type: 'coach', content: lang === 'zh' ? '阵容已满' : 'Lineup is full' });
       return;
     }
+    cancelStream();
     setIsLoading(true);
+    const taskId = claimCoachInflightGeneration(inflightTaskRef);
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const suggestMsg = practiceName
       ? (lang === 'zh' ? `围绕${practiceName}，推荐下一手选什么？` : `Around ${practiceName}, what should we pick next?`)
       : (lang === 'zh' ? '推荐下一手选什么？' : 'What should we pick next?');
     addCoachMessage({ type: 'user', action: 'suggest', lesson: 'bp', content: suggestMsg });
     try {
-      const suggestions = await fetchSuggestions(coaching.allies, coaching.enemies, selectionSide, undefined, lang);
+      const suggestions = await awaitWithTimeout(
+        fetchSuggestions(coaching.allies, coaching.enemies, selectionSide, undefined, lang),
+        SUGGEST_FETCH_TIMEOUT_MS,
+      );
+      if (inflightTaskRef.current !== taskId) return;
       addCoachMessage({
         type: 'coach', action: 'suggest', lesson: 'bp',
         content: suggestions.length > 0
@@ -237,18 +266,27 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         suggestions, grounded: true
       });
     } catch (error) {
-      addCoachMessage({ type: 'coach', content: `Error: ${error}` });
+      if (inflightTaskRef.current !== taskId) return;
+      const message = error instanceof Error && error.message === 'timeout'
+        ? coachFetchTimeoutMessage(lang)
+        : String(error);
+      addCoachMessage({ type: 'coach', content: `Error: ${message}` });
+    } finally {
+      if (inflightTaskRef.current === taskId) {
+        setIsLoading(false);
+      }
     }
-    setIsLoading(false);
-  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage]);
+  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, cancelStream]);
 
   const handleMeta = useCallback(async () => {
     cancelStream();
     setIsLoading(true);
+    const taskId = claimCoachInflightGeneration(inflightTaskRef);
     addCoachMessage({ type: 'user', action: 'meta', content: lang === 'zh' ? '当前版本哪些英雄强势？' : 'Which heroes are strong this patch?' });
     const msgId = addCoachMessage({ type: 'coach', action: 'meta', content: '', isStreaming: true });
     try {
-      const data = await fetchTierList(lang, undefined, 12);
+      const data = await awaitWithTimeout(fetchTierList(lang, undefined, 12), META_FETCH_TIMEOUT_MS);
+      if (inflightTaskRef.current !== taskId) return;
       updateCoachMessage(msgId, {
         content: lang === 'zh' ? '当前版本强势英雄榜：' : 'Current meta tier list:',
         tierHeroes: data.heroes,
@@ -256,9 +294,16 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         isStreaming: false,
       });
     } catch (error) {
-      updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
+      if (inflightTaskRef.current !== taskId) return;
+      const message = error instanceof Error && error.message === 'timeout'
+        ? coachFetchTimeoutMessage(lang)
+        : String(error);
+      updateCoachMessage(msgId, { content: `Error: ${message}`, isStreaming: false });
+    } finally {
+      if (inflightTaskRef.current === taskId) {
+        setIsLoading(false);
+      }
     }
-    setIsLoading(false);
   }, [lang, addCoachMessage, updateCoachMessage, cancelStream]);
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
@@ -333,9 +378,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onOpenPracticePicker={() => setShowMentorPicker(true)}
             onOpenDraftPicker={() => setShowHeroPicker(true)}
             onHeroDetail={setDetailHeroId}
-            isLoading={isLoading}
             onMeta={handleMeta}
             onStartReview={handleReview}
+            coachBusy={isLoading}
           />
           {sessions.length > 0 && (
             <div className="w-full max-w-3xl min-w-0 mt-3">

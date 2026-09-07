@@ -17,7 +17,7 @@ interface HomeModulesProps {
   onOpenPracticePicker: () => void;
   onOpenDraftPicker: () => void;
   onHeroDetail?: (heroId: number) => void;
-  isLoading: boolean;
+  coachBusy?: boolean;
   onMeta: () => void;
   onStartReview?: (matchId: number, heroId?: number) => void;
 }
@@ -34,7 +34,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
   onOpenPracticePicker,
   onOpenDraftPicker,
   onHeroDetail,
-  isLoading,
+  coachBusy = false,
   onMeta,
   onStartReview,
 }) => {
@@ -65,7 +65,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
   const metaBtn = (
     <button
       onClick={onMeta}
-      disabled={isLoading}
+      disabled={coachBusy}
       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-k3-border-subtle text-xs text-k3-text-secondary hover:text-k3-text-primary min-h-[40px] flex-shrink-0 touch-manipulation"
     >
       <BarChart3 size={12} />
@@ -102,13 +102,12 @@ const HomeModules: React.FC<HomeModulesProps> = ({
         {metaBtn}
         {draftBtn}
       </div>
-      <LessonRail lang={lang} currentLesson={lesson} onLessonChange={onLessonChange} isLoading={isLoading} compact={density === 'compact'} />
+      <LessonRail lang={lang} currentLesson={lesson} onLessonChange={onLessonChange} compact={density === 'compact'} />
       {onStartReview && (
         <ReviewEntry
           lang={lang}
           allHeroes={allHeroes}
           practiceHero={practiceHero}
-          isLoading={isLoading}
           density={density}
           defaultExpanded={density === 'full' && lesson === 'review'}
           onStartReview={onStartReview}

@@ -42,6 +42,13 @@ describe('CoachView streaming code patterns (regression guard)', () => {
     expect(content).toMatch(/fetchPlaybookStream\(\s*coaching\.allies,\s*coaching\.enemies[\s\S]*coaching\.focusHeroId/);
     expect(content).toMatch(/fetchSuggestions\(\s*coaching\.allies,\s*coaching\.enemies/);
   });
+
+  it('guards stream terminal callbacks with inflight generation', () => {
+    const content = readFileSync(coachViewPath, 'utf-8');
+    expect(content).toContain('isCoachInflightCurrent(inflightTaskRef, streamGen)');
+    expect(content).toContain('claimCoachInflightGeneration(inflightTaskRef)');
+    expect(content).toContain('finishStream(streamGen)');
+  });
 });
 
 describe('Stream callback patterns across codebase', () => {
