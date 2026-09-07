@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Language, Hero, A2UIBlock, A2UIAction } from '../../types';
 import {
-  Sparkles, Target, TrendingUp, BarChart3, Zap,
+  Sparkles, Target, TrendingUp, BarChart3, Zap, Film,
   ChevronDown, ChevronUp, Check, AlertTriangle,
 } from 'lucide-react';
 import { MatchupData, TierHero, PlaybookHero } from '../../services/geminiService';
@@ -75,6 +75,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
     late: lang === 'zh' ? '后期' : 'Late',
     showMore: lang === 'zh' ? '展开' : 'Expand',
     showLess: lang === 'zh' ? '收起' : 'Collapse',
+    laneInference: lang === 'zh' ? '根据录像站位推断' : 'Inferred from replay positioning',
     thinking: mentorName
       ? (lang === 'zh' ? `${mentorName}在看数据` : `${mentorName} is reading the numbers`)
       : (lang === 'zh' ? '分析中…' : 'Analyzing…'),
@@ -86,13 +87,15 @@ const ResultCard: React.FC<ResultCardProps> = ({
       case 'playbook': return <Target size={14} className="text-k3-text-secondary flex-shrink-0" />;
       case 'suggest': return <TrendingUp size={14} className="text-k3-text-secondary flex-shrink-0" />;
       case 'meta': return <BarChart3 size={14} className="text-k3-text-secondary flex-shrink-0" />;
+      case 'review': return <Film size={14} className="text-k3-text-secondary flex-shrink-0" />;
       default: return <Sparkles size={14} className="text-k3-text-secondary flex-shrink-0" />;
     }
   };
 
-  const isSectionOpen = (id: string, markdown?: string) => {
+  const isSectionOpen = (id: string, markdown?: string, defaultOpen?: boolean) => {
     if (openSections[id] !== undefined) return openSections[id];
     if (!expanded) return false;
+    if (defaultOpen !== undefined) return defaultOpen;
     return !markdown || markdown.length < 900;
   };
 
@@ -260,17 +263,39 @@ const ResultCard: React.FC<ResultCardProps> = ({
       </header>
 
       <div className="p-3 sm:p-4 space-y-3 min-w-0">
-        {message.isStreaming && session.blocks.length === 0 && (
+        {message.isStreaming && session.blocks.length === 0 && !message.error && (
           <p className="text-sm text-k3-text-secondary italic">{t.thinking}</p>
         )}
 
+        {message.error && (
+          <div className="flex items-start gap-2 p-3 rounded-sm bg-red-500/10 border border-red-500/20">
+            <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-red-400">
+                {message.action === 'review'
+                  ? (lang === 'zh' ? '复盘失败' : 'Review failed')
+                  : (lang === 'zh' ? '请求失败' : 'Request failed')}
+              </p>
+              <p className="text-sm text-red-400/90 break-words mt-1">{message.error}</p>
+            </div>
+          </div>
+        )}
+
         {session.blocks.map((block) => {
+          const isReview = block.type === 'review';
+          const reviewDefaultOpen = block.reviewSection === 'summary'
+            || block.reviewSection === 'lanes'
+            || block.reviewSection === 'howToWin';
+
           const body = (
             <>
               {block.type === 'matchups' && renderMatchups(block)}
               {block.type === 'actions' && block.actions && renderActions(block.actions)}
               {block.type === 'tier' && renderTier(block)}
               {block.playbook && renderPlaybook(block)}
+              {block.reviewSection === 'lanes' && (
+                <p className="text-[10px] text-k3-text-tertiary mb-2 italic">{t.laneInference}</p>
+              )}
               {block.markdown && (
                 <MarkdownBody
                   text={block.markdown}
@@ -285,16 +310,16 @@ const ResultCard: React.FC<ResultCardProps> = ({
           }
 
           const long = Boolean(block.markdown && block.markdown.length >= 900);
-          const open = isSectionOpen(block.id, block.markdown);
+          const open = isSectionOpen(block.id, block.markdown, isReview ? reviewDefaultOpen : undefined);
 
           return (
-            <section key={block.id} className="min-w-0">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
+            <section key={block.id} className={`min-w-0 ${isReview ? 'rounded-lg border border-k3-border-subtle/80 bg-k3-elevated/20' : ''}`}>
+              <div className={`flex items-center justify-between gap-2 mb-1.5 ${isReview ? 'px-2.5 pt-2.5' : ''}`}>
                 <h3 className="text-k3-text-primary font-semibold text-sm flex items-center gap-2 min-w-0">
                   <span className="w-1 h-4 bg-k3-text-tertiary rounded-full flex-shrink-0" />
                   <span className="truncate">{block.title}</span>
                 </h3>
-                {long && (
+                {(long || isReview) && (
                   <button
                     onClick={() => setOpenSections((prev) => ({ ...prev, [block.id]: !open }))}
                     className="text-[11px] text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 min-h-[40px] flex-shrink-0 touch-manipulation"
@@ -304,8 +329,10 @@ const ResultCard: React.FC<ResultCardProps> = ({
                   </button>
                 )}
               </div>
-              {open ? body : (
-                <p className="text-xs text-k3-text-tertiary truncate">
+              {open ? (
+                <div className={isReview ? 'px-2.5 pb-2.5' : undefined}>{body}</div>
+              ) : (
+                <p className={`text-xs text-k3-text-tertiary truncate ${isReview ? 'px-2.5 pb-2.5' : ''}`}>
                   {(block.markdown || '').replace(/\n/g, ' ').slice(0, 80)}
                 </p>
               )}

@@ -3,10 +3,12 @@ import { Language, Hero, DraftState, LessonMode } from '../../types';
 import { BarChart3, Users } from 'lucide-react';
 import LessonRail from './LessonRail';
 import DraftContextChip from './DraftContextChip';
+import ReviewEntry from './ReviewEntry';
 
 interface HomeModulesProps {
   lang: Language;
   density?: 'full' | 'compact';
+  allHeroes: Hero[];
   practiceHero: Hero | null;
   lesson: LessonMode;
   onLessonChange: (lesson: LessonMode) => void;
@@ -17,11 +19,13 @@ interface HomeModulesProps {
   onHeroDetail?: (heroId: number) => void;
   isLoading: boolean;
   onMeta: () => void;
+  onStartReview?: (matchId: number, heroId?: number) => void;
 }
 
 const HomeModules: React.FC<HomeModulesProps> = ({
   lang,
   density = 'full',
+  allHeroes,
   practiceHero,
   lesson,
   onLessonChange,
@@ -32,6 +36,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
   onHeroDetail,
   isLoading,
   onMeta,
+  onStartReview,
 }) => {
   const t = useMemo(() => ({
     practicing: lang === 'zh' ? '正在练习' : 'Practicing',
@@ -98,6 +103,15 @@ const HomeModules: React.FC<HomeModulesProps> = ({
         {draftBtn}
       </div>
       <LessonRail lang={lang} currentLesson={lesson} onLessonChange={onLessonChange} isLoading={isLoading} compact={density === 'compact'} />
+      {onStartReview && (
+        <ReviewEntry
+          lang={lang}
+          allHeroes={allHeroes}
+          practiceHero={practiceHero}
+          isLoading={isLoading}
+          onStartReview={onStartReview}
+        />
+      )}
     </div>
   );
 };

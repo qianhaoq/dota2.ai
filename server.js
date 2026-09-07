@@ -2,6 +2,10 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
+import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.js';
+import { validateReviewPostRequest } from './lib/matchReview/reviewRequestGuard.js';
+import { buildHeroNamesMap } from './lib/matchReview/heroNamesMap.js';
+import { isTerminalStreamFinish } from './lib/matchReview/reviewStream.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,6 +44,8 @@ const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for matchup data
 const CONSTANTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for constants (patch data changes rarely)
 const MATCHES_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for pro/public matches
+const MATCH_DETAIL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for single match review
+const MATCH_DETAIL_CACHE_MAX = 50;
 
 // ============ Cache Storage ============
 const cache = {
@@ -55,16 +61,19 @@ const cache = {
   steamHeroesEn: { data: null, timestamp: 0 },
   // Pro/Public matches
   proMatches: { data: null, timestamp: 0 },
-  publicMatches: { data: null, timestamp: 0 }
+  publicMatches: { data: null, timestamp: 0 },
+  // Single match detail for replay review
+  matchDetails: new Map(), // Map<matchId, { data, timestamp }>
 };
 
-async function fetchWithRetry(url, retries = 2, delay = 500) {
+async function fetchWithRetry(url, retries = 2, delay = 500, options = {}) {
   for (let i = 0; i <= retries; i++) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, options);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return await res.json();
     } catch (err) {
+      if (options.signal?.aborted) throw err;
       if (i === retries) throw err;
       await new Promise(r => setTimeout(r, delay * (i + 1)));
     }
@@ -630,13 +639,13 @@ async function getLeanItemMeta() {
     .sort((a, b) => (a.cost || 0) - (b.cost || 0));
 }
 
-async function getHeroStats() {
+async function getHeroStats(fetchOptions = {}) {
   const now = Date.now();
   if (cache.heroStats.data && (now - cache.heroStats.timestamp) < CACHE_TTL_MS) {
     return cache.heroStats.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/heroStats`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroStats`, 2, 500, fetchOptions);
     const statsMap = {};
     for (const hero of data) {
       const proPick = hero.pro_pick || 0;
@@ -2004,6 +2013,286 @@ app.post('/api/chat', async (req, res) => {
     res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 });
+
+// ============ Match Replay Review ============
+function evictMatchDetailCache() {
+  const now = Date.now();
+  for (const [id, entry] of cache.matchDetails) {
+    if (now - entry.timestamp > MATCH_DETAIL_CACHE_TTL_MS) {
+      cache.matchDetails.delete(id);
+    }
+  }
+  while (cache.matchDetails.size >= MATCH_DETAIL_CACHE_MAX) {
+    let oldestId = null;
+    let oldestTs = Infinity;
+    for (const [id, entry] of cache.matchDetails) {
+      if (entry.timestamp < oldestTs) {
+        oldestTs = entry.timestamp;
+        oldestId = id;
+      }
+    }
+    if (oldestId === null) break;
+    cache.matchDetails.delete(oldestId);
+  }
+}
+
+async function getMatchDetail(matchId, fetchOptions = {}) {
+  evictMatchDetailCache();
+  const cached = cache.matchDetails.get(matchId);
+  if (cached && Date.now() - cached.timestamp < MATCH_DETAIL_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const data = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 2, 500, fetchOptions);
+  evictMatchDetailCache();
+  cache.matchDetails.set(matchId, { data, timestamp: Date.now() });
+  return data;
+}
+
+function sendReviewSse(res, payload) {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+function endReviewSse(res, payload) {
+  if (payload) sendReviewSse(res, payload);
+  res.write('data: [DONE]\n\n');
+  res.end();
+}
+
+function respondReviewError(res, wantsStream, errorMsg, status = 400) {
+  if (wantsStream) {
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+    }
+    endReviewSse(res, { error: errorMsg });
+    return;
+  }
+  return res.status(status).json({ error: errorMsg });
+}
+
+app.get('/api/review/:matchId', handleMatchReview);
+app.post('/api/review/:matchId', handleMatchReview);
+
+async function handleMatchReview(req, res) {
+  const acceptHeader = req.headers.accept || '';
+  const wantsStream = acceptHeader.includes('text/event-stream');
+  const lang = req.body?.lang ?? req.query.lang ?? 'zh';
+  const heroIdRaw = req.body?.heroId ?? req.query.heroId;
+  const heroId = heroIdRaw != null && heroIdRaw !== '' ? Number(heroIdRaw) : undefined;
+  const followUp = typeof req.body?.followUp === 'string'
+    ? req.body.followUp.trim()
+    : (typeof req.query.followUp === 'string' ? req.query.followUp.trim() : '');
+  const matchId = Number(req.params.matchId);
+  const isZh = lang === 'zh';
+
+  if (!Number.isFinite(matchId) || matchId <= 0) {
+    return respondReviewError(res, wantsStream, isZh ? '无效的比赛 ID' : 'Invalid match ID');
+  }
+
+  if (req.method === 'GET') {
+    return res.status(405).json({
+      error: isZh
+        ? '请使用 POST 并设置 Accept: text/event-stream 获取复盘'
+        : 'Use POST with Accept: text/event-stream for match review',
+    });
+  }
+
+  if (!wantsStream) {
+    return res.status(406).json({
+      error: isZh
+        ? '复盘生成需要 Accept: text/event-stream'
+        : 'Match review generation requires Accept: text/event-stream',
+    });
+  }
+
+  const postGuard = validateReviewPostRequest(req);
+  if (!postGuard.ok) {
+    return respondReviewError(
+      res,
+      wantsStream,
+      isZh ? postGuard.errorZh : postGuard.errorEn,
+      postGuard.status
+    );
+  }
+
+  let clientGone = false;
+  let stream = null;
+  const abortController = new AbortController();
+  const abortUpstream = () => {
+    if (res.writableEnded) return;
+    clientGone = true;
+    abortController.abort();
+    stream?.controller?.abort();
+  };
+  const detachAbortListeners = () => {
+    res.removeListener('close', abortUpstream);
+    req.removeListener('aborted', abortUpstream);
+  };
+
+  if (wantsStream) {
+    res.on('close', abortUpstream);
+    req.on('aborted', abortUpstream);
+  }
+
+  try {
+    if (clientGone) return;
+
+    const fetchOpts = wantsStream ? { signal: abortController.signal } : {};
+    const [matchData, heroStats, heroConstants] = await Promise.all([
+      getMatchDetail(matchId, fetchOpts),
+      getHeroStats(fetchOpts),
+      getHeroConstants(),
+    ]);
+
+    if (clientGone) return;
+
+    if (heroId !== undefined) {
+      const inMatch = (matchData.players || []).some((p) => p.hero_id === heroId);
+      if (!inMatch) {
+        return respondReviewError(
+          res,
+          wantsStream,
+          isZh ? '该英雄未参与此场比赛' : 'Hero did not play in this match'
+        );
+      }
+    }
+
+    const heroNames = buildHeroNamesMap(
+      heroStats,
+      matchData.players || [],
+      heroConstants,
+      HERO_NAMES_CN
+    );
+    const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
+    const isGrounded = Boolean(matchFact.grounded);
+
+    const apiKeyError = isZh ? 'DeepSeek API Key 未配置' : 'DeepSeek API Key not configured';
+
+    if (!apiKey || !openai) {
+      if (wantsStream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+        sendReviewSse(res, { matchFact, grounded: isGrounded });
+        endReviewSse(res, { error: apiKeyError });
+        return;
+      }
+      return res.json({ matchFact, grounded: isGrounded, error: apiKeyError });
+    }
+
+    const groundedContext = matchFactToPrompt(matchFact, lang);
+    const focusName = matchFact.focusLens?.displayName
+      || (heroId ? `Hero#${heroId}` : (isZh ? '本局' : 'this match'));
+
+    const systemPrompt = isZh
+      ? `你是一位职业 DOTA2 教练，帮玩家复盘比赛并给出「如何赢」的实战建议。
+
+【硬性规则】
+1. 只能使用提供的 MatchFact 数据，禁止引用 OpenDota 原始 lane/lane_role 字段
+2. 分路信息以「根据录像站位推断」的聚类结果为准
+3. 禁止编造击杀、经济、出装等未提供的数据
+4. 针对玩家所选英雄给出可执行建议：对线、节奏、团战、装备思路
+5. 中文回答，语气专业但易懂
+
+【输出格式 — 使用 ## 标题】
+## 摘要
+## 真实分路
+## 经济节奏
+## 时间线解读
+## 你的镜头
+## 如何赢`
+      : `You are a pro Dota 2 coach reviewing a match for "how to win" advice.
+
+Rules:
+1. Use ONLY the provided MatchFact data — never OpenDota raw lane/lane_role
+2. Lane assignments are from replay positioning clusters
+3. Do not invent kills, economy, or items not in the data
+4. Give actionable advice for the selected hero
+
+Format with ## headings:
+## Summary
+## True lanes
+## Economy
+## Timeline
+## Your POV
+## How to win`;
+
+    const userPrompt = followUp
+      ? (isZh
+        ? `基于以下比赛数据回答追问（聚焦 ${focusName}）：${followUp}\n\n${groundedContext}`
+        : `Answer this follow-up about ${focusName}: ${followUp}\n\n${groundedContext}`)
+      : (isZh
+        ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}`
+        : `Review this match, focus hero: ${focusName}\n\n${groundedContext}`);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    sendReviewSse(res, { matchFact, grounded: isGrounded });
+
+    try {
+      stream = await openai.chat.completions.create({
+        model: DEEPSEEK_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        stream: true,
+      }, {
+        signal: abortController.signal,
+      });
+
+      if (clientGone) {
+        stream.controller?.abort();
+        return;
+      }
+
+      let finishReason = null;
+      for await (const chunk of stream) {
+        if (clientGone || res.writableEnded) break;
+        const choice = chunk.choices[0];
+        const content = choice?.delta?.content;
+        if (content) {
+          sendReviewSse(res, { text: content, grounded: isGrounded });
+        }
+        if (choice?.finish_reason) {
+          finishReason = choice.finish_reason;
+        }
+      }
+      if (!res.writableEnded) {
+        if (isTerminalStreamFinish(finishReason)) {
+          endReviewSse(res);
+        } else {
+          endReviewSse(res, {
+            error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
+          });
+        }
+      }
+    } catch (streamErr) {
+      if (clientGone || streamErr.name === 'AbortError') return;
+      console.error('Match review stream error:', streamErr);
+      if (!res.writableEnded) {
+        endReviewSse(res, {
+          error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
+        });
+      }
+    } finally {
+      detachAbortListeners();
+    }
+  } catch (error) {
+    if (wantsStream) detachAbortListeners();
+    if (clientGone || error.name === 'AbortError') return;
+    console.error('Match review error:', error);
+    const errorMsg = error.message || (isZh ? '复盘失败' : 'Review failed');
+    return respondReviewError(res, wantsStream, errorMsg, 500);
+  }
+}
 
 app.use(express.static(path.join(__dirname, 'dist')));
 
