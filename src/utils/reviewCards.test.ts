@@ -229,6 +229,7 @@ describe('reviewCards gold match 8985182860', () => {
   });
 
   it('parseAiReviewCards merges LLM JSON with deterministic spine', () => {
+    const fallback = buildFallbackAiCards(fact, 'zh') as ReviewCardsPayload;
     const llmJson = JSON.stringify({
       primary_mistake: {
         category: 'fight_timing',
@@ -241,7 +242,11 @@ describe('reviewCards gold match 8985182860', () => {
         { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
         { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
       ],
-      drill: { duration: '15 分钟', title: '练节奏', steps: ['只练一件事：能不打就不打，信息不足时撤退'] },
+      drill: {
+        duration: fallback.drill?.duration,
+        title: fallback.drill?.title,
+        steps: ['只练一件事：能不打就不打，信息不足时撤退'],
+      },
       followups: ['展开这场团'],
       mentor_note: '拉比克结语',
     });
@@ -251,7 +256,7 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.key_moments).toHaveLength(3);
     expect(cards.key_moments?.[0].timestamp).toBe(48);
     expect(cards.key_moments?.every((m) => m.evidence.length >= 1)).toBe(true);
-    expect(cards.drill?.title).toBe('练节奏');
+    expect(cards.drill?.title).toBe(fallback.drill?.title);
     const first = cards.key_moments?.[0];
     expect(first).toBeTruthy();
     expect(cards.followups?.[0]).toBe(`展开 ${first!.timestampLabel} 节点：${first!.headline}`);
@@ -747,10 +752,14 @@ describe('buildKeyMomentsFromTimeline', () => {
         { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
         { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
       ],
-      drill: { duration: '15 分钟', title: '练节奏', steps: [safeStep!] },
+      drill: {
+        duration: fallback.drill?.duration,
+        title: fallback.drill?.title,
+        steps: [safeStep!],
+      },
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
-    expect(cards.drill?.title).toBe('练节奏');
+    expect(cards.drill?.title).toBe(fallback.drill?.title);
     expect(cards.drill?.steps).toEqual([safeStep]);
   });
 
@@ -876,11 +885,57 @@ describe('buildKeyMomentsFromTimeline', () => {
     const enFact = buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN });
     const cards = parseAiReviewCards(llmJson, enFact, 'en') as ReviewCardsPayload;
     const fallback = buildFallbackAiCards(enFact, 'en') as ReviewCardsPayload;
-    expect(isGroundedDrillMetadata('Rush Divine Rapier every game')).toBe(false);
+    expect(isGroundedDrillMetadata('Rush Divine Rapier every game', 'en', 'title')).toBe(false);
+    expect(isGroundedDrillMetadata('40% magic-resistance drill', 'en', 'title')).toBe(false);
+    expect(isGroundedDrillMetadata('until 10 wins', 'en', 'duration')).toBe(false);
     expect(cards.drill?.title).toBe(fallback.drill?.title);
     expect(cards.drill?.duration).toBe(fallback.drill?.duration);
     expect(cards.drill?.steps).toEqual(['One focus: disengage when information is incomplete']);
     expect(cards.drill?.title).not.toMatch(/rapier/i);
+  });
+
+  it('replaces invented balance claims and open-ended drill durations', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: 'Mid fight too early',
+        explanation: 'Forced a fight while behind.',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: 'Mid tier 2', why: 'Extended lead.', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: 'Roshan', why: 'Dire took Roshan.', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: {
+        duration: 'until 10 wins',
+        title: '40% magic-resistance drill',
+        steps: ['One focus: disengage when information is incomplete'],
+      },
+    });
+    const enFact = buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN });
+    const cards = parseAiReviewCards(llmJson, enFact, 'en') as ReviewCardsPayload;
+    const fallback = buildFallbackAiCards(enFact, 'en') as ReviewCardsPayload;
+    expect(cards.drill?.title).toBe(fallback.drill?.title);
+    expect(cards.drill?.duration).toBe(fallback.drill?.duration);
+    expect(cards.drill?.steps).toEqual(['One focus: disengage when information is incomplete']);
+    expect(cards.drill?.title).not.toMatch(/magic-resistance|40%/i);
+    expect(cards.drill?.duration).not.toMatch(/until 10 wins/i);
+  });
+
+  it('accepts allowlisted fallback drill title and duration', () => {
+    const enFact = buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN });
+    const zhFact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
+    const enFallback = buildFallbackAiCards(enFact, 'en') as ReviewCardsPayload;
+    const zhFallback = buildFallbackAiCards(zhFact, 'zh') as ReviewCardsPayload;
+    expect(enFallback.drill?.title).toBeTruthy();
+    expect(enFallback.drill?.duration).toBeTruthy();
+    expect(zhFallback.drill?.title).toBeTruthy();
+    expect(zhFallback.drill?.duration).toBeTruthy();
+    expect(isGroundedDrillMetadata(enFallback.drill!.title, 'en', 'title')).toBe(true);
+    expect(isGroundedDrillMetadata(enFallback.drill!.duration, 'en', 'duration')).toBe(true);
+    expect(isGroundedDrillMetadata(zhFallback.drill!.title, 'zh', 'title')).toBe(true);
+    expect(isGroundedDrillMetadata(zhFallback.drill!.duration, 'zh', 'duration')).toBe(true);
   });
 
   it('replaces mentor notes with invented balance claims', () => {
