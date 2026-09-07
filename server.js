@@ -5,7 +5,7 @@ import OpenAI from 'openai';
 import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.js';
 import { validateReviewPostRequest } from './lib/matchReview/reviewRequestGuard.js';
 import { buildHeroNamesMap } from './lib/matchReview/heroNamesMap.js';
-import { isTerminalStreamFinish } from './lib/matchReview/reviewStream.js';
+import { isTerminalStreamFinish, reviewAiUnavailableNotice } from './lib/matchReview/reviewStream.js';
 import {
   buildDeterministicReviewCards,
   buildFallbackAiCards,
@@ -2335,6 +2335,7 @@ async function handleMatchReview(req, res) {
         }
         const fallbackCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
         sendReviewSse(res, { reviewCards: fallbackCards, grounded: isGrounded });
+        sendReviewSse(res, { error: reviewAiUnavailableNotice(lang, 'unconfigured') });
         endReviewSse(res);
         return;
       }
@@ -2503,6 +2504,7 @@ JSON shape:
         } else {
           const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
           sendReviewSse(res, { reviewCards, grounded: isGrounded });
+          sendReviewSse(res, { error: reviewAiUnavailableNotice(lang, 'provider') });
           endReviewSse(res);
         }
       }

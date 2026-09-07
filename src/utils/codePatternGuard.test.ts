@@ -51,6 +51,18 @@ describe('CoachView streaming code patterns (regression guard)', () => {
   });
 });
 
+describe('server review fallback SSE patterns', () => {
+  const serverPath = join(__dirname, '../../server.js');
+
+  it('sends non-destructive error notice after fallback reviewCards before [DONE]', () => {
+    const content = readFileSync(serverPath, 'utf-8');
+    expect(content).toContain('reviewAiUnavailableNotice');
+    expect(content).toMatch(
+      /sendReviewSse\(res,\s*\{\s*reviewCards[\s\S]*sendReviewSse\(res,\s*\{\s*error:\s*reviewAiUnavailableNotice/,
+    );
+  });
+});
+
 describe('Stream callback patterns across codebase', () => {
   it('no source files use dangerous messages.find().content + pattern in onChunk', () => {
     const srcDir = join(__dirname, '..');
