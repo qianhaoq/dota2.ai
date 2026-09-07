@@ -389,9 +389,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       />
 
       {detailHeroId && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
-          <div className="relative w-full max-w-4xl max-h-[90vh] min-h-0 bg-k3-surface rounded-2xl border border-k3-border-subtle overflow-hidden flex flex-col">
-            <button onClick={() => setDetailHeroId(null)} className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 p-2 bg-k3-elevated hover:bg-k3-border-subtle rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4">
+          <div className="relative w-full h-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] min-h-0 bg-k3-surface sm:rounded-2xl border-0 sm:border sm:border-k3-border-subtle overflow-hidden flex flex-col pt-safe pb-safe px-safe">
+            <button
+              type="button"
+              onClick={() => setDetailHeroId(null)}
+              aria-label={lang === 'zh' ? '关闭' : 'Close'}
+              className="absolute top-safe-offset right-safe-offset z-10 p-2 bg-k3-elevated hover:bg-k3-border-subtle rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center touch-manipulation"
+            >
               <X size={20} className="text-k3-text-secondary" />
             </button>
             <div className="p-3 sm:p-6 overflow-y-auto min-h-0 flex-1">

@@ -60,7 +60,7 @@ const DraftContextChip: React.FC<DraftContextChipProps> = ({
   return (
     <button
       onClick={onOpenPicker}
-      className="inline-flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-1.5 rounded-sm hover:bg-k3-surface active:bg-k3-surface transition-colors group min-h-[40px] touch-manipulation overflow-x-auto max-w-full"
+      className="inline-flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-1.5 rounded-sm hover:bg-k3-surface active:bg-k3-surface transition-colors group min-h-[40px] touch-manipulation overflow-x-auto scrollbar-hide max-w-full min-w-0"
     >
       {draft.radiant.length > 0 && (
         <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
@@ -71,7 +71,7 @@ const DraftContextChip: React.FC<DraftContextChipProps> = ({
             {draft.radiant.map((hero) => (
               <div
                 key={hero.id}
-                className="w-5 h-5 sm:w-6 sm:h-6 rounded-sm overflow-hidden border border-k3-radiant/30 hover:scale-110 active:scale-95 transition-transform cursor-pointer flex-shrink-0"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-sm overflow-hidden border border-k3-radiant/30 hover:scale-110 active:scale-95 transition-transform cursor-pointer flex-shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   onHeroDetail?.(hero.id);
@@ -98,7 +98,7 @@ const DraftContextChip: React.FC<DraftContextChipProps> = ({
             {draft.dire.map((hero) => (
               <div
                 key={hero.id}
-                className="w-5 h-5 sm:w-6 sm:h-6 rounded-sm overflow-hidden border border-k3-dire/30 hover:scale-110 active:scale-95 transition-transform cursor-pointer flex-shrink-0"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-sm overflow-hidden border border-k3-dire/30 hover:scale-110 active:scale-95 transition-transform cursor-pointer flex-shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   onHeroDetail?.(hero.id);

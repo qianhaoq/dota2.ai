@@ -55,36 +55,42 @@ const LessonRail: React.FC<LessonRailProps> = ({
 
   if (compact) {
     return (
-      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-        {lessons.map((lesson) => {
-          const Icon = lesson.icon;
-          const isActive = currentLesson === lesson.id;
-          
-          return (
-            <button
-              key={lesson.id}
-              onClick={() => handleClick(lesson)}
-              disabled={isLoading}
-              className={`text-xs sm:text-sm transition-colors whitespace-nowrap min-h-[36px] px-1 touch-manipulation ${
-                !lesson.enabled
-                  ? 'text-k3-text-tertiary/40 cursor-not-allowed'
-                  : isActive
-                    ? 'text-k3-text-primary font-medium'
-                    : 'text-k3-text-secondary hover:text-k3-text-primary'
-              }`}
-              title={!lesson.enabled ? t.reviewHint : undefined}
-            >
-              {lesson.label}
-            </button>
-          );
-        })}
+      <div className="relative min-w-0">
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide min-w-0">
+          {lessons.map((lesson) => {
+            const isActive = currentLesson === lesson.id;
+
+            return (
+              <button
+                key={lesson.id}
+                onClick={() => handleClick(lesson)}
+                disabled={isLoading}
+                className={`text-xs sm:text-sm transition-colors whitespace-nowrap min-h-[44px] px-2.5 flex-shrink-0 touch-manipulation ${
+                  !lesson.enabled
+                    ? 'text-k3-text-tertiary/40 cursor-not-allowed'
+                    : isActive
+                      ? 'text-k3-text-primary font-medium'
+                      : 'text-k3-text-secondary hover:text-k3-text-primary'
+                }`}
+                title={!lesson.enabled ? t.reviewHint : undefined}
+              >
+                {lesson.label}
+              </button>
+            );
+          })}
+        </div>
+        {showReviewHint && (
+          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-k3-elevated border border-k3-border-subtle rounded-lg text-xs text-k3-text-secondary z-10 w-max max-w-[min(90vw,18rem)] text-center whitespace-normal">
+            {t.reviewHint}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
     <div className="relative min-w-0">
-      <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 pb-1">
+      <div className="flex items-center justify-start sm:justify-center gap-1.5 sm:gap-2 overflow-x-auto scrollbar-hide pb-1 min-w-0">
         {lessons.map((lesson) => {
           const Icon = lesson.icon;
           const isActive = currentLesson === lesson.id;
@@ -94,7 +100,7 @@ const LessonRail: React.FC<LessonRailProps> = ({
               key={lesson.id}
               onClick={() => handleClick(lesson)}
               disabled={isLoading}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap min-h-[40px] touch-manipulation ${
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all whitespace-nowrap min-h-[44px] flex-shrink-0 touch-manipulation ${
                 !lesson.enabled
                   ? 'text-k3-text-tertiary/40 cursor-not-allowed'
                   : isActive
@@ -110,9 +116,8 @@ const LessonRail: React.FC<LessonRailProps> = ({
         })}
       </div>
 
-      {/* Review hint tooltip */}
       {showReviewHint && (
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-k3-elevated border border-k3-border-subtle rounded-lg text-xs text-k3-text-secondary whitespace-nowrap z-10 max-w-[90vw] text-center">
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-2 bg-k3-elevated border border-k3-border-subtle rounded-lg text-xs text-k3-text-secondary z-10 w-max max-w-[min(90vw,18rem)] text-center whitespace-normal">
           {t.reviewHint}
         </div>
       )}
