@@ -10,6 +10,7 @@ import {
   buildDeterministicReviewCards,
   buildFallbackAiCards,
   buildReviewCardsPromptFacts,
+  buildReviewKeyMomentsPromptRule,
   parseAiReviewCards,
   isReviewAiCardsComplete,
   minRequiredKeyMoments,
@@ -2347,6 +2348,7 @@ async function handleMatchReview(req, res) {
 
     const deterministicCards = buildDeterministicReviewCards(matchFact, lang);
     const { _catalog, ...initialReviewCards } = deterministicCards;
+    const keyMomentsRule = buildReviewKeyMomentsPromptRule(_catalog || [], lang);
 
     const systemPrompt = followUp
       ? (isZh
@@ -2378,9 +2380,9 @@ Format with ## headings:
 1. 只能使用 MatchFact 与证据字段，禁止编造
 2. 分路以录像站位聚类为准，禁止引用 OpenDota lane/lane_role
 3. 只指出一个主要失误（category 仅 fight_timing；无路线数据时禁止 farm_route）
-4. 3–5 个关键时刻必须带 timestamp（秒）且引用 evidence factKey
-5. 一个具体、可执行的下一局 drill（限时）
-6. mentor_note 用拉比克口吻，2–3 句
+4. ${keyMomentsRule}，必须带 timestamp（秒）
+5. 一个具体、可执行的下一局 drill（限时，仅限角色中立的固定教练句式）
+6. mentor_note 仅限拉比克口吻短结语，禁止任何数值/技能/平衡/出装说法（否则省略）
 7. followups 必须引用可用证据（具体时间戳节点或经济/KDA 等 factKey），禁止无依据的出装/羊刀类追问
 
 【JSON 结构】
@@ -2404,9 +2406,9 @@ Rules:
 1. Use ONLY MatchFact and evidence factKeys — no invented data
 2. Lanes from replay positioning clusters
 3. One primary mistake (category: fight_timing only — no farm_route without route data)
-4. 3–5 key_moments with timestamp (seconds) and evidence factKeys
-5. One time-boxed drill
-6. mentor_note in Rubick voice, 2–3 sentences
+4. ${keyMomentsRule}, each with timestamp (seconds)
+5. One time-boxed drill (role-neutral fixed coaching phrases only)
+6. mentor_note: short Rubick sign-off only — no stats, abilities, balance, or item claims
 7. Followups must cite available evidence (specific key_moment or economy/KDA factKeys); no unsupported item-build questions
 
 JSON shape:
