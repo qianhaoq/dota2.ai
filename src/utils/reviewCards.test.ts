@@ -14,6 +14,7 @@ import {
   isReviewAiCardsComplete,
   isValidReviewDrill,
   hasDistinctKeyMoments,
+  evidenceSupportsCategory,
 } from '../../lib/matchReview/reviewCards.js';
 import type { ReviewCardsPayload } from '../types/reviewCards';
 
@@ -236,6 +237,69 @@ describe('reviewCards gold match 8985182860', () => {
     expect(hasDistinctKeyMoments(cards.key_moments ?? [], 3)).toBe(false);
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
+
+  it('rejects moments that share one evidence list but bind to the same timeline key', () => {
+    const sharedEvidence = [{ factKey: 'timeline_0' }, { factKey: 'timeline_1' }, { factKey: 'timeline_2' }];
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '失误',
+        explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { evidence: sharedEvidence, headline: 'a', why: 'a' },
+        { evidence: sharedEvidence, headline: 'b', why: 'b' },
+        { evidence: sharedEvidence, headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.key_moments?.every((m) => m.evidence[0].factKey === 'timeline_0')).toBe(true);
+    expect(hasDistinctKeyMoments(cards.key_moments ?? [], 3)).toBe(false);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
+  it('rejects vision category when evidence lacks vision facts', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'vision',
+        headline: '视野不足',
+        explanation: '没做眼',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { timestamp: 1310, evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { timestamp: 2817, evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake).toBeUndefined();
+    expect(evidenceSupportsCategory('vision', [{ factKey: 'kda' }])).toBe(false);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
+  it('rejects primary mistake with empty explanation', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '',
+        explanation: '',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { timestamp: 1310, evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { timestamp: 2817, evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake).toBeUndefined();
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
 });
 
 describe('resolveEvidence', () => {
@@ -322,6 +386,8 @@ describe('isReviewAiCardsComplete', () => {
   });
   const groundedMistake = {
     category: 'fight_timing',
+    headline: '团战节奏偏慢',
+    explanation: '中期开团过早导致失利。',
     evidence: [{ factKey: 'kda', label: 'KDA', value: '7/9/19' }],
   };
 
@@ -365,5 +431,26 @@ describe('formatTimestamp', () => {
   it('formats seconds as m:ss', () => {
     expect(formatTimestamp(48)).toBe('0:48');
     expect(formatTimestamp(1310)).toBe('21:50');
+  });
+
+  it('formats pre-horn negative seconds with a single leading sign', () => {
+    expect(formatTimestamp(-5)).toBe('-0:05');
+    expect(formatTimestamp(-65)).toBe('-1:05');
+  });
+});
+
+describe('cs at 10 exact bucket', () => {
+  it('omits cs_at_10 when replay lacks the exact 600-second bucket', () => {
+    const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
+    const player = fact.players.find((p: { heroId: number }) => p.heroId === 54);
+    if (player) {
+      player.timeBuckets = [540, 660];
+      player.lhTimeline = [40, 80];
+    }
+    const cards = buildDeterministicReviewCards(fact, 'zh') as ReviewCardsPayload & {
+      _catalog?: Array<{ factKey: string }>;
+    };
+    const csEntry = cards._catalog?.find((e) => e.factKey === 'cs_at_10');
+    expect(csEntry).toBeUndefined();
   });
 });
