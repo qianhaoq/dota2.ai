@@ -116,7 +116,7 @@ describe('reviewCards gold match 8985182860', () => {
         category: 'fight_timing',
         headline: '中期开团过早',
         explanation: '在经济落后时强行开团。',
-        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
       },
       key_moments: [
         { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
@@ -138,7 +138,7 @@ describe('reviewCards gold match 8985182860', () => {
         category: 'fight_timing',
         headline: '中期开团过早',
         explanation: '在经济落后时强行开团。',
-        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
       },
       key_moments: [
         { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
@@ -161,7 +161,7 @@ describe('reviewCards gold match 8985182860', () => {
         category: 'fight_timing',
         headline: '中期开团过早',
         explanation: '在经济落后时强行开团。',
-        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
       },
       key_moments: [
         { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
@@ -181,7 +181,7 @@ describe('reviewCards gold match 8985182860', () => {
         category: 'fight_timing',
         headline: 'Mid fight too early',
         explanation: 'Forced a fight while behind.',
-        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
       },
       key_moments: [
         { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
@@ -204,7 +204,7 @@ describe('reviewCards gold match 8985182860', () => {
         category: 'fight_timing',
         headline: 'Mid fight too early',
         explanation: 'Forced a fight while behind.',
-        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
       },
       key_moments: [
         { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
@@ -227,7 +227,7 @@ describe('reviewCards gold match 8985182860', () => {
         category: 'fight_timing',
         headline: '中期开团过早',
         explanation: '在经济落后时强行开团。',
-        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
       },
       key_moments: [
         { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
@@ -256,7 +256,7 @@ describe('reviewCards gold match 8985182860', () => {
         category: 'fight_timing',
         headline: '中期开团过早',
         explanation: '在经济落后时强行开团。',
-        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
       },
       key_moments: [
         {
@@ -310,6 +310,27 @@ describe('reviewCards gold match 8985182860', () => {
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
     expect(cards.key_moments?.length ?? 0).toBe(0);
     expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
+  it('rejects fight_timing primary mistake without timeline evidence', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { timestamp: 1310, evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { timestamp: 2817, evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake).toBeUndefined();
+    expect(evidenceSupportsCategory('fight_timing', [{ factKey: 'kda' }])).toBe(false);
+    expect(evidenceSupportsCategory('fight_timing', [{ factKey: 'timeline_0' }])).toBe(true);
   });
 
   it('rejects disallowed farm_route category until route evidence exists', () => {
@@ -653,6 +674,22 @@ describe('buildKeyMomentsFromTimeline', () => {
   });
 });
 
+describe('unfocused match review', () => {
+  it('uses neutral outcome and economy labels when heroId is omitted', () => {
+    const fact = buildMatchFact(fixture, { lang: 'zh', heroNames: HERO_NAMES_CN });
+    const cards = buildDeterministicReviewCards(fact, 'zh') as ReviewCardsPayload;
+    expect(cards.match_summary?.result).toBe('neutral');
+    expect(cards.match_summary?.resultLabel).toMatch(/夜魇|Dire/i);
+    expect(cards.match_summary?.heroName).toBe('全场复盘');
+    const gold10 = cards.phases?.flatMap((p) => p.evidence).find((e) => e.factKey === 'gold_lead_10');
+    expect(gold10?.label).not.toContain('我方');
+    expect(gold10?.label).toMatch(/经济|Gold lead/);
+    const mid = cards.phases?.find((p) => p.phase === 'mid');
+    expect(mid?.insight).toMatch(/经济差|gold lead/i);
+    expect(mid?.insight).not.toMatch(/我方经济|your-team gold/i);
+  });
+});
+
 describe('economy orientation', () => {
   it('negates gold lead for Dire focus hero', () => {
     const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 18, heroNames: HERO_NAMES_CN });
@@ -706,7 +743,10 @@ describe('isReviewAiCardsComplete', () => {
     category: 'fight_timing',
     headline: '团战节奏偏慢',
     explanation: '中期开团过早导致失利。',
-    evidence: [{ factKey: 'kda', label: 'KDA', value: '7/9/19' }],
+    evidence: [
+      { factKey: 'timeline_0', label: '0:48', value: '一血' },
+      { factKey: 'kda', label: 'KDA', value: '7/9/19' },
+    ],
   };
 
   it('requires a nonempty drill, grounded moments, and primary-mistake evidence', () => {

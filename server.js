@@ -2388,7 +2388,7 @@ Format with ## headings:
     "category": "fight_timing",
     "headline": "一句话标题",
     "explanation": "2–4 句解释",
-    "evidence": [{"factKey": "kda"}, {"factKey": "gold_lead_20"}]
+    "evidence": [{"factKey": "timeline_0"}, {"factKey": "kda"}]
   },
   "key_moments": [
     {"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}
@@ -2410,7 +2410,7 @@ Rules:
 
 JSON shape:
 {
-  "primary_mistake": {"category": "fight_timing", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
+  "primary_mistake": {"category": "fight_timing", "headline": "...", "explanation": "...", "evidence": [{"factKey": "timeline_0"}, {"factKey": "kda"}]},
   "key_moments": [{"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}],
   "drill": {"duration": "15 min", "title": "...", "steps": ["..."]},
   "followups": ["Break down 21:50: took mid tier 2", "What did gold lead at 20 min (-1200) mean for tempo?", "One thing to practice next"],

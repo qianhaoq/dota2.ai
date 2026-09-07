@@ -3,8 +3,8 @@ import type { ReviewCardsPayload } from '../types/reviewCards';
 
 const DEFAULT_PIN_THRESHOLD_PX = 120;
 
-/** Compact fingerprint of structured review-card growth during an in-flight review stream. */
-function reviewCardsGrowthFingerprint(reviewCards?: ReviewCardsPayload | null): string {
+/** Compact fingerprint of structured review-card growth during a review session. */
+export function reviewCardsGrowthFingerprint(reviewCards?: ReviewCardsPayload | null): string {
   if (!reviewCards) return '0';
   return [
     reviewCards.phases?.length ?? 0,
@@ -38,6 +38,25 @@ export function streamingSessionFingerprint(session: CoachSession | undefined): 
     m.matchFact ? 1 : 0,
     reviewCardsGrowthFingerprint(m.reviewCards),
   ].join(':');
+}
+
+/** Review-card fingerprint independent of isStreaming (covers batched onReviewCards + onComplete). */
+export function reviewSessionCardsFingerprint(session: CoachSession | undefined): string {
+  if (!session || session.message.action !== 'review') return '';
+  const m = session.message;
+  if (!m.reviewCards && !m.matchFact) return '';
+  return [
+    session.id,
+    m.isStreaming ? 's' : 'd',
+    m.content.length,
+    m.matchFact ? 1 : 0,
+    reviewCardsGrowthFingerprint(m.reviewCards),
+  ].join(':');
+}
+
+/** Combined fingerprint for auto-scroll: streaming chunks or review-card growth. */
+export function coachSessionScrollFingerprint(session: CoachSession | undefined): string {
+  return streamingSessionFingerprint(session) || reviewSessionCardsFingerprint(session);
 }
 
 export type TimelineVisibilityKind = 'none' | 'append' | 'restore';

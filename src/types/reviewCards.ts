@@ -19,7 +19,7 @@ export interface MatchSummaryCard {
   heroName: string;
   kda: string;
   gpm: number;
-  result: 'win' | 'loss';
+  result: 'win' | 'loss' | 'neutral';
   resultLabel: string;
   laneLabel?: string;
   laneGrounded?: boolean;

@@ -8,6 +8,7 @@ import {
   isScrollPinnedNearBottom,
   shouldAutoScrollCoachTimeline,
   streamingSessionFingerprint,
+  coachSessionScrollFingerprint,
 } from '../../utils/coachScroll';
 import ResultCard from './ResultCard';
 
@@ -123,7 +124,9 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
     );
 
     const streamingSession = visibleSessions.find((s) => s.message.isStreaming);
-    const fingerprint = streamingSessionFingerprint(streamingSession);
+    const reviewSession = visibleSessions.find((s) => s.message.action === 'review' && (s.message.reviewCards || s.message.matchFact));
+    const fingerprint = coachSessionScrollFingerprint(streamingSession)
+      || coachSessionScrollFingerprint(reviewSession);
     const shouldScrollBottom = shouldAutoScrollCoachTimeline({
       appendedAtTail: visibilityChange.kind === 'append',
       streamingFingerprint: fingerprint,

@@ -112,7 +112,9 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
     const s = cards.match_summary;
     const resultClass = s.result === 'win'
       ? 'text-k3-radiant bg-k3-radiant/10 border-k3-radiant/25'
-      : 'text-k3-dire bg-k3-dire/10 border-k3-dire/25';
+      : s.result === 'loss'
+        ? 'text-k3-dire bg-k3-dire/10 border-k3-dire/25'
+        : 'text-k3-text-secondary bg-k3-surface/40 border-k3-border-subtle';
 
     return (
       <div className="rounded-lg border border-k3-border-subtle bg-gradient-to-br from-k3-elevated/40 to-k3-base p-3">
