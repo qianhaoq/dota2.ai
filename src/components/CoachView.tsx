@@ -40,6 +40,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const [userInput, setUserInput] = useState('');
   const streamControllerRef = useRef<AbortController | null>(null);
   const activeReviewRef = useRef<{ matchId: number; heroId?: number } | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showMentorPicker, setShowMentorPicker] = useState(false);
   const [showHeroPicker, setShowHeroPicker] = useState(false);
   const [detailHeroId, setDetailHeroId] = useState<number | null>(null);
@@ -311,7 +312,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-k3-base overflow-hidden">
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
         <div className={`flex flex-col items-center justify-start px-3 sm:px-4 ${hasResults ? 'pt-2 sm:pt-3 pb-3' : 'pt-4 sm:pt-6 pb-6'}`}>
           <MentorStage
             lang={lang}
@@ -348,6 +349,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                 onDismissSession={dismissSession}
                 onUndoDismiss={undoDismissSession}
                 mentorName={mentorName}
+                scrollContainerRef={scrollContainerRef}
               />
             </div>
           )}
