@@ -1,4 +1,10 @@
 import { Hero, Language } from '../types';
+import type { MatchFact } from '../types/matchReview';
+import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
+
+function cancelledMessage(lang: Language): string {
+  return lang === 'zh' ? '请求已取消' : 'Request cancelled';
+}
 
 export interface MatchupAdvantage {
   hero: string;
@@ -223,7 +229,7 @@ export const analyzeDraftStream = (
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        callbacks.onError('请求已取消');
+        callbacks.onError(cancelledMessage(lang));
       } else {
         callbacks.onError(error.message || 'Unknown error');
       }
@@ -486,7 +492,159 @@ export const fetchPlaybookStream = (
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        callbacks?.onError('请求已取消');
+        callbacks?.onError(cancelledMessage(lang));
+      } else {
+        callbacks?.onError(error.message || 'Unknown error');
+      }
+    }
+  })();
+
+  return controller;
+};
+
+// ============ Match Replay Review ============
+
+export interface ReviewStreamCallbacks {
+  onData: (matchFact: MatchFact) => void;
+  onChunk: (text: string) => void;
+  onComplete: (grounded: boolean) => void;
+  onError: (error: string) => void;
+}
+
+export const fetchMatchReviewStream = (
+  matchId: number,
+  lang: Language,
+  heroId?: number,
+  followUp?: string,
+  callbacks?: ReviewStreamCallbacks
+): AbortController => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+  const cleanup = async (reader?: ReadableStreamDefaultReader<Uint8Array>) => {
+    clearTimeout(timeoutId);
+    if (reader) {
+      try {
+        await reader.cancel();
+      } catch {
+        // ignore cancel errors
+      }
+    }
+  };
+
+  (async () => {
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      let response: Response;
+      const reviewBody = {
+        lang,
+        ...(heroId ? { heroId } : {}),
+        ...(followUp ? { followUp } : {}),
+      };
+      response = await fetch(`/api/review/${matchId}`, {
+        method: 'POST',
+        headers: {
+          Accept: 'text/event-stream',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(reviewBody),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to fetch match review');
+      }
+
+      reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let isGrounded = false;
+      let sawDone = false;
+
+      const processLine = (line: string): 'complete' | 'error' | 'continue' => {
+        if (!line.startsWith('data: ')) return 'continue';
+        const data = line.slice(6).trim();
+        if (isReviewSseTerminal(data)) {
+          sawDone = true;
+          return 'complete';
+        }
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.error) {
+            callbacks?.onError(parsed.error);
+            return 'error';
+          }
+          if (parsed.matchFact && callbacks?.onData) {
+            callbacks.onData(parsed.matchFact);
+            isGrounded = parsed.grounded ?? true;
+          }
+          if (parsed.text && callbacks?.onChunk) {
+            callbacks.onChunk(parsed.text);
+          }
+          if (parsed.grounded !== undefined) {
+            isGrounded = parsed.grounded;
+          }
+        } catch {
+          // skip malformed
+        }
+        return 'continue';
+      };
+
+      const drainLines = (lines: string[]): 'complete' | 'error' | 'continue' => {
+        for (const line of lines) {
+          const result = processLine(line);
+          if (result !== 'continue') return result;
+        }
+        return 'continue';
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          const result = drainLines(lines);
+          if (result === 'complete') {
+            await cleanup(reader);
+            callbacks?.onComplete(isGrounded);
+            return;
+          }
+          if (result === 'error') {
+            await cleanup(reader);
+            return;
+          }
+        }
+        if (done) {
+          buffer += decoder.decode();
+          const tail = buffer.split('\n').filter((line) => line.length > 0);
+          const result = drainLines(tail);
+          if (result === 'complete') {
+            await cleanup(reader);
+            callbacks?.onComplete(isGrounded);
+            return;
+          }
+          if (result === 'error') {
+            await cleanup(reader);
+            return;
+          }
+          break;
+        }
+      }
+
+      await cleanup(reader);
+      if (!sawDone) {
+        callbacks?.onError(incompleteReviewStreamMessage(lang));
+        return;
+      }
+      callbacks?.onComplete(isGrounded);
+    } catch (error: any) {
+      await cleanup(reader);
+      if (error.name === 'AbortError') {
+        callbacks?.onError(cancelledMessage(lang));
       } else {
         callbacks?.onError(error.message || 'Unknown error');
       }

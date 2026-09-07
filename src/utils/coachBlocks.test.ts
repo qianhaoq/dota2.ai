@@ -133,6 +133,134 @@ describe('messageToBlocks', () => {
     }));
     expect(blocks.map((b) => b.type)).toEqual(['tier']);
   });
+
+  it('shows localized fallback when review lanes are empty', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      matchFact: {
+        summary: {
+          matchId: 1,
+          duration: 2400,
+          durationFormatted: '40:00',
+          radiantWin: true,
+          winner: 'radiant',
+          winnerLabelZh: '天辉胜利',
+          winnerLabelEn: 'Radiant Victory',
+        },
+        players: [],
+        lanes: [],
+        laneInferenceLabelZh: '根据录像站位推断',
+        laneInferenceLabelEn: 'Inferred from replay positioning',
+        laneSource: 'lane_pos_unavailable',
+        laneDataAvailable: false,
+        economy: { radiantGoldAdv: [], checkpoints: [] },
+        timeline: [],
+        focusHeroId: null,
+        focusLens: null,
+        focusLaneGrounded: true,
+        grounded: false,
+      },
+    }), 'zh');
+    const lanes = blocks.find((b) => b.reviewSection === 'lanes');
+    expect(lanes?.markdown).toContain('暂无可用录像站位数据');
+    expect(lanes?.markdown).not.toBe('');
+  });
+
+  it('returns no blocks when review message has an error', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      error: 'DeepSeek API Key 未配置',
+      matchFact: null,
+    }));
+    expect(blocks).toEqual([]);
+  });
+
+  it('does not leak inline markdown asterisks in review POV (en)', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      matchFact: {
+        summary: {
+          matchId: 8985182860,
+          duration: 2400,
+          durationFormatted: '40:00',
+          radiantWin: true,
+          winner: 'radiant',
+          winnerLabelZh: '天辉胜利',
+          winnerLabelEn: 'Radiant Victory',
+        },
+        players: [],
+        lanes: [],
+        laneInferenceLabelZh: '根据录像站位推断',
+        laneInferenceLabelEn: 'Inferred from replay positioning',
+        laneSource: 'lane_pos_cluster',
+        laneDataAvailable: true,
+        economy: { radiantGoldAdv: [], checkpoints: [] },
+        timeline: [],
+        focusHeroId: 54,
+        focusLens: {
+          heroId: 54,
+          displayName: 'Lifestealer',
+          kda: '2/1/3',
+          gpm: 400,
+          netWorth: 12000,
+          lane: 'bot',
+          laneLabel: 'Bot',
+          laneGrounded: true,
+          opponents: [{ heroId: 2, displayName: 'Axe', kda: '1/2/0' }],
+          nearby: [{ heroId: 71, displayName: 'Spirit Breaker' }],
+          earlyKills: [],
+          keyTimeline: [],
+          laneSource: 'lane_pos_cluster',
+          laneConfidence: 'high',
+        },
+        focusLaneGrounded: true,
+        grounded: true,
+      },
+    }), 'en');
+    const pov = blocks.find((b) => b.reviewSection === 'pov');
+    expect(pov?.markdown).toContain('Nearby: Spirit Breaker');
+    expect(pov?.markdown).not.toContain('**');
+  });
+
+  it('localizes Chinese timeline objective labels', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      matchFact: {
+        summary: {
+          matchId: 8985182860,
+          duration: 2400,
+          durationFormatted: '40:00',
+          radiantWin: false,
+          winner: 'dire',
+          winnerLabelZh: '夜魇胜利',
+          winnerLabelEn: 'Dire Victory',
+        },
+        players: [],
+        lanes: [],
+        laneInferenceLabelZh: '根据录像站位推断',
+        laneInferenceLabelEn: 'Inferred from replay positioning',
+        laneSource: 'lane_pos_cluster',
+        laneDataAvailable: true,
+        economy: { radiantGoldAdv: [], checkpoints: [] },
+        timeline: [
+          { time: 48, type: 'CHAT_MESSAGE_FIRSTBLOOD', key: '5', team: 2, carrierName: '森海飞霞' },
+          { time: 563, type: 'building_kill', key: 'npc_dota_badguys_tower1_top' },
+          { time: 2053, type: 'CHAT_MESSAGE_ROSHAN_KILL', key: null, team: 3 },
+        ],
+        focusHeroId: null,
+        focusLens: null,
+        focusLaneGrounded: true,
+        grounded: true,
+      },
+    }), 'zh');
+    const timeline = blocks.find((b) => b.reviewSection === 'timeline');
+    expect(timeline?.markdown).toContain('森海飞霞');
+    expect(timeline?.markdown).toContain('一血');
+    expect(timeline?.markdown).toContain('夜魇上路一塔');
+    expect(timeline?.markdown).toContain('夜魇肉山');
+    expect(timeline?.markdown).not.toContain('CHAT_MESSAGE_');
+    expect(timeline?.markdown).not.toContain('building_kill');
+  });
 });
 
 describe('pairCoachSessions', () => {

@@ -29,8 +29,9 @@ RUN npm ci --only=production
 # Copy built frontend from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy server files
+# Copy server runtime (match review modules + entry)
 COPY server.js ./
+COPY lib ./lib
 
 # Set environment variables
 ENV NODE_ENV=production

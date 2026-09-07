@@ -24,9 +24,9 @@ const LessonRail: React.FC<LessonRailProps> = ({
     items: lang === 'zh' ? '出装' : 'Items',
     mind: lang === 'zh' ? '思路' : 'Game sense',
     review: lang === 'zh' ? '复盘' : 'Replay',
-    reviewHint: lang === 'zh' 
-      ? '复盘还没开课。以后用 OpenDota 比赛 ID。' 
-      : 'Replay review is not open yet.',
+    reviewHint: lang === 'zh'
+      ? '在下方输入比赛 ID 开始复盘'
+      : 'Enter a match ID below to start a review.',
   }), [lang]);
 
   const lessons: Array<{
@@ -39,7 +39,7 @@ const LessonRail: React.FC<LessonRailProps> = ({
     { id: 'match', label: t.match, icon: Swords, enabled: true },
     { id: 'items', label: t.items, icon: Package, enabled: true },
     { id: 'mind', label: t.mind, icon: Brain, enabled: true },
-    { id: 'review', label: t.review, icon: Film, enabled: false },
+    { id: 'review', label: t.review, icon: Film, enabled: true },
   ];
 
   const [showReviewHint, setShowReviewHint] = React.useState(false);

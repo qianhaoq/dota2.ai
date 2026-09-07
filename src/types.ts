@@ -46,7 +46,7 @@ export type LessonMode = 'bp' | 'match' | 'items' | 'mind' | 'review';
  * A2UI（agent-to-UI）生成式卡片块。
  * 教练流式结果映射到这些块，而不是纯聊天气泡。
  */
-export type A2UIBlockType = 'section' | 'actions' | 'matchups' | 'tier' | 'markdown';
+export type A2UIBlockType = 'section' | 'actions' | 'matchups' | 'tier' | 'markdown' | 'review';
 
 export interface A2UIAction {
   id: string;
@@ -68,4 +68,8 @@ export interface A2UIBlock {
   playbook?: unknown;
   /** meta 梯队（TierHero[]） */
   tierHeroes?: unknown;
+  /** 复盘 MatchFact */
+  matchFact?: unknown;
+  /** 复盘子区块 */
+  reviewSection?: 'summary' | 'lanes' | 'economy' | 'timeline' | 'pov' | 'howToWin';
 }
