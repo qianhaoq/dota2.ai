@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Language, Hero } from '../../types';
 import type { MatchFact } from '../../types/matchReview';
 import { Film, Search, ChevronDown, Loader2 } from 'lucide-react';
@@ -31,6 +31,18 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const [factsLoading, setFactsLoading] = useState(false);
   const [factsError, setFactsError] = useState<string | null>(null);
   const [matchFact, setMatchFact] = useState<MatchFact | null>(null);
+  const factsRequestIdRef = useRef(0);
+
+  const invalidateFactsRequest = () => {
+    factsRequestIdRef.current += 1;
+    setFactsLoading(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      factsRequestIdRef.current += 1;
+    };
+  }, []);
 
   useEffect(() => {
     if (defaultExpanded) setExpanded(true);
@@ -75,18 +87,24 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const handleFetchFacts = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!parsedId || factsLoading || isLoading) return;
+    const requestId = factsRequestIdRef.current + 1;
+    factsRequestIdRef.current = requestId;
     setFactsLoading(true);
     setFactsError(null);
     setMatchFact(null);
     setHeroId('');
     try {
       const fact = await fetchMatchFacts(parsedId, lang);
+      if (factsRequestIdRef.current !== requestId) return;
       setMatchFact(fact);
     } catch (err) {
+      if (factsRequestIdRef.current !== requestId) return;
       const message = err instanceof Error ? err.message : t.invalid;
       setFactsError(message);
     } finally {
-      setFactsLoading(false);
+      if (factsRequestIdRef.current === requestId) {
+        setFactsLoading(false);
+      }
     }
   };
 
@@ -97,6 +115,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   };
 
   const handleChangeMatch = () => {
+    invalidateFactsRequest();
     setMatchFact(null);
     setHeroId('');
     setFactsError(null);
@@ -105,7 +124,8 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const handleMatchInput = (value: string) => {
     setMatchInput(value);
     const nextId = parseMatchId(value);
-    if (matchFact && nextId !== matchFact.summary.matchId) {
+    if (factsLoading || (matchFact && nextId !== matchFact.summary.matchId)) {
+      invalidateFactsRequest();
       setMatchFact(null);
       setHeroId('');
       setFactsError(null);
