@@ -281,6 +281,47 @@ describe('reviewCards gold match 8985182860', () => {
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
+  it('rejects positioning diagnosis backed only by match-wide timeline facts', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'positioning',
+        headline: '站位太差',
+        explanation: '团战站位失误。',
+        evidence: [{ factKey: 'timeline_0' }],
+      },
+      key_moments: [
+        { evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake).toBeUndefined();
+    expect(evidenceSupportsCategory('positioning', [{ factKey: 'timeline_0' }])).toBe(false);
+    expect(evidenceSupportsCategory('positioning', [{ factKey: 'deaths' }])).toBe(true);
+  });
+
+  it('rejects malformed drill steps instead of coercing null to a string', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '失误',
+        explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: '练', steps: [null, {}] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.drill?.steps).toEqual([]);
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
   it('ignores malformed numeric factKey in moment evidence without throwing', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
@@ -395,6 +436,15 @@ describe('short match late phase', () => {
     const late = cards.phases?.find((p) => p.phase === 'late');
     expect(late?.insight).toContain('未进入典型后期');
     expect(late?.insight).not.toContain('后期决策决定胜负');
+  });
+
+  it('uses neutral late-phase wording for long matches', () => {
+    const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
+    const cards = buildDeterministicReviewCards(fact, 'zh') as ReviewCardsPayload;
+    const late = cards.phases?.find((p) => p.phase === 'late');
+    expect(late?.insight).toContain('后期');
+    expect(late?.insight).not.toContain('后期决策决定胜负');
+    expect(late?.insight).not.toMatch(/decided the outcome/i);
   });
 
   it('does not prescribe mid-game tempo when match ends before 10 min', () => {

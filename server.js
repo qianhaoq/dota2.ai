@@ -2374,7 +2374,7 @@ Format with ## headings:
 【硬性规则】
 1. 只能使用 MatchFact 与证据字段，禁止编造
 2. 分路以录像站位聚类为准，禁止引用 OpenDota lane/lane_role
-3. 只指出一个主要失误（category 五选一）
+3. 只指出一个主要失误（category 四选一）
 4. 3–5 个关键时刻必须带 timestamp（秒）且引用 evidence factKey
 5. 一个具体、可执行的下一局 drill（限时）
 6. mentor_note 用拉比克口吻，2–3 句
