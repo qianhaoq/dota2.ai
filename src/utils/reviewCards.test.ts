@@ -16,6 +16,10 @@ import {
   hasDistinctKeyMoments,
   isGroundedDrillStep,
   areGroundedDrillSteps,
+  isGroundedMentorNote,
+  defaultMentorNote,
+  minRequiredKeyMoments,
+  countTimelineFactsInCatalog,
   evidenceSupportsCategory,
 } from '../../lib/matchReview/reviewCards.js';
 import type { ReviewCardsPayload } from '../types/reviewCards';
@@ -745,6 +749,61 @@ describe('buildKeyMomentsFromTimeline', () => {
     expect(cards.drill?.title).toBe('练节奏');
     expect(cards.drill?.steps).toEqual(['每局只选一个改进点', '死亡后检查信息是否足够']);
   });
+
+  it('rejects unrecognized ability/item drill prescriptions via positive grounding', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: 'Mid fight too early',
+        explanation: 'Forced a fight while behind.',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: 'Mid tier 2', why: 'Extended lead.', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: 'Roshan', why: 'Dire took Roshan.', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: {
+        duration: '15 min',
+        title: 'Ability drill',
+        steps: ['Cast Chronosphere as soon as it is ready', 'Purchase Divine Rapier next fight'],
+      },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'en') as ReviewCardsPayload;
+    const fallback = buildFallbackAiCards(fact, 'en') as ReviewCardsPayload;
+    expect(cards.drill?.title).toBe(fallback.drill?.title);
+    expect(cards.drill?.steps?.join(' ')).not.toMatch(/chronosphere|rapier/i);
+  });
+
+  it('omits economy follow-ups when catalog has no economy facts', () => {
+    const bareFixture = { ...fixture, objectives: [], radiant_gold_adv: [], players: [] };
+    const factBare = buildMatchFact(bareFixture, { lang: 'zh' });
+    const cards = buildFallbackAiCards(factBare, 'zh') as ReviewCardsPayload;
+    expect(cards.followups?.length).toBe(1);
+    expect(cards.followups?.[0]).toBe('下一局只练一件事');
+    expect(cards.followups?.join(' ')).not.toMatch(/经济|GPM|gold|checkpoint/i);
+  });
+
+  it('replaces mentor notes with invented balance claims', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '中期开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'timeline_0' }, { factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: '一血', why: '下路交出一血。', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: '推中二塔', why: '扩大优势。', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: '肉山', why: '夜魇控肉山。', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['每局只选一个改进点'] },
+      mentor_note: '本版本拉比克偷智力有 35% spell amplification，应该多出羊刀。',
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.mentor_note).toBe(defaultMentorNote('zh'));
+    expect(cards.mentor_note).not.toMatch(/35%|羊刀|amplification/i);
+  });
 });
 
 describe('unfocused match review', () => {
@@ -833,22 +892,46 @@ describe('isReviewAiCardsComplete', () => {
       key_moments: [m0, m1, m2],
       drill: { title: '', steps: [] },
     })).toBe(false);
-    expect(isValidReviewDrill({ duration: '15 分钟', title: '练', steps: ['一步'] })).toBe(true);
+    expect(isValidReviewDrill({ duration: '15 分钟', title: '练', steps: ['每局只选一个改进点'] })).toBe(true);
     expect(isReviewAiCardsComplete({
       primary_mistake: groundedMistake,
       key_moments: [m0, m1, {}],
-      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+      drill: { duration: '15 分钟', title: '练', steps: ['每局只选一个改进点'] },
     })).toBe(false);
     expect(isReviewAiCardsComplete({
       primary_mistake: { category: 'fight_timing' },
       key_moments: [m0, m1, m2],
-      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+      drill: { duration: '15 分钟', title: '练', steps: ['每局只选一个改进点'] },
     })).toBe(false);
     expect(isReviewAiCardsComplete({
       primary_mistake: groundedMistake,
       key_moments: [m0, m1, m2],
-      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
+      drill: { duration: '15 分钟', title: '练', steps: ['每局只选一个改进点'] },
     })).toBe(true);
+  });
+
+  it('scales required key-moment count to available timeline facts', () => {
+    const m0 = groundedMoment('timeline_0', 48, '0:48');
+    const m1 = groundedMoment('timeline_1', 800, '13:20');
+    const payload = {
+      primary_mistake: groundedMistake,
+      key_moments: [m0, m1],
+      drill: { duration: '15 分钟', title: '练', steps: ['每局只选一个改进点'] },
+    };
+    expect(minRequiredKeyMoments(2)).toBe(2);
+    expect(minRequiredKeyMoments(5)).toBe(3);
+    expect(minRequiredKeyMoments(0)).toBe(0);
+    expect(isReviewAiCardsComplete(payload)).toBe(false);
+    expect(isReviewAiCardsComplete(payload, { minKeyMoments: 2 })).toBe(true);
+    expect(isReviewAiCardsComplete(payload, { minKeyMoments: 0 })).toBe(true);
+  });
+
+  it('counts timeline facts in catalog for sparse matches', () => {
+    const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
+    const det = buildDeterministicReviewCards(fact, 'zh') as ReviewCardsPayload & { _catalog?: Array<{ factKey: string }> };
+    const timelineCount = countTimelineFactsInCatalog(det._catalog || []);
+    expect(timelineCount).toBeGreaterThanOrEqual(3);
+    expect(minRequiredKeyMoments(det._catalog || [])).toBe(3);
   });
 });
 

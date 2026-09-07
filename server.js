@@ -12,6 +12,7 @@ import {
   buildReviewCardsPromptFacts,
   parseAiReviewCards,
   isReviewAiCardsComplete,
+  minRequiredKeyMoments,
 } from './lib/matchReview/reviewCards.js';
 import {
   REVIEW_HIGH_MMR_MIN_RANK_TIER,
@@ -2478,7 +2479,9 @@ JSON shape:
         const choice = stream.choices?.[0];
         const fullText = choice?.message?.content || '';
         let reviewCards = parseAiReviewCards(fullText, matchFact, lang);
-        const usedFallback = !isReviewAiCardsComplete(reviewCards);
+        const det = buildDeterministicReviewCards(matchFact, lang);
+        const minKeyMoments = minRequiredKeyMoments(det._catalog || []);
+        const usedFallback = !isReviewAiCardsComplete(reviewCards, { minKeyMoments });
         if (usedFallback) {
           reviewCards = buildFallbackAiCards(matchFact, lang);
         }
