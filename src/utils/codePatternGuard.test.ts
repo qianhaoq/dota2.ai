@@ -58,7 +58,7 @@ describe('server review fallback SSE patterns', () => {
     const content = readFileSync(serverPath, 'utf-8');
     expect(content).toContain('reviewAiUnavailableNotice');
     expect(content).toMatch(
-      /sendReviewSse\(res,\s*\{\s*reviewCards[\s\S]*sendReviewSse\(res,\s*\{\s*error:\s*reviewAiUnavailableNotice/,
+      /sendReviewSse\(res,\s*\{\s*reviewCards[\s\S]*sendReviewSse\(res,\s*\{\s*reviewNotice:\s*reviewAiUnavailableNotice/,
     );
   });
 });

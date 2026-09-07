@@ -27,4 +27,30 @@ describe('reviewSse', () => {
     expect(reviewAiUnavailableNotice('zh', 'provider')).toContain('AI 洞察生成失败');
     expect(reviewAiUnavailableNotice('en', 'provider')).toMatch(/AI insight generation failed/i);
   });
+
+  it('reviewNotice SSE is nonterminal and preserves grounded through DONE', () => {
+    let isGrounded = false;
+    let notice = '';
+    let sawComplete = false;
+    const lines = [
+      'data: {"matchFact":{"summary":{}},"grounded":true}',
+      'data: {"reviewCards":{},"grounded":true}',
+      `data: {"reviewNotice":"${reviewAiUnavailableNotice('zh', 'unconfigured')}"}`,
+      'data: [DONE]',
+    ];
+    for (const line of lines) {
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') {
+        sawComplete = true;
+        break;
+      }
+      const parsed = JSON.parse(data);
+      if (parsed.error) throw new Error('terminal error');
+      if (parsed.reviewNotice) notice = parsed.reviewNotice;
+      if (parsed.grounded !== undefined) isGrounded = parsed.grounded;
+    }
+    expect(sawComplete).toBe(true);
+    expect(isGrounded).toBe(true);
+    expect(notice).toContain('API Key');
+  });
 });

@@ -2335,7 +2335,7 @@ async function handleMatchReview(req, res) {
         }
         const fallbackCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
         sendReviewSse(res, { reviewCards: fallbackCards, grounded: isGrounded });
-        sendReviewSse(res, { error: reviewAiUnavailableNotice(lang, 'unconfigured') });
+        sendReviewSse(res, { reviewNotice: reviewAiUnavailableNotice(lang, 'unconfigured') });
         endReviewSse(res);
         return;
       }
@@ -2504,7 +2504,7 @@ JSON shape:
         } else {
           const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
           sendReviewSse(res, { reviewCards, grounded: isGrounded });
-          sendReviewSse(res, { error: reviewAiUnavailableNotice(lang, 'provider') });
+          sendReviewSse(res, { reviewNotice: reviewAiUnavailableNotice(lang, 'provider') });
           endReviewSse(res);
         }
       }

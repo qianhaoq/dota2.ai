@@ -508,6 +508,7 @@ export const fetchPlaybookStream = (
 export interface ReviewStreamCallbacks {
   onData: (matchFact: MatchFact) => void;
   onReviewCards?: (cards: ReviewCardsPayload) => void;
+  onReviewNotice?: (notice: string) => void;
   onChunk: (text: string) => void;
   onComplete: (grounded: boolean) => void;
   onError: (error: string) => void;
@@ -578,6 +579,9 @@ export const fetchMatchReviewStream = (
           if (parsed.error) {
             callbacks?.onError(parsed.error);
             return 'error';
+          }
+          if (parsed.reviewNotice && callbacks?.onReviewNotice) {
+            callbacks.onReviewNotice(parsed.reviewNotice);
           }
           if (parsed.matchFact && callbacks?.onData) {
             callbacks.onData(parsed.matchFact);

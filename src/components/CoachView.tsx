@@ -219,6 +219,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       {
         onData: (matchFact) => { updateCoachMessage(msgId, { matchFact }); },
         onReviewCards: (reviewCards) => { updateCoachMessage(msgId, { reviewCards }); },
+        onReviewNotice: (notice) => { updateCoachMessage(msgId, { error: notice }); },
         onChunk: (text) => {
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
