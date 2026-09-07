@@ -3,6 +3,9 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.js';
+import { validateReviewPostRequest } from './lib/matchReview/reviewRequestGuard.js';
+import { buildHeroNamesMap } from './lib/matchReview/heroNamesMap.js';
+import { isTerminalStreamFinish } from './lib/matchReview/reviewStream.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2070,41 +2073,6 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400) {
   return res.status(status).json({ error: errorMsg });
 }
 
-function buildHeroNamesMap(heroStats, matchPlayers = []) {
-  const map = {};
-
-  for (const [id, cn] of Object.entries(HERO_NAMES_CN)) {
-    const heroId = Number(id);
-    map[heroId] = {
-      nameZh: cn.nameZh,
-      nameEn: cn.nameZh,
-    };
-  }
-
-  for (const [id, stats] of Object.entries(heroStats || {})) {
-    const heroId = Number(id);
-    const cn = HERO_NAMES_CN[heroId];
-    map[heroId] = {
-      nameZh: cn?.nameZh || stats?.localized_name || stats?.name || map[heroId]?.nameZh || `Hero#${heroId}`,
-      nameEn: stats?.name || stats?.localized_name || cn?.nameZh || map[heroId]?.nameEn || `Hero#${heroId}`,
-    };
-  }
-
-  for (const p of matchPlayers) {
-    const heroId = p.hero_id;
-    if (!heroId) continue;
-    const cn = HERO_NAMES_CN[heroId];
-    if (!map[heroId]) {
-      map[heroId] = {
-        nameZh: cn?.nameZh || `Hero#${heroId}`,
-        nameEn: cn?.nameZh || `Hero#${heroId}`,
-      };
-    }
-  }
-
-  return map;
-}
-
 app.get('/api/review/:matchId', handleMatchReview);
 app.post('/api/review/:matchId', handleMatchReview);
 
@@ -2140,6 +2108,16 @@ async function handleMatchReview(req, res) {
     });
   }
 
+  const postGuard = validateReviewPostRequest(req);
+  if (!postGuard.ok) {
+    return respondReviewError(
+      res,
+      wantsStream,
+      isZh ? postGuard.errorZh : postGuard.errorEn,
+      postGuard.status
+    );
+  }
+
   let clientGone = false;
   let stream = null;
   const abortController = new AbortController();
@@ -2163,9 +2141,10 @@ async function handleMatchReview(req, res) {
     if (clientGone) return;
 
     const fetchOpts = wantsStream ? { signal: abortController.signal } : {};
-    const [matchData, heroStats] = await Promise.all([
+    const [matchData, heroStats, heroConstants] = await Promise.all([
       getMatchDetail(matchId, fetchOpts),
       getHeroStats(fetchOpts),
+      getHeroConstants(),
     ]);
 
     if (clientGone) return;
@@ -2181,7 +2160,12 @@ async function handleMatchReview(req, res) {
       }
     }
 
-    const heroNames = buildHeroNamesMap(heroStats, matchData.players || []);
+    const heroNames = buildHeroNamesMap(
+      heroStats,
+      matchData.players || [],
+      heroConstants,
+      HERO_NAMES_CN
+    );
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const isGrounded = Boolean(matchFact.grounded);
 
@@ -2269,15 +2253,26 @@ Format with ## headings:
         return;
       }
 
+      let finishReason = null;
       for await (const chunk of stream) {
         if (clientGone || res.writableEnded) break;
-        const content = chunk.choices[0]?.delta?.content;
+        const choice = chunk.choices[0];
+        const content = choice?.delta?.content;
         if (content) {
           sendReviewSse(res, { text: content, grounded: isGrounded });
         }
+        if (choice?.finish_reason) {
+          finishReason = choice.finish_reason;
+        }
       }
       if (!res.writableEnded) {
-        endReviewSse(res);
+        if (isTerminalStreamFinish(finishReason)) {
+          endReviewSse(res);
+        } else {
+          endReviewSse(res, {
+            error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
+          });
+        }
       }
     } catch (streamErr) {
       if (clientGone || streamErr.name === 'AbortError') return;

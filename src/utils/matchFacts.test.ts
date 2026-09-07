@@ -3,6 +3,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { buildMatchFact, parseMatchId, matchFactToPrompt, selectTimelineForDisplay } from '../../lib/matchReview/matchFacts.js';
+import { buildHeroNamesMap } from '../../lib/matchReview/heroNamesMap.js';
 import { LANE_CLUSTER_SOURCE } from '../../lib/matchReview/laneResolver.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -79,9 +80,26 @@ describe('buildMatchFact', () => {
     expect(prompt).not.toContain('夜魇');
   });
 
+  it('uses English hero names from constants when heroStats is unavailable', () => {
+    const heroConstants = {
+      npc_dota_hero_life_stealer: { id: 54, localized_name: 'Lifestealer', name: 'npc_dota_hero_life_stealer' },
+    };
+    const heroNames = buildHeroNamesMap(
+      {} as Record<string, never>,
+      fixture.players,
+      heroConstants,
+      { 54: { nameZh: '噬魂鬼' } }
+    ) as Record<number, { nameZh: string; nameEn: string }>;
+    const factEn = buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames });
+    const lsPlayer = factEn.players.find((p: { heroId: number }) => p.heroId === 54);
+    expect(lsPlayer?.displayName).toBe('Lifestealer');
+    expect(lsPlayer?.displayName).not.toBe('噬魂鬼');
+  });
+
   it('prompt localizes timeline objectives in Chinese', () => {
     const prompt = matchFactToPrompt(fact, 'zh');
     expect(prompt).toContain('一血');
+    expect(prompt).toContain('森海飞霞');
     expect(prompt).not.toMatch(/CHAT_MESSAGE_FIRSTBLOOD/);
   });
 

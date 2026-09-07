@@ -18,13 +18,21 @@ describe('formatObjectiveLabel', () => {
   });
 
   it('localizes first blood and roshan kills in Chinese', () => {
-    expect(formatObjectiveLabel({ type: 'CHAT_MESSAGE_FIRSTBLOOD' }, 'zh')).toBe('一血');
+    expect(formatObjectiveLabel({
+      type: 'CHAT_MESSAGE_FIRSTBLOOD',
+      team: 2,
+      carrierName: '森海飞霞',
+    }, 'zh')).toBe('天辉森海飞霞 一血');
     expect(formatObjectiveLabel({ type: 'CHAT_MESSAGE_ROSHAN_KILL', team: 2 }, 'zh')).toBe('天辉肉山');
     expect(formatObjectiveLabel({ type: 'CHAT_MESSAGE_ROSHAN_KILL', team: 3 }, 'zh')).toBe('夜魇肉山');
   });
 
   it('keeps English labels with side for en', () => {
-    expect(formatObjectiveLabel({ type: 'CHAT_MESSAGE_FIRSTBLOOD' }, 'en')).toBe('First Blood');
+    expect(formatObjectiveLabel({
+      type: 'CHAT_MESSAGE_FIRSTBLOOD',
+      team: 2,
+      carrierName: 'Hoodwink',
+    }, 'en')).toBe('Radiant Hoodwink First Blood');
     expect(formatObjectiveLabel({ type: 'CHAT_MESSAGE_ROSHAN_KILL', team: 2 }, 'en')).toBe('Radiant Roshan');
     expect(formatObjectiveLabel({
       type: 'building_kill',

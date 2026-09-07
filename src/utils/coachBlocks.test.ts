@@ -243,7 +243,7 @@ describe('messageToBlocks', () => {
         laneDataAvailable: true,
         economy: { radiantGoldAdv: [], checkpoints: [] },
         timeline: [
-          { time: 48, type: 'CHAT_MESSAGE_FIRSTBLOOD', key: '5' },
+          { time: 48, type: 'CHAT_MESSAGE_FIRSTBLOOD', key: '5', team: 2, carrierName: '森海飞霞' },
           { time: 563, type: 'building_kill', key: 'npc_dota_badguys_tower1_top' },
           { time: 2053, type: 'CHAT_MESSAGE_ROSHAN_KILL', key: null, team: 3 },
         ],
@@ -254,6 +254,7 @@ describe('messageToBlocks', () => {
       },
     }), 'zh');
     const timeline = blocks.find((b) => b.reviewSection === 'timeline');
+    expect(timeline?.markdown).toContain('森海飞霞');
     expect(timeline?.markdown).toContain('一血');
     expect(timeline?.markdown).toContain('夜魇上路一塔');
     expect(timeline?.markdown).toContain('夜魇肉山');

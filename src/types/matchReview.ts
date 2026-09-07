@@ -86,7 +86,14 @@ export interface MatchFact {
     radiantGoldAdv: number[];
     checkpoints: Array<{ minute: number; radiantGoldLead: number }>;
   };
-  timeline: Array<{ time: number; type: string; key: string | null; team?: number }>;
+  timeline: Array<{
+    time: number;
+    type: string;
+    key: string | null;
+    team?: number;
+    carrierName?: string | null;
+    aegisStolen?: boolean;
+  }>;
   focusHeroId: number | null;
   focusLens: {
     heroId: number;
