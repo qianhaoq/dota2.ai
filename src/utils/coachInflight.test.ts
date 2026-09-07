@@ -107,7 +107,7 @@ describe('coachInflight', () => {
     };
     const out = finalizeReviewCoachMessage(msg, { error: 'Request timed out, please try again' });
     expect(out.isStreaming).toBe(false);
-    expect(out.error).toBeUndefined();
+    expect(out.error).toBe('Request timed out, please try again');
     expect(out.reviewCards?.match_summary?.heroName).toBe('噬魂鬼');
   });
 

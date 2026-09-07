@@ -672,6 +672,13 @@ describe('buildKeyMomentsFromTimeline', () => {
       expect(m.evidence[0].factKey).toBe(timelineKeys[i]);
     });
   });
+
+  it('omits fallback primary_mistake when catalog has no timeline events', () => {
+    const factNoTimeline = buildMatchFact({ ...fixture, objectives: [] }, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
+    const cards = buildFallbackAiCards(factNoTimeline, 'zh') as ReviewCardsPayload;
+    expect(cards.primary_mistake).toBeUndefined();
+    expect(cards.key_moments?.length ?? 0).toBe(0);
+  });
 });
 
 describe('unfocused match review', () => {
@@ -681,6 +688,8 @@ describe('unfocused match review', () => {
     expect(cards.match_summary?.result).toBe('neutral');
     expect(cards.match_summary?.resultLabel).toMatch(/夜魇|Dire/i);
     expect(cards.match_summary?.heroName).toBe('全场复盘');
+    expect(cards.match_summary?.kda).toBeUndefined();
+    expect(cards.match_summary?.gpm).toBeUndefined();
     const gold10 = cards.phases?.flatMap((p) => p.evidence).find((e) => e.factKey === 'gold_lead_10');
     expect(gold10?.label).not.toContain('我方');
     expect(gold10?.label).toMatch(/经济|Gold lead/);

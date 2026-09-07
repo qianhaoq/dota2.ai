@@ -258,9 +258,20 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
 export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A2UIBlock[] {
   const t = labels(lang);
   const blocks: A2UIBlock[] = [];
+  const hasStructuredReview = message.action === 'review'
+    && Boolean(message.reviewCards || message.matchFact);
 
-  if (message.error) {
+  if (message.error && !hasStructuredReview) {
     return [];
+  }
+
+  if (message.error && hasStructuredReview) {
+    blocks.push({
+      id: `${message.id}-review-notice`,
+      type: 'markdown',
+      title: lang === 'zh' ? '提示' : 'Notice',
+      markdown: message.error,
+    });
   }
 
   if (message.action === 'review' && message.matchFact) {

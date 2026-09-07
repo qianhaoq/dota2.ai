@@ -126,13 +126,15 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
           <span className="text-[10px] text-k3-text-tertiary">{s.durationFormatted}</span>
         </div>
         <p className="text-base font-semibold text-k3-text-primary">{s.heroName}</p>
+        {(s.kda || s.gpm != null || (s.laneGrounded && s.laneLabel)) && (
         <div className="flex flex-wrap gap-3 mt-2 text-xs text-k3-text-secondary">
-          <span>KDA {s.kda}</span>
-          <span>GPM {s.gpm}</span>
+          {s.kda && <span>KDA {s.kda}</span>}
+          {s.gpm != null && <span>GPM {s.gpm}</span>}
           {s.laneGrounded && s.laneLabel && (
             <span>{lang === 'zh' ? '分路' : 'Lane'}: {s.laneLabel}</span>
           )}
         </div>
+        )}
         {s.laneGrounded && (
           <p className="text-[10px] text-k3-text-tertiary mt-2 italic">
             {lang === 'zh' ? '分路根据录像站位推断' : 'Lanes inferred from replay positioning'}

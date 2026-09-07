@@ -17,8 +17,8 @@ export interface MatchSummaryCard {
   heroId?: number;
   durationFormatted: string;
   heroName: string;
-  kda: string;
-  gpm: number;
+  kda?: string;
+  gpm?: number;
   result: 'win' | 'loss' | 'neutral';
   resultLabel: string;
   laneLabel?: string;

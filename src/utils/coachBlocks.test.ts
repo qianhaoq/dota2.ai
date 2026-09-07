@@ -189,6 +189,21 @@ describe('messageToBlocks', () => {
     expect(blocks.some((b) => b.type === 'reviewInsight')).toBe(true);
   });
 
+  it('renders review notice alongside insight blocks when stream error is preserved', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      content: '',
+      error: 'Request timed out, please try again',
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      reviewCards: {
+        match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
+        phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
+      },
+    }), 'zh');
+    expect(blocks.some((b) => b.type === 'markdown' && b.markdown?.includes('timed out'))).toBe(true);
+    expect(blocks.some((b) => b.type === 'reviewInsight')).toBe(true);
+  });
+
   it('maps reviewCards to reviewInsight blocks (Fact→Insight→Drill)', () => {
     const blocks = messageToBlocks(baseCoach({
       action: 'review',
