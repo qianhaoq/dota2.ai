@@ -2376,7 +2376,7 @@ Format with ## headings:
 【硬性规则】
 1. 只能使用 MatchFact 与证据字段，禁止编造
 2. 分路以录像站位聚类为准，禁止引用 OpenDota lane/lane_role
-3. 只指出一个主要失误（category 三选一：fight_timing / positioning / farm_route）
+3. 只指出一个主要失误（category 二选一：fight_timing / farm_route）
 4. 3–5 个关键时刻必须带 timestamp（秒）且引用 evidence factKey
 5. 一个具体、可执行的下一局 drill（限时）
 6. mentor_note 用拉比克口吻，2–3 句
@@ -2385,7 +2385,7 @@ Format with ## headings:
 【JSON 结构】
 {
   "primary_mistake": {
-    "category": "fight_timing|positioning|farm_route",
+    "category": "fight_timing|farm_route",
     "headline": "一句话标题",
     "explanation": "2–4 句解释",
     "evidence": [{"factKey": "kda"}, {"factKey": "gold_lead_20"}]
@@ -2410,7 +2410,7 @@ Rules:
 
 JSON shape:
 {
-  "primary_mistake": {"category": "fight_timing|positioning|farm_route", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
+  "primary_mistake": {"category": "fight_timing|farm_route", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
   "key_moments": [{"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}],
   "drill": {"duration": "15 min", "title": "...", "steps": ["..."]},
   "followups": ["Break down 21:50: took mid tier 2", "What did gold lead at 20 min (-1200) mean for tempo?", "One thing to practice next"],
@@ -2491,9 +2491,15 @@ JSON shape:
       if (clientGone || streamErr.name === 'AbortError') return;
       console.error('Match review stream error:', streamErr);
       if (!res.writableEnded) {
-        endReviewSse(res, {
-          error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
-        });
+        if (followUp) {
+          endReviewSse(res, {
+            error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
+          });
+        } else {
+          const reviewCards = buildFallbackAiCards(matchFact, lang);
+          sendReviewSse(res, { reviewCards, grounded: isGrounded });
+          endReviewSse(res);
+        }
       }
     } finally {
       detachAbortListeners();

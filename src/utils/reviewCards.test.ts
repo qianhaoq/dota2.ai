@@ -171,6 +171,27 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.followups?.[2]).toBe('One thing to practice next');
   });
 
+  it('replaces item question appended to first follow-up chip', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: 'Mid fight too early',
+        explanation: 'Forced a fight while behind.',
+        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        { timestamp: 48, phase: 'lane', headline: 'First Blood', why: 'Bot lane trade.', evidence: [{ factKey: 'timeline_0' }] },
+        { timestamp: 1310, phase: 'mid', headline: 'Mid tier 2', why: 'Extended lead.', evidence: [{ factKey: 'timeline_2' }] },
+        { timestamp: 2817, phase: 'late', headline: 'Roshan', why: 'Dire took Roshan.', evidence: [{ factKey: 'timeline_5' }] },
+      ],
+      drill: { duration: '15 min', title: 'Drill', steps: ['One step'] },
+      followups: ['Break down 0:48: First Blood — why was Butterfly wrong?', 'What did gold lead mean?', 'One thing to practice next'],
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'en') as ReviewCardsPayload;
+    expect(cards.followups?.[0]).toBe('Break down 0:48: First Blood');
+    expect(cards.followups?.[0]).not.toMatch(/butterfly/i);
+  });
+
   it('parseAiReviewCards merges LLM JSON with deterministic spine', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
@@ -401,7 +422,7 @@ describe('reviewCards gold match 8985182860', () => {
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
-  it('rejects positioning diagnosis without death-context or position evidence', () => {
+  it('rejects disallowed positioning category', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
         category: 'positioning',
@@ -418,8 +439,6 @@ describe('reviewCards gold match 8985182860', () => {
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
     expect(cards.primary_mistake).toBeUndefined();
-    expect(evidenceSupportsCategory('positioning', [{ factKey: 'timeline_0' }])).toBe(false);
-    expect(evidenceSupportsCategory('positioning', [{ factKey: 'deaths' }])).toBe(false);
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
