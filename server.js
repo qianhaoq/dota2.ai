@@ -66,7 +66,7 @@ const cache = {
   proMatches: { data: null, timestamp: 0 },
   publicMatches: { data: null, timestamp: 0 },
   publicMatchesHighMmr: { data: null, timestamp: 0 },
-  reviewSuggestions: { data: null, timestamp: 0 },
+  reviewSuggestions: { data: {} },
   // Single match detail for replay review
   matchDetails: new Map(), // Map<matchId, { data, timestamp }>
 };
@@ -312,30 +312,45 @@ async function getAbilityConstants() {
 
 // ============ Pro/Public Matches Fetchers ============
 
-async function getProMatches(limit = 20) {
+function normalizeReviewLang(lang) {
+  return lang === 'en' ? 'en' : 'zh';
+}
+
+async function getProMatches(limit = 20, options = {}) {
+  const { forceRefresh = false } = options;
   const now = Date.now();
-  if (cache.proMatches.data && (now - cache.proMatches.timestamp) < MATCHES_CACHE_TTL_MS) {
-    return cache.proMatches.data;
+  if (
+    !forceRefresh
+    && cache.proMatches.data
+    && (now - cache.proMatches.timestamp) < MATCHES_CACHE_TTL_MS
+  ) {
+    return cache.proMatches.data.slice(0, limit);
   }
   try {
     const data = await fetchWithRetry(`${OPENDOTA_API}/proMatches`);
-    const matches = Array.isArray(data) ? data.slice(0, limit) : [];
+    const matches = Array.isArray(data) ? data : [];
     cache.proMatches = { data: matches, timestamp: now };
     console.log(`Loaded ${matches.length} pro matches from OpenDota`);
-    return matches;
+    return matches.slice(0, limit);
   } catch (err) {
     console.error('Failed to fetch pro matches:', err.message);
-    return cache.proMatches.data || [];
+    return cache.proMatches.data?.slice(0, limit) || [];
   }
 }
 
 async function getPublicMatches(limit = 50, options = {}) {
-  const { highMmr = false } = options;
+  const { highMmr = false, forceRefresh = false } = options;
+  const cacheKey = highMmr ? 'publicMatchesHighMmr' : 'publicMatches';
   const now = Date.now();
-  const cacheEntry = highMmr ? cache.publicMatchesHighMmr : cache.publicMatches;
 
-  if (cacheEntry.data && (now - cacheEntry.timestamp) < MATCHES_CACHE_TTL_MS) {
-    return cacheEntry.data.slice(0, limit);
+  const readCached = () => cache[cacheKey].data?.slice(0, limit) || [];
+
+  if (
+    !forceRefresh
+    && cache[cacheKey].data
+    && (now - cache[cacheKey].timestamp) < MATCHES_CACHE_TTL_MS
+  ) {
+    return readCached();
   }
   try {
     const url = highMmr
@@ -343,16 +358,12 @@ async function getPublicMatches(limit = 50, options = {}) {
       : `${OPENDOTA_API}/publicMatches`;
     const data = await fetchWithRetry(url);
     const matches = Array.isArray(data) ? data : [];
-    if (highMmr) {
-      cache.publicMatchesHighMmr = { data: matches, timestamp: now };
-    } else {
-      cache.publicMatches = { data: matches, timestamp: now };
-    }
+    cache[cacheKey] = { data: matches, timestamp: now };
     console.log(`Loaded ${matches.length} public matches from OpenDota${highMmr ? ' (high MMR)' : ''}`);
     return matches.slice(0, limit);
   } catch (err) {
     console.error('Failed to fetch public matches:', err.message);
-    return cacheEntry.data?.slice(0, limit) || [];
+    return readCached();
   }
 }
 
@@ -376,20 +387,22 @@ function filterPublicMatchesWithHeroes(matches) {
 }
 
 async function getReviewMatchSuggestions(lang = 'zh', limit = REVIEW_SUGGESTIONS_DEFAULT_LIMIT) {
+  const normalizedLang = normalizeReviewLang(lang);
   const cappedLimit = Math.min(Math.max(limit, 1), REVIEW_SUGGESTIONS_MAX_LIMIT);
+  const cacheKey = `${normalizedLang}:${cappedLimit}`;
   const now = Date.now();
-  const cacheKey = `${lang}:${cappedLimit}`;
 
-  if (
-    cache.reviewSuggestions.data?.[cacheKey]
-    && (now - cache.reviewSuggestions.timestamp) < REVIEW_SUGGESTIONS_CACHE_TTL_MS
-  ) {
-    return cache.reviewSuggestions.data[cacheKey];
+  const cached = cache.reviewSuggestions.data[cacheKey];
+  if (cached && (now - cached.timestamp) < REVIEW_SUGGESTIONS_CACHE_TTL_MS) {
+    return {
+      ...cached.payload,
+      cacheAge: Math.round((now - cached.timestamp) / 1000),
+    };
   }
 
   const [proMatches, publicMatches, heroConstants] = await Promise.all([
-    getProMatches(100),
-    getPublicMatches(100, { highMmr: true }),
+    getProMatches(100, { forceRefresh: true }),
+    getPublicMatches(100, { highMmr: true, forceRefresh: true }),
     getHeroConstants(),
   ]);
 
@@ -397,7 +410,7 @@ async function getReviewMatchSuggestions(lang = 'zh', limit = REVIEW_SUGGESTIONS
     .filter((match) => match.match_id && (match.duration || 0) > 0)
     .slice(0, cappedLimit)
     .map((match) => ({
-      ...formatProMatch(match, heroConstants, lang),
+      ...formatProMatch(match, heroConstants, normalizedLang),
       kind: 'recent',
     }));
 
@@ -405,7 +418,7 @@ async function getReviewMatchSuggestions(lang = 'zh', limit = REVIEW_SUGGESTIONS
     .filter((match) => match.match_id && (match.duration || 0) > 0)
     .slice(0, cappedLimit)
     .map((match) => ({
-      ...formatPublicMatch(match, heroConstants, lang),
+      ...formatPublicMatch(match, heroConstants, normalizedLang),
       kind: 'highMmr',
     }));
 
@@ -417,11 +430,7 @@ async function getReviewMatchSuggestions(lang = 'zh', limit = REVIEW_SUGGESTIONS
     cacheAge: 0,
   };
 
-  if (!cache.reviewSuggestions.data) {
-    cache.reviewSuggestions.data = {};
-  }
-  cache.reviewSuggestions.data[cacheKey] = payload;
-  cache.reviewSuggestions.timestamp = now;
+  cache.reviewSuggestions.data[cacheKey] = { payload, timestamp: now };
 
   return payload;
 }
@@ -2155,21 +2164,16 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400) {
 
 app.get('/api/review/suggestions', async (req, res) => {
   try {
-    const lang = req.query.lang || 'zh';
+    const lang = normalizeReviewLang(req.query.lang || 'zh');
     const limit = Math.min(
       parseInt(req.query.limit, 10) || REVIEW_SUGGESTIONS_DEFAULT_LIMIT,
       REVIEW_SUGGESTIONS_MAX_LIMIT,
     );
     const suggestions = await getReviewMatchSuggestions(lang, limit);
-    res.json({
-      ...suggestions,
-      cacheAge: cache.reviewSuggestions.timestamp
-        ? Math.round((Date.now() - cache.reviewSuggestions.timestamp) / 1000)
-        : null,
-    });
+    res.json(suggestions);
   } catch (err) {
     console.error('Review suggestions error:', err);
-    const lang = req.query.lang || 'zh';
+    const lang = normalizeReviewLang(req.query.lang || 'zh');
     res.json({
       recent: [],
       highMmr: [],
