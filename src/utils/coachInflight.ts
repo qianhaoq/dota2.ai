@@ -67,6 +67,11 @@ export function isCoachInflightCurrent(
   return generationRef.current === captured;
 }
 
+/** True when a streaming coach message already has structured review payload worth keeping on cancel. */
+function hasStructuredReviewPayload(msg: CoachMessage): boolean {
+  return Boolean(msg.reviewCards || (msg.action === 'review' && msg.matchFact));
+}
+
 /** Clear streaming flags on all in-flight coach messages (e.g. after Stop). */
 export function clearStreamingCoachMessages(
   messages: CoachMessage[],
@@ -79,7 +84,9 @@ export function clearStreamingCoachMessages(
     return {
       ...msg,
       isStreaming: false,
-      ...(cancelledLabel && !msg.content && !msg.error ? { error: cancelledLabel } : {}),
+      ...(cancelledLabel && !msg.content && !msg.error && !hasStructuredReviewPayload(msg)
+        ? { error: cancelledLabel }
+        : {}),
     };
   });
   return changed ? next : messages;

@@ -127,7 +127,9 @@ describe('reviewCards gold match 8985182860', () => {
       mentor_note: '拉比克结语',
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
-    expect(cards.followups?.[0]).toBe('展开 0:48 节点：一血');
+    const first = cards.key_moments?.[0];
+    expect(first).toBeTruthy();
+    expect(cards.followups?.[0]).toBe(`展开 ${first!.timestampLabel} 节点：${first!.headline}`);
   });
 
   it('replaces item-specific model follow-ups with evidence-bound defaults', () => {
@@ -147,8 +149,10 @@ describe('reviewCards gold match 8985182860', () => {
       followups: ['展开 0:48 节点：一血', '为什么不该出羊刀', '下一局只练一件事'],
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    const second = cards.key_moments?.[1];
+    expect(second).toBeTruthy();
     expect(cards.followups?.[1]).not.toMatch(/羊刀/);
-    expect(cards.followups?.[1]).toMatch(/^展开 \d+:\d{2} 节点：推中二塔$/);
+    expect(cards.followups?.[1]).toBe(`展开 ${second!.timestampLabel} 节点：${second!.headline}`);
   });
 
   it('replaces unsupported item follow-up in any chip slot', () => {
@@ -188,7 +192,9 @@ describe('reviewCards gold match 8985182860', () => {
       followups: ['Break down 0:48: First Blood — why was Butterfly wrong?', 'What did gold lead mean?', 'One thing to practice next'],
     });
     const cards = parseAiReviewCards(llmJson, fact, 'en') as ReviewCardsPayload;
-    expect(cards.followups?.[0]).toBe('Break down 0:48: First Blood');
+    const first = cards.key_moments?.[0];
+    expect(first).toBeTruthy();
+    expect(cards.followups?.[0]).toBe(`Break down ${first!.timestampLabel}: ${first!.headline}`);
     expect(cards.followups?.[0]).not.toMatch(/butterfly/i);
   });
 
@@ -209,7 +215,9 @@ describe('reviewCards gold match 8985182860', () => {
       followups: ['Break down 0:48: First Blood — why was BKB wrong?', 'What did gold lead mean?', 'One thing to practice next'],
     });
     const cards = parseAiReviewCards(llmJson, fact, 'en') as ReviewCardsPayload;
-    expect(cards.followups?.[0]).toBe('Break down 0:48: First Blood');
+    const first = cards.key_moments?.[0];
+    expect(first).toBeTruthy();
+    expect(cards.followups?.[0]).toBe(`Break down ${first!.timestampLabel}: ${first!.headline}`);
     expect(cards.followups?.[0]).not.toMatch(/BKB/i);
   });
 
@@ -237,7 +245,51 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.key_moments?.[0].timestamp).toBe(48);
     expect(cards.key_moments?.every((m) => m.evidence.length >= 1)).toBe(true);
     expect(cards.drill?.title).toBe('练节奏');
-    expect(cards.followups?.[0]).toBe('展开 0:48 节点：一血');
+    const first = cards.key_moments?.[0];
+    expect(first).toBeTruthy();
+    expect(cards.followups?.[0]).toBe(`展开 ${first!.timestampLabel} 节点：${first!.headline}`);
+  });
+
+  it('binds key moment headline and why to catalog timeline fact, ignoring hallucinated model copy', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '中期开团过早',
+        explanation: '在经济落后时强行开团。',
+        evidence: [{ factKey: 'kda' }, { factKey: 'gold_lead_20' }],
+      },
+      key_moments: [
+        {
+          timestamp: 48,
+          phase: 'lane',
+          headline: '玩家在此阵亡并买了羊刀',
+          why: '错误决策导致崩盘。',
+          evidence: [{ factKey: 'timeline_0' }],
+        },
+        {
+          timestamp: 1310,
+          phase: 'mid',
+          headline: '推中二塔',
+          why: '扩大优势。',
+          evidence: [{ factKey: 'timeline_2' }],
+        },
+        {
+          timestamp: 2817,
+          phase: 'late',
+          headline: '肉山',
+          why: '夜魇控肉山。',
+          evidence: [{ factKey: 'timeline_5' }],
+        },
+      ],
+      drill: { duration: '15 分钟', title: '练节奏', steps: ['10 分前不参团'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    const first = cards.key_moments?.[0];
+    expect(first).toBeTruthy();
+    expect(first!.headline).toBe(first!.evidence[0].value);
+    expect(first!.headline).not.toMatch(/羊刀|阵亡/);
+    expect(first!.why).toBe('该节点改变了地图压力或经济节奏。');
+    expect(first!.timestampLabel).toBe(first!.evidence[0].label);
   });
 
   it('rejects key moments without catalog evidence', () => {
@@ -360,7 +412,7 @@ describe('reviewCards gold match 8985182860', () => {
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
-  it('rejects key moments with empty headline or why', () => {
+  it('fills key moment copy from catalog when model sends empty headline or why', () => {
     const llmJson = JSON.stringify({
       primary_mistake: {
         category: 'fight_timing',
@@ -376,8 +428,11 @@ describe('reviewCards gold match 8985182860', () => {
       drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
-    expect(cards.key_moments?.length ?? 0).toBe(1);
-    expect(isReviewAiCardsComplete(cards)).toBe(false);
+    expect(cards.key_moments).toHaveLength(3);
+    cards.key_moments?.forEach((m) => {
+      expect(m.headline).toBe(m.evidence[0].value);
+      expect(m.why).toBe('该节点改变了地图压力或经济节奏。');
+    });
   });
 
   it('rejects duplicate timeline key moments', () => {
