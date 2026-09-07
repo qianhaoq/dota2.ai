@@ -40,9 +40,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const [userInput, setUserInput] = useState('');
   const streamControllerRef = useRef<AbortController | null>(null);
   const activeReviewRef = useRef<{ matchId: number; heroId?: number } | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showMentorPicker, setShowMentorPicker] = useState(false);
   const [showHeroPicker, setShowHeroPicker] = useState(false);
   const [detailHeroId, setDetailHeroId] = useState<number | null>(null);
+  const [dismissedSessionIds, setDismissedSessionIds] = useState<string[]>([]);
+  const [lastDismissedSessionId, setLastDismissedSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -240,16 +243,23 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [coaching, practiceHero, selectionSide, lang, addCoachMessage]);
 
   const handleMeta = useCallback(async () => {
+    cancelStream();
     setIsLoading(true);
     addCoachMessage({ type: 'user', action: 'meta', content: lang === 'zh' ? '当前版本哪些英雄强势？' : 'Which heroes are strong this patch?' });
+    const msgId = addCoachMessage({ type: 'coach', action: 'meta', content: '', isStreaming: true });
     try {
       const data = await fetchTierList(lang, undefined, 12);
-      addCoachMessage({ type: 'coach', action: 'meta', content: lang === 'zh' ? '当前版本强势英雄榜：' : 'Current meta tier list:', tierHeroes: data.heroes, grounded: true });
+      updateCoachMessage(msgId, {
+        content: lang === 'zh' ? '当前版本强势英雄榜：' : 'Current meta tier list:',
+        tierHeroes: data.heroes,
+        grounded: true,
+        isStreaming: false,
+      });
     } catch (error) {
-      addCoachMessage({ type: 'coach', content: `Error: ${error}` });
+      updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
     }
     setIsLoading(false);
-  }, [lang, addCoachMessage]);
+  }, [lang, addCoachMessage, updateCoachMessage, cancelStream]);
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -267,7 +277,20 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     setDraft({ radiant: [], dire: [] });
     setMessages([]);
     setUserInput('');
+    setDismissedSessionIds([]);
+    setLastDismissedSessionId(null);
   }, [cancelStream]);
+
+  const dismissSession = useCallback((sessionId: string) => {
+    setDismissedSessionIds((prev) => (prev.includes(sessionId) ? prev : [...prev, sessionId]));
+    setLastDismissedSessionId(sessionId);
+  }, []);
+
+  const undoDismissSession = useCallback(() => {
+    if (!lastDismissedSessionId) return;
+    setDismissedSessionIds((prev) => prev.filter((id) => id !== lastDismissedSessionId));
+    setLastDismissedSessionId(null);
+  }, [lastDismissedSessionId]);
 
   const handleLessonAction = useCallback((lessonMode: LessonMode) => {
     setLesson(lessonMode);
@@ -281,25 +304,26 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [handleAnalyze, handlePlaybook]);
 
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
-  const hasResults = sessions.length > 0;
+  const dismissedSessionIdSet = useMemo(() => new Set(dismissedSessionIds), [dismissedSessionIds]);
+  const hasResults = sessions.some((s) => !dismissedSessionIdSet.has(s.id));
   const mentorName = mentor
     ? (lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name)
     : undefined;
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-k3-base overflow-hidden">
-      {hasResults && (
-        <div className="flex-shrink-0 min-h-0 max-h-[36%] overflow-y-auto overflow-x-hidden border-b border-k3-border-subtle bg-k3-base min-w-0 custom-scrollbar">
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
+        <div className={`flex flex-col items-center justify-start px-3 sm:px-4 ${hasResults ? 'pt-2 sm:pt-3 pb-3' : 'pt-4 sm:pt-6 pb-6'}`}>
           <MentorStage
             lang={lang}
             mentor={mentor}
             practiceHero={practiceHero}
-            density="compact"
+            density={hasResults ? 'compact' : 'hero'}
             onOpenPracticePicker={() => setShowMentorPicker(true)}
           />
           <HomeModules
             lang={lang}
-            density="compact"
+            density="full"
             allHeroes={allHeroes}
             practiceHero={practiceHero}
             lesson={lesson}
@@ -313,45 +337,23 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onMeta={handleMeta}
             onStartReview={handleReview}
           />
+          {sessions.length > 0 && (
+            <div className="w-full max-w-3xl min-w-0 mt-3">
+              <CoachCanvas
+                sessions={sessions}
+                dismissedSessionIds={dismissedSessionIdSet}
+                lastDismissedSessionId={lastDismissedSessionId}
+                lang={lang}
+                allHeroes={allHeroes}
+                onSelectHero={handleHeroSelect}
+                onDismissSession={dismissSession}
+                onUndoDismiss={undoDismissSession}
+                mentorName={mentorName}
+                scrollContainerRef={scrollContainerRef}
+              />
+            </div>
+          )}
         </div>
-      )}
-
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
-        {!hasResults ? (
-          <div className="min-h-full flex flex-col items-center justify-start px-3 sm:px-4 pt-4 sm:pt-6 pb-6">
-            <MentorStage
-              lang={lang}
-              mentor={mentor}
-              practiceHero={practiceHero}
-              density="hero"
-              onOpenPracticePicker={() => setShowMentorPicker(true)}
-            />
-            <HomeModules
-              lang={lang}
-              density="full"
-              allHeroes={allHeroes}
-              practiceHero={practiceHero}
-              lesson={lesson}
-              onLessonChange={handleLessonAction}
-              draft={draft}
-              selectionSide={selectionSide}
-              onOpenPracticePicker={() => setShowMentorPicker(true)}
-              onOpenDraftPicker={() => setShowHeroPicker(true)}
-              onHeroDetail={setDetailHeroId}
-              isLoading={isLoading}
-              onMeta={handleMeta}
-              onStartReview={handleReview}
-            />
-          </div>
-        ) : (
-          <CoachCanvas
-            sessions={sessions}
-            lang={lang}
-            allHeroes={allHeroes}
-            onSelectHero={handleHeroSelect}
-            mentorName={mentorName}
-          />
-        )}
       </div>
 
       <CoachComposer
