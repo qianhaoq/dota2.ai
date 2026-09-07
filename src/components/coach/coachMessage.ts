@@ -20,6 +20,8 @@ export interface CoachMessage {
   matchFact?: MatchFact | null;
   /** 结构化复盘卡片（Fact → Insight → Drill） */
   reviewCards?: ReviewCardsPayload | null;
+  /** 复盘追问（仅 markdown 流，不重复渲染 fact spine） */
+  reviewFollowUp?: boolean;
   /** 复盘等流式请求失败时的错误信息（不写入 content，避免误渲染为复盘正文） */
   error?: string;
 }

@@ -2320,7 +2320,9 @@ async function handleMatchReview(req, res) {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
-        sendReviewSse(res, { matchFact, grounded: isGrounded });
+        if (!followUp) {
+          sendReviewSse(res, { matchFact, grounded: isGrounded });
+        }
         if (followUp) {
           endReviewSse(res, {
             error: isZh
@@ -2428,8 +2430,8 @@ JSON shape:
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
 
-    sendReviewSse(res, { matchFact, grounded: isGrounded });
     if (!followUp) {
+      sendReviewSse(res, { matchFact, grounded: isGrounded });
       sendReviewSse(res, { reviewCards: initialReviewCards, grounded: isGrounded });
     }
 

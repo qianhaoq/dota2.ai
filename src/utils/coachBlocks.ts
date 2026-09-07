@@ -266,7 +266,7 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A
   if (message.action === 'review' && message.matchFact) {
     if (message.reviewCards) {
       blocks.push(...reviewInsightBlocks(message, lang));
-    } else {
+    } else if (!message.reviewFollowUp) {
       blocks.push(...reviewSectionBlocks(message, lang, t));
     }
   }
@@ -313,7 +313,7 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A
   const hasTitled = sections.some((s) => Boolean(s.title));
   const hasStructured = blocks.length > 0;
 
-  const reviewHowToWin = message.action === 'review' && !message.reviewCards;
+  const reviewHowToWin = message.action === 'review' && !message.reviewCards && !message.reviewFollowUp;
   sections.forEach((section, index) => {
     if (hasStructured && !section.title && section.markdown.length < 48) {
       return;

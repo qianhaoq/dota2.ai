@@ -211,6 +211,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     if (followUp) setUserInput('');
     const msgId = addCoachMessage({
       type: 'coach', action: 'review', lesson: 'review', content: '', isStreaming: true,
+      ...(followUp ? { reviewFollowUp: true } : {}),
     });
     streamControllerRef.current = fetchMatchReviewStream(
       matchId, lang, heroId ?? practiceHero?.id, followUp,

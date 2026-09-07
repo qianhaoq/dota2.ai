@@ -198,6 +198,39 @@ describe('messageToBlocks', () => {
     expect(blocks.filter((b) => b.type === 'review')).toHaveLength(0);
   });
 
+  it('skips fact spine blocks for review follow-up messages', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      reviewFollowUp: true,
+      content: '## 回答\n具体解释。',
+      matchFact: {
+        summary: {
+          matchId: 8985182860,
+          durationFormatted: '52:05',
+          radiantWin: false,
+          winner: 'dire',
+          winnerLabelZh: '夜魇胜利',
+          winnerLabelEn: 'Dire Victory',
+          duration: 3125,
+        },
+        players: [],
+        lanes: [],
+        laneInferenceLabelZh: '',
+        laneInferenceLabelEn: '',
+        laneSource: 'lane_pos_cluster',
+        laneDataAvailable: true,
+        economy: { radiantGoldAdv: [], checkpoints: [] },
+        timeline: [],
+        focusHeroId: 54,
+        focusLens: null,
+        focusLaneGrounded: true,
+        grounded: true,
+      },
+    }), 'zh');
+    expect(blocks.filter((b) => b.type === 'review')).toHaveLength(0);
+    expect(blocks.some((b) => b.title === '回答' || b.markdown?.includes('具体解释'))).toBe(true);
+  });
+
   it('does not leak inline markdown asterisks in review POV (en)', () => {
     const blocks = messageToBlocks(baseCoach({
       action: 'review',

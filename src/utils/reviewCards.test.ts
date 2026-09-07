@@ -144,6 +144,7 @@ describe('reviewCards gold match 8985182860', () => {
     expect(cards.key_moments?.[0].timestamp).toBe(48);
     expect(cards.key_moments?.every((m) => m.evidence.length >= 1)).toBe(true);
     expect(cards.drill?.title).toBe('练节奏');
+    expect(cards.followups?.[0]).toBe('展开 0:48 节点：一血');
   });
 
   it('rejects key moments without catalog evidence', () => {
@@ -203,6 +204,26 @@ describe('reviewCards gold match 8985182860', () => {
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
     expect(cards.primary_mistake).toBeUndefined();
+    expect(isReviewAiCardsComplete(cards)).toBe(false);
+  });
+
+  it('rejects drill with non-string title', () => {
+    const llmJson = JSON.stringify({
+      primary_mistake: {
+        category: 'fight_timing',
+        headline: '失误',
+        explanation: '解释',
+        evidence: [{ factKey: 'kda' }],
+      },
+      key_moments: [
+        { timestamp: 48, evidence: [{ factKey: 'timeline_0' }], headline: 'a', why: 'a' },
+        { timestamp: 1310, evidence: [{ factKey: 'timeline_2' }], headline: 'b', why: 'b' },
+        { timestamp: 2817, evidence: [{ factKey: 'timeline_5' }], headline: 'c', why: 'c' },
+      ],
+      drill: { duration: '15 分钟', title: {}, steps: ['一步'] },
+    });
+    const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
+    expect(cards.drill).toBeUndefined();
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
@@ -367,7 +388,7 @@ describe('reviewCards gold match 8985182860', () => {
       drill: { duration: '15 分钟', title: '练', steps: [null, {}] },
     });
     const cards = parseAiReviewCards(llmJson, fact, 'zh') as ReviewCardsPayload;
-    expect(cards.drill?.steps).toEqual([]);
+    expect(cards.drill).toBeUndefined();
     expect(isReviewAiCardsComplete(cards)).toBe(false);
   });
 
@@ -530,21 +551,21 @@ describe('isReviewAiCardsComplete', () => {
       key_moments: [m0, m1, m2],
       drill: { title: '', steps: [] },
     })).toBe(false);
-    expect(isValidReviewDrill({ title: '练', steps: ['一步'] })).toBe(true);
+    expect(isValidReviewDrill({ duration: '15 分钟', title: '练', steps: ['一步'] })).toBe(true);
     expect(isReviewAiCardsComplete({
       primary_mistake: groundedMistake,
       key_moments: [m0, m1, {}],
-      drill: { title: '练', steps: ['一步'] },
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
     })).toBe(false);
     expect(isReviewAiCardsComplete({
       primary_mistake: { category: 'fight_timing' },
       key_moments: [m0, m1, m2],
-      drill: { title: '练', steps: ['一步'] },
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
     })).toBe(false);
     expect(isReviewAiCardsComplete({
       primary_mistake: groundedMistake,
       key_moments: [m0, m1, m2],
-      drill: { title: '练', steps: ['一步'] },
+      drill: { duration: '15 分钟', title: '练', steps: ['一步'] },
     })).toBe(true);
   });
 });
