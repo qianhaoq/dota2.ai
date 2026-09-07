@@ -6,6 +6,11 @@ import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.
 import { validateReviewPostRequest } from './lib/matchReview/reviewRequestGuard.js';
 import { buildHeroNamesMap } from './lib/matchReview/heroNamesMap.js';
 import { isTerminalStreamFinish } from './lib/matchReview/reviewStream.js';
+import {
+  REVIEW_HIGH_MMR_MIN_RANK_TIER,
+  resolvePublicMatchSkill,
+  selectReviewHighMmrPublicMatches,
+} from './lib/matchReview/publicMatchRank.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -354,7 +359,7 @@ async function getPublicMatches(limit = 50, options = {}) {
   }
   try {
     const url = highMmr
-      ? `${OPENDOTA_API}/publicMatches?mmr_descending=1`
+      ? `${OPENDOTA_API}/publicMatches?mmr_descending=1&min_rank=${REVIEW_HIGH_MMR_MIN_RANK_TIER}`
       : `${OPENDOTA_API}/publicMatches`;
     const data = await fetchWithRetry(url);
     const matches = Array.isArray(data) ? data : [];
@@ -414,9 +419,7 @@ async function getReviewMatchSuggestions(lang = 'zh', limit = REVIEW_SUGGESTIONS
       kind: 'recent',
     }));
 
-  const highMmr = filterPublicMatchesWithHeroes(publicMatches || [])
-    .filter((match) => match.match_id && (match.duration || 0) > 0)
-    .slice(0, cappedLimit)
+  const highMmr = selectReviewHighMmrPublicMatches(publicMatches || [], cappedLimit)
     .map((match) => ({
       ...formatPublicMatch(match, heroConstants, normalizedLang),
       kind: 'highMmr',
@@ -508,21 +511,14 @@ function formatPublicMatch(match, heroConstants, lang = 'zh') {
     });
   };
   
-  const avgMmr = match.avg_mmr || match.avg_rank_tier;
-  let mmrLabel = '';
-  if (avgMmr) {
-    if (avgMmr >= 7000) mmrLabel = isZh ? '万分局' : 'Immortal';
-    else if (avgMmr >= 6000) mmrLabel = isZh ? '高分局' : 'Divine+';
-    else if (avgMmr >= 5000) mmrLabel = isZh ? '中高分局' : 'Ancient+';
-    else mmrLabel = isZh ? '普通局' : 'Normal';
-  }
+  const { avgMmr, mmrLabel } = resolvePublicMatchSkill(match, lang);
   
   return {
     matchId: match.match_id,
     startTime: match.start_time,
     duration: match.duration,
     radiantWin: match.radiant_win,
-    avgMmr: avgMmr,
+    avgMmr,
     mmrLabel,
     radiantHeroes: getHeroInfos(radiantHeroIds),
     direHeroes: getHeroInfos(direHeroIds),

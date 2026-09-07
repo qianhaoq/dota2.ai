@@ -22,10 +22,10 @@ const publicSuggestion: ReviewPublicSuggestion = {
   kind: 'highMmr',
   matchId: 8987197531,
   startTime: 1788779026,
-  duration: 404,
+  duration: 1100,
   radiantWin: true,
-  avgMmr: 54,
-  mmrLabel: 'Ancient+',
+  avgMmr: null,
+  mmrLabel: '超凡 V',
   radiantHeroNames: ['Windranger', 'Slark'],
   direHeroNames: ['Pudge', 'Invoker'],
   opendotaUrl: 'https://www.opendota.com/matches/8987197531',
@@ -40,7 +40,11 @@ describe('reviewSuggestions formatting', () => {
 
   it('formats public match title from hero names', () => {
     expect(formatSuggestionTitle(publicSuggestion, 'en')).toBe('Windranger, Slark vs Pudge, Invoker');
-    expect(formatSuggestionSubtitle(publicSuggestion, 'en')).toBe('Ancient+ · 6m');
+    expect(formatSuggestionSubtitle(publicSuggestion, 'zh')).toBe('超凡 V · 18分钟');
+    expect(formatSuggestionSubtitle(
+      { ...publicSuggestion, mmrLabel: 'Divine 5' },
+      'en',
+    )).toBe('Divine 5 · 18m');
   });
 
   it('formats live duration', () => {
