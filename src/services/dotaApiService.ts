@@ -112,3 +112,74 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'zh'): P
   }
   return data.matchFact;
 };
+
+export interface ReviewSuggestionBase {
+  matchId: number;
+  kind: 'recent' | 'highMmr';
+  startTime: number;
+  duration: number;
+  radiantWin: boolean;
+  opendotaUrl: string;
+}
+
+export interface ReviewProSuggestion extends ReviewSuggestionBase {
+  kind: 'recent';
+  radiantTeam: string;
+  direTeam: string;
+  leagueName: string;
+  radiantScore?: number;
+  direScore?: number;
+}
+
+export interface ReviewPublicSuggestion extends ReviewSuggestionBase {
+  kind: 'highMmr';
+  avgMmr: number | null;
+  mmrLabel: string;
+  radiantHeroNames: string[];
+  direHeroNames: string[];
+}
+
+export type ReviewSuggestion = ReviewProSuggestion | ReviewPublicSuggestion;
+
+export interface ReviewSuggestionsResponse {
+  recent: ReviewProSuggestion[];
+  highMmr: ReviewPublicSuggestion[];
+  count: number;
+  source: string;
+  cacheAge: number | null;
+  error?: string;
+}
+
+/** 复盘页推荐比赛（近期职业 + 高分路人），仅 OpenDota，不调用 DeepSeek */
+export const fetchReviewSuggestions = async (
+  lang: Language = 'zh',
+  limit: number = 6,
+): Promise<ReviewSuggestionsResponse> => {
+  try {
+    const params = new URLSearchParams({ lang, limit: String(limit) });
+    const response = await fetch(`/api/review/suggestions?${params}`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || (lang === 'zh' ? '加载推荐失败' : 'Failed to load suggestions'));
+    }
+    return {
+      recent: Array.isArray(data.recent) ? data.recent : [],
+      highMmr: Array.isArray(data.highMmr) ? data.highMmr : [],
+      count: data.count ?? 0,
+      source: data.source || 'opendota',
+      cacheAge: data.cacheAge ?? null,
+      error: data.error,
+    };
+  } catch (error) {
+    console.error('Review suggestions fetch error:', error);
+    const message = error instanceof Error ? error.message : undefined;
+    return {
+      recent: [],
+      highMmr: [],
+      count: 0,
+      source: 'error',
+      cacheAge: null,
+      error: message || (lang === 'zh' ? '暂时无法加载推荐比赛' : 'Failed to load match suggestions'),
+    };
+  }
+};

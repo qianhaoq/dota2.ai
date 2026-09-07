@@ -44,6 +44,9 @@ const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for matchup data
 const CONSTANTS_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours for constants (patch data changes rarely)
 const MATCHES_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for pro/public matches
+const REVIEW_SUGGESTIONS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for coach review suggestions
+const REVIEW_SUGGESTIONS_DEFAULT_LIMIT = 6;
+const REVIEW_SUGGESTIONS_MAX_LIMIT = 6;
 const MATCH_DETAIL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for single match review
 const MATCH_DETAIL_CACHE_MAX = 50;
 
@@ -62,6 +65,8 @@ const cache = {
   // Pro/Public matches
   proMatches: { data: null, timestamp: 0 },
   publicMatches: { data: null, timestamp: 0 },
+  publicMatchesHighMmr: { data: null, timestamp: 0 },
+  reviewSuggestions: { data: {} },
   // Single match detail for replay review
   matchDetails: new Map(), // Map<matchId, { data, timestamp }>
 };
@@ -307,43 +312,127 @@ async function getAbilityConstants() {
 
 // ============ Pro/Public Matches Fetchers ============
 
-async function getProMatches(limit = 20) {
+function normalizeReviewLang(lang) {
+  return lang === 'en' ? 'en' : 'zh';
+}
+
+async function getProMatches(limit = 20, options = {}) {
+  const { forceRefresh = false } = options;
   const now = Date.now();
-  if (cache.proMatches.data && (now - cache.proMatches.timestamp) < MATCHES_CACHE_TTL_MS) {
-    return cache.proMatches.data;
+  if (
+    !forceRefresh
+    && cache.proMatches.data
+    && (now - cache.proMatches.timestamp) < MATCHES_CACHE_TTL_MS
+  ) {
+    return cache.proMatches.data.slice(0, limit);
   }
   try {
     const data = await fetchWithRetry(`${OPENDOTA_API}/proMatches`);
-    const matches = Array.isArray(data) ? data.slice(0, limit) : [];
+    const matches = Array.isArray(data) ? data : [];
     cache.proMatches = { data: matches, timestamp: now };
     console.log(`Loaded ${matches.length} pro matches from OpenDota`);
-    return matches;
+    return matches.slice(0, limit);
   } catch (err) {
     console.error('Failed to fetch pro matches:', err.message);
-    return cache.proMatches.data || [];
+    return cache.proMatches.data?.slice(0, limit) || [];
   }
 }
 
-async function getPublicMatches(limit = 50, mmrBracket = null) {
+async function getPublicMatches(limit = 50, options = {}) {
+  const { highMmr = false, forceRefresh = false } = options;
+  const cacheKey = highMmr ? 'publicMatchesHighMmr' : 'publicMatches';
   const now = Date.now();
-  
-  if (cache.publicMatches.data && (now - cache.publicMatches.timestamp) < MATCHES_CACHE_TTL_MS) {
-    return cache.publicMatches.data.slice(0, limit);
+
+  const readCached = () => cache[cacheKey].data?.slice(0, limit) || [];
+
+  if (
+    !forceRefresh
+    && cache[cacheKey].data
+    && (now - cache[cacheKey].timestamp) < MATCHES_CACHE_TTL_MS
+  ) {
+    return readCached();
   }
   try {
-    let url = `${OPENDOTA_API}/publicMatches`;
-    if (mmrBracket) {
-      url += `?mmr_ascending=${mmrBracket}`;
-    }
+    const url = highMmr
+      ? `${OPENDOTA_API}/publicMatches?mmr_descending=1`
+      : `${OPENDOTA_API}/publicMatches`;
     const data = await fetchWithRetry(url);
     const matches = Array.isArray(data) ? data : [];
-    cache.publicMatches = { data: matches, timestamp: now };
-    console.log(`Loaded ${matches.length} public matches from OpenDota`);
+    cache[cacheKey] = { data: matches, timestamp: now };
+    console.log(`Loaded ${matches.length} public matches from OpenDota${highMmr ? ' (high MMR)' : ''}`);
     return matches.slice(0, limit);
   } catch (err) {
     console.error('Failed to fetch public matches:', err.message);
-    return cache.publicMatches.data?.slice(0, limit) || [];
+    return readCached();
   }
+}
+
+function parseTeamHeroIds(teamData) {
+  if (!teamData) return [];
+  if (Array.isArray(teamData)) {
+    return teamData.map((id) => parseInt(id, 10)).filter((id) => !Number.isNaN(id) && id > 0);
+  }
+  if (typeof teamData === 'string') {
+    return teamData.split(',').map((id) => parseInt(id.trim(), 10)).filter((id) => !Number.isNaN(id) && id > 0);
+  }
+  return [];
+}
+
+function filterPublicMatchesWithHeroes(matches) {
+  return matches.filter((match) => {
+    const radiantIds = parseTeamHeroIds(match.radiant_team);
+    const direIds = parseTeamHeroIds(match.dire_team);
+    return radiantIds.length > 0 || direIds.length > 0;
+  });
+}
+
+async function getReviewMatchSuggestions(lang = 'zh', limit = REVIEW_SUGGESTIONS_DEFAULT_LIMIT) {
+  const normalizedLang = normalizeReviewLang(lang);
+  const cappedLimit = Math.min(Math.max(limit, 1), REVIEW_SUGGESTIONS_MAX_LIMIT);
+  const cacheKey = `${normalizedLang}:${cappedLimit}`;
+  const now = Date.now();
+
+  const cached = cache.reviewSuggestions.data[cacheKey];
+  if (cached && (now - cached.timestamp) < REVIEW_SUGGESTIONS_CACHE_TTL_MS) {
+    return {
+      ...cached.payload,
+      cacheAge: Math.round((now - cached.timestamp) / 1000),
+    };
+  }
+
+  const [proMatches, publicMatches, heroConstants] = await Promise.all([
+    getProMatches(100, { forceRefresh: true }),
+    getPublicMatches(100, { highMmr: true, forceRefresh: true }),
+    getHeroConstants(),
+  ]);
+
+  const recent = (proMatches || [])
+    .filter((match) => match.match_id && (match.duration || 0) > 0)
+    .slice(0, cappedLimit)
+    .map((match) => ({
+      ...formatProMatch(match, heroConstants, normalizedLang),
+      kind: 'recent',
+    }));
+
+  const highMmr = filterPublicMatchesWithHeroes(publicMatches || [])
+    .filter((match) => match.match_id && (match.duration || 0) > 0)
+    .slice(0, cappedLimit)
+    .map((match) => ({
+      ...formatPublicMatch(match, heroConstants, normalizedLang),
+      kind: 'highMmr',
+    }));
+
+  const payload = {
+    recent,
+    highMmr,
+    count: recent.length + highMmr.length,
+    source: 'opendota',
+    cacheAge: 0,
+  };
+
+  cache.reviewSuggestions.data[cacheKey] = { payload, timestamp: now };
+
+  return payload;
 }
 
 function formatProMatch(match, heroConstants, lang = 'zh') {
@@ -2072,6 +2161,29 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400) {
   }
   return res.status(status).json({ error: errorMsg });
 }
+
+app.get('/api/review/suggestions', async (req, res) => {
+  try {
+    const lang = normalizeReviewLang(req.query.lang || 'zh');
+    const limit = Math.min(
+      parseInt(req.query.limit, 10) || REVIEW_SUGGESTIONS_DEFAULT_LIMIT,
+      REVIEW_SUGGESTIONS_MAX_LIMIT,
+    );
+    const suggestions = await getReviewMatchSuggestions(lang, limit);
+    res.json(suggestions);
+  } catch (err) {
+    console.error('Review suggestions error:', err);
+    const lang = normalizeReviewLang(req.query.lang || 'zh');
+    res.json({
+      recent: [],
+      highMmr: [],
+      count: 0,
+      source: 'opendota',
+      cacheAge: null,
+      error: lang === 'zh' ? '暂时无法加载推荐比赛' : 'Failed to load match suggestions',
+    });
+  }
+});
 
 app.get('/api/review/:matchId', handleMatchReviewFacts);
 app.post('/api/review/:matchId', handleMatchReview);

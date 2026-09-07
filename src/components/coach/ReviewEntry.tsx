@@ -5,6 +5,7 @@ import { Film, Search, ChevronDown, Loader2 } from 'lucide-react';
 import { parseMatchId } from '../../utils/parseMatchId';
 import { isHeroInMatch, rosterFromMatchFact } from '../../utils/reviewRoster';
 import { fetchMatchFacts } from '../../services/dotaApiService';
+import ReviewSuggestions from './ReviewSuggestions';
 
 interface ReviewEntryProps {
   lang: Language;
@@ -84,17 +85,21 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     setHeroId('');
   }, [factsReady, matchFact, practiceHero?.id, heroId]);
 
-  const handleFetchFacts = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!parsedId || factsLoading || isLoading) return;
+  const handleFetchFacts = async (e?: React.FormEvent, overrideMatchId?: number) => {
+    e?.preventDefault();
+    const targetId = overrideMatchId ?? parsedId;
+    if (!targetId || factsLoading || isLoading) return;
     const requestId = factsRequestIdRef.current + 1;
     factsRequestIdRef.current = requestId;
     setFactsLoading(true);
     setFactsError(null);
     setMatchFact(null);
     setHeroId('');
+    if (overrideMatchId) {
+      setMatchInput(String(overrideMatchId));
+    }
     try {
-      const fact = await fetchMatchFacts(parsedId, lang);
+      const fact = await fetchMatchFacts(targetId, lang);
       if (factsRequestIdRef.current !== requestId) return;
       setMatchFact(fact);
     } catch (err) {
@@ -106,6 +111,11 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
         setFactsLoading(false);
       }
     }
+  };
+
+  const handleSuggestionSelect = (matchId: number) => {
+    if (factsLoading || isLoading) return;
+    void handleFetchFacts(undefined, matchId);
   };
 
   const handleStart = (e: React.FormEvent) => {
@@ -154,7 +164,13 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
       {expanded && (
         <div className={`mt-2 p-3 rounded-xl border border-k3-border-subtle bg-k3-surface space-y-3 ${density === 'compact' ? 'max-h-[46vh] overflow-y-auto custom-scrollbar' : ''}`}>
           {!factsReady ? (
-            <form onSubmit={handleFetchFacts} className="space-y-3">
+            <form onSubmit={(e) => handleFetchFacts(e)} className="space-y-3">
+              <ReviewSuggestions
+                lang={lang}
+                disabled={factsLoading || isLoading}
+                selectedMatchId={parsedId}
+                onSelect={handleSuggestionSelect}
+              />
               <p className="text-[11px] text-k3-text-tertiary">{t.subtitle}</p>
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-k3-text-tertiary" />
