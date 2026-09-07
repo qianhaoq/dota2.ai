@@ -1,5 +1,6 @@
 import { Hero, Language } from '../types';
 import type { MatchFact } from '../types/matchReview';
+import type { ReviewCardsPayload } from '../types/reviewCards';
 import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
 
 function cancelledMessage(lang: Language): string {
@@ -506,6 +507,7 @@ export const fetchPlaybookStream = (
 
 export interface ReviewStreamCallbacks {
   onData: (matchFact: MatchFact) => void;
+  onReviewCards?: (cards: ReviewCardsPayload) => void;
   onChunk: (text: string) => void;
   onComplete: (grounded: boolean) => void;
   onError: (error: string) => void;
@@ -580,6 +582,9 @@ export const fetchMatchReviewStream = (
           if (parsed.matchFact && callbacks?.onData) {
             callbacks.onData(parsed.matchFact);
             isGrounded = parsed.grounded ?? true;
+          }
+          if (parsed.reviewCards && callbacks?.onReviewCards) {
+            callbacks.onReviewCards(parsed.reviewCards);
           }
           if (parsed.text && callbacks?.onChunk) {
             callbacks.onChunk(parsed.text);

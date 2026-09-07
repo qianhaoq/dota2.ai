@@ -175,6 +175,29 @@ describe('messageToBlocks', () => {
     expect(blocks).toEqual([]);
   });
 
+  it('maps reviewCards to reviewInsight blocks (Fact→Insight→Drill)', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      reviewCards: {
+        match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
+        phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
+        primary_mistake: { category: 'fight_timing', categoryLabel: '团战时机', headline: '开团过早', explanation: '解释', evidence: [] },
+        key_moments: [
+          { timestamp: 48, timestampLabel: '0:48', phase: 'lane', headline: '一血', why: '原因', evidence: [] },
+          { timestamp: 1310, timestampLabel: '21:50', phase: 'mid', headline: '推塔', why: '原因', evidence: [] },
+          { timestamp: 2817, timestampLabel: '46:57', phase: 'late', headline: '肉山', why: '原因', evidence: [] },
+        ],
+        drill: { duration: '15 分钟', title: '练一件事', steps: ['步骤1'] },
+        followups: ['展开这场团'],
+      },
+    }), 'zh');
+    expect(blocks.some((b) => b.type === 'reviewInsight' && b.reviewCardKind === 'primary_mistake')).toBe(true);
+    expect(blocks.some((b) => b.reviewCardKind === 'key_moments')).toBe(true);
+    expect(blocks.some((b) => b.reviewCardKind === 'drill')).toBe(true);
+    expect(blocks.filter((b) => b.type === 'review')).toHaveLength(0);
+  });
+
   it('does not leak inline markdown asterisks in review POV (en)', () => {
     const blocks = messageToBlocks(baseCoach({
       action: 'review',

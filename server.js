@@ -7,6 +7,12 @@ import { validateReviewPostRequest } from './lib/matchReview/reviewRequestGuard.
 import { buildHeroNamesMap } from './lib/matchReview/heroNamesMap.js';
 import { isTerminalStreamFinish } from './lib/matchReview/reviewStream.js';
 import {
+  buildDeterministicReviewCards,
+  buildFallbackAiCards,
+  buildReviewCardsPromptFacts,
+  parseAiReviewCards,
+} from './lib/matchReview/reviewCards.js';
+import {
   REVIEW_HIGH_MMR_MIN_RANK_TIER,
   resolvePublicMatchSkill,
   selectReviewHighMmrPublicMatches,
@@ -2314,6 +2320,8 @@ async function handleMatchReview(req, res) {
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
         sendReviewSse(res, { matchFact, grounded: isGrounded });
+        const fallbackCards = buildFallbackAiCards(matchFact, lang);
+        sendReviewSse(res, { reviewCards: fallbackCards, grounded: isGrounded });
         endReviewSse(res, { error: apiKeyError });
         return;
       }
@@ -2321,49 +2329,88 @@ async function handleMatchReview(req, res) {
     }
 
     const groundedContext = matchFactToPrompt(matchFact, lang);
+    const evidenceFacts = buildReviewCardsPromptFacts(matchFact, lang);
     const focusName = matchFact.focusLens?.displayName
       || (heroId ? `Hero#${heroId}` : (isZh ? '本局' : 'this match'));
 
-    const systemPrompt = isZh
-      ? `你是一位职业 DOTA2 教练，帮玩家复盘比赛并给出「如何赢」的实战建议。
+    const deterministicCards = buildDeterministicReviewCards(matchFact, lang);
+    const { _catalog, ...initialReviewCards } = deterministicCards;
+
+    const systemPrompt = followUp
+      ? (isZh
+        ? `你是大魔导师拉比克，以职业教练口吻帮玩家复盘 DOTA2 比赛。
 
 【硬性规则】
-1. 只能使用提供的 MatchFact 数据，禁止引用 OpenDota 原始 lane/lane_role 字段
-2. 分路信息以「根据录像站位推断」的聚类结果为准
-3. 禁止编造击杀、经济、出装等未提供的数据
-4. 针对玩家所选英雄给出可执行建议：对线、节奏、团战、装备思路
-5. 中文回答，语气专业但易懂
+1. 只能使用 MatchFact 数据，禁止引用 OpenDota 原始 lane/lane_role
+2. 分路以录像站位聚类为准
+3. 禁止编造数据
+4. 中文回答，简洁有力
 
 【输出格式 — 使用 ## 标题】
-## 摘要
-## 真实分路
-## 经济节奏
-## 时间线解读
-## 你的镜头
-## 如何赢`
-      : `You are a pro Dota 2 coach reviewing a match for "how to win" advice.
+## 回答
+## 建议`
+        : `You are Rubick, a pro Dota 2 coach.
 
 Rules:
-1. Use ONLY the provided MatchFact data — never OpenDota raw lane/lane_role
-2. Lane assignments are from replay positioning clusters
-3. Do not invent kills, economy, or items not in the data
-4. Give actionable advice for the selected hero
+1. Use ONLY MatchFact data — never OpenDota raw lane/lane_role
+2. Lanes from replay positioning clusters
+3. Do not invent data
 
 Format with ## headings:
-## Summary
-## True lanes
-## Economy
-## Timeline
-## Your POV
-## How to win`;
+## Answer
+## Tip`)
+      : (isZh
+        ? `你是大魔导师拉比克，帮玩家做赛后复盘。只输出一个 JSON 对象，不要 markdown 代码块外的文字。
+
+【硬性规则】
+1. 只能使用 MatchFact 与证据字段，禁止编造
+2. 分路以录像站位聚类为准，禁止引用 OpenDota lane/lane_role
+3. 只指出一个主要失误（category 五选一）
+4. 3–5 个关键时刻必须带 timestamp（秒）且引用 evidence factKey
+5. 一个具体、可执行的下一局 drill（限时）
+6. mentor_note 用拉比克口吻，2–3 句
+
+【JSON 结构】
+{
+  "primary_mistake": {
+    "category": "fight_timing|itemisation|vision|positioning|farm_route",
+    "headline": "一句话标题",
+    "explanation": "2–4 句解释",
+    "evidence": [{"factKey": "kda"}, {"factKey": "gold_lead_20"}]
+  },
+  "key_moments": [
+    {"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}
+  ],
+  "drill": {"duration": "15 分钟", "title": "...", "steps": ["...", "..."]},
+  "followups": ["展开这场团", "为什么不该出羊刀", "下一局只练一件事"],
+  "mentor_note": "拉比克口吻结语"
+}`
+        : `You are Rubick reviewing a Dota 2 match. Output ONLY one JSON object, no prose outside JSON.
+
+Rules:
+1. Use ONLY MatchFact and evidence factKeys — no invented data
+2. Lanes from replay positioning clusters
+3. One primary mistake (category enum)
+4. 3–5 key_moments with timestamp (seconds) and evidence factKeys
+5. One time-boxed drill
+6. mentor_note in Rubick voice, 2–3 sentences
+
+JSON shape:
+{
+  "primary_mistake": {"category": "fight_timing|itemisation|vision|positioning|farm_route", "headline": "...", "explanation": "...", "evidence": [{"factKey": "kda"}]},
+  "key_moments": [{"timestamp": 563, "phase": "lane|mid|late", "headline": "...", "why": "...", "evidence": [{"factKey": "timeline_0"}]}],
+  "drill": {"duration": "15 min", "title": "...", "steps": ["..."]},
+  "followups": ["Break down that fight", "Why not Scythe?", "One thing to practice next"],
+  "mentor_note": "..."
+}`);
 
     const userPrompt = followUp
       ? (isZh
-        ? `基于以下比赛数据回答追问（聚焦 ${focusName}）：${followUp}\n\n${groundedContext}`
-        : `Answer this follow-up about ${focusName}: ${followUp}\n\n${groundedContext}`)
+        ? `基于以下比赛数据回答追问（聚焦 ${focusName}）：${followUp}\n\n${groundedContext}\n\n${evidenceFacts}`
+        : `Answer this follow-up about ${focusName}: ${followUp}\n\n${groundedContext}\n\n${evidenceFacts}`)
       : (isZh
-        ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}`
-        : `Review this match, focus hero: ${focusName}\n\n${groundedContext}`);
+        ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}\n\n${evidenceFacts}`
+        : `Review this match, focus hero: ${focusName}\n\n${groundedContext}\n\n${evidenceFacts}`);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -2371,6 +2418,7 @@ Format with ## headings:
     res.flushHeaders?.();
 
     sendReviewSse(res, { matchFact, grounded: isGrounded });
+    sendReviewSse(res, { reviewCards: initialReviewCards, grounded: isGrounded });
 
     try {
       stream = await openai.chat.completions.create({
@@ -2379,7 +2427,7 @@ Format with ## headings:
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        stream: true,
+        stream: Boolean(followUp),
       }, {
         signal: abortController.signal,
       });
@@ -2389,25 +2437,47 @@ Format with ## headings:
         return;
       }
 
-      let finishReason = null;
-      for await (const chunk of stream) {
-        if (clientGone || res.writableEnded) break;
-        const choice = chunk.choices[0];
-        const content = choice?.delta?.content;
-        if (content) {
-          sendReviewSse(res, { text: content, grounded: isGrounded });
+      if (followUp) {
+        let finishReason = null;
+        for await (const chunk of stream) {
+          if (clientGone || res.writableEnded) break;
+          const choice = chunk.choices[0];
+          const content = choice?.delta?.content;
+          if (content) {
+            sendReviewSse(res, { text: content, grounded: isGrounded });
+          }
+          if (choice?.finish_reason) {
+            finishReason = choice.finish_reason;
+          }
         }
-        if (choice?.finish_reason) {
-          finishReason = choice.finish_reason;
+        if (!res.writableEnded) {
+          if (isTerminalStreamFinish(finishReason)) {
+            endReviewSse(res);
+          } else {
+            endReviewSse(res, {
+              error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
+            });
+          }
         }
-      }
-      if (!res.writableEnded) {
-        if (isTerminalStreamFinish(finishReason)) {
-          endReviewSse(res);
-        } else {
-          endReviewSse(res, {
-            error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
-          });
+      } else {
+        const choice = stream.choices?.[0];
+        const fullText = choice?.message?.content || '';
+        const finishReason = choice?.finish_reason;
+        let reviewCards = parseAiReviewCards(fullText, matchFact, lang);
+        const hasAiParts = reviewCards.primary_mistake
+          && reviewCards.key_moments?.length >= 3;
+        if (!hasAiParts) {
+          reviewCards = buildFallbackAiCards(matchFact, lang);
+        }
+        if (!res.writableEnded) {
+          sendReviewSse(res, { reviewCards, grounded: isGrounded });
+          if (isTerminalStreamFinish(finishReason)) {
+            endReviewSse(res);
+          } else {
+            endReviewSse(res, {
+              error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
+            });
+          }
         }
       }
     } catch (streamErr) {

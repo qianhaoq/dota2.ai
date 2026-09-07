@@ -216,6 +216,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       matchId, lang, heroId ?? practiceHero?.id, followUp,
       {
         onData: (matchFact) => { updateCoachMessage(msgId, { matchFact }); },
+        onReviewCards: (reviewCards) => { updateCoachMessage(msgId, { reviewCards }); },
         onChunk: (text) => {
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
@@ -395,6 +396,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                 onUndoDismiss={undoDismissSession}
                 mentorName={mentorName}
                 scrollContainerRef={scrollContainerRef}
+                onReviewFollowUp={handleReviewFollowUp}
               />
             </div>
           )}

@@ -22,6 +22,7 @@ interface CoachCanvasProps {
   onUndoDismiss: () => void;
   mentorName?: string;
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
+  onReviewFollowUp?: (question: string) => void;
 }
 
 const UndoStrip: React.FC<{
@@ -60,6 +61,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
   onUndoDismiss,
   mentorName,
   scrollContainerRef,
+  onReviewFollowUp,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<HTMLDivElement>(null);
@@ -181,6 +183,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
                 mentorName={mentorName}
                 expanded
                 onDismiss={() => onDismissSession(session.id)}
+                onReviewFollowUp={onReviewFollowUp}
               />
             </div>
           );

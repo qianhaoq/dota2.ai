@@ -1,6 +1,7 @@
 import { A2UIAction, A2UIBlock, Language } from '../types';
 import type { CoachMessage, CoachSession } from '../components/coach/coachMessage';
 import type { MatchFact } from '../types/matchReview';
+import type { ReviewCardsPayload } from '../types/reviewCards';
 import { formatObjectiveLabel } from '../../lib/matchReview/objectiveLabels.js';
 import { selectTimelineForDisplay } from '../../lib/matchReview/matchFacts.js';
 
@@ -75,6 +76,87 @@ function suggestionActions(message: CoachMessage, lang: Language): A2UIAction[] 
       heroId: s.id,
     };
   });
+}
+
+function reviewInsightBlocks(message: CoachMessage, lang: Language): A2UIBlock[] {
+  const cards = message.reviewCards as ReviewCardsPayload | null | undefined;
+  if (!cards) return [];
+
+  const t = labels(lang);
+  const blocks: A2UIBlock[] = [];
+
+  if (cards.match_summary) {
+    blocks.push({
+      id: `${message.id}-ri-summary`,
+      type: 'reviewInsight',
+      title: t.reviewSummary,
+      reviewCardKind: 'match_summary',
+      reviewCards: cards,
+    });
+  }
+
+  if (cards.phases && cards.phases.length > 0) {
+    blocks.push({
+      id: `${message.id}-ri-phases`,
+      type: 'reviewInsight',
+      title: lang === 'zh' ? '阶段节奏' : 'Phase spine',
+      reviewCardKind: 'phases',
+      reviewCards: cards,
+    });
+  }
+
+  if (cards.primary_mistake) {
+    blocks.push({
+      id: `${message.id}-ri-mistake`,
+      type: 'reviewInsight',
+      title: lang === 'zh' ? '本场主要失误' : 'Primary mistake',
+      reviewCardKind: 'primary_mistake',
+      reviewCards: cards,
+    });
+  }
+
+  if (cards.key_moments && cards.key_moments.length > 0) {
+    blocks.push({
+      id: `${message.id}-ri-moments`,
+      type: 'reviewInsight',
+      title: lang === 'zh' ? '关键节点' : 'Key moments',
+      reviewCardKind: 'key_moments',
+      reviewCards: cards,
+    });
+  }
+
+  if (cards.drill) {
+    blocks.push({
+      id: `${message.id}-ri-drill`,
+      type: 'reviewInsight',
+      title: lang === 'zh' ? '下一局练习' : 'Next-game drill',
+      reviewCardKind: 'drill',
+      reviewCards: cards,
+    });
+  }
+
+  if (cards.followups && cards.followups.length > 0 && !message.isStreaming) {
+    blocks.push({
+      id: `${message.id}-ri-followups`,
+      type: 'reviewInsight',
+      title: lang === 'zh' ? '继续问拉比克' : 'Ask Rubick',
+      reviewCardKind: 'followups',
+      reviewCards: cards,
+    });
+  }
+
+  if (cards.mentor_note && !message.isStreaming) {
+    blocks.push({
+      id: `${message.id}-ri-mentor`,
+      type: 'reviewInsight',
+      title: lang === 'zh' ? '拉比克说' : 'From Rubick',
+      reviewCardKind: 'mentor_note',
+      reviewCards: cards,
+      markdown: cards.mentor_note,
+    });
+  }
+
+  return blocks;
 }
 
 function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnType<typeof labels>): A2UIBlock[] {
@@ -182,7 +264,11 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A
   }
 
   if (message.action === 'review' && message.matchFact) {
-    blocks.push(...reviewSectionBlocks(message, lang, t));
+    if (message.reviewCards) {
+      blocks.push(...reviewInsightBlocks(message, lang));
+    } else {
+      blocks.push(...reviewSectionBlocks(message, lang, t));
+    }
   }
 
   const matchups = message.matchupData;
@@ -227,7 +313,7 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A
   const hasTitled = sections.some((s) => Boolean(s.title));
   const hasStructured = blocks.length > 0;
 
-  const reviewHowToWin = message.action === 'review';
+  const reviewHowToWin = message.action === 'review' && !message.reviewCards;
   sections.forEach((section, index) => {
     if (hasStructured && !section.title && section.markdown.length < 48) {
       return;
