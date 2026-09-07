@@ -11,6 +11,7 @@ import {
   buildFallbackAiCards,
   buildReviewCardsPromptFacts,
   parseAiReviewCards,
+  isReviewAiCardsComplete,
 } from './lib/matchReview/reviewCards.js';
 import {
   REVIEW_HIGH_MMR_MIN_RANK_TIER,
@@ -2322,7 +2323,7 @@ async function handleMatchReview(req, res) {
         sendReviewSse(res, { matchFact, grounded: isGrounded });
         const fallbackCards = buildFallbackAiCards(matchFact, lang);
         sendReviewSse(res, { reviewCards: fallbackCards, grounded: isGrounded });
-        endReviewSse(res, { error: apiKeyError });
+        endReviewSse(res);
         return;
       }
       return res.json({ matchFact, grounded: isGrounded, error: apiKeyError });
@@ -2464,9 +2465,7 @@ JSON shape:
         const fullText = choice?.message?.content || '';
         const finishReason = choice?.finish_reason;
         let reviewCards = parseAiReviewCards(fullText, matchFact, lang);
-        const hasAiParts = reviewCards.primary_mistake
-          && reviewCards.key_moments?.length >= 3;
-        if (!hasAiParts) {
+        if (!isReviewAiCardsComplete(reviewCards)) {
           reviewCards = buildFallbackAiCards(matchFact, lang);
         }
         if (!res.writableEnded) {

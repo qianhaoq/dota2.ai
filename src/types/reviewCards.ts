@@ -17,6 +17,7 @@ export interface ReviewEvidence {
 
 export interface MatchSummaryCard {
   matchId: number;
+  heroId?: number;
   durationFormatted: string;
   heroName: string;
   kda: string;

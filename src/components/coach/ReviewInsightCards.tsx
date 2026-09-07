@@ -13,7 +13,7 @@ import {
 interface ReviewInsightCardsProps {
   block: A2UIBlock;
   lang: Language;
-  onFollowUp?: (question: string) => void;
+  onFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
 }
 
 const MISTAKE_COLORS: Record<string, string> = {
@@ -243,14 +243,21 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
   }
 
   if (kind === 'followups' && cards.followups) {
+    const matchId = cards.match_summary?.matchId;
+    const heroId = cards.match_summary?.heroId;
+    const canFollowUp = Boolean(onFollowUp && matchId);
+
     return (
       <div className="flex flex-wrap gap-2">
         {cards.followups.map((chip) => (
           <button
             key={chip}
             type="button"
-            onClick={() => onFollowUp?.(chip)}
-            disabled={!onFollowUp}
+            onClick={() => {
+              if (!canFollowUp || matchId == null) return;
+              onFollowUp?.(chip, { matchId, heroId });
+            }}
+            disabled={!canFollowUp}
             className="text-xs px-3 py-2 rounded-full border border-k3-border-subtle bg-k3-elevated/40 text-k3-text-secondary hover:text-k3-text-primary hover:border-k3-text-tertiary transition-colors touch-manipulation min-h-[40px] disabled:opacity-50"
           >
             {chip}

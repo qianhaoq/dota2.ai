@@ -234,8 +234,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     );
   }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream]);
 
-  const handleReviewFollowUp = useCallback((question: string) => {
-    const ctx = activeReviewRef.current;
+  const handleReviewFollowUp = useCallback((
+    question: string,
+    context?: { matchId: number; heroId?: number },
+  ) => {
+    const ctx = context ?? activeReviewRef.current;
     if (!ctx) return;
     handleReview(ctx.matchId, ctx.heroId, question);
   }, [handleReview]);

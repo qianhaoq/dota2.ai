@@ -18,7 +18,7 @@ interface ResultCardProps {
   mentorName?: string;
   expanded?: boolean;
   onDismiss?: () => void;
-  onReviewFollowUp?: (question: string) => void;
+  onReviewFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
 }
 
 const TierSkeleton: React.FC = () => (
@@ -354,7 +354,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
               {block.reviewSection === 'lanes' && (
                 <p className="text-[10px] text-k3-text-tertiary mb-2 italic">{t.laneInference}</p>
               )}
-              {block.markdown && (
+              {block.markdown && !(isReviewInsight && block.reviewCardKind === 'mentor_note') && (
                 <MarkdownBody
                   text={block.markdown}
                   streaming={Boolean(message.isStreaming && block.id === lastTextId)}
@@ -368,7 +368,11 @@ const ResultCard: React.FC<ResultCardProps> = ({
           }
 
           const long = Boolean(block.markdown && block.markdown.length >= 900);
-          const open = isSectionOpen(block.id, block.markdown, isReview ? reviewDefaultOpen : undefined);
+          const open = isSectionOpen(
+            block.id,
+            block.markdown,
+            (isReview || isReviewInsight) ? reviewDefaultOpen : undefined,
+          );
 
           return (
             <section key={block.id} className={`min-w-0 ${isReview || isReviewInsight ? 'rounded-lg border border-k3-border-subtle/80 bg-k3-elevated/20' : ''}`}>
