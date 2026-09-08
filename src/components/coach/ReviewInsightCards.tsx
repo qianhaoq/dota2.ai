@@ -20,6 +20,8 @@ interface ReviewInsightCardsProps {
   onFollowUp?: (question: string, context: ReviewFollowUpContext) => void;
   onComposeFollowUp?: (text: string, context: ReviewFollowUpContext) => void;
   followUpContext?: ReviewFollowUpContext;
+  /** When false, hide drill / chip follow-up CTAs (e.g. AI unavailable fallback). */
+  followUpActionsEnabled?: boolean;
 }
 
 const MISTAKE_COLORS: Record<string, string> = {
@@ -193,6 +195,7 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
   onFollowUp,
   onComposeFollowUp,
   followUpContext,
+  followUpActionsEnabled = true,
 }) => {
   const cards = block.reviewCards as ReviewCardsPayload | undefined;
   const kind = block.reviewCardKind;
@@ -351,7 +354,7 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
           <p className="text-[10px] text-k3-text-tertiary italic flex-1 min-w-0">
             {lang === 'zh' ? '事实 → 洞察 → 练习' : 'Fact → Insight → Drill'}
           </p>
-          {onFollowUp && drillContext && (
+          {followUpActionsEnabled && onFollowUp && drillContext && (
             <button
               type="button"
               onClick={() => onFollowUp(
@@ -374,7 +377,7 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
     const chipContext: ReviewFollowUpContext | undefined = matchId != null
       ? { matchId, heroId }
       : undefined;
-    const canFollowUp = Boolean(onFollowUp && chipContext);
+    const canFollowUp = followUpActionsEnabled && Boolean(onFollowUp && chipContext);
     const chipClass = variant === 'chips'
       ? 'text-xs px-3 py-2 rounded-full border border-k3-border-subtle bg-k3-elevated/60 text-k3-text-secondary hover:text-k3-text-primary hover:border-k3-radiant/30 hover:bg-k3-radiant/5 transition-colors touch-manipulation min-h-[40px]'
       : 'text-xs px-3 py-2 rounded-full border border-k3-border-subtle bg-k3-elevated/40 text-k3-text-secondary hover:text-k3-text-primary hover:border-k3-text-tertiary transition-colors touch-manipulation min-h-[40px] disabled:opacity-50';
@@ -393,7 +396,7 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
               if (!canFollowUp || !chipContext) return;
               onFollowUp?.(chip, chipContext);
             }}
-            disabled={(!onComposeFollowUp || !chipContext) && !canFollowUp}
+            disabled={!onComposeFollowUp && !canFollowUp}
             className={chipClass}
           >
             {chip}

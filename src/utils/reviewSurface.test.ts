@@ -5,6 +5,10 @@ import {
   reviewSurfaceProgressLabel,
   isPrimaryReviewReadyForFollowUp,
   reviewNoticeBlocks,
+  reviewFactSpineBlocks,
+  findStreamingReviewFollowUp,
+  isReviewFollowUpAllowed,
+  isReviewAiFollowUpAvailable,
 } from './reviewSurface';
 import type { CoachSession } from '../components/coach/coachMessage';
 
@@ -102,5 +106,83 @@ describe('reviewNoticeBlocks', () => {
     ];
     expect(reviewNoticeBlocks(blocks)).toHaveLength(1);
     expect(reviewNoticeBlocks(blocks)[0].markdown).toBe('AI unavailable');
+  });
+});
+
+describe('reviewFactSpineBlocks', () => {
+  it('returns review section blocks only', () => {
+    const blocks = [
+      { id: 'a', type: 'review' as const, reviewSection: 'summary' as const, markdown: 'x' },
+      { id: 'b', type: 'reviewInsight' as const, reviewCardKind: 'match_summary' as const },
+    ];
+    expect(reviewFactSpineBlocks(blocks)).toHaveLength(1);
+    expect(reviewFactSpineBlocks(blocks)[0].id).toBe('a');
+  });
+});
+
+describe('findStreamingReviewFollowUp', () => {
+  it('finds in-flight follow-up session', () => {
+    const sessions = [
+      reviewSession({ reviewCards: { drill: { title: 'd', steps: [], duration: '5m' }, primary_mistake: { headline: 'x' } as never, match_summary: { matchId: 1 } as never } }, 'primary'),
+      reviewSession({ reviewFollowUp: true, isStreaming: true, content: 'partial' }, 'fu'),
+    ];
+    expect(findStreamingReviewFollowUp(sessions)?.id).toBe('fu');
+  });
+});
+
+describe('isReviewFollowUpAllowed', () => {
+  it('blocks while a follow-up is streaming', () => {
+    const sessions = [
+      reviewSession({
+        reviewCards: {
+          match_summary: { matchId: 1 } as never,
+          primary_mistake: { headline: 'x' } as never,
+          drill: { title: 'd', steps: [], duration: '5m' },
+        },
+      }, 'primary'),
+      reviewSession({ reviewFollowUp: true, isStreaming: true, content: '…' }, 'fu'),
+    ];
+    expect(isReviewFollowUpAllowed(sessions)).toBe(false);
+  });
+
+  it('allows when primary complete and no streaming follow-up', () => {
+    const sessions = [
+      reviewSession({
+        reviewCards: {
+          match_summary: { matchId: 1 } as never,
+          primary_mistake: { headline: 'x' } as never,
+          drill: { title: 'd', steps: [], duration: '5m' },
+          followups: ['q'],
+        },
+      }),
+    ];
+    expect(isReviewFollowUpAllowed(sessions)).toBe(true);
+  });
+});
+
+describe('isReviewAiFollowUpAvailable', () => {
+  it('returns false when review notice is present', () => {
+    const message = {
+      id: '1', type: 'coach' as const, action: 'review' as const, content: '',
+      reviewCards: { followups: ['a'], drill: { title: 'd', steps: [], duration: '5m' }, primary_mistake: { headline: 'x' } as never, match_summary: { matchId: 1 } as never },
+    };
+    const notices = [{ id: 'c1-review-notice', type: 'markdown' as const, markdown: 'AI unavailable' }];
+    expect(isReviewAiFollowUpAvailable(message, notices)).toBe(false);
+  });
+
+  it('returns false when followups array is empty', () => {
+    const message = {
+      id: '1', type: 'coach' as const, action: 'review' as const, content: '',
+      reviewCards: { followups: [], drill: { title: 'd', steps: [], duration: '5m' }, primary_mistake: { headline: 'x' } as never, match_summary: { matchId: 1 } as never },
+    };
+    expect(isReviewAiFollowUpAvailable(message, [])).toBe(false);
+  });
+
+  it('returns true when followups exist and no notice', () => {
+    const message = {
+      id: '1', type: 'coach' as const, action: 'review' as const, content: '',
+      reviewCards: { followups: ['展开节点'], drill: { title: 'd', steps: [], duration: '5m' }, primary_mistake: { headline: 'x' } as never, match_summary: { matchId: 1 } as never },
+    };
+    expect(isReviewAiFollowUpAvailable(message, [])).toBe(true);
   });
 });

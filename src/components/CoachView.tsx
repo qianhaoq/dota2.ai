@@ -12,7 +12,7 @@ import { fetchHeroes } from '../services/dotaApiService';
 import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
-import { findPrimaryReviewSession, isPrimaryReviewReadyForFollowUp, type ReviewFollowUpContext } from '../utils/reviewSurface';
+import { findPrimaryReviewSession, isReviewFollowUpAllowed, type ReviewFollowUpContext } from '../utils/reviewSurface';
 import {
   clearStreamingCoachMessages,
   coachCancelledMessage,
@@ -200,6 +200,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
+    if (!followUp) {
+      pendingFollowUpContextRef.current = null;
+      setUserInput('');
+    }
     cancelStream();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
@@ -245,24 +249,21 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
-  const primaryReviewReady = useMemo(
-    () => isPrimaryReviewReadyForFollowUp(activeReviewSession?.message),
-    [activeReviewSession],
+  const reviewFollowUpAllowed = useMemo(
+    () => isReviewFollowUpAllowed(sessions),
+    [sessions],
   );
 
   const handleReviewFollowUp = useCallback((
     question: string,
     context?: ReviewFollowUpContext,
   ) => {
+    if (!reviewFollowUpAllowed) return;
     const ctx = context ?? pendingFollowUpContextRef.current ?? activeReviewRef.current;
     if (!ctx) return;
-    const primaryMsg = activeReviewSession?.message;
-    if (primaryMsg && !primaryMsg.reviewFollowUp && !isPrimaryReviewReadyForFollowUp(primaryMsg)) {
-      return;
-    }
     pendingFollowUpContextRef.current = null;
     handleReview(ctx.matchId, ctx.heroId, question);
-  }, [handleReview, activeReviewSession?.message]);
+  }, [handleReview, reviewFollowUpAllowed]);
 
   const handleComposeFollowUp = useCallback((text: string, context: ReviewFollowUpContext) => {
     pendingFollowUpContextRef.current = context;
@@ -342,13 +343,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     if (!userInput.trim()) return;
     if (isLoading && lesson !== 'review') return;
     if (lesson === 'review' && activeReviewRef.current) {
-      if (!primaryReviewReady) return;
+      if (!reviewFollowUpAllowed) return;
       handleReviewFollowUp(userInput.trim());
       return;
     }
     if (isLoading) return;
     handleAnalyze();
-  }, [userInput, isLoading, lesson, primaryReviewReady, handleAnalyze, handleReviewFollowUp]);
+  }, [userInput, isLoading, lesson, reviewFollowUpAllowed, handleAnalyze, handleReviewFollowUp]);
 
   const resetAll = useCallback(() => {
     cancelStream();
@@ -422,6 +423,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onDismiss={dismissSession}
             onReviewFollowUp={handleReviewFollowUp}
             onComposeFollowUp={handleComposeFollowUp}
+            followUpAllowed={reviewFollowUpAllowed}
             scrollContainerRef={scrollContainerRef}
           />
           {sessions.length > 0 && (
@@ -453,7 +455,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         onCancel={cancelStream}
         mentorName={mentorName}
         allowInputWhileLoading={lesson === 'review' && Boolean(activeReviewSession)}
-        submitDisabled={lesson === 'review' && Boolean(activeReviewSession) && !primaryReviewReady}
+        submitDisabled={lesson === 'review' && Boolean(activeReviewSession) && !reviewFollowUpAllowed}
         focusToken={composerFocusToken}
       />
 

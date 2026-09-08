@@ -71,6 +71,40 @@ export function reviewSurfaceProgressLabel(
   return map[phase];
 }
 
+/** Fact spine blocks shown before reviewCards arrive (type: review). */
+export function reviewFactSpineBlocks(blocks: A2UIBlock[]): A2UIBlock[] {
+  return blocks.filter((b) => b.type === 'review' && b.reviewSection);
+}
+
+/** In-flight follow-up markdown stream for a completed primary review. */
+export function findStreamingReviewFollowUp(sessions: CoachSession[]): CoachSession | null {
+  for (let i = sessions.length - 1; i >= 0; i -= 1) {
+    const s = sessions[i];
+    if (s.action === 'review' && s.message.reviewFollowUp && s.message.isStreaming) {
+      return s;
+    }
+  }
+  return null;
+}
+
+/** Safe to start or submit a new review follow-up (primary complete, none streaming). */
+export function isReviewFollowUpAllowed(sessions: CoachSession[]): boolean {
+  if (findStreamingReviewFollowUp(sessions)) return false;
+  const primary = findPrimaryReviewSession(sessions);
+  return isPrimaryReviewReadyForFollowUp(primary?.message);
+}
+
+/** AI follow-up chips / composer actions are available (not fallback-only). */
+export function isReviewAiFollowUpAvailable(
+  message?: CoachMessage,
+  noticeBlocks: A2UIBlock[] = [],
+): boolean {
+  if (!message || message.isStreaming) return false;
+  if (noticeBlocks.length > 0) return false;
+  const followups = message.reviewCards?.followups;
+  return Boolean(followups && followups.length > 0);
+}
+
 /** Notice blocks from reviewNotice / fallback warnings (not reviewInsight cards). */
 export function reviewNoticeBlocks(blocks: A2UIBlock[]): A2UIBlock[] {
   return blocks.filter((b) => b.id.endsWith('-review-notice'));
