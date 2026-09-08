@@ -4,9 +4,16 @@ export const META_FETCH_TIMEOUT_MS = 30_000;
 export const SUGGEST_FETCH_TIMEOUT_MS = 30_000;
 export const REVIEW_SUGGESTIONS_TIMEOUT_MS = 20_000;
 
-/** User-visible copy when a coach request is cancelled via Stop. */
+/** User-visible copy when a coach request is cancelled via Stop or superseded. */
 export function coachCancelledMessage(lang: 'zh' | 'en'): string {
-  return lang === 'zh' ? '已停止' : 'Cancelled';
+  return lang === 'zh' ? '已取消' : 'Cancelled';
+}
+
+/** True when `error` is an intentional user abort (Stop / supersede), not a server failure. */
+export function isCoachUserAbortError(error?: string): boolean {
+  return error === '已取消'
+    || error === 'Cancelled'
+    || error === '已停止';
 }
 
 /** User-visible copy when a non-stream fetch exceeds its timeout. */
@@ -94,7 +101,7 @@ export function finalizeReviewCoachMessage(
   return next;
 }
 
-/** Clear streaming flags on all in-flight coach messages (e.g. after Stop). */
+/** Clear streaming flags on all in-flight coach messages (e.g. after Stop / supersede). */
 export function clearStreamingCoachMessages(
   messages: CoachMessage[],
   cancelledLabel?: string,
@@ -103,10 +110,18 @@ export function clearStreamingCoachMessages(
   const next = messages.map((msg) => {
     if (!msg.isStreaming) return msg;
     changed = true;
+    if (msg.action === 'review') {
+      const finalized = finalizeReviewCoachMessage(msg, {});
+      if (cancelledLabel && !finalized.error && !hasStructuredReviewPayload(msg)) {
+        return { ...finalized, error: cancelledLabel };
+      }
+      return finalized;
+    }
+    const hasContent = Boolean(msg.content?.trim());
     return {
       ...msg,
       isStreaming: false,
-      ...(cancelledLabel && !msg.content && !msg.error && !hasStructuredReviewPayload(msg)
+      ...(cancelledLabel && !hasContent && !msg.error
         ? { error: cancelledLabel }
         : {}),
     };
