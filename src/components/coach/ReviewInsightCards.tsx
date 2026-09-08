@@ -6,6 +6,7 @@ import type {
   ReviewEvidence,
   KeyMomentCard,
 } from '../../types/reviewCards';
+import type { ReviewFollowUpContext } from '../../utils/reviewSurface';
 import {
   AlertCircle, ChevronDown, ChevronUp, Clock, Crosshair, Target, Zap,
 } from 'lucide-react';
@@ -16,8 +17,9 @@ interface ReviewInsightCardsProps {
   block: A2UIBlock;
   lang: Language;
   variant?: ReviewInsightVariant;
-  onFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
-  onComposeFollowUp?: (text: string) => void;
+  onFollowUp?: (question: string, context: ReviewFollowUpContext) => void;
+  onComposeFollowUp?: (text: string, context: ReviewFollowUpContext) => void;
+  followUpContext?: ReviewFollowUpContext;
 }
 
 const MISTAKE_COLORS: Record<string, string> = {
@@ -190,6 +192,7 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
   variant = 'default',
   onFollowUp,
   onComposeFollowUp,
+  followUpContext,
 }) => {
   const cards = block.reviewCards as ReviewCardsPayload | undefined;
   const kind = block.reviewCardKind;
@@ -317,8 +320,10 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
 
   if (kind === 'drill' && cards.drill) {
     const d = cards.drill;
-    const matchId = cards.match_summary?.matchId;
-    const heroId = cards.match_summary?.heroId;
+    const drillContext: ReviewFollowUpContext | undefined = followUpContext
+      ?? (cards.match_summary?.matchId != null
+        ? { matchId: cards.match_summary.matchId, heroId: cards.match_summary.heroId }
+        : undefined);
 
     return (
       <div className="rounded-lg border border-k3-radiant/30 bg-k3-radiant/8 p-3 sm:p-4">
@@ -346,12 +351,12 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
           <p className="text-[10px] text-k3-text-tertiary italic flex-1 min-w-0">
             {lang === 'zh' ? '事实 → 洞察 → 练习' : 'Fact → Insight → Drill'}
           </p>
-          {onFollowUp && matchId != null && (
+          {onFollowUp && drillContext && (
             <button
               type="button"
               onClick={() => onFollowUp(
                 lang === 'zh' ? '帮我细化这个练习' : 'Help me refine this drill',
-                { matchId, heroId },
+                drillContext,
               )}
               className="text-[10px] px-2.5 py-1.5 rounded-full border border-k3-radiant/30 bg-k3-radiant/10 text-k3-radiant touch-manipulation min-h-[32px]"
             >
@@ -364,9 +369,12 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
   }
 
   if (kind === 'followups' && cards.followups) {
-    const matchId = cards.match_summary?.matchId;
-    const heroId = cards.match_summary?.heroId;
-    const canFollowUp = Boolean(onFollowUp && matchId);
+    const matchId = followUpContext?.matchId ?? cards.match_summary?.matchId;
+    const heroId = followUpContext?.heroId ?? cards.match_summary?.heroId;
+    const chipContext: ReviewFollowUpContext | undefined = matchId != null
+      ? { matchId, heroId }
+      : undefined;
+    const canFollowUp = Boolean(onFollowUp && chipContext);
     const chipClass = variant === 'chips'
       ? 'text-xs px-3 py-2 rounded-full border border-k3-border-subtle bg-k3-elevated/60 text-k3-text-secondary hover:text-k3-text-primary hover:border-k3-radiant/30 hover:bg-k3-radiant/5 transition-colors touch-manipulation min-h-[40px]'
       : 'text-xs px-3 py-2 rounded-full border border-k3-border-subtle bg-k3-elevated/40 text-k3-text-secondary hover:text-k3-text-primary hover:border-k3-text-tertiary transition-colors touch-manipulation min-h-[40px] disabled:opacity-50';
@@ -378,14 +386,14 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
             key={chip}
             type="button"
             onClick={() => {
-              if (onComposeFollowUp) {
-                onComposeFollowUp(chip);
+              if (onComposeFollowUp && chipContext) {
+                onComposeFollowUp(chip, chipContext);
                 return;
               }
-              if (!canFollowUp || matchId == null) return;
-              onFollowUp?.(chip, { matchId, heroId });
+              if (!canFollowUp || !chipContext) return;
+              onFollowUp?.(chip, chipContext);
             }}
-            disabled={!onComposeFollowUp && !canFollowUp}
+            disabled={(!onComposeFollowUp || !chipContext) && !canFollowUp}
             className={chipClass}
           >
             {chip}

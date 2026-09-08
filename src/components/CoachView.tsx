@@ -12,7 +12,7 @@ import { fetchHeroes } from '../services/dotaApiService';
 import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
-import { findPrimaryReviewSession } from '../utils/reviewSurface';
+import { findPrimaryReviewSession, isPrimaryReviewReadyForFollowUp, type ReviewFollowUpContext } from '../utils/reviewSurface';
 import {
   clearStreamingCoachMessages,
   coachCancelledMessage,
@@ -55,6 +55,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const streamControllerRef = useRef<AbortController | null>(null);
   const inflightTaskRef = useRef(0);
   const activeReviewRef = useRef<{ matchId: number; heroId?: number } | null>(null);
+  const pendingFollowUpContextRef = useRef<ReviewFollowUpContext | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showMentorPicker, setShowMentorPicker] = useState(false);
   const [showHeroPicker, setShowHeroPicker] = useState(false);
@@ -242,16 +243,29 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     );
   }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream]);
 
+  const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
+  const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
+  const primaryReviewReady = useMemo(
+    () => isPrimaryReviewReadyForFollowUp(activeReviewSession?.message),
+    [activeReviewSession],
+  );
+
   const handleReviewFollowUp = useCallback((
     question: string,
-    context?: { matchId: number; heroId?: number },
+    context?: ReviewFollowUpContext,
   ) => {
-    const ctx = context ?? activeReviewRef.current;
+    const ctx = context ?? pendingFollowUpContextRef.current ?? activeReviewRef.current;
     if (!ctx) return;
+    const primaryMsg = activeReviewSession?.message;
+    if (primaryMsg && !primaryMsg.reviewFollowUp && !isPrimaryReviewReadyForFollowUp(primaryMsg)) {
+      return;
+    }
+    pendingFollowUpContextRef.current = null;
     handleReview(ctx.matchId, ctx.heroId, question);
-  }, [handleReview]);
+  }, [handleReview, activeReviewSession?.message]);
 
-  const handleComposeFollowUp = useCallback((text: string) => {
+  const handleComposeFollowUp = useCallback((text: string, context: ReviewFollowUpContext) => {
+    pendingFollowUpContextRef.current = context;
     setUserInput(text);
     setComposerFocusToken((t) => t + 1);
   }, []);
@@ -328,12 +342,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     if (!userInput.trim()) return;
     if (isLoading && lesson !== 'review') return;
     if (lesson === 'review' && activeReviewRef.current) {
+      if (!primaryReviewReady) return;
       handleReviewFollowUp(userInput.trim());
       return;
     }
     if (isLoading) return;
     handleAnalyze();
-  }, [userInput, isLoading, lesson, handleAnalyze, handleReviewFollowUp]);
+  }, [userInput, isLoading, lesson, primaryReviewReady, handleAnalyze, handleReviewFollowUp]);
 
   const resetAll = useCallback(() => {
     cancelStream();
@@ -367,9 +382,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     }
   }, [handleAnalyze, handlePlaybook]);
 
-  const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const dismissedSessionIdSet = useMemo(() => new Set(dismissedSessionIds), [dismissedSessionIds]);
-  const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
   const hasResults = sessions.some((s) => !dismissedSessionIdSet.has(s.id));
   const mentorName = mentor
     ? (lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name)
@@ -440,6 +453,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         onCancel={cancelStream}
         mentorName={mentorName}
         allowInputWhileLoading={lesson === 'review' && Boolean(activeReviewSession)}
+        submitDisabled={lesson === 'review' && Boolean(activeReviewSession) && !primaryReviewReady}
         focusToken={composerFocusToken}
       />
 

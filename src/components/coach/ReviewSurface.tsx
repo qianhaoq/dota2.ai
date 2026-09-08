@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Film, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
+import { Film, ChevronDown, ChevronUp, Loader2, X, Check, AlertTriangle } from 'lucide-react';
 import type { Language } from '../../types';
 import type { A2UIBlock } from '../../types';
 import type { CoachSession } from './coachMessage';
@@ -8,15 +8,18 @@ import {
   findPrimaryReviewSession,
   getReviewSurfacePhase,
   reviewSurfaceProgressLabel,
+  reviewNoticeBlocks,
+  type ReviewFollowUpContext,
 } from '../../utils/reviewSurface';
+import { MarkdownBody } from './ResultCard';
 
 interface ReviewSurfaceProps {
   sessions: CoachSession[];
   dismissedSessionIds: ReadonlySet<string>;
   lang: Language;
   onDismiss: (sessionId: string) => void;
-  onReviewFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
-  onComposeFollowUp?: (text: string) => void;
+  onReviewFollowUp?: (question: string, context: ReviewFollowUpContext) => void;
+  onComposeFollowUp?: (text: string, context: ReviewFollowUpContext) => void;
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
@@ -83,13 +86,18 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
   const dismissed = session ? dismissedSessionIds.has(session.id) : true;
 
   const phase = getReviewSurfacePhase(cards, Boolean(message?.matchFact), message?.isStreaming);
-  const progressLabel = reviewSurfaceProgressLabel(phase, lang);
+  const progressLabel = reviewSurfaceProgressLabel(phase, lang, message?.isStreaming);
 
   const t = useMemo(() => ({
     surfaceTitle: lang === 'zh' ? '复盘工作区' : 'Review workspace',
     dismiss: lang === 'zh' ? '收起复盘' : 'Dismiss review',
     askThis: lang === 'zh' ? '追问这场' : 'Ask about this match',
     followups: lang === 'zh' ? '继续问拉比克' : 'Ask Rubick',
+    notice: lang === 'zh' ? '提示' : 'Notice',
+    grounded: lang === 'zh' ? '基于 OpenDota 数据' : 'Grounded in OpenDota',
+    groundedShort: lang === 'zh' ? '数据' : 'Data',
+    ungrounded: lang === 'zh' ? '判断，数据未验证' : 'Judgment, unverified',
+    ungroundedShort: lang === 'zh' ? '未验证' : 'Unverified',
     summary: lang === 'zh' ? '摘要' : 'Summary',
     phases: lang === 'zh' ? '阶段节奏' : 'Phase spine',
     mistake: lang === 'zh' ? '本场主要失误' : 'Primary mistake',
@@ -105,6 +113,18 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     if (!session) return [];
     return session.blocks.filter((b) => b.type === 'reviewInsight' && b.reviewCardKind);
   }, [session]);
+
+  const noticeBlocks = useMemo(() => {
+    if (!session) return [];
+    return reviewNoticeBlocks(session.blocks);
+  }, [session]);
+
+  const followUpContext = useMemo((): ReviewFollowUpContext | undefined => {
+    const summary = cards?.match_summary;
+    const matchId = summary?.matchId ?? message?.matchFact?.summary?.matchId;
+    if (matchId == null) return undefined;
+    return { matchId, heroId: summary?.heroId ?? message?.matchFact?.focusHeroId ?? undefined };
+  }, [cards, message]);
 
   const blockByKind = useMemo(() => {
     const map = new Map<string, A2UIBlock>();
@@ -169,6 +189,17 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
                 {resultLabel}
               </span>
             )}
+            {!message?.isStreaming && message?.grounded !== undefined && (
+              <span className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full ${
+                message.grounded
+                  ? 'bg-k3-radiant/10 text-k3-radiant border border-k3-radiant/20'
+                  : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+              }`}>
+                {message.grounded ? <Check size={10} className="flex-shrink-0" /> : <AlertTriangle size={10} className="flex-shrink-0" />}
+                <span className="truncate sm:hidden">{message.grounded ? t.groundedShort : t.ungroundedShort}</span>
+                <span className="hidden sm:inline">{message.grounded ? t.grounded : t.ungrounded}</span>
+              </span>
+            )}
           </div>
         </div>
         {!message?.isStreaming && (
@@ -194,11 +225,25 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
       )}
 
       <div className="p-3 sm:p-4 space-y-3">
+        {noticeBlocks.map((block) => (
+          <div
+            key={block.id}
+            data-testid="review-surface-notice"
+            className="rounded-lg border border-yellow-500/25 bg-yellow-500/5 px-3 py-2.5"
+          >
+            {block.title && (
+              <p className="text-[11px] font-semibold text-yellow-400/90 mb-1">{block.title}</p>
+            )}
+            {block.markdown && <MarkdownBody text={block.markdown} />}
+          </div>
+        ))}
+
         {blockByKind.get('match_summary') ? (
           <ReviewInsightCards
             block={blockByKind.get('match_summary')!}
             lang={lang}
             variant="surface"
+            followUpContext={followUpContext}
             onFollowUp={onReviewFollowUp}
             onComposeFollowUp={onComposeFollowUp}
           />
@@ -215,11 +260,12 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
               block={blockByKind.get('primary_mistake')!}
               lang={lang}
               variant="hero"
+              followUpContext={followUpContext}
               onFollowUp={onReviewFollowUp}
               onComposeFollowUp={onComposeFollowUp}
             />
           </div>
-        ) : cards && !cards.primary_mistake && (
+        ) : cards && !cards.primary_mistake && message?.isStreaming && (
           <SlotSkeleton label={t.loadingMistake} />
         )}
 
@@ -232,6 +278,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
               block={blockByKind.get('drill')!}
               lang={lang}
               variant="surface"
+              followUpContext={followUpContext}
               onFollowUp={onReviewFollowUp}
               onComposeFollowUp={onComposeFollowUp}
             />
@@ -291,13 +338,14 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
             block={followupBlock!}
             lang={lang}
             variant="chips"
+            followUpContext={followUpContext}
             onFollowUp={onReviewFollowUp}
             onComposeFollowUp={onComposeFollowUp}
           />
         </div>
       )}
 
-      {headerSummary && onComposeFollowUp && !showFollowups && !message?.isStreaming && (
+      {headerSummary && onComposeFollowUp && followUpContext && !showFollowups && !message?.isStreaming && (
         <div className="px-3 sm:px-4 pb-3 flex flex-wrap gap-2">
           <button
             type="button"
@@ -305,6 +353,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
               lang === 'zh'
                 ? `关于比赛 ${headerSummary.matchId}，我还想问…`
                 : `About match ${headerSummary.matchId}, I want to ask…`,
+              followUpContext,
             )}
             className="text-xs px-3 py-2 rounded-full border border-k3-border-subtle bg-k3-elevated/40 text-k3-text-secondary hover:text-k3-text-primary touch-manipulation min-h-[40px]"
           >

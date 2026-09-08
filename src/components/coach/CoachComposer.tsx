@@ -12,6 +12,8 @@ interface CoachComposerProps {
   mentorName?: string;
   /** When true, input stays enabled during loading (e.g. review follow-ups while streaming). */
   allowInputWhileLoading?: boolean;
+  /** When true, send is disabled even if input has text (e.g. primary review still loading). */
+  submitDisabled?: boolean;
   /** Increment to focus the input after programmatic fill (follow-up chips). */
   focusToken?: number;
 }
@@ -25,6 +27,7 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
   onCancel,
   mentorName,
   allowInputWhileLoading = false,
+  submitDisabled = false,
   focusToken = 0,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,7 +60,7 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
   }, []);
 
   const inputDisabled = isLoading && !allowInputWhileLoading;
-  const canSend = userInput.trim().length > 0 && (!isLoading || allowInputWhileLoading);
+  const canSend = userInput.trim().length > 0 && !submitDisabled && (!isLoading || allowInputWhileLoading);
 
   return (
     <div className="flex-shrink-0 border-t border-k3-border-subtle bg-k3-base pb-[max(1rem,env(safe-area-inset-bottom,0px))]">

@@ -3,6 +3,8 @@ import {
   findPrimaryReviewSession,
   getReviewSurfacePhase,
   reviewSurfaceProgressLabel,
+  isPrimaryReviewReadyForFollowUp,
+  reviewNoticeBlocks,
 } from './reviewSurface';
 import type { CoachSession } from '../components/coach/coachMessage';
 
@@ -35,8 +37,35 @@ describe('findPrimaryReviewSession', () => {
   });
 });
 
+describe('isPrimaryReviewReadyForFollowUp', () => {
+  it('blocks while primary review is streaming', () => {
+    expect(isPrimaryReviewReadyForFollowUp({
+      id: '1', type: 'coach', action: 'review', content: '', isStreaming: true,
+      reviewCards: { match_summary: { matchId: 1 } as never },
+    })).toBe(false);
+  });
+
+  it('blocks partial terminal review without mistake and drill', () => {
+    expect(isPrimaryReviewReadyForFollowUp({
+      id: '1', type: 'coach', action: 'review', content: '', isStreaming: false,
+      reviewCards: { match_summary: { matchId: 1 } as never, phases: [] },
+    })).toBe(false);
+  });
+
+  it('allows follow-up when mistake and drill are present', () => {
+    expect(isPrimaryReviewReadyForFollowUp({
+      id: '1', type: 'coach', action: 'review', content: '', isStreaming: false,
+      reviewCards: {
+        match_summary: { matchId: 1 } as never,
+        primary_mistake: { headline: 'x' } as never,
+        drill: { title: 'd', steps: [], duration: '5m' },
+      },
+    })).toBe(true);
+  });
+});
+
 describe('getReviewSurfacePhase', () => {
-  it('progresses facts → insight → drill → complete', () => {
+  it('progresses facts → insight → drill → complete while streaming', () => {
     expect(getReviewSurfacePhase(null, true, true)).toBe('facts');
     expect(getReviewSurfacePhase({ match_summary: { matchId: 1 } as never }, true, true)).toBe('insight');
     expect(getReviewSurfacePhase({
@@ -50,11 +79,28 @@ describe('getReviewSurfacePhase', () => {
       followups: ['a'],
     }, true, false)).toBe('complete');
   });
+
+  it('returns complete when stream is terminal even with partial cards', () => {
+    expect(getReviewSurfacePhase({ match_summary: { matchId: 1 } as never }, true, false)).toBe('complete');
+    expect(getReviewSurfacePhase(null, true, false)).toBe('complete');
+  });
 });
 
 describe('reviewSurfaceProgressLabel', () => {
-  it('returns Chinese progress copy for active phases', () => {
-    expect(reviewSurfaceProgressLabel('insight', 'zh')).toContain('失误');
-    expect(reviewSurfaceProgressLabel('complete', 'zh')).toBeNull();
+  it('returns Chinese progress copy only while streaming', () => {
+    expect(reviewSurfaceProgressLabel('insight', 'zh', true)).toContain('失误');
+    expect(reviewSurfaceProgressLabel('insight', 'zh', false)).toBeNull();
+    expect(reviewSurfaceProgressLabel('complete', 'zh', true)).toBeNull();
+  });
+});
+
+describe('reviewNoticeBlocks', () => {
+  it('extracts review notice markdown blocks', () => {
+    const blocks = [
+      { id: 'c1-review-notice', type: 'markdown' as const, title: '提示', markdown: 'AI unavailable' },
+      { id: 'c1-ri-summary', type: 'reviewInsight' as const, reviewCardKind: 'match_summary' as const },
+    ];
+    expect(reviewNoticeBlocks(blocks)).toHaveLength(1);
+    expect(reviewNoticeBlocks(blocks)[0].markdown).toBe('AI unavailable');
   });
 });

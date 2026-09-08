@@ -1,6 +1,8 @@
 import type { CoachSession } from '../components/coach/coachMessage';
+import type { CoachMessage } from '../components/coach/coachMessage';
 import type { ReviewCardsPayload } from '../types/reviewCards';
 import type { Language } from '../types';
+import type { A2UIBlock } from '../types';
 
 /** Primary review session (initial Fact→Insight→Drill), not follow-up markdown replies. */
 export function findPrimaryReviewSession(sessions: CoachSession[]): CoachSession | null {
@@ -12,6 +14,16 @@ export function findPrimaryReviewSession(sessions: CoachSession[]): CoachSession
     }
   }
   return null;
+}
+
+/** Primary review has finished streaming with mistake + drill — safe to accept follow-ups. */
+export function isPrimaryReviewReadyForFollowUp(message?: CoachMessage): boolean {
+  if (!message || message.action !== 'review' || message.reviewFollowUp) {
+    return true;
+  }
+  if (message.isStreaming) return false;
+  const cards = message.reviewCards;
+  return Boolean(cards?.primary_mistake && cards?.drill);
 }
 
 export type ReviewSurfacePhase =
@@ -26,18 +38,21 @@ export function getReviewSurfacePhase(
   hasMatchFact?: boolean,
   isStreaming?: boolean,
 ): ReviewSurfacePhase {
+  if (!isStreaming) return 'complete';
   if (!hasMatchFact && !reviewCards) return 'idle';
   if (!reviewCards) return 'facts';
   if (!reviewCards.primary_mistake) return 'insight';
-  if (!reviewCards.drill && isStreaming) return 'drill';
-  if (isStreaming && !reviewCards.followups?.length) return 'drill';
+  if (!reviewCards.drill) return 'drill';
+  if (!reviewCards.followups?.length) return 'drill';
   return 'complete';
 }
 
 export function reviewSurfaceProgressLabel(
   phase: ReviewSurfacePhase,
   lang: Language,
+  isStreaming?: boolean,
 ): string | null {
+  if (!isStreaming || phase === 'complete' || phase === 'idle') return null;
   const zh: Record<ReviewSurfacePhase, string | null> = {
     idle: null,
     facts: '正在解读比赛数据…',
@@ -52,5 +67,13 @@ export function reviewSurfaceProgressLabel(
     drill: 'Building your drill…',
     complete: null,
   };
-  return lang === 'zh' ? zh[phase] : en[phase];
+  const map = lang === 'zh' ? zh : en;
+  return map[phase];
 }
+
+/** Notice blocks from reviewNotice / fallback warnings (not reviewInsight cards). */
+export function reviewNoticeBlocks(blocks: A2UIBlock[]): A2UIBlock[] {
+  return blocks.filter((b) => b.id.endsWith('-review-notice'));
+}
+
+export type ReviewFollowUpContext = { matchId: number; heroId?: number };
