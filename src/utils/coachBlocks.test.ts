@@ -38,6 +38,25 @@ describe('parseMarkdownSections', () => {
       { title: '结论', markdown: '打高地。' },
     ]);
   });
+
+  it('strips emoji from ## titles', () => {
+    const text = '## 📈 对线分析 ✅\n压制对面。\n## 🎯结论\n抱团推塔。';
+    expect(parseMarkdownSections(text)).toEqual([
+      { title: '对线分析', markdown: '压制对面。' },
+      { title: '结论', markdown: '抱团推塔。' },
+    ]);
+  });
+
+  it('skips titled sections with an empty body', () => {
+    const text = '## 空标题\n## 有内容\n正文。';
+    expect(parseMarkdownSections(text)).toEqual([
+      { title: '有内容', markdown: '正文。' },
+    ]);
+  });
+
+  it('skips a trailing title with no body yet (mid-stream)', () => {
+    expect(parseMarkdownSections('## 分析思路')).toEqual([]);
+  });
 });
 
 describe('messageToBlocks', () => {
@@ -56,6 +75,24 @@ describe('messageToBlocks', () => {
     }));
     expect(blocks.map((b) => b.type)).toEqual(['section', 'section']);
     expect(blocks.map((b) => b.title)).toEqual(['分析思路', '结论']);
+  });
+
+  it('keeps analyze sections as section cards after stripping emoji titles', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'analyze',
+      content: '## 📊 分析思路\n先看对线。\n## ✅ 结论\n中期抱团。',
+    }));
+    expect(blocks.map((b) => b.type)).toEqual(['section', 'section']);
+    expect(blocks.map((b) => b.title)).toEqual(['分析思路', '结论']);
+  });
+
+  it('keeps playbook markdown sections as section cards and skips empty ones', () => {
+    const blocks = messageToBlocks(baseCoach({
+      action: 'playbook',
+      content: '## 前期节奏\n拉野控线。\n## \n## 中期节奏\n抱团推塔。',
+    }));
+    expect(blocks.map((b) => b.type)).toEqual(['section', 'section']);
+    expect(blocks.map((b) => b.title)).toEqual(['前期节奏', '中期节奏']);
   });
 
   it('maps matchup payload to a matchups block', () => {

@@ -10,9 +10,18 @@ export interface MarkdownSection {
   markdown: string;
 }
 
+/** 去掉 ## 标题里的 emoji / 装饰符号，保留文字标题。 */
+export function stripSectionTitleEmoji(title: string): string {
+  return title
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0E}\u{FE0F}\u{200D}\u{20E3}]/gu, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 /**
  * 按二级标题拆成可独立渲染的卡片段。
  * 流式过程中标题尚未写完时，未闭合段仍会作为最后一块返回。
+ * 只有标题没有正文的空段会被跳过。
  */
 export function parseMarkdownSections(content: string): MarkdownSection[] {
   if (!content.trim()) return [];
@@ -24,8 +33,8 @@ export function parseMarkdownSections(content: string): MarkdownSection[] {
 
   const flush = () => {
     const markdown = currentLines.join('\n').trim();
-    if (currentTitle || markdown) {
-      sections.push({ title: currentTitle, markdown });
+    if (markdown) {
+      sections.push({ title: currentTitle || undefined, markdown });
     }
     currentTitle = undefined;
     currentLines = [];
@@ -34,7 +43,7 @@ export function parseMarkdownSections(content: string): MarkdownSection[] {
   for (const line of lines) {
     if (line.startsWith('## ')) {
       flush();
-      currentTitle = line.replace(/^##\s+/, '').trim();
+      currentTitle = stripSectionTitleEmoji(line.replace(/^##\s+/, ''));
     } else {
       currentLines.push(line);
     }

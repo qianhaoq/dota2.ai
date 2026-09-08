@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Film, ChevronDown, ChevronUp, Loader2, X, Check, AlertTriangle } from 'lucide-react';
+import { Film, Loader2, X, Check, AlertTriangle } from 'lucide-react';
 import type { Language } from '../../types';
 import type { A2UIBlock } from '../../types';
 import type { CoachSession } from './coachMessage';
@@ -17,6 +17,7 @@ import {
 } from '../../utils/reviewSurface';
 import { MarkdownBody } from './ResultCard';
 import { scrollOffsetWithinContainer } from '../../utils/coachScroll';
+import { CardSkeleton, InsightCard, SectionCard, StatusNotice } from './a2ui';
 
 interface ReviewSurfaceProps {
   sessions: CoachSession[];
@@ -29,63 +30,16 @@ interface ReviewSurfaceProps {
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }
 
-const SlotSkeleton: React.FC<{ label: string }> = ({ label }) => (
-  <div
-    className="rounded-lg border border-k3-border-subtle/60 bg-k3-elevated/20 p-3 animate-pulse"
-    aria-hidden="true"
-  >
-    <div className="h-3 w-24 rounded bg-k3-elevated mb-2" />
-    <div className="h-4 w-3/4 max-w-xs rounded bg-k3-elevated mb-2" />
-    <div className="h-3 w-full rounded bg-k3-elevated/70" />
-    <p className="text-[10px] text-k3-text-tertiary mt-2">{label}</p>
-  </div>
-);
-
 const FactSpineSection: React.FC<{ block: A2UIBlock; lang: Language }> = ({ block, lang }) => (
-  <section className="rounded-lg border border-k3-border-subtle/70 bg-k3-elevated/15 px-3 py-2.5">
-    {block.title && (
-      <h4 className="text-[11px] font-semibold text-k3-text-tertiary uppercase tracking-wide mb-1.5">
-        {block.title}
-      </h4>
-    )}
+  <InsightCard framed label={block.title}>
     {block.reviewSection === 'lanes' && (
       <p className="text-[10px] text-k3-text-tertiary mb-2 italic">
         {lang === 'zh' ? '根据录像站位推断' : 'Inferred from replay positioning'}
       </p>
     )}
     {block.markdown && <MarkdownBody text={block.markdown} />}
-  </section>
+  </InsightCard>
 );
-
-const CollapsibleSection: React.FC<{
-  title: string;
-  defaultOpen?: boolean;
-  compactDefault?: boolean;
-  preview?: string;
-  children: React.ReactNode;
-}> = ({ title, defaultOpen = false, compactDefault = false, preview, children }) => {
-  const [open, setOpen] = useState(defaultOpen);
-  const collapsed = compactDefault && !open;
-
-  return (
-    <section className="rounded-lg border border-k3-border-subtle/70 bg-k3-elevated/15 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left touch-manipulation min-h-[44px]"
-      >
-        <span className="text-sm font-medium text-k3-text-primary truncate">{title}</span>
-        <span className="flex items-center gap-1 text-[11px] text-k3-text-tertiary flex-shrink-0 min-w-0">
-          {collapsed && preview && (
-            <span className="inline truncate max-w-[8rem] sm:max-w-[12rem]">{preview}</span>
-          )}
-          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </span>
-      </button>
-      {open && <div className="px-3 pb-3 pt-0">{children}</div>}
-    </section>
-  );
-};
 
 const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
   sessions,
@@ -281,25 +235,20 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
 
         <div className="p-3 sm:p-4 space-y-3">
           {noticeBlocks.map((block) => (
-            <div
+            <StatusNotice
               key={block.id}
-              data-testid="review-surface-notice"
-              className="rounded-lg border border-yellow-500/25 bg-yellow-500/5 px-3 py-2.5"
+              testId="review-surface-notice"
+              tone="warning"
+              title={block.title}
             >
-              {block.title && (
-                <p className="text-[11px] font-semibold text-yellow-400/90 mb-1">{block.title}</p>
-              )}
               {block.markdown && <MarkdownBody text={block.markdown} />}
-            </div>
+            </StatusNotice>
           ))}
 
           {stoppedEarly && noticeBlocks.length === 0 && (
-            <div
-              data-testid="review-surface-stopped-early"
-              className="rounded-lg border border-k3-border-subtle/80 bg-k3-elevated/20 px-3 py-2.5 text-xs text-k3-text-secondary"
-            >
+            <StatusNotice testId="review-surface-stopped-early" tone="neutral">
               {t.stoppedEarly}
-            </div>
+            </StatusNotice>
           )}
 
           {blockByKind.get('match_summary') ? (
@@ -310,7 +259,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
               {...insightFollowUpProps}
             />
           ) : message?.matchFact && surfaceActivelyStreaming ? (
-            <SlotSkeleton label={t.loadingSummary} />
+            <CardSkeleton label={t.loadingSummary} />
           ) : factSpineBlocks.length > 0 ? (
             <div className="space-y-2" data-testid="review-surface-fact-spine">
               {factSpineBlocks.map((block) => (
@@ -320,75 +269,71 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
           ) : null}
 
           {blockByKind.get('primary_mistake') ? (
-            <div data-review-slot="primary_mistake">
-              <p className="text-[11px] font-semibold text-k3-text-tertiary uppercase tracking-wide mb-1.5 px-0.5">
-                {t.mistake}
-              </p>
+            <InsightCard slotKey="primary_mistake" label={t.mistake}>
               <ReviewInsightCards
                 block={blockByKind.get('primary_mistake')!}
                 lang={lang}
                 variant="hero"
                 {...insightFollowUpProps}
               />
-            </div>
+            </InsightCard>
           ) : cards && !cards.primary_mistake && surfaceActivelyStreaming && (
-            <SlotSkeleton label={t.loadingMistake} />
+            <CardSkeleton label={t.loadingMistake} />
           )}
 
           {blockByKind.get('drill') ? (
-            <div data-review-slot="drill">
-              <p className="text-[11px] font-semibold text-k3-text-tertiary uppercase tracking-wide mb-1.5 px-0.5">
-                {t.drill}
-              </p>
+            <InsightCard slotKey="drill" label={t.drill}>
               <ReviewInsightCards
                 block={blockByKind.get('drill')!}
                 lang={lang}
                 variant="surface"
                 {...insightFollowUpProps}
               />
-            </div>
+            </InsightCard>
           ) : cards?.primary_mistake && !cards.drill && surfaceActivelyStreaming && (
-            <SlotSkeleton label={t.loadingDrill} />
+            <CardSkeleton label={t.loadingDrill} />
           )}
 
           {blockByKind.get('phases') && (
-            <CollapsibleSection
+            <SectionCard
               title={t.phases}
-              compactDefault={mobileCompact}
+              lang={lang}
+              framed
               defaultOpen={!mobileCompact}
-              preview={cards?.phases?.[0]?.label}
+              preview={mobileCompact ? cards?.phases?.[0]?.label : undefined}
             >
               <ReviewInsightCards
                 block={blockByKind.get('phases')!}
                 lang={lang}
                 variant="surface"
               />
-            </CollapsibleSection>
+            </SectionCard>
           )}
 
           {blockByKind.get('key_moments') && (
-            <CollapsibleSection
+            <SectionCard
               title={t.moments}
-              compactDefault={mobileCompact}
+              lang={lang}
+              framed
               defaultOpen={false}
-              preview={momentsPreview}
+              preview={mobileCompact ? momentsPreview : undefined}
             >
               <ReviewInsightCards
                 block={blockByKind.get('key_moments')!}
                 lang={lang}
                 variant="timeline"
               />
-            </CollapsibleSection>
+            </SectionCard>
           )}
 
           {blockByKind.get('mentor_note') && (
-            <CollapsibleSection title={t.mentor} defaultOpen={false}>
+            <SectionCard title={t.mentor} lang={lang} framed defaultOpen={false}>
               <ReviewInsightCards
                 block={blockByKind.get('mentor_note')!}
                 lang={lang}
                 variant="surface"
               />
-            </CollapsibleSection>
+            </SectionCard>
           )}
         </div>
       </div>
