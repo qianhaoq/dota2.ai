@@ -9,6 +9,7 @@ import type { CoachSession } from './coachMessage';
 import { sessionTitle } from '../../utils/coachBlocks';
 import { shouldShowCoachFailureAlert } from '../../utils/coachInflight';
 import { groupMarkdownSegments } from '../../utils/markdownLines';
+import { primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../../utils/reviewSurface';
 import ReviewInsightCards from './ReviewInsightCards';
 
 interface ResultCardProps {
@@ -20,6 +21,7 @@ interface ResultCardProps {
   expanded?: boolean;
   onDismiss?: () => void;
   onReviewFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
+  canSubmitReviewFollowUpForContext?: (context: ReviewFollowUpContext) => boolean;
 }
 
 const TierSkeleton: React.FC = () => (
@@ -79,9 +81,21 @@ const ResultCard: React.FC<ResultCardProps> = ({
   expanded = true,
   onDismiss,
   onReviewFollowUp,
+  canSubmitReviewFollowUpForContext,
 }) => {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const message = session.message;
+  const followUpContext = useMemo(
+    () => primaryReviewFollowUpContext(session),
+    [session],
+  );
+  const followUpActionsEnabled = useMemo(
+    () => Boolean(
+      followUpContext
+      && canSubmitReviewFollowUpForContext?.(followUpContext),
+    ),
+    [followUpContext, canSubmitReviewFollowUpForContext],
+  );
 
   const t = useMemo(() => ({
     grounded: lang === 'zh' ? '基于 OpenDota 数据' : 'Grounded in OpenDota',
@@ -350,6 +364,8 @@ const ResultCard: React.FC<ResultCardProps> = ({
                   block={block}
                   lang={lang}
                   onFollowUp={onReviewFollowUp}
+                  followUpContext={followUpContext ?? undefined}
+                  followUpActionsEnabled={followUpActionsEnabled}
                 />
               )}
               {block.reviewSection === 'lanes' && (

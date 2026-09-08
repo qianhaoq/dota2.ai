@@ -10,6 +10,8 @@ import {
   isReviewFollowUpAllowed,
   isReviewAiFollowUpAvailable,
   canSubmitReviewFollowUp,
+  canSubmitReviewFollowUpForContext,
+  findReviewSessionByContext,
   findInflightCoachSession,
   primaryReviewFollowUpContext,
 } from './reviewSurface';
@@ -215,6 +217,74 @@ describe('canSubmitReviewFollowUp', () => {
       }),
     ];
     expect(canSubmitReviewFollowUp(sessions)).toBe(true);
+  });
+});
+
+const completeReviewCards = {
+  match_summary: { matchId: 8985182860, heroId: 54 } as never,
+  primary_mistake: { headline: 'x' } as never,
+  drill: { title: 'd', steps: [], duration: '5m' },
+  followups: ['q'],
+};
+
+describe('findReviewSessionByContext', () => {
+  it('finds the review session matching matchId and heroId', () => {
+    const sessions = [
+      reviewSession({ reviewCards: completeReviewCards }, 'older'),
+      reviewSession({
+        reviewCards: { ...completeReviewCards, match_summary: { matchId: 2, heroId: 7 } as never },
+      }, 'newer'),
+    ];
+    expect(findReviewSessionByContext(sessions, { matchId: 8985182860, heroId: 54 })?.id).toBe('older');
+  });
+});
+
+describe('canSubmitReviewFollowUpForContext', () => {
+  it('allows follow-up on older completed review when latest primary is partial', () => {
+    const sessions = [
+      reviewSession({ reviewCards: completeReviewCards }, 'review-a'),
+      reviewSession({
+        isStreaming: false,
+        reviewCards: { match_summary: { matchId: 2 } as never, phases: [] },
+      }, 'review-b'),
+    ];
+    expect(canSubmitReviewFollowUp(sessions)).toBe(false);
+    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 8985182860, heroId: 54 })).toBe(true);
+  });
+
+  it('allows follow-up on older completed review when latest primary is fallback-only', () => {
+    const sessions = [
+      reviewSession({ reviewCards: completeReviewCards }, 'review-a'),
+      {
+        ...reviewSession({
+          reviewCards: {
+            match_summary: { matchId: 2 } as never,
+            primary_mistake: { headline: 'x' } as never,
+            drill: { title: 'd', steps: [], duration: '5m' },
+          },
+        }, 'review-b'),
+        blocks: [{ id: 'r2-review-notice', type: 'markdown' as const, markdown: 'AI unavailable' }],
+      },
+    ];
+    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 8985182860, heroId: 54 })).toBe(true);
+    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 2 })).toBe(false);
+  });
+
+  it('blocks all follow-ups while a review follow-up is streaming', () => {
+    const sessions = [
+      reviewSession({ reviewCards: completeReviewCards }, 'review-a'),
+      reviewSession({ reviewFollowUp: true, isStreaming: true, content: '…' }, 'follow-up'),
+    ];
+    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 8985182860, heroId: 54 })).toBe(false);
+  });
+
+  it('blocks follow-up when targeted review is incomplete', () => {
+    const sessions = [
+      reviewSession({
+        reviewCards: { match_summary: { matchId: 8985182860 } as never, phases: [] },
+      }, 'review-a'),
+    ];
+    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 8985182860 })).toBe(false);
   });
 });
 

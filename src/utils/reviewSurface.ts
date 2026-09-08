@@ -102,12 +102,45 @@ export function isReviewFollowUpAllowed(sessions: CoachSession[]): boolean {
   return isPrimaryReviewReadyForFollowUp(primary?.message);
 }
 
-/** Composer / Surface may submit a review follow-up (allowed + AI available). */
+/** Primary review session matching an explicit match/hero context (canvas history actions). */
+export function findReviewSessionByContext(
+  sessions: CoachSession[],
+  context: ReviewFollowUpContext,
+): CoachSession | null {
+  for (let i = sessions.length - 1; i >= 0; i -= 1) {
+    const s = sessions[i];
+    if (s.action !== 'review' || s.message.reviewFollowUp) continue;
+    const ctx = primaryReviewFollowUpContext(s);
+    if (!ctx || ctx.matchId !== context.matchId) continue;
+    if (
+      context.heroId != null
+      && ctx.heroId != null
+      && ctx.heroId !== context.heroId
+    ) {
+      continue;
+    }
+    return s;
+  }
+  return null;
+}
+
+/** Composer / Surface / canvas may submit a follow-up for a specific review context. */
+export function canSubmitReviewFollowUpForContext(
+  sessions: CoachSession[],
+  context?: ReviewFollowUpContext | null,
+): boolean {
+  if (findStreamingReviewFollowUp(sessions)) return false;
+  const target = context
+    ? findReviewSessionByContext(sessions, context)
+    : findPrimaryReviewSession(sessions);
+  if (!target) return false;
+  if (!isPrimaryReviewReadyForFollowUp(target.message)) return false;
+  return isReviewAiFollowUpAvailable(target.message, reviewNoticeBlocks(target.blocks));
+}
+
+/** Composer / Surface may submit a review follow-up (latest primary, allowed + AI available). */
 export function canSubmitReviewFollowUp(sessions: CoachSession[]): boolean {
-  if (!isReviewFollowUpAllowed(sessions)) return false;
-  const primary = findPrimaryReviewSession(sessions);
-  if (!primary) return false;
-  return isReviewAiFollowUpAvailable(primary.message, reviewNoticeBlocks(primary.blocks));
+  return canSubmitReviewFollowUpForContext(sessions, null);
 }
 
 /** AI follow-up chips / composer actions are available (not fallback-only). */

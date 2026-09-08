@@ -11,7 +11,7 @@ import {
   coachSessionScrollFingerprint,
 } from '../../utils/coachScroll';
 import ResultCard from './ResultCard';
-import { findPrimaryReviewSession } from '../../utils/reviewSurface';
+import { findPrimaryReviewSession, type ReviewFollowUpContext } from '../../utils/reviewSurface';
 
 interface CoachCanvasProps {
   sessions: CoachSession[];
@@ -25,6 +25,7 @@ interface CoachCanvasProps {
   mentorName?: string;
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
   onReviewFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
+  canSubmitReviewFollowUpForContext?: (context: ReviewFollowUpContext) => boolean;
 }
 
 const UndoStrip: React.FC<{
@@ -64,6 +65,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
   mentorName,
   scrollContainerRef,
   onReviewFollowUp,
+  canSubmitReviewFollowUpForContext,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<HTMLDivElement>(null);
@@ -214,6 +216,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
                 expanded
                 onDismiss={() => onDismissSession(session.id)}
                 onReviewFollowUp={onReviewFollowUp}
+                canSubmitReviewFollowUpForContext={canSubmitReviewFollowUpForContext}
               />
             </div>
           );

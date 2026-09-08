@@ -12,7 +12,7 @@ import { fetchHeroes } from '../services/dotaApiService';
 import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
-import { findPrimaryReviewSession, isReviewFollowUpAllowed, canSubmitReviewFollowUp, findInflightCoachSession, primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../utils/reviewSurface';
+import { findPrimaryReviewSession, isReviewFollowUpAllowed, canSubmitReviewFollowUp, canSubmitReviewFollowUpForContext, findInflightCoachSession, primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../utils/reviewSurface';
 import {
   clearStreamingCoachMessages,
   coachCancelledMessage,
@@ -274,13 +274,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     question: string,
     context?: ReviewFollowUpContext,
   ) => {
-    if (!reviewFollowUpSubmittable || isLoading) return;
+    if (isLoading) return;
     const displayedCtx = primaryReviewFollowUpContext(activeReviewSession);
     const ctx = context ?? pendingFollowUpContextRef.current ?? displayedCtx;
-    if (!ctx) return;
+    if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
     pendingFollowUpContextRef.current = null;
     handleReview(ctx.matchId, ctx.heroId, question);
-  }, [handleReview, reviewFollowUpSubmittable, isLoading, activeReviewSession]);
+  }, [handleReview, isLoading, activeReviewSession, sessions]);
 
   const handleComposeFollowUp = useCallback((text: string, context: ReviewFollowUpContext) => {
     pendingFollowUpContextRef.current = context;
@@ -457,6 +457,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                 mentorName={mentorName}
                 scrollContainerRef={scrollContainerRef}
                 onReviewFollowUp={handleReviewFollowUp}
+                canSubmitReviewFollowUpForContext={(ctx) => (
+                  !isLoading && canSubmitReviewFollowUpForContext(sessions, ctx)
+                )}
               />
             </div>
           )}
