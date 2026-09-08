@@ -9,7 +9,7 @@ import {
   fetchMatchReviewStream,
 } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
-import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
+import { buildPracticeUserContext, heroDisplayName, resolveAnalyzeUserMessage, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
 import { findPrimaryReviewSession, isReviewFollowUpAllowed, canSubmitReviewFollowUp, canSubmitReviewFollowUpForContext, findInflightCoachSession, primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../utils/reviewSurface';
@@ -126,7 +126,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     [draft, selectionSide, practiceHero]
   );
 
-  const handleAnalyze = useCallback(() => {
+  const handleAnalyze = useCallback((options?: { ignoreComposerInput?: boolean }) => {
     if (coaching.radiant.length === 0 && coaching.dire.length === 0) {
       addCoachMessage({ type: 'coach', content: t.needHeroes });
       return;
@@ -138,7 +138,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     const defaultMsg = practiceName
       ? (lang === 'zh' ? `分析练习英雄 ${practiceName}` : `Analyze practice hero ${practiceName}`)
       : (lang === 'zh' ? '分析当前阵容' : 'Analyze current lineup');
-    const userMsg = userInput.trim() || defaultMsg;
+    const userMsg = resolveAnalyzeUserMessage(userInput, defaultMsg, options?.ignoreComposerInput);
     const userContext = buildPracticeUserContext(practiceHero, lang, userMsg);
     addCoachMessage({ type: 'user', action: 'analyze', lesson, content: userMsg });
     setUserInput('');
@@ -397,18 +397,23 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [lastDismissedSessionId]);
 
   const handleLessonAction = useCallback((lessonMode: LessonMode) => {
+    const leavingReview = lesson === 'review' && lessonMode !== 'review';
     if (lessonMode !== 'review') {
       pendingFollowUpContextRef.current = null;
     }
+    if (leavingReview) {
+      setUserInput('');
+    }
     setLesson(lessonMode);
     if (lessonMode === 'review') return;
+    const analyzeOpts = leavingReview ? { ignoreComposerInput: true } : undefined;
     switch (lessonMode) {
-      case 'bp': handleAnalyze(); break;
+      case 'bp': handleAnalyze(analyzeOpts); break;
       case 'match': handlePlaybook(); break;
       case 'items':
-      case 'mind': handleAnalyze(); break;
+      case 'mind': handleAnalyze(analyzeOpts); break;
     }
-  }, [handleAnalyze, handlePlaybook]);
+  }, [lesson, handleAnalyze, handlePlaybook]);
 
   const dismissedSessionIdSet = useMemo(() => new Set(dismissedSessionIds), [dismissedSessionIds]);
   const hasResults = sessions.some((s) => !dismissedSessionIdSet.has(s.id));
