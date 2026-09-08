@@ -54,6 +54,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const [userInput, setUserInput] = useState('');
   const streamControllerRef = useRef<AbortController | null>(null);
   const inflightTaskRef = useRef(0);
+  const prevInflightSessionIdRef = useRef<string | null>(null);
   const activeReviewRef = useRef<{ matchId: number; heroId?: number } | null>(null);
   const pendingFollowUpContextRef = useRef<ReviewFollowUpContext | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -147,9 +148,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       coaching.radiant, coaching.dire, lang, userContext,
       {
         onChunk: (text) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
-        onMatchupData: (data) => { updateCoachMessage(msgId, { matchupData: data }); },
+        onMatchupData: (data) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          updateCoachMessage(msgId, { matchupData: data });
+        },
         onComplete: (grounded) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { isStreaming: false, grounded });
@@ -181,8 +186,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     streamControllerRef.current = fetchPlaybookStream(
       coaching.allies, coaching.enemies, selectionSide, lang, coaching.focusHeroId,
       {
-        onData: (data) => { updateCoachMessage(msgId, { playbookData: data }); },
+        onData: (data) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          updateCoachMessage(msgId, { playbookData: data });
+        },
         onChunk: (text) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
         onComplete: () => {
@@ -225,10 +234,20 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     streamControllerRef.current = fetchMatchReviewStream(
       matchId, lang, heroId ?? practiceHero?.id, followUp,
       {
-        onData: (matchFact) => { updateCoachMessage(msgId, { matchFact }); },
-        onReviewCards: (reviewCards) => { updateCoachMessage(msgId, { reviewCards }); },
-        onReviewNotice: (notice) => { updateCoachMessage(msgId, { error: notice }); },
+        onData: (matchFact) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          updateCoachMessage(msgId, { matchFact });
+        },
+        onReviewCards: (reviewCards) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          updateCoachMessage(msgId, { reviewCards });
+        },
+        onReviewNotice: (notice) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          updateCoachMessage(msgId, { error: notice });
+        },
         onChunk: (text) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
         onComplete: (grounded) => {
@@ -250,6 +269,15 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
   const inflightSession = useMemo(() => findInflightCoachSession(sessions), [sessions]);
+  const composerBusy = Boolean(inflightSession) || isLoading;
+
+  useEffect(() => {
+    const inflightId = inflightSession?.id ?? null;
+    if (prevInflightSessionIdRef.current && !inflightId) {
+      setIsLoading(false);
+    }
+    prevInflightSessionIdRef.current = inflightId;
+  }, [inflightSession]);
   const inflightIsReview = inflightSession?.action === 'review';
   const reviewFollowUpAllowed = useMemo(
     () => isReviewFollowUpAllowed(sessions),
@@ -446,7 +474,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onHeroDetail={setDetailHeroId}
             onMeta={handleMeta}
             onStartReview={handleReview}
-            coachBusy={isLoading}
+            coachBusy={composerBusy}
           />
           <ReviewSurface
             sessions={sessions}
@@ -486,7 +514,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         userInput={userInput}
         setUserInput={setUserInput}
         onSubmit={handleSubmit}
-        isLoading={isLoading}
+        isLoading={composerBusy}
         onCancel={cancelStream}
         mentorName={mentorName}
         allowInputWhileLoading={allowInputWhileLoading}

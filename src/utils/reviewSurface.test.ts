@@ -14,6 +14,8 @@ import {
   findReviewSessionById,
   findInflightCoachSession,
   primaryReviewFollowUpContext,
+  shouldShowReviewSurfaceProgress,
+  isReviewSurfaceStoppedEarly,
 } from './reviewSurface';
 import type { CoachSession } from '../components/coach/coachMessage';
 
@@ -100,6 +102,50 @@ describe('reviewSurfaceProgressLabel', () => {
     expect(reviewSurfaceProgressLabel('insight', 'zh', true)).toContain('失误');
     expect(reviewSurfaceProgressLabel('insight', 'zh', false)).toBeNull();
     expect(reviewSurfaceProgressLabel('complete', 'zh', true)).toBeNull();
+  });
+});
+
+describe('shouldShowReviewSurfaceProgress', () => {
+  const partialReview = {
+    id: '1', type: 'coach' as const, action: 'review' as const, content: '',
+    isStreaming: true,
+    reviewCards: { match_summary: { matchId: 1 } as never, phases: [] },
+  };
+
+  it('hides progress after matchFact arrives but stream is terminal', () => {
+    expect(shouldShowReviewSurfaceProgress(
+      { ...partialReview, isStreaming: false },
+      'insight',
+      false,
+    )).toBe(false);
+  });
+
+  it('hides progress when session has an error even if isStreaming is stale', () => {
+    expect(shouldShowReviewSurfaceProgress(
+      { ...partialReview, error: '已取消' },
+      'insight',
+      true,
+    )).toBe(false);
+  });
+
+  it('shows progress only for active streaming insight phase', () => {
+    expect(shouldShowReviewSurfaceProgress(partialReview, 'insight', true)).toBe(true);
+  });
+});
+
+describe('isReviewSurfaceStoppedEarly', () => {
+  it('is true for terminal review with summary but no mistake/drill', () => {
+    expect(isReviewSurfaceStoppedEarly({
+      id: '1', type: 'coach', action: 'review', content: '', isStreaming: false,
+      reviewCards: { match_summary: { matchId: 1 } as never, phases: [] },
+    })).toBe(true);
+  });
+
+  it('is false while streaming', () => {
+    expect(isReviewSurfaceStoppedEarly({
+      id: '1', type: 'coach', action: 'review', content: '', isStreaming: true,
+      reviewCards: { match_summary: { matchId: 1 } as never },
+    })).toBe(false);
   });
 });
 

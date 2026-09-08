@@ -7,7 +7,7 @@ import {
 import { MatchupData, TierHero, PlaybookHero } from '../../services/geminiService';
 import type { CoachSession } from './coachMessage';
 import { sessionTitle } from '../../utils/coachBlocks';
-import { shouldShowCoachFailureAlert } from '../../utils/coachInflight';
+import { shouldShowCoachFailureAlert, isCoachUserAbortError } from '../../utils/coachInflight';
 import { groupMarkdownSegments } from '../../utils/markdownLines';
 import { primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../../utils/reviewSurface';
 import ReviewInsightCards from './ReviewInsightCards';
@@ -334,9 +334,11 @@ const ResultCard: React.FC<ResultCardProps> = ({
             <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
             <div className="min-w-0">
               <p className="text-sm font-medium text-red-400">
-                {message.action === 'review'
-                  ? (lang === 'zh' ? '复盘失败' : 'Review failed')
-                  : (lang === 'zh' ? '请求失败' : 'Request failed')}
+                {isCoachUserAbortError(message.error)
+                  ? (lang === 'zh' ? '已取消' : 'Cancelled')
+                  : message.action === 'review'
+                    ? (lang === 'zh' ? '复盘失败' : 'Review failed')
+                    : (lang === 'zh' ? '请求失败' : 'Request failed')}
               </p>
               <p className="text-sm text-red-400/90 break-words mt-1">{message.error}</p>
             </div>

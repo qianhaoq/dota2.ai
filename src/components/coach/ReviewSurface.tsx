@@ -8,6 +8,8 @@ import {
   findPrimaryReviewSession,
   getReviewSurfacePhase,
   reviewSurfaceProgressLabel,
+  shouldShowReviewSurfaceProgress,
+  isReviewSurfaceStoppedEarly,
   reviewNoticeBlocks,
   reviewFactSpineBlocks,
   isReviewAiFollowUpAvailable,
@@ -106,9 +108,14 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
   const cards = message?.reviewCards;
   const dismissed = session ? dismissedSessionIds.has(session.id) : true;
   const isStreaming = Boolean(message?.isStreaming);
+  const surfaceActivelyStreaming = isStreaming && !message?.error;
 
-  const phase = getReviewSurfacePhase(cards, Boolean(message?.matchFact), isStreaming);
-  const progressLabel = reviewSurfaceProgressLabel(phase, lang, isStreaming);
+  const phase = getReviewSurfacePhase(cards, Boolean(message?.matchFact), surfaceActivelyStreaming);
+  const progressLabel = surfaceActivelyStreaming
+    && shouldShowReviewSurfaceProgress(message, phase, surfaceActivelyStreaming)
+    ? reviewSurfaceProgressLabel(phase, lang, surfaceActivelyStreaming)
+    : null;
+  const stoppedEarly = isReviewSurfaceStoppedEarly(message);
 
   const t = useMemo(() => ({
     surfaceTitle: lang === 'zh' ? '复盘工作区' : 'Review workspace',
@@ -128,6 +135,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     loadingSummary: lang === 'zh' ? '加载比赛摘要…' : 'Loading summary…',
     loadingMistake: lang === 'zh' ? '提炼关键失误…' : 'Distilling mistake…',
     loadingDrill: lang === 'zh' ? '生成练习方案…' : 'Building drill…',
+    stoppedEarly: lang === 'zh' ? '复盘已停止，以下为已加载内容。' : 'Review stopped — showing loaded content.',
   }), [lang]);
 
   const insightBlocks = useMemo(() => {
@@ -249,7 +257,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
               )}
             </div>
           </div>
-          {!isStreaming && (
+          {!surfaceActivelyStreaming && (
             <button
               type="button"
               onClick={() => onDismiss(session.id)}
@@ -285,6 +293,15 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
             </div>
           ))}
 
+          {stoppedEarly && noticeBlocks.length === 0 && (
+            <div
+              data-testid="review-surface-stopped-early"
+              className="rounded-lg border border-k3-border-subtle/80 bg-k3-elevated/20 px-3 py-2.5 text-xs text-k3-text-secondary"
+            >
+              {t.stoppedEarly}
+            </div>
+          )}
+
           {blockByKind.get('match_summary') ? (
             <ReviewInsightCards
               block={blockByKind.get('match_summary')!}
@@ -292,7 +309,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
               variant="surface"
               {...insightFollowUpProps}
             />
-          ) : message?.matchFact && isStreaming ? (
+          ) : message?.matchFact && surfaceActivelyStreaming ? (
             <SlotSkeleton label={t.loadingSummary} />
           ) : factSpineBlocks.length > 0 ? (
             <div className="space-y-2" data-testid="review-surface-fact-spine">
@@ -314,7 +331,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
                 {...insightFollowUpProps}
               />
             </div>
-          ) : cards && !cards.primary_mistake && isStreaming && (
+          ) : cards && !cards.primary_mistake && surfaceActivelyStreaming && (
             <SlotSkeleton label={t.loadingMistake} />
           )}
 
@@ -330,7 +347,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
                 {...insightFollowUpProps}
               />
             </div>
-          ) : cards?.primary_mistake && !cards.drill && isStreaming && (
+          ) : cards?.primary_mistake && !cards.drill && surfaceActivelyStreaming && (
             <SlotSkeleton label={t.loadingDrill} />
           )}
 
