@@ -12,5 +12,6 @@ export { default as HomeModules } from './HomeModules';
 export { default as ResultCard } from './ResultCard';
 export { default as CoachCanvas } from './CoachCanvas';
 export { default as CoachComposer } from './CoachComposer';
+export { default as ReviewSurface } from './ReviewSurface';
 export type { LessonMode } from '../../types';
 export type { CoachMessage, CoachSession } from './coachMessage';

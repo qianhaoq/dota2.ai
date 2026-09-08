@@ -15,6 +15,17 @@ export function reviewCardsGrowthFingerprint(reviewCards?: ReviewCardsPayload | 
   ].join(':');
 }
 
+/** Scroll target offset within a scroll container (container coordinate space). */
+export function scrollOffsetWithinContainer(
+  container: HTMLElement,
+  target: HTMLElement,
+  padding = 0,
+): number {
+  const containerRect = container.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  return container.scrollTop + (targetRect.top - containerRect.top) - padding;
+}
+
 /** Whether the scroll container is pinned near the bottom (user is following the stream). */
 export function isScrollPinnedNearBottom(
   scrollTop: number,

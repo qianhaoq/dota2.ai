@@ -4,6 +4,7 @@ import {
   resolveCoachingLineup,
   buildPracticeUserContext,
   heroDisplayName,
+  resolveAnalyzeUserMessage,
 } from './practiceContext';
 
 const invoker: Hero = {
@@ -142,5 +143,20 @@ describe('buildPracticeUserContext', () => {
     expect(buildPracticeUserContext(invoker, 'zh', '这把怎么抢线')).toBe(
       '练习英雄：祈求者。请以该英雄为学员焦点教学。 这把怎么抢线'
     );
+  });
+});
+
+describe('resolveAnalyzeUserMessage', () => {
+  it('uses composer input when present', () => {
+    expect(resolveAnalyzeUserMessage('custom prompt', 'default')).toBe('custom prompt');
+  });
+
+  it('falls back to default when composer is empty', () => {
+    expect(resolveAnalyzeUserMessage('  ', 'default')).toBe('default');
+  });
+
+  it('ignores chip-prefilled composer text when abandoning review mode', () => {
+    expect(resolveAnalyzeUserMessage('match follow-up chip', 'Analyze lineup', true))
+      .toBe('Analyze lineup');
   });
 });

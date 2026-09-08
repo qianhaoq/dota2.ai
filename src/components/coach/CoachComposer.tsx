@@ -10,6 +10,14 @@ interface CoachComposerProps {
   isLoading: boolean;
   onCancel: () => void;
   mentorName?: string;
+  /** When true, input stays enabled during loading (e.g. review follow-ups while streaming). */
+  allowInputWhileLoading?: boolean;
+  /** When true, lock input (e.g. AI unavailable for review follow-ups). */
+  disableInput?: boolean;
+  /** When true, send is disabled even if input has text (e.g. primary review still loading). */
+  submitDisabled?: boolean;
+  /** Increment to focus the input after programmatic fill (follow-up chips). */
+  focusToken?: number;
 }
 
 const CoachComposer: React.FC<CoachComposerProps> = ({
@@ -20,6 +28,10 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
   isLoading,
   onCancel,
   mentorName,
+  allowInputWhileLoading = false,
+  disableInput = false,
+  submitDisabled = false,
+  focusToken = 0,
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,6 +46,12 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
   }), [lang, mentorName]);
 
   useEffect(() => {
+    if (focusToken > 0) {
+      inputRef.current?.focus();
+    }
+  }, [focusToken]);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === '/' && document.activeElement !== inputRef.current) {
         e.preventDefault();
@@ -44,7 +62,8 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const canSend = userInput.trim().length > 0 && !isLoading;
+  const inputDisabled = disableInput || (isLoading && !allowInputWhileLoading);
+  const canSend = userInput.trim().length > 0 && !submitDisabled && (!isLoading || allowInputWhileLoading);
 
   return (
     <div className="flex-shrink-0 border-t border-k3-border-subtle bg-k3-base pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
@@ -70,7 +89,7 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
               placeholder={t.composer}
-              disabled={isLoading}
+              disabled={inputDisabled}
               className="flex-1 min-w-0 bg-transparent px-3 sm:px-4 py-3 pr-14 text-base sm:text-sm text-k3-text-primary focus:outline-none placeholder:text-k3-text-tertiary disabled:opacity-50"
             />
             <button

@@ -9,9 +9,10 @@ import {
   fetchMatchReviewStream,
 } from '../services/geminiService';
 import { fetchHeroes } from '../services/dotaApiService';
-import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
+import { buildPracticeUserContext, heroDisplayName, resolveAnalyzeUserMessage, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
+import { findPrimaryReviewSession, isReviewFollowUpAllowed, canSubmitReviewFollowUp, canSubmitReviewFollowUpForContext, findInflightCoachSession, primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../utils/reviewSurface';
 import {
   clearStreamingCoachMessages,
   coachCancelledMessage,
@@ -32,6 +33,7 @@ import {
   HomeModules,
   CoachCanvas,
   CoachComposer,
+  ReviewSurface,
 } from './coach';
 import type { CoachMessage } from './coach/coachMessage';
 
@@ -53,12 +55,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const streamControllerRef = useRef<AbortController | null>(null);
   const inflightTaskRef = useRef(0);
   const activeReviewRef = useRef<{ matchId: number; heroId?: number } | null>(null);
+  const pendingFollowUpContextRef = useRef<ReviewFollowUpContext | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showMentorPicker, setShowMentorPicker] = useState(false);
   const [showHeroPicker, setShowHeroPicker] = useState(false);
   const [detailHeroId, setDetailHeroId] = useState<number | null>(null);
   const [dismissedSessionIds, setDismissedSessionIds] = useState<string[]>([]);
   const [lastDismissedSessionId, setLastDismissedSessionId] = useState<string | null>(null);
+  const [composerFocusToken, setComposerFocusToken] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -122,7 +126,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     [draft, selectionSide, practiceHero]
   );
 
-  const handleAnalyze = useCallback(() => {
+  const handleAnalyze = useCallback((options?: { ignoreComposerInput?: boolean }) => {
     if (coaching.radiant.length === 0 && coaching.dire.length === 0) {
       addCoachMessage({ type: 'coach', content: t.needHeroes });
       return;
@@ -134,7 +138,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     const defaultMsg = practiceName
       ? (lang === 'zh' ? `分析练习英雄 ${practiceName}` : `Analyze practice hero ${practiceName}`)
       : (lang === 'zh' ? '分析当前阵容' : 'Analyze current lineup');
-    const userMsg = userInput.trim() || defaultMsg;
+    const userMsg = resolveAnalyzeUserMessage(userInput, defaultMsg, options?.ignoreComposerInput);
     const userContext = buildPracticeUserContext(practiceHero, lang, userMsg);
     addCoachMessage({ type: 'user', action: 'analyze', lesson, content: userMsg });
     setUserInput('');
@@ -196,6 +200,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
+    if (!followUp) {
+      pendingFollowUpContextRef.current = null;
+      setUserInput('');
+    }
     cancelStream();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
@@ -239,14 +247,47 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     );
   }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream]);
 
+  const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
+  const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
+  const inflightSession = useMemo(() => findInflightCoachSession(sessions), [sessions]);
+  const inflightIsReview = inflightSession?.action === 'review';
+  const reviewFollowUpAllowed = useMemo(
+    () => isReviewFollowUpAllowed(sessions),
+    [sessions],
+  );
+  const reviewFollowUpSubmittable = useMemo(
+    () => canSubmitReviewFollowUp(sessions),
+    [sessions],
+  );
+  const surfaceFollowUpAllowed = reviewFollowUpSubmittable && !isLoading;
+  const composerReviewFollowUpMode = lesson === 'review' && Boolean(activeReviewSession);
+  const allowInputWhileLoading = isLoading && inflightIsReview && Boolean(activeReviewSession);
+  const composerInputDisabled = composerReviewFollowUpMode && !reviewFollowUpSubmittable
+    && !(isLoading && inflightIsReview);
+
+  useEffect(() => {
+    const ctx = primaryReviewFollowUpContext(activeReviewSession);
+    if (ctx) activeReviewRef.current = ctx;
+  }, [activeReviewSession]);
+
   const handleReviewFollowUp = useCallback((
     question: string,
-    context?: { matchId: number; heroId?: number },
+    context?: ReviewFollowUpContext,
   ) => {
-    const ctx = context ?? activeReviewRef.current;
-    if (!ctx) return;
+    if (isLoading) return;
+    const displayedCtx = primaryReviewFollowUpContext(activeReviewSession);
+    const ctx = context ?? pendingFollowUpContextRef.current ?? displayedCtx;
+    if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
+    pendingFollowUpContextRef.current = null;
     handleReview(ctx.matchId, ctx.heroId, question);
-  }, [handleReview]);
+  }, [handleReview, isLoading, activeReviewSession, sessions]);
+
+  const handleComposeFollowUp = useCallback((text: string, context: ReviewFollowUpContext) => {
+    pendingFollowUpContextRef.current = context;
+    setLesson('review');
+    setUserInput(text);
+    setComposerFocusToken((t) => t + 1);
+  }, []);
 
   const handleSuggest = useCallback(async () => {
     if (coaching.allies.length >= 5) {
@@ -317,17 +358,26 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim() || isLoading) return;
-    if (lesson === 'review' && activeReviewRef.current) {
+    if (!userInput.trim()) return;
+    const pendingCtx = lesson === 'review' ? pendingFollowUpContextRef.current : null;
+    const reviewFollowUpSubmit = Boolean(
+      lesson === 'review' && (pendingCtx || activeReviewSession),
+    );
+    if (reviewFollowUpSubmit) {
+      if (isLoading) return;
+      const ctx = pendingCtx ?? primaryReviewFollowUpContext(activeReviewSession);
+      if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
       handleReviewFollowUp(userInput.trim());
       return;
     }
+    if (isLoading) return;
     handleAnalyze();
-  }, [userInput, isLoading, lesson, handleAnalyze, handleReviewFollowUp]);
+  }, [userInput, isLoading, lesson, activeReviewSession, sessions, handleAnalyze, handleReviewFollowUp]);
 
   const resetAll = useCallback(() => {
     cancelStream();
     activeReviewRef.current = null;
+    pendingFollowUpContextRef.current = null;
     setDraft({ radiant: [], dire: [] });
     setMessages([]);
     setUserInput('');
@@ -347,17 +397,24 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [lastDismissedSessionId]);
 
   const handleLessonAction = useCallback((lessonMode: LessonMode) => {
+    const leavingReview = lesson === 'review' && lessonMode !== 'review';
+    if (lessonMode !== 'review') {
+      pendingFollowUpContextRef.current = null;
+    }
+    if (leavingReview) {
+      setUserInput('');
+    }
     setLesson(lessonMode);
     if (lessonMode === 'review') return;
+    const analyzeOpts = leavingReview ? { ignoreComposerInput: true } : undefined;
     switch (lessonMode) {
-      case 'bp': handleAnalyze(); break;
+      case 'bp': handleAnalyze(analyzeOpts); break;
       case 'match': handlePlaybook(); break;
       case 'items':
-      case 'mind': handleAnalyze(); break;
+      case 'mind': handleAnalyze(analyzeOpts); break;
     }
-  }, [handleAnalyze, handlePlaybook]);
+  }, [lesson, handleAnalyze, handlePlaybook]);
 
-  const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const dismissedSessionIdSet = useMemo(() => new Set(dismissedSessionIds), [dismissedSessionIds]);
   const hasResults = sessions.some((s) => !dismissedSessionIdSet.has(s.id));
   const mentorName = mentor
@@ -391,6 +448,16 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onStartReview={handleReview}
             coachBusy={isLoading}
           />
+          <ReviewSurface
+            sessions={sessions}
+            dismissedSessionIds={dismissedSessionIdSet}
+            lang={lang}
+            onDismiss={dismissSession}
+            onReviewFollowUp={handleReviewFollowUp}
+            onComposeFollowUp={handleComposeFollowUp}
+            followUpAllowed={surfaceFollowUpAllowed}
+            scrollContainerRef={scrollContainerRef}
+          />
           {sessions.length > 0 && (
             <div className="w-full max-w-3xl min-w-0 mt-3">
               <CoachCanvas
@@ -405,6 +472,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
                 mentorName={mentorName}
                 scrollContainerRef={scrollContainerRef}
                 onReviewFollowUp={handleReviewFollowUp}
+                canSubmitReviewFollowUpForContext={(ctx) => (
+                  !isLoading && canSubmitReviewFollowUpForContext(sessions, ctx)
+                )}
               />
             </div>
           )}
@@ -419,6 +489,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         isLoading={isLoading}
         onCancel={cancelStream}
         mentorName={mentorName}
+        allowInputWhileLoading={allowInputWhileLoading}
+        disableInput={composerInputDisabled}
+        submitDisabled={composerReviewFollowUpMode && !reviewFollowUpSubmittable}
+        focusToken={composerFocusToken}
       />
 
       <MentorPicker

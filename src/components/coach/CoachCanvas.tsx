@@ -11,6 +11,7 @@ import {
   coachSessionScrollFingerprint,
 } from '../../utils/coachScroll';
 import ResultCard from './ResultCard';
+import { findPrimaryReviewSession, type ReviewFollowUpContext } from '../../utils/reviewSurface';
 
 interface CoachCanvasProps {
   sessions: CoachSession[];
@@ -23,7 +24,8 @@ interface CoachCanvasProps {
   onUndoDismiss: () => void;
   mentorName?: string;
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
-  onReviewFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
+  onReviewFollowUp?: (question: string, context: ReviewFollowUpContext) => void;
+  canSubmitReviewFollowUpForContext?: (context: ReviewFollowUpContext) => boolean;
 }
 
 const UndoStrip: React.FC<{
@@ -63,6 +65,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
   mentorName,
   scrollContainerRef,
   onReviewFollowUp,
+  canSubmitReviewFollowUpForContext,
 }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const undoRef = useRef<HTMLDivElement>(null);
@@ -72,9 +75,15 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
   const prevStreamingFingerprintRef = useRef('');
   const pinnedNearBottomRef = useRef(true);
 
+  const primaryReviewSession = useMemo(
+    () => findPrimaryReviewSession(sessions),
+    [sessions],
+  );
+
   const visibleSessions = useMemo(
-    () => filterVisibleSessions(sessions, dismissedSessionIds),
-    [sessions, dismissedSessionIds],
+    () => filterVisibleSessions(sessions, dismissedSessionIds)
+      .filter((s) => !(primaryReviewSession && s.id === primaryReviewSession.id && !s.message.reviewFollowUp)),
+    [sessions, dismissedSessionIds, primaryReviewSession],
   );
 
   const lastDismissedSession = useMemo(
@@ -170,7 +179,27 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
       )}
 
       {sessions.map((session) => {
+        const isPrimaryReview = primaryReviewSession
+          && session.id === primaryReviewSession.id
+          && !session.message.reviewFollowUp;
         const dismissed = dismissedSessionIds.has(session.id);
+
+        if (isPrimaryReview) {
+          if (dismissed && session.id === lastDismissedSessionId) {
+            return (
+              <UndoStrip
+                key={`undo-${session.id}`}
+                innerRef={undoRef}
+                title={sessionTitle(session, lang)}
+                dismissedLabel={t.dismissed}
+                undoLabel={t.undo}
+                onUndo={onUndoDismiss}
+              />
+            );
+          }
+          return null;
+        }
+
         if (!dismissed) {
           return (
             <div
@@ -187,6 +216,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
                 expanded
                 onDismiss={() => onDismissSession(session.id)}
                 onReviewFollowUp={onReviewFollowUp}
+                canSubmitReviewFollowUpForContext={canSubmitReviewFollowUpForContext}
               />
             </div>
           );

@@ -68,3 +68,13 @@ export function buildPracticeUserContext(
     : `Practice hero: ${name}. Teach this hero as the student's focus.`;
   return extraTrimmed ? `${prefix} ${extraTrimmed}` : prefix;
 }
+
+/** Analyze prompt: default lineup copy unless composer input is intentionally used. */
+export function resolveAnalyzeUserMessage(
+  userInput: string,
+  defaultMsg: string,
+  ignoreComposerInput = false,
+): string {
+  if (ignoreComposerInput) return defaultMsg;
+  return userInput.trim() || defaultMsg;
+}
