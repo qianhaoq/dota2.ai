@@ -87,11 +87,27 @@ export function findStreamingReviewFollowUp(sessions: CoachSession[]): CoachSess
   return null;
 }
 
+/** Any coach session currently streaming (review, meta, analyze, etc.). */
+export function findInflightCoachSession(sessions: CoachSession[]): CoachSession | null {
+  for (let i = sessions.length - 1; i >= 0; i -= 1) {
+    if (sessions[i].message.isStreaming) return sessions[i];
+  }
+  return null;
+}
+
 /** Safe to start or submit a new review follow-up (primary complete, none streaming). */
 export function isReviewFollowUpAllowed(sessions: CoachSession[]): boolean {
   if (findStreamingReviewFollowUp(sessions)) return false;
   const primary = findPrimaryReviewSession(sessions);
   return isPrimaryReviewReadyForFollowUp(primary?.message);
+}
+
+/** Composer / Surface may submit a review follow-up (allowed + AI available). */
+export function canSubmitReviewFollowUp(sessions: CoachSession[]): boolean {
+  if (!isReviewFollowUpAllowed(sessions)) return false;
+  const primary = findPrimaryReviewSession(sessions);
+  if (!primary) return false;
+  return isReviewAiFollowUpAvailable(primary.message, reviewNoticeBlocks(primary.blocks));
 }
 
 /** AI follow-up chips / composer actions are available (not fallback-only). */

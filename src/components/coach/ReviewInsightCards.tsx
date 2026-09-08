@@ -99,9 +99,20 @@ const EvidenceChips: React.FC<{
 const CompactMomentTimeline: React.FC<{
   moments: KeyMomentCard[];
   lang: Language;
-}> = ({ moments, lang }) => {
+  timelineKey: string;
+}> = ({ moments, lang, timelineKey }) => {
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   const detailRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setActiveIdx(null);
+  }, [timelineKey]);
+
+  useEffect(() => {
+    if (activeIdx !== null && activeIdx >= moments.length) {
+      setActiveIdx(null);
+    }
+  }, [activeIdx, moments.length]);
 
   useEffect(() => {
     if (activeIdx !== null && detailRef.current) {
@@ -310,7 +321,14 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
 
   if (kind === 'key_moments' && cards.key_moments) {
     if (variant === 'timeline') {
-      return <CompactMomentTimeline moments={cards.key_moments} lang={lang} />;
+      return (
+        <CompactMomentTimeline
+          key={block.id}
+          timelineKey={block.id}
+          moments={cards.key_moments}
+          lang={lang}
+        />
+      );
     }
     return (
       <div className="space-y-2">

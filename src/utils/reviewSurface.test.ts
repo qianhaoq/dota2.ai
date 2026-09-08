@@ -9,6 +9,8 @@ import {
   findStreamingReviewFollowUp,
   isReviewFollowUpAllowed,
   isReviewAiFollowUpAvailable,
+  canSubmitReviewFollowUp,
+  findInflightCoachSession,
 } from './reviewSurface';
 import type { CoachSession } from '../components/coach/coachMessage';
 
@@ -157,6 +159,51 @@ describe('isReviewFollowUpAllowed', () => {
       }),
     ];
     expect(isReviewFollowUpAllowed(sessions)).toBe(true);
+  });
+});
+
+describe('canSubmitReviewFollowUp', () => {
+  it('returns false when review notice blocks AI follow-ups', () => {
+    const sessions = [
+      {
+        ...reviewSession({
+          reviewCards: {
+            match_summary: { matchId: 1 } as never,
+            primary_mistake: { headline: 'x' } as never,
+            drill: { title: 'd', steps: [], duration: '5m' },
+            followups: ['q'],
+          },
+        }),
+        blocks: [
+          { id: 'r1-review-notice', type: 'markdown' as const, markdown: 'AI unavailable' },
+        ],
+      },
+    ];
+    expect(canSubmitReviewFollowUp(sessions)).toBe(false);
+  });
+
+  it('returns true when primary complete, AI available, no streaming follow-up', () => {
+    const sessions = [
+      reviewSession({
+        reviewCards: {
+          match_summary: { matchId: 1 } as never,
+          primary_mistake: { headline: 'x' } as never,
+          drill: { title: 'd', steps: [], duration: '5m' },
+          followups: ['q'],
+        },
+      }),
+    ];
+    expect(canSubmitReviewFollowUp(sessions)).toBe(true);
+  });
+});
+
+describe('findInflightCoachSession', () => {
+  it('returns the latest streaming session', () => {
+    const sessions = [
+      reviewSession({ isStreaming: false }, 'done'),
+      { id: 'meta', action: 'meta' as const, message: { id: 'meta', type: 'coach' as const, action: 'meta' as const, content: '', isStreaming: true }, blocks: [] },
+    ];
+    expect(findInflightCoachSession(sessions)?.id).toBe('meta');
   });
 });
 

@@ -12,6 +12,8 @@ interface CoachComposerProps {
   mentorName?: string;
   /** When true, input stays enabled during loading (e.g. review follow-ups while streaming). */
   allowInputWhileLoading?: boolean;
+  /** When true, lock input (e.g. AI unavailable for review follow-ups). */
+  disableInput?: boolean;
   /** When true, send is disabled even if input has text (e.g. primary review still loading). */
   submitDisabled?: boolean;
   /** Increment to focus the input after programmatic fill (follow-up chips). */
@@ -27,6 +29,7 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
   onCancel,
   mentorName,
   allowInputWhileLoading = false,
+  disableInput = false,
   submitDisabled = false,
   focusToken = 0,
 }) => {
@@ -59,7 +62,7 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const inputDisabled = isLoading && !allowInputWhileLoading;
+  const inputDisabled = disableInput || (isLoading && !allowInputWhileLoading);
   const canSend = userInput.trim().length > 0 && !submitDisabled && (!isLoading || allowInputWhileLoading);
 
   return (
