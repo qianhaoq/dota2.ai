@@ -297,6 +297,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
           {blockByKind.get('phases') && (
             <SectionCard
               title={t.phases}
+              lang={lang}
               framed
               defaultOpen={!mobileCompact}
               preview={mobileCompact ? cards?.phases?.[0]?.label : undefined}
@@ -312,6 +313,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
           {blockByKind.get('key_moments') && (
             <SectionCard
               title={t.moments}
+              lang={lang}
               framed
               defaultOpen={false}
               preview={mobileCompact ? momentsPreview : undefined}
@@ -325,7 +327,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
           )}
 
           {blockByKind.get('mentor_note') && (
-            <SectionCard title={t.mentor} framed defaultOpen={false}>
+            <SectionCard title={t.mentor} lang={lang} framed defaultOpen={false}>
               <ReviewInsightCards
                 block={blockByKind.get('mentor_note')!}
                 lang={lang}

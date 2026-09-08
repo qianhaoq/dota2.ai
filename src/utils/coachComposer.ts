@@ -68,15 +68,21 @@ export function resolveCoachComposerState({
 }
 
 /**
- * 仅当复盘追问确实可提交时才走追问管线；否则退回普通提问，
- * 避免主复盘不完整时用户输入被静默吞掉。
+ * Route composer submit through the review pipeline when:
+ * - follow-up is ready (complete primary), or
+ * - the user still holds retained match context after cancel / incomplete primary
+ *   (restart/follow-up with that match id — never fall through to draft analyze).
  */
 export function shouldSubmitReviewFollowUp(
   lesson: LessonMode,
   hasPendingContext: boolean,
   state: CoachComposerState,
+  hasRetainedMatchContext = false,
 ): boolean {
   if (lesson !== 'review') return false;
-  if (!hasPendingContext && !state.reviewFollowUpMode) return false;
-  return state.reviewFollowUpSubmittable;
+  if (state.reviewFollowUpSubmittable) {
+    return hasPendingContext || state.reviewFollowUpMode;
+  }
+  // Cancelled before follow-up-ready, or incomplete primary: keep match-scoped submit.
+  return hasRetainedMatchContext;
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import type { Language } from '../../../types';
 
 interface SectionCardProps {
   title: React.ReactNode;
@@ -13,6 +14,8 @@ interface SectionCardProps {
   onToggle?: (next: boolean) => void;
   /** One-line preview shown while collapsed. */
   preview?: string;
+  /** UI language for default expand/collapse labels (中文 first). */
+  lang?: Language;
   expandLabel?: string;
   collapseLabel?: string;
   children: React.ReactNode;
@@ -27,8 +30,9 @@ const SectionCard: React.FC<SectionCardProps> = ({
   defaultOpen = true,
   onToggle,
   preview,
-  expandLabel = 'Expand',
-  collapseLabel = 'Collapse',
+  lang = 'zh',
+  expandLabel,
+  collapseLabel,
   children,
 }) => {
   const [innerOpen, setInnerOpen] = useState(defaultOpen);
@@ -38,6 +42,8 @@ const SectionCard: React.FC<SectionCardProps> = ({
     setInnerOpen(next);
     onToggle?.(next);
   };
+  const resolvedExpand = expandLabel ?? (lang === 'zh' ? '展开' : 'Expand');
+  const resolvedCollapse = collapseLabel ?? (lang === 'zh' ? '收起' : 'Collapse');
 
   return (
     <section className={`min-w-0 ${framed ? 'rounded-lg border border-k3-border-subtle/80 bg-k3-elevated/20' : ''}`}>
@@ -53,7 +59,7 @@ const SectionCard: React.FC<SectionCardProps> = ({
             className="text-[11px] text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 min-h-[40px] flex-shrink-0 touch-manipulation"
           >
             {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {isOpen ? collapseLabel : expandLabel}
+            {isOpen ? resolvedCollapse : resolvedExpand}
           </button>
         )}
       </div>

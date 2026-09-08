@@ -160,19 +160,33 @@ describe('resolveCoachComposerState', () => {
 });
 
 describe('shouldSubmitReviewFollowUp', () => {
-  it('routes to the review pipeline only when submittable', () => {
+  it('routes to the review pipeline when follow-up is submittable', () => {
     const active = reviewSession({ reviewCards: completeCards });
     const ok = resolveCoachComposerState({
       ...baseInput, sessions: [active], activeReviewSession: active,
     });
     expect(shouldSubmitReviewFollowUp('review', false, ok)).toBe(true);
+    expect(shouldSubmitReviewFollowUp('bp', false, ok)).toBe(false);
+  });
 
+  it('routes incomplete/cancelled primary through retained match context, not draft analyze', () => {
     const cancelled = reviewSession({ isStreaming: false, reviewCards: partialCards as never });
     const incomplete = resolveCoachComposerState({
       ...baseInput, sessions: [cancelled], activeReviewSession: cancelled,
     });
+    expect(incomplete.primaryReviewIncomplete).toBe(true);
+    expect(incomplete.reviewFollowUpSubmittable).toBe(false);
+    // Without retained match id, do not claim the review submit path.
     expect(shouldSubmitReviewFollowUp('review', false, incomplete)).toBe(false);
-    expect(shouldSubmitReviewFollowUp('bp', false, ok)).toBe(false);
+    // With retained match context (activeReviewRef / pending), restart/follow-up.
+    expect(shouldSubmitReviewFollowUp('review', false, incomplete, true)).toBe(true);
+  });
+
+  it('routes early cancel (no active session) when match context was retained', () => {
+    const neutral = resolveCoachComposerState({ ...baseInput, sessions: [] });
+    expect(neutral.reviewFollowUpMode).toBe(false);
+    expect(shouldSubmitReviewFollowUp('review', false, neutral)).toBe(false);
+    expect(shouldSubmitReviewFollowUp('review', false, neutral, true)).toBe(true);
   });
 
   it('honours a pending compose context even without a displayed review session', () => {
@@ -182,6 +196,8 @@ describe('shouldSubmitReviewFollowUp', () => {
     });
     expect(shouldSubmitReviewFollowUp('review', true, state)).toBe(true);
     const neutral = resolveCoachComposerState({ ...baseInput, sessions: [] });
+    // Pending alone is not enough when follow-up is not submittable; need retained match.
     expect(shouldSubmitReviewFollowUp('review', true, neutral)).toBe(false);
+    expect(shouldSubmitReviewFollowUp('review', true, neutral, true)).toBe(true);
   });
 });

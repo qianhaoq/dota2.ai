@@ -386,16 +386,29 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     e.preventDefault();
     if (!userInput.trim()) return;
     const pendingCtx = lesson === 'review' ? pendingFollowUpContextRef.current : null;
-    if (shouldSubmitReviewFollowUp(lesson, Boolean(pendingCtx), composerState)) {
+    const displayedCtx = primaryReviewFollowUpContext(activeReviewSession);
+    const retainedRef = activeReviewRef.current;
+    const hasRetainedMatchContext = Boolean(pendingCtx || displayedCtx || retainedRef);
+    if (shouldSubmitReviewFollowUp(lesson, Boolean(pendingCtx), composerState, hasRetainedMatchContext)) {
       if (isLoading) return;
-      const ctx = pendingCtx ?? primaryReviewFollowUpContext(activeReviewSession);
-      if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
-      handleReviewFollowUp(userInput.trim());
+      // Ready follow-up: require AI-available gate.
+      if (composerState.reviewFollowUpSubmittable) {
+        const ctx = pendingCtx ?? displayedCtx;
+        if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
+        handleReviewFollowUp(userInput.trim());
+        return;
+      }
+      // Incomplete / cancelled primary: restart/follow-up with retained match id.
+      const matchId = pendingCtx?.matchId ?? displayedCtx?.matchId ?? retainedRef?.matchId;
+      const heroId = pendingCtx?.heroId ?? displayedCtx?.heroId ?? retainedRef?.heroId;
+      if (matchId == null) return;
+      pendingFollowUpContextRef.current = null;
+      handleReview(matchId, heroId, userInput.trim());
       return;
     }
     if (isLoading) return;
     handleAnalyze();
-  }, [userInput, isLoading, lesson, composerState, activeReviewSession, sessions, handleAnalyze, handleReviewFollowUp]);
+  }, [userInput, isLoading, lesson, composerState, activeReviewSession, sessions, handleAnalyze, handleReview, handleReviewFollowUp]);
 
   const resetAll = useCallback(() => {
     cancelStream();
