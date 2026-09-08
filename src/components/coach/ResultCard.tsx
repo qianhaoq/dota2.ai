@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Language, Hero, A2UIBlock, A2UIAction } from '../../types';
 import {
   Sparkles, Target, TrendingUp, BarChart3, Zap, Film,
-  ChevronDown, ChevronUp, Check, AlertTriangle, X,
+  Check, AlertTriangle, X,
 } from 'lucide-react';
 import { MatchupData, TierHero, PlaybookHero } from '../../services/geminiService';
 import type { CoachSession } from './coachMessage';
@@ -11,6 +11,7 @@ import { shouldShowCoachFailureAlert, isCoachUserAbortError } from '../../utils/
 import { groupMarkdownSegments } from '../../utils/markdownLines';
 import { primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../../utils/reviewSurface';
 import ReviewInsightCards from './ReviewInsightCards';
+import { ActionChipBar, CardSkeleton, SectionCard, StatusNotice } from './a2ui';
 
 interface ResultCardProps {
   session: CoachSession;
@@ -23,21 +24,6 @@ interface ResultCardProps {
   onReviewFollowUp?: (question: string, context: ReviewFollowUpContext) => void;
   canSubmitReviewFollowUpForContext?: (context: ReviewFollowUpContext) => boolean;
 }
-
-const TierSkeleton: React.FC = () => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5" aria-hidden="true">
-    {Array.from({ length: 6 }).map((_, i) => (
-      <div
-        key={i}
-        className="flex items-center gap-2 p-2 rounded-sm border border-k3-border-subtle bg-k3-elevated/20 animate-pulse min-h-[44px]"
-      >
-        <span className="w-5 h-5 rounded-sm bg-k3-elevated flex-shrink-0" />
-        <span className="flex-1 h-3 rounded bg-k3-elevated min-w-0" />
-        <span className="w-10 h-3 rounded bg-k3-elevated flex-shrink-0" />
-      </div>
-    ))}
-  </div>
-);
 
 export const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ text, streaming }) => {
   const segments = groupMarkdownSegments(text);
@@ -211,29 +197,14 @@ const ResultCard: React.FC<ResultCardProps> = ({
   };
 
   const renderActions = (actions: A2UIAction[]) => (
-    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-      {actions.map((action) => (
-        <button
-          key={action.id}
-          onClick={() => {
-            if (action.heroId == null) return;
-            const hero = allHeroes.find((h) => h.id === action.heroId);
-            if (hero) onSelectHero(hero);
-          }}
-          className="flex items-center gap-2 p-2.5 bg-k3-elevated/40 hover:bg-k3-elevated border border-k3-border-subtle rounded-sm text-left min-h-[44px] touch-manipulation min-w-0"
-        >
-          <div className="flex-1 min-w-0">
-            <span className="text-k3-text-primary text-xs font-medium block truncate">{action.label}</span>
-            {action.subtitle && (
-              <span className="text-k3-text-tertiary text-[9px]">{action.subtitle}</span>
-            )}
-          </div>
-          {action.meta && (
-            <span className="text-k3-radiant text-[10px] font-bold flex-shrink-0">{action.meta}</span>
-          )}
-        </button>
-      ))}
-    </div>
+    <ActionChipBar
+      actions={actions}
+      onAction={(action) => {
+        if (action.heroId == null) return;
+        const hero = allHeroes.find((h) => h.id === action.heroId);
+        if (hero) onSelectHero(hero);
+      }}
+    />
   );
 
   const renderTier = (block: A2UIBlock) => {
@@ -314,7 +285,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
         {message.isStreaming && session.action === 'meta' && !message.tierHeroes?.length && !message.error && (
           <div className="space-y-2">
             <p className="text-sm text-k3-text-secondary italic">{t.thinking}</p>
-            <TierSkeleton />
+            <CardSkeleton variant="grid" />
           </div>
         )}
 
@@ -330,19 +301,19 @@ const ResultCard: React.FC<ResultCardProps> = ({
         )}
 
         {shouldShowCoachFailureAlert(message) && (
-          <div className="flex items-start gap-2 p-3 rounded-sm bg-red-500/10 border border-red-500/20">
-            <AlertTriangle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-red-400">
-                {isCoachUserAbortError(message.error)
-                  ? (lang === 'zh' ? '已取消' : 'Cancelled')
-                  : message.action === 'review'
-                    ? (lang === 'zh' ? '复盘失败' : 'Review failed')
-                    : (lang === 'zh' ? '请求失败' : 'Request failed')}
-              </p>
-              <p className="text-sm text-red-400/90 break-words mt-1">{message.error}</p>
-            </div>
-          </div>
+          <StatusNotice
+            tone="error"
+            icon={<AlertTriangle size={16} className="text-red-400" />}
+            title={
+              isCoachUserAbortError(message.error)
+                ? (lang === 'zh' ? '已取消' : 'Cancelled')
+                : message.action === 'review'
+                  ? (lang === 'zh' ? '复盘失败' : 'Review failed')
+                  : (lang === 'zh' ? '请求失败' : 'Request failed')
+            }
+          >
+            {message.error}
+          </StatusNotice>
         )}
 
         {session.blocks.map((block) => {
@@ -387,37 +358,27 @@ const ResultCard: React.FC<ResultCardProps> = ({
           }
 
           const long = Boolean(block.markdown && block.markdown.length >= 900);
+          const framed = isReview || isReviewInsight;
           const open = isSectionOpen(
             block.id,
             block.markdown,
-            (isReview || isReviewInsight) ? reviewDefaultOpen : undefined,
+            framed ? reviewDefaultOpen : undefined,
           );
 
           return (
-            <section key={block.id} className={`min-w-0 ${isReview || isReviewInsight ? 'rounded-lg border border-k3-border-subtle/80 bg-k3-elevated/20' : ''}`}>
-              <div className={`flex items-center justify-between gap-2 mb-1.5 ${isReview || isReviewInsight ? 'px-2.5 pt-2.5' : ''}`}>
-                <h3 className="text-k3-text-primary font-semibold text-sm flex items-center gap-2 min-w-0">
-                  <span className="w-1 h-4 bg-k3-text-tertiary rounded-full flex-shrink-0" />
-                  <span className="truncate">{block.title}</span>
-                </h3>
-                {(long || isReview || isReviewInsight) && (
-                  <button
-                    onClick={() => setOpenSections((prev) => ({ ...prev, [block.id]: !open }))}
-                    className="text-[11px] text-k3-text-tertiary hover:text-k3-text-secondary flex items-center gap-1 min-h-[40px] flex-shrink-0 touch-manipulation"
-                  >
-                    {open ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                    {open ? t.showLess : t.showMore}
-                  </button>
-                )}
-              </div>
-              {open ? (
-                <div className={isReview || isReviewInsight ? 'px-2.5 pb-2.5' : undefined}>{body}</div>
-              ) : (
-                <p className={`text-xs text-k3-text-tertiary truncate ${isReview || isReviewInsight ? 'px-2.5 pb-2.5' : ''}`}>
-                  {(block.markdown || '').replace(/\n/g, ' ').slice(0, 80)}
-                </p>
-              )}
-            </section>
+            <SectionCard
+              key={block.id}
+              title={block.title}
+              framed={framed}
+              collapsible={long || framed}
+              open={open}
+              onToggle={(next) => setOpenSections((prev) => ({ ...prev, [block.id]: next }))}
+              preview={(block.markdown || '').replace(/\n/g, ' ').slice(0, 80)}
+              expandLabel={t.showMore}
+              collapseLabel={t.showLess}
+            >
+              {body}
+            </SectionCard>
           );
         })}
       </div>
