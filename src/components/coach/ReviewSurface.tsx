@@ -14,6 +14,7 @@ import {
   type ReviewFollowUpContext,
 } from '../../utils/reviewSurface';
 import { MarkdownBody } from './ResultCard';
+import { scrollOffsetWithinContainer } from '../../utils/coachScroll';
 
 interface ReviewSurfaceProps {
   sessions: CoachSession[];
@@ -188,7 +189,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     if (!target) return;
     requestAnimationFrame(() => {
       if (container) {
-        const top = target.offsetTop - 8;
+        const top = scrollOffsetWithinContainer(container, target, 8);
         container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
       } else {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });

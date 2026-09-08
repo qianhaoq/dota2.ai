@@ -359,9 +359,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim()) return;
-    const pendingCtx = pendingFollowUpContextRef.current;
+    const pendingCtx = lesson === 'review' ? pendingFollowUpContextRef.current : null;
     const reviewFollowUpSubmit = Boolean(
-      pendingCtx || (lesson === 'review' && activeReviewSession),
+      lesson === 'review' && (pendingCtx || activeReviewSession),
     );
     if (reviewFollowUpSubmit) {
       if (isLoading) return;
@@ -377,6 +377,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const resetAll = useCallback(() => {
     cancelStream();
     activeReviewRef.current = null;
+    pendingFollowUpContextRef.current = null;
     setDraft({ radiant: [], dire: [] });
     setMessages([]);
     setUserInput('');
@@ -396,6 +397,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [lastDismissedSessionId]);
 
   const handleLessonAction = useCallback((lessonMode: LessonMode) => {
+    if (lessonMode !== 'review') {
+      pendingFollowUpContextRef.current = null;
+    }
     setLesson(lessonMode);
     if (lessonMode === 'review') return;
     switch (lessonMode) {

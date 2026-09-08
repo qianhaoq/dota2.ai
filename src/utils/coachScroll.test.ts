@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   classifyTimelineVisibilityChange,
   isScrollPinnedNearBottom,
+  scrollOffsetWithinContainer,
   shouldAutoScrollCoachTimeline,
   coachSessionScrollFingerprint,
   streamingSessionFingerprint,
@@ -12,6 +13,19 @@ const streamingSession = (id: string, content: string): CoachSession => ({
   id,
   message: { id, type: 'coach', content, isStreaming: true },
   blocks: [],
+});
+
+describe('scrollOffsetWithinContainer', () => {
+  it('derives scroll top from bounding rects and current scrollTop', () => {
+    const container = {
+      scrollTop: 200,
+      getBoundingClientRect: () => ({ top: 100 }),
+    } as HTMLElement;
+    const target = {
+      getBoundingClientRect: () => ({ top: 250 }),
+    } as HTMLElement;
+    expect(scrollOffsetWithinContainer(container, target, 8)).toBe(342);
+  });
 });
 
 describe('isScrollPinnedNearBottom', () => {
