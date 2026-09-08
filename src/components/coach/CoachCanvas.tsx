@@ -11,6 +11,7 @@ import {
   coachSessionScrollFingerprint,
 } from '../../utils/coachScroll';
 import ResultCard from './ResultCard';
+import { findPrimaryReviewSession } from '../../utils/reviewSurface';
 
 interface CoachCanvasProps {
   sessions: CoachSession[];
@@ -72,9 +73,15 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
   const prevStreamingFingerprintRef = useRef('');
   const pinnedNearBottomRef = useRef(true);
 
+  const primaryReviewSession = useMemo(
+    () => findPrimaryReviewSession(sessions),
+    [sessions],
+  );
+
   const visibleSessions = useMemo(
-    () => filterVisibleSessions(sessions, dismissedSessionIds),
-    [sessions, dismissedSessionIds],
+    () => filterVisibleSessions(sessions, dismissedSessionIds)
+      .filter((s) => !(primaryReviewSession && s.id === primaryReviewSession.id && !s.message.reviewFollowUp)),
+    [sessions, dismissedSessionIds, primaryReviewSession],
   );
 
   const lastDismissedSession = useMemo(
@@ -170,7 +177,27 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
       )}
 
       {sessions.map((session) => {
+        const isPrimaryReview = primaryReviewSession
+          && session.id === primaryReviewSession.id
+          && !session.message.reviewFollowUp;
         const dismissed = dismissedSessionIds.has(session.id);
+
+        if (isPrimaryReview) {
+          if (dismissed && session.id === lastDismissedSessionId) {
+            return (
+              <UndoStrip
+                key={`undo-${session.id}`}
+                innerRef={undoRef}
+                title={sessionTitle(session, lang)}
+                dismissedLabel={t.dismissed}
+                undoLabel={t.undo}
+                onUndo={onUndoDismiss}
+              />
+            );
+          }
+          return null;
+        }
+
         if (!dismissed) {
           return (
             <div

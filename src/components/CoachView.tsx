@@ -12,6 +12,7 @@ import { fetchHeroes } from '../services/dotaApiService';
 import { buildPracticeUserContext, heroDisplayName, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
+import { findPrimaryReviewSession } from '../utils/reviewSurface';
 import {
   clearStreamingCoachMessages,
   coachCancelledMessage,
@@ -32,6 +33,7 @@ import {
   HomeModules,
   CoachCanvas,
   CoachComposer,
+  ReviewSurface,
 } from './coach';
 import type { CoachMessage } from './coach/coachMessage';
 
@@ -59,6 +61,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const [detailHeroId, setDetailHeroId] = useState<number | null>(null);
   const [dismissedSessionIds, setDismissedSessionIds] = useState<string[]>([]);
   const [lastDismissedSessionId, setLastDismissedSessionId] = useState<string | null>(null);
+  const [composerFocusToken, setComposerFocusToken] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
@@ -248,6 +251,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     handleReview(ctx.matchId, ctx.heroId, question);
   }, [handleReview]);
 
+  const handleComposeFollowUp = useCallback((text: string) => {
+    setUserInput(text);
+    setComposerFocusToken((t) => t + 1);
+  }, []);
+
   const handleSuggest = useCallback(async () => {
     if (coaching.allies.length >= 5) {
       addCoachMessage({ type: 'coach', content: lang === 'zh' ? '阵容已满' : 'Lineup is full' });
@@ -317,11 +325,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim() || isLoading) return;
+    if (!userInput.trim()) return;
+    if (isLoading && lesson !== 'review') return;
     if (lesson === 'review' && activeReviewRef.current) {
       handleReviewFollowUp(userInput.trim());
       return;
     }
+    if (isLoading) return;
     handleAnalyze();
   }, [userInput, isLoading, lesson, handleAnalyze, handleReviewFollowUp]);
 
@@ -359,6 +369,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const dismissedSessionIdSet = useMemo(() => new Set(dismissedSessionIds), [dismissedSessionIds]);
+  const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
   const hasResults = sessions.some((s) => !dismissedSessionIdSet.has(s.id));
   const mentorName = mentor
     ? (lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name)
@@ -391,6 +402,15 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onStartReview={handleReview}
             coachBusy={isLoading}
           />
+          <ReviewSurface
+            sessions={sessions}
+            dismissedSessionIds={dismissedSessionIdSet}
+            lang={lang}
+            onDismiss={dismissSession}
+            onReviewFollowUp={handleReviewFollowUp}
+            onComposeFollowUp={handleComposeFollowUp}
+            scrollContainerRef={scrollContainerRef}
+          />
           {sessions.length > 0 && (
             <div className="w-full max-w-3xl min-w-0 mt-3">
               <CoachCanvas
@@ -419,6 +439,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
         isLoading={isLoading}
         onCancel={cancelStream}
         mentorName={mentorName}
+        allowInputWhileLoading={lesson === 'review' && Boolean(activeReviewSession)}
+        focusToken={composerFocusToken}
       />
 
       <MentorPicker
