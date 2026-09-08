@@ -71,6 +71,26 @@ export function reviewSurfaceProgressLabel(
   return map[phase];
 }
 
+/** Review Surface may show streaming progress (never when terminal or errored). */
+export function shouldShowReviewSurfaceProgress(
+  message?: CoachMessage,
+  phase?: ReviewSurfacePhase,
+  isStreaming?: boolean,
+): boolean {
+  if (!message || message.reviewFollowUp || !isStreaming) return false;
+  if (message.error) return false;
+  return reviewSurfaceProgressLabel(phase ?? 'complete', 'zh', isStreaming) != null;
+}
+
+/** Primary review stopped before insight/drill finished (cancel, error, or abort). */
+export function isReviewSurfaceStoppedEarly(message?: CoachMessage): boolean {
+  if (!message || message.isStreaming || message.reviewFollowUp) return false;
+  const cards = message.reviewCards;
+  const hasSpine = Boolean(message.matchFact || cards?.match_summary);
+  if (!hasSpine) return false;
+  return !cards?.primary_mistake || !cards?.drill;
+}
+
 /** Fact spine blocks shown before reviewCards arrive (type: review). */
 export function reviewFactSpineBlocks(blocks: A2UIBlock[]): A2UIBlock[] {
   return blocks.filter((b) => b.type === 'review' && b.reviewSection);

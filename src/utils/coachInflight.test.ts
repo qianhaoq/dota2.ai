@@ -10,6 +10,7 @@ import {
   shouldShowCoachFailureAlert,
   invalidateCoachInflightGeneration,
   isCoachInflightCurrent,
+  isCoachUserAbortError,
 } from './coachInflight';
 import type { CoachMessage } from '../components/coach/coachMessage';
 
@@ -41,7 +42,7 @@ describe('coachInflight', () => {
     ];
     const out = clearStreamingCoachMessages(messages, coachCancelledMessage('zh'));
     expect(out[0].isStreaming).toBe(false);
-    expect(out[0].error).toBe('已停止');
+    expect(out[0].error).toBe('已取消');
     expect(out[1]).toBe(messages[1]);
   });
 
@@ -55,7 +56,7 @@ describe('coachInflight', () => {
     expect(out[0].content).toBe('partial');
   });
 
-  it('clearStreamingCoachMessages keeps review cards visible when cancelled mid-stream', () => {
+  it('clearStreamingCoachMessages finalizes review sessions with structured cards', () => {
     const messages: CoachMessage[] = [
       {
         id: 'a',
@@ -144,6 +145,12 @@ describe('coachInflight', () => {
   it('exposes bilingual timeout copy', () => {
     expect(coachFetchTimeoutMessage('zh')).toContain('超时');
     expect(coachFetchTimeoutMessage('en')).toMatch(/timed out/i);
+  });
+
+  it('isCoachUserAbortError recognizes cancel copy', () => {
+    expect(isCoachUserAbortError('已取消')).toBe(true);
+    expect(isCoachUserAbortError('已停止')).toBe(true);
+    expect(isCoachUserAbortError('Request timed out')).toBe(false);
   });
 
   it('awaitWithTimeout rejects when the deadline passes', async () => {
