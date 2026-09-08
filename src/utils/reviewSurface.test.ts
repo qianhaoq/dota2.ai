@@ -11,6 +11,7 @@ import {
   isReviewAiFollowUpAvailable,
   canSubmitReviewFollowUp,
   findInflightCoachSession,
+  primaryReviewFollowUpContext,
 } from './reviewSurface';
 import type { CoachSession } from '../components/coach/coachMessage';
 
@@ -159,6 +160,26 @@ describe('isReviewFollowUpAllowed', () => {
       }),
     ];
     expect(isReviewFollowUpAllowed(sessions)).toBe(true);
+  });
+});
+
+describe('primaryReviewFollowUpContext', () => {
+  it('derives matchId and heroId from the displayed primary session', () => {
+    const session = reviewSession({
+      reviewCards: {
+        match_summary: { matchId: 8985182860, heroId: 54 } as never,
+        primary_mistake: { headline: 'x' } as never,
+        drill: { title: 'd', steps: [], duration: '5m' },
+      },
+    });
+    expect(primaryReviewFollowUpContext(session)).toEqual({ matchId: 8985182860, heroId: 54 });
+  });
+
+  it('falls back to matchFact when summary card is missing', () => {
+    const session = reviewSession({
+      matchFact: { summary: { matchId: 123 }, focusHeroId: 7 } as never,
+    });
+    expect(primaryReviewFollowUpContext(session)).toEqual({ matchId: 123, heroId: 7 });
   });
 });
 

@@ -127,3 +127,20 @@ export function reviewNoticeBlocks(blocks: A2UIBlock[]): A2UIBlock[] {
 }
 
 export type ReviewFollowUpContext = { matchId: number; heroId?: number };
+
+/** Match context for the primary review shown in Review Surface. */
+export function primaryReviewFollowUpContext(
+  session: CoachSession | null | undefined,
+): ReviewFollowUpContext | null {
+  if (!session || session.action !== 'review' || session.message.reviewFollowUp) {
+    return null;
+  }
+  const msg = session.message;
+  const cards = msg.reviewCards;
+  const matchId = cards?.match_summary?.matchId ?? msg.matchFact?.summary?.matchId;
+  if (matchId == null) return null;
+  return {
+    matchId,
+    heroId: cards?.match_summary?.heroId ?? msg.matchFact?.focusHeroId ?? undefined,
+  };
+}

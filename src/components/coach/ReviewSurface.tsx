@@ -172,7 +172,11 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
   const resultLabel = headerSummary?.resultLabel;
 
   useEffect(() => {
-    if (!session || dismissed) return;
+    if (!session) return;
+    if (dismissed) {
+      autoScrolledSessionIdRef.current = null;
+      return;
+    }
     if (autoScrolledSessionIdRef.current === session.id) return;
     autoScrolledSessionIdRef.current = session.id;
     const container = scrollContainerRef?.current;
