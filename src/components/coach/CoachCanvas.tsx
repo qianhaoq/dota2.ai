@@ -24,7 +24,7 @@ interface CoachCanvasProps {
   onUndoDismiss: () => void;
   mentorName?: string;
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
-  onReviewFollowUp?: (question: string, context: { matchId: number; heroId?: number }) => void;
+  onReviewFollowUp?: (question: string, context: ReviewFollowUpContext) => void;
   canSubmitReviewFollowUpForContext?: (context: ReviewFollowUpContext) => boolean;
 }
 

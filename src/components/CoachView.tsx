@@ -284,6 +284,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
 
   const handleComposeFollowUp = useCallback((text: string, context: ReviewFollowUpContext) => {
     pendingFollowUpContextRef.current = context;
+    setLesson('review');
     setUserInput(text);
     setComposerFocusToken((t) => t + 1);
   }, []);
@@ -358,15 +359,20 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim()) return;
-    if (isLoading && lesson !== 'review') return;
-    if (lesson === 'review' && activeReviewSession) {
-      if (!reviewFollowUpSubmittable || isLoading) return;
+    const pendingCtx = pendingFollowUpContextRef.current;
+    const reviewFollowUpSubmit = Boolean(
+      pendingCtx || (lesson === 'review' && activeReviewSession),
+    );
+    if (reviewFollowUpSubmit) {
+      if (isLoading) return;
+      const ctx = pendingCtx ?? primaryReviewFollowUpContext(activeReviewSession);
+      if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
       handleReviewFollowUp(userInput.trim());
       return;
     }
     if (isLoading) return;
     handleAnalyze();
-  }, [userInput, isLoading, lesson, activeReviewSession, reviewFollowUpSubmittable, handleAnalyze, handleReviewFollowUp]);
+  }, [userInput, isLoading, lesson, activeReviewSession, sessions, handleAnalyze, handleReviewFollowUp]);
 
   const resetAll = useCallback(() => {
     cancelStream();

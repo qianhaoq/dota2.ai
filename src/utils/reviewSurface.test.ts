@@ -11,7 +11,7 @@ import {
   isReviewAiFollowUpAvailable,
   canSubmitReviewFollowUp,
   canSubmitReviewFollowUpForContext,
-  findReviewSessionByContext,
+  findReviewSessionById,
   findInflightCoachSession,
   primaryReviewFollowUpContext,
 } from './reviewSurface';
@@ -174,14 +174,22 @@ describe('primaryReviewFollowUpContext', () => {
         drill: { title: 'd', steps: [], duration: '5m' },
       },
     });
-    expect(primaryReviewFollowUpContext(session)).toEqual({ matchId: 8985182860, heroId: 54 });
+    expect(primaryReviewFollowUpContext(session)).toEqual({
+      sessionId: 'r1',
+      matchId: 8985182860,
+      heroId: 54,
+    });
   });
 
   it('falls back to matchFact when summary card is missing', () => {
     const session = reviewSession({
       matchFact: { summary: { matchId: 123 }, focusHeroId: 7 } as never,
     });
-    expect(primaryReviewFollowUpContext(session)).toEqual({ matchId: 123, heroId: 7 });
+    expect(primaryReviewFollowUpContext(session)).toEqual({
+      sessionId: 'r1',
+      matchId: 123,
+      heroId: 7,
+    });
   });
 });
 
@@ -227,19 +235,22 @@ const completeReviewCards = {
   followups: ['q'],
 };
 
-describe('findReviewSessionByContext', () => {
-  it('finds the review session matching matchId and heroId', () => {
+describe('findReviewSessionById', () => {
+  it('returns the exact primary review session', () => {
     const sessions = [
       reviewSession({ reviewCards: completeReviewCards }, 'older'),
       reviewSession({
         reviewCards: { ...completeReviewCards, match_summary: { matchId: 2, heroId: 7 } as never },
       }, 'newer'),
     ];
-    expect(findReviewSessionByContext(sessions, { matchId: 8985182860, heroId: 54 })?.id).toBe('older');
+    expect(findReviewSessionById(sessions, 'older')?.id).toBe('older');
+    expect(findReviewSessionById(sessions, 'missing')).toBeNull();
   });
 });
 
 describe('canSubmitReviewFollowUpForContext', () => {
+  const ctxA = { sessionId: 'review-a', matchId: 8985182860, heroId: 54 };
+
   it('allows follow-up on older completed review when latest primary is partial', () => {
     const sessions = [
       reviewSession({ reviewCards: completeReviewCards }, 'review-a'),
@@ -249,7 +260,30 @@ describe('canSubmitReviewFollowUpForContext', () => {
       }, 'review-b'),
     ];
     expect(canSubmitReviewFollowUp(sessions)).toBe(false);
-    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 8985182860, heroId: 54 })).toBe(true);
+    expect(canSubmitReviewFollowUpForContext(sessions, ctxA)).toBe(true);
+  });
+
+  it('validates the exact session when the same match is reviewed twice', () => {
+    const sessions = [
+      reviewSession({ reviewCards: completeReviewCards }, 'review-first'),
+      reviewSession({
+        isStreaming: false,
+        reviewCards: {
+          match_summary: completeReviewCards.match_summary,
+          phases: [],
+        },
+      }, 'review-second'),
+    ];
+    expect(canSubmitReviewFollowUpForContext(sessions, {
+      sessionId: 'review-first',
+      matchId: 8985182860,
+      heroId: 54,
+    })).toBe(true);
+    expect(canSubmitReviewFollowUpForContext(sessions, {
+      sessionId: 'review-second',
+      matchId: 8985182860,
+      heroId: 54,
+    })).toBe(false);
   });
 
   it('allows follow-up on older completed review when latest primary is fallback-only', () => {
@@ -266,8 +300,11 @@ describe('canSubmitReviewFollowUpForContext', () => {
         blocks: [{ id: 'r2-review-notice', type: 'markdown' as const, markdown: 'AI unavailable' }],
       },
     ];
-    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 8985182860, heroId: 54 })).toBe(true);
-    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 2 })).toBe(false);
+    expect(canSubmitReviewFollowUpForContext(sessions, ctxA)).toBe(true);
+    expect(canSubmitReviewFollowUpForContext(sessions, {
+      sessionId: 'review-b',
+      matchId: 2,
+    })).toBe(false);
   });
 
   it('blocks all follow-ups while a review follow-up is streaming', () => {
@@ -275,7 +312,7 @@ describe('canSubmitReviewFollowUpForContext', () => {
       reviewSession({ reviewCards: completeReviewCards }, 'review-a'),
       reviewSession({ reviewFollowUp: true, isStreaming: true, content: '…' }, 'follow-up'),
     ];
-    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 8985182860, heroId: 54 })).toBe(false);
+    expect(canSubmitReviewFollowUpForContext(sessions, ctxA)).toBe(false);
   });
 
   it('blocks follow-up when targeted review is incomplete', () => {
@@ -284,7 +321,7 @@ describe('canSubmitReviewFollowUpForContext', () => {
         reviewCards: { match_summary: { matchId: 8985182860 } as never, phases: [] },
       }, 'review-a'),
     ];
-    expect(canSubmitReviewFollowUpForContext(sessions, { matchId: 8985182860 })).toBe(false);
+    expect(canSubmitReviewFollowUpForContext(sessions, ctxA)).toBe(false);
   });
 });
 

@@ -341,10 +341,7 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
 
   if (kind === 'drill' && cards.drill) {
     const d = cards.drill;
-    const drillContext: ReviewFollowUpContext | undefined = followUpContext
-      ?? (cards.match_summary?.matchId != null
-        ? { matchId: cards.match_summary.matchId, heroId: cards.match_summary.heroId }
-        : undefined);
+    const drillContext = followUpContext;
 
     return (
       <div className="rounded-lg border border-k3-radiant/30 bg-k3-radiant/8 p-3 sm:p-4">
@@ -390,11 +387,7 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
   }
 
   if (kind === 'followups' && cards.followups) {
-    const matchId = followUpContext?.matchId ?? cards.match_summary?.matchId;
-    const heroId = followUpContext?.heroId ?? cards.match_summary?.heroId;
-    const chipContext: ReviewFollowUpContext | undefined = matchId != null
-      ? { matchId, heroId }
-      : undefined;
+    const chipContext = followUpContext;
     const canFollowUp = followUpActionsEnabled && Boolean(onFollowUp && chipContext);
     const chipClass = variant === 'chips'
       ? 'text-xs px-3 py-2 rounded-full border border-k3-border-subtle bg-k3-elevated/60 text-k3-text-secondary hover:text-k3-text-primary hover:border-k3-radiant/30 hover:bg-k3-radiant/5 transition-colors touch-manipulation min-h-[40px]'

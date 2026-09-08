@@ -152,9 +152,13 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
   const followUpContext = useMemo((): ReviewFollowUpContext | undefined => {
     const summary = cards?.match_summary;
     const matchId = summary?.matchId ?? message?.matchFact?.summary?.matchId;
-    if (matchId == null) return undefined;
-    return { matchId, heroId: summary?.heroId ?? message?.matchFact?.focusHeroId ?? undefined };
-  }, [cards, message]);
+    if (matchId == null || !session) return undefined;
+    return {
+      sessionId: session.id,
+      matchId,
+      heroId: summary?.heroId ?? message?.matchFact?.focusHeroId ?? undefined,
+    };
+  }, [cards, message, session]);
 
   const blockByKind = useMemo(() => {
     const map = new Map<string, A2UIBlock>();

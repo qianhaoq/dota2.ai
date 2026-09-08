@@ -102,36 +102,24 @@ export function isReviewFollowUpAllowed(sessions: CoachSession[]): boolean {
   return isPrimaryReviewReadyForFollowUp(primary?.message);
 }
 
-/** Primary review session matching an explicit match/hero context (canvas history actions). */
-export function findReviewSessionByContext(
+/** Primary review session for an explicit session id (canvas / surface follow-up actions). */
+export function findReviewSessionById(
   sessions: CoachSession[],
-  context: ReviewFollowUpContext,
+  sessionId: string,
 ): CoachSession | null {
-  for (let i = sessions.length - 1; i >= 0; i -= 1) {
-    const s = sessions[i];
-    if (s.action !== 'review' || s.message.reviewFollowUp) continue;
-    const ctx = primaryReviewFollowUpContext(s);
-    if (!ctx || ctx.matchId !== context.matchId) continue;
-    if (
-      context.heroId != null
-      && ctx.heroId != null
-      && ctx.heroId !== context.heroId
-    ) {
-      continue;
-    }
-    return s;
-  }
-  return null;
+  const s = sessions.find((sess) => sess.id === sessionId);
+  if (!s || s.action !== 'review' || s.message.reviewFollowUp) return null;
+  return s;
 }
 
-/** Composer / Surface / canvas may submit a follow-up for a specific review context. */
+/** Composer / Surface / canvas may submit a follow-up for a specific review session. */
 export function canSubmitReviewFollowUpForContext(
   sessions: CoachSession[],
   context?: ReviewFollowUpContext | null,
 ): boolean {
   if (findStreamingReviewFollowUp(sessions)) return false;
-  const target = context
-    ? findReviewSessionByContext(sessions, context)
+  const target = context?.sessionId
+    ? findReviewSessionById(sessions, context.sessionId)
     : findPrimaryReviewSession(sessions);
   if (!target) return false;
   if (!isPrimaryReviewReadyForFollowUp(target.message)) return false;
@@ -159,7 +147,7 @@ export function reviewNoticeBlocks(blocks: A2UIBlock[]): A2UIBlock[] {
   return blocks.filter((b) => b.id.endsWith('-review-notice'));
 }
 
-export type ReviewFollowUpContext = { matchId: number; heroId?: number };
+export type ReviewFollowUpContext = { sessionId: string; matchId: number; heroId?: number };
 
 /** Match context for the primary review shown in Review Surface. */
 export function primaryReviewFollowUpContext(
@@ -173,6 +161,7 @@ export function primaryReviewFollowUpContext(
   const matchId = cards?.match_summary?.matchId ?? msg.matchFact?.summary?.matchId;
   if (matchId == null) return null;
   return {
+    sessionId: session.id,
     matchId,
     heroId: cards?.match_summary?.heroId ?? msg.matchFact?.focusHeroId ?? undefined,
   };
