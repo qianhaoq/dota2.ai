@@ -1,25 +1,74 @@
 <div align="center">
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 
-# Dota2.ai - AI 战术助手 | AI Tactical Assistant
+# Dota2.ai — 战术教练 V3 | Tactical Coach V3
 
-**中文默认 | Chinese Default with English Toggle**
+**教玩家做判断，不替玩家玩游戏。**
+**Chinese default · English toggle · MIT License**
 
 </div>
 
 ---
 
-## 📖 简介 | Introduction
+## 📖 这是什么 | What this is
 
-Dota2.ai 是一个基于 DeepSeek AI 的 Dota 2 战术助手应用，提供以下功能：
+Dota2.ai 是一个基于 DeepSeek 的 Dota 2 战术教练应用。它尝试回答三个问题：
 
-- **阵容分析 (Draft Strategy)**: 选择天辉/夜魇英雄，可选战术背景，分析对局（胜率预测、获胜条件、装备建议）
-- **传说百科 (Lore Keeper)**: 与神秘商人聊天，探索 Dota 2 的传说故事
+- **眼前是什么局面** —— 基于可校验的比赛事实（MatchFact），而不是感觉；
+- **有哪些选择及代价** —— 把“我该怎么办”拆成可比较的分支与前提；
+- **下一局能练什么** —— 保存一个可检查的动作，而不是一整份战报。
 
-Dota2.ai is a Dota 2 tactical assistant powered by DeepSeek AI, featuring:
+四个一级入口（V3 信息架构）：
 
-- **Draft Strategy**: Pick Radiant/Dire heroes, add optional strategy context, analyze matchup (win probability, win conditions, item suggestions)
-- **Lore Keeper**: Chat with the Secret Shopkeeper about Dota 2 lore
+| 入口 | 内容 |
+|------|------|
+| **战术室** | 动机入口（刚打完 / 准备开局 / 想练一下）、赛后复盘、战前阵容、装备取舍 |
+| **英雄修炼** | 冻结情境 → 先自己判断 → 再看拆解 → 保存练习动作 |
+| **英雄图鉴** | 英雄/技能/属性资料层，中文/英文/别名搜索 |
+| **战术笔记** | 本机保存的“触发 + 行动 + 检查”，支持完成/撤销/移除/导出 |
+
+### 诚实的边界 | Honest limits
+
+这个项目**承诺“判断更清楚”，不承诺**上分、胜率增益、完美出装或精确胜负预测：
+
+- 现有比赛数据只有统计、分路推断、经济与目标事件，**没有逐时刻坐标/视野**——因此真实复盘使用非空间证据，地图仅为明确标识的教学示意；
+- 装备取舍比较的是决策维度（用途/前提/牺牲/改选条件），**不冒充当前补丁的具体数值推荐**；
+- 英雄修炼的情境为教学编写，完成标记是**自我报告**，不是已验证的成长分；
+- 未连接比赛账号时，不伪造最近比赛、段位或成长分。
+
+设计细节见 [`docs/design/tactical-coach-v3/`](docs/design/tactical-coach-v3/)（产品/交互/视觉设计、A2UI 内部契约、迁移与验收）。
+
+---
+
+## 🧱 技术栈 | Stack
+
+- **前端**：React 18 + TypeScript + Vite + Tailwind（V3 战术色板与既有 k3 并存）
+- **后端**：Node/Express（`server.js`），SSE 流式输出
+- **AI**：DeepSeek（`deepseek-chat`，OpenAI 兼容客户端）——流式教练、复盘、出装与神秘商人对话
+- **数据**：OpenDota / Steam 公开接口（英雄、比赛事实、趋势）
+
+### 架构速览 | Architecture
+
+```
+src/
+├── app/                  # V3 外壳：WorkspaceShell、导航、导师栏、英雄缓存
+├── features/
+│   ├── tactical/         # 战术室：动机入口 + 装备取舍工作区
+│   ├── review/           # 复盘工作区（包装既有 CoachView 会话）
+│   ├── draft/            # 战前阵容工作区
+│   ├── practice/         # 英雄修炼（先答后讲）
+│   ├── knowledge/        # 英雄图鉴（KnowledgeLens）
+│   └── journal/          # 战术笔记（本机存储，失败退化为内存）
+├── coach-ui/             # 内部 A2UI 风格组件目录 dota-coach-ui/1：
+│   ├── catalog.ts        #   组件/动作白名单（不是官方 A2UI 线协议）
+│   ├── runtime.ts        #   beginRun/applyPatch/finishRun/answerEvent 运行时
+│   └── components/       #   CoachBrief / DecisionFork / EvidenceLens / …
+├── components/           # 既有教练组件（CoachView、ReviewSurface、HeroHub…）
+├── services/             # /api 客户端（SSE 流式）
+└── utils/                # 复盘/流式/组合逻辑与单元测试
+server.js                 # Express：/api/analyze、/api/review/:id、/api/playbook、…
+lib/matchReview/          # 比赛事实解析与约束
+```
 
 ---
 
@@ -27,263 +76,102 @@ Dota2.ai is a Dota 2 tactical assistant powered by DeepSeek AI, featuring:
 
 ### 环境要求 | Prerequisites
 
-- Node.js >= 18.0.0
-- npm >= 9.0.0
-- DeepSeek API Key ([获取地址 | Get it here](https://platform.deepseek.com/))
+- Node.js ≥ 18（CI 使用 20）
+- npm ≥ 9
+- DeepSeek API Key（[获取 | get one](https://platform.deepseek.com/)）
 
-### 安装步骤 | Installation
+### 安装 | Install
 
 ```bash
-# 克隆仓库 | Clone repository
 git clone https://github.com/qianhaoq/dota2.ai.git
 cd dota2.ai
-
-# 安装依赖 | Install dependencies
-npm install
-
-# 配置环境变量 | Configure environment variables
-cp .env.example .env
-# 编辑 .env 文件，填入你的 DEEPSEEK_API_KEY
-# Edit .env file and add your DEEPSEEK_API_KEY
+npm ci
+cp .env.example .env   # 填入 DEEPSEEK_API_KEY
 ```
 
-### 开发模式 | Development Mode
+### 开发 | Dev
 
 ```bash
-# 方式一：分别启动前端和后端 | Option 1: Start frontend and backend separately
-# 终端 1 | Terminal 1:
-npm start          # 启动后端服务器 (端口 8080) | Start backend server (port 8080)
-
-# 终端 2 | Terminal 2:
-npm run dev        # 启动 Vite 开发服务器 | Start Vite dev server
-
-# 方式二：同时启动（需要 concurrently）| Option 2: Start both (requires concurrently)
-npm run start:dev
+npm run start:dev      # Vite (http://localhost:5173) + Express (8080)
+# 或分开跑 | or separately: npm start (8080) + npm run dev (5173)
 ```
 
-访问 | Visit: http://localhost:5173
-
-### 生产构建 | Production Build
+### 生产 | Production
 
 ```bash
-# 构建前端 | Build frontend
 npm run build
-
-# 启动生产服务器 | Start production server
-npm start
+npm start              # http://localhost:8080
 ```
 
-访问 | Visit: http://localhost:8080
-
----
-
-## 🐳 Docker 部署 | Docker Deployment
-
-### 本地 Docker 运行 | Local Docker Run
+### 验证命令 | Verification（PR 前必须全部通过）
 
 ```bash
-# 构建镜像 | Build image
-docker build -t dota2-ai .
-
-# 运行容器 | Run container
-docker run -p 8080:8080 -e DEEPSEEK_API_KEY=your_api_key dota2-ai
-```
-
-### Google Cloud Run 部署 | Deploy to Google Cloud Run
-
-#### 1. 准备工作 | Prerequisites
-
-确保已安装 [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) 并已登录:
-
-```bash
-gcloud auth login
-gcloud config set project YOUR_PROJECT_ID
-```
-
-#### 2. 构建并推送镜像 | Build and Push Image
-
-```bash
-# 启用所需的 API | Enable required APIs
-gcloud services enable cloudbuild.googleapis.com run.googleapis.com
-
-# 构建并推送到 Container Registry | Build and push to Container Registry
-gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/dota2-ai
-
-# 或使用 Artifact Registry（推荐）| Or use Artifact Registry (recommended)
-gcloud builds submit --tag REGION-docker.pkg.dev/YOUR_PROJECT_ID/REPO_NAME/dota2-ai
-```
-
-#### 3. 部署到 Cloud Run | Deploy to Cloud Run
-
-```bash
-gcloud run deploy dota2-ai \
-  --image gcr.io/YOUR_PROJECT_ID/dota2-ai \
-  --platform managed \
-  --region asia-east1 \
-  --allow-unauthenticated \
-  --set-env-vars DEEPSEEK_API_KEY=your_api_key \
-  --memory 512Mi \
-  --min-instances 0 \
-  --max-instances 10
-```
-
-部署成功后会显示服务 URL。
-After deployment, you'll receive a service URL.
-
-#### 4. 配置自定义域名 | Configure Custom Domain
-
-在 Cloud Run 控制台或使用 CLI 添加自定义域名:
-
-```bash
-gcloud run domain-mappings create \
-  --service dota2-ai \
-  --domain dota2.ai \
-  --region asia-east1
-```
-
----
-
-## 🌐 DNS 配置 (dota2.ai) | DNS Configuration
-
-当前 dota2.ai 域名指向 Google AI Studio 的 IPv6 地址 (`2001:4860:4802:32::15`)。
-部署到 Cloud Run 后，需要更新 GoDaddy DNS 设置。
-
-The domain dota2.ai currently points to Google AI Studio's IPv6 address (`2001:4860:4802:32::15`).
-After deploying to Cloud Run, you'll need to update GoDaddy DNS settings.
-
-### GoDaddy DNS 配置步骤 | GoDaddy DNS Configuration Steps
-
-1. 登录 [GoDaddy](https://www.godaddy.com) 账户
-2. 进入域名管理 → DNS 管理
-3. 根据 Cloud Run 提供的 DNS 记录更新:
-
-**方式一：使用 Cloud Run 的域名映射** | **Option 1: Use Cloud Run Domain Mapping**
-
-Cloud Run 会提供需要添加的 DNS 记录，通常是:
-- 删除现有的 AAAA 记录 (`2001:4860:4802:32::15`)
-- 添加 Cloud Run 提供的 CNAME 记录
-
-**方式二：使用负载均衡器** | **Option 2: Use Load Balancer**
-
-如需更高级的配置（如 SSL 证书管理），可以使用 Google Cloud Load Balancer:
-- 添加 A 记录指向负载均衡器 IP
-- 添加 AAAA 记录指向负载均衡器 IPv6（如有）
-
----
-
-## 📁 项目结构 | Project Structure
-
-```
-dota2.ai/
-├── src/
-│   ├── components/       # React 组件
-│   │   ├── DraftAssistant.tsx
-│   │   ├── HeroCard.tsx
-│   │   └── LoreChat.tsx
-│   ├── services/         # API 服务
-│   │   ├── dotaApiService.ts
-│   │   └── geminiService.ts
-│   ├── App.tsx           # 主应用组件
-│   ├── types.ts          # TypeScript 类型定义
-│   ├── constants.ts      # 常量配置
-│   ├── index.css         # 全局样式 (Tailwind)
-│   └── main.tsx          # 应用入口
-├── public/               # 静态资源
-├── server.js             # Express 后端服务器
-├── Dockerfile            # Docker 构建文件
-├── vite.config.ts        # Vite 配置
-├── tailwind.config.js    # Tailwind 配置
-└── package.json          # 项目依赖
+npm test               # vitest 单元测试
+npx tsc --noEmit       # 类型检查
+npm run build          # 生产构建
+node --check server.js # 服务端语法
 ```
 
 ---
 
 ## 🔧 环境变量 | Environment Variables
 
-| 变量名 | 必需 | 默认值 | 描述 |
-|--------|------|--------|------|
-| `DEEPSEEK_API_KEY` | ✅ | - | DeepSeek API 密钥 |
-| `PORT` | ❌ | 8080 | 服务器端口 |
-| `HOST` | ❌ | 0.0.0.0 | 服务器主机地址 |
+| 变量 | 必需 | 默认 | 说明 |
+|------|------|------|------|
+| `DEEPSEEK_API_KEY` | ✅ | — | DeepSeek 密钥（GitHub Actions 同名 secret） |
+| `STEAM_WEB_API_KEY` | ❌ | — | 本地化英雄名；缺省时回退 OpenDota 常量 |
+| `PORT` | ❌ | `8080` | 服务端口（Cloud Run 注入同名变量） |
+| `HOST` | ❌ | `0.0.0.0` | 绑定地址 |
+
+完整说明与云端命名见 [`.env.example`](.env.example)。`.env` 已被 gitignore；请勿提交密钥。
 
 ---
 
-## 🔗 API 端点 | API Endpoints
+## 🐳 部署 | Deployment
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/health` | GET | 健康检查 |
-| `/api/health` | GET | API 健康检查（含配置状态）|
-| `/api/analyze` | POST | 分析阵容对局 |
-| `/api/chat` | POST | 传说百科聊天 |
+```bash
+# Docker
+docker build -t dota2-ai .
+docker run -p 8080:8080 -e DEEPSEEK_API_KEY=your_api_key dota2-ai
+
+# Google Cloud Run（概要；镜像与区域按需调整）
+gcloud builds submit --tag REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai
+gcloud run deploy dota2-ai --image REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai \
+  --set-env-vars DEEPSEEK_API_KEY=your_api_key --allow-unauthenticated
+```
+
+容器内 `HOST=0.0.0.0`、`PORT=8080` 已由 Dockerfile 设定；密钥通过环境变量注入，不打包进镜像。
 
 ---
 
 ## 🔄 开发与 CI | Development & CI
 
-### CI/CD 流程 | CI/CD Pipeline
+| 阶段 | 触发 | 说明 |
+|------|------|------|
+| GitHub Actions CI | PR / push to main | `tsc` + `node --check` + `build` + `vitest` |
+| AI Code Review | PR | Copilot / 自定义 LLM 审查（可选） |
+| 合并门禁 | PR | 见 [docs/MERGE_GATES.md](docs/MERGE_GATES.md) 与 [AGENTS.md](AGENTS.md) |
 
-| 阶段 | 触发条件 | 说明 |
-|------|---------|------|
-| **GitHub Actions CI** | PR / push to main | TypeScript 检查、构建、单元测试 |
-| **AI Code Review** | PR only | AI 自动代码审查（可选）|
-| **Cloud Build** | merge to main | 自动构建 Docker 镜像 |
-| **Cloud Run** | Cloud Build 成功 | 自动部署到 dota2.ai |
-
-### 质量门禁 | Quality Gates
-
-本仓库配置了自动化质量检查：
-
-**必需检查 (build-and-test):**
-- TypeScript 类型检查
-- 服务器语法验证
-- Vite 生产构建
-- Vitest 单元测试
-
-**AI 代码审查:**
-
-1. **GitHub Copilot（推荐）** — 无需 API 密钥，使用 Copilot 订阅
-   - 启用：Settings → Copilot → Code review → Auto-review
-   - 每个 PR 自动请求 Copilot 审查
-
-2. **自定义 LLM（可选）** — 需配置 API 密钥
-   - 支持 DeepSeek / OpenAI / xAI (Grok)
-   - 未配置时自动跳过，不阻塞合并
-
-📖 详细配置：[docs/QUALITY.md](docs/QUALITY.md)
-
-### 本地测试 | Local Testing
-
-```bash
-# 运行测试 | Run tests
-npm test
-
-# TypeScript 检查 | Type check
-npx tsc --noEmit
-
-# 构建 | Build
-npm run build
-```
-
-### PR 规范 | PR Guidelines
-
-- 所有 PR 必须通过 CI 检查后才能合并
-- 请使用 PR 模板填写变更说明和风险评估
-- 涉及流式展示 (streaming) 的改动需特别注意闭包陷阱
-
-All PRs must pass CI before merging. Use the PR template to document changes and risk assessment.
+质量与协作规范：[docs/QUALITY.md](docs/QUALITY.md)、[CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ---
 
-## 📧 联系方式 | Contact
+## 🌍 开源说明 | Open-source notes
 
-如果你对 Dota 2 与 AI 感兴趣，请联系我:
-If you are interested in Dota 2 and AI, please contact me:
-
-**Email:** qianhao1229@gmail.com
+- **许可证**：[MIT](LICENSE)（Copyright © 2026 dota2.ai contributors）。
+- **商标**：本项目为粉丝作品，与 Valve Corporation 无关联。Dota、Dota 2、Steam 及英雄素材版权归 Valve 所有；运行时数据来自公开 OpenDota / Steam 接口。
+- **参与贡献**：见 [CONTRIBUTING.md](CONTRIBUTING.md) —— 一个 PR 一件事、保持双语、不换 AI 提供方、不绕过 CI。
+- **安全**：见 [SECURITY.md](SECURITY.md)。建议仓库管理员开启 **Secret scanning + Push protection**（Settings → Code security），防止密钥进入历史。
+- **联系**：通过 GitHub Issues（仓库不提供个人邮箱）。
 
 ---
 
-## 📜 许可证 | License
+## English Summary
 
-MIT License
+Dota2.ai is an open-source (MIT) Dota 2 tactical coach powered by DeepSeek. It teaches judgment instead of playing for you: **Tactical Room** (post-match review, draft preview, item tradeoffs), **Hero Training** (decide first, see the breakdown after), **Hero Codex** (reference layer), and a local-only **Tactical Journal** (trigger / action / check).
+
+Honest limits: match facts include stats, lane inference, economy and objectives — **no per-moment coordinates or vision**, so real reviews use non-spatial evidence and maps are clearly-labeled teaching diagrams. Item tradeoffs compare decision dimensions, not patch-number recommendations. Training completion marks are self-reports, not verified growth.
+
+Stack: React 18 + TypeScript + Vite + Tailwind frontend; Express backend (`server.js`) streaming SSE; DeepSeek (`deepseek-chat`) for coaching; OpenDota/Steam public data. The internal A2UI-style component catalog (`src/coach-ui`, `dota-coach-ui/1`) is an internal domain model — not a claim of official A2UI wire-protocol compatibility. Design docs: [`docs/design/tactical-coach-v3/`](docs/design/tactical-coach-v3/).
+
+Quick start: `npm ci` → `cp .env.example .env` (add `DEEPSEEK_API_KEY`) → `npm run start:dev`. Verify with `npm test && npx tsc --noEmit && npm run build && node --check server.js`. Not affiliated with Valve; see LICENSE, CONTRIBUTING.md and SECURITY.md.
