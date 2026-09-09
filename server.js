@@ -17,6 +17,7 @@ import {
 } from './lib/matchReview/reviewCards.js';
 import {
   attachEnrichmentToMatchFact,
+  baselineWinRateFromMatchups,
   buildHeroEnrichmentPayload,
 } from './lib/matchReview/opendotaEnrichment.js';
 import {
@@ -857,7 +858,8 @@ async function getHeroItemPopularity(heroId, options = {}) {
   } catch (err) {
     if (options.signal?.aborted) throw err;
     console.error(`Failed to fetch item popularity for hero ${heroId}:`, err.message);
-    return cached?.data || { startGame: [], earlyGame: [], midGame: [], lateGame: [] };
+    // Do NOT pass empty buckets as success — that makes every major purchase look "Uncommon".
+    return cached?.data ?? null;
   }
 }
 
@@ -888,25 +890,22 @@ async function enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts = {}) {
   if (!focusId) return matchFact;
   try {
     if (fetchOpts.signal?.aborted) return matchFact;
-    const [benchmarks, itemPopularity, matchupsMap, heroStats, itemConstants] = await Promise.all([
+    const [benchmarks, itemPopularity, matchupsMap, itemConstants] = await Promise.all([
       getHeroBenchmarks(focusId, fetchOpts),
       getHeroItemPopularity(focusId, fetchOpts),
       getHeroMatchups(focusId, fetchOpts),
-      getHeroStats(fetchOpts),
       getItemConstants(fetchOpts),
     ]);
     if (fetchOpts.signal?.aborted) return matchFact;
-    const baselineRaw = heroStats?.[focusId]?.winRate;
-    const baselineWinRate = baselineRaw != null && baselineRaw !== ''
-      ? parseFloat(baselineRaw)
-      : null;
+    // Baseline must come from the same /matchups population (not pro-skewed heroStats).
+    const baselineWinRate = baselineWinRateFromMatchups(matchupsMap);
     const enrichment = buildHeroEnrichmentPayload({
       matchFact,
       benchmarks,
       itemPopularity,
       matchupsMap,
       lang,
-      baselineWinRate: Number.isFinite(baselineWinRate) ? baselineWinRate : null,
+      baselineWinRate,
       itemConstants,
     });
     if (!enrichment) return matchFact;

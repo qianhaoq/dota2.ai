@@ -6,6 +6,7 @@ import {
   normalizeItemKey,
   dotabuffHeroGuidesUrl,
   buildMatchupContext,
+  baselineWinRateFromMatchups,
   buildHeroEnrichmentPayload,
   buildEnrichmentSectionCards,
   attachEnrichmentToMatchFact,
@@ -30,6 +31,12 @@ describe('opendotaEnrichment', () => {
     );
     expect(dotabuffHeroGuidesUrl('furion')).toBe(
       'https://www.dotabuff.com/heroes/natures-prophet/guides',
+    );
+    expect(dotabuffHeroGuidesUrl('centaur')).toBe(
+      'https://www.dotabuff.com/heroes/centaur-warrunner/guides',
+    );
+    expect(dotabuffHeroGuidesUrl('npc_dota_hero_centaur')).toBe(
+      'https://www.dotabuff.com/heroes/centaur-warrunner/guides',
     );
     expect(dotabuffHeroGuidesUrl('life_stealer')).toBe(
       'https://www.dotabuff.com/heroes/lifestealer/guides',
@@ -83,6 +90,19 @@ describe('opendotaEnrichment', () => {
     expect(cmp.xpm?.percentile).toBe(50);
     expect(cmp.lastHits?.percentile).toBe(50);
     expect(cmp.lastHits?.unit).toBe('per_min');
+
+    // If last_hits_per_min is missing, omit metric — never fall back to aggregate last_hits.
+    const cmpNoPerMin = buildBenchmarkComparison({
+      actual: { gpm: 350, lastHitsPerMin: 6 },
+      benchmarks: {
+        result: {
+          gold_per_min: benchmarks.result.gold_per_min,
+          last_hits: benchmarks.result.last_hits,
+        },
+      },
+    });
+    expect(cmpNoPerMin.lastHits).toBeUndefined();
+    expect(cmpNoPerMin.gpm?.percentile).toBe(20);
   });
 
   it('compareItemBuild normalizes keys and never invents expectedBy / delayed timing', () => {
@@ -121,6 +141,30 @@ describe('opendotaEnrichment', () => {
     });
     expect(result.unavailable).toBe(true);
     expect(result.missingPopular).toEqual([]);
+  });
+
+  it('compareItemBuild treats null popularity (failed fetch) as unavailable', () => {
+    const result = compareItemBuild({
+      purchaseLog: [
+        { time: 900, key: 'blink' },
+        { time: 1500, key: 'black_king_bar' },
+      ],
+      itemPopularity: null as unknown as {},
+    });
+    expect(result.unavailable).toBe(true);
+    expect(result.offMeta).toEqual([]);
+    expect(result.missingPopular).toEqual([]);
+  });
+
+  it('baselineWinRateFromMatchups aggregates matchup population (not heroStats)', () => {
+    const baseline = baselineWinRateFromMatchups({
+      1: { gamesPlayed: 100, wins: 55, winRate: '55.0' },
+      2: { gamesPlayed: 100, wins: 45, winRate: '45.0' },
+    });
+    // (55+45)/(100+100) = 50%
+    expect(baseline).toBe(50);
+    expect(baselineWinRateFromMatchups({})).toBeNull();
+    expect(baselineWinRateFromMatchups(null)).toBeNull();
   });
 
   it('buildMatchupContext computes advantage vs hero baseline (not 50%)', () => {
@@ -239,6 +283,38 @@ describe('opendotaEnrichment', () => {
       { factKey: 'lh_percentile' },
     ])).toBe(false);
     expect(JSON.stringify(cards)).not.toMatch(/expectedBy/);
+  });
+
+  it('marks itemCompare unavailable when itemPopularity fetch failed (null)', () => {
+    const matchFact = {
+      summary: { matchId: 3, duration: 1800 },
+      focusHeroId: 11,
+      players: [
+        {
+          heroId: 11,
+          isRadiant: true,
+          displayName: '影魔',
+          internalSlug: 'nevermore',
+          gpm: 500,
+          xpm: 550,
+          lastHits: 200,
+          purchaseLog: [{ time: 1200, key: 'blink' }],
+        },
+      ],
+    };
+    const enrichment = buildHeroEnrichmentPayload({
+      matchFact,
+      benchmarks: null,
+      itemPopularity: null,
+      matchupsMap: {},
+      lang: 'en',
+    });
+    expect(enrichment?.itemCompare?.unavailable).toBe(true);
+    const sections = buildEnrichmentSectionCards(
+      attachEnrichmentToMatchFact(matchFact, enrichment!),
+      'en',
+    ) as ReviewCardsPayload;
+    expect(sections.item_compare).toBeUndefined();
   });
 
   it('skips item compare when purchaseLog is absent (not empty array)', () => {
