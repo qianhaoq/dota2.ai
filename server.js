@@ -869,12 +869,13 @@ async function getHeroItemPopularity(heroId, options = {}) {
       lateGame: formatItems(data.late_game_items)
     };
 
-    // All-empty buckets are not usable popularity — caching them as success makes every
-    // major purchase look "Uncommon". Require at least one bucket with data.
-    const hasAnyBucket = [popularity.startGame, popularity.earlyGame, popularity.midGame, popularity.lateGame]
+    // compareItemBuild builds popularKeys from early/mid/late only (excludes startGame).
+    // startGame-only payloads are not usable — caching them makes every major purchase
+    // after ~8 minutes look "Uncommon". Require ≥1 comparator bucket with data.
+    const hasComparatorBucket = [popularity.earlyGame, popularity.midGame, popularity.lateGame]
       .some((bucket) => Array.isArray(bucket) && bucket.length > 0);
-    if (!hasAnyBucket) {
-      console.error(`Item popularity for hero ${heroId} returned all-empty buckets; marking unavailable`);
+    if (!hasComparatorBucket) {
+      console.error(`Item popularity for hero ${heroId} has no early/mid/late data; marking unavailable`);
       return cached?.data ?? null;
     }
     

@@ -10,6 +10,8 @@ import {
   buildHeroEnrichmentPayload,
   buildEnrichmentSectionCards,
   attachEnrichmentToMatchFact,
+  buildRecipeComponentKeySet,
+  isMajorPurchase,
 } from '../../lib/matchReview/opendotaEnrichment.js';
 import { buildFallbackAiCards, evidenceSupportsCategory } from '../../lib/matchReview/reviewCards.js';
 import type { ReviewCardsPayload } from '../types/reviewCards';
@@ -154,6 +156,96 @@ describe('opendotaEnrichment', () => {
     expect(result.unavailable).toBe(true);
     expect(result.offMeta).toEqual([]);
     expect(result.missingPopular).toEqual([]);
+  });
+
+  it('compareItemBuild treats startGame-only / empty early-mid-late popularity as unavailable', () => {
+    const startOnly = compareItemBuild({
+      purchaseLog: [{ time: 900, key: 'blink' }],
+      itemPopularity: {
+        startGame: [{ key: 'tango', name: 'Tango', count: 50 }],
+        earlyGame: [],
+        midGame: [],
+        lateGame: [],
+      },
+    });
+    expect(startOnly.unavailable).toBe(true);
+    expect(startOnly.offMeta).toEqual([]);
+
+    const empty = compareItemBuild({
+      purchaseLog: [{ time: 900, key: 'blink' }],
+      itemPopularity: { earlyGame: [], midGame: [], lateGame: [] },
+    });
+    expect(empty.unavailable).toBe(true);
+  });
+
+  it('compareItemBuild derives component filtering from recipe constants (relic/talisman)', () => {
+    const itemConstants = {
+      relic: { id: 54, dname: 'Sacred Relic', qual: 'secret_shop', components: null, created: false },
+      talisman_of_evasion: { id: 32, dname: 'Talisman of Evasion', qual: 'secret_shop', components: null, created: false },
+      radiance: {
+        id: 63,
+        dname: 'Radiance',
+        components: ['relic', 'talisman_of_evasion'],
+        created: true,
+        qual: 'epic',
+      },
+      blink: {
+        id: 1,
+        dname: 'Blink Dagger',
+        qual: 'component',
+        behavior: 'UNIT_TARGET',
+        abilities: { '0': 'blink' },
+        components: null,
+        created: false,
+      },
+      overwhelming_blink: {
+        id: 600,
+        components: ['blink', 'reaver'],
+        created: true,
+      },
+      reaver: { id: 53, qual: 'secret_shop', components: null },
+      black_king_bar: {
+        id: 116,
+        dname: 'Black King Bar',
+        qual: 'epic',
+        created: true,
+        components: ['mithril_hammer', 'ogre_axe'],
+        behavior: 'NO_TARGET',
+        abilities: { '0': 'bkb' },
+      },
+      mithril_hammer: { id: 8, qual: 'component', components: null },
+      ogre_axe: { id: 21, qual: 'component', components: null },
+    };
+
+    expect(buildRecipeComponentKeySet(itemConstants).has('relic')).toBe(true);
+    expect(buildRecipeComponentKeySet(itemConstants).has('talisman_of_evasion')).toBe(true);
+    expect(isMajorPurchase('relic', itemConstants)).toBe(false);
+    expect(isMajorPurchase('talisman_of_evasion', itemConstants)).toBe(false);
+    expect(isMajorPurchase('blink', itemConstants)).toBe(true);
+    expect(isMajorPurchase('black_king_bar', itemConstants)).toBe(true);
+    expect(isMajorPurchase('ogre_axe', itemConstants)).toBe(false);
+
+    const result = compareItemBuild({
+      purchaseLog: [
+        { time: 900, key: 'relic' },
+        { time: 1000, key: 'talisman_of_evasion' },
+        { time: 1200, key: 'blink' },
+        { time: 1800, key: 'black_king_bar' },
+      ],
+      itemPopularity: {
+        earlyGame: [],
+        midGame: [{ key: 'blink', name: 'Blink', count: 80 }],
+        lateGame: [{ key: 'black_king_bar', name: 'Black King Bar', count: 60 }],
+      },
+      itemConstants,
+    });
+    expect(result.unavailable).toBe(false);
+    expect(result.actualCore.every((i: { key: string }) => i.key !== 'relic')).toBe(true);
+    expect(result.actualCore.every((i: { key: string }) => i.key !== 'talisman_of_evasion')).toBe(true);
+    expect(result.offMeta.every((o: { key: string }) => o.key !== 'relic')).toBe(true);
+    expect(result.offMeta.every((o: { key: string }) => o.key !== 'talisman_of_evasion')).toBe(true);
+    expect(result.actualCore.some((i: { key: string }) => i.key === 'blink')).toBe(true);
+    expect(result.actualCore.some((i: { key: string }) => i.key === 'black_king_bar')).toBe(true);
   });
 
   it('compareItemBuild counts consumable/component purchases in possession keys', () => {
