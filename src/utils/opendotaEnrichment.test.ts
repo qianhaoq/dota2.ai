@@ -3,19 +3,36 @@ import {
   percentileForValue,
   buildBenchmarkComparison,
   compareItemBuild,
+  normalizeItemKey,
   dotabuffHeroGuidesUrl,
   buildMatchupContext,
   buildHeroEnrichmentPayload,
   buildEnrichmentSectionCards,
   attachEnrichmentToMatchFact,
 } from '../../lib/matchReview/opendotaEnrichment.js';
-import { buildFallbackAiCards } from '../../lib/matchReview/reviewCards.js';
+import { buildFallbackAiCards, evidenceSupportsCategory } from '../../lib/matchReview/reviewCards.js';
 import type { ReviewCardsPayload } from '../types/reviewCards';
 
 describe('opendotaEnrichment', () => {
-  it('dotabuffHeroGuidesUrl maps underscores to hyphens', () => {
+  it('normalizeItemKey strips item_ and resolves numeric ids via constants', () => {
+    expect(normalizeItemKey('item_blink')).toBe('blink');
+    expect(normalizeItemKey('Blink')).toBe('blink');
+    expect(normalizeItemKey('1', { blink: { id: 1, dname: 'Blink Dagger' } })).toBe('blink');
+    expect(normalizeItemKey(1, { blink: { id: 1 } })).toBe('blink');
+  });
+
+  it('dotabuffHeroGuidesUrl maps internal names to canonical Dotabuff slugs', () => {
+    expect(dotabuffHeroGuidesUrl('nevermore')).toBe(
+      'https://www.dotabuff.com/heroes/shadow-fiend/guides',
+    );
+    expect(dotabuffHeroGuidesUrl('skeleton_king')).toBe(
+      'https://www.dotabuff.com/heroes/wraith-king/guides',
+    );
+    expect(dotabuffHeroGuidesUrl('furion')).toBe(
+      'https://www.dotabuff.com/heroes/natures-prophet/guides',
+    );
     expect(dotabuffHeroGuidesUrl('life_stealer')).toBe(
-      'https://www.dotabuff.com/heroes/life-stealer/guides',
+      'https://www.dotabuff.com/heroes/lifestealer/guides',
     );
     expect(dotabuffHeroGuidesUrl('npc_dota_hero_bane')).toBe(
       'https://www.dotabuff.com/heroes/bane/guides',
@@ -36,7 +53,7 @@ describe('opendotaEnrichment', () => {
     expect(percentileForValue([], 400)).toBeNull();
   });
 
-  it('buildBenchmarkComparison maps gpm/xpm/lh', () => {
+  it('buildBenchmarkComparison uses last_hits_per_min (not aggregate last_hits)', () => {
     const benchmarks = {
       result: {
         gold_per_min: [
@@ -47,6 +64,11 @@ describe('opendotaEnrichment', () => {
         xp_per_min: [
           { percentile: 0.5, value: 500 },
         ],
+        last_hits_per_min: [
+          { percentile: 0.3, value: 4 },
+          { percentile: 0.7, value: 8 },
+        ],
+        // Aggregate total must not be used when comparing LH/min.
         last_hits: [
           { percentile: 0.3, value: 100 },
           { percentile: 0.7, value: 200 },
@@ -54,37 +76,54 @@ describe('opendotaEnrichment', () => {
       },
     };
     const cmp = buildBenchmarkComparison({
-      actual: { gpm: 350, xpm: 500, lastHits: 150 },
+      actual: { gpm: 350, xpm: 500, lastHitsPerMin: 6 },
       benchmarks,
     });
     expect(cmp.gpm?.percentile).toBe(20);
     expect(cmp.xpm?.percentile).toBe(50);
     expect(cmp.lastHits?.percentile).toBe(50);
+    expect(cmp.lastHits?.unit).toBe('per_min');
   });
 
-  it('compareItemBuild flags delayed and off-meta majors', () => {
+  it('compareItemBuild normalizes keys and never invents expectedBy / delayed timing', () => {
     const result = compareItemBuild({
       purchaseLog: [
-        { time: -80, key: 'tango' },
+        { time: -80, key: 'item_tango' },
         { time: 200, key: 'boots' },
-        { time: 1800, key: 'blink' },
+        { time: 1800, key: 'item_blink' },
         { time: 2100, key: 'rapier' },
       ],
       itemPopularity: {
         earlyGame: [{ key: 'boots', name: 'Boots', count: 100 }],
-        midGame: [{ key: 'blink', name: 'Blink Dagger', count: 80 }],
+        // Popularity may arrive as numeric id string — must still match blink.
+        midGame: [{ key: '1', name: 'Blink Dagger', count: 80 }],
         lateGame: [{ key: 'black_king_bar', name: 'Black King Bar', count: 60 }],
       },
-      durationSeconds: 2400,
+      itemConstants: { blink: { id: 1, dname: 'Blink Dagger' } },
     });
+    expect(result.unavailable).toBe(false);
     expect(result.actualCore.some((i: { key: string }) => i.key === 'blink')).toBe(true);
     expect(result.actualCore.every((i: { key: string }) => i.key !== 'tango')).toBe(true);
-    expect(result.delayed.some((d: { key: string }) => d.key === 'blink')).toBe(true);
+    expect((result as { delayed?: unknown }).delayed).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/expectedBy/);
     expect(result.offMeta.some((o: { key: string }) => o.key === 'rapier')).toBe(true);
     expect(result.missingPopular.some((m: { key: string }) => m.key === 'black_king_bar')).toBe(true);
+    // Blink purchased and present in popular mid after id→key normalize — not missing.
+    expect(result.missingPopular.every((m: { key: string }) => m.key !== 'blink')).toBe(true);
   });
 
-  it('buildMatchupContext filters low sample and sorts hardest first', () => {
+  it('compareItemBuild preserves missing purchase history as unavailable', () => {
+    const result = compareItemBuild({
+      purchaseLog: null as unknown as [],
+      itemPopularity: {
+        midGame: [{ key: 'blink', name: 'Blink', count: 10 }],
+      },
+    });
+    expect(result.unavailable).toBe(true);
+    expect(result.missingPopular).toEqual([]);
+  });
+
+  it('buildMatchupContext computes advantage vs hero baseline (not 50%)', () => {
     const rows = buildMatchupContext({
       focusHeroId: 3,
       enemyHeroIds: [1, 2, 8],
@@ -98,13 +137,18 @@ describe('opendotaEnrichment', () => {
         8: { nameZh: '主宰', nameEn: 'Juggernaut' },
       },
       lang: 'zh',
+      baselineWinRate: 52,
     });
     expect(rows).toHaveLength(2);
     expect(rows[0].heroName).toBe('斧王');
-    expect(rows[0].advantage).toBeLessThan(0);
+    // 40 - 52 = -12
+    expect(rows[0].advantage).toBe(-12);
+    expect(rows[0].advantageLabel).toBe('-12.0%');
+    // 60 - 52 = +8
+    expect(rows[1].advantage).toBe(8);
   });
 
-  it('buildHeroEnrichmentPayload + section cards enrich fallback review', () => {
+  it('buildHeroEnrichmentPayload + section cards enrich fallback review without farm_route', () => {
     const matchFact = {
       summary: { matchId: 1, duration: 2400, durationFormatted: '40:00', radiantWin: false },
       focusHeroId: 3,
@@ -155,7 +199,10 @@ describe('opendotaEnrichment', () => {
             { percentile: 0.5, value: 400 },
           ],
           xp_per_min: [{ percentile: 0.2, value: 350 }],
-          last_hits: [{ percentile: 0.2, value: 80 }],
+          last_hits_per_min: [
+            { percentile: 0.2, value: 2 },
+            { percentile: 0.5, value: 5 },
+          ],
         },
       },
       itemPopularity: {
@@ -166,10 +213,15 @@ describe('opendotaEnrichment', () => {
         8: { gamesPlayed: 120, wins: 50, winRate: '41.7', advantage: '-8.3' },
       },
       lang: 'zh',
+      baselineWinRate: 48,
     });
 
     expect(enrichment?.guidesUrl).toContain('/heroes/bane/guides');
     expect(enrichment?.benchmarks?.gpm?.percentile).toBeLessThanOrEqual(20);
+    expect(enrichment?.benchmarks?.lastHits?.unit).toBe('per_min');
+    // 40 LH / 40 min = 1 LH/min → low percentile on last_hits_per_min
+    expect(enrichment?.benchmarks?.lastHits?.percentile).toBeLessThanOrEqual(20);
+    expect(enrichment?.matchups?.[0]?.advantage).toBeCloseTo(41.7 - 48, 5);
 
     const enriched = attachEnrichmentToMatchFact(matchFact, enrichment!);
     const sections = buildEnrichmentSectionCards(enriched, 'zh') as ReviewCardsPayload;
@@ -180,8 +232,47 @@ describe('opendotaEnrichment', () => {
     const cards = buildFallbackAiCards(enriched, 'zh', { includeFollowups: false }) as ReviewCardsPayload;
     expect(cards.item_compare).toBeTruthy();
     expect(cards.farm_benchmarks).toBeTruthy();
-    expect(cards.primary_mistake?.category).toBe('farm_route');
-    expect(cards.drill?.title).not.toBe('下一局只练一件事');
-    expect(JSON.stringify(cards)).not.toMatch(/每局只选一个改进点/);
+    // Aggregate farm must not become farm_route classification.
+    expect(cards.primary_mistake?.category).not.toBe('farm_route');
+    expect(evidenceSupportsCategory('farm_route', [
+      { factKey: 'gpm_percentile' },
+      { factKey: 'lh_percentile' },
+    ])).toBe(false);
+    expect(JSON.stringify(cards)).not.toMatch(/expectedBy/);
+  });
+
+  it('skips item compare when purchaseLog is absent (not empty array)', () => {
+    const matchFact = {
+      summary: { matchId: 2, duration: 1800 },
+      focusHeroId: 11,
+      players: [
+        {
+          heroId: 11,
+          isRadiant: true,
+          displayName: '影魔',
+          internalSlug: 'nevermore',
+          gpm: 500,
+          xpm: 550,
+          lastHits: 200,
+          // purchaseLog omitted intentionally
+        },
+      ],
+    };
+    const enrichment = buildHeroEnrichmentPayload({
+      matchFact,
+      benchmarks: null,
+      itemPopularity: {
+        midGame: [{ key: 'blink', name: 'Blink', count: 50 }],
+      },
+      matchupsMap: {},
+      lang: 'en',
+    });
+    expect(enrichment?.itemCompare).toBeNull();
+    expect(enrichment?.guidesUrl).toContain('/heroes/shadow-fiend/guides');
+    const sections = buildEnrichmentSectionCards(
+      attachEnrichmentToMatchFact(matchFact, enrichment!),
+      'en',
+    ) as ReviewCardsPayload;
+    expect(sections.item_compare).toBeUndefined();
   });
 });

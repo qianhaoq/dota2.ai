@@ -297,17 +297,18 @@ async function getHeroConstants() {
   }
 }
 
-async function getItemConstants() {
+async function getItemConstants(options = {}) {
   const now = Date.now();
   if (cache.items.data && (now - cache.items.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.items.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/items`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/items`, 2, 500, options);
     cache.items = { data, timestamp: now };
     console.log(`Loaded ${Object.keys(data).length} items from OpenDota constants`);
     return data;
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     console.error('Failed to fetch item constants:', err.message);
     return cache.items.data || {};
   }
@@ -780,51 +781,55 @@ async function getHeroStats(fetchOptions = {}) {
   }
 }
 
-async function getHeroMatchups(heroId) {
+async function getHeroMatchups(heroId, options = {}) {
   const now = Date.now();
   const cached = cache.matchups.get(heroId);
   if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
     return cached.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/matchups`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/matchups`, 2, 500, options);
     const matchupMap = {};
     for (const m of data) {
       if (m.games_played > 0) {
+        const wr = (m.wins / m.games_played) * 100;
         matchupMap[m.hero_id] = {
           heroId: m.hero_id,
           gamesPlayed: m.games_played,
           wins: m.wins,
-          winRate: ((m.wins / m.games_played) * 100).toFixed(1),
-          advantage: (((m.wins / m.games_played) - 0.5) * 100).toFixed(1)
+          winRate: wr.toFixed(1),
+          // Legacy field vs 50% — enrichment recomputes vs hero baseline when available.
+          advantage: (wr - 50).toFixed(1),
         };
       }
     }
     cache.matchups.set(heroId, { data: matchupMap, timestamp: now });
     return matchupMap;
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     console.error(`Failed to fetch matchups for hero ${heroId}:`, err.message);
     return cached?.data || {};
   }
 }
 
-async function getHeroItemPopularity(heroId) {
+async function getHeroItemPopularity(heroId, options = {}) {
   const now = Date.now();
   const cached = cache.itemPopularity.get(heroId);
   if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
     return cached.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/itemPopularity`);
-    const itemConstants = await getItemConstants();
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/itemPopularity`, 2, 500, options);
+    const itemConstants = await getItemConstants(options);
     
     const formatItems = (itemCounts) => {
       if (!itemCounts) return [];
       return Object.entries(itemCounts)
         .map(([itemIdStr, count]) => {
-          const itemId = parseInt(itemIdStr);
+          const itemId = parseInt(itemIdStr, 10);
           const itemEntry = Object.entries(itemConstants).find(([_, item]) => item.id === itemId);
-          const itemKey = itemEntry?.[0] || itemIdStr;
+          // Prefer constants map key (internal name); never leave bare numeric ID when resolvable.
+          const itemKey = (itemEntry?.[0] || itemIdStr).toLowerCase().replace(/^item_/, '');
           const item = itemEntry?.[1];
           return {
             id: itemId,
@@ -850,6 +855,7 @@ async function getHeroItemPopularity(heroId) {
     cache.itemPopularity.set(heroId, { data: popularity, timestamp: now });
     return popularity;
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     console.error(`Failed to fetch item popularity for hero ${heroId}:`, err.message);
     return cached?.data || { startGame: [], earlyGame: [], midGame: [], lateGame: [] };
   }
@@ -881,21 +887,32 @@ async function enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts = {}) {
   const focusId = matchFact?.focusHeroId;
   if (!focusId) return matchFact;
   try {
-    const [benchmarks, itemPopularity, matchupsMap] = await Promise.all([
+    if (fetchOpts.signal?.aborted) return matchFact;
+    const [benchmarks, itemPopularity, matchupsMap, heroStats, itemConstants] = await Promise.all([
       getHeroBenchmarks(focusId, fetchOpts),
-      getHeroItemPopularity(focusId),
-      getHeroMatchups(focusId),
+      getHeroItemPopularity(focusId, fetchOpts),
+      getHeroMatchups(focusId, fetchOpts),
+      getHeroStats(fetchOpts),
+      getItemConstants(fetchOpts),
     ]);
+    if (fetchOpts.signal?.aborted) return matchFact;
+    const baselineRaw = heroStats?.[focusId]?.winRate;
+    const baselineWinRate = baselineRaw != null && baselineRaw !== ''
+      ? parseFloat(baselineRaw)
+      : null;
     const enrichment = buildHeroEnrichmentPayload({
       matchFact,
       benchmarks,
       itemPopularity,
       matchupsMap,
       lang,
+      baselineWinRate: Number.isFinite(baselineWinRate) ? baselineWinRate : null,
+      itemConstants,
     });
     if (!enrichment) return matchFact;
     return attachEnrichmentToMatchFact(matchFact, enrichment);
   } catch (err) {
+    if (fetchOpts.signal?.aborted || err?.name === 'AbortError') return matchFact;
     console.error('OpenDota enrichment failed (continuing without):', err.message);
     return matchFact;
   }
@@ -2365,6 +2382,7 @@ async function handleMatchReview(req, res) {
     );
     let matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     matchFact = await enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts);
+    if (clientGone) return;
     const isGrounded = Boolean(matchFact.grounded);
 
     const apiKeyError = isZh ? 'DeepSeek API Key 未配置' : 'DeepSeek API Key not configured';
