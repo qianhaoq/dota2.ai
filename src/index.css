@@ -381,3 +381,206 @@ button, .no-select {
     font-size: 16px !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * V3 tactical layer (docs/design/tactical-coach-v3/docs/tokens.json)
+ * Extends — never replaces — the k3 tokens above. CoachView keeps using k3.
+ * ------------------------------------------------------------------------- */
+:root {
+  --v3-base: #0b1013;
+  --v3-panel: #11191d;
+  --v3-raised: #182329;
+  --v3-line: #2a383f;
+  --v3-text: #e9e6df;
+  --v3-muted: #a3b0b5;
+  --v3-quiet: #82969e;
+  --v3-primary: #9f493a;
+  --v3-primary-text: #fff0e9;
+  --v3-gold: #c3a679;
+  --v3-information: #87c7df;
+  --v3-risk: #ee9a87;
+}
+
+.v3-display {
+  font-family: Georgia, 'Noto Serif CJK SC', 'Songti SC', serif;
+}
+
+.v3-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--v3-quiet);
+}
+
+.v3-panel {
+  background: var(--v3-panel);
+  border: 1px solid var(--v3-line);
+  border-radius: 5px;
+}
+
+.v3-raised {
+  background: var(--v3-raised);
+  border: 1px solid var(--v3-line);
+  border-radius: 5px;
+}
+
+/* Authority tags: fact=blue+source, hypothesis=gold+dashed, demo=badge, gap=rust. Color is never the only signal. */
+.v3-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--v3-line);
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 10px;
+  line-height: 18px;
+  color: var(--v3-muted);
+  white-space: nowrap;
+}
+
+.v3-tag-fact {
+  color: var(--v3-information);
+  border-color: rgba(135, 199, 223, 0.45);
+}
+
+.v3-tag-hypothesis {
+  color: var(--v3-gold);
+  border-style: dashed;
+  border-color: rgba(195, 166, 121, 0.6);
+}
+
+.v3-tag-demo {
+  color: var(--v3-gold);
+  border-color: rgba(195, 166, 121, 0.45);
+}
+
+.v3-tag-gap {
+  color: var(--v3-risk);
+  border-color: rgba(238, 154, 135, 0.45);
+}
+
+.v3-hypothesis-block {
+  border: 1px dashed rgba(195, 166, 121, 0.55);
+}
+
+/* Controls: one primary action per state; ember red is reserved for it. */
+.v3-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--v3-line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--v3-text);
+  font-size: 13px;
+  transition: background-color 120ms ease, border-color 120ms ease, filter 120ms ease;
+  touch-action: manipulation;
+}
+
+.v3-btn:hover {
+  background: var(--v3-raised);
+}
+
+.v3-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.v3-btn-primary {
+  background: var(--v3-primary);
+  border-color: transparent;
+  color: var(--v3-primary-text);
+}
+
+.v3-btn-primary:hover {
+  background: var(--v3-primary);
+  filter: brightness(1.12);
+}
+
+.v3-btn-quiet {
+  color: var(--v3-muted);
+}
+
+.v3-nav-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--v3-muted);
+  transition: color 120ms ease;
+  touch-action: manipulation;
+}
+
+.v3-nav-item:hover {
+  color: var(--v3-text);
+}
+
+.v3-nav-item-active {
+  color: var(--v3-text);
+}
+
+.v3-nav-item-active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  background: var(--v3-primary);
+}
+
+.v3-bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  min-height: 48px;
+  font-size: 10px;
+  color: var(--v3-quiet);
+  transition: color 120ms ease;
+  touch-action: manipulation;
+}
+
+.v3-bottom-nav-item-active {
+  color: var(--v3-text);
+}
+
+.v3-toast {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 76px);
+  max-width: min(92vw, 420px);
+  background: var(--v3-raised);
+  border: 1px solid var(--v3-line);
+  border-radius: 4px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--v3-text);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+  z-index: 60;
+}
+
+.v3-toast-show {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v3-btn,
+  .v3-btn-primary,
+  .v3-nav-item,
+  .v3-bottom-nav-item,
+  .v3-toast {
+    transition: none;
+  }
+}
