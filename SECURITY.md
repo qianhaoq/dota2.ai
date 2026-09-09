@@ -18,8 +18,13 @@
   `STEAM_WEB_API_KEY`. If a key leaks, rotate it at the provider first, then
   clean history.
 - The server is a hobby-scale Express app: it assumes a trusted frontend and
-  rate-limits upstream providers only. Do not expose it unauthenticated to the
-  public internet without your own gateway.
+  rate-limits upstream providers only. AI routes currently have **no**
+  first-party app authentication or request rate limiting. Do not expose the
+  service unauthenticated to the public internet (including Cloud Run with
+  `--allow-unauthenticated`) without your own edge layer — prefer
+  IAM-authenticated Cloud Run, or IAP / API Gateway / Cloud Armor (or an
+  equivalent reverse proxy) for auth and abuse controls until app-level auth
+  lands.
 - User notes (战术笔记) are stored in the browser's localStorage only; they are
   never uploaded. Exporting notes is a manual, local action.
 
@@ -40,4 +45,5 @@ Enable in **Settings → Code security**:
 - 不要在公开 Issue 或 PR 中粘贴密钥、token 或他人比赛 ID。
 - 本仓库不提供个人邮箱作为安全联系渠道。
 - `.env` 已被 gitignore；密钥一旦泄露请先在服务商处轮换，再清理历史。
+- 当前 AI 接口尚无应用层鉴权 / 限流；不要用裸 `--allow-unauthenticated` 把 Cloud Run（或其它公网 URL）直接暴露出去。请用 IAM 鉴权，或 IAP / API Gateway / Cloud Armor 等网关挡在前面，直到应用内鉴权落地。
 - 战术笔记只保存在浏览器本机 localStorage，不会上传；导出为用户手动操作。

@@ -130,17 +130,22 @@ node --check server.js # 服务端语法
 ## 🐳 部署 | Deployment
 
 ```bash
-# Docker
+# Docker（仅本地 / 受信网络；不要把带密钥的容器直接挂到公网）
 docker build -t dota2-ai .
 docker run -p 8080:8080 -e DEEPSEEK_API_KEY=your_api_key dota2-ai
 
 # Google Cloud Run（概要；镜像与区域按需调整）
+# 推荐：默认 IAM 鉴权（不要加 --allow-unauthenticated），调用方带 identity token；
+# 或在前方加 IAP / API Gateway / Cloud Armor 等网关做鉴权与限流。
 gcloud builds submit --tag REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai
 gcloud run deploy dota2-ai --image REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai \
-  --set-env-vars DEEPSEEK_API_KEY=your_api_key --allow-unauthenticated
+  --no-allow-unauthenticated \
+  --set-secrets DEEPSEEK_API_KEY=DEEPSEEK_API_KEY:latest
 ```
 
-容器内 `HOST=0.0.0.0`、`PORT=8080` 已由 Dockerfile 设定；密钥通过环境变量注入，不打包进镜像。
+容器内 `HOST=0.0.0.0`、`PORT=8080` 已由 Dockerfile 设定；密钥用 Secret Manager（`--set-secrets`）注入，不要写进镜像，也尽量避免明文 `--set-env-vars`。
+
+**诚实说明 / Honest limits：** 当前 Express AI 路由（`/api/analyze`、`/api/review/:matchId`、`/api/chat` 等）**没有**应用层登录鉴权或请求限流；`SECURITY.md` 要求不要在无网关的情况下把服务裸露到公网。生产若仍需公网可达，请先用 **IAM 鉴权 Cloud Run**，或 **IAP / API Gateway / Cloud Armor**（或同类反向代理）挡在前面；应用内真实 auth / rate-limit 仍是后续跟进项，本文不假装代码里已经有。不要把 `--allow-unauthenticated` 当作默认安全部署路径。
 
 ---
 
