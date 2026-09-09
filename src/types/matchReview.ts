@@ -62,7 +62,7 @@ export interface MatchPlayerFact {
   xpTimeline: number[];
   timeBuckets: number[];
   killsLog: Array<{ time: number; target: string }>;
-  purchaseLog?: Array<{ time: number; key: string }>;
+  purchaseLog?: Array<{ time: number; key: string }> | null;
   lastHits?: number;
 }
 

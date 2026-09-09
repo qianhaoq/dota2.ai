@@ -910,9 +910,25 @@ async function enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts = {}) {
   try {
     if (fetchOpts.signal?.aborted) return matchFact;
     const deadlineSignal = AbortSignal.timeout(ENRICHMENT_DEADLINE_MS);
-    const signal = (typeof AbortSignal.any === 'function' && fetchOpts.signal)
-      ? AbortSignal.any([fetchOpts.signal, deadlineSignal])
-      : (fetchOpts.signal || deadlineSignal);
+    let signal;
+    if (typeof AbortSignal.any === 'function') {
+      signal = fetchOpts.signal
+        ? AbortSignal.any([fetchOpts.signal, deadlineSignal])
+        : deadlineSignal;
+    } else if (fetchOpts.signal) {
+      // Node 18 may lack AbortSignal.any; keep both client abort and 10s deadline.
+      const combined = new AbortController();
+      const onAbort = () => combined.abort();
+      if (fetchOpts.signal.aborted || deadlineSignal.aborted) {
+        combined.abort();
+      } else {
+        fetchOpts.signal.addEventListener('abort', onAbort, { once: true });
+        deadlineSignal.addEventListener('abort', onAbort, { once: true });
+      }
+      signal = combined.signal;
+    } else {
+      signal = deadlineSignal;
+    }
     const opts = { ...fetchOpts, signal };
     const [benchmarks, itemPopularity, matchupsMap, itemConstants] = await Promise.all([
       getHeroBenchmarks(focusId, opts),
