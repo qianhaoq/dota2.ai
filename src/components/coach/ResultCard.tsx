@@ -10,6 +10,7 @@ import { sessionTitle } from '../../utils/coachBlocks';
 import { shouldShowCoachFailureAlert, isCoachUserAbortError } from '../../utils/coachInflight';
 import { groupMarkdownSegments } from '../../utils/markdownLines';
 import { primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../../utils/reviewSurface';
+import { shouldAddHeroToDraft } from '../../utils/draftContext';
 import ReviewInsightCards from './ReviewInsightCards';
 import { ActionChipBar, CardSkeleton, SectionCard, StatusNotice } from './a2ui';
 
@@ -18,6 +19,8 @@ interface ResultCardProps {
   lang: Language;
   allHeroes: Hero[];
   onSelectHero: (hero: Hero) => void;
+  /** Review/replay taps inspect only — do not mutate the draft board. */
+  onInspectHero?: (heroId: number) => void;
   mentorName?: string;
   expanded?: boolean;
   onDismiss?: () => void;
@@ -63,12 +66,20 @@ const ResultCard: React.FC<ResultCardProps> = ({
   lang,
   allHeroes,
   onSelectHero,
+  onInspectHero,
   mentorName,
   expanded = true,
   onDismiss,
   onReviewFollowUp,
   canSubmitReviewFollowUpForContext,
 }) => {
+  const handleHeroTap = (hero: Hero) => {
+    if (shouldAddHeroToDraft(session.action)) {
+      onSelectHero(hero);
+      return;
+    }
+    onInspectHero?.(hero.id);
+  };
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const message = session.message;
   const followUpContext = useMemo(
@@ -202,7 +213,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
       onAction={(action) => {
         if (action.heroId == null) return;
         const hero = allHeroes.find((h) => h.id === action.heroId);
-        if (hero) onSelectHero(hero);
+        if (hero) handleHeroTap(hero);
       }}
     />
   );
@@ -219,7 +230,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
               key={hero.id}
               onClick={() => {
                 const h = allHeroes.find((ah) => ah.id === hero.id);
-                if (h) onSelectHero(h);
+                if (h) handleHeroTap(h);
               }}
               className="flex items-center gap-2 p-2 bg-k3-elevated/40 hover:bg-k3-elevated rounded-sm text-left border border-k3-border-subtle min-h-[44px] touch-manipulation min-w-0"
             >

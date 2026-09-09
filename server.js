@@ -1954,6 +1954,11 @@ app.post('/api/analyze', async (req, res) => {
   }
 });
 
+// SPA GET fallback guard — clients must POST (avoids index.html HTML responses).
+app.get('/api/suggestions', (_req, res) => {
+  res.status(405).json({ error: 'Use POST', suggestions: [] });
+});
+
 // Next hero suggestions based on OpenDota matchup data
 app.post('/api/suggestions', async (req, res) => {
   try {
@@ -2384,7 +2389,7 @@ Format with ## headings:
 4. ${keyMomentsRule}，必须带 timestamp（秒）
 5. 一个具体、可执行的下一局 drill（限时，仅限角色中立的固定教练句式）
 6. mentor_note 仅限拉比克口吻短结语，禁止任何数值/技能/平衡/出装说法（否则省略）
-7. followups 必须引用可用证据（具体时间戳节点或经济/KDA 等 factKey），禁止无依据的出装/羊刀类追问
+7. followups 最多 3 条，必须是可点的下一步动作/关键点追问（引用时间戳或 factKey）；禁止堆砌澄清问题列表；优先信息卡与关键节点
 
 【JSON 结构】
 {
@@ -2410,7 +2415,7 @@ Rules:
 4. ${keyMomentsRule}, each with timestamp (seconds)
 5. One time-boxed drill (role-neutral fixed coaching phrases only)
 6. mentor_note: short Rubick sign-off only — no stats, abilities, balance, or item claims
-7. Followups must cite available evidence (specific key_moment or economy/KDA factKeys); no unsupported item-build questions
+7. At most 3 followups; each must be an actionable next step / key-moment drill citing evidence (timestamp or factKey). Do not dump clarifying question lists — prefer cards and key points
 
 JSON shape:
 {

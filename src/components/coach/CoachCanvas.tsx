@@ -20,6 +20,7 @@ interface CoachCanvasProps {
   lang: Language;
   allHeroes: Hero[];
   onSelectHero: (hero: Hero) => void;
+  onInspectHero?: (heroId: number) => void;
   onDismissSession: (sessionId: string) => void;
   onUndoDismiss: () => void;
   mentorName?: string;
@@ -60,6 +61,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
   lang,
   allHeroes,
   onSelectHero,
+  onInspectHero,
   onDismissSession,
   onUndoDismiss,
   mentorName,
@@ -212,6 +214,7 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
                 lang={lang}
                 allHeroes={allHeroes}
                 onSelectHero={onSelectHero}
+                onInspectHero={onInspectHero}
                 mentorName={mentorName}
                 expanded
                 onDismiss={() => onDismissSession(session.id)}
