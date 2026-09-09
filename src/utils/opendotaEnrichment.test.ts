@@ -413,6 +413,83 @@ describe('opendotaEnrichment', () => {
     expect(preMid.popularMid.some((p: { key: string }) => p.key === 'blink')).toBe(true);
   });
 
+  it('isMajorPurchase excludes CONSUMABLE_OR_COMPONENT before crafted upgrade-input promotion', () => {
+    const itemConstants = {
+      urn_of_shadows: {
+        id: 92,
+        dname: 'Urn of Shadows',
+        components: ['ring_of_protection', 'sobi_mask', 'fluffy_hat'],
+        created: true,
+        cost: 880,
+      },
+      spirit_vessel: {
+        id: 269,
+        dname: 'Spirit Vessel',
+        components: ['urn_of_shadows', 'vitality_booster'],
+        created: true,
+      },
+      ring_of_protection: { id: 12, components: null, created: false },
+      sobi_mask: { id: 28, components: null, created: false },
+      fluffy_hat: { id: 593, components: null, created: false },
+      vitality_booster: { id: 61, components: null, created: false },
+      force_staff: {
+        id: 102,
+        components: ['staff_of_wizardry', 'fluffy_hat'],
+        created: true,
+      },
+      hurricane_pike: {
+        id: 263,
+        components: ['force_staff', 'dragon_lance'],
+        created: true,
+      },
+      staff_of_wizardry: { id: 23, components: null, created: false },
+      dragon_lance: { id: 236, components: null, created: true },
+    };
+    // Explicitly excluded utility stays out of actualCore even when crafted + upgrade input.
+    expect(isMajorPurchase('urn_of_shadows', itemConstants)).toBe(false);
+    // Crafted majors that are NOT on the exclusion list still promote.
+    expect(isMajorPurchase('force_staff', itemConstants)).toBe(true);
+
+    const result = compareItemBuild({
+      purchaseLog: [
+        { time: 600, key: 'urn_of_shadows' },
+        { time: 1200, key: 'force_staff' },
+      ],
+      itemPopularity: {
+        earlyGame: [],
+        midGame: [{ key: 'force_staff', name: 'Force Staff', count: 70 }],
+        lateGame: [],
+      },
+      itemConstants,
+      durationSec: 30 * 60,
+    });
+    expect(result.actualCore.every((i: { key: string }) => i.key !== 'urn_of_shadows')).toBe(true);
+    expect(result.offMeta.every((o: { key: string }) => o.key !== 'urn_of_shadows')).toBe(true);
+    expect(result.actualCore.some((i: { key: string }) => i.key === 'force_staff')).toBe(true);
+  });
+
+  it('compareItemBuild deduplicates missingPopular across mid+late by normalized key', () => {
+    const result = compareItemBuild({
+      purchaseLog: [{ time: 600, key: 'boots' }],
+      itemPopularity: {
+        earlyGame: [{ key: 'boots', name: 'Boots', count: 100 }],
+        midGame: [
+          { key: 'blink', name: 'Blink', count: 80 },
+          { key: 'black_king_bar', name: 'BKB mid', count: 50 },
+        ],
+        lateGame: [
+          { key: 'black_king_bar', name: 'BKB late', count: 70 },
+          { key: 'assault', name: 'Assault Cuirass', count: 40 },
+        ],
+      },
+      durationSec: 40 * 60,
+    });
+    const keys = result.missingPopular.map((m: { key: string }) => m.key);
+    expect(keys.filter((k: string) => k === 'black_king_bar')).toHaveLength(1);
+    expect(keys).toContain('blink');
+    expect(keys).toContain('assault');
+  });
+
   it('baselineWinRateFromMatchups aggregates matchup population (not heroStats)', () => {
     const baseline = baselineWinRateFromMatchups({
       1: { gamesPlayed: 100, wins: 55, winRate: '55.0' },

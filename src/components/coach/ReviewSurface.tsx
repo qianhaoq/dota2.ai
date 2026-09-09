@@ -186,7 +186,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     <div
       ref={surfaceRef}
       data-testid="review-surface"
-      className="w-full max-w-3xl min-w-0 mb-3 flex flex-col"
+      className="w-full max-w-3xl min-w-0 mb-3 flex flex-col sticky top-0 z-[3] bg-k3-base"
     >
       <div className="rounded-xl border border-k3-border-subtle bg-k3-surface shadow-sm overflow-hidden flex flex-col max-h-[min(70vh,720px)]">
         <header className="sticky top-0 z-[2] flex items-start gap-2 px-3 sm:px-4 py-2.5 border-b border-k3-border-subtle bg-k3-elevated/90 backdrop-blur-sm">
