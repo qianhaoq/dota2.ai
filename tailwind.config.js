@@ -17,8 +17,25 @@ export default {
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
         display: ['Cinzel', 'serif'],
+        // V3 (docs/design/tactical-coach-v3/docs/tokens.json): titles may be serif, body stays sans.
+        v3display: ['Georgia', 'Noto Serif CJK SC', 'Songti SC', 'serif'],
       },
       colors: {
+        // V3 tactical palette (tokens.json) alongside k3; k3 classes used by CoachView stay untouched.
+        v3: {
+          base: '#0b1013',
+          panel: '#11191d',
+          raised: '#182329',
+          line: '#2a383f',
+          text: '#e9e6df',
+          muted: '#a3b0b5',
+          quiet: '#82969e',
+          primary: '#9f493a',
+          'primary-text': '#fff0e9',
+          gold: '#c3a679',
+          information: '#87c7df',
+          risk: '#ee9a87',
+        },
         k3: {
           base: '#0B0B0C',
           surface: '#141416',
