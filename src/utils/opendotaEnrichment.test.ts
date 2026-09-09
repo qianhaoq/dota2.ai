@@ -174,6 +174,37 @@ describe('opendotaEnrichment', () => {
     expect(result.missingPopular.some((m: { key: string }) => m.key === 'black_king_bar')).toBe(true);
   });
 
+  it('compareItemBuild builds popularKeys from full lists before display slice', () => {
+    // OpenDota retains top 10 per bucket; display slices to 6. Rank 7–10 must not be Uncommon.
+    const midGame = [
+      { key: 'blink', name: 'Blink', count: 100 },
+      { key: 'force_staff', name: 'Force Staff', count: 90 },
+      { key: 'aether_lens', name: 'Aether Lens', count: 80 },
+      { key: 'glimmer_cape', name: 'Glimmer Cape', count: 70 },
+      { key: 'ghost', name: 'Ghost Scepter', count: 60 },
+      { key: 'cyclone', name: 'Eul\'s Scepter', count: 50 },
+      { key: 'orchid', name: 'Orchid', count: 40 }, // rank 7
+      { key: 'dagon', name: 'Dagon', count: 30 },
+      { key: 'veil_of_discord', name: 'Veil', count: 20 },
+      { key: 'rod_of_atos', name: 'Atos', count: 10 },
+    ];
+    const result = compareItemBuild({
+      purchaseLog: [
+        { time: 900, key: 'blink' },
+        { time: 1400, key: 'orchid' }, // popular mid rank 7 — must not be offMeta
+      ],
+      itemPopularity: {
+        earlyGame: [],
+        midGame,
+        lateGame: [{ key: 'black_king_bar', name: 'Black King Bar', count: 60 }],
+      },
+    });
+    expect(result.unavailable).toBe(false);
+    expect(result.popularMid).toHaveLength(6);
+    expect(result.popularMid.every((p: { key: string }) => p.key !== 'orchid')).toBe(true);
+    expect(result.offMeta.every((o: { key: string }) => o.key !== 'orchid')).toBe(true);
+  });
+
   it('baselineWinRateFromMatchups aggregates matchup population (not heroStats)', () => {
     const baseline = baselineWinRateFromMatchups({
       1: { gamesPlayed: 100, wins: 55, winRate: '55.0' },

@@ -81,7 +81,7 @@ export interface MatchEnrichment {
     popularLate: Array<{ key?: string; name?: string; count?: number }>;
     offMeta: Array<{ key: string; name: string; timeLabel: string }>;
     missingPopular?: Array<{ key: string; name: string }>;
-  };
+  } | null;
   matchups?: Array<{
     heroId: number;
     heroName: string;
