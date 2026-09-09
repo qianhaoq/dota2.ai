@@ -452,6 +452,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
   }, [lesson, handleAnalyze, handlePlaybook]);
 
   const dismissedSessionIdSet = useMemo(() => new Set(dismissedSessionIds), [dismissedSessionIds]);
+  const reviewSurfaceActive = Boolean(
+    activeReviewSession && !dismissedSessionIdSet.has(activeReviewSession.id),
+  );
   const hasResults = sessions.some((s) => !dismissedSessionIdSet.has(s.id));
   const mentorName = mentor
     ? (lang === 'zh' ? (mentor.nameZh || mentor.name) : mentor.name)
@@ -470,7 +473,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
           />
           <HomeModules
             lang={lang}
-            density="full"
+            density={reviewSurfaceActive ? 'compact' : 'full'}
             allHeroes={allHeroes}
             practiceHero={practiceHero}
             lesson={lesson}
@@ -483,6 +486,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
             onMeta={handleMeta}
             onStartReview={handleReview}
             coachBusy={composerBusy}
+            hideReviewEntry={reviewSurfaceActive}
           />
           <ReviewSurface
             sessions={sessions}

@@ -16,6 +16,10 @@ import {
   minRequiredKeyMoments,
 } from './lib/matchReview/reviewCards.js';
 import {
+  attachEnrichmentToMatchFact,
+  buildHeroEnrichmentPayload,
+} from './lib/matchReview/opendotaEnrichment.js';
+import {
   REVIEW_HIGH_MMR_MIN_RANK_TIER,
   resolvePublicMatchSkill,
   selectReviewHighMmrPublicMatches,
@@ -69,6 +73,7 @@ const cache = {
   heroStats: { data: null, timestamp: 0 },
   matchups: new Map(), // Map<heroId, { data, timestamp }>
   itemPopularity: new Map(), // Map<heroId, { data, timestamp }>
+  benchmarks: new Map(), // Map<heroId, { data, timestamp }>
   // Foundation data constants
   heroes: { data: null, timestamp: 0 },
   items: { data: null, timestamp: 0 },
@@ -847,6 +852,52 @@ async function getHeroItemPopularity(heroId) {
   } catch (err) {
     console.error(`Failed to fetch item popularity for hero ${heroId}:`, err.message);
     return cached?.data || { startGame: [], earlyGame: [], midGame: [], lateGame: [] };
+  }
+}
+
+
+async function getHeroBenchmarks(heroId, options = {}) {
+  const now = Date.now();
+  const cached = cache.benchmarks.get(heroId);
+  if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
+    return cached.data;
+  }
+  try {
+    const data = await fetchWithRetry(
+      `${OPENDOTA_API}/benchmarks?hero_id=${heroId}`,
+      2,
+      500,
+      options,
+    );
+    cache.benchmarks.set(heroId, { data, timestamp: now });
+    return data;
+  } catch (err) {
+    console.error(`Failed to fetch benchmarks for hero ${heroId}:`, err.message);
+    return cached?.data || null;
+  }
+}
+
+async function enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts = {}) {
+  const focusId = matchFact?.focusHeroId;
+  if (!focusId) return matchFact;
+  try {
+    const [benchmarks, itemPopularity, matchupsMap] = await Promise.all([
+      getHeroBenchmarks(focusId, fetchOpts),
+      getHeroItemPopularity(focusId),
+      getHeroMatchups(focusId),
+    ]);
+    const enrichment = buildHeroEnrichmentPayload({
+      matchFact,
+      benchmarks,
+      itemPopularity,
+      matchupsMap,
+      lang,
+    });
+    if (!enrichment) return matchFact;
+    return attachEnrichmentToMatchFact(matchFact, enrichment);
+  } catch (err) {
+    console.error('OpenDota enrichment failed (continuing without):', err.message);
+    return matchFact;
   }
 }
 
@@ -2215,7 +2266,8 @@ async function handleMatchReviewFacts(req, res) {
       heroConstants,
       HERO_NAMES_CN
     );
-    const matchFact = buildMatchFact(matchData, { lang, heroNames });
+    let matchFact = buildMatchFact(matchData, { lang, heroNames });
+    matchFact = await enrichMatchFactWithOpenDota(matchFact, lang);
     return res.json({ matchFact, grounded: Boolean(matchFact.grounded) });
   } catch (error) {
     console.error('Match facts error:', error);
@@ -2311,7 +2363,8 @@ async function handleMatchReview(req, res) {
       heroConstants,
       HERO_NAMES_CN
     );
-    const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
+    let matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
+    matchFact = await enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts);
     const isGrounded = Boolean(matchFact.grounded);
 
     const apiKeyError = isZh ? 'DeepSeek API Key 未配置' : 'DeepSeek API Key not configured';

@@ -8,7 +8,7 @@ import type {
 } from '../../types/reviewCards';
 import type { ReviewFollowUpContext } from '../../utils/reviewSurface';
 import {
-  AlertCircle, ChevronDown, ChevronUp, Clock, Crosshair, Target, Zap,
+  AlertCircle, ChevronDown, ChevronUp, Clock, Crosshair, ExternalLink, Target, Zap,
 } from 'lucide-react';
 
 export type ReviewInsightVariant = 'default' | 'surface' | 'hero' | 'timeline' | 'chips';
@@ -413,6 +413,91 @@ export const ReviewInsightCards: React.FC<ReviewInsightCardsProps> = ({
             {chip}
           </button>
         ))}
+      </div>
+    );
+  }
+
+  if (kind === 'item_compare' && cards.item_compare) {
+    const sec = cards.item_compare;
+    return (
+      <div className="space-y-2">
+        {sec.insight && (
+          <p className="text-[11px] text-k3-text-tertiary leading-relaxed">{sec.insight}</p>
+        )}
+        <ul className="space-y-1.5">
+          {sec.rows.map((row, idx) => (
+            <li
+              key={`${row.label}-${idx}`}
+              className="flex items-start justify-between gap-2 text-xs min-h-[28px]"
+            >
+              <span className="text-k3-text-tertiary flex-shrink-0">{row.label}</span>
+              <span className="text-k3-text-secondary text-right">{row.value}</span>
+            </li>
+          ))}
+        </ul>
+        {sec.guidesUrl && (
+          <a
+            href={sec.guidesUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] text-k3-radiant hover:underline mt-1 min-h-[32px]"
+          >
+            <ExternalLink size={11} />
+            {lang === 'zh' ? 'Dotabuff 英雄指南（外链）' : 'Dotabuff hero guides (outbound)'}
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  if (kind === 'farm_benchmarks' && cards.farm_benchmarks) {
+    const sec = cards.farm_benchmarks;
+    return (
+      <div className="space-y-2">
+        {sec.insight && (
+          <p className="text-[11px] text-k3-text-tertiary leading-relaxed">{sec.insight}</p>
+        )}
+        <ul className="space-y-1.5">
+          {sec.rows.map((row, idx) => (
+            <li
+              key={`${row.label}-${idx}`}
+              className="flex items-center justify-between gap-2 text-xs min-h-[28px]"
+            >
+              <span className="text-k3-text-tertiary">{row.label}</span>
+              <span className="text-k3-text-secondary">
+                {row.value}
+                {row.percentile != null && (
+                  <span className="ml-2 text-[10px] text-k3-text-tertiary">~P{row.percentile}</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (kind === 'matchup_context' && cards.matchup_context) {
+    const sec = cards.matchup_context;
+    return (
+      <div className="space-y-2">
+        {sec.insight && (
+          <p className="text-[11px] text-k3-text-tertiary leading-relaxed">{sec.insight}</p>
+        )}
+        <ul className="space-y-2">
+          {sec.rows.map((row, idx) => (
+            <li
+              key={`${row.heroName}-${idx}`}
+              className="rounded-md border border-k3-border-subtle/70 bg-k3-elevated/20 px-2.5 py-2"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-k3-text-primary">{row.heroName}</span>
+                <span className="text-[11px] font-mono text-k3-text-secondary">{row.advantageLabel}</span>
+              </div>
+              <p className="text-[10px] text-k3-text-tertiary mt-0.5">{row.detail}</p>
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }

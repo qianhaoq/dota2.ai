@@ -90,6 +90,9 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     loadingMistake: lang === 'zh' ? '提炼关键失误…' : 'Distilling mistake…',
     loadingDrill: lang === 'zh' ? '生成练习方案…' : 'Building drill…',
     stoppedEarly: lang === 'zh' ? '复盘已停止，以下为已加载内容。' : 'Review stopped — showing loaded content.',
+    items: lang === 'zh' ? '出装对比' : 'Item build compare',
+    farm: lang === 'zh' ? '对线/经济对标' : 'Farm benchmarks',
+    matchups: lang === 'zh' ? '克制关系' : 'Matchups',
   }), [lang]);
 
   const insightBlocks = useMemo(() => {
@@ -152,9 +155,13 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     requestAnimationFrame(() => {
       if (container) {
         const top = scrollOffsetWithinContainer(container, target, 8);
-        container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        const delta = Math.abs(container.scrollTop - Math.max(0, top));
+        // Avoid outer chat chase — only nudge once if surface is far off-screen.
+        if (delta > 48) {
+          container.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        }
       } else {
-        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
     });
   }, [session?.id, dismissed, scrollContainerRef]);
@@ -179,10 +186,10 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     <div
       ref={surfaceRef}
       data-testid="review-surface"
-      className="w-full max-w-3xl min-w-0 mb-3"
+      className="w-full max-w-3xl min-w-0 mb-3 flex flex-col"
     >
-      <div className="rounded-xl border border-k3-border-subtle bg-k3-surface shadow-sm overflow-hidden">
-        <header className="flex items-start gap-2 px-3 sm:px-4 py-2.5 border-b border-k3-border-subtle bg-k3-elevated/30">
+      <div className="rounded-xl border border-k3-border-subtle bg-k3-surface shadow-sm overflow-hidden flex flex-col max-h-[min(70vh,720px)]">
+        <header className="sticky top-0 z-[2] flex items-start gap-2 px-3 sm:px-4 py-2.5 border-b border-k3-border-subtle bg-k3-elevated/90 backdrop-blur-sm">
           <Film size={16} className="text-k3-text-secondary flex-shrink-0 mt-0.5" />
           <div className="min-w-0 flex-1">
             <p className="text-xs text-k3-text-tertiary uppercase tracking-wide">{t.surfaceTitle}</p>
@@ -233,7 +240,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
           </div>
         )}
 
-        <div className="p-3 sm:p-4 space-y-3">
+        <div className="p-3 sm:p-4 space-y-3 overflow-y-auto overscroll-contain custom-scrollbar min-h-0 flex-1" data-testid="review-surface-scroll">
           {noticeBlocks.map((block) => (
             <StatusNotice
               key={block.id}
@@ -322,6 +329,54 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
                 block={blockByKind.get('key_moments')!}
                 lang={lang}
                 variant="timeline"
+              />
+            </SectionCard>
+          )}
+
+          {blockByKind.get('item_compare') && (
+            <SectionCard
+              title={t.items}
+              lang={lang}
+              framed
+              defaultOpen={!mobileCompact}
+              preview={mobileCompact ? cards?.item_compare?.rows?.[0]?.value : undefined}
+            >
+              <ReviewInsightCards
+                block={blockByKind.get('item_compare')!}
+                lang={lang}
+                variant="surface"
+              />
+            </SectionCard>
+          )}
+
+          {blockByKind.get('farm_benchmarks') && (
+            <SectionCard
+              title={t.farm}
+              lang={lang}
+              framed
+              defaultOpen={!mobileCompact}
+              preview={mobileCompact ? cards?.farm_benchmarks?.rows?.[0]?.label : undefined}
+            >
+              <ReviewInsightCards
+                block={blockByKind.get('farm_benchmarks')!}
+                lang={lang}
+                variant="surface"
+              />
+            </SectionCard>
+          )}
+
+          {blockByKind.get('matchup_context') && (
+            <SectionCard
+              title={t.matchups}
+              lang={lang}
+              framed
+              defaultOpen={false}
+              preview={mobileCompact ? cards?.matchup_context?.rows?.[0]?.heroName : undefined}
+            >
+              <ReviewInsightCards
+                block={blockByKind.get('matchup_context')!}
+                lang={lang}
+                variant="surface"
               />
             </SectionCard>
           )}

@@ -62,6 +62,37 @@ export interface MatchPlayerFact {
   xpTimeline: number[];
   timeBuckets: number[];
   killsLog: Array<{ time: number; target: string }>;
+  purchaseLog?: Array<{ time: number; key: string }>;
+  lastHits?: number;
+}
+
+export interface MatchEnrichmentBenchmarks {
+  gpm?: { actual: number; percentile: number };
+  xpm?: { actual: number; percentile: number };
+  lastHits?: { actual: number; percentile: number };
+}
+
+export interface MatchEnrichment {
+  benchmarks?: MatchEnrichmentBenchmarks;
+  itemCompare?: {
+    actualCore: Array<{ key: string; name: string; time: number; timeLabel: string }>;
+    popularMid: Array<{ key?: string; name?: string; count?: number }>;
+    popularLate: Array<{ key?: string; name?: string; count?: number }>;
+    delayed: Array<{ key: string; name: string; expectedBy: string; actualAt?: string }>;
+    offMeta: Array<{ key: string; name: string; timeLabel: string }>;
+    missingPopular?: Array<{ key: string; name: string }>;
+  };
+  matchups?: Array<{
+    heroId: number;
+    heroName: string;
+    advantage: number;
+    advantageLabel: string;
+    winRate?: string | null;
+    gamesPlayed?: number;
+    detail: string;
+  }>;
+  guidesUrl?: string | null;
+  source?: string;
 }
 
 export interface MatchFact {
@@ -113,4 +144,5 @@ export interface MatchFact {
   } | null;
   focusLaneGrounded: boolean;
   grounded: boolean;
+  enrichment?: MatchEnrichment;
 }

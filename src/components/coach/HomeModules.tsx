@@ -20,6 +20,8 @@ interface HomeModulesProps {
   coachBusy?: boolean;
   onMeta: () => void;
   onStartReview?: (matchId: number, heroId?: number) => void;
+  /** Hide match-pick entry while Review Surface workspace is active. */
+  hideReviewEntry?: boolean;
 }
 
 const HomeModules: React.FC<HomeModulesProps> = ({
@@ -37,6 +39,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
   coachBusy = false,
   onMeta,
   onStartReview,
+  hideReviewEntry = false,
 }) => {
   const t = useMemo(() => ({
     practicing: lang === 'zh' ? '正在练习' : 'Practicing',
@@ -103,7 +106,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
         {draftBtn}
       </div>
       <LessonRail lang={lang} currentLesson={lesson} onLessonChange={onLessonChange} compact={density === 'compact'} />
-      {onStartReview && (
+      {onStartReview && !hideReviewEntry && (
         <ReviewEntry
           lang={lang}
           allHeroes={allHeroes}
