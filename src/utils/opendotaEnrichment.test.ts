@@ -156,6 +156,24 @@ describe('opendotaEnrichment', () => {
     expect(result.missingPopular).toEqual([]);
   });
 
+  it('compareItemBuild counts consumable/component purchases in possession keys', () => {
+    // aghanims_shard is filtered from actualCore but must still satisfy popular membership.
+    const result = compareItemBuild({
+      purchaseLog: [
+        { time: 1200, key: 'blink' },
+        { time: 1500, key: 'aghanims_shard' },
+      ],
+      itemPopularity: {
+        midGame: [{ key: 'aghanims_shard', name: "Aghanim's Shard", count: 90 }],
+        lateGame: [{ key: 'black_king_bar', name: 'Black King Bar', count: 70 }],
+      },
+    });
+    expect(result.unavailable).toBe(false);
+    expect(result.actualCore.every((i: { key: string }) => i.key !== 'aghanims_shard')).toBe(true);
+    expect(result.missingPopular.every((m: { key: string }) => m.key !== 'aghanims_shard')).toBe(true);
+    expect(result.missingPopular.some((m: { key: string }) => m.key === 'black_king_bar')).toBe(true);
+  });
+
   it('baselineWinRateFromMatchups aggregates matchup population (not heroStats)', () => {
     const baseline = baselineWinRateFromMatchups({
       1: { gamesPlayed: 100, wins: 55, winRate: '55.0' },

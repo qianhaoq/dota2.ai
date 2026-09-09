@@ -75,10 +75,10 @@ export interface MatchEnrichmentBenchmarks {
 export interface MatchEnrichment {
   benchmarks?: MatchEnrichmentBenchmarks;
   itemCompare?: {
+    unavailable?: boolean;
     actualCore: Array<{ key: string; name: string; time: number; timeLabel: string }>;
     popularMid: Array<{ key?: string; name?: string; count?: number }>;
     popularLate: Array<{ key?: string; name?: string; count?: number }>;
-    delayed: Array<{ key: string; name: string; expectedBy: string; actualAt?: string }>;
     offMeta: Array<{ key: string; name: string; timeLabel: string }>;
     missingPopular?: Array<{ key: string; name: string }>;
   };

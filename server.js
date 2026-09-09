@@ -300,18 +300,28 @@ async function getHeroConstants() {
 
 async function getItemConstants(options = {}) {
   const now = Date.now();
-  if (cache.items.data && (now - cache.items.timestamp) < CONSTANTS_CACHE_TTL_MS) {
+  if (cache.items.data && Object.keys(cache.items.data).length > 0
+      && (now - cache.items.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.items.data;
   }
   try {
     const data = await fetchWithRetry(`${OPENDOTA_API}/constants/items`, 2, 500, options);
+    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+      console.error('Item constants response empty; treating as unavailable');
+      return (cache.items.data && Object.keys(cache.items.data).length > 0)
+        ? cache.items.data
+        : null;
+    }
     cache.items = { data, timestamp: now };
     console.log(`Loaded ${Object.keys(data).length} items from OpenDota constants`);
     return data;
   } catch (err) {
     if (options.signal?.aborted) throw err;
     console.error('Failed to fetch item constants:', err.message);
-    return cache.items.data || {};
+    // Do NOT soft-fallback to {} — bare numeric IDs vs names cause Uncommon false positives.
+    return (cache.items.data && Object.keys(cache.items.data).length > 0)
+      ? cache.items.data
+      : null;
   }
 }
 
@@ -726,6 +736,7 @@ async function getLeanHeroMeta(lang = 'zh') {
 // Get lean item list for frontend
 async function getLeanItemMeta() {
   const items = await getItemConstants();
+  if (!items) return [];
   return Object.entries(items)
     .filter(([key, item]) => !item.recipe && item.cost > 0)
     .map(([key, item]) => ({
@@ -822,7 +833,12 @@ async function getHeroItemPopularity(heroId, options = {}) {
   try {
     const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/itemPopularity`, 2, 500, options);
     const itemConstants = await getItemConstants(options);
-    
+    // Without item name map, popularity keys stay numeric and comparisons false-positive.
+    if (!itemConstants || Object.keys(itemConstants).length === 0) {
+      console.error(`Item constants unavailable for hero ${heroId} popularity; marking enrichment unavailable`);
+      return cached?.data ?? null;
+    }
+
     const formatItems = (itemCounts) => {
       if (!itemCounts) return [];
       return Object.entries(itemCounts)
@@ -885,16 +901,24 @@ async function getHeroBenchmarks(heroId, options = {}) {
   }
 }
 
+// Optional enrichment must not block SSE beyond this independent deadline.
+const ENRICHMENT_DEADLINE_MS = 10000;
+
 async function enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts = {}) {
   const focusId = matchFact?.focusHeroId;
   if (!focusId) return matchFact;
   try {
     if (fetchOpts.signal?.aborted) return matchFact;
+    const deadlineSignal = AbortSignal.timeout(ENRICHMENT_DEADLINE_MS);
+    const signal = (typeof AbortSignal.any === 'function' && fetchOpts.signal)
+      ? AbortSignal.any([fetchOpts.signal, deadlineSignal])
+      : (fetchOpts.signal || deadlineSignal);
+    const opts = { ...fetchOpts, signal };
     const [benchmarks, itemPopularity, matchupsMap, itemConstants] = await Promise.all([
-      getHeroBenchmarks(focusId, fetchOpts),
-      getHeroItemPopularity(focusId, fetchOpts),
-      getHeroMatchups(focusId, fetchOpts),
-      getItemConstants(fetchOpts),
+      getHeroBenchmarks(focusId, opts),
+      getHeroItemPopularity(focusId, opts),
+      getHeroMatchups(focusId, opts),
+      getItemConstants(opts),
     ]);
     if (fetchOpts.signal?.aborted) return matchFact;
     // Baseline must come from the same /matchups population (not pro-skewed heroStats).
@@ -911,7 +935,13 @@ async function enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts = {}) {
     if (!enrichment) return matchFact;
     return attachEnrichmentToMatchFact(matchFact, enrichment);
   } catch (err) {
-    if (fetchOpts.signal?.aborted || err?.name === 'AbortError') return matchFact;
+    // Client abort OR enrichment deadline — degrade without enrichment so SSE can proceed.
+    if (fetchOpts.signal?.aborted || err?.name === 'AbortError' || err?.name === 'TimeoutError') {
+      if (!fetchOpts.signal?.aborted) {
+        console.warn(`OpenDota enrichment timed out after ${ENRICHMENT_DEADLINE_MS}ms; continuing without`);
+      }
+      return matchFact;
+    }
     console.error('OpenDota enrichment failed (continuing without):', err.message);
     return matchFact;
   }
