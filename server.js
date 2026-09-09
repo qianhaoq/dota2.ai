@@ -16,6 +16,11 @@ import {
   minRequiredKeyMoments,
 } from './lib/matchReview/reviewCards.js';
 import {
+  attachEnrichmentToMatchFact,
+  baselineWinRateFromMatchups,
+  buildHeroEnrichmentPayload,
+} from './lib/matchReview/opendotaEnrichment.js';
+import {
   REVIEW_HIGH_MMR_MIN_RANK_TIER,
   resolvePublicMatchSkill,
   selectReviewHighMmrPublicMatches,
@@ -69,6 +74,7 @@ const cache = {
   heroStats: { data: null, timestamp: 0 },
   matchups: new Map(), // Map<heroId, { data, timestamp }>
   itemPopularity: new Map(), // Map<heroId, { data, timestamp }>
+  benchmarks: new Map(), // Map<heroId, { data, timestamp }>
   // Foundation data constants
   heroes: { data: null, timestamp: 0 },
   items: { data: null, timestamp: 0 },
@@ -292,19 +298,30 @@ async function getHeroConstants() {
   }
 }
 
-async function getItemConstants() {
+async function getItemConstants(options = {}) {
   const now = Date.now();
-  if (cache.items.data && (now - cache.items.timestamp) < CONSTANTS_CACHE_TTL_MS) {
+  if (cache.items.data && Object.keys(cache.items.data).length > 0
+      && (now - cache.items.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.items.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/items`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/items`, 2, 500, options);
+    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
+      console.error('Item constants response empty; treating as unavailable');
+      return (cache.items.data && Object.keys(cache.items.data).length > 0)
+        ? cache.items.data
+        : null;
+    }
     cache.items = { data, timestamp: now };
     console.log(`Loaded ${Object.keys(data).length} items from OpenDota constants`);
     return data;
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     console.error('Failed to fetch item constants:', err.message);
-    return cache.items.data || {};
+    // Do NOT soft-fallback to {} — bare numeric IDs vs names cause Uncommon false positives.
+    return (cache.items.data && Object.keys(cache.items.data).length > 0)
+      ? cache.items.data
+      : null;
   }
 }
 
@@ -719,6 +736,7 @@ async function getLeanHeroMeta(lang = 'zh') {
 // Get lean item list for frontend
 async function getLeanItemMeta() {
   const items = await getItemConstants();
+  if (!items) return [];
   return Object.entries(items)
     .filter(([key, item]) => !item.recipe && item.cost > 0)
     .map(([key, item]) => ({
@@ -775,51 +793,60 @@ async function getHeroStats(fetchOptions = {}) {
   }
 }
 
-async function getHeroMatchups(heroId) {
+async function getHeroMatchups(heroId, options = {}) {
   const now = Date.now();
   const cached = cache.matchups.get(heroId);
   if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
     return cached.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/matchups`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/matchups`, 2, 500, options);
     const matchupMap = {};
     for (const m of data) {
       if (m.games_played > 0) {
+        const wr = (m.wins / m.games_played) * 100;
         matchupMap[m.hero_id] = {
           heroId: m.hero_id,
           gamesPlayed: m.games_played,
           wins: m.wins,
-          winRate: ((m.wins / m.games_played) * 100).toFixed(1),
-          advantage: (((m.wins / m.games_played) - 0.5) * 100).toFixed(1)
+          winRate: wr.toFixed(1),
+          // Legacy field vs 50% — enrichment recomputes vs hero baseline when available.
+          advantage: (wr - 50).toFixed(1),
         };
       }
     }
     cache.matchups.set(heroId, { data: matchupMap, timestamp: now });
     return matchupMap;
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     console.error(`Failed to fetch matchups for hero ${heroId}:`, err.message);
     return cached?.data || {};
   }
 }
 
-async function getHeroItemPopularity(heroId) {
+async function getHeroItemPopularity(heroId, options = {}) {
   const now = Date.now();
   const cached = cache.itemPopularity.get(heroId);
   if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
     return cached.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/itemPopularity`);
-    const itemConstants = await getItemConstants();
-    
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/itemPopularity`, 2, 500, options);
+    const itemConstants = await getItemConstants(options);
+    // Without item name map, popularity keys stay numeric and comparisons false-positive.
+    if (!itemConstants || Object.keys(itemConstants).length === 0) {
+      console.error(`Item constants unavailable for hero ${heroId} popularity; marking enrichment unavailable`);
+      return cached?.data ?? null;
+    }
+
     const formatItems = (itemCounts) => {
       if (!itemCounts) return [];
       return Object.entries(itemCounts)
         .map(([itemIdStr, count]) => {
-          const itemId = parseInt(itemIdStr);
+          const itemId = parseInt(itemIdStr, 10);
           const itemEntry = Object.entries(itemConstants).find(([_, item]) => item.id === itemId);
-          const itemKey = itemEntry?.[0] || itemIdStr;
+          // Prefer constants map key (internal name); never leave bare numeric ID when resolvable.
+          const itemKey = (itemEntry?.[0] || itemIdStr).toLowerCase().replace(/^item_/, '');
           const item = itemEntry?.[1];
           return {
             id: itemId,
@@ -841,12 +868,108 @@ async function getHeroItemPopularity(heroId) {
       midGame: formatItems(data.mid_game_items),
       lateGame: formatItems(data.late_game_items)
     };
+
+    // Cache any non-empty popularity (including startGame-only) for playbook /
+    // /api/heroes/:heroId/items consumers. Comparator-unavailable (startGame-only →
+    // empty early/mid/late) is enforced inside compareItemBuild for review enrichment only.
+    const hasAnyBucket = [popularity.startGame, popularity.earlyGame, popularity.midGame, popularity.lateGame]
+      .some((bucket) => Array.isArray(bucket) && bucket.length > 0);
+    if (!hasAnyBucket) {
+      console.error(`Item popularity for hero ${heroId} has no positive counts; marking unavailable`);
+      return cached?.data ?? null;
+    }
     
     cache.itemPopularity.set(heroId, { data: popularity, timestamp: now });
     return popularity;
   } catch (err) {
+    if (options.signal?.aborted) throw err;
     console.error(`Failed to fetch item popularity for hero ${heroId}:`, err.message);
-    return cached?.data || { startGame: [], earlyGame: [], midGame: [], lateGame: [] };
+    // Do NOT pass empty buckets as success — that makes every major purchase look "Uncommon".
+    return cached?.data ?? null;
+  }
+}
+
+
+async function getHeroBenchmarks(heroId, options = {}) {
+  const now = Date.now();
+  const cached = cache.benchmarks.get(heroId);
+  if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
+    return cached.data;
+  }
+  try {
+    const data = await fetchWithRetry(
+      `${OPENDOTA_API}/benchmarks?hero_id=${heroId}`,
+      2,
+      500,
+      options,
+    );
+    cache.benchmarks.set(heroId, { data, timestamp: now });
+    return data;
+  } catch (err) {
+    console.error(`Failed to fetch benchmarks for hero ${heroId}:`, err.message);
+    return cached?.data || null;
+  }
+}
+
+// Optional enrichment must not block SSE beyond this independent deadline.
+const ENRICHMENT_DEADLINE_MS = 10000;
+
+async function enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts = {}) {
+  const focusId = matchFact?.focusHeroId;
+  if (!focusId) return matchFact;
+  try {
+    if (fetchOpts.signal?.aborted) return matchFact;
+    const deadlineSignal = AbortSignal.timeout(ENRICHMENT_DEADLINE_MS);
+    let signal;
+    if (typeof AbortSignal.any === 'function') {
+      signal = fetchOpts.signal
+        ? AbortSignal.any([fetchOpts.signal, deadlineSignal])
+        : deadlineSignal;
+    } else if (fetchOpts.signal) {
+      // Node 18 may lack AbortSignal.any; keep both client abort and 10s deadline.
+      const combined = new AbortController();
+      const onAbort = () => combined.abort();
+      if (fetchOpts.signal.aborted || deadlineSignal.aborted) {
+        combined.abort();
+      } else {
+        fetchOpts.signal.addEventListener('abort', onAbort, { once: true });
+        deadlineSignal.addEventListener('abort', onAbort, { once: true });
+      }
+      signal = combined.signal;
+    } else {
+      signal = deadlineSignal;
+    }
+    const opts = { ...fetchOpts, signal };
+    const [benchmarks, itemPopularity, matchupsMap, itemConstants] = await Promise.all([
+      getHeroBenchmarks(focusId, opts),
+      getHeroItemPopularity(focusId, opts),
+      getHeroMatchups(focusId, opts),
+      getItemConstants(opts),
+    ]);
+    if (fetchOpts.signal?.aborted) return matchFact;
+    // Baseline must come from the same /matchups population (not pro-skewed heroStats).
+    const baselineWinRate = baselineWinRateFromMatchups(matchupsMap);
+    const enrichment = buildHeroEnrichmentPayload({
+      matchFact,
+      benchmarks,
+      itemPopularity,
+      matchupsMap,
+      lang,
+      baselineWinRate,
+      itemConstants,
+    });
+    if (!enrichment) return matchFact;
+    return attachEnrichmentToMatchFact(matchFact, enrichment);
+  } catch (err) {
+    // Client abort OR enrichment deadline — degrade without enrichment so SSE can proceed.
+    if (fetchOpts.signal?.aborted || err?.name === 'AbortError' || err?.name === 'TimeoutError') {
+      if (!fetchOpts.signal?.aborted) {
+        console.warn(`OpenDota enrichment timed out after ${ENRICHMENT_DEADLINE_MS}ms; continuing without`);
+      }
+      return matchFact;
+    }
+    console.error('OpenDota enrichment failed (continuing without):', err.message);
+    return matchFact;
   }
 }
 
@@ -2215,7 +2338,8 @@ async function handleMatchReviewFacts(req, res) {
       heroConstants,
       HERO_NAMES_CN
     );
-    const matchFact = buildMatchFact(matchData, { lang, heroNames });
+    let matchFact = buildMatchFact(matchData, { lang, heroNames });
+    matchFact = await enrichMatchFactWithOpenDota(matchFact, lang);
     return res.json({ matchFact, grounded: Boolean(matchFact.grounded) });
   } catch (error) {
     console.error('Match facts error:', error);
@@ -2311,7 +2435,9 @@ async function handleMatchReview(req, res) {
       heroConstants,
       HERO_NAMES_CN
     );
-    const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
+    let matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
+    matchFact = await enrichMatchFactWithOpenDota(matchFact, lang, fetchOpts);
+    if (clientGone) return;
     const isGrounded = Boolean(matchFact.grounded);
 
     const apiKeyError = isZh ? 'DeepSeek API Key 未配置' : 'DeepSeek API Key not configured';

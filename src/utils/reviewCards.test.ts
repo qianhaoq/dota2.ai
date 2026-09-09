@@ -113,8 +113,15 @@ describe('reviewCards gold match 8985182860', () => {
     const cards = buildFallbackAiCards(fact, 'zh') as ReviewCardsPayload;
     expect(cards.primary_mistake?.category).toBe('fight_timing');
     expect(cards.primary_mistake?.headline).not.toMatch(/站位|进场时机/);
+    expect(cards.primary_mistake?.headline).not.toMatch(/高死亡|偏高/);
+    expect(cards.primary_mistake?.explanation).not.toMatch(/偏高|is high/i);
+    expect(cards.primary_mistake?.explanation).toMatch(/死亡 \d+ 次/);
     expect(cards.primary_mistake?.explanation).toMatch(/不做未证实的因果推断/);
     expect(cards.primary_mistake?.evidence?.some((e) => e.factKey.startsWith('timeline_'))).toBe(true);
+    const en = buildFallbackAiCards(fact, 'en') as ReviewCardsPayload;
+    expect(en.primary_mistake?.headline).not.toMatch(/high deaths/i);
+    expect(en.primary_mistake?.explanation).not.toMatch(/is high/i);
+    expect(en.primary_mistake?.explanation).toMatch(/\d+ deaths/);
   });
 
   it('synthesizes contextual default followups when LLM omits followups array', () => {
@@ -713,7 +720,7 @@ describe('buildKeyMomentsFromTimeline', () => {
     const fallback = buildFallbackAiCards(fact, 'zh') as ReviewCardsPayload;
     expect(cards.drill?.title).toBe(fallback.drill?.title);
     expect(cards.drill?.steps).toEqual(fallback.drill?.steps);
-    expect(cards.drill?.steps?.join(' ')).not.toMatch(/羊刀|10 分前|参团/);
+    expect(cards.drill?.steps?.join(' ')).not.toMatch(/羊刀|10 分前不参团|出羊刀/);
   });
 
   it('rejects item-specific drill steps in English', () => {

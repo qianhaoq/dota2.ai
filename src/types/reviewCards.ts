@@ -55,6 +55,19 @@ export interface ReviewDrillCard {
   steps: string[];
 }
 
+export interface ReviewSectionRowsCard {
+  title: string;
+  insight?: string;
+  rows: Array<{ label: string; value: string; percentile?: number }>;
+  guidesUrl?: string;
+}
+
+export interface ReviewMatchupSectionCard {
+  title: string;
+  insight?: string;
+  rows: Array<{ heroName: string; advantageLabel: string; detail: string }>;
+}
+
 /** 结构化复盘卡片载荷 — Fact → Insight → Drill */
 export interface ReviewCardsPayload {
   match_summary?: MatchSummaryCard;
@@ -64,4 +77,7 @@ export interface ReviewCardsPayload {
   drill?: ReviewDrillCard;
   followups?: string[];
   mentor_note?: string;
+  item_compare?: ReviewSectionRowsCard;
+  farm_benchmarks?: ReviewSectionRowsCard;
+  matchup_context?: ReviewMatchupSectionCard;
 }

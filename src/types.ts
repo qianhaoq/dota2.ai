@@ -87,7 +87,10 @@ export interface A2UIBlock {
     | 'key_moments'
     | 'drill'
     | 'followups'
-    | 'mentor_note';
+    | 'mentor_note'
+    | 'item_compare'
+    | 'farm_benchmarks'
+    | 'matchup_context';
   /** 结构化复盘卡片数据 */
   reviewCards?: import('./types/reviewCards').ReviewCardsPayload;
 }

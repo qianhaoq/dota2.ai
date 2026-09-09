@@ -133,7 +133,13 @@ const CoachCanvas: React.FC<CoachCanvasProps> = ({
     );
 
     const streamingSession = visibleSessions.find((s) => s.message.isStreaming);
-    const reviewSession = visibleSessions.find((s) => s.message.action === 'review' && (s.message.reviewCards || s.message.matchFact));
+    // Primary review lives in Review Surface (filtered from visibleSessions) —
+    // do not chase outer chat scroll for its card growth (fixed-surface UX).
+    const reviewSession = visibleSessions.find((s) => (
+      s.message.action === 'review'
+      && s.message.reviewFollowUp
+      && (s.message.reviewCards || s.message.matchFact || s.message.isStreaming)
+    ));
     const fingerprint = coachSessionScrollFingerprint(streamingSession)
       || coachSessionScrollFingerprint(reviewSession);
     const shouldScrollBottom = shouldAutoScrollCoachTimeline({

@@ -12,6 +12,9 @@ export function reviewCardsGrowthFingerprint(reviewCards?: ReviewCardsPayload | 
     reviewCards.key_moments?.length ?? 0,
     reviewCards.drill ? 1 : 0,
     reviewCards.followups?.length ?? 0,
+    reviewCards.item_compare ? 1 : 0,
+    reviewCards.farm_benchmarks ? 1 : 0,
+    reviewCards.matchup_context ? 1 : 0,
   ].join(':');
 }
 

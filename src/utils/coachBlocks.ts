@@ -144,6 +144,36 @@ function reviewInsightBlocks(message: CoachMessage, lang: Language): A2UIBlock[]
     });
   }
 
+  if (cards.item_compare) {
+    blocks.push({
+      id: `${message.id}-ri-items`,
+      type: 'reviewInsight',
+      title: cards.item_compare.title || (lang === 'zh' ? '出装对比' : 'Item build compare'),
+      reviewCardKind: 'item_compare',
+      reviewCards: cards,
+    });
+  }
+
+  if (cards.farm_benchmarks) {
+    blocks.push({
+      id: `${message.id}-ri-farm`,
+      type: 'reviewInsight',
+      title: cards.farm_benchmarks.title || (lang === 'zh' ? '对线/经济对标' : 'Farm benchmarks'),
+      reviewCardKind: 'farm_benchmarks',
+      reviewCards: cards,
+    });
+  }
+
+  if (cards.matchup_context) {
+    blocks.push({
+      id: `${message.id}-ri-matchups`,
+      type: 'reviewInsight',
+      title: cards.matchup_context.title || (lang === 'zh' ? '克制关系' : 'Matchups'),
+      reviewCardKind: 'matchup_context',
+      reviewCards: cards,
+    });
+  }
+
   if (cards.followups && cards.followups.length > 0 && !message.isStreaming) {
     blocks.push({
       id: `${message.id}-ri-followups`,
