@@ -40,9 +40,15 @@ import type { CoachMessage } from './coach/coachMessage';
 
 interface CoachViewProps {
   lang: Language;
+  /**
+   * External lesson switch (e.g. tactical-room motive entries). Bump `nonce`
+   * to re-apply the same mode. This is a soft switch: it changes the active
+   * workspace without auto-running a task — generation stays explicit.
+   */
+  lessonRequest?: { mode: LessonMode; nonce: number } | null;
 }
 
-const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
+const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const [allHeroes, setAllHeroes] = useState<Hero[]>([]);
   const [isHeroesLoading, setIsHeroesLoading] = useState(true);
   const [mentor, setMentor] = useState<Hero | null>(null);
@@ -432,7 +438,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
     setLastDismissedSessionId(null);
   }, [lastDismissedSessionId]);
 
-  const handleLessonAction = useCallback((lessonMode: LessonMode) => {
+  /** State-only lesson switch: clears cross-lesson context, never auto-runs a task. */
+  const applyLessonSwitch = useCallback((lessonMode: LessonMode) => {
     const leavingReview = lesson === 'review' && lessonMode !== 'review';
     if (lessonMode !== 'review') {
       pendingFollowUpContextRef.current = null;
@@ -441,6 +448,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       setUserInput('');
     }
     setLesson(lessonMode);
+    return leavingReview;
+  }, [lesson]);
+
+  const handleLessonAction = useCallback((lessonMode: LessonMode) => {
+    const leavingReview = applyLessonSwitch(lessonMode);
     if (lessonMode === 'review') return;
     const analyzeOpts = leavingReview ? { ignoreComposerInput: true } : undefined;
     switch (lessonMode) {
@@ -449,7 +461,16 @@ const CoachView: React.FC<CoachViewProps> = ({ lang }) => {
       case 'items':
       case 'mind': handleAnalyze(analyzeOpts); break;
     }
-  }, [lesson, handleAnalyze, handlePlaybook]);
+  }, [applyLessonSwitch, handleAnalyze, handlePlaybook]);
+
+  // Soft-switch from the shell (motive entries / workspace tabs). Generation stays explicit.
+  // Guarded by nonce so a manual LessonRail switch inside CoachView is never overridden.
+  const appliedLessonNonceRef = useRef(-1);
+  useEffect(() => {
+    if (!lessonRequest || appliedLessonNonceRef.current === lessonRequest.nonce) return;
+    appliedLessonNonceRef.current = lessonRequest.nonce;
+    applyLessonSwitch(lessonRequest.mode);
+  }, [lessonRequest, applyLessonSwitch]);
 
   const dismissedSessionIdSet = useMemo(() => new Set(dismissedSessionIds), [dismissedSessionIds]);
   const hasResults = sessions.some((s) => !dismissedSessionIdSet.has(s.id));
