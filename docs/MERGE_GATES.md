@@ -112,3 +112,5 @@ This page is the source of truth for merge policy.
 | `.github/workflows/ai-review.yml` | 请求 Copilot review；Custom LLM 可选 |
 | `docs/COPILOT-WORKFLOW.md` | Copilot Pro 日常用法 |
 | `docs/QUALITY.md` | 本地/CI 质量检查 |
+
+<!-- gate e2e 2026-09-09 -->
