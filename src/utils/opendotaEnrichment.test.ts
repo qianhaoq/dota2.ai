@@ -112,8 +112,8 @@ describe('opendotaEnrichment', () => {
       purchaseLog: [
         { time: -80, key: 'item_tango' },
         { time: 200, key: 'boots' },
-        { time: 1800, key: 'item_blink' },
-        { time: 2100, key: 'rapier' },
+        { time: 1200, key: 'item_blink' }, // mid stage (10–25m) — matches midGame popularity
+        { time: 2100, key: 'rapier' }, // late stage
       ],
       itemPopularity: {
         earlyGame: [{ key: 'boots', name: 'Boots', count: 100 }],
@@ -193,10 +193,36 @@ describe('opendotaEnrichment', () => {
         id: 1,
         dname: 'Blink Dagger',
         qual: 'component',
-        behavior: 'UNIT_TARGET',
-        abilities: { '0': 'blink' },
+        // No behavior/abilities — OpenDota /constants/items does not reliably supply them.
         components: null,
         created: false,
+        cost: 2250,
+      },
+      ghost: {
+        id: 37,
+        dname: 'Ghost Scepter',
+        qual: 'component',
+        components: null,
+        created: false,
+        cost: 1500,
+      },
+      ethereal_blade: {
+        id: 176,
+        dname: 'Ethereal Blade',
+        components: ['ghost', 'crystalys'],
+        created: true,
+      },
+      force_staff: {
+        id: 102,
+        dname: 'Force Staff',
+        components: ['staff_of_wizardry', 'fluffy_hat'],
+        created: true,
+        cost: 2200,
+      },
+      hurricane_pike: {
+        id: 263,
+        components: ['force_staff', 'dragon_lance'],
+        created: true,
       },
       overwhelming_blink: {
         id: 600,
@@ -221,7 +247,9 @@ describe('opendotaEnrichment', () => {
     expect(buildRecipeComponentKeySet(itemConstants).has('talisman_of_evasion')).toBe(true);
     expect(isMajorPurchase('relic', itemConstants)).toBe(false);
     expect(isMajorPurchase('talisman_of_evasion', itemConstants)).toBe(false);
-    expect(isMajorPurchase('blink', itemConstants)).toBe(true);
+    expect(isMajorPurchase('blink', itemConstants)).toBe(true); // standalone allowlist, no behavior/abilities
+    expect(isMajorPurchase('ghost', itemConstants)).toBe(true);
+    expect(isMajorPurchase('force_staff', itemConstants)).toBe(true); // crafted + upgrade input
     expect(isMajorPurchase('black_king_bar', itemConstants)).toBe(true);
     expect(isMajorPurchase('ogre_axe', itemConstants)).toBe(false);
 
@@ -248,7 +276,70 @@ describe('opendotaEnrichment', () => {
     expect(result.actualCore.some((i: { key: string }) => i.key === 'black_king_bar')).toBe(true);
   });
 
-  it('compareItemBuild counts consumable/component purchases in possession keys', () => {
+  it('compareItemBuild keeps upgradeable standalones without behavior/abilities fields', () => {
+    const itemConstants = {
+      blink: { id: 1, dname: 'Blink Dagger', qual: 'component', components: null, created: false, cost: 2250 },
+      overwhelming_blink: { id: 600, components: ['blink', 'reaver'], created: true },
+      reaver: { id: 53, qual: 'secret_shop', components: null, created: false },
+      relic: { id: 54, qual: 'secret_shop', components: null, created: false },
+      radiance: { id: 63, components: ['relic', 'talisman_of_evasion'], created: true },
+      talisman_of_evasion: { id: 32, components: null, created: false },
+    };
+    expect(isMajorPurchase('blink', itemConstants)).toBe(true);
+    expect(isMajorPurchase('relic', itemConstants)).toBe(false);
+
+    const result = compareItemBuild({
+      purchaseLog: [
+        { time: 900, key: 'relic' },
+        { time: 1200, key: 'blink' },
+      ],
+      itemPopularity: {
+        earlyGame: [],
+        midGame: [{ key: 'blink', name: 'Blink', count: 80 }],
+        lateGame: [],
+      },
+      itemConstants,
+    });
+    expect(result.actualCore.some((i: { key: string }) => i.key === 'blink')).toBe(true);
+    expect(result.actualCore.every((i: { key: string }) => i.key !== 'relic')).toBe(true);
+    expect(result.offMeta.every((o: { key: string }) => o.key !== 'blink')).toBe(true);
+  });
+
+  it('compareItemBuild requires stage-specific popularity for offMeta (no sparse-bucket union)', () => {
+    // Only early bucket populated — mid/late purchases must NOT be judged Uncommon against early.
+    const earlyOnly = compareItemBuild({
+      purchaseLog: [
+        { time: 12 * 60, key: 'aether_lens' }, // mid purchase
+        { time: 30 * 60, key: 'rapier' }, // late purchase
+      ],
+      itemPopularity: {
+        earlyGame: [{ key: 'boots', name: 'Boots', count: 100 }],
+        midGame: [],
+        lateGame: [],
+      },
+    });
+    expect(earlyOnly.unavailable).toBe(false);
+    expect(earlyOnly.offMeta).toEqual([]);
+
+    // Mid bucket present: mid off-meta fires; late still suppressed when late empty.
+    const midOnly = compareItemBuild({
+      purchaseLog: [
+        { time: 12 * 60, key: 'aether_lens' },
+        { time: 14 * 60, key: 'blink' },
+        { time: 30 * 60, key: 'rapier' },
+      ],
+      itemPopularity: {
+        earlyGame: [],
+        midGame: [{ key: 'blink', name: 'Blink', count: 80 }],
+        lateGame: [],
+      },
+    });
+    expect(midOnly.offMeta.some((o: { key: string }) => o.key === 'aether_lens')).toBe(true);
+    expect(midOnly.offMeta.every((o: { key: string }) => o.key !== 'blink')).toBe(true);
+    expect(midOnly.offMeta.every((o: { key: string }) => o.key !== 'rapier')).toBe(true);
+  });
+
+    it('compareItemBuild counts consumable/component purchases in possession keys', () => {
     // aghanims_shard is filtered from actualCore but must still satisfy popular membership.
     const result = compareItemBuild({
       purchaseLog: [

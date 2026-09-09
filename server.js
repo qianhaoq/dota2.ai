@@ -869,13 +869,13 @@ async function getHeroItemPopularity(heroId, options = {}) {
       lateGame: formatItems(data.late_game_items)
     };
 
-    // compareItemBuild builds popularKeys from early/mid/late only (excludes startGame).
-    // startGame-only payloads are not usable — caching them makes every major purchase
-    // after ~8 minutes look "Uncommon". Require ≥1 comparator bucket with data.
-    const hasComparatorBucket = [popularity.earlyGame, popularity.midGame, popularity.lateGame]
+    // Cache any non-empty popularity (including startGame-only) for playbook /
+    // /api/heroes/:heroId/items consumers. Comparator-unavailable (startGame-only →
+    // empty early/mid/late) is enforced inside compareItemBuild for review enrichment only.
+    const hasAnyBucket = [popularity.startGame, popularity.earlyGame, popularity.midGame, popularity.lateGame]
       .some((bucket) => Array.isArray(bucket) && bucket.length > 0);
-    if (!hasComparatorBucket) {
-      console.error(`Item popularity for hero ${heroId} has no early/mid/late data; marking unavailable`);
+    if (!hasAnyBucket) {
+      console.error(`Item popularity for hero ${heroId} has no positive counts; marking unavailable`);
       return cached?.data ?? null;
     }
     
