@@ -205,6 +205,31 @@ describe('opendotaEnrichment', () => {
     expect(result.offMeta.every((o: { key: string }) => o.key !== 'orchid')).toBe(true);
   });
 
+  it('compareItemBuild omits unreached late/mid stages from missingPopular', () => {
+    const popularity = {
+      earlyGame: [{ key: 'boots', name: 'Boots', count: 100 }],
+      midGame: [{ key: 'blink', name: 'Blink', count: 80 }],
+      lateGame: [{ key: 'black_king_bar', name: 'Black King Bar', count: 60 }],
+    };
+    const short = compareItemBuild({
+      purchaseLog: [{ time: 600, key: 'boots' }],
+      itemPopularity: popularity,
+      durationSec: 12 * 60, // mid reached, late not
+    });
+    expect(short.unavailable).toBe(false);
+    expect(short.popularLate.some((p: { key: string }) => p.key === 'black_king_bar')).toBe(true); // reference only
+    expect(short.missingPopular.some((m: { key: string }) => m.key === 'blink')).toBe(true);
+    expect(short.missingPopular.every((m: { key: string }) => m.key !== 'black_king_bar')).toBe(true);
+
+    const preMid = compareItemBuild({
+      purchaseLog: [{ time: 200, key: 'boots' }],
+      itemPopularity: popularity,
+      durationSec: 8 * 60, // neither mid nor late reached
+    });
+    expect(preMid.missingPopular).toEqual([]);
+    expect(preMid.popularMid.some((p: { key: string }) => p.key === 'blink')).toBe(true);
+  });
+
   it('baselineWinRateFromMatchups aggregates matchup population (not heroStats)', () => {
     const baseline = baselineWinRateFromMatchups({
       1: { gamesPlayed: 100, wins: 55, winRate: '55.0' },

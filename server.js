@@ -868,6 +868,15 @@ async function getHeroItemPopularity(heroId, options = {}) {
       midGame: formatItems(data.mid_game_items),
       lateGame: formatItems(data.late_game_items)
     };
+
+    // All-empty buckets are not usable popularity — caching them as success makes every
+    // major purchase look "Uncommon". Require at least one bucket with data.
+    const hasAnyBucket = [popularity.startGame, popularity.earlyGame, popularity.midGame, popularity.lateGame]
+      .some((bucket) => Array.isArray(bucket) && bucket.length > 0);
+    if (!hasAnyBucket) {
+      console.error(`Item popularity for hero ${heroId} returned all-empty buckets; marking unavailable`);
+      return cached?.data ?? null;
+    }
     
     cache.itemPopularity.set(heroId, { data: popularity, timestamp: now });
     return popularity;
