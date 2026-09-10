@@ -47,10 +47,17 @@ export class CdpSession {
     });
   }
 
-  send(method, params = {}) {
+  send(method, params = {}, timeoutMs = 20000) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`CDP timeout ${method}`));
+      }, timeoutMs);
+      this.pending.set(id, {
+        resolve: (value) => { clearTimeout(timer); resolve(value); },
+        reject: (err) => { clearTimeout(timer); reject(err); },
+      });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -73,6 +80,11 @@ export async function launchChrome({ runId, debugPort }) {
     '--no-sandbox',
     '--disable-dev-shm-usage',
     '--disable-extensions',
+    '--disable-component-extensions-with-background-pages',
+    '--disable-default-apps',
+    '--disable-background-networking',
+    '--no-first-run',
+    '--no-default-browser-check',
     '--hide-scrollbars',
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${userDataDir}`,
@@ -87,17 +99,20 @@ export async function launchChrome({ runId, debugPort }) {
   const version = await waitFor(async () => {
     try { return await requestJson(`http://127.0.0.1:${debugPort}/json/version`); } catch { return null; }
   }, { timeoutMs: 20000, label: 'chrome DevTools' });
-  const targets = await waitFor(async () => {
+  const page = await waitFor(async () => {
     try {
       const list = await requestJson(`http://127.0.0.1:${debugPort}/json/list`);
-      return Array.isArray(list) && list.length ? list : null;
+      if (!Array.isArray(list)) return null;
+      return list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl) || null;
     } catch { return null; }
-  }, { timeoutMs: 10000, label: 'chrome target' });
-  const wsUrl = targets[0].webSocketDebuggerUrl || version.webSocketDebuggerUrl;
+  }, { timeoutMs: 15000, label: 'chrome page target' });
+  const wsUrl = page.webSocketDebuggerUrl || version.webSocketDebuggerUrl;
+  if (!wsUrl) throw new Error('Chrome DevTools page websocket missing');
   const ws = new WebSocket(wsUrl);
   await new Promise((resolve, reject) => {
-    ws.addEventListener('open', resolve, { once: true });
-    ws.addEventListener('error', reject, { once: true });
+    const timer = setTimeout(() => reject(new Error('Chrome websocket open timeout')), 10000);
+    ws.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+    ws.addEventListener('error', (err) => { clearTimeout(timer); reject(err); }, { once: true });
   });
   const cdp = new CdpSession(ws);
   await cdp.send('Page.enable');
@@ -237,9 +252,9 @@ export async function navigate(cdp, url) {
   await cdp.send('Page.navigate', { url });
   await waitFor(async () => {
     const ready = await cdp.send('Runtime.evaluate', {
-      expression: `document.readyState`,
+      expression: `document.readyState === 'interactive' || document.readyState === 'complete'`,
       returnByValue: true,
     });
-    return ready.result?.value === 'complete' ? true : null;
+    return ready.result?.value ? true : null;
   }, { timeoutMs: 30000, label: `navigate ${url}` });
 }

@@ -63,7 +63,7 @@ Read-only. Run this first whenever anything looks off:
 
 Pass only if every check holds:
 
-- `.run/state.json` exists and every recorded PID (`express`, and `vite` in dev) is alive.
+- `.run/state.json` exists and launch PIDs are alive (`express`, plus `vite` in dev). A leftover `chrome` pid from a previous drive is ignored; drive starts a new Chrome.
 - `GET {apiOrigin}/health` is `200` and `status=healthy`.
 - `GET {apiOrigin}/api/health` is `200`. Record `apiKeyConfigured` (do not fail the doctor when it is `false`).
 - `GET {uiOrigin}/` is `200` and the title is `Dota2.ai - Tactical Assistant`.
@@ -78,7 +78,7 @@ If doctor fails, stop. Do not click a UI you did not launch.
 .cursor/skills/verify-dota2-ai/bin/verify-dota2-ai drive tactical-room-entry
 ```
 
-Recipes live in `features/`. The helper launches headless Chrome at 1280×800, navigates `{uiOrigin}/`, and resolves controls by **role + accessible name**, **placeholder**, or **visible 中文 substring** — never x/y.
+Recipes live in `features/`. The helper launches headless Chrome at 1280×800, attaches only to a DevTools target with `type=page` (Chrome may also list component `background_page` targets first — do not attach to those), navigates `{uiOrigin}/`, and resolves controls by **role + accessible name**, **placeholder**, or **visible 中文 substring** — never x/y.
 
 Handles taken from source (zh default):
 

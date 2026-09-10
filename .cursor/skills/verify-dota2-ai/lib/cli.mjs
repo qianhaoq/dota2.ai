@@ -246,10 +246,13 @@ async function inspect(state) {
     report.errors.push(`no state at ${STATE_PATH} — run launch first`);
     return report;
   }
+  const required = state.mode === 'prod' ? ['express'] : ['express', 'vite'];
   for (const [name, pid] of Object.entries(state.pids || {})) {
     const alive = pidAlive(pid);
     report.pids[name] = { pid, alive };
-    if (!alive) report.errors.push(`${name} pid ${pid} is not running`);
+    if (required.includes(name) && !alive) {
+      report.errors.push(`${name} pid ${pid} is not running`);
+    }
   }
   try {
     report.health = await fetchJson(`${state.apiOrigin}/health`);
