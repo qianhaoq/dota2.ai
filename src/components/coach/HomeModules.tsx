@@ -15,6 +15,7 @@ interface HomeModulesProps {
   onLessonChange: (lesson: LessonMode) => void;
   draft: DraftState;
   selectionSide: 'radiant' | 'dire';
+  mySide: 'radiant' | 'dire';
   onOpenPracticePicker: () => void;
   onOpenDraftPicker: () => void;
   onHeroDetail?: (heroId: number) => void;
@@ -36,6 +37,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
   onLessonChange,
   draft,
   selectionSide,
+  mySide,
   onOpenPracticePicker,
   onOpenDraftPicker,
   onHeroDetail,
@@ -118,8 +120,8 @@ const HomeModules: React.FC<HomeModulesProps> = ({
             lang={lang}
             isLoading={coachBusy}
             hasHeroes={hasHeroes}
-            hasAllies={(selectionSide === 'radiant' ? draft.radiant : draft.dire).length > 0 || Boolean(practiceHero)}
-            alliesFull={(selectionSide === 'radiant' ? draft.radiant : draft.dire).length >= 5}
+            hasAllies={(mySide === 'radiant' ? draft.radiant : draft.dire).length > 0 || Boolean(practiceHero)}
+            alliesFull={(mySide === 'radiant' ? draft.radiant : draft.dire).length >= 5}
             selectionSide={selectionSide}
             onAnalyze={onAnalyze}
             onPlaybook={onPlaybook}

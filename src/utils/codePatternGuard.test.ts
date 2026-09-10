@@ -38,9 +38,11 @@ describe('CoachView streaming code patterns (regression guard)', () => {
 
     expect(content).toContain('resolveCoachingLineup');
     expect(content).toContain('buildPracticeUserContext');
-    expect(content).toMatch(/analyzeDraftStream\(\s*coaching\.radiant,\s*coaching\.dire/);
-    expect(content).toMatch(/fetchPlaybookStream\(\s*coaching\.allies,\s*coaching\.enemies[\s\S]*coaching\.focusHeroId/);
+    // lineup may be coaching or a draftOverride-resolved CoachingLineup
+    expect(content).toMatch(/analyzeDraftStream\(\s*(?:coaching|lineup)\.radiant,\s*(?:coaching|lineup)\.dire/);
+    expect(content).toMatch(/fetchPlaybookStream\(\s*(?:coaching|lineup)\.allies,\s*(?:coaching|lineup)\.enemies[\s\S]*(?:coaching|lineup)\.focusHeroId/);
     expect(content).toMatch(/fetchSuggestions\(\s*coaching\.allies,\s*coaching\.enemies/);
+    expect(content).toContain('draftOverride');
   });
 
   it('guards stream terminal callbacks with inflight generation', () => {

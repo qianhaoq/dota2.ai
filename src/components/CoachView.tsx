@@ -149,8 +149,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     [draft, mySide, practiceHero]
   );
 
-  const handleAnalyze = useCallback((options?: { ignoreComposerInput?: boolean }) => {
-    if (coaching.radiant.length === 0 && coaching.dire.length === 0) {
+  const handleAnalyze = useCallback((options?: { ignoreComposerInput?: boolean; draftOverride?: DraftState }) => {
+    const lineup = options?.draftOverride
+      ? resolveCoachingLineup(options.draftOverride, mySide, practiceHero)
+      : coaching;
+    if (lineup.radiant.length === 0 && lineup.dire.length === 0) {
       addCoachMessage({ type: 'coach', content: t.needHeroes });
       return;
     }
@@ -167,7 +170,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     setUserInput('');
     const msgId = addCoachMessage({ type: 'coach', action: 'analyze', lesson, content: '', isStreaming: true });
     streamControllerRef.current = analyzeDraftStream(
-      coaching.radiant, coaching.dire, lang, userContext,
+      lineup.radiant, lineup.dire, lang, userContext,
       {
         onChunk: (text) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
@@ -189,10 +192,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         }
       }
     );
-  }, [coaching, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
+  }, [coaching, mySide, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
-  const handlePlaybook = useCallback(() => {
-    if (coaching.allies.length === 0) {
+  const handlePlaybook = useCallback((options?: { draftOverride?: DraftState }) => {
+    const lineup = options?.draftOverride
+      ? resolveCoachingLineup(options.draftOverride, mySide, practiceHero)
+      : coaching;
+    if (lineup.allies.length === 0) {
       addCoachMessage({ type: 'coach', content: t.needAllies });
       return;
     }
@@ -206,7 +212,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     addCoachMessage({ type: 'user', action: 'playbook', lesson: 'match', content: playbookMsg });
     const msgId = addCoachMessage({ type: 'coach', action: 'playbook', lesson: 'match', content: '', isStreaming: true, playbookData: [] });
     streamControllerRef.current = fetchPlaybookStream(
-      coaching.allies, coaching.enemies, mySide, lang, coaching.focusHeroId,
+      lineup.allies, lineup.enemies, mySide, lang, lineup.focusHeroId,
       {
         onData: (data) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
@@ -230,6 +236,60 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     );
   }, [coaching, practiceHero, mySide, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
+  /** State-only lesson switch: isolates review vs draft boards; never auto-runs a task. */
+  const applyLessonSwitch = useCallback((lessonMode: LessonMode) => {
+    const switched = resolveLessonDraftSwitch({
+      currentLesson: lesson,
+      nextLesson: lessonMode,
+      liveDraft: draft,
+      snapshot: draftSnapshotRef.current,
+    });
+    draftSnapshotRef.current = switched.snapshot;
+    if (switched.enteringReview || switched.leavingReview) {
+      setDraft(switched.draft);
+    }
+    if (switched.leavingReview) {
+      setContextRevision((n) => n + 1);
+      pendingFollowUpContextRef.current = null;
+      setUserInput('');
+    }
+    if (lessonMode !== 'review') {
+      pendingFollowUpContextRef.current = null;
+    }
+    setLesson(switched.lesson);
+    return switched;
+  }, [lesson, draft]);
+
+  const handleLessonAction = useCallback((lessonMode: LessonMode) => {
+    const switched = applyLessonSwitch(lessonMode);
+    if (lessonMode === 'review') return;
+    if (switched.leavingReview) {
+      const analyzeOpts = { ignoreComposerInput: true, draftOverride: switched.draft };
+      switch (lessonMode) {
+        case 'bp': handleAnalyze(analyzeOpts); break;
+        case 'match': handlePlaybook({ draftOverride: switched.draft }); break;
+        case 'items':
+        case 'mind': handleAnalyze(analyzeOpts); break;
+      }
+      return;
+    }
+    switch (lessonMode) {
+      case 'bp': handleAnalyze(); break;
+      case 'match': handlePlaybook(); break;
+      case 'items':
+      case 'mind': handleAnalyze(); break;
+    }
+  }, [applyLessonSwitch, handleAnalyze, handlePlaybook]);
+
+  /** Accept a suggestion/result hero onto ally side (mySide), not the editing selectionSide. */
+  const handleAcceptSuggestion = useCallback((hero: Hero) => {
+    const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
+    if (isPicked) return;
+    if (draft[mySide].length >= 5) return;
+    setDraft(prev => ({ ...prev, [mySide]: [...prev[mySide], hero] }));
+    setContextRevision((n) => n + 1);
+  }, [draft, mySide]);
+
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
     if (!followUp) {
       pendingFollowUpContextRef.current = null;
@@ -238,7 +298,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     cancelStream();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
-    setLesson('review');
+    applyLessonSwitch('review');
     activeReviewRef.current = { matchId, heroId };
     const hero = heroId ? allHeroes.find((h) => h.id === heroId) : practiceHero;
     const heroName = hero ? heroDisplayName(hero, lang) : null;
@@ -286,7 +346,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         },
       }
     );
-  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream]);
+  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, applyLessonSwitch]);
 
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
@@ -331,10 +391,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
 
   const handleComposeFollowUp = useCallback((text: string, context: ReviewFollowUpContext) => {
     pendingFollowUpContextRef.current = context;
-    setLesson('review');
+    applyLessonSwitch('review');
     setUserInput(text);
     setComposerFocusToken((t) => t + 1);
-  }, []);
+  }, [applyLessonSwitch]);
 
   const handleSuggest = useCallback(async () => {
     if (coaching.allies.length >= 5) {
@@ -455,41 +515,6 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     setLastDismissedSessionId(null);
   }, [lastDismissedSessionId]);
 
-  /** State-only lesson switch: isolates review vs draft boards; never auto-runs a task. */
-  const applyLessonSwitch = useCallback((lessonMode: LessonMode) => {
-    const switched = resolveLessonDraftSwitch({
-      currentLesson: lesson,
-      nextLesson: lessonMode,
-      liveDraft: draft,
-      snapshot: draftSnapshotRef.current,
-    });
-    draftSnapshotRef.current = switched.snapshot;
-    if (switched.enteringReview || switched.leavingReview) {
-      setDraft(switched.draft);
-    }
-    if (switched.leavingReview) {
-      setContextRevision((n) => n + 1);
-      pendingFollowUpContextRef.current = null;
-      setUserInput('');
-    }
-    if (lessonMode !== 'review') {
-      pendingFollowUpContextRef.current = null;
-    }
-    setLesson(switched.lesson);
-    return switched.leavingReview;
-  }, [lesson, draft]);
-
-  const handleLessonAction = useCallback((lessonMode: LessonMode) => {
-    const leavingReview = applyLessonSwitch(lessonMode);
-    if (lessonMode === 'review') return;
-    const analyzeOpts = leavingReview ? { ignoreComposerInput: true } : undefined;
-    switch (lessonMode) {
-      case 'bp': handleAnalyze(analyzeOpts); break;
-      case 'match': handlePlaybook(); break;
-      case 'items':
-      case 'mind': handleAnalyze(analyzeOpts); break;
-    }
-  }, [applyLessonSwitch, handleAnalyze, handlePlaybook]);
 
   // Soft-switch from the shell (motive entries / workspace tabs). Generation stays explicit.
   // Guarded by nonce so a manual LessonRail switch inside CoachView is never overridden.
@@ -526,6 +551,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
             onLessonChange={handleLessonAction}
             draft={draft}
             selectionSide={selectionSide}
+            mySide={mySide}
             onOpenPracticePicker={() => setShowMentorPicker(true)}
             onOpenDraftPicker={() => setShowHeroPicker(true)}
             onHeroDetail={setDetailHeroId}
@@ -557,7 +583,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
                 lastDismissedSessionId={lastDismissedSessionId}
                 lang={lang}
                 allHeroes={allHeroes}
-                onSelectHero={handleHeroSelect}
+                onSelectHero={handleAcceptSuggestion}
                 onInspectHero={setDetailHeroId}
                 onDismissSession={dismissSession}
                 onUndoDismiss={undoDismissSession}
@@ -607,6 +633,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         draft={draft}
         selectionSide={selectionSide}
         onSideChange={setSelectionSide}
+        mySide={mySide}
+        onMySideChange={(side) => {
+          setMySide(side);
+          setContextRevision((n) => n + 1);
+        }}
         onSelectHero={handleHeroSelect}
         onReset={resetAll}
       />

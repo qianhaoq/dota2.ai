@@ -12,6 +12,8 @@ interface HeroPickerOverlayProps {
   draft: { radiant: Hero[]; dire: Hero[] };
   selectionSide: 'radiant' | 'dire';
   onSideChange: (side: 'radiant' | 'dire') => void;
+  mySide: 'radiant' | 'dire';
+  onMySideChange: (side: 'radiant' | 'dire') => void;
   onSelectHero: (hero: Hero) => void;
   onReset: () => void;
 }
@@ -25,6 +27,8 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
   draft,
   selectionSide,
   onSideChange,
+  mySide,
+  onMySideChange,
   onSelectHero,
   onReset,
 }) => {
@@ -39,6 +43,8 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
     reset: lang === 'zh' ? '重置' : 'Reset',
     all: lang === 'zh' ? '全部' : 'All',
     selectingFor: lang === 'zh' ? '正在为' : 'Picking for',
+    mySideLabel: lang === 'zh' ? '己方' : 'My side',
+    editingSide: lang === 'zh' ? '编辑' : 'Editing',
     close: lang === 'zh' ? '关闭' : 'Close',
   };
 
@@ -102,29 +108,59 @@ const HeroPickerOverlay: React.FC<HeroPickerOverlayProps> = ({
               <X size={20} className="sm:w-[18px] sm:h-[18px]" />
             </button>
           </div>
-          <div className="col-span-2 sm:col-auto flex gap-1 min-w-0 sm:flex-1">
-            <button
-              type="button"
-              onClick={() => onSideChange('radiant')}
-              className={`flex-1 sm:flex-none px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[40px] touch-manipulation ${
-                selectionSide === 'radiant'
-                  ? 'bg-k3-radiant/15 text-k3-radiant border border-k3-radiant/30'
-                  : 'text-k3-text-tertiary hover:bg-k3-elevated border border-transparent'
-              }`}
-            >
-              {t.radiant} ({draft.radiant.length}/5)
-            </button>
-            <button
-              type="button"
-              onClick={() => onSideChange('dire')}
-              className={`flex-1 sm:flex-none px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[40px] touch-manipulation ${
-                selectionSide === 'dire'
-                  ? 'bg-k3-dire/15 text-k3-dire border border-k3-dire/30'
-                  : 'text-k3-text-tertiary hover:bg-k3-elevated border border-transparent'
-              }`}
-            >
-              {t.dire} ({draft.dire.length}/5)
-            </button>
+          <div className="col-span-2 sm:col-auto flex flex-col gap-1.5 min-w-0 sm:flex-1">
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="text-[10px] text-k3-text-tertiary flex-shrink-0 w-8 sm:w-auto sm:mr-1">{t.mySideLabel}</span>
+              <button
+                type="button"
+                onClick={() => onMySideChange('radiant')}
+                data-testid="my-side-radiant"
+                className={`flex-1 sm:flex-none px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[36px] touch-manipulation ${
+                  mySide === 'radiant'
+                    ? 'bg-k3-radiant/15 text-k3-radiant border border-k3-radiant/30'
+                    : 'text-k3-text-tertiary hover:bg-k3-elevated border border-transparent'
+                }`}
+              >
+                {t.radiant}
+              </button>
+              <button
+                type="button"
+                onClick={() => onMySideChange('dire')}
+                data-testid="my-side-dire"
+                className={`flex-1 sm:flex-none px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[36px] touch-manipulation ${
+                  mySide === 'dire'
+                    ? 'bg-k3-dire/15 text-k3-dire border border-k3-dire/30'
+                    : 'text-k3-text-tertiary hover:bg-k3-elevated border border-transparent'
+                }`}
+              >
+                {t.dire}
+              </button>
+            </div>
+            <div className="flex items-center gap-1 min-w-0">
+              <span className="text-[10px] text-k3-text-tertiary flex-shrink-0 w-8 sm:w-auto sm:mr-1">{t.editingSide}</span>
+              <button
+                type="button"
+                onClick={() => onSideChange('radiant')}
+                className={`flex-1 sm:flex-none px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[40px] touch-manipulation ${
+                  selectionSide === 'radiant'
+                    ? 'bg-k3-radiant/15 text-k3-radiant border border-k3-radiant/30'
+                    : 'text-k3-text-tertiary hover:bg-k3-elevated border border-transparent'
+                }`}
+              >
+                {t.radiant} ({draft.radiant.length}/5)
+              </button>
+              <button
+                type="button"
+                onClick={() => onSideChange('dire')}
+                className={`flex-1 sm:flex-none px-2 sm:px-2.5 py-1.5 text-[10px] sm:text-xs font-medium rounded-lg transition-colors min-h-[40px] touch-manipulation ${
+                  selectionSide === 'dire'
+                    ? 'bg-k3-dire/15 text-k3-dire border border-k3-dire/30'
+                    : 'text-k3-text-tertiary hover:bg-k3-elevated border border-transparent'
+                }`}
+              >
+                {t.dire} ({draft.dire.length}/5)
+              </button>
+            </div>
           </div>
         </div>
 
