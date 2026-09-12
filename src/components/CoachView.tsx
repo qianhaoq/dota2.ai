@@ -144,6 +144,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     // cards stamped with an older revision so old chips can't act on the new board.
     cancelStream();
     const nextRevision = contextRevision + 1;
+    contextRevisionRef.current = nextRevision;
     setContextRevision(nextRevision);
     setMessages((prev) => clearStaleSuggestionsForRevision(prev, nextRevision));
   }, [draft, selectionSide, lesson, practiceHero, contextRevision, cancelStream]);
@@ -180,6 +181,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     cancelStream();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
+    const requestRevision = contextRevision;
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const defaultMsg = practiceName
       ? (lang === 'zh' ? `分析练习英雄 ${practiceName}` : `Analyze practice hero ${practiceName}`)
@@ -188,25 +190,35 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     const userContext = buildPracticeUserContext(practiceHero, lang, userMsg);
     addCoachMessage({ type: 'user', action: 'analyze', lesson, content: userMsg });
     setUserInput('');
-    const msgId = addCoachMessage({ type: 'coach', action: 'analyze', lesson, content: '', isStreaming: true, allySide: mySide, contextRevision });
+    const msgId = addCoachMessage({ type: 'coach', action: 'analyze', lesson, content: '', isStreaming: true, allySide: mySide, contextRevision: requestRevision });
     streamControllerRef.current = analyzeDraftStream(
       lineup.radiant, lineup.dire, lang, userContext,
       {
         onChunk: (text) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          if (requestRevision !== contextRevisionRef.current) return;
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
         onMatchupData: (data) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          if (requestRevision !== contextRevisionRef.current) return;
           updateCoachMessage(msgId, { matchupData: data });
         },
         onComplete: (grounded) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          if (requestRevision !== contextRevisionRef.current) {
+            finishStream(streamGen);
+            return;
+          }
           updateCoachMessage(msgId, { isStreaming: false, grounded });
           finishStream(streamGen);
         },
         onError: (error) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          if (requestRevision !== contextRevisionRef.current) {
+            finishStream(streamGen);
+            return;
+          }
           updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
           finishStream(streamGen);
         }
@@ -225,30 +237,41 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     cancelStream();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
+    const requestRevision = contextRevision;
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const playbookMsg = practiceName
       ? (lang === 'zh' ? `本局怎么打${practiceName}？` : `How should we play ${practiceName} this game?`)
       : (lang === 'zh' ? '本局怎么打？' : 'How should we play this game?');
     addCoachMessage({ type: 'user', action: 'playbook', lesson: 'match', content: playbookMsg });
-    const msgId = addCoachMessage({ type: 'coach', action: 'playbook', lesson: 'match', content: '', isStreaming: true, playbookData: [], allySide: mySide, contextRevision });
+    const msgId = addCoachMessage({ type: 'coach', action: 'playbook', lesson: 'match', content: '', isStreaming: true, playbookData: [], allySide: mySide, contextRevision: requestRevision });
     streamControllerRef.current = fetchPlaybookStream(
       lineup.allies, lineup.enemies, mySide, lang, lineup.focusHeroId,
       {
         onData: (data) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          if (requestRevision !== contextRevisionRef.current) return;
           updateCoachMessage(msgId, { playbookData: data });
         },
         onChunk: (text) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          if (requestRevision !== contextRevisionRef.current) return;
           setMessages(prev => appendStreamChunk(prev, msgId, text));
         },
         onComplete: () => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          if (requestRevision !== contextRevisionRef.current) {
+            finishStream(streamGen);
+            return;
+          }
           updateCoachMessage(msgId, { isStreaming: false, grounded: true });
           finishStream(streamGen);
         },
         onError: (error) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          if (requestRevision !== contextRevisionRef.current) {
+            finishStream(streamGen);
+            return;
+          }
           updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
           finishStream(streamGen);
         }
@@ -314,7 +337,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       if ([...board.radiant, ...board.dire].find(h => h.id === hero.id)) return;
       if (board[side].length >= 5) return;
       draftSnapshotRef.current = acceptHeroOntoDraft(board, side, hero, boundPractice);
+      // Board changed: abort in-flight work and retire stale suggestion chips.
+      // applyLessonSwitch supplies the leaving-review revision bump, so clear
+      // stamped chips against the resulting revision (contextRevision + 1).
+      cancelStream();
+      const nextRevision = contextRevision + 1;
+      contextRevisionRef.current = nextRevision;
       applyLessonSwitch('bp');
+      setMessages((prev) => clearStaleSuggestionsForRevision(prev, nextRevision));
       return;
     }
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
@@ -323,8 +353,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     // Materialize the request-time practice hero alongside the accepted pick when
     // the ally board is empty — resolveCoachingLineup only seeds it into an empty board.
     setDraft(prev => acceptHeroOntoDraft(prev, side, hero, boundPractice));
-    setContextRevision((n) => n + 1);
-  }, [lesson, draft, mySide, practiceHero, allHeroes, applyLessonSwitch]);
+    // The board changed: abort in-flight work and retire completed Next-pick
+    // cards stamped with an older revision so old chips can't act on the new board.
+    cancelStream();
+    const nextRevision = contextRevision + 1;
+    contextRevisionRef.current = nextRevision;
+    setContextRevision(nextRevision);
+    setMessages((prev) => clearStaleSuggestionsForRevision(prev, nextRevision));
+  }, [lesson, draft, mySide, practiceHero, allHeroes, contextRevision, applyLessonSwitch, cancelStream]);
 
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
     if (!followUp) {

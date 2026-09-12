@@ -143,6 +143,20 @@ describe('CoachView draft-mutation invalidation (Codex P1)', () => {
   it('handleSuggest ignores responses whose revision went stale in flight', () => {
     expect(content).toMatch(/requestRevision !== contextRevisionRef\.current/);
   });
+
+  it('handleAcceptSuggestion cancels in-flight work and clears stale revision-stamped suggestions', () => {
+    expect(content).toMatch(
+      /const handleAcceptSuggestion = useCallback\([\s\S]*cancelStream\(\)[\s\S]*clearStaleSuggestionsForRevision/,
+    );
+  });
+
+  it('analyze/playbook stream callbacks ignore responses from a stale revision', () => {
+    const analyze = content.match(/const handleAnalyze = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
+    const playbook = content.match(/const handlePlaybook = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
+    for (const body of [analyze, playbook]) {
+      expect(body).toContain('requestRevision !== contextRevisionRef.current');
+    }
+  });
 });
 
 describe('HomeModules ally enablement uses resolved lineup (Codex P1)', () => {
