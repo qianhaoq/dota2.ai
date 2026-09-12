@@ -39,6 +39,7 @@ import {
 import type { CoachMessage } from './coach/coachMessage';
 import {
   EMPTY_DRAFT,
+  acceptHeroOntoDraft,
   draftHasHeroes,
   resolveLessonDraftSwitch,
 } from '../utils/draftContext';
@@ -104,21 +105,25 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const handleHeroSelect = useCallback((hero: Hero) => {
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
     if (isPicked) return;
-    const emptyBefore = !draftHasHeroes(draft);
-    if (selectionSide === 'radiant') {
-      if (draft.radiant.length < 5) {
-        setDraft(prev => ({ ...prev, radiant: [...prev.radiant, hero] }));
-        if (emptyBefore && !mySideExplicitRef.current) setMySide('radiant');
-        setContextRevision((n) => n + 1);
-      }
-    } else {
-      if (draft.dire.length < 5) {
-        setDraft(prev => ({ ...prev, dire: [...prev.dire, hero] }));
-        if (emptyBefore && !mySideExplicitRef.current) setMySide('dire');
-        setContextRevision((n) => n + 1);
+    // Practice hero seeds the ally side on an empty board, so a practice-only
+    // lineup counts as non-empty for first-pick side inference — picking an
+    // enemy first must not flip mySide to the opposing side.
+    const emptyBefore = !draftHasHeroes(draft) && !practiceHero;
+    if (draft[selectionSide].length >= 5) return;
+    setDraft(prev => ({ ...prev, [selectionSide]: [...prev[selectionSide], hero] }));
+    if (lesson === 'review') {
+      // Picker edits made during review are intentional: persist them into the
+      // snapshot (guarded against the snapshot board) so leave-review restore
+      // keeps the picks. Live draft is still updated above for visible feedback.
+      const board = draftSnapshotRef.current;
+      const snapshotPicked = [...board.radiant, ...board.dire].find(h => h.id === hero.id);
+      if (!snapshotPicked && board[selectionSide].length < 5) {
+        draftSnapshotRef.current = { ...board, [selectionSide]: [...board[selectionSide], hero] };
       }
     }
-  }, [draft, selectionSide]);
+    if (emptyBefore && !mySideExplicitRef.current) setMySide(selectionSide);
+    setContextRevision((n) => n + 1);
+  }, [draft, selectionSide, lesson, practiceHero]);
 
   const addCoachMessage = useCallback((message: Omit<CoachMessage, 'id'>) => {
     const id = generateMessageId();
@@ -291,16 +296,18 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       const board = draftSnapshotRef.current;
       if ([...board.radiant, ...board.dire].find(h => h.id === hero.id)) return;
       if (board[mySide].length >= 5) return;
-      draftSnapshotRef.current = { ...board, [mySide]: [...board[mySide], hero] };
+      draftSnapshotRef.current = acceptHeroOntoDraft(board, mySide, hero, practiceHero);
       applyLessonSwitch('bp');
       return;
     }
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
     if (isPicked) return;
     if (draft[mySide].length >= 5) return;
-    setDraft(prev => ({ ...prev, [mySide]: [...prev[mySide], hero] }));
+    // Materialize the practice hero alongside the accepted pick when the ally
+    // board is empty — resolveCoachingLineup only seeds it into an empty board.
+    setDraft(prev => acceptHeroOntoDraft(prev, mySide, hero, practiceHero));
     setContextRevision((n) => n + 1);
-  }, [lesson, draft, mySide, applyLessonSwitch]);
+  }, [lesson, draft, mySide, practiceHero, applyLessonSwitch]);
 
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
     if (!followUp) {

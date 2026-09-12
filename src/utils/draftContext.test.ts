@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Hero } from '../types';
 import {
   EMPTY_DRAFT,
+  acceptHeroOntoDraft,
   cloneDraft,
   draftHasHeroes,
   resolveLessonDraftSwitch,
@@ -66,5 +67,48 @@ describe('draftContext isolation', () => {
     expect(shouldAddHeroToDraft(undefined)).toBe(false);
     expect(shouldAddHeroToDraft('suggest')).toBe(true);
     expect(shouldAddHeroToDraft('analyze')).toBe(true);
+  });
+});
+
+describe('acceptHeroOntoDraft', () => {
+  const practice = hero(100, 'Practice');
+
+  it('appends the accepted hero to a non-empty side', () => {
+    const board = { radiant: [hero(1, 'A')], dire: [] };
+    const next = acceptHeroOntoDraft(board, 'radiant', hero(2, 'B'), practice);
+    expect(next.radiant.map((h) => h.id)).toEqual([1, 2]);
+    expect(board.radiant).toHaveLength(1);
+  });
+
+  it('materializes the practice hero before the accepted pick on an empty side', () => {
+    const next = acceptHeroOntoDraft(EMPTY_DRAFT, 'radiant', hero(2, 'B'), practice);
+    expect(next.radiant.map((h) => h.id)).toEqual([100, 2]);
+  });
+
+  it('does not duplicate when the accepted hero IS the practice hero', () => {
+    const next = acceptHeroOntoDraft(EMPTY_DRAFT, 'radiant', practice, practice);
+    expect(next.radiant.map((h) => h.id)).toEqual([100]);
+  });
+
+  it('does not re-materialize a practice hero already on the other side', () => {
+    const board = { radiant: [], dire: [practice] };
+    const next = acceptHeroOntoDraft(board, 'radiant', hero(2, 'B'), practice);
+    expect(next.radiant.map((h) => h.id)).toEqual([2]);
+    expect(next.dire.map((h) => h.id)).toEqual([100]);
+  });
+
+  it('returns the board unchanged when the hero is already picked', () => {
+    const board = { radiant: [hero(1, 'A')], dire: [] };
+    const next = acceptHeroOntoDraft(board, 'dire', hero(1, 'A'), practice);
+    expect(next).toBe(board);
+  });
+
+  it('caps the side at 5 heroes', () => {
+    const board = {
+      radiant: [hero(1, 'A'), hero(2, 'B'), hero(3, 'C'), hero(4, 'D'), hero(5, 'E')],
+      dire: [],
+    };
+    const next = acceptHeroOntoDraft(board, 'radiant', hero(6, 'F'), practice);
+    expect(next.radiant).toHaveLength(5);
   });
 });

@@ -1,4 +1,4 @@
-import type { DraftState, LessonMode } from '../types';
+import type { DraftState, Hero, LessonMode } from '../types';
 
 export type DraftSide = 'radiant' | 'dire';
 
@@ -80,6 +80,31 @@ export function resolveLessonDraftSwitch({
     enteringReview: false,
     clearUserInput: false,
   };
+}
+
+/**
+ * Accept a suggested hero onto a side, materializing the practice hero first
+ * when that side is still empty. resolveCoachingLineup only seeds the practice
+ * hero into an EMPTY ally board — once any hero is written, the practice hero
+ * must already be on the board or analysis loses it (and focusHeroId).
+ * Returns the board unchanged when the hero is already picked anywhere.
+ */
+export function acceptHeroOntoDraft(
+  board: DraftState,
+  side: DraftSide,
+  hero: Hero,
+  practiceHero: Hero | null,
+): DraftState {
+  const all = [...board.radiant, ...board.dire];
+  if (all.some((h) => h.id === hero.id)) return board;
+  const allies = [...board[side]];
+  if (allies.length === 0 && practiceHero && !all.some((h) => h.id === practiceHero.id)) {
+    allies.push(practiceHero);
+  }
+  if (!allies.some((h) => h.id === hero.id) && allies.length < 5) {
+    allies.push(hero);
+  }
+  return { ...board, [side]: allies };
 }
 
 /** Review / replay hero taps inspect only — they must not mutate the draft board. */
