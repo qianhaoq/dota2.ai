@@ -11,7 +11,7 @@ interface ChatMessageProps {
   message: CoachMessage;
   lang: Language;
   allHeroes: Hero[];
-  onSelectHero: (hero: Hero) => void;
+  onSelectHero: (hero: Hero, allySide?: 'radiant' | 'dire') => void;
   mentor?: Hero | null;
 }
 
@@ -254,7 +254,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
                   key={s.id}
                   onClick={() => {
                     const hero = allHeroes.find(h => h.id === s.id);
-                    if (hero) onSelectHero(hero);
+                    if (hero) onSelectHero(hero, message.allySide);
                   }}
                   className="flex items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 bg-k3-surface hover:bg-k3-elevated active:bg-k3-elevated border border-k3-border-subtle rounded-sm transition-all text-left group min-h-[44px] touch-manipulation"
                 >
@@ -284,7 +284,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, lang, allHeroes, onS
                   key={hero.id}
                   onClick={() => {
                     const h = allHeroes.find(ah => ah.id === hero.id);
-                    if (h) onSelectHero(h);
+                    if (h) onSelectHero(h, message.allySide);
                   }}
                   className="flex items-center gap-1.5 sm:gap-2 p-2 bg-k3-surface hover:bg-k3-elevated active:bg-k3-elevated rounded-sm transition-colors text-left group border border-k3-border-subtle min-h-[44px] touch-manipulation"
                 >

@@ -3,6 +3,7 @@ import type { Hero } from '../types';
 import {
   EMPTY_DRAFT,
   acceptHeroOntoDraft,
+  clearStaleSuggestionMessages,
   cloneDraft,
   draftHasHeroes,
   resolveLessonDraftSwitch,
@@ -110,5 +111,26 @@ describe('acceptHeroOntoDraft', () => {
     };
     const next = acceptHeroOntoDraft(board, 'radiant', hero(6, 'F'), practice);
     expect(next.radiant).toHaveLength(5);
+  });
+});
+
+describe('clearStaleSuggestionMessages', () => {
+  it('clears suggestions when allySide no longer matches', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], allySide: 'radiant' as const },
+      { id: '2', action: 'analyze' as const, suggestions: [{ id: 2 }], allySide: 'radiant' as const },
+      { id: '3', action: 'suggest' as const, suggestions: [{ id: 3 }], allySide: 'dire' as const },
+    ];
+    const next = clearStaleSuggestionMessages(messages, 'dire');
+    expect(next[0].suggestions).toBeUndefined();
+    expect(next[1].suggestions).toEqual([{ id: 2 }]); // non-suggest untouched
+    expect(next[2].suggestions).toEqual([{ id: 3 }]); // matching side kept
+  });
+
+  it('returns the same array reference when nothing changes', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], allySide: 'dire' as const },
+    ];
+    expect(clearStaleSuggestionMessages(messages, 'dire')).toBe(messages);
   });
 });

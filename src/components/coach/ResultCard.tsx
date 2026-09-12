@@ -18,7 +18,7 @@ interface ResultCardProps {
   session: CoachSession;
   lang: Language;
   allHeroes: Hero[];
-  onSelectHero: (hero: Hero) => void;
+  onSelectHero: (hero: Hero, allySide?: 'radiant' | 'dire') => void;
   /** Review/replay taps inspect only — do not mutate the draft board. */
   onInspectHero?: (heroId: number) => void;
   mentorName?: string;
@@ -75,7 +75,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
 }) => {
   const handleHeroTap = (hero: Hero) => {
     if (shouldAddHeroToDraft(session.action)) {
-      onSelectHero(hero);
+      onSelectHero(hero, session.message.allySide);
       return;
     }
     onInspectHero?.(hero.id);

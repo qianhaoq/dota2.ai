@@ -86,3 +86,24 @@ describe('Stream callback patterns across codebase', () => {
     expect(violations).toEqual([]);
   });
 });
+
+describe('CoachView suggest allySide binding (Codex P1)', () => {
+  const coachViewPath = join(__dirname, '../components/CoachView.tsx');
+  const content = readFileSync(coachViewPath, 'utf-8');
+
+  it('stores request-time allySide on suggest coach messages', () => {
+    expect(content).toMatch(/const requestSide = mySide/);
+    expect(content).toMatch(/allySide:\s*requestSide/);
+    expect(content).toMatch(/contextRevision:\s*requestRevision/);
+  });
+
+  it('accepts an explicit allySide on handleAcceptSuggestion', () => {
+    expect(content).toMatch(/handleAcceptSuggestion = useCallback\(\s*\(hero: Hero, allySide\?:/);
+    expect(content).toMatch(/const side = allySide \?\? mySide/);
+  });
+
+  it('invalidates in-flight and clears stale suggestions on My side change', () => {
+    expect(content).toContain('clearStaleSuggestionMessages');
+    expect(content).toMatch(/onMySideChange=\{\(side\) => \{[\s\S]*cancelStream\(\)[\s\S]*clearStaleSuggestionMessages/);
+  });
+});

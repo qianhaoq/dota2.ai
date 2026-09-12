@@ -111,3 +111,27 @@ export function acceptHeroOntoDraft(
 export function shouldAddHeroToDraft(action: string | undefined): boolean {
   return action === 'suggest' || action === 'analyze' || action === 'meta' || action === 'playbook';
 }
+
+/** Drop Next-pick suggestion payloads whose request-time allySide no longer matches. */
+export function clearStaleSuggestionMessages<T extends {
+  action?: string;
+  suggestions?: unknown[] | undefined;
+  allySide?: DraftSide;
+}>(messages: T[], newSide: DraftSide): T[] {
+  let changed = false;
+  const next = messages.map((m) => {
+    if (
+      m.action === 'suggest'
+      && Array.isArray(m.suggestions)
+      && m.suggestions.length > 0
+      && m.allySide
+      && m.allySide !== newSide
+    ) {
+      changed = true;
+      return { ...m, suggestions: undefined };
+    }
+    return m;
+  });
+  return changed ? next : messages;
+}
+
