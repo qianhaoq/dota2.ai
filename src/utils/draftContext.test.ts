@@ -5,6 +5,7 @@ import {
   acceptHeroOntoDraft,
   clearStaleSuggestionMessages,
   clearStaleSuggestionsForPracticeHero,
+  clearStaleSuggestionsForRevision,
   cloneDraft,
   draftHasHeroes,
   resolveLessonDraftSwitch,
@@ -171,5 +172,33 @@ describe('clearStaleSuggestionsForPracticeHero', () => {
       { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], practiceHeroId: 10 },
     ];
     expect(clearStaleSuggestionsForPracticeHero(messages, 10)).toBe(messages);
+  });
+});
+
+describe('clearStaleSuggestionsForRevision', () => {
+  it('clears suggestions stamped with an older contextRevision', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], contextRevision: 1 },
+      { id: '2', action: 'analyze' as const, suggestions: [{ id: 2 }], contextRevision: 1 },
+      { id: '3', action: 'suggest' as const, suggestions: [{ id: 3 }], contextRevision: 2 },
+    ];
+    const next = clearStaleSuggestionsForRevision(messages, 2);
+    expect(next[0].suggestions).toBeUndefined();
+    expect(next[1].suggestions).toEqual([{ id: 2 }]); // non-suggest untouched
+    expect(next[2].suggestions).toEqual([{ id: 3 }]); // current revision kept
+  });
+
+  it('leaves legacy unstamped suggest cards alone', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }] },
+    ];
+    expect(clearStaleSuggestionsForRevision(messages, 3)).toBe(messages);
+  });
+
+  it('returns the same array reference when nothing changes', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], contextRevision: 2 },
+    ];
+    expect(clearStaleSuggestionsForRevision(messages, 2)).toBe(messages);
   });
 });

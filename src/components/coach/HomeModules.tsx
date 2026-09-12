@@ -126,6 +126,7 @@ const HomeModules: React.FC<HomeModulesProps> = ({
             isLoading={coachBusy}
             hasHeroes={coachingLineup.radiant.length > 0 || coachingLineup.dire.length > 0}
             hasAllies={coachingLineup.allies.length > 0}
+            hasEnemies={coachingLineup.enemies.length > 0}
             alliesFull={coachingLineup.allies.length >= 5}
             selectionSide={selectionSide}
             onAnalyze={onAnalyze}

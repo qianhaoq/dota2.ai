@@ -42,6 +42,7 @@ import {
   acceptHeroOntoDraft,
   clearStaleSuggestionMessages,
   clearStaleSuggestionsForPracticeHero,
+  clearStaleSuggestionsForRevision,
   draftHasHeroes,
   resolveLessonDraftSwitch,
   type DraftSide,
@@ -71,6 +72,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   /** True once the user explicitly picked My side; blocks first-pick emptyBefore inference. */
   const mySideExplicitRef = useRef(false);
   const [contextRevision, setContextRevision] = useState(0);
+  const contextRevisionRef = useRef(0);
+  useEffect(() => {
+    contextRevisionRef.current = contextRevision;
+  }, [contextRevision]);
   const draftSnapshotRef = useRef<DraftState>(EMPTY_DRAFT);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -105,6 +110,16 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     needAllies: lang === 'zh' ? '请先选择己方英雄' : 'Please select your heroes first',
   }), [lang]);
 
+  const cancelStream = useCallback(() => {
+    invalidateCoachInflightGeneration(inflightTaskRef);
+    if (streamControllerRef.current) {
+      streamControllerRef.current.abort();
+      streamControllerRef.current = null;
+    }
+    setIsLoading(false);
+    setMessages((prev) => clearStreamingCoachMessages(prev, coachCancelledMessage(lang)));
+  }, [lang]);
+
   const handleHeroSelect = useCallback((hero: Hero) => {
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
     if (isPicked) return;
@@ -125,8 +140,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       }
     }
     if (emptyBefore && !mySideExplicitRef.current) setMySide(selectionSide);
-    setContextRevision((n) => n + 1);
-  }, [draft, selectionSide, lesson, practiceHero]);
+    // The board changed: abort in-flight work and retire completed Next-pick
+    // cards stamped with an older revision so old chips can't act on the new board.
+    cancelStream();
+    const nextRevision = contextRevision + 1;
+    setContextRevision(nextRevision);
+    setMessages((prev) => clearStaleSuggestionsForRevision(prev, nextRevision));
+  }, [draft, selectionSide, lesson, practiceHero, contextRevision, cancelStream]);
 
   const addCoachMessage = useCallback((message: Omit<CoachMessage, 'id'>) => {
     const id = generateMessageId();
@@ -137,16 +157,6 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const updateCoachMessage = useCallback((id: string, updates: Partial<CoachMessage>) => {
     setMessages(prev => prev.map(msg => msg.id === id ? { ...msg, ...updates } : msg));
   }, []);
-
-  const cancelStream = useCallback(() => {
-    invalidateCoachInflightGeneration(inflightTaskRef);
-    if (streamControllerRef.current) {
-      streamControllerRef.current.abort();
-      streamControllerRef.current = null;
-    }
-    setIsLoading(false);
-    setMessages((prev) => clearStreamingCoachMessages(prev, coachCancelledMessage(lang)));
-  }, [lang]);
 
   const finishStream = useCallback((streamGen: number) => {
     if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
@@ -446,6 +456,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         SUGGEST_FETCH_TIMEOUT_MS,
       );
       if (inflightTaskRef.current !== taskId) return;
+      // Board changed while the request was in flight — the response no longer
+      // matches the current draft context.
+      if (requestRevision !== contextRevisionRef.current) return;
       addCoachMessage({
         type: 'coach', action: 'suggest', lesson: 'bp',
         content: suggestions.length > 0

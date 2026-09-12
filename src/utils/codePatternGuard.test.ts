@@ -129,8 +129,25 @@ describe('CoachView suggest practiceHeroId binding (Codex P1)', () => {
   });
 });
 
+describe('CoachView draft-mutation invalidation (Codex P1)', () => {
+  const coachViewPath = join(__dirname, '../components/CoachView.tsx');
+  const content = readFileSync(coachViewPath, 'utf-8');
+
+  it('handleHeroSelect cancels in-flight work and clears stale revision-stamped suggestions', () => {
+    expect(content).toContain('clearStaleSuggestionsForRevision');
+    expect(content).toMatch(
+      /const handleHeroSelect = useCallback\([\s\S]*cancelStream\(\)[\s\S]*clearStaleSuggestionsForRevision/,
+    );
+  });
+
+  it('handleSuggest ignores responses whose revision went stale in flight', () => {
+    expect(content).toMatch(/requestRevision !== contextRevisionRef\.current/);
+  });
+});
+
 describe('HomeModules ally enablement uses resolved lineup (Codex P1)', () => {
   const content = readFileSync(join(__dirname, '../components/coach/HomeModules.tsx'), 'utf-8');
+  const intentChipsContent = readFileSync(join(__dirname, '../components/coach/IntentChips.tsx'), 'utf-8');
 
   it('derives lineup via resolveCoachingLineup', () => {
     expect(content).toContain('resolveCoachingLineup');
@@ -138,5 +155,14 @@ describe('HomeModules ally enablement uses resolved lineup (Codex P1)', () => {
 
   it('does not enable allies from bare Boolean(practiceHero)', () => {
     expect(content).not.toMatch(/hasAllies=\{[^}]*Boolean\(practiceHero\)/);
+  });
+
+  it('passes hasEnemies from the resolved lineup to IntentChips', () => {
+    expect(content).toMatch(/hasEnemies=\{coachingLineup\.enemies\.length > 0\}/);
+  });
+
+  it('Next pick is enabled for enemy-only / empty boards, not hasAllies-only', () => {
+    expect(intentChipsContent).not.toMatch(/enabled:\s*hasAllies && !alliesFull/);
+    expect(intentChipsContent).toMatch(/hasAllies \|\| hasEnemies \|\| !hasHeroes/);
   });
 });

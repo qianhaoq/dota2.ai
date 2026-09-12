@@ -162,3 +162,30 @@ export function clearStaleSuggestionsForPracticeHero<T extends {
   return changed ? next : messages;
 }
 
+/**
+ * Drop Next-pick suggestion payloads stamped with an older contextRevision —
+ * the draft board moved on, so old chips are no longer actionable. Legacy
+ * unstamped suggest cards are left alone (same rule as the practiceHero helper).
+ */
+export function clearStaleSuggestionsForRevision<T extends {
+  action?: string;
+  suggestions?: unknown[] | undefined;
+  contextRevision?: number;
+}>(messages: T[], currentRevision: number): T[] {
+  let changed = false;
+  const next = messages.map((m) => {
+    if (
+      m.action === 'suggest'
+      && Array.isArray(m.suggestions)
+      && m.suggestions.length > 0
+      && m.contextRevision !== undefined
+      && m.contextRevision !== currentRevision
+    ) {
+      changed = true;
+      return { ...m, suggestions: undefined };
+    }
+    return m;
+  });
+  return changed ? next : messages;
+}
+
