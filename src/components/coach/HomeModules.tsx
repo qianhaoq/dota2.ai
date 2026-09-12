@@ -5,6 +5,7 @@ import LessonRail from './LessonRail';
 import DraftContextChip from './DraftContextChip';
 import ReviewEntry from './ReviewEntry';
 import IntentChips from './IntentChips';
+import { resolveCoachingLineup } from '../../utils/practiceContext';
 
 interface HomeModulesProps {
   lang: Language;
@@ -61,6 +62,10 @@ const HomeModules: React.FC<HomeModulesProps> = ({
     ? (lang === 'zh' ? (practiceHero.nameZh || practiceHero.name) : practiceHero.name)
     : null;
   const hasHeroes = draft.radiant.length > 0 || draft.dire.length > 0;
+  const coachingLineup = useMemo(
+    () => resolveCoachingLineup(draft, mySide, practiceHero),
+    [draft, mySide, practiceHero],
+  );
 
   const practiceChip = practiceHero && (
     <button
@@ -119,9 +124,9 @@ const HomeModules: React.FC<HomeModulesProps> = ({
           <IntentChips
             lang={lang}
             isLoading={coachBusy}
-            hasHeroes={hasHeroes || Boolean(practiceHero)}
-            hasAllies={(mySide === 'radiant' ? draft.radiant : draft.dire).length > 0 || Boolean(practiceHero)}
-            alliesFull={(mySide === 'radiant' ? draft.radiant : draft.dire).length >= 5}
+            hasHeroes={coachingLineup.radiant.length > 0 || coachingLineup.dire.length > 0}
+            hasAllies={coachingLineup.allies.length > 0}
+            alliesFull={coachingLineup.allies.length >= 5}
             selectionSide={selectionSide}
             onAnalyze={onAnalyze}
             onPlaybook={onPlaybook}

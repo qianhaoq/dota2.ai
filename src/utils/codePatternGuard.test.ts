@@ -128,3 +128,15 @@ describe('CoachView suggest practiceHeroId binding (Codex P1)', () => {
     expect(content).toMatch(/onDismissMentor=\{\(\) => \{[\s\S]*clearStaleSuggestionsForPracticeHero/);
   });
 });
+
+describe('HomeModules ally enablement uses resolved lineup (Codex P1)', () => {
+  const content = readFileSync(join(__dirname, '../components/coach/HomeModules.tsx'), 'utf-8');
+
+  it('derives lineup via resolveCoachingLineup', () => {
+    expect(content).toContain('resolveCoachingLineup');
+  });
+
+  it('does not enable allies from bare Boolean(practiceHero)', () => {
+    expect(content).not.toMatch(/hasAllies=\{[^}]*Boolean\(practiceHero\)/);
+  });
+});
