@@ -64,6 +64,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const [selectionSide, setSelectionSide] = useState<'radiant' | 'dire'>('radiant');
   /** mySide — ally perspective for analyze/playbook; independent of editingSide. */
   const [mySide, setMySide] = useState<'radiant' | 'dire'>('radiant');
+  /** True once the user explicitly picked My side; blocks first-pick emptyBefore inference. */
+  const mySideExplicitRef = useRef(false);
   const [contextRevision, setContextRevision] = useState(0);
   const draftSnapshotRef = useRef<DraftState>(EMPTY_DRAFT);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
@@ -106,13 +108,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     if (selectionSide === 'radiant') {
       if (draft.radiant.length < 5) {
         setDraft(prev => ({ ...prev, radiant: [...prev.radiant, hero] }));
-        if (emptyBefore) setMySide('radiant');
+        if (emptyBefore && !mySideExplicitRef.current) setMySide('radiant');
         setContextRevision((n) => n + 1);
       }
     } else {
       if (draft.dire.length < 5) {
         setDraft(prev => ({ ...prev, dire: [...prev.dire, hero] }));
-        if (emptyBefore) setMySide('dire');
+        if (emptyBefore && !mySideExplicitRef.current) setMySide('dire');
         setContextRevision((n) => n + 1);
       }
     }
@@ -283,12 +285,22 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
 
   /** Accept a suggestion/result hero onto ally side (mySide), not the editing selectionSide. */
   const handleAcceptSuggestion = useCallback((hero: Hero) => {
+    if (lesson === 'review') {
+      // Review live draft is disposable; persist onto the intentional snapshot, then leave
+      // review so restore surfaces the pick (avoids wipe on leave-review).
+      const board = draftSnapshotRef.current;
+      if ([...board.radiant, ...board.dire].find(h => h.id === hero.id)) return;
+      if (board[mySide].length >= 5) return;
+      draftSnapshotRef.current = { ...board, [mySide]: [...board[mySide], hero] };
+      applyLessonSwitch('bp');
+      return;
+    }
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
     if (isPicked) return;
     if (draft[mySide].length >= 5) return;
     setDraft(prev => ({ ...prev, [mySide]: [...prev[mySide], hero] }));
     setContextRevision((n) => n + 1);
-  }, [draft, mySide]);
+  }, [lesson, draft, mySide, applyLessonSwitch]);
 
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
     if (!followUp) {
@@ -497,6 +509,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     pendingFollowUpContextRef.current = null;
     setDraft(EMPTY_DRAFT);
     draftSnapshotRef.current = EMPTY_DRAFT;
+    setMySide('radiant');
+    mySideExplicitRef.current = false;
     setContextRevision((n) => n + 1);
     setMessages([]);
     setUserInput('');
@@ -635,6 +649,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         onSideChange={setSelectionSide}
         mySide={mySide}
         onMySideChange={(side) => {
+          mySideExplicitRef.current = true;
           setMySide(side);
           setContextRevision((n) => n + 1);
         }}

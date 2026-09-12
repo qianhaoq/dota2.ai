@@ -114,12 +114,12 @@ const HomeModules: React.FC<HomeModulesProps> = ({
         {draftBtn}
       </div>
       <LessonRail lang={lang} currentLesson={lesson} onLessonChange={onLessonChange} compact={density === 'compact'} />
-      {(lesson === 'bp' || hasHeroes) && onAnalyze && onPlaybook && onSuggest && onCancelStream && (
+      {(lesson === 'bp' || hasHeroes || Boolean(practiceHero)) && onAnalyze && onPlaybook && onSuggest && onCancelStream && (
         <div className="flex justify-center" data-testid="draft-intent-chips">
           <IntentChips
             lang={lang}
             isLoading={coachBusy}
-            hasHeroes={hasHeroes}
+            hasHeroes={hasHeroes || Boolean(practiceHero)}
             hasAllies={(mySide === 'radiant' ? draft.radiant : draft.dire).length > 0 || Boolean(practiceHero)}
             alliesFull={(mySide === 'radiant' ? draft.radiant : draft.dire).length >= 5}
             selectionSide={selectionSide}
