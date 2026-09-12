@@ -181,7 +181,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     cancelStream();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
-    const requestRevision = contextRevision;
+    const requestRevision = contextRevisionRef.current;
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const defaultMsg = practiceName
       ? (lang === 'zh' ? `分析练习英雄 ${practiceName}` : `Analyze practice hero ${practiceName}`)
@@ -237,7 +237,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     cancelStream();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
-    const requestRevision = contextRevision;
+    const requestRevision = contextRevisionRef.current;
     const practiceName = practiceHero ? heroDisplayName(practiceHero, lang) : null;
     const playbookMsg = practiceName
       ? (lang === 'zh' ? `本局怎么打${practiceName}？` : `How should we play ${practiceName} this game?`)
@@ -292,7 +292,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       setDraft(switched.draft);
     }
     if (switched.leavingReview) {
-      setContextRevision((n) => n + 1);
+      // Sync bump so handleLessonAction streams started in this turn stamp the new revision.
+      const nextRevision = contextRevisionRef.current + 1;
+      contextRevisionRef.current = nextRevision;
+      setContextRevision(nextRevision);
       pendingFollowUpContextRef.current = null;
       setUserInput('');
     }
@@ -338,13 +341,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       if (board[side].length >= 5) return;
       draftSnapshotRef.current = acceptHeroOntoDraft(board, side, hero, boundPractice);
       // Board changed: abort in-flight work and retire stale suggestion chips.
-      // applyLessonSwitch supplies the leaving-review revision bump, so clear
-      // stamped chips against the resulting revision (contextRevision + 1).
+      // applyLessonSwitch sync-bumps contextRevision on leave-review; clear chips against that revision.
       cancelStream();
-      const nextRevision = contextRevision + 1;
-      contextRevisionRef.current = nextRevision;
       applyLessonSwitch('bp');
-      setMessages((prev) => clearStaleSuggestionsForRevision(prev, nextRevision));
+      setMessages((prev) => clearStaleSuggestionsForRevision(prev, contextRevisionRef.current));
       return;
     }
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
