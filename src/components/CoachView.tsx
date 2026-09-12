@@ -739,9 +739,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
           if (side !== mySide) {
             cancelStream();
             setMessages((prev) => clearStaleSuggestionMessages(prev, side));
+            setContextRevision((n) => n + 1);
           }
           setMySide(side);
-          setContextRevision((n) => n + 1);
         }}
         onSelectHero={handleHeroSelect}
         onReset={resetAll}
