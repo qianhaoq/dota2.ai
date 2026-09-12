@@ -4,6 +4,7 @@ import {
   EMPTY_DRAFT,
   acceptHeroOntoDraft,
   clearStaleSuggestionMessages,
+  clearStaleSuggestionsForPracticeHero,
   cloneDraft,
   draftHasHeroes,
   resolveLessonDraftSwitch,
@@ -132,5 +133,43 @@ describe('clearStaleSuggestionMessages', () => {
       { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], allySide: 'dire' as const },
     ];
     expect(clearStaleSuggestionMessages(messages, 'dire')).toBe(messages);
+  });
+});
+
+describe('clearStaleSuggestionsForPracticeHero', () => {
+  it('clears suggestions when practiceHeroId no longer matches', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], practiceHeroId: 10 },
+      { id: '2', action: 'analyze' as const, suggestions: [{ id: 2 }], practiceHeroId: 10 },
+      { id: '3', action: 'suggest' as const, suggestions: [{ id: 3 }], practiceHeroId: 20 },
+      { id: '4', action: 'suggest' as const, suggestions: [{ id: 4 }], practiceHeroId: null },
+    ];
+    const next = clearStaleSuggestionsForPracticeHero(messages, 20);
+    expect(next[0].suggestions).toBeUndefined();
+    expect(next[1].suggestions).toEqual([{ id: 2 }]); // non-suggest untouched
+    expect(next[2].suggestions).toEqual([{ id: 3 }]); // matching id kept
+    expect(next[3].suggestions).toBeUndefined(); // null != 20
+  });
+
+  it('clears stamped null when practice hero becomes set', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], practiceHeroId: null },
+    ];
+    const next = clearStaleSuggestionsForPracticeHero(messages, 10);
+    expect(next[0].suggestions).toBeUndefined();
+  });
+
+  it('leaves legacy unstamped suggest cards alone', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }] },
+    ];
+    expect(clearStaleSuggestionsForPracticeHero(messages, 10)).toBe(messages);
+  });
+
+  it('returns the same array reference when nothing changes', () => {
+    const messages = [
+      { id: '1', action: 'suggest' as const, suggestions: [{ id: 1 }], practiceHeroId: 10 },
+    ];
+    expect(clearStaleSuggestionsForPracticeHero(messages, 10)).toBe(messages);
   });
 });

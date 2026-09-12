@@ -107,3 +107,24 @@ describe('CoachView suggest allySide binding (Codex P1)', () => {
     expect(content).toMatch(/onMySideChange=\{\(side\) => \{[\s\S]*cancelStream\(\)[\s\S]*clearStaleSuggestionMessages/);
   });
 });
+
+describe('CoachView suggest practiceHeroId binding (Codex P1)', () => {
+  const coachViewPath = join(__dirname, '../components/CoachView.tsx');
+  const content = readFileSync(coachViewPath, 'utf-8');
+
+  it('stores request-time practiceHeroId on suggest coach messages', () => {
+    expect(content).toMatch(/const requestPracticeHeroId = practiceHero\?\.id \?\? null/);
+    expect(content).toMatch(/practiceHeroId:\s*requestPracticeHeroId/);
+  });
+
+  it('accepts an explicit practiceHeroId on handleAcceptSuggestion', () => {
+    expect(content).toMatch(/handleAcceptSuggestion = useCallback\(\s*\(hero: Hero, allySide\?: DraftSide, practiceHeroId\?:/);
+    expect(content).toMatch(/practiceHeroId !== undefined/);
+  });
+
+  it('invalidates in-flight and clears stale suggestions on practice hero change', () => {
+    expect(content).toContain('clearStaleSuggestionsForPracticeHero');
+    expect(content).toMatch(/onSelectMentor=\{\(hero\) => \{[\s\S]*cancelStream\(\)[\s\S]*clearStaleSuggestionsForPracticeHero/);
+    expect(content).toMatch(/onDismissMentor=\{\(\) => \{[\s\S]*clearStaleSuggestionsForPracticeHero/);
+  });
+});

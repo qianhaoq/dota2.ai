@@ -135,3 +135,30 @@ export function clearStaleSuggestionMessages<T extends {
   return changed ? next : messages;
 }
 
+/**
+ * Drop Next-pick suggestion payloads whose request-time practiceHeroId no
+ * longer matches. Only messages that stamped practiceHeroId (including null)
+ * are considered; legacy unstamped suggest cards are left alone.
+ */
+export function clearStaleSuggestionsForPracticeHero<T extends {
+  action?: string;
+  suggestions?: unknown[] | undefined;
+  practiceHeroId?: number | null;
+}>(messages: T[], newPracticeHeroId: number | null): T[] {
+  let changed = false;
+  const next = messages.map((m) => {
+    if (
+      m.action === 'suggest'
+      && Array.isArray(m.suggestions)
+      && m.suggestions.length > 0
+      && m.practiceHeroId !== undefined
+      && m.practiceHeroId !== newPracticeHeroId
+    ) {
+      changed = true;
+      return { ...m, suggestions: undefined };
+    }
+    return m;
+  });
+  return changed ? next : messages;
+}
+

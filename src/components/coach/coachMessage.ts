@@ -18,6 +18,8 @@ export interface CoachMessage {
   suggestions?: HeroSuggestion[];
   /** Ally perspective at request time — accept must use this, not live mySide. */
   allySide?: 'radiant' | 'dire';
+  /** Practice hero at request time — accept must use this, not live practiceHero. */
+  practiceHeroId?: number | null;
   /** Coach context revision at request time. */
   contextRevision?: number;
   tierHeroes?: TierHero[];

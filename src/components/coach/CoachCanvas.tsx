@@ -19,7 +19,7 @@ interface CoachCanvasProps {
   lastDismissedSessionId: string | null;
   lang: Language;
   allHeroes: Hero[];
-  onSelectHero: (hero: Hero, allySide?: 'radiant' | 'dire') => void;
+  onSelectHero: (hero: Hero, allySide?: 'radiant' | 'dire', practiceHeroId?: number | null) => void;
   onInspectHero?: (heroId: number) => void;
   onDismissSession: (sessionId: string) => void;
   onUndoDismiss: () => void;
