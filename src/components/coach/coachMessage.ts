@@ -16,6 +16,12 @@ export interface CoachMessage {
   matchupData?: MatchupData | null;
   playbookData?: PlaybookHero[];
   suggestions?: HeroSuggestion[];
+  /** Ally perspective at request time — accept must use this, not live mySide. */
+  allySide?: 'radiant' | 'dire';
+  /** Practice hero at request time — accept must use this, not live practiceHero. */
+  practiceHeroId?: number | null;
+  /** Coach context revision at request time. */
+  contextRevision?: number;
   tierHeroes?: TierHero[];
   matchFact?: MatchFact | null;
   /** 结构化复盘卡片（Fact → Insight → Drill） */

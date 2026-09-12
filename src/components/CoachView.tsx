@@ -37,6 +37,15 @@ import {
   ReviewSurface,
 } from './coach';
 import type { CoachMessage } from './coach/coachMessage';
+import {
+  EMPTY_DRAFT,
+  acceptHeroOntoDraft,
+  clearStaleSuggestionMessages,
+  clearStaleSuggestionsForPracticeHero,
+  draftHasHeroes,
+  resolveLessonDraftSwitch,
+  type DraftSide,
+} from '../utils/draftContext';
 
 interface CoachViewProps {
   lang: Language;
@@ -54,8 +63,15 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const [mentor, setMentor] = useState<Hero | null>(null);
   const [practiceHero, setPracticeHero] = useState<Hero | null>(null);
   const [lesson, setLesson] = useState<LessonMode>('mind');
-  const [draft, setDraft] = useState<DraftState>({ radiant: [], dire: [] });
+  const [draft, setDraft] = useState<DraftState>(EMPTY_DRAFT);
+  /** editingSide — which side the picker writes into (DESIGN.md mySide vs editingSide). */
   const [selectionSide, setSelectionSide] = useState<'radiant' | 'dire'>('radiant');
+  /** mySide — ally perspective for analyze/playbook; independent of editingSide. */
+  const [mySide, setMySide] = useState<'radiant' | 'dire'>('radiant');
+  /** True once the user explicitly picked My side; blocks first-pick emptyBefore inference. */
+  const mySideExplicitRef = useRef(false);
+  const [contextRevision, setContextRevision] = useState(0);
+  const draftSnapshotRef = useRef<DraftState>(EMPTY_DRAFT);
   const [messages, setMessages] = useState<CoachMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
@@ -92,16 +108,25 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const handleHeroSelect = useCallback((hero: Hero) => {
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
     if (isPicked) return;
-    if (selectionSide === 'radiant') {
-      if (draft.radiant.length < 5) {
-        setDraft(prev => ({ ...prev, radiant: [...prev.radiant, hero] }));
-      }
-    } else {
-      if (draft.dire.length < 5) {
-        setDraft(prev => ({ ...prev, dire: [...prev.dire, hero] }));
+    // Practice hero seeds the ally side on an empty board, so a practice-only
+    // lineup counts as non-empty for first-pick side inference — picking an
+    // enemy first must not flip mySide to the opposing side.
+    const emptyBefore = !draftHasHeroes(draft) && !practiceHero;
+    if (draft[selectionSide].length >= 5) return;
+    setDraft(prev => ({ ...prev, [selectionSide]: [...prev[selectionSide], hero] }));
+    if (lesson === 'review') {
+      // Picker edits made during review are intentional: persist them into the
+      // snapshot (guarded against the snapshot board) so leave-review restore
+      // keeps the picks. Live draft is still updated above for visible feedback.
+      const board = draftSnapshotRef.current;
+      const snapshotPicked = [...board.radiant, ...board.dire].find(h => h.id === hero.id);
+      if (!snapshotPicked && board[selectionSide].length < 5) {
+        draftSnapshotRef.current = { ...board, [selectionSide]: [...board[selectionSide], hero] };
       }
     }
-  }, [draft, selectionSide]);
+    if (emptyBefore && !mySideExplicitRef.current) setMySide(selectionSide);
+    setContextRevision((n) => n + 1);
+  }, [draft, selectionSide, lesson, practiceHero]);
 
   const addCoachMessage = useCallback((message: Omit<CoachMessage, 'id'>) => {
     const id = generateMessageId();
@@ -130,12 +155,15 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   }, []);
 
   const coaching = useMemo(
-    () => resolveCoachingLineup(draft, selectionSide, practiceHero),
-    [draft, selectionSide, practiceHero]
+    () => resolveCoachingLineup(draft, mySide, practiceHero),
+    [draft, mySide, practiceHero]
   );
 
-  const handleAnalyze = useCallback((options?: { ignoreComposerInput?: boolean }) => {
-    if (coaching.radiant.length === 0 && coaching.dire.length === 0) {
+  const handleAnalyze = useCallback((options?: { ignoreComposerInput?: boolean; draftOverride?: DraftState }) => {
+    const lineup = options?.draftOverride
+      ? resolveCoachingLineup(options.draftOverride, mySide, practiceHero)
+      : coaching;
+    if (lineup.radiant.length === 0 && lineup.dire.length === 0) {
       addCoachMessage({ type: 'coach', content: t.needHeroes });
       return;
     }
@@ -150,9 +178,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     const userContext = buildPracticeUserContext(practiceHero, lang, userMsg);
     addCoachMessage({ type: 'user', action: 'analyze', lesson, content: userMsg });
     setUserInput('');
-    const msgId = addCoachMessage({ type: 'coach', action: 'analyze', lesson, content: '', isStreaming: true });
+    const msgId = addCoachMessage({ type: 'coach', action: 'analyze', lesson, content: '', isStreaming: true, allySide: mySide, contextRevision });
     streamControllerRef.current = analyzeDraftStream(
-      coaching.radiant, coaching.dire, lang, userContext,
+      lineup.radiant, lineup.dire, lang, userContext,
       {
         onChunk: (text) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
@@ -174,10 +202,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         }
       }
     );
-  }, [coaching, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
+  }, [coaching, mySide, contextRevision, practiceHero, lang, userInput, lesson, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
 
-  const handlePlaybook = useCallback(() => {
-    if (coaching.allies.length === 0) {
+  const handlePlaybook = useCallback((options?: { draftOverride?: DraftState }) => {
+    const lineup = options?.draftOverride
+      ? resolveCoachingLineup(options.draftOverride, mySide, practiceHero)
+      : coaching;
+    if (lineup.allies.length === 0) {
       addCoachMessage({ type: 'coach', content: t.needAllies });
       return;
     }
@@ -189,9 +220,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       ? (lang === 'zh' ? `本局怎么打${practiceName}？` : `How should we play ${practiceName} this game?`)
       : (lang === 'zh' ? '本局怎么打？' : 'How should we play this game?');
     addCoachMessage({ type: 'user', action: 'playbook', lesson: 'match', content: playbookMsg });
-    const msgId = addCoachMessage({ type: 'coach', action: 'playbook', lesson: 'match', content: '', isStreaming: true, playbookData: [] });
+    const msgId = addCoachMessage({ type: 'coach', action: 'playbook', lesson: 'match', content: '', isStreaming: true, playbookData: [], allySide: mySide, contextRevision });
     streamControllerRef.current = fetchPlaybookStream(
-      coaching.allies, coaching.enemies, selectionSide, lang, coaching.focusHeroId,
+      lineup.allies, lineup.enemies, mySide, lang, lineup.focusHeroId,
       {
         onData: (data) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
@@ -213,7 +244,77 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         }
       }
     );
-  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
+  }, [coaching, practiceHero, mySide, contextRevision, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, t]);
+
+  /** State-only lesson switch: isolates review vs draft boards; never auto-runs a task. */
+  const applyLessonSwitch = useCallback((lessonMode: LessonMode) => {
+    const switched = resolveLessonDraftSwitch({
+      currentLesson: lesson,
+      nextLesson: lessonMode,
+      liveDraft: draft,
+      snapshot: draftSnapshotRef.current,
+    });
+    draftSnapshotRef.current = switched.snapshot;
+    if (switched.enteringReview || switched.leavingReview) {
+      setDraft(switched.draft);
+    }
+    if (switched.leavingReview) {
+      setContextRevision((n) => n + 1);
+      pendingFollowUpContextRef.current = null;
+      setUserInput('');
+    }
+    if (lessonMode !== 'review') {
+      pendingFollowUpContextRef.current = null;
+    }
+    setLesson(switched.lesson);
+    return switched;
+  }, [lesson, draft]);
+
+  const handleLessonAction = useCallback((lessonMode: LessonMode) => {
+    const switched = applyLessonSwitch(lessonMode);
+    if (lessonMode === 'review') return;
+    if (switched.leavingReview) {
+      const analyzeOpts = { ignoreComposerInput: true, draftOverride: switched.draft };
+      switch (lessonMode) {
+        case 'bp': handleAnalyze(analyzeOpts); break;
+        case 'match': handlePlaybook({ draftOverride: switched.draft }); break;
+        case 'items':
+        case 'mind': handleAnalyze(analyzeOpts); break;
+      }
+      return;
+    }
+    switch (lessonMode) {
+      case 'bp': handleAnalyze(); break;
+      case 'match': handlePlaybook(); break;
+      case 'items':
+      case 'mind': handleAnalyze(); break;
+    }
+  }, [applyLessonSwitch, handleAnalyze, handlePlaybook]);
+
+  /** Accept onto request-time allySide + practiceHero when provided; never live editing state. */
+  const handleAcceptSuggestion = useCallback((hero: Hero, allySide?: DraftSide, practiceHeroId?: number | null) => {
+    const side = allySide ?? mySide;
+    const boundPractice = practiceHeroId !== undefined
+      ? (practiceHeroId == null ? null : allHeroes.find((h) => h.id === practiceHeroId) ?? null)
+      : practiceHero;
+    if (lesson === 'review') {
+      // Review live draft is disposable; persist onto the intentional snapshot, then leave
+      // review so restore surfaces the pick (avoids wipe on leave-review).
+      const board = draftSnapshotRef.current;
+      if ([...board.radiant, ...board.dire].find(h => h.id === hero.id)) return;
+      if (board[side].length >= 5) return;
+      draftSnapshotRef.current = acceptHeroOntoDraft(board, side, hero, boundPractice);
+      applyLessonSwitch('bp');
+      return;
+    }
+    const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
+    if (isPicked) return;
+    if (draft[side].length >= 5) return;
+    // Materialize the request-time practice hero alongside the accepted pick when
+    // the ally board is empty — resolveCoachingLineup only seeds it into an empty board.
+    setDraft(prev => acceptHeroOntoDraft(prev, side, hero, boundPractice));
+    setContextRevision((n) => n + 1);
+  }, [lesson, draft, mySide, practiceHero, allHeroes, applyLessonSwitch]);
 
   const handleReview = useCallback((matchId: number, heroId?: number, followUp?: string) => {
     if (!followUp) {
@@ -223,7 +324,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     cancelStream();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
-    setLesson('review');
+    applyLessonSwitch('review');
     activeReviewRef.current = { matchId, heroId };
     const hero = heroId ? allHeroes.find((h) => h.id === heroId) : practiceHero;
     const heroName = hero ? heroDisplayName(hero, lang) : null;
@@ -271,7 +372,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         },
       }
     );
-  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream]);
+  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, applyLessonSwitch]);
 
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
@@ -316,16 +417,21 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
 
   const handleComposeFollowUp = useCallback((text: string, context: ReviewFollowUpContext) => {
     pendingFollowUpContextRef.current = context;
-    setLesson('review');
+    applyLessonSwitch('review');
     setUserInput(text);
     setComposerFocusToken((t) => t + 1);
-  }, []);
+  }, [applyLessonSwitch]);
 
   const handleSuggest = useCallback(async () => {
     if (coaching.allies.length >= 5) {
       addCoachMessage({ type: 'coach', content: lang === 'zh' ? '阵容已满' : 'Lineup is full' });
       return;
     }
+    // Bind the session to ally + practice hero at request time — accept must
+    // use these even if the user flips My side / practice hero before tapping.
+    const requestSide = mySide;
+    const requestRevision = contextRevision;
+    const requestPracticeHeroId = practiceHero?.id ?? null;
     cancelStream();
     setIsLoading(true);
     const taskId = claimCoachInflightGeneration(inflightTaskRef);
@@ -333,10 +439,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     const suggestMsg = practiceName
       ? (lang === 'zh' ? `围绕${practiceName}，推荐下一手选什么？` : `Around ${practiceName}, what should we pick next?`)
       : (lang === 'zh' ? '推荐下一手选什么？' : 'What should we pick next?');
-    addCoachMessage({ type: 'user', action: 'suggest', lesson: 'bp', content: suggestMsg });
+    addCoachMessage({ type: 'user', action: 'suggest', lesson: 'bp', content: suggestMsg, allySide: requestSide, practiceHeroId: requestPracticeHeroId, contextRevision: requestRevision });
     try {
       const suggestions = await awaitWithTimeout(
-        fetchSuggestions(coaching.allies, coaching.enemies, selectionSide, undefined, lang),
+        fetchSuggestions(coaching.allies, coaching.enemies, requestSide, undefined, lang),
         SUGGEST_FETCH_TIMEOUT_MS,
       );
       if (inflightTaskRef.current !== taskId) return;
@@ -345,7 +451,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         content: suggestions.length > 0
           ? (lang === 'zh' ? '根据对位数据，推荐以下英雄：' : 'Based on matchup data, I recommend:')
           : (lang === 'zh' ? '暂无推荐，请先选择敌方英雄' : 'No recommendations yet, select enemy heroes first'),
-        suggestions, grounded: true
+        suggestions, grounded: true,
+        allySide: requestSide,
+        practiceHeroId: requestPracticeHeroId,
+        contextRevision: requestRevision,
       });
     } catch (error) {
       if (inflightTaskRef.current !== taskId) return;
@@ -358,14 +467,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         setIsLoading(false);
       }
     }
-  }, [coaching, practiceHero, selectionSide, lang, addCoachMessage, cancelStream]);
+  }, [coaching, practiceHero, mySide, contextRevision, lang, addCoachMessage, cancelStream]);
 
   const handleMeta = useCallback(async () => {
     cancelStream();
     setIsLoading(true);
     const taskId = claimCoachInflightGeneration(inflightTaskRef);
     addCoachMessage({ type: 'user', action: 'meta', content: lang === 'zh' ? '当前版本哪些英雄强势？' : 'Which heroes are strong this patch?' });
-    const msgId = addCoachMessage({ type: 'coach', action: 'meta', content: '', isStreaming: true });
+    const msgId = addCoachMessage({ type: 'coach', action: 'meta', content: '', isStreaming: true, allySide: mySide, contextRevision });
     try {
       const data = await awaitWithTimeout(fetchTierList(lang, undefined, 12), META_FETCH_TIMEOUT_MS);
       if (inflightTaskRef.current !== taskId) return;
@@ -386,7 +495,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         setIsLoading(false);
       }
     }
-  }, [lang, addCoachMessage, updateCoachMessage, cancelStream]);
+  }, [lang, mySide, contextRevision, addCoachMessage, updateCoachMessage, cancelStream]);
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -420,7 +529,11 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     cancelStream();
     activeReviewRef.current = null;
     pendingFollowUpContextRef.current = null;
-    setDraft({ radiant: [], dire: [] });
+    setDraft(EMPTY_DRAFT);
+    draftSnapshotRef.current = EMPTY_DRAFT;
+    setMySide('radiant');
+    mySideExplicitRef.current = false;
+    setContextRevision((n) => n + 1);
     setMessages([]);
     setUserInput('');
     setDismissedSessionIds([]);
@@ -438,30 +551,6 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     setLastDismissedSessionId(null);
   }, [lastDismissedSessionId]);
 
-  /** State-only lesson switch: clears cross-lesson context, never auto-runs a task. */
-  const applyLessonSwitch = useCallback((lessonMode: LessonMode) => {
-    const leavingReview = lesson === 'review' && lessonMode !== 'review';
-    if (lessonMode !== 'review') {
-      pendingFollowUpContextRef.current = null;
-    }
-    if (leavingReview) {
-      setUserInput('');
-    }
-    setLesson(lessonMode);
-    return leavingReview;
-  }, [lesson]);
-
-  const handleLessonAction = useCallback((lessonMode: LessonMode) => {
-    const leavingReview = applyLessonSwitch(lessonMode);
-    if (lessonMode === 'review') return;
-    const analyzeOpts = leavingReview ? { ignoreComposerInput: true } : undefined;
-    switch (lessonMode) {
-      case 'bp': handleAnalyze(analyzeOpts); break;
-      case 'match': handlePlaybook(); break;
-      case 'items':
-      case 'mind': handleAnalyze(analyzeOpts); break;
-    }
-  }, [applyLessonSwitch, handleAnalyze, handlePlaybook]);
 
   // Soft-switch from the shell (motive entries / workspace tabs). Generation stays explicit.
   // Guarded by nonce so a manual LessonRail switch inside CoachView is never overridden.
@@ -479,7 +568,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     : undefined;
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-k3-base overflow-hidden">
+    <div className="flex flex-col h-full min-h-0 bg-k3-base overflow-hidden" data-context-revision={contextRevision} data-my-side={mySide}>
       <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
         <div className={`flex flex-col items-center justify-start px-3 sm:px-4 ${hasResults ? 'pt-2 sm:pt-3 pb-3' : 'pt-4 sm:pt-6 pb-6'}`}>
           <MentorStage
@@ -498,13 +587,19 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
             onLessonChange={handleLessonAction}
             draft={draft}
             selectionSide={selectionSide}
+            mySide={mySide}
             onOpenPracticePicker={() => setShowMentorPicker(true)}
             onOpenDraftPicker={() => setShowHeroPicker(true)}
             onHeroDetail={setDetailHeroId}
             onMeta={handleMeta}
             onStartReview={handleReview}
             coachBusy={composerBusy}
+            onAnalyze={() => handleAnalyze()}
+            onPlaybook={handlePlaybook}
+            onSuggest={handleSuggest}
+            onCancelStream={cancelStream}
           />
+          {lesson === 'review' && (
           <ReviewSurface
             sessions={sessions}
             dismissedSessionIds={dismissedSessionIdSet}
@@ -515,6 +610,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
             followUpAllowed={surfaceFollowUpAllowed}
             scrollContainerRef={scrollContainerRef}
           />
+          )}
           {sessions.length > 0 && (
             <div className="w-full max-w-3xl min-w-0 mt-3">
               <CoachCanvas
@@ -523,7 +619,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
                 lastDismissedSessionId={lastDismissedSessionId}
                 lang={lang}
                 allHeroes={allHeroes}
-                onSelectHero={handleHeroSelect}
+                onSelectHero={handleAcceptSuggestion}
+                onInspectHero={setDetailHeroId}
                 onDismissSession={dismissSession}
                 onUndoDismiss={undoDismissSession}
                 mentorName={mentorName}
@@ -559,8 +656,23 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         allHeroes={allHeroes}
         isLoading={isHeroesLoading}
         currentMentor={practiceHero}
-        onSelectMentor={(hero) => { cancelStream(); setPracticeHero(hero); }}
-        onDismissMentor={() => { setPracticeHero(null); }}
+        onSelectMentor={(hero) => {
+          const nextId = hero.id;
+          if (practiceHero?.id !== nextId) {
+            cancelStream();
+            setMessages((prev) => clearStaleSuggestionsForPracticeHero(prev, nextId));
+            setContextRevision((n) => n + 1);
+          }
+          setPracticeHero(hero);
+        }}
+        onDismissMentor={() => {
+          if (practiceHero != null) {
+            cancelStream();
+            setMessages((prev) => clearStaleSuggestionsForPracticeHero(prev, null));
+            setContextRevision((n) => n + 1);
+          }
+          setPracticeHero(null);
+        }}
       />
 
       <HeroPickerOverlay
@@ -572,6 +684,16 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         draft={draft}
         selectionSide={selectionSide}
         onSideChange={setSelectionSide}
+        mySide={mySide}
+        onMySideChange={(side) => {
+          mySideExplicitRef.current = true;
+          if (side !== mySide) {
+            cancelStream();
+            setMessages((prev) => clearStaleSuggestionMessages(prev, side));
+          }
+          setMySide(side);
+          setContextRevision((n) => n + 1);
+        }}
         onSelectHero={handleHeroSelect}
         onReset={resetAll}
       />

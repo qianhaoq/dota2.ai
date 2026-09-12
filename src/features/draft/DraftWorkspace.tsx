@@ -12,8 +12,8 @@ const DraftWorkspace: React.FC<{ lang: Language }> = ({ lang }) => {
     title: lang === 'zh' ? '选五个人，也选一套共同的打法。' : 'Pick five players — and one shared plan.',
     hint:
       lang === 'zh'
-        ? '从已知英雄开始推演，不必先填满十格。“我的阵营”与正在编辑的一侧相互独立；样本胜率不是本局获胜概率。'
-        : 'Start from known heroes; ten slots are not required. Your side and the side you edit stay separate. Sample win rates are not this game’s odds.',
+        ? '从已知英雄开始推演，不必先填满十格。选好人后点「分析阵容」。我的阵营与正在编辑的一侧相互独立；样本胜率不是本局获胜概率。'
+        : 'Start from known heroes; ten slots are not required. After picks, tap Analyze draft. Your side and the editing side stay separate. Sample win rates are not this game’s odds.',
   };
   return (
     <div className="px-[16px] pt-[14px] pb-[4px] max-w-[860px] w-full mx-auto min-w-0">

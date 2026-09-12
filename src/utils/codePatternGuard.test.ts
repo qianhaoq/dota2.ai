@@ -38,9 +38,11 @@ describe('CoachView streaming code patterns (regression guard)', () => {
 
     expect(content).toContain('resolveCoachingLineup');
     expect(content).toContain('buildPracticeUserContext');
-    expect(content).toMatch(/analyzeDraftStream\(\s*coaching\.radiant,\s*coaching\.dire/);
-    expect(content).toMatch(/fetchPlaybookStream\(\s*coaching\.allies,\s*coaching\.enemies[\s\S]*coaching\.focusHeroId/);
+    // lineup may be coaching or a draftOverride-resolved CoachingLineup
+    expect(content).toMatch(/analyzeDraftStream\(\s*(?:coaching|lineup)\.radiant,\s*(?:coaching|lineup)\.dire/);
+    expect(content).toMatch(/fetchPlaybookStream\(\s*(?:coaching|lineup)\.allies,\s*(?:coaching|lineup)\.enemies[\s\S]*(?:coaching|lineup)\.focusHeroId/);
     expect(content).toMatch(/fetchSuggestions\(\s*coaching\.allies,\s*coaching\.enemies/);
+    expect(content).toContain('draftOverride');
   });
 
   it('guards stream terminal callbacks with inflight generation', () => {
@@ -82,5 +84,47 @@ describe('Stream callback patterns across codebase', () => {
     }
     
     expect(violations).toEqual([]);
+  });
+});
+
+describe('CoachView suggest allySide binding (Codex P1)', () => {
+  const coachViewPath = join(__dirname, '../components/CoachView.tsx');
+  const content = readFileSync(coachViewPath, 'utf-8');
+
+  it('stores request-time allySide on suggest coach messages', () => {
+    expect(content).toMatch(/const requestSide = mySide/);
+    expect(content).toMatch(/allySide:\s*requestSide/);
+    expect(content).toMatch(/contextRevision:\s*requestRevision/);
+  });
+
+  it('accepts an explicit allySide on handleAcceptSuggestion', () => {
+    expect(content).toMatch(/handleAcceptSuggestion = useCallback\(\s*\(hero: Hero, allySide\?:/);
+    expect(content).toMatch(/const side = allySide \?\? mySide/);
+  });
+
+  it('invalidates in-flight and clears stale suggestions on My side change', () => {
+    expect(content).toContain('clearStaleSuggestionMessages');
+    expect(content).toMatch(/onMySideChange=\{\(side\) => \{[\s\S]*cancelStream\(\)[\s\S]*clearStaleSuggestionMessages/);
+  });
+});
+
+describe('CoachView suggest practiceHeroId binding (Codex P1)', () => {
+  const coachViewPath = join(__dirname, '../components/CoachView.tsx');
+  const content = readFileSync(coachViewPath, 'utf-8');
+
+  it('stores request-time practiceHeroId on suggest coach messages', () => {
+    expect(content).toMatch(/const requestPracticeHeroId = practiceHero\?\.id \?\? null/);
+    expect(content).toMatch(/practiceHeroId:\s*requestPracticeHeroId/);
+  });
+
+  it('accepts an explicit practiceHeroId on handleAcceptSuggestion', () => {
+    expect(content).toMatch(/handleAcceptSuggestion = useCallback\(\s*\(hero: Hero, allySide\?: DraftSide, practiceHeroId\?:/);
+    expect(content).toMatch(/practiceHeroId !== undefined/);
+  });
+
+  it('invalidates in-flight and clears stale suggestions on practice hero change', () => {
+    expect(content).toContain('clearStaleSuggestionsForPracticeHero');
+    expect(content).toMatch(/onSelectMentor=\{\(hero\) => \{[\s\S]*cancelStream\(\)[\s\S]*clearStaleSuggestionsForPracticeHero/);
+    expect(content).toMatch(/onDismissMentor=\{\(\) => \{[\s\S]*clearStaleSuggestionsForPracticeHero/);
   });
 });

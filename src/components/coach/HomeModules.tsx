@@ -4,6 +4,7 @@ import { BarChart3, Users } from 'lucide-react';
 import LessonRail from './LessonRail';
 import DraftContextChip from './DraftContextChip';
 import ReviewEntry from './ReviewEntry';
+import IntentChips from './IntentChips';
 
 interface HomeModulesProps {
   lang: Language;
@@ -14,12 +15,17 @@ interface HomeModulesProps {
   onLessonChange: (lesson: LessonMode) => void;
   draft: DraftState;
   selectionSide: 'radiant' | 'dire';
+  mySide: 'radiant' | 'dire';
   onOpenPracticePicker: () => void;
   onOpenDraftPicker: () => void;
   onHeroDetail?: (heroId: number) => void;
   coachBusy?: boolean;
   onMeta: () => void;
   onStartReview?: (matchId: number, heroId?: number) => void;
+  onAnalyze?: () => void;
+  onPlaybook?: () => void;
+  onSuggest?: () => void;
+  onCancelStream?: () => void;
 }
 
 const HomeModules: React.FC<HomeModulesProps> = ({
@@ -31,12 +37,17 @@ const HomeModules: React.FC<HomeModulesProps> = ({
   onLessonChange,
   draft,
   selectionSide,
+  mySide,
   onOpenPracticePicker,
   onOpenDraftPicker,
   onHeroDetail,
   coachBusy = false,
   onMeta,
   onStartReview,
+  onAnalyze,
+  onPlaybook,
+  onSuggest,
+  onCancelStream,
 }) => {
   const t = useMemo(() => ({
     practicing: lang === 'zh' ? '正在练习' : 'Practicing',
@@ -103,13 +114,30 @@ const HomeModules: React.FC<HomeModulesProps> = ({
         {draftBtn}
       </div>
       <LessonRail lang={lang} currentLesson={lesson} onLessonChange={onLessonChange} compact={density === 'compact'} />
-      {onStartReview && (
+      {(lesson === 'bp' || hasHeroes || Boolean(practiceHero)) && onAnalyze && onPlaybook && onSuggest && onCancelStream && (
+        <div className="flex justify-center" data-testid="draft-intent-chips">
+          <IntentChips
+            lang={lang}
+            isLoading={coachBusy}
+            hasHeroes={hasHeroes || Boolean(practiceHero)}
+            hasAllies={(mySide === 'radiant' ? draft.radiant : draft.dire).length > 0 || Boolean(practiceHero)}
+            alliesFull={(mySide === 'radiant' ? draft.radiant : draft.dire).length >= 5}
+            selectionSide={selectionSide}
+            onAnalyze={onAnalyze}
+            onPlaybook={onPlaybook}
+            onSuggest={onSuggest}
+            onMeta={onMeta}
+            onCancel={onCancelStream}
+          />
+        </div>
+      )}
+      {onStartReview && lesson === 'review' && (
         <ReviewEntry
           lang={lang}
           allHeroes={allHeroes}
           practiceHero={practiceHero}
           density={density}
-          defaultExpanded={density === 'full' && lesson === 'review'}
+          defaultExpanded={density === 'full'}
           onStartReview={onStartReview}
         />
       )}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { DecisionFork, EvidenceLens, PracticeCommit } from '../../coach-ui/components';
+import { DecisionFork, EvidenceLens, PracticeCommit, CoachBrief } from '../../coach-ui/components';
 import { answerEvent, applyPatch, beginRun, finishRun, stopRun, switchContext, createState } from '../../coach-ui/runtime';
 import type { CoachAnswerValue, CoachRuntimeState } from '../../coach-ui/types';
 import { MentorPicker } from '../../components/coach';
@@ -302,6 +302,15 @@ const TrainingWorkspace: React.FC<TrainingWorkspaceProps> = ({ lang, onNoteSaved
             </button>
           )}
         </DecisionFork>
+
+        {revealed && !run.busy && surfaceTitle && (
+          <CoachBrief
+            lang={lang}
+            title={surfaceTitle}
+            conditions={chosen ? [chosen.need, chosen.cost] : [variant.reveal]}
+            boundary={lang === 'zh' ? '教学情境：不是你上一局的真实失误记录。' : 'Teaching scenario — not your last game’s recorded mistake.'}
+          />
+        )}
 
         {revealed && !run.busy && surfaceTitle && (
           <section className="v3-panel px-[16px] py-[14px]" aria-label={lang === 'zh' ? '个人回忆' : 'Personal memory'}>
