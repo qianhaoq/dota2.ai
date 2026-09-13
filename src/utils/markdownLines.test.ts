@@ -34,6 +34,12 @@ describe('groupMarkdownSegments', () => {
     ]);
   });
 
+  it('leaves multi-span bold lines as paragraphs for inline parsing', () => {
+    expect(groupMarkdownSegments('**a** and **b**')).toEqual([
+      { type: 'paragraph', text: '**a** and **b**' },
+    ]);
+  });
+
   it('normalizes Windows CRLF so markers and text stay clean', () => {
     const text = '### 节奏\r\n**要点**\r\n- 先对线\r\n* 再抱团\r\n结论';
     expect(groupMarkdownSegments(text)).toEqual([
@@ -76,3 +82,40 @@ function countBareListItems(html: string): number {
   }
   return bare;
 }
+
+describe('MarkdownBody inline bold', () => {
+  const render = (text: string) =>
+    renderToStaticMarkup(React.createElement(MarkdownBody, { text }));
+
+  it('renders inline **bold** in a paragraph without raw asterisks', () => {
+    const html = render('hello **world**');
+    expect(html).toContain('<strong>world</strong>');
+    expect(html).not.toContain('**');
+  });
+
+  it('renders inline bold inside list items and keeps a single ul', () => {
+    const html = render('- focus **core** timing');
+    expect(html).toContain('<strong>core</strong>');
+    expect(html).not.toContain('**');
+    expect((html.match(/<ul\b/g) || []).length).toBe(1);
+    expect(countBareListItems(html)).toBe(0);
+  });
+
+  it('still renders a whole-line **strong** line', () => {
+    const html = render('**whole line**');
+    expect(html).toMatch(/<strong[^>]*>whole line<\/strong>/);
+    expect(html).not.toContain('**');
+  });
+
+  it('handles multiple bold spans in one paragraph', () => {
+    const html = render('**a** and **b**');
+    expect(html).toContain('<strong>a</strong>');
+    expect(html).toContain('<strong>b</strong>');
+    expect(html).not.toContain('**');
+  });
+
+  it('renders *italic* without breaking text', () => {
+    const html = render('play *slow* here');
+    expect(html).toContain('<em>slow</em>');
+  });
+});
