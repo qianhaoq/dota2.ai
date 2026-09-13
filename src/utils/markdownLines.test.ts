@@ -118,4 +118,24 @@ describe('MarkdownBody inline bold', () => {
     const html = render('play *slow* here');
     expect(html).toContain('<em>slow</em>');
   });
+
+  it('allows italic emphasis markers inside bold spans', () => {
+    const html = render('Use **BKB during the *first* jump**');
+    expect(html).toContain('<strong>');
+    expect(html).toContain('<em>first</em>');
+    expect(html).toMatch(/<strong[^>]*>[\s\S]*<em>first<\/em>[\s\S]*<\/strong>/);
+    expect(html).not.toContain('**');
+  });
+
+  it('preserves underscores inside snake_case identifiers', () => {
+    const html = render('target npc_dota_hero_axe next');
+    expect(html).toContain('npc_dota_hero_axe');
+    expect(html).not.toContain('<em>');
+  });
+
+  it('still renders standalone _italic_ with word boundaries', () => {
+    const html = render('play _slow_ here');
+    expect(html).toContain('<em>slow</em>');
+    expect(html).not.toContain('_slow_');
+  });
 });

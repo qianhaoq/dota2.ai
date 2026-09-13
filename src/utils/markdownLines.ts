@@ -50,9 +50,9 @@ export function groupMarkdownSegments(text: string): MarkdownSegment[] {
 }
 
 /** Match `**bold**` first so nested `*` inside bold is handled after. */
-const INLINE_BOLD_RE = /\*\*([^*]+?)\*\*/g;
+const INLINE_BOLD_RE = /\*\*((?:(?!\*\*).)+?)\*\*/g;
 /** Single `*italic*` or `_italic_` (no newlines). */
-const INLINE_ITALIC_RE = /(?:\*([^*\n]+?)\*|_([^_\n]+?)_)/g;
+const INLINE_ITALIC_RE = /(?:\*([^*\n]+?)\*|(?<!\w)_([^_\n]+?)_(?!\w))/g;
 
 function renderItalicText(text: string, nextKey: () => string): ReactNode[] {
   const nodes: ReactNode[] = [];
