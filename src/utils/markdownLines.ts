@@ -605,6 +605,8 @@ function canOpenAsterisk(text: string, i: number): boolean {
  *
  * Optional cache: failed-to-EOF from `start` makes later searches from >= start
  * return -1 without rescanning (avoids O(n²) unmatched `*a ` openers).
+ * The memo is skipped when this search declined a closer a later opener
+ * could still use (skipped nested span, or rule-of-three rejection).
  */
 function findClosingAsterisk(
   text: string,
@@ -616,6 +618,9 @@ function findClosingAsterisk(
 ): number {
   const cache = caches?.asterisk;
   if (cache && start >= cache.noCloserFrom) return -1;
+  // Only cache a failed-to-EOF miss when no later opener could use a closer
+  // we declined (nested span we skipped, or rule-of-three rejection).
+  let cacheSafe = true;
 
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return -1; // do not cache — line-local
@@ -638,6 +643,9 @@ function findClosingAsterisk(
         ) {
           return j;
         }
+        // Both-flanking opener+closer whose lengths sum to a multiple of 3
+        // must not match unless both lengths are multiples of 3.
+        cacheSafe = false;
       }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
@@ -655,6 +663,7 @@ function findClosingAsterisk(
           ) {
             return j;
           }
+          cacheSafe = false;
         }
         // Not a valid italic closer: skip the whole run atomically.
         j = runEnd - 1;
@@ -672,18 +681,24 @@ function findClosingAsterisk(
         ) {
           return j;
         }
+        cacheSafe = false;
       }
       // Nested italic: left-flanking-only opener — skip complete span when
       // another closer still follows (`*outer *inner* tail*`).
       if (runLen === 1 && canOpenAsterisk(text, j) && depth < MAX_ITALIC_NEST) {
         const afterNested = skipAsteriskItalicSpan(text, j, caches, depth + 1);
         if (afterNested !== -1 && hasAsteriskCloserAtOrAfter(text, afterNested)) {
+          // Nested span owns its closer; a later top-level opener may still
+          // pair with it (`x*a *b* d**c` → unmatched outer + em b).
+          cacheSafe = false;
           j = afterNested - 1;
         }
       }
     }
   }
-  if (cache && start < cache.noCloserFrom) cache.noCloserFrom = start;
+  // Exhausted to EOF with no closer. Only memoize when the miss is
+  // opener-independent (no skipped nested closer, no rule-of-three reject).
+  if (cache && cacheSafe && start < cache.noCloserFrom) cache.noCloserFrom = start;
   return -1;
 }
 
@@ -705,6 +720,8 @@ function canOpenUnderscore(text: string, i: number): boolean {
  *
  * Optional cache: failed-to-EOF from `start` makes later searches from >= start
  * return -1 without rescanning (avoids O(n²) unmatched `_a ` openers).
+ * The memo is skipped when this search declined a closer a later opener
+ * could still use (skipped nested span).
  */
 function findClosingUnderscore(
   text: string,
@@ -714,6 +731,9 @@ function findClosingUnderscore(
 ): number {
   const cache = caches?.underscore;
   if (cache && start >= cache.noCloserFrom) return -1;
+  // Only cache a failed-to-EOF miss when no later opener could use a closer
+  // we declined (nested span we skipped).
+  let cacheSafe = true;
 
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return -1; // do not cache — line-local
@@ -730,6 +750,8 @@ function findClosingUnderscore(
         if (canOpenUnderscore(text, j) && depth < MAX_ITALIC_NEST) {
           const afterNested = skipUnderscoreItalicSpan(text, j, caches, depth + 1);
           if (afterNested !== -1 && hasUnderscoreCloserAtOrAfter(text, afterNested)) {
+            // Nested span owns its closer; a later top-level opener may still pair.
+            cacheSafe = false;
             j = afterNested - 1;
           }
         }
@@ -739,7 +761,9 @@ function findClosingUnderscore(
       return j;
     }
   }
-  if (cache && start < cache.noCloserFrom) cache.noCloserFrom = start;
+  // Exhausted to EOF with no closer. Only memoize when the miss is
+  // opener-independent (no skipped nested closer).
+  if (cache && cacheSafe && start < cache.noCloserFrom) cache.noCloserFrom = start;
   return -1;
 }
 
@@ -1004,6 +1028,7 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * - Rejected asterisk runs in bold closer scans are skipped atomically (`Use **BKB ****`).
  * - Rule of three also applies to bold closers (`a**b****c` stays literal).
  * - Failed-to-EOF bold cache is not reused when a later opener can still pair (`**a **b** ****`).
+ * - Failed-to-EOF italic cache is not reused after a nested skip or rule-of-three reject (`x*a *b* d**c`).
  * - Backslash-escaped delimiters stay literal; unmatched `**` openers are not retried as italic.
  * - Backtick code spans are protected from emphasis parsing (including inside underscore closers).
  * - Unmatched `**` / `*` / `_` openers cache failed closer scans so long streams stay linear-ish.

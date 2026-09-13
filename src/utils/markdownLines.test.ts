@@ -505,4 +505,18 @@ describe('MarkdownBody inline bold', () => {
     // Must not leave the valid inner span literal.
     expect(html).not.toContain('**b**');
   });
+
+  it('does not reuse outer italic-search failures for a later inner opener', () => {
+    // Outer `*` skips nested `*b*`, rejects `**` via rule of three, must not
+    // cache that miss so later `*b*` still renders emphasis.
+    const html = render('x*a *b* d**c');
+    expect(html).toMatch(/x\*a <em[^>]*>b<\/em> d\*\*c/);
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect(html).not.toContain('<strong>');
+    // Unmatched outer markers stay literal; nested b must not.
+    expect(html).toContain('x*a');
+    expect(html).toContain('d**c');
+    expect(html).not.toContain('*b*');
+  });
+
 });
