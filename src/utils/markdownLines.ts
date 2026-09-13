@@ -97,6 +97,14 @@ function findClosingBold(text: string, start: number): number {
 
   for (; j < text.length - 1; j++) {
     if (text[j] === '\n') return -1;
+    if (text[j] === '`' && !isEscaped(text, j)) {
+      // Delimiters inside a code span are not emphasis closers.
+      const after = skipCodeSpan(text, j);
+      if (after !== -1) {
+        j = after - 1;
+        continue;
+      }
+    }
     if (!text.startsWith('**', j)) continue;
     if (isEscaped(text, j)) continue;
     if (isWhitespace(text[j - 1])) continue; // not right-flanking
@@ -133,6 +141,14 @@ function canOpenAsterisk(text: string, i: number): boolean {
 function findClosingAsterisk(text: string, start: number): number {
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return -1;
+    if (text[j] === '`' && !isEscaped(text, j)) {
+      // Delimiters inside a code span are not emphasis closers.
+      const after = skipCodeSpan(text, j);
+      if (after !== -1) {
+        j = after - 1;
+        continue;
+      }
+    }
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
       const after = skipBoldSpan(text, j);
       if (after === -1) {
@@ -177,13 +193,39 @@ function findClosingUnderscore(text: string, start: number): number {
   return -1;
 }
 
-/** Find closing backtick for an inline code span opened at `open` (`). */
+/** Length of the backtick run starting at `i` (`text[i]` is a backtick). */
+function backtickRunLength(text: string, i: number): number {
+  let n = 0;
+  while (text[i + n] === '`') n += 1;
+  return n;
+}
+
+/**
+ * Find the closing run for an inline code span opened at `open` (`).
+ * CommonMark: the closer must be an unescaped run of exactly the same
+ * number of backticks as the opener — a longer or shorter run does not close.
+ * Returns the index of the first backtick of the closing run, or -1.
+ */
 function findClosingBacktick(text: string, open: number): number {
-  for (let j = open + 1; j < text.length; j++) {
+  const n = backtickRunLength(text, open);
+  for (let j = open + n; j < text.length; j++) {
     if (text[j] === '\n') return -1;
-    if (text[j] === '`' && !isEscaped(text, j)) return j;
+    if (text[j] !== '`' || isEscaped(text, j)) continue;
+    const run = backtickRunLength(text, j);
+    if (run === n) return j;
+    j += run - 1; // skip runs of the wrong length
   }
   return -1;
+}
+
+/**
+ * Skip a complete code span opened at `i` (`text[i]` is a backtick).
+ * Returns the index after the closing run, or -1 when there is no closer.
+ */
+function skipCodeSpan(text: string, i: number): number {
+  const close = findClosingBacktick(text, i);
+  if (close === -1) return -1;
+  return close + backtickRunLength(text, i);
 }
 
 function parseInline(text: string, nextKey: () => string): ReactNode[] {
@@ -204,9 +246,10 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
       const close = findClosingBacktick(text, i);
       if (close !== -1) {
         flushLiteral(i);
-        const codeInner = text.slice(i + 1, close);
+        const ticks = backtickRunLength(text, i);
+        const codeInner = text.slice(i + ticks, close);
         nodes.push(createElement('code', { key: nextKey() }, codeInner));
-        i = close + 1;
+        i = close + ticks;
         literalStart = i;
         continue;
       }

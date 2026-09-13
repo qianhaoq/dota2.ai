@@ -205,4 +205,29 @@ describe('MarkdownBody inline bold', () => {
     expect(html).not.toContain('<em>');
     expect(html).toMatch(/<code[^>]*>damage\*armor\*scale<\/code>/);
   });
+
+  it('ignores ** inside code spans while finding the bold closer', () => {
+    const html = render('**Use `damage**armor` safely**');
+    expect((html.match(/<strong\b/g) || []).length).toBe(1);
+    expect(html).toMatch(
+      /<strong[^>]*>[\s\S]*<code[^>]*>damage\*\*armor<\/code>[\s\S]*<\/strong>/,
+    );
+    // `**` may appear inside the code span content; outer markers must not leak.
+    expect(html).not.toContain('**Use');
+    expect(html).not.toContain('safely**');
+  });
+
+  it('ignores * inside code spans while finding the italic closer', () => {
+    const html = render('*Use `damage*armor` safely*');
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect(html).toMatch(
+      /<em[^>]*>[\s\S]*<code[^>]*>damage\*armor<\/code>[\s\S]*<\/em>/,
+    );
+  });
+
+  it('matches multi-backtick code spans by delimiter run length', () => {
+    const html = render('Use `` `foo` `` literally');
+    expect((html.match(/<code\b/g) || []).length).toBe(1);
+    expect(html).toContain('`foo`');
+  });
 });
