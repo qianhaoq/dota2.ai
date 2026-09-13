@@ -138,4 +138,26 @@ describe('MarkdownBody inline bold', () => {
     expect(html).toContain('<em>slow</em>');
     expect(html).not.toContain('_slow_');
   });
+
+  it('does not treat spaced multiplication asterisks as emphasis', () => {
+    const html = render('damage * 1.5 * armor');
+    expect(html).toContain('damage * 1.5 * armor');
+    expect(html).not.toContain('<em>');
+  });
+
+  it('preserves italic containers around bold spans', () => {
+    const html = render('Move *after **BKB** expires*');
+    expect(html).toMatch(/<em[^>]*>[\s\S]*<strong[^>]*>BKB<\/strong>[\s\S]*<\/em>/);
+    expect(html).toContain('after');
+    expect(html).toContain('expires');
+    expect(html).not.toContain('**');
+    expect(html).not.toContain('*after');
+    expect(html).not.toContain('expires*');
+  });
+
+  it('preserves Chinese underscore identifiers with Unicode letter boundaries', () => {
+    const html = render('查看 英雄_斧王_编号 即可');
+    expect(html).toContain('英雄_斧王_编号');
+    expect(html).not.toContain('<em>');
+  });
 });

@@ -49,48 +49,150 @@ export function groupMarkdownSegments(text: string): MarkdownSegment[] {
   return segments;
 }
 
-/** Match `**bold**` first so nested `*` inside bold is handled after. */
-const INLINE_BOLD_RE = /\*\*((?:(?!\*\*).)+?)\*\*/g;
-/** Single `*italic*` or `_italic_` (no newlines). */
-const INLINE_ITALIC_RE = /(?:\*([^*\n]+?)\*|(?<!\w)_([^_\n]+?)_(?!\w))/g;
+/** Letter / number / `_` — Unicode-aware so Chinese counts as identifier chars. */
+function isIdentChar(ch: string | undefined): boolean {
+  if (!ch) return false;
+  return /[\p{L}\p{N}_]/u.test(ch);
+}
 
-function renderItalicText(text: string, nextKey: () => string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  let last = 0;
-  INLINE_ITALIC_RE.lastIndex = 0;
-  for (let m = INLINE_ITALIC_RE.exec(text); m; m = INLINE_ITALIC_RE.exec(text)) {
-    if (m.index > last) {
-      nodes.push(createElement(Fragment, { key: nextKey() }, text.slice(last, m.index)));
+function isWhitespace(ch: string | undefined): boolean {
+  return ch !== undefined && /\s/.test(ch);
+}
+
+/** Skip a `**…**` span starting at `i` (`text[i]` is first `*`). Returns index after close, or -1. */
+function skipBoldSpan(text: string, i: number): number {
+  if (!text.startsWith('**', i)) return -1;
+  const close = text.indexOf('**', i + 2);
+  if (close === -1 || text.slice(i + 2, close).includes('\n')) return -1;
+  return close + 2;
+}
+
+function findClosingBold(text: string, start: number): number {
+  for (let j = start; j < text.length - 1; j++) {
+    if (text[j] === '\n') return -1;
+    if (text.startsWith('**', j)) return j;
+  }
+  return -1;
+}
+
+/** Asterisk open: left-flanking (not followed by whitespace). */
+function canOpenAsterisk(text: string, i: number): boolean {
+  const next = text[i + 1];
+  return next !== undefined && next !== '\n' && !isWhitespace(next);
+}
+
+/**
+ * Find closing `*` for emphasis. Must be right-flanking (not preceded by whitespace).
+ * Skips nested `**bold**` so outer italic can wrap bold.
+ */
+function findClosingAsterisk(text: string, start: number): number {
+  for (let j = start; j < text.length; j++) {
+    if (text[j] === '\n') return -1;
+    if (text.startsWith('**', j)) {
+      const after = skipBoldSpan(text, j);
+      if (after === -1) return -1;
+      j = after - 1;
+      continue;
     }
-    const inner = m[1] ?? m[2] ?? '';
-    nodes.push(createElement('em', { key: nextKey() }, inner));
-    last = m.index + m[0].length;
+    if (text[j] === '*' && !isWhitespace(text[j - 1])) {
+      return j;
+    }
   }
-  if (last < text.length) {
-    nodes.push(createElement(Fragment, { key: nextKey() }, text.slice(last)));
+  return -1;
+}
+
+/** Underscore open: not after an identifier char, and left-flanking. */
+function canOpenUnderscore(text: string, i: number): boolean {
+  if (isIdentChar(text[i - 1])) return false;
+  const next = text[i + 1];
+  return next !== undefined && next !== '\n' && next !== '_' && !isWhitespace(next);
+}
+
+/**
+ * Find closing `_`. Right-flanking, not before an identifier char.
+ * Interior must not contain `_` (same as prior `[^_\n]+` behavior).
+ */
+function findClosingUnderscore(text: string, start: number): number {
+  for (let j = start; j < text.length; j++) {
+    if (text[j] === '\n') return -1;
+    if (text[j] === '_') {
+      if (isWhitespace(text[j - 1])) return -1;
+      if (isIdentChar(text[j + 1])) return -1;
+      // No other `_` between start and j
+      if (text.slice(start, j).includes('_')) return -1;
+      return j;
+    }
   }
+  return -1;
+}
+
+function parseInline(text: string, nextKey: () => string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let i = 0;
+  let literalStart = 0;
+
+  const flushLiteral = (end: number) => {
+    if (end > literalStart) {
+      nodes.push(createElement(Fragment, { key: nextKey() }, text.slice(literalStart, end)));
+    }
+  };
+
+  while (i < text.length) {
+    // Prefer `**bold**` over single `*`
+    if (text.startsWith('**', i)) {
+      const close = findClosingBold(text, i + 2);
+      if (close !== -1) {
+        flushLiteral(i);
+        const inner = text.slice(i + 2, close);
+        nodes.push(createElement('strong', { key: nextKey() }, ...parseInline(inner, nextKey)));
+        i = close + 2;
+        literalStart = i;
+        continue;
+      }
+    }
+
+    if (text[i] === '*' && !text.startsWith('**', i) && canOpenAsterisk(text, i)) {
+      const close = findClosingAsterisk(text, i + 1);
+      if (close !== -1 && close > i + 1) {
+        flushLiteral(i);
+        const inner = text.slice(i + 1, close);
+        nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey)));
+        i = close + 1;
+        literalStart = i;
+        continue;
+      }
+    }
+
+    if (text[i] === '_' && canOpenUnderscore(text, i)) {
+      const close = findClosingUnderscore(text, i + 1);
+      if (close !== -1 && close > i + 1) {
+        flushLiteral(i);
+        const inner = text.slice(i + 1, close);
+        nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey)));
+        i = close + 1;
+        literalStart = i;
+        continue;
+      }
+    }
+
+    i += 1;
+  }
+
+  flushLiteral(text.length);
   return nodes.length > 0 ? nodes : [text];
 }
 
 /**
  * Render inline markdown (`**bold**`, `*italic*`, `_italic_`) as React nodes.
  * Does not use dangerouslySetInnerHTML.
+ *
+ * - Asterisk emphasis requires flanking (no open/close next to whitespace) so
+ *   `damage * 1.5 * armor` stays literal.
+ * - Nested spans keep delimiter context so `*after **BKB** expires*` → em>strong.
+ * - Underscore boundaries are Unicode letter/number aware so `英雄_斧王_编号` stays intact.
  */
 export function renderInlineMarkdown(text: string): ReactNode[] {
   let key = 0;
   const nextKey = () => `i${key++}`;
-  const nodes: ReactNode[] = [];
-  let last = 0;
-  INLINE_BOLD_RE.lastIndex = 0;
-  for (let m = INLINE_BOLD_RE.exec(text); m; m = INLINE_BOLD_RE.exec(text)) {
-    if (m.index > last) {
-      nodes.push(...renderItalicText(text.slice(last, m.index), nextKey));
-    }
-    nodes.push(createElement('strong', { key: nextKey() }, ...renderItalicText(m[1], nextKey)));
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) {
-    nodes.push(...renderItalicText(text.slice(last), nextKey));
-  }
-  return nodes;
+  return parseInline(text, nextKey);
 }
