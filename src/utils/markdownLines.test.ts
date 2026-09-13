@@ -519,4 +519,35 @@ describe('MarkdownBody inline bold', () => {
     expect(html).not.toContain('*b*');
   });
 
+  it('parses many unmatched triple-star openers in near-linear time', () => {
+    // Each `***a ` used to rescan the suffix via firstRightFlankingAsteriskRunLength.
+    const text = '***a '.repeat(8000); // ~40k chars
+    const t0 = Date.now();
+    const html = render(text);
+    const elapsed = Date.now() - t0;
+    // Generous CI budget (unfixed ~2.1s on Node 20); cached path should be well under.
+    expect(elapsed).toBeLessThan(2000);
+    expect(html).not.toContain('<strong>');
+    expect(html).not.toContain('<em>');
+    expect(html).toContain('***a');
+  });
+
+  it('keeps incomplete four-star spans literal while the closer is short', () => {
+    // Streaming prefix of `****important****` — do not wrap with leftover stars inside.
+    const html = render('****important***');
+    expect(html).toContain('****important***');
+    expect(html).not.toContain('<strong>');
+    expect(html).not.toContain('<em>');
+    // Must not render `<strong>**important*</strong>`.
+    expect(html).not.toMatch(/<strong[^>]*>\*\*important\*<\/strong>/);
+  });
+
+  it('still partitions complete four-star spans after unequal-run fix', () => {
+    const html = render('****important****');
+    expect(html).toMatch(/<strong[^>]*>[\s\S]*important[\s\S]*<\/strong>/);
+    expect(html).not.toMatch(/<strong[^>]*>\s*<\/strong>/);
+    expect(html).not.toContain('****');
+    expect(html).toContain('important');
+  });
+
 });

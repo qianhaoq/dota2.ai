@@ -119,10 +119,21 @@ function canCloseAsteriskRun(text: string, i: number, runLen: number): boolean {
  * Length of the first right-flanking asterisk run at or after `start`
  * (line-local; skips code spans; rejected runs skipped atomically).
  * 0 if none — used to partition triple openers by closer order.
+ *
+ * Optional cache: a failed-to-EOF probe from `start` makes later probes from
+ * >= start return 0 without rescanning (avoids O(n²) unmatched `***a ` openers).
+ * Hits are opener-independent (no rule-of-three / nest context), so safe to memoize.
  */
-function firstRightFlankingAsteriskRunLength(text: string, start: number): number {
+function firstRightFlankingAsteriskRunLength(
+  text: string,
+  start: number,
+  caches?: EmphasisCaches,
+): number {
+  const cache = caches?.firstCloser;
+  if (cache && start >= cache.noCloserFrom) return 0;
+
   for (let j = start; j < text.length; j++) {
-    if (text[j] === '\n') return 0;
+    if (text[j] === '\n') return 0; // do not cache — line-local
     if (text[j] === '`' && !isEscaped(text, j)) {
       j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
       continue;
@@ -133,6 +144,7 @@ function firstRightFlankingAsteriskRunLength(text: string, start: number): numbe
       j += runLen - 1;
     }
   }
+  if (cache && start < cache.noCloserFrom) cache.noCloserFrom = start;
   return 0;
 }
 
@@ -165,11 +177,13 @@ interface CloserCache {
   noCloserFrom: number;
 }
 
-/** Shared caches for bold / asterisk / underscore failed-to-EOF closer scans. */
+/** Shared caches for bold / asterisk / underscore / triple-lookahead failed-to-EOF scans. */
 interface EmphasisCaches {
   bold: CloserCache;
   asterisk: CloserCache;
   underscore: CloserCache;
+  /** Failed first-right-flanking asterisk-run probes (triple-opener closer order). */
+  firstCloser: CloserCache;
 }
 
 function freshEmphasisCaches(): EmphasisCaches {
@@ -177,6 +191,7 @@ function freshEmphasisCaches(): EmphasisCaches {
     bold: { noCloserFrom: Number.POSITIVE_INFINITY },
     asterisk: { noCloserFrom: Number.POSITIVE_INFINITY },
     underscore: { noCloserFrom: Number.POSITIVE_INFINITY },
+    firstCloser: { noCloserFrom: Number.POSITIVE_INFINITY },
   };
 }
 
@@ -466,7 +481,9 @@ function skipUnderscoreItalicSpan(
  * Skips the remainder of the OPENING asterisk run so `****x****` does not
  * close on the opener itself. Closing runs are partitioned by opener and
  * nesting context:
- * leftover opener stars → last two of the closer (nested inside);
+ * leftover opener stars → last two of the closer when closer is long enough
+ * to leave the same residual inside (****x****); shorter closers are skipped
+ * so incomplete streams (****important***) stay literal;
  * clean `**` with nested unmatched italic → last two (leave first for italic);
  * clean `**` otherwise → first two (trailing stars for an outer italic closer).
  *
@@ -499,8 +516,12 @@ function findClosingBold(
 
   // Skip remainder of the opening delimiter run (stars still belonging to opener).
   let j = start;
-  const hadOpenerRemainder = j < text.length && text[j] === '*';
-  while (j < text.length && text[j] === '*') j += 1;
+  let openerRemainder = 0;
+  while (j < text.length && text[j] === '*') {
+    openerRemainder += 1;
+    j += 1;
+  }
+  const hadOpenerRemainder = openerRemainder > 0;
 
   for (; j < text.length - 1; j++) {
     if (text[j] === '\n') return -1; // do not cache — line-local; closer may exist after
@@ -545,8 +566,20 @@ function findClosingBold(
       j = runEnd - 1;
       continue;
     }
-    // Opener leftover → close on last two so nested stars stay inside (****x****).
-    if (hadOpenerRemainder || runLen === 2) {
+    // Exact ** closer: always take both stars.
+    if (runLen === 2) {
+      return runEnd - 2;
+    }
+    // Opener leftover (****x****): close on last two only when the closer run
+    // leaves at least openerRemainder stars inside. A shorter closer is an
+    // incomplete stream (****important*** of ****important****) — skip it so
+    // the prefix stays literal until the matching closer arrives.
+    if (hadOpenerRemainder) {
+      if (runLen - 2 < openerRemainder) {
+        cacheSafe = false;
+        j = runEnd - 1;
+        continue;
+      }
       return runEnd - 2;
     }
     // Clean ** opener with runLen > 2: partition by nesting context.
@@ -909,6 +942,7 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
         const firstCloserLen = firstRightFlankingAsteriskRunLength(
           text,
           i + runLen,
+          caches,
         );
         if (firstCloserLen !== 1) {
           const openerCanBoth = canCloseAsteriskRun(text, i, runLen);
@@ -959,8 +993,10 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
         literalStart = i;
         continue;
       }
-      // Unmatched bold opener: consume both stars as literal (do not retry 2nd as italic).
-      i += 2;
+      // Unmatched bold opener: consume the whole opener run as literal (not just
+      // two stars) so a shorter suffix cannot rematch — e.g. streaming
+      // `****important***` must not become `**<strong>important</strong>*`.
+      i += openerRunLen;
       continue;
     }
 
@@ -1023,6 +1059,8 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * - Nested spans keep delimiter context so `*after **BKB** expires*` → em>strong.
  * - Underscore boundaries are Unicode letter/number aware so `英雄_斧王_编号` stays intact.
  * - Longer asterisk runs partition by opener/closer context (`****x****`, `***x***`, asymmetric `***a** b*`).
+ * - Unequal leftover opener/closer runs do not force a last-two bold close (`****important***` stays literal while streaming).
+ * - Triple-opener closer-order lookahead caches failed-to-EOF probes (`***a ` streams stay near-linear).
  * - Incomplete triple openers stay literal while streaming (`Use ***Warning:**`); do not bold-fallback.
  * - Triple openers partition by closer order (`***foo* bar**` bold-outer; `***foo** bar*` italic-outer).
  * - Rejected asterisk runs in bold closer scans are skipped atomically (`Use **BKB ****`).
