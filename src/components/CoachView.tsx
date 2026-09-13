@@ -128,7 +128,14 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     // enemy first must not flip mySide to the opposing side.
     const emptyBefore = !draftHasHeroes(draft) && !practiceHero;
     if (draft[selectionSide].length >= 5) return;
-    setDraft(prev => ({ ...prev, [selectionSide]: [...prev[selectionSide], hero] }));
+    // Materialize the practice hero alongside a direct ally pick when the ally
+    // board is empty — resolveCoachingLineup only seeds it into an empty board,
+    // so a raw push would drop the practice hero from subsequent analysis.
+    setDraft(prev => (
+      selectionSide === mySide
+        ? acceptHeroOntoDraft(prev, selectionSide, hero, practiceHero)
+        : { ...prev, [selectionSide]: [...prev[selectionSide], hero] }
+    ));
     if (lesson === 'review') {
       // Picker edits made during review are intentional: persist them into the
       // snapshot (guarded against the snapshot board) so leave-review restore
@@ -136,7 +143,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       const board = draftSnapshotRef.current;
       const snapshotPicked = [...board.radiant, ...board.dire].find(h => h.id === hero.id);
       if (!snapshotPicked && board[selectionSide].length < 5) {
-        draftSnapshotRef.current = { ...board, [selectionSide]: [...board[selectionSide], hero] };
+        draftSnapshotRef.current = selectionSide === mySide
+          ? acceptHeroOntoDraft(board, selectionSide, hero, practiceHero)
+          : { ...board, [selectionSide]: [...board[selectionSide], hero] };
       }
     }
     if (emptyBefore && !mySideExplicitRef.current) setMySide(selectionSide);
@@ -147,7 +156,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     contextRevisionRef.current = nextRevision;
     setContextRevision(nextRevision);
     setMessages((prev) => clearStaleSuggestionsForRevision(prev, nextRevision));
-  }, [draft, selectionSide, lesson, practiceHero, contextRevision, cancelStream]);
+  }, [draft, selectionSide, lesson, practiceHero, mySide, contextRevision, cancelStream]);
 
   const addCoachMessage = useCallback((message: Omit<CoachMessage, 'id'>) => {
     const id = generateMessageId();
@@ -292,6 +301,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       setDraft(switched.draft);
     }
     if (switched.leavingReview) {
+      // Cancel the active stream BEFORE the revision bump — otherwise stream
+      // callbacks started in review reject every update against the new revision
+      // and finishStream without clearing isStreaming, wedging the composer busy.
+      cancelStream();
       // Sync bump so handleLessonAction streams started in this turn stamp the new revision.
       const nextRevision = contextRevisionRef.current + 1;
       contextRevisionRef.current = nextRevision;
@@ -304,7 +317,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     }
     setLesson(switched.lesson);
     return switched;
-  }, [lesson, draft]);
+  }, [lesson, draft, cancelStream]);
 
   const handleLessonAction = useCallback((lessonMode: LessonMode) => {
     const switched = applyLessonSwitch(lessonMode);
@@ -523,7 +536,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     setIsLoading(true);
     const taskId = claimCoachInflightGeneration(inflightTaskRef);
     addCoachMessage({ type: 'user', action: 'meta', content: lang === 'zh' ? '当前版本哪些英雄强势？' : 'Which heroes are strong this patch?' });
-    const msgId = addCoachMessage({ type: 'coach', action: 'meta', content: '', isStreaming: true, allySide: mySide, contextRevision });
+    // Meta is not side-specific: omit request-time allySide so acceptHeroOntoDraft
+    // resolves to the current mySide (`allySide ?? mySide`) even after a side flip.
+    const msgId = addCoachMessage({ type: 'coach', action: 'meta', content: '', isStreaming: true, contextRevision });
     try {
       const data = await awaitWithTimeout(fetchTierList(lang, undefined, 12), META_FETCH_TIMEOUT_MS);
       if (inflightTaskRef.current !== taskId) return;
@@ -544,7 +559,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         setIsLoading(false);
       }
     }
-  }, [lang, mySide, contextRevision, addCoachMessage, updateCoachMessage, cancelStream]);
+  }, [lang, contextRevision, addCoachMessage, updateCoachMessage, cancelStream]);
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();

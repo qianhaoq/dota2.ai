@@ -159,6 +159,33 @@ describe('CoachView draft-mutation invalidation (Codex P1)', () => {
   });
 });
 
+describe('CoachView practice materialization / leave-review cancel / meta side (Codex P1)', () => {
+  const coachViewPath = join(__dirname, '../components/CoachView.tsx');
+  const content = readFileSync(coachViewPath, 'utf-8');
+
+  it('handleHeroSelect materializes the practice hero on direct ally picks (live + snapshot)', () => {
+    const body = content.match(/const handleHeroSelect = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
+    expect(body).toMatch(/selectionSide === mySide[\s\S]*acceptHeroOntoDraft/);
+    // Both the live-draft updater and the review-snapshot persist path.
+    expect(body.match(/acceptHeroOntoDraft/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // mySide must be a dependency of the callback.
+    expect(content).toMatch(/\[draft, selectionSide, lesson, practiceHero, mySide,/);
+  });
+
+  it('applyLessonSwitch cancels the active stream BEFORE the leave-review revision bump', () => {
+    const body = content.match(/const applyLessonSwitch = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
+    expect(body).toMatch(/leavingReview\) \{\s*[\s\S]*?cancelStream\(\);[\s\S]*?contextRevisionRef\.current = nextRevision/);
+    expect(content).toMatch(/applyLessonSwitch = useCallback\([\s\S]*\}, \[lesson, draft, cancelStream\]\)/);
+  });
+
+  it('meta coach message omits request-time allySide so accept resolves to current mySide', () => {
+    const body = content.match(/const handleMeta = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
+    expect(body).toContain("action: 'meta'");
+    expect(body).not.toMatch(/allySide:\s*mySide/);
+    expect(content).toMatch(/const side = allySide \?\? mySide/);
+  });
+});
+
 describe('HomeModules ally enablement uses resolved lineup (Codex P1)', () => {
   const content = readFileSync(join(__dirname, '../components/coach/HomeModules.tsx'), 'utf-8');
   const intentChipsContent = readFileSync(join(__dirname, '../components/coach/IntentChips.tsx'), 'utf-8');
