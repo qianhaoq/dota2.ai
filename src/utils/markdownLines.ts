@@ -59,22 +59,46 @@ function isWhitespace(ch: string | undefined): boolean {
   return ch !== undefined && /\s/.test(ch);
 }
 
+/**
+ * True when `text[i]` is preceded by an odd number of backslashes
+ * (CommonMark-style escape of that character).
+ */
+function isEscaped(text: string, i: number): boolean {
+  let n = 0;
+  for (let k = i - 1; k >= 0 && text[k] === '\\'; k--) n += 1;
+  return n % 2 === 1;
+}
+
+/** Unescape markdown punctuation escapes in a literal slice. */
+function unescapeMarkdown(s: string): string {
+  return s.replace(/\\([\\`*_{}\[\]()#+\-.!|>])/g, '$1');
+}
+
 /** Bold open: left-flanking — `**` must be followed by a non-whitespace char. */
 function canOpenBold(text: string, i: number): boolean {
+  if (isEscaped(text, i)) return false;
   const next = text[i + 2];
   return next !== undefined && next !== '\n' && !isWhitespace(next);
 }
 
 /**
  * Find closing `**` for bold. Right-flanking (not preceded by whitespace);
- * keeps scanning past invalid candidates. When the closer starts a longer
- * asterisk run (e.g. `***`), close on the LAST two asterisks of the run so
- * leftover stars stay inside the bold span for the nested italic parser.
+ * keeps scanning past invalid candidates.
+ *
+ * Skips the remainder of the OPENING asterisk run so `****x****` does not
+ * close on the opener itself. When the closer starts a longer asterisk run
+ * (e.g. `***` / `****`), close on the LAST two asterisks of the run so
+ * leftover stars stay inside the bold span for nested emphasis.
  */
 function findClosingBold(text: string, start: number): number {
-  for (let j = start; j < text.length - 1; j++) {
+  // Skip remainder of the opening delimiter run (stars still belonging to opener).
+  let j = start;
+  while (j < text.length && text[j] === '*') j += 1;
+
+  for (; j < text.length - 1; j++) {
     if (text[j] === '\n') return -1;
     if (!text.startsWith('**', j)) continue;
+    if (isEscaped(text, j)) continue;
     if (isWhitespace(text[j - 1])) continue; // not right-flanking
     let runEnd = j;
     while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
@@ -97,6 +121,7 @@ function skipBoldSpan(text: string, i: number): number {
 
 /** Asterisk open: left-flanking (not followed by whitespace). */
 function canOpenAsterisk(text: string, i: number): boolean {
+  if (isEscaped(text, i)) return false;
   const next = text[i + 1];
   return next !== undefined && next !== '\n' && !isWhitespace(next);
 }
@@ -108,13 +133,17 @@ function canOpenAsterisk(text: string, i: number): boolean {
 function findClosingAsterisk(text: string, start: number): number {
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return -1;
-    if (text.startsWith('**', j)) {
+    if (text.startsWith('**', j) && !isEscaped(text, j)) {
       const after = skipBoldSpan(text, j);
-      if (after === -1) return -1;
+      if (after === -1) {
+        // Unmatched bold opener: skip both stars so they are not italic closers.
+        j += 1;
+        continue;
+      }
       j = after - 1;
       continue;
     }
-    if (text[j] === '*' && !isWhitespace(text[j - 1])) {
+    if (text[j] === '*' && !isEscaped(text, j) && !isWhitespace(text[j - 1])) {
       return j;
     }
   }
@@ -123,6 +152,7 @@ function findClosingAsterisk(text: string, start: number): number {
 
 /** Underscore open: not after an identifier char, and left-flanking. */
 function canOpenUnderscore(text: string, i: number): boolean {
+  if (isEscaped(text, i)) return false;
   if (isIdentChar(text[i - 1])) return false;
   const next = text[i + 1];
   return next !== undefined && next !== '\n' && next !== '_' && !isWhitespace(next);
@@ -136,12 +166,22 @@ function findClosingUnderscore(text: string, start: number): number {
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return -1;
     if (text[j] === '_') {
+      if (isEscaped(text, j)) continue;
       if (isWhitespace(text[j - 1])) return -1;
       if (isIdentChar(text[j + 1])) return -1;
       // No other `_` between start and j
       if (text.slice(start, j).includes('_')) return -1;
       return j;
     }
+  }
+  return -1;
+}
+
+/** Find closing backtick for an inline code span opened at `open` (`). */
+function findClosingBacktick(text: string, open: number): number {
+  for (let j = open + 1; j < text.length; j++) {
+    if (text[j] === '\n') return -1;
+    if (text[j] === '`' && !isEscaped(text, j)) return j;
   }
   return -1;
 }
@@ -153,11 +193,25 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
 
   const flushLiteral = (end: number) => {
     if (end > literalStart) {
-      nodes.push(createElement(Fragment, { key: nextKey() }, text.slice(literalStart, end)));
+      const raw = text.slice(literalStart, end);
+      nodes.push(createElement(Fragment, { key: nextKey() }, unescapeMarkdown(raw)));
     }
   };
 
   while (i < text.length) {
+    // Inline code spans suppress emphasis parsing inside.
+    if (text[i] === '`' && !isEscaped(text, i)) {
+      const close = findClosingBacktick(text, i);
+      if (close !== -1) {
+        flushLiteral(i);
+        const codeInner = text.slice(i + 1, close);
+        nodes.push(createElement('code', { key: nextKey() }, codeInner));
+        i = close + 1;
+        literalStart = i;
+        continue;
+      }
+    }
+
     // Prefer `**bold**` over single `*`; opener must be left-flanking
     if (text.startsWith('**', i) && canOpenBold(text, i)) {
       const close = findClosingBold(text, i + 2);
@@ -169,6 +223,9 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
         literalStart = i;
         continue;
       }
+      // Unmatched bold opener: consume both stars as literal (do not retry 2nd as italic).
+      i += 2;
+      continue;
     }
 
     if (text[i] === '*' && !text.startsWith('**', i) && canOpenAsterisk(text, i)) {
@@ -199,17 +256,20 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
   }
 
   flushLiteral(text.length);
-  return nodes.length > 0 ? nodes : [text];
+  return nodes.length > 0 ? nodes : [unescapeMarkdown(text)];
 }
 
 /**
- * Render inline markdown (`**bold**`, `*italic*`, `_italic_`) as React nodes.
+ * Render inline markdown (`**bold**`, `*italic*`, `_italic_`, `` `code` ``) as React nodes.
  * Does not use dangerouslySetInnerHTML.
  *
  * - Asterisk emphasis requires flanking (no open/close next to whitespace) so
  *   `damage * 1.5 * armor` stays literal.
  * - Nested spans keep delimiter context so `*after **BKB** expires*` → em>strong.
  * - Underscore boundaries are Unicode letter/number aware so `英雄_斧王_编号` stays intact.
+ * - Longer asterisk runs partition by opener/closer context (`****x****`, `***x***`).
+ * - Backslash-escaped delimiters stay literal; unmatched `**` openers are not retried as italic.
+ * - Backtick code spans are protected from emphasis parsing.
  */
 export function renderInlineMarkdown(text: string): ReactNode[] {
   let key = 0;

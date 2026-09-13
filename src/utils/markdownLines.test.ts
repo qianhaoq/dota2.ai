@@ -176,4 +176,33 @@ describe('MarkdownBody inline bold', () => {
     expect(html).toContain('英雄_斧王_编号');
     expect(html).not.toContain('<em>');
   });
+
+  it('partitions four-star runs as nested strong without empty spans', () => {
+    const html = render('This is ****important**** now');
+    expect(html).toMatch(/<strong[^>]*>[\s\S]*important[\s\S]*<\/strong>/);
+    expect(html).not.toMatch(/<strong[^>]*>\s*<\/strong>/);
+    expect(html).not.toContain('****');
+    expect(html).toContain('important');
+  });
+
+  it('preserves backslash-escaped emphasis delimiters as literal stars', () => {
+    const html = render('Use \\*slow\\* literally');
+    expect(html).toContain('*slow*');
+    expect(html).not.toContain('<em>');
+    expect(html).not.toContain('\\*');
+  });
+
+  it('keeps unmatched bold openers literal instead of italicizing', () => {
+    const html = render('Use **BKB*');
+    expect(html).toContain('**BKB*');
+    expect(html).not.toContain('<em>');
+    expect(html).not.toContain('<strong>');
+  });
+
+  it('protects inline code spans from emphasis parsing', () => {
+    const html = render('`damage*armor*scale`');
+    expect(html).toContain('damage*armor*scale');
+    expect(html).not.toContain('<em>');
+    expect(html).toMatch(/<code[^>]*>damage\*armor\*scale<\/code>/);
+  });
 });
