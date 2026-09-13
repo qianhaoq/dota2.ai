@@ -228,7 +228,22 @@ describe('MarkdownBody inline bold', () => {
   it('matches multi-backtick code spans by delimiter run length', () => {
     const html = render('Use `` `foo` `` literally');
     expect((html.match(/<code\b/g) || []).length).toBe(1);
-    expect(html).toContain('`foo`');
+    // CommonMark strips one leading/trailing space inside equal-length fences.
+    expect(html).toMatch(/<code[^>]*>`foo`<\/code>/);
+  });
+
+  it('continues past non-closing intraword underscores for emphasis', () => {
+    const html = render('play _very_good_ here');
+    expect(html).toContain('<em>very_good</em>');
+    expect(html).not.toContain('_very_good_');
+    expect(html).not.toMatch(/_<em>/);
+    expect(html).not.toMatch(/<\/em>_/);
+  });
+
+  it('does not strip all-space code span content', () => {
+    const html = render('x ``  `` y');
+    expect((html.match(/<code\b/g) || []).length).toBe(1);
+    expect(html).toMatch(/<code[^>]*>  <\/code>/);
   });
 
   it('parses asymmetric triple-star nesting as italic wrapping bold', () => {

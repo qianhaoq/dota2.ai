@@ -182,18 +182,18 @@ function canOpenUnderscore(text: string, i: number): boolean {
 }
 
 /**
- * Find closing `_`. Right-flanking, not before an identifier char.
- * Interior must not contain `_` (same as prior `[^_\n]+` behavior).
+ * Find closing `_`. Right-flanking: not preceded by whitespace and not
+ * followed by an identifier char. Underscores that cannot close (escaped,
+ * whitespace-preceded, or ident-followed) are treated as literal and the
+ * scan continues for a later valid closer, so `_very_good_` works.
  */
 function findClosingUnderscore(text: string, start: number): number {
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return -1;
     if (text[j] === '_') {
       if (isEscaped(text, j)) continue;
-      if (isWhitespace(text[j - 1])) return -1;
-      if (isIdentChar(text[j + 1])) return -1;
-      // No other `_` between start and j
-      if (text.slice(start, j).includes('_')) return -1;
+      if (isWhitespace(text[j - 1])) continue; // not right-flanking
+      if (isIdentChar(text[j + 1])) continue; // ident-followed stays literal
       return j;
     }
   }
@@ -243,6 +243,18 @@ function skipCodeSpan(text: string, i: number): number {
   return close + backtickRunLength(text, i);
 }
 
+/**
+ * CommonMark code-span content normalization: if the content both begins and
+ * ends with a space (U+0020) and is not all spaces, strip one leading and one
+ * trailing space so `` `foo` `` padding yields exactly `foo` with backticks.
+ */
+function normalizeCodeSpanContent(s: string): string {
+  if (s.length >= 2 && s.startsWith(' ') && s.endsWith(' ') && /[^ ]/.test(s)) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
 function parseInline(text: string, nextKey: () => string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let i = 0;
@@ -262,7 +274,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
       if (close !== -1) {
         flushLiteral(i);
         const ticks = backtickRunLength(text, i);
-        const codeInner = text.slice(i + ticks, close);
+        const codeInner = normalizeCodeSpanContent(text.slice(i + ticks, close));
         nodes.push(createElement('code', { key: nextKey() }, codeInner));
         i = close + ticks;
         literalStart = i;
