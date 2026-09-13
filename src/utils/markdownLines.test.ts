@@ -230,4 +230,22 @@ describe('MarkdownBody inline bold', () => {
     expect((html.match(/<code\b/g) || []).length).toBe(1);
     expect(html).toContain('`foo`');
   });
+
+  it('parses asymmetric triple-star nesting as italic wrapping bold', () => {
+    const html = render('***Warning:** buy BKB*');
+    expect(html).toMatch(
+      /<em[^>]*>[\s\S]*<strong[^>]*>Warning:<\/strong>[\s\S]*buy BKB[\s\S]*<\/em>/,
+    );
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect((html.match(/<strong\b/g) || []).length).toBe(1);
+    expect(html).not.toContain('*Warning');
+    expect(html).not.toContain('BKB*');
+  });
+
+  it('keeps a backslash before the closing backtick inside code spans', () => {
+    const html = render('`C:\\`');
+    expect((html.match(/<code\b/g) || []).length).toBe(1);
+    expect(html).toContain('<code>C:\\</code>');
+    expect(html).not.toMatch(/<code>C:<\/code>/);
+  });
 });

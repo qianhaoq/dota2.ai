@@ -86,13 +86,14 @@ function canOpenBold(text: string, i: number): boolean {
  * keeps scanning past invalid candidates.
  *
  * Skips the remainder of the OPENING asterisk run so `****x****` does not
- * close on the opener itself. When the closer starts a longer asterisk run
- * (e.g. `***` / `****`), close on the LAST two asterisks of the run so
- * leftover stars stay inside the bold span for nested emphasis.
+ * close on the opener itself. Closing runs are partitioned by opener context:
+ * leftover opener stars → last two of the closer (nested inside); clean `**`
+ * opener → first two (trailing stars left for an outer italic closer).
  */
 function findClosingBold(text: string, start: number): number {
   // Skip remainder of the opening delimiter run (stars still belonging to opener).
   let j = start;
+  const hadOpenerRemainder = j < text.length && text[j] === '*';
   while (j < text.length && text[j] === '*') j += 1;
 
   for (; j < text.length - 1; j++) {
@@ -110,7 +111,13 @@ function findClosingBold(text: string, start: number): number {
     if (isWhitespace(text[j - 1])) continue; // not right-flanking
     let runEnd = j;
     while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
-    return runEnd - 2; // last two of the run
+    const runLen = runEnd - j;
+    // Opener leftover → close on last two so nested stars stay inside (****x****).
+    // Clean ** opener → close on first two so trailing stars can close outer em.
+    if (hadOpenerRemainder || runLen === 2) {
+      return runEnd - 2;
+    }
+    return j;
   }
   return -1;
 }
@@ -193,6 +200,13 @@ function findClosingUnderscore(text: string, start: number): number {
   return -1;
 }
 
+/** Length of the asterisk run starting at `i` (`text[i]` is `*`). */
+function asteriskRunLength(text: string, i: number): number {
+  let n = 0;
+  while (text[i + n] === '*') n += 1;
+  return n;
+}
+
 /** Length of the backtick run starting at `i` (`text[i]` is a backtick). */
 function backtickRunLength(text: string, i: number): number {
   let n = 0;
@@ -210,7 +224,8 @@ function findClosingBacktick(text: string, open: number): number {
   const n = backtickRunLength(text, open);
   for (let j = open + n; j < text.length; j++) {
     if (text[j] === '\n') return -1;
-    if (text[j] !== '`' || isEscaped(text, j)) continue;
+    // Inside code spans backslashes are literal — do not treat \` as escaped.
+    if (text[j] !== '`') continue;
     const run = backtickRunLength(text, j);
     if (run === n) return j;
     j += run - 1; // skip runs of the wrong length
@@ -252,6 +267,24 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
         i = close + ticks;
         literalStart = i;
         continue;
+      }
+    }
+
+    // Triple+ asterisk runs: prefer italic-outer (CommonMark), so
+    // `***Warning:** buy BKB*` → <em><strong>Warning:</strong> buy BKB</em>
+    // rather than bold consuming the first two stars and leaving a stray `*`.
+    if (text[i] === '*' && !isEscaped(text, i)) {
+      const runLen = asteriskRunLength(text, i);
+      if (runLen >= 3 && canOpenAsterisk(text, i)) {
+        const close = findClosingAsterisk(text, i + 1);
+        if (close !== -1 && close > i + 1) {
+          flushLiteral(i);
+          const inner = text.slice(i + 1, close);
+          nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey)));
+          i = close + 1;
+          literalStart = i;
+          continue;
+        }
       }
     }
 
@@ -310,7 +343,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
  *   `damage * 1.5 * armor` stays literal.
  * - Nested spans keep delimiter context so `*after **BKB** expires*` → em>strong.
  * - Underscore boundaries are Unicode letter/number aware so `英雄_斧王_编号` stays intact.
- * - Longer asterisk runs partition by opener/closer context (`****x****`, `***x***`).
+ * - Longer asterisk runs partition by opener/closer context (`****x****`, `***x***`, asymmetric `***a** b*`).
  * - Backslash-escaped delimiters stay literal; unmatched `**` openers are not retried as italic.
  * - Backtick code spans are protected from emphasis parsing.
  */
