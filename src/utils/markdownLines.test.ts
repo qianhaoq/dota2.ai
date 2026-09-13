@@ -471,4 +471,38 @@ describe('MarkdownBody inline bold', () => {
     // Must not close mid-run into `BKB *</strong>*`.
     expect(html).not.toMatch(/BKB \*<\/strong>/);
   });
+
+  it('partitions triple openers as bold-outer when the one-star closer comes first', () => {
+    // Opposite of `***foo** bar*` / `***Warning:** buy BKB*` (italic-outer).
+    const html = render('x ***foo* bar** y');
+    expect(html).toMatch(
+      /<strong[^>]*>[\s\S]*<em[^>]*>foo<\/em>[\s\S]*bar[\s\S]*<\/strong>/,
+    );
+    expect((html.match(/<strong\b/g) || []).length).toBe(1);
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect(html).not.toContain('***');
+    expect(html).not.toContain('*foo');
+    expect(html).not.toContain('bar**');
+    // Must not leave the whole sequence literal.
+    expect(html).not.toContain('***foo* bar**');
+  });
+
+  it('keeps rule-of-three both-flanking bold pairs literal', () => {
+    // Opener ** (2) + closer **** (4) = 6, both-flanking, neither multiple of 3.
+    const html = render('a**b****c');
+    expect(html).toContain('a**b****c');
+    expect(html).not.toContain('<strong>');
+    expect(html).not.toContain('<em>');
+    expect(html).not.toMatch(/a<strong[^>]*>b<\/strong>/);
+  });
+
+  it('does not reuse outer bold-search failures for a later inner opener', () => {
+    // Outer `**` has no closer; inner `**b**` must still render strong.
+    const html = render('**a **b** ****');
+    expect(html).toMatch(/\*\*a <strong[^>]*>b<\/strong> \*\*\*\*/);
+    expect((html.match(/<strong\b/g) || []).length).toBe(1);
+    expect(html).not.toContain('<em>');
+    // Must not leave the valid inner span literal.
+    expect(html).not.toContain('**b**');
+  });
 });
