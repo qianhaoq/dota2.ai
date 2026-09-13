@@ -59,20 +59,40 @@ function isWhitespace(ch: string | undefined): boolean {
   return ch !== undefined && /\s/.test(ch);
 }
 
-/** Skip a `**…**` span starting at `i` (`text[i]` is first `*`). Returns index after close, or -1. */
-function skipBoldSpan(text: string, i: number): number {
-  if (!text.startsWith('**', i)) return -1;
-  const close = text.indexOf('**', i + 2);
-  if (close === -1 || text.slice(i + 2, close).includes('\n')) return -1;
-  return close + 2;
+/** Bold open: left-flanking — `**` must be followed by a non-whitespace char. */
+function canOpenBold(text: string, i: number): boolean {
+  const next = text[i + 2];
+  return next !== undefined && next !== '\n' && !isWhitespace(next);
 }
 
+/**
+ * Find closing `**` for bold. Right-flanking (not preceded by whitespace);
+ * keeps scanning past invalid candidates. When the closer starts a longer
+ * asterisk run (e.g. `***`), close on the LAST two asterisks of the run so
+ * leftover stars stay inside the bold span for the nested italic parser.
+ */
 function findClosingBold(text: string, start: number): number {
   for (let j = start; j < text.length - 1; j++) {
     if (text[j] === '\n') return -1;
-    if (text.startsWith('**', j)) return j;
+    if (!text.startsWith('**', j)) continue;
+    if (isWhitespace(text[j - 1])) continue; // not right-flanking
+    let runEnd = j;
+    while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
+    return runEnd - 2; // last two of the run
   }
   return -1;
+}
+
+/**
+ * Skip a valid flanked `**…**` span starting at `i` (`text[i]` is first `*`).
+ * Returns index after close, or -1.
+ */
+function skipBoldSpan(text: string, i: number): number {
+  if (!text.startsWith('**', i)) return -1;
+  if (!canOpenBold(text, i)) return -1;
+  const close = findClosingBold(text, i + 2);
+  if (close === -1) return -1;
+  return close + 2;
 }
 
 /** Asterisk open: left-flanking (not followed by whitespace). */
@@ -138,8 +158,8 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
   };
 
   while (i < text.length) {
-    // Prefer `**bold**` over single `*`
-    if (text.startsWith('**', i)) {
+    // Prefer `**bold**` over single `*`; opener must be left-flanking
+    if (text.startsWith('**', i) && canOpenBold(text, i)) {
       const close = findClosingBold(text, i + 2);
       if (close !== -1) {
         flushLiteral(i);

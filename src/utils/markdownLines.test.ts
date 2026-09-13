@@ -155,6 +155,22 @@ describe('MarkdownBody inline bold', () => {
     expect(html).not.toContain('expires*');
   });
 
+  it('renders triple-asterisk runs as nested strong+em with no leaked stars', () => {
+    const html = render('This is ***important*** now');
+    expect(html).toMatch(
+      /<strong[^>]*><em[^>]*>important<\/em><\/strong>|<em[^>]*><strong[^>]*>important<\/strong><\/em>/,
+    );
+    expect(html).not.toContain('**');
+    expect(html).not.toContain('*important');
+    expect(html).not.toContain('important*');
+  });
+
+  it('keeps spaced double-asterisk operators literal', () => {
+    const html = render('damage ** 2 ** armor');
+    expect(html).toContain('damage ** 2 ** armor');
+    expect(html).not.toContain('<strong>');
+  });
+
   it('preserves Chinese underscore identifiers with Unicode letter boundaries', () => {
     const html = render('查看 英雄_斧王_编号 即可');
     expect(html).toContain('英雄_斧王_编号');
