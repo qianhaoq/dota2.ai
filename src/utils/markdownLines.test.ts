@@ -367,4 +367,16 @@ describe('MarkdownBody inline bold', () => {
     expect(html).not.toContain('<code>');
     expect(html).toContain('```foo``');
   });
+
+  it('consumes unmatched backtick runs while searching for italic closers', () => {
+    // 3-tick opener has no 3-tick closer; must not retry the 2-tick suffix as a
+    // code span and skip the real `*` closer after b.
+    const html = render('*a ```b*`` c*');
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect(html).toMatch(/<em[^>]*>a ```b<\/em>/);
+    expect(html).toContain('`` c*');
+    expect(html).not.toContain('<code>');
+    // Must not italicize through to the final star.
+    expect(html).not.toMatch(/<em[^>]*>a ```b\*`` c<\/em>/);
+  });
 });

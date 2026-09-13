@@ -119,11 +119,9 @@ function hasUnmatchedItalicBefore(
   let k = from;
   while (k < closerAt) {
     if (text[k] === '`' && !isEscaped(text, k)) {
-      const after = skipCodeSpan(text, k);
-      if (after !== -1) {
-        k = Math.min(after, closerAt);
-        continue;
-      }
+      // Matched span or unmatched opener run — never advance one tick at a time.
+      k = Math.min(skipCodeSpanOrUnmatchedOpener(text, k), closerAt);
+      continue;
     }
     if (text.startsWith('**', k) && !isEscaped(text, k)) {
       const after = skipBoldSpan(text, k, caches);
@@ -161,11 +159,9 @@ function findClosingAsteriskBounded(
   for (let j = start; j < bound; j++) {
     if (text[j] === '\n') return -1;
     if (text[j] === '`' && !isEscaped(text, j)) {
-      const after = skipCodeSpan(text, j);
-      if (after !== -1) {
-        j = after - 1;
-        continue;
-      }
+      // Matched span: skip it. Unmatched opener: consume whole run atomically.
+      j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
+      continue;
     }
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
       // Transition `***…`: close italic on first star before skipBoldSpan.
@@ -204,11 +200,9 @@ function hasBoldCloserAtOrAfter(text: string, start: number): boolean {
   for (let j = start; j < text.length - 1; j++) {
     if (text[j] === '\n') return false;
     if (text[j] === '`' && !isEscaped(text, j)) {
-      const after = skipCodeSpan(text, j);
-      if (after !== -1) {
-        j = after - 1;
-        continue;
-      }
+      // Matched span: skip it. Unmatched opener: consume whole run atomically.
+      j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
+      continue;
     }
     if (
       text.startsWith('**', j) &&
@@ -258,11 +252,9 @@ function findClosingBold(
     if (text[j] === '\n') return -1; // do not cache — line-local; closer may exist after
     if (text[j] === '`' && !isEscaped(text, j)) {
       // Delimiters inside a code span are not emphasis closers.
-      const after = skipCodeSpan(text, j);
-      if (after !== -1) {
-        j = after - 1;
-        continue;
-      }
+      // Unmatched opener: consume whole run so a shorter suffix cannot rematch.
+      j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
+      continue;
     }
     if (!text.startsWith('**', j)) continue;
     if (isEscaped(text, j)) continue;
@@ -340,11 +332,9 @@ function findClosingAsterisk(
     if (text[j] === '\n') return -1; // do not cache — line-local
     if (text[j] === '`' && !isEscaped(text, j)) {
       // Delimiters inside a code span are not emphasis closers.
-      const after = skipCodeSpan(text, j);
-      if (after !== -1) {
-        j = after - 1;
-        continue;
-      }
+      // Unmatched opener: consume whole run so a shorter suffix cannot rematch.
+      j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
+      continue;
     }
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
       // Transition run `***…` (e.g. `*italic***bold**`): first star closes
@@ -402,11 +392,9 @@ function findClosingUnderscore(
     if (text[j] === '\n') return -1; // do not cache — line-local
     if (text[j] === '`' && !isEscaped(text, j)) {
       // Delimiters inside a code span are not emphasis closers.
-      const after = skipCodeSpan(text, j);
-      if (after !== -1) {
-        j = after - 1;
-        continue;
-      }
+      // Unmatched opener: consume whole run so a shorter suffix cannot rematch.
+      j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
+      continue;
     }
     if (text[j] === '_') {
       if (isEscaped(text, j)) continue;
@@ -460,6 +448,18 @@ function skipCodeSpan(text: string, i: number): number {
   const close = findClosingBacktick(text, i);
   if (close === -1) return -1;
   return close + backtickRunLength(text, i);
+}
+
+/**
+ * During closer scans: skip a matched code span, or atomically consume an
+ * unmatched opener run so a shorter backtick suffix cannot rematch
+ * (same idea as parseInline's unmatched-opener fallback).
+ * Returns the index after the skipped region.
+ */
+function skipCodeSpanOrUnmatchedOpener(text: string, i: number): number {
+  const after = skipCodeSpan(text, i);
+  if (after !== -1) return after;
+  return i + backtickRunLength(text, i);
 }
 
 /**
@@ -597,6 +597,7 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * - Transition `***` between italic and bold partitions before skipBoldSpan (`*italic***bold**`).
  * - Recursive inline parse is depth-capped (`MAX_INLINE_NEST`) so long `*`.repeat runs never stack-overflow.
  * - Unmatched multi-backtick openers consume the whole opener run as literal (no shorter rematch).
+ * - Closer scans that skip code spans also consume unmatched backtick runs atomically.
  */
 export function renderInlineMarkdown(text: string): ReactNode[] {
   let key = 0;
