@@ -125,12 +125,16 @@ function reviewInsightBlocks(message: CoachMessage, lang: Language): A2UIBlock[]
   }
 
   if (cards.key_moments && cards.key_moments.length > 0) {
+    const cappedMoments = {
+      ...cards,
+      key_moments: cards.key_moments.slice(0, 3),
+    };
     blocks.push({
       id: `${message.id}-ri-moments`,
       type: 'reviewInsight',
       title: lang === 'zh' ? '关键节点' : 'Key moments',
       reviewCardKind: 'key_moments',
-      reviewCards: cards,
+      reviewCards: cappedMoments,
     });
   }
 
@@ -145,12 +149,17 @@ function reviewInsightBlocks(message: CoachMessage, lang: Language): A2UIBlock[]
   }
 
   if (cards.followups && cards.followups.length > 0 && !message.isStreaming) {
+    const capped = {
+      ...cards,
+      // Prefer ≤3 action chips over question spam (V3: cards + 关键点).
+      followups: cards.followups.slice(0, 3),
+    };
     blocks.push({
       id: `${message.id}-ri-followups`,
       type: 'reviewInsight',
-      title: lang === 'zh' ? '继续问拉比克' : 'Ask Rubick',
+      title: lang === 'zh' ? '下一步动作' : 'Next actions',
       reviewCardKind: 'followups',
-      reviewCards: cards,
+      reviewCards: capped,
     });
   }
 

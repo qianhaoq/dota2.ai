@@ -75,7 +75,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     surfaceTitle: lang === 'zh' ? '复盘工作区' : 'Review workspace',
     dismiss: lang === 'zh' ? '收起复盘' : 'Dismiss review',
     askThis: lang === 'zh' ? '追问这场' : 'Ask about this match',
-    followups: lang === 'zh' ? '继续问拉比克' : 'Ask Rubick',
+    followups: lang === 'zh' ? '下一步动作' : 'Next actions',
     grounded: lang === 'zh' ? '基于 OpenDota 数据' : 'Grounded in OpenDota',
     groundedShort: lang === 'zh' ? '数据' : 'Data',
     ungrounded: lang === 'zh' ? '判断，数据未验证' : 'Judgment, unverified',
