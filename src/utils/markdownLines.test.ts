@@ -160,6 +160,20 @@ describe('MarkdownBody inline bold', () => {
     expect(html).not.toContain('<em>');
   });
 
+  it('keeps compact parenthesized * operators literal (punctuation flanking)', () => {
+    const html = render('damage*(crit)*armor');
+    expect(html).toContain('damage*(crit)*armor');
+    expect(html).not.toContain('<em>');
+    expect(html).not.toContain('<strong>');
+  });
+
+  it('keeps compact parenthesized ** operators literal (punctuation flanking)', () => {
+    const html = render('damage**(crit)**armor');
+    expect(html).toContain('damage**(crit)**armor');
+    expect(html).not.toContain('<em>');
+    expect(html).not.toContain('<strong>');
+  });
+
   it('preserves italic containers around bold spans', () => {
     const html = render('Move *after **BKB** expires*');
     expect(html).toMatch(/<em[^>]*>[\s\S]*<strong[^>]*>BKB<\/strong>[\s\S]*<\/em>/);

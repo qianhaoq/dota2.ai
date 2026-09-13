@@ -60,6 +60,62 @@ function isWhitespace(ch: string | undefined): boolean {
 }
 
 /**
+ * CommonMark punctuation for flanking: Unicode P* categories plus the ASCII
+ * punctuation set (includes backtick, which is Symbol not Punctuation).
+ */
+function isPunctuation(ch: string | undefined): boolean {
+  if (!ch) return false;
+  if (/[!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]/.test(ch)) return true;
+  return /\p{P}/u.test(ch);
+}
+
+/**
+ * Start/end of string count as whitespace for CommonMark flanking checks
+ * so `*(foo)*` / `**(x)**` still open at the boundary.
+ */
+function isFlankWhitespace(ch: string | undefined): boolean {
+  return ch === undefined || isWhitespace(ch);
+}
+
+/**
+ * Left-flanking delimiter run of `runLen` markers starting at `i` (CommonMark):
+ * not followed by whitespace, and either not followed by punctuation, or
+ * followed by punctuation and preceded by whitespace or punctuation.
+ * (Opener followed by `(` cannot open when preceded by a letter.)
+ */
+function isLeftFlankingRun(text: string, i: number, runLen: number): boolean {
+  const preceded = text[i - 1];
+  const followed = text[i + runLen];
+  if (isFlankWhitespace(followed)) return false;
+  if (!isPunctuation(followed)) return true;
+  return isFlankWhitespace(preceded) || isPunctuation(preceded);
+}
+
+/**
+ * Right-flanking delimiter run of `runLen` markers starting at `i` (CommonMark):
+ * not preceded by whitespace, and either not preceded by punctuation, or
+ * preceded by punctuation and followed by whitespace or punctuation.
+ * (Closer preceded by `)` cannot close when followed by a letter.)
+ */
+function isRightFlankingRun(text: string, i: number, runLen: number): boolean {
+  const preceded = text[i - 1];
+  const followed = text[i + runLen];
+  if (isFlankWhitespace(preceded)) return false;
+  if (!isPunctuation(preceded)) return true;
+  return isFlankWhitespace(followed) || isPunctuation(followed);
+}
+
+/** Asterisk run can open emphasis/strong when left-flanking. */
+function canOpenAsteriskRun(text: string, i: number, runLen: number): boolean {
+  return runLen >= 1 && isLeftFlankingRun(text, i, runLen);
+}
+
+/** Asterisk run can close emphasis/strong when right-flanking. */
+function canCloseAsteriskRun(text: string, i: number, runLen: number): boolean {
+  return runLen >= 1 && isRightFlankingRun(text, i, runLen);
+}
+
+/**
  * True when `text[i]` is preceded by an odd number of backslashes
  * (CommonMark-style escape of that character).
  */
@@ -74,11 +130,13 @@ function unescapeMarkdown(s: string): string {
   return s.replace(/\\([\\`*_{}\[\]()#+\-.!|>])/g, '$1');
 }
 
-/** Bold open: left-flanking — `**` must be followed by a non-whitespace char. */
+/** Bold open: left-flanking `**` run (punctuation-aware CommonMark flanking). */
 function canOpenBold(text: string, i: number): boolean {
   if (isEscaped(text, i)) return false;
-  const next = text[i + 2];
-  return next !== undefined && next !== '\n' && !isWhitespace(next);
+  if (!text.startsWith('**', i)) return false;
+  const runLen = asteriskRunLength(text, i);
+  if (runLen < 2) return false;
+  return canOpenAsteriskRun(text, i, runLen);
 }
 
 /** Per-parse cache: once a closer search fails through EOF from `start`, later searches from >= start also fail. */
@@ -114,7 +172,11 @@ function hasUnmatchedItalicBefore(
   caches?: EmphasisCaches,
 ): boolean {
   if (closerAt <= from) return false;
-  if (isWhitespace(text[closerAt - 1])) return false; // not a valid italic closer
+  // closerAt is the first star of a right-flanking run (may be shared ***).
+  {
+    const closerRun = asteriskRunLength(text, closerAt);
+    if (!canCloseAsteriskRun(text, closerAt, closerRun)) return false;
+  }
 
   let k = from;
   while (k < closerAt) {
@@ -165,12 +227,11 @@ function findClosingAsteriskBounded(
     }
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
       // Transition `***…`: close italic on first star before skipBoldSpan.
-      if (!isWhitespace(text[j - 1])) {
-        let runEnd = j;
-        while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
-        if (runEnd - j >= 3 && j < bound) {
-          return j;
-        }
+      let runEnd = j;
+      while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
+      const runLen = runEnd - j;
+      if (runLen >= 3 && j < bound && canCloseAsteriskRun(text, j, runLen)) {
+        return j;
       }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
@@ -181,8 +242,11 @@ function findClosingAsteriskBounded(
       j = after - 1;
       continue;
     }
-    if (text[j] === '*' && !isEscaped(text, j) && !isWhitespace(text[j - 1])) {
-      return j;
+    if (text[j] === '*' && !isEscaped(text, j)) {
+      const runLen = asteriskRunLength(text, j);
+      if (canCloseAsteriskRun(text, j, runLen)) {
+        return j;
+      }
     }
   }
   return -1;
@@ -204,12 +268,11 @@ function hasBoldCloserAtOrAfter(text: string, start: number): boolean {
       j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
       continue;
     }
-    if (
-      text.startsWith('**', j) &&
-      !isEscaped(text, j) &&
-      !isWhitespace(text[j - 1])
-    ) {
-      return true;
+    if (text.startsWith('**', j) && !isEscaped(text, j)) {
+      const runLen = asteriskRunLength(text, j);
+      if (runLen >= 2 && canCloseAsteriskRun(text, j, runLen)) {
+        return true;
+      }
     }
   }
   return false;
@@ -258,10 +321,14 @@ function findClosingBold(
     }
     if (!text.startsWith('**', j)) continue;
     if (isEscaped(text, j)) continue;
-    if (isWhitespace(text[j - 1])) {
-      // Not right-flanking: left-flanking-only `**` is a nested opener.
-      // Skip a complete nested span only when another closer still follows so
-      // we do not steal the sole closer (`**foo **bar baz**`).
+    let runEnd = j;
+    while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
+    const runLen = runEnd - j;
+    if (!canCloseAsteriskRun(text, j, runLen)) {
+      // Not right-flanking (or both-flanking without trailing punct): may be a
+      // left-flanking-only nested opener — skip a complete nested span only when
+      // another closer still follows so we do not steal the sole closer
+      // (`**foo **bar baz**`).
       if (canOpenBold(text, j) && depth < MAX_BOLD_NEST) {
         const afterNested = skipBoldSpan(text, j, caches, depth + 1);
         if (afterNested !== -1 && hasBoldCloserAtOrAfter(text, afterNested)) {
@@ -270,9 +337,6 @@ function findClosingBold(
       }
       continue;
     }
-    let runEnd = j;
-    while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
-    const runLen = runEnd - j;
     // Opener leftover → close on last two so nested stars stay inside (****x****).
     if (hadOpenerRemainder || runLen === 2) {
       return runEnd - 2;
@@ -306,11 +370,11 @@ function skipBoldSpan(
   return close + 2;
 }
 
-/** Asterisk open: left-flanking (not followed by whitespace). */
+/** Asterisk open: left-flanking (punctuation-aware CommonMark flanking). */
 function canOpenAsterisk(text: string, i: number): boolean {
   if (isEscaped(text, i)) return false;
-  const next = text[i + 1];
-  return next !== undefined && next !== '\n' && !isWhitespace(next);
+  const runLen = asteriskRunLength(text, i);
+  return canOpenAsteriskRun(text, i, runLen);
 }
 
 /**
@@ -339,12 +403,11 @@ function findClosingAsterisk(
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
       // Transition run `***…` (e.g. `*italic***bold**`): first star closes
       // italic; remaining open bold. Partition before skipBoldSpan.
-      if (!isWhitespace(text[j - 1])) {
-        let runEnd = j;
-        while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
-        if (runEnd - j >= 3) {
-          return j;
-        }
+      let runEnd = j;
+      while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
+      const runLen = runEnd - j;
+      if (runLen >= 3 && canCloseAsteriskRun(text, j, runLen)) {
+        return j;
       }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
@@ -355,8 +418,11 @@ function findClosingAsterisk(
       j = after - 1;
       continue;
     }
-    if (text[j] === '*' && !isEscaped(text, j) && !isWhitespace(text[j - 1])) {
-      return j;
+    if (text[j] === '*' && !isEscaped(text, j)) {
+      const runLen = asteriskRunLength(text, j);
+      if (canCloseAsteriskRun(text, j, runLen)) {
+        return j;
+      }
     }
   }
   if (cache && start < cache.noCloserFrom) cache.noCloserFrom = start;
@@ -584,8 +650,8 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * Render inline markdown (`**bold**`, `*italic*`, `_italic_`, `` `code` ``) as React nodes.
  * Does not use dangerouslySetInnerHTML.
  *
- * - Asterisk emphasis requires flanking (no open/close next to whitespace) so
- *   `damage * 1.5 * armor` stays literal.
+ * - Asterisk emphasis requires CommonMark flanking (whitespace + punctuation) so
+ *   `damage * 1.5 * armor` and `damage*(crit)*armor` / `damage**(crit)**armor` stay literal.
  * - Nested spans keep delimiter context so `*after **BKB** expires*` → em>strong.
  * - Underscore boundaries are Unicode letter/number aware so `英雄_斧王_编号` stays intact.
  * - Longer asterisk runs partition by opener/closer context (`****x****`, `***x***`, asymmetric `***a** b*`).
