@@ -443,4 +443,32 @@ describe('MarkdownBody inline bold', () => {
     // Must not split into two adjacent emphasis spans.
     expect(html).not.toMatch(/<em[^>]*>foo<\/em><em[^>]*>bar<\/em>/);
   });
+
+  it('keeps incomplete triple-star openers literal during streaming', () => {
+    // Partial prefix of `***Warning:** buy BKB*` — do not bold-fallback.
+    const html = render('Use ***Warning:**');
+    expect(html).toContain('Use ***Warning:**');
+    expect(html).not.toContain('<strong>');
+    expect(html).not.toContain('<em>');
+    // Must not collapse to bold with a leaked star (`*Warning:`).
+    expect(html).not.toMatch(/<strong[^>]*>\*Warning:/);
+  });
+
+  it('still parses complete asymmetric triple nesting after streaming fix', () => {
+    const html = render('***Warning:** buy BKB*');
+    expect(html).toMatch(
+      /<em[^>]*>[\s\S]*<strong[^>]*>Warning:<\/strong>[\s\S]*buy BKB[\s\S]*<\/em>/,
+    );
+    expect(html).not.toContain('*Warning');
+  });
+
+  it('consumes rejected star runs atomically in bold closer scans', () => {
+    // `****` after whitespace is not a closer; must not retry from interior stars.
+    const html = render('Use **BKB ****');
+    expect(html).toContain('Use **BKB ****');
+    expect(html).not.toContain('<strong>');
+    expect(html).not.toContain('<em>');
+    // Must not close mid-run into `BKB *</strong>*`.
+    expect(html).not.toMatch(/BKB \*<\/strong>/);
+  });
 });

@@ -493,8 +493,12 @@ function findClosingBold(
         const afterNested = skipBoldSpan(text, j, caches, depth + 1);
         if (afterNested !== -1 && hasBoldCloserAtOrAfter(text, afterNested)) {
           j = afterNested - 1;
+          continue;
         }
       }
+      // Rejected run: skip atomically so a suffix cannot become artificially
+      // right-flanking (`Use **BKB ****` must stay literal, not close mid-run).
+      j = runEnd - 1;
       continue;
     }
     // Opener leftover → close on last two so nested stars stay inside (****x****).
@@ -840,6 +844,13 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
           literalStart = i;
           continue;
         }
+        // Incomplete triple opener (streaming): keep `***` literal — do not
+        // fall back to bold on the first two stars (`Use ***Warning:**`).
+        // Longer runs (****…) may still open bold below.
+        if (runLen === 3) {
+          i += runLen;
+          continue;
+        }
       }
     }
 
@@ -918,6 +929,8 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * - Nested spans keep delimiter context so `*after **BKB** expires*` → em>strong.
  * - Underscore boundaries are Unicode letter/number aware so `英雄_斧王_编号` stays intact.
  * - Longer asterisk runs partition by opener/closer context (`****x****`, `***x***`, asymmetric `***a** b*`).
+ * - Incomplete triple openers stay literal while streaming (`Use ***Warning:**`); do not bold-fallback.
+ * - Rejected asterisk runs in bold closer scans are skipped atomically (`Use **BKB ****`).
  * - Backslash-escaped delimiters stay literal; unmatched `**` openers are not retried as italic.
  * - Backtick code spans are protected from emphasis parsing (including inside underscore closers).
  * - Unmatched `**` / `*` / `_` openers cache failed closer scans so long streams stay linear-ish.
