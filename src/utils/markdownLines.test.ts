@@ -564,6 +564,35 @@ describe('MarkdownBody inline bold', () => {
     expect(html).not.toContain('重点*');
   });
 
+  it('partitions longer both-flanking ÷3 asterisk runs as strong pairs', () => {
+    // Six markers are three ** pairs — not one em+strong nest (reserved for ***).
+    const html = render('这是******重点******现在');
+    expect(html).toMatch(
+      /<strong[^>]*><strong[^>]*><strong[^>]*>重点<\/strong><\/strong><\/strong>/,
+    );
+    expect(html).not.toContain('<em');
+    expect(html).toContain('这是');
+    expect(html).toContain('现在');
+    expect(html).not.toContain('******');
+    expect(html).not.toContain('*重点');
+    expect(html).not.toContain('重点*');
+  });
+
+  it('caches successful triple-closer lookaheads in near-linear time', () => {
+    // Positive firstRightFlankingAsteriskRunLength hits must be memoized too;
+    // EOF-miss cache alone leaves `'***a '.repeat(N) + 'x*'` quadratic (~2.6s/40k).
+    const text = '***a '.repeat(8000) + 'x*'; // ~40k chars
+    const t0 = Date.now();
+    const html = render(text);
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeLessThan(2000);
+    // Distant single-star closer does not italicize the unmatched ***a openers.
+    expect(html).not.toContain('<em>');
+    expect(html).not.toContain('<strong>');
+    expect(html).toContain('***a');
+    expect(html).toContain('x*');
+  });
+
   it('parses nested ambiguous italic markers in near-linear time', () => {
     // skipAsteriskItalicSpan + hasAsteriskCloserAtOrAfter used to re-explore
     // the suffix for every nesting; ~140 chars took ~2s unfixed.

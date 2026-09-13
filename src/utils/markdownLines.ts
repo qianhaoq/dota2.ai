@@ -120,9 +120,12 @@ function canCloseAsteriskRun(text: string, i: number, runLen: number): boolean {
  * (line-local; skips code spans; rejected runs skipped atomically).
  * 0 if none — used to partition triple openers by closer order.
  *
- * Optional cache: a failed-to-EOF probe from `start` makes later probes from
- * >= start return 0 without rescanning (avoids O(n²) unmatched `***a ` openers).
- * Hits are opener-independent (no rule-of-three / nest context), so safe to memoize.
+ * Optional cache:
+ * - Failed-to-EOF from `start` → later probes from >= start return 0.
+ * - Successful hit at index H with length L → later probes from start' <= H
+ *   reuse L (same first closer; left-to-right parse only advances start).
+ * Both are opener-independent (no rule-of-three / nest context).
+ * Positive hits must be memoized too: `'***a '.repeat(N) + 'x*'` stays near-linear.
  */
 function firstRightFlankingAsteriskRunLength(
   text: string,
@@ -131,6 +134,8 @@ function firstRightFlankingAsteriskRunLength(
 ): number {
   const cache = caches?.firstCloser;
   if (cache && start >= cache.noCloserFrom) return 0;
+  // Known successful closer at-or-after this start (left-to-right probes).
+  if (cache && cache.hitIndex >= start) return cache.hitLen;
 
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return 0; // do not cache — line-local
@@ -140,7 +145,16 @@ function firstRightFlankingAsteriskRunLength(
     }
     if (text[j] === '*' && !isEscaped(text, j)) {
       const runLen = asteriskRunLength(text, j);
-      if (canCloseAsteriskRun(text, j, runLen)) return runLen;
+      if (canCloseAsteriskRun(text, j, runLen)) {
+        if (cache) {
+          // Prefer the leftmost known hit (probes usually advance start).
+          if (cache.hitIndex < 0 || j < cache.hitIndex) {
+            cache.hitIndex = j;
+            cache.hitLen = runLen;
+          }
+        }
+        return runLen;
+      }
       j += runLen - 1;
     }
   }
@@ -182,8 +196,11 @@ interface EmphasisCaches {
   bold: CloserCache;
   asterisk: CloserCache;
   underscore: CloserCache;
-  /** Failed first-right-flanking asterisk-run probes (triple-opener closer order). */
-  firstCloser: CloserCache;
+  /**
+   * First-right-flanking asterisk-run probes (triple-opener closer order).
+   * Negatives: noCloserFrom. Positives: hitIndex/hitLen of the next successful run.
+   */
+  firstCloser: CloserCache & { hitIndex: number; hitLen: number };
   /**
    * Nested closer-existence probes (`has*CloserAtOrAfter`). Negatives use
    * noCloserFrom; positives are per-start hits. Opener-independent → safe.
@@ -205,7 +222,7 @@ function freshEmphasisCaches(): EmphasisCaches {
     bold: { noCloserFrom: Number.POSITIVE_INFINITY },
     asterisk: { noCloserFrom: Number.POSITIVE_INFINITY },
     underscore: { noCloserFrom: Number.POSITIVE_INFINITY },
-    firstCloser: { noCloserFrom: Number.POSITIVE_INFINITY },
+    firstCloser: { noCloserFrom: Number.POSITIVE_INFINITY, hitIndex: -1, hitLen: 0 },
     hasBoldCloser: { noCloserFrom: Number.POSITIVE_INFINITY, hits: new Map() },
     hasAsteriskCloser: { noCloserFrom: Number.POSITIVE_INFINITY, hits: new Map() },
     hasUnderscoreCloser: { noCloserFrom: Number.POSITIVE_INFINITY, hits: new Map() },
@@ -1002,15 +1019,16 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
     // Two-star closer first (`***foo** bar*` / `***Warning:** buy BKB*`) →
     // italic-outer. One-star closer first (`***foo* bar**`) → fall through
     // to bold-outer so leftover `*` stays an inner italic opener.
-    // Both-flanking runs whose lengths are multiples of 3 (`这是***重点***现在`)
-    // search from after the FULL opener run — do not reinterpret leftover
-    // opener stars as nested bold (punctuation flanking breaks that path).
+    // Both-flanking ***…*** only (`这是***重点***现在`) — exact three-star
+    // runs — nest strong+em from after the FULL opener. Longer runs whose
+    // lengths are divisible by three (`这是******重点******现在`) must NOT use
+    // this shortcut: partition the full delimiter length as strong pairs.
     if (text[i] === '*' && !isEscaped(text, i)) {
       const runLen = asteriskRunLength(text, i);
       if (runLen >= 3 && canOpenAsterisk(text, i)) {
         const openerCanBoth = canCloseAsteriskRun(text, i, runLen);
-        // Intraword / both-flanking ***…*** (rule of three allows match).
-        if (openerCanBoth && runLen % 3 === 0) {
+        // Intraword / both-flanking ***…*** only (reserve for actual three-star).
+        if (openerCanBoth && runLen === 3) {
           const close = findClosingAsterisk(
             text,
             i + runLen,
@@ -1023,8 +1041,7 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
             const closerRun = asteriskRunLength(text, close);
             const closerCanBoth = canOpenAsteriskRun(text, close, closerRun);
             if (
-              closerRun >= 3 &&
-              closerRun % 3 === 0 &&
+              closerRun === 3 &&
               canCloseAsteriskRun(text, close, closerRun) &&
               !violatesRuleOfThree(
                 runLen,
@@ -1052,7 +1069,7 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
               continue;
             }
           }
-          // No matching both-flanking %3 closer — fall through to closer-order
+          // No matching both-flanking *** closer — fall through to closer-order
           // partition (e.g. `a***foo* bar**b` → bold-outer).
         }
         const firstCloserLen = firstRightFlankingAsteriskRunLength(
@@ -1175,10 +1192,10 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * - Underscore boundaries are Unicode letter/number aware so `英雄_斧王_编号` stays intact.
  * - Longer asterisk runs partition by opener/closer context (`****x****`, `***x***`, asymmetric `***a** b*`).
  * - Unequal leftover opener/closer runs do not force a last-two bold close (`****important***` stays literal while streaming).
- * - Triple-opener closer-order lookahead caches failed-to-EOF probes (`***a ` streams stay near-linear).
+ * - Triple-opener closer-order lookahead caches EOF misses and successful hits (`***a `…`x*` stays near-linear).
  * - Incomplete triple openers stay literal while streaming (`Use ***Warning:**`); do not bold-fallback.
  * - Triple openers partition by closer order (`***foo* bar**` bold-outer; `***foo** bar*` italic-outer).
- * - Both-flanking triple runs (lengths divisible by 3) nest strong+em without scanning from mid-opener (`这是***重点***现在`).
+ * - Both-flanking exact `***` runs nest strong+em (`这是***重点***现在`); longer ÷3 runs partition as strong pairs (`这是******重点******现在`).
  * - Nested closer probes (`has*CloserAtOrAfter` / successful `skip*Span`) are memoized so `*a *b* `.repeat stays near-linear.
  * - Rejected asterisk runs in bold closer scans are skipped atomically (`Use **BKB ****`).
  * - Rule of three also applies to bold closers (`a**b****c` stays literal).
