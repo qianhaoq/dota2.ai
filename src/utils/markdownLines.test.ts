@@ -283,4 +283,46 @@ describe('MarkdownBody inline bold', () => {
     expect(html).not.toContain('<strong>');
     expect(html).toContain('**a');
   });
+
+  it('parses many unmatched asterisk italic openers in near-linear time', () => {
+    const text = '*a '.repeat(16000); // ~48k chars
+    const t0 = Date.now();
+    const html = render(text);
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeLessThan(500);
+    expect(html).not.toContain('<em>');
+    expect(html).toContain('*a');
+  });
+
+  it('parses many unmatched underscore italic openers in near-linear time', () => {
+    const text = '_a '.repeat(16000); // ~48k chars
+    const t0 = Date.now();
+    const html = render(text);
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeLessThan(500);
+    expect(html).not.toContain('<em>');
+    expect(html).toContain('_a');
+  });
+
+  it('partitions shared *** closer as bold wrapping nested italic', () => {
+    const html = render('x **foo *bar*** y');
+    expect(html).toMatch(
+      /<strong[^>]*>[\s\S]*foo[\s\S]*<em[^>]*>bar<\/em>[\s\S]*<\/strong>/,
+    );
+    expect((html.match(/<strong\b/g) || []).length).toBe(1);
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect(html).not.toContain('*bar');
+    expect(html).not.toContain('bar*');
+    expect(html).not.toContain('**');
+  });
+
+  it('keeps outer italic when bold shares a trailing *** closer', () => {
+    const html = render('x *foo **bar*** y');
+    expect(html).toMatch(
+      /<em[^>]*>[\s\S]*foo[\s\S]*<strong[^>]*>bar<\/strong>[\s\S]*<\/em>/,
+    );
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect((html.match(/<strong\b/g) || []).length).toBe(1);
+    expect(html).not.toContain('**');
+  });
 });
