@@ -127,6 +127,21 @@ describe('MarkdownBody inline bold', () => {
     expect(html).not.toContain('**');
   });
 
+  it('renders nested strong spans: outer bold wraps inner bold', () => {
+    const html = render('**foo **bar** baz**');
+    expect(html).toMatch(
+      /<strong[^>]*>foo <strong[^>]*>bar<\/strong> baz<\/strong>/,
+    );
+    expect((html.match(/<strong\b/g) || []).length).toBe(2);
+    expect(html).not.toContain('**');
+  });
+
+  it('keeps sole closer on outer when nested opener is unmatched', () => {
+    const html = render('**foo **bar baz**');
+    expect(html).toMatch(/<strong[^>]*>foo \*\*bar baz<\/strong>/);
+    expect((html.match(/<strong\b/g) || []).length).toBe(1);
+  });
+
   it('preserves underscores inside snake_case identifiers', () => {
     const html = render('target npc_dota_hero_axe next');
     expect(html).toContain('npc_dota_hero_axe');

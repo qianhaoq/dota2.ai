@@ -184,6 +184,35 @@ function findClosingAsteriskBounded(
   return -1;
 }
 
+
+/** Max nested-strong probes inside findClosingBold (stack + pathological `**a ` streams). */
+const MAX_BOLD_NEST = 32;
+
+/**
+ * True when `[start, EOF)` still contains a right-flanking `**` that could
+ * close an outer bold (skips code spans; does not update closer caches).
+ */
+function hasBoldCloserAtOrAfter(text: string, start: number): boolean {
+  for (let j = start; j < text.length - 1; j++) {
+    if (text[j] === '\n') return false;
+    if (text[j] === '`' && !isEscaped(text, j)) {
+      const after = skipCodeSpan(text, j);
+      if (after !== -1) {
+        j = after - 1;
+        continue;
+      }
+    }
+    if (
+      text.startsWith('**', j) &&
+      !isEscaped(text, j) &&
+      !isWhitespace(text[j - 1])
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Find closing `**` for bold. Right-flanking (not preceded by whitespace);
  * keeps scanning past invalid candidates.
@@ -195,6 +224,11 @@ function findClosingAsteriskBounded(
  * clean `**` with nested unmatched italic → last two (leave first for italic);
  * clean `**` otherwise → first two (trailing stars for an outer italic closer).
  *
+ * Nested strong: a left-flanking-only `**` (whitespace before) is a nested
+ * opener — skip a complete `**…**` span when another closer still follows, so
+ * `**foo **bar** baz**` keeps the outer closer (same idea as skipping code spans).
+ * Nested probes are depth-capped (`MAX_BOLD_NEST`) so unmatched `**` streams stay safe.
+ *
  * Optional cache: a failed-to-EOF search from `start` makes later searches
  * from >= start return -1 without rescanning (avoids O(n²) unmatched `**`).
  */
@@ -202,6 +236,7 @@ function findClosingBold(
   text: string,
   start: number,
   caches?: EmphasisCaches,
+  depth = 0,
 ): number {
   const cache = caches?.bold;
   if (cache && start >= cache.noCloserFrom) return -1;
@@ -223,7 +258,18 @@ function findClosingBold(
     }
     if (!text.startsWith('**', j)) continue;
     if (isEscaped(text, j)) continue;
-    if (isWhitespace(text[j - 1])) continue; // not right-flanking
+    if (isWhitespace(text[j - 1])) {
+      // Not right-flanking: left-flanking-only `**` is a nested opener.
+      // Skip a complete nested span only when another closer still follows so
+      // we do not steal the sole closer (`**foo **bar baz**`).
+      if (canOpenBold(text, j) && depth < MAX_BOLD_NEST) {
+        const afterNested = skipBoldSpan(text, j, caches, depth + 1);
+        if (afterNested !== -1 && hasBoldCloserAtOrAfter(text, afterNested)) {
+          j = afterNested - 1;
+        }
+      }
+      continue;
+    }
     let runEnd = j;
     while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
     const runLen = runEnd - j;
@@ -247,10 +293,15 @@ function findClosingBold(
  * Skip a valid flanked `**…**` span starting at `i` (`text[i]` is first `*`).
  * Returns index after close, or -1.
  */
-function skipBoldSpan(text: string, i: number, caches?: EmphasisCaches): number {
+function skipBoldSpan(
+  text: string,
+  i: number,
+  caches?: EmphasisCaches,
+  depth = 0,
+): number {
   if (!text.startsWith('**', i)) return -1;
   if (!canOpenBold(text, i)) return -1;
-  const close = findClosingBold(text, i + 2, caches);
+  const close = findClosingBold(text, i + 2, caches, depth);
   if (close === -1) return -1;
   return close + 2;
 }
@@ -513,6 +564,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
  * - Backtick code spans are protected from emphasis parsing (including inside underscore closers).
  * - Unmatched `**` / `*` / `_` openers cache failed closer scans so long streams stay linear-ish.
  * - Shared `***` closers partition by nesting (`**foo *bar***` → strong>em; `*foo **bar***` → em>strong).
+ * - Nested strong skips complete inner `**…**` when an outer closer remains (`**foo **bar** baz**`).
  */
 export function renderInlineMarkdown(text: string): ReactNode[] {
   let key = 0;
