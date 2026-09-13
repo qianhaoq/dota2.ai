@@ -263,4 +263,24 @@ describe('MarkdownBody inline bold', () => {
     expect(html).toContain('<code>C:\\</code>');
     expect(html).not.toMatch(/<code>C:<\/code>/);
   });
+
+  it('ignores _ inside code spans while finding the underscore closer', () => {
+    const html = render('_Use `a_b_` safely_');
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect(html).toMatch(
+      /<em[^>]*>[\s\S]*<code[^>]*>a_b_<\/code>[\s\S]*<\/em>/,
+    );
+    expect(html).not.toContain('_Use');
+    expect(html).not.toContain('safely_');
+  });
+
+  it('parses many unmatched bold openers in near-linear time', () => {
+    const text = '**a '.repeat(8000);
+    const t0 = Date.now();
+    const html = render(text);
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeLessThan(500);
+    expect(html).not.toContain('<strong>');
+    expect(html).toContain('**a');
+  });
 });

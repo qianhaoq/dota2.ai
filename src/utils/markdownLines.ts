@@ -81,6 +81,11 @@ function canOpenBold(text: string, i: number): boolean {
   return next !== undefined && next !== '\n' && !isWhitespace(next);
 }
 
+/** Per-parse cache: once a bold closer search fails through EOF from `start`, later searches from >= start also fail. */
+interface BoldCloserCache {
+  noCloserFrom: number;
+}
+
 /**
  * Find closing `**` for bold. Right-flanking (not preceded by whitespace);
  * keeps scanning past invalid candidates.
@@ -89,15 +94,20 @@ function canOpenBold(text: string, i: number): boolean {
  * close on the opener itself. Closing runs are partitioned by opener context:
  * leftover opener stars → last two of the closer (nested inside); clean `**`
  * opener → first two (trailing stars left for an outer italic closer).
+ *
+ * Optional cache: a failed-to-EOF search from `start` makes later searches
+ * from >= start return -1 without rescanning (avoids O(n²) unmatched `**`).
  */
-function findClosingBold(text: string, start: number): number {
+function findClosingBold(text: string, start: number, cache?: BoldCloserCache): number {
+  if (cache && start >= cache.noCloserFrom) return -1;
+
   // Skip remainder of the opening delimiter run (stars still belonging to opener).
   let j = start;
   const hadOpenerRemainder = j < text.length && text[j] === '*';
   while (j < text.length && text[j] === '*') j += 1;
 
   for (; j < text.length - 1; j++) {
-    if (text[j] === '\n') return -1;
+    if (text[j] === '\n') return -1; // do not cache — line-local; closer may exist after
     if (text[j] === '`' && !isEscaped(text, j)) {
       // Delimiters inside a code span are not emphasis closers.
       const after = skipCodeSpan(text, j);
@@ -119,6 +129,8 @@ function findClosingBold(text: string, start: number): number {
     }
     return j;
   }
+  // Exhausted to EOF with no closer — later searches from this start (or after) also fail.
+  if (cache && start < cache.noCloserFrom) cache.noCloserFrom = start;
   return -1;
 }
 
@@ -126,10 +138,10 @@ function findClosingBold(text: string, start: number): number {
  * Skip a valid flanked `**…**` span starting at `i` (`text[i]` is first `*`).
  * Returns index after close, or -1.
  */
-function skipBoldSpan(text: string, i: number): number {
+function skipBoldSpan(text: string, i: number, cache?: BoldCloserCache): number {
   if (!text.startsWith('**', i)) return -1;
   if (!canOpenBold(text, i)) return -1;
-  const close = findClosingBold(text, i + 2);
+  const close = findClosingBold(text, i + 2, cache);
   if (close === -1) return -1;
   return close + 2;
 }
@@ -145,7 +157,7 @@ function canOpenAsterisk(text: string, i: number): boolean {
  * Find closing `*` for emphasis. Must be right-flanking (not preceded by whitespace).
  * Skips nested `**bold**` so outer italic can wrap bold.
  */
-function findClosingAsterisk(text: string, start: number): number {
+function findClosingAsterisk(text: string, start: number, cache?: BoldCloserCache): number {
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return -1;
     if (text[j] === '`' && !isEscaped(text, j)) {
@@ -157,7 +169,7 @@ function findClosingAsterisk(text: string, start: number): number {
       }
     }
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
-      const after = skipBoldSpan(text, j);
+      const after = skipBoldSpan(text, j, cache);
       if (after === -1) {
         // Unmatched bold opener: skip both stars so they are not italic closers.
         j += 1;
@@ -190,6 +202,14 @@ function canOpenUnderscore(text: string, i: number): boolean {
 function findClosingUnderscore(text: string, start: number): number {
   for (let j = start; j < text.length; j++) {
     if (text[j] === '\n') return -1;
+    if (text[j] === '`' && !isEscaped(text, j)) {
+      // Delimiters inside a code span are not emphasis closers.
+      const after = skipCodeSpan(text, j);
+      if (after !== -1) {
+        j = after - 1;
+        continue;
+      }
+    }
     if (text[j] === '_') {
       if (isEscaped(text, j)) continue;
       if (isWhitespace(text[j - 1])) continue; // not right-flanking
@@ -259,6 +279,8 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let i = 0;
   let literalStart = 0;
+  // One cache per parse: many unmatched `**` must not rescan the whole suffix each time.
+  const boldCache: BoldCloserCache = { noCloserFrom: Number.POSITIVE_INFINITY };
 
   const flushLiteral = (end: number) => {
     if (end > literalStart) {
@@ -288,7 +310,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
     if (text[i] === '*' && !isEscaped(text, i)) {
       const runLen = asteriskRunLength(text, i);
       if (runLen >= 3 && canOpenAsterisk(text, i)) {
-        const close = findClosingAsterisk(text, i + 1);
+        const close = findClosingAsterisk(text, i + 1, boldCache);
         if (close !== -1 && close > i + 1) {
           flushLiteral(i);
           const inner = text.slice(i + 1, close);
@@ -302,7 +324,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
 
     // Prefer `**bold**` over single `*`; opener must be left-flanking
     if (text.startsWith('**', i) && canOpenBold(text, i)) {
-      const close = findClosingBold(text, i + 2);
+      const close = findClosingBold(text, i + 2, boldCache);
       if (close !== -1) {
         flushLiteral(i);
         const inner = text.slice(i + 2, close);
@@ -317,7 +339,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
     }
 
     if (text[i] === '*' && !text.startsWith('**', i) && canOpenAsterisk(text, i)) {
-      const close = findClosingAsterisk(text, i + 1);
+      const close = findClosingAsterisk(text, i + 1, boldCache);
       if (close !== -1 && close > i + 1) {
         flushLiteral(i);
         const inner = text.slice(i + 1, close);
@@ -357,7 +379,8 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
  * - Underscore boundaries are Unicode letter/number aware so `英雄_斧王_编号` stays intact.
  * - Longer asterisk runs partition by opener/closer context (`****x****`, `***x***`, asymmetric `***a** b*`).
  * - Backslash-escaped delimiters stay literal; unmatched `**` openers are not retried as italic.
- * - Backtick code spans are protected from emphasis parsing.
+ * - Backtick code spans are protected from emphasis parsing (including inside underscore closers).
+ * - Unmatched `**` openers cache failed closer scans so long streams stay linear-ish.
  */
 export function renderInlineMarkdown(text: string): ReactNode[] {
   let key = 0;
