@@ -197,7 +197,16 @@ function hasUnmatchedItalicBefore(
     }
     if (text[k] === '*' && canOpenAsterisk(text, k)) {
       // Scan for a closer strictly before closerAt (do not consume closerAt).
-      const close = findClosingAsteriskBounded(text, k + 1, closerAt, caches);
+      const openerCanBoth = canCloseAsteriskRun(text, k, 1);
+      const close = findClosingAsteriskBounded(
+        text,
+        k + 1,
+        closerAt,
+        caches,
+        0,
+        1,
+        openerCanBoth,
+      );
       if (close === -1) return true; // would use closerAt
       k = close + 1;
       continue;
@@ -218,6 +227,8 @@ function findClosingAsteriskBounded(
   bound: number,
   caches?: EmphasisCaches,
   depth = 0,
+  openerRunLen = 1,
+  openerCanBoth = false,
 ): number {
   for (let j = start; j < bound; j++) {
     if (text[j] === '\n') return -1;
@@ -232,15 +243,31 @@ function findClosingAsteriskBounded(
       while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
       const runLen = runEnd - j;
       if (runLen >= 3 && j < bound && canCloseAsteriskRun(text, j, runLen)) {
-        return j;
+        const closerCanBoth = canOpenAsteriskRun(text, j, runLen);
+        if (
+          !violatesRuleOfThree(openerRunLen, runLen, openerCanBoth, closerCanBoth)
+        ) {
+          return j;
+        }
       }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
-        // Unmatched **: first star may still close italic (`*important**`).
+        // Unmatched **: first star may still close italic (`*important**`),
+        // but not when rule of three blocks a both-flanking run (`*foo**bar*`).
         if (j < bound && canCloseAsteriskRun(text, j, runLen)) {
-          return j;
+          const closerCanBoth = canOpenAsteriskRun(text, j, runLen);
+          if (
+            !violatesRuleOfThree(
+              openerRunLen,
+              runLen,
+              openerCanBoth,
+              closerCanBoth,
+            )
+          ) {
+            return j;
+          }
         }
-        j += 1;
+        j = runEnd - 1;
         continue;
       }
       if (after > bound) return -1;
@@ -250,16 +277,24 @@ function findClosingAsteriskBounded(
     if (text[j] === '*' && !isEscaped(text, j)) {
       const runLen = asteriskRunLength(text, j);
       if (canCloseAsteriskRun(text, j, runLen)) {
-        return j;
+        const closerCanBoth = canOpenAsteriskRun(text, j, runLen);
+        if (
+          !violatesRuleOfThree(openerRunLen, runLen, openerCanBoth, closerCanBoth)
+        ) {
+          return j;
+        }
       }
       // Nested italic opener: skip complete span when an outer closer remains.
       if (runLen === 1 && canOpenAsterisk(text, j) && depth < MAX_ITALIC_NEST) {
+        const nestedCanBoth = canCloseAsteriskRun(text, j, 1);
         const nestedClose = findClosingAsteriskBounded(
           text,
           j + 1,
           bound,
           caches,
           depth + 1,
+          1,
+          nestedCanBoth,
         );
         if (nestedClose !== -1) {
           const afterNested = nestedClose + 1;
@@ -360,7 +395,8 @@ function skipAsteriskItalicSpan(
 ): number {
   if (text[i] !== '*' || text.startsWith('**', i)) return -1;
   if (!canOpenAsterisk(text, i)) return -1;
-  const close = findClosingAsterisk(text, i + 1, caches, depth);
+  const openerCanBoth = canCloseAsteriskRun(text, i, 1);
+  const close = findClosingAsterisk(text, i + 1, caches, depth, 1, openerCanBoth);
   if (close === -1) return -1;
   return close + 1;
 }
@@ -517,6 +553,8 @@ function findClosingAsterisk(
   start: number,
   caches?: EmphasisCaches,
   depth = 0,
+  openerRunLen = 1,
+  openerCanBoth = false,
 ): number {
   const cache = caches?.asterisk;
   if (cache && start >= cache.noCloserFrom) return -1;
@@ -536,16 +574,32 @@ function findClosingAsterisk(
       while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
       const runLen = runEnd - j;
       if (runLen >= 3 && canCloseAsteriskRun(text, j, runLen)) {
-        return j;
+        const closerCanBoth = canOpenAsteriskRun(text, j, runLen);
+        if (
+          !violatesRuleOfThree(openerRunLen, runLen, openerCanBoth, closerCanBoth)
+        ) {
+          return j;
+        }
       }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
-        // Unmatched **: first star may still close italic (`*important**`).
+        // Unmatched **: first star may still close italic (`*important**`),
+        // but rule of three blocks both-flanking internal `**` (`*foo**bar*`).
         if (canCloseAsteriskRun(text, j, runLen)) {
-          return j;
+          const closerCanBoth = canOpenAsteriskRun(text, j, runLen);
+          if (
+            !violatesRuleOfThree(
+              openerRunLen,
+              runLen,
+              openerCanBoth,
+              closerCanBoth,
+            )
+          ) {
+            return j;
+          }
         }
-        // Not right-flanking: skip both stars so they are not italic closers.
-        j += 1;
+        // Not a valid italic closer: skip the whole run atomically.
+        j = runEnd - 1;
         continue;
       }
       j = after - 1;
@@ -554,7 +608,12 @@ function findClosingAsterisk(
     if (text[j] === '*' && !isEscaped(text, j)) {
       const runLen = asteriskRunLength(text, j);
       if (canCloseAsteriskRun(text, j, runLen)) {
-        return j;
+        const closerCanBoth = canOpenAsteriskRun(text, j, runLen);
+        if (
+          !violatesRuleOfThree(openerRunLen, runLen, openerCanBoth, closerCanBoth)
+        ) {
+          return j;
+        }
       }
       // Nested italic: left-flanking-only opener — skip complete span when
       // another closer still follows (`*outer *inner* tail*`).
@@ -631,6 +690,30 @@ function asteriskRunLength(text: string, i: number): number {
   let n = 0;
   while (text[i + n] === '*') n += 1;
   return n;
+}
+
+/** Length of the underscore run starting at `i` (`text[i]` is `_`). */
+function underscoreRunLength(text: string, i: number): number {
+  let n = 0;
+  while (text[i + n] === '_') n += 1;
+  return n;
+}
+
+/**
+ * CommonMark "rule of three": if either delimiter can both open and close,
+ * and the sum of run lengths is a multiple of 3, they may not match unless
+ * both lengths are multiples of 3. Blocks `*foo**bar*` from closing on `**`.
+ */
+function violatesRuleOfThree(
+  openerLen: number,
+  closerLen: number,
+  openerCanBoth: boolean,
+  closerCanBoth: boolean,
+): boolean {
+  if (!openerCanBoth && !closerCanBoth) return false;
+  if ((openerLen + closerLen) % 3 !== 0) return false;
+  if (openerLen % 3 === 0 && closerLen % 3 === 0) return false;
+  return true;
 }
 
 /** Length of the backtick run starting at `i` (`text[i]` is a backtick). */
@@ -740,7 +823,15 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
     if (text[i] === '*' && !isEscaped(text, i)) {
       const runLen = asteriskRunLength(text, i);
       if (runLen >= 3 && canOpenAsterisk(text, i)) {
-        const close = findClosingAsterisk(text, i + 1, caches);
+        const openerCanBoth = canCloseAsteriskRun(text, i, runLen);
+        const close = findClosingAsterisk(
+          text,
+          i + 1,
+          caches,
+          0,
+          runLen,
+          openerCanBoth,
+        );
         if (close !== -1 && close > i + 1) {
           flushLiteral(i);
           const inner = text.slice(i + 1, close);
@@ -769,7 +860,15 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
     }
 
     if (text[i] === '*' && !text.startsWith('**', i) && canOpenAsterisk(text, i)) {
-      const close = findClosingAsterisk(text, i + 1, caches);
+      const openerCanBoth = canCloseAsteriskRun(text, i, 1);
+      const close = findClosingAsterisk(
+        text,
+        i + 1,
+        caches,
+        0,
+        1,
+        openerCanBoth,
+      );
       if (close !== -1 && close > i + 1) {
         flushLiteral(i);
         const inner = text.slice(i + 1, close);
@@ -790,6 +889,17 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
         literalStart = i;
         continue;
       }
+    }
+
+    // Non-opening delimiter runs: advance past the COMPLETE run (not one char)
+    // so long `****…` / `____…` streams stay linear (avoid O(n²) rescans).
+    if (text[i] === '*' && !isEscaped(text, i)) {
+      i += asteriskRunLength(text, i);
+      continue;
+    }
+    if (text[i] === '_' && !isEscaped(text, i)) {
+      i += underscoreRunLength(text, i);
+      continue;
     }
 
     i += 1;
@@ -815,10 +925,12 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * - Nested strong skips complete inner `**…**` when an outer closer remains (`**foo **bar** baz**`).
  * - Nested italic skips complete inner `*…*` / `_…_` when an outer closer remains (`*outer *inner* tail*`).
  * - Right-flanking unmatched `**` partitions so italic can close on the first star (`*important**`).
+ * - Rule of three: both-flanking internal `**` must not close a one-star opener (`*foo**bar*`).
  * - Transition `***` between italic and bold partitions before skipBoldSpan (`*italic***bold**`).
  * - Recursive inline parse is depth-capped (`MAX_INLINE_NEST`) so long `*`.repeat runs never stack-overflow.
  * - Unmatched multi-backtick openers consume the whole opener run as literal (no shorter rematch).
  * - Closer scans that skip code spans also consume unmatched backtick runs atomically.
+ * - Non-opening `*` / `_` runs are consumed atomically (long star-only streams stay linear).
  */
 export function renderInlineMarkdown(text: string): ReactNode[] {
   let key = 0;
