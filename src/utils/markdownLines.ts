@@ -217,6 +217,7 @@ function findClosingAsteriskBounded(
   start: number,
   bound: number,
   caches?: EmphasisCaches,
+  depth = 0,
 ): number {
   for (let j = start; j < bound; j++) {
     if (text[j] === '\n') return -1;
@@ -235,6 +236,10 @@ function findClosingAsteriskBounded(
       }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
+        // Unmatched **: first star may still close italic (`*important**`).
+        if (j < bound && canCloseAsteriskRun(text, j, runLen)) {
+          return j;
+        }
         j += 1;
         continue;
       }
@@ -247,6 +252,22 @@ function findClosingAsteriskBounded(
       if (canCloseAsteriskRun(text, j, runLen)) {
         return j;
       }
+      // Nested italic opener: skip complete span when an outer closer remains.
+      if (runLen === 1 && canOpenAsterisk(text, j) && depth < MAX_ITALIC_NEST) {
+        const nestedClose = findClosingAsteriskBounded(
+          text,
+          j + 1,
+          bound,
+          caches,
+          depth + 1,
+        );
+        if (nestedClose !== -1) {
+          const afterNested = nestedClose + 1;
+          if (hasAsteriskCloserInBound(text, afterNested, bound)) {
+            j = afterNested - 1;
+          }
+        }
+      }
     }
   }
   return -1;
@@ -255,6 +276,9 @@ function findClosingAsteriskBounded(
 
 /** Max nested-strong probes inside findClosingBold (stack + pathological `**a ` streams). */
 const MAX_BOLD_NEST = 32;
+
+/** Max nested-italic probes inside findClosingAsterisk / findClosingUnderscore. */
+const MAX_ITALIC_NEST = 32;
 
 /**
  * True when `[start, EOF)` still contains a right-flanking `**` that could
@@ -276,6 +300,106 @@ function hasBoldCloserAtOrAfter(text: string, start: number): boolean {
     }
   }
   return false;
+}
+
+/**
+ * True when `[start, EOF)` still contains a right-flanking `*` that could
+ * close an outer asterisk italic (skips code spans; does not update caches).
+ */
+function hasAsteriskCloserAtOrAfter(text: string, start: number): boolean {
+  for (let j = start; j < text.length; j++) {
+    if (text[j] === '\n') return false;
+    if (text[j] === '`' && !isEscaped(text, j)) {
+      j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
+      continue;
+    }
+    if (text[j] === '*' && !isEscaped(text, j)) {
+      const runLen = asteriskRunLength(text, j);
+      if (canCloseAsteriskRun(text, j, runLen)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * True when `[start, bound)` contains a right-flanking `*` closer
+ * (bounded probe; does not update caches).
+ */
+function hasAsteriskCloserInBound(
+  text: string,
+  start: number,
+  bound: number,
+): boolean {
+  for (let j = start; j < bound; j++) {
+    if (text[j] === '\n') return false;
+    if (text[j] === '`' && !isEscaped(text, j)) {
+      j = Math.min(skipCodeSpanOrUnmatchedOpener(text, j), bound) - 1;
+      continue;
+    }
+    if (text[j] === '*' && !isEscaped(text, j)) {
+      const runLen = asteriskRunLength(text, j);
+      if (canCloseAsteriskRun(text, j, runLen)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Skip a valid flanked `*…*` italic span starting at `i`.
+ * Returns index after close, or -1.
+ */
+function skipAsteriskItalicSpan(
+  text: string,
+  i: number,
+  caches?: EmphasisCaches,
+  depth = 0,
+): number {
+  if (text[i] !== '*' || text.startsWith('**', i)) return -1;
+  if (!canOpenAsterisk(text, i)) return -1;
+  const close = findClosingAsterisk(text, i + 1, caches, depth);
+  if (close === -1) return -1;
+  return close + 1;
+}
+
+/**
+ * True when `[start, EOF)` still contains a valid underscore italic closer
+ * (skips code spans; does not update caches).
+ */
+function hasUnderscoreCloserAtOrAfter(text: string, start: number): boolean {
+  for (let j = start; j < text.length; j++) {
+    if (text[j] === '\n') return false;
+    if (text[j] === '`' && !isEscaped(text, j)) {
+      j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
+      continue;
+    }
+    if (text[j] === '_' && !isEscaped(text, j)) {
+      if (isWhitespace(text[j - 1])) continue;
+      if (isIdentChar(text[j + 1])) continue;
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Skip a valid flanked `_…_` italic span starting at `i`.
+ * Returns index after close, or -1.
+ */
+function skipUnderscoreItalicSpan(
+  text: string,
+  i: number,
+  caches?: EmphasisCaches,
+  depth = 0,
+): number {
+  if (text[i] !== '_') return -1;
+  if (!canOpenUnderscore(text, i)) return -1;
+  const close = findClosingUnderscore(text, i + 1, caches, depth);
+  if (close === -1) return -1;
+  return close + 1;
 }
 
 /**
@@ -380,6 +504,10 @@ function canOpenAsterisk(text: string, i: number): boolean {
 /**
  * Find closing `*` for emphasis. Must be right-flanking (not preceded by whitespace).
  * Skips nested `**bold**` so outer italic can wrap bold.
+ * Skips complete nested `*…*` spans when another closer still follows
+ * (`*outer *inner* tail*`), matching nested-bold skip.
+ * Right-flanking unmatched `**` partitions so the first star can close italic
+ * (`*important**` → em + literal `*`).
  *
  * Optional cache: failed-to-EOF from `start` makes later searches from >= start
  * return -1 without rescanning (avoids O(n²) unmatched `*a ` openers).
@@ -388,6 +516,7 @@ function findClosingAsterisk(
   text: string,
   start: number,
   caches?: EmphasisCaches,
+  depth = 0,
 ): number {
   const cache = caches?.asterisk;
   if (cache && start >= cache.noCloserFrom) return -1;
@@ -411,7 +540,11 @@ function findClosingAsterisk(
       }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
-        // Unmatched bold opener: skip both stars so they are not italic closers.
+        // Unmatched **: first star may still close italic (`*important**`).
+        if (canCloseAsteriskRun(text, j, runLen)) {
+          return j;
+        }
+        // Not right-flanking: skip both stars so they are not italic closers.
         j += 1;
         continue;
       }
@@ -422,6 +555,14 @@ function findClosingAsterisk(
       const runLen = asteriskRunLength(text, j);
       if (canCloseAsteriskRun(text, j, runLen)) {
         return j;
+      }
+      // Nested italic: left-flanking-only opener — skip complete span when
+      // another closer still follows (`*outer *inner* tail*`).
+      if (runLen === 1 && canOpenAsterisk(text, j) && depth < MAX_ITALIC_NEST) {
+        const afterNested = skipAsteriskItalicSpan(text, j, caches, depth + 1);
+        if (afterNested !== -1 && hasAsteriskCloserAtOrAfter(text, afterNested)) {
+          j = afterNested - 1;
+        }
       }
     }
   }
@@ -442,6 +583,8 @@ function canOpenUnderscore(text: string, i: number): boolean {
  * followed by an identifier char. Underscores that cannot close (escaped,
  * whitespace-preceded, or ident-followed) are treated as literal and the
  * scan continues for a later valid closer, so `_very_good_` works.
+ * Skips complete nested `_…_` spans when another closer still follows
+ * (`_outer _inner_ tail_`), matching nested asterisk italic skip.
  *
  * Optional cache: failed-to-EOF from `start` makes later searches from >= start
  * return -1 without rescanning (avoids O(n²) unmatched `_a ` openers).
@@ -450,6 +593,7 @@ function findClosingUnderscore(
   text: string,
   start: number,
   caches?: EmphasisCaches,
+  depth = 0,
 ): number {
   const cache = caches?.underscore;
   if (cache && start >= cache.noCloserFrom) return -1;
@@ -464,7 +608,16 @@ function findClosingUnderscore(
     }
     if (text[j] === '_') {
       if (isEscaped(text, j)) continue;
-      if (isWhitespace(text[j - 1])) continue; // not right-flanking
+      if (isWhitespace(text[j - 1])) {
+        // Nested underscore italic opener — skip complete span when outer closer remains.
+        if (canOpenUnderscore(text, j) && depth < MAX_ITALIC_NEST) {
+          const afterNested = skipUnderscoreItalicSpan(text, j, caches, depth + 1);
+          if (afterNested !== -1 && hasUnderscoreCloserAtOrAfter(text, afterNested)) {
+            j = afterNested - 1;
+          }
+        }
+        continue; // not right-flanking
+      }
       if (isIdentChar(text[j + 1])) continue; // ident-followed stays literal
       return j;
     }
@@ -660,6 +813,8 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * - Unmatched `**` / `*` / `_` openers cache failed closer scans so long streams stay linear-ish.
  * - Shared `***` closers partition by nesting (`**foo *bar***` → strong>em; `*foo **bar***` → em>strong).
  * - Nested strong skips complete inner `**…**` when an outer closer remains (`**foo **bar** baz**`).
+ * - Nested italic skips complete inner `*…*` / `_…_` when an outer closer remains (`*outer *inner* tail*`).
+ * - Right-flanking unmatched `**` partitions so italic can close on the first star (`*important**`).
  * - Transition `***` between italic and bold partitions before skipBoldSpan (`*italic***bold**`).
  * - Recursive inline parse is depth-capped (`MAX_INLINE_NEST`) so long `*`.repeat runs never stack-overflow.
  * - Unmatched multi-backtick openers consume the whole opener run as literal (no shorter rematch).

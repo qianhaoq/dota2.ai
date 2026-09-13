@@ -393,4 +393,32 @@ describe('MarkdownBody inline bold', () => {
     // Must not italicize through to the final star.
     expect(html).not.toMatch(/<em[^>]*>a ```b\*`` c<\/em>/);
   });
+
+  it('lets right-flanking ** close single italic on the first star', () => {
+    const html = render('*important**');
+    expect(html).toMatch(/<em[^>]*>important<\/em>\*/);
+    expect((html.match(/<em\b/g) || []).length).toBe(1);
+    expect(html).not.toContain('<strong>');
+    expect(html).not.toContain('*important');
+  });
+
+  it('skips nested asterisk italic when choosing the outer closer', () => {
+    const html = render('*outer *inner* tail*');
+    expect(html).toMatch(
+      /<em[^>]*>outer <em[^>]*>inner<\/em> tail<\/em>/,
+    );
+    expect((html.match(/<em\b/g) || []).length).toBe(2);
+    expect(html).not.toContain('*outer');
+    expect(html).not.toContain('tail*');
+  });
+
+  it('skips nested underscore italic when choosing the outer closer', () => {
+    const html = render('_outer _inner_ tail_');
+    expect(html).toMatch(
+      /<em[^>]*>outer <em[^>]*>inner<\/em> tail<\/em>/,
+    );
+    expect((html.match(/<em\b/g) || []).length).toBe(2);
+    expect(html).not.toContain('_outer');
+    expect(html).not.toContain('tail_');
+  });
 });
