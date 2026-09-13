@@ -550,4 +550,52 @@ describe('MarkdownBody inline bold', () => {
     expect(html).toContain('important');
   });
 
+  it('nests strong+em for intraword both-flanking triple stars', () => {
+    // Chinese letters both-flank ***; must not reinterpret leftover opener
+    // stars as nested bold (that path fails punctuation flanking).
+    const html = render('这是***重点***现在');
+    expect(html).toMatch(
+      /<strong[^>]*><em[^>]*>重点<\/em><\/strong>|<em[^>]*><strong[^>]*>重点<\/strong><\/em>/,
+    );
+    expect(html).toContain('这是');
+    expect(html).toContain('现在');
+    expect(html).not.toContain('***');
+    expect(html).not.toContain('*重点');
+    expect(html).not.toContain('重点*');
+  });
+
+  it('parses nested ambiguous italic markers in near-linear time', () => {
+    // skipAsteriskItalicSpan + hasAsteriskCloserAtOrAfter used to re-explore
+    // the suffix for every nesting; ~140 chars took ~2s unfixed.
+    const text = '*a *b* '.repeat(40); // ~280 chars; unfixed times out / multi-second
+    const t0 = Date.now();
+    const html = render(text);
+    const elapsed = Date.now() - t0;
+    // Generous CI budget (unfixed ~2s for only 20 reps on Node 20).
+    expect(elapsed).toBeLessThan(2000);
+    // Nested `*b*` spans still render; outer `*a ` may share closers.
+    expect(html).toContain('<em');
+    expect(html).toContain('b');
+  });
+
+  it('parses nested ambiguous bold markers in near-linear time', () => {
+    const text = '**a **b** '.repeat(40);
+    const t0 = Date.now();
+    const html = render(text);
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeLessThan(2000);
+    expect(html).toContain('<strong');
+    expect(html).toContain('b');
+  });
+
+  it('parses nested ambiguous underscore markers in near-linear time', () => {
+    const text = '_a _b_ '.repeat(40);
+    const t0 = Date.now();
+    const html = render(text);
+    const elapsed = Date.now() - t0;
+    expect(elapsed).toBeLessThan(2000);
+    expect(html).toContain('<em');
+    expect(html).toContain('b');
+  });
+
 });

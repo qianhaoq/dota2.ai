@@ -184,6 +184,20 @@ interface EmphasisCaches {
   underscore: CloserCache;
   /** Failed first-right-flanking asterisk-run probes (triple-opener closer order). */
   firstCloser: CloserCache;
+  /**
+   * Nested closer-existence probes (`has*CloserAtOrAfter`). Negatives use
+   * noCloserFrom; positives are per-start hits. Opener-independent → safe.
+   */
+  hasBoldCloser: CloserCache & { hits: Map<number, true> };
+  hasAsteriskCloser: CloserCache & { hits: Map<number, true> };
+  hasUnderscoreCloser: CloserCache & { hits: Map<number, true> };
+  /**
+   * Successful nested span skips (`skip*Span` → index after close).
+   * Only hits are stored (misses may be depth-limited).
+   */
+  skipBoldAt: Map<number, number>;
+  skipAsteriskAt: Map<number, number>;
+  skipUnderscoreAt: Map<number, number>;
 }
 
 function freshEmphasisCaches(): EmphasisCaches {
@@ -192,6 +206,12 @@ function freshEmphasisCaches(): EmphasisCaches {
     asterisk: { noCloserFrom: Number.POSITIVE_INFINITY },
     underscore: { noCloserFrom: Number.POSITIVE_INFINITY },
     firstCloser: { noCloserFrom: Number.POSITIVE_INFINITY },
+    hasBoldCloser: { noCloserFrom: Number.POSITIVE_INFINITY, hits: new Map() },
+    hasAsteriskCloser: { noCloserFrom: Number.POSITIVE_INFINITY, hits: new Map() },
+    hasUnderscoreCloser: { noCloserFrom: Number.POSITIVE_INFINITY, hits: new Map() },
+    skipBoldAt: new Map(),
+    skipAsteriskAt: new Map(),
+    skipUnderscoreAt: new Map(),
   };
 }
 
@@ -355,9 +375,18 @@ const MAX_ITALIC_NEST = 32;
  * True when `[start, EOF)` still contains a right-flanking `**` that could
  * close an outer bold (skips code spans; does not update closer caches).
  */
-function hasBoldCloserAtOrAfter(text: string, start: number): boolean {
+function hasBoldCloserAtOrAfter(
+  text: string,
+  start: number,
+  caches?: EmphasisCaches,
+): boolean {
+  const cache = caches?.hasBoldCloser;
+  if (cache) {
+    if (start >= cache.noCloserFrom) return false;
+    if (cache.hits.has(start)) return true;
+  }
   for (let j = start; j < text.length - 1; j++) {
-    if (text[j] === '\n') return false;
+    if (text[j] === '\n') return false; // do not cache — line-local
     if (text[j] === '`' && !isEscaped(text, j)) {
       // Matched span: skip it. Unmatched opener: consume whole run atomically.
       j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
@@ -366,10 +395,12 @@ function hasBoldCloserAtOrAfter(text: string, start: number): boolean {
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
       const runLen = asteriskRunLength(text, j);
       if (runLen >= 2 && canCloseAsteriskRun(text, j, runLen)) {
+        if (cache) cache.hits.set(start, true);
         return true;
       }
     }
   }
+  if (cache && start < cache.noCloserFrom) cache.noCloserFrom = start;
   return false;
 }
 
@@ -377,9 +408,18 @@ function hasBoldCloserAtOrAfter(text: string, start: number): boolean {
  * True when `[start, EOF)` still contains a right-flanking `*` that could
  * close an outer asterisk italic (skips code spans; does not update caches).
  */
-function hasAsteriskCloserAtOrAfter(text: string, start: number): boolean {
+function hasAsteriskCloserAtOrAfter(
+  text: string,
+  start: number,
+  caches?: EmphasisCaches,
+): boolean {
+  const cache = caches?.hasAsteriskCloser;
+  if (cache) {
+    if (start >= cache.noCloserFrom) return false;
+    if (cache.hits.has(start)) return true;
+  }
   for (let j = start; j < text.length; j++) {
-    if (text[j] === '\n') return false;
+    if (text[j] === '\n') return false; // do not cache — line-local
     if (text[j] === '`' && !isEscaped(text, j)) {
       j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
       continue;
@@ -387,10 +427,12 @@ function hasAsteriskCloserAtOrAfter(text: string, start: number): boolean {
     if (text[j] === '*' && !isEscaped(text, j)) {
       const runLen = asteriskRunLength(text, j);
       if (canCloseAsteriskRun(text, j, runLen)) {
+        if (cache) cache.hits.set(start, true);
         return true;
       }
     }
   }
+  if (cache && start < cache.noCloserFrom) cache.noCloserFrom = start;
   return false;
 }
 
@@ -431,19 +473,33 @@ function skipAsteriskItalicSpan(
 ): number {
   if (text[i] !== '*' || text.startsWith('**', i)) return -1;
   if (!canOpenAsterisk(text, i)) return -1;
+  const memo = caches?.skipAsteriskAt;
+  if (memo?.has(i)) return memo.get(i)!;
   const openerCanBoth = canCloseAsteriskRun(text, i, 1);
   const close = findClosingAsterisk(text, i + 1, caches, depth, 1, openerCanBoth);
   if (close === -1) return -1;
-  return close + 1;
+  const after = close + 1;
+  // Only memoize hits — misses may be depth-capped.
+  if (memo) memo.set(i, after);
+  return after;
 }
 
 /**
  * True when `[start, EOF)` still contains a valid underscore italic closer
  * (skips code spans; does not update caches).
  */
-function hasUnderscoreCloserAtOrAfter(text: string, start: number): boolean {
+function hasUnderscoreCloserAtOrAfter(
+  text: string,
+  start: number,
+  caches?: EmphasisCaches,
+): boolean {
+  const cache = caches?.hasUnderscoreCloser;
+  if (cache) {
+    if (start >= cache.noCloserFrom) return false;
+    if (cache.hits.has(start)) return true;
+  }
   for (let j = start; j < text.length; j++) {
-    if (text[j] === '\n') return false;
+    if (text[j] === '\n') return false; // do not cache — line-local
     if (text[j] === '`' && !isEscaped(text, j)) {
       j = skipCodeSpanOrUnmatchedOpener(text, j) - 1;
       continue;
@@ -451,9 +507,11 @@ function hasUnderscoreCloserAtOrAfter(text: string, start: number): boolean {
     if (text[j] === '_' && !isEscaped(text, j)) {
       if (isWhitespace(text[j - 1])) continue;
       if (isIdentChar(text[j + 1])) continue;
+      if (cache) cache.hits.set(start, true);
       return true;
     }
   }
+  if (cache && start < cache.noCloserFrom) cache.noCloserFrom = start;
   return false;
 }
 
@@ -469,9 +527,13 @@ function skipUnderscoreItalicSpan(
 ): number {
   if (text[i] !== '_') return -1;
   if (!canOpenUnderscore(text, i)) return -1;
+  const memo = caches?.skipUnderscoreAt;
+  if (memo?.has(i)) return memo.get(i)!;
   const close = findClosingUnderscore(text, i + 1, caches, depth);
   if (close === -1) return -1;
-  return close + 1;
+  const after = close + 1;
+  if (memo) memo.set(i, after);
+  return after;
 }
 
 /**
@@ -543,7 +605,7 @@ function findClosingBold(
       // (`**foo **bar baz**`).
       if (canOpenBold(text, j) && depth < MAX_BOLD_NEST) {
         const afterNested = skipBoldSpan(text, j, caches, depth + 1);
-        if (afterNested !== -1 && hasBoldCloserAtOrAfter(text, afterNested)) {
+        if (afterNested !== -1 && hasBoldCloserAtOrAfter(text, afterNested, caches)) {
           // Nested span owns its closer; a later top-level opener may still
           // pair with it (`**a **b** ****` → unmatched outer + strong b).
           cacheSafe = false;
@@ -607,6 +669,8 @@ function skipBoldSpan(
 ): number {
   if (!text.startsWith('**', i)) return -1;
   if (!canOpenBold(text, i)) return -1;
+  const memo = caches?.skipBoldAt;
+  if (memo?.has(i)) return memo.get(i)!;
   const openerRunLen = asteriskRunLength(text, i);
   const openerCanBoth = canCloseAsteriskRun(text, i, openerRunLen);
   const close = findClosingBold(
@@ -618,7 +682,9 @@ function skipBoldSpan(
     openerCanBoth,
   );
   if (close === -1) return -1;
-  return close + 2;
+  const after = close + 2;
+  if (memo) memo.set(i, after);
+  return after;
 }
 
 /** Asterisk open: left-flanking (punctuation-aware CommonMark flanking). */
@@ -720,7 +786,7 @@ function findClosingAsterisk(
       // another closer still follows (`*outer *inner* tail*`).
       if (runLen === 1 && canOpenAsterisk(text, j) && depth < MAX_ITALIC_NEST) {
         const afterNested = skipAsteriskItalicSpan(text, j, caches, depth + 1);
-        if (afterNested !== -1 && hasAsteriskCloserAtOrAfter(text, afterNested)) {
+        if (afterNested !== -1 && hasAsteriskCloserAtOrAfter(text, afterNested, caches)) {
           // Nested span owns its closer; a later top-level opener may still
           // pair with it (`x*a *b* d**c` → unmatched outer + em b).
           cacheSafe = false;
@@ -782,7 +848,7 @@ function findClosingUnderscore(
         // Nested underscore italic opener — skip complete span when outer closer remains.
         if (canOpenUnderscore(text, j) && depth < MAX_ITALIC_NEST) {
           const afterNested = skipUnderscoreItalicSpan(text, j, caches, depth + 1);
-          if (afterNested !== -1 && hasUnderscoreCloserAtOrAfter(text, afterNested)) {
+          if (afterNested !== -1 && hasUnderscoreCloserAtOrAfter(text, afterNested, caches)) {
             // Nested span owns its closer; a later top-level opener may still pair.
             cacheSafe = false;
             j = afterNested - 1;
@@ -936,16 +1002,65 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
     // Two-star closer first (`***foo** bar*` / `***Warning:** buy BKB*`) →
     // italic-outer. One-star closer first (`***foo* bar**`) → fall through
     // to bold-outer so leftover `*` stays an inner italic opener.
+    // Both-flanking runs whose lengths are multiples of 3 (`这是***重点***现在`)
+    // search from after the FULL opener run — do not reinterpret leftover
+    // opener stars as nested bold (punctuation flanking breaks that path).
     if (text[i] === '*' && !isEscaped(text, i)) {
       const runLen = asteriskRunLength(text, i);
       if (runLen >= 3 && canOpenAsterisk(text, i)) {
+        const openerCanBoth = canCloseAsteriskRun(text, i, runLen);
+        // Intraword / both-flanking ***…*** (rule of three allows match).
+        if (openerCanBoth && runLen % 3 === 0) {
+          const close = findClosingAsterisk(
+            text,
+            i + runLen,
+            caches,
+            0,
+            runLen,
+            openerCanBoth,
+          );
+          if (close !== -1) {
+            const closerRun = asteriskRunLength(text, close);
+            const closerCanBoth = canOpenAsteriskRun(text, close, closerRun);
+            if (
+              closerRun >= 3 &&
+              closerRun % 3 === 0 &&
+              canCloseAsteriskRun(text, close, closerRun) &&
+              !violatesRuleOfThree(
+                runLen,
+                closerRun,
+                openerCanBoth,
+                closerCanBoth,
+              )
+            ) {
+              flushLiteral(i);
+              const inner = text.slice(i + runLen, close);
+              // Nest strong+em (either order is CommonMark-valid).
+              nodes.push(
+                createElement(
+                  'em',
+                  { key: nextKey() },
+                  createElement(
+                    'strong',
+                    { key: nextKey() },
+                    ...parseInline(inner, nextKey, depth + 1),
+                  ),
+                ),
+              );
+              i = close + closerRun;
+              literalStart = i;
+              continue;
+            }
+          }
+          // No matching both-flanking %3 closer — fall through to closer-order
+          // partition (e.g. `a***foo* bar**b` → bold-outer).
+        }
         const firstCloserLen = firstRightFlankingAsteriskRunLength(
           text,
           i + runLen,
           caches,
         );
         if (firstCloserLen !== 1) {
-          const openerCanBoth = canCloseAsteriskRun(text, i, runLen);
           const close = findClosingAsterisk(
             text,
             i + 1,
@@ -1063,6 +1178,8 @@ function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[
  * - Triple-opener closer-order lookahead caches failed-to-EOF probes (`***a ` streams stay near-linear).
  * - Incomplete triple openers stay literal while streaming (`Use ***Warning:**`); do not bold-fallback.
  * - Triple openers partition by closer order (`***foo* bar**` bold-outer; `***foo** bar*` italic-outer).
+ * - Both-flanking triple runs (lengths divisible by 3) nest strong+em without scanning from mid-opener (`这是***重点***现在`).
+ * - Nested closer probes (`has*CloserAtOrAfter` / successful `skip*Span`) are memoized so `*a *b* `.repeat stays near-linear.
  * - Rejected asterisk runs in bold closer scans are skipped atomically (`Use **BKB ****`).
  * - Rule of three also applies to bold closers (`a**b****c` stays literal).
  * - Failed-to-EOF bold cache is not reused when a later opener can still pair (`**a **b** ****`).
