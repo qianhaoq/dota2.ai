@@ -8,7 +8,7 @@ import { MatchupData, TierHero, PlaybookHero } from '../../services/geminiServic
 import type { CoachSession } from './coachMessage';
 import { sessionTitle } from '../../utils/coachBlocks';
 import { shouldShowCoachFailureAlert, isCoachUserAbortError } from '../../utils/coachInflight';
-import { groupMarkdownSegments } from '../../utils/markdownLines';
+import { groupMarkdownSegments, renderInlineMarkdown } from '../../utils/markdownLines';
 import { primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../../utils/reviewSurface';
 import { shouldAddHeroToDraft } from '../../utils/draftContext';
 import ReviewInsightCards from './ReviewInsightCards';
@@ -34,10 +34,10 @@ export const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ 
     <>
       {segments.map((segment, idx) => {
         if (segment.type === 'heading') {
-          return <h4 key={idx} className="text-k3-text-primary font-medium text-sm mt-3 mb-1.5">{segment.text}</h4>;
+          return <h4 key={idx} className="text-k3-text-primary font-medium text-sm mt-3 mb-1.5">{renderInlineMarkdown(segment.text)}</h4>;
         }
         if (segment.type === 'strong') {
-          return <strong key={idx} className="block mt-2 text-k3-text-primary text-sm">{segment.text}</strong>;
+          return <strong key={idx} className="block mt-2 text-k3-text-primary text-sm">{renderInlineMarkdown(segment.text)}</strong>;
         }
         if (segment.type === 'list') {
           return (
@@ -45,14 +45,14 @@ export const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ 
               {segment.items.map((item, itemIdx) => (
                 <li key={itemIdx} className="ml-3 text-k3-text-secondary text-sm leading-relaxed flex items-start gap-2 my-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-k3-text-tertiary mt-2 flex-shrink-0" />
-                  <span className="min-w-0 break-words">{item}</span>
+                  <span className="min-w-0 break-words">{renderInlineMarkdown(item)}</span>
                 </li>
               ))}
             </ul>
           );
         }
         if (segment.type === 'blank') return <div key={idx} className="h-2" />;
-        return <p key={idx} className="text-k3-text-secondary text-sm leading-relaxed break-words">{segment.text}</p>;
+        return <p key={idx} className="text-k3-text-secondary text-sm leading-relaxed break-words">{renderInlineMarkdown(segment.text)}</p>;
       })}
       {streaming && (
         <span className="inline-block w-0.5 h-4 bg-k3-text-secondary animate-pulse ml-0.5 align-middle" />
