@@ -168,6 +168,14 @@ function findClosingAsteriskBounded(
       }
     }
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
+      // Transition `***…`: close italic on first star before skipBoldSpan.
+      if (!isWhitespace(text[j - 1])) {
+        let runEnd = j;
+        while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
+        if (runEnd - j >= 3 && j < bound) {
+          return j;
+        }
+      }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
         j += 1;
@@ -339,6 +347,15 @@ function findClosingAsterisk(
       }
     }
     if (text.startsWith('**', j) && !isEscaped(text, j)) {
+      // Transition run `***…` (e.g. `*italic***bold**`): first star closes
+      // italic; remaining open bold. Partition before skipBoldSpan.
+      if (!isWhitespace(text[j - 1])) {
+        let runEnd = j;
+        while (runEnd < text.length && text[runEnd] === '*') runEnd += 1;
+        if (runEnd - j >= 3) {
+          return j;
+        }
+      }
       const after = skipBoldSpan(text, j, caches);
       if (after === -1) {
         // Unmatched bold opener: skip both stars so they are not italic closers.
@@ -457,7 +474,15 @@ function normalizeCodeSpanContent(s: string): string {
   return s;
 }
 
-function parseInline(text: string, nextKey: () => string): ReactNode[] {
+/** Max recursive parseInline depth (long `***…***` runs must not blow the stack). */
+const MAX_INLINE_NEST = 32;
+
+function parseInline(text: string, nextKey: () => string, depth = 0): ReactNode[] {
+  // Pathological long delimiter runs recurse via italic-outer peeling; cap depth.
+  if (depth >= MAX_INLINE_NEST) {
+    return [unescapeMarkdown(text)];
+  }
+
   const nodes: ReactNode[] = [];
   let i = 0;
   let literalStart = 0;
@@ -484,6 +509,10 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
         literalStart = i;
         continue;
       }
+      // Unmatched opener run: consume the COMPLETE run as literal so a shorter
+      // suffix cannot rematch (e.g. partial stream ```foo`` stays literal).
+      i += backtickRunLength(text, i);
+      continue;
     }
 
     // Triple+ asterisk runs: prefer italic-outer (CommonMark), so
@@ -496,7 +525,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
         if (close !== -1 && close > i + 1) {
           flushLiteral(i);
           const inner = text.slice(i + 1, close);
-          nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey)));
+          nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey, depth + 1)));
           i = close + 1;
           literalStart = i;
           continue;
@@ -510,7 +539,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
       if (close !== -1) {
         flushLiteral(i);
         const inner = text.slice(i + 2, close);
-        nodes.push(createElement('strong', { key: nextKey() }, ...parseInline(inner, nextKey)));
+        nodes.push(createElement('strong', { key: nextKey() }, ...parseInline(inner, nextKey, depth + 1)));
         i = close + 2;
         literalStart = i;
         continue;
@@ -525,7 +554,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
       if (close !== -1 && close > i + 1) {
         flushLiteral(i);
         const inner = text.slice(i + 1, close);
-        nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey)));
+        nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey, depth + 1)));
         i = close + 1;
         literalStart = i;
         continue;
@@ -537,7 +566,7 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
       if (close !== -1 && close > i + 1) {
         flushLiteral(i);
         const inner = text.slice(i + 1, close);
-        nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey)));
+        nodes.push(createElement('em', { key: nextKey() }, ...parseInline(inner, nextKey, depth + 1)));
         i = close + 1;
         literalStart = i;
         continue;
@@ -565,6 +594,9 @@ function parseInline(text: string, nextKey: () => string): ReactNode[] {
  * - Unmatched `**` / `*` / `_` openers cache failed closer scans so long streams stay linear-ish.
  * - Shared `***` closers partition by nesting (`**foo *bar***` → strong>em; `*foo **bar***` → em>strong).
  * - Nested strong skips complete inner `**…**` when an outer closer remains (`**foo **bar** baz**`).
+ * - Transition `***` between italic and bold partitions before skipBoldSpan (`*italic***bold**`).
+ * - Recursive inline parse is depth-capped (`MAX_INLINE_NEST`) so long `*`.repeat runs never stack-overflow.
+ * - Unmatched multi-backtick openers consume the whole opener run as literal (no shorter rematch).
  */
 export function renderInlineMarkdown(text: string): ReactNode[] {
   let key = 0;

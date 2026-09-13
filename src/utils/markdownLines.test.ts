@@ -340,4 +340,31 @@ describe('MarkdownBody inline bold', () => {
     expect((html.match(/<strong\b/g) || []).length).toBe(1);
     expect(html).not.toContain('**');
   });
+
+  it('partitions transition *** between italic and following bold', () => {
+    const html = render('*italic***bold**');
+    expect(html).toMatch(/<em[^>]*>italic<\/em>/);
+    expect(html).toMatch(/<strong[^>]*>bold<\/strong>/);
+    expect(html).toMatch(/<em[^>]*>italic<\/em><strong[^>]*>bold<\/strong>/);
+    expect(html).not.toContain('*italic');
+    expect(html).not.toContain('*bold');
+    expect(html).not.toContain('**');
+  });
+
+  it('does not stack-overflow on very long balanced asterisk runs', () => {
+    const text = '*'.repeat(5000) + 'x' + '*'.repeat(5000);
+    let html = '';
+    expect(() => {
+      html = render(text);
+    }).not.toThrow();
+    expect(html).toContain('x');
+    expect(html.length).toBeGreaterThan(0);
+  });
+
+  it('consumes unmatched multi-backtick opener runs as literal', () => {
+    // Partial stream: 3-tick opener, no 3-tick closer, then a 2-tick run.
+    const html = render('```foo``');
+    expect(html).not.toContain('<code>');
+    expect(html).toContain('```foo``');
+  });
 });
