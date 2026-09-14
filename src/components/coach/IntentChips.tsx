@@ -7,6 +7,7 @@ interface IntentChipsProps {
   isLoading: boolean;
   hasHeroes: boolean;
   hasAllies: boolean;
+  hasEnemies: boolean;
   alliesFull: boolean;
   selectionSide: 'radiant' | 'dire';
   onAnalyze: () => void;
@@ -21,6 +22,7 @@ const IntentChips: React.FC<IntentChipsProps> = ({
   isLoading,
   hasHeroes,
   hasAllies,
+  hasEnemies,
   alliesFull,
   selectionSide,
   onAnalyze,
@@ -54,7 +56,9 @@ const IntentChips: React.FC<IntentChipsProps> = ({
       id: 'suggest',
       label: t.suggest,
       onClick: onSuggest,
-      enabled: hasAllies && !alliesFull,
+      // Next pick works from any usable context: existing allies, an enemy-only
+      // board (first-ally pick vs known enemies), or an empty board (first pick).
+      enabled: !alliesFull && (hasAllies || hasEnemies || !hasHeroes),
     },
     {
       id: 'meta',

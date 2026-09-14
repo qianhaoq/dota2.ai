@@ -14,7 +14,7 @@ interface SectionCardProps {
   onToggle?: (next: boolean) => void;
   /** One-line preview shown while collapsed. */
   preview?: string;
-  /** UI language for default expand/collapse labels (中文 first). */
+  /** UI language for default expand/collapse labels (English default). */
   lang?: Language;
   expandLabel?: string;
   collapseLabel?: string;
@@ -30,7 +30,7 @@ const SectionCard: React.FC<SectionCardProps> = ({
   defaultOpen = true,
   onToggle,
   preview,
-  lang = 'zh',
+  lang = 'en',
   expandLabel,
   collapseLabel,
   children,

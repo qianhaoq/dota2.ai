@@ -20,7 +20,7 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
 
 - Keep PRs small; one issue → one focused PR.
 - Reuse `src/components`, `src/services`, `src/types.ts`.
-- Respect bilingual UI defaults (中文 first).
+- Respect bilingual UI: English default, Chinese via toggle; DeepSeek/API output must follow UI lang.
 - Fill the PR template; call out streaming / API / deploy risk.
 - Prefer **ready-for-review** (not forever-draft) when CI should auto-merge.
 
@@ -30,6 +30,18 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
 - Rewrite `server.js` wholesale or swap the AI provider without an explicit ask.
 - Skip TypeScript / build / tests.
 - Invent Dota lore or balance numbers not backed by repo data.
+
+## Coach invariants
+
+Worst pitfalls from Codex P1s (#54, #56) — full rules: `.cursor/rules/dota2-coach-invariants.mdc`.
+
+- Any draft / side / practice change that invalidates in-flight Analyze / Playbook / Next-pick MUST bump `contextRevision` (sync `contextRevisionRef` **before** `setContextRevision`) **and** call `cancelStream()` together, and retire stale suggestion cards (`clearStaleSuggestionsForRevision`). On leaving review (`applyLessonSwitch`), `cancelStream()` before the revision bump.
+- No-op interactions (re-tapping the already-selected "My side") MUST NOT bump the revision or cancel streams.
+- Respect explicit My side (`mySideExplicitRef`): never infer `mySide` from the first pick when the user set it; a practice-hero-only board is non-empty for side inference.
+- Accepting a suggestion / Next-pick binds to the request-time ally side + practice hero stamped on the message — not live controls.
+- Streaming `onChunk` functional-appends only (`setMessages(prev => appendStreamChunk(prev, …))`); never `messages.find` overwrite.
+- Analyze / Next-pick enablement derives from the resolved lineup (`resolveCoachingLineup`), not the raw empty draft.
+- DeepSeek output language follows UI `lang` (zh → 简体中文, en → English); preserve the product-approved default (English after #57).
 
 ## Merge policy
 

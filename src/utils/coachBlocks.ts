@@ -125,12 +125,16 @@ function reviewInsightBlocks(message: CoachMessage, lang: Language): A2UIBlock[]
   }
 
   if (cards.key_moments && cards.key_moments.length > 0) {
+    const cappedMoments = {
+      ...cards,
+      key_moments: cards.key_moments.slice(0, 3),
+    };
     blocks.push({
       id: `${message.id}-ri-moments`,
       type: 'reviewInsight',
       title: lang === 'zh' ? '关键节点' : 'Key moments',
       reviewCardKind: 'key_moments',
-      reviewCards: cards,
+      reviewCards: cappedMoments,
     });
   }
 
@@ -145,12 +149,17 @@ function reviewInsightBlocks(message: CoachMessage, lang: Language): A2UIBlock[]
   }
 
   if (cards.followups && cards.followups.length > 0 && !message.isStreaming) {
+    const capped = {
+      ...cards,
+      // Prefer ≤3 action chips over question spam (V3: cards + 关键点).
+      followups: cards.followups.slice(0, 3),
+    };
     blocks.push({
       id: `${message.id}-ri-followups`,
       type: 'reviewInsight',
-      title: lang === 'zh' ? '继续问拉比克' : 'Ask Rubick',
+      title: lang === 'zh' ? '下一步动作' : 'Next actions',
       reviewCardKind: 'followups',
-      reviewCards: cards,
+      reviewCards: capped,
     });
   }
 
@@ -264,7 +273,7 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
 /**
  * 把一条教练消息映射成 A2UI 块。渲染层只吃 blocks，不解析聊天气泡。
  */
-export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A2UIBlock[] {
+export function messageToBlocks(message: CoachMessage, lang: Language = 'en'): A2UIBlock[] {
   const t = labels(lang);
   const blocks: A2UIBlock[] = [];
   const hasStructuredReview = message.action === 'review'
@@ -367,7 +376,7 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A
 }
 
 /** 用户问句 + 教练回复配成一次可检视的会话，供画布 / 历史轨使用 */
-export function pairCoachSessions(messages: CoachMessage[], lang: Language = 'zh'): CoachSession[] {
+export function pairCoachSessions(messages: CoachMessage[], lang: Language = 'en'): CoachSession[] {
   const sessions: CoachSession[] = [];
   let pendingUser: CoachMessage | null = null;
 

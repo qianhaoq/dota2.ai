@@ -31,6 +31,23 @@ describe('fetchReviewSuggestions', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/review/suggestions?lang=zh&limit=6');
   });
 
+
+  it('defaults to English when lang is omitted', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        recent: [],
+        highMmr: [],
+        count: 0,
+        source: 'opendota',
+        cacheAge: 0,
+      }),
+    });
+
+    await fetchReviewSuggestions();
+    expect(fetchMock).toHaveBeenCalledWith('/api/review/suggestions?lang=en&limit=6');
+  });
+
   it('soft-fails with empty lists on network error', async () => {
     fetchMock.mockRejectedValue(new Error('network down'));
     const data = await fetchReviewSuggestions('en', 6);

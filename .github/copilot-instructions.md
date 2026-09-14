@@ -2,7 +2,7 @@
 
 ## Product
 
-Dota2.ai is a DeepSeek-powered Dota 2 tactical assistant (Chinese default UI, English toggle):
+Dota2.ai is a DeepSeek-powered Dota 2 tactical assistant (English default UI, Chinese via toggle; DeepSeek/API output follows UI lang):
 
 - **Draft Strategy**: Radiant/Dire hero picks + optional strategy context → matchup analysis
 - **Lore Keeper**: chat with the Secret Shopkeeper about Dota 2 lore
@@ -32,6 +32,17 @@ Live site: `dota2.ai`. Contact / deploy owner: personal project of `qianhaoq`.
 - No secrets in code, logs, PR bodies, or commit messages.
 - Prefer focused diffs. Do not drive-by refactor unrelated files.
 - Streaming / SSE / chunked responses: watch closure traps and aborted-request cleanup (called out in the PR template).
+
+### Coach / streaming invariants (Codex P1s #54, #56)
+
+- Draft / side / practice changes that invalidate in-flight Analyze / Playbook / Next-pick must bump `contextRevision` and call `cancelStream()` together; retire stale suggestion cards for the new revision.
+- Re-tapping the already-selected "My side" is a no-op — must not bump the revision or cancel streams.
+- Respect explicit My side (`mySideExplicitRef`); never infer `mySide` from the first pick when set explicitly, and treat a practice-hero-only board as non-empty for inference.
+- Accepting a suggestion / Next-pick uses the request-time ally side + practice hero stamped on the message, not live controls.
+- Streaming chunks functional-append only (`setMessages(prev => appendStreamChunk(prev, …))`); never `messages.find` overwrite.
+- Analyze / Next-pick enablement derives from the resolved lineup (`resolveCoachingLineup`), not the raw empty draft.
+
+Full list: `.cursor/rules/dota2-coach-invariants.mdc`.
 
 ## Quality bar (must stay green)
 

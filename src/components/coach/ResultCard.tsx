@@ -8,8 +8,9 @@ import { MatchupData, TierHero, PlaybookHero } from '../../services/geminiServic
 import type { CoachSession } from './coachMessage';
 import { sessionTitle } from '../../utils/coachBlocks';
 import { shouldShowCoachFailureAlert, isCoachUserAbortError } from '../../utils/coachInflight';
-import { groupMarkdownSegments } from '../../utils/markdownLines';
+import { groupMarkdownSegments, renderInlineMarkdown } from '../../utils/markdownLines';
 import { primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../../utils/reviewSurface';
+import { shouldAddHeroToDraft } from '../../utils/draftContext';
 import ReviewInsightCards from './ReviewInsightCards';
 import { ActionChipBar, CardSkeleton, SectionCard, StatusNotice } from './a2ui';
 
@@ -17,7 +18,9 @@ interface ResultCardProps {
   session: CoachSession;
   lang: Language;
   allHeroes: Hero[];
-  onSelectHero: (hero: Hero) => void;
+  onSelectHero: (hero: Hero, allySide?: 'radiant' | 'dire', practiceHeroId?: number | null) => void;
+  /** Review/replay taps inspect only — do not mutate the draft board. */
+  onInspectHero?: (heroId: number) => void;
   mentorName?: string;
   expanded?: boolean;
   onDismiss?: () => void;
@@ -31,10 +34,10 @@ export const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ 
     <>
       {segments.map((segment, idx) => {
         if (segment.type === 'heading') {
-          return <h4 key={idx} className="text-k3-text-primary font-medium text-sm mt-3 mb-1.5">{segment.text}</h4>;
+          return <h4 key={idx} className="text-k3-text-primary font-medium text-sm mt-3 mb-1.5">{renderInlineMarkdown(segment.text)}</h4>;
         }
         if (segment.type === 'strong') {
-          return <strong key={idx} className="block mt-2 text-k3-text-primary text-sm">{segment.text}</strong>;
+          return <strong key={idx} className="block mt-2 text-k3-text-primary text-sm">{renderInlineMarkdown(segment.text)}</strong>;
         }
         if (segment.type === 'list') {
           return (
@@ -42,14 +45,14 @@ export const MarkdownBody: React.FC<{ text: string; streaming?: boolean }> = ({ 
               {segment.items.map((item, itemIdx) => (
                 <li key={itemIdx} className="ml-3 text-k3-text-secondary text-sm leading-relaxed flex items-start gap-2 my-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-k3-text-tertiary mt-2 flex-shrink-0" />
-                  <span className="min-w-0 break-words">{item}</span>
+                  <span className="min-w-0 break-words">{renderInlineMarkdown(item)}</span>
                 </li>
               ))}
             </ul>
           );
         }
         if (segment.type === 'blank') return <div key={idx} className="h-2" />;
-        return <p key={idx} className="text-k3-text-secondary text-sm leading-relaxed break-words">{segment.text}</p>;
+        return <p key={idx} className="text-k3-text-secondary text-sm leading-relaxed break-words">{renderInlineMarkdown(segment.text)}</p>;
       })}
       {streaming && (
         <span className="inline-block w-0.5 h-4 bg-k3-text-secondary animate-pulse ml-0.5 align-middle" />
@@ -63,12 +66,20 @@ const ResultCard: React.FC<ResultCardProps> = ({
   lang,
   allHeroes,
   onSelectHero,
+  onInspectHero,
   mentorName,
   expanded = true,
   onDismiss,
   onReviewFollowUp,
   canSubmitReviewFollowUpForContext,
 }) => {
+  const handleHeroTap = (hero: Hero) => {
+    if (shouldAddHeroToDraft(session.action)) {
+      onSelectHero(hero, session.message.allySide, session.message.practiceHeroId);
+      return;
+    }
+    onInspectHero?.(hero.id);
+  };
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const message = session.message;
   const followUpContext = useMemo(
@@ -202,7 +213,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
       onAction={(action) => {
         if (action.heroId == null) return;
         const hero = allHeroes.find((h) => h.id === action.heroId);
-        if (hero) onSelectHero(hero);
+        if (hero) handleHeroTap(hero);
       }}
     />
   );
@@ -219,7 +230,7 @@ const ResultCard: React.FC<ResultCardProps> = ({
               key={hero.id}
               onClick={() => {
                 const h = allHeroes.find((ah) => ah.id === hero.id);
-                if (h) onSelectHero(h);
+                if (h) handleHeroTap(h);
               }}
               className="flex items-center gap-2 p-2 bg-k3-elevated/40 hover:bg-k3-elevated rounded-sm text-left border border-k3-border-subtle min-h-[44px] touch-manipulation min-w-0"
             >

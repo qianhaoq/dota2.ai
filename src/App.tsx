@@ -3,8 +3,8 @@ import { Language } from './types';
 import WorkspaceShell from './app/WorkspaceShell';
 
 const App: React.FC = () => {
-  // 中文默认，可切换英文 (bilingual: zh default, en toggle).
-  const [lang, setLang] = useState<Language>('zh');
+  // English default, Chinese via toggle (bilingual: en default, zh toggle).
+  const [lang, setLang] = useState<Language>('en');
 
   // Keep the shell on the visual viewport so the sticky composer stays above the iOS keyboard.
   useEffect(() => {

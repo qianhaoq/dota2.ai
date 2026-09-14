@@ -45,7 +45,7 @@ const mapPrimaryAttr = (attr: string): Attribute => {
   }
 };
 
-export const fetchHeroes = async (lang: string = 'zh'): Promise<Hero[]> => {
+export const fetchHeroes = async (lang: string = 'en'): Promise<Hero[]> => {
   try {
     const response = await fetch(`/api/meta/heroes?lang=${lang}`);
     if (response.ok) {
@@ -98,7 +98,7 @@ const mapOpenDotaHero = (apiHero: OpenDotaHero): Hero => {
 };
 
 /** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
-export const fetchMatchFacts = async (matchId: number, lang: Language = 'zh'): Promise<MatchFact> => {
+export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): Promise<MatchFact> => {
   const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
@@ -152,7 +152,7 @@ export interface ReviewSuggestionsResponse {
 
 /** 复盘页推荐比赛（近期职业 + 高分路人），仅 OpenDota，不调用 DeepSeek */
 export const fetchReviewSuggestions = async (
-  lang: Language = 'zh',
+  lang: Language = 'en',
   limit: number = 6,
 ): Promise<ReviewSuggestionsResponse> => {
   try {

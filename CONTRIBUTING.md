@@ -26,7 +26,7 @@ node --check server.js # 服务端语法
 - **一个 PR 只做一件事**，并在 PR 描述中填写模板；涉及 SSE / API / 部署的改动请显式标注风险。
 - **不要**整个重写 `server.js`，也不要在未被明确要求时更换 AI 提供方（当前为 DeepSeek + OpenAI 兼容客户端）。
 - 不要绕过或削弱 CI 门禁。
-- 界面保持**中文默认、英文可切换**的双语约定。
+- 界面保持**英文默认、中文可切换**的双语约定；DeepSeek/API 输出须跟随 UI 语言。
 - 英雄、装备数值与背景以仓库数据和公开 API 为准；**不编造** Dota 设定或平衡数字。
 - 教学演示内容必须带“教学”标识，不得冒充真实比赛数据；没有坐标/视野数据就不画“真实位置”。
 - `mentorId`、`practiceHeroId`、`focusPlayerSlot` 是三个独立概念，不要合并成一个状态。
@@ -63,7 +63,7 @@ npm test && npx tsc --noEmit && npm run build && node --check server.js
 - One focused PR per issue; fill in the PR template and flag streaming / API / deploy risk.
 - Do **not** rewrite `server.js` wholesale or swap the AI provider (DeepSeek via the OpenAI-compatible client) without an explicit ask.
 - Do not weaken or bypass CI gates.
-- Keep the UI bilingual: Chinese default, English toggle.
+- Keep the UI bilingual: English default, Chinese via toggle; DeepSeek/API output must follow UI lang.
 - Hero/lore/numbers come from repo data and public APIs — never invented.
 - Teaching demos must be labeled as demos; never fake live-match data, positions or vision.
 - `mentorId`, `practiceHeroId` and `focusPlayerSlot` are separate concepts.

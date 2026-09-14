@@ -349,7 +349,7 @@ export const chatWithShopkeeper = async (history: {role: string, parts: {text: s
 
 // ============ Meta Tier API ============
 export const fetchTierList = async (
-  lang: Language = 'zh',
+  lang: Language = 'en',
   role?: string,
   limit: number = 20,
   sortBy: 'winRate' | 'pickRate' = 'winRate'
@@ -374,7 +374,7 @@ export const fetchTierList = async (
 
 // ============ Pro/Public Matches API ============
 export const fetchProMatches = async (
-  lang: Language = 'zh',
+  lang: Language = 'en',
   limit: number = 10
 ): Promise<ProMatchesResponse> => {
   try {
@@ -394,7 +394,7 @@ export const fetchProMatches = async (
 };
 
 export const fetchPublicMatches = async (
-  lang: Language = 'zh',
+  lang: Language = 'en',
   limit: number = 10,
   heroId?: number
 ): Promise<PublicMatchesResponse> => {
