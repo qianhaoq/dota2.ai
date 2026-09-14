@@ -76,4 +76,4 @@ When leaving review comments (Copilot or Codex), **tag each finding** with sever
 
 Unlabeled comments: treat correctness/security/data-loss as P0/P1; treat nit/style as P2.
 
-The merge Gate still requires **all** review threads resolved; the short-term path for P2 is Resolve + rationale (no code change). See `docs/MERGE_GATES.md`.
+Codex Review Gate / Auto Merge block unresolved Codex **P0/P1 (or unlabeled)**; pure Codex **P2 may stay open**, or Resolve after `P2: defer — <reason>` / `P2: won't fix — <reason>`. Non-Codex threads still must be resolved. GitHub native conversation resolution has no severity filter — see `docs/MERGE_GATES.md`.
