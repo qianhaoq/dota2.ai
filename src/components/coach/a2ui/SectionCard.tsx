@@ -30,7 +30,7 @@ const SectionCard: React.FC<SectionCardProps> = ({
   defaultOpen = true,
   onToggle,
   preview,
-  lang = 'zh',
+  lang = 'en',
   expandLabel,
   collapseLabel,
   children,

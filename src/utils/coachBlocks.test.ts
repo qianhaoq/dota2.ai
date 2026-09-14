@@ -61,7 +61,7 @@ describe('parseMarkdownSections', () => {
 
 describe('messageToBlocks', () => {
   it('maps streaming markdown without headings to a single analysis block', () => {
-    const blocks = messageToBlocks(baseCoach({ content: '正在看 OpenDota…' }));
+    const blocks = messageToBlocks(baseCoach({ content: '正在看 OpenDota…' }), 'zh');
     expect(blocks).toHaveLength(1);
     expect(blocks[0].type).toBe('section');
     expect(blocks[0].title).toBe('分析');
@@ -102,7 +102,7 @@ describe('messageToBlocks', () => {
         radiantAdvantages: [{ hero: 'Axe', vsHero: 'PA', advantage: 4.2, winRate: '54', games: 10 }],
         direAdvantages: [],
       },
-    }));
+    }), 'zh');
     expect(blocks[0].type).toBe('matchups');
     expect(blocks[0].title).toBe('对位优势');
   });
@@ -135,7 +135,7 @@ describe('messageToBlocks', () => {
         rank: 1,
         tier: 'S',
       }],
-    }));
+    }), 'zh');
     expect(blocks.map((b) => b.type)).toEqual(['actions', 'tier']);
     expect(blocks[0].actions?.[0]).toMatchObject({ label: '斧王', heroId: 2, meta: '+6.1%' });
   });
@@ -151,7 +151,7 @@ describe('messageToBlocks', () => {
         items: { startGame: [], earlyGame: [], midGame: [], lateGame: [] },
         vsEnemies: [],
       }],
-    }));
+    }), 'zh');
     expect(blocks[0].type).toBe('section');
     expect(blocks[0].title).toBe('出装剧本');
     expect(blocks[0].playbook).toHaveLength(1);

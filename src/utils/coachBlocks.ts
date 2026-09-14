@@ -273,7 +273,7 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
 /**
  * 把一条教练消息映射成 A2UI 块。渲染层只吃 blocks，不解析聊天气泡。
  */
-export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A2UIBlock[] {
+export function messageToBlocks(message: CoachMessage, lang: Language = 'en'): A2UIBlock[] {
   const t = labels(lang);
   const blocks: A2UIBlock[] = [];
   const hasStructuredReview = message.action === 'review'
@@ -376,7 +376,7 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'zh'): A
 }
 
 /** 用户问句 + 教练回复配成一次可检视的会话，供画布 / 历史轨使用 */
-export function pairCoachSessions(messages: CoachMessage[], lang: Language = 'zh'): CoachSession[] {
+export function pairCoachSessions(messages: CoachMessage[], lang: Language = 'en'): CoachSession[] {
   const sessions: CoachSession[] = [];
   let pendingUser: CoachMessage | null = null;
 
