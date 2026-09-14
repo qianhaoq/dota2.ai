@@ -1,0 +1,71 @@
+---
+description: Durable CoachView / draft / markdown / DeepSeek-lang invariants from Codex P1s (#54, #56). Do not regress.
+globs: src/components/CoachView.tsx,src/components/coach/**,src/utils/markdownLines.ts,src/utils/draftContext.ts,src/utils/practiceContext.ts,server.js,lib/aiLanguage.js
+alwaysApply: false
+---
+
+# Coach invariants — do not regress (#54, #56)
+
+Encoded from repeated Codex P1 findings: PR #54 (coach draft/review/practice isolation),
+PR #56 (streaming markdown emphasis). Every rule below was a real P1 bug once. When touching
+these files, scan this list before and after your diff.
+
+## A. CoachView / draft / practice (#54) — CRITICAL
+
+1. **Revision + cancel go together.** Any draft / side / practice change that invalidates
+   in-flight Analyze / Playbook / Next-pick MUST bump `contextRevision` (via
+   `setContextRevision` + `contextRevisionRef.current`) **AND** call `cancelStream()`.
+   MUST also retire completed suggestion cards stamped with an older revision
+   (`clearStaleSuggestionsForRevision`) — stale cards must not stay actionable against the
+   new board.
+2. **No-op means no revision.** Re-tapping the already-selected "My side" MUST NOT bump the
+   revision or cancel streams. Compare desired vs current state before invalidating.
+3. **My side vs editing side.** NEVER infer or lock `mySide` from the first pick when the
+   user set My side explicitly — preserve `mySideExplicitRef`. A practice-hero-only board
+   counts as non-empty for ally-side inference: picking an enemy first on an otherwise
+   empty board MUST NOT flip `mySide` to the opposing side.
+4. **Practice hero materializes.** Direct ally picks and Next-pick accepts MUST route
+   through `acceptHeroOntoDraft` so the seeded practice hero lands on the ally board.
+   MUST NOT raw-push onto an empty ally side (empty-board seed-only logic silently drops
+   the practice hero from later analysis).
+5. **Accepts bind to request-time context.** Accepting a suggestion / Next-pick MUST use
+   the ally side + practice hero stamped on the message/session at request time — NOT live
+   controls the user may have changed after the card was generated.
+6. **Review isolation.** Entering review MUST snapshot the draft (`draftSnapshotRef`);
+   leaving review MUST restore it — UNLESS the user intentionally edited the draft during
+   review (persist those edits into the snapshot so restore keeps them). MUST NOT discard
+   accepted draft actions on review exit. Cancel draft streams when leaving to review /
+   switching lessons externally where context changed.
+7. **Streaming setState.** `onChunk` MUST functional-append only:
+   `setMessages(prev => appendStreamChunk(prev, …))`. NEVER `messages.find(...)` and
+   overwrite — that drops interleaved chunks (see `_buggyAppendPattern_DO_NOT_USE`).
+8. **Post-bump stream revisions.** After `applyLessonSwitch` bumps the revision inside a
+   `setState`, the next stream MUST read `contextRevisionRef.current` **after** the bump —
+   MUST NOT reuse a revision captured before the `setState` (it is stale by definition).
+9. **Enablement from resolved lineup.** Analyze / Next-pick enablement MUST derive from the
+   **resolved lineup** (`resolveCoachingLineup` allies/enemies after practice
+   materialization), not the raw empty draft. Enemy-only drafts can still enable
+   Next-pick / ally recommendations.
+
+## B. markdownLines (#56) — HIGH — do not regress
+
+- CommonMark-ish flanking for `*` / `**` / `_`: a delimiter run MUST NOT open before
+  whitespace or close after whitespace.
+- Code spans protect their contents from emphasis parsing; skip code spans when scanning
+  for closers; closer backtick run length MUST equal opener run length; an unmatched
+  backtick opener run is consumed atomically as literal text.
+- Escapes: honor `\*` etc. outside code spans; backslashes are literal inside code spans.
+- Nested `***` / `****` partition by nesting context — MUST NOT always peel first/last two
+  stars as bold + remainder italic.
+- Cache failed closer scans (perf): re-scanning every position on every SSE chunk is
+  quadratic and froze streaming UIs once already.
+- `_` boundaries are Unicode/CJK-aware, not JS `\w`: snake_case identifiers MUST NOT
+  render as emphasis; CJK-adjacent `_` still needs real word-boundary logic.
+- Streaming half-open delimiters stay literal: a mid-stream `**foo` MUST NOT be
+  reinterpreted as italic; wait for the closing run.
+
+## C. DeepSeek output language
+
+- Output language MUST follow UI `lang` on analyze / playbook / review / chat: `zh` →
+  简体中文, `en` → English (`lib/aiLanguage.js`). This invariant is being locked by
+  PR #57; do not change the default-language product decision (中文 first) here.

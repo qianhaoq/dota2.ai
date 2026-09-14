@@ -33,6 +33,17 @@ Live site: `dota2.ai`. Contact / deploy owner: personal project of `qianhaoq`.
 - Prefer focused diffs. Do not drive-by refactor unrelated files.
 - Streaming / SSE / chunked responses: watch closure traps and aborted-request cleanup (called out in the PR template).
 
+### Coach / streaming invariants (Codex P1s #54, #56)
+
+- Draft / side / practice changes that invalidate in-flight Analyze / Playbook / Next-pick must bump `contextRevision` and call `cancelStream()` together; retire stale suggestion cards for the new revision.
+- Re-tapping the already-selected "My side" is a no-op — must not bump the revision or cancel streams.
+- Respect explicit My side (`mySideExplicitRef`); never infer `mySide` from the first pick when set explicitly, and treat a practice-hero-only board as non-empty for inference.
+- Accepting a suggestion / Next-pick uses the request-time ally side + practice hero stamped on the message, not live controls.
+- Streaming chunks functional-append only (`setMessages(prev => appendStreamChunk(prev, …))`); never `messages.find` overwrite.
+- Analyze / Next-pick enablement derives from the resolved lineup (`resolveCoachingLineup`), not the raw empty draft.
+
+Full list: `.cursor/rules/dota2-coach-invariants.mdc`.
+
 ## Quality bar (must stay green)
 
 Before finishing a change, the agent should be able to run locally / in setup:
