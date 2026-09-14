@@ -1,6 +1,6 @@
 ---
-description: Durable CoachView / draft / markdown / DeepSeek-lang invariants from Codex P1s (#54, #56). Do not regress.
-globs: src/components/CoachView.tsx,src/components/coach/**,src/utils/markdownLines.ts,src/utils/draftContext.ts,src/utils/practiceContext.ts,server.js,lib/aiLanguage.js
+description: "Durable CoachView / draft / markdown / DeepSeek-lang invariants from Codex P1s (#54, #56). Do not regress."
+globs: src/components/CoachView.tsx,src/components/coach/**,src/utils/markdownLines.ts,src/utils/draftContext.ts,src/utils/practiceContext.ts,server.js,lib/aiLanguage.js,src/services/geminiService.ts
 alwaysApply: false
 ---
 
@@ -13,11 +13,11 @@ these files, scan this list before and after your diff.
 ## A. CoachView / draft / practice (#54) — CRITICAL
 
 1. **Revision + cancel go together.** Any draft / side / practice change that invalidates
-   in-flight Analyze / Playbook / Next-pick MUST bump `contextRevision` (via
-   `setContextRevision` + `contextRevisionRef.current`) **AND** call `cancelStream()`.
-   MUST also retire completed suggestion cards stamped with an older revision
-   (`clearStaleSuggestionsForRevision`) — stale cards must not stay actionable against the
-   new board.
+   in-flight Analyze / Playbook / Next-pick MUST bump `contextRevision` (via a **synchronous**
+   `contextRevisionRef.current` update **before** `setContextRevision`) **AND** call
+   `cancelStream()`. MUST also retire completed suggestion cards stamped with an older
+   revision (`clearStaleSuggestionsForRevision`) — stale cards must not stay actionable
+   against the new board.
 2. **No-op means no revision.** Re-tapping the already-selected "My side" MUST NOT bump the
    revision or cancel streams. Compare desired vs current state before invalidating.
 3. **My side vs editing side.** NEVER infer or lock `mySide` from the first pick when the
@@ -34,14 +34,19 @@ these files, scan this list before and after your diff.
 6. **Review isolation.** Entering review MUST snapshot the draft (`draftSnapshotRef`);
    leaving review MUST restore it — UNLESS the user intentionally edited the draft during
    review (persist those edits into the snapshot so restore keeps them). MUST NOT discard
-   accepted draft actions on review exit. Cancel draft streams when leaving to review /
-   switching lessons externally where context changed.
+   accepted draft actions on review exit. On the exit-from-review path
+   (`applyLessonSwitch`), MUST call `cancelStream()` **before** bumping the revision.
+   Also cancel when switching lessons externally where context changed.
 7. **Streaming setState.** `onChunk` MUST functional-append only:
    `setMessages(prev => appendStreamChunk(prev, …))`. NEVER `messages.find(...)` and
    overwrite — that drops interleaved chunks (see `_buggyAppendPattern_DO_NOT_USE`).
-8. **Post-bump stream revisions.** After `applyLessonSwitch` bumps the revision inside a
-   `setState`, the next stream MUST read `contextRevisionRef.current` **after** the bump —
-   MUST NOT reuse a revision captured before the `setState` (it is stale by definition).
+8. **Post-bump stream revisions.** When exiting review (or any path that immediately starts
+   Analyze / Playbook after a revision bump), bump `contextRevision` via a **synchronous
+   ref update** (`contextRevisionRef.current = next`) **before** `setContextRevision(next)`
+   and **before** starting Analyze / Playbook — MUST NOT rely on bumping only inside a
+   `setState` updater (React may defer it). Streams MUST then read
+   `contextRevisionRef.current` after that sync bump — MUST NOT reuse a revision captured
+   before the bump.
 9. **Enablement from resolved lineup.** Analyze / Next-pick enablement MUST derive from the
    **resolved lineup** (`resolveCoachingLineup` allies/enemies after practice
    materialization), not the raw empty draft. Enemy-only drafts can still enable
@@ -67,5 +72,6 @@ these files, scan this list before and after your diff.
 ## C. DeepSeek output language
 
 - Output language MUST follow UI `lang` on analyze / playbook / review / chat: `zh` →
-  简体中文, `en` → English (`lib/aiLanguage.js`). This invariant is being locked by
-  PR #57; do not change the default-language product decision (中文 first) here.
+  简体中文, `en` → English (`lib/aiLanguage.js`, `src/services/geminiService.ts`).
+  Preserve the product-approved default (English after #57 / current AGENTS); do not
+  freeze or regress that default in these rules.
