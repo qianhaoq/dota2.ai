@@ -63,7 +63,7 @@ npm test && npx tsc --noEmit && npm run build && node --check server.js
 - One focused PR per issue; fill in the PR template and flag streaming / API / deploy risk.
 - Do **not** rewrite `server.js` wholesale or swap the AI provider (DeepSeek via the OpenAI-compatible client) without an explicit ask.
 - Do not weaken or bypass CI gates.
-- Keep the UI bilingual: Chinese default, English toggle.
+- Keep the UI bilingual: English default, Chinese via toggle; DeepSeek/API output must follow UI lang.
 - Hero/lore/numbers come from repo data and public APIs — never invented.
 - Teaching demos must be labeled as demos; never fake live-match data, positions or vision.
 - `mentorId`, `practiceHeroId` and `focusPlayerSlot` are separate concepts.

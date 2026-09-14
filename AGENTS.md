@@ -20,7 +20,7 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
 
 - Keep PRs small; one issue → one focused PR.
 - Reuse `src/components`, `src/services`, `src/types.ts`.
-- Respect bilingual UI defaults (中文 first).
+- Respect bilingual UI: English default, Chinese via toggle; DeepSeek/API output must follow UI lang.
 - Fill the PR template; call out streaming / API / deploy risk.
 - Prefer **ready-for-review** (not forever-draft) when CI should auto-merge.
 
