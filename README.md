@@ -4,7 +4,7 @@
 # Dota2.ai — 战术教练 V3 | Tactical Coach V3
 
 **教玩家做判断，不替玩家玩游戏。**
-**Chinese default · English toggle · MIT License**
+**English default · Chinese toggle · MIT License**
 
 </div>
 

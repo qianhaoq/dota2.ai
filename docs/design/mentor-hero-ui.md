@@ -98,7 +98,7 @@ Empty (无导师) → PickingMentor → LessonReady → TeachingChat ↔ Analysi
 | 主 CTA 反白 | `bg #F5F5F5` / `text #0B0B0C` |
 | 教练页无比赛轮播 | `ProMatchStrip` 不进入 CoachView |
 | 数据接地 | 仅 OpenDota 公开 API；无数据写「暂无数据」，**不用灰遮罩** |
-| 中文优先 | 界面默认 zh，en 为切换态 |
+| English default | 界面默认 en，zh 为切换态；DeepSeek/API 输出跟随 UI 语言 |
 
 ---
 

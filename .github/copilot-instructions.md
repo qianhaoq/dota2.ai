@@ -2,7 +2,7 @@
 
 ## Product
 
-Dota2.ai is a DeepSeek-powered Dota 2 tactical assistant (Chinese default UI, English toggle):
+Dota2.ai is a DeepSeek-powered Dota 2 tactical assistant (English default UI, Chinese via toggle; DeepSeek/API output follows UI lang):
 
 - **Draft Strategy**: Radiant/Dire hero picks + optional strategy context → matchup analysis
 - **Lore Keeper**: chat with the Secret Shopkeeper about Dota 2 lore
