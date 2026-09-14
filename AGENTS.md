@@ -31,6 +31,18 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
 - Skip TypeScript / build / tests.
 - Invent Dota lore or balance numbers not backed by repo data.
 
+## Coach invariants
+
+Worst pitfalls from Codex P1s (#54, #56) — full rules: `.cursor/rules/dota2-coach-invariants.mdc`.
+
+- Any draft / side / practice change that invalidates in-flight Analyze / Playbook / Next-pick MUST bump `contextRevision` (sync `contextRevisionRef` **before** `setContextRevision`) **and** call `cancelStream()` together, and retire stale suggestion cards (`clearStaleSuggestionsForRevision`). On leaving review (`applyLessonSwitch`), `cancelStream()` before the revision bump.
+- No-op interactions (re-tapping the already-selected "My side") MUST NOT bump the revision or cancel streams.
+- Respect explicit My side (`mySideExplicitRef`): never infer `mySide` from the first pick when the user set it; a practice-hero-only board is non-empty for side inference.
+- Accepting a suggestion / Next-pick binds to the request-time ally side + practice hero stamped on the message — not live controls.
+- Streaming `onChunk` functional-appends only (`setMessages(prev => appendStreamChunk(prev, …))`); never `messages.find` overwrite.
+- Analyze / Next-pick enablement derives from the resolved lineup (`resolveCoachingLineup`), not the raw empty draft.
+- DeepSeek output language follows UI `lang` (zh → 简体中文, en → English); preserve the product-approved default (English after #57).
+
 ## Merge policy
 
 Human merge is **optional** only when every auto-merge gate passes. Copilot often submits `COMMENTED`, not `APPROVED` — do not require `APPROVED`. `.github/workflows/auto-merge.yml` squash-merges into `main` only if a successful **Build & Test check run** exists on the head SHA (fail closed if missing), **`copilot-pull-request-reviewer` and `Codex Review Gate` check runs exist and succeeded** (missing skips), the latest Copilot review for that SHA exists and is not `CHANGES_REQUESTED` (`APPROVED` or `COMMENTED` OK), and **all review threads are resolved** (#33: COMMENTED + open threads must not merge). Missing Copilot review does not auto-merge. Codex Gate dispatches Auto Merge on success and fails the check if dispatch fails. Merge is pinned to the evaluated head SHA. To block auto-merge, add label `no-auto-merge` or keep the PR as draft. See `docs/MERGE_GATES.md`.
