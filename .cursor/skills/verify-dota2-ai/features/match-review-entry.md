@@ -21,7 +21,7 @@
 Preconditions:
 
 - Doctor reports `ok: true`.
-- Language is 中文.
+- Language defaults to English. This recipe drives 中文: click `切换语言` first (or rely on the helper).
 - DeepSeek is **not** required for this file. Do not POST `/api/review/:id` here.
 
 - **Tab entry.** From the landing, choose `复盘`. Run `verify-dota2-ai drive match-review-entry` (the helper clicks `role=tab` name `复盘`). The kicker `TACTICAL REVIEW / 赛后复盘` and heading `先还原你当时掌握的信息。` appear.

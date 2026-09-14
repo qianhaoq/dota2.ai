@@ -21,7 +21,7 @@
 Preconditions:
 
 - Doctor reports `ok: true`.
-- Language is 中文.
+- Language defaults to English. This recipe drives 中文: click `切换语言` first (or rely on the helper).
 - Chrome user-data-dir is the helper's disposable profile so `localStorage` key `dota-v3-tactical-notes` starts empty.
 - DeepSeek is not required. The training drill is local.
 

@@ -7,7 +7,7 @@ description: Drive the Dota2.ai Tactical Coach V3 web UI (React + Vite on :5173,
 
 Agent-facing control skill for the **web UI** (primary surface). HTTP APIs (`/health`, `/api/health`, `/api/analyze`, `/api/review/:matchId`, `/api/playbook`) exist behind the same Express process; drive them only as supporting checks, never as a substitute for the user path.
 
-The UI defaults to **中文**. Visible strings and `aria-label` values below are copied from `src/`. Do not invent selectors. Desktop nav is `hidden md:flex` — drive at **1280×800** so `主导航` is visible (`移动端导航` is `md:hidden`).
+The UI defaults to **English**; Chinese is available via the header toggle. Visible strings and `aria-label` values below are copied from `src/`. Do not invent selectors. Desktop nav is `hidden md:flex` — drive at **1280×800** so `Main navigation` is visible (`Mobile navigation` is `md:hidden`).
 
 No Playwright/Cypress harness lives in this repo. The shipped helper talks **Chrome DevTools Protocol** (Chrome is on the Cursor cloud image). If Chrome is missing, use the Cursor `computerUse` browser with the same roles/names — never coordinates.
 
@@ -17,7 +17,7 @@ No Playwright/Cypress harness lives in this repo. The shipped helper talks **Chr
 |---|---|
 | Surface | Web UI first. Secondary: unauthenticated JSON/SSE under `/api/*`. |
 | Run | `npm ci` then `npm run start:dev` (Vite `http://127.0.0.1:5173` + Express `8080`). `server.js` reads `process.env` only — it does **not** load `.env` itself. The helper sources repo `.env` into the child env. |
-| Drive | CDP helper below. Stable handles: `aria-label`, `role=tab` / `role=button`, visible 中文, hash `#tactical` `#training` `#knowledge` `#journal`. |
+| Drive | CDP helper below. Stable handles: `aria-label`, `role=tab` / `role=button`, visible copy (en default), hash `#tactical` `#training` `#knowledge` `#journal`. |
 | Observe | PNG screenshots, `Accessibility.getFullAXTree` dump, `document.body.innerText`, `/health` JSON. |
 | Isolate | Dev mode **cannot** share `:5173` / `:8080`. If those ports are already taken, **refuse** — do not attach to a user's session. Side-by-side: `VERIFY_MODE=prod VERIFY_API_PORT=<free>` after `npm run build` (single Express serving `dist`). Vite's `/api` proxy is hardcoded to `localhost:8080`, so isolated prod mode is the only safe second instance. |
 
@@ -80,22 +80,22 @@ If doctor fails, stop. Do not click a UI you did not launch.
 
 Recipes live in `features/`. The helper launches headless Chrome at 1280×800, attaches only to a DevTools target with `type=page` (Chrome may also list component `background_page` targets first — do not attach to those), navigates `{uiOrigin}/`, and resolves controls by **role + accessible name**, **placeholder**, or **visible 中文 substring** — never x/y.
 
-Handles taken from source (zh default):
+Handles taken from source (en default; 中文 after toggle):
 
 | Control | Handle |
 |---|---|
 | Brand | `role=button` `aria-label="DOTA2.AI"` |
-| Desktop nav | `role=navigation` `aria-label="主导航"` |
-| 战术室 / 英雄修炼 / 英雄图鉴 / 战术笔记 | `role=button` name equals that label (`aria-current="page"` when active) |
-| Language | `role=button` `aria-label="Switch language"` (visible `中`). After toggle: `aria-label="切换语言"` (visible `EN`) |
-| Tactical workspaces | `role=tablist` `aria-label="战术室工作区"` ; tabs `入口` `复盘` `阵容` `装备` |
-| Motive cards | buttons whose accessible name **contains** `刚打完，复盘一局` / `准备开局，推演阵容` / `想变强，练一次判断` (no `aria-label`; name includes the subtitle) |
-| Review intake | heading `先还原你当时掌握的信息。` ; button `复盘一局` ; placeholder `8985182860 或 opendota.com/matches/...` ; submit `拉取比赛` |
-| Codex search | hash `#knowledge` ; placeholder `搜索英雄名称或别名...` |
-| Journal | hash `#journal` ; empty copy `还没有保存的动作。` |
+| Desktop nav | `role=navigation` `aria-label="Main navigation"` (zh: `主导航`) |
+| Tactical Room / Hero Training / Hero Codex / Tactical Journal | `role=button` name equals that label (`aria-current="page"` when active). After toggle: 战术室 / 英雄修炼 / 英雄图鉴 / 战术笔记 |
+| Language | `role=button` `aria-label="切换语言"` (visible `EN`). After toggle to 中文: `aria-label="Switch language"` (visible `中`). Inverted: label is the *other* language's instruction. |
+| Tactical workspaces | `role=tablist` `aria-label="Tactical room workspaces"` ; tabs `Start` `Review` `Draft` `Items` (zh: `战术室工作区` / `入口` `复盘` `阵容` `装备`) |
+| Motive cards | buttons whose accessible name **contains** `Just finished — review a game` / `About to queue — draft preview` / `Want to improve — drill a call` (zh equivalents after toggle; no `aria-label`; name includes the subtitle) |
+| Review intake | heading `Reconstruct what you knew at the time.` ; button `Review a game` ; (zh: `先还原你当时掌握的信息。` / `复盘一局`) |
+| Codex search | hash `#knowledge` ; placeholder `Search hero name or alias...` (zh: `搜索英雄名称或别名...`) |
+| Journal | hash `#journal` ; empty copy `No saved actions yet.` (zh: `还没有保存的动作。`) |
 | Deep links | `#tactical` `#training` `#knowledge` `#journal` |
 
-Cursor `computerUse` fallback (same handles, still 1280px wide): open `{uiOrigin}`, click the named buttons, assert the same 中文, screenshot into `evidence/<feature>/<runId>/`.
+Cursor `computerUse` fallback (same handles, still 1280px wide): open `{uiOrigin}`, click the named buttons, assert the matching language copy, screenshot into `evidence/<feature>/<runId>/`.
 
 Do not start DeepSeek SSE unless `/api/health.apiKeyConfigured` is true and the mapped feature says so.
 

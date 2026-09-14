@@ -22,7 +22,7 @@
 Preconditions:
 
 - Doctor reports `ok: true` at `http://127.0.0.1:5173`.
-- Language is 中文 (header shows `中`, `aria-label="Switch language"`).
+- Language defaults to English (header shows `EN`, `aria-label="切换语言"`). This recipe drives 中文: click `切换语言` first (or rely on the helper).
 - Viewport is 1280×800 so `主导航` is visible.
 - DeepSeek is not required.
 

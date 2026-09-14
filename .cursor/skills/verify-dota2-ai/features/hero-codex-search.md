@@ -21,7 +21,7 @@
 Preconditions:
 
 - Doctor reports `ok: true`.
-- Language is 中文.
+- Language defaults to English. This recipe drives 中文: click `切换语言` first (or rely on the helper).
 - DeepSeek is not required. `/api/meta/heroes` or the OpenDota `heroStats` fallback must be reachable.
 - Chrome profile is disposable; no prior query.
 

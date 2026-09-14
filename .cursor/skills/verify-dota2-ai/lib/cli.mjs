@@ -302,12 +302,23 @@ async function cmdDoctor() {
   if (!report.ok) process.exit(2);
 }
 
+
+/** Product default is English; Chinese recipes toggle once via inverted aria-label. */
+async function ensureZh(cdp) {
+  const text = await pageText(cdp);
+  if (text.includes('战术室') || text.includes('把下一次判断')) return;
+  await clickHandle(cdp, { role: 'button', name: '切换语言' });
+  await waitForText(cdp, '战术室');
+}
+
 const FEATURES = {
   'tactical-room-entry': {
     title: '战术室入口',
     needsDeepseek: false,
     async run(cdp) {
       const shots = {};
+      await waitForText(cdp, 'Make the next call');
+      await ensureZh(cdp);
       await waitForText(cdp, '把下一次判断');
       shots.landing = 'landing.png';
       await screenshotPng(cdp, shots.landing);
@@ -342,6 +353,8 @@ const FEATURES = {
     title: '赛后复盘入口',
     needsDeepseek: false,
     async run(cdp) {
+      await waitForText(cdp, 'Make the next call');
+      await ensureZh(cdp);
       await waitForText(cdp, '把下一次判断');
       await clickHandle(cdp, { role: 'tab', name: '复盘' });
       await waitForText(cdp, '先还原你当时掌握的信息。');
@@ -363,6 +376,8 @@ const FEATURES = {
     needsDeepseek: false,
     async run(cdp, { uiOrigin }) {
       await navigate(cdp, `${uiOrigin}/#knowledge`);
+      await waitForText(cdp, 'Reference should answer');
+      await ensureZh(cdp);
       await waitForText(cdp, '资料应该回答“怎么用”');
       await waitFor(async () => {
         const text = await pageText(cdp);
@@ -389,6 +404,8 @@ const FEATURES = {
     needsDeepseek: false,
     async run(cdp, { uiOrigin }) {
       await navigate(cdp, `${uiOrigin}/#journal`);
+      await waitForText(cdp, 'Take exactly one executable action');
+      await ensureZh(cdp);
       await waitForText(cdp, '下一局，只带走一个能执行的动作。');
       const empty = await pageText(cdp);
       if (!empty.includes('还没有保存的动作。') && !empty.includes('触发')) {
@@ -426,23 +443,23 @@ const FEATURES = {
     title: '语言切换',
     needsDeepseek: false,
     async run(cdp) {
-      await waitForText(cdp, '把下一次判断');
-      const zh = await pageText(cdp);
-      if (!zh.includes('战术室') || !zh.includes('英雄图鉴')) {
-        throw new Error('default language is not 中文');
-      }
-      await screenshotPng(cdp, 'zh.png');
-      await clickHandle(cdp, { role: 'button', name: 'Switch language' });
-      await waitForText(cdp, 'Tactical Room');
+      await waitForText(cdp, 'Make the next call');
       const en = await pageText(cdp);
-      if (!en.includes('Make the next call') || !en.includes('Hero Codex')) {
-        throw new Error('English toggle did not swap primary nav/copy');
+      if (!en.includes('Tactical Room') || !en.includes('Hero Codex')) {
+        throw new Error('default language is not English');
       }
       await screenshotPng(cdp, 'en.png');
       await clickHandle(cdp, { role: 'button', name: '切换语言' });
       await waitForText(cdp, '战术室');
-      await screenshotPng(cdp, 'zh-back.png');
-      return { shots: { zh: 'zh.png', en: 'en.png', back: 'zh-back.png' }, observed: ['zh default', 'EN', 'back to 中'] };
+      const zh = await pageText(cdp);
+      if (!zh.includes('把下一次判断') || !zh.includes('英雄图鉴')) {
+        throw new Error('Chinese toggle did not swap primary nav/copy');
+      }
+      await screenshotPng(cdp, 'zh.png');
+      await clickHandle(cdp, { role: 'button', name: 'Switch language' });
+      await waitForText(cdp, 'Tactical Room');
+      await screenshotPng(cdp, 'en-back.png');
+      return { shots: { en: 'en.png', zh: 'zh.png', back: 'en-back.png' }, observed: ['en default', '中', 'back to EN'] };
     },
   },
 };
