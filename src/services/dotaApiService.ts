@@ -97,18 +97,50 @@ const mapOpenDotaHero = (apiHero: OpenDotaHero): Hero => {
   };
 };
 
+export class MatchFactsError extends Error {
+  upstream?: string;
+  upstreamStatus?: number;
+  retryable?: boolean;
+
+  constructor(
+    message: string,
+    opts?: { upstream?: string; upstreamStatus?: number; retryable?: boolean },
+  ) {
+    super(message);
+    this.name = 'MatchFactsError';
+    this.upstream = opts?.upstream;
+    this.upstreamStatus = opts?.upstreamStatus;
+    this.retryable = opts?.retryable;
+  }
+}
+
 /** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
 export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): Promise<MatchFact> => {
   const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
   });
-  const data = await response.json().catch(() => ({} as { error?: string; matchFact?: MatchFact }));
+  const data = await response.json().catch(
+    () => ({} as {
+      error?: string;
+      matchFact?: MatchFact;
+      upstream?: string;
+      upstreamStatus?: number;
+      retryable?: boolean;
+    }),
+  );
   if (!response.ok) {
-    throw new Error(data.error || (lang === 'zh' ? '拉取比赛失败' : 'Failed to load match'));
+    throw new MatchFactsError(
+      data.error || (lang === 'zh' ? '拉取比赛失败' : 'Failed to load match'),
+      {
+        upstream: data.upstream,
+        upstreamStatus: data.upstreamStatus,
+        retryable: data.retryable,
+      },
+    );
   }
   if (!data.matchFact) {
-    throw new Error(lang === 'zh' ? '比赛数据为空' : 'Match data is empty');
+    throw new MatchFactsError(lang === 'zh' ? '比赛数据为空' : 'Match data is empty');
   }
   return data.matchFact;
 };

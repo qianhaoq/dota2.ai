@@ -37,6 +37,16 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(express.json());
 
+// www → apex: works when www.dota2.ai points at this Cloud Run service.
+// If DNS/CDN still serves a different origin for www, configure redirect there as follow-up.
+app.use((req, res, next) => {
+  const host = (req.hostname || '').toLowerCase();
+  if (host === 'www.dota2.ai') {
+    return res.redirect(301, `https://dota2.ai${req.originalUrl || '/'}`);
+  }
+  next();
+});
+
 const apiKey = process.env.DEEPSEEK_API_KEY;
 if (!apiKey) {
   console.warn("WARNING: DEEPSEEK_API_KEY is not set in the server environment.");
@@ -92,16 +102,95 @@ const cache = {
   matchDetails: new Map(), // Map<matchId, { data, timestamp }>
 };
 
+function isRetryableHttpStatus(status) {
+  return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
+}
+
+function redactFetchUrl(url) {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return String(url).split('?')[0];
+  }
+}
+
+function combineAbortSignals(signals) {
+  const list = signals.filter(Boolean);
+  if (list.length === 0) return undefined;
+  if (list.length === 1) return list[0];
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any(list);
+  const controller = new AbortController();
+  const onAbort = () => {
+    controller.abort(list.find((s) => s.aborted)?.reason);
+  };
+  for (const signal of list) {
+    if (signal.aborted) {
+      onAbort();
+      break;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+  return controller.signal;
+}
+
+function enrichUpstreamError(err, url, status) {
+  const message = status != null ? `HTTP ${status}` : (err?.message || 'Fetch failed');
+  const error = (err instanceof Error && status == null) ? err : new Error(message);
+  if (status != null) error.status = status;
+  else if (err?.status != null) error.status = err.status;
+
+  const resolvedStatus = error.status;
+  if (resolvedStatus != null) {
+    error.retryable = isRetryableHttpStatus(resolvedStatus);
+  } else {
+    // network / timeout — retryable unless caller aborted
+    error.retryable = err?.name !== 'AbortError';
+  }
+
+  if (typeof url === 'string' && url.includes('api.opendota.com')) {
+    error.upstream = 'opendota';
+  } else if (err?.upstream) {
+    error.upstream = err.upstream;
+  }
+  return error;
+}
+
 async function fetchWithRetry(url, retries = 2, delay = 500, options = {}) {
+  const { timeoutMs, signal: callerSignal, ...fetchOptions } = options;
+  const safeUrl = redactFetchUrl(url);
+
   for (let i = 0; i <= retries; i++) {
+    const started = Date.now();
     try {
-      const res = await fetch(url, options);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const timeoutSignal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+      const signal = combineAbortSignals([callerSignal, timeoutSignal]);
+      const res = await fetch(url, { ...fetchOptions, ...(signal ? { signal } : {}) });
+      const latencyMs = Date.now() - started;
+      if (!res.ok) {
+        console.warn(
+          `[fetchWithRetry] ${safeUrl} attempt=${i + 1}/${retries + 1} status=${res.status} latencyMs=${latencyMs}`
+        );
+        const httpErr = enrichUpstreamError(new Error(`HTTP ${res.status}`), url, res.status);
+        if (!isRetryableHttpStatus(res.status) || i === retries) throw httpErr;
+        await new Promise((r) => setTimeout(r, delay * (i + 1)));
+        continue;
+      }
+      if (i > 0) {
+        console.warn(
+          `[fetchWithRetry] ${safeUrl} attempt=${i + 1}/${retries + 1} status=${res.status} latencyMs=${latencyMs} ok`
+        );
+      }
       return await res.json();
     } catch (err) {
-      if (options.signal?.aborted) throw err;
-      if (i === retries) throw err;
-      await new Promise(r => setTimeout(r, delay * (i + 1)));
+      const latencyMs = Date.now() - started;
+      if (callerSignal?.aborted) throw err;
+      const enriched = enrichUpstreamError(err, url, err?.status);
+      console.warn(
+        `[fetchWithRetry] ${safeUrl} attempt=${i + 1}/${retries + 1} status=${enriched.status ?? 'network'} latencyMs=${latencyMs} error=${enriched.message}`
+      );
+      if (i === retries || enriched.retryable === false) throw enriched;
+      await new Promise((r) => setTimeout(r, delay * (i + 1)));
     }
   }
 }
@@ -2016,7 +2105,10 @@ async function getMatchDetail(matchId, fetchOptions = {}) {
     return cached.data;
   }
 
-  const data = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 2, 500, fetchOptions);
+  const data = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
+    ...fetchOptions,
+    timeoutMs: fetchOptions.timeoutMs ?? 25000,
+  });
   evictMatchDetailCache();
   cache.matchDetails.set(matchId, { data, timestamp: Date.now() });
   return data;
@@ -2032,7 +2124,76 @@ function endReviewSse(res, payload) {
   res.end();
 }
 
-function respondReviewError(res, wantsStream, errorMsg, status = 400) {
+function mapOpenDotaFetchError(error, isZh) {
+  const upstreamStatus = typeof error?.status === 'number'
+    ? error.status
+    : (() => {
+        const m = /HTTP (\d{3})/.exec(error?.message || '');
+        return m ? Number(m[1]) : undefined;
+      })();
+  const isUpstream = error?.upstream === 'opendota'
+    || upstreamStatus != null
+    || /opendota|fetch failed|timeout|network/i.test(error?.message || '');
+  const retryable = error?.retryable === true
+    || (upstreamStatus != null && isRetryableHttpStatus(upstreamStatus))
+    || (upstreamStatus == null && isUpstream);
+
+  if (upstreamStatus === 404) {
+    return {
+      status: 404,
+      body: {
+        error: isZh ? '找不到这场比赛' : 'Match not found',
+        upstream: 'opendota',
+        upstreamStatus: 404,
+        retryable: false,
+      },
+    };
+  }
+
+  if (retryable) {
+    return {
+      status: 503,
+      body: {
+        error: isZh
+          ? 'OpenDota 暂时不可用，请稍后重试'
+          : 'OpenDota is temporarily unavailable. Please retry in a moment.',
+        upstream: 'opendota',
+        upstreamStatus,
+        retryable: true,
+      },
+    };
+  }
+
+  if (isUpstream) {
+    return {
+      status: 502,
+      body: {
+        error: isZh ? '拉取比赛失败' : 'Failed to load match',
+        upstream: 'opendota',
+        upstreamStatus,
+        retryable: false,
+      },
+    };
+  }
+
+  return {
+    status: 500,
+    body: {
+      error: error?.message || (isZh ? '拉取比赛失败' : 'Failed to load match'),
+      retryable: false,
+    },
+  };
+}
+
+function isOpenDotaFetchError(error) {
+  if (!error) return false;
+  if (error.upstream === 'opendota') return true;
+  if (typeof error.status === 'number') return true;
+  return /HTTP \d{3}/.test(error.message || '');
+}
+
+function respondReviewError(res, wantsStream, errorMsg, status = 400, extra = {}) {
+  const payload = { error: errorMsg, ...extra };
   if (wantsStream) {
     if (!res.headersSent) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -2040,10 +2201,10 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400) {
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders?.();
     }
-    endReviewSse(res, { error: errorMsg });
+    endReviewSse(res, payload);
     return;
   }
-  return res.status(status).json({ error: errorMsg });
+  return res.status(status).json(payload);
 }
 
 app.get('/api/review/suggestions', async (req, res) => {
@@ -2098,13 +2259,8 @@ async function handleMatchReviewFacts(req, res) {
     return res.json({ matchFact, grounded: Boolean(matchFact.grounded) });
   } catch (error) {
     console.error('Match facts error:', error);
-    const errorMsg = error.message || (isZh ? '拉取比赛失败' : 'Failed to load match');
-    const status = /HTTP 404/.test(errorMsg) ? 404 : 500;
-    return res.status(status).json({
-      error: status === 404
-        ? (isZh ? '找不到这场比赛' : 'Match not found')
-        : errorMsg,
-    });
+    const mapped = mapOpenDotaFetchError(error, isZh);
+    return res.status(mapped.status).json(mapped.body);
   }
 }
 
@@ -2332,6 +2488,20 @@ async function handleMatchReview(req, res) {
     if (wantsStream) detachAbortListeners();
     if (clientGone || error.name === 'AbortError') return;
     console.error('Match review error:', error);
+    if (isOpenDotaFetchError(error)) {
+      const mapped = mapOpenDotaFetchError(error, isZh);
+      return respondReviewError(
+        res,
+        wantsStream,
+        mapped.body.error,
+        mapped.status,
+        {
+          upstream: mapped.body.upstream,
+          upstreamStatus: mapped.body.upstreamStatus,
+          retryable: mapped.body.retryable,
+        }
+      );
+    }
     const errorMsg = error.message || (isZh ? '复盘失败' : 'Review failed');
     return respondReviewError(res, wantsStream, errorMsg, 500);
   }
