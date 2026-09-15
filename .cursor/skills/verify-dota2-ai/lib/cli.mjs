@@ -122,6 +122,14 @@ function fetchText(url) {
   });
 }
 
+
+async function assertViteProxyTargetFree(apiPort, host) {
+  if (!(host === '127.0.0.1' || host === 'localhost')) return;
+  if (!(await portFree(apiPort, '::1'))) {
+    throw new Error(`[::1]:${apiPort} is in use (Vite localhost /api proxy may hit it)`);
+  }
+}
+
 function portFree(port, host = DEFAULT_HOST) {
   return new Promise((resolve) => {
     const srv = net.createServer();
@@ -285,12 +293,8 @@ async function cmdLaunch() {
     if (!(await portFree(apiPort, host))) {
       fail(`refuse to launch: ${host}:${apiPort} is already in use. Do not drive a shared Express instance. Stop the other process or use VERIFY_MODE=prod VERIFY_API_PORT=<free-port>.`);
     }
-    // Vite proxies /api to localhost:8080, which may resolve to ::1 — refuse if that is taken too.
-    if (host === '127.0.0.1' || host === 'localhost') {
-      if (!(await portFree(apiPort, '::1'))) {
-        fail(`refuse to launch: [::1]:${apiPort} is already in use (Vite localhost proxy may hit it). Free that listener or use VERIFY_MODE=prod.`);
-      }
-    }
+    try { await assertViteProxyTargetFree(apiPort, host); }
+    catch (err) { fail(`refuse to launch: ${err.message}. Free that listener or use VERIFY_MODE=prod.`); }
     if (!(await portFree(vitePort, host))) {
       fail(`refuse to launch: ${host}:${vitePort} is already in use. Do not attach to someone else's Vite session.`);
     }
@@ -435,6 +439,13 @@ async function inspect(state) {
   } catch (err) {
     report.errors.push(`UI ${err.message}`);
   }
+  if (state.mode !== 'prod') {
+    try {
+      await assertViteProxyTargetFree(Number(state.apiPort), state.host || DEFAULT_HOST);
+    } catch (err) {
+      report.errors.push(err.message);
+    }
+  }
   report.ok = report.errors.length === 0;
   return report;
 }
@@ -527,7 +538,10 @@ const FEATURES = {
       await waitForText(cdp, '拉取比赛');
       const after = await pageText(cdp);
       if (!after.includes('拉取比赛')) throw new Error('review intake missing 拉取比赛');
-      for (const banned of ['正在分析', '分析中', 'Streaming', '教练拆解', '停止生成', 'Stop generating', 'facts request']) {
+      for (const banned of [
+        '正在分析', '分析中', 'Streaming', '教练拆解', '停止生成', 'Stop generating', 'facts request',
+        '拉比克在看数据', '停止', '正在解读比赛', '解读比赛数据', '看数据…', '看数据...',
+      ]) {
         if (after.includes(banned)) {
           throw new Error(`review entry unexpectedly started analysis (saw ${JSON.stringify(banned)})`);
         }
@@ -650,6 +664,17 @@ const FEATURES = {
       await screenshotPng(cdp, 'zh.png');
       await clickHandle(cdp, { role: 'button', name: 'Switch language' });
       await waitForText(cdp, 'Tactical Room');
+      const enBack = await pageText(cdp);
+      for (const need of ['Tactical Room', 'Hero Codex', 'Make the next call']) {
+        if (!enBack.includes(need)) throw new Error(`back to EN missing ${JSON.stringify(need)}`);
+      }
+      if (enBack.includes('战术室') || enBack.includes('英雄图鉴') || enBack.includes('把下一次判断')) {
+        throw new Error('back to EN still shows Chinese primary copy');
+      }
+      // Toggle aria-label should be Chinese again when UI is English (inverted quirk).
+      if (!(await existsHandle(cdp, { role: 'button', name: '切换语言' }))) {
+        throw new Error('back to EN missing inverted toggle aria-label 切换语言');
+      }
       await screenshotPng(cdp, 'en-back.png');
       return { shots: { en: 'en.png', zh: 'zh.png', back: 'en-back.png' }, observed: ['en default', '中', 'back to EN'] };
     },
