@@ -21,6 +21,7 @@ import {
   childEnv,
   ensureDir,
   findChrome,
+  loadDotenv,
   readState,
   writeState,
 } from './paths.mjs';
@@ -56,12 +57,31 @@ function repoRevision() {
     const porcelain = dirty.status === 0 ? (dirty.stdout || '') : '';
     if (!porcelain.trim()) return sha;
     const diff = spawnSync('git', ['diff', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
-    const payload = `${porcelain}\n${diff.status === 0 ? (diff.stdout || '') : ''}`;
-    const fingerprint = createHash('sha256').update(payload).digest('hex').slice(0, 12);
-    return `${sha}+dirty:${fingerprint}`;
+    const hash = createHash('sha256');
+    hash.update(porcelain);
+    hash.update('\n');
+    hash.update(diff.status === 0 ? (diff.stdout || '') : '');
+    // Untracked files are absent from `git diff HEAD`; hash their contents too.
+    const untracked = spawnSync('git', ['ls-files', '-o', '--exclude-standard'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    if (untracked.status === 0) {
+      for (const rel of (untracked.stdout || '').split('\n').filter(Boolean)) {
+        hash.update(rel);
+        hash.update('\0');
+        try { hash.update(fs.readFileSync(path.join(REPO_ROOT, rel))); } catch { hash.update('missing'); }
+        hash.update('\n');
+      }
+    }
+    return `${sha}+dirty:${hash.digest('hex').slice(0, 12)}`;
   } catch {
     return null;
   }
+}
+
+function launchEnvFingerprint() {
+  const fromFile = loadDotenv();
+  const key = process.env.DEEPSEEK_API_KEY ?? fromFile.DEEPSEEK_API_KEY ?? '';
+  // Hash so state.json never stores the raw secret.
+  return createHash('sha256').update(`DEEPSEEK_API_KEY=${key}`).digest('hex').slice(0, 12);
 }
 
 
@@ -214,6 +234,7 @@ async function cmdLaunch() {
     const doctor = await inspect(existing);
     if (doctor.ok) {
       const revision = repoRevision();
+      const envFingerprint = launchEnvFingerprint();
       const sameNetwork = existing.mode === mode
         && existing.host === host
         && Number(existing.apiPort) === apiPort
@@ -221,10 +242,14 @@ async function cmdLaunch() {
         && existing.uiOrigin === requestedUiOrigin
         && existing.apiOrigin === requestedApiOrigin;
       const sameRevision = !revision ? true : existing.revision === revision;
-      if (sameNetwork && sameRevision) {
+      const sameEnv = !existing.envFingerprint || existing.envFingerprint === envFingerprint;
+      if (sameNetwork && sameRevision && sameEnv) {
         log(`already running runId=${existing.runId} ui=${existing.uiOrigin} api=${existing.apiOrigin} revision=${existing.revision || 'unknown'}`);
         printDoctor(doctor);
         return;
+      }
+      if (sameNetwork && sameRevision && !sameEnv) {
+        fail(`refuse to launch: healthy instance already running with a different launch env fingerprint (e.g. DEEPSEEK_API_KEY/.env changed). Run cleanup first, then relaunch.`);
       }
       if (sameNetwork && !sameRevision) {
         fail(`refuse to launch: healthy instance already running for revision ${existing.revision}, but workspace is now ${revision}. Run cleanup first so prod rebuild / fresh launch can serve the current code.`);
@@ -284,6 +309,7 @@ async function cmdLaunch() {
     uiOrigin,
     pids,
     revision: repoRevision(),
+    envFingerprint: launchEnvFingerprint(),
     startedAt: new Date().toISOString(),
     repoRoot: REPO_ROOT,
   };
@@ -622,6 +648,11 @@ async function cmdDrive(featureId) {
   }
   if (feature.needsDeepseek && !report.deepseekConfigured) {
     fail(`${featureId} needs a live DeepSeek stream. DEEPSEEK_API_KEY is not configured. Pick tactical-room-entry, language-toggle, or tactical-journal instead.`);
+  }
+
+  const currentRevision = repoRevision();
+  if (state.revision && currentRevision && state.revision !== currentRevision) {
+    fail(`refuse to drive: launch revision ${state.revision} != workspace ${currentRevision}. Run cleanup + launch again so verification matches the current code.`);
   }
 
   const debugPort = Number(process.env.VERIFY_CDP_PORT || 9333);
