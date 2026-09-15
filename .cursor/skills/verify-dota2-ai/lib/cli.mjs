@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import {
   DEFAULT_API_PORT,
   DEFAULT_HOST,
@@ -50,13 +51,19 @@ function repoRevision() {
   try {
     const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' });
     if (head.status !== 0) return null;
+    const sha = head.stdout.trim();
     const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' });
-    const isDirty = dirty.status === 0 && Boolean((dirty.stdout || '').trim());
-    return `${head.stdout.trim()}${isDirty ? '+dirty' : ''}`;
+    const porcelain = dirty.status === 0 ? (dirty.stdout || '') : '';
+    if (!porcelain.trim()) return sha;
+    const diff = spawnSync('git', ['diff', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
+    const payload = `${porcelain}\n${diff.status === 0 ? (diff.stdout || '') : ''}`;
+    const fingerprint = createHash('sha256').update(payload).digest('hex').slice(0, 12);
+    return `${sha}+dirty:${fingerprint}`;
   } catch {
     return null;
   }
 }
+
 
 function nowId() {
   return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
@@ -622,24 +629,11 @@ async function cmdDrive(featureId) {
     fail(`Chrome debug port ${debugPort} is in use. Set VERIFY_CDP_PORT to a free port.`);
   }
 
-  const chrome = await launchChrome({ runId: state.runId, debugPort });
-  let chromeIdentity = null;
-  for (let i = 0; i < 20 && !chromeIdentity?.starttime; i++) {
-    chromeIdentity = readProcIdentity(chrome.chromePid);
-    if (chromeIdentity?.starttime) break;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
-  }
-  chromeIdentity = chromeIdentity || { pid: chrome.chromePid, starttime: null, cmdline: chrome.chromePath };
-  state.pids.chrome = chromeIdentity;
-  state.chrome = { pid: chrome.chromePid, debugPort, userDataDir: chrome.userDataDir, path: chrome.chromePath, starttime: chromeIdentity.starttime, cmdline: chromeIdentity.cmdline };
-  writeState(state);
-
-  // Fresh evidence dir per drive so a failed retry cannot leave stale passing meta/screenshots.
+  // Allocate evidence BEFORE Chrome so launch failures still update LAST_RUN.
   const driveRunId = `${state.runId}-${nowId()}`;
   const evidenceRoot = path.join(EVIDENCE_DIR, featureId, driveRunId);
   ensureDir(evidenceRoot);
-  fs.writeFileSync(LAST_RUN_PATH, `${evidenceRoot}
-`);
+  fs.writeFileSync(LAST_RUN_PATH, `${evidenceRoot}\n`);
   fs.writeFileSync(path.join(evidenceRoot, 'meta.json'), `${JSON.stringify({
     featureId,
     title: feature.title,
@@ -647,13 +641,26 @@ async function cmdDrive(featureId) {
     launchRunId: state.runId,
     status: 'running',
     startedAt: new Date().toISOString(),
-  }, null, 2)}
-`);
+  }, null, 2)}\n`);
+
+  let chrome = null;
   const prevCwd = process.cwd();
   process.chdir(evidenceRoot);
 
   let result;
   try {
+    chrome = await launchChrome({ runId: state.runId, debugPort });
+    let chromeIdentity = null;
+    for (let i = 0; i < 20 && !chromeIdentity?.starttime; i++) {
+      chromeIdentity = readProcIdentity(chrome.chromePid);
+      if (chromeIdentity?.starttime) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+    chromeIdentity = chromeIdentity || { pid: chrome.chromePid, starttime: null, cmdline: chrome.chromePath };
+    state.pids.chrome = chromeIdentity;
+    state.chrome = { pid: chrome.chromePid, debugPort, userDataDir: chrome.userDataDir, path: chrome.chromePath, starttime: chromeIdentity.starttime, cmdline: chromeIdentity.cmdline };
+    writeState(state);
+
     await navigate(chrome.cdp, `${state.uiOrigin}/`);
     result = await feature.run(chrome.cdp, { uiOrigin: state.uiOrigin, apiOrigin: state.apiOrigin });
     const text = await pageText(chrome.cdp);

@@ -51,9 +51,10 @@ export function loadDotenv(filePath = path.join(REPO_ROOT, '.env')) {
 
 export function childEnv(overrides = {}) {
   const fromFile = loadDotenv();
+  // File first, then process.env (shell/cloud secrets win), then intentional overrides.
   return {
-    ...process.env,
     ...fromFile,
+    ...process.env,
     ...overrides,
   };
 }

@@ -97,35 +97,47 @@ export async function launchChrome({ runId, debugPort }) {
     stdio: 'ignore',
   });
   child.unref();
-  const version = await waitFor(async () => {
-    try { return await requestJson(`http://127.0.0.1:${debugPort}/json/version`); } catch { return null; }
-  }, { timeoutMs: 20000, label: 'chrome DevTools' });
-  const page = await waitFor(async () => {
-    try {
-      const list = await requestJson(`http://127.0.0.1:${debugPort}/json/list`);
-      if (!Array.isArray(list)) return null;
-      return list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl) || null;
-    } catch { return null; }
-  }, { timeoutMs: 15000, label: 'chrome page target' });
-  const wsUrl = page.webSocketDebuggerUrl || version.webSocketDebuggerUrl;
-  if (!wsUrl) throw new Error('Chrome DevTools page websocket missing');
-  const ws = new WebSocket(wsUrl);
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Chrome websocket open timeout')), 10000);
-    ws.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
-    ws.addEventListener('error', (err) => { clearTimeout(timer); reject(err); }, { once: true });
-  });
-  const cdp = new CdpSession(ws);
-  await cdp.send('Page.enable');
-  await cdp.send('Runtime.enable');
-  await cdp.send('Accessibility.enable');
-  await cdp.send('Emulation.setDeviceMetricsOverride', {
-    width: 1280,
-    height: 800,
-    deviceScaleFactor: 1,
-    mobile: false,
-  });
-  return { cdp, chromePid: child.pid, userDataDir, debugPort, chromePath: chrome };
+  const killSpawned = () => {
+    if (!child.pid) return;
+    try { process.kill(-child.pid, 'SIGKILL'); } catch {
+      try { process.kill(child.pid, 'SIGKILL'); } catch { /* ignore */ }
+    }
+  };
+  try {
+    const version = await waitFor(async () => {
+      try { return await requestJson(`http://127.0.0.1:${debugPort}/json/version`); } catch { return null; }
+    }, { timeoutMs: 20000, label: 'chrome DevTools' });
+    const page = await waitFor(async () => {
+      try {
+        const list = await requestJson(`http://127.0.0.1:${debugPort}/json/list`);
+        if (!Array.isArray(list)) return null;
+        return list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl) || null;
+      } catch { return null; }
+    }, { timeoutMs: 15000, label: 'chrome page target' });
+    const wsUrl = page.webSocketDebuggerUrl || version.webSocketDebuggerUrl;
+    if (!wsUrl) throw new Error('Chrome DevTools page websocket missing');
+    const ws = new WebSocket(wsUrl);
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Chrome websocket open timeout')), 10000);
+      ws.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+      ws.addEventListener('error', (err) => { clearTimeout(timer); reject(err); }, { once: true });
+    });
+    const cdp = new CdpSession(ws);
+    await cdp.send('Page.enable');
+    await cdp.send('Runtime.enable');
+    await cdp.send('Accessibility.enable');
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: 1280,
+      height: 800,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    return { cdp, chromePid: child.pid, userDataDir, debugPort, chromePath: chrome };
+  } catch (err) {
+    killSpawned();
+    try { fs.rmSync(userDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    throw err;
+  }
 }
 
 const FINDER = `({ role, name, placeholder, textIncludes }) => {
