@@ -38,11 +38,12 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.use(express.json());
 
 // www → apex: works when www.dota2.ai points at this Cloud Run service.
+// Use 308 (not 301) so POST/SSE keep their method when Fetch follows the redirect.
 // If DNS/CDN still serves a different origin for www, configure redirect there as follow-up.
 app.use((req, res, next) => {
   const host = (req.hostname || '').toLowerCase();
   if (host === 'www.dota2.ai') {
-    return res.redirect(301, `https://dota2.ai${req.originalUrl || '/'}`);
+    return res.redirect(308, `https://dota2.ai${req.originalUrl || '/'}`);
   }
   next();
 });
