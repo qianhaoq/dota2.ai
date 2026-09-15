@@ -127,9 +127,13 @@ function portFree(port, host = DEFAULT_HOST) {
     const srv = net.createServer();
     srv.unref();
     srv.once('error', () => resolve(false));
-    srv.listen({ port, host }, () => {
-      srv.close(() => resolve(true));
-    });
+    try {
+      srv.listen({ port, host, ipv6Only: host === '::1' }, () => {
+        srv.close(() => resolve(true));
+      });
+    } catch {
+      resolve(false);
+    }
   });
 }
 
@@ -178,16 +182,15 @@ function pidEntryPid(entry) {
 function killPid(entry, label) {
   const pid = pidEntryPid(entry);
   if (!pid || !pidAlive(pid)) return;
-  const expected = (entry && typeof entry === 'object' && entry.starttime != null)
-    ? { starttime: String(entry.starttime), cmdline: entry.cmdline || '', bootId: entry.bootId || null }
+  const expected = (entry && typeof entry === 'object' && entry.starttime != null && entry.bootId)
+    ? { starttime: String(entry.starttime), cmdline: entry.cmdline || '', bootId: String(entry.bootId) }
     : null;
   if (!expected) {
-    log(`skip kill ${label} pid=${pid}: no identity token (refuse bare PID — possible reuse)`);
+    log(`skip kill ${label} pid=${pid}: no identity token (refuse bare PID / missing bootId — possible reuse)`);
     return;
   }
   const live = readProcIdentity(pid);
-  const bootOk = !expected.bootId || !live?.bootId || String(live.bootId) === String(expected.bootId);
-  if (!live || String(live.starttime) !== String(expected.starttime) || !bootOk) {
+  if (!live?.bootId || String(live.starttime) !== String(expected.starttime) || String(live.bootId) !== String(expected.bootId)) {
     log(`skip kill ${label} pid=${pid}: identity mismatch (possible PID reuse / reboot)`);
     return;
   }
@@ -281,6 +284,12 @@ async function cmdLaunch() {
     }
     if (!(await portFree(apiPort, host))) {
       fail(`refuse to launch: ${host}:${apiPort} is already in use. Do not drive a shared Express instance. Stop the other process or use VERIFY_MODE=prod VERIFY_API_PORT=<free-port>.`);
+    }
+    // Vite proxies /api to localhost:8080, which may resolve to ::1 — refuse if that is taken too.
+    if (host === '127.0.0.1' || host === 'localhost') {
+      if (!(await portFree(apiPort, '::1'))) {
+        fail(`refuse to launch: [::1]:${apiPort} is already in use (Vite localhost proxy may hit it). Free that listener or use VERIFY_MODE=prod.`);
+      }
     }
     if (!(await portFree(vitePort, host))) {
       fail(`refuse to launch: ${host}:${vitePort} is already in use. Do not attach to someone else's Vite session.`);
@@ -377,16 +386,15 @@ async function inspect(state) {
     const pid = pidEntryPid(entry);
     let alive = pidAlive(pid);
     let identityOk = true;
-    if (alive && entry && typeof entry === 'object' && entry.starttime != null) {
+    if (alive && entry && typeof entry === 'object' && entry.starttime != null && entry.bootId) {
       const live = readProcIdentity(pid);
-      const bootOk = !entry.bootId || !live?.bootId || String(live.bootId) === String(entry.bootId);
-      identityOk = Boolean(live && String(live.starttime) === String(entry.starttime) && bootOk);
+      identityOk = Boolean(live?.bootId && String(live.starttime) === String(entry.starttime) && String(live.bootId) === String(entry.bootId));
       if (!identityOk) {
         alive = false;
         report.errors.push(`${name} pid ${pid} is alive but identity mismatch (possible PID reuse)`);
       }
-    } else if (alive && required.includes(name) && !(entry && typeof entry === 'object' && entry.starttime != null)) {
-      // Required service recorded without identity — treat as unsafe / not ours.
+    } else if (alive && required.includes(name)) {
+      // Required service recorded without full identity — treat as unsafe / not ours.
       alive = false;
       identityOk = false;
       report.errors.push(`${name} pid ${pid} lacks identity token (refuse to trust — possible PID reuse)`);
@@ -519,6 +527,11 @@ const FEATURES = {
       await waitForText(cdp, '拉取比赛');
       const after = await pageText(cdp);
       if (!after.includes('拉取比赛')) throw new Error('review intake missing 拉取比赛');
+      for (const banned of ['正在分析', '分析中', 'Streaming', '教练拆解', '停止生成', 'Stop generating', 'facts request']) {
+        if (after.includes(banned)) {
+          throw new Error(`review entry unexpectedly started analysis (saw ${JSON.stringify(banned)})`);
+        }
+      }
       await screenshotPng(cdp, 'after.png');
       return { shots: { after: 'after.png' }, observed: ['review tab', 'match-id intake', 'no analysis started'] };
     },
