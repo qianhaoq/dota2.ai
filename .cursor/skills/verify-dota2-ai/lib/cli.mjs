@@ -62,9 +62,13 @@ function repoRevision() {
     hash.update('\n');
     hash.update(diff.status === 0 ? (diff.stdout || '') : '');
     // Untracked files are absent from `git diff HEAD`; hash their contents too.
-    const untracked = spawnSync('git', ['ls-files', '-o', '--exclude-standard'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    const untracked = spawnSync(
+      'git',
+      ['-c', 'core.quotepath=false', 'ls-files', '-z', '-o', '--exclude-standard'],
+      { cwd: REPO_ROOT, encoding: 'utf8' },
+    );
     if (untracked.status === 0) {
-      for (const rel of (untracked.stdout || '').split('\n').filter(Boolean)) {
+      for (const rel of (untracked.stdout || '').split('\0').filter(Boolean)) {
         hash.update(rel);
         hash.update('\0');
         try { hash.update(fs.readFileSync(path.join(REPO_ROOT, rel))); } catch { hash.update('missing'); }
@@ -365,9 +369,23 @@ async function inspect(state) {
   for (const [name, entry] of Object.entries(state.pids || {})) {
     if (name === 'chrome') continue; // leftover chrome from a prior drive is optional
     const pid = pidEntryPid(entry);
-    const alive = pidAlive(pid);
-    report.pids[name] = { pid, alive, identity: typeof entry === 'object' ? { starttime: entry.starttime, cmdline: entry.cmdline } : null };
-    if (required.includes(name) && !alive) {
+    let alive = pidAlive(pid);
+    let identityOk = true;
+    if (alive && entry && typeof entry === 'object' && entry.starttime != null) {
+      const live = readProcIdentity(pid);
+      identityOk = Boolean(live && String(live.starttime) === String(entry.starttime));
+      if (!identityOk) {
+        alive = false;
+        report.errors.push(`${name} pid ${pid} is alive but identity mismatch (possible PID reuse)`);
+      }
+    } else if (alive && required.includes(name) && !(entry && typeof entry === 'object' && entry.starttime != null)) {
+      // Required service recorded without identity — treat as unsafe / not ours.
+      alive = false;
+      identityOk = false;
+      report.errors.push(`${name} pid ${pid} lacks identity token (refuse to trust — possible PID reuse)`);
+    }
+    report.pids[name] = { pid, alive, identityOk, identity: typeof entry === 'object' ? { starttime: entry.starttime, cmdline: entry.cmdline } : null };
+    if (required.includes(name) && !alive && identityOk) {
       report.errors.push(`${name} pid ${pid} is not running`);
     }
   }
