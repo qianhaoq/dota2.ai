@@ -177,18 +177,6 @@ function spawnLogged(bin, args, logFile, env) {
 }
 
 async function cmdLaunch() {
-  const existing = readState();
-  if (existing?.pids) {
-    const doctor = await inspect(existing);
-    if (doctor.ok) {
-      log(`already running runId=${existing.runId} ui=${existing.uiOrigin} api=${existing.apiOrigin}`);
-      printDoctor(doctor);
-      return;
-    }
-    log('stale state detected; cleaning before relaunch');
-    await cmdCleanup({ keepStateIfMissing: true });
-  }
-
   if (!fs.existsSync(path.join(REPO_ROOT, 'node_modules'))) {
     fail('node_modules missing. From the repo root run: npm ci');
   }
@@ -198,9 +186,36 @@ async function cmdLaunch() {
   const apiPort = Number(process.env.VERIFY_API_PORT || (mode === 'prod' ? 18080 : DEFAULT_API_PORT));
   const vitePort = Number(process.env.VERIFY_VITE_PORT || DEFAULT_VITE_PORT);
   const runId = nowId();
+  const requestedUiOrigin = mode === 'prod' ? `http://${host}:${apiPort}` : `http://${host}:${vitePort}`;
+  const requestedApiOrigin = `http://${host}:${apiPort}`;
+
+  const existing = readState();
+  if (existing?.pids) {
+    const doctor = await inspect(existing);
+    if (doctor.ok) {
+      const sameConfig = existing.mode === mode
+        && existing.host === host
+        && Number(existing.apiPort) === apiPort
+        && Number(existing.vitePort) === (mode === 'prod' ? apiPort : vitePort)
+        && existing.uiOrigin === requestedUiOrigin
+        && existing.apiOrigin === requestedApiOrigin;
+      if (sameConfig) {
+        log(`already running runId=${existing.runId} ui=${existing.uiOrigin} api=${existing.apiOrigin}`);
+        printDoctor(doctor);
+        return;
+      }
+      fail(`refuse to launch: healthy instance already running (mode=${existing.mode} ui=${existing.uiOrigin} api=${existing.apiOrigin}) but requested mode=${mode} ui=${requestedUiOrigin} api=${requestedApiOrigin}. Run cleanup first, or reuse the existing instance without overrides.`);
+    }
+    log('stale state detected; cleaning before relaunch');
+    await cmdCleanup({ keepStateIfMissing: true });
+  }
 
   if (mode === 'dev') {
-    // vite.config.ts proxies /api to hard-coded localhost:8080 — custom VERIFY_API_PORT would desync UI→API.
+    // vite.config.ts proxies /api to hard-coded localhost:8080 — custom host/port desync UI→API.
+    const localhostHosts = new Set(['127.0.0.1', 'localhost']);
+    if (process.env.VERIFY_HOST && !localhostHosts.has(host)) {
+      fail(`refuse to launch: VERIFY_HOST=${host} is incompatible with VERIFY_MODE=dev (Vite proxies /api to localhost:${DEFAULT_API_PORT}). Use 127.0.0.1/localhost, or VERIFY_MODE=prod.`);
+    }
     if (process.env.VERIFY_API_PORT && apiPort !== DEFAULT_API_PORT) {
       fail(`refuse to launch: VERIFY_API_PORT=${apiPort} is incompatible with VERIFY_MODE=dev (Vite proxies /api to localhost:${DEFAULT_API_PORT}). Use default ${DEFAULT_API_PORT}, or VERIFY_MODE=prod VERIFY_API_PORT=<free-port>.`);
     }
@@ -600,7 +615,9 @@ async function cmdDrive(featureId) {
   state.chrome = { pid: chrome.chromePid, debugPort, userDataDir: chrome.userDataDir, path: chrome.chromePath, starttime: chromeIdentity.starttime, cmdline: chromeIdentity.cmdline };
   writeState(state);
 
-  const evidenceRoot = path.join(EVIDENCE_DIR, featureId, state.runId);
+  // Fresh evidence dir per drive so a failed retry cannot leave stale passing meta/screenshots.
+  const driveRunId = `${state.runId}-${nowId()}`;
+  const evidenceRoot = path.join(EVIDENCE_DIR, featureId, driveRunId);
   ensureDir(evidenceRoot);
   const prevCwd = process.cwd();
   process.chdir(evidenceRoot);
@@ -615,7 +632,8 @@ async function cmdDrive(featureId) {
     const meta = {
       featureId,
       title: feature.title,
-      runId: state.runId,
+      runId: driveRunId,
+      launchRunId: state.runId,
       uiOrigin: state.uiOrigin,
       apiOrigin: state.apiOrigin,
       capturedAt: new Date().toISOString(),
