@@ -105,7 +105,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     } catch (err) {
       if (factsRequestIdRef.current !== requestId) return;
       const isUpstream = err instanceof MatchFactsError
-        && (err.upstream === 'opendota' || err.retryable === true);
+        && err.retryable === true;
       if (isUpstream) {
         setUpstreamUnavailable(true);
         setFactsError(t.upstreamUnavailable);
