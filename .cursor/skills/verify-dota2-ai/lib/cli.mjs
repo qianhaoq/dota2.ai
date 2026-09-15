@@ -3,7 +3,7 @@
  * Dota2.ai Tactical Coach V3 验证 CLI。
  * 只杀掉本 CLI 写入 state 的 PID；cleanup 不删除 evidence/。
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -43,6 +43,19 @@ function log(msg) {
 function fail(msg, code = 1) {
   process.stderr.write(`${msg}\n`);
   process.exit(code);
+}
+
+
+function repoRevision() {
+  try {
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    if (head.status !== 0) return null;
+    const dirty = spawnSync('git', ['status', '--porcelain'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    const isDirty = dirty.status === 0 && Boolean((dirty.stdout || '').trim());
+    return `${head.stdout.trim()}${isDirty ? '+dirty' : ''}`;
+  } catch {
+    return null;
+  }
 }
 
 function nowId() {
@@ -193,16 +206,21 @@ async function cmdLaunch() {
   if (existing?.pids) {
     const doctor = await inspect(existing);
     if (doctor.ok) {
-      const sameConfig = existing.mode === mode
+      const revision = repoRevision();
+      const sameNetwork = existing.mode === mode
         && existing.host === host
         && Number(existing.apiPort) === apiPort
         && Number(existing.vitePort) === (mode === 'prod' ? apiPort : vitePort)
         && existing.uiOrigin === requestedUiOrigin
         && existing.apiOrigin === requestedApiOrigin;
-      if (sameConfig) {
-        log(`already running runId=${existing.runId} ui=${existing.uiOrigin} api=${existing.apiOrigin}`);
+      const sameRevision = !revision ? true : existing.revision === revision;
+      if (sameNetwork && sameRevision) {
+        log(`already running runId=${existing.runId} ui=${existing.uiOrigin} api=${existing.apiOrigin} revision=${existing.revision || 'unknown'}`);
         printDoctor(doctor);
         return;
+      }
+      if (sameNetwork && !sameRevision) {
+        fail(`refuse to launch: healthy instance already running for revision ${existing.revision}, but workspace is now ${revision}. Run cleanup first so prod rebuild / fresh launch can serve the current code.`);
       }
       fail(`refuse to launch: healthy instance already running (mode=${existing.mode} ui=${existing.uiOrigin} api=${existing.apiOrigin}) but requested mode=${mode} ui=${requestedUiOrigin} api=${requestedApiOrigin}. Run cleanup first, or reuse the existing instance without overrides.`);
     }
@@ -258,6 +276,7 @@ async function cmdLaunch() {
     apiOrigin,
     uiOrigin,
     pids,
+    revision: repoRevision(),
     startedAt: new Date().toISOString(),
     repoRoot: REPO_ROOT,
   };
@@ -619,6 +638,17 @@ async function cmdDrive(featureId) {
   const driveRunId = `${state.runId}-${nowId()}`;
   const evidenceRoot = path.join(EVIDENCE_DIR, featureId, driveRunId);
   ensureDir(evidenceRoot);
+  fs.writeFileSync(LAST_RUN_PATH, `${evidenceRoot}
+`);
+  fs.writeFileSync(path.join(evidenceRoot, 'meta.json'), `${JSON.stringify({
+    featureId,
+    title: feature.title,
+    runId: driveRunId,
+    launchRunId: state.runId,
+    status: 'running',
+    startedAt: new Date().toISOString(),
+  }, null, 2)}
+`);
   const prevCwd = process.cwd();
   process.chdir(evidenceRoot);
 
@@ -634,6 +664,7 @@ async function cmdDrive(featureId) {
       title: feature.title,
       runId: driveRunId,
       launchRunId: state.runId,
+      status: 'passed',
       uiOrigin: state.uiOrigin,
       apiOrigin: state.apiOrigin,
       capturedAt: new Date().toISOString(),
@@ -653,6 +684,20 @@ async function cmdDrive(featureId) {
     try {
       fs.writeFileSync(path.join(evidenceRoot, 'page.txt'), await pageText(chrome.cdp));
       await screenshotPng(chrome.cdp, path.join(evidenceRoot, 'failure.png'));
+    } catch { /* ignore */ }
+    try {
+      fs.writeFileSync(path.join(evidenceRoot, 'meta.json'), `${JSON.stringify({
+        featureId,
+        title: feature.title,
+        runId: driveRunId,
+        launchRunId: state.runId,
+        status: 'failed',
+        error: err.message,
+        failedAt: new Date().toISOString(),
+      }, null, 2)}
+`);
+      fs.writeFileSync(LAST_RUN_PATH, `${evidenceRoot}
+`);
     } catch { /* ignore */ }
     process.chdir(prevCwd);
     await stopDriveChrome(state, chrome);
