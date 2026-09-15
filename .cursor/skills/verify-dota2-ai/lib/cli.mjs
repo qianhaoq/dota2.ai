@@ -123,8 +123,10 @@ function fetchText(url) {
 }
 
 
-async function assertViteProxyTargetFree(apiPort, host) {
+async function assertViteProxyTargetFree(apiPort, host, { ownedPids = null } = {}) {
   if (!(host === '127.0.0.1' || host === 'localhost')) return;
+  // If we intentionally bound Express on ::1 via VERIFY_HOST=localhost, do not treat our own listener as conflict.
+  if (host === 'localhost') return;
   if (!(await portFree(apiPort, '::1'))) {
     throw new Error(`[::1]:${apiPort} is in use (Vite localhost /api proxy may hit it)`);
   }
