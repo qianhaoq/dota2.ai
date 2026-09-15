@@ -27,3 +27,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# verify-dota2-ai: runtime scratch only. Evidence proofs must survive cleanup
+# and stay local — never commit screenshots, ARIA dumps, or page text.
+.cursor/skills/verify-dota2-ai/.run/
+.cursor/skills/verify-dota2-ai/evidence/*
+!.cursor/skills/verify-dota2-ai/evidence/.gitkeep
+!.cursor/skills/verify-dota2-ai/evidence/README.md
