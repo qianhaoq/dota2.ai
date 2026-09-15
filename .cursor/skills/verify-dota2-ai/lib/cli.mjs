@@ -438,19 +438,38 @@ const FEATURES = {
       await waitFor(async () => {
         return (await existsHandle(cdp, { placeholder: '搜索英雄名称或别名...' })) || null;
       }, { timeoutMs: 45000, label: 'hero search box' });
+      const before = await pageText(cdp);
+      const beforeCount = Number(/共\s*(\d+)\s*位英雄/.exec(before)?.[1] || 0);
+      if (beforeCount < 2) {
+        throw new Error(`expected unfiltered hero catalog before search, got count=${beforeCount}`);
+      }
+      const nonMatch = ['敌法师', '斧王', '水晶室女', '斯温', 'Anti-Mage', 'Axe', 'Sven']
+        .find((name) => before.includes(name));
       await fillHandle(cdp, { placeholder: '搜索英雄名称或别名...' }, '剑圣');
       await waitFor(async () => {
         const text = await pageText(cdp);
         if (text.includes('未找到匹配的英雄')) return 'empty';
-        if (text.includes('主宰') || text.includes('Juggernaut') || text.includes('剑圣')) return text;
+        const count = Number(/共\s*(\d+)\s*位英雄/.exec(text)?.[1] || 0);
+        const hasMatch = text.includes('主宰') || text.includes('Juggernaut');
+        if (hasMatch && count > 0 && count < beforeCount) return text;
         return null;
       }, { timeoutMs: 20000, label: 'search results for 剑圣' });
       const after = await pageText(cdp);
+      const afterCount = Number(/共\s*(\d+)\s*位英雄/.exec(after)?.[1] || 0);
       if (after.includes('未找到匹配的英雄') && !after.includes('主宰') && !after.includes('Juggernaut')) {
         throw new Error('codex search for 剑圣 returned empty — /api/meta/heroes or OpenDota likely failed');
       }
+      if (!(after.includes('主宰') || after.includes('Juggernaut'))) {
+        throw new Error('codex search for 剑圣 did not show 主宰/Juggernaut');
+      }
+      if (!(afterCount > 0 && afterCount < beforeCount)) {
+        throw new Error(`codex search did not narrow catalog: before=${beforeCount} after=${afterCount}`);
+      }
+      if (nonMatch && after.includes(nonMatch)) {
+        throw new Error(`codex search still shows non-match ${JSON.stringify(nonMatch)} after filtering`);
+      }
       await screenshotPng(cdp, 'after.png');
-      return { shots: { after: 'after.png' }, observed: ['#knowledge', 'placeholder search 剑圣'] };
+      return { shots: { after: 'after.png' }, observed: ['#knowledge', 'placeholder search 剑圣', `narrowed ${beforeCount}->${afterCount}`] };
     },
   },
   'tactical-journal': {
@@ -481,7 +500,12 @@ const FEATURES = {
       }
       await screenshotPng(cdp, 'after.png');
       await clickHandle(cdp, { role: 'button', name: '标记已自我检查' });
-      await waitForText(cdp, '已自我检查');
+      // Button flips to 标记待练; status tag shows 已自我检查 (not the pre-click button substring alone).
+      await waitForText(cdp, '标记待练');
+      const marked = await pageText(cdp);
+      if (!marked.includes('已自我检查') || marked.includes('标记已自我检查') || marked.includes('待练习')) {
+        throw new Error('journal note did not switch to done (expected 标记待练 + 已自我检查, no 待练习)');
+      }
       await clickHandle(cdp, { role: 'button', name: '移除' });
       await waitForText(cdp, '撤销刚才的移除');
       await clickHandle(cdp, { role: 'button', name: '撤销刚才的移除' });
