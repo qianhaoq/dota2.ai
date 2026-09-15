@@ -1,4 +1,5 @@
 import http from 'node:http';
+import WebSocket from 'ws';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { findChrome, tmpChromeDir } from './paths.mjs';
@@ -205,6 +206,15 @@ export async function fillHandle(cdp, handle, value) {
     }`,
     arguments: [{ value }],
   });
+}
+
+
+export async function existsHandle(cdp, handle) {
+  const result = await cdp.send('Runtime.evaluate', {
+    expression: `(${FINDER})(${JSON.stringify(handle)})`,
+    returnByValue: false,
+  });
+  return Boolean(result.result && result.result.subtype !== 'null' && result.result.type !== 'undefined');
 }
 
 export async function pageText(cdp) {

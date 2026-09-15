@@ -26,6 +26,7 @@ import {
 import {
   ariaDump,
   clickHandle,
+  existsHandle,
   fillHandle,
   launchChrome,
   navigate,
@@ -98,8 +99,48 @@ function pidAlive(pid) {
   }
 }
 
-function killPid(pid, label) {
+
+function readProcIdentity(pid) {
+  if (!pid) return null;
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const closeParen = stat.lastIndexOf(')');
+    if (closeParen < 0) return null;
+    const after = stat.slice(closeParen + 2).trim().split(/\s+/);
+    // fields after comm: state(1).. starttime is field 22 overall => index 19 in after (22-3)
+    const starttime = after[19];
+    let cmdline = '';
+    try {
+      cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ').trim();
+    } catch { /* ignore */ }
+    return { pid: Number(pid), starttime, cmdline };
+  } catch {
+    return null;
+  }
+}
+
+function pidEntryPid(entry) {
+  if (entry == null) return null;
+  if (typeof entry === 'number') return entry;
+  if (typeof entry === 'object' && entry.pid != null) return Number(entry.pid);
+  return null;
+}
+
+function killPid(entry, label) {
+  const pid = pidEntryPid(entry);
   if (!pid || !pidAlive(pid)) return;
+  const expected = (entry && typeof entry === 'object' && entry.starttime != null)
+    ? { starttime: String(entry.starttime), cmdline: entry.cmdline || '' }
+    : null;
+  if (!expected) {
+    log(`skip kill ${label} pid=${pid}: no identity token (refuse bare PID — possible reuse)`);
+    return;
+  }
+  const live = readProcIdentity(pid);
+  if (!live || String(live.starttime) !== String(expected.starttime)) {
+    log(`skip kill ${label} pid=${pid}: identity mismatch (possible PID reuse)`);
+    return;
+  }
   try { process.kill(-pid, 'SIGTERM'); } catch {
     try { process.kill(pid, 'SIGTERM'); } catch { /* ignore */ }
   }
@@ -126,7 +167,13 @@ function spawnLogged(bin, args, logFile, env) {
   });
   child.unref();
   fs.closeSync(fd);
-  return child.pid;
+  let identity = null;
+  for (let i = 0; i < 20 && !identity?.starttime; i++) {
+    identity = readProcIdentity(child.pid);
+    if (identity?.starttime) break;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+  return identity || { pid: child.pid, starttime: null, cmdline: `${bin} ${args.join(' ')}` };
 }
 
 async function cmdLaunch() {
@@ -170,13 +217,10 @@ async function cmdLaunch() {
 
   const pids = {};
   if (mode === 'prod') {
-    const distIndex = path.join(REPO_ROOT, 'dist', 'index.html');
-    if (!fs.existsSync(distIndex)) {
-      log('VERIFY_MODE=prod: running npm run build');
-      const build = spawn('npm', ['run', 'build'], { cwd: REPO_ROOT, env, stdio: 'inherit' });
-      const code = await new Promise((resolve) => build.on('exit', resolve));
-      if (code !== 0) fail('vite build failed');
-    }
+    log('VERIFY_MODE=prod: running npm run build');
+    const build = spawn('npm', ['run', 'build'], { cwd: REPO_ROOT, env, stdio: 'inherit' });
+    const code = await new Promise((resolve) => build.on('exit', resolve));
+    if (code !== 0) fail('vite build failed');
     pids.express = spawnLogged(process.execPath, ['server.js'], path.join(RUN_DIR, 'express.log'), env);
   } else {
     const viteBin = path.join(REPO_ROOT, 'node_modules', '.bin', 'vite');
@@ -247,9 +291,11 @@ async function inspect(state) {
     return report;
   }
   const required = state.mode === 'prod' ? ['express'] : ['express', 'vite'];
-  for (const [name, pid] of Object.entries(state.pids || {})) {
+  for (const [name, entry] of Object.entries(state.pids || {})) {
+    if (name === 'chrome') continue; // leftover chrome from a prior drive is optional
+    const pid = pidEntryPid(entry);
     const alive = pidAlive(pid);
-    report.pids[name] = { pid, alive };
+    report.pids[name] = { pid, alive, identity: typeof entry === 'object' ? { starttime: entry.starttime, cmdline: entry.cmdline } : null };
     if (required.includes(name) && !alive) {
       report.errors.push(`${name} pid ${pid} is not running`);
     }
@@ -264,7 +310,17 @@ async function inspect(state) {
   }
   try {
     report.apiHealth = await fetchJson(`${state.apiOrigin}/api/health`);
-    report.deepseekConfigured = Boolean(report.apiHealth.json?.apiKeyConfigured);
+    const apiJson = report.apiHealth.json;
+    const apiOk = report.apiHealth.status === 200
+      && apiJson
+      && typeof apiJson === 'object'
+      && typeof apiJson.apiKeyConfigured === 'boolean';
+    if (!apiOk) {
+      report.errors.push(`/api/health not ok: ${JSON.stringify(report.apiHealth)}`);
+      report.deepseekConfigured = null;
+    } else {
+      report.deepseekConfigured = Boolean(apiJson.apiKeyConfigured);
+    }
   } catch (err) {
     report.errors.push(`/api/health ${err.message}`);
   }
@@ -380,9 +436,7 @@ const FEATURES = {
       await ensureZh(cdp);
       await waitForText(cdp, '资料应该回答“怎么用”');
       await waitFor(async () => {
-        const text = await pageText(cdp);
-        if (text.includes('搜索英雄名称或别名')) return text;
-        return null;
+        return (await existsHandle(cdp, { placeholder: '搜索英雄名称或别名...' })) || null;
       }, { timeoutMs: 45000, label: 'hero search box' });
       await fillHandle(cdp, { placeholder: '搜索英雄名称或别名...' }, '剑圣');
       await waitFor(async () => {
@@ -464,6 +518,22 @@ const FEATURES = {
   },
 };
 
+
+async function stopDriveChrome(state, chrome) {
+  try { chrome?.cdp?.close(); } catch { /* ignore */ }
+  if (state?.pids?.chrome) {
+    killPid(state.pids.chrome, 'chrome');
+    delete state.pids.chrome;
+  }
+  if (state?.chrome?.userDataDir && fs.existsSync(state.chrome.userDataDir)) {
+    try { fs.rmSync(state.chrome.userDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+  if (state) {
+    delete state.chrome;
+    writeState(state);
+  }
+}
+
 async function cmdDrive(featureId) {
   if (!featureId || featureId === '--list') {
     log(Object.entries(FEATURES).map(([id, f]) => `${id}\t${f.title}`).join('\n'));
@@ -488,8 +558,15 @@ async function cmdDrive(featureId) {
   }
 
   const chrome = await launchChrome({ runId: state.runId, debugPort });
-  state.pids.chrome = chrome.chromePid;
-  state.chrome = { pid: chrome.chromePid, debugPort, userDataDir: chrome.userDataDir, path: chrome.chromePath };
+  let chromeIdentity = null;
+  for (let i = 0; i < 20 && !chromeIdentity?.starttime; i++) {
+    chromeIdentity = readProcIdentity(chrome.chromePid);
+    if (chromeIdentity?.starttime) break;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+  chromeIdentity = chromeIdentity || { pid: chrome.chromePid, starttime: null, cmdline: chrome.chromePath };
+  state.pids.chrome = chromeIdentity;
+  state.chrome = { pid: chrome.chromePid, debugPort, userDataDir: chrome.userDataDir, path: chrome.chromePath, starttime: chromeIdentity.starttime, cmdline: chromeIdentity.cmdline };
   writeState(state);
 
   const evidenceRoot = path.join(EVIDENCE_DIR, featureId, state.runId);
@@ -529,11 +606,11 @@ async function cmdDrive(featureId) {
       await screenshotPng(chrome.cdp, path.join(evidenceRoot, 'failure.png'));
     } catch { /* ignore */ }
     process.chdir(prevCwd);
-    chrome.cdp.close();
+    await stopDriveChrome(state, chrome);
     fail(`drive ${featureId} failed: ${err.message}`);
   }
   process.chdir(prevCwd);
-  chrome.cdp.close();
+  await stopDriveChrome(state, chrome);
 }
 
 async function cmdCleanup() {
