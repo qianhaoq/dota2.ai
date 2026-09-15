@@ -537,15 +537,22 @@ const FEATURES = {
         await clickHandle(cdp, { role: 'button', textIncludes: '复盘一局' });
         await waitForText(cdp, '8985182860');
       }
-      await waitForText(cdp, '拉取比赛');
+      // Prefer the intake button label, not the loading substring 正在拉取比赛…
+      await waitFor(async () => (await existsHandle(cdp, { role: 'button', name: '拉取比赛' })) || null, {
+        timeoutMs: 30000,
+        label: '拉取比赛 button',
+      });
       const after = await pageText(cdp);
-      if (!after.includes('拉取比赛')) throw new Error('review intake missing 拉取比赛');
+      if (!(await existsHandle(cdp, { role: 'button', name: '拉取比赛' }))) {
+        throw new Error('review intake missing 拉取比赛 button');
+      }
       for (const banned of [
         '正在分析', '分析中', 'Streaming', '教练拆解', '停止生成', 'Stop generating', 'facts request',
         '拉比克在看数据', '停止', '正在解读比赛', '解读比赛数据', '看数据…', '看数据...',
+        '正在拉取比赛',
       ]) {
         if (after.includes(banned)) {
-          throw new Error(`review entry unexpectedly started analysis (saw ${JSON.stringify(banned)})`);
+          throw new Error(`review entry unexpectedly started analysis/facts fetch (saw ${JSON.stringify(banned)})`);
         }
       }
       await screenshotPng(cdp, 'after.png');
