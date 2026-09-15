@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Dota2.ai Tactical Coach V3 — verification CLI (launch / doctor / drive / cleanup).
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec node "$DIR/../lib/cli.mjs" "$@"
