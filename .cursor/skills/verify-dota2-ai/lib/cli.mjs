@@ -200,6 +200,10 @@ async function cmdLaunch() {
   const runId = nowId();
 
   if (mode === 'dev') {
+    // vite.config.ts proxies /api to hard-coded localhost:8080 — custom VERIFY_API_PORT would desync UI→API.
+    if (process.env.VERIFY_API_PORT && apiPort !== DEFAULT_API_PORT) {
+      fail(`refuse to launch: VERIFY_API_PORT=${apiPort} is incompatible with VERIFY_MODE=dev (Vite proxies /api to localhost:${DEFAULT_API_PORT}). Use default ${DEFAULT_API_PORT}, or VERIFY_MODE=prod VERIFY_API_PORT=<free-port>.`);
+    }
     if (!(await portFree(apiPort, host))) {
       fail(`refuse to launch: ${host}:${apiPort} is already in use. Do not drive a shared Express instance. Stop the other process or use VERIFY_MODE=prod VERIFY_API_PORT=<free-port>.`);
     }
@@ -438,11 +442,14 @@ const FEATURES = {
       await waitFor(async () => {
         return (await existsHandle(cdp, { placeholder: '搜索英雄名称或别名...' })) || null;
       }, { timeoutMs: 45000, label: 'hero search box' });
-      const before = await pageText(cdp);
+      // HeroHub shows the search box + "共 0 位英雄" while /api/meta/heroes is still loading.
+      const before = await waitFor(async () => {
+        const text = await pageText(cdp);
+        if (/Loading heroes/i.test(text)) return null;
+        const count = Number(/共\s*(\d+)\s*位英雄/.exec(text)?.[1] || 0);
+        return count >= 2 ? text : null;
+      }, { timeoutMs: 45000, label: 'unfiltered hero catalog populated' });
       const beforeCount = Number(/共\s*(\d+)\s*位英雄/.exec(before)?.[1] || 0);
-      if (beforeCount < 2) {
-        throw new Error(`expected unfiltered hero catalog before search, got count=${beforeCount}`);
-      }
       const nonMatch = ['敌法师', '斧王', '水晶室女', '斯温', 'Anti-Mage', 'Axe', 'Sven']
         .find((name) => before.includes(name));
       await fillHandle(cdp, { placeholder: '搜索英雄名称或别名...' }, '剑圣');
