@@ -1,10 +1,10 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Language, Hero } from '../../types';
 import type { MatchFact } from '../../types/matchReview';
-import { Film, Search, ChevronDown, Loader2 } from 'lucide-react';
+import { Film, Search, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { parseMatchId } from '../../utils/parseMatchId';
 import { isHeroInMatch, rosterFromMatchFact } from '../../utils/reviewRoster';
-import { fetchMatchFacts } from '../../services/dotaApiService';
+import { fetchMatchFacts, MatchFactsError } from '../../services/dotaApiService';
 import ReviewSuggestions from './ReviewSuggestions';
 
 interface ReviewEntryProps {
@@ -29,6 +29,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [factsLoading, setFactsLoading] = useState(false);
   const [factsError, setFactsError] = useState<string | null>(null);
+  const [upstreamUnavailable, setUpstreamUnavailable] = useState(false);
   const [matchFact, setMatchFact] = useState<MatchFact | null>(null);
   const factsRequestIdRef = useRef(0);
 
@@ -62,6 +63,10 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     radiant: lang === 'zh' ? '天辉' : 'Radiant',
     dire: lang === 'zh' ? '夜魇' : 'Dire',
     emptyRoster: lang === 'zh' ? '这场比赛没有可用英雄数据' : 'No hero data for this match',
+    upstreamUnavailable: lang === 'zh'
+      ? 'OpenDota 暂时不可用，请稍后重试'
+      : 'OpenDota is temporarily unavailable. Please retry in a moment.',
+    retry: lang === 'zh' ? '重试' : 'Retry',
   }), [lang]);
 
   const parsedId = parseMatchId(matchInput);
@@ -87,6 +92,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     factsRequestIdRef.current = requestId;
     setFactsLoading(true);
     setFactsError(null);
+    setUpstreamUnavailable(false);
     setMatchFact(null);
     setHeroId('');
     if (overrideMatchId) {
@@ -98,8 +104,15 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
       setMatchFact(fact);
     } catch (err) {
       if (factsRequestIdRef.current !== requestId) return;
-      const message = err instanceof Error ? err.message : t.invalid;
-      setFactsError(message);
+      const isUpstream = err instanceof MatchFactsError
+        && err.retryable === true;
+      if (isUpstream) {
+        setUpstreamUnavailable(true);
+        setFactsError(t.upstreamUnavailable);
+      } else {
+        const message = err instanceof Error ? err.message : t.invalid;
+        setFactsError(message);
+      }
     } finally {
       if (factsRequestIdRef.current === requestId) {
         setFactsLoading(false);
@@ -123,6 +136,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     setMatchFact(null);
     setHeroId('');
     setFactsError(null);
+    setUpstreamUnavailable(false);
   };
 
   const handleMatchInput = (value: string) => {
@@ -133,6 +147,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
       setMatchFact(null);
       setHeroId('');
       setFactsError(null);
+      setUpstreamUnavailable(false);
     }
   };
 
@@ -182,7 +197,22 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
                 <p className="text-xs text-yellow-400">{t.invalid}</p>
               )}
               {factsError && (
-                <p className="text-xs text-yellow-400">{factsError}</p>
+                <div className="space-y-2">
+                  <p className="text-xs text-yellow-400">{factsError}</p>
+                  {upstreamUnavailable && (
+                    <button
+                      type="button"
+                      onClick={() => void handleFetchFacts()}
+                      disabled={factsLoading || !parsedId}
+                      className="w-full py-2.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-k3-text-primary text-sm font-medium disabled:opacity-40 min-h-[44px] touch-manipulation inline-flex items-center justify-center gap-2 hover:bg-k3-elevated"
+                    >
+                      {factsLoading
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : <RefreshCw size={14} />}
+                      {factsLoading ? t.fetching : t.retry}
+                    </button>
+                  )}
+                </div>
               )}
               <button
                 type="submit"
