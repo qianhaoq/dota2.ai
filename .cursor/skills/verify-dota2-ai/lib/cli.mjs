@@ -144,6 +144,11 @@ function pidAlive(pid) {
 }
 
 
+function readBootId() {
+  try { return fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(); }
+  catch { return null; }
+}
+
 function readProcIdentity(pid) {
   if (!pid) return null;
   try {
@@ -157,7 +162,7 @@ function readProcIdentity(pid) {
     try {
       cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ').trim();
     } catch { /* ignore */ }
-    return { pid: Number(pid), starttime, cmdline };
+    return { pid: Number(pid), starttime, cmdline, bootId: readBootId() };
   } catch {
     return null;
   }
@@ -174,15 +179,16 @@ function killPid(entry, label) {
   const pid = pidEntryPid(entry);
   if (!pid || !pidAlive(pid)) return;
   const expected = (entry && typeof entry === 'object' && entry.starttime != null)
-    ? { starttime: String(entry.starttime), cmdline: entry.cmdline || '' }
+    ? { starttime: String(entry.starttime), cmdline: entry.cmdline || '', bootId: entry.bootId || null }
     : null;
   if (!expected) {
     log(`skip kill ${label} pid=${pid}: no identity token (refuse bare PID — possible reuse)`);
     return;
   }
   const live = readProcIdentity(pid);
-  if (!live || String(live.starttime) !== String(expected.starttime)) {
-    log(`skip kill ${label} pid=${pid}: identity mismatch (possible PID reuse)`);
+  const bootOk = !expected.bootId || !live?.bootId || String(live.bootId) === String(expected.bootId);
+  if (!live || String(live.starttime) !== String(expected.starttime) || !bootOk) {
+    log(`skip kill ${label} pid=${pid}: identity mismatch (possible PID reuse / reboot)`);
     return;
   }
   try { process.kill(-pid, 'SIGTERM'); } catch {
@@ -373,7 +379,8 @@ async function inspect(state) {
     let identityOk = true;
     if (alive && entry && typeof entry === 'object' && entry.starttime != null) {
       const live = readProcIdentity(pid);
-      identityOk = Boolean(live && String(live.starttime) === String(entry.starttime));
+      const bootOk = !entry.bootId || !live?.bootId || String(live.bootId) === String(entry.bootId);
+      identityOk = Boolean(live && String(live.starttime) === String(entry.starttime) && bootOk);
       if (!identityOk) {
         alive = false;
         report.errors.push(`${name} pid ${pid} is alive but identity mismatch (possible PID reuse)`);
@@ -573,8 +580,10 @@ const FEATURES = {
       await ensureZh(cdp);
       await waitForText(cdp, '下一局，只带走一个能执行的动作。');
       const empty = await pageText(cdp);
-      if (!empty.includes('还没有保存的动作。') && !empty.includes('触发')) {
-        throw new Error('journal workspace did not render empty or list state');
+      const isEmpty = empty.includes('还没有保存的动作。');
+      const isList = empty.includes('触发') && empty.includes('行动') && empty.includes('检查');
+      if (!isEmpty && !isList) {
+        throw new Error('journal workspace did not render empty panel (还没有保存的动作。) or a saved note list');
       }
       await screenshotPng(cdp, 'empty.png');
       await clickHandle(cdp, { role: 'button', name: '英雄修炼' });
