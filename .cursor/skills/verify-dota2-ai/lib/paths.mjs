@@ -22,7 +22,12 @@ export function ensureDir(dir) {
 
 export function readState() {
   if (!fs.existsSync(STATE_PATH)) return null;
-  return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'));
+  } catch (err) {
+    // Malformed/truncated state must not crash doctor/launch/drive/cleanup.
+    return { __invalidState: true, parseError: String(err?.message || err) };
+  }
 }
 
 export function writeState(state) {

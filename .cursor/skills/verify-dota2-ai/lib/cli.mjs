@@ -83,11 +83,27 @@ function repoRevision() {
 
 function launchEnvFingerprint() {
   const fromFile = loadDotenv();
-  const key = process.env.DEEPSEEK_API_KEY ?? fromFile.DEEPSEEK_API_KEY ?? '';
-  // Hash so state.json never stores the raw secret.
-  return createHash('sha256').update(`DEEPSEEK_API_KEY=${key}`).digest('hex').slice(0, 12);
+  const deepseek = process.env.DEEPSEEK_API_KEY ?? fromFile.DEEPSEEK_API_KEY ?? '';
+  const steam = process.env.STEAM_WEB_API_KEY ?? fromFile.STEAM_WEB_API_KEY ?? '';
+  // Hash so state.json never stores raw secrets.
+  return createHash('sha256')
+    .update(`DEEPSEEK_API_KEY=${deepseek}\nSTEAM_WEB_API_KEY=${steam}`)
+    .digest('hex')
+    .slice(0, 12);
 }
 
+
+
+function requireValidState(state, { allowMissing = false } = {}) {
+  if (!state) {
+    if (allowMissing) return null;
+    return null;
+  }
+  if (state.__invalidState) {
+    fail(`refuse: malformed verifier state at ${STATE_PATH} (${state.parseError}). Delete ${STATE_PATH} / run cleanup after fixing, or remove the file manually if cleanup cannot parse it.`);
+  }
+  return state;
+}
 
 function nowId() {
   return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
@@ -253,7 +269,11 @@ async function cmdLaunch() {
   const requestedApiOrigin = `http://${host}:${apiPort}`;
 
   const existing = readState();
-  if (existing?.pids) {
+  if (existing?.__invalidState) {
+    log(`malformed state detected (${existing.parseError}); removing before relaunch`);
+    await cmdCleanup({});
+  }
+  if (existing?.pids && !existing.__invalidState) {
     const doctor = await inspect(existing);
     if (doctor.ok) {
       const revision = repoRevision();
@@ -470,6 +490,9 @@ function printDoctor(report) {
 
 async function cmdDoctor() {
   const state = readState();
+  if (state?.__invalidState) {
+    fail(`malformed verifier state at ${STATE_PATH} (${state.parseError}). Run cleanup to remove it.`);
+  }
   const report = await inspect(state);
   printDoctor(report);
   if (!report.ok) process.exit(2);
@@ -537,14 +560,27 @@ const FEATURES = {
         await clickHandle(cdp, { role: 'button', textIncludes: '复盘一局' });
         await waitForText(cdp, '8985182860');
       }
-      // Fail fast if Review auto-starts facts fetch; do not wait for a failed fetch to clear back to the button.
-      await waitFor(async () => {
+      // Require a quiet idle window: button present and no auto-fetch indicator across several samples.
+      const quietMs = 1500;
+      const deadline = Date.now() + 8000;
+      let quietSince = null;
+      while (Date.now() < deadline) {
         const text = await pageText(cdp);
         if (text.includes('正在拉取比赛')) {
           throw new Error('review entry auto-started facts fetch (正在拉取比赛)');
         }
-        return (await existsHandle(cdp, { role: 'button', name: '拉取比赛' })) || null;
-      }, { timeoutMs: 8000, label: 'idle 拉取比赛 button (no auto-fetch)' });
+        const hasBtn = await existsHandle(cdp, { role: 'button', name: '拉取比赛' });
+        if (hasBtn) {
+          if (quietSince == null) quietSince = Date.now();
+          if (Date.now() - quietSince >= quietMs) break;
+        } else {
+          quietSince = null;
+        }
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      if (quietSince == null || Date.now() - quietSince < quietMs) {
+        throw new Error('timeout waiting for quiet idle 拉取比赛 button (no auto-fetch)');
+      }
       const after = await pageText(cdp);
       if (!(await existsHandle(cdp, { role: 'button', name: '拉取比赛' }))) {
         throw new Error('review intake missing 拉取比赛 button');
@@ -718,6 +754,9 @@ async function cmdDrive(featureId) {
   if (!feature) fail(`unknown feature ${featureId}. Known: ${Object.keys(FEATURES).join(', ')}`);
 
   const state = readState();
+  if (state?.__invalidState) {
+    fail(`malformed verifier state at ${STATE_PATH} (${state.parseError}). Run cleanup to remove it.`);
+  }
   const report = await inspect(state);
   if (!report.ok) {
     printDoctor(report);
@@ -826,6 +865,14 @@ async function cmdCleanup() {
   const state = readState();
   if (!state) {
     log(`nothing to clean (${STATE_PATH} absent)`);
+    return;
+  }
+  if (state.__invalidState) {
+    try { fs.rmSync(STATE_PATH, { force: true }); } catch { /* ignore */ }
+    if (fs.existsSync(RUN_DIR)) {
+      try { fs.rmSync(RUN_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+    log(`removed malformed state at ${STATE_PATH}; evidence kept under ${EVIDENCE_DIR}`);
     return;
   }
   for (const [name, pid] of Object.entries(state.pids || {})) {
