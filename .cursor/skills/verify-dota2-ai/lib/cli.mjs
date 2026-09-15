@@ -537,11 +537,14 @@ const FEATURES = {
         await clickHandle(cdp, { role: 'button', textIncludes: '复盘一局' });
         await waitForText(cdp, '8985182860');
       }
-      // Prefer the intake button label, not the loading substring 正在拉取比赛…
-      await waitFor(async () => (await existsHandle(cdp, { role: 'button', name: '拉取比赛' })) || null, {
-        timeoutMs: 30000,
-        label: '拉取比赛 button',
-      });
+      // Fail fast if Review auto-starts facts fetch; do not wait for a failed fetch to clear back to the button.
+      await waitFor(async () => {
+        const text = await pageText(cdp);
+        if (text.includes('正在拉取比赛')) {
+          throw new Error('review entry auto-started facts fetch (正在拉取比赛)');
+        }
+        return (await existsHandle(cdp, { role: 'button', name: '拉取比赛' })) || null;
+      }, { timeoutMs: 8000, label: 'idle 拉取比赛 button (no auto-fetch)' });
       const after = await pageText(cdp);
       if (!(await existsHandle(cdp, { role: 'button', name: '拉取比赛' }))) {
         throw new Error('review intake missing 拉取比赛 button');
