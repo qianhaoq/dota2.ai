@@ -111,9 +111,10 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
               href="mailto:qianhao1229@gmail.com?subject=dota2.ai%20feedback"
               className="v3-btn v3-btn-quiet min-h-[40px] px-[10px]"
               aria-label={lang === 'en' ? 'Send feedback' : '发送反馈'}
+              title={lang === 'en' ? 'Feedback' : '反馈'}
             >
               <MessageSquare size={14} />
-              <span>{lang === 'en' ? 'Feedback' : '反馈'}</span>
+              <span className="hidden lg:inline">{lang === 'en' ? 'Feedback' : '反馈'}</span>
             </a>
           </div>
         </div>
