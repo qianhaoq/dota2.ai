@@ -167,7 +167,7 @@ gcloud run deploy dota2-ai --image REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2
 - **商标**：本项目为粉丝作品，与 Valve Corporation 无关联。Dota、Dota 2、Steam 及英雄素材版权归 Valve 所有；运行时数据来自公开 OpenDota / Steam 接口。
 - **参与贡献**：见 [CONTRIBUTING.md](CONTRIBUTING.md) —— 一个 PR 一件事、保持双语、不换 AI 提供方、不绕过 CI。
 - **安全**：见 [SECURITY.md](SECURITY.md)。建议仓库管理员开启 **Secret scanning + Push protection**（Settings → Code security），防止密钥进入历史。
-- **联系**：通过 GitHub Issues（仓库不提供个人邮箱）。
+- **联系 / Feedback**：产品内「反馈」入口为 `mailto:qianhao1229@gmail.com`（subject: dota2.ai feedback）；也可通过 GitHub Issues 讨论贡献与缺陷。
 
 ---
 
