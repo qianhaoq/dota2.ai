@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Globe } from 'lucide-react';
+import { Globe, MessageSquare } from 'lucide-react';
 import MentorRail from './MentorRail';
 import { NAV_ITEMS, isNavId, navLabel, type NavId } from './nav';
 import { findMentor, useHeroes } from './useHeroes';
@@ -107,6 +107,14 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
               <Globe size={14} />
               <span>{lang === 'en' ? 'EN' : '中'}</span>
             </button>
+            <a
+              href="mailto:qianhao1229@gmail.com?subject=dota2.ai%20feedback"
+              className="v3-btn v3-btn-quiet min-h-[40px] px-[10px]"
+              aria-label={lang === 'en' ? 'Send feedback' : '发送反馈'}
+            >
+              <MessageSquare size={14} />
+              <span>{lang === 'en' ? 'Feedback' : '反馈'}</span>
+            </a>
           </div>
         </div>
       </header>
