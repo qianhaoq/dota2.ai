@@ -97,7 +97,7 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
             </nav>
           </div>
           <div className="flex items-center gap-[8px] flex-shrink-0">
-            <span className="v3-tag v3-tag-demo hidden sm:inline-flex">{lang === 'zh' ? '教学演示徽章 = 非真实数据' : 'Demo badge = not live data'}</span>
+            <span className="v3-tag v3-tag-demo !hidden sm:!inline-flex">{lang === 'zh' ? '教学演示徽章 = 非真实数据' : 'Demo badge = not live data'}</span>
             <button
               type="button"
               onClick={onToggleLang}
@@ -114,7 +114,7 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
               title={lang === 'en' ? 'Feedback' : '反馈'}
             >
               <MessageSquare size={14} />
-              <span>{lang === 'en' ? 'Feedback' : '反馈'}</span>
+              <span className="max-sm:hidden">{lang === 'en' ? 'Feedback' : '反馈'}</span>
             </a>
           </div>
         </div>
