@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.js';
@@ -2507,6 +2509,100 @@ async function handleMatchReview(req, res) {
     return respondReviewError(res, wantsStream, errorMsg, 500);
   }
 }
+
+
+// ============ In-app feedback (站内留言) ============
+// Append-only JSONL under data/feedback.jsonl. No auth / no admin UI.
+const FEEDBACK_DIR = path.join(__dirname, 'data');
+const FEEDBACK_FILE = path.join(FEEDBACK_DIR, 'feedback.jsonl');
+const FEEDBACK_MAX_MESSAGE = 4000;
+const FEEDBACK_MAX_FIELD = 200;
+const FEEDBACK_RATE_LIMIT = 20;
+const FEEDBACK_RATE_WINDOW_MS = 60 * 60 * 1000;
+/** @type {Map<string, number[]>} */
+const feedbackHitsByIp = new Map();
+
+function feedbackClientIp(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  const raw = typeof fwd === 'string' && fwd.length > 0
+    ? fwd.split(',')[0].trim()
+    : (req.ip || '');
+  return String(raw).slice(0, 64) || 'unknown';
+}
+
+function feedbackRateLimited(ip) {
+  const now = Date.now();
+  const prev = feedbackHitsByIp.get(ip) || [];
+  const recent = prev.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
+  if (recent.length >= FEEDBACK_RATE_LIMIT) {
+    feedbackHitsByIp.set(ip, recent);
+    return true;
+  }
+  recent.push(now);
+  feedbackHitsByIp.set(ip, recent);
+  // Bound map growth on long-lived instances.
+  if (feedbackHitsByIp.size > 5000) {
+    for (const [k, times] of feedbackHitsByIp) {
+      const kept = times.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
+      if (kept.length === 0) feedbackHitsByIp.delete(k);
+      else feedbackHitsByIp.set(k, kept);
+    }
+  }
+  return false;
+}
+
+app.get('/api/feedback', (_req, res) => {
+  res.status(405).json({ ok: false, error: 'Use POST' });
+});
+
+app.post('/api/feedback', (req, res) => {
+  try {
+    const ip = feedbackClientIp(req);
+    if (feedbackRateLimited(ip)) {
+      return res.status(429).json({ ok: false, error: 'rate limited' });
+    }
+
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const messageRaw = body.message;
+    if (typeof messageRaw !== 'string' || !messageRaw.trim()) {
+      return res.status(400).json({ ok: false, error: 'message required' });
+    }
+
+    const message = messageRaw.trim().slice(0, FEEDBACK_MAX_MESSAGE);
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, FEEDBACK_MAX_FIELD) : '';
+    const contact = typeof body.contact === 'string' ? body.contact.trim().slice(0, FEEDBACK_MAX_FIELD) : '';
+    const lang = normalizeUiLang(body.lang || 'en');
+    const ua = String(req.headers['user-agent'] || '').slice(0, 300);
+
+    const record = {
+      id: randomUUID(),
+      ts: new Date().toISOString(),
+      name: name || undefined,
+      contact: contact || undefined,
+      message,
+      lang,
+      ip,
+      ua: ua || undefined,
+    };
+
+    fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
+    fs.appendFileSync(FEEDBACK_FILE, `${JSON.stringify(record)}\n`, 'utf8');
+
+    console.log('[feedback]', JSON.stringify({
+      id: record.id,
+      ts: record.ts,
+      name: Boolean(name),
+      contact: Boolean(contact),
+      len: message.length,
+      lang,
+    }));
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('[feedback] store failed', error);
+    return res.status(500).json({ ok: false, error: 'store failed' });
+  }
+});
 
 app.use(express.static(path.join(__dirname, 'dist')));
 

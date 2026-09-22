@@ -8,6 +8,7 @@ import TrainingWorkspace from '../features/practice/TrainingWorkspace';
 import { KnowledgeWorkspace } from '../features/knowledge';
 import JournalWorkspace from '../features/journal/JournalWorkspace';
 import { QUOTES } from './mentorQuotes';
+import FeedbackModal from './FeedbackModal';
 import type { Language } from '../types';
 
 export interface WorkspaceShellProps {
@@ -33,6 +34,7 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
   const [nav, setNav] = useState<NavId>('tactical');
   const [visited, setVisited] = useState<Record<NavId, boolean>>(VISITED_INIT);
   const [toast, setToast] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { heroes } = useHeroes(lang);
   const mentor = findMentor(heroes);
@@ -107,15 +109,16 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
               <Globe size={14} />
               <span>{lang === 'en' ? 'EN' : '中'}</span>
             </button>
-            <a
-              href="mailto:qianhao1229@gmail.com?subject=dota2.ai%20feedback"
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
               className="v3-btn v3-btn-quiet min-h-[40px] px-[10px] md:hidden lg:inline-flex"
-              aria-label={lang === 'en' ? 'Send feedback' : '发送反馈'}
+              aria-label={lang === 'en' ? 'Leave feedback' : '站内留言'}
               title={lang === 'en' ? 'Feedback' : '反馈'}
             >
               <MessageSquare size={14} />
               <span className="max-sm:hidden">{lang === 'en' ? 'Feedback' : '反馈'}</span>
-            </a>
+            </button>
           </div>
         </div>
       </header>
@@ -198,6 +201,12 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
           {toast}
         </div>
       )}
+
+      <FeedbackModal
+        lang={lang}
+        isOpen={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+      />
     </div>
   );
 };
