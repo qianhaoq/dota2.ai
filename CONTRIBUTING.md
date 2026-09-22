@@ -35,7 +35,7 @@ node --check server.js # 服务端语法
 ## 安全
 
 - 不要提交 `.env`、API 密钥或他人隐私数据（比赛 ID、Steam ID 属于他人数据）。
-- 产品反馈：应用内「反馈 / Feedback」→ `mailto:qianhao1229@gmail.com`；贡献与缺陷讨论仍走 GitHub Issues。
+- 产品反馈：应用内「反馈 / Feedback」打开站内留言表单，提交到 `/api/feedback`（stdout `[feedback:record]` → Cloud Logging；本地另有 best-effort `data/feedback.jsonl`）；贡献与缺陷讨论仍走 GitHub Issues。
 - 建议仓库管理员开启 Secret scanning 与 Push protection（见 `SECURITY.md`）。
 
 ## 商标与版权说明
@@ -72,7 +72,7 @@ npm test && npx tsc --noEmit && npm run build && node --check server.js
 ## Security
 
 - Never commit `.env`, API keys, or other people's data (match IDs / Steam IDs included).
-- Product feedback: in-app Feedback link → `mailto:qianhao1229@gmail.com`; contribution/bug discussion still via GitHub Issues.
+- Product feedback: in-app Feedback opens a leave-a-message form that POSTs to `/api/feedback` (durable: stdout `[feedback:record]` → Cloud Logging; local best-effort `data/feedback.jsonl`); contribution/bug discussion still via GitHub Issues.
 - Maintainers: enable Secret scanning and Push protection (see `SECURITY.md`).
 
 ## Trademark notice

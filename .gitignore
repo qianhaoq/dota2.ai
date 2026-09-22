@@ -34,3 +34,7 @@ dist-ssr
 .cursor/skills/verify-dota2-ai/evidence/*
 !.cursor/skills/verify-dota2-ai/evidence/.gitkeep
 !.cursor/skills/verify-dota2-ai/evidence/README.md
+
+# In-app feedback submissions (JSONL append log)
+data/*.jsonl
+!data/.gitkeep

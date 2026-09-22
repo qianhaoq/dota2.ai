@@ -32,6 +32,7 @@ COPY --from=builder /app/dist ./dist
 # Copy server runtime (match review modules + entry)
 COPY server.js ./
 COPY lib ./lib
+RUN mkdir -p ./data
 
 # Set environment variables
 ENV NODE_ENV=production

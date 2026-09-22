@@ -39,3 +39,7 @@ __tests__
 Dockerfile
 docker-compose*.yml
 .dockerignore
+
+# Never bake local feedback submissions into the image
+data/*.jsonl
+data/**/*.jsonl

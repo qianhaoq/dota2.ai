@@ -53,10 +53,15 @@ const CoachComposer: React.FC<CoachComposerProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === '/' && document.activeElement !== inputRef.current) {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
+      if (e.key !== '/') return;
+      // Ignore when typing in any field, or when a modal dialog is open.
+      const active = document.activeElement as HTMLElement | null;
+      const tag = active?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active?.isContentEditable) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      if (document.activeElement === inputRef.current) return;
+      e.preventDefault();
+      inputRef.current?.focus();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);

@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.js';
@@ -36,6 +38,7 @@ const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(express.json());
+
 
 // www → apex: works when www.dota2.ai points at this Cloud Run service.
 // Use 308 (not 301) so POST/SSE keep their method when Fetch follows the redirect.
@@ -2507,6 +2510,154 @@ async function handleMatchReview(req, res) {
     return respondReviewError(res, wantsStream, errorMsg, 500);
   }
 }
+
+
+// ============ In-app feedback (站内留言) ============
+// Best-effort local JSONL + durable stdout record for Cloud Logging.
+// No auth / no admin UI. Cloud Run disk is ephemeral — treat
+// `[feedback:record]` console lines as the durable copy.
+const FEEDBACK_DIR = path.join(__dirname, 'data');
+const FEEDBACK_FILE = path.join(FEEDBACK_DIR, 'feedback.jsonl');
+const FEEDBACK_MAX_MESSAGE = 4000;
+const FEEDBACK_MAX_FIELD = 200;
+const FEEDBACK_RATE_LIMIT = 20;
+const FEEDBACK_RATE_WINDOW_MS = 60 * 60 * 1000;
+const FEEDBACK_RATE_MAP_MAX = 2000;
+/** @type {Map<string, number[]>} */
+const feedbackHitsByIp = new Map();
+/** @type {number[]} */
+let feedbackGlobalHits = [];
+const FEEDBACK_GLOBAL_LIMIT = 200;
+
+function feedbackIsPrivateOrLoopback(ip) {
+  const v = String(ip || '').replace(/^::ffff:/, '');
+  if (!v || v === 'unknown') return false;
+  if (v === '127.0.0.1' || v === '::1') return true;
+  if (v.startsWith('10.') || v.startsWith('192.168.') || v.startsWith('fd') || v.startsWith('fe80:')) return true;
+  // RFC 1918 172.16/12 + GCP / Cloud Run CGNAT 100.64/10
+  if (v.startsWith('172.')) {
+    const second = Number(v.split('.')[1]);
+    if (second >= 16 && second <= 31) return true;
+  }
+  if (v.startsWith('100.')) {
+    const second = Number(v.split('.')[1]);
+    if (second >= 64 && second <= 127) return true;
+  }
+  return false;
+}
+
+function feedbackXffClient(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd !== 'string' || !fwd.trim()) return undefined;
+  const parts = fwd.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return undefined;
+  // Trusted end with one private proxy hop (Cloud Run / GCLB): right-most
+  // value is the connecting client the proxy observed. Caller-prefixed
+  // spoofed entries sit to the left and are ignored.
+  return parts[parts.length - 1].slice(0, 64);
+}
+
+function feedbackClientIp(req) {
+  const peer = String(req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown');
+  // Only trust XFF when the TCP peer is a private/loopback proxy (Cloud Run / GCLB).
+  // Direct public connections use the peer itself so XFF cannot be spoofed.
+  if (feedbackIsPrivateOrLoopback(peer)) {
+    return feedbackXffClient(req) || peer.slice(0, 64);
+  }
+  return peer.slice(0, 64);
+}
+
+function feedbackRateLimited(ip) {
+  const now = Date.now();
+  const prev = feedbackHitsByIp.get(ip) || [];
+  const recent = prev.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
+  if (recent.length >= FEEDBACK_RATE_LIMIT) {
+    feedbackHitsByIp.set(ip, recent);
+    return true;
+  }
+  recent.push(now);
+  feedbackHitsByIp.set(ip, recent);
+
+  if (feedbackHitsByIp.size > FEEDBACK_RATE_MAP_MAX) {
+    // Evict expired entries first, then drop arbitrary oldest keys until under cap.
+    for (const [k, times] of feedbackHitsByIp) {
+      const kept = times.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
+      if (kept.length === 0) feedbackHitsByIp.delete(k);
+      else feedbackHitsByIp.set(k, kept);
+    }
+    while (feedbackHitsByIp.size > FEEDBACK_RATE_MAP_MAX) {
+      const oldest = feedbackHitsByIp.keys().next().value;
+      if (oldest === undefined) break;
+      feedbackHitsByIp.delete(oldest);
+    }
+  }
+  return false;
+}
+
+app.get('/api/feedback', (_req, res) => {
+  res.status(405).json({ ok: false, error: 'Use POST' });
+});
+
+app.post('/api/feedback', (req, res) => {
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const messageRaw = body.message;
+    if (typeof messageRaw !== 'string' || !messageRaw.trim()) {
+      return res.status(400).json({ ok: false, error: 'message required' });
+    }
+
+    const ip = feedbackClientIp(req);
+    const now = Date.now();
+    feedbackGlobalHits = feedbackGlobalHits.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
+    if (feedbackGlobalHits.length >= FEEDBACK_GLOBAL_LIMIT || feedbackRateLimited(ip)) {
+      return res.status(429).json({ ok: false, error: 'rate limited' });
+    }
+    feedbackGlobalHits.push(now);
+
+    const message = messageRaw.trim().slice(0, FEEDBACK_MAX_MESSAGE);
+    const name = typeof body.name === 'string' ? body.name.trim().slice(0, FEEDBACK_MAX_FIELD) : '';
+    const contact = typeof body.contact === 'string' ? body.contact.trim().slice(0, FEEDBACK_MAX_FIELD) : '';
+    const lang = normalizeUiLang(body.lang || 'en');
+    const ua = String(req.headers['user-agent'] || '').slice(0, 300);
+
+    const record = {
+      id: randomUUID(),
+      ts: new Date().toISOString(),
+      name: name || undefined,
+      contact: contact || undefined,
+      message,
+      lang,
+      ip,
+      xff: feedbackXffClient(req),
+      ua: ua || undefined,
+    };
+
+    // Durable path for Cloud Run: full record on stdout → Cloud Logging.
+    console.log('[feedback:record]', JSON.stringify(record));
+    // Compact meta line for grepping (no PII beyond flags).
+    console.log('[feedback]', JSON.stringify({
+      id: record.id,
+      ts: record.ts,
+      name: Boolean(name),
+      contact: Boolean(contact),
+      len: message.length,
+      lang,
+    }));
+
+    try {
+      fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
+      fs.appendFileSync(FEEDBACK_FILE, `${JSON.stringify(record)}\n`, 'utf8');
+    } catch (diskErr) {
+      // Disk is best-effort; Cloud Logging already has the record.
+      console.warn('[feedback] jsonl append failed (continuing)', diskErr?.message || diskErr);
+    }
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('[feedback] store failed', error);
+    return res.status(500).json({ ok: false, error: 'store failed' });
+  }
+});
 
 app.use(express.static(path.join(__dirname, 'dist')));
 
