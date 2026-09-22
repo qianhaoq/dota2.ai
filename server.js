@@ -39,8 +39,6 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(express.json());
 
-// Cloud Run / reverse proxies: trust one hop so req.ip is the client.
-app.set('trust proxy', 1);
 
 // www → apex: works when www.dota2.ai points at this Cloud Run service.
 // Use 308 (not 301) so POST/SSE keep their method when Fetch follows the redirect.
@@ -2527,11 +2525,21 @@ const FEEDBACK_RATE_WINDOW_MS = 60 * 60 * 1000;
 const FEEDBACK_RATE_MAP_MAX = 2000;
 /** @type {Map<string, number[]>} */
 const feedbackHitsByIp = new Map();
+/** @type {number[]} */
+let feedbackGlobalHits = [];
+const FEEDBACK_GLOBAL_LIMIT = 200;
 
 function feedbackClientIp(req) {
-  // Prefer Express req.ip after trust proxy; never take raw X-Forwarded-For[0].
-  const ip = typeof req.ip === 'string' && req.ip ? req.ip : 'unknown';
-  return ip.slice(0, 64);
+  // Rate-limit key must not be spoofable via X-Forwarded-For. Use the TCP peer
+  // (Cloud Run / LB socket). Logged `xff` below is informational only.
+  const peer = req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
+  return String(peer).slice(0, 64);
+}
+
+function feedbackXffHint(req) {
+  const fwd = req.headers['x-forwarded-for'];
+  if (typeof fwd !== 'string' || !fwd) return undefined;
+  return fwd.split(',')[0].trim().slice(0, 64) || undefined;
 }
 
 function feedbackRateLimited(ip) {
@@ -2568,9 +2576,12 @@ app.get('/api/feedback', (_req, res) => {
 app.post('/api/feedback', (req, res) => {
   try {
     const ip = feedbackClientIp(req);
-    if (feedbackRateLimited(ip)) {
+    const now = Date.now();
+    feedbackGlobalHits = feedbackGlobalHits.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
+    if (feedbackGlobalHits.length >= FEEDBACK_GLOBAL_LIMIT || feedbackRateLimited(ip)) {
       return res.status(429).json({ ok: false, error: 'rate limited' });
     }
+    feedbackGlobalHits.push(now);
 
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const messageRaw = body.message;
@@ -2592,6 +2603,7 @@ app.post('/api/feedback', (req, res) => {
       message,
       lang,
       ip,
+      xff: feedbackXffHint(req),
       ua: ua || undefined,
     };
 

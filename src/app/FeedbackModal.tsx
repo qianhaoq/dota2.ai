@@ -12,6 +12,13 @@ type SubmitState = 'idle' | 'sending' | 'success' | 'error';
 
 const FEEDBACK_FETCH_MS = 15000;
 
+function isImeComposing(e: KeyboardEvent): boolean {
+  // Escape during IME candidate cancel must not dismiss the modal.
+  if (e.isComposing) return true;
+  // Some browsers report composition via keyCode 229 without isComposing.
+  return e.keyCode === 229;
+}
+
 const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) => {
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
@@ -19,7 +26,9 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const closeRef = useRef<HTMLButtonElement>(null);
+  const successCloseRef = useRef<HTMLButtonElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const closedRef = useRef(false);
@@ -92,18 +101,57 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
     };
   }, [isOpen]);
 
+  // After success, move focus to the success Close control.
+  useEffect(() => {
+    if (!isOpen || submitState !== 'success') return;
+    const id = window.setTimeout(() => successCloseRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, [isOpen, submitState]);
+
   useEffect(() => {
     if (!isOpen) return undefined;
+
+    const focusables = () => {
+      const root = dialogRef.current;
+      if (!root) return [] as HTMLElement[];
+      return Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
+    };
+
+    const rootContains = (el: HTMLElement | null) =>
+      Boolean(el && dialogRef.current?.contains(el));
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (isImeComposing(e)) return;
         e.preventDefault();
         dismiss();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const nodes = focusables();
+      if (nodes.length === 0) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || !rootContains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !rootContains(active)) {
+        e.preventDefault();
+        first.focus();
       }
     };
+
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- dismiss closes via latest onClose
-  }, [isOpen, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, onClose, submitState]);
 
   if (!isOpen) return null;
 
@@ -172,6 +220,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
       />
 
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="feedback-modal-title"
@@ -203,7 +252,12 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
             <p className="text-[14px] leading-[22px] text-v3-text" role="status">
               {t.success}
             </p>
-            <button type="button" onClick={dismiss} className="v3-btn v3-btn-primary self-start">
+            <button
+              ref={successCloseRef}
+              type="button"
+              onClick={dismiss}
+              className="v3-btn v3-btn-primary self-start"
+            >
               {t.close}
             </button>
           </div>
