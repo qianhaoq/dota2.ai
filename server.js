@@ -39,6 +39,9 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(express.json());
 
+// Cloud Run / reverse proxies: trust one hop so req.ip is the client.
+app.set('trust proxy', 1);
+
 // www → apex: works when www.dota2.ai points at this Cloud Run service.
 // Use 308 (not 301) so POST/SSE keep their method when Fetch follows the redirect.
 // If DNS/CDN still serves a different origin for www, configure redirect there as follow-up.
@@ -2512,22 +2515,23 @@ async function handleMatchReview(req, res) {
 
 
 // ============ In-app feedback (站内留言) ============
-// Append-only JSONL under data/feedback.jsonl. No auth / no admin UI.
+// Best-effort local JSONL + durable stdout record for Cloud Logging.
+// No auth / no admin UI. Cloud Run disk is ephemeral — treat
+// `[feedback:record]` console lines as the durable copy.
 const FEEDBACK_DIR = path.join(__dirname, 'data');
 const FEEDBACK_FILE = path.join(FEEDBACK_DIR, 'feedback.jsonl');
 const FEEDBACK_MAX_MESSAGE = 4000;
 const FEEDBACK_MAX_FIELD = 200;
 const FEEDBACK_RATE_LIMIT = 20;
 const FEEDBACK_RATE_WINDOW_MS = 60 * 60 * 1000;
+const FEEDBACK_RATE_MAP_MAX = 2000;
 /** @type {Map<string, number[]>} */
 const feedbackHitsByIp = new Map();
 
 function feedbackClientIp(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  const raw = typeof fwd === 'string' && fwd.length > 0
-    ? fwd.split(',')[0].trim()
-    : (req.ip || '');
-  return String(raw).slice(0, 64) || 'unknown';
+  // Prefer Express req.ip after trust proxy; never take raw X-Forwarded-For[0].
+  const ip = typeof req.ip === 'string' && req.ip ? req.ip : 'unknown';
+  return ip.slice(0, 64);
 }
 
 function feedbackRateLimited(ip) {
@@ -2540,12 +2544,18 @@ function feedbackRateLimited(ip) {
   }
   recent.push(now);
   feedbackHitsByIp.set(ip, recent);
-  // Bound map growth on long-lived instances.
-  if (feedbackHitsByIp.size > 5000) {
+
+  if (feedbackHitsByIp.size > FEEDBACK_RATE_MAP_MAX) {
+    // Evict expired entries first, then drop arbitrary oldest keys until under cap.
     for (const [k, times] of feedbackHitsByIp) {
       const kept = times.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
       if (kept.length === 0) feedbackHitsByIp.delete(k);
       else feedbackHitsByIp.set(k, kept);
+    }
+    while (feedbackHitsByIp.size > FEEDBACK_RATE_MAP_MAX) {
+      const oldest = feedbackHitsByIp.keys().next().value;
+      if (oldest === undefined) break;
+      feedbackHitsByIp.delete(oldest);
     }
   }
   return false;
@@ -2585,9 +2595,9 @@ app.post('/api/feedback', (req, res) => {
       ua: ua || undefined,
     };
 
-    fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
-    fs.appendFileSync(FEEDBACK_FILE, `${JSON.stringify(record)}\n`, 'utf8');
-
+    // Durable path for Cloud Run: full record on stdout → Cloud Logging.
+    console.log('[feedback:record]', JSON.stringify(record));
+    // Compact meta line for grepping (no PII beyond flags).
     console.log('[feedback]', JSON.stringify({
       id: record.id,
       ts: record.ts,
@@ -2596,6 +2606,14 @@ app.post('/api/feedback', (req, res) => {
       len: message.length,
       lang,
     }));
+
+    try {
+      fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
+      fs.appendFileSync(FEEDBACK_FILE, `${JSON.stringify(record)}\n`, 'utf8');
+    } catch (diskErr) {
+      // Disk is best-effort; Cloud Logging already has the record.
+      console.warn('[feedback] jsonl append failed (continuing)', diskErr?.message || diskErr);
+    }
 
     return res.json({ ok: true });
   } catch (error) {

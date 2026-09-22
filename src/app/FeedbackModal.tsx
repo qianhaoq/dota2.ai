@@ -10,6 +10,8 @@ export interface FeedbackModalProps {
 
 type SubmitState = 'idle' | 'sending' | 'success' | 'error';
 
+const FEEDBACK_FETCH_MS = 15000;
+
 const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) => {
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
@@ -19,6 +21,8 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
   const closeRef = useRef<HTMLButtonElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const closedRef = useRef(false);
 
   const t = useMemo(
     () =>
@@ -52,9 +56,17 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
     [lang],
   );
 
+  const dismiss = () => {
+    closedRef.current = true;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    onClose();
+  };
+
   useEffect(() => {
     if (!isOpen) return undefined;
 
+    closedRef.current = false;
     setName('');
     setContact('');
     setMessage('');
@@ -70,11 +82,12 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
       window.matchMedia('(pointer: coarse)').matches
         ? closeRef.current
         : messageRef.current;
-    // Defer so the dialog is in the DOM.
     const id = window.setTimeout(() => focusTarget?.focus(), 0);
 
     return () => {
       window.clearTimeout(id);
+      abortRef.current?.abort();
+      abortRef.current = null;
       restoreRef.current?.focus?.();
     };
   }, [isOpen]);
@@ -82,14 +95,15 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
   useEffect(() => {
     if (!isOpen) return undefined;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && submitState !== 'sending') {
+      if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        dismiss();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose, submitState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dismiss closes via latest onClose
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -106,6 +120,12 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
     }
     setFieldError(null);
     setSubmitState('sending');
+
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    const timer = window.setTimeout(() => ac.abort(), FEEDBACK_FETCH_MS);
+
     try {
       const res = await fetch('/api/feedback', {
         method: 'POST',
@@ -116,19 +136,30 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
           message: trimmed,
           lang,
         }),
+        signal: ac.signal,
       });
+      if (closedRef.current) return;
       if (!res.ok) {
         setSubmitState('error');
         return;
       }
       const data = (await res.json().catch(() => null)) as { ok?: boolean } | null;
+      if (closedRef.current) return;
       if (!data?.ok) {
         setSubmitState('error');
         return;
       }
       setSubmitState('success');
-    } catch {
+    } catch (err) {
+      if (closedRef.current) return;
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setSubmitState('error');
+        return;
+      }
       setSubmitState('error');
+    } finally {
+      window.clearTimeout(timer);
+      if (abortRef.current === ac) abortRef.current = null;
     }
   };
 
@@ -136,9 +167,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4">
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={() => {
-          if (!sending) onClose();
-        }}
+        onClick={dismiss}
         aria-hidden="true"
       />
 
@@ -161,8 +190,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
           <button
             ref={closeRef}
             type="button"
-            onClick={onClose}
-            disabled={sending}
+            onClick={dismiss}
             aria-label={t.close}
             className="v3-btn v3-btn-quiet !min-h-[40px] !px-[10px] flex-shrink-0"
           >
@@ -175,12 +203,16 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
             <p className="text-[14px] leading-[22px] text-v3-text" role="status">
               {t.success}
             </p>
-            <button type="button" onClick={onClose} className="v3-btn v3-btn-primary self-start">
+            <button type="button" onClick={dismiss} className="v3-btn v3-btn-primary self-start">
               {t.close}
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-[14px] px-[16px] py-[16px] overflow-y-auto">
+          <form
+            onSubmit={handleSubmit}
+            noValidate
+            className="flex flex-col gap-[14px] px-[16px] py-[16px] overflow-y-auto"
+          >
             <label className="flex flex-col gap-[6px]">
               <span className="text-[11px] text-v3-quiet tracking-[0.04em]">{t.name}</span>
               <input
@@ -222,7 +254,6 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
                 rows={5}
                 maxLength={4000}
                 disabled={sending}
-                required
                 aria-invalid={fieldError ? true : undefined}
                 aria-describedby={fieldError ? 'feedback-message-error' : undefined}
                 className="min-h-[120px] px-[12px] py-[10px] rounded-[4px] bg-v3-panel border border-v3-line text-v3-text text-[14px] outline-none focus:border-v3-gold resize-y"
@@ -241,12 +272,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ lang, isOpen, onClose }) 
             )}
 
             <div className="flex items-center justify-end gap-[8px] pt-[4px]">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={sending}
-                className="v3-btn v3-btn-quiet"
-              >
+              <button type="button" onClick={dismiss} className="v3-btn v3-btn-quiet">
                 {t.close}
               </button>
               <button type="submit" disabled={sending} className="v3-btn v3-btn-primary">
