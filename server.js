@@ -2529,17 +2529,38 @@ const feedbackHitsByIp = new Map();
 let feedbackGlobalHits = [];
 const FEEDBACK_GLOBAL_LIMIT = 200;
 
-function feedbackClientIp(req) {
-  // Rate-limit key must not be spoofable via X-Forwarded-For. Use the TCP peer
-  // (Cloud Run / LB socket). Logged `xff` below is informational only.
-  const peer = req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown';
-  return String(peer).slice(0, 64);
+function feedbackIsPrivateOrLoopback(ip) {
+  const v = String(ip || '').replace(/^::ffff:/, '');
+  if (!v || v === 'unknown') return false;
+  if (v === '127.0.0.1' || v === '::1') return true;
+  if (v.startsWith('10.') || v.startsWith('192.168.') || v.startsWith('fd') || v.startsWith('fe80:')) return true;
+  // RFC 1918 172.16/12 + GCP / Cloud Run CGNAT 100.64/10
+  if (v.startsWith('172.')) {
+    const second = Number(v.split('.')[1]);
+    if (second >= 16 && second <= 31) return true;
+  }
+  if (v.startsWith('100.')) {
+    const second = Number(v.split('.')[1]);
+    if (second >= 64 && second <= 127) return true;
+  }
+  return false;
 }
 
-function feedbackXffHint(req) {
+function feedbackXffClient(req) {
   const fwd = req.headers['x-forwarded-for'];
-  if (typeof fwd !== 'string' || !fwd) return undefined;
+  if (typeof fwd !== 'string' || !fwd.trim()) return undefined;
+  // Left-most = original client when a trusted proxy appended hops.
   return fwd.split(',')[0].trim().slice(0, 64) || undefined;
+}
+
+function feedbackClientIp(req) {
+  const peer = String(req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown');
+  // Only trust XFF when the TCP peer is a private/loopback proxy (Cloud Run / GCLB).
+  // Direct public connections use the peer itself so XFF cannot be spoofed.
+  if (feedbackIsPrivateOrLoopback(peer)) {
+    return feedbackXffClient(req) || peer.slice(0, 64);
+  }
+  return peer.slice(0, 64);
 }
 
 function feedbackRateLimited(ip) {
@@ -2575,6 +2596,12 @@ app.get('/api/feedback', (_req, res) => {
 
 app.post('/api/feedback', (req, res) => {
   try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const messageRaw = body.message;
+    if (typeof messageRaw !== 'string' || !messageRaw.trim()) {
+      return res.status(400).json({ ok: false, error: 'message required' });
+    }
+
     const ip = feedbackClientIp(req);
     const now = Date.now();
     feedbackGlobalHits = feedbackGlobalHits.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
@@ -2582,12 +2609,6 @@ app.post('/api/feedback', (req, res) => {
       return res.status(429).json({ ok: false, error: 'rate limited' });
     }
     feedbackGlobalHits.push(now);
-
-    const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const messageRaw = body.message;
-    if (typeof messageRaw !== 'string' || !messageRaw.trim()) {
-      return res.status(400).json({ ok: false, error: 'message required' });
-    }
 
     const message = messageRaw.trim().slice(0, FEEDBACK_MAX_MESSAGE);
     const name = typeof body.name === 'string' ? body.name.trim().slice(0, FEEDBACK_MAX_FIELD) : '';
@@ -2603,7 +2624,7 @@ app.post('/api/feedback', (req, res) => {
       message,
       lang,
       ip,
-      xff: feedbackXffHint(req),
+      xff: feedbackXffClient(req),
       ua: ua || undefined,
     };
 
