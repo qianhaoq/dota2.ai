@@ -2549,8 +2549,12 @@ function feedbackIsPrivateOrLoopback(ip) {
 function feedbackXffClient(req) {
   const fwd = req.headers['x-forwarded-for'];
   if (typeof fwd !== 'string' || !fwd.trim()) return undefined;
-  // Left-most = original client when a trusted proxy appended hops.
-  return fwd.split(',')[0].trim().slice(0, 64) || undefined;
+  const parts = fwd.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return undefined;
+  // Trusted end with one private proxy hop (Cloud Run / GCLB): right-most
+  // value is the connecting client the proxy observed. Caller-prefixed
+  // spoofed entries sit to the left and are ignored.
+  return parts[parts.length - 1].slice(0, 64);
 }
 
 function feedbackClientIp(req) {
