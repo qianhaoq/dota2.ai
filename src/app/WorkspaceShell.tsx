@@ -127,16 +127,19 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
               <MessageSquare size={14} />
               <span className="max-sm:hidden">{lang === 'en' ? 'Feedback' : '反馈'}</span>
             </button>
+            {/* Reachable at every viewport: icon-only below xl so the lg header
+                doesn't crowd the nav in English; full label at xl+. aria-label
+                matches the visible label exactly (Label in Name). */}
             <a
               href={RELATIONS_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="v3-btn v3-btn-quiet min-h-[40px] px-[10px] hidden xl:inline-flex"
+              className="v3-btn v3-btn-quiet min-h-[40px] px-[10px]"
               aria-label={relationsLabel}
               title={relationsHint}
             >
               <ExternalLink size={14} />
-              <span>{relationsLabel}</span>
+              <span className="hidden xl:inline">{relationsLabel}</span>
             </a>
           </div>
         </div>
