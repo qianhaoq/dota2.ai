@@ -34,6 +34,11 @@ import {
 } from './lib/matchReview/reviewResponder.js';
 import { computeApiHealth } from './lib/serverHealth.js';
 import {
+  parseForwardedFor,
+  parseTrustedProxyHops,
+  resolveClientIp as resolveClientIpFromParts,
+} from './lib/clientIp.js';
+import {
   REVIEW_HIGH_MMR_MIN_RANK_TIER,
   resolvePublicMatchSkill,
   selectReviewHighMmrPublicMatches,
@@ -2649,43 +2654,29 @@ const feedbackHitsByIp = new Map();
 let feedbackGlobalHits = [];
 const FEEDBACK_GLOBAL_LIMIT = 200;
 
-function feedbackIsPrivateOrLoopback(ip) {
-  const v = String(ip || '').replace(/^::ffff:/, '');
-  if (!v || v === 'unknown') return false;
-  if (v === '127.0.0.1' || v === '::1') return true;
-  if (v.startsWith('10.') || v.startsWith('192.168.') || v.startsWith('fd') || v.startsWith('fe80:')) return true;
-  // RFC 1918 172.16/12 + GCP / Cloud Run CGNAT 100.64/10
-  if (v.startsWith('172.')) {
-    const second = Number(v.split('.')[1]);
-    if (second >= 16 && second <= 31) return true;
-  }
-  if (v.startsWith('100.')) {
-    const second = Number(v.split('.')[1]);
-    if (second >= 64 && second <= 127) return true;
-  }
-  return false;
-}
+// Client identity for the feedback rate limit and the parse-request budget.
+// On Cloud Run the TCP peer is the platform proxy, and GCLB appends
+// "<client-ip>,<lb-ip>" to X-Forwarded-For — the right-most entry is the LB,
+// so every user would collapse into one bucket. Pick XFF[len - hops] instead:
+//   2 (default) = Cloud Run behind GCLB · 1 = direct *.run.app traffic
+//   +1 per extra fronting proxy (IAP / API Gateway / CDN). XFF is only
+//   consulted when the TCP peer is private/loopback (see lib/clientIp.js).
+const trustedProxyHops = parseTrustedProxyHops(process.env.TRUSTED_PROXY_HOPS);
 
-function feedbackXffClient(req) {
-  const fwd = req.headers['x-forwarded-for'];
-  if (typeof fwd !== 'string' || !fwd.trim()) return undefined;
-  const parts = fwd.split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length === 0) return undefined;
-  // Trusted end with one private proxy hop (Cloud Run / GCLB): right-most
-  // value is the connecting client the proxy observed. Caller-prefixed
-  // spoofed entries sit to the left and are ignored.
-  return parts[parts.length - 1].slice(0, 64);
-}
-
-// Shared by the feedback rate limit and the review parse-request budget.
 function resolveClientIp(req) {
-  const peer = String(req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown');
-  // Only trust XFF when the TCP peer is a private/loopback proxy (Cloud Run / GCLB).
-  // Direct public connections use the peer itself so XFF cannot be spoofed.
-  if (feedbackIsPrivateOrLoopback(peer)) {
-    return feedbackXffClient(req) || peer.slice(0, 64);
-  }
-  return peer.slice(0, 64);
+  return resolveClientIpFromParts({
+    peerAddress: req.socket?.remoteAddress || req.connection?.remoteAddress,
+    forwardedFor: req.headers['x-forwarded-for'],
+    trustedProxyHops,
+  });
+}
+
+// Raw diagnostic for feedback records: the entry appended by the nearest
+// trusted proxy (on GCLB this is the load balancer's IP, not the client —
+// the resolved client IP is in `ip`).
+function feedbackXffClient(req) {
+  const parts = parseForwardedFor(req.headers['x-forwarded-for']);
+  return parts.length > 0 ? parts[parts.length - 1].slice(0, 64) : undefined;
 }
 
 function feedbackRateLimited(ip) {
