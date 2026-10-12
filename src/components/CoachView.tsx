@@ -8,7 +8,7 @@ import {
   fetchPlaybookStream,
   fetchMatchReviewStream,
 } from '../services/geminiService';
-import { fetchHeroes } from '../services/dotaApiService';
+import { fetchHeroes, fetchMatchFacts } from '../services/dotaApiService';
 import { buildPracticeUserContext, heroDisplayName, resolveAnalyzeUserMessage, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
@@ -405,6 +405,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { matchFact });
         },
+        onParseStatus: (parseStatus) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          updateCoachMessage(msgId, { parseStatus });
+        },
         onReviewCards: (reviewCards) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { reviewCards });
@@ -432,6 +436,19 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       }
     );
   }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, applyLessonSwitch]);
+
+  /**
+   * Re-fetch facts for a review whose replay is still parsing. Read-only GET —
+   * no draft/side change, so no contextRevision bump or cancelStream (coach invariants).
+   */
+  const handleReviewFactsRetry = useCallback(async (matchId: number, messageId: string) => {
+    try {
+      const { matchFact, parse } = await fetchMatchFacts(matchId, lang);
+      updateCoachMessage(messageId, { matchFact, parseStatus: parse });
+    } catch {
+      // Keep previous facts/status; the banner stays so the user can retry again.
+    }
+  }, [lang, updateCoachMessage]);
 
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
@@ -671,6 +688,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
             onDismiss={dismissSession}
             onReviewFollowUp={handleReviewFollowUp}
             onComposeFollowUp={handleComposeFollowUp}
+            onRetryFacts={handleReviewFactsRetry}
             followUpAllowed={surfaceFollowUpAllowed}
             scrollContainerRef={scrollContainerRef}
           />

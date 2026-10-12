@@ -3,8 +3,10 @@ import { Language, Hero } from '../../types';
 import type { MatchFact } from '../../types/matchReview';
 import { Film, Search, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { parseMatchId } from '../../utils/parseMatchId';
+import { parseRetryAfterLabel, shouldShowParseStatusBanner } from '../../utils/parseStatus';
 import { isHeroInMatch, rosterFromMatchFact } from '../../utils/reviewRoster';
 import { fetchMatchFacts, MatchFactsError } from '../../services/dotaApiService';
+import type { ReviewParseStatus } from '../../types/matchReview';
 import ReviewSuggestions from './ReviewSuggestions';
 
 interface ReviewEntryProps {
@@ -31,6 +33,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const [factsError, setFactsError] = useState<string | null>(null);
   const [upstreamUnavailable, setUpstreamUnavailable] = useState(false);
   const [matchFact, setMatchFact] = useState<MatchFact | null>(null);
+  const [parseStatus, setParseStatus] = useState<ReviewParseStatus | null>(null);
   const factsRequestIdRef = useRef(0);
 
   const invalidateFactsRequest = () => {
@@ -94,14 +97,16 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     setFactsError(null);
     setUpstreamUnavailable(false);
     setMatchFact(null);
+    setParseStatus(null);
     setHeroId('');
     if (overrideMatchId) {
       setMatchInput(String(overrideMatchId));
     }
     try {
-      const fact = await fetchMatchFacts(targetId, lang);
+      const { matchFact: fact, parse } = await fetchMatchFacts(targetId, lang);
       if (factsRequestIdRef.current !== requestId) return;
       setMatchFact(fact);
+      setParseStatus(parse);
     } catch (err) {
       if (factsRequestIdRef.current !== requestId) return;
       const isUpstream = err instanceof MatchFactsError
@@ -134,6 +139,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const handleChangeMatch = () => {
     invalidateFactsRequest();
     setMatchFact(null);
+    setParseStatus(null);
     setHeroId('');
     setFactsError(null);
     setUpstreamUnavailable(false);
@@ -145,6 +151,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     if (factsLoading || (matchFact && nextId !== matchFact.summary.matchId)) {
       invalidateFactsRequest();
       setMatchFact(null);
+      setParseStatus(null);
       setHeroId('');
       setFactsError(null);
       setUpstreamUnavailable(false);
@@ -243,6 +250,33 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
                   {t.changeMatch}
                 </button>
               </div>
+
+              {parseStatus && shouldShowParseStatusBanner(parseStatus) && (
+                <div
+                  data-testid="review-entry-parse-status"
+                  className="rounded-lg border border-yellow-500/25 bg-yellow-500/5 px-3 py-2.5 space-y-1.5"
+                >
+                  {parseStatus.message && (
+                    <p className="text-xs text-k3-text-secondary">{parseStatus.message}</p>
+                  )}
+                  {parseRetryAfterLabel(lang, parseStatus.retryAfterSec) && (
+                    <p className="text-[11px] text-k3-text-tertiary">
+                      {parseRetryAfterLabel(lang, parseStatus.retryAfterSec)}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleFetchFacts()}
+                    disabled={factsLoading}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-xs font-medium text-k3-text-primary hover:bg-k3-elevated disabled:opacity-40 min-h-[36px] touch-manipulation"
+                  >
+                    {factsLoading
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <RefreshCw size={12} />}
+                    {factsLoading ? t.fetching : t.retry}
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className="text-[11px] text-k3-text-tertiary block mb-1">{t.hero}</label>

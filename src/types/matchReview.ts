@@ -73,7 +73,7 @@ export interface FieldReason {
 
 /** OpenDota replay parse status returned by /api/review (GET facts + POST stream). */
 export interface ReviewParseStatus {
-  status: 'requested' | 'pending' | 'parsed' | 'failed';
+  status: 'requested' | 'pending' | 'parsed' | 'failed' | 'throttled';
   jobId: number | null;
   retryAfterSec: number | null;
   message: string;

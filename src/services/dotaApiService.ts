@@ -1,5 +1,6 @@
 import { Hero, Attribute, Language } from '../types';
-import type { MatchFact } from '../types/matchReview';
+import type { MatchFact, ReviewParseStatus } from '../types/matchReview';
+import { parseReviewParseStatus } from '../utils/parseStatus';
 
 const OPENDOTA_API = 'https://api.opendota.com/api';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
@@ -114,8 +115,14 @@ export class MatchFactsError extends Error {
   }
 }
 
+export interface MatchFactsResult {
+  matchFact: MatchFact;
+  /** OpenDota replay parse status; null when the server did not include one. */
+  parse: ReviewParseStatus | null;
+}
+
 /** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
-export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): Promise<MatchFact> => {
+export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): Promise<MatchFactsResult> => {
   const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
@@ -124,6 +131,7 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): P
     () => ({} as {
       error?: string;
       matchFact?: MatchFact;
+      parse?: unknown;
       upstream?: string;
       upstreamStatus?: number;
       retryable?: boolean;
@@ -142,7 +150,7 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): P
   if (!data.matchFact) {
     throw new MatchFactsError(lang === 'zh' ? '比赛数据为空' : 'Match data is empty');
   }
-  return data.matchFact;
+  return { matchFact: data.matchFact, parse: parseReviewParseStatus(data.parse) };
 };
 
 export interface ReviewSuggestionBase {
