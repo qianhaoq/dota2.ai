@@ -2517,7 +2517,9 @@ async function handleMatchReview(req, res) {
             finishReason = choice.finish_reason;
           }
         }
-        if (!res.writableEnded) {
+        // writableEnded stays false on an aborted close, so gate on
+        // clientGone too: a gone client must not get a final write/end.
+        if (!clientGone && !res.writableEnded) {
           if (isTerminalStreamFinish(finishReason)) {
             responder.end();
           } else {

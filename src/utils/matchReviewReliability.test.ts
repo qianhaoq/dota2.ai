@@ -581,6 +581,28 @@ describe('match detail cache', () => {
     expect(fetches).toBe(2);
   });
 
+  it('propagates ordinary upstream failures to every shared-refresh waiter', async () => {
+    let fetches = 0;
+    const cache = createMatchDetailCache({
+      fetchMatch: () => new Promise((resolve, reject) => {
+        fetches += 1;
+        reject(new Error('upstream 522'));
+      }),
+    });
+
+    // Three callers share one in-flight refresh whose failure is NOT an
+    // initiator abort. Every waiter must see the same error — none may start
+    // its own retry wave of upstream fetches.
+    const controller = new AbortController();
+    const calls = [
+      cache.get(1, { signal: controller.signal }),
+      cache.get(1),
+      cache.get(1),
+    ];
+    await Promise.all(calls.map((p) => expect(p).rejects.toThrow(/upstream 522/)));
+    expect(fetches).toBe(1);
+  });
+
   it('keeps the parsed entry a late unparsed refresh would replace', async () => {
     let now = 500_000_000;
     let fetches = 0;
