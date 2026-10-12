@@ -382,6 +382,42 @@ describe('match detail cache', () => {
     expect(fetches).toBe(2);
   });
 
+  it('re-timestamps the retained parsed entry so requests stop hammering upstream', async () => {
+    // Without the timestamp refresh the retained entry stays expired forever:
+    // every request refetches while upstream keeps answering "unparsed".
+    let now = 25_000_000;
+    let fetches = 0;
+    const cache = createMatchDetailCache({
+      now: () => now,
+      fetchMatch: async () => {
+        fetches += 1;
+        return fetches === 1 ? parsedData : unparsedData;
+      },
+    });
+
+    expect(await cache.get(1)).toBe(parsedData);
+    expect(fetches).toBe(1);
+
+    // Entry goes stale; the refresh comes back unparsed and is refused.
+    now += MATCH_DETAIL_CACHE_TTL_MS + 1_000;
+    expect(await cache.get(1)).toBe(parsedData);
+    expect(fetches).toBe(2);
+
+    // Re-timestamped: the retained entry is fresh for a full long TTL —
+    // repeated requests must not refetch upstream.
+    now += 1_000;
+    expect(await cache.get(1)).toBe(parsedData);
+    now += MATCH_DETAIL_CACHE_TTL_MS - 2_000;
+    expect(await cache.get(1)).toBe(parsedData);
+    expect(fetches).toBe(2);
+
+    // After the renewed TTL lapses, one refresh may run again (OpenDota may
+    // have re-parsed by then).
+    now += 2_000;
+    expect(await cache.get(1)).toBe(parsedData);
+    expect(fetches).toBe(3);
+  });
+
   it('serves stale data when the upstream refresh fails', async () => {
     let now = 30_000_000;
     let fetches = 0;

@@ -33,6 +33,11 @@ import {
   createReviewResponder,
 } from './lib/matchReview/reviewResponder.js';
 import { computeApiHealth } from './lib/serverHealth.js';
+import { combineAbortSignals } from './lib/abortSignals.js';
+import {
+  createParseRequestSubmitter,
+  PARSE_REQUEST_TIMEOUT_MS,
+} from './lib/matchReview/parseRequestSubmit.js';
 import {
   parseForwardedFor,
   parseTrustedProxyHops,
@@ -134,25 +139,6 @@ function redactFetchUrl(url) {
   } catch {
     return String(url).split('?')[0];
   }
-}
-
-function combineAbortSignals(signals) {
-  const list = signals.filter(Boolean);
-  if (list.length === 0) return undefined;
-  if (list.length === 1) return list[0];
-  if (typeof AbortSignal.any === 'function') return AbortSignal.any(list);
-  const controller = new AbortController();
-  const onAbort = () => {
-    controller.abort(list.find((s) => s.aborted)?.reason);
-  };
-  for (const signal of list) {
-    if (signal.aborted) {
-      onAbort();
-      break;
-    }
-    signal.addEventListener('abort', onAbort, { once: true });
-  }
-  return controller.signal;
 }
 
 function enrichUpstreamError(err, url, status) {
@@ -2157,7 +2143,20 @@ const parseRequestBudget = createParseRequestBudget({
   perClientMax: envPositiveInt('PARSE_BUDGET_PER_CLIENT_MAX', 3),
 });
 const opendotaApiKey = process.env.OPENDOTA_API_KEY || '';
-const PARSE_REQUEST_TIMEOUT_MS = 8000;
+
+// Submission flow lives in lib (fully injected, unit-tested). Client-disconnect
+// aborts are rethrown as-is and NOT recorded in the tracker — a disconnected
+// client must not leave a bogus 'failed' marker that later visitors see for the
+// failure-cooldown window; only real timeouts/upstream failures are recorded.
+const submitParseRequest = createParseRequestSubmitter({
+  tracker: parseRequestTracker,
+  budget: parseRequestBudget,
+  baseUrl: OPENDOTA_API,
+  apiKey: opendotaApiKey,
+  timeoutMs: PARSE_REQUEST_TIMEOUT_MS,
+  log: (msg) => console.log(`[review:parse-request] ${msg}`),
+  warn: (msg) => console.warn(`[review:parse-request] ${msg}`),
+});
 
 /**
  * Resolve the parse status for a match. When the match is unparsed, request an
@@ -2174,51 +2173,7 @@ async function resolveReviewParseStatus(matchId, matchData, lang, clientIp, sign
   if (isMatchParsed(matchData)) {
     return parseStatusPayload('parsed', { lang });
   }
-
-  const active = parseRequestTracker.active(matchId);
-  if (active) {
-    return parseStatusPayload(active.failed ? 'failed' : 'pending', {
-      jobId: active.jobId,
-      retryAfterSec: active.retryAfterSec,
-      lang,
-    });
-  }
-
-  // Over budget: do not submit — tell the client to back off instead.
-  const overBudget = parseRequestBudget.tryConsume(clientIp);
-  if (overBudget) {
-    console.warn(
-      `[review:parse-request] match=${matchId} throttled scope=${overBudget.scope}`
-      + ` retryAfterSec=${overBudget.retryAfterSec}`
-    );
-    return parseStatusPayload('throttled', {
-      retryAfterSec: overBudget.retryAfterSec,
-      lang,
-    });
-  }
-
-  parseRequestTracker.markRequested(matchId);
-  try {
-    const url = `${OPENDOTA_API}/request/${matchId}${opendotaApiKey ? `?api_key=${encodeURIComponent(opendotaApiKey)}` : ''}`;
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: combineAbortSignals([signal, AbortSignal.timeout(PARSE_REQUEST_TIMEOUT_MS)]),
-    });
-    if (!res.ok) {
-      parseRequestTracker.markResult(matchId, { failed: true });
-      console.warn(`[review:parse-request] match=${matchId} status=${res.status} (non-fatal)`);
-      return parseStatusPayload('failed', { lang });
-    }
-    const body = await res.json().catch(() => ({}));
-    const jobId = body?.job?.jobId ?? null;
-    parseRequestTracker.markResult(matchId, { jobId });
-    console.log(`[review:parse-request] match=${matchId} requested jobId=${jobId ?? 'n/a'}`);
-    return parseStatusPayload('requested', { jobId, lang });
-  } catch (err) {
-    parseRequestTracker.markResult(matchId, { failed: true });
-    console.warn(`[review:parse-request] match=${matchId} error=${err?.name || 'unknown'} (non-fatal)`);
-    return parseStatusPayload('failed', { lang });
-  }
+  return submitParseRequest(matchId, clientIp, { signal, lang });
 }
 
 function mapOpenDotaFetchError(error, isZh) {
@@ -2655,12 +2610,17 @@ let feedbackGlobalHits = [];
 const FEEDBACK_GLOBAL_LIMIT = 200;
 
 // Client identity for the feedback rate limit and the parse-request budget.
-// On Cloud Run the TCP peer is the platform proxy, and GCLB appends
-// "<client-ip>,<lb-ip>" to X-Forwarded-For — the right-most entry is the LB,
-// so every user would collapse into one bucket. Pick XFF[len - hops] instead:
-//   2 (default) = Cloud Run behind GCLB · 1 = direct *.run.app traffic
-//   +1 per extra fronting proxy (IAP / API Gateway / CDN). XFF is only
-//   consulted when the TCP peer is private/loopback (see lib/clientIp.js).
+// TRUSTED_PROXY_HOPS is an exact topology count (not a tunable): it must equal
+// the number of trusted proxies appending to X-Forwarded-For. Production is a
+// Cloud Run domain mapping (dota2.ai → Google Front End, no external LB): GFE
+// appends exactly one entry — the client — so the default is 1.
+//   1 (default) = Cloud Run direct/domain-mapped traffic
+//   2           = an external HTTPS load balancer in front (appends
+//                 "<client-ip>,<lb-ip>")
+//   +1 per extra fronting proxy (IAP / API Gateway / CDN). Over-counting lets
+//   clients spoof their IP; under-counting collapses users into one bucket.
+//   XFF is only consulted when the TCP peer is private/loopback
+//   (see lib/clientIp.js).
 const trustedProxyHops = parseTrustedProxyHops(process.env.TRUSTED_PROXY_HOPS);
 
 function resolveClientIp(req) {
@@ -2671,9 +2631,9 @@ function resolveClientIp(req) {
   });
 }
 
-// Raw diagnostic for feedback records: the entry appended by the nearest
-// trusted proxy (on GCLB this is the load balancer's IP, not the client —
-// the resolved client IP is in `ip`).
+// Raw diagnostic for feedback records: the right-most XFF entry, i.e. what
+// the nearest trusted proxy appended (with an external LB in front that is
+// the LB's IP, not the client — the resolved client IP is in `ip`).
 function feedbackXffClient(req) {
   const parts = parseForwardedFor(req.headers['x-forwarded-for']);
   return parts.length > 0 ? parts[parts.length - 1].slice(0, 64) : undefined;
