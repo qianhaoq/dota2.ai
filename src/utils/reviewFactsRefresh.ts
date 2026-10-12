@@ -1,6 +1,28 @@
 import type { CoachMessage } from '../components/coach/coachMessage';
 import type { MatchFact, ReviewParseStatus } from '../types/matchReview';
 
+/**
+ * Handle for an in-flight facts retry (GET /api/review/:id). The abort
+ * controller is fired when the active review changes or the view unmounts;
+ * ref identity doubles as the generation marker — a newer retry replaces it.
+ */
+export interface ReviewFactsRetryToken {
+  controller: AbortController;
+}
+
+/**
+ * A retry response may be applied only while its token is still the installed
+ * one (not superseded by a newer retry) and its fetch was not aborted (review
+ * changed / unmounted). A late response failing this check must be dropped —
+ * applying it could clear a newer review's message and re-run the old match.
+ */
+export function isFactsRetryCurrent(
+  installed: ReviewFactsRetryToken | null,
+  token: ReviewFactsRetryToken,
+): boolean {
+  return installed === token && !token.controller.signal.aborted;
+}
+
 export interface ReviewFactsRefreshResult {
   /** Merge into the message via updateCoachMessage. */
   patch: Partial<CoachMessage>;

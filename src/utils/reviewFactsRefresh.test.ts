@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CoachMessage } from '../components/coach/coachMessage';
 import type { MatchFact, ReviewParseStatus } from '../types/matchReview';
 import type { ReviewCardsPayload } from '../types/reviewCards';
-import { reviewFactsRefreshResult } from './reviewFactsRefresh';
+import { reviewFactsRefreshResult, isFactsRetryCurrent, type ReviewFactsRetryToken } from './reviewFactsRefresh';
 
 const fact = (timelineLength: number): MatchFact => ({
   summary: { matchId: 9035042364 },
@@ -124,5 +124,30 @@ describe('reviewFactsRefreshResult', () => {
 
     expect(result.staleCleared).toBe(true);
     expect(result.heroId).toBe(74);
+  });
+});
+
+describe('isFactsRetryCurrent', () => {
+  const makeToken = (): ReviewFactsRetryToken => ({ controller: new AbortController() });
+
+  it('is current while its token stays installed and unaborted', () => {
+    const token = makeToken();
+    expect(isFactsRetryCurrent(token, token)).toBe(true);
+  });
+
+  it('is stale once a newer retry supersedes the token', () => {
+    const token = makeToken();
+    expect(isFactsRetryCurrent(makeToken(), token)).toBe(false);
+  });
+
+  it('is stale once the slot was cleared (review finished/reset)', () => {
+    const token = makeToken();
+    expect(isFactsRetryCurrent(null, token)).toBe(false);
+  });
+
+  it('is stale once aborted (active review changed or view unmounted)', () => {
+    const token = makeToken();
+    token.controller.abort();
+    expect(isFactsRetryCurrent(token, token)).toBe(false);
   });
 });

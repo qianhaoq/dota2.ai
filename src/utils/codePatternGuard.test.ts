@@ -179,7 +179,10 @@ describe('CoachView practice materialization / leave-review cancel / meta side (
   it('applyLessonSwitch cancels the active stream BEFORE the leave-review revision bump', () => {
     const body = content.match(/const applyLessonSwitch = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
     expect(body).toMatch(/leavingReview\) \{\s*[\s\S]*?cancelStream\(\);[\s\S]*?contextRevisionRef\.current = nextRevision/);
-    expect(content).toMatch(/applyLessonSwitch = useCallback\([\s\S]*\}, \[lesson, draft, cancelStream\]\)/);
+    // Leaving review also aborts a pending facts retry so its late response
+    // can't re-enter review after the user navigated away.
+    expect(body).toMatch(/leavingReview\) \{\s*[\s\S]*?abortFactsRetry\(\);/);
+    expect(content).toMatch(/applyLessonSwitch = useCallback\([\s\S]*\}, \[lesson, draft, cancelStream, abortFactsRetry\]\)/);
   });
 
   it('meta coach message omits request-time allySide so accept resolves to current mySide', () => {

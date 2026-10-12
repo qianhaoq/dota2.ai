@@ -122,10 +122,11 @@ export interface MatchFactsResult {
 }
 
 /** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
-export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): Promise<MatchFactsResult> => {
+export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', signal?: AbortSignal): Promise<MatchFactsResult> => {
   const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
+    signal,
   });
   const data = await response.json().catch(
     () => ({} as {

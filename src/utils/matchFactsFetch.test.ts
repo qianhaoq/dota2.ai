@@ -77,4 +77,17 @@ describe('fetchMatchFacts', () => {
     });
     await expect(fetchMatchFacts(1, 'zh')).rejects.toThrow('找不到这场比赛');
   });
+
+  it('forwards the abort signal so callers can cancel a stale retry', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ matchFact: { summary: { matchId: 9035042364 } } }),
+    });
+
+    const controller = new AbortController();
+    await fetchMatchFacts(9035042364, 'en', controller.signal);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.signal).toBe(controller.signal);
+  });
 });
