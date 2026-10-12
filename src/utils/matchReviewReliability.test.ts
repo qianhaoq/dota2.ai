@@ -237,6 +237,38 @@ describe('parse status payload', () => {
     now += 2_000;
     expect(tracker.active(1)).toBeNull();
   });
+
+  it('downgrades an aborted in-flight request to a short retry window', () => {
+    let now = 7_000_000;
+    const tracker = createParseRequestTracker({
+      cooldownMs: 300_000,
+      failureCooldownMs: 60_000,
+      abortCooldownMs: 60_000,
+      now: () => now,
+    });
+    tracker.markRequested(1);
+    tracker.markAborted(1);
+    // Not failed (outcome unknown — later visitors must not see a bogus
+    // 'failed'), but no longer plain pending either.
+    expect(tracker.active(1)).toMatchObject({ jobId: null, failed: false, aborted: true });
+
+    // Still deduped within the short abort window...
+    now += 59_000;
+    expect(tracker.active(1)).not.toBeNull();
+    // ...and resubmittable once it lapses — far short of the success cooldown.
+    now += 2_000;
+    expect(tracker.active(1)).toBeNull();
+  });
+
+  it('clears the abort state on the next requested/result marking', () => {
+    let now = 8_000_000;
+    const tracker = createParseRequestTracker({ cooldownMs: 300_000, now: () => now });
+    tracker.markAborted(1);
+    tracker.markRequested(1);
+    expect(tracker.active(1)).toMatchObject({ aborted: false });
+    tracker.markResult(1, { jobId: 9 });
+    expect(tracker.active(1)).toMatchObject({ jobId: 9, aborted: false });
+  });
 });
 
 describe('parse request budget (global + per client)', () => {
@@ -418,7 +450,7 @@ describe('match detail cache', () => {
     expect(fetches).toBe(3);
   });
 
-  it('serves stale data when the upstream refresh fails', async () => {
+  it('serves stale data when the upstream refresh fails, then backs off', async () => {
     let now = 30_000_000;
     let fetches = 0;
     const cache = createMatchDetailCache({
@@ -433,6 +465,48 @@ describe('match detail cache', () => {
     now += MATCH_DETAIL_CACHE_TTL_MS + 1_000;
     expect(await cache.get(1)).toBe(parsedData);
     expect(fetches).toBe(2);
+
+    // Stale-on-error re-timestamps the entry: during the outage every further
+    // request must be served from the cache instead of firing another
+    // (4-retry) upstream refresh.
+    now += 1_000;
+    expect(await cache.get(1)).toBe(parsedData);
+    now += MATCH_DETAIL_CACHE_TTL_MS - 2_000;
+    expect(await cache.get(1)).toBe(parsedData);
+    expect(fetches).toBe(2);
+
+    // Parsed data is immutable, so the renewed long TTL fully elapses before
+    // another refresh attempt runs.
+    now += 2_000;
+    expect(await cache.get(1)).toBe(parsedData);
+    expect(fetches).toBe(3);
+  });
+
+  it('backs off with the short TTL after serving stale unparsed data on error', async () => {
+    let now = 35_000_000;
+    let fetches = 0;
+    const cache = createMatchDetailCache({
+      now: () => now,
+      fetchMatch: async () => {
+        fetches += 1;
+        if (fetches === 1) return unparsedData;
+        throw new Error('upstream 522');
+      },
+    });
+    expect(await cache.get(1)).toBe(unparsedData);
+    // Entry expires; the refresh fails and the stale unparsed data is served
+    // with a renewed (short) TTL.
+    now += UNPARSED_MATCH_CACHE_TTL_MS + 1_000;
+    expect(await cache.get(1)).toBe(unparsedData);
+    expect(fetches).toBe(2);
+    now += 1_000;
+    expect(await cache.get(1)).toBe(unparsedData);
+    expect(fetches).toBe(2);
+    // Unparsed freshness matters (the parse may complete upstream): retry
+    // after the short TTL, not the parsed long TTL.
+    now += UNPARSED_MATCH_CACHE_TTL_MS;
+    expect(await cache.get(1)).toBe(unparsedData);
+    expect(fetches).toBe(3);
   });
 
   it('freshness follows parse state (short vs long TTL)', () => {

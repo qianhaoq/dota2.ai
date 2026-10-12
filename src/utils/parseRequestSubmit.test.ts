@@ -135,7 +135,7 @@ describe('submitParseRequest', () => {
     expect(h.tracker.active(1)).toMatchObject({ failed: true });
   });
 
-  it('rethrows client-disconnect aborts without recording a failure', async () => {
+  it('rethrows client-disconnect aborts with a short abort-retry tracker state', async () => {
     const controller = new AbortController();
     const fetchImpl = vi.fn(async () => {
       controller.abort();
@@ -145,10 +145,49 @@ describe('submitParseRequest', () => {
 
     await expect(h.submit(1, '203.0.113.7', { signal: controller.signal }))
       .rejects.toThrow(/aborted/);
-    // Not marked failed: the tracker keeps the requested/pending state, so a
-    // later visitor is not shown a bogus 'failed' status for 60s.
-    expect(h.tracker.active(1)).toMatchObject({ failed: false, jobId: null });
+    // Not marked failed (a later visitor must not see a bogus 'failed'), but
+    // the markRequested pending entry is downgraded to a short abort window —
+    // the aborted POST may never have reached OpenDota, so it must not hold
+    // the full 5-minute success cooldown either.
+    expect(h.tracker.active(1)).toMatchObject({ failed: false, jobId: null, aborted: true });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('resubmits once the abort window lapses', async () => {
+    let now = 1_000_000;
+    const tracker = createParseRequestTracker({
+      cooldownMs: 300_000,
+      failureCooldownMs: 60_000,
+      abortCooldownMs: 60_000,
+      now: () => now,
+    });
+    const controller = new AbortController();
+    let abortNext = true;
+    const fetchImpl = vi.fn(async () => {
+      if (abortNext) {
+        controller.abort();
+        throw abortError();
+      }
+      return okResponse({ job: { jobId: 42 } });
+    });
+    const h = createHarness({ tracker, fetchImpl });
+
+    await expect(h.submit(1, '203.0.113.7', { signal: controller.signal }))
+      .rejects.toThrow(/aborted/);
+    abortNext = false;
+
+    // Within the short abort window the match is still deduped (pending) —
+    // the aborted POST may already be queued at OpenDota.
+    const pending = await h.submit(1, '198.51.100.9');
+    expect(pending.status).toBe('pending');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    // Once the window lapses — far short of the success cooldown — the next
+    // visitor's request submits a fresh parse.
+    now += 61_000;
+    const payload = await h.submit(1, '198.51.100.9');
+    expect(payload).toMatchObject({ status: 'requested', jobId: 42 });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it('does not treat a caller-side AbortError with a live signal as a client abort', async () => {

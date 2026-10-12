@@ -2143,9 +2143,12 @@ const parseRequestBudget = createParseRequestBudget({
 const opendotaApiKey = process.env.OPENDOTA_API_KEY || '';
 
 // Submission flow lives in lib (fully injected, unit-tested). Client-disconnect
-// aborts are rethrown as-is and NOT recorded in the tracker — a disconnected
+// aborts are rethrown as-is and never recorded as failures — a disconnected
 // client must not leave a bogus 'failed' marker that later visitors see for the
-// failure-cooldown window; only real timeouts/upstream failures are recorded.
+// failure-cooldown window. The abort only downgrades the in-flight pending
+// entry to a short abort-retry window (the aborted POST may never have reached
+// OpenDota, so it must not hold the full success cooldown either); only real
+// timeouts/upstream failures are recorded as failures.
 const submitParseRequest = createParseRequestSubmitter({
   tracker: parseRequestTracker,
   budget: parseRequestBudget,
