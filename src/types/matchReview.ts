@@ -64,6 +64,21 @@ export interface MatchPlayerFact {
   killsLog: Array<{ time: number; target: string }>;
 }
 
+export type FieldEmptyReason = 'not_parsed_yet' | 'no_data';
+
+export interface FieldReason {
+  reason: FieldEmptyReason;
+  message: string;
+}
+
+/** OpenDota replay parse status returned by /api/review (GET facts + POST stream). */
+export interface ReviewParseStatus {
+  status: 'requested' | 'pending' | 'parsed' | 'failed';
+  jobId: number | null;
+  retryAfterSec: number | null;
+  message: string;
+}
+
 export interface MatchFact {
   summary: {
     matchId: number;
@@ -113,4 +128,8 @@ export interface MatchFact {
   } | null;
   focusLaneGrounded: boolean;
   grounded: boolean;
+  /** True when OpenDota replay data (lanes/timeline/economy) is available. */
+  parsed?: boolean;
+  /** Reasons for empty fields (lanes/timeline/economy/focusLane), localized per lang. */
+  fieldReasons?: Partial<Record<'lanes' | 'timeline' | 'economy' | 'focusLane', FieldReason>>;
 }

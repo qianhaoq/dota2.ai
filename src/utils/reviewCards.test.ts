@@ -689,9 +689,16 @@ describe('buildKeyMomentsFromTimeline', () => {
     const factNoTimeline = buildMatchFact({ ...fixture, objectives: [] }, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
     const cards = buildFallbackAiCards(factNoTimeline, 'zh') as ReviewCardsPayload;
     expect(cards.primary_mistake).toBeUndefined();
-    expect(cards.key_moments?.length ?? 0).toBe(0);
+    // No objective timeline → key moments fall back deterministically to the
+    // focus hero's kills/deaths instead of staying empty.
+    expect(cards.key_moments?.length ?? 0).toBeGreaterThan(0);
+    cards.key_moments?.forEach((m) => {
+      expect(m.timestamp).toBeGreaterThanOrEqual(0);
+      expect(m.timestampLabel).toMatch(/^\d+:\d{2}$/);
+      expect(m.headline).toBe(m.evidence[0].value);
+    });
+    expect(cards.followups?.[0]).toMatch(/^展开 \d+:\d{2} 节点：/);
     expect(cards.followups?.[0]).not.toMatch(/关键团战|展开这场团|key fight/i);
-    expect(cards.followups?.[0]).toMatch(/经济|GPM|KDA/);
   });
 
   it('replaces ungrounded model drill steps with deterministic fallback drill', () => {

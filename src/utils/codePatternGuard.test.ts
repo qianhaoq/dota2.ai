@@ -59,8 +59,12 @@ describe('server review fallback SSE patterns', () => {
   it('sends non-destructive error notice after fallback reviewCards before [DONE]', () => {
     const content = readFileSync(serverPath, 'utf-8');
     expect(content).toContain('reviewAiUnavailableNotice');
+    // Direct SSE writes (sendReviewSse) or the dual SSE/JSON responder both apply.
+    const emitCall = /(?:sendReviewSse\(res,|responder\.send\()/;
     expect(content).toMatch(
-      /sendReviewSse\(res,\s*\{\s*reviewCards[\s\S]*sendReviewSse\(res,\s*\{\s*reviewNotice:\s*reviewAiUnavailableNotice/,
+      new RegExp(
+        `${emitCall.source}\\s*\\{\\s*reviewCards[\\s\\S]*${emitCall.source}\\s*\\{\\s*reviewNotice:\\s*reviewAiUnavailableNotice`,
+      ),
     );
     expect(content).toMatch(/if \(usedFallback\)[\s\S]*reviewAiUnavailableNotice\(lang,\s*'invalid'\)/);
   });

@@ -15,8 +15,22 @@ import {
   buildReviewKeyMomentsPromptRule,
   parseAiReviewCards,
   isReviewAiCardsComplete,
+  describeReviewCardsInvalidReason,
   minRequiredKeyMoments,
 } from './lib/matchReview/reviewCards.js';
+import {
+  isMatchParsed,
+  createParseRequestTracker,
+  parseStatusPayload,
+} from './lib/matchReview/matchParse.js';
+import { createMatchDetailCache } from './lib/matchReview/matchDetailCache.js';
+import {
+  wantsReviewStream,
+  sendReviewSse,
+  endReviewSse,
+  createReviewResponder,
+} from './lib/matchReview/reviewResponder.js';
+import { computeApiHealth } from './lib/serverHealth.js';
 import {
   REVIEW_HIGH_MMR_MIN_RANK_TIER,
   resolvePublicMatchSkill,
@@ -82,8 +96,6 @@ const MATCHES_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for pro/public matche
 const REVIEW_SUGGESTIONS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for coach review suggestions
 const REVIEW_SUGGESTIONS_DEFAULT_LIMIT = 6;
 const REVIEW_SUGGESTIONS_MAX_LIMIT = 6;
-const MATCH_DETAIL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour for single match review
-const MATCH_DETAIL_CACHE_MAX = 50;
 
 // ============ Cache Storage ============
 const cache = {
@@ -102,8 +114,6 @@ const cache = {
   publicMatches: { data: null, timestamp: 0 },
   publicMatchesHighMmr: { data: null, timestamp: 0 },
   reviewSuggestions: { data: {} },
-  // Single match detail for replay review
-  matchDetails: new Map(), // Map<matchId, { data, timestamp }>
 };
 
 function isRetryableHttpStatus(status) {
@@ -1150,21 +1160,21 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/api/health', async (req, res) => {
-  const heroConstantsLoaded = cache.heroes.data !== null;
-  const itemConstantsLoaded = cache.items.data !== null;
-  const abilityConstantsLoaded = cache.abilities.data !== null;
-  
-  res.status(200).json({ 
-    status: 'healthy',
+  const health = computeApiHealth({
+    heroesLoaded: cache.heroes.data !== null,
+    itemsLoaded: cache.items.data !== null,
+    abilitiesLoaded: cache.abilities.data !== null,
+  });
+
+  res.status(200).json({
+    status: health.status,
     apiKeyConfigured: !!apiKey,
     model: DEEPSEEK_MODEL,
     provider: 'deepseek',
     opendotaConstants: {
-      heroes: heroConstantsLoaded,
-      items: itemConstantsLoaded,
-      abilities: abilityConstantsLoaded,
-      herosCacheAge: heroConstantsLoaded ? Math.round((Date.now() - cache.heroes.timestamp) / 1000) : null,
-      itemsCacheAge: itemConstantsLoaded ? Math.round((Date.now() - cache.items.timestamp) / 1000) : null
+      ...health.opendotaConstants,
+      herosCacheAge: cache.heroes.data !== null ? Math.round((Date.now() - cache.heroes.timestamp) / 1000) : null,
+      itemsCacheAge: cache.items.data !== null ? Math.round((Date.now() - cache.items.timestamp) / 1000) : null
     },
     chineseNameMapping: {
       heroCount: Object.keys(HERO_NAMES_CN).length,
@@ -1172,6 +1182,37 @@ app.get('/api/health', async (req, res) => {
     }
   });
 });
+
+// ============ Constants warm-load (non-blocking, with retry) ============
+const WARM_CONSTANTS_MAX_ATTEMPTS = 5;
+const WARM_CONSTANTS_RETRY_DELAY_MS = 30 * 1000;
+
+function warmLoadOpenDotaConstants(attempt = 1) {
+  const allLoaded = () => cache.heroes.data !== null
+    && cache.items.data !== null
+    && cache.abilities.data !== null;
+  Promise.all([getHeroConstants(), getItemConstants(), getAbilityConstants()])
+    .then(() => {
+      if (allLoaded()) {
+        console.log('[constants] warm-load complete (heroes/items/abilities)');
+        return;
+      }
+      if (attempt >= WARM_CONSTANTS_MAX_ATTEMPTS) {
+        console.warn(`[constants] warm-load incomplete after ${attempt} attempts; /api/health reports degraded until first use`);
+        return;
+      }
+      console.warn(`[constants] warm-load attempt ${attempt} incomplete; retrying in ${WARM_CONSTANTS_RETRY_DELAY_MS / 1000}s`);
+      setTimeout(() => warmLoadOpenDotaConstants(attempt + 1), WARM_CONSTANTS_RETRY_DELAY_MS);
+    })
+    .catch((err) => {
+      if (attempt >= WARM_CONSTANTS_MAX_ATTEMPTS) {
+        console.warn(`[constants] warm-load failed after ${attempt} attempts (${err?.message || 'unknown'}); /api/health reports degraded until first use`);
+        return;
+      }
+      console.warn(`[constants] warm-load attempt ${attempt} failed (${err?.message || 'unknown'}); retrying in ${WARM_CONSTANTS_RETRY_DELAY_MS / 1000}s`);
+      setTimeout(() => warmLoadOpenDotaConstants(attempt + 1), WARM_CONSTANTS_RETRY_DELAY_MS);
+    });
+}
 
 // ============ Meta API Endpoints ============
 
@@ -2081,51 +2122,69 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // ============ Match Replay Review ============
-function evictMatchDetailCache() {
-  const now = Date.now();
-  for (const [id, entry] of cache.matchDetails) {
-    if (now - entry.timestamp > MATCH_DETAIL_CACHE_TTL_MS) {
-      cache.matchDetails.delete(id);
+// Unparsed entries live under a short TTL and never overwrite parsed data
+// (see lib/matchReview/matchDetailCache.js).
+const matchDetailCache = createMatchDetailCache({
+  fetchMatch: (matchId, options = {}) => fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
+    ...options,
+    timeoutMs: options.timeoutMs ?? 25000,
+  }),
+  log: (msg) => console.warn(`[match-detail-cache] ${msg}`),
+});
+
+function getMatchDetail(matchId, fetchOptions = {}) {
+  return matchDetailCache.get(matchId, fetchOptions);
+}
+
+// OpenDota POST /request/{match_id} dedup/rate-limit state (per match).
+const parseRequestTracker = createParseRequestTracker();
+const opendotaApiKey = process.env.OPENDOTA_API_KEY || '';
+const PARSE_REQUEST_TIMEOUT_MS = 8000;
+
+/**
+ * Resolve the parse status for a match. When the match is unparsed, request an
+ * OpenDota replay parse (deduped/rate-limited per match, failures non-fatal).
+ * @param {number} matchId
+ * @param {object} matchData
+ * @param {string} lang
+ * @returns {Promise<{ status: string, jobId: number | null, retryAfterSec: number | null, message: string }>}
+ */
+async function resolveReviewParseStatus(matchId, matchData, lang) {
+  if (isMatchParsed(matchData)) {
+    return parseStatusPayload('parsed', { lang });
+  }
+
+  const active = parseRequestTracker.active(matchId);
+  if (active) {
+    return parseStatusPayload(active.failed ? 'failed' : 'pending', {
+      jobId: active.jobId,
+      retryAfterSec: active.retryAfterSec,
+      lang,
+    });
+  }
+
+  parseRequestTracker.markRequested(matchId);
+  try {
+    const url = `${OPENDOTA_API}/request/${matchId}${opendotaApiKey ? `?api_key=${encodeURIComponent(opendotaApiKey)}` : ''}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      signal: AbortSignal.timeout(PARSE_REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      parseRequestTracker.markResult(matchId, { failed: true });
+      console.warn(`[review:parse-request] match=${matchId} status=${res.status} (non-fatal)`);
+      return parseStatusPayload('failed', { lang });
     }
+    const body = await res.json().catch(() => ({}));
+    const jobId = body?.job?.jobId ?? null;
+    parseRequestTracker.markResult(matchId, { jobId });
+    console.log(`[review:parse-request] match=${matchId} requested jobId=${jobId ?? 'n/a'}`);
+    return parseStatusPayload('requested', { jobId, lang });
+  } catch (err) {
+    parseRequestTracker.markResult(matchId, { failed: true });
+    console.warn(`[review:parse-request] match=${matchId} error=${err?.name || 'unknown'} (non-fatal)`);
+    return parseStatusPayload('failed', { lang });
   }
-  while (cache.matchDetails.size >= MATCH_DETAIL_CACHE_MAX) {
-    let oldestId = null;
-    let oldestTs = Infinity;
-    for (const [id, entry] of cache.matchDetails) {
-      if (entry.timestamp < oldestTs) {
-        oldestTs = entry.timestamp;
-        oldestId = id;
-      }
-    }
-    if (oldestId === null) break;
-    cache.matchDetails.delete(oldestId);
-  }
-}
-
-async function getMatchDetail(matchId, fetchOptions = {}) {
-  evictMatchDetailCache();
-  const cached = cache.matchDetails.get(matchId);
-  if (cached && Date.now() - cached.timestamp < MATCH_DETAIL_CACHE_TTL_MS) {
-    return cached.data;
-  }
-
-  const data = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
-    ...fetchOptions,
-    timeoutMs: fetchOptions.timeoutMs ?? 25000,
-  });
-  evictMatchDetailCache();
-  cache.matchDetails.set(matchId, { data, timestamp: Date.now() });
-  return data;
-}
-
-function sendReviewSse(res, payload) {
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
-
-function endReviewSse(res, payload) {
-  if (payload) sendReviewSse(res, payload);
-  res.write('data: [DONE]\n\n');
-  res.end();
 }
 
 function mapOpenDotaFetchError(error, isZh) {
@@ -2260,7 +2319,12 @@ async function handleMatchReviewFacts(req, res) {
       HERO_NAMES_CN
     );
     const matchFact = buildMatchFact(matchData, { lang, heroNames });
-    return res.json({ matchFact, grounded: Boolean(matchFact.grounded) });
+    const parse = await resolveReviewParseStatus(matchId, matchData, lang);
+    return res.json({
+      matchFact,
+      grounded: Boolean(matchFact.grounded),
+      parse,
+    });
   } catch (error) {
     console.error('Match facts error:', error);
     const mapped = mapOpenDotaFetchError(error, isZh);
@@ -2270,7 +2334,7 @@ async function handleMatchReviewFacts(req, res) {
 
 async function handleMatchReview(req, res) {
   const acceptHeader = req.headers.accept || '';
-  const wantsStream = acceptHeader.includes('text/event-stream');
+  const wantsStream = wantsReviewStream(acceptHeader);
   const lang = normalizeUiLang(req.body?.lang ?? req.query.lang ?? 'en');
   const heroIdRaw = req.body?.heroId ?? req.query.heroId;
   const heroId = heroIdRaw != null && heroIdRaw !== '' ? Number(heroIdRaw) : undefined;
@@ -2284,13 +2348,8 @@ async function handleMatchReview(req, res) {
     return respondReviewError(res, wantsStream, isZh ? '无效的比赛 ID' : 'Invalid match ID');
   }
 
-  if (!wantsStream) {
-    return res.status(406).json({
-      error: isZh
-        ? '复盘生成需要 Accept: text/event-stream'
-        : 'Match review generation requires Accept: text/event-stream',
-    });
-  }
+  // Non-SSE Accept gets the same review as a single JSON result (not a bare 406).
+  const responder = createReviewResponder(res, wantsStream);
 
   const postGuard = validateReviewPostRequest(req);
   if (!postGuard.ok) {
@@ -2352,33 +2411,26 @@ async function handleMatchReview(req, res) {
     );
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const isGrounded = Boolean(matchFact.grounded);
-
-    const apiKeyError = isZh ? 'DeepSeek API Key 未配置' : 'DeepSeek API Key not configured';
+    const parse = await resolveReviewParseStatus(matchId, matchData, lang);
 
     if (!apiKey || !openai) {
-      if (wantsStream) {
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders?.();
-        if (!followUp) {
-          sendReviewSse(res, { matchFact, grounded: isGrounded });
-        }
-        if (followUp) {
-          endReviewSse(res, {
-            error: isZh
-              ? '追问需要 AI 服务，当前未配置 API Key'
-              : 'Follow-up requires AI service; API key not configured',
-          });
-          return;
-        }
-        const fallbackCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
-        sendReviewSse(res, { reviewCards: fallbackCards, grounded: isGrounded });
-        sendReviewSse(res, { reviewNotice: reviewAiUnavailableNotice(lang, 'unconfigured') });
-        endReviewSse(res);
+      responder.begin();
+      if (!followUp) {
+        responder.send({ matchFact, grounded: isGrounded, parse });
+      }
+      if (followUp) {
+        responder.end({
+          error: isZh
+            ? '追问需要 AI 服务，当前未配置 API Key'
+            : 'Follow-up requires AI service; API key not configured',
+        });
         return;
       }
-      return res.json({ matchFact, grounded: isGrounded, error: apiKeyError });
+      const fallbackCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
+      responder.send({ reviewCards: fallbackCards, grounded: isGrounded });
+      responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'unconfigured') });
+      responder.end();
+      return;
     }
 
     const groundedContext = matchFactToPrompt(matchFact, lang);
@@ -2403,27 +2455,26 @@ async function handleMatchReview(req, res) {
         ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}\n\n${evidenceFacts}`
         : `Review this match, focus hero: ${focusName}\n\n${groundedContext}\n\n${evidenceFacts}`);
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders?.();
+    responder.begin();
 
     if (!followUp) {
-      sendReviewSse(res, { matchFact, grounded: isGrounded });
-      sendReviewSse(res, { reviewCards: initialReviewCards, grounded: isGrounded });
+      responder.send({ matchFact, grounded: isGrounded, parse });
+      responder.send({ reviewCards: initialReviewCards, grounded: isGrounded });
     }
 
+    const completionRequest = () => openai.chat.completions.create({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      stream: Boolean(followUp),
+    }, {
+      signal: abortController.signal,
+    });
+
     try {
-      stream = await openai.chat.completions.create({
-        model: DEEPSEEK_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        stream: Boolean(followUp),
-      }, {
-        signal: abortController.signal,
-      });
+      stream = await completionRequest();
 
       if (clientGone) {
         stream.controller?.abort();
@@ -2437,7 +2488,7 @@ async function handleMatchReview(req, res) {
           const choice = chunk.choices[0];
           const content = choice?.delta?.content;
           if (content) {
-            sendReviewSse(res, { text: content, grounded: isGrounded });
+            responder.send({ text: content, grounded: isGrounded });
           }
           if (choice?.finish_reason) {
             finishReason = choice.finish_reason;
@@ -2445,9 +2496,9 @@ async function handleMatchReview(req, res) {
         }
         if (!res.writableEnded) {
           if (isTerminalStreamFinish(finishReason)) {
-            endReviewSse(res);
+            responder.end();
           } else {
-            endReviewSse(res, {
+            responder.end({
               error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
             });
           }
@@ -2455,19 +2506,38 @@ async function handleMatchReview(req, res) {
       } else {
         const choice = stream.choices?.[0];
         const fullText = choice?.message?.content || '';
-        let reviewCards = parseAiReviewCards(fullText, matchFact, lang);
         const det = buildDeterministicReviewCards(matchFact, lang);
         const minKeyMoments = minRequiredKeyMoments(det._catalog || []);
-        const usedFallback = !isReviewAiCardsComplete(reviewCards, { minKeyMoments });
+        let reviewCards = parseAiReviewCards(fullText, matchFact, lang);
+        let usedFallback = !isReviewAiCardsComplete(reviewCards, { minKeyMoments });
+        if (usedFallback) {
+          const reason = describeReviewCardsInvalidReason(reviewCards, { minKeyMoments });
+          console.warn(`[review:ai-validation] match=${matchId} attempt=1 result=invalid reason=${reason}`);
+          try {
+            stream = await completionRequest();
+            const retryText = stream.choices?.[0]?.message?.content || '';
+            const retryCards = parseAiReviewCards(retryText, matchFact, lang);
+            if (isReviewAiCardsComplete(retryCards, { minKeyMoments })) {
+              reviewCards = retryCards;
+              usedFallback = false;
+            } else {
+              console.warn(`[review:ai-validation] match=${matchId} attempt=2 result=invalid reason=${describeReviewCardsInvalidReason(retryCards, { minKeyMoments })}`);
+            }
+          } catch (retryErr) {
+            if (!clientGone && retryErr.name !== 'AbortError') {
+              console.warn(`[review:ai-retry] match=${matchId} error=${retryErr?.name || 'unknown'} (non-fatal)`);
+            }
+          }
+        }
         if (usedFallback) {
           reviewCards = buildFallbackAiCards(matchFact, lang);
         }
         if (!res.writableEnded) {
-          sendReviewSse(res, { reviewCards, grounded: isGrounded });
+          responder.send({ reviewCards, grounded: isGrounded });
           if (usedFallback) {
-            sendReviewSse(res, { reviewNotice: reviewAiUnavailableNotice(lang, 'invalid') });
+            responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'invalid') });
           }
-          endReviewSse(res);
+          responder.end();
         }
       }
     } catch (streamErr) {
@@ -2475,14 +2545,14 @@ async function handleMatchReview(req, res) {
       console.error('Match review stream error:', streamErr);
       if (!res.writableEnded) {
         if (followUp) {
-          endReviewSse(res, {
+          responder.end({
             error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
           });
         } else {
           const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
-          sendReviewSse(res, { reviewCards, grounded: isGrounded });
-          sendReviewSse(res, { reviewNotice: reviewAiUnavailableNotice(lang, 'provider') });
-          endReviewSse(res);
+          responder.send({ reviewCards, grounded: isGrounded });
+          responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'provider') });
+          responder.end();
         }
       }
     } finally {
@@ -2669,3 +2739,7 @@ app.listen(PORT, HOST, () => {
   console.log(`Server is running on http://${HOST}:${PORT}`);
   console.log(`Health check available at http://${HOST}:${PORT}/health`);
 });
+
+// Warm-load OpenDota constants at startup so /api/health does not report
+// degraded until first request (non-blocking, retried on failure).
+warmLoadOpenDotaConstants();
