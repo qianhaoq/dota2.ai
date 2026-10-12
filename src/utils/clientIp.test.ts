@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   DEFAULT_TRUSTED_PROXY_HOPS,
   MAX_TRUSTED_PROXY_HOPS,
@@ -18,22 +18,53 @@ describe('parseTrustedProxyHops', () => {
   it('falls back to the Cloud Run domain-mapping default (1) for missing or invalid input', () => {
     expect(DEFAULT_TRUSTED_PROXY_HOPS).toBe(1);
     expect(parseTrustedProxyHops(undefined)).toBe(1);
+    expect(parseTrustedProxyHops(null)).toBe(1);
     expect(parseTrustedProxyHops('')).toBe(1);
     expect(parseTrustedProxyHops('abc')).toBe(1);
     expect(parseTrustedProxyHops('-1')).toBe(1);
+    expect(parseTrustedProxyHops(' 2')).toBe(1);
   });
 
-  it('accepts explicit hop counts', () => {
-    expect(parseTrustedProxyHops('0')).toBe(0);
+  it('accepts explicit integer hop counts in range', () => {
     expect(parseTrustedProxyHops('1')).toBe(1);
     expect(parseTrustedProxyHops('2')).toBe(2);
-    expect(parseTrustedProxyHops('2.9')).toBe(2); // fractional floors to the whole count
     expect(parseTrustedProxyHops(3)).toBe(3);
+    expect(parseTrustedProxyHops(String(MAX_TRUSTED_PROXY_HOPS))).toBe(MAX_TRUSTED_PROXY_HOPS);
+    expect(MAX_TRUSTED_PROXY_HOPS).toBeLessThanOrEqual(5);
   });
 
-  it('caps absurd values so the pick window cannot drift into spoofable entries', () => {
-    expect(parseTrustedProxyHops('99')).toBe(MAX_TRUSTED_PROXY_HOPS);
-    expect(MAX_TRUSTED_PROXY_HOPS).toBeLessThanOrEqual(5);
+  it('rejects fractional, zero and out-of-range values instead of flooring or capping them', () => {
+    // Flooring '2.9' → 2 or capping '99' → 5 would silently over-count hops
+    // relative to the real topology, drifting the pick window into
+    // caller-spoofable left-side XFF entries. Reject to the safe default.
+    expect(parseTrustedProxyHops('2.9')).toBe(1);
+    expect(parseTrustedProxyHops('1.5')).toBe(1);
+    expect(parseTrustedProxyHops(2.9)).toBe(1);
+    expect(parseTrustedProxyHops('0')).toBe(1);
+    expect(parseTrustedProxyHops(0)).toBe(1);
+    expect(parseTrustedProxyHops('99')).toBe(1);
+    expect(parseTrustedProxyHops('1e1')).toBe(1);
+    expect(parseTrustedProxyHops('+2')).toBe(1);
+  });
+
+  it('warns exactly once for invalid values and not for unset or valid ones', async () => {
+    // Fresh module instance: the once-flag is module state already consumed
+    // by the invalid inputs in the tests above.
+    vi.resetModules();
+    const fresh = await import('../../lib/clientIp.js');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(fresh.parseTrustedProxyHops(undefined)).toBe(1);
+      expect(fresh.parseTrustedProxyHops('2')).toBe(2);
+      expect(warn).not.toHaveBeenCalled();
+      expect(fresh.parseTrustedProxyHops('99')).toBe(1);
+      expect(fresh.parseTrustedProxyHops('2.9')).toBe(1);
+      expect(fresh.parseTrustedProxyHops('')).toBe(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0][0]).toContain('99');
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 
@@ -185,12 +216,30 @@ describe('resolveClientIp', () => {
     })).toBe(CLOUD_RUN_PEER);
   });
 
-  it('uses the peer when no trusted hops are configured', () => {
+  it('treats an out-of-range hop count (0) as the default single hop', () => {
+    // 0 is not a valid topology count (a trusted proxy always appends ≥1
+    // entry); it must not disable XFF consultation on private peers.
     expect(resolveClientIp({
       peerAddress: '127.0.0.1',
-      forwardedFor: '6.6.6.6',
+      forwardedFor: '198.51.100.9',
       trustedProxyHops: 0,
-    })).toBe('127.0.0.1');
+    })).toBe('198.51.100.9');
+  });
+
+  it('cannot be steered by padded spoof prefixes when the hop config is invalid (P1 regression)', () => {
+    // '99' used to cap to 5 and '2.9' used to floor to 2 — both over-count
+    // hops, so a caller padding XFF to ≥hops entries got their own entry
+    // picked as the client IP. Invalid config now falls back to 1.
+    expect(resolveClientIp({
+      peerAddress: CLOUD_RUN_PEER,
+      forwardedFor: '6.6.6.1, 6.6.6.2, 6.6.6.3, 6.6.6.4, 198.51.100.9',
+      trustedProxyHops: '99',
+    })).toBe('198.51.100.9');
+    expect(resolveClientIp({
+      peerAddress: CLOUD_RUN_PEER,
+      forwardedFor: '6.6.6.6, 198.51.100.9',
+      trustedProxyHops: '2.9',
+    })).toBe('198.51.100.9');
   });
 
   it('falls back to the peer when XFF is missing or empty', () => {
