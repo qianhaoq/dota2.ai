@@ -13,12 +13,10 @@ import {
   buildFallbackAiCards,
   buildReviewCardsPromptFacts,
   buildReviewKeyMomentsPromptRule,
-  parseAiReviewCards,
-  isReviewAiCardsComplete,
-  describeReviewCardsInvalidReason,
   minRequiredKeyMoments,
   canReviewAiCardsValidate,
 } from './lib/matchReview/reviewCards.js';
+import { resolveReviewCardsWithRetry } from './lib/matchReview/reviewAiRetry.js';
 import {
   isMatchParsed,
   createParseRequestTracker,
@@ -2517,31 +2515,31 @@ async function handleMatchReview(req, res) {
         const fullText = choice?.message?.content || '';
         const det = buildDeterministicReviewCards(matchFact, lang);
         const minKeyMoments = minRequiredKeyMoments(det._catalog || []);
-        let reviewCards = parseAiReviewCards(fullText, matchFact, lang);
-        let usedFallback = !isReviewAiCardsComplete(reviewCards, { minKeyMoments });
-        if (usedFallback) {
-          const reason = describeReviewCardsInvalidReason(reviewCards, { minKeyMoments });
-          console.warn(`[review:ai-validation] match=${matchId} attempt=1 result=invalid reason=${reason}`);
-          try {
-            stream = await completionRequest();
-            const retryText = stream.choices?.[0]?.message?.content || '';
-            const retryCards = parseAiReviewCards(retryText, matchFact, lang);
-            if (isReviewAiCardsComplete(retryCards, { minKeyMoments })) {
-              reviewCards = retryCards;
-              usedFallback = false;
-            } else {
-              console.warn(`[review:ai-validation] match=${matchId} attempt=2 result=invalid reason=${describeReviewCardsInvalidReason(retryCards, { minKeyMoments })}`);
-            }
-          } catch (retryErr) {
-            if (!clientGone && retryErr.name !== 'AbortError') {
-              console.warn(`[review:ai-retry] match=${matchId} error=${retryErr?.name || 'unknown'} (non-fatal)`);
-            }
-          }
-        }
-        if (usedFallback) {
-          reviewCards = buildFallbackAiCards(matchFact, lang);
-        }
-        if (!res.writableEnded) {
+        // Keeps the outer `stream` binding current so abortUpstream() can
+        // cancel an in-flight retry via stream.controller.
+        const requestCompletionText = async () => {
+          stream = await completionRequest();
+          return stream.choices?.[0]?.message?.content || '';
+        };
+        // Client-disconnect aborts during the retry rethrow (see
+        // reviewAiRetry.js) and land in the outer catch, which returns
+        // without writing to a response that already closed.
+        const { reviewCards: resolvedCards, usedFallback } = await resolveReviewCardsWithRetry({
+          firstText: fullText,
+          matchFact,
+          lang,
+          minKeyMoments,
+          matchId,
+          requestCompletionText,
+          signal: abortController.signal,
+          warn: (msg) => console.warn(msg),
+        });
+        const reviewCards = usedFallback
+          ? buildFallbackAiCards(matchFact, lang)
+          : resolvedCards;
+        // writableEnded stays false on an aborted close, so gate on
+        // clientGone too: a gone client must not get a final write/end.
+        if (!clientGone && !res.writableEnded) {
           responder.send({ reviewCards, grounded: isGrounded });
           if (usedFallback) {
             responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'invalid') });
