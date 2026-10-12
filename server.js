@@ -2491,7 +2491,7 @@ async function handleMatchReview(req, res) {
       console.warn(`[review:ai-validation] match=${matchId} ai_skipped reason=no_timeline_facts`);
       const reviewCards = buildFallbackAiCards(matchFact, lang);
       responder.send({ reviewCards, grounded: isGrounded });
-      responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'no_evidence') });
+      responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, matchFact.parsed ? 'no_timeline' : 'no_evidence') });
       responder.end();
       return;
     }

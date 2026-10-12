@@ -352,6 +352,13 @@ describe('review AI unavailable notices', () => {
     expect(reviewAiUnavailableNotice('zh', 'no_evidence')).toMatch(/尚未解析|基础比赛数据/);
     expect(reviewAiUnavailableNotice('en', 'no_evidence')).toMatch(/not parsed yet|basic match data/);
   });
+
+  it('explains the parsed-but-no-timeline fallback without claiming the replay is unparsed', () => {
+    expect(reviewAiUnavailableNotice('zh', 'no_timeline')).toMatch(/缺少时间线证据|基础比赛数据/);
+    expect(reviewAiUnavailableNotice('zh', 'no_timeline')).not.toContain('尚未解析');
+    expect(reviewAiUnavailableNotice('en', 'no_timeline')).toMatch(/No timeline evidence|basic match data/);
+    expect(reviewAiUnavailableNotice('en', 'no_timeline')).not.toMatch(/not parsed yet/i);
+  });
 });
 
 describe('match detail cache', () => {
