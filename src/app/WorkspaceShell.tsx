@@ -16,6 +16,9 @@ export interface WorkspaceShellProps {
   onToggleLang: () => void;
 }
 
+// Canonical domain of the third-party Hero Relations (voice-line map) site.
+const RELATIONS_URL = 'https://dota2relations.com/#tidehunter/out';
+
 const VISITED_INIT: Record<NavId, boolean> = {
   tactical: true,
   training: false,
@@ -125,15 +128,15 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
               <span className="max-sm:hidden">{lang === 'en' ? 'Feedback' : '反馈'}</span>
             </button>
             <a
-              href="https://dota2-relations.pages.dev/#tidehunter/out"
+              href={RELATIONS_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="v3-btn v3-btn-quiet min-h-[40px] px-[10px] md:hidden lg:inline-flex"
-              aria-label={relationsHint}
+              className="v3-btn v3-btn-quiet min-h-[40px] px-[10px] hidden xl:inline-flex"
+              aria-label={relationsLabel}
               title={relationsHint}
             >
               <ExternalLink size={14} />
-              <span className="hidden xl:inline">{relationsLabel}</span>
+              <span>{relationsLabel}</span>
             </a>
           </div>
         </div>
