@@ -17,10 +17,12 @@ import {
   isReviewAiCardsComplete,
   describeReviewCardsInvalidReason,
   minRequiredKeyMoments,
+  canReviewAiCardsValidate,
 } from './lib/matchReview/reviewCards.js';
 import {
   isMatchParsed,
   createParseRequestTracker,
+  createParseRequestBudget,
   parseStatusPayload,
 } from './lib/matchReview/matchParse.js';
 import { createMatchDetailCache } from './lib/matchReview/matchDetailCache.js';
@@ -2136,20 +2138,34 @@ function getMatchDetail(matchId, fetchOptions = {}) {
   return matchDetailCache.get(matchId, fetchOptions);
 }
 
-// OpenDota POST /request/{match_id} dedup/rate-limit state (per match).
+// OpenDota POST /request/{match_id} dedup/rate-limit state (per match),
+// plus global/per-client submission budgets (env-tunable) so a single client
+// or an OpenDota outage cannot amplify into a stream of parse submissions.
+function envPositiveInt(name, fallback) {
+  const raw = parseInt(process.env[name] ?? '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
 const parseRequestTracker = createParseRequestTracker();
+const parseRequestBudget = createParseRequestBudget({
+  globalMax: envPositiveInt('PARSE_BUDGET_GLOBAL_MAX', 10),
+  perClientMax: envPositiveInt('PARSE_BUDGET_PER_CLIENT_MAX', 3),
+});
 const opendotaApiKey = process.env.OPENDOTA_API_KEY || '';
 const PARSE_REQUEST_TIMEOUT_MS = 8000;
 
 /**
  * Resolve the parse status for a match. When the match is unparsed, request an
- * OpenDota replay parse (deduped/rate-limited per match, failures non-fatal).
+ * OpenDota replay parse (deduped/rate-limited per match, budgeted globally and
+ * per client; failures non-fatal).
  * @param {number} matchId
  * @param {object} matchData
  * @param {string} lang
+ * @param {string} clientIp client identity for the per-client budget
+ * @param {AbortSignal} [signal] aborts the upstream submission when the client disconnects
  * @returns {Promise<{ status: string, jobId: number | null, retryAfterSec: number | null, message: string }>}
  */
-async function resolveReviewParseStatus(matchId, matchData, lang) {
+async function resolveReviewParseStatus(matchId, matchData, lang, clientIp, signal) {
   if (isMatchParsed(matchData)) {
     return parseStatusPayload('parsed', { lang });
   }
@@ -2163,12 +2179,25 @@ async function resolveReviewParseStatus(matchId, matchData, lang) {
     });
   }
 
+  // Over budget: do not submit — tell the client to back off instead.
+  const overBudget = parseRequestBudget.tryConsume(clientIp);
+  if (overBudget) {
+    console.warn(
+      `[review:parse-request] match=${matchId} throttled scope=${overBudget.scope}`
+      + ` retryAfterSec=${overBudget.retryAfterSec}`
+    );
+    return parseStatusPayload('throttled', {
+      retryAfterSec: overBudget.retryAfterSec,
+      lang,
+    });
+  }
+
   parseRequestTracker.markRequested(matchId);
   try {
     const url = `${OPENDOTA_API}/request/${matchId}${opendotaApiKey ? `?api_key=${encodeURIComponent(opendotaApiKey)}` : ''}`;
     const res = await fetch(url, {
       method: 'POST',
-      signal: AbortSignal.timeout(PARSE_REQUEST_TIMEOUT_MS),
+      signal: combineAbortSignals([signal, AbortSignal.timeout(PARSE_REQUEST_TIMEOUT_MS)]),
     });
     if (!res.ok) {
       parseRequestTracker.markResult(matchId, { failed: true });
@@ -2319,7 +2348,7 @@ async function handleMatchReviewFacts(req, res) {
       HERO_NAMES_CN
     );
     const matchFact = buildMatchFact(matchData, { lang, heroNames });
-    const parse = await resolveReviewParseStatus(matchId, matchData, lang);
+    const parse = await resolveReviewParseStatus(matchId, matchData, lang, resolveClientIp(req));
     return res.json({
       matchFact,
       grounded: Boolean(matchFact.grounded),
@@ -2375,15 +2404,16 @@ async function handleMatchReview(req, res) {
     req.removeListener('aborted', abortUpstream);
   };
 
-  if (wantsStream) {
-    res.on('close', abortUpstream);
-    req.on('aborted', abortUpstream);
-  }
+  // Disconnect cleanup applies to BOTH response modes: SSE stops streaming
+  // early, and JSON-mode upstream work (OpenDota + DeepSeek) is aborted via
+  // the shared signal instead of running to completion for a gone client.
+  res.on('close', abortUpstream);
+  req.on('aborted', abortUpstream);
 
   try {
     if (clientGone) return;
 
-    const fetchOpts = wantsStream ? { signal: abortController.signal } : {};
+    const fetchOpts = { signal: abortController.signal };
     const [matchData, heroStats, heroConstants] = await Promise.all([
       getMatchDetail(matchId, fetchOpts),
       getHeroStats(fetchOpts),
@@ -2411,7 +2441,13 @@ async function handleMatchReview(req, res) {
     );
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const isGrounded = Boolean(matchFact.grounded);
-    const parse = await resolveReviewParseStatus(matchId, matchData, lang);
+    const parse = await resolveReviewParseStatus(
+      matchId,
+      matchData,
+      lang,
+      resolveClientIp(req),
+      abortController.signal
+    );
 
     if (!apiKey || !openai) {
       responder.begin();
@@ -2472,6 +2508,19 @@ async function handleMatchReview(req, res) {
     }, {
       signal: abortController.signal,
     });
+
+    // Unparsed / no-objective matches carry no timeline_* evidence, so AI
+    // cards can never pass validation (retrying cannot succeed). Skip the
+    // DeepSeek calls entirely and serve the deterministic fallback built
+    // from basic match data. Follow-ups are unaffected (no card validation).
+    if (!followUp && !canReviewAiCardsValidate(_catalog || [])) {
+      console.warn(`[review:ai-validation] match=${matchId} ai_skipped reason=no_timeline_facts`);
+      const reviewCards = buildFallbackAiCards(matchFact, lang);
+      responder.send({ reviewCards, grounded: isGrounded });
+      responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'no_evidence') });
+      responder.end();
+      return;
+    }
 
     try {
       stream = await completionRequest();
@@ -2555,11 +2604,8 @@ async function handleMatchReview(req, res) {
           responder.end();
         }
       }
-    } finally {
-      detachAbortListeners();
     }
   } catch (error) {
-    if (wantsStream) detachAbortListeners();
     if (clientGone || error.name === 'AbortError') return;
     console.error('Match review error:', error);
     if (isOpenDotaFetchError(error)) {
@@ -2578,6 +2624,10 @@ async function handleMatchReview(req, res) {
     }
     const errorMsg = error.message || (isZh ? '复盘失败' : 'Review failed');
     return respondReviewError(res, wantsStream, errorMsg, 500);
+  } finally {
+    // Every exit path (SSE and JSON, success and error) detaches the
+    // disconnect listeners — they are registered for both response modes.
+    detachAbortListeners();
   }
 }
 
@@ -2627,7 +2677,8 @@ function feedbackXffClient(req) {
   return parts[parts.length - 1].slice(0, 64);
 }
 
-function feedbackClientIp(req) {
+// Shared by the feedback rate limit and the review parse-request budget.
+function resolveClientIp(req) {
   const peer = String(req.socket?.remoteAddress || req.connection?.remoteAddress || 'unknown');
   // Only trust XFF when the TCP peer is a private/loopback proxy (Cloud Run / GCLB).
   // Direct public connections use the peer itself so XFF cannot be spoofed.
@@ -2676,7 +2727,7 @@ app.post('/api/feedback', (req, res) => {
       return res.status(400).json({ ok: false, error: 'message required' });
     }
 
-    const ip = feedbackClientIp(req);
+    const ip = resolveClientIp(req);
     const now = Date.now();
     feedbackGlobalHits = feedbackGlobalHits.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
     if (feedbackGlobalHits.length >= FEEDBACK_GLOBAL_LIMIT || feedbackRateLimited(ip)) {

@@ -5,6 +5,8 @@ import path from 'node:path';
 import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
 import {
   buildFallbackAiCards,
+  buildDeterministicReviewCards,
+  canReviewAiCardsValidate,
   describeReviewCardsInvalidReason,
   isReviewAiCardsComplete,
 } from '../../lib/matchReview/reviewCards.js';
@@ -12,9 +14,11 @@ import { LANE_CLUSTER_SOURCE } from '../../lib/matchReview/laneResolver.js';
 import {
   isMatchParsed,
   createParseRequestTracker,
+  createParseRequestBudget,
   parseStatusPayload,
   UNPARSED_MATCH_CACHE_TTL_MS,
   PARSE_REQUEST_COOLDOWN_MS,
+  PARSE_BUDGET_WINDOW_MS,
 } from '../../lib/matchReview/matchParse.js';
 import {
   createMatchDetailCache,
@@ -23,6 +27,7 @@ import {
   MATCH_DETAIL_CACHE_TTL_MS,
 } from '../../lib/matchReview/matchDetailCache.js';
 import { computeApiHealth } from '../../lib/serverHealth.js';
+import { reviewAiUnavailableNotice } from '../../lib/matchReview/reviewStream.js';
 import {
   wantsReviewStream,
   createReviewResponder,
@@ -131,6 +136,26 @@ describe('match 9035042364 parsed fixture', () => {
     expect(enCards.mentor_note!).not.toMatch(/Rubick|I am|i'm/i);
     expect(enCards.mentor_note!).toContain('Legion Commander');
   });
+
+  it('claims replay grounding only when the match is actually parsed', () => {
+    const parsedEn = buildMatchFact(parsedFixture, { lang: 'en', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
+    const unparsedEn = buildMatchFact(unparsedFixture, { lang: 'en', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
+    const parsedZh = buildMatchFact(parsedFixture, { lang: 'zh', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
+    const unparsedZh = buildMatchFact(unparsedFixture, { lang: 'zh', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
+
+    expect((buildFallbackAiCards(parsedEn, 'en') as ReviewCardsPayload).mentor_note)
+      .toContain('grounded in replay data');
+    expect((buildFallbackAiCards(parsedZh, 'zh') as ReviewCardsPayload).mentor_note)
+      .toContain('复盘基于录像数据');
+
+    const enNote = (buildFallbackAiCards(unparsedEn, 'en') as ReviewCardsPayload).mentor_note!;
+    expect(enNote).toContain('based on basic match data (replay not parsed yet)');
+    expect(enNote).not.toContain('grounded in replay data');
+
+    const zhNote = (buildFallbackAiCards(unparsedZh, 'zh') as ReviewCardsPayload).mentor_note!;
+    expect(zhNote).toContain('基于基础比赛数据（录像尚未解析）');
+    expect(zhNote).not.toContain('复盘基于录像数据');
+  });
 });
 
 describe('match 9035042364 unparsed fixture', () => {
@@ -211,6 +236,89 @@ describe('parse status payload', () => {
     expect(tracker.active(1)).not.toBeNull();
     now += 2_000;
     expect(tracker.active(1)).toBeNull();
+  });
+});
+
+describe('parse request budget (global + per client)', () => {
+  it('enforces the per-client cap within the window', () => {
+    let now = 100_000_000;
+    const budget = createParseRequestBudget({ now: () => now, globalMax: 10, perClientMax: 3 });
+    expect(budget.tryConsume('203.0.113.7')).toBeNull();
+    expect(budget.tryConsume('203.0.113.7')).toBeNull();
+    expect(budget.tryConsume('203.0.113.7')).toBeNull();
+
+    const blocked = budget.tryConsume('203.0.113.7');
+    expect(blocked).toMatchObject({ scope: 'client' });
+    expect(blocked!.retryAfterSec).toBeGreaterThan(0);
+
+    // Other clients are unaffected; the window slides open again.
+    expect(budget.tryConsume('198.51.100.9')).toBeNull();
+    now += PARSE_BUDGET_WINDOW_MS + 1;
+    expect(budget.tryConsume('203.0.113.7')).toBeNull();
+  });
+
+  it('enforces the global cap across all clients', () => {
+    let now = 200_000_000;
+    const budget = createParseRequestBudget({ now: () => now, globalMax: 3, perClientMax: 10 });
+    expect(budget.tryConsume('a')).toBeNull();
+    expect(budget.tryConsume('b')).toBeNull();
+    expect(budget.tryConsume('c')).toBeNull();
+
+    const blocked = budget.tryConsume('d');
+    expect(blocked).toMatchObject({ scope: 'global' });
+    expect(blocked!.retryAfterSec).toBeGreaterThan(0);
+
+    now += PARSE_BUDGET_WINDOW_MS + 1;
+    expect(budget.tryConsume('d')).toBeNull();
+  });
+
+  it('does not consume global budget for a throttled client', () => {
+    let now = 300_000_000;
+    const budget = createParseRequestBudget({ now: () => now, globalMax: 2, perClientMax: 1 });
+    expect(budget.tryConsume('a')).toBeNull();
+    // 'a' hits its per-client cap — this must NOT burn a global slot.
+    expect(budget.tryConsume('a')).toMatchObject({ scope: 'client' });
+    expect(budget.tryConsume('b')).toBeNull();
+    expect(budget.tryConsume('c')).toMatchObject({ scope: 'global' });
+  });
+});
+
+describe('parse status payload (throttled)', () => {
+  it('reports throttling with retry guidance in zh and en', () => {
+    const zh = parseStatusPayload('throttled', { retryAfterSec: 240, lang: 'zh' });
+    expect(zh).toMatchObject({ status: 'throttled', retryAfterSec: 240 });
+    expect(zh.message).toMatch(/频率上限|稍后/);
+
+    const en = parseStatusPayload('throttled', { lang: 'en' });
+    expect(en.retryAfterSec).toBeGreaterThan(0);
+    expect(en.message).toMatch(/limit reached|try again/i);
+  });
+});
+
+describe('AI card validation satisfiability', () => {
+  it('requires timeline evidence for validation to be satisfiable', () => {
+    expect(canReviewAiCardsValidate([])).toBe(false);
+    expect(canReviewAiCardsValidate([{ factKey: 'kda', label: 'KDA', value: '1/2/3' }])).toBe(false);
+    expect(canReviewAiCardsValidate([
+      { factKey: 'kda', label: 'KDA', value: '1/2/3' },
+      { factKey: 'timeline_0', label: '10:00', value: 'tower', timestamp: 600 },
+    ])).toBe(true);
+  });
+
+  it('is unsatisfiable for unparsed matches and satisfiable for parsed ones', () => {
+    const parsedFact = buildMatchFact(parsedFixture, { lang: 'zh', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
+    const unparsedFact = buildMatchFact(unparsedFixture, { lang: 'zh', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
+    const parsedCatalog = (buildDeterministicReviewCards(parsedFact, 'zh') as { _catalog: unknown[] })._catalog || [];
+    const unparsedCatalog = (buildDeterministicReviewCards(unparsedFact, 'zh') as { _catalog: unknown[] })._catalog || [];
+    expect(canReviewAiCardsValidate(parsedCatalog)).toBe(true);
+    expect(canReviewAiCardsValidate(unparsedCatalog)).toBe(false);
+  });
+});
+
+describe('review AI unavailable notices', () => {
+  it('explains the no-evidence fallback in zh and en', () => {
+    expect(reviewAiUnavailableNotice('zh', 'no_evidence')).toMatch(/尚未解析|基础比赛数据/);
+    expect(reviewAiUnavailableNotice('en', 'no_evidence')).toMatch(/not parsed yet|basic match data/);
   });
 });
 
@@ -300,6 +408,99 @@ describe('match detail cache', () => {
     expect(isMatchDetailEntryFresh(parsedEntry, at + MATCH_DETAIL_CACHE_TTL_MS - 1)).toBe(true);
     expect(isMatchDetailEntryFresh(parsedEntry, at + MATCH_DETAIL_CACHE_TTL_MS + 1)).toBe(false);
     expect(isMatchDetailEntryFresh(undefined, at)).toBe(false);
+  });
+
+  it('dedupes overlapping refreshes into a single upstream fetch', async () => {
+    let now = 400_000_000;
+    let fetches = 0;
+    const resolvers: Array<(data: object) => void> = [];
+    const cache = createMatchDetailCache({
+      now: () => now,
+      fetchMatch: () => new Promise((resolve) => {
+        fetches += 1;
+        resolvers.push(resolve);
+      }),
+    });
+
+    const first = cache.get(9035042364);
+    const second = cache.get(9035042364);
+    const third = cache.get(9035042364);
+    // Without in-flight dedup each caller would start its own fetch and a
+    // slow unparsed response could land after (and overwrite) a parsed one.
+    expect(fetches).toBe(1);
+
+    resolvers[0](unparsedData);
+    expect(await first).toBe(unparsedData);
+    expect(await second).toBe(unparsedData);
+    expect(await third).toBe(unparsedData);
+
+    // After the short TTL a single replacement refresh may run.
+    now += UNPARSED_MATCH_CACHE_TTL_MS + 1_000;
+    const fourth = cache.get(9035042364);
+    resolvers[1](parsedData);
+    expect(await fourth).toBe(parsedData);
+    expect(fetches).toBe(2);
+  });
+
+  it('retries on its own when a shared refresh dies with its initiator', async () => {
+    let fetches = 0;
+    let failFirst = true;
+    let resolveSecond: (data: object) => void = () => {};
+    const cache = createMatchDetailCache({
+      fetchMatch: () => new Promise((resolve, reject) => {
+        fetches += 1;
+        if (failFirst) {
+          failFirst = false;
+          reject(new Error('This operation was aborted'));
+          return;
+        }
+        resolveSecond = resolve;
+      }),
+    });
+
+    // Caller 1 supplies an abort signal; caller 2 (still connected) shares
+    // the in-flight refresh. Caller 1 disconnects, aborting the shared fetch.
+    const controller = new AbortController();
+    const first = cache.get(1, { signal: controller.signal });
+    const second = cache.get(1);
+    controller.abort();
+
+    await expect(first).rejects.toThrow(/aborted/);
+    resolveSecond(parsedData);
+    expect(await second).toBe(parsedData);
+    expect(fetches).toBe(2);
+  });
+
+  it('keeps the parsed entry a late unparsed refresh would replace', async () => {
+    let now = 500_000_000;
+    let fetches = 0;
+    const resolvers: Array<(data: object) => void> = [];
+    const cache = createMatchDetailCache({
+      now: () => now,
+      fetchMatch: () => new Promise((resolve) => {
+        fetches += 1;
+        resolvers.push(resolve);
+      }),
+    });
+
+    const first = cache.get(1);
+    resolvers[0](parsedData);
+    expect(await first).toBe(parsedData);
+
+    // The parsed entry goes stale; the refresh that comes back is unparsed.
+    now += MATCH_DETAIL_CACHE_TTL_MS + 1_000;
+    const second = cache.get(1);
+    resolvers[1](unparsedData);
+    expect(await second).toBe(parsedData);
+    expect(fetches).toBe(2);
+
+    // The cache still holds the parsed entry, so a later refresh that comes
+    // back unparsed again is also refused.
+    now += MATCH_DETAIL_CACHE_TTL_MS + 1_000;
+    const third = cache.get(1);
+    resolvers[2](unparsedData);
+    expect(await third).toBe(parsedData);
+    expect(fetches).toBe(3);
   });
 });
 
