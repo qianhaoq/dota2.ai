@@ -87,18 +87,30 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     setHeroId('');
   }, [factsReady, matchFact, practiceHero?.id, heroId]);
 
-  const handleFetchFacts = async (e?: React.FormEvent, overrideMatchId?: number) => {
+  const handleFetchFacts = async (
+    e?: React.FormEvent,
+    overrideMatchId?: number,
+    opts?: { preserve?: boolean },
+  ) => {
     e?.preventDefault();
     const targetId = overrideMatchId ?? parsedId;
     if (!targetId || factsLoading) return;
+    // Non-destructive refresh (parse-status retry on an already-loaded match):
+    // keep the current fact/hero until the new payload arrives so a transient
+    // failure doesn't discard a usable match.
+    const preserve = Boolean(
+      opts?.preserve && matchFact && matchFact.summary.matchId === targetId,
+    );
     const requestId = factsRequestIdRef.current + 1;
     factsRequestIdRef.current = requestId;
     setFactsLoading(true);
     setFactsError(null);
     setUpstreamUnavailable(false);
-    setMatchFact(null);
-    setParseStatus(null);
-    setHeroId('');
+    if (!preserve) {
+      setMatchFact(null);
+      setParseStatus(null);
+      setHeroId('');
+    }
     if (overrideMatchId) {
       setMatchInput(String(overrideMatchId));
     }
@@ -107,6 +119,8 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
       if (factsRequestIdRef.current !== requestId) return;
       setMatchFact(fact);
       setParseStatus(parse);
+      // heroId is kept when still in the new roster; the roster effect below
+      // resets it (to the practice hero or '') when it isn't.
     } catch (err) {
       if (factsRequestIdRef.current !== requestId) return;
       const isUpstream = err instanceof MatchFactsError
@@ -264,9 +278,12 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
                       {parseRetryAfterLabel(lang, parseStatus.retryAfterSec)}
                     </p>
                   )}
+                  {factsError && (
+                    <p className="text-xs text-yellow-400">{factsError}</p>
+                  )}
                   <button
                     type="button"
-                    onClick={() => void handleFetchFacts()}
+                    onClick={() => void handleFetchFacts(undefined, undefined, { preserve: true })}
                     disabled={factsLoading}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-xs font-medium text-k3-text-primary hover:bg-k3-elevated disabled:opacity-40 min-h-[36px] touch-manipulation"
                   >

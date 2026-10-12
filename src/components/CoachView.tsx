@@ -14,6 +14,7 @@ import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator
 import { pairCoachSessions } from '../utils/coachBlocks';
 import { findPrimaryReviewSession, canSubmitReviewFollowUpForContext, findInflightCoachSession, primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../utils/reviewSurface';
 import { resolveCoachComposerState, shouldSubmitReviewFollowUp } from '../utils/coachComposer';
+import { reviewFactsRefreshResult, type ReviewFactsRefreshResult } from '../utils/reviewFactsRefresh';
 import {
   clearStreamingCoachMessages,
   coachCancelledMessage,
@@ -440,15 +441,27 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   /**
    * Re-fetch facts for a review whose replay is still parsing. Read-only GET —
    * no draft/side change, so no contextRevision bump or cancelStream (coach invariants).
+   * When the refreshed fact invalidates the insight cards (newly parsed or changed),
+   * the stale cards/notice are dropped and the review is re-run via handleReview,
+   * which performs the invariant-required cancelStream + lesson switch itself.
    */
   const handleReviewFactsRetry = useCallback(async (matchId: number, messageId: string) => {
     try {
       const { matchFact, parse } = await fetchMatchFacts(matchId, lang);
-      updateCoachMessage(messageId, { matchFact, parseStatus: parse });
+      const refresh: { current: ReviewFactsRefreshResult | null } = { current: null };
+      setMessages((prev) => prev.map((msg) => {
+        if (msg.id !== messageId) return msg;
+        const result = reviewFactsRefreshResult(msg, { matchFact, parseStatus: parse });
+        refresh.current = result;
+        return { ...msg, ...result.patch };
+      }));
+      if (refresh.current?.staleCleared) {
+        handleReview(matchId, refresh.current.heroId ?? undefined);
+      }
     } catch {
       // Keep previous facts/status; the banner stays so the user can retry again.
     }
-  }, [lang, updateCoachMessage]);
+  }, [lang, handleReview]);
 
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
