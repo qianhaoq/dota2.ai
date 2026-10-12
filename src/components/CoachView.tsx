@@ -14,7 +14,7 @@ import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator
 import { pairCoachSessions } from '../utils/coachBlocks';
 import { findPrimaryReviewSession, canSubmitReviewFollowUpForContext, findInflightCoachSession, primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../utils/reviewSurface';
 import { resolveCoachComposerState, shouldSubmitReviewFollowUp } from '../utils/coachComposer';
-import { reviewFactsRefreshResult, isFactsRetryCurrent, type ReviewFactsRetryToken } from '../utils/reviewFactsRefresh';
+import { reviewFactsRefreshResult, reviewRequestHeroId, isFactsRetryCurrent, type ReviewFactsRetryToken } from '../utils/reviewFactsRefresh';
 import {
   clearStreamingCoachMessages,
   coachCancelledMessage,
@@ -476,10 +476,16 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const handleReviewFactsRetry = useCallback(async (matchId: number, messageId: string) => {
     // Supersede any older pending retry so its late response can't clobber this one.
     abortFactsRetry();
+    // Re-send the request-time hero stamped on the message: without it the GET
+    // returns a focus-less fact (focusHeroId: null, no focusLens) that always
+    // differs from the focused fact the cards were built from.
+    const requestTarget = messagesRef.current.find((msg) => msg.id === messageId);
+    if (!requestTarget) return;
+    const heroId = reviewRequestHeroId(requestTarget);
     const token: ReviewFactsRetryToken = { controller: new AbortController() };
     factsRetryRef.current = token;
     try {
-      const { matchFact, parse } = await fetchMatchFacts(matchId, lang, token.controller.signal);
+      const { matchFact, parse } = await fetchMatchFacts(matchId, lang, token.controller.signal, heroId ?? undefined);
       if (!isFactsRetryCurrent(factsRetryRef.current, token)) return;
       // Compute the re-review decision from synchronously available state: a value
       // assigned inside a setMessages updater can't be read right after — React

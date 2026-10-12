@@ -78,6 +78,18 @@ describe('fetchMatchFacts', () => {
     await expect(fetchMatchFacts(1, 'zh')).rejects.toThrow('找不到这场比赛');
   });
 
+  it('appends the request-time heroId so the fact keeps its focus lens', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ matchFact: { summary: { matchId: 9035042364 }, focusHeroId: 74 } }),
+    });
+
+    await fetchMatchFacts(9035042364, 'en', undefined, 74);
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/review/9035042364?lang=en&heroId=74');
+  });
+
   it('forwards the abort signal so callers can cancel a stale retry', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

@@ -2289,6 +2289,11 @@ app.post('/api/review/:matchId', handleMatchReview);
 /** GET：只拉 OpenDota MatchFact，不调用 DeepSeek */
 async function handleMatchReviewFacts(req, res) {
   const lang = normalizeUiLang(req.query.lang ?? 'en');
+  // Focus hero stamped on the review message at request time. Without it the
+  // refreshed fact loses focusHeroId/focusLens and every retry looks "changed",
+  // wiping the insight cards and re-running the review for no reason.
+  const heroIdRaw = req.query.heroId;
+  const heroId = heroIdRaw != null && heroIdRaw !== '' ? Number(heroIdRaw) : undefined;
   const matchId = Number(req.params.matchId);
   const isZh = lang === 'zh';
 
@@ -2302,13 +2307,21 @@ async function handleMatchReviewFacts(req, res) {
       getHeroStats(),
       getHeroConstants(),
     ]);
+    if (heroId !== undefined) {
+      const inMatch = (matchData.players || []).some((p) => p.hero_id === heroId);
+      if (!inMatch) {
+        return res.status(400).json({
+          error: isZh ? '该英雄未参与此场比赛' : 'Hero did not play in this match',
+        });
+      }
+    }
     const heroNames = buildHeroNamesMap(
       heroStats,
       matchData.players || [],
       heroConstants,
       HERO_NAMES_CN
     );
-    const matchFact = buildMatchFact(matchData, { lang, heroNames });
+    const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const parse = await resolveReviewParseStatus(matchId, matchData, lang, resolveClientIp(req));
     return res.json({
       matchFact,

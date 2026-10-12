@@ -36,25 +36,50 @@ export interface ReviewFactsRefreshResult {
 }
 
 /**
+ * The hero a review message was requested with — stamped on the cards first,
+ * falling back to the fact's focus. A facts retry must re-send this heroId so
+ * the refreshed fact keeps the same focusHeroId/focusLens.
+ */
+export function reviewRequestHeroId(message: CoachMessage): number | null {
+  return message.reviewCards?.match_summary?.heroId
+    ?? message.matchFact?.focusHeroId
+    ?? null;
+}
+
+/**
+ * Only parse progress invalidates insight cards: whether the replay is parsed
+ * and whether lanes/timeline evidence exists. Anything else (focus lens, names,
+ * labels) re-renders from the patched fact without touching the cards — so an
+ * unchanged unparsed refresh must not clear cards or trigger a duplicate review.
+ */
+function parseSignature(fact: MatchFact | null | undefined, parse: ReviewParseStatus | null | undefined) {
+  return {
+    parsed: parse?.status === 'parsed',
+    lanes: (fact?.lanes?.length ?? 0) > 0,
+    timeline: (fact?.timeline?.length ?? 0) > 0,
+  };
+}
+
+/**
  * Patch for a review message after a facts retry (GET /api/review/:id).
  *
  * messageToBlocks prefers reviewCards over the fact spine, so replacing only
  * matchFact/parseStatus would leave stale cards (generated from the unparsed
- * payload) on screen forever. When the refreshed fact is newly parsed or
- * differs from the fact the cards were generated from, drop the cards and the
- * stale notice so lanes/timeline re-render from the fresh fact.
+ * payload) on screen forever. When the refreshed fact's parse signature differs
+ * from the one the cards were generated from, drop the cards and the stale
+ * notice so lanes/timeline re-render from the fresh fact.
  */
 export function reviewFactsRefreshResult(
   prev: CoachMessage,
   next: { matchFact: MatchFact; parseStatus: ReviewParseStatus | null },
 ): ReviewFactsRefreshResult {
-  const heroId = prev.reviewCards?.match_summary?.heroId
-    ?? prev.matchFact?.focusHeroId
-    ?? null;
-  const wasParsed = prev.parseStatus?.status === 'parsed';
-  const nowParsed = next.parseStatus?.status === 'parsed';
-  const factChanged = JSON.stringify(prev.matchFact ?? null) !== JSON.stringify(next.matchFact);
-  const staleCleared = Boolean(prev.reviewCards) && (factChanged || (nowParsed && !wasParsed));
+  const heroId = reviewRequestHeroId(prev);
+  const before = parseSignature(prev.matchFact, prev.parseStatus);
+  const after = parseSignature(next.matchFact, next.parseStatus);
+  const parseChanged = before.parsed !== after.parsed
+    || before.lanes !== after.lanes
+    || before.timeline !== after.timeline;
+  const staleCleared = Boolean(prev.reviewCards) && parseChanged;
 
   const patch: Partial<CoachMessage> = {
     matchFact: next.matchFact,

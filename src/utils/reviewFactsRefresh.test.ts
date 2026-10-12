@@ -2,11 +2,18 @@ import { describe, expect, it } from 'vitest';
 import type { CoachMessage } from '../components/coach/coachMessage';
 import type { MatchFact, ReviewParseStatus } from '../types/matchReview';
 import type { ReviewCardsPayload } from '../types/reviewCards';
-import { reviewFactsRefreshResult, isFactsRetryCurrent, type ReviewFactsRetryToken } from './reviewFactsRefresh';
+import { reviewFactsRefreshResult, reviewRequestHeroId, isFactsRetryCurrent, type ReviewFactsRetryToken } from './reviewFactsRefresh';
 
 const fact = (timelineLength: number): MatchFact => ({
   summary: { matchId: 9035042364 },
   focusHeroId: 74,
+  timeline: Array.from({ length: timelineLength }, (_, i) => ({ time: i * 60, type: 'kill', key: null })),
+} as unknown as MatchFact);
+
+/** A fact built without the request-time heroId — what the GET returned before the fix. */
+const focusLessFact = (timelineLength: number): MatchFact => ({
+  summary: { matchId: 9035042364 },
+  focusHeroId: null,
   timeline: Array.from({ length: timelineLength }, (_, i) => ({ time: i * 60, type: 'kill', key: null })),
 } as unknown as MatchFact);
 
@@ -57,9 +64,9 @@ describe('reviewFactsRefreshResult', () => {
     expect(result.patch.error).toBeUndefined();
   });
 
-  it('drops stale cards when the refreshed fact differs even without a parse transition', () => {
+  it('drops stale cards when parse evidence appears without a status transition', () => {
     const prev = reviewMessage({
-      matchFact: fact(2),
+      matchFact: fact(0),
       parseStatus: parseStatus('parsed'),
       reviewCards: cards(),
     });
@@ -69,6 +76,39 @@ describe('reviewFactsRefreshResult', () => {
 
     expect(result.staleCleared).toBe(true);
     expect(result.patch.reviewCards).toBeNull();
+  });
+
+  it('keeps cards when only non-parse fact fields differ while parsed', () => {
+    const prev = reviewMessage({
+      matchFact: fact(2),
+      parseStatus: parseStatus('parsed'),
+      reviewCards: cards(),
+    });
+    // Same parsed flag and lanes/timeline presence — only fact details moved.
+    const next = { matchFact: fact(3), parseStatus: parseStatus('parsed') };
+
+    const result = reviewFactsRefreshResult(prev, next);
+
+    expect(result.staleCleared).toBe(false);
+    expect(result.patch.reviewCards).toBeUndefined();
+  });
+
+  it('keeps cards when an unchanged unparsed refresh drops the focus context', () => {
+    // Regression: a facts retry that omitted the request-time heroId returned
+    // focusHeroId: null / no focusLens, and the focused fact comparison always
+    // treated it as changed — clearing cards and re-running the review.
+    const prev = reviewMessage({
+      matchFact: fact(0),
+      parseStatus: parseStatus('pending'),
+      reviewCards: cards(),
+    });
+    const next = { matchFact: focusLessFact(0), parseStatus: parseStatus('pending') };
+
+    const result = reviewFactsRefreshResult(prev, next);
+
+    expect(result.staleCleared).toBe(false);
+    expect(result.patch.reviewCards).toBeUndefined();
+    expect(result.heroId).toBe(74);
   });
 
   it('keeps cards when nothing changed', () => {
@@ -124,6 +164,26 @@ describe('reviewFactsRefreshResult', () => {
 
     expect(result.staleCleared).toBe(true);
     expect(result.heroId).toBe(74);
+  });
+});
+
+describe('reviewRequestHeroId', () => {
+  it('prefers the hero stamped on the cards', () => {
+    const msg = reviewMessage({ matchFact: fact(0), reviewCards: cards() });
+    expect(reviewRequestHeroId(msg)).toBe(74);
+  });
+
+  it('falls back to the fact focus when cards carry no hero', () => {
+    const msg = reviewMessage({
+      matchFact: fact(0),
+      reviewCards: { match_summary: { ...cards().match_summary!, heroId: undefined } },
+    });
+    expect(reviewRequestHeroId(msg)).toBe(74);
+  });
+
+  it('is null for a review requested without a hero', () => {
+    const msg = reviewMessage({ matchFact: focusLessFact(0) });
+    expect(reviewRequestHeroId(msg)).toBeNull();
   });
 });
 
