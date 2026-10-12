@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Globe, MessageSquare } from 'lucide-react';
+import { Globe, MessageSquare, ExternalLink } from 'lucide-react';
 import MentorRail from './MentorRail';
 import { NAV_ITEMS, isNavId, navLabel, type NavId } from './nav';
 import { findMentor, useHeroes } from './useHeroes';
@@ -68,6 +68,11 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
   const brand = 'DOTA2.AI';
   const mentorLine = QUOTES[nav][lang === 'zh' ? 'zh' : 'en'];
   const langToggleLabel = lang === 'en' ? '切换语言' : 'Switch language';
+  const relationsLabel = lang === 'en' ? 'Hero Relations (voice-line map)' : '英雄关系图（语音台词）';
+  const relationsHint =
+    lang === 'en'
+      ? 'Third-party: how Dota 2 heroes feel about each other, from voice lines'
+      : '第三方站点：基于语音台词的英雄关系';
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-v3-base text-v3-text overflow-hidden px-safe">
@@ -119,6 +124,17 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
               <MessageSquare size={14} />
               <span className="max-sm:hidden">{lang === 'en' ? 'Feedback' : '反馈'}</span>
             </button>
+            <a
+              href="https://dota2-relations.pages.dev/#tidehunter/out"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="v3-btn v3-btn-quiet min-h-[40px] px-[10px] md:hidden lg:inline-flex"
+              aria-label={relationsHint}
+              title={relationsHint}
+            >
+              <ExternalLink size={14} />
+              <span className="hidden xl:inline">{relationsLabel}</span>
+            </a>
           </div>
         </div>
       </header>
