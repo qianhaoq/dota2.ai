@@ -526,6 +526,38 @@ describe('match detail cache', () => {
     expect(fetches).toBe(3);
   });
 
+  it('serves stale data across matches during an outage (A then B)', async () => {
+    // Refreshing A must not evict B's expired entry: stale-if-error is the
+    // fallback for every cached match, not just the one being requested.
+    let now = 45_000_000;
+    let outage = false;
+    let fetches = 0;
+    const dataB = { ...parsedData };
+    const cache = createMatchDetailCache({
+      now: () => now,
+      fetchMatch: async (matchId: number) => {
+        fetches += 1;
+        if (outage) throw new Error('upstream 522');
+        return matchId === 1 ? parsedData : dataB;
+      },
+    });
+
+    expect(await cache.get(1)).toBe(parsedData);
+    expect(await cache.get(2)).toBe(dataB);
+
+    // Both entries expire, then upstream goes down.
+    now += MATCH_DETAIL_CACHE_TTL_MS + 1_000;
+    outage = true;
+
+    // A is served stale through one failed refresh, and B's expired entry
+    // survives that refresh...
+    expect(await cache.get(1)).toBe(parsedData);
+    // ...so B is served stale as well. Both serves went through a (failed)
+    // refresh attempt — neither expired entry was served as fresh.
+    expect(await cache.get(2)).toBe(dataB);
+    expect(fetches).toBe(4);
+  });
+
   it('freshness follows parse state (short vs long TTL)', () => {
     const at = 100_000;
     const unparsedEntry = { data: unparsedData, timestamp: at };
