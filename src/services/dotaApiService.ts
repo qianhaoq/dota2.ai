@@ -155,6 +155,43 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', si
   return { matchFact: data.matchFact, parse: parseReviewParseStatus(data.parse) };
 };
 
+/**
+ * Explicitly request an OpenDota replay parse for a match. The facts load
+ * (fetchMatchFacts) is read-only and never submits — this endpoint is the
+ * only submission path, so parse quota is only spent on user intent.
+ * Returns the same parse-status payload shape (requested / pending /
+ * parsed / throttled / failed), or throws with the server's error text.
+ */
+export const requestMatchParse = async (
+  matchId: number,
+  lang: Language = 'en',
+  signal?: AbortSignal,
+): Promise<ReviewParseStatus> => {
+  const response = await fetch(
+    `/api/review/${matchId}/parse-request?lang=${encodeURIComponent(lang)}`,
+    {
+      method: 'POST',
+      // JSON content-type + custom header: both mark this as a non-simple
+      // request the endpoint requires (CSRF / drive-by protection).
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({ lang }),
+      signal,
+    },
+  );
+  const data = await response.json().catch(
+    () => ({} as { status?: unknown; jobId?: unknown; retryAfterSec?: unknown; message?: unknown; error?: string }),
+  );
+  const parse = parseReviewParseStatus(data);
+  if (parse) return parse;
+  throw new MatchFactsError(
+    data.error || (lang === 'zh' ? '解析请求失败' : 'Failed to request parse'),
+  );
+};
+
 export interface ReviewSuggestionBase {
   matchId: number;
   kind: 'recent' | 'highMmr';

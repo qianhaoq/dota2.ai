@@ -18,12 +18,20 @@ import {
 } from './lib/matchReview/reviewCards.js';
 import { resolveReviewCardsWithRetry } from './lib/matchReview/reviewAiRetry.js';
 import {
-  isMatchParsed,
   createParseRequestTracker,
   createParseRequestBudget,
-  parseStatusPayload,
 } from './lib/matchReview/matchParse.js';
 import { createMatchDetailCache } from './lib/matchReview/matchDetailCache.js';
+import {
+  createReadOnlyParseStatusResolver,
+  createReviewParseRequestHandler,
+  rejectParseRequestGet,
+} from './lib/matchReview/parseRequestEndpoint.js';
+import {
+  isRetryableHttpStatus,
+  mapOpenDotaFetchError,
+  isOpenDotaFetchError,
+} from './lib/matchReview/openDotaErrors.js';
 import {
   wantsReviewStream,
   sendReviewSse,
@@ -125,10 +133,6 @@ const cache = {
   publicMatchesHighMmr: { data: null, timestamp: 0 },
   reviewSuggestions: { data: {} },
 };
-
-function isRetryableHttpStatus(status) {
-  return status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599);
-}
 
 function redactFetchUrl(url) {
   try {
@@ -2160,90 +2164,23 @@ const submitParseRequest = createParseRequestSubmitter({
 });
 
 /**
- * Resolve the parse status for a match. When the match is unparsed, request an
- * OpenDota replay parse (deduped/rate-limited per match, budgeted globally and
- * per client; failures non-fatal).
- * @param {number} matchId
- * @param {object} matchData
- * @param {string} lang
- * @param {string} clientIp client identity for the per-client budget
- * @param {AbortSignal} [signal] aborts the upstream submission when the client disconnects
- * @returns {Promise<{ status: string, jobId: number | null, retryAfterSec: number | null, message: string }>}
+ * Resolve the parse status for a match — READ-ONLY. Never submits a parse:
+ * automatic submission on facts load let autoscaled instances collectively
+ * exhaust the OpenDota parse quota (per-instance budgets don't aggregate).
+ * Unparsed matches report 'unparsed' and the user can request a parse via
+ * POST /api/review/:matchId/parse-request (the only submission path).
  */
-async function resolveReviewParseStatus(matchId, matchData, lang, clientIp, signal) {
-  if (isMatchParsed(matchData)) {
-    return parseStatusPayload('parsed', { lang });
-  }
-  return submitParseRequest(matchId, clientIp, { signal, lang });
-}
+const resolveReviewParseStatus = createReadOnlyParseStatusResolver({
+  tracker: parseRequestTracker,
+});
 
-function mapOpenDotaFetchError(error, isZh) {
-  const upstreamStatus = typeof error?.status === 'number'
-    ? error.status
-    : (() => {
-        const m = /HTTP (\d{3})/.exec(error?.message || '');
-        return m ? Number(m[1]) : undefined;
-      })();
-  const isUpstream = error?.upstream === 'opendota'
-    || upstreamStatus != null
-    || /opendota|fetch failed|timeout|network/i.test(error?.message || '');
-  const retryable = error?.retryable === true
-    || (upstreamStatus != null && isRetryableHttpStatus(upstreamStatus))
-    || (upstreamStatus == null && isUpstream);
-
-  if (upstreamStatus === 404) {
-    return {
-      status: 404,
-      body: {
-        error: isZh ? '找不到这场比赛' : 'Match not found',
-        upstream: 'opendota',
-        upstreamStatus: 404,
-        retryable: false,
-      },
-    };
-  }
-
-  if (retryable) {
-    return {
-      status: 503,
-      body: {
-        error: isZh
-          ? 'OpenDota 暂时不可用，请稍后重试'
-          : 'OpenDota is temporarily unavailable. Please retry in a moment.',
-        upstream: 'opendota',
-        upstreamStatus,
-        retryable: true,
-      },
-    };
-  }
-
-  if (isUpstream) {
-    return {
-      status: 502,
-      body: {
-        error: isZh ? '拉取比赛失败' : 'Failed to load match',
-        upstream: 'opendota',
-        upstreamStatus,
-        retryable: false,
-      },
-    };
-  }
-
-  return {
-    status: 500,
-    body: {
-      error: error?.message || (isZh ? '拉取比赛失败' : 'Failed to load match'),
-      retryable: false,
-    },
-  };
-}
-
-function isOpenDotaFetchError(error) {
-  if (!error) return false;
-  if (error.upstream === 'opendota') return true;
-  if (typeof error.status === 'number') return true;
-  return /HTTP \d{3}/.test(error.message || '');
-}
+// Explicit parse-request endpoint — the ONLY path that calls submitParseRequest.
+const handleMatchReviewParseRequest = createReviewParseRequestHandler({
+  submitParseRequest,
+  getMatchDetail,
+  resolveClientIp,
+  log: (msg) => console.log(`[review:parse-request] ${msg}`),
+});
 
 function respondReviewError(res, wantsStream, errorMsg, status = 400, extra = {}) {
   const payload = { error: errorMsg, ...extra };
@@ -2285,6 +2222,11 @@ app.get('/api/review/suggestions', async (req, res) => {
 
 app.get('/api/review/:matchId', handleMatchReviewFacts);
 app.post('/api/review/:matchId', handleMatchReview);
+// Explicit OpenDota parse submission — the ONLY path that calls submitParseRequest
+// (facts load and review stream report parse status read-only). GET gets a JSON
+// 405 so it never falls through to the SPA index.html fallback.
+app.post('/api/review/:matchId/parse-request', handleMatchReviewParseRequest);
+app.get('/api/review/:matchId/parse-request', rejectParseRequestGet);
 
 /** GET：只拉 OpenDota MatchFact，不调用 DeepSeek */
 async function handleMatchReviewFacts(req, res) {
@@ -2322,7 +2264,7 @@ async function handleMatchReviewFacts(req, res) {
       HERO_NAMES_CN
     );
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
-    const parse = await resolveReviewParseStatus(matchId, matchData, lang, resolveClientIp(req));
+    const parse = resolveReviewParseStatus(matchId, matchData, lang);
     return res.json({
       matchFact,
       grounded: Boolean(matchFact.grounded),
@@ -2415,13 +2357,7 @@ async function handleMatchReview(req, res) {
     );
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const isGrounded = Boolean(matchFact.grounded);
-    const parse = await resolveReviewParseStatus(
-      matchId,
-      matchData,
-      lang,
-      resolveClientIp(req),
-      abortController.signal
-    );
+    const parse = resolveReviewParseStatus(matchId, matchData, lang);
 
     if (!apiKey || !openai) {
       responder.begin();

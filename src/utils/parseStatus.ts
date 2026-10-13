@@ -5,6 +5,7 @@ const REVIEW_PARSE_STATUSES: ReadonlySet<string> = new Set([
   'requested',
   'pending',
   'parsed',
+  'unparsed',
   'failed',
   'throttled',
 ]);

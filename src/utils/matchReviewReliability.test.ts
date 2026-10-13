@@ -208,6 +208,16 @@ describe('parse status payload', () => {
     expect(failed.message).toContain('失败');
   });
 
+  it('reports unparsed without retry guidance — the user must request a parse explicitly', () => {
+    const zh = parseStatusPayload('unparsed', { lang: 'zh' });
+    expect(zh).toMatchObject({ status: 'unparsed', jobId: null, retryAfterSec: null });
+    expect(zh.message).toMatch(/解析/);
+
+    const en = parseStatusPayload('unparsed', { lang: 'en' });
+    expect(en.retryAfterSec).toBeNull();
+    expect(en.message).toMatch(/request a parse/i);
+  });
+
   it('dedupes parse requests per match within the cooldown window', () => {
     let now = 1_000_000;
     const tracker = createParseRequestTracker({ now: () => now });

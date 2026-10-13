@@ -71,9 +71,14 @@ export interface FieldReason {
   message: string;
 }
 
-/** OpenDota replay parse status returned by /api/review (GET facts + POST stream). */
+/**
+ * OpenDota replay parse status returned by /api/review (GET facts + POST
+ * stream) and POST /api/review/:matchId/parse-request. 'unparsed' means the
+ * server never auto-submits a parse (facts load is read-only) — the user can
+ * request one via requestMatchParse.
+ */
 export interface ReviewParseStatus {
-  status: 'requested' | 'pending' | 'parsed' | 'failed' | 'throttled';
+  status: 'requested' | 'pending' | 'parsed' | 'unparsed' | 'failed' | 'throttled';
   jobId: number | null;
   retryAfterSec: number | null;
   message: string;

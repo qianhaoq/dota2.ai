@@ -6,7 +6,7 @@ import {
 } from './parseStatus';
 
 describe('parseReviewParseStatus', () => {
-  it.each(['requested', 'pending', 'parsed', 'failed', 'throttled'] as const)(
+  it.each(['requested', 'pending', 'parsed', 'unparsed', 'failed', 'throttled'] as const)(
     'accepts status %s with full fields',
     (status) => {
       const parsed = parseReviewParseStatus({
@@ -54,7 +54,7 @@ describe('shouldShowParseStatusBanner', () => {
     ).toBe(false);
   });
 
-  it.each(['requested', 'pending', 'failed', 'throttled'] as const)('shows the banner for %s', (status) => {
+  it.each(['requested', 'pending', 'unparsed', 'failed', 'throttled'] as const)('shows the banner for %s', (status) => {
     expect(
       shouldShowParseStatusBanner({ status, jobId: null, retryAfterSec: null, message: '' }),
     ).toBe(true);
