@@ -567,7 +567,7 @@ export const fetchMatchReviewStream = (
       // content type). Dispatch the same callbacks once.
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
-        const data = await response.json().catch(() => ({}));
+        const data = await response.json();
         if (data.error) {
           callbacks?.onError(data.error);
           return;
