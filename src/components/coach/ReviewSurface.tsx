@@ -16,6 +16,7 @@ import {
   type ReviewFollowUpContext,
 } from '../../utils/reviewSurface';
 import { parseRetryAfterLabel, shouldShowParseStatusBanner } from '../../utils/parseStatus';
+import { shouldOfferParseRequest } from '../../utils/parseRequest';
 import { MarkdownBody } from './ResultCard';
 import { scrollOffsetWithinContainer } from '../../utils/coachScroll';
 import { CardSkeleton, InsightCard, SectionCard, StatusNotice } from './a2ui';
@@ -96,11 +97,16 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     stoppedEarly: lang === 'zh' ? '复盘已停止，以下为已加载内容。' : 'Review stopped — showing loaded content.',
     retryFacts: lang === 'zh' ? '重试' : 'Retry',
     retryingFacts: lang === 'zh' ? '重新拉取中…' : 'Retrying…',
+    requestParse: lang === 'zh' ? '请求解析' : 'Request parse',
+    requestingParse: lang === 'zh' ? '正在请求…' : 'Requesting…',
   }), [lang]);
 
   const parseStatus = message?.parseStatus ?? null;
   const showParseBanner = shouldShowParseStatusBanner(parseStatus);
   const parseRetryLabel = parseStatus ? parseRetryAfterLabel(lang, parseStatus.retryAfterSec) : null;
+  // The facts GET is read-only; for submittable statuses the retry submits a
+  // parse first (handled in onRetryFacts), so the button advertises that.
+  const offerParseRequest = shouldOfferParseRequest(parseStatus);
 
   // Empty lanes/timeline explanations (fieldReasons) — shown once, whether or
   // not the parse banner is up (e.g. parsed but genuinely no timeline data).
@@ -290,7 +296,9 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
                     {factsRetrying
                       ? <Loader2 size={12} className="animate-spin" />
                       : <RefreshCw size={12} />}
-                    {factsRetrying ? t.retryingFacts : t.retryFacts}
+                    {factsRetrying
+                      ? (offerParseRequest ? t.requestingParse : t.retryingFacts)
+                      : (offerParseRequest ? t.requestParse : t.retryFacts)}
                   </button>
                 )}
               </div>

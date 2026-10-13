@@ -223,6 +223,41 @@ describe('CoachView practice materialization / leave-review cancel / meta side (
   });
 });
 
+describe('CoachView review facts retry submits parse first (parse-request wiring)', () => {
+  const coachViewContent = readFileSync(join(__dirname, '../components/CoachView.tsx'), 'utf-8');
+  const retryBody = coachViewContent.match(/const handleReviewFactsRetry = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
+  const surfaceContent = readFileSync(join(__dirname, '../components/coach/ReviewSurface.tsx'), 'utf-8');
+
+  it('gates the parse submission on shouldOfferParseRequest of the message parse status', () => {
+    expect(retryBody).toContain('shouldOfferParseRequest(requestTarget.parseStatus)');
+  });
+
+  it('submits via requestMatchParse with the retry-token signal BEFORE the read-only facts GET', () => {
+    expect(retryBody.indexOf('await requestMatchParse(matchId, lang, token.controller.signal)'))
+      .toBeGreaterThanOrEqual(0);
+    expect(retryBody.indexOf('await requestMatchParse'))
+      .toBeLessThan(retryBody.indexOf('await fetchMatchFacts'));
+  });
+
+  it('applies the returned parse status with a currency check before refreshing facts', () => {
+    expect(retryBody).toMatch(
+      /await requestMatchParse[\s\S]*isFactsRetryCurrent[\s\S]*parseStatus:\s*requested[\s\S]*await fetchMatchFacts/,
+    );
+  });
+
+  it('drops aborted parse submissions instead of refreshing', () => {
+    expect(retryBody).toMatch(/isParseAbortError\(err\)\s*\|\|\s*token\.controller\.signal\.aborted\)\s*return/);
+  });
+
+  it('labels the review-surface retry button Request parse only for submittable statuses', () => {
+    expect(surfaceContent).toContain('shouldOfferParseRequest');
+    expect(surfaceContent).toMatch(/requestParse:\s*lang === 'zh' \? '请求解析' : 'Request parse'/);
+    expect(surfaceContent).toMatch(/offerParseRequest \? t\.requestParse : t\.retryFacts/);
+    // Non-submittable states keep the plain Retry label.
+    expect(surfaceContent).toMatch(/retryFacts:\s*lang === 'zh' \? '重试' : 'Retry'/);
+  });
+});
+
 describe('HomeModules ally enablement uses resolved lineup (Codex P1)', () => {
   const content = readFileSync(join(__dirname, '../components/coach/HomeModules.tsx'), 'utf-8');
   const intentChipsContent = readFileSync(join(__dirname, '../components/coach/IntentChips.tsx'), 'utf-8');

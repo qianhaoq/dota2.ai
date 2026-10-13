@@ -8,7 +8,8 @@ import {
   fetchPlaybookStream,
   fetchMatchReviewStream,
 } from '../services/geminiService';
-import { fetchHeroes, fetchMatchFacts } from '../services/dotaApiService';
+import { fetchHeroes, fetchMatchFacts, requestMatchParse } from '../services/dotaApiService';
+import { isParseAbortError, shouldOfferParseRequest } from '../utils/parseRequest';
 import { buildPracticeUserContext, heroDisplayName, resolveAnalyzeUserMessage, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
@@ -463,15 +464,20 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, applyLessonSwitch, abortFactsRetry]);
 
   /**
-   * Re-fetch facts for a review whose replay is still parsing. Read-only GET —
-   * no draft/side change, so no contextRevision bump or cancelStream (coach invariants).
-   * When the refreshed fact invalidates the insight cards (newly parsed or changed),
-   * the stale cards/notice are dropped and the review is re-run via handleReview,
-   * which performs the invariant-required cancelStream + lesson switch itself.
+   * Re-fetch facts for a review whose replay is still parsing. For statuses
+   * where a parse can be submitted (unparsed / failed / cooldown elapsed) the
+   * retry must submit it first via requestMatchParse — the facts GET is
+   * read-only and never submits — then refresh facts. Read-only otherwise:
+   * no draft/side change, so no contextRevision bump or cancelStream (coach
+   * invariants). When the refreshed fact invalidates the insight cards (newly
+   * parsed or changed), the stale cards/notice are dropped and the review is
+   * re-run via handleReview, which performs the invariant-required
+   * cancelStream + lesson switch itself.
    *
-   * The GET is bound to a retry token: starting another review (or leaving the
-   * review workspace / unmounting) aborts it, and a late response that fails the
-   * currency check is dropped instead of clearing a newer review's message.
+   * Both requests are bound to a retry token: starting another review (or
+   * leaving the review workspace / unmounting) aborts them, and a late
+   * response that fails the currency check is dropped instead of clearing a
+   * newer review's message.
    */
   const handleReviewFactsRetry = useCallback(async (matchId: number, messageId: string) => {
     // Supersede any older pending retry so its late response can't clobber this one.
@@ -485,6 +491,19 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     const token: ReviewFactsRetryToken = { controller: new AbortController() };
     factsRetryRef.current = token;
     try {
+      // Submit the parse job before refreshing when the banner offers it —
+      // otherwise the read-only GET just re-reports the same unparsed state.
+      if (shouldOfferParseRequest(requestTarget.parseStatus)) {
+        try {
+          const requested = await requestMatchParse(matchId, lang, token.controller.signal);
+          if (!isFactsRetryCurrent(factsRetryRef.current, token)) return;
+          setMessages((prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, parseStatus: requested } : msg)));
+        } catch (err) {
+          if (isParseAbortError(err) || token.controller.signal.aborted) return;
+          // Parse submission failed: fall through to the read-only refresh so
+          // the banner re-renders with the freshest status instead of going stale.
+        }
+      }
       const { matchFact, parse } = await fetchMatchFacts(matchId, lang, token.controller.signal, heroId ?? undefined);
       if (!isFactsRetryCurrent(factsRetryRef.current, token)) return;
       // Compute the re-review decision from synchronously available state: a value
