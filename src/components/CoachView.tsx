@@ -8,12 +8,14 @@ import {
   fetchPlaybookStream,
   fetchMatchReviewStream,
 } from '../services/geminiService';
-import { fetchHeroes } from '../services/dotaApiService';
+import { fetchHeroes, fetchMatchFacts, requestMatchParse } from '../services/dotaApiService';
+import { isParseAbortError, shouldOfferParseRequest } from '../utils/parseRequest';
 import { buildPracticeUserContext, heroDisplayName, resolveAnalyzeUserMessage, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
 import { pairCoachSessions } from '../utils/coachBlocks';
 import { findPrimaryReviewSession, canSubmitReviewFollowUpForContext, findInflightCoachSession, primaryReviewFollowUpContext, type ReviewFollowUpContext } from '../utils/reviewSurface';
 import { resolveCoachComposerState, shouldSubmitReviewFollowUp } from '../utils/coachComposer';
+import { reviewFactsRefreshResult, reviewRequestHeroId, isFactsRetryCurrent, type ReviewFactsRetryToken } from '../utils/reviewFactsRefresh';
 import {
   clearStreamingCoachMessages,
   coachCancelledMessage,
@@ -81,6 +83,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [userInput, setUserInput] = useState('');
   const streamControllerRef = useRef<AbortController | null>(null);
+  /** In-flight facts retry; aborted when the active review changes or on unmount. */
+  const factsRetryRef = useRef<ReviewFactsRetryToken | null>(null);
+  /** Synchronous mirror of messages for decisions that can't wait on a render. */
+  const messagesRef = useRef<CoachMessage[]>([]);
   const inflightTaskRef = useRef(0);
   const prevInflightSessionIdRef = useRef<string | null>(null);
   const activeReviewRef = useRef<{ matchId: number; heroId?: number } | null>(null);
@@ -119,6 +125,20 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     setIsLoading(false);
     setMessages((prev) => clearStreamingCoachMessages(prev, coachCancelledMessage(lang)));
   }, [lang]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const abortFactsRetry = useCallback(() => {
+    if (factsRetryRef.current) {
+      factsRetryRef.current.controller.abort();
+      factsRetryRef.current = null;
+    }
+  }, []);
+
+  // Drop the pending facts retry on unmount so a late response can't set state.
+  useEffect(() => abortFactsRetry, [abortFactsRetry]);
 
   const handleHeroSelect = useCallback((hero: Hero) => {
     const isPicked = [...draft.radiant, ...draft.dire].find(h => h.id === hero.id);
@@ -305,6 +325,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       // callbacks started in review reject every update against the new revision
       // and finishStream without clearing isStreaming, wedging the composer busy.
       cancelStream();
+      // The review workspace is gone: a pending facts retry must not land and
+      // re-enter review via handleReview after the user navigated away.
+      abortFactsRetry();
       // Sync bump so handleLessonAction streams started in this turn stamp the new revision.
       const nextRevision = contextRevisionRef.current + 1;
       contextRevisionRef.current = nextRevision;
@@ -317,7 +340,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     }
     setLesson(switched.lesson);
     return switched;
-  }, [lesson, draft, cancelStream]);
+  }, [lesson, draft, cancelStream, abortFactsRetry]);
 
   const handleLessonAction = useCallback((lessonMode: LessonMode) => {
     const switched = applyLessonSwitch(lessonMode);
@@ -381,6 +404,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       setUserInput('');
     }
     cancelStream();
+    // A new/restarted review supersedes a pending facts retry for the old one —
+    // its late response must not clear the new message or re-run the old match.
+    abortFactsRetry();
     setIsLoading(true);
     const streamGen = claimCoachInflightGeneration(inflightTaskRef);
     applyLessonSwitch('review');
@@ -404,6 +430,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         onData: (matchFact) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { matchFact });
+        },
+        onParseStatus: (parseStatus) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          updateCoachMessage(msgId, { parseStatus });
         },
         onReviewCards: (reviewCards) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
@@ -431,7 +461,70 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         },
       }
     );
-  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, applyLessonSwitch]);
+  }, [allHeroes, practiceHero, lang, addCoachMessage, updateCoachMessage, cancelStream, finishStream, applyLessonSwitch, abortFactsRetry]);
+
+  /**
+   * Re-fetch facts for a review whose replay is still parsing. For statuses
+   * where a parse can be submitted (unparsed / failed / cooldown elapsed) the
+   * retry must submit it first via requestMatchParse — the facts GET is
+   * read-only and never submits — then refresh facts. Read-only otherwise:
+   * no draft/side change, so no contextRevision bump or cancelStream (coach
+   * invariants). When the refreshed fact invalidates the insight cards (newly
+   * parsed or changed), the stale cards/notice are dropped and the review is
+   * re-run via handleReview, which performs the invariant-required
+   * cancelStream + lesson switch itself.
+   *
+   * Both requests are bound to a retry token: starting another review (or
+   * leaving the review workspace / unmounting) aborts them, and a late
+   * response that fails the currency check is dropped instead of clearing a
+   * newer review's message.
+   */
+  const handleReviewFactsRetry = useCallback(async (matchId: number, messageId: string) => {
+    // Supersede any older pending retry so its late response can't clobber this one.
+    abortFactsRetry();
+    // Re-send the request-time hero stamped on the message: without it the GET
+    // returns a focus-less fact (focusHeroId: null, no focusLens) that always
+    // differs from the focused fact the cards were built from.
+    const requestTarget = messagesRef.current.find((msg) => msg.id === messageId);
+    if (!requestTarget) return;
+    const heroId = reviewRequestHeroId(requestTarget);
+    const token: ReviewFactsRetryToken = { controller: new AbortController() };
+    factsRetryRef.current = token;
+    try {
+      // Submit the parse job before refreshing when the banner offers it —
+      // otherwise the read-only GET just re-reports the same unparsed state.
+      if (shouldOfferParseRequest(requestTarget.parseStatus)) {
+        try {
+          const requested = await requestMatchParse(matchId, lang, token.controller.signal);
+          if (!isFactsRetryCurrent(factsRetryRef.current, token)) return;
+          setMessages((prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, parseStatus: requested } : msg)));
+        } catch (err) {
+          if (isParseAbortError(err) || token.controller.signal.aborted) return;
+          // Parse submission failed: fall through to the read-only refresh so
+          // the banner re-renders with the freshest status instead of going stale.
+        }
+      }
+      const { matchFact, parse } = await fetchMatchFacts(matchId, lang, token.controller.signal, heroId ?? undefined);
+      if (!isFactsRetryCurrent(factsRetryRef.current, token)) return;
+      // Compute the re-review decision from synchronously available state: a value
+      // assigned inside a setMessages updater can't be read right after — React
+      // may defer the updater.
+      const target = messagesRef.current.find((msg) => msg.id === messageId);
+      if (!target) return;
+      const refresh = reviewFactsRefreshResult(target, { matchFact, parseStatus: parse });
+      setMessages((prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, ...refresh.patch } : msg)));
+      if (refresh.staleCleared) {
+        // The re-review supersedes this retry; release the token first so
+        // handleReview's abort of pending retries stays a no-op for us.
+        if (factsRetryRef.current === token) factsRetryRef.current = null;
+        handleReview(matchId, refresh.heroId ?? undefined);
+      }
+    } catch {
+      // Aborted or failed: keep previous facts/status; the banner stays so the user can retry again.
+    } finally {
+      if (factsRetryRef.current === token) factsRetryRef.current = null;
+    }
+  }, [lang, handleReview, abortFactsRetry]);
 
   const sessions = useMemo(() => pairCoachSessions(messages, lang), [messages, lang]);
   const activeReviewSession = useMemo(() => findPrimaryReviewSession(sessions), [sessions]);
@@ -591,6 +684,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
 
   const resetAll = useCallback(() => {
     cancelStream();
+    abortFactsRetry();
     activeReviewRef.current = null;
     pendingFollowUpContextRef.current = null;
     setDraft(EMPTY_DRAFT);
@@ -602,7 +696,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     setUserInput('');
     setDismissedSessionIds([]);
     setLastDismissedSessionId(null);
-  }, [cancelStream]);
+  }, [cancelStream, abortFactsRetry]);
 
   const dismissSession = useCallback((sessionId: string) => {
     setDismissedSessionIds((prev) => (prev.includes(sessionId) ? prev : [...prev, sessionId]));
@@ -671,6 +765,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
             onDismiss={dismissSession}
             onReviewFollowUp={handleReviewFollowUp}
             onComposeFollowUp={handleComposeFollowUp}
+            onRetryFacts={handleReviewFactsRetry}
             followUpAllowed={surfaceFollowUpAllowed}
             scrollContainerRef={scrollContainerRef}
           />

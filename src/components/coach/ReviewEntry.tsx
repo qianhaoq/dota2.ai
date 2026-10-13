@@ -3,8 +3,11 @@ import { Language, Hero } from '../../types';
 import type { MatchFact } from '../../types/matchReview';
 import { Film, Search, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { parseMatchId } from '../../utils/parseMatchId';
+import { parseRetryAfterLabel, shouldShowParseStatusBanner } from '../../utils/parseStatus';
+import { createParseRequestController, shouldOfferParseRequest } from '../../utils/parseRequest';
 import { isHeroInMatch, rosterFromMatchFact } from '../../utils/reviewRoster';
-import { fetchMatchFacts, MatchFactsError } from '../../services/dotaApiService';
+import { fetchMatchFacts, MatchFactsError, requestMatchParse } from '../../services/dotaApiService';
+import type { ReviewParseStatus } from '../../types/matchReview';
 import ReviewSuggestions from './ReviewSuggestions';
 
 interface ReviewEntryProps {
@@ -31,16 +34,28 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const [factsError, setFactsError] = useState<string | null>(null);
   const [upstreamUnavailable, setUpstreamUnavailable] = useState(false);
   const [matchFact, setMatchFact] = useState<MatchFact | null>(null);
+  const [parseStatus, setParseStatus] = useState<ReviewParseStatus | null>(null);
+  const [parseRequesting, setParseRequesting] = useState(false);
+  const [parseRequestError, setParseRequestError] = useState<string | null>(null);
   const factsRequestIdRef = useRef(0);
+  const parseRequestControllerRef = useRef<ReturnType<typeof createParseRequestController> | null>(null);
+  const getParseRequestController = () => (
+    parseRequestControllerRef.current ??= createParseRequestController(requestMatchParse)
+  );
 
   const invalidateFactsRequest = () => {
     factsRequestIdRef.current += 1;
     setFactsLoading(false);
+    // A pending parse request targets the old match — cancel it too.
+    parseRequestControllerRef.current?.abort();
+    setParseRequesting(false);
+    setParseRequestError(null);
   };
 
   useEffect(() => {
     return () => {
       factsRequestIdRef.current += 1;
+      parseRequestControllerRef.current?.abort();
     };
   }, []);
 
@@ -67,6 +82,11 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
       ? 'OpenDota 暂时不可用，请稍后重试'
       : 'OpenDota is temporarily unavailable. Please retry in a moment.',
     retry: lang === 'zh' ? '重试' : 'Retry',
+    requestParse: lang === 'zh' ? '请求解析' : 'Request parse',
+    requestingParse: lang === 'zh' ? '正在请求…' : 'Requesting…',
+    parseRequestFailed: lang === 'zh'
+      ? '解析请求失败，请稍后重试'
+      : 'Failed to request a parse. Please try again.',
   }), [lang]);
 
   const parsedId = parseMatchId(matchInput);
@@ -84,24 +104,44 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     setHeroId('');
   }, [factsReady, matchFact, practiceHero?.id, heroId]);
 
-  const handleFetchFacts = async (e?: React.FormEvent, overrideMatchId?: number) => {
+  const handleFetchFacts = async (
+    e?: React.FormEvent,
+    overrideMatchId?: number,
+    opts?: { preserve?: boolean },
+  ) => {
     e?.preventDefault();
     const targetId = overrideMatchId ?? parsedId;
     if (!targetId || factsLoading) return;
+    // Non-destructive refresh (parse-status retry on an already-loaded match):
+    // keep the current fact/hero until the new payload arrives so a transient
+    // failure doesn't discard a usable match.
+    const preserve = Boolean(
+      opts?.preserve && matchFact && matchFact.summary.matchId === targetId,
+    );
     const requestId = factsRequestIdRef.current + 1;
     factsRequestIdRef.current = requestId;
     setFactsLoading(true);
     setFactsError(null);
     setUpstreamUnavailable(false);
-    setMatchFact(null);
-    setHeroId('');
+    if (!preserve) {
+      setMatchFact(null);
+      setParseStatus(null);
+      setHeroId('');
+      // The banner's target match is going away; cancel a pending parse request.
+      parseRequestControllerRef.current?.abort();
+      setParseRequesting(false);
+      setParseRequestError(null);
+    }
     if (overrideMatchId) {
       setMatchInput(String(overrideMatchId));
     }
     try {
-      const fact = await fetchMatchFacts(targetId, lang);
+      const { matchFact: fact, parse } = await fetchMatchFacts(targetId, lang);
       if (factsRequestIdRef.current !== requestId) return;
       setMatchFact(fact);
+      setParseStatus(parse);
+      // heroId is kept when still in the new roster; the roster effect below
+      // resets it (to the practice hero or '') when it isn't.
     } catch (err) {
       if (factsRequestIdRef.current !== requestId) return;
       const isUpstream = err instanceof MatchFactsError
@@ -134,9 +174,27 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const handleChangeMatch = () => {
     invalidateFactsRequest();
     setMatchFact(null);
+    setParseStatus(null);
     setHeroId('');
     setFactsError(null);
     setUpstreamUnavailable(false);
+  };
+
+  // Explicit user action: the only path that submits an OpenDota parse job.
+  // Bound to the loaded match, never auto-fired.
+  const handleRequestParse = async () => {
+    const matchId = matchFact?.summary.matchId;
+    if (!matchId || parseRequesting) return;
+    setParseRequesting(true);
+    setParseRequestError(null);
+    const result = await getParseRequestController().request(matchId, lang, t.parseRequestFailed);
+    setParseRequesting(false);
+    if (!result || result.kind === 'aborted') return;
+    if (result.kind === 'error') {
+      setParseRequestError(result.message);
+      return;
+    }
+    setParseStatus(result.status);
   };
 
   const handleMatchInput = (value: string) => {
@@ -145,6 +203,7 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     if (factsLoading || (matchFact && nextId !== matchFact.summary.matchId)) {
       invalidateFactsRequest();
       setMatchFact(null);
+      setParseStatus(null);
       setHeroId('');
       setFactsError(null);
       setUpstreamUnavailable(false);
@@ -243,6 +302,53 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
                   {t.changeMatch}
                 </button>
               </div>
+
+              {parseStatus && shouldShowParseStatusBanner(parseStatus) && (
+                <div
+                  data-testid="review-entry-parse-status"
+                  className="rounded-lg border border-yellow-500/25 bg-yellow-500/5 px-3 py-2.5 space-y-1.5"
+                >
+                  {parseStatus.message && (
+                    <p className="text-xs text-k3-text-secondary">{parseStatus.message}</p>
+                  )}
+                  {parseRetryAfterLabel(lang, parseStatus.retryAfterSec) && (
+                    <p className="text-[11px] text-k3-text-tertiary">
+                      {parseRetryAfterLabel(lang, parseStatus.retryAfterSec)}
+                    </p>
+                  )}
+                  {factsError && (
+                    <p className="text-xs text-yellow-400">{factsError}</p>
+                  )}
+                  {parseRequestError && (
+                    <p className="text-xs text-yellow-400">{parseRequestError}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleFetchFacts(undefined, undefined, { preserve: true })}
+                      disabled={factsLoading}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-xs font-medium text-k3-text-primary hover:bg-k3-elevated disabled:opacity-40 min-h-[36px] touch-manipulation"
+                    >
+                      {factsLoading
+                        ? <Loader2 size={12} className="animate-spin" />
+                        : <RefreshCw size={12} />}
+                      {factsLoading ? t.fetching : t.retry}
+                    </button>
+                    {shouldOfferParseRequest(parseStatus) && (
+                      <button
+                        type="button"
+                        data-testid="review-entry-request-parse"
+                        onClick={() => void handleRequestParse()}
+                        disabled={parseRequesting}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-xs font-medium text-k3-text-primary hover:bg-k3-elevated disabled:opacity-40 min-h-[36px] touch-manipulation"
+                      >
+                        {parseRequesting && <Loader2 size={12} className="animate-spin" />}
+                        {parseRequesting ? t.requestingParse : t.requestParse}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-[11px] text-k3-text-tertiary block mb-1">{t.hero}</label>

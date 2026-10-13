@@ -59,10 +59,44 @@ describe('server review fallback SSE patterns', () => {
   it('sends non-destructive error notice after fallback reviewCards before [DONE]', () => {
     const content = readFileSync(serverPath, 'utf-8');
     expect(content).toContain('reviewAiUnavailableNotice');
+    // Direct SSE writes (sendReviewSse) or the dual SSE/JSON responder both apply.
+    const emitCall = /(?:sendReviewSse\(res,|responder\.send\()/;
     expect(content).toMatch(
-      /sendReviewSse\(res,\s*\{\s*reviewCards[\s\S]*sendReviewSse\(res,\s*\{\s*reviewNotice:\s*reviewAiUnavailableNotice/,
+      new RegExp(
+        `${emitCall.source}\\s*\\{\\s*reviewCards[\\s\\S]*${emitCall.source}\\s*\\{\\s*reviewNotice:\\s*reviewAiUnavailableNotice`,
+      ),
     );
     expect(content).toMatch(/if \(usedFallback\)[\s\S]*reviewAiUnavailableNotice\(lang,\s*'invalid'\)/);
+  });
+});
+
+describe('parse submission gating (Codex P1: facts load never submits)', () => {
+  const serverPath = join(__dirname, '../../server.js');
+  const content = readFileSync(serverPath, 'utf-8');
+
+  it('resolves parse status read-only via the lib resolver (no submission)', () => {
+    expect(content).toContain('createReadOnlyParseStatusResolver({');
+    expect(content).toMatch(/const resolveReviewParseStatus = createReadOnlyParseStatusResolver\(/);
+  });
+
+  it('never invokes submitParseRequest directly in server.js (endpoint wiring only)', () => {
+    // The only mention with a call shape is the factory import; server.js must
+    // merely pass the submitter into createReviewParseRequestHandler.
+    expect(content).not.toMatch(/\bsubmitParseRequest\s*\(/);
+    expect(content).toMatch(/createReviewParseRequestHandler\(\{[\s\S]*submitParseRequest,/);
+  });
+
+  it('registers the explicit parse-request endpoint and rejects its GET with 405', () => {
+    expect(content).toContain("app.post('/api/review/:matchId/parse-request'");
+    expect(content).toContain("app.get('/api/review/:matchId/parse-request'");
+  });
+
+  it('facts/review call sites pass no client IP or signal to the read-only resolver', () => {
+    const calls = content.match(/resolveReviewParseStatus\([^)]*\)/g) ?? [];
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    for (const call of calls) {
+      expect(call).not.toMatch(/resolveClientIp|signal/i);
+    }
   });
 });
 
@@ -175,7 +209,10 @@ describe('CoachView practice materialization / leave-review cancel / meta side (
   it('applyLessonSwitch cancels the active stream BEFORE the leave-review revision bump', () => {
     const body = content.match(/const applyLessonSwitch = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
     expect(body).toMatch(/leavingReview\) \{\s*[\s\S]*?cancelStream\(\);[\s\S]*?contextRevisionRef\.current = nextRevision/);
-    expect(content).toMatch(/applyLessonSwitch = useCallback\([\s\S]*\}, \[lesson, draft, cancelStream\]\)/);
+    // Leaving review also aborts a pending facts retry so its late response
+    // can't re-enter review after the user navigated away.
+    expect(body).toMatch(/leavingReview\) \{\s*[\s\S]*?abortFactsRetry\(\);/);
+    expect(content).toMatch(/applyLessonSwitch = useCallback\([\s\S]*\}, \[lesson, draft, cancelStream, abortFactsRetry\]\)/);
   });
 
   it('meta coach message omits request-time allySide so accept resolves to current mySide', () => {
@@ -183,6 +220,41 @@ describe('CoachView practice materialization / leave-review cancel / meta side (
     expect(body).toContain("action: 'meta'");
     expect(body).not.toMatch(/allySide:\s*mySide/);
     expect(content).toMatch(/const side = allySide \?\? mySide/);
+  });
+});
+
+describe('CoachView review facts retry submits parse first (parse-request wiring)', () => {
+  const coachViewContent = readFileSync(join(__dirname, '../components/CoachView.tsx'), 'utf-8');
+  const retryBody = coachViewContent.match(/const handleReviewFactsRetry = useCallback\([\s\S]*?\n  \}, \[/)?.[0] ?? '';
+  const surfaceContent = readFileSync(join(__dirname, '../components/coach/ReviewSurface.tsx'), 'utf-8');
+
+  it('gates the parse submission on shouldOfferParseRequest of the message parse status', () => {
+    expect(retryBody).toContain('shouldOfferParseRequest(requestTarget.parseStatus)');
+  });
+
+  it('submits via requestMatchParse with the retry-token signal BEFORE the read-only facts GET', () => {
+    expect(retryBody.indexOf('await requestMatchParse(matchId, lang, token.controller.signal)'))
+      .toBeGreaterThanOrEqual(0);
+    expect(retryBody.indexOf('await requestMatchParse'))
+      .toBeLessThan(retryBody.indexOf('await fetchMatchFacts'));
+  });
+
+  it('applies the returned parse status with a currency check before refreshing facts', () => {
+    expect(retryBody).toMatch(
+      /await requestMatchParse[\s\S]*isFactsRetryCurrent[\s\S]*parseStatus:\s*requested[\s\S]*await fetchMatchFacts/,
+    );
+  });
+
+  it('drops aborted parse submissions instead of refreshing', () => {
+    expect(retryBody).toMatch(/isParseAbortError\(err\)\s*\|\|\s*token\.controller\.signal\.aborted\)\s*return/);
+  });
+
+  it('labels the review-surface retry button Request parse only for submittable statuses', () => {
+    expect(surfaceContent).toContain('shouldOfferParseRequest');
+    expect(surfaceContent).toMatch(/requestParse:\s*lang === 'zh' \? '请求解析' : 'Request parse'/);
+    expect(surfaceContent).toMatch(/offerParseRequest \? t\.requestParse : t\.retryFacts/);
+    // Non-submittable states keep the plain Retry label.
+    expect(surfaceContent).toMatch(/retryFacts:\s*lang === 'zh' \? '重试' : 'Retry'/);
   });
 });
 

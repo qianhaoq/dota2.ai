@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Film, Loader2, X, Check, AlertTriangle } from 'lucide-react';
+import { Film, Loader2, X, Check, AlertTriangle, RefreshCw } from 'lucide-react';
 import type { Language } from '../../types';
 import type { A2UIBlock } from '../../types';
 import type { CoachSession } from './coachMessage';
@@ -15,6 +15,8 @@ import {
   isReviewAiFollowUpAvailable,
   type ReviewFollowUpContext,
 } from '../../utils/reviewSurface';
+import { parseRetryAfterLabel, shouldShowParseStatusBanner } from '../../utils/parseStatus';
+import { shouldOfferParseRequest } from '../../utils/parseRequest';
 import { MarkdownBody } from './ResultCard';
 import { scrollOffsetWithinContainer } from '../../utils/coachScroll';
 import { CardSkeleton, InsightCard, SectionCard, StatusNotice } from './a2ui';
@@ -26,6 +28,8 @@ interface ReviewSurfaceProps {
   onDismiss: (sessionId: string) => void;
   onReviewFollowUp?: (question: string, context: ReviewFollowUpContext) => void;
   onComposeFollowUp?: (text: string, context: ReviewFollowUpContext) => void;
+  /** Re-fetch match facts (GET /api/review/:id) when the replay is still parsing. */
+  onRetryFacts?: (matchId: number, messageId: string) => void | Promise<void>;
   followUpAllowed?: boolean;
   scrollContainerRef?: React.RefObject<HTMLElement | null>;
 }
@@ -48,6 +52,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
   onDismiss,
   onReviewFollowUp,
   onComposeFollowUp,
+  onRetryFacts,
   followUpAllowed = true,
   scrollContainerRef,
 }) => {
@@ -90,7 +95,41 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     loadingMistake: lang === 'zh' ? '提炼关键失误…' : 'Distilling mistake…',
     loadingDrill: lang === 'zh' ? '生成练习方案…' : 'Building drill…',
     stoppedEarly: lang === 'zh' ? '复盘已停止，以下为已加载内容。' : 'Review stopped — showing loaded content.',
+    retryFacts: lang === 'zh' ? '重试' : 'Retry',
+    retryingFacts: lang === 'zh' ? '重新拉取中…' : 'Retrying…',
+    requestParse: lang === 'zh' ? '请求解析' : 'Request parse',
+    requestingParse: lang === 'zh' ? '正在请求…' : 'Requesting…',
   }), [lang]);
+
+  const parseStatus = message?.parseStatus ?? null;
+  const showParseBanner = shouldShowParseStatusBanner(parseStatus);
+  const parseRetryLabel = parseStatus ? parseRetryAfterLabel(lang, parseStatus.retryAfterSec) : null;
+  // The facts GET is read-only; for submittable statuses the retry submits a
+  // parse first (handled in onRetryFacts), so the button advertises that.
+  const offerParseRequest = shouldOfferParseRequest(parseStatus);
+
+  // Empty lanes/timeline explanations (fieldReasons) — shown once, whether or
+  // not the parse banner is up (e.g. parsed but genuinely no timeline data).
+  const fieldReasonMessages = useMemo(() => {
+    const fact = message?.matchFact;
+    if (!fact?.fieldReasons) return [];
+    const parseMessage = message?.parseStatus?.message;
+    const out: string[] = [];
+    const push = (msg?: string) => {
+      if (msg && msg !== parseMessage && !out.includes(msg)) out.push(msg);
+    };
+    if ((fact.lanes?.length ?? 0) === 0) push(fact.fieldReasons.lanes?.message);
+    if ((fact.timeline?.length ?? 0) === 0) push(fact.fieldReasons.timeline?.message);
+    return out;
+  }, [message?.matchFact, message?.parseStatus?.message]);
+
+  const [factsRetrying, setFactsRetrying] = useState(false);
+  const handleRetryFacts = () => {
+    const retryMatchId = cards?.match_summary?.matchId ?? message?.matchFact?.summary?.matchId;
+    if (!onRetryFacts || !message || retryMatchId == null || factsRetrying) return;
+    setFactsRetrying(true);
+    Promise.resolve(onRetryFacts(retryMatchId, message.id)).finally(() => setFactsRetrying(false));
+  };
 
   const insightBlocks = useMemo(() => {
     if (!session) return [];
@@ -234,6 +273,38 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
         )}
 
         <div className="p-3 sm:p-4 space-y-3">
+          {(showParseBanner || fieldReasonMessages.length > 0) && (
+            <StatusNotice
+              testId="review-parse-status"
+              tone={showParseBanner ? 'warning' : 'neutral'}
+            >
+              <div className="space-y-1.5">
+                {showParseBanner && parseStatus!.message && <p>{parseStatus!.message}</p>}
+                {showParseBanner && parseRetryLabel && (
+                  <p className="text-k3-text-tertiary">{parseRetryLabel}</p>
+                )}
+                {fieldReasonMessages.map((msg) => (
+                  <p key={msg} className="text-k3-text-tertiary">{msg}</p>
+                ))}
+                {showParseBanner && onRetryFacts && (
+                  <button
+                    type="button"
+                    onClick={handleRetryFacts}
+                    disabled={factsRetrying}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-xs font-medium text-k3-text-primary hover:bg-k3-elevated disabled:opacity-40 min-h-[36px] touch-manipulation"
+                  >
+                    {factsRetrying
+                      ? <Loader2 size={12} className="animate-spin" />
+                      : <RefreshCw size={12} />}
+                    {factsRetrying
+                      ? (offerParseRequest ? t.requestingParse : t.retryingFacts)
+                      : (offerParseRequest ? t.requestParse : t.retryFacts)}
+                  </button>
+                )}
+              </div>
+            </StatusNotice>
+          )}
+
           {noticeBlocks.map((block) => (
             <StatusNotice
               key={block.id}

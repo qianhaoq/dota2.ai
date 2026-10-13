@@ -1,5 +1,6 @@
 import { Hero, Attribute, Language } from '../types';
-import type { MatchFact } from '../types/matchReview';
+import type { MatchFact, ReviewParseStatus } from '../types/matchReview';
+import { parseReviewParseStatus } from '../utils/parseStatus';
 
 const OPENDOTA_API = 'https://api.opendota.com/api';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
@@ -114,16 +115,25 @@ export class MatchFactsError extends Error {
   }
 }
 
+export interface MatchFactsResult {
+  matchFact: MatchFact;
+  /** OpenDota replay parse status; null when the server did not include one. */
+  parse: ReviewParseStatus | null;
+}
+
 /** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
-export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): Promise<MatchFact> => {
-  const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}`, {
+export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', signal?: AbortSignal, heroId?: number): Promise<MatchFactsResult> => {
+  const heroParam = heroId != null ? `&heroId=${encodeURIComponent(heroId)}` : '';
+  const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}${heroParam}`, {
     method: 'GET',
     headers: { Accept: 'application/json' },
+    signal,
   });
   const data = await response.json().catch(
     () => ({} as {
       error?: string;
       matchFact?: MatchFact;
+      parse?: unknown;
       upstream?: string;
       upstreamStatus?: number;
       retryable?: boolean;
@@ -142,7 +152,44 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en'): P
   if (!data.matchFact) {
     throw new MatchFactsError(lang === 'zh' ? '比赛数据为空' : 'Match data is empty');
   }
-  return data.matchFact;
+  return { matchFact: data.matchFact, parse: parseReviewParseStatus(data.parse) };
+};
+
+/**
+ * Explicitly request an OpenDota replay parse for a match. The facts load
+ * (fetchMatchFacts) is read-only and never submits — this endpoint is the
+ * only submission path, so parse quota is only spent on user intent.
+ * Returns the same parse-status payload shape (requested / pending /
+ * parsed / throttled / failed), or throws with the server's error text.
+ */
+export const requestMatchParse = async (
+  matchId: number,
+  lang: Language = 'en',
+  signal?: AbortSignal,
+): Promise<ReviewParseStatus> => {
+  const response = await fetch(
+    `/api/review/${matchId}/parse-request?lang=${encodeURIComponent(lang)}`,
+    {
+      method: 'POST',
+      // JSON content-type + custom header: both mark this as a non-simple
+      // request the endpoint requires (CSRF / drive-by protection).
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({ lang }),
+      signal,
+    },
+  );
+  const data = await response.json().catch(
+    () => ({} as { status?: unknown; jobId?: unknown; retryAfterSec?: unknown; message?: unknown; error?: string }),
+  );
+  const parse = parseReviewParseStatus(data);
+  if (parse) return parse;
+  throw new MatchFactsError(
+    data.error || (lang === 'zh' ? '解析请求失败' : 'Failed to request parse'),
+  );
 };
 
 export interface ReviewSuggestionBase {

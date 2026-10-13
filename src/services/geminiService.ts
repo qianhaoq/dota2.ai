@@ -1,7 +1,8 @@
 import { Hero, Language } from '../types';
-import type { MatchFact } from '../types/matchReview';
+import type { MatchFact, ReviewParseStatus } from '../types/matchReview';
 import type { ReviewCardsPayload } from '../types/reviewCards';
 import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
+import { parseReviewParseStatus } from '../utils/parseStatus';
 
 function cancelledMessage(lang: Language): string {
   return lang === 'zh' ? '请求已取消' : 'Request cancelled';
@@ -507,6 +508,8 @@ export const fetchPlaybookStream = (
 
 export interface ReviewStreamCallbacks {
   onData: (matchFact: MatchFact) => void;
+  /** OpenDota replay parse status (SSE facts event or JSON result). */
+  onParseStatus?: (parse: ReviewParseStatus) => void;
   onReviewCards?: (cards: ReviewCardsPayload) => void;
   onReviewNotice?: (notice: string) => void;
   onChunk: (text: string) => void;
@@ -559,6 +562,27 @@ export const fetchMatchReviewStream = (
         throw new Error(data.error || 'Failed to fetch match review');
       }
 
+      // JSON path: server answered with a single accumulated result instead of
+      // SSE (non-stream Accept upstream, or an intermediary stripped the SSE
+      // content type). Dispatch the same callbacks once.
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        if (data.error) {
+          callbacks?.onError(data.error);
+          return;
+        }
+        const jsonParseStatus = parseReviewParseStatus(data.parse);
+        if (jsonParseStatus) callbacks?.onParseStatus?.(jsonParseStatus);
+        if (data.matchFact) callbacks?.onData(data.matchFact);
+        if (data.reviewCards) callbacks?.onReviewCards?.(data.reviewCards);
+        if (data.reviewNotice) callbacks?.onReviewNotice?.(data.reviewNotice);
+        if (typeof data.text === 'string' && data.text) callbacks?.onChunk(data.text);
+        clearTimeout(timeoutId);
+        callbacks?.onComplete(data.grounded ?? Boolean(data.matchFact));
+        return;
+      }
+
       reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
@@ -582,6 +606,10 @@ export const fetchMatchReviewStream = (
           }
           if (parsed.reviewNotice && callbacks?.onReviewNotice) {
             callbacks.onReviewNotice(parsed.reviewNotice);
+          }
+          const parseStatus = parseReviewParseStatus(parsed.parse);
+          if (parseStatus && callbacks?.onParseStatus) {
+            callbacks.onParseStatus(parseStatus);
           }
           if (parsed.matchFact && callbacks?.onData) {
             callbacks.onData(parsed.matchFact);
