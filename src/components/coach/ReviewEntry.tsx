@@ -4,8 +4,9 @@ import type { MatchFact } from '../../types/matchReview';
 import { Film, Search, ChevronDown, Loader2, RefreshCw } from 'lucide-react';
 import { parseMatchId } from '../../utils/parseMatchId';
 import { parseRetryAfterLabel, shouldShowParseStatusBanner } from '../../utils/parseStatus';
+import { createParseRequestController, shouldOfferParseRequest } from '../../utils/parseRequest';
 import { isHeroInMatch, rosterFromMatchFact } from '../../utils/reviewRoster';
-import { fetchMatchFacts, MatchFactsError } from '../../services/dotaApiService';
+import { fetchMatchFacts, MatchFactsError, requestMatchParse } from '../../services/dotaApiService';
 import type { ReviewParseStatus } from '../../types/matchReview';
 import ReviewSuggestions from './ReviewSuggestions';
 
@@ -34,16 +35,27 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const [upstreamUnavailable, setUpstreamUnavailable] = useState(false);
   const [matchFact, setMatchFact] = useState<MatchFact | null>(null);
   const [parseStatus, setParseStatus] = useState<ReviewParseStatus | null>(null);
+  const [parseRequesting, setParseRequesting] = useState(false);
+  const [parseRequestError, setParseRequestError] = useState<string | null>(null);
   const factsRequestIdRef = useRef(0);
+  const parseRequestControllerRef = useRef<ReturnType<typeof createParseRequestController> | null>(null);
+  const getParseRequestController = () => (
+    parseRequestControllerRef.current ??= createParseRequestController(requestMatchParse)
+  );
 
   const invalidateFactsRequest = () => {
     factsRequestIdRef.current += 1;
     setFactsLoading(false);
+    // A pending parse request targets the old match — cancel it too.
+    parseRequestControllerRef.current?.abort();
+    setParseRequesting(false);
+    setParseRequestError(null);
   };
 
   useEffect(() => {
     return () => {
       factsRequestIdRef.current += 1;
+      parseRequestControllerRef.current?.abort();
     };
   }, []);
 
@@ -70,6 +82,11 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
       ? 'OpenDota 暂时不可用，请稍后重试'
       : 'OpenDota is temporarily unavailable. Please retry in a moment.',
     retry: lang === 'zh' ? '重试' : 'Retry',
+    requestParse: lang === 'zh' ? '请求解析' : 'Request parse',
+    requestingParse: lang === 'zh' ? '正在请求…' : 'Requesting…',
+    parseRequestFailed: lang === 'zh'
+      ? '解析请求失败，请稍后重试'
+      : 'Failed to request a parse. Please try again.',
   }), [lang]);
 
   const parsedId = parseMatchId(matchInput);
@@ -110,6 +127,10 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
       setMatchFact(null);
       setParseStatus(null);
       setHeroId('');
+      // The banner's target match is going away; cancel a pending parse request.
+      parseRequestControllerRef.current?.abort();
+      setParseRequesting(false);
+      setParseRequestError(null);
     }
     if (overrideMatchId) {
       setMatchInput(String(overrideMatchId));
@@ -157,6 +178,23 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
     setHeroId('');
     setFactsError(null);
     setUpstreamUnavailable(false);
+  };
+
+  // Explicit user action: the only path that submits an OpenDota parse job.
+  // Bound to the loaded match, never auto-fired.
+  const handleRequestParse = async () => {
+    const matchId = matchFact?.summary.matchId;
+    if (!matchId || parseRequesting) return;
+    setParseRequesting(true);
+    setParseRequestError(null);
+    const result = await getParseRequestController().request(matchId, lang, t.parseRequestFailed);
+    setParseRequesting(false);
+    if (!result || result.kind === 'aborted') return;
+    if (result.kind === 'error') {
+      setParseRequestError(result.message);
+      return;
+    }
+    setParseStatus(result.status);
   };
 
   const handleMatchInput = (value: string) => {
@@ -281,17 +319,34 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
                   {factsError && (
                     <p className="text-xs text-yellow-400">{factsError}</p>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => void handleFetchFacts(undefined, undefined, { preserve: true })}
-                    disabled={factsLoading}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-xs font-medium text-k3-text-primary hover:bg-k3-elevated disabled:opacity-40 min-h-[36px] touch-manipulation"
-                  >
-                    {factsLoading
-                      ? <Loader2 size={12} className="animate-spin" />
-                      : <RefreshCw size={12} />}
-                    {factsLoading ? t.fetching : t.retry}
-                  </button>
+                  {parseRequestError && (
+                    <p className="text-xs text-yellow-400">{parseRequestError}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleFetchFacts(undefined, undefined, { preserve: true })}
+                      disabled={factsLoading}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-xs font-medium text-k3-text-primary hover:bg-k3-elevated disabled:opacity-40 min-h-[36px] touch-manipulation"
+                    >
+                      {factsLoading
+                        ? <Loader2 size={12} className="animate-spin" />
+                        : <RefreshCw size={12} />}
+                      {factsLoading ? t.fetching : t.retry}
+                    </button>
+                    {shouldOfferParseRequest(parseStatus) && (
+                      <button
+                        type="button"
+                        data-testid="review-entry-request-parse"
+                        onClick={() => void handleRequestParse()}
+                        disabled={parseRequesting}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-k3-border-subtle bg-k3-elevated/60 text-xs font-medium text-k3-text-primary hover:bg-k3-elevated disabled:opacity-40 min-h-[36px] touch-manipulation"
+                      >
+                        {parseRequesting && <Loader2 size={12} className="animate-spin" />}
+                        {parseRequesting ? t.requestingParse : t.requestParse}
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
