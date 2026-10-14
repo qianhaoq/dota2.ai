@@ -2419,6 +2419,9 @@ async function handleMatchReview(req, res) {
         { role: 'user', content: userPrompt },
       ],
       stream: Boolean(followUp),
+      // Card reviews must be a single JSON object; DeepSeek JSON mode removes
+      // malformed-JSON failures. Follow-ups are markdown, so leave them alone.
+      ...(followUp ? {} : { response_format: { type: 'json_object' } }),
     }, {
       signal: abortController.signal,
     });
