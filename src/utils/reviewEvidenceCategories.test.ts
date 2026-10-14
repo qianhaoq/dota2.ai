@@ -93,8 +93,13 @@ describe('primary_mistake evidence-backed categories (match 9035042364 regressio
 });
 
 describe('lane_outcome evidence rule', () => {
-  it('accepts cs_at_10 / gold_lead_10 / lane_opponents as lane evidence', () => {
-    for (const factKey of ['cs_at_10', 'gold_lead_10', 'lane_opponents']) {
+  it('rejects lane_opponents alone (identity, not a lane result)', () => {
+    expect(evidenceSupportsCategory('lane_outcome', [{ factKey: 'lane_opponents' }])).toBe(false);
+    expect(evidenceSupportsCategory('lane_outcome', [{ factKey: 'lane_opponents' }, { factKey: 'cs_at_10' }])).toBe(true);
+  });
+
+  it('accepts cs_at_10 / gold_lead_10 as lane-result evidence', () => {
+    for (const factKey of ['cs_at_10', 'gold_lead_10']) {
       const cards = parseModelJson('lane_outcome', [{ factKey }]);
       expect(cards.primary_mistake?.category).toBe('lane_outcome');
       expect(cards.primary_mistake?.evidence?.[0].factKey).toBe(factKey);
@@ -132,27 +137,14 @@ describe('economy_swing evidence rule', () => {
   });
 });
 
-describe('death_pattern evidence rule', () => {
-  it('accepts deaths or kda plus a timeline/gold anchor', () => {
-    const anchored = [
-      [{ factKey: 'deaths' }, { factKey: 'timeline_3' }],
-      [{ factKey: 'kda' }, { factKey: 'gold_lead_30' }],
-    ];
-    for (const evidence of anchored) {
+describe('death_pattern is not offered (no per-death facts in the catalog)', () => {
+  it('rejects death_pattern even with deaths/kda + anchors', () => {
+    for (const evidence of [[{ factKey: 'deaths' }, { factKey: 'timeline_3' }], [{ factKey: 'kda' }, { factKey: 'gold_lead_30' }]]) {
+      expect(evidenceSupportsCategory('death_pattern', evidence)).toBe(false);
       const cards = parseModelJson('death_pattern', evidence);
-      expect(cards.primary_mistake?.category).toBe('death_pattern');
-      expect(isReviewAiCardsComplete(cards)).toBe(true);
-      expect(describeReviewCardsInvalidReason(cards)).toBe('ok');
+      expect(cards.primary_mistake).toBeUndefined();
+      expect(describeReviewCardsInvalidReason(cards)).toBe('primary_mistake_not_grounded');
     }
-  });
-
-  it('rejects deaths alone without a time/consequence anchor', () => {
-    expect(evidenceSupportsCategory('death_pattern', [{ factKey: 'deaths' }])).toBe(false);
-    expect(evidenceSupportsCategory('death_pattern', [{ factKey: 'kda' }])).toBe(false);
-    const cards = parseModelJson('death_pattern', [{ factKey: 'deaths' }]);
-    expect(cards.primary_mistake).toBeUndefined();
-    expect(isReviewAiCardsComplete(cards)).toBe(false);
-    expect(describeReviewCardsInvalidReason(cards)).toBe('primary_mistake_not_grounded');
   });
 });
 
@@ -211,10 +203,11 @@ describe('buildPrimaryMistakeCategoryPromptTable', () => {
     const full = buildPrimaryMistakeCategoryPromptTable(buildCatalog(), 'zh');
     // Fixture catalog has timeline_*, 4 gold_lead checkpoints, cs_at_10,
     // lane_opponents, deaths and kda → all four categories are available.
-    expect(full.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(4);
-    for (const category of ['fight_timing', 'lane_outcome', 'economy_swing', 'death_pattern']) {
+    expect(full.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(3);
+    for (const category of ['fight_timing', 'lane_outcome', 'economy_swing']) {
       expect(full).toContain(category);
     }
+    expect(full).not.toContain('death_pattern');
     expect(full).not.toContain('farm_route');
   });
 
@@ -243,11 +236,8 @@ describe('buildPrimaryMistakeCategoryPromptTable', () => {
     expect(onlyLane).not.toContain('fight_timing');
     expect(onlyLane).not.toContain('economy_swing');
     expect(onlyLane).not.toContain('death_pattern');
-    // deaths + a timeline anchor unlocks death_pattern alongside fight_timing.
-    const deathAnchored = buildPrimaryMistakeCategoryPromptTable(cat('deaths', 'timeline_0'), 'zh');
-    expect(deathAnchored).toContain('death_pattern');
-    expect(deathAnchored).toContain('fight_timing');
-    expect(deathAnchored).not.toContain('lane_outcome');
+    // lane_opponents alone says nothing about who won the lane.
+    expect(buildPrimaryMistakeCategoryPromptTable(cat('lane_opponents'), 'zh')).toBe('');
   });
 
   it('returns empty string for empty or missing catalog', () => {

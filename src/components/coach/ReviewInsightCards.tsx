@@ -29,7 +29,6 @@ const MISTAKE_COLORS: Record<string, string> = {
   itemisation: 'text-purple-400 border-purple-400/30 bg-purple-400/10',
   lane_outcome: 'text-sky-400 border-sky-400/30 bg-sky-400/10',
   economy_swing: 'text-amber-400 border-amber-400/30 bg-amber-400/10',
-  death_pattern: 'text-rose-400 border-rose-400/30 bg-rose-400/10',
   farm_route: 'text-yellow-400 border-yellow-400/30 bg-yellow-400/10',
 };
 

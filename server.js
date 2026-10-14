@@ -2434,7 +2434,7 @@ async function handleMatchReview(req, res) {
     // DeepSeek calls entirely and serve the deterministic fallback built
     // from basic match data. Follow-ups are unaffected (no card validation).
     if (!followUp && !canReviewAiCardsValidate(_catalog || [])) {
-      console.warn(`[review:ai-validation] match=${matchId} ai_skipped reason=no_timeline_facts`);
+      console.warn(`[review:ai-validation] match=${matchId} ai_skipped reason=no_grounded_category`);
       const reviewCards = buildFallbackAiCards(matchFact, lang);
       responder.send({ reviewCards, grounded: isGrounded });
       responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, matchFact.parsed ? 'no_timeline' : 'no_evidence') });

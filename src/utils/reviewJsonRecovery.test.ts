@@ -72,3 +72,14 @@ describe('prompt schema lists only satisfiable categories', () => {
     expect(getReviewSystemPrompt('zh', {})).toContain('"category": "fight_timing"');
   });
 });
+
+describe('AI gate follows category satisfiability', () => {
+  it('calls the model for parsed matches without timeline when economy evidence exists', async () => {
+    const { canReviewAiCardsValidate } = await import('../../lib/matchReview/reviewCards.js');
+    const c = (...k: string[]) => k.map((factKey) => ({ factKey, label: factKey, value: '1' }));
+    expect(canReviewAiCardsValidate(c('gold_lead_10', 'gold_lead_20'))).toBe(true);
+    expect(canReviewAiCardsValidate(c('cs_at_10'))).toBe(true);
+    expect(canReviewAiCardsValidate(c('kda', 'deaths', 'gpm', 'lane_opponents'))).toBe(false);
+    expect(canReviewAiCardsValidate([])).toBe(false);
+  });
+});
