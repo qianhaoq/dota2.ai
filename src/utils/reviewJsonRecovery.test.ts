@@ -61,15 +61,31 @@ describe('validation metric reason for unparseable output', () => {
   });
 });
 
-describe('prompt schema lists only satisfiable categories', () => {
-  it('uses categoryNames in the JSON example and defaults to fight_timing', async () => {
+describe('prompt JSON example is itself valid for this catalog', () => {
+  it('uses one concrete satisfiable category with its required evidence', async () => {
     const { getReviewSystemPrompt } = await import('../../lib/aiLanguage.js');
-    const only = getReviewSystemPrompt('en', { categoryTable: '- fight_timing: x', categoryNames: ['fight_timing'] });
-    expect(only).toContain('"category": "fight_timing"');
-    expect(only).not.toContain('economy_swing');
-    const zh = getReviewSystemPrompt('zh', { categoryNames: ['fight_timing', 'economy_swing'] });
-    expect(zh).toContain('"category": "fight_timing | economy_swing"');
+    const rc = await import('../../lib/matchReview/reviewCards.js');
+    const c = (...k: string[]) => k.map((factKey) => ({ factKey, label: factKey, value: '1' }));
+    const econ = rc.buildPrimaryMistakeExample(c('gold_lead_20', 'gold_lead_30', 'kda'));
+    expect(econ).toEqual({ category: 'economy_swing', evidenceKeys: ['gold_lead_20', 'gold_lead_30'] });
+    expect(rc.evidenceSupportsCategory(econ!.category, econ!.evidenceKeys.map((factKey: string) => ({ factKey })))).toBe(true);
+    const lane = rc.buildPrimaryMistakeExample(c('cs_at_10', 'lane_opponents'));
+    expect(lane).toEqual({ category: 'lane_outcome', evidenceKeys: ['cs_at_10'] });
+    expect(rc.buildPrimaryMistakeExample(c('timeline_0', 'gold_lead_10'))?.category).toBe('fight_timing');
+    expect(rc.buildPrimaryMistakeExample([])).toBeNull();
+    const en = getReviewSystemPrompt('en', { mistakeExample: econ });
+    expect(en).toContain('"category": "economy_swing"');
+    expect(en).toContain('{"factKey": "gold_lead_20"}, {"factKey": "gold_lead_30"}');
+    expect(en).not.toContain(' | ');
+    const zh = getReviewSystemPrompt('zh', { mistakeExample: lane });
+    expect(zh).toContain('"category": "lane_outcome"');
     expect(getReviewSystemPrompt('zh', {})).toContain('"category": "fight_timing"');
+  });
+
+  it('prefers the later corrected copy when recovered objects tie', () => {
+    const a = '{"primary_mistake":{"category":"fight_timing","headline":"old"},"key_moments":[]}';
+    const b = '{"primary_mistake":{"category":"fight_timing","headline":"new"},"key_moments":[]}';
+    expect(extractJsonFromLlmOutput(`${a}\nNote: corrected:\n${b}`)?.primary_mistake?.headline).toBe('new');
   });
 });
 

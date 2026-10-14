@@ -14,7 +14,7 @@ import {
   buildReviewCardsPromptFacts,
   buildReviewKeyMomentsPromptRule,
   buildPrimaryMistakeCategoryPromptTable,
-  availablePrimaryMistakeCategories,
+  buildPrimaryMistakeExample,
   minRequiredKeyMoments,
   canReviewAiCardsValidate,
 } from './lib/matchReview/reviewCards.js';
@@ -2391,13 +2391,13 @@ async function handleMatchReview(req, res) {
     const keyMomentsRule = buildReviewKeyMomentsPromptRule(_catalog || [], lang);
 
     const categoryTable = buildPrimaryMistakeCategoryPromptTable(_catalog || [], lang);
-    const categoryNames = availablePrimaryMistakeCategories(_catalog || []);
+    const mistakeExample = buildPrimaryMistakeExample(_catalog || []);
 
     const systemPrompt = getReviewSystemPrompt(lang, {
       followUp: Boolean(followUp),
       keyMomentsRule,
       categoryTable,
-      categoryNames,
+      mistakeExample,
     });
 
     const userPrompt = followUp
