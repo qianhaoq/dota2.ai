@@ -118,3 +118,12 @@ describe('saved 9035042364 outputs through the production parse + validate path'
     }
   });
 });
+
+describe('full-width structural punctuation', () => {
+  it('repairs `]，"key"` outside strings and keeps full-width text inside strings', () => {
+    const text = '{"primary_mistake":{"headline":"甲，乙：丙"},"followups":["a"]，"mentor_note"："x"}';
+    const j = extractJsonFromLlmOutput(text);
+    expect(j?.primary_mistake?.headline).toBe('甲，乙：丙');
+    expect(j?.mentor_note).toBe('x');
+  });
+});
