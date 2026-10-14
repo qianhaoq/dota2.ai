@@ -13,6 +13,7 @@ import {
   buildFallbackAiCards,
   buildReviewCardsPromptFacts,
   buildReviewKeyMomentsPromptRule,
+  buildPrimaryMistakeCategoryPromptTable,
   minRequiredKeyMoments,
   canReviewAiCardsValidate,
 } from './lib/matchReview/reviewCards.js';
@@ -2388,9 +2389,12 @@ async function handleMatchReview(req, res) {
     const { _catalog, ...initialReviewCards } = deterministicCards;
     const keyMomentsRule = buildReviewKeyMomentsPromptRule(_catalog || [], lang);
 
+    const categoryTable = buildPrimaryMistakeCategoryPromptTable(_catalog || [], lang);
+
     const systemPrompt = getReviewSystemPrompt(lang, {
       followUp: Boolean(followUp),
       keyMomentsRule,
+      categoryTable,
     });
 
     const userPrompt = followUp
@@ -2487,6 +2491,7 @@ async function handleMatchReview(req, res) {
           requestCompletionText,
           signal: abortController.signal,
           warn: (msg) => console.warn(msg),
+          metric: (line) => console.log(line),
         });
         const reviewCards = usedFallback
           ? buildFallbackAiCards(matchFact, lang)
