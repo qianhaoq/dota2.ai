@@ -16,7 +16,7 @@ describe('extractJsonFromLlmOutput recovers malformed review JSON (9035042364)',
     expect(raw.key_moments.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('still returns null for prose / arrays / empty output', () => {
+  it('returns null for prose / empty / unrecoverable output (plain arrays pass through unchanged)', () => {
     expect(extractJsonFromLlmOutput('')).toBeNull();
     expect(extractJsonFromLlmOutput('sorry, I cannot help')).toBeNull();
     expect(extractJsonFromLlmOutput('[1, 2, 3]')).toEqual([1, 2, 3]);
@@ -49,5 +49,26 @@ describe('validation metric reason for unparseable output', () => {
     const parsed = lines.map((l) => JSON.parse(l));
     expect(parsed.map((p) => p.reason)).toEqual(['json_unparseable', 'json_unparseable']);
     expect(parsed.every((p) => p.event === 'review_ai_validation' && p.result === 'invalid')).toBe(true);
+  });
+
+  it('logs category/evidence for malformed-but-recovered outputs', async () => {
+    const { rawPrimaryMistakeFields } = await import('../../lib/matchReview/reviewAiRetry.js');
+    for (const s of samples) {
+      const f = rawPrimaryMistakeFields(s.text);
+      expect(typeof f.category).toBe('string');
+      expect(f.evidenceKeys.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('prompt schema lists only satisfiable categories', () => {
+  it('uses categoryNames in the JSON example and defaults to fight_timing', async () => {
+    const { getReviewSystemPrompt } = await import('../../lib/aiLanguage.js');
+    const only = getReviewSystemPrompt('en', { categoryTable: '- fight_timing: x', categoryNames: ['fight_timing'] });
+    expect(only).toContain('"category": "fight_timing"');
+    expect(only).not.toContain('economy_swing');
+    const zh = getReviewSystemPrompt('zh', { categoryNames: ['fight_timing', 'economy_swing'] });
+    expect(zh).toContain('"category": "fight_timing | economy_swing"');
+    expect(getReviewSystemPrompt('zh', {})).toContain('"category": "fight_timing"');
   });
 });
