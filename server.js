@@ -2429,10 +2429,11 @@ async function handleMatchReview(req, res) {
       signal: abortController.signal,
     });
 
-    // Unparsed / no-objective matches carry no timeline_* evidence, so AI
-    // cards can never pass validation (retrying cannot succeed). Skip the
-    // DeepSeek calls entirely and serve the deterministic fallback built
-    // from basic match data. Follow-ups are unaffected (no card validation).
+    // When no primary_mistake category has its required evidence in this
+    // match's catalog (typically unparsed matches: no timeline, no gold or CS
+    // checkpoints), AI cards can never validate and a retry cannot help. Skip
+    // the DeepSeek calls and serve the deterministic fallback. Follow-ups are
+    // unaffected (no card validation).
     if (!followUp && !canReviewAiCardsValidate(_catalog || [])) {
       console.warn(`[review:ai-validation] match=${matchId} ai_skipped reason=no_grounded_category`);
       const reviewCards = buildFallbackAiCards(matchFact, lang);
