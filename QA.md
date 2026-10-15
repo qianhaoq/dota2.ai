@@ -52,12 +52,21 @@ PREV=$(gcloud run revisions list --service $SVC $G \
   --format='value(metadata.name)' | grep -A1 -x "$CUR" | tail -n1)
 [ -n "$PREV" ] && [ "$PREV" != "$CUR" ] || { echo "no previous ready revision"; exit 1; }
 # 上一修订必须带三个 Secret Manager 绑定 / PREV must bind all three secrets
-SECRETS=$(gcloud run revisions describe "$PREV" $G --format=json | python3 -c 'import json,sys; c=json.load(sys.stdin)["spec"]["containers"][0]; print(" ".join(sorted(e["name"] for e in c.get("env",[]) if "valueFrom" in e)))')
-[ "$SECRETS" = "DEEPSEEK_API_KEY GEMINI_API_KEY STEAM_WEB_API_KEY" ] || { echo "$PREV lacks secret bindings; use dota2-ai-00072-sls or newer"; exit 1; }
+# 上一修订必须至少带这三个 Secret Manager 绑定（允许额外绑定）/ PREV must bind at least these three secrets
+gcloud run revisions describe "$PREV" $G --format=json | python3 -c 'import json,sys; c=json.load(sys.stdin)["spec"]["containers"][0]; have={e["name"] for e in c.get("env",[]) if "valueFrom" in e}; need={"DEEPSEEK_API_KEY","GEMINI_API_KEY","STEAM_WEB_API_KEY"}; miss=need-have; sys.exit("missing secret bindings: "+",".join(sorted(miss)) if miss else 0)' \
+  || { echo "$PREV lacks secret bindings; use dota2-ai-00072-sls or newer"; exit 1; }
+# /api/health 总是 200，需检查 body；带重试以等待冷启动加载 / health is always 200: check the body, retry while warming
+probe() { for i in $(seq 1 12); do
+  curl -fsS -m 30 "$1/api/health" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("status")=="healthy" and d.get("apiKeyConfigured") is True else 1)' && { echo "health ok: $1"; return 0; }
+  sleep 10; done; echo "health FAILED: $1"; return 1; }
+# 先给 PREV 打 0% 标签并直接探测它，确认可用后再切流量 / Tag PREV (0% traffic) and probe it directly before shifting
+gcloud run services update-traffic $SVC $G --update-tags="rollback=$PREV"
+TAG_URL=$(gcloud run services describe $SVC $G --format=json | python3 -c 'import json,sys; print(next(t["url"] for t in json.load(sys.stdin)["status"]["traffic"] if t.get("tag")=="rollback"))')
+probe "$TAG_URL"
 echo "rollback $CUR -> $PREV"
 gcloud run services update-traffic $SVC $G --to-revisions="$PREV=100"
-# /api/health 总是 200，需检查 body 中 apiKeyConfigured / health always 200: check the body
-curl -fsS -m 30 https://dota2.ai/api/health | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("status")=="healthy" and d.get("apiKeyConfigured") is True, d.get("status"); print("health ok")'
+probe https://dota2.ai
+gcloud run services update-traffic $SVC $G --remove-tags=rollback
 # 恢复到原修订（不要用 --to-latest，以免覆盖有意固定的修订）/ Restore the original pin, not --to-latest:
 # gcloud run services update-traffic $SVC $G --to-revisions="$CUR=100"
 ```
