@@ -88,7 +88,7 @@ export interface MatchPlayerFact {
   deathsDerivedCount: number;
 }
 
-export type FieldEmptyReason = 'not_parsed_yet' | 'no_data';
+export type FieldEmptyReason = 'not_parsed_yet' | 'no_data' | 'incomplete_hero_map';
 
 export interface FieldReason {
   reason: FieldEmptyReason;
