@@ -89,6 +89,19 @@ describe('detectAdvantageSwing', () => {
     });
   });
 
+  it('returns a null crossover when the loser peak lead is exactly zero (stomp from minute 0)', () => {
+    // OpenDota's radiant_gold_adv[0] is always 0; a dire stomp looks like this.
+    // The loser's peak "lead" is that phantom 0 — no crossover may be fabricated.
+    const adv = [0, -100, -300, -600, -900];
+    expect(detectAdvantageSwing(adv, false)).toEqual({
+      loserSide: 'radiant',
+      loserPeakLead: 0,
+      loserPeakMinute: 0,
+      crossoverMinute: null,
+      comeback: false,
+    });
+  });
+
   it('returns a null crossover when the loser peak lead is negative', () => {
     // Radiant lost while never leading once: no crossover exists to report.
     expect(detectAdvantageSwing([-100, -200, -300, -400, -500], false)).toEqual({
