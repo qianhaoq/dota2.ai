@@ -39,15 +39,27 @@ PR: #___
 > feature flag, data repair).
 
 ```bash
-# Find the previous revision:
-# gcloud run revisions list --service dota2-ai --region asia-east1 --project aegis-assistant-488913
-gcloud run services update-traffic dota2-ai --region asia-east1 --project aegis-assistant-488913 --to-revisions=<PREVIOUS_REVISION>=100
+# 自动选出“当前 100% 流量之前的最近一个 Ready 修订”并切回 / Auto-pick the previous Ready revision and shift 100% to it
+SVC=dota2-ai; REGION=asia-east1; PROJECT=aegis-assistant-488913
+CUR=$(gcloud run services describe $SVC --region $REGION --project $PROJECT \
+  --format='value(status.traffic[0].revisionName)')
+PREV=$(gcloud run revisions list --service $SVC --region $REGION --project $PROJECT \
+  --filter='status.conditions[0].status=True' --sort-by='~metadata.creationTimestamp' \
+  --format='value(metadata.name)' | grep -A1 -x "$CUR" | tail -n1)
+[ -n "$PREV" ] && [ "$PREV" != "$CUR" ] || { echo "no previous ready revision"; exit 1; }
+echo "rollback $CUR -> $PREV"
+gcloud run services update-traffic $SVC --region $REGION --project $PROJECT --to-revisions="$PREV=100"
+curl -fsS -o /dev/null -w 'health %{http_code}\n' https://dota2.ai/api/health
+# 恢复 / Restore: gcloud run services update-traffic $SVC --region $REGION --project $PROJECT --to-latest
 ```
+
+> 上一修订须带 Secret Manager 绑定（`deepseek-api-key` / `gemini-api-key` / `steam-web-api-key`，即 00072 及之后）；否则改用 `dota2-ai-00072-sls`。
+> The previous revision must carry the Secret Manager bindings (00072+); otherwise use `dota2-ai-00072-sls`.
 
 ## 签署 / Sign-off
 
 - [ ] 我在上述 head commit 上完成了全部测试点与黄金样例 / I verified all test points and golden samples on the head commit above
-- [ ] 回滚命令已演练或在预发验证过 / The rollback command was rehearsed or verified in staging
+- [x] 回滚命令已演练或在预发验证过 / The rollback command was rehearsed or verified in staging — 2026-10-16 演练 / drill: dota2-ai-00075-d66 → 00074-vh2 → 00075-d66, /api/health 与 / 均 200 / both 200
 - [ ] 现在给 PR 打 `qa-passed` 标签 / Apply the `qa-passed` label to the PR now
 
 > 注意 / Note: 打标签时间必须晚于最后一次 push —— 否则 QA Gate 会以
