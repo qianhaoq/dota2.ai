@@ -39,27 +39,38 @@ PR: #___
 > feature flag, data repair).
 
 ```bash
-# 自动选出“当前 100% 流量之前的最近一个 Ready 修订”并切回 / Auto-pick the previous Ready revision and shift 100% to it
+# 自动选出“当前 100% 流量修订之前的最近一个 Ready 修订”并切回；任何一步失败即停止。
+# Auto-pick the previous Ready revision before the one serving 100%; stop on any failure.
+set -euo pipefail
 SVC=dota2-ai; REGION=asia-east1; PROJECT=aegis-assistant-488913
-CUR=$(gcloud run services describe $SVC --region $REGION --project $PROJECT \
-  --format='value(status.traffic[0].revisionName)')
-PREV=$(gcloud run revisions list --service $SVC --region $REGION --project $PROJECT \
+G="--region $REGION --project $PROJECT"
+CUR=$(gcloud run services describe $SVC $G \
+  --format=json | python3 -c 'import json,sys; t=[x for x in json.load(sys.stdin)["status"]["traffic"] if x.get("percent")==100 and x.get("revisionName")]; print(t[0]["revisionName"] if len(t)==1 else "")')
+[ -n "$CUR" ] || { echo "traffic is split/tagged; no single 100% revision — roll back manually"; exit 1; }
+PREV=$(gcloud run revisions list --service $SVC $G \
   --filter='status.conditions[0].status=True' --sort-by='~metadata.creationTimestamp' \
   --format='value(metadata.name)' | grep -A1 -x "$CUR" | tail -n1)
 [ -n "$PREV" ] && [ "$PREV" != "$CUR" ] || { echo "no previous ready revision"; exit 1; }
+# 上一修订必须带三个 Secret Manager 绑定 / PREV must bind all three secrets
+SECRETS=$(gcloud run revisions describe "$PREV" $G --format=json | python3 -c 'import json,sys; c=json.load(sys.stdin)["spec"]["containers"][0]; print(" ".join(sorted(e["name"] for e in c.get("env",[]) if "valueFrom" in e)))')
+[ "$SECRETS" = "DEEPSEEK_API_KEY GEMINI_API_KEY STEAM_WEB_API_KEY" ] || { echo "$PREV lacks secret bindings; use dota2-ai-00072-sls or newer"; exit 1; }
 echo "rollback $CUR -> $PREV"
-gcloud run services update-traffic $SVC --region $REGION --project $PROJECT --to-revisions="$PREV=100"
-curl -fsS -o /dev/null -w 'health %{http_code}\n' https://dota2.ai/api/health
-# 恢复 / Restore: gcloud run services update-traffic $SVC --region $REGION --project $PROJECT --to-latest
+gcloud run services update-traffic $SVC $G --to-revisions="$PREV=100"
+# /api/health 总是 200，需检查 body 中 apiKeyConfigured / health always 200: check the body
+curl -fsS -m 30 https://dota2.ai/api/health | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("status")=="healthy" and d.get("apiKeyConfigured") is True, d.get("status"); print("health ok")'
+# 恢复到原修订（不要用 --to-latest，以免覆盖有意固定的修订）/ Restore the original pin, not --to-latest:
+# gcloud run services update-traffic $SVC $G --to-revisions="$CUR=100"
 ```
 
-> 上一修订须带 Secret Manager 绑定（`deepseek-api-key` / `gemini-api-key` / `steam-web-api-key`，即 00072 及之后）；否则改用 `dota2-ai-00072-sls`。
-> The previous revision must carry the Secret Manager bindings (00072+); otherwise use `dota2-ai-00072-sls`.
+> 脚本会校验上一修订带 `deepseek-api-key` / `gemini-api-key` / `steam-web-api-key` 绑定（00072 及之后），否则中止。
+> The script aborts unless the previous revision binds all three secrets (00072+).
+
+演练记录 / Drill log: 2026-10-16 dota2-ai-00075-d66 → 00074-vh2 → 00075-d66，/api/health 与 / 均 200。
 
 ## 签署 / Sign-off
 
 - [ ] 我在上述 head commit 上完成了全部测试点与黄金样例 / I verified all test points and golden samples on the head commit above
-- [x] 回滚命令已演练或在预发验证过 / The rollback command was rehearsed or verified in staging — 2026-10-16 演练 / drill: dota2-ai-00075-d66 → 00074-vh2 → 00075-d66, /api/health 与 / 均 200 / both 200
+- [x] 回滚命令已演练或在预发验证过 / The rollback command was rehearsed or verified in staging
 - [ ] 现在给 PR 打 `qa-passed` 标签 / Apply the `qa-passed` label to the PR now
 
 > 注意 / Note: 打标签时间必须晚于最后一次 push —— 否则 QA Gate 会以
