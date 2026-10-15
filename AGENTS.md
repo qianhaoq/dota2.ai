@@ -14,7 +14,7 @@ node --check server.js
 
 Dev: `npm run start:dev` (Vite + Express). Prod-like: `npm run build && npm start` on port 8080.
 
-Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`.
+Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`. Recommended: `GEMINI_API_KEY` (review-card fallback provider).
 
 ## Do
 
