@@ -41,6 +41,7 @@ PR: #___
 ```bash
 # 自动选出“当前 100% 流量修订之前的最近一个 Ready 修订”并切回；任何一步失败即停止。
 # Auto-pick the previous Ready revision before the one serving 100%; stop on any failure.
+( # 子 shell：set -e 失败不会关闭交互终端 / subshell so a set -e failure won't close your interactive shell
 set -euo pipefail
 SVC=dota2-ai; REGION=asia-east1; PROJECT=aegis-assistant-488913
 G="--region $REGION --project $PROJECT"
@@ -48,10 +49,10 @@ read -r CUR CUR_LATEST < <(gcloud run services describe $SVC $G \
   --format=json | python3 -c 'import json,sys; t=[x for x in json.load(sys.stdin)["status"]["traffic"] if x.get("percent")==100 and x.get("revisionName")]; print(t[0]["revisionName"], bool(t[0].get("latestRevision"))) if len(t)==1 else print("", "")')
 [ -n "$CUR" ] || { echo "traffic is split/tagged; no single 100% revision — roll back manually"; exit 1; }
 PREV=$(gcloud run revisions list --service $SVC $G \
-  --filter='status.conditions[0].status=True' --sort-by='~metadata.creationTimestamp' \
-  --format='value(metadata.name)' | grep -A1 -x "$CUR" | tail -n1)
+  --sort-by='~metadata.creationTimestamp' --format=json \
+  | python3 -c 'import json,sys; print("\n".join(r["metadata"]["name"] for r in json.load(sys.stdin) if any(c.get("type")=="Ready" and c.get("status")=="True" for c in r.get("status",{}).get("conditions",[]))))' \
+  | grep -A1 -x "$CUR" | tail -n1)
 [ -n "$PREV" ] && [ "$PREV" != "$CUR" ] || { echo "no previous ready revision"; exit 1; }
-# 上一修订必须带三个 Secret Manager 绑定 / PREV must bind all three secrets
 # 上一修订必须至少带这三个 Secret Manager 绑定（允许额外绑定）/ PREV must bind at least these three secrets
 gcloud run revisions describe "$PREV" $G --format=json | python3 -c 'import json,sys; c=json.load(sys.stdin)["spec"]["containers"][0]; have={e["name"] for e in c.get("env",[]) if "valueFrom" in e}; need={"DEEPSEEK_API_KEY","GEMINI_API_KEY","STEAM_WEB_API_KEY"}; miss=need-have; sys.exit("missing secret bindings: "+",".join(sorted(miss)) if miss else 0)' \
   || { echo "$PREV lacks secret bindings; use dota2-ai-00072-sls or newer"; exit 1; }
@@ -59,11 +60,11 @@ gcloud run revisions describe "$PREV" $G --format=json | python3 -c 'import json
 # 私有（IAM）服务需带 identity token；公开服务可留空 / Private services need an identity token
 AUTH=(); TOKEN=$(gcloud auth print-identity-token 2>/dev/null || true); [ -n "$TOKEN" ] && AUTH=(-H "Authorization: Bearer $TOKEN")
 probe() { for i in $(seq 1 12); do
-  curl -fsS -m 30 "${AUTH[@]}" "$1/api/health" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("status")=="healthy" and d.get("apiKeyConfigured") is True else 1)' && { echo "health ok: $1"; return 0; }
+  curl -fsS -m 30 ${AUTH[@]+"${AUTH[@]}"} "$1/api/health" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("status")=="healthy" and d.get("apiKeyConfigured") is True else 1)' && { echo "health ok: $1"; return 0; }
   sleep 10; done; echo "health FAILED: $1"; return 1; }
 # 先给 PREV 打 0% 标签并直接探测它，确认可用后再切流量 / Tag PREV (0% traffic) and probe it directly before shifting
 # 用唯一标签名，避免覆盖已有标签；退出时总会清理 / Unique tag so existing tags are untouched; always cleaned up
-TAG="rb-$(date +%s)"
+TAG="rb-$(date +%s)-$(openssl rand -hex 3 2>/dev/null || printf %04x%04x $RANDOM $RANDOM)"
 trap 'gcloud run services update-traffic $SVC $G --remove-tags="$TAG" >/dev/null 2>&1 || true' EXIT
 gcloud run services update-traffic $SVC $G --update-tags="$TAG=$PREV"
 TAG_URL=$(gcloud run services describe $SVC $G --format=json | TAG="$TAG" python3 -c 'import json,os,sys; print(next(t["url"] for t in json.load(sys.stdin)["status"]["traffic"] if t.get("tag")==os.environ["TAG"]))')
@@ -73,6 +74,7 @@ gcloud run services update-traffic $SVC $G --to-revisions="$PREV=100"
 probe https://dota2.ai
 # 恢复：原先是 LATEST 就恢复 LATEST，否则恢复原固定修订 / Restore: LATEST if it was LATEST, else the original pin
 echo "restore with: gcloud run services update-traffic $SVC $G $([ "$CUR_LATEST" = True ] && echo --to-latest || echo --to-revisions=$CUR=100)"
+)
 ```
 
 > 脚本会校验上一修订带 `deepseek-api-key` / `gemini-api-key` / `steam-web-api-key` 绑定（00072 及之后），否则中止。
