@@ -47,6 +47,8 @@ Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程仅�
 | Required check: **`ci / Build & Test`** | CI job 名（`.github/workflows/ci.yml`） |
 | ~~Required check `copilot-pull-request-reviewer`~~ | **不设为 required**（Copilot 由 Auto Merge 内部 soft-path 判断） |
 | Required check: **`codex / Codex Review Gate`** | **job / check-run 名**（`.github/workflows/codex-gate.yml` 的 `jobs.*.name`），不是 workflow 展示名 |
+| Required check: **`ci / Secret Scan`** | gitleaks（`ci.yml` 调用 devflow-gates） |
+| Required check: **`qa / QA Gate`** | QA label `qa-passed`（`qa-gate.yml`，见 `QA.md`） |
 | **Require conversation resolution before merging** | 未解决行内线程挡住 Merge（无严重度例外；与纯 P2 open 的关系见下方「原生保护」） |
 | （可选）**Dismiss stale pull request approvals when new commits are pushed** | 新 push 后旧 APPROVED 作废 |
 
@@ -67,7 +69,7 @@ Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程仅�
 
 [Codex](https://chatgpt.com/codex) 只发 **issue comment**（`<!-- codex-pull-request-review-summary -->`）和行内 review threads，**不是** GitHub 原生 required check。
 
-`.github/workflows/codex-gate.yml` 的 **job 名必须是 `codex / Codex Review Gate`**。经典 branch protection / Ruleset 勾选的是这个 **check-run / job 名**，不要只看 workflow 文件标题。
+`.github/workflows/codex-gate.yml` 的 caller job id `codex` + reusable job 名 `Codex Review Gate` 产生 check **`codex / Codex Review Gate`**。经典 branch protection / Ruleset 勾选的是这个 **check-run / job 名**，不要只看 workflow 文件标题。
 
 | 情况 | 结果 |
 |------|------|
