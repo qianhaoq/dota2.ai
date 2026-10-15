@@ -225,6 +225,8 @@ describe('buildDeathTimeline — synthetic', () => {
     const players = [
       mkPlayer({ hero_id: 3, player_slot: 128, hero_name: 'npc_dota_hero_lina', kills_log: [
         { time: 60, key: 'npc_dota_hero_rubick' }, // radiant victim, minute 1
+      ] }),
+      mkPlayer({ hero_id: 4, player_slot: 2, hero_name: 'npc_dota_hero_snapfire', kills_log: [
         { time: 120, key: 'npc_dota_hero_axe' }, // dire victim, minute 2
       ] }),
       mkPlayer({ hero_id: 1, player_slot: 0, hero_name: 'npc_dota_hero_rubick', kills_log: [] }),
@@ -254,7 +256,7 @@ describe('buildDeathTimeline — synthetic', () => {
     expect(timeline.deathsByHeroId![2][1].killerHeroId).toBe(1);
   });
 
-  it('treats parsed matches with zero hero kills as no_data, not not_parsed_yet', () => {
+  it('treats parsed matches with zero hero kills as an available empty timeline', () => {
     const fact = buildMatchFact({
       match_id: 1,
       duration: 1200,
@@ -268,8 +270,58 @@ describe('buildDeathTimeline — synthetic', () => {
       objectives: [],
     }, { lang: 'zh', heroNames: { 1: { nameZh: 'A', nameEn: 'A', internalSlug: 'a' }, 2: { nameZh: 'B', nameEn: 'B', internalSlug: 'b' } } }) as MatchFact;
     expect(fact.parsed).toBe(true);
-    expect(fact.deathTimelineAvailable).toBe(false);
-    expect(fact.fieldReasons?.deaths?.reason).toBe('no_data');
+    // 0 hero kills is a real result, not missing data: status ok/empty (0 deaths),
+    // so no fieldReasons.deaths entry at all.
+    expect(fact.deathTimelineAvailable).toBe(true);
+    expect(fact.fieldReasons?.deaths).toBeUndefined();
+    for (const p of fact.players) {
+      expect(p.deathEvents).toEqual([]);
+      expect(p.deathsDerivedCount).toBe(0);
+    }
+  });
+
+  it('returns zero-death coverage directly for parsed zero-kill matches', () => {
+    const players = [
+      mkPlayer({ hero_id: 1, player_slot: 0, deaths: 0, kills_log: [] }),
+      mkPlayer({ hero_id: 2, player_slot: 128, deaths: 0, kills_log: [] }),
+    ];
+    const heroNames = { 1: { nameZh: 'A', nameEn: 'A', internalSlug: 'a' }, 2: { nameZh: 'B', nameEn: 'B', internalSlug: 'b' } };
+    expect(buildDeathTimeline(players, [], heroNames, { parsed: true })).toEqual({
+      available: true,
+      deathsByHeroId: {},
+      coverage: {
+        1: { derivedCount: 0, reportedDeaths: 0 },
+        2: { derivedCount: 0, reportedDeaths: 0 },
+      },
+    });
+    // Without the parsed flag the same input stays unavailable (legacy default:
+    // no kills_log means the replay was never parsed).
+    expect(buildDeathTimeline(players, [], heroNames)).toEqual({ available: false });
+  });
+
+  it('drops same-team kill entries (denies and similar noise)', () => {
+    // A radiant hero "killing" a radiant victim is a deny/self-kill record, not
+    // a death the enemy inflicted — it must not enter the death timeline.
+    const players = [
+      mkPlayer({ hero_id: 1, player_slot: 0, hero_name: 'npc_dota_hero_lina', kills_log: [
+        { time: 100, key: 'npc_dota_hero_axe' }, // same team (radiant) — dropped
+        { time: 200, key: 'npc_dota_hero_rubick' }, // enemy (dire) — kept
+      ] }),
+      mkPlayer({ hero_id: 2, player_slot: 1, hero_name: 'npc_dota_hero_axe', kills_log: [] }),
+      mkPlayer({ hero_id: 3, player_slot: 128, hero_name: 'npc_dota_hero_rubick', kills_log: [
+        { time: 300, key: 'npc_dota_hero_lina' }, // enemy (radiant) — kept
+      ] }),
+    ];
+    const timeline = buildDeathTimeline(players, []);
+    expect(timeline.available).toBe(true);
+    expect(timeline.deathsByHeroId![1]).toEqual([
+      { time: 300, minute: 5, killerHeroId: 3, killerIsRadiant: false, teamGoldLeadAtT: null },
+    ]);
+    expect(timeline.deathsByHeroId![3]).toEqual([
+      { time: 200, minute: 3, killerHeroId: 1, killerIsRadiant: true, teamGoldLeadAtT: null },
+    ]);
+    expect(timeline.deathsByHeroId![2]).toBeUndefined();
+    expect(timeline.coverage![2]).toEqual({ derivedCount: 0, reportedDeaths: 0 });
   });
 
   it('returns available:false for empty or invalid players input', () => {

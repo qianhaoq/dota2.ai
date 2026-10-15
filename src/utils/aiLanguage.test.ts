@@ -45,4 +45,23 @@ describe('DeepSeek language locks', () => {
     expect(deepseekLanguageLock('zh')).toContain('简体中文');
     expect(deepseekLanguageLock('en')).toContain('English');
   });
+
+  it('review prompts instruct the lost/destroyed-by wording for building events', () => {
+    const followZh = getReviewSystemPrompt('zh', { followUp: true });
+    expect(followZh).toContain('被 Z 摧毁');
+    expect(followZh).toContain('goodguys_*=天辉建筑');
+    expect(followZh).toContain('badguys_*=夜魇建筑');
+    expect(followZh).toContain('T2 不是高地塔');
+
+    const followEn = getReviewSystemPrompt('en', { followUp: true });
+    expect(followEn).toContain('"X lost Y (destroyed by Z)"');
+    expect(followEn).toContain('goodguys_* = Radiant building');
+    expect(followEn).toContain('badguys_* = Dire building');
+    expect(followEn).toContain('T2 is NOT high ground');
+
+    const reviewZh = getReviewSystemPrompt('zh', { followUp: false, keyMomentsRule: '3 个关键时刻' });
+    expect(reviewZh).toContain('被 Z 摧毁');
+    const reviewEn = getReviewSystemPrompt('en', { followUp: false, keyMomentsRule: '3 key moments' });
+    expect(reviewEn).toContain('"X lost Y (destroyed by Z)"');
+  });
 });

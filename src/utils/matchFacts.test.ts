@@ -5,10 +5,14 @@ import { dirname, join } from 'path';
 import { buildMatchFact, parseMatchId, matchFactToPrompt, selectTimelineForDisplay } from '../../lib/matchReview/matchFacts.js';
 import { buildHeroNamesMap } from '../../lib/matchReview/heroNamesMap.js';
 import { LANE_CLUSTER_SOURCE } from '../../lib/matchReview/laneResolver.js';
+import { formatObjectiveLabel } from '../../lib/matchReview/objectiveLabels.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixture = JSON.parse(
   readFileSync(join(__dirname, '../fixtures/match8985182860.json'), 'utf8')
+);
+const parsedFixture = JSON.parse(
+  readFileSync(join(__dirname, '../fixtures/match9035042364.parsed.json'), 'utf8')
 );
 
 const HERO_NAMES_CN: Record<number, { nameZh: string; nameEn: string }> = {
@@ -78,6 +82,60 @@ describe('buildMatchFact', () => {
     expect(prompt).toContain('net worth');
     expect(prompt).not.toContain('天辉');
     expect(prompt).not.toContain('夜魇');
+  });
+
+  it('prompt includes a compact per-player table with side, hero, K/D/A and economy', () => {
+    const prompt = matchFactToPrompt(fact, 'zh');
+    expect(prompt).toContain('## 玩家数据');
+    // Radiant Lifestealer 7/9/19.
+    expect(prompt).toContain('天辉 噬魂鬼：K/D/A 7/9/19，GPM 439，XPM 778，经济 18381，英雄伤害 32688');
+    // Dire Sven.
+    expect(prompt).toContain('夜魇 斯温：K/D/A 12/3/17，GPM 822，XPM 1242，经济 38218，英雄伤害 53582');
+    // This fixture has no replay-parse-only fields: no player name / LH / level.
+    expect(prompt).not.toContain('正补');
+    expect(prompt).not.toContain('等级');
+
+    const promptEn = matchFactToPrompt(buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN }), 'en');
+    expect(promptEn).toContain('## Players');
+    expect(promptEn).toContain('Radiant Lifestealer: K/D/A 7/9/19, GPM 439, XPM 778, net worth 18381, hero damage 32688');
+    expect(promptEn).toContain('Dire Sven: K/D/A 12/3/17, GPM 822, XPM 1242, net worth 38218, hero damage 53582');
+  });
+
+  it('prompt building events name the losing side and the destroyer', () => {
+    const prompt = matchFactToPrompt(fact, 'zh');
+    // 563s: Radiant creeps (npc_dota_creep_goodguys_melee, no player_slot)
+    // took the Dire top T1 — previously read as "Dire pushed a Radiant tower".
+    expect(prompt).toContain('- 9:23 夜魇上路一塔被天辉摧毁');
+    // 2996s: Sven (Dire) took the Radiant mid melee barracks on high ground.
+    expect(prompt).toContain('- 49:56 天辉中路高地近战兵营被夜魇摧毁');
+    expect(prompt).not.toContain('高地塔');
+
+    const promptEn = matchFactToPrompt(buildMatchFact(fixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_CN }), 'en');
+    expect(promptEn).toContain('- 9:23 Dire lost top T1 tower (destroyed by Radiant)');
+
+    // The display cap keeps only one regular tower event; assert the labels of
+    // the capped-out events directly from the built timeline.
+    const labelAt = (t: number, lang: 'zh' | 'en') => formatObjectiveLabel(
+      fact.timeline.find((ev) => ev.time === t) as { type: string; key: string | null; team?: number | null },
+      lang,
+    );
+    // 799s: Rubick (Radiant, player_slot 1) took the Dire mid T1.
+    expect(labelAt(799, 'zh')).toBe('夜魇中路一塔被天辉摧毁');
+    // 1359s: Dire creeps took the Radiant bot T1.
+    expect(labelAt(1359, 'zh')).toBe('天辉下路一塔被夜魇摧毁');
+    expect(labelAt(1359, 'en')).toBe('Radiant lost bot T1 tower (destroyed by Dire)');
+  });
+
+  it('derives the destroyer team from the killing unit for creep tower kills', () => {
+    const creepKill = fact.timeline.find((ev) => ev.time === 563);
+    expect(creepKill?.type).toBe('building_kill');
+    expect(creepKill?.playerSlot).toBeNull();
+    expect(creepKill?.team).toBe(2);
+    const direCreepKill = fact.timeline.find((ev) => ev.time === 1359);
+    expect(direCreepKill?.team).toBe(3);
+    const heroKill = fact.timeline.find((ev) => ev.time === 799);
+    expect(heroKill?.playerSlot).toBe(1);
+    expect(heroKill?.team).toBe(2);
   });
 
   it('uses English hero names from constants when heroStats is unavailable', () => {
@@ -194,5 +252,53 @@ describe('buildMatchFact', () => {
     expect(stripped.focusLens?.laneGrounded).toBe(false);
     expect(stripped.focusLens?.opponents).toEqual([]);
     expect(stripped.focusLens?.laneLabel).toContain('无法推断分路');
+  });
+});
+
+describe('matchFactToPrompt — per-player facts (parsed fixture)', () => {
+  // 9035042364 carries replay-parse-only fields (personaname, last_hits, level)
+  // that 8985182860 lacks; the follow-up context must surface all of them.
+  const HERO_NAMES: Record<number, { nameZh: string; nameEn: string; internalSlug: string }> = {
+    9: { nameZh: '米拉娜', nameEn: 'Mirana', internalSlug: 'mirana' },
+    14: { nameZh: '帕吉', nameEn: 'Pudge', internalSlug: 'pudge' },
+    21: { nameZh: '风行者', nameEn: 'Windranger', internalSlug: 'windrunner' },
+    35: { nameZh: '狙击手', nameEn: 'Sniper', internalSlug: 'sniper' },
+    41: { nameZh: '虚空假面', nameEn: 'Faceless Void', internalSlug: 'faceless_void' },
+    42: { nameZh: '冥魂大帝', nameEn: 'Wraith King', internalSlug: 'skeleton_king' },
+    69: { nameZh: '末日使者', nameEn: 'Doom', internalSlug: 'doom_bringer' },
+    84: { nameZh: '食人魔魔法师', nameEn: 'Ogre Magi', internalSlug: 'ogre_magi' },
+    104: { nameZh: '军团指挥官', nameEn: 'Legion Commander', internalSlug: 'legion_commander' },
+    123: { nameZh: '森海飞霞', nameEn: 'Hoodwink', internalSlug: 'hoodwink' },
+  };
+
+  it('includes side, hero, player name, K/D/A, economy and parse-only stats per player', () => {
+    const fact = buildMatchFact(parsedFixture, { lang: 'zh', heroNames: HERO_NAMES });
+    const prompt = matchFactToPrompt(fact, 'zh');
+    // Radiant Pudge, the exact player a follow-up claimed to have no data for.
+    expect(prompt).toContain('- 天辉 帕吉(Player2)：K/D/A 5/19/22，GPM 379，XPM 694，经济 19717，英雄伤害 21676，正补 171，等级 26');
+    // Every roster entry gets a line.
+    expect(prompt.match(/^- (天辉|夜魇) /gm)).toHaveLength(10);
+    expect(prompt.match(/^- 天辉 /gm)).toHaveLength(5);
+    expect(prompt.match(/^- 夜魇 /gm)).toHaveLength(5);
+  });
+
+  it('localizes the per-player table in English', () => {
+    const factEn = buildMatchFact(parsedFixture, { lang: 'en', heroNames: HERO_NAMES });
+    const prompt = matchFactToPrompt(factEn, 'en');
+    expect(prompt).toContain('- Radiant Pudge (Player2): K/D/A 5/19/22, GPM 379, XPM 694, net worth 19717, hero damage 21676, last hits 171, level 26');
+    expect(prompt).toContain('## Players');
+  });
+
+  it('omits player name, last hits and level when OpenDota provides none', () => {
+    const fact = buildMatchFact(fixture, { lang: 'zh', heroNames: HERO_NAMES_CN });
+    for (const p of fact.players) {
+      expect(p.personName).toBeNull();
+      expect(p.lastHits).toBeNull();
+      expect(p.level).toBeNull();
+    }
+    const prompt = matchFactToPrompt(fact, 'zh');
+    expect(prompt).not.toContain('正补');
+    expect(prompt).not.toContain('等级');
+    expect(prompt).not.toContain('(Player');
   });
 });
