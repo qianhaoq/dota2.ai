@@ -42,6 +42,11 @@ import {
 } from './lib/matchReview/reviewResponder.js';
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
+import { withCompletionDeadline } from './lib/completionDeadline.js';
+
+// Per-attempt card completion deadline; two attempts + fetch stay under
+// Cloud Run's 300s request timeout.
+const REVIEW_CARD_COMPLETION_DEADLINE_MS = 90000;
 import {
   createParseRequestSubmitter,
   PARSE_REQUEST_TIMEOUT_MS,
@@ -2415,21 +2420,26 @@ async function handleMatchReview(req, res) {
       responder.send({ reviewCards: initialReviewCards, grounded: isGrounded });
     }
 
-    const completionRequest = () => openai.chat.completions.create({
+    const completionBody = {
       model: DEEPSEEK_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       stream: Boolean(followUp),
-      // NOTE: DeepSeek json_object mode hung every card review in prod
-      // (rev 00065: 100% 504 at 300s). Malformed JSON is handled by
+      // No response_format: DeepSeek json_object mode hung every card review
+      // in prod (rev 00065: 100% 504 at 300s). Malformed JSON is recovered by
       // extractJsonFromLlmOutput instead.
-    }, {
-      signal: abortController.signal,
-      timeout: 90000,
-      maxRetries: 0,
-    });
+    };
+    // Follow-ups stream and keep the SDK's default retries. Card requests get
+    // an app-owned deadline covering body parsing, and no SDK retries (the
+    // validation retry already makes a second attempt).
+    const completionRequest = () => (followUp
+      ? openai.chat.completions.create(completionBody, { signal: abortController.signal })
+      : withCompletionDeadline(
+        (signal) => openai.chat.completions.create(completionBody, { signal, maxRetries: 0 }),
+        { ms: REVIEW_CARD_COMPLETION_DEADLINE_MS, signal: abortController.signal },
+      ));
 
     // When no primary_mistake category has its required evidence in this
     // match's catalog (typically unparsed matches: no timeline, no gold or CS
@@ -2516,7 +2526,8 @@ async function handleMatchReview(req, res) {
         }
       }
     } catch (streamErr) {
-      if (clientGone || streamErr.name === 'AbortError') return;
+      if (clientGone || (streamErr.name === 'AbortError' && abortController.signal.aborted)) return;
+      if (streamErr.name === 'CompletionDeadlineError') console.warn(`[review:ai-validation] match=${matchId} completion_deadline_exceeded`);
       console.error('Match review stream error:', streamErr);
       if (!res.writableEnded) {
         if (followUp) {
