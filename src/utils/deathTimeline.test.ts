@@ -285,8 +285,8 @@ describe('buildDeathTimeline — synthetic', () => {
       mkPlayer({ hero_id: 1, player_slot: 0, deaths: 0, kills_log: [] }),
       mkPlayer({ hero_id: 2, player_slot: 128, deaths: 0, kills_log: [] }),
     ];
-    const heroNames = { 1: { nameZh: 'A', nameEn: 'A', internalSlug: 'a' }, 2: { nameZh: 'B', nameEn: 'B', internalSlug: 'b' } };
-    expect(buildDeathTimeline(players, [], heroNames, { parsed: true })).toEqual({
+    const heroSlugs = { 1: 'npc_dota_hero_antimage', 2: 'npc_dota_hero_axe' };
+    expect(buildDeathTimeline(players, [], heroSlugs, { parsed: true })).toEqual({
       available: true,
       deathsByHeroId: {},
       coverage: {
@@ -296,7 +296,7 @@ describe('buildDeathTimeline — synthetic', () => {
     });
     // Without the parsed flag the same input stays unavailable (legacy default:
     // no kills_log means the replay was never parsed).
-    expect(buildDeathTimeline(players, [], heroNames)).toEqual({ available: false });
+    expect(buildDeathTimeline(players, [], heroSlugs)).toEqual({ available: false });
   });
 
   it('drops same-team kill entries (denies and similar noise)', () => {
