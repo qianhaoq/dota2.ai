@@ -33,6 +33,26 @@ export interface MatchLaneGroup {
   confidence: LaneConfidence;
 }
 
+/** A death of a hero, derived by inverting every player's kills_log. */
+export interface DeathTimelineEvent {
+  time: number;
+  minute: number;
+  killerHeroId: number | null;
+  killerIsRadiant: boolean | null;
+  /** Gold lead of the victim's team at that minute (null when radiant_gold_adv is unavailable). */
+  teamGoldLeadAtT: number | null;
+}
+
+/** Advantage reversal summary from radiant_gold_adv (null when the array is too short). */
+export interface AdvantageSwing {
+  loserSide: 'radiant' | 'dire';
+  loserPeakLead: number;
+  loserPeakMinute: number;
+  /** First minute after the peak where the winner took the lead; null if never. */
+  crossoverMinute: number | null;
+  comeback: boolean;
+}
+
 export interface MatchPlayerFact {
   heroId: number;
   playerSlot: number;
@@ -62,6 +82,10 @@ export interface MatchPlayerFact {
   xpTimeline: number[];
   timeBuckets: number[];
   killsLog: Array<{ time: number; target: string }>;
+  /** Deaths derived by inverting kills_log; [] when the replay is not parsed. */
+  deathEvents: DeathTimelineEvent[];
+  /** Derived death count vs the reported scoreboard deaths (see deathTimeline coverage). */
+  deathsDerivedCount: number;
 }
 
 export type FieldEmptyReason = 'not_parsed_yet' | 'no_data';
@@ -114,6 +138,9 @@ export interface MatchFact {
     carrierName?: string | null;
     aegisStolen?: boolean;
   }>;
+  /** True when kills_log data exists, so per-player deathEvents are derived. */
+  deathTimelineAvailable: boolean;
+  advantageSwing: AdvantageSwing | null;
   focusHeroId: number | null;
   focusLens: {
     heroId: number;
@@ -127,6 +154,7 @@ export interface MatchFact {
     opponents: Array<{ heroId: number; displayName: string; kda: string }>;
     nearby: Array<{ heroId: number; displayName: string }>;
     earlyKills: Array<{ time: number; target: string }>;
+    deathEvents: DeathTimelineEvent[];
     keyTimeline: Array<{ time: number; type: string; key: string | null }>;
     laneSource: string;
     laneConfidence: LaneConfidence;
@@ -135,6 +163,6 @@ export interface MatchFact {
   grounded: boolean;
   /** True when OpenDota replay data (lanes/timeline/economy) is available. */
   parsed?: boolean;
-  /** Reasons for empty fields (lanes/timeline/economy/focusLane), localized per lang. */
-  fieldReasons?: Partial<Record<'lanes' | 'timeline' | 'economy' | 'focusLane', FieldReason>>;
+  /** Reasons for empty fields (lanes/timeline/economy/focusLane/deaths), localized per lang. */
+  fieldReasons?: Partial<Record<'lanes' | 'timeline' | 'economy' | 'focusLane' | 'deaths', FieldReason>>;
 }
