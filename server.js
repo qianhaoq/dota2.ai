@@ -2540,9 +2540,10 @@ async function handleMatchReview(req, res) {
         const cards = usedFallback
           ? buildFallbackAiCards(matchFact, lang)
           : resolvedCards;
-        // Follow-up chat streams from DeepSeek only; with Gemini-only config
-        // drop the suggestions so the client keeps follow-up actions disabled.
-        const reviewCards = openai ? cards : { ...cards, followups: [] };
+        // Follow-up chat streams from DeepSeek only; when it is unconfigured
+        // or failed during this request (cards came from Gemini fallback), drop
+        // the suggestions so the client keeps follow-up actions disabled.
+        const reviewCards = (openai && !failedCardProviders.has('deepseek')) ? cards : { ...cards, followups: [] };
         // writableEnded stays false on an aborted close, so gate on
         // clientGone too: a gone client must not get a final write/end.
         if (!clientGone && !res.writableEnded) {
