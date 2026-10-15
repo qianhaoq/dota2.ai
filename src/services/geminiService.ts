@@ -517,6 +517,8 @@ export interface ReviewStreamCallbacks {
   onError: (error: string) => void;
 }
 
+export const REVIEW_CLIENT_TIMEOUT_MS = 180000;
+
 export const fetchMatchReviewStream = (
   matchId: number,
   lang: Language,
@@ -525,7 +527,9 @@ export const fetchMatchReviewStream = (
   callbacks?: ReviewStreamCallbacks
 ): AbortController => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  // Must exceed the server's review budget (REVIEW_REQUEST_BUDGET_MS = 170s:
+  // OpenDota fetch + DeepSeek 40s + Gemini 40s + validation retry).
+  const timeoutId = setTimeout(() => controller.abort(), REVIEW_CLIENT_TIMEOUT_MS);
 
   const cleanup = async (reader?: ReadableStreamDefaultReader<Uint8Array>) => {
     clearTimeout(timeoutId);
