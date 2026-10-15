@@ -42,6 +42,16 @@ import {
 } from './lib/matchReview/reviewResponder.js';
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
+import { withCompletionDeadline, cardAttemptDeadlineMs } from './lib/completionDeadline.js';
+
+// Per-attempt card completion deadline; two attempts + fetch stay under
+// Cloud Run's 300s request timeout.
+const REVIEW_CARD_COMPLETION_DEADLINE_MS = 90000;
+// Request-wide budget for the whole card review (OpenDota fetch + all
+// completion attempts), leaving headroom under Cloud Run's 300s limit to
+// build and send the fallback response.
+const REVIEW_REQUEST_BUDGET_MS = 270000;
+const REVIEW_MIN_ATTEMPT_MS = 5000;
 import {
   createParseRequestSubmitter,
   PARSE_REQUEST_TIMEOUT_MS,
@@ -2309,6 +2319,7 @@ async function handleMatchReview(req, res) {
   }
 
   let clientGone = false;
+  const reviewStartedAt = Date.now();
   let stream = null;
   const abortController = new AbortController();
   const abortUpstream = () => {
@@ -2415,19 +2426,35 @@ async function handleMatchReview(req, res) {
       responder.send({ reviewCards: initialReviewCards, grounded: isGrounded });
     }
 
-    const completionRequest = () => openai.chat.completions.create({
+    const completionBody = {
       model: DEEPSEEK_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       stream: Boolean(followUp),
-      // Card reviews must be a single JSON object; DeepSeek JSON mode removes
-      // malformed-JSON failures. Follow-ups are markdown, so leave them alone.
-      ...(followUp ? {} : { response_format: { type: 'json_object' } }),
-    }, {
-      signal: abortController.signal,
-    });
+      // No response_format: DeepSeek json_object mode hung every card review
+      // in prod (rev 00065: 100% 504 at 300s). Malformed JSON is recovered by
+      // extractJsonFromLlmOutput instead.
+    };
+    // Follow-ups stream and keep the SDK's default retries. Card requests get
+    // an app-owned deadline covering body parsing, and no SDK retries (the
+    // validation retry already makes a second attempt).
+    const completionRequest = () => (followUp
+      ? openai.chat.completions.create(completionBody, { signal: abortController.signal })
+      : withCompletionDeadline(
+        (signal) => openai.chat.completions.create(completionBody, { signal, maxRetries: 0 }),
+        {
+          ms: cardAttemptDeadlineMs({
+            startedAt: reviewStartedAt,
+            now: Date.now(),
+            budgetMs: REVIEW_REQUEST_BUDGET_MS,
+            perAttemptMs: REVIEW_CARD_COMPLETION_DEADLINE_MS,
+            minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
+          }),
+          signal: abortController.signal,
+        },
+      ));
 
     // When no primary_mistake category has its required evidence in this
     // match's catalog (typically unparsed matches: no timeline, no gold or CS
@@ -2514,7 +2541,8 @@ async function handleMatchReview(req, res) {
         }
       }
     } catch (streamErr) {
-      if (clientGone || streamErr.name === 'AbortError') return;
+      if (clientGone || (streamErr.name === 'AbortError' && abortController.signal.aborted)) return;
+      if (streamErr.name === 'CompletionDeadlineError') console.warn(`[review:ai-validation] match=${matchId} completion_deadline_exceeded`);
       console.error('Match review stream error:', streamErr);
       if (!res.writableEnded) {
         if (followUp) {
