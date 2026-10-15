@@ -710,6 +710,62 @@ describe('reviewCards — same-team kills_log entries in fallback key moments', 
   });
 });
 
+describe('reviewCards — phase spine mid kill evidence drops same-team kills_log entries', () => {
+  // Focus: radiant Storm Spirit with three mid-phase (10–25 min) kills_log
+  // entries. The 15:00 entry "kills" his own Crystal Maiden (deny record) —
+  // buildPhaseSpine keeps at most 2 mid kills, so it must be filtered out
+  // upstream or it both becomes mid_kill_* evidence and displaces a real kill.
+  const HERO_NAMES: Record<number, { nameZh: string; nameEn: string; internalSlug: string }> = {
+    1: { nameZh: '风暴之灵', nameEn: 'Storm Spirit', internalSlug: 'storm_spirit' },
+    2: { nameZh: '水晶室女', nameEn: 'Crystal Maiden', internalSlug: 'crystal_maiden' },
+    3: { nameZh: '斧王', nameEn: 'Axe', internalSlug: 'axe' },
+    4: { nameZh: '矮人直升机', nameEn: 'Gyrocopter', internalSlug: 'gyrocopter' },
+  };
+  const raw = {
+    match_id: 3,
+    duration: 1800,
+    radiant_win: true,
+    radiant_gold_adv: [],
+    players: [
+      { hero_id: 1, player_slot: 0, kills: 3, deaths: 0, assists: 0, kills_log: [
+        { time: 900, key: 'npc_dota_hero_crystal_maiden' }, // same team (deny)
+        { time: 960, key: 'npc_dota_hero_axe' },            // enemy kill 16:00
+        { time: 1020, key: 'npc_dota_hero_gyrocopter' },    // enemy kill 17:00
+      ] },
+      { hero_id: 2, player_slot: 1, kills: 0, deaths: 1, assists: 0, kills_log: [] },
+      { hero_id: 3, player_slot: 128, kills: 0, deaths: 1, assists: 0, kills_log: [] },
+      { hero_id: 4, player_slot: 129, kills: 0, deaths: 1, assists: 0, kills_log: [] },
+    ],
+    objectives: [],
+  };
+
+  it('normalizes killsLog at build time: the same-team entry never reaches consumers', () => {
+    const fact = buildMatchFact(raw, { lang: 'en', heroId: 1, heroNames: HERO_NAMES });
+    const focus = fact.players.find((p: { heroId: number }) => p.heroId === 1);
+    expect(focus?.killsLog).toEqual([
+      { time: 960, target: 'axe' },
+      { time: 1020, target: 'gyrocopter' },
+    ]);
+  });
+
+  it('mid phase evidence keeps both real enemy kills and never shows the denied ally', () => {
+    const fact = buildMatchFact(raw, { lang: 'en', heroId: 1, heroNames: HERO_NAMES });
+    const cards = buildDeterministicReviewCards(fact, 'en') as ReviewCardsPayload;
+    const mid = cards.phases?.find((p) => p.phase === 'mid');
+    expect(mid).toBeDefined();
+    const killEvidence = (mid?.evidence || []).filter((e) => e.factKey.startsWith('mid_kill_'));
+    expect(killEvidence.map((e) => e.label)).toEqual(['16:00', '17:00']);
+    expect(killEvidence.map((e) => e.value)).toEqual(['Axe', 'Gyrocopter']);
+    // The 15:00 deny must not appear anywhere in the spine nor displace a kill.
+    const allEvidenceText = (cards.phases || [])
+      .flatMap((p) => p.evidence || [])
+      .map((e) => `${e.label} ${e.value}`)
+      .join(' | ');
+    expect(allEvidenceText).not.toContain('Crystal Maiden');
+    expect(allEvidenceText).not.toContain('15:00');
+  });
+});
+
 describe('buildKeyMomentsFromTimeline', () => {
   const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
 

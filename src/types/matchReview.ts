@@ -90,6 +90,7 @@ export interface MatchPlayerFact {
   lhTimeline: number[];
   xpTimeline: number[];
   timeBuckets: number[];
+  /** Enemy kills from parsed kills_log; same-team entries (denies/self-kills) are dropped when built. */
   killsLog: Array<{ time: number; target: string }>;
   /** Deaths derived by inverting kills_log; [] when the replay is not parsed. */
   deathEvents: DeathTimelineEvent[];
