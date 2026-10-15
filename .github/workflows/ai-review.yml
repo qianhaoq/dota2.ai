@@ -2,7 +2,7 @@ name: AI Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ jobs:
   copilot-review:
     name: Copilot Review
     runs-on: ubuntu-latest
-    if: vars.DISABLE_COPILOT_REVIEW != 'true'
+    if: vars.DISABLE_COPILOT_REVIEW != 'true' && github.event.pull_request.draft == false
     
     steps:
       - name: Request Copilot Code Review
@@ -77,6 +77,7 @@ jobs:
   # This is supplementary to Copilot, not required for merge
   # ============================================================
   custom-llm-review:
+    if: github.event.pull_request.draft == false
     name: Custom LLM Review (Optional)
     runs-on: ubuntu-latest
     timeout-minutes: 5
