@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { buildDeathTimeline } from '../../lib/matchReview/deathTimeline.js';
+import { buildDeathTimeline, isSameTeamKill } from '../../lib/matchReview/deathTimeline.js';
 import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
 import type { MatchFact } from '../types/matchReview';
 
@@ -282,8 +282,8 @@ describe('buildDeathTimeline — synthetic', () => {
 
   it('returns zero-death coverage directly for parsed zero-kill matches', () => {
     const players = [
-      mkPlayer({ hero_id: 1, player_slot: 0, deaths: 0, kills_log: [] }),
-      mkPlayer({ hero_id: 2, player_slot: 128, deaths: 0, kills_log: [] }),
+      mkPlayer({ hero_id: 1, player_slot: 0, kills: 0, deaths: 0, kills_log: [] }),
+      mkPlayer({ hero_id: 2, player_slot: 128, kills: 0, deaths: 0, kills_log: [] }),
     ];
     const heroSlugs = { 1: 'npc_dota_hero_antimage', 2: 'npc_dota_hero_axe' };
     expect(buildDeathTimeline(players, [], heroSlugs, { parsed: true })).toEqual({
@@ -297,6 +297,50 @@ describe('buildDeathTimeline — synthetic', () => {
     // Without the parsed flag the same input stays unavailable (legacy default:
     // no kills_log means the replay was never parsed).
     expect(buildDeathTimeline(players, [], heroSlugs)).toEqual({ available: false });
+  });
+
+  it('stays unavailable when the scoreboard shows kills but kills_log is missing', () => {
+    // parsed=true is not enough: kills on the scoreboard with no kills_log means
+    // the parse data itself is missing — an empty "available" timeline would
+    // claim 0 deaths for players who visibly died.
+    const players = [
+      mkPlayer({ hero_id: 1, player_slot: 0, kills: 3, deaths: 0, kills_log: [] }),
+      mkPlayer({ hero_id: 2, player_slot: 128, kills: 0, deaths: 4, kills_log: [] }),
+    ];
+    const heroSlugs = { 1: 'npc_dota_hero_antimage', 2: 'npc_dota_hero_axe' };
+    expect(buildDeathTimeline(players, [], heroSlugs, { parsed: true }))
+      .toEqual({ available: false });
+    // A single player with kills>0 is enough to disqualify the empty path.
+    const onlyOneKill = [
+      mkPlayer({ hero_id: 1, player_slot: 0, kills: 1, kills_log: [] }),
+      mkPlayer({ hero_id: 2, player_slot: 128, kills: 0, kills_log: [] }),
+    ];
+    expect(buildDeathTimeline(onlyOneKill, [], heroSlugs, { parsed: true }))
+      .toEqual({ available: false });
+  });
+
+  it('reports missing kills_log on a parsed match as no_data via buildMatchFact', () => {
+    const fact = buildMatchFact({
+      match_id: 2,
+      duration: 1200,
+      radiant_win: true,
+      radiant_gold_adv: [0, 100, 200],
+      od_data: { has_parsed: true },
+      players: [
+        mkPlayer({ hero_id: 1, player_slot: 0, kills: 2, deaths: 1, kills_log: [] }),
+        mkPlayer({ hero_id: 2, player_slot: 128, kills: 1, deaths: 2, kills_log: [] }),
+      ],
+      objectives: [],
+    }, { lang: 'zh', heroNames: { 1: { nameZh: 'A', nameEn: 'A', internalSlug: 'a' }, 2: { nameZh: 'B', nameEn: 'B', internalSlug: 'b' } } }) as MatchFact;
+    expect(fact.parsed).toBe(true);
+    expect(fact.deathTimelineAvailable).toBe(false);
+    // Parsed match + missing data => no_data, not not_parsed_yet.
+    expect(fact.fieldReasons?.deaths?.reason).toBe('no_data');
+    expect(fact.fieldReasons?.deaths?.message).toContain('死亡时间线');
+    for (const p of fact.players) {
+      expect(p.deathEvents).toEqual([]);
+      expect(p.deathsDerivedCount).toBe(0);
+    }
   });
 
   it('drops same-team kill entries (denies and similar noise)', () => {
@@ -322,6 +366,19 @@ describe('buildDeathTimeline — synthetic', () => {
     ]);
     expect(timeline.deathsByHeroId![2]).toBeUndefined();
     expect(timeline.coverage![2]).toEqual({ derivedCount: 0, reportedDeaths: 0 });
+  });
+
+  it('isSameTeamKill: only flags records where both sides are known and equal', () => {
+    // Shared with reviewCards key moments: radiant-radiant and dire-dire are
+    // same-team (deny/self-kill noise); cross-team is a real kill.
+    expect(isSameTeamKill(0, 3)).toBe(true);
+    expect(isSameTeamKill(128, 132)).toBe(true);
+    expect(isSameTeamKill(0, 128)).toBe(false);
+    expect(isSameTeamKill(127, 128)).toBe(false);
+    // Unknown side on either end is never classified as same-team.
+    expect(isSameTeamKill(null, 0)).toBe(false);
+    expect(isSameTeamKill(0, undefined)).toBe(false);
+    expect(isSameTeamKill(null, undefined)).toBe(false);
   });
 
   it('returns available:false for empty or invalid players input', () => {

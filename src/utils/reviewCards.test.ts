@@ -656,6 +656,60 @@ describe('resolveEvidence', () => {
   });
 });
 
+describe('reviewCards — same-team kills_log entries in fallback key moments', () => {
+  // No objectives / no gold adv, so fallback moments come solely from the focus
+  // hero's kills/deaths (buildFocusHeroEvents via buildFallbackKeyMoments).
+  const HERO_NAMES: Record<number, { nameZh: string; nameEn: string; internalSlug: string }> = {
+    1: { nameZh: '风暴之灵', nameEn: 'Storm Spirit', internalSlug: 'storm_spirit' },
+    2: { nameZh: '水晶室女', nameEn: 'Crystal Maiden', internalSlug: 'crystal_maiden' },
+    3: { nameZh: '斧王', nameEn: 'Axe', internalSlug: 'axe' },
+  };
+  const raw = {
+    match_id: 2,
+    duration: 1500,
+    radiant_win: false,
+    radiant_gold_adv: [],
+    players: [
+      // Focus: radiant Storm Spirit. The 5:00 entry "kills" his own Crystal
+      // Maiden (deny record) — must not become a key moment.
+      { hero_id: 1, player_slot: 0, kills: 2, deaths: 1, assists: 0, kills_log: [
+        { time: 300, key: 'npc_dota_hero_crystal_maiden' },
+        { time: 420, key: 'npc_dota_hero_axe' },
+      ] },
+      // Radiant CM "kills" Storm Spirit (same team) — not an enemy death.
+      { hero_id: 2, player_slot: 1, kills: 0, deaths: 2, assists: 0, kills_log: [
+        { time: 500, key: 'npc_dota_hero_storm_spirit' },
+      ] },
+      // Dire Axe kills Storm Spirit — a real death moment.
+      { hero_id: 3, player_slot: 128, kills: 1, deaths: 2, assists: 0, kills_log: [
+        { time: 600, key: 'npc_dota_hero_storm_spirit' },
+      ] },
+    ],
+    objectives: [],
+  };
+  const fact = buildMatchFact(raw, { lang: 'en', heroId: 1, heroNames: HERO_NAMES });
+
+  it('drops same-team kills/deaths and keeps only enemy ones', () => {
+    const cards = buildFallbackAiCards(fact, 'en') as ReviewCardsPayload;
+    const headlines = (cards.key_moments || []).map((m) => m.headline).join(' | ');
+    expect(headlines).toContain('Killed Axe');
+    expect(headlines).toContain('Died (killed by Axe)');
+    expect(headlines).not.toContain('Killed Crystal Maiden');
+    expect(headlines).not.toContain('Died (killed by Crystal Maiden)');
+    expect(cards.key_moments).toHaveLength(2);
+  });
+
+  it('applies the same filter in Chinese headlines', () => {
+    const zhFact = buildMatchFact(raw, { lang: 'zh', heroId: 1, heroNames: HERO_NAMES });
+    const cards = buildFallbackAiCards(zhFact, 'zh') as ReviewCardsPayload;
+    const headlines = (cards.key_moments || []).map((m) => m.headline).join(' | ');
+    expect(headlines).toContain('击杀 斧王');
+    expect(headlines).toContain('阵亡（被 斧王 击杀）');
+    expect(headlines).not.toContain('击杀 水晶室女');
+    expect(headlines).not.toContain('阵亡（被 水晶室女 击杀）');
+  });
+});
+
 describe('buildKeyMomentsFromTimeline', () => {
   const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
 
