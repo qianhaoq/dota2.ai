@@ -43,6 +43,7 @@ import {
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
 import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
+import { withCompletionDeadline } from './lib/completionDeadline.js';
 
 // Per-attempt card completion deadline; two attempts + fetch stay under
 // Cloud Run's 300s request timeout.
@@ -53,6 +54,9 @@ const REVIEW_CARD_COMPLETION_DEADLINE_MS = 40000;
 // Cloud Run's 300s limit, with headroom to send the fallback response.
 const REVIEW_REQUEST_BUDGET_MS = 170000;
 const REVIEW_MIN_ATTEMPT_MS = 5000;
+// Fetch-phase cap (OpenDota match + hero stats + constants). Leaves 80s of
+// the request budget for DeepSeek 40s + Gemini 40s.
+const REVIEW_FETCH_BUDGET_MS = 90000;
 import {
   createParseRequestSubmitter,
   PARSE_REQUEST_TIMEOUT_MS,
@@ -2352,12 +2356,19 @@ async function handleMatchReview(req, res) {
   try {
     if (clientGone) return;
 
-    const fetchOpts = { signal: abortController.signal };
-    const [matchData, heroStats, heroConstants] = await Promise.all([
-      getMatchDetail(matchId, fetchOpts),
-      getHeroStats(fetchOpts),
-      getHeroConstants(),
-    ]);
+    // App-owned deadline over the whole fetch phase so a stalled OpenDota or
+    // constants refresh cannot outlive the browser's review timeout. The race
+    // also bounds getHeroConstants(), which takes no signal (its shared cache
+    // refresh may finish in the background). Expiry is a CompletionDeadlineError
+    // (distinct from client disconnect) and is answered with a 504 below.
+    const [matchData, heroStats, heroConstants] = await withCompletionDeadline(
+      (signal) => Promise.all([
+        getMatchDetail(matchId, { signal }),
+        getHeroStats({ signal }),
+        getHeroConstants(),
+      ]),
+      { ms: REVIEW_FETCH_BUDGET_MS, signal: abortController.signal },
+    );
 
     if (clientGone) return;
 
@@ -2572,7 +2583,17 @@ async function handleMatchReview(req, res) {
       }
     }
   } catch (error) {
-    if (clientGone || error.name === 'AbortError') return;
+    if (clientGone || (error.name === 'AbortError' && abortController.signal.aborted)) return;
+    if (error.name === 'CompletionDeadlineError') {
+      console.warn(JSON.stringify({ severity: 'WARNING', event: 'review_fetch_deadline_exceeded', matchId, budgetMs: REVIEW_FETCH_BUDGET_MS }));
+      return respondReviewError(
+        res,
+        wantsStream,
+        isZh ? '获取比赛数据超时，请稍后重试' : 'Timed out fetching match data; please retry',
+        504,
+        { retryable: true },
+      );
+    }
     console.error('Match review error:', error);
     if (isOpenDotaFetchError(error)) {
       const mapped = mapOpenDotaFetchError(error, isZh);

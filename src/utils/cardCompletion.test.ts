@@ -90,3 +90,21 @@ describe('review timing budget', () => {
     expect(errors).toEqual([]); expect(failed.size).toBe(0);
   });
 });
+
+import { withCompletionDeadline } from '../../lib/completionDeadline.js';
+describe('review fetch-phase deadline', () => {
+  it('bounds a stalled fetch phase, including members that ignore the signal, and aborts the others', async () => {
+    let matchAborted = false;
+    const stalledMatch = (s: AbortSignal) => new Promise((_, rej) => s.addEventListener('abort', () => { matchAborted = true; rej(Object.assign(new Error('a'), { name: 'AbortError' })); }));
+    const stalledConstants = () => new Promise(() => {}); // takes no signal
+    await expect(withCompletionDeadline((s) => Promise.all([stalledMatch(s), stalledConstants()]), { ms: 20 }))
+      .rejects.toMatchObject({ name: 'CompletionDeadlineError' });
+    expect(matchAborted).toBe(true);
+  });
+  it('fetch budget + both provider attempts fit the request budget and client timeout', () => {
+    const src = fs.readFileSync('server.js', 'utf8');
+    const n = (k: string) => Number(src.match(new RegExp(`${k} = (\\d+)`))![1]);
+    expect(n('REVIEW_FETCH_BUDGET_MS') + 2 * n('REVIEW_CARD_COMPLETION_DEADLINE_MS')).toBeLessThanOrEqual(n('REVIEW_REQUEST_BUDGET_MS'));
+    expect(n('REVIEW_REQUEST_BUDGET_MS')).toBeLessThan(REVIEW_CLIENT_TIMEOUT_MS);
+  });
+});
