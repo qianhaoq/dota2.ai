@@ -48,9 +48,10 @@ import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
 // Cloud Run's 300s request timeout.
 const REVIEW_CARD_COMPLETION_DEADLINE_MS = 40000;
 // Request-wide budget for the whole card review (OpenDota fetch + all
-// completion attempts), leaving headroom under Cloud Run's 300s limit to
-// build and send the fallback response.
-const REVIEW_REQUEST_BUDGET_MS = 270000;
+// completion attempts). Must stay below the browser's review timeout
+// (REVIEW_CLIENT_TIMEOUT_MS = 180s in src/services/geminiService.ts) and
+// Cloud Run's 300s limit, with headroom to send the fallback response.
+const REVIEW_REQUEST_BUDGET_MS = 170000;
 const REVIEW_MIN_ATTEMPT_MS = 5000;
 import {
   createParseRequestSubmitter,
@@ -121,7 +122,7 @@ const gemini = geminiApiKey ? new OpenAI({
   baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
   apiKey: geminiApiKey,
 }) : null;
-const GEMINI_REVIEW_MODEL = process.env.GEMINI_REVIEW_MODEL || 'gemini-2.5-flash';
+const GEMINI_REVIEW_MODEL = process.env.GEMINI_REVIEW_MODEL || 'gemini-3.5-flash-lite';
 
 // ============ External API URLs ============
 const OPENDOTA_API = 'https://api.opendota.com/api';
@@ -2536,9 +2537,12 @@ async function handleMatchReview(req, res) {
           warn: (msg) => console.warn(msg),
           metric: (line) => console.log(line),
         });
-        const reviewCards = usedFallback
+        const cards = usedFallback
           ? buildFallbackAiCards(matchFact, lang)
           : resolvedCards;
+        // Follow-up chat streams from DeepSeek only; with Gemini-only config
+        // drop the suggestions so the client keeps follow-up actions disabled.
+        const reviewCards = openai ? cards : { ...cards, followups: [] };
         // writableEnded stays false on an aborted close, so gate on
         // clientGone too: a gone client must not get a final write/end.
         if (!clientGone && !res.writableEnded) {

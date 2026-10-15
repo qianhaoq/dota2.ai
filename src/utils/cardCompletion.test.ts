@@ -63,3 +63,30 @@ describe('review_ai_validation provider field', () => {
     expect(JSON.parse(lines[0]).reason).toBe('json_unparseable');
   });
 });
+
+import { cardAttemptDeadlineMs } from '../../lib/completionDeadline.js';
+import { REVIEW_CLIENT_TIMEOUT_MS } from '../services/geminiService';
+import fs from 'node:fs';
+
+describe('review timing budget', () => {
+  it('worst-case chain (fetch + DS timeout + slow invalid Gemini + Gemini retry) ends before the client timeout', () => {
+    const src = fs.readFileSync('server.js', 'utf8');
+    const budget = Number(src.match(/REVIEW_REQUEST_BUDGET_MS = (\d+)/)![1]);
+    const per = Number(src.match(/REVIEW_CARD_COMPLETION_DEADLINE_MS = (\d+)/)![1]);
+    expect(per).toBe(40000);
+    // 10s fetch, DS deadline 40s, invalid Gemini 39s, Gemini retry capped by budget
+    let t = 10000 + per + 39000;
+    t += cardAttemptDeadlineMs({ startedAt: 0, now: t, budgetMs: budget, perAttemptMs: per, minAttemptMs: 5000 });
+    expect(t).toBeLessThanOrEqual(budget);
+    // even a 120s OpenDota fetch keeps the server under its budget
+    const slow = 120000 + cardAttemptDeadlineMs({ startedAt: 0, now: 120000, budgetMs: budget, perAttemptMs: per, minAttemptMs: 5000 });
+    expect(slow).toBeLessThanOrEqual(budget);
+    expect(budget + 5000).toBeLessThan(REVIEW_CLIENT_TIMEOUT_MS);
+    expect(REVIEW_CLIENT_TIMEOUT_MS).toBeLessThan(300000);
+  });
+  it('does not mark or report a provider skipped for budget exhaustion', async () => {
+    const failed = new Set<string>(); const errors: string[] = [];
+    await expect(requestCardCompletion({ startedAt: Date.now() - 269999, budgetMs: 270000, perAttemptMs: 40, minAttemptMs: 5, providers: [{ name: 'gemini', create: async () => ({}) }], failed, onProviderError: (i) => errors.push(i.provider) })).rejects.toMatchObject({ name: 'CompletionDeadlineError' });
+    expect(errors).toEqual([]); expect(failed.size).toBe(0);
+  });
+});

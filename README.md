@@ -119,6 +119,8 @@ node --check server.js # 服务端语法
 | 变量 | 必需 | 默认 | 说明 |
 |------|------|------|------|
 | `DEEPSEEK_API_KEY` | ✅ | — | DeepSeek 密钥（GitHub Actions 同名 secret） |
+| `GEMINI_API_KEY` | 推荐 | — | 复盘卡片备用模型：DeepSeek 失败/超时（每次 40s）时改用 Gemini |
+| `GEMINI_REVIEW_MODEL` | ❌ | `gemini-3.5-flash-lite` | 覆盖备用 Gemini 模型 |
 | `STEAM_WEB_API_KEY` | ❌ | — | 本地化英雄名；缺省时回退 OpenDota 常量 |
 | `PORT` | ❌ | `8080` | 服务端口（Cloud Run 注入同名变量） |
 | `HOST` | ❌ | `0.0.0.0` | 绑定地址 |
@@ -140,7 +142,7 @@ docker run -p 8080:8080 -e DEEPSEEK_API_KEY=your_api_key dota2-ai
 gcloud builds submit --tag REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai
 gcloud run deploy dota2-ai --image REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai \
   --no-allow-unauthenticated \
-  --set-secrets DEEPSEEK_API_KEY=DEEPSEEK_API_KEY:latest
+  --set-secrets DEEPSEEK_API_KEY=DEEPSEEK_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest
 ```
 
 容器内 `HOST=0.0.0.0`、`PORT=8080` 已由 Dockerfile 设定；密钥用 Secret Manager（`--set-secrets`）注入，不要写进镜像，也尽量避免明文 `--set-env-vars`。
