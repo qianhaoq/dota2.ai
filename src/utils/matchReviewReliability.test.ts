@@ -168,7 +168,7 @@ describe('match 9035042364 unparsed fixture', () => {
     expect(fact.timeline).toHaveLength(0);
     expect(fact.economy.checkpoints).toHaveLength(0);
 
-    expect(Object.keys(fact.fieldReasons ?? {}).sort()).toEqual(['economy', 'focusLane', 'lanes', 'timeline']);
+    expect(Object.keys(fact.fieldReasons ?? {}).sort()).toEqual(['deaths', 'economy', 'focusLane', 'lanes', 'timeline']);
     for (const reason of Object.values(fact.fieldReasons ?? {})) {
       expect(reason!.reason).toBe('not_parsed_yet');
       expect(reason!.message).toContain('尚未解析');
