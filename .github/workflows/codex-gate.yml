@@ -6,8 +6,11 @@
 # so classic branch protection can require the job name "Codex Review Gate".
 #
 # Heuristic (fail-closed):
+#   - No PR resolvable from the event (issue_comment off a PR, push /
+#     default-branch contexts) → skip, no check written
+#   - PR closed / merged → skip, no check written
 #   - Label skip-codex-gate → success (escape hatch)
-#   - Draft PR → success (re-runs on ready_for_review)
+#   - Draft PR → failure (re-runs on ready_for_review)
 #   - No Codex Review Summary comment yet:
 #       * head commit younger than ~20 minutes → fail (still waiting)
 #       * otherwise → fail (timeout; add skip-codex-gate or comment @codex review)
@@ -16,14 +19,20 @@
 #   - Summary does not positively show Completed or 👍 no-findings → fail
 #   - Summary completed, but it does not mention the current head SHA
 #     (stale review of an older commit after synchronize) → fail
-#   - Summary completed, but unresolved Codex P0/P1 (or unlabeled) threads remain → fail
-#     (open P2-only threads do not block; unlabeled defaults high / fail-closed)
+#   - Summary completed, but unresolved blocking Codex threads remain → fail.
+#     Severity rule: only P0/P1-labeled threads block; explicit P2 never
+#     blocks. Unlabeled threads are non-blocking P2 unless the body
+#     (case-insensitive) contains a security/correctness keyword — then they
+#     block: security, vulnerab, injection, xss, csrf, rce, secret,
+#     token leak, credential, auth bypass, privilege, data loss, corrupt,
+#     race condition, deadlock, crash, incorrect result, wrong result,
+#     regression.
 #   - Summary completed for this head SHA (or 👍 / no-findings) and zero
 #     unresolved blocking Codex threads → success
 #   - GraphQL thread lookup failed + any Codex review comments exist → fail
 #
-# Re-runs when Codex posts/edits its summary or submits a review. Resolving
-# threads does not emit an event — Re-run this job or workflow_dispatch.
+# Re-runs when Codex posts/edits its summary, submits a review, or when a
+# review thread is resolved/unresolved (pull_request_review_thread).
 #
 # Branch protection / Ruleset required-check name is the *job* name below
 # (`Codex Review Gate`), not an arbitrary workflow title. Keep workflow
@@ -40,6 +49,8 @@ on:
     types: [submitted]
   pull_request_review_comment:
     types: [created]
+  pull_request_review_thread:
+    types: [resolved, unresolved]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -68,6 +79,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'pull_request_review' ||
       github.event_name == 'pull_request_review_comment' ||
+      github.event_name == 'pull_request_review_thread' ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     steps:
       - name: Evaluate Codex review
@@ -85,6 +97,36 @@ jobs:
               '<!-- codex-pull-request-review-summary -->',
               '## Codex Review Summary',
             ];
+            // Unlabeled threads are non-blocking P2 unless a body (case-
+            // insensitive) contains one of these security/correctness
+            // keywords — then they block. Bare acronyms use word boundaries
+            // so ordinary words ("source") do not trip them.
+            const BLOCKING_KEYWORD_PATTERNS = [
+              /security/i,
+              /vulnerab/i,
+              /injection/i,
+              /\bxss\b/i,
+              /\bcsrf\b/i,
+              /\brce\b/i,
+              /secret/i,
+              /token leak/i,
+              /credential/i,
+              /auth bypass/i,
+              /privilege/i,
+              /data loss/i,
+              /corrupt/i,
+              /race condition/i,
+              /deadlock/i,
+              /crash/i,
+              /incorrect result/i,
+              /wrong result/i,
+              /regression/i,
+            ];
+
+            function hasSecurityOrCorrectnessKeyword(bodyText) {
+              const text = bodyText || '';
+              return BLOCKING_KEYWORD_PATTERNS.some((re) => re.test(text));
+            }
 
             function isCodexLogin(login) {
               return CODEX_LOGINS.has(login || '');
@@ -158,23 +200,22 @@ jobs:
               return null; // unlabeled
             }
 
-            // Block if any body is P0/P1 or unlabeled. Allow only when every
-            // scanned body is explicit P2 (later P0/P1 escalations still block;
-            // later P2 cannot downgrade an unlabeled opener).
+            // Per body: P0/P1 blocks; explicit P2 never blocks; unlabeled
+            // blocks only when the body carries a security/correctness
+            // keyword (otherwise treated as non-blocking P2).
             function isBlockingSeverity(bodyText) {
-              return severityMarker(bodyText) !== 'P2';
+              const m = severityMarker(bodyText);
+              if (m === 'P0P1') return true;
+              if (m === 'P2') return false;
+              return hasSecurityOrCorrectnessKeyword(bodyText);
             }
 
+            // Thread blocks if any scanned body blocks (later P0/P1
+            // escalations still block; a keyword-bearing unlabeled body
+            // stays blocking until resolved).
             function isBlockingCodexBodies(bodies) {
               if (!bodies.length) return true;
-              let anyP0P1 = false;
-              let anyUnlabeled = false;
-              for (const body of bodies) {
-                const m = severityMarker(body);
-                if (m === 'P0P1') anyP0P1 = true;
-                else if (m === null) anyUnlabeled = true;
-              }
-              return anyP0P1 || anyUnlabeled;
+              return bodies.some((body) => isBlockingSeverity(body));
             }
 
             async function countUnresolvedCodexThreads(prNumber) {
@@ -273,7 +314,9 @@ jobs:
 
             const prNumber = await resolvePrNumber();
             if (!prNumber) {
-              core.setFailed('Could not resolve PR number');
+              // Non-PR context (issue_comment off a PR, push/default-branch
+              // contexts, dispatch without a PR): nothing to gate.
+              core.info('No PR number resolved from this event — skip, no check written');
               return;
             }
 
@@ -282,6 +325,12 @@ jobs:
               repo,
               pull_number: prNumber,
             });
+
+            if (pr.merged || pr.state !== 'open') {
+              core.info(`PR #${prNumber} is ${pr.merged ? 'merged' : pr.state} — skip, no check written`);
+              return;
+            }
+
             const sha = pr.head.sha;
 
             if (pr.labels.some((l) => l.name === 'skip-codex-gate')) {
@@ -291,8 +340,9 @@ jobs:
             }
 
             if (pr.draft) {
-              core.info(`PR #${prNumber} is draft — passing until ready_for_review`);
-              await reportOnHeadSha(sha, 'success', 'Draft', 'Codex gate waits until the PR is ready');
+              const msg = 'PR is draft — Gate fails until ready_for_review';
+              await reportOnHeadSha(sha, 'failure', 'Draft', msg);
+              core.setFailed(msg);
               return;
             }
 
@@ -380,12 +430,17 @@ jobs:
             }
 
             if (unresolvedCodex > 0) {
-              const msg = `${unresolvedCodex} unresolved Codex P0/P1 (or unlabeled) thread(s). Resolve them, then re-run this job (thread resolve does not retrigger).`;
+              const msg =
+                `${unresolvedCodex} unresolved blocking Codex thread(s): P0/P1-labeled, or unlabeled whose body ` +
+                'contains a security/correctness keyword (security, vulnerab, injection, xss, csrf, rce, secret, ' +
+                'token leak, credential, auth bypass, privilege, data loss, corrupt, race condition, deadlock, ' +
+                'crash, incorrect result, wrong result, regression). Resolve them — resolving a thread re-runs ' +
+                'this gate (pull_request_review_thread). Explicit P2 and unlabeled without such keywords never block.';
               await reportOnHeadSha(sha, 'failure', 'Codex findings open', msg);
               core.setFailed(msg);
               return;
             }
 
-            const ok = `Codex review finished for ${sha.slice(0, 7)} with no unresolved P0/P1 (or unlabeled) Codex threads`;
+            const ok = `Codex review finished for ${sha.slice(0, 7)} with no unresolved blocking Codex threads (P0/P1 or security/correctness unlabeled; P2 and unlabeled without keywords never block)`;
             core.info(ok);
             await reportSuccessAndDispatch(sha, 'Codex clear', ok, prNumber);
