@@ -2422,11 +2422,13 @@ async function handleMatchReview(req, res) {
         { role: 'user', content: userPrompt },
       ],
       stream: Boolean(followUp),
-      // Card reviews must be a single JSON object; DeepSeek JSON mode removes
-      // malformed-JSON failures. Follow-ups are markdown, so leave them alone.
-      ...(followUp ? {} : { response_format: { type: 'json_object' } }),
+      // NOTE: DeepSeek json_object mode hung every card review in prod
+      // (rev 00065: 100% 504 at 300s). Malformed JSON is handled by
+      // extractJsonFromLlmOutput instead.
     }, {
       signal: abortController.signal,
+      timeout: 90000,
+      maxRetries: 0,
     });
 
     // When no primary_mistake category has its required evidence in this
