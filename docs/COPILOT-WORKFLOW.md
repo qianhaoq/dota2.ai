@@ -12,7 +12,7 @@
 | `.github/workflows/copilot-setup-steps.yml` | 云端 Agent 开工前装 Node 20 + `npm ci` |
 | `.github/workflows/ai-review.yml` | PR 打开时请求 Copilot review |
 | `.github/workflows/auto-merge.yml` | **CI 全绿 + Copilot 已审 head（非 `CHANGES_REQUESTED`）+ 线程已解决 → 自动 squash**（见 `docs/MERGE_GATES.md`） |
-| `.github/workflows/codex-gate.yml` | job/check 名 **`Codex Review Gate`**（branch protection 认这个名字） |
+| `.github/workflows/codex-gate.yml` | job/check 名 **`codex / Codex Review Gate`**（branch protection 认这个名字） |
 | 现有 `ci.yml` | PR 质量门禁（tsc / build / test） |
 
 ## 默认策略（你选的）
@@ -21,7 +21,7 @@
 2. **不必等人合并**（门槛比以前严）：`auto-merge.yml` 只在同时满足时 squash 进 `main`：
    - 不是 draft
    - 没有 `no-auto-merge` label
-   - 该 head SHA 上有成功的 **Build & Test check run**（没有这条 check 不合，不用 combined status 凑）
+   - 该 head SHA 上有成功的 **ci / Build & Test check run**（没有这条 check 不合，不用 combined status 凑）
    - 该 head SHA 上已有 Copilot review，且不是 `CHANGES_REQUESTED`（**不要求** `APPROVED`；`COMMENTED` 可以；没有 review 不合）
    - 所有 review 线程已 resolve（`COMMENTED` + 未解决线程 = #33，不合）
 3. 需要人工把关时：给 PR 打上 `no-auto-merge`，或保持 draft。完整说明见 [`docs/MERGE_GATES.md`](MERGE_GATES.md)。
