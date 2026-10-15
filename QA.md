@@ -39,7 +39,9 @@ PR: #___
 > feature flag, data repair).
 
 ```bash
-<ROLLBACK_COMMAND>
+# Find the previous revision:
+# gcloud run revisions list --service dota2-ai --region asia-east1 --project aegis-assistant-488913
+gcloud run services update-traffic dota2-ai --region asia-east1 --project aegis-assistant-488913 --to-revisions=<PREVIOUS_REVISION>=100
 ```
 
 ## 签署 / Sign-off
