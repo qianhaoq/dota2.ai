@@ -165,6 +165,39 @@ describe('buildDeathTimeline — synthetic', () => {
     expect(timeline.coverage![2]).toEqual({ derivedCount: 1, reportedDeaths: 2 });
   });
 
+  it('never attributes deaths through player nicknames', () => {
+    // A player named 'Axe' (and a bare hero_name) is not an authoritative hero
+    // identifier — Axe's deaths must not land on them.
+    const nicknames = [
+      mkPlayer({ hero_id: 1, player_slot: 0, name: 'Killer', kills_log: [{ time: 100, key: 'npc_dota_hero_axe' }] }),
+      mkPlayer({ hero_id: 2, player_slot: 128, deaths: 3, name: 'Axe', hero_name: 'Axe', kills_log: [] }),
+    ];
+    expect(buildDeathTimeline(nicknames, [])).toEqual({ available: false });
+
+    // With an authoritative slug the real Axe receives the death; the
+    // nickname-only namesake still receives nothing.
+    const withSlugs = [
+      mkPlayer({ hero_id: 1, player_slot: 0, name: 'Killer', kills_log: [{ time: 100, key: 'npc_dota_hero_axe' }] }),
+      mkPlayer({ hero_id: 2, player_slot: 128, deaths: 1, name: 'Axe', kills_log: [] }),
+      mkPlayer({ hero_id: 3, player_slot: 129, deaths: 5, name: 'Axe', kills_log: [] }),
+    ];
+    const timeline = buildDeathTimeline(withSlugs, [], { 2: 'npc_dota_hero_axe' });
+    expect(timeline.available).toBe(true);
+    expect(timeline.deathsByHeroId![2]).toHaveLength(1);
+    expect(timeline.deathsByHeroId![3]).toBeUndefined();
+    expect(timeline.coverage![3]).toEqual({ derivedCount: 0, reportedDeaths: 5 });
+  });
+
+  it('returns available:false when kills_log exists but no victim resolves', () => {
+    // Cold cache: empty hero slug map and no hero_name -> zero victims mapped.
+    const players = [
+      mkPlayer({ hero_id: 1, player_slot: 0, kills_log: [{ time: 100, key: 'npc_dota_hero_axe' }] }),
+      mkPlayer({ hero_id: 2, player_slot: 128, deaths: 2, kills_log: [] }),
+    ];
+    expect(buildDeathTimeline(players, [], {})).toEqual({ available: false });
+    expect(buildDeathTimeline(players, [])).toEqual({ available: false });
+  });
+
   it('skips victims that cannot be mapped to a hero', () => {
     const players = [
       mkPlayer({ hero_id: 1, player_slot: 0, kills_log: [
@@ -258,8 +291,11 @@ describe('buildMatchFact — death timeline integration', () => {
   it('reports no timeline when hero slugs cannot be resolved', () => {
     const bare = buildMatchFact(parsedFixture, { lang: 'zh', heroId: 104 }) as MatchFact;
     // Without heroNames there is no slug lookup and no hero_name on the fixture
-    // players, so no victim can be mapped — nothing is fabricated.
-    expect(bare.deathTimelineAvailable).toBe(true);
+    // players, so no victim can be mapped — reported as unavailable with a
+    // fieldReasons.deaths entry instead of an empty "available" timeline.
+    expect(bare.deathTimelineAvailable).toBe(false);
+    expect(bare.fieldReasons?.deaths?.reason).toBe('no_data');
+    expect(bare.fieldReasons?.deaths?.message).toContain('死亡时间线');
     for (const p of bare.players) {
       expect(p.deathEvents).toEqual([]);
       expect(p.deathsDerivedCount).toBe(0);

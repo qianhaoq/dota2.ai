@@ -84,7 +84,18 @@ describe('detectAdvantageSwing', () => {
       loserSide: 'radiant',
       loserPeakLead: -100,
       loserPeakMinute: 0,
-      crossoverMinute: 1,
+      crossoverMinute: null,
+      comeback: false,
+    });
+  });
+
+  it('returns a null crossover when the loser peak lead is negative', () => {
+    // Radiant lost while never leading once: no crossover exists to report.
+    expect(detectAdvantageSwing([-100, -200, -300, -400, -500], false)).toEqual({
+      loserSide: 'radiant',
+      loserPeakLead: -100,
+      loserPeakMinute: 0,
+      crossoverMinute: null,
       comeback: false,
     });
   });
