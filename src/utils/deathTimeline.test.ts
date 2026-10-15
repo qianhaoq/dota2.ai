@@ -264,8 +264,8 @@ describe('buildDeathTimeline — synthetic', () => {
       radiant_gold_adv: [0, 100, 200, 300, 400, 500],
       od_data: { has_parsed: true },
       players: [
-        mkPlayer({ hero_id: 1, player_slot: 0, kills_log: [] }),
-        mkPlayer({ hero_id: 2, player_slot: 128, kills_log: [] }),
+        mkPlayer({ hero_id: 1, player_slot: 0, kills: 0, deaths: 0, kills_log: [] }),
+        mkPlayer({ hero_id: 2, player_slot: 128, kills: 0, deaths: 0, kills_log: [] }),
       ],
       objectives: [],
     }, { lang: 'zh', heroNames: { 1: { nameZh: 'A', nameEn: 'A', internalSlug: 'a' }, 2: { nameZh: 'B', nameEn: 'B', internalSlug: 'b' } } }) as MatchFact;
@@ -456,6 +456,19 @@ describe('parsed-empty guard uses scoreboard deaths too', () => {
     const players = Array.from({ length: 10 }, (_, i) => ({
       hero_id: i + 1, player_slot: i < 5 ? i : 128 + i - 5, kills: 0, deaths: i === 0 ? 1 : 0, kills_log: [],
     }));
-    expect(buildDeathTimeline({ players } as any, { parsed: true } as any).available).toBe(false);
+    expect(buildDeathTimeline(players as any, [], {}, { parsed: true } as any).available).toBe(false);
   });
 });
+
+describe('parsed-empty guard requires complete scoreboard', () => {
+  it('unavailable when a player omits deaths, or roster empty', async () => {
+    const { buildDeathTimeline } = await import('../../lib/matchReview/deathTimeline.js');
+    const players: any[] = Array.from({ length: 10 }, (_, i) => ({
+      hero_id: i + 1, player_slot: i < 5 ? i : 128 + i - 5, kills: 0, deaths: 0, kills_log: [],
+    }));
+    delete players[3].deaths;
+    expect(buildDeathTimeline(players as any, [], {}, { parsed: true } as any).available).toBe(false);
+    expect(buildDeathTimeline([] as any, [], {}, { parsed: true } as any).available).toBe(false);
+  });
+});
+
