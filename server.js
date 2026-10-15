@@ -42,11 +42,11 @@ import {
 } from './lib/matchReview/reviewResponder.js';
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
-import { withCompletionDeadline, cardAttemptDeadlineMs } from './lib/completionDeadline.js';
+import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
 
 // Per-attempt card completion deadline; two attempts + fetch stay under
 // Cloud Run's 300s request timeout.
-const REVIEW_CARD_COMPLETION_DEADLINE_MS = 90000;
+const REVIEW_CARD_COMPLETION_DEADLINE_MS = 40000;
 // Request-wide budget for the whole card review (OpenDota fetch + all
 // completion attempts), leaving headroom under Cloud Run's 300s limit to
 // build and send the fallback response.
@@ -113,6 +113,15 @@ const openai = apiKey ? new OpenAI({
 }) : null;
 
 const DEEPSEEK_MODEL = 'deepseek-chat';
+
+// Gemini (OpenAI-compatible endpoint) is the card-review fallback when
+// DeepSeek fails or times out. Same prompt and validation/repair pipeline.
+const geminiApiKey = process.env.GEMINI_API_KEY;
+const gemini = geminiApiKey ? new OpenAI({
+  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+  apiKey: geminiApiKey,
+}) : null;
+const GEMINI_REVIEW_MODEL = process.env.GEMINI_REVIEW_MODEL || 'gemini-2.5-flash';
 
 // ============ External API URLs ============
 const OPENDOTA_API = 'https://api.opendota.com/api';
@@ -2372,7 +2381,8 @@ async function handleMatchReview(req, res) {
     const isGrounded = Boolean(matchFact.grounded);
     const parse = resolveReviewParseStatus(matchId, matchData, lang);
 
-    if (!apiKey || !openai) {
+    // Cards can run on Gemini alone; follow-ups stream from DeepSeek only.
+    if (followUp ? !openai : (!openai && !gemini)) {
       responder.begin();
       if (!followUp) {
         responder.send({ matchFact, grounded: isGrounded, parse });
@@ -2437,24 +2447,26 @@ async function handleMatchReview(req, res) {
       // in prod (rev 00065: 100% 504 at 300s). Malformed JSON is recovered by
       // extractJsonFromLlmOutput instead.
     };
-    // Follow-ups stream and keep the SDK's default retries. Card requests get
-    // an app-owned deadline covering body parsing, and no SDK retries (the
-    // validation retry already makes a second attempt).
-    const completionRequest = () => (followUp
-      ? openai.chat.completions.create(completionBody, { signal: abortController.signal })
-      : withCompletionDeadline(
-        (signal) => openai.chat.completions.create(completionBody, { signal, maxRetries: 0 }),
-        {
-          ms: cardAttemptDeadlineMs({
-            startedAt: reviewStartedAt,
-            now: Date.now(),
-            budgetMs: REVIEW_REQUEST_BUDGET_MS,
-            perAttemptMs: REVIEW_CARD_COMPLETION_DEADLINE_MS,
-            minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
-          }),
-          signal: abortController.signal,
-        },
-      ));
+    // Follow-ups stream from DeepSeek with the SDK's default retries. Card
+    // requests go through the provider chain (DeepSeek, then Gemini), each
+    // attempt under an app-owned deadline capped by the request budget, no SDK
+    // retries (the validation retry already makes a second attempt).
+    const followUpRequest = () => openai.chat.completions.create(completionBody, { signal: abortController.signal });
+    const cardProviders = [
+      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ ...completionBody, stream: false }, { signal, maxRetries: 0 }) }] : []),
+      ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ ...completionBody, model: GEMINI_REVIEW_MODEL, stream: false }, { signal, maxRetries: 0 }) }] : []),
+    ];
+    const failedCardProviders = new Set();
+    const cardCompletion = () => requestCardCompletion({
+      providers: cardProviders,
+      failed: failedCardProviders,
+      startedAt: reviewStartedAt,
+      budgetMs: REVIEW_REQUEST_BUDGET_MS,
+      perAttemptMs: REVIEW_CARD_COMPLETION_DEADLINE_MS,
+      minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
+      signal: abortController.signal,
+      onProviderError: ({ provider, error }) => console.warn(JSON.stringify({ severity: 'WARNING', event: 'review_ai_provider_error', matchId, provider, error })),
+    });
 
     // When no primary_mistake category has its required evidence in this
     // match's catalog (typically unparsed matches: no timeline, no gold or CS
@@ -2471,14 +2483,12 @@ async function handleMatchReview(req, res) {
     }
 
     try {
-      stream = await completionRequest();
-
-      if (clientGone) {
-        stream.controller?.abort();
-        return;
-      }
-
       if (followUp) {
+        stream = await followUpRequest();
+        if (clientGone) {
+          stream.controller?.abort();
+          return;
+        }
         let finishReason = null;
         for await (const chunk of stream) {
           if (clientGone || res.writableEnded) break;
@@ -2503,21 +2513,20 @@ async function handleMatchReview(req, res) {
           }
         }
       } else {
-        const choice = stream.choices?.[0];
-        const fullText = choice?.message?.content || '';
+        const first = await cardCompletion();
+        if (clientGone) return;
+        const fullText = first.text;
         const det = buildDeterministicReviewCards(matchFact, lang);
         const minKeyMoments = minRequiredKeyMoments(det._catalog || []);
-        // Keeps the outer `stream` binding current so abortUpstream() can
-        // cancel an in-flight retry via stream.controller.
-        const requestCompletionText = async () => {
-          stream = await completionRequest();
-          return stream.choices?.[0]?.message?.content || '';
-        };
+        // Upstream cancellation on disconnect flows through the shared
+        // abortController signal combined into each attempt's deadline.
+        const requestCompletionText = () => cardCompletion();
         // Client-disconnect aborts during the retry rethrow (see
         // reviewAiRetry.js) and land in the outer catch, which returns
         // without writing to a response that already closed.
         const { reviewCards: resolvedCards, usedFallback } = await resolveReviewCardsWithRetry({
           firstText: fullText,
+          firstProvider: first.provider,
           matchFact,
           lang,
           minKeyMoments,
