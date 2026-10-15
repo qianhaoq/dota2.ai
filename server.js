@@ -13,6 +13,8 @@ import {
   buildFallbackAiCards,
   buildReviewCardsPromptFacts,
   buildReviewKeyMomentsPromptRule,
+  buildPrimaryMistakeCategoryPromptTable,
+  buildPrimaryMistakeExample,
   minRequiredKeyMoments,
   canReviewAiCardsValidate,
 } from './lib/matchReview/reviewCards.js';
@@ -2388,9 +2390,14 @@ async function handleMatchReview(req, res) {
     const { _catalog, ...initialReviewCards } = deterministicCards;
     const keyMomentsRule = buildReviewKeyMomentsPromptRule(_catalog || [], lang);
 
+    const categoryTable = buildPrimaryMistakeCategoryPromptTable(_catalog || [], lang);
+    const mistakeExample = buildPrimaryMistakeExample(_catalog || []);
+
     const systemPrompt = getReviewSystemPrompt(lang, {
       followUp: Boolean(followUp),
       keyMomentsRule,
+      categoryTable,
+      mistakeExample,
     });
 
     const userPrompt = followUp
@@ -2415,16 +2422,20 @@ async function handleMatchReview(req, res) {
         { role: 'user', content: userPrompt },
       ],
       stream: Boolean(followUp),
+      // Card reviews must be a single JSON object; DeepSeek JSON mode removes
+      // malformed-JSON failures. Follow-ups are markdown, so leave them alone.
+      ...(followUp ? {} : { response_format: { type: 'json_object' } }),
     }, {
       signal: abortController.signal,
     });
 
-    // Unparsed / no-objective matches carry no timeline_* evidence, so AI
-    // cards can never pass validation (retrying cannot succeed). Skip the
-    // DeepSeek calls entirely and serve the deterministic fallback built
-    // from basic match data. Follow-ups are unaffected (no card validation).
+    // When no primary_mistake category has its required evidence in this
+    // match's catalog (typically unparsed matches: no timeline, no gold or CS
+    // checkpoints), AI cards can never validate and a retry cannot help. Skip
+    // the DeepSeek calls and serve the deterministic fallback. Follow-ups are
+    // unaffected (no card validation).
     if (!followUp && !canReviewAiCardsValidate(_catalog || [])) {
-      console.warn(`[review:ai-validation] match=${matchId} ai_skipped reason=no_timeline_facts`);
+      console.warn(`[review:ai-validation] match=${matchId} ai_skipped reason=no_grounded_category`);
       const reviewCards = buildFallbackAiCards(matchFact, lang);
       responder.send({ reviewCards, grounded: isGrounded });
       responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, matchFact.parsed ? 'no_timeline' : 'no_evidence') });
@@ -2487,6 +2498,7 @@ async function handleMatchReview(req, res) {
           requestCompletionText,
           signal: abortController.signal,
           warn: (msg) => console.warn(msg),
+          metric: (line) => console.log(line),
         });
         const reviewCards = usedFallback
           ? buildFallbackAiCards(matchFact, lang)
