@@ -126,13 +126,13 @@ describe('buildMatchFact', () => {
     expect(labelAt(1359, 'en')).toBe('Radiant lost bot T1 tower (destroyed by Dire)');
   });
 
-  it('derives the destroyer team from the killing unit for creep tower kills', () => {
+  it('does not infer destroyer team from the creep unit name (controlled creeps keep original name)', () => {
     const creepKill = fact.timeline.find((ev) => ev.time === 563);
     expect(creepKill?.type).toBe('building_kill');
     expect(creepKill?.playerSlot).toBeNull();
-    expect(creepKill?.team).toBe(2);
+    expect(creepKill?.team).toBeNull();
     const direCreepKill = fact.timeline.find((ev) => ev.time === 1359);
-    expect(direCreepKill?.team).toBe(3);
+    expect(direCreepKill?.team).toBeNull();
     const heroKill = fact.timeline.find((ev) => ev.time === 799);
     expect(heroKill?.playerSlot).toBe(1);
     expect(heroKill?.team).toBe(2);
