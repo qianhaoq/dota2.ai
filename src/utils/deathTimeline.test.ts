@@ -264,11 +264,10 @@ describe('buildDeathTimeline — synthetic', () => {
       radiant_gold_adv: [0, 100, 200, 300, 400, 500],
       od_data: { has_parsed: true },
       players: [
-        mkPlayer({ hero_id: 1, player_slot: 0, kills: 0, deaths: 0, kills_log: [] }),
-        mkPlayer({ hero_id: 2, player_slot: 128, kills: 0, deaths: 0, kills_log: [] }),
+        ...Array.from({ length: 10 }, (_, i) => mkPlayer({ hero_id: i + 1, player_slot: i < 5 ? i : 128 + i - 5, kills: 0, deaths: 0, kills_log: [] })),
       ],
       objectives: [],
-    }, { lang: 'zh', heroNames: { 1: { nameZh: 'A', nameEn: 'A', internalSlug: 'a' }, 2: { nameZh: 'B', nameEn: 'B', internalSlug: 'b' } } }) as MatchFact;
+    }, { lang: 'zh', heroNames: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [i + 1, { nameZh: 'H' + i, nameEn: 'H' + i, internalSlug: 'h' + i }])) }) as MatchFact;
     expect(fact.parsed).toBe(true);
     // 0 hero kills is a real result, not missing data: status ok/empty (0 deaths),
     // so no fieldReasons.deaths entry at all.
@@ -281,18 +280,13 @@ describe('buildDeathTimeline — synthetic', () => {
   });
 
   it('returns zero-death coverage directly for parsed zero-kill matches', () => {
-    const players = [
-      mkPlayer({ hero_id: 1, player_slot: 0, kills: 0, deaths: 0, kills_log: [] }),
-      mkPlayer({ hero_id: 2, player_slot: 128, kills: 0, deaths: 0, kills_log: [] }),
-    ];
-    const heroSlugs = { 1: 'npc_dota_hero_antimage', 2: 'npc_dota_hero_axe' };
+    const players = Array.from({ length: 10 }, (_, i) =>
+      mkPlayer({ hero_id: i + 1, player_slot: i < 5 ? i : 128 + i - 5, kills: 0, deaths: 0, kills_log: [] }));
+    const heroSlugs = Object.fromEntries(players.map((p, i) => [i + 1, `npc_dota_hero_h${i}`]));
     expect(buildDeathTimeline(players, [], heroSlugs, { parsed: true })).toEqual({
       available: true,
       deathsByHeroId: {},
-      coverage: {
-        1: { derivedCount: 0, reportedDeaths: 0 },
-        2: { derivedCount: 0, reportedDeaths: 0 },
-      },
+      coverage: Object.fromEntries(players.map((_, i) => [i + 1, { derivedCount: 0, reportedDeaths: 0 }])),
     });
     // Without the parsed flag the same input stays unavailable (legacy default:
     // no kills_log means the replay was never parsed).
@@ -469,6 +463,8 @@ describe('parsed-empty guard requires complete scoreboard', () => {
     delete players[3].deaths;
     expect(buildDeathTimeline(players as any, [], {}, { parsed: true } as any).available).toBe(false);
     expect(buildDeathTimeline([] as any, [], {}, { parsed: true } as any).available).toBe(false);
+    const partial = [{ hero_id: 1, player_slot: 0, kills: 0, deaths: 0, kills_log: [] }];
+    expect(buildDeathTimeline(partial as any, [], {}, { parsed: true } as any).available).toBe(false);
   });
 });
 
