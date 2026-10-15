@@ -43,6 +43,10 @@ Worst pitfalls from Codex P1s (#54, #56) — full rules: `.cursor/rules/dota2-co
 - Analyze / Next-pick enablement derives from the resolved lineup (`resolveCoachingLineup`), not the raw empty draft.
 - DeepSeek output language follows UI `lang` (zh → 简体中文, en → English); preserve the product-approved default (English after #57).
 
+## Handoff
+
+- When handing work to the next bot, DM it and wake it by name. A mention in a group chat alone does not count as a handoff.
+
 ## Merge policy
 
 Human merge is **optional** only when every auto-merge gate passes. Copilot often submits `COMMENTED`, not `APPROVED` — do not require `APPROVED`. `.github/workflows/auto-merge.yml` squash-merges into `main` only if a successful **ci / Build & Test check run** exists on the head SHA (fail closed if missing), **`codex / Codex Review Gate` succeeded**, and Copilot is satisfied: either official `copilot-pull-request-reviewer` check succeeded, **or** soft-path when that check is missing but head already has Copilot `APPROVED`/`COMMENTED` (quota death; still fail-closed with no head review). Latest Copilot review for that SHA must not be `CHANGES_REQUESTED`. **Blocking threads:** unresolved non-Codex threads, plus unresolved Codex **P0/P1 (or unlabeled)**; pure Codex **P2 may stay open**. Missing Copilot review does not auto-merge. Codex Gate dispatches Auto Merge on success and fails the check if dispatch fails. Merge is pinned to the evaluated head SHA. To block auto-merge, add label `no-auto-merge` or keep the PR as draft. See `docs/MERGE_GATES.md`.

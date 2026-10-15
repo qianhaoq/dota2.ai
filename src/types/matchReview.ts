@@ -48,7 +48,11 @@ export interface AdvantageSwing {
   loserSide: 'radiant' | 'dire';
   loserPeakLead: number;
   loserPeakMinute: number;
-  /** First minute after the peak where the winner took the lead; null if never. */
+  /**
+   * First minute after the peak where the winner's lead also reached
+   * LEAD_FLIP_THRESHOLD (~1000 gold) — both sides must hold a real lead for a
+   * flip to count. Null when either side never did.
+   */
   crossoverMinute: number | null;
   comeback: boolean;
 }
@@ -60,6 +64,8 @@ export interface MatchPlayerFact {
   nameZh: string;
   nameEn: string;
   displayName: string;
+  /** Player's display name (personaname) when OpenDota provides one. */
+  personName: string | null;
   kills: number;
   deaths: number;
   assists: number;
@@ -68,6 +74,9 @@ export interface MatchPlayerFact {
   netWorth: number;
   heroDamage: number;
   towerDamage: number;
+  /** Last hits / hero level when replay-parse data provides them. */
+  lastHits: number | null;
+  level: number | null;
   lane: string;
   laneLabelZh: string;
   laneLabelEn: string;
@@ -81,6 +90,7 @@ export interface MatchPlayerFact {
   lhTimeline: number[];
   xpTimeline: number[];
   timeBuckets: number[];
+  /** Enemy kills from parsed kills_log; same-team entries (denies/self-kills) are dropped when built. */
   killsLog: Array<{ time: number; target: string }>;
   /** Deaths derived by inverting kills_log; [] when the replay is not parsed. */
   deathEvents: DeathTimelineEvent[];
@@ -138,7 +148,10 @@ export interface MatchFact {
     carrierName?: string | null;
     aegisStolen?: boolean;
   }>;
-  /** True when kills_log data exists, so per-player deathEvents are derived. */
+  /**
+   * True when the death timeline is usable: kills_log data exists, or the match
+   * is parsed with 0 hero kills (an available-but-empty timeline, 0 deaths).
+   */
   deathTimelineAvailable: boolean;
   advantageSwing: AdvantageSwing | null;
   focusHeroId: number | null;

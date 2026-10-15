@@ -29,16 +29,16 @@ const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../
 const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
 
 const HERO_NAMES_CN = {
-  54: { nameZh: '噬魂鬼', nameEn: 'Lifestealer' },
-  86: { nameZh: '拉比克', nameEn: 'Rubick' },
-  42: { nameZh: '冥界亚龙', nameEn: 'Viper' },
-  2: { nameZh: '斧王', nameEn: 'Axe' },
-  88: { nameZh: '娜迦海妖', nameEn: 'Naga Siren' },
-  71: { nameZh: '裂魂人', nameEn: 'Spirit Breaker' },
-  18: { nameZh: '斯温', nameEn: 'Sven' },
-  9: { nameZh: '米拉娜', nameEn: 'Mirana' },
-  123: { nameZh: '森海飞霞', nameEn: 'Hoodwink' },
-  90: { nameZh: '光之守卫', nameEn: 'Keeper of the Light' },
+  54: { nameZh: '噬魂鬼', nameEn: 'Lifestealer', internalSlug: 'npc_dota_hero_life_stealer' },
+  86: { nameZh: '拉比克', nameEn: 'Rubick', internalSlug: 'npc_dota_hero_rubick' },
+  42: { nameZh: '冥界亚龙', nameEn: 'Viper', internalSlug: 'npc_dota_hero_viper' },
+  2: { nameZh: '斧王', nameEn: 'Axe', internalSlug: 'npc_dota_hero_axe' },
+  88: { nameZh: '娜迦海妖', nameEn: 'Naga Siren', internalSlug: 'npc_dota_hero_naga_siren' },
+  71: { nameZh: '裂魂人', nameEn: 'Spirit Breaker', internalSlug: 'npc_dota_hero_spirit_breaker' },
+  18: { nameZh: '斯温', nameEn: 'Sven', internalSlug: 'npc_dota_hero_sven' },
+  9: { nameZh: '米拉娜', nameEn: 'Mirana', internalSlug: 'npc_dota_hero_mirana' },
+  123: { nameZh: '森海飞霞', nameEn: 'Hoodwink', internalSlug: 'npc_dota_hero_hoodwink' },
+  90: { nameZh: '光之守卫', nameEn: 'Keeper of the Light', internalSlug: 'npc_dota_hero_keeper_of_the_light' },
 };
 
 describe('reviewCards gold match 8985182860', () => {
@@ -656,6 +656,116 @@ describe('resolveEvidence', () => {
   });
 });
 
+describe('reviewCards — same-team kills_log entries in fallback key moments', () => {
+  // No objectives / no gold adv, so fallback moments come solely from the focus
+  // hero's kills/deaths (buildFocusHeroEvents via buildFallbackKeyMoments).
+  const HERO_NAMES: Record<number, { nameZh: string; nameEn: string; internalSlug: string }> = {
+    1: { nameZh: '风暴之灵', nameEn: 'Storm Spirit', internalSlug: 'storm_spirit' },
+    2: { nameZh: '水晶室女', nameEn: 'Crystal Maiden', internalSlug: 'crystal_maiden' },
+    3: { nameZh: '斧王', nameEn: 'Axe', internalSlug: 'axe' },
+  };
+  const raw = {
+    match_id: 2,
+    duration: 1500,
+    radiant_win: false,
+    radiant_gold_adv: [],
+    players: [
+      // Focus: radiant Storm Spirit. The 5:00 entry "kills" his own Crystal
+      // Maiden (deny record) — must not become a key moment.
+      { hero_id: 1, player_slot: 0, kills: 2, deaths: 1, assists: 0, kills_log: [
+        { time: 300, key: 'npc_dota_hero_crystal_maiden' },
+        { time: 420, key: 'npc_dota_hero_axe' },
+      ] },
+      // Radiant CM "kills" Storm Spirit (same team) — not an enemy death.
+      { hero_id: 2, player_slot: 1, kills: 0, deaths: 2, assists: 0, kills_log: [
+        { time: 500, key: 'npc_dota_hero_storm_spirit' },
+      ] },
+      // Dire Axe kills Storm Spirit — a real death moment.
+      { hero_id: 3, player_slot: 128, kills: 1, deaths: 2, assists: 0, kills_log: [
+        { time: 600, key: 'npc_dota_hero_storm_spirit' },
+      ] },
+    ],
+    objectives: [],
+  };
+  const fact = buildMatchFact(raw, { lang: 'en', heroId: 1, heroNames: HERO_NAMES });
+
+  it('drops same-team kills/deaths and keeps only enemy ones', () => {
+    const cards = buildFallbackAiCards(fact, 'en') as ReviewCardsPayload;
+    const headlines = (cards.key_moments || []).map((m) => m.headline).join(' | ');
+    expect(headlines).toContain('Killed Axe');
+    expect(headlines).toContain('Died (killed by Axe)');
+    expect(headlines).not.toContain('Killed Crystal Maiden');
+    expect(headlines).not.toContain('Died (killed by Crystal Maiden)');
+    expect(cards.key_moments).toHaveLength(2);
+  });
+
+  it('applies the same filter in Chinese headlines', () => {
+    const zhFact = buildMatchFact(raw, { lang: 'zh', heroId: 1, heroNames: HERO_NAMES });
+    const cards = buildFallbackAiCards(zhFact, 'zh') as ReviewCardsPayload;
+    const headlines = (cards.key_moments || []).map((m) => m.headline).join(' | ');
+    expect(headlines).toContain('击杀 斧王');
+    expect(headlines).toContain('阵亡（被 斧王 击杀）');
+    expect(headlines).not.toContain('击杀 水晶室女');
+    expect(headlines).not.toContain('阵亡（被 水晶室女 击杀）');
+  });
+});
+
+describe('reviewCards — phase spine mid kill evidence drops same-team kills_log entries', () => {
+  // Focus: radiant Storm Spirit with three mid-phase (10–25 min) kills_log
+  // entries. The 15:00 entry "kills" his own Crystal Maiden (deny record) —
+  // buildPhaseSpine keeps at most 2 mid kills, so it must be filtered out
+  // upstream or it both becomes mid_kill_* evidence and displaces a real kill.
+  const HERO_NAMES: Record<number, { nameZh: string; nameEn: string; internalSlug: string }> = {
+    1: { nameZh: '风暴之灵', nameEn: 'Storm Spirit', internalSlug: 'storm_spirit' },
+    2: { nameZh: '水晶室女', nameEn: 'Crystal Maiden', internalSlug: 'crystal_maiden' },
+    3: { nameZh: '斧王', nameEn: 'Axe', internalSlug: 'axe' },
+    4: { nameZh: '矮人直升机', nameEn: 'Gyrocopter', internalSlug: 'gyrocopter' },
+  };
+  const raw = {
+    match_id: 3,
+    duration: 1800,
+    radiant_win: true,
+    radiant_gold_adv: [],
+    players: [
+      { hero_id: 1, player_slot: 0, kills: 3, deaths: 0, assists: 0, kills_log: [
+        { time: 900, key: 'npc_dota_hero_crystal_maiden' }, // same team (deny)
+        { time: 960, key: 'npc_dota_hero_axe' },            // enemy kill 16:00
+        { time: 1020, key: 'npc_dota_hero_gyrocopter' },    // enemy kill 17:00
+      ] },
+      { hero_id: 2, player_slot: 1, kills: 0, deaths: 1, assists: 0, kills_log: [] },
+      { hero_id: 3, player_slot: 128, kills: 0, deaths: 1, assists: 0, kills_log: [] },
+      { hero_id: 4, player_slot: 129, kills: 0, deaths: 1, assists: 0, kills_log: [] },
+    ],
+    objectives: [],
+  };
+
+  it('normalizes killsLog at build time: the same-team entry never reaches consumers', () => {
+    const fact = buildMatchFact(raw, { lang: 'en', heroId: 1, heroNames: HERO_NAMES });
+    const focus = fact.players.find((p: { heroId: number }) => p.heroId === 1);
+    expect(focus?.killsLog).toEqual([
+      { time: 960, target: 'axe' },
+      { time: 1020, target: 'gyrocopter' },
+    ]);
+  });
+
+  it('mid phase evidence keeps both real enemy kills and never shows the denied ally', () => {
+    const fact = buildMatchFact(raw, { lang: 'en', heroId: 1, heroNames: HERO_NAMES });
+    const cards = buildDeterministicReviewCards(fact, 'en') as ReviewCardsPayload;
+    const mid = cards.phases?.find((p) => p.phase === 'mid');
+    expect(mid).toBeDefined();
+    const killEvidence = (mid?.evidence || []).filter((e) => e.factKey.startsWith('mid_kill_'));
+    expect(killEvidence.map((e) => e.label)).toEqual(['16:00', '17:00']);
+    expect(killEvidence.map((e) => e.value)).toEqual(['Axe', 'Gyrocopter']);
+    // The 15:00 deny must not appear anywhere in the spine nor displace a kill.
+    const allEvidenceText = (cards.phases || [])
+      .flatMap((p) => p.evidence || [])
+      .map((e) => `${e.label} ${e.value}`)
+      .join(' | ');
+    expect(allEvidenceText).not.toContain('Crystal Maiden');
+    expect(allEvidenceText).not.toContain('15:00');
+  });
+});
+
 describe('buildKeyMomentsFromTimeline', () => {
   const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: HERO_NAMES_CN });
 
@@ -1220,5 +1330,12 @@ describe('cs at 10 exact bucket', () => {
     };
     const csEntry = cards._catalog?.find((e) => e.factKey === 'cs_at_10');
     expect(csEntry).toBeUndefined();
+  });
+});
+
+describe('killsLog drops unresolved victims', () => {
+  it('omits kill entries whose victim cannot be mapped to the roster', () => {
+    const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: {} });
+    for (const p of fact.players) expect(p.killsLog).toEqual([]);
   });
 });

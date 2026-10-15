@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { detectAdvantageSwing, COMEBACK_LEAD_THRESHOLD } from '../../lib/matchReview/advantageSwing.js';
+import { detectAdvantageSwing, COMEBACK_LEAD_THRESHOLD, LEAD_FLIP_THRESHOLD } from '../../lib/matchReview/advantageSwing.js';
 import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
 import type { MatchFact } from '../types/matchReview';
 
@@ -24,8 +24,9 @@ const HERO_NAMES: Record<number, { nameZh: string; nameEn: string; internalSlug:
 };
 
 describe('detectAdvantageSwing', () => {
-  it('exports the comeback lead threshold', () => {
+  it('exports the comeback and lead-flip thresholds', () => {
     expect(COMEBACK_LEAD_THRESHOLD).toBe(5000);
+    expect(LEAD_FLIP_THRESHOLD).toBe(1000);
   });
 
   it('returns null when the advantage array is too short or missing', () => {
@@ -36,13 +37,14 @@ describe('detectAdvantageSwing', () => {
   });
 
   it('detects a dire-side lead that radiant overturned (comeback)', () => {
-    // Dire peaked at +6000 at minute 2; radiant took the lead at minute 4 and won.
+    // Dire peaked at +6000 at minute 2; radiant's lead reached the flip
+    // threshold at minute 5 (minute 4's +500 is below it) and radiant won.
     const adv = [0, -1000, -6000, -3000, 500, 4000, 12000];
     expect(detectAdvantageSwing(adv, true)).toEqual({
       loserSide: 'dire',
       loserPeakLead: 6000,
       loserPeakMinute: 2,
-      crossoverMinute: 4,
+      crossoverMinute: 5,
       comeback: true,
     });
   });
@@ -67,14 +69,42 @@ describe('detectAdvantageSwing', () => {
   });
 
   it('is not a comeback when the eventual loser barely led', () => {
+    // +184 at minute 1 is below LEAD_FLIP_THRESHOLD: the sign changes at
+    // minute 2 but neither side ever held a real lead — no flip is reported.
     const adv = [0, 184, -7, 37, -537, -227, -312];
     expect(detectAdvantageSwing(adv, false)).toEqual({
       loserSide: 'radiant',
       loserPeakLead: 184,
       loserPeakMinute: 1,
-      crossoverMinute: 2,
+      crossoverMinute: null,
       comeback: false,
     });
+  });
+
+  it('does not count a flip when the winner never leads by the flip threshold', () => {
+    // Dire peaked at +4000, but radiant's best lead after the peak is +400 —
+    // the winner side never reached LEAD_FLIP_THRESHOLD, so the sign change
+    // is noise and no crossover is reported.
+    const adv = [-4000, -3000, -1000, 400, 200, -100];
+    expect(detectAdvantageSwing(adv, true)).toEqual({
+      loserSide: 'dire',
+      loserPeakLead: 4000,
+      loserPeakMinute: 0,
+      crossoverMinute: null,
+      comeback: false,
+    });
+  });
+
+  it('counts flips where both sides reach exactly the flip threshold', () => {
+    // Loser peak +1000 and winner takeover -1000 are exactly at the threshold.
+    const adv = [0, 1000, 500, -999, -1000, -2000];
+    expect(detectAdvantageSwing(adv, false)).toMatchObject({ crossoverMinute: 4 });
+    // One gold short of the threshold on the winner side: not a flip.
+    const justUnder = [0, 1000, 500, -998, -999, -1200];
+    expect(detectAdvantageSwing(justUnder, false)).toMatchObject({ crossoverMinute: 5 });
+    // One gold short of the threshold on the loser peak: not a flip either.
+    const justUnderPeak = [0, 999, 500, -1000, -2000];
+    expect(detectAdvantageSwing(justUnderPeak, false)).toMatchObject({ crossoverMinute: null });
   });
 
   it('handles a stomp where the loser never led (negative peak)', () => {
@@ -115,14 +145,15 @@ describe('detectAdvantageSwing', () => {
 });
 
 describe('detectAdvantageSwing — fixture integration', () => {
-  it('finds the (small) radiant peak from the parsed fixture', () => {
+  it('finds the (small) radiant peak from the parsed fixture but no flip', () => {
     const swing = detectAdvantageSwing(parsedFixture.radiant_gold_adv, parsedFixture.radiant_win);
-    // Dire won; radiant's best moment was +184 at minute 1, gone by minute 2.
+    // Dire won; radiant's best moment was +184 at minute 1 — below the flip
+    // threshold, so the minute-2 sign change is not a reversal.
     expect(swing).toEqual({
       loserSide: 'radiant',
       loserPeakLead: 184,
       loserPeakMinute: 1,
-      crossoverMinute: 2,
+      crossoverMinute: null,
       comeback: false,
     });
   });
