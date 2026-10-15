@@ -20,3 +20,17 @@ describe('withCompletionDeadline', () => {
     await expect(p).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
+
+import { cardAttemptDeadlineMs } from '../../lib/completionDeadline.js';
+describe('cardAttemptDeadlineMs', () => {
+  const base = { startedAt: 0, budgetMs: 270000, perAttemptMs: 90000, minAttemptMs: 5000 };
+  it('caps by per-attempt and by remaining request budget', () => {
+    expect(cardAttemptDeadlineMs({ ...base, now: 10000 })).toBe(90000);
+    // slow OpenDota (135s) + invalid first attempt at 89s -> retry gets only 46s
+    expect(cardAttemptDeadlineMs({ ...base, now: 224000 })).toBe(46000);
+  });
+  it('skips the attempt when the budget is exhausted', async () => {
+    expect(cardAttemptDeadlineMs({ ...base, now: 268000 })).toBe(0);
+    await expect(withCompletionDeadline(async () => 'x', { ms: 0 })).rejects.toMatchObject({ name: 'CompletionDeadlineError' });
+  });
+});

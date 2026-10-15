@@ -42,11 +42,16 @@ import {
 } from './lib/matchReview/reviewResponder.js';
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
-import { withCompletionDeadline } from './lib/completionDeadline.js';
+import { withCompletionDeadline, cardAttemptDeadlineMs } from './lib/completionDeadline.js';
 
 // Per-attempt card completion deadline; two attempts + fetch stay under
 // Cloud Run's 300s request timeout.
 const REVIEW_CARD_COMPLETION_DEADLINE_MS = 90000;
+// Request-wide budget for the whole card review (OpenDota fetch + all
+// completion attempts), leaving headroom under Cloud Run's 300s limit to
+// build and send the fallback response.
+const REVIEW_REQUEST_BUDGET_MS = 270000;
+const REVIEW_MIN_ATTEMPT_MS = 5000;
 import {
   createParseRequestSubmitter,
   PARSE_REQUEST_TIMEOUT_MS,
@@ -2314,6 +2319,7 @@ async function handleMatchReview(req, res) {
   }
 
   let clientGone = false;
+  const reviewStartedAt = Date.now();
   let stream = null;
   const abortController = new AbortController();
   const abortUpstream = () => {
@@ -2438,7 +2444,16 @@ async function handleMatchReview(req, res) {
       ? openai.chat.completions.create(completionBody, { signal: abortController.signal })
       : withCompletionDeadline(
         (signal) => openai.chat.completions.create(completionBody, { signal, maxRetries: 0 }),
-        { ms: REVIEW_CARD_COMPLETION_DEADLINE_MS, signal: abortController.signal },
+        {
+          ms: cardAttemptDeadlineMs({
+            startedAt: reviewStartedAt,
+            now: Date.now(),
+            budgetMs: REVIEW_REQUEST_BUDGET_MS,
+            perAttemptMs: REVIEW_CARD_COMPLETION_DEADLINE_MS,
+            minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
+          }),
+          signal: abortController.signal,
+        },
       ));
 
     // When no primary_mistake category has its required evidence in this
