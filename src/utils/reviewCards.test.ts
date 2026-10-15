@@ -29,16 +29,16 @@ const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '../
 const fixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
 
 const HERO_NAMES_CN = {
-  54: { nameZh: '噬魂鬼', nameEn: 'Lifestealer' },
-  86: { nameZh: '拉比克', nameEn: 'Rubick' },
-  42: { nameZh: '冥界亚龙', nameEn: 'Viper' },
-  2: { nameZh: '斧王', nameEn: 'Axe' },
-  88: { nameZh: '娜迦海妖', nameEn: 'Naga Siren' },
-  71: { nameZh: '裂魂人', nameEn: 'Spirit Breaker' },
-  18: { nameZh: '斯温', nameEn: 'Sven' },
-  9: { nameZh: '米拉娜', nameEn: 'Mirana' },
-  123: { nameZh: '森海飞霞', nameEn: 'Hoodwink' },
-  90: { nameZh: '光之守卫', nameEn: 'Keeper of the Light' },
+  54: { nameZh: '噬魂鬼', nameEn: 'Lifestealer', internalSlug: 'npc_dota_hero_life_stealer' },
+  86: { nameZh: '拉比克', nameEn: 'Rubick', internalSlug: 'npc_dota_hero_rubick' },
+  42: { nameZh: '冥界亚龙', nameEn: 'Viper', internalSlug: 'npc_dota_hero_viper' },
+  2: { nameZh: '斧王', nameEn: 'Axe', internalSlug: 'npc_dota_hero_axe' },
+  88: { nameZh: '娜迦海妖', nameEn: 'Naga Siren', internalSlug: 'npc_dota_hero_naga_siren' },
+  71: { nameZh: '裂魂人', nameEn: 'Spirit Breaker', internalSlug: 'npc_dota_hero_spirit_breaker' },
+  18: { nameZh: '斯温', nameEn: 'Sven', internalSlug: 'npc_dota_hero_sven' },
+  9: { nameZh: '米拉娜', nameEn: 'Mirana', internalSlug: 'npc_dota_hero_mirana' },
+  123: { nameZh: '森海飞霞', nameEn: 'Hoodwink', internalSlug: 'npc_dota_hero_hoodwink' },
+  90: { nameZh: '光之守卫', nameEn: 'Keeper of the Light', internalSlug: 'npc_dota_hero_keeper_of_the_light' },
 };
 
 describe('reviewCards gold match 8985182860', () => {
@@ -1330,5 +1330,12 @@ describe('cs at 10 exact bucket', () => {
     };
     const csEntry = cards._catalog?.find((e) => e.factKey === 'cs_at_10');
     expect(csEntry).toBeUndefined();
+  });
+});
+
+describe('killsLog drops unresolved victims', () => {
+  it('omits kill entries whose victim cannot be mapped to the roster', () => {
+    const fact = buildMatchFact(fixture, { lang: 'zh', heroId: 54, heroNames: {} });
+    for (const p of fact.players) expect(p.killsLog).toEqual([]);
   });
 });
