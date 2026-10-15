@@ -142,10 +142,10 @@ docker run -p 8080:8080 -e DEEPSEEK_API_KEY=your_api_key dota2-ai
 gcloud builds submit --tag REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai
 gcloud run deploy dota2-ai --image REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai \
   --no-allow-unauthenticated \
-  --update-secrets DEEPSEEK_API_KEY=deepseek-api-key:latest
+  --update-secrets DEEPSEEK_API_KEY=deepseek-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest
 ```
 
-DeepSeek 密钥存放在 Secret Manager 的 `deepseek-api-key`，用 `--update-secrets` 绑定（只增改该项，不会清掉其它环境变量）；Gemini / Steam 在线上目前仍是普通环境变量（不在此命令里传明文；后续建议同样迁到 Secret Manager 并用 `--update-secrets` 绑定）。`main` 上的 Cloud Build 触发器只执行 `gcloud run services update --image`，会保留已有的 secret / env 绑定。
+DeepSeek / Gemini 密钥分别存放在 Secret Manager 的 `deepseek-api-key` / `gemini-api-key`，用 `--update-secrets` 绑定（只增改这些项，不会清掉其它环境变量）；不要在命令行传明文密钥。`main` 上的 Cloud Build 触发器只执行 `gcloud run services update --image`，会保留已有的 secret / env 绑定。
 
 容器内 `HOST=0.0.0.0`、`PORT=8080` 已由 Dockerfile 设定；密钥用 Secret Manager（`--update-secrets`）注入，不要写进镜像，也尽量避免明文 `--set-env-vars`。
 
