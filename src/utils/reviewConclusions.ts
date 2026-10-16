@@ -92,3 +92,26 @@ export function getPresetFollowUps(
     .filter((q): q is string => typeof q === 'string' && Boolean(q.trim()))
     .slice(0, max);
 }
+
+/** First-screen heading adapts to the fact-derived outcome (never assumes a loss). */
+export function conclusionScreenHeading(outcome: 'win' | 'loss' | null | undefined, lang: Language): string {
+  if (outcome === 'loss') return lang === 'zh' ? '这局输在哪' : 'Where this game was lost';
+  if (outcome === 'win') return lang === 'zh' ? '这局赢在哪' : 'Where this game was won';
+  return lang === 'zh' ? '关键时刻' : 'Key moments';
+}
+
+const SOURCE_LABELS: Record<string, { en: string; zh: string }> = {
+  advantageSwing: { en: 'Gold swing', zh: '经济逆转' },
+  economy: { en: 'Gold graph', zh: '经济曲线' },
+  timeline: { en: 'Objectives', zh: '目标事件' },
+  deathTimeline: { en: 'Death timeline', zh: '死亡时间线' },
+  players: { en: 'Scoreboard', zh: '玩家数据' },
+  focusLens: { en: 'Your hero', zh: '你的英雄' },
+};
+
+/** Localized label for an evidence source id; unknown ids fall back to a generic label. */
+export function evidenceSourceLabel(source: string, lang: Language): string {
+  const entry = SOURCE_LABELS[source];
+  if (entry) return lang === 'zh' ? entry.zh : entry.en;
+  return lang === 'zh' ? '比赛数据' : 'Match data';
+}

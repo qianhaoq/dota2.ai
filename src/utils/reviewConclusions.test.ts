@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  conclusionScreenHeading,
+  evidenceSourceLabel,
   buildConclusionCards,
   conclusionHeading,
   getPresetFollowUps,
@@ -159,5 +161,20 @@ describe('getPresetFollowUps', () => {
     expect(getPresetFollowUps(null)).toEqual([]);
     expect(getPresetFollowUps(undefined)).toEqual([]);
     expect(getPresetFollowUps({} as ThreeConclusions)).toEqual([]);
+  });
+});
+
+describe('conclusionScreenHeading / evidenceSourceLabel', () => {
+  it('adapts heading to outcome and never assumes a loss', () => {
+    expect(conclusionScreenHeading('loss', 'en')).toBe('Where this game was lost');
+    expect(conclusionScreenHeading('win', 'en')).toBe('Where this game was won');
+    expect(conclusionScreenHeading(null, 'en')).toBe('Key moments');
+    expect(conclusionScreenHeading(undefined, 'zh')).toBe('关键时刻');
+    expect(conclusionScreenHeading('win', 'zh')).toBe('这局赢在哪');
+  });
+  it('localizes evidence sources and hides internal ids', () => {
+    expect(evidenceSourceLabel('deathTimeline', 'zh')).toBe('死亡时间线');
+    expect(evidenceSourceLabel('economy', 'en')).toBe('Gold graph');
+    expect(evidenceSourceLabel('weirdInternalId', 'zh')).toBe('比赛数据');
   });
 });

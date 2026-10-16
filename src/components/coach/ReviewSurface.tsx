@@ -192,7 +192,9 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     () => getPresetFollowUps(message?.threeConclusions),
     [message?.threeConclusions],
   );
-  const showConclusionScreen = Boolean(conclusionCards) && !surfaceActivelyStreaming;
+  // Conclusions are fact-derived and arrive with the facts frame — render them
+  // immediately; the AI cards keep streaming inside the Full breakdown.
+  const showConclusionScreen = Boolean(conclusionCards);
 
   useEffect(() => {
     if (!showConclusionScreen || matchId == null) return;
@@ -450,6 +452,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
                 followUps={presetFollowUps}
                 followUpEnabled={presetFollowUpEnabled}
                 onFollowUp={handlePresetFollowUp}
+                outcome={message?.threeConclusions?.outcome ?? null}
               />
               <FakedoorSteamCTA lang={lang} />
             </>

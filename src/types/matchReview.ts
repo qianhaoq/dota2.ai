@@ -122,6 +122,8 @@ export interface ReviewConclusion {
  * to the classic card layout then).
  */
 export interface ThreeConclusions {
+  /** Focus side outcome derived from facts; null when unknown. */
+  outcome?: 'win' | 'loss' | null;
   turningPoint: ReviewConclusion;
   topMistake: ReviewConclusion;
   nextGameRule: ReviewConclusion;

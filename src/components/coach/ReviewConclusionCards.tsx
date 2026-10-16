@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AlertCircle, ChevronDown, ChevronUp, Crosshair, Zap } from 'lucide-react';
 import type { Language } from '../../types';
 import type { ConclusionCardView, ConclusionKey } from '../../utils/reviewConclusions';
+import { conclusionScreenHeading, evidenceSourceLabel } from '../../utils/reviewConclusions';
 
 interface ReviewConclusionCardsProps {
   cards: ConclusionCardView[];
@@ -11,6 +12,8 @@ interface ReviewConclusionCardsProps {
   /** false disables the preset buttons (review still streaming / AI unavailable). */
   followUpEnabled: boolean;
   onFollowUp: (question: string) => void;
+  /** Fact-derived focus outcome; drives the heading (lost / won / neutral). */
+  outcome?: 'win' | 'loss' | null;
 }
 
 const CARD_ICONS: Record<ConclusionKey, React.ReactNode> = {
@@ -75,7 +78,7 @@ const ConclusionCard: React.FC<{ card: ConclusionCardView; lang: Language; index
                   )}
                   <span className="text-k3-text-secondary min-w-0">
                     {ev.text}
-                    <span className="text-k3-text-tertiary"> · {ev.source}</span>
+                    <span className="text-k3-text-tertiary"> · {evidenceSourceLabel(ev.source, lang)}</span>
                   </span>
                 </li>
               ))}
@@ -98,9 +101,10 @@ const ReviewConclusionCards: React.FC<ReviewConclusionCardsProps> = ({
   followUps,
   followUpEnabled,
   onFollowUp,
+  outcome,
 }) => {
   const t = {
-    heading: lang === 'zh' ? '这局输在哪' : 'Where this game was lost',
+    heading: conclusionScreenHeading(outcome, lang),
     followUpsLabel: lang === 'zh' ? '继续追问' : 'Ask a follow-up',
   };
 
