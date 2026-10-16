@@ -346,3 +346,24 @@ describe('buildThreeConclusions — winning focus picks a favorable swing (90350
     expect(tp.summary).not.toContain('went against your team');
   });
 });
+
+describe('buildThreeConclusions — death timeline failure reason', () => {
+  const base = buildMatchFact(goldFixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_8985 }) as MatchFact;
+  const withReason = (reason: string) => ({
+    ...base,
+    deathTimelineAvailable: false,
+    fieldReasons: { ...(base as any).fieldReasons, deaths: { reason, message: 'x' } },
+  }) as unknown as MatchFact;
+
+  it('reports parsed-but-unmapped instead of "not parsed yet"', () => {
+    const tm = buildThreeConclusions(withReason('incomplete_hero_map'), { lang: 'en' }).topMistake;
+    expect(tm.status).toBe('insufficient');
+    expect(tm.summary).toContain('replay parsed');
+    expect(tm.summary).not.toContain('not parsed yet');
+  });
+
+  it('still says not parsed yet when that is the real reason (zh)', () => {
+    const tm = buildThreeConclusions(withReason('not_parsed_yet'), { lang: 'zh' }).topMistake;
+    expect(tm.summary).toContain('录像尚未解析');
+  });
+});
