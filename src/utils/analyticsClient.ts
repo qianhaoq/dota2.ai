@@ -128,3 +128,17 @@ export function buildEventPayload(
 export function followUpKind(submitted: string, prefilled: string | null | undefined): 'preset' | 'custom' {
   return prefilled && submitted.trim() === prefilled.trim() ? 'preset' : 'custom';
 }
+
+export const REVIEW_VIEWED_SESSION_PREFIX = 'dota2ai.reviewViewed.';
+
+/** Returns true (and marks) the first time a match is viewed in this browser session. */
+export function claimReviewViewed(session: StorageLike, matchId: number): boolean {
+  const key = `${REVIEW_VIEWED_SESSION_PREFIX}${matchId}`;
+  try {
+    if (session.getItem(key) === '1') return false;
+    session.setItem(key, '1');
+    return true;
+  } catch {
+    return true;
+  }
+}

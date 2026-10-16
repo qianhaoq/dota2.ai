@@ -566,12 +566,17 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
   const handleReviewFollowUp = useCallback((
     question: string,
     context?: ReviewFollowUpContext,
+    kind: 'preset' | 'custom' = 'preset',
   ) => {
     if (isLoading) return;
     const displayedCtx = primaryReviewFollowUpContext(activeReviewSession);
     const ctx = context ?? pendingFollowUpContextRef.current ?? displayedCtx;
     if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
     pendingFollowUpContextRef.current = null;
+    // Central tracking for every accepted follow-up: direct buttons/chips
+    // (ReviewSurface presets, Practice this, ResultCard chips) default to
+    // preset; the composer passes its own provenance.
+    trackEvent('followup_clicked', { kind });
     handleReview(ctx.matchId, ctx.heroId, question);
   }, [handleReview, isLoading, activeReviewSession, sessions]);
 
@@ -679,9 +684,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       if (composerState.reviewFollowUpSubmittable) {
         const ctx = pendingCtx ?? displayedCtx;
         if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
-        trackEvent('followup_clicked', { kind: followUpKind(userInput, prefilledFollowUpRef.current) });
+        const kind = followUpKind(userInput, prefilledFollowUpRef.current);
         prefilledFollowUpRef.current = null;
-        handleReviewFollowUp(userInput.trim());
+        handleReviewFollowUp(userInput.trim(), undefined, kind);
         return;
       }
       // Incomplete / cancelled primary: restart/follow-up with retained match id.

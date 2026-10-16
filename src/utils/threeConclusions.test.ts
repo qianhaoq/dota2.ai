@@ -329,3 +329,20 @@ describe('derivePrimaryDeathPattern', () => {
     expect(derivePrimaryDeathPattern(null as never)).toBeNull();
   });
 });
+
+describe('buildThreeConclusions — winning focus picks a favorable swing (9035042364 parsed, Doom/Dire)', () => {
+  const fact = buildMatchFact(
+    JSON.parse(readFileSync(path.join(fixturesDir, 'match9035042364.parsed.json'), 'utf8')),
+    { lang: 'en', heroId: 69, heroNames: HERO_NAMES_9035 },
+  ) as MatchFact;
+  const conclusions = buildThreeConclusions(fact, { lang: 'en' });
+
+  it('never presents the opponent recovery as the turning point of a win', () => {
+    expect(conclusions.outcome).toBe('win');
+    const tp = conclusions.turningPoint;
+    expect(tp.status).toBe('ok');
+    expect(tp.summary).not.toContain('57:00');
+    expect(tp.summary).not.toContain('against Dire');
+    expect(tp.summary).not.toContain('went against your team');
+  });
+});

@@ -242,7 +242,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     followUpActionsEnabled && followUpContext && onReviewFollowUp && !isStreaming,
   );
   const handlePresetFollowUp = (question: string) => {
-    trackEvent('followup_clicked', { kind: 'preset' });
+    // followup_clicked is tracked centrally in CoachView.handleReviewFollowUp.
     if (!presetFollowUpEnabled || !followUpContext || !onReviewFollowUp) return;
     onReviewFollowUp(question, followUpContext);
   };

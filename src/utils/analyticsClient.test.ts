@@ -7,6 +7,7 @@ import {
   resolveAnonId,
   decideReturnVisit,
   followUpKind,
+  claimReviewViewed,
   type StorageLike,
 } from './analyticsClient';
 
@@ -141,5 +142,15 @@ describe('followUpKind', () => {
     expect(followUpKind(' Why did we lose? ', 'Why did we lose?')).toBe('preset');
     expect(followUpKind('Why did we lose at 30?', 'Why did we lose?')).toBe('custom');
     expect(followUpKind('anything', null)).toBe('custom');
+  });
+});
+
+describe('claimReviewViewed', () => {
+  it('counts a match once per browser session (survives refresh via sessionStorage)', () => {
+    const session = makeStorage();
+    expect(claimReviewViewed(session, 8985182860)).toBe(true);
+    expect(claimReviewViewed(session, 8985182860)).toBe(false);
+    expect(claimReviewViewed(session, 1)).toBe(true);
+    expect(claimReviewViewed(makeStorage(), 8985182860)).toBe(true);
   });
 });

@@ -13,6 +13,8 @@ import {
   localDayStamp,
   type AnalyticsEventName,
   type AnalyticsProps,
+  type StorageLike,
+  claimReviewViewed,
 } from '../utils/analyticsClient';
 
 const EVENTS_URL = '/api/events';
@@ -77,6 +79,10 @@ export function trackEvent(event: AnalyticsEventName, props?: AnalyticsProps): v
 export function trackReviewViewed(matchId: number): void {
   if (!Number.isFinite(matchId) || reviewViewedMatches.has(matchId)) return;
   reviewViewedMatches.add(matchId);
+  // Persist per browser session so a refresh does not re-count the view.
+  let session: StorageLike | null = null;
+  try { session = typeof window !== 'undefined' ? window.sessionStorage : null; } catch { session = null; }
+  if (session && !claimReviewViewed(session, matchId)) return;
   // 比赛 ID 超过服务端数值 props 上限（1e9），以标识字符串形式上报。
   trackEvent('review_viewed', { matchId: String(matchId) });
 }
