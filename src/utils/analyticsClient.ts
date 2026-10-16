@@ -24,7 +24,7 @@ export const ANON_ID_STORAGE_KEY = 'dota2ai.anonId';
 export const RETURN_VISIT_SESSION_KEY = 'dota2ai.returnVisitSent';
 
 /** 与服务端 IDENTIFIER_RE 一致：短标识符，无空格、无自由文本。 */
-const ANON_ID_RE = /^[A-Za-z0-9_.:-]{1,64}$/;
+const ANON_ID_RE = /^anon_(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-z]{6,12}\.[0-9a-z]{4,10})$/;
 
 export function isValidAnonId(raw: unknown): raw is string {
   return typeof raw === 'string' && ANON_ID_RE.test(raw);

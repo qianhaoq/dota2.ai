@@ -27,6 +27,7 @@ const FakedoorSteamCTA: React.FC<{ lang: Language }> = ({ lang }) => {
     submit: lang === 'zh' ? '提醒我' : 'Notify me',
     sending: lang === 'zh' ? '提交中…' : 'Sending…',
     thanks: lang === 'zh' ? '感谢！上线后我们会联系你。' : "Thanks! We'll reach out when it launches.",
+    thanksAnonymous: lang === 'zh' ? '感谢！你的兴趣已记录。' : 'Thanks! Your interest has been recorded.',
     error: lang === 'zh' ? '提交失败，请重试。' : "Couldn't save — please try again.",
   };
 
@@ -77,7 +78,7 @@ const FakedoorSteamCTA: React.FC<{ lang: Language }> = ({ lang }) => {
       {state === 'thanks' ? (
         <p className="flex items-center gap-1.5 text-xs text-k3-radiant" data-testid="fakedoor-steam-thanks">
           <Check size={12} className="flex-shrink-0" />
-          {t.thanks}
+          {contact.trim() ? t.thanks : t.thanksAnonymous}
         </p>
       ) : (
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-2">

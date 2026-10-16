@@ -28,8 +28,8 @@ const reviewViewedMatches = new Set<number>();
 function resolveIdentity(): string | null {
   if (identityResolved) return cachedAnonId;
   identityResolved = true;
-  if (typeof window === 'undefined' || !window.localStorage) return null;
   try {
+    if (typeof window === 'undefined' || !window.localStorage) return null;
     cachedAnonId = resolveAnonId(window.localStorage).anonId;
   } catch {
     cachedAnonId = null;

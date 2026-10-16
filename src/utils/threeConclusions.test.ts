@@ -85,10 +85,10 @@ describe('buildThreeConclusions — gold sample 8985182860 (en)', () => {
     expect(rule.title).toBe('Next-game rule');
     expect(rule.summary).toContain('Laning rule vs Axe:');
     expect(rule.summary).toContain('40 CS');
-    expect(rule.summary).toContain('+975 team gold at 10 min');
+    expect(rule.summary).toContain('a +975 team gold lead at 10 min');
     expect(rule.evidence).toEqual([
       { time: '10:00', text: 'CS @10 min: 40', source: 'players' },
-      { time: '10:00', text: 'Team gold @10 min: +975', source: 'economy' },
+      { time: '10:00', text: 'Team gold lead @10 min: +975', source: 'economy' },
       { time: null, text: 'Lane opponents: Axe', source: 'focusLens' },
     ]);
   });

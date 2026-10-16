@@ -17,8 +17,8 @@ describe('validateAnalyticsEvent', () => {
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
     for (const [event, props, expected] of cases) {
-      expect(validateAnalyticsEvent({ event, props, anonId: 'anon-42' })).toEqual({
-        ok: true, event, props: expected, anonId: 'anon-42',
+      expect(validateAnalyticsEvent({ event, props, anonId: 'anon_123e4567-e89b-42d3-a456-426614174000' })).toEqual({
+        ok: true, event, props: expected, anonId: 'anon_123e4567-e89b-42d3-a456-426614174000',
       });
     }
   });
@@ -65,9 +65,16 @@ describe('sanitizeAnalyticsProps — PII and free-text stripping', () => {
 });
 
 describe('normalizeAnalyticsAnonId', () => {
-  it('keeps short identifier-like ids', () => {
-    expect(normalizeAnalyticsAnonId('anon-42')).toBe('anon-42');
-    expect(normalizeAnalyticsAnonId('  abc_123.DEF:xyz  ')).toBe('abc_123.DEF:xyz');
+  it('keeps generated-format anon ids', () => {
+    expect(normalizeAnalyticsAnonId('anon_123e4567-e89b-42d3-a456-426614174000')).toBe('anon_123e4567-e89b-42d3-a456-426614174000');
+    expect(normalizeAnalyticsAnonId('  anon_lq2x9k1.abcd1234  ')).toBe('anon_lq2x9k1.abcd1234');
+  });
+
+  it('rejects identifier-shaped PII that is not the generated format', () => {
+    expect(normalizeAnalyticsAnonId('13800138000')).toBeNull();
+    expect(normalizeAnalyticsAnonId('192.168.1.10')).toBeNull();
+    expect(normalizeAnalyticsAnonId('abc_123.DEF:xyz')).toBeNull();
+    expect(normalizeAnalyticsAnonId('anon_alice')).toBeNull();
   });
 
   it('nulls out non-identifiers (PII, free text, oversized, non-strings)', () => {
