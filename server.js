@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.js';
+import { buildThreeConclusions } from './lib/matchReview/threeConclusions.js';
 import { validateReviewPostRequest } from './lib/matchReview/reviewRequestGuard.js';
 import { buildHeroNamesMap } from './lib/matchReview/heroNamesMap.js';
 import { isTerminalStreamFinish, reviewAiUnavailableNotice } from './lib/matchReview/reviewStream.js';
@@ -78,6 +79,8 @@ import {
   getReviewSystemPrompt,
   getLoreSystemInstruction,
 } from './lib/aiLanguage.js';
+import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyticsEvents.js';
+import { normalizeFeedbackSubmission } from './lib/feedbackStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2291,10 +2294,12 @@ async function handleMatchReviewFacts(req, res) {
     );
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const parse = resolveReviewParseStatus(matchId, matchData, lang);
+    // 三条结论为新增字段（additive）：老客户端忽略即可。
     return res.json({
       matchFact,
       grounded: Boolean(matchFact.grounded),
       parse,
+      threeConclusions: buildThreeConclusions(matchFact, { lang }),
     });
   } catch (error) {
     console.error('Match facts error:', error);
@@ -2392,12 +2397,13 @@ async function handleMatchReview(req, res) {
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const isGrounded = Boolean(matchFact.grounded);
     const parse = resolveReviewParseStatus(matchId, matchData, lang);
+    const threeConclusions = buildThreeConclusions(matchFact, { lang });
 
     // Cards can run on Gemini alone; follow-ups stream from DeepSeek only.
     if (followUp ? !openai : (!openai && !gemini)) {
       responder.begin();
       if (!followUp) {
-        responder.send({ matchFact, grounded: isGrounded, parse });
+        responder.send({ matchFact, grounded: isGrounded, parse, threeConclusions });
       }
       if (followUp) {
         responder.end({
@@ -2444,7 +2450,7 @@ async function handleMatchReview(req, res) {
     responder.begin();
 
     if (!followUp) {
-      responder.send({ matchFact, grounded: isGrounded, parse });
+      responder.send({ matchFact, grounded: isGrounded, parse, threeConclusions });
       responder.send({ reviewCards: initialReviewCards, grounded: isGrounded });
     }
 
@@ -2619,14 +2625,15 @@ async function handleMatchReview(req, res) {
 }
 
 
-// ============ In-app feedback (站内留言) ============
+// ============ In-app feedback (站内留言 / 假门兴趣) ============
 // Best-effort local JSONL + durable stdout record for Cloud Logging.
 // No auth / no admin UI. Cloud Run disk is ephemeral — treat
 // `[feedback:record]` console lines as the durable copy.
+// Submission validation (message/kind/contact caps) lives in
+// lib/feedbackStore.js; kinds like 'fakedoor_steam_autoreview' record
+// interest with an optional contact and no message.
 const FEEDBACK_DIR = path.join(__dirname, 'data');
 const FEEDBACK_FILE = path.join(FEEDBACK_DIR, 'feedback.jsonl');
-const FEEDBACK_MAX_MESSAGE = 4000;
-const FEEDBACK_MAX_FIELD = 200;
 const FEEDBACK_RATE_LIMIT = 20;
 const FEEDBACK_RATE_WINDOW_MS = 60 * 60 * 1000;
 const FEEDBACK_RATE_MAP_MAX = 2000;
@@ -2700,10 +2707,11 @@ app.get('/api/feedback', (_req, res) => {
 app.post('/api/feedback', (req, res) => {
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
-    const messageRaw = body.message;
-    if (typeof messageRaw !== 'string' || !messageRaw.trim()) {
-      return res.status(400).json({ ok: false, error: 'message required' });
+    const submission = normalizeFeedbackSubmission(body);
+    if (!submission.ok) {
+      return res.status(400).json({ ok: false, error: submission.error });
     }
+    const { kind, message, name, contact } = submission;
 
     const ip = resolveClientIp(req);
     const now = Date.now();
@@ -2713,18 +2721,16 @@ app.post('/api/feedback', (req, res) => {
     }
     feedbackGlobalHits.push(now);
 
-    const message = messageRaw.trim().slice(0, FEEDBACK_MAX_MESSAGE);
-    const name = typeof body.name === 'string' ? body.name.trim().slice(0, FEEDBACK_MAX_FIELD) : '';
-    const contact = typeof body.contact === 'string' ? body.contact.trim().slice(0, FEEDBACK_MAX_FIELD) : '';
     const lang = normalizeUiLang(body.lang || 'en');
     const ua = String(req.headers['user-agent'] || '').slice(0, 300);
 
     const record = {
       id: randomUUID(),
       ts: new Date().toISOString(),
+      kind: kind || undefined,
       name: name || undefined,
       contact: contact || undefined,
-      message,
+      message: message || undefined,
       lang,
       ip,
       xff: feedbackXffClient(req),
@@ -2737,6 +2743,7 @@ app.post('/api/feedback', (req, res) => {
     console.log('[feedback]', JSON.stringify({
       id: record.id,
       ts: record.ts,
+      kind: kind || null,
       name: Boolean(name),
       contact: Boolean(contact),
       len: message.length,
@@ -2756,6 +2763,37 @@ app.post('/api/feedback', (req, res) => {
     console.error('[feedback] store failed', error);
     return res.status(500).json({ ok: false, error: 'store failed' });
   }
+});
+
+// ============ Analytics events (轻量埋点) ============
+// POST /api/events { event, props, anonId }: 白名单事件、props 标量清洗
+// （无自由文本）、anonId 短标识。只输出一条结构化 JSON 日志（type:
+// 'analytics'）；IP 仅用于限流，绝不写入日志。校验在 lib/analyticsEvents.js。
+const analyticsRateLimiter = createAnalyticsRateLimiter();
+
+app.get('/api/events', (_req, res) => {
+  res.status(405).json({ ok: false, error: 'Use POST' });
+});
+
+app.post('/api/events', (req, res) => {
+  const validated = validateAnalyticsEvent(req.body);
+  if (!validated.ok) {
+    return res.status(400).json({ ok: false, error: validated.error });
+  }
+
+  // 客户端 IP 只作限流键，不进入任何持久化输出（无 IP、无 UA、无自由文本）。
+  if (!analyticsRateLimiter.tryConsume(resolveClientIp(req))) {
+    return res.status(429).json({ ok: false, error: 'rate limited' });
+  }
+
+  console.log(JSON.stringify({
+    type: 'analytics',
+    event: validated.event,
+    props: validated.props,
+    anonId: validated.anonId,
+    ts: new Date().toISOString(),
+  }));
+  return res.status(202).json({ ok: true });
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));
