@@ -65,8 +65,12 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
 
   const t = useMemo(() => ({
     title: lang === 'zh' ? '复盘一局' : 'Review a match',
-    subtitle: lang === 'zh' ? '输入比赛 ID 或 OpenDota / Dotabuff 链接' : 'Match ID or OpenDota / Dotabuff URL',
-    placeholder: lang === 'zh' ? '8985182860 或 opendota.com/matches/...' : '8985182860 or opendota.com/matches/...',
+    subtitle: lang === 'zh'
+      ? '输入比赛 ID 或 OpenDota / Dotabuff / STRATZ 链接'
+      : 'Match ID or OpenDota / Dotabuff / STRATZ URL',
+    placeholder: lang === 'zh'
+      ? '8985182860 或 stratz.com/matches/...'
+      : '8985182860 or stratz.com/matches/...',
     fetch: lang === 'zh' ? '拉取比赛' : 'Load match',
     fetching: lang === 'zh' ? '正在拉取比赛…' : 'Loading match…',
     hero: lang === 'zh' ? '选择本局英雄' : 'Pick a hero from this match',
