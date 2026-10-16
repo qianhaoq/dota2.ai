@@ -1,5 +1,5 @@
 import { Hero, Attribute, Language } from '../types';
-import type { MatchFact, ReviewParseStatus } from '../types/matchReview';
+import type { MatchFact, ReviewParseStatus, ThreeConclusions } from '../types/matchReview';
 import { parseReviewParseStatus } from '../utils/parseStatus';
 
 const OPENDOTA_API = 'https://api.opendota.com/api';
@@ -119,6 +119,8 @@ export interface MatchFactsResult {
   matchFact: MatchFact;
   /** OpenDota replay parse status; null when the server did not include one. */
   parse: ReviewParseStatus | null;
+  /** Fact-derived three conclusions; null on older payloads. */
+  threeConclusions: ThreeConclusions | null;
 }
 
 /** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
@@ -134,6 +136,7 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', si
       error?: string;
       matchFact?: MatchFact;
       parse?: unknown;
+      threeConclusions?: ThreeConclusions | null;
       upstream?: string;
       upstreamStatus?: number;
       retryable?: boolean;
@@ -152,7 +155,13 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', si
   if (!data.matchFact) {
     throw new MatchFactsError(lang === 'zh' ? '比赛数据为空' : 'Match data is empty');
   }
-  return { matchFact: data.matchFact, parse: parseReviewParseStatus(data.parse) };
+  return {
+    matchFact: data.matchFact,
+    parse: parseReviewParseStatus(data.parse),
+    threeConclusions: data.threeConclusions && typeof data.threeConclusions === 'object'
+      ? data.threeConclusions
+      : null,
+  };
 };
 
 /**

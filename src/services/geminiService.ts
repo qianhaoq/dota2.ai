@@ -1,5 +1,5 @@
 import { Hero, Language } from '../types';
-import type { MatchFact, ReviewParseStatus } from '../types/matchReview';
+import type { MatchFact, ReviewParseStatus, ThreeConclusions } from '../types/matchReview';
 import type { ReviewCardsPayload } from '../types/reviewCards';
 import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
 import { parseReviewParseStatus } from '../utils/parseStatus';
@@ -510,6 +510,8 @@ export interface ReviewStreamCallbacks {
   onData: (matchFact: MatchFact) => void;
   /** OpenDota replay parse status (SSE facts event or JSON result). */
   onParseStatus?: (parse: ReviewParseStatus) => void;
+  /** Fact-derived three conclusions riding alongside matchFact. */
+  onThreeConclusions?: (conclusions: ThreeConclusions) => void;
   onReviewCards?: (cards: ReviewCardsPayload) => void;
   onReviewNotice?: (notice: string) => void;
   onChunk: (text: string) => void;
@@ -579,6 +581,7 @@ export const fetchMatchReviewStream = (
         const jsonParseStatus = parseReviewParseStatus(data.parse);
         if (jsonParseStatus) callbacks?.onParseStatus?.(jsonParseStatus);
         if (data.matchFact) callbacks?.onData(data.matchFact);
+        if (data.threeConclusions) callbacks?.onThreeConclusions?.(data.threeConclusions);
         if (data.reviewCards) callbacks?.onReviewCards?.(data.reviewCards);
         if (data.reviewNotice) callbacks?.onReviewNotice?.(data.reviewNotice);
         if (typeof data.text === 'string' && data.text) callbacks?.onChunk(data.text);
@@ -618,6 +621,9 @@ export const fetchMatchReviewStream = (
           if (parsed.matchFact && callbacks?.onData) {
             callbacks.onData(parsed.matchFact);
             isGrounded = parsed.grounded ?? true;
+          }
+          if (parsed.threeConclusions && callbacks?.onThreeConclusions) {
+            callbacks.onThreeConclusions(parsed.threeConclusions);
           }
           if (parsed.reviewCards && callbacks?.onReviewCards) {
             callbacks.onReviewCards(parsed.reviewCards);

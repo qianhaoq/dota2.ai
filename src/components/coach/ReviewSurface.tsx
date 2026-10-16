@@ -17,9 +17,13 @@ import {
 } from '../../utils/reviewSurface';
 import { parseRetryAfterLabel, shouldShowParseStatusBanner } from '../../utils/parseStatus';
 import { shouldOfferParseRequest } from '../../utils/parseRequest';
+import { buildConclusionCards, getPresetFollowUps } from '../../utils/reviewConclusions';
+import { trackEvent, trackReviewViewed } from '../../services/analytics';
 import { MarkdownBody } from './ResultCard';
 import { scrollOffsetWithinContainer } from '../../utils/coachScroll';
 import { CardSkeleton, InsightCard, SectionCard, StatusNotice } from './a2ui';
+import ReviewConclusionCards from './ReviewConclusionCards';
+import FakedoorSteamCTA from './FakedoorSteamCTA';
 
 interface ReviewSurfaceProps {
   sessions: CoachSession[];
@@ -99,6 +103,7 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     retryingFacts: lang === 'zh' ? '重新拉取中…' : 'Retrying…',
     requestParse: lang === 'zh' ? '请求解析' : 'Request parse',
     requestingParse: lang === 'zh' ? '正在请求…' : 'Requesting…',
+    fullBreakdown: lang === 'zh' ? '详细分析' : 'Full breakdown',
   }), [lang]);
 
   const parseStatus = message?.parseStatus ?? null;
@@ -177,6 +182,25 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
     ?? message?.matchFact?.focusLens?.displayName;
   const resultLabel = headerSummary?.resultLabel;
 
+  // First screen: three fact-derived conclusions. Absent on old payloads —
+  // fall back to the classic card layout below.
+  const conclusionCards = useMemo(
+    () => buildConclusionCards(message?.threeConclusions, lang),
+    [message?.threeConclusions, lang],
+  );
+  const presetFollowUps = useMemo(
+    () => getPresetFollowUps(message?.threeConclusions),
+    [message?.threeConclusions],
+  );
+  // Conclusions are fact-derived and arrive with the facts frame — render them
+  // immediately; the AI cards keep streaming inside the Full breakdown.
+  const showConclusionScreen = Boolean(conclusionCards);
+
+  useEffect(() => {
+    if (!showConclusionScreen || matchId == null) return;
+    trackReviewViewed(matchId);
+  }, [showConclusionScreen, matchId]);
+
   useEffect(() => {
     if (!session) return;
     if (dismissed) {
@@ -213,6 +237,104 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
   const insightFollowUpProps = followUpActionsEnabled
     ? { followUpContext, onFollowUp: onReviewFollowUp, onComposeFollowUp }
     : { followUpContext, followUpActionsEnabled: false };
+
+  const presetFollowUpEnabled = Boolean(
+    followUpActionsEnabled && followUpContext && onReviewFollowUp && !isStreaming,
+  );
+  const handlePresetFollowUp = (question: string) => {
+    // followup_clicked is tracked centrally in CoachView.handleReviewFollowUp.
+    if (!presetFollowUpEnabled || !followUpContext || !onReviewFollowUp) return;
+    onReviewFollowUp(question, followUpContext);
+  };
+
+  const detailContent = (
+    <>
+      {blockByKind.get('match_summary') ? (
+        <ReviewInsightCards
+          block={blockByKind.get('match_summary')!}
+          lang={lang}
+          variant="surface"
+          {...insightFollowUpProps}
+        />
+      ) : message?.matchFact && surfaceActivelyStreaming ? (
+        <CardSkeleton label={t.loadingSummary} />
+      ) : factSpineBlocks.length > 0 ? (
+        <div className="space-y-2" data-testid="review-surface-fact-spine">
+          {factSpineBlocks.map((block) => (
+            <FactSpineSection key={block.id} block={block} lang={lang} />
+          ))}
+        </div>
+      ) : null}
+
+      {blockByKind.get('primary_mistake') ? (
+        <InsightCard slotKey="primary_mistake" label={t.mistake}>
+          <ReviewInsightCards
+            block={blockByKind.get('primary_mistake')!}
+            lang={lang}
+            variant="hero"
+            {...insightFollowUpProps}
+          />
+        </InsightCard>
+      ) : cards && !cards.primary_mistake && surfaceActivelyStreaming && (
+        <CardSkeleton label={t.loadingMistake} />
+      )}
+
+      {blockByKind.get('drill') ? (
+        <InsightCard slotKey="drill" label={t.drill}>
+          <ReviewInsightCards
+            block={blockByKind.get('drill')!}
+            lang={lang}
+            variant="surface"
+            {...insightFollowUpProps}
+          />
+        </InsightCard>
+      ) : cards?.primary_mistake && !cards.drill && surfaceActivelyStreaming && (
+        <CardSkeleton label={t.loadingDrill} />
+      )}
+
+      {blockByKind.get('phases') && (
+        <SectionCard
+          title={t.phases}
+          lang={lang}
+          framed
+          defaultOpen={!mobileCompact}
+          preview={mobileCompact ? cards?.phases?.[0]?.label : undefined}
+        >
+          <ReviewInsightCards
+            block={blockByKind.get('phases')!}
+            lang={lang}
+            variant="surface"
+          />
+        </SectionCard>
+      )}
+
+      {blockByKind.get('key_moments') && (
+        <SectionCard
+          title={t.moments}
+          lang={lang}
+          framed
+          defaultOpen={false}
+          preview={mobileCompact ? momentsPreview : undefined}
+        >
+          <ReviewInsightCards
+            block={blockByKind.get('key_moments')!}
+            lang={lang}
+            variant="timeline"
+          />
+        </SectionCard>
+      )}
+
+      {blockByKind.get('mentor_note') && (
+        <SectionCard title={t.mentor} lang={lang} framed defaultOpen={false}>
+          <ReviewInsightCards
+            block={blockByKind.get('mentor_note')!}
+            lang={lang}
+            variant="surface"
+          />
+        </SectionCard>
+      )}
+    </>
+  );
 
   return (
     <div
@@ -322,89 +444,31 @@ const ReviewSurface: React.FC<ReviewSurfaceProps> = ({
             </StatusNotice>
           )}
 
-          {blockByKind.get('match_summary') ? (
-            <ReviewInsightCards
-              block={blockByKind.get('match_summary')!}
-              lang={lang}
-              variant="surface"
-              {...insightFollowUpProps}
-            />
-          ) : message?.matchFact && surfaceActivelyStreaming ? (
-            <CardSkeleton label={t.loadingSummary} />
-          ) : factSpineBlocks.length > 0 ? (
-            <div className="space-y-2" data-testid="review-surface-fact-spine">
-              {factSpineBlocks.map((block) => (
-                <FactSpineSection key={block.id} block={block} lang={lang} />
-              ))}
-            </div>
-          ) : null}
-
-          {blockByKind.get('primary_mistake') ? (
-            <InsightCard slotKey="primary_mistake" label={t.mistake}>
-              <ReviewInsightCards
-                block={blockByKind.get('primary_mistake')!}
+          {showConclusionScreen && conclusionCards && (
+            <>
+              <ReviewConclusionCards
+                cards={conclusionCards}
                 lang={lang}
-                variant="hero"
-                {...insightFollowUpProps}
+                followUps={presetFollowUps}
+                followUpEnabled={presetFollowUpEnabled}
+                onFollowUp={handlePresetFollowUp}
+                outcome={message?.threeConclusions?.outcome ?? null}
               />
-            </InsightCard>
-          ) : cards && !cards.primary_mistake && surfaceActivelyStreaming && (
-            <CardSkeleton label={t.loadingMistake} />
+              <FakedoorSteamCTA lang={lang} />
+            </>
           )}
 
-          {blockByKind.get('drill') ? (
-            <InsightCard slotKey="drill" label={t.drill}>
-              <ReviewInsightCards
-                block={blockByKind.get('drill')!}
-                lang={lang}
-                variant="surface"
-                {...insightFollowUpProps}
-              />
-            </InsightCard>
-          ) : cards?.primary_mistake && !cards.drill && surfaceActivelyStreaming && (
-            <CardSkeleton label={t.loadingDrill} />
-          )}
-
-          {blockByKind.get('phases') && (
+          {showConclusionScreen ? (
             <SectionCard
-              title={t.phases}
-              lang={lang}
-              framed
-              defaultOpen={!mobileCompact}
-              preview={mobileCompact ? cards?.phases?.[0]?.label : undefined}
-            >
-              <ReviewInsightCards
-                block={blockByKind.get('phases')!}
-                lang={lang}
-                variant="surface"
-              />
-            </SectionCard>
-          )}
-
-          {blockByKind.get('key_moments') && (
-            <SectionCard
-              title={t.moments}
+              title={t.fullBreakdown}
               lang={lang}
               framed
               defaultOpen={false}
-              preview={mobileCompact ? momentsPreview : undefined}
             >
-              <ReviewInsightCards
-                block={blockByKind.get('key_moments')!}
-                lang={lang}
-                variant="timeline"
-              />
+              <div className="space-y-3">{detailContent}</div>
             </SectionCard>
-          )}
-
-          {blockByKind.get('mentor_note') && (
-            <SectionCard title={t.mentor} lang={lang} framed defaultOpen={false}>
-              <ReviewInsightCards
-                block={blockByKind.get('mentor_note')!}
-                lang={lang}
-                variant="surface"
-              />
-            </SectionCard>
+          ) : (
+            detailContent
           )}
         </div>
       </div>
