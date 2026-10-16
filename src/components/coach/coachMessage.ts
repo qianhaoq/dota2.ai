@@ -1,6 +1,6 @@
 import { A2UIBlock, LessonMode } from '../../types';
 import { MatchupData, HeroSuggestion, TierHero, PlaybookHero } from '../../services/geminiService';
-import type { MatchFact, ReviewParseStatus } from '../../types/matchReview';
+import type { MatchFact, ReviewParseStatus, ThreeConclusions } from '../../types/matchReview';
 import type { ReviewCardsPayload } from '../../types/reviewCards';
 
 export type CoachAction = 'analyze' | 'playbook' | 'suggest' | 'meta' | 'review';
@@ -32,6 +32,8 @@ export interface CoachMessage {
   reviewFollowUp?: boolean;
   /** 复盘等流式请求失败时的错误信息（不写入 content，避免误渲染为复盘正文） */
   error?: string;
+  /** 事实推导的三条结论（旧 payload 没有时首屏回退到经典卡片布局）。 */
+  threeConclusions?: ThreeConclusions | null;
 }
 
 export interface CoachSession {

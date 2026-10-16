@@ -98,6 +98,37 @@ export interface MatchPlayerFact {
   deathsDerivedCount: number;
 }
 
+/** One fact-derived evidence line backing a conclusion. */
+export interface ConclusionEvidence {
+  /** Localized timestamp label (e.g. "18:32"), null when not time-bound. */
+  time: string | null;
+  text: string;
+  source: string;
+}
+
+export type ReviewConclusionStatus = 'ok' | 'insufficient';
+
+export interface ReviewConclusion {
+  status: ReviewConclusionStatus;
+  /** Backend title — the review surface renders its own product labels instead. */
+  title: string;
+  summary: string;
+  evidence: ConclusionEvidence[];
+}
+
+/**
+ * Fact-derived three-conclusion payload attached to GET/POST /api/review/:id
+ * responses as a sibling of matchFact (absent on older payloads — fall back
+ * to the classic card layout then).
+ */
+export interface ThreeConclusions {
+  turningPoint: ReviewConclusion;
+  topMistake: ReviewConclusion;
+  nextGameRule: ReviewConclusion;
+  /** 2–3 fact-tailored preset follow-up questions (localized server-side). */
+  followUps: string[];
+}
+
 export type FieldEmptyReason = 'not_parsed_yet' | 'no_data' | 'incomplete_hero_map';
 
 export interface FieldReason {

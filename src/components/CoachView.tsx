@@ -9,6 +9,7 @@ import {
   fetchMatchReviewStream,
 } from '../services/geminiService';
 import { fetchHeroes, fetchMatchFacts, requestMatchParse } from '../services/dotaApiService';
+import { trackEvent } from '../services/analytics';
 import { isParseAbortError, shouldOfferParseRequest } from '../utils/parseRequest';
 import { buildPracticeUserContext, heroDisplayName, resolveAnalyzeUserMessage, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
@@ -435,6 +436,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { parseStatus });
         },
+        onThreeConclusions: (threeConclusions) => {
+          if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          updateCoachMessage(msgId, { threeConclusions });
+        },
         onReviewCards: (reviewCards) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
           updateCoachMessage(msgId, { reviewCards });
@@ -504,7 +509,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
           // the banner re-renders with the freshest status instead of going stale.
         }
       }
-      const { matchFact, parse } = await fetchMatchFacts(matchId, lang, token.controller.signal, heroId ?? undefined);
+      const { matchFact, parse, threeConclusions } = await fetchMatchFacts(matchId, lang, token.controller.signal, heroId ?? undefined);
       if (!isFactsRetryCurrent(factsRetryRef.current, token)) return;
       // Compute the re-review decision from synchronously available state: a value
       // assigned inside a setMessages updater can't be read right after — React
@@ -512,7 +517,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       const target = messagesRef.current.find((msg) => msg.id === messageId);
       if (!target) return;
       const refresh = reviewFactsRefreshResult(target, { matchFact, parseStatus: parse });
-      setMessages((prev) => prev.map((msg) => (msg.id === messageId ? { ...msg, ...refresh.patch } : msg)));
+      setMessages((prev) => prev.map((msg) => (msg.id === messageId
+        ? { ...msg, ...refresh.patch, ...(threeConclusions ? { threeConclusions } : {}) }
+        : msg)));
       if (refresh.staleCleared) {
         // The re-review supersedes this retry; release the token first so
         // handleReview's abort of pending retries stays a no-op for us.
@@ -667,6 +674,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       if (composerState.reviewFollowUpSubmittable) {
         const ctx = pendingCtx ?? displayedCtx;
         if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
+        trackEvent('followup_clicked', { kind: 'custom' });
         handleReviewFollowUp(userInput.trim());
         return;
       }
@@ -675,6 +683,7 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       const heroId = pendingCtx?.heroId ?? displayedCtx?.heroId ?? retainedRef?.heroId;
       if (matchId == null) return;
       pendingFollowUpContextRef.current = null;
+      trackEvent('followup_clicked', { kind: 'custom' });
       handleReview(matchId, heroId, userInput.trim());
       return;
     }
