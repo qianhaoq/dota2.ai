@@ -44,6 +44,7 @@ import {
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
 import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
+import { streamFollowUpCompletion } from './lib/matchReview/followUpCompletion.js';
 import { withCompletionDeadline } from './lib/completionDeadline.js';
 import {
   isLlmSdkError,
@@ -64,6 +65,10 @@ const REVIEW_MIN_ATTEMPT_MS = 5000;
 // Fetch-phase cap (OpenDota match + hero stats + constants). Leaves 80s of
 // the request budget for DeepSeek 40s + Gemini 40s.
 const REVIEW_FETCH_BUDGET_MS = 90000;
+// Per-attempt deadline for the review follow-up stream (DeepSeek first, then
+// the Gemini fallback with its own deadline). Env-tunable; fetch budget +
+// two follow-up attempts must stay inside REVIEW_REQUEST_BUDGET_MS.
+const REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS = envPositiveInt('REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS', 40000);
 import {
   createParseRequestSubmitter,
   PARSE_REQUEST_TIMEOUT_MS,
@@ -2376,13 +2381,13 @@ async function handleMatchReview(req, res) {
 
   let clientGone = false;
   const reviewStartedAt = Date.now();
-  let stream = null;
   const abortController = new AbortController();
   const abortUpstream = () => {
     if (res.writableEnded) return;
     clientGone = true;
+    // Aborts every in-flight upstream call: the fetch phase and each provider
+    // attempt (cards and follow-up streams) all consume this shared signal.
     abortController.abort();
-    stream?.controller?.abort();
   };
   const detachAbortListeners = () => {
     res.removeListener('close', abortUpstream);
@@ -2502,11 +2507,16 @@ async function handleMatchReview(req, res) {
       // in prod (rev 00065: 100% 504 at 300s). Malformed JSON is recovered by
       // extractJsonFromLlmOutput instead.
     };
-    // Follow-ups stream from DeepSeek with the SDK's default retries. Card
-    // requests go through the provider chain (DeepSeek, then Gemini), each
-    // attempt under an app-owned deadline capped by the request budget, no SDK
-    // retries (the validation retry already makes a second attempt).
-    const followUpRequest = () => openai.chat.completions.create(completionBody, { signal: abortController.signal });
+    // Follow-ups stream through their own provider chain (DeepSeek with the
+    // SDK's default retries, then Gemini with none), each attempt bounded by
+    // REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS. Card requests go through the card
+    // provider chain (DeepSeek, then Gemini), each attempt under an app-owned
+    // deadline capped by the request budget, no SDK retries (the validation
+    // retry already makes a second attempt).
+    const followUpProviders = [
+      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create(completionBody, { signal }) }] : []),
+      ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ ...completionBody, model: GEMINI_REVIEW_MODEL }, { signal, maxRetries: 0 }) }] : []),
+    ];
     const cardProviders = [
       ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ ...completionBody, stream: false }, { signal, maxRetries: 0 }) }] : []),
       ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ ...completionBody, model: GEMINI_REVIEW_MODEL, stream: false }, { signal, maxRetries: 0 }) }] : []),
@@ -2545,33 +2555,35 @@ async function handleMatchReview(req, res) {
 
     try {
       if (followUp) {
-        stream = await followUpRequest();
-        if (clientGone) {
-          stream.controller?.abort();
-          return;
-        }
-        let finishReason = null;
-        for await (const chunk of stream) {
-          if (clientGone || res.writableEnded) break;
-          const choice = chunk.choices[0];
-          const content = choice?.delta?.content;
-          if (content) {
-            responder.send({ text: content, grounded: isGrounded });
-          }
-          if (choice?.finish_reason) {
-            finishReason = choice.finish_reason;
-          }
-        }
+        // Provider chain (DeepSeek → Gemini), each attempt under its own
+        // deadline; total failure before any text was forwarded answers with
+        // the sanitized generic error (never provider text).
+        const outcome = await streamFollowUpCompletion({
+          providers: followUpProviders,
+          attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
+          signal: abortController.signal,
+          onText: (text) => responder.send({ text, grounded: isGrounded }),
+          shouldStop: () => clientGone || res.writableEnded,
+          onProviderError: ({ provider, error, raw }) => logLlmError(console.warn, {
+            event: 'review_followup_provider_error',
+            matchId,
+            provider,
+            error: raw,
+            failure: error,
+            lang,
+          }),
+        });
         // writableEnded stays false on an aborted close, so gate on
         // clientGone too: a gone client must not get a final write/end.
-        if (!clientGone && !res.writableEnded) {
-          if (isTerminalStreamFinish(finishReason)) {
-            responder.end();
-          } else {
-            responder.end({
-              error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
-            });
-          }
+        if (clientGone || res.writableEnded) return;
+        if (outcome.status === 'failed') {
+          responder.end(sanitizeLlmErrorForClient(lang));
+        } else if (outcome.status === 'done' && isTerminalStreamFinish(outcome.finishReason)) {
+          responder.end();
+        } else {
+          responder.end({
+            error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
+          });
         }
       } else {
         const first = await cardCompletion();
