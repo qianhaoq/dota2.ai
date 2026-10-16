@@ -85,21 +85,29 @@ export function resolveAnonId(
   return { anonId, isReturning: false };
 }
 
-/** return_visit 只在「老访客 + 本会话还没发过」时发一次。 */
-export function shouldEmitReturnVisit(session: StorageLike, isReturning: boolean): boolean {
-  if (!isReturning) return false;
-  try {
-    return session.getItem(RETURN_VISIT_SESSION_KEY) !== '1';
-  } catch {
-    return true;
-  }
+export const LAST_VISIT_DAY_STORAGE_KEY = 'dota2ai.lastVisitDay';
+
+/** 本地日历日（YYYY-MM-DD），只用于比较是否跨天，不上报。 */
+export function localDayStamp(now: Date = new Date()): string {
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${m}-${d}`;
 }
 
-export function markReturnVisitEmitted(session: StorageLike): void {
+/**
+ * return_visit 判定：同一会话内（含刷新）只评估一次；只有当上次访问日
+ * 存在且与今天不同（跨天回访）时才返回 true。首次访问只写入标记，绝不发；
+ * 首访当天刷新 / 新开标签也不算回访。存储异常一律不发（宁缺毋滥）。
+ */
+export function decideReturnVisit(local: StorageLike, session: StorageLike, today: string): boolean {
   try {
+    if (session.getItem(RETURN_VISIT_SESSION_KEY) === '1') return false;
     session.setItem(RETURN_VISIT_SESSION_KEY, '1');
+    const lastDay = local.getItem(LAST_VISIT_DAY_STORAGE_KEY);
+    local.setItem(LAST_VISIT_DAY_STORAGE_KEY, today);
+    return typeof lastDay === 'string' && lastDay.length > 0 && lastDay !== today;
   } catch {
-    // 标记失败最坏只是同会话多发一次，可接受。
+    return false;
   }
 }
 
@@ -114,4 +122,9 @@ export function buildEventPayload(
     props: props ?? {},
     anonId: isValidAnonId(anonId) ? anonId : null,
   };
+}
+
+/** Composer submit provenance: unchanged prefilled chip text = preset, anything else = custom. */
+export function followUpKind(submitted: string, prefilled: string | null | undefined): 'preset' | 'custom' {
+  return prefilled && submitted.trim() === prefilled.trim() ? 'preset' : 'custom';
 }

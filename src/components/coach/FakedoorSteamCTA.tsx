@@ -44,7 +44,7 @@ const FakedoorSteamCTA: React.FC<{ lang: Language }> = ({ lang }) => {
       const res = await fetch('/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildFakedoorSubmission(contact)),
+        body: JSON.stringify(buildFakedoorSubmission(contact, lang)),
       });
       if (!res.ok) throw new Error(`feedback failed: ${res.status}`);
       setState('thanks');

@@ -10,6 +10,7 @@ import {
 } from '../services/geminiService';
 import { fetchHeroes, fetchMatchFacts, requestMatchParse } from '../services/dotaApiService';
 import { trackEvent } from '../services/analytics';
+import { followUpKind } from '../utils/analyticsClient';
 import { isParseAbortError, shouldOfferParseRequest } from '../utils/parseRequest';
 import { buildPracticeUserContext, heroDisplayName, resolveAnalyzeUserMessage, resolveCoachingLineup } from '../utils/practiceContext';
 import { appendStreamChunk, generateMessageId } from '../utils/streamAccumulator';
@@ -574,8 +575,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
     handleReview(ctx.matchId, ctx.heroId, question);
   }, [handleReview, isLoading, activeReviewSession, sessions]);
 
+  // Text of a preset chip that prefilled the composer; submitting it unchanged
+  // is logged as a preset follow-up, edited text counts as custom.
+  const prefilledFollowUpRef = useRef<string | null>(null);
   const handleComposeFollowUp = useCallback((text: string, context: ReviewFollowUpContext) => {
     pendingFollowUpContextRef.current = context;
+    prefilledFollowUpRef.current = text.trim();
     applyLessonSwitch('review');
     setUserInput(text);
     setComposerFocusToken((t) => t + 1);
@@ -674,7 +679,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       if (composerState.reviewFollowUpSubmittable) {
         const ctx = pendingCtx ?? displayedCtx;
         if (!ctx || !canSubmitReviewFollowUpForContext(sessions, ctx)) return;
-        trackEvent('followup_clicked', { kind: 'custom' });
+        trackEvent('followup_clicked', { kind: followUpKind(userInput, prefilledFollowUpRef.current) });
+        prefilledFollowUpRef.current = null;
         handleReviewFollowUp(userInput.trim());
         return;
       }
@@ -683,7 +689,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       const heroId = pendingCtx?.heroId ?? displayedCtx?.heroId ?? retainedRef?.heroId;
       if (matchId == null) return;
       pendingFollowUpContextRef.current = null;
-      trackEvent('followup_clicked', { kind: 'custom' });
+      trackEvent('followup_clicked', { kind: followUpKind(userInput, prefilledFollowUpRef.current) });
+      prefilledFollowUpRef.current = null;
       handleReview(matchId, heroId, userInput.trim());
       return;
     }

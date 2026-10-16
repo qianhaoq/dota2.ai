@@ -1,13 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   ANON_ID_STORAGE_KEY,
-  RETURN_VISIT_SESSION_KEY,
   buildEventPayload,
   generateAnonId,
   isValidAnonId,
-  markReturnVisitEmitted,
   resolveAnonId,
-  shouldEmitReturnVisit,
+  decideReturnVisit,
+  followUpKind,
   type StorageLike,
 } from './analyticsClient';
 
@@ -87,23 +86,30 @@ describe('resolveAnonId', () => {
   });
 });
 
-describe('return_visit gating', () => {
-  it('emits once per session for a returning visitor', () => {
+describe('return_visit gating (different day, not a refresh)', () => {
+  it('first visit never emits, and a same-session refresh never emits', () => {
+    const local = makeStorage();
     const session = makeStorage();
-    expect(shouldEmitReturnVisit(session, true)).toBe(true);
-    markReturnVisitEmitted(session);
-    expect(session.data.get(RETURN_VISIT_SESSION_KEY)).toBe('1');
-    expect(shouldEmitReturnVisit(session, true)).toBe(false);
+    expect(decideReturnVisit(local, session, '2026-10-16')).toBe(false);
+    expect(decideReturnVisit(local, session, '2026-10-16')).toBe(false);
   });
 
-  it('never emits for a first-time visitor', () => {
-    const session = makeStorage();
-    expect(shouldEmitReturnVisit(session, false)).toBe(false);
+  it('a new session on the same day is not a return visit', () => {
+    const local = makeStorage();
+    decideReturnVisit(local, makeStorage(), '2026-10-16');
+    expect(decideReturnVisit(local, makeStorage(), '2026-10-16')).toBe(false);
   });
 
-  it('fails open when sessionStorage throws', () => {
-    expect(shouldEmitReturnVisit(makeThrowingStorage(), true)).toBe(true);
-    expect(() => markReturnVisitEmitted(makeThrowingStorage())).not.toThrow();
+  it('a new session on a later day emits once', () => {
+    const local = makeStorage();
+    decideReturnVisit(local, makeStorage(), '2026-10-16');
+    const session = makeStorage();
+    expect(decideReturnVisit(local, session, '2026-10-18')).toBe(true);
+    expect(decideReturnVisit(local, session, '2026-10-18')).toBe(false);
+  });
+
+  it('fails closed when storage throws', () => {
+    expect(decideReturnVisit(makeThrowingStorage(), makeThrowingStorage(), '2026-10-16')).toBe(false);
   });
 });
 
@@ -127,5 +133,13 @@ describe('buildEventPayload', () => {
       props: { matchId: '123' },
       anonId: null,
     });
+  });
+});
+
+describe('followUpKind', () => {
+  it('logs unchanged prefilled chips as preset and edits as custom', () => {
+    expect(followUpKind(' Why did we lose? ', 'Why did we lose?')).toBe('preset');
+    expect(followUpKind('Why did we lose at 30?', 'Why did we lose?')).toBe('custom');
+    expect(followUpKind('anything', null)).toBe('custom');
   });
 });

@@ -8,9 +8,9 @@
 
 import {
   buildEventPayload,
-  markReturnVisitEmitted,
   resolveAnonId,
-  shouldEmitReturnVisit,
+  decideReturnVisit,
+  localDayStamp,
   type AnalyticsEventName,
   type AnalyticsProps,
 } from '../utils/analyticsClient';
@@ -40,11 +40,10 @@ export function initAnalytics(): void {
   if (initialized || typeof window === 'undefined') return;
   initialized = true;
   try {
-    const { anonId, isReturning } = resolveAnonId(window.localStorage);
+    const { anonId } = resolveAnonId(window.localStorage);
     cachedAnonId = anonId;
     identityResolved = true;
-    if (window.sessionStorage && shouldEmitReturnVisit(window.sessionStorage, isReturning)) {
-      markReturnVisitEmitted(window.sessionStorage);
+    if (window.sessionStorage && decideReturnVisit(window.localStorage, window.sessionStorage, localDayStamp())) {
       trackEvent('return_visit');
     }
   } catch {
