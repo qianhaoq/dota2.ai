@@ -45,6 +45,12 @@ import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
 import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
 import { withCompletionDeadline } from './lib/completionDeadline.js';
+import {
+  isLlmSdkError,
+  logLlmError,
+  redactSecrets,
+  sanitizeLlmErrorForClient,
+} from './lib/llmErrors.js';
 
 // Per-attempt card completion deadline; two attempts + fetch stay under
 // Cloud Run's 300s request timeout.
@@ -1864,8 +1870,20 @@ ${statsSection}
       });
     }
   } catch (error) {
+    // LLM/provider failures never cross to the client raw (they can embed
+    // auth details or key tails): generic localized payload + structured log.
+    const lang = normalizeUiLang(req.body?.lang || 'en');
+    if (isLlmSdkError(error)) {
+      logLlmError(console.error, { event: 'playbook_llm_error', provider: 'deepseek', error, lang });
+      const payload = sanitizeLlmErrorForClient(lang);
+      if (wantsStream) {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+      return res.status(502).json(payload);
+    }
     console.error("Playbook Error:", error);
-    const wantsStream = (req.headers.accept || '').includes('text/event-stream');
     if (wantsStream) {
       res.write(`data: ${JSON.stringify({ error: error.message || "Internal Server Error" })}\n\n`);
       res.write('data: [DONE]\n\n');
@@ -1978,6 +1996,18 @@ app.post('/api/analyze', async (req, res) => {
       });
     }
   } catch (error) {
+    // Same hygiene as /api/playbook: provider errors → generic payload only.
+    const lang = normalizeUiLang(req.body?.lang || 'en');
+    if (isLlmSdkError(error)) {
+      logLlmError(console.error, { event: 'analyze_llm_error', provider: 'deepseek', error, lang });
+      const payload = sanitizeLlmErrorForClient(lang);
+      if (wantsStream) {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+      return res.status(502).json(payload);
+    }
     console.error("DeepSeek Analysis Error:", error);
     if (wantsStream) {
       res.write(`data: ${JSON.stringify({ error: error.message || "Internal Server Error" })}\n\n`);
@@ -2109,7 +2139,9 @@ app.post('/api/suggestions', async (req, res) => {
     res.json({ suggestions });
   } catch (error) {
     console.error("Suggestions Error:", error);
-    res.json({ suggestions: [], error: error.message });
+    // No LLM call here, but never echo raw upstream text either (redaction
+    // guards against future leaks if a provider call is ever added).
+    res.json({ suggestions: [], error: redactSecrets(error.message || 'Failed to compute suggestions') });
   }
 });
 
@@ -2140,6 +2172,11 @@ app.post('/api/chat', async (req, res) => {
 
     res.json({ text: response.choices[0].message.content });
   } catch (error) {
+    const lang = normalizeUiLang(req.body?.lang);
+    if (isLlmSdkError(error)) {
+      logLlmError(console.error, { event: 'chat_llm_error', provider: 'deepseek', error, lang });
+      return res.status(502).json(sanitizeLlmErrorForClient(lang));
+    }
     console.error("DeepSeek Chat Error:", error);
     res.status(500).json({ error: error.message || "Internal Server Error" });
   }
@@ -2483,7 +2520,13 @@ async function handleMatchReview(req, res) {
       perAttemptMs: REVIEW_CARD_COMPLETION_DEADLINE_MS,
       minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
       signal: abortController.signal,
-      onProviderError: ({ provider, error }) => console.warn(JSON.stringify({ severity: 'WARNING', event: 'review_ai_provider_error', matchId, provider, error })),
+      onProviderError: ({ provider, error, raw }) => logLlmError(console.warn, {
+        event: 'review_ai_provider_error',
+        matchId,
+        provider,
+        error: raw,
+        failure: error,
+      }),
     });
 
     // When no primary_mistake category has its required evidence in this
@@ -2574,6 +2617,21 @@ async function handleMatchReview(req, res) {
     } catch (streamErr) {
       if (clientGone || (streamErr.name === 'AbortError' && abortController.signal.aborted)) return;
       if (streamErr.name === 'CompletionDeadlineError') console.warn(`[review:ai-validation] match=${matchId} completion_deadline_exceeded`);
+      if (isLlmSdkError(streamErr)) {
+        // Structured log with redacted detail; client gets the generic code.
+        logLlmError(console.error, { event: 'review_stream_llm_error', matchId, error: streamErr, lang });
+        if (!res.writableEnded) {
+          if (followUp) {
+            responder.end(sanitizeLlmErrorForClient(lang));
+          } else {
+            const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
+            responder.send({ reviewCards, grounded: isGrounded });
+            responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'provider') });
+            responder.end();
+          }
+        }
+        return;
+      }
       console.error('Match review stream error:', streamErr);
       if (!res.writableEnded) {
         if (followUp) {
@@ -2599,6 +2657,11 @@ async function handleMatchReview(req, res) {
         504,
         { retryable: true },
       );
+    }
+    if (isLlmSdkError(error)) {
+      const sanitized = sanitizeLlmErrorForClient(lang);
+      logLlmError(console.error, { event: 'review_llm_error', matchId, error, lang });
+      return respondReviewError(res, wantsStream, sanitized.error, 502, { message: sanitized.message });
     }
     console.error('Match review error:', error);
     if (isOpenDotaFetchError(error)) {
