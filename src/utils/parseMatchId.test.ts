@@ -56,4 +56,13 @@ describe('parseMatchId — pasted match URLs', () => {
     expect(parseMatchId('https://stratz.com/matches/not-a-number')).toBeNull();
     expect(parseMatchId('https://dotabuff.com/matches/')).toBeNull();
   });
+
+  it('requires a hostname boundary: exact domain or real subdomain only', () => {
+    expect(parseMatchId('https://evilstratz.com/matches/8985182860')).toBeNull();
+    expect(parseMatchId('https://opendota.com.evil.test/matches/8985182860')).toBeNull();
+    expect(parseMatchId('https://notdotabuff.com/matches/8985182860')).toBeNull();
+    expect(parseMatchId('https://evil.test/?u=stratz.com/matches/8985182860')).toBeNull();
+    expect(parseMatchId('https://api.opendota.com/matches/8985182860')).toBe(8985182860);
+    expect(parseMatchId('https://zh.dotabuff.com/matches/8985182860/builds')).toBe(8985182860);
+  });
 });

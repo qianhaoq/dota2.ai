@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   ANALYTICS_EVENTS,
-  ANALYTICS_MAX_PROPS,
   validateAnalyticsEvent,
   sanitizeAnalyticsProps,
   normalizeAnalyticsAnonId,
@@ -9,17 +8,17 @@ import {
 } from '../../lib/analyticsEvents.js';
 
 describe('validateAnalyticsEvent', () => {
-  it('accepts every whitelisted event with props and anonId', () => {
-    for (const event of ANALYTICS_EVENTS) {
-      expect(validateAnalyticsEvent({
-        event,
-        props: { preset: 'why_this_item', custom: true, position: 2 },
-        anonId: 'anon-42',
-      })).toEqual({
-        ok: true,
-        event,
-        props: { preset: 'why_this_item', custom: true, position: 2 },
-        anonId: 'anon-42',
+  it('accepts every whitelisted event and keeps only allowlisted props', () => {
+    const cases: Array<[string, Record<string, unknown>, Record<string, unknown>]> = [
+      ['review_viewed', { matchId: '8985182860', extra: 'x' }, { matchId: '8985182860' }],
+      ['followup_clicked', { kind: 'preset', position: 2 }, { kind: 'preset' }],
+      ['fakedoor_clicked', { kind: 'steam_autoreview' }, { kind: 'steam_autoreview' }],
+      ['return_visit', { kind: 'preset' }, {}],
+    ];
+    expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
+    for (const [event, props, expected] of cases) {
+      expect(validateAnalyticsEvent({ event, props, anonId: 'anon-42' })).toEqual({
+        ok: true, event, props: expected, anonId: 'anon-42',
       });
     }
   });
@@ -49,37 +48,12 @@ describe('validateAnalyticsEvent', () => {
 });
 
 describe('sanitizeAnalyticsProps — PII and free-text stripping', () => {
-  it('keeps identifier strings, booleans and finite numbers only', () => {
-    expect(sanitizeAnalyticsProps({
-      preset: 'why_build_this_item',
-      custom: false,
-      count: 3,
-      ratio: -1.5,
-      junkObject: { a: 1 },
-      junkArray: [1],
-      junkNull: null,
-      freeText: 'Why did we lose that fight at 29:00?',
-      chineseText: '辅助这段该怎么站',
-      email: 'user@example.com',
-      nan: Number.NaN,
-      infinite: Number.POSITIVE_INFINITY,
-      huge: 1e12,
-    })).toEqual({
-      preset: 'why_build_this_item',
-      custom: false,
-      count: 3,
-      ratio: -1.5,
-    });
-  });
-
-  it('caps the number of kept keys', () => {
-    const props: Record<string, number> = {};
-    for (let i = 0; i < ANALYTICS_MAX_PROPS + 5; i += 1) props[`k${i}`] = i;
-    const sanitized = sanitizeAnalyticsProps(props);
-    expect(Object.keys(sanitized)).toHaveLength(ANALYTICS_MAX_PROPS);
-    // The first keys in insertion order survive.
-    expect(sanitized.k0).toBe(0);
-    expect(sanitized[`k${ANALYTICS_MAX_PROPS - 1}`]).toBe(ANALYTICS_MAX_PROPS - 1);
+  it('drops unknown keys (incl. PII key names) and non-allowlisted values', () => {
+    expect(sanitizeAnalyticsProps({ 'alice@example.com': true, kind: 'preset' }, 'followup_clicked')).toEqual({ kind: 'preset' });
+    expect(sanitizeAnalyticsProps({ kind: 'Why did we lose?' }, 'followup_clicked')).toEqual({});
+    expect(sanitizeAnalyticsProps({ matchId: 8985182860 }, 'review_viewed')).toEqual({});
+    expect(sanitizeAnalyticsProps({ matchId: 'abc' }, 'review_viewed')).toEqual({});
+    expect(sanitizeAnalyticsProps({ kind: 'preset' }, 'unknown_event')).toEqual({});
   });
 
   it('returns {} for non-object props', () => {
