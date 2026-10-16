@@ -41,6 +41,11 @@ describe('buildThreeConclusions — gold sample 8985182860 (en)', () => {
   const fact = buildMatchFact(goldFixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_8985 }) as MatchFact;
   const conclusions = buildThreeConclusions(fact, { lang: 'en' });
 
+  it('exposes the focus side outcome derived from summary.radiantWin', () => {
+    // Lifestealer is Radiant and Radiant lost.
+    expect(conclusions.outcome).toBe('loss');
+  });
+
   it('turningPoint reports the detected lead flip with gold swing and window deaths', () => {
     const tp = conclusions.turningPoint;
     expect(tp.status).toBe('ok');
@@ -88,9 +93,10 @@ describe('buildThreeConclusions — gold sample 8985182860 (en)', () => {
     ]);
   });
 
-  it('followUps are the 3 presets tailored with turning time and lane', () => {
+  it('followUps omit the item preset (no item facts) and keep the fact-backed ones', () => {
+    // MatchFact carries no itemTimings here, so the vague "Why build this item?"
+    // preset is omitted entirely instead of pointing at nothing.
     expect(conclusions.followUps).toEqual([
-      'Why build this item?',
       'Why did we lose the fight at 29:00?',
       'Where should support stand in the Bot lane here?',
     ]);
@@ -113,29 +119,36 @@ describe('buildThreeConclusions — gold sample 8985182860 (zh)', () => {
 
   it('followUps use the zh presets tailored to facts', () => {
     expect(conclusions.followUps).toEqual([
-      '为什么出这件？',
       '29:00 那波团为什么输？',
       '辅助下路这段该怎么站？',
     ]);
   });
 });
 
-describe('buildThreeConclusions — fallback largest swing (9035042364 parsed, en)', () => {
+describe('buildThreeConclusions — fallback adverse swing (9035042364 parsed, en)', () => {
   // No lead flip in this match (radiant's best moment was +184), so the
-  // turning point falls back to the largest one-minute gold swing.
+  // turning point falls back to the largest one-minute gold swing adverse to
+  // the focus side — NOT the absolute max, which was radiant's late -13863 →
+  // -8124 recovery that explains nothing about the loss.
   const fact = buildMatchFact(
     JSON.parse(readFileSync(path.join(fixturesDir, 'match9035042364.parsed.json'), 'utf8')),
     { lang: 'en', heroId: 104, heroNames: HERO_NAMES_9035 },
   ) as MatchFact;
   const conclusions = buildThreeConclusions(fact, { lang: 'en' });
 
-  it('turningPoint uses the biggest one-minute swing and the focus-side orientation', () => {
+  it('exposes the focus side outcome', () => {
+    // Legion Commander is Radiant and Radiant lost.
+    expect(conclusions.outcome).toBe('loss');
+  });
+
+  it('turningPoint picks the biggest adverse swing, never the losing side\'s recovery', () => {
     const tp = conclusions.turningPoint;
     expect(tp.status).toBe('ok');
-    expect(tp.summary).toContain('57:00 — the biggest one-minute gold swing of the game: Radiant went from -13863 to -8124.');
-    // The swing favored radiant (focus LC is radiant).
-    expect(tp.summary).toContain('That swing went your team\'s way.');
-    expect(tp.evidence.filter((e) => e.source === 'economy').map((e) => e.time)).toEqual(['56:00', '57:00']);
+    expect(tp.summary).toContain('44:00 — the biggest one-minute gold swing against Radiant: Radiant went from -21378 to -25798.');
+    // The -13863 → -8124 recovery at 57:00 must not be presented as the loss driver.
+    expect(tp.summary).not.toContain('57:00');
+    expect(tp.summary).toContain('That swing went against your team.');
+    expect(tp.evidence.filter((e) => e.source === 'economy').map((e) => e.time)).toEqual(['43:00', '44:00']);
   });
 
   it('topMistake derives the behind-deaths pattern', () => {
@@ -145,8 +158,13 @@ describe('buildThreeConclusions — fallback largest swing (9035042364 parsed, e
     expect(tm.evidence[0].time).toBe('14:05');
   });
 
-  it('followUps flip the fight question to a win', () => {
-    expect(conclusions.followUps[1]).toBe('Why did we win the fight at 57:00?');
+  it('followUps ask about the wipe-backed fight at the adverse minute', () => {
+    // 4 Radiant deaths within 30s in minute 44 prove the fight; the question
+    // may name it. The late-game recovery minute is never referenced.
+    expect(conclusions.followUps).toEqual([
+      'Why did we lose the fight at 44:00?',
+      'Where should support stand in the Top lane here?',
+    ]);
   });
 });
 
@@ -164,33 +182,39 @@ describe('buildThreeConclusions — insufficient cases', () => {
       expect(conclusions[key].evidence).toEqual([]);
       expect(conclusions[key].title).toBeTruthy();
     }
-    // Presets still exist for the follow-up chips.
-    expect(conclusions.followUps).toEqual(['为什么出这件？', '那波团为什么输？', '辅助这段该怎么站？']);
+    // Presets still exist for the follow-up chips: no swing and no item facts,
+    // so both are omitted rather than invented.
+    expect(conclusions.outcome).toBe('loss'); // radiantWin + focus side are known facts even when unparsed
+    expect(conclusions.followUps).toEqual(['这局的关键节点在哪里？', '辅助这段该怎么站？']);
   });
 
   it('topMistake/nextGameRule need a focus hero even on a fully parsed match (en)', () => {
     const fact = buildMatchFact(goldFixture, { lang: 'en', heroNames: HERO_NAMES_8985 }) as MatchFact;
     const conclusions = buildThreeConclusions(fact, { lang: 'en' });
     expect(fact.focusHeroId).toBeNull();
+    expect(conclusions.outcome).toBeNull();
     expect(conclusions.turningPoint.status).toBe('ok');
     expect(conclusions.topMistake.status).toBe('insufficient');
     expect(conclusions.topMistake.summary).toContain('Insufficient data');
     expect(conclusions.nextGameRule.status).toBe('insufficient');
     expect(conclusions.nextGameRule.summary).toContain('Insufficient data');
-    // No focus side ⇒ no tailored fight question.
-    expect(conclusions.followUps[1]).toBe('Why did we lose that fight?');
-    expect(conclusions.followUps[2]).toBe('Where should support stand here?');
+    // No focus side ⇒ the wipe-backed fight is asked about neutrally, and the
+    // support question loses its lane detail.
+    expect(conclusions.followUps).toEqual([
+      'What happened in the fight at 29:00?',
+      'Where should support stand here?',
+    ]);
   });
 
   it('survives null facts with explicit insufficient markers (en default)', () => {
     const conclusions = buildThreeConclusions(null as never);
+    expect(conclusions.outcome).toBeNull();
     expect(conclusions.turningPoint.status).toBe('insufficient');
     expect(conclusions.topMistake.status).toBe('insufficient');
     expect(conclusions.topMistake.summary).toContain('Insufficient data');
     expect(conclusions.nextGameRule.status).toBe('insufficient');
     expect(conclusions.followUps).toEqual([
-      'Why build this item?',
-      'Why did we lose that fight?',
+      'What was the decisive moment of this game?',
       'Where should support stand here?',
     ]);
   });
@@ -226,7 +250,7 @@ describe('buildThreeConclusions — insufficient cases', () => {
     expect(conclusions.topMistake.status).toBe('insufficient');
     expect(conclusions.topMistake.summary).toBe('Insufficient data — fewer than two recorded deaths, so no death pattern can be derived');
     expect(conclusions.turningPoint.status).toBe('insufficient');
-    expect(conclusions.turningPoint.summary).toBe('Insufficient data — the gold timeline is too short or too flat to locate a turning point');
+    expect(conclusions.turningPoint.summary).toBe('Insufficient data — no single minute moved the gold lead enough to mark a turning point');
   });
 
   it('defaults to English without opts', () => {
