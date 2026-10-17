@@ -92,9 +92,17 @@ const DraftAssistant: React.FC<DraftAssistantProps> = ({ lang }) => {
     }
     
     setIsSuggestionsLoading(true);
-    const result = await fetchSuggestions(allies, enemies, side, role || undefined, lang);
-    setSuggestions(result);
-    setIsSuggestionsLoading(false);
+    try {
+      const result = await fetchSuggestions(allies, enemies, side, role || undefined, lang);
+      setSuggestions(result);
+    } catch {
+      // 429s and fetch failures now throw with the server's localized
+      // message; this auto-refresh panel falls back to an empty list (the
+      // coach view surfaces the message text).
+      setSuggestions([]);
+    } finally {
+      setIsSuggestionsLoading(false);
+    }
   }, [lang]);
 
   useEffect(() => {
