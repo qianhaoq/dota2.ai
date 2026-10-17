@@ -36,10 +36,11 @@
 
   /* The legacy global CSS paints the body dark and constrains #root height;
      the v2 shell owns its own light surface, ink color and font stack. */
+  /* Height follows #root (`--app-height` in index.css) so the shell shrinks
+     when iOS opens the keyboard — no 100dvh override here. */
   display: flex;
   flex-direction: column;
   height: 100%;
-  min-height: 100dvh;
   background: var(--d2-bg);
   color: var(--d2-ink);
   font: 400 15px/22px Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;

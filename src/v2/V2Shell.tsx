@@ -22,7 +22,7 @@ const V2Shell: React.FC<{ children: React.ReactNode; noIndex?: boolean }> = ({ c
   }, [noIndex]);
 
   return (
-    <div className="d2-root">
+    <div className="d2-root pt-safe px-safe">
       <TopBar />
       <div className="flex-1 min-h-0 overflow-y-auto">
         <main className="max-w-d2-chat mx-auto px-[16px] pt-[16px] pb-[24px]">{children}</main>
