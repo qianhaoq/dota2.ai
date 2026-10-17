@@ -1,6 +1,7 @@
 import { Hero, Attribute, Language } from '../types';
 import type { MatchFact, ReviewParseStatus, ThreeConclusions } from '../types/matchReview';
 import { parseReviewParseStatus } from '../utils/parseStatus';
+import { serverErrorMessage } from '../utils/serverErrorMessage';
 
 const OPENDOTA_API = 'https://api.opendota.com/api';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
@@ -144,7 +145,7 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', si
   );
   if (!response.ok) {
     throw new MatchFactsError(
-      data.error || (lang === 'zh' ? '拉取比赛失败' : 'Failed to load match'),
+      serverErrorMessage(data, lang === 'zh' ? '拉取比赛失败' : 'Failed to load match'),
       {
         upstream: data.upstream,
         upstreamStatus: data.upstreamStatus,
@@ -197,7 +198,7 @@ export const requestMatchParse = async (
   const parse = parseReviewParseStatus(data);
   if (parse) return parse;
   throw new MatchFactsError(
-    data.error || (lang === 'zh' ? '解析请求失败' : 'Failed to request parse'),
+    serverErrorMessage(data, lang === 'zh' ? '解析请求失败' : 'Failed to request parse'),
   );
 };
 
@@ -248,7 +249,7 @@ export const fetchReviewSuggestions = async (
     const response = await fetch(`/api/review/suggestions?${params}`);
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error || (lang === 'zh' ? '加载推荐失败' : 'Failed to load suggestions'));
+      throw new Error(serverErrorMessage(data, lang === 'zh' ? '加载推荐失败' : 'Failed to load suggestions'));
     }
     return {
       recent: Array.isArray(data.recent) ? data.recent : [],

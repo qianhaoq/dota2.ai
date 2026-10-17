@@ -44,7 +44,16 @@ import {
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
 import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
+import { streamFollowUpCompletion } from './lib/matchReview/followUpCompletion.js';
+import { followUpProvidersAvailable } from './lib/matchReview/followUpAvailability.js';
+import { clampFollowUpAttemptMs } from './lib/matchReview/followUpTimeout.js';
 import { withCompletionDeadline } from './lib/completionDeadline.js';
+import {
+  isLlmSdkError,
+  logLlmError,
+  sanitizeLlmErrorForClient,
+  internalErrorForClient,
+} from './lib/llmErrors.js';
 
 // Per-attempt card completion deadline; two attempts + fetch stay under
 // Cloud Run's 300s request timeout.
@@ -58,6 +67,20 @@ const REVIEW_MIN_ATTEMPT_MS = 5000;
 // Fetch-phase cap (OpenDota match + hero stats + constants). Leaves 80s of
 // the request budget for DeepSeek 40s + Gemini 40s.
 const REVIEW_FETCH_BUDGET_MS = 90000;
+// Per-attempt deadline for the review follow-up stream (DeepSeek first, then
+// the Gemini fallback with its own deadline). Env-tunable, but clamped so
+// fetch budget + two follow-up attempts always fit REVIEW_REQUEST_BUDGET_MS
+// (and stay below the client's fixed 180s review timeout); each attempt is
+// capped again by the request's remaining budget at call time.
+const REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS = clampFollowUpAttemptMs(
+  process.env.REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
+  {
+    fetchBudgetMs: REVIEW_FETCH_BUDGET_MS,
+    requestBudgetMs: REVIEW_REQUEST_BUDGET_MS,
+    maxAttempts: 2,
+    minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
+  },
+);
 import {
   createParseRequestSubmitter,
   PARSE_REQUEST_TIMEOUT_MS,
@@ -1864,14 +1887,29 @@ ${statsSection}
       });
     }
   } catch (error) {
-    console.error("Playbook Error:", error);
-    const wantsStream = (req.headers.accept || '').includes('text/event-stream');
+    // LLM/provider failures never cross to the client raw (they can embed
+    // auth details or key tails): generic localized payload + structured log.
+    const lang = normalizeUiLang(req.body?.lang || 'en');
+    if (isLlmSdkError(error)) {
+      logLlmError(console.error, { event: 'playbook_llm_error', provider: 'deepseek', error, lang });
+      const payload = sanitizeLlmErrorForClient(lang);
+      if (wantsStream) {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+      return res.status(502).json(payload);
+    }
+    // Unclassified errors may still be provider-derived (e.g. SDK SyntaxError
+    // with a body excerpt): redacted structured log, generic payload only.
+    logLlmError(console.error, { event: 'playbook_error', error, lang });
+    const internal = internalErrorForClient(lang);
     if (wantsStream) {
-      res.write(`data: ${JSON.stringify({ error: error.message || "Internal Server Error" })}\n\n`);
+      res.write(`data: ${JSON.stringify(internal)}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
-      res.status(500).json({ error: error.message || "Internal Server Error" });
+      res.status(500).json(internal);
     }
   }
 });
@@ -1978,13 +2016,26 @@ app.post('/api/analyze', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error("DeepSeek Analysis Error:", error);
+    // Same hygiene as /api/playbook: provider errors → generic payload only.
+    const lang = normalizeUiLang(req.body?.lang || 'en');
+    if (isLlmSdkError(error)) {
+      logLlmError(console.error, { event: 'analyze_llm_error', provider: 'deepseek', error, lang });
+      const payload = sanitizeLlmErrorForClient(lang);
+      if (wantsStream) {
+        res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+      return res.status(502).json(payload);
+    }
+    logLlmError(console.error, { event: 'analyze_error', error, lang });
+    const internal = internalErrorForClient(lang);
     if (wantsStream) {
-      res.write(`data: ${JSON.stringify({ error: error.message || "Internal Server Error" })}\n\n`);
+      res.write(`data: ${JSON.stringify(internal)}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
-      res.status(500).json({ error: error.message || "Internal Server Error" });
+      res.status(500).json(internal);
     }
   }
 });
@@ -2109,7 +2160,9 @@ app.post('/api/suggestions', async (req, res) => {
     res.json({ suggestions });
   } catch (error) {
     console.error("Suggestions Error:", error);
-    res.json({ suggestions: [], error: error.message });
+    // No LLM call here, but never echo raw upstream text either (redaction
+    // guards against future leaks if a provider call is ever added).
+    res.json({ suggestions: [], error: 'Failed to compute suggestions' });
   }
 });
 
@@ -2140,8 +2193,13 @@ app.post('/api/chat', async (req, res) => {
 
     res.json({ text: response.choices[0].message.content });
   } catch (error) {
-    console.error("DeepSeek Chat Error:", error);
-    res.status(500).json({ error: error.message || "Internal Server Error" });
+    const lang = normalizeUiLang(req.body?.lang);
+    if (isLlmSdkError(error)) {
+      logLlmError(console.error, { event: 'chat_llm_error', provider: 'deepseek', error, lang });
+      return res.status(502).json(sanitizeLlmErrorForClient(lang));
+    }
+    logLlmError(console.error, { event: 'chat_error', error, lang });
+    res.status(500).json(internalErrorForClient(lang));
   }
 });
 
@@ -2339,13 +2397,13 @@ async function handleMatchReview(req, res) {
 
   let clientGone = false;
   const reviewStartedAt = Date.now();
-  let stream = null;
   const abortController = new AbortController();
   const abortUpstream = () => {
     if (res.writableEnded) return;
     clientGone = true;
+    // Aborts every in-flight upstream call: the fetch phase and each provider
+    // attempt (cards and follow-up streams) all consume this shared signal.
     abortController.abort();
-    stream?.controller?.abort();
   };
   const detachAbortListeners = () => {
     res.removeListener('close', abortUpstream);
@@ -2399,8 +2457,10 @@ async function handleMatchReview(req, res) {
     const parse = resolveReviewParseStatus(matchId, matchData, lang);
     const threeConclusions = buildThreeConclusions(matchFact, { lang });
 
-    // Cards can run on Gemini alone; follow-ups stream from DeepSeek only.
-    if (followUp ? !openai : (!openai && !gemini)) {
+    // Cards and follow-ups share the DeepSeek → Gemini provider chain, so
+    // either provider alone serves both. Only a deployment with nothing
+    // configured answers fallback cards here / rejects the follow-up.
+    if (!openai && !gemini) {
       responder.begin();
       if (!followUp) {
         responder.send({ matchFact, grounded: isGrounded, parse, threeConclusions });
@@ -2465,11 +2525,17 @@ async function handleMatchReview(req, res) {
       // in prod (rev 00065: 100% 504 at 300s). Malformed JSON is recovered by
       // extractJsonFromLlmOutput instead.
     };
-    // Follow-ups stream from DeepSeek with the SDK's default retries. Card
-    // requests go through the provider chain (DeepSeek, then Gemini), each
-    // attempt under an app-owned deadline capped by the request budget, no SDK
-    // retries (the validation retry already makes a second attempt).
-    const followUpRequest = () => openai.chat.completions.create(completionBody, { signal: abortController.signal });
+    // Follow-ups stream through their own provider chain (DeepSeek with the
+    // SDK's default retries, then Gemini with none), each attempt bounded by
+    // REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS (and the remaining request budget).
+    // Card requests go through the card
+    // provider chain (DeepSeek, then Gemini), each attempt under an app-owned
+    // deadline capped by the request budget, no SDK retries (the validation
+    // retry already makes a second attempt).
+    const followUpProviders = [
+      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create(completionBody, { signal }) }] : []),
+      ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ ...completionBody, model: GEMINI_REVIEW_MODEL }, { signal, maxRetries: 0 }) }] : []),
+    ];
     const cardProviders = [
       ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ ...completionBody, stream: false }, { signal, maxRetries: 0 }) }] : []),
       ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ ...completionBody, model: GEMINI_REVIEW_MODEL, stream: false }, { signal, maxRetries: 0 }) }] : []),
@@ -2483,7 +2549,13 @@ async function handleMatchReview(req, res) {
       perAttemptMs: REVIEW_CARD_COMPLETION_DEADLINE_MS,
       minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
       signal: abortController.signal,
-      onProviderError: ({ provider, error }) => console.warn(JSON.stringify({ severity: 'WARNING', event: 'review_ai_provider_error', matchId, provider, error })),
+      onProviderError: ({ provider, error, raw }) => logLlmError(console.warn, {
+        event: 'review_ai_provider_error',
+        matchId,
+        provider,
+        error: raw,
+        failure: error,
+      }),
     });
 
     // When no primary_mistake category has its required evidence in this
@@ -2502,33 +2574,41 @@ async function handleMatchReview(req, res) {
 
     try {
       if (followUp) {
-        stream = await followUpRequest();
-        if (clientGone) {
-          stream.controller?.abort();
-          return;
-        }
-        let finishReason = null;
-        for await (const chunk of stream) {
-          if (clientGone || res.writableEnded) break;
-          const choice = chunk.choices[0];
-          const content = choice?.delta?.content;
-          if (content) {
-            responder.send({ text: content, grounded: isGrounded });
-          }
-          if (choice?.finish_reason) {
-            finishReason = choice.finish_reason;
-          }
-        }
+        // Provider chain (DeepSeek → Gemini), each attempt under its own
+        // deadline; total failure before any text was forwarded answers with
+        // the sanitized generic error (never provider text).
+        const outcome = await streamFollowUpCompletion({
+          providers: followUpProviders,
+          attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
+          // Each attempt is further capped by the request's remaining budget;
+          // with less than REVIEW_MIN_ATTEMPT_MS left, remaining providers are
+          // skipped and the generic sanitized error is served instead.
+          startedAt: reviewStartedAt,
+          budgetMs: REVIEW_REQUEST_BUDGET_MS,
+          minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
+          signal: abortController.signal,
+          onText: (text) => responder.send({ text, grounded: isGrounded }),
+          shouldStop: () => clientGone || res.writableEnded,
+          onProviderError: ({ provider, error, raw }) => logLlmError(console.warn, {
+            event: 'review_followup_provider_error',
+            matchId,
+            provider,
+            error: raw,
+            failure: error,
+            lang,
+          }),
+        });
         // writableEnded stays false on an aborted close, so gate on
         // clientGone too: a gone client must not get a final write/end.
-        if (!clientGone && !res.writableEnded) {
-          if (isTerminalStreamFinish(finishReason)) {
-            responder.end();
-          } else {
-            responder.end({
-              error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
-            });
-          }
+        if (clientGone || res.writableEnded) return;
+        if (outcome.status === 'failed') {
+          responder.end(sanitizeLlmErrorForClient(lang));
+        } else if (outcome.status === 'done' && isTerminalStreamFinish(outcome.finishReason)) {
+          responder.end();
+        } else {
+          responder.end({
+            error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
+          });
         }
       } else {
         const first = await cardCompletion();
@@ -2557,10 +2637,17 @@ async function handleMatchReview(req, res) {
         const cards = usedFallback
           ? buildFallbackAiCards(matchFact, lang)
           : resolvedCards;
-        // Follow-up chat streams from DeepSeek only; when it is unconfigured
-        // or failed during this request (cards came from Gemini fallback), drop
-        // the suggestions so the client keeps follow-up actions disabled.
-        const reviewCards = (openai && !failedCardProviders.has('deepseek')) ? cards : { ...cards, followups: [] };
+        // Follow-up chat streams through the same chain as cards (DeepSeek →
+        // Gemini). Keep the suggestions whenever any configured follow-up
+        // provider survived this request (followUpProvidersAvailable also
+        // covers a Gemini-only deployment); drop them only when none did, so
+        // the client keeps follow-up actions disabled (it reads empty
+        // followups as "follow-ups unavailable").
+        const reviewCards = followUpProvidersAvailable({
+          deepseekConfigured: Boolean(openai),
+          geminiConfigured: Boolean(gemini),
+          failedCardProviders,
+        }) ? cards : { ...cards, followups: [] };
         // writableEnded stays false on an aborted close, so gate on
         // clientGone too: a gone client must not get a final write/end.
         if (!clientGone && !res.writableEnded) {
@@ -2574,12 +2661,27 @@ async function handleMatchReview(req, res) {
     } catch (streamErr) {
       if (clientGone || (streamErr.name === 'AbortError' && abortController.signal.aborted)) return;
       if (streamErr.name === 'CompletionDeadlineError') console.warn(`[review:ai-validation] match=${matchId} completion_deadline_exceeded`);
-      console.error('Match review stream error:', streamErr);
+      if (isLlmSdkError(streamErr)) {
+        // Structured log with redacted detail; client gets the generic code.
+        logLlmError(console.error, { event: 'review_stream_llm_error', matchId, error: streamErr, lang });
+        if (!res.writableEnded) {
+          if (followUp) {
+            responder.end(sanitizeLlmErrorForClient(lang));
+          } else {
+            const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
+            responder.send({ reviewCards, grounded: isGrounded });
+            responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'provider') });
+            responder.end();
+          }
+        }
+        return;
+      }
+      // Unclassified stream errors can still be provider-derived (SDK
+      // SyntaxError on a malformed provider body): redacted log, generic payload.
+      logLlmError(console.error, { event: 'review_stream_error', matchId, error: streamErr, lang });
       if (!res.writableEnded) {
         if (followUp) {
-          responder.end({
-            error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
-          });
+          responder.end(sanitizeLlmErrorForClient(lang));
         } else {
           const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
           responder.send({ reviewCards, grounded: isGrounded });
@@ -2600,7 +2702,12 @@ async function handleMatchReview(req, res) {
         { retryable: true },
       );
     }
-    console.error('Match review error:', error);
+    if (isLlmSdkError(error)) {
+      const sanitized = sanitizeLlmErrorForClient(lang);
+      logLlmError(console.error, { event: 'review_llm_error', matchId, error, lang });
+      return respondReviewError(res, wantsStream, sanitized.error, 502, { message: sanitized.message });
+    }
+    logLlmError(console.error, { event: 'review_error', matchId, error, lang });
     if (isOpenDotaFetchError(error)) {
       const mapped = mapOpenDotaFetchError(error, isZh);
       return respondReviewError(
@@ -2615,8 +2722,8 @@ async function handleMatchReview(req, res) {
         }
       );
     }
-    const errorMsg = error.message || (isZh ? '复盘失败' : 'Review failed');
-    return respondReviewError(res, wantsStream, errorMsg, 500);
+    const internal = internalErrorForClient(lang);
+    return respondReviewError(res, wantsStream, internal.error, 500, { message: internal.message });
   } finally {
     // Every exit path (SSE and JSON, success and error) detaches the
     // disconnect listeners — they are registered for both response modes.

@@ -3,6 +3,7 @@ import type { MatchFact, ReviewParseStatus, ThreeConclusions } from '../types/ma
 import type { ReviewCardsPayload } from '../types/reviewCards';
 import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
 import { parseReviewParseStatus } from '../utils/parseStatus';
+import { serverErrorMessage } from '../utils/serverErrorMessage';
 
 function cancelledMessage(lang: Language): string {
   return lang === 'zh' ? '请求已取消' : 'Request cancelled';
@@ -176,7 +177,7 @@ export const analyzeDraftStream = (
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to analyze draft');
+        throw new Error(serverErrorMessage(data, 'Failed to analyze draft'));
       }
 
       const reader = response.body?.getReader();
@@ -207,7 +208,7 @@ export const analyzeDraftStream = (
             try {
               const parsed = JSON.parse(data);
               if (parsed.error) {
-                callbacks.onError(parsed.error);
+                callbacks.onError(serverErrorMessage(parsed, parsed.error));
                 return;
               }
               if (parsed.matchupData && callbacks.onMatchupData) {
@@ -259,7 +260,7 @@ export const analyzeDraft = async (radiant: Hero[], dire: Hero[], lang: Language
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to analyze draft');
+      throw new Error(serverErrorMessage(data, 'Failed to analyze draft'));
     }
 
     return data.text || "Failed to generate analysis.";
@@ -337,14 +338,16 @@ export const chatWithShopkeeper = async (history: {role: string, parts: {text: s
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to chat');
+      throw new Error(serverErrorMessage(data, 'Failed to chat'));
     }
 
     return data.text || "...";
   } catch (error: any) {
     clearTimeout(timeoutId);
     console.error("Chat Request Error:", error);
-    return `The shop is closed. (Server Error: ${error.message})`;
+    return lang === 'zh'
+      ? `商店暂时关门了。（服务器错误：${error.message}）`
+      : `The shop is closed. (Server Error: ${error.message})`;
   }
 };
 
@@ -363,7 +366,7 @@ export const fetchTierList = async (
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch tier list');
+      throw new Error(serverErrorMessage(data, 'Failed to fetch tier list'));
     }
     
     return data;
@@ -384,7 +387,7 @@ export const fetchProMatches = async (
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch pro matches');
+      throw new Error(serverErrorMessage(data, 'Failed to fetch pro matches'));
     }
     
     return data;
@@ -407,7 +410,7 @@ export const fetchPublicMatches = async (
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch public matches');
+      throw new Error(serverErrorMessage(data, 'Failed to fetch public matches'));
     }
     
     return data;
@@ -443,7 +446,7 @@ export const fetchPlaybookStream = (
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to fetch playbook');
+        throw new Error(serverErrorMessage(data, 'Failed to fetch playbook'));
       }
 
       const reader = response.body?.getReader();
@@ -473,7 +476,7 @@ export const fetchPlaybookStream = (
             try {
               const parsed = JSON.parse(data);
               if (parsed.error) {
-                callbacks?.onError(parsed.error);
+                callbacks?.onError(serverErrorMessage(parsed, parsed.error));
                 return;
               }
               if (parsed.playbookData && callbacks?.onData) {
@@ -565,7 +568,7 @@ export const fetchMatchReviewStream = (
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to fetch match review');
+        throw new Error(serverErrorMessage(data, 'Failed to fetch match review'));
       }
 
       // JSON path: server answered with a single accumulated result instead of
@@ -575,7 +578,7 @@ export const fetchMatchReviewStream = (
       if (contentType.includes('application/json')) {
         const data = await response.json();
         if (data.error) {
-          callbacks?.onError(data.error);
+          callbacks?.onError(serverErrorMessage(data, data.error));
           return;
         }
         const jsonParseStatus = parseReviewParseStatus(data.parse);
@@ -608,7 +611,7 @@ export const fetchMatchReviewStream = (
         try {
           const parsed = JSON.parse(data);
           if (parsed.error) {
-            callbacks?.onError(parsed.error);
+            callbacks?.onError(serverErrorMessage(parsed, parsed.error));
             return 'error';
           }
           if (parsed.reviewNotice && callbacks?.onReviewNotice) {
