@@ -48,4 +48,18 @@ describe('clampFollowUpAttemptMs', () => {
     expect(budgets.requestBudgetMs).toBeLessThan(REVIEW_CLIENT_TIMEOUT_MS);
     expect(REVIEW_CLIENT_TIMEOUT_MS).toBeLessThan(300000);
   });
+
+  it('parses env strings with Number semantics: scientific notation keeps its magnitude', () => {
+    // parseInt('1e9') === 1 used to silently become a 1ms attempt (then
+    // min-clamped); Number-based parsing keeps 1e9 huge and lets the ceiling
+    // clamp bring it back down to the budget.
+    expect(clampFollowUpAttemptMs('1e9', budgets)).toBe(40000);
+    expect(clampFollowUpAttemptMs('4e4', budgets)).toBe(40000);
+    expect(clampFollowUpAttemptMs('40000', budgets)).toBe(40000);
+    expect(clampFollowUpAttemptMs('2.5e4', budgets)).toBe(25000);
+    // Invalid values fall back to the 40s default, never to 1ms.
+    for (const invalid of ['abc', '', '  ', '-5', 'Infinity', 'NaN', null, undefined]) {
+      expect(clampFollowUpAttemptMs(invalid, budgets)).toBe(40000);
+    }
+  });
 });

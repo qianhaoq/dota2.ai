@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { streamFollowUpCompletion } from '../../lib/matchReview/followUpCompletion.js';
+import { decideFollowUpOutcome } from '../../lib/matchReview/followUpFallback.js';
 import { clampFollowUpAttemptMs } from '../../lib/matchReview/followUpTimeout.js';
 import { sanitizeLlmErrorForClient } from '../../lib/llmErrors.js';
 
@@ -47,7 +48,7 @@ describe('streamFollowUpCompletion (timeout → fallback → error)', () => {
     await vi.advanceTimersByTimeAsync(40000);
     const outcome = await pending;
 
-    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini' });
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini', forwarded: true });
     expect(texts).toEqual(['gemini ', 'answer']);
     expect(failures).toEqual(['deepseek:deadline']);
     expect(deepSeekAborted).toBe(true);
@@ -108,7 +109,7 @@ describe('streamFollowUpCompletion (timeout → fallback → error)', () => {
     await vi.advanceTimersByTimeAsync(40000);
     const outcome = await pending;
 
-    expect(outcome).toEqual({ status: 'incomplete', finishReason: null, provider: 'deepseek' });
+    expect(outcome).toEqual({ status: 'incomplete', finishReason: null, provider: 'deepseek', forwarded: true });
     expect(texts).toEqual(['partial ']);
     expect(geminiCalled).toBe(false);
   });
@@ -158,18 +159,21 @@ describe('streamFollowUpCompletion (timeout → fallback → error)', () => {
       onText: (t) => texts.push(t),
       shouldStop: () => texts.length >= 1,
     });
-    expect(outcome).toEqual({ status: 'stopped', finishReason: null, provider: 'deepseek' });
+    expect(outcome).toEqual({ status: 'stopped', finishReason: null, provider: 'deepseek', forwarded: true });
     expect(texts).toEqual(['first']);
     expect(geminiCalled).toBe(false);
   });
 
-  it('marks a finished-but-non-terminal stream via finishReason (caller shows incomplete)', async () => {
+  it('marks a finished-but-non-terminal stream via finishReason + forwarded (caller appends the template)', async () => {
     const outcome = await streamFollowUpCompletion({
       providers: [{ name: 'deepseek', create: async () => streamOf([chunk('hi')]) }],
       attemptMs: 40000,
       onText: () => {},
     });
-    expect(outcome).toEqual({ status: 'done', finishReason: null, provider: 'deepseek' });
+    expect(outcome).toEqual({ status: 'done', finishReason: null, provider: 'deepseek', forwarded: true });
+    // End-to-end contract: the truncated-looking clean EOF degrades to the
+    // appended deterministic template, not a bare end.
+    expect(decideFollowUpOutcome(outcome)).toEqual({ action: 'fallback', reason: 'incomplete', append: true });
   });
 });
 
@@ -188,7 +192,7 @@ describe('streamFollowUpCompletion (empty-stream fallback)', () => {
       onProviderError: (i) => failures.push(`${i.provider}:${i.error}`),
     });
 
-    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini' });
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini', forwarded: true });
     expect(texts).toEqual(['gemini answer']);
     expect(failures).toEqual(['deepseek:empty_stream']);
   });
@@ -223,7 +227,7 @@ describe('streamFollowUpCompletion (empty-stream fallback)', () => {
       attemptMs: 40000,
       onText: (t: string) => texts.push(t),
     });
-    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini' });
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini', forwarded: true });
     expect(texts).toEqual(['gemini answer']);
   });
 });
@@ -243,7 +247,9 @@ describe('streamFollowUpCompletion (terminal finish)', () => {
       onText: (t: string) => texts.push(t),
     });
     const outcome = await p;
-    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'deepseek' });
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'deepseek', forwarded: true });
+    // Terminal finish_reason + forwarded text = complete answer: plain end.
+    expect(decideFollowUpOutcome(outcome)).toEqual({ action: 'end' });
     expect(texts).toEqual(['final answer']);
     expect(gemini.create).not.toHaveBeenCalled();
   });

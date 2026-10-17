@@ -50,10 +50,13 @@ import { withCompletionDeadline } from './lib/completionDeadline.js';
 import {
   isLlmSdkError,
   logLlmError,
+  redactSecrets,
   sanitizeLlmErrorForClient,
   internalErrorForClient,
 } from './lib/llmErrors.js';
-import { publicModelName, resolveDeepSeekConfig } from './lib/llmConfig.js';
+import { publicModelName, resolveDeepSeekConfig, loggableModelName } from './lib/llmConfig.js';
+import { jsonBodyErrorHandler } from './lib/jsonBodyErrors.js';
+import { parsePositiveInt } from './lib/positiveInt.js';
 import {
   buildFollowUpFallbackText,
   decideFollowUpOutcome,
@@ -118,6 +121,10 @@ const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(express.json());
+// Malformed/oversized JSON bodies get a JSON error here (Express's default is
+// an HTML "Bad Request" page). Registered as an error handler right after the
+// body parser; anything else passes through to the default handling untouched.
+app.use(jsonBodyErrorHandler);
 
 
 // www → apex: works when www.dota2.ai points at this Cloud Run service.
@@ -157,9 +164,15 @@ const DEEPSEEK_MODEL = deepseekConfig.model;
 // NEVER merged into the Gemini request (see cardProviders). Retired legacy
 // names (deepseek-chat / deepseek-reasoner) are mapped to the default model.
 const deepseekExtraBody = deepseekConfig.extraBody;
-console.log(`INFO: DeepSeek model=${deepseekConfig.model} thinking=${deepseekConfig.thinking}`);
+// Never log the raw model value: a key/secret pasted into DEEPSEEK_MODEL must
+// not reach the logs — loggableModelName whitelists/masks it.
+console.log(`INFO: DeepSeek model=${loggableModelName(deepseekConfig.model)} thinking=${deepseekConfig.thinking}`);
 if (deepseekConfig.legacyMappedFrom) {
-  console.warn(`WARNING: DEEPSEEK_MODEL=${deepseekConfig.legacyMappedFrom} is a retired DeepSeek model name; using ${deepseekConfig.model} instead.`);
+  console.warn(`WARNING: DEEPSEEK_MODEL=${loggableModelName(deepseekConfig.legacyMappedFrom)} is a retired DeepSeek model name; using ${loggableModelName(deepseekConfig.model)} instead.`);
+}
+if (deepseekConfig.credentialMappedFrom) {
+  // Value withheld on purpose: it looks like an API key/credential.
+  console.warn('WARNING: DEEPSEEK_MODEL looks like an API key/credential; ignoring it and using the default model instead.');
 }
 
 // Gemini (OpenAI-compatible endpoint) is the card-review fallback when
@@ -1976,7 +1989,8 @@ app.post('/api/analyze', async (req, res) => {
       
       proMatchEvidence = await getRecentProMatchEvidence([], 3);
     } catch (err) {
-      console.error('OpenDota fetch error:', err.message);
+      // err.message can embed the full request URL (incl. ?api_key=…) — redacted.
+      console.error('OpenDota fetch error:', redactSecrets(err?.message ?? err));
     }
     
     const prompt = buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded, heroConstants, proMatchEvidence);
@@ -2182,7 +2196,9 @@ app.post('/api/suggestions', async (req, res) => {
     
     res.json({ suggestions });
   } catch (error) {
-    console.error("Suggestions Error:", error);
+    // Redacted structured log: upstream/fetch errors can embed query-string
+    // credentials in URLs even though no LLM call runs here.
+    logLlmError(console.error, { event: 'suggestions_error', error });
     // No LLM call here, but never echo raw upstream text either (redaction
     // guards against future leaks if a provider call is ever added).
     res.json({ suggestions: [], error: 'Failed to compute suggestions' });
@@ -2246,8 +2262,9 @@ function getMatchDetail(matchId, fetchOptions = {}) {
 // plus global/per-client submission budgets (env-tunable) so a single client
 // or an OpenDota outage cannot amplify into a stream of parse submissions.
 function envPositiveInt(name, fallback) {
-  const raw = parseInt(process.env[name] ?? '', 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+  // Number-based parsing (parsePositiveInt): parseInt('1e9') === 1 would
+  // silently turn scientific-notation env values into 1.
+  return parsePositiveInt(process.env[name], fallback);
 }
 
 const parseRequestTracker = createParseRequestTracker();
@@ -2318,7 +2335,8 @@ app.get('/api/review/suggestions', async (req, res) => {
     const suggestions = await getReviewMatchSuggestions(lang, limit);
     res.json(suggestions);
   } catch (err) {
-    console.error('Review suggestions error:', err);
+    // Redacted structured log: fetch errors can embed ?api_key=… URLs.
+    logLlmError(console.error, { event: 'review_suggestions_error', error: err });
     const lang = normalizeReviewLang(req.query.lang || 'en');
     res.json({
       recent: [],
@@ -2384,7 +2402,8 @@ async function handleMatchReviewFacts(req, res) {
       threeConclusions: buildThreeConclusions(matchFact, { lang }),
     });
   } catch (error) {
-    console.error('Match facts error:', error);
+    // Redacted structured log: fetch errors can embed ?api_key=… URLs.
+    logLlmError(console.error, { event: 'match_facts_error', error });
     const mapped = mapOpenDotaFetchError(error, isZh);
     return res.status(mapped.status).json(mapped.body);
   }
