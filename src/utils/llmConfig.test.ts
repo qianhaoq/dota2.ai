@@ -166,13 +166,24 @@ describe('loggableModelName (startup log masking)', () => {
     expect(loggableModelName(' deepseek-flash ')).toBe('deepseek-flash');
   });
 
-  it('passes conservative custom names that do not look like credentials', () => {
-    expect(loggableModelName('corp-finetune-alias')).toBe('corp-finetune-alias');
-    expect(loggableModelName('gateway.prod-v2_eu')).toBe('gateway.prod-v2_eu');
-    // 40 chars total is loggable — as long as no segment is a 24+ alnum run.
-    const long40 = `${'a'.repeat(20)}-${'a'.repeat(19)}`;
-    expect(loggableModelName(long40)).toBe(long40);
-    expect(loggableModelName(`${long40}a`)).toBe(REDACTED_CUSTOM_MODEL);
+  it('masks every non-allowlisted custom name (heuristics are incomplete)', () => {
+    for (const custom of [
+      'corp-finetune-alias',
+      'gateway.prod-v2_eu',
+      'secret-prod-1234567890',
+      'token_abcdefghijklmnopqrst',
+      'password-hunter2',
+    ]) {
+      expect(loggableModelName(custom)).toBe(REDACTED_CUSTOM_MODEL);
+    }
+  });
+
+  it('resolver ignores token/secret/password-shaped DEEPSEEK_MODEL values', () => {
+    for (const v of ['secret-prod-1234567890', 'token_abcdefghijklmnopqrst', 'my-password-1', 'bearer-abc']) {
+      const cfg = resolveDeepSeekConfig({ DEEPSEEK_MODEL: v });
+      expect(cfg.model).toBe('deepseek-flash');
+      expect(cfg.credentialMappedFrom).toBe(v);
+    }
   });
 
   it('masks credential-shaped values (never echoes a key into the logs)', () => {
