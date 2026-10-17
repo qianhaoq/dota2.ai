@@ -111,6 +111,9 @@ import {
   getLoreSystemInstruction,
 } from './lib/aiLanguage.js';
 import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyticsEvents.js';
+import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
+import { createLlmRateLimitMiddleware } from './lib/llmRateLimit.js';
+import { validateChatRequest, chatRequestErrorMessage } from './lib/chatRequest.js';
 import { normalizeFeedbackSubmission } from './lib/feedbackStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1659,8 +1662,57 @@ app.get('/api/heroes/:heroId/items', async (req, res) => {
   }
 });
 
+// ============ LLM endpoint per-IP rate limits ============
+// Sliding-window per-IP limits for every route that can trigger a DeepSeek /
+// Gemini completion: /api/chat, /api/analyze, /api/playbook, POST
+// /api/suggestions and POST /api/review/:matchId (review cards also call the
+// LLM, so every POST counts; the GET facts route stays unlimited). One limiter
+// per endpoint group so a chatty chat user cannot starve review requests.
+// Env-tunable (see .env.example), parsed with parsePositiveInt and clamped to
+// sane ceilings so a typo cannot disable or explode a limit. In-memory like
+// the feedback limiter: per-instance, reset on redeploy.
+const LLM_RATE_MAX_WINDOW_MS = 60 * 60 * 1000;
+const LLM_RATE_MAX_PER_IP = 1000;
+const LLM_RATE_MAX_GLOBAL = 10000;
+const LLM_RATE_WINDOW_MS = Math.min(
+  parsePositiveInt(process.env.LLM_RATE_WINDOW_MS, 60000), LLM_RATE_MAX_WINDOW_MS,
+);
+const LLM_RATE_GLOBAL_PER_WINDOW = Math.min(
+  parsePositiveInt(process.env.LLM_RATE_GLOBAL_PER_WINDOW, 300), LLM_RATE_MAX_GLOBAL,
+);
+
+function createLlmGroupLimiter(envName, perIpDefault) {
+  return createSlidingWindowLimiter({
+    limit: Math.min(parsePositiveInt(process.env[envName], perIpDefault), LLM_RATE_MAX_PER_IP),
+    globalLimit: LLM_RATE_GLOBAL_PER_WINDOW,
+    windowMs: LLM_RATE_WINDOW_MS,
+  });
+}
+
+const chatLlmRateLimit = createLlmRateLimitMiddleware({
+  limiter: createLlmGroupLimiter('LLM_RATE_CHAT_PER_IP', 10),
+  resolveClientIp,
+  name: 'chat',
+});
+// analyze + playbook share one limiter (same coach screen, same budget).
+const analyzeLlmRateLimit = createLlmRateLimitMiddleware({
+  limiter: createLlmGroupLimiter('LLM_RATE_ANALYZE_PER_IP', 6),
+  resolveClientIp,
+  name: 'analyze+playbook',
+});
+const suggestionsLlmRateLimit = createLlmRateLimitMiddleware({
+  limiter: createLlmGroupLimiter('LLM_RATE_SUGGESTIONS_PER_IP', 20),
+  resolveClientIp,
+  name: 'suggestions',
+});
+const reviewLlmRateLimit = createLlmRateLimitMiddleware({
+  limiter: createLlmGroupLimiter('LLM_RATE_REVIEW_PER_IP', 12),
+  resolveClientIp,
+  name: 'review',
+});
+
 // ============ Playbook API - 本局打法 ============
-app.post('/api/playbook', async (req, res) => {
+app.post('/api/playbook', analyzeLlmRateLimit, async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
   
@@ -1948,7 +2000,7 @@ ${statsSection}
   }
 });
 
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/analyze', analyzeLlmRateLimit, async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
   
@@ -2083,7 +2135,7 @@ app.get('/api/suggestions', (_req, res) => {
 });
 
 // Next hero suggestions based on OpenDota matchup data
-app.post('/api/suggestions', async (req, res) => {
+app.post('/api/suggestions', suggestionsLlmRateLimit, async (req, res) => {
   try {
     const { allies = [], enemies = [], side = 'radiant', limit = 8, role } = req.body;
     
@@ -2205,10 +2257,20 @@ app.post('/api/suggestions', async (req, res) => {
   }
 });
 
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', chatLlmRateLimit, async (req, res) => {
   try {
-    const { history, message, lang: langRaw } = req.body;
-    const lang = normalizeUiLang(langRaw);
+    // Validation in lib/chatRequest.js: message shape/size caps, Gemini-format
+    // history sanitized to OpenAI roles ('model' → 'assistant', 'system' and
+    // unknown roles dropped, item/char budgets enforced).
+    const validated = validateChatRequest(req.body);
+    if (!validated.ok) {
+      const lang = normalizeUiLang(req.body?.lang);
+      return res.status(validated.status).json({
+        error: validated.error,
+        message: chatRequestErrorMessage(validated.error, lang),
+      });
+    }
+    const { message, history, lang } = validated;
 
     if (!apiKey || !openai) {
       return res.status(500).json({ error: "Server API Key not configured" });
@@ -2218,10 +2280,7 @@ app.post('/api/chat', async (req, res) => {
 
     const messages = [
       { role: 'system', content: systemContent },
-      ...history.map(h => ({
-        role: h.role,
-        content: h.parts.map(p => p.text).join('')
-      })),
+      ...history,
       { role: 'user', content: message }
     ];
 
@@ -2350,7 +2409,7 @@ app.get('/api/review/suggestions', async (req, res) => {
 });
 
 app.get('/api/review/:matchId', handleMatchReviewFacts);
-app.post('/api/review/:matchId', handleMatchReview);
+app.post('/api/review/:matchId', reviewLlmRateLimit, handleMatchReview);
 // Explicit OpenDota parse submission — the ONLY path that calls submitParseRequest
 // (facts load and review stream report parse status read-only). GET gets a JSON
 // 405 so it never falls through to the SPA index.html fallback.

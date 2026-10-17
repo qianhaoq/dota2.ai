@@ -122,6 +122,7 @@ node --check server.js # 服务端语法
 | `GEMINI_API_KEY` | 推荐 | — | 复盘卡片备用模型：DeepSeek 失败/超时（每次 40s）时改用 Gemini |
 | `GEMINI_REVIEW_MODEL` | ❌ | `gemini-3.5-flash-lite` | 覆盖备用 Gemini 模型 |
 | `STEAM_WEB_API_KEY` | ❌ | — | 本地化英雄名；缺省时回退 OpenDota 常量 |
+| `LLM_RATE_*` | ❌ | `60s` 窗口；chat `10`/analyze `6`/suggestions `20`/review `12` 每 IP，每组全局 `300` | LLM 路由按 IP 滑动窗口限流（429 + `Retry-After`）；详见 [`.env.example`](.env.example) |
 | `PORT` | ❌ | `8080` | 服务端口（Cloud Run 注入同名变量） |
 | `HOST` | ❌ | `0.0.0.0` | 绑定地址 |
 
@@ -149,7 +150,7 @@ DeepSeek / Gemini / Steam 密钥分别存放在 Secret Manager 的 `deepseek-api
 
 容器内 `HOST=0.0.0.0`、`PORT=8080` 已由 Dockerfile 设定；密钥用 Secret Manager（`--update-secrets`）注入，不要写进镜像，也尽量避免明文 `--set-env-vars`。
 
-**诚实说明 / Honest limits：** 当前 Express AI 路由（`/api/analyze`、`/api/review/:matchId`、`/api/chat` 等）**没有**应用层登录鉴权或请求限流；`SECURITY.md` 要求不要在无网关的情况下把服务裸露到公网。生产若仍需公网可达，请先用 **IAM 鉴权 Cloud Run**，或 **IAP / API Gateway / Cloud Armor**（或同类反向代理）挡在前面；应用内真实 auth / rate-limit 仍是后续跟进项，本文不假装代码里已经有。不要把 `--allow-unauthenticated` 当作默认安全部署路径。
+**诚实说明 / Honest limits：** 当前 Express AI 路由（`/api/analyze`、`/api/review/:matchId`、`/api/chat` 等）**没有**应用层登录鉴权；LLM 路由已有按 IP 的应用内滑动窗口限流（`LLM_RATE_*`，实例内存态），但这只是防滥用预算，不是防线——`SECURITY.md` 要求不要在无网关的情况下把服务裸露到公网。生产若仍需公网可达，请先用 **IAM 鉴权 Cloud Run**，或 **IAP / API Gateway / Cloud Armor**（或同类反向代理）挡在前面；应用内真实 auth 仍是后续跟进项，本文不假装代码里已经有。不要把 `--allow-unauthenticated` 当作默认安全部署路径。
 
 ---
 
