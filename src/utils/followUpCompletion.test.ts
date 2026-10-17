@@ -228,6 +228,27 @@ describe('streamFollowUpCompletion (empty-stream fallback)', () => {
   });
 });
 
+describe('streamFollowUpCompletion (terminal finish)', () => {
+  it('returns done as soon as a terminal finish_reason arrives, even if the iterator then stalls', async () => {
+    vi.useFakeTimers();
+    const texts: string[] = [];
+    async function* stallsAfterStop() {
+      yield chunk('final answer', 'stop');
+      await never();
+    }
+    const gemini = { name: 'gemini', create: vi.fn() };
+    const p = streamFollowUpCompletion({
+      providers: [{ name: 'deepseek', create: async () => stallsAfterStop() }, gemini],
+      attemptMs: 40000,
+      onText: (t: string) => texts.push(t),
+    });
+    const outcome = await p;
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'deepseek' });
+    expect(texts).toEqual(['final answer']);
+    expect(gemini.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('streamFollowUpCompletion (request-budget clamp)', () => {
   it('caps each attempt at the remaining request budget, not the configured timeout', async () => {
     vi.useFakeTimers();

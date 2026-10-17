@@ -345,7 +345,9 @@ export const chatWithShopkeeper = async (history: {role: string, parts: {text: s
   } catch (error: any) {
     clearTimeout(timeoutId);
     console.error("Chat Request Error:", error);
-    return `The shop is closed. (Server Error: ${error.message})`;
+    return lang === 'zh'
+      ? `商店暂时关门了。（服务器错误：${error.message}）`
+      : `The shop is closed. (Server Error: ${error.message})`;
   }
 };
 

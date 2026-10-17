@@ -46,6 +46,8 @@ describe('redactSecrets', () => {
     expect(redactSecrets('key ****abcd is invalid')).not.toContain('abcd');
     expect(redactSecrets('provided key ...wxyz expired')).not.toContain('wxyz');
     expect(redactSecrets('invalid key: sk-mock***ef12')).not.toContain('ef12');
+    // Single Unicode ellipsis (U+2026) masking, as providers render it.
+    expect(redactSecrets('Incorrect API key: \u2026abcd')).not.toContain('abcd');
   });
 
   it('redacts long secret-shaped runs without a known prefix', () => {
