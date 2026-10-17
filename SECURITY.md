@@ -24,8 +24,10 @@
   validated, LLM-bound requests consume budget (invalid 400s, cache hits and
   deterministic fallbacks never count), and IPv6 clients are keyed by their
   `/64` prefix so address rotation inside one block cannot multiply a budget.
-  A generous global cost guard per group (`LLM_GLOBAL_GUARD_*`) degrades to the
-  deterministic fallback instead of answering 429. These are still **not**
+  A generous global cost guard per group (`LLM_GLOBAL_GUARD_*`) never answers
+  429: review serves the deterministic fallback cards/template, playbook the
+  data-only answer, and chat/analyze the same generic 502 `ai_unavailable` as a
+  provider outage (suggestions never calls an LLM and has no global guard). These are still **not**
   authentication, and the limits are not shared
   across instances (effective cap ≈ instances × limit). Do not expose the
   service unauthenticated to the public internet (including Cloud Run with

@@ -2712,8 +2712,9 @@ async function handleMatchReview(req, res) {
             responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'cost_guard') });
           } else {
             // Same contract as the unconfigured/provider fallbacks: the
-            // deterministic template answers, flagged fallback:true.
-            console.warn(JSON.stringify({ severity: 'WARNING', event: 'review_followup_fallback', matchId, reason: 'cost_guard' }));
+            // deterministic template answers, flagged fallback:true. No
+            // per-request log here: the limiter already emits one aggregated
+            // llm_cost_guard_tripped warning per interval (no log amplification).
             responder.send({ text: buildFollowUpFallbackText(matchFact, threeConclusions, lang), grounded: isGrounded, fallback: true });
             responder.send({ reviewNotice: reviewFollowUpFallbackNotice(lang) });
           }

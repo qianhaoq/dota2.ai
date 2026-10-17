@@ -176,3 +176,15 @@ describe('limiter without a global bucket (LLM-free routes such as suggestions)'
     expect(third.reason).toBe('client');
   });
 });
+
+describe('limiter without a global bucket keeps no global hit log', () => {
+  it('handles high total traffic across rotating clients with only per-client state', () => {
+    let now = 0;
+    const limiter = createSlidingWindowLimiter({ limit: 1, windowMs: 60000, maxTrackedClients: 10, now: () => now });
+    for (let i = 0; i < 20000; i += 1) {
+      expect(limiter.tryConsume(`c${i}`, now).ok).toBe(true);
+    }
+    now = 1;
+    expect(limiter.tryConsume('c19999', now).reason).toBe('client');
+  });
+});
