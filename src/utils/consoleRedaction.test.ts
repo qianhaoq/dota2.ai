@@ -75,6 +75,7 @@ describe('installConsoleRedaction (unit)', () => {
     expect(redactCredentials('token=12345')).toBe('token=[REDACTED]');
     expect(redactCredentials('apiKey=abcde')).toBe('apiKey=[REDACTED]');
     expect(redactCredentials("'OPENDOTA_API_KEY' => 'qafakeopaque123456789'")).toBe("'OPENDOTA_API_KEY' => '[REDACTED]'");
+    expect(redactCredentials(JSON.stringify({ auth: 'qafakeopaque123456' }))).toBe('{"auth":"[REDACTED]"}');
   });
 
   it('redactCredentials keeps JSON field names when masking values (Codex P1)', () => {
