@@ -2,7 +2,7 @@ import { Hero, Attribute, Language } from '../types';
 import type { MatchFact, ReviewParseStatus, ThreeConclusions } from '../types/matchReview';
 import { parseReviewParseStatus } from '../utils/parseStatus';
 import { serverErrorMessage } from '../utils/serverErrorMessage';
-import { retryAfterFrom } from '../utils/retryAfter';
+import { bodyRetryAfterSec, retryAfterFrom } from '../utils/retryAfter';
 
 const OPENDOTA_API = 'https://api.opendota.com/api';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
@@ -155,14 +155,16 @@ export const fetchMatchFacts = async (matchId: number | string, lang: Language =
       upstreamStatus?: number;
       retryable?: boolean;
       retryAfterSec?: unknown;
+      retryAfter?: unknown;
     }),
   );
   if (!response.ok) {
-    // 429 rate limits (server PR #89): Retry-After header first, body
-    // retryAfterSec second, so the UI can run a live countdown.
+    // 429 rate limits (server PR #89): Retry-After header first, then the
+    // body's retryAfterSec / retryAfter (the production field name in
+    // lib/llmRateLimit.js), so the UI can run a live countdown.
     const rateLimited = response.status === 429;
     const retryAfterSec = rateLimited
-      ? retryAfterFrom(response.headers?.get?.('retry-after'), data.retryAfterSec)
+      ? retryAfterFrom(response.headers?.get?.('retry-after'), bodyRetryAfterSec(data))
       : undefined;
     throw new MatchFactsError(
       serverErrorMessage(data, lang === 'zh' ? '拉取比赛失败' : 'Failed to load match'),

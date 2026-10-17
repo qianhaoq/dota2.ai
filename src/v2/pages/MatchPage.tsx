@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import V2Shell from '../V2Shell';
 import Composer, { FOLLOW_UP_MAX_CHARS } from '../components/Composer';
@@ -292,6 +292,12 @@ const MatchPage: React.FC = () => {
     ask(q, 'preset');
   };
 
+  /** ParseNotice countdown expiry / "Check again": re-fetch the facts and the
+   * current hero's conclusions through the same reload path as Retry — no
+   * full page reload. Stable identity so ParseNotice's countdown isn't reset
+   * by unrelated re-renders here. */
+  const refreshFacts = useCallback(() => setReloadKey((k) => k + 1), []);
+
   // ---- data loading ----
   useEffect(() => {
     // Route changed to /m or an invalid id mid-conversation: the follow-up
@@ -383,8 +389,11 @@ const MatchPage: React.FC = () => {
 
   const pick = (player: MatchPlayerFact) => {
     setPickerOpen(false);
+    // Identity, not spelling: `?hero=14` and `?hero=Pudge` resolve to the same
+    // player the review already shows — reselecting that hero is a no-op (no
+    // navigate, no thread reset) even though the canonical slug differs.
+    if (player.heroId === heroId) return;
     const slug = player.internalSlug || String(player.heroId);
-    if (heroParam === slug) return;
     // Switching hero ends the old thread: abort the in-flight follow-up
     // stream BEFORE clearing the turns, or its chunks could still land.
     abortStream();
@@ -479,7 +488,13 @@ const MatchPage: React.FC = () => {
           </div>
         )}
 
-        {facts && <ParseNotice matchId={matchId} parse={heroFacts?.parse ?? facts.parse} />}
+        {facts && (
+          <ParseNotice
+            matchId={matchId}
+            parse={heroFacts?.parse ?? facts.parse}
+            onRefresh={refreshFacts}
+          />
+        )}
 
         {facts && heroPlayer && !pickerOpen && phase !== 'error' && (
           <button

@@ -31,7 +31,21 @@ export const parseRetryAfterHeader = (
   return null;
 };
 
-/** Header first, then the body's `retryAfterSec`, then give up (null = wait unknown). */
+/**
+ * First usable wait from a 429 JSON body: `retryAfterSec` (client-facing) or
+ * the production `retryAfter` field (lib/llmRateLimit.js respondRateLimited) —
+ * whichever is a finite number first, undefined when neither is.
+ */
+export const bodyRetryAfterSec = (
+  body: { retryAfterSec?: unknown; retryAfter?: unknown } | null | undefined,
+): unknown => {
+  if (!body) return undefined;
+  if (typeof body.retryAfterSec === 'number' && Number.isFinite(body.retryAfterSec)) return body.retryAfterSec;
+  if (typeof body.retryAfter === 'number' && Number.isFinite(body.retryAfter)) return body.retryAfter;
+  return undefined;
+};
+
+/** Header first, then the body's `retryAfterSec`/`retryAfter`, then give up (null = wait unknown). */
 export const retryAfterFrom = (
   header: string | null | undefined,
   bodyValue: unknown,

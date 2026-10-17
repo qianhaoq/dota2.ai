@@ -78,6 +78,20 @@ describe('fetchMatchFacts', () => {
     await expect(fetchMatchFacts(1, 'zh')).rejects.toThrow('找不到这场比赛');
   });
 
+  it('429 without a Retry-After header: falls back to the body retryAfter (production field name)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: 'rate_limited', message: 'Too many requests', retryAfter: 30 }),
+    });
+
+    await expect(fetchMatchFacts(9035042364, 'en')).rejects.toMatchObject({
+      name: 'MatchFactsError',
+      status: 429,
+      retryAfterSec: 30,
+    });
+  });
+
   it('appends the request-time heroId so the fact keeps its focus lens', async () => {
     fetchMock.mockResolvedValue({
       ok: true,

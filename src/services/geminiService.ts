@@ -4,7 +4,7 @@ import type { ReviewCardsPayload } from '../types/reviewCards';
 import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
 import { parseReviewParseStatus } from '../utils/parseStatus';
 import { serverErrorMessage } from '../utils/serverErrorMessage';
-import { retryAfterFrom } from '../utils/retryAfter';
+import { bodyRetryAfterSec, retryAfterFrom } from '../utils/retryAfter';
 
 function cancelledMessage(lang: Language): string {
   return lang === 'zh' ? '请求已取消' : 'Request cancelled';
@@ -596,11 +596,12 @@ export const fetchMatchReviewStream = (
       if (response.status === 429) {
         // Rate limited before any streaming started: surface the wait via
         // onRateLimited (Retry-After header, falling back to the body's
-        // retryAfterSec) instead of a generic stream error.
-        const data = await response.json().catch(() => ({} as { retryAfterSec?: unknown }));
+        // retryAfterSec / retryAfter — the production field name in
+        // lib/llmRateLimit.js) instead of a generic stream error.
+        const data = await response.json().catch(() => ({} as { retryAfterSec?: unknown; retryAfter?: unknown }));
         const retryAfterSec = retryAfterFrom(
           response.headers?.get?.('retry-after'),
-          data.retryAfterSec,
+          bodyRetryAfterSec(data),
         );
         const message = serverErrorMessage(
           data,

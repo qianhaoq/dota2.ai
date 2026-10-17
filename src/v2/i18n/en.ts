@@ -67,6 +67,8 @@ export const en = {
   parseRequest: 'Request parse',
   parseRequesting: 'Requesting…',
   parseRequestFailed: 'Could not request the parse. Try again.',
+  parseCheckIn: 'Checking again in {n}s…',
+  parseCheckAgain: 'Check again',
   fdTitle: 'Want this after every match?',
   fdBody: 'A review like this, automatically, for every game you play. $3/mo when it launches.',
   fdNoCharge: 'No charge now.',

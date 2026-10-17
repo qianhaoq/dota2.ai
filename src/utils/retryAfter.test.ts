@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   RETRY_AFTER_MAX_SEC,
   RETRY_AFTER_MIN_SEC,
+  bodyRetryAfterSec,
   clampRetryAfterSec,
   parseRetryAfterHeader,
   retryAfterFrom,
@@ -59,6 +60,12 @@ describe('retryAfterFrom', () => {
     expect(retryAfterFrom('', '120', NOW)).toBeNull();
   });
 
+  it('falls back to the production body `retryAfter` field too', () => {
+    expect(retryAfterFrom(null, bodyRetryAfterSec({ retryAfter: 60 }), NOW)).toBe(60);
+    expect(retryAfterFrom(null, bodyRetryAfterSec({ retryAfterSec: 45, retryAfter: 60 }), NOW)).toBe(45);
+    expect(retryAfterFrom(null, bodyRetryAfterSec({ retryAfter: 'soon' }), NOW)).toBeNull();
+  });
+
   it('clamps the body value too', () => {
     expect(retryAfterFrom(null, 0, NOW)).toBe(RETRY_AFTER_MIN_SEC);
     expect(retryAfterFrom(null, 99999, NOW)).toBe(RETRY_AFTER_MAX_SEC);
@@ -67,5 +74,19 @@ describe('retryAfterFrom', () => {
   it('returns null when nothing usable is present', () => {
     expect(retryAfterFrom(null, undefined, NOW)).toBeNull();
     expect(retryAfterFrom(undefined, 'soon', NOW)).toBeNull();
+  });
+});
+
+describe('bodyRetryAfterSec', () => {
+  it('prefers retryAfterSec, then the production retryAfter field', () => {
+    expect(bodyRetryAfterSec({ retryAfterSec: 45, retryAfter: 60 })).toBe(45);
+    expect(bodyRetryAfterSec({ retryAfter: 60 })).toBe(60);
+    expect(bodyRetryAfterSec({})).toBeUndefined();
+    expect(bodyRetryAfterSec(null)).toBeUndefined();
+  });
+
+  it('ignores non-numeric values', () => {
+    expect(bodyRetryAfterSec({ retryAfter: '30' })).toBeUndefined();
+    expect(bodyRetryAfterSec({ retryAfterSec: Number.POSITIVE_INFINITY })).toBeUndefined();
   });
 });

@@ -3,7 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import ParseNotice from './ParseNotice';
+import ParseNotice, { parseRefreshCountdownSec } from './ParseNotice';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { requestMatchParse } from '../../services/dotaApiService';
 import type { ReviewParseStatus } from '../../types/matchReview';
@@ -27,11 +27,15 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-const renderNotice = () =>
+const renderNotice = (opts?: { parse?: ReviewParseStatus; onRefresh?: () => void }) =>
   render(
     <MemoryRouter>
       <I18nProvider>
-        <ParseNotice matchId="9035042364" parse={unparsed} />
+        <ParseNotice
+          matchId="9035042364"
+          parse={opts?.parse ?? unparsed}
+          onRefresh={opts?.onRefresh}
+        />
       </I18nProvider>
     </MemoryRouter>,
   );
@@ -87,5 +91,82 @@ describe('ParseNotice — request-parse pending state', () => {
 
     unmount();
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe('ParseNotice — refresh after a parse request', () => {
+  /** Submit a parse request and let it resolve with the given status. */
+  const submitWith = async (status: ReviewParseStatus) => {
+    const gate = deferred<ReviewParseStatus>();
+    vi.mocked(requestMatchParse).mockReturnValue(gate.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Request parse' }));
+    await act(async () => {
+      gate.resolve(status);
+    });
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    vi.mocked(requestMatchParse).mockReset();
+  });
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    if (vi.isFakeTimers()) vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('counts down from retryAfterSec and calls onRefresh at zero — request button stays hidden', async () => {
+    vi.useFakeTimers();
+    const onRefresh = vi.fn();
+    renderNotice({ onRefresh });
+
+    await submitWith({ status: 'requested', jobId: 7, retryAfterSec: 10, message: 'Parse requested.' });
+
+    expect(screen.getByText('Checking again in 10s…')).toBeTruthy();
+    // A parse request is already pending server-side — no second request offered.
+    expect(screen.queryByRole('button', { name: 'Request parse' })).toBeNull();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(9_000);
+    });
+    expect(screen.getByText('Checking again in 1s…')).toBeTruthy();
+    expect(onRefresh).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('defaults the countdown to 30s when retryAfterSec is missing, clamped to 5..600', async () => {
+    const onRefresh = vi.fn();
+    renderNotice({ onRefresh });
+
+    await submitWith({ status: 'pending', jobId: 7, retryAfterSec: null, message: 'Parsing.' });
+    expect(screen.getByText('Checking again in 30s…')).toBeTruthy();
+  });
+
+  it('clamps the countdown window to 5..600 seconds', () => {
+    expect(parseRefreshCountdownSec(null)).toBe(30);
+    expect(parseRefreshCountdownSec(undefined)).toBe(30);
+    expect(parseRefreshCountdownSec(Number.NaN)).toBe(30);
+    expect(parseRefreshCountdownSec(0)).toBe(5);
+    expect(parseRefreshCountdownSec(2)).toBe(5);
+    expect(parseRefreshCountdownSec(45.6)).toBe(46);
+    expect(parseRefreshCountdownSec(99999)).toBe(600);
+  });
+
+  it('the Check again button (shown after submission) calls onRefresh immediately', async () => {
+    const onRefresh = vi.fn();
+    renderNotice({ onRefresh });
+    expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+
+    await submitWith({ status: 'requested', jobId: 7, retryAfterSec: 600, message: 'Parse requested.' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 });

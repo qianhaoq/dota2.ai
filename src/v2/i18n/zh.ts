@@ -69,6 +69,8 @@ export const zh: Dict = {
   parseRequest: '请求解析',
   parseRequesting: '请求中…',
   parseRequestFailed: '解析请求失败，请重试。',
+  parseCheckIn: '{n} 秒后自动查询…',
+  parseCheckAgain: '立即查询',
   fdTitle: '想要每场比赛后都有这样的复盘？',
   fdBody: '你打的每一局都自动生成这样的复盘。上线后 $3/月。',
   fdNoCharge: '现在不收费。',

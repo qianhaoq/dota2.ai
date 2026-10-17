@@ -280,6 +280,23 @@ describe('MatchPage — hero flow', () => {
 
     expect(await screen.findAllByText('Insufficient data')).toHaveLength(2);
   });
+
+  // ?hero=14 and ?hero=Pudge resolve to the same Pudge player the review
+  // already shows — picking Pudge again must not navigate or re-fetch.
+  it.each(['14', 'Pudge'])('reselecting the already-shown hero (?hero=%s) is a no-op', async (param) => {
+    stubFetch({ base: enFixture, hero: pudgeEn });
+    renderPage(`/m/9035042364?hero=${param}`);
+
+    expect(await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
+    const callsBefore = fetchMock.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: /Change/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pudge, 5/19/22' }));
+    await flush();
+
+    expect(fetchMock.mock.calls.length).toBe(callsBefore);
+    expect(screen.getByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
+  });
 });
 
 describe('MatchPage — follow-ups', () => {
