@@ -150,3 +150,23 @@ describe('isLlmSdkError', () => {
     expect(isLlmSdkError(null)).toBe(false);
   });
 });
+
+describe('internalErrorForClient + server.js fallthrough guard', () => {
+  it('returns a fixed localized payload with nothing error-derived', async () => {
+    const { internalErrorForClient } = await import('../../lib/llmErrors.js');
+    expect(internalErrorForClient('en')).toEqual({ error: 'internal_error', message: 'Internal Server Error' });
+    expect(internalErrorForClient('zh').error).toBe('internal_error');
+  });
+
+  it('server.js never echoes error.message / streamErr.message to clients', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(join(process.cwd(), 'server.js'), 'utf8');
+    // Unclassified errors (e.g. SDK SyntaxError with a provider-body excerpt)
+    // must take the generic path too.
+    expect(src).not.toMatch(/JSON\.stringify\(\{\s*error:\s*error\.message/);
+    expect(src).not.toMatch(/json\(\{\s*error:\s*error\.message/);
+    expect(src).not.toMatch(/streamErr\.message\s*\|\|/);
+    expect(src).not.toMatch(/const errorMsg = error\.message/);
+  });
+});

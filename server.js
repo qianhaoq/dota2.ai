@@ -51,8 +51,8 @@ import { withCompletionDeadline } from './lib/completionDeadline.js';
 import {
   isLlmSdkError,
   logLlmError,
-  redactSecrets,
   sanitizeLlmErrorForClient,
+  internalErrorForClient,
 } from './lib/llmErrors.js';
 
 // Per-attempt card completion deadline; two attempts + fetch stay under
@@ -1900,13 +1900,16 @@ ${statsSection}
       }
       return res.status(502).json(payload);
     }
-    console.error("Playbook Error:", error);
+    // Unclassified errors may still be provider-derived (e.g. SDK SyntaxError
+    // with a body excerpt): redacted structured log, generic payload only.
+    logLlmError(console.error, { event: 'playbook_error', error, lang });
+    const internal = internalErrorForClient(lang);
     if (wantsStream) {
-      res.write(`data: ${JSON.stringify({ error: error.message || "Internal Server Error" })}\n\n`);
+      res.write(`data: ${JSON.stringify(internal)}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
-      res.status(500).json({ error: error.message || "Internal Server Error" });
+      res.status(500).json(internal);
     }
   }
 });
@@ -2025,13 +2028,14 @@ app.post('/api/analyze', async (req, res) => {
       }
       return res.status(502).json(payload);
     }
-    console.error("DeepSeek Analysis Error:", error);
+    logLlmError(console.error, { event: 'analyze_error', error, lang });
+    const internal = internalErrorForClient(lang);
     if (wantsStream) {
-      res.write(`data: ${JSON.stringify({ error: error.message || "Internal Server Error" })}\n\n`);
+      res.write(`data: ${JSON.stringify(internal)}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
-      res.status(500).json({ error: error.message || "Internal Server Error" });
+      res.status(500).json(internal);
     }
   }
 });
@@ -2158,7 +2162,7 @@ app.post('/api/suggestions', async (req, res) => {
     console.error("Suggestions Error:", error);
     // No LLM call here, but never echo raw upstream text either (redaction
     // guards against future leaks if a provider call is ever added).
-    res.json({ suggestions: [], error: redactSecrets(error.message || 'Failed to compute suggestions') });
+    res.json({ suggestions: [], error: 'Failed to compute suggestions' });
   }
 });
 
@@ -2194,8 +2198,8 @@ app.post('/api/chat', async (req, res) => {
       logLlmError(console.error, { event: 'chat_llm_error', provider: 'deepseek', error, lang });
       return res.status(502).json(sanitizeLlmErrorForClient(lang));
     }
-    console.error("DeepSeek Chat Error:", error);
-    res.status(500).json({ error: error.message || "Internal Server Error" });
+    logLlmError(console.error, { event: 'chat_error', error, lang });
+    res.status(500).json(internalErrorForClient(lang));
   }
 });
 
@@ -2672,12 +2676,12 @@ async function handleMatchReview(req, res) {
         }
         return;
       }
-      console.error('Match review stream error:', streamErr);
+      // Unclassified stream errors can still be provider-derived (SDK
+      // SyntaxError on a malformed provider body): redacted log, generic payload.
+      logLlmError(console.error, { event: 'review_stream_error', matchId, error: streamErr, lang });
       if (!res.writableEnded) {
         if (followUp) {
-          responder.end({
-            error: streamErr.message || (isZh ? '流式复盘失败' : 'Streaming review failed'),
-          });
+          responder.end(sanitizeLlmErrorForClient(lang));
         } else {
           const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
           responder.send({ reviewCards, grounded: isGrounded });
@@ -2703,7 +2707,7 @@ async function handleMatchReview(req, res) {
       logLlmError(console.error, { event: 'review_llm_error', matchId, error, lang });
       return respondReviewError(res, wantsStream, sanitized.error, 502, { message: sanitized.message });
     }
-    console.error('Match review error:', error);
+    logLlmError(console.error, { event: 'review_error', matchId, error, lang });
     if (isOpenDotaFetchError(error)) {
       const mapped = mapOpenDotaFetchError(error, isZh);
       return respondReviewError(
@@ -2718,8 +2722,8 @@ async function handleMatchReview(req, res) {
         }
       );
     }
-    const errorMsg = error.message || (isZh ? '复盘失败' : 'Review failed');
-    return respondReviewError(res, wantsStream, errorMsg, 500);
+    const internal = internalErrorForClient(lang);
+    return respondReviewError(res, wantsStream, internal.error, 500, { message: internal.message });
   } finally {
     // Every exit path (SSE and JSON, success and error) detaches the
     // disconnect listeners — they are registered for both response modes.
