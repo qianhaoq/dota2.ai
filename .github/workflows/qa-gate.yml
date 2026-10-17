@@ -66,9 +66,14 @@ jobs:
       pull-requests: write
       issues: write
       actions: write
-    uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@855d62df74bfbcc25ee902b0681c1b53968f2f56  # devflow-gates main @ 855d62d (pinned; bump deliberately)
+    uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@8388e56b48ae0c59156019bf02e4129ddf9d7ce2  # devflow-gates main @ 8388e56 (pinned; bump deliberately)
     with:
       qa_label: 'qa-passed'
+      # Keep qa-passed when a push only merges main cleanly into the
+      # QA-tested head (e.g. "Update branch" under strict protection): no
+      # conflicts, merge tree == clean re-merge, no file overlap with main.
+      # Anything else still strips the label. See devflow-gates README.
+      keep_qa_on_clean_main_update: true
 
   # Schedule path only — see the header note. actions: write is scoped to
   # this job; it re-runs failing pull_request_target gate runs.
@@ -79,4 +84,4 @@ jobs:
       pull-requests: write
       issues: write
       actions: write
-    uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@855d62df74bfbcc25ee902b0681c1b53968f2f56  # devflow-gates main @ 855d62d (pinned; bump deliberately)
+    uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@8388e56b48ae0c59156019bf02e4129ddf9d7ce2  # devflow-gates main @ 8388e56 (pinned; bump deliberately)

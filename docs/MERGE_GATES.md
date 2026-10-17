@@ -9,12 +9,13 @@ This page is the source of truth for merge policy.
 
 ## Check names after devflow-gates migration
 
-本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `855d62d`，即 855d62df74bfbcc25ee902b0681c1b53968f2f56）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
+本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `8388e56`，即 8388e56b48ae0c59156019bf02e4129ddf9d7ce2）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
 
 - `ci / Build & Test`
 - `ci / Secret Scan`
 - `codex / Codex Review Gate`
 - `qa / QA Gate`（label `qa-passed`，见 `QA.md`）
+  - 已开启 `keep_qa_on_clean_main_update`：新 push 只是把 main **干净合入** QA 验过的 head（GitHub "Update branch" 的 merge 方式；无冲突、merge 结果 == 干净重合并、main 改动的文件与本 PR 无交集）时保留 `qa-passed`，并在 PR 上留置顶评论「仅干净合入 main…QA 测试基于 <sha>」；其他任何 push（普通提交、rebase/force push、手工解冲突、文件重叠）仍移除标签、需重新 QA。
 
 旧的裸名 `Build & Test` / `Codex Review Gate` 在合入后不再产生，若仍为 required 会让所有 PR 永久挂起。
 
