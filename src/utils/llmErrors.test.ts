@@ -42,6 +42,17 @@ describe('redactSecrets', () => {
     expect(out).toContain('[REDACTED]');
   });
 
+  it('covers every shape the global console redaction relies on (Bearer sk-…, bare sk-…, api_key=/key= params, Authorization headers)', () => {
+    const QA_FAKE_KEY = 'sk-qa-fake-ABCD1234'; // mock shape only, never a real key
+    expect(redactSecrets(`Bearer ${QA_FAKE_KEY}`)).not.toContain('ABCD1234');
+    expect(redactSecrets(`rejected ${QA_FAKE_KEY} bye`)).not.toContain('ABCD1234');
+    expect(redactSecrets(`Authorization: Bearer ${QA_FAKE_KEY} invalid`)).not.toContain('sk-qa-fake');
+    expect(redactSecrets(`Authorization: ${QA_FAKE_KEY}`)).not.toContain('ABCD1234');
+    expect(redactSecrets('GET https://api.opendota.com/api/heroes?api_key=qa-fake-ABCD123456 401')).not.toContain('ABCD123456');
+    expect(redactSecrets('url ?key=qa-fake-ABCD123456 denied')).not.toContain('ABCD123456');
+    expect(redactSecrets('headers {"authorization":"Bearer sk-qa-fake-ABCD1234"} sent')).not.toContain('ABCD1234');
+  });
+
   it('redacts masked key tails (…abcd / ****abcd)', () => {
     expect(redactSecrets('key ****abcd is invalid')).not.toContain('abcd');
     expect(redactSecrets('provided key ...wxyz expired')).not.toContain('wxyz');
