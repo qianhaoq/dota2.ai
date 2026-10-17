@@ -31,28 +31,50 @@ describe('installConsoleRedaction (unit)', () => {
     );
 
     expect(errorMock).toHaveBeenCalledTimes(1);
-    const [strArg, errArg, objArg] = errorMock.mock.calls[0] as unknown[];
-    expect(String(strArg)).not.toContain(QA_FAKE_KEY);
-    expect(String(strArg)).not.toContain('ABCD1234');
-    expect(String(strArg)).toContain('[REDACTED]');
-    // Errors become a redacted `${name}: ${message}\n${stack}` string.
-    expect(String(errArg)).toContain('Error: fetch failed');
-    expect(String(errArg)).not.toContain(QA_FAKE_QUERY_KEY);
-    expect(String(errArg)).toContain('at '); // stack retained for debugging
-    // Objects are stringified then redacted.
-    expect(String(objArg)).not.toContain(QA_FAKE_KEY);
-    expect(String(objArg)).toContain('[REDACTED]');
+    // The wrapper formats the whole line first, then redacts it as one string.
+    const line = String((errorMock.mock.calls[0] as unknown[])[0]);
+    expect((errorMock.mock.calls[0] as unknown[]).length).toBe(1);
+    expect(line).not.toContain(QA_FAKE_KEY);
+    expect(line).not.toContain('ABCD1234');
+    expect(line).not.toContain(QA_FAKE_QUERY_KEY);
+    expect(line).toContain('[REDACTED]');
+    expect(line).toContain('Error: fetch failed');
+    expect(line).toContain('at '); // stack retained for debugging
 
     uninstall();
   });
 
-  it('passes primitives through untouched (format specifiers keep working)', () => {
-    const { consoleObj, logMock } = makeConsole();
+  it('applies printf-style substitutions before redaction (Codex P1)', () => {
+    const { consoleObj, logMock, errorMock } = makeConsole();
     const uninstall = installConsoleRedaction(consoleObj);
 
     consoleObj.log('count=%d ok=%s', 42, true, null, undefined);
+    expect(logMock.mock.calls[0]).toEqual(['count=42 ok=true null undefined']);
 
-    expect(logMock.mock.calls[0]).toEqual(['count=%d ok=%s', 42, true, null, undefined]);
+    // Credential context in the format string, bare token as a separate arg.
+    consoleObj.error('Authorization: Bearer %s', 'eyJhbGciOiJIUzI1NiJ9.qa-fake.sig');
+    consoleObj.error('Authorization: %s', 'qafaketoken123456');
+    for (const [l] of errorMock.mock.calls as unknown[][]) {
+      expect(String(l)).not.toContain('qa-fake');
+      expect(String(l)).not.toContain('qafaketoken');
+    }
+    uninstall();
+  });
+
+  it('keeps ordinary ellipsis text intact (Codex P1)', () => {
+    const { consoleObj, logMock } = makeConsole();
+    const uninstall = installConsoleRedaction(consoleObj);
+    consoleObj.log(JSON.stringify({ message: 'Wait...this happens. Please…help' }));
+    expect(String(logMock.mock.calls[0][0])).toContain('Wait...this happens. Please…help');
+    uninstall();
+  });
+
+  it('bounds serialization of large objects (Codex P2)', () => {
+    const { consoleObj, logMock } = makeConsole();
+    const uninstall = installConsoleRedaction(consoleObj);
+    const rows = Array.from({ length: 10000 }, (_, i) => ({ id: i, name: `row-${i}` }));
+    consoleObj.log({ rows });
+    expect(String(logMock.mock.calls[0][0]).length).toBeLessThan(5000);
     uninstall();
   });
 
