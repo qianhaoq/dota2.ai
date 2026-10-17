@@ -151,13 +151,16 @@ export function canSubmitReviewFollowUp(sessions: CoachSession[]): boolean {
   return canSubmitReviewFollowUpForContext(sessions, null);
 }
 
-/** AI follow-up chips / composer actions are available (not fallback-only). */
+/**
+ * Follow-up chips / composer actions are available. A review notice (cards
+ * came from the deterministic fallback) no longer disables follow-ups: the
+ * server answers them via DeepSeek → Gemini → deterministic template.
+ */
 export function isReviewAiFollowUpAvailable(
   message?: CoachMessage,
-  noticeBlocks: A2UIBlock[] = [],
+  _noticeBlocks: A2UIBlock[] = [],
 ): boolean {
   if (!message || message.isStreaming) return false;
-  if (noticeBlocks.length > 0) return false;
   const followups = message.reviewCards?.followups;
   return Boolean(followups && followups.length > 0);
 }

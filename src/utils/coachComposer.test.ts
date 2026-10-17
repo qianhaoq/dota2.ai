@@ -109,8 +109,9 @@ describe('resolveCoachComposerState', () => {
     expect(state.submitDisabled).toBe(true);
   });
 
-  it('locks input only when AI follow-up is unavailable on a completed review', () => {
-    const active = reviewSession({ reviewCards: completeCards });
+  it('locks input only when follow-ups are unavailable (no followups) on a completed review', () => {
+    // A review notice alone no longer locks input: follow-ups are template-backed.
+    const active = reviewSession({ reviewCards: { ...completeCards, followups: [] } });
     const sessions = [{
       ...active,
       blocks: [{ id: 'r1-review-notice', type: 'markdown' as const, markdown: 'AI unavailable' }],

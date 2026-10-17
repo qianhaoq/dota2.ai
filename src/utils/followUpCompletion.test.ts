@@ -213,18 +213,18 @@ describe('streamFollowUpCompletion (empty-stream fallback)', () => {
     expect(failures).toEqual(['deepseek:empty_stream', 'gemini:empty_stream']);
   });
 
-  it('keeps done semantics for an empty stream that ended with a terminal finish_reason', async () => {
-    let geminiCalled = false;
+  it('treats an empty stream as failed even with a terminal finish_reason (empty refusal / content_filter)', async () => {
+    const texts: string[] = [];
     const outcome = await streamFollowUpCompletion({
       providers: [
-        { name: 'deepseek', create: async () => streamOf([chunk(undefined, 'stop')]) },
-        { name: 'gemini', create: async () => { geminiCalled = true; return streamOf([]); } },
+        { name: 'deepseek', create: async () => streamOf([chunk(undefined, 'content_filter')]) },
+        { name: 'gemini', create: async () => streamOf([chunk('gemini answer', 'stop')]) },
       ],
       attemptMs: 40000,
-      onText: () => {},
+      onText: (t: string) => texts.push(t),
     });
-    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'deepseek' });
-    expect(geminiCalled).toBe(false);
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini' });
+    expect(texts).toEqual(['gemini answer']);
   });
 });
 

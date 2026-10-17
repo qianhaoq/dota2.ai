@@ -2499,7 +2499,7 @@ async function handleMatchReview(req, res) {
         responder.end();
         return;
       }
-      const fallbackCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
+      const fallbackCards = buildFallbackAiCards(matchFact, lang);
       responder.send({ reviewCards: fallbackCards, grounded: isGrounded });
       responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'unconfigured') });
       responder.end();
@@ -2718,7 +2718,7 @@ async function handleMatchReview(req, res) {
           if (followUp) {
             sendFollowUpFallback({ reason: 'error', append: followUpForwarded });
           } else {
-            const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
+            const reviewCards = buildFallbackAiCards(matchFact, lang);
             responder.send({ reviewCards, grounded: isGrounded });
             responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'provider') });
             responder.end();
@@ -2736,7 +2736,7 @@ async function handleMatchReview(req, res) {
           // error objects can echo request details (incl. auth material).
           sendFollowUpFallback({ reason: 'error', append: followUpForwarded });
         } else {
-          const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
+          const reviewCards = buildFallbackAiCards(matchFact, lang);
           responder.send({ reviewCards, grounded: isGrounded });
           responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'provider') });
           responder.end();
