@@ -8,7 +8,7 @@ import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.
 import { buildThreeConclusions } from './lib/matchReview/threeConclusions.js';
 import { validateReviewPostRequest } from './lib/matchReview/reviewRequestGuard.js';
 import { buildHeroNamesMap } from './lib/matchReview/heroNamesMap.js';
-import { isTerminalStreamFinish, reviewAiUnavailableNotice } from './lib/matchReview/reviewStream.js';
+import { reviewAiUnavailableNotice } from './lib/matchReview/reviewStream.js';
 import {
   buildDeterministicReviewCards,
   buildFallbackAiCards,
@@ -45,7 +45,6 @@ import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
 import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
 import { streamFollowUpCompletion } from './lib/matchReview/followUpCompletion.js';
-import { followUpProvidersAvailable } from './lib/matchReview/followUpAvailability.js';
 import { clampFollowUpAttemptMs } from './lib/matchReview/followUpTimeout.js';
 import { withCompletionDeadline } from './lib/completionDeadline.js';
 import {
@@ -54,6 +53,12 @@ import {
   sanitizeLlmErrorForClient,
   internalErrorForClient,
 } from './lib/llmErrors.js';
+import { resolveDeepSeekConfig } from './lib/llmConfig.js';
+import {
+  buildFollowUpFallbackText,
+  decideFollowUpOutcome,
+  reviewFollowUpFallbackNotice,
+} from './lib/matchReview/followUpFallback.js';
 
 // Per-attempt card completion deadline; two attempts + fetch stay under
 // Cloud Run's 300s request timeout.
@@ -143,7 +148,19 @@ const openai = apiKey ? new OpenAI({
   apiKey: apiKey,
 }) : null;
 
-const DEEPSEEK_MODEL = 'deepseek-chat';
+// DeepSeek model + thinking mode (lib/llmConfig.js): env-tunable, defaults to
+// deepseek-flash with thinking disabled — review cards and follow-ups answer
+// inside a 40s deadline and thinking mode would blow through it.
+const deepseekConfig = resolveDeepSeekConfig(process.env);
+const DEEPSEEK_MODEL = deepseekConfig.model;
+// Merged into every DeepSeek chat.completions.create body (thinking toggle);
+// NEVER merged into the Gemini request (see cardProviders). Retired legacy
+// names (deepseek-chat / deepseek-reasoner) are mapped to the default model.
+const deepseekExtraBody = deepseekConfig.extraBody;
+console.log(`INFO: DeepSeek model=${deepseekConfig.model} thinking=${deepseekConfig.thinking}`);
+if (deepseekConfig.legacyMappedFrom) {
+  console.warn(`WARNING: DEEPSEEK_MODEL=${deepseekConfig.legacyMappedFrom} is a retired DeepSeek model name; using ${deepseekConfig.model} instead.`);
+}
 
 // Gemini (OpenAI-compatible endpoint) is the card-review fallback when
 // DeepSeek fails or times out. Same prompt and validation/repair pipeline.
@@ -1850,6 +1867,7 @@ ${statsSection}
       
       const stream = await openai.chat.completions.create({
         model: DEEPSEEK_MODEL,
+        ...deepseekExtraBody,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -1873,6 +1891,7 @@ ${statsSection}
     } else {
       const response = await openai.chat.completions.create({
         model: DEEPSEEK_MODEL,
+        ...deepseekExtraBody,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -1977,6 +1996,7 @@ app.post('/api/analyze', async (req, res) => {
 
       const stream = await openai.chat.completions.create({
         model: DEEPSEEK_MODEL,
+        ...deepseekExtraBody,
         messages: [
           { role: 'system', content: systemInstruction },
           { role: 'user', content: prompt }
@@ -2000,6 +2020,7 @@ app.post('/api/analyze', async (req, res) => {
     } else {
       const response = await openai.chat.completions.create({
         model: DEEPSEEK_MODEL,
+        ...deepseekExtraBody,
         messages: [
           { role: 'system', content: systemInstruction },
           { role: 'user', content: prompt }
@@ -2188,6 +2209,7 @@ app.post('/api/chat', async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: DEEPSEEK_MODEL,
+      ...deepseekExtraBody,
       messages: messages,
     });
 
@@ -2466,11 +2488,13 @@ async function handleMatchReview(req, res) {
         responder.send({ matchFact, grounded: isGrounded, parse, threeConclusions });
       }
       if (followUp) {
-        responder.end({
-          error: isZh
-            ? '追问需要 AI 服务，当前未配置 API Key'
-            : 'Follow-up requires AI service; API key not configured',
-        });
+        // Unconfigured DeepSeek still answers the follow-up: deterministic
+        // template text from match facts instead of an error frame — same
+        // contract as provider failures below.
+        console.warn(JSON.stringify({ severity: 'WARNING', event: 'review_followup_fallback', matchId, reason: 'unconfigured' }));
+        responder.send({ text: buildFollowUpFallbackText(matchFact, threeConclusions, lang), grounded: isGrounded, fallback: true });
+        responder.send({ reviewNotice: reviewFollowUpFallbackNotice(lang) });
+        responder.end();
         return;
       }
       const fallbackCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
@@ -2525,6 +2549,10 @@ async function handleMatchReview(req, res) {
       // in prod (rev 00065: 100% 504 at 300s). Malformed JSON is recovered by
       // extractJsonFromLlmOutput instead.
     };
+    // DeepSeek gets the resolved thinking param; Gemini keeps the exact body
+    // it serves today — deepseekExtraBody is never merged into the Gemini
+    // request (a `thinking` field would change its wire format).
+    const deepseekCompletionBody = { ...completionBody, ...deepseekExtraBody };
     // Follow-ups stream through their own provider chain (DeepSeek with the
     // SDK's default retries, then Gemini with none), each attempt bounded by
     // REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS (and the remaining request budget).
@@ -2533,11 +2561,11 @@ async function handleMatchReview(req, res) {
     // deadline capped by the request budget, no SDK retries (the validation
     // retry already makes a second attempt).
     const followUpProviders = [
-      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create(completionBody, { signal }) }] : []),
+      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create(deepseekCompletionBody, { signal }) }] : []),
       ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ ...completionBody, model: GEMINI_REVIEW_MODEL }, { signal, maxRetries: 0 }) }] : []),
     ];
     const cardProviders = [
-      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ ...completionBody, stream: false }, { signal, maxRetries: 0 }) }] : []),
+      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ ...deepseekCompletionBody, stream: false }, { signal, maxRetries: 0 }) }] : []),
       ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ ...completionBody, model: GEMINI_REVIEW_MODEL, stream: false }, { signal, maxRetries: 0 }) }] : []),
     ];
     const failedCardProviders = new Set();
@@ -2572,22 +2600,48 @@ async function handleMatchReview(req, res) {
       return;
     }
 
+    // Follow-up fallback state: `forwarded` records whether any body chunk
+    // already reached the client — that decides whether the deterministic
+    // template replaces the whole answer or is appended as a closing note.
+    let followUpForwarded = false;
+    const sendFollowUpFallback = (decision) => {
+      // Structured reason only (matchId + reason): never log the raw upstream
+      // error, which can echo request details.
+      console.warn(JSON.stringify({ severity: 'WARNING', event: 'review_followup_fallback', matchId, reason: decision.reason }));
+      if (decision.append) {
+        // Partial answer already streamed: append the full deterministic
+        // template (its lead line + match facts) after a blank line so the
+        // user gets the promised facts, not a dangling introduction.
+        responder.send({ text: `\n\n${buildFollowUpFallbackText(matchFact, threeConclusions, lang)}`, grounded: isGrounded, fallback: true });
+        responder.send({ reviewNotice: reviewFollowUpFallbackNotice(lang) });
+      } else {
+        responder.send({ text: buildFollowUpFallbackText(matchFact, threeConclusions, lang), grounded: isGrounded, fallback: true });
+        responder.send({ reviewNotice: reviewFollowUpFallbackNotice(lang) });
+      }
+      responder.end();
+    };
+
     try {
       if (followUp) {
         // Provider chain (DeepSeek → Gemini), each attempt under its own
-        // deadline; total failure before any text was forwarded answers with
-        // the sanitized generic error (never provider text).
+        // deadline. Every non-happy ending — total failure before any text
+        // was forwarded, or an interruption after partial text — degrades to
+        // the deterministic template below; the raw provider error never
+        // reaches the client.
         const outcome = await streamFollowUpCompletion({
           providers: followUpProviders,
           attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
           // Each attempt is further capped by the request's remaining budget;
           // with less than REVIEW_MIN_ATTEMPT_MS left, remaining providers are
-          // skipped and the generic sanitized error is served instead.
+          // skipped and the deterministic template is served instead.
           startedAt: reviewStartedAt,
           budgetMs: REVIEW_REQUEST_BUDGET_MS,
           minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
           signal: abortController.signal,
-          onText: (text) => responder.send({ text, grounded: isGrounded }),
+          onText: (text) => {
+            responder.send({ text, grounded: isGrounded });
+            followUpForwarded = true;
+          },
           shouldStop: () => clientGone || res.writableEnded,
           onProviderError: ({ provider, error, raw }) => logLlmError(console.warn, {
             event: 'review_followup_provider_error',
@@ -2601,14 +2655,11 @@ async function handleMatchReview(req, res) {
         // writableEnded stays false on an aborted close, so gate on
         // clientGone too: a gone client must not get a final write/end.
         if (clientGone || res.writableEnded) return;
-        if (outcome.status === 'failed') {
-          responder.end(sanitizeLlmErrorForClient(lang));
-        } else if (outcome.status === 'done' && isTerminalStreamFinish(outcome.finishReason)) {
+        const decision = decideFollowUpOutcome(outcome);
+        if (decision.action === 'end') {
           responder.end();
         } else {
-          responder.end({
-            error: isZh ? '复盘流未完成' : 'Review stream ended incomplete',
-          });
+          sendFollowUpFallback(decision);
         }
       } else {
         const first = await cardCompletion();
@@ -2637,17 +2688,12 @@ async function handleMatchReview(req, res) {
         const cards = usedFallback
           ? buildFallbackAiCards(matchFact, lang)
           : resolvedCards;
-        // Follow-up chat streams through the same chain as cards (DeepSeek →
-        // Gemini). Keep the suggestions whenever any configured follow-up
-        // provider survived this request (followUpProvidersAvailable also
-        // covers a Gemini-only deployment); drop them only when none did, so
-        // the client keeps follow-up actions disabled (it reads empty
-        // followups as "follow-ups unavailable").
-        const reviewCards = followUpProvidersAvailable({
-          deepseekConfigured: Boolean(openai),
-          geminiConfigured: Boolean(gemini),
-          failedCardProviders,
-        }) ? cards : { ...cards, followups: [] };
+        // Follow-up suggestions are never cleared: even with every provider
+        // down (or none configured) a follow-up still gets a deterministic
+        // template answer from match facts, so the UI must keep the follow-up
+        // actions enabled (it reads empty followups as "follow-ups
+        // unavailable"). followUpProvidersAvailable stays a pure lib helper.
+        const reviewCards = cards;
         // writableEnded stays false on an aborted close, so gate on
         // clientGone too: a gone client must not get a final write/end.
         if (!clientGone && !res.writableEnded) {
@@ -2662,11 +2708,13 @@ async function handleMatchReview(req, res) {
       if (clientGone || (streamErr.name === 'AbortError' && abortController.signal.aborted)) return;
       if (streamErr.name === 'CompletionDeadlineError') console.warn(`[review:ai-validation] match=${matchId} completion_deadline_exceeded`);
       if (isLlmSdkError(streamErr)) {
-        // Structured log with redacted detail; client gets the generic code.
+        // Structured log with redacted detail; client gets the generic code
+        // (cards) or the deterministic template (follow-ups — they always
+        // answer, never ai_unavailable).
         logLlmError(console.error, { event: 'review_stream_llm_error', matchId, error: streamErr, lang });
         if (!res.writableEnded) {
           if (followUp) {
-            responder.end(sanitizeLlmErrorForClient(lang));
+            sendFollowUpFallback({ reason: 'error', append: followUpForwarded });
           } else {
             const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
             responder.send({ reviewCards, grounded: isGrounded });
@@ -2681,7 +2729,10 @@ async function handleMatchReview(req, res) {
       logLlmError(console.error, { event: 'review_stream_error', matchId, error: streamErr, lang });
       if (!res.writableEnded) {
         if (followUp) {
-          responder.end(sanitizeLlmErrorForClient(lang));
+          // Provider failure/timeout degrades to the deterministic follow-up
+          // template. The raw upstream message never reaches the client —
+          // error objects can echo request details (incl. auth material).
+          sendFollowUpFallback({ reason: 'error', append: followUpForwarded });
         } else {
           const reviewCards = buildFallbackAiCards(matchFact, lang, { includeFollowups: false });
           responder.send({ reviewCards, grounded: isGrounded });

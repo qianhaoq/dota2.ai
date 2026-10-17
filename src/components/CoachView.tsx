@@ -447,6 +447,10 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         },
         onReviewNotice: (notice) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
+          // Follow-up fallback frames carry their own explanation line in the
+          // streamed text, and a follow-up message has no structured payload —
+          // setting error here would blank its content in messageToBlocks.
+          if (followUp) return;
           updateCoachMessage(msgId, { error: notice });
         },
         onChunk: (text) => {

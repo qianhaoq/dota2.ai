@@ -68,10 +68,13 @@ describe('followUpProvidersAvailable', () => {
 describe('server.js follow-up gating (pattern guard)', () => {
   const server = readFileSync(join(__dirname, '../../server.js'), 'utf8');
 
-  it('keeps followup suggestions whenever a configured provider survived the card phase', () => {
-    expect(server).toMatch(
-      /followUpProvidersAvailable\(\{[\s\S]*?deepseekConfigured: Boolean\(openai\),[\s\S]*?geminiConfigured: Boolean\(gemini\),[\s\S]*?failedCardProviders,[\s\S]*?\}\) \? cards : \{ \.\.\.cards, followups: \[\] \}/,
-    );
+  it('never clears followup suggestions — the template fallback can always answer', () => {
+    // Since every follow-up failure path degrades to the deterministic
+    // template (never an error frame), the UI must keep the follow-up actions
+    // enabled even when all card providers failed this request. The pure
+    // followUpProvidersAvailable helper stays in lib for log/diagnostic use.
+    expect(server).not.toMatch(/followups: \[\] \}?\s*;/);
+    expect(server).toMatch(/const reviewCards = cards;/);
   });
 
   it('lets follow-up requests through when either provider is configured', () => {

@@ -463,3 +463,32 @@ describe('streaming append still feeds A2UI sections', () => {
     expect(blocks.map((b) => b.title)).toEqual(['分析思路', '结论']);
   });
 });
+
+describe('review follow-up fallback text rendering', () => {
+  const fallbackContent = 'AI follow-up is temporarily unavailable — here is what the match data shows:\n- **Turning point** — the gold lead flipped at 18:00.';
+
+  it('renders the deterministic fallback text as markdown blocks on a follow-up message', () => {
+    // The server's follow-up fallback ends with [DONE] (no error frame), so
+    // the finished follow-up message carries only streamed content.
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      reviewFollowUp: true,
+      content: fallbackContent,
+    }));
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(blocks.some((b) => (b.markdown ?? '').includes('temporarily unavailable'))).toBe(true);
+  });
+
+  it('would blank a follow-up message if a notice set error — notices must not set error on follow-ups', () => {
+    // Regression guard for the CoachView onReviewNotice guard: a follow-up
+    // message has no matchFact/reviewCards, so messageToBlocks drops
+    // everything once error is set.
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      reviewFollowUp: true,
+      content: fallbackContent,
+      error: 'AI follow-up unavailable; the answer below is built from match data only.',
+    }));
+    expect(blocks).toEqual([]);
+  });
+});

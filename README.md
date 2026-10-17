@@ -44,7 +44,7 @@ Dota2.ai 是一个基于 DeepSeek 的 Dota 2 战术教练应用。它尝试回�
 
 - **前端**：React 18 + TypeScript + Vite + Tailwind（V3 战术色板与既有 k3 并存）
 - **后端**：Node/Express（`server.js`），SSE 流式输出
-- **AI**：DeepSeek（`deepseek-chat`，OpenAI 兼容客户端）——流式教练、复盘、出装与神秘商人对话
+- **AI**：DeepSeek（默认 `deepseek-flash`，可用 `DEEPSEEK_MODEL` 覆盖，OpenAI 兼容客户端）——流式教练、复盘、出装与神秘商人对话
 - **数据**：OpenDota / Steam 公开接口（英雄、比赛事实、趋势）
 
 ### 架构速览 | Architecture
@@ -181,6 +181,6 @@ Dota2.ai is an open-source (MIT) Dota 2 tactical coach powered by DeepSeek. It t
 
 Honest limits: match facts include stats, lane inference, economy and objectives — **no per-moment coordinates or vision**, so real reviews use non-spatial evidence and maps are clearly-labeled teaching diagrams. Item tradeoffs compare decision dimensions, not patch-number recommendations. Training completion marks are self-reports, not verified growth.
 
-Stack: React 18 + TypeScript + Vite + Tailwind frontend; Express backend (`server.js`) streaming SSE; DeepSeek (`deepseek-chat`) for coaching; OpenDota/Steam public data. The internal A2UI-style component catalog (`src/coach-ui`, `dota-coach-ui/1`) is an internal domain model — not a claim of official A2UI wire-protocol compatibility. Design docs: [`docs/design/tactical-coach-v3/`](docs/design/tactical-coach-v3/).
+Stack: React 18 + TypeScript + Vite + Tailwind frontend; Express backend (`server.js`) streaming SSE; DeepSeek (default model `deepseek-flash`, overridable via `DEEPSEEK_MODEL`, thinking via `DEEPSEEK_THINKING`) for coaching; OpenDota/Steam public data. The internal A2UI-style component catalog (`src/coach-ui`, `dota-coach-ui/1`) is an internal domain model — not a claim of official A2UI wire-protocol compatibility. Design docs: [`docs/design/tactical-coach-v3/`](docs/design/tactical-coach-v3/).
 
 Quick start: `npm ci` → `cp .env.example .env` (add `DEEPSEEK_API_KEY`) → `npm run start:dev`. Verify with `npm test && npx tsc --noEmit && npm run build && node --check server.js`. Not affiliated with Valve; see LICENSE, CONTRIBUTING.md and SECURITY.md.

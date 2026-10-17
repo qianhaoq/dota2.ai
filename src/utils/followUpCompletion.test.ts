@@ -389,8 +389,12 @@ describe('server.js follow-up wiring (pattern guard)', () => {
     }
   });
 
-  it('answers total follow-up failure with the sanitized generic payload, not provider text', () => {
-    expect(server).toMatch(/outcome\.status === 'failed'[\s\S]*?sanitizeLlmErrorForClient\(lang\)/);
+  it('answers total follow-up failure with the deterministic template, not provider text', () => {
+    // failed (every provider died before any text) degrades to the
+    // buildFollowUpFallbackText template — follow-ups never return
+    // ai_unavailable, and the raw provider error never reaches the client.
+    expect(server).toMatch(/const decision = decideFollowUpOutcome\(outcome\);[\s\S]*?sendFollowUpFallback\(decision\)/);
+    expect(server).toMatch(/sendFollowUpFallback\(\{ reason: 'error', append: followUpForwarded \}\)/);
     // Follow-up streaming goes through the provider chain, not a direct call.
     expect(server).toMatch(/const followUpProviders = \[/);
     expect(server).not.toMatch(/followUpRequest/);
