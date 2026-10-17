@@ -4,7 +4,7 @@ import { DEFAULT_FLAGS, parseFfOverride, resolveFlags } from './flags';
 const NO_ENV: Record<string, string | undefined> = {};
 
 describe('resolveFlags — env parsing', () => {
-  it('defaults: legacy UI fully visible, v2 off', () => {
+  it('defaults: v2 UI owns / (cutover), legacy pieces stay available', () => {
     expect(resolveFlags({ env: NO_ENV, pathname: '/', search: '' })).toEqual(DEFAULT_FLAGS);
   });
 
@@ -27,8 +27,16 @@ describe('resolveFlags — env parsing', () => {
 
   it('ignores invalid env values', () => {
     const flags = resolveFlags({ env: { VITE_FF_UI_V2: 'yes', VITE_FF_FAKEDOOR_V2: '2' }, pathname: '/', search: '' });
-    expect(flags.ui_v2).toBe(false);
+    expect(flags.ui_v2).toBe(true);
     expect(flags.fakedoor_v2).toBe(false);
+  });
+
+  it('rollback lever: VITE_FF_UI_V2=0 puts the legacy app back on /', () => {
+    const flags = resolveFlags({ env: { VITE_FF_UI_V2: '0' }, pathname: '/', search: '' });
+    expect(flags.ui_v2).toBe(false);
+    // Route-forced surfaces are unaffected by the rollback env.
+    expect(resolveFlags({ env: { VITE_FF_UI_V2: '0' }, pathname: '/m/9035042364', search: '' }).ui_v2).toBe(true);
+    expect(resolveFlags({ env: { VITE_FF_UI_V2: '0' }, pathname: '/new', search: '' }).ui_v2).toBe(true);
   });
 });
 
@@ -80,8 +88,9 @@ describe('resolveFlags — ?ff= override', () => {
   });
 
   it('is ignored when not allowed', () => {
-    const flags = resolveFlags({ env: NO_ENV, pathname: '/', search: '?ff=ui_v2:1,-legacy_tabs', allowOverride: false });
-    expect(flags.ui_v2).toBe(false);
+    const flags = resolveFlags({ env: NO_ENV, pathname: '/', search: '?ff=-ui_v2,-legacy_tabs', allowOverride: false });
+    // ui_v2 stays on its default (cutover) value — the override is ignored.
+    expect(flags.ui_v2).toBe(true);
     expect(flags.legacy_tabs).toBe(true);
   });
 

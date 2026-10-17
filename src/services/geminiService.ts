@@ -525,7 +525,7 @@ export interface ReviewStreamCallbacks {
 export const REVIEW_CLIENT_TIMEOUT_MS = 180000;
 
 export const fetchMatchReviewStream = (
-  matchId: number,
+  matchId: number | string,
   lang: Language,
   heroId?: number,
   followUp?: string,

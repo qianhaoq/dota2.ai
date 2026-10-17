@@ -19,9 +19,14 @@ export const FLAG_NAMES = [
 export type FlagName = (typeof FLAG_NAMES)[number];
 export type Flags = Record<FlagName, boolean>;
 
-/** Product defaults (env unset): legacy UI fully visible, v2 surfaces off. */
+/**
+ * Product defaults (env unset): the v2 UI owns `/` (cutover done); the legacy
+ * app lives under `/legacy`. Rollback lever: build env VITE_FF_UI_V2=0 puts
+ * the legacy app back on `/` and unknown paths (`/legacy`, `/new`, `/m` are
+ * route-forced and unaffected).
+ */
 export const DEFAULT_FLAGS: Flags = {
-  ui_v2: false,
+  ui_v2: true,
   legacy_mentor: true,
   legacy_tabs: true,
   legacy_next_actions: true,

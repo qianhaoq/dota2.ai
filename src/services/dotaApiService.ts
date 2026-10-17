@@ -124,8 +124,8 @@ export interface MatchFactsResult {
   threeConclusions: ThreeConclusions | null;
 }
 
-/** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
-export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', signal?: AbortSignal, heroId?: number): Promise<MatchFactsResult> => {
+/** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流。matchId 可为字符串（v2 全程按字符串传递，不丢精度）。 */
+export const fetchMatchFacts = async (matchId: number | string, lang: Language = 'en', signal?: AbortSignal, heroId?: number): Promise<MatchFactsResult> => {
   const heroParam = heroId != null ? `&heroId=${encodeURIComponent(heroId)}` : '';
   const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}${heroParam}`, {
     method: 'GET',
@@ -173,7 +173,7 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', si
  * parsed / throttled / failed), or throws with the server's error text.
  */
 export const requestMatchParse = async (
-  matchId: number,
+  matchId: number | string,
   lang: Language = 'en',
   signal?: AbortSignal,
 ): Promise<ReviewParseStatus> => {

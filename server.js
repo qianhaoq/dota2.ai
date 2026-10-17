@@ -2978,8 +2978,10 @@ app.post('/api/events', (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get('*', (req, res) => {
-  // The /new v2 experience is gated/unlisted — keep it out of search indexes.
-  if (req.path === '/new' || req.path.startsWith('/new/')) {
+  // The /new and /legacy surfaces are gated/unlisted — keep them out of
+  // search indexes (case-insensitive; / and /m stay indexable).
+  const p = req.path.toLowerCase();
+  if (p === '/new' || p.startsWith('/new/') || p === '/legacy' || p.startsWith('/legacy/')) {
     res.set('X-Robots-Tag', 'noindex');
   }
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
