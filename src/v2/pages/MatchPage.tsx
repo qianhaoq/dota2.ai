@@ -9,8 +9,9 @@ import { trackEvent, trackReviewViewed } from '../../services/analytics';
 import { followUpKind } from '../../utils/analyticsClient';
 import { getPresetFollowUps } from '../../utils/reviewConclusions';
 import type { MatchPlayerFact } from '../../types/matchReview';
-import { parseMatchInput } from '../parseMatchInput';
+import { parseMatchInput, isSafeMatchId } from '../parseMatchInput';
 import { buildCarryQuery } from '../carryQuery';
+import { useFlags } from '../FlagsProvider';
 import ProgressTrace from '../review/ProgressTrace';
 import HeroPicker from '../review/HeroPicker';
 import ResultHeader from '../review/ResultHeader';
@@ -22,8 +23,8 @@ import { resolveHeroParam } from '../review/resolveHero';
 import { IconMatch } from '../review/icons';
 import type { DictKey } from '../i18n/en';
 
-/** Match ids are strings end-to-end (QA P2) — 1–20 digits, never coerced. */
-const MATCH_ID_RE = /^\d{1,20}$/;
+/** Match ids are strings end-to-end (QA P2) — 1–20 digits, never coerced,
+ * and within the server's Number.MAX_SAFE_INTEGER range (see parseMatchInput). */
 
 interface FollowUpTurn {
   id: number;
@@ -53,12 +54,13 @@ const CARD_DEFS: Array<{ key: ConclusionField; labelKey: DictKey; icon: 'turn' |
 const MatchPage: React.FC = () => {
   const { matchId: routeMatchId } = useParams<{ matchId: string }>();
   const matchId = routeMatchId ?? '';
-  const validId = MATCH_ID_RE.test(matchId);
+  const validId = isSafeMatchId(matchId);
   const [searchParams] = useSearchParams();
   const heroParam = searchParams.get('hero');
   const location = useLocation();
   const navigate = useNavigate();
   const { lang, t } = useI18n();
+  const { fakedoor_v2 } = useFlags();
 
   const [reloadKey, setReloadKey] = useState(0);
   const [phase, setPhase] = useState<'loading' | 'pick' | 'loadingHero' | 'results' | 'error'>('loading');
@@ -104,11 +106,23 @@ const MatchPage: React.FC = () => {
   // ---- follow-up streaming ----
   const turnIdRef = useRef(0);
   const streamRef = useRef<AbortController | null>(null);
+  // Bumped whenever the conversation context dies (hero/match/lang change,
+  // unmount): stream callbacks capture the value at start and drop events
+  // from a superseded request, so a stale chunk can never land in the new
+  // thread.
+  const streamEpochRef = useRef(0);
   const prefillRef = useRef<string | null>(null);
   const streaming = turns.some((turn) => turn.status === 'streaming');
   const rateLimited = (rateLimit ?? 0) > 0;
 
-  useEffect(() => () => streamRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      streamEpochRef.current += 1;
+      streamRef.current?.abort();
+      streamRef.current = null;
+    },
+    [],
+  );
 
   // Live countdown for a 429: tick once per second until the wait elapses,
   // then release the disabled Retry / chips / composer.
@@ -125,21 +139,40 @@ const MatchPage: React.FC = () => {
       ? t('rateLimitSeconds').replace('{n}', String(rateLimit))
       : t('rateLimitMoment');
 
+  /** Kill the in-flight follow-up stream (hero/match/lang change, unmount):
+   * invalidate its callbacks, abort the request, and release `streaming`. */
+  const abortStream = () => {
+    streamEpochRef.current += 1;
+    streamRef.current?.abort();
+    streamRef.current = null;
+    setTurns((ts) => ts.map((x) => (x.status === 'streaming' ? { ...x, status: 'done' } : x)));
+  };
+
   const startStream = (id: number, question: string) => {
+    const epoch = streamEpochRef.current;
+    const stale = () => epoch !== streamEpochRef.current;
     const controller = fetchMatchReviewStream(matchId, lang, heroId ?? undefined, question, {
       onData: () => {},
-      onChunk: (text) =>
-        setTurns((ts) => ts.map((x) => (x.id === id ? { ...x, answer: x.answer + text } : x))),
-      onComplete: () => setTurns((ts) => ts.map((x) => (x.id === id ? { ...x, status: 'done' } : x))),
-      onError: (message) =>
+      onChunk: (text) => {
+        if (stale()) return;
+        setTurns((ts) => ts.map((x) => (x.id === id ? { ...x, answer: x.answer + text } : x)));
+      },
+      onComplete: () => {
+        if (stale()) return;
+        setTurns((ts) => ts.map((x) => (x.id === id ? { ...x, status: 'done' } : x)));
+      },
+      onError: (message) => {
+        if (stale()) return;
         setTurns((ts) =>
           ts.map((x) =>
             x.id === id
               ? { ...x, status: controller.signal.aborted ? 'done' : 'error', error: message, rateLimited: false }
               : x,
           ),
-        ),
+        );
+      },
       onRateLimited: (retryAfterSec) => {
+        if (stale()) return;
         setRateLimit(retryAfterSec == null ? 0 : Math.max(1, Math.round(retryAfterSec)));
         setTurns((ts) =>
           ts.map((x) => (x.id === id ? { ...x, status: 'error', rateLimited: true } : x)),
@@ -185,6 +218,9 @@ const MatchPage: React.FC = () => {
   // ---- data loading ----
   useEffect(() => {
     if (!validId) return undefined;
+    // matchId/lang/reload changed — any follow-up stream belongs to a dead
+    // thread. Kill it BEFORE clearing the turns.
+    abortStream();
     const ac = new AbortController();
     setPhase('loading');
     setError(null);
@@ -227,7 +263,9 @@ const MatchPage: React.FC = () => {
         if (ac.signal.aborted) return;
         setHeroFacts(res);
         setPhase('results');
-        trackReviewViewed(matchId);
+        // Cards are what "review viewed" means — a payload without
+        // threeConclusions renders no conclusion cards, so don't count it.
+        if (res.threeConclusions) trackReviewViewed(matchId);
       })
       .catch((err: unknown) => {
         if (ac.signal.aborted) return;
@@ -258,6 +296,9 @@ const MatchPage: React.FC = () => {
     setPickerOpen(false);
     const slug = player.internalSlug || String(player.heroId);
     if (heroParam === slug) return;
+    // Switching hero ends the old thread: abort the in-flight follow-up
+    // stream BEFORE clearing the turns, or its chunks could still land.
+    abortStream();
     setTurns([]);
     setAsked([]);
     const params = new URLSearchParams(location.search);
@@ -320,7 +361,11 @@ const MatchPage: React.FC = () => {
           </div>
         </div>
 
-        {facts ? <ProgressTrace step={traceStep} done={phase !== 'loading' && phase !== 'loadingHero'} /> : null}
+        {/* Tool trace also covers the INITIAL facts request (facts still null
+            while loading), not just the hero-scoped pass after facts arrive. */}
+        {(facts || phase === 'loading') && (
+          <ProgressTrace step={traceStep} done={phase !== 'loading' && phase !== 'loadingHero'} />
+        )}
 
         {error && (
           <div className="bg-d2-down-bg border-l-[3px] border-d2-down rounded-[14px] px-[14px] py-[12px]">
@@ -413,7 +458,7 @@ const MatchPage: React.FC = () => {
             </div>
           )}
 
-          <FakedoorCard />
+          {fakedoor_v2 && <FakedoorCard />}
         </section>
       )}
 

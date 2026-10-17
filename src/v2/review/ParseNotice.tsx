@@ -14,6 +14,10 @@ const ParseNotice: React.FC<{ matchId: string; parse: ReviewParseStatus | null }
   const { lang, t } = useI18n();
   const [status, setStatus] = useState<ReviewParseStatus | null>(null);
   const [failed, setFailed] = useState(false);
+  // Pending must live in React state: reading controller.isPending() during
+  // render doesn't subscribe to anything, so the "Requesting…" label would
+  // never appear (or never clear) without another render trigger.
+  const [pending, setPending] = useState(false);
   const parseController = useMemo(
     () => createParseRequestController((id, l, signal) => requestMatchParse(id, l, signal)),
     [],
@@ -21,11 +25,12 @@ const ParseNotice: React.FC<{ matchId: string; parse: ReviewParseStatus | null }
 
   if (!parse || parse.status === 'parsed') return null;
   const shown = status ?? parse;
-  const pending = parseController.isPending();
 
   const request = async () => {
     setFailed(false);
+    setPending(true);
     const result = await parseController.request(matchId, lang, t('parseRequestFailed'));
+    setPending(false);
     if (!result) return;
     if (result.kind === 'status') setStatus(result.status);
     if (result.kind === 'error') setFailed(true);

@@ -25,10 +25,16 @@ describe('resolveFlags — env parsing', () => {
     });
   });
 
-  it('ignores invalid env values', () => {
+  it('ignores invalid env values (defaults stay in effect)', () => {
     const flags = resolveFlags({ env: { VITE_FF_UI_V2: 'yes', VITE_FF_FAKEDOOR_V2: '2' }, pathname: '/', search: '' });
     expect(flags.ui_v2).toBe(true);
+    expect(flags.fakedoor_v2).toBe(true);
+  });
+
+  it('fakedoor_v2 kill switch: VITE_FF_FAKEDOOR_V2=0 hides the card', () => {
+    const flags = resolveFlags({ env: { VITE_FF_FAKEDOOR_V2: '0' }, pathname: '/m/9035042364', search: '' });
     expect(flags.fakedoor_v2).toBe(false);
+    expect(flags.ui_v2).toBe(true);
   });
 
   it('rollback lever: VITE_FF_UI_V2=0 puts the legacy app back on /', () => {
@@ -98,5 +104,10 @@ describe('resolveFlags — ?ff= override', () => {
     const flags = resolveFlags({ env: NO_ENV, pathname: '/new', search: '?ff=legacy_mentor:1,ui_v2:0', allowOverride: false });
     expect(flags.legacy_mentor).toBe(true);
     expect(flags.ui_v2).toBe(false);
+  });
+
+  it('preview kill switch: /new?ff=-fakedoor_v2 hides the card', () => {
+    const flags = resolveFlags({ env: NO_ENV, pathname: '/new', search: '?ff=-fakedoor_v2', allowOverride: false });
+    expect(flags.fakedoor_v2).toBe(false);
   });
 });

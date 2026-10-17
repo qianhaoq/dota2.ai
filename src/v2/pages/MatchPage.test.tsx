@@ -7,12 +7,29 @@ import path from 'node:path';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import MatchPage from './MatchPage';
 import { I18nProvider } from '../i18n/I18nProvider';
-import { trackEvent } from '../../services/analytics';
+import { trackEvent, trackReviewViewed } from '../../services/analytics';
 
 vi.mock('../../services/analytics', () => ({
   trackEvent: vi.fn(),
   trackReviewViewed: vi.fn(),
 }));
+
+// Partial mock: the page must honor the resolved flags without caring how
+// they were resolved (flags.test.ts covers env/preview kill switches).
+const flagState = { fakedoor_v2: true };
+vi.mock('../FlagsProvider', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../FlagsProvider')>();
+  return {
+    ...actual,
+    useFlags: () => ({
+      ui_v2: true,
+      legacy_mentor: false,
+      legacy_tabs: false,
+      legacy_next_actions: false,
+      fakedoor_v2: flagState.fakedoor_v2,
+    }),
+  };
+});
 
 const fixturesDir = path.join(__dirname, '../__fixtures__');
 const readFixture = (name: string) =>
@@ -56,6 +73,46 @@ function rateLimitResponse(sec: number) {
     status: 429,
     headers: { get: (n: string) => (n.toLowerCase() === 'retry-after' ? String(sec) : null) },
     json: async () => ({ error: 'rate_limited', message: 'Too many requests', retryAfterSec: sec }),
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/**
+ * SSE response whose chunks are released manually — models an in-flight
+ * follow-up stream that stays pending until the test pushes the next chunk.
+ */
+function gatedSseResponse() {
+  let releaseRead: ((r: { done: boolean; value?: Uint8Array }) => void) | null = null;
+  const encode = (payload: string) => Uint8Array.from(payload, (c) => c.charCodeAt(0));
+  return {
+    response: {
+      ok: true,
+      headers: { get: (n: string) => (n.toLowerCase() === 'content-type' ? 'text/event-stream' : null) },
+      body: {
+        getReader: () => ({
+          read: () =>
+            new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
+              releaseRead = resolve;
+            }),
+          cancel: async () => {},
+        }),
+      },
+    },
+    /** Push one SSE data event; the mock fetch ignores the abort signal, so
+     * chunks pushed after an abort exercise the page's stale-callback guard. */
+    push: (obj: unknown) => {
+      releaseRead?.({ done: false, value: encode(`data: ${JSON.stringify(obj)}\n\n`) });
+      releaseRead = null;
+    },
   };
 }
 
@@ -318,5 +375,155 @@ describe('MatchPage — 429 rate limiting', () => {
     expect(
       (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
     ).toBe(false);
+  });
+});
+
+describe('MatchPage — fakedoor card flag', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    flagState.fakedoor_v2 = true;
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('renders the fakedoor card when fakedoor_v2 is on (MVP default)', async () => {
+    stubFetch({ base: enFixture, hero: pudgeEn });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    expect(screen.getByText('Want this after every match?')).toBeTruthy();
+  });
+
+  it('hides the fakedoor card when the flag is off (kill switch)', async () => {
+    flagState.fakedoor_v2 = false;
+    stubFetch({ base: enFixture, hero: pudgeEn });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    expect(screen.queryByText('Want this after every match?')).toBeNull();
+  });
+});
+
+describe('MatchPage — hero change aborts the follow-up stream', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    flagState.fakedoor_v2 = true;
+    vi.mocked(trackEvent).mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const flush = async () => {
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+  };
+
+  const postCall = () =>
+    fetchMock.mock.calls.find(([, init]) => (init as { method?: string } | undefined)?.method === 'POST');
+
+  it('aborts the in-flight stream before clearing turns; stale chunks never land', async () => {
+    const stream = gatedSseResponse();
+    stubFetch({ base: enFixture, hero: pudgeEn, postResponse: stream.response });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    // Start a follow-up and let its first chunk stream in.
+    const chip = pudgeEn.threeConclusions.followUps[0];
+    fireEvent.click(screen.getByRole('button', { name: chip }));
+    await flush();
+    stream.push({ text: 'FIRST CHUNK ' });
+    expect(await screen.findByText(/FIRST CHUNK/)).toBeTruthy();
+    expect((postCall()![1] as { signal: AbortSignal }).signal.aborted).toBe(false);
+
+    // Change hero while the stream is still in flight.
+    fireEvent.click(screen.getByRole('button', { name: /Change/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Faceless Void, 13/14/12' }));
+
+    // The in-flight request was aborted before the turns were cleared…
+    await waitFor(() => expect((postCall()![1] as { signal: AbortSignal }).signal.aborted).toBe(true));
+    // …the old thread is gone (the streamed answer; the chip itself may
+    // legitimately reappear as a preset now that `asked` was reset)…
+    expect(screen.queryByText(/FIRST CHUNK/)).toBeNull();
+    // …and the composer is released (no turn stuck streaming).
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled).toBe(false),
+    );
+
+    // A chunk arriving after the abort (the fetch mock ignores the signal) is
+    // dropped — no stale text is appended to the new thread.
+    stream.push({ text: 'STALE CHUNK' });
+    await flush();
+    expect(screen.queryByText(/STALE CHUNK/)).toBeNull();
+  });
+});
+
+describe('MatchPage — review_viewed tracking', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    flagState.fakedoor_v2 = true;
+    vi.mocked(trackReviewViewed).mockClear();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('tracks review_viewed once the conclusion cards render', async () => {
+    stubFetch({ base: enFixture, hero: pudgeEn });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    expect(trackReviewViewed).toHaveBeenCalledWith('9035042364');
+  });
+
+  it('does not track when threeConclusions is null (no cards rendered)', async () => {
+    stubFetch({ base: enFixture, hero: { ...pudgeEn, threeConclusions: null } });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText('The three conclusions aren’t available for this match yet.');
+
+    expect(trackReviewViewed).not.toHaveBeenCalled();
+  });
+});
+
+describe('MatchPage — initial-load progress', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    flagState.fakedoor_v2 = true;
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('shows the tool trace while the FIRST facts request is still pending', async () => {
+    const firstFacts = deferred<unknown>();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((input: unknown, init?: { method?: string }) => {
+      if ((init?.method ?? 'GET') === 'POST') return Promise.resolve(sseResponse([]));
+      const url = new URL(String(input), 'http://local.test');
+      if (url.searchParams.has('heroId')) return Promise.resolve(jsonResponse(pudgeEn));
+      return firstFacts.promise.then((payload) => jsonResponse(payload));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage('/m/9035042364?hero=pudge');
+
+    // facts === null + phase === 'loading' → the trace must already be visible.
+    expect(await screen.findByText('Fetching match')).toBeTruthy();
+    expect(screen.queryByText('Analyzed match · OpenDota')).toBeNull();
+
+    await act(async () => {
+      firstFacts.resolve(enFixture);
+    });
+    expect(await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
+    expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
   });
 });

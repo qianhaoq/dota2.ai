@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { MessageSquare } from 'lucide-react';
 import TopBarFeedbackModal from '../../app/FeedbackModal';
@@ -107,7 +108,14 @@ const TopBar: React.FC = () => {
           </svg>
         </button>
       </div>
-      <TopBarFeedbackModal lang={lang} isOpen={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      {/* The modal's fixed overlay must not be contained by this header's
+          backdrop-blur — portal it to <body> (no-op render when there is no
+          document, e.g. SSR). */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <TopBarFeedbackModal lang={lang} isOpen={feedbackOpen} onClose={() => setFeedbackOpen(false)} />,
+          document.body,
+        )}
     </header>
   );
 };

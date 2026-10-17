@@ -21,16 +21,17 @@ export type Flags = Record<FlagName, boolean>;
 
 /**
  * Product defaults (env unset): the v2 UI owns `/` (cutover done); the legacy
- * app lives under `/legacy`. Rollback lever: build env VITE_FF_UI_V2=0 puts
- * the legacy app back on `/` and unknown paths (`/legacy`, `/new`, `/m` are
- * route-forced and unaffected).
+ * app lives under `/legacy`. The v2 fake-door card ships ON for the MVP (the
+ * legacy app has its own CTA and is unaffected). Rollback levers: build env
+ * VITE_FF_UI_V2=0 puts the legacy app back on `/`; VITE_FF_FAKEDOOR_V2=0 (or
+ * `?ff=-fakedoor_v2` on the /new preview) hides the fake-door card.
  */
 export const DEFAULT_FLAGS: Flags = {
   ui_v2: true,
   legacy_mentor: true,
   legacy_tabs: true,
   legacy_next_actions: true,
-  fakedoor_v2: false,
+  fakedoor_v2: true,
 };
 
 const ENV_PREFIX = 'VITE_FF_';

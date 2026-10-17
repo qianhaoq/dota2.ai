@@ -8,10 +8,12 @@ describe('parseMatchInput — bare ids', () => {
     expect(parseMatchInput('7')).toBe('7');
   });
 
-  it('keeps >16-digit ids exact (never Number()-mangled)', () => {
-    const long = '12345678901234567'; // 17 digits — beyond float-safe parsing of match ids
-    expect(parseMatchInput(long)).toBe(long);
-    expect(parseMatchInput(long)).not.toBe(String(Number(long)));
+  it('accepts ids up to Number.MAX_SAFE_INTEGER; rejects anything above it (server does Number(matchId))', () => {
+    expect(parseMatchInput('9035042364')).toBe('9035042364');
+    expect(parseMatchInput('9007199254740991')).toBe('9007199254740991'); // MAX_SAFE_INTEGER
+    expect(parseMatchInput('9007199254740992')).toBeNull(); // MAX_SAFE_INTEGER + 1
+    expect(parseMatchInput('12345678901234567')).toBeNull(); // 17 digits
+    expect(parseMatchInput('https://opendota.com/matches/9007199254740992')).toBeNull();
   });
 
   it('rejects ids longer than 20 digits instead of truncating', () => {

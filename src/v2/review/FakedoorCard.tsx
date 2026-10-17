@@ -29,13 +29,18 @@ const FakedoorCard: React.FC = () => {
 
   if (dismissed) return null;
 
-  const close = () => {
-    setDismissed(true);
+  /** Once per session: "Not now" AND a successful submission both count. */
+  const markSeen = () => {
     try {
       window.sessionStorage.setItem(FAKEDOOR_SESSION_KEY, '1');
     } catch {
       // sessionStorage unavailable — stays hidden for this mount only.
     }
+  };
+
+  const close = () => {
+    setDismissed(true);
+    markSeen();
   };
 
   const notify = async () => {
@@ -49,6 +54,9 @@ const FakedoorCard: React.FC = () => {
         body: JSON.stringify(buildFakedoorSubmission(contact, lang)),
       });
       if (!res.ok) throw new Error(`feedback failed: ${res.status}`);
+      // The thanks state stays visible for this mount; the marker keeps the
+      // card from reappearing on a later remount in the same session.
+      markSeen();
       setState('thanks');
     } catch {
       setState('error');
