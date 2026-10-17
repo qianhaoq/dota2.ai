@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import OpenAI from 'openai';
 import { buildMatchFact, matchFactToPrompt } from './lib/matchReview/matchFacts.js';
 import { buildThreeConclusions } from './lib/matchReview/threeConclusions.js';
-import { validateReviewPostRequest } from './lib/matchReview/reviewRequestGuard.js';
+import { validateReviewPostRequest, validateReviewFollowUp } from './lib/matchReview/reviewRequestGuard.js';
 import { buildHeroNamesMap } from './lib/matchReview/heroNamesMap.js';
 import { reviewAiUnavailableNotice } from './lib/matchReview/reviewStream.js';
 import {
@@ -112,7 +112,8 @@ import {
 } from './lib/aiLanguage.js';
 import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyticsEvents.js';
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
-import { createLlmRateLimitMiddleware } from './lib/llmRateLimit.js';
+import { createLlmRateLimit } from './lib/llmRateLimit.js';
+import { rateLimitKey } from './lib/rateLimitKey.js';
 import { validateChatRequest, chatRequestErrorMessage } from './lib/chatRequest.js';
 import { normalizeFeedbackSubmission } from './lib/feedbackStore.js';
 
@@ -1662,57 +1663,68 @@ app.get('/api/heroes/:heroId/items', async (req, res) => {
   }
 });
 
-// ============ LLM endpoint per-IP rate limits ============
+// ============ LLM endpoint per-IP rate limits + global cost guard ============
 // Sliding-window per-IP limits for every route that can trigger a DeepSeek /
 // Gemini completion: /api/chat, /api/analyze, /api/playbook, POST
-// /api/suggestions and POST /api/review/:matchId (review cards also call the
-// LLM, so every POST counts; the GET facts route stays unlimited). One limiter
-// per endpoint group so a chatty chat user cannot starve review requests.
+// /api/suggestions and POST /api/review/:matchId (the GET facts route stays
+// unlimited). One limiter per endpoint group so a chatty chat user cannot
+// starve review requests. Budget is consumed by an explicit acquire() INSIDE
+// each handler, after validation and after every no-LLM short-circuit — so
+// invalid (400/413) requests, cache hits and deterministic answers never
+// consume quota, and junk traffic cannot exhaust the budget real users depend
+// on (QA P1). IPv6 clients are keyed by their /64 prefix
+// (lib/rateLimitKey.js): rotating addresses inside one block cannot multiply
+// an attacker's budget. Over-limit clients get a 429 with Retry-After.
+// The global per-group cap no longer answers 429. In its place a generous
+// global COST GUARD (LLM_GLOBAL_GUARD_<GROUP>, default 600/min) trips only
+// under sustained aggregate abuse; a tripped request skips the LLM call and
+// serves the route's existing deterministic fallback instead of failing, and
+// does not consume that client's per-IP quota (it never reached the LLM).
 // Env-tunable (see .env.example), parsed with parsePositiveInt and clamped to
 // sane ceilings so a typo cannot disable or explode a limit. In-memory like
 // the feedback limiter: per-instance, reset on redeploy.
 const LLM_RATE_MAX_WINDOW_MS = 60 * 60 * 1000;
 const LLM_RATE_MAX_PER_IP = 1000;
-const LLM_RATE_MAX_GLOBAL = 10000;
+const LLM_GLOBAL_GUARD_MAX = 100000;
+const LLM_GLOBAL_GUARD_DEFAULT = 600;
 const LLM_RATE_WINDOW_MS = Math.min(
   parsePositiveInt(process.env.LLM_RATE_WINDOW_MS, 60000), LLM_RATE_MAX_WINDOW_MS,
 );
-const LLM_RATE_GLOBAL_PER_WINDOW = Math.min(
-  parsePositiveInt(process.env.LLM_RATE_GLOBAL_PER_WINDOW, 300), LLM_RATE_MAX_GLOBAL,
-);
 
-function createLlmGroupLimiter(envName, perIpDefault) {
+function createLlmGroupLimiter(perIpEnvName, guardEnvName, perIpDefault) {
   return createSlidingWindowLimiter({
-    limit: Math.min(parsePositiveInt(process.env[envName], perIpDefault), LLM_RATE_MAX_PER_IP),
-    globalLimit: LLM_RATE_GLOBAL_PER_WINDOW,
+    limit: Math.min(parsePositiveInt(process.env[perIpEnvName], perIpDefault), LLM_RATE_MAX_PER_IP),
+    globalLimit: Math.min(
+      parsePositiveInt(process.env[guardEnvName], LLM_GLOBAL_GUARD_DEFAULT), LLM_GLOBAL_GUARD_MAX,
+    ),
     windowMs: LLM_RATE_WINDOW_MS,
   });
 }
 
-const chatLlmRateLimit = createLlmRateLimitMiddleware({
-  limiter: createLlmGroupLimiter('LLM_RATE_CHAT_PER_IP', 10),
+const chatLlmLimit = createLlmRateLimit({
+  limiter: createLlmGroupLimiter('LLM_RATE_CHAT_PER_IP', 'LLM_GLOBAL_GUARD_CHAT', 10),
   resolveClientIp,
   name: 'chat',
 });
 // analyze + playbook share one limiter (same coach screen, same budget).
-const analyzeLlmRateLimit = createLlmRateLimitMiddleware({
-  limiter: createLlmGroupLimiter('LLM_RATE_ANALYZE_PER_IP', 6),
+const analyzeLlmLimit = createLlmRateLimit({
+  limiter: createLlmGroupLimiter('LLM_RATE_ANALYZE_PER_IP', 'LLM_GLOBAL_GUARD_ANALYZE', 6),
   resolveClientIp,
   name: 'analyze+playbook',
 });
-const suggestionsLlmRateLimit = createLlmRateLimitMiddleware({
-  limiter: createLlmGroupLimiter('LLM_RATE_SUGGESTIONS_PER_IP', 20),
+const suggestionsLlmLimit = createLlmRateLimit({
+  limiter: createLlmGroupLimiter('LLM_RATE_SUGGESTIONS_PER_IP', 'LLM_GLOBAL_GUARD_SUGGESTIONS', 20),
   resolveClientIp,
   name: 'suggestions',
 });
-const reviewLlmRateLimit = createLlmRateLimitMiddleware({
-  limiter: createLlmGroupLimiter('LLM_RATE_REVIEW_PER_IP', 12),
+const reviewLlmLimit = createLlmRateLimit({
+  limiter: createLlmGroupLimiter('LLM_RATE_REVIEW_PER_IP', 'LLM_GLOBAL_GUARD_REVIEW', 30),
   resolveClientIp,
   name: 'review',
 });
 
 // ============ Playbook API - 本局打法 ============
-app.post('/api/playbook', analyzeLlmRateLimit, async (req, res) => {
+app.post('/api/playbook', async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
   
@@ -1806,17 +1818,26 @@ app.post('/api/playbook', analyzeLlmRateLimit, async (req, res) => {
       ? playbookData.find(h => h.heroId === focusHeroId) 
       : playbookData[0];
     
-    if (!apiKey || !openai) {
+    // Data-only answer whenever no AI text can be produced (unconfigured key,
+    // or a tripped global cost guard): the OpenDota data the route already
+    // gathered plus an error note — never a 429 for the cost guard.
+    const servePlaybookDataOnly = (errorText) => {
       if (wantsStream) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
         res.write(`data: ${JSON.stringify({ playbookData, focusHero })}\n\n`);
-        res.write(`data: ${JSON.stringify({ error: "DeepSeek API Key not configured - only data returned" })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: errorText })}\n\n`);
         res.write('data: [DONE]\n\n');
         return res.end();
       }
-      return res.json({ playbookData, focusHero, error: "DeepSeek API Key not configured" });
+      return res.json({ playbookData, focusHero, error: errorText });
+    };
+
+    if (!apiKey || !openai) {
+      return servePlaybookDataOnly(
+        wantsStream ? "DeepSeek API Key not configured - only data returned" : "DeepSeek API Key not configured",
+      );
     }
     
     const isZh = lang === 'zh';
@@ -1924,6 +1945,20 @@ ${statsSection}
 3. Follow the output format with complete reasoning and conclusion
 4. Give specific item and strategy advice against enemy lineup`;
 
+    // Count only now: allies were validated and the OpenDota data is fetched,
+    // so this request is LLM-bound. Still before any SSE header, so a 429 goes
+    // out as plain JSON. A tripped global cost guard degrades to the same
+    // data-only response as an unconfigured key.
+    const llmGate = analyzeLlmLimit.acquire(req);
+    if (!llmGate.ok) {
+      if (llmGate.reason === 'cost_guard') {
+        return servePlaybookDataOnly(
+          isZh ? 'AI 分析暂时不可用（成本保护已触发），仅返回数据部分' : 'AI analysis temporarily unavailable (cost guard); data-only response',
+        );
+      }
+      return analyzeLlmLimit.respondRateLimited(req, res, llmGate.retryAfterSec);
+    }
+
     if (wantsStream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -2000,7 +2035,7 @@ ${statsSection}
   }
 });
 
-app.post('/api/analyze', analyzeLlmRateLimit, async (req, res) => {
+app.post('/api/analyze', async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
   
@@ -2048,6 +2083,18 @@ app.post('/api/analyze', analyzeLlmRateLimit, async (req, res) => {
     const prompt = buildGroundedPrompt(radiant, dire, heroStats, matchupAnalysis, lang, userContext, isGrounded, heroConstants, proMatchEvidence);
 
     const systemInstruction = getDraftSystemInstruction(lang);
+
+    // Count only now: the key check and the OpenDota grounding phase are past
+    // and the completion is the next call. Still before any SSE header, so a
+    // 429 goes out as plain JSON. A tripped global cost guard answers the
+    // generic ai_unavailable payload (same as a provider failure) — never 429.
+    const llmGate = analyzeLlmLimit.acquire(req);
+    if (!llmGate.ok) {
+      if (llmGate.reason === 'cost_guard') {
+        return res.status(502).json(sanitizeLlmErrorForClient(lang));
+      }
+      return analyzeLlmLimit.respondRateLimited(req, res, llmGate.retryAfterSec);
+    }
 
     if (wantsStream) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -2135,13 +2182,25 @@ app.get('/api/suggestions', (_req, res) => {
 });
 
 // Next hero suggestions based on OpenDota matchup data
-app.post('/api/suggestions', suggestionsLlmRateLimit, async (req, res) => {
+app.post('/api/suggestions', async (req, res) => {
   try {
     const { allies = [], enemies = [], side = 'radiant', limit = 8, role } = req.body;
-    
+
     const heroStats = await getHeroStats();
     if (!heroStats || Object.keys(heroStats).length === 0) {
       return res.json({ suggestions: [], error: 'OpenDota data unavailable' });
+    }
+
+    // Count only now: the data-availability short-circuit above answers for
+    // free, everything below does the OpenDota-driven compute. A tripped
+    // global cost guard reuses that same empty-suggestions answer instead of
+    // a 429 (this route never calls an LLM).
+    const llmGate = suggestionsLlmLimit.acquire(req);
+    if (!llmGate.ok) {
+      if (llmGate.reason === 'cost_guard') {
+        return res.json({ suggestions: [], error: 'OpenDota data unavailable' });
+      }
+      return suggestionsLlmLimit.respondRateLimited(req, res, llmGate.retryAfterSec);
     }
     
     const alliedIds = new Set(allies.map(h => h.id));
@@ -2257,7 +2316,7 @@ app.post('/api/suggestions', suggestionsLlmRateLimit, async (req, res) => {
   }
 });
 
-app.post('/api/chat', chatLlmRateLimit, async (req, res) => {
+app.post('/api/chat', async (req, res) => {
   try {
     // Validation in lib/chatRequest.js: message shape/size caps, Gemini-format
     // history sanitized to OpenAI roles ('model' → 'assistant', 'system' and
@@ -2274,6 +2333,18 @@ app.post('/api/chat', chatLlmRateLimit, async (req, res) => {
 
     if (!apiKey || !openai) {
       return res.status(500).json({ error: "Server API Key not configured" });
+    }
+
+    // Count only now: the body has been validated (invalid bodies answered 400
+    // above, consuming nothing) and the completion is the next call. A tripped
+    // global cost guard answers the generic ai_unavailable payload (same as a
+    // provider failure) — never a 429.
+    const llmGate = chatLlmLimit.acquire(req);
+    if (!llmGate.ok) {
+      if (llmGate.reason === 'cost_guard') {
+        return res.status(502).json(sanitizeLlmErrorForClient(lang));
+      }
+      return chatLlmLimit.respondRateLimited(req, res, llmGate.retryAfterSec);
     }
 
     const systemContent = getLoreSystemInstruction(lang);
@@ -2409,7 +2480,7 @@ app.get('/api/review/suggestions', async (req, res) => {
 });
 
 app.get('/api/review/:matchId', handleMatchReviewFacts);
-app.post('/api/review/:matchId', reviewLlmRateLimit, handleMatchReview);
+app.post('/api/review/:matchId', handleMatchReview);
 // Explicit OpenDota parse submission — the ONLY path that calls submitParseRequest
 // (facts load and review stream report parse status read-only). GET gets a JSON
 // 405 so it never falls through to the SPA index.html fallback.
@@ -2482,6 +2553,15 @@ async function handleMatchReview(req, res) {
 
   if (!Number.isFinite(matchId) || matchId <= 0) {
     return respondReviewError(res, wantsStream, isZh ? '无效的比赛 ID' : 'Invalid match ID');
+  }
+
+  // Follow-up questions share /api/chat's per-message cap. Rejected before any
+  // budget is consumed (the limiter below only counts LLM-bound requests).
+  const followUpGuard = validateReviewFollowUp(followUp);
+  if (!followUpGuard.ok) {
+    return respondReviewError(res, wantsStream, followUpGuard.error, followUpGuard.status, {
+      message: chatRequestErrorMessage(followUpGuard.error, lang),
+    });
   }
 
   // Non-SSE Accept gets the same review as a single JSON result (not a bare 406).
@@ -2611,6 +2691,36 @@ async function handleMatchReview(req, res) {
         ? `请复盘以下比赛，聚焦英雄：${focusName}\n\n${groundedContext}\n\n${evidenceFacts}`
         : `Review this match, focus hero: ${focusName}\n\n${groundedContext}\n\n${evidenceFacts}`);
 
+    // Budget gate — consume only now. Everything above (validation, match
+    // fetch, unconfigured fallback, no-evidence card short-circuit) answers
+    // without the LLM and must not count. The responder has not opened the SSE
+    // stream yet, so a 429 still goes out as plain JSON. A tripped global cost
+    // guard serves the deterministic fallback (cards → fallback cards,
+    // follow-up → template text) instead of 429, and consumes no per-IP quota.
+    const aiCardsSkipped = !followUp && !canReviewAiCardsValidate(_catalog || []);
+    if (!aiCardsSkipped) {
+      const llmGate = reviewLlmLimit.acquire(req);
+      if (!llmGate.ok) {
+        if (llmGate.reason === 'cost_guard') {
+          responder.begin();
+          if (!followUp) {
+            responder.send({ matchFact, grounded: isGrounded, parse, threeConclusions });
+            responder.send({ reviewCards: buildFallbackAiCards(matchFact, lang), grounded: isGrounded });
+            responder.send({ reviewNotice: reviewAiUnavailableNotice(lang, 'cost_guard') });
+          } else {
+            // Same contract as the unconfigured/provider fallbacks: the
+            // deterministic template answers, flagged fallback:true.
+            console.warn(JSON.stringify({ severity: 'WARNING', event: 'review_followup_fallback', matchId, reason: 'cost_guard' }));
+            responder.send({ text: buildFollowUpFallbackText(matchFact, threeConclusions, lang), grounded: isGrounded, fallback: true });
+            responder.send({ reviewNotice: reviewFollowUpFallbackNotice(lang) });
+          }
+          responder.end();
+          return;
+        }
+        return reviewLlmLimit.respondRateLimited(req, res, llmGate.retryAfterSec);
+      }
+    }
+
     responder.begin();
 
     if (!followUp) {
@@ -2669,9 +2779,10 @@ async function handleMatchReview(req, res) {
     // When no primary_mistake category has its required evidence in this
     // match's catalog (typically unparsed matches: no timeline, no gold or CS
     // checkpoints), AI cards can never validate and a retry cannot help. Skip
-    // the DeepSeek calls and serve the deterministic fallback. Follow-ups are
+    // the DeepSeek calls and serve the deterministic fallback (this request
+    // consumed no budget — see aiCardsSkipped above). Follow-ups are
     // unaffected (no card validation).
-    if (!followUp && !canReviewAiCardsValidate(_catalog || [])) {
+    if (aiCardsSkipped) {
       console.warn(`[review:ai-validation] match=${matchId} ai_skipped reason=no_grounded_category`);
       const reviewCards = buildFallbackAiCards(matchFact, lang);
       responder.send({ reviewCards, grounded: isGrounded });
@@ -2954,7 +3065,9 @@ app.post('/api/feedback', (req, res) => {
     const ip = resolveClientIp(req);
     const now = Date.now();
     feedbackGlobalHits = feedbackGlobalHits.filter((t) => now - t < FEEDBACK_RATE_WINDOW_MS);
-    if (feedbackGlobalHits.length >= FEEDBACK_GLOBAL_LIMIT || feedbackRateLimited(ip)) {
+    // Limit key groups IPv6 by /64 (address rotation cannot multiply a
+    // budget); the stored record keeps the resolved IP as before.
+    if (feedbackGlobalHits.length >= FEEDBACK_GLOBAL_LIMIT || feedbackRateLimited(rateLimitKey(ip))) {
       return res.status(429).json({ ok: false, error: 'rate limited' });
     }
     feedbackGlobalHits.push(now);
@@ -3019,8 +3132,8 @@ app.post('/api/events', (req, res) => {
     return res.status(400).json({ ok: false, error: validated.error });
   }
 
-  // 客户端 IP 只作限流键，不进入任何持久化输出（无 IP、无 UA、无自由文本）。
-  if (!analyticsRateLimiter.tryConsume(resolveClientIp(req))) {
+  // 客户端 IP 只作限流键（IPv6 按 /64 聚合），不进入任何持久化输出（无 IP、无 UA、无自由文本）。
+  if (!analyticsRateLimiter.tryConsume(rateLimitKey(resolveClientIp(req)))) {
     return res.status(429).json({ ok: false, error: 'rate limited' });
   }
 

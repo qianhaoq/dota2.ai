@@ -20,8 +20,13 @@
 - The server is a hobby-scale Express app: it assumes a trusted frontend and
   rate-limits upstream providers. AI routes (`/api/chat`, `/api/analyze`,
   `/api/playbook`, `POST /api/suggestions`, `POST /api/review/:matchId`) have
-  in-memory, per-instance per-IP rate limits (`LLM_RATE_*`, see README), but
-  still **no** first-party app authentication, and the limits are not shared
+  in-memory, per-instance per-IP rate limits (`LLM_RATE_*`, see README). Only
+  validated, LLM-bound requests consume budget (invalid 400s, cache hits and
+  deterministic fallbacks never count), and IPv6 clients are keyed by their
+  `/64` prefix so address rotation inside one block cannot multiply a budget.
+  A generous global cost guard per group (`LLM_GLOBAL_GUARD_*`) degrades to the
+  deterministic fallback instead of answering 429. These are still **not**
+  authentication, and the limits are not shared
   across instances (effective cap ≈ instances × limit). Do not expose the
   service unauthenticated to the public internet (including Cloud Run with
   `--allow-unauthenticated`) without your own edge layer — prefer

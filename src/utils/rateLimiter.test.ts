@@ -43,12 +43,12 @@ describe('createSlidingWindowLimiter — retryAfterSec', () => {
     expect(limiter.tryConsume('1.1.1.1', now).ok).toBe(true);
     // Oldest (only) hit at t=0 expires at 60_000. At t=500 → 59.5s left → ceil 60.
     now = 500;
-    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 60 });
+    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 60, reason: 'client' });
     now = 1000;
-    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 59 });
+    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 59, reason: 'client' });
     // Exactly on the boundary → the hit has not expired yet (59_999-style), wait ≥ 1s.
     now = 60_000 - 1;
-    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 1 });
+    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 1, reason: 'client' });
   });
 
   it('reports from the oldest hit still inside the window, not the most recent', () => {
@@ -59,10 +59,10 @@ describe('createSlidingWindowLimiter — retryAfterSec', () => {
     expect(limiter.tryConsume('1.1.1.1', now).ok).toBe(true);
     now = 30_500;
     // Oldest hit t=0 expires at 60_000 → 29.5s → 30s (not 30_000-based 30s of the newer hit... which would also be 30 — use distinct offsets below).
-    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 30 });
+    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 30, reason: 'client' });
     now = 59_999;
     // Oldest hit still blocks for 1 more ms → 1s; the newer one for another 30s.
-    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 1 });
+    expect(limiter.tryConsume('1.1.1.1', now)).toEqual({ ok: false, retryAfterSec: 1, reason: 'client' });
   });
 });
 
@@ -75,7 +75,7 @@ describe('createSlidingWindowLimiter — global cap', () => {
     expect(limiter.tryConsume('2.2.2.2', now)).toEqual({ ok: true, retryAfterSec: 0 });
     now = 20_000;
     // Global window is full; retry waits for the OLDEST global hit (t=0 → 40s left → 40s).
-    expect(limiter.tryConsume('3.3.3.3', now)).toEqual({ ok: false, retryAfterSec: 40 });
+    expect(limiter.tryConsume('3.3.3.3', now)).toEqual({ ok: false, retryAfterSec: 40, reason: 'global' });
     now = 60_001;
     expect(limiter.tryConsume('3.3.3.3', now).ok).toBe(true); // both old hits expired
   });
@@ -135,5 +135,32 @@ describe('createSlidingWindowLimiter retryAfter when both buckets are full (Code
     expect(r.ok).toBe(false);
     // global frees at t=60s (29s), my bucket frees at t=90s (59s) -> 59
     expect(r.retryAfterSec).toBe(59);
+  });
+});
+
+describe('createSlidingWindowLimiter rejection reason (QA P1 cost guard)', () => {
+  it('labels client-only rejections as client', () => {
+    const limiter = createSlidingWindowLimiter({ limit: 1, globalLimit: 100, windowMs: 60_000, now: () => 0 });
+    expect(limiter.tryConsume('1.1.1.1', 0).ok).toBe(true);
+    expect(limiter.tryConsume('1.1.1.1', 1).reason).toBe('client');
+  });
+
+  it('labels global-only rejections as global', () => {
+    const limiter = createSlidingWindowLimiter({ limit: 100, globalLimit: 1, windowMs: 60_000, now: () => 0 });
+    expect(limiter.tryConsume('1.1.1.1', 0).ok).toBe(true);
+    expect(limiter.tryConsume('2.2.2.2', 1).reason).toBe('global');
+  });
+
+  it('prefers global when both buckets are full (cost guard degrades, never 429)', () => {
+    let now = 0;
+    const limiter = createSlidingWindowLimiter({ limit: 1, globalLimit: 1, windowMs: 60_000, now: () => now });
+    expect(limiter.tryConsume('1.1.1.1', now).ok).toBe(true);
+    now = 1000;
+    expect(limiter.tryConsume('1.1.1.1', now).reason).toBe('global');
+  });
+
+  it('successful consumes stay shape-compatible (no reason field)', () => {
+    const limiter = createSlidingWindowLimiter({ limit: 1, globalLimit: 1, windowMs: 60_000, now: () => 0 });
+    expect(limiter.tryConsume('1.1.1.1', 0)).toEqual({ ok: true, retryAfterSec: 0 });
   });
 });

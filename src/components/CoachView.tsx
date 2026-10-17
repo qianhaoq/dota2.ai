@@ -250,7 +250,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
             finishStream(streamGen);
             return;
           }
-          updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
+          // onError already carries the localized message text — no raw
+          // "Error: " prefix.
+          updateCoachMessage(msgId, { content: error, isStreaming: false });
           finishStream(streamGen);
         }
       }
@@ -303,7 +305,9 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
             finishStream(streamGen);
             return;
           }
-          updateCoachMessage(msgId, { content: `Error: ${error}`, isStreaming: false });
+          // onError already carries the localized message text — no raw
+          // "Error: " prefix.
+          updateCoachMessage(msgId, { content: error, isStreaming: false });
           finishStream(streamGen);
         }
       }
@@ -637,10 +641,12 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       });
     } catch (error) {
       if (inflightTaskRef.current !== taskId) return;
+      // Show the message itself (e.g. the server's localized 429 text), not a
+      // raw "Error: " prefix or String(err).
       const message = error instanceof Error && error.message === 'timeout'
         ? coachFetchTimeoutMessage(lang)
-        : String(error);
-      addCoachMessage({ type: 'coach', content: `Error: ${message}` });
+        : (error instanceof Error ? error.message : String(error));
+      addCoachMessage({ type: 'coach', content: message });
     } finally {
       if (inflightTaskRef.current === taskId) {
         setIsLoading(false);
@@ -669,8 +675,8 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
       if (inflightTaskRef.current !== taskId) return;
       const message = error instanceof Error && error.message === 'timeout'
         ? coachFetchTimeoutMessage(lang)
-        : String(error);
-      updateCoachMessage(msgId, { content: `Error: ${message}`, isStreaming: false });
+        : (error instanceof Error ? error.message : String(error));
+      updateCoachMessage(msgId, { content: message, isStreaming: false });
     } finally {
       if (inflightTaskRef.current === taskId) {
         setIsLoading(false);
