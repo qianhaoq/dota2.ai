@@ -90,3 +90,53 @@ describe('practice hero request payloads', () => {
     expect((body.allies as Hero[])[0].id).toBe(74);
   });
 });
+
+describe('fetchSuggestions error surfacing (QA P2: 429 shows the server message)', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects with the server-localized rate-limit message on 429 (zh)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({
+        error: 'rate_limited',
+        message: '请求过于频繁，请约 42 秒后再试',
+        retryAfter: 42,
+      }),
+    });
+
+    await expect(
+      fetchSuggestions([], [], 'radiant', undefined, 'zh'),
+    ).rejects.toThrow('请求过于频繁，请约 42 秒后再试');
+  });
+
+  it('rejects with the server-localized rate-limit message on 429 (en)', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({
+        error: 'rate_limited',
+        message: 'Too many requests, please retry in about 42s',
+        retryAfter: 42,
+      }),
+    });
+
+    await expect(
+      fetchSuggestions([], [], 'radiant', undefined, 'en'),
+    ).rejects.toThrow('Too many requests, please retry in about 42s');
+  });
+
+  it('still returns an empty list for network failures (old behavior)', async () => {
+    fetchMock.mockRejectedValue(new Error('network down'));
+    await expect(fetchSuggestions([], [], 'radiant', undefined, 'en')).resolves.toEqual([]);
+  });
+});

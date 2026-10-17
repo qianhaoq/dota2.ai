@@ -297,12 +297,14 @@ export interface HeroSuggestion {
 }
 
 export const fetchSuggestions = async (
-  allies: Hero[], 
-  enemies: Hero[], 
+  allies: Hero[],
+  enemies: Hero[],
   side: 'radiant' | 'dire',
   role?: string,
   lang?: string
 ): Promise<HeroSuggestion[]> => {
+  let data: { suggestions?: HeroSuggestion[] } = {};
+  let notOk = false;
   try {
     const response = await fetch('/api/suggestions', {
       method: 'POST',
@@ -312,12 +314,23 @@ export const fetchSuggestions = async (
       body: JSON.stringify({ allies, enemies, side, limit: 8, role, lang }),
     });
 
-    const data = await response.json();
-    return data.suggestions || [];
+    data = await response.json();
+    notOk = !response.ok;
   } catch (error) {
     console.error('Suggestions fetch error:', error);
     return [];
   }
+
+  if (notOk) {
+    // Surface the server's localized payload (e.g. the 429 rate-limit
+    // message) instead of silently rendering an empty list.
+    throw new Error(serverErrorMessage(
+      data,
+      lang === 'zh' ? '获取推荐失败' : 'Failed to fetch suggestions',
+    ));
+  }
+
+  return data.suggestions || [];
 };
 
 export const chatWithShopkeeper = async (history: {role: string, parts: {text: string}[]}[], message: string, lang: Language): Promise<string> => {
