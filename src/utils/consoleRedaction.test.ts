@@ -83,6 +83,20 @@ describe('installConsoleRedaction (unit)', () => {
     uninstall();
   });
 
+  it('redacts generic credential names in structured context (Codex P1)', () => {
+    const { consoleObj, errorMock } = makeConsole();
+    const uninstall = installConsoleRedaction(consoleObj);
+    consoleObj.error('Could not parse message into JSON:', '{"token":"qafaketoken123456"');
+    consoleObj.error('cfg', { token: 'qafaketoken123456', password: 'qafakepw123' });
+    consoleObj.error('password=qafakepw123 secret=qafakesecret1');
+    consoleObj.error(JSON.stringify({ line: JSON.stringify({ key: 'qafakekey98765' }) }));
+    for (const [l] of errorMock.mock.calls as unknown[][]) {
+      expect(String(l)).not.toMatch(/qafake(token|pw|secret|key)/);
+      expect(String(l)).toContain('[REDACTED]');
+    }
+    uninstall();
+  });
+
   it('bounds serialization of large objects (Codex P2)', () => {
     const { consoleObj, logMock } = makeConsole();
     const uninstall = installConsoleRedaction(consoleObj);
