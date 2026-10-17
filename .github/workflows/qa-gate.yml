@@ -7,7 +7,10 @@
 # pull_request_target keeps the workflow YAML on the trusted base branch.
 #
 # IMPORTANT: the gate REMOVES the QA label on every new push
-# (synchronize), which needs write access — the caller must grant
+# (synchronize) — except, with keep_qa_on_clean_main_update: true (set
+# below), a push that only merges main cleanly into the QA-tested head;
+# then the label is kept and a sticky PR comment explains why. Removal
+# needs write access — the caller must grant
 # pull-requests: write and issues: write (a reusable workflow can only
 # restrict permissions further, never elevate them).
 #
