@@ -32,12 +32,42 @@ describe('parsePositiveInt (env int parsing)', () => {
     expect(parsePositiveInt('1e9', 40)).toBe(1_000_000_000);
     expect(parsePositiveInt(String(Number.MAX_SAFE_INTEGER), 40)).toBe(Number.MAX_SAFE_INTEGER);
   });
+
+  it('rejects hex/octal/binary literals that Number() would accept', () => {
+    // Number('0x1F40') === 8000 — a base prefix in an env value is a config
+    // mistake, never a valid decimal budget.
+    for (const literal of ['0x1F40', '0o17', '0b101', '0X1f40', ' 0x10 ', '1_000']) {
+      expect(parsePositiveInt(literal, 42)).toBe(42);
+    }
+  });
+
+  it('still accepts plain decimal and exponent forms', () => {
+    expect(parsePositiveInt('8000', 1)).toBe(8000);
+    expect(parsePositiveInt('8e3', 1)).toBe(8000);
+    expect(parsePositiveInt('8E3', 1)).toBe(8000);
+    expect(parsePositiveInt('8e+3', 1)).toBe(8000);
+  });
+
+  it('clamps to the optional { max } upper bound', () => {
+    expect(parsePositiveInt('8000', 1, { max: 100 })).toBe(100);
+    expect(parsePositiveInt('100', 1, { max: 100 })).toBe(100);
+    expect(parsePositiveInt('20', 1, { max: 100 })).toBe(20);
+    // max applies to number inputs too; fallback is untouched by max.
+    expect(parsePositiveInt(5000, 1, { max: 100 })).toBe(100);
+    expect(parsePositiveInt('abc', 7, { max: 100 })).toBe(7);
+  });
 });
 
 describe('envPositiveInt (server.js wiring)', () => {
   it('server.js parses env ints via parsePositiveInt, not parseInt', () => {
     const src = readFileSync(join(__dirname, '../../server.js'), 'utf8');
-    expect(src).toMatch(/return parsePositiveInt\(process\.env\[name\], fallback\);/);
+    expect(src).toMatch(/return parsePositiveInt\(process\.env\[name\], fallback, max != null \? \{ max \} : undefined\);/);
     expect(src).not.toMatch(/parseInt\(process\.env\[name\]/);
+  });
+
+  it('caps the parse-submission budgets at 100 global / 20 per client', () => {
+    const src = readFileSync(join(__dirname, '../../server.js'), 'utf8');
+    expect(src).toMatch(/envPositiveInt\('PARSE_BUDGET_GLOBAL_MAX', 10, 100\)/);
+    expect(src).toMatch(/envPositiveInt\('PARSE_BUDGET_PER_CLIENT_MAX', 3, 20\)/);
   });
 });
