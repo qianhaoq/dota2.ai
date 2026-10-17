@@ -11,6 +11,7 @@ import { createSlidingWindowLimiter } from '../../lib/rateLimiter.js';
 import {
   validateReviewFollowUp,
 } from '../../lib/matchReview/reviewRequestGuard.js';
+import { reviewFollowUpFallbackNotice } from '../../lib/matchReview/followUpFallback.js';
 
 // The repo has no @types/express; type just the surface the harness touches.
 type ExpressApp = {
@@ -335,5 +336,100 @@ describe('review follow-up length cap at HTTP level (QA P2)', () => {
     expect((await post({ followUp: 'x'.repeat(2000) })).status).toBe(200);
     expect((await post({})).status).toBe(200);
     expect(reachedLlmSection).toHaveBeenCalledTimes(2);
+  });
+});
+
+// Review route wiring mirroring server.js handleMatchReview's budget gate:
+// validate follow-up → acquire → cost_guard serves the deterministic
+// template fallback (fallback:true + notice), per-IP over-limit answers 429.
+function createReviewHarness(options: { perIp?: number; global?: number } = {}) {
+  const llmCall = vi.fn(async () => 'ai text');
+  const reviewLimit = createLlmRateLimit({
+    limiter: createSlidingWindowLimiter({
+      limit: options.perIp ?? 30,
+      globalLimit: options.global ?? 600,
+      windowMs: 60_000,
+    }),
+    resolveClientIp,
+    name: 'review',
+    warn: vi.fn(),
+  });
+  const express = createRequire(import.meta.url)('express') as
+    (() => ExpressApp) & { json: () => unknown };
+  const app = express();
+  app.use(express.json());
+  app.post('/api/review/:matchId', async (req: HarnessReq, res: HarnessRes) => {
+    const body = (req.body ?? {}) as { followUp?: unknown; lang?: unknown };
+    const lang = normalizeUiLang(body.lang);
+    const followUp = typeof body.followUp === 'string' ? body.followUp.trim() : '';
+    const guard = validateReviewFollowUp(followUp);
+    if (!guard.ok) {
+      return res.status(guard.status || 400).json({ error: guard.error, message: chatRequestErrorMessage(guard.error, lang) });
+    }
+    if (!followUp) return res.status(400).json({ error: 'invalid_request' });
+    const gate = reviewLimit.acquire(req);
+    if (!gate.ok) {
+      if (gate.reason === 'cost_guard') {
+        return res.status(200).json({ text: 'template fallback', fallback: true, reviewNotice: reviewFollowUpFallbackNotice(lang) });
+      }
+      return reviewLimit.respondRateLimited(req, res as never, gate.retryAfterSec);
+    }
+    return res.status(200).json({ text: await llmCall() });
+  });
+  return { app, llmCall };
+}
+
+describe('review route: QA P1 repro and cost guard → template fallback', () => {
+  let server: Server | null = null;
+  let baseUrl = '';
+  let llmCall: ReturnType<typeof createReviewHarness>['llmCall'];
+  const start = async (opts: { perIp?: number; global?: number }) => {
+    const h = createReviewHarness(opts);
+    llmCall = h.llmCall;
+    server = h.app.listen(0, '127.0.0.1');
+    await new Promise<void>((resolve) => server!.once('listening', () => resolve()));
+    baseUrl = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+  };
+  afterEach(async () => {
+    server?.closeAllConnections?.();
+    await new Promise<void>((resolve) => server ? server.close(() => resolve()) : resolve());
+    server = null;
+  });
+  const post = (peer: string, body: unknown) => fetch(`${baseUrl}/api/review/9035042364`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': peer },
+    body: JSON.stringify(body),
+  });
+
+  it('310 invalid review POSTs from one /64 leave an IPv4 user unaffected', async () => {
+    await start({ perIp: 30, global: 300 });
+    const statuses = await Promise.all(Array.from({ length: 310 }, (_, i) =>
+      post(`2001:db8:1:2::${(i + 1).toString(16)}`, { followUp: 'x'.repeat(2001) }).then((r) => r.status)));
+    expect(new Set(statuses)).toEqual(new Set([400]));
+    const ok = await post('203.0.113.7', { followUp: 'why did we lose?' });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { text?: string }).text).toBe('ai text');
+  });
+
+  it('a tripped global guard serves the template fallback (200, fallback:true), never 429', async () => {
+    await start({ perIp: 30, global: 2 });
+    expect((await post('203.0.113.1', { followUp: 'q1' })).status).toBe(200);
+    expect((await post('203.0.113.2', { followUp: 'q2' })).status).toBe(200);
+    const tripped = await post('203.0.113.3', { followUp: 'q3' });
+    expect(tripped.status).toBe(200);
+    const payload = await tripped.json() as { fallback?: boolean; reviewNotice?: unknown };
+    expect(payload.fallback).toBe(true);
+    expect(payload.reviewNotice).toBeTruthy();
+    expect(llmCall).toHaveBeenCalledTimes(2);
+  });
+
+  it('per-IP review limit (30) still answers 429 for one /64', async () => {
+    await start({ perIp: 30, global: 600 });
+    for (let i = 0; i < 30; i += 1) {
+      expect((await post(`2001:db8:9:9::${i + 1}`, { followUp: 'q' })).status).toBe(200);
+    }
+    const limited = await post('2001:db8:9:9::ffff', { followUp: 'q' });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('retry-after')).toBeTruthy();
   });
 });
