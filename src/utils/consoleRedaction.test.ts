@@ -115,6 +115,37 @@ describe('installConsoleRedaction (unit)', () => {
   });
 });
 
+describe('installConsoleRedaction (Codex P1/P2: no truncation, structured fields intact)', () => {
+  it('keeps a long feedback JSON record complete and valid', () => {
+    const { consoleObj, logMock } = makeConsole();
+    const uninstall = installConsoleRedaction(consoleObj);
+    const record = { event: 'feedback_submitted', id: '3f2b8c1e-9a7d-4e21-b0c4-5d6e7f8a9b0c', message: 'x '.repeat(2000) };
+    const line = JSON.stringify(record);
+    consoleObj.log(line);
+    const out = logMock.mock.calls[0][0];
+    expect(out).toBe(line);
+    expect(JSON.parse(out)).toEqual(record);
+    uninstall();
+  });
+
+  it('does not redact event names or UUIDs but still redacts credentials', () => {
+    const { consoleObj, warnMock } = makeConsole();
+    const uninstall = installConsoleRedaction(consoleObj);
+    consoleObj.warn(JSON.stringify({
+      event: 'review_followup_fallback',
+      other: 'review_ai_provider_error',
+      requestId: '3f2b8c1e-9a7d-4e21-b0c4-5d6e7f8a9b0c',
+      detail: `Bearer ${QA_FAKE_KEY}`,
+    }));
+    const out = warnMock.mock.calls[0][0];
+    expect(out).toContain('review_followup_fallback');
+    expect(out).toContain('review_ai_provider_error');
+    expect(out).toContain('3f2b8c1e-9a7d-4e21-b0c4-5d6e7f8a9b0c');
+    expect(out).not.toContain('ABCD1234');
+    uninstall();
+  });
+});
+
 describe('installConsoleRedaction × real openai SDK (malformed SSE chunk regression)', () => {
   it('keeps the SDK console.error output but strips the leaked key from it', async () => {
     // Spy on the ORIGINAL console.error first, then install the redaction

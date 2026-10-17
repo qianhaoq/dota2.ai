@@ -1033,7 +1033,12 @@ async function getHeroItemPopularity(heroId, fetchOptions = {}) {
       lateGame: formatItems(data.late_game_items)
     };
     
-    cache.itemPopularity.set(heroId, { data: popularity, timestamp: now });
+    // Never cache a degraded result: getItemConstants swallows a client abort
+    // (and upstream failures) and returns its fallback ({} on a cold cache),
+    // which would pin numeric item names / zero costs for every later client.
+    if (!fetchOptions.signal?.aborted && Object.keys(itemConstants || {}).length > 0) {
+      cache.itemPopularity.set(heroId, { data: popularity, timestamp: now });
+    }
     return popularity;
   } catch (err) {
     console.error(`Failed to fetch item popularity for hero ${heroId}:`, redactSecrets(err.message));
