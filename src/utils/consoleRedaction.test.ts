@@ -99,6 +99,10 @@ describe('installConsoleRedaction (unit)', () => {
     consoleObj.error('STEAM_WEB_API_KEY=qafakesecret0123456789');
     consoleObj.error('cfg', { password: 'qafakepw!@#' });
     consoleObj.error('{"password":"$2b$10$qafakepw/hash.value","user":"bob"}');
+    consoleObj.error(JSON.stringify({ password: 'abc"qafakepwSUFFIX' })); // escaped quote
+    consoleObj.error(JSON.stringify({ line: JSON.stringify({ password: 'abc"qafakepwSUFFIX\\tail' }) }));
+    consoleObj.error('cfg', { deepseekApiKey: 'qafakekeyopaque1', openDotaApiKey: 'qafakekeyopaque2' }); // camelCase
+    consoleObj.error('myAccessToken=qafaketokenopaque3 next');
     for (const [l] of errorMock.mock.calls as unknown[][]) {
       expect(String(l)).not.toMatch(/qafake(token|pw|secret|key)/);
       expect(String(l)).toContain('[REDACTED]');
