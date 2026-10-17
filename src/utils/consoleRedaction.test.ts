@@ -70,6 +70,13 @@ describe('installConsoleRedaction (unit)', () => {
     uninstall();
   });
 
+  it('redacts short unquoted values and Map => entries (Codex P1)', () => {
+    expect(redactCredentials('password=p@ss')).toBe('password=[REDACTED]');
+    expect(redactCredentials('token=12345')).toBe('token=[REDACTED]');
+    expect(redactCredentials('apiKey=abcde')).toBe('apiKey=[REDACTED]');
+    expect(redactCredentials("'OPENDOTA_API_KEY' => 'qafakeopaque123456789'")).toBe("'OPENDOTA_API_KEY' => '[REDACTED]'");
+  });
+
   it('redactCredentials keeps JSON field names when masking values (Codex P1)', () => {
     const out = redactCredentials(JSON.stringify({ event: 'x', password: 'p@ssw0rd!', user: 'bob' }));
     expect(out).toBe('{"event":"x","password":"[REDACTED]","user":"bob"}');
