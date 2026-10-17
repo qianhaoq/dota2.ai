@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { streamFollowUpCompletion } from '../../lib/matchReview/followUpCompletion.js';
+import { clampFollowUpAttemptMs } from '../../lib/matchReview/followUpTimeout.js';
 import { sanitizeLlmErrorForClient } from '../../lib/llmErrors.js';
 
 // Mock providers only — no network, mock credential shapes if any appear.
@@ -172,20 +173,199 @@ describe('streamFollowUpCompletion (timeout → fallback → error)', () => {
   });
 });
 
+describe('streamFollowUpCompletion (empty-stream fallback)', () => {
+  it('treats a cleanly-closed empty stream as a provider failure and streams from Gemini instead', async () => {
+    const texts: string[] = [];
+    const failures: string[] = [];
+    // Upstream proxy truncated the SSE body: no content, no finish_reason.
+    const deepseek = { name: 'deepseek', create: async () => streamOf([]) };
+    const gemini = { name: 'gemini', create: async () => streamOf([chunk('gemini answer', 'stop')]) };
+
+    const outcome = await streamFollowUpCompletion({
+      providers: [deepseek, gemini],
+      attemptMs: 40000,
+      onText: (t) => texts.push(t),
+      onProviderError: (i) => failures.push(`${i.provider}:${i.error}`),
+    });
+
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini' });
+    expect(texts).toEqual(['gemini answer']);
+    expect(failures).toEqual(['deepseek:empty_stream']);
+  });
+
+  it('returns failed when every provider closes with an empty, non-terminal stream', async () => {
+    const texts: string[] = [];
+    const failures: string[] = [];
+    const providers = [
+      { name: 'deepseek', create: async () => streamOf([]) },
+      { name: 'gemini', create: async () => streamOf([chunk(undefined)]) },
+    ];
+
+    const outcome = await streamFollowUpCompletion({
+      providers,
+      attemptMs: 40000,
+      onText: (t) => texts.push(t),
+      onProviderError: (i) => failures.push(`${i.provider}:${i.error}`),
+    });
+
+    expect(outcome).toEqual({ status: 'failed', finishReason: null });
+    expect(texts).toEqual([]);
+    expect(failures).toEqual(['deepseek:empty_stream', 'gemini:empty_stream']);
+  });
+
+  it('keeps done semantics for an empty stream that ended with a terminal finish_reason', async () => {
+    let geminiCalled = false;
+    const outcome = await streamFollowUpCompletion({
+      providers: [
+        { name: 'deepseek', create: async () => streamOf([chunk(undefined, 'stop')]) },
+        { name: 'gemini', create: async () => { geminiCalled = true; return streamOf([]); } },
+      ],
+      attemptMs: 40000,
+      onText: () => {},
+    });
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'deepseek' });
+    expect(geminiCalled).toBe(false);
+  });
+});
+
+describe('streamFollowUpCompletion (request-budget clamp)', () => {
+  it('caps each attempt at the remaining request budget, not the configured timeout', async () => {
+    vi.useFakeTimers();
+    const failures: string[] = [];
+    let deepSeekAborted = false;
+    let geminiCalled = false;
+    const deepseek = {
+      name: 'deepseek',
+      create: (signal: AbortSignal) => {
+        signal.addEventListener('abort', () => { deepSeekAborted = true; });
+        return never();
+      },
+    };
+    const gemini = {
+      name: 'gemini',
+      create: async () => {
+        geminiCalled = true;
+        return streamOf([chunk('x', 'stop')]);
+      },
+    };
+
+    // 140s of the 170s budget already spent: the first attempt may only run
+    // for the remaining 30s, not the configured 40s.
+    const startedAt = Date.now() - 140000;
+    const pending = streamFollowUpCompletion({
+      providers: [deepseek, gemini],
+      attemptMs: 40000,
+      startedAt,
+      budgetMs: 170000,
+      minAttemptMs: 5000,
+      onText: () => {},
+      onProviderError: (i) => failures.push(`${i.provider}:${i.error}`),
+    });
+    await vi.advanceTimersByTimeAsync(30000);
+    const outcome = await pending;
+
+    // Deadline hit at 30s (budget-clamped); nothing left for Gemini.
+    expect(outcome).toEqual({ status: 'failed', finishReason: null });
+    expect(failures).toEqual(['deepseek:deadline']);
+    expect(deepSeekAborted).toBe(true);
+    expect(geminiCalled).toBe(false);
+  });
+
+  it('skips the next provider when the remaining budget drops below minAttemptMs', async () => {
+    const failures: string[] = [];
+    let geminiCalled = false;
+    const httpErr = Object.assign(new Error('boom'), { status: 500 });
+    const start = Date.now();
+    let clock = start;
+    const deepseek = {
+      name: 'deepseek',
+      // Fails fast in wall time but burns the budget down to 3s remaining
+      // (via the injected clock) before handing over to the next provider.
+      create: async () => { clock = start + 167000; throw httpErr; },
+    };
+    const gemini = {
+      name: 'gemini',
+      create: async () => {
+        geminiCalled = true;
+        return streamOf([chunk('x', 'stop')]);
+      },
+    };
+
+    const outcome = await streamFollowUpCompletion({
+      providers: [deepseek, gemini],
+      attemptMs: 40000,
+      startedAt: start,
+      budgetMs: 170000,
+      minAttemptMs: 5000,
+      now: () => clock,
+      onText: () => {},
+      onProviderError: (i) => failures.push(`${i.provider}:${i.error}`),
+    });
+
+    expect(outcome).toEqual({ status: 'failed', finishReason: null });
+    expect(geminiCalled).toBe(false);
+    // Budget exhaustion is not a provider failure: only DeepSeek is reported.
+    expect(failures).toEqual(['deepseek:http_500']);
+  });
+
+  it('does not attempt any provider once the request budget is exhausted', async () => {
+    let called = false;
+    const providers = [{
+      name: 'deepseek',
+      create: async () => {
+        called = true;
+        return streamOf([chunk('x', 'stop')]);
+      },
+    }];
+
+    // 1s left < 5s floor: not even the first provider is attempted.
+    const outcome = await streamFollowUpCompletion({
+      providers,
+      attemptMs: 40000,
+      startedAt: Date.now() - 169000,
+      budgetMs: 170000,
+      minAttemptMs: 5000,
+      onText: () => {},
+    });
+
+    expect(outcome).toEqual({ status: 'failed', finishReason: null });
+    expect(called).toBe(false);
+  });
+});
+
 describe('server.js follow-up wiring (pattern guard)', () => {
   const server = readFileSync(join(__dirname, '../../server.js'), 'utf8');
-  const num = (name: string) =>
-    Number(server.match(new RegExp(`const ${name} = envPositiveInt\\('${name}', (\\d+)\\)`))?.[1] ?? NaN);
+  const num = (name: string) => Number(server.match(new RegExp(`const ${name} = (\\d+)`))![1]);
 
-  it('configures the follow-up attempt timeout (~40s, env-tunable)', () => {
-    expect(num('REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS')).toBe(40000);
+  it('configures the follow-up attempt timeout (~40s, env-tunable but budget-clamped)', () => {
+    expect(server).toMatch(/clampFollowUpAttemptMs\(\s*process\.env\.REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,/);
+    // Whatever the env holds, the effective attempt timeout after clamping is
+    // bounded by the server's own budgets.
+    for (const raw of [undefined, 1, 40000, 999999, 'garbage']) {
+      expect(clampFollowUpAttemptMs(raw, {
+        fetchBudgetMs: num('REVIEW_FETCH_BUDGET_MS'),
+        requestBudgetMs: num('REVIEW_REQUEST_BUDGET_MS'),
+        maxAttempts: 2,
+        minAttemptMs: num('REVIEW_MIN_ATTEMPT_MS'),
+      })).toBeLessThanOrEqual(40000);
+    }
     expect(server).toMatch(/streamFollowUpCompletion\(\{\s*[\s\S]*?attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS/);
+    // Each attempt is additionally capped by the remaining request budget.
+    expect(server).toMatch(/streamFollowUpCompletion\(\{\s*[\s\S]*?minAttemptMs: REVIEW_MIN_ATTEMPT_MS,/);
   });
 
   it('keeps fetch + two follow-up attempts inside the request budget', () => {
-    const budget = Number(server.match(/const REVIEW_REQUEST_BUDGET_MS = (\d+)/)![1]);
-    const fetch = Number(server.match(/const REVIEW_FETCH_BUDGET_MS = (\d+)/)![1]);
-    expect(fetch + 2 * num('REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS')).toBeLessThanOrEqual(budget);
+    const budget = num('REVIEW_REQUEST_BUDGET_MS');
+    const fetch = num('REVIEW_FETCH_BUDGET_MS');
+    for (const raw of [undefined, 1, 40000, 999999]) {
+      const attemptMs = clampFollowUpAttemptMs(raw, {
+        fetchBudgetMs: fetch,
+        requestBudgetMs: budget,
+        maxAttempts: 2,
+        minAttemptMs: num('REVIEW_MIN_ATTEMPT_MS'),
+      });
+      expect(fetch + 2 * attemptMs).toBeLessThanOrEqual(budget);
+    }
   });
 
   it('answers total follow-up failure with the sanitized generic payload, not provider text', () => {

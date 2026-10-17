@@ -45,6 +45,8 @@ import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
 import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
 import { streamFollowUpCompletion } from './lib/matchReview/followUpCompletion.js';
+import { followUpProvidersAvailable } from './lib/matchReview/followUpAvailability.js';
+import { clampFollowUpAttemptMs } from './lib/matchReview/followUpTimeout.js';
 import { withCompletionDeadline } from './lib/completionDeadline.js';
 import {
   isLlmSdkError,
@@ -66,9 +68,19 @@ const REVIEW_MIN_ATTEMPT_MS = 5000;
 // the request budget for DeepSeek 40s + Gemini 40s.
 const REVIEW_FETCH_BUDGET_MS = 90000;
 // Per-attempt deadline for the review follow-up stream (DeepSeek first, then
-// the Gemini fallback with its own deadline). Env-tunable; fetch budget +
-// two follow-up attempts must stay inside REVIEW_REQUEST_BUDGET_MS.
-const REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS = envPositiveInt('REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS', 40000);
+// the Gemini fallback with its own deadline). Env-tunable, but clamped so
+// fetch budget + two follow-up attempts always fit REVIEW_REQUEST_BUDGET_MS
+// (and stay below the client's fixed 180s review timeout); each attempt is
+// capped again by the request's remaining budget at call time.
+const REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS = clampFollowUpAttemptMs(
+  process.env.REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
+  {
+    fetchBudgetMs: REVIEW_FETCH_BUDGET_MS,
+    requestBudgetMs: REVIEW_REQUEST_BUDGET_MS,
+    maxAttempts: 2,
+    minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
+  },
+);
 import {
   createParseRequestSubmitter,
   PARSE_REQUEST_TIMEOUT_MS,
@@ -2441,8 +2453,10 @@ async function handleMatchReview(req, res) {
     const parse = resolveReviewParseStatus(matchId, matchData, lang);
     const threeConclusions = buildThreeConclusions(matchFact, { lang });
 
-    // Cards can run on Gemini alone; follow-ups stream from DeepSeek only.
-    if (followUp ? !openai : (!openai && !gemini)) {
+    // Cards and follow-ups share the DeepSeek → Gemini provider chain, so
+    // either provider alone serves both. Only a deployment with nothing
+    // configured answers fallback cards here / rejects the follow-up.
+    if (!openai && !gemini) {
       responder.begin();
       if (!followUp) {
         responder.send({ matchFact, grounded: isGrounded, parse, threeConclusions });
@@ -2509,7 +2523,8 @@ async function handleMatchReview(req, res) {
     };
     // Follow-ups stream through their own provider chain (DeepSeek with the
     // SDK's default retries, then Gemini with none), each attempt bounded by
-    // REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS. Card requests go through the card
+    // REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS (and the remaining request budget).
+    // Card requests go through the card
     // provider chain (DeepSeek, then Gemini), each attempt under an app-owned
     // deadline capped by the request budget, no SDK retries (the validation
     // retry already makes a second attempt).
@@ -2561,6 +2576,12 @@ async function handleMatchReview(req, res) {
         const outcome = await streamFollowUpCompletion({
           providers: followUpProviders,
           attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
+          // Each attempt is further capped by the request's remaining budget;
+          // with less than REVIEW_MIN_ATTEMPT_MS left, remaining providers are
+          // skipped and the generic sanitized error is served instead.
+          startedAt: reviewStartedAt,
+          budgetMs: REVIEW_REQUEST_BUDGET_MS,
+          minAttemptMs: REVIEW_MIN_ATTEMPT_MS,
           signal: abortController.signal,
           onText: (text) => responder.send({ text, grounded: isGrounded }),
           shouldStop: () => clientGone || res.writableEnded,
@@ -2612,10 +2633,17 @@ async function handleMatchReview(req, res) {
         const cards = usedFallback
           ? buildFallbackAiCards(matchFact, lang)
           : resolvedCards;
-        // Follow-up chat streams from DeepSeek only; when it is unconfigured
-        // or failed during this request (cards came from Gemini fallback), drop
-        // the suggestions so the client keeps follow-up actions disabled.
-        const reviewCards = (openai && !failedCardProviders.has('deepseek')) ? cards : { ...cards, followups: [] };
+        // Follow-up chat streams through the same chain as cards (DeepSeek →
+        // Gemini). Keep the suggestions whenever any configured follow-up
+        // provider survived this request (followUpProvidersAvailable also
+        // covers a Gemini-only deployment); drop them only when none did, so
+        // the client keeps follow-up actions disabled (it reads empty
+        // followups as "follow-ups unavailable").
+        const reviewCards = followUpProvidersAvailable({
+          deepseekConfigured: Boolean(openai),
+          geminiConfigured: Boolean(gemini),
+          failedCardProviders,
+        }) ? cards : { ...cards, followups: [] };
         // writableEnded stays false on an aborted close, so gate on
         // clientGone too: a gone client must not get a final write/end.
         if (!clientGone && !res.writableEnded) {
