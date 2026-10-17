@@ -1,3 +1,6 @@
+// MUST stay the first import: wraps console.* with secret redaction before any
+// dependency (openai SDK, express, …) can log raw provider output to stdout.
+import './lib/installConsoleRedaction.js';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -43,6 +46,8 @@ import {
 } from './lib/matchReview/reviewResponder.js';
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
+import { createSseAbort } from './lib/sseAbort.js';
+import { logUnredacted } from './lib/consoleRedaction.js';
 import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
 import { streamFollowUpCompletion } from './lib/matchReview/followUpCompletion.js';
 import { clampFollowUpAttemptMs } from './lib/matchReview/followUpTimeout.js';
@@ -51,6 +56,7 @@ import {
   isLlmSdkError,
   logLlmError,
   redactSecrets,
+  redactUnmistakableSecrets,
   sanitizeLlmErrorForClient,
   internalErrorForClient,
 } from './lib/llmErrors.js';
@@ -278,7 +284,7 @@ async function fetchWithRetry(url, retries = 2, delay = 500, options = {}) {
       if (callerSignal?.aborted) throw err;
       const enriched = enrichUpstreamError(err, url, err?.status);
       console.warn(
-        `[fetchWithRetry] ${safeUrl} attempt=${i + 1}/${retries + 1} status=${enriched.status ?? 'network'} latencyMs=${latencyMs} error=${enriched.message}`
+        `[fetchWithRetry] ${safeUrl} attempt=${i + 1}/${retries + 1} status=${enriched.status ?? 'network'} latencyMs=${latencyMs} error=${redactSecrets(enriched.message)}`
       );
       if (i === retries || enriched.retryable === false) throw enriched;
       await new Promise((r) => setTimeout(r, delay * (i + 1)));
@@ -463,50 +469,50 @@ function getHeroName(heroId, useZh = false, heroStats = null) {
 
 // ============ OpenDota Constants Fetchers ============
 
-async function getHeroConstants() {
+async function getHeroConstants(fetchOptions = {}) {
   const now = Date.now();
   if (cache.heroes.data && (now - cache.heroes.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.heroes.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/heroes`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/heroes`, 2, 500, fetchOptions);
     cache.heroes = { data, timestamp: now };
     console.log(`Loaded ${Object.keys(data).length} heroes from OpenDota constants`);
     return data;
   } catch (err) {
-    console.error('Failed to fetch hero constants:', err.message);
+    console.error('Failed to fetch hero constants:', redactSecrets(err.message));
     return cache.heroes.data || {};
   }
 }
 
-async function getItemConstants() {
+async function getItemConstants(fetchOptions = {}) {
   const now = Date.now();
   if (cache.items.data && (now - cache.items.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.items.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/items`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/items`, 2, 500, fetchOptions);
     cache.items = { data, timestamp: now };
     console.log(`Loaded ${Object.keys(data).length} items from OpenDota constants`);
     return data;
   } catch (err) {
-    console.error('Failed to fetch item constants:', err.message);
+    console.error('Failed to fetch item constants:', redactSecrets(err.message));
     return cache.items.data || {};
   }
 }
 
-async function getAbilityConstants() {
+async function getAbilityConstants(fetchOptions = {}) {
   const now = Date.now();
   if (cache.abilities.data && (now - cache.abilities.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.abilities.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/abilities`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/constants/abilities`, 2, 500, fetchOptions);
     cache.abilities = { data, timestamp: now };
     console.log(`Loaded ${Object.keys(data).length} abilities from OpenDota constants`);
     return data;
   } catch (err) {
-    console.error('Failed to fetch ability constants:', err.message);
+    console.error('Failed to fetch ability constants:', redactSecrets(err.message));
     return cache.abilities.data || {};
   }
 }
@@ -518,7 +524,7 @@ function normalizeReviewLang(lang) {
 }
 
 async function getProMatches(limit = 20, options = {}) {
-  const { forceRefresh = false } = options;
+  const { forceRefresh = false, signal } = options;
   const now = Date.now();
   if (
     !forceRefresh
@@ -528,19 +534,19 @@ async function getProMatches(limit = 20, options = {}) {
     return cache.proMatches.data.slice(0, limit);
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/proMatches`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/proMatches`, 2, 500, { signal });
     const matches = Array.isArray(data) ? data : [];
     cache.proMatches = { data: matches, timestamp: now };
     console.log(`Loaded ${matches.length} pro matches from OpenDota`);
     return matches.slice(0, limit);
   } catch (err) {
-    console.error('Failed to fetch pro matches:', err.message);
+    console.error('Failed to fetch pro matches:', redactSecrets(err.message));
     return cache.proMatches.data?.slice(0, limit) || [];
   }
 }
 
 async function getPublicMatches(limit = 50, options = {}) {
-  const { highMmr = false, forceRefresh = false } = options;
+  const { highMmr = false, forceRefresh = false, signal } = options;
   const cacheKey = highMmr ? 'publicMatchesHighMmr' : 'publicMatches';
   const now = Date.now();
 
@@ -557,13 +563,13 @@ async function getPublicMatches(limit = 50, options = {}) {
     const url = highMmr
       ? `${OPENDOTA_API}/publicMatches?mmr_descending=1&min_rank=${REVIEW_HIGH_MMR_MIN_RANK_TIER}`
       : `${OPENDOTA_API}/publicMatches`;
-    const data = await fetchWithRetry(url);
+    const data = await fetchWithRetry(url, 2, 500, { signal });
     const matches = Array.isArray(data) ? data : [];
     cache[cacheKey] = { data: matches, timestamp: now };
     console.log(`Loaded ${matches.length} public matches from OpenDota${highMmr ? ' (high MMR)' : ''}`);
     return matches.slice(0, limit);
   } catch (err) {
-    console.error('Failed to fetch public matches:', err.message);
+    console.error('Failed to fetch public matches:', redactSecrets(err.message));
     return readCached();
   }
 }
@@ -724,9 +730,9 @@ function formatPublicMatch(match, heroConstants, lang = 'en') {
   };
 }
 
-async function getRecentProMatchEvidence(heroIds = [], limit = 5) {
-  const proMatches = await getProMatches(50);
-  const heroConstants = await getHeroConstants();
+async function getRecentProMatchEvidence(heroIds = [], limit = 5, fetchOptions = {}) {
+  const proMatches = await getProMatches(50, { signal: fetchOptions.signal });
+  const heroConstants = await getHeroConstants(fetchOptions);
   
   if (!proMatches || proMatches.length === 0) {
     return { matches: [], summary: '' };
@@ -744,10 +750,10 @@ async function getRecentProMatchEvidence(heroIds = [], limit = 5) {
   return { matches: recentMatches, summary };
 }
 
-async function getRecentPublicMatchEvidence(heroIds = [], limit = 5) {
+async function getRecentPublicMatchEvidence(heroIds = [], limit = 5, fetchOptions = {}) {
   try {
-    const publicMatches = await getPublicMatches(50);
-    const heroConstants = await getHeroConstants();
+    const publicMatches = await getPublicMatches(50, { signal: fetchOptions.signal });
+    const heroConstants = await getHeroConstants(fetchOptions);
     
     if (!publicMatches || publicMatches.length === 0) {
       return { matches: [], summary: '' };
@@ -783,7 +789,7 @@ async function getRecentPublicMatchEvidence(heroIds = [], limit = 5) {
       try {
         matchesToUse.push(formatPublicMatch(m, heroConstants, 'zh'));
       } catch (formatErr) {
-        console.error('Error formatting match for evidence:', formatErr.message);
+        console.error('Error formatting match for evidence:', redactSecrets(formatErr.message));
       }
     }
     
@@ -802,7 +808,7 @@ async function getRecentPublicMatchEvidence(heroIds = [], limit = 5) {
     
     return { matches: matchesToUse, summary };
   } catch (err) {
-    console.error('getRecentPublicMatchEvidence error:', err.message);
+    console.error('getRecentPublicMatchEvidence error:', redactSecrets(err.message));
     return { matches: [], summary: '' };
   }
 }
@@ -838,7 +844,7 @@ async function getSteamHeroes(language = 'schinese') {
     }
     return null;
   } catch (err) {
-    console.error(`Failed to fetch Steam heroes (${language}):`, err.message);
+    console.error(`Failed to fetch Steam heroes (${language}):`, redactSecrets(err.message));
     return cache[cacheKey].data || null;
   }
 }
@@ -957,19 +963,19 @@ async function getHeroStats(fetchOptions = {}) {
     cache.heroStats = { data: statsMap, timestamp: now };
     return statsMap;
   } catch (err) {
-    console.error('Failed to fetch heroStats:', err.message);
+    console.error('Failed to fetch heroStats:', redactSecrets(err.message));
     return cache.heroStats.data || {};
   }
 }
 
-async function getHeroMatchups(heroId) {
+async function getHeroMatchups(heroId, fetchOptions = {}) {
   const now = Date.now();
   const cached = cache.matchups.get(heroId);
   if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
     return cached.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/matchups`);
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/matchups`, 2, 500, fetchOptions);
     const matchupMap = {};
     for (const m of data) {
       if (m.games_played > 0) {
@@ -985,20 +991,20 @@ async function getHeroMatchups(heroId) {
     cache.matchups.set(heroId, { data: matchupMap, timestamp: now });
     return matchupMap;
   } catch (err) {
-    console.error(`Failed to fetch matchups for hero ${heroId}:`, err.message);
+    console.error(`Failed to fetch matchups for hero ${heroId}:`, redactSecrets(err.message));
     return cached?.data || {};
   }
 }
 
-async function getHeroItemPopularity(heroId) {
+async function getHeroItemPopularity(heroId, fetchOptions = {}) {
   const now = Date.now();
   const cached = cache.itemPopularity.get(heroId);
   if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
     return cached.data;
   }
   try {
-    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/itemPopularity`);
-    const itemConstants = await getItemConstants();
+    const data = await fetchWithRetry(`${OPENDOTA_API}/heroes/${heroId}/itemPopularity`, 2, 500, fetchOptions);
+    const itemConstants = await getItemConstants(fetchOptions);
     
     const formatItems = (itemCounts) => {
       if (!itemCounts) return [];
@@ -1029,20 +1035,25 @@ async function getHeroItemPopularity(heroId) {
       lateGame: formatItems(data.late_game_items)
     };
     
-    cache.itemPopularity.set(heroId, { data: popularity, timestamp: now });
+    // Never cache a degraded result: getItemConstants swallows a client abort
+    // (and upstream failures) and returns its fallback ({} on a cold cache),
+    // which would pin numeric item names / zero costs for every later client.
+    if (!fetchOptions.signal?.aborted && Object.keys(itemConstants || {}).length > 0) {
+      cache.itemPopularity.set(heroId, { data: popularity, timestamp: now });
+    }
     return popularity;
   } catch (err) {
-    console.error(`Failed to fetch item popularity for hero ${heroId}:`, err.message);
+    console.error(`Failed to fetch item popularity for hero ${heroId}:`, redactSecrets(err.message));
     return cached?.data || { startGame: [], earlyGame: [], midGame: [], lateGame: [] };
   }
 }
 
-async function aggregateMatchupData(radiantIds, direIds, heroStats) {
+async function aggregateMatchupData(radiantIds, direIds, heroStats, fetchOptions = {}) {
   const allMatchups = {};
   const heroIdsToFetch = [...radiantIds, ...direIds];
   
   await Promise.all(heroIdsToFetch.map(async (id) => {
-    allMatchups[id] = await getHeroMatchups(id);
+    allMatchups[id] = await getHeroMatchups(id, fetchOptions);
   }));
   
   const analysis = {
@@ -1285,10 +1296,10 @@ function warmLoadOpenDotaConstants(attempt = 1) {
     })
     .catch((err) => {
       if (attempt >= WARM_CONSTANTS_MAX_ATTEMPTS) {
-        console.warn(`[constants] warm-load failed after ${attempt} attempts (${err?.message || 'unknown'}); /api/health reports degraded until first use`);
+        console.warn(`[constants] warm-load failed after ${attempt} attempts (${redactSecrets(err?.message) || 'unknown'}); /api/health reports degraded until first use`);
         return;
       }
-      console.warn(`[constants] warm-load attempt ${attempt} failed (${err?.message || 'unknown'}); retrying in ${WARM_CONSTANTS_RETRY_DELAY_MS / 1000}s`);
+      console.warn(`[constants] warm-load attempt ${attempt} failed (${redactSecrets(err?.message) || 'unknown'}); retrying in ${WARM_CONSTANTS_RETRY_DELAY_MS / 1000}s`);
       setTimeout(() => warmLoadOpenDotaConstants(attempt + 1), WARM_CONSTANTS_RETRY_DELAY_MS);
     });
 }
@@ -1306,7 +1317,7 @@ app.get('/api/meta/heroes', async (req, res) => {
       cacheAge: cache.heroes.timestamp ? Math.round((Date.now() - cache.heroes.timestamp) / 1000) : null
     });
   } catch (err) {
-    console.error('Meta heroes error:', err);
+    console.error('Meta heroes error:', redactSecrets(err?.message ?? err));
     res.status(500).json({ error: 'Failed to fetch hero meta', heroes: [] });
   }
 });
@@ -1320,7 +1331,7 @@ app.get('/api/meta/items', async (req, res) => {
       cacheAge: cache.items.timestamp ? Math.round((Date.now() - cache.items.timestamp) / 1000) : null
     });
   } catch (err) {
-    console.error('Meta items error:', err);
+    console.error('Meta items error:', redactSecrets(err?.message ?? err));
     res.status(500).json({ error: 'Failed to fetch item meta', items: [] });
   }
 });
@@ -1348,7 +1359,7 @@ app.get('/api/meta/abilities', async (req, res) => {
       cacheAge: cache.abilities.timestamp ? Math.round((Date.now() - cache.abilities.timestamp) / 1000) : null
     });
   } catch (err) {
-    console.error('Meta abilities error:', err);
+    console.error('Meta abilities error:', redactSecrets(err?.message ?? err));
     res.status(500).json({ error: 'Failed to fetch ability meta', abilities: [] });
   }
 });
@@ -1454,7 +1465,7 @@ app.get('/api/meta/heroes/:heroId', async (req, res) => {
       cacheAge: cache.heroes.timestamp ? Math.round((Date.now() - cache.heroes.timestamp) / 1000) : null
     });
   } catch (err) {
-    console.error('Hero detail error:', err);
+    console.error('Hero detail error:', redactSecrets(err?.message ?? err));
     res.status(500).json({ error: 'Failed to fetch hero detail' });
   }
 });
@@ -1488,7 +1499,7 @@ app.get('/api/meta/pro-matches', async (req, res) => {
       cacheAge: cache.proMatches.timestamp ? Math.round((Date.now() - cache.proMatches.timestamp) / 1000) : null
     });
   } catch (err) {
-    console.error('Pro matches error:', err);
+    console.error('Pro matches error:', redactSecrets(err?.message ?? err));
     res.status(500).json({ error: 'Failed to fetch pro matches', matches: [] });
   }
 });
@@ -1543,7 +1554,7 @@ app.get('/api/meta/public-matches', async (req, res) => {
       try {
         formattedMatches.push(formatPublicMatch(m, heroConstants, lang));
       } catch (formatErr) {
-        console.error('Error formatting public match:', formatErr.message, 'match_id:', m.match_id);
+        console.error('Error formatting public match:', redactSecrets(formatErr.message), 'match_id:', m.match_id);
       }
     }
     
@@ -1554,7 +1565,7 @@ app.get('/api/meta/public-matches', async (req, res) => {
       cacheAge: cache.publicMatches.timestamp ? Math.round((Date.now() - cache.publicMatches.timestamp) / 1000) : null
     });
   } catch (err) {
-    console.error('Public matches error:', err);
+    console.error('Public matches error:', redactSecrets(err?.message ?? err));
     res.json({ matches: [], count: 0, source: 'opendota', error: 'Failed to fetch public matches' });
   }
 });
@@ -1627,7 +1638,7 @@ app.get('/api/meta/tier', async (req, res) => {
       cacheAge: cache.heroStats.timestamp ? Math.round((Date.now() - cache.heroStats.timestamp) / 1000) : null
     });
   } catch (err) {
-    console.error('Meta tier error:', err);
+    console.error('Meta tier error:', redactSecrets(err?.message ?? err));
     res.status(500).json({ error: 'Failed to fetch tier data', heroes: [] });
   }
 });
@@ -1654,7 +1665,7 @@ app.get('/api/heroes/:heroId/items', async (req, res) => {
         : null
     });
   } catch (err) {
-    console.error('Item popularity error:', err);
+    console.error('Item popularity error:', redactSecrets(err?.message ?? err));
     res.status(500).json({ error: 'Failed to fetch item popularity' });
   }
 });
@@ -1663,7 +1674,15 @@ app.get('/api/heroes/:heroId/items', async (req, res) => {
 app.post('/api/playbook', async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
-  
+
+  // Client-disconnect abort, armed BEFORE any upstream work: the old
+  // req.on('close') was registered only after the OpenDota fetches and the
+  // DeepSeek call had already started, so a disconnect during that phase
+  // aborted nothing. One shared signal feeds every fetch and
+  // chat.completions.create in both response modes (SSE / JSON).
+  const sseAbort = createSseAbort(req, res);
+  const clientSignal = sseAbort.signal;
+
   try {
     let { allies = [], enemies = [], focusHeroId, side = 'radiant', lang = 'en' } = req.body;
     lang = normalizeUiLang(lang);
@@ -1682,17 +1701,17 @@ app.post('/api/playbook', async (req, res) => {
     }
     
     const [heroStats, heroConstants] = await Promise.all([
-      getHeroStats(),
-      getHeroConstants(),
+      getHeroStats({ signal: clientSignal }),
+      getHeroConstants({ signal: clientSignal }),
     ]);
     
     const alliedIds = allies.map(h => h.id);
     const enemyIds = enemies.map(h => h.id).filter(Boolean);
     
     const [itemPopularityResults, matchupsResults, publicMatchEvidence] = await Promise.all([
-      Promise.all(alliedIds.map(id => getHeroItemPopularity(id).then(items => ({ id, items })))),
-      Promise.all(alliedIds.map(id => getHeroMatchups(id).then(matchups => ({ id, matchups })))),
-      getRecentPublicMatchEvidence(alliedIds, 3)
+      Promise.all(alliedIds.map(id => getHeroItemPopularity(id, { signal: clientSignal }).then(items => ({ id, items })))),
+      Promise.all(alliedIds.map(id => getHeroMatchups(id, { signal: clientSignal }).then(matchups => ({ id, matchups })))),
+      getRecentPublicMatchEvidence(alliedIds, 3, { signal: clientSignal })
     ]);
     
     const itemPopularityMap = {};
@@ -1888,13 +1907,10 @@ ${statsSection}
           { role: 'user', content: userPrompt }
         ],
         stream: true,
-      });
-      
-      req.on('close', () => {
-        stream.controller?.abort();
-      });
+      }, { signal: clientSignal });
       
       for await (const chunk of stream) {
+        if (sseAbort.aborted()) break;
         const content = chunk.choices[0]?.delta?.content;
         if (content) {
           res.write(`data: ${JSON.stringify({ text: content })}\n\n`);
@@ -1911,7 +1927,7 @@ ${statsSection}
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-      });
+      }, { signal: clientSignal });
       
       res.json({
         playbookData,
@@ -1921,6 +1937,9 @@ ${statsSection}
       });
     }
   } catch (error) {
+    // Client already disconnected: the abort surfaced here (APIUserAbortError /
+    // AbortError) — nothing left to send, and a gone client is not an error.
+    if (sseAbort.aborted()) return;
     // LLM/provider failures never cross to the client raw (they can embed
     // auth details or key tails): generic localized payload + structured log.
     const lang = normalizeUiLang(req.body?.lang || 'en');
@@ -1945,13 +1964,19 @@ ${statsSection}
     } else {
       res.status(500).json(internal);
     }
+  } finally {
+    sseAbort.detach();
   }
 });
 
 app.post('/api/analyze', async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
-  
+
+  // Same early-armed disconnect abort as /api/playbook (see above).
+  const sseAbort = createSseAbort(req, res);
+  const clientSignal = sseAbort.signal;
+
   try {
     let { radiant = [], dire = [], lang = 'en', userContext } = req.body;
     lang = normalizeUiLang(lang);
@@ -1979,15 +2004,15 @@ app.post('/api/analyze', async (req, res) => {
     
     try {
       [heroStats, heroConstants] = await Promise.all([
-        getHeroStats(),
-        getHeroConstants()
+        getHeroStats({ signal: clientSignal }),
+        getHeroConstants({ signal: clientSignal })
       ]);
       if (Object.keys(heroStats).length > 0 && (radiantIds.length > 0 || direIds.length > 0)) {
-        matchupAnalysis = await aggregateMatchupData(radiantIds, direIds, heroStats);
+        matchupAnalysis = await aggregateMatchupData(radiantIds, direIds, heroStats, { signal: clientSignal });
         isGrounded = true;
       }
       
-      proMatchEvidence = await getRecentProMatchEvidence([], 3);
+      proMatchEvidence = await getRecentProMatchEvidence([], 3, { signal: clientSignal });
     } catch (err) {
       // err.message can embed the full request URL (incl. ?api_key=…) — redacted.
       console.error('OpenDota fetch error:', redactSecrets(err?.message ?? err));
@@ -2018,13 +2043,10 @@ app.post('/api/analyze', async (req, res) => {
           { role: 'user', content: prompt }
         ],
         stream: true,
-      });
-
-      req.on('close', () => {
-        stream.controller?.abort();
-      });
+      }, { signal: clientSignal });
 
       for await (const chunk of stream) {
+        if (sseAbort.aborted()) break;
         const content = chunk.choices[0]?.delta?.content;
         if (content) {
           res.write(`data: ${JSON.stringify({ text: content, grounded: isGrounded })}\n\n`);
@@ -2041,7 +2063,7 @@ app.post('/api/analyze', async (req, res) => {
           { role: 'system', content: systemInstruction },
           { role: 'user', content: prompt }
         ],
-      });
+      }, { signal: clientSignal });
 
       res.json({ 
         text: response.choices[0].message.content,
@@ -2053,6 +2075,7 @@ app.post('/api/analyze', async (req, res) => {
       });
     }
   } catch (error) {
+    if (sseAbort.aborted()) return;
     // Same hygiene as /api/playbook: provider errors → generic payload only.
     const lang = normalizeUiLang(req.body?.lang || 'en');
     if (isLlmSdkError(error)) {
@@ -2074,6 +2097,8 @@ app.post('/api/analyze', async (req, res) => {
     } else {
       res.status(500).json(internal);
     }
+  } finally {
+    sseAbort.detach();
   }
 });
 
@@ -2261,16 +2286,17 @@ function getMatchDetail(matchId, fetchOptions = {}) {
 // OpenDota POST /request/{match_id} dedup/rate-limit state (per match),
 // plus global/per-client submission budgets (env-tunable) so a single client
 // or an OpenDota outage cannot amplify into a stream of parse submissions.
-function envPositiveInt(name, fallback) {
+function envPositiveInt(name, fallback, max) {
   // Number-based parsing (parsePositiveInt): parseInt('1e9') === 1 would
-  // silently turn scientific-notation env values into 1.
-  return parsePositiveInt(process.env[name], fallback);
+  // silently turn scientific-notation env values into 1; non-decimal literals
+  // ('0x1F40' / '0o17' / '0b101') fall back, and `max` clamps the ceiling.
+  return parsePositiveInt(process.env[name], fallback, max != null ? { max } : undefined);
 }
 
 const parseRequestTracker = createParseRequestTracker();
 const parseRequestBudget = createParseRequestBudget({
-  globalMax: envPositiveInt('PARSE_BUDGET_GLOBAL_MAX', 10),
-  perClientMax: envPositiveInt('PARSE_BUDGET_PER_CLIENT_MAX', 3),
+  globalMax: envPositiveInt('PARSE_BUDGET_GLOBAL_MAX', 10, 100),
+  perClientMax: envPositiveInt('PARSE_BUDGET_PER_CLIENT_MAX', 3, 20),
 });
 const opendotaApiKey = process.env.OPENDOTA_API_KEY || '';
 
@@ -2464,9 +2490,10 @@ async function handleMatchReview(req, res) {
 
     // App-owned deadline over the whole fetch phase so a stalled OpenDota or
     // constants refresh cannot outlive the browser's review timeout. The race
-    // also bounds getHeroConstants(), which takes no signal (its shared cache
-    // refresh may finish in the background). Expiry is a CompletionDeadlineError
-    // (distinct from client disconnect) and is answered with a 504 below.
+    // also bounds getHeroConstants(), called without a signal here (its shared
+    // cache refresh may finish in the background). Expiry is a
+    // CompletionDeadlineError (distinct from client disconnect) and is answered
+    // with a 504 below.
     const [matchData, heroStats, heroConstants] = await withCompletionDeadline(
       (signal) => Promise.all([
         getMatchDetail(matchId, { signal }),
@@ -2917,7 +2944,11 @@ app.post('/api/feedback', (req, res) => {
     };
 
     // Durable path for Cloud Run: full record on stdout → Cloud Logging.
-    console.log('[feedback:record]', JSON.stringify(record));
+    // Bypass the global wrapper's broad heuristics (so prose like `key=escape`
+    // survives) but still strip unmistakable secrets (sk-… / AIza… / Bearer /
+    // Authorization) before they reach Cloud Logging (Codex P1).
+    const feedbackLine = redactUnmistakableSecrets(JSON.stringify(record));
+    logUnredacted('log', ['[feedback:record]', feedbackLine]);
     // Compact meta line for grepping (no PII beyond flags).
     console.log('[feedback]', JSON.stringify({
       id: record.id,
@@ -2931,15 +2962,15 @@ app.post('/api/feedback', (req, res) => {
 
     try {
       fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
-      fs.appendFileSync(FEEDBACK_FILE, `${JSON.stringify(record)}\n`, 'utf8');
+      fs.appendFileSync(FEEDBACK_FILE, `${feedbackLine}\n`, 'utf8');
     } catch (diskErr) {
       // Disk is best-effort; Cloud Logging already has the record.
-      console.warn('[feedback] jsonl append failed (continuing)', diskErr?.message || diskErr);
+      console.warn('[feedback] jsonl append failed (continuing)', redactSecrets(diskErr?.message ?? diskErr));
     }
 
     return res.json({ ok: true });
   } catch (error) {
-    console.error('[feedback] store failed', error);
+    console.error('[feedback] store failed', redactSecrets(error?.message ?? error));
     return res.status(500).json({ ok: false, error: 'store failed' });
   }
 });
