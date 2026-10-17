@@ -76,7 +76,7 @@ lib/matchReview/          # 比赛事实解析与约束
 
 ### 环境要求 | Prerequisites
 
-- Node.js ≥ 18（CI 使用 20）
+- Node.js ≥ 20（CI 与 Docker 使用 20；vitest 4 / react-router 7 需要 Node 20+）
 - npm ≥ 9
 - DeepSeek API Key（[获取 | get one](https://platform.deepseek.com/)）
 
