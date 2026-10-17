@@ -3,6 +3,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { OpenAI } from 'openai';
 import { installConsoleRedaction, logUnredacted } from '../../lib/consoleRedaction.js';
+import { redactCredentials, redactUnmistakableSecrets } from '../../lib/llmErrors.js';
 
 // Mock credential shapes only — never a real key format/value from any account.
 const QA_FAKE_KEY = 'sk-qa-fake-ABCD1234';
@@ -69,21 +70,42 @@ describe('installConsoleRedaction (unit)', () => {
     uninstall();
   });
 
-  it('logUnredacted writes verbatim through the original method (feedback record)', () => {
+  it('redactCredentials keeps JSON field names when masking values (Codex P1)', () => {
+    const out = redactCredentials(JSON.stringify({ event: 'x', password: 'p@ssw0rd!', user: 'bob' }));
+    expect(out).toBe('{"event":"x","password":"[REDACTED]","user":"bob"}');
+    expect(() => JSON.parse(out)).not.toThrow();
+  });
+
+  it('redactUnmistakableSecrets keeps prose but strips sk-/Bearer/AIza (Codex P1)', () => {
+    const prose = JSON.stringify({
+      message: "Use key=escape to close; Press { key: 'Escape' } to close",
+      contact: 'sk-qa-fake-ABCD1234',
+    });
+    const out = redactUnmistakableSecrets(prose);
+    expect(out).toContain('Use key=escape to close');
+    expect(out).toContain("{ key: 'Escape' }");
+    expect(out).not.toContain('ABCD1234');
+    expect(out).toContain('[REDACTED]');
+  });
+
+  it('feedback durable log applies redactUnmistakableSecrets then logUnredacted', () => {
     const { consoleObj, logMock } = makeConsole();
     const uninstall = installConsoleRedaction(consoleObj);
-    const record = JSON.stringify({ message: "Use key=escape to close; Press { key: 'Escape' } to close" });
-    logUnredacted('log', ['[feedback:record]', record], consoleObj);
-    expect(logMock.mock.calls[0]).toEqual(['[feedback:record]', record]);
-    // the normal path still redacts
-    consoleObj.log(`GET https://api.opendota.com/api/heroes?api_key=${QA_FAKE_QUERY_KEY}&x=1`);
-    expect(String(logMock.mock.calls[1][0])).not.toContain(QA_FAKE_QUERY_KEY);
+    const record = JSON.stringify({
+      message: "Use key=escape; Press { key: 'Escape' }",
+      contact: 'sk-qa-fake-ABCD1234',
+    });
+    logUnredacted('log', ['[feedback:record]', redactUnmistakableSecrets(record)], consoleObj);
+    expect(logMock.mock.calls[0][0]).toBe('[feedback:record]');
+    expect(String(logMock.mock.calls[0][1])).toContain('Use key=escape');
+    expect(String(logMock.mock.calls[0][1])).not.toContain('ABCD1234');
     uninstall();
   });
 
-  it('server.js writes the feedback record via logUnredacted', async () => {
+  it('server.js writes the feedback record via logUnredacted + redactUnmistakableSecrets', async () => {
     const fs = await import('node:fs');
     const src = fs.readFileSync(new URL('../../server.js', import.meta.url), 'utf8');
+    expect(src).toMatch(/redactUnmistakableSecrets\(JSON\.stringify\(record\)\)/);
     expect(src).toMatch(/logUnredacted\('log', \['\[feedback:record\]'/);
   });
 

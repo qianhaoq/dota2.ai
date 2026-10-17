@@ -56,6 +56,7 @@ import {
   isLlmSdkError,
   logLlmError,
   redactSecrets,
+  redactUnmistakableSecrets,
   sanitizeLlmErrorForClient,
   internalErrorForClient,
 } from './lib/llmErrors.js';
@@ -2943,9 +2944,11 @@ app.post('/api/feedback', (req, res) => {
     };
 
     // Durable path for Cloud Run: full record on stdout → Cloud Logging.
-    // Written verbatim (bypasses the global credential redaction, exactly like
-    // the jsonl copy below) so user prose such as `key=escape` survives.
-    logUnredacted('log', ['[feedback:record]', JSON.stringify(record)]);
+    // Bypass the global wrapper's broad heuristics (so prose like `key=escape`
+    // survives) but still strip unmistakable secrets (sk-… / AIza… / Bearer /
+    // Authorization) before they reach Cloud Logging (Codex P1).
+    const feedbackLine = redactUnmistakableSecrets(JSON.stringify(record));
+    logUnredacted('log', ['[feedback:record]', feedbackLine]);
     // Compact meta line for grepping (no PII beyond flags).
     console.log('[feedback]', JSON.stringify({
       id: record.id,
@@ -2959,7 +2962,7 @@ app.post('/api/feedback', (req, res) => {
 
     try {
       fs.mkdirSync(FEEDBACK_DIR, { recursive: true });
-      fs.appendFileSync(FEEDBACK_FILE, `${JSON.stringify(record)}\n`, 'utf8');
+      fs.appendFileSync(FEEDBACK_FILE, `${feedbackLine}\n`, 'utf8');
     } catch (diskErr) {
       // Disk is best-effort; Cloud Logging already has the record.
       console.warn('[feedback] jsonl append failed (continuing)', redactSecrets(diskErr?.message ?? diskErr));
