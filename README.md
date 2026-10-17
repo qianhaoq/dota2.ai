@@ -122,7 +122,7 @@ node --check server.js # 服务端语法
 | `GEMINI_API_KEY` | 推荐 | — | 复盘卡片备用模型：DeepSeek 失败/超时（每次 40s）时改用 Gemini |
 | `GEMINI_REVIEW_MODEL` | ❌ | `gemini-3.5-flash-lite` | 覆盖备用 Gemini 模型 |
 | `STEAM_WEB_API_KEY` | ❌ | — | 本地化英雄名；缺省时回退 OpenDota 常量 |
-| `LLM_RATE_*` / `LLM_GLOBAL_GUARD_*` | ❌ | `60s` 窗口；chat `10`/analyze `6`/suggestions `20`/review `30` 每 IP（IPv6 按 `/64` 前缀共桶），每组全局成本护栏 `600` | LLM 路由按 IP 滑动窗口限流（429 + `Retry-After`；只计入通过校验、真正调用 LLM 的请求）；全局护栏触发时跳过 LLM 并降级为确定性回退而非 429；详见 [`.env.example`](.env.example) |
+| `LLM_RATE_*` / `LLM_GLOBAL_GUARD_*` | ❌ | `60s` 窗口；chat `10`/analyze `6`/suggestions `20`/review `30` 每 IP（IPv6 按 `/64` 前缀共桶），chat/analyze/review 每组全局成本护栏 `600`（suggestions 不调用 LLM，无全局护栏） | LLM 路由按 IP 滑动窗口限流（429 + `Retry-After`；只计入通过校验、真正调用 LLM 的请求）；全局护栏触发时跳过 LLM 并降级为确定性回退而非 429；详见 [`.env.example`](.env.example) |
 | `PORT` | ❌ | `8080` | 服务端口（Cloud Run 注入同名变量） |
 | `HOST` | ❌ | `0.0.0.0` | 绑定地址 |
 

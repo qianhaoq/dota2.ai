@@ -164,3 +164,15 @@ describe('createSlidingWindowLimiter rejection reason (QA P1 cost guard)', () =>
     expect(limiter.tryConsume('1.1.1.1', 0)).toEqual({ ok: true, retryAfterSec: 0 });
   });
 });
+
+describe('limiter without a global bucket (LLM-free routes such as suggestions)', () => {
+  it('always enforces the per-IP limit with reason client, regardless of total traffic', () => {
+    const limiter = createSlidingWindowLimiter({ limit: 2, windowMs: 60000, now: () => 1000 });
+    for (let i = 0; i < 700; i += 1) limiter.tryConsume(`198.51.100.${i % 250}-${i}`);
+    expect(limiter.tryConsume('203.0.113.7').ok).toBe(true);
+    expect(limiter.tryConsume('203.0.113.7').ok).toBe(true);
+    const third = limiter.tryConsume('203.0.113.7');
+    expect(third.ok).toBe(false);
+    expect(third.reason).toBe('client');
+  });
+});

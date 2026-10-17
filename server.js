@@ -1694,9 +1694,10 @@ const LLM_RATE_WINDOW_MS = Math.min(
 function createLlmGroupLimiter(perIpEnvName, guardEnvName, perIpDefault) {
   return createSlidingWindowLimiter({
     limit: Math.min(parsePositiveInt(process.env[perIpEnvName], perIpDefault), LLM_RATE_MAX_PER_IP),
-    globalLimit: Math.min(
-      parsePositiveInt(process.env[guardEnvName], LLM_GLOBAL_GUARD_DEFAULT), LLM_GLOBAL_GUARD_MAX,
-    ),
+    // No guard env → no global bucket at all (deterministic, LLM-free routes).
+    globalLimit: guardEnvName
+      ? Math.min(parsePositiveInt(process.env[guardEnvName], LLM_GLOBAL_GUARD_DEFAULT), LLM_GLOBAL_GUARD_MAX)
+      : undefined,
     windowMs: LLM_RATE_WINDOW_MS,
   });
 }
@@ -1713,7 +1714,7 @@ const analyzeLlmLimit = createLlmRateLimit({
   name: 'analyze+playbook',
 });
 const suggestionsLlmLimit = createLlmRateLimit({
-  limiter: createLlmGroupLimiter('LLM_RATE_SUGGESTIONS_PER_IP', 'LLM_GLOBAL_GUARD_SUGGESTIONS', 20),
+  limiter: createLlmGroupLimiter('LLM_RATE_SUGGESTIONS_PER_IP', null, 20),
   resolveClientIp,
   name: 'suggestions',
 });
@@ -2193,11 +2194,11 @@ app.post('/api/suggestions', async (req, res) => {
 
     // Count only now: the data-availability short-circuit above answers for
     // free, everything below does the OpenDota-driven compute. This route
-    // never calls an LLM, so a tripped global cost guard simply lets the
-    // deterministic computation run (never a 429, never an empty answer);
-    // only the per-IP limit answers 429.
+    // never calls an LLM, so it has no global cost guard at all (no global
+    // bucket that could mask a full per-IP bucket); only the per-IP limit
+    // applies and answers 429.
     const llmGate = suggestionsLlmLimit.acquire(req);
-    if (!llmGate.ok && llmGate.reason !== 'cost_guard') {
+    if (!llmGate.ok) {
       return suggestionsLlmLimit.respondRateLimited(req, res, llmGate.retryAfterSec);
     }
     
@@ -2557,7 +2558,11 @@ async function handleMatchReview(req, res) {
   // budget is consumed (the limiter below only counts LLM-bound requests).
   const followUpGuard = validateReviewFollowUp(followUp);
   if (!followUpGuard.ok) {
-    return respondReviewError(res, wantsStream, followUpGuard.error, followUpGuard.status, {
+    // Real HTTP 400 JSON even for SSE clients: nothing is streamed yet, and
+    // response.ok must reflect the rejection (the client already parses JSON
+    // error bodies, e.g. 429).
+    return res.status(followUpGuard.status || 400).json({
+      error: followUpGuard.error,
       message: chatRequestErrorMessage(followUpGuard.error, lang),
     });
   }
