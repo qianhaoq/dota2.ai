@@ -2,6 +2,7 @@ import { Hero, Attribute, Language } from '../types';
 import type { MatchFact, ReviewParseStatus, ThreeConclusions } from '../types/matchReview';
 import { parseReviewParseStatus } from '../utils/parseStatus';
 import { serverErrorMessage } from '../utils/serverErrorMessage';
+import { bodyRetryAfterSec, retryAfterFrom } from '../utils/retryAfter';
 
 const OPENDOTA_API = 'https://api.opendota.com/api';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
@@ -103,16 +104,28 @@ export class MatchFactsError extends Error {
   upstream?: string;
   upstreamStatus?: number;
   retryable?: boolean;
+  /** HTTP status of our own response (e.g. 429 when rate limited). */
+  status?: number;
+  /** Wait in seconds when rate limited (Retry-After / body), when known. */
+  retryAfterSec?: number;
 
   constructor(
     message: string,
-    opts?: { upstream?: string; upstreamStatus?: number; retryable?: boolean },
+    opts?: {
+      upstream?: string;
+      upstreamStatus?: number;
+      retryable?: boolean;
+      status?: number;
+      retryAfterSec?: number;
+    },
   ) {
     super(message);
     this.name = 'MatchFactsError';
     this.upstream = opts?.upstream;
     this.upstreamStatus = opts?.upstreamStatus;
     this.retryable = opts?.retryable;
+    this.status = opts?.status;
+    this.retryAfterSec = opts?.retryAfterSec;
   }
 }
 
@@ -124,8 +137,8 @@ export interface MatchFactsResult {
   threeConclusions: ThreeConclusions | null;
 }
 
-/** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流 */
-export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', signal?: AbortSignal, heroId?: number): Promise<MatchFactsResult> => {
+/** 仅拉取比赛事实（球员/英雄），不触发 DeepSeek 复盘流。matchId 可为字符串（v2 全程按字符串传递，不丢精度）。 */
+export const fetchMatchFacts = async (matchId: number | string, lang: Language = 'en', signal?: AbortSignal, heroId?: number): Promise<MatchFactsResult> => {
   const heroParam = heroId != null ? `&heroId=${encodeURIComponent(heroId)}` : '';
   const response = await fetch(`/api/review/${matchId}?lang=${encodeURIComponent(lang)}${heroParam}`, {
     method: 'GET',
@@ -141,15 +154,26 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', si
       upstream?: string;
       upstreamStatus?: number;
       retryable?: boolean;
+      retryAfterSec?: unknown;
+      retryAfter?: unknown;
     }),
   );
   if (!response.ok) {
+    // 429 rate limits (server PR #89): Retry-After header first, then the
+    // body's retryAfterSec / retryAfter (the production field name in
+    // lib/llmRateLimit.js), so the UI can run a live countdown.
+    const rateLimited = response.status === 429;
+    const retryAfterSec = rateLimited
+      ? retryAfterFrom(response.headers?.get?.('retry-after'), bodyRetryAfterSec(data))
+      : undefined;
     throw new MatchFactsError(
       serverErrorMessage(data, lang === 'zh' ? '拉取比赛失败' : 'Failed to load match'),
       {
         upstream: data.upstream,
         upstreamStatus: data.upstreamStatus,
         retryable: data.retryable,
+        status: response.status,
+        ...(retryAfterSec != null ? { retryAfterSec } : {}),
       },
     );
   }
@@ -173,7 +197,7 @@ export const fetchMatchFacts = async (matchId: number, lang: Language = 'en', si
  * parsed / throttled / failed), or throws with the server's error text.
  */
 export const requestMatchParse = async (
-  matchId: number,
+  matchId: number | string,
   lang: Language = 'en',
   signal?: AbortSignal,
 ): Promise<ReviewParseStatus> => {

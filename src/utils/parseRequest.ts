@@ -30,7 +30,7 @@ export function isParseAbortError(err: unknown): boolean {
 }
 
 export type ParseRequestFn = (
-  matchId: number,
+  matchId: number | string,
   lang: Language,
   signal?: AbortSignal,
 ) => Promise<ReviewParseStatus>;
@@ -49,9 +49,10 @@ export interface ParseRequestController {
    * Single-flight parse request: while one request is in flight, further
    * calls resolve to null immediately and the helper is NOT invoked again.
    * Server-shaped errors surface their message; anything else (network
-   * failure) falls back to the caller's localized failureMessage.
+   * failure) falls back to the caller's localized failureMessage. matchId may
+   * be a string (v2 passes ids through without numeric coercion).
    */
-  request(matchId: number, lang: Language, failureMessage: string): Promise<ParseRequestResult | null>;
+  request(matchId: number | string, lang: Language, failureMessage: string): Promise<ParseRequestResult | null>;
 }
 
 export function createParseRequestController(requestFn: ParseRequestFn): ParseRequestController {

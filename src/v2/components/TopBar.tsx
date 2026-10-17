@@ -1,21 +1,31 @@
-import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { MessageSquare } from 'lucide-react';
+import TopBarFeedbackModal from '../../app/FeedbackModal';
 import { useI18n } from '../i18n/I18nProvider';
 import { buildCarryQuery } from '../carryQuery';
+import { SAMPLE_MATCH_ID } from './EmptyState';
 import type { DictKey } from '../i18n/en';
 
 const SURFACE_TABS: DictKey[] = ['tab_web', 'tab_cli', 'tab_discord', 'tab_dev'];
 
 /**
- * V2 TopBar (handoff §3): logo, "Sample data" badge, surface tabs
- * (Web/CLI/Discord/For AI & Devs — non-functional placeholders), EN/中文
- * toggle, New button. Tabs are hidden below `lg` so the bar never overflows
- * at 390px. All tap targets are ≥44px.
+ * V2 TopBar (handoff §3): logo, "Sample data" badge (only while viewing the
+ * sample/golden match `/m/9035042364` — hidden on home and real matches),
+ * surface tabs (Web/CLI/Discord/For AI & Devs — non-functional placeholders),
+ * Feedback (opens the existing on-site FeedbackModal), a small "Classic" link
+ * to the legacy app, EN/中文 toggle, New button. Tabs are hidden below `lg`
+ * and Classic below `sm` so the bar never overflows at 390px. Tap targets
+ * ≥44px.
  */
 const TopBar: React.FC = () => {
   const { lang, setLang, t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  const onSampleMatch = location.pathname === `/m/${SAMPLE_MATCH_ID}`;
 
   const goNew = () => {
     navigate({ pathname: '/new', search: buildCarryQuery(location.search, lang) });
@@ -32,12 +42,14 @@ const TopBar: React.FC = () => {
           </span>
           dota2.ai
         </div>
-        <span
-          className="hidden xs:inline-flex items-center h-[24px] px-[8px] rounded-d2-chip bg-[#FFFBEB] text-d2-warn text-d2-12 font-semibold whitespace-nowrap"
-          title={t('sampleTitle')}
-        >
-          {t('samplePill')}
-        </span>
+        {onSampleMatch && (
+          <span
+            className="hidden xs:inline-flex items-center h-[24px] px-[8px] rounded-d2-chip bg-[#FFFBEB] text-d2-warn text-d2-12 font-semibold whitespace-nowrap"
+            title={t('sampleTitle')}
+          >
+            {t('samplePill')}
+          </span>
+        )}
         <div className="flex-1" />
         {/* Surface tabs: placeholders for the proposed CLI/Discord/Dev surfaces.
             Hidden on small screens so the bar fits 390px. */}
@@ -61,6 +73,21 @@ const TopBar: React.FC = () => {
           ))}
         </nav>
         <div className="flex-1 hidden lg:block" />
+        <Link
+          to="/legacy"
+          className="hidden sm:inline-flex items-center min-h-[44px] px-[8px] rounded-[12px] text-d2-13 font-medium text-d2-ink-3 transition-colors duration-d2-fast hover:bg-d2-surface-2 whitespace-nowrap"
+        >
+          {t('classicBtn')}
+        </Link>
+        <button
+          type="button"
+          onClick={() => setFeedbackOpen(true)}
+          aria-label={t('feedbackAria')}
+          title={t('feedbackBtn')}
+          className="min-w-[44px] min-h-[44px] rounded-[12px] grid place-items-center text-d2-ink-3 flex-none transition-colors duration-d2-fast hover:bg-d2-surface-2"
+        >
+          <MessageSquare size={17} aria-hidden="true" />
+        </button>
         <button
           type="button"
           onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
@@ -81,6 +108,14 @@ const TopBar: React.FC = () => {
           </svg>
         </button>
       </div>
+      {/* The modal's fixed overlay must not be contained by this header's
+          backdrop-blur — portal it to <body> (no-op render when there is no
+          document, e.g. SSR). */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <TopBarFeedbackModal lang={lang} isOpen={feedbackOpen} onClose={() => setFeedbackOpen(false)} />,
+          document.body,
+        )}
     </header>
   );
 };

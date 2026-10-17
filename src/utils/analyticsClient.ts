@@ -131,8 +131,12 @@ export function followUpKind(submitted: string, prefilled: string | null | undef
 
 export const REVIEW_VIEWED_SESSION_PREFIX = 'dota2ai.reviewViewed.';
 
-/** Returns true (and marks) the first time a match is viewed in this browser session. */
-export function claimReviewViewed(session: StorageLike, matchId: number): boolean {
+/**
+ * Returns true (and marks) the first time a match is viewed in this browser
+ * session. Accepts the id as number (legacy) or digit string (v2) — both map
+ * to the same storage key, so a session never double-counts a match.
+ */
+export function claimReviewViewed(session: StorageLike, matchId: number | string): boolean {
   const key = `${REVIEW_VIEWED_SESSION_PREFIX}${matchId}`;
   try {
     if (session.getItem(key) === '1') return false;
