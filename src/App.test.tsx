@@ -60,6 +60,14 @@ describe('App routes', () => {
     expect(screen.getByText(/doesn’t look like a match ID/)).toBeTruthy();
   });
 
+  it('bare /m (no match id) renders the invalid-match view, not the legacy shell', () => {
+    const { unmount } = renderRoute('/m');
+    expect(screen.getByText(/doesn’t look like a match ID/)).toBeTruthy();
+    unmount();
+    renderRoute('/m/');
+    expect(screen.getByText(/doesn’t look like a match ID/)).toBeTruthy();
+  });
+
   it('/ and /legacy render the legacy shell', () => {
     const { unmount } = renderRoute('/');
     expect(screen.getByTestId('legacy-shell')).toBeTruthy();

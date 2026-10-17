@@ -14,22 +14,28 @@ describe('resolveLang', () => {
     expect(resolveLang({ urlLang: 'zh', storedLang: 'en', browserLanguages: ['en-US'] })).toBe('zh');
     expect(resolveLang({ urlLang: 'en', storedLang: 'zh', browserLanguages: ['zh-CN'] })).toBe('en');
     expect(resolveLang({ storedLang: 'zh', browserLanguages: ['en-US'] })).toBe('zh');
-    expect(resolveLang({ browserLanguages: ['zh-TW'] })).toBe('zh');
-    expect(resolveLang({ browserLanguages: ['en-US'] })).toBe('en');
+    expect(resolveLang({ browserLanguages: ['zh-TW'], detectBrowser: true })).toBe('zh');
+    expect(resolveLang({ browserLanguages: ['en-US'], detectBrowser: true })).toBe('en');
     expect(resolveLang({})).toBe('en');
+  });
+
+  it('ignores the browser by default (first visit lands on English)', () => {
+    expect(resolveLang({ browserLanguages: ['zh-CN'] })).toBe('en');
+    expect(resolveLang({ browserLanguages: ['zh-TW'], detectBrowser: false })).toBe('en');
+    expect(resolveLang({ browserLanguages: ['zh'], detectBrowser: true })).toBe('zh');
   });
 
   it('ignores invalid values at every step', () => {
     expect(resolveLang({ urlLang: 'fr', storedLang: 'zh' })).toBe('zh');
-    expect(resolveLang({ urlLang: '', storedLang: 'english', browserLanguages: ['zh'] })).toBe('zh');
+    expect(resolveLang({ urlLang: '', storedLang: 'english', browserLanguages: ['zh'], detectBrowser: true })).toBe('zh');
     expect(resolveLang({ urlLang: 'ZH' })).toBe('en'); // case-sensitive: only exact en|zh
-    expect(resolveLang({ urlLang: null, storedLang: null, browserLanguages: null })).toBe('en');
+    expect(resolveLang({ urlLang: null, storedLang: null, browserLanguages: null, detectBrowser: true })).toBe('en');
   });
 
-  it('maps zh-CN and zh-TW browser languages to zh', () => {
-    expect(resolveLang({ browserLanguages: ['zh-CN', 'en'] })).toBe('zh');
-    expect(resolveLang({ browserLanguages: ['zh-TW'] })).toBe('zh');
-    expect(resolveLang({ browserLanguages: ['en-GB', 'zh-Hans'] })).toBe('zh');
+  it('maps zh-CN and zh-TW browser languages to zh when detection is enabled', () => {
+    expect(resolveLang({ browserLanguages: ['zh-CN', 'en'], detectBrowser: true })).toBe('zh');
+    expect(resolveLang({ browserLanguages: ['zh-TW'], detectBrowser: true })).toBe('zh');
+    expect(resolveLang({ browserLanguages: ['en-GB', 'zh-Hans'], detectBrowser: true })).toBe('zh');
   });
 
   it('normalizeLang accepts only exact en/zh', () => {

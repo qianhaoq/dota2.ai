@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { parseMatchId } from '../../utils/parseMatchId';
 import { useI18n } from '../i18n/I18nProvider';
+import { buildCarryQuery } from '../carryQuery';
 
 /**
  * Sticky bottom composer (handoff §3). Submitting a numeric match ID or an
@@ -20,9 +21,7 @@ const Composer: React.FC = () => {
     if (id) {
       setError(false);
       setValue('');
-      const params = new URLSearchParams(location.search);
-      params.set('lang', lang);
-      navigate({ pathname: `/m/${id}`, search: `?${params.toString()}` });
+      navigate({ pathname: `/m/${id}`, search: buildCarryQuery(location.search, lang) });
     } else {
       setError(true);
     }

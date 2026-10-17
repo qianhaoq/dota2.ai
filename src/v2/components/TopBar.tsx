@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useI18n } from '../i18n/I18nProvider';
+import { buildCarryQuery } from '../carryQuery';
 import type { DictKey } from '../i18n/en';
 
 const SURFACE_TABS: DictKey[] = ['tab_web', 'tab_cli', 'tab_discord', 'tab_dev'];
@@ -17,9 +18,7 @@ const TopBar: React.FC = () => {
   const location = useLocation();
 
   const goNew = () => {
-    const params = new URLSearchParams(location.search);
-    params.set('lang', lang);
-    navigate({ pathname: '/new', search: `?${params.toString()}` });
+    navigate({ pathname: '/new', search: buildCarryQuery(location.search, lang) });
   };
 
   return (

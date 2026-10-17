@@ -6,6 +6,10 @@ import type { Language } from '../../types';
  * Invalid values are ignored at every step. Browser languages starting with
  * "zh" (zh-CN, zh-TW, …) map to zh.
  *
+ * The browser step is opt-in (`detectBrowser: true`, wired to the build-time
+ * VITE_LANG_DETECT_BROWSER=1 flag in I18nProvider); by default a first-time
+ * visitor always lands on English.
+ *
  * Everything DOM/storage-touching is isolated in small guarded helpers so the
  * resolution itself stays unit-testable in a node environment.
  */
@@ -24,14 +28,16 @@ export interface ResolveLangInput {
   storedLang?: string | null;
   /** Browser language tags, e.g. navigator.languages. */
   browserLanguages?: readonly string[] | null;
+  /** Opt-in: consult `browserLanguages` (default false → English first visit). */
+  detectBrowser?: boolean;
 }
 
-export function resolveLang({ urlLang, storedLang, browserLanguages }: ResolveLangInput): Language {
+export function resolveLang({ urlLang, storedLang, browserLanguages, detectBrowser = false }: ResolveLangInput): Language {
   const fromUrl = normalizeLang(urlLang);
   if (fromUrl) return fromUrl;
   const fromStorage = normalizeLang(storedLang);
   if (fromStorage) return fromStorage;
-  if (browserLanguages?.some((tag) => typeof tag === 'string' && tag.toLowerCase().startsWith('zh'))) {
+  if (detectBrowser && browserLanguages?.some((tag) => typeof tag === 'string' && tag.toLowerCase().startsWith('zh'))) {
     return 'zh';
   }
   return 'en';

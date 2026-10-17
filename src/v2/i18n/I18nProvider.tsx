@@ -26,6 +26,8 @@ const I18nContext = createContext<I18nContextValue | null>(null);
  * Shared language state for both the legacy app and the v2 shell.
  * Must be rendered inside a Router (it reads/writes the URL `lang` param).
  * Resolution priority: URL > localStorage > browser > 'en' (see resolveLang).
+ * The browser step is a build-time opt-in (VITE_LANG_DETECT_BROWSER=1); by
+ * default a first-time visitor lands on English.
  */
 export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
@@ -36,7 +38,13 @@ export const I18nProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const [lang, setLangState] = useState<Language>(() =>
-    resolveLang({ urlLang, storedLang: readStoredLang(), browserLanguages: browserLanguageTags() }),
+    resolveLang({
+      urlLang,
+      storedLang: readStoredLang(),
+      browserLanguages: browserLanguageTags(),
+      // Build-time opt-in: browser language only counts when explicitly enabled.
+      detectBrowser: import.meta.env.VITE_LANG_DETECT_BROWSER === '1',
+    }),
   );
 
   // A valid ?lang= in the URL always wins (shared/deep links).

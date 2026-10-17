@@ -156,23 +156,25 @@ const WorkspaceShell: React.FC<WorkspaceShellProps> = ({ lang, onToggleLang }) =
 
         <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {/* Mobile: the mentor compresses to one line (DESIGN.md §2). */}
-          <div className="lg:hidden flex-shrink-0 flex items-center gap-[10px] px-[16px] py-[8px] border-b border-v3-line bg-v3-panel">
-            {mentor?.icon || mentor?.img ? (
-              <img
-                src={mentor.icon || mentor.img}
-                alt=""
-                aria-hidden="true"
-                className="w-[24px] h-[24px] rounded-[3px] object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <span aria-hidden="true" className="text-v3-gold text-[13px] w-[24px] h-[24px] flex items-center justify-center">◇</span>
-            )}
-            <span className="text-[11px] leading-[17px] text-v3-muted truncate">
-              <strong className="text-v3-text font-medium">{lang === 'zh' ? '拉比克' : 'Rubick'}</strong>
-              <span className="text-v3-quiet"> · {mentorLine}</span>
-            </span>
-          </div>
+          {flags.legacy_mentor && (
+            <div className="lg:hidden flex-shrink-0 flex items-center gap-[10px] px-[16px] py-[8px] border-b border-v3-line bg-v3-panel">
+              {mentor?.icon || mentor?.img ? (
+                <img
+                  src={mentor.icon || mentor.img}
+                  alt=""
+                  aria-hidden="true"
+                  className="w-[24px] h-[24px] rounded-[3px] object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <span aria-hidden="true" className="text-v3-gold text-[13px] w-[24px] h-[24px] flex items-center justify-center">◇</span>
+              )}
+              <span className="text-[11px] leading-[17px] text-v3-muted truncate">
+                <strong className="text-v3-text font-medium">{lang === 'zh' ? '拉比克' : 'Rubick'}</strong>
+                <span className="text-v3-quiet"> · {mentorLine}</span>
+              </span>
+            </div>
+          )}
 
           <div className="flex-1 min-h-0 flex flex-col">
             {visited.tactical && (

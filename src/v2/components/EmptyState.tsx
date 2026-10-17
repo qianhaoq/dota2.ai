@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n/I18nProvider';
+import { buildCarryQuery } from '../carryQuery';
 import type { DictKey } from '../i18n/en';
 
 export const SAMPLE_MATCH_ID = '9035042364';
@@ -16,9 +17,7 @@ const EmptyState: React.FC = () => {
   const [notice, setNotice] = useState<DictKey | null>(null);
 
   const openSample = () => {
-    const params = new URLSearchParams(location.search);
-    params.set('lang', lang);
-    navigate({ pathname: `/m/${SAMPLE_MATCH_ID}`, search: `?${params.toString()}` });
+    navigate({ pathname: `/m/${SAMPLE_MATCH_ID}`, search: buildCarryQuery(location.search, lang) });
   };
 
   return (
