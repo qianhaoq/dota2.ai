@@ -2192,14 +2192,12 @@ app.post('/api/suggestions', async (req, res) => {
     }
 
     // Count only now: the data-availability short-circuit above answers for
-    // free, everything below does the OpenDota-driven compute. A tripped
-    // global cost guard reuses that same empty-suggestions answer instead of
-    // a 429 (this route never calls an LLM).
+    // free, everything below does the OpenDota-driven compute. This route
+    // never calls an LLM, so a tripped global cost guard simply lets the
+    // deterministic computation run (never a 429, never an empty answer);
+    // only the per-IP limit answers 429.
     const llmGate = suggestionsLlmLimit.acquire(req);
-    if (!llmGate.ok) {
-      if (llmGate.reason === 'cost_guard') {
-        return res.json({ suggestions: [], error: 'OpenDota data unavailable' });
-      }
+    if (!llmGate.ok && llmGate.reason !== 'cost_guard') {
       return suggestionsLlmLimit.respondRateLimited(req, res, llmGate.retryAfterSec);
     }
     
