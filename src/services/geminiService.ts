@@ -4,6 +4,7 @@ import type { ReviewCardsPayload } from '../types/reviewCards';
 import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
 import { parseReviewParseStatus } from '../utils/parseStatus';
 import { serverErrorMessage } from '../utils/serverErrorMessage';
+import { retryAfterFrom } from '../utils/retryAfter';
 
 function cancelledMessage(lang: Language): string {
   return lang === 'zh' ? '请求已取消' : 'Request cancelled';
@@ -520,6 +521,12 @@ export interface ReviewStreamCallbacks {
   onChunk: (text: string) => void;
   onComplete: (grounded: boolean) => void;
   onError: (error: string) => void;
+  /**
+   * HTTP 429 rate limit (server PR #89): invoked INSTEAD of onError so the
+   * UI can show a live countdown. Null retryAfterSec = server didn't say how
+   * long. Legacy callers without this callback still get onError.
+   */
+  onRateLimited?: (retryAfterSec: number | null, message: string) => void;
 }
 
 export const REVIEW_CLIENT_TIMEOUT_MS = 180000;
@@ -565,6 +572,25 @@ export const fetchMatchReviewStream = (
         body: JSON.stringify(reviewBody),
         signal: controller.signal,
       });
+
+      if (response.status === 429) {
+        // Rate limited before any streaming started: surface the wait via
+        // onRateLimited (Retry-After header, falling back to the body's
+        // retryAfterSec) instead of a generic stream error.
+        const data = await response.json().catch(() => ({} as { retryAfterSec?: unknown }));
+        const retryAfterSec = retryAfterFrom(
+          response.headers?.get?.('retry-after'),
+          data.retryAfterSec,
+        );
+        const message = serverErrorMessage(
+          data,
+          lang === 'zh' ? '请求太频繁，请稍后再试。' : 'Too many requests right now. Try again in a moment.',
+        );
+        clearTimeout(timeoutId);
+        if (callbacks?.onRateLimited) callbacks.onRateLimited(retryAfterSec, message);
+        else callbacks?.onError(message);
+        return;
+      }
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import V2Shell from '../V2Shell';
-import Composer from '../components/Composer';
+import Composer, { FOLLOW_UP_MAX_CHARS } from '../components/Composer';
 import { useI18n } from '../i18n/I18nProvider';
 import { MatchFactsError, fetchMatchFacts, type MatchFactsResult } from '../../services/dotaApiService';
 import { fetchMatchReviewStream } from '../../services/geminiService';
@@ -31,6 +31,8 @@ interface FollowUpTurn {
   answer: string;
   status: 'streaming' | 'done' | 'error';
   error?: string;
+  /** The turn ended in a 429: show the rate-limit countdown, not errFollowUp. */
+  rateLimited?: boolean;
 }
 
 type ConclusionField = 'turningPoint' | 'topMistake' | 'nextGameRule';
@@ -62,8 +64,12 @@ const MatchPage: React.FC = () => {
   const [phase, setPhase] = useState<'loading' | 'pick' | 'loadingHero' | 'results' | 'error'>('loading');
   const [facts, setFacts] = useState<MatchFactsResult | null>(null);
   const [heroFacts, setHeroFacts] = useState<MatchFactsResult | null>(null);
-  const [error, setError] = useState<{ message: string; notFound: boolean } | null>(null);
+  const [error, setError] = useState<{ message: string; notFound: boolean; rateLimited: boolean } | null>(null);
   const [traceStep, setTraceStep] = useState(0);
+  // 429 rate limit: whole seconds left until controls re-enable. null = no
+  // limit in effect; 0 = the server didn't say how long ("in a moment" copy,
+  // nothing disabled). Ticks down once per second while > 0.
+  const [rateLimit, setRateLimit] = useState<number | null>(null);
   // Closed by default: with ?hero= deep links the grid must not flash; "Change" reopens it.
   const [pickerOpen, setPickerOpen] = useState(false);
   const [turns, setTurns] = useState<FollowUpTurn[]>([]);
@@ -100,8 +106,24 @@ const MatchPage: React.FC = () => {
   const streamRef = useRef<AbortController | null>(null);
   const prefillRef = useRef<string | null>(null);
   const streaming = turns.some((turn) => turn.status === 'streaming');
+  const rateLimited = (rateLimit ?? 0) > 0;
 
   useEffect(() => () => streamRef.current?.abort(), []);
+
+  // Live countdown for a 429: tick once per second until the wait elapses,
+  // then release the disabled Retry / chips / composer.
+  useEffect(() => {
+    if (!rateLimited) return undefined;
+    const id = window.setInterval(() => {
+      setRateLimit((sec) => (sec != null && sec > 0 ? sec - 1 : sec));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [rateLimited]);
+
+  const rateLimitNotice = () =>
+    rateLimit != null && rateLimit > 0
+      ? t('rateLimitSeconds').replace('{n}', String(rateLimit))
+      : t('rateLimitMoment');
 
   const startStream = (id: number, question: string) => {
     const controller = fetchMatchReviewStream(matchId, lang, heroId ?? undefined, question, {
@@ -113,17 +135,25 @@ const MatchPage: React.FC = () => {
         setTurns((ts) =>
           ts.map((x) =>
             x.id === id
-              ? { ...x, status: controller.signal.aborted ? 'done' : 'error', error: message }
+              ? { ...x, status: controller.signal.aborted ? 'done' : 'error', error: message, rateLimited: false }
               : x,
           ),
         ),
+      onRateLimited: (retryAfterSec) => {
+        setRateLimit(retryAfterSec == null ? 0 : Math.max(1, Math.round(retryAfterSec)));
+        setTurns((ts) =>
+          ts.map((x) => (x.id === id ? { ...x, status: 'error', rateLimited: true } : x)),
+        );
+      },
     });
     streamRef.current = controller;
   };
 
   const ask = (question: string, kind: 'preset' | 'custom') => {
-    const q = question.trim();
+    // Trim + hard cap (maxLength can be bypassed by a programmatic paste).
+    const q = question.trim().slice(0, FOLLOW_UP_MAX_CHARS);
     if (!q || streaming) return;
+    setRateLimit(null);
     trackEvent('followup_clicked', { kind });
     setAsked((prev) => (prev.includes(q) ? prev : [...prev, q]));
     // The id must be computed here, not inside the setTurns updater — React
@@ -138,7 +168,8 @@ const MatchPage: React.FC = () => {
   const retryTurn = (turn: FollowUpTurn) => {
     if (streaming) return;
     stickRef.current = true;
-    setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, answer: '', error: undefined, status: 'streaming' } : x)));
+    setRateLimit(null);
+    setTurns((ts) => ts.map((x) => (x.id === turn.id ? { ...x, answer: '', error: undefined, rateLimited: false, status: 'streaming' } : x)));
     startStream(turn.id, turn.question);
   };
 
@@ -162,6 +193,7 @@ const MatchPage: React.FC = () => {
     setTurns([]);
     setAsked([]);
     setPickerOpen(false);
+    setRateLimit(null);
     fetchMatchFacts(matchId, lang, ac.signal)
       .then((res) => {
         if (ac.signal.aborted) return;
@@ -172,7 +204,9 @@ const MatchPage: React.FC = () => {
         const message = err instanceof Error ? err.message : '';
         const notFound =
           (err instanceof MatchFactsError && err.upstreamStatus === 404) || /not found/i.test(message);
-        setError({ message: notFound ? '' : message, notFound });
+        const limited = err instanceof MatchFactsError && err.status === 429;
+        if (limited) setRateLimit(err.retryAfterSec ?? 0);
+        setError({ message: notFound ? '' : message, notFound, rateLimited: limited });
         setPhase('error');
       });
     return () => ac.abort();
@@ -200,7 +234,9 @@ const MatchPage: React.FC = () => {
         const message = err instanceof Error ? err.message : '';
         const notFound =
           (err instanceof MatchFactsError && err.upstreamStatus === 404) || /not found/i.test(message);
-        setError({ message: notFound ? '' : message, notFound });
+        const limited = err instanceof MatchFactsError && err.status === 429;
+        if (limited) setRateLimit(err.retryAfterSec ?? 0);
+        setError({ message: notFound ? '' : message, notFound, rateLimited: limited });
         setPhase('error');
       });
     return () => ac.abort();
@@ -261,6 +297,7 @@ const MatchPage: React.FC = () => {
         <Composer
           mode={phase === 'results' ? 'followUp' : 'match'}
           disabled={streaming}
+          locked={rateLimited}
           onStop={() => streamRef.current?.abort()}
           onSubmitQuestion={onComposerQuestion}
           currentMatchId={matchId}
@@ -288,12 +325,17 @@ const MatchPage: React.FC = () => {
         {error && (
           <div className="bg-d2-down-bg border-l-[3px] border-d2-down rounded-[14px] px-[14px] py-[12px]">
             <p className="m-0 text-d2-15 text-d2-ink-2">
-              {error.notFound ? t('errMatchNotFound') : error.message || t('errLoad')}
+              {error.rateLimited
+                ? rateLimitNotice()
+                : error.notFound
+                  ? t('errMatchNotFound')
+                  : error.message || t('errLoad')}
             </p>
             <button
               type="button"
               onClick={() => setReloadKey((k) => k + 1)}
-              className="mt-[8px] inline-flex items-center min-h-[36px] px-[14px] rounded-d2-control bg-d2-surface border border-d2-line-2 text-d2-13 font-semibold text-d2-ink-2 shadow-d2-1"
+              disabled={rateLimited}
+              className="mt-[8px] inline-flex items-center min-h-[36px] px-[14px] rounded-d2-control bg-d2-surface border border-d2-line-2 text-d2-13 font-semibold text-d2-ink-2 shadow-d2-1 disabled:opacity-50"
             >
               {t('btnRetry')}
             </button>
@@ -361,7 +403,7 @@ const MatchPage: React.FC = () => {
                 <button
                   key={q}
                   type="button"
-                  disabled={streaming}
+                  disabled={streaming || rateLimited}
                   onClick={() => onChipAsk(q)}
                   className="inline-flex items-center min-h-[44px] px-[14px] rounded-d2-chip bg-d2-surface border border-d2-line-2 text-d2-13 font-medium text-d2-ink-2 shadow-d2-1 transition-colors duration-d2-fast hover:border-d2-accent hover:text-d2-ink disabled:opacity-50"
                 >
@@ -385,11 +427,14 @@ const MatchPage: React.FC = () => {
           </div>
           {turn.status === 'error' ? (
             <div className="bg-d2-down-bg border-l-[3px] border-d2-down rounded-[14px] px-[14px] py-[12px]">
-              <p className="m-0 text-d2-15 text-d2-ink-2">{t('errFollowUp')}</p>
+              <p className="m-0 text-d2-15 text-d2-ink-2">
+                {turn.rateLimited ? rateLimitNotice() : t('errFollowUp')}
+              </p>
               <button
                 type="button"
                 onClick={() => retryTurn(turn)}
-                className="mt-[8px] inline-flex items-center min-h-[36px] px-[14px] rounded-d2-control bg-d2-surface border border-d2-line-2 text-d2-13 font-semibold text-d2-ink-2 shadow-d2-1"
+                disabled={rateLimited}
+                className="mt-[8px] inline-flex items-center min-h-[36px] px-[14px] rounded-d2-control bg-d2-surface border border-d2-line-2 text-d2-13 font-semibold text-d2-ink-2 shadow-d2-1 disabled:opacity-50"
               >
                 {t('btnRetry')}
               </button>

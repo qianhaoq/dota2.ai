@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -49,15 +49,32 @@ function sseResponse(chunks: Array<Record<string, unknown>>) {
   };
 }
 
+/** Duck-typed 429 with a Retry-After header + localized body (server PR #89). */
+function rateLimitResponse(sec: number) {
+  return {
+    ok: false,
+    status: 429,
+    headers: { get: (n: string) => (n.toLowerCase() === 'retry-after' ? String(sec) : null) },
+    json: async () => ({ error: 'rate_limited', message: 'Too many requests', retryAfterSec: sec }),
+  };
+}
+
 const fetchMock = vi.fn();
 let heroResponse: unknown = null;
 
-function stubFetch(opts: { base: unknown; hero?: unknown; post?: Array<Record<string, unknown>> }) {
+function stubFetch(opts: {
+  base: unknown;
+  hero?: unknown;
+  post?: Array<Record<string, unknown>>;
+  postResponse?: unknown;
+}) {
   heroResponse = opts.hero ?? opts.base;
   const post = opts.post ?? [];
   fetchMock.mockReset();
   fetchMock.mockImplementation((input: unknown, init?: { method?: string }) => {
-    if ((init?.method ?? 'GET') === 'POST') return Promise.resolve(sseResponse(post));
+    if ((init?.method ?? 'GET') === 'POST') {
+      return Promise.resolve(opts.postResponse ?? sseResponse(post));
+    }
     const url = new URL(String(input), 'http://local.test');
     const lang = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
     const withHero = url.searchParams.has('heroId');
@@ -203,5 +220,103 @@ describe('MatchPage — follow-ups', () => {
     await screen.findByText(/8 times\./);
     // The asked chip is removed from the suggestions.
     await waitFor(() => expect(screen.queryByRole('button', { name: chip })).toBeNull());
+  });
+
+  it('hard-slices a follow-up to 2000 chars before sending', async () => {
+    stubFetch({ base: enFixture, hero: pudgeEn, post: [{ text: 'ok' }] });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    // fireEvent.change bypasses the input's maxLength, like a programmatic
+    // paste would — the page must still cap what goes on the wire.
+    fireEvent.change(screen.getByPlaceholderText('Ask a follow-up about this match'), {
+      target: { value: 'y'.repeat(2500) },
+    });
+    fireEvent.submit(screen.getByPlaceholderText('Ask a follow-up about this match').closest('form')!);
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(([, init]) => (init as { method?: string } | undefined)?.method === 'POST');
+      expect(post).toBeTruthy();
+      expect(JSON.parse((post![1] as { body: string }).body).followUp).toHaveLength(2000);
+    });
+  });
+});
+
+describe('MatchPage — 429 rate limiting', () => {
+  /** Fake timers mean findByText/waitFor would hang — flush microtasks instead. */
+  const flush = async () => {
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+    });
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('facts 429: countdown message, Retry + composer disabled until it elapses', async () => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(() => Promise.resolve(rateLimitResponse(30)));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage('/m/9035042364');
+
+    await flush();
+    expect(screen.getByText('Too many requests right now. Try again in 30s.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (screen.getByPlaceholderText('Paste match ID or link') as HTMLInputElement).disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByText('Too many requests right now. Try again in 20s.')).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
+    expect(screen.getByText('Too many requests right now. Try again in a moment.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByPlaceholderText('Paste match ID or link') as HTMLInputElement).disabled,
+    ).toBe(false);
+  });
+
+  it('follow-up 429: countdown in the turn, chips / composer / Retry disabled, then released', async () => {
+    stubFetch({ base: enFixture, hero: pudgeEn, postResponse: rateLimitResponse(30) });
+    renderPage('/m/9035042364?hero=pudge');
+
+    await flush();
+    const chip = pudgeEn.threeConclusions.followUps[0];
+    fireEvent.click(screen.getByRole('button', { name: chip }));
+    await flush();
+
+    expect(screen.getByText('Too many requests right now. Try again in 30s.')).toBeTruthy();
+    const otherChip = screen.getByRole('button', {
+      name: pudgeEn.threeConclusions.followUps[1],
+    }) as HTMLButtonElement;
+    expect(otherChip.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
+    ).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    expect(screen.getByText('Too many requests right now. Try again in a moment.')).toBeTruthy();
+    expect(otherChip.disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
+    ).toBe(false);
   });
 });

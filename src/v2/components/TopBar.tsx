@@ -4,22 +4,27 @@ import { MessageSquare } from 'lucide-react';
 import TopBarFeedbackModal from '../../app/FeedbackModal';
 import { useI18n } from '../i18n/I18nProvider';
 import { buildCarryQuery } from '../carryQuery';
+import { SAMPLE_MATCH_ID } from './EmptyState';
 import type { DictKey } from '../i18n/en';
 
 const SURFACE_TABS: DictKey[] = ['tab_web', 'tab_cli', 'tab_discord', 'tab_dev'];
 
 /**
- * V2 TopBar (handoff §3): logo, "Sample data" badge, surface tabs
- * (Web/CLI/Discord/For AI & Devs — non-functional placeholders), Feedback
- * (opens the existing on-site FeedbackModal), a small "Classic" link to the
- * legacy app, EN/中文 toggle, New button. Tabs are hidden below `lg` and
- * Classic below `sm` so the bar never overflows at 390px. Tap targets ≥44px.
+ * V2 TopBar (handoff §3): logo, "Sample data" badge (only while viewing the
+ * sample/golden match `/m/9035042364` — hidden on home and real matches),
+ * surface tabs (Web/CLI/Discord/For AI & Devs — non-functional placeholders),
+ * Feedback (opens the existing on-site FeedbackModal), a small "Classic" link
+ * to the legacy app, EN/中文 toggle, New button. Tabs are hidden below `lg`
+ * and Classic below `sm` so the bar never overflows at 390px. Tap targets
+ * ≥44px.
  */
 const TopBar: React.FC = () => {
   const { lang, setLang, t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  const onSampleMatch = location.pathname === `/m/${SAMPLE_MATCH_ID}`;
 
   const goNew = () => {
     navigate({ pathname: '/new', search: buildCarryQuery(location.search, lang) });
@@ -36,12 +41,14 @@ const TopBar: React.FC = () => {
           </span>
           dota2.ai
         </div>
-        <span
-          className="hidden xs:inline-flex items-center h-[24px] px-[8px] rounded-d2-chip bg-[#FFFBEB] text-d2-warn text-d2-12 font-semibold whitespace-nowrap"
-          title={t('sampleTitle')}
-        >
-          {t('samplePill')}
-        </span>
+        {onSampleMatch && (
+          <span
+            className="hidden xs:inline-flex items-center h-[24px] px-[8px] rounded-d2-chip bg-[#FFFBEB] text-d2-warn text-d2-12 font-semibold whitespace-nowrap"
+            title={t('sampleTitle')}
+          >
+            {t('samplePill')}
+          </span>
+        )}
         <div className="flex-1" />
         {/* Surface tabs: placeholders for the proposed CLI/Discord/Dev surfaces.
             Hidden on small screens so the bar fits 390px. */}

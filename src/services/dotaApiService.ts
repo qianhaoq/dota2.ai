@@ -2,6 +2,7 @@ import { Hero, Attribute, Language } from '../types';
 import type { MatchFact, ReviewParseStatus, ThreeConclusions } from '../types/matchReview';
 import { parseReviewParseStatus } from '../utils/parseStatus';
 import { serverErrorMessage } from '../utils/serverErrorMessage';
+import { retryAfterFrom } from '../utils/retryAfter';
 
 const OPENDOTA_API = 'https://api.opendota.com/api';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
@@ -103,16 +104,28 @@ export class MatchFactsError extends Error {
   upstream?: string;
   upstreamStatus?: number;
   retryable?: boolean;
+  /** HTTP status of our own response (e.g. 429 when rate limited). */
+  status?: number;
+  /** Wait in seconds when rate limited (Retry-After / body), when known. */
+  retryAfterSec?: number;
 
   constructor(
     message: string,
-    opts?: { upstream?: string; upstreamStatus?: number; retryable?: boolean },
+    opts?: {
+      upstream?: string;
+      upstreamStatus?: number;
+      retryable?: boolean;
+      status?: number;
+      retryAfterSec?: number;
+    },
   ) {
     super(message);
     this.name = 'MatchFactsError';
     this.upstream = opts?.upstream;
     this.upstreamStatus = opts?.upstreamStatus;
     this.retryable = opts?.retryable;
+    this.status = opts?.status;
+    this.retryAfterSec = opts?.retryAfterSec;
   }
 }
 
@@ -141,15 +154,24 @@ export const fetchMatchFacts = async (matchId: number | string, lang: Language =
       upstream?: string;
       upstreamStatus?: number;
       retryable?: boolean;
+      retryAfterSec?: unknown;
     }),
   );
   if (!response.ok) {
+    // 429 rate limits (server PR #89): Retry-After header first, body
+    // retryAfterSec second, so the UI can run a live countdown.
+    const rateLimited = response.status === 429;
+    const retryAfterSec = rateLimited
+      ? retryAfterFrom(response.headers?.get?.('retry-after'), data.retryAfterSec)
+      : undefined;
     throw new MatchFactsError(
       serverErrorMessage(data, lang === 'zh' ? '拉取比赛失败' : 'Failed to load match'),
       {
         upstream: data.upstream,
         upstreamStatus: data.upstreamStatus,
         retryable: data.retryable,
+        status: response.status,
+        ...(retryAfterSec != null ? { retryAfterSec } : {}),
       },
     );
   }

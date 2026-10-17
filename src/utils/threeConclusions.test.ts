@@ -85,7 +85,7 @@ describe('buildThreeConclusions — gold sample 8985182860 (en)', () => {
     expect(rule.title).toBe('Next-game rule');
     expect(rule.summary).toContain('Laning rule vs Axe:');
     expect(rule.summary).toContain('40 CS');
-    expect(rule.summary).toContain('a +975 team gold lead at 10 min');
+    expect(rule.summary).toContain('your team was 975 gold ahead at 10 min');
     expect(rule.evidence).toEqual([
       { time: '10:00', text: 'CS @10 min: 40', source: 'players' },
       { time: '10:00', text: 'Team gold lead @10 min: +975', source: 'economy' },
@@ -114,6 +114,7 @@ describe('buildThreeConclusions — gold sample 8985182860 (zh)', () => {
     expect(conclusions.topMistake.summary).toContain('6 次集中在后期');
     expect(conclusions.nextGameRule.title).toBe('下一局规则');
     expect(conclusions.nextGameRule.summary).toContain('对线规则——面对 斧王');
+    expect(conclusions.nextGameRule.summary).toContain('我方领先 975 金');
     expect(conclusions.nextGameRule.evidence[2].text).toBe('对线对手：斧王');
   });
 
@@ -280,8 +281,65 @@ describe('buildThreeConclusions — itemization rule when item timings exist', (
   });
 });
 
-describe('derivePrimaryDeathPattern', () => {
-  it('returns the dominant same-phase bucket', () => {
+describe('buildThreeConclusions — next-game rule gold-lead wording (deficit / lead / even)', () => {
+  // Lifestealer is Radiant, so the min-10 radiantGoldLead IS teamGold10.
+  // Only that checkpoint is overridden; everything else comes from the gold
+  // fixture, so the numbers are the data's, not hand-typed.
+  const baseFact = buildMatchFact(goldFixture, { lang: 'en', heroId: 54, heroNames: HERO_NAMES_8985 }) as MatchFact;
+  const withTeamGold10 = (fact: MatchFact, lead: number) =>
+    ({
+      ...fact,
+      economy: {
+        ...fact.economy,
+        checkpoints: (fact.economy?.checkpoints ?? []).map((c) =>
+          c?.minute === 10 ? { ...c, radiantGoldLead: lead } : c,
+        ),
+      },
+    }) as MatchFact;
+  const summaryFor = (lead: number, lang: 'en' | 'zh') =>
+    buildThreeConclusions(withTeamGold10(baseFact, lead), { lang }).nextGameRule.summary;
+
+  it('en deficit: absolute gold behind with a thousands separator, never a "lead"', () => {
+    const summary = summaryFor(-2060, 'en');
+    expect(summary).toContain('this game you had 40 CS and your team was 2,060 gold behind at 10 min.');
+    expect(summary).not.toContain('gold lead');
+    expect(summary).not.toContain('-2060');
+  });
+
+  it('en lead: gold ahead, still thousands-separated', () => {
+    const summary = summaryFor(12345, 'en');
+    expect(summary).toContain('your team was 12,345 gold ahead at 10 min.');
+    expect(summary).not.toContain('+12345');
+  });
+
+  it('en even: team gold was even', () => {
+    expect(summaryFor(0, 'en')).toContain('this game you had 40 CS and team gold was even at 10 min.');
+  });
+
+  it('zh deficit: 我方落后 with plain digits', () => {
+    const summary = summaryFor(-2060, 'zh');
+    expect(summary).toContain('本局 10 分钟时你的补刀为 40、我方落后 2060 金。');
+    expect(summary).not.toContain('经济差');
+    expect(summary).not.toContain('2,060');
+  });
+
+  it('zh lead: 我方领先 with plain digits', () => {
+    expect(summaryFor(975, 'zh')).toContain('我方领先 975 金');
+  });
+
+  it('zh even: 双方经济持平', () => {
+    expect(summaryFor(0, 'zh')).toContain('补刀为 40、双方经济持平。');
+  });
+
+  it('keeps the signed evidence lines untouched', () => {
+    const rule = buildThreeConclusions(withTeamGold10(baseFact, -2060), { lang: 'en' }).nextGameRule;
+    expect(rule.evidence[1]).toEqual({ time: '10:00', text: 'Team gold lead @10 min: -2060', source: 'economy' });
+    const ruleZh = buildThreeConclusions(withTeamGold10(baseFact, -2060), { lang: 'zh' }).nextGameRule;
+    expect(ruleZh.evidence[1]).toEqual({ time: '10:00', text: '10 分钟我方经济差：-2060', source: 'economy' });
+  });
+});
+
+describe('derivePrimaryDeathPattern', () => {  it('returns the dominant same-phase bucket', () => {
     const pattern = derivePrimaryDeathPattern([
       { time: 300, killerHeroId: 1, teamGoldLeadAtT: null },
       { time: 500, killerHeroId: 2, teamGoldLeadAtT: null },
