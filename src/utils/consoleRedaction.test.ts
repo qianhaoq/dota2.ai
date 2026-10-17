@@ -69,6 +69,20 @@ describe('installConsoleRedaction (unit)', () => {
     uninstall();
   });
 
+  it('leaves generic key/token/password prose alone but redacts credential pairs (Codex P1)', () => {
+    const { consoleObj, logMock } = makeConsole();
+    const uninstall = installConsoleRedaction(consoleObj);
+    consoleObj.log(JSON.stringify({ message: 'Use key=escape to close; my password: is long' }));
+    expect(String(logMock.mock.calls[0][0])).toContain('Use key=escape to close; my password: is long');
+    consoleObj.log(`GET https://api.opendota.com/api/heroes?api_key=${QA_FAKE_QUERY_KEY}&x=1`);
+    consoleObj.log(`GET https://example.test/v1?alt=json&key=${QA_FAKE_QUERY_KEY}`);
+    for (const call of logMock.mock.calls.slice(1)) {
+      expect(String(call[0])).not.toContain(QA_FAKE_QUERY_KEY);
+    }
+    expect(String(logMock.mock.calls[2][0])).toContain('&key=[REDACTED]');
+    uninstall();
+  });
+
   it('bounds serialization of large objects (Codex P2)', () => {
     const { consoleObj, logMock } = makeConsole();
     const uninstall = installConsoleRedaction(consoleObj);
