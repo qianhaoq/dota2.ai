@@ -8,6 +8,7 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import MatchPage from './MatchPage';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { trackEvent, trackReviewViewed } from '../../services/analytics';
+import { REVIEW_CLIENT_TIMEOUT_MS } from '../../services/geminiService';
 
 vi.mock('../../services/analytics', () => ({
   trackEvent: vi.fn(),
@@ -717,5 +718,178 @@ describe('MatchPage — 400 message_too_long (server PR #89)', () => {
     expect(
       (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
     ).toBe(false);
+  });
+});
+
+/**
+ * POST mock whose pending SSE read rejects with an AbortError when the page
+ * aborts the request's signal — like a real aborted fetch/SSE. The service's
+ * internal 180s timeout and the user's Stop button both call the same
+ * controller.abort(); only the page's userStoppedRef tells them apart.
+ */
+function abortableGatedSse() {
+  let releaseRead: ((r: { done: boolean; value?: Uint8Array }) => void) | null = null;
+  let rejectRead: ((e: unknown) => void) | null = null;
+  const encode = (payload: string) => Uint8Array.from(payload, (c) => c.charCodeAt(0));
+  const wireAbort = (signal: AbortSignal) =>
+    signal.addEventListener('abort', () => {
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+      rejectRead?.(err);
+    });
+  return {
+    wireAbort,
+    push: (obj: unknown) => {
+      releaseRead?.({ done: false, value: encode(`data: ${JSON.stringify(obj)}\n\n`) });
+      releaseRead = null;
+      rejectRead = null;
+    },
+    response: {
+      ok: true,
+      headers: { get: (n: string) => (n.toLowerCase() === 'content-type' ? 'text/event-stream' : null) },
+      body: {
+        getReader: () => ({
+          read: () =>
+            new Promise<{ done: boolean; value?: Uint8Array }>((resolve, reject) => {
+              releaseRead = resolve;
+              rejectRead = reject;
+            }),
+          cancel: async () => {},
+        }),
+      },
+    },
+  };
+}
+
+describe('MatchPage — user Stop vs service timeout', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  /** POST mock wiring: the gated SSE read rejects with an AbortError once the
+   * page aborts the request's signal, like a real aborted fetch/SSE. */
+  const stubAbortableStream = (stream: ReturnType<typeof abortableGatedSse>) => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((input: unknown, init?: { method?: string; signal?: AbortSignal }) => {
+      if ((init?.method ?? 'GET') === 'POST') {
+        stream.wireAbort(init!.signal!);
+        return Promise.resolve(stream.response);
+      }
+      const url = new URL(String(input), 'http://local.test');
+      const lang = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
+      if (url.searchParams.has('heroId')) return Promise.resolve(jsonResponse(pudgeEn));
+      return Promise.resolve(jsonResponse(lang === 'zh' ? zhFixture : enFixture));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  };
+
+  it('a service-side timeout abort (no Stop) keeps the turn in error state with Retry', async () => {
+    // Fake timers so the service's OWN REVIEW_CLIENT_TIMEOUT_MS timer fires —
+    // the exact path production hits (controller.abort() from inside the
+    // service, with no user Stop behind it).
+    vi.useFakeTimers();
+    const flushTimers = async () => {
+      await act(async () => {
+        for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+      });
+    };
+    const stream = abortableGatedSse();
+    stubAbortableStream(stream);
+    renderPage('/m/9035042364?hero=pudge');
+    await flushTimers();
+
+    fireEvent.click(screen.getByRole('button', { name: pudgeEn.threeConclusions.followUps[0] }));
+    await flushTimers();
+    stream.push({ text: 'PARTIAL ANSWER ' });
+    await flushTimers();
+    expect(screen.getByText(/PARTIAL ANSWER/)).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REVIEW_CLIENT_TIMEOUT_MS);
+    });
+
+    // The turn errored (not silently "done"): generic copy + Retry offered,
+    // the composer is released.
+    expect(screen.getByText('Could not answer that.')).toBeTruthy();
+    const retry = screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(false);
+    expect(
+      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
+    ).toBe(false);
+  });
+
+  it('the user\'s Stop settles the turn with its partial answer, no error shown', async () => {
+    const stream = abortableGatedSse();
+    stubAbortableStream(stream);
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    fireEvent.click(screen.getByRole('button', { name: pudgeEn.threeConclusions.followUps[0] }));
+    await flush();
+    stream.push({ text: 'PARTIAL ANSWER ' });
+    expect(await screen.findByText(/PARTIAL ANSWER/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    await flush();
+
+    expect(screen.queryByText('Could not answer that.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    // The partial answer stays visible and the composer is released.
+    expect(screen.getByText(/PARTIAL ANSWER/)).toBeTruthy();
+    expect(
+      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
+    ).toBe(false);
+  });
+});
+
+describe('MatchPage — tool trace done state', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('never claims "Analyzed" over a failed hero-scoped request', async () => {
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((input: unknown, init?: { method?: string }) => {
+      if ((init?.method ?? 'GET') === 'POST') return Promise.resolve(sseResponse([]));
+      const url = new URL(String(input), 'http://local.test');
+      if (url.searchParams.has('heroId')) return Promise.reject(new Error('upstream boom'));
+      return Promise.resolve(jsonResponse(enFixture));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage('/m/9035042364?hero=pudge');
+
+    expect(await screen.findByText('upstream boom')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    // The trace is still expanded (steps, not a checkmark) — the request
+    // failed, so "Analyzed match · OpenDota" would be a lie.
+    expect(screen.queryByText('Analyzed match · OpenDota')).toBeNull();
+    expect(screen.getByText('Fetching match')).toBeTruthy();
+  });
+
+  it('claims "Analyzed" once results render', async () => {
+    stubFetch({ base: enFixture, hero: pudgeEn });
+    renderPage('/m/9035042364?hero=pudge');
+
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+    expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
+  });
+
+  it('claims "Analyzed" when the picker is deliberately shown (no ?hero)', async () => {
+    stubFetch({ base: enFixture, hero: pudgeEn });
+    renderPage('/m/9035042364');
+
+    expect(await screen.findByText('Which one was you?')).toBeTruthy();
+    expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
   });
 });

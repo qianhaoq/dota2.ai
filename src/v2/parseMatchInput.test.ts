@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMatchInput } from './parseMatchInput';
+import { isSafeMatchId, parseMatchInput } from './parseMatchInput';
 
 describe('parseMatchInput — bare ids', () => {
   it('accepts pure digits (1–20) as exact strings', () => {
@@ -14,6 +14,18 @@ describe('parseMatchInput — bare ids', () => {
     expect(parseMatchInput('9007199254740992')).toBeNull(); // MAX_SAFE_INTEGER + 1
     expect(parseMatchInput('12345678901234567')).toBeNull(); // 17 digits
     expect(parseMatchInput('https://opendota.com/matches/9007199254740992')).toBeNull();
+  });
+
+  it('rejects 0 and all-zero ids — a match id must be a positive integer', () => {
+    expect(parseMatchInput('0')).toBeNull();
+    expect(parseMatchInput('000')).toBeNull();
+    expect(parseMatchInput('00000000000000000000')).toBeNull(); // 20 zeros, still zero
+    expect(parseMatchInput('https://opendota.com/matches/0')).toBeNull();
+    expect(parseMatchInput('https://opendota.com/matches/000')).toBeNull();
+    expect(isSafeMatchId('0')).toBe(false);
+    // Positive ids (including zero-padded ones) still pass.
+    expect(isSafeMatchId('1')).toBe(true);
+    expect(isSafeMatchId('007')).toBe(true);
   });
 
   it('rejects ids longer than 20 digits instead of truncating', () => {

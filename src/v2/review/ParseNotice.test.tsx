@@ -75,4 +75,17 @@ describe('ParseNotice — request-parse pending state', () => {
     expect(screen.queryByRole('button', { name: 'Request parse' })).toBeNull();
     expect(screen.getByText('Parse requested.')).toBeTruthy();
   });
+
+  it('aborts the in-flight parse request on unmount', async () => {
+    const gate = deferred<ReviewParseStatus>();
+    vi.mocked(requestMatchParse).mockReturnValue(gate.promise);
+    const { unmount } = renderNotice();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request parse' }));
+    const signal = vi.mocked(requestMatchParse).mock.calls[0][2];
+    expect(signal?.aborted).toBe(false);
+
+    unmount();
+    expect(signal?.aborted).toBe(true);
+  });
 });

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { ReviewParseStatus } from '../../types/matchReview';
 import { requestMatchParse } from '../../services/dotaApiService';
 import { createParseRequestController, shouldOfferParseRequest } from '../../utils/parseRequest';
@@ -22,6 +22,11 @@ const ParseNotice: React.FC<{ matchId: string; parse: ReviewParseStatus | null }
     () => createParseRequestController((id, l, signal) => requestMatchParse(id, l, signal)),
     [],
   );
+
+  // An in-flight parse request outlives nothing: unmount (hero/match change,
+  // error path) aborts it, like legacy ReviewEntry — otherwise the request
+  // keeps running and its result lands in a dead component.
+  useEffect(() => () => parseController.abort(), [parseController]);
 
   if (!parse || parse.status === 'parsed') return null;
   const shown = status ?? parse;

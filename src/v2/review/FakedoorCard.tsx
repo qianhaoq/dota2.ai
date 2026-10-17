@@ -7,6 +7,10 @@ import { IconInfo } from './icons';
 /** sessionStorage marker: the fake-door card is interacted with at most once per session. */
 const FAKEDOOR_SESSION_KEY = 'dota2ai.fakedoorV2Dismissed';
 
+/** Empty contact is fine (anonymous interest), but a non-empty one must be a
+ * plausible email — local part @ domain with a TLD, no spaces. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 type FdState = 'open' | 'sending' | 'thanks' | 'error';
 
 /**
@@ -26,6 +30,7 @@ const FakedoorCard: React.FC = () => {
   });
   const [state, setState] = useState<FdState>('open');
   const [contact, setContact] = useState('');
+  const [emailError, setEmailError] = useState(false);
 
   if (dismissed) return null;
 
@@ -45,6 +50,14 @@ const FakedoorCard: React.FC = () => {
 
   const notify = async () => {
     if (state === 'sending' || state === 'thanks') return;
+    // A non-empty contact that isn't an email never leaves the card: no
+    // request, no analytics event, no session marker — just inline feedback.
+    const trimmed = contact.trim();
+    if (trimmed && !EMAIL_RE.test(trimmed)) {
+      setEmailError(true);
+      return;
+    }
+    setEmailError(false);
     trackEvent('fakedoor_clicked', { kind: 'steam_autoreview' });
     setState('sending');
     try {
@@ -83,11 +96,15 @@ const FakedoorCard: React.FC = () => {
             <input
               type="email"
               value={contact}
-              onChange={(e) => setContact(e.target.value)}
+              onChange={(e) => {
+                setContact(e.target.value);
+                if (emailError) setEmailError(false);
+              }}
               placeholder={t('fdEmailPh')}
               autoComplete="email"
               maxLength={200}
               disabled={state === 'sending'}
+              aria-invalid={emailError || undefined}
               className="flex-1 min-w-0 min-h-[40px] px-[12px] rounded-d2-control bg-d2-surface-2 border border-d2-line text-d2-13 text-d2-ink placeholder:text-d2-ink-4 outline-none focus:border-d2-accent disabled:opacity-50"
             />
             <div className="flex gap-[8px]">
@@ -110,6 +127,7 @@ const FakedoorCard: React.FC = () => {
           </div>
         )}
         {state === 'error' && <p className="mt-[8px] mb-0 text-d2-13 text-d2-down" role="alert">{t('fdError')}</p>}
+        {emailError && <p className="mt-[8px] mb-0 text-d2-13 text-d2-down" role="alert">{t('fdEmailInvalid')}</p>}
       </div>
     </div>
   );

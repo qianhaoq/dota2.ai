@@ -75,6 +75,7 @@ export const zh: Dict = {
   fdNotify: '上线时通知我',
   fdNotNow: '暂不需要',
   fdEmailPh: '邮箱（选填）',
+  fdEmailInvalid: '邮箱格式看起来不对——请修改或留空。',
   fdSending: '提交中…',
   fdThanks: '感谢！上线时联系你。',
   fdThanksAnon: '感谢！你的意向已记录。',

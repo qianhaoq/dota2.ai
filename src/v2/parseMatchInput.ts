@@ -3,7 +3,8 @@
  * STRING — never Number()/parseInt'd. The server does Number(req.params.matchId),
  * so ids above Number.MAX_SAFE_INTEGER (9007199254740991 — effectively 16
  * digits) are rejected here (BigInt compare, no float coercion). Accepts pure
- * digits (1–20, within the safe range) or match URLs whose protocol is ONLY
+ * digits (1–20, a positive integer within the safe range — 0 / all-zero ids
+ * are rejected) or match URLs whose protocol is ONLY
  * http/https (javascript:, data:, ftp: … are rejected; scheme-less hosts are
  * treated as https) on opendota.com / dotabuff.com / stratz.com (exact host
  * or subdomain — lookalikes like opendota.com.evil.test fail the host check).
@@ -16,9 +17,12 @@ const BARE_ID_RE = /^\d{1,20}$/;
 const URL_ID_RE = /\/matches\/(\d{1,20})(?=\/|$)/i;
 const MAX_SAFE_ID = BigInt(Number.MAX_SAFE_INTEGER);
 
-/** True when a bare digit id is well-formed AND within the server's safe numeric range. */
+/** True when a bare digit id is well-formed AND a positive integer within the
+ * server's safe numeric range (0 and all-zero ids are not match ids). */
 export function isSafeMatchId(raw: string): boolean {
-  return BARE_ID_RE.test(raw) && BigInt(raw) <= MAX_SAFE_ID;
+  if (!BARE_ID_RE.test(raw)) return false;
+  const id = BigInt(raw);
+  return id > 0n && id <= MAX_SAFE_ID;
 }
 
 export function parseMatchInput(input: unknown): string | null {

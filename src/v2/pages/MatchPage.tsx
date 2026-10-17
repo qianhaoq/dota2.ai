@@ -143,6 +143,11 @@ const MatchPage: React.FC = () => {
   // ---- follow-up streaming ----
   const turnIdRef = useRef(0);
   const streamRef = useRef<AbortController | null>(null);
+  // Set ONLY by the user's Stop action. The service aborts the same controller
+  // on its own 180s timeout and still calls onError — an aborted signal alone
+  // can't tell the two apart, so Stop marks "keep the partial answer" while a
+  // service-side abort stays an error with Retry.
+  const userStoppedRef = useRef(false);
   // Bumped whenever the conversation context dies (hero/match/lang change,
   // unmount): stream callbacks capture the value at start and drop events
   // from a superseded request, so a stale chunk can never land in the new
@@ -189,9 +194,17 @@ const MatchPage: React.FC = () => {
     setTurns((ts) => ts.map((x) => (x.status === 'streaming' ? { ...x, status: 'done' } : x)));
   };
 
+  /** The user's Stop button: unlike the service's internal timeout abort, this
+   * one means "keep the partial answer" — marked so onError can tell them apart. */
+  const stopStream = () => {
+    userStoppedRef.current = true;
+    streamRef.current?.abort();
+  };
+
   const startStream = (id: number, question: string) => {
     const epoch = streamEpochRef.current;
     const stale = () => epoch !== streamEpochRef.current;
+    userStoppedRef.current = false;
     const controller = fetchMatchReviewStream(matchId, lang, heroId ?? undefined, question, {
       onData: () => {},
       onChunk: (text) => {
@@ -204,10 +217,14 @@ const MatchPage: React.FC = () => {
       },
       onError: (message) => {
         if (stale()) return;
+        // Aborted by the user's Stop: settle the turn with its partial answer.
+        // Aborted by the service's own timeout (no Stop): a real error — keep
+        // the turn in error state so Retry is offered.
+        const userStopped = controller.signal.aborted && userStoppedRef.current;
         setTurns((ts) =>
           ts.map((x) =>
             x.id === id
-              ? { ...x, status: controller.signal.aborted ? 'done' : 'error', error: message, rateLimited: false }
+              ? { ...x, status: userStopped ? 'done' : 'error', error: message, rateLimited: false }
               : x,
           ),
         );
@@ -408,7 +425,7 @@ const MatchPage: React.FC = () => {
           mode={phase === 'results' ? 'followUp' : 'match'}
           disabled={streaming}
           locked={rateLimited}
-          onStop={() => streamRef.current?.abort()}
+          onStop={stopStream}
           onSubmitQuestion={onComposerQuestion}
           currentMatchId={matchId}
           restore={restore}
@@ -432,9 +449,11 @@ const MatchPage: React.FC = () => {
         </div>
 
         {/* Tool trace also covers the INITIAL facts request (facts still null
-            while loading), not just the hero-scoped pass after facts arrive. */}
+            while loading), not just the hero-scoped pass after facts arrive.
+            "Analyzed" is claimed only when results or the picker are actually
+            shown — never over an error card for a failed request. */}
         {(facts || phase === 'loading') && (
-          <ProgressTrace step={traceStep} done={phase !== 'loading' && phase !== 'loadingHero'} />
+          <ProgressTrace step={traceStep} done={phase === 'results' || phase === 'pick'} />
         )}
 
         {error && (

@@ -73,6 +73,7 @@ export const en = {
   fdNotify: 'Notify me',
   fdNotNow: 'Not now',
   fdEmailPh: 'Email (optional)',
+  fdEmailInvalid: 'That email doesn’t look right — fix it or leave it blank.',
   fdSending: 'Sending…',
   fdThanks: 'Thanks! We’ll be in touch at launch.',
   fdThanksAnon: 'Thanks! Your interest is recorded.',
