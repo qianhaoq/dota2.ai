@@ -9,6 +9,7 @@ import { isHeroInMatch, rosterFromMatchFact } from '../../utils/reviewRoster';
 import { fetchMatchFacts, MatchFactsError, requestMatchParse } from '../../services/dotaApiService';
 import type { ReviewParseStatus } from '../../types/matchReview';
 import ReviewSuggestions from './ReviewSuggestions';
+import { useFlags } from '../../v2/FlagsProvider';
 
 interface ReviewEntryProps {
   lang: Language;
@@ -38,6 +39,9 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
   const [parseRequesting, setParseRequesting] = useState(false);
   const [parseRequestError, setParseRequestError] = useState<string | null>(null);
   const factsRequestIdRef = useRef(0);
+  // Feature flags (v2 rebuild): on /new and /m the "Next actions" suggestions
+  // are hidden but the code stays. On / and /legacy they show.
+  const flags = useFlags();
   const parseRequestControllerRef = useRef<ReturnType<typeof createParseRequestController> | null>(null);
   const getParseRequestController = () => (
     parseRequestControllerRef.current ??= createParseRequestController(requestMatchParse)
@@ -237,12 +241,14 @@ const ReviewEntry: React.FC<ReviewEntryProps> = ({
         <div className="mt-2 p-3 rounded-xl border border-k3-border-subtle bg-k3-surface space-y-3">
           {!factsReady ? (
             <form onSubmit={(e) => handleFetchFacts(e)} className="space-y-3">
-              <ReviewSuggestions
-                lang={lang}
-                disabled={factsLoading}
-                selectedMatchId={parsedId}
-                onSelect={handleSuggestionSelect}
-              />
+              {flags.legacy_next_actions && (
+                <ReviewSuggestions
+                  lang={lang}
+                  disabled={factsLoading}
+                  selectedMatchId={parsedId}
+                  onSelect={handleSuggestionSelect}
+                />
+              )}
               <p className="text-[11px] text-k3-text-tertiary">{t.subtitle}</p>
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-k3-text-tertiary" />

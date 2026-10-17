@@ -2906,6 +2906,10 @@ app.post('/api/events', (req, res) => {
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get('*', (req, res) => {
+  // The /new v2 experience is gated/unlisted — keep it out of search indexes.
+  if (req.path === '/new' || req.path.startsWith('/new/')) {
+    res.set('X-Robots-Tag', 'noindex');
+  }
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
