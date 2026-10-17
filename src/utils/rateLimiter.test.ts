@@ -122,3 +122,18 @@ describe('createAnalyticsRateLimiter stays a boolean facade over the shared limi
     expect(limiter.tryConsume('2.2.2.2', now)).toBe(false); // global limit 1
   });
 });
+
+describe('createSlidingWindowLimiter retryAfter when both buckets are full (Codex P2)', () => {
+  it('reports the longest applicable wait', () => {
+    let now = 0;
+    const limiter = createSlidingWindowLimiter({ limit: 1, globalLimit: 2, windowMs: 60_000, now: () => now });
+    expect(limiter.tryConsume('other', now).ok).toBe(true); // global hit at t=0
+    now = 30_000;
+    expect(limiter.tryConsume('me', now).ok).toBe(true); // global full, my bucket full (hit at t=30s)
+    now = 31_000;
+    const r = limiter.tryConsume('me', now);
+    expect(r.ok).toBe(false);
+    // global frees at t=60s (29s), my bucket frees at t=90s (59s) -> 59
+    expect(r.retryAfterSec).toBe(59);
+  });
+});

@@ -161,3 +161,24 @@ describe('createLlmRateLimitMiddleware — 429 responses', () => {
     expect(blocked.headers['Retry-After']).toBe('58'); // oldest hit t=0 → 60s-2s, ceil
   });
 });
+
+describe('createLlmRateLimitMiddleware log sampling (Codex P2)', () => {
+  it('logs at most one aggregated line per interval per group', () => {
+    let now = 0;
+    const log = vi.fn();
+    const mw = createLlmRateLimitMiddleware({
+      limiter: createFixedLimiter({ ok: false, retryAfterSec: 5 }),
+      resolveClientIp: () => '203.0.113.9',
+      name: 'chat',
+      now: () => now,
+      log,
+    });
+    for (let i = 0; i < 50; i += 1) mw(createReqMock() as never, createResMock() as never, vi.fn());
+    expect(log).toHaveBeenCalledTimes(1);
+    now = 61_000;
+    mw(createReqMock() as never, createResMock() as never, vi.fn());
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(String(log.mock.calls[1][0])).toContain('50 rejection(s)');
+    expect(String(log.mock.calls[1][0])).not.toContain('203.0.113.9');
+  });
+});
