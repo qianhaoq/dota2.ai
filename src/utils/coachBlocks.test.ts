@@ -491,4 +491,26 @@ describe('review follow-up fallback text rendering', () => {
     }));
     expect(blocks).toEqual([]);
   });
+
+  it('renders the notice as a dedicated block below the follow-up body (body intact)', () => {
+    // The server sends { reviewNotice } after the follow-up fallback text;
+    // CoachView stores it on msg.notice (never error), so the streamed body
+    // must survive and the notice must appear as its own trailing block.
+    const notice = 'AI follow-up unavailable; the answer below is built from match data only.';
+    const blocks = messageToBlocks(baseCoach({
+      action: 'review',
+      reviewFollowUp: true,
+      content: fallbackContent,
+      notice,
+    }));
+    const noticeBlocks = blocks.filter((b) => b.type === 'notice');
+    expect(noticeBlocks).toHaveLength(1);
+    expect(noticeBlocks[0].markdown).toBe(notice);
+    expect(noticeBlocks[0].id).toBe('c1-followup-notice');
+    // The notice block is the last block, after the body markdown.
+    expect(blocks[blocks.length - 1].type).toBe('notice');
+    const bodyBlocks = blocks.filter((b) => b.type !== 'notice');
+    expect(bodyBlocks.length).toBeGreaterThan(0);
+    expect(bodyBlocks.some((b) => (b.markdown ?? '').includes('gold lead flipped'))).toBe(true);
+  });
 });

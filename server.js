@@ -53,7 +53,7 @@ import {
   sanitizeLlmErrorForClient,
   internalErrorForClient,
 } from './lib/llmErrors.js';
-import { resolveDeepSeekConfig } from './lib/llmConfig.js';
+import { publicModelName, resolveDeepSeekConfig } from './lib/llmConfig.js';
 import {
   buildFollowUpFallbackText,
   decideFollowUpOutcome,
@@ -1233,7 +1233,9 @@ app.get('/api/health', async (req, res) => {
   res.status(200).json({
     status: health.status,
     apiKeyConfigured: !!apiKey,
-    model: DEEPSEEK_MODEL,
+    // Whitelisted name only: a custom DEEPSEEK_MODEL (internal alias / gateway
+    // name) must not leak to anonymous callers; provider stays 'deepseek'.
+    model: publicModelName(DEEPSEEK_MODEL),
     provider: 'deepseek',
     opendotaConstants: {
       ...health.opendotaConstants,

@@ -30,6 +30,11 @@ export interface CoachMessage {
   reviewCards?: ReviewCardsPayload | null;
   /** 复盘追问（仅 markdown 流，不重复渲染 fact spine） */
   reviewFollowUp?: boolean;
+  /**
+   * 追问的非破坏性服务端提示（如追问落到确定性模板时的 reviewNotice）。
+   * 独立于 error：追问消息的正文仍要渲染，error 会把正文清空。
+   */
+  notice?: string;
   /** 复盘等流式请求失败时的错误信息（不写入 content，避免误渲染为复盘正文） */
   error?: string;
   /** 事实推导的三条结论（旧 payload 没有时首屏回退到经典卡片布局）。 */

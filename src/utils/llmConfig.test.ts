@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveDeepSeekConfig,
+  publicModelName,
   DEFAULT_DEEPSEEK_MODEL,
   LEGACY_DEEPSEEK_MODELS,
 } from '../../lib/llmConfig.js';
@@ -87,5 +88,40 @@ describe('resolveDeepSeekConfig', () => {
     const b = resolveDeepSeekConfig({});
     expect(a.extraBody).not.toBe(b.extraBody);
     expect(a.extraBody.thinking).not.toBe(b.extraBody.thinking);
+  });
+});
+
+describe('publicModelName (/api/health whitelist)', () => {
+  it('passes the two documented public names through verbatim', () => {
+    expect(publicModelName('deepseek-flash')).toBe('deepseek-flash');
+    expect(publicModelName('deepseek-v4-pro')).toBe('deepseek-v4-pro');
+  });
+
+  it('masks every other value as deepseek-custom (never leaks deployment details)', () => {
+    for (const model of [
+      'my-internal-alias',      // valid per resolveDeepSeekConfig, but private
+      'gateway-prod/model-x',   // never a resolved value; defense in depth
+      'deepseek-chat',          // retired legacy name
+      'DeepSeek-Flash',         // case differs from the whitelist
+      'deepseek-flash ',        // trailing space (resolved values are trimmed,
+                                // but /api/health must not echo raw input)
+      '',
+    ]) {
+      expect(publicModelName(model)).toBe('deepseek-custom');
+    }
+    expect(publicModelName(undefined)).toBe('deepseek-custom');
+    expect(publicModelName(null)).toBe('deepseek-custom');
+    expect(publicModelName(123)).toBe('deepseek-custom');
+  });
+
+  it('keeps the health payload consistent with the resolver: legacy names resolve to a public name', () => {
+    // What /api/health reports for a legacy env value: resolveDeepSeekConfig
+    // maps it to the default first, so health shows 'deepseek-flash'.
+    const resolved = resolveDeepSeekConfig({ DEEPSEEK_MODEL: 'deepseek-chat' });
+    expect(publicModelName(resolved.model)).toBe('deepseek-flash');
+    // A valid custom name resolves to itself but is masked publicly.
+    const custom = resolveDeepSeekConfig({ DEEPSEEK_MODEL: 'corp-finetune-alias' });
+    expect(custom.model).toBe('corp-finetune-alias');
+    expect(publicModelName(custom.model)).toBe('deepseek-custom');
   });
 });

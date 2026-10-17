@@ -447,10 +447,13 @@ const CoachView: React.FC<CoachViewProps> = ({ lang, lessonRequest }) => {
         },
         onReviewNotice: (notice) => {
           if (!isCoachInflightCurrent(inflightTaskRef, streamGen)) return;
-          // Follow-up fallback frames carry their own explanation line in the
-          // streamed text, and a follow-up message has no structured payload —
-          // setting error here would blank its content in messageToBlocks.
-          if (followUp) return;
+          // Follow-up notices (deterministic-template fallback) are stored in
+          // a dedicated field and rendered below the streamed body: setting
+          // error here would blank the follow-up content in messageToBlocks.
+          if (followUp) {
+            updateCoachMessage(msgId, { notice });
+            return;
+          }
           updateCoachMessage(msgId, { error: notice });
         },
         onChunk: (text) => {

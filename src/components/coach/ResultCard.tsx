@@ -355,7 +355,14 @@ const ResultCard: React.FC<ResultCardProps> = ({
               {block.reviewSection === 'lanes' && (
                 <p className="text-[10px] text-k3-text-tertiary mb-2 italic">{t.laneInference}</p>
               )}
-              {block.markdown && !(isReviewInsight && block.reviewCardKind === 'mentor_note') && (
+              {block.type === 'notice' && (
+                // Non-destructive server hint (follow-up template fallback):
+                // small gray footnote below the streamed body.
+                <p className="text-[11px] text-k3-text-tertiary break-words">{block.markdown}</p>
+              )}
+              {block.markdown
+                && block.type !== 'notice'
+                && !(isReviewInsight && block.reviewCardKind === 'mentor_note') && (
                 <MarkdownBody
                   text={block.markdown}
                   streaming={Boolean(message.isStreaming && block.id === lastTextId)}
