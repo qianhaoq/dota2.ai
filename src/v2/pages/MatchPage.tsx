@@ -343,6 +343,11 @@ const MatchPage: React.FC = () => {
     }
     const ac = new AbortController();
     setPhase('loadingHero');
+    // Set the trace step directly, not via the phase effect: this fetch can
+    // reject before 'loadingHero' commits as its own render (React may batch
+    // it with the error), and the trace must already reflect that facts and
+    // roster are in — never a still-spinning "Fetching match".
+    setTraceStep(2);
     setError(null);
     fetchMatchFacts(matchId, lang, ac.signal, player.heroId)
       .then((res) => {
@@ -366,12 +371,10 @@ const MatchPage: React.FC = () => {
     return () => ac.abort();
   }, [validId, matchId, lang, reloadKey, facts, heroParam]);
 
-  // Tool-trace steps advance on a timer while a request is in flight.
+  // Tool-trace steps advance on a timer while the INITIAL facts request is in
+  // flight; the hero-scoped pass sets its step where the request starts (see
+  // the hero effect above).
   useEffect(() => {
-    if (phase === 'loadingHero') {
-      setTraceStep(2);
-      return undefined;
-    }
     if (phase !== 'loading') return undefined;
     setTraceStep(0);
     const id = window.setInterval(() => setTraceStep((s) => Math.min(s + 1, 1)), 700);

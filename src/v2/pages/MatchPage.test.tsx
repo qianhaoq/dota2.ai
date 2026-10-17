@@ -202,6 +202,10 @@ describe('MatchPage — golden fixtures', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -246,6 +250,10 @@ describe('MatchPage — hero flow', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -282,6 +290,10 @@ describe('MatchPage — follow-ups', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -338,6 +350,10 @@ describe('MatchPage — 429 rate limiting', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -410,6 +426,10 @@ describe('MatchPage — fakedoor card flag', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -440,6 +460,10 @@ describe('MatchPage — hero change aborts the follow-up stream', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -488,6 +512,10 @@ describe('MatchPage — review_viewed tracking', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -516,6 +544,10 @@ describe('MatchPage — initial-load progress', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -551,6 +583,10 @@ describe('MatchPage — route change to /m aborts the follow-up stream', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -592,6 +628,10 @@ describe('MatchPage — partial threeConclusions payload', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -626,6 +666,10 @@ describe('MatchPage — follow-up reviewNotice / fallback (server PR #89)', () =
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -683,6 +727,10 @@ describe('MatchPage — 400 message_too_long (server PR #89)', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -768,6 +816,10 @@ describe('MatchPage — user Stop vs service timeout', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
@@ -855,6 +907,10 @@ describe('MatchPage — tool trace done state', () => {
   });
   afterEach(() => {
     cleanup();
+    // Clear storage AFTER each test too, so a failure mid-test can't leak
+    // lang (d2ai.lang=zh) or flags into the next one's render.
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -867,19 +923,21 @@ describe('MatchPage — tool trace done state', () => {
       return Promise.resolve(jsonResponse(enFixture));
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderPage('/m/9035042364?hero=pudge');
+    // lang pinned in the URL: the assertions match exact EN copy, so the test
+    // must not depend on storage being clean (URL wins in resolveLang).
+    renderPage('/m/9035042364?hero=pudge&lang=en');
 
     expect(await screen.findByText('upstream boom')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
     // The trace is still expanded (steps, not a checkmark) — the request
     // failed, so "Analyzed match · OpenDota" would be a lie.
     expect(screen.queryByText('Analyzed match · OpenDota')).toBeNull();
-    expect(screen.getByText('Fetching match')).toBeTruthy();
+    expect(screen.getByText(/Fetching match/)).toBeTruthy();
   });
 
   it('claims "Analyzed" once results render', async () => {
     stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364?hero=pudge');
+    renderPage('/m/9035042364?hero=pudge&lang=en');
 
     await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
     expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
@@ -887,7 +945,7 @@ describe('MatchPage — tool trace done state', () => {
 
   it('claims "Analyzed" when the picker is deliberately shown (no ?hero)', async () => {
     stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364');
+    renderPage('/m/9035042364?lang=en');
 
     expect(await screen.findByText('Which one was you?')).toBeTruthy();
     expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
