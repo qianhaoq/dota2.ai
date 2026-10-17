@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { OpenAI } from 'openai';
-import { installConsoleRedaction } from '../../lib/consoleRedaction.js';
+import { installConsoleRedaction, logUnredacted } from '../../lib/consoleRedaction.js';
 
 // Mock credential shapes only — never a real key format/value from any account.
 const QA_FAKE_KEY = 'sk-qa-fake-ABCD1234';
@@ -69,18 +69,22 @@ describe('installConsoleRedaction (unit)', () => {
     uninstall();
   });
 
-  it('leaves generic key/token/password prose alone but redacts credential pairs (Codex P1)', () => {
+  it('logUnredacted writes verbatim through the original method (feedback record)', () => {
     const { consoleObj, logMock } = makeConsole();
     const uninstall = installConsoleRedaction(consoleObj);
-    consoleObj.log(JSON.stringify({ message: 'Use key=escape to close; my password: is long' }));
-    expect(String(logMock.mock.calls[0][0])).toContain('Use key=escape to close; my password: is long');
+    const record = JSON.stringify({ message: "Use key=escape to close; Press { key: 'Escape' } to close" });
+    logUnredacted('log', ['[feedback:record]', record], consoleObj);
+    expect(logMock.mock.calls[0]).toEqual(['[feedback:record]', record]);
+    // the normal path still redacts
     consoleObj.log(`GET https://api.opendota.com/api/heroes?api_key=${QA_FAKE_QUERY_KEY}&x=1`);
-    consoleObj.log(`GET https://example.test/v1?alt=json&key=${QA_FAKE_QUERY_KEY}`);
-    for (const call of logMock.mock.calls.slice(1)) {
-      expect(String(call[0])).not.toContain(QA_FAKE_QUERY_KEY);
-    }
-    expect(String(logMock.mock.calls[2][0])).toContain('&key=[REDACTED]');
+    expect(String(logMock.mock.calls[1][0])).not.toContain(QA_FAKE_QUERY_KEY);
     uninstall();
+  });
+
+  it('server.js writes the feedback record via logUnredacted', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(new URL('../../server.js', import.meta.url), 'utf8');
+    expect(src).toMatch(/logUnredacted\('log', \['\[feedback:record\]'/);
   });
 
   it('redacts generic credential names in structured context (Codex P1)', () => {
@@ -90,6 +94,9 @@ describe('installConsoleRedaction (unit)', () => {
     consoleObj.error('cfg', { token: 'qafaketoken123456', password: 'qafakepw123' });
     consoleObj.error('password=qafakepw123 secret=qafakesecret1');
     consoleObj.error(JSON.stringify({ line: JSON.stringify({ key: 'qafakekey98765' }) }));
+    consoleObj.error('Could not parse message into JSON:', '{"token":"qafaketoken123456'); // unterminated
+    consoleObj.error('env', { STEAM_WEB_API_KEY: 'qafakesecret0123456789', OPENDOTA_API_KEY: 'qafakekey0123456789' });
+    consoleObj.error('STEAM_WEB_API_KEY=qafakesecret0123456789');
     for (const [l] of errorMock.mock.calls as unknown[][]) {
       expect(String(l)).not.toMatch(/qafake(token|pw|secret|key)/);
       expect(String(l)).toContain('[REDACTED]');

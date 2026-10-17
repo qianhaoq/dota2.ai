@@ -47,6 +47,7 @@ import {
 import { computeApiHealth } from './lib/serverHealth.js';
 import { combineAbortSignals } from './lib/abortSignals.js';
 import { createSseAbort } from './lib/sseAbort.js';
+import { logUnredacted } from './lib/consoleRedaction.js';
 import { requestCardCompletion } from './lib/matchReview/cardCompletion.js';
 import { streamFollowUpCompletion } from './lib/matchReview/followUpCompletion.js';
 import { clampFollowUpAttemptMs } from './lib/matchReview/followUpTimeout.js';
@@ -2942,7 +2943,9 @@ app.post('/api/feedback', (req, res) => {
     };
 
     // Durable path for Cloud Run: full record on stdout → Cloud Logging.
-    console.log('[feedback:record]', JSON.stringify(record));
+    // Written verbatim (bypasses the global credential redaction, exactly like
+    // the jsonl copy below) so user prose such as `key=escape` survives.
+    logUnredacted('log', ['[feedback:record]', JSON.stringify(record)]);
     // Compact meta line for grepping (no PII beyond flags).
     console.log('[feedback]', JSON.stringify({
       id: record.id,
