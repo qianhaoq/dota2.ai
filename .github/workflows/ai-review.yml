@@ -126,7 +126,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Provider | Secret Name | Default Model |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------------|---------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| DeepSeek | \`DEEPSEEK_API_KEY\` | deepseek-chat |" >> $GITHUB_STEP_SUMMARY
+          echo "| DeepSeek | \`DEEPSEEK_API_KEY\` | deepseek-flash |" >> $GITHUB_STEP_SUMMARY
           echo "| OpenAI | \`OPENAI_API_KEY\` | gpt-4o-mini |" >> $GITHUB_STEP_SUMMARY
           echo "| xAI (Grok) | \`XAI_API_KEY\` | grok-2-latest |" >> $GITHUB_STEP_SUMMARY
 
@@ -175,7 +175,7 @@ jobs:
             deepseek)
               API_URL="https://api.deepseek.com/v1/chat/completions"
               API_KEY="${DEEPSEEK_API_KEY:-$AI_REVIEW_API_KEY}"
-              MODEL="${MODEL:-deepseek-chat}"
+              MODEL="${MODEL:-deepseek-flash}"
               ;;
             xai|grok)
               API_URL="https://api.x.ai/v1/chat/completions"

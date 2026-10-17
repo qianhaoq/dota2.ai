@@ -139,27 +139,39 @@ describe('reviewFollowUpFallbackNotice', () => {
 });
 
 describe('decideFollowUpOutcome', () => {
-  it('ends normally on a clean provider finish', () => {
+  it('ends normally on a clean provider finish with a terminal finish_reason', () => {
     for (const finishReason of ['stop', 'length', 'content_filter']) {
-      expect(decideFollowUpOutcome({ status: 'done', finishReason })).toEqual({ action: 'end' });
+      expect(decideFollowUpOutcome({ status: 'done', finishReason, forwarded: true }))
+        .toEqual({ action: 'end' });
     }
   });
 
-  it('treats text-forwarded EOF without a finish_reason as done — no fallback appended', () => {
-    // Upstream proxies often drop finish_reason before [DONE]; the stream
-    // iterator returning cleanly IS the completion signal once text was
-    // forwarded. Waiting for a terminal finish_reason would misreport the
-    // answer as broken and append the deterministic template to a full answer.
-    expect(decideFollowUpOutcome({ status: 'done', finishReason: null }))
+  it('treats text-forwarded EOF without a terminal finish_reason as incomplete — template appended', () => {
+    // Upstream proxies often drop finish_reason before [DONE]; without the
+    // terminal signal the forwarded text may be a truncated half-answer, so
+    // the deterministic template is appended after it (never a bare error).
+    expect(decideFollowUpOutcome({ status: 'done', finishReason: null, forwarded: true }))
+      .toEqual({ action: 'fallback', reason: 'incomplete', append: true });
+    expect(decideFollowUpOutcome({ status: 'done', finishReason: undefined, forwarded: true }))
+      .toEqual({ action: 'fallback', reason: 'incomplete', append: true });
+    expect(decideFollowUpOutcome({ status: 'done', finishReason: 'tool_calls', forwarded: true }))
+      .toEqual({ action: 'fallback', reason: 'incomplete', append: true });
+  });
+
+  it('ends on a non-terminal finish when no text was forwarded (empty streams are handled upstream)', () => {
+    // streamFollowUpCompletion retries/empties streams before any text as the
+    // next provider, so 'done' with forwarded=false is unreachable from it;
+    // keep the defensive end (nothing to append to).
+    expect(decideFollowUpOutcome({ status: 'done', finishReason: null, forwarded: false }))
       .toEqual({ action: 'end' });
-    expect(decideFollowUpOutcome({ status: 'done', finishReason: undefined }))
-      .toEqual({ action: 'end' });
-    expect(decideFollowUpOutcome({ status: 'done', finishReason: 'tool_calls' }))
+    expect(decideFollowUpOutcome({ status: 'done', finishReason: 'stop', forwarded: false }))
       .toEqual({ action: 'end' });
   });
 
   it('ends without writing when the caller stopped the stream (client gone)', () => {
-    expect(decideFollowUpOutcome({ status: 'stopped', finishReason: 'stop' }))
+    expect(decideFollowUpOutcome({ status: 'stopped', finishReason: 'stop', forwarded: true }))
+      .toEqual({ action: 'end' });
+    expect(decideFollowUpOutcome({ status: 'stopped', finishReason: null, forwarded: false }))
       .toEqual({ action: 'end' });
   });
 

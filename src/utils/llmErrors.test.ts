@@ -169,4 +169,38 @@ describe('internalErrorForClient + server.js fallthrough guard', () => {
     expect(src).not.toMatch(/streamErr\.message\s*\|\|/);
     expect(src).not.toMatch(/const errorMsg = error\.message/);
   });
+
+  it('redacts SDK stream-parsing SyntaxErrors (chunk JSON / headers embed credentials)', () => {
+    // The openai SDK can throw plain SyntaxError while parsing a malformed
+    // stream chunk; the message may quote the raw chunk or request headers.
+    const syntaxErr = new SyntaxError(
+      `Unexpected token '<' in JSON at position 0 (headers: Bearer ${MOCK_BEARER}, chunk: {"key":"${MOCK_SK_KEY}"})`,
+    );
+    expect(isLlmSdkError(syntaxErr)).toBe(false); // unclassified — still needs redaction
+    const sink = vi.fn();
+    const line = logLlmError(sink, { event: 'review_stream_error', matchId: 123, error: syntaxErr });
+    const parsed = JSON.parse(line);
+    expect(parsed.errorClass).toBe('SyntaxError');
+    expect(parsed.message).toContain('[REDACTED]');
+    expect(parsed.message).not.toContain('Bearer eyJhbGciOiJIUzI1NiIs');
+    expect(parsed.message).not.toContain(MOCK_SK_KEY);
+    expect(parsed.message).not.toContain('sk-test-mock');
+    expect(redactSecrets(syntaxErr.message)).not.toContain('sk-abc');
+  });
+
+  it('server.js routes provider/fetch error logging through redaction (no raw console dumps)', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(join(process.cwd(), 'server.js'), 'utf8');
+    // Every call site that used to print the raw error object/message from
+    // provider/fetch paths is now a structured logLlmError / redactSecrets line.
+    expect(src).not.toMatch(/console\.error\("Suggestions Error:", error\)/);
+    expect(src).not.toMatch(/console\.error\('Review suggestions error:', err\)/);
+    expect(src).not.toMatch(/console\.error\('Match facts error:', error\)/);
+    expect(src).not.toMatch(/console\.error\('OpenDota fetch error:', err\.message\)/);
+    expect(src).toMatch(/logLlmError\(console\.error, \{ event: 'suggestions_error', error \}\)/);
+    expect(src).toMatch(/logLlmError\(console\.error, \{ event: 'review_suggestions_error', error: err \}\)/);
+    expect(src).toMatch(/logLlmError\(console\.error, \{ event: 'match_facts_error', error \}\)/);
+    expect(src).toMatch(/console\.error\('OpenDota fetch error:', redactSecrets\(err\?\.message \?\? err\)\)/);
+  });
 });
