@@ -100,14 +100,23 @@ describe('resolveFlags — ?ff= override', () => {
     expect(flags.legacy_tabs).toBe(true);
   });
 
-  it('is always allowed on /new (preview prefix), still beating route forcing', () => {
-    const flags = resolveFlags({ env: NO_ENV, pathname: '/new', search: '?ff=legacy_mentor:1,ui_v2:0', allowOverride: false });
-    expect(flags.legacy_mentor).toBe(true);
-    expect(flags.ui_v2).toBe(false);
+  it('is always allowed on /new and /m (v2 preview surfaces), still beating route forcing', () => {
+    for (const pathname of ['/new', '/m/9035042364']) {
+      const flags = resolveFlags({ env: NO_ENV, pathname, search: '?ff=legacy_mentor:1,ui_v2:0', allowOverride: false });
+      expect(flags.legacy_mentor, pathname).toBe(true);
+      expect(flags.ui_v2, pathname).toBe(false);
+    }
   });
 
-  it('preview kill switch: /new?ff=-fakedoor_v2 hides the card', () => {
-    const flags = resolveFlags({ env: NO_ENV, pathname: '/new', search: '?ff=-fakedoor_v2', allowOverride: false });
-    expect(flags.fakedoor_v2).toBe(false);
+  it('preview kill switch: ?ff=-fakedoor_v2 hides the card on /new and /m', () => {
+    for (const pathname of ['/new', '/m/9035042364']) {
+      const flags = resolveFlags({ env: NO_ENV, pathname, search: '?ff=-fakedoor_v2', allowOverride: false });
+      expect(flags.fakedoor_v2, pathname).toBe(false);
+    }
+  });
+
+  it('is still ignored on /legacy without allowOverride', () => {
+    const flags = resolveFlags({ env: NO_ENV, pathname: '/legacy', search: '?ff=ui_v2:1', allowOverride: false });
+    expect(flags.ui_v2).toBe(false);
   });
 });

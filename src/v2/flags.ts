@@ -5,7 +5,8 @@
  * Resolution order:
  *   build-time env (VITE_FF_<NAME>) → route-forced values → ?ff= URL override
  * URL overrides are honored only in dev builds, when VITE_ALLOW_FF_OVERRIDE=1,
- * or on the /new preview prefix.
+ * or on the v2 preview surfaces (/new and /m/* — carryQuery carries ff across
+ * them).
  */
 
 export const FLAG_NAMES = [
@@ -24,7 +25,7 @@ export type Flags = Record<FlagName, boolean>;
  * app lives under `/legacy`. The v2 fake-door card ships ON for the MVP (the
  * legacy app has its own CTA and is unaffected). Rollback levers: build env
  * VITE_FF_UI_V2=0 puts the legacy app back on `/`; VITE_FF_FAKEDOOR_V2=0 (or
- * `?ff=-fakedoor_v2` on the /new preview) hides the fake-door card.
+ * `?ff=-fakedoor_v2` on the /new or /m preview) hides the fake-door card.
  */
 export const DEFAULT_FLAGS: Flags = {
   ui_v2: true,
@@ -103,8 +104,9 @@ export function resolveFlags({ env, pathname, search, allowOverride = false }: R
     flags.legacy_next_actions = true;
   }
 
-  // URL override last, and only where allowed (the /new preview always allows).
-  if (allowOverride || onNew) {
+  // URL override last, and only where allowed (the v2 preview surfaces —
+  // /new and /m/* — always allow).
+  if (allowOverride || onNew || onMatch) {
     const raw = new URLSearchParams(search.replace(/^\?/, '')).get('ff');
     Object.assign(flags, parseFfOverride(raw));
   }

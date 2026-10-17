@@ -527,6 +527,13 @@ export interface ReviewStreamCallbacks {
    * long. Legacy callers without this callback still get onError.
    */
   onRateLimited?: (retryAfterSec: number | null, message: string) => void;
+  /**
+   * HTTP 400 { error: 'message_too_long' } on a follow-up (server PR #89):
+   * invoked INSTEAD of onError so the UI can show the server's localized
+   * message inline and keep the user's text in the composer. Legacy callers
+   * without this callback still get onError.
+   */
+  onMessageTooLong?: (message: string) => void;
 }
 
 export const REVIEW_CLIENT_TIMEOUT_MS = 180000;
@@ -594,6 +601,16 @@ export const fetchMatchReviewStream = (
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
+        // Oversized follow-up (server PR #89): 400 message_too_long with a
+        // localized message — dedicated callback so the UI can keep the user's
+        // text in the composer; other errors keep flowing through onError.
+        if (response.status === 400 && data.error === 'message_too_long') {
+          const message = serverErrorMessage(data, 'Failed to fetch match review');
+          clearTimeout(timeoutId);
+          if (callbacks?.onMessageTooLong) callbacks.onMessageTooLong(message);
+          else callbacks?.onError(message);
+          return;
+        }
         throw new Error(serverErrorMessage(data, 'Failed to fetch match review'));
       }
 

@@ -8,7 +8,7 @@ import { fetchMatchReviewStream } from '../../services/geminiService';
 import { trackEvent, trackReviewViewed } from '../../services/analytics';
 import { followUpKind } from '../../utils/analyticsClient';
 import { getPresetFollowUps } from '../../utils/reviewConclusions';
-import type { MatchPlayerFact } from '../../types/matchReview';
+import type { MatchPlayerFact, ReviewConclusion } from '../../types/matchReview';
 import { parseMatchInput, isSafeMatchId } from '../parseMatchInput';
 import { buildCarryQuery } from '../carryQuery';
 import { useFlags } from '../FlagsProvider';
@@ -32,6 +32,14 @@ interface FollowUpTurn {
   answer: string;
   status: 'streaming' | 'done' | 'error';
   error?: string;
+  /**
+   * Non-destructive server notice (deterministic-template fallback, server
+   * PR #89): rendered as a muted line under the answer, never as an error —
+   * the answer body itself stays visible.
+   */
+  notice?: string;
+  /** The turn ended in a 400 message_too_long: show error (the server's localized message) inline, not errFollowUp. */
+  messageTooLong?: boolean;
   /** The turn ended in a 429: show the rate-limit countdown, not errFollowUp. */
   rateLimited?: boolean;
 }
@@ -43,6 +51,35 @@ const CARD_DEFS: Array<{ key: ConclusionField; labelKey: DictKey; icon: 'turn' |
   { key: 'topMistake', labelKey: 'cardMistake', icon: 'fix' },
   { key: 'nextGameRule', labelKey: 'cardNext', icon: 'next' },
 ];
+
+/** reviewNotice arrives as a localized string; server PR #89 may also send an
+ * object ({ message }) — normalize either to the text to show. */
+const noticeText = (notice: string | { message?: unknown }): string => {
+  if (typeof notice === 'string') return notice.trim();
+  if (notice && typeof notice === 'object' && typeof notice.message === 'string') return notice.message.trim();
+  return '';
+};
+
+/** Server-provided message shown inline: friendly copy, never "Error: …". */
+const friendlyServerMessage = (message: string): string => message.replace(/^\s*error:\s*/i, '').trim();
+
+/**
+ * A conclusion the server omitted or sent malformed (partial threeConclusions
+ * payload) renders as an explicit insufficient card instead of crashing
+ * InsightCard — the same contract buildConclusionCards applies on the legacy
+ * review surface, in the v2 card shape.
+ */
+const normalizeConclusion = (raw: ReviewConclusion | undefined | null, insufficientSummary: string): ReviewConclusion => {
+  if (raw && typeof raw === 'object' && typeof raw.summary === 'string' && raw.summary.trim()) {
+    return {
+      status: raw.status === 'insufficient' ? 'insufficient' : 'ok',
+      title: typeof raw.title === 'string' ? raw.title : '',
+      summary: raw.summary,
+      evidence: Array.isArray(raw.evidence) ? raw.evidence : [],
+    };
+  }
+  return { status: 'insufficient', title: '', summary: insufficientSummary, evidence: [] };
+};
 
 /**
  * `/m/:matchId?hero=&lang=` — the conversational review page. One chat thread:
@@ -112,6 +149,10 @@ const MatchPage: React.FC = () => {
   // thread.
   const streamEpochRef = useRef(0);
   const prefillRef = useRef<string | null>(null);
+  // Refill the composer after a 400 message_too_long so the user can shorten
+  // their text; the nonce lets the same value re-apply on a repeated 400.
+  const restoreNonceRef = useRef(0);
+  const [restore, setRestore] = useState<{ value: string; nonce: number } | null>(null);
   const streaming = turns.some((turn) => turn.status === 'streaming');
   const rateLimited = (rateLimit ?? 0) > 0;
 
@@ -178,6 +219,25 @@ const MatchPage: React.FC = () => {
           ts.map((x) => (x.id === id ? { ...x, status: 'error', rateLimited: true } : x)),
         );
       },
+      onReviewNotice: (notice) => {
+        if (stale()) return;
+        const text = noticeText(notice);
+        if (!text) return;
+        setTurns((ts) => ts.map((x) => (x.id === id ? { ...x, notice: text } : x)));
+      },
+      onMessageTooLong: (message) => {
+        if (stale()) return;
+        // The question bounced — put it back in the composer so the user can
+        // shorten it, and show the server's localized limit message inline.
+        setRestore({ value: question, nonce: ++restoreNonceRef.current });
+        setTurns((ts) =>
+          ts.map((x) =>
+            x.id === id
+              ? { ...x, status: 'error', error: friendlyServerMessage(message), messageTooLong: true, rateLimited: false }
+              : x,
+          ),
+        );
+      },
     });
     streamRef.current = controller;
   };
@@ -217,7 +277,16 @@ const MatchPage: React.FC = () => {
 
   // ---- data loading ----
   useEffect(() => {
-    if (!validId) return undefined;
+    // Route changed to /m or an invalid id mid-conversation: the follow-up
+    // stream belongs to a dead thread. Kill it and clear the conversation —
+    // the invalid-id early return below renders neither, but a live stream
+    // would keep landing chunks in hidden state.
+    if (!validId) {
+      abortStream();
+      setTurns([]);
+      setAsked([]);
+      return undefined;
+    }
     // matchId/lang/reload changed — any follow-up stream belongs to a dead
     // thread. Kill it BEFORE clearing the turns.
     abortStream();
@@ -342,6 +411,7 @@ const MatchPage: React.FC = () => {
           onStop={() => streamRef.current?.abort()}
           onSubmitQuestion={onComposerQuestion}
           currentMatchId={matchId}
+          restore={restore}
         />
       }
     >
@@ -434,7 +504,12 @@ const MatchPage: React.FC = () => {
 
           {conclusions ? (
             CARD_DEFS.map(({ key, labelKey, icon }) => (
-              <InsightCard key={key} label={t(labelKey)} icon={icon} conclusion={conclusions[key]} />
+              <InsightCard
+                key={key}
+                label={t(labelKey)}
+                icon={icon}
+                conclusion={normalizeConclusion(conclusions[key], t('insufficientBadge'))}
+              />
             ))
           ) : (
             <p className="m-0 text-d2-15 text-d2-ink-3 bg-d2-surface rounded-d2-card shadow-d2-2 p-[16px]">
@@ -473,7 +548,11 @@ const MatchPage: React.FC = () => {
           {turn.status === 'error' ? (
             <div className="bg-d2-down-bg border-l-[3px] border-d2-down rounded-[14px] px-[14px] py-[12px]">
               <p className="m-0 text-d2-15 text-d2-ink-2">
-                {turn.rateLimited ? rateLimitNotice() : t('errFollowUp')}
+                {turn.rateLimited
+                  ? rateLimitNotice()
+                  : turn.messageTooLong && turn.error
+                    ? turn.error
+                    : t('errFollowUp')}
               </p>
               <button
                 type="button"
@@ -485,7 +564,12 @@ const MatchPage: React.FC = () => {
               </button>
             </div>
           ) : (
-            <AiText text={turn.answer} streaming={turn.status === 'streaming'} />
+            <>
+              <AiText text={turn.answer} streaming={turn.status === 'streaming'} />
+              {turn.notice && (
+                <p className="m-0 text-d2-12 text-d2-ink-4">{turn.notice}</p>
+              )}
+            </>
           )}
         </section>
       ))}

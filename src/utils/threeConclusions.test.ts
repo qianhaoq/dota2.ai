@@ -88,7 +88,7 @@ describe('buildThreeConclusions — gold sample 8985182860 (en)', () => {
     expect(rule.summary).toContain('your team was 975 gold ahead at 10 min');
     expect(rule.evidence).toEqual([
       { time: '10:00', text: 'CS @10 min: 40', source: 'players' },
-      { time: '10:00', text: 'Team gold lead @10 min: +975', source: 'economy' },
+      { time: '10:00', text: 'Team gold @10 min: 975 ahead', source: 'economy' },
       { time: null, text: 'Lane opponents: Axe', source: 'focusLens' },
     ]);
   });
@@ -331,11 +331,22 @@ describe('buildThreeConclusions — next-game rule gold-lead wording (deficit / 
     expect(summaryFor(0, 'zh')).toContain('补刀为 40、双方经济持平。');
   });
 
-  it('keeps the signed evidence lines untouched', () => {
-    const rule = buildThreeConclusions(withTeamGold10(baseFact, -2060), { lang: 'en' }).nextGameRule;
-    expect(rule.evidence[1]).toEqual({ time: '10:00', text: 'Team gold lead @10 min: -2060', source: 'economy' });
-    const ruleZh = buildThreeConclusions(withTeamGold10(baseFact, -2060), { lang: 'zh' }).nextGameRule;
-    expect(ruleZh.evidence[1]).toEqual({ time: '10:00', text: '10 分钟我方经济差：-2060', source: 'economy' });
+  it('mirrors the sign-aware wording in the evidence row (en)', () => {
+    const behind = buildThreeConclusions(withTeamGold10(baseFact, -2060), { lang: 'en' }).nextGameRule;
+    expect(behind.evidence[1]).toEqual({ time: '10:00', text: 'Team gold @10 min: 2,060 behind', source: 'economy' });
+    const ahead = buildThreeConclusions(withTeamGold10(baseFact, 1234), { lang: 'en' }).nextGameRule;
+    expect(ahead.evidence[1].text).toBe('Team gold @10 min: 1,234 ahead');
+    const even = buildThreeConclusions(withTeamGold10(baseFact, 0), { lang: 'en' }).nextGameRule;
+    expect(even.evidence[1].text).toBe('Team gold @10 min: even');
+  });
+
+  it('mirrors the sign-aware wording in the evidence row (zh, plain digits)', () => {
+    const behind = buildThreeConclusions(withTeamGold10(baseFact, -2060), { lang: 'zh' }).nextGameRule;
+    expect(behind.evidence[1]).toEqual({ time: '10:00', text: '10 分钟我方经济：落后 2060', source: 'economy' });
+    const ahead = buildThreeConclusions(withTeamGold10(baseFact, 975), { lang: 'zh' }).nextGameRule;
+    expect(ahead.evidence[1].text).toBe('10 分钟我方经济：领先 975');
+    const even = buildThreeConclusions(withTeamGold10(baseFact, 0), { lang: 'zh' }).nextGameRule;
+    expect(even.evidence[1].text).toBe('10 分钟我方经济：持平');
   });
 });
 

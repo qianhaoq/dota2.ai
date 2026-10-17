@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import MatchPage from './MatchPage';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { trackEvent, trackReviewViewed } from '../../services/analytics';
@@ -141,12 +141,25 @@ function stubFetch(opts: {
   vi.stubGlobal('fetch', fetchMock);
 }
 
+/** Test-only navigation control: clicking it routes elsewhere while the page
+ * stays mounted (mirrors App.tsx, where /m/:matchId and /m share MatchPage). */
+const JumpButton: React.FC<{ to: string }> = ({ to }) => {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(to)}>
+      jump
+    </button>
+  );
+};
+
 function renderPage(entry: string) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <I18nProvider>
+        <JumpButton to="/m" />
         <Routes>
           <Route path="/m/:matchId" element={<MatchPage />} />
+          <Route path="/m" element={<MatchPage />} />
         </Routes>
       </I18nProvider>
     </MemoryRouter>,
@@ -154,6 +167,16 @@ function renderPage(entry: string) {
 }
 
 const CONCLUSION_KEYS = ['turningPoint', 'topMistake', 'nextGameRule'] as const;
+
+/** Flush pending microtasks so SSE chunks / fetch promises settle. */
+const flush = async () => {
+  await act(async () => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  });
+};
+
+const postCall = () =>
+  fetchMock.mock.calls.find(([, init]) => (init as { method?: string } | undefined)?.method === 'POST');
 
 /**
  * Number tokens per TEXT NODE (not glued textContent — adjacent block elements
@@ -419,15 +442,6 @@ describe('MatchPage — hero change aborts the follow-up stream', () => {
     vi.unstubAllGlobals();
   });
 
-  const flush = async () => {
-    await act(async () => {
-      for (let i = 0; i < 5; i++) await Promise.resolve();
-    });
-  };
-
-  const postCall = () =>
-    fetchMock.mock.calls.find(([, init]) => (init as { method?: string } | undefined)?.method === 'POST');
-
   it('aborts the in-flight stream before clearing turns; stale chunks never land', async () => {
     const stream = gatedSseResponse();
     stubFetch({ base: enFixture, hero: pudgeEn, postResponse: stream.response });
@@ -525,5 +539,183 @@ describe('MatchPage — initial-load progress', () => {
     });
     expect(await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
     expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
+  });
+});
+
+describe('MatchPage — route change to /m aborts the follow-up stream', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    flagState.fakedoor_v2 = true;
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('navigating to bare /m mid-stream aborts and clears the conversation', async () => {
+    const stream = gatedSseResponse();
+    stubFetch({ base: enFixture, hero: pudgeEn, postResponse: stream.response });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    // Start a follow-up and let its first chunk stream in.
+    const chip = pudgeEn.threeConclusions.followUps[0];
+    fireEvent.click(screen.getByRole('button', { name: chip }));
+    await flush();
+    stream.push({ text: 'FIRST CHUNK ' });
+    expect(await screen.findByText(/FIRST CHUNK/)).toBeTruthy();
+    expect((postCall()![1] as { signal: AbortSignal }).signal.aborted).toBe(false);
+
+    // Route to bare /m while the stream is still in flight.
+    fireEvent.click(screen.getByRole('button', { name: 'jump' }));
+
+    // The in-flight request was aborted, the invalid-id notice rendered, and
+    // the conversation is gone…
+    await waitFor(() => expect((postCall()![1] as { signal: AbortSignal }).signal.aborted).toBe(true));
+    expect(await screen.findByText(/doesn’t look like a match ID/)).toBeTruthy();
+    expect(screen.queryByText(/FIRST CHUNK/)).toBeNull();
+
+    // …and a chunk arriving after the abort (the fetch mock ignores the
+    // signal) is dropped — no stale text lands anywhere.
+    stream.push({ text: 'STALE CHUNK' });
+    await flush();
+    expect(screen.queryByText(/STALE CHUNK/)).toBeNull();
+  });
+});
+
+describe('MatchPage — partial threeConclusions payload', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('renders a missing conclusion as an Insufficient data card instead of crashing', async () => {
+    const partial = {
+      ...pudgeEn,
+      threeConclusions: {
+        outcome: pudgeEn.threeConclusions.outcome,
+        turningPoint: pudgeEn.threeConclusions.turningPoint,
+        nextGameRule: pudgeEn.threeConclusions.nextGameRule,
+      },
+    };
+    stubFetch({ base: enFixture, hero: partial });
+    renderPage('/m/9035042364?hero=pudge');
+
+    // Present conclusions render verbatim…
+    expect(await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
+    expect(screen.getByText(pudgeEn.threeConclusions.nextGameRule.summary)).toBeTruthy();
+    // …the missing topMistake becomes an explicit insufficient card (muted
+    // summary + badge)…
+    expect(screen.getByText('One thing to change')).toBeTruthy();
+    expect(await screen.findAllByText('Insufficient data')).toHaveLength(2);
+    // …and the absent followUps default to [] — no preset chips.
+    expect(screen.queryByRole('button', { name: pudgeEn.threeConclusions.followUps[0] })).toBeNull();
+  });
+});
+
+describe('MatchPage — follow-up reviewNotice / fallback (server PR #89)', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const askViaComposer = (question: string) => {
+    fireEvent.change(screen.getByPlaceholderText('Ask a follow-up about this match'), {
+      target: { value: question },
+    });
+    fireEvent.submit(screen.getByPlaceholderText('Ask a follow-up about this match').closest('form')!);
+  };
+
+  it('renders the template text normally with the notice as a muted line under it', async () => {
+    stubFetch({
+      base: enFixture,
+      hero: pudgeEn,
+      post: [
+        { reviewNotice: 'AI follow-up unavailable; the answer below is built from match data only.', fallback: true },
+        { text: 'Deterministic answer from match data.' },
+      ],
+    });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    askViaComposer('What went wrong?');
+
+    expect(await screen.findByText('Deterministic answer from match data.')).toBeTruthy();
+    expect(screen.getByText('AI follow-up unavailable; the answer below is built from match data only.')).toBeTruthy();
+    // The notice is a muted line, not an error state.
+    expect(screen.queryByText('Could not answer that.')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('accepts the notice as an object ({ message }) too', async () => {
+    stubFetch({
+      base: enFixture,
+      hero: pudgeEn,
+      post: [
+        { reviewNotice: { message: 'AI follow-up unavailable (object form).' }, fallback: true },
+        { text: 'Body.' },
+      ],
+    });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    askViaComposer('What went wrong?');
+
+    expect(await screen.findByText('Body.')).toBeTruthy();
+    expect(screen.getByText('AI follow-up unavailable (object form).')).toBeTruthy();
+  });
+});
+
+describe('MatchPage — 400 message_too_long (server PR #89)', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('shows the localized server message inline (no "Error:" prefix) and keeps the text', async () => {
+    stubFetch({
+      base: enFixture,
+      hero: pudgeEn,
+      postResponse: {
+        ok: false,
+        status: 400,
+        headers: { get: () => null },
+        json: async () => ({ error: 'message_too_long', message: 'Error: Follow-ups are limited to 2000 characters.' }),
+      },
+    });
+    renderPage('/m/9035042364?hero=pudge');
+    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
+
+    fireEvent.change(screen.getByPlaceholderText('Ask a follow-up about this match'), {
+      target: { value: 'A question that is too long' },
+    });
+    fireEvent.submit(screen.getByPlaceholderText('Ask a follow-up about this match').closest('form')!);
+
+    // Friendly inline message — server copy without the "Error:" prefix…
+    expect(await screen.findByText('Follow-ups are limited to 2000 characters.')).toBeTruthy();
+    expect(screen.queryByText(/Error:/)).toBeNull();
+    expect(screen.queryByText('Could not answer that.')).toBeNull();
+    // …and the user's text is back in the composer so they can shorten it.
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).value).toBe(
+        'A question that is too long',
+      ),
+    );
+    expect(
+      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
+    ).toBe(false);
   });
 });

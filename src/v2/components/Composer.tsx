@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useI18n } from '../i18n/I18nProvider';
 import { buildCarryQuery } from '../carryQuery';
@@ -28,12 +28,20 @@ const Composer: React.FC<{
   onSubmitQuestion?: (value: string) => void;
   onStop?: () => void;
   currentMatchId?: string;
-}> = ({ mode = 'match', disabled = false, locked = false, onSubmitQuestion, onStop, currentMatchId }) => {
+  /** Refill the input after a rejected submit (400 message_too_long keeps the
+   * user's text so they can shorten it). A new object re-applies even when the
+   * value is unchanged — hence the nonce. */
+  restore?: { value: string; nonce: number } | null;
+}> = ({ mode = 'match', disabled = false, locked = false, onSubmitQuestion, onStop, currentMatchId, restore }) => {
   const { lang, t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const [value, setValue] = useState('');
   const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (restore) setValue(restore.value);
+  }, [restore]);
 
   const goToMatch = (id: string) => {
     setValue('');
