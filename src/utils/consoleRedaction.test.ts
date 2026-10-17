@@ -94,6 +94,8 @@ describe('installConsoleRedaction (unit)', () => {
     expect(out).toContain("{ key: 'Escape' }");
     expect(out).not.toContain('ABCD1234');
     expect(out).toContain('[REDACTED]');
+    expect(redactUnmistakableSecrets('Authorization: Basic dTpw')).toBe('Authorization: [REDACTED]');
+    expect(redactCredentials('Authorization: Basic dTpw')).toBe('Authorization: [REDACTED]');
   });
 
   it('feedback durable log applies redactUnmistakableSecrets then logUnredacted', () => {
