@@ -97,6 +97,8 @@ describe('installConsoleRedaction (unit)', () => {
     consoleObj.error('Could not parse message into JSON:', '{"token":"qafaketoken123456'); // unterminated
     consoleObj.error('env', { STEAM_WEB_API_KEY: 'qafakesecret0123456789', OPENDOTA_API_KEY: 'qafakekey0123456789' });
     consoleObj.error('STEAM_WEB_API_KEY=qafakesecret0123456789');
+    consoleObj.error('cfg', { password: 'qafakepw!@#' });
+    consoleObj.error('{"password":"$2b$10$qafakepw/hash.value","user":"bob"}');
     for (const [l] of errorMock.mock.calls as unknown[][]) {
       expect(String(l)).not.toMatch(/qafake(token|pw|secret|key)/);
       expect(String(l)).toContain('[REDACTED]');
