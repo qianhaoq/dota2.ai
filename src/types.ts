@@ -52,6 +52,7 @@ export type A2UIBlockType =
   | 'matchups'
   | 'tier'
   | 'markdown'
+  | 'notice'
   | 'review'
   | 'reviewInsight';
 

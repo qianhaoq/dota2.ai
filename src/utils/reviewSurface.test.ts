@@ -240,7 +240,7 @@ describe('primaryReviewFollowUpContext', () => {
 });
 
 describe('canSubmitReviewFollowUp', () => {
-  it('returns false when review notice blocks AI follow-ups', () => {
+  it('stays submittable when a review notice is present (template-backed follow-ups)', () => {
     const sessions = [
       {
         ...reviewSession({
@@ -256,7 +256,7 @@ describe('canSubmitReviewFollowUp', () => {
         ],
       },
     ];
-    expect(canSubmitReviewFollowUp(sessions)).toBe(false);
+    expect(canSubmitReviewFollowUp(sessions)).toBe(true);
   });
 
   it('returns true when primary complete, AI available, no streaming follow-up', () => {
@@ -382,13 +382,13 @@ describe('findInflightCoachSession', () => {
 });
 
 describe('isReviewAiFollowUpAvailable', () => {
-  it('returns false when review notice is present', () => {
+  it('stays available when a review notice is present (template-backed follow-ups)', () => {
     const message = {
       id: '1', type: 'coach' as const, action: 'review' as const, content: '',
       reviewCards: { followups: ['a'], drill: { title: 'd', steps: [], duration: '5m' }, primary_mistake: { headline: 'x' } as never, match_summary: { matchId: 1 } as never },
     };
     const notices = [{ id: 'c1-review-notice', type: 'markdown' as const, markdown: 'AI unavailable' }];
-    expect(isReviewAiFollowUpAvailable(message, notices)).toBe(false);
+    expect(isReviewAiFollowUpAvailable(message, notices)).toBe(true);
   });
 
   it('returns false when followups array is empty', () => {

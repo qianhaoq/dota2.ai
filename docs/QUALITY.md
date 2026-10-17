@@ -54,7 +54,7 @@
 
 | 提供商 | Secret 名称 | 默认模型 |
 |--------|-------------|----------|
-| DeepSeek | `DEEPSEEK_API_KEY` | deepseek-chat |
+| DeepSeek | `DEEPSEEK_API_KEY` | deepseek-flash（可用 `DEEPSEEK_MODEL` 覆盖） |
 | OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
 | xAI (Grok) | `XAI_API_KEY` | grok-2-latest |
 

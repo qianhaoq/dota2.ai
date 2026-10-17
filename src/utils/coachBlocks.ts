@@ -372,6 +372,16 @@ export function messageToBlocks(message: CoachMessage, lang: Language = 'en'): A
     });
   });
 
+  // 非破坏性服务端提示（追问兜底时的 reviewNotice）：排在正文之后，
+  // 小字渲染，绝不能进 error —— error 会把追问正文整个清掉。
+  if (message.notice) {
+    blocks.push({
+      id: `${message.id}-followup-notice`,
+      type: 'notice',
+      markdown: message.notice,
+    });
+  }
+
   return blocks;
 }
 

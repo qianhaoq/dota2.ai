@@ -213,18 +213,18 @@ describe('streamFollowUpCompletion (empty-stream fallback)', () => {
     expect(failures).toEqual(['deepseek:empty_stream', 'gemini:empty_stream']);
   });
 
-  it('keeps done semantics for an empty stream that ended with a terminal finish_reason', async () => {
-    let geminiCalled = false;
+  it('treats an empty stream as failed even with a terminal finish_reason (empty refusal / content_filter)', async () => {
+    const texts: string[] = [];
     const outcome = await streamFollowUpCompletion({
       providers: [
-        { name: 'deepseek', create: async () => streamOf([chunk(undefined, 'stop')]) },
-        { name: 'gemini', create: async () => { geminiCalled = true; return streamOf([]); } },
+        { name: 'deepseek', create: async () => streamOf([chunk(undefined, 'content_filter')]) },
+        { name: 'gemini', create: async () => streamOf([chunk('gemini answer', 'stop')]) },
       ],
       attemptMs: 40000,
-      onText: () => {},
+      onText: (t: string) => texts.push(t),
     });
-    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'deepseek' });
-    expect(geminiCalled).toBe(false);
+    expect(outcome).toEqual({ status: 'done', finishReason: 'stop', provider: 'gemini' });
+    expect(texts).toEqual(['gemini answer']);
   });
 });
 
@@ -389,8 +389,12 @@ describe('server.js follow-up wiring (pattern guard)', () => {
     }
   });
 
-  it('answers total follow-up failure with the sanitized generic payload, not provider text', () => {
-    expect(server).toMatch(/outcome\.status === 'failed'[\s\S]*?sanitizeLlmErrorForClient\(lang\)/);
+  it('answers total follow-up failure with the deterministic template, not provider text', () => {
+    // failed (every provider died before any text) degrades to the
+    // buildFollowUpFallbackText template — follow-ups never return
+    // ai_unavailable, and the raw provider error never reaches the client.
+    expect(server).toMatch(/const decision = decideFollowUpOutcome\(outcome\);[\s\S]*?sendFollowUpFallback\(decision\)/);
+    expect(server).toMatch(/sendFollowUpFallback\(\{ reason: 'error', append: followUpForwarded \}\)/);
     // Follow-up streaming goes through the provider chain, not a direct call.
     expect(server).toMatch(/const followUpProviders = \[/);
     expect(server).not.toMatch(/followUpRequest/);
