@@ -2,9 +2,17 @@
 
 > 用法 / Usage: 复制本模板到 PR 描述或 issue，逐项勾选后，在**最新 head commit** 上完成验证，
 > 再给 PR 打 `qa-passed` 标签。新的 push 会自动移除该标签，必须重新走一遍本单。
+> 唯一例外：push 只是把 main **干净合入**已验收的 head（"Update branch" 合并方式、
+> 无冲突、merge 结果 == 干净重合并、main 改动的文件与本 PR 无交集）时，标签保留，
+> PR 上会出现一条置顶评论说明原因并给出 QA 实际验证的 commit——这种情况无需重验。
 > Copy this template into the PR description or an issue, check every item
 > against the **latest head commit**, then apply the `qa-passed` label.
 > Any new push removes the label automatically — redo this checklist.
+> Only exception: a push that merely merges main **cleanly** into the
+> QA-verified head (an "Update branch" merge with no conflicts, a tree equal
+> to a clean re-merge, and no file overlap between main's changes and this
+> PR) keeps the label; a sticky PR comment explains why and names the commit
+> QA actually verified. No re-test is needed in that case.
 
 PR: #___
 被验收的 head commit / Verified head commit: `<COMMIT_SHA>`
@@ -90,7 +98,8 @@ echo "restore with: gcloud run services update-traffic $SVC $G $([ "$CUR_LATEST"
 
 > 注意 / Note: 打标签时间必须晚于最后一次 push —— 否则 QA Gate 会以
 > "label predates the latest push" 拒绝。push 新提交后标签被自动移除，
-> 需重新验收并再次打标。
+> 需重新验收并再次打标（干净合入 main 的例外见文首：标签保留、无需重验）。
 > The label must be applied AFTER the last push — otherwise the QA Gate
 > rejects with "label predates the latest push". A new push removes the
-> label; re-verify and re-apply it.
+> label; re-verify and re-apply it (except a clean main merge, see the top:
+> the label is kept and no re-test is needed).

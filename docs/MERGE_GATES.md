@@ -9,16 +9,17 @@ This page is the source of truth for merge policy.
 
 ## Check names after devflow-gates migration
 
-本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `855d62d`，即 855d62df74bfbcc25ee902b0681c1b53968f2f56）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
+本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `3853cc9`，即 3853cc9dedbf1ffd8b10def841ed4c822dae7906）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
 
 - `ci / Build & Test`
 - `ci / Secret Scan`
 - `codex / Codex Review Gate`
 - `qa / QA Gate`（label `qa-passed`，见 `QA.md`）
+  - 已开启 `keep_qa_on_clean_main_update`：新 push 只是把 main **干净合入** QA 验过的 head（GitHub "Update branch" 的 merge 方式；无冲突、merge 结果 == 干净重合并、main 改动的文件与本 PR 无交集）时保留 `qa-passed`，并在 PR 上留置顶评论「仅干净合入 main…QA 测试基于 <sha>」；其他任何 push（普通提交、rebase/force push、手工解冲突、文件重叠）仍移除标签、需重新 QA。
 
 旧的裸名 `Build & Test` / `Codex Review Gate` 在合入后不再产生，若仍为 required 会让所有 PR 永久挂起。
 
-Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程一律阻断（`block_unlabeled: true`，默认，fail-closed）；显式 P2（Codex、Copilot 或人工）不阻断；P2 可回复 `P2: defer — <理由>` 后 Resolve。线程 Resolve 不会触发 Actions：由每 15 分钟的 Gate Refresh 重跑，或 `workflow_dispatch` 填 PR 号。
+Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程一律阻断（`block_unlabeled: true`，默认，fail-closed）；显式 P2（Codex、Copilot 或人工）不阻断；P2 可回复 `P2: defer — <理由>` 后 Resolve。线程 Resolve 不会触发 Actions（已取消每 15 分钟的定时 Refresh 以节省分钟）：Resolve 最后一个阻断线程后，在 PR 评论 `/recheck` 触发 Gate Refresh 重跑，或 `workflow_dispatch`（在 PR 分支上）填 PR 号；新 push / Codex 新评论也会自动重评。
 
 > dota2.ai：`copilot-pull-request-reviewer` **不是** required check（不要加回 branch protection）。Copilot 只在 Auto Merge 内部判断（`require_copilot: true`，soft-path：官方 check 缺失但 head 有 Copilot APPROVED/COMMENTED 即可；`CHANGES_REQUESTED` 一票否决）。
 
