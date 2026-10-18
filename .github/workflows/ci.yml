@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   ci:
-    uses: qianhaoq/devflow-gates/.github/workflows/ci.yml@88a9af464d5bcb9620231cf3be952b119c17b0e3  # devflow-gates main @ 88a9af4 (pinned; bump deliberately)
+    uses: qianhaoq/devflow-gates/.github/workflows/ci.yml@37aef857960dd425a1d48ef781818c89d889db2c  # devflow-gates main @ 37aef85 (pinned; bump deliberately)
     with:
       runs_on: '["self-hosted", "linux", "x64"]'
       node_version: '20'          # '' skips setup-node
