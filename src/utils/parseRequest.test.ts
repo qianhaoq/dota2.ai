@@ -87,7 +87,7 @@ describe('createParseRequestController', () => {
   });
 
   it('abort() cancels the in-flight request and resolves it as aborted', async () => {
-    const requestFn = vi.fn(async (_id: number, _lang: 'en' | 'zh', signal?: AbortSignal) => {
+    const requestFn = vi.fn(async (_id: number | string, _lang: 'en' | 'zh', signal?: AbortSignal) => {
       await new Promise((res) => setTimeout(res, 5));
       if (signal?.aborted) {
         throw Object.assign(new Error('This operation was aborted'), { name: 'AbortError' });

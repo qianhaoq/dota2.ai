@@ -63,6 +63,8 @@ export interface MatchPlayerFact {
   isRadiant: boolean;
   nameZh: string;
   nameEn: string;
+  /** URL-friendly hero slug (e.g. "faceless_void"); used by the v2 ?hero= param. */
+  internalSlug?: string;
   displayName: string;
   /** Player's display name (personaname) when OpenDota provides one. */
   personName: string | null;

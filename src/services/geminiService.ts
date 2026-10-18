@@ -4,6 +4,7 @@ import type { ReviewCardsPayload } from '../types/reviewCards';
 import { incompleteReviewStreamMessage, isReviewSseTerminal } from '../utils/reviewSse';
 import { parseReviewParseStatus } from '../utils/parseStatus';
 import { serverErrorMessage } from '../utils/serverErrorMessage';
+import { bodyRetryAfterSec, retryAfterFrom } from '../utils/retryAfter';
 
 function cancelledMessage(lang: Language): string {
   return lang === 'zh' ? '请求已取消' : 'Request cancelled';
@@ -533,12 +534,25 @@ export interface ReviewStreamCallbacks {
   onChunk: (text: string) => void;
   onComplete: (grounded: boolean) => void;
   onError: (error: string) => void;
+  /**
+   * HTTP 429 rate limit (server PR #89): invoked INSTEAD of onError so the
+   * UI can show a live countdown. Null retryAfterSec = server didn't say how
+   * long. Legacy callers without this callback still get onError.
+   */
+  onRateLimited?: (retryAfterSec: number | null, message: string) => void;
+  /**
+   * HTTP 400 { error: 'message_too_long' } on a follow-up (server PR #89):
+   * invoked INSTEAD of onError so the UI can show the server's localized
+   * message inline and keep the user's text in the composer. Legacy callers
+   * without this callback still get onError.
+   */
+  onMessageTooLong?: (message: string) => void;
 }
 
 export const REVIEW_CLIENT_TIMEOUT_MS = 180000;
 
 export const fetchMatchReviewStream = (
-  matchId: number,
+  matchId: number | string,
   lang: Language,
   heroId?: number,
   followUp?: string,
@@ -579,8 +593,38 @@ export const fetchMatchReviewStream = (
         signal: controller.signal,
       });
 
+      if (response.status === 429) {
+        // Rate limited before any streaming started: surface the wait via
+        // onRateLimited (Retry-After header, falling back to the body's
+        // retryAfterSec / retryAfter — the production field name in
+        // lib/llmRateLimit.js) instead of a generic stream error.
+        const data = await response.json().catch(() => ({} as { retryAfterSec?: unknown; retryAfter?: unknown }));
+        const retryAfterSec = retryAfterFrom(
+          response.headers?.get?.('retry-after'),
+          bodyRetryAfterSec(data),
+        );
+        const message = serverErrorMessage(
+          data,
+          lang === 'zh' ? '请求太频繁，请稍后再试。' : 'Too many requests right now. Try again in a moment.',
+        );
+        clearTimeout(timeoutId);
+        if (callbacks?.onRateLimited) callbacks.onRateLimited(retryAfterSec, message);
+        else callbacks?.onError(message);
+        return;
+      }
+
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
+        // Oversized follow-up (server PR #89): 400 message_too_long with a
+        // localized message — dedicated callback so the UI can keep the user's
+        // text in the composer; other errors keep flowing through onError.
+        if (response.status === 400 && data.error === 'message_too_long') {
+          const message = serverErrorMessage(data, 'Failed to fetch match review');
+          clearTimeout(timeoutId);
+          if (callbacks?.onMessageTooLong) callbacks.onMessageTooLong(message);
+          else callbacks?.onError(message);
+          return;
+        }
         throw new Error(serverErrorMessage(data, 'Failed to fetch match review'));
       }
 

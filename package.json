@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "preview:mock": "node scripts/mock-review-server.mjs",
     "start": "node server.js",
     "start:dev": "concurrently \"npm run dev\" \"npm start\"",
     "test": "vitest run"

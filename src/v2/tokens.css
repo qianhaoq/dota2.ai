@@ -52,10 +52,30 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Focus ring: solid accent outline (QA P2 — the old translucent box-shadow
+   had <3:1 contrast; #4F46E5 on #FAFAF9 is ~7:1). */
 .d2-root :focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.28);
-  border-radius: 8px;
+  outline: 2px solid #4F46E5;
+  outline-offset: 2px;
+}
+
+/* Streaming caret (handoff §3 AiText). The reduced-motion rule below already
+   disables the blink animation there. */
+.d2-root .d2-caret::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -2px;
+  background: var(--d2-ink-3);
+  animation: d2-blink 1s steps(1) infinite;
+}
+
+@keyframes d2-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 /* Motion is 150–220ms ease-out (sheet 320ms); off entirely when the user

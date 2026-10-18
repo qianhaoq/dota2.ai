@@ -8,8 +8,16 @@ import './tokens.css';
  * the sticky bottom Composer. Sets its own light background/ink/font via
  * `.d2-root` (see tokens.css) so the legacy dark global styles don't leak in.
  * `noIndex` adds `<meta name="robots" content="noindex">` while mounted.
+ * Pages that own the scroll (MatchPage) pass a `scrollRef`/`onScroll` pair and
+ * may swap the composer (follow-up mode) via the `composer` slot.
  */
-const V2Shell: React.FC<{ children: React.ReactNode; noIndex?: boolean }> = ({ children, noIndex = false }) => {
+const V2Shell: React.FC<{
+  children: React.ReactNode;
+  noIndex?: boolean;
+  scrollRef?: React.Ref<HTMLDivElement>;
+  onScroll?: React.UIEventHandler<HTMLDivElement>;
+  composer?: React.ReactNode;
+}> = ({ children, noIndex = false, scrollRef, onScroll, composer }) => {
   useEffect(() => {
     if (!noIndex) return;
     const meta = document.createElement('meta');
@@ -24,10 +32,10 @@ const V2Shell: React.FC<{ children: React.ReactNode; noIndex?: boolean }> = ({ c
   return (
     <div className="d2-root pt-safe px-safe">
       <TopBar />
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <main className="max-w-d2-chat mx-auto px-[16px] pt-[16px] pb-[24px]">{children}</main>
       </div>
-      <Composer />
+      {composer ?? <Composer />}
     </div>
   );
 };
