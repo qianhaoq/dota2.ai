@@ -9,7 +9,7 @@ This page is the source of truth for merge policy.
 
 ## Check names after devflow-gates migration
 
-本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `37aef85`，即 37aef857960dd425a1d48ef781818c89d889db2c）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
+本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `d837538`，即 d83753839f5bf0a3b795f1578b0d1ff8c4cf9ff5）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
 
 - `ci / Build & Test`
 - `ci / Secret Scan`
