@@ -9,7 +9,7 @@ This page is the source of truth for merge policy.
 
 ## Check names after devflow-gates migration
 
-本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `3853cc9`，即 3853cc9dedbf1ffd8b10def841ed4c822dae7906）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
+本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `d837538`，即 d83753839f5bf0a3b795f1578b0d1ff8c4cf9ff5）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
 
 - `ci / Build & Test`
 - `ci / Secret Scan`
@@ -21,7 +21,7 @@ This page is the source of truth for merge policy.
 
 Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程一律阻断（`block_unlabeled: true`，默认，fail-closed）；显式 P2（Codex、Copilot 或人工）不阻断；P2 可回复 `P2: defer — <理由>` 后 Resolve。线程 Resolve 不会触发 Actions（已取消每 15 分钟的定时 Refresh 以节省分钟）：Resolve 最后一个阻断线程后，在 PR 评论 `/recheck` 触发 Gate Refresh 重跑，或 `workflow_dispatch`（在 PR 分支上）填 PR 号；新 push / Codex 新评论也会自动重评。
 
-> dota2.ai：`copilot-pull-request-reviewer` **不是** required check（不要加回 branch protection）。Copilot 只在 Auto Merge 内部判断（`require_copilot: true`，soft-path：官方 check 缺失但 head 有 Copilot APPROVED/COMMENTED 即可；`CHANGES_REQUESTED` 一票否决）。
+> dota2.ai：`copilot-pull-request-reviewer` **不是** required check（不要加回 branch protection）。Copilot 只在 Auto Merge 内部判断（`require_copilot: ${{ vars.DISABLE_COPILOT_REVIEW != 'true' }}` + `copilot_scope: any`：PR 上**任一提交**有过一条 Copilot APPROVED/COMMENTED 即可，head 上的 Copilot check 忽略；最新一条 Copilot 评审为 `CHANGES_REQUESTED` 一票否决）。Copilot 只在 opened / ready_for_review 请求一次，ruleset 22375766 已设 review_on_push=false（省 Actions 分钟与 Copilot 配额），head 新鲜度由 Codex Gate / CI / QA 保证。
 
 ## 先读：个人私有仓库 Ruleset 不生效 | Private personal repo
 
@@ -46,7 +46,7 @@ Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程一�
 |------|--------|
 | **Require status checks to pass before merging** | 没有绿勾不能合 |
 | Required check: **`ci / Build & Test`** | CI job 名（`.github/workflows/ci.yml`） |
-| ~~Required check `copilot-pull-request-reviewer`~~ | **不设为 required**（Copilot 由 Auto Merge 内部 soft-path 判断） |
+| ~~Required check `copilot-pull-request-reviewer`~~ | **不设为 required**（Copilot 由 Auto Merge 内部判断：任一提交有过 Copilot review 即可） |
 | Required check: **`codex / Codex Review Gate`** | **job / check-run 名**（`.github/workflows/codex-gate.yml` 的 `jobs.*.name`），不是 workflow 展示名 |
 | Required check: **`ci / Secret Scan`** | gitleaks（`ci.yml` 调用 devflow-gates） |
 | Required check: **`qa / QA Gate`** | QA label `qa-passed`（`qa-gate.yml`，见 `QA.md`） |
@@ -97,9 +97,9 @@ Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程一�
 2. 没有 `no-auto-merge` label
 3. head SHA 上必须有一条**成功的 `ci / Build & Test` check run**（或同名 CI）。没有这条 check run → **fail closed**，不用 legacy combined status 凑合
 4. 相关 check 已完成且未失败（忽略 Custom LLM Review、以及 Auto Merge 自己的 check 名）。同一 check 名只看**最新一次尝试**，按 **`created_at`** 排名（`id` 平局打破），不用 `completed_at`（旧 run 后结束不能盖住新失败）
-5. head 上应有 `copilot-pull-request-reviewer` 且 **`conclusion: success`**（`skipped` / `neutral` 都不合）。**Soft-path：** 官方 check 缺失（常见于 Copilot 配额耗尽）但 head 已有 Copilot `APPROVED`/`COMMENTED` review → 视为满足；仍无 head review → fail-closed
+5. （已取消）head 上的 `copilot-pull-request-reviewer` check 不再参与判断（`copilot_scope: any`；缺失、运行中、失败都不阻断）
 6. head 上必须有 **`codex / Codex Review Gate`**（这是 **job / check-run 名**，不是 workflow 展示名），且 **`conclusion: success`**（缺失 / `skipped` / `neutral` 都不合）
-7. 该 head SHA 上**已有** Copilot review，且**不是** `CHANGES_REQUESTED`
+7. 该 PR 上（**任一提交**）**已有** Copilot review，且最新一条**不是** `CHANGES_REQUESTED`
    - **`APPROVED` 或 `COMMENTED` 都可以。不要求原生 `APPROVED`。**
    - **没有 Copilot review 不会自动合。**
    - **#33 的硬门槛：** 有 review（即使是 `COMMENTED`）但还有未解决行内线程 → 不合。靠第 8 条挡。
@@ -128,7 +128,7 @@ GitHub branch protection **没有**严重度 / soft-path 过滤器：
 
 | 原生设置 | 与本仓工作流的关系 |
 |----------|-------------------|
-| Required check `copilot-pull-request-reviewer` | Auto Merge 的 **soft-path**（配额耗尽、check 缺失但 head 已有 Copilot review）只影响工作流自身判断。若该 check 仍是 required status check，`pulls.merge` / UI 仍会因缺失 check 被拒，除非临时去掉 required、或给合并 actor（含 `github-actions`）开 bypass。配额耗尽时的人工合入仍须 Codex Gate + Build，禁止 Build-only。 |
+| Required check `copilot-pull-request-reviewer` | Auto Merge 的 Copilot 判断（`copilot_scope: any`：任一提交有过 Copilot review 即可，不看 head 上的 check）只影响工作流自身判断。若该 check 仍是 required status check，`pulls.merge` / UI 仍会因缺失 check 被拒，除非临时去掉 required、或给合并 actor（含 `github-actions`）开 bypass。配额耗尽时的人工合入仍须 Codex Gate + Build，禁止 Build-only。 |
 | Require conversation resolution | 无作者/严重度例外。若开启，**未 Resolve 的纯 P2 也会挡住** merge。建议：Codex Gate 可对纯 P2 先行绿灯；合入前仍用 `P2: defer — …` Resolve（或关原生 conversation resolution，改信 Auto Merge 的 GraphQL 严重度门槛；若要「P2 真·保持 open 也能 API 合入」，给 `github-actions` bypass）。 |
 
 ## 评审严重度 | Review severity (P0 / P1 / P2)

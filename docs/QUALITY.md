@@ -9,7 +9,7 @@
 | 检查 | 类型 | 合并要求 | 说明 |
 |------|------|---------|------|
 | **ci / Build & Test** | CI | ✅ 必需 | TypeScript、构建、测试 |
-| **copilot-pull-request-reviewer** | AI check | ❌ 非 required（Auto Merge soft-path 判断） | 只覆盖 Copilot，**不覆盖 Codex**。check-run `conclusion` 必须是 `success`（不是 review state）。Copilot **review** 可以是 `COMMENTED`，不要求 `APPROVED` |
+| **copilot-pull-request-reviewer** | AI check | ❌ 非 required（Auto Merge 只要求任一提交上有过 Copilot review） | 只覆盖 Copilot，**不覆盖 Codex**。head 上的该 check 不参与合并判断（缺失、运行中、失败都不阻断）。Copilot **review** 可以是 `COMMENTED`，不要求 `APPROVED` |
 | **codex / Codex Review Gate** | AI check | ✅ 必需 | **job 名**必须是 `codex / Codex Review Gate`（不要只认 workflow 展示名） |
 | **会话已解决** | 讨论 | ✅ 必需 | 未解决的 Copilot / Codex / 人类行内线程挡住合并 |
 | **Custom LLM Review** | AI | ⏭️ 可选 | DeepSeek/OpenAI/xAI（需 API 密钥）；不阻塞合并 |
@@ -114,7 +114,7 @@ Branch name pattern: main
 - `ci / Build & Test`、`ci / Secret Scan`、`codex / Codex Review Gate`、`qa / QA Gate` 设为必需 check（`copilot-pull-request-reviewer` 不设为必需）
 - Copilot check **不覆盖** Codex；Codex 靠 `codex-gate.yml` + conversation resolution
 - Custom LLM Review 与 `ai-review.yml` 的 “Copilot Review”（只负责请求审查）不要设为必需
-- auto-merge：**不要求** Copilot 原生 `APPROVED`。head 上必须有 Copilot review 且不是 `CHANGES_REQUESTED`（`APPROVED`/`COMMENTED` 均可），线程必须全部 resolve，且必须有成功的 **ci / Build & Test check run**（没有 check run 不合）。
+- auto-merge：**不要求** Copilot 原生 `APPROVED`。PR 上（任一提交）必须有过 Copilot review 且最新一条不是 `CHANGES_REQUESTED`（`APPROVED`/`COMMENTED` 均可），线程必须全部 resolve，且必须有成功的 **ci / Build & Test check run**（没有 check run 不合）。
 
 ---
 
