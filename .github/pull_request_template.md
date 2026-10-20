@@ -15,6 +15,13 @@
 
 ## 测试情况 | How Tested
 
+<!-- 必填：跑了什么测试 + 关键输出；口头 done 不算。勾选不够，须贴命令与摘要。 -->
+
+```text
+# command
+# key output
+```
+
 - [ ] CI 通过 | CI passes
 - [ ] 本地测试 | Local testing
 - [ ] dota2.ai 线上验证 | Verified on dota2.ai
