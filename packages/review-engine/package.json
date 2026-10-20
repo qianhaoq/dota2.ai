@@ -1,0 +1,19 @@
+{
+  "name": "@dota2ai/review-engine",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build:types": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "src",
+    "data",
+    "dist"
+  ]
+}
