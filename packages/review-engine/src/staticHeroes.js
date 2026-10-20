@@ -1,10 +1,8 @@
-import { readFileSync } from 'node:fs';
+import staticHeroesData from '../data/static-heroes.json' with { type: 'json' };
 
 /** @typedef {{ id: number, nameEn: string, nameZh: string, internalSlug: string, internalName: string }} StaticHero */
 
-/** @type {{ patch: string, sourceDate: string, source: string, heroes: Record<string, StaticHero> }} */
-const staticHeroesData = JSON.parse(readFileSync(new URL('../data/static-heroes.json', import.meta.url), 'utf8'));
-
+/** @type {Record<string, StaticHero>} */
 export const STATIC_HEROES = staticHeroesData.heroes;
 export const STATIC_HEROES_PATCH = staticHeroesData.patch;
 

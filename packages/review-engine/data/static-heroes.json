@@ -845,7 +845,7 @@
     },
     "131": {
       "id": 131,
-      "nameEn": "Ring Master",
+      "nameEn": "Ringmaster",
       "nameZh": "马戏团团长",
       "internalSlug": "ringmaster",
       "internalName": "npc_dota_hero_ringmaster"
