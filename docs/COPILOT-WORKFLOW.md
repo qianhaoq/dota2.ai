@@ -11,18 +11,18 @@
 | `.github/instructions/*.instructions.md` | 按路径生效的细则 |
 | `.github/workflows/copilot-setup-steps.yml` | 云端 Agent 开工前装 Node 20 + `npm ci` |
 | `.github/workflows/ai-review.yml` | PR 打开时请求 Copilot review |
-| `.github/workflows/auto-merge.yml` | **CI 全绿 + Copilot 已审 head（非 `CHANGES_REQUESTED`）+ 线程已解决 → 自动 squash**（见 `docs/MERGE_GATES.md`） |
+| `.github/workflows/auto-merge.yml` | **CI 全绿 + Copilot 至少审过一次（任一提交，非 `CHANGES_REQUESTED`）+ 线程已解决 → 自动 squash**（见 `docs/MERGE_GATES.md`） |
 | `.github/workflows/codex-gate.yml` | job/check 名 **`codex / Codex Review Gate`**（branch protection 认这个名字） |
 | 现有 `ci.yml` | PR 质量门禁（tsc / build / test） |
 
 ## 默认策略（你选的）
 
-1. **默认 Copilot review**：Ruleset / Settings 自动请求；`ai-review.yml` 再兜底请求一次。
+1. **默认 Copilot review**：`ai-review.yml` 在 opened / ready_for_review 请求一次；ruleset 不在 push 时重审（review_on_push=false，省配额）。
 2. **不必等人合并**（门槛比以前严）：`auto-merge.yml` 只在同时满足时 squash 进 `main`：
    - 不是 draft
    - 没有 `no-auto-merge` label
    - 该 head SHA 上有成功的 **ci / Build & Test check run**（没有这条 check 不合，不用 combined status 凑）
-   - 该 head SHA 上已有 Copilot review，且不是 `CHANGES_REQUESTED`（**不要求** `APPROVED`；`COMMENTED` 可以；没有 review 不合）
+   - 该 PR 上（任一提交）已有 Copilot review，且最新一条不是 `CHANGES_REQUESTED`（**不要求** `APPROVED`；`COMMENTED` 可以；从未审过不合）；head 新鲜度由 Codex Gate / CI / QA 保证
    - 所有 review 线程已 resolve（`COMMENTED` + 未解决线程 = #33，不合）
 3. 需要人工把关时：给 PR 打上 `no-auto-merge`，或保持 draft。完整说明见 [`docs/MERGE_GATES.md`](MERGE_GATES.md)。
 
