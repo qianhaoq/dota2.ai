@@ -72,7 +72,11 @@ export function buildFacts(raw, player) {
     if (valid) {
       const sorted = [...logs].sort((a, b) => a.time - b.time);
       const timelineSource = sorted.length ? sorted.map(d => d.source_path).join('; ') : Array.isArray(player.deaths_log) ? `${path}.deaths_log` : raw.players.map((_, i) => `players[${i}].kills_log`).join('; ');
-      const counts = entries => Object.fromEntries([...new Set(entries.map(e => slug(e.key)))].sort().map(key => [key, entries.filter(e => slug(e.key) === key).length]));
+      const killerSlots = new Map(raw.players.map(p => [heroSlug(p.hero_id), p.player_slot]));
+      const counts = entries => {
+        const killers = entries.filter(d => d.key && !isSameTeamKill(killerSlots.get(slug(d.key)), player.player_slot));
+        return Object.fromEntries([...new Set(killers.map(e => slug(e.key)))].sort().map(key => [key, killers.filter(e => slug(e.key) === key).length]));
+      };
       sorted.forEach((d, i) => {
         const diff = d.time >= 0 ? gold[Math.floor(d.time / 60)] : null;
         const id = `death.${i + 1}`;
@@ -82,13 +86,13 @@ export function buildFacts(raw, player) {
       });
       const completeTimeline = !finite(player.deaths) || sorted.length === player.deaths;
       if (completeTimeline) {
-        add('killed_by', counts(sorted.filter(d => d.key)), 'entity', timelineSource);
+        add('killed_by', counts(sorted), 'entity', timelineSource);
         for (const [killer, count] of Object.entries(facts.killed_by.value)) add(`killed_by.${killer}`, count, 'count', timelineSource);
         add('deaths.total', sorted.length, 'count', timelineSource);
         for (const minute of [15, 22]) {
           const early = sorted.filter(d => d.time < minute * 60);
           add(`deaths.before_${minute}`, early.length, 'count', timelineSource);
-          add(`deaths.before_${minute}.killed_by`, counts(early.filter(d => d.key)), 'entity', timelineSource);
+          add(`deaths.before_${minute}.killed_by`, counts(early), 'entity', timelineSource);
         }
         if (deaths.every(d => finite(d.team_gold_diff_at_t))) add('deaths.behind_1k', deaths.filter(d => d.team_gold_diff_at_t < -1000).length, 'count', 'radiant_gold_adv; deaths', { derivation: 'minute=floor(t/60); player_team_gold_adv[minute] < -1000' });
         else gaps.push({ topic: 'deaths.behind_1k', reason: 'missing_gold_at_death' });

@@ -271,6 +271,44 @@ it('excludes same-team denies and self-kills from inverted death evidence', () =
   expect(review.insights[1].pattern).toBe('phase_repeat');
 });
 
+it('excludes same-team denies and self-kills from direct-log killer counts while keeping all deaths', () => {
+  const deaths_log = [
+    { time: 10, key: 'npc_dota_hero_pudge' },
+    { time: 20, key: 'antimage' },
+    { time: 30, key: 'npc_dota_hero_antimage' },
+    { time: 61, key: 'npc_dota_hero_axe' },
+    { time: 121, key: 'crystal_maiden' },
+    { time: 601, key: 'npc_dota_badguys_tower1_mid' },
+    { time: 1300, key: 'unknown_hero' },
+    { time: 1501 },
+  ].map(d => ({ ...d, gold_fed: 100, time_dead: 20 }));
+  const raw = { version: 1, radiant_gold_adv: Array(26).fill(0), players: [
+    { hero_id: 14, player_slot: 0, deaths: 8, deaths_log },
+    { hero_id: 1, player_slot: 1 },
+    { hero_id: 2, player_slot: 128 },
+    { hero_id: 5, player_slot: 129 },
+  ] };
+  const review = buildReview(raw, opts);
+  const f = review.facts;
+  expect(review.deaths.map(d => d.t)).toEqual(deaths_log.map(d => d.time));
+  expect(f['death.2'].value.killer).toBe('antimage');
+  expect(f['deaths.total'].value).toBe(8);
+  expect(f['deaths.before_15'].value).toBe(6);
+  expect(f['deaths.before_22'].value).toBe(7);
+  expect(['lane', 'mid', 'late'].map(phase => f[`deaths.phase.${phase}`].value)).toEqual([5, 2, 1]);
+  expect(f['deaths.behind_1k'].value).toBe(0);
+  expect(f.gold_fed.value).toBe(800);
+  expect(f.time_dead.value).toBe(160);
+  expect(f.killed_by.value).toEqual({ axe: 1, crystal_maiden: 1, npc_dota_badguys_tower1_mid: 1, unknown_hero: 1 });
+  expect(f['deaths.before_15.killed_by'].value).toEqual({ axe: 1, crystal_maiden: 1, npc_dota_badguys_tower1_mid: 1 });
+  expect(f['deaths.before_22.killed_by'].value).toEqual(f.killed_by.value);
+  expect(f['killed_by.antimage']).toBeUndefined();
+  expect(f['killed_by.pudge']).toBeUndefined();
+  const insight = review.insights.find(i => i.id === 'fix_this');
+  expect(insight.status).toBe('ok');
+  expect(insight.pattern).toBe('phase_repeat');
+});
+
 it.each([
   [{ player_slot: 0 }, 'radiant'],
   [{ player_slot: 128 }, 'dire'],
