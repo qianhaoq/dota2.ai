@@ -315,11 +315,33 @@ it.each([
   [{ team: 3, player_slot: 0 }, 'dire'],
   [{ team: 2, player_slot: 128 }, 'radiant'],
   [{ team: 0, player_slot: 128 }, 'dire'],
+  [{ key: 'npc_dota_goodguys_tower1_bot' }, 'dire'],
+  [{ key: 'npc_dota_badguys_tower2_top' }, 'radiant'],
+  [{ key: 'npc_dota_goodguys_tower4' }, 'dire'],
+  [{ team: 2, key: 'npc_dota_goodguys_tower1_mid' }, 'radiant'],
+  [{ player_slot: 128, key: 'npc_dota_badguys_tower1_mid' }, 'dire'],
+  [{ team: null, player_slot: null, key: 'npc_dota_goodguys_tower1_bot', unit: 'npc_dota_creep_goodguys_melee' }, 'dire'],
+  [{ key: 'tower', unit: 'npc_dota_creep_badguys_melee' }, null],
+  [{ key: 42 }, null],
   [{}, null],
 ])('recovers objective teams while preferring explicit teams: %j', (fields, team) => {
   const review = buildReview({ version: 1, objectives: [{ time: 120, type: 'building_kill', ...fields }] }, opts);
   expect(review.objectives[0].team).toBe(team);
   expect(review.facts['obj.120.0'].value.team).toBe(team);
+});
+
+it('infers the five creep-attributed building kill teams in 9035042364', () => {
+  const review = buildReview(load(9035042364), opts);
+  const times = [1039, 1579, 2482, 2813, 2840];
+  const objectives = review.objectives.filter(o => o.type === 'building_kill' && times.includes(o.t));
+  expect(objectives.map(o => [o.t, o.key, o.team])).toEqual([
+    [1039, 'npc_dota_goodguys_tower1_bot', 'dire'],
+    [1579, 'npc_dota_goodguys_tower2_bot', 'dire'],
+    [2482, 'npc_dota_badguys_tower2_top', 'radiant'],
+    [2813, 'npc_dota_goodguys_tower4', 'dire'],
+    [2840, 'npc_dota_goodguys_tower4', 'dire'],
+  ]);
+  for (const objective of objectives) expect(review.facts[objective.fact_id].value.team).toBe(objective.team);
 });
 
 it('localizes Chinese followup labels while retaining internal insight and gap keys', () => {
