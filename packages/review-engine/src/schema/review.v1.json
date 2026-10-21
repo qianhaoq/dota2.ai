@@ -1,0 +1,732 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReviewV1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "dota2.ai/review@1"
+    },
+    "engine_version": {
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "parsed",
+        "unparsed",
+        "insufficient"
+      ]
+    },
+    "lang": {
+      "enum": [
+        "en",
+        "zh"
+      ]
+    },
+    "match": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "duration_s": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "winner": {
+          "enum": [
+            "radiant",
+            "dire",
+            null
+          ]
+        },
+        "score": {
+          "type": "object",
+          "properties": {
+            "radiant": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "dire": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "radiant",
+            "dire"
+          ],
+          "additionalProperties": false
+        },
+        "patch": {},
+        "parsed": {
+          "type": "boolean"
+        },
+        "parse_version": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "start_time": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "duration_s",
+        "winner",
+        "score",
+        "patch",
+        "parsed",
+        "parse_version",
+        "start_time"
+      ],
+      "additionalProperties": false
+    },
+    "player": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "hero": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hero_id": {
+              "type": "number"
+            },
+            "team": {
+              "enum": [
+                "radiant",
+                "dire",
+                null
+              ]
+            },
+            "kda": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "result": {
+              "enum": [
+                "win",
+                "loss",
+                null
+              ]
+            },
+            "account_id": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "hero",
+            "hero_id",
+            "team",
+            "kda",
+            "result",
+            "account_id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "roster": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "hero": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hero_id": {
+            "type": "number"
+          },
+          "team": {
+            "enum": [
+              "radiant",
+              "dire",
+              null
+            ]
+          },
+          "kda": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "required": [
+          "hero",
+          "hero_id",
+          "team",
+          "kda"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "facts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "scalar",
+              "time",
+              "count",
+              "delta",
+              "series_ref",
+              "entity"
+            ]
+          },
+          "value": {},
+          "unit": {
+            "type": "string"
+          },
+          "t": {
+            "type": "number"
+          },
+          "perspective": {
+            "enum": [
+              "player_team",
+              "radiant"
+            ]
+          },
+          "display": {
+            "type": "object",
+            "properties": {
+              "en": {
+                "type": "string"
+              },
+              "zh": {
+                "type": "string"
+              },
+              "t": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "en",
+              "zh"
+            ],
+            "additionalProperties": false
+          },
+          "derivation": {
+            "type": "string"
+          },
+          "citation": {
+            "type": "string"
+          },
+          "source_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "value",
+          "display"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "series": {
+      "type": "object",
+      "properties": {
+        "radiant_gold_adv": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "radiant_xp_adv": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "perspective": {
+          "enum": [
+            "radiant",
+            "dire",
+            null
+          ]
+        }
+      },
+      "required": [
+        "radiant_gold_adv",
+        "radiant_xp_adv",
+        "perspective"
+      ],
+      "additionalProperties": false
+    },
+    "objectives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string"
+          },
+          "key": {
+            "type": [
+              "string",
+              "number",
+              "null"
+            ]
+          },
+          "team": {
+            "enum": [
+              "radiant",
+              "dire",
+              null
+            ]
+          },
+          "fact_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "type",
+          "key",
+          "team",
+          "fact_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "deaths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number"
+          },
+          "killer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "team_gold_diff_at_t": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "fact_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "t",
+          "killer",
+          "team_gold_diff_at_t",
+          "fact_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "purchases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number"
+          },
+          "item": {
+            "type": "string"
+          },
+          "key_item": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "t",
+          "item",
+          "key_item"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "insights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "enum": [
+              "turning_point",
+              "fix_this",
+              "next_game"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "insufficient"
+            ]
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "number"
+              },
+              "to": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "additionalProperties": false
+          },
+          "claim": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "slots": {
+                "type": "string"
+              },
+              "phrasing": {
+                "enum": [
+                  "template",
+                  "llm"
+                ]
+              }
+            },
+            "required": [
+              "text",
+              "slots",
+              "phrasing"
+            ],
+            "additionalProperties": false
+          },
+          "fact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label_key": {
+                  "type": "string"
+                },
+                "fact_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label_key",
+                "fact_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "highlight": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "markers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "moments": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "highlight",
+              "markers",
+              "moments"
+            ],
+            "additionalProperties": false
+          },
+          "comeback": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "fact_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "fact_ids"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "baseline": {},
+          "target": {},
+          "citations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "data_gap": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "time",
+          "claim",
+          "fact_ids",
+          "metrics",
+          "evidence",
+          "baseline",
+          "target",
+          "citations",
+          "data_gap"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "data_gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "followups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "answerable": {
+            "type": "boolean"
+          },
+          "fact_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "gap": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "answerable"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "enum": [
+              "opendota",
+              "kb"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "fetched_at": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ref": {
+            "type": "string"
+          },
+          "patch": {},
+          "source_date": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "evidence_url": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string"
+        },
+        "cache": {
+          "enum": [
+            "hit",
+            "miss"
+          ]
+        },
+        "phrasing": {
+          "enum": [
+            "template",
+            "llm"
+          ]
+        },
+        "llm_provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "url",
+        "evidence_url",
+        "generated_at",
+        "cache",
+        "phrasing",
+        "llm_provider"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "engine_version",
+    "state",
+    "lang",
+    "match",
+    "player",
+    "roster",
+    "facts",
+    "series",
+    "objectives",
+    "deaths",
+    "purchases",
+    "insights",
+    "data_gaps",
+    "followups",
+    "citations",
+    "meta"
+  ],
+  "additionalProperties": false
+}
