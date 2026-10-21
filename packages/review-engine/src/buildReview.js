@@ -27,15 +27,17 @@ export function buildReview(raw, opts) {
     if (!result.facts[topic] && !gaps.some(g => g.topic === topic)) gaps.push({ topic, reason: 'missing_parsed_player_field' });
   }
   if (opts.heroId != null && !focus) gaps.push({ topic: 'player', reason: 'hero_not_in_roster' });
-  const complete = Array.isArray(raw.radiant_gold_adv) && raw.radiant_gold_adv.length > 5 && raw.radiant_gold_adv.every(Number.isFinite) && players.length > 0 && players.every(p => heroSlug(p.hero_id) && teamOf(p));
+  const complete = players.length > 0 && players.every(p => heroSlug(p.hero_id) && teamOf(p));
+  const goldComplete = Array.isArray(raw.radiant_gold_adv) && raw.radiant_gold_adv.length > 5 && Array.from(raw.radiant_gold_adv).every(Number.isFinite);
   let state = !parsed ? 'unparsed' : complete && (opts.heroId == null || focus) ? 'parsed' : 'insufficient';
-  if (parsed && !complete) gaps.push({ topic: 'parsed_evidence', reason: 'missing_gold_or_roster_mapping' });
+  if (parsed && !complete) gaps.push({ topic: 'parsed_evidence', reason: 'missing_roster_mapping' });
+  if (parsed && !goldComplete) gaps.push({ topic: 'radiant_gold_adv', reason: 'missing_or_incomplete_gold_series' });
   const insights = focus ? buildInsights(result, opts.lang, state) : [];
   if (state === 'parsed' && insights.length && insights.every(i => i.status === 'insufficient')) state = 'insufficient';
   const objectives = parsed ? (raw.objectives ?? []).map((o, i) => ({ o, i })).filter(({ o }) => Number.isFinite(o.time)).map(({ o, i }) => {
     const fact_id = `obj.${o.time}.${i}`;
     const objective = { t: o.time, type: o.type ?? 'unknown', key: o.key ?? null, team: o.team === 2 ? 'radiant' : o.team === 3 ? 'dire' : null, fact_id };
-    result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: String(o.key ?? o.type), zh: String(o.key ?? o.type) }, citation: 's1', source_path: `objectives[${i}]` };
+    result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: String(objective.key ?? objective.type), zh: String(objective.key ?? objective.type) }, citation: 's1', source_path: `objectives[${i}]` };
     return objective;
   }) : [];
   const url = `https://dota2.ai/m/${raw.match_id ?? ''}${focus ? `?hero=${heroSlug(focus.hero_id)}` : ''}`;
@@ -44,7 +46,7 @@ export function buildReview(raw, opts) {
     match: { id: raw.match_id ?? null, duration_s: raw.duration ?? null, winner, score: { radiant: raw.radiant_score ?? null, dire: raw.dire_score ?? null }, patch, parsed, parse_version: raw.version ?? null, start_time: raw.start_time ?? null },
     player: focus ? { ...roster[players.indexOf(focus)], result: winner && teamOf(focus) ? (winner === teamOf(focus) ? 'win' : 'loss') : null, account_id: focus.account_id ?? null } : null,
     roster, facts: result.facts,
-    series: { radiant_gold_adv: parsed ? raw.radiant_gold_adv ?? [] : [], radiant_xp_adv: parsed ? raw.radiant_xp_adv ?? [] : [], perspective: focus ? teamOf(focus) : 'radiant' },
+    series: { radiant_gold_adv: parsed ? Array.from(raw.radiant_gold_adv ?? [], value => Number.isFinite(value) ? value : null) : [], radiant_xp_adv: parsed ? raw.radiant_xp_adv ?? [] : [], perspective: focus ? teamOf(focus) : 'radiant' },
     objectives, deaths: result.deaths,
     purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: false })) : [],
     insights, data_gaps: gaps,

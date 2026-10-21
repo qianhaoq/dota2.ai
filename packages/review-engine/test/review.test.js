@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { describe, it, expect } from 'vitest';
 import { buildReview, validateReview, ENGINE_VERSION } from '../src/index.js';
-import { findWindow } from '../src/facts/index.js';
+import { clock, findWindow } from '../src/facts/index.js';
 const dir = new URL('./fixtures/gold/', import.meta.url);
 const load = id => JSON.parse(gunzipSync(readFileSync(new URL(`${id}.json.gz`, dir))));
 const opts = { heroId: 14, lang: 'en', fetchedAt: '2026-10-22T00:00:00Z' };
@@ -125,9 +125,9 @@ it('prioritizes repeated killers over phase concentration, with phase as fallbac
   expect(repeated.pattern).toBe('repeat_killer');
   expect(repeated.fact_ids).toEqual(['killed_by.doom_bringer']);
   expect(repeated.claim.slots).toContain('{killed_by.doom_bringer}');
-  expect(repeated.claim.text).toContain('doom_bringer (2 deaths)');
+  expect(repeated.claim.text).toContain('Doom (2 deaths)');
   expect(repeated.claim.text).not.toContain('hoodwink');
-  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toContain('doom_bringer（2 次）');
+  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toContain('末日使者（2 次）');
   raw.players[0].deaths_log[1].key = 'sniper';
   expect(buildReview(raw, opts).insights[1].pattern).toBe('phase_repeat');
   expect(buildReview(raw, opts).insights[1].claim.text).toContain('lane phase: 3');
@@ -202,4 +202,54 @@ it('preserves objective indices after discarding invalid times', () => {
   expect(review.objectives).toHaveLength(1);
   expect(review.objectives[0].fact_id).toBe('obj.120.1');
   expect(review.facts['obj.120.1'].source_path).toBe('objectives[1]');
+});
+
+
+it.each(['hole', 'null', 'non-finite'])('keeps independently supported insights with a %s in the gold series', gap => {
+  const raw = load(9035042364);
+  if (gap === 'hole') delete raw.radiant_gold_adv[0];
+  else raw.radiant_gold_adv[0] = gap === 'null' ? null : Infinity;
+  const review = buildReview(raw, opts);
+  expect(review.state).toBe('parsed');
+  expect(review.insights.map(i => i.status)).toEqual(['ok', 'ok', 'ok']);
+  expect(review.insights[0].fact_ids).toContain('gold.window.40_45.delta');
+  expect(review.insights[2].fact_ids).toContain('lh_at_10');
+  expect(review.data_gaps).toContainEqual({ topic: 'radiant_gold_adv', reason: 'missing_or_incomplete_gold_series' });
+  expect(validateReview(review).ok).toBe(true);
+});
+
+it('keeps death insights without gold and gates economy insights on their own facts', () => {
+  const raw = load(9035042364);
+  delete raw.radiant_gold_adv;
+  delete raw.players.find(p => p.hero_id === 14).lh_t;
+  const review = buildReview(raw, opts);
+  expect(review.state).toBe('parsed');
+  expect(review.insights.map(i => i.status)).toEqual(['insufficient', 'ok', 'insufficient']);
+  expect(review.insights[1].pattern).toBe('repeat_killer');
+  expect(validateReview(review).ok).toBe(true);
+  raw.players.find(p => p.hero_id === 14).lh_t = Array(11).fill(13);
+  const withLastHits = buildReview(raw, opts);
+  expect(withLastHits.insights[2].status).toBe('ok');
+  expect(withLastHits.insights[2].fact_ids).toEqual(['lh_at_10']);
+});
+
+it.each(['en', 'zh'])('falls back to the slug for an unknown repeated killer in %s', lang => {
+  const raw = { version: 1, players: [{ hero_id: 14, player_slot: 0, deaths: 2, deaths_log: [{ time: 61, key: 'unknown_hero' }, { time: 121, key: 'unknown_hero' }] }] };
+  const insight = buildReview(raw, { ...opts, lang }).insights[1];
+  expect(insight.status).toBe('ok');
+  expect(insight.fact_ids).toEqual(['killed_by.unknown_hero']);
+  expect(insight.claim.text).toContain(lang === 'zh' ? 'unknown_hero（2 次）' : 'unknown_hero (2 deaths)');
+});
+
+it.each([[-5, '-0:05'], [-65, '-1:05'], [0, '0:00'], [65, '1:05']])('formats clock(%s) as %s', (seconds, expected) => {
+  expect(clock(seconds)).toBe(expected);
+});
+
+it('uses the normalized unknown type for objectives without a key or type', () => {
+  const raw = load(9035042364);
+  raw.objectives = [{ time: -5 }];
+  const review = buildReview(raw, opts);
+  expect(review.objectives[0].type).toBe('unknown');
+  expect(review.facts['obj.-5.0'].display).toEqual({ en: 'unknown', zh: 'unknown' });
+  expect(validateReview(review).ok).toBe(true);
 });

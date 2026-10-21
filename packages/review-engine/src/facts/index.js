@@ -1,6 +1,6 @@
 import { getStaticHero } from '../staticHeroes.js';
 
-export const clock = seconds => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+export const clock = seconds => `${seconds < 0 ? '-' : ''}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.abs(seconds) % 60).padStart(2, '0')}`;
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 export const heroSlug = id => getStaticHero(id)?.internalSlug ?? null;
 export const teamOf = player => Number.isInteger(player.player_slot) ? (player.player_slot < 128 ? 'radiant' : 'dire') : null;
