@@ -7,3 +7,5 @@ export * from './matchParse.js';
 export * from './heroNamesMap.js';
 export * from './parseMatchId.js';
 export * from './staticHeroes.js';
+export { buildReview, ENGINE_VERSION } from './buildReview.js';
+export { validateReview } from './schema/validate.js';
