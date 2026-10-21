@@ -5,6 +5,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY packages/review-engine/package.json ./packages/review-engine/
 
 # Install all dependencies (including devDependencies for build)
 RUN npm ci
@@ -22,9 +23,10 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
+COPY packages/review-engine/package.json ./packages/review-engine/
 
 # Install only production dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy built frontend from builder stage
 COPY --from=builder /app/dist ./dist
@@ -32,6 +34,7 @@ COPY --from=builder /app/dist ./dist
 # Copy server runtime (match review modules + entry)
 COPY server.js ./
 COPY lib ./lib
+COPY packages ./packages
 RUN mkdir -p ./data
 
 # Set environment variables
