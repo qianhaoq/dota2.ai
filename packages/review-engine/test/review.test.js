@@ -253,3 +253,49 @@ it('uses the normalized unknown type for objectives without a key or type', () =
   expect(review.facts['obj.-5.0'].display).toEqual({ en: 'unknown', zh: 'unknown' });
   expect(validateReview(review).ok).toBe(true);
 });
+
+it('excludes same-team denies and self-kills from inverted death evidence', () => {
+  const raw = { version: 1, radiant_gold_adv: Array(11).fill(0), players: [
+    { hero_id: 14, player_slot: 0, deaths: 2, kills_log: [{ time: 10, key: 'npc_dota_hero_pudge' }] },
+    { hero_id: 1, player_slot: 1, kills_log: [{ time: 20, key: 'npc_dota_hero_pudge' }, { time: 30, key: 'npc_dota_hero_pudge' }] },
+    { hero_id: 2, player_slot: 128, kills_log: [{ time: 61, key: 'npc_dota_hero_pudge' }] },
+    { hero_id: 5, player_slot: 129, kills_log: [{ time: 121, key: 'npc_dota_hero_pudge' }] },
+  ] };
+  const review = buildReview(raw, opts);
+  expect(review.deaths.map(d => d.t)).toEqual([61, 121]);
+  expect(review.facts['deaths.total'].value).toBe(2);
+  expect(review.facts.killed_by.value).toEqual({ axe: 1, crystal_maiden: 1 });
+  expect(review.facts['killed_by.antimage']).toBeUndefined();
+  expect(review.facts['killed_by.pudge']).toBeUndefined();
+  expect(review.insights[1].status).toBe('ok');
+  expect(review.insights[1].pattern).toBe('phase_repeat');
+});
+
+it.each([
+  [{ player_slot: 0 }, 'radiant'],
+  [{ player_slot: 128 }, 'dire'],
+  [{ team: 3, player_slot: 0 }, 'dire'],
+  [{ team: 2, player_slot: 128 }, 'radiant'],
+  [{ team: 0, player_slot: 128 }, 'dire'],
+  [{}, null],
+])('recovers objective teams while preferring explicit teams: %j', (fields, team) => {
+  const review = buildReview({ version: 1, objectives: [{ time: 120, type: 'building_kill', ...fields }] }, opts);
+  expect(review.objectives[0].team).toBe(team);
+  expect(review.facts['obj.120.0'].value.team).toBe(team);
+});
+
+it('localizes Chinese followup labels while retaining internal insight and gap keys', () => {
+  const raw = load(9035042364);
+  delete raw.players.find(p => p.hero_id === 14).deaths_log[0].gold_fed;
+  const review = buildReview(raw, { ...opts, lang: 'zh' });
+  expect(review.followups.filter(f => f.answerable).map(f => [f.id, f.label])).toEqual([
+    ['why_turning_point', '查看结论证据：转折点'],
+    ['why_fix_this', '查看结论证据：本场要改'],
+    ['why_next_game', '查看结论证据：下局重点'],
+  ]);
+  for (const [gap, label] of [['gold_fed', '死亡送出金钱'], ['death_locations', '死亡位置']]) {
+    expect(review.followups).toContainEqual({ id: gap, label, answerable: false, gap });
+  }
+  const english = buildReview(raw, opts);
+  expect(english.followups).toContainEqual({ id: 'gold_fed', label: 'Gold fed', answerable: false, gap: 'gold_fed' });
+});

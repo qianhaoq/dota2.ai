@@ -1,3 +1,4 @@
+import { isSameTeamKill } from '../deathTimeline.js';
 import { getStaticHero } from '../staticHeroes.js';
 
 export const clock = seconds => `${seconds < 0 ? '-' : ''}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.abs(seconds) % 60).padStart(2, '0')}`;
@@ -66,7 +67,7 @@ export function buildFacts(raw, player) {
     let logs = Array.isArray(player.deaths_log) ? player.deaths_log.map((d, i) => ({ ...d, source_path: `${path}.deaths_log[${i}]` })) : null;
     const mapped = heroSlug(player.hero_id);
     const killsComplete = raw.players.every(p => Array.isArray(p.kills_log) && heroSlug(p.hero_id));
-    if (!Array.isArray(logs) && mapped && killsComplete) logs = raw.players.flatMap((p, i) => p.kills_log.map((k, j) => ({ ...k, source_path: `players[${i}].kills_log[${j}]` })).filter(k => slug(k.key) === mapped).map(k => ({ time: k.time, key: heroSlug(p.hero_id), source_path: k.source_path })));
+    if (!Array.isArray(logs) && mapped && killsComplete) logs = raw.players.flatMap((p, i) => isSameTeamKill(p.player_slot, player.player_slot) ? [] : p.kills_log.map((k, j) => ({ ...k, source_path: `players[${i}].kills_log[${j}]` })).filter(k => slug(k.key) === mapped).map(k => ({ time: k.time, key: heroSlug(p.hero_id), source_path: k.source_path })));
     const valid = Array.isArray(logs) && logs.every(d => finite(d.time));
     if (valid) {
       const sorted = [...logs].sort((a, b) => a.time - b.time);

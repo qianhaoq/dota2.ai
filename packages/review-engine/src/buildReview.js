@@ -5,6 +5,21 @@ import { isMatchParsed } from './matchParse.js';
 
 export const ENGINE_VERSION = '2.0.0-pr2';
 
+const insightLabels = { turning_point: '转折点', fix_this: '本场要改', next_game: '下局重点' };
+const gapLabels = {
+  gold_fed: { zh: '死亡送出金钱', en: 'Gold fed' },
+  time_dead: { zh: '死亡总时长', en: 'Time dead' },
+  lh_at_10: { zh: '十分钟补刀', en: 'Last hits at 10 minutes' },
+  death_locations: { zh: '死亡位置', en: 'Death locations' },
+  build_vs_lineup: { zh: '针对阵容的出装', en: 'Build versus lineup' },
+  deaths: { zh: '死亡时间线', en: 'Death timeline' },
+  'deaths.behind_1k': { zh: '经济落后千金时的死亡', en: 'Deaths while behind by 1,000 gold' },
+  patch: { zh: '游戏版本', en: 'Patch' },
+  player: { zh: '玩家英雄', en: 'Player hero' },
+  parsed_evidence: { zh: '解析数据证据', en: 'Parsed evidence' },
+  radiant_gold_adv: { zh: '天辉经济优势曲线', en: 'Radiant gold advantage' },
+};
+
 /**
  * @param {any} raw OpenDota match, supplied by an adapter (never fetched here).
  * @param {{heroId?: number, lang: 'en'|'zh', fetchedAt: string, patch?: any, kb?: any[]}} opts
@@ -36,7 +51,9 @@ export function buildReview(raw, opts) {
   if (state === 'parsed' && insights.length && insights.every(i => i.status === 'insufficient')) state = 'insufficient';
   const objectives = parsed ? (raw.objectives ?? []).map((o, i) => ({ o, i })).filter(({ o }) => Number.isFinite(o.time)).map(({ o, i }) => {
     const fact_id = `obj.${o.time}.${i}`;
-    const objective = { t: o.time, type: o.type ?? 'unknown', key: o.key ?? null, team: o.team === 2 ? 'radiant' : o.team === 3 ? 'dire' : null, fact_id };
+    // Explicit objective teams take precedence over the acting player's slot.
+    const team = o.team === 2 || o.team === 3 ? o.team : Number.isInteger(o.player_slot) ? (o.player_slot < 128 ? 2 : 3) : null;
+    const objective = { t: o.time, type: o.type ?? 'unknown', key: o.key ?? null, team: team === 2 ? 'radiant' : team === 3 ? 'dire' : null, fact_id };
     result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: String(objective.key ?? objective.type), zh: String(objective.key ?? objective.type) }, citation: 's1', source_path: `objectives[${i}]` };
     return objective;
   }) : [];
@@ -50,7 +67,7 @@ export function buildReview(raw, opts) {
     objectives, deaths: result.deaths,
     purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: false })) : [],
     insights, data_gaps: gaps,
-    followups: [...insights.filter(i => i.status === 'ok').map(i => ({ id: `why_${i.id}`, label: opts.lang === 'zh' ? `查看结论证据：${i.id}` : `Evidence: ${i.id}`, answerable: true, fact_ids: i.fact_ids })), ...gaps.map(g => ({ id: g.topic, label: g.topic, answerable: false, gap: g.topic }))],
+    followups: [...insights.filter(i => i.status === 'ok').map(i => ({ id: `why_${i.id}`, label: opts.lang === 'zh' ? `查看结论证据：${insightLabels[i.id] ?? i.id}` : `Evidence: ${i.id}`, answerable: true, fact_ids: i.fact_ids })), ...gaps.map(g => ({ id: g.topic, label: gapLabels[g.topic]?.[opts.lang] ?? g.topic, answerable: false, gap: g.topic }))],
     citations: [{ id: 's1', provider: 'opendota', url: `https://api.opendota.com/api/matches/${raw.match_id ?? ''}`, fetched_at: opts.fetchedAt, fields: [...new Set(Object.values(result.facts).filter(f => f.citation === 's1').map(f => f.source_path))] }],
     meta: { url, evidence_url: `${url}${focus ? '&' : '?'}view=evidence`, generated_at: opts.fetchedAt, cache: 'miss', phrasing: 'template', llm_provider: null },
   };
