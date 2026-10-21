@@ -63,33 +63,35 @@ export function buildFacts(raw, player) {
   if (player) {
     const index = raw.players.indexOf(player);
     const path = `players[${index}]`;
-    let logs = player.deaths_log;
+    let logs = Array.isArray(player.deaths_log) ? player.deaths_log.map((d, i) => ({ ...d, source_path: `${path}.deaths_log[${i}]` })) : null;
     const mapped = heroSlug(player.hero_id);
     const killsComplete = raw.players.every(p => Array.isArray(p.kills_log) && heroSlug(p.hero_id));
-    if (!Array.isArray(logs) && mapped && killsComplete) logs = raw.players.flatMap(p => p.kills_log.filter(k => slug(k.key) === mapped).map(k => ({ time: k.time, key: heroSlug(p.hero_id) })));
+    if (!Array.isArray(logs) && mapped && killsComplete) logs = raw.players.flatMap((p, i) => p.kills_log.map((k, j) => ({ ...k, source_path: `players[${i}].kills_log[${j}]` })).filter(k => slug(k.key) === mapped).map(k => ({ time: k.time, key: heroSlug(p.hero_id), source_path: k.source_path })));
     const valid = Array.isArray(logs) && logs.every(d => finite(d.time));
     if (valid) {
       const sorted = [...logs].sort((a, b) => a.time - b.time);
+      const timelineSource = sorted.length ? sorted.map(d => d.source_path).join('; ') : Array.isArray(player.deaths_log) ? `${path}.deaths_log` : raw.players.map((_, i) => `players[${i}].kills_log`).join('; ');
       const counts = entries => Object.fromEntries([...new Set(entries.map(e => slug(e.key)))].sort().map(key => [key, entries.filter(e => slug(e.key) === key).length]));
       sorted.forEach((d, i) => {
         const diff = d.time >= 0 ? gold[Math.floor(d.time / 60)] : null;
         const id = `death.${i + 1}`;
         const event = { t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
         deaths.push(event);
-        add(id, event, 'entity', `${path}.${Array.isArray(player.deaths_log) ? 'deaths_log' : 'kills_log inversion'}`, { t: d.time });
+        add(id, event, 'entity', d.source_path, { t: d.time });
       });
       const completeTimeline = !finite(player.deaths) || sorted.length === player.deaths;
       if (completeTimeline) {
-        add('killed_by', counts(sorted.filter(d => d.key)), 'entity', `${path}.deaths_log / kills_log inversion`);
-        add('deaths.total', sorted.length, 'count', `${path}.deaths_log / kills_log inversion`);
+        add('killed_by', counts(sorted.filter(d => d.key)), 'entity', timelineSource);
+        for (const [killer, count] of Object.entries(facts.killed_by.value)) add(`killed_by.${killer}`, count, 'count', timelineSource);
+        add('deaths.total', sorted.length, 'count', timelineSource);
         for (const minute of [15, 22]) {
           const early = sorted.filter(d => d.time < minute * 60);
-          add(`deaths.before_${minute}`, early.length, 'count', `${path}.deaths_log / kills_log inversion`);
-          add(`deaths.before_${minute}.killed_by`, counts(early.filter(d => d.key)), 'entity', `${path}.deaths_log / kills_log inversion`);
+          add(`deaths.before_${minute}`, early.length, 'count', timelineSource);
+          add(`deaths.before_${minute}.killed_by`, counts(early.filter(d => d.key)), 'entity', timelineSource);
         }
         if (deaths.every(d => finite(d.team_gold_diff_at_t))) add('deaths.behind_1k', deaths.filter(d => d.team_gold_diff_at_t < -1000).length, 'count', 'radiant_gold_adv; deaths', { derivation: 'minute=floor(t/60); player_team_gold_adv[minute] < -1000' });
         else gaps.push({ topic: 'deaths.behind_1k', reason: 'missing_gold_at_death' });
-        for (const [phase, from, to] of [['lane', 0, 600], ['mid', 600, 1500], ['late', 1500, Infinity]]) add(`deaths.phase.${phase}`, deaths.filter(d => d.t >= from && d.t < to).length, 'count', `${path}.deaths_log / kills_log inversion`);
+        for (const [phase, from, to] of [['lane', 0, 600], ['mid', 600, 1500], ['late', 1500, Infinity]]) add(`deaths.phase.${phase}`, deaths.filter(d => d.t >= from && d.t < to).length, 'count', timelineSource);
       }
       if (!completeTimeline) gaps.push({ topic: 'deaths', reason: 'death_timeline_incomplete' });
     } else gaps.push({ topic: 'deaths', reason: 'missing_death_timeline' });

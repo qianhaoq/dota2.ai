@@ -83,6 +83,8 @@ it('applies Dire perspective and patch fallback without mutating raw', () => {
   const r = buildReview(raw, { ...opts, heroId, patch: 'test-patch' });
   expect(r.facts['gold.at.10'].value).toBe(2060);
   expect(r.facts.patch.value).toBe('test-patch');
+  expect(r.facts.patch.display).toEqual({ en: 'test-patch', zh: 'test-patch' });
+  expect(buildReview(raw, { ...opts, patch: 42 }).facts.patch.display.en).toBe('42');
   raw.patch = 42;
   expect(buildReview(raw, { ...opts, patch: 'fallback' }).facts.patch.value).toBe(42);
 });
@@ -119,9 +121,17 @@ it('rejects malformed nested review payloads with independent errors', () => {
 
 it('prioritizes repeated killers over phase concentration, with phase as fallback', () => {
   const raw = { version: 1, match_id: 1, radiant_gold_adv: [0, 0, 0, 0, 0, 0, 0], players: [{ hero_id: 14, player_slot: 0, kills_log: [], deaths: 3, deaths_log: [{ time: 61, key: 'doom_bringer' }, { time: 121, key: 'doom_bringer' }, { time: 181, key: 'hoodwink' }] }] };
-  expect(buildReview(raw, opts).insights[1].pattern).toBe('repeat_killer');
+  const repeated = buildReview(raw, opts).insights[1];
+  expect(repeated.pattern).toBe('repeat_killer');
+  expect(repeated.fact_ids).toEqual(['killed_by.doom_bringer']);
+  expect(repeated.claim.slots).toContain('{killed_by.doom_bringer}');
+  expect(repeated.claim.text).toContain('doom_bringer (2 deaths)');
+  expect(repeated.claim.text).not.toContain('hoodwink');
+  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toContain('doom_bringer（2 次）');
   raw.players[0].deaths_log[1].key = 'sniper';
   expect(buildReview(raw, opts).insights[1].pattern).toBe('phase_repeat');
+  expect(buildReview(raw, opts).insights[1].claim.text).toContain('lane phase: 3');
+  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toContain('对线期集中死亡：3');
   raw.players[0].deaths_log = [];
   raw.players[0].deaths = 0;
   expect(buildReview(raw, opts).insights[1].status).toBe('insufficient');
@@ -149,4 +159,47 @@ it('withholds aggregate death claims when the observed timeline is incomplete', 
   for (const id of ['deaths.total', 'deaths.before_15', 'deaths.behind_1k', 'killed_by', 'gold_fed', 'time_dead']) expect(r.facts[id], id).toBeUndefined();
   expect(r.insights[1].status).toBe('insufficient');
   expect(r.data_gaps).toContainEqual({ topic: 'deaths', reason: 'death_timeline_incomplete' });
+});
+
+it('keeps supported insights when unrelated kill logs are missing', () => {
+  const raw = load(9035042364);
+  const focus = raw.players.find(p => p.hero_id === 14);
+  delete raw.players.find(p => p !== focus).kills_log;
+  const review = buildReview(raw, opts);
+  expect(review.state).toBe('parsed');
+  expect(review.insights.map(i => i.status)).toEqual(['ok', 'ok', 'ok']);
+  expect(review.facts['deaths.total'].value).toBe(19);
+  expect(buildReview(raw, { ...opts, heroId: undefined }).state).toBe('parsed');
+  delete focus.deaths_log;
+  const inverted = buildReview(raw, opts);
+  expect(inverted.deaths).toEqual([]);
+  expect(inverted.facts['deaths.total']).toBeUndefined();
+  expect(inverted.insights.map(i => i.status)).toEqual(['ok', 'insufficient', 'ok']);
+  expect(inverted.data_gaps).toContainEqual({ topic: 'deaths', reason: 'missing_death_timeline' });
+});
+
+it('cites the original killer events for inverted death facts and aggregates', () => {
+  const raw = { version: 1, radiant_gold_adv: Array(11).fill(0), players: [
+    { hero_id: 14, player_slot: 0, deaths: 2, kills_log: [] },
+    { hero_id: 1, player_slot: 128, kills_log: [{ time: 5, key: 'npc_dota_hero_axe' }, { time: 121, key: 'npc_dota_hero_pudge' }] },
+    { hero_id: 2, player_slot: 129, kills_log: [{ time: 61, key: 'npc_dota_hero_pudge' }] },
+  ] };
+  const review = buildReview(raw, opts);
+  expect(review.facts['death.1'].source_path).toBe('players[2].kills_log[0]');
+  expect(review.facts['death.2'].source_path).toBe('players[1].kills_log[1]');
+  for (const id of ['killed_by', 'deaths.total', 'deaths.before_15', 'deaths.before_22.killed_by', 'deaths.phase.lane']) {
+    expect(review.facts[id].source_path).toBe('players[2].kills_log[0]; players[1].kills_log[1]');
+  }
+  expect(review.citations[0].fields).toContain('players[2].kills_log[0]');
+  expect(review.citations[0].fields.join('; ')).not.toContain('players[0].kills_log');
+  expect(review.citations[0].fields.join('; ')).not.toContain('inversion');
+});
+
+it('preserves objective indices after discarding invalid times', () => {
+  const raw = load(9035042364);
+  raw.objectives = [{ time: null }, { time: 120, key: 'tower' }];
+  const review = buildReview(raw, opts);
+  expect(review.objectives).toHaveLength(1);
+  expect(review.objectives[0].fact_id).toBe('obj.120.1');
+  expect(review.facts['obj.120.1'].source_path).toBe('objectives[1]');
 });

@@ -20,19 +20,19 @@ export function buildReview(raw, opts) {
   const evidenceRaw = parsed ? { ...raw, players } : { ...raw, players: [], radiant_gold_adv: [], radiant_xp_adv: [] };
   const result = buildFacts(evidenceRaw, parsed ? focus : null);
   const patch = raw.patch ?? opts.patch ?? null;
-  if (patch != null && !result.facts.patch) result.facts.patch = { id: 'patch', kind: 'entity', value: patch, display: { en: JSON.stringify(patch), zh: JSON.stringify(patch) }, source_path: 'opts.patch' };
+  if (patch != null && !result.facts.patch) result.facts.patch = { id: 'patch', kind: 'entity', value: patch, display: { en: String(patch), zh: String(patch) }, source_path: 'opts.patch' };
   const gaps = buildGaps(focus, result.gaps);
   if (patch == null) gaps.push({ topic: 'patch', reason: 'missing_match_patch' });
   if (focus) for (const topic of ['gold_fed', 'time_dead', 'lh_at_10']) {
     if (!result.facts[topic] && !gaps.some(g => g.topic === topic)) gaps.push({ topic, reason: 'missing_parsed_player_field' });
   }
   if (opts.heroId != null && !focus) gaps.push({ topic: 'player', reason: 'hero_not_in_roster' });
-  const complete = Array.isArray(raw.radiant_gold_adv) && raw.radiant_gold_adv.length > 5 && raw.radiant_gold_adv.every(Number.isFinite) && players.length > 0 && players.every(p => Array.isArray(p.kills_log) && heroSlug(p.hero_id) && teamOf(p));
+  const complete = Array.isArray(raw.radiant_gold_adv) && raw.radiant_gold_adv.length > 5 && raw.radiant_gold_adv.every(Number.isFinite) && players.length > 0 && players.every(p => heroSlug(p.hero_id) && teamOf(p));
   let state = !parsed ? 'unparsed' : complete && (opts.heroId == null || focus) ? 'parsed' : 'insufficient';
-  if (parsed && !complete) gaps.push({ topic: 'parsed_evidence', reason: 'missing_gold_kills_or_roster_mapping' });
+  if (parsed && !complete) gaps.push({ topic: 'parsed_evidence', reason: 'missing_gold_or_roster_mapping' });
   const insights = focus ? buildInsights(result, opts.lang, state) : [];
   if (state === 'parsed' && insights.length && insights.every(i => i.status === 'insufficient')) state = 'insufficient';
-  const objectives = parsed ? (raw.objectives ?? []).filter(o => Number.isFinite(o.time)).map((o, i) => {
+  const objectives = parsed ? (raw.objectives ?? []).map((o, i) => ({ o, i })).filter(({ o }) => Number.isFinite(o.time)).map(({ o, i }) => {
     const fact_id = `obj.${o.time}.${i}`;
     const objective = { t: o.time, type: o.type ?? 'unknown', key: o.key ?? null, team: o.team === 2 ? 'radiant' : o.team === 3 ? 'dire' : null, fact_id };
     result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: String(o.key ?? o.type), zh: String(o.key ?? o.type) }, citation: 's1', source_path: `objectives[${i}]` };
