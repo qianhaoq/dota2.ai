@@ -1,0 +1,896 @@
+{
+  "patch": "7.41",
+  "sourceDate": "2026-10-14",
+  "source": "opendota constants/heroes + repo heroNamesCn",
+  "heroes": {
+    "1": {
+      "id": 1,
+      "nameEn": "Anti-Mage",
+      "nameZh": "敌法师",
+      "internalSlug": "antimage",
+      "internalName": "npc_dota_hero_antimage"
+    },
+    "2": {
+      "id": 2,
+      "nameEn": "Axe",
+      "nameZh": "斧王",
+      "internalSlug": "axe",
+      "internalName": "npc_dota_hero_axe"
+    },
+    "3": {
+      "id": 3,
+      "nameEn": "Bane",
+      "nameZh": "祸乱之源",
+      "internalSlug": "bane",
+      "internalName": "npc_dota_hero_bane"
+    },
+    "4": {
+      "id": 4,
+      "nameEn": "Bloodseeker",
+      "nameZh": "血魔",
+      "internalSlug": "bloodseeker",
+      "internalName": "npc_dota_hero_bloodseeker"
+    },
+    "5": {
+      "id": 5,
+      "nameEn": "Crystal Maiden",
+      "nameZh": "水晶室女",
+      "internalSlug": "crystal_maiden",
+      "internalName": "npc_dota_hero_crystal_maiden"
+    },
+    "6": {
+      "id": 6,
+      "nameEn": "Drow Ranger",
+      "nameZh": "卓尔游侠",
+      "internalSlug": "drow_ranger",
+      "internalName": "npc_dota_hero_drow_ranger"
+    },
+    "7": {
+      "id": 7,
+      "nameEn": "Earthshaker",
+      "nameZh": "撼地者",
+      "internalSlug": "earthshaker",
+      "internalName": "npc_dota_hero_earthshaker"
+    },
+    "8": {
+      "id": 8,
+      "nameEn": "Juggernaut",
+      "nameZh": "主宰",
+      "internalSlug": "juggernaut",
+      "internalName": "npc_dota_hero_juggernaut"
+    },
+    "9": {
+      "id": 9,
+      "nameEn": "Mirana",
+      "nameZh": "米拉娜",
+      "internalSlug": "mirana",
+      "internalName": "npc_dota_hero_mirana"
+    },
+    "10": {
+      "id": 10,
+      "nameEn": "Morphling",
+      "nameZh": "变体精灵",
+      "internalSlug": "morphling",
+      "internalName": "npc_dota_hero_morphling"
+    },
+    "11": {
+      "id": 11,
+      "nameEn": "Shadow Fiend",
+      "nameZh": "影魔",
+      "internalSlug": "nevermore",
+      "internalName": "npc_dota_hero_nevermore"
+    },
+    "12": {
+      "id": 12,
+      "nameEn": "Phantom Lancer",
+      "nameZh": "幻影长矛手",
+      "internalSlug": "phantom_lancer",
+      "internalName": "npc_dota_hero_phantom_lancer"
+    },
+    "13": {
+      "id": 13,
+      "nameEn": "Puck",
+      "nameZh": "帕克",
+      "internalSlug": "puck",
+      "internalName": "npc_dota_hero_puck"
+    },
+    "14": {
+      "id": 14,
+      "nameEn": "Pudge",
+      "nameZh": "帕吉",
+      "internalSlug": "pudge",
+      "internalName": "npc_dota_hero_pudge"
+    },
+    "15": {
+      "id": 15,
+      "nameEn": "Razor",
+      "nameZh": "剃刀",
+      "internalSlug": "razor",
+      "internalName": "npc_dota_hero_razor"
+    },
+    "16": {
+      "id": 16,
+      "nameEn": "Sand King",
+      "nameZh": "沙王",
+      "internalSlug": "sand_king",
+      "internalName": "npc_dota_hero_sand_king"
+    },
+    "17": {
+      "id": 17,
+      "nameEn": "Storm Spirit",
+      "nameZh": "风暴之灵",
+      "internalSlug": "storm_spirit",
+      "internalName": "npc_dota_hero_storm_spirit"
+    },
+    "18": {
+      "id": 18,
+      "nameEn": "Sven",
+      "nameZh": "斯温",
+      "internalSlug": "sven",
+      "internalName": "npc_dota_hero_sven"
+    },
+    "19": {
+      "id": 19,
+      "nameEn": "Tiny",
+      "nameZh": "小小",
+      "internalSlug": "tiny",
+      "internalName": "npc_dota_hero_tiny"
+    },
+    "20": {
+      "id": 20,
+      "nameEn": "Vengeful Spirit",
+      "nameZh": "复仇之魂",
+      "internalSlug": "vengefulspirit",
+      "internalName": "npc_dota_hero_vengefulspirit"
+    },
+    "21": {
+      "id": 21,
+      "nameEn": "Windranger",
+      "nameZh": "风行者",
+      "internalSlug": "windrunner",
+      "internalName": "npc_dota_hero_windrunner"
+    },
+    "22": {
+      "id": 22,
+      "nameEn": "Zeus",
+      "nameZh": "宙斯",
+      "internalSlug": "zuus",
+      "internalName": "npc_dota_hero_zuus"
+    },
+    "23": {
+      "id": 23,
+      "nameEn": "Kunkka",
+      "nameZh": "昆卡",
+      "internalSlug": "kunkka",
+      "internalName": "npc_dota_hero_kunkka"
+    },
+    "25": {
+      "id": 25,
+      "nameEn": "Lina",
+      "nameZh": "莉娜",
+      "internalSlug": "lina",
+      "internalName": "npc_dota_hero_lina"
+    },
+    "26": {
+      "id": 26,
+      "nameEn": "Lion",
+      "nameZh": "莱恩",
+      "internalSlug": "lion",
+      "internalName": "npc_dota_hero_lion"
+    },
+    "27": {
+      "id": 27,
+      "nameEn": "Shadow Shaman",
+      "nameZh": "暗影萨满",
+      "internalSlug": "shadow_shaman",
+      "internalName": "npc_dota_hero_shadow_shaman"
+    },
+    "28": {
+      "id": 28,
+      "nameEn": "Slardar",
+      "nameZh": "斯拉达",
+      "internalSlug": "slardar",
+      "internalName": "npc_dota_hero_slardar"
+    },
+    "29": {
+      "id": 29,
+      "nameEn": "Tidehunter",
+      "nameZh": "潮汐猎人",
+      "internalSlug": "tidehunter",
+      "internalName": "npc_dota_hero_tidehunter"
+    },
+    "30": {
+      "id": 30,
+      "nameEn": "Witch Doctor",
+      "nameZh": "巫医",
+      "internalSlug": "witch_doctor",
+      "internalName": "npc_dota_hero_witch_doctor"
+    },
+    "31": {
+      "id": 31,
+      "nameEn": "Lich",
+      "nameZh": "巫妖",
+      "internalSlug": "lich",
+      "internalName": "npc_dota_hero_lich"
+    },
+    "32": {
+      "id": 32,
+      "nameEn": "Riki",
+      "nameZh": "力丸",
+      "internalSlug": "riki",
+      "internalName": "npc_dota_hero_riki"
+    },
+    "33": {
+      "id": 33,
+      "nameEn": "Enigma",
+      "nameZh": "谜团",
+      "internalSlug": "enigma",
+      "internalName": "npc_dota_hero_enigma"
+    },
+    "34": {
+      "id": 34,
+      "nameEn": "Tinker",
+      "nameZh": "修补匠",
+      "internalSlug": "tinker",
+      "internalName": "npc_dota_hero_tinker"
+    },
+    "35": {
+      "id": 35,
+      "nameEn": "Sniper",
+      "nameZh": "狙击手",
+      "internalSlug": "sniper",
+      "internalName": "npc_dota_hero_sniper"
+    },
+    "36": {
+      "id": 36,
+      "nameEn": "Necrophos",
+      "nameZh": "瘟疫法师",
+      "internalSlug": "necrolyte",
+      "internalName": "npc_dota_hero_necrolyte"
+    },
+    "37": {
+      "id": 37,
+      "nameEn": "Warlock",
+      "nameZh": "术士",
+      "internalSlug": "warlock",
+      "internalName": "npc_dota_hero_warlock"
+    },
+    "38": {
+      "id": 38,
+      "nameEn": "Beastmaster",
+      "nameZh": "兽王",
+      "internalSlug": "beastmaster",
+      "internalName": "npc_dota_hero_beastmaster"
+    },
+    "39": {
+      "id": 39,
+      "nameEn": "Queen of Pain",
+      "nameZh": "痛苦女王",
+      "internalSlug": "queenofpain",
+      "internalName": "npc_dota_hero_queenofpain"
+    },
+    "40": {
+      "id": 40,
+      "nameEn": "Venomancer",
+      "nameZh": "剧毒术士",
+      "internalSlug": "venomancer",
+      "internalName": "npc_dota_hero_venomancer"
+    },
+    "41": {
+      "id": 41,
+      "nameEn": "Faceless Void",
+      "nameZh": "虚空假面",
+      "internalSlug": "faceless_void",
+      "internalName": "npc_dota_hero_faceless_void"
+    },
+    "42": {
+      "id": 42,
+      "nameEn": "Wraith King",
+      "nameZh": "冥魂大帝",
+      "internalSlug": "skeleton_king",
+      "internalName": "npc_dota_hero_skeleton_king"
+    },
+    "43": {
+      "id": 43,
+      "nameEn": "Death Prophet",
+      "nameZh": "死亡先知",
+      "internalSlug": "death_prophet",
+      "internalName": "npc_dota_hero_death_prophet"
+    },
+    "44": {
+      "id": 44,
+      "nameEn": "Phantom Assassin",
+      "nameZh": "幻影刺客",
+      "internalSlug": "phantom_assassin",
+      "internalName": "npc_dota_hero_phantom_assassin"
+    },
+    "45": {
+      "id": 45,
+      "nameEn": "Pugna",
+      "nameZh": "帕格纳",
+      "internalSlug": "pugna",
+      "internalName": "npc_dota_hero_pugna"
+    },
+    "46": {
+      "id": 46,
+      "nameEn": "Templar Assassin",
+      "nameZh": "圣堂刺客",
+      "internalSlug": "templar_assassin",
+      "internalName": "npc_dota_hero_templar_assassin"
+    },
+    "47": {
+      "id": 47,
+      "nameEn": "Viper",
+      "nameZh": "冥界亚龙",
+      "internalSlug": "viper",
+      "internalName": "npc_dota_hero_viper"
+    },
+    "48": {
+      "id": 48,
+      "nameEn": "Luna",
+      "nameZh": "露娜",
+      "internalSlug": "luna",
+      "internalName": "npc_dota_hero_luna"
+    },
+    "49": {
+      "id": 49,
+      "nameEn": "Dragon Knight",
+      "nameZh": "龙骑士",
+      "internalSlug": "dragon_knight",
+      "internalName": "npc_dota_hero_dragon_knight"
+    },
+    "50": {
+      "id": 50,
+      "nameEn": "Dazzle",
+      "nameZh": "戴泽",
+      "internalSlug": "dazzle",
+      "internalName": "npc_dota_hero_dazzle"
+    },
+    "51": {
+      "id": 51,
+      "nameEn": "Clockwerk",
+      "nameZh": "发条技师",
+      "internalSlug": "rattletrap",
+      "internalName": "npc_dota_hero_rattletrap"
+    },
+    "52": {
+      "id": 52,
+      "nameEn": "Leshrac",
+      "nameZh": "拉席克",
+      "internalSlug": "leshrac",
+      "internalName": "npc_dota_hero_leshrac"
+    },
+    "53": {
+      "id": 53,
+      "nameEn": "Nature's Prophet",
+      "nameZh": "先知",
+      "internalSlug": "furion",
+      "internalName": "npc_dota_hero_furion"
+    },
+    "54": {
+      "id": 54,
+      "nameEn": "Lifestealer",
+      "nameZh": "噬魂鬼",
+      "internalSlug": "life_stealer",
+      "internalName": "npc_dota_hero_life_stealer"
+    },
+    "55": {
+      "id": 55,
+      "nameEn": "Dark Seer",
+      "nameZh": "黑暗贤者",
+      "internalSlug": "dark_seer",
+      "internalName": "npc_dota_hero_dark_seer"
+    },
+    "56": {
+      "id": 56,
+      "nameEn": "Clinkz",
+      "nameZh": "克林克兹",
+      "internalSlug": "clinkz",
+      "internalName": "npc_dota_hero_clinkz"
+    },
+    "57": {
+      "id": 57,
+      "nameEn": "Omniknight",
+      "nameZh": "全能骑士",
+      "internalSlug": "omniknight",
+      "internalName": "npc_dota_hero_omniknight"
+    },
+    "58": {
+      "id": 58,
+      "nameEn": "Enchantress",
+      "nameZh": "魅惑魔女",
+      "internalSlug": "enchantress",
+      "internalName": "npc_dota_hero_enchantress"
+    },
+    "59": {
+      "id": 59,
+      "nameEn": "Huskar",
+      "nameZh": "哈斯卡",
+      "internalSlug": "huskar",
+      "internalName": "npc_dota_hero_huskar"
+    },
+    "60": {
+      "id": 60,
+      "nameEn": "Night Stalker",
+      "nameZh": "暗夜魔王",
+      "internalSlug": "night_stalker",
+      "internalName": "npc_dota_hero_night_stalker"
+    },
+    "61": {
+      "id": 61,
+      "nameEn": "Broodmother",
+      "nameZh": "育母蜘蛛",
+      "internalSlug": "broodmother",
+      "internalName": "npc_dota_hero_broodmother"
+    },
+    "62": {
+      "id": 62,
+      "nameEn": "Bounty Hunter",
+      "nameZh": "赏金猎人",
+      "internalSlug": "bounty_hunter",
+      "internalName": "npc_dota_hero_bounty_hunter"
+    },
+    "63": {
+      "id": 63,
+      "nameEn": "Weaver",
+      "nameZh": "编织者",
+      "internalSlug": "weaver",
+      "internalName": "npc_dota_hero_weaver"
+    },
+    "64": {
+      "id": 64,
+      "nameEn": "Jakiro",
+      "nameZh": "杰奇洛",
+      "internalSlug": "jakiro",
+      "internalName": "npc_dota_hero_jakiro"
+    },
+    "65": {
+      "id": 65,
+      "nameEn": "Batrider",
+      "nameZh": "蝙蝠骑士",
+      "internalSlug": "batrider",
+      "internalName": "npc_dota_hero_batrider"
+    },
+    "66": {
+      "id": 66,
+      "nameEn": "Chen",
+      "nameZh": "陈",
+      "internalSlug": "chen",
+      "internalName": "npc_dota_hero_chen"
+    },
+    "67": {
+      "id": 67,
+      "nameEn": "Spectre",
+      "nameZh": "幽鬼",
+      "internalSlug": "spectre",
+      "internalName": "npc_dota_hero_spectre"
+    },
+    "68": {
+      "id": 68,
+      "nameEn": "Ancient Apparition",
+      "nameZh": "远古冰魄",
+      "internalSlug": "ancient_apparition",
+      "internalName": "npc_dota_hero_ancient_apparition"
+    },
+    "69": {
+      "id": 69,
+      "nameEn": "Doom",
+      "nameZh": "末日使者",
+      "internalSlug": "doom_bringer",
+      "internalName": "npc_dota_hero_doom_bringer"
+    },
+    "70": {
+      "id": 70,
+      "nameEn": "Ursa",
+      "nameZh": "熊战士",
+      "internalSlug": "ursa",
+      "internalName": "npc_dota_hero_ursa"
+    },
+    "71": {
+      "id": 71,
+      "nameEn": "Spirit Breaker",
+      "nameZh": "裂魂人",
+      "internalSlug": "spirit_breaker",
+      "internalName": "npc_dota_hero_spirit_breaker"
+    },
+    "72": {
+      "id": 72,
+      "nameEn": "Gyrocopter",
+      "nameZh": "矮人直升机",
+      "internalSlug": "gyrocopter",
+      "internalName": "npc_dota_hero_gyrocopter"
+    },
+    "73": {
+      "id": 73,
+      "nameEn": "Alchemist",
+      "nameZh": "炼金术士",
+      "internalSlug": "alchemist",
+      "internalName": "npc_dota_hero_alchemist"
+    },
+    "74": {
+      "id": 74,
+      "nameEn": "Invoker",
+      "nameZh": "祈求者",
+      "internalSlug": "invoker",
+      "internalName": "npc_dota_hero_invoker"
+    },
+    "75": {
+      "id": 75,
+      "nameEn": "Silencer",
+      "nameZh": "沉默术士",
+      "internalSlug": "silencer",
+      "internalName": "npc_dota_hero_silencer"
+    },
+    "76": {
+      "id": 76,
+      "nameEn": "Outworld Devourer",
+      "nameZh": "殁境神蚀者",
+      "internalSlug": "obsidian_destroyer",
+      "internalName": "npc_dota_hero_obsidian_destroyer"
+    },
+    "77": {
+      "id": 77,
+      "nameEn": "Lycan",
+      "nameZh": "狼人",
+      "internalSlug": "lycan",
+      "internalName": "npc_dota_hero_lycan"
+    },
+    "78": {
+      "id": 78,
+      "nameEn": "Brewmaster",
+      "nameZh": "酒仙",
+      "internalSlug": "brewmaster",
+      "internalName": "npc_dota_hero_brewmaster"
+    },
+    "79": {
+      "id": 79,
+      "nameEn": "Shadow Demon",
+      "nameZh": "暗影恶魔",
+      "internalSlug": "shadow_demon",
+      "internalName": "npc_dota_hero_shadow_demon"
+    },
+    "80": {
+      "id": 80,
+      "nameEn": "Lone Druid",
+      "nameZh": "德鲁伊",
+      "internalSlug": "lone_druid",
+      "internalName": "npc_dota_hero_lone_druid"
+    },
+    "81": {
+      "id": 81,
+      "nameEn": "Chaos Knight",
+      "nameZh": "混沌骑士",
+      "internalSlug": "chaos_knight",
+      "internalName": "npc_dota_hero_chaos_knight"
+    },
+    "82": {
+      "id": 82,
+      "nameEn": "Meepo",
+      "nameZh": "米波",
+      "internalSlug": "meepo",
+      "internalName": "npc_dota_hero_meepo"
+    },
+    "83": {
+      "id": 83,
+      "nameEn": "Treant Protector",
+      "nameZh": "树精卫士",
+      "internalSlug": "treant",
+      "internalName": "npc_dota_hero_treant"
+    },
+    "84": {
+      "id": 84,
+      "nameEn": "Ogre Magi",
+      "nameZh": "食人魔魔法师",
+      "internalSlug": "ogre_magi",
+      "internalName": "npc_dota_hero_ogre_magi"
+    },
+    "85": {
+      "id": 85,
+      "nameEn": "Undying",
+      "nameZh": "不朽尸王",
+      "internalSlug": "undying",
+      "internalName": "npc_dota_hero_undying"
+    },
+    "86": {
+      "id": 86,
+      "nameEn": "Rubick",
+      "nameZh": "拉比克",
+      "internalSlug": "rubick",
+      "internalName": "npc_dota_hero_rubick"
+    },
+    "87": {
+      "id": 87,
+      "nameEn": "Disruptor",
+      "nameZh": "干扰者",
+      "internalSlug": "disruptor",
+      "internalName": "npc_dota_hero_disruptor"
+    },
+    "88": {
+      "id": 88,
+      "nameEn": "Nyx Assassin",
+      "nameZh": "司夜刺客",
+      "internalSlug": "nyx_assassin",
+      "internalName": "npc_dota_hero_nyx_assassin"
+    },
+    "89": {
+      "id": 89,
+      "nameEn": "Naga Siren",
+      "nameZh": "娜迦海妖",
+      "internalSlug": "naga_siren",
+      "internalName": "npc_dota_hero_naga_siren"
+    },
+    "90": {
+      "id": 90,
+      "nameEn": "Keeper of the Light",
+      "nameZh": "光之守卫",
+      "internalSlug": "keeper_of_the_light",
+      "internalName": "npc_dota_hero_keeper_of_the_light"
+    },
+    "91": {
+      "id": 91,
+      "nameEn": "Io",
+      "nameZh": "艾欧",
+      "internalSlug": "wisp",
+      "internalName": "npc_dota_hero_wisp"
+    },
+    "92": {
+      "id": 92,
+      "nameEn": "Visage",
+      "nameZh": "维萨吉",
+      "internalSlug": "visage",
+      "internalName": "npc_dota_hero_visage"
+    },
+    "93": {
+      "id": 93,
+      "nameEn": "Slark",
+      "nameZh": "斯拉克",
+      "internalSlug": "slark",
+      "internalName": "npc_dota_hero_slark"
+    },
+    "94": {
+      "id": 94,
+      "nameEn": "Medusa",
+      "nameZh": "美杜莎",
+      "internalSlug": "medusa",
+      "internalName": "npc_dota_hero_medusa"
+    },
+    "95": {
+      "id": 95,
+      "nameEn": "Troll Warlord",
+      "nameZh": "巨魔战将",
+      "internalSlug": "troll_warlord",
+      "internalName": "npc_dota_hero_troll_warlord"
+    },
+    "96": {
+      "id": 96,
+      "nameEn": "Centaur Warrunner",
+      "nameZh": "半人马战行者",
+      "internalSlug": "centaur",
+      "internalName": "npc_dota_hero_centaur"
+    },
+    "97": {
+      "id": 97,
+      "nameEn": "Magnus",
+      "nameZh": "马格纳斯",
+      "internalSlug": "magnataur",
+      "internalName": "npc_dota_hero_magnataur"
+    },
+    "98": {
+      "id": 98,
+      "nameEn": "Timbersaw",
+      "nameZh": "伐木机",
+      "internalSlug": "shredder",
+      "internalName": "npc_dota_hero_shredder"
+    },
+    "99": {
+      "id": 99,
+      "nameEn": "Bristleback",
+      "nameZh": "钢背兽",
+      "internalSlug": "bristleback",
+      "internalName": "npc_dota_hero_bristleback"
+    },
+    "100": {
+      "id": 100,
+      "nameEn": "Tusk",
+      "nameZh": "巨牙海民",
+      "internalSlug": "tusk",
+      "internalName": "npc_dota_hero_tusk"
+    },
+    "101": {
+      "id": 101,
+      "nameEn": "Skywrath Mage",
+      "nameZh": "天怒法师",
+      "internalSlug": "skywrath_mage",
+      "internalName": "npc_dota_hero_skywrath_mage"
+    },
+    "102": {
+      "id": 102,
+      "nameEn": "Abaddon",
+      "nameZh": "亚巴顿",
+      "internalSlug": "abaddon",
+      "internalName": "npc_dota_hero_abaddon"
+    },
+    "103": {
+      "id": 103,
+      "nameEn": "Elder Titan",
+      "nameZh": "上古巨神",
+      "internalSlug": "elder_titan",
+      "internalName": "npc_dota_hero_elder_titan"
+    },
+    "104": {
+      "id": 104,
+      "nameEn": "Legion Commander",
+      "nameZh": "军团指挥官",
+      "internalSlug": "legion_commander",
+      "internalName": "npc_dota_hero_legion_commander"
+    },
+    "105": {
+      "id": 105,
+      "nameEn": "Techies",
+      "nameZh": "工程师",
+      "internalSlug": "techies",
+      "internalName": "npc_dota_hero_techies"
+    },
+    "106": {
+      "id": 106,
+      "nameEn": "Ember Spirit",
+      "nameZh": "灰烬之灵",
+      "internalSlug": "ember_spirit",
+      "internalName": "npc_dota_hero_ember_spirit"
+    },
+    "107": {
+      "id": 107,
+      "nameEn": "Earth Spirit",
+      "nameZh": "大地之灵",
+      "internalSlug": "earth_spirit",
+      "internalName": "npc_dota_hero_earth_spirit"
+    },
+    "108": {
+      "id": 108,
+      "nameEn": "Underlord",
+      "nameZh": "孽主",
+      "internalSlug": "abyssal_underlord",
+      "internalName": "npc_dota_hero_abyssal_underlord"
+    },
+    "109": {
+      "id": 109,
+      "nameEn": "Terrorblade",
+      "nameZh": "恐怖利刃",
+      "internalSlug": "terrorblade",
+      "internalName": "npc_dota_hero_terrorblade"
+    },
+    "110": {
+      "id": 110,
+      "nameEn": "Phoenix",
+      "nameZh": "凤凰",
+      "internalSlug": "phoenix",
+      "internalName": "npc_dota_hero_phoenix"
+    },
+    "111": {
+      "id": 111,
+      "nameEn": "Oracle",
+      "nameZh": "神谕者",
+      "internalSlug": "oracle",
+      "internalName": "npc_dota_hero_oracle"
+    },
+    "112": {
+      "id": 112,
+      "nameEn": "Winter Wyvern",
+      "nameZh": "寒冬飞龙",
+      "internalSlug": "winter_wyvern",
+      "internalName": "npc_dota_hero_winter_wyvern"
+    },
+    "113": {
+      "id": 113,
+      "nameEn": "Arc Warden",
+      "nameZh": "天穹守望者",
+      "internalSlug": "arc_warden",
+      "internalName": "npc_dota_hero_arc_warden"
+    },
+    "114": {
+      "id": 114,
+      "nameEn": "Monkey King",
+      "nameZh": "齐天大圣",
+      "internalSlug": "monkey_king",
+      "internalName": "npc_dota_hero_monkey_king"
+    },
+    "119": {
+      "id": 119,
+      "nameEn": "Dark Willow",
+      "nameZh": "邪影芳灵",
+      "internalSlug": "dark_willow",
+      "internalName": "npc_dota_hero_dark_willow"
+    },
+    "120": {
+      "id": 120,
+      "nameEn": "Pangolier",
+      "nameZh": "石鳞剑士",
+      "internalSlug": "pangolier",
+      "internalName": "npc_dota_hero_pangolier"
+    },
+    "121": {
+      "id": 121,
+      "nameEn": "Grimstroke",
+      "nameZh": "天涯墨客",
+      "internalSlug": "grimstroke",
+      "internalName": "npc_dota_hero_grimstroke"
+    },
+    "123": {
+      "id": 123,
+      "nameEn": "Hoodwink",
+      "nameZh": "森海飞霞",
+      "internalSlug": "hoodwink",
+      "internalName": "npc_dota_hero_hoodwink"
+    },
+    "126": {
+      "id": 126,
+      "nameEn": "Void Spirit",
+      "nameZh": "虚无之灵",
+      "internalSlug": "void_spirit",
+      "internalName": "npc_dota_hero_void_spirit"
+    },
+    "128": {
+      "id": 128,
+      "nameEn": "Snapfire",
+      "nameZh": "电炎绝手",
+      "internalSlug": "snapfire",
+      "internalName": "npc_dota_hero_snapfire"
+    },
+    "129": {
+      "id": 129,
+      "nameEn": "Mars",
+      "nameZh": "玛尔斯",
+      "internalSlug": "mars",
+      "internalName": "npc_dota_hero_mars"
+    },
+    "131": {
+      "id": 131,
+      "nameEn": "Ringmaster",
+      "nameZh": "马戏团团长",
+      "internalSlug": "ringmaster",
+      "internalName": "npc_dota_hero_ringmaster"
+    },
+    "135": {
+      "id": 135,
+      "nameEn": "Dawnbreaker",
+      "nameZh": "破晓辰星",
+      "internalSlug": "dawnbreaker",
+      "internalName": "npc_dota_hero_dawnbreaker"
+    },
+    "136": {
+      "id": 136,
+      "nameEn": "Marci",
+      "nameZh": "玛西",
+      "internalSlug": "marci",
+      "internalName": "npc_dota_hero_marci"
+    },
+    "137": {
+      "id": 137,
+      "nameEn": "Primal Beast",
+      "nameZh": "獸",
+      "internalSlug": "primal_beast",
+      "internalName": "npc_dota_hero_primal_beast"
+    },
+    "138": {
+      "id": 138,
+      "nameEn": "Muerta",
+      "nameZh": "穆尔塔",
+      "internalSlug": "muerta",
+      "internalName": "npc_dota_hero_muerta"
+    },
+    "145": {
+      "id": 145,
+      "nameEn": "Kez",
+      "nameZh": "凯斯",
+      "internalSlug": "kez",
+      "internalName": "npc_dota_hero_kez"
+    },
+    "155": {
+      "id": 155,
+      "nameEn": "Largo",
+      "nameZh": "拉戈",
+      "internalSlug": "largo",
+      "internalName": "npc_dota_hero_largo"
+    }
+  }
+}
