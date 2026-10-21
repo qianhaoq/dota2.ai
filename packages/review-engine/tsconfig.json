@@ -3,6 +3,7 @@
     "target": "ES2022",
     "allowJs": true,
     "checkJs": true,
+    "strictNullChecks": true,
     "declaration": true,
     "emitDeclarationOnly": true,
     "module": "NodeNext",

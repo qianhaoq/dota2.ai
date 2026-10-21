@@ -103,6 +103,7 @@ function kMeansCluster(points, k = 3, maxIter = 40) {
   let centroids = initCentroids(points, effectiveK);
 
   for (let iter = 0; iter < maxIter; iter++) {
+    /** @type {Array<Array<{ centroid: { x: number, y: number } }>>} */
     const groups = Array.from({ length: effectiveK }, () => []);
     for (const p of points) {
       let best = 0;

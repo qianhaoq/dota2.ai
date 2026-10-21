@@ -79,7 +79,7 @@ export function derivePrimaryDeathPattern(events) {
 
   const priority = { phase_repeat: 0, repeat_killer: 1, behind_deaths: 2 };
   const candidates = [phaseRepeat, repeatKiller, behindDeaths]
-    .filter(Boolean)
+    .filter((candidate) => candidate !== null)
     .sort((a, b) => (b.events.length - a.events.length) || (priority[a.pattern] - priority[b.pattern]));
 
   if (candidates.length === 0) return null;
@@ -105,7 +105,7 @@ function isHeroNameIdentifier(value) {
 const HERO_NAME_PREFIX = 'npc_dota_hero_';
 
 /**
- * @param {number} playerSlot
+ * @param {number | null | undefined} playerSlot
  * @returns {boolean | null}
  */
 function slotIsRadiant(playerSlot) {
@@ -134,11 +134,11 @@ export function isSameTeamKill(killerPlayerSlot, victimPlayerSlot) {
  * @param {Record<number, string> | null} [heroSlugById] heroId -> 'npc_dota_hero_x' 或 'x'（slug 的权威来源）
  * @param {{ parsed?: boolean }} [opts] parsed=true 且面板全场 0 击杀时，按「可用的空时间线」处理（每人 0 死亡）而不是不可用；面板有击杀却没有 kills_log 视为解析数据缺失，仍返回不可用
  * @returns {{
- *   available: boolean,
- *   reason?: string,
- *   deathsByHeroId?: Record<number, Array<{ time: number, minute: number, killerHeroId: number | null, killerIsRadiant: boolean | null, teamGoldLeadAtT: number | null }>>,
- *   coverage?: Record<number, { derivedCount: number, reportedDeaths: number | null }>,
- * }}
+ *   available: true,
+ *   reason?: undefined,
+ *   deathsByHeroId: Record<number, Array<{ time: number, minute: number, killerHeroId: number | null, killerIsRadiant: boolean | null, teamGoldLeadAtT: number | null }>>,
+ *   coverage: Record<number, { derivedCount: number, reportedDeaths: number | null }>,
+ * } | { available: false, reason?: string, deathsByHeroId?: undefined, coverage?: undefined }}
  * 未解析（全体玩家都没有 kills_log）或没有任何受害者能映射回英雄时返回
  * { available: false }；已解析但全场 0 英雄击杀时返回 available:true 的空
  * 时间线（0 死亡，status ok/empty）；任一玩家的英雄缺权威 slug（heroSlugById
