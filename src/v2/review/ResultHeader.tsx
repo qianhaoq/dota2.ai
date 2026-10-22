@@ -1,10 +1,11 @@
 import React from 'react';
+import { heroDisplayName } from './heroDisplayName';
 import { useI18n } from '../i18n/I18nProvider';
 
 /**
  * Review result header (handoff §1 screen 4): hero, WIN/LOSS badge (d2 up /
- * down), duration and KDA — every string comes from the API payload, nothing
- * is computed client-side.
+ * down), duration and KDA from the API payload; hero labels use the shared
+ * localized hero metadata.
  */
 const ResultHeader: React.FC<{
   heroName: string;
@@ -12,8 +13,11 @@ const ResultHeader: React.FC<{
   isRadiant: boolean;
   outcome: 'win' | 'loss' | null;
   duration: string;
-}> = ({ heroName, kda, isRadiant, outcome, duration }) => {
-  const { t } = useI18n();
+  heroSlug?: string;
+  chart?: React.ReactNode;
+}> = ({ heroName, kda, isRadiant, outcome, duration, heroSlug, chart }) => {
+  const { t, lang } = useI18n();
+  const displayName = heroDisplayName(heroSlug ?? heroName, lang);
   const won = outcome === 'win';
 
   return (
@@ -23,11 +27,11 @@ const ResultHeader: React.FC<{
           className="w-[44px] h-[44px] rounded-[10px] bg-[#ECEEF2] grid place-items-center text-d2-17 font-semibold text-d2-ink-2 flex-none"
           aria-hidden="true"
         >
-          {heroName.slice(0, 1)}
+          {heroSlug ? <img className="w-full h-full object-cover rounded-d2-avatar" src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroSlug}.png`} alt="" /> : displayName.slice(0, 1)}
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-[8px] min-w-0">
-            <h2 className="text-d2-17 font-semibold tracking-[-0.01em] text-d2-ink m-0 truncate">{heroName}</h2>
+            <h2 className="text-d2-17 font-semibold tracking-[-0.01em] text-d2-ink m-0 truncate">{displayName}</h2>
             {outcome && (
               <span
                 className={`inline-flex items-center h-[22px] px-[8px] rounded-d2-chip text-d2-12 font-semibold whitespace-nowrap ${
@@ -42,10 +46,11 @@ const ResultHeader: React.FC<{
             </span>
           </div>
           <div className="d2-tnum text-d2-13 text-d2-ink-3">
-            {t(isRadiant ? 'sideRadiant' : 'sideDire')} · {kda}
+            {t(isRadiant ? 'sideRadiant' : 'sideDire')}{kda ? ` · ${kda}` : ''}
           </div>
         </div>
       </div>
+      {chart}
     </div>
   );
 };

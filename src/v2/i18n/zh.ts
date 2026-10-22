@@ -6,6 +6,24 @@ import type { Dict } from './en';
  * (redesign/final/index.html I18N.zh).
  */
 export const zh: Dict = {
+  share: '分享', chartGold: '金钱', chartXp: '经验',
+  'traceFacts': '读取事实',
+  'tracePhrasing': '生成复盘',
+  'traceElapsed': '分析耗时 {seconds} 秒',
+  'miniChart': '经济与经验差',
+  'evidenceSoon': '证据面板即将推出',
+  'refusalData': '现有数据无法回答此问题。缺少证据：',
+  'copyLink': '复制链接',
+  'copyJson': '复制 JSON',
+  'copied': '已复制',
+  'copyFailed': '复制失败，请重试。',
+  'err.internal': '无法加载复盘，请重试。',
+  'err.upstream_timeout': '数据源超时，请重试。',
+  'err.rate_limited': '请求过多，请稍后重试。',
+  'err.invalid_input': '请检查比赛编号和英雄。',
+  'err.match_not_found': '未找到比赛',
+  'questionTooLong': '问题请勿超过 300 字。',
+
   samplePill: '示例数据',
   sampleTitle: '原型。使用一场真实的 OpenDota 比赛作为示例数据',
   tab_web: '网页',

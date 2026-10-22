@@ -16,10 +16,11 @@ const SURFACE_TABS: DictKey[] = ['tab_web', 'tab_cli', 'tab_discord', 'tab_dev']
  * surface tabs (Web/CLI/Discord/For AI & Devs — non-functional placeholders),
  * Feedback (opens the existing on-site FeedbackModal), a small "Classic" link
  * to the legacy app, EN/中文 toggle, New button. Tabs are hidden below `lg`
- * and Classic below `sm` so the bar never overflows at 390px. Tap targets
+ * and Classic below `sm`; the sample badge hides below 400px to leave room
+ * for review actions at 390px. Tap targets
  * ≥44px.
  */
-const TopBar: React.FC = () => {
+const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
   const { lang, setLang, t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -44,10 +45,10 @@ const TopBar: React.FC = () => {
         </div>
         {onSampleMatch && (
           <span
-            className="hidden xs:inline-flex items-center h-[24px] px-[8px] rounded-d2-chip bg-[#FFFBEB] text-d2-warn text-d2-12 font-semibold whitespace-nowrap"
+            className="hidden min-[400px]:inline-flex min-w-0 shrink items-center h-[24px] px-[8px] rounded-d2-chip bg-[#FFFBEB] text-d2-warn text-d2-12 font-semibold whitespace-nowrap"
             title={t('sampleTitle')}
           >
-            {t('samplePill')}
+            <span className="truncate">{t('samplePill')}</span>
           </span>
         )}
         <div className="flex-1" />
@@ -73,6 +74,7 @@ const TopBar: React.FC = () => {
           ))}
         </nav>
         <div className="flex-1 hidden lg:block" />
+        {action}
         <Link
           to="/legacy"
           className="hidden sm:inline-flex items-center min-h-[44px] px-[8px] rounded-[12px] text-d2-13 font-medium text-d2-ink-3 transition-colors duration-d2-fast hover:bg-d2-surface-2 whitespace-nowrap"

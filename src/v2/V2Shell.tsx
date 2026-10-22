@@ -17,7 +17,8 @@ const V2Shell: React.FC<{
   scrollRef?: React.Ref<HTMLDivElement>;
   onScroll?: React.UIEventHandler<HTMLDivElement>;
   composer?: React.ReactNode;
-}> = ({ children, noIndex = false, scrollRef, onScroll, composer }) => {
+  topBarAction?: React.ReactNode;
+}> = ({ children, noIndex = false, scrollRef, onScroll, composer, topBarAction }) => {
   useEffect(() => {
     if (!noIndex) return;
     const meta = document.createElement('meta');
@@ -31,7 +32,7 @@ const V2Shell: React.FC<{
 
   return (
     <div className="d2-root pt-safe px-safe">
-      <TopBar />
+      <TopBar action={topBarAction} />
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <main className="max-w-d2-chat mx-auto px-[16px] pt-[16px] pb-[24px]">{children}</main>
       </div>
