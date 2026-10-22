@@ -53,3 +53,23 @@ languages, schema validity, evidence references, input immutability and repeat
 serialization. Only the focal match has manually specified numerical gold
 assertions; other games are regression/contract coverage, not manually verified
 numeric baselines.
+
+PR3 phrasing is opt-in: `phraseInsight({ insight, facts, lang, complete,
+roster, purchases, dataGaps })` returns validated LLM slots or a deterministic
+claim, with zero retries. `complete(input, { signal })` returns JSON text or
+`{ text, usage }`. `lib/matchReview/phrasingCompletion.js` adapts the existing
+completion deadline to DeepSeek only; supply the server's resolved
+`DEEPSEEK_MODEL`. No production route changes are enabled here.
+
+Use `buildReview(raw, { ...opts, presetFollowups: true })` for the new
+`death_list` and `laning_0_10` chips, then `answerPresetFollowup`. The default
+preserves PR2's exact followup contract until API v1 opts in. Baseline and death
+location questions remain explicit data gaps. Spend accounting is process-local,
+resets at UTC midnight, and honors `LLM_DAILY_BUDGET_USD` (default five dollars).
+The entity validator conservatively rejects unfamiliar prose as well as
+unbacked entities; this can increase template fallback rates.
+
+PR3 validation: `npm test` — 83 files / 1,231 tests passed (including unchanged
+PR2 golden assertions); `npx tsc -p packages/review-engine/tsconfig.json --noEmit`,
+`npx tsc --noEmit`, `npm run build`, and `node --check server.js` passed.
+No SSE route, public API default, dependency, or deployment configuration changes.

@@ -1,12 +1,15 @@
 import { buildFacts, heroSlug, teamOf } from './facts/index.js';
 import { buildInsights } from './insights/index.js';
 import { buildGaps } from './gaps/index.js';
+import { buildPresetFollowups } from './phrasing/followups.js';
 import { isMatchParsed } from './matchParse.js';
 
 export const ENGINE_VERSION = '2.0.0-pr2';
 
 const insightLabels = { turning_point: '转折点', fix_this: '本场要改', next_game: '下局重点' };
 const gapLabels = {
+  laning_baseline: { zh: '同段位对线基准', en: 'Same-bracket laning baseline' },
+  laning_0_10: { zh: '对线记录', en: 'Laning evidence' },
   gold_fed: { zh: '死亡送出金钱', en: 'Gold fed' },
   time_dead: { zh: '死亡总时长', en: 'Time dead' },
   lh_at_10: { zh: '十分钟补刀', en: 'Last hits at 10 minutes' },
@@ -22,7 +25,7 @@ const gapLabels = {
 
 /**
  * @param {any} raw OpenDota match, supplied by an adapter (never fetched here).
- * @param {{heroId?: number, lang: 'en'|'zh', fetchedAt: string, patch?: any, kb?: any[]}} opts
+ * @param {{heroId?: number, lang: 'en'|'zh', fetchedAt: string, patch?: any, kb?: any[], presetFollowups?: boolean}} opts
  */
 export function buildReview(raw, opts) {
   raw = raw ?? {};
@@ -57,6 +60,7 @@ export function buildReview(raw, opts) {
     result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: String(objective.key ?? objective.type), zh: String(objective.key ?? objective.type) }, citation: 's1', source_path: `objectives[${i}]` };
     return objective;
   }) : [];
+  const presets = opts.presetFollowups ? buildPresetFollowups(result, parsed && focus ? { ...focus, index: players.indexOf(focus) } : null, opts.lang, gaps) : [];
   const url = `https://dota2.ai/m/${raw.match_id ?? ''}${focus ? `?hero=${heroSlug(focus.hero_id)}` : ''}`;
   return {
     schema: 'dota2.ai/review@1', engine_version: ENGINE_VERSION, state, lang: opts.lang,
@@ -67,7 +71,7 @@ export function buildReview(raw, opts) {
     objectives, deaths: result.deaths,
     purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: false })) : [],
     insights, data_gaps: gaps,
-    followups: [...insights.filter(i => i.status === 'ok').map(i => ({ id: `why_${i.id}`, label: opts.lang === 'zh' ? `查看结论证据：${insightLabels[i.id] ?? i.id}` : `Evidence: ${i.id}`, answerable: true, fact_ids: i.fact_ids })), ...gaps.map(g => ({ id: g.topic, label: gapLabels[g.topic]?.[opts.lang] ?? g.topic, answerable: false, gap: g.topic }))],
+    followups: [...presets, ...insights.filter(i => i.status === 'ok').map(i => ({ id: `why_${i.id}`, label: opts.lang === 'zh' ? `查看结论证据：${insightLabels[i.id] ?? i.id}` : `Evidence: ${i.id}`, answerable: true, fact_ids: i.fact_ids })), ...gaps.filter(g => !presets.some(p => p.id === g.topic)).map(g => ({ id: g.topic, label: gapLabels[g.topic]?.[opts.lang] ?? g.topic, answerable: false, gap: g.topic }))],
     citations: [{ id: 's1', provider: 'opendota', url: `https://api.opendota.com/api/matches/${raw.match_id ?? ''}`, fetched_at: opts.fetchedAt, fields: [...new Set(Object.values(result.facts).filter(f => f.citation === 's1').map(f => f.source_path))] }],
     meta: { url, evidence_url: `${url}${focus ? '&' : '?'}view=evidence`, generated_at: opts.fetchedAt, cache: 'miss', phrasing: 'template', llm_provider: null },
   };
