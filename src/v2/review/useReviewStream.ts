@@ -136,7 +136,13 @@ export function useReviewStream(matchId: string, hero: string | null, lang: stri
                 delay = Math.min(f.retry, 30000);
                 return;
             }
-            if (f.id && lastId && Number(f.id) <= Number(lastId))
+            // A replay-cache miss recomputes the review with IDs starting at 1.
+            if (f.id && lastId && Number(f.id) < Number(lastId)) {
+                lastId = '';
+                pendingTokens.length = 0;
+                dispatch({ event: 'reset', data: contextKey });
+            }
+            if (f.id && lastId && Number(f.id) === Number(lastId))
                 return;
             if (f.id)
                 lastId = f.id;

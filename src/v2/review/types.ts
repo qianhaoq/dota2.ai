@@ -43,6 +43,7 @@ export interface Review {
     };
     player: (Hero & {
         result: 'win' | 'loss';
+        kda?: (number | null)[];
     }) | null;
     roster: Hero[];
     facts: Record<string, Fact>;

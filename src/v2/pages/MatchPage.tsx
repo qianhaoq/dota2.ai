@@ -15,6 +15,7 @@ import AiText from '../review/AiText';
 import InsightCard from '../review/InsightCard';
 import FakedoorCard from '../review/FakedoorCard';
 import ResultHeader from '../review/ResultHeader';
+import ParseNotice from '../review/ParseNotice';
 import { control, surface, ToolTrace, HeroGrid, HeroCollapsedRow, MiniChart, FollowupChips, RefusalBubble, Share, JumpToLatest, FactChip } from '../review/ConversationCards';
 interface Turn {
     id: number;
@@ -187,9 +188,10 @@ export default function MatchPage() {
                 navigate({ pathname: location.pathname, search: `?${next}` }, { replace: true });
             }}/>}
       {player && <HeroCollapsedRow hero={player.hero} change={() => setPicker(true)}/>}
-      {player && <ResultHeader heroName={player.hero.replaceAll('_', ' ')} heroSlug={player.hero} kda="" isRadiant={player.team === 'radiant'} outcome={player.result} duration={review?.facts['ancient.fell']?.display[lang] ?? ''} chart={review?.series ? <MiniChart series={review.series}/> : undefined}/>}
+      {player && <ResultHeader heroName={player.hero.replaceAll('_', ' ')} heroSlug={player.hero} kda={player.kda?.map((value: number | null) => value ?? '—').join('/') ?? ''} isRadiant={player.team === 'radiant'} outcome={player.result} duration={review?.facts['ancient.fell']?.display[lang] ?? ''} chart={review?.series ? <MiniChart series={review.series}/> : undefined}/>}
       {stream.insights.map((insight, i) => insight && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'}/>)}
-      {stream.done && stream.done.state !== 'parsed' && stream.done.state !== 'needs_hero' && <p className="text-d2-13 text-d2-warn">{t('insufficientBadge')}</p>}
+      {stream.done?.state === 'unparsed' && <ParseNotice matchId={matchId} parse={{ status: 'unparsed', jobId: null, retryAfterSec: null, message: '' }} onRefresh={stream.retry}/>}
+      {stream.done && stream.done.state !== 'unparsed' && stream.done.state !== 'parsed' && stream.done.state !== 'needs_hero' && <p className="text-d2-13 text-d2-warn">{t('insufficientBadge')}</p>}
       {review?.player && <FollowupChips followups={stream.followups} asked={asked} disabled={streaming} ask={f => ask(f.label, f)}/>}
       {inputError && <p role="alert">{t('questionTooLong')}</p>}
       {turns.map(turn => <section key={turn.id} className="pt-[16px] space-y-[8px]"><div className="flex justify-end"><p className="rounded-[18px_18px_6px_18px] bg-d2-surface-3 px-[14px] py-[10px] max-w-[82%] break-words text-d2-15 font-medium">{turn.question}</p></div><AiText text={turn.text} streaming={turn.status === 'streaming'}/>{turn.gaps.length > 0 && <RefusalBubble gaps={turn.gaps}/>}<div className="flex flex-wrap gap-[8px]">{turn.factIds.map(id => review?.facts[id] && <FactChip key={id} fact={review.facts[id]}/>)}</div>{turn.error && <div role="alert">{errorText(turn.error)}{turn.error.retryable && <button className={control} disabled={streaming} onClick={() => {

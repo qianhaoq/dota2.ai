@@ -88,6 +88,7 @@ describe('SSE v1 conversation', () => {
                     expect(screen.getAllByText((_, el) => el?.tagName === 'SPAN' && el.textContent === r.facts[metric.fact_id].display[lang as 'en' | 'zh'] + (r.facts[metric.fact_id].display.t ? ` · ${r.facts[metric.fact_id].display.t}` : '')).length).toBeGreaterThan(0);
             }
             expect(screen.getAllByTestId('insight-card')).toHaveLength(3);
+            expect(screen.getByText(`${lang === 'zh' ? '天辉' : 'Radiant'} · ${r.player!.kda!.join('/')}`)).toBeTruthy();
         });
     it('renders the second golden sample from the real engine', async () => {
         stub(other);
@@ -109,8 +110,25 @@ describe('SSE v1 conversation', () => {
             fetcher.mockResolvedValue(response(events(r)).response);
             page();
             await ready();
-            expect(screen.getByText('Insufficient data')).toBeTruthy();
+            if (state === 'unparsed') {
+                expect(screen.getByRole('button', { name: 'Request parse' })).toBeTruthy();
+            } else {
+                expect(screen.getByText('Insufficient data')).toBeTruthy();
+            }
         });
+    it('unparsed requests a parse and Check again restarts the review stream', async () => {
+        const r = engine();
+        r.state = 'unparsed';
+        fetcher.mockResolvedValueOnce(response(events(r)).response)
+            .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'requested', jobId: 42, retryAfterSec: 30, message: 'Parse requested' }), { headers: { 'Content-Type': 'application/json' } }));
+        page();
+        fireEvent.click(await screen.findByRole('button', { name: 'Request parse' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Check again' }));
+        await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+        expect(fetcher.mock.calls[1][0]).toBe('/api/review/9035042364/parse-request?lang=en');
+        expect(fetcher.mock.calls[1][1].method).toBe('POST');
+        await waitFor(() => expect(screen.queryByRole('button', { name: 'Request parse' })).toBeNull());
+    });
     it('needs_hero shows a 2×5 roster; picking requests hero=pudge and Change reopens it', async () => {
         page('/m/9035042364?lang=en');
         await screen.findByText('Which one was you?');

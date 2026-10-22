@@ -78,3 +78,21 @@ it('unmount cancels a pending reconnect without issuing another fetch', async ()
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
 });
+
+it.each([false, true])('accepts a restarted sequence and clears stale cards/tokens (reduced motion: %s)', async (reduced) => {
+    vi.stubGlobal('matchMedia', () => ({ matches: reduced }));
+    const card = { kind: 'insight', index: 1, payload: { id: 'fix_this', claim: { text: 'old' } } };
+    const frame = (event: string, data: unknown, id: number) => `id: ${id}\nevent: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    const fetcher = vi.fn()
+        .mockResolvedValueOnce(sse('retry: 0\n\n' + frame('card', card, 1) + frame('token', { target: 'insight:fix_this', delta: 'stale' }, 2) + frame('card', { kind: 'followups', payload: [{ id: 'stale' }] }, 3)))
+        .mockResolvedValueOnce(sse(frame('card', { ...card, payload: { ...card.payload, claim: { text: 'fresh' } } }, 1) + frame('done', { state: 'parsed' }, 2)));
+    vi.stubGlobal('fetch', fetcher);
+    const hook = renderHook(() => useReviewStream('123', 'pudge', 'en'));
+    await waitFor(() => expect(hook.result.current.status).toBe('done'));
+    expect(fetcher.mock.calls[1][1].headers['Last-Event-ID']).toBe('3');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.done?.state).toBe('parsed');
+    expect(hook.result.current.error).toBeUndefined();
+    expect(hook.result.current.insights[0]?.claim.text).toBe('fresh');
+    expect(hook.result.current.followups).toEqual([]);
+});

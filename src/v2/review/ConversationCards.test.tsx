@@ -35,6 +35,10 @@ describe('review hero display names', () => {
       expect(screen.getByText(`${lang === 'en' ? 'You' : '你'}: ${name}`)).toBeTruthy();
     });
   }
+  it.each(['en', 'zh'])('renders a nullable roster hero safely (%s)', lang => {
+    wrap(<HeroGrid roster={[{ hero: null, hero_id: 0, team: 'radiant' } as any]} pick={() => {}}/>, lang);
+    expect(screen.getByRole('button', { name: lang === 'zh' ? '未知英雄' : 'Unknown' })).toBeTruthy();
+  });
   it('uses the prototype heading and note typography', () => {
     wrap(<HeroGrid roster={[]} pick={() => {}}/>);
     expect(screen.getByRole('heading').className).toContain('text-d2-17 font-semibold');

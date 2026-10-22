@@ -7,7 +7,8 @@ const byName = new Map(heroes.flatMap(hero =>
 ));
 
 /** Keep engine identifiers for requests/images; localize only visible labels. */
-export function heroDisplayName(name: string, lang: 'en' | 'zh'): string {
+export function heroDisplayName(name: string | null | undefined, lang: 'en' | 'zh'): string {
+  if (!name) return lang === 'zh' ? '未知英雄' : 'Unknown';
   const hero = byName.get(normalize(name));
   return hero ? (lang === 'zh' ? hero.nameZh : hero.nameEn) : name;
 }
