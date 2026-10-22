@@ -34,6 +34,7 @@ COPY --from=builder /app/dist ./dist
 # Copy server runtime (match review modules + entry)
 COPY server.js ./
 COPY lib ./lib
+COPY routes ./routes
 COPY packages ./packages
 RUN mkdir -p ./data
 
