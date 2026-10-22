@@ -3,7 +3,7 @@ import { gapTemplates, trustedCopy, refusal } from './templates.js';
 import { SLOT } from './slots.js';
 const result = reason => ({ ok: !reason, reason });
 /** Numbers inside slots are identifiers, never literal prose. */
-export function validateSlots(slots, { allowedFactIds, requiredFactIds = [] }) {
+export function validateSlots(slots, { allowedFactIds, requiredFactIds = [], approvedSlots = '' }) {
   if (typeof slots !== 'string' || !slots.trim()) return result('malformed_slots');
   const ids = [...slots.matchAll(SLOT)].map(m => m[1]);
   const prose = slots.replace(SLOT, '');
@@ -12,6 +12,12 @@ export function validateSlots(slots, { allowedFactIds, requiredFactIds = [] }) {
   if (/<|>|```|ignore|system\s*:|instructions?|忽略|指令/i.test(prose)) return result('unsafe_output');
   if (ids.some(id => !allowedFactIds.includes(id))) return result('unknown_fact');
   if (requiredFactIds.some(id => !ids.includes(id))) return result('missing_required_fact');
+  if (approvedSlots) {
+    // Protect periods in fact IDs before splitting complete, approved clauses.
+    const clauses = text => text.replace(SLOT, slot => slot.replace(/\./g, '\u0000'))
+      .split(/(?<=[。.!?])\s*|\n+/).map(s => s.replace(/\u0000/g, '.').trim()).filter(Boolean).sort();
+    if (JSON.stringify(clauses(slots)) !== JSON.stringify(clauses(approvedSlots))) return result('fact_clause_mismatch');
+  }
   return result(null);
 }
 // Capture decorated numbers as a whole, preserving units and signs in comparison.
@@ -50,7 +56,7 @@ export function validateRendered(text, { facts, roster = [], purchases = [], dat
   const approved = trustedCopy.map(copy => copy[lang].replace(/TIME|VALUE|TOTAL|PHASE/g, '')).join(' ');
   for (const word of approved.toLowerCase().match(/[a-z]+/g) ?? []) vocabulary.add(word);
   for (const phase of ['lane', 'mid', 'late']) vocabulary.add(phase);
-  if (lang === 'en' && (remaining.match(/[a-z]+/g) ?? []).some(w => !vocabulary.has(w))) return result('unbacked_entity_or_prose');
+  if (lang === 'en' && (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(remaining) || (remaining.match(/[a-z]+/g) ?? []).some(w => !vocabulary.has(w)))) return result('unbacked_entity_or_prose');
   if (lang === 'zh') {
     const phrases = [...(approved.match(/[\u3400-\u9fff]+/g) ?? []), '对线期', '中期', '后期'];
     for (const phrase of phrases.sort((a, b) => b.length - a.length)) remaining = remaining.split(phrase).join(' ');

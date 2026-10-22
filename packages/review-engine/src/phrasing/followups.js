@@ -18,8 +18,9 @@ export function buildPresetFollowups(result, player, lang, gaps) {
       display: { ...facts[d.fact_id].display, en, zh: chinese },
     };
   }
-  if (player && Number.isInteger(player.lane) && player.lane >= 1 && player.lane <= 3) {
-    const lane = { en: ['bottom', 'middle', 'top'][player.lane - 1], zh: ['下路', '中路', '上路'][player.lane - 1] };
+  if (player && Number.isInteger(player.lane) && player.lane >= 1 && player.lane <= 3 && Number.isInteger(player.player_slot)) {
+    const laneIndex = player.player_slot >= 128 && player.lane !== 2 ? 3 - player.lane : player.lane - 1;
+    const lane = { en: ['bottom', 'middle', 'top'][laneIndex], zh: ['下路', '中路', '上路'][laneIndex] };
     facts.lane = { id: 'lane', kind: 'entity', value: player.lane, display: lane, citation: 's1', source_path: `players[${player.index}].lane` };
   }
   const laneIds = ['lh_at_10', 'gold.at.10', 'lane', 'deaths.phase.lane'];

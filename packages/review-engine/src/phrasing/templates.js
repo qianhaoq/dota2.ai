@@ -1,3 +1,4 @@
+import { STATIC_HEROES } from '../staticHeroes.js';
 import { renderSlots } from './slots.js';
 
 export const refusal = lang => lang === 'zh'
@@ -34,7 +35,7 @@ export const coachCopy = {
   gold: { en: 'Recovery gold: VALUE.', zh: '回升段经济：VALUE。' },
   xp: { en: 'Recovery experience: VALUE.', zh: '回升段经验：VALUE。' },
   behind: { en: 'Deaths while behind: VALUE of TOTAL. Prioritize avoiding low-value fights while behind.', zh: '落后时死亡 VALUE 次，共 TOTAL 次。落后时优先减少低收益交战。' },
-  repeat: { en: 'Repeated killer deaths: VALUE. Review these deaths first.', zh: '重复击杀者的击杀次数：VALUE。优先复查这些死亡。' },
+  repeat: { en: 'Repeated killer HERO deaths: VALUE. Review these deaths first.', zh: '重复击杀者 HERO 的击杀次数：VALUE。优先复查这些死亡。' },
   phase: { en: 'PHASE phase deaths: VALUE. Review these deaths first.', zh: 'PHASE死亡：VALUE 次。优先复查这些死亡。' },
   next: { en: 'Next game, practice consistent last hits and safe resource collection.', zh: '下局练习稳定补刀与安全获取资源。' },
   farm: { en: 'At TIME, last hits: VALUE.', zh: 'TIME 时补刀：VALUE。' },
@@ -50,7 +51,7 @@ export function renderTemplate(insight, facts, lang) {
   const ids = (insight.fact_ids ?? []).filter(id => facts[id]?.display?.[lang]);
   const copy = (key, id, extra = {}) => {
     const time = Number.isInteger(facts[id]?.t) ? `{t:${facts[id].t}}` : '';
-    return coachCopy[key][lang].replace(/TIME|VALUE|TOTAL|PHASE/g, word => ({
+    return coachCopy[key][lang].replace(/TIME|VALUE|TOTAL|PHASE|HERO/g, word => ({
       TIME: time, VALUE: `{${id}}`, ...extra,
     })[word] ?? '');
   };
@@ -67,7 +68,10 @@ export function renderTemplate(insight, facts, lang) {
       else if (/^comeback\..*\.(gold|xp)$/.test(id)) sentences.push(copy(id.endsWith('.xp') ? 'xp' : 'gold', id));
       else if (id === 'deaths.behind_1k' && ids.includes('deaths.total')) sentences.push(copy('behind', id, { TOTAL: '{deaths.total}' }));
       else if (id === 'deaths.total' && !ids.includes('deaths.behind_1k')) sentences.push(copy('total', id));
-      else if (id.startsWith('killed_by.')) sentences.push(copy('repeat', id));
+      else if (id.startsWith('killed_by.')) {
+        const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === id.slice('killed_by.'.length));
+        sentences.push(copy('repeat', id, { HERO: hero?.[lang === 'zh' ? 'nameZh' : 'nameEn'] ?? '' }));
+      }
       else if (id === 'gold.at.10') sentences.push(copy('economy', id));
       else if (id === 'lh_at_10') sentences.push(copy('farm', id));
       else if (id === 'lane') sentences.push(copy('lane', id));

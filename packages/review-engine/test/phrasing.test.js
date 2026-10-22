@@ -173,3 +173,43 @@ it('adapter defaults to the resolved DEEPSEEK_MODEL environment setting', async 
     vi.unstubAllEnvs();
   }
 });
+
+it('rejects unexpected CJK prose in English, including provider output', async () => {
+  expect(rendered('−2,060 这是虚假的经济损失。').ok).toBe(false);
+  const output = await phraseInsight({ insight, facts, lang: 'en', log: vi.fn(), complete: async () => JSON.stringify({ slots: '{gold} 这是虚假的经济损失。' }) });
+  expect(output.phrasing).toBe('template');
+});
+it.each(['en', 'zh'])('binds comeback slots to approved clauses in %s', async lang => {
+  const f = Object.fromEntries(['gold', 'xp'].map((unit, i) => [`comeback.test.${unit}`, { display: { en: String(i + 100), zh: String(i + 100) } }]));
+  const i = { id: 'turning_point', status: 'ok', fact_ids: Object.keys(f) };
+  const template = renderTemplate(i, f, lang);
+  const swapped = template.slots.replace('.gold}', '.temp}').replace('.xp}', '.gold}').replace('.temp}', '.xp}');
+  const context = { insight: i, facts: f, lang, log: vi.fn() };
+  expect((await phraseInsight({ ...context, complete: async () => JSON.stringify({ slots: swapped }) })).phrasing).toBe('template');
+  const reordered = template.slots.split(lang === 'en' ? /(?<=\.) / : /(?<=。) /).reverse().join(' ');
+  expect((await phraseInsight({ ...context, complete: async () => JSON.stringify({ slots: reordered }) })).phrasing).toBe('llm');
+});
+it.each([[1, 'top', '上路'], [3, 'bottom', '下路']])('maps Dire lane %s using team', (lane, en, zh) => {
+  const raw = load(9035042364);
+  const player = raw.players.find(p => p.player_slot >= 128);
+  player.lane = lane;
+  const review = buildReview(raw, { ...opts, heroId: player.hero_id, presetFollowups: true });
+  expect(review.facts.lane.display).toEqual({ en, zh });
+});
+it.each(['en', 'zh'])('names the localized repeated killer in fallback in %s', lang => {
+  const hero = STATIC_HEROES[2] ?? Object.values(STATIC_HEROES)[0];
+  const id = `killed_by.${hero.internalSlug}`;
+  const text = renderTemplate({ id: 'fix_this', status: 'ok', fact_ids: [id] }, { [id]: { display: { en: '3', zh: '3' } } }, lang).text;
+  expect(text).toContain(hero[lang === 'en' ? 'nameEn' : 'nameZh']);
+});
+it('preserves resolved thinking defaults and explicit body overrides', async () => {
+  vi.stubEnv('DEEPSEEK_THINKING', 'disabled');
+  try {
+    const create = vi.fn(async () => ({ choices: [{ message: { content: '{}' } }] }));
+    const client = { chat: { completions: { create } } };
+    await createPhrasingCompletion({ client })({});
+    expect(create.mock.calls[0][0].thinking).toEqual({ type: 'disabled' });
+    await createPhrasingCompletion({ client, extraBody: { thinking: { type: 'enabled' }, temperature: 0 } })({});
+    expect(create.mock.calls[1][0]).toMatchObject({ thinking: { type: 'enabled' }, temperature: 0 });
+  } finally { vi.unstubAllEnvs(); }
+});

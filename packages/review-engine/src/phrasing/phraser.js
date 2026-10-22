@@ -14,6 +14,8 @@ export async function phraseInsight({
   let timer;
   try {
     const input = buildPhrasingInput(insight, selected, lang);
+    input.approved_clauses = fallback.slots;
+    input.instruction += ' Only reorder the complete approved_clauses sentences; preserve each sentence exactly.';
     const pending = Promise.resolve().then(() => complete(input, { signal: controller.signal })).then(response => {
       // Charge completed calls even when validation fails or the caller timed out.
       budget.record(response?.usage ?? {
@@ -31,14 +33,14 @@ export async function phraseInsight({
     const response = await Promise.race([pending, timeout]);
     const parsed = JSON.parse(typeof response === 'string' ? response : response.text);
     if (!parsed || Object.keys(parsed).join() !== 'slots') throw new Error('invalid_json_shape');
-    const check = validateSlots(parsed.slots, { allowedFactIds: allowedSlots(selected), requiredFactIds: insight.required_fact_ids ?? insight.fact_ids });
+    const check = validateSlots(parsed.slots, { approvedSlots: fallback.slots, allowedFactIds: allowedSlots(selected), requiredFactIds: insight.required_fact_ids ?? insight.fact_ids });
     if (!check.ok) throw new Error(check.reason);
     const text = renderSlots(parsed.slots, selected, lang);
     const rendered = validateRendered(text, { facts: selected, roster, purchases, dataGaps, lang });
     if (!rendered.ok) throw new Error(rendered.reason);
     return { text, slots: parsed.slots, phrasing: 'llm' };
   } catch (error) {
-    const reasons = ['timeout', 'invalid_json_shape', 'malformed_slots', 'literal_number', 'unsafe_output', 'unknown_fact', 'unknown_time', 'missing_required_fact', 'malformed_render', 'fabricated_number', 'data_gap', 'hero_not_in_roster', 'unbacked_entity_or_prose'];
+    const reasons = ['fact_clause_mismatch', 'timeout', 'invalid_json_shape', 'malformed_slots', 'literal_number', 'unsafe_output', 'unknown_fact', 'unknown_time', 'missing_required_fact', 'malformed_render', 'fabricated_number', 'data_gap', 'hero_not_in_roster', 'unbacked_entity_or_prose'];
     const reason = error instanceof SyntaxError ? 'invalid_json' : error instanceof Error && reasons.includes(error.message) ? error.message : 'provider_error';
     log('validator_reject', { reason });
     return fallback;
