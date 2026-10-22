@@ -94,10 +94,11 @@ it('falls back on timeout, provider failure, missing ids and injection, with no 
   expect(log).toHaveBeenCalledWith('validator_reject', { reason: 'timeout' });
 });
 it.each(['en', 'zh'])('buffers complete sentences and stops on first invalid sentence in %s', async lang => {
-  const chunks = ['{go', 'ld}。', ' 21k!', ' {gold}。'];
+  const punctuation = lang === 'en' ? '.' : '。';
+  const chunks = ['{go', `ld}${punctuation}`,  ' 21k!', ' {gold}。'];
   const output = [];
   for await (const text of validateStream(chunks, { facts, lang })) output.push(text);
-  expect(output).toEqual(['−2,060。', refusal(lang)]);
+  expect(output).toEqual([`−2,060${punctuation}`, refusal(lang)]);
 });
 it('handles periods inside split fact slots and validates trailing sentences', async () => {
   const output = [];
@@ -146,15 +147,16 @@ it('adapter uses only DeepSeek, caller model, zero SDK retries and preserves usa
   const complete = createPhrasingCompletion({ client: { chat: { completions: { create } } }, model: 'configured-model' });
   expect((await complete(buildPhrasingInput(insight, facts, 'en'))).usage.prompt_tokens).toBe(20);
   expect(create.mock.calls[0][0].model).toBe('configured-model');
+  expect(create.mock.calls[0][0].max_tokens).toBe(512);
   expect(create.mock.calls[0][1].maxRetries).toBe(0);
 });
 
 it('records provider usage before validation and skips subsequent calls after the breaker trips', async () => {
-  const budget = createBudget({ limit: 0.001, inputPerMillion: 1, outputPerMillion: 2 });
-  const complete = vi.fn(async () => ({ text: 'invalid', usage: { prompt_tokens: 500, completion_tokens: 250 } }));
+  const budget = createBudget({ limit: 0.01, inputPerMillion: 1, outputPerMillion: 2 });
+  const complete = vi.fn(async () => ({ text: 'invalid', usage: { prompt_tokens: 5000, completion_tokens: 2500 } }));
   const options = { insight, facts, lang: 'en', budget, complete, log: vi.fn() };
   await phraseInsight(options);
-  expect(budget.spent).toBe(0.001);
+  expect(budget.spent).toBe(0.01);
   await phraseInsight(options);
   expect(complete).toHaveBeenCalledTimes(1);
 });
@@ -212,4 +214,53 @@ it('preserves resolved thinking defaults and explicit body overrides', async () 
     await createPhrasingCompletion({ client, extraBody: { thinking: { type: 'enabled' }, temperature: 0 } })({});
     expect(create.mock.calls[1][0]).toMatchObject({ thinking: { type: 'enabled' }, temperature: 0 });
   } finally { vi.unstubAllEnvs(); }
+});
+
+it.each(['en', 'zh'])('binds streamed clauses while allowing reordering in %s', async lang => {
+  const facts = Object.fromEntries(['gold', 'xp'].map(unit => [`comeback.test.${unit}`, { display: { en: '100', zh: '100' } }]));
+  const insight = { id: 'turning_point', status: 'ok', fact_ids: Object.keys(facts) };
+  const approvedSlots = renderTemplate(insight, facts, lang).slots;
+  const options = { facts, lang, approvedSlots, requiredFactIds: Object.keys(facts) };
+  const collect = async slots => { const out = []; for await (const t of validateStream([slots], options)) out.push(t); return out; };
+  const swapped = approvedSlots.replace('.gold}', '.temp}').replace('.xp}', '.gold}').replace('.temp}', '.xp}');
+  expect(await collect(swapped)).toEqual([refusal(lang)]);
+  const reordered = approvedSlots.split(lang === 'en' ? /(?<=\.) / : /(?<=。) /).reverse().join(' ');
+  expect((await collect(reordered)).join('')).not.toContain(refusal(lang));
+});
+it.each(['en', 'zh'])('rejects foreign scripts in rendered and streamed output in %s', async lang => {
+  expect(validateRendered('blink', { facts: {}, purchases: ['blink'], lang }).ok).toBe(true);
+  for (const foreign of ['Это ложь', 'كذب', '거짓', 'ひらがな']) {
+    expect(validateRendered(`−2,060 ${foreign}.`, { facts, lang }).ok).toBe(false);
+    const out = [];
+    for await (const text of validateStream([`{gold} ${foreign}.`], { facts, lang })) out.push(text);
+    expect(out).toEqual([refusal(lang)]);
+  }
+});
+it('skips completion for missing referenced or required localized facts', async () => {
+  const complete = vi.fn();
+  for (const i of [{ ...insight, fact_ids: ['gold', 'missing'] }, { ...insight, required_fact_ids: ['missing'] }]) {
+    expect((await phraseInsight({ insight: i, facts, lang: 'en', complete })).phrasing).toBe('template');
+  }
+  expect(complete).not.toHaveBeenCalled();
+  expect((await phraseInsight({ insight, facts: { gold: { display: { en: '100' } } }, lang: 'zh', complete })).phrasing).toBe('template');
+  expect(complete).not.toHaveBeenCalled();
+});
+it('atomically reserves concurrent spend, reconciles usage, and releases failed calls', async () => {
+  const budget = createBudget({ limit: 0.001, inputPerMillion: 0, outputPerMillion: 1.9 });
+  let finish;
+  const complete = vi.fn(() => new Promise(resolve => { finish = resolve; }));
+  const options = { insight, facts, lang: 'en', budget, complete, log: vi.fn() };
+  const pending = phraseInsight(options);
+  await Promise.resolve();
+  const blocked = await Promise.all(Array.from({ length: 5 }, () => phraseInsight(options)));
+  expect(blocked.every(r => r.phrasing === 'template')).toBe(true);
+  expect(complete).toHaveBeenCalledTimes(1);
+  finish({ text: 'invalid', usage: { completion_tokens: 1 } });
+  await pending;
+  expect(budget.spent).toBeCloseTo(0.0000019);
+  const failing = vi.fn(async () => { throw new Error('failed'); });
+  await phraseInsight({ ...options, complete: failing });
+  await phraseInsight({ ...options, complete: failing });
+  expect(failing).toHaveBeenCalledTimes(2);
+  expect(budget.spent).toBeCloseTo(0.0000019);
 });

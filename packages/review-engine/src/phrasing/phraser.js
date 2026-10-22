@@ -8,7 +8,7 @@ export async function phraseInsight({
   roster = [], purchases = [], dataGaps = [], timeoutMs = 8000, log = console.warn,
 }) {
   const fallback = renderTemplate(insight, facts, lang);
-  if (!complete || insight.answerable === false || insight.status === 'insufficient' || !budget.enabled()) return fallback;
+  if (!complete || insight.answerable === false || insight.status === 'insufficient' || !(insight.fact_ids?.length) || [...insight.fact_ids, ...(insight.required_fact_ids ?? [])].some(id => !facts[id]?.display?.[lang]) || !budget.enabled()) return fallback;
   const selected = Object.fromEntries((insight.fact_ids ?? []).filter(id => facts[id]).map(id => [id, facts[id]]));
   const controller = new AbortController();
   let timer;
@@ -16,13 +16,17 @@ export async function phraseInsight({
     const input = buildPhrasingInput(insight, selected, lang);
     input.approved_clauses = fallback.slots;
     input.instruction += ' Only reorder the complete approved_clauses sentences; preserve each sentence exactly.';
-    const pending = Promise.resolve().then(() => complete(input, { signal: controller.signal })).then(response => {
+    const maxTokens = 512;
+    const estimate = { prompt_tokens: new TextEncoder().encode(JSON.stringify(input) + input.instruction).length + 128, completion_tokens: maxTokens };
+    const reservation = budget.reserve(estimate);
+    if (!reservation) return fallback;
+    const pending = Promise.resolve().then(() => complete(input, { signal: controller.signal, maxTokens })).then(response => {
       // Charge completed calls even when validation fails or the caller timed out.
-      budget.record(response?.usage ?? {
-        prompt_tokens: JSON.stringify(input).length,
-        completion_tokens: String(response?.text ?? response).length,
-      });
+      reservation.settle(response?.usage ?? estimate);
       return response;
+    }, error => {
+      reservation.release();
+      throw error;
     });
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => {

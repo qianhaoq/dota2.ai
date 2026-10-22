@@ -6,7 +6,7 @@ export async function* validateStream(chunks, options) {
   let buffer = '';
   const seen = new Set();
   const validate = sentence => {
-    const check = validateSlots(sentence, { allowedFactIds: options.allowedFactIds ?? allowedSlots(options.facts) });
+    const check = validateSlots(sentence, { approvedSlots: options.approvedSlots, partial: true, allowedFactIds: options.allowedFactIds ?? allowedSlots(options.facts) });
     if (!check.ok) return null;
     try {
       const text = renderSlots(sentence, options.facts, options.lang);

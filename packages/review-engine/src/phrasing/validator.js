@@ -3,7 +3,7 @@ import { gapTemplates, trustedCopy, refusal } from './templates.js';
 import { SLOT } from './slots.js';
 const result = reason => ({ ok: !reason, reason });
 /** Numbers inside slots are identifiers, never literal prose. */
-export function validateSlots(slots, { allowedFactIds, requiredFactIds = [], approvedSlots = '' }) {
+export function validateSlots(slots, { allowedFactIds, requiredFactIds = [], approvedSlots = '', partial = false }) {
   if (typeof slots !== 'string' || !slots.trim()) return result('malformed_slots');
   const ids = [...slots.matchAll(SLOT)].map(m => m[1]);
   const prose = slots.replace(SLOT, '');
@@ -16,7 +16,7 @@ export function validateSlots(slots, { allowedFactIds, requiredFactIds = [], app
     // Protect periods in fact IDs before splitting complete, approved clauses.
     const clauses = text => text.replace(SLOT, slot => slot.replace(/\./g, '\u0000'))
       .split(/(?<=[。.!?])\s*|\n+/).map(s => s.replace(/\u0000/g, '.').trim()).filter(Boolean).sort();
-    if (JSON.stringify(clauses(slots)) !== JSON.stringify(clauses(approvedSlots))) return result('fact_clause_mismatch');
+    if (partial ? clauses(slots).some(clause => !clauses(approvedSlots).includes(clause)) : JSON.stringify(clauses(slots)) !== JSON.stringify(clauses(approvedSlots))) return result('fact_clause_mismatch');
   }
   return result(null);
 }
@@ -32,6 +32,11 @@ const mentions = (text, name) => name && (/[\u3400-\u9fff]/.test(name) ? text.in
 export function validateRendered(text, { facts, roster = [], purchases = [], dataGaps = [], lang = 'en' }) {
   if (typeof text !== 'string' || /[{}０-９]|[+−–-]{2}/.test(text)) return result('malformed_render');
   if ([...Object.values(gapTemplates).map(copy => copy[lang]), refusal(lang)].includes(text)) return result(null);
+  // Check before removing trusted displays/entities, so those cannot hide foreign scripts.
+  const characters = lang === 'zh'
+    ? /^[\p{Script=Han}A-Za-z0-9\s\x20-\x7e，。！？：；、（）《》“”‘’…—−–→▼▲%]*$/u
+    : /^[\p{Script=Latin}0-9\s\x20-\x7e−–→▼▲]*$/u;
+  if (!characters.test(text)) return result('unbacked_entity_or_prose');
   const allowed = new Set(Object.values(facts).flatMap(/** @param {any} f */ f => numbers(f.display?.[lang] ?? '').concat(numbers(f.display?.t ?? ''))).map(normalize));
   if (numbers(text).some(n => !allowed.has(normalize(n)))) return result('fabricated_number');
   if (dataGaps.some(g => (g.topic ?? g) === 'death_locations') && /\b(vision|wards?|position|coordinates)\b|视野|站位|坐标|位置/i.test(text)) return result('data_gap');
