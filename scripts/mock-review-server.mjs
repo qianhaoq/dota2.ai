@@ -3,15 +3,15 @@
  *
  *   npm run build && npm run preview:mock        # http://localhost:4180
  *
- * Serves ./dist with SPA fallback and mocks the review APIs from the golden
- * fixtures in src/v2/__fixtures__ (match 9035042364, heroId 14/Pudge only —
- * any other heroId 404s): GET facts (lang/heroId select the fixture), POST
- * follow-up as a word-by-word SSE stream built ONLY
- * from fixture strings, /api/events + /api/feedback acks, empty suggestions.
- * Any other match id 404s with the server's "Match not found" shape.
+ * Serves ./dist and the real /api/v1 router using raw OpenDota fixtures for
+ * 9035042364 and 8985182860. No outbound fetches or LLM completion.
+ * Try /new/m/9035042364?hero=pudge to force the v2 UI.
+ * Legacy /api/review GET/POST fixtures and feedback/event acknowledgements
+ * remain available. Other match IDs return MATCH_NOT_FOUND.
  */
 
 import express from 'express';
+import { createV1Router } from '../routes/v1/index.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +36,20 @@ function loadFixture(lang, heroId) {
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '64kb' }));
+
+const rawMatches = new Map([
+  [9035042364, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/match9035042364.parsed.json'), 'utf8'))],
+  [8985182860, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/match8985182860.json'), 'utf8'))],
+]);
+app.use(createV1Router({
+  fetchMatch: async (id) => {
+    const match = rawMatches.get(Number(id));
+    if (!match) throw Object.assign(new Error('Match not found'), { code: 'MATCH_NOT_FOUND' });
+    return structuredClone(match);
+  },
+  phrasingCompletion: undefined,
+}));
+
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, mock: true });

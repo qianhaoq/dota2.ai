@@ -22,6 +22,7 @@ const renderCard = () =>
 
 describe('FakedoorCard — once per session', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     window.localStorage.clear();
     window.sessionStorage.clear();
   });
@@ -37,6 +38,7 @@ describe('FakedoorCard — once per session', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Notify me' }));
     expect(await screen.findByText('Thanks! Your interest is recorded.')).toBeTruthy();
     expect(window.sessionStorage.getItem(SESSION_KEY)).toBe('1');
+    expect(trackEvent).toHaveBeenCalledExactlyOnceWith('fakedoor_clicked', { action: 'notify', kind: 'steam_autoreview' });
 
     unmount();
     renderCard();
@@ -54,9 +56,24 @@ describe('FakedoorCard — once per session', () => {
     expect(screen.getByRole('button', { name: 'Notify me' })).toBeTruthy();
   });
 
+  it('retries feedback honestly without counting another click in the session', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Notify me' }));
+    await screen.findByText('Could not save — try again.');
+    fireEvent.click(screen.getByRole('button', { name: 'Notify me' }));
+    await screen.findByText('Thanks! Your interest is recorded.');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(trackEvent).toHaveBeenCalledExactlyOnceWith('fakedoor_clicked', { action: 'notify', kind: 'steam_autoreview' });
+    unmount(); renderCard();
+    expect(screen.queryByRole('button', { name: 'Notify me' })).toBeNull();
+  });
+
   it('marks the session on "Not now" and stays hidden after remount', () => {
     const { unmount } = renderCard();
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    expect(trackEvent).toHaveBeenCalledExactlyOnceWith('fakedoor_clicked', { action: 'dismiss', kind: 'steam_autoreview' });
     expect(window.sessionStorage.getItem(SESSION_KEY)).toBe('1');
 
     unmount();
@@ -67,6 +84,7 @@ describe('FakedoorCard — once per session', () => {
 
 describe('FakedoorCard — email validation', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     window.localStorage.clear();
     window.sessionStorage.clear();
     vi.mocked(trackEvent).mockClear();

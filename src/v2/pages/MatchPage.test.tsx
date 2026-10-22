@@ -1,970 +1,387 @@
 // @vitest-environment jsdom
+/** PR6 migrates the page contract from legacy facts/2000-char asks to SSE v1/300-char asks.
+ * Regression coverage below keeps cancellation, Stop, retry, language, trace,
+ * hero selection, verbatim numbers, flags and analytics against the real engine. */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { readFileSync } from 'node:fs';
+import { buildReview } from '../../../packages/review-engine/src/index.js';
 import MatchPage from './MatchPage';
 import { I18nProvider } from '../i18n/I18nProvider';
-import { trackEvent, trackReviewViewed } from '../../services/analytics';
-import { REVIEW_CLIENT_TIMEOUT_MS } from '../../services/geminiService';
-
-vi.mock('../../services/analytics', () => ({
-  trackEvent: vi.fn(),
-  trackReviewViewed: vi.fn(),
-}));
-
-// Partial mock: the page must honor the resolved flags without caring how
-// they were resolved (flags.test.ts covers env/preview kill switches).
-const flagState = { fakedoor_v2: true };
-vi.mock('../FlagsProvider', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../FlagsProvider')>();
-  return {
-    ...actual,
-    useFlags: () => ({
-      ui_v2: true,
-      legacy_mentor: false,
-      legacy_tabs: false,
-      legacy_next_actions: false,
-      fakedoor_v2: flagState.fakedoor_v2,
-    }),
-  };
-});
-
-const fixturesDir = path.join(__dirname, '../__fixtures__');
-const readFixture = (name: string) =>
-  JSON.parse(readFileSync(path.join(fixturesDir, `review-9035042364${name}.json`), 'utf8'));
-
-const enFixture = readFixture('-en');
-const zhFixture = readFixture('-zh');
-const pudgeEn = readFixture('-pudge-en');
-const pudgeZh = readFixture('-pudge-zh');
-
-/** Duck-typed Responses (jsdom has no fetch implementation to lean on). */
-function jsonResponse(obj: unknown) {
-  return {
-    ok: true,
-    headers: { get: () => 'application/json' },
-    json: async () => obj,
-  };
+import { trackEvent } from '../../services/analytics';
+import type { Review } from '../review/types';
+vi.mock('../../services/analytics', () => ({ trackEvent: vi.fn() }));
+const flags = { fakedoor_v2: true };
+vi.mock('../FlagsProvider', () => ({ useFlags: () => flags }));
+const raw = JSON.parse(readFileSync('src/fixtures/match9035042364.parsed.json', 'utf8'));
+const other = JSON.parse(readFileSync('src/fixtures/match8985182860.json', 'utf8'));
+function engine(data = raw, heroId: number | null = 14, lang: string = 'en'): Review {
+    return buildReview(data, { heroId: heroId ?? undefined, lang: lang === 'zh' ? 'zh' : 'en', fetchedAt: '2026-10-17T00:00:00Z', presetFollowups: true }) as unknown as Review;
 }
-
-function sseResponse(chunks: Array<Record<string, unknown>>) {
-  const lines = [...chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`), 'data: [DONE]\n\n'];
-  const encoded = lines.map((l) => Uint8Array.from(l, (c) => c.charCodeAt(0)));
-  let i = 0;
-  return {
-    ok: true,
-    headers: { get: (n: string) => (n.toLowerCase() === 'content-type' ? 'text/event-stream' : null) },
-    body: {
-      getReader: () => ({
-        read: async () =>
-          i < encoded.length ? { done: false, value: encoded[i++] } : { done: true, value: undefined },
-        cancel: async () => {},
-      }),
-    },
-  };
+export const frame = (event: string, data: unknown, id?: number) => `${id == null ? '' : `id: ${id}\n`}event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+function response(text: string, open = false) {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({ start(c) {
+            controller = c;
+            if (text)
+                c.enqueue(new TextEncoder().encode(text));
+            if (!open)
+                c.close();
+        } });
+    return { response: new Response(body, { headers: { 'Content-Type': 'text/event-stream' } }), push: (text: string) => controller.enqueue(new TextEncoder().encode(text)) };
 }
-
-/** Duck-typed 429 with a Retry-After header + localized body (server PR #89). */
-function rateLimitResponse(sec: number) {
-  return {
-    ok: false,
-    status: 429,
-    headers: { get: (n: string) => (n.toLowerCase() === 'retry-after' ? String(sec) : null) },
-    json: async () => ({ error: 'rate_limited', message: 'Too many requests', retryAfterSec: sec }),
-  };
+function events(review: Review) {
+    let id = 0;
+    return 'retry: 0\n\n: ping\n\n' + frame('progress', { step: 'fetch_match', status: 'done', ms: 10 }, ++id) + (!review.player ? frame('hero_pick', { roster: review.roster }, ++id) : '') + frame('card', { kind: 'result_header', payload: { match: review.match, player: review.player } }, ++id) + review.insights.map((payload, i) => frame('card', { kind: 'insight', index: i + 1, payload }, ++id)).join('') + frame('card', { kind: 'followups', payload: review.followups }, ++id) + frame('done', { state: review.player ? review.state : 'needs_hero', ...(!review.player ? { needs: 'hero' } : {}), review }, ++id);
 }
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
-/**
- * SSE response whose chunks are released manually — models an in-flight
- * follow-up stream that stays pending until the test pushes the next chunk.
- */
-function gatedSseResponse() {
-  let releaseRead: ((r: { done: boolean; value?: Uint8Array }) => void) | null = null;
-  const encode = (payload: string) => Uint8Array.from(payload, (c) => c.charCodeAt(0));
-  return {
-    response: {
-      ok: true,
-      headers: { get: (n: string) => (n.toLowerCase() === 'content-type' ? 'text/event-stream' : null) },
-      body: {
-        getReader: () => ({
-          read: () =>
-            new Promise<{ done: boolean; value?: Uint8Array }>((resolve) => {
-              releaseRead = resolve;
-            }),
-          cancel: async () => {},
-        }),
-      },
-    },
-    /** Push one SSE data event; the mock fetch ignores the abort signal, so
-     * chunks pushed after an abort exercise the page's stale-callback guard. */
-    push: (obj: unknown) => {
-      releaseRead?.({ done: false, value: encode(`data: ${JSON.stringify(obj)}\n\n`) });
-      releaseRead = null;
-    },
-  };
-}
-
-const fetchMock = vi.fn();
-let heroResponse: unknown = null;
-
-function stubFetch(opts: {
-  base: unknown;
-  hero?: unknown;
-  post?: Array<Record<string, unknown>>;
-  postResponse?: unknown;
-}) {
-  heroResponse = opts.hero ?? opts.base;
-  const post = opts.post ?? [];
-  fetchMock.mockReset();
-  fetchMock.mockImplementation((input: unknown, init?: { method?: string }) => {
-    if ((init?.method ?? 'GET') === 'POST') {
-      return Promise.resolve(opts.postResponse ?? sseResponse(post));
-    }
-    const url = new URL(String(input), 'http://local.test');
-    const lang = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
-    const withHero = url.searchParams.has('heroId');
-    if (withHero) return Promise.resolve(jsonResponse(heroResponse));
-    return Promise.resolve(jsonResponse(lang === 'zh' ? zhFixture : enFixture));
-  });
-  vi.stubGlobal('fetch', fetchMock);
-}
-
-/** Test-only navigation control: clicking it routes elsewhere while the page
- * stays mounted (mirrors App.tsx, where /m/:matchId and /m share MatchPage). */
-const JumpButton: React.FC<{ to: string }> = ({ to }) => {
-  const navigate = useNavigate();
-  return (
-    <button type="button" onClick={() => navigate(to)}>
-      jump
-    </button>
-  );
-};
-
-function renderPage(entry: string) {
-  return render(
-    <MemoryRouter initialEntries={[entry]}>
-      <I18nProvider>
-        <JumpButton to="/m" />
-        <Routes>
-          <Route path="/m/:matchId" element={<MatchPage />} />
-          <Route path="/m" element={<MatchPage />} />
-        </Routes>
-      </I18nProvider>
-    </MemoryRouter>,
-  );
-}
-
-const CONCLUSION_KEYS = ['turningPoint', 'topMistake', 'nextGameRule'] as const;
-
-/** Flush pending microtasks so SSE chunks / fetch promises settle. */
-const flush = async () => {
-  await act(async () => {
-    for (let i = 0; i < 5; i++) await Promise.resolve();
-  });
-};
-
-const postCall = () =>
-  fetchMock.mock.calls.find(([, init]) => (init as { method?: string } | undefined)?.method === 'POST');
-
-/**
- * Number tokens per TEXT NODE (not glued textContent — adjacent block elements
- * would fuse "43:00" + "44:00" into one fake token). Every token the page shows
- * must exist verbatim somewhere in the fixture JSON: nothing is computed or
- * invented client-side.
- */
-function renderedNumberTokens(main: HTMLElement): Set<string> {
-  const tokens = new Set<string>();
-  const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
-  let node: Node | null;
-  while ((node = walker.nextNode())) {
-    for (const m of (node.nodeValue ?? '').match(/\d[\d,.:]*/g) ?? []) tokens.add(m);
-  }
-  return tokens;
-}
-
-describe('MatchPage — golden fixtures', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('renders the 3 cards verbatim; every number in the conversation comes from the fixture (en)', async () => {
-    stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364?hero=pudge');
-
-    for (const key of CONCLUSION_KEYS) {
-      expect(await screen.findByText(pudgeEn.threeConclusions[key].summary)).toBeTruthy();
-    }
-    expect(screen.getByPlaceholderText('Ask a follow-up about this match')).toBeTruthy();
-
-    const tokens = renderedNumberTokens(screen.getByRole('main'));
-    const fixtureText = readFileSync(path.join(fixturesDir, 'review-9035042364-pudge-en.json'), 'utf8');
-    expect(tokens.size).toBeGreaterThan(5);
-    for (const token of tokens) {
-      expect(fixtureText, `rendered number "${token}" must exist in the fixture`).toContain(token);
-    }
-  });
-
-  it('renders the 3 cards verbatim; every number comes from the zh fixture (zh)', async () => {
-    stubFetch({ base: zhFixture, hero: pudgeZh });
-    renderPage('/m/9035042364?hero=pudge&lang=zh');
-
-    for (const key of CONCLUSION_KEYS) {
-      expect(await screen.findByText(pudgeZh.threeConclusions[key].summary)).toBeTruthy();
-    }
-    expect(screen.getByPlaceholderText('继续追问这场比赛')).toBeTruthy();
-
-    const tokens = renderedNumberTokens(screen.getByRole('main'));
-    const fixtureText = readFileSync(path.join(fixturesDir, 'review-9035042364-pudge-zh.json'), 'utf8');
-    for (const token of tokens) {
-      expect(fixtureText, `rendered number "${token}" must exist in the fixture`).toContain(token);
-    }
-  });
-});
-
-describe('MatchPage — hero flow', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('shows the hero picker without ?hero; picking Pudge requests heroId=14', async () => {
-    stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364');
-
-    expect(await screen.findByText('Which one was you?')).toBeTruthy();
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/review/9035042364?lang=en');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Pudge, 5/19/22' }));
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/review/9035042364?lang=en&heroId=14',
-        expect.objectContaining({ method: 'GET' }),
-      );
+const fetcher = vi.fn();
+function stub(data = raw) {
+    fetcher.mockImplementation((input: string, init?: RequestInit) => {
+        if (init?.method === 'POST')
+            return Promise.resolve(response(frame('token', { target: 'answer', delta: 'Evidence answer' }) + frame('done', { state: 'parsed', answer: 'Evidence answer', phrasing: 'template' })).response);
+        const url = new URL(input, 'http://test');
+        const hero = url.searchParams.get('hero');
+        return Promise.resolve(response(events(engine(data, hero ? hero === 'pudge' ? 14 : Number(hero) : null, url.searchParams.get('lang') ?? 'en'))).response);
     });
-    expect(await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
-  });
-
-  it('renders the insufficient badge on insufficient conclusions', async () => {
-    stubFetch({ base: enFixture, hero: enFixture }); // no-hero payload: topMistake/nextGameRule insufficient
-    renderPage('/m/9035042364?hero=pudge');
-
-    expect(await screen.findAllByText('Insufficient data')).toHaveLength(2);
-  });
-
-  // ?hero=14 and ?hero=Pudge resolve to the same Pudge player the review
-  // already shows — picking Pudge again must not navigate or re-fetch.
-  it.each(['14', 'Pudge'])('reselecting the already-shown hero (?hero=%s) is a no-op', async (param) => {
-    stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage(`/m/9035042364?hero=${param}`);
-
-    expect(await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
-    const callsBefore = fetchMock.mock.calls.length;
-
-    fireEvent.click(screen.getByRole('button', { name: /Change/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Pudge, 5/19/22' }));
-    await flush();
-
-    expect(fetchMock.mock.calls.length).toBe(callsBefore);
-    expect(screen.getByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
-  });
-});
-
-describe('MatchPage — follow-ups', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.mocked(trackEvent).mockClear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('clicking a preset chip streams the SSE answer and tracks followup_clicked', async () => {
-    stubFetch({
-      base: enFixture,
-      hero: pudgeEn,
-      post: [{ text: 'Wraith King ' }, { text: 'killed you ' }, { text: '8 times.' }],
-    });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    const chip = pudgeEn.threeConclusions.followUps[0];
-    fireEvent.click(await screen.findByRole('button', { name: chip }));
-
-    expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { kind: 'preset' });
-    await screen.findByText(/8 times\./);
-    // The asked chip is removed from the suggestions.
-    await waitFor(() => expect(screen.queryByRole('button', { name: chip })).toBeNull());
-  });
-
-  it('hard-slices a follow-up to 2000 chars before sending', async () => {
-    stubFetch({ base: enFixture, hero: pudgeEn, post: [{ text: 'ok' }] });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    // fireEvent.change bypasses the input's maxLength, like a programmatic
-    // paste would — the page must still cap what goes on the wire.
-    fireEvent.change(screen.getByPlaceholderText('Ask a follow-up about this match'), {
-      target: { value: 'y'.repeat(2500) },
-    });
-    fireEvent.submit(screen.getByPlaceholderText('Ask a follow-up about this match').closest('form')!);
-
-    await waitFor(() => {
-      const post = fetchMock.mock.calls.find(([, init]) => (init as { method?: string } | undefined)?.method === 'POST');
-      expect(post).toBeTruthy();
-      expect(JSON.parse((post![1] as { body: string }).body).followUp).toHaveLength(2000);
-    });
-  });
-});
-
-describe('MatchPage — 429 rate limiting', () => {
-  /** Fake timers mean findByText/waitFor would hang — flush microtasks instead. */
-  const flush = async () => {
+    vi.stubGlobal('fetch', fetcher);
+}
+function Controls() {
+    const navigate = useNavigate();
+    return <><button onClick={() => navigate('/m/9035042364?hero=14&lang=zh')}>Switch language</button><button onClick={() => navigate('/m/8985182860?hero=14')}>Switch match</button><button onClick={() => navigate('/m')}>Bare route</button></>;
+}
+function page(route = '/m/9035042364?hero=pudge&lang=en') {
+    return render(<MemoryRouter initialEntries={[route]}><I18nProvider><Controls /><Routes><Route path="/m/:matchId?" element={<MatchPage />}/></Routes></I18nProvider></MemoryRouter>);
+}
+async function ready() {
+    await screen.findAllByTestId('insight-card');
+    fireEvent.click(await screen.findByRole('button', { name: /Share|分享/ }));
+    await screen.findByText(/Copy JSON|复制 JSON/);
+}
+async function flush() {
     await act(async () => {
-      for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+        await new Promise(r => setTimeout(r, 0));
     });
-  };
-
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.runOnlyPendingTimers();
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
-  it('facts 429: countdown message, Retry + composer disabled until it elapses', async () => {
-    fetchMock.mockReset();
-    fetchMock.mockImplementation(() => Promise.resolve(rateLimitResponse(30)));
-    vi.stubGlobal('fetch', fetchMock);
-    renderPage('/m/9035042364');
-
-    await flush();
-    expect(screen.getByText('Too many requests right now. Try again in 30s.')).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(
-      (screen.getByPlaceholderText('Paste match ID or link') as HTMLInputElement).disabled,
-    ).toBe(true);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
-    });
-    expect(screen.getByText('Too many requests right now. Try again in 20s.')).toBeTruthy();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(20_000);
-    });
-    expect(screen.getByText('Too many requests right now. Try again in a moment.')).toBeTruthy();
-    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(false);
-    expect(
-      (screen.getByPlaceholderText('Paste match ID or link') as HTMLInputElement).disabled,
-    ).toBe(false);
-  });
-
-  it('follow-up 429: countdown in the turn, chips / composer / Retry disabled, then released', async () => {
-    stubFetch({ base: enFixture, hero: pudgeEn, postResponse: rateLimitResponse(30) });
-    renderPage('/m/9035042364?hero=pudge');
-
-    await flush();
-    const chip = pudgeEn.threeConclusions.followUps[0];
-    fireEvent.click(screen.getByRole('button', { name: chip }));
-    await flush();
-
-    expect(screen.getByText('Too many requests right now. Try again in 30s.')).toBeTruthy();
-    const otherChip = screen.getByRole('button', {
-      name: pudgeEn.threeConclusions.followUps[1],
-    }) as HTMLButtonElement;
-    expect(otherChip.disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true);
-    expect(
-      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
-    ).toBe(true);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
-    });
-    expect(screen.getByText('Too many requests right now. Try again in a moment.')).toBeTruthy();
-    expect(otherChip.disabled).toBe(false);
-    expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(false);
-    expect(
-      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
-    ).toBe(false);
-  });
-});
-
-describe('MatchPage — fakedoor card flag', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    flagState.fakedoor_v2 = true;
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('renders the fakedoor card when fakedoor_v2 is on (MVP default)', async () => {
-    stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    expect(screen.getByText('Want this after every match?')).toBeTruthy();
-  });
-
-  it('hides the fakedoor card when the flag is off (kill switch)', async () => {
-    flagState.fakedoor_v2 = false;
-    stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    expect(screen.queryByText('Want this after every match?')).toBeNull();
-  });
-});
-
-describe('MatchPage — hero change aborts the follow-up stream', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    flagState.fakedoor_v2 = true;
-    vi.mocked(trackEvent).mockClear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('aborts the in-flight stream before clearing turns; stale chunks never land', async () => {
-    const stream = gatedSseResponse();
-    stubFetch({ base: enFixture, hero: pudgeEn, postResponse: stream.response });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    // Start a follow-up and let its first chunk stream in.
-    const chip = pudgeEn.threeConclusions.followUps[0];
-    fireEvent.click(screen.getByRole('button', { name: chip }));
-    await flush();
-    stream.push({ text: 'FIRST CHUNK ' });
-    expect(await screen.findByText(/FIRST CHUNK/)).toBeTruthy();
-    expect((postCall()![1] as { signal: AbortSignal }).signal.aborted).toBe(false);
-
-    // Change hero while the stream is still in flight.
-    fireEvent.click(screen.getByRole('button', { name: /Change/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Faceless Void, 13/14/12' }));
-
-    // The in-flight request was aborted before the turns were cleared…
-    await waitFor(() => expect((postCall()![1] as { signal: AbortSignal }).signal.aborted).toBe(true));
-    // …the old thread is gone (the streamed answer; the chip itself may
-    // legitimately reappear as a preset now that `asked` was reset)…
-    expect(screen.queryByText(/FIRST CHUNK/)).toBeNull();
-    // …and the composer is released (no turn stuck streaming).
-    await waitFor(() =>
-      expect((screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled).toBe(false),
-    );
-
-    // A chunk arriving after the abort (the fetch mock ignores the signal) is
-    // dropped — no stale text is appended to the new thread.
-    stream.push({ text: 'STALE CHUNK' });
-    await flush();
-    expect(screen.queryByText(/STALE CHUNK/)).toBeNull();
-  });
-});
-
-describe('MatchPage — review_viewed tracking', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    flagState.fakedoor_v2 = true;
-    vi.mocked(trackReviewViewed).mockClear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('tracks review_viewed once the conclusion cards render', async () => {
-    stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    expect(trackReviewViewed).toHaveBeenCalledWith('9035042364');
-  });
-
-  it('does not track when threeConclusions is null (no cards rendered)', async () => {
-    stubFetch({ base: enFixture, hero: { ...pudgeEn, threeConclusions: null } });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText('The three conclusions aren’t available for this match yet.');
-
-    expect(trackReviewViewed).not.toHaveBeenCalled();
-  });
-});
-
-describe('MatchPage — initial-load progress', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    flagState.fakedoor_v2 = true;
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('shows the tool trace while the FIRST facts request is still pending', async () => {
-    const firstFacts = deferred<unknown>();
-    fetchMock.mockReset();
-    fetchMock.mockImplementation((input: unknown, init?: { method?: string }) => {
-      if ((init?.method ?? 'GET') === 'POST') return Promise.resolve(sseResponse([]));
-      const url = new URL(String(input), 'http://local.test');
-      if (url.searchParams.has('heroId')) return Promise.resolve(jsonResponse(pudgeEn));
-      return firstFacts.promise.then((payload) => jsonResponse(payload));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    renderPage('/m/9035042364?hero=pudge');
-
-    // facts === null + phase === 'loading' → the trace must already be visible.
-    expect(await screen.findByText('Fetching match')).toBeTruthy();
-    expect(screen.queryByText('Analyzed match · OpenDota')).toBeNull();
-
-    await act(async () => {
-      firstFacts.resolve(enFixture);
-    });
-    expect(await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
-    expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
-  });
-});
-
-describe('MatchPage — route change to /m aborts the follow-up stream', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    flagState.fakedoor_v2 = true;
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('navigating to bare /m mid-stream aborts and clears the conversation', async () => {
-    const stream = gatedSseResponse();
-    stubFetch({ base: enFixture, hero: pudgeEn, postResponse: stream.response });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    // Start a follow-up and let its first chunk stream in.
-    const chip = pudgeEn.threeConclusions.followUps[0];
-    fireEvent.click(screen.getByRole('button', { name: chip }));
-    await flush();
-    stream.push({ text: 'FIRST CHUNK ' });
-    expect(await screen.findByText(/FIRST CHUNK/)).toBeTruthy();
-    expect((postCall()![1] as { signal: AbortSignal }).signal.aborted).toBe(false);
-
-    // Route to bare /m while the stream is still in flight.
-    fireEvent.click(screen.getByRole('button', { name: 'jump' }));
-
-    // The in-flight request was aborted, the invalid-id notice rendered, and
-    // the conversation is gone…
-    await waitFor(() => expect((postCall()![1] as { signal: AbortSignal }).signal.aborted).toBe(true));
-    expect(await screen.findByText(/doesn’t look like a match ID/)).toBeTruthy();
-    expect(screen.queryByText(/FIRST CHUNK/)).toBeNull();
-
-    // …and a chunk arriving after the abort (the fetch mock ignores the
-    // signal) is dropped — no stale text lands anywhere.
-    stream.push({ text: 'STALE CHUNK' });
-    await flush();
-    expect(screen.queryByText(/STALE CHUNK/)).toBeNull();
-  });
-});
-
-describe('MatchPage — partial threeConclusions payload', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('renders a missing conclusion as an Insufficient data card instead of crashing', async () => {
-    const partial = {
-      ...pudgeEn,
-      threeConclusions: {
-        outcome: pudgeEn.threeConclusions.outcome,
-        turningPoint: pudgeEn.threeConclusions.turningPoint,
-        nextGameRule: pudgeEn.threeConclusions.nextGameRule,
-      },
-    };
-    stubFetch({ base: enFixture, hero: partial });
-    renderPage('/m/9035042364?hero=pudge');
-
-    // Present conclusions render verbatim…
-    expect(await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary)).toBeTruthy();
-    expect(screen.getByText(pudgeEn.threeConclusions.nextGameRule.summary)).toBeTruthy();
-    // …the missing topMistake becomes an explicit insufficient card (muted
-    // summary + badge)…
-    expect(screen.getByText('One thing to change')).toBeTruthy();
-    expect(await screen.findAllByText('Insufficient data')).toHaveLength(2);
-    // …and the absent followUps default to [] — no preset chips.
-    expect(screen.queryByRole('button', { name: pudgeEn.threeConclusions.followUps[0] })).toBeNull();
-  });
-});
-
-describe('MatchPage — follow-up reviewNotice / fallback (server PR #89)', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  const askViaComposer = (question: string) => {
-    fireEvent.change(screen.getByPlaceholderText('Ask a follow-up about this match'), {
-      target: { value: question },
-    });
-    fireEvent.submit(screen.getByPlaceholderText('Ask a follow-up about this match').closest('form')!);
-  };
-
-  it('renders the template text normally with the notice as a muted line under it', async () => {
-    stubFetch({
-      base: enFixture,
-      hero: pudgeEn,
-      post: [
-        { reviewNotice: 'AI follow-up unavailable; the answer below is built from match data only.', fallback: true },
-        { text: 'Deterministic answer from match data.' },
-      ],
-    });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    askViaComposer('What went wrong?');
-
-    expect(await screen.findByText('Deterministic answer from match data.')).toBeTruthy();
-    expect(screen.getByText('AI follow-up unavailable; the answer below is built from match data only.')).toBeTruthy();
-    // The notice is a muted line, not an error state.
-    expect(screen.queryByText('Could not answer that.')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-  });
-
-  it('accepts the notice as an object ({ message }) too', async () => {
-    stubFetch({
-      base: enFixture,
-      hero: pudgeEn,
-      post: [
-        { reviewNotice: { message: 'AI follow-up unavailable (object form).' }, fallback: true },
-        { text: 'Body.' },
-      ],
-    });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    askViaComposer('What went wrong?');
-
-    expect(await screen.findByText('Body.')).toBeTruthy();
-    expect(screen.getByText('AI follow-up unavailable (object form).')).toBeTruthy();
-  });
-});
-
-describe('MatchPage — 400 message_too_long (server PR #89)', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('shows the localized server message inline (no "Error:" prefix) and keeps the text', async () => {
-    stubFetch({
-      base: enFixture,
-      hero: pudgeEn,
-      postResponse: {
-        ok: false,
-        status: 400,
-        headers: { get: () => null },
-        json: async () => ({ error: 'message_too_long', message: 'Error: Follow-ups are limited to 2000 characters.' }),
-      },
-    });
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    fireEvent.change(screen.getByPlaceholderText('Ask a follow-up about this match'), {
-      target: { value: 'A question that is too long' },
-    });
-    fireEvent.submit(screen.getByPlaceholderText('Ask a follow-up about this match').closest('form')!);
-
-    // Friendly inline message — server copy without the "Error:" prefix…
-    expect(await screen.findByText('Follow-ups are limited to 2000 characters.')).toBeTruthy();
-    expect(screen.queryByText(/Error:/)).toBeNull();
-    expect(screen.queryByText('Could not answer that.')).toBeNull();
-    // …and the user's text is back in the composer so they can shorten it.
-    await waitFor(() =>
-      expect((screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).value).toBe(
-        'A question that is too long',
-      ),
-    );
-    expect(
-      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
-    ).toBe(false);
-  });
-});
-
-/**
- * POST mock whose pending SSE read rejects with an AbortError when the page
- * aborts the request's signal — like a real aborted fetch/SSE. The service's
- * internal 180s timeout and the user's Stop button both call the same
- * controller.abort(); only the page's userStoppedRef tells them apart.
- */
-function abortableGatedSse() {
-  let releaseRead: ((r: { done: boolean; value?: Uint8Array }) => void) | null = null;
-  let rejectRead: ((e: unknown) => void) | null = null;
-  const encode = (payload: string) => Uint8Array.from(payload, (c) => c.charCodeAt(0));
-  const wireAbort = (signal: AbortSignal) =>
-    signal.addEventListener('abort', () => {
-      const err = new Error('The operation was aborted');
-      err.name = 'AbortError';
-      rejectRead?.(err);
-    });
-  return {
-    wireAbort,
-    push: (obj: unknown) => {
-      releaseRead?.({ done: false, value: encode(`data: ${JSON.stringify(obj)}\n\n`) });
-      releaseRead = null;
-      rejectRead = null;
-    },
-    response: {
-      ok: true,
-      headers: { get: (n: string) => (n.toLowerCase() === 'content-type' ? 'text/event-stream' : null) },
-      body: {
-        getReader: () => ({
-          read: () =>
-            new Promise<{ done: boolean; value?: Uint8Array }>((resolve, reject) => {
-              releaseRead = resolve;
-              rejectRead = reject;
-            }),
-          cancel: async () => {},
-        }),
-      },
-    },
-  };
 }
-
-describe('MatchPage — user Stop vs service timeout', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  afterEach(() => {
+beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.clearAllMocks();
+    flags.fakedoor_v2 = true;
+    stub();
+});
+afterEach(() => {
     cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
     vi.unstubAllGlobals();
     vi.useRealTimers();
-  });
-
-  /** POST mock wiring: the gated SSE read rejects with an AbortError once the
-   * page aborts the request's signal, like a real aborted fetch/SSE. */
-  const stubAbortableStream = (stream: ReturnType<typeof abortableGatedSse>) => {
-    fetchMock.mockReset();
-    fetchMock.mockImplementation((input: unknown, init?: { method?: string; signal?: AbortSignal }) => {
-      if ((init?.method ?? 'GET') === 'POST') {
-        stream.wireAbort(init!.signal!);
-        return Promise.resolve(stream.response);
-      }
-      const url = new URL(String(input), 'http://local.test');
-      const lang = url.searchParams.get('lang') === 'zh' ? 'zh' : 'en';
-      if (url.searchParams.has('heroId')) return Promise.resolve(jsonResponse(pudgeEn));
-      return Promise.resolve(jsonResponse(lang === 'zh' ? zhFixture : enFixture));
-    });
-    vi.stubGlobal('fetch', fetchMock);
-  };
-
-  it('a service-side timeout abort (no Stop) keeps the turn in error state with Retry', async () => {
-    // Fake timers so the service's OWN REVIEW_CLIENT_TIMEOUT_MS timer fires —
-    // the exact path production hits (controller.abort() from inside the
-    // service, with no user Stop behind it).
-    vi.useFakeTimers();
-    const flushTimers = async () => {
-      await act(async () => {
-        for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
-      });
-    };
-    const stream = abortableGatedSse();
-    stubAbortableStream(stream);
-    renderPage('/m/9035042364?hero=pudge');
-    await flushTimers();
-
-    fireEvent.click(screen.getByRole('button', { name: pudgeEn.threeConclusions.followUps[0] }));
-    await flushTimers();
-    stream.push({ text: 'PARTIAL ANSWER ' });
-    await flushTimers();
-    expect(screen.getByText(/PARTIAL ANSWER/)).toBeTruthy();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(REVIEW_CLIENT_TIMEOUT_MS);
-    });
-
-    // The turn errored (not silently "done"): generic copy + Retry offered,
-    // the composer is released.
-    expect(screen.getByText('Could not answer that.')).toBeTruthy();
-    const retry = screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement;
-    expect(retry.disabled).toBe(false);
-    expect(
-      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
-    ).toBe(false);
-  });
-
-  it('the user\'s Stop settles the turn with its partial answer, no error shown', async () => {
-    const stream = abortableGatedSse();
-    stubAbortableStream(stream);
-    renderPage('/m/9035042364?hero=pudge');
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-
-    fireEvent.click(screen.getByRole('button', { name: pudgeEn.threeConclusions.followUps[0] }));
-    await flush();
-    stream.push({ text: 'PARTIAL ANSWER ' });
-    expect(await screen.findByText(/PARTIAL ANSWER/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
-    await flush();
-
-    expect(screen.queryByText('Could not answer that.')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    // The partial answer stays visible and the composer is released.
-    expect(screen.getByText(/PARTIAL ANSWER/)).toBeTruthy();
-    expect(
-      (screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled,
-    ).toBe(false);
-  });
 });
-
-describe('MatchPage — tool trace done state', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-  });
-  afterEach(() => {
-    cleanup();
-    // Clear storage AFTER each test too, so a failure mid-test can't leak
-    // lang (d2ai.lang=zh) or flags into the next one's render.
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    vi.unstubAllGlobals();
-  });
-
-  it('never claims "Analyzed" over a failed hero-scoped request', async () => {
-    fetchMock.mockReset();
-    fetchMock.mockImplementation((input: unknown, init?: { method?: string }) => {
-      if ((init?.method ?? 'GET') === 'POST') return Promise.resolve(sseResponse([]));
-      const url = new URL(String(input), 'http://local.test');
-      if (url.searchParams.has('heroId')) return Promise.reject(new Error('upstream boom'));
-      return Promise.resolve(jsonResponse(enFixture));
+describe('SSE v1 conversation', () => {
+    for (const lang of ['en', 'zh'])
+        it(`renders engine claims and every metric display verbatim (${lang})`, async () => {
+            page(`/m/9035042364?hero=14&lang=${lang}`);
+            const r = engine(raw, 14, lang);
+            await screen.findByText(r.insights[0].claim.text);
+            for (const insight of r.insights) {
+                expect(screen.getByText(insight.claim.text)).toBeTruthy();
+                for (const metric of insight.metrics)
+                    expect(screen.getAllByText((_, el) => el?.tagName === 'SPAN' && el.textContent === r.facts[metric.fact_id].display[lang as 'en' | 'zh'] + (r.facts[metric.fact_id].display.t ? ` · ${r.facts[metric.fact_id].display.t}` : '')).length).toBeGreaterThan(0);
+            }
+            expect(screen.getAllByTestId('insight-card')).toHaveLength(3);
+            expect(screen.getByText(`${lang === 'zh' ? '天辉' : 'Radiant'} · ${r.player!.kda!.join('/')}`)).toBeTruthy();
+        });
+    it('renders the second golden sample from the real engine', async () => {
+        stub(other);
+        page(`/m/8985182860?hero=${other.players[0].hero_id}`);
+        const r = engine(other, other.players[0].hero_id);
+        await screen.findByText(r.insights[0].claim.text);
+        for (const i of r.insights) {
+            expect(screen.getByText(i.claim.text)).toBeTruthy();
+            for (const metric of i.metrics) {
+                const fact = r.facts[metric.fact_id];
+                expect(screen.getAllByText(fact.display.en + (fact.display.t ? ` · ${fact.display.t}` : '')).length).toBeGreaterThan(0);
+            }
+        }
     });
-    vi.stubGlobal('fetch', fetchMock);
-    // lang pinned in the URL: the assertions match exact EN copy, so the test
-    // must not depend on storage being clean (URL wins in resolveLang).
-    renderPage('/m/9035042364?hero=pudge&lang=en');
-
-    expect(await screen.findByText('upstream boom')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
-    // The trace is still expanded (steps, not a checkmark) — the request
-    // failed, so "Analyzed match · OpenDota" would be a lie.
-    expect(screen.queryByText('Analyzed match · OpenDota')).toBeNull();
-    expect(screen.getByText(/Fetching match/)).toBeTruthy();
-  });
-
-  it('claims "Analyzed" once results render', async () => {
-    stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364?hero=pudge&lang=en');
-
-    await screen.findByText(pudgeEn.threeConclusions.turningPoint.summary);
-    expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
-  });
-
-  it('claims "Analyzed" when the picker is deliberately shown (no ?hero)', async () => {
-    stubFetch({ base: enFixture, hero: pudgeEn });
-    renderPage('/m/9035042364?lang=en');
-
-    expect(await screen.findByText('Which one was you?')).toBeTruthy();
-    expect(screen.getByText('Analyzed match · OpenDota')).toBeTruthy();
-  });
+    for (const state of ['unparsed', 'insufficient'])
+        it(`renders ${state} and its engine insights`, async () => {
+            const r = engine();
+            r.state = state;
+            fetcher.mockResolvedValue(response(events(r)).response);
+            page();
+            await ready();
+            if (state === 'unparsed') {
+                expect(screen.getByRole('button', { name: 'Request parse' })).toBeTruthy();
+            } else {
+                expect(screen.getByText('Insufficient data')).toBeTruthy();
+            }
+        });
+    it('unparsed requests a parse and Check again restarts the review stream', async () => {
+        const r = engine();
+        r.state = 'unparsed';
+        fetcher.mockResolvedValueOnce(response(events(r)).response)
+            .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'requested', jobId: 42, retryAfterSec: 30, message: 'Parse requested' }), { headers: { 'Content-Type': 'application/json' } }));
+        page();
+        fireEvent.click(await screen.findByRole('button', { name: 'Request parse' }));
+        fireEvent.click(await screen.findByRole('button', { name: 'Check again' }));
+        await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+        expect(fetcher.mock.calls[1][0]).toBe('/api/review/9035042364/parse-request?lang=en');
+        expect(fetcher.mock.calls[1][1].method).toBe('POST');
+        await waitFor(() => expect(screen.queryByRole('button', { name: 'Request parse' })).toBeNull());
+    });
+    it('needs_hero shows a 2×5 roster; picking requests hero=pudge and Change reopens it', async () => {
+        page('/m/9035042364?lang=en');
+        await screen.findByText('Which one was you?');
+        expect(screen.getAllByRole('button').filter(b => b.querySelector('img'))).toHaveLength(10);
+        fireEvent.click(screen.getByRole('button', { name: 'Pudge' }));
+        await ready();
+        expect(fetcher.mock.calls.some(([url]) => url.includes('hero=pudge'))).toBe(true);
+        fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+        expect(screen.getByText('Which one was you?')).toBeTruthy();
+        const calls = fetcher.mock.calls.length;
+        fireEvent.click(screen.getByRole('button', { name: 'Pudge' }));
+        await flush();
+        expect(fetcher.mock.calls.length).toBe(calls);
+    });
+    it('terminal error localizes message_key and never exposes upstream text', async () => {
+        fetcher.mockResolvedValue(response(frame('error', { code: 'UPSTREAM_TIMEOUT', message_key: 'err.upstream_timeout', retryable: true, message: 'SECRET upstream boom' }) + events(engine())).response);
+        page();
+        await screen.findByText('The data source timed out. Please retry.');
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+        expect(screen.queryByText(/SECRET/)).toBeNull();
+        expect(screen.queryAllByTestId('insight-card')).toHaveLength(0);
+        expect(screen.queryByText('Analyzed match · OpenDota')).toBeNull();
+    });
+    it('nonretryable error offers no Retry', async () => {
+        fetcher.mockResolvedValue(response(frame('error', { code: 'MATCH_NOT_FOUND', message_key: 'err.match_not_found', retryable: false })).response);
+        page();
+        await screen.findByText('Match not found');
+        expect(screen.queryByText('Retry')).toBeNull();
+    });
+    it('Retry starts a fresh request', async () => {
+        fetcher.mockResolvedValueOnce(response(frame('error', { ...{ code: 'INTERNAL', message_key: 'err.internal', retryable: true } })).response);
+        page();
+        fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+        await ready();
+        expect(fetcher).toHaveBeenCalledTimes(2);
+    });
+    it('JSON fallback sends Accept and renders the same engine payload', async () => {
+        fetcher.mockRejectedValueOnce(new Error('unsupported')).mockResolvedValueOnce(new Response(JSON.stringify(engine()), { headers: { 'Content-Type': 'application/json' } }));
+        page();
+        await ready();
+        expect(fetcher.mock.calls[1][1].headers.Accept).toBe('application/json');
+    });
+    it('reconnects with Last-Event-ID; duplicate replay does not duplicate cards', async () => {
+        const r = engine();
+        const card = { kind: 'insight', index: 1, payload: r.insights[0] };
+        fetcher.mockResolvedValueOnce(response('retry: 0\n\n' + frame('card', card, 1)).response).mockResolvedValueOnce(response(frame('card', card, 1) + frame('done', { state: 'parsed', review: r }, 2)).response);
+        page();
+        fireEvent.click(await screen.findByRole('button', { name: /Share|分享/ }));
+        await screen.findByText(/Copy JSON|复制 JSON/);
+        expect(fetcher.mock.calls[1][1].headers['Last-Event-ID']).toBe('1');
+        expect(screen.getAllByTestId('insight-card')).toHaveLength(1);
+    });
+    it('tracks review_viewed once per match and hero after cards render', async () => {
+        const view = page();
+        await ready();
+        view.rerender(<MemoryRouter><MatchPage /></MemoryRouter>);
+        await flush();
+        expect(vi.mocked(trackEvent).mock.calls.filter(([e]) => e === 'review_viewed')).toHaveLength(1);
+        expect(trackEvent).toHaveBeenCalledWith('review_viewed', expect.objectContaining({ ui: 'v2', surface: 'web', lang: 'en', phrasing: 'template' }));
+    });
+    it('does not track a view without cards', async () => {
+        const r = engine();
+        r.insights = [];
+        fetcher.mockResolvedValue(response(events(r)).response);
+        page();
+        fireEvent.click(await screen.findByRole('button', { name: /Share|分享/ }));
+        await screen.findByText(/Copy JSON|复制 JSON/);
+        expect(vi.mocked(trackEvent).mock.calls.filter(([e]) => e === 'review_viewed')).toHaveLength(0);
+    });
+    it('renders the server-formatted elapsed time without computing a screen number', async () => {
+        fetcher.mockResolvedValue(response(frame('done', { state: 'parsed', review: engine(), timings: { total_ms: 1549, total_display: '1.5' } })).response);
+        page();
+        const label = await screen.findByText('Analyzed in 1.5s');
+        expect(label.closest('details')?.open).toBe(false);
+    });
+    it('shows progress while pending and collapses after done', async () => {
+        const gated = response(frame('progress', { step: 'fetch_match', status: 'active' }), true);
+        fetcher.mockResolvedValue(gated.response);
+        page();
+        await screen.findAllByText('Fetching match');
+        expect(screen.queryByText('Analyzed match · OpenDota')).toBeNull();
+        gated.push(events(engine()));
+        await ready();
+        expect(screen.getByText('Analyzed match · OpenDota').closest('details')?.open).toBe(false);
+    });
+    it('preset POST uses followup_id; asked chip disappears and answer appears', async () => {
+        page();
+        await ready();
+        fireEvent.click(screen.getByRole('button', { name: 'Death list' }));
+        await screen.findByText('Evidence answer');
+        expect(screen.queryByRole('button', { name: 'Death list' })).toBeNull();
+        const body = JSON.parse(fetcher.mock.calls.find(([, init]) => init?.method === 'POST')![1].body);
+        expect(body).toEqual({ hero: 'pudge', lang: 'en', followup_id: 'death_list' });
+        expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'death_list', answerable: true });
+    });
+    it('free question uses question and rejects over 300 characters before sending', async () => {
+        page();
+        await ready();
+        const input = screen.getByPlaceholderText('Ask a follow-up about this match');
+        fireEvent.change(input, { target: { value: 'x'.repeat(301) } });
+        fireEvent.submit(input.closest('form')!);
+        await screen.findByText('Please keep questions under 300 characters.');
+        expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+        fireEvent.change(input, { target: { value: 'my deaths?' } });
+        fireEvent.submit(input.closest('form')!);
+        await screen.findByText('Evidence answer');
+        expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'free', answerable: true });
+    });
+    it('unanswerable followup cites its matching data_gap', async () => {
+        page();
+        await ready();
+        fireEvent.click(screen.getByRole('button', { name: 'Death locations' }));
+        await screen.findByText('death_locations: opendota_deaths_log_has_no_coordinates');
+        expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'death_locations', answerable: false });
+    });
+    it('refused free build question cites build gap', async () => {
+        page();
+        await ready();
+        const input = screen.getByPlaceholderText('Ask a follow-up about this match');
+        fireEvent.change(input, { target: { value: 'which build?' } });
+        fireEvent.submit(input.closest('form')!);
+        await screen.findByText('build_vs_lineup: no_compliant_patch_matched_kb');
+    });
+    it('service timeout keeps the partial answer and offers Retry', async () => {
+        page();
+        await ready();
+        const gated = response('', true);
+        fetcher.mockResolvedValueOnce(gated.response);
+        vi.useFakeTimers();
+        fireEvent.click(screen.getByRole('button', { name: 'Death list' }));
+        await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+        gated.push(frame('token', { target: 'answer', delta: 'Partial before timeout' }));
+        await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+        await act(async () => { await vi.advanceTimersByTimeAsync(60000); });
+        expect(screen.getByText('Partial before timeout')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+        expect((screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled).toBe(false);
+    });
+    it('killer counts are engine displays; missing gold-fed evidence stays unavailable', async () => {
+        page(); await ready(); const r = engine();
+        expect(screen.getByText(r.facts.killed_by.display.en)).toBeTruthy();
+        expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === r.facts['gold.low'].display.en + ' · ' + r.facts['gold.low'].display.t)).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Gold fed' }));
+        await screen.findByText('gold_fed: missing_or_incomplete_deaths_log');
+    });
+    it('Stop preserves partial answer and releases the composer', async () => {
+        const gated = response('', true);
+        page();
+        await ready();
+        fetcher.mockResolvedValue(gated.response);
+        fireEvent.click(screen.getByRole('button', { name: 'Death list' }));
+        await flush();
+        gated.push(frame('token', { target: 'answer', delta: 'PARTIAL' }));
+        await screen.findByText('PARTIAL');
+        fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+        expect((screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled).toBe(false);
+        expect(screen.getByText('PARTIAL')).toBeTruthy();
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+    it('follow-up terminal error is localized with retry; partial text stays', async () => {
+        page();
+        await ready();
+        fetcher.mockResolvedValueOnce(response(frame('token', { target: 'answer', delta: 'partial' }) + frame('error', { code: 'RATE_LIMITED', retryable: true, message_key: 'err.rate_limited', message: 'SECRET' })).response);
+        fireEvent.click(screen.getByRole('button', { name: 'Death list' }));
+        await screen.findByText('Too many requests. Please try again later.');
+        expect(screen.getByText('partial')).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        await screen.findByText('Evidence answer');
+        expect(vi.mocked(trackEvent).mock.calls.filter(([e]) => e === 'followup_clicked')).toHaveLength(1);
+    });
+    it('cancels old followup on language change and drops stale chunks', async () => {
+        page();
+        await ready();
+        const gated = response('', true);
+        fetcher.mockResolvedValueOnce(gated.response);
+        fireEvent.click(screen.getByRole('button', { name: 'Death list' }));
+        await flush();
+        const signal = fetcher.mock.calls.at(-1)![1].signal;
+        fireEvent.click(screen.getByText('Switch language'));
+        fireEvent.click(await screen.findByRole('button', { name: '分享' }));
+        await screen.findByText('复制 JSON');
+        expect(signal.aborted).toBe(true);
+        expect(screen.queryByText('Death list', { selector: 'p' })).toBeNull();
+    });
+    it('invalid route cancels active review and never requests a bare id', async () => {
+        const gated = response('', true);
+        fetcher.mockResolvedValue(gated.response);
+        page();
+        await flush();
+        const signal = fetcher.mock.calls[0][1].signal;
+        fireEvent.click(screen.getByText('Bare route'));
+        await screen.findByText(/That doesn’t look like a match ID\./);
+        expect(signal.aborted).toBe(true);
+        expect(fetcher).toHaveBeenCalledTimes(1);
+    });
+    it('reduced motion buffers streamed chunks and shows the full answer at done', async () => {
+        vi.stubGlobal('matchMedia', () => ({ matches: true }));
+        page();
+        await ready();
+        const gated = response('', true);
+        fetcher.mockResolvedValueOnce(gated.response);
+        fireEvent.click(screen.getByRole('button', { name: 'Death list' }));
+        await flush();
+        gated.push(frame('token', { target: 'answer', delta: 'half' }));
+        await flush();
+        expect(screen.queryByText('half')).toBeNull();
+        gated.push(frame('done', { answer: 'whole answer', state: 'parsed' }));
+        await screen.findByText('whole answer');
+    });
+    it('Jump to latest appears when scrolled up and hides after jumping', async () => {
+        const view = page();
+        await ready();
+        const scroller = view.container.querySelector('.overflow-y-auto')!;
+        Object.defineProperties(scroller, { scrollHeight: { value: 1200 }, clientHeight: { value: 400 }, scrollTop: { value: 0, writable: true } });
+        fireEvent.scroll(scroller);
+        fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' }));
+        expect(screen.queryByRole('button', { name: 'Jump to latest' })).toBeNull();
+        expect(scroller.scrollTop).toBe(1200);
+    });
+    it('fake door is shown once per session and notify fires once', async () => {
+        const v = page();
+        await ready();
+        fetcher.mockResolvedValueOnce({ ok: true });
+        fireEvent.click(screen.getByRole('button', { name: 'Notify me' }));
+        await screen.findByText('Thanks! Your interest is recorded.');
+        expect(fetcher).toHaveBeenLastCalledWith('/api/feedback', expect.objectContaining({ method: 'POST' }));
+        expect(trackEvent).toHaveBeenCalledWith('fakedoor_clicked', { action: 'notify', kind: 'steam_autoreview' });
+        v.unmount();
+        page();
+        await ready();
+        expect(screen.queryByRole('button', { name: 'Notify me' })).toBeNull();
+        expect(vi.mocked(trackEvent).mock.calls.filter(([e]) => e === 'fakedoor_clicked')).toHaveLength(1);
+    });
+    it('fake door dismissal tracks action and respects kill switch', async () => {
+        flags.fakedoor_v2 = false;
+        const v = page();
+        await ready();
+        expect(screen.queryByText('Notify me')).toBeNull();
+        flags.fakedoor_v2 = true;
+        v.unmount();
+        page();
+        await ready();
+        fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+        expect(trackEvent).toHaveBeenCalledWith('fakedoor_clicked', { action: 'dismiss', kind: 'steam_autoreview' });
+    });
+    it('copies a canonical deep link with hero, claim and language and the exact JSON', async () => {
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+        page('/m/9035042364?hero=pudge&claim=2&lang=en');
+        await ready();
+        fireEvent.click(screen.getByText('Copy link'));
+        await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/m/9035042364?hero=pudge&claim=2&lang=en`));
+        fireEvent.click(screen.getByText('Copy JSON'));
+        await waitFor(() => expect(JSON.parse(writeText.mock.calls[1][0])).toEqual(engine()));
+    });
 });

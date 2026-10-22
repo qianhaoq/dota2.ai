@@ -146,3 +146,17 @@ export function claimReviewViewed(session: StorageLike, matchId: number | string
     return true;
   }
 }
+
+/** First visit is scoped to the anonymous identity; legacy identities start now. */
+export function daysSinceFirstVisit(storage: StorageLike, anonId: string, now = Date.now()): number {
+  try {
+    const key = `dota2ai.firstVisit.${anonId}`;
+    const raw = storage.getItem(key);
+    const first = raw === null ? NaN : Number(raw);
+    if (!Number.isFinite(first) || first < 0 || first > now) {
+      storage.setItem(key, String(now));
+      return 0;
+    }
+    return Math.floor((now - first) / 86400000);
+  } catch { return 0; }
+}

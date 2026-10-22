@@ -6,6 +6,7 @@ import {
   isValidAnonId,
   resolveAnonId,
   decideReturnVisit,
+  daysSinceFirstVisit,
   followUpKind,
   claimReviewViewed,
   type StorageLike,
@@ -154,4 +155,23 @@ describe('claimReviewViewed', () => {
     expect(claimReviewViewed(session, 1)).toBe(true);
     expect(claimReviewViewed(makeStorage(), 8985182860)).toBe(true);
   });
+});
+
+it('tracks elapsed whole days per identity without changing calendar-day/session gating', () => {
+  const local = makeStorage(), session = makeStorage();
+  const start = 1000000000;
+  expect(daysSinceFirstVisit(local, 'anon_one', start)).toBe(0);
+  expect(decideReturnVisit(local, session, '2026-10-21')).toBe(false);
+  expect(daysSinceFirstVisit(local, 'anon_one', start + 2 * 86400000 + 100)).toBe(2);
+  expect(decideReturnVisit(local, makeStorage(), '2026-10-23')).toBe(true);
+  expect(decideReturnVisit(local, session, '2026-10-23')).toBe(false);
+  expect(daysSinceFirstVisit(local, 'anon_two', start + 3 * 86400000)).toBe(0);
+});
+it('repairs invalid first-visit timestamps and handles unavailable storage', () => {
+  for (const raw of ['NaN', '-1', '999999999999999']) {
+    const local = makeStorage({ 'dota2ai.firstVisit.anon_one': raw });
+    expect(daysSinceFirstVisit(local, 'anon_one', 1000)).toBe(0);
+    expect(local.getItem('dota2ai.firstVisit.anon_one')).toBe('1000');
+  }
+  expect(daysSinceFirstVisit(makeThrowingStorage(), 'anon_one', 1000)).toBe(0);
 });

@@ -19,7 +19,7 @@ function input(req, ask = false) {
   }
   return { matchId: Number(id), heroId, lang, key: `review:${Number(id)}:${heroId ?? 'none'}:${ENGINE_VERSION}` };
 }
-function reviewEvents(review, cache) {
+function reviewEvents(review, cache, totalMs) {
   const events = [];
   const add = (event, data) => events.push({ event, data });
   for (const step of ['fetch_match', 'parse_check', 'facts', 'insights', 'phrasing']) add('progress', { step, status: step === 'phrasing' ? 'skipped' : 'done', ms: 0 });
@@ -27,7 +27,7 @@ function reviewEvents(review, cache) {
   add('card', { kind: 'result_header', payload: { match: review.match, player: review.player, series_ref: 'series' } });
   review.insights.forEach((insight, i) => add('card', { kind: 'insight', index: i + 1, payload: insight, phrasing: 'template' }));
   add('card', { kind: 'followups', payload: review.followups });
-  add('done', { review_id: `${review.match.id}:${review.player?.hero_id ?? 'none'}:${ENGINE_VERSION}`, state: review.player ? review.state : 'needs_hero', ...(!review.player ? { needs: 'hero' } : {}), cache, timings: {}, review });
+  add('done', { review_id: `${review.match.id}:${review.player?.hero_id ?? 'none'}:${ENGINE_VERSION}`, state: review.player ? review.state : 'needs_hero', ...(!review.player ? { needs: 'hero' } : {}), cache, timings: { total_ms: totalMs, total_display: (totalMs / 1000).toFixed(1) }, review });
   return events;
 }
 /** The cache adapter only needs get(key) and set(key, value, ttlMs). */
@@ -107,6 +107,7 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
     if (streaming && !ask) res.vary('Accept');
     const stream = streaming && (ask || !req.headers.accept?.includes('application/json'));
     let sse;
+    const started = now();
     try {
       const params = input(req, ask);
       let followupId, question;
@@ -149,7 +150,7 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
         sse.send('token', { target: 'answer', delta: answer.text });
         sse.send('done', { state: review.state, answer: answer.text, phrasing: answer.phrasing });
       } else if (stream) {
-        const events = reviewEvents(review, hit ? 'hit' : 'miss');
+        const events = reviewEvents(review, hit ? 'hit' : 'miss', Math.max(0, now() - started));
         await cache.set(replayKey, events, review.match.parsed ? 7 * DAY : UNPARSED_MATCH_CACHE_TTL_MS);
         events.forEach(({ event, data }, i) => sse.send(event, data, i + 1));
       } else {

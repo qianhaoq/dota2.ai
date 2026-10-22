@@ -123,3 +123,31 @@ describe('createAnalyticsRateLimiter', () => {
     expect(limiter.tryConsume('3.3.3.3', now)).toBe(false);
   });
 });
+
+describe('v2 analytics props', () => {
+  it('preserves the complete review metadata and existing match ID', () => {
+    const props = { matchId: '9035042364', ui: 'v2', state: 'parsed', surface: 'web', lang: 'en', phrasing: 'template' };
+    expect(sanitizeAnalyticsProps(props, 'review_viewed')).toEqual(props);
+    for (const surface of ['web', 'api', 'cli', 'mcp', 'discord']) expect(sanitizeAnalyticsProps({ surface }, 'review_viewed')).toEqual({ surface });
+    for (const state of ['parsed', 'unparsed', 'insufficient', 'needs_hero']) expect(sanitizeAnalyticsProps({ state }, 'review_viewed')).toEqual({ state });
+    expect(sanitizeAnalyticsProps({ ui: 'v1', lang: 'zh', phrasing: 'llm' }, 'review_viewed')).toEqual({ ui: 'v1', lang: 'zh', phrasing: 'llm' });
+    expect(sanitizeAnalyticsProps({ ui: 'v3', state: 'bad', surface: 'email', lang: 'fr', phrasing: 'guess' }, 'review_viewed')).toEqual({});
+  });
+  it('accepts followup identifiers and booleans, never free text', () => {
+    for (const followup_id of ['death_list', 'free']) for (const answerable of [true, false]) {
+      const props = { kind: 'custom', followup_id, answerable };
+      expect(sanitizeAnalyticsProps(props, 'followup_clicked')).toEqual(props);
+    }
+    expect(sanitizeAnalyticsProps({ followup_id: 'hello@example.com', answerable: 'true' }, 'followup_clicked')).toEqual({});
+  });
+  it('accepts both fake-door kinds and actions', () => {
+    for (const kind of ['steam_autoreview', 'fakedoor_steam_autoreview']) for (const action of ['notify', 'dismiss']) {
+      expect(sanitizeAnalyticsProps({ kind, action }, 'fakedoor_clicked')).toEqual({ kind, action });
+    }
+    expect(sanitizeAnalyticsProps({ kind: 'other', action: 'buy' }, 'fakedoor_clicked')).toEqual({});
+  });
+  it('accepts nonnegative integer days only', () => {
+    for (const days_since_first of [0, 1, 365]) expect(sanitizeAnalyticsProps({ days_since_first }, 'return_visit')).toEqual({ days_since_first });
+    for (const days_since_first of [-1, 1.5, Infinity, NaN, '1', true]) expect(sanitizeAnalyticsProps({ days_since_first }, 'return_visit')).toEqual({});
+  });
+});

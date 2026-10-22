@@ -11,6 +11,7 @@ import {
   resolveAnonId,
   decideReturnVisit,
   localDayStamp,
+  daysSinceFirstVisit,
   type AnalyticsEventName,
   type AnalyticsProps,
   type StorageLike,
@@ -45,8 +46,9 @@ export function initAnalytics(): void {
     const { anonId } = resolveAnonId(window.localStorage);
     cachedAnonId = anonId;
     identityResolved = true;
+    const days = daysSinceFirstVisit(window.localStorage, anonId);
     if (window.sessionStorage && decideReturnVisit(window.localStorage, window.sessionStorage, localDayStamp())) {
-      trackEvent('return_visit');
+      trackEvent('return_visit', { days_since_first: days });
     }
   } catch {
     // 埋点永远不能搞挂应用。

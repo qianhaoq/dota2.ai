@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { buildFakedoorSubmission } from '../../utils/fakedoor';
 import { trackEvent } from '../../services/analytics';
 import { useI18n } from '../i18n/I18nProvider';
+import { claimSession } from './analytics';
 import { IconInfo } from './icons';
 
 /** sessionStorage marker: the fake-door card is interacted with at most once per session. */
@@ -43,7 +44,12 @@ const FakedoorCard: React.FC = () => {
     }
   };
 
+  const emit = (action: 'notify' | 'dismiss') => {
+    if (claimSession('dota2ai.fakedoorV2Clicked')) trackEvent('fakedoor_clicked', { action, kind: 'steam_autoreview' });
+  };
+
   const close = () => {
+    emit('dismiss');
     setDismissed(true);
     markSeen();
   };
@@ -58,7 +64,7 @@ const FakedoorCard: React.FC = () => {
       return;
     }
     setEmailError(false);
-    trackEvent('fakedoor_clicked', { kind: 'steam_autoreview' });
+    emit('notify');
     setState('sending');
     try {
       const res = await fetch('/api/feedback', {
@@ -118,6 +124,7 @@ const FakedoorCard: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={state === 'sending'}
                 onClick={close}
                 className="inline-flex items-center justify-center min-h-[40px] px-[14px] rounded-d2-control bg-d2-surface border border-d2-line-2 text-d2-13 font-semibold text-d2-ink-2"
               >
