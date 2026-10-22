@@ -1,6 +1,10 @@
 // MUST stay the first import: wraps console.* with secret redaction before any
 // dependency (openai SDK, express, …) can log raw provider output to stdout.
 import './lib/installConsoleRedaction.js';
+import { createV1Router } from './routes/v1/index.js';
+import { securityHeaders } from './routes/v1/support.js';
+import { scheduleShadow } from './routes/v1/shadow.js';
+import { createPhrasingCompletion } from './lib/matchReview/phrasingCompletion.js';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -130,6 +134,11 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 
+app.use(securityHeaders);
+app.use('/api/v1', express.json(), (error, req, res, next) => {
+  if ([400, 413].includes(error?.status)) return res.status(400).json({ code: 'INVALID_INPUT', retryable: false, message_key: 'err.invalid_input' });
+  next(error);
+});
 app.use(express.json());
 // Malformed/oversized JSON bodies get a JSON error here (Express's default is
 // an HTML "Bad Request" page). Registered as an error handler right after the
@@ -2480,6 +2489,8 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400, extra = {}
   return res.status(status).json(payload);
 }
 
+app.use(createV1Router({ fetchMatch: getMatchDetail, phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined }));
+
 app.get('/api/review/suggestions', async (req, res) => {
   try {
     const lang = normalizeReviewLang(req.query.lang || 'en');
@@ -2549,12 +2560,14 @@ async function handleMatchReviewFacts(req, res) {
     );
     const matchFact = buildMatchFact(matchData, { lang, heroId, heroNames });
     const parse = resolveReviewParseStatus(matchId, matchData, lang);
+    const threeConclusions = buildThreeConclusions(matchFact, { lang });
+    scheduleShadow(res, { raw: matchData, heroId, lang, legacy: threeConclusions });
     // 三条结论为新增字段（additive）：老客户端忽略即可。
     return res.json({
       matchFact,
       grounded: Boolean(matchFact.grounded),
       parse,
-      threeConclusions: buildThreeConclusions(matchFact, { lang }),
+      threeConclusions,
     });
   } catch (error) {
     // Redacted structured log: fetch errors can embed ?api_key=… URLs.
@@ -2668,6 +2681,7 @@ async function handleMatchReview(req, res) {
     const isGrounded = Boolean(matchFact.grounded);
     const parse = resolveReviewParseStatus(matchId, matchData, lang);
     const threeConclusions = buildThreeConclusions(matchFact, { lang });
+    scheduleShadow(res, { raw: matchData, heroId, lang, legacy: threeConclusions });
 
     // Cards and follow-ups share the DeepSeek → Gemini provider chain, so
     // either provider alone serves both. Only a deployment with nothing
