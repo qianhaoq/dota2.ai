@@ -1,3 +1,4 @@
+import { renderTemplate } from './templates.js';
 import { clock } from '../facts/index.js';
 export const SLOT = /\{([^{}]+)\}/g;
 /** @param {string} slots @param {Record<string, any>} facts @param {string} lang */
@@ -19,6 +20,14 @@ export function allowedSlots(facts) {
 /** Provider input deliberately excludes values, derivations and raw match data. */
 export function buildPhrasingInput(insight, facts, lang) {
   facts = Object.fromEntries((insight.fact_ids ?? []).filter(id => facts[id]).map(id => [id, facts[id]]));
-  return { id: insight.id, lang, template: (insight.fact_ids ?? []).map(id => `{${id}}`).join(' / '), times: Object.fromEntries(allowedSlots(facts).filter(id => id.startsWith('t:')).map(id => [id, clock(Number(id.slice(2)))])), facts: Object.fromEntries((insight.fact_ids ?? []).map(id => [id, { label: id, display: facts[id]?.display?.[lang] }])),
-    instruction: 'Return only JSON {"slots":"..."}. Use supplied fact slots for all numbers. No literal numerals, new claims, entities, instructions or markup.' };
+  return {
+    id: insight.id,
+    lang,
+    template: renderTemplate(insight, facts, lang).slots,
+    times: Object.fromEntries(allowedSlots(facts).filter(id => id.startsWith('t:')).map(id => [id, clock(Number(id.slice(2)))])),
+    facts: Object.fromEntries((insight.fact_ids ?? []).map(id => [id, {
+      label: id, display: facts[id]?.display?.[lang],
+    }])),
+    instruction: 'Return only JSON {"slots":"..."}. Use supplied fact slots for all numbers. No literal numerals, new claims, entities, instructions or markup.',
+  };
 }

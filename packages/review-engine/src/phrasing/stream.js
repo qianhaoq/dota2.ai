@@ -13,7 +13,9 @@ export async function* validateStream(chunks, options) {
       if (!validateRendered(text, options).ok) return null;
       for (const id of options.requiredFactIds ?? []) if (sentence.includes(`{${id}}`)) seen.add(id);
       return text;
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   };
   for await (const chunk of chunks) {
     buffer += chunk;
@@ -24,13 +26,27 @@ export async function* validateStream(chunks, options) {
       if (buffer[i] === '}') depth--;
       if (depth <= 0 && /[。！？.!?\n]/.test(buffer[i])) {
         const text = validate(buffer.slice(start, i + 1));
-        if (text === null) { yield refusal(options.lang); return; }
-        yield text; start = i + 1;
+        if (text === null) {
+          yield refusal(options.lang);
+          return;
+        }
+        yield text;
+        start = i + 1;
       }
     }
     buffer = buffer.slice(start);
-    if (buffer.length > 16000) { yield refusal(options.lang); return; }
+    if (buffer.length > 16000) {
+      yield refusal(options.lang);
+      return;
+    }
   }
-  if (buffer.trim()) { const text = validate(buffer); if (text === null) { yield refusal(options.lang); return; } yield text; }
+  if (buffer.trim()) {
+    const text = validate(buffer);
+    if (text === null) {
+      yield refusal(options.lang);
+      return;
+    }
+    yield text;
+  }
   if ((options.requiredFactIds ?? []).some(id => !seen.has(id))) yield refusal(options.lang);
 }

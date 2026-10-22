@@ -1,3 +1,4 @@
+import { STATIC_HEROES } from '../staticHeroes.js';
 import { renderTemplate } from './templates.js';
 /** Presets are opt-in until the API v1 rollout; legacy followup lists stay stable. */
 export function buildPresetFollowups(result, player, lang, gaps) {
@@ -8,8 +9,14 @@ export function buildPresetFollowups(result, player, lang, gaps) {
   // A death event is answerable only when its complete timeline and gold samples exist.
   const deathReady = !!facts['deaths.total'] && deaths.every(d => d.killer && d.team_gold_diff_at_t != null);
   for (const d of deaths) {
-    const display = `${facts[d.fact_id].display.t}: ${d.killer ?? (zh ? '未知' : 'unknown')}; ${d.team_gold_diff_at_t ?? (zh ? '未知' : 'unknown')}`;
-    facts[d.fact_id] = { ...facts[d.fact_id], display: { ...facts[d.fact_id].display, en: display, zh: display } };
+    const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === d.killer);
+    const gold = d.team_gold_diff_at_t ?? (zh ? '未知' : 'unknown');
+    const en = `killed by ${hero?.nameEn ?? d.killer ?? 'unknown'}; team gold difference: ${gold}`;
+    const chinese = `击杀者：${hero?.nameZh ?? d.killer ?? '未知'}；团队经济差：${gold}`;
+    facts[d.fact_id] = {
+      ...facts[d.fact_id],
+      display: { ...facts[d.fact_id].display, en, zh: chinese },
+    };
   }
   if (player && Number.isInteger(player.lane) && player.lane >= 1 && player.lane <= 3) {
     const lane = { en: ['bottom', 'middle', 'top'][player.lane - 1], zh: ['下路', '中路', '上路'][player.lane - 1] };
