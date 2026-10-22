@@ -10,7 +10,8 @@ export function buildPresetFollowups(result, player, lang, gaps) {
   const deathReady = !!facts['deaths.total'] && deaths.every(d => d.killer && d.team_gold_diff_at_t != null);
   for (const d of deaths) {
     const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === d.killer);
-    const gold = d.team_gold_diff_at_t ?? (zh ? '未知' : 'unknown');
+    const g = d.team_gold_diff_at_t;
+    const gold = g == null ? (zh ? '未知' : 'unknown') : `${g < 0 ? '−' : g > 0 ? '+' : ''}${Math.abs(g).toLocaleString('en-US')}`;
     const en = `killed by ${hero?.nameEn ?? d.killer ?? 'unknown'}; team gold difference: ${gold}`;
     const chinese = `击杀者：${hero?.nameZh ?? d.killer ?? '未知'}；团队经济差：${gold}`;
     facts[d.fact_id] = {
@@ -19,7 +20,8 @@ export function buildPresetFollowups(result, player, lang, gaps) {
     };
   }
   if (player && Number.isInteger(player.lane) && player.lane >= 1 && player.lane <= 3 && Number.isInteger(player.player_slot)) {
-    const laneIndex = player.player_slot >= 128 && player.lane !== 2 ? 3 - player.lane : player.lane - 1;
+    // OpenDota `lane` is geographic (1=bot, 2=mid, 3=top) for both teams; only `lane_role` is team-relative.
+    const laneIndex = player.lane - 1;
     const lane = { en: ['bottom', 'middle', 'top'][laneIndex], zh: ['下路', '中路', '上路'][laneIndex] };
     facts.lane = { id: 'lane', kind: 'entity', value: player.lane, display: lane, citation: 's1', source_path: `players[${player.index}].lane` };
   }

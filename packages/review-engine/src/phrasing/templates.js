@@ -78,7 +78,7 @@ export function renderTemplate(insight, facts, lang) {
       else if (/^death\.\d+$/.test(id)) sentences.push(copy('death', id));
       else if (id.startsWith('deaths.phase.')) {
         const phase = id.split('.').at(-1);
-        const name = lang === 'zh' ? { lane: '对线期', mid: '中期', late: '后期' }[phase] : phase;
+        const name = lang === 'zh' ? { lane: '对线期', mid: '中期', late: '后期' }[phase] : phase[0].toUpperCase() + phase.slice(1);
         sentences.push(copy('phase', id, { PHASE: name }));
       }
     }

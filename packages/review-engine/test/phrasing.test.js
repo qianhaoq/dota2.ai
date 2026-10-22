@@ -127,7 +127,7 @@ it('adds deterministic presets, treats baseline/location as gaps and withholds m
     const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === death.killer);
     expect(text).toContain(hero.nameEn);
     expect(r.facts[death.fact_id].display.zh).toContain(hero.nameZh);
-    expect(text).toContain(String(death.team_gold_diff_at_t));
+    expect(text).toContain(Math.abs(death.team_gold_diff_at_t).toLocaleString('en-US'));
   }
   raw.players.find(p => p.hero_id === 14).lane = 2;
   for (const lang of ['en', 'zh']) {
@@ -191,12 +191,22 @@ it.each(['en', 'zh'])('binds comeback slots to approved clauses in %s', async la
   const reordered = template.slots.split(lang === 'en' ? /(?<=\.) / : /(?<=。) /).reverse().join(' ');
   expect((await phraseInsight({ ...context, complete: async () => JSON.stringify({ slots: reordered }) })).phrasing).toBe('llm');
 });
-it.each([[1, 'top', '上路'], [3, 'bottom', '下路']])('maps Dire lane %s using team', (lane, en, zh) => {
+it.each([[false, 1, 'bottom', '下路'], [false, 3, 'top', '上路'], [true, 1, 'bottom', '下路'], [true, 3, 'top', '上路']])('maps geographic lane (dire=%s, lane=%s) without team flip', (dire, lane, en, zh) => {
   const raw = load(9035042364);
-  const player = raw.players.find(p => p.player_slot >= 128);
+  const player = raw.players.find(p => (p.player_slot >= 128) === dire);
   player.lane = lane;
   const review = buildReview(raw, { ...opts, heroId: player.hero_id, presetFollowups: true });
   expect(review.facts.lane.display).toEqual({ en, zh });
+});
+it('rejects unknown fact ids and data-gap topics with targeted reasons', () => {
+  expect(validateSlots('{gold} {made.up}', { allowedFactIds: ['gold'], requiredFactIds: ['gold'] }).reason).toBe('unknown_fact');
+  expect(rendered('Check your ward position −2,060.').reason).toBe('data_gap');
+});
+it('formats death_list gold like insight facts and capitalizes en sentences', () => {
+  const review = buildReview(load(9035042364), { ...opts, presetFollowups: true });
+  const d = Object.values(review.facts).find(f => /^death\.\d+$/.test(f.id ?? '') && /gold difference: [−+]?\d/.test(f.display.en));
+  expect(d.display.en).toMatch(/gold difference: ([−+]\d{1,3}(,\d{3})*|0)$/);
+  expect(renderTemplate({ id: 'next_game', status: 'ok', fact_ids: ['deaths.phase.lane'] }, { 'deaths.phase.lane': { display: { en: '4', zh: '4' } } }, 'en').text).toMatch(/^Lane phase/);
 });
 it.each(['en', 'zh'])('names the localized repeated killer in fallback in %s', lang => {
   const hero = STATIC_HEROES[2] ?? Object.values(STATIC_HEROES)[0];
