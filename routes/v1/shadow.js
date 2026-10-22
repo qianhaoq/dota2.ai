@@ -1,7 +1,7 @@
 import { buildReview } from '../../packages/review-engine/src/buildReview.js';
 /** Only registers work: legacy data and responses are never modified. */
 export function scheduleShadow(res, { raw, heroId, lang, legacy, logger = console, enabled = process.env.SHADOW_DIFF !== 'false' && process.env.SHADOW_DIFF !== '0' }) {
-  if (!enabled) return;
+  if (!enabled || !Number.isInteger(heroId) || heroId <= 0) return;
   res.once('finish', () => setImmediate(() => {
     try {
       const review = buildReview(raw, { heroId, lang, fetchedAt: new Date().toISOString() });

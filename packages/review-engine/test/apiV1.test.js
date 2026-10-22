@@ -124,6 +124,14 @@ describe('API v1 contract', () => {
     const text = await (await broken.get(`${base}/ask`, post({ hero: 14, followup_id: 'death_list' }))).text();
     expect(events(text).at(-1).data.phrasing).toBe('template'); expect(text).not.toContain('provider secret');
   });
+  it('ask treats an empty followup ID as absent for free questions', async () => {
+    const { get } = await setup();
+    const ask = async body => events(await (await get(`${base}/ask`, post({ hero: 14, ...body }))).text());
+    const expected = await ask({ question: 'Show my deaths' });
+    expect(expected.map(e => e.event)).toEqual(['token', 'done']);
+    expect(await ask({ followup_id: '', question: 'Show my deaths' })).toEqual(expected);
+    expect((await ask({ followup_id: '' }))[0]).toMatchObject({ event: 'error', data: { code: 'INVALID_INPUT' } });
+  });
   it('ask validates question and applies its separate hourly bucket', async () => {
     const { get } = await setup();
     expect(events(await (await get(`${base}/ask`, post({ hero: 14, question: 'x'.repeat(301) }))).text())[0].data.code).toBe('INVALID_INPUT');
@@ -285,6 +293,15 @@ describe('cache, privacy and shadow support', () => {
     const hash = createIpKey(now); const req = { socket: { remoteAddress: '1.2.3.4' }, headers: {} };
     const key = hash(req); expect(key).toMatch(/^[a-f0-9]{64}$/); expect(hash(req)).toBe(key); time += DAY; expect(hash(req)).not.toBe(key);
     const limit = createLimiter({ capacity: 1, windowMs: 1000, now }); expect(limit(key)).toBe(0); expect(limit(key)).toBe(1);
+  });
+  it.each([null, undefined, 0, -1, 1.5, NaN, Infinity, '14'])('shadow does no work or logging for invalid hero ID %s', async heroId => {
+    const { EventEmitter } = await import('node:events');
+    const res = new EventEmitter(); const logger = { log: vi.fn() };
+    const once = vi.spyOn(res, 'once');
+    scheduleShadow(res, { raw: fixture(9035042364), heroId, lang: 'en', legacy: {}, logger, enabled: true });
+    expect(once).not.toHaveBeenCalled();
+    res.emit('finish'); await new Promise(setImmediate);
+    expect(logger.log).not.toHaveBeenCalled();
   });
   it('shadow omits minute and fix kind for unparsed insights', async () => {
     const { EventEmitter } = await import('node:events');

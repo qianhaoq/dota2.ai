@@ -111,7 +111,7 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
       const params = input(req, ask);
       let followupId, question;
       if (ask) {
-        followupId = req.body.followup_id;
+        followupId = req.body.followup_id === '' ? undefined : req.body.followup_id;
         if (followupId != null && (typeof followupId !== 'string' || followupId.length > 100)) throw invalid();
         if (req.body.question != null && typeof req.body.question !== 'string') throw invalid();
         question = req.body.question?.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim();
