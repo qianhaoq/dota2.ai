@@ -41,9 +41,16 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
     let active = 0;
     const queue = [];
     return async (...args) => {
-      if (active >= max) await new Promise(resolve => queue.push(resolve));
+      const signal = args[1]?.signal;
+      signal?.throwIfAborted();
+      if (active >= max) await new Promise((resolve, reject) => {
+        const ready = () => { signal?.removeEventListener('abort', abort); resolve(); };
+        const abort = () => { queue.splice(queue.indexOf(ready), 1); reject(signal.reason); };
+        queue.push(ready);
+        signal?.addEventListener('abort', abort, { once: true });
+      });
       else active++;
-      try { return await fn(...args); } finally {
+      try { signal?.throwIfAborted(); return await fn(...args); } finally {
         if (queue.length) queue.shift()();
         else active--;
       }
@@ -60,25 +67,44 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
     let entry = await cache.get(params.key);
     const hit = !!entry;
     if (!entry) {
-      if (!pending.has(params.key)) {
+      let task = pending.get(params.key);
+      if (task?.controller.signal.aborted) task = undefined;
+      if (!task) {
         limit(req, res, reviewLimit);
-        const promise = (async () => {
-          onStart();
-          const raw = await fetchBounded(params.matchId);
+        task = { controller: new AbortController(), waiters: 0, promise: null, settled: false };
+        const current = task;
+        task.promise = (async () => {
+          const raw = await fetchBounded(params.matchId, { signal: current.controller.signal });
+          current.controller.signal.throwIfAborted();
           if (!raw || raw.error || !raw.match_id) throw Object.assign(new Error('missing match'), { code: 'MATCH_NOT_FOUND' });
           const value = { raw, fetchedAt: new Date(now()).toISOString() };
           await cache.set(params.key, value, isMatchParsed(raw) ? 7 * DAY : UNPARSED_MATCH_CACHE_TTL_MS);
           return value;
-        })();
-        pending.set(params.key, promise);
+        })().finally(() => {
+          current.settled = true;
+          if (pending.get(params.key) === current) pending.delete(params.key);
+        });
+        pending.set(params.key, task);
       }
-      const promise = pending.get(params.key);
+      task.waiters++;
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        if (--task.waiters === 0 && !task.settled) task.controller.abort();
+      };
+      const onClose = () => { if (!res.writableFinished) release(); };
+      res.once('close', onClose);
+      if (res.destroyed) onClose();
       onStart();
-      try { entry = await promise; } finally { if (pending.get(params.key) === promise) pending.delete(params.key); }
+      try { entry = await task.promise; } finally { res.removeListener('close', onClose); release(); }
     }
-    return { review: buildReview(entry.raw, { heroId: params.heroId, lang: params.lang, fetchedAt: entry.fetchedAt, presetFollowups: true }), hit };
+    const review = buildReview(entry.raw, { heroId: params.heroId, lang: params.lang, fetchedAt: entry.fetchedAt, presetFollowups: true });
+    review.meta.cache = hit ? 'hit' : 'miss';
+    return { review, hit };
   }
   const handle = (ask, streaming) => async (req, res) => {
+    if (streaming && !ask) res.vary('Accept');
     const stream = streaming && (ask || !req.headers.accept?.includes('application/json'));
     let sse;
     try {
@@ -113,11 +139,12 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
         const followup = review.followups.find(f => f.id === (followupId ?? topic));
         if (followupId && !followup) throw invalid();
         const answerKey = `ask:${params.key}:${params.lang}:${followupId}`;
-        let answer = followupId ? await cache.get(answerKey) : undefined;
+        const cacheable = followupId && review.state === 'parsed' && followup?.answerable;
+        let answer = cacheable ? await cache.get(answerKey) : undefined;
         if (!answer) {
           // Free questions are deliberately unanswerable unless matched to approved evidence.
           answer = followup ? await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) }) : { text: refusal(params.lang), phrasing: 'template' };
-          if (followupId) await cache.set(answerKey, answer, 7 * DAY);
+          if (cacheable) await cache.set(answerKey, answer, 7 * DAY);
         }
         sse.send('token', { target: 'answer', delta: answer.text });
         sse.send('done', { state: review.state, answer: answer.text, phrasing: answer.phrasing });
@@ -142,7 +169,7 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
       } else res.status(status).json(errorBody(code));
     }
   };
-  router.use('/api/v1', (req, res, next) => { if (req.method === 'GET') res.set('Access-Control-Allow-Origin', '*'); next(); });
+  router.use('/api/v1', (req, res, next) => { if (req.method === 'GET') res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Retry-After' }); next(); });
   router.get('/api/v1/config', (req, res) => res.json({ flags: { ui_v2: false, llm_phrasing: process.env.LLM_PHRASING !== 'false' }, versions: { api: '1', engine: ENGINE_VERSION } }));
   router.get('/api/v1/review/:matchId', handle(false, false));
   router.get('/api/v1/review/:matchId/stream', handle(false, true));

@@ -40,7 +40,8 @@ describe('API v1 contract', () => {
     expect(frames.slice(0, 5).map(e => e.data.step)).toEqual(['fetch_match', 'parse_check', 'facts', 'insights', 'phrasing']);
     expect(frames.at(-1).event).toBe('done');
     expect(frames.at(-1).data.state).toBe(json.state);
-    expect(frames.at(-1).data.review).toEqual(json);
+    expect(json.meta.cache).toBe('miss');
+    expect(frames.at(-1).data.review).toEqual({ ...json, meta: { ...json.meta, cache: 'hit' } });
     expect(frames.find(e => e.data.kind === 'result_header').data.payload).toEqual({ match: json.match, player: json.player, series_ref: 'series' });
     const resumed = events(await (await get(`${url}/stream?hero=${hero}&lang=${lang}`, { headers: { 'Last-Event-ID': '5' } })).text());
     expect(resumed).toEqual(frames.slice(5));
@@ -65,6 +66,7 @@ describe('API v1 contract', () => {
     expect((await get('/api/v1/review/1')).status).toBe(200);
     const response = await get('/api/v1/review/31');
     expect(response.status).toBe(429); expect(response.headers.get('retry-after')).toBe('20');
+    expect(response.headers.get('access-control-expose-headers')).toBe('Retry-After');
     expect(await response.json()).toEqual({ code: 'RATE_LIMITED', retryable: true, message_key: 'err.rate_limited' });
     const stream = await get('/api/v1/review/31/stream');
     expect(stream.status).toBe(429); expect(stream.headers.get('retry-after')).toBe('20');
@@ -161,7 +163,9 @@ describe('API v1 contract', () => {
   it('JSON Accept on stream returns the same review and unparsed streams finish unparsed', async () => {
     const { get } = await setup();
     const json = await (await get(`${base}?hero=14`)).json();
-    expect(await (await get(`${base}/stream?hero=14`, { headers: { Accept: 'application/json' } })).json()).toEqual(json);
+    const response = await get(`${base}/stream?hero=14`, { headers: { Accept: 'application/json' } });
+    expect(response.headers.get('vary')).toContain('Accept');
+    expect(await response.json()).toEqual({ ...json, meta: { ...json.meta, cache: 'hit' } });
     const raw = fixture(9035042364); raw.od_data = { has_parsed: false };
     const unparsed = await setup({ fetchMatch: async () => raw });
     const frames = events(await (await unparsed.get(`${base}/stream?hero=14`)).text());
@@ -192,6 +196,79 @@ describe('API v1 contract', () => {
     finish(fixture(9035042364));
     expect(await response.text()).toContain(': ping\n\n'); expect(clear).toHaveBeenCalled();
   });
+  it.each([false, true])('disconnect aborts only after all waiters leave (second waiter: %s)', async second => {
+    let signal, finish;
+    const fetchMatch = vi.fn((id, options) => {
+      signal = options.signal;
+      return new Promise((resolve, reject) => {
+        finish = () => resolve(fixture(9035042364));
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+    });
+    const { get } = await setup({ fetchMatch });
+    const first = await get(`${base}/stream`);
+    const other = second ? await get(`${base}/stream`) : null;
+    await first.body.cancel();
+    if (second) {
+      // A separate request gives the server time to process the closed socket.
+      await get('/api/v1/config');
+      expect(signal.aborted).toBe(false);
+      finish();
+      expect(events(await other.text()).at(-1).data.state).toBe('needs_hero');
+    } else await vi.waitFor(() => expect(signal.aborted).toBe(true));
+    expect(fetchMatch).toHaveBeenCalledOnce();
+  });
+  it('does not cache a result returned after its fetch was aborted', async () => {
+    let signal, finish;
+    const cache = createCache(); const set = vi.spyOn(cache, 'set');
+    const fetchMatch = vi.fn((id, options) => {
+      signal = options.signal;
+      return new Promise(resolve => { finish = () => resolve(fixture(9035042364)); });
+    });
+    const { get } = await setup({ fetchMatch, cache });
+    const response = await get(`${base}/stream`);
+    await response.body.cancel();
+    await vi.waitFor(() => expect(signal.aborted).toBe(true));
+    finish();
+    await get('/api/v1/config');
+    expect(set).not.toHaveBeenCalled();
+    fetchMatch.mockResolvedValue(fixture(9035042364));
+    expect((await get(base)).status).toBe(200);
+    expect(fetchMatch).toHaveBeenCalledTimes(2);
+  });
+  it('aborts queued requests without fetching them', async () => {
+    const signals = [];
+    const fetchMatch = vi.fn((id, { signal }) => new Promise((resolve, reject) => {
+      signals.push(signal);
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const { get } = await setup({ fetchMatch });
+    const active = await Promise.all(Array.from({ length: 8 }, (_, i) => get(`/api/v1/review/${i + 1}/stream`)));
+    const queued = await get('/api/v1/review/9/stream');
+    await queued.body.cancel();
+    await get('/api/v1/config');
+    await Promise.all(active.map(r => r.body.cancel()));
+    await vi.waitFor(() => expect(signals.every(s => s.aborted)).toBe(true));
+    expect(fetchMatch).toHaveBeenCalledTimes(8);
+  });
+  it('does not cache unparsed or insufficient preset answers; parsed answers last seven days', async () => {
+    let time = Date.now();
+    const cache = createCache({ now: () => time });
+    const set = vi.spyOn(cache, 'set');
+    const raw = fixture(9035042364);
+    const fetchMatch = vi.fn().mockResolvedValueOnce({ ...raw, od_data: { has_parsed: false } }).mockResolvedValue(raw);
+    const { get } = await setup({ fetchMatch, cache, now: () => time });
+    const ask = async id => events(await (await get(`${base}/ask`, post({ hero: 14, followup_id: id }))).text()).at(-1).data.answer;
+    const unparsed = await ask('death_list');
+    expect(set.mock.calls.filter(([key]) => key.startsWith('ask:'))).toHaveLength(0);
+    time += DAY;
+    const parsed = await ask('death_list');
+    expect(parsed).not.toBe(unparsed);
+    expect(fetchMatch).toHaveBeenCalledTimes(2);
+    expect(set.mock.calls.filter(([key]) => key.startsWith('ask:'))).toEqual([[expect.any(String), expect.objectContaining({ text: parsed }), 7 * DAY]]);
+    await ask('laning_0_10');
+    expect(set.mock.calls.filter(([key]) => key.startsWith('ask:'))).toHaveLength(1);
+  });
   it('OpenAPI 3.1 structure and references lint, including broken ref detection', async () => {
     expect(await lintOpenapi()).toBe(true);
     const broken = structuredClone(openapi); broken.components.schemas.Broken = { $ref: '#/missing' };
@@ -208,6 +285,14 @@ describe('cache, privacy and shadow support', () => {
     const hash = createIpKey(now); const req = { socket: { remoteAddress: '1.2.3.4' }, headers: {} };
     const key = hash(req); expect(key).toMatch(/^[a-f0-9]{64}$/); expect(hash(req)).toBe(key); time += DAY; expect(hash(req)).not.toBe(key);
     const limit = createLimiter({ capacity: 1, windowMs: 1000, now }); expect(limit(key)).toBe(0); expect(limit(key)).toBe(1);
+  });
+  it('shadow omits minute and fix kind for unparsed insights', async () => {
+    const { EventEmitter } = await import('node:events');
+    const res = new EventEmitter(); const logger = { log: vi.fn() };
+    const raw = fixture(9035042364); raw.od_data = { has_parsed: false };
+    scheduleShadow(res, { raw, heroId: 14, lang: 'en', legacy: {}, logger });
+    res.emit('finish'); await new Promise(setImmediate);
+    expect(JSON.parse(logger.log.mock.calls[0][0])).toMatchObject({ v2: null, fix_kind: null });
   });
   it('shadow runs only after finish, does not call LLM, and swallows errors', async () => {
     const { EventEmitter } = await import('node:events');
