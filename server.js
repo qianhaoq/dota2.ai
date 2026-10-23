@@ -66,6 +66,7 @@ import {
 } from './lib/llmErrors.js';
 import { publicModelName, resolveDeepSeekConfig, loggableModelName } from './lib/llmConfig.js';
 import { jsonBodyErrorHandler } from './lib/jsonBodyErrors.js';
+import { matchPathRedirect } from './lib/matchPathRedirect.js';
 import { parsePositiveInt } from './lib/positiveInt.js';
 import {
   buildFollowUpFallbackText,
@@ -3198,6 +3199,12 @@ app.post('/api/events', (req, res) => {
   }));
   return res.status(202).json({ ok: true });
 });
+
+// Legacy /match/:id permalinks → canonical /m/:id, 301 with the query string
+// preserved (lib/matchPathRedirect.js; non-numeric ids fall through to the
+// SPA below). Must stay before static/SPA. Hash routes (#/m/:id,
+// #/match/:id) never reach the server — the fragment is handled client-side.
+app.get('/match/:id', matchPathRedirect);
 
 app.use(express.static(path.join(__dirname, 'dist')));
 

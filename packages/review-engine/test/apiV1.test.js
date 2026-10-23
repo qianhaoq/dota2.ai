@@ -284,6 +284,37 @@ describe('API v1 contract', () => {
   });
 });
 
+describe('GET /api/v1/config flags', () => {
+  afterEach(() => { delete process.env.UI_V2; delete process.env.FF_UI_V2; });
+  it('ui_v2 defaults to false and follows UI_V2/FF_UI_V2', async () => {
+    const { get } = await setup();
+    const flag = async () => (await (await get('/api/v1/config')).json()).flags.ui_v2;
+    expect(await flag()).toBe(false);
+    process.env.UI_V2 = '1';
+    expect(await flag()).toBe(true);
+    delete process.env.UI_V2;
+    process.env.FF_UI_V2 = 'true';
+    expect(await flag()).toBe(true);
+    delete process.env.FF_UI_V2;
+    process.env.UI_V2 = '0';
+    expect(await flag()).toBe(false);
+    delete process.env.UI_V2;
+    process.env.FF_UI_V2 = 'false';
+    expect(await flag()).toBe(false);
+  });
+  it('any explicit true wins over a false value; unrecognized values fall back to false', async () => {
+    const { get } = await setup();
+    const flag = async () => (await (await get('/api/v1/config')).json()).flags.ui_v2;
+    process.env.UI_V2 = '0';
+    process.env.FF_UI_V2 = 'true';
+    expect(await flag()).toBe(true);
+    delete process.env.UI_V2;
+    delete process.env.FF_UI_V2;
+    process.env.UI_V2 = 'yes';
+    expect(await flag()).toBe(false);
+  });
+});
+
 describe('cache, privacy and shadow support', () => {
   it('LRU capacity, TTL, and daily HMAC rotation', () => {
     let time = 0; const now = () => time;

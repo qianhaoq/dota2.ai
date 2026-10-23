@@ -5,6 +5,19 @@ import { createCache, createLimiter, createIpKey, DAY, errorBody, classify, star
 import { openapi, llms } from './openapi.js';
 
 const invalid = () => Object.assign(new Error('invalid input'), { code: 'INVALID_INPUT' });
+/**
+ * Server-side ui_v2 rollout switch: UI_V2 or FF_UI_V2 env ('1'/'true' → true,
+ * '0'/'false' → false, anything else ignored; default false). This reports
+ * SERVER config only — the frontend bundle is gated by its own build-time
+ * VITE_FF_UI_V2, which ops must keep aligned by hand (docs/ROLLBACK.md);
+ * the two are NOT guaranteed to be in sync at any given moment.
+ */
+function uiV2FromEnv(env = process.env) {
+  const values = [env.UI_V2, env.FF_UI_V2];
+  if (values.some(v => v === '1' || v === 'true')) return true;
+  if (values.some(v => v === '0' || v === 'false')) return false;
+  return false;
+}
 function input(req, ask = false) {
   const source = ask ? req.body : req.query;
   if (!source || typeof source !== 'object') throw invalid();
@@ -176,7 +189,7 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
     return (await load(params, req, res)).review;
   } });
   router.use('/api/v1', (req, res, next) => { if (req.method === 'GET') res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Retry-After' }); next(); });
-  router.get('/api/v1/config', (req, res) => res.json({ flags: { ui_v2: false, llm_phrasing: process.env.LLM_PHRASING !== 'false' }, versions: { api: '1', engine: ENGINE_VERSION } }));
+  router.get('/api/v1/config', (req, res) => res.json({ flags: { ui_v2: uiV2FromEnv(), llm_phrasing: process.env.LLM_PHRASING !== 'false' }, versions: { api: '1', engine: ENGINE_VERSION } }));
   router.get('/api/v1/review/:matchId', handle(false, false));
   router.get('/api/v1/review/:matchId/stream', handle(false, true));
   router.post('/api/v1/review/:matchId/ask', handle(true, true));

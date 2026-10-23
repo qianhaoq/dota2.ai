@@ -29,8 +29,9 @@ const HomePage: React.FC = () => (
 );
 
 /**
- * Legacy deep links like `/#training` kept working through the hash nav —
- * send them to `/legacy#training` so they still land on the right workspace.
+ * Legacy deep links:
+ * - `/#training` (workspace nav) → `/legacy#training`
+ * - `/#/match/:id` or `/#/m/:id` → `/m/:id` (hash never reaches the server)
  */
 const LegacyHashRedirect: React.FC = () => {
   const location = useLocation();
@@ -39,7 +40,15 @@ const LegacyHashRedirect: React.FC = () => {
   useEffect(() => {
     if (location.pathname !== '/') return;
     const hash = location.hash.replace(/^#/, '');
-    if (hash && isNavId(hash)) {
+    if (!hash) return;
+
+    const matchHash = hash.match(/^\/?(?:match|m)\/(\d+)\b/);
+    if (matchHash) {
+      navigate(`/m/${matchHash[1]}${location.search}`, { replace: true });
+      return;
+    }
+
+    if (isNavId(hash)) {
       navigate(`/legacy#${hash}`, { replace: true });
     }
   }, [location, navigate]);

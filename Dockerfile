@@ -15,6 +15,12 @@ RUN npm ci
 # Copy source files
 COPY . .
 
+# Build-time UI flag (tier-② rollback). Unset → DEFAULT_FLAGS.ui_v2 (true).
+# Pass via: docker build --build-arg VITE_FF_UI_V2=0 …
+# or Cloud Build substitution (see docs/ROLLBACK.md).
+ARG VITE_FF_UI_V2
+ENV VITE_FF_UI_V2=$VITE_FF_UI_V2
+
 # Build the frontend
 RUN npm run build
 
