@@ -74,7 +74,10 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
     };
 
     const claimFacts = insight.fact_ids.map(id => facts[id]).filter((f): f is Fact => !!f);
-    const enemies = review.roster.filter(h => h.team && h.team !== review.player?.team);
+    const playerTeam = review.player?.team;
+    const enemies = playerTeam === 'radiant' || playerTeam === 'dire'
+        ? review.roster.filter(h => h.team && h.team !== playerTeam)
+        : [];
 
     return <div data-testid="evidence-body" data-claim={claim}>
       <div className="flex items-start justify-between gap-[8px] px-[16px] pt-[12px] pb-[10px]">

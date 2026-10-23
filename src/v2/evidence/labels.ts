@@ -122,8 +122,10 @@ export interface KillerRow {
  */
 export function killerRows(review: Review, lang: 'en' | 'zh'): KillerRow[] {
   const counts = new Map<string, number>();
+  const playerTeam = review.player?.team;
+  const alliedHeroes = new Set(review.roster.filter(h => h.team && h.team === playerTeam).map(h => h.hero));
   for (const death of review.deaths ?? []) {
-    if (death.killer) counts.set(death.killer, (counts.get(death.killer) ?? 0) + 1);
+    if (death.killer && !alliedHeroes.has(death.killer)) counts.set(death.killer, (counts.get(death.killer) ?? 0) + 1);
   }
   const max = Math.max(1, ...counts.values());
   return [...counts.entries()]

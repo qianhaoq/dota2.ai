@@ -102,6 +102,16 @@ describe('EvidenceBody claim 1 (fix this)', () => {
 });
 
 describe('EvidenceBody claim 2 (next game)', () => {
+  it('omits the enemy lineup when the player team is unknown', () => {
+    // The engine can emit null even though the UI Hero type requires a string.
+    const unknownTeam = { ...review, player: { ...review.player!, team: null } } as unknown as Review;
+    wrap(<EvidenceBody review={unknownTeam} claim={2} onPage={() => {}}/>);
+    const body = screen.getByTestId('evidence-body');
+    expect(within(body).queryByText('Enemy lineup')).toBeNull();
+    expect(within(body).queryByText('Wraith King')).toBeNull();
+    expect(within(body).getByText('Why this advice')).toBeTruthy();
+  });
+
   it('shows why chips, enemy lineup, item timings and the build gap', () => {
     wrap(<EvidenceBody review={review} claim={2} onPage={() => {}}/>);
     const body = screen.getByTestId('evidence-body');
@@ -184,6 +194,20 @@ describe('EvidenceBody shared sections', () => {
 
 
 describe('GoldXpChart domain', () => {
+  it.each([[1000, 1100], [1000, 1000]])('keeps the zero baseline inside the plot for positive samples %j', (...samples) => {
+    const positive = {
+      ...review,
+      series: { radiant_gold_adv: samples, radiant_xp_adv: [], perspective: 'radiant' },
+      facts: {},
+    } as Review;
+    wrap(<GoldXpChart review={positive} mode="gold"/>);
+    const chart = screen.getByTestId('gold-xp-chart');
+    const baseline = chart.querySelector('line[stroke="#CBD1DA"]')!;
+    const y = Number(baseline.getAttribute('y1'));
+    expect(y).toBeGreaterThanOrEqual(12);
+    expect(y).toBeLessThanOrEqual(176 - 22);
+  });
+
   it('keeps a nonzero vertical domain for a single finite / all-equal series', () => {
     const flat = {
       ...review,

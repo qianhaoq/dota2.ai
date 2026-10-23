@@ -84,7 +84,21 @@ describe('evidence labels', () => {
     expect(rows[0].share).toBe(1);
     expect(rows[1].share).toBeCloseTo(5 / 8);
     const noFacts = { ...review, facts: {} };
+    expect(killerRows(noFacts, 'en').map(r => r.slug)).toEqual(rows.map(r => r.slug));
     expect(killerRows(noFacts, 'en').every(r => r.count === null)).toBe(true);
+  });
+
+  it('excludes allied denies and self-kills while retaining non-hero killers', () => {
+    const ally = review.roster.find(h => h.team === review.player?.team && h.hero !== review.player?.hero)!;
+    const deaths = [ally.hero, review.player!.hero, 'tower', 'unknown'].flatMap(killer =>
+      Array.from({ length: 10 }, (_, t) => ({ t, killer, team_gold_diff_at_t: null })));
+    const withDenies = { ...review, deaths: [...deaths, ...(review.deaths ?? [])] };
+    for (const facts of [review.facts, {}]) {
+      const rows = killerRows({ ...withDenies, facts }, 'en');
+      expect(rows.map(r => r.slug)).toEqual(['tower', 'unknown', 'skeleton_king', 'doom_bringer', 'hoodwink', 'sniper']);
+      expect(rows[0].share).toBe(1);
+      expect(rows.find(r => r.slug === 'skeleton_king')?.share).toBeCloseTo(8 / 10);
+    }
   });
 
   it('itemRows drops consumables/wards and pre-horn buys, keeps mm:ss labels', () => {
