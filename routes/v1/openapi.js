@@ -15,6 +15,7 @@ export const openapi = {
     '/api/v1/review/{matchId}': { get: { parameters, responses: responses({ 'application/json': { schema: { $ref: './schema/review.v1.json' } } }) } },
     '/api/v1/review/{matchId}/stream': { get: { parameters: [...parameters, { name: 'Last-Event-ID', in: 'header', schema: { type: 'integer', minimum: 0 } }], description: 'Ordered progress, hero_pick, card, token, done/error events. IDs increase; heartbeat every 15 seconds. Cached replay resumes after Last-Event-ID. done.review is the complete JSON review.', responses: responses(sse) } },
     '/api/v1/review/{matchId}/ask': { post: { parameters: [parameters[0]], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['hero'], properties: { hero: { type: ['string', 'integer'] }, lang: { enum: ['en', 'zh'] }, followup_id: { type: 'string' }, question: { type: 'string', maxLength: 300 } }, anyOf: [{ required: ['followup_id'] }, { required: ['question'] }] } } } }, responses: responses(sse) } },
+    '/mcp': { post: { description: 'Stateless Streamable HTTP MCP. Tools: review_match({match_id,hero?,lang?}) and get_evidence({match_id,hero,insight_id}). Send Accept: application/json, text/event-stream.', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' }, example: { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} } } } }, responses: { 200: { description: 'MCP JSON-RPC response', content: { 'application/json': { schema: { type: 'object' } } } }, 202: { description: 'Notification accepted' } } }, get: { description: 'Stateless transport has no SSE subscription', responses: { 405: { description: 'Use POST' } } } },
     '/api/v1/config': { get: { responses: responses({ 'application/json': { schema: { type: 'object' } } }) } },
     '/llms.txt': { get: { responses: responses({ 'text/plain': { schema: { type: 'string' } } }) } },
   }, components: { schemas: { Error: error } },
@@ -27,6 +28,10 @@ GET /api/v1/review/{matchId}?hero=pudge&lang=en returns Review JSON; omit hero f
 GET /api/v1/review/{matchId}/stream returns SSE v1 with cached Last-Event-ID replay.
 POST /api/v1/review/{matchId}/ask accepts {hero,lang,followup_id?,question?}. Presets include death_list and laning_0_10. Unsupported questions receive a data-gap refusal.
 GET /api/v1/config exposes flags and versions. GET /openapi.json documents the API.
+POST /mcp provides stateless Streamable HTTP MCP: review_match({match_id,hero?,lang?}), get_evidence({match_id,hero,insight_id}).
+CLI: npx dota2ai review 9035042364 --hero pudge --json (add --offline for OpenDota + template engine).
+Stdio MCP: npx -p @dota2ai/mcp dota2ai-mcp [--offline]; DOTA2AI_OFFLINE=1 also enables offline mode.
+DOTA2AI_API_BASE overrides the public API origin for CLI and stdio MCP.
 No API key needed. Review misses: 30/10 minutes/IP; ask: 20/hour/IP. Respect Retry-After.
 Example: /api/v1/review/9035042364?hero=pudge&lang=en
 `;

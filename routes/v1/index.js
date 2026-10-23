@@ -1,4 +1,5 @@
 import express from 'express';
+import { attachMcp } from '@dota2ai/mcp';
 import { buildReview, ENGINE_VERSION, STATIC_HEROES, isMatchParsed, UNPARSED_MATCH_CACHE_TTL_MS, phraseInsight, refusal } from '../../packages/review-engine/src/index.js';
 import { createCache, createLimiter, createIpKey, DAY, errorBody, classify, startSse } from './support.js';
 import { openapi, llms } from './openapi.js';
@@ -170,6 +171,10 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
       } else res.status(status).json(errorBody(code));
     }
   };
+  attachMcp(router, { reviewForRequest: (req, res) => async args => {
+    const params = input({ params: { matchId: String(args.match_id) }, query: { hero: args.hero, lang: args.lang } });
+    return (await load(params, req, res)).review;
+  } });
   router.use('/api/v1', (req, res, next) => { if (req.method === 'GET') res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Retry-After' }); next(); });
   router.get('/api/v1/config', (req, res) => res.json({ flags: { ui_v2: false, llm_phrasing: process.env.LLM_PHRASING !== 'false' }, versions: { api: '1', engine: ENGINE_VERSION } }));
   router.get('/api/v1/review/:matchId', handle(false, false));

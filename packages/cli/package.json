@@ -1,0 +1,29 @@
+{
+  "name": "dota2ai",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "dota2ai": "./bin/dota2ai.js"
+  },
+  "exports": {
+    "./client": "./src/client.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "scripts"
+  ],
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "dependencies": {
+    "@dota2ai/review-engine": "*"
+  },
+  "bundleDependencies": [
+    "@dota2ai/review-engine"
+  ],
+  "scripts": {
+    "prepack": "node scripts/prepare-pack.js",
+    "postpack": "node -e \"require('node:fs').rmSync('node_modules/@dota2ai/review-engine', {recursive:true,force:true})\""
+  }
+}

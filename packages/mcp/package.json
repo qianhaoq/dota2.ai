@@ -1,0 +1,10 @@
+{
+  "name": "@dota2ai/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "dota2ai-mcp": "./bin/dota2ai-mcp.js" },
+  "exports": "./src/index.js",
+  "files": ["bin", "src"],
+  "engines": { "node": ">=20.10.0" },
+  "dependencies": { "dota2ai": "*", "@modelcontextprotocol/sdk": "^1.32.1", "zod": "^3.25.76" }
+}
