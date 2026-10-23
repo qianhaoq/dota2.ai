@@ -28,7 +28,10 @@ jobs:
         run: npm ci
 
       - name: Install Playwright chromium
-        run: npx playwright install --with-deps chromium
+        # --with-deps apt-updates system packages; the self-hosted pool already
+        # has the deps, so fall back to a plain browser install when the apt
+        # mirror flakes (500 from deb.debian.org).
+        run: npx playwright install --with-deps chromium || npx playwright install chromium
 
       - name: Run e2e (build + preview:mock + playwright)
         run: npm run test:e2e
