@@ -42,8 +42,8 @@ PR: #___
 
 ## 回滚命令 / Rollback Command
 
-> 三级回滚总览（① `LLM_PHRASING=false` 措辞回退 → ② 构建期 `VITE_FF_UI_V2=0` UI 回退 → ③ 本节流量回滚）见 [docs/ROLLBACK.md](docs/ROLLBACK.md)。
-> Three-tier rollback overview (① `LLM_PHRASING=false` phrasing → ② build-time `VITE_FF_UI_V2=0` UI → ③ the traffic rollback below) lives in [docs/ROLLBACK.md](docs/ROLLBACK.md).
+> 三级回滚总览（① `--update-env-vars LLM_PHRASING=false` 措辞回退 → ② Docker `ARG VITE_FF_UI_V2=0` 打回滚镜像 → ③ 本节流量回滚）见 [docs/ROLLBACK.md](docs/ROLLBACK.md)。① 勿用 `--set-env-vars`（会清空其它 env）。
+> Three-tier rollback overview (① `--update-env-vars LLM_PHRASING=false` phrasing → ② Docker `ARG VITE_FF_UI_V2=0` rollback image → ③ the traffic rollback below) lives in [docs/ROLLBACK.md](docs/ROLLBACK.md). Do not use `--set-env-vars` for ① (it clears other env).
 
 > 上线出问题时第一时间执行的命令（部署回退、功能开关、数据修复）。
 > The first command to run when the release goes wrong (deploy revert,

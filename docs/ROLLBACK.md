@@ -10,7 +10,7 @@
 | 级别 Tier | 手段 Lever | 生效方式 | 影响范围 | 恢复 |
 | --- | --- | --- | --- | --- |
 | ① | `LLM_PHRASING=false` | 服务端 env，新修订热读 `process.env` | 仅 LLM 措辞 → 纯模板 | 删 env 或设 `true` |
-| ② | 构建期 `VITE_FF_UI_V2=0` | **重新构建**前端并部署新修订 | `/` 回到 legacy UI | 再以默认构建部署 |
+| ② | 构建期 `VITE_FF_UI_V2=0` | **重新构建镜像**（Dockerfile `ARG`）并部署新修订 | `/` 回到 legacy UI | 再以默认构建部署 |
 | ③ | Cloud Run 流量切回上一修订 | `gcloud run services update-traffic`（脚本见 `QA.md`） | 整站回到旧版本 | 再切回新修订 |
 
 服务与区域 / Service & region: `dota2-ai` @ `asia-east1`, project `aegis-assistant-488913`。
@@ -27,11 +27,11 @@
 
 ```bash
 gcloud run services update dota2-ai --region asia-east1 --project aegis-assistant-488913 \
-  --set-env-vars LLM_PHRASING=false
+  --update-env-vars LLM_PHRASING=false
 ```
 
-> 注意：`--set-env-vars` 会替换整组 env；已有其它 env 时用 `--update-env-vars`，或先
-> `gcloud run services describe dota2-ai --format=json` 抄下现值再整组设置。
+> 必须用 `--update-env-vars`（只改列出的键，保留其余 env）。**不要**用 `--set-env-vars`：
+> 官方语义会先清空再写入，事故时会把已有的 `UI_V2` / 密钥以外的调参一并抹掉。
 
 验证 / verify:
 
@@ -39,20 +39,65 @@ gcloud run services update dota2-ai --region asia-east1 --project aegis-assistan
 curl -s https://dota2.ai/api/v1/config | jq '.flags.llm_phrasing'   # → false
 ```
 
-恢复 / roll forward：删除该 env（或设 `LLM_PHRASING=true`）再部署一次。
+恢复 / roll forward：`--update-env-vars LLM_PHRASING=true`，或 `--remove-env-vars LLM_PHRASING`。
 
 ## ② 前端 UI 回退（构建期 flag）/ Frontend UI back to legacy
 
 **症状**：v2 UI（`/` 上的对话式首页）出现阻断性缺陷，需要把 `/` 交回 legacy 应用。
 
 v2 UI 由**构建期** env `VITE_FF_UI_V2` 决定（`src/v2/flags.ts`，`DEFAULT_FLAGS.ui_v2`）。
-以 `VITE_FF_UI_V2=0` 重新构建并部署新修订，`/` 即回到 legacy；v2 仍可通过 `/new` 与
-`/m/:id` 预览面访问（路由强制 ui_v2，见 `resolveFlags`）。
+镜像构建在 Dockerfile 的 builder 阶段执行 `npm run build`，且 `.dockerignore` 排除本地 `dist`，
+因此**只在宿主机设 `VITE_FF_UI_V2=0` 再 `npm run build` 无效**——必须把 flag 作为 Docker
+**`ARG VITE_FF_UI_V2`** 传入（Dockerfile 再 `ENV` 给 Vite）。未传 ARG 时 env 为空，解析回落到
+`DEFAULT_FLAGS.ui_v2 === true`。
+
+以 `VITE_FF_UI_V2=0` 打新镜像并部署后，`/` 回到 legacy；v2 仍可通过 `/new` 与 `/m/:id`
+预览面访问（路由强制 ui_v2，见 `resolveFlags`）。
+
+### 本地 / 显式 docker build
 
 ```bash
-VITE_FF_UI_V2=0 npm run build
-# 然后按常规流程部署新修订（部署脚本不在本文件范围）
+# 回滚镜像（legacy on /）
+docker build --build-arg VITE_FF_UI_V2=0 \
+  -t REGION-docker.pkg.dev/PROJECT/REPO/dota2-ai:ui-v2-off .
+
+# 默认构建（省略 ARG → v2 on /）
+docker build -t REGION-docker.pkg.dev/PROJECT/REPO/dota2-ai:latest .
 ```
+
+推镜像后按常规 `gcloud run deploy` / `gcloud run services update --image` 上新修订
+（`main` 触发器若只换 image，会保留已有 secret/env）。
+
+### 与现有 Cloud Build 流程对齐
+
+仓库日常路径是 `gcloud builds submit --tag …`（见 README）：该快捷方式**不能**传
+`--build-arg`。需要回滚镜像时，用一次性 config + substitution（与 Dockerfile `ARG` 对齐）：
+
+```bash
+# 按需改 IMAGE；_VITE_FF_UI_V2=0 打回滚镜像
+IMAGE=asia-east1-docker.pkg.dev/aegis-assistant-488913/REPO/dota2-ai:ui-v2-off
+cat > /tmp/cb-ui-v2.yaml <<'YAML'
+steps:
+- name: gcr.io/cloud-builders/docker
+  args:
+  - build
+  - --build-arg
+  - VITE_FF_UI_V2=${_VITE_FF_UI_V2}
+  - -t
+  - ${_IMAGE}
+  - .
+images:
+- ${_IMAGE}
+substitutions:
+  _VITE_FF_UI_V2: "0"
+  _IMAGE: "asia-east1-docker.pkg.dev/aegis-assistant-488913/REPO/dota2-ai:ui-v2-off"
+YAML
+gcloud builds submit --config=/tmp/cb-ui-v2.yaml \
+  --substitutions=_VITE_FF_UI_V2=0,_IMAGE=${IMAGE} \
+  --project aegis-assistant-488913
+```
+
+然后 `gcloud run services update dota2-ai --region asia-east1 --image "$IMAGE"`。
 
 ### `GET /api/v1/config` 的 `flags.ui_v2` 与前端 flag 的关系
 
@@ -65,12 +110,12 @@ API 的 `flags.ui_v2` 读**服务端** env `UI_V2` 或 `FF_UI_V2`（`routes/v1/i
 rollout 状态暴露给监控/巡检对账用。
 
 ```bash
-# 服务端侧对齐（与前端构建期 flag 保持一致地设置）：
+# 服务端侧对齐（两个别名都清掉，避免只改 UI_V2 时 FF_UI_V2=true 仍把 config 报成 true）：
 gcloud run services update dota2-ai --region asia-east1 --project aegis-assistant-488913 \
-  --update-env-vars UI_V2=false
+  --update-env-vars UI_V2=false,FF_UI_V2=false
 ```
 
-恢复 / roll forward：以默认构建（不设 `VITE_FF_UI_V2=0`）重新构建部署即可。
+恢复 / roll forward：以默认构建（不传 `VITE_FF_UI_V2=0`）重新构建部署即可。
 
 ## ③ 流量回滚（上一修订）/ Traffic to the previous revision
 
@@ -89,5 +134,7 @@ gcloud run services update dota2-ai --region asia-east1 --project aegis-assistan
 
 - 历史 path 链接 `GET /match/:id` 由服务端 **301** 到 `/m/:id` 并**原样保留 query**
   （`lib/matchPathRedirect.js`，挂在 static/SPA 之前）；非数字 id 不重定向，落回 SPA。
-- 历史 **hash** 路由 `#/m/:id`、`#/match/:id`：hash 片段不会发送到服务器，因此本服务
-  **不做** hash 301——由客户端/浏览器（SPA 与 `LegacyHashRedirect`）处理。
+- 历史 **hash** 路由 `#/match/:id`、`#/m/:id`：hash 片段不会发送到服务器，因此本服务
+  **不做** hash 301——由客户端 `LegacyHashRedirect`（`src/App.tsx`）在 `/` 上解析并
+  `replace` 导航到 `/m/:id`（保留当前 `location.search`）。workspace 旧链 `/#training`
+  仍进 `/legacy#training`。

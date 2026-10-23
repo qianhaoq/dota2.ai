@@ -93,6 +93,17 @@ describe('App routes', () => {
     await waitFor(() => expect(screen.getByTestId('legacy-shell')).toBeTruthy());
   });
 
+  it('legacy hash #/match/:id on / redirects to /m/:id', async () => {
+    renderRoute('/#/match/9035042364');
+    await waitFor(() => expect(screen.getByText('9035042364')).toBeTruthy());
+    expect(screen.queryByText('Why did you win or lose?')).toBeNull();
+  });
+
+  it('legacy hash #/m/:id on / redirects to /m/:id', async () => {
+    renderRoute('/#/m/9035042364');
+    await waitFor(() => expect(screen.getByText('9035042364')).toBeTruthy());
+  });
+
   it('unknown routes fall back to the new home', () => {
     renderRoute('/totally/unknown');
     expect(screen.getByText('Why did you win or lose?')).toBeTruthy();
