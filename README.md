@@ -185,3 +185,24 @@ Honest limits: match facts include stats, lane inference, economy and objectives
 Stack: React 18 + TypeScript + Vite + Tailwind frontend; Express backend (`server.js`) streaming SSE; DeepSeek (default model `deepseek-flash`, overridable via `DEEPSEEK_MODEL`, thinking via `DEEPSEEK_THINKING`) for coaching; OpenDota/Steam public data. The internal A2UI-style component catalog (`src/coach-ui`, `dota-coach-ui/1`) is an internal domain model — not a claim of official A2UI wire-protocol compatibility. Design docs: [`docs/design/tactical-coach-v3/`](docs/design/tactical-coach-v3/).
 
 Quick start: `npm ci` → `cp .env.example .env` (add `DEEPSEEK_API_KEY`) → `npm run start:dev`. Verify with `npm test && npx tsc --noEmit && npm run build && node --check server.js`. Not affiliated with Valve; see LICENSE, CONTRIBUTING.md and SECURITY.md.
+
+### CLI and MCP
+
+```bash
+npx dota2ai review 9035042364 --hero pudge --lang en
+npx dota2ai review 9035042364 --hero 14 --json --offline
+npx -p @dota2ai/mcp dota2ai-mcp --offline
+```
+
+CLI and stdio MCP use the public API by default (`DOTA2AI_API_BASE` overrides
+`https://dota2.ai`). Offline mode uses OpenDota and template phrasing, with no keys
+required; `OPENDOTA_API_KEY` is optional. MCP also accepts `DOTA2AI_OFFLINE=1`.
+CLI exit codes: 0 success (including unparsed), 2 invalid input, 3 insufficient
+data, 4 upstream failure. JSON output preserves the API Review schema.
+
+For a local MCP client, configure
+`{"mcpServers":{"dota2ai":{"command":"npx","args":["-y","-p","@dota2ai/mcp","dota2ai-mcp"]}}}`.
+Remote clients can connect to `https://dota2.ai/mcp` using Streamable HTTP.
+Tools: `review_match({match_id, hero?, lang?})` returns a Review;
+`get_evidence({match_id, hero, insight_id})` returns the insight, referenced facts,
+evidence, citations and data gap. Server MCP uses OpenDota and template phrasing.

@@ -6,6 +6,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 COPY packages/review-engine/package.json ./packages/review-engine/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/mcp/package.json ./packages/mcp/
 
 # Install all dependencies (including devDependencies for build)
 RUN npm ci
@@ -24,6 +26,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 COPY packages/review-engine/package.json ./packages/review-engine/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/mcp/package.json ./packages/mcp/
 
 # Install only production dependencies
 RUN npm ci --omit=dev
