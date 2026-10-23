@@ -28,6 +28,14 @@ export interface Insight {
         label_key: string;
     }[];
     citations: string[];
+    /** Registered data gap tied to this insight (e.g. death_locations), if any. */
+    data_gap?: string | null;
+    /** Engine evidence descriptor: chart kind + highlight window (minutes). */
+    evidence?: {
+        kind?: string;
+        highlight?: number[];
+        markers?: string[];
+    };
 }
 export interface Followup {
     id: string;
@@ -36,10 +44,44 @@ export interface Followup {
     gap?: string;
     fact_ids?: string[];
 }
+export interface Objective {
+    t: number;
+    type: string;
+    key: string | null;
+    team: 'radiant' | 'dire' | null;
+    fact_id: string;
+}
+export interface DeathEntry {
+    t: number;
+    killer: string | null;
+    team_gold_diff_at_t: number | null;
+    fact_id?: string;
+}
+export interface Purchase {
+    t: number;
+    item: string;
+    key_item: boolean;
+}
+export interface Citation {
+    id: string;
+    provider: string;
+    url: string;
+    fetched_at: string;
+    fields: string[];
+}
 export interface Review {
     state: string;
     match: {
         id: number;
+        duration_s?: number | null;
+        winner?: string | null;
+        score?: {
+            radiant: number | null;
+            dire: number | null;
+        };
+        patch?: unknown;
+        parsed?: boolean;
+        start_time?: number | null;
     };
     player: (Hero & {
         result: 'win' | 'loss';
@@ -56,6 +98,17 @@ export interface Review {
     series: {
         radiant_gold_adv: number[];
         radiant_xp_adv: number[];
+        perspective?: string;
+    };
+    objectives?: Objective[];
+    deaths?: DeathEntry[];
+    purchases?: Purchase[];
+    citations?: Citation[];
+    meta?: {
+        url?: string;
+        evidence_url?: string;
+        generated_at?: string;
+        [key: string]: unknown;
     };
 }
 export interface StreamError {

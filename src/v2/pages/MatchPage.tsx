@@ -17,6 +17,10 @@ import FakedoorCard from '../review/FakedoorCard';
 import ResultHeader from '../review/ResultHeader';
 import ParseNotice from '../review/ParseNotice';
 import { control, surface, ToolTrace, HeroGrid, HeroCollapsedRow, MiniChart, FollowupChips, RefusalBubble, Share, JumpToLatest, FactChip } from '../review/ConversationCards';
+import EvidenceBody from '../evidence/EvidenceBody';
+import EvidencePanel from '../evidence/EvidencePanel';
+import EvidenceSheet from '../evidence/EvidenceSheet';
+import { useMedia } from '../evidence/useMedia';
 interface Turn {
     id: number;
     question: string;
@@ -169,9 +173,34 @@ export default function MatchPage() {
     };
     const streaming = turns.some(t => t.status === 'streaming');
     const player = review?.player ?? stream.resultHeader?.player;
+    // Evidence sheet (mobile) / panel (desktop) state lives in the URL so it
+    // deep-links: ?claim=N (1-based) & view=evidence (tech-plan §7.4).
+    const desktop = useMedia('(min-width:1024px)');
+    const evidenceTrigger = useRef<HTMLElement | null>(null);
+    const claimParam = Number(params.get('claim'));
+    const claimIndex = review && claimParam >= 1 && claimParam <= review.insights.length ? claimParam - 1 : null;
+    const evidenceOpen = params.get('view') === 'evidence' && claimIndex != null;
+    const openEvidence = (index: number, trigger?: HTMLElement) => {
+        if (trigger)
+            evidenceTrigger.current = trigger;
+        const next = new URLSearchParams(location.search);
+        next.set('claim', String(index + 1));
+        next.set('view', 'evidence');
+        navigate({ pathname: location.pathname, search: `?${next}` });
+    };
+    const closeEvidence = () => {
+        const next = new URLSearchParams(location.search);
+        next.delete('view');
+        next.delete('claim');
+        navigate({ pathname: location.pathname, search: `?${next}` }, { replace: true });
+        evidenceTrigger.current?.focus?.();
+    };
+    const evidenceBody = review && claimIndex != null
+        ? <EvidenceBody review={review} claim={claimIndex} onPage={index => openEvidence(index)} onClose={desktop ? undefined : closeEvidence}/>
+        : null;
     if (!valid)
         return <V2Shell><p role="alert">{t('invalidMatch')}</p></V2Shell>;
-    return <V2Shell topBarAction={review?.player ? <Share matchId={matchId} hero={hero} lang={lang} claim={params.get('claim') ?? '1'} review={review}/> : undefined} scrollRef={scroll} onScroll={() => {
+    return <V2Shell topBarAction={review?.player ? <Share matchId={matchId} hero={hero} lang={lang} claim={params.get('claim') ?? '1'} review={review}/> : undefined} panel={<EvidencePanel open={evidenceOpen && desktop}>{evidenceOpen && desktop ? evidenceBody : null}</EvidencePanel>} layer={evidenceOpen && !desktop ? <EvidenceSheet onClose={closeEvidence}>{evidenceBody}</EvidenceSheet> : null} scrollRef={scroll} onScroll={() => {
         const el = scroll.current!;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
         setAway(!stick.current);
@@ -189,7 +218,7 @@ export default function MatchPage() {
             }}/>}
       {player && <HeroCollapsedRow hero={player.hero} change={() => setPicker(true)}/>}
       {player && <ResultHeader heroName={player.hero.replaceAll('_', ' ')} heroSlug={player.hero} kda={player.kda?.map((value: number | null) => value ?? '—').join('/') ?? ''} isRadiant={player.team === 'radiant'} outcome={player.result} duration={review?.facts['ancient.fell']?.display[lang] ?? ''} chart={review?.series ? <MiniChart series={review.series}/> : undefined}/>}
-      {stream.insights.map((insight, i) => insight && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'}/>)}
+      {stream.insights.map((insight, i) => insight && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'} onEvidence={review ? openEvidence : undefined}/>)}
       {stream.done?.state === 'unparsed' && <ParseNotice matchId={matchId} parse={{ status: 'unparsed', jobId: null, retryAfterSec: null, message: '' }} onRefresh={stream.retry}/>}
       {stream.done && stream.done.state !== 'unparsed' && stream.done.state !== 'parsed' && stream.done.state !== 'needs_hero' && <p className="text-d2-13 text-d2-warn">{t('insufficientBadge')}</p>}
       {review?.player && <FollowupChips followups={stream.followups} asked={asked} disabled={streaming} ask={f => ask(f.label, f)}/>}

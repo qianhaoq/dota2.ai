@@ -60,7 +60,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
               key={key}
               type="button"
               title={i === 0 ? undefined : t('tabsProposed')}
-              aria-selected={i === 0}
+              aria-current={i === 0 ? 'page' : undefined}
               aria-disabled={i !== 0}
               onClick={i === 0 ? undefined : (e) => e.preventDefault()}
               className={`h-[32px] px-[14px] rounded-d2-chip text-d2-13 font-medium whitespace-nowrap transition-colors duration-d2-fast ${

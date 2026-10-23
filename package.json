@@ -9,7 +9,9 @@
     "preview:mock": "node scripts/mock-review-server.mjs",
     "start": "node server.js",
     "start:dev": "concurrently \"npm run dev\" \"npm start\"",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots"
   },
   "dependencies": {
     "express": "^4.22.3",
@@ -22,6 +24,8 @@
     "ws": "^8.21.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.64.1",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^22.0.0",

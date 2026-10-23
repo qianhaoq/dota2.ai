@@ -41,3 +41,8 @@ data/*.jsonl
 # Codex CLI 凭证，勿提交
 .codex/
 auth.json
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
