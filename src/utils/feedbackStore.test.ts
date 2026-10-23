@@ -85,3 +85,20 @@ describe('normalizeFeedbackSubmission — fakedoor interest kind', () => {
     });
   });
 });
+
+describe('normalizeFeedbackSubmission — evidence claim vote', () => {
+  it('allows evidence_claim_vote without a message', () => {
+    expect(FEEDBACK_KINDS.has('evidence_claim_vote')).toBe(true);
+    expect(normalizeFeedbackSubmission({ kind: 'evidence_claim_vote' })).toEqual({
+      ok: true,
+      kind: 'evidence_claim_vote',
+      message: '',
+      name: '',
+      contact: '',
+    });
+    expect(normalizeFeedbackSubmission({
+      kind: 'evidence_claim_vote',
+      message: 'y:claim=1',
+    })).toMatchObject({ ok: true, kind: 'evidence_claim_vote', message: 'y:claim=1' });
+  });
+});

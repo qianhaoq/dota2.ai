@@ -5,12 +5,21 @@ const SNAP_LOW = 0.55, SNAP_HIGH = 0.92;
 const CLOSED = 'translateY(100%)';
 const snapTransform = (snap: number) => `translateY(${(1 - snap / SNAP_HIGH) * 100}%)`;
 
+const FOCUSABLE = 'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
+
+function focusables(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true',
+  );
+}
+
 /**
  * Mobile (<1024px) evidence bottom sheet — 55%/92% snap heights, drag handle,
  * Esc/✕/scrim close, focus moves to the container on open (handoff §1 screen 5,
- * prototype openEvidence/snap/drag). Hidden on ≥1024 (the panel takes over);
- * MatchPage also only mounts it below lg. Reduced motion is handled globally
- * in tokens.css (all transitions off).
+ * prototype openEvidence/snap/drag). Tab / Shift+Tab cycle inside the sheet
+ * (focus trap) while aria-modal is advertised. Hidden on ≥1024 (the panel takes
+ * over); MatchPage also only mounts it below lg. Reduced motion is handled
+ * globally in tokens.css (all transitions off).
  */
 export default function EvidenceSheet({ children, onClose }: {
     children: React.ReactNode;
@@ -55,10 +64,28 @@ export default function EvidenceSheet({ children, onClose }: {
             if (event.key === 'Escape') {
                 event.preventDefault();
                 requestClose();
+                return;
+            }
+            if (event.key !== 'Tab' || !sheet.current) return;
+            const nodes = focusables(sheet.current);
+            // Container itself is focusable (tabIndex=-1) as the entry point.
+            const cycle = nodes.length ? nodes : [sheet.current];
+            const first = cycle[0];
+            const last = cycle[cycle.length - 1];
+            const active = document.activeElement as HTMLElement | null;
+            const outside = !active || !sheet.current.contains(active);
+            if (event.shiftKey) {
+                if (outside || active === first || active === sheet.current) {
+                    event.preventDefault();
+                    last.focus();
+                }
+            } else if (outside || active === last) {
+                event.preventDefault();
+                first.focus();
             }
         };
-        document.addEventListener('keydown', keydown);
-        return () => document.removeEventListener('keydown', keydown);
+        document.addEventListener('keydown', keydown, true);
+        return () => document.removeEventListener('keydown', keydown, true);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [closing]);
 

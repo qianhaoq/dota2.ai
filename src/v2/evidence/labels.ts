@@ -1,5 +1,6 @@
 import type { DictKey } from '../i18n/en';
 import type { Insight, Objective, Review } from '../review/types';
+import { itemDisplayName } from './itemNames';
 
 /**
  * Pure helpers for the evidence sheet/panel. Hard rule (tech-plan §13 PR7):
@@ -44,14 +45,22 @@ const BIG_STRUCTURE = /tower[34]|range_rax|melee_rax|fort/;
 export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh', t: Translate): Moment[] {
   const playerTeam = review.player?.team ?? 'radiant';
   const sideName = (side: string) => t(side === 'radiant' ? 'sideRadiant' : 'sideDire');
-  const laneName = (lane: string) => t(lane === 'mid' ? 'laneMid' : lane === 'top' ? 'laneTop' : 'laneBot');
+  const laneName = (lane: string) => {
+    if (lane === 'mid') return t('laneMid');
+    if (lane === 'top') return t('laneTop');
+    if (lane === 'bot') return t('laneBot');
+    return '';
+  };
   const moments: Moment[] = [];
   for (const objective of review.objectives ?? []) {
     if (objective.type === 'CHAT_MESSAGE_ROSHAN_KILL') {
+      const label = objective.team
+        ? fill(t('momRoshan'), { team: sideName(objective.team) })
+        : t('momRoshanUnknown');
       moments.push({
         t: objective.t,
         kind: 'rosh',
-        label: fill(t('momRoshan'), { team: sideName(objective.team ?? 'dire') }),
+        label,
         time: factTime(review, objective),
         hl: false,
       });
@@ -62,13 +71,19 @@ export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh'
     const owner = objective.key.includes('goodguys') ? 'radiant' : 'dire';
     const lane = /_(mid|top|bot)$/.exec(objective.key)?.[1] ?? '';
     const tier = /tower(\d)/.exec(objective.key)?.[1] ?? '';
-    const label = objective.key.includes('fort')
-      ? fill(t('momAncient'), { team: sideName(owner) })
-      : objective.key.includes('melee_rax')
-        ? fill(t('momRaxMelee'), { team: sideName(owner), lane: laneName(lane) })
-        : objective.key.includes('range_rax')
-          ? fill(t('momRaxRanged'), { team: sideName(owner), lane: laneName(lane) })
-          : fill(t('momTower'), { team: sideName(owner), lane: laneName(lane), tier });
+    let label: string;
+    if (objective.key.includes('fort')) {
+      label = fill(t('momAncient'), { team: sideName(owner) });
+    } else if (objective.key.includes('melee_rax')) {
+      label = fill(t('momRaxMelee'), { team: sideName(owner), lane: laneName(lane) });
+    } else if (objective.key.includes('range_rax')) {
+      label = fill(t('momRaxRanged'), { team: sideName(owner), lane: laneName(lane) });
+    } else if (tier === '4' && !lane) {
+      // T4 base towers have no _mid/_top/_bot suffix — do not invent bottom.
+      label = fill(t('momTowerBase'), { team: sideName(owner), tier });
+    } else {
+      label = fill(t('momTower'), { team: sideName(owner), lane: laneName(lane), tier });
+    }
     moments.push({ t: objective.t, kind: owner === playerTeam ? 'down' : 'up', label, time: factTime(review, objective), hl: false });
   }
   const low = review.facts['gold.low'];
@@ -122,11 +137,8 @@ export function killerRows(review: Review, lang: 'en' | 'zh'): KillerRow[] {
 
 const CONSUMABLE = /^(ward_|tango|branches|blood_grenade|clarity|flask|enchanted_mango|faerie_fire|tpscroll|smoke_of_deceit|dust$|magic_stick$)/;
 
-/** Humanize an item slug for display (`blade_mail` → `Blade mail`). Not a metric. */
-export const itemName = (slug: string) => {
-  const words = slug.replaceAll('_', ' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
-};
+/** @deprecated Prefer itemDisplayName(slug, lang). Kept as English humanize fallback. */
+export const itemName = (slug: string, lang: 'en' | 'zh' = 'en') => itemDisplayName(slug, lang);
 
 /** Item grid rows: real purchases minus consumables/wards and pre-horn buys. */
 export function itemRows(review: Review): { item: string; time: string; key: boolean }[] {
@@ -140,6 +152,26 @@ export interface SourceRow {
   caption: DictKey;
 }
 
+/**
+ * Extract OpenDota field tokens from an engine `source_path`
+ * (e.g. `players[6].kills_log[0]` → `kills_log`).
+ */
+export function fieldsFromSourcePath(sourcePath: string | undefined | null): string[] {
+  if (!sourcePath) return [];
+  const fields: string[] = [];
+  for (const part of sourcePath.split(/[;\s]+/).filter(Boolean)) {
+    if (/\bkills_log\b/.test(part)) fields.push('kills_log');
+    else if (/\bdeaths_log\b/.test(part)) fields.push('deaths_log');
+    else if (/\bkilled_by\b/.test(part)) fields.push('killed_by');
+    else if (/\bradiant_gold_adv\b/.test(part)) fields.push('radiant_gold_adv');
+    else if (/\bradiant_xp_adv\b/.test(part)) fields.push('radiant_xp_adv');
+    else if (/\bpurchase_log\b/.test(part)) fields.push('purchase_log');
+    else if (/\blh_t\b/.test(part)) fields.push('lh_t');
+    else if (/\bobjectives\b/.test(part)) fields.push('objectives');
+  }
+  return fields;
+}
+
 /** Per-claim source list — only fields that actually back the rendered data. */
 export function sourcesFor(review: Review, claim: number): SourceRow[] {
   const rows: SourceRow[] = [];
@@ -148,8 +180,26 @@ export function sourcesFor(review: Review, claim: number): SourceRow[] {
     if (review.series.radiant_xp_adv.length) rows.push({ field: 'radiant_xp_adv', caption: 'srcPerMinute' });
     if (review.objectives?.length) rows.push({ field: 'objectives', caption: 'srcObjectives' });
   } else if (claim === 1) {
-    if (review.deaths?.length) rows.push({ field: 'deaths_log', caption: 'srcDeathsLog' });
-    if (review.facts['killed_by']) rows.push({ field: 'killed_by', caption: 'srcKilledBy' });
+    // Prefer fact source_path provenance (deaths may be rebuilt from kills_log).
+    const seen = new Set<string>();
+    const consider = (sp?: string | null) => {
+      for (const field of fieldsFromSourcePath(sp)) {
+        if (seen.has(field)) continue;
+        seen.add(field);
+        if (field === 'deaths_log') rows.push({ field, caption: 'srcDeathsLog' });
+        else if (field === 'kills_log') rows.push({ field, caption: 'srcKillsLog' });
+        else if (field === 'killed_by') rows.push({ field, caption: 'srcKilledBy' });
+      }
+    };
+    for (const death of review.deaths ?? []) {
+      consider(death.fact_id ? review.facts[death.fact_id]?.source_path : null);
+    }
+    consider(review.facts['deaths.total']?.source_path);
+    consider(review.facts['killed_by']?.source_path);
+    // If deaths exist but no source_path was recoverable, keep an honest fallback.
+    if (!rows.length && review.deaths?.length) {
+      rows.push({ field: 'deaths', caption: 'srcDeathsLog' });
+    }
   } else {
     if (review.facts['lh_at_10']) rows.push({ field: 'lh_t', caption: 'srcLhTimeline' });
     if (review.purchases?.length) rows.push({ field: 'purchase_log', caption: 'srcPurchaseLog' });
@@ -192,3 +242,43 @@ export const gapRegistered = (review: Review, topic: string) =>
 
 export const gapReason = (review: Review, topic: string) =>
   (review.data_gaps ?? []).find(g => g.topic === topic)?.reason;
+
+/**
+ * Orient radiant_* series to the selected player's perspective.
+ * Engine keeps arrays in Radiant perspective; facts like gold.low are already flipped.
+ */
+export function seriesForPlayer(series: Review['series']): {
+  gold: (number | null)[];
+  xp: (number | null)[];
+} {
+  const flip = series.perspective === 'dire' ? -1 : 1;
+  const map = (arr: (number | null)[] | undefined) =>
+    (arr ?? []).map(v => (v == null || !Number.isFinite(v) ? null : (v as number) * flip));
+  return {
+    gold: map(series.radiant_gold_adv as (number | null)[]),
+    xp: map(series.radiant_xp_adv as (number | null)[]),
+  };
+}
+
+/**
+ * Build an SVG path that breaks (moves) across non-finite / null samples
+ * instead of coercing them to zero.
+ */
+export function seriesPath(
+  arr: (number | null | undefined)[],
+  X: (i: number) => number,
+  Y: (v: number) => number,
+): string {
+  const parts: string[] = [];
+  let drawing = false;
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i];
+    if (v == null || !Number.isFinite(v)) {
+      drawing = false;
+      continue;
+    }
+    parts.push(`${drawing ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`);
+    drawing = true;
+  }
+  return parts.join(' ');
+}

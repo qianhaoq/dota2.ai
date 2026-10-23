@@ -114,6 +114,8 @@ export const en = {
   legendXP: 'XP diff',
   keyMoments: 'Key moments',
   momRoshan: '{team} took Roshan',
+  momRoshanUnknown: 'Roshan taken',
+  momTowerBase: '{team} T{tier} tower destroyed',
   momTower: '{team} {lane} T{tier} tower destroyed',
   momRaxMelee: '{team} {lane} melee barracks destroyed',
   momRaxRanged: '{team} {lane} ranged barracks destroyed',
@@ -142,6 +144,7 @@ export const en = {
   srcPerMinute: 'per minute',
   srcObjectives: 'building_kill · Roshan',
   srcDeathsLog: 'time + killer',
+  srcKillsLog: 'reconstructed from kills_log',
   srcKilledBy: 'per hero',
   srcPurchaseLog: 'item + time',
   srcLhTimeline: 'last-hits timeline',
@@ -152,6 +155,7 @@ export const en = {
   fbY: 'Yes',
   fbN: 'Something’s off',
   fbThanks: 'Thanks. This is logged with the review.',
+  fbError: 'Couldn’t save — try again.',
 };
 
 export type Dict = Record<keyof typeof en, string>;

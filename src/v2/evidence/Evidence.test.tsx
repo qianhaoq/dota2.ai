@@ -110,7 +110,7 @@ describe('EvidenceBody claim 2 (next game)', () => {
     expect(within(body).getByText('Wraith King')).toBeTruthy();
     expect(within(body).queryByText('Pudge')).toBeNull();
     const items = within(body).getByTestId('items-grid');
-    expect(within(items).getByText('Blink')).toBeTruthy();
+    expect(within(items).getByText('Blink Dagger')).toBeTruthy();
     expect(within(items).getByText('21:00')).toBeTruthy();
     expect(items.textContent).not.toMatch(/ward/i);
     expect(within(body).getByText('Build vs this lineup: not enough data')).toBeTruthy();
@@ -137,10 +137,21 @@ describe('EvidenceBody shared sections', () => {
     expect(within(sources).getByRole('link', { name: 'OpenDota ↗' })).toBeTruthy();
   });
 
-  it('feedback buttons collapse into a thanks line', () => {
+  it('feedback buttons collapse into a thanks line after a successful persist', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } }))));
     wrap(<EvidenceBody review={review} claim={0} onPage={() => {}}/>);
     fireEvent.click(screen.getByRole('button', { name: /Yes/ }));
+    expect(await screen.findByRole('status')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Thanks');
+    expect(fetch).toHaveBeenCalledWith('/api/feedback', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('keeps feedback buttons and shows an error when persist fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ ok: false }), { status: 500, headers: { 'Content-Type': 'application/json' } }))));
+    wrap(<EvidenceBody review={review} claim={0} onPage={() => {}}/>);
+    fireEvent.click(screen.getByRole('button', { name: /Yes/ }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Yes/ })).toBeTruthy();
   });
 
   it('localizes to zh', () => {
@@ -150,6 +161,14 @@ describe('EvidenceBody shared sections', () => {
     expect(within(body).getByText('谁击杀了你')).toBeTruthy();
     expect(within(body).getByText('死亡位置：数据不足')).toBeTruthy();
     expect(within(body).getByText('冥魂大帝')).toBeTruthy();
+  });
+
+  it('localizes item names in the Chinese evidence view', () => {
+    wrap(<EvidenceBody review={review} claim={2} onPage={() => {}}/>, 'zh');
+    const items = within(screen.getByTestId('evidence-body')).getByTestId('items-grid');
+    expect(within(items).getByText('闪烁匕首')).toBeTruthy();
+    expect(within(items).getByText('黑皇杖')).toBeTruthy();
+    expect(within(items).queryByText('Black king bar')).toBeNull();
   });
 });
 
@@ -231,6 +250,22 @@ describe('EvidenceSheet', () => {
     pt(handle, 'pointerup', 500);
     act(() => { vi.advanceTimersByTime(400); });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('traps Tab focus inside the sheet', async () => {
+    await open();
+    const dialog = screen.getByRole('dialog', { name: 'Evidence' });
+    const buttons = within(dialog).getAllByRole('button').filter(b => !(b as HTMLButtonElement).disabled);
+    expect(buttons.length).toBeGreaterThan(1);
+    const first = buttons[0];
+    const last = buttons[buttons.length - 1];
+    last.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(last);
   });
 });
 

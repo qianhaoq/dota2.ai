@@ -178,15 +178,22 @@ export default function MatchPage() {
     const desktop = useMedia('(min-width:1024px)');
     const evidenceTrigger = useRef<HTMLElement | null>(null);
     const claimParam = Number(params.get('claim'));
-    const claimIndex = review && claimParam >= 1 && claimParam <= review.insights.length ? claimParam - 1 : null;
-    const evidenceOpen = params.get('view') === 'evidence' && claimIndex != null;
+    const evidenceView = params.get('view') === 'evidence';
+    // Engine meta.evidence_url is view=evidence without claim — default to first insight.
+    const claimIndex = review
+        ? (claimParam >= 1 && claimParam <= review.insights.length
+            ? claimParam - 1
+            : (evidenceView && review.insights.length ? 0 : null))
+        : null;
+    const evidenceOpen = evidenceView && claimIndex != null;
     const openEvidence = (index: number, trigger?: HTMLElement) => {
         if (trigger)
             evidenceTrigger.current = trigger;
         const next = new URLSearchParams(location.search);
         next.set('claim', String(index + 1));
         next.set('view', 'evidence');
-        navigate({ pathname: location.pathname, search: `?${next}` });
+        // Push on first open; replace while paging so Back does not reopen prior claims.
+        navigate({ pathname: location.pathname, search: `?${next}` }, { replace: evidenceOpen });
     };
     const closeEvidence = () => {
         const next = new URLSearchParams(location.search);

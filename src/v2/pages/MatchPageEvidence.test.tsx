@@ -65,4 +65,11 @@ describe('MatchPage evidence wiring', () => {
         const dialog = await screen.findByRole('dialog', { name: '证据' });
         await waitFor(() => expect(within(dialog).getByTestId('evidence-body').textContent).toContain('关键时刻'));
     });
+
+    it('opens claim 1 when view=evidence has no claim (engine evidence_url)', async () => {
+        page('/m/9035042364?hero=pudge&lang=en&view=evidence');
+        const dialog = await screen.findByRole('dialog', { name: 'Evidence' });
+        await waitFor(() => expect(within(dialog).getByTestId('evidence-body').getAttribute('data-claim')).toBe('0'));
+        expect(within(dialog).getByTestId('evidence-body').textContent).toContain('Key moments');
+    });
 });

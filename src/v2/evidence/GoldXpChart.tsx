@@ -1,7 +1,7 @@
 import React from 'react';
 import { useI18n } from '../i18n/I18nProvider';
 import type { Review } from '../review/types';
-import { dodgeLabels } from './labels';
+import { dodgeLabels, seriesForPlayer, seriesPath } from './labels';
 
 export type SeriesMode = 'gold' | 'xp' | 'both';
 
@@ -22,6 +22,10 @@ interface Marker {
  * Series arrays drive geometry only; every visible metric string is an engine
  * `fact.display`. Axis value labels are intentionally omitted for the same
  * reason — marker labels carry the numbers.
+ *
+ * Arrays stay Radiant-perspective in the engine; when the selected player is
+ * Dire we flip both series so markers (gold.low etc.) land on the right points.
+ * Null / non-finite samples break the path instead of plotting as zero.
  */
 export default function GoldXpChart({ review, mode, band, bandLabel, width = 340, height = 176 }: {
     review: Review;
@@ -34,8 +38,7 @@ export default function GoldXpChart({ review, mode, band, bandLabel, width = 340
     height?: number;
 }) {
     const { t, lang } = useI18n();
-    const gold = review.series.radiant_gold_adv ?? [];
-    const xp = review.series.radiant_xp_adv ?? [];
+    const { gold, xp } = seriesForPlayer(review.series);
     const showGold = mode !== 'xp', showXp = mode !== 'gold';
     const facts = review.facts;
 
@@ -57,7 +60,7 @@ export default function GoldXpChart({ review, mode, band, bandLabel, width = 340
     }
 
     const PL = 34, PR = 8, PT = 12, PB = 22;
-    const all = [...(showGold ? gold : []), ...(showXp ? xp : [])].filter((v): v is number => Number.isFinite(v));
+    const all = [...(showGold ? gold : []), ...(showXp ? xp : [])].filter((v): v is number => Number.isFinite(v as number));
     if (!all.length) return null;
     let mn = Math.min(...all), mx = Math.max(...all, 0);
     const pad = (mx - mn) * 0.06;
@@ -66,20 +69,22 @@ export default function GoldXpChart({ review, mode, band, bandLabel, width = 340
     const minutes = Math.max(1, gold.length - 1, xp.length - 1);
     const X = (m: number) => PL + (m / minutes) * (width - PL - PR);
     const Y = (v: number) => PT + ((mx - v) / (mx - mn)) * (height - PT - PB);
-    const path = (arr: number[]) => arr.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(v).toFixed(1)}`).join(' ');
+    const path = (arr: (number | null)[]) => seriesPath(arr, X, Y);
 
     // Marker labels, dodged so none overlaps another (handoff §6 low-label rule).
-    const labeled = dodgeLabels(markers.map(mk => {
-        const v = (mk.series === 'xp' ? xp : gold)[mk.m] ?? 0;
+    // Skip markers whose series sample is missing — do not plot them at y=0.
+    const labeled = dodgeLabels(markers.flatMap(mk => {
+        const v = (mk.series === 'xp' ? xp : gold)[mk.m];
+        if (v == null || !Number.isFinite(v)) return [];
         const widthPx = mk.label.length * 6.2;
         const cx = mk.anchor === 'end' ? X(mk.m) + mk.dx - widthPx / 2 : mk.anchor === 'start' ? X(mk.m) + mk.dx + widthPx / 2 : X(mk.m) + mk.dx;
-        return { key: mk.label, cx, y: Y(v) + mk.dy, width: widthPx, mk, cy: Y(v) };
+        return [{ key: mk.label, cx, y: Y(v) + mk.dy, width: widthPx, mk, cy: Y(v) }];
     }));
 
     const gridValues = [20000, -20000].filter(v => v > mn && v < mx);
     const axisMinutes = [0, 15, 30, 45, 60].filter(m => m <= minutes);
 
-    return <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto block overflow-visible" role="img" aria-label={t('evChartAria')} data-testid="gold-xp-chart" data-mode={mode}>
+    return <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto block overflow-visible" role="img" aria-label={t('evChartAria')} data-testid="gold-xp-chart" data-mode={mode} data-perspective={review.series.perspective ?? 'radiant'}>
       {band && <g>
         <rect x={X(band[0] / 60)} y={PT} width={Math.max(0, X(band[1] / 60) - X(band[0] / 60))} height={height - PT - PB} fill="#FEE2E2" opacity="0.7" rx="2"/>
         {bandLabel && <text x={(X(band[0] / 60) + X(band[1] / 60)) / 2} y={PT - 2} fontSize="10" fontWeight="600" fill="#B91C1C" textAnchor="middle">{bandLabel}</text>}
@@ -89,8 +94,9 @@ export default function GoldXpChart({ review, mode, band, bandLabel, width = 340
       {axisMinutes.map(m => <text key={m} x={X(m)} y={height - 6} fontSize="11" fill="#64748B" textAnchor={m === 0 ? 'start' : 'middle'}>{m}:00</text>)}
       {showXp && <path data-series="xp" d={path(xp)} fill="none" stroke="#94A3B8" strokeWidth="1.6" strokeDasharray="4 3" strokeLinejoin="round"/>}
       {showGold && <path data-series="gold" d={path(gold)} fill="none" stroke="#B7791F" strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round"/>}
-      {labeled.map(({ key, mk, cy, y }) => {
-          const v = (mk.series === 'xp' ? xp : gold)[mk.m] ?? 0;
+      {labeled.map(({ key, mk, y }) => {
+          const v = (mk.series === 'xp' ? xp : gold)[mk.m];
+          if (v == null || !Number.isFinite(v)) return null;
           return <g key={key}>
             <circle cx={X(mk.m)} cy={Y(v)} r="4" fill={mk.color} stroke="#fff" strokeWidth="1.5"/>
             <text x={X(mk.m) + mk.dx} y={y} fontSize="11" fontWeight="600" fill={mk.color} textAnchor={mk.anchor} className="d2-tnum">{mk.label}</text>

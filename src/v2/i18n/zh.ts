@@ -116,6 +116,8 @@ export const zh: Dict = {
   legendXP: '经验差',
   keyMoments: '关键时刻',
   momRoshan: '{team}击杀肉山',
+  momRoshanUnknown: '肉山被击杀',
+  momTowerBase: '{team}T{tier}塔被摧毁',
   momTower: '{team}{lane}T{tier}塔被摧毁',
   momRaxMelee: '{team}{lane}近战兵营被摧毁',
   momRaxRanged: '{team}{lane}远程兵营被摧毁',
@@ -144,6 +146,7 @@ export const zh: Dict = {
   srcPerMinute: '每分钟',
   srcObjectives: 'building_kill · 肉山',
   srcDeathsLog: '时间 + 击杀者',
+  srcKillsLog: '由对方 kills_log 重建',
   srcKilledBy: '按英雄',
   srcPurchaseLog: '装备 + 时间',
   srcLhTimeline: '补刀时间线',
@@ -154,4 +157,5 @@ export const zh: Dict = {
   fbY: '对',
   fbN: '有问题',
   fbThanks: '谢谢，已随复盘记录。',
+  fbError: '未能保存，请重试。',
 };

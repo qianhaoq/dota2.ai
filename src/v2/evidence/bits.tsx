@@ -118,14 +118,15 @@ export function KillerBars({ review }: {
     </div>)}</div>;
 }
 
-/** Purchase grid: item names are humanized slugs; times are mm:ss row labels. */
+/** Purchase grid: item names localized via bilingual map; times are mm:ss row labels. */
 export function ItemsGrid({ review }: {
     review: Review;
 }) {
+    const { lang } = useI18n();
     const rows = itemRows(review);
     if (!rows.length) return null;
     return <ul className="list-none p-0 m-0 grid grid-cols-2 gap-[6px]" data-testid="items-grid">{rows.map(row => <li key={`${row.item}-${row.time}`} className={`flex justify-between gap-[6px] px-[10px] py-[8px] rounded-d2-control text-d2-13 text-d2-ink-2 ${row.key ? 'bg-d2-accent-bg' : 'bg-d2-surface-2'}`}>
-      <span className="min-w-0 truncate">{itemName(row.item)}</span>
+      <span className="min-w-0 truncate">{itemName(row.item, lang)}</span>
       <b className={`font-semibold d2-tnum ${row.key ? 'text-d2-accent' : 'text-d2-ink-3'}`}>{row.time}</b>
     </li>)}</ul>;
 }
@@ -169,18 +170,47 @@ export function Sources({ review, rows }: {
     </div>;
 }
 
-/** 👍/👎 claim feedback — local state only (server analytics whitelist is unchanged). */
+/**
+ * 👍/👎 claim feedback — persists via POST /api/feedback (kind evidence_claim_vote)
+ * before showing the logged thanks line. Failures keep the buttons and show an error.
+ */
 export function Feedback({ claim }: {
     claim: number;
 }) {
-    const { t } = useI18n();
+    const { t, lang } = useI18n();
     const [votes, setVotes] = useState<Record<number, 'y' | 'n'>>({});
+    const [pending, setPending] = useState(false);
+    const [error, setError] = useState(false);
     const vote = votes[claim];
     if (vote) return <p className="m-0 text-d2-13 text-d2-ink-3" role="status">{t('fbThanks')}</p>;
-    const btn = 'h-[32px] px-[12px] rounded-d2-chip border border-d2-line-2 bg-d2-surface text-d2-13 inline-flex items-center gap-[6px]';
+    const submit = async (choice: 'y' | 'n') => {
+        if (pending) return;
+        setPending(true);
+        setError(false);
+        try {
+            const res = await fetch('/api/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    kind: 'evidence_claim_vote',
+                    message: `${choice}:claim=${claim + 1}`,
+                    lang,
+                }),
+            });
+            const data = await res.json().catch(() => null) as { ok?: boolean } | null;
+            if (!res.ok || !data?.ok) throw new Error('feedback_failed');
+            setVotes(prev => ({ ...prev, [claim]: choice }));
+        } catch {
+            setError(true);
+        } finally {
+            setPending(false);
+        }
+    };
+    const btn = 'h-[32px] px-[12px] rounded-d2-chip border border-d2-line-2 bg-d2-surface text-d2-13 inline-flex items-center gap-[6px] disabled:opacity-40';
     return <div className="flex items-center gap-[8px] flex-wrap text-d2-13 text-d2-ink-3">
       {t('fbQ')}
-      <button className={btn} aria-pressed={false} onClick={() => setVotes(prev => ({ ...prev, [claim]: 'y' }))}><ThumbsUp size={14} aria-hidden="true"/>{t('fbY')}</button>
-      <button className={btn} aria-pressed={false} onClick={() => setVotes(prev => ({ ...prev, [claim]: 'n' }))}><ThumbsDown size={14} aria-hidden="true"/>{t('fbN')}</button>
+      <button className={btn} aria-pressed={false} disabled={pending} onClick={() => void submit('y')}><ThumbsUp size={14} aria-hidden="true"/>{t('fbY')}</button>
+      <button className={btn} aria-pressed={false} disabled={pending} onClick={() => void submit('n')}><ThumbsDown size={14} aria-hidden="true"/>{t('fbN')}</button>
+      {error && <span role="alert" className="text-d2-down text-d2-12">{t('fbError')}</span>}
     </div>;
 }

@@ -96,8 +96,8 @@ export interface Review {
         reason: string;
     }[];
     series: {
-        radiant_gold_adv: number[];
-        radiant_xp_adv: number[];
+        radiant_gold_adv: (number | null)[];
+        radiant_xp_adv: (number | null)[];
         perspective?: string;
     };
     objectives?: Objective[];
