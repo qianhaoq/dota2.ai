@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useI18n } from '../i18n/I18nProvider';
+import type { DictKey } from '../i18n/en';
 import AiText from './AiText';
 import { surface, FactChip } from './ConversationCards';
 import { heroDisplayName } from './heroDisplayName';
@@ -39,11 +40,42 @@ function windowFact(insight: Insight, review: Review | undefined): Fact | undefi
   return (parentId && review?.facts?.[parentId]) || (deltaId && review?.facts?.[deltaId]) || undefined;
 }
 
+/** Numeric window delta from a gold.window.* fact (parent or .delta child). */
+export function windowDelta(fact: Fact | undefined): number | undefined {
+  if (!fact) return undefined;
+  const v = fact.value;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    const d = (v as { delta?: unknown }).delta;
+    if (typeof d === 'number' && Number.isFinite(d)) return d;
+  }
+  return undefined;
+}
+
+/** Collapse wording only when the five-minute delta is clearly negative. */
+export function goldWindowLabelKey(fact: Fact | undefined): 'cardGoldCollapse' | 'cardGoldWorstWindow' {
+  const delta = windowDelta(fact);
+  return delta != null && delta < 0 ? 'cardGoldCollapse' : 'cardGoldWorstWindow';
+}
+
+/** Localized metric name for a detail-row fact id / label_key. */
+export function detailFactLabelKey(factId: string): DictKey | null {
+  if (factId === 'gold.low') return 'factGoldLow';
+  if (factId === 'deaths.total') return 'factDeathsTotal';
+  if (factId === 'gold_fed') return 'goldFed';
+  if (factId === 'time_dead') return 'timeDead';
+  if (/^deaths\.behind/.test(factId)) return 'factDeathsBehind';
+  if (/^comeback\..+\.gold$/.test(factId)) return 'factRecoveryGold';
+  if (/^comeback\..+\.xp$/.test(factId)) return 'factRecoveryXp';
+  if (/^gold\.window\./.test(factId)) return 'factWorstWindow';
+  return null;
+}
+
 function MatchupBlock({ insight, review, lang, t }: {
   insight: Insight;
   review?: Review;
   lang: Lang;
-  t: (k: any) => string;
+  t: (k: DictKey) => string;
 }) {
   if (insight.id === 'fix_this') {
     const rows = killedByRows(review, lang);
@@ -78,7 +110,7 @@ function MatchupBlock({ insight, review, lang, t }: {
       <div className="mt-[8px]" data-testid="card-matchup">
         <div className="text-d2-12 text-d2-ink-3 mb-[4px]">{t('cardMatchup')}</div>
         <div className="text-d2-15 font-semibold text-d2-ink-2 d2-tnum">
-          <span className="text-d2-ink-3 font-medium mr-[6px]">{t('cardGoldCollapse')}</span>
+          <span className="text-d2-ink-3 font-medium mr-[6px]">{t(goldWindowLabelKey(win))}</span>
           {when ? <span>{when}</span> : null}
           {when && change ? <span className="mx-[6px] text-d2-ink-4">·</span> : null}
           {change ? <span>{change}</span> : null}
@@ -178,7 +210,10 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
         <div className="mt-[8px]" data-testid="card-details">
           <div className="text-d2-12 text-d2-ink-4 mb-[4px]">{t('cardDetails')}</div>
           <div className="flex flex-wrap gap-[8px] text-d2-ink-3">
-            {details.map(f => <FactChip key={f.id} fact={f} />)}
+            {details.map(f => {
+              const key = detailFactLabelKey(f.id);
+              return <FactChip key={f.id} fact={f} label={key ? t(key) : undefined} />;
+            })}
           </div>
         </div>
       ) : null}

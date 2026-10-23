@@ -27,14 +27,16 @@ export function HeroGrid({ roster, pick }: {
     pick: (hero: Hero) => void;
 }) {
     const { t, lang } = useI18n();
-    return <section className={surface}><h2 className="text-d2-17 font-semibold tracking-[-0.01em] text-d2-ink m-0">{t('pickHeading')}</h2><p className="text-d2-13 text-d2-ink-3 m-0 mt-[4px]">{t('pickNote')}</p><div className="grid grid-cols-5 gap-[2px] mt-[12px]">{roster.map(h => <button className="min-w-0 flex flex-col items-center gap-[4px] py-[6px] rounded-d2-control hover:bg-d2-surface-2 text-d2-12 leading-[14px] break-words" onClick={() => pick(h)} key={h.hero_id}><img className="w-[48px] h-[48px] object-cover rounded-d2-avatar" src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${h.hero}.png`} alt=""/>{heroDisplayName(h.hero, lang)}</button>)}</div></section>;
+    return <section className={surface}><h2 className="text-d2-17 font-semibold tracking-[-0.01em] text-d2-ink m-0">{t('pickHeading')}</h2><p className="text-d2-13 text-d2-ink-3 m-0 mt-[4px]">{t('pickNote')}</p><div className="grid grid-cols-5 gap-[2px] mt-[12px]">{roster.map(h => <button className="min-w-0 flex flex-col items-center gap-[4px] py-[6px] rounded-d2-control hover:bg-d2-surface-2 text-d2-12 leading-[14px] break-words" onClick={() => pick(h)} key={h.hero_id}><img className="w-[48px] h-[48px] object-cover rounded-d2-avatar" src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${h.hero}.png`} alt=""/><span className="min-w-0 w-full text-center">{heroDisplayName(h.hero, lang)}</span>{h.personaname ? <span className="min-w-0 w-full truncate text-center text-d2-ink-4 text-[11px] leading-[13px]" title={h.personaname}>{h.personaname}</span> : null}</button>)}</div></section>;
 }
-export function HeroCollapsedRow({ hero, change }: {
+export function HeroCollapsedRow({ hero, personaname, change }: {
     hero: string;
+    personaname?: string | null;
     change: () => void;
 }) {
     const { t, lang } = useI18n();
-    return <button className="w-full flex items-center gap-[10px] min-h-[44px] px-[14px] rounded-d2-control bg-d2-surface shadow-d2-1 text-d2-13" aria-label={t('changeHero')} onClick={change}><img className="w-[28px] h-[28px] object-cover rounded-[7px]" src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${hero}.png`} alt=""/><b className="min-w-0 truncate">{t('youPrefix')}: {heroDisplayName(hero, lang)}</b><span className="ml-auto text-d2-accent font-semibold">{t('changeHero')}</span></button>;
+    const name = heroDisplayName(hero, lang);
+    return <button className="w-full flex items-center gap-[10px] min-h-[44px] px-[14px] rounded-d2-control bg-d2-surface shadow-d2-1 text-d2-13" aria-label={t('changeHero')} onClick={change}><img className="w-[28px] h-[28px] object-cover rounded-[7px]" src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${hero}.png`} alt=""/><span className="min-w-0 truncate text-left"><b>{t('youPrefix')}: {name}</b>{personaname ? <span className="block text-d2-ink-4 font-normal truncate">{personaname}</span> : null}</span><span className="ml-auto text-d2-accent font-semibold">{t('changeHero')}</span></button>;
 }
 /** Only SVG coordinates are scaled here; all visible values use engine displays. */
 export function MiniChart({ series }: {
@@ -46,11 +48,14 @@ export function MiniChart({ series }: {
     const bound = Math.max(1, ...nums.map(Math.abs));
     return <div className="mt-[12px]"><svg role="img" aria-label={t('miniChart')} viewBox="0 0 240 50" className="w-full h-[50px]">{arrays.map((values, i) => <polyline key={i} fill="none" stroke={i ? '#64748B' : '#B7791F'} strokeWidth="2" points={values.map((v, x) => v == null || !Number.isFinite(v) ? '' : `${x / Math.max(1, values.length - 1) * 240},${25 - v / bound * 23}`).filter(Boolean).join(' ')}/>)}</svg><div className="flex gap-[12px] text-d2-12 text-d2-ink-3"><span className="text-d2-gold">● {t('chartGold')}</span><span className="text-d2-xp">● {t('chartXp')}</span></div></div>;
 }
-export function FactChip({ fact }: {
+export function FactChip({ fact, label }: {
     fact: Fact;
+    /** Optional metric name shown before the value (insight detail chips). */
+    label?: string;
 }) {
     const { lang } = useI18n();
-    return <span className="inline-block rounded-d2-chip bg-d2-surface-2 px-[10px] py-[4px] text-d2-13 d2-tnum" title={fact.source_path}>{fact.display[lang]}{fact.display.t ? ` · ${fact.display.t}` : ''}</span>;
+    const value = `${fact.display[lang]}${fact.display.t ? ` · ${fact.display.t}` : ''}`;
+    return <span className="inline-block rounded-d2-chip bg-d2-surface-2 px-[10px] py-[4px] text-d2-13 d2-tnum" title={fact.source_path}>{label ? <><span className="text-d2-ink-3 font-medium">{label}</span>{' '}{value}</> : value}</span>;
 }
 export function FollowupChips({ followups, asked, disabled, ask }: {
     followups: Followup[];

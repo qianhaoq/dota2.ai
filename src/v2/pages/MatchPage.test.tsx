@@ -98,9 +98,10 @@ describe('SSE v1 conversation', () => {
                 expect(screen.getByText('Wraith King')).toBeTruthy();
                 expect(screen.getAllByText('Conclusion').length).toBe(3);
             }
-            // Details still surface gold.low for turning_point
+            // Details still surface labeled gold.low for turning_point
             const low = r.facts['gold.low'];
-            expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === low.display[lang as 'en' | 'zh'] + (low.display.t ? ` · ${low.display.t}` : ''))).toBeTruthy();
+            const lowLabel = lang === 'zh' ? '全局低点' : 'Gold low';
+            expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && (el.textContent ?? '').includes(lowLabel) && (el.textContent ?? '').includes(low.display[lang as 'en' | 'zh']))).toBeTruthy();
             expect(screen.getByText(`${lang === 'zh' ? '天辉' : 'Radiant'} · ${r.player!.kda!.join('/')}`)).toBeTruthy();
         });
     it('renders the second golden sample from the real engine', async () => {
@@ -144,13 +145,13 @@ describe('SSE v1 conversation', () => {
         page('/m/9035042364?lang=en');
         await screen.findByText('Which one was you?');
         expect(screen.getAllByRole('button').filter(b => b.querySelector('img'))).toHaveLength(10);
-        fireEvent.click(screen.getByRole('button', { name: 'Pudge' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Pudge\b/ }));
         await ready();
         expect(fetcher.mock.calls.some(([url]) => url.includes('hero=pudge'))).toBe(true);
         fireEvent.click(screen.getByRole('button', { name: 'Change' }));
         expect(screen.getByText('Which one was you?')).toBeTruthy();
         const calls = fetcher.mock.calls.length;
-        fireEvent.click(screen.getByRole('button', { name: 'Pudge' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Pudge\b/ }));
         await flush();
         expect(fetcher.mock.calls.length).toBe(calls);
     });
@@ -285,8 +286,8 @@ describe('SSE v1 conversation', () => {
         expect(screen.getAllByTestId('killer-row').length).toBeGreaterThan(0);
         expect(screen.getByText('Wraith King')).toBeTruthy();
         expect(screen.queryByText(/doom_bringer/)).toBeNull();
-        // gold.low stays in the details chips for turning_point
-        expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === r.facts['gold.low'].display.en + ' · ' + r.facts['gold.low'].display.t)).toBeTruthy();
+        // gold.low stays in the details chips for turning_point (with metric label)
+        expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && (el.textContent ?? '').includes('Gold low') && (el.textContent ?? '').includes(r.facts['gold.low'].display.en))).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Gold fed' }));
         await screen.findByText('gold_fed: missing_or_incomplete_deaths_log');
     });
