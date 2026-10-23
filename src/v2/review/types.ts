@@ -1,5 +1,7 @@
 export interface Fact {
     id: string;
+    /** Present on engine facts; optional in UI fixtures. */
+    value?: unknown;
     display: {
         en: string;
         zh: string;
@@ -13,6 +15,8 @@ export interface Hero {
     hero: string;
     hero_id: number;
     team: string;
+    /** Sanitized Steam persona name when OpenDota provided one. */
+    personaname?: string | null;
 }
 export interface Insight {
     time?: { from: number; to: number };

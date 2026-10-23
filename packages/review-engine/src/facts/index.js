@@ -1,5 +1,5 @@
 import { isSameTeamKill } from '../deathTimeline.js';
-import { getStaticHero } from '../staticHeroes.js';
+import { STATIC_HEROES, getStaticHero } from '../staticHeroes.js';
 
 export const clock = seconds => `${seconds < 0 ? '-' : ''}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.abs(seconds) % 60).padStart(2, '0')}`;
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -7,6 +7,23 @@ export const heroSlug = id => getStaticHero(id)?.internalSlug ?? null;
 export const teamOf = player => Number.isInteger(player.player_slot) ? (player.player_slot < 128 ? 'radiant' : 'dire') : null;
 const format = value => `${value < 0 ? '−' : ''}${Math.abs(value).toLocaleString('en-US')}`;
 const slug = key => String(key).replace(/^npc_dota_hero_/, '');
+const heroLabel = (key, lang) => {
+  const s = String(key).replace(/^npc_dota_hero_/, '');
+  const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === s);
+  return hero ? (lang === 'zh' ? hero.nameZh : hero.nameEn) : s;
+};
+/** Localize slug→count entity maps (killed_by); leave other entity values unchanged. */
+const entityCountDisplay = value => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  if (!entries.length || !entries.every(([, v]) => typeof v === 'number' && Number.isFinite(v))) return null;
+  const sorted = [...entries].sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])));
+  return {
+    en: sorted.map(([k, v]) => `${heroLabel(k, 'en')}: ${v}`).join(' / '),
+    zh: sorted.map(([k, v]) => `${heroLabel(k, 'zh')}: ${v}`).join(' / '),
+  };
+};
+
 
 /** Fixed five-minute windows; missing intermediate samples invalidate the window. */
 export function findWindow(series, start = 0, direction = 'min', accept = window => true) {
@@ -30,8 +47,15 @@ export function buildFacts(raw, player) {
   const gold = (raw.radiant_gold_adv ?? []).map(v => finite(v) ? v * sign : null);
   const xp = (raw.radiant_xp_adv ?? []).map(v => finite(v) ? v * sign : null);
   const add = (id, value, kind, source_path, extra = {}) => {
-    const text = typeof value === 'number' ? (kind === 'time' ? clock(value) : format(value)) : typeof value === 'object' && value !== null ? Object.entries(value).map(([key, v]) => `${key}: ${v}`).join(' / ') : String(value);
-    facts[id] = { id, kind, value, perspective, display: { en: text, zh: text }, citation: 's1', source_path, ...extra };
+    const localized = kind === 'entity' ? entityCountDisplay(value) : null;
+    const text = localized
+      ? localized.en
+      : typeof value === 'number'
+        ? (kind === 'time' ? clock(value) : format(value))
+        : typeof value === 'object' && value !== null
+          ? Object.entries(value).map(([key, v]) => `${key}: ${v}`).join(' / ')
+          : String(value);
+    facts[id] = { id, kind, value, perspective, display: localized ?? { en: text, zh: text }, citation: 's1', source_path, ...extra };
     if (finite(facts[id].t)) facts[id].display.t = clock(facts[id].t);
   };
   const windowFacts = (prefix, series, w, unit, source) => {

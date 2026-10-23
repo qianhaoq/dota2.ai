@@ -1,4 +1,5 @@
 import { buildFacts, heroSlug, teamOf } from './facts/index.js';
+import { sanitizePlayerNameForPrompt } from './matchFacts.js';
 import { buildInsights } from './insights/index.js';
 import { buildGaps } from './gaps/index.js';
 import { buildPresetFollowups } from './phrasing/followups.js';
@@ -31,7 +32,7 @@ export function buildReview(raw, opts) {
   raw = raw ?? {};
   const players = Array.isArray(raw.players) ? raw.players : [];
   const focus = opts.heroId == null ? null : players.find(p => p.hero_id === opts.heroId) ?? null;
-  const roster = players.map(p => ({ hero: heroSlug(p.hero_id), hero_id: p.hero_id, team: teamOf(p), kda: [p.kills ?? null, p.deaths ?? null, p.assists ?? null] }));
+  const roster = players.map(p => ({ hero: heroSlug(p.hero_id), hero_id: p.hero_id, team: teamOf(p), kda: [p.kills ?? null, p.deaths ?? null, p.assists ?? null], personaname: sanitizePlayerNameForPrompt(p.personaname) }));
   const winner = typeof raw.radiant_win === 'boolean' ? (raw.radiant_win ? 'radiant' : 'dire') : null;
   const parsed = isMatchParsed(raw);
   // Explicitly unparsed matches expose only basic facts, even if stale replay fields remain.

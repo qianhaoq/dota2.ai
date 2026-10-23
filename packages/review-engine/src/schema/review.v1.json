@@ -142,6 +142,12 @@
                 "number",
                 "null"
               ]
+            },
+            "personaname": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -187,6 +193,12 @@
             },
             "minItems": 3,
             "maxItems": 3
+          },
+          "personaname": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [

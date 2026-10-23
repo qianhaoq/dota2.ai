@@ -78,16 +78,30 @@ afterEach(() => {
 });
 describe('SSE v1 conversation', () => {
     for (const lang of ['en', 'zh'])
-        it(`renders engine claims and every metric display verbatim (${lang})`, async () => {
+        it(`renders short conclusions with matchup/details hierarchy (${lang})`, async () => {
             page(`/m/9035042364?hero=14&lang=${lang}`);
             const r = engine(raw, 14, lang);
             await screen.findByText(r.insights[0].claim.text);
             for (const insight of r.insights) {
                 expect(screen.getByText(insight.claim.text)).toBeTruthy();
-                for (const metric of insight.metrics)
-                    expect(screen.getAllByText((_, el) => el?.tagName === 'SPAN' && el.textContent === r.facts[metric.fact_id].display[lang as 'en' | 'zh'] + (r.facts[metric.fact_id].display.t ? ` · ${r.facts[metric.fact_id].display.t}` : '')).length).toBeGreaterThan(0);
             }
             expect(screen.getAllByTestId('insight-card')).toHaveLength(3);
+            expect(screen.getAllByTestId('card-conclusion')).toHaveLength(3);
+            expect(screen.getAllByTestId('card-matchup')).toHaveLength(3);
+            // fix_this killers are localized rows, not slug aggregates
+            expect(screen.getAllByTestId('killer-row').length).toBeGreaterThan(0);
+            expect(screen.queryByText(/doom_bringer|skeleton_king/)).toBeNull();
+            if (lang === 'zh') {
+                expect(screen.getByText('冥魂大帝')).toBeTruthy();
+                expect(screen.getAllByText('结论').length).toBe(3);
+            } else {
+                expect(screen.getByText('Wraith King')).toBeTruthy();
+                expect(screen.getAllByText('Conclusion').length).toBe(3);
+            }
+            // Details still surface labeled gold.low for turning_point
+            const low = r.facts['gold.low'];
+            const lowLabel = lang === 'zh' ? '全局低点' : 'Gold low';
+            expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && (el.textContent ?? '').includes(lowLabel) && (el.textContent ?? '').includes(low.display[lang as 'en' | 'zh']))).toBeTruthy();
             expect(screen.getByText(`${lang === 'zh' ? '天辉' : 'Radiant'} · ${r.player!.kda!.join('/')}`)).toBeTruthy();
         });
     it('renders the second golden sample from the real engine', async () => {
@@ -97,11 +111,9 @@ describe('SSE v1 conversation', () => {
         await screen.findByText(r.insights[0].claim.text);
         for (const i of r.insights) {
             expect(screen.getByText(i.claim.text)).toBeTruthy();
-            for (const metric of i.metrics) {
-                const fact = r.facts[metric.fact_id];
-                expect(screen.getAllByText(fact.display.en + (fact.display.t ? ` · ${fact.display.t}` : '')).length).toBeGreaterThan(0);
-            }
         }
+        expect(screen.getAllByTestId('insight-card')).toHaveLength(3);
+        expect(screen.getAllByTestId('card-conclusion')).toHaveLength(3);
     });
     for (const state of ['unparsed', 'insufficient'])
         it(`renders ${state} and its engine insights`, async () => {
@@ -133,13 +145,13 @@ describe('SSE v1 conversation', () => {
         page('/m/9035042364?lang=en');
         await screen.findByText('Which one was you?');
         expect(screen.getAllByRole('button').filter(b => b.querySelector('img'))).toHaveLength(10);
-        fireEvent.click(screen.getByRole('button', { name: 'Pudge' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Pudge\b/ }));
         await ready();
         expect(fetcher.mock.calls.some(([url]) => url.includes('hero=pudge'))).toBe(true);
         fireEvent.click(screen.getByRole('button', { name: 'Change' }));
         expect(screen.getByText('Which one was you?')).toBeTruthy();
         const calls = fetcher.mock.calls.length;
-        fireEvent.click(screen.getByRole('button', { name: 'Pudge' }));
+        fireEvent.click(screen.getByRole('button', { name: /^Pudge\b/ }));
         await flush();
         expect(fetcher.mock.calls.length).toBe(calls);
     });
@@ -267,10 +279,15 @@ describe('SSE v1 conversation', () => {
         expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
         expect((screen.getByPlaceholderText('Ask a follow-up about this match') as HTMLInputElement).disabled).toBe(false);
     });
-    it('killer counts are engine displays; missing gold-fed evidence stays unavailable', async () => {
+    it('killer matchup uses localized names; missing gold-fed evidence stays unavailable', async () => {
         page(); await ready(); const r = engine();
-        expect(screen.getByText(r.facts.killed_by.display.en)).toBeTruthy();
-        expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && el.textContent === r.facts['gold.low'].display.en + ' · ' + r.facts['gold.low'].display.t)).toBeTruthy();
+        // Structured matchup rows — never the slug aggregate string as primary copy.
+        expect(screen.queryByText(r.facts.killed_by.display.en)).toBeNull();
+        expect(screen.getAllByTestId('killer-row').length).toBeGreaterThan(0);
+        expect(screen.getByText('Wraith King')).toBeTruthy();
+        expect(screen.queryByText(/doom_bringer/)).toBeNull();
+        // gold.low stays in the details chips for turning_point (with metric label)
+        expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && (el.textContent ?? '').includes('Gold low') && (el.textContent ?? '').includes(r.facts['gold.low'].display.en))).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Gold fed' }));
         await screen.findByText('gold_fed: missing_or_incomplete_deaths_log');
     });
