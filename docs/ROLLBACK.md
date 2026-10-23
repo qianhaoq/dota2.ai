@@ -97,7 +97,7 @@ gcloud builds submit --config=/tmp/cb-ui-v2.yaml \
   --project aegis-assistant-488913
 ```
 
-然后 `gcloud run services update dota2-ai --region asia-east1 --image "$IMAGE"`。
+然后 `gcloud run services update dota2-ai --region asia-east1 --project aegis-assistant-488913 --image "$IMAGE"`（与上文 build 一样显式钉项目，避免落到错误 `core/project`）。
 
 ### `GET /api/v1/config` 的 `flags.ui_v2` 与前端 flag 的关系
 
@@ -115,7 +115,27 @@ gcloud run services update dota2-ai --region asia-east1 --project aegis-assistan
   --update-env-vars UI_V2=false,FF_UI_V2=false
 ```
 
-恢复 / roll forward：以默认构建（不传 `VITE_FF_UI_V2=0`）重新构建部署即可。
+恢复 / roll forward（**前端构建 + 服务端 env 都要恢复**；顺序如下）：
+
+1. **重建并部署前端**（默认构建，**不传** `VITE_FF_UI_V2=0`；可把上面 Cloud Build yaml 的 `_VITE_FF_UI_V2` 设为 `1`，或省略该 ARG）：
+
+```bash
+IMAGE=asia-east1-docker.pkg.dev/aegis-assistant-488913/REPO/dota2-ai:latest
+gcloud builds submit --config=/tmp/cb-ui-v2.yaml \
+  --substitutions=_VITE_FF_UI_V2=1,_IMAGE=${IMAGE} \
+  --project aegis-assistant-488913
+gcloud run services update dota2-ai --region asia-east1 --project aegis-assistant-488913 \
+  --image "$IMAGE"
+```
+
+2. **恢复服务端** `UI_V2` / `FF_UI_V2`（与 UI 对齐，使 `/api/v1/config` 不再停留在回滚时的 `false`）。必须用 `--update-env-vars`（**禁止** `--set-env-vars`，以免清空其它 env）。若回滚前记过原值则写回原值；正式切流后的前进场景写 `true`：
+
+```bash
+gcloud run services update dota2-ai --region asia-east1 --project aegis-assistant-488913 \
+  --update-env-vars UI_V2=true,FF_UI_V2=true
+```
+
+验证 / verify：`curl -s https://dota2.ai/api/v1/config | jq '.flags.ui_v2'` → `true`，且 `/` 为 v2 UI。
 
 ## ③ 流量回滚（上一修订）/ Traffic to the previous revision
 
