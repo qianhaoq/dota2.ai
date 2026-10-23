@@ -64,6 +64,18 @@ describe('evidence labels', () => {
     expect(t4.some(m => m.label === 'Radiant T4 tower destroyed')).toBe(true);
   });
 
+  it('keeps building moment polarity neutral when player team is unknown', () => {
+    const unknownTeam = { ...review, player: { ...review.player!, team: null } } as unknown as Review;
+    const moments = buildMoments(unknownTeam, review.insights[0], 'en', t);
+    const buildings = moments.filter(m => /tower|barracks|Ancient/i.test(m.label));
+    expect(buildings.length).toBeGreaterThan(0);
+    expect(buildings.every(m => m.kind === 'note')).toBe(true);
+    expect(buildings.some(m => m.kind === 'up' || m.kind === 'down')).toBe(false);
+    // Known team still gets red/green polarity.
+    const known = buildMoments(review, review.insights[0], 'en', t).filter(m => /tower|barracks|Ancient/i.test(m.label));
+    expect(known.some(m => m.kind === 'up' || m.kind === 'down')).toBe(true);
+  });
+
   it('does not attribute teamless Roshan to Dire', () => {
     const withNullRosh = {
       ...review,

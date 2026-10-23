@@ -43,7 +43,8 @@ const BIG_STRUCTURE = /tower[34]|range_rax|melee_rax|fort/;
  * from `objectives`, plus the gold-low point as a fact-display note.
  */
 export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh', t: Translate): Moment[] {
-  const playerTeam = review.player?.team ?? 'radiant';
+  // Preserve unknown team — never default to Radiant for polarity.
+  const playerTeam = review.player?.team ?? null;
   const sideName = (side: string) => t(side === 'radiant' ? 'sideRadiant' : 'sideDire');
   const laneName = (lane: string) => {
     if (lane === 'mid') return t('laneMid');
@@ -84,7 +85,9 @@ export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh'
     } else {
       label = fill(t('momTower'), { team: sideName(owner), lane: laneName(lane), tier });
     }
-    moments.push({ t: objective.t, kind: owner === playerTeam ? 'down' : 'up', label, time: factTime(review, objective), hl: false });
+    // Unknown player team → neutral polarity (note), not Radiant red/green.
+    const kind = !playerTeam ? 'note' : owner === playerTeam ? 'down' : 'up';
+    moments.push({ t: objective.t, kind, label, time: factTime(review, objective), hl: false });
   }
   const low = review.facts['gold.low'];
   if (low) {

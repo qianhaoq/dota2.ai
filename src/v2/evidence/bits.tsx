@@ -125,7 +125,7 @@ export function ItemsGrid({ review }: {
     const { lang } = useI18n();
     const rows = itemRows(review);
     if (!rows.length) return null;
-    return <ul className="list-none p-0 m-0 grid grid-cols-2 gap-[6px]" data-testid="items-grid">{rows.map(row => <li key={`${row.item}-${row.time}`} className={`flex justify-between gap-[6px] px-[10px] py-[8px] rounded-d2-control text-d2-13 text-d2-ink-2 ${row.key ? 'bg-d2-accent-bg' : 'bg-d2-surface-2'}`}>
+    return <ul className="list-none p-0 m-0 grid grid-cols-2 gap-[6px]" data-testid="items-grid">{rows.map((row, i) => <li key={`${row.item}-${row.time}-${i}`} className={`flex justify-between gap-[6px] px-[10px] py-[8px] rounded-d2-control text-d2-13 text-d2-ink-2 ${row.key ? 'bg-d2-accent-bg' : 'bg-d2-surface-2'}`}>
       <span className="min-w-0 truncate">{itemName(row.item, lang)}</span>
       <b className={`font-semibold d2-tnum ${row.key ? 'text-d2-accent' : 'text-d2-ink-3'}`}>{row.time}</b>
     </li>)}</ul>;
