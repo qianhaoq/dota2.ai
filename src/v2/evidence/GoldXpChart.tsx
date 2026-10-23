@@ -63,7 +63,10 @@ export default function GoldXpChart({ review, mode, band, bandLabel, width = 340
     const all = [...(showGold ? gold : []), ...(showXp ? xp : [])].filter((v): v is number => Number.isFinite(v as number));
     if (!all.length) return null;
     let mn = Math.min(...all), mx = Math.max(...all, 0);
-    const pad = (mx - mn) * 0.06;
+    // One finite sample or an all-equal series leaves mx === mn; pad must stay
+    // nonzero or Y() divides by zero and SVG paths/markers become NaN (flat/invisible).
+    const span = mx - mn;
+    const pad = span > 0 ? span * 0.06 : Math.max(Math.abs(mn) * 0.05, 1);
     mn -= pad;
     mx += pad;
     const minutes = Math.max(1, gold.length - 1, xp.length - 1);

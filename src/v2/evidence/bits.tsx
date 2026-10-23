@@ -173,15 +173,22 @@ export function Sources({ review, rows }: {
 /**
  * 👍/👎 claim feedback — persists via POST /api/feedback (kind evidence_claim_vote)
  * before showing the logged thanks line. Failures keep the buttons and show an error.
+ * Payload includes match / hero / insight so votes for the same claim ordinal across
+ * different reviews stay distinguishable in the feedback store.
  */
-export function Feedback({ claim }: {
+export function Feedback({ review, claim }: {
+    review: Review;
     claim: number;
 }) {
     const { t, lang } = useI18n();
-    const [votes, setVotes] = useState<Record<number, 'y' | 'n'>>({});
+    const [votes, setVotes] = useState<Record<string, 'y' | 'n'>>({});
     const [pending, setPending] = useState(false);
     const [error, setError] = useState(false);
-    const vote = votes[claim];
+    const matchId = review.match.id;
+    const hero = review.player?.hero ?? '';
+    const insightId = review.insights[claim]?.id ?? '';
+    const voteKey = `${matchId}:${hero}:${insightId || claim}`;
+    const vote = votes[voteKey];
     if (vote) return <p className="m-0 text-d2-13 text-d2-ink-3" role="status">{t('fbThanks')}</p>;
     const submit = async (choice: 'y' | 'n') => {
         if (pending) return;
@@ -193,13 +200,16 @@ export function Feedback({ claim }: {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     kind: 'evidence_claim_vote',
-                    message: `${choice}:claim=${claim + 1}`,
+                    message: `${choice}:claim=${claim + 1}:match=${matchId}:hero=${hero}:insight=${insightId}`,
                     lang,
+                    matchId,
+                    hero,
+                    insightId,
                 }),
             });
             const data = await res.json().catch(() => null) as { ok?: boolean } | null;
             if (!res.ok || !data?.ok) throw new Error('feedback_failed');
-            setVotes(prev => ({ ...prev, [claim]: choice }));
+            setVotes(prev => ({ ...prev, [voteKey]: choice }));
         } catch {
             setError(true);
         } finally {

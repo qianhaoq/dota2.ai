@@ -42,6 +42,9 @@ describe('normalizeFeedbackSubmission — fakedoor interest kind', () => {
       message: '',
       name: '',
       contact: '',
+      matchId: '',
+      hero: '',
+      insightId: '',
     });
     expect(normalizeFeedbackSubmission({ kind: 'fakedoor_steam_autoreview', contact: ' someone@example.com ' })).toMatchObject({
       ok: true,
@@ -82,6 +85,9 @@ describe('normalizeFeedbackSubmission — fakedoor interest kind', () => {
       message: '',
       name: '',
       contact: '',
+      matchId: '',
+      hero: '',
+      insightId: '',
     });
   });
 });
@@ -95,10 +101,26 @@ describe('normalizeFeedbackSubmission — evidence claim vote', () => {
       message: '',
       name: '',
       contact: '',
+      matchId: '',
+      hero: '',
+      insightId: '',
     });
     expect(normalizeFeedbackSubmission({
       kind: 'evidence_claim_vote',
       message: 'y:claim=1',
     })).toMatchObject({ ok: true, kind: 'evidence_claim_vote', message: 'y:claim=1' });
+    expect(normalizeFeedbackSubmission({
+      kind: 'evidence_claim_vote',
+      message: 'y:claim=1:match=9035042364:hero=pudge:insight=turning_point',
+      matchId: 9035042364,
+      hero: 'pudge',
+      insightId: 'turning_point',
+    })).toMatchObject({
+      ok: true,
+      kind: 'evidence_claim_vote',
+      matchId: '9035042364',
+      hero: 'pudge',
+      insightId: 'turning_point',
+    });
   });
 });

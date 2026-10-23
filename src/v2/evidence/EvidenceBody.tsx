@@ -157,7 +157,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
         <Sources review={review} rows={sourcesFor(review, claim)}/>
       </div>
       <div className={`${section} pb-[24px]`}>
-        <Feedback claim={claim}/>
+        <Feedback review={review} claim={claim}/>
       </div>
     </div>;
 }

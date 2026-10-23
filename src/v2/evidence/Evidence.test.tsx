@@ -10,6 +10,7 @@ import type { Review } from '../review/types';
 import EvidenceBody from './EvidenceBody';
 import EvidenceSheet from './EvidenceSheet';
 import EvidencePanel from './EvidencePanel';
+import GoldXpChart from './GoldXpChart';
 import InsightCard from '../review/InsightCard';
 
 const raw = JSON.parse(readFileSync('src/fixtures/match9035042364.parsed.json', 'utf8'));
@@ -144,6 +145,15 @@ describe('EvidenceBody shared sections', () => {
     expect(await screen.findByRole('status')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Thanks');
     expect(fetch).toHaveBeenCalledWith('/api/feedback', expect.objectContaining({ method: 'POST' }));
+    const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string);
+    expect(body).toMatchObject({
+      kind: 'evidence_claim_vote',
+      matchId: review.match.id,
+      hero: review.player?.hero,
+      insightId: review.insights[0]?.id,
+    });
+    expect(body.message).toContain(`match=${review.match.id}`);
+    expect(body.message).toContain(`hero=${review.player?.hero}`);
   });
 
   it('keeps feedback buttons and shows an error when persist fails', async () => {
@@ -172,6 +182,26 @@ describe('EvidenceBody shared sections', () => {
   });
 });
 
+
+describe('GoldXpChart domain', () => {
+  it('keeps a nonzero vertical domain for a single finite / all-equal series', () => {
+    const flat = {
+      ...review,
+      series: {
+        radiant_gold_adv: [0, null, 0],
+        radiant_xp_adv: [0, null, 0],
+        perspective: 'radiant',
+      },
+      facts: {},
+    } as Review;
+    wrap(<GoldXpChart review={flat} mode="gold"/>);
+    const chart = screen.getByTestId('gold-xp-chart');
+    const path = chart.querySelector('[data-series="gold"]');
+    expect(path).toBeTruthy();
+    expect(path!.getAttribute('d') || '').not.toMatch(/NaN/);
+    expect(path!.getAttribute('d') || '').toMatch(/M/);
+  });
+});
 describe('InsightCard Evidence button', () => {
   it('is disabled without a handler and reports (0-based index, trigger) on click', () => {
     const insight = review.insights[0];
