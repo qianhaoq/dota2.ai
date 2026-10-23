@@ -32,6 +32,19 @@ it('reproduces every PR2 numerical acceptance criterion for Pudge', () => {
   expect(f['comeback.52_57.xp'].value.delta).toBe(39051);
   expect(review.insights.map(i => [i.id, i.status])).toEqual([['turning_point', 'ok'], ['fix_this', 'ok'], ['next_game', 'ok']]);
   expect(review.insights[1].pattern).toBe('behind_1k');
+  expect(review.insights[0].claim.text).toBe('Prioritize reviewing the worst gold window at 40:00–45:00.');
+  expect(review.insights[1].claim.text).toBe('Prioritize avoiding low-value fights while behind.');
+  expect(review.insights[2].claim.text).toBe('Practice consistent last hits and safe resource collection.');
+  expect(review.insights[0].claim.text).not.toMatch(/6,?983|28,?965/);
+  expect(f.killed_by.display.en).toContain('Wraith King');
+  expect(f.killed_by.display.en).not.toMatch(/skeleton_king:/);
+  expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).insights.map(i => i.claim.text)).toEqual([
+    '优先回看 40:00–45:00 这段最差经济窗口。',
+    '落后时优先减少无收益的交战。',
+    '优先练习稳定补刀与安全获取资源。',
+  ]);
+  expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).toContain('冥魂大帝');
+  expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).not.toMatch(/skeleton_king:/);
   expect(review.engine_version).toBe(ENGINE_VERSION);
   expect(validateReview(review)).toEqual({ ok: true, errors: [] });
 });
@@ -124,14 +137,15 @@ it('prioritizes repeated killers over phase concentration, with phase as fallbac
   const repeated = buildReview(raw, opts).insights[1];
   expect(repeated.pattern).toBe('repeat_killer');
   expect(repeated.fact_ids).toEqual(['killed_by.doom_bringer']);
-  expect(repeated.claim.slots).toContain('{killed_by.doom_bringer}');
-  expect(repeated.claim.text).toContain('Doom (2 deaths)');
+  expect(repeated.claim.slots).not.toContain('{killed_by.doom_bringer}');
+  expect(repeated.claim.text).toBe('Prioritize reviewing deaths to Doom.');
   expect(repeated.claim.text).not.toContain('hoodwink');
-  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toContain('末日使者（2 次）');
+  expect(repeated.claim.text).not.toMatch(/\d/);
+  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toBe('优先复查末日使者造成的死亡。');
   raw.players[0].deaths_log[1].key = 'sniper';
   expect(buildReview(raw, opts).insights[1].pattern).toBe('phase_repeat');
-  expect(buildReview(raw, opts).insights[1].claim.text).toContain('lane phase: 3');
-  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toContain('对线期集中死亡：3');
+  expect(buildReview(raw, opts).insights[1].claim.text).toBe('Prioritize reviewing deaths concentrated in the lane phase.');
+  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toBe('优先复查对线期集中死亡。');
   raw.players[0].deaths_log = [];
   raw.players[0].deaths = 0;
   expect(buildReview(raw, opts).insights[1].status).toBe('insufficient');
@@ -238,7 +252,8 @@ it.each(['en', 'zh'])('falls back to the slug for an unknown repeated killer in 
   const insight = buildReview(raw, { ...opts, lang }).insights[1];
   expect(insight.status).toBe('ok');
   expect(insight.fact_ids).toEqual(['killed_by.unknown_hero']);
-  expect(insight.claim.text).toContain(lang === 'zh' ? 'unknown_hero（2 次）' : 'unknown_hero (2 deaths)');
+  expect(insight.claim.text).toBe(lang === 'zh' ? '优先复查unknown_hero造成的死亡。' : 'Prioritize reviewing deaths to unknown_hero.');
+  expect(insight.claim.text).not.toMatch(lang === 'zh' ? /2 次/ : /2 deaths/);
 });
 
 it.each([[-5, '-0:05'], [-65, '-1:05'], [0, '0:00'], [65, '1:05']])('formats clock(%s) as %s', (seconds, expected) => {

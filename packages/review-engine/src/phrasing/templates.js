@@ -29,15 +29,22 @@ const insufficient = {
 };
 
 // Fixed prose is also the validator's auditable coaching vocabulary.
+// Card UI conclusions are short (buildInsights claim.text); renderTemplate keeps
+// fact-slot sentences for LLM reorder / follow-ups / validators.
 export const coachCopy = {
   window: { en: 'Review the gold change at TIME: VALUE. Prioritize this turning point.', zh: '复查 TIME 的经济变化：VALUE。优先回看这个转折点。' },
   low: { en: 'Team gold reached its global low at TIME: VALUE.', zh: '团队经济在 TIME 达到全局低点：VALUE。' },
   gold: { en: 'Recovery gold: VALUE.', zh: '回升段经济：VALUE。' },
   xp: { en: 'Recovery experience: VALUE.', zh: '回升段经验：VALUE。' },
   behind: { en: 'Deaths while behind: VALUE of TOTAL. Prioritize avoiding low-value fights while behind.', zh: '落后时死亡 VALUE 次，共 TOTAL 次。落后时优先减少低收益交战。' },
+  // Short UI conclusions (also seed vocabulary for validateRendered).
+  behindAction: { en: 'Prioritize avoiding low-value fights while behind.', zh: '落后时优先减少无收益的交战。' },
+  turningAction: { en: 'Prioritize reviewing the worst gold window at TIME.', zh: '优先回看 TIME 这段最差经济窗口。' },
+  repeatAction: { en: 'Prioritize reviewing deaths to HERO.', zh: '优先复查HERO造成的死亡。' },
+  phaseAction: { en: 'Prioritize reviewing deaths concentrated in the PHASE phase.', zh: '优先复查PHASE集中死亡。' },
   repeat: { en: 'Repeated killer HERO deaths: VALUE. Review these deaths first.', zh: '重复击杀者 HERO 的击杀次数：VALUE。优先复查这些死亡。' },
   phase: { en: 'PHASE phase deaths: VALUE. Review these deaths first.', zh: 'PHASE死亡：VALUE 次。优先复查这些死亡。' },
-  next: { en: 'Next game, practice consistent last hits and safe resource collection.', zh: '下局练习稳定补刀与安全获取资源。' },
+  next: { en: 'Practice consistent last hits and safe resource collection.', zh: '优先练习稳定补刀与安全获取资源。' },
   farm: { en: 'At TIME, last hits: VALUE.', zh: 'TIME 时补刀：VALUE。' },
   economy: { en: 'At TIME, team gold difference: VALUE.', zh: 'TIME 时团队经济差：VALUE。' },
   lane: { en: 'Lane: VALUE.', zh: '分路：VALUE。' },
