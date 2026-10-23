@@ -57,3 +57,25 @@ it.each(['en', 'zh'])('keeps the sample review toolbar compact with accessible 4
     expect(button.className).toContain('min-h-[44px]');
   }
 });
+
+describe('HeroGrid personaname', () => {
+  it('renders Steam nicknames under hero names when present', () => {
+    const pick = vi.fn();
+    wrap(<HeroGrid roster={[{ hero: 'pudge', hero_id: 14, team: 'radiant', personaname: 'CoolPudge' }]} pick={pick}/>);
+    expect(screen.getByText('Pudge')).toBeTruthy();
+    expect(screen.getByText('CoolPudge')).toBeTruthy();
+  });
+  it('omits the nickname row when personaname is missing', () => {
+    wrap(<HeroGrid roster={[{ hero: 'pudge', hero_id: 14, team: 'radiant' }]} pick={() => {}}/>);
+    expect(screen.getByText('Pudge')).toBeTruthy();
+    expect(screen.queryByText('CoolPudge')).toBeNull();
+    // No empty nickname line: only one text span under the avatar besides the button chrome
+    expect(screen.queryByText('Unknown')).toBeNull();
+    expect(screen.queryByText('匿名')).toBeNull();
+  });
+  it('shows personaname on the collapsed row when provided', () => {
+    wrap(<HeroCollapsedRow hero="pudge" personaname="CoolPudge" change={() => {}}/>);
+    expect(screen.getByText('CoolPudge')).toBeTruthy();
+    expect(screen.getByText(/You: Pudge/)).toBeTruthy();
+  });
+});

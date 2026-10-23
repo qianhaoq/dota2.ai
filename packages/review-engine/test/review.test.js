@@ -49,6 +49,37 @@ it('reproduces every PR2 numerical acceptance criterion for Pudge', () => {
   expect(validateReview(review)).toEqual({ ok: true, errors: [] });
 });
 
+it('puts sanitized Steam personaname on every roster entry', () => {
+  const raw = structuredClone(load(9035042364));
+  for (const [i, p] of raw.players.entries()) p.personaname = `Nick${i + 1}`;
+  const review = buildReview(raw, opts);
+  expect(review.roster).toHaveLength(10);
+  for (const entry of review.roster) {
+    expect(typeof entry.personaname).toBe('string');
+    expect(entry.personaname).toMatch(/^Nick\d+$/);
+  }
+  const pudge = review.roster.find(r => r.hero_id === 14);
+  expect(pudge?.personaname).toBeTruthy();
+  expect(review.player?.personaname).toBe(pudge.personaname);
+  expect(validateReview(review)).toEqual({ ok: true, errors: [] });
+
+  const missing = structuredClone(load(9035042364));
+  for (const p of missing.players) delete p.personaname;
+  const blankReview = buildReview(missing, opts);
+  expect(blankReview.roster.every(r => r.personaname === null)).toBe(true);
+  expect(validateReview(blankReview)).toEqual({ ok: true, errors: [] });
+
+  const dirty = structuredClone(load(9035042364));
+  dirty.players[0].personaname = 'Evil\nName<script>#inject';
+  const cleaned = buildReview(dirty, { ...opts, heroId: dirty.players[0].hero_id });
+  expect(cleaned.roster[0].personaname).not.toMatch(/[\n<>#]/);
+  expect(cleaned.roster[0].personaname).toBeTruthy();
+  dirty.players[1].personaname = '   ';
+  const blank = buildReview(dirty, { ...opts, heroId: dirty.players[1].hero_id });
+  const blankEntry = blank.roster.find(r => r.hero_id === dirty.players[1].hero_id);
+  expect(blankEntry.personaname).toBeNull();
+});
+
 describe('gold corpus', () => {
   for (const file of readdirSync(dir).filter(file => file.endsWith('.json.gz')).sort()) it(`${file}: schema, determinism, no mutation, evidence references`, () => {
     const raw = load(file.replace('.json.gz', ''));
