@@ -42,8 +42,9 @@ export function MiniChart({ series }: {
 }) {
     const { t } = useI18n();
     const arrays = [series.radiant_gold_adv ?? [], series.radiant_xp_adv ?? []];
-    const bound = Math.max(1, ...arrays.flat().map(Math.abs));
-    return <div className="mt-[12px]"><svg role="img" aria-label={t('miniChart')} viewBox="0 0 240 50" className="w-full h-[50px]">{arrays.map((values, i) => <polyline key={i} fill="none" stroke={i ? '#64748B' : '#B7791F'} strokeWidth="2" points={values.map((v, x) => `${x / Math.max(1, values.length - 1) * 240},${25 - v / bound * 23}`).join(' ')}/>)}</svg><div className="flex gap-[12px] text-d2-12 text-d2-ink-3"><span className="text-d2-gold">● {t('chartGold')}</span><span className="text-d2-xp">● {t('chartXp')}</span></div></div>;
+    const nums = arrays.flat().filter((v): v is number => v != null && Number.isFinite(v));
+    const bound = Math.max(1, ...nums.map(Math.abs));
+    return <div className="mt-[12px]"><svg role="img" aria-label={t('miniChart')} viewBox="0 0 240 50" className="w-full h-[50px]">{arrays.map((values, i) => <polyline key={i} fill="none" stroke={i ? '#64748B' : '#B7791F'} strokeWidth="2" points={values.map((v, x) => v == null || !Number.isFinite(v) ? '' : `${x / Math.max(1, values.length - 1) * 240},${25 - v / bound * 23}`).filter(Boolean).join(' ')}/>)}</svg><div className="flex gap-[12px] text-d2-12 text-d2-ink-3"><span className="text-d2-gold">● {t('chartGold')}</span><span className="text-d2-xp">● {t('chartXp')}</span></div></div>;
 }
 export function FactChip({ fact }: {
     fact: Fact;

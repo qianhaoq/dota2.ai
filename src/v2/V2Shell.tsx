@@ -18,7 +18,11 @@ const V2Shell: React.FC<{
   onScroll?: React.UIEventHandler<HTMLDivElement>;
   composer?: React.ReactNode;
   topBarAction?: React.ReactNode;
-}> = ({ children, noIndex = false, scrollRef, onScroll, composer, topBarAction }) => {
+  /** Desktop evidence rail (420px, ≥lg); sits beside the chat column + composer. */
+  panel?: React.ReactNode;
+  /** Overlay layer rendered at the root (e.g. the mobile evidence sheet). */
+  layer?: React.ReactNode;
+}> = ({ children, noIndex = false, scrollRef, onScroll, composer, topBarAction, panel, layer }) => {
   useEffect(() => {
     if (!noIndex) return;
     const meta = document.createElement('meta');
@@ -33,10 +37,16 @@ const V2Shell: React.FC<{
   return (
     <div className="d2-root pt-safe px-safe">
       <TopBar action={topBarAction} />
-      <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-        <main className="max-w-d2-chat mx-auto px-[16px] pt-[16px] pb-[24px]">{children}</main>
+      <div className="flex-1 min-h-0 flex">
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+            <main className="max-w-d2-chat mx-auto px-[16px] pt-[16px] pb-[24px]">{children}</main>
+          </div>
+          {composer ?? <Composer />}
+        </div>
+        {panel}
       </div>
-      {composer ?? <Composer />}
+      {layer}
     </div>
   );
 };

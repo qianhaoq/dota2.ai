@@ -3105,7 +3105,7 @@ app.post('/api/feedback', (req, res) => {
     if (!submission.ok) {
       return res.status(400).json({ ok: false, error: submission.error });
     }
-    const { kind, message, name, contact } = submission;
+    const { kind, message, name, contact, matchId, hero, insightId } = submission;
 
     const ip = resolveClientIp(req);
     const now = Date.now();
@@ -3127,6 +3127,9 @@ app.post('/api/feedback', (req, res) => {
       name: name || undefined,
       contact: contact || undefined,
       message: message || undefined,
+      matchId: matchId || undefined,
+      hero: hero || undefined,
+      insightId: insightId || undefined,
       lang,
       ip,
       xff: feedbackXffClient(req),
