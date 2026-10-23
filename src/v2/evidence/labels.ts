@@ -180,34 +180,46 @@ export function fieldsFromSourcePath(sourcePath: string | undefined | null): str
 /** Per-claim source list — only fields that actually back the rendered data. */
 export function sourcesFor(review: Review, claim: number): SourceRow[] {
   const rows: SourceRow[] = [];
+  const captions: Record<string, DictKey> = {
+    radiant_gold_adv: 'srcPerMinute',
+    radiant_xp_adv: 'srcPerMinute',
+    objectives: 'srcObjectives',
+    deaths_log: 'srcDeathsLog',
+    kills_log: 'srcKillsLog',
+    killed_by: 'srcKilledBy',
+    lh_t: 'srcLhTimeline',
+    purchase_log: 'srcPurchaseLog',
+  };
+  const seen = new Set<string>();
+  const add = (field: string, caption = captions[field]) => {
+    if (seen.has(field)) return;
+    seen.add(field);
+    rows.push({ field, caption });
+  };
+  const consider = (sourcePath?: string | null) => {
+    for (const field of fieldsFromSourcePath(sourcePath)) add(field);
+  };
+  for (const id of review.insights[claim]?.fact_ids ?? []) {
+    consider(review.facts[id]?.source_path);
+  }
+
   if (claim === 0) {
-    if (review.series.radiant_gold_adv.length) rows.push({ field: 'radiant_gold_adv', caption: 'srcPerMinute' });
-    if (review.series.radiant_xp_adv.length) rows.push({ field: 'radiant_xp_adv', caption: 'srcPerMinute' });
-    if (review.objectives?.length) rows.push({ field: 'objectives', caption: 'srcObjectives' });
+    if (review.series.radiant_gold_adv.length) add('radiant_gold_adv');
+    if (review.series.radiant_xp_adv.length) add('radiant_xp_adv');
+    if (review.objectives?.length) add('objectives');
   } else if (claim === 1) {
-    // Prefer fact source_path provenance (deaths may be rebuilt from kills_log).
-    const seen = new Set<string>();
-    const consider = (sp?: string | null) => {
-      for (const field of fieldsFromSourcePath(sp)) {
-        if (seen.has(field)) continue;
-        seen.add(field);
-        if (field === 'deaths_log') rows.push({ field, caption: 'srcDeathsLog' });
-        else if (field === 'kills_log') rows.push({ field, caption: 'srcKillsLog' });
-        else if (field === 'killed_by') rows.push({ field, caption: 'srcKilledBy' });
-      }
-    };
+    // Death rows may be rebuilt from opponents' kills_log.
     for (const death of review.deaths ?? []) {
       consider(death.fact_id ? review.facts[death.fact_id]?.source_path : null);
     }
     consider(review.facts['deaths.total']?.source_path);
     consider(review.facts['killed_by']?.source_path);
-    // If deaths exist but no source_path was recoverable, keep an honest fallback.
-    if (!rows.length && review.deaths?.length) {
-      rows.push({ field: 'deaths', caption: 'srcDeathsLog' });
+    // Gold provenance alone does not explain where the death rows came from.
+    if (review.deaths?.length && !['deaths_log', 'kills_log', 'killed_by'].some(field => seen.has(field))) {
+      add('deaths', 'srcDeathsLog');
     }
-  } else {
-    if (review.facts['lh_at_10']) rows.push({ field: 'lh_t', caption: 'srcLhTimeline' });
-    if (review.purchases?.length) rows.push({ field: 'purchase_log', caption: 'srcPurchaseLog' });
+  } else if (review.purchases?.length) {
+    add('purchase_log');
   }
   return rows;
 }

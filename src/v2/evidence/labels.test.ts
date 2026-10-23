@@ -132,11 +132,28 @@ describe('evidence labels', () => {
   it('sourcesFor lists only fields backing the rendered claim', () => {
     expect(sourcesFor(review, 0).map(s => s.field)).toEqual(['radiant_gold_adv', 'radiant_xp_adv', 'objectives']);
     // Fixture deaths are rebuilt from opponents' kills_log — do not advertise absent deaths_log.
-    expect(sourcesFor(review, 1).map(s => s.field)).toEqual(['kills_log']);
-    expect(sourcesFor(review, 2).map(s => s.field)).toEqual(['lh_t', 'purchase_log']);
+    expect(sourcesFor(review, 1).map(s => s.field)).toEqual(['radiant_gold_adv', 'kills_log']);
+    expect(sourcesFor(review, 2).map(s => s.field)).toEqual(['radiant_gold_adv', 'lh_t', 'purchase_log']);
     const { 'deaths.total': _dt, killed_by: _kb, ...restFacts } = review.facts;
-    const sparse = { ...review, objectives: [], deaths: [], purchases: [], facts: restFacts } as unknown as Review;
+    const sparse = { ...review, insights: [], objectives: [], deaths: [], purchases: [], facts: restFacts } as unknown as Review;
     expect(sourcesFor(sparse, 1).map(s => s.field)).toEqual([]);
+  });
+
+  it('includes every insight fact source field for each claim', () => {
+    review.insights.forEach((insight, claim) => {
+      const fields = sourcesFor(review, claim).map(source => source.field);
+      for (const id of insight.fact_ids) {
+        for (const field of fieldsFromSourcePath(review.facts[id]?.source_path)) {
+          expect(fields, `claim ${claim}, fact ${id}`).toContain(field);
+        }
+      }
+      expect(new Set(fields).size).toBe(fields.length);
+    });
+  });
+
+  it('keeps an honest death fallback when death provenance is missing', () => {
+    const sparse = { ...review, facts: { 'deaths.behind_1k': review.facts['deaths.behind_1k'] } };
+    expect(sourcesFor(sparse, 1).map(source => source.field)).toEqual(['radiant_gold_adv', 'deaths']);
   });
 
   it('fieldsFromSourcePath extracts OpenDota field tokens', () => {
