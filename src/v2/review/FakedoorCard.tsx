@@ -83,22 +83,29 @@ const FakedoorCard: React.FC = () => {
   };
 
   return (
-    <div className="flex gap-[10px] p-[12px] rounded-[12px] bg-d2-surface border border-d2-line-2 shadow-d2-1">
-      <span className="flex-none mt-[2px]">
-        <IconInfo />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="m-0 text-d2-15 font-semibold text-d2-ink">{t('fdTitle')}</p>
-        <p className="m-[2px_0_0] text-d2-13 text-d2-ink-3">
-          {t('fdBody')} <span className="font-semibold text-d2-ink">{t('fdNoCharge')}</span>
+    <div className="p-[16px] rounded-[12px] bg-d2-surface-2 border border-d2-gold/30 shadow-d2-2 relative overflow-hidden">
+      {/* Decorative gold gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-d2-gold/5 to-transparent pointer-events-none" />
+      <div className="relative">
+        <div className="flex items-center gap-[8px] mb-[8px]">
+          <svg className="w-[20px] h-[20px] text-d2-gold-2" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <circle cx="16" cy="16" r="14" />
+            <path d="m8 19 6-6 5 4 5-7M9 20l5 5" strokeWidth="2" />
+            <circle cx="22.5" cy="9.5" r="3" strokeWidth="1.5" />
+            <circle cx="9" cy="21" r="2.5" strokeWidth="1.5" />
+          </svg>
+          <span className="text-d2-gold-2 text-d2-12 font-bold uppercase tracking-wider">{t('fdTitle')}</span>
+        </div>
+        <p className="m-0 text-d2-15 text-d2-ink-2">
+          {t('fdBody')} <span className="font-semibold text-d2-gold-2">{t('fdNoCharge')}</span>
         </p>
 
         {state === 'thanks' ? (
-          <p className="m-[10px_0_0] text-d2-13 font-medium text-d2-up" role="status">
+          <p className="m-[12px_0_0] text-d2-13 font-medium text-d2-up" role="status">
             {contact.trim() ? t('fdThanks') : t('fdThanksAnon')}
           </p>
         ) : (
-          <div className="mt-[10px] flex flex-col gap-[8px] sm:flex-row sm:items-center">
+          <div className="mt-[12px] flex flex-col gap-[8px] sm:flex-row sm:items-center">
             <input
               type="email"
               value={contact}
@@ -111,14 +118,15 @@ const FakedoorCard: React.FC = () => {
               maxLength={200}
               disabled={state === 'sending'}
               aria-invalid={emailError || undefined}
-              className="flex-1 min-w-0 min-h-[40px] px-[12px] rounded-d2-control bg-d2-surface-2 border border-d2-line text-d2-13 text-d2-ink placeholder:text-d2-ink-4 outline-none focus:border-d2-accent disabled:opacity-50"
+              className="flex-1 min-w-0 min-h-[40px] px-[12px] rounded-d2-control bg-d2-surface-3 border border-d2-line text-d2-13 text-d2-ink placeholder:text-d2-ink-4 outline-none focus:border-d2-gold disabled:opacity-50"
             />
             <div className="flex gap-[8px]">
               <button
                 type="button"
                 onClick={() => void notify()}
                 disabled={state === 'sending'}
-                className="inline-flex items-center justify-center min-h-[40px] px-[14px] rounded-d2-control bg-d2-ink text-d2-surface text-d2-13 font-semibold disabled:opacity-40"
+                className="inline-flex items-center justify-center min-h-[40px] px-[16px] rounded-d2-control bg-gradient-to-b from-[#ff7159] to-[#ed4e36] text-white text-d2-13 font-bold uppercase tracking-wide shadow-[inset_0_1px_#ffb09f,inset_0_-1px_#9e2819] hover:brightness-110 disabled:opacity-40 transition-all"
+                style={{ clipPath: 'polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px))' }}
               >
                 {state === 'sending' ? t('fdSending') : t('fdNotify')}
               </button>
@@ -126,7 +134,7 @@ const FakedoorCard: React.FC = () => {
                 type="button"
                 disabled={state === 'sending'}
                 onClick={close}
-                className="inline-flex items-center justify-center min-h-[40px] px-[14px] rounded-d2-control bg-d2-surface border border-d2-line-2 text-d2-13 font-semibold text-d2-ink-2"
+                className="inline-flex items-center justify-center min-h-[40px] px-[14px] rounded-d2-control bg-d2-surface-3 border border-d2-line text-d2-13 font-semibold text-d2-ink-3 hover:bg-d2-surface-2 hover:text-d2-ink-2 transition-colors"
               >
                 {t('fdNotNow')}
               </button>

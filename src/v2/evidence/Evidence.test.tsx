@@ -202,7 +202,7 @@ describe('GoldXpChart domain', () => {
     } as Review;
     wrap(<GoldXpChart review={positive} mode="gold"/>);
     const chart = screen.getByTestId('gold-xp-chart');
-    const baseline = chart.querySelector('line[stroke="#CBD1DA"]')!;
+    const baseline = chart.querySelector('line[stroke="#5a6269"]')!;
     const y = Number(baseline.getAttribute('y1'));
     expect(y).toBeGreaterThanOrEqual(12);
     expect(y).toBeLessThanOrEqual(176 - 22);

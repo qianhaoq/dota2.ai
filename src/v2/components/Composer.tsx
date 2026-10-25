@@ -76,7 +76,7 @@ const Composer: React.FC<{
   };
 
   return (
-    <div className="flex-none bg-gradient-to-b from-transparent to-d2-bg pt-[10px] pb-[calc(12px+env(safe-area-inset-bottom))]">
+    <div className="flex-none bg-gradient-to-t from-d2-bg via-d2-bg/95 to-transparent pt-[10px] pb-[calc(12px+env(safe-area-inset-bottom))]">
       <div className="max-w-d2-chat mx-auto px-[16px]">
         {error && (
           <p role="alert" className="text-d2-13 text-d2-down mb-[8px]">
@@ -86,7 +86,7 @@ const Composer: React.FC<{
         <form
           onSubmit={submit}
           autoComplete="off"
-          className="flex items-center gap-[8px] h-[52px] pl-[16px] pr-[6px] bg-d2-surface border border-d2-line-2 rounded-d2-card shadow-d2-2 focus-within:border-[#A5B4FC]"
+          className="flex items-center gap-[8px] h-[52px] pl-[16px] pr-[6px] bg-d2-surface-2 border border-d2-line rounded-d2-card shadow-d2-2 focus-within:border-d2-gold/50"
         >
           <input
             value={value}
@@ -98,14 +98,14 @@ const Composer: React.FC<{
             aria-label={mode === 'followUp' ? t('followUpPh') : t('inputAria')}
             disabled={disabled || locked}
             maxLength={mode === 'followUp' ? FOLLOW_UP_MAX_CHARS : undefined}
-            className="flex-1 min-w-0 border-0 outline-none bg-transparent text-d2-15 h-full placeholder:text-d2-ink-4 disabled:opacity-50"
+            className="flex-1 min-w-0 border-0 outline-none bg-transparent text-d2-15 text-d2-ink h-full placeholder:text-d2-ink-4 disabled:opacity-50"
           />
           {disabled && onStop ? (
             <button
               type="button"
               onClick={onStop}
               aria-label={t('stopAria')}
-              className="w-[44px] h-[44px] rounded-[12px] bg-d2-ink grid place-items-center flex-none text-d2-surface"
+              className="w-[44px] h-[44px] rounded-[12px] bg-d2-coral grid place-items-center flex-none text-white hover:brightness-110 transition-all"
             >
               <IconStop />
             </button>
@@ -114,10 +114,10 @@ const Composer: React.FC<{
               type="submit"
               aria-label={t('sendAria')}
               disabled={!value.trim() || disabled || locked}
-              className="w-[44px] h-[44px] rounded-[12px] bg-d2-ink grid place-items-center flex-none transition-opacity duration-d2-fast disabled:opacity-25"
+              className="w-[44px] h-[44px] border-l border-d2-line-2 grid place-items-center flex-none text-d2-gold-2 transition-colors duration-d2-fast hover:text-d2-gold-pale disabled:text-d2-disabled disabled:opacity-40"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 19V5M5 12l7-7 7 7" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
           )}
