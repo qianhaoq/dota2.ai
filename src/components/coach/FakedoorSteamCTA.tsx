@@ -17,8 +17,8 @@ const FakedoorSteamCTA: React.FC<{ lang: Language }> = ({ lang }) => {
 
   const t = {
     cta: lang === 'zh'
-      ? '绑定 Steam，每局自动复盘（$3/月）'
-      : 'Link Steam for auto-review every match ($3/month)',
+      ? '绑定 Steam，每局自动复盘'
+      : 'Link Steam for auto-review every match',
     title: lang === 'zh' ? '即将上线' : 'Coming soon',
     body: lang === 'zh'
       ? '我们正在做「每局打完自动复盘」。留下邮箱，上线时第一时间通知你。'

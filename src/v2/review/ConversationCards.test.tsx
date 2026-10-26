@@ -5,7 +5,7 @@ import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { I18nProvider } from '../i18n/I18nProvider';
 import TopBar from '../components/TopBar';
-import { HeroGrid, HeroCollapsedRow, Share } from './ConversationCards';
+import { HeroGrid, HeroCollapsedRow, Share, RefusalBubble } from './ConversationCards';
 import ResultHeader from './ResultHeader';
 import type { Review } from './types';
 
@@ -77,5 +77,24 @@ describe('HeroGrid personaname', () => {
     wrap(<HeroCollapsedRow hero="pudge" personaname="CoolPudge" change={() => {}}/>);
     expect(screen.getByText('CoolPudge')).toBeTruthy();
     expect(screen.getByText(/You: Pudge/)).toBeTruthy();
+  });
+});
+
+describe('RefusalBubble', () => {
+  it('shows a short human message and never renders raw gap codes', () => {
+    wrap(<RefusalBubble gaps={[
+      { topic: 'death_locations', reason: 'opendota_deaths_log_has_no_coordinates' },
+      { topic: 'build_vs_lineup', reason: 'no_compliant_patch_matched_kb' },
+    ]}/>);
+    expect(screen.getByTestId('refusal-bubble')).toBeTruthy();
+    expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
+    expect(screen.queryByText(/death_locations/)).toBeNull();
+    expect(screen.queryByText(/opendota_deaths_log_has_no_coordinates/)).toBeNull();
+    expect(screen.queryByText(/build_vs_lineup/)).toBeNull();
+    expect(screen.queryByText(/no_compliant_patch_matched_kb/)).toBeNull();
+  });
+  it('renders nothing when gaps are empty', () => {
+    wrap(<RefusalBubble gaps={[]}/>);
+    expect(screen.queryByTestId('refusal-bubble')).toBeNull();
   });
 });

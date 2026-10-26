@@ -18,7 +18,7 @@ type FdState = 'open' | 'sending' | 'thanks' | 'error';
  * Light-styled fake-door card (handoff §1 screen 8), equivalent to the legacy
  * FakedoorSteamCTA: same /api/feedback endpoint and payload builder, same
  * `fakedoor_clicked {kind:'steam_autoreview'}` analytics event, max once per
- * session. "$3/mo when it launches. No charge now."
+ * session. Notify-on-launch only — no price in the copy.
  */
 const FakedoorCard: React.FC = () => {
   const { lang, t } = useI18n();
@@ -97,7 +97,7 @@ const FakedoorCard: React.FC = () => {
           <span className="text-d2-gold-2 text-d2-12 font-bold uppercase tracking-wider">{t('fdTitle')}</span>
         </div>
         <p className="m-0 text-d2-15 text-d2-ink-2">
-          {t('fdBody')} <span className="font-semibold text-d2-gold-2">{t('fdNoCharge')}</span>
+          {t('fdBody')}
         </p>
 
         {state === 'thanks' ? (
