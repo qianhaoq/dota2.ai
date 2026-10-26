@@ -29,11 +29,11 @@ function wrap(ui: React.ReactElement, lang: 'en' | 'zh' = 'zh') {
 afterEach(() => cleanup());
 
 describe('cardConclusion fallback', () => {
-  it('keeps short engine conclusions intact', () => {
-    const r = review('zh');
-    expect(cardConclusion(r.insights[1])).toBe('落后时优先减少无收益的交战。');
-    expect(cardConclusion(r.insights[0])).toContain('优先回看');
-    expect(cardConclusion(r.insights[2])).toBe('优先练习稳定补刀与安全获取资源。');
+  it.each(['en', 'zh'] as const)('keeps numbered engine conclusions intact in %s', lang => {
+    const r = review(lang);
+    for (const insight of r.insights) expect(cardConclusion(insight)).toBe(insight.claim.text);
+    expect(cardConclusion(r.insights[1])).toContain('16/19');
+    expect(cardConclusion(r.insights[2])).toContain('−2,060');
   });
   it('splits legacy multi-sentence fix_this claims', () => {
     expect(cardConclusion({
@@ -76,9 +76,9 @@ describe('InsightCard hierarchy for 9035042364', () => {
 
     expect(screen.getAllByTestId('insight-card')).toHaveLength(3);
 
-    expect(screen.getByText('落后时优先减少无收益的交战。')).toBeTruthy();
+    expect(screen.getByText('落后千金时死亡 16/19；重复击杀者含冥魂大帝。落后时优先减少无收益的交战。')).toBeTruthy();
     expect(screen.getByText(/优先回看/)).toBeTruthy();
-    expect(screen.getByText('优先练习稳定补刀与安全获取资源。')).toBeTruthy();
+    expect(screen.getByText('本局 10 分钟补刀 13、团队经济 −2,060。下一局 10 分钟补刀至少 13，经济落后控制在 2,060 金以内；未达标先安全发育。')).toBeTruthy();
     expect(screen.queryByText(/doom_bringer/)).toBeNull();
     expect(screen.queryByText(/skeleton_king/)).toBeNull();
 
@@ -102,7 +102,7 @@ describe('InsightCard hierarchy for 9035042364', () => {
   it('en: uses English hero names in matchup', () => {
     const r = review('en');
     wrap(<InsightCard insight={r.insights[1]} review={r} index={2} streaming={false} />, 'en');
-    expect(screen.getByText('Prioritize avoiding low-value fights while behind.')).toBeTruthy();
+    expect(screen.getByText('Deaths while behind: 16/19; repeated killer includes Wraith King. Prioritize avoiding low-value fights while behind.')).toBeTruthy();
     expect(screen.getByText('Wraith King')).toBeTruthy();
     expect(screen.getByText('Doom')).toBeTruthy();
     expect(screen.queryByText(/doom_bringer/)).toBeNull();
