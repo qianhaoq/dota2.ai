@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { describe, it, expect } from 'vitest';
 import { buildReview, validateReview, ENGINE_VERSION } from '../src/index.js';
+import { buildInsights } from '../src/insights/index.js';
 import { clock, findWindow } from '../src/facts/index.js';
 const dir = new URL('./fixtures/gold/', import.meta.url);
 const load = id => JSON.parse(gunzipSync(readFileSync(new URL(`${id}.json.gz`, dir))));
@@ -32,16 +33,16 @@ it('reproduces every PR2 numerical acceptance criterion for Pudge', () => {
   expect(f['comeback.52_57.xp'].value.delta).toBe(39051);
   expect(review.insights.map(i => [i.id, i.status])).toEqual([['turning_point', 'ok'], ['fix_this', 'ok'], ['next_game', 'ok']]);
   expect(review.insights[1].pattern).toBe('behind_1k');
-  expect(review.insights[0].claim.text).toBe('Prioritize reviewing the worst gold window at 40:00–45:00.');
-  expect(review.insights[1].claim.text).toBe('Prioritize avoiding low-value fights while behind.');
-  expect(review.insights[2].claim.text).toBe('Practice consistent last hits and safe resource collection.');
-  expect(review.insights[0].claim.text).not.toMatch(/6,?983|28,?965/);
+  expect(review.insights[0].claim.text).toBe('Prioritize reviewing the worst gold window at 40:00–45:00 (▼6,983); global low −28,965.');
+  expect(review.insights[1].claim.text).toBe('Deaths while behind: 16/19; repeated killer includes Wraith King. Prioritize avoiding low-value fights while behind.');
+  expect(review.insights[2].claim.text).toBe('This game: 13 CS and −2,060 team gold at 10:00. Next game aim for at least 13 CS at 10:00 and keep the deficit under 2,060 gold; if you miss either, farm safely before forcing plays.');
+  expect(review.insights[0].claim.text).toMatch(/▼6,983.*−28,965/);
   expect(f.killed_by.display.en).toContain('Wraith King');
   expect(f.killed_by.display.en).not.toMatch(/skeleton_king:/);
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).insights.map(i => i.claim.text)).toEqual([
-    '优先回看 40:00–45:00 这段最差经济窗口。',
-    '落后时优先减少无收益的交战。',
-    '优先练习稳定补刀与安全获取资源。',
+    '优先回看 40:00–45:00 这段最差经济窗口（▼6,983）；全局低点 −28,965。',
+    '落后千金时死亡 16/19；重复击杀者含冥魂大帝。落后时优先减少无收益的交战。',
+    '本局 10 分钟补刀 13、团队经济 −2,060。下一局 10 分钟补刀至少 13，经济落后控制在 2,060 金以内；未达标先安全发育。',
   ]);
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).toContain('冥魂大帝');
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).not.toMatch(/skeleton_king:/);
@@ -168,15 +169,15 @@ it('prioritizes repeated killers over phase concentration, with phase as fallbac
   const repeated = buildReview(raw, opts).insights[1];
   expect(repeated.pattern).toBe('repeat_killer');
   expect(repeated.fact_ids).toEqual(['killed_by.doom_bringer']);
-  expect(repeated.claim.slots).not.toContain('{killed_by.doom_bringer}');
-  expect(repeated.claim.text).toBe('Prioritize reviewing deaths to Doom.');
+  expect(repeated.claim.slots).toContain('{killed_by.doom_bringer}');
+  expect(repeated.claim.text).toBe('Prioritize reviewing 2 deaths to Doom.');
   expect(repeated.claim.text).not.toContain('hoodwink');
-  expect(repeated.claim.text).not.toMatch(/\d/);
-  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toBe('优先复查末日使者造成的死亡。');
+  expect(repeated.claim.text).toMatch(/2 deaths/);
+  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toBe('优先复查末日使者造成的 2 次死亡。');
   raw.players[0].deaths_log[1].key = 'sniper';
   expect(buildReview(raw, opts).insights[1].pattern).toBe('phase_repeat');
-  expect(buildReview(raw, opts).insights[1].claim.text).toBe('Prioritize reviewing deaths concentrated in the lane phase.');
-  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toBe('优先复查对线期集中死亡。');
+  expect(buildReview(raw, opts).insights[1].claim.text).toBe('Prioritize reviewing 3 deaths concentrated in the lane phase.');
+  expect(buildReview(raw, { ...opts, lang: 'zh' }).insights[1].claim.text).toBe('优先复查对线期集中的 3 次死亡。');
   raw.players[0].deaths_log = [];
   raw.players[0].deaths = 0;
   expect(buildReview(raw, opts).insights[1].status).toBe('insufficient');
@@ -276,6 +277,8 @@ it('keeps death insights without gold and gates economy insights on their own fa
   const withLastHits = buildReview(raw, opts);
   expect(withLastHits.insights[2].status).toBe('ok');
   expect(withLastHits.insights[2].fact_ids).toEqual(['lh_at_10']);
+  expect(withLastHits.insights[2].claim.text).toContain('aim for at least 13 CS at 10:00');
+  expect(withLastHits.insights[2].claim.text).not.toContain('team gold');
 });
 
 it.each(['en', 'zh'])('falls back to the slug for an unknown repeated killer in %s', lang => {
@@ -283,8 +286,8 @@ it.each(['en', 'zh'])('falls back to the slug for an unknown repeated killer in 
   const insight = buildReview(raw, { ...opts, lang }).insights[1];
   expect(insight.status).toBe('ok');
   expect(insight.fact_ids).toEqual(['killed_by.unknown_hero']);
-  expect(insight.claim.text).toBe(lang === 'zh' ? '优先复查unknown_hero造成的死亡。' : 'Prioritize reviewing deaths to unknown_hero.');
-  expect(insight.claim.text).not.toMatch(lang === 'zh' ? /2 次/ : /2 deaths/);
+  expect(insight.claim.text).toBe(lang === 'zh' ? '优先复查unknown_hero造成的 2 次死亡。' : 'Prioritize reviewing 2 deaths to unknown_hero.');
+  expect(insight.claim.text).toMatch(lang === 'zh' ? /2 次/ : /2 deaths/);
 });
 
 it.each([[-5, '-0:05'], [-65, '-1:05'], [0, '0:00'], [65, '1:05']])('formats clock(%s) as %s', (seconds, expected) => {
@@ -404,4 +407,57 @@ it('localizes Chinese followup labels while retaining internal insight and gap k
   }
   const english = buildReview(raw, opts);
   expect(english.followups).toContainEqual({ id: 'gold_fed', label: 'Gold fed', answerable: false, gap: 'gold_fed' });
+});
+
+it('includes the Axe match window and ten-minute targets without inferred lane claims', () => {
+  const review = buildReview(load(8985182860), { ...opts, heroId: 2 });
+  expect(review.insights[0].claim.text).toMatch(/17:00–22:00.*▼2,983/);
+  expect(review.insights[2].claim.text).toMatch(/48 CS and −975 team gold/);
+  expect(review.insights[2].data_gap).toBe('build_vs_lineup');
+  expect(validateReview(review)).toEqual({ ok: true, errors: [] });
+  for (const [id, heroId, lang] of [[9035042364, 14, 'zh'], [8985182860, 2, 'en']]) {
+    const r = buildReview(load(id), { ...opts, heroId, lang });
+    for (const insight of r.insights) {
+      expect(insight.claim.text).not.toMatch(/safe lane|safelane|offlane|off lane|mid lane|top lane|bottom lane|优势路|劣势路|中路|上路|下路|分路/i);
+    }
+  }
+  const pudge = buildReview(load(9035042364), { ...opts, lang: 'zh' });
+  expect(pudge.insights[1].fact_ids).toContain('killed_by.skeleton_king');
+});
+
+it.each(['en', 'zh'])('omits unavailable global low and preserves missing-window copy in %s', lang => {
+  const raw = load(9035042364);
+  const { facts } = buildReview(raw, { ...opts, lang });
+  delete facts['gold.low'];
+  const input = { facts, deaths: [], worst: { from: 40, to: 45 } };
+  const turning = buildInsights(input, lang, 'parsed')[0];
+  expect(turning.claim.text).toMatch(/40:00–45:00.*▼6,983/);
+  expect(turning.claim.text).not.toMatch(/global low|全局低点|[{}]/);
+  expect(buildInsights({ ...input, worst: null }, lang, 'parsed')[0].claim.text)
+    .toBe(lang === 'zh' ? '缺少经济曲线。' : 'Gold series unavailable.');
+});
+
+it.each(['en', 'zh'])('sets directional gold-only and combined targets in %s', lang => {
+  for (const value of [-975, 0, 975]) {
+    const raw = load(8985182860);
+    const player = raw.players.find(p => p.hero_id === 2);
+    // Preserve player-team perspective regardless of the fixture's side.
+    raw.radiant_gold_adv[10] = player.player_slot < 128 ? value : -value;
+    for (const withCs of [true, false]) {
+      const input = structuredClone(raw);
+      if (!withCs) delete input.players.find(p => p.hero_id === 2).lh_t;
+      const review = buildReview(input, { ...opts, heroId: 2, lang });
+      const next = review.insights[2];
+      expect(next.status).toBe('ok');
+      expect(next.claim.text).toMatch(value < 0 ? /deficit under 975|经济落后控制在 975/
+        : value > 0 ? /keep a lead of at least 975|保持至少 975 金的经济领先/
+          : /avoid falling behind|经济不要落后/);
+      expect(next.claim.text).toMatch(/farm safely|安全发育/);
+      if (!withCs) {
+        expect(next.fact_ids).toEqual(['gold.at.10']);
+        expect(next.claim.text).not.toMatch(/CS|补刀/);
+      }
+      expect(validateReview(review)).toEqual({ ok: true, errors: [] });
+    }
+  }
 });

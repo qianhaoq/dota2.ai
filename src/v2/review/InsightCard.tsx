@@ -12,6 +12,8 @@ type Lang = 'en' | 'zh';
 export function cardConclusion(insight: Insight): string {
   const text = insight.claim?.text?.trim() ?? '';
   if (!text) return text;
+  // Current numbered claims keep their evidence alongside the action.
+  if (insight.id === 'fix_this' && /^(?:落后千金时死亡|Deaths while behind:)\s*\d[\d,]*\/\d/.test(text)) return text;
   const parts = text.split(/(?<=[。．.!?！？])\s*/).map(s => s.trim()).filter(Boolean);
   if (parts.length < 2) return text;
   const last = parts[parts.length - 1];
