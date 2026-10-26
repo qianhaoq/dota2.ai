@@ -33,19 +33,21 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
   };
 
   return (
-    <header className="flex-none border-b border-d2-line bg-d2-surface/90 backdrop-blur z-30">
+    <header className="flex-none border-b border-d2-line-2 bg-d2-surface/95 backdrop-blur z-30">
       <div className="h-[52px] flex items-center gap-[8px] px-[8px] sm:px-[16px] max-w-[1280px] mx-auto min-w-0">
         <div className="flex items-center gap-[8px] font-semibold text-d2-15 tracking-[-0.01em] whitespace-nowrap text-d2-ink">
-          <span className="w-[24px] h-[24px] rounded-[7px] bg-d2-ink grid place-items-center" aria-hidden="true">
-            <svg width="12" height="12" viewBox="0 0 24 24">
-              <path d="M12 2l2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z" fill="#fff" />
+          <span className="w-[26px] h-[26px] text-d2-gold-2" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 5 16 1l13 4v22l-13 4L3 27Z" />
+              <path d="m3 5 9 9 8-8 9 9M3 27l9-9 8 8 9-9" />
+              <path d="m13 14 7-7 5 5-7 7Z" fill="currentColor" stroke="none" />
             </svg>
           </span>
-          dota2.ai
+          <span className="font-serif">dota2.ai</span>
         </div>
         {onSampleMatch && (
           <span
-            className="hidden min-[400px]:inline-flex min-w-0 shrink items-center h-[24px] px-[8px] rounded-d2-chip bg-[#FFFBEB] text-d2-warn text-d2-12 font-semibold whitespace-nowrap"
+            className="hidden min-[400px]:inline-flex min-w-0 shrink items-center h-[24px] px-[8px] rounded-d2-chip bg-d2-accent-bg border border-d2-gold/30 text-d2-gold-2 text-d2-12 font-semibold whitespace-nowrap"
             title={t('sampleTitle')}
           >
             <span className="truncate">{t('samplePill')}</span>
@@ -54,7 +56,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
         <div className="flex-1" />
         {/* Surface tabs: placeholders for the proposed CLI/Discord/Dev surfaces.
             Hidden on small screens so the bar fits 390px. */}
-        <nav className="hidden lg:flex gap-[4px] p-[4px] bg-d2-surface-2 rounded-d2-chip" aria-label="Surfaces">
+        <nav className="hidden lg:flex gap-[4px] p-[4px] bg-d2-surface-3 rounded-d2-chip" aria-label="Surfaces">
           {SURFACE_TABS.map((key, i) => (
             <button
               key={key}
@@ -65,8 +67,8 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
               onClick={i === 0 ? undefined : (e) => e.preventDefault()}
               className={`h-[32px] px-[14px] rounded-d2-chip text-d2-13 font-medium whitespace-nowrap transition-colors duration-d2-fast ${
                 i === 0
-                  ? 'bg-d2-surface text-d2-ink shadow-d2-1 font-semibold'
-                  : 'text-d2-ink-3 cursor-default'
+                  ? 'bg-d2-surface-2 text-d2-ink shadow-d2-1 font-semibold'
+                  : 'text-d2-ink-4 cursor-default hover:text-d2-ink-3'
               }`}
             >
               {t(key)}
@@ -77,7 +79,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
         {action}
         <Link
           to="/legacy"
-          className="hidden sm:inline-flex items-center min-h-[44px] px-[8px] rounded-[12px] text-d2-13 font-medium text-d2-ink-3 transition-colors duration-d2-fast hover:bg-d2-surface-2 whitespace-nowrap"
+          className="hidden sm:inline-flex items-center min-h-[44px] px-[8px] rounded-[12px] text-d2-13 font-medium text-d2-ink-4 transition-colors duration-d2-fast hover:bg-d2-surface-3 hover:text-d2-ink-3 whitespace-nowrap"
         >
           {t('classicBtn')}
         </Link>
@@ -86,7 +88,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
           onClick={() => setFeedbackOpen(true)}
           aria-label={t('feedbackAria')}
           title={t('feedbackBtn')}
-          className="min-w-[44px] min-h-[44px] rounded-[12px] grid place-items-center text-d2-ink-3 flex-none transition-colors duration-d2-fast hover:bg-d2-surface-2"
+          className="min-w-[44px] min-h-[44px] rounded-[12px] grid place-items-center text-d2-ink-4 flex-none transition-colors duration-d2-fast hover:bg-d2-surface-3 hover:text-d2-gold-2"
         >
           <MessageSquare size={17} aria-hidden="true" />
         </button>
@@ -94,7 +96,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
           type="button"
           onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
           aria-label={t('langAria')}
-          className="min-w-[44px] min-h-[44px] px-[8px] rounded-[12px] grid place-items-center text-d2-ink-2 font-semibold text-d2-13 flex-none transition-colors duration-d2-fast hover:bg-d2-surface-2"
+          className="min-w-[44px] min-h-[44px] px-[8px] rounded-[12px] grid place-items-center text-d2-ink-3 font-semibold text-d2-13 flex-none transition-colors duration-d2-fast hover:bg-d2-surface-3 hover:text-d2-gold-2"
         >
           {t('langBtn')}
         </button>
@@ -103,7 +105,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
           onClick={goNew}
           aria-label={t('newReview')}
           title={t('newReview')}
-          className="min-w-[44px] min-h-[44px] rounded-[12px] grid place-items-center text-d2-ink-3 flex-none transition-colors duration-d2-fast hover:bg-d2-surface-2"
+          className="min-w-[44px] min-h-[44px] rounded-[12px] grid place-items-center text-d2-ink-4 flex-none transition-colors duration-d2-fast hover:bg-d2-surface-3 hover:text-d2-gold-2"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

@@ -17,9 +17,9 @@ export default function EvidencePanel({ children, open }: {
       {open && children
         ? <div className="flex-1 overflow-y-auto overscroll-contain">{children}</div>
         : <div className="px-[24px] py-[32px] text-d2-ink-3">
-            <div className="text-d2-12 font-semibold text-d2-ink-4">{t('evidence')}</div>
-            <div className="mt-[6px] text-d2-17 font-semibold text-d2-ink">{t('evEmptyH')}</div>
-            <div className="h-[140px] rounded-[12px] border border-dashed border-d2-line-2 my-[16px] bg-d2-bg [background-image:repeating-linear-gradient(90deg,#ECEEF2_0_1px,transparent_1px_48px)]"/>
+            <div className="text-d2-12 font-semibold text-d2-gold-2 uppercase tracking-wider">{t('evidence')}</div>
+            <div className="mt-[6px] text-d2-17 font-semibold text-d2-ink font-serif">{t('evEmptyH')}</div>
+            <div className="h-[140px] rounded-[12px] border border-dashed border-d2-line my-[16px] bg-d2-surface-2 [background-image:repeating-linear-gradient(90deg,rgba(255,255,255,0.03)_0_1px,transparent_1px_48px)]"/>
             <p className="m-0 text-d2-13">{t('evEmptyP')}</p>
           </div>}
     </aside>;

@@ -82,8 +82,8 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
     return <div data-testid="evidence-body" data-claim={claim}>
       <div className="flex items-start justify-between gap-[8px] px-[16px] pt-[12px] pb-[10px]">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-[6px] text-d2-12 font-semibold text-d2-ink-3">{insightIcon(insight.id)}<span>{t(labelKey)}{time ? <> · <span className="d2-tnum">{time}</span></> : null}</span></div>
-          <div className="mt-[4px] text-d2-17 font-semibold">{insight.claim.text}</div>
+          <div className="flex items-center gap-[6px] text-d2-12 font-bold uppercase tracking-wider text-d2-gold-2">{insightIcon(insight.id)}<span>{t(labelKey)}{time ? <> · <span className="d2-tnum font-mono">{time}</span></> : null}</span></div>
+          <div className="mt-[4px] text-d2-17 font-semibold text-d2-ink font-serif">{insight.claim.text}</div>
         </div>
         <Pager claim={claim} total={review.insights.length} onPage={onPage} onClose={onClose}/>
       </div>
@@ -93,8 +93,8 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
           <Segmented value={series} onChange={setSeries}/>
           <GoldXpChart review={review} mode={series} band={band} bandLabel={bandLabel}/>
           <div className="flex gap-[14px] mt-[8px] text-d2-12 text-d2-ink-4">
-            <span className="inline-flex items-center gap-[6px]"><svg width="16" height="6" aria-hidden="true"><line x1="0" y1="3" x2="16" y2="3" stroke="#B7791F" strokeWidth="2.2"/></svg>{t('legendGold')}</span>
-            <span className="inline-flex items-center gap-[6px]"><svg width="16" height="6" aria-hidden="true"><line x1="0" y1="3" x2="16" y2="3" stroke="#94A3B8" strokeWidth="1.6" strokeDasharray="4 3"/></svg>{t('legendXP')}</span>
+            <span className="inline-flex items-center gap-[6px]"><svg width="16" height="6" aria-hidden="true"><line x1="0" y1="3" x2="16" y2="3" stroke="#c79123" strokeWidth="2.2"/></svg>{t('legendGold')}</span>
+            <span className="inline-flex items-center gap-[6px]"><svg width="16" height="6" aria-hidden="true"><line x1="0" y1="3" x2="16" y2="3" stroke="#1a9fff" strokeWidth="1.6" strokeDasharray="4 3"/></svg>{t('legendXP')}</span>
           </div>
         </div>
         {(goldWindow?.delta || xpWindow?.delta) && <div className={section}>
@@ -118,8 +118,8 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
           <h4 className={sectionH}>{fill(t('evDeathsTitle'), { n: facts['deaths.total']?.display[lang] ?? '' }).replace(/\s+/g, ' ').trim()}</h4>
           <DeathStrip review={review} band={band} bandLabel={deathBandLabel} topKiller={topKiller}/>
           <div className="flex gap-[14px] mt-[6px] text-d2-12 text-d2-ink-4">
-            {topKiller && <span className="inline-flex items-center gap-[6px]"><span className="inline-block w-[8px] h-[8px] rounded-full bg-d2-down"/>{heroDisplayName(topKiller, lang)}{facts[`killed_by.${topKiller}`] ? ` (${facts[`killed_by.${topKiller}`].display[lang]})` : ''}</span>}
-            <span className="inline-flex items-center gap-[6px]"><span className="inline-block w-[8px] h-[8px] rounded-full bg-[#94A3B8]"/>{t('evOthers')}</span>
+            {topKiller && <span className="inline-flex items-center gap-[6px]"><span className="inline-block w-[8px] h-[8px] rounded-full bg-d2-coral"/>{heroDisplayName(topKiller, lang)}{facts[`killed_by.${topKiller}`] ? ` (${facts[`killed_by.${topKiller}`].display[lang]})` : ''}</span>}
+            <span className="inline-flex items-center gap-[6px]"><span className="inline-block w-[8px] h-[8px] rounded-full bg-d2-ink-4"/>{t('evOthers')}</span>
           </div>
         </div>
         <div className={section}>
@@ -143,8 +143,8 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
         </div>
         {enemies.length > 0 && <div className={section}>
           <h4 className={sectionH}>{t('enemyLineup')}</h4>
-          <div className="flex flex-wrap gap-[8px]">{enemies.map(h => <span key={h.hero_id} className="inline-flex items-center gap-[6px] rounded-d2-chip bg-d2-surface-2 px-[10px] py-[4px] text-d2-13">
-            <img className="w-[20px] h-[20px] rounded-[5px] object-cover" src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${h.hero}.png`} alt="" loading="lazy"/>
+          <div className="flex flex-wrap gap-[8px]">{enemies.map(h => <span key={h.hero_id} className="inline-flex items-center gap-[6px] rounded-d2-chip bg-d2-surface-3 border border-d2-line-2 px-[10px] py-[4px] text-d2-13 text-d2-ink-2">
+            <div className="w-[20px] h-[18px] rounded-[3px] overflow-hidden border border-d2-line-2"><img className="w-full h-full object-cover" src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${h.hero}.png`} alt="" loading="lazy"/></div>
             {heroDisplayName(h.hero, lang)}
           </span>)}</div>
         </div>}

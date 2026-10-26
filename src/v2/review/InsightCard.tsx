@@ -186,20 +186,24 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
     return undefined;
   })();
 
+  const isHot = insight.id === 'turning_point';
+  const isNext = insight.id === 'next_game';
+  const borderColor = isHot ? 'border-l-d2-coral' : isNext ? 'border-l-d2-gold' : 'border-l-d2-ink-4';
+  
   return (
-    <article id={`claim-${index}`} className={surface} data-testid="insight-card" data-insight={insight.id}>
-      <div className="flex items-center justify-between text-d2-12 text-d2-ink-3">
-        <b>{t(label)}</b>
+    <article id={`claim-${index}`} className={`${surface} border-l-[3px] ${borderColor}`} data-testid="insight-card" data-insight={insight.id}>
+      <div className="flex items-center justify-between text-d2-12">
+        <b className="text-d2-gold-2 uppercase tracking-wider">{t(label)}</b>
         {timeChip ? (
-          <span className="rounded-d2-chip bg-d2-surface-2 px-[10px] min-h-[28px] flex items-center text-d2-13 font-semibold">
+          <span className="rounded-d2-chip bg-d2-surface-3 border border-d2-line px-[10px] min-h-[28px] flex items-center text-d2-13 font-semibold text-d2-ink-2 font-mono">
             {timeChip}
           </span>
         ) : null}
       </div>
 
       <div className="mt-[8px]" data-testid="card-conclusion">
-        <div className="text-d2-12 text-d2-ink-3 mb-[2px]">{t('cardConclusion')}</div>
-        <div className="text-d2-17 font-semibold">
+        <div className="text-d2-12 text-d2-ink-4 mb-[2px]">{t('cardConclusion')}</div>
+        <div className="text-d2-17 font-semibold text-d2-ink font-serif leading-[1.3]">
           <AiText variant="claim" text={conclusion} streaming={streaming} />
         </div>
       </div>
@@ -209,7 +213,7 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
       {details.length > 0 ? (
         <div className="mt-[8px]" data-testid="card-details">
           <div className="text-d2-12 text-d2-ink-4 mb-[4px]">{t('cardDetails')}</div>
-          <div className="flex flex-wrap gap-[8px] text-d2-ink-3">
+          <div className="flex flex-wrap gap-[8px]">
             {details.map(f => {
               const key = detailFactLabelKey(f.id);
               return <FactChip key={f.id} fact={f} label={key ? t(key) : undefined} />;
@@ -218,24 +222,25 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
         </div>
       ) : null}
 
-      <div className="mt-[12px] pt-[10px] border-t border-d2-line flex items-center justify-between text-d2-12 text-d2-ink-4">
+      <div className="mt-[12px] pt-[10px] border-t border-d2-line-2 flex items-center justify-between text-d2-12 text-d2-ink-4">
         <span>
           OpenDota{' '}
           {insight.citations.map(c => (
             <sup
               key={c}
-              className="inline-grid place-items-center w-[15px] h-[15px] ml-[3px] rounded-full bg-d2-accent-bg text-d2-accent text-[10px]"
+              className="inline-grid place-items-center w-[15px] h-[15px] ml-[3px] rounded-full bg-d2-accent-bg text-d2-gold-2 text-[10px] font-bold"
             >
               {c.replace(/^s/, '')}
             </sup>
           ))}
         </span>
         <button
-          className="ml-auto min-h-[32px] text-d2-accent font-semibold disabled:text-d2-disabled"
+          className="ml-auto min-h-[32px] text-d2-gold-2 font-semibold uppercase tracking-wide text-[11px] hover:text-d2-gold-pale disabled:text-d2-disabled transition-colors flex items-center gap-[4px]"
           disabled={!onEvidence}
           onClick={event => onEvidence?.(index - 1, event.currentTarget)}
         >
           {t('evidenceShow')}
+          <span aria-hidden="true">↗</span>
         </button>
       </div>
     </article>

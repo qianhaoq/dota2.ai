@@ -116,11 +116,11 @@ export default function EvidenceSheet({ children, onClose }: {
     return <div className="fixed inset-0 z-40 lg:hidden" data-testid="evidence-sheet-layer">
       <div className="absolute inset-0 bg-d2-scrim transition-opacity duration-d2-sheet ease-d2-sheet" style={{ opacity: entered && !closing ? 1 : 0 }} onClick={requestClose}/>
       <div ref={sheet} role="dialog" aria-modal="true" aria-label={t('evidence')} tabIndex={-1}
-        className="absolute left-0 right-0 bottom-0 h-[92%] max-w-[560px] mx-auto bg-d2-surface rounded-t-[24px] shadow-d2-sheet flex flex-col focus:outline-none transition-transform duration-d2-sheet ease-d2-sheet"
+        className="absolute left-0 right-0 bottom-0 h-[92%] max-w-[560px] mx-auto bg-d2-surface border-t border-d2-line rounded-t-[24px] shadow-d2-sheet flex flex-col focus:outline-none transition-transform duration-d2-sheet ease-d2-sheet"
         style={{ transform, transition: dragY != null ? 'none' : undefined }}>
         <div className="flex-none h-[22px] grid place-items-center cursor-grab touch-none" data-testid="evidence-handle"
           onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
-          <i className="block w-[36px] h-[4px] rounded-[2px] bg-d2-disabled"/>
+          <i className="block w-[36px] h-[4px] rounded-[2px] bg-d2-ink-4"/>
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain pb-safe" data-testid="evidence-sheet-body">{children}</div>
       </div>
