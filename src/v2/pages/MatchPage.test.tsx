@@ -249,20 +249,26 @@ describe('SSE v1 conversation', () => {
         await screen.findByText('Evidence answer');
         expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'free', answerable: true });
     });
-    it('unanswerable followup cites its matching data_gap', async () => {
+    it('unanswerable followup shows human refusal without raw gap codes', async () => {
         page();
         await ready();
         fireEvent.click(screen.getByRole('button', { name: 'Death locations' }));
-        await screen.findByText('death_locations: opendota_deaths_log_has_no_coordinates');
+        await screen.findByTestId('refusal-bubble');
+        expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
+        expect(screen.queryByText('death_locations: opendota_deaths_log_has_no_coordinates')).toBeNull();
+        expect(screen.queryByText(/opendota_deaths_log_has_no_coordinates/)).toBeNull();
         expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'death_locations', answerable: false });
     });
-    it('refused free build question cites build gap', async () => {
+    it('refused free build question shows human refusal without raw gap codes', async () => {
         page();
         await ready();
         const input = screen.getByPlaceholderText('Ask a follow-up about this match');
         fireEvent.change(input, { target: { value: 'which build?' } });
         fireEvent.submit(input.closest('form')!);
-        await screen.findByText('build_vs_lineup: no_compliant_patch_matched_kb');
+        await screen.findByTestId('refusal-bubble');
+        expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
+        expect(screen.queryByText('build_vs_lineup: no_compliant_patch_matched_kb')).toBeNull();
+        expect(screen.queryByText(/no_compliant_patch_matched_kb/)).toBeNull();
     });
     it('service timeout keeps the partial answer and offers Retry', async () => {
         page();
@@ -289,7 +295,10 @@ describe('SSE v1 conversation', () => {
         // gold.low stays in the details chips for turning_point (with metric label)
         expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && (el.textContent ?? '').includes('Gold low') && (el.textContent ?? '').includes(r.facts['gold.low'].display.en))).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Gold fed' }));
-        await screen.findByText('gold_fed: missing_or_incomplete_deaths_log');
+        await screen.findByTestId('refusal-bubble');
+        expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
+        expect(screen.queryByText('gold_fed: missing_or_incomplete_deaths_log')).toBeNull();
+        expect(screen.queryByText(/missing_or_incomplete_deaths_log/)).toBeNull();
     });
     it('Stop preserves partial answer and releases the composer', async () => {
         const gated = response('', true);

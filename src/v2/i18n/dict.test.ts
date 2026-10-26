@@ -18,3 +18,15 @@ describe('dictionary parity', () => {
     }
   });
 });
+
+describe('fake-door copy', () => {
+  it('does not name a price or monthly fee in en or zh', () => {
+    for (const [lang, dict] of [['en', en], ['zh', zh]] as const) {
+      const blob = Object.values(dict).join('\n');
+      expect(blob, lang).not.toMatch(/\$\s*\d/);
+      expect(blob, lang).not.toMatch(/\d+\s*\/\s*(mo|month|月)/i);
+      expect(dict.fdBody, `${lang}.fdBody`).not.toMatch(/charge|收费|\$/i);
+    }
+  });
+});
+

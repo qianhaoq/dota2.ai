@@ -69,7 +69,9 @@ export function RefusalBubble({ gaps }: {
     gaps: Review['data_gaps'];
 }) {
     const { t } = useI18n();
-    return <aside className="bg-d2-surface-3 px-[14px] py-[12px] rounded-[14px] border-l-[3px] border-d2-gold text-d2-15 text-d2-ink-2"><p className="flex gap-[10px]"><Info size={18} className="flex-none mt-[3px] text-d2-gold-2"/>{t('refusalData')}</p>{gaps.map(g => <p key={g.topic} className="text-d2-13 text-d2-ink-3">{g.topic}: {g.reason}</p>)}</aside>;
+    // gaps gate the bubble only — never render raw topic/reason codes to users.
+    if (!gaps.length) return null;
+    return <aside className="bg-d2-surface-3 px-[14px] py-[12px] rounded-[14px] border-l-[3px] border-d2-gold text-d2-15 text-d2-ink-2" data-testid="refusal-bubble"><p className="flex gap-[10px] m-0"><Info size={18} className="flex-none mt-[3px] text-d2-gold-2"/>{t('refusalData')}</p></aside>;
 }
 export function Share({ matchId, hero, lang, claim, review }: {
     matchId: string;
