@@ -28,7 +28,9 @@ export function buildPresetFollowups(result, player, lang, gaps) {
   const laneIds = ['lh_at_10', 'gold.at.10', 'lane', 'deaths.phase.lane'];
   const laneReady = laneIds.every(id => facts[id]);
   if (!laneReady) gaps.push({ topic: 'laning_0_10', reason: 'missing_laning_fields' });
+  const itemIds = Object.keys(facts).filter(id => id.startsWith('item.first.'));
   return [
+    ...(itemIds.length ? [{ id: 'item_timings', label: zh ? '关键装备时间' : 'Key item timings', answerable: true, fact_ids: itemIds }] : []),
     { id: 'death_list', label: zh ? '查看死亡记录' : 'Death list', answerable: deathReady, fact_ids: deathIds, ...(deathReady ? {} : { gap: 'deaths' }) },
     { id: 'laning_0_10', label: zh ? '查看对线记录' : 'Laning evidence', answerable: laneReady, fact_ids: laneIds.filter(id => facts[id]), ...(laneReady ? {} : { gap: 'laning_0_10' }) },
   ];

@@ -1,3 +1,4 @@
+import { coachCopy } from '../phrasing/templates.js';
 import { STATIC_HEROES } from '../staticHeroes.js';
 
 /** Deterministic templates: claim.text combines match facts with a concrete coaching action. */
@@ -24,7 +25,7 @@ export function buildInsights({ facts, deaths, worst, comeback }, lang, state) {
     : [];
   const turningIds = [windowDeltaId, 'gold.low', ...recoveryIds].filter(id => id && facts[id]);
   const windowTime = windowPrefix && facts[windowPrefix]?.display?.t;
-  const windowDelta = facts[windowDeltaId]?.display[lang]?.replace('−', '▼');
+  const windowDelta = windowDeltaId ? facts[windowDeltaId]?.display[lang]?.replace('−', '▼') : null;
   const lowClause = facts['gold.low'] ? (zh ? '；全局低点 {gold.low}。' : '; global low {gold.low}.') : (zh ? '。' : '.');
   const turningSlots = windowTime
     ? (zh ? `优先回看 ${windowTime} 这段最差经济窗口${windowDelta ? `（${windowDelta}）` : ''}${lowClause}` : `Prioritize reviewing the worst gold window at ${windowTime}${windowDelta ? ` (${windowDelta})` : ''}${lowClause}`)
@@ -82,10 +83,21 @@ export function buildInsights({ facts, deaths, worst, comeback }, lang, state) {
   const goldTarget = gold && (zh
     ? gold.value < 0 ? `经济落后控制在 ${goldAbs} 金以内` : gold.value > 0 ? `保持至少 ${goldAbs} 金的经济领先` : '经济不要落后'
     : gold.value < 0 ? `keep the deficit under ${goldAbs} gold` : gold.value > 0 ? `keep a lead of at least ${goldAbs} gold` : 'avoid falling behind in team gold');
-  const nextSlots = nextIds.length
+  let nextSlots = nextIds.length
     ? zh
       ? `本局 10 分钟${[cs && '补刀 {lh_at_10}', gold && '团队经济 {gold.at.10}'].filter(Boolean).join('、')}。下一局 10 分钟${[cs && '补刀至少 {lh_at_10}', goldTarget].filter(Boolean).join('，')}；未达标先安全发育。`
       : `This game: ${[cs && '{lh_at_10} CS', gold && '{gold.at.10} team gold'].filter(Boolean).join(' and ')} at 10:00. Next game ${[cs && 'aim for at least {lh_at_10} CS at 10:00', goldTarget].filter(Boolean).join(' and ')}; if you miss ${cs && gold ? 'either' : 'the target'}, farm safely before forcing plays.`
     : (zh ? '优先练习稳定补刀与安全获取资源。' : 'Practice consistent last hits and safe resource collection.');
+  if (worst && windowPrefix && nextIds.length) {
+    const itemIds = Object.keys(facts).filter(id => id.startsWith('item.first.'));
+    for (const id of itemIds) {
+      const relation = facts[id].t < worst.from * 60 ? 'itemBefore' : facts[id].t > worst.to * 60 ? 'itemAfter' : 'itemDuring';
+      nextSlots += ` ${coachCopy[relation][lang].replace('VALUE', `{${id}}`)}`;
+    }
+    if (itemIds.length) {
+      nextIds.push(...itemIds, windowPrefix);
+      nextSlots += zh ? ` 最差经济窗口：${windowTime}。` : ` Worst gold window: ${windowTime}.`;
+    }
+  }
   return [turning, fix, make('next_game', nextIds, nextSlots, { from: 600, to: 600 }, 'economy', { data_gap: 'build_vs_lineup' })];
 }

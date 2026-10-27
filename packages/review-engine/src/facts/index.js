@@ -1,6 +1,17 @@
 import { isSameTeamKill } from '../deathTimeline.js';
 import { STATIC_HEROES, getStaticHero } from '../staticHeroes.js';
 
+export const KEY_ITEMS = {
+  blink: { en: 'blink', zh: '跳刀' },
+  black_king_bar: { en: 'Black King Bar', zh: '黑皇杖' },
+  blade_mail: { en: 'Blade Mail', zh: '刃甲' },
+  force_staff: { en: 'Force Staff', zh: '原力法杖' },
+  lotus_orb: { en: 'Lotus Orb', zh: '莲花' },
+  sphere: { en: "Linken's Sphere", zh: '林肯法球' },
+  sheepstick: { en: 'Scythe of Vyse', zh: '羊刀' },
+  nullifier: { en: 'Nullifier', zh: '否决' },
+};
+
 export const clock = seconds => `${seconds < 0 ? '-' : ''}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.abs(seconds) % 60).padStart(2, '0')}`;
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 export const heroSlug = id => getStaticHero(id)?.internalSlug ?? null;
@@ -88,6 +99,12 @@ export function buildFacts(raw, player) {
   if (player) {
     const index = raw.players.indexOf(player);
     const path = `players[${index}]`;
+    (player.purchase_log ?? []).forEach((purchase, i) => {
+      const id = `item.first.${purchase.key}`;
+      if (!Object.hasOwn(KEY_ITEMS, purchase.key) || !finite(purchase.time) || facts[id]) return;
+      add(id, purchase.time, 'time', `${path}.purchase_log[${i}].time`, { t: purchase.time, unit: 'seconds' });
+      facts[id].display = { en: `${KEY_ITEMS[purchase.key].en} at ${clock(purchase.time)}`, zh: `${clock(purchase.time)} 购入${KEY_ITEMS[purchase.key].zh}`, t: clock(purchase.time) };
+    });
     let logs = Array.isArray(player.deaths_log) ? player.deaths_log.map((d, i) => ({ ...d, source_path: `${path}.deaths_log[${i}]` })) : null;
     const mapped = heroSlug(player.hero_id);
     const killsComplete = raw.players.every(p => Array.isArray(p.kills_log) && heroSlug(p.hero_id));

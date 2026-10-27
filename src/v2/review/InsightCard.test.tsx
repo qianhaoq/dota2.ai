@@ -78,7 +78,7 @@ describe('InsightCard hierarchy for 9035042364', () => {
 
     expect(screen.getByText('落后千金时死亡 16/19；重复击杀者含冥魂大帝。落后时优先减少无收益的交战。')).toBeTruthy();
     expect(screen.getByText(/优先回看/)).toBeTruthy();
-    expect(screen.getByText('本局 10 分钟补刀 13、团队经济 −2,060。下一局 10 分钟补刀至少 13，经济落后控制在 2,060 金以内；未达标先安全发育。')).toBeTruthy();
+    expect(screen.getByText('本局 10 分钟补刀 13、团队经济 −2,060。下一局 10 分钟补刀至少 13，经济落后控制在 2,060 金以内；未达标先安全发育。 本局 21:00 购入跳刀，早于最差经济窗口。 本局 44:33 购入黑皇杖，处于最差经济窗口内。 本局 53:01 购入刃甲，晚于最差经济窗口。 最差经济窗口：40:00–45:00。')).toBeTruthy();
     expect(screen.queryByText(/doom_bringer/)).toBeNull();
     expect(screen.queryByText(/skeleton_king/)).toBeNull();
 

@@ -118,8 +118,8 @@ describe('evidence labels', () => {
     expect(rows.some(r => r.item.startsWith('ward_'))).toBe(false);
     expect(rows.some(r => r.item === 'tango')).toBe(false);
     expect(rows.some(r => r.time.startsWith('-'))).toBe(false);
-    expect(rows).toContainEqual({ item: 'blink', time: '21:00', key: false });
-    expect(rows).toContainEqual({ item: 'black_king_bar', time: '44:33', key: false });
+    expect(rows).toContainEqual({ item: 'blink', time: '21:00', key: true });
+    expect(rows).toContainEqual({ item: 'black_king_bar', time: '44:33', key: true });
   });
 
   it('itemName localizes bilingual labels', () => {

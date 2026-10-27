@@ -354,3 +354,21 @@ describe('cache, privacy and shadow support', () => {
     expect(logger.log).toHaveBeenCalledTimes(1);
   });
 });
+
+it.each([
+  [8985182860, 2, 'en', 'When should I have bought BKB?', ['15:45', '31:46']],
+  [9035042364, 14, 'en', 'Show my blink and items build', ['21:00', '44:33']],
+  [8985182860, 2, 'zh', '出装黑皇杖时间？', ['15:45', '31:46']],
+])('answers free item questions from purchase evidence for %s (%s, %s)', async (match, hero, lang, question, times) => {
+  const { get } = await setup({ fetchMatch: async () => fixture(match) });
+  const url = `/api/v1/review/${match}`;
+  const ask = async body => events(await (await get(`${url}/ask`, post({ hero, lang, ...body }))).text()).at(-1).data.answer;
+  const answer = await ask({ question });
+  for (const time of times) expect(answer).toContain(time);
+  expect(answer).toMatch(lang === 'zh' ? /无法判断出装优劣/ : /cannot be judged/);
+  expect(answer).not.toMatch(/build_vs_lineup|not in this match/);
+  expect(await ask({ followup_id: 'item_timings' })).toBe(answer);
+  for (const question of ['BKB vision positioning', '视野站位', 'same bracket baseline']) {
+    expect(await ask({ question })).toMatch(lang === 'zh' ? /不在本局记录/ : /not in this match/);
+  }
+});

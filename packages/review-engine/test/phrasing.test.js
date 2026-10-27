@@ -274,3 +274,17 @@ it('atomically reserves concurrent spend, reconciles usage, and releases failed 
   expect(failing).toHaveBeenCalledTimes(2);
   expect(budget.spent).toBeCloseTo(0.0000019);
 });
+
+it.each(['en', 'zh'])('renders purchased item timings with an honest build KB gap in %s', async lang => {
+  const review = buildReview(load(8985182860), { ...opts, heroId: 2, lang, presetFollowups: true });
+  const insight = review.followups.find(f => f.id === 'item_timings');
+  const context = { insight, facts: review.facts, lang, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps };
+  const rendered = renderTemplate(insight, review.facts, lang);
+  expect(rendered.text).toContain('15:45');
+  expect(rendered.text).toContain('31:46');
+  expect(rendered.text).toContain(lang === 'en' ? 'Black King Bar' : '黑皇杖');
+  expect(rendered.text).toContain(gapTemplates.build_vs_lineup[lang]);
+  expect(validateRendered(rendered.text, context)).toEqual({ ok: true, reason: null });
+  const answer = await phraseInsight({ ...context, complete: async input => ({ text: JSON.stringify({ slots: input.approved_clauses }) }) });
+  expect(answer.phrasing).toBe('llm');
+});
