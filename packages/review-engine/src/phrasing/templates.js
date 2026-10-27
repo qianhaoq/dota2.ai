@@ -10,7 +10,7 @@ export const gapTemplates = {
   time_dead: { en: 'Respawn timestamps are missing, so total time dead cannot be calculated.', zh: '缺少复活时间记录，无法计算死亡总时长。' },
   lh_at_10: { en: 'The last-hit sample at ten minutes is missing, so laning farm cannot be measured.', zh: '缺少十分钟补刀采样，无法衡量对线补刀。' },
   death_locations: { en: 'The OpenDota death log has no coordinates, so position and vision cannot be judged.', zh: 'OpenDota 死亡日志没有坐标，无法判断站位与视野。' },
-  build_vs_lineup: { en: 'Purchase timing and matchup context are incomplete, so a build verdict is unavailable.', zh: '出装时机与对局背景不完整，无法判断出装优劣。' },
+  build_vs_lineup: { en: 'Without a patch-matched build knowledge base, build quality and when you should buy cannot be judged.', zh: '缺少匹配版本的出装知识库，无法判断出装优劣或应该何时购买。' },
   deaths: { en: 'The death timeline is incomplete, so a full death review is unavailable.', zh: '死亡时间线不完整，无法逐条复查全部死亡。' },
   'deaths.behind_1k': { en: 'Team gold samples at deaths are missing, so deaths while behind cannot be counted.', zh: '缺少死亡时的团队经济采样，无法统计落后时的死亡。' },
   patch: { en: 'The match patch is unknown, so patch-specific advice is unavailable.', zh: '本局版本未知，无法给出针对版本的建议。' },
@@ -32,6 +32,11 @@ const insufficient = {
 // Card UI conclusions are short (buildInsights claim.text); renderTemplate keeps
 // fact-slot sentences for LLM reorder / follow-ups / validators.
 export const coachCopy = {
+  windowEvidence: { en: 'Worst gold window at TIME: VALUE.', zh: '最差经济窗口 TIME：VALUE。' },
+  item: { en: 'Purchased VALUE.', zh: '本局 VALUE。' },
+  itemBefore: { en: 'Purchased VALUE before the worst gold window.', zh: '本局 VALUE，早于最差经济窗口。' },
+  itemDuring: { en: 'Purchased VALUE during the worst gold window.', zh: '本局 VALUE，处于最差经济窗口内。' },
+  itemAfter: { en: 'Purchased VALUE after the worst gold window.', zh: '本局 VALUE，晚于最差经济窗口。' },
   window: { en: 'Review the gold change at TIME: VALUE. Prioritize this turning point.', zh: '复查 TIME 的经济变化：VALUE。优先回看这个转折点。' },
   low: { en: 'Team gold reached its global low at TIME: VALUE.', zh: '团队经济在 TIME 达到全局低点：VALUE。' },
   gold: { en: 'Recovery gold: VALUE.', zh: '回升段经济：VALUE。' },
@@ -53,7 +58,7 @@ export const coachCopy = {
   total: { en: 'Total deaths: VALUE.', zh: '总死亡：VALUE 次。' },
   death: { en: 'At TIME: VALUE.', zh: 'TIME：VALUE。' },
 };
-export const trustedCopy = [...Object.values(coachCopy), ...Object.values(insufficient)];
+export const trustedCopy = [...Object.values(coachCopy), ...Object.values(insufficient), gapTemplates.build_vs_lineup];
 
 export function renderTemplate(insight, facts, lang) {
   const ids = (insight.fact_ids ?? []).filter(id => facts[id]?.display?.[lang]);
@@ -71,7 +76,14 @@ export function renderTemplate(insight, facts, lang) {
   } else {
     const sentences = [];
     for (const id of ids) {
-      if (/^gold.window.*\.delta$/.test(id)) sentences.push(copy('window', id));
+      if (id.startsWith('item.first.')) {
+        const window = insight.id === 'next_game' && ids.find(key => /^gold.window.\d+_\d+$/.test(key));
+        const value = facts[window]?.value;
+        const relation = value ? facts[id].t < value.start_minute * 60 ? 'itemBefore' : facts[id].t > value.end_minute * 60 ? 'itemAfter' : 'itemDuring' : 'item';
+        sentences.push(copy(relation, id));
+      }
+      else if (/^gold.window.\d+_\d+$/.test(id)) sentences.push(coachCopy.windowEvidence[lang].replace('TIME', `{t:${facts[id].t}}`).replace('VALUE', `{${id}}`));
+      else if (/^gold.window.*\.delta$/.test(id)) sentences.push(copy('window', id));
       else if (id === 'gold.low') sentences.push(copy('low', id));
       else if (/^comeback\..*\.(gold|xp)$/.test(id)) sentences.push(copy(id.endsWith('.xp') ? 'xp' : 'gold', id));
       else if (id === 'deaths.behind_1k' && ids.includes('deaths.total')) sentences.push(copy('behind', id, { TOTAL: '{deaths.total}' }));
@@ -91,6 +103,7 @@ export function renderTemplate(insight, facts, lang) {
       }
     }
     if (insight.id === 'next_game' && sentences.length) sentences.push(coachCopy.next[lang]);
+    if (insight.id === 'item_timings') sentences.push(gapTemplates.build_vs_lineup[lang]);
     slots = sentences.join(insight.id === 'death_list' ? '\n' : ' ') || refusal(lang);
   }
   return { text: renderSlots(slots, facts, lang), slots, phrasing: 'template' };

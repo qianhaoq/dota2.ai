@@ -35,14 +35,14 @@ it('reproduces every PR2 numerical acceptance criterion for Pudge', () => {
   expect(review.insights[1].pattern).toBe('behind_1k');
   expect(review.insights[0].claim.text).toBe('Prioritize reviewing the worst gold window at 40:00–45:00 (▼6,983); global low −28,965.');
   expect(review.insights[1].claim.text).toBe('Deaths while behind: 16/19; repeated killer includes Wraith King. Prioritize avoiding low-value fights while behind.');
-  expect(review.insights[2].claim.text).toBe('This game: 13 CS and −2,060 team gold at 10:00. Next game aim for at least 13 CS at 10:00 and keep the deficit under 2,060 gold; if you miss either, farm safely before forcing plays.');
+  expect(review.insights[2].claim.text).toBe('This game: 13 CS and −2,060 team gold at 10:00. Next game aim for at least 13 CS at 10:00 and keep the deficit under 2,060 gold; if you miss either, farm safely before forcing plays. Purchased blink at 21:00 before the worst gold window. Purchased Black King Bar at 44:33 during the worst gold window. Purchased Blade Mail at 53:01 after the worst gold window. Worst gold window: 40:00–45:00.');
   expect(review.insights[0].claim.text).toMatch(/▼6,983.*−28,965/);
   expect(f.killed_by.display.en).toContain('Wraith King');
   expect(f.killed_by.display.en).not.toMatch(/skeleton_king:/);
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).insights.map(i => i.claim.text)).toEqual([
     '优先回看 40:00–45:00 这段最差经济窗口（▼6,983）；全局低点 −28,965。',
     '落后千金时死亡 16/19；重复击杀者含冥魂大帝。落后时优先减少无收益的交战。',
-    '本局 10 分钟补刀 13、团队经济 −2,060。下一局 10 分钟补刀至少 13，经济落后控制在 2,060 金以内；未达标先安全发育。',
+    '本局 10 分钟补刀 13、团队经济 −2,060。下一局 10 分钟补刀至少 13，经济落后控制在 2,060 金以内；未达标先安全发育。 本局 21:00 购入跳刀，早于最差经济窗口。 本局 44:33 购入黑皇杖，处于最差经济窗口内。 本局 53:01 购入刃甲，晚于最差经济窗口。 最差经济窗口：40:00–45:00。',
   ]);
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).toContain('冥魂大帝');
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).not.toMatch(/skeleton_king:/);
@@ -454,10 +454,43 @@ it.each(['en', 'zh'])('sets directional gold-only and combined targets in %s', l
           : /avoid falling behind|经济不要落后/);
       expect(next.claim.text).toMatch(/farm safely|安全发育/);
       if (!withCs) {
-        expect(next.fact_ids).toEqual(['gold.at.10']);
+        expect(next.fact_ids).toEqual(['gold.at.10', 'item.first.blink', 'item.first.blade_mail', 'item.first.black_king_bar', 'item.first.lotus_orb', 'gold.window.17_22']);
         expect(next.claim.text).not.toMatch(/CS|补刀/);
       }
       expect(validateReview(review)).toEqual({ ok: true, errors: [] });
     }
   }
+});
+
+it.each([
+  [8985182860, 2, { blink: 945, blade_mail: 1258, black_king_bar: 1906, lotus_orb: 2359 }],
+  [9035042364, 14, { blink: 1260, black_king_bar: 2673 }],
+])('records first key item purchases for %s and preserves concrete C1 targets', (match, heroId, expected) => {
+  const raw = load(match);
+  const player = raw.players.find(p => p.hero_id === heroId);
+  player.purchase_log.push({ key: 'blink', time: 9999 }, { key: 'nullifier', time: Infinity });
+  const review = buildReview(raw, { ...opts, heroId, presetFollowups: true });
+  for (const [key, time] of Object.entries(expected)) {
+    expect(review.facts[`item.first.${key}`]).toMatchObject({ value: time, t: time });
+    expect(review.purchases.find(p => p.item === key).key_item).toBe(true);
+  }
+  expect(review.facts['item.first.nullifier']).toBeUndefined();
+  expect(review.purchases.filter(p => p.item === 'boots').every(p => !p.key_item)).toBe(true);
+  expect(review.followups.find(f => f.id === 'item_timings').answerable).toBe(true);
+  const next = review.insights[2];
+  expect(next.data_gap).toBe('build_vs_lineup');
+  expect(next.claim.text).toContain(match === 8985182860 ? '48 CS' : '13 CS');
+  expect(next.claim.text).toContain(match === 8985182860 ? '−975' : '−2,060');
+  expect(next.claim.text).toContain(match === 8985182860 ? 'blink at 15:45 before' : 'Black King Bar at 44:33 during');
+  if (heroId === 2) {
+    expect(next.claim.text).toContain('Black King Bar at 31:46 after');
+    expect(next.claim.text).toContain('17:00–22:00');
+  }
+});
+
+it('omits item timing presets when no finite key purchases exist', () => {
+  const raw = load(9035042364);
+  raw.players.find(p => p.hero_id === 14).purchase_log = [{ key: 'blink', time: NaN }, { key: 'boots', time: 20 }];
+  const review = buildReview(raw, { ...opts, presetFollowups: true });
+  expect(review.followups.some(f => f.id === 'item_timings')).toBe(false);
 });

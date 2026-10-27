@@ -149,8 +149,12 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
       const { review, hit } = await load(params, req, res, begin);
       begin();
       if (ask) {
-        const unsupported = /\b(vision|wards?|position|coordinates|build|items?|baseline|bracket)\b|视野|站位|坐标|位置|出装|同段位/i.test(question ?? '');
-        const topic = unsupported ? null : /\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question ?? '') ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question ?? '') ? 'laning_0_10' : null;
+        const unsupported = /\b(vision|wards?|position|coordinates|baseline|bracket)\b|视野|站位|坐标|位置|同段位/i.test(question ?? '');
+        const itemQuestion = /\b(build|items?|bkb|blink|black[ _]king[ _]bar|blade[ _]mail|force(?:[ _]staff)?|lotus(?:[ _]orb)?|linken'?s?|sphere|sheep(?:stick)?|hex|nullifier)\b|出装|装备|跳刀|黑皇杖|刃甲|原力|莲花|林肯|羊刀|否决/i.test(question ?? '');
+        const itemTopic = itemQuestion
+          ? (review.followups.some(f => f.id === 'item_timings' && f.answerable) ? 'item_timings' : 'build_vs_lineup')
+          : null;
+        const topic = unsupported ? null : itemTopic ?? (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question ?? '') ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question ?? '') ? 'laning_0_10' : null);
         const followup = review.followups.find(f => f.id === (followupId ?? topic));
         if (followupId && !followup) throw invalid();
         const answerKey = `ask:${params.key}:${params.lang}:${followupId}`;

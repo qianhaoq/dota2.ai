@@ -1,4 +1,4 @@
-import { buildFacts, heroSlug, teamOf } from './facts/index.js';
+import { buildFacts, heroSlug, teamOf, KEY_ITEMS } from './facts/index.js';
 import { sanitizePlayerNameForPrompt } from './matchFacts.js';
 import { buildInsights } from './insights/index.js';
 import { buildGaps } from './gaps/index.js';
@@ -70,7 +70,7 @@ export function buildReview(raw, opts) {
     roster, facts: result.facts,
     series: { radiant_gold_adv: parsed ? Array.from(raw.radiant_gold_adv ?? [], value => Number.isFinite(value) ? value : null) : [], radiant_xp_adv: parsed ? raw.radiant_xp_adv ?? [] : [], perspective: focus ? teamOf(focus) : 'radiant' },
     objectives, deaths: result.deaths,
-    purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: false })) : [],
+    purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: Object.hasOwn(KEY_ITEMS, p.key) })) : [],
     insights, data_gaps: gaps,
     followups: [...presets, ...insights.filter(i => i.status === 'ok').map(i => ({ id: `why_${i.id}`, label: opts.lang === 'zh' ? `查看结论证据：${insightLabels[i.id] ?? i.id}` : `Evidence: ${i.id}`, answerable: true, fact_ids: i.fact_ids })), ...gaps.filter(g => !presets.some(p => p.id === g.topic)).map(g => ({ id: g.topic, label: gapLabels[g.topic]?.[opts.lang] ?? g.topic, answerable: false, gap: g.topic }))],
     citations: [{ id: 's1', provider: 'opendota', url: `https://api.opendota.com/api/matches/${raw.match_id ?? ''}`, fetched_at: opts.fetchedAt, fields: [...new Set(Object.values(result.facts).filter(f => f.citation === 's1').map(f => f.source_path))] }],

@@ -26,7 +26,7 @@ Dota 2 match reviews grounded in OpenDota facts. Never invent numbers; all displ
 Review page: /m/{matchId}?hero=pudge&lang=en (also zh).
 GET /api/v1/review/{matchId}?hero=pudge&lang=en returns Review JSON; omit hero for roster selection.
 GET /api/v1/review/{matchId}/stream returns SSE v1 with cached Last-Event-ID replay.
-POST /api/v1/review/{matchId}/ask accepts {hero,lang,followup_id?,question?}. Presets include death_list and laning_0_10. Unsupported questions receive a data-gap refusal.
+POST /api/v1/review/{matchId}/ask accepts {hero,lang,followup_id?,question?}. Presets include death_list, laning_0_10 and item_timings. Unsupported questions receive a data-gap refusal.
 GET /api/v1/config exposes flags and versions. GET /openapi.json documents the API.
 POST /mcp provides stateless Streamable HTTP MCP: review_match({match_id,hero?,lang?}), get_evidence({match_id,hero,insight_id}).
 CLI: npx dota2ai review 9035042364 --hero pudge --json (add --offline for OpenDota + template engine).
