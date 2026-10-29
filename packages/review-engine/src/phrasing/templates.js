@@ -5,6 +5,73 @@ export const refusal = lang => lang === 'zh'
   ? '该问题需要的数据不在本局记录中。'
   : "The data needed for this question is not in this match's record.";
 
+const DIG_DEEPER = /dig\s*deeper|analyze\s*further|deeper\s*analysis|深入分析|再分析|详细分析/i;
+const DEFAULT_CHIP_ORDER = ['item_timings', 'death_list', 'laning_0_10'];
+const DIG_DEEPER_CHIP_ORDER = ['why_turning_point', 'death_list', 'item_timings'];
+
+export const isDigDeeper = question => DIG_DEEPER.test(question ?? '');
+
+/** Pick ≤2 answerable followups; never invent chips or leak gap ids. */
+export function pickSoftRefuseChips(followups = [], { digDeeper = false } = {}) {
+  const answerable = followups.filter(f => f?.answerable && f.label);
+  const preferred = digDeeper ? DIG_DEEPER_CHIP_ORDER : DEFAULT_CHIP_ORDER;
+  const picked = [];
+  const used = new Set();
+  const take = f => {
+    if (!f || used.has(f.id)) return;
+    picked.push(f);
+    used.add(f.id);
+  };
+  for (const id of preferred) {
+    take(answerable.find(f => f.id === id));
+    if (picked.length === 2) return picked;
+  }
+  // Default path: next prefer why_* in review order; dig-deeper falls through to any remaining.
+  const rest = digDeeper
+    ? answerable
+    : [...answerable.filter(f => String(f.id).startsWith('why_')), ...answerable];
+  for (const f of rest) {
+    take(f);
+    if (picked.length === 2) break;
+  }
+  return picked;
+}
+
+function truncateQuestion(question, lang) {
+  const raw = String(question ?? '').replace(/\s+/g, ' ').trim();
+  if (!raw) return lang === 'zh' ? '该问题' : 'that';
+  const max = lang === 'zh' ? 24 : 48;
+  return raw.length > max ? `${raw.slice(0, max)}…` : raw;
+}
+
+/**
+ * Soft refuse for free asks / permanent gaps: explain scope + ≤2 answerable chips.
+ * @param {'en'|'zh'} lang
+ * @param {{ question?: string, answerableFollowups?: Array<{id:string,label:string,answerable?:boolean}>, gapBody?: string, digDeeper?: boolean }} opts
+ */
+export function softRefusal(lang, opts = {}) {
+  const digDeeper = opts.digDeeper ?? isDigDeeper(opts.question);
+  const chips = pickSoftRefuseChips(opts.answerableFollowups ?? [], { digDeeper });
+  const labels = chips.map(c => c.label);
+  const zh = lang === 'zh';
+  let body;
+  if (opts.gapBody) {
+    body = opts.gapBody;
+  } else if (!labels.length) {
+    body = zh ? '本局可解析字段不足。' : 'This match does not have enough parsed fields to answer that.';
+  } else {
+    const q = truncateQuestion(opts.question, lang);
+    body = zh
+      ? `本局记录答不了「${q}」这类问题。`
+      : 'This match record can\'t answer that.';
+  }
+  if (!labels.length) return body;
+  const tryLine = zh
+    ? `你可以问：${labels.join('、')}。`
+    : `Try: ${labels.join(', ')}.`;
+  return `${body}\n${tryLine}`;
+}
+
 export const gapTemplates = {
   gold_fed: { en: 'Kill bounty records are missing, so gold fed cannot be calculated.', zh: '缺少击杀赏金记录，无法计算死亡送出的金钱。' },
   time_dead: { en: 'Respawn timestamps are missing, so total time dead cannot be calculated.', zh: '缺少复活时间记录，无法计算死亡总时长。' },
