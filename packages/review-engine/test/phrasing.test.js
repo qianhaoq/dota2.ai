@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { describe, it, expect, vi } from 'vitest';
-import { buildReview, validateReview, renderTemplate, renderSlots, buildPhrasingInput, validateSlots, validateRendered, phraseInsight, validateStream, createBudget, GAP_TOPICS, gapTemplates, answerPresetFollowup, refusal } from '../src/index.js';
+import { buildReview, validateReview, renderTemplate, renderSlots, buildPhrasingInput, validateSlots, validateRendered, phraseInsight, validateStream, createBudget, GAP_TOPICS, gapTemplates, answerPresetFollowup, refusal, softRefusal, pickSoftRefuseChips, isDigDeeper } from '../src/index.js';
 import { STATIC_HEROES } from '../src/staticHeroes.js';
 import { createPhrasingCompletion } from '../../../lib/matchReview/phrasingCompletion.js';
 const load = id => JSON.parse(gunzipSync(readFileSync(new URL(`./fixtures/gold/${id}.json.gz`, import.meta.url))));
@@ -287,4 +287,42 @@ it.each(['en', 'zh'])('renders purchased item timings with an honest build KB ga
   expect(validateRendered(rendered.text, context)).toEqual({ ok: true, reason: null });
   const answer = await phraseInsight({ ...context, complete: async input => ({ text: JSON.stringify({ slots: input.approved_clauses }) }) });
   expect(answer.phrasing).toBe('llm');
+});
+
+describe('C1 softRefusal', () => {
+  const chips = [
+    { id: 'item_timings', label: 'Key item timings', answerable: true },
+    { id: 'death_list', label: 'Death list', answerable: true },
+    { id: 'laning_0_10', label: 'Laning evidence', answerable: true },
+    { id: 'why_turning_point', label: 'Evidence: turning_point', answerable: true },
+    { id: 'death_locations', label: 'Death locations', answerable: false },
+  ];
+  it('detects dig-deeper phrasing', () => {
+    expect(isDigDeeper('深入分析下')).toBe(true);
+    expect(isDigDeeper('dig deeper')).toBe(true);
+    expect(isDigDeeper('analyze further please')).toBe(true);
+    expect(isDigDeeper('Show my deaths')).toBe(false);
+  });
+  it('picks ≤2 chips with default and dig-deeper priority', () => {
+    expect(pickSoftRefuseChips(chips).map(c => c.id)).toEqual(['item_timings', 'death_list']);
+    expect(pickSoftRefuseChips(chips, { digDeeper: true }).map(c => c.id)).toEqual(['why_turning_point', 'death_list']);
+    expect(pickSoftRefuseChips([{ id: 'laning_0_10', label: 'Lane', answerable: true }]).map(c => c.id)).toEqual(['laning_0_10']);
+    expect(pickSoftRefuseChips([])).toEqual([]);
+  });
+  it('formats zh/en soft refuse without inventing chips or leaking gap ids', () => {
+    const zh = softRefusal('zh', { question: '深入分析下', answerableFollowups: chips });
+    expect(zh).toContain('本局记录答不了「深入分析下」这类问题。');
+    expect(zh).toContain('你可以问：');
+    expect(zh).toContain('Evidence: turning_point');
+    expect(zh).not.toMatch(/build_vs_lineup|death_locations|\$3/);
+    const en = softRefusal('en', { question: 'dig deeper', answerableFollowups: chips });
+    expect(en).toContain("This match record can't answer that.");
+    expect(en).toMatch(/Try: Evidence: turning_point, Death list\./);
+    expect(softRefusal('zh', { question: 'x', answerableFollowups: [] })).toBe('本局可解析字段不足。');
+    expect(softRefusal('en', { question: 'x', answerableFollowups: [] })).toMatch(/enough parsed fields/);
+    const gap = softRefusal('en', { question: 'vision?', answerableFollowups: chips, gapBody: gapTemplates.death_locations.en });
+    expect(gap.startsWith(gapTemplates.death_locations.en)).toBe(true);
+    expect(gap).toMatch(/Try: Key item timings/);
+    expect(gap).not.toContain('death_locations');
+  });
 });

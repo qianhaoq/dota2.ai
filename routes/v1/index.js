@@ -1,6 +1,6 @@
 import express from 'express';
 import { attachMcp } from '@dota2ai/mcp';
-import { buildReview, ENGINE_VERSION, STATIC_HEROES, isMatchParsed, UNPARSED_MATCH_CACHE_TTL_MS, phraseInsight, refusal } from '../../packages/review-engine/src/index.js';
+import { buildReview, ENGINE_VERSION, STATIC_HEROES, isMatchParsed, UNPARSED_MATCH_CACHE_TTL_MS, phraseInsight, softRefusal, gapTemplates, isDigDeeper } from '../../packages/review-engine/src/index.js';
 import { createCache, createLimiter, createIpKey, DAY, errorBody, classify, startSse } from './support.js';
 import { openapi, llms } from './openapi.js';
 
@@ -161,8 +161,36 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
         const cacheable = followupId && review.state === 'parsed' && followup?.answerable;
         let answer = cacheable ? await cache.get(answerKey) : undefined;
         if (!answer) {
-          // Free questions are deliberately unanswerable unless matched to approved evidence.
-          answer = followup ? await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) }) : { text: refusal(params.lang), phrasing: 'template' };
+          if (followup) {
+            answer = await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) });
+            // Permanent / unanswerable preset: keep gapTemplates body, append ≤2 answerable chips.
+            if (!followup.answerable) {
+              answer = {
+                text: softRefusal(params.lang, {
+                  question,
+                  answerableFollowups: review.followups,
+                  gapBody: answer.text,
+                  digDeeper: isDigDeeper(question),
+                }),
+                phrasing: 'template',
+              };
+            }
+          } else {
+            // C1 soft refuse: free miss / permanent gap → scope copy + ≤2 answerable chips (no gap codes).
+            const gapTopic = unsupported
+              ? (/\b(baseline|bracket)\b|同段位/i.test(question ?? '') ? 'laning_baseline' : 'death_locations')
+              : null;
+            const gapBody = gapTopic ? gapTemplates[gapTopic]?.[params.lang] : undefined;
+            answer = {
+              text: softRefusal(params.lang, {
+                question,
+                answerableFollowups: review.followups,
+                gapBody,
+                digDeeper: isDigDeeper(question),
+              }),
+              phrasing: 'template',
+            };
+          }
           if (cacheable) await cache.set(answerKey, answer, 7 * DAY);
         }
         sse.send('token', { target: 'answer', delta: answer.text });
