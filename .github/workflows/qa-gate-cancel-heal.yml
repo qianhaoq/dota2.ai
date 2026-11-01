@@ -29,7 +29,7 @@ jobs:
       pull-requests: write
       issues: write
       actions: write
-    uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@53dd06c4da868c5d19078cca74547053b36ac55f # devflow-gates main @ 53dd06c
+    uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@5f984ac2f3f879fe2f69d803c672e22f4d9ac1fc # devflow-gates main @ 5f984ac
     with:
       runs_on: '["self-hosted", "linux", "x64"]'
       qa_label: 'qa-passed'
