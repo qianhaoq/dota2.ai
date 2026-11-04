@@ -1,6 +1,7 @@
 import type { DictKey } from '../i18n/en';
 import type { Insight, Objective, Review } from '../review/types';
 import { itemDisplayName } from './itemNames';
+import { heroDisplayName } from '../review/heroDisplayName';
 
 /**
  * Pure helpers for the evidence sheet/panel. Hard rule (tech-plan §13 PR7):
@@ -42,7 +43,7 @@ const BIG_STRUCTURE = /tower[34]|range_rax|melee_rax|fort/;
  * Key moments for claim 0: Roshan kills, big building kills (T3+/rax/fort)
  * from `objectives`, plus the gold-low point as a fact-display note.
  */
-export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh', t: Translate): Moment[] {
+export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh', t: Translate, allStructures = false): Moment[] {
   // Preserve unknown team — never default to Radiant for polarity.
   const playerTeam = review.player?.team ?? null;
   const sideName = (side: string) => t(side === 'radiant' ? 'sideRadiant' : 'sideDire');
@@ -67,7 +68,7 @@ export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh'
       });
       continue;
     }
-    if (objective.type !== 'building_kill' || !objective.key || !BIG_STRUCTURE.test(objective.key)) continue;
+    if (objective.type !== 'building_kill' || !objective.key || (!allStructures && !BIG_STRUCTURE.test(objective.key))) continue;
     // The owner is encoded in the key (goodguys = Radiant's structure).
     const owner = objective.key.includes('goodguys') ? 'radiant' : 'dire';
     const lane = /_(mid|top|bot)$/.exec(objective.key)?.[1] ?? '';
@@ -103,6 +104,25 @@ export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh'
   return moments
     .sort((a, b) => a.t - b.t)
     .map(m => ({ ...m, hl: from != null && to != null && m.t >= from && m.t <= to }));
+}
+
+/** Records in the selected insight's exact window; sequence does not imply cause. */
+export function windowMoments(review: Review, insight: Insight, lang: 'en' | 'zh', t: Translate): Moment[] {
+  const from = insight.time?.from, to = insight.time?.to;
+  if (!review.player || insight.status !== 'ok' || from == null || to == null || !Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
+  const inside = (at: number) => Number.isFinite(at) && at >= from && at <= to;
+  const moments = buildMoments(review, insight, lang, t, true).filter(m => inside(m.t));
+  for (const death of review.deaths ?? []) {
+    if (!inside(death.t)) continue;
+    moments.push({t: death.t, time: mmss(death.t), kind: 'down', hl: false,
+      label: death.killer ? fill(t('windowDeathBy'), {hero: heroDisplayName(death.killer, lang)}) : t('windowDeath')});
+  }
+  for (const purchase of review.purchases ?? []) {
+    if (!purchase.key_item || !inside(purchase.t)) continue;
+    moments.push({t: purchase.t, time: mmss(purchase.t), kind: 'note', hl: false,
+      label: fill(t('windowPurchase'), {item: itemName(purchase.item, lang)})});
+  }
+  return moments.sort((a, b) => a.t - b.t);
 }
 
 /** Objective facts (`obj.<t>.<i>`) carry display.t in newer engines; fall back to a derived label. */
@@ -207,6 +227,10 @@ export function sourcesFor(review: Review, claim: number): SourceRow[] {
     if (review.series.radiant_gold_adv.length) add('radiant_gold_adv');
     if (review.series.radiant_xp_adv.length) add('radiant_xp_adv');
     if (review.objectives?.length) add('objectives');
+    const insight = review.insights[claim];
+    const inside = (at: number) => insight?.status === 'ok' && insight.time != null && insight.time.to > insight.time.from && at >= insight.time.from && at <= insight.time.to;
+    for (const death of review.deaths ?? []) if (inside(death.t)) consider(death.fact_id ? review.facts[death.fact_id]?.source_path : null);
+    if (review.purchases?.some(p => p.key_item && inside(p.t))) add('purchase_log');
   } else if (claim === 1) {
     // Death rows may be rebuilt from opponents' kills_log.
     for (const death of review.deaths ?? []) {

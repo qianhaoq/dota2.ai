@@ -5,6 +5,7 @@ import { FactChip } from '../review/ConversationCards';
 import { heroDisplayName } from '../review/heroDisplayName';
 import type { Fact, Review } from '../review/types';
 import GoldXpChart, { type SeriesMode } from './GoldXpChart';
+import WindowContext from './WindowContext';
 import { DeathStrip, Feedback, GapBox, ItemsGrid, KV, KillerBars, MomentsList, Pager, Segmented, Sources, section, sectionH } from './bits';
 import { buildMoments, fill, gapReason, gapRegistered, insightTimeChip, killerRows, sourcesFor } from './labels';
 
@@ -75,6 +76,9 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
 
     const claimFacts = insight.fact_ids.map(id => facts[id]).filter((f): f is Fact => !!f);
     const playerTeam = review.player?.team;
+    const focusedWindow = review.player && insight.status === 'ok' && insight.time && insight.time.to > insight.time.from ? insight.time : null;
+    const otherMoments = buildMoments(review, insight, lang, t).filter(moment =>
+        !focusedWindow || moment.t < focusedWindow.from || moment.t > focusedWindow.to);
     const enemies = playerTeam === 'radiant' || playerTeam === 'dire'
         ? review.roster.filter(h => h.team && h.team !== playerTeam)
         : [];
@@ -107,9 +111,10 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
                   down: true,
               }))}/>
         </div>}
+        <WindowContext review={review} insight={insight}/>
         <div className={section}>
           <h4 className={sectionH}>{t('keyMoments')}</h4>
-          <MomentsList moments={buildMoments(review, insight, lang, t)}/>
+          <MomentsList moments={otherMoments}/>
         </div>
       </>}
 
