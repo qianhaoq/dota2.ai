@@ -11,6 +11,19 @@ const DIG_DEEPER_CHIP_ORDER = ['why_turning_point', 'death_list', 'item_timings'
 
 export const isDigDeeper = question => DIG_DEEPER.test(question ?? '');
 
+/**
+ * Infer a registered data-gap explanation for a free question, not an answer.
+ * @param {string|undefined} question
+ * @param {'en'|'zh'} lang
+ * @returns {string|undefined}
+ */
+export function questionGapBody(question, lang) {
+  const text = question ?? '';
+  if (/\b(baseline|bracket)\b|同段位/i.test(text)) return gapTemplates.laning_baseline[lang];
+  if (/\b(vision|wards?|position|coordinates)\b|视野|站位|坐标|位置/i.test(text)) return gapTemplates.death_locations[lang];
+  return undefined;
+}
+
 /** Pick ≤2 answerable followups; never invent chips or leak gap ids. */
 export function pickSoftRefuseChips(followups = [], { digDeeper = false } = {}) {
   const answerable = followups.filter(f => f?.answerable && f.label);

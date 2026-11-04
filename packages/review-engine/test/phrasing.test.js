@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { describe, it, expect, vi } from 'vitest';
-import { buildReview, validateReview, renderTemplate, renderSlots, buildPhrasingInput, validateSlots, validateRendered, phraseInsight, validateStream, createBudget, GAP_TOPICS, gapTemplates, answerPresetFollowup, refusal, softRefusal, pickSoftRefuseChips, isDigDeeper } from '../src/index.js';
+import { buildReview, validateReview, renderTemplate, renderSlots, buildPhrasingInput, validateSlots, validateRendered, phraseInsight, validateStream, createBudget, GAP_TOPICS, gapTemplates, answerPresetFollowup, refusal, softRefusal, pickSoftRefuseChips, isDigDeeper, questionGapBody } from '../src/index.js';
 import { STATIC_HEROES } from '../src/staticHeroes.js';
 import { createPhrasingCompletion } from '../../../lib/matchReview/phrasingCompletion.js';
 const load = id => JSON.parse(gunzipSync(readFileSync(new URL(`./fixtures/gold/${id}.json.gz`, import.meta.url))));
@@ -302,6 +302,19 @@ describe('C1 softRefusal', () => {
     expect(isDigDeeper('dig deeper')).toBe(true);
     expect(isDigDeeper('analyze further please')).toBe(true);
     expect(isDigDeeper('Show my deaths')).toBe(false);
+  });
+  it.each([
+    ['vision and wards?', 'en', 'death_locations'],
+    ['站位和坐标', 'zh', 'death_locations'],
+    ['same-bracket baseline and vision?', 'en', 'laning_baseline'],
+    ['同段位的视野基准', 'zh', 'laning_baseline'],
+  ])('explains the registered gap for %s in the engine', (question, lang, topic) => {
+    expect(questionGapBody(question,lang)).toBe(gapTemplates[topic][lang]);
+  });
+  it('does not turn answerable or unrelated questions into inferred gaps', () => {
+    for (const question of ['my deaths?', 'BKB timing', 'dig deeper', 'my positioning', undefined]) {
+      expect(questionGapBody(question,'en')).toBeUndefined();
+    }
   });
   it('picks ≤2 chips with default and dig-deeper priority', () => {
     expect(pickSoftRefuseChips(chips).map(c => c.id)).toEqual(['item_timings', 'death_list']);

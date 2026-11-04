@@ -7,7 +7,7 @@ import { createCache, createIpKey, createLimiter, DAY, securityHeaders } from '.
 import { scheduleShadow } from '../../../routes/v1/shadow.js';
 import { lintOpenapi } from '../../../scripts/lint-openapi.mjs';
 import { openapi } from '../../../routes/v1/openapi.js';
-import { renderTemplate, pickSoftRefuseChips } from '../src/phrasing/templates.js';
+import { renderTemplate, pickSoftRefuseChips, gapTemplates } from '../src/phrasing/templates.js';
 
 const fixture = id => JSON.parse(gunzipSync(readFileSync(new URL(`./fixtures/gold/${id}.json.gz`, import.meta.url))));
 const servers = [];
@@ -362,6 +362,17 @@ describe('cache, privacy and shadow support', () => {
     scheduleShadow(res, { raw, legacy: {}, logger, enabled: false }); res.emit('finish'); await new Promise(setImmediate);
     expect(logger.log).toHaveBeenCalledTimes(1);
   });
+});
+
+it.each(['en', 'zh'])('keeps explicit gap explanations ahead of inferred free-question gaps in %s', async lang => {
+  const phrasingCompletion = vi.fn();
+  const { get } = await setup({ phrasingCompletion });
+  const frames = events(await (await get(`${base}/ask`, post({hero:14,lang,followup_id:'death_locations',question:'same-bracket baseline'}))).text());
+  const answer = frames.at(-1).data.answer;
+  expect(answer.split('\n')[0]).toBe(gapTemplates.death_locations[lang]);
+  expect(answer).not.toContain(gapTemplates.laning_baseline[lang]);
+  expect(answer).toMatch(lang === 'zh' ? /你可以问：/ : /Try:/);
+  expect(phrasingCompletion).not.toHaveBeenCalled();
 });
 
 it.each([
