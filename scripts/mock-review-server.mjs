@@ -48,6 +48,10 @@ app.use(createV1Router({
     return structuredClone(match);
   },
   phrasingCompletion: undefined,
+  // Optional synthetic snapshot for local learning-flow acceptance, never a production upload.
+  knowledgeSnapshot: process.env.SITE_KNOWLEDGE_PREVIEW_FILE
+    ? JSON.parse(readFileSync(process.env.SITE_KNOWLEDGE_PREVIEW_FILE, 'utf8'))
+    : undefined,
 }));
 
 

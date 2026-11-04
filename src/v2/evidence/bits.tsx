@@ -148,12 +148,15 @@ export function GapBox({ title, body, reason }: {
 }
 
 /** Source fields behind the claim, plus match/patch/parse badges and the citation link. */
-export function Sources({ review, rows }: {
+export function Sources({ review, rows, claim }: {
     review: Review;
     rows: SourceRow[];
+    claim: number;
 }) {
-    const { t } = useI18n();
-    const citation = review.citations?.[0];
+    const { t, lang } = useI18n();
+    const citation = review.citations?.find(c => c.provider === 'opendota');
+    const refs = new Set(review.insights[claim]?.citations ?? []);
+    const materials = (review.citations ?? []).filter(c => c.provider === 'kb' && refs.has(c.id));
     return <div data-testid="evidence-sources">
       <ul className="list-none m-0 p-0 text-d2-13 text-d2-ink-3">{rows.map((row, i) => <li key={row.field} className="flex gap-[8px] py-[4px] items-start">
         <span className="w-[18px] h-[18px] rounded-full bg-d2-accent-bg text-d2-gold-2 text-[11px] font-bold grid place-items-center flex-none d2-tnum">{i + 1}</span>
@@ -167,6 +170,21 @@ export function Sources({ review, rows }: {
       {citation && <div className="mt-[8px] text-d2-12 text-d2-ink-4" data-testid="evidence-fetched">
         {t('srcFetched')} {citation.fetched_at} · <a href={citation.url} target="_blank" rel="noopener" className="text-d2-gold-2 font-semibold no-underline hover:text-d2-gold-pale">OpenDota ↗</a>
       </div>}
+      {materials.length > 0 && <section className="mt-[16px]" data-testid="learning-sources">
+        <h5 className={sectionH}>{t('learningSources')}</h5>
+        <p className="text-d2-12 text-d2-ink-4 mb-[10px]">{t('learningSourceHint')}</p>
+        {materials.map(source => {
+          const fact = source.ref ? review.facts[`kb.${source.ref}`] : undefined;
+          const value = fact?.value && typeof fact.value === 'object' && !Array.isArray(fact.value)
+            ? fact.value as {title?:unknown;locator?:unknown} : {};
+          return <article key={source.id} className="p-[12px] mb-[8px] rounded-[12px] border border-d2-line-2 bg-d2-surface-3">
+            <a className="text-d2-13 text-d2-gold-2 font-semibold" href={source.url} target="_blank" rel="noopener noreferrer">{typeof value.title === 'string' ? value.title : source.url} ↗</a>
+            {fact && <p className="text-d2-13 text-d2-ink-2 mt-[6px]">{fact.display[lang]}</p>}
+            {typeof value.locator === 'string' && value.locator !== source.url && <p className="text-d2-12 text-d2-ink-4">{value.locator}</p>}
+            <p className="text-d2-12 text-d2-ink-4">{t('learningCaptured')} {source.source_date ?? source.fetched_at} · {source.patch && source.patch !== 'unknown' ? t('badgePatch').replace('{v}',String(source.patch)) : t('learningPatchUnknown')}</p>
+          </article>;
+        })}
+      </section>}
     </div>;
 }
 

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["schema", "generated_at", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "dota2.ai/site-knowledge@1"},
+    "generated_at": {"type": "string"},
+    "entries": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/entry"}}
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "summary", "hero", "patch", "stamp", "source_url", "source_date", "content_hash", "locator", "verification"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^kb-[a-f0-9]{24}$"},
+        "kind": {"enum": ["fact", "principle"]},
+        "title": {"type": "string", "minLength": 1, "maxLength": 300},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "hero": {"type": "string", "maxLength": 100},
+        "patch": {"type": "string", "minLength": 1, "maxLength": 100},
+        "stamp": {"type": "string", "minLength": 1, "maxLength": 500},
+        "source_url": {"type": "string", "maxLength": 2048},
+        "source_date": {"type": "string"},
+        "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "locator": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "verification": {"const": "material_linked_not_independently_verified"}
+      }
+    }
+  }
+}

@@ -72,6 +72,9 @@ export interface Citation {
     url: string;
     fetched_at: string;
     fields: string[];
+    ref?: string;
+    patch?: unknown;
+    source_date?: string;
 }
 export interface Review {
     state: string;

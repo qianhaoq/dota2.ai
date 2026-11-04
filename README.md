@@ -206,3 +206,13 @@ Remote clients can connect to `https://dota2.ai/mcp` using Streamable HTTP.
 Tools: `review_match({match_id, hero?, lang?})` returns a Review;
 `get_evidence({match_id, hero, insight_id})` returns the insight, referenced facts,
 evidence, citations and data gap. Server MCP uses OpenDota and template phrasing.
+
+### Public learning material / 公开学习材料
+
+`data/site-knowledge.v1.json` is a versioned, read-only `dota2.ai/site-knowledge@1` snapshot exported by `qh-dsh-dota-coach`. It is empty by default: no fictional coaching knowledge is shipped. Select note IDs explicitly with the local coach's `dota_kb {action:"export",ids:[...]}`, review the resulting `export/site/knowledge.v1.json`, and replace the site snapshot through a focused PR. Never copy the coach database, transcripts, credentials, replays or private training records.
+
+The API validates the snapshot and uses existing Review v1 facts/citations; it adds no required fields or crawler endpoints. A learning reference is shown with its public URL, timestamp locator, collection time and patch. Patch facts require an exact match to `Review.match.patch` (use that identifier when curating); general principles remain labelled as learning material. Material-linked summaries are not independent validation and do not remove the build-quality data gap. Invalid snapshots log `site_knowledge_invalid` once on router initialization and fall back to match facts only.
+
+The third insight's evidence lets a user edit and save one `trigger → action → check` practice goal in the existing local Tactical Journal. Completion is self-report. Blocked device storage is reported as session-only; a full journal cannot report a new save as successful. Nothing is uploaded automatically.
+
+Release checks include Review JSON/SSE equality, the golden match corpus, en/zh evidence on mobile and desktop, source visibility and goal persistence. Roll back learning material by restoring the empty snapshot; deploy the prior image for a code rollback. Local journal records remain on the user's device. Production rollout remains a separate confirmed action.
