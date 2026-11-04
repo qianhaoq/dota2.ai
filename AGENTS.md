@@ -50,6 +50,8 @@ Worst pitfalls from Codex P1s (#54, #56) — full rules: `.cursor/rules/dota2-co
 ## Merge policy
 
 Human merge is **optional** only when every auto-merge gate passes. Copilot often submits `COMMENTED`, not `APPROVED` — do not require `APPROVED`. `.github/workflows/auto-merge.yml` squash-merges into `main` only if a successful **ci / Build & Test check run** exists on the head SHA (fail closed if missing), **`codex / Codex Review Gate` succeeded**, and Copilot is satisfied: Copilot has reviewed the PR **at least once, on any commit** (`copilot_scope: any`; Copilot is requested only on opened / ready_for_review and never re-reviews pushes), and the latest Copilot review is not `CHANGES_REQUESTED`. Head-SHA freshness comes from the Codex Gate, CI and QA. Repo variable `DISABLE_COPILOT_REVIEW=true` turns off both the request and this requirement. **Blocking threads:** unresolved non-Codex threads, plus unresolved Codex **P0/P1 (or unlabeled)**; pure Codex **P2 may stay open**. A PR that Copilot never reviewed does not auto-merge. Codex Gate dispatches Auto Merge on success and fails the check if dispatch fails. Merge is pinned to the evaluated head SHA. To block auto-merge, add label `no-auto-merge` or keep the PR as draft. See `docs/MERGE_GATES.md`.
+**Green → product-owner merge (2026-11-02):** after required checks are green and P0/P1 are cleared, the product owner may Approve/squash or let auto-merge run — **do not wait for 钱浩**. If GitHub “≥1 approving review from someone with write access” blocks self-Approve: product owner/agent may (1) temporarily set `main` `required_approving_review_count` to `0`, (2) squash-merge, (3) **restore to `1` immediately**. No `--admin` bypass; P0/P1 must still be clear. Steady state stays at `1` — never leave it at `0`.
+
 
 - **评审严重度**：P0/P1 须改代码后再 Resolve；P2 可保持 open，或回复 `P2: defer — <reason>` / `P2: won't fix — <reason>` 后 Resolve（无需改代码）。Codex Gate / Auto Merge 仅阻断 Codex P0/P1（及未标注）。未标注时：正确性/安全/数据丢失→P0/P1，nit/style→P2。详见 `docs/MERGE_GATES.md`「评审严重度」。
 
@@ -57,14 +59,15 @@ Human merge is **optional** only when every auto-merge gate passes. Copilot ofte
 
 `.github/workflows/copilot-setup-steps.yml` installs Node 20 + `npm ci` before the agent starts. Prefer those tools; do not assume global CLIs beyond that.
 
-## Coding 工具顺序（2026-10-20 起）
+## Coding 工具顺序（2026-11-02 起）
 
 **适用范围（写死）**：下列 Codex / `coding` / `/home/box/.../codex-quota.sh` 顺序**仅**适用于已预装这些工具的**本机或 `/home/box` 工作站**。Copilot cloud、仅 Node·npm 的云端 agent、以及任何未预装 Codex/`coding` 的环境：**必须按该环境已有工具执行**；**严禁**把本机/box 工具序、`codex`/`coding` 或 `/home/box` 路径当作云端硬性要求。
 
-1. **（本机/box）默认用 Codex CLI**（ChatGPT 账号登录），模型 `gpt-6.1-sol`（`~/.codex/config.toml`）。
-2. **周额度用完后继续用 credits** 跑 Codex；**credits 也用完**再切：`coding glm`（一般代码）/ `coding kimi`（前端/交互/UI）。
-3. 查额度（仅本机/box）：`/home/box/.coding-plans/codex-quota.sh`（退出码 0=继续 Codex，1=切 glm/kimi，2=未知；`--json`、`--probe`），或 Codex TUI 内 `/status`。云端无此脚本时跳过。
-4. 凭证 `~/.codex/auth.json` 及任何 API key **绝不打印、外传或提交**；`.codex/`、`auth.json` 已在 `.gitignore`。
+1. **（本机/box）优先用 Codex CLI**（ChatGPT 账号登录），模型 `gpt-6.1-sol`（`~/.codex/config.toml`）；出口优先 box（美区）。
+2. **Codex 不可用**（区域 403 / 额度与 credits 耗尽 / 鉴权失败等）再切：`coding glm`（一般代码）/ `coding kimi`（前端/交互/UI）。
+3. **不默认 Cursor Cloud Agent**（Cloud 上 OpenAI/Codex 常不可用；真要开只能选非 OpenAI 模型，一般不必）。
+4. 查额度（仅本机/box）：`/home/box/.coding-plans/codex-quota.sh`（退出码 0=继续 Codex，1=切 glm/kimi，2=未知；`--json`、`--probe`），或 Codex TUI 内 `/status`。云端无此脚本时跳过。
+5. 凭证 `~/.codex/auth.json` 及任何 API key **绝不打印、外传或提交**；`.codex/`、`auth.json` 已在 `.gitignore`。
 
 ## 测试与门禁（禁止弱化凑绿）
 
