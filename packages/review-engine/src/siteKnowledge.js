@@ -8,13 +8,29 @@ const validSnapshot = /** @type {import('ajv').ValidateFunction<SiteKnowledgeSna
 const validEntry = /** @type {import('ajv').ValidateFunction<SiteKnowledgeEntry>} */ (ajv.compile(schema.$defs.entry));
 const publicHosts = new Set(['bilibili.com','www.bilibili.com','youtube.com','www.youtube.com','youtu.be','reddit.com','www.reddit.com','old.reddit.com','dota2.com','www.dota2.com']);
 const timestamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
+/** @param {URL} url */
+const publicResource = url => {
+  if (url.hostname.endsWith('bilibili.com')) return /^\/video\/BV[A-Za-z0-9]{10}\/?$/.test(url.pathname);
+  if (url.hostname === 'youtu.be') return /^\/[A-Za-z0-9_-]{11}\/?$/.test(url.pathname);
+  if (url.hostname.endsWith('youtube.com')) return url.pathname === '/watch'
+    ? /^[A-Za-z0-9_-]{11}$/.test(url.searchParams.get('v') ?? '')
+    : /^\/(?:shorts|live)\/[A-Za-z0-9_-]{11}\/?$/.test(url.pathname);
+  if (url.hostname.endsWith('reddit.com')) return /^\/r\/[A-Za-z0-9_]+\/comments\/[a-z0-9]+(?:\/|$)/.test(url.pathname);
+  return /^\/(?:newsentry\/\d+|patches\/\d+(?:\.\d+)?[a-z]?)(?:\/|$)/.test(url.pathname);
+};
 /** @param {unknown} entry @returns {entry is SiteKnowledgeEntry} */
 const safeEntry = entry => {
   if (!validEntry(entry) || !timestamp(entry.source_date)) return false;
   try {
     const url = new URL(entry.source_url);
     return url.protocol === 'https:' && !url.username && !url.password && !url.port && publicHosts.has(url.hostname) &&
-      [...url.searchParams.keys()].every(key => ['v','t','start'].includes(key));
+      publicResource(url) && new Set(url.searchParams.keys()).size === [...url.searchParams.keys()].length &&
+      [...url.searchParams].every(([key,value]) =>
+        key === 'v' ? url.hostname.endsWith('youtube.com') && /^[A-Za-z0-9_-]{11}$/.test(value) :
+        key === 't' ? /^\d{1,7}s?$/.test(value) :
+        key === 'start' ? url.hostname.endsWith('youtube.com') && /^\d{1,7}$/.test(value) :
+        key === 'p' ? url.hostname.endsWith('bilibili.com') && /^[1-9]\d{0,3}$/.test(value) : false) &&
+      (entry.locator === entry.source_url || /^(?:\d{1,3}:\d{2})(?:\s*[–-]\s*\d{1,3}:\d{2})?$/.test(entry.locator));
   } catch { return false; }
 };
 

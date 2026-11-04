@@ -33,7 +33,16 @@ it('rejects private fields, unsupported versions, unsafe sources and duplicate p
     {...snapshot,entries:[{...snapshot.entries[0],source_record_id:'private'}]},
     {...snapshot,entries:[{...snapshot.entries[0],source_url:'https://www.youtube.com/watch?v=abcdefghijk&token=private'}]},
     {...snapshot,entries:[{...snapshot.entries[0],source_url:'javascript:alert(1)'}]},
+    {...snapshot,entries:[{...snapshot.entries[0],source_url:'https://www.reddit.com/message/messages/abc123'}]},
+    {...snapshot,entries:[{...snapshot.entries[0],source_url:'https://www.youtube.com/feed/history'}]},
+    {...snapshot,entries:[{...snapshot.entries[0],locator:'https://private.example/account'}]},
     {...snapshot,entries:[snapshot.entries[0],snapshot.entries[0]]},
   ];
   for (const value of invalid) expect(()=>parseSiteKnowledge(value)).toThrow('Invalid public site knowledge');
+});
+it('accepts sanitized video time and part selectors for public citations', () => {
+  const source_url = 'https://www.bilibili.com/video/BV1xx411c7mD?t=750&p=2';
+  const value = {...snapshot,entries:[{...snapshot.entries[0],source_url,locator:source_url}]};
+  expect(parseSiteKnowledge(value)[0].source_url).toBe(source_url);
+  expect(()=>parseSiteKnowledge({...value,entries:[{...value.entries[0],source_url:source_url+'&p=3'}]})).toThrow();
 });
