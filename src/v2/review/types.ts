@@ -73,7 +73,7 @@ export interface Citation {
     fetched_at: string;
     fields: string[];
     ref?: string;
-    patch?: unknown;
+    patch?: string;
     source_date?: string;
 }
 export interface Review {

@@ -22,7 +22,7 @@ export default function PracticeGoal({review, insight, store = journalStore}: {r
     <label className="inline-flex gap-[8px] items-center mt-[10px]"><input type="checkbox" checked={saved.done} onChange={()=>store.toggleDone(key)}/>{t('practiceSelfCheck')}</label>
   </section>;
   const button = 'rounded-d2-control px-[12px] py-[8px] border border-d2-line text-d2-13 text-d2-ink-2 hover:border-d2-gold';
-  if (!editing) return <button className={button} onClick={()=>setEditing(true)}>{t('practiceSave')}</button>;
+  if (!editing) return <button className={button} onClick={()=>{setError(null);setEditing(true);}}>{t('practiceSave')}</button>;
   return <form data-testid="practice-goal-form" onSubmit={event=>{
     event.preventDefault();
     if (!trigger.trim() || !action.trim() || !check.trim()) {setError('invalid');return;}
@@ -31,6 +31,6 @@ export default function PracticeGoal({review, insight, store = journalStore}: {r
   }}>
     {([['trigger',t('practiceTrigger'),trigger,setTrigger],['action',t('practiceAction'),action,setAction],['check',t('practiceCheck'),check,setCheck]] as const).map(([name,label,value,set])=><div key={name} className="text-d2-13 text-d2-ink-2 mb-[10px]"><label htmlFor={`${formId}-${name}`}>{label}</label><textarea id={`${formId}-${name}`} required maxLength={500} value={value} onChange={event=>set(event.target.value)} className="block w-full mt-[4px] p-[8px] rounded-d2-control border border-d2-line bg-d2-surface-2 text-d2-ink" rows={3}/></div>)}
     {error && <p role="alert" className="text-d2-13 text-d2-down">{t(error==='full'?'practiceFull':'practiceInvalid')}</p>}
-    <div className="flex gap-[8px]"><button className={button} type="submit">{t('practiceConfirm')}</button><button className={button} type="button" onClick={()=>setEditing(false)}>{t('practiceCancel')}</button></div>
+    <div className="flex gap-[8px]"><button className={button} type="submit">{t('practiceConfirm')}</button><button className={button} type="button" onClick={()=>{setError(null);setEditing(false);}}>{t('practiceCancel')}</button></div>
   </form>;
 }

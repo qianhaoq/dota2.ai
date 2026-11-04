@@ -213,6 +213,8 @@ evidence, citations and data gap. Server MCP uses OpenDota and template phrasing
 
 The API validates the snapshot and uses existing Review v1 facts/citations; it adds no required fields or crawler endpoints. A learning reference is shown with its public URL, timestamp locator, collection time and patch. Patch facts require an exact match to `Review.match.patch` (use that identifier when curating); general principles remain labelled as learning material. Material-linked summaries are not independent validation and do not remove the build-quality data gap. Invalid snapshots log `site_knowledge_invalid` once on router initialization and fall back to match facts only.
 
+The production image copies only this public snapshot into its data directory. MCP `get_evidence` returns linked material in optional `contextual_facts`, separate from match `facts`, with the original verification disclaimer.
+
 The third insight's evidence lets a user edit and save one `trigger → action → check` practice goal in the existing local Tactical Journal. Completion is self-report. Blocked device storage is reported as session-only; a full journal cannot report a new save as successful. Nothing is uploaded automatically.
 
 Release checks include Review JSON/SSE equality, the golden match corpus, en/zh evidence on mobile and desktop, source visibility and goal persistence. Roll back learning material by restoring the empty snapshot; deploy the prior image for a code rollback. Local journal records remain on the user's device. Production rollout remains a separate confirmed action.

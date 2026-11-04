@@ -227,7 +227,7 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
       <div className="mt-[12px] pt-[10px] border-t border-d2-line-2 flex items-center justify-between text-d2-12 text-d2-ink-4">
         <span className="inline-flex flex-wrap items-center gap-[6px]">
           {insight.citations.map((c, position) => (
-            <span key={c}>{review?.citations?.find(source=>source.id===c)?.provider === 'kb' ? t('learningSourcesShort') : c.startsWith('s') ? 'OpenDota' : t('sources')}{' '}
+            <span key={`${c}:${position}`}>{review?.citations?.find(source=>source.id===c)?.provider === 'kb' ? t('learningSourcesShort') : c.startsWith('s') ? 'OpenDota' : t('sources')}{' '}
             <sup
               className="inline-grid place-items-center w-[15px] h-[15px] ml-[3px] rounded-full bg-d2-accent-bg text-d2-gold-2 text-[10px] font-bold"
             >

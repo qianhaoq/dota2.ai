@@ -40,8 +40,8 @@ export interface Moment {
 const BIG_STRUCTURE = /tower[34]|range_rax|melee_rax|fort/;
 
 /**
- * Key moments for claim 0: Roshan kills, big building kills (T3+/rax/fort)
- * from `objectives`, plus the gold-low point as a fact-display note.
+ * Roshan kills, building kills and the gold-low fact-display note. By default
+ * buildings are T3+/rax/fort; allStructures includes every recorded building.
  */
 export function buildMoments(review: Review, insight: Insight, lang: 'en' | 'zh', t: Translate, allStructures = false): Moment[] {
   // Preserve unknown team — never default to Radiant for polarity.
@@ -122,7 +122,9 @@ export function windowMoments(review: Review, insight: Insight, lang: 'en' | 'zh
     moments.push({t: purchase.t, time: mmss(purchase.t), kind: 'note', hl: false,
       label: fill(t('windowPurchase'), {item: itemName(purchase.item, lang)})});
   }
-  return moments.sort((a, b) => a.t - b.t);
+  // The whole list is already within the window; use one neutral treatment.
+  // Stable Array.sort preserves source insertion order for simultaneous events.
+  return moments.sort((a, b) => a.t - b.t).map(moment => ({...moment,hl:false}));
 }
 
 /** Objective facts (`obj.<t>.<i>`) carry display.t in newer engines; fall back to a derived label. */

@@ -50,4 +50,7 @@ it('reports memory-only persistence and refuses a full journal without claiming 
   expect(screen.getByRole('alert').textContent).toContain('journal is full');
   expect(full.getNotes()).toHaveLength(100);
   expect(screen.queryByTestId('practice-goal-saved')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+  fireEvent.click(screen.getByRole('button',{name:'Save one practice goal'}));
+  expect(screen.queryByRole('alert')).toBeNull();
 });

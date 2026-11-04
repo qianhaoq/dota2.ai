@@ -4,6 +4,6 @@ import type { Insight } from './types';
 export function practiceGoalText(insight: Insight): string {
   const text = insight.claim.text.trim();
   if (insight.id !== 'next_game') return text;
-  const sentences = text.split(/(?<=[。！？])\s*|(?<=[.!?])\s+/).filter(Boolean);
+  const sentences = (text.match(/[\s\S]*?(?:[。！？]|[.!?](?=\s)|$)/g) ?? []).map(sentence=>sentence.trim()).filter(Boolean);
   return sentences.find(sentence => /^(?:Next game\b|下一局|优先练习|Practice consistent\b)/i.test(sentence)) ?? text;
 }

@@ -12,12 +12,16 @@ export function createToolHandlers(options = {}) {
       const result = await review(args);
       const insight = result.insights.find(i => i.id === args.insight_id);
       if (!insight) throw invalid('Unknown insight_id');
+      const learningCitations = new Set(result.citations.filter(c => c.provider === 'kb' && insight.citations.includes(c.id)).map(c => c.id));
+      const contextualFacts = Object.fromEntries(Object.entries(result.facts).filter(([,fact]) => learningCitations.has(fact.citation)));
       return {
         insight,
         facts: Object.fromEntries(insight.fact_ids.filter(id => Object.hasOwn(result.facts, id)).map(id => [id, result.facts[id]])),
         evidence: insight.evidence,
         citations: result.citations.filter(c => insight.citations.includes(c.id)),
         data_gap: insight.data_gap,
+        // Context is material-linked and unverified, separate from match facts.
+        ...(Object.keys(contextualFacts).length ? {contextual_facts:contextualFacts} : {}),
       };
     },
   };
