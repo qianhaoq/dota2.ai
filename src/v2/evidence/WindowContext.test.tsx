@@ -21,6 +21,7 @@ it('aligns deaths, key purchases and objectives with inclusive window boundaries
   review.purchases = [{t:900,item:'black_king_bar',key_item:true},{t:800,item:'branches',key_item:false}];
   const rows = windowMoments(review,insight,'en',translate as any);
   expect(rows.map(r=>r.t)).toEqual([600,750,900]);
+  expect(rows.every(r=>r.hl === false)).toBe(true);
   expect(rows.map(r=>r.label)).toContain('windowDeath');
   expect(windowMoments(review,{...insight,status:'insufficient'},'en',translate as any)).toEqual([]);
 });
