@@ -154,7 +154,8 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
         const itemTopic = itemQuestion
           ? (review.followups.some(f => f.id === 'item_timings' && f.answerable) ? 'item_timings' : 'build_vs_lineup')
           : null;
-        const topic = unsupported ? null : itemTopic ?? (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question ?? '') ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question ?? '') ? 'laning_0_10' : null);
+        const labelTopic = review.followups.find(f => f.answerable && f.label.trim().toLowerCase() === question?.trim().toLowerCase())?.id;
+        const topic = unsupported ? null : labelTopic ?? itemTopic ?? (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question ?? '') ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question ?? '') ? 'laning_0_10' : null);
         const followup = review.followups.find(f => f.id === (followupId ?? topic));
         if (followupId && !followup) throw invalid();
         const answerKey = `ask:${params.key}:${params.lang}:${followupId}`;

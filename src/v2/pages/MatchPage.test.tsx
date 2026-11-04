@@ -249,6 +249,17 @@ describe('SSE v1 conversation', () => {
         await screen.findByText('Evidence answer');
         expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'free', answerable: true });
     });
+    it('recommended evidence labels retain their answerable status when typed as free questions', async () => {
+        page();
+        await ready();
+        const label = engine().followups.find(f=>f.id === 'why_turning_point')!.label;
+        const input = screen.getByPlaceholderText('Ask a follow-up about this match');
+        fireEvent.change(input,{target:{value:label}});
+        fireEvent.submit(input.closest('form')!);
+        await screen.findByText('Evidence answer');
+        expect(trackEvent).toHaveBeenCalledWith('followup_clicked',{followup_id:'free',answerable:true});
+        expect(screen.queryByTestId('refusal-bubble')).toBeNull();
+    });
     it('unanswerable followup shows human refusal without raw gap codes', async () => {
         page();
         await ready();

@@ -7,7 +7,7 @@ import { createCache, createIpKey, createLimiter, DAY, securityHeaders } from '.
 import { scheduleShadow } from '../../../routes/v1/shadow.js';
 import { lintOpenapi } from '../../../scripts/lint-openapi.mjs';
 import { openapi } from '../../../routes/v1/openapi.js';
-import { renderTemplate } from '../src/phrasing/templates.js';
+import { renderTemplate, pickSoftRefuseChips } from '../src/phrasing/templates.js';
 
 const fixture = id => JSON.parse(gunzipSync(readFileSync(new URL(`./fixtures/gold/${id}.json.gz`, import.meta.url))));
 const servers = [];
@@ -400,4 +400,11 @@ it.each([
   expect(answer).toMatch(lang === 'zh' ? /你可以问：/ : /Try:/);
   expect(answer).not.toBe(lang === 'zh' ? '该问题需要的数据不在本局记录中。' : "The data needed for this question is not in this match's record.");
   expect(answer).not.toMatch(/build_vs_lineup|death_locations|laning_baseline|\$3/);
+  const review = await (await get(`/api/v1/review/${match}?hero=${hero}&lang=${lang}`)).json();
+  for (const followup of pickSoftRefuseChips(review.followups,{digDeeper:true})) {
+    const ask = async body => events(await (await get(`/api/v1/review/${match}/ask`,post({hero,lang,...body}))).text()).at(-1).data.answer;
+    const selected = await ask({question:followup.label});
+    expect(selected).toBe(await ask({followup_id:followup.id}));
+    expect(selected).not.toMatch(lang === 'zh' ? /你可以问：/ : /Try:/);
+  }
 });

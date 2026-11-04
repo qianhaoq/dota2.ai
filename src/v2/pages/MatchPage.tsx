@@ -154,7 +154,8 @@ export default function MatchPage() {
         setInputError(false);
         // Mirror approved free-question routing; unsupported topics are tied to registered gaps.
         const unsupported = /\b(vision|wards?|position|coordinates|build|items?|baseline|bracket)\b|视野|站位|坐标|位置|出装|同段位/i.test(question);
-        const inferred = !unsupported ? review.followups.find(f => f.id === (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question) ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question) ? 'laning_0_10' : '')) : undefined;
+        const labelled = review.followups.find(f => f.answerable && f.label.trim().toLowerCase() === question.trim().toLowerCase());
+        const inferred = labelled ?? (!unsupported ? review.followups.find(f => f.id === (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question) ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question) ? 'laning_0_10' : '')) : undefined);
         const answerable = followup?.answerable ?? inferred?.answerable ?? false;
         trackEvent('followup_clicked', { followup_id: followup?.id ?? 'free', answerable });
         if (followup)

@@ -41,7 +41,8 @@ function truncateQuestion(question, lang) {
   const raw = String(question ?? '').replace(/\s+/g, ' ').trim();
   if (!raw) return lang === 'zh' ? '该问题' : 'that';
   const max = lang === 'zh' ? 24 : 48;
-  return raw.length > max ? `${raw.slice(0, max)}…` : raw;
+  const points = Array.from(raw);
+  return points.length > max ? `${points.slice(0, max).join('')}…` : raw;
 }
 
 /**
