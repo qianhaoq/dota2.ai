@@ -29,6 +29,15 @@ function wrap(ui: React.ReactElement, lang: 'en' | 'zh' = 'zh') {
 afterEach(() => cleanup());
 
 describe('cardConclusion fallback', () => {
+  it('labels learning citations without showing transport identifiers', () => {
+    const r = review('en');
+    const id = 'kb:kb-aaaaaaaaaaaaaaaaaaaaaaaa';
+    r.citations = [...(r.citations ?? []),{id,provider:'kb',url:'https://www.youtube.com/watch?v=abcdefghijk',fetched_at:'2026-11-05T00:00:00Z',fields:[]}];
+    r.insights[2].citations.push(id);
+    wrap(<InsightCard insight={r.insights[2]} review={r} index={3} streaming={false}/>, 'en');
+    expect(screen.getByTestId('insight-card').textContent).toContain('Learning');
+    expect(screen.getByTestId('insight-card').textContent).not.toContain(id);
+  });
   it.each(['en', 'zh'] as const)('keeps numbered engine conclusions intact in %s', lang => {
     const r = review(lang);
     for (const insight of r.insights) expect(cardConclusion(insight)).toBe(insight.claim.text);
