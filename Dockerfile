@@ -47,6 +47,8 @@ COPY lib ./lib
 COPY routes ./routes
 COPY packages ./packages
 RUN mkdir -p ./data
+# Only the reviewed public snapshot belongs in the runtime image.
+COPY --from=builder /app/data/site-knowledge.v1.json ./data/site-knowledge.v1.json
 
 # Set environment variables
 ENV NODE_ENV=production

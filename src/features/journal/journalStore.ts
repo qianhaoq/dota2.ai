@@ -19,7 +19,7 @@ export interface JournalStorage {
   setItem(key: string, value: string): void;
 }
 
-export type AddNoteStatus = 'added' | 'duplicate' | 'invalid';
+export type AddNoteStatus = 'added' | 'duplicate' | 'invalid' | 'full';
 
 export interface JournalNoteInput {
   key: string;
@@ -124,6 +124,7 @@ export function createJournalStore(storage: JournalStorage | null): JournalStore
       const note = sanitizeNote(input);
       if (!note) return 'invalid';
       if (notes.some((n) => n.key === note.key)) return 'duplicate';
+      if (notes.length >= MAX_NOTES) return 'full';
       notes = [...notes, { ...note, done: false }].slice(0, MAX_NOTES);
       persist();
       emit();

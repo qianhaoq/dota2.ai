@@ -6,6 +6,8 @@ import { heroDisplayName } from '../review/heroDisplayName';
 import type { Fact, Review } from '../review/types';
 import GoldXpChart, { type SeriesMode } from './GoldXpChart';
 import WindowContext from './WindowContext';
+import PracticeGoal from '../review/PracticeGoal';
+import { practiceGoalText } from '../review/practiceGoalText';
 import { DeathStrip, Feedback, GapBox, ItemsGrid, KV, KillerBars, MomentsList, Pager, Segmented, Sources, section, sectionH } from './bits';
 import { buildMoments, fill, gapReason, gapRegistered, insightTimeChip, killerRows, sourcesFor } from './labels';
 
@@ -87,7 +89,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
       <div className="flex items-start justify-between gap-[8px] px-[16px] pt-[12px] pb-[10px]">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-[6px] text-d2-12 font-bold uppercase tracking-wider text-d2-gold-2">{insightIcon(insight.id)}<span>{t(labelKey)}{time ? <> · <span className="d2-tnum font-mono">{time}</span></> : null}</span></div>
-          <div className="mt-[4px] text-d2-17 font-semibold text-d2-ink font-serif">{insight.claim.text}</div>
+          <div className="mt-[4px] text-d2-17 font-semibold text-d2-ink font-serif">{practiceGoalText(insight)}</div>
         </div>
         <Pager claim={claim} total={review.insights.length} onPage={onPage} onClose={onClose}/>
       </div>
@@ -146,6 +148,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
           <h4 className={sectionH}>{t('whyAdvice')}</h4>
           <div className="flex flex-wrap gap-[8px]">{claimFacts.map(f => <FactChip key={f.id} fact={f}/>)}</div>
         </div>
+        <div className={section}><PracticeGoal key={`${review.match.id}:${review.player?.hero_id}:${lang}`} review={review} insight={insight}/></div>
         {enemies.length > 0 && <div className={section}>
           <h4 className={sectionH}>{t('enemyLineup')}</h4>
           <div className="flex flex-wrap gap-[8px]">{enemies.map(h => <span key={h.hero_id} className="inline-flex items-center gap-[6px] rounded-d2-chip bg-d2-surface-3 border border-d2-line-2 px-[10px] py-[4px] text-d2-13 text-d2-ink-2">
@@ -162,7 +165,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
 
       <div className={section}>
         <h4 className={sectionH}>{t('sources')}</h4>
-        <Sources review={review} rows={sourcesFor(review, claim)}/>
+        <Sources review={review} rows={sourcesFor(review, claim)} claim={claim}/>
       </div>
       <div className={`${section} pb-[24px]`}>
         <Feedback review={review} claim={claim}/>

@@ -110,7 +110,7 @@ const ItemTradeoffWorkspace: React.FC<ItemTradeoffWorkspaceProps> = ({ lang, onS
       contextId: CONTEXT_ID,
       authority: 'demo',
     });
-    if (status === 'invalid') return;
+    if (status === 'invalid' || status === 'full') return;
     setSaved(true);
     onSaved();
   };

@@ -1,0 +1,18 @@
+{
+  "schema": "dota2.ai/site-knowledge@1",
+  "generated_at": "2026-11-05T00:00:00Z",
+  "entries": [{
+    "id": "kb-aaaaaaaaaaaaaaaaaaaaaaaa",
+    "kind": "principle",
+    "title": "Synthetic learning fixture",
+    "summary": "Synthetic fixture: check the next objective before choosing a route.",
+    "hero": "",
+    "patch": "unknown",
+    "stamp": "[long-term · 2026-11-05 · synthetic]",
+    "source_url": "https://www.youtube.com/watch?v=abcdefghijk&t=750",
+    "source_date": "2026-11-05T00:00:00Z",
+    "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "locator": "12:30–12:45",
+    "verification": "material_linked_not_independently_verified"
+  }]
+}

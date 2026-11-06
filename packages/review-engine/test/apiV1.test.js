@@ -26,6 +26,20 @@ const base = '/api/v1/review/9035042364';
 const post = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
 describe('API v1 contract', () => {
+  it('keeps public learning references identical in JSON and SSE and fails closed on an invalid snapshot', async () => {
+    const knowledgeSnapshot = JSON.parse(readFileSync(new URL('./fixtures/site-knowledge.json', import.meta.url)));
+    const {get} = await setup({knowledgeSnapshot});
+    const json = await (await get(`${base}?hero=pudge&lang=en`)).json();
+    const streamed = events(await (await get(`${base}/stream?hero=pudge&lang=en`)).text()).at(-1).data.review;
+    expect(json.citations.filter(c=>c.provider==='kb')).toHaveLength(1);
+    expect(streamed.citations).toEqual(json.citations);
+    const logger = {warn:vi.fn()};
+    const invalid = await setup({knowledgeSnapshot:{schema:'unsupported'},logger});
+    const response = await invalid.get(`${base}?hero=pudge&lang=en`);
+    expect(response.status).toBe(200);
+    expect((await response.json()).citations.filter(c=>c.provider==='kb')).toEqual([]);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('site_knowledge_invalid'));
+  });
   for (const id of [8985182860, 9035042364]) for (const lang of ['en', 'zh']) it(`JSON equals SSE ${id} ${lang}, ordered IDs and cached resume`, async () => {
     const raw = fixture(id);
     const hero = raw.players[0].hero_id;

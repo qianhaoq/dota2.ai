@@ -4,6 +4,7 @@ import { buildInsights } from './insights/index.js';
 import { buildGaps } from './gaps/index.js';
 import { buildPresetFollowups } from './phrasing/followups.js';
 import { isMatchParsed } from './matchParse.js';
+import { attachSiteKnowledge } from './siteKnowledge.js';
 
 export const ENGINE_VERSION = '2.0.0-pr2';
 
@@ -63,7 +64,7 @@ export function buildReview(raw, opts) {
   }) : [];
   const presets = opts.presetFollowups ? buildPresetFollowups(result, parsed && focus ? { ...focus, index: players.indexOf(focus) } : null, opts.lang, gaps) : [];
   const url = `https://dota2.ai/m/${raw.match_id ?? ''}${focus ? `?hero=${heroSlug(focus.hero_id)}` : ''}`;
-  return {
+  return attachSiteKnowledge({
     schema: 'dota2.ai/review@1', engine_version: ENGINE_VERSION, state, lang: opts.lang,
     match: { id: raw.match_id ?? null, duration_s: raw.duration ?? null, winner, score: { radiant: raw.radiant_score ?? null, dire: raw.dire_score ?? null }, patch, parsed, parse_version: raw.version ?? null, start_time: raw.start_time ?? null },
     player: focus ? { ...roster[players.indexOf(focus)], result: winner && teamOf(focus) ? (winner === teamOf(focus) ? 'win' : 'loss') : null, account_id: focus.account_id ?? null } : null,
@@ -75,5 +76,5 @@ export function buildReview(raw, opts) {
     followups: [...presets, ...insights.filter(i => i.status === 'ok').map(i => ({ id: `why_${i.id}`, label: opts.lang === 'zh' ? `查看结论证据：${insightLabels[i.id] ?? i.id}` : `Evidence: ${i.id}`, answerable: true, fact_ids: i.fact_ids })), ...gaps.filter(g => !presets.some(p => p.id === g.topic)).map(g => ({ id: g.topic, label: gapLabels[g.topic]?.[opts.lang] ?? g.topic, answerable: false, gap: g.topic }))],
     citations: [{ id: 's1', provider: 'opendota', url: `https://api.opendota.com/api/matches/${raw.match_id ?? ''}`, fetched_at: opts.fetchedAt, fields: [...new Set(Object.values(result.facts).filter(f => f.citation === 's1').map(f => f.source_path))] }],
     meta: { url, evidence_url: `${url}${focus ? '&' : '?'}view=evidence`, generated_at: opts.fetchedAt, cache: 'miss', phrasing: 'template', llm_provider: null },
-  };
+  }, opts.kb);
 }

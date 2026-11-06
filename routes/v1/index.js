@@ -1,4 +1,6 @@
 import express from 'express';
+import { readFileSync } from 'node:fs';
+import { parseSiteKnowledge } from '../../packages/review-engine/src/siteKnowledge.js';
 import { attachMcp } from '@dota2ai/mcp';
 import { buildReview, ENGINE_VERSION, STATIC_HEROES, isMatchParsed, UNPARSED_MATCH_CACHE_TTL_MS, phraseInsight, refusal } from '../../packages/review-engine/src/index.js';
 import { createCache, createLimiter, createIpKey, DAY, errorBody, classify, startSse } from './support.js';
@@ -45,7 +47,13 @@ function reviewEvents(review, cache, totalMs) {
   return events;
 }
 /** The cache adapter only needs get(key) and set(key, value, ttlMs). */
-export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now, logger = console, cache = createCache({ now }) }) {
+export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now, logger = console, cache = createCache({ now }), knowledgeSnapshot }) {
+  let knowledge = [];
+  try {
+    knowledge = parseSiteKnowledge(knowledgeSnapshot ?? JSON.parse(readFileSync(new URL('../../data/site-knowledge.v1.json', import.meta.url), 'utf8')));
+  } catch {
+    logger.warn?.(JSON.stringify({event:'site_knowledge_invalid',fallback:'match_facts_only'}));
+  }
   const router = express.Router();
   const ipKey = createIpKey(now);
   const reviewLimit = createLimiter({ capacity: 30, windowMs: 600000, now });
@@ -113,7 +121,7 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
       onStart();
       try { entry = await task.promise; } finally { res.removeListener('close', onClose); release(); }
     }
-    const review = buildReview(entry.raw, { heroId: params.heroId, lang: params.lang, fetchedAt: entry.fetchedAt, presetFollowups: true });
+    const review = buildReview(entry.raw, { heroId: params.heroId, lang: params.lang, fetchedAt: entry.fetchedAt, presetFollowups: true, kb: knowledge });
     review.meta.cache = hit ? 'hit' : 'miss';
     return { review, hit };
   }

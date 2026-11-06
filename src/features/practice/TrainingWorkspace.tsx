@@ -238,7 +238,7 @@ const TrainingWorkspace: React.FC<TrainingWorkspaceProps> = ({ lang, onNoteSaved
       contextId,
       authority: 'demo',
     });
-    if (status === 'invalid') return;
+    if (status === 'invalid' || status === 'full') return;
     onNoteSaved(savedToast);
   };
 

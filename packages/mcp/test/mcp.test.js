@@ -12,6 +12,17 @@ import { buildReview, validateReview } from '@dota2ai/review-engine';
 const raw = JSON.parse(gunzipSync(readFileSync(new URL('../../review-engine/test/fixtures/gold/9035042364.json.gz', import.meta.url))));
 const now = () => '2026-01-01T00:00:00.000Z';
 const args = { match_id: raw.match_id, hero: 'pudge' };
+it('includes referenced learning context separately from verified match facts', async () => {
+  const snapshot = JSON.parse(readFileSync(new URL('../../review-engine/test/fixtures/site-knowledge.json', import.meta.url)));
+  const result = buildReview(raw,{heroId:14,lang:'en',fetchedAt:now(),kb:snapshot.entries});
+  const tools = createToolHandlers({review:async()=>result});
+  const evidence = await tools.get_evidence({...args,insight_id:'next_game'});
+  const context = Object.values(evidence.contextual_facts);
+  expect(context).toHaveLength(1);
+  expect(context[0].value).toMatchObject({title:snapshot.entries[0].title,summary:snapshot.entries[0].summary,locator:snapshot.entries[0].locator,verification:'material_linked_not_independently_verified'});
+  expect(Object.keys(evidence.facts).some(id=>id.startsWith('kb.'))).toBe(false);
+  expect((await tools.get_evidence({...args,insight_id:'turning_point'})).contextual_facts).toBeUndefined();
+});
 it('handlers return the full engine review and only referenced facts/citations', async () => {
   const tools = createToolHandlers({ fetchMatch: async () => raw, now });
   const review = await tools.review_match(args);
