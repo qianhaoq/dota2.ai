@@ -130,7 +130,8 @@ describe('evidence labels', () => {
   });
 
   it('sourcesFor lists only fields backing the rendered claim', () => {
-    expect(sourcesFor(review, 0).map(s => s.field)).toEqual(['radiant_gold_adv', 'radiant_xp_adv', 'objectives']);
+    // The aligned 40–45 minute context also renders reconstructed deaths and the 44:33 BKB purchase.
+    expect(sourcesFor(review, 0).map(s => s.field)).toEqual(['radiant_gold_adv', 'radiant_xp_adv', 'objectives', 'kills_log', 'purchase_log']);
     // Fixture deaths are rebuilt from opponents' kills_log — do not advertise absent deaths_log.
     expect(sourcesFor(review, 1).map(s => s.field)).toEqual(['radiant_gold_adv', 'kills_log']);
     expect(sourcesFor(review, 2).map(s => s.field)).toEqual(['radiant_gold_adv', 'lh_t', 'purchase_log']);
