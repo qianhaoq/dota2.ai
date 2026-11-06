@@ -7,7 +7,7 @@ import { createCache, createIpKey, createLimiter, DAY, securityHeaders } from '.
 import { scheduleShadow } from '../../../routes/v1/shadow.js';
 import { lintOpenapi } from '../../../scripts/lint-openapi.mjs';
 import { openapi } from '../../../routes/v1/openapi.js';
-import { renderTemplate } from '../src/phrasing/templates.js';
+import { renderTemplate, pickSoftRefuseChips, gapTemplates } from '../src/phrasing/templates.js';
 
 const fixture = id => JSON.parse(gunzipSync(readFileSync(new URL(`./fixtures/gold/${id}.json.gz`, import.meta.url))));
 const servers = [];
@@ -105,12 +105,18 @@ describe('API v1 contract', () => {
     for (const lang of ['en', 'zh']) for (const followup_id of ['death_list', 'laning_0_10']) {
       const review = await (await get(`${base}?hero=pudge&lang=${lang}`)).json();
       const preset = review.followups.find(f => f.id === followup_id);
-      const expected = renderTemplate(preset, review.facts, lang).text;
+      const template = renderTemplate(preset, review.facts, lang).text;
       const frames = events(await (await get(`${base}/ask`, post({ hero: 'pudge', lang, followup_id }))).text());
       expect(frames.map(e => e.event)).toEqual(['token', 'done']);
-      expect(frames.at(-1).data.answer).toBe(expected);
+      const answer = frames.at(-1).data.answer;
+      if (preset.answerable) expect(answer).toBe(template);
+      else {
+        expect(answer.startsWith(template)).toBe(true);
+        expect(answer).toMatch(lang === 'zh' ? /你可以问：/ : /Try:/);
+        expect(answer).not.toMatch(/build_vs_lineup|death_locations|\$3/);
+      }
       const calls = complete.mock.calls.length;
-      expect(events(await (await get(`${base}/ask`, post({ hero: 14, lang, followup_id }))).text()).at(-1).data.answer).toBe(expected);
+      expect(events(await (await get(`${base}/ask`, post({ hero: 14, lang, followup_id }))).text()).at(-1).data.answer).toBe(answer);
       expect(complete).toHaveBeenCalledTimes(calls);
     }
     expect(complete).toHaveBeenCalled();
@@ -143,7 +149,7 @@ describe('API v1 contract', () => {
     expect(response.status).toBe(429); expect(response.headers.get('retry-after')).toBe('180');
     expect(events(await response.text())[0].data.code).toBe('RATE_LIMITED');
   });
-  it('free evidence questions use validated phrasing without caching; gap questions refuse', async () => {
+  it('free evidence questions use validated phrasing without caching; gap questions soft-refuse', async () => {
     const complete = vi.fn(async input => ({ text: JSON.stringify({ slots: input.approved_clauses }) }));
     const { get } = await setup({ phrasingCompletion: complete });
     for (let i = 0; i < 2; i++) {
@@ -152,7 +158,10 @@ describe('API v1 contract', () => {
     }
     expect(complete).toHaveBeenCalledTimes(2);
     const frames = events(await (await get(`${base}/ask`, post({ hero: 14, question: 'Was my death position bad?' }))).text());
-    expect(frames.at(-1).data.answer).toContain('not in this match');
+    const answer = frames.at(-1).data.answer;
+    expect(answer).toContain('no coordinates');
+    expect(answer).toMatch(/Try:/);
+    expect(answer).not.toMatch(/build_vs_lineup|death_locations|\$3/);
     expect(complete).toHaveBeenCalledTimes(2);
   });
   it('answers complete laning evidence through the validator', async () => {
@@ -355,6 +364,17 @@ describe('cache, privacy and shadow support', () => {
   });
 });
 
+it.each(['en', 'zh'])('keeps explicit gap explanations ahead of inferred free-question gaps in %s', async lang => {
+  const phrasingCompletion = vi.fn();
+  const { get } = await setup({ phrasingCompletion });
+  const frames = events(await (await get(`${base}/ask`, post({hero:14,lang,followup_id:'death_locations',question:'same-bracket baseline'}))).text());
+  const answer = frames.at(-1).data.answer;
+  expect(answer.split('\n')[0]).toBe(gapTemplates.death_locations[lang]);
+  expect(answer).not.toContain(gapTemplates.laning_baseline[lang]);
+  expect(answer).toMatch(lang === 'zh' ? /你可以问：/ : /Try:/);
+  expect(phrasingCompletion).not.toHaveBeenCalled();
+});
+
 it.each([
   [8985182860, 2, 'en', 'When should I have bought BKB?', ['15:45', '31:46']],
   [9035042364, 14, 'en', 'Show my blink and items build', ['21:00', '44:33']],
@@ -369,6 +389,33 @@ it.each([
   expect(answer).not.toMatch(/build_vs_lineup|not in this match/);
   expect(await ask({ followup_id: 'item_timings' })).toBe(answer);
   for (const question of ['BKB vision positioning', '视野站位', 'same bracket baseline']) {
-    expect(await ask({ question })).toMatch(lang === 'zh' ? /不在本局记录/ : /not in this match/);
+    const soft = await ask({ question });
+    expect(soft).toMatch(lang === 'zh' ? /你可以问：/ : /Try:/);
+    expect(soft).not.toMatch(/build_vs_lineup|death_locations|laning_baseline|\$3/);
+    if (/baseline|bracket|同段位/i.test(question)) {
+      expect(soft).toMatch(lang === 'zh' ? /同段位/ : /same-bracket/);
+    } else {
+      expect(soft).toMatch(lang === 'zh' ? /没有坐标|无法判断站位/ : /no coordinates|position and vision/);
+    }
+  }
+});
+
+it.each([
+  [9035042364, 14, 'zh', '深入分析下'],
+  [8985182860, 2, 'en', 'dig deeper'],
+])('C1 soft-refuses dig-deeper free asks for %s (%s)', async (match, hero, lang, question) => {
+  const { get } = await setup({ fetchMatch: async () => fixture(match) });
+  const frames = events(await (await get(`/api/v1/review/${match}/ask`, post({ hero, lang, question }))).text());
+  const answer = frames.at(-1).data.answer;
+  expect(frames.at(-1).data.phrasing).toBe('template');
+  expect(answer).toMatch(lang === 'zh' ? /你可以问：/ : /Try:/);
+  expect(answer).not.toBe(lang === 'zh' ? '该问题需要的数据不在本局记录中。' : "The data needed for this question is not in this match's record.");
+  expect(answer).not.toMatch(/build_vs_lineup|death_locations|laning_baseline|\$3/);
+  const review = await (await get(`/api/v1/review/${match}?hero=${hero}&lang=${lang}`)).json();
+  for (const followup of pickSoftRefuseChips(review.followups,{digDeeper:true})) {
+    const ask = async body => events(await (await get(`/api/v1/review/${match}/ask`,post({hero,lang,...body}))).text()).at(-1).data.answer;
+    const selected = await ask({question:followup.label});
+    expect(selected).toBe(await ask({followup_id:followup.id}));
+    expect(selected).not.toMatch(lang === 'zh' ? /你可以问：/ : /Try:/);
   }
 });

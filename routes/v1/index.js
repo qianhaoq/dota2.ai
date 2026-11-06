@@ -1,6 +1,6 @@
 import express from 'express';
 import { attachMcp } from '@dota2ai/mcp';
-import { buildReview, ENGINE_VERSION, STATIC_HEROES, isMatchParsed, UNPARSED_MATCH_CACHE_TTL_MS, phraseInsight, refusal } from '../../packages/review-engine/src/index.js';
+import { buildReview, ENGINE_VERSION, STATIC_HEROES, isMatchParsed, UNPARSED_MATCH_CACHE_TTL_MS, phraseInsight, softRefusal, questionGapBody } from '../../packages/review-engine/src/index.js';
 import { createCache, createLimiter, createIpKey, DAY, errorBody, classify, startSse } from './support.js';
 import { openapi, llms } from './openapi.js';
 
@@ -154,15 +154,26 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
         const itemTopic = itemQuestion
           ? (review.followups.some(f => f.id === 'item_timings' && f.answerable) ? 'item_timings' : 'build_vs_lineup')
           : null;
-        const topic = unsupported ? null : itemTopic ?? (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question ?? '') ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question ?? '') ? 'laning_0_10' : null);
+        const labelTopic = review.followups.find(f => f.answerable && f.label.trim().toLowerCase() === question?.trim().toLowerCase())?.id;
+        const topic = unsupported ? null : labelTopic ?? itemTopic ?? (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question ?? '') ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question ?? '') ? 'laning_0_10' : null);
         const followup = review.followups.find(f => f.id === (followupId ?? topic));
         if (followupId && !followup) throw invalid();
         const answerKey = `ask:${params.key}:${params.lang}:${followupId}`;
         const cacheable = followupId && review.state === 'parsed' && followup?.answerable;
         let answer = cacheable ? await cache.get(answerKey) : undefined;
         if (!answer) {
-          // Free questions are deliberately unanswerable unless matched to approved evidence.
-          answer = followup ? await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) }) : { text: refusal(params.lang), phrasing: 'template' };
+          const phrased = followup
+            ? await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) })
+            : undefined;
+          // Explicit preset explanations take priority over inferred free-question gaps.
+          answer = followup?.answerable ? phrased : {
+            text: softRefusal(params.lang, {
+              question,
+              answerableFollowups: review.followups,
+              gapBody: phrased?.text ?? questionGapBody(question, params.lang),
+            }),
+            phrasing: 'template',
+          };
           if (cacheable) await cache.set(answerKey, answer, 7 * DAY);
         }
         sse.send('token', { target: 'answer', delta: answer.text });
