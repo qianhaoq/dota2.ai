@@ -6,10 +6,11 @@ import schema from './schema/site-knowledge.v1.json' with { type: 'json' };
 const ajv = new Ajv({allErrors:true,strict:true});
 const validSnapshot = /** @type {import('ajv').ValidateFunction<SiteKnowledgeSnapshot>} */ (ajv.compile(schema));
 const validEntry = /** @type {import('ajv').ValidateFunction<SiteKnowledgeEntry>} */ (ajv.compile(schema.$defs.entry));
-const publicHosts = new Set(['bilibili.com','www.bilibili.com','youtube.com','www.youtube.com','youtu.be','reddit.com','www.reddit.com','old.reddit.com','dota2.com','www.dota2.com']);
+const publicHosts = new Set(['bilibili.com','www.bilibili.com','youtube.com','www.youtube.com','youtu.be','reddit.com','www.reddit.com','old.reddit.com','dota2.com','www.dota2.com','steamcommunity.com']);
 const timestamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
 /** @param {URL} url */
 const publicResource = url => {
+  if (url.hostname === 'steamcommunity.com') return url.href === 'https://steamcommunity.com/sharedfiles/filedetails/?id=827490913';
   if (url.hostname.endsWith('bilibili.com')) return /^\/video\/BV[A-Za-z0-9]{10}\/?$/.test(url.pathname);
   if (url.hostname === 'youtu.be') return /^\/[A-Za-z0-9_-]{11}\/?$/.test(url.pathname);
   if (url.hostname.endsWith('youtube.com')) return url.pathname === '/watch'
@@ -26,6 +27,7 @@ const safeEntry = entry => {
     return url.protocol === 'https:' && !url.username && !url.password && !url.port && publicHosts.has(url.hostname) &&
       publicResource(url) && new Set(url.searchParams.keys()).size === [...url.searchParams.keys()].length &&
       [...url.searchParams].every(([key,value]) =>
+        key === 'id' ? url.hostname === 'steamcommunity.com' && value === '827490913' :
         key === 'v' ? url.hostname.endsWith('youtube.com') && /^[A-Za-z0-9_-]{11}$/.test(value) :
         key === 't' ? /^\d{1,7}s?$/.test(value) :
         key === 'start' ? url.hostname.endsWith('youtube.com') && /^\d{1,7}$/.test(value) :

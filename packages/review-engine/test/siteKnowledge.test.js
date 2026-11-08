@@ -58,3 +58,13 @@ it('requires exact patch suffix and hero; no major-version upgrade is inferred',
   expect(()=>parseSiteKnowledge({...snapshot,entries:[{...entry,completeness:'excerpt'}]})).toThrow();
   expect(()=>parseSiteKnowledge({...snapshot,entries:[{...entry,evidence_level:'title_only'}]})).toThrow();
 });
+
+it('admits only the independently reviewed Steam citation route and excludes unknown patch facts', () => {
+  const url = 'https://steamcommunity.com/sharedfiles/filedetails/?id=827490913';
+  const entry = {...snapshot.entries[0],source_url:url,locator:url,kind:'fact',patch:'unknown'};
+  const entries = parseSiteKnowledge({...snapshot,entries:[entry]});
+  expect(buildReview(raw,{...opts,kb:entries}).citations.filter(c=>c.provider==='kb')).toEqual([]);
+  for (const source_url of [url+'&x=1',url.replace('827490913','1'),url+'#fragment',url.replace('https:','http:')]) {
+    expect(()=>parseSiteKnowledge({...snapshot,entries:[{...entry,source_url,locator:source_url}]})).toThrow();
+  }
+});
