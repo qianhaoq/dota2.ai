@@ -46,3 +46,15 @@ it('accepts sanitized video time and part selectors for public citations', () =>
   expect(parseSiteKnowledge(value)[0].source_url).toBe(source_url);
   expect(()=>parseSiteKnowledge({...value,entries:[{...value.entries[0],source_url:source_url+'&p=3'}]})).toThrow();
 });
+
+it('requires exact patch suffix and hero; no major-version upgrade is inferred', () => {
+  const entry = {...snapshot.entries[0], kind:'fact', hero:'pudge', patch:'7.41f', evidence_level:'post_body', completeness:'full'};
+  for (const patch of [60, '7.41', '7.41e', null]) {
+    const review = buildReview({...raw,patch},{...opts,kb:[entry]});
+    expect(review.citations.filter(c=>c.provider==='kb')).toEqual([]);
+  }
+  expect(buildReview({...raw,patch:'7.41f'},{...opts,kb:[entry]}).citations.filter(c=>c.provider==='kb')).toHaveLength(1);
+  expect(buildReview({...raw,patch:'7.41f'},{...opts,kb:[{...entry,hero:'enigma'}]}).citations.filter(c=>c.provider==='kb')).toEqual([]);
+  expect(()=>parseSiteKnowledge({...snapshot,entries:[{...entry,completeness:'excerpt'}]})).toThrow();
+  expect(()=>parseSiteKnowledge({...snapshot,entries:[{...entry,evidence_level:'title_only'}]})).toThrow();
+});

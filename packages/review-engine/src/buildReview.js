@@ -1,3 +1,4 @@
+import { availableSummary } from './availableSummary.js';
 import { buildFacts, heroSlug, teamOf, KEY_ITEMS } from './facts/index.js';
 import { sanitizePlayerNameForPrompt } from './matchFacts.js';
 import { buildInsights } from './insights/index.js';
@@ -42,6 +43,7 @@ export function buildReview(raw, opts) {
   const patch = raw.patch ?? opts.patch ?? null;
   if (patch != null && !result.facts.patch) result.facts.patch = { id: 'patch', kind: 'entity', value: patch, display: { en: String(patch), zh: String(patch) }, source_path: 'opts.patch' };
   const gaps = buildGaps(focus, result.gaps);
+  if (!parsed) gaps.push({ topic: 'parsed_evidence', reason: 'not_parsed_yet' });
   if (patch == null) gaps.push({ topic: 'patch', reason: 'missing_match_patch' });
   if (focus) for (const topic of ['gold_fed', 'time_dead', 'lh_at_10']) {
     if (!result.facts[topic] && !gaps.some(g => g.topic === topic)) gaps.push({ topic, reason: 'missing_parsed_player_field' });
@@ -52,7 +54,7 @@ export function buildReview(raw, opts) {
   let state = !parsed ? 'unparsed' : complete && (opts.heroId == null || focus) ? 'parsed' : 'insufficient';
   if (parsed && !complete) gaps.push({ topic: 'parsed_evidence', reason: 'missing_roster_mapping' });
   if (parsed && !goldComplete) gaps.push({ topic: 'radiant_gold_adv', reason: 'missing_or_incomplete_gold_series' });
-  const insights = focus ? buildInsights(result, opts.lang, state) : [];
+  const insights = focus ? (!parsed ? availableSummary(raw, focus, result.facts, opts.lang) : buildInsights(result, opts.lang, state)) : [];
   if (state === 'parsed' && insights.length && insights.every(i => i.status === 'insufficient')) state = 'insufficient';
   const objectives = parsed ? (raw.objectives ?? []).map((o, i) => ({ o, i })).filter(({ o }) => Number.isFinite(o.time)).map(({ o, i }) => {
     const fact_id = `obj.${o.time}.${i}`;

@@ -2,6 +2,8 @@ import { isSameTeamKill } from '../deathTimeline.js';
 import { STATIC_HEROES, getStaticHero } from '../staticHeroes.js';
 
 export const KEY_ITEMS = {
+  radiance: { en: 'Radiance', zh: '辉耀' },
+  sange_and_yasha: { en: 'Sange and Yasha', zh: '散夜对剑' },
   blink: { en: 'blink', zh: '跳刀' },
   black_king_bar: { en: 'Black King Bar', zh: '黑皇杖' },
   blade_mail: { en: 'Blade Mail', zh: '刃甲' },

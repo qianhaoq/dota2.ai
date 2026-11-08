@@ -25,7 +25,9 @@
         "source_date": {"type": "string"},
         "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "locator": {"type": "string", "minLength": 1, "maxLength": 2048},
-        "verification": {"const": "material_linked_not_independently_verified"}
+        "verification": {"const": "material_linked_not_independently_verified"},
+        "evidence_level": {"enum": ["subtitle_full", "frames_checked", "post_body"]},
+        "completeness": {"enum": ["full", "unknown"]}
       }
     }
   }

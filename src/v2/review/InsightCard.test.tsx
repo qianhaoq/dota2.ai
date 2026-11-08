@@ -85,9 +85,9 @@ describe('InsightCard hierarchy for 9035042364', () => {
 
     expect(screen.getAllByTestId('insight-card')).toHaveLength(3);
 
-    expect(screen.getByText('落后千金时死亡 16/19；重复击杀者含冥魂大帝。落后时优先减少无收益的交战。')).toBeTruthy();
+    expect(screen.getByText('落后千金时死亡 16/19；重复击杀者含冥魂大帝。这是死亡前一分钟的团队经济采样，不能判断交战是否值得。建议回看死亡前的视野、兵线和目标，再决定刷或打。')).toBeTruthy();
     expect(screen.getByText(/优先回看/)).toBeTruthy();
-    expect(screen.getByText('本局 10 分钟补刀 13、团队经济 −2,060。下一局 10 分钟补刀至少 13，经济落后控制在 2,060 金以内；未达标先安全发育。 本局 21:00 购入跳刀，早于最差经济窗口。 本局 44:33 购入黑皇杖，处于最差经济窗口内。 本局 53:01 购入刃甲，晚于最差经济窗口。 最差经济窗口：40:00–45:00。')).toBeTruthy();
+    expect(screen.getByText('观察：本局 10 分钟补刀 13、团队经济 −2,060。建议：下一局在决定参团前记录兵线、可见敌人和可争目标，赛后核查一次选择。缺少同角色基准与位置证据，不能据此设及格线或判定刷打优劣。 本局 21:00 购入跳刀，早于最差经济窗口。 本局 44:33 购入黑皇杖，处于最差经济窗口内。 本局 53:01 购入刃甲，晚于最差经济窗口。 最差经济窗口：40:00–45:00。')).toBeTruthy();
     expect(screen.queryByText(/doom_bringer/)).toBeNull();
     expect(screen.queryByText(/skeleton_king/)).toBeNull();
 
@@ -111,7 +111,7 @@ describe('InsightCard hierarchy for 9035042364', () => {
   it('en: uses English hero names in matchup', () => {
     const r = review('en');
     wrap(<InsightCard insight={r.insights[1]} review={r} index={2} streaming={false} />, 'en');
-    expect(screen.getByText('Deaths while behind: 16/19; repeated killer includes Wraith King. Prioritize avoiding low-value fights while behind.')).toBeTruthy();
+    expect(screen.getByText('Deaths while behind: 16/19; repeated killer includes Wraith King. This uses the preceding minute of team gold, which cannot establish fight value. Review vision, waves and objectives before each death to assess fighting versus farming.')).toBeTruthy();
     expect(screen.getByText('Wraith King')).toBeTruthy();
     expect(screen.getByText('Doom')).toBeTruthy();
     expect(screen.queryByText(/doom_bringer/)).toBeNull();

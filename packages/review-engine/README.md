@@ -73,3 +73,9 @@ PR3 validation: `npm test` — 83 files / 1,231 tests passed (including unchange
 PR2 golden assertions); `npx tsc -p packages/review-engine/tsconfig.json --noEmit`,
 `npx tsc --noEmit`, `npm run build`, and `node --check server.js` passed.
 No SSE route, public API default, dependency, or deployment configuration changes.
+
+Local content-audit correction (2026-11-08): ten-minute CS/team gold and purchase timestamps are observations, never next-match passing thresholds. Team gold is not individually controllable. Behind-death counts use the preceding minute sample and do not establish fight value. Advice asks for a decision review; it does not claim farming was optimal or promise win-rate gains. The legacy review summary follows the same rule.
+
+Unparsed matches retain `state: unparsed` while exposing one cited final-scoreboard summary (K/D/A, last hits, GPM, XPM, net worth when present). Timeline fields remain withheld and lane abandonment, farming bottlenecks and fight/farm questions remain explicitly unanswered. An `ok` summary means those scoreboard observations exist, not that a personalized tactical answer was established. Both English and Chinese are generated deterministically.
+
+Public learning metadata optionally carries the established `evidence_level` and `completeness` fields. Excerpts and title/comment-only evidence are rejected. The thin site never fetches these sources or hosts dsh; it reads the curator's export. Exact patch and hero applicability still gates citations; `7.41` does not establish `7.41f`, and a source citation does not fill missing replay evidence or validate an item recommendation.
