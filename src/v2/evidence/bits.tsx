@@ -142,7 +142,7 @@ export function GapBox({ title, body, reason }: {
       <div>
         <b className="block text-d2-15 font-semibold text-d2-ink">{title}</b>
         <p className="m-0 mt-[2px] text-d2-13 text-d2-ink-3">{body}</p>
-        {reason && <code className="block mt-[6px] text-[11px] leading-[16px] text-d2-ink-4 font-mono">{reason}</code>}
+        {reason && <code className="block mt-[6px] text-[11px] leading-[16px] text-d2-ink-3 font-mono">{reason}</code>}
       </div>
     </div>;
 }
