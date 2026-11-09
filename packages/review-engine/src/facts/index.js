@@ -2,6 +2,8 @@ import { isSameTeamKill } from '../deathTimeline.js';
 import { STATIC_HEROES, getStaticHero } from '../staticHeroes.js';
 
 export const KEY_ITEMS = {
+  hand_of_midas: { en: 'Hand of Midas', zh: '迈达斯之手' },
+  manta: { en: 'Manta Style', zh: '幻影斧' },
   radiance: { en: 'Radiance', zh: '辉耀' },
   sange_and_yasha: { en: 'Sange and Yasha', zh: '散夜对剑' },
   blink: { en: 'blink', zh: '跳刀' },

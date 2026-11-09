@@ -156,6 +156,7 @@ function detailFacts(insight: Insight, review: Review | undefined): Fact[] {
   if (insight.id === 'next_game') {
     skip.add('gold.at.10');
     skip.add('lh_at_10');
+    skip.add('deaths.phase.lane'); // Already labeled in the claim; avoid a bare count chip.
   }
   const ids = [...new Set([...metricIds, ...extras])].filter(id => !skip.has(id) && review.facts[id]);
   return ids.map(id => review.facts[id]).filter((f): f is Fact => !!f);

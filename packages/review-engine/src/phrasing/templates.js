@@ -51,6 +51,8 @@ export const coachCopy = {
   phase: { en: 'PHASE phase deaths: VALUE. Review these deaths first.', zh: 'PHASE死亡：VALUE 次。优先复查这些死亡。' },
   next: { en: 'Practice consistent last hits and safe resource collection.', zh: '优先练习稳定补刀与安全获取资源。' },
   nextAction: { en: 'Observation: VALUE CS and VALUE team gold at TIME this game. Advice: review one decision afterward. These numbers cannot set passing targets.', zh: '观察：本局 TIME 分钟补刀 VALUE、团队经济 VALUE。建议：赛后核查一次选择。这些数字不能设及格线。' },
+  farmProgress: { en: 'Personal samples at 10:00 → 20:00: VALUE.', zh: '个人10:00 → 20:00采样：VALUE。' },
+  farmBoundary: { en: 'Cumulative gold is not net worth. These samples do not identify a farming bottleneck or an optimal route. Review waves, camp availability, travel and visible enemies in this interval before deciding how to farm faster.', zh: '累计经济不是净资产。这些采样不能定位刷钱瓶颈或最优路线。需回看该区间的兵线、营地资源、移动和可见敌人，再判断怎样刷得更快。' },
   farm: { en: 'At TIME, last hits: VALUE.', zh: 'TIME 时补刀：VALUE。' },
   economy: { en: 'At TIME, team gold difference: VALUE.', zh: 'TIME 时团队经济差：VALUE。' },
   lane: { en: 'Lane: VALUE.', zh: '分路：VALUE。' },
@@ -92,6 +94,7 @@ export function renderTemplate(insight, facts, lang) {
         const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === id.slice('killed_by.'.length));
         sentences.push(copy('repeat', id, { HERO: hero?.[lang === 'zh' ? 'nameZh' : 'nameEn'] ?? '' }));
       }
+      else if (id.startsWith('farm.10_20.')) sentences.push(copy('farmProgress', id));
       else if (id === 'gold.at.10') sentences.push(copy('economy', id));
       else if (id === 'lh_at_10') sentences.push(copy('farm', id));
       else if (id === 'lane') sentences.push(copy('lane', id));
@@ -103,6 +106,7 @@ export function renderTemplate(insight, facts, lang) {
       }
     }
     if (insight.id === 'next_game' && sentences.length) sentences.push(coachCopy.next[lang]);
+    if (insight.id === 'farm_progress') sentences.push(coachCopy.farmBoundary[lang]);
     if (insight.id === 'item_timings') sentences.push(gapTemplates.build_vs_lineup[lang]);
     slots = sentences.join(insight.id === 'death_list' ? '\n' : ' ') || refusal(lang);
   }

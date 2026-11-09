@@ -45,12 +45,15 @@ export function parseSiteKnowledge(snapshot) {
 }
 
 /** Contextual learning citations do not turn material into a verified match claim. */
-export function attachSiteKnowledge(review, entries = []) {
+export function attachSiteKnowledge(review, entries = [], contextualIds = []) {
   const insight = review.insights.find(i=>i.id === 'next_game' && i.status === 'ok');
   if (!review.player || review.state !== 'parsed' || !insight || !Array.isArray(entries)) return review;
   const used = new Set();
   for (const entry of entries.filter(safeEntry)) {
     if (used.size === 3) break;
+    // Version independence says nothing about relevance to this match question.
+    // Require an explicit contextual selection instead of attaching every general principle.
+    if (entry.applicability_scope === 'version_independent' && !contextualIds.includes(entry.id)) continue;
     if (used.has(entry.id) || (entry.hero && entry.hero !== review.player.hero) ||
         (entry.kind === 'fact' && (review.match.patch == null || entry.patch === 'unknown' || entry.patch !== String(review.match.patch)))) continue;
     used.add(entry.id);

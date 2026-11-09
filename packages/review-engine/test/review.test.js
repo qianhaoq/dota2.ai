@@ -35,14 +35,14 @@ it('reproduces every PR2 numerical acceptance criterion for Pudge', () => {
   expect(review.insights[1].pattern).toBe('behind_1k');
   expect(review.insights[0].claim.text).toBe('Prioritize reviewing the worst gold window at 40:00–45:00 (▼6,983); global low −28,965. This is a review candidate, not an established cause of the loss.');
   expect(review.insights[1].claim.text).toBe('Deaths while behind: 16/19; repeated killer includes Wraith King. This uses the preceding minute of team gold, which cannot establish fight value. Review vision, waves and objectives before each death to assess fighting versus farming.');
-  expect(review.insights[2].claim.text).toBe('Observation: 13 CS and −2,060 team gold at 10:00 this game. Advice: next game, record waves, visible enemies and a contestable objective before joining a fight; review one decision afterward. Without role baselines or position evidence, these numbers cannot set passing targets or determine whether farming was better. Purchased blink at 21:00 before the worst gold window. Purchased Black King Bar at 44:33 during the worst gold window. Purchased Blade Mail at 53:01 after the worst gold window. Worst gold window: 40:00–45:00.');
+  expect(review.insights[2].claim.text).toBe('Observation: 13 CS and −2,060 team gold at 10:00 this game. Advice: next game, record waves, visible enemies and a contestable objective before joining a fight; review one decision afterward. Without role baselines or position evidence, these numbers cannot set passing targets or determine whether farming was better. Deaths before 10:00: 4. Last hits and survival do not establish missed farm opportunities, wave control or whether to leave lane. Purchased blink at 21:00 before the worst gold window. Purchased Black King Bar at 44:33 during the worst gold window. Purchased Blade Mail at 53:01 after the worst gold window. These are first purchase records, not delivery or use times; they cannot establish build quality, optimal purchase timing or whether to fight earlier. Worst gold window: 40:00–45:00.');
   expect(review.insights[0].claim.text).toMatch(/▼6,983.*−28,965/);
   expect(f.killed_by.display.en).toContain('Wraith King');
   expect(f.killed_by.display.en).not.toMatch(/skeleton_king:/);
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).insights.map(i => i.claim.text)).toEqual([
     '优先回看 40:00–45:00 这段最差经济窗口（▼6,983）；全局低点 −28,965。这只是回看候选，不能据此认定输因。',
     '落后千金时死亡 16/19；重复击杀者含冥魂大帝。这是死亡前一分钟的团队经济采样，不能判断交战是否值得。建议回看死亡前的视野、兵线和目标，再决定刷或打。',
-    '观察：本局 10 分钟补刀 13、团队经济 −2,060。建议：下一局在决定参团前记录兵线、可见敌人和可争目标，赛后核查一次选择。缺少同角色基准与位置证据，不能据此设及格线或判定刷打优劣。 本局 21:00 购入跳刀，早于最差经济窗口。 本局 44:33 购入黑皇杖，处于最差经济窗口内。 本局 53:01 购入刃甲，晚于最差经济窗口。 最差经济窗口：40:00–45:00。',
+    '观察：本局 10 分钟补刀 13、团队经济 −2,060。建议：下一局在决定参团前记录兵线、可见敌人和可争目标，赛后核查一次选择。缺少同角色基准与位置证据，不能据此设及格线或判定刷打优劣。 前10分钟死亡 4 次；补刀和存活记录不能说明补刀机会、兵线控制或是否该离线。 本局 21:00 购入跳刀，早于最差经济窗口。 本局 44:33 购入黑皇杖，处于最差经济窗口内。 本局 53:01 购入刃甲，晚于最差经济窗口。 这些是首次购买记录，不代表送达或使用时间；不能据此判断装备选择、购买时机优劣，或应该更早参团。 最差经济窗口：40:00–45:00。',
   ]);
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).toContain('冥魂大帝');
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).not.toMatch(/skeleton_king:/);
@@ -280,7 +280,7 @@ it('keeps death insights without gold and gates economy insights on their own fa
   raw.players.find(p => p.hero_id === 14).lh_t = Array(11).fill(13);
   const withLastHits = buildReview(raw, opts);
   expect(withLastHits.insights[2].status).toBe('ok');
-  expect(withLastHits.insights[2].fact_ids).toEqual(['lh_at_10']);
+  expect(withLastHits.insights[2].fact_ids).toEqual(['lh_at_10', 'deaths.phase.lane']);
   expect(withLastHits.insights[2].claim.text).toContain('Observation: 13 CS at 10:00 this game.');
   expect(withLastHits.insights[2].claim.text).not.toContain('team gold');
 });
@@ -519,4 +519,30 @@ it.each(['en','zh'])('offers cited scoreboard facts without parsed timelines or 
   expect(review.deaths).toEqual([]);
   expect(validateReview(review)).toEqual({ok:true,errors:[]});
   for (const id of review.insights[0].fact_ids) expect(review.citations[0].fields).toContain(review.facts[id].source_path);
+});
+
+it.each(['en', 'zh'])('reports personal farm samples without inferring route efficiency in %s', async lang => {
+  const { answerPresetFollowup } = await import('../src/phrasing/followups.js');
+  const raw = load(9035042364);
+  const player = raw.players.find(p => p.hero_id === 14);
+  // Explicit sample endpoints check personal deltas independently of team economy.
+  player.lh_t = Array(21).fill(null); player.lh_t[10] = 45; player.lh_t[20] = 142;
+  player.gold_t = Array(21).fill(null); player.gold_t[10] = 2912; player.gold_t[20] = 7797;
+  player.xp_t = Array(21).fill(null); player.xp_t[10] = 2682; player.xp_t[20] = 7838;
+  const review = buildReview(raw, { ...opts, lang, presetFollowups: true });
+  const followup = review.followups.find(f => f.id === 'farm_progress');
+  expect(followup.answerable).toBe(true);
+  expect(followup.fact_ids.map(id => review.facts[id].value)).toEqual([97, 4885, 5156]);
+  const answer = answerPresetFollowup(followup, review.facts, lang);
+  expect(answer.text).toContain(lang === 'en' ? '45 → 142 (+97)' : '45 → 142（+97）');
+  expect(answer.text).toMatch(/not net worth|不是净资产/);
+  expect(answer.text).toMatch(/do not identify a farming bottleneck|不能定位刷钱瓶颈/);
+  for (const id of followup.fact_ids) expect(review.citations[0].fields).toContain(review.facts[id].source_path);
+  expect(validateReview(review)).toEqual({ ok: true, errors: [] });
+  // Explicit unparsed state must never leak even retained samples into a follow-up.
+  raw.version = null; raw.od_data = { has_parsed: false };
+  expect(buildReview(raw, { ...opts, lang, presetFollowups: true }).followups.some(f => f.id === 'farm_progress')).toBe(false);
+  raw.version = 22; raw.od_data = { has_parsed: true };
+  player.lh_t[20] = null; player.gold_t[20] = -1; player.xp_t[20] = 1;
+  expect(buildReview(raw, { ...opts, lang, presetFollowups: true }).followups.some(f => f.id === 'farm_progress')).toBe(false);
 });

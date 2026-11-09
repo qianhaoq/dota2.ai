@@ -85,6 +85,13 @@ export function buildInsights({ facts, deaths, worst, comeback }, lang, state) {
       ? `观察：本局 10 分钟${[cs && '补刀 {lh_at_10}', gold && '团队经济 {gold.at.10}'].filter(Boolean).join('、')}。建议：下一局在决定参团前记录兵线、可见敌人和可争目标，赛后核查一次选择。缺少同角色基准与位置证据，不能据此设及格线或判定刷打优劣。`
       : `Observation: ${[cs && '{lh_at_10} CS', gold && '{gold.at.10} team gold'].filter(Boolean).join(' and ')} at 10:00 this game. Advice: next game, record waves, visible enemies and a contestable objective before joining a fight; review one decision afterward. Without role baselines or position evidence, these numbers cannot set passing targets or determine whether farming was better.`
     : (zh ? '缺少时间轴证据，无法判断刷打取舍。建议回看一次参团决定，记录兵线、视野和目标。' : 'Timeline evidence is missing, so fighting versus farming cannot be determined. Review one fight decision and record waves, vision and objectives.');
+  // Early deaths describe survival only; they do not grade lane control or missed farm.
+  if (cs && facts['deaths.phase.lane']) {
+    nextIds.push('deaths.phase.lane');
+    nextSlots += zh
+      ? ' 前10分钟死亡 {deaths.phase.lane} 次；补刀和存活记录不能说明补刀机会、兵线控制或是否该离线。'
+      : ' Deaths before 10:00: {deaths.phase.lane}. Last hits and survival do not establish missed farm opportunities, wave control or whether to leave lane.';
+  }
   if (worst && windowPrefix && nextIds.length) {
     const itemIds = Object.keys(facts).filter(id => id.startsWith('item.first.'));
     for (const id of itemIds) {
@@ -93,6 +100,9 @@ export function buildInsights({ facts, deaths, worst, comeback }, lang, state) {
     }
     if (itemIds.length) {
       nextIds.push(...itemIds, windowPrefix);
+      nextSlots += zh
+        ? ' 这些是首次购买记录，不代表送达或使用时间；不能据此判断装备选择、购买时机优劣，或应该更早参团。'
+        : ' These are first purchase records, not delivery or use times; they cannot establish build quality, optimal purchase timing or whether to fight earlier.';
       nextSlots += zh ? ` 最差经济窗口：${windowTime}。` : ` Worst gold window: ${windowTime}.`;
     }
   }

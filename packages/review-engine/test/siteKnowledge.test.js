@@ -78,7 +78,8 @@ it('imports the actual curated export and recalls historical principles without 
   expect(entry.attribution).toContain('hong yu');
   expect(entry.summary).not.toMatch(/7\.41f|patch60|\d/);
   for (const patch of [null,60,'7.41f','7.41e']) {
-    const review = buildReview({...raw,patch},{...opts,kb:entries});
+    expect(buildReview({...raw,patch},{...opts,kb:entries}).citations.filter(c=>c.provider==='kb')).toEqual([]);
+    const review = buildReview({...raw,patch},{...opts,kb:entries,kbContextIds:[entry.id]});
     expect(validateReview(review).ok).toBe(true);
     expect(review.citations.find(c=>c.provider==='kb')).toMatchObject({patch:'unknown',url:entry.source_url});
     expect(review.facts[`kb.${entry.id}`].display.en).toContain(entry.applicability_boundary);
