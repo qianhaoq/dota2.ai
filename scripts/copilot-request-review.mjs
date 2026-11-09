@@ -14,9 +14,11 @@ export function isCopilotAck(event) {
   if (event.event === 'copilot_work_started') return true;
   if (event.event !== 'review_requested') return false;
   const reviewer = event.requested_reviewer;
-  if (reviewer?.type === 'Organization') return false;
+  const login = reviewer?.login?.toLowerCase();
+  // The public Organization login collides with the app slug — never treat it as Copilot.
+  if (reviewer?.type === 'Organization' && login === 'copilot-pull-request-reviewer') return false;
   return ['copilot', 'copilot-pull-request-reviewer[bot]', 'copilot-pull-request-reviewer']
-    .includes(reviewer?.login?.toLowerCase());
+    .includes(login);
 }
 
 export function classifyRequestError(error) {

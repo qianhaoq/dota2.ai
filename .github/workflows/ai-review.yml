@@ -33,7 +33,7 @@ jobs:
     # (dota2.ai's Copilot ruleset has review_on_push=false; other repos have
     # none). Auto Merge therefore only requires one Copilot review on any
     # commit (copilot_scope: any); head freshness = Codex gate + CI + QA.
-    if: vars.DISABLE_COPILOT_REVIEW != 'true' && github.event.pull_request.draft == false && github.event.action != 'synchronize'
+    if: vars.DISABLE_COPILOT_REVIEW != 'true' && github.event.pull_request.draft == false && github.event.action != 'synchronize' && github.event.pull_request.head.repo.full_name == github.repository
     
     steps:
       - name: Checkout
@@ -69,7 +69,7 @@ jobs:
           if [ "$REQUEST_RESULT" = "success" ] && { [ "$OUTCOME" = "already_reviewed" ] || [ "$OUTCOME" = "request_ack" ]; }; then
             echo "✅ $OUTCOME — verified Copilot review or new acknowledgment event." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "❌ ${OUTCOME:-request_failed} — Copilot request failed or was not acknowledged. See request step logs." >> "$GITHUB_STEP_SUMMARY"
+            echo "❌ ${OUTCOME:-request_failed} — Copilot request failed or was not acknowledged. See request step logs. Re-run this job to retry." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ============================================================
