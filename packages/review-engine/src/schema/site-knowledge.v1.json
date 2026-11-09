@@ -13,6 +13,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "kind", "title", "summary", "hero", "patch", "stamp", "source_url", "source_date", "content_hash", "locator", "verification"],
+      "dependencies": {"applicability_scope": {"properties": {"attribution": {"type": "string", "minLength": 1, "maxLength": 300}, "applicability_boundary": {"type": "string", "minLength": 1, "maxLength": 500}, "kind": {"const": "principle"}, "patch": {"const": "unknown"}}, "required": ["attribution", "applicability_boundary"]}},
       "properties": {
         "id": {"type": "string", "pattern": "^kb-[a-f0-9]{24}$"},
         "kind": {"enum": ["fact", "principle"]},
@@ -25,7 +26,12 @@
         "source_date": {"type": "string"},
         "content_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "locator": {"type": "string", "minLength": 1, "maxLength": 2048},
-        "verification": {"const": "material_linked_not_independently_verified"}
+        "verification": {"const": "material_linked_not_independently_verified"},
+        "evidence_level": {"enum": ["subtitle_full", "frames_checked", "post_body"]},
+        "attribution": {"type":"string","minLength":1,"maxLength":300},
+        "applicability_scope": {"const":"version_independent"},
+        "applicability_boundary": {"type":"string","minLength":1,"maxLength":500},
+        "completeness": {"enum": ["full", "unknown"]}
       }
     }
   }

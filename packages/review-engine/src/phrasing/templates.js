@@ -37,20 +37,22 @@ export const coachCopy = {
   itemBefore: { en: 'Purchased VALUE before the worst gold window.', zh: '本局 VALUE，早于最差经济窗口。' },
   itemDuring: { en: 'Purchased VALUE during the worst gold window.', zh: '本局 VALUE，处于最差经济窗口内。' },
   itemAfter: { en: 'Purchased VALUE after the worst gold window.', zh: '本局 VALUE，晚于最差经济窗口。' },
-  window: { en: 'Review the gold change at TIME: VALUE. Prioritize this turning point.', zh: '复查 TIME 的经济变化：VALUE。优先回看这个转折点。' },
+  window: { en: 'Review the gold change at TIME: VALUE. This is a review candidate, not an established cause.', zh: '复查 TIME 的经济变化：VALUE。这只是回看候选，不能据此认定输因。' },
   low: { en: 'Team gold reached its global low at TIME: VALUE.', zh: '团队经济在 TIME 达到全局低点：VALUE。' },
   gold: { en: 'Recovery gold: VALUE.', zh: '回升段经济：VALUE。' },
   xp: { en: 'Recovery experience: VALUE.', zh: '回升段经验：VALUE。' },
-  behind: { en: 'Deaths while behind: VALUE of TOTAL. Prioritize avoiding low-value fights while behind.', zh: '落后时死亡 VALUE 次，共 TOTAL 次。落后时优先减少低收益交战。' },
+  behind: { en: 'Deaths while behind: VALUE of TOTAL. The preceding minute of team gold is context, not evidence that a fight was avoidable. Review each decision with replay evidence.', zh: '落后时死亡 VALUE 次，共 TOTAL 次。死亡前次整分钟的团队经济仅作背景，不能证明交战本可避免。建议用回放逐次核查决定。' },
   // Short UI conclusions (also seed vocabulary for validateRendered).
-  behindAction: { en: 'Deaths while behind: VALUE/TOTAL; repeated killer includes HERO. Prioritize avoiding low-value fights while behind.', zh: '落后千金时死亡 VALUE/TOTAL；重复击杀者含HERO。落后时优先减少无收益的交战。' },
+  behindAction: { en: 'Deaths while behind: VALUE/TOTAL; repeated killer includes HERO. The preceding minute of team gold is context, not evidence that a fight was avoidable. Review each decision with replay evidence.', zh: '落后千金时死亡 VALUE/TOTAL；重复击杀者含HERO。死亡前次整分钟的团队经济仅作背景，不能证明交战本可避免。建议用回放逐次核查决定。' },
   turningAction: { en: 'Prioritize reviewing the worst gold window at TIME (VALUE); global low VALUE.', zh: '优先回看 TIME 这段最差经济窗口（VALUE）；全局低点 VALUE。' },
   repeatAction: { en: 'Prioritize reviewing VALUE deaths to HERO.', zh: '优先复查HERO造成的 VALUE 次死亡。' },
   phaseAction: { en: 'Prioritize reviewing VALUE deaths concentrated in the PHASE phase.', zh: '优先复查PHASE集中的 VALUE 次死亡。' },
   repeat: { en: 'Repeated killer HERO deaths: VALUE. Review these deaths first.', zh: '重复击杀者 HERO 的击杀次数：VALUE。优先复查这些死亡。' },
   phase: { en: 'PHASE phase deaths: VALUE. Review these deaths first.', zh: 'PHASE死亡：VALUE 次。优先复查这些死亡。' },
   next: { en: 'Practice consistent last hits and safe resource collection.', zh: '优先练习稳定补刀与安全获取资源。' },
-  nextAction: { en: 'This game: VALUE CS and VALUE team gold at TIME. Next game aim for at least VALUE CS at TIME and keep the deficit under VALUE gold; keep a lead of at least VALUE gold; avoid falling behind in team gold; if you miss either the target, farm safely before forcing plays.', zh: '本局 TIME 分钟补刀 VALUE、团队经济 VALUE。下一局 TIME 分钟补刀至少 VALUE，经济落后控制在 VALUE 金以内；保持至少 VALUE 金的经济领先；经济不要落后；未达标先安全发育。' },
+  nextAction: { en: 'Observation: VALUE CS and VALUE team gold at TIME this game. Advice: review one decision afterward. These numbers cannot set passing targets.', zh: '观察：本局 TIME 分钟补刀 VALUE、团队经济 VALUE。建议：赛后核查一次选择。这些数字不能设及格线。' },
+  farmProgress: { en: 'Personal samples at 10:00 → 20:00: VALUE.', zh: '个人10:00 → 20:00采样：VALUE。' },
+  farmBoundary: { en: 'Cumulative gold is not net worth. These samples do not identify a farming bottleneck or an optimal route. Review waves, camp availability, travel and visible enemies in this interval before deciding how to farm faster.', zh: '累计经济不是净资产。这些采样不能定位刷钱瓶颈或最优路线。需回看该区间的兵线、营地资源、移动和可见敌人，再判断怎样刷得更快。' },
   farm: { en: 'At TIME, last hits: VALUE.', zh: 'TIME 时补刀：VALUE。' },
   economy: { en: 'At TIME, team gold difference: VALUE.', zh: 'TIME 时团队经济差：VALUE。' },
   lane: { en: 'Lane: VALUE.', zh: '分路：VALUE。' },
@@ -92,6 +94,7 @@ export function renderTemplate(insight, facts, lang) {
         const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === id.slice('killed_by.'.length));
         sentences.push(copy('repeat', id, { HERO: hero?.[lang === 'zh' ? 'nameZh' : 'nameEn'] ?? '' }));
       }
+      else if (id.startsWith('farm.10_20.')) sentences.push(copy('farmProgress', id));
       else if (id === 'gold.at.10') sentences.push(copy('economy', id));
       else if (id === 'lh_at_10') sentences.push(copy('farm', id));
       else if (id === 'lane') sentences.push(copy('lane', id));
@@ -103,6 +106,7 @@ export function renderTemplate(insight, facts, lang) {
       }
     }
     if (insight.id === 'next_game' && sentences.length) sentences.push(coachCopy.next[lang]);
+    if (insight.id === 'farm_progress') sentences.push(coachCopy.farmBoundary[lang]);
     if (insight.id === 'item_timings') sentences.push(gapTemplates.build_vs_lineup[lang]);
     slots = sentences.join(insight.id === 'death_list' ? '\n' : ' ') || refusal(lang);
   }

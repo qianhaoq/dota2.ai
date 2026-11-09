@@ -83,7 +83,7 @@ describe('buildThreeConclusions — gold sample 8985182860 (en)', () => {
     const rule = conclusions.nextGameRule;
     expect(rule.status).toBe('ok');
     expect(rule.title).toBe('Next-game rule');
-    expect(rule.summary).toContain('Laning rule vs Axe:');
+    expect(rule.summary).toContain('Laning observation vs Axe:');
     expect(rule.summary).toContain('40 CS');
     expect(rule.summary).toContain('your team was 975 gold ahead at 10 min');
     expect(rule.evidence).toEqual([
@@ -113,7 +113,7 @@ describe('buildThreeConclusions — gold sample 8985182860 (zh)', () => {
     expect(conclusions.topMistake.title).toBe('最大问题');
     expect(conclusions.topMistake.summary).toContain('6 次集中在后期');
     expect(conclusions.nextGameRule.title).toBe('下一局规则');
-    expect(conclusions.nextGameRule.summary).toContain('对线规则——面对 斧王');
+    expect(conclusions.nextGameRule.summary).toContain('对线观察——面对 斧王');
     expect(conclusions.nextGameRule.summary).toContain('我方领先 975 金');
     expect(conclusions.nextGameRule.evidence[2].text).toBe('对线对手：斧王');
   });
@@ -272,7 +272,8 @@ describe('buildThreeConclusions — itemization rule when item timings exist', (
     const rule = conclusions.nextGameRule;
     expect(rule.status).toBe('ok');
     expect(rule.summary).toContain('Itemization vs this enemy lineup');
-    expect(rule.summary).toContain('your first tracked item (black_king_bar) arrived at 25:00');
+    expect(rule.summary).toContain('your first tracked item (black_king_bar) was purchased at 25:00');
+    expect(rule.summary).toContain('not a next-game benchmark');
     const lineup = rule.evidence.find((e) => e.text.startsWith('Enemy lineup:'));
     expect(lineup?.text).toContain('Nyx Assassin');
     expect(lineup?.time).toBeNull();
@@ -301,7 +302,7 @@ describe('buildThreeConclusions — next-game rule gold-lead wording (deficit / 
 
   it('en deficit: absolute gold behind with a thousands separator, never a "lead"', () => {
     const summary = summaryFor(-2060, 'en');
-    expect(summary).toBe('Laning rule vs Axe: this game you had 40 CS and your team was 2,060 gold behind at 10 min. Next game against a similar lane, aim for at least 40 CS at 10 min and keep the deficit under 2,060 gold — if you miss either, farm safely before forcing plays.');
+    expect(summary).toBe('Laning observation vs Axe: this game you had 40 CS and your team was 2,060 gold behind at 10 min. This is not a next-game passing baseline, and team gold is not individually controllable. Review waves and a contestable objective before one fight to assess fighting versus farming.');
     expect(summary).not.toContain('gold lead');
     expect(summary).not.toContain('-2060');
     // A deficit shrinks by going DOWN — never tell the player to get above it.
@@ -310,27 +311,27 @@ describe('buildThreeConclusions — next-game rule gold-lead wording (deficit / 
 
   it('en lead: gold ahead, still thousands-separated', () => {
     const summary = summaryFor(12345, 'en');
-    expect(summary).toBe('Laning rule vs Axe: this game you had 40 CS and your team was 12,345 gold ahead at 10 min. Next game against a similar lane, aim for at least 40 CS at 10 min and keep your team at least 12,345 gold ahead — if you miss either, farm safely before forcing plays.');
+    expect(summary).toBe('Laning observation vs Axe: this game you had 40 CS and your team was 12,345 gold ahead at 10 min. This is not a next-game passing baseline, and team gold is not individually controllable. Review waves and a contestable objective before one fight to assess fighting versus farming.');
     expect(summary).not.toContain('+12345');
   });
 
   it('en even: team gold was even', () => {
-    expect(summaryFor(0, 'en')).toBe('Laning rule vs Axe: this game you had 40 CS and team gold was even at 10 min. Next game against a similar lane, aim for at least 40 CS at 10 min and don\'t fall behind in gold — if you miss either, farm safely before forcing plays.');
+    expect(summaryFor(0, 'en')).toBe('Laning observation vs Axe: this game you had 40 CS and team gold was even at 10 min. This is not a next-game passing baseline, and team gold is not individually controllable. Review waves and a contestable objective before one fight to assess fighting versus farming.');
   });
 
   it('zh deficit: 我方落后 with plain digits', () => {
     const summary = summaryFor(-2060, 'zh');
-    expect(summary).toBe('对线规则——面对 Axe：本局 10 分钟时你的补刀为 40、我方落后 2060 金。下一局面对相近的对线组合，10 分钟时补刀至少 40，经济落后控制在 2060 金以内；任一项没达到，就先安全补发育，不强行开打。');
+    expect(summary).toBe('对线观察——面对 Axe：本局 10 分钟时你的补刀为 40、我方落后 2060 金。这不是下局及格线，团队经济也不是个人可控指标。建议回看一次参团前的兵线与可争目标，再核查刷打选择。');
     expect(summary).not.toContain('经济差');
     expect(summary).not.toContain('2,060');
   });
 
   it('zh lead: 我方领先 with plain digits', () => {
-    expect(summaryFor(975, 'zh')).toBe('对线规则——面对 Axe：本局 10 分钟时你的补刀为 40、我方领先 975 金。下一局面对相近的对线组合，10 分钟时补刀至少 40，经济至少领先 975 金；任一项没达到，就先安全补发育，不强行开打。');
+    expect(summaryFor(975, 'zh')).toBe('对线观察——面对 Axe：本局 10 分钟时你的补刀为 40、我方领先 975 金。这不是下局及格线，团队经济也不是个人可控指标。建议回看一次参团前的兵线与可争目标，再核查刷打选择。');
   });
 
   it('zh even: 双方经济持平', () => {
-    expect(summaryFor(0, 'zh')).toBe('对线规则——面对 Axe：本局 10 分钟时你的补刀为 40、双方经济持平。下一局面对相近的对线组合，10 分钟时补刀至少 40，经济不落后；任一项没达到，就先安全补发育，不强行开打。');
+    expect(summaryFor(0, 'zh')).toBe('对线观察——面对 Axe：本局 10 分钟时你的补刀为 40、双方经济持平。这不是下局及格线，团队经济也不是个人可控指标。建议回看一次参团前的兵线与可争目标，再核查刷打选择。');
   });
 
   it('mirrors the sign-aware wording in the evidence row (en)', () => {

@@ -1,3 +1,4 @@
+import { availableSummary } from './availableSummary.js';
 import { buildFacts, heroSlug, teamOf, KEY_ITEMS } from './facts/index.js';
 import { sanitizePlayerNameForPrompt } from './matchFacts.js';
 import { buildInsights } from './insights/index.js';
@@ -27,7 +28,7 @@ const gapLabels = {
 
 /**
  * @param {any} raw OpenDota match, supplied by an adapter (never fetched here).
- * @param {{heroId?: number, lang: 'en'|'zh', fetchedAt: string, patch?: any, kb?: any[], presetFollowups?: boolean}} opts
+ * @param {{heroId?: number, lang: 'en'|'zh', fetchedAt: string, patch?: any, kb?: any[], kbContextIds?: string[], presetFollowups?: boolean}} opts
  */
 export function buildReview(raw, opts) {
   raw = raw ?? {};
@@ -42,6 +43,7 @@ export function buildReview(raw, opts) {
   const patch = raw.patch ?? opts.patch ?? null;
   if (patch != null && !result.facts.patch) result.facts.patch = { id: 'patch', kind: 'entity', value: patch, display: { en: String(patch), zh: String(patch) }, source_path: 'opts.patch' };
   const gaps = buildGaps(focus, result.gaps);
+  if (!parsed) gaps.push({ topic: 'parsed_evidence', reason: 'not_parsed_yet' });
   if (patch == null) gaps.push({ topic: 'patch', reason: 'missing_match_patch' });
   if (focus) for (const topic of ['gold_fed', 'time_dead', 'lh_at_10']) {
     if (!result.facts[topic] && !gaps.some(g => g.topic === topic)) gaps.push({ topic, reason: 'missing_parsed_player_field' });
@@ -52,7 +54,7 @@ export function buildReview(raw, opts) {
   let state = !parsed ? 'unparsed' : complete && (opts.heroId == null || focus) ? 'parsed' : 'insufficient';
   if (parsed && !complete) gaps.push({ topic: 'parsed_evidence', reason: 'missing_roster_mapping' });
   if (parsed && !goldComplete) gaps.push({ topic: 'radiant_gold_adv', reason: 'missing_or_incomplete_gold_series' });
-  const insights = focus ? buildInsights(result, opts.lang, state) : [];
+  const insights = focus ? (!parsed ? availableSummary(raw, focus, result.facts, opts.lang) : buildInsights(result, opts.lang, state)) : [];
   if (state === 'parsed' && insights.length && insights.every(i => i.status === 'insufficient')) state = 'insufficient';
   const objectives = parsed ? (raw.objectives ?? []).map((o, i) => ({ o, i })).filter(({ o }) => Number.isFinite(o.time)).map(({ o, i }) => {
     const fact_id = `obj.${o.time}.${i}`;
@@ -76,5 +78,5 @@ export function buildReview(raw, opts) {
     followups: [...presets, ...insights.filter(i => i.status === 'ok').map(i => ({ id: `why_${i.id}`, label: opts.lang === 'zh' ? `查看结论证据：${insightLabels[i.id] ?? i.id}` : `Evidence: ${i.id}`, answerable: true, fact_ids: i.fact_ids })), ...gaps.filter(g => !presets.some(p => p.id === g.topic)).map(g => ({ id: g.topic, label: gapLabels[g.topic]?.[opts.lang] ?? g.topic, answerable: false, gap: g.topic }))],
     citations: [{ id: 's1', provider: 'opendota', url: `https://api.opendota.com/api/matches/${raw.match_id ?? ''}`, fetched_at: opts.fetchedAt, fields: [...new Set(Object.values(result.facts).filter(f => f.citation === 's1').map(f => f.source_path))] }],
     meta: { url, evidence_url: `${url}${focus ? '&' : '?'}view=evidence`, generated_at: opts.fetchedAt, cache: 'miss', phrasing: 'template', llm_provider: null },
-  }, opts.kb);
+  }, opts.kb, opts.kbContextIds);
 }

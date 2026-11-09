@@ -28,8 +28,20 @@ export function buildPresetFollowups(result, player, lang, gaps) {
   const laneIds = ['lh_at_10', 'gold.at.10', 'lane', 'deaths.phase.lane'];
   const laneReady = laneIds.every(id => facts[id]);
   if (!laneReady) gaps.push({ topic: 'laning_0_10', reason: 'missing_laning_fields' });
+  // Personal cumulative samples are observations, never net worth or farming targets.
+  const farmIds = [];
+  for (const [field, nameEn, nameZh] of [['lh_t', 'last hits', '补刀'], ['gold_t', 'cumulative gold', '累计经济'], ['xp_t', 'experience', '经验']]) {
+    const samples = player?.[field];
+    if (![samples?.[10], samples?.[20]].every(v => Number.isFinite(v) && v >= 0) || samples[20] < samples[10]) continue;
+    const id = `farm.10_20.${field}`;
+    facts[id] = { id, kind: 'scalar', value: samples[20] - samples[10],
+      display: { en: `${nameEn}: ${samples[10]} → ${samples[20]} (+${samples[20] - samples[10]})`, zh: `${nameZh}：${samples[10]} → ${samples[20]}（+${samples[20] - samples[10]}）` },
+      citation: 's1', source_path: `players[${player.index}].${field}[10]; players[${player.index}].${field}[20]` };
+    farmIds.push(id);
+  }
   const itemIds = Object.keys(facts).filter(id => id.startsWith('item.first.'));
   return [
+    ...(farmIds.length ? [{ id: 'farm_progress', label: zh ? '10–20分钟个人发育记录' : 'Personal farm at 10–20 minutes', answerable: true, fact_ids: farmIds }] : []),
     ...(itemIds.length ? [{ id: 'item_timings', label: zh ? '关键装备时间' : 'Key item timings', answerable: true, fact_ids: itemIds }] : []),
     { id: 'death_list', label: zh ? '查看死亡记录' : 'Death list', answerable: deathReady, fact_ids: deathIds, ...(deathReady ? {} : { gap: 'deaths' }) },
     { id: 'laning_0_10', label: zh ? '查看对线记录' : 'Laning evidence', answerable: laneReady, fact_ids: laneIds.filter(id => facts[id]), ...(laneReady ? {} : { gap: 'laning_0_10' }) },

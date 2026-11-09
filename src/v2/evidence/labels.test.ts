@@ -134,7 +134,7 @@ describe('evidence labels', () => {
     expect(sourcesFor(review, 0).map(s => s.field)).toEqual(['radiant_gold_adv', 'radiant_xp_adv', 'objectives', 'kills_log', 'purchase_log']);
     // Fixture deaths are rebuilt from opponents' kills_log — do not advertise absent deaths_log.
     expect(sourcesFor(review, 1).map(s => s.field)).toEqual(['radiant_gold_adv', 'kills_log']);
-    expect(sourcesFor(review, 2).map(s => s.field)).toEqual(['radiant_gold_adv', 'lh_t', 'purchase_log']);
+    expect(sourcesFor(review, 2).map(s => s.field)).toEqual(['radiant_gold_adv', 'lh_t', 'kills_log', 'purchase_log']);
     const { 'deaths.total': _dt, killed_by: _kb, ...restFacts } = review.facts;
     const sparse = { ...review, insights: [], objectives: [], deaths: [], purchases: [], facts: restFacts } as unknown as Review;
     expect(sourcesFor(sparse, 1).map(s => s.field)).toEqual([]);

@@ -33,16 +33,16 @@ it('reproduces every PR2 numerical acceptance criterion for Pudge', () => {
   expect(f['comeback.52_57.xp'].value.delta).toBe(39051);
   expect(review.insights.map(i => [i.id, i.status])).toEqual([['turning_point', 'ok'], ['fix_this', 'ok'], ['next_game', 'ok']]);
   expect(review.insights[1].pattern).toBe('behind_1k');
-  expect(review.insights[0].claim.text).toBe('Prioritize reviewing the worst gold window at 40:00–45:00 (▼6,983); global low −28,965.');
-  expect(review.insights[1].claim.text).toBe('Deaths while behind: 16/19; repeated killer includes Wraith King. Prioritize avoiding low-value fights while behind.');
-  expect(review.insights[2].claim.text).toBe('This game: 13 CS and −2,060 team gold at 10:00. Next game aim for at least 13 CS at 10:00 and keep the deficit under 2,060 gold; if you miss either, farm safely before forcing plays. Purchased blink at 21:00 before the worst gold window. Purchased Black King Bar at 44:33 during the worst gold window. Purchased Blade Mail at 53:01 after the worst gold window. Worst gold window: 40:00–45:00.');
+  expect(review.insights[0].claim.text).toBe('Prioritize reviewing the worst gold window at 40:00–45:00 (▼6,983); global low −28,965. This is a review candidate, not an established cause of the loss.');
+  expect(review.insights[1].claim.text).toBe('Deaths while behind: 16/19; repeated killer includes Wraith King. This uses the preceding minute of team gold, which cannot establish fight value. Review vision, waves and objectives before each death to assess fighting versus farming.');
+  expect(review.insights[2].claim.text).toBe('Observation: 13 CS and −2,060 team gold at 10:00 this game. Advice: next game, record waves, visible enemies and a contestable objective before joining a fight; review one decision afterward. Without role baselines or position evidence, these numbers cannot set passing targets or determine whether farming was better. Deaths before 10:00: 4. Last hits and survival do not establish missed farm opportunities, wave control or whether to leave lane. Purchased blink at 21:00 before the worst gold window. Purchased Black King Bar at 44:33 during the worst gold window. Purchased Blade Mail at 53:01 after the worst gold window. These are first purchase records, not delivery or use times; they cannot establish build quality, optimal purchase timing or whether to fight earlier. Worst gold window: 40:00–45:00.');
   expect(review.insights[0].claim.text).toMatch(/▼6,983.*−28,965/);
   expect(f.killed_by.display.en).toContain('Wraith King');
   expect(f.killed_by.display.en).not.toMatch(/skeleton_king:/);
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).insights.map(i => i.claim.text)).toEqual([
-    '优先回看 40:00–45:00 这段最差经济窗口（▼6,983）；全局低点 −28,965。',
-    '落后千金时死亡 16/19；重复击杀者含冥魂大帝。落后时优先减少无收益的交战。',
-    '本局 10 分钟补刀 13、团队经济 −2,060。下一局 10 分钟补刀至少 13，经济落后控制在 2,060 金以内；未达标先安全发育。 本局 21:00 购入跳刀，早于最差经济窗口。 本局 44:33 购入黑皇杖，处于最差经济窗口内。 本局 53:01 购入刃甲，晚于最差经济窗口。 最差经济窗口：40:00–45:00。',
+    '优先回看 40:00–45:00 这段最差经济窗口（▼6,983）；全局低点 −28,965。这只是回看候选，不能据此认定输因。',
+    '落后千金时死亡 16/19；重复击杀者含冥魂大帝。这是死亡前一分钟的团队经济采样，不能判断交战是否值得。建议回看死亡前的视野、兵线和目标，再决定刷或打。',
+    '观察：本局 10 分钟补刀 13、团队经济 −2,060。建议：下一局在决定参团前记录兵线、可见敌人和可争目标，赛后核查一次选择。缺少同角色基准与位置证据，不能据此设及格线或判定刷打优劣。 前10分钟死亡 4 次；补刀和存活记录不能说明补刀机会、兵线控制或是否该离线。 本局 21:00 购入跳刀，早于最差经济窗口。 本局 44:33 购入黑皇杖，处于最差经济窗口内。 本局 53:01 购入刃甲，晚于最差经济窗口。 这些是首次购买记录，不代表送达或使用时间；不能据此判断装备选择、购买时机优劣，或应该更早参团。 最差经济窗口：40:00–45:00。',
   ]);
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).toContain('冥魂大帝');
   expect(buildReview(load(9035042364), { ...opts, lang: 'zh' }).facts.killed_by.display.zh).not.toMatch(/skeleton_king:/);
@@ -139,7 +139,11 @@ it('handles unparsed, missing player and empty evidence honestly', () => {
   raw.od_data = { has_parsed: false };
   const r = buildReview(raw, opts);
   expect(r.state).toBe('unparsed');
-  expect(r.insights.every(i => i.status === 'insufficient' && i.reason === 'not_parsed_yet')).toBe(true);
+  expect(r.insights).toHaveLength(1);
+  expect(r.insights[0]).toMatchObject({ status: 'ok', reason: 'not_parsed_yet', baseline: null, target: null });
+  expect(r.insights[0].fact_ids).toContain('scoreboard.kills');
+  expect(r.facts['scoreboard.last_hits']).toBeUndefined();
+  expect(r.insights[0].claim.text).toContain('remain unanswered');
   expect(r.facts['gold.low']).toBeUndefined();
   expect(validateReview(r).ok).toBe(true);
   expect(buildReview({ version: 1 }, opts).state).toBe('insufficient');
@@ -276,8 +280,8 @@ it('keeps death insights without gold and gates economy insights on their own fa
   raw.players.find(p => p.hero_id === 14).lh_t = Array(11).fill(13);
   const withLastHits = buildReview(raw, opts);
   expect(withLastHits.insights[2].status).toBe('ok');
-  expect(withLastHits.insights[2].fact_ids).toEqual(['lh_at_10']);
-  expect(withLastHits.insights[2].claim.text).toContain('aim for at least 13 CS at 10:00');
+  expect(withLastHits.insights[2].fact_ids).toEqual(['lh_at_10', 'deaths.phase.lane']);
+  expect(withLastHits.insights[2].claim.text).toContain('Observation: 13 CS at 10:00 this game.');
   expect(withLastHits.insights[2].claim.text).not.toContain('team gold');
 });
 
@@ -409,7 +413,7 @@ it('localizes Chinese followup labels while retaining internal insight and gap k
   expect(english.followups).toContainEqual({ id: 'gold_fed', label: 'Gold fed', answerable: false, gap: 'gold_fed' });
 });
 
-it('includes the Axe match window and ten-minute targets without inferred lane claims', () => {
+it('includes the Axe match window and ten-minute observations without inferred lane claims', () => {
   const review = buildReview(load(8985182860), { ...opts, heroId: 2 });
   expect(review.insights[0].claim.text).toMatch(/17:00–22:00.*▼2,983/);
   expect(review.insights[2].claim.text).toMatch(/48 CS and −975 team gold/);
@@ -437,7 +441,7 @@ it.each(['en', 'zh'])('omits unavailable global low and preserves missing-window
     .toBe(lang === 'zh' ? '缺少经济曲线。' : 'Gold series unavailable.');
 });
 
-it.each(['en', 'zh'])('sets directional gold-only and combined targets in %s', lang => {
+it.each(['en', 'zh'])('keeps gold-only and combined observations separate from advice in %s', lang => {
   for (const value of [-975, 0, 975]) {
     const raw = load(8985182860);
     const player = raw.players.find(p => p.hero_id === 2);
@@ -449,10 +453,11 @@ it.each(['en', 'zh'])('sets directional gold-only and combined targets in %s', l
       const review = buildReview(input, { ...opts, heroId: 2, lang });
       const next = review.insights[2];
       expect(next.status).toBe('ok');
-      expect(next.claim.text).toMatch(value < 0 ? /deficit under 975|经济落后控制在 975/
-        : value > 0 ? /keep a lead of at least 975|保持至少 975 金的经济领先/
-          : /avoid falling behind|经济不要落后/);
-      expect(next.claim.text).toMatch(/farm safely|安全发育/);
+      expect(next.baseline).toBeNull();
+      expect(next.target).toBeNull();
+      expect(next.claim.text).toMatch(/cannot set passing targets|不能据此设及格线/);
+      expect(next.claim.text).toMatch(/record waves|记录兵线/);
+      expect(next.claim.text).not.toMatch(/aim for at least|deficit under|keep a lead|补刀至少|落后控制在/);
       if (!withCs) {
         expect(next.fact_ids).toEqual(['gold.at.10', 'item.first.blink', 'item.first.blade_mail', 'item.first.black_king_bar', 'item.first.lotus_orb', 'gold.window.17_22']);
         expect(next.claim.text).not.toMatch(/CS|补刀/);
@@ -465,7 +470,7 @@ it.each(['en', 'zh'])('sets directional gold-only and combined targets in %s', l
 it.each([
   [8985182860, 2, { blink: 945, blade_mail: 1258, black_king_bar: 1906, lotus_orb: 2359 }],
   [9035042364, 14, { blink: 1260, black_king_bar: 2673 }],
-])('records first key item purchases for %s and preserves concrete C1 targets', (match, heroId, expected) => {
+])('records first key item purchases for %s and preserves cited timing observations without passing targets', (match, heroId, expected) => {
   const raw = load(match);
   const player = raw.players.find(p => p.hero_id === heroId);
   player.purchase_log.push({ key: 'blink', time: 9999 }, { key: 'nullifier', time: Infinity });
@@ -493,4 +498,51 @@ it('omits item timing presets when no finite key purchases exist', () => {
   raw.players.find(p => p.hero_id === 14).purchase_log = [{ key: 'blink', time: NaN }, { key: 'boots', time: 20 }];
   const review = buildReview(raw, { ...opts, presetFollowups: true });
   expect(review.followups.some(f => f.id === 'item_timings')).toBe(false);
+});
+
+it.each(['en','zh'])('offers cited scoreboard facts without parsed timelines or invented goals in %s', lang => {
+  const raw = load(9035042364);
+  raw.version = null;
+  raw.od_data = {has_parsed:false};
+  const player = raw.players.find(p=>p.hero_id===14);
+  // Explicit synthetic scoreboard additions test fields absent from the reduced gold fixture.
+  player.last_hits = 120; player.gold_per_min = 323; player.xp_per_min = 322; player.net_worth = 9230;
+  const review = buildReview(raw,{...opts,lang});
+  expect(review.state).toBe('unparsed');
+  expect(review.data_gaps).toContainEqual({topic:'parsed_evidence',reason:'not_parsed_yet'});
+  expect(review.insights).toHaveLength(1);
+  expect(review.facts['scoreboard.last_hits']).toMatchObject({value:120,citation:'s1',source_path:`players[${raw.players.indexOf(player)}].last_hits`});
+  expect(review.insights[0].claim.text).toMatch(/Farming bottlenecks.*remain unanswered|无法定位刷钱瓶颈/);
+  expect(review.insights[0].baseline).toBeNull();
+  expect(review.insights[0].target).toBeNull();
+  expect(review.facts.lh_at_10).toBeUndefined();
+  expect(review.deaths).toEqual([]);
+  expect(validateReview(review)).toEqual({ok:true,errors:[]});
+  for (const id of review.insights[0].fact_ids) expect(review.citations[0].fields).toContain(review.facts[id].source_path);
+});
+
+it.each(['en', 'zh'])('reports personal farm samples without inferring route efficiency in %s', async lang => {
+  const { answerPresetFollowup } = await import('../src/phrasing/followups.js');
+  const raw = load(9035042364);
+  const player = raw.players.find(p => p.hero_id === 14);
+  // Explicit sample endpoints check personal deltas independently of team economy.
+  player.lh_t = Array(21).fill(null); player.lh_t[10] = 45; player.lh_t[20] = 142;
+  player.gold_t = Array(21).fill(null); player.gold_t[10] = 2912; player.gold_t[20] = 7797;
+  player.xp_t = Array(21).fill(null); player.xp_t[10] = 2682; player.xp_t[20] = 7838;
+  const review = buildReview(raw, { ...opts, lang, presetFollowups: true });
+  const followup = review.followups.find(f => f.id === 'farm_progress');
+  expect(followup.answerable).toBe(true);
+  expect(followup.fact_ids.map(id => review.facts[id].value)).toEqual([97, 4885, 5156]);
+  const answer = answerPresetFollowup(followup, review.facts, lang);
+  expect(answer.text).toContain(lang === 'en' ? '45 → 142 (+97)' : '45 → 142（+97）');
+  expect(answer.text).toMatch(/not net worth|不是净资产/);
+  expect(answer.text).toMatch(/do not identify a farming bottleneck|不能定位刷钱瓶颈/);
+  for (const id of followup.fact_ids) expect(review.citations[0].fields).toContain(review.facts[id].source_path);
+  expect(validateReview(review)).toEqual({ ok: true, errors: [] });
+  // Explicit unparsed state must never leak even retained samples into a follow-up.
+  raw.version = null; raw.od_data = { has_parsed: false };
+  expect(buildReview(raw, { ...opts, lang, presetFollowups: true }).followups.some(f => f.id === 'farm_progress')).toBe(false);
+  raw.version = 22; raw.od_data = { has_parsed: true };
+  player.lh_t[20] = null; player.gold_t[20] = -1; player.xp_t[20] = 1;
+  expect(buildReview(raw, { ...opts, lang, presetFollowups: true }).followups.some(f => f.id === 'farm_progress')).toBe(false);
 });

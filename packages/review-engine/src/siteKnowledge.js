@@ -1,15 +1,16 @@
 import { Ajv } from 'ajv';
 import schema from './schema/site-knowledge.v1.json' with { type: 'json' };
 
-/** @typedef {{id:string,kind:'fact'|'principle',title:string,summary:string,hero:string,patch:string,stamp:string,source_url:string,source_date:string,content_hash:string,locator:string,verification:string}} SiteKnowledgeEntry */
+/** @typedef {{id:string,kind:'fact'|'principle',title:string,summary:string,hero:string,patch:string,stamp:string,source_url:string,source_date:string,content_hash:string,locator:string,verification:string,attribution?:string,applicability_scope?:string,applicability_boundary?:string}} SiteKnowledgeEntry */
 /** @typedef {{schema:string,generated_at:string,entries:SiteKnowledgeEntry[]}} SiteKnowledgeSnapshot */
 const ajv = new Ajv({allErrors:true,strict:true});
 const validSnapshot = /** @type {import('ajv').ValidateFunction<SiteKnowledgeSnapshot>} */ (ajv.compile(schema));
 const validEntry = /** @type {import('ajv').ValidateFunction<SiteKnowledgeEntry>} */ (ajv.compile(schema.$defs.entry));
-const publicHosts = new Set(['bilibili.com','www.bilibili.com','youtube.com','www.youtube.com','youtu.be','reddit.com','www.reddit.com','old.reddit.com','dota2.com','www.dota2.com']);
+const publicHosts = new Set(['bilibili.com','www.bilibili.com','youtube.com','www.youtube.com','youtu.be','reddit.com','www.reddit.com','old.reddit.com','dota2.com','www.dota2.com','steamcommunity.com']);
 const timestamp = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
 /** @param {URL} url */
 const publicResource = url => {
+  if (url.hostname === 'steamcommunity.com') return url.href === 'https://steamcommunity.com/sharedfiles/filedetails/?id=827490913';
   if (url.hostname.endsWith('bilibili.com')) return /^\/video\/BV[A-Za-z0-9]{10}\/?$/.test(url.pathname);
   if (url.hostname === 'youtu.be') return /^\/[A-Za-z0-9_-]{11}\/?$/.test(url.pathname);
   if (url.hostname.endsWith('youtube.com')) return url.pathname === '/watch'
@@ -26,6 +27,7 @@ const safeEntry = entry => {
     return url.protocol === 'https:' && !url.username && !url.password && !url.port && publicHosts.has(url.hostname) &&
       publicResource(url) && new Set(url.searchParams.keys()).size === [...url.searchParams.keys()].length &&
       [...url.searchParams].every(([key,value]) =>
+        key === 'id' ? url.hostname === 'steamcommunity.com' && value === '827490913' :
         key === 'v' ? url.hostname.endsWith('youtube.com') && /^[A-Za-z0-9_-]{11}$/.test(value) :
         key === 't' ? /^\d{1,7}s?$/.test(value) :
         key === 'start' ? url.hostname.endsWith('youtube.com') && /^\d{1,7}$/.test(value) :
@@ -43,18 +45,22 @@ export function parseSiteKnowledge(snapshot) {
 }
 
 /** Contextual learning citations do not turn material into a verified match claim. */
-export function attachSiteKnowledge(review, entries = []) {
+export function attachSiteKnowledge(review, entries = [], contextualIds = []) {
   const insight = review.insights.find(i=>i.id === 'next_game' && i.status === 'ok');
   if (!review.player || review.state !== 'parsed' || !insight || !Array.isArray(entries)) return review;
   const used = new Set();
   for (const entry of entries.filter(safeEntry)) {
     if (used.size === 3) break;
+    // Version independence says nothing about relevance to this match question.
+    // Require an explicit contextual selection instead of attaching every general principle.
+    if (entry.applicability_scope === 'version_independent' && !contextualIds.includes(entry.id)) continue;
     if (used.has(entry.id) || (entry.hero && entry.hero !== review.player.hero) ||
         (entry.kind === 'fact' && (review.match.patch == null || entry.patch === 'unknown' || entry.patch !== String(review.match.patch)))) continue;
     used.add(entry.id);
+    const summary = [entry.summary, entry.attribution && `Author: ${entry.attribution}`, entry.applicability_boundary].filter(Boolean).join('\n');
     const citation = `kb:${entry.id}`, id = `kb.${entry.id}`;
-    review.facts[id] = {id,kind:'entity',value:{title:entry.title,summary:entry.summary,locator:entry.locator,patch:entry.patch,verification:entry.verification},
-      display:{en:entry.summary,zh:entry.summary},citation,source_path:`export/site/${entry.id}`};
+    review.facts[id] = {id,kind:'entity',value:{title:entry.title,summary,locator:entry.locator,patch:entry.patch,verification:entry.verification},
+      display:{en:summary,zh:summary},citation,source_path:`export/site/${entry.id}`};
     review.citations.push({id:citation,provider:'kb',url:entry.source_url,fetched_at:entry.source_date,source_date:entry.source_date,
       ref:entry.id,patch:entry.patch,fields:[`export/site/${entry.id}`]});
     insight.citations = [...insight.citations,citation];
