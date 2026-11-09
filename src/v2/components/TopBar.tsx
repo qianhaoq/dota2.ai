@@ -20,7 +20,7 @@ const SURFACE_TABS: DictKey[] = ['tab_web', 'tab_cli', 'tab_discord', 'tab_dev']
  * for review actions at 390px. Tap targets
  * ≥44px.
  */
-const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
+const TopBar: React.FC<{ action?: React.ReactNode; home?: boolean }> = ({ action, home = false }) => {
   const { lang, setLang, t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -33,17 +33,18 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
   };
 
   return (
-    <header className="flex-none border-b border-d2-line-2 bg-d2-surface/95 backdrop-blur z-30">
+    <header className={`flex-none border-b border-d2-line-2 bg-d2-surface/95 backdrop-blur z-30${home ? ' d2-home-header' : ''}`}>
       <div className="h-[52px] flex items-center gap-[8px] px-[8px] sm:px-[16px] max-w-[1280px] mx-auto min-w-0">
-        <div className="flex items-center gap-[8px] font-semibold text-d2-15 tracking-[-0.01em] whitespace-nowrap text-d2-ink">
-          <span className="w-[26px] h-[26px] text-d2-gold-2" aria-hidden="true">
+        <div className="flex items-center gap-[10px] font-semibold text-d2-15 tracking-[-0.01em] whitespace-nowrap text-d2-ink">
+          <span className="w-[28px] h-[28px] text-d2-gold-2" aria-hidden="true">
             <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 5 16 1l13 4v22l-13 4L3 27Z" />
               <path d="m3 5 9 9 8-8 9 9M3 27l9-9 8 8 9-9" />
               <path d="m13 14 7-7 5 5-7 7Z" fill="currentColor" stroke="none" />
             </svg>
           </span>
-          <span className="font-serif">dota2.ai</span>
+          <span className="font-serif text-[17px]">dota2.ai</span>
+          {home && <span className="d2-brand-tag">{t('brandTag')}</span>}
         </div>
         {onSampleMatch && (
           <span
@@ -56,7 +57,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
         <div className="flex-1" />
         {/* Surface tabs: placeholders for the proposed CLI/Discord/Dev surfaces.
             Hidden on small screens so the bar fits 390px. */}
-        <nav className="hidden lg:flex gap-[4px] p-[4px] bg-d2-surface-3 rounded-d2-chip" aria-label="Surfaces">
+        {!home && <nav className="hidden lg:flex gap-[4px] p-[4px] bg-d2-surface-3 rounded-d2-chip" aria-label="Surfaces">
           {SURFACE_TABS.map((key, i) => (
             <button
               key={key}
@@ -74,7 +75,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
               {t(key)}
             </button>
           ))}
-        </nav>
+        </nav>}
         <div className="flex-1 hidden lg:block" />
         {action}
         <Link
@@ -100,7 +101,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
         >
           {t('langBtn')}
         </button>
-        <button
+        {!home && <button
           type="button"
           onClick={goNew}
           aria-label={t('newReview')}
@@ -110,7 +111,7 @@ const TopBar: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
-        </button>
+        </button>}
       </div>
       {/* The modal's fixed overlay must not be contained by this header's
           backdrop-blur — portal it to <body> (no-op render when there is no

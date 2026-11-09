@@ -1,0 +1,17 @@
+{
+  "when": "2026-11-09T11:22:45.079186+08:00",
+  "launcher": "/home/box/.local/bin/coding kimi",
+  "ANTHROPIC_MODEL": "k3.1-pro",
+  "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding/",
+  "all_model_env": {
+    "ANTHROPIC_MODEL": "k3.1-pro",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "k3.1-pro",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "k3.1-pro",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "k3.1-pro",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "k3.1-pro",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "k3.1-pro"
+  },
+  "not_used": "k3.1-pro-highspeed",
+  "base_commit": "2793eb7be5388f0ce3522189ac0958555c5b4f26",
+  "branch": "feat/home-k31pro-redesign-20261109"
+}

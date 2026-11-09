@@ -55,7 +55,7 @@ export function FactChip({ fact, label }: {
 }) {
     const { lang } = useI18n();
     const value = `${fact.display[lang]}${fact.display.t ? ` · ${fact.display.t}` : ''}`;
-    return <span className="inline-block rounded-d2-chip bg-d2-surface-3 border border-d2-line-2 px-[10px] py-[4px] text-d2-13 text-d2-ink-2 d2-tnum" title={fact.source_path}>{label ? <><span className="text-d2-ink-4 font-medium">{label}</span>{' '}{value}</> : value}</span>;
+    return <span className="inline-block rounded-d2-chip bg-d2-surface-3 border border-d2-line-2 px-[10px] py-[4px] text-d2-13 text-d2-ink-2 d2-tnum" title={fact.source_path}>{label ? <><span className="text-d2-ink-3 font-medium">{label}</span>{' '}{value}</> : value}</span>;
 }
 export function FollowupChips({ followups, asked, disabled, ask }: {
     followups: Followup[];

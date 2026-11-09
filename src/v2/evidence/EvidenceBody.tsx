@@ -98,7 +98,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
         <div className={section}>
           <Segmented value={series} onChange={setSeries}/>
           <GoldXpChart review={review} mode={series} band={band} bandLabel={bandLabel}/>
-          <div className="flex gap-[14px] mt-[8px] text-d2-12 text-d2-ink-4">
+          <div className="flex gap-[14px] mt-[8px] text-d2-12 text-d2-ink-3">
             <span className="inline-flex items-center gap-[6px]"><svg width="16" height="6" aria-hidden="true"><line x1="0" y1="3" x2="16" y2="3" stroke="#c79123" strokeWidth="2.2"/></svg>{t('legendGold')}</span>
             <span className="inline-flex items-center gap-[6px]"><svg width="16" height="6" aria-hidden="true"><line x1="0" y1="3" x2="16" y2="3" stroke="#1a9fff" strokeWidth="1.6" strokeDasharray="4 3"/></svg>{t('legendXP')}</span>
           </div>
@@ -124,7 +124,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
         <div className={section}>
           <h4 className={sectionH}>{fill(t('evDeathsTitle'), { n: facts['deaths.total']?.display[lang] ?? '' }).replace(/\s+/g, ' ').trim()}</h4>
           <DeathStrip review={review} band={band} bandLabel={deathBandLabel} topKiller={topKiller}/>
-          <div className="flex gap-[14px] mt-[6px] text-d2-12 text-d2-ink-4">
+          <div className="flex gap-[14px] mt-[6px] text-d2-12 text-d2-ink-3">
             {topKiller && <span className="inline-flex items-center gap-[6px]"><span className="inline-block w-[8px] h-[8px] rounded-full bg-d2-coral"/>{heroDisplayName(topKiller, lang)}{facts[`killed_by.${topKiller}`] ? ` (${facts[`killed_by.${topKiller}`].display[lang]})` : ''}</span>}
             <span className="inline-flex items-center gap-[6px]"><span className="inline-block w-[8px] h-[8px] rounded-full bg-d2-ink-4"/>{t('evOthers')}</span>
           </div>
