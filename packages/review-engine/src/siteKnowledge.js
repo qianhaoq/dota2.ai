@@ -1,7 +1,7 @@
 import { Ajv } from 'ajv';
 import schema from './schema/site-knowledge.v1.json' with { type: 'json' };
 
-/** @typedef {{id:string,kind:'fact'|'principle',title:string,summary:string,hero:string,patch:string,stamp:string,source_url:string,source_date:string,content_hash:string,locator:string,verification:string}} SiteKnowledgeEntry */
+/** @typedef {{id:string,kind:'fact'|'principle',title:string,summary:string,hero:string,patch:string,stamp:string,source_url:string,source_date:string,content_hash:string,locator:string,verification:string,attribution?:string,applicability_scope?:string,applicability_boundary?:string}} SiteKnowledgeEntry */
 /** @typedef {{schema:string,generated_at:string,entries:SiteKnowledgeEntry[]}} SiteKnowledgeSnapshot */
 const ajv = new Ajv({allErrors:true,strict:true});
 const validSnapshot = /** @type {import('ajv').ValidateFunction<SiteKnowledgeSnapshot>} */ (ajv.compile(schema));
@@ -54,9 +54,10 @@ export function attachSiteKnowledge(review, entries = []) {
     if (used.has(entry.id) || (entry.hero && entry.hero !== review.player.hero) ||
         (entry.kind === 'fact' && (review.match.patch == null || entry.patch === 'unknown' || entry.patch !== String(review.match.patch)))) continue;
     used.add(entry.id);
+    const summary = [entry.summary, entry.attribution && `Author: ${entry.attribution}`, entry.applicability_boundary].filter(Boolean).join('\n');
     const citation = `kb:${entry.id}`, id = `kb.${entry.id}`;
-    review.facts[id] = {id,kind:'entity',value:{title:entry.title,summary:entry.summary,locator:entry.locator,patch:entry.patch,verification:entry.verification},
-      display:{en:entry.summary,zh:entry.summary},citation,source_path:`export/site/${entry.id}`};
+    review.facts[id] = {id,kind:'entity',value:{title:entry.title,summary,locator:entry.locator,patch:entry.patch,verification:entry.verification},
+      display:{en:summary,zh:summary},citation,source_path:`export/site/${entry.id}`};
     review.citations.push({id:citation,provider:'kb',url:entry.source_url,fetched_at:entry.source_date,source_date:entry.source_date,
       ref:entry.id,patch:entry.patch,fields:[`export/site/${entry.id}`]});
     insight.citations = [...insight.citations,citation];

@@ -68,3 +68,23 @@ it('admits only the independently reviewed Steam citation route and excludes unk
     expect(()=>parseSiteKnowledge({...snapshot,entries:[{...entry,source_url,locator:source_url}]})).toThrow();
   }
 });
+
+it('imports the actual curated export and recalls historical principles without claiming a match patch', () => {
+  const exported = JSON.parse(readFileSync(new URL('../../../data/site-knowledge.v1.json', import.meta.url)));
+  const entries = parseSiteKnowledge(exported);
+  expect(entries).toHaveLength(1);
+  const entry = entries[0];
+  expect(entry).toMatchObject({kind:'principle',patch:'unknown',applicability_scope:'version_independent'});
+  expect(entry.attribution).toContain('hong yu');
+  expect(entry.summary).not.toMatch(/7\.41f|patch60|\d/);
+  for (const patch of [null,60,'7.41f','7.41e']) {
+    const review = buildReview({...raw,patch},{...opts,kb:entries});
+    expect(validateReview(review).ok).toBe(true);
+    expect(review.citations.find(c=>c.provider==='kb')).toMatchObject({patch:'unknown',url:entry.source_url});
+    expect(review.facts[`kb.${entry.id}`].display.en).toContain(entry.applicability_boundary);
+    expect(review.facts[`kb.${entry.id}`].display.en).toContain(entry.attribution);
+  }
+  expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,kind:'fact'}]})).toThrow();
+  expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,patch:'7.41f'}]})).toThrow();
+  expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,attribution:undefined}]})).toThrow();
+});
