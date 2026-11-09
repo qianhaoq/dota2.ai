@@ -29,8 +29,9 @@ GET /api/v1/review/{matchId}/stream returns SSE v1 with cached Last-Event-ID rep
 POST /api/v1/review/{matchId}/ask accepts {hero,lang,followup_id?,question?}. Presets include death_list, laning_0_10 and item_timings. Unsupported questions receive a data-gap refusal.
 GET /api/v1/config exposes flags and versions. GET /openapi.json documents the API.
 POST /mcp provides stateless Streamable HTTP MCP: review_match({match_id,hero?,lang?}), get_evidence({match_id,hero,insight_id}).
-CLI: npx dota2ai review 9035042364 --hero pudge --json (add --offline for OpenDota + template engine).
-Stdio MCP: npx -p @dota2ai/mcp dota2ai-mcp [--offline]; DOTA2AI_OFFLINE=1 also enables offline mode.
+CLI (repository checkout after npm ci): node packages/cli/bin/dota2ai.js review 9035042364 --hero pudge --json (add --offline for OpenDota + template engine).
+Packages dota2ai, @dota2ai/mcp and @dota2ai/review-engine are not published on npm yet.
+Stdio MCP (repository checkout after npm ci): node packages/mcp/bin/dota2ai-mcp.js [--offline]; DOTA2AI_OFFLINE=1 also enables offline mode.
 DOTA2AI_API_BASE overrides the public API origin for CLI and stdio MCP.
 No API key needed. Review misses: 30/10 minutes/IP; ask: 20/hour/IP. Respect Retry-After.
 Example: /api/v1/review/9035042364?hero=pudge&lang=en

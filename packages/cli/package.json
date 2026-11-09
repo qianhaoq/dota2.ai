@@ -11,7 +11,8 @@
   "files": [
     "bin",
     "src",
-    "scripts"
+    "scripts",
+    "skills"
   ],
   "engines": {
     "node": ">=20.10.0"
