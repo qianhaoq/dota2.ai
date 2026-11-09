@@ -14,13 +14,56 @@ const SAMPLE_RADIANT = ['faceless_void', 'pudge', 'mirana', 'windrunner', 'legio
 const SAMPLE_DIRE = ['hoodwink', 'doom_bringer', 'sniper', 'ogre_magi', 'skeleton_king'];
 const HERO_CDN = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes';
 
+const HomeGround: React.FC = () => (
+  <svg
+    className="d2-home-ground"
+    viewBox="0 0 1200 900"
+    preserveAspectRatio="none"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path className="d2-ground-dire" d="M0 0h1200v165L0 690Z" />
+    <path className="d2-ground-radiant" d="M0 690 1200 165v735H0Z" />
+    <g className="d2-ground-lane-edges">
+      <path d="M70 830V270Q70 70 270 70h860" />
+      <path d="m70 830 1060-760" />
+      <path d="M70 830h860q200 0 200-200V70" />
+    </g>
+    <g className="d2-ground-lanes">
+      <path d="M70 830V270Q70 70 270 70h860" />
+      <path d="m70 830 1060-760" />
+      <path d="M70 830h860q200 0 200-200V70" />
+    </g>
+    <path className="d2-ground-river" d="M-80 175C265 300 770 645 1280 770" />
+    <g className="d2-ground-bases">
+      <path d="m70 812 18 18-18 18-18-18Z" />
+      <path d="m1130 52 18 18-18 18-18-18Z" />
+    </g>
+  </svg>
+);
+
 const MapMotif: React.FC = () => (
-  <svg className="d2-example-map" viewBox="0 0 180 180" fill="none" aria-hidden="true">
-    <path d="M18 18h144v144H18z" stroke="currentColor" />
-    <path d="M25 25 155 155M25 90V25h65M90 155h65V90" stroke="currentColor" strokeWidth="5" />
-    <path d="m19 153 31-25 21 5 25-29 6-23 30-24 29-37" stroke="currentColor" strokeWidth="2" strokeDasharray="4 5" />
-    <path d="m27 145 12 12-12 12-12-12zM153 23l12 12-12 12-12-12z" fill="currentColor" stroke="none" />
-    <circle cx="91" cy="91" r="5" fill="currentColor" stroke="none" />
+  <svg
+    className="d2-example-map"
+    viewBox="0 0 1000 360"
+    preserveAspectRatio="none"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path className="d2-map-radiant d2-map-zone-desktop" d="M0 0h560L440 360H0Z" />
+    <path className="d2-map-dire d2-map-zone-desktop" d="M560 0h440v360H440Z" />
+    <path className="d2-map-radiant d2-map-zone-mobile" d="M0 0h1000v150L0 230Z" />
+    <path className="d2-map-dire d2-map-zone-mobile" d="M0 230 1000 150v210H0Z" />
+    <g className="d2-map-lanes">
+      <path d="M35 320V40h930" />
+      <path d="m35 320 930-280" />
+      <path d="M35 320h930V40" />
+    </g>
+    <path className="d2-map-river" d="M540-30C510 80 485 220 450 390" />
+    <g className="d2-map-bases">
+      <path d="m35 308 12 12-12 12-12-12Z" />
+      <path d="m965 28 12 12-12 12-12-12Z" />
+    </g>
   </svg>
 );
 
@@ -38,8 +81,8 @@ const Lineup: React.FC<{ side: 'radiant' | 'dire'; heroes: string[] }> = ({ side
             key={hero}
             src={`${HERO_CDN}/${hero}.png`}
             alt={heroDisplayName(hero, lang)}
-            width="64"
-            height="56"
+            width="160"
+            height="100"
             loading="lazy"
             decoding="async"
           />
@@ -61,6 +104,7 @@ const EmptyState: React.FC = () => {
 
   return (
     <section className="d2-home-layout" aria-labelledby="home-title">
+      <HomeGround />
       <div className="d2-home-copy">
         <h1 id="home-title" className="d2-home-title">{t('emptyH')}</h1>
         <Composer variant="hero" />

@@ -1,12 +1,12 @@
 Local: http://127.0.0.1:4173/
 Bind: 0.0.0.0:4173
-Public tunnel: unavailable — Cloudflare edge connections are blocked in this environment (last checked 2026-11-09).
 Mode: production build via PORT=4173 HOST=0.0.0.0 npm start
-Health: http://127.0.0.1:4173/health (healthy)
-Commit: branch HEAD — slim copy follow-up after 68a7f29a785bc0d77dede1f45f6f2d2e167726d8
+Health: http://127.0.0.1:4173/health (HTTP 200)
+Home: HTTP 200
 Branch: feat/home-k31pro-redesign-20261109
-Base: 2793eb7be5388f0ce3522189ac0958555c5b4f26
-Keep-alive: server pid 311942
+Composition: centered slim hero + large real-match tableau + SVG lanes/river/faction zones
+Keep-alive: server pid 368398
 Screenshots (full-page, refreshed 2026-11-09):
   /workspace/dota2-home-k31pro-preview/shots/desktop-1440.png
   /workspace/dota2-home-k31pro-preview/shots/mobile-390.png
+  /workspace/dota2-home-k31pro-preview/shots/mobile-390-zh.png
