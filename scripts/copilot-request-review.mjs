@@ -11,7 +11,6 @@ export function isCopilotReview(review) {
 }
 
 export function isCopilotAck(event) {
-  if (event.event === 'copilot_work_started') return true;
   if (event.event !== 'review_requested') return false;
   const reviewer = event.requested_reviewer;
   const login = reviewer?.login?.toLowerCase();
@@ -56,7 +55,7 @@ export async function requestCopilotReview({ github, owner, repo, pull_number, p
       }
     }
     return { outcome: 'no_ack', ok: false,
-      message: 'API returned successfully, but no new Copilot review_requested/copilot_work_started event or real review appeared within the polling window.' };
+      message: 'API returned successfully, but no new Copilot review_requested event or real review appeared within the polling window.' };
   } catch (error) {
     return classifyRequestError(error);
   }

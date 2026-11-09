@@ -42,18 +42,25 @@ describe('honest Copilot review requests', () => {
   });
 
   it.each([
-    { id: 2, event: 'review_requested', requested_reviewer: { login: 'Copilot' } },
+    { id: 2, event: 'review_requested', requested_reviewer: { login: 'Copilot', type: 'Bot' } },
     { id: 2, event: 'review_requested', requested_reviewer: { login: 'copilot-pull-request-reviewer[bot]', type: 'Bot' } },
-    { id: 2, event: 'copilot_work_started' },
   ])('accepts a new acknowledgment: $event', async event => {
     const deps = fixture({ events: [event] });
     expect(await requestCopilotReview(deps)).toMatchObject({ ok: true, outcome: 'request_ack' });
   });
 
-  it('accepts an already requested review once Copilot starts work', async () => {
+  it('does not acknowledge an old review request when Copilot starts work', async () => {
     const prior = { id: 1, event: 'review_requested', requested_reviewer: { login: 'Copilot' } };
     const deps = fixture({ priorEvents: [prior], events: [prior, { id: 2, event: 'copilot_work_started' }] });
-    expect(await requestCopilotReview(deps)).toMatchObject({ ok: true, outcome: 'request_ack' });
+    expect(await requestCopilotReview(deps)).toMatchObject({ ok: false, outcome: 'no_ack' });
+    expect(deps.sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not acknowledge a new Copilot work event without a review request', async () => {
+    const event = { id: 2, event: 'copilot_work_started' };
+    expect(isCopilotAck(event)).toBe(false);
+    expect(await requestCopilotReview(fixture({ events: [event] })))
+      .toMatchObject({ ok: false, outcome: 'no_ack' });
   });
 
   it('accepts a real review arriving during polling', async () => {
@@ -68,7 +75,7 @@ describe('honest Copilot review requests', () => {
   });
 
   it('does not use old acknowledgment events as proof of a new request', async () => {
-    const events = [{ id: 1, event: 'copilot_work_started' }];
+    const events = [{ id: 1, event: 'review_requested', requested_reviewer: { login: 'Copilot', type: 'Bot' } }];
     expect(await requestCopilotReview(fixture({ priorEvents: events, events })))
       .toMatchObject({ ok: false, outcome: 'no_ack' });
   });
