@@ -1,5 +1,21 @@
 # Home redesign changes
 
+## Real Dota scene follow-up (2026-11-09)
+
+### 对比说明
+
+- **移除抽象地图**：根据 t292u 反馈，删除上一版整页三条白色边路 / 河道 / 基地线框（`HomeGround`）以及示例卡内的同款几何（`MapMotif`），不是在线框上继续换色或调渐变。
+- **真实 Dota 环境**：选用官方 Steam 商店截图 `ss02` 的天辉商店、树林与石阶场景，裁掉右侧战斗角色和底部 HUD。桌面以暖白径向遮罩让标题与 Match ID 输入保持清晰，四周仍能辨认商店棚子、火把、树木与石阶；手机使用更紧的商店局部构图和稍强的暖白遮罩。
+- **内容保持不变**：仍只有短标题、Match ID 表单、一条信任说明和真实示例 `9035042364` 阵容；EN/ZH 文案、输入解析和示例跳转均未改变。场景只是装饰，不作为当前版本战术地图证据。
+
+### Source and implementation
+
+- Official page: https://store.steampowered.com/app/570/Dota_2/
+- Original `ss02` (1,500,992 bytes): https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_c9118375a2400278590f29a3537769c986ef6e39.1920x1080.jpg?t=1791407503
+- Prepared HUD-cropped candidate `candidate-radiant-shop.jpg`: 297,114 bytes. Selected derivative: `public/home-scene/radiant-shop.jpg`, 1030×810 JPEG, **188,307 bytes**. No AI-generated imagery or Valve endorsement is implied.
+- `EmptyState.tsx` now has one `aria-hidden` scene layer; all large map SVG geometry and its responsive rules are removed. The existing focus rings, restrained hover states, and global reduced-motion behavior remain unchanged.
+- Refreshed desktop, mobile EN, and mobile ZH screenshots in `docs/home-redesign/shots/`.
+
 ## Composition follow-up (2026-11-09)
 
 ### 对比说明

@@ -1,0 +1,12 @@
+{
+  "when": "2026-11-09T13:27:21.322783+08:00",
+  "launcher": "coding kimi",
+  "ANTHROPIC_MODEL": "k3.1-pro",
+  "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding/",
+  "not_used": [
+    "k3.1-pro-highspeed",
+    "codex"
+  ],
+  "task": "t292u scene background",
+  "base_head": "09077e4a126b923855421f94271a6c5826b537a2"
+}
