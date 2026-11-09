@@ -44,6 +44,7 @@ describe('honest Copilot review requests', () => {
   it.each([
     { id: 2, event: 'review_requested', requested_reviewer: { login: 'Copilot', type: 'Bot' } },
     { id: 2, event: 'review_requested', requested_reviewer: { login: 'copilot-pull-request-reviewer[bot]', type: 'Bot' } },
+    { id: 2, event: 'review_requested', requested_reviewer: { login: 'copilot-pull-request-reviewer', type: 'Bot' } },
   ])('accepts a new acknowledgment: $event', async event => {
     const deps = fixture({ events: [event] });
     expect(await requestCopilotReview(deps)).toMatchObject({ ok: true, outcome: 'request_ack' });
@@ -106,6 +107,15 @@ describe('honest Copilot review requests', () => {
     } })).toBe(false);
     expect(isCopilotAck({ event: 'review_requested', requested_reviewer: { login: 'someone' } })).toBe(false);
   });
+
+  it.each(['Copilot', 'copilot-pull-request-reviewer[bot]', 'copilot-pull-request-reviewer']
+    .flatMap(login => ['User', 'Organization', undefined].map(type => ({ login, type }))))(
+    'rejects acknowledgment from $type reviewer $login', async reviewer => {
+      const event = { id: 2, event: 'review_requested', requested_reviewer: reviewer };
+      expect(isCopilotAck(event)).toBe(false);
+      expect(await requestCopilotReview(fixture({ events: [event] })))
+        .toMatchObject({ ok: false, outcome: 'no_ack' });
+    });
 
   it('fails on polling errors rather than masking them', async () => {
     const deps = fixture();

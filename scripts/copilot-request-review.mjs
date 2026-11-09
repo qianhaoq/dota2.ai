@@ -14,8 +14,8 @@ export function isCopilotAck(event) {
   if (event.event !== 'review_requested') return false;
   const reviewer = event.requested_reviewer;
   const login = reviewer?.login?.toLowerCase();
-  // The public Organization login collides with the app slug — never treat it as Copilot.
-  if (reviewer?.type === 'Organization' && login === 'copilot-pull-request-reviewer') return false;
+  // Logins alone cannot establish the Copilot app identity.
+  if (reviewer?.type !== 'Bot') return false;
   return ['copilot', 'copilot-pull-request-reviewer[bot]', 'copilot-pull-request-reviewer']
     .includes(login);
 }
