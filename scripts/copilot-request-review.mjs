@@ -2,7 +2,7 @@
 export function normalizeCopilotBot(login) {
   const slug = String(login).toLowerCase().replace(/\[bot\]$/, '');
   if (slug !== 'copilot-pull-request-reviewer') throw new Error('Invalid Copilot bot identity');
-  return slug;
+  return `${slug}[bot]`;
 }
 
 export function isCopilotReview(review) {
@@ -29,7 +29,7 @@ export function classifyRequestError(error) {
 }
 
 export async function requestCopilotReview({ github, owner, repo, pull_number, pullRequestId,
-  botLogin = 'copilot-pull-request-reviewer', attempts = 13, intervalMs = 5000,
+  botLogin = 'copilot-pull-request-reviewer[bot]', attempts = 13, intervalMs = 5000,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   const params = { owner, repo, pull_number, per_page: 100 };
   const reviews = () => github.paginate(github.rest.pulls.listReviews, params);
@@ -42,7 +42,7 @@ export async function requestCopilotReview({ github, owner, repo, pull_number, p
     // Snapshot IDs so an old, possibly removed request cannot acknowledge this call.
     const priorIds = new Set((await events()).map(event => event.id));
     await github.graphql(`mutation($pullRequestId: ID!, $botLogins: [String!]!) {
-      requestReviewsByLogin(input: {pullRequestId: $pullRequestId, botLogins: $botLogins}) {
+      requestReviewsByLogin(input: {pullRequestId: $pullRequestId, botLogins: $botLogins, union: true}) {
         pullRequest { number }
       }
     }`, { pullRequestId, botLogins: [normalizeCopilotBot(botLogin)] });

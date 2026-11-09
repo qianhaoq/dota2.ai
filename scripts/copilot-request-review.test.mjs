@@ -77,12 +77,21 @@ describe('honest Copilot review requests', () => {
     'routes %s only through GraphQL botLogins', async botLogin => {
       const deps = fixture();
       await requestCopilotReview({ ...deps, botLogin });
-      expect(normalizeCopilotBot(botLogin)).toBe('copilot-pull-request-reviewer');
+      expect(normalizeCopilotBot(botLogin)).toBe('copilot-pull-request-reviewer[bot]');
       expect(deps.github.graphql).toHaveBeenCalledWith(expect.stringContaining('requestReviewsByLogin'), {
-        pullRequestId: 'PR_123', botLogins: ['copilot-pull-request-reviewer'],
+        pullRequestId: 'PR_123', botLogins: ['copilot-pull-request-reviewer[bot]'],
       });
+      expect(deps.github.graphql.mock.calls[0][0]).toMatch(/union:\s*true/);
       expect(deps.github.rest.pulls.requestReviewers).not.toHaveBeenCalled();
     });
+
+  it('defaults to the suffixed bot login and preserves existing review requests', async () => {
+    const deps = fixture();
+    await requestCopilotReview(deps);
+    expect(deps.github.graphql).toHaveBeenCalledWith(expect.stringMatching(/union:\s*true/), {
+      pullRequestId: 'PR_123', botLogins: ['copilot-pull-request-reviewer[bot]'],
+    });
+  });
 
   it('rejects Organization and unrelated reviewer events', () => {
     expect(isCopilotAck({ event: 'review_requested', requested_reviewer: {
