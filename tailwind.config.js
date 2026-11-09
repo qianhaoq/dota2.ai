@@ -63,7 +63,7 @@ export default {
           ink: '#29251f',
           'ink-2': '#484239',
           'ink-3': '#665f54',
-          'ink-4': '#746d61',
+          'ink-4': '#6a6357',
           disabled: '#989084',
           accent: '#8a5a16',
           'accent-hover': '#6f4510',
