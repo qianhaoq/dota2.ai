@@ -1,57 +1,56 @@
 /*
- * d2 design tokens — Dota2 v4 气质 (钱浩认可 2026-10-25)
- * Dark Dota theme: Bunker background, gold accents, coral CTA, Steam CDN heroes.
- * Scoped to `.d2-root` so legacy v3/k3 stays untouched.
- * Colors: dota2.com CSS observation — Bunker #12181C, Nugget #C79123, Coral #FF6046.
+ * d2 design tokens — warm paper / ivory with restrained Dota accents.
+ * Scoped to `.d2-root` so legacy v3/k3 stays untouched. The same light palette
+ * is used by the home and review routes; Tailwind mirrors it in tailwind.config.js.
  */
 .d2-root {
   /* Core surfaces */
-  --d2-bg: #0b1014;
-  --d2-surface: #12181c;
-  --d2-surface-2: #1b1e21;
-  --d2-surface-3: #23262e;
-  --d2-line: #36363e;
-  --d2-line-2: #ffffff12;
+  --d2-bg: #f6f2e9;
+  --d2-surface: #fcfaf5;
+  --d2-surface-2: #fffdf8;
+  --d2-surface-3: #eee8dc;
+  --d2-line: #d7cfc0;
+  --d2-line-2: rgba(75, 62, 43, 0.13);
 
-  /* Ink (text) — light on dark */
-  --d2-ink: #eee9df;
-  --d2-ink-2: #d3d6d8;
-  --d2-ink-3: #a3aab1;
-  --d2-ink-4: #8b929a;
-  --d2-disabled: #5a6269;
+  /* Ink (text) — dark, warm neutrals on light surfaces */
+  --d2-ink: #29251f;
+  --d2-ink-2: #484239;
+  --d2-ink-3: #665f54;
+  --d2-ink-4: #746d61;
+  --d2-disabled: #989084;
 
-  /* Accents — Dota gold & coral CTA */
-  --d2-accent: #c79123;
-  --d2-accent-hover: #d9a63a;
-  --d2-accent-bg: rgba(199, 145, 35, 0.12);
-  --d2-gold: #c79123;
-  --d2-gold-2: #ebcf87;
-  --d2-gold-pale: #f8e8b9;
-  --d2-coral: #ff6046;
-  --d2-coral-hover: #ff7a62;
+  /* Accents — aged Dota gold & Dire rust CTA */
+  --d2-accent: #8a5a16;
+  --d2-accent-hover: #6f4510;
+  --d2-accent-bg: rgba(154, 102, 31, 0.1);
+  --d2-gold: #946315;
+  --d2-gold-2: #76500f;
+  --d2-gold-pale: #5f3e09;
+  --d2-coral: #a74732;
+  --d2-coral-hover: #893724;
 
-  /* Win/loss — Radiant green / Dire coral-red */
-  --d2-up: #94ad63;
-  --d2-up-bg: rgba(148, 173, 99, 0.15);
-  --d2-down: #ff806b;
-  --d2-down-bg: rgba(168, 56, 6, 0.12);
+  /* Win/loss — Radiant green / Dire rust */
+  --d2-up: #496b32;
+  --d2-up-bg: rgba(73, 107, 50, 0.11);
+  --d2-down: #a13f2c;
+  --d2-down-bg: rgba(161, 63, 44, 0.09);
 
   /* Radiant / Dire explicit */
-  --d2-radiant: #94ad63;
-  --d2-dire: #d1734d;
+  --d2-radiant: #4f7034;
+  --d2-dire: #9a4d35;
 
   /* Misc */
-  --d2-warn: #ea6953;
-  --d2-xp: #1a9fff;
-  --d2-roshan: #c79123;
-  --d2-str: #b9500b;
-  --d2-scrim: rgba(11, 16, 20, 0.85);
+  --d2-warn: #9c432f;
+  --d2-xp: #126d9b;
+  --d2-roshan: #946315;
+  --d2-str: #9d430d;
+  --d2-scrim: rgba(41, 37, 31, 0.48);
 
-  /* Shadows — dark theme adjusted */
-  --d2-sh-1: 0 1px 3px rgba(0, 0, 0, 0.25);
-  --d2-sh-2: 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.2);
-  --d2-sh-3: 0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.25);
-  --d2-sh-sheet: 0 -8px 40px rgba(0, 0, 0, 0.5);
+  /* Shadows — soft warm elevation on paper surfaces */
+  --d2-sh-1: 0 1px 2px rgba(73, 52, 26, 0.06);
+  --d2-sh-2: 0 1px 2px rgba(73, 52, 26, 0.05), 0 5px 16px rgba(73, 52, 26, 0.07);
+  --d2-sh-3: 0 4px 10px rgba(73, 52, 26, 0.08), 0 16px 36px rgba(73, 52, 26, 0.12);
+  --d2-sh-sheet: 0 -8px 40px rgba(73, 52, 26, 0.18);
   --d2-ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
 
   /* Shell container */
@@ -69,10 +68,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Focus ring: gold outline for Dota theme (visible on dark surfaces). */
+/* Focus ring: visible aged-gold outline on ivory surfaces. */
 .d2-root :focus-visible {
-  outline: 2px solid #c79123;
-  outline-offset: 2px;
+  outline: 2px solid #946315;
+  outline-offset: 3px;
 }
 
 /* Streaming caret (handoff §3 AiText). The reduced-motion rule below already

@@ -1,0 +1,4 @@
+URL: http://127.0.0.1:4173/
+Bind: 0.0.0.0:4173
+Mode: production build via `PORT=4173 HOST=0.0.0.0 npm start`
+Health: http://127.0.0.1:4173/health

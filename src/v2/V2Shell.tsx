@@ -22,7 +22,9 @@ const V2Shell: React.FC<{
   panel?: React.ReactNode;
   /** Overlay layer rendered at the root (e.g. the mobile evidence sheet). */
   layer?: React.ReactNode;
-}> = ({ children, noIndex = false, scrollRef, onScroll, composer, topBarAction, panel, layer }) => {
+  /** Home owns its wider two-column layout and places the composer in the hero. */
+  home?: boolean;
+}> = ({ children, noIndex = false, scrollRef, onScroll, composer, topBarAction, panel, layer, home = false }) => {
   useEffect(() => {
     if (!noIndex) return;
     const meta = document.createElement('meta');
@@ -35,14 +37,14 @@ const V2Shell: React.FC<{
   }, [noIndex]);
 
   return (
-    <div className="d2-root pt-safe px-safe">
-      <TopBar action={topBarAction} />
+    <div className={`d2-root pt-safe px-safe${home ? ' d2-home-root' : ''}`}>
+      <TopBar action={topBarAction} home={home} />
       <div className="flex-1 min-h-0 flex">
         <div className="flex-1 min-w-0 flex flex-col">
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
-            <main className="max-w-d2-chat mx-auto px-[16px] pt-[16px] pb-[24px]">{children}</main>
+            <main className={home ? 'd2-home-main' : 'max-w-d2-chat mx-auto px-[16px] pt-[16px] pb-[24px]'}>{children}</main>
           </div>
-          {composer ?? <Composer />}
+          {composer ?? (home ? null : <Composer />)}
         </div>
         {panel}
       </div>

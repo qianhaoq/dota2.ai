@@ -42,15 +42,18 @@ describe('App routes', () => {
 
   it('/ shows the new v2 home', () => {
     renderRoute('/');
-    expect(screen.getByText('Why did you win or lose?')).toBeTruthy();
+    expect(screen.getByText('Review the match. Rethink the next one.')).toBeTruthy();
     expect(screen.getByPlaceholderText('Paste match ID or link')).toBeTruthy();
-    // / is indexable: no noindex meta.
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Review match' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Open sample review · 9035042364/ })).toBeTruthy();
+    expect(screen.getByText('EXAMPLE · REAL MATCH')).toBeTruthy();
     expect(document.querySelector('meta[name="robots"]')).toBeNull();
   });
 
   it('/new shows the v2 empty state with the composer placeholder', () => {
     renderRoute('/new');
-    expect(screen.getByText('Why did you win or lose?')).toBeTruthy();
+    expect(screen.getByText('Review the match. Rethink the next one.')).toBeTruthy();
     expect(screen.getByPlaceholderText('Paste match ID or link')).toBeTruthy();
     expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex');
   });
@@ -96,7 +99,7 @@ describe('App routes', () => {
   it('legacy hash #/match/:id on / redirects to /m/:id', async () => {
     renderRoute('/#/match/9035042364');
     await waitFor(() => expect(screen.getByText('9035042364')).toBeTruthy());
-    expect(screen.queryByText('Why did you win or lose?')).toBeNull();
+    expect(screen.queryByText('Review the match. Rethink the next one.')).toBeNull();
   });
 
   it('legacy hash #/m/:id on / redirects to /m/:id', async () => {
@@ -106,7 +109,7 @@ describe('App routes', () => {
 
   it('unknown routes fall back to the new home', () => {
     renderRoute('/totally/unknown');
-    expect(screen.getByText('Why did you win or lose?')).toBeTruthy();
+    expect(screen.getByText('Review the match. Rethink the next one.')).toBeTruthy();
     expect(screen.queryByTestId('legacy-shell')).toBeNull();
   });
 });
