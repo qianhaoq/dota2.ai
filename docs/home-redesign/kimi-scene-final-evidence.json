@@ -1,0 +1,40 @@
+{
+  "when": "2026-11-09T13:39:37.214404+08:00",
+  "launcher": "coding kimi",
+  "model_observed_in_stream": [
+    "k3.1-pro"
+  ],
+  "settings_ANTHROPIC_MODEL": "k3.1-pro",
+  "settings_ANTHROPIC_BASE_URL": "https://api.kimi.com/coding/",
+  "not_used": [
+    "k3.1-pro-highspeed",
+    "codex"
+  ],
+  "task": "t292u scene background",
+  "base_head": "09077e4a126b923855421f94271a6c5826b537a2",
+  "result_head": "2cd30e5027e86fa9ea76803116463deb1c4ab9f5",
+  "result_subtype": "success",
+  "num_turns": 72,
+  "duration_ms": 623210,
+  "total_cost_usd": 2.0399955000000003,
+  "usage_tokens": {
+    "input": 77879,
+    "output": 18138,
+    "cache_read": 2394301
+  },
+  "tool_counts": {
+    "Bash": 27,
+    "Edit": 13,
+    "Read": 30,
+    "Write": 1
+  },
+  "images_read": [
+    "ATTRIBUTION.md",
+    "candidate-lane-forest.jpg",
+    "candidate-radiant-fountain.jpg",
+    "candidate-radiant-shop.jpg",
+    "desktop-1440.png",
+    "radiant-shop.jpg",
+    "spring_forward_social.png"
+  ]
+}
