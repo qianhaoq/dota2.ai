@@ -55,10 +55,10 @@ export function KV({ entries }: {
 }
 
 const momentIcon = (kind: Moment['kind']) => {
-    if (kind === 'rosh') return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="#c79123"/></svg>;
-    if (kind === 'up') return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5l8 13H4z" fill="#94ad63"/></svg>;
-    if (kind === 'note') return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3" fill="#5a6269"/></svg>;
-    return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19L4 6h16z" fill="#ff6046"/></svg>;
+    if (kind === 'rosh') return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="var(--d2-roshan)"/></svg>;
+    if (kind === 'up') return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5l8 13H4z" fill="var(--d2-up)"/></svg>;
+    if (kind === 'note') return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="3" fill="var(--d2-ink-3)"/></svg>;
+    return <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19L4 6h16z" fill="var(--d2-coral)"/></svg>;
 };
 
 export function MomentsList({ moments }: {
@@ -92,14 +92,14 @@ export function DeathStrip({ review, band, bandLabel, topKiller, width = 340, he
     return <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto block" role="img" aria-label={t('evDeathsAria')} data-testid="death-strip">
       {band && band[1] > band[0] && <g>
         <rect x={X(band[0])} y="4" width={X(band[1]) - X(band[0])} height="38" rx="8" fill="rgba(168, 56, 6, 0.15)"/>
-        {bandLabel && <text x={X(band[0]) + 8} y="16" fontSize="10" fontWeight="600" fill="#ff806b" className="d2-tnum">{bandLabel}</text>}
+        {bandLabel && <text x={X(band[0]) + 8} y="16" fontSize="10" fontWeight="600" fill="var(--d2-coral)" className="d2-tnum">{bandLabel}</text>}
       </g>}
-      <line x1={PL} x2={width - PR} y1="29" y2="29" stroke="#36363e"/>
+      <line x1={PL} x2={width - PR} y1="29" y2="29" stroke="var(--d2-line)"/>
       {deaths.map((death, i) => {
           const hot = topKiller != null && death.killer === topKiller;
-          return <circle key={i} cx={X(death.t)} cy="29" r={hot ? 5 : 4} fill={hot ? '#ff6046' : '#8b929a'} stroke="#12181c" strokeWidth="1.5"/>;
+          return <circle key={i} cx={X(death.t)} cy="29" r={hot ? 5 : 4} fill={hot ? 'var(--d2-coral)' : 'var(--d2-ink-4)'} stroke="var(--d2-surface)" strokeWidth="1.5"/>;
       })}
-      {axisMinutes.map(m => <text key={m} x={X(m * 60)} y="57" fontSize="11" fill="#8b929a" textAnchor={m === 0 ? 'start' : 'middle'}>{m}:00</text>)}
+      {axisMinutes.map(m => <text key={m} x={X(m * 60)} y="57" fontSize="11" fill="var(--d2-ink-4)" textAnchor={m === 0 ? 'start' : 'middle'}>{m}:00</text>)}
     </svg>;
 }
 
