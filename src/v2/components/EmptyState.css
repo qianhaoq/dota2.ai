@@ -41,27 +41,9 @@
   min-width: 0;
 }
 
-.d2-home-eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 0;
-  color: var(--d2-gold-2);
-  font-size: 11px;
-  font-weight: 750;
-  line-height: 18px;
-  letter-spacing: 0.16em;
-}
-
-.d2-home-eyebrow > span {
-  width: 22px;
-  height: 2px;
-  background: var(--d2-gold);
-}
-
 .d2-home-title {
   max-width: 620px;
-  margin: 20px 0 20px;
+  margin: 0 0 32px;
   color: var(--d2-ink);
   font-family: Georgia, 'Noto Serif CJK SC', 'Songti SC', serif;
   font-size: clamp(44px, 4.5vw, 64px);
@@ -71,17 +53,8 @@
   text-wrap: balance;
 }
 
-.d2-home-intro {
-  max-width: 590px;
-  margin: 0;
-  color: var(--d2-ink-3);
-  font-size: 17px;
-  line-height: 1.7;
-}
-
 .d2-home-composer {
   max-width: 620px;
-  margin-top: 30px;
 }
 
 .d2-home-input-label {
@@ -160,45 +133,25 @@
   cursor: not-allowed;
 }
 
-.d2-home-input-hint,
 .d2-home-input-error {
   margin: 9px 2px 0;
+  color: var(--d2-down);
   font-size: 12px;
+  font-weight: 600;
   line-height: 18px;
 }
 
-.d2-home-input-hint {
-  color: var(--d2-ink-4);
-}
-
-.d2-home-input-error {
-  color: var(--d2-down);
-  font-weight: 600;
-}
-
 .d2-home-trust {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  max-width: 580px;
-  margin-top: 26px;
-  padding-top: 20px;
-  border-top: 1px solid var(--d2-line-2);
-  color: var(--d2-ink-3);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.d2-home-trust svg {
-  flex: none;
-  margin-top: 1px;
-  color: var(--d2-gold-2);
+  margin: 18px 2px 0;
+  color: var(--d2-ink-4);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .d2-example {
   position: relative;
   overflow: hidden;
-  padding: 28px;
+  padding: 24px;
   border: 1px solid #d8cdbc;
   border-top: 3px solid var(--d2-gold);
   border-radius: 21px;
@@ -208,70 +161,24 @@
 
 .d2-example-map {
   position: absolute;
-  top: 44px;
-  right: 34px;
-  width: 158px;
-  height: 158px;
+  top: 24px;
+  right: 24px;
+  width: 150px;
+  height: 150px;
   color: var(--d2-gold);
   opacity: 0.09;
   pointer-events: none;
 }
 
-.d2-example-heading,
-.d2-example-title,
 .d2-example-roster,
-.d2-example-note,
-.d2-review-parts,
-.d2-sample-button,
-.d2-example-sources {
+.d2-sample-button {
   position: relative;
-}
-
-.d2-example-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.d2-example-eyebrow {
-  margin: 0;
-  color: var(--d2-gold-2);
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 16px;
-  letter-spacing: 0.14em;
-}
-
-.d2-example-match {
-  color: var(--d2-ink-4);
-  font-size: 11px;
-  line-height: 16px;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.d2-example-match:hover {
-  color: var(--d2-gold-2);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.d2-example-title {
-  max-width: 330px;
-  margin: 15px 0 22px;
-  color: var(--d2-ink);
-  font-family: Georgia, 'Noto Serif CJK SC', 'Songti SC', serif;
-  font-size: 27px;
-  font-weight: 500;
-  line-height: 1.25;
-  letter-spacing: -0.025em;
 }
 
 .d2-example-roster {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 16px;
+  padding: 16px;
   border: 1px solid var(--d2-line-2);
   border-radius: 13px;
   background: #f3eee4;
@@ -281,7 +188,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-bottom: 7px;
+  margin-bottom: 8px;
   font-size: 10px;
   font-weight: 800;
   line-height: 14px;
@@ -321,60 +228,6 @@
   object-fit: cover;
 }
 
-.d2-example-note {
-  margin: 18px 0 12px;
-  color: var(--d2-ink-3);
-  font-size: 12px;
-  line-height: 19px;
-}
-
-.d2-review-parts {
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid var(--d2-line-2);
-  list-style: none;
-}
-
-.d2-review-parts li {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 11px 0;
-  border-bottom: 1px solid var(--d2-line-2);
-}
-
-.d2-part-number {
-  display: grid;
-  flex: none;
-  width: 29px;
-  height: 29px;
-  place-items: center;
-  border: 1px solid rgba(148, 99, 21, 0.25);
-  border-radius: 50%;
-  color: var(--d2-gold-2);
-  font-size: 10px;
-  font-weight: 800;
-}
-
-.d2-review-parts strong,
-.d2-review-parts small {
-  display: block;
-}
-
-.d2-review-parts strong {
-  color: var(--d2-ink-2);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 18px;
-}
-
-.d2-review-parts small {
-  margin-top: 1px;
-  color: var(--d2-ink-4);
-  font-size: 11px;
-  line-height: 16px;
-}
-
 .d2-sample-button {
   display: flex;
   align-items: center;
@@ -382,7 +235,7 @@
   gap: 12px;
   width: 100%;
   min-height: 46px;
-  margin-top: 18px;
+  margin-top: 16px;
   padding: 0 14px;
   border: 1px solid rgba(118, 80, 15, 0.42);
   border-radius: 10px;
@@ -400,28 +253,6 @@
 
 .d2-sample-button svg {
   flex: none;
-}
-
-.d2-example-sources {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px 14px;
-  margin-top: 15px;
-  color: var(--d2-ink-4);
-  font-size: 10px;
-  line-height: 16px;
-}
-
-.d2-example-sources a {
-  color: inherit;
-  text-decoration: underline;
-  text-decoration-color: var(--d2-line);
-  text-underline-offset: 3px;
-}
-
-.d2-example-sources a:hover {
-  color: var(--d2-gold-2);
 }
 
 @media (max-width: 1050px) {
@@ -452,7 +283,7 @@
 
   .d2-home-layout {
     grid-template-columns: minmax(0, 1fr);
-    gap: 42px;
+    gap: 36px;
     min-height: 0;
   }
 
@@ -482,27 +313,10 @@
     padding: 32px 18px 34px;
   }
 
-  .d2-home-layout {
-    gap: 36px;
-  }
-
-  .d2-home-eyebrow {
-    font-size: 10px;
-  }
-
   .d2-home-title {
-    margin-top: 17px;
+    margin-bottom: 26px;
     font-size: clamp(37px, 11vw, 46px);
     line-height: 1.1;
-  }
-
-  .d2-home-intro {
-    font-size: 16px;
-    line-height: 1.65;
-  }
-
-  .d2-home-composer {
-    margin-top: 25px;
   }
 
   .d2-home-form {
@@ -539,31 +353,17 @@
     margin-top: 10px;
   }
 
-  .d2-home-trust {
-    margin-top: 23px;
-    padding-top: 18px;
-  }
-
   .d2-example {
     padding: 21px;
     border-radius: 17px;
   }
 
-  .d2-example-title {
-    font-size: 25px;
-  }
-
   .d2-example-roster {
-    padding: 11px;
+    padding: 12px;
   }
 
   .d2-lineup-heroes {
     gap: 4px;
-  }
-
-  .d2-example-sources {
-    flex-direction: column;
-    gap: 3px;
   }
 }
 
@@ -575,11 +375,5 @@
 
   .d2-example {
     padding: 17px;
-  }
-
-  .d2-example-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 3px;
   }
 }

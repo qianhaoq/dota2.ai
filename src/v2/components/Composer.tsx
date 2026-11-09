@@ -78,7 +78,7 @@ const Composer: React.FC<{
     }
   };
 
-  const describedBy = hero ? `home-match-help${error ? ' home-match-error' : ''}` : undefined;
+  const describedBy = hero && error ? 'home-match-error' : undefined;
 
   return (
     <div className={hero ? 'd2-home-composer' : 'flex-none bg-gradient-to-t from-d2-bg via-d2-bg/95 to-transparent pt-[10px] pb-[calc(12px+env(safe-area-inset-bottom))]'}>
@@ -145,7 +145,6 @@ const Composer: React.FC<{
           )}
         </form>
         {hero && error && <p id="home-match-error" role="alert" className="d2-home-input-error">{t('notMatch')}</p>}
-        {hero && <p id="home-match-help" className="d2-home-input-hint">{t('homeInputHint')}</p>}
         {mode === 'followUp' && value.length > FOLLOW_UP_COUNTER_FROM && (
           <p className="m-0 mt-[4px] text-right text-d2-12 text-d2-ink-4">
             {t('charCounter')

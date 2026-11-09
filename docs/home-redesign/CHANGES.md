@@ -6,9 +6,15 @@
 - Added one clearly labeled example using the real OpenDota sample match `9035042364`: its actual Radiant/Dire roster from the checked-in fixture, Steam CDN hero portraits, a subtle minimap motif, and the three-part review structure. No sample conclusions or invented metrics are shown. OpenDota and Valve/Steam CDN sources are linked.
 - Added responsive desktop/mobile layouts, visible keyboard focus, and reduced-motion-compatible styling. Browser checks at 320, 390, 768, 1024, 1366, and 1440 px found no horizontal overflow; axe WCAG A/AA checks at 390 and 1440 px reported no violations.
 
+## Slim copy follow-up (2026-11-09)
+
+- Reduced the first fold to one short title, the Match ID form, and one small `Free · OpenDota data · No guessing` line. Removed the eyebrow, introductory paragraph, and supported-links helper.
+- Reduced the sample card to its real Radiant/Dire portraits, side marks, subtle map motif, and `Sample · 9035042364` action. Removed the example heading, explanatory note, three-part review list, and duplicated source links.
+- Applied the same concise copy to English and Chinese, removed obsolete dictionary entries, and refreshed desktop/mobile screenshots.
+
 ## Verification
 
 - `npm test` — 101 files, 1457 tests passed.
 - `npx tsc --noEmit` — passed.
 - `npm run build` — passed (existing chunk-size warning only).
-- Desktop/mobile Chromium smoke checks — all ten hero portraits loaded; no page errors.
+- Desktop/mobile Chromium smoke checks — all ten hero portraits loaded; sample navigation and Chinese home passed; no page errors or horizontal overflow.
