@@ -1,4 +1,12 @@
-URL: http://127.0.0.1:4173/
+Local: http://127.0.0.1:4173/
 Bind: 0.0.0.0:4173
-Mode: production build via `PORT=4173 HOST=0.0.0.0 npm start`
+Public tunnel (temporary cloudflared quick tunnel): https://inspiration-arrangements-americas-tuner.trycloudflare.com/
+Mode: production build via PORT=4173 HOST=0.0.0.0 npm start
 Health: http://127.0.0.1:4173/health
+Commit: 68a7f29a785bc0d77dede1f45f6f2d2e167726d8
+Branch: feat/home-k31pro-redesign-20261109
+Base: 2793eb7be5388f0ce3522189ac0958555c5b4f26
+Keep-alive: server pid 299027; tunnel pid 299333
+Screenshots (full-page):
+  /workspace/dota2-home-k31pro-preview/shots/desktop-1440.png
+  /workspace/dota2-home-k31pro-preview/shots/mobile-390.png

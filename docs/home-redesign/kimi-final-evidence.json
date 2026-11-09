@@ -1,0 +1,30 @@
+{
+  "models_seen_in_stream": [
+    "k3.1-pro"
+  ],
+  "launcher": "coding kimi",
+  "settings_ANTHROPIC_MODEL": "k3.1-pro",
+  "not_used": "k3.1-pro-highspeed",
+  "result": {
+    "subtype": "success",
+    "is_error": false,
+    "duration_ms": 818385,
+    "num_turns": 71,
+    "modelUsage": {
+      "k3.1-pro": {
+        "inputTokens": 107830,
+        "outputTokens": 29232,
+        "cacheReadInputTokens": 3057241,
+        "cacheCreationInputTokens": 0,
+        "webSearchRequests": 0,
+        "costUSD": 2.7985705,
+        "contextWindow": 1048576,
+        "maxOutputTokens": 32000,
+        "thinkingTokens": 9007,
+        "canonicalModel": "k3.1-pro",
+        "provider": "firstParty",
+        "costBasis": "unknown"
+      }
+    }
+  }
+}
