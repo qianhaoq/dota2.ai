@@ -188,24 +188,37 @@ Quick start: `npm ci` → `cp .env.example .env` (add `DEEPSEEK_API_KEY`) → `n
 
 ### CLI and MCP
 
+`dota2ai`, `@dota2ai/mcp`, and `@dota2ai/review-engine` are **not published on npm yet**.
+Use Node >=20.10 and a checkout of this repository (no LLM keys needed for CLI access):
+
 ```bash
-npx dota2ai review 9035042364 --hero pudge --lang en
-npx dota2ai review 9035042364 --hero 14 --json --offline
-npx -p @dota2ai/mcp dota2ai-mcp --offline
+# From the repository root after cloning or creating a worktree:
+npm ci
+node packages/cli/bin/dota2ai.js review 9035042364 --hero 14 --lang en --json
+node packages/cli/bin/dota2ai.js review 9035042364 --hero pudge --json --offline
 ```
 
-CLI and stdio MCP use the public API by default (`DOTA2AI_API_BASE` overrides
-`https://dota2.ai`). Offline mode uses OpenDota and template phrasing, with no keys
-required; `OPENDOTA_API_KEY` is optional. MCP also accepts `DOTA2AI_OFFLINE=1`.
-CLI exit codes: 0 success (including unparsed), 2 invalid input, 3 insufficient
-data, 4 upstream failure. JSON output preserves the API Review schema.
+Remote mode needs network access to `https://dota2.ai/api/v1/review/:id`;
+`DOTA2AI_API_BASE` overrides the origin. `--offline` still needs network access
+to OpenDota, then uses the bundled local review engine with no LLM.
+`OPENDOTA_API_KEY` is optional. CLI exit codes: 0 success (including unparsed),
+2 invalid input, 3 insufficient data, 4 upstream/network failure.
+`--json` preserves the API Review schema, including `data_gaps`: never invent
+conclusions for missing evidence. Private matches and a public learning loop
+are unsupported.
 
-For a local MCP client, configure
-`{"mcpServers":{"dota2ai":{"command":"npx","args":["-y","-p","@dota2ai/mcp","dota2ai-mcp"]}}}`.
-Remote clients can connect to `https://dota2.ai/mcp` using Streamable HTTP.
-Tools: `review_match({match_id, hero?, lang?})` returns a Review;
-`get_evidence({match_id, hero, insight_id})` returns the insight, referenced facts,
-evidence, citations and data gap. Server MCP uses OpenDota and template phrasing.
+See the [CLI guide](packages/cli/README.md) for local tarball installation,
+JSON interpretation and an opt-in live smoke. Browserless agents can use the
+[self-contained review skill](packages/cli/skills/dota2ai-review/SKILL.md).
+
+Optional MCP: the existing application mounts stateless Streamable HTTP at
+`/mcp` (production URL: `https://dota2.ai/mcp`; deployment availability must be
+checked independently). Tools: `review_match({match_id, hero?, lang?})` returns
+Review JSON; `get_evidence({match_id, hero, insight_id})` returns referenced
+facts, evidence, citations and data gap. Server MCP uses OpenDota and template
+phrasing. For local stdio, after `npm ci`, run
+`node packages/mcp/bin/dota2ai-mcp.js` from the repo root; add `--offline` or
+`DOTA2AI_OFFLINE=1` for OpenDota + local engine. See the [MCP guide](packages/mcp/README.md).
 
 ### Public learning material / 公开学习材料
 

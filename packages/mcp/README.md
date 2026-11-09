@@ -1,9 +1,16 @@
 # @dota2ai/mcp
 
+This package and its workspace dependencies are not published on npm yet.
+From a repository checkout with Node >=20.10:
+
 ```sh
-npx -p @dota2ai/mcp dota2ai-mcp
-npx -p @dota2ai/mcp dota2ai-mcp --offline
+npm ci
+node packages/mcp/bin/dota2ai-mcp.js
+# Or: node packages/mcp/bin/dota2ai-mcp.js --offline
 ```
+
+For a local MCP client, set `command` to `node` and `args` to the checkout's
+`packages/mcp/bin/dota2ai-mcp.js` path (resolved by the client).
 
 Stdio defaults to the public API. Set `DOTA2AI_API_BASE` to override its origin.
 `--offline` or `DOTA2AI_OFFLINE=1` uses OpenDota + template phrasing without keys.
