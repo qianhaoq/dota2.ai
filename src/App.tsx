@@ -23,7 +23,7 @@ const LegacyApp: React.FC = () => {
 
 /** The new conversational home (`/` and unknown paths while ui_v2 is on). */
 const HomePage: React.FC = () => (
-  <V2Shell>
+  <V2Shell home>
     <EmptyState />
   </V2Shell>
 );

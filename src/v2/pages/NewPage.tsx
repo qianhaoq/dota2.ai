@@ -4,7 +4,7 @@ import EmptyState from '../components/EmptyState';
 
 /** `/new/*` preview route: v2 empty state, flagged noindex while mounted. */
 const NewPage: React.FC = () => (
-  <V2Shell noIndex>
+  <V2Shell home noIndex>
     <EmptyState />
   </V2Shell>
 );

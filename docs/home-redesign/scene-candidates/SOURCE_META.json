@@ -1,0 +1,97 @@
+{
+  "note": "Official Dota 2 Steam store screenshots (app 570). Valve/Steam CDN. Decorative use on free fan match-review site; no license assumed; SSA fan-art non-commercial language noted; Video Policy discourages redistributing game assets separately \u2014 recorded for review.",
+  "ssa": "https://store.steampowered.com/subscriber_agreement/english/",
+  "video_policy": "https://store.steampowered.com/video_policy",
+  "screenshots": [
+    {
+      "index": 0,
+      "id": 0,
+      "file": "steam570-ss00.jpg",
+      "bytes": 1658093,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_ad8eee787704745ccdecdfde3a5cd2733704898d.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 1,
+      "id": 1,
+      "file": "steam570-ss01.jpg",
+      "bytes": 1438987,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_7ab506679d42bfc0c0e40639887176494e0466d9.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 2,
+      "id": 2,
+      "file": "steam570-ss02.jpg",
+      "bytes": 1500992,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_c9118375a2400278590f29a3537769c986ef6e39.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 3,
+      "id": 3,
+      "file": "steam570-ss03.jpg",
+      "bytes": 1458975,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_f9ebafedaf2d5cfb80ef1f74baa18eb08cad6494.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 4,
+      "id": 4,
+      "file": "steam570-ss04.jpg",
+      "bytes": 1042249,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_27b6345f22243bd6b885cc64c5cda74e4bd9c3e8.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 5,
+      "id": 5,
+      "file": "steam570-ss05.jpg",
+      "bytes": 1783848,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_b33a65678dc71cc98df4890e22a89601ee56a918.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 6,
+      "id": 6,
+      "file": "steam570-ss06.jpg",
+      "bytes": 1405800,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_d0f973ce376ca5b6c08e081cb035e86ced105fa9.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 7,
+      "id": 7,
+      "file": "steam570-ss07.jpg",
+      "bytes": 313650,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_1f3b5f5ccf8b159294914c3fe028128a787304b6.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 8,
+      "id": 8,
+      "file": "steam570-ss08.jpg",
+      "bytes": 381509,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_e0a92f15a6631a8186df79182d0fe28b5e37d8cb.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    },
+    {
+      "index": 9,
+      "id": 9,
+      "file": "steam570-ss09.jpg",
+      "bytes": 1799247,
+      "url": "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/570/ss_86d675fdc73ba10462abb8f5ece7791c5047072c.1920x1080.jpg?t=1791407503",
+      "source_page": "https://store.steampowered.com/app/570/Dota_2/",
+      "api": "https://store.steampowered.com/api/appdetails?appids=570&filters=screenshots"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "when": "2026-11-09T12:30:13.147986+08:00",
+  "launcher": "coding kimi",
+  "ANTHROPIC_MODEL": "k3.1-pro",
+  "ANTHROPIC_BASE_URL": "https://api.kimi.com/coding/",
+  "not_used": "k3.1-pro-highspeed",
+  "task": "t289u compose redesign",
+  "base_head": "3e6c4750c7b37f7b4706dfcbf2fc0d7bd0e2fe2c"
+}
