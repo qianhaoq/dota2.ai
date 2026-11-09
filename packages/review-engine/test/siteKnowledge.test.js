@@ -72,20 +72,45 @@ it('admits only the independently reviewed Steam citation route and excludes unk
 it('imports the actual curated export and recalls historical principles without claiming a match patch', () => {
   const exported = JSON.parse(readFileSync(new URL('../../../data/site-knowledge.v1.json', import.meta.url)));
   const entries = parseSiteKnowledge(exported);
-  expect(entries).toHaveLength(1);
-  const entry = entries[0];
-  expect(entry).toMatchObject({kind:'principle',patch:'unknown',applicability_scope:'version_independent'});
-  expect(entry.attribution).toContain('hong yu');
-  expect(entry.summary).not.toMatch(/7\.41f|patch60|\d/);
-  for (const patch of [null,60,'7.41f','7.41e']) {
-    expect(buildReview({...raw,patch},{...opts,kb:entries}).citations.filter(c=>c.provider==='kb')).toEqual([]);
-    const review = buildReview({...raw,patch},{...opts,kb:entries,kbContextIds:[entry.id]});
-    expect(validateReview(review).ok).toBe(true);
-    expect(review.citations.find(c=>c.provider==='kb')).toMatchObject({patch:'unknown',url:entry.source_url});
-    expect(review.facts[`kb.${entry.id}`].display.en).toContain(entry.applicability_boundary);
-    expect(review.facts[`kb.${entry.id}`].display.en).toContain(entry.attribution);
+  expect(entries).toHaveLength(2);
+  const steam = entries.find(e => e.id === 'kb-028d66b81456e3720aaea63a');
+  const ace = entries.find(e => e.id === 'kb-04cd89756c8f746d6eb3eaf2');
+  expect(steam).toMatchObject({kind:'principle',patch:'unknown',applicability_scope:'version_independent',
+    source_url:'https://steamcommunity.com/sharedfiles/filedetails/?id=827490913'});
+  expect(steam.attribution).toContain('hong yu');
+  expect(steam.summary).not.toMatch(/7\.41f|patch60|\d/);
+  expect(ace).toMatchObject({kind:'principle',patch:'unknown',applicability_scope:'version_independent',
+    source_url:'https://news.wmpvp.com/news.html?id=305703&gameTypeStr=1'});
+  expect(ace.attribution).toContain('Ace');
+  for (const entry of [steam, ace]) {
+    for (const patch of [null,60,'7.41f','7.41e']) {
+      expect(buildReview({...raw,patch},{...opts,kb:entries}).citations.filter(c=>c.provider==='kb')).toEqual([]);
+      const review = buildReview({...raw,patch},{...opts,kb:entries,kbContextIds:[entry.id]});
+      expect(validateReview(review).ok).toBe(true);
+      expect(review.citations.find(c=>c.provider==='kb')).toMatchObject({patch:'unknown',url:entry.source_url});
+      expect(review.facts[`kb.${entry.id}`].display.en).toContain(entry.applicability_boundary);
+      expect(review.facts[`kb.${entry.id}`].display.en).toContain(entry.attribution);
+    }
+    expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,kind:'fact'}]})).toThrow();
+    expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,patch:'7.41f'}]})).toThrow();
+    expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,attribution:undefined}]})).toThrow();
   }
-  expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,kind:'fact'}]})).toThrow();
-  expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,patch:'7.41f'}]})).toThrow();
-  expect(()=>parseSiteKnowledge({...exported,entries:[{...entry,attribution:undefined}]})).toThrow();
+});
+
+it('admits only the curated news.wmpvp.com Ace citation route', () => {
+  const url = 'https://news.wmpvp.com/news.html?id=305703&gameTypeStr=1';
+  const entry = {...snapshot.entries[0],source_url:url,locator:url,kind:'principle',patch:'unknown',
+    applicability_scope:'version_independent',applicability_boundary:'boundary',attribution:'Ace'};
+  expect(parseSiteKnowledge({...snapshot,entries:[entry]})[0].source_url).toBe(url);
+  for (const source_url of [
+    url+'&x=1',
+    'https://news.wmpvp.com/news.html?id=1&gameTypeStr=1',
+    'https://news.wmpvp.com/news.html?id=305703',
+    'https://news.wmpvp.com/news.html?gameTypeStr=1&id=305703',
+    url+'#fragment',
+    url.replace('https:','http:'),
+    'https://www.wmpvp.com/news.html?id=305703&gameTypeStr=1',
+  ]) {
+    expect(()=>parseSiteKnowledge({...snapshot,entries:[{...entry,source_url,locator:source_url}]})).toThrow();
+  }
 });
