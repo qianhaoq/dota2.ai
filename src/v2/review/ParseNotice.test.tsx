@@ -5,10 +5,10 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 import ParseNotice, { parseRefreshCountdownSec } from './ParseNotice';
 import { I18nProvider } from '../i18n/I18nProvider';
-import { requestMatchParse } from '../../services/dotaApiService';
+import { requestMatchParse, requestReplayIngest } from '../../services/dotaApiService';
 import type { ReviewParseStatus } from '../../types/matchReview';
 
-vi.mock('../../services/dotaApiService', () => ({ requestMatchParse: vi.fn() }));
+vi.mock('../../services/dotaApiService', () => ({ requestMatchParse: vi.fn(), requestReplayIngest: vi.fn() }));
 
 const unparsed: ReviewParseStatus = {
   status: 'unparsed',
@@ -168,5 +168,27 @@ describe('ParseNotice — refresh after a parse request', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe('first-party replay action', () => {
+  beforeEach(() => { vi.mocked(requestMatchParse).mockReset(); vi.mocked(requestReplayIngest).mockReset(); window.localStorage.clear(); window.sessionStorage.clear(); });
+  afterEach(() => cleanup());
+  it('submits only on click, keeps the local job distinct, refreshes on success', async () => {
+    const gate = deferred<ReviewParseStatus>();
+    vi.mocked(requestReplayIngest).mockReturnValue(gate.promise);
+    const onRefresh = vi.fn(); renderNotice({onRefresh});
+    expect(requestReplayIngest).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Download and parse official .dem'}));
+    expect(screen.getByRole('button',{name:'Downloading / parsing .dem…'}).hasAttribute('disabled')).toBe(true);
+    expect(requestMatchParse).not.toHaveBeenCalled();
+    await act(async()=>gate.resolve({status:'replay_parsed',jobId:null,retryAfterSec:null,message:'Verified replay facts'}));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+  it('shows a CDN failure without claiming that OpenDota is parsing', () => {
+    renderNotice({parse:{status:'replay_cdn_error',jobId:null,retryAfterSec:null,message:'Official replay CDN failed; no replay timeline was verified.'}});
+    expect(screen.getByText(/no replay timeline was verified/)).toBeTruthy();
+    expect(screen.queryByText(/OpenDota is still parsing/)).toBeNull();
   });
 });

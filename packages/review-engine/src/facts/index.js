@@ -16,7 +16,7 @@ export const KEY_ITEMS = {
   nullifier: { en: 'Nullifier', zh: '否决' },
 };
 
-export const clock = seconds => `${seconds < 0 ? '-' : ''}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.abs(seconds) % 60).padStart(2, '0')}`;
+export const clock = seconds => `${seconds < 0 ? '-' : ''}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.floor(Math.abs(seconds)) % 60).padStart(2, '0')}`;
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 export const heroSlug = id => getStaticHero(id)?.internalSlug ?? null;
 export const teamOf = player => Number.isInteger(player.player_slot) ? (player.player_slot < 128 ? 'radiant' : 'dire') : null;
@@ -105,11 +105,11 @@ export function buildFacts(raw, player) {
     const path = `players[${index}]`;
     (player.purchase_log ?? []).forEach((purchase, i) => {
       const id = `item.first.${purchase.key}`;
-      if (!Object.hasOwn(KEY_ITEMS, purchase.key) || !finite(purchase.time) || facts[id]) return;
-      add(id, purchase.time, 'time', `${path}.purchase_log[${i}].time`, { t: purchase.time, unit: 'seconds' });
-      facts[id].display = { en: `${KEY_ITEMS[purchase.key].en} at ${clock(purchase.time)}`, zh: `${clock(purchase.time)} 购入${KEY_ITEMS[purchase.key].zh}`, t: clock(purchase.time) };
+      if ((!Object.hasOwn(KEY_ITEMS, purchase.key) && !raw.replay_ingest) || typeof purchase.key !== 'string' || !finite(purchase.time) || facts[id]) return;
+      add(id, purchase.time, 'time', purchase.source_path ?? `${path}.purchase_log[${i}].time`, { t: purchase.time, unit: 'seconds' });
+      facts[id].display = { en: `${(KEY_ITEMS[purchase.key]?.en ?? purchase.key)} at ${clock(purchase.time)}`, zh: `${clock(purchase.time)} 购入${(KEY_ITEMS[purchase.key]?.zh ?? purchase.key)}`, t: clock(purchase.time) };
     });
-    let logs = Array.isArray(player.deaths_log) ? player.deaths_log.map((d, i) => ({ ...d, source_path: `${path}.deaths_log[${i}]` })) : null;
+    let logs = Array.isArray(player.deaths_log) ? player.deaths_log.map((d, i) => ({ ...d, source_path: d.source_path ?? `${path}.deaths_log[${i}]` })) : null;
     const mapped = heroSlug(player.hero_id);
     const killsComplete = raw.players.every(p => Array.isArray(p.kills_log) && heroSlug(p.hero_id));
     if (!Array.isArray(logs) && mapped && killsComplete) logs = raw.players.flatMap((p, i) => isSameTeamKill(p.player_slot, player.player_slot) ? [] : p.kills_log.map((k, j) => ({ ...k, source_path: `players[${i}].kills_log[${j}]` })).filter(k => slug(k.key) === mapped).map(k => ({ time: k.time, key: heroSlug(p.hero_id), source_path: k.source_path })));
@@ -125,7 +125,7 @@ export function buildFacts(raw, player) {
       sorted.forEach((d, i) => {
         const diff = d.time >= 0 ? gold[Math.floor(d.time / 60)] : null;
         const id = `death.${i + 1}`;
-        const event = { t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
+        const event = { ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
         deaths.push(event);
         add(id, event, 'entity', d.source_path, { t: d.time });
       });

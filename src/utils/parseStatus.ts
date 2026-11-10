@@ -8,6 +8,8 @@ const REVIEW_PARSE_STATUSES: ReadonlySet<string> = new Set([
   'unparsed',
   'failed',
   'throttled',
+  'replay_unavailable', 'replay_expired', 'replay_cdn_error', 'replay_ingest_disabled',
+  'replay_invalid_url', 'replay_pending', 'replay_parsed', 'replay_failed',
 ]);
 
 /**
@@ -32,7 +34,7 @@ export function parseReviewParseStatus(raw: unknown): ReviewParseStatus | null {
 
 /** Banner is shown for anything that is not fully parsed replay data. */
 export function shouldShowParseStatusBanner(parse: ReviewParseStatus | null | undefined): boolean {
-  return Boolean(parse) && parse!.status !== 'parsed';
+  return Boolean(parse) && parse!.status !== 'parsed' && parse!.status !== 'replay_parsed';
 }
 
 /** Bilingual "retry in ~N s" hint shown under the server message. */

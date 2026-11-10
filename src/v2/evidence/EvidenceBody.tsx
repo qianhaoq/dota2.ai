@@ -67,7 +67,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
     const gapBoxFor = (topic: string) => {
         if (!gapRegistered(review, topic)) return null;
         const copy: Record<string, [string, string]> = {
-            death_locations: [t('gapDeathT'), t('gapDeathP')],
+            death_locations: [t('gapDeathT'), gapReason(review, topic) === 'replay_death_coordinates_missing' ? (lang === 'zh' ? '录像死亡事件缺少坐标，无法判断站位与视野。' : 'Replay death events lack coordinates; position and vision cannot be judged.') : t('gapDeathP')],
             build_vs_lineup: [t('gapBuildT'), t('gapBuildP')],
             gold_fed: [t('gapGoldFedT'), t('gapGenericP')],
             time_dead: [t('gapTimeDeadT'), t('gapGenericP')],

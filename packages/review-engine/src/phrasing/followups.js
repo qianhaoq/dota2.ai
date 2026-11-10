@@ -6,8 +6,10 @@ export function buildPresetFollowups(result, player, lang, gaps) {
   const zh = lang === 'zh';
   gaps.push({ topic: 'laning_baseline', reason: 'no_same_bracket_baseline' });
   const deathIds = ['deaths.total', ...deaths.map(d => d.fact_id)].filter(id => facts[id]);
-  // A death event is answerable only when its complete timeline and gold samples exist.
-  const deathReady = !!facts['deaths.total'] && deaths.every(d => d.killer && d.team_gold_diff_at_t != null);
+  // OpenDota death summaries require complete timelines and gold. Verified dem
+  // events can answer an individual-event list with unknown gold shown explicitly.
+  const replayDeaths = deaths.length > 0 && deaths.every(d => facts[d.fact_id]?.citation === 'r1');
+  const deathReady = replayDeaths || (!!facts['deaths.total'] && deaths.every(d => d.killer && d.team_gold_diff_at_t != null));
   for (const d of deaths) {
     const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === d.killer);
     const g = d.team_gold_diff_at_t;

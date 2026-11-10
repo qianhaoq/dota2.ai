@@ -1,0 +1,5 @@
+[
+  {"t":72.5,"type":"DOTA_COMBATLOG_DEATH","attacker":"npc_dota_hero_axe","attacker_hero":true,"attacker_illusion":false,"target":"npc_dota_hero_night_stalker","target_hero":true,"target_illusion":false,"location_x":100,"location_y":-200},
+  {"t":125,"type":"DOTA_COMBATLOG_PURCHASE","attacker":"npc_dota_hero_night_stalker","attacker_hero":true,"attacker_illusion":false,"inflictor":"item_blink"},
+  {"t":130,"type":"DOTA_COMBATLOG_DEATH","attacker":"npc_dota_hero_axe","attacker_hero":true,"attacker_illusion":false,"target":"npc_dota_hero_night_stalker","target_hero":true,"target_illusion":true}
+]

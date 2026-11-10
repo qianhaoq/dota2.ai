@@ -73,3 +73,14 @@ describe('parseRetryAfterLabel', () => {
     expect(parseRetryAfterLabel('zh', -5)).toBeNull();
   });
 });
+
+describe('first-party replay banners', () => {
+  it.each(['replay_unavailable','replay_expired','replay_cdn_error','replay_ingest_disabled','replay_invalid_url','replay_pending','replay_failed'])('preserves %s and displays its message', status => {
+    const parsed = parseReviewParseStatus({status,message:'First-party replay status'});
+    expect(parsed?.status).toBe(status);
+    expect(shouldShowParseStatusBanner(parsed)).toBe(true);
+  });
+  it('hides the banner when verified replay facts are ready', () => {
+    expect(shouldShowParseStatusBanner(parseReviewParseStatus({status:'replay_parsed'}))).toBe(false);
+  });
+});

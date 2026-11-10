@@ -155,12 +155,13 @@ export function Sources({ review, rows, claim }: {
 }) {
     const { t, lang } = useI18n();
     const citation = review.citations?.find(c => c.provider === 'opendota');
+    const replay = review.citations?.find(c => c.provider === 'replay');
     const refs = new Set(review.insights[claim]?.citations ?? []);
     const materials = (review.citations ?? []).filter(c => c.provider === 'kb' && refs.has(c.id));
     return <div data-testid="evidence-sources">
       <ul className="list-none m-0 p-0 text-d2-13 text-d2-ink-3">{rows.map((row, i) => <li key={row.field} className="flex gap-[8px] py-[4px] items-start">
         <span className="w-[18px] h-[18px] rounded-full bg-d2-accent-bg text-d2-gold-2 text-[11px] font-bold grid place-items-center flex-none d2-tnum">{i + 1}</span>
-        <span><code className="font-mono text-d2-12 text-d2-ink-4">opendota · {row.field}</code> <span className="text-d2-12 text-d2-ink-4">{t(row.caption)}</span></span>
+        <span><code className="font-mono text-d2-12 text-d2-ink-4">{replay ? 'replay' : 'opendota'} · {row.field}</code> <span className="text-d2-12 text-d2-ink-4">{t(row.caption)}</span></span>
       </li>)}</ul>
       <div className="flex flex-wrap gap-[6px] mt-[10px]">
         <span className="inline-flex items-center h-[22px] px-[8px] rounded-d2-chip text-d2-12 font-semibold whitespace-nowrap bg-d2-surface-3 border border-d2-line-2 text-d2-ink-3 d2-tnum">Match {review.match.id}</span>
@@ -169,6 +170,10 @@ export function Sources({ review, rows, claim }: {
       </div>
       {citation && <div className="mt-[8px] text-d2-12 text-d2-ink-4" data-testid="evidence-fetched">
         {t('srcFetched')} {citation.fetched_at} · <a href={citation.url} target="_blank" rel="noopener" className="text-d2-gold-2 font-semibold no-underline hover:text-d2-gold-pale">OpenDota ↗</a>
+      </div>}
+      {replay && <div className="mt-[8px] text-d2-12 text-d2-ink-4 break-all" data-testid="replay-provenance">
+        {lang === 'zh' ? '本站录像证据' : 'First-party replay evidence'} · {replay.fetched_at}<br/>
+        SHA-256: {replay.sha256}<br/>{replay.source_path}
       </div>}
       {materials.length > 0 && <section className="mt-[16px]" data-testid="learning-sources">
         <h5 className={sectionH}>{t('learningSources')}</h5>
