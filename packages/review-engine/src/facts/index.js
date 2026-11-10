@@ -125,7 +125,7 @@ export function buildFacts(raw, player) {
       sorted.forEach((d, i) => {
         const diff = d.time >= 0 ? gold[Math.floor(d.time / 60)] : null;
         const id = `death.${i + 1}`;
-        const event = { ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
+        const event = { ...(d.position_source ? {position_source:d.position_source,sample_t:d.sample_t,dt:d.dt,position_source_path:d.position_source_path} : {}), ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
         deaths.push(event);
         add(id, event, 'entity', d.source_path, { t: d.time });
       });
@@ -149,7 +149,8 @@ export function buildFacts(raw, player) {
       if (Array.isArray(player.deaths_log) && player.deaths_log.every(d => finite(d[field])) && (!finite(player.deaths) || player.deaths_log.length === player.deaths)) add(field, player.deaths_log.reduce((sum, d) => sum + d[field], 0), field === 'time_dead' ? 'time' : 'scalar', `${path}.deaths_log[].${field}`, { unit: field === 'time_dead' ? 'seconds' : 'gold', derivation: `sum(deaths_log[].${field})` });
       else gaps.push({ topic: field, reason: 'missing_or_incomplete_deaths_log' });
     }
-    if (finite(player.lh_t?.[10])) add('lh_at_10', player.lh_t[10], 'count', `${path}.lh_t[10]`, { t: 600 });
+    if (finite(player.camps_stacked) && raw.replay_ingest) add('camps_stacked', player.camps_stacked, 'count', player.metadata_source_path + '.camps_stacked');
+    if (finite(player.lh_t?.[10])) add('lh_at_10', player.lh_t[10], 'count', player.metadata_source_path ? player.metadata_source_path + '.inventory_snapshots[game_time=600].last_hits' : `${path}.lh_t[10]`, { t: 600 });
   }
   return { facts, deaths, worst, comeback, gaps };
 }

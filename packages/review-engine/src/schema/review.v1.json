@@ -382,6 +382,18 @@
           },
           "y": {
             "type": "number"
+          },
+          "position_source": {
+            "type": "string"
+          },
+          "sample_t": {
+            "type": "number"
+          },
+          "dt": {
+            "type": "number"
+          },
+          "position_source_path": {
+            "type": "string"
           }
         },
         "required": [

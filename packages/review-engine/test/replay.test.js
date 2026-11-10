@@ -43,13 +43,13 @@ describe('first-party replay evidence', () => {
     expect(review.data_gaps).toContainEqual({topic:'parsed_evidence',reason:status});
     expect(review.parse.message).not.toContain('OpenDota is still parsing');
   });
-  it('never attaches general Ace/support KB without explicit context; explicit selection stays contextual', () => {
+  it('never attaches general Ace/support KB without explicit context; explicit selection is not evaluable without testing facts', () => {
     const kb = parseSiteKnowledge(JSON.parse(readFileSync(new URL('../../../data/site-knowledge.v1.json',import.meta.url),'utf8')));
     const review = buildReview(applyReplayArtifact(raw,artifact()),{...opts,kb});
     expect(review.citations.some(c=>c.provider==='kb')).toBe(false);
     const id = 'kb-04cd89756c8f746d6eb3eaf2';
     const selected = buildReview(applyReplayArtifact(raw,artifact()),{...opts,kb,kbContextIds:[id]});
-    expect(selected.facts[`kb.${id}`].value).toMatchObject({match_assessment:'contextual_only',support_fact_ids:[],contradiction_fact_ids:[]});
+    expect(selected.facts[`kb.${id}`].value).toMatchObject({match_assessment:'not_evaluable',support_fact_ids:[],contradiction_fact_ids:[]});
   });
 });
 
@@ -77,4 +77,51 @@ it('answers verified individual deaths with fractional timestamps and unknown go
   expect(followup.answerable).toBe(true);
   expect(renderTemplate(followup,review.facts,'en').text).toContain('1:12');
   expect(renderTemplate(followup,review.facts,'en').text).toContain('unknown');
+});
+
+it('labels metadata snapshots, truncated graphs and bounded sampled positions without attributing PLAYERSTATS', () => {
+  const match = {match_id:42,duration:180,players:Array.from({length:10},(_,i)=>({hero_id:i===0?2:60+i,player_slot:i<5?i:128+i-5}))};
+  const meta = {players:match.players.map(p=>({player_slot:p.player_slot,graph_net_worth:[100,200],camps_stacked:9,inventory_snapshots:[{game_time:599,last_hits:99},{game_time:600,last_hits:48,denies:1}]}))};
+  const death = {type:'DOTA_COMBATLOG_DEATH',t:72,target:'npc_dota_hero_axe',target_hero:true,target_illusion:false,trace_index:0};
+  const purchase = {type:'DOTA_COMBATLOG_PURCHASE',t:322.3,target:'npc_dota_hero_axe',value_name:'item_soul_ring'};
+  const samples = [{death_source_path:'trace/events.jsonl[0]',t:72.2,x:1,y:2,source_path:'trace/states.jsonl[4]'}];
+  const a = adaptReplayEvents(match,[death,purchase,{type:'DOTA_COMBATLOG_PLAYERSTATS',t:600,target:'fountain',last_hits:999}],metadata,meta,samples);
+  expect(a.players[0].purchase_log[0]).toMatchObject({time:322.3,key:'soul_ring',source_path:'trace/events.jsonl[1]'});
+  expect(a.players[0].lh_t[10]).toBe(48);
+  expect(a.players[0].gold_source).toBe('demo_metadata_graph_net_worth');
+  expect(a.radiant_gold_adv).toEqual([0,0]);
+  expect(a.data_gaps).toContainEqual({topic:'radiant_gold_adv',reason:'metadata_graph_truncated'});
+  expect(a.players[0].deaths_log[0]).toMatchObject({position_source:'state_sample',sample_t:72.2});
+  samples[0].t = 72.251;
+  expect(adaptReplayEvents(match,[death],metadata,meta,samples).players[0].deaths_log[0]).not.toHaveProperty('x');
+});
+
+it('attaches stacking observations without claiming pre-checks or treating zero as contradiction', () => {
+  const kb = parseSiteKnowledge(JSON.parse(readFileSync(new URL('../../../data/site-knowledge.v1.json',import.meta.url),'utf8')));
+  const id = 'kb-028d66b81456e3720aaea63a';
+  const a = adaptReplayEvents(raw,events,metadata,{players:[{player_slot:132,camps_stacked:9}]});
+  const review = buildReview(applyReplayArtifact(raw,a),{...opts,kb});
+  expect(review.facts['kb.'+id].value).toMatchObject({support_fact_ids:['camps_stacked'],contradiction_fact_ids:[],match_assessment:'stacking_observed_precheck_not_evaluable'});
+  a.players[0].camps_stacked=0;
+  const zero = buildReview(applyReplayArtifact(raw,a),{...opts,kb,kbContextIds:[id]});
+  expect(zero.facts['kb.'+id].value).toMatchObject({support_fact_ids:[],contradiction_fact_ids:[],match_assessment:'not_evaluable'});
+});
+
+it('preserves the observed compact comparison-demo economy contract', () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/replay-economy-8985182860.redacted.json',import.meta.url),'utf8'));
+  const match = {match_id:fixture.match_id,duration:3150,players:[{hero_id:42,player_slot:0}]};
+  const a = adaptReplayEvents(match,fixture.events,metadata,fixture.metadata);
+  expect(a.players[0].lh_t[10]).toBe(56);
+  expect(a.players[0].lh_t[9]).toBeUndefined();
+  expect(a.players[0].gold_t).toHaveLength(51);
+  expect(a.players[0].snapshot_source).toBe('demo_metadata_inventory_snapshot');
+  expect(a.objectives[0].key).toBe('npc_dota_badguys_tower1_top');
+  expect(a.objectives[0]).not.toHaveProperty('killer');
+});
+
+it('accepts barracks and filler building events, never their value_name as killer', () => {
+  const events = ['npc_dota_goodguys_melee_rax_mid','npc_dota_goodguys_fillers','npc_dota_badguys_fort','npc_dota_hero_axe'].map(target=>({target,type:'DOTA_COMBATLOG_TEAM_BUILDING_KILL',t:100,value_name:'npc_dota_hero_axe'}));
+  const a = adaptReplayEvents(raw,events,metadata);
+  expect(a.objectives).toHaveLength(3);
+  expect(a.objectives.every(o=>!Object.hasOwn(o,'killer'))).toBe(true);
 });

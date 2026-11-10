@@ -56,14 +56,15 @@ export function attachSiteKnowledge(review, entries = [], contextualIds = []) {
     if (used.size === 3) break;
     // Version independence says nothing about relevance to this match question.
     // Require an explicit contextual selection instead of attaching every general principle.
-    if (entry.applicability_scope === 'version_independent' && !contextualIds.includes(entry.id)) continue;
+    const stacking = entry.id === 'kb-028d66b81456e3720aaea63a' && review.facts.camps_stacked?.value > 0;
+    if (entry.applicability_scope === 'version_independent' && !contextualIds.includes(entry.id) && !stacking) continue;
     if (used.has(entry.id) || (entry.hero && entry.hero !== review.player.hero) ||
         (entry.kind === 'fact' && (review.match.patch == null || entry.patch === 'unknown' || entry.patch !== String(review.match.patch)))) continue;
     used.add(entry.id);
     const summary = [entry.summary, entry.attribution && `Author: ${entry.attribution}`, entry.applicability_boundary].filter(Boolean).join('\n');
     const citation = `kb:${entry.id}`, id = `kb.${entry.id}`;
-    review.facts[id] = {id,kind:'entity',value:{title:entry.title,summary,locator:entry.locator,patch:entry.patch,verification:entry.verification,match_assessment:'contextual_only',support_fact_ids:[],contradiction_fact_ids:[]},
-      display:{en:`Contextual learning only; no match support or contradiction verified.\n${summary}`,zh:`仅作背景学习；尚未核实本场支持或反证。\n${summary}`},citation,source_path:`export/site/${entry.id}`};
+    review.facts[id] = {id,kind:'entity',value:{title:entry.title,summary,locator:entry.locator,patch:entry.patch,verification:entry.verification,match_assessment:stacking ? 'stacking_observed_precheck_not_evaluable' : 'not_evaluable',support_fact_ids:stacking ? ['camps_stacked'] : [],contradiction_fact_ids:[]},
+      display:{en:`Not evaluable as advice: role, lane, vision and safety checks are unverified. Stacking counts, when cited, support only that stacking occurred.\n${summary}`,zh:`建议有效性不可评估：分路、视野与安全检查未核实。引用叠野次数仅证明发生过叠野。\n${summary}`},citation,source_path:`export/site/${entry.id}`};
     review.citations.push({id:citation,provider:'kb',url:entry.source_url,fetched_at:entry.source_date,source_date:entry.source_date,
       ref:entry.id,patch:entry.patch,fields:[`export/site/${entry.id}`]});
     insight.citations = [...insight.citations,citation];

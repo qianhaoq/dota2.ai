@@ -48,7 +48,7 @@ export function buildReview(raw, opts) {
   if (!parsed) gaps.push({ topic: 'parsed_evidence', reason: raw.replay_ingest?.status ?? 'not_parsed_yet' });
   if (replay) {
     gaps.push(...(replay.data_gaps ?? []));
-    for (const gap of gaps) if (gap.topic === 'death_locations') gap.reason = 'replay_death_coordinates_missing';
+    for (const gap of gaps) if (gap.topic === 'death_locations') gap.reason = 'position_sample_missing';
   }
   if (patch == null) gaps.push({ topic: 'patch', reason: 'missing_match_patch' });
   if (focus) for (const topic of ['gold_fed', 'time_dead', 'lh_at_10']) {
@@ -67,17 +67,23 @@ export function buildReview(raw, opts) {
     // Prefer explicit teams, then player slots, then the destroyed structure's opposing side.
     const team = o.team === 2 || o.team === 3 ? o.team : Number.isInteger(o.player_slot) ? (o.player_slot < 128 ? 2 : 3) : typeof o.key === 'string' ? (o.key.includes('goodguys') ? 3 : o.key.includes('badguys') ? 2 : null) : null;
     const objective = { t: o.time, type: o.type ?? 'unknown', key: o.key ?? null, team: team === 2 ? 'radiant' : team === 3 ? 'dire' : null, fact_id };
-    result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: String(objective.key ?? objective.type), zh: String(objective.key ?? objective.type) }, citation: 's1', source_path: `objectives[${i}]` };
+    result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: String(objective.key ?? objective.type), zh: String(objective.key ?? objective.type) }, citation: 's1', source_path: o.source_path ?? `objectives[${i}]` };
     return objective;
   }) : [];
   if (replay) {
     for (const fact of Object.values(result.facts)) {
       if (/^(players\[|radiant_|objectives|trace\/)/.test(fact.source_path)) fact.citation = 'r1';
+      if (fact.source_path?.startsWith('trace/metadata') || (fact.source_path?.startsWith('radiant_gold') && replay.gold_source)) {
+        fact.citation = 'r1';
+        fact.derivation = fact.id === 'camps_stacked' ? 'demo metadata camps_stacked count; does not establish a pre-stack check' : fact.source_path.startsWith('radiant_gold') ? replay.gold_derivation : 'demo_metadata_inventory_snapshot: exact game_time; approximately 30 second snapshot interval';
+      }
     }
     for (const insight of insights) insight.citations = [...new Set(insight.fact_ids.map(id => result.facts[id]?.citation).filter(Boolean))];
     // Partial timelines still prove individual events; never grade a decision from these alone.
     const deathIds = result.deaths.map(d => d.fact_id);
-    const itemIds = Object.keys(result.facts).filter(id=>id.startsWith('item.first.'));
+    const allItemIds = Object.keys(result.facts).filter(id=>id.startsWith('item.first.'));
+    const keyIds = allItemIds.filter(id=>Object.hasOwn(KEY_ITEMS,id.slice(11)));
+    const itemIds = keyIds.length ? keyIds : allItemIds;
     if (itemIds.length) {
       const i = insights.findIndex(i=>i.id === 'next_game');
       const times = itemIds.map(id=>result.facts[id].t);
@@ -89,7 +95,7 @@ export function buildReview(raw, opts) {
       const i = insights.findIndex(i => i.id === 'fix_this');
       insights[i] = { ...insights[i], status:'ok', fact_ids:deathIds, metrics:deathIds.map(fact_id => ({fact_id,label_key:fact_id})), citations:['r1'],
         time:{from:result.deaths[0].t,to:result.deaths.at(-1).t},
-        claim:{slots:'',text:opts.lang === 'zh' ? '录像已核实以下死亡时刻；需结合兵线、视野和目标回看，不能仅凭死亡判定决策错误。' : 'The replay verifies these death times. Review waves, vision and objectives; a death alone does not prove a decision error.', phrasing:'template'} };
+        claim:{slots:'',text:opts.lang === 'zh' ? '录像已核实以下死亡时刻；state_sample 位置是附近采样点（见 sample_t、dt），并非战斗日志精确死亡坐标。需结合兵线、视野和目标回看，不能仅凭死亡判定决策错误。' : 'The replay verifies these death times. Any state_sample position is a nearby sampled location, with sample_t and dt, not an exact combat-log death coordinate. Review waves, vision and objectives; a death alone does not prove a decision error.', phrasing:'template'} };
       state = complete ? 'parsed' : 'insufficient';
     }
   }

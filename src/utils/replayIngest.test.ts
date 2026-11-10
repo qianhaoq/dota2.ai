@@ -133,3 +133,24 @@ it('no URL and a network outage remain distinct unavailable states', async () =>
     expect(fetchImpl).toHaveBeenCalledTimes(status === 'replay_unavailable' ? 0 : 1);
   }
 });
+
+it('streams only nearest real-hero death samples and reads optional metadata', async () => {
+  const {readReviewEvents,readReplaySupplement} = await import('../../lib/matchReview/replayIngest/extractor.js');
+  const dir = await home();
+  const event = {type:'DOTA_COMBATLOG_DEATH',t:10,target:'npc_dota_hero_axe',target_hero:true,target_illusion:false};
+  await writeFile(join(dir,'events.jsonl'),[event,{type:'DOTA_COMBATLOG_PLAYERSTATS',t:10},{type:'DOTA_COMBATLOG_TEAM_BUILDING_KILL',t:12,target:'npc_dota_badguys_fort'}].map(e=>JSON.stringify(e)).join('\n'));
+  const trace = await readReviewEvents(join(dir,'events.jsonl'));
+  expect(trace.rows).toBe(3); expect(trace.events.map(e=>e.trace_index)).toEqual([0,2]);
+  await writeFile(join(dir,'metadata.json'),JSON.stringify({players:[{player_slot:0,camps_stacked:9}]}));
+  await writeFile(join(dir,'states.jsonl'),[
+    {hero:'axe',entity_kind:'real_hero',t:9.8,x:1,y:2,life_state:0},
+    {hero:'axe',entity_kind:'illusion',t:10,x:999,y:999},
+    {hero:'axe',entity_kind:'real_hero',t:10.05,x:3,y:4,life_state:0},
+    {hero:'axe',entity_kind:'real_hero',t:10.3,x:5,y:6}
+  ].map(s=>JSON.stringify(s)).join('\n'));
+  const result = await readReplaySupplement(dir,trace.events);
+  expect(result.metadata.players[0].camps_stacked).toBe(9);
+  expect(result.positions).toEqual([{t:10.05,x:3,y:4,source_path:'trace/states.jsonl[2]',death_source_path:'trace/events.jsonl[0]'}]);
+  await rm(join(dir,'states.jsonl')); await rm(join(dir,'metadata.json'));
+  expect(await readReplaySupplement(dir,trace.events)).toEqual({metadata:null,positions:[]});
+});
