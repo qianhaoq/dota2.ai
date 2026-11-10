@@ -71,11 +71,20 @@ export function buildReview(raw, opts) {
     return objective;
   }) : [];
   if (replay) {
+    // Net worth is deliberately excluded from earned-gold windows and death context.
+    if (focus?.net_worth_t) for (const minute of [0,10,20]) {
+      const value = focus.net_worth_t[minute];
+      if (!Number.isFinite(value)) continue;
+      const id = `net_worth.at.${minute}`;
+      result.facts[id] = {id,kind:'scalar',value,unit:'gold (net worth)',t:minute*60,
+        display:{en:`Net worth: ${value} gold`,zh:`净资产：${value} 金`},citation:'r1',
+        source_path:`${focus.metadata_source_path}.graph_net_worth[${minute}]`,derivation:focus.net_worth_derivation};
+    }
     for (const fact of Object.values(result.facts)) {
       if (/^(players\[|radiant_|objectives|trace\/)/.test(fact.source_path)) fact.citation = 'r1';
-      if (fact.source_path?.startsWith('trace/metadata') || (fact.source_path?.startsWith('radiant_gold') && replay.gold_source)) {
+      if (fact.source_path?.startsWith('trace/metadata')) {
         fact.citation = 'r1';
-        fact.derivation = fact.id === 'camps_stacked' ? 'demo metadata camps_stacked count; does not establish a pre-stack check' : fact.source_path.startsWith('radiant_gold') ? replay.gold_derivation : 'demo_metadata_inventory_snapshot: exact game_time; approximately 30 second snapshot interval';
+        fact.derivation = fact.id.startsWith('net_worth.') ? focus.net_worth_derivation : fact.id === 'camps_stacked' ? 'demo metadata camps_stacked count; does not establish a pre-stack check' : 'demo_metadata_inventory_snapshot: exact game_time; approximately 30 second snapshot interval';
       }
     }
     for (const insight of insights) insight.citations = [...new Set(insight.fact_ids.map(id => result.facts[id]?.citation).filter(Boolean))];

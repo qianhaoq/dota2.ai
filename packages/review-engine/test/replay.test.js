@@ -81,16 +81,18 @@ it('answers verified individual deaths with fractional timestamps and unknown go
 
 it('labels metadata snapshots, truncated graphs and bounded sampled positions without attributing PLAYERSTATS', () => {
   const match = {match_id:42,duration:180,players:Array.from({length:10},(_,i)=>({hero_id:i===0?2:60+i,player_slot:i<5?i:128+i-5}))};
-  const meta = {players:match.players.map(p=>({player_slot:p.player_slot,graph_net_worth:[100,200],camps_stacked:9,inventory_snapshots:[{game_time:599,last_hits:99},{game_time:600,last_hits:48,denies:1}]}))};
+  const meta = {players:match.players.map(p=>({player_slot:p.player_slot,graph_net_worth:[60,200],camps_stacked:9,inventory_snapshots:[{game_time:599,last_hits:99},{game_time:600,last_hits:48,denies:1}]}))};
   const death = {type:'DOTA_COMBATLOG_DEATH',t:72,target:'npc_dota_hero_axe',target_hero:true,target_illusion:false,trace_index:0};
   const purchase = {type:'DOTA_COMBATLOG_PURCHASE',t:322.3,target:'npc_dota_hero_axe',value_name:'item_soul_ring'};
   const samples = [{death_source_path:'trace/events.jsonl[0]',t:72.2,x:1,y:2,source_path:'trace/states.jsonl[4]'}];
   const a = adaptReplayEvents(match,[death,purchase,{type:'DOTA_COMBATLOG_PLAYERSTATS',t:600,target:'fountain',last_hits:999}],metadata,meta,samples);
   expect(a.players[0].purchase_log[0]).toMatchObject({time:322.3,key:'soul_ring',source_path:'trace/events.jsonl[1]'});
   expect(a.players[0].lh_t[10]).toBe(48);
-  expect(a.players[0].gold_source).toBe('demo_metadata_graph_net_worth');
-  expect(a.radiant_gold_adv).toEqual([0,0]);
-  expect(a.data_gaps).toContainEqual({topic:'radiant_gold_adv',reason:'metadata_graph_truncated'});
+  expect(a.players[0].net_worth_source).toBe('demo_metadata_graph_net_worth');
+  expect(a.radiant_gold_adv).toBeUndefined();
+  expect(a.radiant_net_worth_adv).toEqual([0,0]);
+  expect(a.players[0].net_worth_t).toEqual([600,2000]);
+  expect(a.data_gaps).toContainEqual({topic:'radiant_net_worth_adv',reason:'metadata_graph_truncated'});
   expect(a.players[0].deaths_log[0]).toMatchObject({position_source:'state_sample',sample_t:72.2});
   samples[0].t = 72.251;
   expect(adaptReplayEvents(match,[death],metadata,meta,samples).players[0].deaths_log[0]).not.toHaveProperty('x');
@@ -113,7 +115,11 @@ it('preserves the observed compact comparison-demo economy contract', () => {
   const a = adaptReplayEvents(match,fixture.events,metadata,fixture.metadata);
   expect(a.players[0].lh_t[10]).toBe(56);
   expect(a.players[0].lh_t[9]).toBeUndefined();
-  expect(a.players[0].gold_t).toHaveLength(51);
+  expect(a.players[0].net_worth_t).toHaveLength(51);
+  expect(a.players[0].net_worth_t[0]).toBe(600);
+  expect(a.players[0].net_worth_t.at(-1)).toBeCloseTo(29516,0);
+  expect(a.players[0]).not.toHaveProperty('gold_t');
+  expect(a).not.toHaveProperty('radiant_gold_adv');
   expect(a.players[0].snapshot_source).toBe('demo_metadata_inventory_snapshot');
   expect(a.objectives[0].key).toBe('npc_dota_badguys_tower1_top');
   expect(a.objectives[0]).not.toHaveProperty('killer');
@@ -124,4 +130,44 @@ it('accepts barracks and filler building events, never their value_name as kille
   const a = adaptReplayEvents(raw,events,metadata);
   expect(a.objectives).toHaveLength(3);
   expect(a.objectives.every(o=>!Object.hasOwn(o,'killer'))).toBe(true);
+});
+
+it('keeps earned gold distinct, refuses unverified units, and cites replay followups', () => {
+  // Comparison dem at 10m: OpenDota earned advantage 975 != metadata net-worth advantage 612.
+  // Axe earned gold 3117 != rounded metadata net worth 3459.
+  const match = {...raw,duration:1800,radiant_gold_adv:[975],players:raw.players.map(p=>({...p,gold_t:Array(21).fill(3117)}))};
+  const meta = {players:match.players.map(p=>({player_slot:p.player_slot,graph_net_worth:Array.from({length:21},(_,i)=>i===0?60:i===10?345.87186:775.3609),inventory_snapshots:[{game_time:600,last_hits:48},{game_time:1200,last_hits:100}]}))};
+  const a = adaptReplayEvents(match,events,metadata,meta);
+  const applied = applyReplayArtifact(match,a);
+  expect(applied.radiant_gold_adv).toEqual([]);
+  expect(applied.players[0].gold_t).toBeUndefined();
+  expect(applied.players[0].net_worth_t[10]).toBe(3459);
+  const review = buildReview(applied,{...opts,presetFollowups:true});
+  expect(review.facts['farm.10_20.gold_t']).toBeUndefined();
+  expect(review.facts['farm.10_20.net_worth_t']).toMatchObject({citation:'r1',unit:'gold (net worth)'});
+  expect(review.facts['farm.10_20.net_worth_t'].source_path).toContain('graph_net_worth');
+  expect(review.facts['farm.10_20.lh_t'].citation).toBe('r1');
+  expect(review.insights.find(i=>i.id==='turning_point').status).toBe('insufficient');
+  expect(review.facts['net_worth.at.0']).toMatchObject({value:600,citation:'r1'});
+  expect(validateReview(review)).toMatchObject({ok:true});
+  meta.players[0].graph_net_worth[0]=100;
+  const unverified = adaptReplayEvents(match,[],metadata,meta);
+  expect(unverified.players[0].net_worth_t).toBeUndefined();
+  expect(unverified.data_gaps).toContainEqual({topic:'net_worth_t',reason:'metadata_graph_unit_unverified'});
+});
+
+
+it('pins the comparison-dem earned-gold vs net-worth difference and rejects legacy mislabeled artifacts', () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/replay-economy-semantics-8985182860.json',import.meta.url),'utf8'));
+  const match = {match_id:fixture.match_id,duration:1200,players:fixture.players.map(p=>({player_slot:p.player_slot,hero_id:2}))};
+  const demoMetadata = {players:fixture.players.map(p=>({player_slot:p.player_slot,graph_net_worth:Array.from({length:11},(_,i)=>i===0?p.graph_start:p.graph_at_10)}))};
+  const a = adaptReplayEvents(match,[],metadata,demoMetadata);
+  expect(a.radiant_net_worth_adv[10]).toBe(fixture.net_worth_adv_at_10);
+  expect(a.radiant_net_worth_adv[10]).not.toBe(fixture.earned_gold_adv_at_10);
+  expect(a.players.find(p=>p.player_slot===129).net_worth_t[10]).toBe(fixture.axe_net_worth_at_10);
+  expect(a.players.find(p=>p.player_slot===129).net_worth_t[10]).not.toBe(fixture.axe_earned_gold_at_10);
+  expect(a.radiant_gold_adv).toBeUndefined();
+  const legacy = {...artifact(),gold_source:'demo_metadata_graph_net_worth',radiant_gold_adv:[60]};
+  expect(isVerifiedReplay(legacy,42)).toBe(false);
+  expect(buildReview(applyReplayArtifact(raw,legacy),opts).parse.status).toBe('replay_failed');
 });

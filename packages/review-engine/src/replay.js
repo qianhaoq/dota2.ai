@@ -1,10 +1,12 @@
 import { heroSlug } from './facts/index.js';
 export function isVerifiedReplay(a, id) {
-  return a?.schema === 'dota2.ai/replay-facts@1' && a.match_id === id && a.status === 'replay_parsed' && /^[a-f0-9]{64}$/.test(a.demo_sha256 ?? '') && typeof a.fetched_at === 'string' && Number.isFinite(Date.parse(a.fetched_at)) && Number.isSafeInteger(a.demo_bytes) && a.demo_bytes > 19 && Array.isArray(a.players) && a.players.every(p => p && typeof p === 'object' && Number.isInteger(p.hero_id) && Number.isInteger(p.player_slot) &&
+  // Reject persisted artifacts from the old net-worth-as-earned-gold adapter.
+  return a?.gold_source !== 'demo_metadata_graph_net_worth' && !a?.players?.some?.(p=>p?.gold_source === 'demo_metadata_graph_net_worth') && a?.schema === 'dota2.ai/replay-facts@1' && a.match_id === id && a.status === 'replay_parsed' && /^[a-f0-9]{64}$/.test(a.demo_sha256 ?? '') && typeof a.fetched_at === 'string' && Number.isFinite(Date.parse(a.fetched_at)) && Number.isSafeInteger(a.demo_bytes) && a.demo_bytes > 19 && Array.isArray(a.players) && a.players.every(p => p && typeof p === 'object' && Number.isInteger(p.hero_id) && Number.isInteger(p.player_slot) &&
       ['deaths_log','kills_log','purchase_log'].every(k => Array.isArray(p[k]) && p[k].every(e => e && typeof e === 'object' && Number.isFinite(e.time) && typeof e.source_path === 'string')));
 }
 /** Combat log t is game time. Legacy heroes.jsonl is uncalibrated demo time;
  * do not turn it into minute economy samples or death coordinates. */
+const NET_WORTH_DERIVATION = 'demo_metadata_graph_net_worth: metadata stores tens of gold, multiplied by 10 and rounded to gold; net worth, not earned gold; 60s bins from zero; may omit final minute(s); scale verified by first bin in [50, 70] consistent with 600 starting gold';
 /** @param {any} raw @param {any[]} events @param {any} metadata @param {any} demoMetadata @param {any[]} positionSamples */
 export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, positionSamples = []) {
   /** @type {any[]} */
@@ -35,12 +37,14 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
     if (e.type === 'DOTA_COMBATLOG_TEAM_BUILDING_KILL' && /^npc_dota_(goodguys|badguys)_(tower[1-4](?:_(?:top|mid|bot))?|(?:melee|range)_rax_(?:top|mid|bot)|fort|fillers)$/.test(e.target ?? ''))
       objectives.push({time:e.t,key:e.target,type:e.type,team:e.attacker_team,source_path});
   }
-  const gaps = [{topic:'xp_t',reason:'hero_attribution_unverified'}, {topic:'playerstats',reason:'playerstats_unattributed'}, {topic:'radiant_xp_adv',reason:'not_in_combat_log'}, {topic:'purchase_log',reason:'pregame_combat_rows_may_be_missing'}];
+  const gaps = [{topic:'xp_t',reason:'hero_attribution_unverified'}, {topic:'playerstats',reason:'playerstats_unattributed'}, {topic:'radiant_xp_adv',reason:'not_in_combat_log'}];
+  gaps.push({topic:'gold_t',reason:'earned_gold_not_in_replay'}, {topic:'radiant_gold_adv',reason:'earned_gold_not_in_replay'});
+  if (!players.some(p=>p.purchase_log.some(e=>e.time<0))) gaps.push({topic:'purchase_log',reason:'pregame_combat_rows_may_be_missing'});
   const metadataPlayers = demoMetadata?.players ?? demoMetadata?.teams?.flatMap(t => t.players ?? []) ?? [];
   for (const p of players) {
     const m = metadataPlayers.find(m => m.player_slot === p.player_slot);
     if (!m) continue;
-    const source_path = `trace/metadata.json${demoMetadata.players ? '.players' : '.teams[].players'}[player_slot=${p.player_slot}]`;
+    const source_path = `${demoMetadata.metadata_source_path ?? 'trace/metadata.json'}${demoMetadata.players ? '.players' : '.teams[].players'}[player_slot=${p.player_slot}]`;
     p.metadata_source_path = source_path;
     if (Number.isFinite(m.camps_stacked)) p.camps_stacked = m.camps_stacked;
     const snapshots = m.inventory_snapshots ?? (m.snap_at10plus ? [m.snap_at10plus] : []);
@@ -52,30 +56,33 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
     p.snapshot_source = 'demo_metadata_inventory_snapshot';
     p.snapshot_sampling = 'exact minute snapshots only; observed snapshot interval approximately 30 seconds';
     if (Array.isArray(m.graph_net_worth) && m.graph_net_worth.length <= Math.floor(raw.duration/60)+1 && m.graph_net_worth.every(Number.isFinite)) {
-      p.gold_t = [...m.graph_net_worth];
-      p.gold_source = 'demo_metadata_graph_net_worth';
+      if (m.graph_net_worth.length && m.graph_net_worth[0] >= 50 && m.graph_net_worth[0] <= 70) {
+        p.net_worth_t = m.graph_net_worth.map(v=>Math.round(v*10));
+        p.net_worth_source = 'demo_metadata_graph_net_worth';
+        p.net_worth_derivation = NET_WORTH_DERIVATION;
+      } else gaps.push({topic:'net_worth_t',reason:'metadata_graph_unit_unverified'});
     }
   }
-  const graphPlayers = players.filter(p => p.gold_t);
-  let radiant_gold_adv;
-  if (players.length === 10 && graphPlayers.length === 10 && new Set(graphPlayers.map(p=>p.gold_t.length)).size === 1) {
-    radiant_gold_adv = graphPlayers[0].gold_t.map((_,i)=>graphPlayers.reduce((sum,p)=>sum+(p.player_slot < 128 ? 1 : -1)*p.gold_t[i],0));
-    if (radiant_gold_adv.length < Math.floor(raw.duration/60)+1) gaps.push({topic:'radiant_gold_adv',reason:'metadata_graph_truncated'});
-  } else gaps.push({topic:'gold_t',reason:'metadata_graph_missing_or_invalid'});
+  const graphPlayers = players.filter(p => p.net_worth_t);
+  let radiant_net_worth_adv;
+  if (players.length === 10 && graphPlayers.length === 10 && new Set(graphPlayers.map(p=>p.net_worth_t.length)).size === 1) {
+    radiant_net_worth_adv = graphPlayers[0].net_worth_t.map((_,i)=>graphPlayers.reduce((sum,p)=>sum+(p.player_slot < 128 ? 1 : -1)*p.net_worth_t[i],0));
+    if (radiant_net_worth_adv.length < Math.floor(raw.duration/60)+1) gaps.push({topic:'radiant_net_worth_adv',reason:'metadata_graph_truncated'});
+  } else gaps.push({topic:'net_worth_t',reason:'metadata_graph_missing_or_invalid'});
   if (!players.some(p=>p.lh_t?.some(Number.isFinite))) gaps.push({topic:'lh_t',reason:'metadata_snapshot_missing'});
   if (!objectives.length) gaps.push({topic:'objectives',reason:'not_in_combat_log'});
   if (players.some(p=>p.deaths_log.some(d=>!Number.isFinite(d.x)))) gaps.push({topic:'death_locations',reason:'position_sample_missing'});
-  return { ...metadata, schema:'dota2.ai/replay-facts@1', match_id:raw.match_id, status:'replay_parsed', players, objectives, ...(radiant_gold_adv ? {radiant_gold_adv,gold_source:'demo_metadata_graph_net_worth',gold_derivation:'demo_metadata_graph_net_worth: sum Radiant net worth - sum Dire net worth; 60 second bins from zero'} : {}), data_gaps:gaps, event_rows:rows };
+  return { ...metadata, schema:'dota2.ai/replay-facts@1', match_id:raw.match_id, status:'replay_parsed', players, objectives, ...(radiant_net_worth_adv ? {radiant_net_worth_adv,net_worth_source:'demo_metadata_graph_net_worth',net_worth_derivation:NET_WORTH_DERIVATION} : {}), data_gaps:gaps, event_rows:rows };
 }
 export function applyReplayArtifact(raw, artifact) {
   if (!isVerifiedReplay(artifact, raw.match_id)) return { ...raw, replay_ingest:artifact?.status === 'replay_parsed' ? {match_id:raw.match_id,status:'replay_failed',reason:'invalid_artifact'} : artifact };
   /** @type {any[]} */
   const players = (raw.players ?? []).map(p => {
     const clean = { ...p };
-    for (const key of ['lh_t','gold_t','xp_t','times','lane','lane_role','lane_pos','purchase_log','deaths_log','kills_log','camps_stacked','denies_t']) delete clean[key];
+    for (const key of ['lh_t','gold_t','xp_t','times','lane','lane_role','lane_pos','purchase_log','deaths_log','kills_log','camps_stacked','denies_t','net_worth_t']) delete clean[key];
     return { ...clean, ...artifact.players.find(r => r.hero_id === p.hero_id && r.player_slot === p.player_slot) };
   });
-  return { ...raw, players, objectives:artifact.objectives ?? [], radiant_gold_adv:artifact.radiant_gold_adv ?? [], radiant_xp_adv:[], replay_ingest:artifact };
+  return { ...raw, players, objectives:artifact.objectives ?? [], radiant_gold_adv:[], radiant_net_worth_adv:artifact.radiant_net_worth_adv ?? [], radiant_xp_adv:[], replay_ingest:artifact };
 }
 export function replayStatusPayload(status, lang = 'en', retryAfterSec = null) {
   const messages = {

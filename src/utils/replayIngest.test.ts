@@ -154,3 +154,22 @@ it('streams only nearest real-hero death samples and reads optional metadata', a
   await rm(join(dir,'states.jsonl')); await rm(join(dir,'metadata.json'));
   expect(await readReplaySupplement(dir,trace.events)).toEqual({metadata:null,positions:[]});
 });
+
+
+it('pairs official coach metadata.jsonl with replay adaptation (last player row wins)', async () => {
+  const {readReplaySupplement} = await import('../../lib/matchReview/replayIngest/extractor.js');
+  const {adaptReplayEvents} = await import('../../packages/review-engine/src/replay.js');
+  const dir = await home();
+  const row = {source:'demo_metadata',timing:'postgame',players:[{player_slot:0,graph_net_worth:[60,100],camps_stacked:2,items:[],inventory_snapshots:[{game_time:600,last_hits:56}]}]};
+  await writeFile(join(dir,'metadata.jsonl'),[
+    JSON.stringify({...row,players:[]}),JSON.stringify(row),JSON.stringify({source:'other_callback'})
+  ].join('\n'));
+  const supplement = await readReplaySupplement(dir,[]);
+  const a = adaptReplayEvents({match_id:42,duration:120,players:[{hero_id:2,player_slot:0}]},[],{},supplement.metadata);
+  expect(a.players[0].lh_t[10]).toBe(56);
+  expect(a.players[0].net_worth_t).toEqual([600,1000]);
+  expect(a.players[0].metadata_source_path).toBe('trace/metadata.jsonl[1].players[player_slot=0]');
+  expect(a.players[0].gold_t).toBeUndefined();
+  await writeFile(join(dir,'metadata.jsonl'),' '.repeat(8000001));
+  await expect(readReplaySupplement(dir,[])).rejects.toThrow('metadata_bytes_limit');
+});
