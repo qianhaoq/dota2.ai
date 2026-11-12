@@ -4,9 +4,17 @@
  * exactly these keys — enforced by the `Dict` type and the parity test.
  */
 export const en = {
+  followupUnavailable: 'Missing evidence',
+  traceParseCheck: 'Checking OpenDota parse status',
+  traceResults: 'Preparing available results',
+  traceScoreboard: 'Scoreboard summary only — detailed review unavailable',
+  parseUnavailable: 'OpenDota has not parsed this match. Timeline, death and purchase evidence is unavailable. Request an OpenDota parse, then check again; parsing may fail or the replay may have expired.',
+  parseScope: 'This requests OpenDota parsing only. Official .dem ingest is not enabled here and no official replay has been verified. If parsing remains unavailable, review the replay in Dota 2 and record timestamps for the moments you want to discuss.',
+  followupMissing: 'The available evidence cannot answer this question. Check the missing-data details below. For timeline questions, request an OpenDota parse and check again, or review the replay in Dota 2 and record timestamps; other gaps may still remain.',
+
   share: 'Share', chartGold: 'Gold', chartXp: 'XP',
-  'traceFacts': 'Reading facts',
-  'tracePhrasing': 'Writing review',
+  'traceFacts': 'Reading available facts',
+  'tracePhrasing': 'Preparing text',
   'traceElapsed': 'Analyzed in {seconds}s',
   'miniChart': 'Gold and experience advantage',
   'refusalData': 'The available data cannot answer this.',

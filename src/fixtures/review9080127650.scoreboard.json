@@ -1,0 +1,457 @@
+{
+  "schema": "dota2.ai/review@1",
+  "engine_version": "2.0.0-pr2",
+  "state": "unparsed",
+  "lang": "zh",
+  "match": {
+    "id": 9080127650,
+    "duration_s": 1906,
+    "winner": "radiant",
+    "score": {
+      "radiant": 48,
+      "dire": 19
+    },
+    "patch": 60,
+    "parsed": false,
+    "parse_version": null,
+    "start_time": 1794061467
+  },
+  "player": {
+    "hero": "night_stalker",
+    "hero_id": 60,
+    "team": "dire",
+    "kda": [
+      4,
+      8,
+      6
+    ],
+    "result": "loss"
+  },
+  "roster": [
+    {
+      "hero": "skeleton_king",
+      "hero_id": 42,
+      "team": "radiant",
+      "kda": [
+        7,
+        5,
+        9
+      ]
+    },
+    {
+      "hero": "slark",
+      "hero_id": 93,
+      "team": "radiant",
+      "kda": [
+        24,
+        1,
+        9
+      ]
+    },
+    {
+      "hero": "pudge",
+      "hero_id": 14,
+      "team": "radiant",
+      "kda": [
+        8,
+        5,
+        19
+      ]
+    },
+    {
+      "hero": "dark_willow",
+      "hero_id": 119,
+      "team": "radiant",
+      "kda": [
+        4,
+        4,
+        18
+      ]
+    },
+    {
+      "hero": "necrolyte",
+      "hero_id": 36,
+      "team": "radiant",
+      "kda": [
+        5,
+        4,
+        18
+      ]
+    },
+    {
+      "hero": "lion",
+      "hero_id": 26,
+      "team": "dire",
+      "kda": [
+        3,
+        11,
+        7
+      ]
+    },
+    {
+      "hero": "juggernaut",
+      "hero_id": 8,
+      "team": "dire",
+      "kda": [
+        5,
+        6,
+        5
+      ]
+    },
+    {
+      "hero": "witch_doctor",
+      "hero_id": 30,
+      "team": "dire",
+      "kda": [
+        4,
+        13,
+        6
+      ]
+    },
+    {
+      "hero": "ogre_magi",
+      "hero_id": 84,
+      "team": "dire",
+      "kda": [
+        2,
+        10,
+        8
+      ]
+    },
+    {
+      "hero": "night_stalker",
+      "hero_id": 60,
+      "team": "dire",
+      "kda": [
+        4,
+        8,
+        6
+      ]
+    }
+  ],
+  "facts": {
+    "ancient.fell": {
+      "id": "ancient.fell",
+      "kind": "time",
+      "value": 1906,
+      "perspective": "radiant",
+      "display": {
+        "en": "31:46",
+        "zh": "31:46",
+        "t": "31:46"
+      },
+      "citation": "s1",
+      "source_path": "duration",
+      "unit": "seconds",
+      "t": 1906
+    },
+    "patch": {
+      "id": "patch",
+      "kind": "entity",
+      "value": 60,
+      "perspective": "radiant",
+      "display": {
+        "en": "60",
+        "zh": "60"
+      },
+      "citation": "s1",
+      "source_path": "patch"
+    },
+    "scoreboard.kills": {
+      "id": "scoreboard.kills",
+      "kind": "scalar",
+      "value": 4,
+      "display": {
+        "en": "Kills: 4",
+        "zh": "击杀：4"
+      },
+      "citation": "s1",
+      "source_path": "players[9].kills"
+    },
+    "scoreboard.deaths": {
+      "id": "scoreboard.deaths",
+      "kind": "scalar",
+      "value": 8,
+      "display": {
+        "en": "Deaths: 8",
+        "zh": "死亡：8"
+      },
+      "citation": "s1",
+      "source_path": "players[9].deaths"
+    },
+    "scoreboard.assists": {
+      "id": "scoreboard.assists",
+      "kind": "scalar",
+      "value": 6,
+      "display": {
+        "en": "Assists: 6",
+        "zh": "助攻：6"
+      },
+      "citation": "s1",
+      "source_path": "players[9].assists"
+    },
+    "scoreboard.last_hits": {
+      "id": "scoreboard.last_hits",
+      "kind": "scalar",
+      "value": 104,
+      "display": {
+        "en": "Final last hits: 104",
+        "zh": "终局补刀：104"
+      },
+      "citation": "s1",
+      "source_path": "players[9].last_hits"
+    },
+    "scoreboard.gold_per_min": {
+      "id": "scoreboard.gold_per_min",
+      "kind": "scalar",
+      "value": 344,
+      "display": {
+        "en": "GPM: 344",
+        "zh": "每分钟金钱：344"
+      },
+      "citation": "s1",
+      "source_path": "players[9].gold_per_min"
+    },
+    "scoreboard.xp_per_min": {
+      "id": "scoreboard.xp_per_min",
+      "kind": "scalar",
+      "value": 434,
+      "display": {
+        "en": "XPM: 434",
+        "zh": "每分钟经验：434"
+      },
+      "citation": "s1",
+      "source_path": "players[9].xp_per_min"
+    },
+    "scoreboard.net_worth": {
+      "id": "scoreboard.net_worth",
+      "kind": "scalar",
+      "value": 10205,
+      "display": {
+        "en": "Final net worth: 10205",
+        "zh": "终局净资产：10205"
+      },
+      "citation": "s1",
+      "source_path": "players[9].net_worth"
+    }
+  },
+  "series": {
+    "radiant_gold_adv": [],
+    "radiant_xp_adv": [],
+    "perspective": "dire"
+  },
+  "objectives": [],
+  "deaths": [],
+  "purchases": [],
+  "insights": [
+    {
+      "id": "fix_this",
+      "status": "ok",
+      "time": {
+        "from": 0,
+        "to": 0
+      },
+      "claim": {
+        "text": "可核对的终局摘要：击杀：4；死亡：8；助攻：6；终局补刀：104；每分钟金钱：344；每分钟经验：434；终局净资产：10205。缺少补刀/经济时间轴、死亡位置和购买记录，无法定位刷钱瓶颈、判断何时弃线或刷打取舍。建议选一段对线或一次参团，记录兵线、视野与替代资源供回看；这不是本局最优打法结论。",
+        "slots": "可核对的终局摘要：{scoreboard.kills}；{scoreboard.deaths}；{scoreboard.assists}；{scoreboard.last_hits}；{scoreboard.gold_per_min}；{scoreboard.xp_per_min}；{scoreboard.net_worth}。缺少补刀/经济时间轴、死亡位置和购买记录，无法定位刷钱瓶颈、判断何时弃线或刷打取舍。建议选一段对线或一次参团，记录兵线、视野与替代资源供回看；这不是本局最优打法结论。",
+        "phrasing": "template"
+      },
+      "fact_ids": [
+        "scoreboard.kills",
+        "scoreboard.deaths",
+        "scoreboard.assists",
+        "scoreboard.last_hits",
+        "scoreboard.gold_per_min",
+        "scoreboard.xp_per_min",
+        "scoreboard.net_worth"
+      ],
+      "metrics": [
+        {
+          "label_key": "scoreboard.kills",
+          "fact_id": "scoreboard.kills"
+        },
+        {
+          "label_key": "scoreboard.deaths",
+          "fact_id": "scoreboard.deaths"
+        },
+        {
+          "label_key": "scoreboard.assists",
+          "fact_id": "scoreboard.assists"
+        },
+        {
+          "label_key": "scoreboard.last_hits",
+          "fact_id": "scoreboard.last_hits"
+        },
+        {
+          "label_key": "scoreboard.gold_per_min",
+          "fact_id": "scoreboard.gold_per_min"
+        },
+        {
+          "label_key": "scoreboard.xp_per_min",
+          "fact_id": "scoreboard.xp_per_min"
+        },
+        {
+          "label_key": "scoreboard.net_worth",
+          "fact_id": "scoreboard.net_worth"
+        }
+      ],
+      "evidence": {
+        "kind": "none",
+        "highlight": [
+          0,
+          0
+        ],
+        "markers": [
+          "scoreboard.kills",
+          "scoreboard.deaths",
+          "scoreboard.assists",
+          "scoreboard.last_hits",
+          "scoreboard.gold_per_min",
+          "scoreboard.xp_per_min",
+          "scoreboard.net_worth"
+        ],
+        "moments": []
+      },
+      "baseline": null,
+      "target": null,
+      "citations": [
+        "s1"
+      ],
+      "data_gap": "parsed_evidence",
+      "reason": "not_parsed_yet"
+    }
+  ],
+  "data_gaps": [
+    {
+      "topic": "death_locations",
+      "reason": "opendota_deaths_log_has_no_coordinates"
+    },
+    {
+      "topic": "build_vs_lineup",
+      "reason": "no_compliant_patch_matched_kb"
+    },
+    {
+      "topic": "parsed_evidence",
+      "reason": "not_parsed_yet"
+    },
+    {
+      "topic": "gold_fed",
+      "reason": "missing_parsed_player_field"
+    },
+    {
+      "topic": "time_dead",
+      "reason": "missing_parsed_player_field"
+    },
+    {
+      "topic": "lh_at_10",
+      "reason": "missing_parsed_player_field"
+    },
+    {
+      "topic": "laning_baseline",
+      "reason": "no_same_bracket_baseline"
+    },
+    {
+      "topic": "laning_0_10",
+      "reason": "missing_laning_fields"
+    }
+  ],
+  "followups": [
+    {
+      "id": "death_list",
+      "label": "查看死亡记录",
+      "answerable": false,
+      "fact_ids": [],
+      "gap": "deaths"
+    },
+    {
+      "id": "laning_0_10",
+      "label": "查看对线记录",
+      "answerable": false,
+      "fact_ids": [],
+      "gap": "laning_0_10"
+    },
+    {
+      "id": "why_fix_this",
+      "label": "查看结论证据：本场要改",
+      "answerable": true,
+      "fact_ids": [
+        "scoreboard.kills",
+        "scoreboard.deaths",
+        "scoreboard.assists",
+        "scoreboard.last_hits",
+        "scoreboard.gold_per_min",
+        "scoreboard.xp_per_min",
+        "scoreboard.net_worth"
+      ]
+    },
+    {
+      "id": "death_locations",
+      "label": "死亡位置",
+      "answerable": false,
+      "gap": "death_locations"
+    },
+    {
+      "id": "build_vs_lineup",
+      "label": "针对阵容的出装",
+      "answerable": false,
+      "gap": "build_vs_lineup"
+    },
+    {
+      "id": "parsed_evidence",
+      "label": "解析数据证据",
+      "answerable": false,
+      "gap": "parsed_evidence"
+    },
+    {
+      "id": "gold_fed",
+      "label": "死亡送出金钱",
+      "answerable": false,
+      "gap": "gold_fed"
+    },
+    {
+      "id": "time_dead",
+      "label": "死亡总时长",
+      "answerable": false,
+      "gap": "time_dead"
+    },
+    {
+      "id": "lh_at_10",
+      "label": "十分钟补刀",
+      "answerable": false,
+      "gap": "lh_at_10"
+    },
+    {
+      "id": "laning_baseline",
+      "label": "同段位对线基准",
+      "answerable": false,
+      "gap": "laning_baseline"
+    }
+  ],
+  "citations": [
+    {
+      "id": "s1",
+      "provider": "opendota",
+      "url": "https://api.opendota.com/api/matches/9080127650",
+      "fetched_at": "2026-11-12T01:47:53.622Z",
+      "fields": [
+        "duration",
+        "patch",
+        "players[9].kills",
+        "players[9].deaths",
+        "players[9].assists",
+        "players[9].last_hits",
+        "players[9].gold_per_min",
+        "players[9].xp_per_min",
+        "players[9].net_worth"
+      ]
+    }
+  ],
+  "meta": {
+    "url": "https://dota2.ai/m/9080127650?hero=night_stalker",
+    "evidence_url": "https://dota2.ai/m/9080127650?hero=night_stalker&view=evidence",
+    "generated_at": "2026-11-12T01:47:53.622Z",
+    "cache": "miss",
+    "phrasing": "template",
+    "llm_provider": null
+  }
+}

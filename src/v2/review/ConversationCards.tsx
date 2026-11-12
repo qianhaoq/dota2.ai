@@ -6,20 +6,22 @@ import type { Fact, Followup, Hero, Review } from './types';
 import type { ReviewStreamState } from './useReviewStream';
 export const control = 'min-h-[44px] px-[12px] rounded-d2-control border border-d2-line bg-d2-surface-2 text-d2-gold-2 hover:bg-d2-surface-3 transition-colors';
 export const surface = 'bg-d2-surface-2 border border-d2-line-2 rounded-d2-card shadow-d2-2 p-[16px]';
-export function ToolTrace({ steps, done, timings }: {
+export function ToolTrace({ steps, done, timings, review }: {
     steps: ReviewStreamState['steps'];
     done: boolean;
     timings?: Record<string, number | string>;
+    review?: Review;
 }) {
     const { t } = useI18n();
     const keys = ['fetch_match', 'parse_check', 'facts', 'insights', 'phrasing'] as const;
-    const labels = ['traceFetch', 'traceTimeline', 'traceFacts', 'traceConclusions', 'tracePhrasing'] as const;
+    const labels = ['traceFetch', 'traceParseCheck', 'traceFacts', 'traceResults', 'tracePhrasing'] as const;
+    const limited = review && (review.state !== 'parsed' || !review.match.parsed || review.insights.every(i => i.data_gap === 'parsed_evidence'));
     return <details open={!done} className="rounded-d2-control bg-d2-surface-2 border border-d2-line-2 shadow-d2-1 text-d2-13 text-d2-ink-3">
       <summary className="list-none flex items-center gap-[10px] min-h-[44px] px-[14px] cursor-pointer">
-        {done && <Check size={18} className="text-d2-gold-2" aria-hidden="true"/>}<span>{done ? (timings?.total_display != null ? t('traceElapsed').replace('{seconds}', String(timings.total_display)) : t('traceAnalyzed')) : t('traceFetch')}</span><ChevronDown size={16} className="ml-auto" aria-hidden="true"/>
+        {done && <Check size={18} className="text-d2-gold-2" aria-hidden="true"/>}<span>{done ? (limited ? t('traceScoreboard') : timings?.total_display != null && Number(timings.total_display) > 0 ? t('traceElapsed').replace('{seconds}', String(timings.total_display)) : t('traceAnalyzed')) : t('traceFetch')}</span><ChevronDown size={16} className="ml-auto" aria-hidden="true"/>
       </summary><ol className="list-none m-0 px-[16px] pb-[12px]">{keys.map((key, i) => {
         const status = steps[key]?.status ?? 'todo';
-        return <li key={key} data-status={status} className={`flex items-center gap-[10px] min-h-[32px] text-d2-15 ${status === 'todo' ? 'text-d2-ink-4' : 'text-d2-ink-2 font-medium'}`}><span className="w-[18px] flex justify-center">{status === 'done' || status === 'skipped' ? <Check size={18} className="text-d2-gold-2"/> : status === 'active' ? <span className="w-[14px] h-[14px] rounded-full border-2 border-d2-surface-3 border-t-d2-gold-2 motion-safe:animate-spin"/> : <span className="w-[6px] h-[6px] rounded-full bg-d2-ink-4"/>}</span>{t(labels[i])}</li>;
+        return <li key={key} data-status={status} className={`flex items-center gap-[10px] min-h-[32px] text-d2-15 ${status === 'todo' ? 'text-d2-ink-4' : 'text-d2-ink-2 font-medium'}`}><span className="w-[18px] flex justify-center">{status === 'done' ? <Check size={18} className="text-d2-gold-2"/> : status === 'active' ? <span className="w-[14px] h-[14px] rounded-full border-2 border-d2-surface-3 border-t-d2-gold-2 motion-safe:animate-spin"/> : <span className="w-[6px] h-[6px] rounded-full bg-d2-ink-4"/>}</span>{t(labels[i])}</li>;
       })}</ol></details>;
 }
 export function HeroGrid({ roster, pick }: {
@@ -63,7 +65,8 @@ export function FollowupChips({ followups, asked, disabled, ask }: {
     disabled: boolean;
     ask: (f: Followup) => void;
 }) {
-    return <div className="flex flex-wrap gap-[8px]">{followups.filter(f => !asked.includes(f.id)).map(f => <button className="min-h-[36px] px-[12px] rounded-full border border-d2-line bg-d2-surface-2 text-d2-13 font-medium text-d2-ink-2 hover:bg-d2-surface-3 hover:border-d2-gold/30 disabled:opacity-40 transition-colors" key={f.id} disabled={disabled} onClick={() => ask(f)}>{f.label}</button>)}</div>;
+    const { t } = useI18n();
+    return <div className="flex flex-wrap gap-[8px]">{followups.filter(f => !asked.includes(f.id)).map(f => <button className="min-h-[36px] px-[12px] rounded-full border border-d2-line bg-d2-surface-2 text-d2-13 font-medium text-d2-ink-2 hover:bg-d2-surface-3 hover:border-d2-gold/30 disabled:opacity-40 transition-colors" key={f.id} disabled={disabled} onClick={() => ask(f)}>{f.label}{!f.answerable && ` · ${t('followupUnavailable')}`}</button>)}</div>;
 }
 export function RefusalBubble({ gaps }: {
     gaps: Review['data_gaps'];

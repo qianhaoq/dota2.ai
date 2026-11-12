@@ -210,6 +210,18 @@ describe('SSE v1 conversation', () => {
         await screen.findByText(/Copy JSON|复制 JSON/);
         expect(vi.mocked(trackEvent).mock.calls.filter(([e]) => e === 'review_viewed')).toHaveLength(0);
     });
+    for (const lang of ['en', 'zh']) it(`discloses scoreboard-only 9080127650 and avoids unsupported requests (${lang})`, async () => {
+        const r = JSON.parse(readFileSync('src/fixtures/review9080127650.scoreboard.json', 'utf8')) as Review;
+        fetcher.mockResolvedValue(response(events(r).replace('"review":', '"timings":{"total_display":"0.0"},"review":')).response);
+        page(`/m/9080127650?hero=60&lang=${lang}`);
+        await screen.findByText(lang === 'en' ? 'Scoreboard summary only — detailed review unavailable' : '仅终局记分板摘要 — 详细复盘不可用');
+        expect(screen.queryByText(/Analyzed in|分析耗时|Reading timeline|Building 3 conclusions/)).toBeNull();
+        expect(screen.getByText(lang === 'en' ? /OpenDota has not parsed/ : /OpenDota 尚未解析/)).toBeTruthy();
+        expect(screen.getByText(lang === 'en' ? /Official .dem ingest is not enabled/ : /未启用官方 .dem/)).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: /查看死亡记录/ }));
+        await screen.findByText(lang === 'en' ? /The available evidence cannot answer/ : /现有证据无法回答/);
+        expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+    });
     it('renders the server-formatted elapsed time without computing a screen number', async () => {
         fetcher.mockResolvedValue(response(frame('done', { state: 'parsed', review: engine(), timings: { total_ms: 1549, total_display: '1.5' } })).response);
         page();
@@ -252,7 +264,7 @@ describe('SSE v1 conversation', () => {
     it('unanswerable followup shows human refusal without raw gap codes', async () => {
         page();
         await ready();
-        fireEvent.click(screen.getByRole('button', { name: 'Death locations' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Death locations · Missing evidence' }));
         await screen.findByTestId('refusal-bubble');
         expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
         expect(screen.queryByText('death_locations: opendota_deaths_log_has_no_coordinates')).toBeNull();
@@ -294,7 +306,7 @@ describe('SSE v1 conversation', () => {
         expect(screen.queryByText(/doom_bringer/)).toBeNull();
         // gold.low stays in the details chips for turning_point (with metric label)
         expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && (el.textContent ?? '').includes('Gold low') && (el.textContent ?? '').includes(r.facts['gold.low'].display.en))).toBeTruthy();
-        fireEvent.click(screen.getByRole('button', { name: 'Gold fed' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Gold fed · Missing evidence' }));
         await screen.findByTestId('refusal-bubble');
         expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
         expect(screen.queryByText('gold_fed: missing_or_incomplete_deaths_log')).toBeNull();

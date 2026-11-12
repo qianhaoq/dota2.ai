@@ -170,3 +170,12 @@ describe('ParseNotice — refresh after a parse request', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ParseNotice — empty upstream disclosure', () => {
+  it('provides a reason and distinguishes OpenDota parsing from official ingest', () => {
+    renderNotice({ parse: { ...unparsed, message: '' } });
+    expect(screen.getByText(/OpenDota has not parsed/)).toBeTruthy();
+    expect(screen.getByText(/Official .dem ingest is not enabled/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Request parse' })).toBeTruthy();
+  });
+});
