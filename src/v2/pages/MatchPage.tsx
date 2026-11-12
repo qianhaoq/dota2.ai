@@ -153,13 +153,18 @@ export default function MatchPage() {
         }
         setInputError(false);
         // Mirror approved free-question routing; unsupported topics are tied to registered gaps.
-        const unsupported = /\b(vision|wards?|position|coordinates|build|items?|baseline|bracket)\b|视野|站位|坐标|位置|出装|同段位/i.test(question);
-        const inferred = !unsupported ? review.followups.find(f => f.id === (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question) ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question) ? 'laning_0_10' : '')) : undefined;
+        const unsupported = /\b(vision|wards?|position|coordinates|baseline|bracket)\b|视野|站位|坐标|位置|同段位/i.test(question);
+        const itemQuestion = /\b(build|items?|bkb|blink|black[ _]king[ _]bar|blade[ _]mail|force(?:[ _]staff)?|lotus(?:[ _]orb)?|linken'?s?|sphere|sheep(?:stick)?|hex|nullifier)\b|出装|装备|跳刀|黑皇杖|刃甲|原力|莲花|林肯|羊刀|否决/i.test(question);
+        const itemTopic = itemQuestion
+            ? (review.followups.some(f => f.id === 'item_timings' && f.answerable) ? 'item_timings' : 'build_vs_lineup')
+            : null;
+        const routedTopic = unsupported ? null : itemTopic ?? (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question) ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question) ? 'laning_0_10' : null);
+        const inferred = review.followups.find(f => f.id === routedTopic);
         const answerable = followup?.answerable ?? inferred?.answerable ?? false;
         trackEvent('followup_clicked', { followup_id: followup?.id ?? 'free', answerable });
         if (followup)
             setAsked(prev => [...prev, followup.id]);
-        const topic = followup?.gap ?? (/build|items?|出装/i.test(question) ? 'build_vs_lineup' : /baseline|bracket|同段位/i.test(question) ? 'laning_baseline' : /position|coordinates|位置|坐标/i.test(question) ? 'death_locations' : undefined);
+        const topic = followup?.gap ?? (itemQuestion ? 'build_vs_lineup' : /baseline|bracket|同段位/i.test(question) ? 'laning_baseline' : /position|coordinates|位置|坐标/i.test(question) ? 'death_locations' : undefined);
         const gaps = answerable ? [] : review.data_gaps.filter(g => !topic || g.topic === topic);
         const turn: Turn = { id: ++turnId.current, question, text: answerable ? '' : t('followupMissing'), status: answerable ? 'streaming' : 'done', gaps, factIds: (followup ?? inferred)?.fact_ids ?? [], followup };
         setTurns(prev => [...prev, turn]);

@@ -15,10 +15,10 @@ export function ToolTrace({ steps, done, timings, review }: {
     const { t } = useI18n();
     const keys = ['fetch_match', 'parse_check', 'facts', 'insights', 'phrasing'] as const;
     const labels = ['traceFetch', 'traceParseCheck', 'traceFacts', 'traceResults', 'tracePhrasing'] as const;
-    const limited = review && (review.state !== 'parsed' || !review.match.parsed || review.insights.every(i => i.data_gap === 'parsed_evidence'));
+    const limited = review && (review.state !== 'parsed' || !review.match.parsed || (review.insights.length > 0 && review.insights.every(i => i.data_gap === 'parsed_evidence')));
     return <details open={!done} className="rounded-d2-control bg-d2-surface-2 border border-d2-line-2 shadow-d2-1 text-d2-13 text-d2-ink-3">
       <summary className="list-none flex items-center gap-[10px] min-h-[44px] px-[14px] cursor-pointer">
-        {done && <Check size={18} className="text-d2-gold-2" aria-hidden="true"/>}<span>{done ? (limited ? t('traceScoreboard') : timings?.total_display != null && Number(timings.total_display) > 0 ? t('traceElapsed').replace('{seconds}', String(timings.total_display)) : t('traceAnalyzed')) : t('traceFetch')}</span><ChevronDown size={16} className="ml-auto" aria-hidden="true"/>
+        {done && <Check size={18} className="text-d2-gold-2" aria-hidden="true"/>}<span>{done ? (limited ? t('traceScoreboard') : review?.player && timings?.total_display != null && Number(timings.total_display) > 0 ? t('traceElapsed').replace('{seconds}', String(timings.total_display)) : t('traceAnalyzed')) : t('traceFetch')}</span><ChevronDown size={16} className="ml-auto" aria-hidden="true"/>
       </summary><ol className="list-none m-0 px-[16px] pb-[12px]">{keys.map((key, i) => {
         const status = steps[key]?.status ?? 'todo';
         return <li key={key} data-status={status} className={`flex items-center gap-[10px] min-h-[32px] text-d2-15 ${status === 'todo' ? 'text-d2-ink-4' : 'text-d2-ink-2 font-medium'}`}><span className="w-[18px] flex justify-center">{status === 'done' ? <Check size={18} className="text-d2-gold-2"/> : status === 'active' ? <span className="w-[14px] h-[14px] rounded-full border-2 border-d2-surface-3 border-t-d2-gold-2 motion-safe:animate-spin"/> : <span className="w-[6px] h-[6px] rounded-full bg-d2-ink-4"/>}</span>{t(labels[i])}</li>;

@@ -220,6 +220,11 @@ describe('SSE v1 conversation', () => {
         expect(screen.getByText(lang === 'en' ? /Official .dem ingest is not enabled/ : /未启用官方 .dem/)).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: /查看死亡记录/ }));
         await screen.findByText(lang === 'en' ? /The available evidence cannot answer/ : /现有证据无法回答/);
+        const input = screen.getByPlaceholderText(lang === 'en' ? 'Ask a follow-up about this match' : '继续追问这场比赛');
+        for (const question of ['which build?', 'when should I have bought bkb?', 'where were the wards?']) {
+            fireEvent.change(input, { target: { value: question } });
+            fireEvent.submit(input.closest('form')!);
+        }
         expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
     });
     it('renders the server-formatted elapsed time without computing a screen number', async () => {
@@ -270,17 +275,30 @@ describe('SSE v1 conversation', () => {
         expect(screen.queryByText('death_locations: opendota_deaths_log_has_no_coordinates')).toBeNull();
         expect(screen.queryByText(/opendota_deaths_log_has_no_coordinates/)).toBeNull();
         expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'death_locations', answerable: false });
+        expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
     });
-    it('refused free build question shows human refusal without raw gap codes', async () => {
-        page();
-        await ready();
-        const input = screen.getByPlaceholderText('Ask a follow-up about this match');
-        fireEvent.change(input, { target: { value: 'which build?' } });
-        fireEvent.submit(input.closest('form')!);
-        await screen.findByTestId('refusal-bubble');
-        expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
-        expect(screen.queryByText('build_vs_lineup: no_compliant_patch_matched_kb')).toBeNull();
-        expect(screen.queryByText(/no_compliant_patch_matched_kb/)).toBeNull();
+    for (const question of ['which build?', 'when should I have bought bkb?'])
+        it(`routes parsed item question to an evidence stream: ${question}`, async () => {
+            page();
+            await ready();
+            expect(engine().followups.find(f => f.id === 'item_timings')?.answerable).toBe(true);
+            const input = screen.getByPlaceholderText('Ask a follow-up about this match');
+            fireEvent.change(input, { target: { value: question } });
+            fireEvent.submit(input.closest('form')!);
+            await screen.findByText('Evidence answer');
+            const posts = fetcher.mock.calls.filter(([url, init]) => String(url).includes('/ask') && init?.method === 'POST');
+            expect(posts).toHaveLength(1);
+            expect(screen.queryByTestId('refusal-bubble')).toBeNull();
+            expect(screen.queryByText(/The available evidence cannot answer/)).toBeNull();
+            expect(screen.queryByText(/no_compliant_patch_matched_kb/)).toBeNull();
+        });
+    it('parsed needs_hero shows the hero grid with neutral match status', async () => {
+        page('/m/9035042364?lang=en');
+        await screen.findByText('Which one was you?');
+        expect(screen.getByRole('button', { name: /Pudge/ })).toBeTruthy();
+        await screen.findByText('Analyzed match · OpenDota');
+        expect(screen.queryByText('Scoreboard summary only — detailed review unavailable')).toBeNull();
+        expect(screen.queryByText(/Analyzed in/)).toBeNull();
     });
     it('service timeout keeps the partial answer and offers Retry', async () => {
         page();
@@ -311,6 +329,7 @@ describe('SSE v1 conversation', () => {
         expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
         expect(screen.queryByText('gold_fed: missing_or_incomplete_deaths_log')).toBeNull();
         expect(screen.queryByText(/missing_or_incomplete_deaths_log/)).toBeNull();
+        expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
     });
     it('Stop preserves partial answer and releases the composer', async () => {
         const gated = response('', true);
