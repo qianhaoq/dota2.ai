@@ -27,13 +27,13 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-const renderNotice = (opts?: { parse?: ReviewParseStatus; onRefresh?: () => void }) =>
+const renderNotice = (opts?: { parse?: ReviewParseStatus | null; onRefresh?: () => void }) =>
   render(
     <MemoryRouter>
       <I18nProvider>
         <ParseNotice
           matchId="9035042364"
-          parse={opts?.parse ?? unparsed}
+          parse={opts && 'parse' in opts ? opts.parse ?? null : unparsed}
           onRefresh={opts?.onRefresh}
         />
       </I18nProvider>
@@ -178,17 +178,38 @@ describe('first-party replay action', () => {
   it('submits only on click, keeps the local job distinct, refreshes on success', async () => {
     const gate = deferred<ReviewParseStatus>();
     vi.mocked(requestReplayIngest).mockReturnValue(gate.promise);
-    const onRefresh = vi.fn(); renderNotice({onRefresh});
+    const onRefresh = vi.fn(); renderNotice({onRefresh, parse: {...unparsed, status: 'replay_cdn_error'}});
     expect(requestReplayIngest).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button',{name:'Download and parse official .dem'}));
     expect(screen.getByRole('button',{name:'Downloading / parsing .dem…'}).hasAttribute('disabled')).toBe(true);
     expect(requestMatchParse).not.toHaveBeenCalled();
     await act(async()=>gate.resolve({status:'replay_parsed',jobId:null,retryAfterSec:null,message:'Verified replay facts'}));
     expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', {name: 'Download and parse official .dem'})).toBeNull();
+    expect(screen.queryByText(/not enabled/)).toBeNull();
   });
   it('shows a CDN failure without claiming that OpenDota is parsing', () => {
     renderNotice({parse:{status:'replay_cdn_error',jobId:null,retryAfterSec:null,message:'Official replay CDN failed; no replay timeline was verified.'}});
     expect(screen.getByText(/no replay timeline was verified/)).toBeTruthy();
     expect(screen.queryByText(/OpenDota is still parsing/)).toBeNull();
+    expect(screen.queryByText(/Official .dem ingest is not enabled/)).toBeNull();
+    expect(screen.getByRole('button', {name: 'Download and parse official .dem'})).toBeTruthy();
+  });
+});
+
+describe('ParseNotice — empty upstream disclosure', () => {
+  afterEach(() => cleanup());
+  it.each([null, { ...unparsed, status: 'replay_ingest_disabled' as const }])('keeps missing or disabled ingest on the OpenDota path (%s)', parse => {
+    renderNotice({ parse });
+    expect(screen.getByText(/Official .dem ingest is not enabled/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Request parse' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Download and parse official .dem' })).toBeNull();
+  });
+  it('provides a reason and distinguishes OpenDota parsing from official ingest', () => {
+    renderNotice({ parse: { ...unparsed, message: '' } });
+    expect(screen.getByText(/OpenDota has not parsed/)).toBeTruthy();
+    expect(screen.getByText(/Official .dem ingest is not enabled/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Request parse' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Download and parse official .dem' })).toBeNull();
   });
 });

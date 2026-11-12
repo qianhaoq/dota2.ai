@@ -215,3 +215,23 @@ test.describe('evidence panel (desktop-1280)', () => {
     await expect(page).toHaveScreenshot('d-panel-claim1-zh.png', { mask: masks(page) });
   });
 });
+
+test('unparsed scoreboard discloses missing replay evidence and never sends an unsupported ask', async ({ page }) => {
+  const scoreboard = JSON.parse(readFileSync('src/fixtures/review9080127650.scoreboard.json', 'utf8'));
+  let asks = 0;
+  await page.route('**/api/v1/review/9080127650**', route => {
+    if (route.request().method() === 'POST') asks++;
+    const event = (name: string, data: unknown) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+    return route.fulfill({ contentType: 'text/event-stream', body:
+      event('card', { kind: 'followups', payload: scoreboard.followups }) +
+      event('done', { state: 'unparsed', review: scoreboard, timings: { total_display: '0.0' } }) });
+  });
+  await page.goto('/m/9080127650?hero=night_stalker&lang=en');
+  await expect(page.getByText('Scoreboard summary only — detailed review unavailable')).toBeVisible();
+  await expect(page.getByText(/OpenDota has not parsed/)).toBeVisible();
+  await expect(page.getByText(/Official .dem ingest is not enabled/)).toBeVisible();
+  await expect(page.getByText(/Analyzed in|Reading timeline|Building 3 conclusions/)).toHaveCount(0);
+  await page.getByRole('button', { name: /查看死亡记录/ }).click();
+  await expect(page.getByText(/The available evidence cannot answer/)).toBeVisible();
+  expect(asks).toBe(0);
+});

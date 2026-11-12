@@ -67,7 +67,9 @@ const ParseNotice: React.FC<{
     onRefreshRef.current = onRefresh;
   }, [onRefresh]);
 
-  const shown = status ?? parse;
+  const shown = status ?? parse ?? { status: 'unparsed' as const, jobId: null, retryAfterSec: null, message: '' };
+  // Generic OpenDota states do not establish first-party ingest availability.
+  const ingestAvailable = shown.status.startsWith('replay_') && shown.status !== 'replay_ingest_disabled';
   const visible = shown != null && shown.status !== 'parsed' && shown.status !== 'replay_parsed';
   const waiting = visible && shown != null && WAITING_STATUSES.has(shown.status);
   const canRefresh = onRefresh != null;
@@ -130,10 +132,11 @@ const ParseNotice: React.FC<{
       </span>
       <div className="min-w-0">
         <p className="m-0 text-d2-13 font-semibold text-d2-ink-3">{t('parseTitle')}</p>
-        <p className="m-[2px_0_0]">{shown!.message}</p>
+        <p className="m-[2px_0_0]">{shown!.message?.trim() || t('parseUnavailable')}</p>
+        <p className="mt-[6px] mb-0 text-d2-13">{t(ingestAvailable ? 'parseIngestScope' : 'parseScope')}</p>
         {/* While a countdown runs, the parse request is already in flight
             server-side — "Check again" is the action, not another request. */}
-        {shouldOfferParseRequest(shown) && countdown == null && (
+        {(shouldOfferParseRequest(shown) || shown.status === 'replay_ingest_disabled') && countdown == null && (
           <button
             type="button"
             onClick={() => void request()}
@@ -143,7 +146,7 @@ const ParseNotice: React.FC<{
             {pending && requestKind === 'opendota' ? t('parseRequesting') : t('parseRequest')}
           </button>
         )}
-        {!waiting && shown?.status !== 'replay_ingest_disabled' && (
+        {!waiting && ingestAvailable && (
           <button type="button" disabled={pending} onClick={() => void requestReplay()} className="mt-[8px] px-[14px] min-h-[36px] border rounded-d2-control disabled:opacity-50">
             {pending && requestKind === 'replay' ? (lang === 'zh' ? '正在下载并解析 .dem…' : 'Downloading / parsing .dem…') : (lang === 'zh' ? '下载并解析官方 .dem' : 'Download and parse official .dem')}
           </button>
