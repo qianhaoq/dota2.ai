@@ -87,11 +87,17 @@ describe('RefusalBubble', () => {
       { topic: 'build_vs_lineup', reason: 'no_compliant_patch_matched_kb' },
     ]}/>);
     expect(screen.getByTestId('refusal-bubble')).toBeTruthy();
-    expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
+    expect(screen.getByText('The OpenDota death log has no coordinates, so position and vision cannot be judged.')).toBeTruthy();
+    expect(screen.getByText('Without a patch-matched build knowledge base, build quality and when you should buy cannot be judged.')).toBeTruthy();
     expect(screen.queryByText(/death_locations/)).toBeNull();
     expect(screen.queryByText(/opendota_deaths_log_has_no_coordinates/)).toBeNull();
     expect(screen.queryByText(/build_vs_lineup/)).toBeNull();
     expect(screen.queryByText(/no_compliant_patch_matched_kb/)).toBeNull();
+  });
+  it.each(['en', 'zh'])('uses an honest fallback for unknown gaps (%s)', lang => {
+    wrap(<RefusalBubble gaps={[{ topic: 'unknown_topic', reason: 'internal_reason' }]}/>, lang);
+    expect(screen.getByText(lang === 'en' ? "The data needed for this question is not in this match's record." : '该问题需要的数据不在本局记录中。')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/unknown_topic|internal_reason|details below|request a parse/);
   });
   it('renders nothing when gaps are empty', () => {
     wrap(<RefusalBubble gaps={[]}/>);

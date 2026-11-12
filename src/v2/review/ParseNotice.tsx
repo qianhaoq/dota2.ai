@@ -114,7 +114,8 @@ const ParseNotice: React.FC<{
       </span>
       <div className="min-w-0">
         <p className="m-0 text-d2-13 font-semibold text-d2-ink-3">{t('parseTitle')}</p>
-        <p className="m-[2px_0_0]">{shown!.message}</p>
+        <p className="m-[2px_0_0]">{shown!.message?.trim() || t('parseUnavailable')}</p>
+        <p className="mt-[6px] mb-0 text-d2-13">{t('parseScope')}</p>
         {/* While a countdown runs, the parse request is already in flight
             server-side — "Check again" is the action, not another request. */}
         {shouldOfferParseRequest(shown) && countdown == null && (
