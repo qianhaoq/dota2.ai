@@ -28,7 +28,11 @@ Per-instance submission budgets reuse the parse-request budget/tracker pattern:
 1-minute failure/abort cooldown. These are **not fleet-wide quotas**. The API
 uses the existing CSRF guard and trusted-proxy client identity. Missing URL,
 404/410/expired response, network/5xx, invalid URL, disabled ingest and extractor
-failure have separate bilingual statuses. GET review exposes the stored status;
+failure have separate bilingual statuses. GET/stream review parse payloads expose `ingest_available`, derived from the
+current enabled flag and configured extractor, independently of stored status.
+The official action and availability copy require this boolean to be true;
+missing signals fail closed. Verified completed artifacts remain usable when
+ingest is later disabled. GET review also exposes the stored status;
 no separate background worker or polling submit endpoint is introduced.
 
 ## Evidence contract

@@ -116,13 +116,17 @@ it('persists verified facts after download, decompression and parsing; GET overl
   const fetchImpl = vi.fn(async()=>new Response(demo));
   const ingest = createReplayIngest({env:{REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake',REPLAY_HOME:dir},fetchImpl,extract});
   const match = {...raw,od_data:{has_parsed:false},players:[{hero_id:60,player_slot:132},{hero_id:2,player_slot:0}]};
-  expect(await ingest.overlay(match)).toEqual(match); expect(fetchImpl).not.toHaveBeenCalled();
+  expect(await ingest.overlay(match)).toEqual({...match,replay_ingest_available:true}); expect(fetchImpl).not.toHaveBeenCalled();
   expect((await ingest.submit(match,'client')).status).toBe('replay_parsed');
   const artifact = await ingest.read(42);
   expect(artifact).toMatchObject({download_bytes:demo.length,download_sha256:sha256,demo_sha256:sha256,status:'replay_parsed'});
   expect((await ingest.overlay(match)).players[0].deaths_log[0]).toMatchObject({time:72.5,x:100,y:-200});
   expect((await ingest.submit(match,'client')).status).toBe('replay_parsed');
   expect(fetchImpl).toHaveBeenCalledTimes(1); expect(extract).toHaveBeenCalledTimes(2);
+  const disabled = createReplayIngest({env:{REPLAY_HOME:dir},fetchImpl});
+  const retained = await disabled.overlay(match);
+  expect(retained.replay_ingest_available).toBe(false);
+  expect(retained.players[0].deaths_log[0]).toMatchObject({time:72.5,x:100,y:-200});
 });
 
 it('no URL and a network outage remain distinct unavailable states', async () => {
@@ -172,4 +176,20 @@ it('pairs official coach metadata.jsonl with replay adaptation (last player row 
   expect(a.players[0].gold_t).toBeUndefined();
   await writeFile(join(dir,'metadata.jsonl'),' '.repeat(8000001));
   await expect(readReplaySupplement(dir,[])).rejects.toThrow('metadata_bytes_limit');
+});
+
+
+it('reports current capability through review parse status independently of stored jobs', async () => {
+  const { createReadOnlyParseStatusResolver } = await import('../../lib/matchReview/parseRequestEndpoint.js');
+  const resolve = createReadOnlyParseStatusResolver({tracker:createParseRequestTracker()});
+  const dir = await home();
+  const fetchImpl = vi.fn();
+  for (const enabled of [false, true]) {
+    const ingest = createReplayIngest({env:{REPLAY_HOME:dir,REPLAY_INGEST_ENABLED:enabled?'1':'0',DOTA_EXTRACT_BIN:'/fake'},fetchImpl});
+    expect(resolve(42,await ingest.overlay(raw),'en')).toMatchObject({status:'unparsed',ingest_available:enabled});
+  }
+  await writeFile(join(dir,'42.json'),JSON.stringify({match_id:42,status:'replay_cdn_error'}));
+  const disabled = createReplayIngest({env:{REPLAY_HOME:dir},fetchImpl});
+  expect(resolve(42,await disabled.overlay(raw),'en')).toMatchObject({status:'replay_cdn_error',ingest_available:false});
+  expect(fetchImpl).not.toHaveBeenCalled();
 });

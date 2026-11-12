@@ -23,6 +23,7 @@ export function parseReviewParseStatus(raw: unknown): ReviewParseStatus | null {
   if (typeof obj.status !== 'string' || !REVIEW_PARSE_STATUSES.has(obj.status)) return null;
   return {
     status: obj.status as ReviewParseStatus['status'],
+    ...(typeof obj.ingest_available === 'boolean' ? { ingest_available: obj.ingest_available } : {}),
     jobId: typeof obj.jobId === 'number' && Number.isFinite(obj.jobId) ? obj.jobId : null,
     retryAfterSec:
       typeof obj.retryAfterSec === 'number' && Number.isFinite(obj.retryAfterSec)

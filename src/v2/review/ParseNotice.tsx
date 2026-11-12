@@ -68,8 +68,8 @@ const ParseNotice: React.FC<{
   }, [onRefresh]);
 
   const shown = status ?? parse ?? { status: 'unparsed' as const, jobId: null, retryAfterSec: null, message: '' };
-  // Generic OpenDota states do not establish first-party ingest availability.
-  const ingestAvailable = shown.status.startsWith('replay_') && shown.status !== 'replay_ingest_disabled';
+  // OpenDota request results may omit capability; retain the review's live signal.
+  const ingestAvailable = (status?.ingest_available ?? parse?.ingest_available) === true;
   const visible = shown != null && shown.status !== 'parsed' && shown.status !== 'replay_parsed';
   const waiting = visible && shown != null && WAITING_STATUSES.has(shown.status);
   const canRefresh = onRefresh != null;

@@ -19,6 +19,11 @@ describe('parseReviewParseStatus', () => {
     },
   );
 
+  it.each([true, false])('preserves live ingest availability %s', ingest_available => {
+    expect(parseReviewParseStatus({status:'unparsed',ingest_available})?.ingest_available).toBe(ingest_available);
+    expect(parseReviewParseStatus({status:'replay_cdn_error',ingest_available:'true'})?.ingest_available).toBeUndefined();
+  });
+
   it('returns null for missing or non-object payloads', () => {
     expect(parseReviewParseStatus(undefined)).toBeNull();
     expect(parseReviewParseStatus(null)).toBeNull();
