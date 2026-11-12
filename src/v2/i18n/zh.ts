@@ -12,7 +12,7 @@ export const zh: Dict = {
   traceScoreboard: '仅终局记分板摘要 — 详细复盘不可用',
   parseUnavailable: 'OpenDota 尚未解析本场比赛，缺少时间轴、死亡和购买证据。可请求 OpenDota 解析后再次检查；解析可能失败，录像也可能已过期。',
   parseScope: '此操作仅请求 OpenDota 解析。此环境未启用官方 .dem 导入，也未验证官方录像。若仍无法解析，请在 Dota 2 内回看录像，记录想讨论片段的时间点。',
-  followupMissing: '现有证据无法回答此问题，请查看下方缺失数据。时间轴问题可请求 OpenDota 解析后再次检查，或在 Dota 2 内回看并记录时间点；其他数据缺口可能仍然存在。',
+  followupMissing: '现有证据无法回答此问题。',
 
   share: '分享', chartGold: '金钱', chartXp: '经验',
   'traceFacts': '读取事实',

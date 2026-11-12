@@ -220,12 +220,40 @@ describe('SSE v1 conversation', () => {
         expect(screen.getByText(lang === 'en' ? /Official .dem ingest is not enabled/ : /未启用官方 .dem/)).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: /查看死亡记录/ }));
         await screen.findByText(lang === 'en' ? /The available evidence cannot answer/ : /现有证据无法回答/);
+        expect(screen.getByText(lang === 'en' ? 'The death timeline is incomplete, so a full death review is unavailable.' : '死亡时间线不完整，无法逐条复查全部死亡。')).toBeTruthy();
         const input = screen.getByPlaceholderText(lang === 'en' ? 'Ask a follow-up about this match' : '继续追问这场比赛');
         for (const question of ['which build?', 'when should I have bought bkb?', 'where were the wards?']) {
             fireEvent.change(input, { target: { value: question } });
             fireEvent.submit(input.closest('form')!);
         }
         expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+    });
+    for (const timing of [undefined, '0.0', '1.5']) it(`keeps parsed insufficient evidence distinct from scoreboard-only (${timing})`, async () => {
+        const r = engine();
+        r.state = 'insufficient';
+        expect(r.match.parsed).toBe(true);
+        expect(r.insights.length).toBeGreaterThan(0);
+        expect(Object.keys(r.facts).length).toBeGreaterThan(0);
+        fetcher.mockResolvedValue(response(frame('done', { state: 'insufficient', review: r, timings: { total_display: timing } })).response);
+        page();
+        await screen.findByText(timing === '1.5' ? 'Analyzed in 1.5s' : 'Analyzed match · OpenDota');
+        expect(screen.queryByText('Scoreboard summary only — detailed review unavailable')).toBeNull();
+        expect(screen.queryByText('Analyzed in 0.0s')).toBeNull();
+        expect(screen.getByText('Insufficient data')).toBeTruthy();
+    });
+    for (const lang of ['en', 'zh']) it(`explains parsed topic gaps locally (${lang})`, async () => {
+        page(`/m/9035042364?hero=pudge&lang=${lang}`);
+        const input = await screen.findByPlaceholderText(lang === 'en' ? 'Ask a follow-up about this match' : '继续追问这场比赛');
+        for (const [question, explanation] of [
+            ['death coordinates?', lang === 'en' ? 'The OpenDota death log has no coordinates, so position and vision cannot be judged.' : 'OpenDota 死亡日志没有坐标，无法判断站位与视野。'],
+            ['same bracket baseline?', lang === 'en' ? 'No same-bracket laning baseline is available, so these numbers cannot be graded against peers.' : '缺少同段位对线基准，无法用这些数据评价同段位表现。'],
+        ]) {
+            fireEvent.change(input, { target: { value: question } });
+            fireEvent.submit(input.closest('form')!);
+            await screen.findByText(explanation);
+        }
+        expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+        expect(document.body.textContent).not.toMatch(/opendota_deaths_log_has_no_coordinates|details below|request an OpenDota parse/);
     });
     it('renders the server-formatted elapsed time without computing a screen number', async () => {
         fetcher.mockResolvedValue(response(frame('done', { state: 'parsed', review: engine(), timings: { total_ms: 1549, total_display: '1.5' } })).response);
@@ -271,7 +299,7 @@ describe('SSE v1 conversation', () => {
         await ready();
         fireEvent.click(screen.getByRole('button', { name: 'Death locations · Missing evidence' }));
         await screen.findByTestId('refusal-bubble');
-        expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
+        expect(screen.getByText('The OpenDota death log has no coordinates, so position and vision cannot be judged.')).toBeTruthy();
         expect(screen.queryByText('death_locations: opendota_deaths_log_has_no_coordinates')).toBeNull();
         expect(screen.queryByText(/opendota_deaths_log_has_no_coordinates/)).toBeNull();
         expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'death_locations', answerable: false });
@@ -326,7 +354,7 @@ describe('SSE v1 conversation', () => {
         expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && (el.textContent ?? '').includes('Gold low') && (el.textContent ?? '').includes(r.facts['gold.low'].display.en))).toBeTruthy();
         fireEvent.click(screen.getByRole('button', { name: 'Gold fed · Missing evidence' }));
         await screen.findByTestId('refusal-bubble');
-        expect(screen.getByText('The available data cannot answer this.')).toBeTruthy();
+        expect(screen.getByText('Kill bounty records are missing, so gold fed cannot be calculated.')).toBeTruthy();
         expect(screen.queryByText('gold_fed: missing_or_incomplete_deaths_log')).toBeNull();
         expect(screen.queryByText(/missing_or_incomplete_deaths_log/)).toBeNull();
         expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);

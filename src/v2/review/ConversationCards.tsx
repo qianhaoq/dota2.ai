@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { gapTemplates, refusal } from '../../../packages/review-engine/src/phrasing/templates.js';
 import { Check, ChevronDown, Share2, ArrowDown, Info } from 'lucide-react';
 import { useI18n } from '../i18n/I18nProvider';
 import { heroDisplayName } from './heroDisplayName';
@@ -15,7 +16,7 @@ export function ToolTrace({ steps, done, timings, review }: {
     const { t } = useI18n();
     const keys = ['fetch_match', 'parse_check', 'facts', 'insights', 'phrasing'] as const;
     const labels = ['traceFetch', 'traceParseCheck', 'traceFacts', 'traceResults', 'tracePhrasing'] as const;
-    const limited = review && (review.state !== 'parsed' || !review.match.parsed || (review.insights.length > 0 && review.insights.every(i => i.data_gap === 'parsed_evidence')));
+    const limited = review && (review.state === 'unparsed' || !review.match.parsed || (review.insights.length > 0 && review.insights.every(i => i.data_gap === 'parsed_evidence')));
     return <details open={!done} className="rounded-d2-control bg-d2-surface-2 border border-d2-line-2 shadow-d2-1 text-d2-13 text-d2-ink-3">
       <summary className="list-none flex items-center gap-[10px] min-h-[44px] px-[14px] cursor-pointer">
         {done && <Check size={18} className="text-d2-gold-2" aria-hidden="true"/>}<span>{done ? (limited ? t('traceScoreboard') : review?.player && timings?.total_display != null && Number(timings.total_display) > 0 ? t('traceElapsed').replace('{seconds}', String(timings.total_display)) : t('traceAnalyzed')) : t('traceFetch')}</span><ChevronDown size={16} className="ml-auto" aria-hidden="true"/>
@@ -71,10 +72,10 @@ export function FollowupChips({ followups, asked, disabled, ask }: {
 export function RefusalBubble({ gaps }: {
     gaps: Review['data_gaps'];
 }) {
-    const { t } = useI18n();
-    // gaps gate the bubble only — never render raw topic/reason codes to users.
+    const { lang } = useI18n();
+    // Use audited engine copy, never raw topic/reason codes.
     if (!gaps.length) return null;
-    return <aside className="bg-d2-surface-3 px-[14px] py-[12px] rounded-[14px] border-l-[3px] border-d2-gold text-d2-15 text-d2-ink-2" data-testid="refusal-bubble"><p className="flex gap-[10px] m-0"><Info size={18} className="flex-none mt-[3px] text-d2-gold-2"/>{t('refusalData')}</p></aside>;
+    return <aside className="bg-d2-surface-3 px-[14px] py-[12px] rounded-[14px] border-l-[3px] border-d2-gold text-d2-15 text-d2-ink-2" data-testid="refusal-bubble"><p className="flex gap-[10px] m-0"><Info size={18} className="flex-none mt-[3px] text-d2-gold-2"/><span>{[...new Set(gaps.map(g => gapTemplates[g.topic as keyof typeof gapTemplates]?.[lang] ?? refusal(lang)))].map(text => <span className="block" key={text}>{text}</span>)}</span></p></aside>;
 }
 export function Share({ matchId, hero, lang, claim, review }: {
     matchId: string;

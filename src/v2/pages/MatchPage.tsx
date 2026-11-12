@@ -164,8 +164,10 @@ export default function MatchPage() {
         trackEvent('followup_clicked', { followup_id: followup?.id ?? 'free', answerable });
         if (followup)
             setAsked(prev => [...prev, followup.id]);
-        const topic = followup?.gap ?? (itemQuestion ? 'build_vs_lineup' : /baseline|bracket|同段位/i.test(question) ? 'laning_baseline' : /position|coordinates|位置|坐标/i.test(question) ? 'death_locations' : undefined);
-        const gaps = answerable ? [] : review.data_gaps.filter(g => !topic || g.topic === topic);
+        const topic = (followup ?? inferred)?.gap ?? (itemQuestion ? 'build_vs_lineup' : /baseline|bracket|同段位/i.test(question) ? 'laning_baseline' : /position|coordinates|位置|坐标/i.test(question) ? 'death_locations' : undefined);
+        const gaps = answerable ? [] : topic
+            ? [review.data_gaps.find(g => g.topic === topic) ?? { topic, reason: '' }]
+            : [];
         const turn: Turn = { id: ++turnId.current, question, text: answerable ? '' : t('followupMissing'), status: answerable ? 'streaming' : 'done', gaps, factIds: (followup ?? inferred)?.fact_ids ?? [], followup };
         setTurns(prev => [...prev, turn]);
         if (answerable) void start(turn);
