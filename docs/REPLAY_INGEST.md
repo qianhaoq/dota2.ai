@@ -12,8 +12,8 @@ stream requests only read artifacts; they never download or submit a job.
 
 Set **both** `REPLAY_INGEST_ENABLED=1` and `DOTA_EXTRACT_BIN` (fallback
 `COACH_EXTRACT_BIN`) to enable. `REPLAY_HOME` defaults to
-`/tmp/dota2ai-replays`. Without these settings, production keeps its existing
-honest OpenDota summary. No binary is bundled or required for CI.
+`/tmp/dota2ai-replays`. Without these settings or a verified stored artifact,
+production keeps its existing honest OpenDota summary. No binary is bundled or required for CI.
 
 The explicit request is synchronous, aborts when its client disconnects, and has
 a 180-second total timeout. Work directories are removed on success, failure,
@@ -94,8 +94,16 @@ measure parser memory and ephemeral-disk consumption (Cloud Run writable disk
 uses instance memory), provision an explicit storage budget and retention policy,
 allow sufficient HTTP/request timeout, verify official CDN egress from asia-east1,
 and decide fleet-wide concurrency/budgets and artifact persistence. This change
-does not change the Dockerfile, Cloud Run resources, deployment or secrets.
+does not enable ingest or change Cloud Run resources or secrets.
 A Steam login or Web API JSON is not a substitute for a dem.
+
+Production may bake a reviewed compact facts file into the runtime image under
+`REPLAY_HOME`. The Dockerfile narrowly copies `data/replay-facts/9080127650.json`
+and sets `REPLAY_HOME=/app/data/replay-facts`, so GET/overlay can serve this
+verified Night Stalker timeline without ephemeral uploads or a volume. Ingest
+remains off (`REPLAY_INGEST_ENABLED` unset/0), no extractor is bundled, and
+`ingest_available` remains false even when the stored status is `replay_parsed`.
+The image includes no demo, full trace, or raw OpenDota dump.
 
 ## Reproducible local-file integration QA — 9080127650
 

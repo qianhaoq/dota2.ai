@@ -13,6 +13,35 @@ const dirs: string[] = [];
 afterEach(async () => { for (const dir of dirs.splice(0)) await rm(dir,{recursive:true,force:true}); });
 async function home() { const p = await mkdtemp(join(tmpdir(),'ingest-test-')); dirs.push(p); return p; }
 const raw = {match_id:42,replay_url:'https://replay413.dota2.com.cn/570/42_1.dem.bz2',cluster:413,replay_salt:1,players:[]};
+it('reads the baked compact facts with ingest off and discloses unavailable ingest', async () => {
+  const { createReadOnlyParseStatusResolver } = await import('../../lib/matchReview/parseRequestEndpoint.js');
+  const fetchImpl = vi.fn(), extract = vi.fn();
+  const ingest = createReplayIngest({
+    env:{REPLAY_HOME:new URL('../../data/replay-facts/',import.meta.url).pathname},
+    fetchImpl, extract,
+  });
+  const artifact = await ingest.read(9080127650);
+  expect(artifact).toMatchObject({schema:'dota2.ai/replay-facts@1',match_id:9080127650,status:'replay_parsed',trace_version:4});
+  const checkIdentityFields = (value: unknown) => {
+    if (!value || typeof value !== 'object') return;
+    for (const [key, child] of Object.entries(value)) {
+      expect(key).not.toMatch(/account|persona/i);
+      checkIdentityFields(child);
+    }
+  };
+  checkIdentityFields(artifact);
+  const match = {match_id:9080127650,od_data:{has_parsed:false},players:[{hero_id:60,player_slot:132}]};
+  const overlaid = await ingest.overlay(match);
+  expect(overlaid.players[0].deaths_log).toHaveLength(8);
+  expect(overlaid.players[0].deaths_log).toEqual(artifact.players.find((p: {hero_id: number; player_slot: number}) => p.hero_id === 60 && p.player_slot === 132).deaths_log);
+  expect(overlaid.players[0].net_worth_t).toBeUndefined();
+  expect(overlaid.replay_ingest_available).toBe(false);
+  const resolve = createReadOnlyParseStatusResolver({tracker:createParseRequestTracker()});
+  expect(resolve(match.match_id,overlaid,'en')).toMatchObject({status:'replay_parsed',ingest_available:false});
+  expect((await ingest.submit(match,'client')).status).toBe('replay_ingest_disabled');
+  expect(fetchImpl).not.toHaveBeenCalled();
+  expect(extract).not.toHaveBeenCalled();
+});
 describe('official replay acquisition boundary', () => {
   it.each(['http://replay1.valve.net/a','https://replay413.dota2.com.cn/a','https://replay2.steamcontent.com/a'])('allows %s', url => expect(isReplayUrl(url)).toBe(true));
   it.each(['https://evil.test/a','https://replay1.valve.net.evil.test/a','file:///tmp/x','https://u:p@replay1.valve.net/a','https://replay1.valve.net:8080/a','https://replay1.valve.net:443/a','http://replay1.valve.net:80/a','http://198.18.0.1/a','https://replay1.valve.net@evil.test/a'])('rejects %s', url => expect(isReplayUrl(url)).toBe(false));
