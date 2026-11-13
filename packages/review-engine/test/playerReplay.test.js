@@ -74,3 +74,12 @@ it('retains compact enrichment through the official-file event reader and adapte
   expect(p.phase_boots_use_count).toBe(1);
  } finally {await rm(dir,{recursive:true,force:true});}
 });
+
+it('builds generic spell, item and purchase candidates and a usable zero-death fallback',async()=>{
+ const {buildMoments}=await import('../src/insights/moments.js');
+ const make=()=>({facts:{'death.one':{id:'death.one',t:100}},deaths:[{t:100,inflictor:'lina_laguna_blade',fact_id:'death.one'}]});
+ const r=make();const moments=buildMoments(r,{ability_cast_log:[{t:96,key:'lion_impale'}],item_use_log:[{t:50,key:'magic_wand',ended_at:52}],purchase_log:[{time:120,key:'blink'}]},'en');
+ expect(moments.some(i=>i.kind==='ability_into_death')).toBe(true);expect(moments.some(i=>i.kind==='item_window')).toBe(true);expect(moments.some(i=>i.kind==='purchase_context')).toBe(true);
+ for(const i of moments){expect(i.fact_ids.every(id=>r.facts[id])).toBe(true);expect(i.time).toBeTruthy();expect(i.prompt).toBeTruthy();}
+ const zero=buildMoments({facts:{'match.id':{id:'match.id'}},deaths:[]},{},'en');expect(zero).toHaveLength(1);expect(zero[0].fact_ids).toEqual(['match.id']);
+});

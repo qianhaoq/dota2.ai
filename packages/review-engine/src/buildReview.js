@@ -9,7 +9,7 @@ import { buildPresetFollowups } from './phrasing/followups.js';
 import { isMatchParsed } from './matchParse.js';
 import { attachSiteKnowledge } from './siteKnowledge.js';
 
-export const ENGINE_VERSION = '2.2.0-player-review';
+export const ENGINE_VERSION = '2.3.0-replay-jobs';
 
 const insightLabels = { turning_point: '转折点', fix_this: '本场要改', next_game: '下局重点' };
 
@@ -92,11 +92,11 @@ export function buildReview(raw, opts) {
     purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: Object.hasOwn(KEY_ITEMS, p.key) })) : [],
     insights, data_gaps: gaps.filter((g,i)=>gaps.findIndex(other=>other.topic===g.topic)===i),
     followups: (replay
-      ? insights.filter(i => i.prompt).map(i => ({id:`why_${i.id}`,label:i.prompt,answerable:true,fact_ids:i.fact_ids})).concat(presets.filter(p=>p.answerable))
+      ? insights.filter(i => i.prompt).slice(0,2).map(i => ({id:`why_${i.id}`,label:i.prompt,answerable:true,fact_ids:i.fact_ids})).concat(presets.filter(p=>p.answerable).sort((a,b)=>Number(b.id==='death_list')-Number(a.id==='death_list')))
       : [...presets.filter(p=>p.answerable).sort((a,b)=>Number(a.id==='farm_progress')-Number(b.id==='farm_progress')), ...insights.filter(i=>i.status==='ok').map(i=>({id:`why_${i.id}`,label:opts.lang==='zh'?`查看结论证据：${insightLabels[i.id] ?? i.id}`:`Evidence: ${i.id}`,answerable:true,fact_ids:i.fact_ids}))]
     ).slice(0,3),
     citations: [...(replay ? [{id:'r1',provider:'replay',url:replay.replay_url ?? '',fetched_at:replay.fetched_at,sha256:replay.demo_sha256,source_path:'trace/events.jsonl',fields:[...new Set(Object.values(result.facts).filter(f=>f.citation === 'r1').map(f=>f.source_path))]}] : []), { id: 's1', provider: 'opendota', url: `https://api.opendota.com/api/matches/${raw.match_id ?? ''}`, fetched_at: opts.fetchedAt, fields: [...new Set(Object.values(result.facts).filter(f => f.citation === 's1').map(f => f.source_path))] }],
     ...(raw.replay_ingest ? {parse:replayStatusPayload(raw.replay_ingest.status === 'replay_parsed' && !replay ? 'replay_failed' : raw.replay_ingest.status, opts.lang)} : {}),
-    meta: { url, evidence_url: `${url}${focus ? '&' : '?'}view=evidence`, generated_at: opts.fetchedAt, cache: 'miss', phrasing: 'template', llm_provider: null },
+    meta: { replay_generation:raw.replay_generation??0, ingest_available:raw.replay_ingest_available===true, replay_auto_enabled:raw.replay_auto_enabled===true, url, evidence_url: `${url}${focus ? '&' : '?'}view=evidence`, generated_at: opts.fetchedAt, cache: 'miss', phrasing: 'template', llm_provider: null },
   }, opts.kb, opts.kbContextIds);
 }

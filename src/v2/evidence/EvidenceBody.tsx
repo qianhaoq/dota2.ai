@@ -94,15 +94,15 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
         <Pager claim={claim} total={review.insights.length} onPage={onPage} onClose={onClose}/>
       </div>
 
-      {claim === 0 && <>
-        <div className={section}>
+      {!insight.kind && insight.id === 'turning_point' && <>
+        {(review.series.radiant_gold_adv.length > 0 || review.series.radiant_xp_adv.length > 0) && <div className={section}>
           <Segmented value={series} onChange={setSeries}/>
           <GoldXpChart review={review} mode={series} band={band} bandLabel={bandLabel}/>
           <div className="flex gap-[14px] mt-[8px] text-d2-12 text-d2-ink-3">
             <span className="inline-flex items-center gap-[6px]"><svg width="16" height="6" aria-hidden="true"><line x1="0" y1="3" x2="16" y2="3" stroke="#c79123" strokeWidth="2.2"/></svg>{t('legendGold')}</span>
             <span className="inline-flex items-center gap-[6px]"><svg width="16" height="6" aria-hidden="true"><line x1="0" y1="3" x2="16" y2="3" stroke="#1a9fff" strokeWidth="1.6" strokeDasharray="4 3"/></svg>{t('legendXP')}</span>
           </div>
-        </div>
+        </div>}
         {(goldWindow?.delta || xpWindow?.delta) && <div className={section}>
           <KV entries={[goldWindow, xpWindow]
               .filter((w): w is NonNullable<typeof w> => !!w?.delta)
@@ -120,7 +120,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
         </div>
       </>}
 
-      {claim === 1 && <>
+      {!insight.kind && insight.id === 'fix_this' && <>
         <div className={section}>
           <h4 className={sectionH}>{fill(t('evDeathsTitle'), { n: facts['deaths.total']?.display[lang] ?? '' }).replace(/\s+/g, ' ').trim()}</h4>
           <DeathStrip review={review} band={band} bandLabel={deathBandLabel} topKiller={topKiller}/>
@@ -143,7 +143,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
         {gapRegistered(review, 'death_locations') && <div className={section}>{gapBoxFor('death_locations')}</div>}
       </>}
 
-      {claim === 2 && <>
+      {!insight.kind && insight.id === 'next_game' && <>
         <div className={section}>
           <h4 className={sectionH}>{t('whyAdvice')}</h4>
           <div className="flex flex-wrap gap-[8px]">{claimFacts.map(f => <FactChip key={f.id} fact={f}/>)}</div>
@@ -163,6 +163,11 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
         {gapRegistered(review, 'build_vs_lineup') && <div className={section}>{gapBoxFor('build_vs_lineup')}</div>}
       </>}
 
+      {insight.kind && <div className={section} data-testid="moment-evidence">
+        <h4 className={sectionH}>{insight.title ?? t('keyMoments')}</h4>
+        <ol>{claimFacts.map(f => <li key={f.id} data-fact-id={f.id}><time>{f.display.t}</time>{' · '}{f.display[lang]}</li>)}</ol>
+        {insight.prompt && <p className="mt-[12px]">{insight.prompt}</p>}
+      </div>}
       <div className={section}>
         <h4 className={sectionH}>{t('sources')}</h4>
         <Sources review={review} rows={sourcesFor(review, claim)} claim={claim}/>

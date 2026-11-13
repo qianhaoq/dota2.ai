@@ -19,6 +19,7 @@ export interface Hero {
     personaname?: string | null;
 }
 export interface Insight {
+    kind?: string;
     title?: string;
     prompt?: string;
     time?: { from: number; to: number };

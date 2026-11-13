@@ -437,16 +437,27 @@
         "type": "object",
         "properties": {
           "id": {
-            "enum": [
-              "turning_point",
-              "fix_this",
-              "next_game",
-              "hook_death",
-              "darkness_scythe",
-              "skeleton_before_bkb",
-              "bkb_windows",
-              "verified_death",
-              "void_dismember"
+            "anyOf": [
+              {
+                "enum": [
+                  "turning_point",
+                  "fix_this",
+                  "next_game",
+                  "hook_death",
+                  "darkness_scythe",
+                  "skeleton_before_bkb",
+                  "bkb_windows",
+                  "verified_death",
+                  "void_dismember"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^(death|item|purchase)\\.[0-9]+$"
+              },
+              {
+                "const": "verified_timeline"
+              }
             ]
           },
           "status": {
@@ -602,6 +613,16 @@
           },
           "prompt": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ability_into_death",
+              "item_window",
+              "notable_death",
+              "purchase_context",
+              "objective_context"
+            ]
           }
         },
         "required": [
@@ -749,6 +770,16 @@
             "string",
             "null"
           ]
+        },
+        "replay_generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ingest_available": {
+          "type": "boolean"
+        },
+        "replay_auto_enabled": {
+          "type": "boolean"
         }
       },
       "required": [
