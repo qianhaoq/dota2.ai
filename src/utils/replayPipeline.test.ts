@@ -121,3 +121,13 @@ it('IAM-dispatches the private worker after enqueue and keeps 202 if dispatch fa
   'POST https://worker.example.run.app/run',
  ]);
 });
+it('selects a public IPv4 even when official DNS also returns AAAA',async()=>{
+ const {selectPublicReplayAddress,isPublicReplayV4}=await import('../../lib/matchReview/replayIngest/download.js');
+ expect(isPublicReplayV4('198.18.0.1')).toBe(false);
+ expect(isPublicReplayV4('10.0.0.1')).toBe(false);
+ expect(selectPublicReplayAddress([{address:'2600:1f18::1',family:6}])).toBeNull();
+ expect(selectPublicReplayAddress([{address:'198.18.0.1',family:4}])).toBeNull();
+ const mixed=selectPublicReplayAddress([{address:'2600:1f18::1',family:6},{address:'155.133.248.1',family:4}]);
+ expect(mixed).toEqual({address:'155.133.248.1',family:4});
+ expect(selectPublicReplayAddress([{address:'198.18.0.1',family:4},{address:'2600:1f18::1',family:6}])).toBeNull();
+});
