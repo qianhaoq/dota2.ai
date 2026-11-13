@@ -2,7 +2,7 @@
 import {createServer} from 'node:http';
 import {createReplayIngest} from '../lib/matchReview/replayIngest/index.js';
 const ingest=createReplayIngest();
-if(!ingest.async)throw new Error('Worker requires a job store, DOTA_EXTRACT_BIN and REPLAY_INGEST_ENABLED=1');
+if(!ingest.async)throw new Error('Worker requires a job store, REPLAY_INGEST_ENABLED=1, and DOTA_EXTRACT_BIN (or COACH_EXTRACT_BIN)');
 if(process.argv.includes('--serve')){
  // Keep the request open while draining so Cloud Run allocates CPU. Hosting must
  // require IAM authentication; this process is never a public submit endpoint.

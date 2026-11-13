@@ -88,3 +88,36 @@ it('expires publication pointers and purges old job details without dropping act
  now+=60*86400000;await jobs.maintain();expect((await jobs.get(j.jobId)).pointer).toBeUndefined();expect((await jobs.get(j.jobId)).status).toBe('expired');
  expect((await jobs.create({match_id:1},'ip')).generation).toBe(2);
 });
+it('reads hard caps from environment and throttles the fourth daily job',async()=>{
+ const dir=await home();
+ const ingest=createReplayIngest({env:{REPLAY_HOME:dir,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake',REPLAY_BUDGET_DAILY_JOBS:'3',REPLAY_BUDGET_ATTEMPTS:'3',REPLAY_BUDGET_BYTES:'768000000',REPLAY_BUDGET_WORKER_SECONDS:'2700'}});
+ if(!('drain' in ingest))throw new Error('async pipeline required');
+ expect((await ingest.submit({match_id:1},'ip-a')).job_status).toBe('queued');
+ expect((await ingest.submit({match_id:2},'ip-b')).job_status).toBe('queued');
+ expect((await ingest.submit({match_id:3},'ip-c')).job_status).toBe('queued');
+ expect((await ingest.submit({match_id:4},'ip-d')).job_status).toBe('throttled');
+});
+it('enables web submit from a shared bucket without an extractor binary',async()=>{
+ const dir=await home();
+ const ingest=createReplayIngest({env:{REPLAY_INGEST_ENABLED:'1',REPLAY_GCS_BUCKET:'test-bucket'},jobStore:new FileJobStore(join(dir,'jobs')),artifactStore:new FileArtifactStore(join(dir,'artifacts')),queue:new FileQueue(join(dir,'queue'))});
+ if(!('drain' in ingest))throw new Error('bucket-backed submit required');
+ const submitted=await ingest.submit({match_id:99,cluster:1,replay_salt:1},'ip');
+ expect(submitted).toMatchObject({jobId:'99',job_status:'queued'});
+});
+it('IAM-dispatches the private worker after enqueue and keeps 202 if dispatch fails',async()=>{
+ const dir=await home();
+ const calls:string[]=[];
+ const dispatchFetch=vi.fn(async(url:string,init?:RequestInit)=>{
+  calls.push(`${init?.method??'GET'} ${url}`);
+  if(String(url).includes('/identity?'))return new Response('identity-token',{status:200});
+  if(String(url).endsWith('/run'))return new Response('retry',{status:500});
+  return new Response('no',{status:404});
+ });
+ const ingest=createReplayIngest({env:{REPLAY_HOME:dir,REPLAY_INGEST_ENABLED:'1',REPLAY_WORKER_URL:'https://worker.example.run.app'},dispatchFetch,jobStore:new FileJobStore(join(dir,'jobs')),artifactStore:new FileArtifactStore(join(dir,'artifacts')),queue:new FileQueue(join(dir,'queue'))});
+ const submitted=await ingest.submit({match_id:7},'ip');
+ expect(submitted).toMatchObject({jobId:'7',job_status:'queued',dispatch_error:'worker_dispatch_failed'});
+ expect(calls).toEqual([
+  'GET http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https%3A%2F%2Fworker.example.run.app',
+  'POST https://worker.example.run.app/run',
+ ]);
+});
