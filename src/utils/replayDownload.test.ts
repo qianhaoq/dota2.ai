@@ -73,7 +73,7 @@ it('aborts an active HTTP download',async()=>{
 it('batches download byte charges instead of writing on every chunk',async()=>{
  const {createByteCharger}=await import('../../lib/matchReview/replayIngest/worker.js');
  const calls:number[]=[];const charger=createByteCharger(async(n:number)=>{calls.push(n);},{threshold:1000,intervalMs:60_000});
- await charger.add(400);await charger.add(400);expect(calls).toEqual([]);
+ const pending=charger.add(400);expect(typeof (pending as Promise<void>).then).toBe('function');await pending;await charger.add(400);expect(calls).toEqual([]);
  await charger.add(300);expect(calls).toEqual([1100]);
  await charger.add(50);await charger.flush();expect(calls).toEqual([1100,50]);
 });
