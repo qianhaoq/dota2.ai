@@ -1,10 +1,36 @@
 /** Replay candidates are observations plus questions, never verdicts about causality. */
+import { formatObjectiveLabel } from '../objectiveLabels.js';
+import { STATIC_HEROES } from '../staticHeroes.js';
+
 export const clock = t => `${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
 const names = {
  npc_dota_wraith_king_skeleton_warrior:['Wraith King skeleton','冥魂大帝骨卫骷髅'],
  pudge_meat_hook:['Meat Hook','肉钩'],pudge_dismember:['Dismember','肢解'],necrolyte_reapers_scythe:["Reaper’s Scythe",'死神镰刀'],skeleton_king_bone_guard:['Bone Guard','骨卫'],
 };
-export function evidenceName(key, lang) { return names[key]?.[lang === 'zh' ? 1 : 0] ?? key; }
+const titleCase = value => String(value).split(/[_\s]+/).filter(Boolean).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
+export function evidenceName(key, lang) {
+  const zh = lang === 'zh';
+  if (key == null || key === '') return zh ? '未知单位或技能' : 'Unknown unit or ability';
+  if (names[key]) return names[key][zh ? 1 : 0];
+  const text = String(key);
+  if (text.startsWith('npc_dota_hero_')) {
+    const slug = text.slice('npc_dota_hero_'.length);
+    const hero = Object.values(STATIC_HEROES).find(h => h.internalName === text || h.internalSlug === slug);
+    if (hero) return zh ? hero.nameZh : hero.nameEn;
+    return titleCase(slug);
+  }
+  if (text.startsWith('npc_dota_neutral_')) return zh ? '中立生物' : 'Neutral creep';
+  if (text.includes('tower') || text.includes('rax') || text.includes('fort') || text.includes('goodguys') || text.includes('badguys')) {
+    return formatObjectiveLabel({ type: 'building_kill', key: text }, lang);
+  }
+  if (text.startsWith('npc_dota_')) {
+    const rest = titleCase(text.replace(/^npc_dota_/, ''));
+    return zh ? `${rest || '未知单位'}` : (rest || 'Unknown unit');
+  }
+  if (text.startsWith('item_')) return titleCase(text.slice(5));
+  if (text.includes('_') && !text.includes(' ')) return titleCase(text);
+  return text;
+}
 export function buildMoments(result, player, lang) {
  const zh=lang==='zh', out=[], casts=player.ability_cast_log??[], uses=player.item_use_log??[];
  const fact=(id,e,text)=>{result.facts[id]={id,kind:'entity',value:e,t:e.t,display:{en:text,zh:text,t:clock(e.t)},citation:'r1',source_path:[e.source_path,e.end_source_path].filter(Boolean).join('; ')};return id;};
@@ -32,23 +58,23 @@ export function buildMoments(result, player, lang) {
  for (const [index,d] of result.deaths.entries()) {
   if(out.some(i=>i.fact_ids.includes(d.fact_id))) continue;
   const c=casts.filter(c=>Number.isFinite(c.t)&&c.t<=d.t&&d.t-c.t<=8).at(-1);
-  const ids=c?[fact(`cast.before_death.${index}`,c,`${clock(c.t)} · ${evidenceName(c.key,lang).replaceAll('_',' ')}`),d.fact_id]:[d.fact_id];
+  const ids=c?[fact(`cast.before_death.${index}`,c,`${clock(c.t)} · ${evidenceName(c.key,lang)}`),d.fact_id]:[d.fact_id];
   ids.push(...Object.values(result.facts).filter(f=>f.id.startsWith('obj.')&&Number.isFinite(f.t)&&Math.abs(f.t-d.t)<=20).map(f=>f.id));
   add(!c&&index===0?'verified_death':`death.${index}`,c?Math.max(0,c.t-4):d.t,c?d.t+4:d.t,
-   `${clock(d.t)} · ${zh?'死亡记录':'Death recorded'}${d.inflictor?' · '+evidenceName(d.inflictor,lang).replaceAll('_',' '):''}`,
+   `${clock(d.t)} · ${zh?'死亡记录':'Death recorded'}${d.inflictor?' · '+evidenceName(d.inflictor,lang):''}`,
    zh?'待核实：复看这段时间的站位、视野和队友位置。':'Replay question: check position, vision and teammates in this interval.',ids,c?'ability_into_death':'notable_death');
  }
  for(const [index,u] of uses.entries()) {
   if(!Number.isFinite(u.t)||out.some(i=>i.fact_ids.some(id=>result.facts[id]?.value===u))) continue;
   const end=Number.isFinite(u.ended_at)?u.ended_at:u.t;
   const d=result.deaths.find(d=>d.t>end&&d.t-end<=120);
-  add(`item.${index}`,u.t,d?.t??end,`${clock(u.t)}${end!==u.t?'–'+clock(end):''} · ${u.key.replaceAll('_',' ')}${d?' · '+clock(d.t)+' '+(zh?'死亡记录':'death recorded'):''}`,
-   zh?'待核实：物品使用前后，交战和退出路线如何？':'Replay question: what happened during and after this item use?',[fact(`use.item.${index}`,u,`${u.key.replaceAll('_',' ')} · ${clock(u.t)}–${clock(end)}`),...(d?[d.fact_id]:[])],'item_window');
+  add(`item.${index}`,u.t,d?.t??end,`${clock(u.t)}${end!==u.t?'–'+clock(end):''} · ${evidenceName(u.key,lang)}${d?' · '+clock(d.t)+' '+(zh?'死亡记录':'death recorded'):''}`,
+   zh?'待核实：物品使用前后，交战和退出路线如何？':'Replay question: what happened during and after this item use?',[fact(`use.item.${index}`,u,`${evidenceName(u.key,lang)} · ${clock(u.t)}–${clock(end)}`),...(d?[d.fact_id]:[])],'item_window');
  }
  for(const [index,p] of (player.purchase_log??[]).entries()) {
   if(!Number.isFinite(p.time)||out.some(i=>i.fact_ids.some(id=>result.facts[id]?.t===p.time))) continue;
-  add(`purchase.${index}`,p.time,p.time,`${clock(p.time)} · ${zh?'购买':'Purchased'} ${p.key.replaceAll('_',' ')}`,
-   zh?'待核实：何时送达、何时使用？购买记录本身不评价出装。':'Replay question: when was it delivered and used? A purchase alone does not grade the build.',[fact(`purchase.context.${index}`,{...p,t:p.time},p.key.replaceAll('_',' '))],'purchase_context');
+  add(`purchase.${index}`,p.time,p.time,`${clock(p.time)} · ${zh?'购买':'Purchased'} ${evidenceName(p.key,lang)}`,
+   zh?'待核实：何时送达、何时使用？购买记录本身不评价出装。':'Replay question: when was it delivered and used? A purchase alone does not grade the build.',[fact(`purchase.context.${index}`,{...p,t:p.time},evidenceName(p.key,lang))],'purchase_context');
  }
  if(!out.length) {
   const event=Object.values(result.facts).find(f=>f.id.startsWith('obj.')&&Number.isFinite(f.t))??Object.values(result.facts).find(f=>Number.isFinite(f.t));

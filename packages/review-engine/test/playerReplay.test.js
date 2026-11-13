@@ -83,3 +83,21 @@ it('builds generic spell, item and purchase candidates and a usable zero-death f
  for(const i of moments){expect(i.fact_ids.every(id=>r.facts[id])).toBe(true);expect(i.time).toBeTruthy();expect(i.prompt).toBeTruthy();}
  const zero=buildMoments({facts:{'match.id':{id:'match.id'}},deaths:[]},{},'en');expect(zero).toHaveLength(1);expect(zero[0].fact_ids).toEqual(['match.id']);
 });
+
+it('does not leak npc_dota_ names into player-facing moment copy or objective displays',async()=>{
+ const {buildMoments,evidenceName}=await import('../src/insights/moments.js');
+ expect(evidenceName('npc_dota_hero_slark','en')).toBe('Slark');
+ expect(evidenceName('npc_dota_hero_slark','zh')).toBe('斯拉克');
+ expect(evidenceName('npc_dota_badguys_fort','en')).not.toMatch(/npc_dota_/);
+ expect(evidenceName('npc_dota_wraith_king_skeleton_warrior','zh')).toBe('冥魂大帝骨卫骷髅');
+ const r={facts:{'death.one':{id:'death.one',t:100},'obj.near':{id:'obj.near',t:105,display:{en:'keep',zh:'keep'}}},deaths:[{t:100,inflictor:'npc_dota_badguys_tower1_mid',killer:'npc_dota_hero_lina',fact_id:'death.one'}]};
+ const moments=buildMoments(r,{ability_cast_log:[{t:96,key:'npc_dota_hero_lina'}]},'en');
+ const blob=JSON.stringify(moments)+moments.map(i=>i.fact_ids.map(id=>`${r.facts[id]?.display?.en??''}${r.facts[id]?.display?.zh??''}`).join('')).join('');
+ expect(blob).not.toMatch(/npc_dota_/);
+ const review=buildReview(JSON.parse(readFileSync('src/fixtures/match9035042364.parsed.json')),{heroId:14,lang:'en',fetchedAt:'2026-10-17T00:00:00Z'});
+ for (const fact of Object.values(review.facts)) {
+  if (String(fact.id).startsWith('obj.')) {
+    expect(`${fact.display?.en??''}${fact.display?.zh??''}`).not.toMatch(/npc_dota_/);
+  }
+ }
+});

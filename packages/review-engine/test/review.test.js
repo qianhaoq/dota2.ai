@@ -518,6 +518,7 @@ it.each(['en','zh'])('offers cited scoreboard facts without parsed timelines or 
   expect(review.insights[0].target).toBeNull();
   expect(review.facts.lh_at_10).toBeUndefined();
   expect(review.deaths).toEqual([]);
+  expect(review.followups.every(f => !String(f.id).startsWith('why_') && !/查看结论证据|Evidence:/.test(f.label))).toBe(true);
   expect(validateReview(review)).toEqual({ok:true,errors:[]});
   for (const id of review.insights[0].fact_ids) expect(review.citations[0].fields).toContain(review.facts[id].source_path);
 });

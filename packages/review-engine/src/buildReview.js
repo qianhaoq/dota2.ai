@@ -1,4 +1,5 @@
-import { buildMoments } from './insights/moments.js';
+import { buildMoments, evidenceName } from './insights/moments.js';
+import { formatObjectiveLabel } from './objectiveLabels.js';
 import { isVerifiedReplay, replayStatusPayload } from './replay.js';
 import { availableSummary } from './availableSummary.js';
 import { buildFacts, heroSlug, teamOf, KEY_ITEMS } from './facts/index.js';
@@ -11,12 +12,27 @@ import { attachSiteKnowledge } from './siteKnowledge.js';
 
 export const ENGINE_VERSION = '2.3.0-replay-jobs';
 
-const insightLabels = { turning_point: '转折点', fix_this: '本场要改', next_game: '下局重点' };
+const insightLabels = { turning_point: { en: 'Turning point', zh: '转折点' }, fix_this: { en: 'What to change', zh: '本场要改' }, next_game: { en: 'Next game', zh: '下局重点' } };
 
 /**
  * @param {any} raw OpenDota match, supplied by an adapter (never fetched here).
  * @param {{heroId?: number, lang: 'en'|'zh', fetchedAt: string, patch?: any, kb?: any[], kbContextIds?: string[], presetFollowups?: boolean}} opts
  */
+
+function objectiveFactDisplay(o, lang) {
+  const key = typeof o.key === 'string' ? o.key : null;
+  const type = o.type ?? 'unknown';
+  const ev = { type, key, team: o.team === 2 || o.team === 3 ? o.team : undefined };
+  if (key && (type === 'building_kill' || key.startsWith('npc_dota_'))) {
+    return formatObjectiveLabel({ ...ev, type: type === 'unknown' ? 'building_kill' : type }, lang);
+  }
+  if (type && type !== 'unknown') {
+    const label = formatObjectiveLabel(ev, lang);
+    if (label && !/npc_dota_/.test(label)) return label;
+  }
+  if (key) return evidenceName(key, lang);
+  return String(type);
+}
 export function buildReview(raw, opts) {
   raw = raw ?? {};
   const players = Array.isArray(raw.players) ? raw.players : [];
@@ -53,7 +69,7 @@ export function buildReview(raw, opts) {
     // Prefer explicit teams, then player slots, then the destroyed structure's opposing side.
     const team = o.team === 2 || o.team === 3 ? o.team : Number.isInteger(o.player_slot) ? (o.player_slot < 128 ? 2 : 3) : typeof o.key === 'string' ? (o.key.includes('goodguys') ? 3 : o.key.includes('badguys') ? 2 : null) : null;
     const objective = { t: o.time, type: o.type ?? 'unknown', key: o.key ?? null, team: team === 2 ? 'radiant' : team === 3 ? 'dire' : null, fact_id };
-    result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: String(objective.key ?? objective.type), zh: String(objective.key ?? objective.type) }, citation: 's1', source_path: o.source_path ?? `objectives[${i}]` };
+    result.facts[fact_id] = { id: fact_id, kind: 'entity', value: objective, t: o.time, display: { en: objectiveFactDisplay(o, 'en'), zh: objectiveFactDisplay(o, 'zh') }, citation: 's1', source_path: o.source_path ?? `objectives[${i}]` };
     return objective;
   }) : [];
   if (replay) {
@@ -93,8 +109,9 @@ export function buildReview(raw, opts) {
     insights, data_gaps: gaps.filter((g,i)=>gaps.findIndex(other=>other.topic===g.topic)===i),
     followups: (replay
       ? insights.filter(i => i.prompt).slice(0,2).map(i => ({id:`why_${i.id}`,label:i.prompt,answerable:true,fact_ids:i.fact_ids})).concat(presets.filter(p=>p.answerable).sort((a,b)=>Number(b.id==='death_list')-Number(a.id==='death_list')))
-      : [...presets.filter(p=>p.answerable).sort((a,b)=>Number(a.id==='farm_progress')-Number(b.id==='farm_progress')), ...insights.filter(i=>i.status==='ok').map(i=>({id:`why_${i.id}`,label:opts.lang==='zh'?`查看结论证据：${insightLabels[i.id] ?? i.id}`:`Evidence: ${i.id}`,answerable:true,fact_ids:i.fact_ids}))]
+      : [...presets.filter(p=>p.answerable).sort((a,b)=>Number(a.id==='farm_progress')-Number(b.id==='farm_progress')), ...(state === 'unparsed' ? [] : insights.filter(i=>i.status==='ok').map(i=>{const label=insightLabels[i.id]?.[opts.lang] ?? i.title ?? i.id;return {id:`why_${i.id}`,label:opts.lang==='zh'?`查看结论证据：${label}`:`Evidence: ${label}`,answerable:true,fact_ids:i.fact_ids};}))]
     ).slice(0,3),
+
     citations: [...(replay ? [{id:'r1',provider:'replay',url:replay.replay_url ?? '',fetched_at:replay.fetched_at,sha256:replay.demo_sha256,source_path:'trace/events.jsonl',fields:[...new Set(Object.values(result.facts).filter(f=>f.citation === 'r1').map(f=>f.source_path))]}] : []), { id: 's1', provider: 'opendota', url: `https://api.opendota.com/api/matches/${raw.match_id ?? ''}`, fetched_at: opts.fetchedAt, fields: [...new Set(Object.values(result.facts).filter(f => f.citation === 's1').map(f => f.source_path))] }],
     ...(raw.replay_ingest ? {parse:replayStatusPayload(raw.replay_ingest.status === 'replay_parsed' && !replay ? 'replay_failed' : raw.replay_ingest.status, opts.lang)} : {}),
     meta: { replay_generation:raw.replay_generation??0, ingest_available:raw.replay_ingest_available===true, replay_auto_enabled:raw.replay_auto_enabled===true, url, evidence_url: `${url}${focus ? '&' : '?'}view=evidence`, generated_at: opts.fetchedAt, cache: 'miss', phrasing: 'template', llm_provider: null },
