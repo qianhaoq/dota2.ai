@@ -40,6 +40,12 @@ export default function MatchPage() {
     const valid = isSafeMatchId(matchId);
     const stream = useReviewStream(matchId, hero, lang, valid);
     const review = stream.done?.review;
+    const autoSubmitted = useRef(new Set<string>());
+    useEffect(() => {
+        if (!valid || !review?.meta?.ingest_available || !review.meta.replay_auto_enabled || review.parse?.status === 'replay_parsed' || autoSubmitted.current.has(matchId)) return;
+        autoSubmitted.current.add(matchId);
+        void fetch(`/api/review/${matchId}/replay-ingest`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({lang}) }).catch(() => {});
+    }, [valid, review, matchId, lang]);
     const [picker, setPicker] = useState(false);
     const [turns, setTurns] = useState<Turn[]>([]);
     const [asked, setAsked] = useState<string[]>([]);
