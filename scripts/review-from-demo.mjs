@@ -3,7 +3,7 @@ import { readFile, mkdir, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
-import { hashFile, runExtractor, readReviewEvents, readReplaySupplement } from '../lib/matchReview/replayIngest/extractor.js';
+import { hashFile, runExtractor, readReviewEvents, readReplaySupplement, extractorMetadata } from '../lib/matchReview/replayIngest/extractor.js';
 import { adaptReplayEvents, applyReplayArtifact } from '../packages/review-engine/src/replay.js';
 import { buildReview } from '../packages/review-engine/src/buildReview.js';
 
@@ -24,11 +24,11 @@ try {
     if (!bin) throw new Error('DOTA_EXTRACT_BIN is required to parse a local dem');
     temp = await mkdtemp(join(tmpdir(),'review-demo-')); extracted = temp;
     summary = await runExtractor(bin, [demo,temp,'--max-bytes','512000000','--max-output-bytes','512000000','--quiet'], signal);
-    if (summary.trace_version !== 3) throw new Error('Unsupported extractor trace version');
+    extractorMetadata(summary, raw.match_id);
   }
   const trace = await readReviewEvents(join(extracted,'trace','events.jsonl'), signal);
   const supplement = await readReplaySupplement(join(extracted,'trace'), trace.events, signal);
-  const artifact = adaptReplayEvents(raw, trace.events, {demo_bytes:hash.bytes,demo_sha256:hash.sha256,fetched_at:new Date().toISOString(),source:'operator_local_demo',trace_version:3}, supplement.metadata, supplement.positions);
+  const artifact = adaptReplayEvents(raw, trace.events, {demo_bytes:hash.bytes,demo_sha256:hash.sha256,fetched_at:new Date().toISOString(),source:'operator_local_demo',...(summary ? extractorMetadata(summary, raw.match_id) : {})}, supplement.metadata, supplement.positions);
   // Redact identity from the review as well as the fixture/evidence.
   raw.players = raw.players.map(({personaname,account_id,...p}) => p);
   const review = buildReview(applyReplayArtifact(raw,artifact), {heroId:Number(hero),lang,fetchedAt:artifact.fetched_at,presetFollowups:true});

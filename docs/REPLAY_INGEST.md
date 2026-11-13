@@ -4,7 +4,10 @@ Opt-in vertical slice: `POST /api/review/:matchId/replay-ingest` with JSON
 `{"lang":"en"}` (or `zh`). The handler gets OpenDota match metadata, validates
 the official replay CDN URL, downloads without redirects, hashes the compressed
 file, decompresses with the configured extractor, rehashes the dem, and parses
-trace version 3. It retains a compact, name/account-free facts artifact. GET and
+trace versions 3 and 4 only. Extractor `match_id` (when present) must match
+the requested match and is retained as `extractor_match_id`; structured `clock`
+is retained unchanged. Decompression uses the extractor-reported `format`
+(`zstd`, `bz2`, or `raw`), never the URL or downloaded filename suffix. It retains a compact, name/account-free facts artifact. GET and
 stream requests only read artifacts; they never download or submit a job.
 
 Set **both** `REPLAY_INGEST_ENABLED=1` and `DOTA_EXTRACT_BIN` (fallback
@@ -42,14 +45,20 @@ OpenDota metadata fetch time when known, download time/host/status, compressed
 bytes/SHA-256, dem bytes/SHA-256 and parse timing. Only a successful verified
 artifact for the same match can override `od_data.has_parsed=false`.
 
-Combat log timestamps are relative to game start. Real hero death events retain
+Event/objective timestamps are seconds on the pause-adjusted match clock:
+horn is zero and pregame is negative. V4 records the extractor clock formulas
+and explicit fort-kill game end; `demo_tick_30hz` is not a match clock. Real hero death events retain
 killer, exact event time and event coordinates when present; illusions are
 excluded. Purchases require an explicit PURCHASE event and item identifier.
 Source paths retain original trace row indices. The current extractor can filter
 out purchases; **zero emitted purchase rows means a gap, not proof of no buys**.
 Legacy `heroes.jsonl` uses an uncalibrated demo clock; do not align it to combat
-logs or infer death coordinates. Current traces do not provide reliable minute
-LH/gold/XP or calibrated objectives. These fields are omitted with data gaps;
+logs or infer death coordinates. Metadata supplies only exact-minute LH snapshots; earned gold and XP remain
+unavailable. Building-kill events supply observed objectives. Net-worth graphs
+with more bins than minutes are retained as `net_worth_t` with
+`net_worth_timing=uncalibrated_graph_bins` in the artifact, but omitted from the
+review overlay until their sample times are calibrated. They cannot support
+minute-specific facts or followups. Unavailable fields carry explicit data gaps;
 no interpolation or inferred purchase from inventory is allowed.
 
 Replay timeline citations use provider `replay`, dem SHA-256, fetch time and
@@ -88,8 +97,33 @@ and decide fleet-wide concurrency/budgets and artifact persistence. This change
 does not change the Dockerfile, Cloud Run resources, deployment or secrets.
 A Steam login or Web API JSON is not a substitute for a dem.
 
-On this box, match 9080127650 metadata is available, but the official CN replay
-CDN returns HTTP 500 through sandbox egress. Its detailed review is **not
-complete**; the CDN failure keeps the scoreboard summary. No DNS/proxy bypass
-is attempted. A successful local 8985182860 parse demonstrates the pipeline,
-not availability or analysis of 9080127650.
+## Reproducible local-file integration QA — 9080127650
+
+```sh
+DOTA_EXTRACT_BIN=/workspace/t911u-9080127650-official/bin/dota-extract-5a8e575 \
+node scripts/qa-local-replay-ingest.mjs \
+  /workspace/t911u-9080127650-official/opendota-9080127650.json \
+  /workspace/t911u-9080127650-official/9080127650_1490343705.dem.bz2 \
+  /workspace/qh-dsh-dota-coach/packages/coach/fixtures/tiny.dem.bz2 \
+  /workspace/t911u-9080127650-official/site-ingest-qa
+```
+
+This explicit, non-default QA uses an isolated home and local bytes returned by
+`fetchImpl` with HTTP 200. `submit()` writes suffix-less `download`, then invokes
+the real extractor for decompression and parsing. The official object has zstd
+magic despite its `.dem.bz2` URL. The same binary decompresses real `BZh` bytes
+from a suffix-less file; the tiny fixture is header-only, so that check proves
+decompression compatibility rather than a playable-match parse.
+
+The script asserts verified hashes, v4 match/clock, hero 60 / slot 132, separate
+net worth, real fort kill at 1906.7667847s, missing-evidence refusals and explicit
+KB applicability boundaries. It writes artifact, review, contextual review and
+evidence JSON outside git. The 63-bin net-worth graph has unverified sample
+times, so no minute net-worth claim is made. Exact-minute LH snapshots are also
+absent for this match; nearby 599-second snapshots are not relabeled 600.
+
+This proves the **site ingest pipeline on an already-obtained official file**.
+It does not prove production Cloud Run can auto-download from the official CDN.
+No CDN probe is performed. Production `dota2-ai-00125-5lb` at `45c63132` has no
+`REPLAY_INGEST_ENABLED` / `DOTA_EXTRACT_BIN`; its `node:20-alpine` image has no
+extractor. Production stays off, with honest scoreboard status where applicable.

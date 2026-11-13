@@ -8,6 +8,10 @@ export interface ReplayProvenance {
   replay_salt: number | null;
   cluster: number | null;
   opendota_fetched_at: string | null;
+  trace_version?: 3 | 4;
+  extractor_match_id?: number;
+  clock?: {unit:'seconds'; zero:'horn_game_start'; [key:string]:unknown};
+  compression_format?: 'zstd' | 'bz2' | 'raw';
 }
 export interface ReplayPlayer {
   hero_id: number;

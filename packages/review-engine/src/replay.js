@@ -46,6 +46,10 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
     if (!m) continue;
     const source_path = `${demoMetadata.metadata_source_path ?? 'trace/metadata.json'}${demoMetadata.players ? '.players' : '.teams[].players'}[player_slot=${p.player_slot}]`;
     p.metadata_source_path = source_path;
+    if (m.hero_key === `npc_dota_hero_${heroSlug(p.hero_id)}`) {
+      p.extractor_hero_key = m.hero_key;
+      p.hero_identity_source = m.hero_identity_source;
+    }
     if (Number.isFinite(m.camps_stacked)) p.camps_stacked = m.camps_stacked;
     const snapshots = m.inventory_snapshots ?? (m.snap_at10plus ? [m.snap_at10plus] : []);
     p.lh_t = []; p.denies_t = [];
@@ -55,20 +59,26 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
     }
     p.snapshot_source = 'demo_metadata_inventory_snapshot';
     p.snapshot_sampling = 'exact minute snapshots only; observed snapshot interval approximately 30 seconds';
-    if (Array.isArray(m.graph_net_worth) && m.graph_net_worth.length <= Math.floor(raw.duration/60)+1 && m.graph_net_worth.every(Number.isFinite)) {
+    if (Array.isArray(m.graph_net_worth) && m.graph_net_worth.length <= 10000 && m.graph_net_worth.every(Number.isFinite)) {
       if (m.graph_net_worth.length && m.graph_net_worth[0] >= 50 && m.graph_net_worth[0] <= 70) {
         p.net_worth_t = m.graph_net_worth.map(v=>Math.round(v*10));
         p.net_worth_source = 'demo_metadata_graph_net_worth';
         p.net_worth_derivation = NET_WORTH_DERIVATION;
+        if (m.graph_net_worth.length > Math.floor(raw.duration/60)+1) {
+          p.net_worth_timing = 'uncalibrated_graph_bins';
+          p.net_worth_derivation = 'demo_metadata_graph_net_worth: multiplied by 10 and rounded to gold after initial-bin scale check; net worth, not earned gold; graph sample times unverified';
+          gaps.push({topic:'net_worth_t',reason:'metadata_graph_timing_unverified'});
+        }
       } else gaps.push({topic:'net_worth_t',reason:'metadata_graph_unit_unverified'});
     }
   }
-  const graphPlayers = players.filter(p => p.net_worth_t);
+  const graphPlayers = players.filter(p => p.net_worth_t && !p.net_worth_timing);
   let radiant_net_worth_adv;
   if (players.length === 10 && graphPlayers.length === 10 && new Set(graphPlayers.map(p=>p.net_worth_t.length)).size === 1) {
     radiant_net_worth_adv = graphPlayers[0].net_worth_t.map((_,i)=>graphPlayers.reduce((sum,p)=>sum+(p.player_slot < 128 ? 1 : -1)*p.net_worth_t[i],0));
     if (radiant_net_worth_adv.length < Math.floor(raw.duration/60)+1) gaps.push({topic:'radiant_net_worth_adv',reason:'metadata_graph_truncated'});
-  } else gaps.push({topic:'net_worth_t',reason:'metadata_graph_missing_or_invalid'});
+  } else if (players.some(p=>p.net_worth_timing)) gaps.push({topic:'radiant_net_worth_adv',reason:'metadata_graph_timing_unverified'});
+  else gaps.push({topic:'net_worth_t',reason:'metadata_graph_missing_or_invalid'});
   if (!players.some(p=>p.lh_t?.some(Number.isFinite))) gaps.push({topic:'lh_t',reason:'metadata_snapshot_missing'});
   if (!objectives.length) gaps.push({topic:'objectives',reason:'not_in_combat_log'});
   if (players.some(p=>p.deaths_log.some(d=>!Number.isFinite(d.x)))) gaps.push({topic:'death_locations',reason:'position_sample_missing'});
@@ -80,7 +90,10 @@ export function applyReplayArtifact(raw, artifact) {
   const players = (raw.players ?? []).map(p => {
     const clean = { ...p };
     for (const key of ['lh_t','gold_t','xp_t','times','lane','lane_role','lane_pos','purchase_log','deaths_log','kills_log','camps_stacked','denies_t','net_worth_t']) delete clean[key];
-    return { ...clean, ...artifact.players.find(r => r.hero_id === p.hero_id && r.player_slot === p.player_slot) };
+    const merged = { ...clean, ...artifact.players.find(r => r.hero_id === p.hero_id && r.player_slot === p.player_slot) };
+    // Retain raw graph in the artifact, but never index uncalibrated bins as minutes.
+    if (merged.net_worth_timing === 'uncalibrated_graph_bins') delete merged.net_worth_t;
+    return merged;
   });
   return { ...raw, players, objectives:artifact.objectives ?? [], radiant_gold_adv:[], radiant_net_worth_adv:artifact.radiant_net_worth_adv ?? [], radiant_xp_adv:[], replay_ingest:artifact };
 }

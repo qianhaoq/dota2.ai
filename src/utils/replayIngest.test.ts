@@ -97,7 +97,7 @@ it('aborts a disconnected download, records a short retry window and cleans work
   const {readdir} = await import('node:fs/promises'); expect(await readdir(dir)).toEqual(['42.json']);
 });
 
-it('persists verified facts after download, decompression and parsing; GET overlay is read-only', async () => {
+it.each([[3,'bz2'],[4,'zstd']])('persists verified v%s %s facts through suffix-less download; GET overlay is read-only', async (version,format) => {
   const dir = await home(); const {createHash} = await import('node:crypto');
   const demo = Buffer.from('PBDEMS2 compact extractor test input');
   const sha256 = createHash('sha256').update(demo).digest('hex');
@@ -106,20 +106,23 @@ it('persists verified facts after download, decompression and parsing; GET overl
   const events: unknown[] = JSON.parse(fixture);
   const extract = vi.fn(async (_bin: string, args: string[]) => {
     if (args.includes('--decompress-only')) {
+      expect(args[0]).toBe(join(args[1],'download'));
+      expect(await readFile(args[0])).toEqual(compressed);
       await writeFile(join(args[1],'replay.dem'),demo);
-      return {ok:true,bytes:demo.length,sha256};
+      return {ok:true,format,bytes:demo.length,sha256};
     }
     await mkdir(join(args[1],'trace'));
     await writeFile(join(args[1],'trace','events.jsonl'),events.map(e=>JSON.stringify(e)).join('\n')+'\n');
-    return {ok:true,trace_version:3,ms:1};
+    return {ok:true,trace_version:version,match_id:42,clock:{unit:'seconds',zero:'horn_game_start'},ms:1};
   });
-  const fetchImpl = vi.fn(async()=>new Response(demo));
+  const compressed = format === 'zstd' ? Buffer.from('28b52ffd01020304','hex') : Buffer.from('BZh fixture');
+  const fetchImpl = vi.fn(async(url: Parameters<typeof fetch>[0])=>{ expect(String(url)).toMatch(/\.dem\.bz2$/); return new Response(compressed); });
   const ingest = createReplayIngest({env:{REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake',REPLAY_HOME:dir},fetchImpl,extract});
   const match = {...raw,od_data:{has_parsed:false},players:[{hero_id:60,player_slot:132},{hero_id:2,player_slot:0}]};
   expect(await ingest.overlay(match)).toEqual({...match,replay_ingest_available:true}); expect(fetchImpl).not.toHaveBeenCalled();
   expect((await ingest.submit(match,'client')).status).toBe('replay_parsed');
   const artifact = await ingest.read(42);
-  expect(artifact).toMatchObject({download_bytes:demo.length,download_sha256:sha256,demo_sha256:sha256,status:'replay_parsed'});
+  expect(artifact).toMatchObject({download_bytes:compressed.length,download_sha256:createHash('sha256').update(compressed).digest('hex'),compression_format:format,demo_sha256:sha256,status:'replay_parsed',trace_version:version,extractor_match_id:42,clock:{unit:'seconds',zero:'horn_game_start'}});
   expect((await ingest.overlay(match)).players[0].deaths_log[0]).toMatchObject({time:72.5,x:100,y:-200});
   expect((await ingest.submit(match,'client')).status).toBe('replay_parsed');
   expect(fetchImpl).toHaveBeenCalledTimes(1); expect(extract).toHaveBeenCalledTimes(2);
@@ -192,4 +195,33 @@ it('reports current capability through review parse status independently of stor
   const disabled = createReplayIngest({env:{REPLAY_HOME:dir},fetchImpl});
   expect(resolve(42,await disabled.overlay(raw),'en')).toMatchObject({status:'replay_cdn_error',ingest_available:false});
   expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+
+it('bounds extractor versions and rejects cross-match traces', async () => {
+  const {extractorMetadata} = await import('../../lib/matchReview/replayIngest/extractor.js');
+  for (const version of [undefined,2,5,99]) expect(()=>extractorMetadata({trace_version:version},42)).toThrow('Unsupported');
+  expect(()=>extractorMetadata({trace_version:4,match_id:43},42)).toThrow('mismatch');
+  expect(()=>extractorMetadata({trace_version:4,clock:{name:'demo_tick_30hz',unit:'ticks'}},42)).toThrow('match clock');
+  expect(extractorMetadata({trace_version:3},42)).toEqual({trace_version:3});
+});
+
+it.each([undefined,'zip'])('rejects missing/unknown decompress-only format %s before parsing', async format => {
+  const dir = await home();
+  const extract = vi.fn(async()=>({ok:true,format,bytes:32,sha256:'a'.repeat(64)}));
+  const ingest = createReplayIngest({env:{REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake',REPLAY_HOME:dir},fetchImpl:async()=>new Response('compressed body'),extract});
+  expect((await ingest.submit(raw,'client')).status).toBe('replay_failed');
+  expect(extract).toHaveBeenCalledTimes(1);
+});
+
+it('retains denser net-worth graphs without interpreting graph indices as minutes', async () => {
+  const {adaptReplayEvents,applyReplayArtifact} = await import('../../packages/review-engine/src/replay.js');
+  const match = {...raw,duration:120,players:[{hero_id:60,player_slot:132}]};
+  const a = adaptReplayEvents(match,[],{demo_bytes:32,demo_sha256:'a'.repeat(64),fetched_at:new Date().toISOString()},
+    {players:[{player_slot:132,graph_net_worth:[60,65,75,90,100]}]});
+  expect(a.players[0].net_worth_t).toEqual([600,650,750,900,1000]);
+  expect(a.players[0].net_worth_timing).toBe('uncalibrated_graph_bins');
+  expect(a.players[0].gold_t).toBeUndefined();
+  expect(a.data_gaps).toContainEqual({topic:'net_worth_t',reason:'metadata_graph_timing_unverified'});
+  expect(applyReplayArtifact(match,a).players[0].net_worth_t).toBeUndefined();
 });
