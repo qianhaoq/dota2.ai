@@ -1,5 +1,5 @@
 /** Replay candidates are observations plus questions, never verdicts about causality. */
-import { formatObjectiveLabel } from '../objectiveLabels.js';
+import { formatBuildingName } from '../objectiveLabels.js';
 import { STATIC_HEROES } from '../staticHeroes.js';
 
 export const clock = t => `${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
@@ -19,7 +19,7 @@ export function evidenceName(key, lang) {
   if (text.startsWith('npc_dota_hero_')) return titleCase(slug);
   if (text.startsWith('npc_dota_neutral_')) return zh ? '中立生物' : 'Neutral creep';
   if (text.includes('tower') || text.includes('rax') || text.includes('fort') || text.includes('goodguys') || text.includes('badguys')) {
-    return formatObjectiveLabel({ type: 'building_kill', key: text }, lang);
+    return formatBuildingName(text, lang);
   }
   if (text.startsWith('npc_dota_')) {
     const rest = titleCase(text.replace(/^npc_dota_/, ''));

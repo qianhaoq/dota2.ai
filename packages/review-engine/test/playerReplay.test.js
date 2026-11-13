@@ -101,3 +101,13 @@ it('does not leak npc_dota_ names into player-facing moment copy or objective di
   }
  }
 });
+
+it('formats single death fact displays without raw or spaced engine names',async()=>{
+ const {buildFacts}=await import('../src/facts/index.js');
+ const raw={version:21,players:[{hero_id:60,player_slot:132,deaths:1,deaths_log:[{time:61,key:'npc_dota_neutral_satyr_trickster'}]}]};
+ const {facts,deaths}=buildFacts(raw,raw.players[0]);
+ expect(deaths[0].killer).toBe('npc_dota_neutral_satyr_trickster');
+ expect(facts['death.1'].display.en).toBe('1:01 · Death · Neutral creep');
+ expect(facts['death.1'].display.zh).toBe('1:01 · 死亡 · 中立生物');
+ expect(`${facts['death.1'].display.en}${facts['death.1'].display.zh}`).not.toMatch(/npc_dota_|npc dota/);
+});

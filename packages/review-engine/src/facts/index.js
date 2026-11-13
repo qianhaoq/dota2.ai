@@ -125,9 +125,9 @@ export function buildFacts(raw, player) {
         const event = { ...(d.position_source ? {position_source:d.position_source,sample_t:d.sample_t,dt:d.dt,position_source_path:d.position_source_path} : {}), ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), ...(d.inflictor ? {inflictor:d.inflictor} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
         deaths.push(event);
         add(id, event, 'entity', d.source_path, { t: d.time });
-        const killer = event.killer?.replace(/^npc_dota_hero_/, '').replaceAll('_', ' ');
-        const label = killer === 'npc dota wraith king skeleton warrior' ? ['Wraith King skeleton','冥魂大帝骨卫骷髅'] : [killer,killer];
-        facts[id].display = {en:`${clock(d.time)} · Death${label[0] ? ' · '+label[0] : ''}`,zh:`${clock(d.time)} · 死亡${label[1] ? ' · '+label[1] : ''}`,t:clock(d.time)};
+        const killerEn = event.killer ? evidenceName(event.killer, 'en') : '';
+        const killerZh = event.killer ? evidenceName(event.killer, 'zh') : '';
+        facts[id].display = {en:`${clock(d.time)} · Death${killerEn ? ' · '+killerEn : ''}`,zh:`${clock(d.time)} · 死亡${killerZh ? ' · '+killerZh : ''}`,t:clock(d.time)};
       });
       const completeTimeline = !finite(player.deaths) || sorted.length === player.deaths;
       if (completeTimeline) {
