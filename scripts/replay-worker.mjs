@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import {createServer} from 'node:http';
 import {createReplayIngest} from '../lib/matchReview/replayIngest/index.js';
-const ingest=createReplayIngest();
+const ingest=createReplayIngest({onError:(error)=>console.error('replay_worker_error',error?.status||error?.message,error?.cause?.message||error?.code||'')});
 if(!ingest.async)throw new Error('Worker requires a job store, REPLAY_INGEST_ENABLED=1, and DOTA_EXTRACT_BIN (or COACH_EXTRACT_BIN)');
 if(process.argv.includes('--serve')){
  // Keep the request open while draining so Cloud Run allocates CPU. Hosting must
