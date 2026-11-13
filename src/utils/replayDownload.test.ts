@@ -70,3 +70,18 @@ it('aborts an active HTTP download',async()=>{
   await expect(new Response(response.body).arrayBuffer()).rejects.toThrow();
  });
 });
+it('batches download byte charges instead of writing on every chunk',async()=>{
+ const {createByteCharger}=await import('../../lib/matchReview/replayIngest/worker.js');
+ const calls:number[]=[];const charger=createByteCharger(async(n:number)=>{calls.push(n);},{threshold:1000,intervalMs:60_000});
+ await charger.add(400);await charger.add(400);expect(calls).toEqual([]);
+ await charger.add(300);expect(calls).toEqual([1100]);
+ await charger.add(50);await charger.flush();expect(calls).toEqual([1100,50]);
+});
+it('retries GCS 429 before failing a request',async()=>{
+ const {createGcsBucket}=await import('../../lib/matchReview/replayIngest/gcs.js');
+ let hits=0;
+ const fetchImpl=vi.fn(async()=>{hits+=1;if(hits<3)return new Response('slow',{status:429});return new Response(JSON.stringify({generation:1,name:'o'}),{status:200,headers:{'Content-Type':'application/json'}});});
+ const bucket=createGcsBucket('test-bucket',{fetchImpl,tokenProvider:async()=>'tok'});
+ const [meta]=await bucket.file('jobs/state.json').getMetadata();
+ expect(meta.generation).toBe(1);expect(hits).toBe(3);
+});
