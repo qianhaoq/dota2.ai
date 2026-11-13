@@ -1,3 +1,5 @@
+import type { ReplayFailureStatus } from '../../lib/matchReview/replayIngest/types';
+
 export type LaneConfidence = 'high' | 'medium' | 'low';
 
 export interface LaneHeroRef {
@@ -147,7 +149,9 @@ export interface FieldReason {
  * request one via requestMatchParse.
  */
 export interface ReviewParseStatus {
-  status: 'requested' | 'pending' | 'parsed' | 'unparsed' | 'failed' | 'throttled';
+  /** Current server capability; absent on older payloads means unavailable. */
+  ingest_available?: boolean;
+  status: 'requested' | 'pending' | 'parsed' | 'unparsed' | 'failed' | 'throttled' | ReplayFailureStatus | 'replay_ingest_disabled' | 'replay_pending' | 'replay_parsed';
   jobId: number | null;
   retryAfterSec: number | null;
   message: string;

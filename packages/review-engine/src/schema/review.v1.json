@@ -376,6 +376,24 @@
           },
           "fact_id": {
             "type": "string"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "position_source": {
+            "type": "string"
+          },
+          "sample_t": {
+            "type": "number"
+          },
+          "dt": {
+            "type": "number"
+          },
+          "position_source_path": {
+            "type": "string"
           }
         },
         "required": [
@@ -649,7 +667,8 @@
           "provider": {
             "enum": [
               "opendota",
-              "kb"
+              "kb",
+              "replay"
             ]
           },
           "url": {
@@ -669,6 +688,13 @@
           },
           "patch": {},
           "source_date": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "source_path": {
             "type": "string"
           }
         },
@@ -717,6 +743,46 @@
         "cache",
         "phrasing",
         "llm_provider"
+      ],
+      "additionalProperties": false
+    },
+    "parse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "replay_unavailable",
+            "replay_expired",
+            "replay_cdn_error",
+            "replay_ingest_disabled",
+            "replay_invalid_url",
+            "replay_pending",
+            "replay_parsed",
+            "replay_failed",
+            "throttled"
+          ]
+        },
+        "jobId": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "retryAfterSec": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "jobId",
+        "retryAfterSec",
+        "message"
       ],
       "additionalProperties": false
     }

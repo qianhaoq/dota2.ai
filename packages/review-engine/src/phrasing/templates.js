@@ -65,14 +65,17 @@ export const trustedCopy = [...Object.values(coachCopy), ...Object.values(insuff
 export function renderTemplate(insight, facts, lang) {
   const ids = (insight.fact_ids ?? []).filter(id => facts[id]?.display?.[lang]);
   const copy = (key, id, extra = {}) => {
-    const time = Number.isInteger(facts[id]?.t) ? `{t:${facts[id].t}}` : '';
+    const time = Number.isFinite(facts[id]?.t) ? `{t:${facts[id].t}}` : '';
     return coachCopy[key][lang].replace(/TIME|VALUE|TOTAL|PHASE|HERO/g, word => ({
       TIME: time, VALUE: `{${id}}`, ...extra,
     })[word] ?? '');
   };
   let slots;
   if (insight.answerable === false || insight.topic) {
-    slots = gapTemplates[insight.gap ?? insight.topic ?? insight.id]?.[lang] ?? refusal(lang);
+    const topic = insight.gap ?? insight.topic ?? insight.id;
+    slots = topic === 'death_locations' && Object.values(facts).some(f=>f.citation === 'r1')
+      ? (lang === 'zh' ? '录像死亡事件缺少坐标，无法判断站位与视野。' : 'Replay death events lack coordinates; position and vision cannot be judged.')
+      : gapTemplates[topic]?.[lang] ?? refusal(lang);
   } else if (insight.status === 'insufficient' || !ids.length || ids.length !== insight.fact_ids?.length) {
     slots = insufficient[insight.id]?.[lang] ?? refusal(lang);
   } else {
@@ -105,7 +108,7 @@ export function renderTemplate(insight, facts, lang) {
         sentences.push(copy('phase', id, { PHASE: name }));
       }
     }
-    if (insight.id === 'next_game' && sentences.length) sentences.push(coachCopy.next[lang]);
+    if (insight.id === 'next_game' && sentences.length && !ids.some(id=>facts[id]?.citation === 'r1')) sentences.push(coachCopy.next[lang]);
     if (insight.id === 'farm_progress') sentences.push(coachCopy.farmBoundary[lang]);
     if (insight.id === 'item_timings') sentences.push(gapTemplates.build_vs_lineup[lang]);
     slots = sentences.join(insight.id === 'death_list' ? '\n' : ' ') || refusal(lang);

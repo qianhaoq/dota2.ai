@@ -1,6 +1,8 @@
 // MUST stay the first import: wraps console.* with secret redaction before any
 // dependency (openai SDK, express, …) can log raw provider output to stdout.
 import './lib/installConsoleRedaction.js';
+import { createReplayIngest } from './lib/matchReview/replayIngest/index.js';
+import { createReplayIngestHandler } from './lib/matchReview/replayIngest/endpoint.js';
 import { createV1Router } from './routes/v1/index.js';
 import { securityHeaders } from './routes/v1/support.js';
 import { scheduleShadow } from './routes/v1/shadow.js';
@@ -2411,15 +2413,18 @@ app.post('/api/chat', async (req, res) => {
 // Unparsed entries live under a short TTL and never overwrite parsed data
 // (see lib/matchReview/matchDetailCache.js).
 const matchDetailCache = createMatchDetailCache({
-  fetchMatch: (matchId, options = {}) => fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
-    ...options,
-    timeoutMs: options.timeoutMs ?? 25000,
-  }),
+  fetchMatch: async (matchId, options = {}) => {
+    const raw = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
+      ...options, timeoutMs: options.timeoutMs ?? 25000,
+    });
+    return { ...raw, opendota_fetched_at: new Date().toISOString() };
+  },
   log: (msg) => console.warn(`[match-detail-cache] ${msg}`),
 });
 
-function getMatchDetail(matchId, fetchOptions = {}) {
-  return matchDetailCache.get(matchId, fetchOptions);
+const replayIngest = createReplayIngest();
+async function getMatchDetail(matchId, fetchOptions = {}) {
+  return replayIngest.overlay(await matchDetailCache.get(matchId, fetchOptions));
 }
 
 // OpenDota POST /request/{match_id} dedup/rate-limit state (per match),
@@ -2490,7 +2495,7 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400, extra = {}
   return res.status(status).json(payload);
 }
 
-app.use(createV1Router({ fetchMatch: getMatchDetail, phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined }));
+app.use(createV1Router({ fetchMatch: getMatchDetail, replayIngest, phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined }));
 
 app.get('/api/review/suggestions', async (req, res) => {
   try {
@@ -2521,6 +2526,8 @@ app.post('/api/review/:matchId', handleMatchReview);
 // Explicit OpenDota parse submission — the ONLY path that calls submitParseRequest
 // (facts load and review stream report parse status read-only). GET gets a JSON
 // 405 so it never falls through to the SPA index.html fallback.
+app.post('/api/review/:matchId/replay-ingest', createReplayIngestHandler({ingest:replayIngest,getMatchDetail,resolveClientIp}));
+app.get('/api/review/:matchId/replay-ingest', rejectParseRequestGet);
 app.post('/api/review/:matchId/parse-request', handleMatchReviewParseRequest);
 app.get('/api/review/:matchId/parse-request', rejectParseRequestGet);
 

@@ -15,7 +15,7 @@ export function renderSlots(slots, facts, lang) {
 }
 /** Time slots are authorized only by timestamps already attached to selected facts. */
 export function allowedSlots(facts) {
-  return [...Object.keys(facts), ...Object.values(facts).filter(f => Number.isInteger(f.t)).map(f => `t:${f.t}`), ...Object.values(facts).filter(f => f.kind === 'time' && Number.isInteger(f.value)).map(f => `t:${f.value}`)];
+  return [...Object.keys(facts), ...Object.values(facts).filter(f => Number.isFinite(f.t)).map(f => `t:${f.t}`), ...Object.values(facts).filter(f => f.kind === 'time' && Number.isFinite(f.value)).map(f => `t:${f.value}`)];
 }
 /** Provider input deliberately excludes values, derivations and raw match data. */
 export function buildPhrasingInput(insight, facts, lang) {

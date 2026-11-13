@@ -1,3 +1,4 @@
+import { Sources } from './bits';
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -332,4 +333,14 @@ describe('EvidencePanel', () => {
     expect(screen.getByTestId('evidence-body')).toBeTruthy();
     expect(screen.queryByText('The proof for every claim shows up here')).toBeNull();
   });
+});
+
+
+it('labels dem timeline sources as replay and displays their hash and trace path', () => {
+  const replayReview: Review = {...review,citations:[...(review.citations ?? []),{id:'r1',provider:'replay',url:'',fields:[],fetched_at:'2026-11-10T00:00:00Z',sha256:'a'.repeat(64),source_path:'trace/events.jsonl'}]};
+  wrap(<Sources review={replayReview} rows={[{field:'deaths',caption:'srcDeathsLog'}]} claim={1}/>);
+  expect(screen.getByText('replay · deaths')).toBeTruthy();
+  expect(screen.queryByText('opendota · deaths')).toBeNull();
+  expect(screen.getByTestId('replay-provenance').textContent).toContain('a'.repeat(64));
+  expect(screen.getByTestId('replay-provenance').textContent).toContain('trace/events.jsonl');
 });

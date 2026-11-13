@@ -47,7 +47,7 @@ function reviewEvents(review, cache, totalMs) {
   return events;
 }
 /** The cache adapter only needs get(key) and set(key, value, ttlMs). */
-export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now, logger = console, cache = createCache({ now }), knowledgeSnapshot }) {
+export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, now = Date.now, logger = console, cache = createCache({ now }), knowledgeSnapshot }) {
   let knowledge = [];
   try {
     knowledge = parseSiteKnowledge(knowledgeSnapshot ?? JSON.parse(readFileSync(new URL('../../data/site-knowledge.v1.json', import.meta.url), 'utf8')));
@@ -121,7 +121,8 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
       onStart();
       try { entry = await task.promise; } finally { res.removeListener('close', onClose); release(); }
     }
-    const review = buildReview(entry.raw, { heroId: params.heroId, lang: params.lang, fetchedAt: entry.fetchedAt, presetFollowups: true, kb: knowledge });
+    const currentRaw = replayIngest ? await replayIngest.overlay(entry.raw) : entry.raw;
+    const review = buildReview(currentRaw, { heroId: params.heroId, lang: params.lang, fetchedAt: entry.fetchedAt, presetFollowups: true, kb: knowledge });
     review.meta.cache = hit ? 'hit' : 'miss';
     return { review, hit };
   }
@@ -142,7 +143,7 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
         limit(req, res, askLimit);
       }
       const replayKey = `sse:${params.key}:${params.lang}`;
-      if (stream && !ask && req.headers['last-event-id']) {
+      if (!replayIngest?.enabled && stream && !ask && req.headers['last-event-id']) {
         if (!/^\d+$/.test(req.headers['last-event-id']) || !Number.isSafeInteger(Number(req.headers['last-event-id']))) throw invalid();
         const replay = await cache.get(replayKey);
         if (replay && Number(req.headers['last-event-id']) <= replay.length) {
@@ -165,7 +166,8 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
         const topic = unsupported ? null : itemTopic ?? (/\b(deaths?|killed|killers?)\b|死亡|击杀者/i.test(question ?? '') ? 'death_list' : /\b(laning|lane|last hits?)\b|对线|补刀/i.test(question ?? '') ? 'laning_0_10' : null);
         const followup = review.followups.find(f => f.id === (followupId ?? topic));
         if (followupId && !followup) throw invalid();
-        const answerKey = `ask:${params.key}:${params.lang}:${followupId}`;
+        const evidenceVersion = review.citations.find(c=>c.provider === 'replay')?.sha256 ?? 'opendota';
+        const answerKey = `ask:${params.key}:${params.lang}:${followupId}:${evidenceVersion}`;
         const cacheable = followupId && review.state === 'parsed' && followup?.answerable;
         let answer = cacheable ? await cache.get(answerKey) : undefined;
         if (!answer) {
@@ -180,7 +182,7 @@ export function createV1Router({ fetchMatch, phrasingCompletion, now = Date.now,
         await cache.set(replayKey, events, review.match.parsed ? 7 * DAY : UNPARSED_MATCH_CACHE_TTL_MS);
         events.forEach(({ event, data }, i) => sse.send(event, data, i + 1));
       } else {
-        if (review.state === 'parsed') res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
+        if (review.state === 'parsed' && !review.parse) res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
         else res.set('Cache-Control', 'no-store');
         res.json(review);
       }

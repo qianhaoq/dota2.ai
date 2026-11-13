@@ -1,0 +1,60 @@
+{
+  "match_id": 8985182860,
+  "note": "Comparison demo only. OpenDota earned-gold reference independently checked in INDEPENDENT_REVIEW.md; metadata minute 10 is net worth, stored in tens of gold.",
+  "earned_gold_adv_at_10": 975,
+  "net_worth_adv_at_10": 612,
+  "axe_earned_gold_at_10": 3117,
+  "axe_net_worth_at_10": 3459,
+  "players": [
+    {
+      "player_slot": 0,
+      "graph_start": 60,
+      "graph_at_10": 435.7
+    },
+    {
+      "player_slot": 1,
+      "graph_start": 59.8,
+      "graph_at_10": 255.75467
+    },
+    {
+      "player_slot": 2,
+      "graph_start": 59.8,
+      "graph_at_10": 363.97498
+    },
+    {
+      "player_slot": 3,
+      "graph_start": 59.8,
+      "graph_at_10": 219.28593
+    },
+    {
+      "player_slot": 4,
+      "graph_start": 58.43281,
+      "graph_at_10": 260.6281
+    },
+    {
+      "player_slot": 128,
+      "graph_start": 60,
+      "graph_at_10": 215.44531
+    },
+    {
+      "player_slot": 129,
+      "graph_start": 60,
+      "graph_at_10": 345.87186
+    },
+    {
+      "player_slot": 130,
+      "graph_start": 60,
+      "graph_at_10": 373.6969
+    },
+    {
+      "player_slot": 131,
+      "graph_start": 60,
+      "graph_at_10": 187.06874
+    },
+    {
+      "player_slot": 132,
+      "graph_start": 60,
+      "graph_at_10": 352.07654
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { isVerifiedReplay } from './replay.js';
 /**
  * 未解析录像的可靠性策略（纯逻辑，无网络访问，便于单测）：
  * - isMatchParsed: 判断 OpenDota 比赛对象是否已含解析（replay）数据
@@ -37,6 +38,7 @@ export const PARSE_BUDGET_MAX_TRACKED_CLIENTS = 1000;
  */
 export function isMatchParsed(match) {
   if (!match || typeof match !== 'object') return false;
+  if (isVerifiedReplay(match.replay_ingest, match.match_id)) return true;
   if (match.od_data?.has_parsed === true) return true;
   if (match.od_data?.has_parsed === false) return false;
   if (match.version != null && match.version !== false) return true;

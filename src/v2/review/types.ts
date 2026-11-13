@@ -67,6 +67,8 @@ export interface Purchase {
     key_item: boolean;
 }
 export interface Citation {
+    sha256?: string;
+    source_path?: string;
     id: string;
     provider: string;
     url: string;
@@ -77,6 +79,7 @@ export interface Citation {
     source_date?: string;
 }
 export interface Review {
+    parse?: import('../../types/matchReview').ReviewParseStatus;
     state: string;
     match: {
         id: number;

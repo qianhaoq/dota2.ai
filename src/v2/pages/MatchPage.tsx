@@ -233,7 +233,7 @@ export default function MatchPage() {
       {player && <HeroCollapsedRow hero={player.hero} personaname={player.personaname} change={() => setPicker(true)}/>}
       {player && <ResultHeader heroName={player.hero.replaceAll('_', ' ')} heroSlug={player.hero} kda={player.kda?.map((value: number | null) => value ?? '—').join('/') ?? ''} isRadiant={player.team === 'radiant'} outcome={player.result} duration={review?.facts['ancient.fell']?.display[lang] ?? ''} chart={review?.series ? <MiniChart series={review.series}/> : undefined}/>}
       {stream.insights.map((insight, i) => insight && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'} onEvidence={review ? openEvidence : undefined}/>)}
-      {stream.done?.state === 'unparsed' && <ParseNotice matchId={matchId} parse={{ status: 'unparsed', jobId: null, retryAfterSec: null, message: t('parseUnavailable') }} onRefresh={stream.retry}/>}
+      {(review?.parse || stream.done?.state === 'unparsed') && <ParseNotice matchId={matchId} parse={review?.parse ?? { status: 'unparsed', jobId: null, retryAfterSec: null, message: t('parseUnavailable') }} onRefresh={stream.retry}/>}
       {stream.done && stream.done.state !== 'unparsed' && stream.done.state !== 'parsed' && stream.done.state !== 'needs_hero' && <p className="text-d2-13 text-d2-warn">{t('insufficientBadge')}</p>}
       {review?.player && <FollowupChips followups={stream.followups} asked={asked} disabled={streaming} ask={f => ask(f.label, f)}/>}
       {inputError && <p role="alert">{t('questionTooLong')}</p>}

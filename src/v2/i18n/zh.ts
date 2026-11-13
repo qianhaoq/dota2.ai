@@ -11,6 +11,7 @@ export const zh: Dict = {
   traceResults: '整理现有结果',
   traceScoreboard: '仅终局记分板摘要 — 详细复盘不可用',
   parseUnavailable: 'OpenDota 尚未解析本场比赛，缺少时间轴、死亡和购买证据。可请求 OpenDota 解析后再次检查；解析可能失败，录像也可能已过期。',
+  parseIngestScope: '此环境可导入官方 .dem。下载与解析需手动请求；缺失的录像字段仍标为数据缺口。',
   parseScope: '此操作仅请求 OpenDota 解析。此环境未启用官方 .dem 导入，也未验证官方录像。若仍无法解析，请在 Dota 2 内回看录像，记录想讨论片段的时间点。',
   followupMissing: '现有证据无法回答此问题。',
 

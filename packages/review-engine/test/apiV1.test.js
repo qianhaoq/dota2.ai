@@ -1,3 +1,4 @@
+import {adaptReplayEvents,applyReplayArtifact} from '../src/replay.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import { readFileSync } from 'node:fs';
@@ -385,4 +386,23 @@ it.each([
   for (const question of ['BKB vision positioning', '视野站位', 'same bracket baseline']) {
     expect(await ask({ question })).toMatch(lang === 'zh' ? /不在本局记录/ : /not in this match/);
   }
+});
+
+
+it('reads newly ingested facts even when the OpenDota GET is cached, without submitting', async () => {
+  const raw = {match_id:42,duration:200,radiant_win:true,od_data:{has_parsed:false},players:[{hero_id:60,player_slot:132,deaths:1},{hero_id:2,player_slot:0,deaths:0}]};
+  const fixtureEvents = JSON.parse(readFileSync(new URL('./fixtures/replay-events.json',import.meta.url)));
+  let artifact;
+  const replayIngest = {enabled:true,overlay:vi.fn(async raw=>artifact ? applyReplayArtifact(raw,artifact) : raw),submit:vi.fn()};
+  const fetchMatch = vi.fn(async()=>raw);
+  const {get} = await setup({fetchMatch,replayIngest});
+  expect((await (await get('/api/v1/review/42?hero=night_stalker')).json()).state).toBe('unparsed');
+  artifact = adaptReplayEvents(raw,fixtureEvents,{demo_bytes:1000,demo_sha256:'a'.repeat(64),fetched_at:'2026-11-10T00:00:00Z'});
+  const response = await get('/api/v1/review/42?hero=night_stalker');
+  const json = await response.json();
+  expect(json.state).toBe('parsed'); expect(json.deaths[0]).toMatchObject({t:72.5,x:100,y:-200});
+  expect(json.citations.some(c=>c.provider==='replay')).toBe(true);
+  expect(fetchMatch).toHaveBeenCalledTimes(1); expect(replayIngest.submit).not.toHaveBeenCalled();
+  const frames = events(await (await get('/api/v1/review/42/stream?hero=night_stalker')).text());
+  expect(frames.find(f=>f.event==='done').data.review.parse.status).toBe('replay_parsed');
 });

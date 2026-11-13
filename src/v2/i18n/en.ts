@@ -9,6 +9,7 @@ export const en = {
   traceResults: 'Preparing available results',
   traceScoreboard: 'Scoreboard summary only — detailed review unavailable',
   parseUnavailable: 'OpenDota has not parsed this match. Timeline, death and purchase evidence is unavailable. Request an OpenDota parse, then check again; parsing may fail or the replay may have expired.',
+  parseIngestScope: 'Official .dem ingest is available here. Downloading and parsing requires an explicit request; missing replay fields remain data gaps.',
   parseScope: 'This requests OpenDota parsing only. Official .dem ingest is not enabled here and no official replay has been verified. If parsing remains unavailable, review the replay in Dota 2 and record timestamps for the moments you want to discuss.',
   followupMissing: 'The available evidence cannot answer this question.',
 

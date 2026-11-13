@@ -296,3 +296,13 @@ export const fetchReviewSuggestions = async (
     };
   }
 };
+/** Explicit first-party ingest. Never invoked by facts GET or stream setup. */
+export const requestReplayIngest = async (matchId: string | number, lang: Language, signal?: AbortSignal): Promise<ReviewParseStatus> => {
+  const response = await fetch(`/api/review/${encodeURIComponent(String(matchId))}/replay-ingest`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }), signal,
+  });
+  if (!response.ok) throw new Error('Replay ingest request failed');
+  const status = parseReviewParseStatus(await response.json());
+  if (!status) throw new Error('Invalid replay ingest status');
+  return status;
+};

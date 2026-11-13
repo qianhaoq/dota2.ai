@@ -9,6 +9,12 @@ it('ships the explicit public site knowledge snapshot in the production stage', 
   expect(production).toMatch(/^COPY\s+--from=builder\s+\/app\/data\/site-knowledge\.v1\.json\s+\.\/data\/site-knowledge\.v1\.json\s*$/m);
 });
 
+it('ships only the reviewed compact replay facts with ingest disabled', () => {
+  expect(production).toMatch(/^COPY\s+--from=builder\s+\/app\/data\/replay-facts\/9080127650\.json\s+\.\/data\/replay-facts\/9080127650\.json\s*$/m);
+  expect(production).toMatch(/^ENV REPLAY_HOME=\/app\/data\/replay-facts\s*$/m);
+  expect(dockerfile).not.toMatch(/^\s*(?:ENV|ARG)\s+.*(?:REPLAY_INGEST_ENABLED|DOTA_EXTRACT_BIN|COACH_EXTRACT_BIN)/m);
+});
+
 it('does not copy broad data directories or private artifacts into production', () => {
   expect(production).toBeDefined();
   const copies = production.replace(/\\\r?\n/g, ' ').split('\n')
@@ -20,6 +26,8 @@ it('does not copy broad data directories or private artifacts into production', 
     const tokens = copy.trim().split(/\s+/).slice(1).filter(token => !token.startsWith('--'));
     const sources = tokens.slice(0, -1);
     for (const source of sources) {
+      // Exact reviewed public exception; all other replay paths remain forbidden.
+      if (source === '/app/data/replay-facts/9080127650.json') continue;
       expect(source).not.toMatch(/(?:transcripts?|replays?|cookies?|private|\.db(?:$|\.)|\.sqlite)/i);
       if (/(?:^|\/)data(?:\/|$)/.test(source)) {
         expect(source).toBe('/app/data/site-knowledge.v1.json');

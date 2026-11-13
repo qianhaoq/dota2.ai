@@ -1,0 +1,125 @@
+{
+  "match_id": 8985182860,
+  "events": [
+    {
+      "type": "DOTA_COMBATLOG_PURCHASE",
+      "t": 13.066665649414062,
+      "target": "npc_dota_hero_sven",
+      "target_hero": false,
+      "target_illusion": false,
+      "attacker": "dota_unknown",
+      "attacker_hero": false,
+      "attacker_illusion": false,
+      "value_name": "item_magic_stick",
+      "attacker_team": 0,
+      "location_x": null,
+      "location_y": null
+    },
+    {
+      "type": "DOTA_COMBATLOG_DEATH",
+      "t": 29.366668701171875,
+      "target": "npc_dota_creep_badguys_ranged",
+      "target_hero": false,
+      "target_illusion": false,
+      "attacker": "npc_dota_hero_nyx_assassin",
+      "attacker_hero": true,
+      "attacker_illusion": false,
+      "value_name": "npc_dota_hero_mirana",
+      "attacker_team": 3,
+      "location_x": null,
+      "location_y": null
+    },
+    {
+      "type": "DOTA_COMBATLOG_TEAM_BUILDING_KILL",
+      "t": 562.3000030517578,
+      "target": "npc_dota_badguys_tower1_top",
+      "target_hero": false,
+      "target_illusion": false,
+      "attacker": "dota_unknown",
+      "attacker_hero": false,
+      "attacker_illusion": false,
+      "value_name": "npc_dota_hero_skeleton_king",
+      "attacker_team": 2,
+      "location_x": null,
+      "location_y": null
+    }
+  ],
+  "metadata": {
+    "players": [
+      {
+        "player_slot": 0,
+        "graph_net_worth": [
+          60,
+          66.347626,
+          84.99062,
+          115.751564,
+          161.09842,
+          215.78593,
+          257.5219,
+          302.57812,
+          350.72812,
+          396.25467,
+          435.7,
+          458.72345,
+          488.6219,
+          556.7172,
+          604.77966,
+          638.8297,
+          687.7125,
+          717.84064,
+          752.0156,
+          833.1156,
+          948.6797,
+          1050.4468,
+          1116.4626,
+          1189.85,
+          1264.7311,
+          1382.4156,
+          1463.75,
+          1523.1423,
+          1596.6735,
+          1619.3892,
+          1679.0984,
+          1770.6438,
+          1829.6482,
+          1821.3828,
+          1877.8721,
+          1931.5032,
+          2061.4404,
+          2170.2546,
+          2263.0032,
+          2444.838,
+          2437.8787,
+          2483.8958,
+          2505.9111,
+          2601.791,
+          2705.4626,
+          2796.025,
+          2881.5938,
+          2873.9763,
+          2877.0593,
+          2920.019,
+          2951.6265
+        ],
+        "camps_stacked": 0,
+        "inventory_snapshots": [
+          {
+            "denies": 15,
+            "game_time": 570,
+            "last_hits": 56
+          },
+          {
+            "denies": 15,
+            "game_time": 600,
+            "last_hits": 56
+          },
+          {
+            "denies": 15,
+            "game_time": 630,
+            "last_hits": 58
+          }
+        ]
+      }
+    ]
+  }
+}
