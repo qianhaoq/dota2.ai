@@ -394,6 +394,9 @@
           },
           "position_source_path": {
             "type": "string"
+          },
+          "inflictor": {
+            "type": "string"
           }
         },
         "required": [
@@ -437,7 +440,13 @@
             "enum": [
               "turning_point",
               "fix_this",
-              "next_game"
+              "next_game",
+              "hook_death",
+              "darkness_scythe",
+              "skeleton_before_bkb",
+              "bkb_windows",
+              "verified_death",
+              "void_dismember"
             ]
           },
           "status": {
@@ -587,6 +596,12 @@
               "string",
               "null"
             ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
           }
         },
         "required": [

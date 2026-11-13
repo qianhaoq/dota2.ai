@@ -88,7 +88,7 @@ export default function EvidenceBody({ review, claim, onPage, onClose }: {
     return <div data-testid="evidence-body" data-claim={claim}>
       <div className="flex items-start justify-between gap-[8px] px-[16px] pt-[12px] pb-[10px]">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-[6px] text-d2-12 font-bold uppercase tracking-wider text-d2-gold-2">{insightIcon(insight.id)}<span>{t(labelKey)}{time ? <> · <span className="d2-tnum font-mono">{time}</span></> : null}</span></div>
+          <div className="flex items-center gap-[6px] text-d2-12 font-bold uppercase tracking-wider text-d2-gold-2">{insightIcon(insight.id)}<span>{insight.title ?? t(labelKey)}{time ? <> · <span className="d2-tnum font-mono">{time}</span></> : null}</span></div>
           <div className="mt-[4px] text-d2-17 font-semibold text-d2-ink font-serif">{practiceGoalText(insight)}</div>
         </div>
         <Pager claim={claim} total={review.insights.length} onPage={onPage} onClose={onClose}/>

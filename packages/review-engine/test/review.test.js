@@ -406,11 +406,12 @@ it('localizes Chinese followup labels while retaining internal insight and gap k
     ['why_fix_this', '查看结论证据：本场要改'],
     ['why_next_game', '查看结论证据：下局重点'],
   ]);
-  for (const [gap, label] of [['gold_fed', '死亡送出金钱'], ['death_locations', '死亡位置']]) {
-    expect(review.followups).toContainEqual({ id: gap, label, answerable: false, gap });
-  }
+  expect(review.followups).toHaveLength(3);
+  expect(review.followups.every(f=>f.answerable)).toBe(true);
+  expect(review.data_gaps.map(g=>g.topic)).toEqual(expect.arrayContaining(['gold_fed','death_locations']));
   const english = buildReview(raw, opts);
-  expect(english.followups).toContainEqual({ id: 'gold_fed', label: 'Gold fed', answerable: false, gap: 'gold_fed' });
+  expect(english.followups.every(f=>f.answerable)).toBe(true);
+
 });
 
 it('includes the Axe match window and ten-minute observations without inferred lane claims', () => {

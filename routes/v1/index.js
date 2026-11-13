@@ -172,7 +172,7 @@ export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, n
         let answer = cacheable ? await cache.get(answerKey) : undefined;
         if (!answer) {
           // Free questions are deliberately unanswerable unless matched to approved evidence.
-          answer = followup ? await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) }) : { text: refusal(params.lang), phrasing: 'template' };
+          answer = followup ? await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: review.parse?.status === 'replay_parsed' || process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) }) : { text: refusal(params.lang), phrasing: 'template' };
           if (cacheable) await cache.set(answerKey, answer, 7 * DAY);
         }
         sse.send('token', { target: 'answer', delta: answer.text });

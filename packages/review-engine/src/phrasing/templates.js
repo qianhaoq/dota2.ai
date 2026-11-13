@@ -101,6 +101,7 @@ export function renderTemplate(insight, facts, lang) {
       else if (id === 'gold.at.10') sentences.push(copy('economy', id));
       else if (id === 'lh_at_10') sentences.push(copy('farm', id));
       else if (id === 'lane') sentences.push(copy('lane', id));
+      else if (/^(cast\.|use\.bkb\.|purchase\.bkb_after_skeleton)/.test(id)) sentences.push(`{t:${facts[id].t}}: {${id}}`);
       else if (/^death\.\d+$/.test(id)) sentences.push(copy('death', id));
       else if (id.startsWith('deaths.phase.')) {
         const phase = id.split('.').at(-1);

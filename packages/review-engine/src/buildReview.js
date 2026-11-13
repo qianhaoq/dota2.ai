@@ -1,3 +1,4 @@
+import { buildMoments } from './insights/moments.js';
 import { isVerifiedReplay, replayStatusPayload } from './replay.js';
 import { availableSummary } from './availableSummary.js';
 import { buildFacts, heroSlug, teamOf, KEY_ITEMS } from './facts/index.js';
@@ -8,24 +9,9 @@ import { buildPresetFollowups } from './phrasing/followups.js';
 import { isMatchParsed } from './matchParse.js';
 import { attachSiteKnowledge } from './siteKnowledge.js';
 
-export const ENGINE_VERSION = '2.1.0-replay1';
+export const ENGINE_VERSION = '2.2.0-player-review';
 
 const insightLabels = { turning_point: '转折点', fix_this: '本场要改', next_game: '下局重点' };
-const gapLabels = {
-  laning_baseline: { zh: '同段位对线基准', en: 'Same-bracket laning baseline' },
-  laning_0_10: { zh: '对线记录', en: 'Laning evidence' },
-  gold_fed: { zh: '死亡送出金钱', en: 'Gold fed' },
-  time_dead: { zh: '死亡总时长', en: 'Time dead' },
-  lh_at_10: { zh: '十分钟补刀', en: 'Last hits at 10 minutes' },
-  death_locations: { zh: '死亡位置', en: 'Death locations' },
-  build_vs_lineup: { zh: '针对阵容的出装', en: 'Build versus lineup' },
-  deaths: { zh: '死亡时间线', en: 'Death timeline' },
-  'deaths.behind_1k': { zh: '经济落后千金时的死亡', en: 'Deaths while behind by 1,000 gold' },
-  patch: { zh: '游戏版本', en: 'Patch' },
-  player: { zh: '玩家英雄', en: 'Player hero' },
-  parsed_evidence: { zh: '解析数据证据', en: 'Parsed evidence' },
-  radiant_gold_adv: { zh: '天辉经济优势曲线', en: 'Radiant gold advantage' },
-};
 
 /**
  * @param {any} raw OpenDota match, supplied by an adapter (never fetched here).
@@ -88,26 +74,12 @@ export function buildReview(raw, opts) {
       }
     }
     for (const insight of insights) insight.citations = [...new Set(insight.fact_ids.map(id => result.facts[id]?.citation).filter(Boolean))];
-    // Partial timelines still prove individual events; never grade a decision from these alone.
-    const deathIds = result.deaths.map(d => d.fact_id);
-    const allItemIds = Object.keys(result.facts).filter(id=>id.startsWith('item.first.'));
-    const keyIds = allItemIds.filter(id=>Object.hasOwn(KEY_ITEMS,id.slice(11)));
-    const itemIds = keyIds.length ? keyIds : allItemIds;
-    if (itemIds.length) {
-      const i = insights.findIndex(i=>i.id === 'next_game');
-      const times = itemIds.map(id=>result.facts[id].t);
-      const slots = opts.lang === 'zh' ? '录像已核实购买记录；不代表送达或使用时间，不能据此判断出装优劣。' : 'The replay verifies purchase records. These are not delivery or use times and do not establish build quality.';
-      insights[i] = {...insights[i],status:'ok',fact_ids:itemIds,metrics:itemIds.map(fact_id=>({fact_id,label_key:fact_id})),citations:['r1'],time:{from:Math.min(...times),to:Math.max(...times)},claim:{text:slots,slots,phrasing:'template'}};
-      state = complete ? 'parsed' : 'insufficient';
-    }
-    if (deathIds.length) {
-      const i = insights.findIndex(i => i.id === 'fix_this');
-      insights[i] = { ...insights[i], status:'ok', fact_ids:deathIds, metrics:deathIds.map(fact_id => ({fact_id,label_key:fact_id})), citations:['r1'],
-        time:{from:result.deaths[0].t,to:result.deaths.at(-1).t},
-        claim:{slots:'',text:opts.lang === 'zh' ? '录像已核实以下死亡时刻；state_sample 位置是附近采样点（见 sample_t、dt），并非战斗日志精确死亡坐标。需结合兵线、视野和目标回看，不能仅凭死亡判定决策错误。' : 'The replay verifies these death times. Any state_sample position is a nearby sampled location, with sample_t and dt, not an exact combat-log death coordinate. Review waves, vision and objectives; a death alone does not prove a decision error.', phrasing:'template'} };
-      state = complete ? 'parsed' : 'insufficient';
-    }
   }
+  if (replay && focus) {
+    insights.splice(0, insights.length, ...buildMoments(result, focus, opts.lang));
+    state = complete ? 'parsed' : 'insufficient';
+  }
+
   const presets = opts.presetFollowups ? buildPresetFollowups(result, parsed && focus ? { ...focus, index: players.indexOf(focus) } : null, opts.lang, gaps) : [];
   const url = `https://dota2.ai/m/${raw.match_id ?? ''}${focus ? `?hero=${heroSlug(focus.hero_id)}` : ''}`;
   return attachSiteKnowledge({
@@ -118,8 +90,11 @@ export function buildReview(raw, opts) {
     series: { radiant_gold_adv: parsed ? Array.from(raw.radiant_gold_adv ?? [], value => Number.isFinite(value) ? value : null) : [], radiant_xp_adv: parsed ? raw.radiant_xp_adv ?? [] : [], perspective: focus ? teamOf(focus) : 'radiant' },
     objectives, deaths: result.deaths,
     purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: Object.hasOwn(KEY_ITEMS, p.key) })) : [],
-    insights, data_gaps: gaps,
-    followups: [...presets, ...insights.filter(i => i.status === 'ok').map(i => ({ id: `why_${i.id}`, label: opts.lang === 'zh' ? `查看结论证据：${insightLabels[i.id] ?? i.id}` : `Evidence: ${i.id}`, answerable: true, fact_ids: i.fact_ids })), ...gaps.filter(g => !presets.some(p => p.id === g.topic)).map(g => ({ id: g.topic, label: gapLabels[g.topic]?.[opts.lang] ?? g.topic, answerable: false, gap: g.topic }))],
+    insights, data_gaps: gaps.filter((g,i)=>gaps.findIndex(other=>other.topic===g.topic)===i),
+    followups: (replay
+      ? insights.filter(i => i.prompt).map(i => ({id:`why_${i.id}`,label:i.prompt,answerable:true,fact_ids:i.fact_ids})).concat(presets.filter(p=>p.answerable))
+      : [...presets.filter(p=>p.answerable).sort((a,b)=>Number(a.id==='farm_progress')-Number(b.id==='farm_progress')), ...insights.filter(i=>i.status==='ok').map(i=>({id:`why_${i.id}`,label:opts.lang==='zh'?`查看结论证据：${insightLabels[i.id] ?? i.id}`:`Evidence: ${i.id}`,answerable:true,fact_ids:i.fact_ids}))]
+    ).slice(0,3),
     citations: [...(replay ? [{id:'r1',provider:'replay',url:replay.replay_url ?? '',fetched_at:replay.fetched_at,sha256:replay.demo_sha256,source_path:'trace/events.jsonl',fields:[...new Set(Object.values(result.facts).filter(f=>f.citation === 'r1').map(f=>f.source_path))]}] : []), { id: 's1', provider: 'opendota', url: `https://api.opendota.com/api/matches/${raw.match_id ?? ''}`, fetched_at: opts.fetchedAt, fields: [...new Set(Object.values(result.facts).filter(f => f.citation === 's1').map(f => f.source_path))] }],
     ...(raw.replay_ingest ? {parse:replayStatusPayload(raw.replay_ingest.status === 'replay_parsed' && !replay ? 'replay_failed' : raw.replay_ingest.status, opts.lang)} : {}),
     meta: { url, evidence_url: `${url}${focus ? '&' : '?'}view=evidence`, generated_at: opts.fetchedAt, cache: 'miss', phrasing: 'template', llm_provider: null },

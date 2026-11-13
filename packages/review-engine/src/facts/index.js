@@ -125,7 +125,7 @@ export function buildFacts(raw, player) {
       sorted.forEach((d, i) => {
         const diff = d.time >= 0 ? gold[Math.floor(d.time / 60)] : null;
         const id = `death.${i + 1}`;
-        const event = { ...(d.position_source ? {position_source:d.position_source,sample_t:d.sample_t,dt:d.dt,position_source_path:d.position_source_path} : {}), ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
+        const event = { ...(d.position_source ? {position_source:d.position_source,sample_t:d.sample_t,dt:d.dt,position_source_path:d.position_source_path} : {}), ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), ...(d.inflictor ? {inflictor:d.inflictor} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
         deaths.push(event);
         add(id, event, 'entity', d.source_path, { t: d.time });
       });

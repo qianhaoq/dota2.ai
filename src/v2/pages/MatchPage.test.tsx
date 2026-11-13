@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { readFileSync } from 'node:fs';
 import { buildReview } from '../../../packages/review-engine/src/index.js';
+import { applyReplayArtifact } from '../../../packages/review-engine/src/replay.js';
 import MatchPage from './MatchPage';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { trackEvent } from '../../services/analytics';
@@ -210,6 +211,21 @@ describe('SSE v1 conversation', () => {
         await screen.findByText(/Copy JSON|复制 JSON/);
         expect(vi.mocked(trackEvent).mock.calls.filter(([e]) => e === 'review_viewed')).toHaveLength(0);
     });
+    it.each(['en','zh'])('renders the official replay as moments and readable timelines (%s)', async lang => {
+        const artifact = JSON.parse(readFileSync('data/replay-facts/9080127650.json','utf8'));
+        const match = {match_id:9080127650,duration:1906.767,radiant_win:true,players:artifact.players.map((p: {hero_id:number;player_slot:number})=>({hero_id:p.hero_id,player_slot:p.player_slot,...(p.hero_id===60?{kills:4,deaths:8,assists:6}:{})}))};
+        const r = engine(applyReplayArtifact(match,artifact),60,lang);
+        fetcher.mockResolvedValue(response(events(r)).response);
+        const view=page(`/m/9080127650?hero=60&lang=${lang}`);
+        await screen.findAllByTestId('insight-card');
+        expect(screen.getAllByTestId('insight-card')).toHaveLength(5);
+        expect(screen.getByText((_,el)=>el?.tagName==='LI' && !!el.textContent?.includes(lang==='zh'?'冥魂大帝骨卫骷髅':'Wraith King skeleton'))).toBeTruthy();
+        expect(screen.getByText(lang==='zh'?'关键购买记录':'Key purchases')).toBeTruthy();
+        expect(screen.getByText(lang==='zh'?'本局还缺什么':'What remains unverified')).toBeTruthy();
+        expect(screen.queryByRole('img',{name:lang==='zh'?'经济与经验差':'Gold and experience advantage'})).toBeNull();
+        expect(view.container.textContent).not.toMatch(/state_sample|sample_t|net_worth_t|trace_version|trace\//);
+        expect(screen.queryByRole('button',{name:'Notify me'})).toBeNull();
+    });
     for (const lang of ['en', 'zh']) it(`discloses scoreboard-only 9080127650 and avoids unsupported requests (${lang})`, async () => {
         const r = JSON.parse(readFileSync('src/fixtures/review9080127650.scoreboard.json', 'utf8')) as Review;
         fetcher.mockResolvedValue(response(events(r).replace('"review":', '"timings":{"total_display":"0.0"},"review":')).response);
@@ -218,9 +234,8 @@ describe('SSE v1 conversation', () => {
         expect(screen.queryByText(/Analyzed in|分析耗时|Reading timeline|Building 3 conclusions/)).toBeNull();
         expect(screen.getByText(lang === 'en' ? /OpenDota has not parsed/ : /OpenDota 尚未解析/)).toBeTruthy();
         expect(screen.getByText(lang === 'en' ? /Official .dem ingest is not enabled/ : /未启用官方 .dem/)).toBeTruthy();
-        fireEvent.click(screen.getByRole('button', { name: /查看死亡记录/ }));
-        await screen.findByText(lang === 'en' ? /The available evidence cannot answer/ : /现有证据无法回答/);
-        expect(screen.getByText(lang === 'en' ? 'The death timeline is incomplete, so a full death review is unavailable.' : '死亡时间线不完整，无法逐条复查全部死亡。')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: /查看死亡记录/ })).toBeNull();
+        expect(screen.getByText(lang === 'en' ? 'What remains unverified' : '本局还缺什么')).toBeTruthy();
         const input = screen.getByPlaceholderText(lang === 'en' ? 'Ask a follow-up about this match' : '继续追问这场比赛');
         for (const question of ['which build?', 'when should I have bought bkb?', 'where were the wards?']) {
             fireEvent.change(input, { target: { value: question } });
@@ -294,15 +309,10 @@ describe('SSE v1 conversation', () => {
         await screen.findByText('Evidence answer');
         expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'free', answerable: true });
     });
-    it('unanswerable followup shows human refusal without raw gap codes', async () => {
-        page();
-        await ready();
-        fireEvent.click(screen.getByRole('button', { name: 'Death locations · Missing evidence' }));
-        await screen.findByTestId('refusal-bubble');
-        expect(screen.getByText('The OpenDota death log has no coordinates, so position and vision cannot be judged.')).toBeTruthy();
-        expect(screen.queryByText('death_locations: opendota_deaths_log_has_no_coordinates')).toBeNull();
-        expect(screen.queryByText(/opendota_deaths_log_has_no_coordinates/)).toBeNull();
-        expect(trackEvent).toHaveBeenCalledWith('followup_clicked', { followup_id: 'death_locations', answerable: false });
+    it('keeps unavailable evidence out of followup chips', async () => {
+        page(); await ready();
+        expect(screen.queryByRole('button', { name: /Missing evidence/ })).toBeNull();
+        expect(screen.getByText('What remains unverified')).toBeTruthy();
         expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
     });
     for (const question of ['which build?', 'when should I have bought bkb?'])
@@ -352,11 +362,8 @@ describe('SSE v1 conversation', () => {
         expect(screen.queryByText(/doom_bringer/)).toBeNull();
         // gold.low stays in the details chips for turning_point (with metric label)
         expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && (el.textContent ?? '').includes('Gold low') && (el.textContent ?? '').includes(r.facts['gold.low'].display.en))).toBeTruthy();
-        fireEvent.click(screen.getByRole('button', { name: 'Gold fed · Missing evidence' }));
-        await screen.findByTestId('refusal-bubble');
-        expect(screen.getByText('Kill bounty records are missing, so gold fed cannot be calculated.')).toBeTruthy();
-        expect(screen.queryByText('gold_fed: missing_or_incomplete_deaths_log')).toBeNull();
-        expect(screen.queryByText(/missing_or_incomplete_deaths_log/)).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Gold fed · Missing evidence' })).toBeNull();
+        expect(screen.getByText('What remains unverified')).toBeTruthy();
         expect(fetcher.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
     });
     it('Stop preserves partial answer and releases the composer', async () => {
@@ -433,31 +440,12 @@ describe('SSE v1 conversation', () => {
         expect(screen.queryByRole('button', { name: 'Jump to latest' })).toBeNull();
         expect(scroller.scrollTop).toBe(1200);
     });
-    it('fake door is shown once per session and notify fires once', async () => {
-        const v = page();
-        await ready();
-        fetcher.mockResolvedValueOnce({ ok: true });
-        fireEvent.click(screen.getByRole('button', { name: 'Notify me' }));
-        await screen.findByText('Thanks! Your interest is recorded.');
-        expect(fetcher).toHaveBeenLastCalledWith('/api/feedback', expect.objectContaining({ method: 'POST' }));
-        expect(trackEvent).toHaveBeenCalledWith('fakedoor_clicked', { action: 'notify', kind: 'steam_autoreview' });
-        v.unmount();
-        page();
-        await ready();
+    it.each([true, false])('keeps marketing off match review even with fake door flag %s', async enabled => {
+        flags.fakedoor_v2 = enabled;
+        page(); await ready();
         expect(screen.queryByRole('button', { name: 'Notify me' })).toBeNull();
-        expect(vi.mocked(trackEvent).mock.calls.filter(([e]) => e === 'fakedoor_clicked')).toHaveLength(1);
-    });
-    it('fake door dismissal tracks action and respects kill switch', async () => {
-        flags.fakedoor_v2 = false;
-        const v = page();
-        await ready();
-        expect(screen.queryByText('Notify me')).toBeNull();
-        flags.fakedoor_v2 = true;
-        v.unmount();
-        page();
-        await ready();
-        fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-        expect(trackEvent).toHaveBeenCalledWith('fakedoor_clicked', { action: 'dismiss', kind: 'steam_autoreview' });
+        expect(screen.queryByRole('button', { name: 'Not now' })).toBeNull();
+        expect(vi.mocked(trackEvent).mock.calls.filter(([e]) => e === 'fakedoor_clicked')).toHaveLength(0);
     });
     it('copies a canonical deep link with hero, claim and language and the exact JSON', async () => {
         const writeText = vi.fn().mockResolvedValue(undefined);

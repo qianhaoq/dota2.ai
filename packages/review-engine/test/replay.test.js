@@ -31,7 +31,7 @@ describe('first-party replay evidence', () => {
     expect(review.match.parsed).toBe(true); expect(review.state).toBe('parsed');
     expect(review.facts['death.1']).toMatchObject({t:72.5,citation:'r1',source_path:'trace/events.jsonl[0]'});
     expect(review.facts['ancient.fell'].citation).toBe('s1');
-    expect(review.insights.find(i=>i.id==='fix_this')).toMatchObject({status:'ok',fact_ids:['death.1'],time:{from:72.5,to:72.5},citations:['r1']});
+    expect(review.insights.find(i=>i.id==='verified_death')).toMatchObject({status:'ok',fact_ids:['death.1'],time:{from:72.5,to:72.5},citations:['r1']});
     expect(review.citations.find(c=>c.provider==='replay')).toMatchObject({sha256:metadata.demo_sha256,fetched_at:metadata.fetched_at});
     expect(review.deaths[0]).toMatchObject({x:100,y:-200});
     expect(review.data_gaps.some(g=>g.topic==='death_locations')).toBe(false);
@@ -147,7 +147,7 @@ it('keeps earned gold distinct, refuses unverified units, and cites replay follo
   expect(review.facts['farm.10_20.net_worth_t']).toMatchObject({citation:'r1',unit:'gold (net worth)'});
   expect(review.facts['farm.10_20.net_worth_t'].source_path).toContain('graph_net_worth');
   expect(review.facts['farm.10_20.lh_t'].citation).toBe('r1');
-  expect(review.insights.find(i=>i.id==='turning_point').status).toBe('insufficient');
+  expect(review.insights.some(i=>['turning_point','fix_this','next_game'].includes(i.id))).toBe(false);
   expect(review.facts['net_worth.at.0']).toMatchObject({value:600,citation:'r1'});
   expect(validateReview(review)).toMatchObject({ok:true});
   meta.players[0].graph_net_worth[0]=100;

@@ -5,7 +5,6 @@ import Composer from '../components/Composer';
 import { useI18n } from '../i18n/I18nProvider';
 import type { DictKey } from '../i18n/en';
 import { en } from '../i18n/en';
-import { useFlags } from '../FlagsProvider';
 import { isSafeMatchId } from '../parseMatchInput';
 import { readSse, useReviewStream } from '../review/useReviewStream';
 import type { Followup, Review, StreamError } from '../review/types';
@@ -13,7 +12,7 @@ import { trackEvent } from '../../services/analytics';
 import { reviewViewed } from '../review/analytics';
 import AiText from '../review/AiText';
 import InsightCard from '../review/InsightCard';
-import FakedoorCard from '../review/FakedoorCard';
+import ReviewTimelines from '../review/ReviewTimelines';
 import ResultHeader from '../review/ResultHeader';
 import ParseNotice from '../review/ParseNotice';
 import { control, surface, ToolTrace, HeroGrid, HeroCollapsedRow, MiniChart, FollowupChips, RefusalBubble, Share, JumpToLatest, FactChip } from '../review/ConversationCards';
@@ -37,7 +36,6 @@ export default function MatchPage() {
     const [params] = useSearchParams();
     const hero = params.get('hero');
     const { lang, t } = useI18n();
-    const flags = useFlags();
     const navigate = useNavigate(), location = useLocation();
     const valid = isSafeMatchId(matchId);
     const stream = useReviewStream(matchId, hero, lang, valid);
@@ -232,16 +230,17 @@ export default function MatchPage() {
             }}/>}
       {player && <HeroCollapsedRow hero={player.hero} personaname={player.personaname} change={() => setPicker(true)}/>}
       {player && <ResultHeader heroName={player.hero.replaceAll('_', ' ')} heroSlug={player.hero} kda={player.kda?.map((value: number | null) => value ?? '—').join('/') ?? ''} isRadiant={player.team === 'radiant'} outcome={player.result} duration={review?.facts['ancient.fell']?.display[lang] ?? ''} chart={review?.series ? <MiniChart series={review.series}/> : undefined}/>}
-      {stream.insights.map((insight, i) => insight && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'} onEvidence={review ? openEvidence : undefined}/>)}
+      {stream.insights.map((insight, i) => insight && insight.status === 'ok' && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'} onEvidence={review ? openEvidence : undefined}/>)}
       {(review?.parse || stream.done?.state === 'unparsed') && <ParseNotice matchId={matchId} parse={review?.parse ?? { status: 'unparsed', jobId: null, retryAfterSec: null, message: t('parseUnavailable') }} onRefresh={stream.retry}/>}
       {stream.done && stream.done.state !== 'unparsed' && stream.done.state !== 'parsed' && stream.done.state !== 'needs_hero' && <p className="text-d2-13 text-d2-warn">{t('insufficientBadge')}</p>}
+      {review?.player && <ReviewTimelines review={review}/>}
       {review?.player && <FollowupChips followups={stream.followups} asked={asked} disabled={streaming} ask={f => ask(f.label, f)}/>}
       {inputError && <p role="alert">{t('questionTooLong')}</p>}
       {turns.map(turn => <section key={turn.id} className="pt-[16px] space-y-[8px]"><div className="flex justify-end"><p className="rounded-[18px_18px_6px_18px] bg-d2-surface-3 px-[14px] py-[10px] max-w-[82%] break-words text-d2-15 font-medium">{turn.question}</p></div><AiText text={turn.text} streaming={turn.status === 'streaming'}/>{turn.gaps.length > 0 && <RefusalBubble gaps={turn.gaps}/>}<div className="flex flex-wrap gap-[8px]">{turn.factIds.map(id => review?.facts[id] && <FactChip key={id} fact={review.facts[id]}/>)}</div>{turn.error && <div role="alert">{errorText(turn.error)}{turn.error.retryable && <button className={control} disabled={streaming} onClick={() => {
         setTurns(prev => prev.map(t => t.id === turn.id ? { ...t, status: 'streaming', error: undefined, text: '' } : t));
         void start(turn);
     }}>{t('btnRetry')}</button>}</div>}</section>)}
-      {review?.player && flags.fakedoor_v2 && (stream.fakedoor || stream.status === 'done') && <FakedoorCard />}
+
       {away && <JumpToLatest jump={() => {
                 stick.current = true;
                 setAway(false);

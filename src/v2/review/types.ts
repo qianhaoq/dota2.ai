@@ -19,6 +19,8 @@ export interface Hero {
     personaname?: string | null;
 }
 export interface Insight {
+    title?: string;
+    prompt?: string;
     time?: { from: number; to: number };
     id: string;
     status: string;
@@ -56,6 +58,7 @@ export interface Objective {
     fact_id: string;
 }
 export interface DeathEntry {
+    inflictor?: string;
     t: number;
     killer: string | null;
     team_gold_diff_at_t: number | null;
