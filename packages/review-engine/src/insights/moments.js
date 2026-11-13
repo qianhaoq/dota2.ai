@@ -13,12 +13,10 @@ export function evidenceName(key, lang) {
   if (key == null || key === '') return zh ? '未知单位或技能' : 'Unknown unit or ability';
   if (names[key]) return names[key][zh ? 1 : 0];
   const text = String(key);
-  if (text.startsWith('npc_dota_hero_')) {
-    const slug = text.slice('npc_dota_hero_'.length);
-    const hero = Object.values(STATIC_HEROES).find(h => h.internalName === text || h.internalSlug === slug);
-    if (hero) return zh ? hero.nameZh : hero.nameEn;
-    return titleCase(slug);
-  }
+  const slug = text.startsWith('npc_dota_hero_') ? text.slice('npc_dota_hero_'.length) : text;
+  const hero = Object.values(STATIC_HEROES).find(h => h.internalName === text || h.internalName === `npc_dota_hero_${text}` || h.internalSlug === slug);
+  if (hero) return zh ? hero.nameZh : hero.nameEn;
+  if (text.startsWith('npc_dota_hero_')) return titleCase(slug);
   if (text.startsWith('npc_dota_neutral_')) return zh ? '中立生物' : 'Neutral creep';
   if (text.includes('tower') || text.includes('rax') || text.includes('fort') || text.includes('goodguys') || text.includes('badguys')) {
     return formatObjectiveLabel({ type: 'building_kill', key: text }, lang);

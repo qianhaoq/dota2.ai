@@ -1,5 +1,6 @@
 import { isSameTeamKill } from '../deathTimeline.js';
 import { STATIC_HEROES, getStaticHero } from '../staticHeroes.js';
+import { evidenceName } from '../insights/moments.js';
 
 export const KEY_ITEMS = {
   hand_of_midas: { en: 'Hand of Midas', zh: '迈达斯之手' },
@@ -22,11 +23,7 @@ export const heroSlug = id => getStaticHero(id)?.internalSlug ?? null;
 export const teamOf = player => Number.isInteger(player.player_slot) ? (player.player_slot < 128 ? 'radiant' : 'dire') : null;
 const format = value => `${value < 0 ? '−' : ''}${Math.abs(value).toLocaleString('en-US')}`;
 const slug = key => String(key).replace(/^npc_dota_hero_/, '');
-const heroLabel = (key, lang) => {
-  const s = String(key).replace(/^npc_dota_hero_/, '');
-  const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === s);
-  return hero ? (lang === 'zh' ? hero.nameZh : hero.nameEn) : s;
-};
+const heroLabel = (key, lang) => evidenceName(key, lang);
 /** Localize slug→count entity maps (killed_by); leave other entity values unchanged. */
 const entityCountDisplay = value => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;

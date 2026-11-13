@@ -32,13 +32,20 @@ it('enforces each adjudicated budget with injectable thresholds',async()=>{
  await expect(jobs.charge(j.jobId,lease.token,{bytes:6})).rejects.toThrow('resource_limited');
  expect((await jobs.create({match_id:2},'ip')).status).toBe('throttled');
 });
-it('counts rolling IP and hourly limits across a UTC midnight boundary',async()=>{
+it('counts rolling IP limits across a UTC midnight boundary',async()=>{
  let now=86400000-1000;const jobs=new FileJobStore(await home(),{now:()=>now});
  expect((await jobs.create({match_id:1},'same-ip')).status).toBe('queued');
  expect((await jobs.create({match_id:2},'same-ip')).status).toBe('queued');
  expect((await jobs.create({match_id:3},'same-ip')).status).toBe('queued');
  now+=2000;
  expect((await jobs.create({match_id:4},'same-ip')).status).toBe('throttled');
+});
+it('counts rolling hourly limits across a UTC midnight boundary',async()=>{
+ let now=86400000-2000;const jobs=new FileJobStore(await home(),{now:()=>now,budgets:{dailyJobs:100,ipTenMinutes:100,hourlyJobs:2}});
+ expect((await jobs.create({match_id:1},'ip-a')).status).toBe('queued');
+ expect((await jobs.create({match_id:2},'ip-b')).status).toBe('queued');
+ now+=3000;
+ expect((await jobs.create({match_id:3},'ip-c')).status).toBe('throttled');
 });
 
 it('keeps artifacts immutable and verifies checksums',async()=>{
