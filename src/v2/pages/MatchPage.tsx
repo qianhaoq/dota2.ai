@@ -216,7 +216,12 @@ export default function MatchPage() {
         const el = scroll.current!;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
         setAway(!stick.current);
-    }} composer={<Composer mode={review?.player ? 'followUp' : 'match'} disabled={streaming} onStop={stop} currentMatchId={matchId} onSubmitQuestion={q => ask(q)}/>}>
+    }} aboveComposer={away ? <JumpToLatest jump={() => {
+                stick.current = true;
+                setAway(false);
+                if (scroll.current)
+                    scroll.current.scrollTop = scroll.current.scrollHeight;
+            }}/> : null} composer={<Composer mode={review?.player ? 'followUp' : 'match'} disabled={streaming} onStop={stop} currentMatchId={matchId} onSubmitQuestion={q => ask(q)}/>}>
     <div className="space-y-[8px]"><div className="flex justify-end"><div className={`${surface} text-d2-15`}><b className="block">{matchId}</b><span className="text-d2-12 text-d2-ink-4">{t('matchChipTitle')}</span></div></div>
       <ToolTrace steps={stream.steps} done={stream.status === 'done'} timings={stream.done?.timings} review={review}/>
       {stream.error && <div role="alert" className={surface}>{errorText(stream.error)} {stream.error.retryable && <button className={control} onClick={stream.retry}>{t('btnRetry')}</button>}</div>}
@@ -241,12 +246,6 @@ export default function MatchPage() {
         void start(turn);
     }}>{t('btnRetry')}</button>}</div>}</section>)}
 
-      {away && <JumpToLatest jump={() => {
-                stick.current = true;
-                setAway(false);
-                if (scroll.current)
-                    scroll.current.scrollTop = scroll.current.scrollHeight;
-            }}/>}
     </div>
   </V2Shell>;
 }

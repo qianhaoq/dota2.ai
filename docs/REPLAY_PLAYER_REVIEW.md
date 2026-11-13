@@ -33,7 +33,7 @@ Uncalibrated net-worth graph bins remain excluded from timed economy claims.
 The page keeps scoreboard identity and parse honesty. It hides unusable charts,
 shows death and key-purchase lists, collapses limitations into one section,
 and offers at most three answerable followups. Replay moments keep evidence
-links. Jump to latest stays in document flow; the email fake door is absent.
+links. Jump to latest sits above the composer, outside the scroll column, so it cannot cover review cards. The email fake door is absent from the match page.
 OpenDota reviews retain their independently supported evidence and parsed state.
 
 Old tests asserting fixed replay fix/next-game slots, gap-chip invitations and
