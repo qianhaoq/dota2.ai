@@ -14,6 +14,7 @@ import {
   seriesForPlayer,
   seriesPath,
   sourcesFor,
+  formatMatchClock,
 } from './labels';
 import type { Review } from '../review/types';
 
@@ -203,4 +204,9 @@ it('sourcesFor a moment insight lists only fields from that moment\'s facts', ()
     insights: [{ id: 'bkb_windows', kind: 'item_window', status: 'ok', time: { from: 60, to: 120 }, fact_ids: ['use.bkb.1'] }],
   } as any;
   expect(sourcesFor(review, 0).map(s => s.field)).toEqual(['deaths_log']);
+});
+it('formatMatchClock keeps a single minus for pre-horn times', () => {
+  expect(formatMatchClock(-30)).toBe('-0:30');
+  expect(formatMatchClock(-90)).toBe('-1:30');
+  expect(formatMatchClock(125)).toBe('2:05');
 });

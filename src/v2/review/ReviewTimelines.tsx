@@ -3,7 +3,8 @@ import { useI18n } from '../i18n/I18nProvider';
 import { heroDisplayName } from './heroDisplayName';
 import { surface } from './ConversationCards';
 import type { Review } from './types';
-const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+import { formatMatchClock } from '../evidence/labels';
+const clock = formatMatchClock;
 const inflictors: Record<string, [string, string]> = { pudge_meat_hook:['Meat Hook','肉钩'], pudge_dismember:['Dismember','肢解'], necrolyte_reapers_scythe:["Reaper’s Scythe",'死神镰刀'], skeleton_king_bone_guard:['Bone Guard','骨卫'] };
 const items: Record<string, [string, string]> = { black_king_bar: ['Black King Bar', '黑皇杖'], phase_boots: ['Phase Boots', '相位鞋'], spirit_vessel: ['Spirit Vessel', '魂之灵瓮'], urn_of_shadows: ['Urn of Shadows', '影之灵龛'] };
 export default function ReviewTimelines({ review }: { review: Review }) {

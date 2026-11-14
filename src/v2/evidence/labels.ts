@@ -9,6 +9,8 @@ import { heroDisplayName } from '../review/heroDisplayName';
  * below only *select* displays and compute geometry/structure from raw arrays.
  */
 
+/** Signed mm:ss for match clocks, including pre-horn times. */
+export const formatMatchClock = (t: number) => { const sign = t < 0 ? '-' : ''; const s = Math.abs(Number(t)) || 0; return `${sign}${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
 /** mm:ss — allowed only for axis/row labels derived from raw `t` seconds. */
 export const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 

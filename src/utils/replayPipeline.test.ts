@@ -222,3 +222,46 @@ it('degrades a corrupt published artifact to replay_failed instead of throwing',
  const read=await ingest.read(42);
  expect(read).toMatchObject({status:'replay_failed',generation:1,reason:'artifact_checksum'});
 });
+it('keeps a baked official artifact readable when a later job is pending or failed',async()=>{
+ const {mkdtemp}=await import('node:fs/promises');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const {createReplayIngest}=await import('../../lib/matchReview/replayIngest/index.js');
+ const {FileJobStore}=await import('../../lib/matchReview/replayIngest/jobStore.js');
+ const {FileArtifactStore}=await import('../../lib/matchReview/replayIngest/artifactStore.js');
+ const {FileQueue}=await import('../../lib/matchReview/replayIngest/queue.js');
+ const dir=await mkdtemp(join(tmpdir(),'baked-shadow-'));
+ const jobs=new FileJobStore(join(dir,'jobs'));
+ const ingest=createReplayIngest({
+  env:{REPLAY_HOME:new URL('../../data/replay-facts/',import.meta.url).pathname,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},
+  jobStore:jobs,artifactStore:new FileArtifactStore(join(dir,'artifacts')),queue:new FileQueue(join(dir,'queue'))
+ });
+ const raw={match_id:9080127650,players:[]};
+ const created=await jobs.create(raw,'client');
+ expect((await ingest.read(9080127650)).status).toBe('replay_parsed');
+ const lease=await jobs.lease(created.jobId,created.generation);
+ await jobs.update(created.jobId,lease.token,{status:'cdn_error'});
+ const failed=await ingest.read(9080127650);
+ expect(failed).toMatchObject({schema:'dota2.ai/replay-facts@1',match_id:9080127650,status:'replay_parsed'});
+});
+
+it('starts a new generation when submit finds a published artifact is unreadable',async()=>{
+ const {mkdtemp,writeFile}=await import('node:fs/promises');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const {createReplayIngest}=await import('../../lib/matchReview/replayIngest/index.js');
+ const {FileJobStore}=await import('../../lib/matchReview/replayIngest/jobStore.js');
+ const {FileArtifactStore}=await import('../../lib/matchReview/replayIngest/artifactStore.js');
+ const {FileQueue}=await import('../../lib/matchReview/replayIngest/queue.js');
+ const dir=await mkdtemp(join(tmpdir(),'repair-artifact-'));
+ const store=new FileArtifactStore(join(dir,'artifacts'));
+ const jobs=new FileJobStore(join(dir,'jobs'));
+ const ingest=createReplayIngest({env:{REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},jobStore:jobs,artifactStore:store,queue:new FileQueue(join(dir,'queue'))});
+ const pointer=await store.put(42,1,{match_id:42,status:'replay_parsed',trace_version:4,facts:{}});
+ const job=await jobs.create({match_id:42},'client');
+ const lease=await jobs.lease(job.jobId,job.generation);
+ await jobs.publish(job.jobId,lease.token,pointer);
+ await writeFile(join(dir,'artifacts',`${pointer.matchId}-${pointer.generation}-${pointer.sha256}.json`),'{"tampered":true}');
+ const retry=await ingest.submit({match_id:42},'client');
+ expect(retry).toMatchObject({status:'replay_pending',generation:2,job_status:'queued'});
+});

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useI18n } from '../i18n/I18nProvider';
 import type { DictKey } from '../i18n/en';
 import AiText from './AiText';
+import { formatMatchClock } from '../evidence/labels';
 import { surface, FactChip } from './ConversationCards';
 import { heroDisplayName } from './heroDisplayName';
 import type { Fact, Insight, Review } from './types';
@@ -179,7 +180,7 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
   const to = anchor(insight.time?.to);
   // Prefer insight time anchors; fall back to matchup window / first metric with t.
   const timeChip = (() => {
-    if (insight.title && insight.time) { const clock = (s: number) => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`; return `${clock(insight.time.from)}–${clock(insight.time.to)}`; }
+    if (insight.title && insight.time) { return `${formatMatchClock(insight.time.from)}–${formatMatchClock(insight.time.to)}`; }
     if (from) return to && from !== to ? `${from}–${to}` : from;
     const win = windowFact(insight, review);
     if (win?.display.t) return win.display.t;
