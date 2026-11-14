@@ -21,6 +21,17 @@ it('classifies denied ranges and mapped IPv4 without routing to them',()=>{
  expect(selectPublicReplayAddress([{address:'::ffff:34.126.231.241',family:6}])).toBeNull();
  expect(selectPublicReplayAddress([{address:'64:ff9b::227e:e7f1',family:6}])).toBeNull();
  expect(selectPublicReplayAddress([{address:'2001:10::1',family:6}])).toBeNull();
+ expect(classifyReplayAddress('3fff::1')).toBe('documentation');
+ expect(classifyReplayAddress('3fff:0fff::1')).toBe('documentation');
+ expect(classifyReplayAddress('2001:5::1')).toBe('other');
+ expect(classifyReplayAddress('2001:1ff::1')).toBe('other');
+ expect(selectPublicReplayAddress([{address:'3fff::1',family:6}])).toBeNull();
+ expect(selectPublicReplayAddress([{address:'2001:5::1',family:6}])).toBeNull();
+ expect(selectPublicReplayAddress([{address:'3fff::1',family:6},{address:'2001:5::1',family:6}])).toBeNull();
+ expect(classifyReplayAddress('3fff:1000::1')).toBe('public_v6');
+ expect(classifyReplayAddress('2001:200::1')).toBe('public_v6');
+ expect(selectPublicReplayAddress([{address:'2001:200::1',family:6}])).toEqual({address:'2001:200::1',family:6});
+
 });
 it('uses IPv4 preference and a fail-closed IPv6 fallback',()=>{
  const bad={address:'198.18.0.1',family:4};

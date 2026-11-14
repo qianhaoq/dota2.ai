@@ -195,3 +195,17 @@ it('charges bytes and worker seconds to the UTC day they actually accrue',async(
  const next=await jobs.lease(second.jobId,second.generation);
  await expect(jobs.charge(next.jobId,next.token,{bytes:6,workerSeconds:6})).rejects.toThrow('resource_limited');
 });
+
+it('reads artifacts from the default home after only disabling ingest',async()=>{
+ const match_id=880000000+Math.floor(Math.random()*1e6);
+ const enabled=createReplayIngest({env:{REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'}});
+ if(!('jobStore' in enabled)||!('artifactStore' in enabled))throw new Error('async pipeline required');
+ const j=await enabled.jobStore.create({match_id,players:[]},'ip');const l=await enabled.jobStore.lease(j.jobId,j.generation);
+ const pointer=await enabled.artifactStore.put(match_id,j.generation,{extractor_match_id:match_id,trace_version:4,players:[]});
+ await enabled.jobStore.publish(j.jobId,l.token,pointer);
+ const disabled=createReplayIngest({env:{REPLAY_INGEST_ENABLED:'0'}});
+ expect(disabled.enabled).toBe(false);
+ expect(await disabled.read(match_id)).toMatchObject({extractor_match_id:match_id,generation:pointer.generation});
+ expect((await disabled.overlay({match_id,players:[]})).replay_generation).toBe(pointer.generation);
+ expect((await disabled.submit({match_id:match_id+1},'ip')).status).toBe('replay_ingest_disabled');
+});
