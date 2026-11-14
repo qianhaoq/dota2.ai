@@ -112,3 +112,22 @@ it('every add call is thenable even when the batch does not flush',async()=>{
  await charger.flush();
  expect(calls).toEqual([6]);
 });
+it('retains a failed byte batch until a later successful flush',async()=>{
+ const {createByteCharger}=await import('../../lib/matchReview/replayIngest/worker.js');
+ const calls:number[]=[];
+ let fail=true;
+ const charger=createByteCharger(async(n:number)=>{calls.push(n);if(fail)throw new Error('gcs_request_failed');},{threshold:1000,intervalMs:60_000});
+ await expect(charger.add(1100)).rejects.toThrow('gcs_request_failed');
+ expect(calls).toEqual([1100]);
+ fail=false;
+ await charger.flush();
+ expect(calls).toEqual([1100,1100]);
+});
+it('does not restore a resource_limited charge that already committed usage',async()=>{
+ const {createByteCharger}=await import('../../lib/matchReview/replayIngest/worker.js');
+ const calls:number[]=[];
+ const charger=createByteCharger(async(n:number)=>{calls.push(n);throw new Error('resource_limited');},{threshold:1000,intervalMs:60_000});
+ await expect(charger.add(1100)).rejects.toThrow('resource_limited');
+ await charger.flush();
+ expect(calls).toEqual([1100]);
+});

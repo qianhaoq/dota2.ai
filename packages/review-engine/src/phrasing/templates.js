@@ -101,13 +101,14 @@ export function renderTemplate(insight, facts, lang) {
       else if (id === 'gold.at.10') sentences.push(copy('economy', id));
       else if (id === 'lh_at_10') sentences.push(copy('farm', id));
       else if (id === 'lane') sentences.push(copy('lane', id));
-      else if (/^(cast\.|use\.bkb\.|purchase\.bkb_after_skeleton)/.test(id)) sentences.push(`{t:${facts[id].t}}: {${id}}`);
+      else if (/^(cast\.|use\.bkb\.|use\.item\.|purchase\.bkb_after_skeleton|purchase\.context\.|obj\.|ancient\.fell)/.test(id)) sentences.push(`{t:${facts[id].t}}: {${id}}`);
       else if (/^death\.\d+$/.test(id)) sentences.push(copy('death', id));
       else if (id.startsWith('deaths.phase.')) {
         const phase = id.split('.').at(-1);
         const name = lang === 'zh' ? { lane: '对线期', mid: '中期', late: '后期' }[phase] : phase[0].toUpperCase() + phase.slice(1);
         sentences.push(copy('phase', id, { PHASE: name }));
       }
+      else sentences.push(Number.isFinite(facts[id]?.t) ? `{t:${facts[id].t}}: {${id}}` : `{${id}}`);
     }
     if (insight.id === 'next_game' && sentences.length && !ids.some(id=>facts[id]?.citation === 'r1')) sentences.push(coachCopy.next[lang]);
     if (insight.id === 'farm_progress') sentences.push(coachCopy.farmBoundary[lang]);

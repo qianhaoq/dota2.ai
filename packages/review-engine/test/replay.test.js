@@ -171,3 +171,47 @@ it('pins the comparison-dem earned-gold vs net-worth difference and rejects lega
   expect(isVerifiedReplay(legacy,42)).toBe(false);
   expect(buildReview(applyReplayArtifact(raw,legacy),opts).parse.status).toBe('replay_failed');
 });
+it('does not attribute illusion kills to the illusion hero, but keeps non-hero killers', () => {
+  const match = {match_id:42,duration:100,players:[{hero_id:60,player_slot:132},{hero_id:109,player_slot:0}]};
+  const illusion = adaptReplayEvents(match,[{t:10,type:'DOTA_COMBATLOG_DEATH',target:'npc_dota_hero_night_stalker',target_hero:true,target_illusion:false,attacker:'npc_dota_hero_terrorblade',attacker_hero:true,attacker_illusion:true}],metadata);
+  expect(illusion.players[0].deaths_log[0].key).toBeNull();
+  expect(illusion.players[1].kills_log).toEqual([]);
+  const tower = adaptReplayEvents(match,[{t:11,type:'DOTA_COMBATLOG_DEATH',target:'npc_dota_hero_night_stalker',target_hero:true,target_illusion:false,attacker:'npc_dota_goodguys_tower1_mid',attacker_hero:false,attacker_illusion:false}],metadata);
+  expect(tower.players[0].deaths_log[0].key).toBe('npc_dota_goodguys_tower1_mid');
+});
+
+it('humanizes replay building kills instead of leaking the combat-log type', () => {
+  const a = adaptReplayEvents(raw,[{t:100,type:'DOTA_COMBATLOG_TEAM_BUILDING_KILL',target:'npc_dota_badguys_tower1_mid',attacker_team:2}],metadata);
+  const review = buildReview(applyReplayArtifact(raw,a),opts);
+  const displays = Object.values(review.facts).filter(f => String(f.id).startsWith('obj.')).map(f => `${f.display.en} ${f.display.zh}`);
+  expect(displays.join(' ')).not.toMatch(/DOTA_COMBATLOG_|npc_dota_/);
+  expect(displays.join(' ')).toMatch(/tower|Tower|塔/i);
+});
+
+it('answers generic purchase and item-use followups from their cited facts', () => {
+  const a = adaptReplayEvents(raw,[{t:80,type:'DOTA_COMBATLOG_ITEM',attacker:'npc_dota_hero_night_stalker',attacker_hero:true,attacker_illusion:false,inflictor:'item_tpscroll'},{t:125,type:'DOTA_COMBATLOG_PURCHASE',target:'npc_dota_hero_night_stalker',value_name:'item_blink'}],metadata);
+  const review = buildReview(applyReplayArtifact(raw,a),{...opts,presetFollowups:true});
+  const purchase = review.insights.find(i => i.id.startsWith('purchase.') || i.kind === 'purchase_context');
+  const item = review.insights.find(i => i.id.startsWith('item.') || i.kind === 'item_window');
+  expect(purchase).toBeTruthy();
+  expect(renderTemplate(purchase, review.facts, 'en').text).not.toMatch(/not in this match/i);
+  expect(renderTemplate(purchase, review.facts, 'en').text).toMatch(/Blink|blink|Purchased/i);
+  expect(item).toBeTruthy();
+  expect(renderTemplate(item, review.facts, 'en').text).not.toMatch(/not in this match/i);
+});
+
+it('does not cite OpenDota duration as official replay evidence in an empty-timeline fallback', () => {
+  const a = adaptReplayEvents({...raw,duration:1906,players:raw.players},[],metadata);
+  const review = buildReview(applyReplayArtifact({...raw,od_data:{has_parsed:true}},a),opts);
+  const fallback = review.insights.find(i => i.id === 'verified_timeline' || i.id === 'recorded_timeline');
+  expect(fallback).toBeTruthy();
+  for (const id of fallback.fact_ids) {
+    expect(fallback.citations).toEqual(expect.arrayContaining([review.facts[id].citation]));
+  }
+  if (fallback.fact_ids.includes('ancient.fell')) {
+    expect(review.facts['ancient.fell'].citation).toBe('s1');
+    expect(fallback.citations).toEqual(['s1']);
+    expect(fallback.id).toBe('recorded_timeline');
+    expect(fallback.claim.text).not.toMatch(/Verified match record|本局已核实记录/);
+  }
+});

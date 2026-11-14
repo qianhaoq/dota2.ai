@@ -20,7 +20,7 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
     const victim = e.target_hero === true && e.target_illusion === false ? byName.get(e.target) : null;
     const attacker = e.attacker_hero === true && e.attacker_illusion === false ? byName.get(e.attacker) : null;
     if (e.type === 'DOTA_COMBATLOG_DEATH' && victim) {
-      const d = { time:e.t, key:e.attacker && e.attacker !== 'dota_unknown' ? e.attacker : null, ...(e.inflictor && e.inflictor !== 'dota_unknown' ? {inflictor:e.inflictor} : {}), source_path };
+      const d = { time:e.t, key:attacker?e.attacker:(e.attacker&&e.attacker!=='dota_unknown'&&e.attacker_hero!==true?e.attacker:null), ...(e.inflictor && e.inflictor !== 'dota_unknown' ? {inflictor:e.inflictor} : {}), source_path };
       if (Number.isFinite(e.location_x) && Number.isFinite(e.location_y)) Object.assign(d, { x:e.location_x, y:e.location_y });
       if (!Number.isFinite(d.x)) {
         const sample = positionSamples.find(s => s.death_source_path === source_path);

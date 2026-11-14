@@ -23,8 +23,8 @@ function objectiveFactDisplay(o, lang) {
   const key = typeof o.key === 'string' ? o.key : null;
   const type = o.type ?? 'unknown';
   const ev = { type, key, team: o.team === 2 || o.team === 3 ? o.team : undefined };
-  if (key && (type === 'building_kill' || key.startsWith('npc_dota_'))) {
-    return formatObjectiveLabel({ ...ev, type: type === 'unknown' ? 'building_kill' : type }, lang);
+  if (key && (type === 'building_kill' || type === 'DOTA_COMBATLOG_TEAM_BUILDING_KILL' || key.startsWith('npc_dota_'))) {
+    return formatObjectiveLabel({ ...ev, type: 'building_kill' }, lang);
   }
   if (type && type !== 'unknown') {
     const label = formatObjectiveLabel(ev, lang);

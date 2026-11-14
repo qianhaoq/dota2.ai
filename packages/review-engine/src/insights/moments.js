@@ -32,7 +32,7 @@ export function evidenceName(key, lang) {
 export function buildMoments(result, player, lang) {
  const zh=lang==='zh', out=[], casts=player.ability_cast_log??[], uses=player.item_use_log??[];
  const fact=(id,e,text)=>{result.facts[id]={id,kind:'entity',value:e,t:e.t,display:{en:text,zh:text,t:clock(e.t)},citation:'r1',source_path:[e.source_path,e.end_source_path].filter(Boolean).join('; ')};return id;};
- const add=(id,from,to,text,prompt,ids,kind='ability_into_death')=>out.push({id,kind,title:zh?'值得复看的片段':'Replay moment',status:'ok',time:{from,to},claim:{text,slots:text,phrasing:'template'},prompt:`${clock(from)}–${clock(to)} · ${prompt}`,fact_ids:ids,metrics:[],citations:['r1'],evidence:{kind:'death_timeline',highlight:[from/60,to/60],markers:ids,moments:[]},baseline:null,target:null,data_gap:null});
+ const add=(id,from,to,text,prompt,ids,kind='ability_into_death')=>{const citations=[...new Set(ids.map(fid=>result.facts[fid]?.citation).filter(Boolean))];out.push({id,kind,title:zh?'值得复看的片段':'Replay moment',status:'ok',time:{from,to},claim:{text,slots:text,phrasing:'template'},prompt:`${clock(from)}–${clock(to)} · ${prompt}`,fact_ids:ids,metrics:[],citations:citations.length?citations:['r1'],evidence:{kind:'death_timeline',highlight:[from/60,to/60],markers:ids,moments:[]},baseline:null,target:null,data_gap:null});};
  for(const d of result.deaths){
   const inf=d.inflictor;
   if(inf==='pudge_meat_hook' && !out.some(i=>i.id==='hook_death')) add('hook_death',d.t-4,d.t+6,zh?`${clock(d.t)} 被帕吉肉钩击杀。`:`${clock(d.t)}: killed by Pudge’s Meat Hook.`,zh?'复看钩子前后：当时站位、视野和队友在哪里？':'Review the hook: where were you, vision and teammates?',[d.fact_id]);
@@ -75,9 +75,11 @@ export function buildMoments(result, player, lang) {
    zh?'待核实：何时送达、何时使用？购买记录本身不评价出装。':'Replay question: when was it delivered and used? A purchase alone does not grade the build.',[fact(`purchase.context.${index}`,{...p,t:p.time},evidenceName(p.key,lang))],'purchase_context');
  }
  if(!out.length) {
-  const event=Object.values(result.facts).find(f=>f.id.startsWith('obj.')&&Number.isFinite(f.t))??Object.values(result.facts).find(f=>Number.isFinite(f.t));
+  const timed=Object.values(result.facts).filter(f=>Number.isFinite(f.t));
+  const event=timed.find(f=>f.id.startsWith('obj.')&&f.citation==='r1')??timed.find(f=>f.citation==='r1')??timed[0];
   const ids=event?[event.id]:Object.keys(result.facts).slice(0,1);
-  add('verified_timeline',event?.t??0,event?.t??0,zh?'本局已核实记录':'Verified match record',zh?'待核实：复看一次关键目标前的准备。':'Replay question: review preparation before a key objective.',ids,'objective_context');
+  const verified=ids.some(id=>result.facts[id]?.citation==='r1');
+  add(verified?'verified_timeline':'recorded_timeline',event?.t??0,event?.t??0,verified?(zh?'本局已核实记录':'Verified match record'):(zh?'本局记录':'Match record'),zh?'待核实：复看一次关键目标前的准备。':'Replay question: review preparation before a key objective.',ids,'objective_context');
  }
  const preferred=['hook_death','void_dismember','darkness_scythe','skeleton_before_bkb','bkb_windows'];
  for(const i of out) { if(i.id==='skeleton_before_bkb')i.kind='purchase_context';if(i.id==='bkb_windows')i.kind='item_window';if(i.id==='verified_death')i.kind='notable_death'; }
