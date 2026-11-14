@@ -48,6 +48,39 @@ it('counts rolling hourly limits across a UTC midnight boundary',async()=>{
  expect((await jobs.create({match_id:3},'ip-c')).status).toBe('throttled');
 });
 
+it('resets daily job, attempt, and byte caps at the UTC day boundary',async()=>{
+ let now=86400000-1000;
+ const jobs=new FileJobStore(await home(),{now:()=>now,budgets:{dailyJobs:1,hourlyJobs:100,ipTenMinutes:100,attempts:1,bytes:10,workerSeconds:10},leaseMs:1000});
+ const first=await jobs.create({match_id:1},'ip-a');
+ expect(first.status).toBe('queued');
+ expect((await jobs.create({match_id:2},'ip-b')).status).toBe('throttled');
+ const lease=await jobs.lease(first.jobId,first.generation);
+ await jobs.charge(first.jobId,lease.token,{bytes:10,workerSeconds:10});
+ await expect(jobs.charge(first.jobId,lease.token,{bytes:1})).rejects.toThrow('resource_limited');
+ now+=2000;
+ expect((await jobs.create({match_id:2},'ip-b')).status).toBe('queued');
+ now+=1001;
+ const next=await jobs.lease(String(2),1);
+ expect(next).toBeTruthy();
+ await jobs.charge(next.jobId,next.token,{bytes:10,workerSeconds:10});
+});
+it('re-leases a downloading job after the worker lease expires, without starting a new generation',async()=>{
+ let now=1000;const jobs=new FileJobStore(await home(),{now:()=>now,leaseMs:1000});
+ const j=await jobs.create({match_id:11},'ip');
+ const first=await jobs.lease(j.jobId,j.generation);
+ await jobs.update(j.jobId,first.token,{status:'downloading'});
+ expect(await jobs.lease(j.jobId,j.generation)).toBeNull();
+ expect((await jobs.create({match_id:11},'ip')).attached).toBe(true);
+ expect((await jobs.get(j.jobId)).generation).toBe(1);
+ now+=1001;
+ const second=await jobs.lease(j.jobId,j.generation);
+ expect(second.token).toBeGreaterThan(first.token);
+ expect(second.generation).toBe(1);
+ expect(second.status).toBe('downloading');
+ await jobs.publish(j.jobId,second.token,{generation:1,sha256:'recovered'});
+ expect((await jobs.get(j.jobId)).status).toBe('ready');
+});
+
 it('keeps artifacts immutable and verifies checksums',async()=>{
  const dir=await home(),store=new FileArtifactStore(dir);const p=await store.put(1,1,{test:'verified'});expect(await store.read(p)).toEqual({test:'verified'});expect(await store.put(1,1,{test:'verified'})).toEqual(p);
  await writeFile(join(dir,`1-1-${p.sha256}.json`),'{}');await expect(store.read(p)).rejects.toThrow('artifact_checksum');

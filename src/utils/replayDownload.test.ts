@@ -85,3 +85,13 @@ it('retries GCS 429 before failing a request',async()=>{
  const [meta]=await bucket.file('jobs/state.json').getMetadata();
  expect(meta.generation).toBe(1);expect(hits).toBe(3);
 });
+it('every add call is thenable even when the batch does not flush',async()=>{
+ const {createByteCharger}=await import('../../lib/matchReview/replayIngest/worker.js');
+ const calls:number[]=[];
+ const charger=createByteCharger(async(n:number)=>{calls.push(n);},{threshold:10_000,intervalMs:60_000});
+ const results=await Promise.all([charger.add(1),charger.add(2),charger.add(3)]);
+ expect(results).toEqual([undefined,undefined,undefined]);
+ expect(calls).toEqual([]);
+ await charger.flush();
+ expect(calls).toEqual([6]);
+});
