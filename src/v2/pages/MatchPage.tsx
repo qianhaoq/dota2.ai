@@ -57,10 +57,9 @@ export default function MatchPage() {
             if (!autoSubmitted.current.has(matchId)) {
                 autoSubmitted.current.add(matchId);
                 try {
-                    const res = await fetch(`/api/review/${matchId}/replay-ingest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }) });
-                    if (!res.ok && res.status !== 202) autoSubmitted.current.delete(matchId);
+                    await fetch(`/api/review/${matchId}/replay-ingest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }) });
                 } catch {
-                    autoSubmitted.current.delete(matchId);
+                    /* keep autoSubmitted so a failed POST cannot tight-loop ingest */
                 }
             }
             if (cancelled) return;

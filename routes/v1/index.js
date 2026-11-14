@@ -144,8 +144,9 @@ export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, n
         if ((question?.length ?? 0) > 300 || (!followupId && !question) || !params.heroId) throw invalid();
         limit(req, res, askLimit);
       }
-      const generation = replayIngest?.read ? (await replayIngest.read(params.matchId))?.generation ?? 0 : 0;
-      const replayKey = `sse:${params.key}:${params.lang}:${generation}`;
+      const snapshot = replayIngest?.read ? await replayIngest.read(params.matchId) : null;
+      const generation = snapshot?.generation ?? 0;
+      const replayKey = `sse:${params.key}:${params.lang}:${generation}:${snapshot?.status ?? 'none'}`;
       if (!replayIngest?.enabled && stream && !ask && req.headers['last-event-id']) {
         if (!/^\d+$/.test(req.headers['last-event-id']) || !Number.isSafeInteger(Number(req.headers['last-event-id']))) throw invalid();
         const replay = await cache.get(replayKey);

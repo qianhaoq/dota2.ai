@@ -456,7 +456,10 @@
                 "pattern": "^(death|item|purchase)\\.[0-9]+$"
               },
               {
-                "const": "verified_timeline"
+                "enum": [
+                  "verified_timeline",
+                  "recorded_timeline"
+                ]
               }
             ]
           },

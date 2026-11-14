@@ -2,7 +2,7 @@
 import { formatBuildingName } from '../objectiveLabels.js';
 import { STATIC_HEROES } from '../staticHeroes.js';
 
-export const clock = t => `${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
+export const clock = t => {const sign=t<0?'-':'';const s=Math.abs(Number(t))||0;return `${sign}${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;};
 const names = {
  npc_dota_wraith_king_skeleton_warrior:['Wraith King skeleton','冥魂大帝骨卫骷髅'],
  pudge_meat_hook:['Meat Hook','肉钩'],pudge_dismember:['Dismember','肢解'],necrolyte_reapers_scythe:["Reaper’s Scythe",'死神镰刀'],skeleton_king_bone_guard:['Bone Guard','骨卫'],
@@ -50,7 +50,7 @@ export function buildMoments(result, player, lang) {
   }
  }
  const bkb=uses.filter(u=>u.key==='black_king_bar'&&Number.isFinite(u.ended_at));
- const afterBkb=bkb.map(u=>result.deaths.find(d=>d.t>u.ended_at)).filter(Boolean);
+ const afterBkb=[...new Map(bkb.map(u=>result.deaths.find(d=>d.t>u.ended_at)).filter(Boolean).map(d=>[d.fact_id,d])).values()];
  if(bkb.length){const ids=bkb.map((u,i)=>fact(`use.bkb.${i+1}`,u,`${clock(u.t)}–${clock(u.ended_at)}`));add('bkb_windows',bkb[0].t,Math.max(bkb.at(-1).ended_at,...afterBkb.map(d=>d.t)),(zh?'黑皇杖实际开启窗口：':'Black King Bar use windows: ')+bkb.map(u=>`${clock(u.t)}–${clock(u.ended_at)}`).join('、')+(afterBkb.length ? (zh ? `。随后死亡：${afterBkb.map(d=>clock(d.t)).join('、')}，均在对应免疫结束后。` : `. Subsequent deaths: ${afterBkb.map(d=>clock(d.t)).join(', ')}, after the corresponding immunity ended.`) : '')+(zh?'不能据此判断开早或开晚。':' This does not establish early or late use.'),zh?'复看黑皇杖结束后的交战：退出路线和队友位置如何？':'Review fights after BKB ends: check exits and teammate positions.',[...ids,...afterBkb.map(d=>d.fact_id)]);}
  // Generic candidates use verified event times, without assuming spell hit quality.
  for (const [index,d] of result.deaths.entries()) {

@@ -5,6 +5,7 @@ import { buildReview } from '../src/buildReview.js';
 import { adaptReplayEvents, applyReplayArtifact, isVerifiedReplay } from '../src/replay.js';
 import { parseSiteKnowledge } from '../src/siteKnowledge.js';
 import { validateReview } from '../src/schema/validate.js';
+import { clock, buildMoments } from '../src/insights/moments.js';
 const raw = {match_id:42,duration:1906,radiant_win:true,od_data:{has_parsed:false},players:[{hero_id:60,player_slot:132,deaths:1},{hero_id:2,player_slot:0,deaths:0}]};
 const opts = {heroId:60,lang:'en',fetchedAt:'2026-11-11T00:00:00Z'};
 const metadata = {demo_bytes:1000,demo_sha256:'a'.repeat(64),fetched_at:opts.fetchedAt};
@@ -214,4 +215,26 @@ it('does not cite OpenDota duration as official replay evidence in an empty-time
     expect(fallback.id).toBe('recorded_timeline');
     expect(fallback.claim.text).not.toMatch(/Verified match record|本局已核实记录/);
   }
+  expect(validateReview(review)).toEqual({ ok: true, errors: [] });
+});
+
+it('formats pre-horn clocks without doubled minus signs', () => {
+  expect(clock(-30)).toBe('-0:30');
+  expect(clock(-90)).toBe('-1:30');
+  expect(clock(125)).toBe('2:05');
+});
+
+it('lists a later death only once after multiple BKB windows', () => {
+  const result = {
+    deaths: [{ t: 200, fact_id: 'death.1', inflictor: null }],
+    facts: { 'death.1': { id: 'death.1', citation: 'r1', t: 200, display: { en: 'death', zh: '死亡', t: '3:20' } } },
+  };
+  const player = { ability_cast_log: [], item_use_log: [
+    { key: 'black_king_bar', t: 80, ended_at: 90 },
+    { key: 'black_king_bar', t: 110, ended_at: 120 },
+  ] };
+  const moments = buildMoments(result, player, 'en');
+  const bkb = moments.find(m => m.id === 'bkb_windows');
+  expect(bkb.fact_ids.filter(id => id === 'death.1')).toHaveLength(1);
+  expect(bkb.claim.text.match(/3:20/g)).toHaveLength(1);
 });

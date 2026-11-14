@@ -202,3 +202,23 @@ it('keeps the default-home file store when only ingest is disabled',()=>{
  expect('jobStore' in disabled).toBe(true);
  expect('artifactStore' in disabled).toBe(true);
 });
+it('degrades a corrupt published artifact to replay_failed instead of throwing',async()=>{
+ const {mkdtemp,writeFile}=await import('node:fs/promises');
+ const {tmpdir}=await import('node:os');
+ const {join}=await import('node:path');
+ const {createReplayIngest}=await import('../../lib/matchReview/replayIngest/index.js');
+ const {FileJobStore}=await import('../../lib/matchReview/replayIngest/jobStore.js');
+ const {FileArtifactStore}=await import('../../lib/matchReview/replayIngest/artifactStore.js');
+ const {FileQueue}=await import('../../lib/matchReview/replayIngest/queue.js');
+ const dir=await mkdtemp(join(tmpdir(),'corrupt-artifact-'));
+ const store=new FileArtifactStore(join(dir,'artifacts'));
+ const jobs=new FileJobStore(join(dir,'jobs'));
+ const ingest=createReplayIngest({env:{REPLAY_INGEST_ENABLED:'1'},jobStore:jobs,artifactStore:store,queue:new FileQueue(join(dir,'queue'))});
+ const pointer=await store.put(42,1,{match_id:42,status:'replay_parsed',trace_version:4,facts:{}});
+ await writeFile(join(dir,'artifacts',`${pointer.matchId}-${pointer.generation}-${pointer.sha256}.json`),'{"tampered":true}');
+ const job=await jobs.create({match_id:42},'client');
+ const lease=await jobs.lease(job.jobId,job.generation);
+ await jobs.publish(job.jobId,lease.token,pointer);
+ const read=await ingest.read(42);
+ expect(read).toMatchObject({status:'replay_failed',generation:1,reason:'artifact_checksum'});
+});

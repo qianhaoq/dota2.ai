@@ -148,3 +148,18 @@ it('serializes overlapping time charges so elapsed usage is not doubled',async()
  expect(calls).toEqual([20,20]);
  expect(charged).toBe(40);
 });
+it('advances the elapsed cursor when resource_limited usage has already committed',async()=>{
+ const {commitElapsedCharge,createChargeQueue}=await import('../../lib/matchReview/replayIngest/worker.js');
+ let persisted=0;
+ const charge=async({workerSeconds}:{workerSeconds:number})=>{persisted+=workerSeconds;if(persisted>10)throw new Error('resource_limited');};
+ const started=0;
+ const nowAt=(ms:number)=>()=>ms;
+ let charged=0;
+ const account=createChargeQueue();
+ await expect(account(async()=>{try{charged=await commitElapsedCharge(charge,started,charged,nowAt(20_000));}catch(error:any){if(error?.message==='resource_limited'&&Number.isFinite(error.advancedTo))charged=error.advancedTo;throw error;}})).rejects.toThrow('resource_limited');
+ expect(persisted).toBe(20);
+ expect(charged).toBe(20);
+ await account(async()=>{charged=await commitElapsedCharge(charge,started,charged,nowAt(20_000));});
+ expect(persisted).toBe(20);
+ expect(charged).toBe(20);
+});

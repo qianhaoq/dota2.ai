@@ -221,9 +221,12 @@ export function sourcesFor(review: Review, claim: number): SourceRow[] {
   const consider = (sourcePath?: string | null) => {
     for (const field of fieldsFromSourcePath(sourcePath)) add(field);
   };
-  for (const id of review.insights[claim]?.fact_ids ?? []) {
+  const insight = review.insights[claim];
+  for (const id of insight?.fact_ids ?? []) {
     consider(review.facts[id]?.source_path);
   }
+
+  if (insight?.kind) return rows;
 
   if (claim === 0) {
     if (review.series.radiant_gold_adv.length) add('radiant_gold_adv');
