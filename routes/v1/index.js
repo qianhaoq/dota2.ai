@@ -86,6 +86,8 @@ export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, n
     if (retry) { res.set('Retry-After', String(retry)); throw Object.assign(new Error('rate limited'), { code: 'RATE_LIMITED' }); }
   };
   async function load(params, req, res, onStart = () => {}) {
+    const artifact = replayIngest?.read ? await replayIngest.read(params.matchId) : null;
+    params = {...params, key:`${params.key}:artifact:${artifact?.generation ?? 0}:${artifact?.status ?? 'none'}`};
     let entry = await cache.get(params.key);
     const hit = !!entry;
     if (!entry) {
@@ -142,7 +144,9 @@ export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, n
         if ((question?.length ?? 0) > 300 || (!followupId && !question) || !params.heroId) throw invalid();
         limit(req, res, askLimit);
       }
-      const replayKey = `sse:${params.key}:${params.lang}`;
+      const snapshot = replayIngest?.read ? await replayIngest.read(params.matchId) : null;
+      const generation = snapshot?.generation ?? 0;
+      const replayKey = `sse:${params.key}:${params.lang}:${generation}:${snapshot?.status ?? 'none'}`;
       if (!replayIngest?.enabled && stream && !ask && req.headers['last-event-id']) {
         if (!/^\d+$/.test(req.headers['last-event-id']) || !Number.isSafeInteger(Number(req.headers['last-event-id']))) throw invalid();
         const replay = await cache.get(replayKey);
@@ -167,12 +171,12 @@ export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, n
         const followup = review.followups.find(f => f.id === (followupId ?? topic));
         if (followupId && !followup) throw invalid();
         const evidenceVersion = review.citations.find(c=>c.provider === 'replay')?.sha256 ?? 'opendota';
-        const answerKey = `ask:${params.key}:${params.lang}:${followupId}:${evidenceVersion}`;
+        const answerKey = `ask:${params.key}:${params.lang}:${followupId}:${evidenceVersion}:${review.meta.replay_generation ?? 0}`;
         const cacheable = followupId && review.state === 'parsed' && followup?.answerable;
         let answer = cacheable ? await cache.get(answerKey) : undefined;
         if (!answer) {
           // Free questions are deliberately unanswerable unless matched to approved evidence.
-          answer = followup ? await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) }) : { text: refusal(params.lang), phrasing: 'template' };
+          answer = followup ? await phraseInsight({ insight: followup, facts: review.facts, lang: params.lang, complete: review.parse?.status === 'replay_parsed' || process.env.LLM_PHRASING === 'false' ? undefined : complete, roster: review.roster, purchases: review.purchases, dataGaps: review.data_gaps, log: (event, data) => safeLog(event, data) }) : { text: refusal(params.lang), phrasing: 'template' };
           if (cacheable) await cache.set(answerKey, answer, 7 * DAY);
         }
         sse.send('token', { target: 'answer', delta: answer.text });

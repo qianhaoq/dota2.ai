@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createReplayIngest, isReplayUrl, replayUrl } from '../../lib/matchReview/replayIngest/index.js';
+import { createReplayIngest, isReplayUrl, replayUrl } from '../../lib/matchReview/replayIngest/legacy.js';
 import { createParseRequestBudget, createParseRequestTracker } from '../../lib/matchReview/matchParse.js';
 import { replayStatusPayload } from '../../packages/review-engine/src/replay.js';
 import { createReplayIngestHandler } from '../../lib/matchReview/replayIngest/endpoint.js';

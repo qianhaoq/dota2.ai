@@ -5,7 +5,6 @@ import Composer from '../components/Composer';
 import { useI18n } from '../i18n/I18nProvider';
 import type { DictKey } from '../i18n/en';
 import { en } from '../i18n/en';
-import { useFlags } from '../FlagsProvider';
 import { isSafeMatchId } from '../parseMatchInput';
 import { readSse, useReviewStream } from '../review/useReviewStream';
 import type { Followup, Review, StreamError } from '../review/types';
@@ -13,7 +12,7 @@ import { trackEvent } from '../../services/analytics';
 import { reviewViewed } from '../review/analytics';
 import AiText from '../review/AiText';
 import InsightCard from '../review/InsightCard';
-import FakedoorCard from '../review/FakedoorCard';
+import ReviewTimelines from '../review/ReviewTimelines';
 import ResultHeader from '../review/ResultHeader';
 import ParseNotice from '../review/ParseNotice';
 import { control, surface, ToolTrace, HeroGrid, HeroCollapsedRow, MiniChart, FollowupChips, RefusalBubble, Share, JumpToLatest, FactChip } from '../review/ConversationCards';
@@ -37,11 +36,43 @@ export default function MatchPage() {
     const [params] = useSearchParams();
     const hero = params.get('hero');
     const { lang, t } = useI18n();
-    const flags = useFlags();
     const navigate = useNavigate(), location = useLocation();
     const valid = isSafeMatchId(matchId);
     const stream = useReviewStream(matchId, hero, lang, valid);
     const review = stream.done?.review;
+    const autoSubmitted = useRef(new Set<string>());
+    const autoPolls = useRef(new Map<string, number>());
+    const retryReview = useRef(stream.retry);
+    retryReview.current = stream.retry;
+    useEffect(() => {
+        if (!valid || !review?.meta?.ingest_available || !review.meta.replay_auto_enabled) return;
+        const status = review.parse?.status;
+        if (status === 'replay_parsed') return;
+        const terminal = new Set(['replay_unavailable', 'replay_expired', 'replay_cdn_error', 'replay_failed', 'replay_ingest_disabled', 'throttled', 'invalid']);
+        if (autoSubmitted.current.has(matchId) && status && terminal.has(status)) return;
+        const polls = autoPolls.current.get(matchId) ?? 0;
+        if (polls >= 60) return;
+        let cancelled = false;
+        const tick = async () => {
+            if (!autoSubmitted.current.has(matchId)) {
+                autoSubmitted.current.add(matchId);
+                try {
+                    await fetch(`/api/review/${matchId}/replay-ingest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }) });
+                } catch {
+                    /* keep autoSubmitted so a failed POST cannot tight-loop ingest */
+                }
+            }
+            if (cancelled) return;
+            autoPolls.current.set(matchId, polls + 1);
+            retryReview.current();
+        };
+        if (!autoSubmitted.current.has(matchId)) {
+            void tick();
+            return () => { cancelled = true; };
+        }
+        const timer = window.setTimeout(() => { if (!cancelled) void tick(); }, 5000);
+        return () => { cancelled = true; window.clearTimeout(timer); };
+    }, [valid, review, matchId, lang]);
     const [picker, setPicker] = useState(false);
     const [turns, setTurns] = useState<Turn[]>([]);
     const [asked, setAsked] = useState<string[]>([]);
@@ -218,7 +249,12 @@ export default function MatchPage() {
         const el = scroll.current!;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 120;
         setAway(!stick.current);
-    }} composer={<Composer mode={review?.player ? 'followUp' : 'match'} disabled={streaming} onStop={stop} currentMatchId={matchId} onSubmitQuestion={q => ask(q)}/>}>
+    }} aboveComposer={away ? <JumpToLatest jump={() => {
+                stick.current = true;
+                setAway(false);
+                if (scroll.current)
+                    scroll.current.scrollTop = scroll.current.scrollHeight;
+            }}/> : null} composer={<Composer mode={review?.player ? 'followUp' : 'match'} disabled={streaming} onStop={stop} currentMatchId={matchId} onSubmitQuestion={q => ask(q)}/>}>
     <div className="space-y-[8px]"><div className="flex justify-end"><div className={`${surface} text-d2-15`}><b className="block">{matchId}</b><span className="text-d2-12 text-d2-ink-4">{t('matchChipTitle')}</span></div></div>
       <ToolTrace steps={stream.steps} done={stream.status === 'done'} timings={stream.done?.timings} review={review}/>
       {stream.error && <div role="alert" className={surface}>{errorText(stream.error)} {stream.error.retryable && <button className={control} onClick={stream.retry}>{t('btnRetry')}</button>}</div>}
@@ -232,22 +268,17 @@ export default function MatchPage() {
             }}/>}
       {player && <HeroCollapsedRow hero={player.hero} personaname={player.personaname} change={() => setPicker(true)}/>}
       {player && <ResultHeader heroName={player.hero.replaceAll('_', ' ')} heroSlug={player.hero} kda={player.kda?.map((value: number | null) => value ?? '—').join('/') ?? ''} isRadiant={player.team === 'radiant'} outcome={player.result} duration={review?.facts['ancient.fell']?.display[lang] ?? ''} chart={review?.series ? <MiniChart series={review.series}/> : undefined}/>}
-      {stream.insights.map((insight, i) => insight && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'} onEvidence={review ? openEvidence : undefined}/>)}
+      {stream.insights.map((insight, i) => insight && insight.status === 'ok' && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'} onEvidence={review ? openEvidence : undefined}/>)}
       {(review?.parse || stream.done?.state === 'unparsed') && <ParseNotice matchId={matchId} parse={review?.parse ?? { status: 'unparsed', jobId: null, retryAfterSec: null, message: t('parseUnavailable') }} onRefresh={stream.retry}/>}
       {stream.done && stream.done.state !== 'unparsed' && stream.done.state !== 'parsed' && stream.done.state !== 'needs_hero' && <p className="text-d2-13 text-d2-warn">{t('insufficientBadge')}</p>}
-      {review?.player && <FollowupChips followups={stream.followups} asked={asked} disabled={streaming} ask={f => ask(f.label, f)}/>}
+      {review?.player && <ReviewTimelines review={review}/>}
+      {review?.player && (stream.done?.state ?? review.state) !== 'unparsed' && <FollowupChips followups={stream.followups} asked={asked} disabled={streaming} ask={f => ask(f.label, f)}/>}
       {inputError && <p role="alert">{t('questionTooLong')}</p>}
       {turns.map(turn => <section key={turn.id} className="pt-[16px] space-y-[8px]"><div className="flex justify-end"><p className="rounded-[18px_18px_6px_18px] bg-d2-surface-3 px-[14px] py-[10px] max-w-[82%] break-words text-d2-15 font-medium">{turn.question}</p></div><AiText text={turn.text} streaming={turn.status === 'streaming'}/>{turn.gaps.length > 0 && <RefusalBubble gaps={turn.gaps}/>}<div className="flex flex-wrap gap-[8px]">{turn.factIds.map(id => review?.facts[id] && <FactChip key={id} fact={review.facts[id]}/>)}</div>{turn.error && <div role="alert">{errorText(turn.error)}{turn.error.retryable && <button className={control} disabled={streaming} onClick={() => {
         setTurns(prev => prev.map(t => t.id === turn.id ? { ...t, status: 'streaming', error: undefined, text: '' } : t));
         void start(turn);
     }}>{t('btnRetry')}</button>}</div>}</section>)}
-      {review?.player && flags.fakedoor_v2 && (stream.fakedoor || stream.status === 'done') && <FakedoorCard />}
-      {away && <JumpToLatest jump={() => {
-                stick.current = true;
-                setAway(false);
-                if (scroll.current)
-                    scroll.current.scrollTop = scroll.current.scrollHeight;
-            }}/>}
+
     </div>
   </V2Shell>;
 }

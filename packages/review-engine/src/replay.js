@@ -20,7 +20,7 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
     const victim = e.target_hero === true && e.target_illusion === false ? byName.get(e.target) : null;
     const attacker = e.attacker_hero === true && e.attacker_illusion === false ? byName.get(e.attacker) : null;
     if (e.type === 'DOTA_COMBATLOG_DEATH' && victim) {
-      const d = { time:e.t, key:attacker ? e.attacker : null, source_path };
+      const d = { time:e.t, key:attacker?e.attacker:(e.attacker&&e.attacker!=='dota_unknown'&&e.attacker_hero!==true?e.attacker:null), ...(e.inflictor && e.inflictor !== 'dota_unknown' ? {inflictor:e.inflictor} : {}), source_path };
       if (Number.isFinite(e.location_x) && Number.isFinite(e.location_y)) Object.assign(d, { x:e.location_x, y:e.location_y });
       if (!Number.isFinite(d.x)) {
         const sample = positionSamples.find(s => s.death_source_path === source_path);
@@ -29,6 +29,18 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
       }
       victim.deaths_log.push(d);
       if (attacker) attacker.kills_log.push({ time:e.t, key:e.target, source_path });
+    }
+    if (attacker && e.type === 'DOTA_COMBATLOG_ABILITY' && typeof e.inflictor === 'string')
+      (attacker.ability_cast_log ??= []).push({t:e.t,key:e.inflictor,...(e.target && e.target !== 'dota_unknown' ? {target:e.target} : {}),source_path});
+    if (attacker && e.type === 'DOTA_COMBATLOG_ITEM') {
+      const key = e.inflictor?.replace(/^item_/, '');
+      if (key === 'phase_boots') attacker.phase_boots_use_count = (attacker.phase_boots_use_count ?? 0) + 1;
+      if (['black_king_bar','spirit_vessel','urn_of_shadows','tpscroll','smoke_of_deceit','magic_wand','ward_sentry','ward_dispenser'].includes(key))
+        (attacker.item_use_log ??= []).push({t:e.t,key,source_path});
+    }
+    if (victim && e.type === 'DOTA_COMBATLOG_MODIFIER_REMOVE' && e.inflictor === 'modifier_black_king_bar_immune') {
+      const use = victim.item_use_log?.findLast(u => u.key === 'black_king_bar' && u.ended_at == null && u.t <= e.t);
+      if (use) { use.ended_at = e.t; use.end_source_path = source_path; }
     }
     if (e.type === 'DOTA_COMBATLOG_PURCHASE') {
       const buyer = byName.get(e.target) ?? attacker;

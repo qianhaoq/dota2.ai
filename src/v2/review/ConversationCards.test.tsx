@@ -5,7 +5,7 @@ import { cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { I18nProvider } from '../i18n/I18nProvider';
 import TopBar from '../components/TopBar';
-import { HeroGrid, HeroCollapsedRow, Share, RefusalBubble } from './ConversationCards';
+import { HeroGrid, HeroCollapsedRow, Share, RefusalBubble, MiniChart, FollowupChips, JumpToLatest } from './ConversationCards';
 import ResultHeader from './ResultHeader';
 import type { Review } from './types';
 
@@ -103,4 +103,15 @@ describe('RefusalBubble', () => {
     wrap(<RefusalBubble gaps={[]}/>);
     expect(screen.queryByTestId('refusal-bubble')).toBeNull();
   });
+});
+
+it('omits the chart and both legends when neither series is usable', () => {
+  wrap(<MiniChart series={{radiant_gold_adv: [], radiant_xp_adv: [null]}}/>);
+  expect(screen.queryByRole('img')).toBeNull();
+  expect(screen.queryByText(/Gold|XP/)).toBeNull();
+});
+it('caps followups at three answerable questions and keeps jump in document flow', () => {
+  wrap(<><FollowupChips followups={Array.from({length:24}, (_,i)=>({id:String(i),label:`Question ${i}`,answerable:i>2}))} asked={[]} disabled={false} ask={()=>{}}/><JumpToLatest jump={()=>{}}/></>);
+  expect(screen.getAllByRole('button')).toHaveLength(4);
+  expect(screen.getByRole('button', {name:'Jump to latest'}).className).not.toMatch(/fixed|absolute/);
 });

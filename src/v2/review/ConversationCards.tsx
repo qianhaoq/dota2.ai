@@ -48,8 +48,9 @@ export function MiniChart({ series }: {
     const { t } = useI18n();
     const arrays = [series.radiant_gold_adv ?? [], series.radiant_xp_adv ?? []];
     const nums = arrays.flat().filter((v): v is number => v != null && Number.isFinite(v));
+    if (!arrays.some(a => a.filter(v => v != null && Number.isFinite(v)).length >= 2)) return null;
     const bound = Math.max(1, ...nums.map(Math.abs));
-    return <div className="mt-[12px]"><svg role="img" aria-label={t('miniChart')} viewBox="0 0 240 50" className="w-full h-[50px]">{arrays.map((values, i) => <polyline key={i} fill="none" stroke={i ? '#1a9fff' : '#c79123'} strokeWidth="2" points={values.map((v, x) => v == null || !Number.isFinite(v) ? '' : `${x / Math.max(1, values.length - 1) * 240},${25 - v / bound * 23}`).filter(Boolean).join(' ')}/>)}</svg><div className="flex gap-[12px] text-d2-12 text-d2-ink-3"><span className="text-d2-gold-2">● {t('chartGold')}</span><span className="text-d2-xp">● {t('chartXp')}</span></div></div>;
+    return <div className="mt-[12px]"><svg role="img" aria-label={t('miniChart')} viewBox="0 0 240 50" className="w-full h-[50px]">{arrays.map((values, i) => <polyline key={i} fill="none" stroke={i ? '#1a9fff' : '#c79123'} strokeWidth="2" points={values.map((v, x) => v == null || !Number.isFinite(v) ? '' : `${x / Math.max(1, values.length - 1) * 240},${25 - v / bound * 23}`).filter(Boolean).join(' ')}/>)}</svg><div className="flex gap-[12px] text-d2-12 text-d2-ink-3">{arrays[0].filter(Number.isFinite).length >= 2 && <span className="text-d2-gold-2">● {t('chartGold')}</span>}{arrays[1].filter(Number.isFinite).length >= 2 && <span className="text-d2-xp">● {t('chartXp')}</span>}</div></div>;
 }
 export function FactChip({ fact, label }: {
     fact: Fact;
@@ -58,7 +59,7 @@ export function FactChip({ fact, label }: {
 }) {
     const { lang } = useI18n();
     const value = `${fact.display[lang]}${fact.display.t ? ` · ${fact.display.t}` : ''}`;
-    return <span className="inline-block rounded-d2-chip bg-d2-surface-3 border border-d2-line-2 px-[10px] py-[4px] text-d2-13 text-d2-ink-2 d2-tnum" title={fact.source_path}>{label ? <><span className="text-d2-ink-3 font-medium">{label}</span>{' '}{value}</> : value}</span>;
+    return <span className="inline-block rounded-d2-chip bg-d2-surface-3 border border-d2-line-2 px-[10px] py-[4px] text-d2-13 text-d2-ink-2 d2-tnum">{label ? <><span className="text-d2-ink-3 font-medium">{label}</span>{' '}{value}</> : value}</span>;
 }
 export function FollowupChips({ followups, asked, disabled, ask }: {
     followups: Followup[];
@@ -67,7 +68,7 @@ export function FollowupChips({ followups, asked, disabled, ask }: {
     ask: (f: Followup) => void;
 }) {
     const { t } = useI18n();
-    return <div className="flex flex-wrap gap-[8px]">{followups.filter(f => !asked.includes(f.id)).map(f => <button className="min-h-[36px] px-[12px] rounded-full border border-d2-line bg-d2-surface-2 text-d2-13 font-medium text-d2-ink-2 hover:bg-d2-surface-3 hover:border-d2-gold/30 disabled:opacity-40 transition-colors" key={f.id} disabled={disabled} onClick={() => ask(f)}>{f.label}{!f.answerable && ` · ${t('followupUnavailable')}`}</button>)}</div>;
+    return <div className="flex flex-wrap gap-[8px]">{followups.filter(f => f.answerable && !asked.includes(f.id)).slice(0, 3).map(f => <button className="min-h-[36px] px-[12px] rounded-full border border-d2-line bg-d2-surface-2 text-d2-13 font-medium text-d2-ink-2 hover:bg-d2-surface-3 hover:border-d2-gold/30 disabled:opacity-40 transition-colors" key={f.id} disabled={disabled} onClick={() => ask(f)}>{f.label}{!f.answerable && ` · ${t('followupUnavailable')}`}</button>)}</div>;
 }
 export function RefusalBubble({ gaps }: {
     gaps: Review['data_gaps'];
@@ -103,5 +104,5 @@ export function JumpToLatest({ jump }: {
     jump: () => void;
 }) {
     const { t } = useI18n();
-    return <button className={`fixed left-1/2 -translate-x-1/2 bottom-[124px] z-20 h-[32px] px-[12px] rounded-full bg-d2-surface-2 border border-d2-line shadow-d2-3 text-d2-13 font-semibold text-d2-gold-2 flex items-center gap-[6px] hover:bg-d2-surface-3 transition-colors`} onClick={jump}>{t('jumpLatest')}<ArrowDown size={14}/></button>;
+    return <button className={`relative ml-auto my-[12px] h-[32px] px-[12px] rounded-full bg-d2-surface-2 border border-d2-line shadow-d2-3 text-d2-13 font-semibold text-d2-gold-2 flex items-center gap-[6px] hover:bg-d2-surface-3 transition-colors`} onClick={jump}>{t('jumpLatest')}<ArrowDown size={14}/></button>;
 }

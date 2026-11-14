@@ -14,6 +14,7 @@ import {
   seriesForPlayer,
   seriesPath,
   sourcesFor,
+  formatMatchClock,
 } from './labels';
 import type { Review } from '../review/types';
 
@@ -192,4 +193,20 @@ describe('evidence labels', () => {
     expect(seriesPath([1, 2, 3], X, Y)).toBe('M0.0 1.0 L10.0 2.0 L20.0 3.0');
     expect(seriesPath([null, NaN, undefined], X, Y)).toBe('');
   });
+});
+it('sourcesFor a moment insight lists only fields from that moment\'s facts', () => {
+  const review = {
+    series: { radiant_gold_adv: [1], radiant_xp_adv: [1] },
+    objectives: [{ t: 100 }],
+    purchases: [{ t: 100, key_item: true }],
+    deaths: [],
+    facts: { 'use.bkb.1': { id: 'use.bkb.1', source_path: 'players[0].deaths_log[0]', display: { t: '1:00' } } },
+    insights: [{ id: 'bkb_windows', kind: 'item_window', status: 'ok', time: { from: 60, to: 120 }, fact_ids: ['use.bkb.1'] }],
+  } as any;
+  expect(sourcesFor(review, 0).map(s => s.field)).toEqual(['deaths_log']);
+});
+it('formatMatchClock keeps a single minus for pre-horn times', () => {
+  expect(formatMatchClock(-30)).toBe('-0:30');
+  expect(formatMatchClock(-90)).toBe('-1:30');
+  expect(formatMatchClock(125)).toBe('2:05');
 });

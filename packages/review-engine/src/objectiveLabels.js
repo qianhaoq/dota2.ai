@@ -106,3 +106,25 @@ function formatBuildingKillLabel(ev, isZh) {
 
   return isZh ? `${side}建筑被${destroyer}摧毁` : `${side} lost a building (destroyed by ${destroyer})`;
 }
+
+/** Noun label for a building entity, without a destruction event. */
+export function formatBuildingName(key, lang = 'zh') {
+  const isZh = lang === 'zh';
+  if (!key || typeof key !== 'string') return isZh ? '建筑' : 'Building';
+  const isRadiant = key.includes('goodguys');
+  const side = isZh ? (isRadiant ? '天辉' : '夜魇') : (isRadiant ? 'Radiant' : 'Dire');
+  let lane = '';
+  if (key.includes('_top')) lane = isZh ? '上路' : 'top';
+  else if (key.includes('_mid')) lane = isZh ? '中路' : 'mid';
+  else if (key.includes('_bot')) lane = isZh ? '下路' : 'bot';
+  const laneZh = lane ? `${side}${lane}` : side;
+  const laneEn = lane ? `${lane} ` : '';
+  if (key.includes('fort')) return isZh ? `${side}基地` : `${side} Ancient`;
+  if (key.includes('melee_rax')) return isZh ? `${laneZh}高地近战兵营` : `${side} ${laneEn}melee barracks`.replace(/  +/g, ' ').trim();
+  if (key.includes('range_rax')) return isZh ? `${laneZh}高地远程兵营` : `${side} ${laneEn}ranged barracks`.replace(/  +/g, ' ').trim();
+  if (key.includes('tower4')) return isZh ? `${laneZh}基地四塔` : `${side} ${laneEn}T4 base tower`.replace(/  +/g, ' ').trim();
+  if (key.includes('tower3')) return isZh ? `${laneZh}高地三塔` : `${side} ${laneEn}T3 tower`.replace(/  +/g, ' ').trim();
+  if (key.includes('tower2')) return isZh ? `${laneZh}二塔` : `${side} ${laneEn}T2 tower`.replace(/  +/g, ' ').trim();
+  if (key.includes('tower1')) return isZh ? `${laneZh}一塔` : `${side} ${laneEn}T1 tower`.replace(/  +/g, ' ').trim();
+  return isZh ? `${side}建筑` : `${side} building`;
+}
