@@ -41,10 +41,38 @@ export default function MatchPage() {
     const stream = useReviewStream(matchId, hero, lang, valid);
     const review = stream.done?.review;
     const autoSubmitted = useRef(new Set<string>());
+    const autoPolls = useRef(new Map<string, number>());
+    const retryReview = useRef(stream.retry);
+    retryReview.current = stream.retry;
     useEffect(() => {
-        if (!valid || !review?.meta?.ingest_available || !review.meta.replay_auto_enabled || review.parse?.status === 'replay_parsed' || autoSubmitted.current.has(matchId)) return;
-        autoSubmitted.current.add(matchId);
-        void fetch(`/api/review/${matchId}/replay-ingest`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({lang}) }).catch(() => {});
+        if (!valid || !review?.meta?.ingest_available || !review.meta.replay_auto_enabled) return;
+        const status = review.parse?.status;
+        if (status === 'replay_parsed') return;
+        const terminal = new Set(['replay_unavailable', 'replay_expired', 'replay_cdn_error', 'replay_failed', 'replay_ingest_disabled', 'throttled', 'invalid']);
+        if (autoSubmitted.current.has(matchId) && status && terminal.has(status)) return;
+        const polls = autoPolls.current.get(matchId) ?? 0;
+        if (polls >= 60) return;
+        let cancelled = false;
+        const tick = async () => {
+            if (!autoSubmitted.current.has(matchId)) {
+                autoSubmitted.current.add(matchId);
+                try {
+                    const res = await fetch(`/api/review/${matchId}/replay-ingest`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang }) });
+                    if (!res.ok && res.status !== 202) autoSubmitted.current.delete(matchId);
+                } catch {
+                    autoSubmitted.current.delete(matchId);
+                }
+            }
+            if (cancelled) return;
+            autoPolls.current.set(matchId, polls + 1);
+            retryReview.current();
+        };
+        if (!autoSubmitted.current.has(matchId)) {
+            void tick();
+            return () => { cancelled = true; };
+        }
+        const timer = window.setTimeout(() => { if (!cancelled) void tick(); }, 5000);
+        return () => { cancelled = true; window.clearTimeout(timer); };
     }, [valid, review, matchId, lang]);
     const [picker, setPicker] = useState(false);
     const [turns, setTurns] = useState<Turn[]>([]);

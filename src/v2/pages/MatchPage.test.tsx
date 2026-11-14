@@ -457,4 +457,25 @@ describe('SSE v1 conversation', () => {
         fireEvent.click(screen.getByText('Copy JSON'));
         await waitFor(() => expect(JSON.parse(writeText.mock.calls[1][0])).toEqual(engine()));
     });
+    it('refreshes official replay evidence after auto-ingest without navigation', async () => {
+        const first = engine({ ...raw, replay_ingest_available: true, replay_auto_enabled: true });
+        const second = engine({ ...raw, replay_ingest_available: true, replay_auto_enabled: true, replay_generation: 5, replay_ingest: { status: 'replay_parsed' } });
+        second.insights = second.insights.map((insight, i) => i === 0 ? { ...insight, claim: { ...insight.claim, text: 'Official replay confirmed the hook death window.' } } : insight);
+        let reviews = 0;
+        fetcher.mockImplementation((input: string, init?: RequestInit) => {
+            const url = String(input);
+            if (url.includes('/replay-ingest') && init?.method === 'POST') {
+                return Promise.resolve(new Response(JSON.stringify({ status: 'replay_pending', jobId: '9035042364' }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
+            }
+            if (init?.method === 'POST') {
+                return Promise.resolve(response(frame('token', { target: 'answer', delta: 'Evidence answer' }) + frame('done', { state: 'parsed', answer: 'Evidence answer', phrasing: 'template' })).response);
+            }
+            reviews += 1;
+            return Promise.resolve(response(events(reviews === 1 ? first : second)).response);
+        });
+        page('/m/9035042364?hero=pudge&lang=en');
+        await screen.findAllByTestId('insight-card');
+        await waitFor(() => expect(screen.getByText('Official replay confirmed the hook death window.')).toBeTruthy());
+        expect(fetcher.mock.calls.filter(([url, init]) => String(url).includes('/replay-ingest') && (init as RequestInit | undefined)?.method === 'POST')).toHaveLength(1);
+    });
 });

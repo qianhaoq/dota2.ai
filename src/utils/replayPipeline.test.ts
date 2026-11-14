@@ -164,3 +164,34 @@ it('selects a public IPv4 even when official DNS also returns AAAA',async()=>{
  expect(mixed).toEqual({address:'155.133.248.1',family:4});
  expect(selectPublicReplayAddress([{address:'198.18.0.1',family:4},{address:'2600:1f18::1',family:6}])).toBeNull();
 });
+
+it('still reads a published artifact after ingestion is disabled',async()=>{
+ const dir=await home();
+ const enabled=createReplayIngest({env:{REPLAY_HOME:dir,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'}});
+ if(!('jobStore' in enabled)||!('artifactStore' in enabled)||!('queue' in enabled))throw new Error('async pipeline required');
+ const jobs=enabled.jobStore,artifacts=enabled.artifactStore;
+ const j=await jobs.create({match_id:88,players:[]},'ip');const l=await jobs.lease(j.jobId,j.generation);
+ const pointer=await artifacts.put(88,j.generation,{extractor_match_id:88,trace_version:4,players:[]});
+ await jobs.publish(j.jobId,l.token,pointer);
+ const disabled=createReplayIngest({env:{REPLAY_HOME:dir,REPLAY_INGEST_ENABLED:'0'},jobStore:jobs,artifactStore:artifacts,queue:enabled.queue});
+ expect(disabled.enabled).toBe(false);
+ const artifact=await disabled.read(88);
+ expect(artifact).toMatchObject({extractor_match_id:88,generation:pointer.generation});
+ const overlay=await disabled.overlay({match_id:88,players:[]});
+ expect(overlay.replay_generation).toBe(pointer.generation);
+ expect(overlay.replay_ingest_available).toBe(false);
+ expect((await disabled.submit({match_id:89},'ip')).status).toBe('replay_ingest_disabled');
+});
+it('charges bytes and worker seconds to the UTC day they actually accrue',async()=>{
+ let now=86400000-1000;
+ const jobs=new FileJobStore(await home(),{now:()=>now,budgets:{dailyJobs:10,hourlyJobs:100,ipTenMinutes:100,attempts:10,bytes:10,workerSeconds:10},leaseMs:10_000});
+ const first=await jobs.create({match_id:1},'ip-a');
+ const lease=await jobs.lease(first.jobId,first.generation);
+ await jobs.charge(first.jobId,lease.token,{bytes:10,workerSeconds:10});
+ now+=2000;
+ await jobs.charge(first.jobId,lease.token,{bytes:5,workerSeconds:5});
+ const second=await jobs.create({match_id:2},'ip-b');
+ expect(second.status).toBe('queued');
+ const next=await jobs.lease(second.jobId,second.generation);
+ await expect(jobs.charge(next.jobId,next.token,{bytes:6,workerSeconds:6})).rejects.toThrow('resource_limited');
+});
