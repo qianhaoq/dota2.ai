@@ -131,3 +131,20 @@ it('does not restore a resource_limited charge that already committed usage',asy
  await charger.flush();
  expect(calls).toEqual([1100]);
 });
+it('serializes overlapping time charges so elapsed usage is not doubled',async()=>{
+ const {createChargeQueue}=await import('../../lib/matchReview/replayIngest/worker.js');
+ const calls:number[]=[];
+ let charged=0;
+ const gate:{resolve?:()=>void}={};
+ const firstHold=new Promise<void>(r=>{gate.resolve=r;});
+ const account=createChargeQueue();
+ const charge=async(now:number)=>{const delta=now-charged;if(delta<=0)return;calls.push(delta);if(calls.length===1)await firstHold;charged=now;};
+ const a=account(()=>charge(20));
+ const b=account(()=>charge(40));
+ await Promise.resolve();
+ expect(calls).toEqual([20]);
+ gate.resolve?.();
+ await Promise.all([a,b]);
+ expect(calls).toEqual([20,20]);
+ expect(charged).toBe(40);
+});
