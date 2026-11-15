@@ -803,6 +803,7 @@
             "replay_unavailable",
             "replay_expired",
             "replay_cdn_error",
+            "replay_store_error",
             "replay_ingest_disabled",
             "replay_invalid_url",
             "replay_pending",

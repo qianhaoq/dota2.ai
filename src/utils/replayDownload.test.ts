@@ -230,3 +230,50 @@ it('does not persist raw diagnostic objects on a direct legacy failure',async()=
   expect(artifact.extractor_exit).toBe(1);
  }finally{await rm(home,{recursive:true,force:true});}
 });
+
+it.each(['gcs_request_failed','store_contention','workload_identity_unavailable'])('records %s as store failure after HTTP 200 and stops download',async message=>{
+ const {FileJobStore}=await import('../../lib/matchReview/replayIngest/jobStore.js');
+ const home=await mkdtemp(join(tmpdir(),'store-failed-download-'));
+ vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  const store=new FileJobStore(join(home,'jobs'));let consumed=0;
+  vi.spyOn(store,'charge').mockRejectedValue(new Error(message));
+  const ingest=createReplayIngest({jobStore:store,env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl:async()=>new Response(new ReadableStream({pull(controller){consumed+=65536;controller.enqueue(new Uint8Array(65536));}}))});
+  if(!('drain' in ingest))throw Error('async required');
+  const job=await ingest.submit({match_id:42,cluster:184,replay_salt:1},'ip');await ingest.drain();
+  expect(await store.get(job.jobId)).toMatchObject({status:'store_error',http_status:200,stream_error:message});
+  expect(await ingest.read(42)).toMatchObject({status:'replay_store_error'});
+  expect(consumed).toBeLessThan(2*1048576);
+ }finally{await rm(home,{recursive:true,force:true});}
+});
+
+it.each(['gcs_request_failed','store_contention','workload_identity_unavailable'])('classifies mid-stream abort reason %s and bounds consumption',async message=>{
+ const {createReplayIngest:legacyIngest}=await import('../../lib/matchReview/replayIngest/legacy.js');
+ const {FileJobStore}=await import('../../lib/matchReview/replayIngest/jobStore.js');
+ const home=await mkdtemp(join(tmpdir(),'store-abort-download-'));
+ vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  // A caller abort reaches pipeline as AbortError, with the store failure in its reason.
+  const controller=new AbortController();let consumed=0;
+  const fetchImpl=async()=>new Response(new ReadableStream({
+   pull(stream){consumed+=65536;stream.enqueue(new Uint8Array(65536));if(consumed===4*65536)controller.abort(new Error(message));}
+  }));
+  const legacy=legacyIngest({env:{REPLAY_HOME:join(home,'legacy'),REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl});
+  expect(await legacy.submit({match_id:42,cluster:184,replay_salt:1},'ip',{signal:controller.signal})).toMatchObject({status:'replay_store_error'});
+  expect(await legacy.read(42)).toMatchObject({status:'replay_store_error',http_status:200});
+  expect(consumed).toBeLessThan(1048576);
+
+  // Heartbeat aborts the worker with a wrapper whose cause is the storage error.
+  const store=new FileJobStore(join(home,'jobs'),{leaseMs:300});
+  vi.spyOn(store,'heartbeat').mockRejectedValue(new Error('heartbeat failed',{cause:new Error(message)}));
+  let workerBytes=0;
+  const ingest=createReplayIngest({jobStore:store,env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl:async()=>new Response(new ReadableStream({
+   async pull(stream){await new Promise(resolve=>setTimeout(resolve,10));workerBytes+=65536;stream.enqueue(new Uint8Array(65536));}
+  }))});
+  if(!('drain' in ingest))throw Error('async required');
+  const job=await ingest.submit({match_id:43,cluster:184,replay_salt:1},'ip');await ingest.drain();
+  expect(await store.get(job.jobId)).toMatchObject({status:'store_error'});
+  expect(await ingest.read(43)).toMatchObject({status:'replay_store_error'});
+  expect(workerBytes).toBeGreaterThan(0);expect(workerBytes).toBeLessThan(2*1048576);
+ }finally{await rm(home,{recursive:true,force:true});}
+});

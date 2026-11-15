@@ -38,7 +38,7 @@ describe('first-party replay evidence', () => {
     expect(review.data_gaps.some(g=>g.topic==='death_locations')).toBe(false);
     expect(validateReview(review)).toMatchObject({ok:true});
   });
-  it.each(['replay_expired','replay_cdn_error'])('keeps summary and gap for %s', status => {
+  it.each(['replay_expired','replay_store_error','replay_cdn_error'])('keeps summary and gap for %s', status => {
     const review = buildReview(applyReplayArtifact(raw,{match_id:42,status}),opts);
     expect(review.state).toBe('unparsed'); expect(review.deaths).toEqual([]);
     expect(review.data_gaps).toContainEqual({topic:'parsed_evidence',reason:status});

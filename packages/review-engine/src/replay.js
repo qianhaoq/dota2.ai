@@ -114,6 +114,7 @@ export function replayStatusPayload(status, lang = 'en', retryAfterSec = null) {
     replay_ingest_disabled:['First-party replay ingest is not configured; scoreboard only.','未配置本站录像解析；仅展示基础赛后数据。'],
     replay_unavailable:['No official replay URL is available; scoreboard only.','暂无官方录像地址；仅展示基础赛后数据。'],
     replay_expired:['Official replay has expired or is unavailable; scoreboard only.','官方录像已过期或不可用；仅展示基础赛后数据。'],
+    replay_store_error:['Replay storage failed; no replay timeline was verified.','录像存储失败；未核实录像时间线。'],
     replay_cdn_error:['Official replay CDN failed; no replay timeline was verified.','官方录像 CDN 请求失败；未核实录像时间线。'],
     replay_invalid_url:['Replay URL rejected: an official CDN is required.','录像地址已拒绝：必须使用官方 CDN。'],
     replay_pending:['First-party .dem download/parse is running.','本站正在下载并解析 .dem 录像。'],
