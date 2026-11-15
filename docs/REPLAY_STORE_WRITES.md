@@ -40,10 +40,11 @@ there is no distributed lock.
 
 Byte batches and elapsed-time intervals retain stable charge tickets across
 uncertain saves. Each job remembers its latest 32 applied tickets, so a retry
-of a committed mutation succeeds without adding usage or raising another
-resource limit. Clearly rejected writes can still apply on a later retry.
+does not add usage again. If the already-committed budget is over the cap, the
+retry still throws `resource_limited`. In-cap retries succeed. Clearly rejected
+writes can still apply on a later retry.
 
-Validation (2026-11-15): `npm test` passed 113 files / 1661 tests, including
+Validation (2026-11-15): `npm test` passed 113 files / 1663 tests, including
 commit-then-throw and rejected-save byte/seconds retries, bounded ticket history,
 independent-handle metadata/CAS spacing, nonblocking chunk pumps, the 16MiB
 high watermark, overlapping final-flush retries, and scheduled resource-limit propagation (including overlapping final flushes and
