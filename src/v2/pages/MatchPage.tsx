@@ -48,7 +48,7 @@ export default function MatchPage() {
         if (!valid || !review?.meta?.ingest_available || !review.meta.replay_auto_enabled) return;
         const status = review.parse?.status;
         if (status === 'replay_parsed') return;
-        const terminal = new Set(['replay_unavailable', 'replay_expired', 'replay_cdn_error', 'replay_failed', 'replay_ingest_disabled', 'throttled', 'invalid']);
+        const terminal = new Set(['replay_unavailable', 'replay_expired', 'replay_cdn_error', 'replay_store_error', 'replay_failed', 'replay_ingest_disabled', 'throttled', 'invalid']);
         if (autoSubmitted.current.has(matchId) && status && terminal.has(status)) return;
         const polls = autoPolls.current.get(matchId) ?? 0;
         if (polls >= 60) return;

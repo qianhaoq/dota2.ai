@@ -8,7 +8,7 @@ const REVIEW_PARSE_STATUSES: ReadonlySet<string> = new Set([
   'unparsed',
   'failed',
   'throttled',
-  'replay_unavailable', 'replay_expired', 'replay_cdn_error', 'replay_ingest_disabled',
+  'replay_unavailable', 'replay_expired', 'replay_store_error', 'replay_cdn_error', 'replay_ingest_disabled',
   'replay_invalid_url', 'replay_pending', 'replay_parsed', 'replay_failed',
 ]);
 

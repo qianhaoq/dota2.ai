@@ -1,5 +1,5 @@
 /** Persisted job states; successful facts always carry verified dem provenance. */
-export type ReplayFailureStatus = 'replay_unavailable' | 'replay_expired' | 'replay_cdn_error' | 'replay_invalid_url' | 'replay_failed' | 'throttled';
+export type ReplayFailureStatus = 'replay_unavailable' | 'replay_expired' | 'replay_store_error' | 'replay_cdn_error' | 'replay_invalid_url' | 'replay_failed' | 'throttled';
 export interface ReplayProvenance {
   match_id: number;
   fetched_at: string;

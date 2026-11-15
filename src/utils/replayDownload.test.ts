@@ -230,3 +230,19 @@ it('does not persist raw diagnostic objects on a direct legacy failure',async()=
   expect(artifact.extractor_exit).toBe(1);
  }finally{await rm(home,{recursive:true,force:true});}
 });
+
+it.each(['gcs_request_failed','store_contention','workload_identity_unavailable'])('records %s as store failure after HTTP 200 and stops download',async message=>{
+ const {FileJobStore}=await import('../../lib/matchReview/replayIngest/jobStore.js');
+ const home=await mkdtemp(join(tmpdir(),'store-failed-download-'));
+ vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  const store=new FileJobStore(join(home,'jobs'));let consumed=0;
+  vi.spyOn(store,'charge').mockRejectedValue(new Error(message));
+  const ingest=createReplayIngest({jobStore:store,env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl:async()=>new Response(new ReadableStream({pull(controller){consumed+=65536;controller.enqueue(new Uint8Array(65536));}}))});
+  if(!('drain' in ingest))throw Error('async required');
+  const job=await ingest.submit({match_id:42,cluster:184,replay_salt:1},'ip');await ingest.drain();
+  expect(await store.get(job.jobId)).toMatchObject({status:'store_error',http_status:200,stream_error:message});
+  expect(await ingest.read(42)).toMatchObject({status:'replay_store_error'});
+  expect(consumed).toBeLessThan(2*1048576);
+ }finally{await rm(home,{recursive:true,force:true});}
+});
