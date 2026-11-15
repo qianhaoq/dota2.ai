@@ -95,7 +95,7 @@ export function buildMoments(result, player, lang, players = [player]) {
   const inflictor=death?.inflictor?evidenceName(death.inflictor,lang):null;
   const enemyAbilities=[...new Set(primary.toSorted((a,b)=>a.t-b.t).filter(c=>same(c.target,focus)&&!same(c.actor,focus)).map(c=>evidenceName(c.key,lang)))].join(zh?'、':' / ');
   const title=use
-   ? (zh?`使用${itemName(use.key,lang)}期间${enemyAbilities?'遭遇'+enemyAbilities:'有死亡记录'}`:`${enemyAbilities?enemyAbilities:'Death recorded'} during ${itemName(use.key,lang)}`)
+   ? (zh?`使用${itemName(use.key,lang)}期间${enemyAbilities?'被施放'+enemyAbilities:'有死亡记录'}`:`${enemyAbilities?enemyAbilities+' casts':'Death recorded'} during ${itemName(use.key,lang)}`)
    : (zh?`${ability??evidenceName(focus,lang)}${first&&first.t<death?.t?'后':'与'}${inflictor?'被'+inflictor+'击杀':'被'+evidenceName(death?.killer,lang)+'击杀'}`:`${ability??evidenceName(focus,lang)}${first&&first.t<death?.t?' followed by':' and'} death ${inflictor?'to '+inflictor:'by '+evidenceName(death?.killer,lang)}`);
   out.push({id,kind,title,status:'ok',time:{from,to},claim:{text,slots:text,phrasing:'template'},fact_ids:ids,metrics:[],citations:['r1'],evidence:{kind:'death_timeline',highlight:[from/60,to/60],markers:ids,moments:[]},baseline:null,target:null,data_gap:null});
  };

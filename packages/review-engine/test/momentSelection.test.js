@@ -37,7 +37,7 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
  for(const i of r.insights){
   expect(i.claim.text).not.toMatch(/→| · |死亡记录|Death recorded/);
   expect(i.claim.text).toMatch(lang==='zh'?/。$/:/\.$/);
-  expect(i.title).not.toMatch(/已核实交战片段|Verified fight clip|最该改|值得复看/);
+  expect(i.title).not.toMatch(/已核实|Verified fight|最该改|值得复看|遭遇|hit was verified|encountered/);
   const times=i.fact_ids.flatMap(id=>{const f=r.facts[id];return [f.t,f.value?.ended_at].filter(Number.isFinite);});
   expect(i.time).toEqual({from:Math.min(...times),to:Math.max(...times)});
   const clocks=i.claim.text.match(/-?\d+:\d{2}/g)??[];
