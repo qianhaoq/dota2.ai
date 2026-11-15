@@ -65,3 +65,16 @@ it('commits limited usage once and rejects stale lease mutations',async()=>{
  const stale=expect(store.charge('42',job.token+1,{bytes:50})).rejects.toThrow('stale_lease');await vi.runAllTimersAsync();await stale;
  expect(f.state.budget[job.attemptDay].bytes).toBe(101);
 });
+
+it('logs retries and terminal failures without logging expected snapshots or CAS conflicts',async()=>{
+ vi.useFakeTimers();const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+ const responses=[404,412,429,503,403];
+ const bucket=createGcsBucket('test-bucket',{tokenProvider:async()=>'secret-token',fetchImpl:async()=>new Response('',{status:responses.shift()!,headers:{'Retry-After':'2'}})});
+ await expect(bucket.file('jobs/state.json').getMetadata()).rejects.toMatchObject({code:404});
+ await expect(bucket.file('jobs/state.json').save('{}',{preconditionOpts:{ifGenerationMatch:0}})).rejects.toMatchObject({code:412});
+ expect(log).not.toHaveBeenCalled();
+ const failed=expect(bucket.file('jobs/state.json').save('{}')).rejects.toMatchObject({code:403});
+ await vi.runAllTimersAsync();await failed;
+ expect(log.mock.calls).toEqual([429,503,403].map((status,i)=>['replay_store_request',{key:'jobs/state.json',method:'save',status,attempt:i+1,retryAfter:'2'}]));
+ expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret-token|https?:/);
+});
