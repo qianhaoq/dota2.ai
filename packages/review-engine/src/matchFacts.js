@@ -128,6 +128,10 @@ export function buildMatchFact(match, opts = {}) {
   const laneResolution = resolveLanes(match.players || []);
 
   const radiantGoldAdv = match.radiant_gold_adv || [];
+  // Net-worth advantage is a separate 60 s bucket series (radiant_net_worth_adv):
+  // never merged into radiant_gold_adv, never presented as earned gold, and its
+  // bucket index is not an event clock. The series may truncate before game end.
+  const radiantNetWorthAdv = Array.isArray(match.radiant_net_worth_adv) ? match.radiant_net_worth_adv : [];
   const parsed = isMatchParsed(match);
 
   // 死亡时间线需要 heroId -> 英雄 slug 才能把 kills_log 的受害者映射回玩家；
@@ -160,7 +164,15 @@ export function buildMatchFact(match, opts = {}) {
   }
 
   const deathTimeline = buildDeathTimeline(match.players || [], radiantGoldAdv, heroSlugById, { parsed });
-  const advantageSwing = detectAdvantageSwing(radiantGoldAdv, match.radiant_win);
+  // Advantage swing prefers earned gold; only when that series is absent does it
+  // read the net-worth buckets, and the basis is labeled on the result.
+  const swingSeries = radiantGoldAdv.length >= 5 ? 'radiant_gold_adv' : radiantNetWorthAdv.length >= 5 ? 'radiant_net_worth_adv' : null;
+  const advantageSwingBase = swingSeries
+    ? detectAdvantageSwing(swingSeries === 'radiant_gold_adv' ? radiantGoldAdv : radiantNetWorthAdv, match.radiant_win)
+    : null;
+  const advantageSwing = advantageSwingBase
+    ? { ...advantageSwingBase, basis: swingSeries, ...(swingSeries === 'radiant_net_worth_adv' ? { bucket_note: 'net-worth 60 s buckets; minute fields are bucket indexes, not event clocks' } : {}) }
+    : null;
 
   const players = (match.players || []).map((p) => {
     const resolved = laneResolution.players.find((r) => r.heroId === p.hero_id);
@@ -234,13 +246,15 @@ export function buildMatchFact(match, opts = {}) {
 
   const objectives = buildTimelineObjectives(match.objectives || [], players);
 
-  const economyCheckpoints = [10, 20, 30, 40].map((min) => {
-    const idx = min;
-    return {
-      minute: min,
-      radiantGoldLead: radiantGoldAdv[idx] ?? null,
-    };
-  }).filter((e) => e.radiantGoldLead !== null);
+  const economyCheckpoints = [10, 20, 30, 40].map((min) => ({
+    minute: min,
+    radiantGoldLead: Number.isFinite(radiantGoldAdv[min]) ? radiantGoldAdv[min] : null,
+    // Labeled separately: a 60 s net-worth bucket, not earned gold at that minute.
+    radiantNetWorthLead: Number.isFinite(radiantNetWorthAdv[min]) ? radiantNetWorthAdv[min] : null,
+  })).filter((e) => e.radiantGoldLead !== null || e.radiantNetWorthLead !== null);
+
+  const netWorthTruncated = (match.replay_ingest?.data_gaps ?? match.data_gaps ?? [])
+    .some((g) => g?.topic === 'radiant_net_worth_adv' && g?.reason === 'metadata_graph_truncated');
 
   const focusPlayer = focusHeroId
     ? players.find((p) => p.heroId === focusHeroId)
@@ -293,6 +307,36 @@ export function buildMatchFact(match, opts = {}) {
     if (reason) fieldReasons[field] = reason;
   }
 
+  // Earned gold and net-worth buckets are distinct fields with distinct reasons:
+  // earned gold is absent from the replay trace entirely; net worth may be
+  // present while still truncated before game end.
+  if (radiantGoldAdv.length === 0 && radiantNetWorthAdv.length > 0) {
+    fieldReasons.earnedGold = {
+      reason: 'earned_gold_not_in_replay',
+      message: lang === 'zh'
+        ? '赚金曲线：官方录像中没有赚金序列；本页使用的 60 秒桶是净资产优势（radiant_net_worth_adv），不是赚金。'
+        : 'Earned gold: no earned-gold series exists in the official replay; the 60 s buckets used here are net-worth advantage (radiant_net_worth_adv), not earned gold.',
+    };
+  }
+  // Net-worth buckets only exist on the replay path; an OpenDota-only match
+  // never carried them, so their absence there is not a field-level gap.
+  const netWorthExpected = match.replay_ingest?.status === 'replay_parsed';
+  if (radiantNetWorthAdv.length === 0 && netWorthExpected) {
+    fieldReasons.netWorth = {
+      reason: 'net_worth_missing',
+      message: lang === 'zh'
+        ? '净资产优势：本局没有可用的 60 秒净值桶序列。'
+        : 'Net worth: no usable 60 s net-worth bucket series for this match.',
+    };
+  } else if (netWorthExpected && netWorthTruncated) {
+    fieldReasons.netWorth = {
+      reason: 'metadata_graph_truncated',
+      message: lang === 'zh'
+        ? `净资产优势：净值桶存在（${radiantNetWorthAdv.length} 桶），但在终局前截断；桶下标不是事件时点。`
+        : `Net worth: ${radiantNetWorthAdv.length} buckets exist but the series truncates before game end; bucket indexes are not event times.`,
+    };
+  }
+
   return {
     summary,
     players,
@@ -303,6 +347,10 @@ export function buildMatchFact(match, opts = {}) {
     laneDataAvailable: laneDataGrounded,
     economy: {
       radiantGoldAdv,
+      radiantNetWorthAdv,
+      netWorthSource: typeof match.net_worth_source === 'string' ? match.net_worth_source : null,
+      netWorthDerivation: typeof match.net_worth_derivation === 'string' ? match.net_worth_derivation : null,
+      netWorthTruncated,
       checkpoints: economyCheckpoints,
     },
     timeline: objectives,
@@ -457,12 +505,24 @@ export function matchFactToPrompt(matchFact, lang = 'zh') {
   }
 
   lines.push(isZh ? '\n## 经济节点' : '\n## Economy checkpoints');
+  const hasGold = matchFact.economy.radiantGoldAdv?.length > 0;
   for (const cp of matchFact.economy.checkpoints) {
-    const lead = cp.radiantGoldLead;
-    const sign = lead >= 0 ? '+' : '';
+    const sign = (lead) => lead >= 0 ? '+' : '';
+    if (cp.radiantGoldLead != null) {
+      lines.push(isZh
+        ? `- ${cp.minute} 分钟：天辉经济 ${sign(cp.radiantGoldLead)}${cp.radiantGoldLead}`
+        : `- ${cp.minute} min: Radiant gold ${sign(cp.radiantGoldLead)}${cp.radiantGoldLead}`);
+    }
+    if (cp.radiantNetWorthLead != null) {
+      lines.push(isZh
+        ? `- ${cp.minute} 分钟：天辉净资产优势 ${sign(cp.radiantNetWorthLead)}${cp.radiantNetWorthLead}（60 秒净值桶，不是赚金；桶下标不是事件时点）`
+        : `- ${cp.minute} min: Radiant net-worth advantage ${sign(cp.radiantNetWorthLead)}${cp.radiantNetWorthLead} (60 s net-worth bucket, not earned gold; bucket index is not an event time)`);
+    }
+  }
+  if (!hasGold && matchFact.economy.radiantNetWorthAdv?.length > 0) {
     lines.push(isZh
-      ? `- ${cp.minute} 分钟：天辉经济 ${sign}${lead}`
-      : `- ${cp.minute} min: Radiant gold ${sign}${lead}`);
+      ? '注意：本局没有赚金序列，以上是净资产桶。'
+      : 'Note: no earned-gold series exists; the values above are net-worth buckets.');
   }
 
   lines.push(isZh ? '\n## 关键时间线' : '\n## Key timeline');

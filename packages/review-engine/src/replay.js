@@ -134,7 +134,7 @@ export function applyReplayArtifact(raw, artifact) {
     if (merged.net_worth_timing === 'uncalibrated_graph_bins') delete merged.net_worth_t;
     return merged;
   });
-  return { ...raw, players, objectives:artifact.objectives ?? [], radiant_gold_adv:[], radiant_net_worth_adv:artifact.radiant_net_worth_adv ?? [], radiant_xp_adv:[], ...(artifact.hero_states ? {hero_states:artifact.hero_states} : {}), replay_ingest:artifact };
+  return { ...raw, players, objectives:artifact.objectives ?? [], radiant_gold_adv:[], radiant_net_worth_adv:artifact.radiant_net_worth_adv ?? [], radiant_xp_adv:[], ...(artifact.radiant_net_worth_adv ? {net_worth_source:artifact.net_worth_source, net_worth_derivation:artifact.net_worth_derivation} : {}), ...(artifact.hero_states ? {hero_states:artifact.hero_states} : {}), replay_ingest:artifact };
 }
 export function replayStatusPayload(status, lang = 'en', retryAfterSec = null) {
   const messages = {

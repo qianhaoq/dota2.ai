@@ -51,6 +51,9 @@ export function buildReview(raw, opts) {
   if (replay) {
     gaps.push(...(replay.data_gaps ?? []));
     for (const gap of gaps) if (gap.topic === 'death_locations') gap.reason = 'position_sample_missing';
+    // Old compact artifacts predate hero-state sampling; state the absence once
+    // instead of silently treating map/HP/mana questions as answered.
+    if (!raw.hero_states) gaps.push({ topic: 'hero_states', reason: 'hero_states_not_in_artifact' });
   }
   if (patch == null) gaps.push({ topic: 'patch', reason: 'missing_match_patch' });
   if (focus) for (const topic of ['gold_fed', 'time_dead', 'lh_at_10']) {
@@ -103,7 +106,17 @@ export function buildReview(raw, opts) {
     match: { id: raw.match_id ?? null, duration_s: raw.duration ?? null, winner, score: { radiant: raw.radiant_score ?? null, dire: raw.dire_score ?? null }, patch, parsed, parse_version: raw.version ?? null, start_time: raw.start_time ?? null },
     player: focus ? { ...roster[players.indexOf(focus)], result: winner && teamOf(focus) ? (winner === teamOf(focus) ? 'win' : 'loss') : null, account_id: focus.account_id ?? null } : null,
     roster, facts: result.facts,
-    series: { radiant_gold_adv: parsed ? Array.from(raw.radiant_gold_adv ?? [], value => Number.isFinite(value) ? value : null) : [], radiant_xp_adv: parsed ? raw.radiant_xp_adv ?? [] : [], perspective: focus ? teamOf(focus) : 'radiant' },
+    series: {
+      radiant_gold_adv: parsed ? Array.from(raw.radiant_gold_adv ?? [], value => Number.isFinite(value) ? value : null) : [],
+      radiant_xp_adv: parsed ? raw.radiant_xp_adv ?? [] : [],
+      // Net worth is exposed under its own name with its own derivation; it is
+      // never folded into radiant_gold_adv and bucket indexes are not event times.
+      radiant_net_worth_adv: parsed ? Array.from(raw.radiant_net_worth_adv ?? [], value => Number.isFinite(value) ? value : null) : [],
+      net_worth_source: parsed ? raw.net_worth_source ?? null : null,
+      net_worth_derivation: parsed ? raw.net_worth_derivation ?? null : null,
+      net_worth_buckets: parsed && raw.radiant_net_worth_adv?.length ? '60s net-worth bins indexed from 0:00; a bucket index is not an event clock; series may truncate before game end' : null,
+      perspective: focus ? teamOf(focus) : 'radiant',
+    },
     objectives, deaths: result.deaths,
     purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: Object.hasOwn(KEY_ITEMS, p.key) })) : [],
     item_uses: parsed && focus ? (focus.item_use_log ?? []).filter(u => u.key==='black_king_bar' && Number.isFinite(u.t) && Number.isFinite(u.ended_at) && u.ended_at>=u.t && u.end_source_path).sort((a,b)=>a.t-b.t).map(u => ({ t:u.t, item:u.key, ended_at:u.ended_at })) : [],

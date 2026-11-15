@@ -300,6 +300,33 @@
             ]
           }
         },
+        "radiant_net_worth_adv": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "net_worth_source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "net_worth_derivation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "net_worth_buckets": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "perspective": {
           "enum": [
             "radiant",
@@ -311,6 +338,10 @@
       "required": [
         "radiant_gold_adv",
         "radiant_xp_adv",
+        "radiant_net_worth_adv",
+        "net_worth_source",
+        "net_worth_derivation",
+        "net_worth_buckets",
         "perspective"
       ],
       "additionalProperties": false

@@ -191,7 +191,7 @@ describe('messageToBlocks', () => {
         laneInferenceLabelEn: 'Inferred from replay positioning',
         laneSource: 'lane_pos_unavailable',
         laneDataAvailable: false,
-        economy: { radiantGoldAdv: [], checkpoints: [] },
+        economy: { radiantGoldAdv: [], radiantNetWorthAdv: [], netWorthSource: null, netWorthDerivation: null, netWorthTruncated: false, checkpoints: [] },
         timeline: [],
         deathTimelineAvailable: false,
         advantageSwing: null,
@@ -220,7 +220,7 @@ describe('messageToBlocks', () => {
       action: 'review',
       content: '',
       isStreaming: false,
-      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], deathTimelineAvailable: false, advantageSwing: null, focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], radiantNetWorthAdv: [], netWorthSource: null, netWorthDerivation: null, netWorthTruncated: false, checkpoints: [] }, timeline: [], deathTimelineAvailable: false, advantageSwing: null, focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
       reviewCards: {
         match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
         phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
@@ -234,7 +234,7 @@ describe('messageToBlocks', () => {
       action: 'review',
       content: '',
       error: 'Request timed out, please try again',
-      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], deathTimelineAvailable: false, advantageSwing: null, focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], radiantNetWorthAdv: [], netWorthSource: null, netWorthDerivation: null, netWorthTruncated: false, checkpoints: [] }, timeline: [], deathTimelineAvailable: false, advantageSwing: null, focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
       reviewCards: {
         match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
         phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
@@ -251,7 +251,7 @@ describe('messageToBlocks', () => {
       action: 'review',
       content: '',
       error: 'AI 洞察生成不可用（未配置 API Key），以下为基于比赛数据的默认复盘卡片。',
-      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], deathTimelineAvailable: false, advantageSwing: null, focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], radiantNetWorthAdv: [], netWorthSource: null, netWorthDerivation: null, netWorthTruncated: false, checkpoints: [] }, timeline: [], deathTimelineAvailable: false, advantageSwing: null, focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
       reviewCards: {
         match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
         phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
@@ -266,7 +266,7 @@ describe('messageToBlocks', () => {
   it('maps reviewCards to reviewInsight blocks (Fact→Insight→Drill)', () => {
     const blocks = messageToBlocks(baseCoach({
       action: 'review',
-      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], checkpoints: [] }, timeline: [], deathTimelineAvailable: false, advantageSwing: null, focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
+      matchFact: { summary: { matchId: 8985182860, durationFormatted: '52:05', radiantWin: false, winner: 'dire', winnerLabelZh: '夜魇胜利', winnerLabelEn: 'Dire Victory', duration: 3125 }, players: [], lanes: [], laneInferenceLabelZh: '', laneInferenceLabelEn: '', laneSource: 'lane_pos_cluster', laneDataAvailable: true, economy: { radiantGoldAdv: [], radiantNetWorthAdv: [], netWorthSource: null, netWorthDerivation: null, netWorthTruncated: false, checkpoints: [] }, timeline: [], deathTimelineAvailable: false, advantageSwing: null, focusHeroId: 54, focusLens: null, focusLaneGrounded: true, grounded: true },
       reviewCards: {
         match_summary: { matchId: 8985182860, durationFormatted: '52:05', heroName: '噬魂鬼', kda: '7/9/19', gpm: 439, result: 'loss', resultLabel: '失败' },
         phases: [{ phase: 'lane', label: '对线 0–10', insight: '对线期', evidence: [] }],
@@ -307,7 +307,7 @@ describe('messageToBlocks', () => {
         laneInferenceLabelEn: '',
         laneSource: 'lane_pos_cluster',
         laneDataAvailable: true,
-        economy: { radiantGoldAdv: [], checkpoints: [] },
+        economy: { radiantGoldAdv: [], radiantNetWorthAdv: [], netWorthSource: null, netWorthDerivation: null, netWorthTruncated: false, checkpoints: [] },
         timeline: [],
         deathTimelineAvailable: false,
         advantageSwing: null,
@@ -340,7 +340,7 @@ describe('messageToBlocks', () => {
         laneInferenceLabelEn: 'Inferred from replay positioning',
         laneSource: 'lane_pos_cluster',
         laneDataAvailable: true,
-        economy: { radiantGoldAdv: [], checkpoints: [] },
+        economy: { radiantGoldAdv: [], radiantNetWorthAdv: [], netWorthSource: null, netWorthDerivation: null, netWorthTruncated: false, checkpoints: [] },
         timeline: [],
         deathTimelineAvailable: false,
         advantageSwing: null,
@@ -390,7 +390,7 @@ describe('messageToBlocks', () => {
         laneInferenceLabelEn: 'Inferred from replay positioning',
         laneSource: 'lane_pos_cluster',
         laneDataAvailable: true,
-        economy: { radiantGoldAdv: [], checkpoints: [] },
+        economy: { radiantGoldAdv: [], radiantNetWorthAdv: [], netWorthSource: null, netWorthDerivation: null, netWorthTruncated: false, checkpoints: [] },
         timeline: [
           { time: 48, type: 'CHAT_MESSAGE_FIRSTBLOOD', key: '5', team: 2, carrierName: '森海飞霞' },
           { time: 563, type: 'building_kill', key: 'npc_dota_badguys_tower1_top' },

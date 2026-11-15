@@ -150,7 +150,8 @@ export function buildFacts(raw, player) {
       else gaps.push({ topic: field, reason: 'missing_or_incomplete_deaths_log' });
     }
     if (finite(player.camps_stacked) && raw.replay_ingest) add('camps_stacked', player.camps_stacked, 'count', player.metadata_source_path + '.camps_stacked');
-    if (finite(player.lh_t?.[10])) add('lh_at_10', player.lh_t[10], 'count', player.metadata_source_path ? player.metadata_source_path + '.inventory_snapshots[game_time=600].last_hits' : `${path}.lh_t[10]`, { t: 600 });
+    // lh_t is a minute-aligned view; the snapshot's real game_time stays in the citation.
+    if (finite(player.lh_t?.[10])) add('lh_at_10', player.lh_t[10], 'count', player.metadata_source_path ? `${player.metadata_source_path}.inventory_snapshots[game_time=${player.lh_t_sample?.[10] ?? 600}].last_hits` : `${path}.lh_t[10]`, { t: 600, ...(Number.isFinite(player.lh_t_sample?.[10]) && player.lh_t_sample[10] !== 600 ? { derivation: `nearest snapshot to 600 s is game_time=${player.lh_t_sample[10]} (within 30 s)` } : {}) });
   }
   return { facts, deaths, worst, comeback, gaps };
 }
