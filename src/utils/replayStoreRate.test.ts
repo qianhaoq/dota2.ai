@@ -24,15 +24,53 @@ function fake({failures=[] as number[],cas=false,retryAfter='2'}={}){
  return {bucket,saves,failures,failNext(committed:boolean){if(committed)uncertain=true;else rejected=true;},conflict(){cas=true;},get state(){return state;},get maxActive(){return maxActive;}};
 }
 async function clocked<T>(work:()=>Promise<T>){const p=work();await vi.runAllTimersAsync();return p;}
-it.each([16384,65536])('backpressures 28MB synthetic chunks of %i at the object write floor',async chunk=>{
+it.each([16384,65536])('coalesces 28MB synthetic chunks of %i with bounded backpressure',async chunk=>{
  vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket);
  await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
- const charger=createByteCharger((bytes:number)=>store.charge('42',job.token,{bytes}));
- const total=28_442_608;
+ const charger=createByteCharger((bytes:number)=>store.charge('42',job.token,{bytes}),{minWriteIntervalMs:store.state.minWriteIntervalMs});
+ const started=Date.now(),total=28_442_608;
  await clocked(async()=>{for(let n=0;n<total;n+=chunk)await charger.add(Math.min(chunk,total-n));await charger.flush();});
+ expect(Date.now()-started).toBeLessThan(5000);
  expect(f.state.budget[job.attemptDay].bytes).toBe(total);expect(f.maxActive).toBe(1);
  expect(f.saves.every((t,i)=>!i||t-f.saves[i-1]>=1000)).toBe(true);
 });
+it.each([16384,65536])('pumps 8MiB chunks of %i without advancing the write-floor clock',async chunk=>{
+ vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket);
+ await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
+ const charger=createByteCharger((bytes:number,chargeId:string)=>store.charge('42',job.token,{bytes,chargeId}),{minWriteIntervalMs:store.state.minWriteIntervalMs});
+ await clocked(()=>charger.add(1_048_576));
+ const start=Date.now(),before=f.saves.length;
+ for(let n=0;n<8*1_048_576;n+=chunk)await charger.add(chunk);
+ expect(Date.now()).toBe(start);expect(f.saves).toHaveLength(before);
+ await vi.advanceTimersByTimeAsync(999);expect(f.saves).toHaveLength(before);
+ await vi.runAllTimersAsync();
+ expect(f.state.budget[job.attemptDay].bytes).toBe(9*1_048_576);
+ await charger.flush();expect(f.maxActive).toBe(1);
+ expect(f.saves.every((t,i)=>!i||t-f.saves[i-1]>=1000)).toBe(true);
+});
+it('backpressures above 16MiB and bills the full pending batch at the floor',async()=>{
+ vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket);
+ await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
+ const charger=createByteCharger((bytes:number,chargeId:string)=>store.charge('42',job.token,{bytes,chargeId}),{minWriteIntervalMs:1000});
+ await clocked(()=>charger.add(1_048_576));
+ for(let n=0;n<256;n++)await charger.add(65536);
+ let finished=false;const blocked=charger.add(65536).then(()=>{finished=true;});
+ await vi.advanceTimersByTimeAsync(999);expect(finished).toBe(false);
+ await vi.runAllTimersAsync();await blocked;expect(finished).toBe(true);
+ await charger.flush();expect(f.state.budget[job.attemptDay].bytes).toBe(17*1_048_576+65536);
+ expect(f.maxActive).toBe(1);expect(f.saves.every((t,i)=>!i||t-f.saves[i-1]>=1000)).toBe(true);
+});
+
+it('surfaces a scheduled committed resource limit at final flush without rebilling',async()=>{
+ vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket,{budgets:{bytes:1_048_576}});
+ await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
+ const charger=createByteCharger((bytes:number,chargeId:string)=>store.charge('42',job.token,{bytes,chargeId}),{minWriteIntervalMs:1000});
+ await clocked(()=>charger.add(1_048_576));await charger.add(1_048_576);
+ await vi.runAllTimersAsync();
+ await expect(charger.flush()).rejects.toThrow('resource_limited');
+ await charger.flush();expect(f.state.budget[job.attemptDay].bytes).toBe(2*1_048_576);
+});
+
 it('coalesces heartbeat, seconds, bytes and phase; CAS retries commit once',async()=>{
  vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket);
  await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
