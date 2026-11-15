@@ -101,6 +101,28 @@ budget + process reserve = 4,000,000,000 < 4,294,967,296. Existing files count
 against disk admission. Reservation math does not guarantee against all runtime
 memory growth; Cloud Run memory remains 4Gi.
 
+Compact-on-read uses shared caps from the same capacity module: states
+1,500,000,000 bytes (equal to the output cap), event file 256,000,000 bytes,
+250,000 retained tactical events, and metadata 8,000,000 bytes. Compaction runs
+while traces already occupy tmpfs up to the file reservation; streaming states
+line-by-line does not allocate another 1.5GB on the heap. Only nearest death
+samples within 0.25s are retained from states. Retained events do occupy Node
+heap within the process reserve; these bounds are not a measured heap guarantee.
+The file reservation plus process reserve remains 3,276,000,000 bytes < 4Gi.
+
+Held trace details (no new official CDN downloads):
+
+| Match | States bytes | Events bytes | Retained tactical events |
+| --- | --- | --- | --- |
+| 9080127650 | 236,676,282 | 45,020,997 | 67,380 |
+| 8985182860 (52-minute stand-in) | 429,657,471 | 65,798,134 | 98,498 |
+
+The former 100,000-event cap had only 1,502 events of headroom for the stand-in.
+The new caps also cover the Codex-reported 600,998,197-byte states rejection
+under the former 600,000,000-byte reader cap. This closes reader limits that
+could reject traces after successful extraction; it is not a new end-to-end
+measurement of 9089115713.
+
 Production match **9089115713** (3025s) downloaded 65,615,828 bytes and decoded
 zstd to 110,049,500 demo bytes, then failed in extracting with extractor_exit=1
 and `trace size limit exceeded`. Cumulative JSONL exceeded the old 512,000,000

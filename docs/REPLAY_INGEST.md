@@ -102,7 +102,11 @@ Shared hard caps are download 256,000,000, demo 512,000,000, trace output
 See [capacity measurements](REPLAY_PRODUCTION.md#trace-capacity-within-the-existing-4gi-worker).
 9089115713 exceeded the old trace cap; its dem was not retained or re-extracted.
 The held 52-minute 8985182860 dem is only a volume stand-in. AUTO remains 0;
-full traces and existing 0.25s compact-on-read remain unchanged.
+full traces and nearest-death sampling within 0.25s remain unchanged.
+Compact-on-read shares the capacity module's states cap of 1,500,000,000 bytes,
+event file cap of 256,000,000 bytes, retained-event cap of 250,000, and metadata
+cap of 8,000,000 bytes. Traces already occupy tmpfs during compaction; states
+stream line-by-line while retained events occupy Node heap in the process reserve.
 A Steam login or Web API JSON is not a substitute for a dem.
 
 Production may bake a reviewed compact facts file into the runtime image under

@@ -19,3 +19,14 @@ it.each([{maxOutput:1_500_000_001},{maxDownload:256_000_001},{maxDemo:512_000_00
   {diskBudget:3_294_967_296},{diskBudget:2_275_999_999},{maxOutput:NaN},{maxOutput:-1}])('rejects unsafe capacity %j', limits => {
   expect(() => createReplayIngest({env:{},...limits})).toThrow(RangeError);
 });
+
+it('gives compact-on-read headroom above held traces and the reported rejection', () => {
+  expect(c).toMatchObject({REPLAY_MAX_STATES_BYTES:1_500_000_000,
+    REPLAY_MAX_EVENT_BYTES:256_000_000, REPLAY_MAX_RETAINED_EVENTS:250_000,
+    REPLAY_MAX_METADATA_BYTES:8_000_000});
+  expect(c.REPLAY_MAX_STATES_BYTES).toBe(c.REPLAY_MAX_OUTPUT_BYTES);
+  expect(c.REPLAY_MAX_STATES_BYTES).toBeGreaterThan(600_998_197);
+  expect(c.REPLAY_MAX_STATES_BYTES).toBeGreaterThan(429_657_471);
+  expect(c.REPLAY_MAX_EVENT_BYTES).toBeGreaterThan(3.8 * 65_798_134);
+  expect(c.REPLAY_MAX_RETAINED_EVENTS).toBeGreaterThan(2.5 * 98_498);
+});
