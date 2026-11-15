@@ -231,7 +231,7 @@ test('unparsed scoreboard discloses missing replay evidence and never sends an u
   await expect(page.getByText(/OpenDota has not parsed/)).toBeVisible();
   await expect(page.getByText(/Official .dem ingest is not enabled/)).toBeVisible();
   await expect(page.getByText(/Analyzed in|Reading timeline|Building 3 conclusions/)).toHaveCount(0);
-  await page.getByRole('button', { name: /查看死亡记录/ }).click();
-  await expect(page.getByText(/The available evidence cannot answer/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /查看死亡记录|Death list|查看结论证据|Evidence:/ })).toHaveCount(0);
+  await expect(page.getByText(/The available evidence cannot answer/)).toHaveCount(0);
   expect(asks).toBe(0);
 });

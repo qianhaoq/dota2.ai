@@ -5,6 +5,7 @@ import { buildReview } from '../src/buildReview.js';
 import { adaptReplayEvents, applyReplayArtifact, isVerifiedReplay } from '../src/replay.js';
 import { parseSiteKnowledge } from '../src/siteKnowledge.js';
 import { validateReview } from '../src/schema/validate.js';
+import { clock, buildMoments } from '../src/insights/moments.js';
 const raw = {match_id:42,duration:1906,radiant_win:true,od_data:{has_parsed:false},players:[{hero_id:60,player_slot:132,deaths:1},{hero_id:2,player_slot:0,deaths:0}]};
 const opts = {heroId:60,lang:'en',fetchedAt:'2026-11-11T00:00:00Z'};
 const metadata = {demo_bytes:1000,demo_sha256:'a'.repeat(64),fetched_at:opts.fetchedAt};
@@ -31,7 +32,7 @@ describe('first-party replay evidence', () => {
     expect(review.match.parsed).toBe(true); expect(review.state).toBe('parsed');
     expect(review.facts['death.1']).toMatchObject({t:72.5,citation:'r1',source_path:'trace/events.jsonl[0]'});
     expect(review.facts['ancient.fell'].citation).toBe('s1');
-    expect(review.insights.find(i=>i.id==='fix_this')).toMatchObject({status:'ok',fact_ids:['death.1'],time:{from:72.5,to:72.5},citations:['r1']});
+    expect(review.insights.find(i=>i.id==='verified_death')).toMatchObject({status:'ok',fact_ids:['death.1'],time:{from:72.5,to:72.5},citations:['r1']});
     expect(review.citations.find(c=>c.provider==='replay')).toMatchObject({sha256:metadata.demo_sha256,fetched_at:metadata.fetched_at});
     expect(review.deaths[0]).toMatchObject({x:100,y:-200});
     expect(review.data_gaps.some(g=>g.topic==='death_locations')).toBe(false);
@@ -147,7 +148,7 @@ it('keeps earned gold distinct, refuses unverified units, and cites replay follo
   expect(review.facts['farm.10_20.net_worth_t']).toMatchObject({citation:'r1',unit:'gold (net worth)'});
   expect(review.facts['farm.10_20.net_worth_t'].source_path).toContain('graph_net_worth');
   expect(review.facts['farm.10_20.lh_t'].citation).toBe('r1');
-  expect(review.insights.find(i=>i.id==='turning_point').status).toBe('insufficient');
+  expect(review.insights.some(i=>['turning_point','fix_this','next_game'].includes(i.id))).toBe(false);
   expect(review.facts['net_worth.at.0']).toMatchObject({value:600,citation:'r1'});
   expect(validateReview(review)).toMatchObject({ok:true});
   meta.players[0].graph_net_worth[0]=100;
@@ -170,4 +171,70 @@ it('pins the comparison-dem earned-gold vs net-worth difference and rejects lega
   const legacy = {...artifact(),gold_source:'demo_metadata_graph_net_worth',radiant_gold_adv:[60]};
   expect(isVerifiedReplay(legacy,42)).toBe(false);
   expect(buildReview(applyReplayArtifact(raw,legacy),opts).parse.status).toBe('replay_failed');
+});
+it('does not attribute illusion kills to the illusion hero, but keeps non-hero killers', () => {
+  const match = {match_id:42,duration:100,players:[{hero_id:60,player_slot:132},{hero_id:109,player_slot:0}]};
+  const illusion = adaptReplayEvents(match,[{t:10,type:'DOTA_COMBATLOG_DEATH',target:'npc_dota_hero_night_stalker',target_hero:true,target_illusion:false,attacker:'npc_dota_hero_terrorblade',attacker_hero:true,attacker_illusion:true}],metadata);
+  expect(illusion.players[0].deaths_log[0].key).toBeNull();
+  expect(illusion.players[1].kills_log).toEqual([]);
+  const tower = adaptReplayEvents(match,[{t:11,type:'DOTA_COMBATLOG_DEATH',target:'npc_dota_hero_night_stalker',target_hero:true,target_illusion:false,attacker:'npc_dota_goodguys_tower1_mid',attacker_hero:false,attacker_illusion:false}],metadata);
+  expect(tower.players[0].deaths_log[0].key).toBe('npc_dota_goodguys_tower1_mid');
+});
+
+it('humanizes replay building kills instead of leaking the combat-log type', () => {
+  const a = adaptReplayEvents(raw,[{t:100,type:'DOTA_COMBATLOG_TEAM_BUILDING_KILL',target:'npc_dota_badguys_tower1_mid',attacker_team:2}],metadata);
+  const review = buildReview(applyReplayArtifact(raw,a),opts);
+  const displays = Object.values(review.facts).filter(f => String(f.id).startsWith('obj.')).map(f => `${f.display.en} ${f.display.zh}`);
+  expect(displays.join(' ')).not.toMatch(/DOTA_COMBATLOG_|npc_dota_/);
+  expect(displays.join(' ')).toMatch(/tower|Tower|塔/i);
+});
+
+it('answers generic purchase and item-use followups from their cited facts', () => {
+  const a = adaptReplayEvents(raw,[{t:80,type:'DOTA_COMBATLOG_ITEM',attacker:'npc_dota_hero_night_stalker',attacker_hero:true,attacker_illusion:false,inflictor:'item_tpscroll'},{t:125,type:'DOTA_COMBATLOG_PURCHASE',target:'npc_dota_hero_night_stalker',value_name:'item_blink'}],metadata);
+  const review = buildReview(applyReplayArtifact(raw,a),{...opts,presetFollowups:true});
+  const purchase = review.insights.find(i => i.id.startsWith('purchase.') || i.kind === 'purchase_context');
+  const item = review.insights.find(i => i.id.startsWith('item.') || i.kind === 'item_window');
+  expect(purchase).toBeTruthy();
+  expect(renderTemplate(purchase, review.facts, 'en').text).not.toMatch(/not in this match/i);
+  expect(renderTemplate(purchase, review.facts, 'en').text).toMatch(/Blink|blink|Purchased/i);
+  expect(item).toBeTruthy();
+  expect(renderTemplate(item, review.facts, 'en').text).not.toMatch(/not in this match/i);
+});
+
+it('does not cite OpenDota duration as official replay evidence in an empty-timeline fallback', () => {
+  const a = adaptReplayEvents({...raw,duration:1906,players:raw.players},[],metadata);
+  const review = buildReview(applyReplayArtifact({...raw,od_data:{has_parsed:true}},a),opts);
+  const fallback = review.insights.find(i => i.id === 'verified_timeline' || i.id === 'recorded_timeline');
+  expect(fallback).toBeTruthy();
+  for (const id of fallback.fact_ids) {
+    expect(fallback.citations).toEqual(expect.arrayContaining([review.facts[id].citation]));
+  }
+  if (fallback.fact_ids.includes('ancient.fell')) {
+    expect(review.facts['ancient.fell'].citation).toBe('s1');
+    expect(fallback.citations).toEqual(['s1']);
+    expect(fallback.id).toBe('recorded_timeline');
+    expect(fallback.claim.text).not.toMatch(/Verified match record|本局已核实记录/);
+  }
+  expect(validateReview(review)).toEqual({ ok: true, errors: [] });
+});
+
+it('formats pre-horn clocks without doubled minus signs', () => {
+  expect(clock(-30)).toBe('-0:30');
+  expect(clock(-90)).toBe('-1:30');
+  expect(clock(125)).toBe('2:05');
+});
+
+it('lists a later death only once after multiple BKB windows', () => {
+  const result = {
+    deaths: [{ t: 200, fact_id: 'death.1', inflictor: null }],
+    facts: { 'death.1': { id: 'death.1', citation: 'r1', t: 200, display: { en: 'death', zh: '死亡', t: '3:20' } } },
+  };
+  const player = { ability_cast_log: [], item_use_log: [
+    { key: 'black_king_bar', t: 80, ended_at: 90 },
+    { key: 'black_king_bar', t: 110, ended_at: 120 },
+  ] };
+  const moments = buildMoments(result, player, 'en');
+  const bkb = moments.find(m => m.id === 'bkb_windows');
+  expect(bkb.fact_ids.filter(id => id === 'death.1')).toHaveLength(1);
+  expect(bkb.claim.text.match(/3:20/g)).toHaveLength(1);
 });

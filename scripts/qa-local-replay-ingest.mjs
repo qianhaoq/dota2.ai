@@ -17,10 +17,16 @@ assert.equal(raw.players.find(p=>p.player_slot===132).hero_id,60);
 const compressed = await readFile(compressedPath);
 assert.equal(compressed.subarray(0,4).toString('hex'),'28b52ffd');
 let requests = 0;
-const ingest = createReplayIngest({env:{REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:process.env.DOTA_EXTRACT_BIN,REPLAY_HOME:home},fetchImpl:async url=>{
+const ingest = createReplayIngest({onError:e=>console.error('worker:',e.message),env:{REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:process.env.DOTA_EXTRACT_BIN,REPLAY_HOME:home},fetchImpl:async url=>{
   assert.match(url,/\.dem\.bz2$/); requests++; return new Response(compressed,{status:200});
 }});
-assert.equal((await ingest.submit(raw,'local-qa',{lang:'zh'})).status,'replay_parsed');
+const submitted=await ingest.submit(raw,'local-qa',{lang:'zh'});
+assert.equal(submitted.status,'replay_pending'); assert.equal(typeof submitted.jobId,'string');
+assert.equal((await ingest.submit(raw,'local-qa',{lang:'zh'})).jobId,submitted.jobId);
+assert.equal(requests,0);
+await ingest.drain();
+assert.equal((await ingest.jobStore.get(submitted.jobId)).status,'ready');
+assert.equal((await ingest.submit(raw,'local-qa')).jobId,submitted.jobId);
 assert.equal(requests,1);
 const artifact = await ingest.read(raw.match_id);
 assert.equal(artifact.extractor_match_id,9080127650);
@@ -45,7 +51,14 @@ for (const f of contextualFacts) {
   assert.equal(f.value.match_assessment,'not_evaluable');
   assert.deepEqual(f.value.support_fact_ids,[]); assert.deepEqual(f.value.contradiction_fact_ids,[]);
 }
-assert.equal(review.insights.find(i=>i.id==='turning_point').status,'insufficient');
+assert.deepEqual(review.insights.map(i=>i.id),['hook_death','void_dismember','darkness_scythe','skeleton_before_bkb','bkb_windows']);
+for(const i of review.insights) { assert(i.kind); assert(i.prompt); assert(i.fact_ids.every(id=>review.facts[id])); }
+assert.equal(player.deaths_log.length,8);
+assert.equal(review.deaths[5].killer,'npc_dota_wraith_king_skeleton_warrior');
+assert(Math.abs(review.facts['use.bkb.1'].value.ended_at-1654.2)<0.01);
+assert(Math.abs(review.facts['use.bkb.2'].value.ended_at-1805.27)<0.01);
+assert(Math.abs(review.facts['purchase.bkb_after_skeleton'].t-1563.47)<0.01);
+assert(!JSON.stringify(review.insights).match(/state_sample|net_worth_t|xp_t|gold_t|playerstats|trace_version|trace\/|sample_t/));
 assert(review.data_gaps.some(g=>g.topic==='build_vs_lineup'));
 for (const f of Object.values(review.facts).filter(f=>f.source_path?.startsWith('trace/events.jsonl'))) assert.equal(f.citation,'r1');
 assert(!Object.keys(review.facts).some(id=>id.startsWith('net_worth.at.')),'Uncalibrated graph bins cannot support minute facts');

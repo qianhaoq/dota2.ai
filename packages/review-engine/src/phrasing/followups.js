@@ -1,3 +1,4 @@
+import { evidenceName } from '../insights/moments.js';
 import { STATIC_HEROES } from '../staticHeroes.js';
 import { renderTemplate } from './templates.js';
 /** Presets are opt-in until the API v1 rollout; legacy followup lists stay stable. */
@@ -14,8 +15,8 @@ export function buildPresetFollowups(result, player, lang, gaps) {
     const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === d.killer);
     const g = d.team_gold_diff_at_t;
     const gold = g == null ? (zh ? '未知' : 'unknown') : `${g < 0 ? '−' : g > 0 ? '+' : ''}${Math.abs(g).toLocaleString('en-US')}`;
-    const en = `killed by ${hero?.nameEn ?? d.killer ?? 'unknown'}; team gold difference: ${gold}`;
-    const chinese = `击杀者：${hero?.nameZh ?? d.killer ?? '未知'}；团队经济差：${gold}`;
+    const en = `killed by ${hero?.nameEn ?? evidenceName(d.killer, 'en') ?? 'unknown'}; team gold difference: ${gold}${d.inflictor ? '; '+evidenceName(d.inflictor,'en') : ''}`;
+    const chinese = `击杀者：${hero?.nameZh ?? evidenceName(d.killer, 'zh') ?? '未知'}；团队经济差：${gold}${d.inflictor ? '；'+evidenceName(d.inflictor,'zh') : ''}`;
     facts[d.fact_id] = {
       ...facts[d.fact_id],
       display: { ...facts[d.fact_id].display, en, zh: chinese },

@@ -117,7 +117,7 @@ describe('API v1 contract', () => {
   it('preset answers use PR3, reject hallucinations, and cache by language', async () => {
     const complete = vi.fn(async () => ({ text: '{"slots":"Invented 999999 gold."}' }));
     const { get } = await setup({ phrasingCompletion: complete });
-    for (const lang of ['en', 'zh']) for (const followup_id of ['death_list', 'laning_0_10']) {
+    for (const lang of ['en', 'zh']) for (const followup_id of ['death_list', 'item_timings']) {
       const review = await (await get(`${base}?hero=pudge&lang=${lang}`)).json();
       const preset = review.followups.find(f => f.id === followup_id);
       const expected = renderTemplate(preset, review.facts, lang).text;

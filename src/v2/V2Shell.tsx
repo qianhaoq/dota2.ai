@@ -17,6 +17,8 @@ const V2Shell: React.FC<{
   scrollRef?: React.Ref<HTMLDivElement>;
   onScroll?: React.UIEventHandler<HTMLDivElement>;
   composer?: React.ReactNode;
+  /** Sits just above the composer, outside the scroll column, so it cannot cover review cards. */
+  aboveComposer?: React.ReactNode;
   topBarAction?: React.ReactNode;
   /** Desktop evidence rail (420px, ≥lg); sits beside the chat column + composer. */
   panel?: React.ReactNode;
@@ -24,7 +26,7 @@ const V2Shell: React.FC<{
   layer?: React.ReactNode;
   /** Home owns its wider two-column layout and places the composer in the hero. */
   home?: boolean;
-}> = ({ children, noIndex = false, scrollRef, onScroll, composer, topBarAction, panel, layer, home = false }) => {
+}> = ({ children, noIndex = false, scrollRef, onScroll, composer, aboveComposer, topBarAction, panel, layer, home = false }) => {
   useEffect(() => {
     if (!noIndex) return;
     const meta = document.createElement('meta');
@@ -44,6 +46,7 @@ const V2Shell: React.FC<{
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
             <main className={home ? 'd2-home-main' : 'max-w-d2-chat mx-auto px-[16px] pt-[16px] pb-[24px]'}>{children}</main>
           </div>
+          {aboveComposer ? <div className="flex justify-end px-[16px]">{aboveComposer}</div> : null}
           {composer ?? (home ? null : <Composer />)}
         </div>
         {panel}

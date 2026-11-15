@@ -1,5 +1,6 @@
 import { isSameTeamKill } from '../deathTimeline.js';
 import { STATIC_HEROES, getStaticHero } from '../staticHeroes.js';
+import { evidenceName } from '../insights/moments.js';
 
 export const KEY_ITEMS = {
   hand_of_midas: { en: 'Hand of Midas', zh: '迈达斯之手' },
@@ -22,11 +23,7 @@ export const heroSlug = id => getStaticHero(id)?.internalSlug ?? null;
 export const teamOf = player => Number.isInteger(player.player_slot) ? (player.player_slot < 128 ? 'radiant' : 'dire') : null;
 const format = value => `${value < 0 ? '−' : ''}${Math.abs(value).toLocaleString('en-US')}`;
 const slug = key => String(key).replace(/^npc_dota_hero_/, '');
-const heroLabel = (key, lang) => {
-  const s = String(key).replace(/^npc_dota_hero_/, '');
-  const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === s);
-  return hero ? (lang === 'zh' ? hero.nameZh : hero.nameEn) : s;
-};
+const heroLabel = (key, lang) => evidenceName(key, lang);
 /** Localize slug→count entity maps (killed_by); leave other entity values unchanged. */
 const entityCountDisplay = value => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -125,9 +122,12 @@ export function buildFacts(raw, player) {
       sorted.forEach((d, i) => {
         const diff = d.time >= 0 ? gold[Math.floor(d.time / 60)] : null;
         const id = `death.${i + 1}`;
-        const event = { ...(d.position_source ? {position_source:d.position_source,sample_t:d.sample_t,dt:d.dt,position_source_path:d.position_source_path} : {}), ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
+        const event = { ...(d.position_source ? {position_source:d.position_source,sample_t:d.sample_t,dt:d.dt,position_source_path:d.position_source_path} : {}), ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), ...(d.inflictor ? {inflictor:d.inflictor} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
         deaths.push(event);
         add(id, event, 'entity', d.source_path, { t: d.time });
+        const killerEn = event.killer ? evidenceName(event.killer, 'en') : '';
+        const killerZh = event.killer ? evidenceName(event.killer, 'zh') : '';
+        facts[id].display = {en:`${clock(d.time)} · Death${killerEn ? ' · '+killerEn : ''}`,zh:`${clock(d.time)} · 死亡${killerZh ? ' · '+killerZh : ''}`,t:clock(d.time)};
       });
       const completeTimeline = !finite(player.deaths) || sorted.length === player.deaths;
       if (completeTimeline) {
