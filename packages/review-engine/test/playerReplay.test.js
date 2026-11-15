@@ -15,9 +15,12 @@ describe('official replay player review',()=>{
   expect(validateReview(r)).toEqual({ok:true,errors:[]});
   expect(r.insights.filter(i=>i.kind==='item_window')).toHaveLength(2);
   for(const i of r.insights){expect(i.status).toBe('ok');expect(i.prompt).toBeUndefined();expect(i.fact_ids.length).toBeGreaterThan(0);for(const id of i.fact_ids)expect(r.facts[id]?.citation).toBe('r1');}
-  for (const inflictor of ['pudge_meat_hook','pudge_dismember','necrolyte_reapers_scythe','skeleton_king_bone_guard']) {
+  expect(r.deaths.some(d=>d.inflictor==='pudge_meat_hook')).toBe(true);
+  expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor==='pudge_meat_hook'||r.facts[id].value?.key==='pudge_meat_hook'))).toBe(false);
+  for (const inflictor of ['pudge_dismember','skeleton_king_bone_guard']) {
    expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor===inflictor))).toBe(true);
   }
+  expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.key==='necrolyte_reapers_scythe'))).toBe(true);
   expect(r.insights.flatMap(i=>i.fact_ids).some(id=>id.startsWith('purchase.'))).toBe(false);
   const windows=r.insights.filter(i=>i.kind==='item_window');
   expect(windows.map(i=>i.time.to-i.time.from)).toEqual([9,8]);

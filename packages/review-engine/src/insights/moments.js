@@ -64,7 +64,9 @@ export function buildMoments(result, player, lang, players = [player]) {
  for(const [index,d] of result.deaths.entries()) {
   const nearby=casts.filter(c=>Number.isFinite(c.t)&&Math.abs(c.t-d.t)<=5);
   const primary=nearby.filter(c=>linked(c,d) && (!c.source_path || c.source_path!==result.facts[d.fact_id]?.source_path));
-  if(!primary.length) continue;
+  // The killing ability alone is one event, already shown in the death list.
+  const independent=primary.filter(c=>!(d.inflictor && c.key===d.inflictor));
+  if(!independent.length) continue;
   const seen=new Set();
   const support=nearby.filter(c=>!primary.includes(c)&&same(c.actor,d.killer)&&!c.target&&areaCasts.has(c.key)&&!seen.has(c.key)&&seen.add(c.key));
   const text=`${clock(d.t)} · ${zh?'死亡记录':'Death recorded'}${d.killer?' · '+evidenceName(d.killer,lang):''}${d.inflictor?' · '+evidenceName(d.inflictor,lang):''}`;

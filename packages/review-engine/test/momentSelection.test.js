@@ -17,7 +17,7 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
  expect(r.insights.every(i=>!i.id.startsWith('purchase.')&&i.kind!=='purchase_context')).toBe(true);
  const windows=r.insights.filter(i=>i.kind==='item_window');
  expect(windows).toHaveLength(bkbCount);
- expect(r.insights.map(i=>i.id)).toEqual(({9080127650:['death.2','death.3','death.4','death.5','death.6','bkb.1','bkb.2'],9089115713:['death.1'],9088239359:['death.4','death.5','death.6']})[match]);
+ expect(r.insights.map(i=>i.id)).toEqual(({9080127650:['death.3','death.5','death.6','bkb.1','bkb.2'],9089115713:['death.1'],9088239359:['death.4','death.5','death.6']})[match]);
  const selected=r.insights.flatMap(i=>i.fact_ids.map(id=>r.facts[id]));
  expect(copy+JSON.stringify(selected.map(f=>({id:f.id,value:f.value})))).not.toMatch(/invoker_quas|invoker_wex|invoker_exort|invoker_invoke|morphling_morph_str|morphling_morph_agi/);
  const focusKey=STATIC_HEROES[heroId].internalName;
@@ -25,7 +25,7 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
  const c=r.facts[id].value; const d=r.deaths.find(d=>i.fact_ids.includes(d.fact_id));
  if(c.target && c.actor!==focusKey && c.target!==focusKey) expect(c.key).toBe(d?.inflictor);
  }
- expect(r.item_uses).toHaveLength(p.item_use_log?.length??0);
+ expect(r.item_uses).toEqual((p.item_use_log??[]).filter(u=>u.key==='black_king_bar'&&Number.isFinite(u.t)&&Number.isFinite(u.ended_at)&&u.end_source_path).map(u=>({t:u.t,item:u.key,ended_at:u.ended_at})));
  for(const i of windows){
   expect(i.fact_ids.length).toBeGreaterThanOrEqual(2);
   const u=r.facts[i.fact_ids[0]].value;
@@ -70,7 +70,10 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
  }
  if(match===9080127650){
   const pre=r.purchases.find(p=>p.t < -79 && p.t > -80);expect(pre).toBeTruthy();expect(clock(pre.t)).toBe('-1:19');
-  for(const inf of ['pudge_meat_hook','pudge_dismember','necrolyte_reapers_scythe','skeleton_king_bone_guard'])expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor===inf))).toBe(true);
+  expect(r.deaths.some(d=>d.inflictor==='pudge_meat_hook')).toBe(true);
+  expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor==='pudge_meat_hook'||r.facts[id].value?.key==='pudge_meat_hook'))).toBe(false);
+  for(const inf of ['pudge_dismember','skeleton_king_bone_guard'])expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor===inf))).toBe(true);
+  expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.key==='necrolyte_reapers_scythe'))).toBe(true);
  }
  if(match===9089115713){
   expect(copy).not.toMatch(/sniper|狙击手|冰霜新星|射火巫师/i);
@@ -112,6 +115,12 @@ it('requires an enemy target or overlapping death inside the verified BKB interv
  expect(clips).toHaveLength(1);expect(clips[0].time).toEqual({from:100,to:109});
  enemy.ability_cast_log[0].t=110;
  expect(buildMoments(make(),focus,'en',[focus,ally,enemy])).toEqual([]);
+});
+it('does not promote a death whose only link is the recorded inflictor',()=>{
+ const focus={hero_id:60};
+ const killer={hero_id:14,ability_cast_log:[{t:100,key:'pudge_meat_hook',source_path:'hook'}]};
+ const result={facts:{d:{id:'d',citation:'r1'}},deaths:[{t:100,killer:'pudge',inflictor:'pudge_meat_hook',fact_id:'d'}]};
+ expect(buildMoments(result,focus,'zh',[focus,killer])).toEqual([]);
 });
 it('keeps untargeted killer casts only as deduplicated unproven support after qualification',()=>{
  const focus={hero_id:74};
