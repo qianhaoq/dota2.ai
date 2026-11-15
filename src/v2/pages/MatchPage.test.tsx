@@ -221,6 +221,11 @@ describe('SSE v1 conversation', () => {
         expect(screen.getAllByTestId('insight-card')).toHaveLength(r.insights.length);
         expect(screen.getByText((_,el)=>el?.tagName==='LI' && !!el.textContent?.includes(lang==='zh'?'冥魂大帝骨卫骷髅':'Wraith King skeleton'))).toBeTruthy();
         expect(screen.getByText(lang==='zh'?'关键购买记录':'Key purchases')).toBeTruthy();
+        expect(screen.getByText(lang==='zh'?'使用记录':'Item uses')).toBeTruthy();
+        for(const card of screen.getAllByTestId('insight-card')) {
+            expect(card.textContent).toContain(lang==='zh'?'已核实交战片段':'Verified fight clip');
+            expect(card.textContent).not.toMatch(/待核实 \/ 建议复看|Replay question:|何时送达|何时使用/);
+        }
         expect(screen.getByText(lang==='zh'?'本局还缺什么':'What remains unverified')).toBeTruthy();
         expect(screen.queryByRole('img',{name:lang==='zh'?'经济与经验差':'Gold and experience advantage'})).toBeNull();
         expect(view.container.textContent).not.toMatch(/state_sample|sample_t|net_worth_t|trace_version|trace\//);

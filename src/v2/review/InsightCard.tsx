@@ -213,7 +213,7 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
         </div>
       </div>
 
-      {insight.prompt && <p className="text-d2-15 text-d2-ink-2">{lang === 'zh' ? '待核实 / 建议复看：' : 'Replay question: '}{insight.prompt}</p>}
+      {insight.prompt && <p className="text-d2-15 text-d2-ink-2">{insight.prompt}</p>}
       <MatchupBlock insight={insight} review={review} lang={lang} t={t} />
 
       {details.length > 0 ? (

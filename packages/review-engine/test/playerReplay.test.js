@@ -14,14 +14,14 @@ describe('official replay player review',()=>{
   expect(r.state).toBe('parsed');
   expect(validateReview(r)).toEqual({ok:true,errors:[]});
   expect(r.insights.filter(i=>i.kind==='item_window')).toHaveLength(2);
-  for(const i of r.insights){expect(i.status).toBe('ok');expect(i.prompt).toBeTruthy();expect(i.fact_ids.length).toBeGreaterThan(0);for(const id of i.fact_ids)expect(r.facts[id]?.citation).toBe('r1');}
+  for(const i of r.insights){expect(i.status).toBe('ok');expect(i.prompt).toBeUndefined();expect(i.fact_ids.length).toBeGreaterThan(0);for(const id of i.fact_ids)expect(r.facts[id]?.citation).toBe('r1');}
   for (const inflictor of ['pudge_meat_hook','pudge_dismember','necrolyte_reapers_scythe','skeleton_king_bone_guard']) {
    expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor===inflictor))).toBe(true);
   }
   expect(r.insights.flatMap(i=>i.fact_ids).some(id=>id.startsWith('purchase.'))).toBe(false);
   const windows=r.insights.filter(i=>i.kind==='item_window');
   expect(windows.map(i=>i.time.to-i.time.from)).toEqual([9,8]);
-  expect(r.followups).toHaveLength(3);
+  expect(r.followups.map(f=>f.id)).toEqual(['death_list','item_timings']);
   const copy=r.insights.map(i=>i.claim.text+' '+i.prompt).join(' ')+r.followups.map(f=>answerPresetFollowup(f,r.facts,lang).text).join(' ');
   expect(copy).not.toMatch(/state_sample|sample_t|net_worth_t|trace_version|trace\//);
   expect(new Set(r.data_gaps.map(g=>g.topic)).size).toBe(r.data_gaps.length);
@@ -75,9 +75,9 @@ it('retains compact enrichment through the official-file event reader and adapte
 it('selects linked death evidence without item/purchase padding or an empty fallback',async()=>{
  const {buildMoments}=await import('../src/insights/moments.js');
  const make=()=>({facts:{'death.one':{id:'death.one',t:100}},deaths:[{t:100,inflictor:'lina_laguna_blade',fact_id:'death.one'}]});
- const r=make();const moments=buildMoments(r,{hero_id:26,ability_cast_log:[{t:96,key:'lion_impale'}],item_use_log:[{t:50,key:'magic_wand',ended_at:52}],purchase_log:[{time:120,key:'blink'}]},'en');
+ const r=make();const moments=buildMoments(r,{hero_id:26,ability_cast_log:[{t:96,key:'lion_impale',target:'npc_dota_hero_lion'}],item_use_log:[{t:50,key:'magic_wand',ended_at:52}],purchase_log:[{time:120,key:'blink'}]},'en');
  expect(moments.some(i=>i.kind==='ability_into_death')).toBe(true);expect(moments.some(i=>i.kind==='item_window')).toBe(false);expect(moments.some(i=>i.kind==='purchase_context')).toBe(false);
- for(const i of moments){expect(i.fact_ids.every(id=>r.facts[id])).toBe(true);expect(i.time).toBeTruthy();expect(i.prompt).toBeTruthy();}
+ for(const i of moments){expect(i.fact_ids.every(id=>r.facts[id])).toBe(true);expect(i.time).toBeTruthy();expect(i.prompt).toBeUndefined();}
  const zero=buildMoments({facts:{'match.id':{id:'match.id'}},deaths:[]},{},'en');expect(zero).toEqual([]);
 });
 

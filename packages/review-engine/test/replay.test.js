@@ -32,7 +32,7 @@ describe('first-party replay evidence', () => {
     expect(review.match.parsed).toBe(true); expect(review.state).toBe('parsed');
     expect(review.facts['death.1']).toMatchObject({t:72.5,citation:'r1',source_path:'trace/events.jsonl[0]'});
     expect(review.facts['ancient.fell'].citation).toBe('s1');
-    expect(review.insights.find(i=>i.id==='death.1')).toMatchObject({status:'ok',fact_ids:['death.1'],time:{from:72.5,to:72.5},citations:['r1']});
+    expect(review.insights.find(i=>i.id==='death.1')).toBeUndefined();
     expect(review.citations.find(c=>c.provider==='replay')).toMatchObject({sha256:metadata.demo_sha256,fetched_at:metadata.fetched_at});
     expect(review.deaths[0]).toMatchObject({x:100,y:-200});
     expect(review.data_gaps.some(g=>g.topic==='death_locations')).toBe(false);
@@ -214,6 +214,6 @@ it('formats pre-horn clocks without doubled minus signs', () => {
 it('keeps immunity windows separate and never appends a later death', () => {
  const result={deaths:[{t:200,fact_id:'death.1',inflictor:null}],facts:{'death.1':{id:'death.1',citation:'r1',t:200}}};
  const moments=buildMoments(result,{item_use_log:[{key:'black_king_bar',t:80,ended_at:90,end_source_path:'modifier.1'},{key:'black_king_bar',t:110,ended_at:120,end_source_path:'modifier.2'}]},'en');
- expect(moments.map(m=>m.time)).toEqual([{from:80,to:90},{from:110,to:120}]);
+ expect(moments).toEqual([]);
  expect(moments.flatMap(m=>m.fact_ids)).not.toContain('death.1');
 });

@@ -835,6 +835,28 @@
         "message"
       ],
       "additionalProperties": false
+    },
+    "item_uses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number"
+          },
+          "item": {
+            "type": "string"
+          },
+          "ended_at": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "t",
+          "item"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [

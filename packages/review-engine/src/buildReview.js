@@ -106,6 +106,7 @@ export function buildReview(raw, opts) {
     series: { radiant_gold_adv: parsed ? Array.from(raw.radiant_gold_adv ?? [], value => Number.isFinite(value) ? value : null) : [], radiant_xp_adv: parsed ? raw.radiant_xp_adv ?? [] : [], perspective: focus ? teamOf(focus) : 'radiant' },
     objectives, deaths: result.deaths,
     purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: Object.hasOwn(KEY_ITEMS, p.key) })) : [],
+    item_uses: parsed && focus ? (focus.item_use_log ?? []).filter(u => Number.isFinite(u.t) && typeof u.key === 'string').map(u => ({ t:u.t, item:u.key, ...(Number.isFinite(u.ended_at) ? {ended_at:u.ended_at} : {}) })) : [],
     insights, data_gaps: gaps.filter((g,i)=>gaps.findIndex(other=>other.topic===g.topic)===i),
     followups: (replay
       ? insights.filter(i => i.prompt).slice(0,2).map(i => ({id:`why_${i.id}`,label:i.prompt,answerable:true,fact_ids:i.fact_ids})).concat(presets.filter(p=>p.answerable).sort((a,b)=>Number(b.id==='death_list')-Number(a.id==='death_list')))

@@ -6,7 +6,7 @@ import {buildMoments,evidenceName,itemName,clock} from '../src/insights/moments.
 import {validateReview} from '../src/schema/validate.js';
 import dictionary from '../data/display-names.json' with {type:'json'};
 import {STATIC_HEROES} from '../src/staticHeroes.js';
-const samples=[[9080127650,60,2],[9089115713,74,4],[9088239359,71,0]];
+const samples=[[9080127650,60,2],[9089115713,74,0],[9088239359,71,0]];
 for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only linked evidence for ${match} (%s)`,lang=>{
  const a=JSON.parse(readFileSync(`data/replay-facts/${match}.json`));
  const p=a.players.find(p=>p.hero_id===heroId);
@@ -17,8 +17,17 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
  expect(r.insights.every(i=>!i.id.startsWith('purchase.')&&i.kind!=='purchase_context')).toBe(true);
  const windows=r.insights.filter(i=>i.kind==='item_window');
  expect(windows).toHaveLength(bkbCount);
+ expect(r.insights.map(i=>i.id)).toEqual(({9080127650:['death.2','death.3','death.4','death.5','death.6','bkb.1','bkb.2'],9089115713:['death.1'],9088239359:['death.4','death.5','death.6']})[match]);
+ const selected=r.insights.flatMap(i=>i.fact_ids.map(id=>r.facts[id]));
+ expect(copy+JSON.stringify(selected.map(f=>({id:f.id,value:f.value})))).not.toMatch(/invoker_quas|invoker_wex|invoker_exort|invoker_invoke|morphling_morph_str|morphling_morph_agi/);
+ const focusKey=STATIC_HEROES[heroId].internalName;
+ for(const i of r.insights) for(const id of i.fact_ids.filter(id=>id.startsWith('cast.'))){
+ const c=r.facts[id].value; const d=r.deaths.find(d=>i.fact_ids.includes(d.fact_id));
+ if(c.target && c.actor!==focusKey && c.target!==focusKey) expect(c.key).toBe(d?.inflictor);
+ }
+ expect(r.item_uses).toHaveLength(p.item_use_log?.length??0);
  for(const i of windows){
-  expect(i.fact_ids).toHaveLength(1);
+  expect(i.fact_ids.length).toBeGreaterThanOrEqual(2);
   const u=r.facts[i.fact_ids[0]].value;
   expect(u.key).toBe('black_king_bar');
   expect(u.end_source_path).toBeTruthy();
@@ -46,7 +55,9 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
    const actor=STATIC_HEROES[owner.hero_id].internalSlug;
    const target=c.target?.replace(/^npc_dota_hero_/,'');
    const focus=STATIC_HEROES[heroId].internalSlug;
-   expect(actor===focus||actor===killer||target===focus||target===killer||(death.inflictor&&c.key===death.inflictor)).toBeTruthy();
+   const qualified=target===focus || (death.inflictor&&c.key===death.inflictor) || (actor===focus&&!!target&&a.players.some(p=>STATIC_HEROES[p.hero_id].internalSlug===target));
+   const support=actor===killer&&!target&&f.display[lang].includes(lang==='zh'?'未证明命中':'a hit is not proven');
+   expect(qualified||support).toBeTruthy();
    expect(dictionary.abilities[c.key]).toBeTruthy();
    expect(f.display[lang]).toContain(evidenceName(c.key,lang));
    expect(f.display[lang]).toContain(evidenceName(STATIC_HEROES[owner.hero_id].internalName,lang));
@@ -81,12 +92,36 @@ it('resolves official names from the same real ids, with neutral unknown fallbac
 it.each([40,90,110])('never splices a TP to a death %ss later',delay=>{
  const result={facts:{d:{id:'d',citation:'r1'}},deaths:[{t:100+delay,killer:'lion',fact_id:'d'}]};
  const moments=buildMoments(result,{item_use_log:[{t:100,key:'tpscroll'}],purchase_log:[{time:-79,key:'recipe_null_talisman'}]},'zh');
- expect(moments).toHaveLength(1);expect(moments[0].time).toEqual({from:100+delay,to:100+delay});expect(moments[0].fact_ids).toEqual(['d']);
+ expect(moments).toEqual([]);
 });
 it('ignores unlinked contemporaneous casts and objectives and does not infer missing inflictors',()=>{
  const result={facts:{d:{id:'d',citation:'r1'},'obj.100':{id:'obj.100',t:100}},deaths:[{t:100,killer:'earthshaker',fact_id:'d'}]};
  const focus={hero_id:74};
  const unrelated={hero_id:26,ability_cast_log:[{t:99,key:'lion_impale',target:'npc_dota_hero_snapfire'}]};
  const moments=buildMoments(result,focus,'zh',[focus,unrelated]);
- expect(moments[0].fact_ids).toEqual(['d']);expect(moments[0].claim.text).not.toMatch(/穿刺|沟壑|回音击/);
+ expect(moments).toEqual([]);
+});
+it('requires an enemy target or overlapping death inside the verified BKB interval',()=>{
+ const focus={hero_id:60,player_slot:128,item_use_log:[{t:100,ended_at:109,key:'black_king_bar',source_path:'use',end_source_path:'end'}],ability_cast_log:[{t:102,key:'night_stalker_void',target:'npc_dota_hero_lion',source_path:'own'}]};
+ const ally={hero_id:128,player_slot:129,ability_cast_log:[{t:103,key:'snapfire_firesnap_cookie',target:'npc_dota_hero_night_stalker',source_path:'ally'}]};
+ const enemy={hero_id:26,player_slot:0,ability_cast_log:[{t:104,key:'lion_voodoo',target:'npc_dota_hero_snapfire',source_path:'third'}]};
+ const make=()=>({facts:{},deaths:[]});
+ expect(buildMoments(make(),focus,'en',[focus,ally,enemy])).toEqual([]);
+ enemy.ability_cast_log[0].target='npc_dota_hero_night_stalker';
+ const r=make();const clips=buildMoments(r,focus,'en',[focus,ally,enemy]);
+ expect(clips).toHaveLength(1);expect(clips[0].time).toEqual({from:100,to:109});
+ enemy.ability_cast_log[0].t=110;
+ expect(buildMoments(make(),focus,'en',[focus,ally,enemy])).toEqual([]);
+});
+it('keeps untargeted killer casts only as deduplicated unproven support after qualification',()=>{
+ const focus={hero_id:74};
+ const killer={hero_id:7,ability_cast_log:[{t:99,key:'earthshaker_echo_slam',source_path:'aoe1'},{t:100,key:'earthshaker_echo_slam',source_path:'aoe2'},{t:99,key:'earthshaker_enchant_totem',source_path:'untargeted'}]};
+ const make=()=>({facts:{d:{display:{en:'Death',zh:'死亡'}}},deaths:[{t:100,killer:'earthshaker',fact_id:'d'}]});
+ expect(buildMoments(make(),focus,'en',[focus,killer])).toEqual([]);
+ const other={hero_id:84,ability_cast_log:[{t:99,key:'ogre_magi_fireblast',target:'npc_dota_hero_invoker',source_path:'targeted'}]};
+ const r=make();const [clip]=buildMoments(r,focus,'en',[focus,killer,other]);
+ expect(clip.fact_ids.filter(id=>r.facts[id].value?.key==='earthshaker_echo_slam')).toHaveLength(1);
+ expect(clip.claim.text).not.toContain('Echo Slam');
+ expect(clip.fact_ids.some(id=>r.facts[id].value?.key==='earthshaker_enchant_totem')).toBe(false);
+ expect(clip.fact_ids.map(id=>r.facts[id].display.en).join(' ')).toContain('a hit is not proven');
 });

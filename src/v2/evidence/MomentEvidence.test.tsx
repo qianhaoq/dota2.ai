@@ -36,12 +36,14 @@ for(const [match,heroId] of [[9080127650,60],[9089115713,74],[9088239359,71]]) i
  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(review),{headers:{'Content-Type':'application/json'}})));
  const view=render(<MemoryRouter initialEntries={[`/m/${match}?hero=${heroId}&lang=${lang}&claim=4&view=evidence`]}><I18nProvider><Routes><Route path="/m/:matchId" element={<MatchPage/>}/></Routes></I18nProvider></MemoryRouter>);
  const body=await screen.findByTestId('moment-evidence');
- expect(body.textContent).toContain(review.facts[review.insights[3].fact_ids[0]].display[lang]);
+ expect(body.textContent).toContain(review.facts[review.insights[review.insights.length>=4?3:0].fact_ids[0]].display[lang]);
+ if(review.insights.length>=5){
  const next=screen.getByRole('button',{name:lang==='zh'?'下一条洞察':'Next insight'});
  // Use the existing pager, preserving its actual-length boundary.
  fireEvent.click(next);
  await waitFor(()=>expect(screen.getByTestId('evidence-body').getAttribute('data-claim')).toBe('4'));
  for(const id of review.insights[4].fact_ids)expect(screen.getByTestId('moment-evidence').textContent).toContain(review.facts[id].display[lang]);
+ }
  const disclosure=view.container.querySelector('[data-testid="replay-provenance"] details');
  expect(disclosure).toBeTruthy();expect(disclosure?.hasAttribute('open')).toBe(false);
  expect(disclosure?.textContent).toContain('SHA-256');

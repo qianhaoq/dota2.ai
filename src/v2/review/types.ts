@@ -117,6 +117,7 @@ export interface Review {
     objectives?: Objective[];
     deaths?: DeathEntry[];
     purchases?: Purchase[];
+    item_uses?: { t: number; item: string; ended_at?: number }[];
     citations?: Citation[];
     meta?: {
         url?: string;
