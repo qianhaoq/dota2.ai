@@ -88,6 +88,21 @@ it('redacts double-encoded JSON identity fields',()=>{
  expect(sanitizeExtractorDiagnostic(twice,2048)).not.toMatch(/Alice|Private|Smith|supersecret/);
  expect(sanitizeExtractorDiagnostic(twice,2048)).toMatch(/personaname\\?":?<redacted>/);
 });
+it('redacts a backslash immediately before a quote in identity values and logs',async()=>{
+ const identity='Alice '+String.fromCharCode(92)+'"Private" Smith';
+ const encoded=JSON.stringify({personaname:identity});
+ const twice=JSON.stringify(encoded);
+ expect(sanitizeExtractorDiagnostic(encoded,2048)).not.toMatch(/Alice|Private|Smith/);
+ expect(sanitizeExtractorDiagnostic(twice,2048)).not.toMatch(/Alice|Private|Smith/);
+ const logged:unknown[][]=[];
+ const spy=console.error; console.error=(...args:unknown[])=>{logged.push(args);};
+ try{
+  const error=await run(`console.log(${JSON.stringify(JSON.stringify({ok:false,error:encoded}))});process.exitCode=2;`).catch(e=>e);
+  expect(error.message).toBe('extractor_failed');
+  expect(error.diagnostics.extractor_error).not.toMatch(/Alice|Private|Smith/);
+  expect(JSON.stringify(error.diagnostics)+JSON.stringify(logged)).not.toMatch(/Alice|Private|Smith/);
+ }finally{console.error=spy;}
+});
 it('records a spawn code for a missing binary',async()=>{
  const error=await runExtractor('/nonexistent/extractor-missing',[],new AbortController().signal).catch(e=>e);
  expect(error.diagnostics.extractor_spawn_code).toBe('ENOENT');
