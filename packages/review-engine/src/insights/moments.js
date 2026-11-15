@@ -58,7 +58,11 @@ export function buildMoments(result, player, lang, players = [player]) {
    ids.push(fact(`kill.${id}.${ki}`,{...k,t:k.time},l=>`${clock(k.time)} · ${l==='zh'?'存在击杀记录':'A kill record exists'} · ${evidenceName(k.key,l)}`));
    killTexts.push(`${clock(k.time)} · ${zh?'存在击杀记录':'A kill record exists'} · ${evidenceName(k.key,lang)}`);
   }
-  const text=[...primary.toSorted((a,b)=>a.t-b.t).map(c=>castText(c,lang)),...killTexts,base.text].join('；');
+  // Untargeted inflictor casts stay in evidence, but the death line already
+  // records that ability; do not repeat them as a separate proven interaction.
+  const claimCasts=primary.filter(c=>!(base.inflictor && c.key===base.inflictor && !c.target));
+  const text=[...claimCasts.toSorted((a,b)=>a.t-b.t).map(c=>castText(c,lang)),...killTexts,base.text].join('；');
+
   out.push({id,kind,title:zh?'已核实交战片段':'Verified fight clip',status:'ok',time:{from,to},claim:{text,slots:text,phrasing:'template'},fact_ids:ids,metrics:[],citations:['r1'],evidence:{kind:'death_timeline',highlight:[from/60,to/60],markers:ids,moments:[]},baseline:null,target:null,data_gap:null});
  };
  for(const [index,d] of result.deaths.entries()) {
@@ -70,7 +74,7 @@ export function buildMoments(result, player, lang, players = [player]) {
   const seen=new Set();
   const support=nearby.filter(c=>!primary.includes(c)&&same(c.actor,d.killer)&&!c.target&&areaCasts.has(c.key)&&!seen.has(c.key)&&seen.add(c.key));
   const text=`${clock(d.t)} · ${zh?'死亡记录':'Death recorded'}${d.killer?' · '+evidenceName(d.killer,lang):''}${d.inflictor?' · '+evidenceName(d.inflictor,lang):''}`;
-  add(`death.${index+1}`,'ability_into_death',Math.min(d.t,...primary.map(c=>c.t),...support.map(c=>c.t)),Math.max(d.t,...primary.map(c=>c.t),...support.map(c=>c.t)),{ids:[d.fact_id],text},primary,support);
+  add(`death.${index+1}`,'ability_into_death',Math.min(d.t,...primary.map(c=>c.t),...support.map(c=>c.t)),Math.max(d.t,...primary.map(c=>c.t),...support.map(c=>c.t)),{ids:[d.fact_id],text,inflictor:d.inflictor},primary,support);
  }
  for(const [index,u] of (player.item_use_log ?? []).filter(u=>u.key==='black_king_bar').entries()) {
   if(!Number.isFinite(u.t)||!Number.isFinite(u.ended_at)||u.ended_at<u.t||!u.end_source_path) continue;

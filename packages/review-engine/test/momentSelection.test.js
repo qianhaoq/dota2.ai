@@ -85,6 +85,16 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
  if(match===9088239359){
   for(const inf of ['lion_finger_of_death','juggernaut_blade_fury'])expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor===inf))).toBe(true);
   for(const t of [272,624,860])expect(r.insights.some(i=>Math.floor(i.time.from)===t&&i.kind==='item_window')).toBe(false);
+  const wave=r.insights.find(i=>i.id==='death.4');
+  const fury=r.insights.find(i=>i.id==='death.6');
+  const stripDeath=text=>text.replace(lang==='zh'?/死亡记录[^；]*/g:/Death recorded[^；]*/g,'');
+  expect(wave.claim.text).toMatch(lang==='zh'?'暗影冲刺 → 变体精灵':'Charge of Darkness');
+  expect(wave.claim.text).toMatch(lang==='zh'?'死亡记录 · 变体精灵 · 波浪形态':'Death recorded · Morphling · Waveform');
+  expect(stripDeath(wave.claim.text)).not.toMatch(lang==='zh'?'波浪形态':'Waveform');
+  expect(wave.claim.text).not.toMatch(lang==='zh'?'未证明命中':'a hit is not proven');
+  expect(wave.fact_ids.some(id=>r.facts[id].value?.key==='morphling_waveform')).toBe(true);
+  expect(stripDeath(fury.claim.text)).not.toMatch(lang==='zh'?'剑刃风暴':'Blade Fury');
+  expect(fury.claim.text).not.toMatch(lang==='zh'?'未证明命中':'a hit is not proven');
  }
 });
 it('resolves official names from the same real ids, with neutral unknown fallbacks',()=>{
