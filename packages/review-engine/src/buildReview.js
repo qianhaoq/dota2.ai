@@ -9,8 +9,9 @@ import { buildGaps } from './gaps/index.js';
 import { buildPresetFollowups } from './phrasing/followups.js';
 import { isMatchParsed } from './matchParse.js';
 import { attachSiteKnowledge } from './siteKnowledge.js';
+import { buildMainline } from './review/mainline.js';
 
-export const ENGINE_VERSION = '2.3.0-replay-jobs';
+export const ENGINE_VERSION = '3.0.0-review-mainline';
 
 const insightLabels = { turning_point: { en: 'Turning point', zh: '转折点' }, fix_this: { en: 'What to change', zh: '本场要改' }, next_game: { en: 'Next game', zh: '下局重点' } };
 
@@ -94,8 +95,16 @@ export function buildReview(raw, opts) {
     }
     for (const insight of insights) insight.citations = [...new Set(insight.fact_ids.map(id => result.facts[id]?.citation).filter(Boolean))];
   }
+  let practice = null;
   if (replay && focus) {
-    insights.splice(0, insights.length, ...buildMoments(result, focus, opts.lang, players));
+    // Moment facts (cast.*, use.bkb.*, kill.*) back the evidence expand; the
+    // mainline review (overview first, then decision windows) replaces the
+    // moment cards as the payload's lead.
+    const momentCards = buildMoments(result, focus, opts.lang, players);
+    const mainline = buildMainline(result, raw, focus, players, opts.lang, objectives, momentCards);
+    insights.splice(0, insights.length, ...mainline.insights);
+    for (const insight of mainline.insights) insight.citations = [...new Set(insight.fact_ids.map(id => result.facts[id]?.citation).filter(Boolean))];
+    practice = mainline.practice;
     state = complete ? 'parsed' : 'insufficient';
   }
 
@@ -118,6 +127,9 @@ export function buildReview(raw, opts) {
       perspective: focus ? teamOf(focus) : 'radiant',
     },
     objectives, deaths: result.deaths,
+    // Practice goals are proven only when hero-state samples ground them;
+    // otherwise the payload carries an explicit cannot-prove note.
+    ...(practice ? { practice } : {}),
     purchases: parsed && focus ? (focus.purchase_log ?? []).filter(p => Number.isFinite(p.time) && typeof p.key === 'string').map(p => ({ t: p.time, item: p.key, key_item: Object.hasOwn(KEY_ITEMS, p.key) })) : [],
     item_uses: parsed && focus ? (focus.item_use_log ?? []).filter(u => u.key==='black_king_bar' && Number.isFinite(u.t) && Number.isFinite(u.ended_at) && u.ended_at>=u.t && u.end_source_path).sort((a,b)=>a.t-b.t).map(u => ({ t:u.t, item:u.key, ended_at:u.ended_at })) : [],
     insights, data_gaps: gaps.filter((g,i)=>gaps.findIndex(other=>other.topic===g.topic)===i),

@@ -479,12 +479,13 @@
                   "skeleton_before_bkb",
                   "bkb_windows",
                   "verified_death",
-                  "void_dismember"
+                  "void_dismember",
+                  "review_overview"
                 ]
               },
               {
                 "type": "string",
-                "pattern": "^(death|item|purchase|bkb)\\.[0-9]+$"
+                "pattern": "^(death|item|purchase|bkb|window)\\.[0-9]+$"
               },
               {
                 "enum": [
@@ -655,8 +656,35 @@
               "item_window",
               "notable_death",
               "purchase_context",
-              "objective_context"
+              "objective_context",
+              "review_overview",
+              "review_window"
             ]
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label_key": {
+                  "enum": [
+                    "known",
+                    "actions",
+                    "comparable",
+                    "missing",
+                    "evaluation"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label_key",
+                "text"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -693,6 +721,55 @@
         ],
         "additionalProperties": false
       }
+    },
+    "practice": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "proven",
+            "insufficient"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "goal": {
+                "type": "string"
+              },
+              "condition": {
+                "type": "string"
+              },
+              "fact_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "goal",
+              "condition",
+              "fact_ids"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "items",
+        "note"
+      ],
+      "additionalProperties": false
     },
     "followups": {
       "type": "array",

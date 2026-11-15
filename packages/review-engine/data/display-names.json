@@ -440,6 +440,9 @@
       "en": "Buckler",
       "zh": "玄冥盾牌"
     },
+    "chasm_stone": {
+      "en": "Chasm Stone"
+    },
     "clarity": {
       "en": "Clarity",
       "zh": "净化药水"
@@ -672,6 +675,9 @@
       "en": "Headdress Recipe",
       "zh": "图纸（恢复头巾）"
     },
+    "recipe_hydras_breath": {
+      "en": "Hydra's Breath Recipe"
+    },
     "recipe_heart": {
       "en": "Heart of Tarrasque Recipe",
       "zh": "图纸（恐鳌之心）"
@@ -751,6 +757,9 @@
     "recipe_sphere": {
       "en": "Linken's Sphere Recipe",
       "zh": "图纸（林肯法球）"
+    },
+    "recipe_specialists_array": {
+      "en": "Specialist's Array Recipe"
     },
     "recipe_spirit_vessel": {
       "en": "Spirit Vessel Recipe",

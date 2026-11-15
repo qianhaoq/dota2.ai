@@ -13,8 +13,13 @@ describe('official replay player review',()=>{
   const r=review(lang);
   expect(r.state).toBe('parsed');
   expect(validateReview(r)).toEqual({ok:true,errors:[]});
-  expect(r.insights.filter(i=>i.kind==='item_window')).toHaveLength(2);
-  for(const i of r.insights){expect(i.status).toBe('ok');expect(i.prompt).toBeUndefined();expect(i.claim.text).not.toMatch(/→| · |死亡记录|Death recorded/);expect(i.title).not.toMatch(/Verified fight clip|已核实交战片段/);expect(i.fact_ids.length).toBeGreaterThan(0);for(const id of i.fact_ids)expect(r.facts[id]?.citation).toBe('r1');}
+  // Mainline shape: overview first, then 3–5 decision windows; the BKB interval
+  // stays reachable as raw evidence behind one of them.
+  expect(r.insights[0].kind).toBe('review_overview');
+  const windows=r.insights.filter(i=>i.kind==='review_window');
+  expect(windows.length).toBeGreaterThanOrEqual(3);expect(windows.length).toBeLessThanOrEqual(5);
+  expect(r.insights.some(i=>i.fact_ids.some(id=>id.startsWith('use.bkb.')))).toBe(true);
+  for(const i of r.insights){expect(i.status).toBe('ok');expect(i.claim.phrasing).toBe('template');expect(i.claim.text).not.toMatch(/→| · |死亡记录|Death recorded/);expect(i.title).not.toMatch(/Verified fight clip|已核实交战片段|已核实/);expect(i.fact_ids.length).toBeGreaterThan(0);for(const id of i.fact_ids)expect(r.facts[id]?.citation==='r1'||id==='scoreboard.kda'&&r.facts[id]?.citation==='s1').toBe(true);}
   expect(r.deaths.some(d=>d.inflictor==='pudge_meat_hook')).toBe(true);
   expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor==='pudge_meat_hook'||r.facts[id].value?.key==='pudge_meat_hook'))).toBe(false);
   for (const inflictor of ['pudge_dismember','skeleton_king_bone_guard']) {
@@ -22,10 +27,8 @@ describe('official replay player review',()=>{
   }
   expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.key==='necrolyte_reapers_scythe'))).toBe(true);
   expect(r.insights.flatMap(i=>i.fact_ids).some(id=>id.startsWith('purchase.'))).toBe(false);
-  const windows=r.insights.filter(i=>i.kind==='item_window');
-  expect(windows.map(i=>i.time.to-i.time.from)).toEqual([9,8]);
-  expect(r.followups.map(f=>f.id)).toEqual(['death_list','item_timings']);
-  const copy=r.insights.map(i=>i.claim.text+' '+i.prompt).join(' ')+r.followups.map(f=>answerPresetFollowup(f,r.facts,lang).text).join(' ');
+  expect(r.followups.map(f=>f.id)).toEqual(['why_review_overview','why_window.1','death_list']);
+  const copy=r.insights.map(i=>i.claim.text+' '+(i.prompt??'')+(i.sections??[]).map(s=>s.text).join(' ')).join(' ')+r.followups.map(f=>answerPresetFollowup(f,r.facts,lang).text).join(' ');
   expect(copy).not.toMatch(/state_sample|sample_t|net_worth_t|trace_version|trace\//);
   expect(new Set(r.data_gaps.map(g=>g.topic)).size).toBe(r.data_gaps.length);
  });
