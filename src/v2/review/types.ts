@@ -29,6 +29,11 @@ export interface Insight {
         text: string;
         phrasing: string;
     };
+    /** Mainline review layers (review_overview / review_window kinds). */
+    sections?: {
+        label_key: 'known' | 'actions' | 'comparable' | 'missing' | 'evaluation';
+        text: string;
+    }[];
     fact_ids: string[];
     metrics: {
         fact_id: string;
@@ -112,11 +117,22 @@ export interface Review {
     series: {
         radiant_gold_adv: (number | null)[];
         radiant_xp_adv: (number | null)[];
+        /** Replay-only 60 s net-worth buckets; a bucket index is not an event clock. */
+        radiant_net_worth_adv?: (number | null)[];
+        net_worth_source?: string | null;
+        net_worth_derivation?: string | null;
+        net_worth_buckets?: string | null;
         perspective?: string;
     };
     objectives?: Objective[];
     deaths?: DeathEntry[];
     purchases?: Purchase[];
+    /** Top-level practice goals; proven only when hero-state samples ground them. */
+    practice?: {
+        status: 'proven' | 'insufficient';
+        items: { goal: string; condition: string; fact_ids: string[] }[];
+        note: string | null;
+    };
     item_uses?: { t: number; item: string; ended_at?: number }[];
     citations?: Citation[];
     meta?: {

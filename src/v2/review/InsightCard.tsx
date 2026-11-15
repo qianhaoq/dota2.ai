@@ -74,6 +74,17 @@ export function detailFactLabelKey(factId: string): DictKey | null {
   return null;
 }
 
+/** Mainline review section label (known / actions / comparable / missing / evaluation). */
+export function sectionLabelKey(labelKey: NonNullable<Insight['sections']>[number]['label_key']): DictKey {
+  switch (labelKey) {
+    case 'known': return 'sectionKnown';
+    case 'actions': return 'sectionActions';
+    case 'comparable': return 'sectionComparable';
+    case 'missing': return 'sectionMissing';
+    case 'evaluation': return 'sectionEvaluation';
+  }
+}
+
 function MatchupBlock({ insight, review, lang, t }: {
   insight: Insight;
   review?: Review;
@@ -212,6 +223,17 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
           <AiText variant="claim" text={conclusion} streaming={streaming} />
         </div>
       </div>
+
+      {insight.sections?.length ? (
+        <div className="mt-[10px] space-y-[10px]" data-testid="card-sections">
+          {insight.sections.map((section, i) => (
+            <div key={`${section.label_key}:${i}`} data-testid="card-section" data-section={section.label_key}>
+              <div className="text-d2-12 text-d2-ink-3 mb-[2px]">{t(sectionLabelKey(section.label_key))}</div>
+              <p className="text-d2-15 text-d2-ink-2 leading-[1.45] m-0">{section.text}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {insight.prompt && <p className="text-d2-15 text-d2-ink-2">{insight.prompt}</p>}
       <MatchupBlock insight={insight} review={review} lang={lang} t={t} />
