@@ -48,7 +48,10 @@ export function buildMoments(result, player, lang, players = [player]) {
  const castText = (c,l) => `${clock(c.t)} · ${evidenceName(c.actor,l)} · ${evidenceName(c.key,l)}${c.target ? ' → '+evidenceName(c.target,l) : ''}`;
  const add = (id,kind,from,to,base,primary,support=[]) => {
   const ids=[...base.ids];
+  // Untargeted inflictor casts are already named on the death fact; do not
+  // add a second undecorated cast line in the evidence list.
   for(const c of [...primary,...support]) {
+   if(base.inflictor && c.key===base.inflictor && !c.target) continue;
    const unproven=support.includes(c);
    ids.push(fact(`cast.${id}.${c.pi}.${c.ci}`,c,l=>castText(c,l)+(unproven?(l==='zh'?' · 附近时间的施法，未证明命中':' · cast in the nearby window; a hit is not proven'):'')));
   }

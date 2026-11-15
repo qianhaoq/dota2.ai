@@ -92,7 +92,9 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
   expect(wave.claim.text).toMatch(lang==='zh'?'死亡记录 · 变体精灵 · 波浪形态':'Death recorded · Morphling · Waveform');
   expect(stripDeath(wave.claim.text)).not.toMatch(lang==='zh'?'波浪形态':'Waveform');
   expect(wave.claim.text).not.toMatch(lang==='zh'?'未证明命中':'a hit is not proven');
-  expect(wave.fact_ids.some(id=>r.facts[id].value?.key==='morphling_waveform')).toBe(true);
+  expect(r.facts[wave.fact_ids[0]].value?.inflictor).toBe('morphling_waveform');
+  expect(wave.fact_ids.some(id=>id.startsWith('cast.')&&r.facts[id].value?.key==='morphling_waveform')).toBe(false);
+  expect(fury.fact_ids.some(id=>id.startsWith('cast.')&&r.facts[id].value?.key==='juggernaut_blade_fury')).toBe(false);
   expect(stripDeath(fury.claim.text)).not.toMatch(lang==='zh'?'剑刃风暴':'Blade Fury');
   expect(fury.claim.text).not.toMatch(lang==='zh'?'未证明命中':'a hit is not proven');
  }
