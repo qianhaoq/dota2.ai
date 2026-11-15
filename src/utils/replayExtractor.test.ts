@@ -80,3 +80,15 @@ it('keeps stage_timeout when the signal is already aborted before spawn',async()
  expect(error.message).toBe('stage_timeout');
  expect(error.diagnostics).toMatchObject({extractor_exit:null,extractor_signal:null});
 });
+
+it('redacts double-encoded JSON identity fields',()=>{
+ const encoded=JSON.stringify({personaname:'Alice "Private" Smith',api_key:'supersecret'});
+ const twice=JSON.stringify(encoded);
+ expect(sanitizeExtractorDiagnostic(encoded,2048)).not.toMatch(/Alice|Private|Smith|supersecret/);
+ expect(sanitizeExtractorDiagnostic(twice,2048)).not.toMatch(/Alice|Private|Smith|supersecret/);
+ expect(sanitizeExtractorDiagnostic(twice,2048)).toMatch(/personaname\\?":?<redacted>/);
+});
+it('records a spawn code for a missing binary',async()=>{
+ const error=await runExtractor('/nonexistent/extractor-missing',[],new AbortController().signal).catch(e=>e);
+ expect(error.diagnostics.extractor_spawn_code).toBe('ENOENT');
+});
