@@ -57,3 +57,26 @@ it('redacts bearer tokens and multi-word identity values',()=>{
  expect(sanitizeExtractorDiagnostic('token=abc def\n',2048)).toBe('token=<redacted>\n');
  expect(sanitizeExtractorDiagnostic('Authorization: Bearer supersecret\n',2048)).not.toMatch(/supersecret|Alice|\babc\b|\bdef\b/);
 });
+
+it('redacts escaped quotes inside identity values and does not log the remainder',async()=>{
+ const errorText='personaname: '+JSON.stringify('Alice "Private" Smith');
+ const apostrophe="personaname: 'O\\'Brien'";
+ expect(sanitizeExtractorDiagnostic(errorText+'\n',2048)).toBe('personaname: <redacted>\n');
+ expect(sanitizeExtractorDiagnostic(errorText+'\n',2048)).not.toMatch(/Alice|Private|Smith/);
+ expect(sanitizeExtractorDiagnostic(apostrophe+'\n',2048)).toBe('personaname: <redacted>\n');
+ const logged:unknown[][]=[];
+ const spy=console.error; console.error=(...args:unknown[])=>{logged.push(args);};
+ try{
+  const error=await run(`console.log(${JSON.stringify(JSON.stringify({ok:false,error:errorText}))});process.exitCode=2;`).catch(e=>e);
+  expect(error.message).toBe('extractor_failed');
+  expect(error.diagnostics.extractor_error).toBe('personaname: <redacted>');
+  expect(JSON.stringify(error.diagnostics)+JSON.stringify(logged)).not.toMatch(/Alice|Private|Smith/);
+ }finally{console.error=spy;}
+});
+it('keeps stage_timeout when the signal is already aborted before spawn',async()=>{
+ const controller=new AbortController();
+ controller.abort(new Error('stage_timeout'));
+ const error=await runExtractor(process.execPath,['-e','console.log("should-not-run")'],controller.signal).catch(e=>e);
+ expect(error.message).toBe('stage_timeout');
+ expect(error.diagnostics).toMatchObject({extractor_exit:null,extractor_signal:null});
+});

@@ -192,3 +192,24 @@ it('persists extractor diagnostics after the temporary worker home is deleted',a
   expect(job.extractor_stderr).toMatch(/personaname: <redacted>/);
  }finally{await rm(home,{recursive:true,force:true});}
 });
+
+it('keeps phase extract when decompress-only fails before demo verification',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'extractor-decompress-fail-'));
+ vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  const extract=vi.fn(async(_bin:string,args:string[])=>{
+   if(args.includes('--decompress-only')){
+    throw Object.assign(new Error('extractor_failed'),{diagnostics:{extractor_exit:1,extractor_signal:null,extractor_ok:false,extractor_error:'unexpected EOF'}});
+   }
+   throw new Error('parse should not run');
+  });
+  const ingest=createReplayIngest({env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl:async()=>new Response(Buffer.alloc(32,1)),extract});
+  if(!('drain' in ingest))throw Error('async required');
+  const submitted=await ingest.submit({match_id:44,cluster:184,replay_salt:1},'ip');await ingest.drain();
+  const job=await ingest.jobStore.get(submitted.jobId);
+  expect(job).toMatchObject({status:'failed',phase:'extract',extractor_exit:1,extractor_ok:false,last_error:'extractor_failed'});
+  expect(job.compression_format).toBeUndefined();
+  expect(job.demo_bytes).toBeUndefined();
+  expect(extract).toHaveBeenCalledTimes(1);
+ }finally{await rm(home,{recursive:true,force:true});}
+});
