@@ -140,6 +140,7 @@ it.each([[3,'bz2'],[4,'zstd']])('persists verified v%s %s facts through suffix-l
       await writeFile(join(args[1],'replay.dem'),demo);
       return {ok:true,format,bytes:demo.length,sha256};
     }
+    expect(args).toEqual([join(args[1],'replay.dem'),args[1],'--max-bytes','512000000','--max-output-bytes','1500000000','--quiet']);
     await mkdir(join(args[1],'trace'));
     await writeFile(join(args[1],'trace','events.jsonl'),events.map(e=>JSON.stringify(e)).join('\n')+'\n');
     return {ok:true,trace_version:version,match_id:42,clock:{unit:'seconds',zero:'horn_game_start'},ms:1};

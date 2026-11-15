@@ -84,6 +84,75 @@ Connection-level DNS lookup allows only public IPv4 addresses and official
 replay hostnames; it rejects redirects, credentials, custom ports and private
 addresses. Tests inject bytes instead of resolving official hosts.
 
+## Trace capacity within the existing 4Gi worker
+
+Shared hard caps in `lib/matchReview/replayIngest/capacity.js`: download
+256,000,000 bytes; decompressed demo 512,000,000; cumulative JSONL trace output
+1,500,000,000; disk budget 3,000,000,000. Injected limits may only reduce these
+ceilings; no output env override is introduced. The extractor pin is unchanged:
+SHA-256 `e7de32e0c115618d0f17dc7074c55f1a66037eabec9ddef6f9db623d5ce4c18c`.
+
+Cloud Run writable storage is memory-backed and counts toward the unchanged
+4Gi (4,294,967,296 bytes). File reservation = download + demo + output +
+8,000,000 = 2,276,000,000 bytes. Process reserve = 1,000,000,000 bytes, allowing
+room for Node and tmpfs accounting beyond measured extractor RSS (~64MiB).
+File reservation + process reserve = 3,276,000,000 < 4,294,967,296. Even disk
+budget + process reserve = 4,000,000,000 < 4,294,967,296. Existing files count
+against disk admission. Reservation math does not guarantee against all runtime
+memory growth; Cloud Run memory remains 4Gi.
+
+Compact-on-read uses shared caps from the same capacity module: states
+1,500,000,000 bytes (equal to the output cap), event file 256,000,000 bytes,
+250,000 retained tactical events, and metadata 8,000,000 bytes. Compaction runs
+while traces already occupy tmpfs up to the file reservation; streaming states
+line-by-line does not allocate another 1.5GB on the heap. Only nearest death
+samples within 0.25s are retained from states. Retained events do occupy Node
+heap within the process reserve; these bounds are not a measured heap guarantee.
+The file reservation plus process reserve remains 3,276,000,000 bytes < 4Gi.
+
+Held trace details (no new official CDN downloads):
+
+| Match | States bytes | Events bytes | Events.jsonl rows | Retained tactical events |
+| --- | --- | --- | --- | --- |
+| 9080127650 | 236,676,282 | 45,020,997 | 67,380 | 9,155 |
+| 8985182860 (52-minute stand-in) | 429,657,471 | 65,798,134 | 98,498 | 19,645 |
+
+The extractor reports events.jsonl row counts as `tactical.events`. Compact-on-read
+keeps only deaths, abilities, items, modifier removals, purchases, and building
+kills, so the stand-in's retained count is 19,645, not 98,498. The former
+100,000 retained-event cap therefore had 80,355 unused slots on that held
+trace, not 1,502. The cap is still raised so a denser official 50-minute match
+is not tight against 100,000 after a successful 1.5GB extract.
+The new caps also cover the Codex-reported 600,998,197-byte states rejection
+under the former 600,000,000-byte reader cap. This closes reader limits that
+could reject traces after successful extraction; it is not a new end-to-end
+measurement of 9089115713.
+
+Production match **9089115713** (3025s) downloaded 65,615,828 bytes and decoded
+zstd to 110,049,500 demo bytes, then failed in extracting with extractor_exit=1
+and `trace size limit exceeded`. Cumulative JSONL exceeded the old 512,000,000
+output cap; this was not a download, OOM, or timeout failure. Exact overshoot is
+unknown. Its dem was **not retained and was not re-extracted**: worker temp was
+deleted and there was no GCS raw copy.
+
+Already-held measurements with the same pin, without new CDN downloads:
+
+| Match | Duration | Output bytes | Peak RSS bytes | Peak directory bytes | Conservative RSS + directory bytes |
+| --- | --- | --- | --- | --- | --- |
+| 9080127650 | 1906s | 292,251,508 | 62,205,952 | 291,094,891 | 353,300,843 |
+| 8985182860 | 3125s (~52 min) | 509,896,393 | 64,159,744 | 508,908,218 | 573,067,962 |
+
+Both had trace_version 4 and clock present. 9080127650 took about 9.2s wall
+time and its dem is retained. The 52-minute 8985182860 dem is a volume stand-in,
+**not 9089115713**; it was only 2,103,607 bytes under the former cap. The new cap
+provides headroom above that measurement and the old limit, without claiming
+9089115713 extraction success.
+
+Full traces remain unsampled during extraction; existing compact-on-read keeps
+nearest death samples within 0.25s, preserving events, clock and evidence
+citations. AUTO remains conceptually 0. This change does not alter production
+flags, daily/hourly job budget caps, resources, or the extractor binary.
+
 ## Budgets and retention
 
 Defaults are injected into JobStore and enforced in persistent state: **100 new

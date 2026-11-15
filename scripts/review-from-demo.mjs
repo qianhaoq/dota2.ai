@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { REPLAY_MAX_DEMO_BYTES, REPLAY_MAX_OUTPUT_BYTES } from '../lib/matchReview/replayIngest/capacity.js';
 import { readFile, mkdir, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -23,7 +24,7 @@ try {
     const bin = process.env.DOTA_EXTRACT_BIN || process.env.COACH_EXTRACT_BIN;
     if (!bin) throw new Error('DOTA_EXTRACT_BIN is required to parse a local dem');
     temp = await mkdtemp(join(tmpdir(),'review-demo-')); extracted = temp;
-    summary = await runExtractor(bin, [demo,temp,'--max-bytes','512000000','--max-output-bytes','512000000','--quiet'], signal);
+    summary = await runExtractor(bin, [demo,temp,'--max-bytes',String(REPLAY_MAX_DEMO_BYTES),'--max-output-bytes',String(REPLAY_MAX_OUTPUT_BYTES),'--quiet'], signal);
     extractorMetadata(summary, raw.match_id);
   }
   const trace = await readReviewEvents(join(extracted,'trace','events.jsonl'), signal);
