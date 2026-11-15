@@ -29,7 +29,7 @@ try {
   }
   const trace = await readReviewEvents(join(extracted,'trace','events.jsonl'), signal);
   const supplement = await readReplaySupplement(join(extracted,'trace'), trace.events, signal);
-  const artifact = adaptReplayEvents(raw, trace.events, {demo_bytes:hash.bytes,demo_sha256:hash.sha256,fetched_at:new Date().toISOString(),source:'operator_local_demo',...(summary ? extractorMetadata(summary, raw.match_id) : {})}, supplement.metadata, supplement.positions);
+  const artifact = adaptReplayEvents(raw, trace.events, {demo_bytes:hash.bytes,demo_sha256:hash.sha256,fetched_at:new Date().toISOString(),source:'operator_local_demo',...(summary ? extractorMetadata(summary, raw.match_id) : {})}, supplement.metadata, supplement.positions, supplement.heroStates);
   // Redact identity from the review as well as the fixture/evidence.
   raw.players = raw.players.map(({personaname,account_id,...p}) => p);
   const review = buildReview(applyReplayArtifact(raw,artifact), {heroId:Number(hero),lang,fetchedAt:artifact.fetched_at,presetFollowups:true});

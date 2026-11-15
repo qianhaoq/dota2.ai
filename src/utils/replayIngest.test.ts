@@ -189,7 +189,8 @@ it('streams only nearest real-hero death samples and reads optional metadata', a
   expect(result.metadata.players[0].camps_stacked).toBe(9);
   expect(result.positions).toEqual([{t:10.05,x:3,y:4,source_path:'trace/states.jsonl[2]',death_source_path:'trace/events.jsonl[0]'}]);
   await rm(join(dir,'states.jsonl')); await rm(join(dir,'metadata.json'));
-  expect(await readReplaySupplement(dir,trace.events)).toEqual({metadata:null,positions:[]});
+  // heroStates is null when the trace has no usable real_hero rows at all.
+  expect(await readReplaySupplement(dir,trace.events)).toEqual({metadata:null,positions:[],heroStates:null});
 });
 
 

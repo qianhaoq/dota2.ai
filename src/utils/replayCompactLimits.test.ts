@@ -28,7 +28,7 @@ it('uses the shared event byte and retained-count limits independently', async (
 it('uses the shared states and metadata byte limits', async () => {
   const dir = await traceDir();
   await writeFile(join(dir,'states.jsonl'),'{}');
-  expect(await readReplaySupplement(dir,[])).toEqual({metadata:null,positions:[]});
+  expect(await readReplaySupplement(dir,[])).toEqual({metadata:null,positions:[],heroStates:null});
   await writeFile(join(dir,'states.jsonl'),JSON.stringify({padding:'x'.repeat(64)}));
   await expect(readReplaySupplement(dir,[])).rejects.toThrow('states_bytes_limit');
   await writeFile(join(dir,'metadata.json'),JSON.stringify({padding:'x'.repeat(32)}));

@@ -7,8 +7,10 @@ export function isVerifiedReplay(a, id) {
 /** Combat log t is game time. Legacy heroes.jsonl is uncalibrated demo time;
  * do not turn it into minute economy samples or death coordinates. */
 const NET_WORTH_DERIVATION = 'demo_metadata_graph_net_worth: metadata stores tens of gold, multiplied by 10 and rounded to gold; net worth, not earned gold; 60s bins from zero; may omit final minute(s); scale verified by first bin in [50, 70] consistent with 600 starting gold';
-/** @param {any} raw @param {any[]} events @param {any} metadata @param {any} demoMetadata @param {any[]} positionSamples */
-export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, positionSamples = []) {
+/** ~30 s snapshots: 400 rows covers a 3+ hour game. */
+export const MAX_INVENTORY_SNAPSHOTS = 400;
+/** @param {any} raw @param {any[]} events @param {any} metadata @param {any} demoMetadata @param {any[]} positionSamples @param {any} [heroStates] bounded window/cadence samples from readReplaySupplement */
+export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, positionSamples = [], heroStates = null) {
   /** @type {any[]} */
   const players = (raw.players ?? []).map(p => ({ hero_id:p.hero_id, player_slot:p.player_slot, deaths_log:[], kills_log:[], purchase_log:[] }));
   const byName = new Map(players.map(p => [`npc_dota_hero_${heroSlug(p.hero_id)}`, p]));
@@ -51,6 +53,14 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
   }
   const gaps = [{topic:'xp_t',reason:'hero_attribution_unverified'}, {topic:'playerstats',reason:'playerstats_unattributed'}, {topic:'radiant_xp_adv',reason:'not_in_combat_log'}];
   gaps.push({topic:'gold_t',reason:'earned_gold_not_in_replay'}, {topic:'radiant_gold_adv',reason:'earned_gold_not_in_replay'});
+  // No reliable Roshan kill event type exists in the trace; combat-log mentions
+  // of npc_dota_roshan are contact evidence, never a kill clock.
+  gaps.push({topic:'roshan_kill',reason:'no_reliable_roshan_kill_event'});
+  if (heroStates?.samples?.length) {
+    gaps.push({topic:'creep_waves',reason:'states_have_no_creep_entities'});
+    if (heroStates.visibility !== 'fields_present') gaps.push({topic:'hero_state_visibility',reason:heroStates.visibility === 'null_in_trace' ? 'states_visibility_null_in_trace' : 'states_visibility_fields_absent'});
+    if (heroStates.truncated) gaps.push({topic:'hero_states',reason:'sample_cap_truncated'});
+  }
   if (!players.some(p=>p.purchase_log.some(e=>e.time<0))) gaps.push({topic:'purchase_log',reason:'pregame_combat_rows_may_be_missing'});
   const metadataPlayers = demoMetadata?.players ?? demoMetadata?.teams?.flatMap(t => t.players ?? []) ?? [];
   for (const p of players) {
@@ -64,13 +74,30 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
     }
     if (Number.isFinite(m.camps_stacked)) p.camps_stacked = m.camps_stacked;
     const snapshots = m.inventory_snapshots ?? (m.snap_at10plus ? [m.snap_at10plus] : []);
-    p.lh_t = []; p.denies_t = [];
-    for (const snap of snapshots) if (Number.isInteger(snap.game_time) && snap.game_time >= 0 && snap.game_time % 60 === 0) {
-      if (Number.isFinite(snap.last_hits)) p.lh_t[snap.game_time/60] = snap.last_hits;
-      if (Number.isFinite(snap.denies)) p.denies_t[snap.game_time/60] = snap.denies;
+    p.inventory_snapshots = []; p.lh_t = []; p.denies_t = []; p.lh_t_sample = {}; p.denies_t_sample = {};
+    for (const snap of snapshots) {
+      if (!Number.isInteger(snap.game_time) || snap.game_time < 0 || p.inventory_snapshots.length >= MAX_INVENTORY_SNAPSHOTS) continue;
+      const row = { t:snap.game_time };
+      for (const key of ['last_hits','denies','kills','deaths','assists','level']) if (Number.isFinite(snap[key])) row[key] = snap[key];
+      p.inventory_snapshots.push(row);
+      // Minute-aligned view: nearest snapshot within 30 s; the real sample
+      // game_time is recorded and stays the source of truth for citations.
+      const minute = Math.round(snap.game_time/60);
+      const delta = Math.abs(snap.game_time-minute*60);
+      if (delta <= 30) {
+        for (const [field, sampleMap] of [['last_hits','lh_t_sample'],['denies','denies_t_sample']]) {
+          if (!Number.isFinite(snap[field])) continue;
+          const target = field === 'last_hits' ? 'lh_t' : 'denies_t';
+          if (p[target][minute] === undefined || delta < Math.abs((p[sampleMap][minute] ?? minute*60)-minute*60)) {
+            p[target][minute] = snap[field];
+            p[sampleMap][minute] = snap.game_time;
+          }
+        }
+      }
     }
+    if (!p.inventory_snapshots.length) { delete p.inventory_snapshots; delete p.lh_t_sample; delete p.denies_t_sample; }
     p.snapshot_source = 'demo_metadata_inventory_snapshot';
-    p.snapshot_sampling = 'exact minute snapshots only; observed snapshot interval approximately 30 seconds';
+    p.snapshot_sampling = 'snapshots retained at actual game_time (approximately 30 s cadence, not exact minutes); lh_t/denies_t are a minute-aligned view of the nearest snapshot within 30 s and per-minute sample game_time is recorded; not a per-last-hit log';
     if (Array.isArray(m.graph_net_worth) && m.graph_net_worth.length <= 10000 && m.graph_net_worth.every(Number.isFinite)) {
       if (m.graph_net_worth.length && m.graph_net_worth[0] >= 50 && m.graph_net_worth[0] <= 70) {
         p.net_worth_t = m.graph_net_worth.map(v=>Math.round(v*10));
@@ -94,7 +121,7 @@ export function adaptReplayEvents(raw, events, metadata, demoMetadata = null, po
   if (!players.some(p=>p.lh_t?.some(Number.isFinite))) gaps.push({topic:'lh_t',reason:'metadata_snapshot_missing'});
   if (!objectives.length) gaps.push({topic:'objectives',reason:'not_in_combat_log'});
   if (players.some(p=>p.deaths_log.some(d=>!Number.isFinite(d.x)))) gaps.push({topic:'death_locations',reason:'position_sample_missing'});
-  return { ...metadata, schema:'dota2.ai/replay-facts@1', match_id:raw.match_id, status:'replay_parsed', players, objectives, ...(radiant_net_worth_adv ? {radiant_net_worth_adv,net_worth_source:'demo_metadata_graph_net_worth',net_worth_derivation:NET_WORTH_DERIVATION} : {}), data_gaps:gaps, event_rows:rows };
+  return { ...metadata, schema:'dota2.ai/replay-facts@1', match_id:raw.match_id, status:'replay_parsed', players, objectives, ...(radiant_net_worth_adv ? {radiant_net_worth_adv,net_worth_source:'demo_metadata_graph_net_worth',net_worth_derivation:NET_WORTH_DERIVATION} : {}), ...(heroStates?.samples?.length ? {hero_states:{source:heroStates.source,sampling:heroStates.sampling,caps:heroStates.caps,anchors:heroStates.anchors,visibility:heroStates.visibility,truncated:!!heroStates.truncated,samples:heroStates.samples}} : {}), data_gaps:gaps, event_rows:rows };
 }
 export function applyReplayArtifact(raw, artifact) {
   if (!isVerifiedReplay(artifact, raw.match_id)) return { ...raw, replay_ingest:artifact?.status === 'replay_parsed' ? {match_id:raw.match_id,status:'replay_failed',reason:'invalid_artifact'} : artifact };
@@ -107,7 +134,7 @@ export function applyReplayArtifact(raw, artifact) {
     if (merged.net_worth_timing === 'uncalibrated_graph_bins') delete merged.net_worth_t;
     return merged;
   });
-  return { ...raw, players, objectives:artifact.objectives ?? [], radiant_gold_adv:[], radiant_net_worth_adv:artifact.radiant_net_worth_adv ?? [], radiant_xp_adv:[], replay_ingest:artifact };
+  return { ...raw, players, objectives:artifact.objectives ?? [], radiant_gold_adv:[], radiant_net_worth_adv:artifact.radiant_net_worth_adv ?? [], radiant_xp_adv:[], ...(artifact.hero_states ? {hero_states:artifact.hero_states} : {}), replay_ingest:artifact };
 }
 export function replayStatusPayload(status, lang = 'en', retryAfterSec = null) {
   const messages = {
