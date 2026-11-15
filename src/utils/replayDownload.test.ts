@@ -213,3 +213,20 @@ it('keeps phase extract when decompress-only fails before demo verification',asy
   expect(extract).toHaveBeenCalledTimes(1);
  }finally{await rm(home,{recursive:true,force:true});}
 });
+
+it('does not persist raw diagnostic objects on a direct legacy failure',async()=>{
+ const {createReplayIngest}=await import('../../lib/matchReview/replayIngest/legacy.js');
+ const home=await mkdtemp(join(tmpdir(),'legacy-diag-'));
+ try{
+  const ingest=createReplayIngest({
+    env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},
+    fetchImpl:async()=>new Response(Buffer.alloc(32,1)),
+    extract:async()=>{throw Object.assign(new Error('extractor_failed'),{diagnostics:{raw:{personaname:'Alice Secret'},extractor_stderr:'Authorization: Bearer supersecret',extractor_exit:1}});},
+  });
+  await ingest.submit({match_id:42,cluster:184,replay_salt:1},'ip');
+  const artifact=await ingest.read(42);
+  expect(artifact).not.toHaveProperty('raw');
+  expect(JSON.stringify(artifact)).not.toMatch(/Alice Secret|supersecret/);
+  expect(artifact.extractor_exit).toBe(1);
+ }finally{await rm(home,{recursive:true,force:true});}
+});

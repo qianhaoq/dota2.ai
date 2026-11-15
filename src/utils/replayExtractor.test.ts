@@ -92,3 +92,21 @@ it('records a spawn code for a missing binary',async()=>{
  const error=await runExtractor('/nonexistent/extractor-missing',[],new AbortController().signal).catch(e=>e);
  expect(error.diagnostics.extractor_spawn_code).toBe('ENOENT');
 });
+
+it('redacts prefixed credential names and skips empty structured error strings',async()=>{
+ expect(sanitizeExtractorDiagnostic('DEEPSEEK_API_KEY=sk-live-secret\n',2048)).not.toMatch(/sk-live-secret/);
+ expect(sanitizeExtractorDiagnostic('access_token=aaaa.bbbb\n',2048)).not.toMatch(/aaaa\.bbbb/);
+ const error=await run(`console.log(JSON.stringify({ok:false,error:'',message:'demo_truncated'}));process.exitCode=2;`).catch(e=>e);
+ expect(error.diagnostics.extractor_error).toBe('demo_truncated');
+});
+it('does not let abort diagnostics overwrite the child exit fields',async()=>{
+ const controller=new AbortController();
+ const pending=runExtractor(process.execPath,['-e','setInterval(()=>{},1000)'],controller.signal);
+ await new Promise(r=>setTimeout(r,30));
+ controller.abort(Object.assign(new Error('stage_timeout'),{diagnostics:{extractor_exit:0,extractor_stderr:'personaname: Alice Secret'}}));
+ const error=await pending.catch(e=>e);
+ expect(error.message).toBe('stage_timeout');
+ expect(error.diagnostics.extractor_exit).not.toBe(0);
+ expect(error.diagnostics.extractor_signal).toBe('SIGKILL');
+ expect(JSON.stringify(error.diagnostics)).not.toMatch(/Alice Secret/);
+});
