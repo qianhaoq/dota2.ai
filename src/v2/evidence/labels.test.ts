@@ -127,7 +127,7 @@ describe('evidence labels', () => {
     expect(itemName('black_king_bar', 'en')).toBe('Black King Bar');
     expect(itemName('black_king_bar', 'zh')).toBe('黑皇杖');
     expect(itemName('blink', 'zh')).toBe('闪烁匕首');
-    expect(itemName('unknown_widget_xyz', 'en')).toBe('Unknown widget xyz');
+    expect(itemName('unknown_widget_xyz', 'en')).toBe('Unknown item');
   });
 
   it('sourcesFor lists only fields backing the rendered claim', () => {

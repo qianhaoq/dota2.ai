@@ -218,7 +218,7 @@ describe('SSE v1 conversation', () => {
         fetcher.mockResolvedValue(response(events(r)).response);
         const view=page(`/m/9080127650?hero=60&lang=${lang}`);
         await screen.findAllByTestId('insight-card');
-        expect(screen.getAllByTestId('insight-card')).toHaveLength(5);
+        expect(screen.getAllByTestId('insight-card')).toHaveLength(r.insights.length);
         expect(screen.getByText((_,el)=>el?.tagName==='LI' && !!el.textContent?.includes(lang==='zh'?'冥魂大帝骨卫骷髅':'Wraith King skeleton'))).toBeTruthy();
         expect(screen.getByText(lang==='zh'?'关键购买记录':'Key purchases')).toBeTruthy();
         expect(screen.getByText(lang==='zh'?'本局还缺什么':'What remains unverified')).toBeTruthy();

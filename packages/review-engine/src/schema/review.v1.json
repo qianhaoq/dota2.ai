@@ -453,7 +453,7 @@
               },
               {
                 "type": "string",
-                "pattern": "^(death|item|purchase)\\.[0-9]+$"
+                "pattern": "^(death|item|purchase|bkb)\\.[0-9]+$"
               },
               {
                 "enum": [

@@ -92,7 +92,7 @@ export function buildReview(raw, opts) {
     for (const insight of insights) insight.citations = [...new Set(insight.fact_ids.map(id => result.facts[id]?.citation).filter(Boolean))];
   }
   if (replay && focus) {
-    insights.splice(0, insights.length, ...buildMoments(result, focus, opts.lang));
+    insights.splice(0, insights.length, ...buildMoments(result, focus, opts.lang, players));
     state = complete ? 'parsed' : 'insufficient';
   }
 

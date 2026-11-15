@@ -127,7 +127,7 @@ export function buildFacts(raw, player) {
         add(id, event, 'entity', d.source_path, { t: d.time });
         const killerEn = event.killer ? evidenceName(event.killer, 'en') : '';
         const killerZh = event.killer ? evidenceName(event.killer, 'zh') : '';
-        facts[id].display = {en:`${clock(d.time)} · Death${killerEn ? ' · '+killerEn : ''}`,zh:`${clock(d.time)} · 死亡${killerZh ? ' · '+killerZh : ''}`,t:clock(d.time)};
+        facts[id].display = {en:`${clock(d.time)} · Death${killerEn ? ' · '+killerEn : ''}${event.inflictor ? ' · '+evidenceName(event.inflictor,'en') : ''}`,zh:`${clock(d.time)} · 死亡${killerZh ? ' · '+killerZh : ''}${event.inflictor ? ' · '+evidenceName(event.inflictor,'zh') : ''}`,t:clock(d.time)};
       });
       const completeTimeline = !finite(player.deaths) || sorted.length === player.deaths;
       if (completeTimeline) {

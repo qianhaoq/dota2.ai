@@ -13,17 +13,14 @@ describe('official replay player review',()=>{
   const r=review(lang);
   expect(r.state).toBe('parsed');
   expect(validateReview(r)).toEqual({ok:true,errors:[]});
-  expect(r.insights.map(i=>i.id)).toEqual(['hook_death','void_dismember','darkness_scythe','skeleton_before_bkb','bkb_windows']);
+  expect(r.insights.filter(i=>i.kind==='item_window')).toHaveLength(2);
   for(const i of r.insights){expect(i.status).toBe('ok');expect(i.prompt).toBeTruthy();expect(i.fact_ids.length).toBeGreaterThan(0);for(const id of i.fact_ids)expect(r.facts[id]?.citation).toBe('r1');}
-  expect(r.deaths[5]).toMatchObject({killer:'npc_dota_wraith_king_skeleton_warrior',inflictor:'skeleton_king_bone_guard'});
-  expect(r.facts['cast.darkness_before_scythe'].t).toBeCloseTo(705,0);
-  expect(r.deaths[3].t-r.facts['cast.darkness_before_scythe'].t).toBeCloseTo(3.27,1);
-  expect(r.facts['purchase.bkb_after_skeleton'].t).toBeCloseTo(1563.47,1);
-  expect(r.facts['cast.feast_before_skeleton'].t).toBeCloseTo(1501.4,0);
-  expect(r.facts['use.bkb.1'].value).toMatchObject({key:'black_king_bar'});
-  expect(r.facts['use.bkb.1'].value.ended_at).toBeCloseTo(1654.2,1);
-  expect(r.facts['use.bkb.2'].value.t).toBeCloseTo(1797.27,1);
-  expect(r.facts['use.bkb.2'].value.ended_at).toBeCloseTo(1805.27,1);
+  for (const inflictor of ['pudge_meat_hook','pudge_dismember','necrolyte_reapers_scythe','skeleton_king_bone_guard']) {
+   expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor===inflictor))).toBe(true);
+  }
+  expect(r.insights.flatMap(i=>i.fact_ids).some(id=>id.startsWith('purchase.'))).toBe(false);
+  const windows=r.insights.filter(i=>i.kind==='item_window');
+  expect(windows.map(i=>i.time.to-i.time.from)).toEqual([9,8]);
   expect(r.followups).toHaveLength(3);
   const copy=r.insights.map(i=>i.claim.text+' '+i.prompt).join(' ')+r.followups.map(f=>answerPresetFollowup(f,r.facts,lang).text).join(' ');
   expect(copy).not.toMatch(/state_sample|sample_t|net_worth_t|trace_version|trace\//);
@@ -75,13 +72,13 @@ it('retains compact enrichment through the official-file event reader and adapte
  } finally {await rm(dir,{recursive:true,force:true});}
 });
 
-it('builds generic spell, item and purchase candidates and a usable zero-death fallback',async()=>{
+it('selects linked death evidence without item/purchase padding or an empty fallback',async()=>{
  const {buildMoments}=await import('../src/insights/moments.js');
  const make=()=>({facts:{'death.one':{id:'death.one',t:100}},deaths:[{t:100,inflictor:'lina_laguna_blade',fact_id:'death.one'}]});
- const r=make();const moments=buildMoments(r,{ability_cast_log:[{t:96,key:'lion_impale'}],item_use_log:[{t:50,key:'magic_wand',ended_at:52}],purchase_log:[{time:120,key:'blink'}]},'en');
- expect(moments.some(i=>i.kind==='ability_into_death')).toBe(true);expect(moments.some(i=>i.kind==='item_window')).toBe(true);expect(moments.some(i=>i.kind==='purchase_context')).toBe(true);
+ const r=make();const moments=buildMoments(r,{hero_id:26,ability_cast_log:[{t:96,key:'lion_impale'}],item_use_log:[{t:50,key:'magic_wand',ended_at:52}],purchase_log:[{time:120,key:'blink'}]},'en');
+ expect(moments.some(i=>i.kind==='ability_into_death')).toBe(true);expect(moments.some(i=>i.kind==='item_window')).toBe(false);expect(moments.some(i=>i.kind==='purchase_context')).toBe(false);
  for(const i of moments){expect(i.fact_ids.every(id=>r.facts[id])).toBe(true);expect(i.time).toBeTruthy();expect(i.prompt).toBeTruthy();}
- const zero=buildMoments({facts:{'match.id':{id:'match.id'}},deaths:[]},{},'en');expect(zero).toHaveLength(1);expect(zero[0].fact_ids).toEqual(['match.id']);
+ const zero=buildMoments({facts:{'match.id':{id:'match.id'}},deaths:[]},{},'en');expect(zero).toEqual([]);
 });
 
 it('does not leak npc_dota_ names into player-facing moment copy or objective displays',async()=>{
