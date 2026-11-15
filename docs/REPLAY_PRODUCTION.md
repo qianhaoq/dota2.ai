@@ -84,6 +84,48 @@ Connection-level DNS lookup allows only public IPv4 addresses and official
 replay hostnames; it rejects redirects, credentials, custom ports and private
 addresses. Tests inject bytes instead of resolving official hosts.
 
+## Trace capacity within the existing 4Gi worker
+
+Shared hard caps in `lib/matchReview/replayIngest/capacity.js`: download
+256,000,000 bytes; decompressed demo 512,000,000; cumulative JSONL trace output
+1,500,000,000; disk budget 3,000,000,000. Injected limits may only reduce these
+ceilings; no output env override is introduced. The extractor pin is unchanged:
+SHA-256 `e7de32e0c115618d0f17dc7074c55f1a66037eabec9ddef6f9db623d5ce4c18c`.
+
+Cloud Run writable storage is memory-backed and counts toward the unchanged
+4Gi (4,294,967,296 bytes). File reservation = download + demo + output +
+8,000,000 = 2,276,000,000 bytes. Process reserve = 1,000,000,000 bytes, allowing
+room for Node and tmpfs accounting beyond measured extractor RSS (~64MiB).
+File reservation + process reserve = 3,276,000,000 < 4,294,967,296. Even disk
+budget + process reserve = 4,000,000,000 < 4,294,967,296. Existing files count
+against disk admission. Reservation math does not guarantee against all runtime
+memory growth; Cloud Run memory remains 4Gi.
+
+Production match **9089115713** (3025s) downloaded 65,615,828 bytes and decoded
+zstd to 110,049,500 demo bytes, then failed in extracting with extractor_exit=1
+and `trace size limit exceeded`. Cumulative JSONL exceeded the old 512,000,000
+output cap; this was not a download, OOM, or timeout failure. Exact overshoot is
+unknown. Its dem was **not retained and was not re-extracted**: worker temp was
+deleted and there was no GCS raw copy.
+
+Already-held measurements with the same pin, without new CDN downloads:
+
+| Match | Duration | Output bytes | Peak RSS bytes | Peak directory bytes | Conservative RSS + directory bytes |
+| --- | --- | --- | --- | --- | --- |
+| 9080127650 | 1906s | 292,251,508 | 62,205,952 | 291,094,891 | 353,300,843 |
+| 8985182860 | 3125s (~52 min) | 509,896,393 | 64,159,744 | 508,908,218 | 573,067,962 |
+
+Both had trace_version 4 and clock present. 9080127650 took about 9.2s wall
+time and its dem is retained. The 52-minute 8985182860 dem is a volume stand-in,
+**not 9089115713**; it was only 2,103,607 bytes under the former cap. The new cap
+provides headroom above that measurement and the old limit, without claiming
+9089115713 extraction success.
+
+Full traces remain unsampled during extraction; existing compact-on-read keeps
+nearest death samples within 0.25s, preserving events, clock and evidence
+citations. AUTO remains conceptually 0. This change does not alter production
+flags, daily/hourly job budget caps, resources, or the extractor binary.
+
 ## Budgets and retention
 
 Defaults are injected into JobStore and enforced in persistent state: **100 new

@@ -95,6 +95,14 @@ uses instance memory), provision an explicit storage budget and retention policy
 allow sufficient HTTP/request timeout, verify official CDN egress from asia-east1,
 and decide fleet-wide concurrency/budgets and artifact persistence. This change
 does not enable ingest or change Cloud Run resources or secrets.
+Shared hard caps are download 256,000,000, demo 512,000,000, trace output
+1,500,000,000 and disk budget 3,000,000,000 bytes. Memory-backed file reservation
+2,276,000,000 + process reserve 1,000,000,000 = 3,276,000,000 < unchanged 4Gi
+(4,294,967,296 bytes); disk budget + process reserve also stays below 4Gi.
+See [capacity measurements](REPLAY_PRODUCTION.md#trace-capacity-within-the-existing-4gi-worker).
+9089115713 exceeded the old trace cap; its dem was not retained or re-extracted.
+The held 52-minute 8985182860 dem is only a volume stand-in. AUTO remains 0;
+full traces and existing 0.25s compact-on-read remain unchanged.
 A Steam login or Web API JSON is not a substitute for a dem.
 
 Production may bake a reviewed compact facts file into the runtime image under
