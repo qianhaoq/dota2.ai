@@ -144,6 +144,12 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   const deaths = result.deaths.filter(d => promotedDeathIds.has(d.fact_id));
   const focusKills = (focus.kills_log ?? []).filter(k => Number.isFinite(k?.t) && k.key);
   const bkbUses = (focus.item_use_log ?? []).filter(u => u.key === 'black_king_bar' && Number.isFinite(u.t));
+  // Only uses buildMoments linked (verified interval tied to an enemy cast or a
+  // recorded death) become candidates or actions; an unlinked use has no
+  // use.bkb fact and would render a window indistinguishable from a swing.
+  const linkedBkbUses = bkbUses
+    .map((u, i) => ({ ...u, idx: i + 1, bkbId: `use.bkb.${i + 1}` }))
+    .filter(x => facts[x.bkbId]);
   const purchases = (focus.purchase_log ?? []).filter(p => Number.isFinite(p?.time) && typeof p?.key === 'string' && p.time >= 0).sort((a, b) => a.time - b.time);
   const snapshotNearest = t => {
     let best = null;
@@ -167,7 +173,7 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     if (Math.abs(delta) >= NW_SWING_MIN_GOLD && m * 60 <= horizon)
       candidates.push({ t: m * 60, kind: 'swing', delta, score: 2 + Math.min(3, Math.abs(delta) / 2000) });
   }
-  if (bkbUses.length) candidates.push({ t: bkbUses[0].t, kind: 'bkb', use: bkbUses[0], score: 3 });
+  if (linkedBkbUses.length) candidates.push({ t: linkedBkbUses[0].t, kind: 'bkb', use: linkedBkbUses[0], score: 3 });
   // Merge near-duplicate swing candidates within MERGE_WITHIN_S, keeping the
   // higher-scored one — consecutive net-worth swings describe the same slide.
   // Distinct promoted deaths keep their own windows: each has its own actions.
@@ -360,7 +366,7 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     const windowDeaths = deaths.filter(d => d.t >= from && d.t <= to);
     const windowKills = focusKills.filter(k => k.t >= from && k.t <= to);
     const windowObjs = numberedObjectives.filter(o => Number.isFinite(o.t) && o.t >= from && o.t <= to);
-    const windowBkb = bkbUses.filter(u => u.t >= from && u.t <= to);
+    const windowBkb = linkedBkbUses.filter(u => u.t >= from && u.t <= to);
     const pushAction = (t, text) => actions.push({ t, text });
     for (const d of windowDeaths) {
       if (d.fact_id && facts[d.fact_id]) ids.push(d.fact_id);
@@ -398,9 +404,8 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
       for (const id of Object.keys(facts)) if (id.startsWith(`cast.death.${idx}.`) || id.startsWith(`kill.death.${idx}.`)) ids.push(id);
     }
     for (const u of windowBkb) {
-      const idx = bkbUses.indexOf(u) + 1;
-      for (const id of Object.keys(facts)) if (id.startsWith(`cast.bkb.${idx}.`)) ids.push(id);
-      const use = facts[`use.bkb.${idx}`];
+      for (const id of Object.keys(facts)) if (id.startsWith(`cast.bkb.${u.idx}.`)) ids.push(id);
+      const use = facts[u.bkbId];
       if (use) {
         ids.push(use.id);
         pushAction(u.t, zh ? `${clock(u.t)}–${clock(u.ended_at)} 黑皇杖使用（记录区间）` : `${clock(u.t)}–${clock(u.ended_at)} Black King Bar use (recorded interval)`);
@@ -501,6 +506,9 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     if (startAdv == null) missingBits.push(zh
       ? '该时刻没有可用的优势序列桶（序列缺失或被截断）。'
       : 'No advantage-series bucket covers this moment (series missing or truncated).');
+    else if (endAdv == null) missingBits.push(zh
+      ? '优势序列在窗口结束前被截断（60 秒桶，不是赚金），窗口代价无法计算。'
+      : 'The advantage series truncates before this window ends (60 s buckets, not earned gold); the window cost cannot be computed.');
     actions.sort((a, b) => a.t - b.t);
     // Comparable alternatives: only when then-available fields support them.
     const comparableBits = [];

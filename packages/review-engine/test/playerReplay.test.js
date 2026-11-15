@@ -13,6 +13,10 @@ describe('official replay player review',()=>{
   const r=review(lang);
   expect(r.state).toBe('parsed');
   expect(validateReview(r)).toEqual({ok:true,errors:[]});
+  // Night Stalker (hero 60) is Dire; Radiant destroyed the Dire fort at
+  // 31:46, so the scoreboard result is a loss.
+  expect(r.player.team).toBe('dire');
+  expect(r.player.result).toBe('loss');
   // Mainline shape: overview first, then 3–5 decision windows; the BKB interval
   // stays reachable as raw evidence behind one of them.
   expect(r.insights[0].kind).toBe('review_overview');

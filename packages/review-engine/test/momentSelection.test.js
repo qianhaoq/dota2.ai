@@ -84,6 +84,10 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
  }
  if(match===9080127650){
   const pre=r.purchases.find(p=>p.t < -79 && p.t > -80);expect(pre).toBeTruthy();expect(clock(pre.t)).toBe('-1:19');
+  // Night Stalker is Dire; the Ancient that fell at 31:46 was the Dire fort,
+  // destroyed by team 2 (Radiant) — the recorded loss.
+  expect(r.player.team).toBe('dire');
+  expect(r.insights[0].claim.text).toContain(lang==='zh'?'31:46 夜魇基地被天辉摧毁':'31:46: Dire lost the Ancient (destroyed by Radiant)');
   expect(r.deaths.some(d=>d.inflictor==='pudge_meat_hook')).toBe(true);
   expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor==='pudge_meat_hook'||r.facts[id].value?.key==='pudge_meat_hook'))).toBe(false);
   // Linked kill evidence (dismember, bone guard, reaper's scythe) stays reachable.
@@ -111,6 +115,14 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
   // The advantage series is labeled net worth, never earned gold.
   expect(overview).toContain(lang==='zh'?'净资产优势':'net-worth advantage');
   expect(overview).not.toMatch(lang==='zh'?/赚金优势(?!（60 秒桶)/:/earned-gold advantage/);
+  // An unlinked BKB use never becomes a near-duplicate window: every BKB-titled
+  // window cites its use fact, and the truncating series is named as such.
+  for(const w of windows){
+   if(!/黑皇杖|Black King Bar/.test(w.title))continue;
+   expect(w.fact_ids.some(id=>id.startsWith('use.bkb.'))).toBe(true);
+   expect(w.claim.text).toContain(lang==='zh'?'黑皇杖使用':'Black King Bar use');
+  }
+  expect(windows.some(w=>(w.sections??[]).some(s=>s.label_key==='missing'&&/截断|truncates/.test(s.text)))).toBe(true);
  }
  if(match===9088239359){
   for(const inf of ['lion_finger_of_death','juggernaut_blade_fury'])expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor===inf))).toBe(true);
@@ -135,6 +147,32 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
  expect(r.practice).toMatchObject({status:'insufficient',items:[]});
  expect(r.practice.note).toBeTruthy();
  expect(r.data_gaps).toContainEqual({topic:'hero_states',reason:'hero_states_not_in_artifact'});
+});
+it('produces a proven practice goal only when hero-state samples ground a repeated pattern',()=>{
+ const a=JSON.parse(readFileSync('data/replay-facts/9080127650.json'));
+ // Synthesized 30 s samples: low mana near the start of the promoted death
+ // windows (8:15, 14:55, 25:44 → window starts 7:15, 13:55, 24:44).
+ const samples=[];
+ for(let t=420;t<=1560;t+=30) samples.push({t,hero:'night_stalker',team:3,x:100,y:100,hp:500,max_hp:1000,mana:120,max_mana:600,level:12,life_state:1,player_index:4});
+ const raw={match_id:a.match_id,players:a.players};
+ const merged={...applyReplayArtifact(raw,a),hero_states:{samples,sampling:'synthesized 30 s samples for the practice test',visibility:'null_in_trace',truncated:false,anchors:[]}};
+ for(const lang of ['zh','en']){
+  const r=buildReview(merged,{heroId:60,lang,fetchedAt:a.fetched_at});
+  expect(validateReview(r)).toEqual({ok:true,errors:[]});
+  expect(r.data_gaps.some(g=>g.reason==='hero_states_not_in_artifact')).toBe(false);
+  // The windows now carry the state samples the legacy artifacts lacked.
+  const windows=r.insights.filter(i=>i.kind==='review_window');
+  const stateWins=windows.filter(w=>w.fact_ids.some(id=>id.startsWith(`state.win.`)));
+  expect(stateWins.length).toBeGreaterThanOrEqual(2);
+  expect(r.practice.status).toBe('proven');
+  expect(r.practice.items.length).toBeGreaterThanOrEqual(1);
+  const goal=r.practice.items[0].goal, condition=r.practice.items[0].condition;
+  expect(goal).toContain(lang==='zh'?'50%':'50%');
+  expect(condition).toContain(lang==='zh'?'时序相关，非因果':'temporal, not causal');
+  for(const id of r.practice.items[0].fact_ids)expect(r.facts[id]).toBeTruthy();
+  expect(r.practice.items[0].fact_ids.some(id=>id.startsWith('state.win.'))).toBe(true);
+  expect(r.practice.items[0].fact_ids.some(id=>/^death\.\d+$/.test(id))).toBe(true);
+ }
 });
 it('resolves official names from the same real ids, with neutral unknown fallbacks',()=>{
  expect(evidenceName('invoker_cold_snap','zh')).toBe('急速冷却');expect(evidenceName('invoker_cold_snap','en')).toBe('Cold Snap');
