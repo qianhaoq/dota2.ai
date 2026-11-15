@@ -1,8 +1,9 @@
 import {it,expect,vi,afterEach} from 'vitest';
 import http from 'node:http';
+import {createHash} from 'node:crypto';
 import {classifyReplayAddress,selectPublicReplayAddress,createPublicReplayLookup,fetchReplay} from '../../lib/matchReview/replayIngest/download.js';
 import {createReplayIngest} from '../../lib/matchReview/replayIngest/index.js';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const v4={address:'34.126.231.241',family:4},v6={address:'2600:1900:4110:a29::',family:6};
@@ -162,4 +163,70 @@ it('advances the elapsed cursor when resource_limited usage has already committe
  await account(async()=>{charged=await commitElapsedCharge(charge,started,charged,nowAt(20_000));});
  expect(persisted).toBe(20);
  expect(charged).toBe(20);
+});
+
+it('persists extractor diagnostics after the temporary worker home is deleted',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'extractor-job-test-'));
+ vi.spyOn(console,'error').mockImplementation(()=>{});
+ const demo=Buffer.alloc(32,1);
+ try{
+  const extract=vi.fn(async(_bin:string,args:string[])=>{
+   if(args.includes('--decompress-only')){
+    await writeFile(join(args[1],'replay.dem'),demo);
+    return {ok:true,format:'zstd',bytes:demo.length,sha256:createHash('sha256').update(demo).digest('hex')};
+   }
+   throw Object.assign(new Error('extractor_failed'),{diagnostics:{extractor_exit:2,extractor_signal:null,extractor_ok:false,extractor_error:'demo_truncated',extractor_stderr:'Authorization: Bearer supersecret\npersonaname: Alice Secret',extractor_stderr_truncated:false,raw:{players:[]}}});
+  });
+  const ingest=createReplayIngest({env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl:async()=>new Response(demo),extract});
+  if(!('drain' in ingest))throw Error('async required');
+  const submitted=await ingest.submit({match_id:42,cluster:184,replay_salt:1},'ip');await ingest.drain();
+  const job=await ingest.jobStore.get(submitted.jobId);
+  expect(job).toMatchObject({status:'failed',phase:'extracting',compression_format:'zstd',demo_bytes:32,extractor_exit:2,extractor_signal:null,extractor_ok:false,last_error:'extractor_failed'});
+  expect(job.phase_ms).toMatchObject({extract:expect.any(Number),extracting:expect.any(Number)});
+  expect(Object.values(job.phase_ms).every(v=>typeof v==='number'&&Number.isFinite(v))).toBe(true);
+  expect(job).not.toHaveProperty('players');
+  expect(job).not.toHaveProperty('replay_url');
+  expect(job).not.toHaveProperty('replay_salt');
+  expect(JSON.stringify(job)).not.toMatch(/supersecret|Alice Secret/);
+  expect(job.extractor_stderr).toMatch(/Authorization: <redacted>/);
+  expect(job.extractor_stderr).toMatch(/personaname: <redacted>/);
+ }finally{await rm(home,{recursive:true,force:true});}
+});
+
+it('keeps phase extract when decompress-only fails before demo verification',async()=>{
+ const home=await mkdtemp(join(tmpdir(),'extractor-decompress-fail-'));
+ vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  const extract=vi.fn(async(_bin:string,args:string[])=>{
+   if(args.includes('--decompress-only')){
+    throw Object.assign(new Error('extractor_failed'),{diagnostics:{extractor_exit:1,extractor_signal:null,extractor_ok:false,extractor_error:'unexpected EOF'}});
+   }
+   throw new Error('parse should not run');
+  });
+  const ingest=createReplayIngest({env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl:async()=>new Response(Buffer.alloc(32,1)),extract});
+  if(!('drain' in ingest))throw Error('async required');
+  const submitted=await ingest.submit({match_id:44,cluster:184,replay_salt:1},'ip');await ingest.drain();
+  const job=await ingest.jobStore.get(submitted.jobId);
+  expect(job).toMatchObject({status:'failed',phase:'extract',extractor_exit:1,extractor_ok:false,last_error:'extractor_failed'});
+  expect(job.compression_format).toBeUndefined();
+  expect(job.demo_bytes).toBeUndefined();
+  expect(extract).toHaveBeenCalledTimes(1);
+ }finally{await rm(home,{recursive:true,force:true});}
+});
+
+it('does not persist raw diagnostic objects on a direct legacy failure',async()=>{
+ const {createReplayIngest}=await import('../../lib/matchReview/replayIngest/legacy.js');
+ const home=await mkdtemp(join(tmpdir(),'legacy-diag-'));
+ try{
+  const ingest=createReplayIngest({
+    env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},
+    fetchImpl:async()=>new Response(Buffer.alloc(32,1)),
+    extract:async()=>{throw Object.assign(new Error('extractor_failed'),{diagnostics:{raw:{personaname:'Alice Secret'},extractor_stderr:'Authorization: Bearer supersecret',extractor_exit:1}});},
+  });
+  await ingest.submit({match_id:42,cluster:184,replay_salt:1},'ip');
+  const artifact=await ingest.read(42);
+  expect(artifact).not.toHaveProperty('raw');
+  expect(JSON.stringify(artifact)).not.toMatch(/Alice Secret|supersecret/);
+  expect(artifact.extractor_exit).toBe(1);
+ }finally{await rm(home,{recursive:true,force:true});}
 });
