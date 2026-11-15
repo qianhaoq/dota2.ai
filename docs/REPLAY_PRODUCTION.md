@@ -112,12 +112,17 @@ The file reservation plus process reserve remains 3,276,000,000 bytes < 4Gi.
 
 Held trace details (no new official CDN downloads):
 
-| Match | States bytes | Events bytes | Retained tactical events |
-| --- | --- | --- | --- |
-| 9080127650 | 236,676,282 | 45,020,997 | 67,380 |
-| 8985182860 (52-minute stand-in) | 429,657,471 | 65,798,134 | 98,498 |
+| Match | States bytes | Events bytes | Events.jsonl rows | Retained tactical events |
+| --- | --- | --- | --- | --- |
+| 9080127650 | 236,676,282 | 45,020,997 | 67,380 | 9,155 |
+| 8985182860 (52-minute stand-in) | 429,657,471 | 65,798,134 | 98,498 | 19,645 |
 
-The former 100,000-event cap had only 1,502 events of headroom for the stand-in.
+The extractor reports events.jsonl row counts as `tactical.events`. Compact-on-read
+keeps only deaths, abilities, items, modifier removals, purchases, and building
+kills, so the stand-in's retained count is 19,645, not 98,498. The former
+100,000 retained-event cap therefore had 80,355 unused slots on that held
+trace, not 1,502. The cap is still raised so a denser official 50-minute match
+is not tight against 100,000 after a successful 1.5GB extract.
 The new caps also cover the Codex-reported 600,998,197-byte states rejection
 under the former 600,000,000-byte reader cap. This closes reader limits that
 could reject traces after successful extraction; it is not a new end-to-end

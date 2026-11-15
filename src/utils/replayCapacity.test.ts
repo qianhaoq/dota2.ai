@@ -28,5 +28,5 @@ it('gives compact-on-read headroom above held traces and the reported rejection'
   expect(c.REPLAY_MAX_STATES_BYTES).toBeGreaterThan(600_998_197);
   expect(c.REPLAY_MAX_STATES_BYTES).toBeGreaterThan(429_657_471);
   expect(c.REPLAY_MAX_EVENT_BYTES).toBeGreaterThan(3.8 * 65_798_134);
-  expect(c.REPLAY_MAX_RETAINED_EVENTS).toBeGreaterThan(2.5 * 98_498);
+  expect(c.REPLAY_MAX_RETAINED_EVENTS).toBeGreaterThan(10 * 19_645);
 });
