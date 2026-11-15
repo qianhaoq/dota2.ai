@@ -12,7 +12,7 @@ vi.mock('../../lib/matchReview/replayIngest/legacy.js',()=>({createReplayIngest:
 })}));
 import {createWorker} from '../../lib/matchReview/replayIngest/worker.js';
 afterEach(()=>vi.restoreAllMocks());
-it('rejects an overlapping committed byte limit before artifact put with zero elapsed delta',async()=>{
+it.each([false,true])('rejects overlapping committed byte limit before put with zero elapsed (dropped response: %s)',async dropped=>{
  const home=await mkdtemp(join(tmpdir(),'worker-limit-'));
  try{
   const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now);
@@ -25,6 +25,14 @@ it('rejects an overlapping committed byte limit before artifact put with zero el
   let started!:()=>void,release!:()=>void;
   control.started=new Promise<void>(resolve=>{started=resolve;});
   const held=new Promise<void>(resolve=>{release=resolve;});
+  if(dropped){
+   const transaction=store.state.transaction.bind(store.state);let droppedOnce=false;
+   vi.spyOn(store.state,'transaction').mockImplementation(async(fn:any)=>{
+    const result=await transaction(fn);
+    if(!droppedOnce&&(await store.state.read()).jobs[job.jobId].appliedCharges?.length){droppedOnce=true;throw new Error('gcs_request_failed');}
+    return result;
+   });
+  }
   const original=store.charge.bind(store);
   const charge=vi.spyOn(store,'charge').mockImplementation(async(id:string,token:number,usage:any)=>{started();await held;return original(id,token,usage);});
   const put=vi.fn(),publish=vi.spyOn(store,'publish');
@@ -35,7 +43,8 @@ it('rejects an overlapping committed byte limit before artifact put with zero el
   expect(await run).toBe(false);
   expect(put).not.toHaveBeenCalled();expect(publish).not.toHaveBeenCalled();
   expect(await store.get(job.jobId)).toMatchObject({status:'resource_limited'});
-  expect(charge).toHaveBeenCalledTimes(1);
+  expect(charge).toHaveBeenCalledTimes(dropped?2:1);
+  if(dropped)expect(charge.mock.calls[1]).toEqual(charge.mock.calls[0]);
   const state=await store.state.read();
   expect(Object.values(state.budget)[0]).toMatchObject({bytes:1_048_576,workerSeconds:0});
   expect(state.jobs[job.jobId].appliedCharges).toHaveLength(1);

@@ -1,7 +1,7 @@
 import {it,expect,vi,afterEach} from 'vitest';
 import {createGcsBucket} from '../../lib/matchReview/replayIngest/gcs.js';
 import {GcsJobStore} from '../../lib/matchReview/replayIngest/jobStore.js';
-import {createByteCharger} from '../../lib/matchReview/replayIngest/worker.js';
+import {createByteCharger,createElapsedCharger} from '../../lib/matchReview/replayIngest/worker.js';
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();});
 function fake({failures=[] as number[],cas=false,retryAfter='2'}={}){
  let state:any={},generation=0,active=0,maxActive=0,uncertain=false,rejected=false;const saves:number[]=[];
@@ -101,7 +101,7 @@ it.each([false,true])('retries an in-flight scheduled failed save at final flush
  expect(charge).toHaveBeenCalledTimes(2);expect(f.saves).toHaveLength(saves);
 });
 
-it('rejects final flush overlapping a scheduled committed resource limit exactly once',async()=>{
+it.each([false,true])('rejects overlapping final flush with zero elapsed after committed limit (dropped response: %s)',async dropped=>{
  vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket,{budgets:{bytes:1000}});
  await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
  const charge=vi.fn(async(bytes:number,chargeId:string)=>{
@@ -109,13 +109,17 @@ it('rejects final flush overlapping a scheduled committed resource limit exactly
   return store.charge('42',job.token,{bytes,chargeId});
  });
  const charger=createByteCharger(charge,{minWriteIntervalMs:1000});
+ if(dropped){vi.spyOn(console,'error').mockImplementation(()=>{});f.failNext(true);}
+ const elapsedCharge=vi.fn();const started=Date.now();const chargeElapsed=createElapsedCharger(elapsedCharge,started,()=>started);
  await charger.add(1_048_576);await vi.advanceTimersByTimeAsync(0);
  expect(charge).toHaveBeenCalledTimes(1);
  const final=expect(charger.flush()).rejects.toThrow('resource_limited');
  await vi.runAllTimersAsync();await final;
  const saves=f.saves.length;
- await charger.flush();await charger.flush();
- expect(charge).toHaveBeenCalledTimes(1);expect(f.saves).toHaveLength(saves);
+ if(!dropped){await charger.flush();await charger.flush();}
+ await chargeElapsed();expect(elapsedCharge).not.toHaveBeenCalled();
+ expect(charge).toHaveBeenCalledTimes(dropped?2:1);expect(f.saves).toHaveLength(saves);
+ if(dropped)expect(charge.mock.calls[1]).toEqual(charge.mock.calls[0]);
  expect(f.state.budget[job.attemptDay].bytes).toBe(1_048_576);
  expect(f.state.jobs['42'].appliedCharges).toHaveLength(1);
 });
@@ -221,11 +225,13 @@ it('spaces independent handles from object metadata and reapplies after a compet
  expect(state.budget[job.attemptDay].bytes).toBe(300);expect(maxActive).toEqual([1,1]);
 });
 
-it('duplicates succeed after a committed resource limit and retains only 32 tickets',async()=>{
+it('duplicates reject a committed resource limit without rebilling and retain only 32 tickets',async()=>{
  vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket,{budgets:{bytes:100}});
  await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
  const limited=expect(store.charge('42',job.token,{bytes:101,chargeId:'limited'})).rejects.toThrow('resource_limited');await vi.runAllTimersAsync();await limited;
- await clocked(()=>store.charge('42',job.token,{bytes:101,chargeId:'limited'}));
+ const duplicate=expect(store.charge('42',job.token,{bytes:101,workerSeconds:5,chargeId:'limited'})).rejects.toThrow('resource_limited');await vi.runAllTimersAsync();await duplicate;
+ expect(f.state.budget[job.attemptDay].workerSeconds).toBe(0);
+ const stale=expect(store.charge('42',job.token+1,{chargeId:'limited'})).rejects.toThrow('stale_lease');await vi.runAllTimersAsync();await stale;
  expect(f.state.budget[job.attemptDay].bytes).toBe(101);
  // Zero usage still records tickets, even when the budget is already exceeded.
  for(let i=0;i<33;i++){
