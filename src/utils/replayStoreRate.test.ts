@@ -61,14 +61,34 @@ it('backpressures above 16MiB and bills the full pending batch at the floor',asy
  expect(f.maxActive).toBe(1);expect(f.saves.every((t,i)=>!i||t-f.saves[i-1]>=1000)).toBe(true);
 });
 
+it.each([false,true])('retries a scheduled failed save exactly once (committed before error: %s)',async committed=>{
+ vi.useFakeTimers();vi.spyOn(console,'error').mockImplementation(()=>{});
+ const f=fake();const store=new GcsJobStore(f.bucket);
+ await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
+ const charge=vi.fn((bytes:number,chargeId:string)=>store.charge('42',job.token,{bytes,chargeId}));
+ const charger=createByteCharger(charge,{threshold:1000,minWriteIntervalMs:1000});
+ f.failNext(committed);await charger.add(1000);await vi.runAllTimersAsync();
+ expect(charge).toHaveBeenCalledTimes(1);
+ await expect(charger.add(1)).rejects.toThrow('gcs_request_failed');
+ await clocked(()=>charger.flush());
+ expect(charge).toHaveBeenCalledTimes(2);
+ expect(charge.mock.calls[1]).toEqual(charge.mock.calls[0]);
+ expect(f.state.budget[job.attemptDay].bytes).toBe(1000);
+ expect(f.state.jobs['42'].appliedCharges).toHaveLength(1);
+ const saves=f.saves.length;await charger.flush();
+ expect(charge).toHaveBeenCalledTimes(2);expect(f.saves).toHaveLength(saves);
+});
+
 it('surfaces a scheduled committed resource limit at final flush without rebilling',async()=>{
  vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket,{budgets:{bytes:1_048_576}});
  await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
  const charger=createByteCharger((bytes:number,chargeId:string)=>store.charge('42',job.token,{bytes,chargeId}),{minWriteIntervalMs:1000});
  await clocked(()=>charger.add(1_048_576));await charger.add(1_048_576);
  await vi.runAllTimersAsync();
+ const saves=f.saves.length;
  await expect(charger.flush()).rejects.toThrow('resource_limited');
  await charger.flush();expect(f.state.budget[job.attemptDay].bytes).toBe(2*1_048_576);
+ expect(f.saves).toHaveLength(saves);
 });
 
 it('coalesces heartbeat, seconds, bytes and phase; CAS retries commit once',async()=>{
