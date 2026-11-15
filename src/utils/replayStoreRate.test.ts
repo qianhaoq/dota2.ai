@@ -79,6 +79,28 @@ it.each([false,true])('retries a scheduled failed save exactly once (committed b
  expect(charge).toHaveBeenCalledTimes(2);expect(f.saves).toHaveLength(saves);
 });
 
+it.each([false,true])('retries an in-flight scheduled failed save at final flush (committed before error: %s)',async committed=>{
+ vi.useFakeTimers();vi.spyOn(console,'error').mockImplementation(()=>{});
+ const f=fake();const store=new GcsJobStore(f.bucket);
+ await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
+ const charge=vi.fn(async(bytes:number,chargeId:string)=>{
+  await new Promise(resolve=>setTimeout(resolve,50));
+  return store.charge('42',job.token,{bytes,chargeId});
+ });
+ const charger=createByteCharger(charge,{threshold:1000,minWriteIntervalMs:1000});
+ f.failNext(committed);await charger.add(1000);
+ await vi.advanceTimersByTimeAsync(0);expect(charge).toHaveBeenCalledTimes(1);
+ // The scheduled charge is still waiting when the download's final flush joins it.
+ const final=expect(charger.flush()).resolves.toBeUndefined();
+ await vi.runAllTimersAsync();await final;
+ expect(charge).toHaveBeenCalledTimes(2);
+ expect(charge.mock.calls[1]).toEqual(charge.mock.calls[0]);
+ expect(f.state.budget[job.attemptDay].bytes).toBe(1000);
+ expect(f.state.jobs['42'].appliedCharges).toHaveLength(1);
+ const saves=f.saves.length;await charger.flush();
+ expect(charge).toHaveBeenCalledTimes(2);expect(f.saves).toHaveLength(saves);
+});
+
 it('surfaces a scheduled committed resource limit at final flush without rebilling',async()=>{
  vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket,{budgets:{bytes:1_048_576}});
  await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
