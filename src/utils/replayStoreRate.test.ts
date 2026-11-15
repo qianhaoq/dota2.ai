@@ -4,23 +4,24 @@ import {GcsJobStore} from '../../lib/matchReview/replayIngest/jobStore.js';
 import {createByteCharger} from '../../lib/matchReview/replayIngest/worker.js';
 afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();});
 function fake({failures=[] as number[],cas=false,retryAfter='2'}={}){
- let state:any={},generation=0,active=0,maxActive=0;const saves:number[]=[];
+ let state:any={},generation=0,active=0,maxActive=0,uncertain=false,rejected=false;const saves:number[]=[];
  const fetchImpl=vi.fn(async(input:RequestInfo | URL,options?:RequestInit)=>{const url=String(input);
   if(options?.method==='POST'){
    active++;maxActive=Math.max(maxActive,active);
    try{
     saves.push(Date.now());await Promise.resolve();
+    if(rejected){rejected=false;throw new Error('dropped request');}
     const status=failures.shift();if(status)return new Response('',{status,headers:{'Retry-After':retryAfter}});
     if(cas){cas=false;return new Response('',{status:412});}
     if(saves.length>1&&saves.at(-1)!-saves.at(-2)!<1000)return new Response('',{status:429});
-    state=JSON.parse(String(options.body));generation++;return new Response('{}');
+    state=JSON.parse(String(options.body));generation++;if(uncertain){uncertain=false;throw new Error('dropped response');}return new Response('{}');
    }finally{active--;}
   }
   if(!generation)return new Response('',{status:404});
   return new Response(JSON.stringify(url.includes('alt=media')?state:{generation}));
  });
  const bucket=createGcsBucket('test-bucket',{fetchImpl,tokenProvider:async()=>'secret'});
- return {bucket,saves,failures,conflict(){cas=true;},get state(){return state;},get maxActive(){return maxActive;}};
+ return {bucket,saves,failures,failNext(committed:boolean){if(committed)uncertain=true;else rejected=true;},conflict(){cas=true;},get state(){return state;},get maxActive(){return maxActive;}};
 }
 async function clocked<T>(work:()=>Promise<T>){const p=work();await vi.runAllTimersAsync();return p;}
 it.each([16384,65536])('backpressures 28MB synthetic chunks of %i at the object write floor',async chunk=>{
@@ -77,4 +78,59 @@ it('logs retries and terminal failures without logging expected snapshots or CAS
  await vi.runAllTimersAsync();await failed;
  expect(log.mock.calls).toEqual([429,503,403].map((status,i)=>['replay_store_request',{key:'jobs/state.json',method:'save',status,attempt:i+1,retryAfter:'2'}]));
  expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret-token|https?:/);
+});
+
+it.each([true,false])('retries sticky usage tickets exactly once (committed before error: %s)',async committed=>{
+ vi.useFakeTimers();vi.spyOn(console,'error').mockImplementation(()=>{});
+ const f=fake();const store=new GcsJobStore(f.bucket);
+ await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
+ f.failNext(committed);
+ const charger=createByteCharger((bytes:number,chargeId:string)=>store.charge('42',job.token,{bytes,chargeId}));
+ await charger.add(1000);
+ const failed=expect(charger.flush()).rejects.toThrow('gcs_request_failed');await vi.runAllTimersAsync();await failed;
+ await clocked(()=>charger.flush());
+ expect(f.state.budget[job.attemptDay].bytes).toBe(1000);
+ const {createElapsedCharger}=await import('../../lib/matchReview/replayIngest/worker.js');
+ const started=Date.now();const chargeElapsed=createElapsedCharger((usage:any)=>store.charge('42',job.token,usage),started);
+ vi.setSystemTime(started+20_000);f.failNext(committed);
+ const elapsedFailed=expect(chargeElapsed()).rejects.toThrow('gcs_request_failed');await vi.runAllTimersAsync();await elapsedFailed;
+ await clocked(()=>chargeElapsed());
+ expect(f.state.budget[job.attemptDay].workerSeconds).toBe(20);
+ expect(f.state.jobs['42'].appliedCharges).toHaveLength(2);
+ vi.setSystemTime(started+30_000);await clocked(()=>chargeElapsed());
+ expect(f.state.budget[job.attemptDay].workerSeconds).toBe(30);
+});
+
+it('spaces independent handles from object metadata and reapplies after a competing save',async()=>{
+ vi.useFakeTimers();let state:any={},generation=0,updated=0;const saves:number[]=[];const active=[0,0],maxActive=[0,0];
+ const handle=(index:number)=>createGcsBucket('shared-bucket',{tokenProvider:async()=>'secret',fetchImpl:async(input:any,options?:RequestInit)=>{
+  const url=new URL(String(input));
+  if(options?.method==='POST'){
+   active[index]++;maxActive[index]=Math.max(maxActive[index],active[index]);
+   try{await Promise.resolve();if(Number(url.searchParams.get('ifGenerationMatch'))!==generation)return new Response('',{status:412});
+    state=JSON.parse(String(options.body));generation++;updated=Date.now();saves.push(updated);return new Response('{}');
+   }finally{active[index]--;}
+  }
+  if(!generation)return new Response('',{status:404});
+  return new Response(JSON.stringify(url.searchParams.has('alt')?state:{generation,updated:new Date(updated).toISOString()}));
+ }});
+ const a=new GcsJobStore(handle(0));await clocked(()=>a.create({match_id:42},'ip'));const job=await clocked(()=>a.lease('42',1));
+ await clocked(()=>a.charge('42',job.token,{bytes:100,chargeId:'a'}));const at=saves.at(-1)!;
+ vi.setSystemTime(at+500);const b=new GcsJobStore(handle(1));
+ await clocked(()=>Promise.all([b.charge('42',job.token,{bytes:200,chargeId:'b'}),a.heartbeat('42',job.token)]));
+ expect(saves.every((time,i)=>!i||time-saves[i-1]>=1000)).toBe(true);
+ expect(state.budget[job.attemptDay].bytes).toBe(300);expect(maxActive).toEqual([1,1]);
+});
+
+it('duplicates succeed after a committed resource limit and retains only 32 tickets',async()=>{
+ vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket,{budgets:{bytes:100}});
+ await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
+ const limited=expect(store.charge('42',job.token,{bytes:101,chargeId:'limited'})).rejects.toThrow('resource_limited');await vi.runAllTimersAsync();await limited;
+ await clocked(()=>store.charge('42',job.token,{bytes:101,chargeId:'limited'}));
+ expect(f.state.budget[job.attemptDay].bytes).toBe(101);
+ // Zero usage still records tickets, even when the budget is already exceeded.
+ for(let i=0;i<33;i++){
+  const result=expect(store.charge('42',job.token,{chargeId:`next-${i}`})).rejects.toThrow('resource_limited');await vi.runAllTimersAsync();await result;
+ }
+ expect(f.state.jobs['42'].appliedCharges).toEqual(Array.from({length:32},(_,i)=>`next-${i+1}`));
 });

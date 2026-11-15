@@ -7,7 +7,10 @@ lease check cannot change another mutation. CAS conflicts replay the callbacks
 against a fresh snapshot and only resolve callers after a successful commit.
 
 Production defaults enforce at least 1000ms between saves (including failed
-attempts). Byte thresholds trigger an awaited flush, providing download
+attempts) within each writer. Before saving, the writer also waits until at
+least 1000ms after the snapshot object’s GCS `updated` timestamp. A CAS
+conflict reloads metadata and repeats that wait. First creation has no object
+timestamp floor. Byte thresholds trigger an awaited flush, providing download
 backpressure; changing CDN chunk sizes does not change this write floor.
 `GcsJobStore` options can set `minWriteIntervalMs: 0` for instantaneous tests.
 FileState continues to use local flock with no write-rate floor.
@@ -23,8 +26,16 @@ Synthetic injected-JSON-API tests cover two chunk sizes totaling 28,442,608 byte
 write spacing, coalesced budget/heartbeat/phase mutations, CAS, retry delay,
 exhaustion, and committed resource limits. Worker tests verify store failure
 classification and bounded consumption of an otherwise unbounded synthetic body.
-No official CDN request is needed. Cross-process races still use GCS generation
-preconditions; this process cannot schedule another instance's writes.
+No official CDN request is needed. Cross-process spacing relies on object
+metadata plus generation preconditions, together with the in-process mutex;
+there is no distributed lock.
 
-Validation for this change (2026-11-15): `npm test` passed 112 files / 1641 tests;
-`npx tsc --noEmit`, `node --check server.js`, and `npm run build` passed.
+Byte batches and elapsed-time intervals retain stable charge tickets across
+uncertain saves. Each job remembers its latest 32 applied tickets, so a retry
+of a committed mutation succeeds without adding usage or raising another
+resource limit. Clearly rejected writes can still apply on a later retry.
+
+Validation (2026-11-15): `npm test` passed 112 files / 1651 tests, including
+commit-then-throw and rejected-save byte/seconds retries, bounded ticket history,
+and independent-handle metadata/CAS spacing. `npx tsc --noEmit`,
+`node --check server.js`, and `npm run build` passed.
