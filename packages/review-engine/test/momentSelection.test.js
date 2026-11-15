@@ -99,6 +99,7 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
   // Scoreboard K/D 9/1 survives into the overview; the single verified death
   // is Earthshaker's, without an invented inflictor.
   expect(r.insights[0].claim.text).toContain(lang==='zh'?'记分板 K/D 9/1，助攻 12':'scoreboard K/D 9/1, 12 assists');
+  expect(r.insights[0].claim.text).toContain(lang==='zh'?'击杀记录 6 次':'6 recorded kills');
   const deathWin=windows.find(w=>w.fact_ids.includes('death.1'));
   expect(deathWin).toBeTruthy();
   expect(deathWin.claim.text).toContain(lang==='zh'?'撼地者':'Earthshaker');

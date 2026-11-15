@@ -142,7 +142,8 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   const deathFactIds = new Set(result.deaths.map(d => d.fact_id));
   const promotedDeathIds = new Set((momentCards ?? []).flatMap(c => c.fact_ids).filter(id => deathFactIds.has(id)));
   const deaths = result.deaths.filter(d => promotedDeathIds.has(d.fact_id));
-  const focusKills = (focus.kills_log ?? []).filter(k => Number.isFinite(k?.t) && k.key);
+  const eventTime = e => Number.isFinite(e?.t) ? e.t : e?.time;
+  const focusKills = (focus.kills_log ?? []).map(k => ({ ...k, t: eventTime(k) })).filter(k => Number.isFinite(k.t) && k.key);
   const bkbUses = (focus.item_use_log ?? []).filter(u => u.key === 'black_king_bar' && Number.isFinite(u.t));
   // Only uses buildMoments linked (verified interval tied to an enemy cast or a
   // recorded death) become candidates or actions; an unlinked use has no
