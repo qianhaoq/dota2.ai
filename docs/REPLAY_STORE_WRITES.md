@@ -16,7 +16,10 @@ schedules a flush and lets the stream continue. The next charge includes all
 bytes received during that interval: a 1.6MiB/s stream writes about 1.6MiB each
 second, rather than stalling at 1MiB/s. Only uncharged usage above 16MiB
 (including an in-flight ticket) backpressures the stream, bounding lost charges
-on crash. Final flushes await all pending charges; saves remain serialized.
+on crash. After the download stream completes, the worker flushes outstanding
+byte charges before verification and extraction, so a scheduled over-budget or
+store failure cannot continue into decompress or extract. Final flushes still
+await any remaining charges before publish; saves remain serialized.
 The charger defaults to a zero write interval for local stores and direct callers.
 The download phase allows 300000ms for the 256e6-byte cap at a healthy official
 rate plus margin; other phase and worker deadlines are unchanged.
@@ -44,9 +47,11 @@ does not add usage again. If the already-committed budget is over the cap, the
 retry still throws `resource_limited`. In-cap retries succeed. Clearly rejected
 writes can still apply on a later retry.
 
-Validation (2026-11-15): `npm test` passed 113 files / 1663 tests, including
+Validation (2026-11-15): `npm test` passed 114 files / 1664 tests, including
 commit-then-throw and rejected-save byte/seconds retries, bounded ticket history,
 independent-handle metadata/CAS spacing, nonblocking chunk pumps, the 16MiB
-high watermark, overlapping final-flush retries, and scheduled resource-limit propagation (including overlapping final flushes and
-a zero-elapsed worker that must not publish an over-budget artifact). `npx tsc --noEmit`,
+high watermark, overlapping final-flush retries, scheduled resource-limit
+propagation (including overlapping final flushes and a zero-elapsed worker that
+must not publish an over-budget artifact), and a scheduled over-budget download
+charge that must not start extraction. `npx tsc --noEmit`,
 `node --check server.js`, and `npm run build` passed.
