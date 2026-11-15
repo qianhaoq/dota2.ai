@@ -20,7 +20,7 @@ on crash. After the download stream completes, the worker flushes outstanding
 byte charges before verification and extraction, so a scheduled over-budget or
 store failure cannot continue into decompress or extract. If a cleanup flush
 then discovers that a retried ticket is already over cap, the job is recorded
-as `resource_limited` rather than keeping an earlier store or stream error.
+as `resource_limited` rather than keeping an earlier store or stream error, including a store failure still attached to the worker abort signal. Download diagnostics stay on the job.
 The download stage aborts before entering verification if the tail flush outlives
 the phase deadline. Final flushes still await any remaining charges before
 publish; saves remain serialized.
@@ -51,12 +51,12 @@ does not add usage again. If the already-committed budget is over the cap, the
 retry still throws `resource_limited`. In-cap retries succeed. Clearly rejected
 writes can still apply on a later retry.
 
-Validation (2026-11-15): `npm test` passed 114 files / 1666 tests, including
+Validation (2026-11-15): `npm test` passed 114 files / 1667 tests, including
 commit-then-throw and rejected-save byte/seconds retries, bounded ticket history,
 independent-handle metadata/CAS spacing, nonblocking chunk pumps, the 16MiB
 high watermark, overlapping final-flush retries, scheduled resource-limit
 propagation (including overlapping final flushes and a zero-elapsed worker that
 must not publish an over-budget artifact), a scheduled over-budget download charge that must not start extraction,
-a dropped over-budget charge retried in the cleanup flush, and a tail flush
+a dropped over-budget charge retried in the cleanup flush, a leftover store abort on the worker signal that must not hide that limit, and a tail flush
 that must not enter verification after the download stage aborts. `npx tsc --noEmit`,
 `node --check server.js`, and `npm run build` passed.
