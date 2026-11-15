@@ -14,7 +14,7 @@ describe('official replay player review',()=>{
   expect(r.state).toBe('parsed');
   expect(validateReview(r)).toEqual({ok:true,errors:[]});
   expect(r.insights.filter(i=>i.kind==='item_window')).toHaveLength(2);
-  for(const i of r.insights){expect(i.status).toBe('ok');expect(i.prompt).toBeUndefined();expect(i.fact_ids.length).toBeGreaterThan(0);for(const id of i.fact_ids)expect(r.facts[id]?.citation).toBe('r1');}
+  for(const i of r.insights){expect(i.status).toBe('ok');expect(i.prompt).toBeUndefined();expect(i.claim.text).not.toMatch(/→| · |死亡记录|Death recorded/);expect(i.title).not.toMatch(/Verified fight clip|已核实交战片段/);expect(i.fact_ids.length).toBeGreaterThan(0);for(const id of i.fact_ids)expect(r.facts[id]?.citation).toBe('r1');}
   expect(r.deaths.some(d=>d.inflictor==='pudge_meat_hook')).toBe(true);
   expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor==='pudge_meat_hook'||r.facts[id].value?.key==='pudge_meat_hook'))).toBe(false);
   for (const inflictor of ['pudge_dismember','skeleton_king_bone_guard']) {

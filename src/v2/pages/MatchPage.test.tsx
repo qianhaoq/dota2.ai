@@ -222,8 +222,9 @@ describe('SSE v1 conversation', () => {
         expect(screen.getByText((_,el)=>el?.tagName==='LI' && !!el.textContent?.includes(lang==='zh'?'冥魂大帝骨卫骷髅':'Wraith King skeleton'))).toBeTruthy();
         expect(screen.getByText(lang==='zh'?'关键购买记录':'Key purchases')).toBeTruthy();
         expect(screen.getByText(lang==='zh'?'使用记录':'Item uses')).toBeTruthy();
-        for(const card of screen.getAllByTestId('insight-card')) {
-            expect(card.textContent).toContain(lang==='zh'?'已核实交战片段':'Verified fight clip');
+        for(const [index,card] of screen.getAllByTestId('insight-card').entries()) {
+            expect(card.textContent).toContain(r.insights[index].title);
+            expect(card.textContent).toContain(r.insights[index].claim.text);
             expect(card.textContent).not.toMatch(/待核实 \/ 建议复看|Replay question:|何时送达|何时使用/);
         }
         expect(screen.getByText(lang==='zh'?'本局还缺什么':'What remains unverified')).toBeTruthy();

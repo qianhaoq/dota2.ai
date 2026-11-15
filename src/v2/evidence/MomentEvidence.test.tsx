@@ -36,6 +36,7 @@ for(const [match,heroId] of [[9080127650,60],[9089115713,74],[9088239359,71]]) i
  vi.stubGlobal('fetch',vi.fn(async()=>new Response(JSON.stringify(review),{headers:{'Content-Type':'application/json'}})));
  const view=render(<MemoryRouter initialEntries={[`/m/${match}?hero=${heroId}&lang=${lang}&claim=4&view=evidence`]}><I18nProvider><Routes><Route path="/m/:matchId" element={<MatchPage/>}/></Routes></I18nProvider></MemoryRouter>);
  const body=await screen.findByTestId('moment-evidence');
+ for(const card of review.insights){expect(card.claim.text).not.toMatch(/→| · |死亡记录|Death recorded/);expect(card.title).not.toMatch(/Verified fight clip|已核实交战片段/);}
  expect(body.textContent).toContain(review.facts[review.insights[review.insights.length>=4?3:0].fact_ids[0]].display[lang]);
  if(review.insights.length>=5){
  const next=screen.getByRole('button',{name:lang==='zh'?'下一条洞察':'Next insight'});

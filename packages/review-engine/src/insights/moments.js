@@ -50,23 +50,54 @@ export function buildMoments(result, player, lang, players = [player]) {
   const ids=[...base.ids];
   // Untargeted inflictor casts are already named on the death fact; do not
   // add a second undecorated cast line in the evidence list.
-  for(const c of [...primary,...support]) {
+  for(const c of [...primary,...support].sort((a,b)=>a.t-b.t)) {
    if(base.inflictor && c.key===base.inflictor && !c.target) continue;
    const unproven=support.includes(c);
    ids.push(fact(`cast.${id}.${c.pi}.${c.ci}`,c,l=>castText(c,l)+(unproven?(l==='zh'?' · 附近时间的施法，未证明命中':' · cast in the nearby window; a hit is not proven'):'')));
   }
-  const killTexts=[];
+
   for(const [ki,k] of (player.kills_log ?? []).entries()) {
    if(!primary.some(c=>same(c.actor,focus)&&same(c.target,k.key)&&k.time>=c.t&&k.time<=to)) continue;
    ids.push(fact(`kill.${id}.${ki}`,{...k,t:k.time},l=>`${clock(k.time)} · ${l==='zh'?'存在击杀记录':'A kill record exists'} · ${evidenceName(k.key,l)}`));
-   killTexts.push(`${clock(k.time)} · ${zh?'存在击杀记录':'A kill record exists'} · ${evidenceName(k.key,lang)}`);
   }
-  // Untargeted inflictor casts stay in evidence, but the death line already
-  // records that ability; do not repeat them as a separate proven interaction.
-  const claimCasts=primary.filter(c=>!(base.inflictor && c.key===base.inflictor && !c.target));
-  const text=[...claimCasts.toSorted((a,b)=>a.t-b.t).map(c=>castText(c,lang)),...killTexts,base.text].join('；');
-
-  out.push({id,kind,title:zh?'已核实交战片段':'Verified fight clip',status:'ok',time:{from,to},claim:{text,slots:text,phrasing:'template'},fact_ids:ids,metrics:[],citations:['r1'],evidence:{kind:'death_timeline',highlight:[from/60,to/60],markers:ids,moments:[]},baseline:null,target:null,data_gap:null});
+  // Only final cited facts define the span; omitted inflictor casts cannot
+  // contribute a clock. Nearby untargeted support is evidence, not a hit claim.
+  const times=ids.flatMap(id=>{
+   const f=result.facts[id];
+   const t=f.t ?? f.value?.t ?? result.deaths.find(d=>d.fact_id===id)?.t;
+   return [t,f.value?.ended_at].filter(Number.isFinite);
+  });
+  from=Math.min(...times);to=Math.max(...times);
+  const clauses=[];
+  for(const c of primary) {
+   if(!c.target || !ids.includes(`cast.${id}.${c.pi}.${c.ci}`)) continue;
+   const actor=evidenceName(c.actor,lang), target=evidenceName(c.target,lang), ability=evidenceName(c.key,lang);
+   clauses.push({t:c.t,text:zh?`${actor}${clock(c.t)}对${target}施放${ability}`:`${actor} cast ${ability} on ${target} at ${clock(c.t)}`});
+  }
+  for(const factId of ids) {
+   const d=result.deaths.find(d=>d.fact_id===factId);
+   if(d) {
+    const killer=d.killer?evidenceName(d.killer,lang):(zh?'未知单位':'an unknown unit');
+    const ability=d.inflictor?evidenceName(d.inflictor,lang):null;
+    clauses.push({t:d.t,text:zh?`${evidenceName(focus,lang)}${clock(d.t)}被${killer}${ability?'以'+ability:''}击杀`:`${evidenceName(focus,lang)} was killed by ${killer}${ability?' with '+ability:''} at ${clock(d.t)}`});
+   } else if(factId.startsWith('kill.')) {
+    const k=result.facts[factId].value;
+    clauses.push({t:k.t,text:zh?`${clock(k.t)}对${evidenceName(k.key,lang)}有击杀记录`:`a kill on ${evidenceName(k.key,lang)} was recorded at ${clock(k.t)}`});
+   }
+  }
+  clauses.sort((a,b)=>a.t-b.t);
+  const sentence=clauses.map((c,i)=>(i?(clauses[i-1].t<c.t?(zh?'，随后':', then '):(zh?'，':', ')):'')+c.text).join('');
+  const use=kind==='item_window'?result.facts[base.ids[0]].value:null;
+  const text=(use?(zh?`${clock(use.t)}–${clock(use.ended_at)}使用${itemName(use.key,lang)}期间，`:`While using ${itemName(use.key,lang)} from ${clock(use.t)}–${clock(use.ended_at)}, `):'')+sentence+(zh?'。':'.');
+  const death=result.deaths.find(d=>base.ids.includes(d.fact_id));
+  const first=primary.toSorted((a,b)=>a.t-b.t).find(c=>c.target && ids.includes(`cast.${id}.${c.pi}.${c.ci}`));
+  const ability=first?evidenceName(first.key,lang):null;
+  const inflictor=death?.inflictor?evidenceName(death.inflictor,lang):null;
+  const enemyAbilities=[...new Set(primary.toSorted((a,b)=>a.t-b.t).filter(c=>same(c.target,focus)&&!same(c.actor,focus)).map(c=>evidenceName(c.key,lang)))].join(zh?'、':' / ');
+  const title=use
+   ? (zh?`使用${itemName(use.key,lang)}期间${enemyAbilities?'遭遇'+enemyAbilities:'有死亡记录'}`:`${enemyAbilities?enemyAbilities:'Death recorded'} during ${itemName(use.key,lang)}`)
+   : (zh?`${ability??evidenceName(focus,lang)}${first&&first.t<death?.t?'后':'与'}${inflictor?'被'+inflictor+'击杀':'被'+evidenceName(death?.killer,lang)+'击杀'}`:`${ability??evidenceName(focus,lang)}${first&&first.t<death?.t?' followed by':' and'} death ${inflictor?'to '+inflictor:'by '+evidenceName(death?.killer,lang)}`);
+  out.push({id,kind,title,status:'ok',time:{from,to},claim:{text,slots:text,phrasing:'template'},fact_ids:ids,metrics:[],citations:['r1'],evidence:{kind:'death_timeline',highlight:[from/60,to/60],markers:ids,moments:[]},baseline:null,target:null,data_gap:null});
  };
  for(const [index,d] of result.deaths.entries()) {
   const nearby=casts.filter(c=>Number.isFinite(c.t)&&Math.abs(c.t-d.t)<=5);
@@ -76,8 +107,7 @@ export function buildMoments(result, player, lang, players = [player]) {
   if(!independent.length) continue;
   const seen=new Set();
   const support=nearby.filter(c=>!primary.includes(c)&&same(c.actor,d.killer)&&!c.target&&areaCasts.has(c.key)&&!seen.has(c.key)&&seen.add(c.key));
-  const text=`${clock(d.t)} · ${zh?'死亡记录':'Death recorded'}${d.killer?' · '+evidenceName(d.killer,lang):''}${d.inflictor?' · '+evidenceName(d.inflictor,lang):''}`;
-  add(`death.${index+1}`,'ability_into_death',Math.min(d.t,...primary.map(c=>c.t),...support.map(c=>c.t)),Math.max(d.t,...primary.map(c=>c.t),...support.map(c=>c.t)),{ids:[d.fact_id],text,inflictor:d.inflictor},primary,support);
+  add(`death.${index+1}`,'ability_into_death',Math.min(d.t,...primary.map(c=>c.t),...support.map(c=>c.t)),Math.max(d.t,...primary.map(c=>c.t),...support.map(c=>c.t)),{ids:[d.fact_id],inflictor:d.inflictor},primary,support);
  }
  for(const [index,u] of (player.item_use_log ?? []).filter(u=>u.key==='black_king_bar').entries()) {
   if(!Number.isFinite(u.t)||!Number.isFinite(u.ended_at)||u.ended_at<u.t||!u.end_source_path) continue;
@@ -87,7 +117,7 @@ export function buildMoments(result, player, lang, players = [player]) {
   if(!enemy&&!deaths.length) continue;
   const label=l=>`${clock(u.t)}–${clock(u.ended_at)} · ${itemName(u.key,l)}`;
   const id=fact(`use.bkb.${index+1}`,u,label);
-  add(`bkb.${index+1}`,'item_window',u.t,u.ended_at,{ids:[id,...deaths.map(d=>d.fact_id)],text:[label(lang),...deaths.map(d=>result.facts[d.fact_id].display[lang])].join('；')},primary);
+  add(`bkb.${index+1}`,'item_window',u.t,u.ended_at,{ids:[id,...deaths.map(d=>d.fact_id)]},primary);
  }
  return out.sort((a,b)=>a.time.from-b.time.from);
 }

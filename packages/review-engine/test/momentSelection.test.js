@@ -25,7 +25,7 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
  const c=r.facts[id].value; const d=r.deaths.find(d=>i.fact_ids.includes(d.fact_id));
  if(c.target && c.actor!==focusKey && c.target!==focusKey) expect(c.key).toBe(d?.inflictor);
  }
- expect(r.item_uses).toEqual((p.item_use_log??[]).filter(u=>u.key==='black_king_bar'&&Number.isFinite(u.t)&&Number.isFinite(u.ended_at)&&u.end_source_path).map(u=>({t:u.t,item:u.key,ended_at:u.ended_at})));
+ expect(r.item_uses).toEqual((p.item_use_log??[]).filter(u=>u.key==='black_king_bar'&&Number.isFinite(u.t)&&Number.isFinite(u.ended_at)&&u.end_source_path).sort((a,b)=>a.t-b.t).map(u=>({t:u.t,item:u.key,ended_at:u.ended_at})));
  for(const i of windows){
   expect(i.fact_ids.length).toBeGreaterThanOrEqual(2);
   const u=r.facts[i.fact_ids[0]].value;
@@ -35,6 +35,13 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
   expect(i.time.to-i.time.from).toBeLessThanOrEqual(10);
  }
  for(const i of r.insights){
+  expect(i.claim.text).not.toMatch(/→| · |死亡记录|Death recorded/);
+  expect(i.claim.text).toMatch(lang==='zh'?/。$/:/\.$/);
+  expect(i.title).not.toMatch(/已核实交战片段|Verified fight clip|最该改|值得复看/);
+  const times=i.fact_ids.flatMap(id=>{const f=r.facts[id];return [f.t,f.value?.ended_at].filter(Number.isFinite);});
+  expect(i.time).toEqual({from:Math.min(...times),to:Math.max(...times)});
+  const clocks=i.claim.text.match(/-?\d+:\d{2}/g)??[];
+  for(const time of clocks)expect(times.map(clock)).toContain(time);
   if(i.id.startsWith('death.')){
    const index=Number(i.id.split('.')[1])-1;
    const original=p.deaths_log[index];
@@ -87,16 +94,16 @@ for(const [match,heroId,bkbCount] of samples) it.each(['zh','en'])(`selects only
   for(const t of [272,624,860])expect(r.insights.some(i=>Math.floor(i.time.from)===t&&i.kind==='item_window')).toBe(false);
   const wave=r.insights.find(i=>i.id==='death.4');
   const fury=r.insights.find(i=>i.id==='death.6');
-  const stripDeath=text=>text.replace(lang==='zh'?/死亡记录[^；]*/g:/Death recorded[^；]*/g,'');
-  expect(wave.claim.text).toMatch(lang==='zh'?'暗影冲刺 → 变体精灵':'Charge of Darkness');
-  expect(wave.claim.text).toMatch(lang==='zh'?'死亡记录 · 变体精灵 · 波浪形态':'Death recorded · Morphling · Waveform');
-  expect(stripDeath(wave.claim.text)).not.toMatch(lang==='zh'?'波浪形态':'Waveform');
   expect(wave.claim.text).not.toMatch(lang==='zh'?'未证明命中':'a hit is not proven');
+  expect(fury.claim.text).not.toMatch(lang==='zh'?'未证明命中':'a hit is not proven');
+  expect(wave.claim.text).toContain(lang==='zh'?'对变体精灵施放暗影冲刺':'cast Charge of Darkness on Morphling');
+  expect(wave.claim.text).toContain(lang==='zh'?'被变体精灵以波浪形态击杀':'killed by Morphling with Waveform');
   expect(r.facts[wave.fact_ids[0]].value?.inflictor).toBe('morphling_waveform');
   expect(wave.fact_ids.some(id=>id.startsWith('cast.')&&r.facts[id].value?.key==='morphling_waveform')).toBe(false);
   expect(fury.fact_ids.some(id=>id.startsWith('cast.')&&r.facts[id].value?.key==='juggernaut_blade_fury')).toBe(false);
-  expect(stripDeath(fury.claim.text)).not.toMatch(lang==='zh'?'剑刃风暴':'Blade Fury');
-  expect(fury.claim.text).not.toMatch(lang==='zh'?'未证明命中':'a hit is not proven');
+  expect(fury.claim.text).toContain('17:55');
+  expect(fury.claim.text).not.toContain('17:54');
+  expect(fury.claim.text).toContain(lang==='zh'?'被主宰以剑刃风暴击杀':'killed by Juggernaut with Blade Fury');
  }
 });
 it('resolves official names from the same real ids, with neutral unknown fallbacks',()=>{
@@ -145,4 +152,33 @@ it('keeps untargeted killer casts only as deduplicated unproven support after qu
  expect(clip.claim.text).not.toContain('Echo Slam');
  expect(clip.fact_ids.some(id=>r.facts[id].value?.key==='earthshaker_enchant_totem')).toBe(false);
  expect(clip.fact_ids.map(id=>r.facts[id].display.en).join(' ')).toContain('a hit is not proven');
+});
+
+it.each([99.1,99.8,99.9])('uses raw times for same-clock order words (cast %s)',t=>{
+ const focus={hero_id:71,ability_cast_log:[{t,key:'spirit_breaker_charge_of_darkness',target:'npc_dota_hero_lion',source_path:'cast'}]};
+ const d={t:99.8,killer:'lion',inflictor:'lion_finger_of_death',fact_id:'d'};
+ for(const lang of ['zh','en']){
+  const r={facts:{d:{id:'d',t:d.t,value:d}},deaths:[d]};
+  const [card]=buildMoments(r,focus,lang,[focus,{hero_id:26}]);
+  expect(card.claim.text.match(/1:39/g)).toHaveLength(2);
+  expect(card.claim.text.includes(lang==='zh'?'随后':'then')).toBe(t!==d.t);
+  expect(card.title.includes(lang==='zh'?'后':'followed by')).toBe(t<d.t);
+  if(t>d.t)expect(card.claim.text.indexOf(lang==='zh'?'击杀':'killed')).toBeLessThan(card.claim.text.indexOf(lang==='zh'?'施放':'cast'));
+ }
+});
+
+it('sorts BKB casts and the public item-use list by raw time',()=>{
+ const a=JSON.parse(readFileSync('data/replay-facts/9080127650.json'));
+ const focus=a.players.find(p=>p.hero_id===60);
+ focus.item_use_log.reverse();
+ for(const p of a.players)p.ability_cast_log?.reverse();
+ const r=buildReview(applyReplayArtifact({match_id:a.match_id,players:a.players},a),{heroId:60,lang:'en',fetchedAt:a.fetched_at});
+ expect(r.item_uses.map(u=>u.t)).toEqual(r.item_uses.map(u=>u.t).toSorted((a,b)=>a-b));
+ for(const card of r.insights.filter(i=>i.kind==='item_window')){
+  const casts=card.fact_ids.filter(id=>id.startsWith('cast.')).map(id=>r.facts[id].value).toSorted((a,b)=>a.t-b.t);
+  const citedTimes=card.fact_ids.filter(id=>id.startsWith('cast.')).map(id=>r.facts[id].t);
+  expect(citedTimes).toEqual(citedTimes.toSorted((a,b)=>a-b));
+  let position=-1;
+  for(const c of casts){const next=card.claim.text.indexOf(`at ${clock(c.t)}`,position+1);expect(next).toBeGreaterThan(position);position=next;}
+ }
 });
