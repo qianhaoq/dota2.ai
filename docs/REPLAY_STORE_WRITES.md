@@ -43,8 +43,9 @@ uncertain saves. Each job remembers its latest 32 applied tickets, so a retry
 of a committed mutation succeeds without adding usage or raising another
 resource limit. Clearly rejected writes can still apply on a later retry.
 
-Validation (2026-11-15): `npm test` passed 112 files / 1659 tests, including
+Validation (2026-11-15): `npm test` passed 113 files / 1661 tests, including
 commit-then-throw and rejected-save byte/seconds retries, bounded ticket history,
 independent-handle metadata/CAS spacing, nonblocking chunk pumps, the 16MiB
-high watermark, overlapping final-flush retries, and scheduled resource-limit propagation. `npx tsc --noEmit`,
+high watermark, overlapping final-flush retries, and scheduled resource-limit propagation (including overlapping final flushes and
+a zero-elapsed worker that must not publish an over-budget artifact). `npx tsc --noEmit`,
 `node --check server.js`, and `npm run build` passed.

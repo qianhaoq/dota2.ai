@@ -101,6 +101,25 @@ it.each([false,true])('retries an in-flight scheduled failed save at final flush
  expect(charge).toHaveBeenCalledTimes(2);expect(f.saves).toHaveLength(saves);
 });
 
+it('rejects final flush overlapping a scheduled committed resource limit exactly once',async()=>{
+ vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket,{budgets:{bytes:1000}});
+ await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
+ const charge=vi.fn(async(bytes:number,chargeId:string)=>{
+  await new Promise(resolve=>setTimeout(resolve,50));
+  return store.charge('42',job.token,{bytes,chargeId});
+ });
+ const charger=createByteCharger(charge,{minWriteIntervalMs:1000});
+ await charger.add(1_048_576);await vi.advanceTimersByTimeAsync(0);
+ expect(charge).toHaveBeenCalledTimes(1);
+ const final=expect(charger.flush()).rejects.toThrow('resource_limited');
+ await vi.runAllTimersAsync();await final;
+ const saves=f.saves.length;
+ await charger.flush();await charger.flush();
+ expect(charge).toHaveBeenCalledTimes(1);expect(f.saves).toHaveLength(saves);
+ expect(f.state.budget[job.attemptDay].bytes).toBe(1_048_576);
+ expect(f.state.jobs['42'].appliedCharges).toHaveLength(1);
+});
+
 it('surfaces a scheduled committed resource limit at final flush without rebilling',async()=>{
  vi.useFakeTimers();const f=fake();const store=new GcsJobStore(f.bucket,{budgets:{bytes:1_048_576}});
  await clocked(()=>store.create({match_id:42},'ip'));const job=await clocked(()=>store.lease('42',1));
