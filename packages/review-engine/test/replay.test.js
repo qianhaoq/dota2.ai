@@ -32,7 +32,7 @@ describe('first-party replay evidence', () => {
     expect(review.match.parsed).toBe(true); expect(review.state).toBe('parsed');
     expect(review.facts['death.1']).toMatchObject({t:72.5,citation:'r1',source_path:'trace/events.jsonl[0]'});
     expect(review.facts['ancient.fell'].citation).toBe('s1');
-    expect(review.insights.find(i=>i.id==='verified_death')).toMatchObject({status:'ok',fact_ids:['death.1'],time:{from:72.5,to:72.5},citations:['r1']});
+    expect(review.insights.find(i=>i.id==='death.1')).toBeUndefined();
     expect(review.citations.find(c=>c.provider==='replay')).toMatchObject({sha256:metadata.demo_sha256,fetched_at:metadata.fetched_at});
     expect(review.deaths[0]).toMatchObject({x:100,y:-200});
     expect(review.data_gaps.some(g=>g.topic==='death_locations')).toBe(false);
@@ -44,13 +44,13 @@ describe('first-party replay evidence', () => {
     expect(review.data_gaps).toContainEqual({topic:'parsed_evidence',reason:status});
     expect(review.parse.message).not.toContain('OpenDota is still parsing');
   });
-  it('never attaches general Ace/support KB without explicit context; explicit selection is not evaluable without testing facts', () => {
+  it('never attaches unrelated principles to a replay moment, even with explicit context', () => {
     const kb = parseSiteKnowledge(JSON.parse(readFileSync(new URL('../../../data/site-knowledge.v1.json',import.meta.url),'utf8')));
     const review = buildReview(applyReplayArtifact(raw,artifact()),{...opts,kb});
     expect(review.citations.some(c=>c.provider==='kb')).toBe(false);
     const id = 'kb-04cd89756c8f746d6eb3eaf2';
     const selected = buildReview(applyReplayArtifact(raw,artifact()),{...opts,kb,kbContextIds:[id]});
-    expect(selected.facts[`kb.${id}`].value).toMatchObject({match_assessment:'not_evaluable',support_fact_ids:[],contradiction_fact_ids:[]});
+    expect(selected.facts[`kb.${id}`]).toBeUndefined();
   });
 });
 
@@ -99,15 +99,17 @@ it('labels metadata snapshots, truncated graphs and bounded sampled positions wi
   expect(adaptReplayEvents(match,[death],metadata,meta,samples).players[0].deaths_log[0]).not.toHaveProperty('x');
 });
 
-it('attaches stacking observations without claiming pre-checks or treating zero as contradiction', () => {
+it('does not attach stacking material to an unrelated death, even with observed stacking', () => {
   const kb = parseSiteKnowledge(JSON.parse(readFileSync(new URL('../../../data/site-knowledge.v1.json',import.meta.url),'utf8')));
   const id = 'kb-028d66b81456e3720aaea63a';
   const a = adaptReplayEvents(raw,events,metadata,{players:[{player_slot:132,camps_stacked:9}]});
   const review = buildReview(applyReplayArtifact(raw,a),{...opts,kb});
-  expect(review.facts['kb.'+id].value).toMatchObject({support_fact_ids:['camps_stacked'],contradiction_fact_ids:[],match_assessment:'stacking_observed_precheck_not_evaluable'});
+  expect(review.facts.camps_stacked.value).toBe(9);
+  expect(review.facts['kb.'+id]).toBeUndefined();
   a.players[0].camps_stacked=0;
   const zero = buildReview(applyReplayArtifact(raw,a),{...opts,kb,kbContextIds:[id]});
-  expect(zero.facts['kb.'+id].value).toMatchObject({support_fact_ids:[],contradiction_fact_ids:[],match_assessment:'not_evaluable'});
+  expect(zero.facts.camps_stacked.value).toBe(0);
+  expect(zero.facts['kb.'+id]).toBeUndefined();
 });
 
 it('preserves the observed compact comparison-demo economy contract', () => {
@@ -189,33 +191,18 @@ it('humanizes replay building kills instead of leaking the combat-log type', () 
   expect(displays.join(' ')).toMatch(/tower|Tower|塔/i);
 });
 
-it('answers generic purchase and item-use followups from their cited facts', () => {
+it('keeps purchases in the list and excludes unlinked item uses from insights', () => {
   const a = adaptReplayEvents(raw,[{t:80,type:'DOTA_COMBATLOG_ITEM',attacker:'npc_dota_hero_night_stalker',attacker_hero:true,attacker_illusion:false,inflictor:'item_tpscroll'},{t:125,type:'DOTA_COMBATLOG_PURCHASE',target:'npc_dota_hero_night_stalker',value_name:'item_blink'}],metadata);
   const review = buildReview(applyReplayArtifact(raw,a),{...opts,presetFollowups:true});
-  const purchase = review.insights.find(i => i.id.startsWith('purchase.') || i.kind === 'purchase_context');
-  const item = review.insights.find(i => i.id.startsWith('item.') || i.kind === 'item_window');
-  expect(purchase).toBeTruthy();
-  expect(renderTemplate(purchase, review.facts, 'en').text).not.toMatch(/not in this match/i);
-  expect(renderTemplate(purchase, review.facts, 'en').text).toMatch(/Blink|blink|Purchased/i);
-  expect(item).toBeTruthy();
-  expect(renderTemplate(item, review.facts, 'en').text).not.toMatch(/not in this match/i);
+  expect(review.insights).toEqual([]);
+  expect(review.purchases).toContainEqual({t:125,item:'blink',key_item:true});
 });
 
-it('does not cite OpenDota duration as official replay evidence in an empty-timeline fallback', () => {
-  const a = adaptReplayEvents({...raw,duration:1906,players:raw.players},[],metadata);
-  const review = buildReview(applyReplayArtifact({...raw,od_data:{has_parsed:true}},a),opts);
-  const fallback = review.insights.find(i => i.id === 'verified_timeline' || i.id === 'recorded_timeline');
-  expect(fallback).toBeTruthy();
-  for (const id of fallback.fact_ids) {
-    expect(fallback.citations).toEqual(expect.arrayContaining([review.facts[id].citation]));
-  }
-  if (fallback.fact_ids.includes('ancient.fell')) {
-    expect(review.facts['ancient.fell'].citation).toBe('s1');
-    expect(fallback.citations).toEqual(['s1']);
-    expect(fallback.id).toBe('recorded_timeline');
-    expect(fallback.claim.text).not.toMatch(/Verified match record|本局已核实记录/);
-  }
-  expect(validateReview(review)).toEqual({ ok: true, errors: [] });
+it('allows an empty official replay timeline without a filler card', () => {
+ const a=adaptReplayEvents({...raw,duration:1906},[],metadata);
+ const review=buildReview(applyReplayArtifact({...raw,od_data:{has_parsed:true}},a),opts);
+ expect(review.insights).toEqual([]);
+ expect(validateReview(review)).toEqual({ok:true,errors:[]});
 });
 
 it('formats pre-horn clocks without doubled minus signs', () => {
@@ -224,17 +211,9 @@ it('formats pre-horn clocks without doubled minus signs', () => {
   expect(clock(125)).toBe('2:05');
 });
 
-it('lists a later death only once after multiple BKB windows', () => {
-  const result = {
-    deaths: [{ t: 200, fact_id: 'death.1', inflictor: null }],
-    facts: { 'death.1': { id: 'death.1', citation: 'r1', t: 200, display: { en: 'death', zh: '死亡', t: '3:20' } } },
-  };
-  const player = { ability_cast_log: [], item_use_log: [
-    { key: 'black_king_bar', t: 80, ended_at: 90 },
-    { key: 'black_king_bar', t: 110, ended_at: 120 },
-  ] };
-  const moments = buildMoments(result, player, 'en');
-  const bkb = moments.find(m => m.id === 'bkb_windows');
-  expect(bkb.fact_ids.filter(id => id === 'death.1')).toHaveLength(1);
-  expect(bkb.claim.text.match(/3:20/g)).toHaveLength(1);
+it('keeps immunity windows separate and never appends a later death', () => {
+ const result={deaths:[{t:200,fact_id:'death.1',inflictor:null}],facts:{'death.1':{id:'death.1',citation:'r1',t:200}}};
+ const moments=buildMoments(result,{item_use_log:[{key:'black_king_bar',t:80,ended_at:90,end_source_path:'modifier.1'},{key:'black_king_bar',t:110,ended_at:120,end_source_path:'modifier.2'}]},'en');
+ expect(moments).toEqual([]);
+ expect(moments.flatMap(m=>m.fact_ids)).not.toContain('death.1');
 });

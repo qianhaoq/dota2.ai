@@ -173,7 +173,7 @@ export function Sources({ review, rows, claim }: {
       </div>}
       {replay && <div className="mt-[8px] text-d2-12 text-d2-ink-4 break-all" data-testid="replay-provenance">
         {lang === 'zh' ? '本站录像证据' : 'First-party replay evidence'} · {replay.fetched_at}<br/>
-        SHA-256: {replay.sha256}<br/>{replay.source_path}
+        <details><summary>{lang === 'zh' ? '高级来源' : 'Advanced sources'}</summary>SHA-256: {replay.sha256}<br/>{replay.source_path}<ul>{(review.insights[claim]?.fact_ids ?? []).map(id => <li key={id}>{review.facts[id]?.source_path}</li>)}</ul></details>
       </div>}
       {materials.length > 0 && <section className="mt-[16px]" data-testid="learning-sources">
         <h5 className={sectionH}>{t('learningSources')}</h5>

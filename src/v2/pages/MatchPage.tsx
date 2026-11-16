@@ -12,6 +12,7 @@ import { trackEvent } from '../../services/analytics';
 import { reviewViewed } from '../review/analytics';
 import AiText from '../review/AiText';
 import InsightCard from '../review/InsightCard';
+import PracticeGoals from '../review/PracticeGoals';
 import ReviewTimelines from '../review/ReviewTimelines';
 import ResultHeader from '../review/ResultHeader';
 import ParseNotice from '../review/ParseNotice';
@@ -269,6 +270,7 @@ export default function MatchPage() {
       {player && <HeroCollapsedRow hero={player.hero} personaname={player.personaname} change={() => setPicker(true)}/>}
       {player && <ResultHeader heroName={player.hero.replaceAll('_', ' ')} heroSlug={player.hero} kda={player.kda?.map((value: number | null) => value ?? '—').join('/') ?? ''} isRadiant={player.team === 'radiant'} outcome={player.result} duration={review?.facts['ancient.fell']?.display[lang] ?? ''} chart={review?.series ? <MiniChart series={review.series}/> : undefined}/>}
       {stream.insights.map((insight, i) => insight && insight.status === 'ok' && <InsightCard key={i} insight={insight} index={i + 1} review={review} streaming={stream.status === 'streaming'} onEvidence={review ? openEvidence : undefined}/>)}
+      {review?.practice && <PracticeGoals practice={review.practice}/>}
       {(review?.parse || stream.done?.state === 'unparsed') && <ParseNotice matchId={matchId} parse={review?.parse ?? { status: 'unparsed', jobId: null, retryAfterSec: null, message: t('parseUnavailable') }} onRefresh={stream.retry}/>}
       {stream.done && stream.done.state !== 'unparsed' && stream.done.state !== 'parsed' && stream.done.state !== 'needs_hero' && <p className="text-d2-13 text-d2-warn">{t('insufficientBadge')}</p>}
       {review?.player && <ReviewTimelines review={review}/>}

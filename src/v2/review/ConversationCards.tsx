@@ -46,11 +46,17 @@ export function MiniChart({ series }: {
     series: Review['series'];
 }) {
     const { t } = useI18n();
-    const arrays = [series.radiant_gold_adv ?? [], series.radiant_xp_adv ?? []];
-    const nums = arrays.flat().filter((v): v is number => v != null && Number.isFinite(v));
-    if (!arrays.some(a => a.filter(v => v != null && Number.isFinite(v)).length >= 2)) return null;
+    // Each series keeps its own name; replay reviews carry net-worth buckets
+    // (not earned gold), so the line is never labeled as gold.
+    const lines = [
+        { values: series.radiant_gold_adv ?? [], stroke: '#c79123', label: t('chartGold'), cls: 'text-d2-gold-2' },
+        { values: series.radiant_xp_adv ?? [], stroke: '#1a9fff', label: t('chartXp'), cls: 'text-d2-xp' },
+        { values: series.radiant_net_worth_adv ?? [], stroke: '#3fa66a', label: t('chartNetWorth'), cls: '' },
+    ].filter(l => l.values.filter(v => v != null && Number.isFinite(v)).length >= 2);
+    if (!lines.length) return null;
+    const nums = lines.flatMap(l => l.values).filter((v): v is number => v != null && Number.isFinite(v));
     const bound = Math.max(1, ...nums.map(Math.abs));
-    return <div className="mt-[12px]"><svg role="img" aria-label={t('miniChart')} viewBox="0 0 240 50" className="w-full h-[50px]">{arrays.map((values, i) => <polyline key={i} fill="none" stroke={i ? '#1a9fff' : '#c79123'} strokeWidth="2" points={values.map((v, x) => v == null || !Number.isFinite(v) ? '' : `${x / Math.max(1, values.length - 1) * 240},${25 - v / bound * 23}`).filter(Boolean).join(' ')}/>)}</svg><div className="flex gap-[12px] text-d2-12 text-d2-ink-3">{arrays[0].filter(Number.isFinite).length >= 2 && <span className="text-d2-gold-2">● {t('chartGold')}</span>}{arrays[1].filter(Number.isFinite).length >= 2 && <span className="text-d2-xp">● {t('chartXp')}</span>}</div></div>;
+    return <div className="mt-[12px]"><svg role="img" aria-label={lines.map(l => l.label).join(', ')} viewBox="0 0 240 50" className="w-full h-[50px]">{lines.map((l, i) => <polyline key={i} fill="none" stroke={l.stroke} strokeWidth="2" points={l.values.map((v, x) => v == null || !Number.isFinite(v) ? '' : `${x / Math.max(1, l.values.length - 1) * 240},${25 - v / bound * 23}`).filter(Boolean).join(' ')}/>)}</svg><div className="flex flex-wrap gap-[12px] text-d2-12 text-d2-ink-3">{lines.map(l => <span key={l.label} className={l.cls}>● {l.label}</span>)}</div></div>;
 }
 export function FactChip({ fact, label }: {
     fact: Fact;

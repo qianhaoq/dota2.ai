@@ -56,8 +56,9 @@ export function attachSiteKnowledge(review, entries = [], contextualIds = []) {
     if (used.size === 3) break;
     // Version independence says nothing about relevance to this match question.
     // Require an explicit contextual selection instead of attaching every general principle.
-    const stacking = entry.id === 'kb-028d66b81456e3720aaea63a' && review.facts.camps_stacked?.value > 0;
+    const stacking = insight.fact_ids.includes('camps_stacked') && entry.id === 'kb-028d66b81456e3720aaea63a' && review.facts.camps_stacked?.value > 0;
     if (entry.applicability_scope === 'version_independent' && !contextualIds.includes(entry.id) && !stacking) continue;
+    if (review.citations.some(c=>c.provider==='replay') && !stacking) continue;
     if (used.has(entry.id) || (entry.hero && entry.hero !== review.player.hero) ||
         (entry.kind === 'fact' && (review.match.patch == null || entry.patch === 'unknown' || entry.patch !== String(review.match.patch)))) continue;
     used.add(entry.id);

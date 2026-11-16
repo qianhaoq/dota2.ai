@@ -1,9 +1,6 @@
 {
   "match_id": 9080127650,
   "fetched_at": "2026-11-13T02:03:14.361Z",
-  "replay_url_present": true,
-  "replay_url": "http://replay413.dota2.com.cn/570/9080127650_1490343705.dem.bz2",
-  "replay_salt": 1490343705,
   "cluster": 413,
   "opendota_fetched_at": null,
   "status": "replay_parsed",
@@ -1687,7 +1684,7 @@
           "y": 795,
           "position_source": "state_sample",
           "sample_t": 1084.1667232438922,
-          "dt": 0.000036232173442840576,
+          "dt": 3.6232173442840576e-05,
           "position_source_path": "trace/states.jsonl[40658]"
         },
         {
@@ -1710,7 +1707,7 @@
           "y": 1677.875,
           "position_source": "state_sample",
           "sample_t": 1644.4334191307425,
-          "dt": 0.00000848621129989624,
+          "dt": 8.48621129989624e-06,
           "position_source_path": "trace/states.jsonl[61661]"
         },
         {
@@ -3018,7 +3015,7 @@
           "y": 4264.5625,
           "position_source": "state_sample",
           "sample_t": 462.5666908249259,
-          "dt": -0.000020600855350494385,
+          "dt": -2.0600855350494385e-05,
           "position_source_path": "trace/states.jsonl[17342]"
         },
         {
@@ -5186,7 +5183,7 @@
           "y": 873.6875,
           "position_source": "state_sample",
           "sample_t": 711.9000371620059,
-          "dt": 0.00001274794340133667,
+          "dt": 1.274794340133667e-05,
           "position_source_path": "trace/states.jsonl[26699]",
           "inflictor": "item_mage_slayer"
         },
@@ -7669,7 +7666,7 @@
           "y": 4820.187484741211,
           "position_source": "state_sample",
           "sample_t": 1808.966761045158,
-          "dt": 0.00002520531415939331,
+          "dt": 2.520531415939331e-05,
           "position_source_path": "trace/states.jsonl[67837]",
           "inflictor": "necrolyte_reapers_scythe"
         },

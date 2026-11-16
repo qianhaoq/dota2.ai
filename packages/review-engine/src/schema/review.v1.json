@@ -300,6 +300,33 @@
             ]
           }
         },
+        "radiant_net_worth_adv": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "net_worth_source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "net_worth_derivation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "net_worth_buckets": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "perspective": {
           "enum": [
             "radiant",
@@ -311,6 +338,10 @@
       "required": [
         "radiant_gold_adv",
         "radiant_xp_adv",
+        "radiant_net_worth_adv",
+        "net_worth_source",
+        "net_worth_derivation",
+        "net_worth_buckets",
         "perspective"
       ],
       "additionalProperties": false
@@ -448,12 +479,13 @@
                   "skeleton_before_bkb",
                   "bkb_windows",
                   "verified_death",
-                  "void_dismember"
+                  "void_dismember",
+                  "review_overview"
                 ]
               },
               {
                 "type": "string",
-                "pattern": "^(death|item|purchase)\\.[0-9]+$"
+                "pattern": "^(death|item|purchase|bkb|window)\\.[0-9]+$"
               },
               {
                 "enum": [
@@ -624,8 +656,35 @@
               "item_window",
               "notable_death",
               "purchase_context",
-              "objective_context"
+              "objective_context",
+              "review_overview",
+              "review_window"
             ]
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label_key": {
+                  "enum": [
+                    "known",
+                    "actions",
+                    "comparable",
+                    "missing",
+                    "evaluation"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label_key",
+                "text"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -662,6 +721,55 @@
         ],
         "additionalProperties": false
       }
+    },
+    "practice": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "proven",
+            "insufficient"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "goal": {
+                "type": "string"
+              },
+              "condition": {
+                "type": "string"
+              },
+              "fact_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "goal",
+              "condition",
+              "fact_ids"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "items",
+        "note"
+      ],
+      "additionalProperties": false
     },
     "followups": {
       "type": "array",
@@ -835,6 +943,28 @@
         "message"
       ],
       "additionalProperties": false
+    },
+    "item_uses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number"
+          },
+          "item": {
+            "type": "string"
+          },
+          "ended_at": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "t",
+          "item"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [
