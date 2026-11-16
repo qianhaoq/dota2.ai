@@ -32,9 +32,12 @@ const GAP_LABELS: Record<string, [string, string]> = {
 };
 export default function ReviewTimelines({ review }: { review: Review }) {
  const { lang } = useI18n(); const zh = lang === 'zh';
- // Windows cite state.* facts only when hero-state samples exist; the
- // HP/positions-absent note must follow that, not fire unconditionally.
- const hasHeroStates = (review.insights ?? []).some(i => (i.fact_ids ?? []).some(id => id.startsWith('state.')));
+ // Hero-state samples are the state facts that actually carry HP/position
+ // (state.win.* / state.death.*). state.snapshot.* is an inventory-snapshot
+ // level only — it must not flip the appendix into claiming HP/positions were
+ // given. The HP/positions-absent note follows the real samples, not any
+ // state-prefixed id.
+ const hasHeroStates = (review.insights ?? []).some(i => (i.fact_ids ?? []).some(id => /^state\.(win|death)\./.test(id)));
  return <>
  {!!review.deaths?.length && <section className={surface}><h2>{zh ? '死亡记录' : 'Deaths'}</h2><ol className="space-y-[8px]">{review.deaths.map((d, i) => <li key={i}><time>{clock(d.t)}</time>{' · '}{d.killer ? heroDisplayName(d.killer, lang) : (zh ? '击杀者待核实' : 'Killer unverified')}{d.inflictor ? ` · ${evidenceName(d.inflictor, lang)}` : ''}</li>)}</ol></section>}
  {!!review.item_uses?.length && <section className={surface}><h2>{zh ? '使用记录' : 'Item uses'}</h2><ul>{review.item_uses.map((u,i)=><li key={i}>{clock(u.t)}{u.ended_at != null ? `–${clock(u.ended_at)}` : ''}{' · '}{itemDisplayName(u.item,lang)}</li>)}</ul></section>}

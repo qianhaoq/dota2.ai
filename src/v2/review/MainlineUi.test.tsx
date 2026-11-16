@@ -105,4 +105,27 @@ describe('consolidated gap list', () => {
         // The honest remaining gaps (vision / creep entities) are still named.
         expect(document.body.textContent).toContain('视野与兵线实体不在本记录里');
     });
+
+    it('keeps the HP-gap note when only inventory-snapshot state facts exist', () => {
+        // state.snapshot.* carries a level from the inventory snapshot, not an
+        // HP/position sample: snapshot-only windows must not flip the appendix
+        // into claiming HP and positions shipped with the samples.
+        const review = {
+            series: { radiant_gold_adv: [], radiant_xp_adv: [] },
+            insights: [{ id: 'window.1', kind: 'review_window', fact_ids: ['state.snapshot.win.1'] }],
+            data_gaps: [{ topic: 'hero_states', reason: 'hero_states_not_in_artifact' }],
+        } as unknown as Review;
+        renderWithI18n(<ReviewTimelines review={review}/>, 'zh');
+        expect(document.body.textContent).toContain('缺少血量、视野和队友实时位置');
+        expect(document.body.textContent).not.toContain('血量与站位已随状态样本给出');
+        // A real death-anchored sample alongside the snapshot still counts.
+        const withSample = {
+            ...review,
+            insights: [...review.insights, { id: 'window.2', kind: 'review_window', fact_ids: ['state.snapshot.win.2', 'state.death.1.night_stalker'] }],
+        } as unknown as Review;
+        cleanup();
+        renderWithI18n(<ReviewTimelines review={withSample}/>, 'zh');
+        expect(document.body.textContent).not.toContain('缺少血量、视野和队友实时位置');
+        expect(document.body.textContent).toContain('血量与站位已随状态样本给出');
+    });
 });
