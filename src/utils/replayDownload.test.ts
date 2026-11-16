@@ -272,8 +272,41 @@ it.each(['gcs_request_failed','store_contention','workload_identity_unavailable'
   }))});
   if(!('drain' in ingest))throw Error('async required');
   const job=await ingest.submit({match_id:43,cluster:184,replay_salt:1},'ip');await ingest.drain();
-  expect(await store.get(job.jobId)).toMatchObject({status:'store_error'});
+  // The terminal store failure must have landed once the worker is done. A
+  // bounded poll cannot mask a stranded job: it fails clearly if the status
+  // never leaves an active phase instead of asserting over a transient read.
+  const {activeStates}=await import('../../lib/matchReview/replayIngest/jobStore.js');
+  let settled=await store.get(job.jobId);
+  for(let i=0;i<80&&settled&&activeStates.includes(settled.status);i++){await new Promise(resolve=>setTimeout(resolve,25));settled=await store.get(job.jobId);}
+  expect(settled?.status,`job never reached a terminal status (last seen ${settled?.status})`).toBe('store_error');
   expect(await ingest.read(43)).toMatchObject({status:'replay_store_error'});
   expect(workerBytes).toBeGreaterThan(0);expect(workerBytes).toBeLessThan(2*1048576);
+ }finally{await rm(home,{recursive:true,force:true});}
+});
+it('records the terminal store failure even when slow phase updates outlive the lease',async()=>{
+ const {FileJobStore,activeStates}=await import('../../lib/matchReview/replayIngest/jobStore.js');
+ const home=await mkdtemp(join(tmpdir(),'store-abort-slowphases-'));
+ vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  // Slow-runner shape of CI run 43785941304: the failing store also stops
+  // renewing the lease (heartbeat rejects), and phase updates land late
+  // enough that the failure path crosses leaseMs after the lease was taken.
+  // The terminal store_error must still be recorded — dropped on the floor it
+  // would strand the job at 'downloading' with nothing running.
+  const store=new FileJobStore(join(home,'jobs'),{leaseMs:300});
+  const update=store.update.bind(store);
+  vi.spyOn(store,'update').mockImplementation((...args:any[])=>{
+   const patch=args[2] as {status?:string};
+   if(patch?.status&&activeStates.includes(patch.status))return new Promise(resolve=>setTimeout(resolve,170)).then(()=>update(...args));
+   return update(...args);
+  });
+  vi.spyOn(store,'heartbeat').mockRejectedValue(new Error('heartbeat failed',{cause:new Error('gcs_request_failed')}));
+  const ingest=createReplayIngest({jobStore:store,env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl:async()=>new Response(new ReadableStream({
+   async pull(stream){await new Promise(resolve=>setTimeout(resolve,10));stream.enqueue(new Uint8Array(65536));}
+  }))});
+  if(!('drain' in ingest))throw Error('async required');
+  const job=await ingest.submit({match_id:43,cluster:184,replay_salt:1},'ip');await ingest.drain();
+  expect(await store.get(job.jobId)).toMatchObject({status:'store_error'});
+  expect(await ingest.read(43)).toMatchObject({status:'replay_store_error'});
  }finally{await rm(home,{recursive:true,force:true});}
 });
