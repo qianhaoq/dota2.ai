@@ -2,6 +2,7 @@ import {it,expect} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {buildReview} from '../src/buildReview.js';
 import {applyReplayArtifact} from '../src/replay.js';
+import {buildMainline} from '../src/review/mainline.js';
 import {buildMoments,evidenceName,itemName,clock} from '../src/insights/moments.js';
 import {validateReview} from '../src/schema/validate.js';
 import dictionary from '../data/display-names.json' with {type:'json'};
@@ -34,6 +35,11 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
  }
  expect(windows.map(w=>w.id)).toEqual(windows.map((w,i)=>`window.${i+1}`));
  expect(r.insights.every(i=>!i.id.startsWith('purchase.')&&i.kind!=='purchase_context')).toBe(true);
+ // Purchases live in the appendix only: no window title, claim or section
+ // enumerates purchases or purchase progress.
+ for(const w of windows){
+  expect(w.title+w.claim.text+(w.sections??[]).map(s=>s.text).join('')).not.toMatch(/此前已购入|窗口内装备进度|purchased so far|item progress|already purchased/);
+ }
  const copy=r.insights.map(i=>[i.claim.text,i.title,i.prompt,...(i.sections??[]).map(s=>s.text),...i.fact_ids.map(id=>r.facts[id].display[lang])]).flat().join(' ')
   +(r.practice?[(r.practice.note??''),...r.practice.items.flatMap(it=>[it.goal,it.condition])].join(' '):'')
   +r.followups.map(f=>f.label).join(' ');
@@ -124,13 +130,18 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
   expect(r.facts['death.1'].value.inflictor).toBeUndefined();
   expect(deathWin.fact_ids.some(id=>r.facts[id].value?.key==='earthshaker_echo_slam')).toBe(true);
   // The early window stands on its own as kills-vs-conversion: six recorded
-  // kills and item completions against zero enemy structures taken, with the
-  // 12:50 tower named as a Dire self-denial rather than a push.
+  // kills against zero *new* enemy structures taken inside the window (never
+  // a whole-match cumulative zero), with the 12:50 tower named as a Dire
+  // self-denial rather than a push and no purchase list in the body.
   const early=windows.find(w=>w.time.from<=345&&w.time.to>=925);
   expect(early).toBeTruthy();
   expect(early.title).toMatch(/击杀未转化为地图目标|kills without map conversion/);
   for(const t of ['5:44','6:33','9:15','12:00','12:14','14:43'])expect(early.claim.text).toContain(t);
-  expect(early.claim.text).toContain(lang==='zh'?'我方摧毁的敌方建筑为 0 处':'had taken 0 enemy structures');
+  expect(early.claim.text).toContain(lang==='zh'?'本窗口内我方没有新增摧毁敌方建筑':'took no new enemy structure inside this window');
+  expect(early.claim.text).not.toMatch(/摧毁的敌方建筑为 0 处|had taken 0 enemy structures/);
+  const earlyCopy=early.title+early.claim.text+(early.sections??[]).map(s=>s.text).join('');
+  if(lang==='zh')expect(earlyCopy).not.toMatch(/慧光|陨星锤|远行鞋|已购入|装备进度/);
+  else expect(earlyCopy).not.toMatch(/Kaya|Meteor Hammer|Boots of Travel|already purchased|item progress/);
   expect(early.claim.text).toContain(lang==='zh'?'12:50 夜魇中路一塔由夜魇自己拆除，不计为我方推进':'Dire mid T1 tower at 12:50 was demolished by Dire itself, not counted as your team\'s push');
   // The mid window keeps an empty kill log honest: teammates' kills and smokes
   // are named as context, non-participation is never claimed, and losing the
@@ -191,9 +202,9 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
 });
 it('produces a proven practice goal only when hero-state samples ground a repeated pattern',()=>{
  const a=JSON.parse(readFileSync('data/replay-facts/9080127650.json'));
- // Synthesized 30 s samples: low mana across the whole span, so the state
- // facts land near the starts of the windows carrying promoted deaths
- // (11:21 outer towers, 26:03 BKB use) and near the deaths themselves.
+ // Synthesized 30 s samples: low mana across the whole span, so a sample
+ // lands next to each promoted death (the practice evidence anchor) as well
+ // as at the window starts carrying them (11:21 outer towers, 25:03 BKB).
  const samples=[];
  for(let t=420;t<=1560;t+=30) samples.push({t,hero:'night_stalker',team:3,x:100,y:100,hp:500,max_hp:1000,mana:120,max_mana:600,level:12,life_state:1,player_index:4});
  const raw={match_id:a.match_id,players:a.players};
@@ -211,10 +222,119 @@ it('produces a proven practice goal only when hero-state samples ground a repeat
   const goal=r.practice.items[0].goal, condition=r.practice.items[0].condition;
   expect(goal).toContain(lang==='zh'?'50%':'50%');
   expect(condition).toContain(lang==='zh'?'时序相关，非因果':'temporal, not causal');
+  // The proof cites samples at the death anchors, never window starts.
+  expect(condition).toContain(lang==='zh'?'阵亡时点附近':'next to the');
   for(const id of r.practice.items[0].fact_ids)expect(r.facts[id]).toBeTruthy();
-  expect(r.practice.items[0].fact_ids.some(id=>id.startsWith('state.win.'))).toBe(true);
+  expect(r.practice.items[0].fact_ids.some(id=>id.startsWith('state.death.'))).toBe(true);
   expect(r.practice.items[0].fact_ids.some(id=>/^death\.\d+$/.test(id))).toBe(true);
  }
+});
+/** In-memory synthetic facts for direct buildMainline calls (no downloads). */
+const synthMatch=()=>{
+ const facts={};
+ const objectives=[];
+ const obj=(t,key,team)=>{
+  const o={t,type:'building_kill',key,team:team===2?'radiant':'dire'};
+  const id=`obj.${t}.${objectives.length}`;
+  facts[id]={id,kind:'entity',value:o,t,display:{en:`${clock(t)}: ${key} destroyed by team ${team}`,zh:`${clock(t)}：${key} 被阵营 ${team} 摧毁`},citation:'r1',source_path:'objectives'};
+  objectives.push({...o,fact_id:id});
+ };
+ const death=(i,t,killer)=>{
+  const id=`death.${i}`;
+  facts[id]={id,kind:'entity',value:{t,killer},t,display:{en:`${clock(t)} · Death · ${killer}`,zh:`${clock(t)} · 死亡 · ${killer}`},citation:'r1',source_path:'deaths_log'};
+  return {t,killer,fact_id:id};
+ };
+ return {facts,objectives,obj,death};
+};
+it('never claims a whole-match zero-takes conversion when a take predates the window',()=>{
+ const m=synthMatch();
+ // Radiant Invoker already took Dire top T1 at 1:40, then a 3-kill cluster
+ // with no in-window take: the theme is "no NEW conversion in this stretch".
+ m.obj(100.2,'npc_dota_badguys_tower1_top',2);
+ const focus={hero_id:74,player_slot:0,kills_log:[
+  {time:600.4,key:'npc_dota_hero_lion'},
+  {time:650.2,key:'npc_dota_hero_pudge'},
+  {time:700.1,key:'npc_dota_hero_slark'},
+ ]};
+ const {insights}=buildMainline({facts:m.facts,deaths:[]},{duration:900,players:[focus]},focus,[focus],'zh',m.objectives,[]);
+ const win=insights.find(i=>i.kind==='review_window'&&/击杀未转化为地图目标/.test(i.title));
+ expect(win).toBeTruthy();
+ expect(win.claim.text).toContain('本窗口内我方没有新增摧毁敌方建筑');
+ expect(win.claim.text+(win.sections??[]).map(s=>s.text).join('')).not.toMatch(/摧毁的敌方建筑为 0 处|had taken 0 enemy structures/);
+ const known=(win.sections??[]).find(s=>s.label_key==='known');
+ // The pre-window take IS known at the decision time — printed, not erased.
+ expect(known.text).toContain('10:00 前我方摧毁对方建筑 1 处');
+ const comparable=(win.sections??[]).find(s=>s.label_key==='comparable');
+ expect(comparable.text).toContain('窗口开始前全场已推进 1 处');
+});
+it('keeps practice insufficient without hero-state samples, even with BKB and death windows',()=>{
+ const m=synthMatch();
+ // Dire Night Stalker: BKB bought at 1:40 and never used; two own-structure
+ // loss clusters at 5:00/5:50 and 10:00/10:50, each followed by a promoted
+ // death. The BKB checklist pattern matches on purchase logs alone — it must
+ // still be insufficient because no reusable state samples exist.
+ m.obj(300.5,'npc_dota_badguys_tower1_top',2);
+ m.obj(350.2,'npc_dota_badguys_tower1_bot',2);
+ m.obj(600.4,'npc_dota_badguys_tower2_top',2);
+ m.obj(650.1,'npc_dota_badguys_tower2_bot',2);
+ const deaths=[m.death(1,360.3,'pudge'),m.death(2,660.2,'lion')];
+ const focus={hero_id:60,player_slot:132,purchase_log:[{time:100,key:'black_king_bar'}],item_use_log:[],kills_log:[]};
+ m.facts['item.first.black_king_bar']={id:'item.first.black_king_bar',kind:'time',value:100,t:100,display:{en:'Black King Bar at 1:40',zh:'1:40 购入黑皇杖'},citation:'r1',source_path:'purchase_log'};
+ const {insights,practice}=buildMainline({facts:m.facts,deaths},{duration:900,players:[focus]},focus,[focus],'zh',m.objectives,[{fact_ids:['death.1','death.2']}]);
+ const windows=insights.filter(i=>i.kind==='review_window');
+ expect(windows).toHaveLength(2);
+ expect(windows.every(w=>w.fact_ids.some(id=>/^death\.\d+$/.test(id)))).toBe(true);
+ expect(practice).toMatchObject({status:'insufficient',items:[]});
+ expect(practice.note).toBeTruthy();
+});
+it('does not prove low-mana practice from window-start samples when death-adjacent mana is high',()=>{
+ const a=JSON.parse(readFileSync('data/replay-facts/9080127650.json'));
+ // 17% mana at the two window starts (11:21, 25:03) but 98% at the actual
+ // deaths (14:55, 25:44): the start-of-window samples must not stand in for
+ // the fight-anchor samples.
+ const row=(t,mana)=>({t,hero:'night_stalker',team:3,x:0,y:0,hp:900,max_hp:1200,mana,max_mana:600,level:14,life_state:1,player_index:4});
+ const samples=[row(681,100),row(895,590),row(1503,100),row(1544,590)];
+ const raw={match_id:a.match_id,players:a.players};
+ const merged={...applyReplayArtifact(raw,a),hero_states:{samples,sampling:'planted window-start vs death-anchor samples',visibility:'null_in_trace',truncated:false,anchors:[]}};
+ const r=buildReview(merged,{heroId:60,lang:'zh',fetchedAt:a.fetched_at});
+ expect(validateReview(r)).toEqual({ok:true,errors:[]});
+ expect(r.practice).toMatchObject({status:'insufficient',items:[]});
+});
+it.each([[9089115713,74,3025],[9080127650,60,1906],[9088239359,71,1227]])('keeps the Ancient in the last window under production integer duration %s (%s)',(match,heroId,duration)=>{
+ const a=JSON.parse(readFileSync(`data/replay-facts/${match}.json`));
+ const raw={match_id:match,duration,players:a.players};
+ const r=buildReview(applyReplayArtifact(raw,a),{heroId,lang:'zh',fetchedAt:a.fetched_at});
+ expect(validateReview(r)).toEqual({ok:true,errors:[]});
+ const windows=r.insights.filter(i=>i.kind==='review_window');
+ const last=windows[windows.length-1];
+ const fort=a.objectives.find(o=>String(o.key??'').endsWith('_fort'));
+ expect(fort).toBeTruthy();
+ // The event horizon never falls below the last verified event: the Ancient
+ // stays inside the last window's range, facts, claim and stage naming.
+ expect(last.time.to).toBeGreaterThanOrEqual(fort.time);
+ expect(last.fact_ids.some(id=>r.facts[id]?.value?.key===fort.key)).toBe(true);
+ expect(last.claim.text).toContain(clock(fort.time));
+ expect(last.title).toMatch(/高地攻坚至基地被破|高地失守至基地被破/);
+ expect(last.title).not.toMatch(/外塔攻防同期|外塔反推|己方高地失守/);
+});
+it.each([[9088239359,71,1227],[9080127650,60,1906]])('cuts known structure counts at the window start, not the next whole minute (%s)',(match,heroId,duration)=>{
+ const a=JSON.parse(readFileSync(`data/replay-facts/${match}.json`));
+ const raw={match_id:match,duration,players:a.players};
+ const r=buildReview(applyReplayArtifact(raw,a),{heroId,lang:'zh',fetchedAt:a.fetched_at});
+ const windows=r.insights.filter(i=>i.kind==='review_window');
+ // Spirit Breaker window 1 opens at 11:02 (662 s) — the 11:04 mid T1 had not
+ // happened yet; Night Stalker's high-ground window opens at 26:37 (1597 s) —
+ // the 26:45/26:50 barracks are not yet known either.
+ const w=windows.find(w=>w.time.from===(match===9088239359?662:1597));
+ expect(w).toBeTruthy();
+ const known=(w.sections??[]).find(s=>s.label_key==='known');
+ expect(known).toBeTruthy();
+ expect(known.text).not.toMatch(/12:00 前|27:00 前/);
+ if(match===9088239359)expect(known.text).toContain('11:02 前我方摧毁对方建筑 0 处');
+ else expect(known.text).toContain('26:37 前我方失去建筑 6 处');
+ // The decision-time clock on the fact is the actual cutoff (the window
+ // start), and no post-start event leaks into the known layer.
+ for(const bit of known.text.split('；'))expect(bit).not.toMatch(/11:04|26:45|26:50|27:25/);
 });
 it('resolves official names from the same real ids, with neutral unknown fallbacks',()=>{
  expect(evidenceName('invoker_cold_snap','zh')).toBe('急速冷却');expect(evidenceName('invoker_cold_snap','en')).toBe('Cold Snap');

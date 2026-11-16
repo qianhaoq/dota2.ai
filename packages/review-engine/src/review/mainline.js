@@ -41,6 +41,9 @@ const KILL_LOG_GAP_NOTE_S = 600;
 const STATE_WINDOW_START_TOL_S = 15;
 const STATE_ANCHOR_TOL_S = 5;
 const SNAPSHOT_TOL_S = 35;
+/** A focus state sample may ground practice evidence only this close to a
+ * recorded death — one sampling-cadence step, never a long window's start. */
+const DEATH_STATE_TOL_S = 30;
 /** Items whose completions may anchor or extend a window (recipes excluded). */
 const CORE_ITEM_KEYS = new Set([...Object.keys(KEY_ITEMS), 'travel_boots', 'kaya', 'meteor_hammer', 'ultimate_scepter', 'aghanims_shard', 'octarine_core']);
 /** Core mobility items that open the post-item resource/objective line. */
@@ -77,8 +80,14 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   const duration = Number.isFinite(raw.duration) ? raw.duration : null;
   // The horizon must be carried by a fact (ancient.fell or the last recorded
   // event) — never padded, so every clock in the overview copy stays citable.
+  // Production durations are integer seconds while building events carry
+  // fractions, so the OpenDota duration can sit below the last verified event
+  // (the Ancient fall is routinely a fraction past the integer). The horizon
+  // is the later of the two: it must never clip a recorded event — especially
+  // the Ancient — out of the last window.
   const eventTimes = [...objectives.map(o => o.t), ...result.deaths.map(d => d.t)].filter(Number.isFinite);
-  const horizon = duration ?? (eventTimes.length ? Math.max(...eventTimes) : 0);
+  const lastEventT = eventTimes.length ? Math.max(...eventTimes) : 0;
+  const horizon = Math.max(duration ?? 0, lastEventT);
   const focusTeam = focus.player_slot < 128 ? 'radiant' : 'dire';
   const focusKey = STATIC_HEROES[focus.hero_id]?.internalName ?? null;
   const focusLabel = focusKey ? evidenceName(focusKey, lang) : slugOfKey(heroSlug(focus.hero_id) ?? focus.hero_id);
@@ -135,14 +144,16 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
       ...(useGold ? {} : { derivation: typeof raw.net_worth_derivation === 'string' ? raw.net_worth_derivation : '60s net-worth buckets; a bucket index is not an event clock' }),
     });
   };
-  /** Focus-team structure counts before minute m; deny = destroyed by its owner side. */
-  const towersFact = (m, kind) => {
-    const id = `towers.${kind}.before.${m}`;
+  /** Focus-team structure counts strictly before the decision time cutT —
+   * events at or after cutT (including a window's own start anchor) had not
+   * happened yet and are never "known"; deny = destroyed by its owner side. */
+  const towersFact = (cutT, kind) => {
+    const id = `towers.${kind}.before.${Math.round(cutT)}`;
     if (facts[id]) return id;
     let count = 0;
     const parts = [];
     for (const o of objectives) {
-      if (!Number.isFinite(o.t) || o.t >= m * 60) continue;
+      if (!Number.isFinite(o.t) || o.t >= cutT) continue;
       if (o.type !== 'building_kill' && !/tower|rax|fort/.test(String(o.key ?? ''))) continue;
       const owner = ownerSideOf(o.key);
       const killer = killerSideOf(o.team);
@@ -153,13 +164,13 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     }
     if (!parts.length && kind !== 'pushed') return null;
     return addFact({
-      id, kind: 'count', value: count, unit: 'structures', t: m * 60, perspective: 'player_team',
+      id, kind: 'count', value: count, unit: 'structures', t: cutT, perspective: 'player_team',
       display: {
-        en: `${{ pushed: 'Taken by your team', lost: 'Lost by your team', denied: 'Denied by your team' }[kind]} before ${clock(m * 60)}: ${count}`,
-        zh: `${clock(m * 60)} 前${{ pushed: '我方摧毁', lost: '我方失去', denied: '我方自拆' }[kind]}：${count}`,
+        en: `${{ pushed: 'Taken by your team', lost: 'Lost by your team', denied: 'Denied by your team' }[kind]} before ${clock(cutT)}: ${count}`,
+        zh: `${clock(cutT)} 前${{ pushed: '我方摧毁', lost: '我方失去', denied: '我方自拆' }[kind]}：${count}`,
       },
       citation: 'r1', source_path: 'objectives',
-      derivation: `deny = structure destroyed by its owner side; derived from ${parts.length} objective events`,
+      derivation: `strict cutoff at ${clock(cutT)}; deny = structure destroyed by its owner side; derived from ${parts.length} objective events`,
     });
   };
 
@@ -355,9 +366,9 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     if (phase.key === 'laning' && Number.isFinite(facts.lh_at_10?.value)) ids.push('lh_at_10');
     // Every printed phase bound needs a fact carrying that clock.
     const advA = advFact(Math.floor(phase.from / 60)); if (advA) ids.push(advA);
-    const boundA = towersFact(Math.floor(phase.from / 60), 'pushed'); if (boundA) ids.push(boundA);
+    const boundA = towersFact(phase.from, 'pushed'); if (boundA) ids.push(boundA);
     const advB = advFact(Math.max(0, Math.floor(Math.max(phase.from, phase.to - 1) / 60))); if (advB && !ids.includes(advB)) ids.push(advB);
-    if (phase.to % 60 === 0) { const boundB = towersFact(Math.floor(phase.to / 60), 'pushed'); if (boundB && !ids.includes(boundB)) ids.push(boundB); }
+    if (phase.to % 60 === 0) { const boundB = towersFact(phase.to, 'pushed'); if (boundB && !ids.includes(boundB)) ids.push(boundB); }
     else {
       // Prefer the recorded Ancient fall over the duration-derived stand-in.
       const fort = numberedObjectives.find(o => typeof o.key === 'string' && o.key.endsWith('_fort') && o.fact_id && facts[o.fact_id] && Math.abs(o.t - phase.to) <= 5);
@@ -535,28 +546,24 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     const endAdv = advForTeam(to, focusTeam);
     const advA = advFact(Math.floor(from / 60)); if (advA) ids.push(advA);
     const advB = advFact(Math.max(0, Math.floor(to / 60))); if (advB && advB !== advA) ids.push(advB);
-    // Then-known hero state: level + notable purchases from snapshots/purchase
-    // log; HP/mana/position only where a hero_states sample is nearby.
-    // Key items surface first; filler purchases dedupe by item key.
+    // Then-known hero state: level from snapshots; HP/mana/position only where
+    // a hero_states sample is nearby. Purchase lists stay in the appendix —
+    // the window body never enumerates what was bought.
     const snap = snapshotNearest(from);
-    const owned = new Map();
-    for (const p of purchases.filter(p => p.time <= from)) owned.set(p.key, p.time);
-    const recentItems = [...owned.entries()]
-      .sort((a, b) => Number(Object.hasOwn(KEY_ITEMS, b[0])) - Number(Object.hasOwn(KEY_ITEMS, a[0])) || b[1] - a[1])
-      .slice(0, 4)
-      .map(([key, time]) => ({ key, time }));
     const knownBits = [];
     const takesSoFar = takes.filter(o => o.t <= to).length;
+    const takesBeforeWindow = takes.filter(o => o.t < from).length;
     if (startAdv != null) {
       knownBits.push(zh
         ? `本方${useGold ? '赚金优势' : '净资产优势'}约 ${fmtSigned(startAdv)}${useGold ? '' : '（60 秒桶，不是赚金）'}`
         : `your team's ${useGold ? 'earned-gold' : 'net-worth'} advantage was about ${fmtSigned(startAdv)}${useGold ? '' : ' (60 s bucket, not earned gold)'}`);
     }
-    const towersBefore = Math.max(0, Math.floor(from / 60));
-    const pushedFact = towersFact(towersBefore + 1, 'pushed');
-    const lostFact = towersFact(towersBefore + 1, 'lost');
-    if (pushedFact) { ids.push(pushedFact); knownBits.push(zh ? `${clock((towersBefore + 1) * 60)} 前我方摧毁对方建筑 ${facts[pushedFact].value} 处` : `before ${clock((towersBefore + 1) * 60)} your team had taken ${facts[pushedFact].value} enemy structure${facts[pushedFact].value === 1 ? '' : 's'}`); }
-    if (lostFact) { ids.push(lostFact); knownBits.push(zh ? `${clock((towersBefore + 1) * 60)} 前我方失去建筑 ${facts[lostFact].value} 处` : `before ${clock((towersBefore + 1) * 60)} your team had lost ${facts[lostFact].value} structure${facts[lostFact].value === 1 ? '' : 's'}`); }
+    // Known structure counts cut strictly at the window start — the printed
+    // clock is the actual decision-time cutoff, never the next whole minute.
+    const pushedFact = towersFact(from, 'pushed');
+    const lostFact = towersFact(from, 'lost');
+    if (pushedFact) { ids.push(pushedFact); knownBits.push(zh ? `${clock(from)} 前我方摧毁对方建筑 ${facts[pushedFact].value} 处` : `before ${clock(from)} your team had taken ${facts[pushedFact].value} enemy structure${facts[pushedFact].value === 1 ? '' : 's'}`); }
+    if (lostFact) { ids.push(lostFact); knownBits.push(zh ? `${clock(from)} 前我方失去建筑 ${facts[lostFact].value} 处` : `before ${clock(from)} your team had lost ${facts[lostFact].value} structure${facts[lostFact].value === 1 ? '' : 's'}`); }
     if (snap && Number.isInteger(snap.snap.level)) {
       const id = `state.snapshot.win.${n}`;
       if (!facts[id]) addFact({
@@ -566,14 +573,6 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
         derivation: `nearest snapshot to ${clock(from)} (within ${SNAPSHOT_TOL_S} s); approximately 30 s snapshot cadence`,
       });
       if (facts[id]) { ids.push(id); knownBits.push(zh ? `约 ${clock(from)} 时等级 ${snap.snap.level}（装备快照）` : `level ${snap.snap.level} near ${clock(from)} (inventory snapshot)`); }
-    }
-    if (recentItems.length) {
-      const itemPart = recentItems.map(p => itemName(p.key, lang)).join(zh ? '、' : ', ');
-      knownBits.push(zh ? `此前已购入：${itemPart}` : `already purchased: ${itemPart}`);
-      for (const p of recentItems) {
-        const firstId = `item.first.${p.key}`;
-        if (facts[firstId] && p.time === facts[firstId].value) ids.push(firstId);
-      }
     }
     const focusState = stateNear(slugOfKey(heroSlug(focus.hero_id)), from, STATE_WINDOW_START_TOL_S);
     if (focusState) {
@@ -648,15 +647,11 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     const takesId = structCountFact(`takes.win.${n}`, windowTakes, '我方摧毁敌方建筑', 'enemy structures taken by your team');
     const lostId = structCountFact(`lost.win.${n}`, windowLosses, '我方失去建筑', 'your structures lost');
     ids.push(takesId, lostId);
-    // Pattern-specific known context: item progress inside the frame, the
-    // post-item anchor, and what an empty focus kill log does and does not
-    // say (empty never means absent from fights — teammates keep records).
-    const windowCompletions = completions.filter(c => c.time >= from && c.time <= to);
-    if (cand.kind === 'kills_no_conversion' && windowCompletions.length) {
-      const parts = windowCompletions.map(c => `${itemName(c.key, lang)} ${clock(c.time)}`);
-      knownBits.push(zh ? `窗口内装备进度（购买日志口径）：${parts.join(zh ? '、' : ', ')}` : `item progress inside this window (purchase log): ${parts.join(', ')}`);
-      for (const c of windowCompletions) ids.push(itemDoneFact(c));
-    }
+    // Pattern-specific known context: the post-item anchor, and what an empty
+    // focus kill log does and does not say (empty never means absent from
+    // fights — teammates keep records). Completions may anchor or extend a
+    // frame, but no item list enters the window body — purchases live in the
+    // appendix.
     if (cand.kind === 'post_item_objectives') {
       ids.push(itemDoneFact(cand.item));
       knownBits.push(zh
@@ -699,12 +694,16 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
         : `; ${windowDenies.slice(0, 2).map(o => `${formatBuildingName(o.key, lang)} at ${clock(o.t)} was demolished by ${sideName(o.teamNum, false)} itself`).join(', ')}, not counted as your team's push`)
       : '';
     if (cand.kind === 'kills_no_conversion') {
-      const itemPart = windowCompletions.length
-        ? (zh ? `、合成 ${windowCompletions.map(c => itemName(c.key, lang)).join('、')}` : ` and ${windowCompletions.map(c => itemName(c.key, 'en')).join(', ')} completed`)
+      // The theme is "no NEW conversion in this stretch": eligibility checked
+      // in-window takes, so the copy asserts the same interval. A take before
+      // the window exists as recorded context — a whole-match cumulative zero
+      // would contradict it.
+      const priorTakes = takesBeforeWindow
+        ? (zh ? `（窗口开始前全场已推进 ${takesBeforeWindow} 处）` : ` (${takesBeforeWindow} taken earlier in the match)`)
         : '';
       comparableBits.push(zh
-        ? `记录对照：窗口内你的击杀记录 ${windowKills.length} 次${itemPart}；到 ${clock(to)} 为止我方摧毁的敌方建筑为 0 处${denyNote}。这是记录对照，不是路线判定；其余路线没有字段支持，不评。`
-        : `Recorded contrast: ${windowKills.length} kills of yours in this window${itemPart}, while your team had taken 0 enemy structures through ${clock(to)}${denyNote}. This is a recorded contrast, not a verdict; no field supports judging a different route.`);
+        ? `记录对照：窗口内你的击杀记录 ${windowKills.length} 次；本窗口内我方没有新增摧毁敌方建筑${priorTakes}${denyNote}。这是记录对照，不是路线判定；其余路线没有字段支持，不评。`
+        : `Recorded contrast: ${windowKills.length} kills of yours in this window, while your team took no new enemy structure inside it${priorTakes}${denyNote}. This is a recorded contrast, not a verdict; no field supports judging a different route.`);
     } else if (cand.kind === 'post_item_objectives') {
       const firstTake = windowTakes[0];
       const dirNote = startAdv != null && endAdv != null
@@ -754,18 +753,22 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     // section is omitted rather than approximated.
     const claimBits = actions.map(a => a.text);
     if (cand.kind === 'kills_no_conversion') {
+      // Same interval the eligibility check used: zero takes inside this
+      // window, never a cumulative whole-match zero.
       claimBits.push(zh
-        ? `到 ${clock(to)} 为止，我方摧毁的敌方建筑为 0 处${denyNote}`
-        : `through ${clock(to)} your team had taken 0 enemy structures${denyNote}`);
+        ? `本窗口内我方没有新增摧毁敌方建筑${denyNote}`
+        : `your team took no new enemy structure inside this window${denyNote}`);
     }
     const claimText = claimBits.length
       ? `${claimBits.join(zh ? '；' : '; ')}${zh ? '。' : '.'}`
       : (zh ? `窗口 ${clock(cand.anchor)} 附近没有可核实的动作证据。` : `No verifiable action evidence around ${clock(cand.anchor)}.`);
     const dedupedIds = [...new Set(ids)].filter(id => facts[id]);
     const theme = windowTheme(cand, { zh, lang, windowTakes, windowLosses, windowObjs, takesSoFar, focusTeam });
+    // The title span is the analytic frame (time.from/to), so the header and
+    // the time chip always agree; the anchor clock stays in the prompt.
     const title = zh
-      ? `决策窗口 ${n}（${clock(cand.anchor)}–${clock(to)}）：${theme}`
-      : `Decision window ${n} (${clock(cand.anchor)}–${clock(to)}): ${theme}`;
+      ? `决策窗口 ${n}（${clock(from)}–${clock(to)}）：${theme}`
+      : `Decision window ${n} (${clock(from)}–${clock(to)}): ${theme}`;
     windows.push({
       id: `window.${n}`, kind: 'review_window', status: 'ok', title,
       // time is the analytic frame of the window; every event clock inside the
@@ -780,7 +783,7 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   }
 
   // ---- practice goals (proven only with hero states) ----------------------
-  const practice = buildPractice({ zh, facts, addFact, windows, heroStates, focus, focusSlug: slugOfKey(heroSlug(focus.hero_id)), lang });
+  const practice = buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug: slugOfKey(heroSlug(focus.hero_id)), stateNear });
 
   return { insights: [overview, ...windows], practice, windowsShort };
 }
@@ -825,40 +828,76 @@ function windowTheme(cand, { zh, lang, windowTakes, windowLosses, windowObjs, ta
 
 /**
  * Practice goals must be process-checkable with their observed conditions.
- * Without hero-state samples nothing here is provable, so the payload says so
- * once instead of emitting generic advice.
+ * Without reusable hero-state samples nothing here is provable — including the
+ * BKB checklist, which purchase logs alone cannot ground — so the payload
+ * says so once instead of emitting generic advice. Low-mana evidence must sit
+ * at the death/fight anchor: a sample at a long window's start says nothing
+ * about mana minutes later at the fight.
  */
-function buildPractice({ zh, facts, addFact, windows, heroStates, focus, focusSlug, lang }) {
-  const stateWins = windows.map(w => {
-    const id = w.fact_ids.find(id => id === `state.win.${w.id.split('.')[1]}.${focusSlug}`);
-    return id ? { w, s: facts[id].value } : null;
-  }).filter(Boolean);
+function buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug, stateNear }) {
+  if (!heroStates) {
+    return {
+      status: 'insufficient', items: [],
+      note: zh
+        ? '本局证据不足，无法给出可验证的练习目标：缺少可复用的状态样本或重复出现的有依据模式。'
+        : 'Insufficient evidence in this match for a verifiable practice goal: no reusable state samples or a recurring grounded pattern.',
+    };
+  }
   const items = [];
-  const deathsByWindow = w => w.fact_ids.filter(id => /^death\.\d+$/.test(id));
-  // Pattern A: low mana before fights that produced recorded deaths.
-  const lowMana = stateWins.filter(({ w, s }) => deathsByWindow(w).length && pctOf(s.mana, s.max_mana) != null && pctOf(s.mana, s.max_mana) < 50);
+  // Focus state nearest each promoted death in the window, within one
+  // sampling-cadence step of that death — the fight anchor, never window start.
+  const deathStatesOf = w => (w.fact_ids ?? [])
+    .filter(id => /^death\.\d+$/.test(id) && Number.isFinite(facts[id]?.t))
+    .map(id => {
+      const near = stateNear(focusSlug, facts[id].t, DEATH_STATE_TOL_S);
+      return near ? { deathId: id, deathT: facts[id].t, s: near.s } : null;
+    })
+    .filter(Boolean);
+  const lowMana = [];
+  for (const w of windows) {
+    const hit = deathStatesOf(w).find(({ s }) => {
+      const pct = pctOf(s.mana, s.max_mana);
+      return pct != null && pct < 50;
+    });
+    if (hit) lowMana.push(hit);
+  }
   if (lowMana.length >= 2) {
+    const cited = lowMana.map(({ deathId, deathT, s }) => {
+      const id = `state.${deathId}.${focusSlug}`;
+      const manaPct = pctOf(s.mana, s.max_mana);
+      if (!facts[id]) addFact({
+        id, kind: 'entity', value: { ...s, sample_basis: `nearest hero_states sample to ${clock(deathT)} within ±${DEATH_STATE_TOL_S} s` }, t: s.t, perspective: 'player_team',
+        display: {
+          en: `${clock(s.t)} state sample next to the ${clock(deathT)} death: mana ${Number.isFinite(s.mana) ? s.mana : '?'}${Number.isFinite(s.max_mana) ? `/${s.max_mana}` : ''}${manaPct != null ? ` (${manaPct}%)` : ''}`,
+          zh: `${clock(s.t)} 状态样本（${clock(deathT)} 阵亡时点附近）：魔法 ${Number.isFinite(s.mana) ? s.mana : '?'}${Number.isFinite(s.max_mana) ? `/${s.max_mana}` : ''}${manaPct != null ? `（${manaPct}%）` : ''}`,
+        },
+        citation: 'r1', source_path: 'hero_states.samples', derivation: heroStates.sampling,
+      });
+      return { id, deathId, deathT, s, manaPct };
+    });
     items.push({
       goal: zh ? '接团前把魔法值保持在 50% 以上并确认关键技能可用。' : 'Before committing to a fight, keep mana above 50% and confirm key abilities are ready.',
       condition: zh
-        ? `本局 ${lowMana.map(({ w, s }) => `${clock(s.t)} 魔法 ${pctOf(s.mana, s.max_mana)}%（状态样本 ${w.title}）`).join('、')}，且各窗口内均有阵亡记录（时序相关，非因果）。`
-        : `In this match: ${lowMana.map(({ w, s }) => `${clock(s.t)} mana ${pctOf(s.mana, s.max_mana)}% (sample, ${w.title})`).join(', ')} — each window also has a recorded death (temporal, not causal).`,
-      fact_ids: lowMana.flatMap(({ w }) => w.fact_ids.filter(id => id.startsWith('state.win.') || /^death\.\d+$/.test(id))).slice(0, 8),
+        ? `本局 ${cited.map(({ s, deathT, manaPct }) => `${clock(s.t)} 魔法 ${manaPct}%（${clock(deathT)} 阵亡时点附近的状态样本）`).join('、')}。样本取自阵亡锚点附近，而非窗口起点（时序相关，非因果）。`
+        : `In this match: ${cited.map(({ s, deathT, manaPct }) => `${clock(s.t)} mana ${manaPct}% (state sample next to the ${clock(deathT)} death)`).join(', ')}. Samples sit at the death anchors, not at window starts (temporal, not causal).`,
+      fact_ids: cited.flatMap(({ id, deathId }) => [id, deathId]).slice(0, 8),
     });
   }
-  // Pattern B: BKB owned but unused across several death windows.
+  // Pattern B: BKB owned but unused across several death windows; each window
+  // must carry a state sample at one of its deaths so the checklist is tied to
+  // observed fight conditions, not to purchase logs alone.
   const bkbFirst = facts['item.first.black_king_bar'];
   const bkbUnusedWins = windows.filter(w =>
-    deathsByWindow(w).length
+    deathStatesOf(w).length
     && bkbFirst && Number.isFinite(bkbFirst.value) && bkbFirst.value <= w.time.from
     && !w.fact_ids.some(id => id.startsWith('use.bkb.')));
   if (bkbUnusedWins.length >= 2) {
     items.push({
       goal: zh ? '接团前检查黑皇杖是否可用，并把它纳入开团 checklist。' : 'Before committing, check whether Black King Bar is up and include it in the fight checklist.',
       condition: zh
-        ? `黑皇杖于 ${clock(bkbFirst.value)} 购入；${bkbUnusedWins.map(w => w.title).join('、')} 均有阵亡记录且窗口内无使用记录（时序相关，非因果）。`
-        : `Black King Bar was purchased at ${clock(bkbFirst.value)}; ${bkbUnusedWins.map(w => w.title).join(', ')} all contain recorded deaths with no in-window use (temporal, not causal).`,
-      fact_ids: ['item.first.black_king_bar', ...bkbUnusedWins.flatMap(w => deathsByWindow(w))].slice(0, 8),
+        ? `黑皇杖于 ${clock(bkbFirst.value)} 购入；${bkbUnusedWins.map(w => w.title).join('、')} 均有阵亡记录（且阵亡时点附近有状态样本）、窗口内无使用记录（时序相关，非因果）。`
+        : `Black King Bar was purchased at ${clock(bkbFirst.value)}; ${bkbUnusedWins.map(w => w.title).join(', ')} all contain recorded deaths with a state sample next to them and no in-window use (temporal, not causal).`,
+      fact_ids: ['item.first.black_king_bar', ...bkbUnusedWins.flatMap(w => deathStatesOf(w).map(h => h.deathId))].slice(0, 8),
     });
   }
   if (items.length) return { status: 'proven', items: items.slice(0, 2), note: null };

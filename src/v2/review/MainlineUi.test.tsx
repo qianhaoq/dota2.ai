@@ -19,7 +19,7 @@ const windowInsight: Insight = {
     id: 'window.1', kind: 'review_window', status: 'ok', title: '决策窗口 1（8:15）：阵亡与后续',
     time: { from: 495, to: 736 }, claim: { text: '8:15 你被帕吉以肢解击杀；11:21 夜魇下路一塔被天辉摧毁。', phrasing: 'template' },
     sections: [
-        { label_key: 'known', text: '8:00 前我方摧毁对方建筑 0 处；此前已购入：锁子甲。' },
+        { label_key: 'known', text: '8:15 前我方摧毁对方建筑 0 处。' },
         { label_key: 'actions', text: '8:15 你被帕吉以肢解击杀。' },
         { label_key: 'missing', text: '本局没有英雄状态样本。' },
         { label_key: 'evaluation', text: '评价（基于上述证据，不做因果推断）。' },
@@ -90,5 +90,19 @@ describe('consolidated gap list', () => {
         expect(list.textContent).toContain('英雄状态样本');
         expect(list.textContent).toContain('版本号');
         expect(list.textContent).not.toMatch(/net_worth_t|hero_states|source_path|trace\//);
+        // No state samples anywhere: the HP/positions-absent note stays.
+        expect(document.body.textContent).toContain('缺少血量、视野和队友实时位置');
+    });
+
+    it('does not claim HP and positions are missing once windows cite state samples', () => {
+        const review = {
+            series: { radiant_gold_adv: [], radiant_xp_adv: [] },
+            insights: [{ id: 'window.1', kind: 'review_window', fact_ids: ['state.win.1.night_stalker'] }],
+            data_gaps: [{ topic: 'creep_waves', reason: 'states_have_no_creep_entities' }],
+        } as unknown as Review;
+        renderWithI18n(<ReviewTimelines review={review}/>, 'zh');
+        expect(document.body.textContent).not.toContain('缺少血量、视野和队友实时位置');
+        // The honest remaining gaps (vision / creep entities) are still named.
+        expect(document.body.textContent).toContain('视野与兵线实体不在本记录里');
     });
 });
