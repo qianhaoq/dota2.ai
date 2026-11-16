@@ -127,10 +127,13 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   };
 
   const addFact = fact => { facts[fact.id] = fact; return fact.id; };
-  /** Radiant-perspective advantage at bucket m, as its own citable fact. */
+  /** Radiant-perspective advantage at bucket m, as its own citable fact. An
+   * earlier consumer's fact at the same bucket is the same observation —
+   * return it, so every window printing the number cites its bucket. */
   const advFact = m => {
     const id = `net_worth.adv.at.${m}`;
-    if (facts[id] || !Number.isFinite(advSeries[m])) return null;
+    if (facts[id]) return id;
+    if (!Number.isFinite(advSeries[m])) return null;
     const basisEn = useGold ? 'earned-gold advantage' : 'net-worth advantage';
     const basisZh = useGold ? '赚金优势' : '净资产优势（60 秒桶）';
     return addFact({
@@ -377,6 +380,26 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     }
     for (const o of objs) if (o.fact_id && facts[o.fact_id]) ids.push(o.fact_id);
     for (const d of dts) if (d.fact_id && facts[d.fact_id]) ids.push(d.fact_id);
+    // Phase death counts come from the recorded list (what the death appendix
+    // shows), never the linked-cast subset: the overview must agree with that
+    // list. The count is its own citable fact carrying the earliest recorded
+    // clock and killer — an unpromoted death fact is not cited here (an
+    // inflictor-only record never becomes an insight claim).
+    if (recordedDts.length) {
+      const first = recordedDts[0];
+      const killerLabel = knownName(first.killer, lang);
+      const countId = `deaths.recorded.${phase.key}`;
+      if (!facts[countId]) addFact({
+        id: countId, kind: 'count', value: recordedDts.length, unit: 'deaths', t: first.t, perspective: 'player_team',
+        display: {
+          en: `${phaseLabel[phase.key]} ${clock(phase.from)}–${clock(phase.to)} recorded deaths: ${recordedDts.length} (first at ${clock(first.t)}${killerLabel ? `, killed by ${killerLabel}` : ''})`,
+          zh: `${phaseLabel[phase.key]}（${clock(phase.from)}–${clock(phase.to)}）阵亡 ${recordedDts.length} 次（首次 ${clock(first.t)}${killerLabel ? `，被${killerLabel}击杀` : ''}）`,
+        },
+        citation: 'r1', source_path: 'players[].deaths_log',
+        derivation: `count of recorded deaths with t in [${Math.round(phase.from)}, ${Math.round(phase.to)}); first-death clock and killer from the earliest record`,
+      });
+      if (facts[countId]) ids.push(countId);
+    }
     if (!ids.length) {
       phaseLines.push(zh
         ? `${phaseLabel[phase.key]}（${clock(phase.from)}–${clock(phase.to)}）：本阶段没有可核实的证据，不评述。`
@@ -385,16 +408,17 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     }
     phaseFactIds.push(...ids);
     const bits = [];
-    if (dts.length) {
-      const first = dts[0];
-      const killerLabel = first.killer ? evidenceName(first.killer, lang) : (zh ? '未知单位' : 'an unknown unit');
+    if (recordedDts.length) {
+      const first = recordedDts[0];
+      const killerLabel = knownName(first.killer, lang);
+      // The linked-cast subset is context, never the headline count.
+      const linked = dts.length === recordedDts.length ? '' : dts.length
+        ? (zh ? `；其中 ${dts.length} 次有可核实的关联施法` : `; ${dts.length} with a verifiable linked cast`)
+        : (zh ? '；本阶段没有可核实的关联施法' : '; no verifiable linked cast in this phase');
       bits.push(zh
-        ? `阵亡 ${dts.length} 次（首次 ${clock(first.t)} 被${killerLabel}击杀）`
-        : `${dts.length} death${dts.length > 1 ? 's' : ''} (first at ${clock(first.t)}, killed by ${killerLabel})`);
-    } else if (!recordedDts.length) bits.push(zh ? '无阵亡记录' : 'no recorded deaths');
-    else bits.push(zh
-      ? `阵亡记录 ${recordedDts.length} 条（见死亡列表；本阶段没有可核实的关联施法）`
-      : `${recordedDts.length} death record${recordedDts.length > 1 ? 's' : ''} (in the death list; no verifiable linked cast in this phase)`);
+        ? `阵亡 ${recordedDts.length} 次（首次 ${clock(first.t)}${killerLabel ? ` 被${killerLabel}击杀` : ''}${linked}）`
+        : `${recordedDts.length} death${recordedDts.length > 1 ? 's' : ''} (first at ${clock(first.t)}${killerLabel ? `, killed by ${killerLabel}` : ''}${linked})`);
+    } else bits.push(zh ? '无阵亡记录' : 'no recorded deaths');
     if (kills.length) bits.push(zh ? `击杀记录 ${kills.length} 次` : `${kills.length} recorded kill${kills.length > 1 ? 's' : ''}`);
     const pushed = objs.filter(o => killerSideOf(o.team) === focusTeam && ownerSideOf(o.key) && ownerSideOf(o.key) !== focusTeam);
     const lost = objs.filter(o => ownerSideOf(o.key) === focusTeam && killerSideOf(o.team) && killerSideOf(o.team) !== focusTeam);
@@ -783,7 +807,7 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   }
 
   // ---- practice goals (proven only with hero states) ----------------------
-  const practice = buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug: slugOfKey(heroSlug(focus.hero_id)), stateNear });
+  const practice = buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug: slugOfKey(heroSlug(focus.hero_id)), stateNear, bkbUses });
 
   return { insights: [overview, ...windows], practice, windowsShort };
 }
@@ -808,14 +832,27 @@ function windowTheme(cand, { zh, lang, windowTakes, windowLosses, windowObjs, ta
       ? (zh ? '高地攻坚至基地被破' : 'the high ground push through the Ancient')
       : (zh ? '高地失守至基地被破' : 'high ground lost through the Ancient');
   }
+  // High ground is named by structure tier on BOTH sides (T3/T4 towers and
+  // barracks): an enemy T3/rax take is an offensive high-ground push, so an
+  // outer-tower title may only appear when every take really is a T1/T2.
   const highGround = windowLosses.some(o => /tower[3-4]|rax/.test(String(o.key)));
+  const highGroundTake = windowTakes.some(o => /tower[3-4]|rax/.test(String(o.key)));
   if (highGround) {
-    return windowTakes.length
-      ? (zh ? '高地失守与外塔反推同期' : 'your high ground falling amid a counter-take')
-      : (zh ? '己方高地失守' : 'your high ground falling');
+    if (!windowTakes.length) return zh ? '己方高地失守' : 'your high ground falling';
+    return highGroundTake
+      ? (zh ? '高地失守与高地反推同期' : 'your high ground falling amid a high-ground counter-take')
+      : (zh ? '高地失守与外塔反推同期' : 'your high ground falling amid a counter-take');
   }
-  if (windowTakes.length && windowLosses.length) return zh ? '外塔攻防同期' : 'outer towers taken and lost';
-  if (windowTakes.length) return zh ? '推掉敌方外塔' : 'enemy outer towers taken';
+  if (windowTakes.length && windowLosses.length) {
+    return highGroundTake
+      ? (zh ? '推进敌方高地与外塔失守同期' : 'a high-ground push amid outer tower losses')
+      : (zh ? '外塔攻防同期' : 'outer towers taken and lost');
+  }
+  if (windowTakes.length) {
+    return highGroundTake
+      ? (zh ? '推进敌方高地' : 'push onto the enemy high ground')
+      : (zh ? '推掉敌方外塔' : 'enemy outer towers taken');
+  }
   if (!takesSoFar) {
     return highGround || /tower2/.test(windowLosses.map(o => String(o.key)).join())
       ? (zh ? '二塔及以上失守，仍无反推' : 'T2+ towers lost with no counter-take recorded')
@@ -834,7 +871,7 @@ function windowTheme(cand, { zh, lang, windowTakes, windowLosses, windowObjs, ta
  * at the death/fight anchor: a sample at a long window's start says nothing
  * about mana minutes later at the fight.
  */
-function buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug, stateNear }) {
+function buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug, stateNear, bkbUses = [] }) {
   if (!heroStates) {
     return {
       status: 'insufficient', items: [],
@@ -903,11 +940,20 @@ function buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug, sta
   // observed fight conditions, not to purchase logs alone. The repeated
   // pattern is counted in independent anchored deaths — overlapping windows
   // that only share one death are a single fight, not a recurrence.
+  // The negative claim is checked against the full item-use log, not only
+  // promoted use facts: buildMoments drops a use with no enemy cast or death
+  // inside its interval, and "not promoted" is not "not used".
+  const bkbUseInWindow = w => bkbUses.some(u => {
+    const start = Number.isFinite(u?.t) ? u.t : u?.time;
+    const end = Number.isFinite(u?.ended_at) && u.ended_at >= start ? u.ended_at : start;
+    return Number.isFinite(start) && start <= w.time.to && end >= w.time.from;
+  });
   const bkbFirst = facts['item.first.black_king_bar'];
   const bkbUnusedWins = windows.filter(w =>
     deathStatesOf(w).length
     && bkbFirst && Number.isFinite(bkbFirst.value) && bkbFirst.value <= w.time.from
-    && !w.fact_ids.some(id => id.startsWith('use.bkb.')));
+    && !w.fact_ids.some(id => id.startsWith('use.bkb.'))
+    && !bkbUseInWindow(w));
   const bkbDeaths = uniqueByDeath(bkbUnusedWins.flatMap(w => deathStatesOf(w)));
   if (bkbDeaths.length >= 2) {
     items.push({

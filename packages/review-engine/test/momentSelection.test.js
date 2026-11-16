@@ -105,6 +105,12 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
   // destroyed by team 2 (Radiant) — the recorded loss.
   expect(r.player.team).toBe('dire');
   expect(r.insights[0].claim.text).toContain(lang==='zh'?'31:46 夜魇基地被天辉摧毁':'31:46: Dire lost the Ancient (destroyed by Radiant)');
+  // Phase overview deaths are the recorded list (what the death appendix
+  // shows), never the linked-cast subset: laning holds five recorded deaths
+  // before 15:00 (first 3:18), late game three (first 25:44).
+  expect(r.insights[0].claim.text).toContain(lang==='zh'?'阵亡 5 次（首次 3:18':'5 deaths (first at 3:18');
+  expect(r.insights[0].claim.text).toContain(lang==='zh'?'阵亡 3 次（首次 25:44':'3 deaths (first at 25:44');
+  expect(r.insights[0].claim.text).not.toMatch(lang==='zh'?/阵亡 [12] 次（首次/:/ [12] deaths? \(first at/);
   expect(r.deaths.some(d=>d.inflictor==='pudge_meat_hook')).toBe(true);
   expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor==='pudge_meat_hook'||r.facts[id].value?.key==='pudge_meat_hook'))).toBe(false);
   // Linked kill evidence (dismember, bone guard, reaper's scythe) stays reachable.
@@ -149,6 +155,10 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
   const mid=windows.find(w=>w.time.from<=930&&w.time.to>=2080);
   expect(mid).toBeTruthy();
   const midCopy=mid.claim.text+(mid.sections??[]).map(s=>s.text).join(' ');
+  // A bucket fact an earlier consumer created is reused, not orphaned: the
+  // window prints its starting advantage (bucket 15, ≈−4,167) and must cite it.
+  expect(midCopy).toContain('-4,167');
+  expect(mid.fact_ids).toContain('net_worth.adv.at.15');
   expect(midCopy).not.toMatch(/未参战|不在场|did not participate|not in the fight|should have (grouped|farmed)|本该|应当抱团|该去带线/);
   const gapNote=(mid.sections??[]).find(s=>s.label_key==='missing'&&/击杀日志为空|kill log is empty/.test(s.text));
   expect(gapNote).toBeTruthy();
@@ -401,6 +411,65 @@ it('cites each death once when overlapping windows prove the unused-BKB pattern'
  expect(bkb).toBeTruthy();
  expect(bkb.fact_ids).toEqual([...new Set(bkb.fact_ids)]);
  for(const id of ['death.1','death.2'])expect(bkb.fact_ids.filter(x=>x===id)).toHaveLength(1);
+});
+it('does not prove the unused-BKB pattern when the item-use log records in-window uses',()=>{
+ const m=synthMatch();
+ // Two NON-overlapping loss stretches (5:00–7:40, 18:20–21:00), each carrying
+ // its own promoted death with a death-adjacent healthy-mana sample, BKB
+ // bought at 1:40. The log records BKB uses at 5:10 and 18:30, but neither
+ // interval holds an enemy cast or a death, so buildMoments never promotes
+ // them: no use.bkb.* fact exists. "No promoted use" is not "no use" — the
+ // checklist must not claim 窗口内无使用记录 over these windows.
+ m.facts['item.first.black_king_bar']={id:'item.first.black_king_bar',kind:'time',value:100,t:100,display:{en:'Black King Bar at 1:40',zh:'1:40 购入黑皇杖'},citation:'r1',source_path:'purchase_log'};
+ m.obj(300,'npc_dota_badguys_tower1_top',2);
+ m.obj(400,'npc_dota_badguys_tower1_bot',2);
+ m.obj(1100,'npc_dota_badguys_tower2_top',2);
+ m.obj(1200,'npc_dota_badguys_tower2_bot',2);
+ const deaths=[m.death(1,460,'lion'),m.death(2,1260,'pudge')];
+ const focus={hero_id:60,player_slot:132,purchase_log:[{time:100,key:'black_king_bar'}],item_use_log:[
+  {t:310,ended_at:319,key:'black_king_bar',end_source_path:'end'},{t:1110,ended_at:1119,key:'black_king_bar',end_source_path:'end'},
+ ],kills_log:[]};
+ const raw={duration:1500,players:[focus],hero_states:{samples:[
+  {t:460,hero:'night_stalker',team:3,x:0,y:0,hp:900,max_hp:1200,mana:500,max_mana:600,level:14,life_state:1},
+  {t:1260,hero:'night_stalker',team:3,x:0,y:0,hp:880,max_hp:1200,mana:480,max_mana:600,level:15,life_state:1},
+ ],sampling:'synthesized healthy-mana samples for the recorded-use test',visibility:'null_in_trace',truncated:false,anchors:[]}};
+ const build=()=>buildMainline({facts:m.facts,deaths},raw,focus,[focus],'zh',m.objectives,[{fact_ids:['death.1','death.2']}]);
+ const withUses=build();
+ const windows=withUses.insights.filter(i=>i.kind==='review_window');
+ expect(windows.map(w=>w.time)).toEqual([{from:300,to:460},{from:1100,to:1260}]);
+ // No window cites a promoted use fact — yet the log records uses inside both.
+ expect(windows.every(w=>!w.fact_ids.some(id=>id.startsWith('use.bkb.')))).toBe(true);
+ // Healthy mana means only the unused-BKB branch could fire; with recorded
+ // in-window uses it must not, and the condition copy never appears.
+ expect(withUses.practice).toMatchObject({status:'insufficient',items:[]});
+ expect(JSON.stringify(withUses.practice)).not.toContain('窗口内无使用记录');
+ // Control: identical windows with no recorded use at all still prove.
+ focus.item_use_log=[];
+ const noUse=build();
+ expect(noUse.practice.status).toBe('proven');
+ expect(noUse.practice.items.some(it=>it.goal.includes('黑皇杖'))).toBe(true);
+});
+it('titles an offensive high-ground push by structure tier, never as outer towers',()=>{
+ const m=synthMatch();
+ // Radiant focus takes Dire mid T3 then the melee barracks, no Ancient in the
+ // window: an offensive high-ground stretch, not "enemy outer towers taken".
+ m.obj(700.2,'npc_dota_badguys_tower3_mid',2);
+ m.obj(760.4,'npc_dota_badguys_melee_rax_mid',2);
+ const focus={hero_id:74,player_slot:0,kills_log:[]};
+ for(const lang of ['zh','en']){
+  const {insights}=buildMainline({facts:m.facts,deaths:[]},{duration:900,players:[focus]},focus,[focus],lang,m.objectives,[]);
+  const win=insights.find(i=>i.kind==='review_window');
+  expect(win).toBeTruthy();
+  expect(win.title).not.toMatch(/外塔|outer towers/i);
+  expect(win.title).toMatch(lang==='zh'?/高地/:/high ground/i);
+ }
+ // Control: a stretch that really is only T1/T2 takes keeps the outer title.
+ const m2=synthMatch();
+ m2.obj(300.1,'npc_dota_badguys_tower1_mid',2);
+ m2.obj(420.6,'npc_dota_badguys_tower2_top',2);
+ const focus2={hero_id:74,player_slot:0,kills_log:[]};
+ const {insights:ins2}=buildMainline({facts:m2.facts,deaths:[]},{duration:900,players:[focus2]},focus2,[focus2],'zh',m2.objectives,[]);
+ expect(ins2.find(i=>i.kind==='review_window').title).toMatch(/推掉敌方外塔/);
 });
 it.each([[9089115713,74,3025],[9080127650,60,1906],[9088239359,71,1227]])('keeps the Ancient in the last window under production integer duration %s (%s)',(match,heroId,duration)=>{
  const a=JSON.parse(readFileSync(`data/replay-facts/${match}.json`));
