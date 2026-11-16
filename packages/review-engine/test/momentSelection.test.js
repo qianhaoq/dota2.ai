@@ -449,6 +449,153 @@ it('does not prove the unused-BKB pattern when the item-use log records in-windo
  expect(noUse.practice.status).toBe('proven');
  expect(noUse.practice.items.some(it=>it.goal.includes('黑皇杖'))).toBe(true);
 });
+it('does not prove the unused-BKB pattern from time-keyed or unterminated recorded uses',()=>{
+ const m=synthMatch();
+ // The same two non-overlapping loss windows as the recorded-use test, but the
+ // log carries uses in the two shapes promotion never consumes: {time,...}
+ // records, and a single unterminated {t:290} use starting before the first
+ // window. An unterminated interval cannot support a definite "no overlap"
+ // conclusion, so neither window may prove 窗口内无使用记录.
+ m.facts['item.first.black_king_bar']={id:'item.first.black_king_bar',kind:'time',value:100,t:100,display:{en:'Black King Bar at 1:40',zh:'1:40 购入黑皇杖'},citation:'r1',source_path:'purchase_log'};
+ m.obj(300,'npc_dota_badguys_tower1_top',2);
+ m.obj(400,'npc_dota_badguys_tower1_bot',2);
+ m.obj(1100,'npc_dota_badguys_tower2_top',2);
+ m.obj(1200,'npc_dota_badguys_tower2_bot',2);
+ const deaths=[m.death(1,460,'lion'),m.death(2,1260,'pudge')];
+ const samples=[
+  {t:460,hero:'night_stalker',team:3,x:0,y:0,hp:900,max_hp:1200,mana:500,max_mana:600,level:14,life_state:1},
+  {t:1260,hero:'night_stalker',team:3,x:0,y:0,hp:880,max_hp:1200,mana:480,max_mana:600,level:15,life_state:1},
+ ];
+ const build=log=>{
+  const focus={hero_id:60,player_slot:132,purchase_log:[{time:100,key:'black_king_bar'}],item_use_log:log,kills_log:[]};
+  const raw={duration:1500,players:[focus],hero_states:{samples,sampling:'synthesized healthy-mana samples for the use-shape test',visibility:'null_in_trace',truncated:false,anchors:[]}};
+  return buildMainline({facts:m.facts,deaths},raw,focus,[focus],'zh',m.objectives,[{fact_ids:['death.1','death.2']}]);
+ };
+ const timeKeyed=build([{time:310,ended_at:319,key:'black_king_bar'},{time:1110,ended_at:1119,key:'black_king_bar'}]);
+ expect(timeKeyed.insights.filter(i=>i.kind==='review_window').map(w=>w.time)).toEqual([{from:300,to:460},{from:1100,to:1260}]);
+ expect(timeKeyed.practice).toMatchObject({status:'insufficient',items:[]});
+ expect(JSON.stringify(timeKeyed.practice)).not.toContain('窗口内无使用记录');
+ const unterminated=build([{t:290,key:'black_king_bar'}]);
+ expect(unterminated.insights.filter(i=>i.kind==='review_window').map(w=>w.time)).toEqual([{from:300,to:460},{from:1100,to:1260}]);
+ expect(unterminated.practice).toMatchObject({status:'insufficient',items:[]});
+ expect(JSON.stringify(unterminated.practice)).not.toContain('窗口内无使用记录');
+ // Control: no recorded use at all still proves — now with the negative check
+ // itself carried by an auditable fact on the item.
+ const none=build([]);
+ expect(none.practice.status).toBe('proven');
+ const bkb=none.practice.items.find(it=>it.goal.includes('黑皇杖'));
+ expect(bkb).toBeTruthy();
+ expect(bkb.fact_ids).toContain('use.bkb.none.overlap');
+ const check=m.facts['use.bkb.none.overlap'];
+ expect(check.source_path).toBe('players[].item_use_log');
+ expect(check.value).toBe(0);
+ expect(check.derivation).toContain('complete item_use_log negative check');
+ expect(check.derivation).toContain('300–460s, 1100–1260s');
+});
+it('counts a recorded death at the horizon inside the last phase',()=>{
+ const m=synthMatch();
+ // duration=900 with recorded deaths at 100 and 900: the horizon equals the
+ // last death, so an exclusive final bound drops it from every phase while the
+ // death appendix still shows both. The last phase must carry it.
+ m.obj(200,'npc_dota_badguys_tower1_top',2);
+ const deaths=[m.death(1,100,'lion'),m.death(2,900,'pudge')];
+ const focus={hero_id:60,player_slot:132,kills_log:[],item_use_log:[],purchase_log:[]};
+ const {insights}=buildMainline({facts:m.facts,deaths},{duration:900,players:[focus]},focus,[focus],'zh',m.objectives,[]);
+ expect(insights[0].claim.text).toContain('阵亡 2 次（首次 1:40');
+ expect(m.facts['deaths.recorded.laning'].value).toBe(2);
+ const sum=Object.entries(m.facts).filter(([id])=>id.startsWith('deaths.recorded.')).reduce((s,[,f])=>s+f.value,0);
+ expect(sum).toBe(deaths.length);
+});
+it.each([[9089115713,74,3025],[9080127650,60,1906],[9088239359,71,1227]])('phase death counts sum to the recorded death list (%s)',(match,heroId,duration)=>{
+ const a=JSON.parse(readFileSync(`data/replay-facts/${match}.json`));
+ const raw={match_id:match,duration,players:a.players};
+ const r=buildReview(applyReplayArtifact(raw,a),{heroId,lang:'zh',fetchedAt:a.fetched_at});
+ expect(validateReview(r)).toEqual({ok:true,errors:[]});
+ const sum=Object.entries(r.facts).filter(([id])=>id.startsWith('deaths.recorded.')).reduce((s,[,f])=>s+f.value,0);
+ expect(sum).toBe(r.deaths.length);
+});
+it('keeps 60 s bucket indices when the advantage arrays carry null buckets',()=>{
+ const m=synthMatch();
+ // radiant_net_worth_adv=[100,null,300] with a window opening at 60 s: bucket
+ // 1 is missing, and the 300 at bucket 2 may never be relabeled as the
+ // bucket-1 start advantage. The long all-null gold array must not steal the
+ // series either — the copy stays net-worth, not earned gold.
+ m.obj(60,'npc_dota_badguys_tower1_top',2);
+ m.obj(120,'npc_dota_badguys_tower1_bot',2);
+ const focus={hero_id:74,player_slot:0,kills_log:[],item_use_log:[],purchase_log:[]};
+ const raw={duration:300,players:[focus],radiant_gold_adv:[null,null,null,null,null,null,null,null,null,null],radiant_net_worth_adv:[100,null,300]};
+ const {insights}=buildMainline({facts:m.facts,deaths:[]},raw,focus,[focus],'zh',m.objectives,[]);
+ const win=insights.find(i=>i.kind==='review_window');
+ expect(win).toBeTruthy();
+ expect(win.time.from).toBe(60);
+ expect(m.facts['net_worth.adv.at.1']).toBeUndefined();
+ const copy=win.title+win.claim.text+(win.sections??[]).map(s=>s.text).join('');
+ expect(copy).not.toContain('+300');
+ // Bucket 2 keeps its own value and clock when cited.
+ expect(m.facts['net_worth.adv.at.2']?.value).toBe(300);
+ expect(m.facts['net_worth.adv.at.2']?.t).toBe(120);
+ expect(m.facts['net_worth.adv.at.2'].source_path).toBe('radiant_net_worth_adv');
+ // The all-null gold array stole nothing: the basis stays net worth.
+ expect(m.facts['net_worth.adv.at.2'].display.zh).toContain('净资产优势');
+ expect(m.facts['net_worth.adv.at.2'].display.zh).not.toContain('赚金优势');
+ expect(copy).not.toMatch(/赚金优势/);
+});
+it('titles enemy filler takes as high ground, never as outer towers',()=>{
+ const m=synthMatch();
+ // Two enemy filler (high-ground auxiliary) takes inside one 150 s stretch: a
+ // T1/T2-only title would misname them.
+ m.obj(700,'npc_dota_badguys_fillers',2);
+ m.obj(790,'npc_dota_badguys_fillers',2);
+ const focus={hero_id:74,player_slot:0,kills_log:[],item_use_log:[],purchase_log:[]};
+ const {insights}=buildMainline({facts:m.facts,deaths:[]},{duration:900,players:[focus]},focus,[focus],'zh',m.objectives,[]);
+ const win=insights.find(i=>i.kind==='review_window');
+ expect(win).toBeTruthy();
+ expect(win.title).not.toMatch(/外塔/);
+ expect(win.title).toMatch(/推进敌方高地/);
+});
+it('counts only cast-linked deaths in the linked-cast aside, never BKB-only promotions',()=>{
+ const m=synthMatch();
+ // Two recorded laning deaths; only death.1 is promoted — inside a BKB item
+ // window with no linked cast of its own. The aside must not call that a
+ // verifiable linked cast, while the recorded total stays 2.
+ m.facts['item.first.black_king_bar']={id:'item.first.black_king_bar',kind:'time',value:140,t:140,display:{en:'Black King Bar at 2:20',zh:'2:20 购入黑皇杖'},citation:'r1',source_path:'purchase_log'};
+ m.facts['use.bkb.1']={id:'use.bkb.1',kind:'entity',value:{t:140,ended_at:160},t:140,display:{en:'2:20–2:40 Black King Bar use',zh:'2:20–2:40 黑皇杖使用（记录区间）'},citation:'r1',source_path:'item_use_log'};
+ m.obj(250,'npc_dota_badguys_tower1_top',2);
+ m.obj(350,'npc_dota_badguys_tower1_bot',2);
+ const deaths=[m.death(1,150,'lion'),m.death(2,200,'pudge')];
+ const focus={hero_id:60,player_slot:132,purchase_log:[{time:140,key:'black_king_bar'}],item_use_log:[{t:140,ended_at:160,key:'black_king_bar',end_source_path:'end'}],kills_log:[]};
+ const build=cards=>buildMainline({facts:m.facts,deaths},{duration:600,players:[focus]},focus,[focus],'zh',m.objectives,cards);
+ const bkbOnly=build([{fact_ids:['use.bkb.1','death.1']}]);
+ expect(bkbOnly.insights[0].claim.text).toContain('阵亡 2 次');
+ expect(bkbOnly.insights[0].claim.text).not.toContain('其中 1 次有可核实的关联施法');
+ expect(bkbOnly.insights[0].claim.text).toContain('本阶段没有可核实的关联施法');
+ // Control: a real linked cast on death.1 restores the aside at 1 of 2.
+ m.facts['cast.death.1.0.0']={id:'cast.death.1.0.0',kind:'entity',value:{t:148,key:'lion_voodoo',target:'npc_dota_hero_night_stalker'},t:148,display:{en:'2:28 Lion casts Voodoo on Night Stalker',zh:'2:28  Lion 对夜魔王施放妖术'},citation:'r1',source_path:'ability_cast_log'};
+ const withCast=build([{fact_ids:['use.bkb.1','death.1']}]);
+ expect(withCast.insights[0].claim.text).toContain('阵亡 2 次');
+ expect(withCast.insights[0].claim.text).toContain('其中 1 次有可核实的关联施法');
+});
+it('qualifies Chinese phase death counts as records when the death log is shorter than the scoreboard',()=>{
+ const make=focusDeaths=>{
+  const m=synthMatch();
+  m.obj(300,'npc_dota_badguys_tower1_top',2);
+  m.obj(400,'npc_dota_badguys_tower1_bot',2);
+  const deaths=[m.death(1,320,'lion'),m.death(2,420,'pudge')];
+  const focus={hero_id:60,player_slot:132,deaths:focusDeaths,kills_log:[],item_use_log:[],purchase_log:[]};
+  const r=buildMainline({facts:m.facts,deaths},{duration:600,players:[focus]},focus,[focus],'zh',m.objectives,[]);
+  return {r,m};
+ };
+ // Scoreboard says 8 deaths, the log records 2: the copy counts records so it
+ // does not contradict the K/D line.
+ const short=make(8);
+ expect(short.r.insights[0].claim.text).toContain('阵亡记录 2 条（首次 5:20');
+ expect(short.r.insights[0].claim.text).not.toMatch(/阵亡 \d+ 次/);
+ expect(short.m.facts['deaths.recorded.laning'].display.zh).toContain('阵亡记录 2 条');
+ // A complete log keeps the plain official phrasing.
+ const full=make(2);
+ expect(full.r.insights[0].claim.text).toContain('阵亡 2 次（首次 5:20');
+ expect(full.r.insights[0].claim.text).not.toContain('阵亡记录');
+});
 it('titles an offensive high-ground push by structure tier, never as outer towers',()=>{
  const m=synthMatch();
  // Radiant focus takes Dire mid T3 then the melee barracks, no Ancient in the
