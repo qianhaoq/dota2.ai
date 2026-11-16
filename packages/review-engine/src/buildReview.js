@@ -11,7 +11,7 @@ import { isMatchParsed } from './matchParse.js';
 import { attachSiteKnowledge } from './siteKnowledge.js';
 import { buildMainline } from './review/mainline.js';
 
-export const ENGINE_VERSION = '3.1.1-review-mainline';
+export const ENGINE_VERSION = '3.1.2-review-mainline';
 
 const insightLabels = { turning_point: { en: 'Turning point', zh: '转折点' }, fix_this: { en: 'What to change', zh: '本场要改' }, next_game: { en: 'Next game', zh: '下局重点' } };
 

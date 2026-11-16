@@ -853,14 +853,29 @@ function buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug, sta
       return near ? { deathId: id, deathT: facts[id].t, s: near.s } : null;
     })
     .filter(Boolean);
-  const lowMana = [];
-  for (const w of windows) {
+  // Evidence identity is the death (with the sample it anchors), never the
+  // window: two partially overlapping windows that contain the same death —
+  // or two deaths anchored to the one sample — are one observation, not a
+  // repeated pattern.
+  const uniqueByDeath = hits => {
+    const seenDeaths = new Set();
+    const seenSamples = new Set();
+    const unique = [];
+    for (const hit of hits) {
+      if (seenDeaths.has(hit.deathId) || seenSamples.has(hit.s.t)) continue;
+      seenDeaths.add(hit.deathId);
+      seenSamples.add(hit.s.t);
+      unique.push(hit);
+    }
+    return unique;
+  };
+  const lowMana = uniqueByDeath(windows.flatMap(w => {
     const hit = deathStatesOf(w).find(({ s }) => {
       const pct = pctOf(s.mana, s.max_mana);
       return pct != null && pct < 50;
     });
-    if (hit) lowMana.push(hit);
-  }
+    return hit ? [hit] : [];
+  }));
   if (lowMana.length >= 2) {
     const cited = lowMana.map(({ deathId, deathT, s }) => {
       const id = `state.${deathId}.${focusSlug}`;
@@ -885,19 +900,22 @@ function buildPractice({ zh, facts, addFact, windows, heroStates, focusSlug, sta
   }
   // Pattern B: BKB owned but unused across several death windows; each window
   // must carry a state sample at one of its deaths so the checklist is tied to
-  // observed fight conditions, not to purchase logs alone.
+  // observed fight conditions, not to purchase logs alone. The repeated
+  // pattern is counted in independent anchored deaths — overlapping windows
+  // that only share one death are a single fight, not a recurrence.
   const bkbFirst = facts['item.first.black_king_bar'];
   const bkbUnusedWins = windows.filter(w =>
     deathStatesOf(w).length
     && bkbFirst && Number.isFinite(bkbFirst.value) && bkbFirst.value <= w.time.from
     && !w.fact_ids.some(id => id.startsWith('use.bkb.')));
-  if (bkbUnusedWins.length >= 2) {
+  const bkbDeaths = uniqueByDeath(bkbUnusedWins.flatMap(w => deathStatesOf(w)));
+  if (bkbDeaths.length >= 2) {
     items.push({
       goal: zh ? '接团前检查黑皇杖是否可用，并把它纳入开团 checklist。' : 'Before committing, check whether Black King Bar is up and include it in the fight checklist.',
       condition: zh
         ? `黑皇杖于 ${clock(bkbFirst.value)} 购入；${bkbUnusedWins.map(w => w.title).join('、')} 均有阵亡记录（且阵亡时点附近有状态样本）、窗口内无使用记录（时序相关，非因果）。`
         : `Black King Bar was purchased at ${clock(bkbFirst.value)}; ${bkbUnusedWins.map(w => w.title).join(', ')} all contain recorded deaths with a state sample next to them and no in-window use (temporal, not causal).`,
-      fact_ids: ['item.first.black_king_bar', ...bkbUnusedWins.flatMap(w => deathStatesOf(w).map(h => h.deathId))].slice(0, 8),
+      fact_ids: ['item.first.black_king_bar', ...bkbDeaths.map(h => h.deathId)].slice(0, 8),
     });
   }
   if (items.length) return { status: 'proven', items: items.slice(0, 2), note: null };

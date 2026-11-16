@@ -300,6 +300,108 @@ it('does not prove low-mana practice from window-start samples when death-adjace
  expect(validateReview(r)).toEqual({ok:true,errors:[]});
  expect(r.practice).toMatchObject({status:'insufficient',items:[]});
 });
+it('does not double-count one death across overlapping windows into proven low-mana practice',()=>{
+ const m=synthMatch();
+ // Reviewer repro: Dire Night Stalker; a linked-use BKB window 500–809 and an
+ // objective-loss window 600–900 partially overlap; both contain the ONLY
+ // promoted death death.1 @ 650, and the only focus state sample sits at 650
+ // with mana 100/600 (17%). Two windows citing one death are one observation —
+ // never a "repeated pattern".
+ m.facts['item.first.black_king_bar']={id:'item.first.black_king_bar',kind:'time',value:560,t:560,display:{en:'Black King Bar at 9:20',zh:'9:20 购入黑皇杖'},citation:'r1',source_path:'purchase_log'};
+ m.facts['use.bkb.1']={id:'use.bkb.1',kind:'entity',value:{t:800,ended_at:809},t:800,display:{en:'8:00–8:29 Black King Bar use',zh:'8:00–8:29 黑皇杖使用（记录区间）'},citation:'r1',source_path:'item_use_log'};
+ m.obj(600,'npc_dota_badguys_tower2_top',2);
+ m.obj(700,'npc_dota_badguys_tower2_bot',2);
+ m.obj(800,'npc_dota_badguys_tower3_top',2);
+ m.obj(900,'npc_dota_badguys_tower3_bot',2);
+ const deaths=[m.death(1,650,'pudge')];
+ const focus={hero_id:60,player_slot:132,purchase_log:[{time:560,key:'black_king_bar'}],item_use_log:[{t:800,ended_at:809,key:'black_king_bar',end_source_path:'end'}],kills_log:[]};
+ const raw={duration:1000,players:[focus],hero_states:{samples:[{t:650,hero:'night_stalker',team:3,x:100,y:100,hp:500,max_hp:1000,mana:100,max_mana:600,level:12,life_state:1}],sampling:'synthesized single sample for the overlap test',visibility:'null_in_trace',truncated:false,anchors:[]}};
+ const {insights,practice}=buildMainline({facts:m.facts,deaths},raw,focus,[focus],'zh',m.objectives,[{fact_ids:['death.1']}]);
+ const windows=insights.filter(i=>i.kind==='review_window');
+ // The overlap itself stays (window selection is not redesigned here): both
+ // frames exist and both carry the shared death as execution evidence.
+ expect(windows.map(w=>w.time)).toEqual([{from:500,to:809},{from:600,to:900}]);
+ expect(windows.every(w=>w.fact_ids.includes('death.1'))).toBe(true);
+ // One independent death cannot ground a repeated pattern.
+ expect(practice).toMatchObject({status:'insufficient',items:[]});
+});
+it('does not prove the BKB checklist from one death shared by overlapping windows',()=>{
+ const m=synthMatch();
+ // BKB bought at 1:40 and never used; a kills window 610–681 overlaps a loss
+ // stretch 500–800; both contain the only promoted death death.1 @ 655. The
+ // sample there is healthy-mana, so only the unused-BKB branch can fire — and
+ // it must not, because there is only one independent death.
+ m.facts['item.first.black_king_bar']={id:'item.first.black_king_bar',kind:'time',value:100,t:100,display:{en:'Black King Bar at 1:40',zh:'1:40 购入黑皇杖'},citation:'r1',source_path:'purchase_log'};
+ m.obj(500,'npc_dota_badguys_tower1_top',2);
+ m.obj(600,'npc_dota_badguys_tower1_bot',2);
+ m.obj(700,'npc_dota_badguys_tower2_top',2);
+ m.obj(800,'npc_dota_badguys_tower2_bot',2);
+ const deaths=[m.death(1,655,'lion')];
+ const focus={hero_id:60,player_slot:132,purchase_log:[{time:100,key:'black_king_bar'}],item_use_log:[],kills_log:[
+  {time:610,key:'npc_dota_hero_lion'},{time:650,key:'npc_dota_hero_pudge'},{time:680,key:'npc_dota_hero_slark'},
+ ]};
+ const raw={duration:1000,players:[focus],hero_states:{samples:[{t:655,hero:'night_stalker',team:3,x:0,y:0,hp:900,max_hp:1200,mana:500,max_mana:600,level:14,life_state:1}],sampling:'synthesized single healthy-mana sample for the overlap test',visibility:'null_in_trace',truncated:false,anchors:[]}};
+ const {insights,practice}=buildMainline({facts:m.facts,deaths},raw,focus,[focus],'zh',m.objectives,[{fact_ids:['death.1']}]);
+ const windows=insights.filter(i=>i.kind==='review_window');
+ expect(windows.map(w=>w.time)).toEqual([{from:500,to:800},{from:610,to:680}]);
+ expect(windows.every(w=>w.fact_ids.includes('death.1'))).toBe(true);
+ expect(practice).toMatchObject({status:'insufficient',items:[]});
+});
+it('still proves practice when overlapping windows carry independent deaths',()=>{
+ const m=synthMatch();
+ // Positive control: the same BKB/loss overlap, but each window carries its
+ // OWN promoted death with its own low-mana sample (10:50 and 14:10). Partial
+ // overlap is not the crime — double-counting one death is.
+ m.facts['item.first.black_king_bar']={id:'item.first.black_king_bar',kind:'time',value:560,t:560,display:{en:'Black King Bar at 9:20',zh:'9:20 购入黑皇杖'},citation:'r1',source_path:'purchase_log'};
+ m.facts['use.bkb.1']={id:'use.bkb.1',kind:'entity',value:{t:800,ended_at:809},t:800,display:{en:'8:00–8:29 Black King Bar use',zh:'8:00–8:29 黑皇杖使用（记录区间）'},citation:'r1',source_path:'item_use_log'};
+ m.obj(660,'npc_dota_badguys_tower2_top',2);
+ m.obj(780,'npc_dota_badguys_tower2_bot',2);
+ m.obj(900,'npc_dota_badguys_tower3_top',2);
+ const deaths=[m.death(1,650,'pudge'),m.death(2,850,'lion')];
+ const focus={hero_id:60,player_slot:132,purchase_log:[{time:560,key:'black_king_bar'}],item_use_log:[{t:800,ended_at:809,key:'black_king_bar',end_source_path:'end'}],kills_log:[]};
+ const raw={duration:1000,players:[focus],hero_states:{samples:[
+  {t:650,hero:'night_stalker',team:3,x:100,y:100,hp:500,max_hp:1000,mana:100,max_mana:600,level:12,life_state:1},
+  {t:850,hero:'night_stalker',team:3,x:120,y:120,hp:480,max_hp:1000,mana:90,max_mana:600,level:14,life_state:1},
+ ],sampling:'synthesized per-death samples for the overlap control',visibility:'null_in_trace',truncated:false,anchors:[]}};
+ const {insights,practice}=buildMainline({facts:m.facts,deaths},raw,focus,[focus],'zh',m.objectives,[{fact_ids:['death.1','death.2']}]);
+ const windows=insights.filter(i=>i.kind==='review_window');
+ expect(windows.map(w=>w.time)).toEqual([{from:500,to:809},{from:660,to:900}]);
+ expect(windows[0].fact_ids.includes('death.1')).toBe(true);
+ expect(windows[1].fact_ids.includes('death.2')).toBe(true);
+ expect(practice.status).toBe('proven');
+ expect(practice.items.length).toBeGreaterThanOrEqual(1);
+ expect(practice.items[0].condition).toContain('10:50');
+ expect(practice.items[0].condition).toContain('14:10');
+ // Each independent death is cited exactly once.
+ expect(practice.items[0].fact_ids).toEqual([...new Set(practice.items[0].fact_ids)]);
+ for(const id of ['death.1','death.2'])expect(practice.items[0].fact_ids.filter(x=>x===id)).toHaveLength(1);
+});
+it('cites each death once when overlapping windows prove the unused-BKB pattern',()=>{
+ const m=synthMatch();
+ // Positive control for the checklist branch: BKB unused, two overlapping
+ // windows, two INDEPENDENT anchored deaths (6:55 shared, 12:40 only in the
+ // wider frame). The pattern may prove, but never by repeating a death id.
+ m.facts['item.first.black_king_bar']={id:'item.first.black_king_bar',kind:'time',value:100,t:100,display:{en:'Black King Bar at 1:40',zh:'1:40 购入黑皇杖'},citation:'r1',source_path:'purchase_log'};
+ m.obj(500,'npc_dota_badguys_tower1_top',2);
+ m.obj(600,'npc_dota_badguys_tower1_bot',2);
+ m.obj(700,'npc_dota_badguys_tower2_top',2);
+ m.obj(800,'npc_dota_badguys_tower2_bot',2);
+ const deaths=[m.death(1,655,'lion'),m.death(2,760,'pudge')];
+ const focus={hero_id:60,player_slot:132,purchase_log:[{time:100,key:'black_king_bar'}],item_use_log:[],kills_log:[
+  {time:610,key:'npc_dota_hero_lion'},{time:650,key:'npc_dota_hero_pudge'},{time:680,key:'npc_dota_hero_slark'},
+ ]};
+ const raw={duration:1000,players:[focus],hero_states:{samples:[
+  {t:655,hero:'night_stalker',team:3,x:0,y:0,hp:900,max_hp:1200,mana:500,max_mana:600,level:14,life_state:1},
+  {t:760,hero:'night_stalker',team:3,x:0,y:0,hp:880,max_hp:1200,mana:480,max_mana:600,level:15,life_state:1},
+ ],sampling:'synthesized healthy-mana samples for the overlap control',visibility:'null_in_trace',truncated:false,anchors:[]}};
+ const {insights,practice}=buildMainline({facts:m.facts,deaths},raw,focus,[focus],'zh',m.objectives,[{fact_ids:['death.1','death.2']}]);
+ const windows=insights.filter(i=>i.kind==='review_window');
+ expect(windows.map(w=>w.time)).toEqual([{from:500,to:800},{from:610,to:680}]);
+ const bkb=practice.items.find(it=>it.goal.includes('黑皇杖'));
+ expect(bkb).toBeTruthy();
+ expect(bkb.fact_ids).toEqual([...new Set(bkb.fact_ids)]);
+ for(const id of ['death.1','death.2'])expect(bkb.fact_ids.filter(x=>x===id)).toHaveLength(1);
+});
 it.each([[9089115713,74,3025],[9080127650,60,1906],[9088239359,71,1227]])('keeps the Ancient in the last window under production integer duration %s (%s)',(match,heroId,duration)=>{
  const a=JSON.parse(readFileSync(`data/replay-facts/${match}.json`));
  const raw={match_id:match,duration,players:a.players};
