@@ -15,12 +15,23 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
  const raw={match_id:match,players:a.players.map(pl=>pl.hero_id===heroId?{...pl,kills:heroId===74?9:pl.kills,deaths:heroId===74?1:pl.deaths,assists:heroId===74?12:pl.assists}:pl)};
  const r=buildReview(applyReplayArtifact(raw,a),{heroId,lang,fetchedAt:a.fetched_at,presetFollowups:true});
  expect(validateReview(r)).toEqual({ok:true,errors:[]});
- // Mainline structure: overview first, then 3–5 decision windows.
+ // Mainline structure: overview first, then 3–5 decision windows. A short
+ // stomp can honestly carry fewer grounded frames; the overview flags it
+ // instead of the engine padding a death or a swing window.
  expect(r.insights[0].id).toBe('review_overview');
  expect(r.insights[0].kind).toBe('review_overview');
  const windows=r.insights.filter(i=>i.kind==='review_window');
- expect(windows.length).toBeGreaterThanOrEqual(3);
+ expect(windows.length).toBeGreaterThanOrEqual(match===9088239359?2:3);
  expect(windows.length).toBeLessThanOrEqual(5);
+ if(match===9088239359)expect(r.insights[0].data_gap).toBe('mainline_windows_fewer_than_three');
+ else expect(r.insights[0].data_gap).toBeNull();
+ // Death- and swing-centred framing is gone, and windows never carry an
+ // evaluation section: unsupported judgments are omitted, not softened.
+ for(const w of windows){
+  expect(w.title).not.toMatch(/阵亡与后续|death and aftermath|优势序列骤变|advantage swing/i);
+  expect(w.sections?.some(s=>s.label_key==='evaluation')).toBe(false);
+  expect(w.title).not.toMatch(/阵亡|死亡窗口|death window/i);
+ }
  expect(windows.map(w=>w.id)).toEqual(windows.map((w,i)=>`window.${i+1}`));
  expect(r.insights.every(i=>!i.id.startsWith('purchase.')&&i.kind!=='purchase_context')).toBe(true);
  const copy=r.insights.map(i=>[i.claim.text,i.title,i.prompt,...(i.sections??[]).map(s=>s.text),...i.fact_ids.map(id=>r.facts[id].display[lang])]).flat().join(' ')
@@ -93,6 +104,13 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
   // Linked kill evidence (dismember, bone guard, reaper's scythe) stays reachable.
   for(const inf of ['pudge_dismember','skeleton_king_bone_guard'])expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.inflictor===inf))).toBe(true);
   expect(r.insights.some(i=>i.fact_ids.some(id=>r.facts[id].value?.key==='necrolyte_reapers_scythe'))).toBe(true);
+  // The item-timing window anchors on the linked use, not just the purchase:
+  // the linked use.bkb fact is cited and the recorded interval is in the copy.
+  const bkbWin=windows.find(w=>/黑皇杖|Black King Bar/.test(w.title));
+  expect(bkbWin).toBeTruthy();
+  expect(bkbWin.fact_ids.some(id=>id.startsWith('use.bkb.'))).toBe(true);
+  expect(bkbWin.claim.text).toContain(lang==='zh'?'黑皇杖使用':'Black King Bar use');
+  expect(bkbWin.claim.text).toContain('26:37');
  }
  if(match===9089115713){
   expect(copy).not.toMatch(/sniper|狙击手|冰霜新星|射火巫师/i);
@@ -105,6 +123,28 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
   expect(deathWin.claim.text).toContain(lang==='zh'?'撼地者':'Earthshaker');
   expect(r.facts['death.1'].value.inflictor).toBeUndefined();
   expect(deathWin.fact_ids.some(id=>r.facts[id].value?.key==='earthshaker_echo_slam')).toBe(true);
+  // The early window stands on its own as kills-vs-conversion: six recorded
+  // kills and item completions against zero enemy structures taken, with the
+  // 12:50 tower named as a Dire self-denial rather than a push.
+  const early=windows.find(w=>w.time.from<=345&&w.time.to>=925);
+  expect(early).toBeTruthy();
+  expect(early.title).toMatch(/击杀未转化为地图目标|kills without map conversion/);
+  for(const t of ['5:44','6:33','9:15','12:00','12:14','14:43'])expect(early.claim.text).toContain(t);
+  expect(early.claim.text).toContain(lang==='zh'?'我方摧毁的敌方建筑为 0 处':'had taken 0 enemy structures');
+  expect(early.claim.text).toContain(lang==='zh'?'12:50 夜魇中路一塔由夜魇自己拆除，不计为我方推进':'Dire mid T1 tower at 12:50 was demolished by Dire itself, not counted as your team\'s push');
+  // The mid window keeps an empty kill log honest: teammates' kills and smokes
+  // are named as context, non-participation is never claimed, and losing the
+  // match is not treated as evidence the mid-game choices were wrong.
+  const mid=windows.find(w=>w.time.from<=930&&w.time.to>=2080);
+  expect(mid).toBeTruthy();
+  const midCopy=mid.claim.text+(mid.sections??[]).map(s=>s.text).join(' ');
+  expect(midCopy).not.toMatch(/未参战|不在场|did not participate|not in the fight|should have (grouped|farmed)|本该|应当抱团|该去带线/);
+  const gapNote=(mid.sections??[]).find(s=>s.label_key==='missing'&&/击杀日志为空|kill log is empty/.test(s.text));
+  expect(gapNote).toBeTruthy();
+  expect(gapNote.text).toContain(lang==='zh'?'队友有击杀记录':'teammates recorded');
+  expect(gapNote.text).toContain(lang==='zh'?'使用雾':'smoke uses');
+  expect((mid.sections??[]).some(s=>s.label_key==='comparable')).toBe(true);
+  expect(midCopy).toContain(lang==='zh'?'输掉比赛本身不是中期决策有误的证据':'losing the match is not evidence those choices were wrong');
   // Corrected tower facts: 12:50 is a Dire self-denial; Radiant's only two
   // enemy towers are 18:45 top T1 and 40:28 bot T1; nothing calls 12:50 a push.
   const overview=r.insights[0].claim.text+(r.insights[0].sections??[]).map(s=>s.text).join(' ');
@@ -151,8 +191,9 @@ for(const [match,heroId] of samples) it.each(['zh','en'])(`selects only linked e
 });
 it('produces a proven practice goal only when hero-state samples ground a repeated pattern',()=>{
  const a=JSON.parse(readFileSync('data/replay-facts/9080127650.json'));
- // Synthesized 30 s samples: low mana near the start of the promoted death
- // windows (8:15, 14:55, 25:44 → window starts 7:15, 13:55, 24:44).
+ // Synthesized 30 s samples: low mana across the whole span, so the state
+ // facts land near the starts of the windows carrying promoted deaths
+ // (11:21 outer towers, 26:03 BKB use) and near the deaths themselves.
  const samples=[];
  for(let t=420;t<=1560;t+=30) samples.push({t,hero:'night_stalker',team:3,x:100,y:100,hp:500,max_hp:1000,mana:120,max_mana:600,level:12,life_state:1,player_index:4});
  const raw={match_id:a.match_id,players:a.players};

@@ -1,9 +1,18 @@
 /**
  * Whole-match main line + 3–5 bounded decision windows, generated from the
  * fact layer only. Layers stay separate: verified facts (known/actions),
- * evaluation (explicitly marked), and the missing-evidence list. No sentence
+ * recorded contrasts (comparable), and the missing-evidence list. No sentence
  * may assert causality (因此/所以/因为/led to): events are ordered, never
  * explained. A clock may only appear in copy when a cited fact carries it.
+ *
+ * Windows are resource/objective conversion frames: a kill cluster that never
+ * became map objectives, the resource/objective line after a core mobility
+ * item, an item timing set against structure losses, and objective stretches
+ * (takes, losses, high ground, the Ancient). Deaths are execution evidence
+ * inside those frames — never the window theme or title. The evaluation layer
+ * exists only for a decision judgment the fields support; restating a 60 s
+ * net-worth bucket delta is not a judgment, so when that is all there is the
+ * section is omitted entirely.
  */
 import { evidenceName, itemName, clock } from '../insights/moments.js';
 import { formatObjectiveLabel, formatBuildingName } from '../objectiveLabels.js';
@@ -12,12 +21,30 @@ import { heroSlug, KEY_ITEMS } from '../facts/index.js';
 
 export const MAINLINE_WINDOWS = { min: 3, max: 5 };
 const LANING_END_S = 900;
-const NW_SWING_MIN_GOLD = 1500;
-const CONVERSION_AFTER_S = 240;
-const MERGE_WITHIN_S = 180;
+/** Focus kills this many seconds apart belong to one cluster. */
+const KILL_CLUSTER_GAP_S = 300;
+const KILL_CLUSTER_MIN = 3;
+/** A take shortly after the last kill still counts as conversion. */
+const CONVERSION_GRACE_S = 120;
+/** Core item completions this close after a cluster extend its frame. */
+const ITEM_EXTEND_S = 240;
+const MID_HORIZON_S = 1200;
+const STRETCH_GAP_S = 150;
+/** A death just after a stretch's last structure event is aftermath evidence. */
+const STRETCH_DEATH_PAD_S = 90;
+/** A candidate mostly inside an already-picked window of another kind is padding. */
+const CONTAIN_RATIO = 0.8;
+/** Execution evidence immediately before a BKB purchase stays inside the frame. */
+const BKB_BACK_PAD_S = 60;
+/** Longest leading kill-log gap inside a window that still reads as one stretch. */
+const KILL_LOG_GAP_NOTE_S = 600;
 const STATE_WINDOW_START_TOL_S = 15;
 const STATE_ANCHOR_TOL_S = 5;
 const SNAPSHOT_TOL_S = 35;
+/** Items whose completions may anchor or extend a window (recipes excluded). */
+const CORE_ITEM_KEYS = new Set([...Object.keys(KEY_ITEMS), 'travel_boots', 'kaya', 'meteor_hammer', 'ultimate_scepter', 'aghanims_shard', 'octarine_core']);
+/** Core mobility items that open the post-item resource/objective line. */
+const POWER_ITEM_KEYS = ['travel_boots', 'blink'];
 
 const killerSideOf = team => team === 2 || team === 'radiant' ? 'radiant' : team === 3 || team === 'dire' ? 'dire' : null;
 /** Inflictor labels that failed to resolve must be omitted, never printed. */
@@ -163,55 +190,137 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   };
 
   // ---- candidate decision windows ----------------------------------------
-  const candidates = [];
-  for (const d of deaths) {
-    const conversions = numberedObjectives.filter(o => Number.isFinite(o.t) && o.t > d.t && o.t <= d.t + CONVERSION_AFTER_S
-      && ownerSideOf(o.key) && killerSideOf(o.team) === focusTeam && ownerSideOf(o.key) !== focusTeam);
-    candidates.push({ t: d.t, kind: 'death', death: d, conversions, score: 4 + 2 * Math.min(3, conversions.length) });
-  }
-  for (let m = 1; m < advSeries.length; m++) {
-    const delta = advSeries[m] - advSeries[m - 1];
-    if (Math.abs(delta) >= NW_SWING_MIN_GOLD && m * 60 <= horizon)
-      candidates.push({ t: m * 60, kind: 'swing', delta, score: 2 + Math.min(3, Math.abs(delta) / 2000) });
-  }
-  if (linkedBkbUses.length) candidates.push({ t: linkedBkbUses[0].t, kind: 'bkb', use: linkedBkbUses[0], score: 3 });
-  // Merge near-duplicate swing candidates within MERGE_WITHIN_S, keeping the
-  // higher-scored one — consecutive net-worth swings describe the same slide.
-  // Distinct promoted deaths keep their own windows: each has its own actions.
-  candidates.sort((a, b) => a.t - b.t || b.score - a.score);
-  const merged = [];
-  for (const c of candidates) {
-    const near = merged.find(m => m.kind === 'swing' && c.kind === 'swing' && Math.abs(m.t - c.t) <= MERGE_WITHIN_S);
-    if (!near) merged.push({ ...c });
-    else if (c.score > near.score) Object.assign(near, { ...c });
-  }
-  // Prefer windows with at most one focus death: extra deaths inside a
-  // candidate dilute the single-decision reading.
-  for (const m of merged) {
-    const inWindow = deaths.filter(d => d.t >= m.t - 60 && d.t <= m.t + CONVERSION_AFTER_S).length;
-    if (inWindow > 1) m.score -= (inWindow - 1) * 1.5;
-  }
-  merged.sort((a, b) => b.score - a.score || a.t - b.t);
-  const picked = merged.slice(0, MAINLINE_WINDOWS.max).sort((a, b) => a.t - b.t);
-  const windowsShort = merged.length < MAINLINE_WINDOWS.min;
-  /** Window frame for a candidate: [anchor − 60 s, anchor + 240 s] (BKB ± its interval). */
-  const frameOf = c => ({ from: Math.max(0, c.t - (c.kind === 'bkb' ? 30 : 60)), to: c.t + CONVERSION_AFTER_S });
-  // Drop SWING windows whose frames overlap by more than half the shorter
-  // span: duplicated frames read as padding, keep the higher-scored candidate.
-  // Death windows narrate their own distinct actions, so heavy frame overlap
-  // alone (two deaths 100 s apart) is not grounds to drop one.
-  const dedupedPicked = [];
-  for (const c of [...picked].sort((a, b) => b.score - a.score)) {
-    const f = frameOf(c);
-    const clash = dedupedPicked.find(other => {
-      if (other.kind !== 'swing' || c.kind !== 'swing') return false;
-      const g = frameOf(other);
-      const overlap = Math.min(f.to, g.to) - Math.max(f.from, g.from);
-      return overlap > 0 && overlap * 2 > Math.min(f.to - f.from, g.to - g.from);
+  // Structure events split by meaning: a take (your team destroyed an enemy
+  // structure), a loss (an enemy destroyed yours), and same-side demolitions
+  // which are never counted as either side's push.
+  const isTake = o => killerSideOf(o.team) === focusTeam && ownerSideOf(o.key) && ownerSideOf(o.key) !== focusTeam;
+  const isLoss = o => ownerSideOf(o.key) === focusTeam && killerSideOf(o.team) && killerSideOf(o.team) !== focusTeam;
+  const structEvents = numberedObjectives.filter(o => Number.isFinite(o.t)).filter(o => {
+    const owner = ownerSideOf(o.key);
+    const killer = killerSideOf(o.team);
+    return owner && killer && killer !== owner;
+  }).sort((a, b) => a.t - b.t);
+  const takes = structEvents.filter(isTake);
+  const losses = structEvents.filter(isLoss);
+  const takesBetween = (a, b) => takes.filter(o => o.t >= a && o.t <= b);
+  const lossesBetween = (a, b) => losses.filter(o => o.t >= a && o.t <= b);
+  // Core item completions (non-recipe purchases of core items), in time order.
+  const completions = purchases.filter(p => CORE_ITEM_KEYS.has(p.key));
+  /** Completion fact for a core item; carries the completion clock for copy. */
+  const itemDoneFact = entry => {
+    const id = `item.done.${entry.key}`;
+    if (facts[id]) return id;
+    return addFact({
+      id, kind: 'time', value: entry.time, unit: 'seconds', t: entry.time, perspective: 'player_team',
+      display: {
+        en: `${itemName(entry.key, 'en')} completed at ${clock(entry.time)}`,
+        zh: `${clock(entry.time)} ${itemName(entry.key, 'zh')}合成完毕`,
+      },
+      citation: 'r1', source_path: entry.source_path ?? 'purchase_log',
     });
-    if (!clash) dedupedPicked.push(c);
+  };
+
+  const candidates = [];
+
+  // A. Kill cluster without map conversion: several focus kills, and through
+  // the cluster's end the team has taken zero enemy structures (a same-side
+  // demolition by the enemy is not a take). The frame ends on a recorded
+  // anchor — the last kill, or a core completion just after it.
+  const killClusters = [];
+  for (const k of [...focusKills].sort((a, b) => a.t - b.t)) {
+    const cur = killClusters[killClusters.length - 1];
+    if (cur && k.t - cur.lastT <= KILL_CLUSTER_GAP_S) { cur.kills.push(k); cur.lastT = k.t; }
+    else killClusters.push({ kills: [k], lastT: k.t });
   }
-  const finalPicked = dedupedPicked.sort((a, b) => a.t - b.t);
+  for (const cluster of killClusters) {
+    if (cluster.kills.length < KILL_CLUSTER_MIN) continue;
+    const from = Math.floor(cluster.kills[0].t);
+    const ext = completions.filter(c => c.time > cluster.lastT && c.time <= cluster.lastT + ITEM_EXTEND_S);
+    const to = Math.ceil(ext.length ? ext[ext.length - 1].time : cluster.lastT);
+    if (takesBetween(from, to + CONVERSION_GRACE_S).length) continue;
+    candidates.push({
+      kind: 'kills_no_conversion', from, to, anchor: from, score: 6 + Math.min(4, cluster.kills.length * 0.5),
+      ext,
+    });
+  }
+
+  // B. Post-power-item resource/objective stretch: after the first core
+  // mobility item, through a mid-game horizon or the next kill cluster. The
+  // theme is the conversion line (takes, losses); the advantage series only
+  // ever appears as labeled 60 s bucket context.
+  const powerItem = completions.find(c => POWER_ITEM_KEYS.includes(c.key) && (!horizon || c.time <= horizon));
+  if (powerItem) {
+    const nextCluster = killClusters.find(c => c.kills[0].t > powerItem.time);
+    const cap = Math.min(powerItem.time + MID_HORIZON_S, nextCluster ? nextCluster.kills[0].t : Infinity, horizon ?? Infinity);
+    const anchors = [...structEvents, ...focusKills, ...completions.map(c => ({ t: c.time })), ...deaths]
+      .filter(e => Number.isFinite(e.t) && e.t >= powerItem.time && e.t <= cap).map(e => e.t);
+    const to = anchors.length ? Math.ceil(Math.max(...anchors)) : null;
+    if (to != null && to > powerItem.time
+      && (takesBetween(powerItem.time, to).length || lossesBetween(powerItem.time, to).length
+        || focusKills.some(k => k.t >= powerItem.time && k.t <= to))) {
+      candidates.push({
+        kind: 'post_item_objectives', from: Math.floor(powerItem.time), to, anchor: Math.floor(powerItem.time),
+        item: powerItem, score: 7,
+      });
+    }
+  }
+
+  // C. Item timing vs structure loss: BKB purchased and its first linked use
+  // recorded while your own structures fell. An unlinked use never opens this
+  // window — without the use.bkb fact it would be indistinguishable from a
+  // plain loss stretch.
+  const bkbFirstFact = facts['item.first.black_king_bar'];
+  if (bkbFirstFact && Number.isFinite(bkbFirstFact.value)) {
+    const use = linkedBkbUses.find(u => u.t >= bkbFirstFact.value);
+    if (use) {
+      const from = Math.floor(Math.max(0, bkbFirstFact.value - BKB_BACK_PAD_S));
+      const to = Math.ceil(Math.max(use.t, use.ended_at ?? use.t));
+      if (lossesBetween(from, to).length) {
+        candidates.push({ kind: 'bkb_vs_structures', from, to, anchor: Math.floor(bkbFirstFact.value), use, score: 6.5 });
+      }
+    }
+  }
+
+  // D. Objective stretches: runs of structure takes/losses (denies excluded),
+  // extended a little past the last event so a death right after the stretch
+  // stays inside as execution evidence.
+  const stretches = [];
+  for (const o of structEvents) {
+    const cur = stretches[stretches.length - 1];
+    if (cur && o.t - cur.lastT <= STRETCH_GAP_S) { cur.events.push(o); cur.lastT = o.t; }
+    else stretches.push({ events: [o], lastT: o.t });
+  }
+  for (const stretch of stretches) {
+    if (stretch.events.length < 2) continue;
+    const after = deaths.filter(d => d.t > stretch.lastT && d.t <= stretch.lastT + STRETCH_DEATH_PAD_S);
+    const fort = stretch.events.find(o => typeof o.key === 'string' && o.key.endsWith('_fort'));
+    candidates.push({
+      kind: 'objective_stretch',
+      from: Math.floor(stretch.events[0].t),
+      to: Math.ceil(Math.max(stretch.lastT, ...after.map(d => d.t))),
+      anchor: Math.floor(stretch.events[0].t),
+      score: 5 + (fort ? 2 : 0) + Math.min(2, stretch.events.length / 4),
+    });
+  }
+
+  // Pick by score; drop same-kind windows overlapping more than half the
+  // shorter span, and other-kind windows mostly contained in an already-picked
+  // frame (a nested loss stretch inside the post-item line reads as padding).
+  candidates.sort((a, b) => b.score - a.score || a.from - b.from);
+  const pickedList = [];
+  for (const c of candidates) {
+    if (pickedList.length >= MAINLINE_WINDOWS.max) break;
+    const clash = pickedList.find(p => {
+      const overlap = Math.min(p.to, c.to) - Math.max(p.from, c.from);
+      if (overlap <= 0) return false;
+      return p.kind === c.kind
+        ? overlap * 2 > Math.min(p.to - p.from, c.to - c.from)
+        : overlap >= CONTAIN_RATIO * (c.to - c.from);
+    });
+    if (!clash) pickedList.push(c);
+  }
+  const finalPicked = pickedList.sort((a, b) => a.from - b.from);
+  const windowsShort = finalPicked.length < MAINLINE_WINDOWS.min;
   // With no windows, no recorded structure events and no advantage series there
   // is nothing to narrate; an empty timeline gets no filler overview.
   if (!finalPicked.length && !numberedObjectives.length && !advSeries.length) {
@@ -360,14 +469,20 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   const windows = [];
   for (const [index, cand] of finalPicked.entries()) {
     const n = index + 1;
-    const from = Math.max(0, cand.t - (cand.kind === 'bkb' ? 30 : 60));
-    const to = Math.min(horizon || cand.t + CONVERSION_AFTER_S, cand.t + CONVERSION_AFTER_S);
+    const from = cand.from;
+    const to = Math.min(cand.to, Math.ceil(horizon ?? cand.to));
     const ids = [];
     const actions = [];
     const windowDeaths = deaths.filter(d => d.t >= from && d.t <= to);
     const windowKills = focusKills.filter(k => k.t >= from && k.t <= to);
     const windowObjs = numberedObjectives.filter(o => Number.isFinite(o.t) && o.t >= from && o.t <= to);
     const windowBkb = linkedBkbUses.filter(u => u.t >= from && u.t <= to);
+    const windowTakes = takesBetween(from, to);
+    const windowLosses = lossesBetween(from, to);
+    const windowDenies = windowObjs.filter(o => {
+      const owner = ownerSideOf(o.key);
+      return owner && killerSideOf(o.team) === owner;
+    });
     const pushAction = (t, text) => actions.push({ t, text });
     for (const d of windowDeaths) {
       if (d.fact_id && facts[d.fact_id]) ids.push(d.fact_id);
@@ -395,7 +510,11 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
     for (const o of windowObjs) {
       if (o.fact_id && facts[o.fact_id]) {
         ids.push(o.fact_id);
-        pushAction(o.t, `${clock(o.t)} ${formatObjectiveLabel({ type: 'building_kill', key: o.key, team: o.teamNum }, lang)}`);
+        // Same-side demolitions are labeled as such: they are never a take.
+        const denySuffix = windowDenies.includes(o)
+          ? (zh ? '（同阵营拆建筑，不计为推进）' : ' (demolished by its own side; not counted as a push)')
+          : '';
+        pushAction(o.t, `${clock(o.t)} ${formatObjectiveLabel({ type: 'building_kill', key: o.key, team: o.teamNum }, lang)}${denySuffix}`);
       }
     }
     // Linked cast/kill facts that buildMoments attached to these deaths and
@@ -427,6 +546,7 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
       .slice(0, 4)
       .map(([key, time]) => ({ key, time }));
     const knownBits = [];
+    const takesSoFar = takes.filter(o => o.t <= to).length;
     if (startAdv != null) {
       knownBits.push(zh
         ? `本方${useGold ? '赚金优势' : '净资产优势'}约 ${fmtSigned(startAdv)}${useGold ? '' : '（60 秒桶，不是赚金）'}`
@@ -508,48 +628,144 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
       ? '该时刻没有可用的优势序列桶（序列缺失或被截断）。'
       : 'No advantage-series bucket covers this moment (series missing or truncated).');
     else if (endAdv == null) missingBits.push(zh
-      ? '优势序列在窗口结束前被截断（60 秒桶，不是赚金），窗口代价无法计算。'
-      : 'The advantage series truncates before this window ends (60 s buckets, not earned gold); the window cost cannot be computed.');
+      ? '优势序列在窗口结束前被截断（60 秒桶，不是赚金），窗口结束时的差值无法给出。'
+      : 'The advantage series truncates before this window ends (60 s buckets, not earned gold); no end-of-window value can be given.');
     actions.sort((a, b) => a.t - b.t);
-    // Comparable alternatives: only when then-available fields support them.
-    const comparableBits = [];
-    const bkbFirst = facts['item.first.black_king_bar'];
-    const bkbUsedInWindow = windowBkb.length > 0 || (focus.item_use_log ?? []).some(u => u.key === 'black_king_bar' && Number.isFinite(u.t) && u.t >= from && u.t <= to);
-    if (bkbFirst && Number.isFinite(bkbFirst.value) && bkbFirst.value <= from && !bkbUsedInWindow && windowDeaths.length) {
-      if (facts['item.first.black_king_bar']) ids.push('item.first.black_king_bar');
-      comparableBits.push(zh
-        ? `黑皇杖已于 ${clock(bkbFirst.value)} 购入、本窗口内无使用记录；可对照的选择是先开启黑皇杖再接团。是否可行取决于当时冷却与局面，本报告不判定。`
-        : `Black King Bar was purchased at ${clock(bkbFirst.value)} and shows no use inside this window; the comparable alternative was activating it before committing. Whether that was viable depends on cooldowns and the fight, which this report does not judge.`);
+    // Structure counts for this frame, as citable facts (a zero is a value).
+    const structCountFact = (id, list, zhLabel, enLabel) => {
+      if (facts[id]) return id;
+      const anchorT = list.length ? list[list.length - 1].t : to;
+      return addFact({
+        id, kind: 'count', value: list.length, unit: 'structures', t: anchorT, perspective: 'player_team',
+        display: {
+          en: `${enLabel} ${clock(from)}–${clock(to)}: ${list.length}`,
+          zh: `${clock(from)}–${clock(to)} 内${zhLabel}：${list.length} 处`,
+        },
+        citation: 'r1', source_path: 'objectives',
+        derivation: 'counts DOTA_COMBATLOG_TEAM_BUILDING_KILL events; same-side demolitions excluded',
+      });
+    };
+    const takesId = structCountFact(`takes.win.${n}`, windowTakes, '我方摧毁敌方建筑', 'enemy structures taken by your team');
+    const lostId = structCountFact(`lost.win.${n}`, windowLosses, '我方失去建筑', 'your structures lost');
+    ids.push(takesId, lostId);
+    // Pattern-specific known context: item progress inside the frame, the
+    // post-item anchor, and what an empty focus kill log does and does not
+    // say (empty never means absent from fights — teammates keep records).
+    const windowCompletions = completions.filter(c => c.time >= from && c.time <= to);
+    if (cand.kind === 'kills_no_conversion' && windowCompletions.length) {
+      const parts = windowCompletions.map(c => `${itemName(c.key, lang)} ${clock(c.time)}`);
+      knownBits.push(zh ? `窗口内装备进度（购买日志口径）：${parts.join(zh ? '、' : ', ')}` : `item progress inside this window (purchase log): ${parts.join(', ')}`);
+      for (const c of windowCompletions) ids.push(itemDoneFact(c));
     }
-    // Evaluation layer: explicit, evidence-bound, no causality.
-    const evalBits = [];
-    if (windowKills.length) evalBits.push(zh
-      ? `有依据的部分：本窗口内你有 ${windowKills.length} 次击杀记录（记为参与战斗）。`
-      : `Grounded positive: ${windowKills.length} recorded kill${windowKills.length > 1 ? 's' : ''} inside this window (counted as fight participation).`);
-    const convs = windowObjs.filter(o => killerSideOf(o.team) === focusTeam && ownerSideOf(o.key) && ownerSideOf(o.key) !== focusTeam);
-    if (convs.length) evalBits.push(zh
-      ? `有依据的部分：窗口内我方摧毁对方建筑 ${convs.length} 处。`
-      : `Grounded positive: your team took ${convs.length} enemy structure${convs.length > 1 ? 's' : ''} inside this window.`);
-    if (startAdv != null && endAdv != null) evalBits.push(zh
-      ? `窗口代价（序列口径）：${useGold ? '赚金优势' : '净资产优势'}从 ${fmtSigned(startAdv)} 变为 ${fmtSigned(endAdv)}${useGold ? '' : '（60 秒桶，不是赚金）'}。`
-      : `Window cost (series basis): ${useGold ? 'earned-gold' : 'net-worth'} advantage moved from ${fmtSigned(startAdv)} to ${fmtSigned(endAdv)}${useGold ? '' : ' (60 s buckets, not earned gold)'}.`);
+    if (cand.kind === 'post_item_objectives') {
+      ids.push(itemDoneFact(cand.item));
+      knownBits.push(zh
+        ? `窗口起点为装备事件：${clock(cand.item.time)} ${itemName(cand.item.key, lang)}合成完毕`
+        : `the window opens on an item event: ${itemName(cand.item.key, lang)} completed at ${clock(cand.item.time)}`);
+    }
+    if (cand.kind === 'bkb_vs_structures' && facts['item.first.black_king_bar']) {
+      ids.push('item.first.black_king_bar');
+    }
+    const firstKillInWindow = windowKills[0];
+    if (firstKillInWindow && firstKillInWindow.t - from >= KILL_LOG_GAP_NOTE_S) {
+      const mates = players.filter(p => p !== focus && Number.isInteger(p.player_slot)
+        && (p.player_slot < 128) === (focus.player_slot < 128));
+      const mateKills = mates.flatMap(p => (p.kills_log ?? []).map(k => ({ ...k, t: eventTime(k) })))
+        .filter(k => Number.isFinite(k.t) && k.t >= from && k.t <= to && k.key);
+      const mateSmokes = mates.flatMap(p => (p.item_use_log ?? []).filter(u => u.key === 'smoke_of_deceit' && Number.isFinite(u.t) && u.t >= from && u.t <= to));
+      const mateKillsId = facts[`team.kills.win.${n}`] ? `team.kills.win.${n}` : addFact({
+        id: `team.kills.win.${n}`, kind: 'count', value: mateKills.length, unit: 'kills', t: mateKills.length ? Math.max(...mateKills.map(k => k.t)) : to,
+        perspective: 'player_team',
+        display: { en: `teammate kill records ${clock(from)}–${clock(to)}: ${mateKills.length}`, zh: `${clock(from)}–${clock(to)} 内队友击杀记录：${mateKills.length} 次` },
+        citation: 'r1', source_path: 'players[].kills_log', derivation: 'kills_log of same-side players other than the focus',
+      });
+      const smokesId = facts[`team.smoke.win.${n}`] ? `team.smoke.win.${n}` : addFact({
+        id: `team.smoke.win.${n}`, kind: 'count', value: mateSmokes.length, unit: 'uses', t: mateSmokes.length ? Math.max(...mateSmokes.map(u => u.t)) : to,
+        perspective: 'player_team',
+        display: { en: `teammate smoke uses ${clock(from)}–${clock(to)}: ${mateSmokes.length}`, zh: `${clock(from)}–${clock(to)} 内队友使用雾：${mateSmokes.length} 次` },
+        citation: 'r1', source_path: 'players[].item_use_log', derivation: 'smoke_of_deceit entries of same-side players other than the focus',
+      });
+      ids.push(mateKillsId, smokesId);
+      missingBits.push(zh
+        ? `${clock(from)} 至 ${clock(firstKillInWindow.t)} 之间你的击杀日志为空；空日志不说明当时是否在战斗（同期队友有击杀记录 ${mateKills.length} 次、使用雾 ${mateSmokes.length} 次，无站位数据可核对你在场位置）。`
+        : `your kill log is empty between ${clock(from)} and ${clock(firstKillInWindow.t)}; an empty log does not show whether you were fighting (teammates recorded ${mateKills.length} kills and ${mateSmokes.length} smoke uses in the same span; no position data can place you there).`);
+    }
+    // Comparable: recorded contrasts only — never a directive, never an
+    // invented alternative. When no contrast exists the section is omitted.
+    const comparableBits = [];
+    const denyNote = windowDenies.length
+      ? (zh
+        ? `；${windowDenies.slice(0, 2).map(o => zh ? `${clock(o.t)} ${formatBuildingName(o.key, lang)}由${sideName(o.teamNum, true)}自己拆除` : `${formatBuildingName(o.key, lang)} at ${clock(o.t)} was demolished by ${sideName(o.teamNum, false)} itself`).join(zh ? '、' : ', ')}${zh ? '，不计为我方推进' : `, not counted as your team's push`}`
+        : `; ${windowDenies.slice(0, 2).map(o => `${formatBuildingName(o.key, lang)} at ${clock(o.t)} was demolished by ${sideName(o.teamNum, false)} itself`).join(', ')}, not counted as your team's push`)
+      : '';
+    if (cand.kind === 'kills_no_conversion') {
+      const itemPart = windowCompletions.length
+        ? (zh ? `、合成 ${windowCompletions.map(c => itemName(c.key, lang)).join('、')}` : ` and ${windowCompletions.map(c => itemName(c.key, 'en')).join(', ')} completed`)
+        : '';
+      comparableBits.push(zh
+        ? `记录对照：窗口内你的击杀记录 ${windowKills.length} 次${itemPart}；到 ${clock(to)} 为止我方摧毁的敌方建筑为 0 处${denyNote}。这是记录对照，不是路线判定；其余路线没有字段支持，不评。`
+        : `Recorded contrast: ${windowKills.length} kills of yours in this window${itemPart}, while your team had taken 0 enemy structures through ${clock(to)}${denyNote}. This is a recorded contrast, not a verdict; no field supports judging a different route.`);
+    } else if (cand.kind === 'post_item_objectives') {
+      const firstTake = windowTakes[0];
+      const dirNote = startAdv != null && endAdv != null
+        ? (zh ? `；同期${useGold ? '赚金优势' : '净资产优势'}从 ${fmtSigned(startAdv)} 到 ${fmtSigned(endAdv)}${useGold ? '' : '（60 秒桶口径，不是赚金，桶也不是事件时点）'}` : `; the ${useGold ? 'earned-gold' : 'net-worth'} advantage moved from ${fmtSigned(startAdv)} to ${fmtSigned(endAdv)}${useGold ? '' : ' (60 s buckets, not earned gold; a bucket is not an event time)'}`)
+        : '';
+      comparableBits.push(zh
+        ? `记录对照：${itemName(cand.item.key, lang)} ${clock(cand.item.time)} 合成后${firstTake ? `，我方第一处敌方建筑到 ${clock(firstTake.t)} 才出现` : '，窗口内没有出现我方摧掉的敌方建筑'}；同期我方失去建筑 ${windowLosses.length} 处${dirNote}。方向记录不构成对中期选择的判定；输掉比赛本身不是中期决策有误的证据。`
+        : `Recorded contrast: after ${itemName(cand.item.key, 'en')} completed at ${clock(cand.item.time)}${firstTake ? `, your team's first enemy structure only appeared at ${clock(firstTake.t)}` : ', no enemy structure taken by your team appears in this window'}; your team lost ${windowLosses.length} structure${windowLosses.length === 1 ? '' : 's'} in the same span${dirNote}. A direction on record is not a verdict on the mid-game choices; losing the match is not evidence those choices were wrong.`);
+    } else if (cand.kind === 'bkb_vs_structures') {
+      comparableBits.push(zh
+        ? `记录对照：黑皇杖 ${clock(facts['item.first.black_king_bar'].value)} 购入，${clock(cand.use.t)}–${clock(cand.use.ended_at)} 有使用记录；同一窗口内我方失去建筑 ${windowLosses.length} 处。使用与失塔只有时间并列关系；开启位置与时机是否有更优解，没有站位与冷却数据可判。`
+        : `Recorded contrast: Black King Bar purchased at ${clock(facts['item.first.black_king_bar'].value)}, a use recorded ${clock(cand.use.t)}–${clock(cand.use.ended_at)}, while your team lost ${windowLosses.length} structure${windowLosses.length === 1 ? '' : 's'} inside the same window. The use and the losses are only adjacent in time; without position or cooldown data, no better placement or timing can be judged.`);
+    } else if (cand.kind === 'objective_stretch') {
+      const fortLoss = windowObjs.some(o => typeof o.key === 'string' && o.key.endsWith('_fort') && isLoss(o));
+      const maxTier = takes.reduce((tier, o) => {
+        const key = String(o.key);
+        const t = key.includes('fort') ? 5 : key.includes('rax') || key.includes('tower3') ? 4 : key.includes('tower2') ? 3 : 2;
+        return Math.max(tier, t);
+      }, 0);
+      if (windowTakes.length && windowLosses.length) {
+        comparableBits.push(zh
+          ? `记录对照：窗口内我方摧毁敌方建筑 ${windowTakes.length} 处、失去己方建筑 ${windowLosses.length} 处${windowKills.length ? `；你的击杀记录 ${windowKills.length} 次与建筑得失同期出现` : ''}。这是同期记录，不判定攻守取舍。`
+          : `Recorded contrast: your team took ${windowTakes.length} enemy structure${windowTakes.length === 1 ? '' : 's'} and lost ${windowLosses.length} in this window${windowKills.length ? `; ${windowKills.length} kill${windowKills.length > 1 ? 's' : ''} of yours appear in the same span` : ''}. Same-span records; no attack-or-defend verdict is drawn.`);
+      } else if (windowTakes.length && windowKills.length) {
+        comparableBits.push(zh
+          ? `记录对照：你的击杀记录 ${windowKills.length} 次与 ${windowTakes.length} 处推进同期出现。个人动作与团队目标的关系没有站位数据可核对。`
+          : `Recorded contrast: ${windowKills.length} kills of yours appear alongside ${windowTakes.length} structure take${windowTakes.length === 1 ? '' : 's'}. No position data can tie the individual actions to the objectives.`);
+      } else if (!windowTakes.length && !takesSoFar && windowLosses.length) {
+        comparableBits.push(zh
+          ? `记录对照：窗口内我方失去建筑 ${windowLosses.length} 处；到 ${clock(to)} 为止，全场记录中我方摧毁的敌方建筑为 0 处。同期记录不判定攻守取舍。`
+          : `Recorded contrast: your team lost ${windowLosses.length} structure${windowLosses.length === 1 ? '' : 's'} in this window; through ${clock(to)} your team had taken 0 enemy structures in the whole match. Same-span records; no attack-or-defend verdict is drawn.`);
+      }
+      if (fortLoss && maxTier && maxTier <= 3) {
+        comparableBits.push(zh
+          ? `全场记录中我方摧掉的敌方建筑最高只到${maxTier === 3 ? '二塔' : '一塔'}；对方高地及以上建筑在本记录里未被打开。`
+          : `Across the whole match your team's takes never rose above ${maxTier === 3 ? 'T2' : 'T1'} towers; the enemy high ground was never opened in this record.`);
+      }
+    }
     const sections = [];
     if (knownBits.length) sections.push({ label_key: 'known', text: `${knownBits.join(zh ? '；' : '; ')}${zh ? '。' : '.'}` });
     if (actions.length) sections.push({ label_key: 'actions', text: `${actions.map(a => a.text).join(zh ? '；随后 ' : '; then ')}${zh ? '。' : '.'}` });
     if (comparableBits.length) sections.push({ label_key: 'comparable', text: comparableBits.join(zh ? '' : ' ') });
     if (missingBits.length) sections.push({ label_key: 'missing', text: missingBits.join(zh ? '' : ' ') });
-    if (evalBits.length) sections.push({ label_key: 'evaluation', text: `${zh ? '评价（基于上述证据，不做因果推断）：' : 'Assessment (from the evidence above; no causal claims): '}${evalBits.join(zh ? '' : ' ')}` });
+    // The evaluation layer exists only for a decision judgment the fields
+    // support. These frames carry ordered events and recorded contrasts; a
+    // restated 60 s bucket delta would be evaluation-shaped filler, so the
+    // section is omitted rather than approximated.
     const claimBits = actions.map(a => a.text);
-    if (startAdv != null && endAdv != null) claimBits.push(zh
-      ? `窗口内${useGold ? '赚金优势' : '净资产优势'}从 ${fmtSigned(startAdv)} 到 ${fmtSigned(endAdv)}${useGold ? '' : '（60 秒桶）'}`
-      : `${useGold ? 'earned-gold' : 'net-worth'} advantage moved from ${fmtSigned(startAdv)} to ${fmtSigned(endAdv)}${useGold ? '' : ' (60 s buckets)'}`);
+    if (cand.kind === 'kills_no_conversion') {
+      claimBits.push(zh
+        ? `到 ${clock(to)} 为止，我方摧毁的敌方建筑为 0 处${denyNote}`
+        : `through ${clock(to)} your team had taken 0 enemy structures${denyNote}`);
+    }
     const claimText = claimBits.length
       ? `${claimBits.join(zh ? '；' : '; ')}${zh ? '。' : '.'}`
-      : (zh ? `窗口 ${clock(cand.t)} 附近没有可核实的动作证据。` : `No verifiable action evidence around ${clock(cand.t)}.`);
+      : (zh ? `窗口 ${clock(cand.anchor)} 附近没有可核实的动作证据。` : `No verifiable action evidence around ${clock(cand.anchor)}.`);
     const dedupedIds = [...new Set(ids)].filter(id => facts[id]);
+    const theme = windowTheme(cand, { zh, lang, windowTakes, windowLosses, windowObjs, takesSoFar, focusTeam });
     const title = zh
-      ? `决策窗口 ${n}（${clock(cand.t)}）：${cand.kind === 'death' ? '阵亡与后续' : cand.kind === 'swing' ? '优势序列骤变' : '黑皇杖使用'}`
-      : `Decision window ${n} (${clock(cand.t)}): ${cand.kind === 'death' ? 'death and aftermath' : cand.kind === 'swing' ? 'advantage swing' : 'Black King Bar use'}`;
+      ? `决策窗口 ${n}（${clock(cand.anchor)}–${clock(to)}）：${theme}`
+      : `Decision window ${n} (${clock(cand.anchor)}–${clock(to)}): ${theme}`;
     windows.push({
       id: `window.${n}`, kind: 'review_window', status: 'ok', title,
       // time is the analytic frame of the window; every event clock inside the
@@ -559,7 +775,7 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
       sections, fact_ids: dedupedIds, metrics: [],
       evidence: { kind: 'mainline_window', highlight: [from / 60, to / 60], markers: dedupedIds, moments: [] },
       baseline: null, target: null, citations: ['r1'], data_gap: missingBits.length ? 'window_decisive_evidence_missing' : null,
-      prompt: zh ? `${clock(cand.t)} 前后：当时有哪些有依据的可比选择？` : `Around ${clock(cand.t)}: which comparable options had grounds at the time?`,
+      prompt: zh ? `${clock(cand.anchor)} 前后：当时有哪些有依据的可比选择？` : `Around ${clock(cand.anchor)}: which comparable options had grounds at the time?`,
     });
   }
 
@@ -567,6 +783,44 @@ export function buildMainline(result, raw, focus, players, lang, objectives = []
   const practice = buildPractice({ zh, facts, addFact, windows, heroStates, focus, focusSlug: slugOfKey(heroSlug(focus.hero_id)), lang });
 
   return { insights: [overview, ...windows], practice, windowsShort };
+}
+
+/**
+ * Conversion/objective theme naming for a candidate. The theme is always the
+ * resource/objective line — kills vs objectives, the post-item line, an item
+ * timing against structure losses, or the take/loss stretch itself. Deaths are
+ * execution evidence inside the frame and never name the window.
+ */
+function windowTheme(cand, { zh, lang, windowTakes, windowLosses, windowObjs, takesSoFar, focusTeam }) {
+  if (cand.kind === 'kills_no_conversion') return zh ? '击杀未转化为地图目标' : 'kills without map conversion';
+  if (cand.kind === 'post_item_objectives') {
+    const item = itemName(cand.item.key, lang);
+    return zh ? `${item}之后的资源与目标线` : `resource and objective line after ${item}`;
+  }
+  if (cand.kind === 'bkb_vs_structures') return zh ? '黑皇杖首次使用与己方建筑失守' : 'first Black King Bar use amid your structures falling';
+  const fort = windowObjs.find(o => typeof o.key === 'string' && o.key.endsWith('_fort'));
+  if (fort) {
+    const taken = killerSideOf(fort.team) === focusTeam;
+    return taken
+      ? (zh ? '高地攻坚至基地被破' : 'the high ground push through the Ancient')
+      : (zh ? '高地失守至基地被破' : 'high ground lost through the Ancient');
+  }
+  const highGround = windowLosses.some(o => /tower[3-4]|rax/.test(String(o.key)));
+  if (highGround) {
+    return windowTakes.length
+      ? (zh ? '高地失守与外塔反推同期' : 'your high ground falling amid a counter-take')
+      : (zh ? '己方高地失守' : 'your high ground falling');
+  }
+  if (windowTakes.length && windowLosses.length) return zh ? '外塔攻防同期' : 'outer towers taken and lost';
+  if (windowTakes.length) return zh ? '推掉敌方外塔' : 'enemy outer towers taken';
+  if (!takesSoFar) {
+    return highGround || /tower2/.test(windowLosses.map(o => String(o.key)).join())
+      ? (zh ? '二塔及以上失守，仍无反推' : 'T2+ towers lost with no counter-take recorded')
+      : (zh ? '外塔连续失守，仍无反推' : 'outer towers lost with no counter-take recorded');
+  }
+  return highGround
+    ? (zh ? '己方高地失守' : 'your high ground falling')
+    : (zh ? '己方塔连续失守' : 'your towers falling');
 }
 
 /**
