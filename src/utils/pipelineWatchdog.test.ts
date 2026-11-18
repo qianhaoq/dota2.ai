@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { plan, gather, headTime, DEFAULTS, marker, reopenMarker } = require('../../.github/scripts/pipeline-watchdog.cjs');
+const { plan, gather, apply, configure, recoverClosed, needsReopenRecovery, headTime, DEFAULTS, marker, reopenMarker, reopenPendingMarker } = require('../../.github/scripts/pipeline-watchdog.cjs');
 
 const MIN = 60_000;
 const NOW = Date.parse('2026-11-18T15:00:00Z');
@@ -178,4 +178,72 @@ describe('pipeline watchdog gather', () => {
     expect(state.headAt).toBe(ago(20));
     expect(plan({ ...state, hasToken: true }, NOW).actions).toEqual([{ type: 'update-branch' }]);
   });
+});
+
+describe('pipeline watchdog check rollup pagination', () => {
+  it('follows every page of contexts before calling a required check missing', async () => {
+    const run = (name: string) => ({ __typename: 'CheckRun', name, status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: new Date(ago(20)).toISOString(), completedAt: new Date(ago(19)).toISOString(), detailsUrl: '' });
+    const pages: Record<string, { nodes: unknown[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } }> = {
+      first: { nodes: [run('ci / Build & Test'), run('ci / Secret Scan'), run('e2e')], pageInfo: { hasNextPage: true, endCursor: 'c1' } },
+      c1: { nodes: [run('codex / Codex Review Gate')], pageInfo: { hasNextPage: false, endCursor: null } },
+    };
+    const seen: (string | null)[] = [];
+    const github = {
+      rest: {
+        pulls: { get: async () => ({ data: { mergeable_state: 'blocked', head: { sha: SHA, ref: 'feat/x', repo: { full_name: 'o/r' } }, labels: [], draft: false, created_at: new Date(ago(60)).toISOString(), updated_at: new Date(ago(1)).toISOString() } }) },
+        repos: { getCommit: async () => ({ data: { commit: { committer: { date: new Date(ago(30)).toISOString() } } } }) },
+        issues: { listComments: () => [] },
+        actions: { getWorkflowRun: async () => ({ data: { run_attempt: 1 } }) },
+      },
+      paginate: async (fn: (o: unknown) => unknown, o: unknown) => fn(o),
+      graphql: async (_q: string, v: { after: string | null }) => {
+        seen.push(v.after);
+        return { repository: { pullRequest: { commits: { nodes: [{ commit: { oid: SHA, statusCheckRollup: { contexts: pages[v.after ?? 'first'] } } }] } } } };
+      },
+    };
+    const state = await gather(github, 'o', 'r', 7, DEFAULTS);
+    expect(seen).toEqual([null, 'c1']);
+    expect(Object.keys(state.checks).sort()).toEqual([...DEFAULTS.required].sort());
+    expect(plan({ ...state, hasToken: true, comments: [review] }, NOW).actions.map((a: { type: string }) => a.type)).not.toContain('reopen');
+  });
+});
+
+describe('pipeline watchdog reopen recovery', () => {
+  configure({ retryMs: 0 });
+  const core = { info: () => {}, warning: () => {} };
+
+  it('leaves a recoverable marker when reopening fails, and the next pass reopens the PR', async () => {
+    const comments: { id: number; body: string }[] = [];
+    let state = 'open';
+    let failReopen = true;
+    const github = {
+      rest: {
+        issues: {
+          createComment: async ({ body }: { body: string }) => { const c = { id: comments.length + 1, body }; comments.push(c); return { data: c }; },
+          updateComment: async ({ comment_id, body }: { comment_id: number; body: string }) => { comments.find((c) => c.id === comment_id)!.body = body; return {}; },
+          listComments: () => comments.map((c) => ({ ...c, user: { login: 'github-actions[bot]' } })),
+        },
+        pulls: {
+          update: async ({ state: s }: { state: string }) => { if (s === 'open' && failReopen) throw new Error('503'); state = s; return {}; },
+          list: async () => ({ data: [{ number: 7, merged_at: null, updated_at: new Date(NOW).toISOString(), head: { sha: SHA } }] }),
+        },
+      },
+      paginate: async (fn: (o: unknown) => unknown, o: unknown) => fn(o),
+    };
+    const pr = { number: 7, headSha: SHA };
+    await expect(apply(github, core, 'o', 'r', pr, { type: 'reopen' }, 'main')).rejects.toThrow('503');
+    expect(state).toBe('closed');
+    expect(needsReopenRecovery(comments, SHA)).toBe(true);
+    // the same head is not closed again by plan() while recovery is pending
+    expect(types(pr0({ comments: comments.map((c) => ({ login: 'github-actions[bot]', body: c.body, at: ago(1) })) }))).not.toContain('reopen');
+
+    failReopen = false;
+    await recoverClosed(github, core, 'o', 'r', 'main', NOW, false);
+    expect(state).toBe('open');
+    expect(comments[0].body).toContain(reopenMarker(SHA));
+    expect(comments[0].body).not.toContain(reopenPendingMarker(SHA));
+    expect(needsReopenRecovery(comments, SHA)).toBe(false);
+  });
+
+  function pr0(over: Record<string, unknown>) { return pr({ review: undefined, checks: {}, ...over, comments: [review, ...((over.comments as unknown[]) || [])] }); }
 });

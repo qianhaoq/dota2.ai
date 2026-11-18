@@ -41,6 +41,23 @@ const MIN = 60_000;
 const CODEX_REQUEST = '@codex review';
 const marker = (sha) => `<!-- pipeline-watchdog:escalated:${sha} -->`;
 const reopenMarker = (sha) => `<!-- pipeline-watchdog:reopened:${sha} -->`;
+// Written before closing, swapped for reopenMarker once the PR is open again.
+// A pending marker without its done marker on a closed PR means the reopen
+// failed mid-way; recoverClosed() reopens it on the next pass.
+const reopenPendingMarker = (sha) => `<!-- pipeline-watchdog:reopen-pending:${sha} -->`;
+
+/** A closed PR the watchdog closed but never managed to reopen. */
+function needsReopenRecovery(comments, sha) {
+  return comments.some((c) => c.body.includes(reopenPendingMarker(sha)))
+    && !comments.some((c) => c.body.includes(reopenMarker(sha)));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function withRetry(fn, tries = 3, delayMs = 2000) {
+  for (let i = 1; ; i++) {
+    try { return await fn(); } catch (e) { if (i >= tries) throw e; await sleep(delayMs * i); }
+  }
+}
 
 const isCodex = (login, cfg) => String(login || '').replace(/\[bot\]$/, '') === cfg.codexLogin;
 
@@ -141,7 +158,7 @@ function plan(pr, now, cfg = DEFAULTS) {
     // Real failures are the author's to fix; the gate's own message says why.
   }
   if (missing.length && headAge >= cfg.missingCheckMin) {
-    const reopened = pr.comments.some((c) => c.body.includes(reopenMarker(sha)));
+    const reopened = pr.comments.some((c) => c.body.includes(reopenMarker(sha)) || c.body.includes(reopenPendingMarker(sha)));
     if (pr.hasToken && !pr.fork && !reopened) actions.push({ type: 'reopen' });
     else stuck.push(`required check(s) never started for ${sha.slice(0, 7)}: ${missing.join(', ')}${pr.hasToken ? '' : ' (set PIPELINE_TOKEN, or close and reopen the PR)'}`);
   }
@@ -173,12 +190,19 @@ async function gather(github, owner, repo, number, cfg) {
   const comments = (await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 }))
     .map((c) => ({ login: c.user?.login, body: c.body || '', at: Date.parse(c.created_at) }));
   // Only PR-associated check runs: the same rollup branch protection uses.
-  const q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){nodes{__typename ... on CheckRun{name status conclusion startedAt completedAt detailsUrl}}}}}}}}}}`;
-  const res = await github.graphql(q, { o: owner, r: repo, n: number });
-  const node = res.repository.pullRequest.commits.nodes[0]?.commit;
-  const runs = node && node.oid === sha
-    ? (node.statusCheckRollup?.contexts?.nodes || []).filter((x) => x.__typename === 'CheckRun')
-    : [];
+  // `contexts` is a paginated connection: follow every page before deciding
+  // that a required check is missing.
+  const q = `query($o:String!,$r:String!,$n:Int!,$after:String){repository(owner:$o,name:$r){pullRequest(number:$n){commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{__typename ... on CheckRun{name status conclusion startedAt completedAt detailsUrl}}}}}}}}}}`;
+  const runs = [];
+  for (let after = null, page = 0; page < 20; page++) {
+    const res = await github.graphql(q, { o: owner, r: repo, n: number, after });
+    const node = res.repository.pullRequest.commits.nodes[0]?.commit;
+    if (!node || node.oid !== sha) break; // head moved: treat as no checks yet
+    const ctx = node.statusCheckRollup?.contexts;
+    runs.push(...(ctx?.nodes || []).filter((x) => x.__typename === 'CheckRun'));
+    if (!ctx?.pageInfo?.hasNextPage) break;
+    after = ctx.pageInfo.endCursor;
+  }
   const checks = {};
   for (const name of cfg.required) {
     const latest = runs.filter((r) => r.name === name)
@@ -217,15 +241,43 @@ async function gather(github, owner, repo, number, cfg) {
   };
 }
 
+let cfgRetryMs = 2000;
+/** Tests shorten the retry back-off. */
+function configure({ retryMs } = {}) { if (Number.isFinite(retryMs)) cfgRetryMs = retryMs; }
+
+async function reopenAndRecord(github, owner, repo, n, sha, commentId) {
+  await withRetry(() => github.rest.pulls.update({ owner, repo, pull_number: n, state: 'open' }), 3, cfgRetryMs);
+  return github.rest.issues.updateComment({ owner, repo, comment_id: commentId, body: `${reopenMarker(sha)}\nReopened to re-run the required checks for \`${sha.slice(0, 7)}\` (pipeline watchdog).` });
+}
+
+/** Reopen PRs the watchdog closed but failed to reopen (see 'reopen'). */
+async function recoverClosed(github, core, owner, repo, base, now, dryRun) {
+  const closed = await github.rest.pulls.list({ owner, repo, state: 'closed', base, sort: 'updated', direction: 'desc', per_page: 30 });
+  for (const pr of closed.data || closed) {
+    if (pr.merged_at || now - Date.parse(pr.updated_at) > 24 * 60 * MIN) continue;
+    const comments = (await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: pr.number, per_page: 100 }))
+      .map((c) => ({ id: c.id, body: c.body || '' }));
+    if (!needsReopenRecovery(comments, pr.head.sha)) continue;
+    core.info(`#${pr.number} closed by the watchdog but not reopened: reopening`);
+    if (dryRun) continue;
+    const note = comments.find((c) => c.body.includes(reopenPendingMarker(pr.head.sha)));
+    try { await reopenAndRecord(github, owner, repo, pr.number, pr.head.sha, note.id); } catch (e) { core.warning(`#${pr.number} reopen recovery failed: ${e.message}`); }
+  }
+}
+
 async function apply(github, core, owner, repo, pr, action, defaultBranch) {
   const n = pr.number;
   switch (action.type) {
     case 'update-branch':
       return github.rest.pulls.updateBranch({ owner, repo, pull_number: n, expected_head_sha: pr.headSha });
-    case 'reopen':
-      await github.rest.pulls.update({ owner, repo, pull_number: n, state: 'closed' });
-      await github.rest.pulls.update({ owner, repo, pull_number: n, state: 'open' });
-      return github.rest.issues.createComment({ owner, repo, issue_number: n, body: `${reopenMarker(pr.headSha)}\nReopened to re-run the required checks for \`${pr.headSha.slice(0, 7)}\` (pipeline watchdog).` });
+    case 'reopen': {
+      // Record intent first, so a failure between close and reopen is
+      // recoverable on the next pass (recoverClosed) instead of leaving the
+      // PR closed and invisible to a watchdog that only lists open PRs.
+      const { data: note } = await github.rest.issues.createComment({ owner, repo, issue_number: n, body: `${reopenPendingMarker(pr.headSha)}\nClosing and reopening to re-run the required checks for \`${pr.headSha.slice(0, 7)}\` (pipeline watchdog).` });
+      await withRetry(() => github.rest.pulls.update({ owner, repo, pull_number: n, state: 'closed' }), 3, cfgRetryMs);
+      return reopenAndRecord(github, owner, repo, n, pr.headSha, note.id);
+    }
     case 'request-codex':
       return github.rest.issues.createComment({ owner, repo, issue_number: n, body: CODEX_REQUEST });
     case 'dispatch':
@@ -252,8 +304,10 @@ async function apply(github, core, owner, repo, pr, action, defaultBranch) {
 
 async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false, hasToken = process.env.HAS_PIPELINE_TOKEN === 'true' } = {}) {
   const { owner, repo } = context.repo;
+  if (Number.isFinite(cfg.retryMs)) cfgRetryMs = cfg.retryMs;
   const { data: repoInfo } = await github.rest.repos.get({ owner, repo });
   const base = repoInfo.default_branch;
+  try { await recoverClosed(github, core, owner, repo, base, Date.now(), dryRun); } catch (e) { core.warning(`closed-PR recovery failed: ${e.message}`); }
   const prs = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', base, per_page: 50 });
   const now = Date.now();
   // Last manual Auto Merge dispatch (any PR): the nudge cooldown.
@@ -277,4 +331,4 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false, 
   }
 }
 
-module.exports = { DEFAULTS, plan, run, gather, headTime, hasCodexReview, CODEX_REQUEST, marker, reopenMarker };
+module.exports = { DEFAULTS, plan, run, gather, apply, configure, recoverClosed, needsReopenRecovery, headTime, hasCodexReview, CODEX_REQUEST, marker, reopenMarker, reopenPendingMarker };
