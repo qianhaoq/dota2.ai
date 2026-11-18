@@ -16,6 +16,13 @@
 name: Pipeline Watchdog
 
 on:
+  # Event-driven first: every time a gate or auto-merge finishes, look at
+  # the open PRs right away. GitHub's cron is best-effort (the first */10
+  # schedule did not fire for 35+ minutes after this workflow was added),
+  # so the schedule is only the backstop for PRs where nothing happens.
+  workflow_run:
+    workflows: ["CI", "E2E", "Codex Review Gate", "Auto Merge"]
+    types: [completed]
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
@@ -28,6 +35,7 @@ permissions:
   checks: read
 
 concurrency:
+  # One pass at a time; a burst of completions collapses into one queued pass.
   group: pipeline-watchdog
   cancel-in-progress: false
 

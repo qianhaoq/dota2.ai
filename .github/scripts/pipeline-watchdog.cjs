@@ -32,7 +32,10 @@ const DEFAULTS = {
   // waits up to 20); only past this is an in-progress check treated as hung.
   stuckRunningMin: 45,
   maxRunAttempts: 3, // re-runs of one cancelled workflow run
-  autoMergeNudgeMin: 5, // all green this long but still open
+  // All green this long but still open. Auto Merge's workflow_run sweeps
+  // share one concurrency group and can sit pending for good (seen on #144,
+  // #145); a per-PR dispatch uses its own group and goes through.
+  autoMergeNudgeMin: 2,
   escalateAfterMin: 45, // head age before telling a human
   holdLabel: 'no-auto-merge',
   codexLogin: 'chatgpt-codex-connector',

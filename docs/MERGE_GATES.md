@@ -24,7 +24,7 @@ This page is the source of truth for merge policy.
 4. 四个必需 check 全绿、会话已解决 → `auto-merge.yml` squash 合入 main；
 5. main 上的 Cloud Build 触发器自动部署到 dota2.ai。
 
-**卡住时谁来管：`pipeline-watchdog.yml`（每 10 分钟）。** 逻辑在 `.github/scripts/pipeline-watchdog.cjs`，测试在 `src/utils/pipelineWatchdog.test.ts`。它只重复流水线本来就会做的事，从不批准、打标签、解决线程或自己合入：
+**卡住时谁来管：`pipeline-watchdog.yml`。** CI / E2E / Codex Review Gate / Auto Merge 任一跑完即触发（事件驱动），每 10 分钟的 cron 只做兜底（GitHub 的定时任务尽力而为，新加后可能 1 小时都不触发）。 逻辑在 `.github/scripts/pipeline-watchdog.cjs`，测试在 `src/utils/pipelineWatchdog.test.ts`。它只重复流水线本来就会做的事，从不批准、打标签、解决线程或自己合入：
 
 | 情况 | 动作 |
 |---|---|
@@ -33,7 +33,7 @@ This page is the source of truth for merge policy.
 | 必需 check 从未出现（>5 分钟） | 在 PR 分支上 dispatch 对应 workflow |
 | 必需 check 排队 >15 分钟（没有 runner 接），或运行 >45 分钟（超过 job 自身超时） | 取消，下一轮重跑 |
 | 必需 check 为 cancelled / timed_out | 重跑，最多 3 次 |
-| 全绿、可合并但仍开着 >5 分钟 | dispatch Auto Merge 重新评估 |
+| 全绿、可合并但仍开着 >2 分钟 | 按 PR 号 dispatch Auto Merge（独立并发组；`workflow_run` 触发的 sweep 共享一个组，可能一直 pending） |
 | 上述重试用尽，或与 main 冲突 | head 超过 45 分钟后，在 PR 上 @仓库所有者说明原因（每个 head 一次） |
 
 真实失败（测试红、Codex P0/P1）不重跑，由作者修。**必需 secret `PIPELINE_TOKEN`**：仓库所有者（已关联 Codex 的账号）的细粒度 PAT，只授权本仓库，权限 Contents / Pull requests / Issues / Actions 读写。Codex 只响应已关联账号的 `@codex review`，对 `github-actions[bot]` 回复 "To use Codex here, create a Codex account"（#144 实测），所以自动请求评审必须用它发。它同时让 Update branch 的推送正常触发 `pull_request` workflow。
