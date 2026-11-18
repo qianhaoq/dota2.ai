@@ -57,7 +57,7 @@ jobs:
       actions: write
     uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@5f984ac2f3f879fe2f69d803c672e22f4d9ac1fc # devflow-gates main @ 5f984ac
     with:
-      runs_on: '["self-hosted", "linux", "x64"]'
+      runs_on: 'ubuntu-latest'
       qa_label: 'qa-passed'
       # Keep qa-passed when a push only merges main cleanly into the
       # QA-tested head (e.g. "Update branch" under strict protection): no
@@ -87,7 +87,7 @@ jobs:
       check_name: 'qa / QA Gate'
       job_name: 'QA Gate'
       wait_minutes: 30   # > real gate max runtime + runner queue
-      runs_on: '["self-hosted", "linux", "x64"]'
+      runs_on: 'ubuntu-latest'
 
   # OPTIONAL schedule path: add `schedule: [{cron: '17 */6 * * *'}]` under
   # `on:` only if you need it. It never blindly re-runs a red gate (see
@@ -101,4 +101,4 @@ jobs:
   #     actions: write
   #   uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@5f984ac2f3f879fe2f69d803c672e22f4d9ac1fc # devflow-gates main @ 5f984ac
   #   with:
-  #     runs_on: '["self-hosted", "linux", "x64"]'   # keep in sync with qa job above
+  #     runs_on: 'ubuntu-latest'   # keep in sync with qa job above

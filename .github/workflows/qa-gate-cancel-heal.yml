@@ -31,6 +31,6 @@ jobs:
       actions: write
     uses: qianhaoq/devflow-gates/.github/workflows/qa-gate.yml@5f984ac2f3f879fe2f69d803c672e22f4d9ac1fc # devflow-gates main @ 5f984ac
     with:
-      runs_on: '["self-hosted", "linux", "x64"]'
+      runs_on: 'ubuntu-latest'
       qa_label: 'qa-passed'
       keep_qa_on_clean_main_update: true

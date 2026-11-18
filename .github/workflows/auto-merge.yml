@@ -69,7 +69,7 @@ jobs:
       github.event.review.user.login == 'copilot-pull-request-reviewer[bot]')
     uses: qianhaoq/devflow-gates/.github/workflows/auto-merge.yml@53dd06c4da868c5d19078cca74547053b36ac55f # devflow-gates main @ 53dd06c
     with:
-      runs_on: '["self-hosted", "linux", "x64"]'
+      runs_on: 'ubuntu-latest'
       # Exact check-run names = "<caller job name> / <called job name>"
       # from YOUR ci.yml / codex-gate.yml / qa-gate.yml callers. "ci / Secret Scan"
       # is required so a red gitleaks run can never be auto-merged.
