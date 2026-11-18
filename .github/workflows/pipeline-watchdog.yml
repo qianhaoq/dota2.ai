@@ -6,10 +6,12 @@
 # Logic and tests: .github/scripts/pipeline-watchdog.cjs,
 # src/utils/pipelineWatchdog.test.ts.
 #
-# Optional secret PIPELINE_TOKEN (fine-grained PAT: contents, pull requests,
-# issues, actions: write on this repo). With it, "update branch" pushes fire
-# the normal pull_request workflows; with the default GITHUB_TOKEN they do
-# not, and the watchdog dispatches the missing checks on its next pass.
+# Secret PIPELINE_TOKEN (fine-grained PAT of the Codex-linked owner account;
+# this repo only; Contents, Pull requests, Issues, Actions: read & write).
+# Needed for "@codex review" re-requests: Codex ignores github-actions[bot].
+# It also makes "update branch" pushes fire the normal pull_request
+# workflows. Without it the watchdog still re-runs/dispatches checks and
+# escalates, but Codex retries are ineffective.
 
 name: Pipeline Watchdog
 

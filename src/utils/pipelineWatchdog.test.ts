@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { plan, DEFAULTS, marker } = require('../../.github/scripts/pipeline-watchdog.cjs');
+const { plan, headTime, DEFAULTS, marker } = require('../../.github/scripts/pipeline-watchdog.cjs');
 
 const MIN = 60_000;
 const NOW = Date.parse('2026-11-18T15:00:00Z');
@@ -95,6 +95,22 @@ describe('pipeline watchdog plan', () => {
   it('does not touch fork branches', () => {
     expect(types(pr({ fork: true, mergeableState: 'behind', comments: [review] }))).toEqual([]);
     expect(types(pr({ fork: true, comments: [review], checks: {} }))).toEqual([]);
+  });
+});
+
+describe('pipeline watchdog head time', () => {
+  const prCreatedAt = ago(120);
+  it('prefers the first server-recorded check run over the commit date', () => {
+    expect(headTime({ commitAt: ago(5000), prCreatedAt, firstCheckAt: ago(30) }, NOW)).toBe(ago(30));
+  });
+  it('clamps a forged future commit date to now', () => {
+    expect(headTime({ commitAt: NOW + 365 * 24 * 60 * MIN, prCreatedAt, firstCheckAt: Infinity }, NOW)).toBe(NOW);
+  });
+  it('clamps a commit dated before the PR to the PR creation time', () => {
+    expect(headTime({ commitAt: ago(10_000), prCreatedAt, firstCheckAt: Infinity }, NOW)).toBe(prCreatedAt);
+  });
+  it('falls back to PR creation when the commit date is unreadable', () => {
+    expect(headTime({ commitAt: NaN, prCreatedAt, firstCheckAt: Infinity }, NOW)).toBe(prCreatedAt);
   });
 });
 

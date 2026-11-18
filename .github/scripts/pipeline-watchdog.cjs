@@ -41,6 +41,19 @@ const marker = (sha) => `<!-- pipeline-watchdog:escalated:${sha} -->`;
 
 const isCodex = (login, cfg) => String(login || '').replace(/\[bot\]$/, '') === cfg.codexLogin;
 
+/**
+ * When the head commit arrived, from server-recorded times only. The commit's
+ * own date is author-controlled (could be far in the future to suppress
+ * retries, or long before the PR to trigger early escalation), so prefer the
+ * first check run GitHub created for the head; otherwise clamp the commit
+ * date to the PR's lifetime.
+ */
+function headTime({ commitAt, prCreatedAt, firstCheckAt }, now) {
+  if (Number.isFinite(firstCheckAt)) return Math.min(Math.max(firstCheckAt, prCreatedAt), now);
+  const t = Number.isFinite(commitAt) ? commitAt : prCreatedAt;
+  return Math.min(Math.max(t, prCreatedAt), now);
+}
+
 /** A Codex review summary or receipt that names this head commit. */
 function hasCodexReview(comments, sha, cfg) {
   return comments.some((c) => isCodex(c.login, cfg)
@@ -154,7 +167,11 @@ async function gather(github, owner, repo, number, cfg) {
     headRef: pr.head.ref,
     fork: pr.head.repo?.full_name !== `${owner}/${repo}`,
     mergeableState: pr.mergeable_state,
-    headAt: Date.parse(commit.commit.committer?.date || pr.updated_at),
+    headAt: headTime({
+      commitAt: Date.parse(commit.commit.committer?.date),
+      prCreatedAt: Date.parse(pr.created_at),
+      firstCheckAt: runs.reduce((m, r) => Math.min(m, Date.parse(r.started_at || r.completed_at) || Infinity), Infinity),
+    }, Date.now()),
     comments,
     checks,
   };
@@ -210,4 +227,4 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false }
   }
 }
 
-module.exports = { DEFAULTS, plan, run, hasCodexReview, CODEX_REQUEST, marker };
+module.exports = { DEFAULTS, plan, run, headTime, hasCodexReview, CODEX_REQUEST, marker };

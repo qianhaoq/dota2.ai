@@ -36,7 +36,7 @@ This page is the source of truth for merge policy.
 | 全绿、可合并但仍开着 >5 分钟 | dispatch Auto Merge 重新评估 |
 | 上述重试用尽，或与 main 冲突 | head 超过 45 分钟后，在 PR 上 @仓库所有者说明原因（每个 head 一次） |
 
-真实失败（测试红、Codex P0/P1）不重跑，由作者修。可选 secret `PIPELINE_TOKEN`（细粒度 PAT）：有了它，Update branch 产生的推送会正常触发 `pull_request` workflow；没有时由看门狗下一轮补 dispatch。
+真实失败（测试红、Codex P0/P1）不重跑，由作者修。**必需 secret `PIPELINE_TOKEN`**：仓库所有者（已关联 Codex 的账号）的细粒度 PAT，只授权本仓库，权限 Contents / Pull requests / Issues / Actions 读写。Codex 只响应已关联账号的 `@codex review`，对 `github-actions[bot]` 回复 "To use Codex here, create a Codex account"（#144 实测），所以自动请求评审必须用它发。它同时让 Update branch 的推送正常触发 `pull_request` workflow。
 
 **改流水线本身时：** `pull_request_target` / `issue_comment` / `workflow_run` 触发的 workflow 只读 main 上的 YAML，PR 里的改动在合入前不会生效。改这类文件时，先在 PR 分支上 `workflow_dispatch` 实跑（或用只读 dry run），把运行链接贴进 PR 描述；新的约束尽量写成 `npm test` 里的断言（例：`workflowRunners.test.ts` 禁止 `self-hosted`，`pipelineWatchdog.test.ts` 要求 `@codex review` 正文精确）。
 
