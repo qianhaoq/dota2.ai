@@ -1,4 +1,5 @@
 import { createReviewClient, invalid, normalizeInput } from './client.js';
+import { runCoach } from './coach.js';
 
 export function parseArgs(args) {
   if (args[0] !== 'review' || !args[1]) throw invalid('Usage: dota2ai review <matchId> [--hero slug|id] [--lang en|zh] [--json] [--offline]');
@@ -19,6 +20,7 @@ export function parseArgs(args) {
   return options;
 }
 export async function run(args, { stdout = process.stdout, stderr = process.stderr, ...dependencies } = {}) {
+  if (args[0] === 'coach') return runCoach(args, { stdout, stderr, env: dependencies.env, fetchImpl: dependencies.fetchImpl });
   try {
     const options = parseArgs(args);
     const review = await createReviewClient({ ...dependencies, offline: options.offline })(options);
