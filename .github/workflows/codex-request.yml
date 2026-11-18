@@ -1,0 +1,42 @@
+# Asks Codex to review every new PR head, so nobody has to type
+# "@codex review" by hand. The Codex Review Gate then turns green on its
+# own once Codex reports no P0/P1 findings for that head.
+#
+# pull_request_target runs this file from main and never checks out PR
+# code; it only posts one comment.
+#
+# Token: Codex answers mentions from accounts linked to a ChatGPT/Codex
+# workspace. If it ignores comments from github-actions[bot], add a
+# fine-grained PAT of a linked account (Pull requests: write, Issues:
+# write, this repo only) as the CODEX_REVIEW_TOKEN secret.
+
+name: Codex Review Request
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: codex-request-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  request:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Comment "@codex review"
+        env:
+          GH_TOKEN: ${{ secrets.CODEX_REVIEW_TOKEN || github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
+            --body "@codex review
+
+          <sub>Automatic request for head \`${SHA:0:7}\`.</sub>"

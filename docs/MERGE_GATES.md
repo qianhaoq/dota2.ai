@@ -9,13 +9,22 @@ This page is the source of truth for merge policy.
 
 ## Check names after devflow-gates migration
 
-本仓库的 CI / Codex / QA / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `fe7cf65`，即 fe7cf651ef515f165041738dc285b03ce3817bb9）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
+本仓库的 CI / Codex / Auto Merge 改为调用 `qianhaoq/devflow-gates` 的 reusable workflow（固定到 commit `fe7cf65`，即 fe7cf651ef515f165041738dc285b03ce3817bb9）。Check 名变为 `<caller job> / <called job>`，branch protection 与 `auto-merge.yml` 的 `required_checks` 必须使用以下名字：
 
 - `ci / Build & Test`
 - `ci / Secret Scan`
 - `codex / Codex Review Gate`
-- `qa / QA Gate`（label `qa-passed`，见 `QA.md`）
-  - 已开启 `keep_qa_on_clean_main_update`：新 push 只是把 main **干净合入** QA 验过的 head（GitHub "Update branch" 的 merge 方式；无冲突、merge 结果 == 干净重合并、main 改动的文件与本 PR 无交集）时保留 `qa-passed`，并在 PR 上留置顶评论「仅干净合入 main…QA 测试基于 <sha>」；其他任何 push（普通提交、rebase/force push、手工解冲突、文件重叠）仍移除标签、需重新 QA。
+- `e2e`（Playwright 视觉基准 + axe，`e2e.yml`）
+
+**全自动流水线（2026-11-18 起）：** 不再需要任何人工标签。
+
+1. 开 PR / 推送新 head → `codex-request.yml` 自动评论 `@codex review`；
+2. CI、e2e 跑在 GitHub 托管的 `ubuntu-latest`（仓库公开，免费；不再依赖自建 runner）；
+3. Codex 无 P0/P1（或未标注）发现 → `codex / Codex Review Gate` 变绿；
+4. 四个必需 check 全绿、会话已解决 → `auto-merge.yml` squash 合入 main；
+5. main 上的 Cloud Build 触发器自动部署到 dota2.ai。
+
+原 `qa / QA Gate`（`qa-passed` 标签）已移除；`QA.md` 保留为可选的人工验收清单。想让某个 PR 停在人工确认前，打 `no-auto-merge` 或保持 draft。
 
 旧的裸名 `Build & Test` / `Codex Review Gate` 在合入后不再产生，若仍为 required 会让所有 PR 永久挂起。
 
@@ -49,7 +58,7 @@ Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程一�
 | ~~Required check `copilot-pull-request-reviewer`~~ | **不设为 required**（Copilot 已退出合入门槛） |
 | Required check: **`codex / Codex Review Gate`** | **job / check-run 名**（`.github/workflows/codex-gate.yml` 的 `jobs.*.name`），不是 workflow 展示名 |
 | Required check: **`ci / Secret Scan`** | gitleaks（`ci.yml` 调用 devflow-gates） |
-| Required check: **`qa / QA Gate`** | QA label `qa-passed`（`qa-gate.yml`，见 `QA.md`） |
+| Required check: **`e2e`** | Playwright e2e（`.github/workflows/e2e.yml`） |
 | **Require conversation resolution before merging** | 未解决行内线程挡住 Merge（无严重度例外；与纯 P2 open 的关系见下方「原生保护」） |
 | （可选）**Dismiss stale pull request approvals when new commits are pushed** | 新 push 后旧 APPROVED 作废 |
 
@@ -58,7 +67,7 @@ Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程一�
 **Settings → Rules → Rulesets**（升 Team 后才会 enforce；现在也建议配好）：
 
 - Target: branch `main`
-- Require status checks: **`ci / Build & Test`**、**`ci / Secret Scan`**、**`codex / Codex Review Gate`**、**`qa / QA Gate`**（不含 `copilot-pull-request-reviewer`）
+- Require status checks: **`ci / Build & Test`**、**`ci / Secret Scan`**、**`codex / Codex Review Gate`**、**`e2e`**（不含 `copilot-pull-request-reviewer`）
 - Require conversation resolution before merging
 - （可选）Dismiss stale reviews
 
@@ -110,7 +119,7 @@ Codex 线程分级（共享实现）：显式 P0/P1 阻断；未标注线程一�
 
 ## `no-auto-merge` 如何关掉自动合入
 
-给 PR 打上 **`no-auto-merge`** 后，`auto-merge.yml` 直接 skip，即使 CI / Codex / QA 全绿、线程已清。
+给 PR 打上 **`no-auto-merge`** 后，`auto-merge.yml` 直接 skip，即使 CI / e2e / Codex 全绿、线程已清。
 
 其他挡自动合入的方式：保持 **draft**，或把 base 改成非 `main`。
 
