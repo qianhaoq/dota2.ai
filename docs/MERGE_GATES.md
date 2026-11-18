@@ -28,9 +28,9 @@ This page is the source of truth for merge policy.
 
 | 情况 | 动作 |
 |---|---|
-| 分支落后 main（strict 保护） | 自动 Update branch |
+| 分支落后 main（strict 保护） | 有 `PIPELINE_TOKEN` 时自动 Update branch；没有则提醒（`GITHUB_TOKEN` 的推送不触发 PR 检查） |
 | 新 head 10 分钟没有**已完成**的 Codex 评审（含 Codex 回成"任务"、摘要停在 Running 或 Failed） | 再发 `@codex review`，每个 head 最多 3 次 |
-| 必需 check 从未出现（>5 分钟） | 在 PR 分支上 dispatch 对应 workflow |
+| 必需 check 从未出现（>5 分钟） | 用 `PIPELINE_TOKEN` 关闭再重开 PR（每个 head 一次）。不用 dispatch：dispatch 产生的 check 不关联 PR，分支保护不认（#142、#133 实测） |
 | 必需 check 排队 >15 分钟（没有 runner 接），或运行 >45 分钟（超过 job 自身超时） | 取消，下一轮重跑 |
 | 必需 check 为 cancelled / timed_out | 重跑，最多 3 次 |
 | 全绿、可合并但仍开着 >2 分钟（10 分钟冷却，防止与 Auto Merge 互相触发） | 按 PR 号 dispatch Auto Merge（独立并发组；`workflow_run` 触发的 sweep 共享一个组，可能一直 pending） |
