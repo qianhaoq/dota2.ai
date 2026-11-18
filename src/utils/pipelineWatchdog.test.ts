@@ -317,6 +317,29 @@ describe('pipeline watchdog reopen recovery', () => {
     expect(comments[0].body).toContain(reopenPendingMarker(SHA));
   });
 
+  it('recovers a watchdog-closed PR even if the head moved after the marker was written', async () => {
+    const OLD = '1'.repeat(40);
+    let reopened = false;
+    const comments = [{ id: 1, user: { login: 'github-actions[bot]' }, body: `${reopenPendingMarker(OLD)}\nClosing…` }];
+    const github = {
+      rest: {
+        issues: {
+          listComments: () => comments,
+          listEvents: () => [{ event: 'closed', actor: { login: 'github-actions[bot]' } }],
+          updateComment: async ({ body }: { body: string }) => { comments[0].body = body; return {}; },
+        },
+        pulls: {
+          update: async ({ state: s }: { state: string }) => { if (s === 'open') reopened = true; return {}; },
+          list: async () => ({ data: [{ number: 9, merged_at: null, updated_at: new Date(NOW).toISOString(), head: { sha: SHA, repo: { full_name: 'o/r' } } }] }),
+        },
+      },
+      paginate: async (fn: (o: unknown) => unknown, o: unknown) => fn(o),
+    };
+    await recoverClosed(github, core, 'o', 'r', 'main', NOW, false);
+    expect(reopened).toBe(true);
+    expect(comments[0].body).toContain(reopenMarker(OLD));
+  });
+
   it('ignores a forged pending marker and a PR a maintainer closed', async () => {
     const make = (commentLogin: string, closer: string, fork = false) => {
       let reopened = false;

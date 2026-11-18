@@ -57,11 +57,21 @@ const reopenPendingMarker = (sha) => `<!-- pipeline-watchdog:reopen-pending:${sh
 const trustedLogins = (owner) => new Set(['github-actions[bot]', 'github-actions', owner]);
 const byTrusted = (comments, trusted) => comments.filter((c) => trusted.has(c.login));
 
-function needsReopenRecovery(comments, sha, trusted) {
+/**
+ * The trusted pending-reopen note that never got its done marker, or null.
+ * Matched on the SHA written in the marker, not the PR's current head: an
+ * author may push between gather() and the close, so the marker can name an
+ * older commit than the head of the closed PR.
+ */
+function pendingReopen(comments, trusted) {
   const mine = byTrusted(comments, trusted);
-  return mine.some((c) => c.body.includes(reopenPendingMarker(sha)))
-    && !mine.some((c) => c.body.includes(reopenMarker(sha)));
+  for (const c of mine) {
+    const m = c.body.match(/<!-- pipeline-watchdog:reopen-pending:([0-9a-f]{7,40}) -->/);
+    if (m && !mine.some((d) => d.body.includes(reopenMarker(m[1])))) return { note: c, sha: m[1] };
+  }
+  return null;
 }
+const needsReopenRecovery = (comments, _sha, trusted) => pendingReopen(comments, trusted) != null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function withRetry(fn, tries = 3, delayMs = 2000) {
@@ -273,15 +283,15 @@ async function recoverClosed(github, core, owner, repo, base, now, dryRun) {
     if (pr.head.repo?.full_name !== `${owner}/${repo}`) continue; // never act on forks
     const comments = (await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: pr.number, per_page: 100 }))
       .map((c) => ({ id: c.id, login: c.user?.login, body: c.body || '' }));
-    if (!needsReopenRecovery(comments, pr.head.sha, trusted)) continue;
+    const pending = pendingReopen(comments, trusted);
+    if (!pending) continue;
     // Second proof: the most recent close was done by a trusted account.
     const events = await github.paginate(github.rest.issues.listEvents, { owner, repo, issue_number: pr.number, per_page: 100 });
     const lastClose = events.filter((e) => e.event === 'closed').pop();
     if (!lastClose || !trusted.has(lastClose.actor?.login)) continue;
     core.info(`#${pr.number} closed by the watchdog but not reopened: reopening`);
     if (dryRun) continue;
-    const note = byTrusted(comments, trusted).find((c) => c.body.includes(reopenPendingMarker(pr.head.sha)));
-    try { await reopenAndRecord(github, owner, repo, pr.number, pr.head.sha, note.id); } catch (e) { core.warning(`#${pr.number} reopen recovery failed: ${e.message}`); }
+    try { await reopenAndRecord(github, owner, repo, pr.number, pending.sha, pending.note.id); } catch (e) { core.warning(`#${pr.number} reopen recovery failed: ${e.message}`); }
   }
 }
 
@@ -364,4 +374,4 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false, 
   }
 }
 
-module.exports = { trustedLogins, DEFAULTS, plan, run, gather, apply, configure, recoverClosed, needsReopenRecovery, headTime, hasCodexReview, CODEX_REQUEST, marker, reopenMarker, reopenPendingMarker };
+module.exports = { pendingReopen, trustedLogins, DEFAULTS, plan, run, gather, apply, configure, recoverClosed, needsReopenRecovery, headTime, hasCodexReview, CODEX_REQUEST, marker, reopenMarker, reopenPendingMarker };
