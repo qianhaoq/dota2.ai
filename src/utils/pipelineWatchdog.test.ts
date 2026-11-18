@@ -271,13 +271,50 @@ describe('pipeline watchdog reopen recovery', () => {
           createComment: async ({ body }: { body: string }) => { const c = { id: comments.length + 1, body }; comments.push(c); return { data: c }; },
           updateComment: async ({ comment_id, body }: { comment_id: number; body: string }) => { comments.find((c) => c.id === comment_id)!.body = body; return {}; },
         },
-        pulls: { update: async () => { throw new Error('502'); } },
+        pulls: { update: async () => { throw new Error('502'); }, get: async () => ({ data: { state: 'open' } }) },
       },
     };
     await expect(apply(github, core, 'o', 'r', { number: 7, headSha: SHA }, { type: 'reopen' }, 'main')).rejects.toThrow('502');
     expect(comments[0].body).not.toContain(reopenPendingMarker(SHA));
     const asSeen = comments.map((c) => ({ login: 'github-actions[bot]', body: c.body, at: ago(1) }));
     expect(types(pr({ comments: [review, ...asSeen], checks: {} }))).toEqual(['reopen']);
+  });
+
+  it('keeps the marker and reopens when the close went through but its response was lost', async () => {
+    const comments: { id: number; body: string }[] = [];
+    let state = 'open';
+    let closeCalls = 0;
+    const github = {
+      rest: {
+        issues: {
+          createComment: async ({ body }: { body: string }) => { const c = { id: comments.length + 1, body }; comments.push(c); return { data: c }; },
+          updateComment: async ({ comment_id, body }: { comment_id: number; body: string }) => { comments.find((c) => c.id === comment_id)!.body = body; return {}; },
+        },
+        pulls: {
+          update: async ({ state: s }: { state: string }) => { if (s === 'closed') { closeCalls++; state = 'closed'; throw new Error('response lost'); } state = s; return {}; },
+          get: async () => ({ data: { state } }),
+        },
+      },
+    };
+    await apply(github, core, 'o', 'r', { number: 7, headSha: SHA }, { type: 'reopen' }, 'main');
+    expect(closeCalls).toBe(3);
+    expect(state).toBe('open');
+    expect(comments[0].body).toContain(reopenMarker(SHA));
+  });
+
+  it('keeps the marker when the PR state cannot be confirmed and reopening fails too', async () => {
+    const comments: { id: number; body: string }[] = [];
+    const github = {
+      rest: {
+        issues: {
+          createComment: async ({ body }: { body: string }) => { const c = { id: comments.length + 1, body }; comments.push(c); return { data: c }; },
+          updateComment: async ({ comment_id, body }: { comment_id: number; body: string }) => { comments.find((c) => c.id === comment_id)!.body = body; return {}; },
+        },
+        pulls: { update: async () => { throw new Error('503'); }, get: async () => { throw new Error('503'); } },
+      },
+    };
+    await expect(apply(github, core, 'o', 'r', { number: 7, headSha: SHA }, { type: 'reopen' }, 'main')).rejects.toThrow('503');
+    expect(comments[0].body).toContain(reopenPendingMarker(SHA));
   });
 
   it('ignores a forged pending marker and a PR a maintainer closed', async () => {

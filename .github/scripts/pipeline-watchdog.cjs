@@ -298,9 +298,16 @@ async function apply(github, core, owner, repo, pr, action, defaultBranch) {
       try {
         await withRetry(() => github.rest.pulls.update({ owner, repo, pull_number: n, state: 'closed' }), 3, cfgRetryMs);
       } catch (e) {
-        // Never closed: retire the pending marker so a later pass can try again.
-        await github.rest.issues.updateComment({ owner, repo, comment_id: note.id, body: `Tried to close and reopen this PR to re-run checks for \`${pr.headSha.slice(0, 7)}\`, but closing failed (${e.message}); will retry (pipeline watchdog).` }).catch(() => {});
-        throw e;
+        // The close may have been applied with its response lost. Only a PR
+        // confirmed open gets its marker retired; closed or unknown keeps the
+        // marker (so recoverClosed() can still find it) and tries to reopen.
+        let state = null;
+        try { state = (await github.rest.pulls.get({ owner, repo, pull_number: n })).data.state; } catch { /* unknown */ }
+        if (state === 'open') {
+          await github.rest.issues.updateComment({ owner, repo, comment_id: note.id, body: `Tried to close and reopen this PR to re-run checks for \`${pr.headSha.slice(0, 7)}\`, but closing failed (${e.message}); will retry (pipeline watchdog).` }).catch(() => {});
+          throw e;
+        }
+        return reopenAndRecord(github, owner, repo, n, pr.headSha, note.id);
       }
       return reopenAndRecord(github, owner, repo, n, pr.headSha, note.id);
     }
