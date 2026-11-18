@@ -17,13 +17,6 @@
 
 const DEFAULTS = {
   required: ['ci / Build & Test', 'ci / Secret Scan', 'e2e', 'codex / Codex Review Gate'],
-  // Which workflow produces each required check, for dispatching a missing one.
-  producers: {
-    'ci / Build & Test': { workflow: 'ci.yml' },
-    'ci / Secret Scan': { workflow: 'ci.yml' },
-    e2e: { workflow: 'e2e.yml' },
-    'codex / Codex Review Gate': { workflow: 'codex-gate.yml', prInput: true },
-  },
   codexWaitMin: 10, // between "@codex review" requests
   maxCodexRequests: 3, // per head commit, including the automatic first one
   missingCheckMin: 5, // a required check that never appeared
@@ -47,6 +40,7 @@ const DEFAULTS = {
 const MIN = 60_000;
 const CODEX_REQUEST = '@codex review';
 const marker = (sha) => `<!-- pipeline-watchdog:escalated:${sha} -->`;
+const reopenMarker = (sha) => `<!-- pipeline-watchdog:reopened:${sha} -->`;
 
 const isCodex = (login, cfg) => String(login || '').replace(/\[bot\]$/, '') === cfg.codexLogin;
 
@@ -104,9 +98,13 @@ function plan(pr, now, cfg = DEFAULTS) {
   if (pr.mergeableState === 'dirty') {
     stuck.push('merge conflict with main: needs a manual merge or rebase');
   } else if (pr.mergeableState === 'behind') {
-    // Strict protection: bring the branch up to date; the new head restarts the flow.
-    if (!pr.fork) return { actions: [{ type: 'update-branch' }], stuck };
-    stuck.push('branch is behind main (fork PR: the author must update it)');
+    // Strict protection: bring the branch up to date; the new head restarts
+    // the flow. Only with PIPELINE_TOKEN: a GITHUB_TOKEN push fires no
+    // pull_request workflows, and checks dispatched afterwards are not
+    // PR-associated, so branch protection never counts them (#142, #133).
+    if (pr.fork) stuck.push('branch is behind main (fork PR: the author must update it)');
+    else if (pr.hasToken) return { actions: [{ type: 'update-branch' }], stuck };
+    else stuck.push('branch is behind main: click "Update branch", or set the PIPELINE_TOKEN secret so the watchdog can');
   }
 
   // 1. Codex review for this head.
@@ -121,21 +119,16 @@ function plan(pr, now, cfg = DEFAULTS) {
   }
 
   // 2. Required checks.
-  const dispatched = new Set();
+  // `checks` holds only PR-associated runs (the commit's statusCheckRollup),
+  // i.e. what branch protection counts. A missing one cannot be fixed by a
+  // workflow_dispatch (not PR-associated); closing and reopening the PR with
+  // PIPELINE_TOKEN fires the PR events again, once per head.
   let allGreen = true;
+  const missing = [];
   for (const name of cfg.required) {
     const c = pr.checks[name];
     if (!c || c.conclusion !== 'success') allGreen = false;
-    if (!c) {
-      const p = cfg.producers[name];
-      if (headAge < cfg.missingCheckMin || !p) continue;
-      if (pr.fork) { stuck.push(`required check "${name}" never started`); continue; }
-      if (!dispatched.has(p.workflow)) {
-        dispatched.add(p.workflow);
-        actions.push({ type: 'dispatch', workflow: p.workflow, ref: pr.headRef, inputs: p.prInput ? { pr_number: String(pr.number) } : {} });
-      }
-      continue;
-    }
+    if (!c) { missing.push(name); continue; }
     if (c.status !== 'completed') {
       const limit = c.status === 'in_progress' ? cfg.stuckRunningMin : cfg.stuckQueuedMin;
       if (age(c.at) >= limit && c.runId) actions.push({ type: 'cancel-run', runId: c.runId, check: name });
@@ -146,6 +139,11 @@ function plan(pr, now, cfg = DEFAULTS) {
       else stuck.push(`required check "${name}" keeps ending ${c.conclusion}`);
     }
     // Real failures are the author's to fix; the gate's own message says why.
+  }
+  if (missing.length && headAge >= cfg.missingCheckMin) {
+    const reopened = pr.comments.some((c) => c.body.includes(reopenMarker(sha)));
+    if (pr.hasToken && !pr.fork && !reopened) actions.push({ type: 'reopen' });
+    else stuck.push(`required check(s) never started for ${sha.slice(0, 7)}: ${missing.join(', ')}${pr.hasToken ? '' : ' (set PIPELINE_TOKEN, or close and reopen the PR)'}`);
   }
 
   // 3. Everything green but still open: ask auto-merge to look again.
@@ -174,21 +172,29 @@ async function gather(github, owner, repo, number, cfg) {
   const { data: commit } = await github.rest.repos.getCommit({ owner, repo, ref: sha });
   const comments = (await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 }))
     .map((c) => ({ login: c.user?.login, body: c.body || '', at: Date.parse(c.created_at) }));
-  const runs = await github.paginate(github.rest.checks.listForRef, { owner, repo, ref: sha, per_page: 100 });
+  // Only PR-associated check runs: the same rollup branch protection uses.
+  const q = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){nodes{__typename ... on CheckRun{name status conclusion startedAt completedAt detailsUrl}}}}}}}}}}`;
+  const res = await github.graphql(q, { o: owner, r: repo, n: number });
+  const node = res.repository.pullRequest.commits.nodes[0]?.commit;
+  const runs = node && node.oid === sha
+    ? (node.statusCheckRollup?.contexts?.nodes || []).filter((x) => x.__typename === 'CheckRun')
+    : [];
   const checks = {};
   for (const name of cfg.required) {
     const latest = runs.filter((r) => r.name === name)
-      .sort((a, b) => Date.parse(b.started_at || 0) - Date.parse(a.started_at || 0))[0];
+      .sort((a, b) => Date.parse(b.startedAt || 0) - Date.parse(a.startedAt || 0))[0];
     if (!latest) continue;
-    const runId = Number((latest.details_url || '').match(/\/actions\/runs\/(\d+)/)?.[1]) || null;
+    const status = String(latest.status).toLowerCase();
+    const conclusion = latest.conclusion ? String(latest.conclusion).toLowerCase() : null;
+    const runId = Number((latest.detailsUrl || '').match(/\/actions\/runs\/(\d+)/)?.[1]) || null;
     let runAttempt = 1;
-    if (runId && latest.status === 'completed' && latest.conclusion !== 'success') {
+    if (runId && status === 'completed' && conclusion !== 'success') {
       try { runAttempt = (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId })).data.run_attempt; } catch { /* keep 1 */ }
     }
     checks[name] = {
-      status: latest.status,
-      conclusion: latest.conclusion,
-      at: Date.parse(latest.completed_at || latest.started_at || pr.updated_at),
+      status,
+      conclusion,
+      at: Date.parse(latest.completedAt || latest.startedAt || pr.updated_at),
       runId,
       runAttempt,
     };
@@ -204,7 +210,7 @@ async function gather(github, owner, repo, number, cfg) {
     headAt: headTime({
       commitAt: Date.parse(commit.commit.committer?.date),
       prCreatedAt: Date.parse(pr.created_at),
-      firstCheckAt: runs.reduce((m, r) => Math.min(m, Date.parse(r.started_at || r.completed_at) || Infinity), Infinity),
+      firstCheckAt: runs.reduce((m, r) => Math.min(m, Date.parse(r.startedAt || r.completedAt) || Infinity), Infinity),
     }, Date.now()),
     comments,
     checks,
@@ -216,6 +222,10 @@ async function apply(github, core, owner, repo, pr, action, defaultBranch) {
   switch (action.type) {
     case 'update-branch':
       return github.rest.pulls.updateBranch({ owner, repo, pull_number: n, expected_head_sha: pr.headSha });
+    case 'reopen':
+      await github.rest.pulls.update({ owner, repo, pull_number: n, state: 'closed' });
+      await github.rest.pulls.update({ owner, repo, pull_number: n, state: 'open' });
+      return github.rest.issues.createComment({ owner, repo, issue_number: n, body: `${reopenMarker(pr.headSha)}\nReopened to re-run the required checks for \`${pr.headSha.slice(0, 7)}\` (pipeline watchdog).` });
     case 'request-codex':
       return github.rest.issues.createComment({ owner, repo, issue_number: n, body: CODEX_REQUEST });
     case 'dispatch':
@@ -240,7 +250,7 @@ async function apply(github, core, owner, repo, pr, action, defaultBranch) {
   }
 }
 
-async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false } = {}) {
+async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false, hasToken = process.env.HAS_PIPELINE_TOKEN === 'true' } = {}) {
   const { owner, repo } = context.repo;
   const { data: repoInfo } = await github.rest.repos.get({ owner, repo });
   const base = repoInfo.default_branch;
@@ -255,7 +265,7 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false }
   for (const { number, draft } of prs) {
     if (draft) continue;
     try {
-      const pr = { ...(await gather(github, owner, repo, number, cfg)), lastAutoMergeDispatchAt };
+      const pr = { ...(await gather(github, owner, repo, number, cfg)), lastAutoMergeDispatchAt, hasToken };
       const { actions, stuck } = plan(pr, now, cfg);
       core.info(`#${number} ${pr.headSha.slice(0, 7)} ${pr.mergeableState}: ${actions.map((a) => a.type).join(', ') || 'no action'}${stuck.length ? ` | stuck: ${stuck.join('; ')}` : ''}`);
       for (const a of dryRun ? [] : actions) {
@@ -267,4 +277,4 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false }
   }
 }
 
-module.exports = { DEFAULTS, plan, run, gather, headTime, hasCodexReview, CODEX_REQUEST, marker };
+module.exports = { DEFAULTS, plan, run, gather, headTime, hasCodexReview, CODEX_REQUEST, marker, reopenMarker };

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { plan, gather, headTime, DEFAULTS, marker } = require('../../.github/scripts/pipeline-watchdog.cjs');
+const { plan, gather, headTime, DEFAULTS, marker, reopenMarker } = require('../../.github/scripts/pipeline-watchdog.cjs');
 
 const MIN = 60_000;
 const NOW = Date.parse('2026-11-18T15:00:00Z');
@@ -16,7 +16,7 @@ const review = { login: 'chatgpt-codex-connector[bot]', body: `Codex Review: no 
 function pr(over: Record<string, unknown> = {}) {
   return {
     number: 7, draft: false, labels: [] as string[], headSha: SHA, headRef: 'feat/x', fork: false,
-    mergeableState: 'blocked', headAt: ago(30), comments: [] as unknown[],
+    mergeableState: 'blocked', headAt: ago(30), comments: [] as unknown[], hasToken: true,
     checks: Object.fromEntries(DEFAULTS.required.map((n: string) => [n, green()])),
     ...over,
   };
@@ -31,6 +31,12 @@ describe('pipeline watchdog plan', () => {
 
   it('updates a branch that fell behind main, and does nothing else that pass', () => {
     expect(types(pr({ mergeableState: 'behind' }))).toEqual(['update-branch']);
+  });
+
+  it('without PIPELINE_TOKEN, does not update a branch (its checks would never count) and says why', () => {
+    const out = plan(pr({ mergeableState: 'behind', hasToken: false, headAt: ago(60), comments: [review] }), NOW);
+    expect(out.actions.map((a: { type: string }) => a.type)).toEqual(['escalate']);
+    expect(out.stuck[0]).toMatch(/Update branch.*PIPELINE_TOKEN/);
   });
 
   it('re-requests a Codex review after the wait, up to the cap, then escalates', () => {
@@ -88,14 +94,14 @@ describe('pipeline watchdog plan', () => {
     expect(types(pr({ comments: [review], checks: { ...pr().checks, 'ci / Build & Test': failed } }))).toEqual([]);
   });
 
-  it('dispatches missing checks once per workflow, on the PR branch', () => {
-    const out = plan(pr({ comments: [review], checks: {} }), NOW).actions;
-    expect(out).toEqual([
-      { type: 'dispatch', workflow: 'ci.yml', ref: 'feat/x', inputs: {} },
-      { type: 'dispatch', workflow: 'e2e.yml', ref: 'feat/x', inputs: {} },
-      { type: 'dispatch', workflow: 'codex-gate.yml', ref: 'feat/x', inputs: { pr_number: '7' } },
-    ]);
+  it('reopens the PR once per head when required checks never started (dispatch would not count)', () => {
+    expect(types(pr({ comments: [review], checks: {} }))).toEqual(['reopen']);
     expect(types(pr({ headAt: ago(2), comments: [review], checks: {} }))).toEqual([]);
+    const after = { login: 'github-actions[bot]', body: `${reopenMarker(SHA)}\nReopened…`, at: ago(10) };
+    const out = plan(pr({ headAt: ago(60), comments: [review, after], checks: {} }), NOW);
+    expect(out.actions.map((a: { type: string }) => a.type)).toEqual(['escalate']);
+    expect(out.stuck[0]).toMatch(/never started for abcdef1/);
+    expect(types(pr({ hasToken: false, comments: [review], checks: {} }))).toEqual([]);
   });
 
   it('nudges auto-merge when everything is green and mergeable but the PR is still open', () => {
@@ -156,14 +162,20 @@ describe('pipeline watchdog gather', () => {
         pulls: { get: async () => ({ data: { mergeable_state: states[Math.min(reads++, 2)], head: { sha: SHA, ref: 'feat/x', repo: { full_name: 'o/r' } }, labels: [], draft: false, created_at: new Date(ago(60)).toISOString(), updated_at: new Date(ago(1)).toISOString() } }) },
         repos: { getCommit: async () => ({ data: { commit: { committer: { date: new Date(ago(30)).toISOString() } } } }) },
         issues: { listComments: () => [] },
-        checks: { listForRef: () => [] },
         actions: { getWorkflowRun: async () => ({ data: { run_attempt: 1 } }) },
       },
       paginate: async (fn: (o: unknown) => unknown, o: unknown) => fn(o),
+      graphql: async () => ({ repository: { pullRequest: { commits: { nodes: [{ commit: { oid: SHA, statusCheckRollup: { contexts: { nodes: [
+        { __typename: 'CheckRun', name: 'e2e', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: new Date(ago(20)).toISOString(), completedAt: new Date(ago(19)).toISOString(), detailsUrl: 'https://github.com/o/r/actions/runs/11/job/22' },
+        { __typename: 'StatusContext' },
+      ] } } } }] } } } }),
     };
     const state = await gather(github, 'o', 'r', 7, { ...DEFAULTS, mergeableRetryMs: 0 });
     expect(reads).toBe(3);
     expect(state.mergeableState).toBe('behind');
-    expect(plan(state, NOW).actions).toEqual([{ type: 'update-branch' }]);
+    expect(state.checks.e2e).toMatchObject({ status: 'completed', conclusion: 'success', runId: 11 });
+    expect(Object.keys(state.checks)).toEqual(['e2e']);
+    expect(state.headAt).toBe(ago(20));
+    expect(plan({ ...state, hasToken: true }, NOW).actions).toEqual([{ type: 'update-branch' }]);
   });
 });
