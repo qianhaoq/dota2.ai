@@ -9,6 +9,7 @@ import V2Shell from './v2/V2Shell';
 import EmptyState from './v2/components/EmptyState';
 import NewPage from './v2/pages/NewPage';
 import MatchPage from './v2/pages/MatchPage';
+import { CoachHome, CoachReportPage } from './coach/CoachApp';
 
 /**
  * Legacy app — unchanged behavior, but the language now comes from the shared
@@ -69,6 +70,9 @@ export const AppRoutes: React.FC = () => {
   useVisualViewportHeight();
   const flags = useFlags();
   const home = flags.ui_v2 ? <HomePage /> : <LegacyApp />;
+  // The coach (deterministic, evidence-first review) is the front door; the
+  // conversational v2 home stays reachable at /new, legacy tools at /legacy.
+  const coachHome = flags.ui_v2 ? <CoachHome /> : home;
 
   return (
     <>
@@ -77,9 +81,10 @@ export const AppRoutes: React.FC = () => {
         <Route path="/new/*" element={<NewPage />} />
         <Route path="/m/:matchId" element={<MatchPage />} />
         <Route path="/m" element={<MatchPage />} />
+        <Route path="/r/:matchId" element={<CoachReportPage />} />
         <Route path="/legacy/*" element={<LegacyApp />} />
-        <Route path="/" element={home} />
-        <Route path="*" element={home} />
+        <Route path="/" element={coachHome} />
+        <Route path="*" element={coachHome} />
       </Routes>
     </>
   );

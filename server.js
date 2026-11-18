@@ -125,6 +125,7 @@ import {
 } from './lib/aiLanguage.js';
 import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyticsEvents.js';
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
+import { createCoachRouter } from './lib/coach/router.js';
 import { createLlmRateLimit } from './lib/llmRateLimit.js';
 import { rateLimitKey } from './lib/rateLimitKey.js';
 import { validateChatRequest, chatRequestErrorMessage } from './lib/chatRequest.js';
@@ -2496,6 +2497,14 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400, extra = {}
 }
 
 app.use(createV1Router({ fetchMatch: getMatchDetail, replayIngest, phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined }));
+
+// Coach report (deterministic, no LLM): GET /api/coach/:matchId
+app.use(createCoachRouter({
+  getMatchDetail,
+  resolveClientIp,
+  mapError: mapOpenDotaFetchError,
+  log: (msg) => console.warn(`[coach] ${msg}`),
+}));
 
 app.get('/api/review/suggestions', async (req, res) => {
   try {
