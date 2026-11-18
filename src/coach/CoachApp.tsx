@@ -57,7 +57,6 @@ const UI = {
   deaths: { en: 'Deaths', zh: '死亡记录' },
   caught: { en: 'caught', zh: '被抓' },
   fight: { en: 'in a fight', zh: '团战中' },
-  notHero: { en: 'not a hero', zh: '非英雄' },
   notHeroTitle: { en: 'No hero got the kill: tower, creeps or neutrals', zh: '击杀者不是英雄：防御塔、小兵或野怪' },
   converted: { en: '→ objective lost', zh: '→ 丢了目标' },
   gold: { en: 'Gold lead', zh: '经济差' },
@@ -591,7 +590,7 @@ const DeathsCard: React.FC<{ review: Review; report: CoachReport }> = ({ review,
           return (
             <li key={i} className={d.in_fight === false ? 'is-caught' : ''}>
               <time>{clock(d.time)}</time>
-              {h?.icon ? <SafeImg src={h.icon} alt={L(h)} title={L(h)} /> : d.killer == null ? <span className="cx-nothero" title={L(UI.notHeroTitle)}>{L(UI.notHero)}</span> : <span className="cx-blank" />}
+              {h?.icon ? <SafeImg src={h.icon} alt={L(h)} title={L(h)} /> : d.killer == null ? <span className="cx-nothero" title={L(UI.notHeroTitle)} aria-label={L(UI.notHeroTitle)} role="img">—</span> : <span className="cx-blank" />}
               <span>{d.in_fight == null ? '' : d.in_fight ? L(UI.fight) : L(UI.caught)}</span>
               {d.converted && <em>{L(UI.converted)}</em>}
             </li>
