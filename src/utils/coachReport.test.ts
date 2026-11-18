@@ -173,6 +173,42 @@ describe('buildCoachReport — Codex P2 regressions (#139)', () => {
   });
 });
 
+describe('buildCoachReport — Codex P2 regressions, round 2 (#139)', () => {
+  it('missing teamfights or objectives leave death classification unknown', () => {
+    const m = parsed();
+    delete m.teamfights;
+    delete m.objectives;
+    const r = buildCoachReport(m);
+    const rv = r.reviews.find((x) => x.deaths && x.deaths.length)!;
+    expect(rv.deaths!.every((d) => d.in_fight === null && d.converted === null)).toBe(true);
+    for (const x of r.reviews) {
+      const f = x.findings.find((y) => y.id === 'deaths.high');
+      if (!f) continue;
+      expect(f.body.en).not.toContain('outside any team fight');
+      expect(f.body.en).not.toContain('within 90 seconds');
+      expect(f.confidence).toBe('medium');
+    }
+  });
+
+  it('BKB is not credited or recommended against BKB-piercing disablers', () => {
+    const m = unparsed();
+    const slugToId = new Map(Object.entries(names.heroes).map(([id, h]: [string, any]) => [h.slug, Number(id)]));
+    const piercers = ['enigma', 'faceless_void', 'bane', 'batrider', 'legion_commander'];
+    const s = m.players.findIndex((p: any) => p.hero_id === slugToId.get('spectre'));
+    const enemies = m.players.filter((p: any) => p.isRadiant !== m.players[s].isRadiant);
+    enemies.forEach((p: any, i: number) => { p.hero_id = slugToId.get(piercers[i]); });
+    for (const k of ['item_0', 'item_1', 'item_2', 'item_3', 'item_4', 'item_5', 'backpack_0', 'backpack_1', 'backpack_2']) m.players[s][k] = 0;
+    m.players[s].item_0 = names.items.black_king_bar.id;
+    const r = buildCoachReport(m);
+    const fs = r.reviews[s].findings;
+    expect(fs.find((f) => f.id === 'items.answer_present' && f.title.en.includes('chain disables'))).toBeUndefined();
+    const miss = fs.find((f) => f.id === 'items.answer_missing' && f.title.en.includes('chain disables'));
+    expect(miss).toBeTruthy();
+    expect(miss!.body.en).toContain('Black King Bar does not stop');
+    expect(miss!.ask.en).not.toContain('Black King Bar instead');
+  });
+});
+
 describe('buildCoachReport — input guard', () => {
   it('rejects a payload without a 10-player roster', () => {
     expect(() => buildCoachReport({ players: [] })).toThrow(/roster/);

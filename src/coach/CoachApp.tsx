@@ -571,10 +571,10 @@ const DeathsCard: React.FC<{ review: Review; report: CoachReport }> = ({ review,
         {review.deaths!.map((d, i) => {
           const h = hero(d.killer);
           return (
-            <li key={i} className={d.in_fight ? '' : 'is-caught'}>
+            <li key={i} className={d.in_fight === false ? 'is-caught' : ''}>
               <time>{clock(d.time)}</time>
               {h?.icon ? <img src={h.icon} alt={L(h)} title={L(h)} /> : <span className="cx-blank" />}
-              <span>{d.in_fight ? L(UI.fight) : L(UI.caught)}</span>
+              <span>{d.in_fight == null ? '' : d.in_fight ? L(UI.fight) : L(UI.caught)}</span>
               {d.converted && <em>{L(UI.converted)}</em>}
             </li>
           );
@@ -625,7 +625,13 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
   useEffect(() => () => { if (timer.current) window.clearInterval(timer.current); }, []);
   const start = async () => {
     setState('pending');
-    const res = await requestParse(String(report.match.id), lang);
+    let res;
+    try {
+      res = await requestParse(String(report.match.id), lang);
+    } catch {
+      setState('failed');  // network error: keep the button so the user can retry
+      return;
+    }
     if (res.status === 'parsed') { await onParsedRef.current(); return; }
     if (res.status === 'throttled') { setState('throttled'); return; }
     if (res.status === 'failed') { setState('failed'); return; }

@@ -33,7 +33,7 @@ export interface Review {
   primary_threat: number | null;
   opponent: number | null;
   findings: Finding[];
-  deaths: { time: number; killer: number | null; in_fight: boolean; converted: boolean }[] | null;
+  deaths: { time: number; killer: number | null; in_fight: boolean | null; converted: boolean | null }[] | null;
   item_timeline: { time: number; item: ItemRef }[] | null;
 }
 
