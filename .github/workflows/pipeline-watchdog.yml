@@ -1,0 +1,47 @@
+# Keeps open PRs moving through @codex review → checks → auto-merge without
+# anyone watching. Every 10 minutes it re-requests a missing Codex review,
+# re-runs cancelled or stuck required checks, dispatches checks that never
+# started, updates branches that fell behind main, and nudges auto-merge.
+# When retries run out it mentions the repo owner on the PR, once per head.
+# Logic and tests: .github/scripts/pipeline-watchdog.cjs,
+# src/utils/pipelineWatchdog.test.ts.
+#
+# Secret PIPELINE_TOKEN (fine-grained PAT of the Codex-linked owner account;
+# this repo only; Contents, Pull requests, Issues, Actions: read & write).
+# Needed for "@codex review" re-requests: Codex ignores github-actions[bot].
+# It also makes "update branch" pushes fire the normal pull_request
+# workflows. Without it the watchdog still re-runs/dispatches checks and
+# escalates, but Codex retries are ineffective.
+
+name: Pipeline Watchdog
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write # update-branch merges main into same-repo PR branches
+  pull-requests: write
+  issues: write
+  actions: write
+  checks: read
+
+concurrency:
+  group: pipeline-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.PIPELINE_TOKEN || github.token }}
+          script: |
+            const watchdog = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/pipeline-watchdog.cjs`);
+            await watchdog.run({ github, context, core });

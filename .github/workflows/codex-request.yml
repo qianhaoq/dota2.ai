@@ -5,10 +5,12 @@
 # pull_request_target runs this file from main and never checks out PR
 # code; it only posts one comment.
 #
-# Token: Codex answers mentions from accounts linked to a ChatGPT/Codex
-# workspace. If it ignores comments from github-actions[bot], add a
-# fine-grained PAT of a linked account (Pull requests: write, Issues:
-# write, this repo only) as the CODEX_REVIEW_TOKEN secret.
+# Token: Codex only answers mentions from GitHub accounts linked to a Codex
+# workspace. It replies "To use Codex here, create a Codex account" to
+# github-actions[bot] (seen on #144). Set PIPELINE_TOKEN, a fine-grained PAT
+# of the linked owner account (this repo only; Contents, Pull requests,
+# Issues, Actions: read & write), and the request comes from that account.
+# Without it this job still posts, but Codex will not review.
 
 name: Codex Review Request
 
@@ -36,6 +38,6 @@ jobs:
       # Summary (seen on #142).
       - name: Comment "@codex review"
         env:
-          GH_TOKEN: ${{ secrets.CODEX_REVIEW_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN || github.token }}
           PR: ${{ github.event.pull_request.number }}
         run: gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "@codex review"
