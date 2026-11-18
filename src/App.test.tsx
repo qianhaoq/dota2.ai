@@ -40,14 +40,13 @@ describe('App routes', () => {
     vi.unstubAllGlobals();
   });
 
-  it('/ shows the new v2 home', () => {
+  it('/ shows the coach home (the v2 conversational home moved to /new)', () => {
     renderRoute('/');
-    expect(screen.getByText('Review your Dota 2 match.')).toBeTruthy();
-    expect(screen.getByPlaceholderText('Paste match ID or link')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Paste a match.');
+    expect(screen.getByPlaceholderText('Match ID or OpenDota / Dotabuff / STRATZ link')).toBeTruthy();
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Review match' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Sample · 9035042364' })).toBeTruthy();
-    expect(screen.getByText('Free · OpenDota data · No guessing')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Review' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '9091400302' })).toBeTruthy();
     expect(document.querySelector('meta[name="robots"]')).toBeNull();
   });
 
@@ -107,9 +106,9 @@ describe('App routes', () => {
     await waitFor(() => expect(screen.getByText('9035042364')).toBeTruthy());
   });
 
-  it('unknown routes fall back to the new home', () => {
+  it('unknown routes fall back to the coach home', () => {
     renderRoute('/totally/unknown');
-    expect(screen.getByText('Review your Dota 2 match.')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Paste a match.');
     expect(screen.queryByTestId('legacy-shell')).toBeNull();
   });
 });
