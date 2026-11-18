@@ -10,10 +10,12 @@ type Lang = 'en' | 'zh';
 const EXAMPLE_MATCH = '9091400302';
 
 /** An image that collapses to a same-size placeholder if the CDN fails. */
-function SafeImg({ src, alt, className, title }: { src: string; alt: string; className?: string; title?: string }) {
-  const [broken, setBroken] = useState(false);
-  if (broken) return <span className={`cx-img-missing ${className ?? ''}`} title={title ?? alt} aria-label={alt} role="img" />;
-  return <img src={src} alt={alt} title={title} className={className} loading="lazy" onError={() => setBroken(true)} />;
+export function SafeImg({ src, alt, className, title }: { src: string; alt: string; className?: string; title?: string }) {
+  // Remember which URL failed, not just "failed": a reused instance that gets
+  // a new src (e.g. switching players in the deaths list) must try it.
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
+  if (brokenSrc === src) return <span className={`cx-img-missing ${className ?? ''}`} title={title ?? alt} aria-label={alt} role="img" />;
+  return <img src={src} alt={alt} title={title} className={className} loading="lazy" onError={() => setBrokenSrc(src)} />;
 }
 
 const UI = {
