@@ -622,7 +622,14 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
   // while a parse is pending, and completion must reload *that* view.
   const onParsedRef = useRef(onParsed);
   onParsedRef.current = onParsed;
-  useEffect(() => () => { if (timer.current) window.clearInterval(timer.current); }, []);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (timer.current) window.clearInterval(timer.current);
+    };
+  }, []);
   const start = async () => {
     setState('pending');
     let res;
@@ -635,6 +642,8 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
     if (res.status === 'parsed') { await onParsedRef.current(); return; }
     if (res.status === 'throttled') { setState('throttled'); return; }
     if (res.status === 'failed') { setState('failed'); return; }
+    // The user may have left while the request was in flight.
+    if (!mounted.current) return;
     const began = Date.now();
     timer.current = window.setInterval(async () => {
       if (Date.now() - began > 10 * 60_000) {

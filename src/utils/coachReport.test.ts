@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { buildCoachReport as buildRaw, isParsed, objectiveTeam, dataGaps } from '../../lib/coach/analyze.js';
+import { buildCoachReport as buildRaw, isParsed, objectiveTeam, dataGaps, detectionBought } from '../../lib/coach/analyze.js';
 import type { CoachReport } from '../coach/types';
 import { THREAT_TAGS, ANSWERS, BUILT_IN_IMMUNITY, ALWAYS_KEY_ITEMS, heroTags } from '../../lib/coach/knowledge.js';
 import { createCoachRouter, parseCoachQuery } from '../../lib/coach/router.js';
@@ -206,6 +206,23 @@ describe('buildCoachReport — Codex P2 regressions, round 2 (#139)', () => {
     expect(miss).toBeTruthy();
     expect(miss!.body.en).toContain('Black King Bar does not stop');
     expect(miss!.ask.en).not.toContain('Black King Bar instead');
+  });
+});
+
+describe('buildCoachReport — Codex P2 regressions, round 3 (#139)', () => {
+  it('counts detection from purchase logs when the aggregate is missing, and never asserts zero from nothing', () => {
+    const m = JSON.parse(readFileSync(new URL('../fixtures/match9035042364.parsed.json', import.meta.url), 'utf8'));
+    for (const radiant of [true, false]) {
+      const team = m.players.filter((p: any) => Boolean(p.isRadiant) === radiant).map((raw: any) => ({ raw }));
+      const fromLogs = team.reduce((n: number, x: any) => n + (x.raw.purchase_log ?? []).filter((y: any) => y.key === 'dust' || y.key === 'ward_sentry').length, 0);
+      expect(detectionBought(team)).toBe(team.some((x: any) => x.raw.purchase) ? detectionBought(team) : fromLogs);
+    }
+    expect(detectionBought([{ raw: {} }, { raw: {} }])).toBeNull();
+    const r = buildCoachReport(m);
+    for (const rv of r.reviews) {
+      const f = rv.findings.find((x) => x.id === 'vision.detection');
+      if (f) expect(f.body.en).not.toMatch(/bought 0 dust/);
+    }
   });
 });
 
