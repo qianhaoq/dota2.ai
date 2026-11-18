@@ -24,6 +24,22 @@ This page is the source of truth for merge policy.
 4. 四个必需 check 全绿、会话已解决 → `auto-merge.yml` squash 合入 main；
 5. main 上的 Cloud Build 触发器自动部署到 dota2.ai。
 
+**卡住时谁来管：`pipeline-watchdog.yml`（每 10 分钟）。** 逻辑在 `.github/scripts/pipeline-watchdog.cjs`，测试在 `src/utils/pipelineWatchdog.test.ts`。它只重复流水线本来就会做的事，从不批准、打标签、解决线程或自己合入：
+
+| 情况 | 动作 |
+|---|---|
+| 分支落后 main（strict 保护） | 自动 Update branch |
+| 新 head 10 分钟没有 Codex 评审摘要（含 Codex 回成"任务"） | 再发 `@codex review`，每个 head 最多 3 次 |
+| 必需 check 从未出现（>5 分钟） | 在 PR 分支上 dispatch 对应 workflow |
+| 必需 check 排队 / 运行 >15 分钟 | 取消，下一轮重跑 |
+| 必需 check 为 cancelled / timed_out | 重跑，最多 3 次 |
+| 全绿、可合并但仍开着 >5 分钟 | dispatch Auto Merge 重新评估 |
+| 上述重试用尽，或与 main 冲突 | head 超过 45 分钟后，在 PR 上 @仓库所有者说明原因（每个 head 一次） |
+
+真实失败（测试红、Codex P0/P1）不重跑，由作者修。可选 secret `PIPELINE_TOKEN`（细粒度 PAT）：有了它，Update branch 产生的推送会正常触发 `pull_request` workflow；没有时由看门狗下一轮补 dispatch。
+
+**改流水线本身时：** `pull_request_target` / `issue_comment` / `workflow_run` 触发的 workflow 只读 main 上的 YAML，PR 里的改动在合入前不会生效。改这类文件时，先在 PR 分支上 `workflow_dispatch` 实跑（或用只读 dry run），把运行链接贴进 PR 描述；新的约束尽量写成 `npm test` 里的断言（例：`workflowRunners.test.ts` 禁止 `self-hosted`，`pipelineWatchdog.test.ts` 要求 `@codex review` 正文精确）。
+
 原 `qa / QA Gate`（`qa-passed` 标签）已移除；`QA.md` 保留为可选的人工验收清单。想让某个 PR 停在人工确认前，打 `no-auto-merge` 或保持 draft。
 
 旧的裸名 `Build & Test` / `Codex Review Gate` 在合入后不再产生，若仍为 required 会让所有 PR 永久挂起。
