@@ -55,6 +55,7 @@ const UI = {
     en: 'OpenDota has not parsed the replay. The read above uses end-of-game data only. Parsing usually takes a few minutes while the replay is still available.',
     zh: 'OpenDota 还没有解析这场录像，上面的结论只用了终局数据。录像仍可下载时，解析通常需要几分钟。',
   },
+  partialGaps: { en: 'This parse does not include', zh: '这次解析未包含' },
   parseBtn: { en: 'Parse this match', zh: '解析这场比赛' },
   parsePending: { en: 'Parse requested — checking every 20 seconds…', zh: '已提交解析——每 20 秒检查一次…' },
   parseThrottled: { en: 'Too many parse requests right now. Try again in a minute.', zh: '解析请求太多，请一分钟后再试。' },
@@ -256,7 +257,7 @@ export const CoachReportPage: React.FC = () => {
         </div>
       )}
       {report.timeline && <GoldGraph report={report} review={review} />}
-      {!m.parsed && (
+      {report.data_gaps.length > 0 && (
         <ParsePanel
           report={report}
           onParsed={async () => {
@@ -617,11 +618,15 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
   const { L } = useLang();
   const [state, setState] = useState<'idle' | 'pending' | 'throttled' | 'failed' | 'gaveup'>('idle');
   const timer = useRef<number | null>(null);
+  // Always call the latest callback: the user may change seat or position
+  // while a parse is pending, and completion must reload *that* view.
+  const onParsedRef = useRef(onParsed);
+  onParsedRef.current = onParsed;
   useEffect(() => () => { if (timer.current) window.clearInterval(timer.current); }, []);
   const start = async () => {
     setState('pending');
     const res = await requestParse(String(report.match.id), lang);
-    if (res.status === 'parsed') { await onParsed(); return; }
+    if (res.status === 'parsed') { await onParsedRef.current(); return; }
     if (res.status === 'throttled') { setState('throttled'); return; }
     if (res.status === 'failed') { setState('failed'); return; }
     const began = Date.now();
@@ -635,7 +640,7 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
         const r = await fetchCoachReport(String(report.match.id));
         if (r.match.parsed) {
           if (timer.current) window.clearInterval(timer.current);
-          await onParsed();
+          await onParsedRef.current();
         }
       } catch { /* keep polling */ }
     }, 20_000);
@@ -643,10 +648,10 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
   const msg = { pending: UI.parsePending, throttled: UI.parseThrottled, failed: UI.parseFailed, gaveup: UI.parseGaveUp }[state as 'pending'];
   return (
     <section className="cx-gaps">
-      <h3>{L(UI.cantSee)}</h3>
+      <h3>{L(report.match.parsed ? UI.partialGaps : UI.cantSee)}</h3>
       <ul>{report.data_gaps.map((g, i) => <li key={i}>{L(g)}</li>)}</ul>
-      <p className="cx-muted">{L(UI.cantSeeSub)}</p>
-      {report.match.replay_available && state !== 'pending' && (
+      {!report.match.parsed && <p className="cx-muted">{L(UI.cantSeeSub)}</p>}
+      {!report.match.parsed && report.match.replay_available && state !== 'pending' && (
         <button type="button" className="cx-primary" onClick={() => void start()}>{L(UI.parseBtn)}</button>
       )}
       {msg && <p className="cx-notice" role="status">{L(msg)}</p>}

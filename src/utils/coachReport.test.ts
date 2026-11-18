@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { buildCoachReport as buildRaw, isParsed, objectiveTeam } from '../../lib/coach/analyze.js';
+import { buildCoachReport as buildRaw, isParsed, objectiveTeam, dataGaps } from '../../lib/coach/analyze.js';
 import type { CoachReport } from '../coach/types';
 import { THREAT_TAGS, ANSWERS, BUILT_IN_IMMUNITY, ALWAYS_KEY_ITEMS, heroTags } from '../../lib/coach/knowledge.js';
 import { createCoachRouter, parseCoachQuery } from '../../lib/coach/router.js';
@@ -127,6 +127,49 @@ describe('buildCoachReport — parsed match 9094562824', () => {
     expect(objectiveTeam({ type: 'CHAT_MESSAGE_ROSHAN_KILL', team: 3 })).toBe('dire');
     expect(objectiveTeam({ type: 'CHAT_MESSAGE_AEGIS', player_slot: 2 })).toBe('radiant');
     expect(objectiveTeam({ type: 'CHAT_MESSAGE_FIRSTBLOOD' })).toBeNull();
+  });
+});
+
+describe('buildCoachReport — Codex P2 regressions (#139)', () => {
+  const legacy = () => JSON.parse(readFileSync(new URL('../fixtures/match9035042364.parsed.json', import.meta.url), 'utf8'));
+
+  it('turning point uses reconstructed deaths, never a fabricated zero', () => {
+    const r = buildCoachReport(legacy());
+    for (const rv of r.reviews) {
+      const tp = rv.findings.find((f) => f.id === 'team.turning_point');
+      if (!tp || !rv.deaths) continue;
+      const [a, b] = tp.window!;
+      const n = rv.deaths.filter((d) => d.time >= a - 30 && d.time <= b).length;
+      expect(tp.body.en).toContain(`You died ${n} time`);
+    }
+    const noDeaths = legacy();
+    for (const p of noDeaths.players) { delete p.kills_log; delete p.deaths_log; }
+    const r2 = buildCoachReport(noDeaths);
+    for (const rv of r2.reviews) {
+      const tp = rv.findings.find((f) => f.id === 'team.turning_point');
+      if (tp) expect(tp.body.en).not.toContain('You died');
+    }
+  });
+
+  it('labels the lane metric as gold earned when net worth series is missing', () => {
+    const m = legacy();
+    const hasNw = m.players.every((p: any) => Array.isArray(p.networth_t));
+    const r = buildCoachReport(m);
+    const lane = r.reviews.flatMap((rv) => rv.findings).filter((f) => f.area === 'laning');
+    for (const f of lane) {
+      expect(f.evidence[0].k.en).toBe(hasNw ? 'Net worth at 10:00' : 'Gold earned at 10:00');
+      if (!hasNw) expect(f.body.en).toContain('gold earned');
+    }
+  });
+
+  it('reports gaps per field, so a partial parse keeps honest gaps', () => {
+    const m = unparsed();
+    for (const p of m.players) p.kills_log = [];
+    m.players[0].kills_log = [{ time: 100, key: 'npc_dota_hero_ursa' }];
+    const gaps = dataGaps(m).map((g: any) => g.en);
+    expect(gaps).not.toContain('When and to whom you died');
+    expect(gaps).toContain('Laning (last hits, gold at 10:00)');
+    expect(dataGaps(parsed())).toEqual([]);
   });
 });
 
