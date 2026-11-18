@@ -66,6 +66,23 @@ describe('pipeline watchdog plan', () => {
     expect(types(pr({ comments: [review], checks: { ...pr().checks, e2e: queued } }))).toEqual(['cancel-run']);
   });
 
+  it('lets a running check use its own timeout before treating it as hung', () => {
+    const running = (m: number) => ({ status: 'in_progress', conclusion: null, at: ago(m), runId: 5, runAttempt: 1 });
+    expect(types(pr({ headAt: ago(60), comments: [review], checks: { ...pr().checks, e2e: running(25) } }))).toEqual([]);
+    expect(types(pr({ headAt: ago(60), comments: [review], checks: { ...pr().checks, e2e: running(50) } }))).toEqual(['cancel-run']);
+  });
+
+  it('only counts a Codex summary whose code review completed for this head', () => {
+    const summary = (status: string, sha = SHA) => ({
+      login: 'chatgpt-codex-connector[bot]',
+      body: `<!-- codex-pull-request-review-summary -->\n<!-- codex-review-state:v1 {"code_review":{"commit_sha":"${sha}","has_any_findings":false,"status":"${status}"}} -->\nCodex Review Summary`,
+      at: ago(25),
+    });
+    expect(types(pr({ comments: [summary('completed')] }))).not.toContain('request-codex');
+    for (const st of ['running', 'failed', 'cancelled', 'error']) expect(types(pr({ comments: [summary(st)] }))).toContain('request-codex');
+    expect(types(pr({ comments: [summary('completed', '0'.repeat(40))] }))).toContain('request-codex');
+  });
+
   it('never re-runs a real failure', () => {
     const failed = { status: 'completed', conclusion: 'failure', at: ago(20), runId: 5, runAttempt: 1 };
     expect(types(pr({ comments: [review], checks: { ...pr().checks, 'ci / Build & Test': failed } }))).toEqual([]);
@@ -103,8 +120,11 @@ describe('pipeline watchdog head time', () => {
   it('prefers the first server-recorded check run over the commit date', () => {
     expect(headTime({ commitAt: ago(5000), prCreatedAt, firstCheckAt: ago(30) }, NOW)).toBe(ago(30));
   });
-  it('clamps a forged future commit date to now', () => {
-    expect(headTime({ commitAt: NOW + 365 * 24 * 60 * MIN, prCreatedAt, firstCheckAt: Infinity }, NOW)).toBe(NOW);
+  it('falls back to the stable PR creation time for a future-dated commit', () => {
+    const future = NOW + 24 * 60 * MIN;
+    expect(headTime({ commitAt: future, prCreatedAt, firstCheckAt: Infinity }, NOW)).toBe(prCreatedAt);
+    // same answer on a later pass: the clock does not reset
+    expect(headTime({ commitAt: future, prCreatedAt, firstCheckAt: Infinity }, NOW + 10 * MIN)).toBe(prCreatedAt);
   });
   it('clamps a commit dated before the PR to the PR creation time', () => {
     expect(headTime({ commitAt: ago(10_000), prCreatedAt, firstCheckAt: Infinity }, NOW)).toBe(prCreatedAt);

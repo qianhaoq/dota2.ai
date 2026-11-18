@@ -29,9 +29,9 @@ This page is the source of truth for merge policy.
 | 情况 | 动作 |
 |---|---|
 | 分支落后 main（strict 保护） | 自动 Update branch |
-| 新 head 10 分钟没有 Codex 评审摘要（含 Codex 回成"任务"） | 再发 `@codex review`，每个 head 最多 3 次 |
+| 新 head 10 分钟没有**已完成**的 Codex 评审（含 Codex 回成"任务"、摘要停在 Running 或 Failed） | 再发 `@codex review`，每个 head 最多 3 次 |
 | 必需 check 从未出现（>5 分钟） | 在 PR 分支上 dispatch 对应 workflow |
-| 必需 check 排队 / 运行 >15 分钟 | 取消，下一轮重跑 |
+| 必需 check 排队 >15 分钟（没有 runner 接），或运行 >45 分钟（超过 job 自身超时） | 取消，下一轮重跑 |
 | 必需 check 为 cancelled / timed_out | 重跑，最多 3 次 |
 | 全绿、可合并但仍开着 >5 分钟 | dispatch Auto Merge 重新评估 |
 | 上述重试用尽，或与 main 冲突 | head 超过 45 分钟后，在 PR 上 @仓库所有者说明原因（每个 head 一次） |

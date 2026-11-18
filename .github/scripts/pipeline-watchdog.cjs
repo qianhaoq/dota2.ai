@@ -27,7 +27,10 @@ const DEFAULTS = {
   codexWaitMin: 10, // between "@codex review" requests
   maxCodexRequests: 3, // per head commit, including the automatic first one
   missingCheckMin: 5, // a required check that never appeared
-  stuckQueuedMin: 15, // a required check queued/in progress this long
+  stuckQueuedMin: 15, // queued with no runner picking it up: a stalled runner
+  // Running is healthy until the job's own timeout (e2e 30 min, Codex gate
+  // waits up to 20); only past this is an in-progress check treated as hung.
+  stuckRunningMin: 45,
   maxRunAttempts: 3, // re-runs of one cancelled workflow run
   autoMergeNudgeMin: 5, // all green this long but still open
   escalateAfterMin: 45, // head age before telling a human
@@ -50,15 +53,32 @@ const isCodex = (login, cfg) => String(login || '').replace(/\[bot\]$/, '') === 
  */
 function headTime({ commitAt, prCreatedAt, firstCheckAt }, now) {
   if (Number.isFinite(firstCheckAt)) return Math.min(Math.max(firstCheckAt, prCreatedAt), now);
-  const t = Number.isFinite(commitAt) ? commitAt : prCreatedAt;
-  return Math.min(Math.max(t, prCreatedAt), now);
+  // A future-dated (or unreadable) commit falls back to the PR creation time,
+  // which is stable across passes; clamping to `now` would reset the clock
+  // on every run and disable recovery until that date arrives.
+  const t = Number.isFinite(commitAt) && commitAt <= now ? commitAt : prCreatedAt;
+  return Math.max(t, prCreatedAt);
 }
 
-/** A Codex review summary or receipt that names this head commit. */
+/**
+ * True only when Codex finished a code review of this head: either its
+ * Review Summary state says code_review.status "completed" for this SHA, or
+ * it posted a completion receipt naming the commit. A summary that is still
+ * running, or ended failed / cancelled / error, does not count (the gate
+ * rejects those too), so the watchdog keeps retrying and can escalate.
+ */
 function hasCodexReview(comments, sha, cfg) {
-  return comments.some((c) => isCodex(c.login, cfg)
-    && /codex-review-state|codex-pull-request-review-summary|Reviewed commit/.test(c.body)
-    && (c.body.includes(sha) || c.body.includes(sha.slice(0, 10))));
+  return comments.some((c) => {
+    if (!isCodex(c.login, cfg)) return false;
+    const state = c.body.match(/<!-- codex-review-state:v1 (\{.*?\}) -->/);
+    if (state) {
+      try {
+        const cr = JSON.parse(state[1]).code_review || {};
+        return cr.commit_sha === sha && cr.status === 'completed';
+      } catch { return false; }
+    }
+    return /Codex Review:/.test(c.body) && /Reviewed commit/.test(c.body) && c.body.includes(sha.slice(0, 10));
+  });
 }
 
 /**
@@ -111,7 +131,8 @@ function plan(pr, now, cfg = DEFAULTS) {
       continue;
     }
     if (c.status !== 'completed') {
-      if (age(c.at) >= cfg.stuckQueuedMin && c.runId) actions.push({ type: 'cancel-run', runId: c.runId, check: name });
+      const limit = c.status === 'in_progress' ? cfg.stuckRunningMin : cfg.stuckQueuedMin;
+      if (age(c.at) >= limit && c.runId) actions.push({ type: 'cancel-run', runId: c.runId, check: name });
       continue;
     }
     if (c.conclusion === 'cancelled' || c.conclusion === 'timed_out') {
