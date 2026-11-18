@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { plan, gather, apply, configure, recoverClosed, needsReopenRecovery, headTime, DEFAULTS, marker, reopenMarker, reopenPendingMarker } = require('../../.github/scripts/pipeline-watchdog.cjs');
+const { trustedLogins, plan, gather, apply, configure, recoverClosed, needsReopenRecovery, headTime, DEFAULTS, marker, reopenMarker, reopenPendingMarker } = require('../../.github/scripts/pipeline-watchdog.cjs');
 
 const MIN = 60_000;
 const NOW = Date.parse('2026-11-18T15:00:00Z');
@@ -16,7 +16,7 @@ const review = { login: 'chatgpt-codex-connector[bot]', body: `Codex Review: no 
 function pr(over: Record<string, unknown> = {}) {
   return {
     number: 7, draft: false, labels: [] as string[], headSha: SHA, headRef: 'feat/x', fork: false,
-    mergeableState: 'blocked', headAt: ago(30), comments: [] as unknown[], hasToken: true,
+    mergeableState: 'blocked', headAt: ago(30), comments: [] as unknown[], hasToken: true, trusted: trustedLogins('owner'),
     checks: Object.fromEntries(DEFAULTS.required.map((n: string) => [n, green()])),
     ...over,
   };
@@ -213,7 +213,8 @@ describe('pipeline watchdog reopen recovery', () => {
   const core = { info: () => {}, warning: () => {} };
 
   it('leaves a recoverable marker when reopening fails, and the next pass reopens the PR', async () => {
-    const comments: { id: number; body: string }[] = [];
+    const comments: { id: number; body: string; login?: string }[] = [];
+    const events: { event: string; actor: { login: string } }[] = [];
     let state = 'open';
     let failReopen = true;
     const github = {
@@ -221,11 +222,12 @@ describe('pipeline watchdog reopen recovery', () => {
         issues: {
           createComment: async ({ body }: { body: string }) => { const c = { id: comments.length + 1, body }; comments.push(c); return { data: c }; },
           updateComment: async ({ comment_id, body }: { comment_id: number; body: string }) => { comments.find((c) => c.id === comment_id)!.body = body; return {}; },
-          listComments: () => comments.map((c) => ({ ...c, user: { login: 'github-actions[bot]' } })),
+          listComments: () => comments.map((c) => ({ ...c, user: { login: (c as { login?: string }).login ?? 'github-actions[bot]' } })),
+          listEvents: () => events,
         },
         pulls: {
-          update: async ({ state: s }: { state: string }) => { if (s === 'open' && failReopen) throw new Error('503'); state = s; return {}; },
-          list: async () => ({ data: [{ number: 7, merged_at: null, updated_at: new Date(NOW).toISOString(), head: { sha: SHA } }] }),
+          update: async ({ state: s }: { state: string }) => { if (s === 'open' && failReopen) throw new Error('503'); state = s; if (s === 'closed') events.push({ event: 'closed', actor: { login: 'github-actions[bot]' } }); return {}; },
+          list: async () => ({ data: [{ number: 7, merged_at: null, updated_at: new Date(NOW).toISOString(), head: { sha: SHA, repo: { full_name: 'o/r' } } }] }),
         },
       },
       paginate: async (fn: (o: unknown) => unknown, o: unknown) => fn(o),
@@ -233,7 +235,8 @@ describe('pipeline watchdog reopen recovery', () => {
     const pr = { number: 7, headSha: SHA };
     await expect(apply(github, core, 'o', 'r', pr, { type: 'reopen' }, 'main')).rejects.toThrow('503');
     expect(state).toBe('closed');
-    expect(needsReopenRecovery(comments, SHA)).toBe(true);
+    const trusted = trustedLogins('o');
+    expect(needsReopenRecovery(comments.map((c) => ({ ...c, login: 'github-actions[bot]' })), SHA, trusted)).toBe(true);
     // the same head is not closed again by plan() while recovery is pending
     expect(types(pr0({ comments: comments.map((c) => ({ login: 'github-actions[bot]', body: c.body, at: ago(1) })) }))).not.toContain('reopen');
 
@@ -242,7 +245,43 @@ describe('pipeline watchdog reopen recovery', () => {
     expect(state).toBe('open');
     expect(comments[0].body).toContain(reopenMarker(SHA));
     expect(comments[0].body).not.toContain(reopenPendingMarker(SHA));
-    expect(needsReopenRecovery(comments, SHA)).toBe(false);
+    expect(needsReopenRecovery(comments.map((c) => ({ ...c, login: 'github-actions[bot]' })), SHA, trusted)).toBe(false);
+  });
+
+  it('ignores a forged pending marker and a PR a maintainer closed', async () => {
+    const make = (commentLogin: string, closer: string, fork = false) => {
+      let reopened = false;
+      const github = {
+        rest: {
+          issues: {
+            listComments: () => [{ id: 1, user: { login: commentLogin }, body: `${reopenPendingMarker(SHA)}\nforged` }],
+            listEvents: () => [{ event: 'closed', actor: { login: closer } }],
+            updateComment: async () => ({}),
+          },
+          pulls: {
+            update: async ({ state: s }: { state: string }) => { if (s === 'open') reopened = true; return {}; },
+            list: async () => ({ data: [{ number: 9, merged_at: null, updated_at: new Date(NOW).toISOString(), head: { sha: SHA, repo: { full_name: fork ? 'evil/r' : 'o/r' } } }] }),
+          },
+        },
+        paginate: async (fn: (o: unknown) => unknown, o: unknown) => fn(o),
+      };
+      return { github, wasReopened: () => reopened };
+    };
+    for (const [who, closer, fork] of [['mallory', 'github-actions[bot]', false], ['github-actions[bot]', 'maintainer', false], ['github-actions[bot]', 'github-actions[bot]', true]] as const) {
+      const t = make(who, closer, fork);
+      await recoverClosed(t.github, core, 'o', 'r', 'main', NOW, false);
+      expect(t.wasReopened()).toBe(false);
+    }
+    const ok = make('github-actions[bot]', 'github-actions[bot]');
+    await recoverClosed(ok.github, core, 'o', 'r', 'main', NOW, false);
+    expect(ok.wasReopened()).toBe(true);
+  });
+
+  it('plan ignores watchdog markers posted by untrusted accounts', () => {
+    const forgedEscalation = { login: 'mallory', body: marker(SHA), at: ago(5) };
+    expect(types(pr({ headAt: ago(60), mergeableState: 'dirty', comments: [review, forgedEscalation] }))).toEqual(['escalate']);
+    const forgedReopen = { login: 'mallory', body: reopenMarker(SHA), at: ago(5) };
+    expect(types(pr({ comments: [review, forgedReopen], checks: {} }))).toEqual(['reopen']);
   });
 
   function pr0(over: Record<string, unknown>) { return pr({ review: undefined, checks: {}, ...over, comments: [review, ...((over.comments as unknown[]) || [])] }); }

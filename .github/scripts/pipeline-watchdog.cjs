@@ -47,9 +47,20 @@ const reopenMarker = (sha) => `<!-- pipeline-watchdog:reopened:${sha} -->`;
 const reopenPendingMarker = (sha) => `<!-- pipeline-watchdog:reopen-pending:${sha} -->`;
 
 /** A closed PR the watchdog closed but never managed to reopen. */
-function needsReopenRecovery(comments, sha) {
-  return comments.some((c) => c.body.includes(reopenPendingMarker(sha)))
-    && !comments.some((c) => c.body.includes(reopenMarker(sha)));
+/**
+ * Accounts whose comments count as watchdog state: the Actions bot (default
+ * token) and the repo owner (whose PAT is PIPELINE_TOKEN). Markers posted by
+ * anyone else are ignored, so a commenter cannot forge watchdog state, e.g.
+ * a reopen-pending marker that would make the privileged token reopen a PR
+ * a maintainer closed on purpose.
+ */
+const trustedLogins = (owner) => new Set(['github-actions[bot]', 'github-actions', owner]);
+const byTrusted = (comments, trusted) => comments.filter((c) => trusted.has(c.login));
+
+function needsReopenRecovery(comments, sha, trusted) {
+  const mine = byTrusted(comments, trusted);
+  return mine.some((c) => c.body.includes(reopenPendingMarker(sha)))
+    && !mine.some((c) => c.body.includes(reopenMarker(sha)));
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -158,7 +169,7 @@ function plan(pr, now, cfg = DEFAULTS) {
     // Real failures are the author's to fix; the gate's own message says why.
   }
   if (missing.length && headAge >= cfg.missingCheckMin) {
-    const reopened = pr.comments.some((c) => c.body.includes(reopenMarker(sha)) || c.body.includes(reopenPendingMarker(sha)));
+    const reopened = byTrusted(pr.comments, pr.trusted || new Set()).some((c) => c.body.includes(reopenMarker(sha)) || c.body.includes(reopenPendingMarker(sha)));
     if (pr.hasToken && !pr.fork && !reopened) actions.push({ type: 'reopen' });
     else stuck.push(`required check(s) never started for ${sha.slice(0, 7)}: ${missing.join(', ')}${pr.hasToken ? '' : ' (set PIPELINE_TOKEN, or close and reopen the PR)'}`);
   }
@@ -171,7 +182,7 @@ function plan(pr, now, cfg = DEFAULTS) {
   }
 
   // 4. Out of retries: tell a human, once per head commit.
-  if (stuck.length && headAge >= cfg.escalateAfterMin && !pr.comments.some((c) => c.body.includes(marker(sha)))) {
+  if (stuck.length && headAge >= cfg.escalateAfterMin && !byTrusted(pr.comments, pr.trusted || new Set()).some((c) => c.body.includes(marker(sha)))) {
     actions.push({ type: 'escalate', reasons: stuck });
   }
   return { actions, stuck };
@@ -252,15 +263,21 @@ async function reopenAndRecord(github, owner, repo, n, sha, commentId) {
 
 /** Reopen PRs the watchdog closed but failed to reopen (see 'reopen'). */
 async function recoverClosed(github, core, owner, repo, base, now, dryRun) {
+  const trusted = trustedLogins(owner);
   const closed = await github.rest.pulls.list({ owner, repo, state: 'closed', base, sort: 'updated', direction: 'desc', per_page: 30 });
   for (const pr of closed.data || closed) {
     if (pr.merged_at || now - Date.parse(pr.updated_at) > 24 * 60 * MIN) continue;
+    if (pr.head.repo?.full_name !== `${owner}/${repo}`) continue; // never act on forks
     const comments = (await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: pr.number, per_page: 100 }))
-      .map((c) => ({ id: c.id, body: c.body || '' }));
-    if (!needsReopenRecovery(comments, pr.head.sha)) continue;
+      .map((c) => ({ id: c.id, login: c.user?.login, body: c.body || '' }));
+    if (!needsReopenRecovery(comments, pr.head.sha, trusted)) continue;
+    // Second proof: the most recent close was done by a trusted account.
+    const events = await github.paginate(github.rest.issues.listEvents, { owner, repo, issue_number: pr.number, per_page: 100 });
+    const lastClose = events.filter((e) => e.event === 'closed').pop();
+    if (!lastClose || !trusted.has(lastClose.actor?.login)) continue;
     core.info(`#${pr.number} closed by the watchdog but not reopened: reopening`);
     if (dryRun) continue;
-    const note = comments.find((c) => c.body.includes(reopenPendingMarker(pr.head.sha)));
+    const note = byTrusted(comments, trusted).find((c) => c.body.includes(reopenPendingMarker(pr.head.sha)));
     try { await reopenAndRecord(github, owner, repo, pr.number, pr.head.sha, note.id); } catch (e) { core.warning(`#${pr.number} reopen recovery failed: ${e.message}`); }
   }
 }
@@ -319,7 +336,7 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false, 
   for (const { number, draft } of prs) {
     if (draft) continue;
     try {
-      const pr = { ...(await gather(github, owner, repo, number, cfg)), lastAutoMergeDispatchAt, hasToken };
+      const pr = { ...(await gather(github, owner, repo, number, cfg)), lastAutoMergeDispatchAt, hasToken, trusted: trustedLogins(owner) };
       const { actions, stuck } = plan(pr, now, cfg);
       core.info(`#${number} ${pr.headSha.slice(0, 7)} ${pr.mergeableState}: ${actions.map((a) => a.type).join(', ') || 'no action'}${stuck.length ? ` | stuck: ${stuck.join('; ')}` : ''}`);
       for (const a of dryRun ? [] : actions) {
@@ -331,4 +348,4 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false, 
   }
 }
 
-module.exports = { DEFAULTS, plan, run, gather, apply, configure, recoverClosed, needsReopenRecovery, headTime, hasCodexReview, CODEX_REQUEST, marker, reopenMarker, reopenPendingMarker };
+module.exports = { trustedLogins, DEFAULTS, plan, run, gather, apply, configure, recoverClosed, needsReopenRecovery, headTime, hasCodexReview, CODEX_REQUEST, marker, reopenMarker, reopenPendingMarker };
