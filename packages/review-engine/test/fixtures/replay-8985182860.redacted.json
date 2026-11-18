@@ -1,0 +1,28 @@
+[
+  {
+    "attacker": "npc_dota_hero_life_stealer",
+    "attacker_hero": true,
+    "attacker_illusion": false,
+    "location_x": null,
+    "location_y": null,
+    "t": 383.8333282470703,
+    "target": "npc_dota_hero_axe",
+    "target_hero": true,
+    "target_illusion": false,
+    "type": "DOTA_COMBATLOG_DEATH",
+    "trace_index": 4816
+  },
+  {
+    "attacker": "npc_dota_hero_rubick",
+    "attacker_hero": true,
+    "attacker_illusion": false,
+    "location_x": null,
+    "location_y": null,
+    "t": 592.1667022705078,
+    "target": "npc_dota_hero_axe",
+    "target_hero": true,
+    "target_illusion": false,
+    "type": "DOTA_COMBATLOG_DEATH",
+    "trace_index": 8538
+  }
+]

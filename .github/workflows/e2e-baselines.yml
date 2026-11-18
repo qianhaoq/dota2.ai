@@ -1,0 +1,42 @@
+# Manual only: regenerate the Playwright visual baselines on the same
+# GitHub-hosted image the `e2e` check uses, and upload them as an artifact.
+# Nothing is committed: review the PNGs, then commit them in a PR, where the
+# normal `e2e` check validates them.
+#
+# Deliberately a separate workflow and job name ("E2E Baselines" /
+# "Regenerate baselines"), so a regeneration run can never produce or
+# satisfy the required `e2e` check.
+
+name: E2E Baselines
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    name: Regenerate baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Regenerate visual baselines
+        run: npm run test:e2e:update
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: e2e-snapshots
+          path: e2e/*-snapshots/
+          retention-days: 7

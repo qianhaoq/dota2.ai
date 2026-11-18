@@ -1,5 +1,6 @@
 import { isSameTeamKill } from '../deathTimeline.js';
 import { STATIC_HEROES, getStaticHero } from '../staticHeroes.js';
+import { evidenceName } from '../insights/moments.js';
 
 export const KEY_ITEMS = {
   hand_of_midas: { en: 'Hand of Midas', zh: '迈达斯之手' },
@@ -16,17 +17,13 @@ export const KEY_ITEMS = {
   nullifier: { en: 'Nullifier', zh: '否决' },
 };
 
-export const clock = seconds => `${seconds < 0 ? '-' : ''}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.abs(seconds) % 60).padStart(2, '0')}`;
+export const clock = seconds => `${seconds < 0 ? '-' : ''}${Math.floor(Math.abs(seconds) / 60)}:${String(Math.floor(Math.abs(seconds)) % 60).padStart(2, '0')}`;
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 export const heroSlug = id => getStaticHero(id)?.internalSlug ?? null;
 export const teamOf = player => Number.isInteger(player.player_slot) ? (player.player_slot < 128 ? 'radiant' : 'dire') : null;
 const format = value => `${value < 0 ? '−' : ''}${Math.abs(value).toLocaleString('en-US')}`;
 const slug = key => String(key).replace(/^npc_dota_hero_/, '');
-const heroLabel = (key, lang) => {
-  const s = String(key).replace(/^npc_dota_hero_/, '');
-  const hero = Object.values(STATIC_HEROES).find(h => h.internalSlug === s);
-  return hero ? (lang === 'zh' ? hero.nameZh : hero.nameEn) : s;
-};
+const heroLabel = (key, lang) => evidenceName(key, lang);
 /** Localize slug→count entity maps (killed_by); leave other entity values unchanged. */
 const entityCountDisplay = value => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -105,11 +102,11 @@ export function buildFacts(raw, player) {
     const path = `players[${index}]`;
     (player.purchase_log ?? []).forEach((purchase, i) => {
       const id = `item.first.${purchase.key}`;
-      if (!Object.hasOwn(KEY_ITEMS, purchase.key) || !finite(purchase.time) || facts[id]) return;
-      add(id, purchase.time, 'time', `${path}.purchase_log[${i}].time`, { t: purchase.time, unit: 'seconds' });
-      facts[id].display = { en: `${KEY_ITEMS[purchase.key].en} at ${clock(purchase.time)}`, zh: `${clock(purchase.time)} 购入${KEY_ITEMS[purchase.key].zh}`, t: clock(purchase.time) };
+      if ((!Object.hasOwn(KEY_ITEMS, purchase.key) && !raw.replay_ingest) || typeof purchase.key !== 'string' || !finite(purchase.time) || facts[id]) return;
+      add(id, purchase.time, 'time', purchase.source_path ?? `${path}.purchase_log[${i}].time`, { t: purchase.time, unit: 'seconds' });
+      facts[id].display = { en: `${(KEY_ITEMS[purchase.key]?.en ?? purchase.key)} at ${clock(purchase.time)}`, zh: `${clock(purchase.time)} 购入${(KEY_ITEMS[purchase.key]?.zh ?? purchase.key)}`, t: clock(purchase.time) };
     });
-    let logs = Array.isArray(player.deaths_log) ? player.deaths_log.map((d, i) => ({ ...d, source_path: `${path}.deaths_log[${i}]` })) : null;
+    let logs = Array.isArray(player.deaths_log) ? player.deaths_log.map((d, i) => ({ ...d, source_path: d.source_path ?? `${path}.deaths_log[${i}]` })) : null;
     const mapped = heroSlug(player.hero_id);
     const killsComplete = raw.players.every(p => Array.isArray(p.kills_log) && heroSlug(p.hero_id));
     if (!Array.isArray(logs) && mapped && killsComplete) logs = raw.players.flatMap((p, i) => isSameTeamKill(p.player_slot, player.player_slot) ? [] : p.kills_log.map((k, j) => ({ ...k, source_path: `players[${i}].kills_log[${j}]` })).filter(k => slug(k.key) === mapped).map(k => ({ time: k.time, key: heroSlug(p.hero_id), source_path: k.source_path })));
@@ -125,9 +122,12 @@ export function buildFacts(raw, player) {
       sorted.forEach((d, i) => {
         const diff = d.time >= 0 ? gold[Math.floor(d.time / 60)] : null;
         const id = `death.${i + 1}`;
-        const event = { t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
+        const event = { ...(d.position_source ? {position_source:d.position_source,sample_t:d.sample_t,dt:d.dt,position_source_path:d.position_source_path} : {}), ...(finite(d.x) && finite(d.y) ? {x:d.x,y:d.y} : {}), ...(d.inflictor ? {inflictor:d.inflictor} : {}), t: d.time, killer: d.key ? slug(d.key) : null, team_gold_diff_at_t: finite(diff) ? diff : null, fact_id: id };
         deaths.push(event);
         add(id, event, 'entity', d.source_path, { t: d.time });
+        const killerEn = event.killer ? evidenceName(event.killer, 'en') : '';
+        const killerZh = event.killer ? evidenceName(event.killer, 'zh') : '';
+        facts[id].display = {en:`${clock(d.time)} · Death${killerEn ? ' · '+killerEn : ''}${event.inflictor ? ' · '+evidenceName(event.inflictor,'en') : ''}`,zh:`${clock(d.time)} · 死亡${killerZh ? ' · '+killerZh : ''}${event.inflictor ? ' · '+evidenceName(event.inflictor,'zh') : ''}`,t:clock(d.time)};
       });
       const completeTimeline = !finite(player.deaths) || sorted.length === player.deaths;
       if (completeTimeline) {
@@ -149,7 +149,9 @@ export function buildFacts(raw, player) {
       if (Array.isArray(player.deaths_log) && player.deaths_log.every(d => finite(d[field])) && (!finite(player.deaths) || player.deaths_log.length === player.deaths)) add(field, player.deaths_log.reduce((sum, d) => sum + d[field], 0), field === 'time_dead' ? 'time' : 'scalar', `${path}.deaths_log[].${field}`, { unit: field === 'time_dead' ? 'seconds' : 'gold', derivation: `sum(deaths_log[].${field})` });
       else gaps.push({ topic: field, reason: 'missing_or_incomplete_deaths_log' });
     }
-    if (finite(player.lh_t?.[10])) add('lh_at_10', player.lh_t[10], 'count', `${path}.lh_t[10]`, { t: 600 });
+    if (finite(player.camps_stacked) && raw.replay_ingest) add('camps_stacked', player.camps_stacked, 'count', player.metadata_source_path + '.camps_stacked');
+    // lh_t is a minute-aligned view; the snapshot's real game_time stays in the citation.
+    if (finite(player.lh_t?.[10])) add('lh_at_10', player.lh_t[10], 'count', player.metadata_source_path ? `${player.metadata_source_path}.inventory_snapshots[game_time=${player.lh_t_sample?.[10] ?? 600}].last_hits` : `${path}.lh_t[10]`, { t: 600, ...(Number.isFinite(player.lh_t_sample?.[10]) && player.lh_t_sample[10] !== 600 ? { derivation: `nearest snapshot to 600 s is game_time=${player.lh_t_sample[10]} (within 30 s)` } : {}) });
   }
   return { facts, deaths, worst, comeback, gaps };
 }

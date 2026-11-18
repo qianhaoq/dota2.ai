@@ -215,10 +215,14 @@ function reviewSectionBlocks(message: CoachMessage, lang: Language, t: ReturnTyp
   });
 
   const ecoLines = fact.economy.checkpoints.map((cp) => {
-    const sign = cp.radiantGoldLead >= 0 ? '+' : '';
+    // Earned gold may be absent on the replay path; fall back to the labeled
+    // net-worth bucket lead rather than rendering a bare "null".
+    const lead = cp.radiantGoldLead ?? cp.radiantNetWorthLead;
+    const label = lang === 'zh' && cp.radiantGoldLead == null ? '天辉净资产优势' : cp.radiantGoldLead == null ? 'Radiant net-worth lead' : lang === 'zh' ? '天辉' : 'Radiant';
+    const sign = (lead ?? 0) >= 0 ? '+' : '';
     return lang === 'zh'
-      ? `- ${cp.minute} 分钟：天辉 ${sign}${cp.radiantGoldLead}`
-      : `- ${cp.minute} min: Radiant ${sign}${cp.radiantGoldLead}`;
+      ? `- ${cp.minute} 分钟：${label} ${sign}${lead ?? '—'}`
+      : `- ${cp.minute} min: ${label} ${sign}${lead ?? '—'}`;
   }).join('\n');
 
   blocks.push({

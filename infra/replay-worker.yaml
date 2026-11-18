@@ -1,0 +1,33 @@
+# DECLARATION ONLY. No resources or APIs have been enabled/applied.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: dota2-ai-replay-worker
+  annotations:
+    run.googleapis.com/ingress: internal
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '1'
+        autoscaling.knative.dev/minScale: '0'
+        run.googleapis.com/cpu-throttling: 'true'
+    spec:
+      serviceAccountName: REPLACE_WITH_WORKER_SERVICE_ACCOUNT
+      containerConcurrency: 1
+      timeoutSeconds: 900
+      containers:
+        - image: REPLACE_WITH_REVIEWED_PINNED_IMAGE_DIGEST
+          resources:
+            limits:
+              cpu: '2'
+              memory: 4Gi
+          env:
+            - name: REPLAY_GCS_BUCKET
+              value: REPLACE_WITH_APPROVED_PRIVATE_BUCKET
+            - name: REPLAY_INGEST_ENABLED
+              value: '1'
+            - name: REPLAY_AUTO_ENABLED
+              value: '0'
+          ports:
+            - containerPort: 8080

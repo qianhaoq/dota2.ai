@@ -1,5 +1,8 @@
 # QA 验收单 / QA Sign-off Checklist
 
+> **可选。** 合入不再需要 `qa-passed` 标签（见 `docs/MERGE_GATES.md`）。需要人工验收的 PR，先打 `no-auto-merge`，按本单验完再去掉。
+> **Optional.** Merging no longer needs a `qa-passed` label. To hold a PR for manual QA, label it `no-auto-merge`, run this checklist, then remove the label.
+
 > 用法 / Usage: 复制本模板到 PR 描述或 issue，逐项勾选后，在**最新 head commit** 上完成验证，
 > 再给 PR 打 `qa-passed` 标签。新的 push 会自动移除该标签，必须重新走一遍本单。
 > 唯一例外：push 只是把 main **干净合入**已验收的 head（"Update branch" 合并方式、

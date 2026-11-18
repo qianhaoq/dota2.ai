@@ -1,3 +1,5 @@
+import type { ReplayFailureStatus } from '../../lib/matchReview/replayIngest/types';
+
 export type LaneConfidence = 'high' | 'medium' | 'low';
 
 export interface LaneHeroRef {
@@ -55,6 +57,13 @@ export interface AdvantageSwing {
    */
   crossoverMinute: number | null;
   comeback: boolean;
+  /**
+   * Which advantage series produced the swing: earned gold when present,
+   * otherwise the replay's 60 s net-worth buckets (never presented as gold).
+   */
+  basis: 'radiant_gold_adv' | 'radiant_net_worth_adv';
+  /** Present only on the net-worth basis: bucket semantics caveat. */
+  bucket_note?: string;
 }
 
 export interface MatchPlayerFact {
@@ -133,7 +142,16 @@ export interface ThreeConclusions {
   followUps: string[];
 }
 
-export type FieldEmptyReason = 'not_parsed_yet' | 'no_data' | 'incomplete_hero_map';
+export type FieldEmptyReason =
+  | 'not_parsed_yet'
+  | 'no_data'
+  | 'incomplete_hero_map'
+  /** Replay trace has no earned-gold series; the shown buckets are net worth. */
+  | 'earned_gold_not_in_replay'
+  /** Replay path expected net-worth buckets but none survived verification. */
+  | 'net_worth_missing'
+  /** Net-worth buckets exist but stop before game end. */
+  | 'metadata_graph_truncated';
 
 export interface FieldReason {
   reason: FieldEmptyReason;
@@ -147,7 +165,9 @@ export interface FieldReason {
  * request one via requestMatchParse.
  */
 export interface ReviewParseStatus {
-  status: 'requested' | 'pending' | 'parsed' | 'unparsed' | 'failed' | 'throttled';
+  /** Current server capability; absent on older payloads means unavailable. */
+  ingest_available?: boolean;
+  status: 'requested' | 'pending' | 'parsed' | 'unparsed' | 'failed' | 'throttled' | ReplayFailureStatus | 'replay_ingest_disabled' | 'replay_pending' | 'replay_parsed';
   jobId: number | null;
   retryAfterSec: number | null;
   message: string;
@@ -173,7 +193,13 @@ export interface MatchFact {
   laneDataAvailable: boolean;
   economy: {
     radiantGoldAdv: number[];
-    checkpoints: Array<{ minute: number; radiantGoldLead: number }>;
+    /** Replay-derived 60 s net-worth buckets; separate series, never earned gold. */
+    radiantNetWorthAdv: number[];
+    netWorthSource: string | null;
+    netWorthDerivation: string | null;
+    netWorthTruncated: boolean;
+    /** Leads may be null when one of the two series lacks that minute. */
+    checkpoints: Array<{ minute: number; radiantGoldLead: number | null; radiantNetWorthLead: number | null }>;
   };
   timeline: Array<{
     time: number;
@@ -211,6 +237,6 @@ export interface MatchFact {
   grounded: boolean;
   /** True when OpenDota replay data (lanes/timeline/economy) is available. */
   parsed?: boolean;
-  /** Reasons for empty fields (lanes/timeline/economy/focusLane/deaths), localized per lang. */
-  fieldReasons?: Partial<Record<'lanes' | 'timeline' | 'economy' | 'focusLane' | 'deaths', FieldReason>>;
+  /** Reasons for empty fields (lanes/timeline/economy/focusLane/deaths/earnedGold/netWorth), localized per lang. */
+  fieldReasons?: Partial<Record<'lanes' | 'timeline' | 'economy' | 'focusLane' | 'deaths' | 'earnedGold' | 'netWorth', FieldReason>>;
 }

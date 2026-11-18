@@ -1,4 +1,5 @@
 import { STATIC_HEROES } from '../../../packages/review-engine/src/staticHeroes.js';
+import { evidenceName } from '../../../packages/review-engine/src/insights/moments.js';
 
 const heroes = Object.values(STATIC_HEROES);
 const normalize = (name: string) => name.toLowerCase().replace(/^npc_dota_hero_/, '').replaceAll('_', ' ');
@@ -10,5 +11,5 @@ const byName = new Map(heroes.flatMap(hero =>
 export function heroDisplayName(name: string | null | undefined, lang: 'en' | 'zh'): string {
   if (!name) return lang === 'zh' ? '未知英雄' : 'Unknown';
   const hero = byName.get(normalize(name));
-  return hero ? (lang === 'zh' ? hero.nameZh : hero.nameEn) : name;
+  return hero ? (lang === 'zh' ? hero.nameZh : hero.nameEn) : evidenceName(name, lang);
 }

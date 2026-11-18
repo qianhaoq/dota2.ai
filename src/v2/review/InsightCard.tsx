@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { useI18n } from '../i18n/I18nProvider';
 import type { DictKey } from '../i18n/en';
 import AiText from './AiText';
+import { formatMatchClock } from '../evidence/labels';
 import { surface, FactChip } from './ConversationCards';
 import { heroDisplayName } from './heroDisplayName';
 import type { Fact, Insight, Review } from './types';
@@ -71,6 +72,17 @@ export function detailFactLabelKey(factId: string): DictKey | null {
   if (/^comeback\..+\.xp$/.test(factId)) return 'factRecoveryXp';
   if (/^gold\.window\./.test(factId)) return 'factWorstWindow';
   return null;
+}
+
+/** Mainline review section label (known / actions / comparable / missing / evaluation). */
+export function sectionLabelKey(labelKey: NonNullable<Insight['sections']>[number]['label_key']): DictKey {
+  switch (labelKey) {
+    case 'known': return 'sectionKnown';
+    case 'actions': return 'sectionActions';
+    case 'comparable': return 'sectionComparable';
+    case 'missing': return 'sectionMissing';
+    case 'evaluation': return 'sectionEvaluation';
+  }
 }
 
 function MatchupBlock({ insight, review, lang, t }: {
@@ -179,6 +191,7 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
   const to = anchor(insight.time?.to);
   // Prefer insight time anchors; fall back to matchup window / first metric with t.
   const timeChip = (() => {
+    if (insight.title && insight.time) { return `${formatMatchClock(insight.time.from)}–${formatMatchClock(insight.time.to)}`; }
     if (from) return to && from !== to ? `${from}–${to}` : from;
     const win = windowFact(insight, review);
     if (win?.display.t) return win.display.t;
@@ -196,7 +209,7 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
   return (
     <article id={`claim-${index}`} className={`${surface} border-l-[3px] ${borderColor}`} data-testid="insight-card" data-insight={insight.id}>
       <div className="flex items-center justify-between text-d2-12">
-        <b className="text-d2-gold-2 uppercase tracking-wider">{t(label)}</b>
+        <b className="text-d2-gold-2 uppercase tracking-wider">{insight.title ?? t(label)}</b>
         {timeChip ? (
           <span className="rounded-d2-chip bg-d2-surface-3 border border-d2-line px-[10px] min-h-[28px] flex items-center text-d2-13 font-semibold text-d2-ink-2 font-mono">
             {timeChip}
@@ -205,12 +218,24 @@ export default function InsightCard({ insight, review, index, streaming, onEvide
       </div>
 
       <div className="mt-[8px]" data-testid="card-conclusion">
-        <div className="text-d2-12 text-d2-ink-4 mb-[2px]">{t('cardConclusion')}</div>
+        <div className="text-d2-12 text-d2-ink-4 mb-[2px]">{insight.title ? (lang === 'zh' ? '事实' : 'Fact') : t('cardConclusion')}</div>
         <div className="text-d2-17 font-semibold text-d2-ink font-serif leading-[1.3]">
           <AiText variant="claim" text={conclusion} streaming={streaming} />
         </div>
       </div>
 
+      {insight.sections?.length ? (
+        <div className="mt-[10px] space-y-[10px]" data-testid="card-sections">
+          {insight.sections.map((section, i) => (
+            <div key={`${section.label_key}:${i}`} data-testid="card-section" data-section={section.label_key}>
+              <div className="text-d2-12 text-d2-ink-3 mb-[2px]">{t(sectionLabelKey(section.label_key))}</div>
+              <p className="text-d2-15 text-d2-ink-2 leading-[1.45] m-0">{section.text}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {insight.prompt && <p className="text-d2-15 text-d2-ink-2">{insight.prompt}</p>}
       <MatchupBlock insight={insight} review={review} lang={lang} t={t} />
 
       {details.length > 0 ? (

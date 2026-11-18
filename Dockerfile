@@ -49,11 +49,14 @@ COPY packages ./packages
 RUN mkdir -p ./data
 # Only the reviewed public snapshot belongs in the runtime image.
 COPY --from=builder /app/data/site-knowledge.v1.json ./data/site-knowledge.v1.json
+# Only this reviewed compact replay-facts artifact belongs in the runtime image.
+COPY --from=builder /app/data/replay-facts/9080127650.json ./data/replay-facts/9080127650.json
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=8080
+ENV REPLAY_HOME=/app/data/replay-facts
 
 # Expose port
 EXPOSE 8080

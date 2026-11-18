@@ -1,0 +1,18 @@
+# DECLARATIONS / IAM REVIEW NOTES ONLY — no apply commands.
+region: asia-east1
+worker:
+  authentication: Cloud Run IAM required; never grant allUsers invoker
+  invokers: [APPROVED_OPERATOR_OR_WEB_SERVICE_ACCOUNT]
+  bucketAccess: object read/create/update for jobs/, queue/, artifacts/
+  secrets: []
+web:
+  bucketAccess: object read/create/update for jobs/ and queue/; read artifacts/
+  workerAccess: roles/run.invoker only if explicitly approved for dispatch
+bucket:
+  location: asia-east1
+  public: false
+  uniformAccess: true
+  compactRetentionDays: 90
+  completedJobDetailsRetentionDays: 30
+  rawReplayRetention: none
+apisNotEnabled: [firestore.googleapis.com, cloudtasks.googleapis.com, cloudscheduler.googleapis.com]

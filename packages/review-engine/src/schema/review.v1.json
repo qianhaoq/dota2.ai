@@ -300,6 +300,33 @@
             ]
           }
         },
+        "radiant_net_worth_adv": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "net_worth_source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "net_worth_derivation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "net_worth_buckets": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "perspective": {
           "enum": [
             "radiant",
@@ -311,6 +338,10 @@
       "required": [
         "radiant_gold_adv",
         "radiant_xp_adv",
+        "radiant_net_worth_adv",
+        "net_worth_source",
+        "net_worth_derivation",
+        "net_worth_buckets",
         "perspective"
       ],
       "additionalProperties": false
@@ -376,6 +407,27 @@
           },
           "fact_id": {
             "type": "string"
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "position_source": {
+            "type": "string"
+          },
+          "sample_t": {
+            "type": "number"
+          },
+          "dt": {
+            "type": "number"
+          },
+          "position_source_path": {
+            "type": "string"
+          },
+          "inflictor": {
+            "type": "string"
           }
         },
         "required": [
@@ -416,10 +468,31 @@
         "type": "object",
         "properties": {
           "id": {
-            "enum": [
-              "turning_point",
-              "fix_this",
-              "next_game"
+            "anyOf": [
+              {
+                "enum": [
+                  "turning_point",
+                  "fix_this",
+                  "next_game",
+                  "hook_death",
+                  "darkness_scythe",
+                  "skeleton_before_bkb",
+                  "bkb_windows",
+                  "verified_death",
+                  "void_dismember",
+                  "review_overview"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^(death|item|purchase|bkb|window)\\.[0-9]+$"
+              },
+              {
+                "enum": [
+                  "verified_timeline",
+                  "recorded_timeline"
+                ]
+              }
             ]
           },
           "status": {
@@ -569,6 +642,49 @@
               "string",
               "null"
             ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ability_into_death",
+              "item_window",
+              "notable_death",
+              "purchase_context",
+              "objective_context",
+              "review_overview",
+              "review_window"
+            ]
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label_key": {
+                  "enum": [
+                    "known",
+                    "actions",
+                    "comparable",
+                    "missing",
+                    "evaluation"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label_key",
+                "text"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [
@@ -605,6 +721,55 @@
         ],
         "additionalProperties": false
       }
+    },
+    "practice": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "proven",
+            "insufficient"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "goal": {
+                "type": "string"
+              },
+              "condition": {
+                "type": "string"
+              },
+              "fact_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "goal",
+              "condition",
+              "fact_ids"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "items",
+        "note"
+      ],
+      "additionalProperties": false
     },
     "followups": {
       "type": "array",
@@ -649,7 +814,8 @@
           "provider": {
             "enum": [
               "opendota",
-              "kb"
+              "kb",
+              "replay"
             ]
           },
           "url": {
@@ -669,6 +835,13 @@
           },
           "patch": {},
           "source_date": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "source_path": {
             "type": "string"
           }
         },
@@ -708,6 +881,16 @@
             "string",
             "null"
           ]
+        },
+        "replay_generation": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ingest_available": {
+          "type": "boolean"
+        },
+        "replay_auto_enabled": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -719,6 +902,69 @@
         "llm_provider"
       ],
       "additionalProperties": false
+    },
+    "parse": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "replay_unavailable",
+            "replay_expired",
+            "replay_cdn_error",
+            "replay_store_error",
+            "replay_ingest_disabled",
+            "replay_invalid_url",
+            "replay_pending",
+            "replay_parsed",
+            "replay_failed",
+            "throttled"
+          ]
+        },
+        "jobId": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "retryAfterSec": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "jobId",
+        "retryAfterSec",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "item_uses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number"
+          },
+          "item": {
+            "type": "string"
+          },
+          "ended_at": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "t",
+          "item"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [

@@ -1,237 +1,153 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 
-# Dota2.ai — 战术教练 V3 | Tactical Coach V3
+# ◆ dota2.ai
 
-**教玩家做判断，不替玩家玩游戏。**
-**English default · Chinese toggle · MIT License**
+**A post-match Dota 2 coach that shows its evidence.**
+**一位拿证据说话的 Dota 2 赛后教练。**
+
+[dota2.ai](https://dota2.ai) · [Try a match](https://dota2.ai/r/9091400302) · [API](#for-agents-and-scripts) · [中文](#中文)
 
 </div>
 
 ---
 
-## 📖 这是什么 | What this is
+Paste a match ID. Pick the hero you played. You get the two or three things most worth fixing — each one opened with a question for you, backed by the numbers it rests on, and honest about what the data cannot show.
 
-Dota2.ai 是一个基于 DeepSeek 的 Dota 2 战术教练应用。它尝试回答三个问题：
+```text
+$ node packages/cli/bin/dota2ai.js coach 9091400302 --hero spectre
 
-- **眼前是什么局面** —— 基于可校验的比赛事实（MatchFact），而不是感觉；
-- **有哪些选择及代价** —— 把“我该怎么办”拆成可比较的分支与前提；
-- **下一局能练什么** —— 保存一个可检查的动作，而不是一整份战报。
+#9091400302 · Dire victory 34–75 · 45:22 · 7.41 · not parsed
+Spectre · Core · 12/15/9 · loss
 
-四个一级入口（V3 信息架构）：
+Biggest lever: no item answer to their magic burst.
 
-| 入口 | 内容 |
-|------|------|
-| **战术室** | 动机入口（刚打完 / 准备开局 / 想练一下）、赛后复盘、战前阵容、装备取舍 |
-| **英雄修炼** | 冻结情境 → 先自己判断 → 再看拆解 → 保存练习动作 |
-| **英雄图鉴** | 英雄/技能/属性资料层，中文/英文/别名搜索 |
-| **战术笔记** | 本机保存的“触发 + 行动 + 检查”，支持完成/撤销/移除/导出 |
-
-### 诚实的边界 | Honest limits
-
-这个项目**承诺“判断更清楚”，不承诺**上分、胜率增益、完美出装或精确胜负预测：
-
-- 现有比赛数据只有统计、分路推断、经济与目标事件，**没有逐时刻坐标/视野**——因此真实复盘使用非空间证据，地图仅为明确标识的教学示意；
-- 装备取舍比较的是决策维度（用途/前提/牺牲/改选条件），**不冒充当前补丁的具体数值推荐**；
-- 英雄修炼的情境为教学编写，完成标记是**自我报告**，不是已验证的成长分；
-- 未连接比赛账号时，不伪造最近比赛、段位或成长分。
-
-设计细节见 [`docs/design/tactical-coach-v3/`](docs/design/tactical-coach-v3/)（产品/交互/视觉设计、A2UI 内部契约、迁移与验收）。
-
----
-
-## 🧱 技术栈 | Stack
-
-- **前端**：React 18 + TypeScript + Vite + Tailwind（V3 战术色板与既有 k3 并存）
-- **后端**：Node/Express（`server.js`），SSE 流式输出
-- **AI**：DeepSeek（默认 `deepseek-flash`，可用 `DEEPSEEK_MODEL` 覆盖，OpenAI 兼容客户端）——流式教练、复盘、出装与神秘商人对话
-- **数据**：OpenDota / Steam 公开接口（英雄、比赛事实、趋势）
-
-### 架构速览 | Architecture
-
-```
-src/
-├── app/                  # V3 外壳：WorkspaceShell、导航、导师栏、英雄缓存
-├── features/
-│   ├── tactical/         # 战术室：动机入口 + 装备取舍工作区
-│   ├── review/           # 复盘工作区（包装既有 CoachView 会话）
-│   ├── draft/            # 战前阵容工作区
-│   ├── practice/         # 英雄修炼（先答后讲）
-│   ├── knowledge/        # 英雄图鉴（KnowledgeLens）
-│   └── journal/          # 战术笔记（本机存储，失败退化为内存）
-├── coach-ui/             # 内部 A2UI 风格组件目录 dota-coach-ui/1：
-│   ├── catalog.ts        #   组件/动作白名单（不是官方 A2UI 线协议）
-│   ├── runtime.ts        #   beginRun/applyPatch/finishRun/answerEvent 运行时
-│   └── components/       #   CoachBrief / DecisionFork / EvidenceLens / …
-├── components/           # 既有教练组件（CoachView、ReviewSurface、HeroHub…）
-├── services/             # /api 客户端（SSE 流式）
-└── utils/                # 复盘/流式/组合逻辑与单元测试
-server.js                 # Express：/api/analyze、/api/review/:id、/api/playbook、…
-lib/matchReview/          # 比赛事实解析与约束
+1. ! No item answer to their magic burst
+   Ask yourself: Think of the fight you most regret. Which enemy spell started it —
+                 and which item slot could have been Black King Bar instead?
+   Skywrath Mage, Hoodwink brought magic burst. You finished with nothing that answers it —
+   the usual tools for a core are Black King Bar, Pipe of Insight, Eternal Shroud, Mage Slayer.
+   You also died more than most Spectre players (15 deaths).
+   - Your final items: Orchid Malevolence, Manta Style, Phase Boots, Oblivion Staff, Urn of Shadows, …
+   (Final inventory only: we cannot see what you sold or when you bought it until the match is parsed.)
 ```
 
----
+## What it believes
 
-## 🚀 本地开发 | Local Development
+1. **Teach judgment, don't play for you.** Post-match and pre-match only. Nothing runs while you are in a game.
+2. **Every claim has a receipt.** Findings link to the stats behind them. No invented patch numbers, no win-rate promises.
+3. **Say what you can't see.** Most matches are not parsed when you look at them. The coach still works — on what the data supports — lists what is missing, and gives you a button to parse the rest.
+4. **Ask before telling.** Each finding starts with a question. Prefer answers? Hit *Just tell me*.
+5. **Agents are users too.** The web page, the JSON API and the CLI render the same report.
 
-### 环境要求 | Prerequisites
+## What the coach looks at
 
-- Node.js ≥ 20（CI 与 Docker 使用 20；vitest 4 / react-router 7 需要 Node 20+）
-- npm ≥ 9
-- DeepSeek API Key（[获取 | get one](https://platform.deepseek.com/)）
+| | Unparsed match | Parsed match |
+|---|---|---|
+| Seat | core / support from farm | position 1–5 from lanes |
+| Items | final build vs. the enemy's threat profile (magic burst, chain disables, silences, physical carries, evasion, illusions, healing, invisibility) | + purchase timings |
+| Deaths | count vs. same-hero games | + caught alone vs. in a fight, and whether the enemy converted it into a tower or Roshan |
+| Farm & impact | GPM, last hits, hero and tower damage vs. same-hero benchmarks | + lane result at 10:00 vs. your lane opponent |
+| Team | did anyone answer their snowballing hero? | + the 3-minute window where the game turned |
+| Vision | — | wards, sentries, dust vs. invisible heroes |
 
-### 安装 | Install
+Thresholds are conservative on purpose: an item gap is only raised when it plausibly cost you (you also died more than the median player of your hero). Hero traits and item answers are a small, curated table in [`lib/coach/knowledge.js`](lib/coach/knowledge.js), validated against Valve's localized item and hero names.
+
+**Limits, stated plainly.** Public match data has no per-moment positions or vision, so the coach never claims to know where you stood or what you saw. Benchmarks are per hero, not per bracket or role. A good report is a good set of questions — not a verdict.
+
+## For agents and scripts
 
 ```bash
-git clone https://github.com/qianhaoq/dota2.ai.git
-cd dota2.ai
+# JSON — the same report the page renders (schema: dota2.ai/coach-report@1)
+curl https://dota2.ai/api/coach/9091400302
+curl 'https://dota2.ai/api/coach/9091400302?slot=4&pos=1'    # override one seat's position
+
+# Terminal (from a checkout, Node ≥ 20.10)
+node packages/cli/bin/dota2ai.js coach 9091400302                       # list heroes
+node packages/cli/bin/dota2ai.js coach 9091400302 --hero spectre --lang zh
+node packages/cli/bin/dota2ai.js coach 9091400302 --hero 67 --json
+```
+
+Exit codes: `0` ok · `2` invalid input · `3` match or data missing · `4` upstream failure. `DOTA2AI_API_BASE` points the CLI at another origin.
+
+The older Review v1 surface is still available: `/api/v1/review/:id`, `dota2ai review`, and an MCP server (`/mcp`, or `node packages/mcp/bin/dota2ai-mcp.js` over stdio). See [packages/cli](packages/cli/README.md) and [packages/mcp](packages/mcp/README.md).
+
+## Run it
+
+```bash
 npm ci
-cp .env.example .env   # 填入 DEEPSEEK_API_KEY
+cp .env.example .env        # the coach itself needs no keys
+npm run start:dev           # Vite :5173 + Express :8080
 ```
 
-### 开发 | Dev
+Open <http://localhost:5173/r/9091400302>. `server.js` reads `process.env` only — export your variables or use a loader.
+
+| Variable | Needed for |
+|---|---|
+| — | the coach (`/`, `/r/:id`, `/api/coach/:id`) |
+| `OPENDOTA_API_KEY` | optional; parse requests |
+| `DEEPSEEK_API_KEY` | legacy LLM surfaces (`/legacy`, `/m/:id`, chat, playbook) |
+| `GEMINI_API_KEY` | optional fallback for legacy review cards |
+| `STEAM_WEB_API_KEY` | optional localized hero names in legacy tools |
+
+Full list, rate-limit knobs and proxy settings: [`.env.example`](.env.example).
+
+## Check it
 
 ```bash
-npm run start:dev      # Vite (http://localhost:5173) + Express (8080)
-# 或分开跑 | or separately: npm start (8080) + npm run dev (5173)
+npx tsc --noEmit && node --check server.js && npm run build && npm test   # what CI runs
+npx vitest run src/utils/coachReport.test.ts                              # just the coach
+npm run test:e2e                                                          # Playwright, zero-outbound mock
 ```
 
-### 生产 | Production
+## How it is built
 
-```bash
-npm run build
-npm start              # http://localhost:8080
+```
+lib/coach/            analyze.js   pure report engine — no IO, no clock, no LLM
+                      knowledge.js curated threat tags and item answers
+                      router.js    GET /api/coach/:matchId
+                      data/        names snapshot (Valve datafeed + OpenDota constants)
+src/coach/            the web coach (home + report)
+packages/cli          dota2ai coach | review
+server.js             Express: static app, coach route, legacy /api/* routes
+lib/matchReview/      shared infra: OpenDota match cache, parse-request budget
+packages/review-engine, packages/mcp, src/v2, src/components   Review v1, MCP, legacy UIs
 ```
 
-### 验证命令 | Verification（PR 前必须全部通过）
+The engine is deterministic: the same OpenDota payload always produces the same report, so behaviour is pinned with real (anonymized) match fixtures in [`src/fixtures/coach/`](src/fixtures/coach).
 
-```bash
-npm test               # vitest 单元测试
-npx tsc --noEmit       # 类型检查
-npm run build          # 生产构建
-node --check server.js # 服务端语法
-```
+## Deploy
+
+Docker → Google Cloud Run. Keys come from Secret Manager (`--update-secrets`), never the image. The Express routes have no app-level auth — only per-IP limits — so put Cloud Run IAM, IAP or an API gateway in front of anything that spends money. Details and rollback: [`SECURITY.md`](SECURITY.md), [`docs/ROLLBACK.md`](docs/ROLLBACK.md).
+
+## Contributing
+
+One focused PR per change, evidence in the description (commands and output), and never weaken a test to get green. Gates and review severity: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/MERGE_GATES.md`](docs/MERGE_GATES.md).
 
 ---
 
-## 🔧 环境变量 | Environment Variables
+## 中文
 
-| 变量 | 必需 | 默认 | 说明 |
-|------|------|------|------|
-| `DEEPSEEK_API_KEY` | ✅ | — | DeepSeek 密钥（GitHub Actions 同名 secret） |
-| `GEMINI_API_KEY` | 推荐 | — | 复盘卡片备用模型：DeepSeek 失败/超时（每次 40s）时改用 Gemini |
-| `GEMINI_REVIEW_MODEL` | ❌ | `gemini-3.5-flash-lite` | 覆盖备用 Gemini 模型 |
-| `STEAM_WEB_API_KEY` | ❌ | — | 本地化英雄名；缺省时回退 OpenDota 常量 |
-| `LLM_RATE_*` / `LLM_GLOBAL_GUARD_*` | ❌ | `60s` 窗口；chat `10`/analyze `6`/suggestions `20`/review `30` 每 IP（IPv6 按 `/64` 前缀共桶），chat/analyze/review 每组全局成本护栏 `600`（suggestions 不调用 LLM，无全局护栏） | LLM 路由按 IP 滑动窗口限流（429 + `Retry-After`；只计入通过校验、真正调用 LLM 的请求）；全局护栏触发时跳过 LLM、不返回 429：review 降级为确定性回退卡片/模板、playbook 仅返回数据部分，chat/analyze 返回与上游故障相同的 502 `ai_unavailable`；详见 [`.env.example`](.env.example) |
-| `PORT` | ❌ | `8080` | 服务端口（Cloud Run 注入同名变量） |
-| `HOST` | ❌ | `0.0.0.0` | 绑定地址 |
+**贴一场比赛，选你玩的英雄，得到最值得改的两三件事。** 每一条都先抛给你一个问题，附上它依据的数据，并且老实说明数据看不到什么。
 
-完整说明与云端命名见 [`.env.example`](.env.example)。`.env` 已被 gitignore；请勿提交密钥。
+**它的原则**
 
----
+1. **教判断，不替你打。** 只做赛前赛后，游戏进行中什么都不运行。
+2. **每条结论都有出处。** 不编造版本数值，不承诺胜率。
+3. **说清楚看不到什么。** 大多数比赛在你查看时还没被解析。教练照样给出数据撑得住的结论，列出缺失项，并提供一键解析。
+4. **先问，再讲。** 想直接看结论，点「直接告诉我」。
+5. **Agent 也是用户。** 网页、JSON API 和命令行输出的是同一份报告。
 
-## 🐳 部署 | Deployment
+**它看什么**：未解析时看位置（核心/辅助）、终局装备与对方威胁的匹配、死亡与经济相对同英雄对局的分位、全队有没有人针对对方滚起来的英雄；解析后再加 1–5 号位、10 分钟对线、死亡分类（被抓 / 团战 / 被转化成目标）、比赛转折的三分钟、视野与反隐、关键装备时间。
+
+**诚实的边界**：公开比赛数据没有逐时刻坐标和视野，所以教练从不声称知道你站在哪、看到了什么。分位基准按英雄统计，不区分段位和位置。好的报告是一组好问题，而不是判决。
 
 ```bash
-# Docker（仅本地 / 受信网络；不要把带密钥的容器直接挂到公网）
-docker build -t dota2-ai .
-docker run -p 8080:8080 -e DEEPSEEK_API_KEY=your_api_key dota2-ai
-
-# Google Cloud Run（概要；镜像与区域按需调整）
-# 推荐：默认 IAM 鉴权（不要加 --allow-unauthenticated），调用方带 identity token；
-# 或在前方加 IAP / API Gateway / Cloud Armor 等网关做鉴权与限流。
-gcloud builds submit --tag REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai
-gcloud run deploy dota2-ai --image REGION-docker.pkg.dev/YOUR_PROJECT/REPO/dota2-ai \
-  --no-allow-unauthenticated \
-  --update-secrets DEEPSEEK_API_KEY=deepseek-api-key:latest,GEMINI_API_KEY=gemini-api-key:latest,STEAM_WEB_API_KEY=steam-web-api-key:latest
+curl https://dota2.ai/api/coach/9091400302
+node packages/cli/bin/dota2ai.js coach 9091400302 --hero 幽鬼 --lang zh
 ```
 
-DeepSeek / Gemini / Steam 密钥分别存放在 Secret Manager 的 `deepseek-api-key` / `gemini-api-key` / `steam-web-api-key`，用 `--update-secrets` 绑定（只增改这些项，不会清掉其它环境变量）；不要在命令行传明文密钥。`main` 上的 Cloud Build 触发器只执行 `gcloud run services update --image`，会保留已有的 secret / env 绑定。
-
-容器内 `HOST=0.0.0.0`、`PORT=8080` 已由 Dockerfile 设定；密钥用 Secret Manager（`--update-secrets`）注入，不要写进镜像，也尽量避免明文 `--set-env-vars`。
-
-**诚实说明 / Honest limits：** 当前 Express AI 路由（`/api/analyze`、`/api/review/:matchId`、`/api/chat` 等）**没有**应用层登录鉴权；LLM 路由已有按 IP 的应用内滑动窗口限流（`LLM_RATE_*`，实例内存态），但这只是防滥用预算，不是防线——`SECURITY.md` 要求不要在无网关的情况下把服务裸露到公网。生产若仍需公网可达，请先用 **IAM 鉴权 Cloud Run**，或 **IAP / API Gateway / Cloud Armor**（或同类反向代理）挡在前面；应用内真实 auth 仍是后续跟进项，本文不假装代码里已经有。不要把 `--allow-unauthenticated` 当作默认安全部署路径。
+本地运行：`npm ci && npm run start:dev`，打开 <http://localhost:5173/r/9091400302>。教练功能不需要任何 API key。
 
 ---
 
-## 🔄 开发与 CI | Development & CI
-
-| 阶段 | 触发 | 说明 |
-|------|------|------|
-| GitHub Actions CI | PR / push to main | `tsc` + `node --check` + `build` + `vitest` |
-| AI Code Review | PR | Copilot / 自定义 LLM 审查（可选） |
-| 合并门禁 | PR | 见 [docs/MERGE_GATES.md](docs/MERGE_GATES.md) 与 [AGENTS.md](AGENTS.md) |
-
-质量与协作规范：[docs/QUALITY.md](docs/QUALITY.md)、[CONTRIBUTING.md](CONTRIBUTING.md)。
-
----
-
-## 🌍 开源说明 | Open-source notes
-
-- **许可证**：[MIT](LICENSE)（Copyright © 2026 dota2.ai contributors）。
-- **商标**：本项目为粉丝作品，与 Valve Corporation 无关联。Dota、Dota 2、Steam 及英雄素材版权归 Valve 所有；运行时数据来自公开 OpenDota / Steam 接口。
-- **参与贡献**：见 [CONTRIBUTING.md](CONTRIBUTING.md) —— 一个 PR 一件事、保持双语、不换 AI 提供方、不绕过 CI。
-- **安全**：见 [SECURITY.md](SECURITY.md)。建议仓库管理员开启 **Secret scanning + Push protection**（Settings → Code security），防止密钥进入历史。
-- **联系 / Feedback**：产品内「反馈」入口为 `mailto:qianhao1229@gmail.com`（subject: dota2.ai feedback）；也可通过 GitHub Issues 讨论贡献与缺陷。
-
----
-
-## English Summary
-
-Dota2.ai is an open-source (MIT) Dota 2 tactical coach powered by DeepSeek. It teaches judgment instead of playing for you: **Tactical Room** (post-match review, draft preview, item tradeoffs), **Hero Training** (decide first, see the breakdown after), **Hero Codex** (reference layer), and a local-only **Tactical Journal** (trigger / action / check).
-
-Honest limits: match facts include stats, lane inference, economy and objectives — **no per-moment coordinates or vision**, so real reviews use non-spatial evidence and maps are clearly-labeled teaching diagrams. Item tradeoffs compare decision dimensions, not patch-number recommendations. Training completion marks are self-reports, not verified growth.
-
-Stack: React 18 + TypeScript + Vite + Tailwind frontend; Express backend (`server.js`) streaming SSE; DeepSeek (default model `deepseek-flash`, overridable via `DEEPSEEK_MODEL`, thinking via `DEEPSEEK_THINKING`) for coaching; OpenDota/Steam public data. The internal A2UI-style component catalog (`src/coach-ui`, `dota-coach-ui/1`) is an internal domain model — not a claim of official A2UI wire-protocol compatibility. Design docs: [`docs/design/tactical-coach-v3/`](docs/design/tactical-coach-v3/).
-
-Quick start: `npm ci` → `cp .env.example .env` (add `DEEPSEEK_API_KEY`) → `npm run start:dev`. Verify with `npm test && npx tsc --noEmit && npm run build && node --check server.js`. Not affiliated with Valve; see LICENSE, CONTRIBUTING.md and SECURITY.md.
-
-### CLI and MCP
-
-`dota2ai`, `@dota2ai/mcp`, and `@dota2ai/review-engine` are **not published on npm yet**.
-Use Node >=20.10 and a checkout of this repository (no LLM keys needed for CLI access):
-
-```bash
-# From the repository root after cloning or creating a worktree:
-npm ci
-node packages/cli/bin/dota2ai.js review 9035042364 --hero 14 --lang en --json
-node packages/cli/bin/dota2ai.js review 9035042364 --hero pudge --json --offline
-```
-
-Remote mode needs network access to `https://dota2.ai/api/v1/review/:id`;
-`DOTA2AI_API_BASE` overrides the origin. `--offline` still needs network access
-to OpenDota, then uses the bundled local review engine with no LLM.
-`OPENDOTA_API_KEY` is optional. CLI exit codes: 0 success (including unparsed),
-2 invalid input, 3 insufficient data, 4 upstream/network failure.
-`--json` preserves the API Review schema, including `data_gaps`: never invent
-conclusions for missing evidence. Private matches and a public learning loop
-are unsupported.
-
-See the [CLI guide](packages/cli/README.md) for local tarball installation,
-JSON interpretation and an opt-in live smoke. Browserless agents can use the
-[self-contained review skill](packages/cli/skills/dota2ai-review/SKILL.md).
-
-Optional MCP: the existing application mounts stateless Streamable HTTP at
-`/mcp` (production URL: `https://dota2.ai/mcp`; deployment availability must be
-checked independently). Tools: `review_match({match_id, hero?, lang?})` returns
-Review JSON; `get_evidence({match_id, hero, insight_id})` returns referenced
-facts, evidence, citations and data gap. Server MCP uses OpenDota and template
-phrasing. For local stdio, after `npm ci`, run
-`node packages/mcp/bin/dota2ai-mcp.js` from the repo root; add `--offline` or
-`DOTA2AI_OFFLINE=1` for OpenDota + local engine. See the [MCP guide](packages/mcp/README.md).
-
-### Public learning material / 公开学习材料
-
-`data/site-knowledge.v1.json` is a versioned, read-only `dota2.ai/site-knowledge@1` snapshot exported by `qh-dsh-dota-coach`. It is empty by default: no fictional coaching knowledge is shipped. Select note IDs explicitly with the local coach's `dota_kb {action:"export",ids:[...]}`, review the resulting `export/site/knowledge.v1.json`, and replace the site snapshot through a focused PR. Never copy the coach database, transcripts, credentials, replays or private training records.
-
-The API validates the snapshot and uses existing Review v1 facts/citations; it adds no required fields or crawler endpoints. A learning reference is shown with its public URL, timestamp locator, collection time and patch. Patch facts require an exact match to `Review.match.patch` (use that identifier when curating); general principles remain labelled as learning material. Material-linked summaries are not independent validation and do not remove the build-quality data gap. Invalid snapshots log `site_knowledge_invalid` once on router initialization and fall back to match facts only.
-
-The production image copies only this public snapshot into its data directory. MCP `get_evidence` returns linked material in optional `contextual_facts`, separate from match `facts`, with the original verification disclaimer.
-
-The third insight's evidence lets a user edit and save one `trigger → action → check` practice goal in the existing local Tactical Journal. Completion is self-report. Blocked device storage is reported as session-only; a full journal cannot report a new save as successful. Nothing is uploaded automatically.
-
-Release checks include Review JSON/SSE equality, the golden match corpus, en/zh evidence on mobile and desktop, source visibility and goal persistence. Roll back learning material by restoring the empty snapshot; deploy the prior image for a code rollback. Local journal records remain on the user's device. Production rollout remains a separate confirmed action.
-
-Tactical knowledge is supplied by a separately operated background dsh coach (exact runtime `0.2.1-rc.3`); this public thin site does not host that agent or fetch learning sources. The learning model must read actual source text and write a candidate before explicit human curator review and selected snapshot export. The site consumes the exported readonly facts and contextual citations. Unknown-patch source advice is not current-patch tactical evidence; human review and accurate applicability are prerequisites to publication. A local learning run does not imply deployment or resolve matches lacking wave/position/replay evidence.
-
-Local acceptance currently stops at human review of the real Steam-guide model candidate: zero promotions/exports/imports/citations. The exact guide citation route is supported, with arbitrary IDs/queries/fragments rejected. It does not make unknown-patch advice applicable to a match. See the companion coach's `docs/tactical-acceptance.md` and the local evidence report for the verifiable run and remaining blocker.
+MIT © 2026 dota2.ai contributors. A fan project, not affiliated with Valve. Dota 2 and its assets belong to Valve Corporation; match data comes from the public OpenDota API. 粉丝项目，与 Valve 无关。

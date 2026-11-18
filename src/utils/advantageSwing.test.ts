@@ -160,8 +160,43 @@ describe('detectAdvantageSwing — fixture integration', () => {
 
   it('exposes advantageSwing through buildMatchFact for parsed matches', () => {
     const fact = buildMatchFact(parsedFixture, { lang: 'zh', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
-    expect(fact.advantageSwing).toEqual(detectAdvantageSwing(parsedFixture.radiant_gold_adv, parsedFixture.radiant_win));
+    expect(fact.advantageSwing).toEqual({ ...detectAdvantageSwing(parsedFixture.radiant_gold_adv, parsedFixture.radiant_win), basis: 'radiant_gold_adv' });
     expect(fact.advantageSwing?.comeback).toBe(false);
+  });
+
+  it('falls back to labeled net-worth buckets when earned gold is absent', () => {
+    const fact = buildMatchFact({
+      ...unparsedFixture,
+      od_data: { has_parsed: true },
+      radiant_gold_adv: [],
+      radiant_net_worth_adv: [0, 2000, -1200, ...Array(42).fill(-15000)],
+      net_worth_source: 'demo_metadata_graph_net_worth',
+      replay_ingest: { status: 'replay_parsed', data_gaps: [{ topic: 'radiant_net_worth_adv', reason: 'metadata_graph_truncated' }] },
+    }, { lang: 'zh', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
+    // Dire won, so the loser perspective is Radiant: peak +2000 at bucket 1,
+    // crossover once the net-worth buckets passed −1000 (bucket 2).
+    expect(fact.advantageSwing).toMatchObject({ basis: 'radiant_net_worth_adv', loserSide: 'radiant', loserPeakLead: 2000, loserPeakMinute: 1, crossoverMinute: 2 });
+    expect(fact.advantageSwing?.bucket_note).toContain('bucket');
+    // Economy checkpoints carry both labeled leads; earned gold stays empty.
+    expect(fact.economy.radiantGoldAdv).toEqual([]);
+    expect(fact.economy.radiantNetWorthAdv).toHaveLength(45);
+    expect(fact.economy.netWorthSource).toBe('demo_metadata_graph_net_worth');
+    expect(fact.economy.netWorthTruncated).toBe(true);
+    expect(fact.economy.checkpoints[0]).toEqual({ minute: 10, radiantGoldLead: null, radiantNetWorthLead: -15000 });
+    // fieldReasons separate the missing earned-gold series from the truncated net-worth one.
+    expect(fact.fieldReasons?.earnedGold?.reason).toBe('earned_gold_not_in_replay');
+    expect(fact.fieldReasons?.netWorth?.reason).toBe('metadata_graph_truncated');
+    expect(fact.fieldReasons?.netWorth?.message).toContain('净资产');
+  });
+
+  it('reports a missing net-worth series without calling it earned gold', () => {
+    // Replay path (replay_parsed) expects net-worth buckets; their absence is a real gap.
+    const fact = buildMatchFact({ ...unparsedFixture, od_data: { has_parsed: true }, radiant_gold_adv: [], radiant_net_worth_adv: [], replay_ingest: { status: 'replay_parsed', data_gaps: [] } }, { lang: 'en', heroId: 104, heroNames: HERO_NAMES }) as MatchFact;
+    expect(fact.economy.checkpoints).toEqual([]);
+    expect(fact.fieldReasons?.economy?.reason).toBe('no_data');
+    expect(fact.fieldReasons?.netWorth?.reason).toBe('net_worth_missing');
+    expect(fact.fieldReasons?.earnedGold).toBeUndefined();
+    expect(fact.advantageSwing).toBeNull();
   });
 
   it('returns null advantageSwing for the unparsed fixture', () => {

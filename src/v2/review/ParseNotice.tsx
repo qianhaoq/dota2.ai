@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReviewParseStatus } from '../../types/matchReview';
-import { requestMatchParse } from '../../services/dotaApiService';
+import { requestMatchParse, requestReplayIngest } from '../../services/dotaApiService';
 import { createParseRequestController, shouldOfferParseRequest } from '../../utils/parseRequest';
 import { useI18n } from '../i18n/I18nProvider';
 import { IconInfo } from './icons';
@@ -16,7 +16,7 @@ export const parseRefreshCountdownSec = (sec: number | null | undefined): number
 
 /** Statuses a requested parse can sit in while the replay isn't ready yet —
  * the window where the countdown and "Check again" apply. */
-const WAITING_STATUSES: ReadonlySet<ReviewParseStatus['status']> = new Set(['requested', 'pending', 'throttled']);
+const WAITING_STATUSES: ReadonlySet<ReviewParseStatus['status']> = new Set(['requested', 'pending', 'throttled', 'replay_pending']);
 
 /**
  * Calm replay-parse notice: shown when parse.status is anything but 'parsed'.
@@ -38,9 +38,12 @@ const ParseNotice: React.FC<{
   // render doesn't subscribe to anything, so the "Requesting…" label would
   // never appear (or never clear) without another render trigger.
   const [pending, setPending] = useState(false);
+  const [requestKind, setRequestKind] = useState<'opendota' | 'replay'>('opendota');
   // True once our parse request was accepted — gates the "Check again" button.
   const [submitted, setSubmitted] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const replayController = useMemo(() => createParseRequestController((id, l, signal) => requestReplayIngest(id, l, signal)), []);
+  useEffect(() => () => replayController.abort(), [replayController]);
   const parseController = useMemo(
     () => createParseRequestController((id, l, signal) => requestMatchParse(id, l, signal)),
     [],
@@ -64,8 +67,10 @@ const ParseNotice: React.FC<{
     onRefreshRef.current = onRefresh;
   }, [onRefresh]);
 
-  const visible = parse != null && parse.status !== 'parsed';
-  const shown = status ?? parse;
+  const shown = status ?? parse ?? { status: 'unparsed' as const, jobId: null, retryAfterSec: null, message: '' };
+  // OpenDota request results may omit capability; retain the review's live signal.
+  const ingestAvailable = (status?.ingest_available ?? parse?.ingest_available) === true;
+  const visible = shown != null && shown.status !== 'parsed' && shown.status !== 'replay_parsed';
   const waiting = visible && shown != null && WAITING_STATUSES.has(shown.status);
   const canRefresh = onRefresh != null;
 
@@ -95,6 +100,7 @@ const ParseNotice: React.FC<{
   if (!visible) return null;
 
   const request = async () => {
+    setRequestKind('opendota');
     setFailed(false);
     setPending(true);
     const result = await parseController.request(matchId, lang, t('parseRequestFailed'));
@@ -107,6 +113,18 @@ const ParseNotice: React.FC<{
     if (result.kind === 'error') setFailed(true);
   };
 
+  const requestReplay = async () => {
+    setRequestKind('replay');
+    setFailed(false); setPending(true);
+    const result = await replayController.request(matchId, lang, t('parseRequestFailed'));
+    setPending(false);
+    if (result?.kind === 'status') {
+      setStatus(result.status); setSubmitted(true);
+      if (result.status.status === 'replay_parsed') onRefreshRef.current?.();
+    }
+    if (result?.kind === 'error') setFailed(true);
+  };
+
   return (
     <div className="flex gap-[10px] p-[12px_14px] rounded-[14px] bg-d2-surface-2 text-d2-ink-2 text-d2-15">
       <span className="flex-none mt-[3px]">
@@ -115,17 +133,22 @@ const ParseNotice: React.FC<{
       <div className="min-w-0">
         <p className="m-0 text-d2-13 font-semibold text-d2-ink-3">{t('parseTitle')}</p>
         <p className="m-[2px_0_0]">{shown!.message?.trim() || t('parseUnavailable')}</p>
-        <p className="mt-[6px] mb-0 text-d2-13">{t('parseScope')}</p>
+        <p className="mt-[6px] mb-0 text-d2-13">{t(ingestAvailable ? 'parseIngestScope' : 'parseScope')}</p>
         {/* While a countdown runs, the parse request is already in flight
             server-side — "Check again" is the action, not another request. */}
-        {shouldOfferParseRequest(shown) && countdown == null && (
+        {(shouldOfferParseRequest(shown) || shown.status === 'replay_ingest_disabled') && countdown == null && (
           <button
             type="button"
             onClick={() => void request()}
             disabled={pending}
             className="mt-[8px] inline-flex items-center min-h-[36px] px-[14px] rounded-d2-control bg-d2-surface border border-d2-line-2 text-d2-13 font-semibold text-d2-ink-2 shadow-d2-1 disabled:opacity-50"
           >
-            {pending ? t('parseRequesting') : t('parseRequest')}
+            {pending && requestKind === 'opendota' ? t('parseRequesting') : t('parseRequest')}
+          </button>
+        )}
+        {!waiting && ingestAvailable && (
+          <button type="button" disabled={pending} onClick={() => void requestReplay()} className="mt-[8px] px-[14px] min-h-[36px] border rounded-d2-control disabled:opacity-50">
+            {pending && requestKind === 'replay' ? (lang === 'zh' ? '正在下载并解析 .dem…' : 'Downloading / parsing .dem…') : (lang === 'zh' ? '下载并解析官方 .dem' : 'Download and parse official .dem')}
           </button>
         )}
         {countdown != null && countdown > 0 && (
