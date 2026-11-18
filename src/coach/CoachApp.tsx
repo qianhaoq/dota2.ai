@@ -9,6 +9,15 @@ import './coach.css';
 type Lang = 'en' | 'zh';
 const EXAMPLE_MATCH = '9091400302';
 
+/** An image that collapses to a same-size placeholder if the CDN fails. */
+export function SafeImg({ src, alt, className, title }: { src: string; alt: string; className?: string; title?: string }) {
+  // Remember which URL failed, not just "failed": a reused instance that gets
+  // a new src (e.g. switching players in the deaths list) must try it.
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
+  if (brokenSrc === src) return <span className={`cx-img-missing ${className ?? ''}`} title={title ?? alt} aria-label={alt} role="img" />;
+  return <img src={src} alt={alt} title={title} className={className} loading="lazy" onError={() => setBrokenSrc(src)} />;
+}
+
 const UI = {
   tagline: { en: 'A post-match coach that shows its evidence.', zh: '一位拿证据说话的赛后教练。' },
   heroTitle: { en: 'Paste a match.\nGet a coach’s read.', zh: '贴一场比赛，\n得到一份教练复盘。' },
@@ -48,6 +57,7 @@ const UI = {
   deaths: { en: 'Deaths', zh: '死亡记录' },
   caught: { en: 'caught', zh: '被抓' },
   fight: { en: 'in a fight', zh: '团战中' },
+  notHeroTitle: { en: 'No hero got the kill: tower, creeps or neutrals', zh: '击杀者不是英雄：防御塔、小兵或野怪' },
   converted: { en: '→ objective lost', zh: '→ 丢了目标' },
   gold: { en: 'Gold lead', zh: '经济差' },
   cantSee: { en: 'Not parsed yet — here is what we can’t see', zh: '比赛尚未解析——以下内容暂时看不到' },
@@ -520,7 +530,7 @@ const ItemsCard: React.FC<{ player: Player; review: Review }> = ({ player }) => 
         {player.items.length === 0 && <span className="cx-muted">—</span>}
         {player.items.map((it) => (
           <figure key={it.key} title={L(it)}>
-            {it.img ? <img src={it.img} alt={L(it)} loading="lazy" /> : null}
+            {it.img ? <SafeImg src={it.img} alt={L(it)} /> : <span className="cx-img-missing" />}
             <figcaption>{L(it)}</figcaption>
           </figure>
         ))}
@@ -559,7 +569,7 @@ const TimelineCard: React.FC<{ review: Review }> = ({ review }) => {
         {review.item_timeline!.slice(0, 10).map((x) => (
           <li key={x.item.key}>
             <time>{clock(x.time)}</time>
-            {x.item.img && <img src={x.item.img} alt="" loading="lazy" />}
+            {x.item.img && <SafeImg src={x.item.img} alt="" />}
             <span>{L(x.item)}</span>
           </li>
         ))}
@@ -580,7 +590,7 @@ const DeathsCard: React.FC<{ review: Review; report: CoachReport }> = ({ review,
           return (
             <li key={i} className={d.in_fight === false ? 'is-caught' : ''}>
               <time>{clock(d.time)}</time>
-              {h?.icon ? <img src={h.icon} alt={L(h)} title={L(h)} /> : <span className="cx-blank" />}
+              {h?.icon ? <SafeImg src={h.icon} alt={L(h)} title={L(h)} /> : d.killer == null ? <span className="cx-nothero" title={L(UI.notHeroTitle)} aria-label={L(UI.notHeroTitle)} role="img">—</span> : <span className="cx-blank" />}
               <span>{d.in_fight == null ? '' : d.in_fight ? L(UI.fight) : L(UI.caught)}</span>
               {d.converted && <em>{L(UI.converted)}</em>}
             </li>

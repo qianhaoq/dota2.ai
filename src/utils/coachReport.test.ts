@@ -248,6 +248,40 @@ describe('buildCoachReport — Codex P2 regressions, round 4 (#139)', () => {
   });
 });
 
+describe('buildCoachReport — 9091400302 parsed (real OpenDota parse)', () => {
+  const m = () => JSON.parse(readFileSync(new URL('../fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
+
+  it('upgrades the unparsed report: no data gaps, lane positions 1–5 for all ten', () => {
+    const r = buildCoachReport(m());
+    expect(r.match.parsed).toBe(true);
+    expect(r.data_gaps).toEqual([]);
+    for (const team of [r.reviews.slice(0, 5), r.reviews.slice(5)]) {
+      expect(team.map((rv) => rv.role.pos).sort()).toEqual([1, 2, 3, 4, 5]);
+      expect(team.every((rv) => rv.role.source === 'lanes')).toBe(true);
+    }
+    const spectre = r.reviews[slotOf(r, 'spectre')];
+    expect(spectre.role.pos).toBe(1);
+    expect(spectre.deaths!.length).toBe(15);
+  });
+
+  it('the losing side sees the real turn; the winning side (still 23k ahead) sees a slipped lead, not a turn', () => {
+    const r = buildCoachReport(m());
+    const spectre = r.reviews[slotOf(r, 'spectre')];
+    const tp = spectre.findings.find((f) => f.id === 'team.turning_point')!;
+    expect(tp.title.en).toBe('The game turned at 39:00–42:00');
+    expect(spectre.findings.some((f) => f.id === 'team.lead_slipped')).toBe(false);
+    for (const slug of ['ursa', 'skywrath_mage', 'hoodwink', 'weaver', 'dawnbreaker']) {
+      const rv = r.reviews[slotOf(r, slug)];
+      expect(rv.findings.some((f) => f.id === 'team.turning_point')).toBe(false);
+      const slip = rv.findings.find((f) => f.id === 'team.lead_slipped')!;
+      expect(slip.title.en).toBe('Your lead slipped at 34:00–37:00');
+      expect(slip.body.en).toContain('28.2k ahead');
+      expect(slip.severity).toBe(1);
+      expect(rv.headline.en).not.toMatch(/turned/);
+    }
+  });
+});
+
 describe('buildCoachReport — input guard', () => {
   it('rejects a payload without a 10-player roster', () => {
     expect(() => buildCoachReport({ players: [] })).toThrow(/roster/);
