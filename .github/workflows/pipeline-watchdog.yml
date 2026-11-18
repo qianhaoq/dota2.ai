@@ -8,10 +8,11 @@
 #
 # Secret PIPELINE_TOKEN (fine-grained PAT of the Codex-linked owner account;
 # this repo only; Contents, Pull requests, Issues, Actions: read & write).
-# Needed for "@codex review" re-requests: Codex ignores github-actions[bot].
-# It also makes "update branch" pushes fire the normal pull_request
-# workflows. Without it the watchdog still re-runs/dispatches checks and
-# escalates, but Codex retries are ineffective.
+# Needed because events made with GITHUB_TOKEN start no workflows and Codex
+# ignores github-actions[bot]: "@codex review" re-requests, "update branch"
+# and close/reopen only re-trigger the PR checks with this token. Without it
+# the watchdog still re-runs cancelled checks and nudges auto-merge, and
+# mentions the owner for the rest.
 
 name: Pipeline Watchdog
 
@@ -48,6 +49,8 @@ jobs:
         with:
           sparse-checkout: .github/scripts
       - uses: actions/github-script@v7
+        env:
+          HAS_PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN != '' }}
         with:
           github-token: ${{ secrets.PIPELINE_TOKEN || github.token }}
           script: |
