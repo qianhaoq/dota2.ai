@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { plan, headTime, DEFAULTS, marker } = require('../../.github/scripts/pipeline-watchdog.cjs');
+const { plan, gather, headTime, DEFAULTS, marker } = require('../../.github/scripts/pipeline-watchdog.cjs');
 
 const MIN = 60_000;
 const NOW = Date.parse('2026-11-18T15:00:00Z');
@@ -139,5 +139,26 @@ describe('codex-request workflow', () => {
     const yml = readFileSync(join(__dirname, '../../.github/workflows/codex-request.yml'), 'utf8');
     const bodies = [...yml.matchAll(/--body\s+"([^"]*)"/g)].map((m) => m[1]);
     expect(bodies).toEqual(['@codex review']);
+  });
+});
+
+describe('pipeline watchdog gather', () => {
+  it('re-reads a PR whose mergeable state GitHub has not computed yet', async () => {
+    const states = ['unknown', 'unknown', 'behind'];
+    let reads = 0;
+    const github = {
+      rest: {
+        pulls: { get: async () => ({ data: { mergeable_state: states[Math.min(reads++, 2)], head: { sha: SHA, ref: 'feat/x', repo: { full_name: 'o/r' } }, labels: [], draft: false, created_at: new Date(ago(60)).toISOString(), updated_at: new Date(ago(1)).toISOString() } }) },
+        repos: { getCommit: async () => ({ data: { commit: { committer: { date: new Date(ago(30)).toISOString() } } } }) },
+        issues: { listComments: () => [] },
+        checks: { listForRef: () => [] },
+        actions: { getWorkflowRun: async () => ({ data: { run_attempt: 1 } }) },
+      },
+      paginate: async (fn: (o: unknown) => unknown, o: unknown) => fn(o),
+    };
+    const state = await gather(github, 'o', 'r', 7, { ...DEFAULTS, mergeableRetryMs: 0 });
+    expect(reads).toBe(3);
+    expect(state.mergeableState).toBe('behind');
+    expect(plan(state, NOW).actions).toEqual([{ type: 'update-branch' }]);
   });
 });

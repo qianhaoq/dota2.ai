@@ -156,7 +156,13 @@ function plan(pr, now, cfg = DEFAULTS) {
 }
 
 async function gather(github, owner, repo, number, cfg) {
-  const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+  // GitHub computes mergeability lazily: the first read after a push (or
+  // after main moves) often says "unknown". Ask again a few times.
+  let { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+  for (let i = 0; i < 3 && pr.mergeable_state === 'unknown'; i++) {
+    await new Promise((r) => setTimeout(r, cfg.mergeableRetryMs ?? 3000));
+    ({ data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number }));
+  }
   const sha = pr.head.sha;
   const { data: commit } = await github.rest.repos.getCommit({ owner, repo, ref: sha });
   const comments = (await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 }))
@@ -248,4 +254,4 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false }
   }
 }
 
-module.exports = { DEFAULTS, plan, run, headTime, hasCodexReview, CODEX_REQUEST, marker };
+module.exports = { DEFAULTS, plan, run, gather, headTime, hasCodexReview, CODEX_REQUEST, marker };
