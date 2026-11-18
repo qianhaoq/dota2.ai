@@ -30,13 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      # The body must be exactly "@codex review": any extra text makes Codex
+      # treat the mention as a cloud task ("Review Result … View task")
+      # instead of a code review, and the Codex gate never sees a Review
+      # Summary (seen on #142).
       - name: Comment "@codex review"
         env:
           GH_TOKEN: ${{ secrets.CODEX_REVIEW_TOKEN || github.token }}
           PR: ${{ github.event.pull_request.number }}
-          SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" \
-            --body "@codex review
-
-          <sub>Automatic request for head \`${SHA:0:7}\`.</sub>"
+        run: gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body "@codex review"
