@@ -208,6 +208,21 @@ describe('pipeline watchdog check rollup pagination', () => {
   });
 });
 
+describe('pipeline watchdog stale snapshot', () => {
+  it('skips a PR whose head moved between the REST read and the rollup query', async () => {
+    const github = {
+      rest: {
+        pulls: { get: async () => ({ data: { mergeable_state: 'blocked', head: { sha: SHA, ref: 'feat/x', repo: { full_name: 'o/r' } }, labels: [], draft: false, created_at: new Date(ago(60)).toISOString(), updated_at: new Date(ago(1)).toISOString() } }) },
+        repos: { getCommit: async () => ({ data: { commit: { committer: { date: new Date(ago(30)).toISOString() } } } }) },
+        issues: { listComments: () => [] },
+      },
+      paginate: async (fn: (o: unknown) => unknown, o: unknown) => fn(o),
+      graphql: async () => ({ repository: { pullRequest: { commits: { nodes: [{ commit: { oid: 'f'.repeat(40), statusCheckRollup: null } }] } } } }),
+    };
+    await expect(gather(github, 'o', 'r', 7, DEFAULTS)).rejects.toThrow(/head moved during gather/);
+  });
+});
+
 describe('pipeline watchdog reopen recovery', () => {
   configure({ retryMs: 0 });
   const core = { info: () => {}, warning: () => {} };
@@ -246,6 +261,23 @@ describe('pipeline watchdog reopen recovery', () => {
     expect(comments[0].body).toContain(reopenMarker(SHA));
     expect(comments[0].body).not.toContain(reopenPendingMarker(SHA));
     expect(needsReopenRecovery(comments.map((c) => ({ ...c, login: 'github-actions[bot]' })), SHA, trusted)).toBe(false);
+  });
+
+  it('retires the pending marker when closing fails, so the next pass can try again', async () => {
+    const comments: { id: number; body: string }[] = [];
+    const github = {
+      rest: {
+        issues: {
+          createComment: async ({ body }: { body: string }) => { const c = { id: comments.length + 1, body }; comments.push(c); return { data: c }; },
+          updateComment: async ({ comment_id, body }: { comment_id: number; body: string }) => { comments.find((c) => c.id === comment_id)!.body = body; return {}; },
+        },
+        pulls: { update: async () => { throw new Error('502'); } },
+      },
+    };
+    await expect(apply(github, core, 'o', 'r', { number: 7, headSha: SHA }, { type: 'reopen' }, 'main')).rejects.toThrow('502');
+    expect(comments[0].body).not.toContain(reopenPendingMarker(SHA));
+    const asSeen = comments.map((c) => ({ login: 'github-actions[bot]', body: c.body, at: ago(1) }));
+    expect(types(pr({ comments: [review, ...asSeen], checks: {} }))).toEqual(['reopen']);
   });
 
   it('ignores a forged pending marker and a PR a maintainer closed', async () => {

@@ -208,7 +208,10 @@ async function gather(github, owner, repo, number, cfg) {
   for (let after = null, page = 0; page < 20; page++) {
     const res = await github.graphql(q, { o: owner, r: repo, n: number, after });
     const node = res.repository.pullRequest.commits.nodes[0]?.commit;
-    if (!node || node.oid !== sha) break; // head moved: treat as no checks yet
+    // A push landed between the REST read and this query: the snapshot mixes
+    // two heads, so skip the PR this pass rather than act on stale data.
+    if (node && node.oid !== sha) throw new Error(`head moved during gather (${sha.slice(0, 7)} → ${node.oid.slice(0, 7)}); skipping this pass`);
+    if (!node) break;
     const ctx = node.statusCheckRollup?.contexts;
     runs.push(...(ctx?.nodes || []).filter((x) => x.__typename === 'CheckRun'));
     if (!ctx?.pageInfo?.hasNextPage) break;
@@ -292,7 +295,13 @@ async function apply(github, core, owner, repo, pr, action, defaultBranch) {
       // recoverable on the next pass (recoverClosed) instead of leaving the
       // PR closed and invisible to a watchdog that only lists open PRs.
       const { data: note } = await github.rest.issues.createComment({ owner, repo, issue_number: n, body: `${reopenPendingMarker(pr.headSha)}\nClosing and reopening to re-run the required checks for \`${pr.headSha.slice(0, 7)}\` (pipeline watchdog).` });
-      await withRetry(() => github.rest.pulls.update({ owner, repo, pull_number: n, state: 'closed' }), 3, cfgRetryMs);
+      try {
+        await withRetry(() => github.rest.pulls.update({ owner, repo, pull_number: n, state: 'closed' }), 3, cfgRetryMs);
+      } catch (e) {
+        // Never closed: retire the pending marker so a later pass can try again.
+        await github.rest.issues.updateComment({ owner, repo, comment_id: note.id, body: `Tried to close and reopen this PR to re-run checks for \`${pr.headSha.slice(0, 7)}\`, but closing failed (${e.message}); will retry (pipeline watchdog).` }).catch(() => {});
+        throw e;
+      }
       return reopenAndRecord(github, owner, repo, n, pr.headSha, note.id);
     }
     case 'request-codex':
