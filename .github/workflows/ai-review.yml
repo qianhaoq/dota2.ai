@@ -25,7 +25,7 @@ jobs:
   # ============================================================
   copilot-review:
     name: Copilot Review
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     if: false  # Copilot retired 2026-11-09; do not auto-request
     
@@ -89,7 +89,7 @@ jobs:
   custom-llm-review:
     if: github.event.pull_request.draft == false
     name: Custom LLM Review (Optional)
-    runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     
     env:

@@ -76,7 +76,7 @@
 
 ## 🔒 必需检查：Build & Test
 
-CI 作业名是 **ci / Build & Test**。个人私有仓库请用**经典 branch protection**（Ruleset 可能显示 Active 但不 enforce），并要求 `ci / Build & Test` + `ci / Secret Scan` + `codex / Codex Review Gate` + `qa / QA Gate` + 会话已解决（**不要**要求 `copilot-pull-request-reviewer`）。见 [`MERGE_GATES.md`](MERGE_GATES.md)。
+CI 作业名是 **ci / Build & Test**。个人私有仓库请用**经典 branch protection**（Ruleset 可能显示 Active 但不 enforce），并要求 `ci / Build & Test` + `ci / Secret Scan` + `codex / Codex Review Gate` + `e2e` + 会话已解决（**不要**要求 `copilot-pull-request-reviewer`）。见 [`MERGE_GATES.md`](MERGE_GATES.md)。
 
 | 步骤 | 命令 | 说明 |
 |------|------|------|
@@ -102,7 +102,7 @@ Branch name pattern: main
    Required checks:
      - ci / Build & Test
      - ci / Secret Scan
-     - qa / QA Gate
+     - e2e
      - codex / Codex Review Gate
 ✅ Require conversation resolution before merging
 ```
@@ -111,7 +111,7 @@ Branch name pattern: main
 
 ### 说明
 
-- `ci / Build & Test`、`ci / Secret Scan`、`codex / Codex Review Gate`、`qa / QA Gate` 设为必需 check（`copilot-pull-request-reviewer` 不设为必需）
+- `ci / Build & Test`、`ci / Secret Scan`、`codex / Codex Review Gate`、`e2e` 设为必需 check（`copilot-pull-request-reviewer` 不设为必需）
 - Copilot check **不覆盖** Codex；Codex 靠 `codex-gate.yml` + conversation resolution
 - Custom LLM Review 与 `ai-review.yml` 的 “Copilot Review”（只负责请求审查）不要设为必需
 - auto-merge：**不要求** Copilot 原生 `APPROVED`。PR 上（任一提交）必须有过 Copilot review 且最新一条不是 `CHANGES_REQUESTED`（`APPROVED`/`COMMENTED` 均可），线程必须全部 resolve，且必须有成功的 **ci / Build & Test check run**（没有 check run 不合）。

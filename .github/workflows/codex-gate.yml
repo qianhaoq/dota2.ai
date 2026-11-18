@@ -71,7 +71,7 @@ jobs:
       actions: write
     uses: qianhaoq/devflow-gates/.github/workflows/codex-gate.yml@5f984ac2f3f879fe2f69d803c672e22f4d9ac1fc # devflow-gates main @ 5f984ac
     with:
-      runs_on: '["self-hosted", "linux", "x64"]'
+      runs_on: 'ubuntu-latest'
       wait_minutes: 20
 
 
@@ -100,7 +100,7 @@ jobs:
       check_name: 'codex / Codex Review Gate'
       job_name: 'Codex Review Gate'
       wait_minutes: 30   # > real gate max runtime + runner queue
-      runs_on: '["self-hosted", "linux", "x64"]'
+      runs_on: 'ubuntu-latest'
 
   # Refresh path — Codex comments and "/recheck" only (see header).
   codex-refresh:
@@ -117,5 +117,5 @@ jobs:
       actions: write
     uses: qianhaoq/devflow-gates/.github/workflows/codex-gate.yml@5f984ac2f3f879fe2f69d803c672e22f4d9ac1fc # devflow-gates main @ 5f984ac
     with:
-      runs_on: '["self-hosted", "linux", "x64"]'
+      runs_on: 'ubuntu-latest'
       wait_minutes: 20

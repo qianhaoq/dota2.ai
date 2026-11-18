@@ -10,7 +10,7 @@
 #   - workflow_run only triggers from the default branch, once this file
 #     is merged there.
 #   - The names below must match the `name:` of YOUR repo's caller
-#     workflows (see examples/ci.yml, codex-gate.yml, qa-gate.yml).
+#     workflows (see ci.yml, e2e.yml, codex-gate.yml).
 #   - Runs those workflows start from `push` are skipped by the reusable
 #     workflow; runs from `pull_request` are matched to a PR by head SHA;
 #     every other origin (pull_request_target / issue_comment / review /
@@ -31,7 +31,7 @@ name: Auto Merge
 
 on:
   workflow_run:
-    workflows: ["CI", "Codex Review Gate", "QA Gate"]
+    workflows: ["CI", "E2E", "Codex Review Gate"]
     types: [completed]
   pull_request_review:
     types: [submitted]
@@ -69,15 +69,16 @@ jobs:
       github.event.review.user.login == 'copilot-pull-request-reviewer[bot]')
     uses: qianhaoq/devflow-gates/.github/workflows/auto-merge.yml@53dd06c4da868c5d19078cca74547053b36ac55f # devflow-gates main @ 53dd06c
     with:
-      runs_on: '["self-hosted", "linux", "x64"]'
+      runs_on: 'ubuntu-latest'
       # Exact check-run names = "<caller job name> / <called job name>"
-      # from YOUR ci.yml / codex-gate.yml / qa-gate.yml callers. "ci / Secret Scan"
+      # from YOUR ci.yml / e2e.yml / codex-gate.yml callers. No human label is
+      # required: Playwright e2e plus the Codex gate replace the manual QA gate. "ci / Secret Scan"
       # is required so a red gitleaks run can never be auto-merged.
       required_checks: |
         ci / Build & Test
         codex / Codex Review Gate
         ci / Secret Scan
-        qa / QA Gate
+        e2e
       merge_method: squash
       # Copilot is retired as a merge gate. DISABLE_COPILOT_REVIEW=true
       # is already set operationally; the durable default is false.
