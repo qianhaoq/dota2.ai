@@ -32,7 +32,13 @@ const DEFAULTS = {
   // waits up to 20); only past this is an in-progress check treated as hung.
   stuckRunningMin: 45,
   maxRunAttempts: 3, // re-runs of one cancelled workflow run
-  autoMergeNudgeMin: 5, // all green this long but still open
+  // All green this long but still open. Auto Merge's workflow_run sweeps
+  // share one concurrency group and can sit pending for good (seen on #144,
+  // #145); a per-PR dispatch uses its own group and goes through.
+  autoMergeNudgeMin: 2,
+  // The watchdog also runs when Auto Merge completes; without a cooldown a PR
+  // that cannot merge would bounce watchdog ↔ auto-merge every minute.
+  autoMergeCooldownMin: 10,
   escalateAfterMin: 45, // head age before telling a human
   holdLabel: 'no-auto-merge',
   codexLogin: 'chatgpt-codex-connector',
@@ -145,7 +151,8 @@ function plan(pr, now, cfg = DEFAULTS) {
   // 3. Everything green but still open: ask auto-merge to look again.
   if (allGreen && codexDone && ['clean', 'unstable', 'has_hooks'].includes(pr.mergeableState)) {
     const greenSince = Math.max(...cfg.required.map((n) => pr.checks[n].at));
-    if (age(greenSince) >= cfg.autoMergeNudgeMin) actions.push({ type: 'dispatch', workflow: 'auto-merge.yml', ref: null, inputs: { pr_number: String(pr.number) } });
+    const cooled = !pr.lastAutoMergeDispatchAt || age(pr.lastAutoMergeDispatchAt) >= cfg.autoMergeCooldownMin;
+    if (age(greenSince) >= cfg.autoMergeNudgeMin && cooled) actions.push({ type: 'dispatch', workflow: 'auto-merge.yml', ref: null, inputs: { pr_number: String(pr.number) } });
   }
 
   // 4. Out of retries: tell a human, once per head commit.
@@ -239,10 +246,16 @@ async function run({ github, context, core }, cfg = DEFAULTS, { dryRun = false }
   const base = repoInfo.default_branch;
   const prs = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', base, per_page: 50 });
   const now = Date.now();
+  // Last manual Auto Merge dispatch (any PR): the nudge cooldown.
+  let lastAutoMergeDispatchAt = 0;
+  try {
+    const { data } = await github.rest.actions.listWorkflowRuns({ owner, repo, workflow_id: 'auto-merge.yml', event: 'workflow_dispatch', per_page: 1 });
+    lastAutoMergeDispatchAt = Date.parse(data.workflow_runs[0]?.created_at) || 0;
+  } catch (e) { core.warning(`auto-merge run lookup failed: ${e.message}`); }
   for (const { number, draft } of prs) {
     if (draft) continue;
     try {
-      const pr = await gather(github, owner, repo, number, cfg);
+      const pr = { ...(await gather(github, owner, repo, number, cfg)), lastAutoMergeDispatchAt };
       const { actions, stuck } = plan(pr, now, cfg);
       core.info(`#${number} ${pr.headSha.slice(0, 7)} ${pr.mergeableState}: ${actions.map((a) => a.type).join(', ') || 'no action'}${stuck.length ? ` | stuck: ${stuck.join('; ')}` : ''}`);
       for (const a of dryRun ? [] : actions) {

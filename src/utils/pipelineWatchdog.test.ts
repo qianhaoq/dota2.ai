@@ -100,7 +100,12 @@ describe('pipeline watchdog plan', () => {
 
   it('nudges auto-merge when everything is green and mergeable but the PR is still open', () => {
     expect(types(pr({ comments: [review], mergeableState: 'clean' }))).toEqual(['dispatch']);
-    expect(types(pr({ comments: [review], mergeableState: 'clean', checks: Object.fromEntries(DEFAULTS.required.map((n: string) => [n, green(2)])) }))).toEqual([]);
+    expect(types(pr({ comments: [review], mergeableState: 'clean', checks: Object.fromEntries(DEFAULTS.required.map((n: string) => [n, green(1)])) }))).toEqual([]);
+  });
+
+  it('does not re-nudge auto-merge within the cooldown (no watchdog ↔ auto-merge loop)', () => {
+    expect(types(pr({ comments: [review], mergeableState: 'clean', lastAutoMergeDispatchAt: ago(3) }))).toEqual([]);
+    expect(types(pr({ comments: [review], mergeableState: 'clean', lastAutoMergeDispatchAt: ago(11) }))).toEqual(['dispatch']);
   });
 
   it('escalates once per head commit, with a hidden marker', () => {
