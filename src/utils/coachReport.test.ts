@@ -140,7 +140,7 @@ describe('buildCoachReport — Codex P2 regressions (#139)', () => {
       if (!tp || !rv.deaths) continue;
       const [a, b] = tp.window!;
       const n = rv.deaths.filter((d) => d.time >= a - 30 && d.time <= b).length;
-      expect(tp.body.en).toContain(`You died ${n} time`);
+      expect(tp.body.en).toMatch(new RegExp(`You died (at least )?${n} time`));
     }
     const noDeaths = legacy();
     for (const p of noDeaths.players) { delete p.kills_log; delete p.deaths_log; }
@@ -222,6 +222,28 @@ describe('buildCoachReport — Codex P2 regressions, round 3 (#139)', () => {
     for (const rv of r.reviews) {
       const f = rv.findings.find((x) => x.id === 'vision.detection');
       if (f) expect(f.body.en).not.toMatch(/bought 0 dust/);
+    }
+  });
+});
+
+describe('buildCoachReport — Codex P2 regressions, round 4 (#139)', () => {
+  const legacy = () => JSON.parse(readFileSync(new URL('../fixtures/match9035042364.parsed.json', import.meta.url), 'utf8'));
+
+  it('a Roshan kill and its Aegis pickup count as one objective', () => {
+    const r = buildCoachReport(parsed());
+    const tp = r.reviews[slotOf(r, 'techies')].findings.find((f) => f.id === 'team.turning_point')!;
+    expect(tp.body.en).toContain('the enemy took 5 objectives');
+  });
+
+  it('reconstructed death timelines that disagree with the scoreboard are qualified', () => {
+    const r = buildCoachReport(legacy());
+    const mismatched = r.reviews.filter((rv) => rv.deaths && rv.deaths.length !== r.players[rv.slot].kda[1]);
+    expect(mismatched.length).toBeGreaterThan(0);
+    for (const rv of mismatched) {
+      const d = rv.findings.find((f) => f.id === 'deaths.high');
+      if (d) expect(d.evidence.some((e) => e.k.en === 'Deaths with a timeline')).toBe(true);
+      const tp = rv.findings.find((f) => f.id === 'team.turning_point');
+      if (tp && tp.body.en.includes('You died')) expect(tp.body.en).toContain('at least');
     }
   });
 });

@@ -66,6 +66,7 @@ const UI = {
   upstream: { en: 'OpenDota did not answer in time. Try again in a moment.', zh: 'OpenDota 暂时没有响应，请稍后重试。' },
   rateLimited: { en: 'Slow down a little — too many requests from your network.', zh: '请求太频繁了，请稍等。' },
   retry: { en: 'Try again', zh: '重试' },
+  refreshFailed: { en: 'Could not update the report — what you see may not reflect your latest change.', zh: '报告没能更新——当前显示的可能不是你最新的选择。' },
   newMatch: { en: 'Another match', zh: '换一场' },
   api: { en: 'For agents and scripts', zh: '给 agent 和脚本' },
   confidence: { high: { en: 'high confidence', zh: '高置信' }, medium: { en: 'medium confidence', zh: '中等置信' }, low: { en: 'low confidence', zh: '低置信' } } as Record<string, Bi>,
@@ -235,6 +236,12 @@ export const CoachReportPage: React.FC = () => {
     <Shell wide>
       <MatchHeader report={report} />
       {notice && <p className="cx-notice" role="status">{notice}</p>}
+      {error && (
+        <p className="cx-notice cx-notice--error" role="alert">
+          {error.status === 429 ? L(UI.rateLimited) : L(UI.refreshFailed)}{' '}
+          <button type="button" className="cx-inline-btn" onClick={() => void load()}>{L(UI.retry)}</button>
+        </p>
+      )}
       <Lineup report={report} selected={selected} onPick={(s) => setParam({ p: String(s), pos: null })} />
       {review && player ? (
         <div className={`cx-grid ${loading ? 'is-loading' : ''}`}>
@@ -566,7 +573,7 @@ const DeathsCard: React.FC<{ review: Review; report: CoachReport }> = ({ review,
   const hero = (id: number | null) => (id == null ? null : report.players.find((p) => p.hero.id === id)?.hero ?? null);
   return (
     <div className="cx-box">
-      <h3>{L(UI.deaths)} · {review.deaths!.length}</h3>
+      <h3>{L(UI.deaths)} · {review.deaths!.length}{report.players[review.slot].kda[1] !== review.deaths!.length ? ` / ${report.players[review.slot].kda[1]}` : ''}</h3>
       <ol className="cx-deaths">
         {review.deaths!.map((d, i) => {
           const h = hero(d.killer);

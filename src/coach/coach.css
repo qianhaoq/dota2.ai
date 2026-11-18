@@ -95,7 +95,10 @@
 .cx-pill.warn { color: var(--accent); border-color: rgba(227, 163, 70, 0.4); }
 .cx-ghost { background: none; border: 1px solid var(--line-2); border-radius: 999px; padding: 6px 14px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
 .cx-ghost:hover { color: var(--text); border-color: var(--text-3); }
+.cx-inline-btn { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .cx-notice { margin: 16px 0 0; padding: 10px 14px; border-radius: 10px; background: rgba(227, 163, 70, 0.08); border: 1px solid rgba(227, 163, 70, 0.25); color: var(--text); font-size: 14px; }
+
+.cx-notice--error { background: rgba(208, 106, 85, 0.1); border-color: rgba(208, 106, 85, 0.35); }
 
 /* lineup */
 .cx-lineup { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 22px 0; }
