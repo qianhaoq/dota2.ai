@@ -434,6 +434,9 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
     expect(l.deaths).toBeNull();
     expect(l.read.en).not.toMatch(/did not die/);
     expect(l.read.zh).not.toMatch(/没有死亡/);
+    // …and the story table shows unknown K/D, not 0 / 0.
+    const story = r.reviews[slotOf(r, 'tidehunter')].chapters!.story!;
+    expect(story.phases.every((ph) => ph.my_kd[0] === null && ph.my_kd[1] === null)).toBe(true);
   });
 
   it('the defence plan keeps the damage-type split and the top hero as separate facts', () => {

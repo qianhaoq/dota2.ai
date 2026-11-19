@@ -56,7 +56,7 @@ export interface Chapters {
   story: {
     phases: {
       key: 'early' | 'mid' | 'late'; label: Bi; from: number; to: number; lead_start: number; lead_end: number; swing: number;
-      buildings: [number, number]; roshan: number; fights: [number, number] | null; my_kd: [number, number];
+      buildings: [number, number]; roshan: number; fights: [number, number] | null; my_kd: [number | null, number | null];
     }[];
     peak: { min: number; v: number } | null;
     low: { min: number; v: number } | null;

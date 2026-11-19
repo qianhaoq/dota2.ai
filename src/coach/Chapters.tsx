@@ -132,7 +132,7 @@ const Story: React.FC<{ ch: NonNullable<ChaptersT['story']> }> = ({ ch }) => {
             <td><Lead v={p.swing} /></td>
             <td>{p.buildings[0]} / {p.buildings[1]}{p.roshan ? <small> · {L({ en: `Roshan ×${p.roshan}`, zh: `肉山 ×${p.roshan}` })}</small> : null}</td>
             <td>{p.fights ? `${p.fights[0]}–${p.fights[1]}` : '—'}</td>
-            <td>{p.my_kd[0]} / {p.my_kd[1]}</td>
+            <td>{p.my_kd[0] ?? '—'} / {p.my_kd[1] ?? '—'}</td>
           </tr>
         ))}
       </Table>
