@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchCoachCases } from './api';
+import { CoachApiError, fetchCoachCases } from './api';
 import type { CaseCard, CaseStudies, CaseTheme } from './types';
 import { SafeImg, useLang } from './ui';
 
@@ -29,18 +29,49 @@ const T = {
 const fmtDate = (sec: number | null) => (sec ? new Date(sec * 1000).toISOString().slice(0, 10) : '');
 const minutes = (sec: number) => `${Math.round(sec / 60)}′`;
 
-export const Cases: React.FC<{ matchId: string; slot: number; pos: number | null; onAsk?: () => void }> = ({ matchId, slot, pos, onAsk }) => {
+/**
+ * Worth one silent retry: an upstream failure (5xx) or a network error. A
+ * cold cache needs a dozen OpenDota fetches, and whatever the first attempt
+ * profiled stays cached server-side, so the retry is cheaper. Client errors
+ * (400/404/422) and rate limits (429) would fail the same way again.
+ */
+export function isRetryableCasesError(e: unknown): boolean {
+  if (e instanceof CoachApiError) return e.status >= 500 || e.status === 0;
+  return e instanceof TypeError; // fetch() network failure
+}
+
+const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
+  const id = setTimeout(resolve, ms);
+  signal.addEventListener('abort', () => { clearTimeout(id); resolve(); }, { once: true });
+});
+
+export const Cases: React.FC<{ matchId: string; slot: number; pos: number | null; onAsk?: () => void; retryDelayMs?: number }> = ({ matchId, slot, pos, onAsk, retryDelayMs = 2000 }) => {
   const { L } = useLang();
   const [state, setState] = useState<{ status: 'loading' | 'ok' | 'error'; data?: CaseStudies }>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const ac = new AbortController();
     setState({ status: 'loading' });
-    fetchCoachCases(matchId, { slot, pos, signal: ac.signal })
-      .then((data) => setState({ status: 'ok', data }))
-      .catch((e) => { if (!ac.signal.aborted) setState({ status: 'error' }); return e; });
+    const load = () => fetchCoachCases(matchId, { slot, pos, signal: ac.signal });
+    (async () => {
+      try {
+        let data;
+        try {
+          data = await load();
+        } catch (e) {
+          if (ac.signal.aborted || !isRetryableCasesError(e)) throw e;
+          // One silent retry; the reader keeps seeing "finding similar games".
+          await wait(retryDelayMs, ac.signal);
+          if (ac.signal.aborted) return;
+          data = await load();
+        }
+        if (!ac.signal.aborted) setState({ status: 'ok', data });
+      } catch {
+        if (!ac.signal.aborted) setState({ status: 'error' });
+      }
+    })();
     return () => ac.abort();
-  }, [matchId, slot, pos, attempt]);
+  }, [matchId, slot, pos, attempt, retryDelayMs]);
 
   const themes = state.data?.themes ?? [];
   return (
