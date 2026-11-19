@@ -7,7 +7,7 @@ import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { buildCaseStudies, candidateProfile, keyEnemyOf, profileOf, similarHeroes, similarity, withDamageType } from '../../lib/coach/cases.js';
 import { caseCandidatesSql, chooseCandidates, createCaseService, UNUSABLE_TTL_MS } from '../../lib/coach/caseSource.js';
 import { createCoachRouter } from '../../lib/coach/router.js';
-import { reportContext } from '../../lib/coach/ask.js';
+import { fallbackAnswer, reportContext } from '../../lib/coach/ask.js';
 
 const express = createRequire(import.meta.url)('express');
 const parsedReal = () => JSON.parse(readFileSync(new URL('../fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
@@ -296,5 +296,28 @@ describe('follow-up context with case studies', () => {
     expect(ctx).toContain('### 你死于熊战士 8 次');
     expect(ctx).toContain(`反例比赛 ${cases.themes[0].negative.match_id}`);
     expect(reportContext(report, 0, 'zh')).not.toContain('相似职业对局');
+  });
+
+  it('without a model, a question about the pro cases is answered from the cases', () => {
+    const match = parsedReal();
+    const report = buildCoachReport(match);
+    const cases: any = buildCaseStudies({ report, slot: 0, match, candidates: proProfiles() });
+    const a = fallbackAnswer({ report, slot: 0, lang: 'zh', question: '关于职业对局的正例和反例：正例做了什么不一样的？', cases });
+    expect(a).toContain('**你死于熊战士 8 次**');
+    expect(a).toContain('反例 · ');
+    expect(a).toContain('正例做得不一样的地方');
+    // Cases not loaded: the usual headline answer, never an empty one.
+    const b = fallbackAnswer({ report, slot: 0, lang: 'zh', question: '正例做了什么？', cases: null });
+    expect(b).toContain(`**${report.reviews[0].headline.zh}**`);
+  });
+
+  it('pure damage is not compared on defensive items (no item list classifies it)', () => {
+    const match = parsedReal();
+    const report = buildCoachReport(match);
+    (report.reviews[0] as any).chapters.items.damage.types = { physical: 0.2, magic: 0.1, pure: 0.7, other: 0 };
+    const out: any = buildCaseStudies({ report, slot: 0, match, candidates: proProfiles() });
+    expect(out.damage_type).toBeNull();
+    expect(out.themes.map((t: any) => t.key)).not.toContain('items');
+    expect(JSON.stringify(out)).not.toMatch(/pure|纯粹/);
   });
 });
