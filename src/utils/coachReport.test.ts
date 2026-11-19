@@ -282,6 +282,247 @@ describe('buildCoachReport — 9091400302 parsed (real OpenDota parse)', () => {
   });
 });
 
+describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
+  const m = () => JSON.parse(readFileSync(new URL('../fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
+  const ch = (slug: string) => { const r = buildCoachReport(m()); return r.reviews[slotOf(r, slug)].chapters!; };
+
+  it('laning: Tidehunter + Shadow Shaman lost top to Ursa + Hoodwink on lane gold at 10:00', () => {
+    const l = ch('tidehunter').laning!;
+    expect(l.lane).toBe('top');
+    expect(l.gold).toEqual([2986 + 1729, 3663 + 1776]);
+    expect(l.outcome).toBe('lost');
+    expect(l.deaths).toBe(3);
+    expect(l.read.zh).toContain('4:21 被森海飞霞');
+    expect(l.towers).toEqual({ ours: 974, theirs: 1208 });
+  });
+
+  it('deaths: every death gets a context, and the repeated killer is named', () => {
+    const d = ch('tidehunter').deaths!;
+    expect(d.rows).toHaveLength(12);
+    expect(d.summary.top_killer).toEqual({ hero: 70, deaths: 8 });
+    const c = d.summary as unknown as { by_context: Record<string, number> };
+    expect(Object.values(c.by_context).reduce((a, b) => a + b, 0)).toBe(12);
+    expect(d.read.zh).toContain('其中 8 次死于熊战士');
+  });
+
+  it('items: damage split by type points at physical, and the first anti-physical item came after 11 deaths', () => {
+    const it = ch('tidehunter').items!;
+    expect(it.damage!.by_hero[0].hero).toBe(70);
+    expect(it.damage!.types!.physical).toBeGreaterThan(0.55);
+    const mm = (it as unknown as { mismatch: { kind: string; answer: { key: string } } }).mismatch;
+    expect(mm.kind).toBe('physical');
+    expect(mm.answer.key).toBe('ghost');
+    expect(it.read.zh).toContain('此时你已经死了 11 次');
+    // Lotus Orb is a support's answer, not counted as a core's physical defence.
+    expect(it.rows.find((r) => r.item.key === 'lotus_orb')!.vs).toEqual([]);
+  });
+
+  it('fights: 18 fights, won/lost by gold edge, Ravage tracked with cooldown honesty', () => {
+    const f = ch('tidehunter').fights!;
+    expect(f.summary.fights).toBe(18);
+    expect(f.ultimate!.key).toBe('tidehunter_ravage');
+    expect(f.summary.ult_in).toBe(7);
+    expect(f.rows.filter((r) => r.ult_state === 'unused')).toHaveLength(f.summary.ult_unused);
+    // A short-cooldown self-buff is not tracked as a fight-defining ultimate.
+    expect(ch('ursa').fights!.ultimate).toBeNull();
+  });
+
+  it('story: the lead trajectory is relative to gold earned and phases add up to the final lead', () => {
+    const s = ch('tidehunter').story!;
+    expect(s.phases.map((p) => p.key)).toEqual(['early', 'mid', 'late']);
+    expect(s.phases.reduce((a, p) => a + p.swing, 0)).toBe(-43787);
+    expect(s.read.zh).toContain('10:00 落后 18%，25:00 落后 30%');
+  });
+
+  it('plan: at most three, each with a reason and a check; winners still get one from their findings', () => {
+    const tide = ch('tidehunter').plan;
+    expect(tide.map((p) => p.key)).toEqual(['deaths.top_killer', 'items.defense_order', 'laning.deaths']);
+    for (const slug of ['ursa', 'skywrath_mage', 'spectre', 'pudge']) {
+      const plan = ch(slug).plan;
+      expect(plan.length).toBeGreaterThan(0);
+      expect(plan.length).toBeLessThanOrEqual(3);
+      for (const p of plan) { expect(p.why.zh).toBeTruthy(); expect(p.check.zh).toBeTruthy(); }
+    }
+  });
+
+  it('a pre-horn death (negative time) is laning, not a 500', () => {
+    const raw = m();
+    const tide = raw.players.find((p: { hero_id: number }) => p.hero_id === 29);
+    tide.deaths_log[0].time = -15;
+    const r = buildCoachReport(raw);
+    const d = r.reviews[slotOf(r, 'tidehunter')].chapters!.deaths!;
+    expect(d.rows[0]).toMatchObject({ time: -15, phase: 'early' });
+  });
+
+  it('an item that answers both damage types counts for both (Glimmer Cape for a support)', () => {
+    const it = ch('shadow_shaman').items!;
+    const glimmer = it.rows.find((r) => r.item.key === 'glimmer_cape')!;
+    expect(glimmer.vs.sort()).toEqual(['magic', 'physical']);
+    const raw = m();
+    const ss = raw.players.find((p: { hero_id: number }) => p.hero_id === 27);
+    ss.damage_inflictor_received = { null: 1000, skywrath_mage_arcane_bolt: 9000 };
+    const r = buildCoachReport(raw);
+    const items = r.reviews[slotOf(r, 'shadow_shaman')].chapters!.items!;
+    expect(items.read.en).toContain('first item against magic damage was Glimmer Cape');
+    expect(items.read.en).not.toMatch(/never bought an item against magic/);
+  });
+
+  it('ultimate cooldown counts from the end of the fight that cast it', () => {
+    const raw = m();
+    const ti = raw.players.findIndex((p: { hero_id: number }) => p.hero_id === 29);
+    const blank = () => raw.players.map(() => ({ damage: 0, deaths: 0, gold_delta: 0, ability_uses: {}, item_uses: {}, healing: 0 }));
+    const fight = (start: number, end: number, ravage: boolean) => {
+      const players = blank();
+      players[ti] = { ...players[ti], damage: 500, ability_uses: ravage ? { tidehunter_ravage: 1 } : { tidehunter_gush: 1 } };
+      return { start, end, deaths: 0, players };
+    };
+    raw.teamfights = [fight(600, 650, true), fight(760, 770, false), fight(780, 790, false), fight(820, 830, false)];
+    const r = buildCoachReport(raw);
+    const rows = r.reviews[slotOf(r, 'tidehunter')].chapters!.fights!.rows;
+    // 650 + 150 = 800: 760 and 780 are still on cooldown, 820 is not.
+    expect(rows.map((x) => x.ult_state)).toEqual(['used', 'cooldown', 'cooldown', 'unused']);
+  });
+
+  it('the trajectory labels each point ahead/behind on its own (comeback)', () => {
+    const raw = m();
+    raw.radiant_gold_adv = raw.radiant_gold_adv.map((v: number, i: number) => (i <= 10 ? -2000 * (i / 10) : 4000));
+    const r = buildCoachReport(raw);
+    const s = r.reviews[slotOf(r, 'tidehunter')].chapters!.story!;
+    expect(s.read.en).toMatch(/behind \d+% at 10:00, ahead \d+% at 25:00/);
+    expect(s.read.zh).toMatch(/10:00 落后 \d+%，25:00 领先 \d+%/);
+  });
+
+  it('defence audit reads the full purchase log (a cheap Pavise counts)', () => {
+    const raw = m();
+    const ss = raw.players.find((p: { hero_id: number }) => p.hero_id === 27);
+    ss.damage_inflictor_received = { null: 9000, skywrath_mage_arcane_bolt: 1000 };
+    ss.purchase_log = [{ time: 400, key: 'pavise' }, ...ss.purchase_log];
+    const r = buildCoachReport(raw);
+    expect(r.reviews[slotOf(r, 'shadow_shaman')].chapters!.items!.read.en).toContain('first item against physical damage was Pavise at 6:40');
+  });
+
+  it('no purchase log: damage is shown, but nothing is claimed about what was (not) bought', () => {
+    const raw = m();
+    const ss = raw.players.find((p: { hero_id: number }) => p.hero_id === 27);
+    ss.damage_inflictor_received = { null: 1000, skywrath_mage_arcane_bolt: 9000 };
+    delete ss.purchase_log;
+    const r = buildCoachReport(raw);
+    const rv = r.reviews[slotOf(r, 'shadow_shaman')];
+    expect(rv.chapters!.items!.read.en).toContain('By type');
+    expect(rv.chapters!.items!.read.en).not.toMatch(/never bought|first item against/);
+    expect(rv.chapters!.plan.some((p) => p.key === 'items.defense_order')).toBe(false);
+  });
+
+  it('casts outside fights = total casts minus casts recorded in fights, not fights with a cast', () => {
+    const raw = m();
+    const wi = raw.players.findIndex((p: { hero_id: number }) => p.hero_id === 37);
+    const players = raw.players.map(() => ({ damage: 0, deaths: 0, gold_delta: 0, ability_uses: {}, item_uses: {}, healing: 0 }));
+    players[wi] = { ...players[wi], damage: 300, ability_uses: { warlock_rain_of_chaos: 2 } };
+    raw.teamfights = [{ start: 900, end: 960, deaths: 0, players }];
+    raw.players[wi].ability_uses = { ...raw.players[wi].ability_uses, warlock_rain_of_chaos: 2 };
+    const r = buildCoachReport(raw);
+    const f = r.reviews[slotOf(r, 'warlock')].chapters!.fights!;
+    expect(f.summary.ult_in).toBe(1);
+    expect(f.read.en).not.toMatch(/outside recorded fights/);
+  });
+
+  it('no death timeline: the lane chapter claims nothing about lane deaths', () => {
+    const raw = m();
+    for (const p of raw.players) { delete p.deaths_log; delete p.kills_log; }
+    const r = buildCoachReport(raw);
+    const l = r.reviews[slotOf(r, 'tidehunter')].chapters!.laning!;
+    expect(l.deaths).toBeNull();
+    expect(l.read.en).not.toMatch(/did not die/);
+    expect(l.read.zh).not.toMatch(/没有死亡/);
+    // …and the story table shows unknown K/D, not 0 / 0.
+    const story = r.reviews[slotOf(r, 'tidehunter')].chapters!.story!;
+    expect(story.phases.every((ph) => ph.my_kd[0] === null && ph.my_kd[1] === null)).toBe(true);
+  });
+
+  it('the defence plan keeps the damage-type split and the top hero as separate facts', () => {
+    const p = ch('tidehunter').plan.find((x) => x.key === 'items.defense_order')!;
+    expect(p.why.en).toMatch(/^Most of the damage you took was physical \(\d+% of all sources\); the hero who hurt you most was Ursa \(50% of hero damage\)\.$/);
+  });
+
+  it('fights before the first recorded ultimate cast are unknown, not "not cast" (may not be learned)', () => {
+    const raw = m();
+    const wi = raw.players.findIndex((p: { hero_id: number }) => p.hero_id === 37);
+    const blank = () => raw.players.map(() => ({ damage: 0, deaths: 0, gold_delta: 0, ability_uses: {}, item_uses: {}, healing: 0 }));
+    const fight = (start: number, cast: boolean) => {
+      const players = blank();
+      players[wi] = { ...players[wi], damage: 200, ability_uses: cast ? { warlock_rain_of_chaos: 1 } : { warlock_fatal_bonds: 1 } };
+      return { start, end: start + 30, deaths: 0, players };
+    };
+    raw.teamfights = [fight(660, false), fight(780, false), fight(900, true), fight(1300, false)];
+    const r = buildCoachReport(raw);
+    const rows = r.reviews[slotOf(r, 'warlock')].chapters!.fights!.rows;
+    expect(rows.map((x) => x.ult_state)).toEqual([null, null, 'used', 'unused']);
+  });
+
+  it('time dead uses the replay total, including a death still running at the end', () => {
+    const r = buildCoachReport(m());
+    const d = r.reviews[slotOf(r, 'shadow_shaman')].chapters!.deaths!;
+    expect(d.summary.time_dead).toBe(735);
+    expect(d.read.zh).toContain('共 12:15 不在地图上');
+  });
+
+  it('Blade Mail returns damage of unknown type: it is "other", never pure', () => {
+    const raw = m();
+    const ursa = raw.players.find((p: { hero_id: number }) => p.hero_id === 70);
+    expect(ursa.damage_inflictor_received.blade_mail).toBeGreaterThan(0);
+    const r = buildCoachReport(raw);
+    const ty = r.reviews[slotOf(r, 'ursa')].chapters!.items!.damage!.types!;
+    const total = Object.values(ursa.damage_inflictor_received as Record<string, number>).reduce((a, b) => a + b, 0);
+    expect(ty.other).toBeGreaterThanOrEqual(ursa.damage_inflictor_received.blade_mail / total - 1e-9);
+  });
+
+  it('a game without a minute-10 sample makes no 10:00 claim', () => {
+    const raw = m();
+    raw.radiant_gold_adv = raw.radiant_gold_adv.slice(0, 8);
+    raw.duration = 420;
+    const r = buildCoachReport(raw);
+    const s = r.reviews[slotOf(r, 'tidehunter')].chapters!.story!;
+    expect(s.read.en).not.toContain('10:00');
+    expect(s.read.zh).not.toContain('10 分钟时');
+  });
+
+  it('unparsed matches get no chapters', () => {
+    const r = buildCoachReport(unparsed());
+    expect(r.reviews.every((rv) => rv.chapters == null)).toBe(true);
+  });
+
+  it('auto-triggered and passive ultimates are never audited as "not cast" (Reincarnation)', () => {
+    const raw = JSON.parse(readFileSync(new URL('../fixtures/match9035042364.parsed.json', import.meta.url), 'utf8'));
+    const r = buildCoachReport(raw);
+    const wk = r.reviews[slotOf(r, 'skeleton_king')].chapters!;
+    expect(wk.fights?.ultimate ?? null).toBeNull();
+    expect(wk.plan.some((p) => p.key === 'fights.ult_unused')).toBe(false);
+  });
+
+  it('an incomplete death timeline says so instead of presenting it as the total', () => {
+    const raw = JSON.parse(readFileSync(new URL('../fixtures/match9035042364.parsed.json', import.meta.url), 'utf8'));
+    const r = buildCoachReport(raw);
+    const rv = r.reviews[slotOf(r, 'hoodwink')];
+    const d = rv.chapters!.deaths!;
+    expect(r.players[rv.slot].kda[1]).toBe(10);
+    expect(d.summary.recorded).toBe(10);
+    expect(d.read.en).toMatch(/^You died 10 times \(the timeline has 9 of them/);
+  });
+
+  it('another real parse builds chapters without throwing for all ten players', () => {
+    const r = buildCoachReport(parsed());
+    for (const rv of r.reviews) expect(rv.chapters).toBeTruthy();
+    // Fight membership still comes from the fight windows: deaths inside one
+    // are "fight" (result unknown), never "caught".
+    const d0 = r.reviews[0].chapters!.deaths!;
+    expect(d0.rows.filter((x) => x.time === 1580 || x.time === 1680).map((x) => x.context)).toEqual(['fight', 'fight']);
+    expect(d0.rows.filter((x) => x.context === 'caught').length).toBe(r.reviews[0].deaths!.filter((x) => x.in_fight === false && x.time >= 600).length);
+    // Its teamfights carry no per-player rows: no fight table, no "0 of 4 fights".
+    expect(r.reviews.every((rv) => rv.chapters!.fights == null)).toBe(true);
+    expect(r.reviews[0].chapters!.story!.phases.every((p) => p.fights == null)).toBe(true);
+  });
+});
+
 describe('buildCoachReport — input guard', () => {
   it('rejects a payload without a 10-player roster', () => {
     expect(() => buildCoachReport({ players: [] })).toThrow(/roster/);
