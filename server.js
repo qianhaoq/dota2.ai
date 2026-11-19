@@ -2504,6 +2504,20 @@ app.use(createCoachRouter({
   resolveClientIp,
   mapError: mapOpenDotaFetchError,
   log: (msg) => console.warn(`[coach] ${msg}`),
+  // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
+  ask: {
+    guard: (req) => {
+      const g = validateReviewPostRequest(req);
+      return g.ok ? g : { ok: false, status: g.status, error: g.errorEn };
+    },
+    llm: reviewLlmLimit,
+    providers: (messages) => [
+      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ model: DEEPSEEK_MODEL, messages, stream: true, ...deepseekExtraBody }, { signal }) }] : []),
+      ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ model: GEMINI_REVIEW_MODEL, messages, stream: true }, { signal, maxRetries: 0 }) }] : []),
+    ],
+    stream: streamFollowUpCompletion,
+    attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
+  },
 }));
 
 app.get('/api/review/suggestions', async (req, res) => {

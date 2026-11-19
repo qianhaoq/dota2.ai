@@ -60,30 +60,30 @@ export interface Chapters {
     }[];
     peak: { min: number; v: number } | null;
     low: { min: number; v: number } | null;
-    read: Bi; note: Bi;
+    read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   laning: {
     lane: 'top' | 'mid' | 'bot';
     rows: { slot: number; hero: number; ally: boolean; lh5: number | null; lh10: number | null; dn10: number | null; gold10: number | null; xp10: number | null }[];
     gold: [number, number]; diff: number; outcome: 'stomp' | 'won' | 'draw' | 'lost' | 'stomped'; outcome_label: Bi;
     deaths: number | null; towers: { ours: number | null; theirs: number | null };
-    read: Bi; note: Bi;
+    read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   deaths: {
     rows: DeathRow[];
     summary: { deaths: number; recorded: number; time_dead: number; share_dead: number | null; gold_lost: number; top_killer: { hero: number; deaths: number } | null };
-    read: Bi; note: Bi;
+    read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   items: {
     rows: { time: number; item: ItemRef; phase: string; vs: ('physical' | 'magic')[] }[];
     damage: { total: number; types: { physical: number; magic: number; pure: number; other: number } | null; by_hero: { hero: number; amount: number; share: number }[] } | null;
-    read: Bi; note: Bi;
+    read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   fights: {
     rows: FightRow[];
     ultimate: { key: string; en: string; zh: string } | null;
     summary: { fights: number; present: number; won: number; lost: number; ult_in: number | null; ult_unused: number; ult_cooldown: number; silent: number };
-    read: Bi; note: Bi;
+    read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   plan: { key: string; title: Bi; why: Bi; check: Bi }[];
 }

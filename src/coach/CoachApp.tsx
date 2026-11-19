@@ -238,6 +238,7 @@ export const CoachReportPage: React.FC = () => {
         </p>
       )}
       <Lineup report={report} selected={selected} onPick={(s) => setParam({ p: String(s), pos: null })} />
+      {review && <Chapters review={review} report={report} pos={posOverride} />}
       {review && player ? (
         <div className={`cx-grid ${loading ? 'is-loading' : ''}`}>
           <section className="cx-read" aria-label={L(UI.coachRead)}>
@@ -259,7 +260,6 @@ export const CoachReportPage: React.FC = () => {
         </div>
       )}
       {report.timeline && <GoldGraph report={report} review={review} />}
-      {review && <Chapters review={review} report={report} />}
       {report.data_gaps.length > 0 && (
         <ParsePanel
           report={report}
