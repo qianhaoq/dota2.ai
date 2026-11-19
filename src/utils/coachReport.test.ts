@@ -8,6 +8,7 @@ import type { CoachReport } from '../coach/types';
 import { THREAT_TAGS, ANSWERS, BUILT_IN_IMMUNITY, ALWAYS_KEY_ITEMS, heroTags } from '../../lib/coach/knowledge.js';
 import { createCoachRouter, parseCoachQuery } from '../../lib/coach/router.js';
 import { parseAskBody, reportContext, askMessages } from '../../lib/coach/ask.js';
+import { streamFollowUpCompletion } from '../../lib/matchReview/followUpCompletion.js';
 
 // express ships no types in this repo; load it the way other route tests do.
 const express = createRequire(import.meta.url)('express');
@@ -641,7 +642,8 @@ describe('POST /api/coach/:matchId/ask (follow-up questions)', () => {
   it('streams the model answer; a tripped cost guard falls back, a rate limit is a 429', async () => {
     let seen: { role: string; content: string }[] = [];
     const providers = (messages: { role: string; content: string }[]) => { seen = messages; return [{ name: 'fake', create: async () => null }]; };
-    const stream = async (o: { onText: (t: string) => void }) => { o.onText('第一句。'); o.onText('第二句。'); return { status: 'done' }; };
+    // A real completed stream: text forwarded and a terminal finish_reason.
+    const stream = async (o: { onText: (t: string) => void }) => { o.onText('第一句。'); o.onText('第二句。'); return { status: 'done', finishReason: 'stop', forwarded: true }; };
     let gate: { ok: boolean; reason?: string; retryAfterSec?: number } = { ok: true };
     const base = await start({
       providers, stream, attemptMs: 1000,
@@ -663,6 +665,29 @@ describe('POST /api/coach/:matchId/ask (follow-up questions)', () => {
     const f = await frames(await post(base, { question: 'lane?', slot: 0, lang: 'en' }));
     expect(f[0].fallback).toBe(true);
     expect(f[0].text).toMatch(/Top lane lost/);
+  });
+
+  it('a stream that stops without a terminal finish_reason is truncated: report text is appended', async () => {
+    const providers = () => [{
+      name: 'fake',
+      create: async () => (async function* gen() { yield { choices: [{ delta: { content: 'The most important mistake was' } }] }; })(),
+    }];
+    const base = await start({ providers, stream: streamFollowUpCompletion, attemptMs: 5000 });
+    const f = await frames(await post(base, { question: 'lane?', slot: 0, lang: 'en' }));
+    expect(f[0].text).toBe('The most important mistake was');
+    expect(f.some((x) => x.fallback && x.incomplete && /Top lane lost/.test(x.text))).toBe(true);
+    expect(f.some((x) => x.notice)).toBe(true);
+    expect(f[f.length - 1]).toEqual({ done: true });
+  });
+
+  it('no death durations at all: the takeaway gives the count only, never "0:00 spent dead"', () => {
+    const raw = parsedReal();
+    for (const p of raw.players) { delete p.life_state_dead; for (const d of p.deaths_log ?? []) delete d.time_dead; }
+    const r = buildCoachReport(raw);
+    const d = r.reviews[slotOf(r, 'shadow_shaman')].chapters!.deaths!;
+    expect(d.takeaway.en).toBe('19 deaths');
+    expect(d.summary.time_dead).toBeNull();
+    expect(d.read.en).not.toMatch(/0:00/);
   });
 
   it('every chapter carries a takeaway and points aligned in both languages', () => {

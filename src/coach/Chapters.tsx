@@ -112,7 +112,8 @@ export const Chapters: React.FC<{ review: Review; report: CoachReport; pos: numb
       {ch.items && <Items ch={ch.items} heroById={heroById} onAsk={() => onAsk('items')} />}
       {ch.fights && <Fights ch={ch.fights} onAsk={() => onAsk('fights')} />}
       {ch.plan.length > 0 && <Plan plan={ch.plan} onAsk={() => onAsk('plan')} />}
-      <AskPanel ref={ask} report={report} review={review} pos={pos} />
+      {/* One conversation per match + player + position: switching player resets it. */}
+      <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={ask} report={report} review={review} pos={pos} />
     </section>
   );
 };

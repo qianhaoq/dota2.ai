@@ -71,7 +71,7 @@ export interface Chapters {
   } | null;
   deaths: {
     rows: DeathRow[];
-    summary: { deaths: number; recorded: number; time_dead: number; share_dead: number | null; gold_lost: number; top_killer: { hero: number; deaths: number } | null };
+    summary: { deaths: number; recorded: number; time_dead: number | null; share_dead: number | null; gold_lost: number; top_killer: { hero: number; deaths: number } | null };
     read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   items: {

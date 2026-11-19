@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { askCoach, CoachApiError, type AskTurn } from './api';
 import { useLang } from './ui';
 import type { Bi, CoachReport, Review } from './types';
@@ -73,6 +73,8 @@ export const AskPanel = forwardRef<AskHandle, { report: CoachReport; review: Rev
   const panel = useRef<HTMLElement>(null);
   const abort = useRef<AbortController | null>(null);
   const chips = useMemo(() => suggestions(report, review, lang), [report, review, lang]);
+  // Abort an in-flight answer when this conversation goes away (player switch).
+  useEffect(() => () => abort.current?.abort(), []);
 
   useImperativeHandle(ref, () => ({
     prefill: (text: string) => {
