@@ -444,6 +444,48 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
     expect(p.why.en).toMatch(/^Most of the damage you took was physical \(\d+% of all sources\); the hero who hurt you most was Ursa \(50% of hero damage\)\.$/);
   });
 
+  it('fights before the first recorded ultimate cast are unknown, not "not cast" (may not be learned)', () => {
+    const raw = m();
+    const wi = raw.players.findIndex((p: { hero_id: number }) => p.hero_id === 37);
+    const blank = () => raw.players.map(() => ({ damage: 0, deaths: 0, gold_delta: 0, ability_uses: {}, item_uses: {}, healing: 0 }));
+    const fight = (start: number, cast: boolean) => {
+      const players = blank();
+      players[wi] = { ...players[wi], damage: 200, ability_uses: cast ? { warlock_rain_of_chaos: 1 } : { warlock_fatal_bonds: 1 } };
+      return { start, end: start + 30, deaths: 0, players };
+    };
+    raw.teamfights = [fight(660, false), fight(780, false), fight(900, true), fight(1300, false)];
+    const r = buildCoachReport(raw);
+    const rows = r.reviews[slotOf(r, 'warlock')].chapters!.fights!.rows;
+    expect(rows.map((x) => x.ult_state)).toEqual([null, null, 'used', 'unused']);
+  });
+
+  it('time dead uses the replay total, including a death still running at the end', () => {
+    const r = buildCoachReport(m());
+    const d = r.reviews[slotOf(r, 'shadow_shaman')].chapters!.deaths!;
+    expect(d.summary.time_dead).toBe(735);
+    expect(d.read.zh).toContain('共 12:15 不在地图上');
+  });
+
+  it('Blade Mail returns damage of unknown type: it is "other", never pure', () => {
+    const raw = m();
+    const ursa = raw.players.find((p: { hero_id: number }) => p.hero_id === 70);
+    expect(ursa.damage_inflictor_received.blade_mail).toBeGreaterThan(0);
+    const r = buildCoachReport(raw);
+    const ty = r.reviews[slotOf(r, 'ursa')].chapters!.items!.damage!.types!;
+    const total = Object.values(ursa.damage_inflictor_received as Record<string, number>).reduce((a, b) => a + b, 0);
+    expect(ty.other).toBeGreaterThanOrEqual(ursa.damage_inflictor_received.blade_mail / total - 1e-9);
+  });
+
+  it('a game without a minute-10 sample makes no 10:00 claim', () => {
+    const raw = m();
+    raw.radiant_gold_adv = raw.radiant_gold_adv.slice(0, 8);
+    raw.duration = 420;
+    const r = buildCoachReport(raw);
+    const s = r.reviews[slotOf(r, 'tidehunter')].chapters!.story!;
+    expect(s.read.en).not.toContain('10:00');
+    expect(s.read.zh).not.toContain('10 分钟时');
+  });
+
   it('unparsed matches get no chapters', () => {
     const r = buildCoachReport(unparsed());
     expect(r.reviews.every((rv) => rv.chapters == null)).toBe(true);
