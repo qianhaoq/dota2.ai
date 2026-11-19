@@ -160,6 +160,19 @@ describe('case studies — unknown is never zero (Codex #153)', () => {
     expect(out.themes.find((t: any) => t.key === 'deaths')).toBeUndefined();
   });
 
+  it('zero scoreboard deaths is a known zero, so a deathless winner can be a positive case', () => {
+    const m = parsedReal();
+    // Make Ursa (winning side) deathless, with no death rows at all.
+    const s = m.players.findIndex((p: any) => p.hero_id === 70);
+    m.players[s].deaths = 0;
+    delete m.players[s].deaths_log;
+    for (const pl of m.players) if (pl.kills_log) pl.kills_log = pl.kills_log.filter((k: any) => !String(k.key).includes('ursa'));
+    const p: any = profileOf(m, buildCoachReport(m), s);
+    expect(p.deaths).toBe(0);
+    expect(p.deaths_to).toEqual({});
+    expect(p.caught).toBe(0);
+  });
+
   it('the "caught outside fights" tip needs the positive case to actually be caught less', () => {
     const match = parsedReal();
     const report = buildCoachReport(match);
