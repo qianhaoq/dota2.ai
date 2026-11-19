@@ -392,9 +392,53 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
     expect(s.read.zh).toMatch(/10:00 落后 \d+%，25:00 领先 \d+%/);
   });
 
+  it('defence audit reads the full purchase log (a cheap Pavise counts)', () => {
+    const raw = m();
+    const ss = raw.players.find((p: { hero_id: number }) => p.hero_id === 27);
+    ss.damage_inflictor_received = { null: 9000, skywrath_mage_arcane_bolt: 1000 };
+    ss.purchase_log = [{ time: 400, key: 'pavise' }, ...ss.purchase_log];
+    const r = buildCoachReport(raw);
+    expect(r.reviews[slotOf(r, 'shadow_shaman')].chapters!.items!.read.en).toContain('first item against physical damage was Pavise at 6:40');
+  });
+
+  it('no purchase log: damage is shown, but nothing is claimed about what was (not) bought', () => {
+    const raw = m();
+    const ss = raw.players.find((p: { hero_id: number }) => p.hero_id === 27);
+    ss.damage_inflictor_received = { null: 1000, skywrath_mage_arcane_bolt: 9000 };
+    delete ss.purchase_log;
+    const r = buildCoachReport(raw);
+    const rv = r.reviews[slotOf(r, 'shadow_shaman')];
+    expect(rv.chapters!.items!.read.en).toContain('By type');
+    expect(rv.chapters!.items!.read.en).not.toMatch(/never bought|first item against/);
+    expect(rv.chapters!.plan.some((p) => p.key === 'items.defense_order')).toBe(false);
+  });
+
+  it('casts outside fights = total casts minus casts recorded in fights, not fights with a cast', () => {
+    const raw = m();
+    const wi = raw.players.findIndex((p: { hero_id: number }) => p.hero_id === 37);
+    const players = raw.players.map(() => ({ damage: 0, deaths: 0, gold_delta: 0, ability_uses: {}, item_uses: {}, healing: 0 }));
+    players[wi] = { ...players[wi], damage: 300, ability_uses: { warlock_rain_of_chaos: 2 } };
+    raw.teamfights = [{ start: 900, end: 960, deaths: 0, players }];
+    raw.players[wi].ability_uses = { ...raw.players[wi].ability_uses, warlock_rain_of_chaos: 2 };
+    const r = buildCoachReport(raw);
+    const f = r.reviews[slotOf(r, 'warlock')].chapters!.fights!;
+    expect(f.summary.ult_in).toBe(1);
+    expect(f.read.en).not.toMatch(/outside recorded fights/);
+  });
+
   it('unparsed matches get no chapters', () => {
     const r = buildCoachReport(unparsed());
     expect(r.reviews.every((rv) => rv.chapters == null)).toBe(true);
+  });
+
+  it('an incomplete death timeline says so instead of presenting it as the total', () => {
+    const raw = JSON.parse(readFileSync(new URL('../fixtures/match9035042364.parsed.json', import.meta.url), 'utf8'));
+    const r = buildCoachReport(raw);
+    const rv = r.reviews[slotOf(r, 'hoodwink')];
+    const d = rv.chapters!.deaths!;
+    expect(r.players[rv.slot].kda[1]).toBe(10);
+    expect(d.summary.recorded).toBe(10);
+    expect(d.read.en).toMatch(/^You died 10 times \(the timeline has 9 of them/);
   });
 
   it('another real parse builds chapters without throwing for all ten players', () => {

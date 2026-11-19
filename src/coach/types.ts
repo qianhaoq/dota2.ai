@@ -42,7 +42,7 @@ export type FightResult = 'won' | 'lost' | 'even';
 
 export interface FightRow {
   start: number; end: number; result: FightResult; gold_edge: number; kills: [number, number];
-  present: boolean; damage: number; died: boolean; ult_used: boolean | null;
+  present: boolean; damage: number; died: boolean; ult_used: boolean | null; ult_casts: number | null;
   ult_state: 'used' | 'cooldown' | 'unused' | null;
 }
 
@@ -71,7 +71,7 @@ export interface Chapters {
   } | null;
   deaths: {
     rows: DeathRow[];
-    summary: { deaths: number; time_dead: number; share_dead: number | null; gold_lost: number; top_killer: { hero: number; deaths: number } | null };
+    summary: { deaths: number; recorded: number; time_dead: number; share_dead: number | null; gold_lost: number; top_killer: { hero: number; deaths: number } | null };
     read: Bi; note: Bi;
   } | null;
   items: {
