@@ -55,7 +55,7 @@ export function renderCoach(report, slot, lang) {
   };
   rv.findings.forEach((f, i) => {
     lines.push('', `${i + 1}. ${f.tone === 'good' ? '✓' : '!'} ${L(f.title)}`);
-    if (f.tone === 'fix') lines.push(`   ${zh ? '先想一想' : 'Ask yourself'}: ${L(f.ask)}`);
+    if (f.tone === 'fix') lines.push(`   ${zh ? '怎么做' : 'What to do'}: ${L(f.action ?? f.ask)}`);
     lines.push(`   ${L(f.body)}`);
     for (const e of f.evidence) if (!e.heroes) lines.push(`   - ${evidence(e)}`);
     if (f.caveat) lines.push(`   (${L(f.caveat)})`);

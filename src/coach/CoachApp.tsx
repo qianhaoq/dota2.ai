@@ -34,10 +34,7 @@ const UI = {
   forYou: { en: 'For you', zh: '你的问题' },
   forTeam: { en: 'For your team', zh: '全队的问题' },
   wentWell: { en: 'What went right', zh: '做得好的地方' },
-  askFirst: { en: 'Before you read', zh: '先想一想' },
-  showRead: { en: 'Show the coach’s read', zh: '看教练的分析' },
-  justTell: { en: 'Just tell me', zh: '直接告诉我' },
-  askMe: { en: 'Ask me first', zh: '先问我' },
+  doNext: { en: 'What to do', zh: '怎么做' },
   role: { en: 'Seat', zh: '位置' },
   roleInferred: { en: 'Inferred from farm — lanes unknown until parsed.', zh: '按经济推断——解析前不知道分路。' },
   roleLanes: { en: 'Inferred from lanes and farm.', zh: '按分路和经济推断。' },
@@ -364,15 +361,6 @@ const Lineup: React.FC<{ report: CoachReport; selected: number | null; onPick: (
 
 const ReadColumn: React.FC<{ review: Review; report: CoachReport }> = ({ review, report }) => {
   const { L } = useLang();
-  const [direct, setDirect] = useState<boolean>(() => {
-    try { return localStorage.getItem('coach.direct') === '1'; } catch { return false; }
-  });
-  const toggle = () => {
-    setDirect((d) => {
-      try { localStorage.setItem('coach.direct', d ? '0' : '1'); } catch { /* storage blocked */ }
-      return !d;
-    });
-  };
   const mine = review.findings.filter((f) => f.tone === 'fix' && !f.shared);
   const team = review.findings.filter((f) => f.tone === 'fix' && f.shared);
   const good = review.findings.filter((f) => f.tone === 'good');
@@ -380,32 +368,27 @@ const ReadColumn: React.FC<{ review: Review; report: CoachReport }> = ({ review,
     <>
       <div className="cx-read-head">
         <p className="cx-eyebrow">{L(UI.coachRead)}</p>
-        <button type="button" className="cx-toggle" aria-pressed={direct} onClick={toggle}>
-          {direct ? L(UI.askMe) : L(UI.justTell)}
-        </button>
       </div>
       <h2 className="cx-headline">{L(review.headline)}</h2>
-      {mine.length > 0 && <Group title={L(UI.forYou)} findings={mine} report={report} direct={direct} />}
-      {team.length > 0 && <Group title={L(UI.forTeam)} findings={team} report={report} direct={direct} />}
-      {good.length > 0 && <Group title={L(UI.wentWell)} findings={good} report={report} direct />}
+      {mine.length > 0 && <Group title={L(UI.forYou)} findings={mine} report={report} />}
+      {team.length > 0 && <Group title={L(UI.forTeam)} findings={team} report={report} />}
+      {good.length > 0 && <Group title={L(UI.wentWell)} findings={good} report={report} />}
       {review.findings.length === 0 && <p className="cx-muted">{L(UI.noFindings)}</p>}
     </>
   );
 };
 
-const Group: React.FC<{ title: string; findings: Finding[]; report: CoachReport; direct: boolean }> = ({ title, findings, report, direct }) => (
+const Group: React.FC<{ title: string; findings: Finding[]; report: CoachReport }> = ({ title, findings, report }) => (
   <div className="cx-group">
     <h3 className="cx-group-title">{title}</h3>
     <ol className="cx-findings">
-      {findings.map((f) => <FindingCard key={f.id} f={f} report={report} direct={direct} />)}
+      {findings.map((f) => <FindingCard key={f.id} f={f} report={report} />)}
     </ol>
   </div>
 );
 
-const FindingCard: React.FC<{ f: Finding; report: CoachReport; direct: boolean }> = ({ f, report, direct }) => {
+const FindingCard: React.FC<{ f: Finding; report: CoachReport }> = ({ f, report }) => {
   const { L } = useLang();
-  const [open, setOpen] = useState(direct);
-  useEffect(() => setOpen(direct), [direct]);
   return (
     <li className={`cx-card tone-${f.tone} sev-${f.severity}`}>
       <div className="cx-card-meta">
@@ -414,17 +397,11 @@ const FindingCard: React.FC<{ f: Finding; report: CoachReport; direct: boolean }
       </div>
       <h4>{L(f.title)}</h4>
       {f.tone === 'fix' && (
-        <p className="cx-ask"><span>{L(UI.askFirst)}</span>{L(f.ask)}</p>
+        <p className="cx-do"><span>{L(UI.doNext)}</span>{L(f.action ?? f.ask)}</p>
       )}
-      {open ? (
-        <>
-          <p className="cx-body">{L(f.body)}</p>
-          <EvidenceRow evidence={f.evidence} report={report} />
-          {f.caveat && <p className="cx-caveat">{L(f.caveat)}</p>}
-        </>
-      ) : (
-        <button type="button" className="cx-reveal" onClick={() => setOpen(true)}>{L(UI.showRead)}</button>
-      )}
+      <p className="cx-body">{L(f.body)}</p>
+      <EvidenceRow evidence={f.evidence} report={report} />
+      {f.caveat && <p className="cx-caveat">{L(f.caveat)}</p>}
     </li>
   );
 };

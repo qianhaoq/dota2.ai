@@ -16,7 +16,9 @@ export interface Finding {
   shared?: boolean;
   title: Bi;
   body: Bi;
-  ask: Bi;
+  action: Bi;
+  /** Pre-1.2.0 reports (HTTP-cached for up to 5 min across a deploy). */
+  ask?: Bi;
   evidence: Evidence[];
   caveat?: Bi | null;
   window?: [number, number];

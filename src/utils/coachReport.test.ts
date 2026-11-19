@@ -78,9 +78,11 @@ describe('buildCoachReport — unparsed match 9091400302', () => {
     expect(ids(r, u)).toContain('farm.strong');
   });
 
-  it('every fix carries a question, bilingual text and evidence', () => {
+  it('every finding tells the player what to do (not a question), bilingual, with evidence', () => {
     for (const rv of r.reviews) for (const f of rv.findings) {
-      expect(f.title.en && f.title.zh && f.body.en && f.body.zh && f.ask.en && f.ask.zh).toBeTruthy();
+      expect(f.title.en && f.title.zh && f.body.en && f.body.zh && f.action.en && f.action.zh).toBeTruthy();
+      expect(f.action.en).not.toMatch(/\?/);
+      expect(f.action.zh).not.toMatch(/[？?]/);
       expect(f.evidence.length).toBeGreaterThan(0);
     }
   });
@@ -207,7 +209,7 @@ describe('buildCoachReport — Codex P2 regressions, round 2 (#139)', () => {
     const miss = fs.find((f) => f.id === 'items.answer_missing' && f.title.en.includes('chain disables'));
     expect(miss).toBeTruthy();
     expect(miss!.body.en).toContain('Black King Bar does not stop');
-    expect(miss!.ask.en).not.toContain('Black King Bar instead');
+    expect(miss!.action.en).not.toContain('Black King Bar');
   });
 });
 
@@ -626,8 +628,18 @@ describe('POST /api/coach/:matchId/ask (follow-up questions)', () => {
     expect(ctx).toContain('大招未放');
     expect(ctx).toContain('输掉的团战');
     expect(ctx).not.toMatch(/\b(unused|absent|fight_lost|cooldown)\b/);
+    // Each death is its own line with a labelled killer, matching the engine rows.
+    const rv = report.reviews[0] as { chapters: { deaths: { rows: { time: number; killer: number }[] } } };
+    const deathLines = ctx.split('\n').filter((l: string) => /^- \d+:\d{2} 击杀者：/.test(l));
+    expect(deathLines).toHaveLength(rv.chapters.deaths.rows.length);
+    const name = (id: number) => (report.players as { hero: { id: number; zh: string } }[]).find((x) => x.hero.id === id)?.hero.zh ?? '非英雄';
+    rv.chapters.deaths.rows.forEach((d, i) => {
+      const t = `${Math.floor(Math.round(d.time) / 60)}:${String(Math.round(d.time) % 60).padStart(2, '0')}`;
+      expect(deathLines[i].startsWith(`- ${t} 击杀者：${name(d.killer)}，`)).toBe(true);
+    });
     const msgs = askMessages({ report: report as never, slot: 0, lang: 'zh', question: '为什么？', history: [{ q: '上一问', a: '上一答' }] });
     expect(msgs[0].content).toMatch(/只能使用下面"复盘数据"里的事实/);
+    expect(msgs[0].content).toMatch(/时间和击杀者必须出自"死亡记录"的同一行/);
     expect(msgs.map((m: { role: string }) => m.role)).toEqual(['system', 'user', 'assistant', 'user', 'assistant', 'user']);
     expect(msgs[msgs.length - 1].content).toBe('为什么？');
   });
