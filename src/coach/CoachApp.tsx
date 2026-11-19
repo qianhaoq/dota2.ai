@@ -50,6 +50,7 @@ const UI = {
   notHeroTitle: { en: 'No hero got the kill: tower, creeps or neutrals', zh: '击杀者不是英雄：防御塔、小兵或野怪' },
   converted: { en: '→ objective lost', zh: '→ 丢了目标' },
   gold: { en: 'Gold lead', zh: '经济差' },
+  yourDeaths: { en: 'your deaths', zh: '你的死亡' },
   cantSee: { en: 'Not parsed yet — here is what we can’t see', zh: '比赛尚未解析——以下内容暂时看不到' },
   cantSeeSub: {
     en: 'OpenDota has not parsed the replay. The read above uses end-of-game data only. Parsing usually takes a few minutes while the replay is still available.',
@@ -235,6 +236,7 @@ export const CoachReportPage: React.FC = () => {
         </p>
       )}
       <Lineup report={report} selected={selected} onPick={(s) => setParam({ p: String(s), pos: null })} />
+      {report.timeline && <GoldGraph report={report} review={review} />}
       {review && <Chapters review={review} report={report} pos={posOverride} />}
       {review && player ? (
         <div className={`cx-grid ${loading ? 'is-loading' : ''}`}>
@@ -256,7 +258,6 @@ export const CoachReportPage: React.FC = () => {
           <p>{L(UI.pickSub)}</p>
         </div>
       )}
-      {report.timeline && <GoldGraph report={report} review={review} />}
       {report.data_gaps.length > 0 && (
         <ParsePanel
           report={report}
@@ -350,6 +351,13 @@ const Lineup: React.FC<{ report: CoachReport; selected: number | null; onPick: (
                 <span className="cx-seat-name">{L(p.hero)}</span>
                 <span className="cx-seat-kda">{p.kda.join('/')}</span>
                 <span className="cx-seat-nw">{k(p.net_worth)}</span>
+                {p.items.length > 0 && (
+                  <span className="cx-seat-items" aria-label={L(UI.items)}>
+                    {p.items.map((it, i) => (it.img
+                      ? <SafeImg key={`${it.key}-${i}`} src={it.img} alt={L(it)} title={L(it)} />
+                      : <span key={`${it.key}-${i}`} className="cx-img-missing" title={L(it)} />))}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -574,22 +582,39 @@ const GoldGraph: React.FC<{ report: CoachReport; review: Review | null }> = ({ r
   const line = adv.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const area = `${line} L${x(adv.length - 1)},${H / 2} L${x(0)},${H / 2} Z`;
   const tp = review?.findings.find((f) => f.window)?.window;
+  const ticks = Array.from({ length: Math.floor((adv.length - 1) / 10) + 1 }, (_, i) => i * 10);
   return (
     <section className="cx-graph" aria-label={L(UI.gold)}>
       <h3>{L(UI.gold)} <small><span className="r">{L(UI.radiant)} ▲</span> <span className="d">{L(UI.dire)} ▼</span></small></h3>
+      <div className="cx-graph-plot">
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={L(UI.gold)}>
         <defs>
           <clipPath id="cx-top"><rect x="0" y="0" width={W} height={H / 2} /></clipPath>
           <clipPath id="cx-bot"><rect x="0" y={H / 2} width={W} height={H / 2} /></clipPath>
         </defs>
         {tp && <rect className="cx-tp" x={x(tp[0] / 60)} width={x(tp[1] / 60) - x(tp[0] / 60)} y="0" height={H} />}
+        {ticks.slice(1).map((m) => <line key={m} x1={x(m)} x2={x(m)} y1="0" y2={H} className="cx-grid-v" />)}
         <line x1="0" x2={W} y1={H / 2} y2={H / 2} className="cx-axis" />
         <path d={area} className="cx-area-r" clipPath="url(#cx-top)" />
         <path d={area} className="cx-area-d" clipPath="url(#cx-bot)" />
         <path d={line} className="cx-line" />
-        {review?.deaths?.map((d, i) => <circle key={i} cx={x(d.time / 60)} cy={H - 6} r="3" className="cx-death-dot" />)}
       </svg>
-      <div className="cx-graph-axis"><span>0:00</span><span>{clock((adv.length - 1) * 60)}</span></div>
+      {/* Labels are HTML over the stretched SVG so text never distorts. */}
+      {review?.deaths && review.deaths.length > 0 && (
+        <div className="cx-graph-deaths" aria-hidden="true">
+          {review.deaths.map((d, i) => <i key={i} style={{ left: `${(x(d.time / 60) / W) * 100}%` }} />)}
+        </div>
+      )}
+      <div className="cx-graph-y" aria-hidden="true">
+        <span style={{ top: `${(y(max) / H) * 100}%` }}>+{k(max)}</span>
+        <span style={{ top: '50%' }}>0</span>
+        <span style={{ top: `${(y(-max) / H) * 100}%` }}>−{k(max)}</span>
+      </div>
+      </div>
+      <div className="cx-graph-axis" aria-hidden="true">
+        {ticks.map((m) => <span key={m} style={{ left: `${(x(m) / W) * 100}%` }}>{m}′</span>)}
+      </div>
+      {review?.deaths && review.deaths.length > 0 && <p className="cx-graph-legend"><i className="cx-death-key" /> {L(UI.yourDeaths)}</p>}
     </section>
   );
 };

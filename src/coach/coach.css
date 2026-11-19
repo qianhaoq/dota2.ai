@@ -197,8 +197,6 @@
 .cx-area-d { fill: rgba(208, 106, 85, 0.22); }
 .cx-line { fill: none; stroke: var(--text-2); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .cx-tp { fill: rgba(227, 163, 70, 0.12); }
-.cx-death-dot { fill: var(--dire); }
-.cx-graph-axis { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-3); }
 .cx-gaps { margin-top: 28px; border: 1px dashed rgba(227, 163, 70, 0.35); border-radius: 14px; padding: 20px; }
 .cx-gaps h3 { font-family: var(--serif); font-weight: 400; font-size: 20px; margin: 0 0 10px; }
 .cx-gaps ul { margin: 0 0 6px; padding-left: 18px; color: var(--text-2); }
@@ -382,3 +380,18 @@
   .cx-case-table { font-size: 12.5px; }
   .cx-case-table th, .cx-case-table td { padding: 5px 4px; }
 }
+
+/* ------------------------------------------ lineup items + gold graph */
+.cx-seat-items { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 5px; }
+.cx-seat-items img, .cx-seat-items .cx-img-missing { width: 100%; aspect-ratio: 88 / 64; height: auto; border-radius: 2px; object-fit: cover; display: block; }
+.cx-graph-plot { position: relative; padding-left: 40px; }
+.cx-graph-y { position: absolute; left: 0; top: 0; bottom: 0; width: 36px; pointer-events: none; }
+.cx-graph-y span { position: absolute; right: 0; transform: translateY(-50%); font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.cx-graph-axis { position: relative; height: 16px; margin-left: 40px; font-size: 10.5px; color: var(--text-3); }
+.cx-graph-axis span { position: absolute; transform: translateX(-50%); }
+.cx-graph-axis span:first-child { transform: none; }
+.cx-grid-v { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.cx-graph-legend { margin: 4px 0 0 40px; font-size: 11.5px; color: var(--text-3); }
+.cx-death-key { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--dire); vertical-align: middle; }
+.cx-graph-deaths { position: absolute; left: 40px; right: 0; bottom: 3px; height: 7px; pointer-events: none; }
+.cx-graph-deaths i { position: absolute; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--dire); }
