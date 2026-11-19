@@ -22,8 +22,8 @@ Spectre · Core · 12/15/9 · loss
 Biggest lever: no item answer to their magic burst.
 
 1. ! No item answer to their magic burst
-   Ask yourself: Think of the fight you most regret. Which enemy spell started it —
-                 and which item slot could have been Black King Bar instead?
+   What to do: Next game against Skywrath Mage, Hoodwink: make Black King Bar your next big
+               item after your core item, and have it before the first big fight.
    Skywrath Mage, Hoodwink brought magic burst. You finished with nothing that answers it —
    the usual tools for a core are Black King Bar, Pipe of Insight, Eternal Shroud, Mage Slayer.
    You also died more than most Spectre players (15 deaths).

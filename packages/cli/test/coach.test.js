@@ -21,10 +21,10 @@ describe('dota2ai coach', () => {
     expect(() => findSlot(report, 'axe')).toThrow(/not in this match/);
   });
 
-  it('renders the read with questions and the parse gap', () => {
+  it('renders the read with next-game actions and the parse gap', () => {
     const text = renderCoach(report, findSlot(report, 'spectre'), 'en');
     expect(text).toContain('Dire victory 34–75');
-    expect(text).toContain('Ask yourself:');
+    expect(text).toContain('What to do:');
     expect(text).toContain('Not parsed yet');
   });
 

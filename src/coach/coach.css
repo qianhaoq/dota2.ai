@@ -123,7 +123,6 @@
 .cx-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; transition: opacity .2s; }
 .cx-grid.is-loading { opacity: 0.55; }
 .cx-read-head { display: flex; justify-content: space-between; align-items: center; }
-.cx-toggle { background: none; border: 1px solid var(--line-2); border-radius: 999px; padding: 4px 12px; font-size: 12.5px; color: var(--text-2); }
 .cx-headline { font-family: var(--serif); font-weight: 400; font-size: clamp(24px, 3vw, 32px); line-height: 1.2; letter-spacing: -0.01em; margin: 10px 0 24px; }
 .cx-group { margin-bottom: 26px; }
 .cx-group-title { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); font-weight: 500; margin: 0 0 10px; }
@@ -137,11 +136,9 @@
 .cx-area { color: var(--accent); }
 .cx-card.tone-good .cx-area { color: var(--good); }
 .cx-card h4 { font-family: var(--serif); font-weight: 400; font-size: 21px; line-height: 1.25; margin: 6px 0 10px; }
-.cx-ask { margin: 0 0 12px; padding: 10px 14px; background: rgba(236, 228, 214, 0.04); border-radius: 10px; font-family: var(--serif); font-style: italic; font-size: 16px; color: var(--text); }
-.cx-ask span { display: block; font-family: var(--sans); font-style: normal; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); margin-bottom: 4px; }
+.cx-do { margin: 0 0 12px; padding: 10px 14px; background: rgba(227, 163, 70, 0.08); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; font-size: 15.5px; line-height: 1.6; color: var(--text); }
+.cx-do span { display: block; font-family: var(--sans); font-style: normal; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
 .cx-body { margin: 0 0 12px; color: var(--text-2); }
-.cx-reveal { background: none; border: 0; padding: 0; color: var(--accent); font-size: 14px; }
-.cx-reveal::after { content: ' →'; }
 .cx-caveat { margin: 10px 0 0; font-size: 12.5px; color: var(--text-3); }
 .cx-evidence { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
 .cx-ev { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 120px; }
