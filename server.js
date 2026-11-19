@@ -126,6 +126,7 @@ import {
 import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyticsEvents.js';
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
 import { createCoachRouter } from './lib/coach/router.js';
+import { createCaseService } from './lib/coach/caseSource.js';
 import { createLlmRateLimit } from './lib/llmRateLimit.js';
 import { rateLimitKey } from './lib/rateLimitKey.js';
 import { validateChatRequest, chatRequestErrorMessage } from './lib/chatRequest.js';
@@ -2499,11 +2500,21 @@ function respondReviewError(res, wantsStream, errorMsg, status = 400, extra = {}
 app.use(createV1Router({ fetchMatch: getMatchDetail, replayIngest, phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined }));
 
 // Coach report (deterministic, no LLM): GET /api/coach/:matchId
+// Case studies: pro games via OpenDota Explorer, profiled once and cached.
+// Raw pro matches bypass matchDetailCache so they never evict viewers' games.
+const opendotaKeyParam = opendotaApiKey ? `api_key=${encodeURIComponent(opendotaApiKey)}` : '';
+const coachCases = createCaseService({
+  explorer: (sql) => fetchWithRetry(`${OPENDOTA_API}/explorer?sql=${encodeURIComponent(sql)}${opendotaKeyParam ? `&${opendotaKeyParam}` : ''}`, 1, 1000, { timeoutMs: 20000 }),
+  fetchMatch: (id) => fetchWithRetry(`${OPENDOTA_API}/matches/${id}${opendotaKeyParam ? `?${opendotaKeyParam}` : ''}`, 1, 1000, { timeoutMs: 20000 }),
+  log: (msg) => console.warn(`[coach-cases] ${msg}`),
+});
+
 app.use(createCoachRouter({
   getMatchDetail,
   resolveClientIp,
   mapError: mapOpenDotaFetchError,
   log: (msg) => console.warn(`[coach] ${msg}`),
+  cases: coachCases,
   // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
   ask: {
     guard: (req) => {

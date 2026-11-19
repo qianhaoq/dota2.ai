@@ -1,4 +1,4 @@
-import type { CoachReport } from './types';
+import type { CaseStudies, CoachReport } from './types';
 
 export class CoachApiError extends Error {
   constructor(public code: string, message: string, public status: number, public retryAfterSec?: number) {
@@ -21,6 +21,19 @@ export async function fetchCoachReport(
     throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status, body.retryAfterSec);
   }
   return body as CoachReport;
+}
+
+/** Professional case studies for one player; slow on a cold cache. */
+export async function fetchCoachCases(
+  matchId: string,
+  opts: { slot: number; pos?: number | null; signal?: AbortSignal },
+): Promise<CaseStudies> {
+  const qs = new URLSearchParams({ slot: String(opts.slot) });
+  if (opts.pos != null) qs.set('pos', String(opts.pos));
+  const res = await fetch(`/api/coach/${encodeURIComponent(matchId)}/cases?${qs}`, { signal: opts.signal });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status, body.retryAfterSec);
+  return body as CaseStudies;
 }
 
 export interface ParseStatus { status: string; jobId?: number | null; retryAfterSec?: number | null; message?: string }
