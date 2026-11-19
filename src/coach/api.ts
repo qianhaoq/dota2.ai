@@ -79,4 +79,6 @@ export async function askCoach(
       if (msg.done) return;
     }
   }
+  // EOF without the terminal frame: a proxy or the server cut the answer.
+  throw new CoachApiError('incomplete', 'The answer stream ended early', 0);
 }

@@ -680,6 +680,55 @@ describe('POST /api/coach/:matchId/ask (follow-up questions)', () => {
     expect(f[f.length - 1]).toEqual({ done: true });
   });
 
+  it('a client that leaves while the match loads never reaches the LLM budget or a provider', async () => {
+    let release!: () => void;
+    const loaded = new Promise<void>((r) => { release = r; });
+    let acquired = 0; let built = 0;
+    const app = express();
+    app.use(express.json());
+    app.use(createCoachRouter({
+      getMatchDetail: async () => { await loaded; return parsedReal(); },
+      resolveClientIp: () => '1.2.3.4',
+      mapError: () => ({ status: 502, body: { error: 'x' } }),
+      limiter: { tryConsume: () => ({ ok: true, retryAfterSec: 0 }) },
+      ask: {
+        providers: () => { built += 1; return [{ name: 'fake', create: async () => null }]; },
+        stream: async () => ({ status: 'done', finishReason: 'stop', forwarded: true }),
+        attemptMs: 1000,
+        llm: { acquire: () => { acquired += 1; return { ok: true }; }, respondRateLimited: () => {} },
+      } as never,
+    }));
+    server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server!.once('listening', r));
+    const base = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+    const ac = new AbortController();
+    const req = fetch(`${base}/api/coach/9091400302/ask`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: 'q', slot: 0 }), signal: ac.signal,
+    }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 100));
+    ac.abort();
+    await req;
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(acquired).toBe(0);
+    expect(built).toBe(0);
+  });
+
+  it('the client rejects a stream that ends without the terminal frame', async () => {
+    const { askCoach } = await import('../coach/api');
+    const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"text":"The most important mistake was"}\n\n')); c.close(); } });
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })) as typeof fetch;
+    try {
+      const got: string[] = [];
+      await expect(askCoach('1', { slot: 0, lang: 'en', question: 'q', history: [] }, { onText: (t) => got.push(t) })).rejects.toMatchObject({ code: 'incomplete' });
+      expect(got).toEqual(['The most important mistake was']);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
   it('no death durations at all: the takeaway gives the count only, never "0:00 spent dead"', () => {
     const raw = parsedReal();
     for (const p of raw.players) { delete p.life_state_dead; for (const d of p.deaths_log ?? []) delete d.time_dead; }

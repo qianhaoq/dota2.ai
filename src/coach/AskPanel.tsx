@@ -22,6 +22,7 @@ const T = {
   thinking: { en: 'Reading the review…', zh: '正在翻看复盘…' },
   rateLimited: { en: 'Too many questions — wait a minute and try again.', zh: '提问太频繁了，请稍等一分钟再试。' },
   failed: { en: 'Could not get an answer. Try again.', zh: '没有拿到回答，请重试。' },
+  incomplete: { en: 'The answer was cut off — ask again for the full version.', zh: '回答被中断了，内容不完整，请重新提问。' },
   tooLong: { en: 'Keep the question under 500 characters.', zh: '问题请控制在 500 字以内。' },
 } satisfies Record<string, Bi>;
 
@@ -104,7 +105,8 @@ export const AskPanel = forwardRef<AskHandle, { report: CoachReport; review: Rev
       patchLast((t) => ({ ...t, pending: false }));
     } catch (e) {
       if ((e as Error).name === 'AbortError') { patchLast((t) => ({ ...t, pending: false })); return; }
-      const msg = e instanceof CoachApiError && e.status === 429 ? L(T.rateLimited) : L(T.failed);
+      const msg = e instanceof CoachApiError && e.status === 429 ? L(T.rateLimited)
+        : e instanceof CoachApiError && e.code === 'incomplete' ? L(T.incomplete) : L(T.failed);
       patchLast((t) => ({ ...t, pending: false, error: msg }));
     } finally {
       setBusy(false);
