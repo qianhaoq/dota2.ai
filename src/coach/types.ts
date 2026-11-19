@@ -48,7 +48,7 @@ export interface FightRow {
 
 export interface DeathRow {
   time: number; killer: number | null; phase: 'early' | 'mid' | 'late';
-  context: 'lane' | 'caught' | 'fight_won' | 'fight_lost' | 'fight_even';
+  context: 'lane' | 'caught' | 'fight_won' | 'fight_lost' | 'fight_even' | 'fight' | 'unknown';
   gold_lost: number | null; time_dead: number | null; converted: boolean | null;
 }
 
@@ -75,7 +75,7 @@ export interface Chapters {
     read: Bi; note: Bi;
   } | null;
   items: {
-    rows: { time: number; item: ItemRef; phase: string; vs: 'physical' | 'magic' | null }[];
+    rows: { time: number; item: ItemRef; phase: string; vs: ('physical' | 'magic')[] }[];
     damage: { total: number; types: { physical: number; magic: number; pure: number; other: number } | null; by_hero: { hero: number; amount: number; share: number }[] } | null;
     read: Bi; note: Bi;
   } | null;

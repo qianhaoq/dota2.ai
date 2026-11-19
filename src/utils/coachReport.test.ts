@@ -314,7 +314,7 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
     expect(mm.answer.key).toBe('ghost');
     expect(it.read.zh).toContain('此时你已经死了 11 次');
     // Lotus Orb is a support's answer, not counted as a core's physical defence.
-    expect(it.rows.find((r) => r.item.key === 'lotus_orb')!.vs).toBeNull();
+    expect(it.rows.find((r) => r.item.key === 'lotus_orb')!.vs).toEqual([]);
   });
 
   it('fights: 18 fights, won/lost by gold edge, Ravage tracked with cooldown honesty', () => {
@@ -331,7 +331,7 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
     const s = ch('tidehunter').story!;
     expect(s.phases.map((p) => p.key)).toEqual(['early', 'mid', 'late']);
     expect(s.phases.reduce((a, p) => a + p.swing, 0)).toBe(-43787);
-    expect(s.read.zh).toContain('10:00 18%');
+    expect(s.read.zh).toContain('10:00 落后 18%，25:00 落后 30%');
   });
 
   it('plan: at most three, each with a reason and a check; winners still get one from their findings', () => {
@@ -345,6 +345,53 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
     }
   });
 
+  it('a pre-horn death (negative time) is laning, not a 500', () => {
+    const raw = m();
+    const tide = raw.players.find((p: { hero_id: number }) => p.hero_id === 29);
+    tide.deaths_log[0].time = -15;
+    const r = buildCoachReport(raw);
+    const d = r.reviews[slotOf(r, 'tidehunter')].chapters!.deaths!;
+    expect(d.rows[0]).toMatchObject({ time: -15, phase: 'early' });
+  });
+
+  it('an item that answers both damage types counts for both (Glimmer Cape for a support)', () => {
+    const it = ch('shadow_shaman').items!;
+    const glimmer = it.rows.find((r) => r.item.key === 'glimmer_cape')!;
+    expect(glimmer.vs.sort()).toEqual(['magic', 'physical']);
+    const raw = m();
+    const ss = raw.players.find((p: { hero_id: number }) => p.hero_id === 27);
+    ss.damage_inflictor_received = { null: 1000, skywrath_mage_arcane_bolt: 9000 };
+    const r = buildCoachReport(raw);
+    const items = r.reviews[slotOf(r, 'shadow_shaman')].chapters!.items!;
+    expect(items.read.en).toContain('first item against magic damage was Glimmer Cape');
+    expect(items.read.en).not.toMatch(/never bought an item against magic/);
+  });
+
+  it('ultimate cooldown counts from the end of the fight that cast it', () => {
+    const raw = m();
+    const ti = raw.players.findIndex((p: { hero_id: number }) => p.hero_id === 29);
+    const blank = () => raw.players.map(() => ({ damage: 0, deaths: 0, gold_delta: 0, ability_uses: {}, item_uses: {}, healing: 0 }));
+    const fight = (start: number, end: number, ravage: boolean) => {
+      const players = blank();
+      players[ti] = { ...players[ti], damage: 500, ability_uses: ravage ? { tidehunter_ravage: 1 } : { tidehunter_gush: 1 } };
+      return { start, end, deaths: 0, players };
+    };
+    raw.teamfights = [fight(600, 650, true), fight(760, 770, false), fight(780, 790, false), fight(820, 830, false)];
+    const r = buildCoachReport(raw);
+    const rows = r.reviews[slotOf(r, 'tidehunter')].chapters!.fights!.rows;
+    // 650 + 150 = 800: 760 and 780 are still on cooldown, 820 is not.
+    expect(rows.map((x) => x.ult_state)).toEqual(['used', 'cooldown', 'cooldown', 'unused']);
+  });
+
+  it('the trajectory labels each point ahead/behind on its own (comeback)', () => {
+    const raw = m();
+    raw.radiant_gold_adv = raw.radiant_gold_adv.map((v: number, i: number) => (i <= 10 ? -2000 * (i / 10) : 4000));
+    const r = buildCoachReport(raw);
+    const s = r.reviews[slotOf(r, 'tidehunter')].chapters!.story!;
+    expect(s.read.en).toMatch(/behind \d+% at 10:00, ahead \d+% at 25:00/);
+    expect(s.read.zh).toMatch(/10:00 落后 \d+%，25:00 领先 \d+%/);
+  });
+
   it('unparsed matches get no chapters', () => {
     const r = buildCoachReport(unparsed());
     expect(r.reviews.every((rv) => rv.chapters == null)).toBe(true);
@@ -353,6 +400,11 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
   it('another real parse builds chapters without throwing for all ten players', () => {
     const r = buildCoachReport(parsed());
     for (const rv of r.reviews) expect(rv.chapters).toBeTruthy();
+    // Fight membership still comes from the fight windows: deaths inside one
+    // are "fight" (result unknown), never "caught".
+    const d0 = r.reviews[0].chapters!.deaths!;
+    expect(d0.rows.filter((x) => x.time === 1580 || x.time === 1680).map((x) => x.context)).toEqual(['fight', 'fight']);
+    expect(d0.rows.filter((x) => x.context === 'caught').length).toBe(r.reviews[0].deaths!.filter((x) => x.in_fight === false && x.time >= 600).length);
     // Its teamfights carry no per-player rows: no fight table, no "0 of 4 fights".
     expect(r.reviews.every((rv) => rv.chapters!.fights == null)).toBe(true);
     expect(r.reviews[0].chapters!.story!.phases.every((p) => p.fights == null)).toBe(true);

@@ -40,6 +40,7 @@ const T = {
   ctx: {
     lane: { en: 'Lane', zh: '对线期' }, caught: { en: 'Caught alone', zh: '团战外被抓' },
     fight_won: { en: 'Fight · won', zh: '团战 · 赢' }, fight_lost: { en: 'Fight · lost', zh: '团战 · 输' }, fight_even: { en: 'Fight · even', zh: '团战 · 均势' },
+    fight: { en: 'Fight', zh: '团战' }, unknown: { en: 'Unknown', zh: '无法判断' },
   },
   dmgBy: { en: 'Hero damage you took, by source', zh: '你承受的英雄伤害（按来源）' },
   dmgType: { en: 'All damage you took, by type', zh: '你承受的全部伤害（按类型）' },
@@ -218,7 +219,7 @@ const Items: React.FC<{ ch: NonNullable<ChaptersT['items']>; heroById: Map<numbe
               <time>{clock(r.time)}</time>
               {r.item.img ? <SafeImg src={r.item.img} alt="" /> : <span className="cx-img-missing" />}
               <span>{L(r.item)}</span>
-              {r.vs && <em className={`cx-vs cx-vs--${r.vs}`}>{L(r.vs === 'physical' ? T.vsPhys : T.vsMagic)}</em>}
+              {r.vs.map((v) => <em key={v} className={`cx-vs cx-vs--${v}`}>{L(v === 'physical' ? T.vsPhys : T.vsMagic)}</em>)}
             </li>
           ))}
         </ol>
