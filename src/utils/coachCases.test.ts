@@ -4,8 +4,8 @@ import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
-import { buildCaseStudies, candidateProfile, keyEnemyOf, similarHeroes, similarity } from '../../lib/coach/cases.js';
-import { caseCandidatesSql, chooseCandidates, createCaseService } from '../../lib/coach/caseSource.js';
+import { buildCaseStudies, candidateProfile, keyEnemyOf, profileOf, similarHeroes, similarity, withDamageType } from '../../lib/coach/cases.js';
+import { caseCandidatesSql, chooseCandidates, createCaseService, UNUSABLE_TTL_MS } from '../../lib/coach/caseSource.js';
 import { createCoachRouter } from '../../lib/coach/router.js';
 import { reportContext } from '../../lib/coach/ask.js';
 
@@ -112,6 +112,65 @@ describe('case studies (pure)', () => {
   });
 });
 
+describe('case studies — unknown is never zero (Codex #153)', () => {
+  const pool = () => proProfiles();
+
+  it('a hero without a tracked ultimate gets no ultimate theme and is never a fight case', () => {
+    const match = parsedReal();
+    const report = buildCoachReport(match);
+    const pudge = 3;
+    const me: any = profileOf(match, report, pudge);
+    expect(me.fights.ult_in).toBeNull();
+    expect(me.fights.ult_unused).toBeNull();
+    const out: any = buildCaseStudies({ report, slot: pudge, match, candidates: pool() });
+    expect(out.themes.map((t: any) => t.key)).not.toContain('fights');
+    expect(JSON.stringify(out)).not.toMatch(/\bnull of\b|undefined/);
+    // As a candidate: untracked usage cannot make a losing game a negative case.
+    const tide = buildCoachReport(match);
+    const fake = pool().map((p: any) => ({ ...p, fights: p.fights && { ...p.fights, ult_in: null, ult_unused: null } }));
+    const r2: any = buildCaseStudies({ report: tide, slot: 0, match, candidates: fake });
+    expect(r2.themes.map((t: any) => t.key)).not.toContain('fights');
+  });
+
+  it('defensive items come from the full purchase log (a Pavise counts)', () => {
+    const match = parsedReal();
+    const ss = 1; // Shadow Shaman, support
+    match.players[ss].purchase_log = [...match.players[ss].purchase_log, { time: 700, key: 'pavise' }].sort((a: any, b: any) => a.time - b.time);
+    const report = buildCoachReport(match);
+    const p: any = withDamageType(profileOf(match, report, ss), 'physical');
+    expect(p.first_answer).toMatchObject({ key: 'pavise', time: 700 });
+    // No purchase log at all: unknown, not "no defensive item".
+    const bare = parsedReal();
+    delete bare.players[ss].purchase_log;
+    const q: any = profileOf(bare, buildCoachReport(bare), ss);
+    expect(q.defence).toBeNull();
+    expect(q.has_items).toBe(false);
+  });
+
+  it('without a complete death log, deaths to the key enemy are unknown — not a positive case', () => {
+    const match = parsedReal();
+    for (const pl of match.players) { delete pl.deaths_log; delete pl.kills_log; }
+    const report = buildCoachReport(match);
+    const p: any = profileOf(match, report, 0);
+    expect(p.deaths_to).toBeNull();
+    expect(p.caught).toBeNull();
+    const unknownPool = pool().map((c: any) => ({ ...c, deaths_to: null, caught: null, share_dead: null }));
+    const full = parsedReal();
+    const out: any = buildCaseStudies({ report: buildCoachReport(full), slot: 0, match: full, candidates: unknownPool });
+    expect(out.themes.find((t: any) => t.key === 'deaths')).toBeUndefined();
+  });
+
+  it('the "caught outside fights" tip needs the positive case to actually be caught less', () => {
+    const match = parsedReal();
+    const report = buildCoachReport(match);
+    const caughtALot = pool().map((c: any) => ({ ...c, caught: 6, defence: [] }));
+    const out: any = buildCaseStudies({ report, slot: 0, match, candidates: caughtALot });
+    const deaths = out.themes.find((t: any) => t.key === 'deaths');
+    expect(deaths.positive).toBeTruthy();
+    expect(deaths.analysis.some((a: any) => a.zh.includes('团战外被抓') && a.zh.includes('学一件事'))).toBe(false);
+  });
+});
+
 describe('case source', () => {
   it('builds SQL from integers only', () => {
     const sql = caseCandidatesSql({ heroIds: [29, 7], enemyId: 70, excludeMatchId: 9091400302 });
@@ -151,6 +210,28 @@ describe('case source', () => {
     await svc.get({ report, slot: 0, match: base });
     expect(calls).toEqual({ explorer: 1, fetch: 2 });
     expect(svc.peek({ report, slot: 0 })).toBe(a);
+  });
+
+  it('a pro game that was not parsed yet is retried later, not cached as unusable forever', async () => {
+    let clock = 0;
+    let parsedNow = false;
+    let fetches = 0;
+    const svc = createCaseService({
+      now: () => clock,
+      resultTtlMs: 1000,
+      explorer: async () => ({ rows: [{ match_id: 11, hero_id: 29, player_slot: 0 }] }),
+      fetchMatch: async () => { fetches += 1; return parsedNow ? { ...parsedReal(), match_id: 11 } : { ...unparsed(), match_id: 11 }; },
+    });
+    const base = parsedReal();
+    const report = buildCoachReport(base);
+    expect((await svc.get({ report, slot: 0, match: base })).pool.total).toBe(0);
+    parsedNow = true;
+    clock += 2000; // results expired, unusable entry still fresh: no refetch
+    expect((await svc.get({ report, slot: 0, match: base })).pool.total).toBe(0);
+    expect(fetches).toBe(1);
+    clock += UNUSABLE_TTL_MS;
+    expect((await svc.get({ report, slot: 0, match: base })).pool.total).toBe(1);
+    expect(fetches).toBe(2);
   });
 
   it('an upstream outage is an error, not "no similar games"', async () => {
