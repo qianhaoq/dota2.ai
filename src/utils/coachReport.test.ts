@@ -282,6 +282,83 @@ describe('buildCoachReport — 9091400302 parsed (real OpenDota parse)', () => {
   });
 });
 
+describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
+  const m = () => JSON.parse(readFileSync(new URL('../fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
+  const ch = (slug: string) => { const r = buildCoachReport(m()); return r.reviews[slotOf(r, slug)].chapters!; };
+
+  it('laning: Tidehunter + Shadow Shaman lost top to Ursa + Hoodwink on lane gold at 10:00', () => {
+    const l = ch('tidehunter').laning!;
+    expect(l.lane).toBe('top');
+    expect(l.gold).toEqual([2986 + 1729, 3663 + 1776]);
+    expect(l.outcome).toBe('lost');
+    expect(l.deaths).toBe(3);
+    expect(l.read.zh).toContain('4:21 被森海飞霞');
+    expect(l.towers).toEqual({ ours: 974, theirs: 1208 });
+  });
+
+  it('deaths: every death gets a context, and the repeated killer is named', () => {
+    const d = ch('tidehunter').deaths!;
+    expect(d.rows).toHaveLength(12);
+    expect(d.summary.top_killer).toEqual({ hero: 70, deaths: 8 });
+    const c = d.summary as unknown as { by_context: Record<string, number> };
+    expect(Object.values(c.by_context).reduce((a, b) => a + b, 0)).toBe(12);
+    expect(d.read.zh).toContain('其中 8 次死于熊战士');
+  });
+
+  it('items: damage split by type points at physical, and the first anti-physical item came after 11 deaths', () => {
+    const it = ch('tidehunter').items!;
+    expect(it.damage!.by_hero[0].hero).toBe(70);
+    expect(it.damage!.types!.physical).toBeGreaterThan(0.55);
+    const mm = (it as unknown as { mismatch: { kind: string; answer: { key: string } } }).mismatch;
+    expect(mm.kind).toBe('physical');
+    expect(mm.answer.key).toBe('ghost');
+    expect(it.read.zh).toContain('此时你已经死了 11 次');
+    // Lotus Orb is a support's answer, not counted as a core's physical defence.
+    expect(it.rows.find((r) => r.item.key === 'lotus_orb')!.vs).toBeNull();
+  });
+
+  it('fights: 18 fights, won/lost by gold edge, Ravage tracked with cooldown honesty', () => {
+    const f = ch('tidehunter').fights!;
+    expect(f.summary.fights).toBe(18);
+    expect(f.ultimate!.key).toBe('tidehunter_ravage');
+    expect(f.summary.ult_in).toBe(7);
+    expect(f.rows.filter((r) => r.ult_state === 'unused')).toHaveLength(f.summary.ult_unused);
+    // A short-cooldown self-buff is not tracked as a fight-defining ultimate.
+    expect(ch('ursa').fights!.ultimate).toBeNull();
+  });
+
+  it('story: the lead trajectory is relative to gold earned and phases add up to the final lead', () => {
+    const s = ch('tidehunter').story!;
+    expect(s.phases.map((p) => p.key)).toEqual(['early', 'mid', 'late']);
+    expect(s.phases.reduce((a, p) => a + p.swing, 0)).toBe(-43787);
+    expect(s.read.zh).toContain('10:00 18%');
+  });
+
+  it('plan: at most three, each with a reason and a check; winners still get one from their findings', () => {
+    const tide = ch('tidehunter').plan;
+    expect(tide.map((p) => p.key)).toEqual(['deaths.top_killer', 'items.defense_order', 'laning.deaths']);
+    for (const slug of ['ursa', 'skywrath_mage', 'spectre', 'pudge']) {
+      const plan = ch(slug).plan;
+      expect(plan.length).toBeGreaterThan(0);
+      expect(plan.length).toBeLessThanOrEqual(3);
+      for (const p of plan) { expect(p.why.zh).toBeTruthy(); expect(p.check.zh).toBeTruthy(); }
+    }
+  });
+
+  it('unparsed matches get no chapters', () => {
+    const r = buildCoachReport(unparsed());
+    expect(r.reviews.every((rv) => rv.chapters == null)).toBe(true);
+  });
+
+  it('another real parse builds chapters without throwing for all ten players', () => {
+    const r = buildCoachReport(parsed());
+    for (const rv of r.reviews) expect(rv.chapters).toBeTruthy();
+    // Its teamfights carry no per-player rows: no fight table, no "0 of 4 fights".
+    expect(r.reviews.every((rv) => rv.chapters!.fights == null)).toBe(true);
+    expect(r.reviews[0].chapters!.story!.phases.every((p) => p.fights == null)).toBe(true);
+  });
+});
+
 describe('buildCoachReport — input guard', () => {
   it('rejects a payload without a 10-player roster', () => {
     expect(() => buildCoachReport({ players: [] })).toThrow(/roster/);

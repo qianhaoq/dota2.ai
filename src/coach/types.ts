@@ -35,6 +35,57 @@ export interface Review {
   findings: Finding[];
   deaths: { time: number; killer: number | null; in_fight: boolean | null; converted: boolean | null }[] | null;
   item_timeline: { time: number; item: ItemRef }[] | null;
+  chapters?: Chapters | null;
+}
+
+export type FightResult = 'won' | 'lost' | 'even';
+
+export interface FightRow {
+  start: number; end: number; result: FightResult; gold_edge: number; kills: [number, number];
+  present: boolean; damage: number; died: boolean; ult_used: boolean | null;
+  ult_state: 'used' | 'cooldown' | 'unused' | null;
+}
+
+export interface DeathRow {
+  time: number; killer: number | null; phase: 'early' | 'mid' | 'late';
+  context: 'lane' | 'caught' | 'fight_won' | 'fight_lost' | 'fight_even';
+  gold_lost: number | null; time_dead: number | null; converted: boolean | null;
+}
+
+export interface Chapters {
+  story: {
+    phases: {
+      key: 'early' | 'mid' | 'late'; label: Bi; from: number; to: number; lead_start: number; lead_end: number; swing: number;
+      buildings: [number, number]; roshan: number; fights: [number, number] | null; my_kd: [number, number];
+    }[];
+    peak: { min: number; v: number } | null;
+    low: { min: number; v: number } | null;
+    read: Bi; note: Bi;
+  } | null;
+  laning: {
+    lane: 'top' | 'mid' | 'bot';
+    rows: { slot: number; hero: number; ally: boolean; lh5: number | null; lh10: number | null; dn10: number | null; gold10: number | null; xp10: number | null }[];
+    gold: [number, number]; diff: number; outcome: 'stomp' | 'won' | 'draw' | 'lost' | 'stomped'; outcome_label: Bi;
+    deaths: number; towers: { ours: number | null; theirs: number | null };
+    read: Bi; note: Bi;
+  } | null;
+  deaths: {
+    rows: DeathRow[];
+    summary: { deaths: number; time_dead: number; share_dead: number | null; gold_lost: number; top_killer: { hero: number; deaths: number } | null };
+    read: Bi; note: Bi;
+  } | null;
+  items: {
+    rows: { time: number; item: ItemRef; phase: string; vs: 'physical' | 'magic' | null }[];
+    damage: { total: number; types: { physical: number; magic: number; pure: number; other: number } | null; by_hero: { hero: number; amount: number; share: number }[] } | null;
+    read: Bi; note: Bi;
+  } | null;
+  fights: {
+    rows: FightRow[];
+    ultimate: { key: string; en: string; zh: string } | null;
+    summary: { fights: number; present: number; won: number; lost: number; ult_in: number | null; ult_unused: number; ult_cooldown: number; silent: number };
+    read: Bi; note: Bi;
+  } | null;
+  plan: { key: string; title: Bi; why: Bi; check: Bi }[];
 }
 
 export interface Player {

@@ -1,22 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useI18n } from '../v2/i18n/I18nProvider';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { CoachApiError, fetchCoachReport, requestParse } from './api';
 import type { Bi, CoachReport, Evidence, Finding, Player, Review } from './types';
+import { SafeImg, clock, k, useLang, type Lang } from './ui';
+import { Chapters } from './Chapters';
 import './coach.css';
 
-type Lang = 'en' | 'zh';
 const EXAMPLE_MATCH = '9091400302';
 
-/** An image that collapses to a same-size placeholder if the CDN fails. */
-export function SafeImg({ src, alt, className, title }: { src: string; alt: string; className?: string; title?: string }) {
-  // Remember which URL failed, not just "failed": a reused instance that gets
-  // a new src (e.g. switching players in the deaths list) must try it.
-  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
-  if (brokenSrc === src) return <span className={`cx-img-missing ${className ?? ''}`} title={title ?? alt} aria-label={alt} role="img" />;
-  return <img src={src} alt={alt} title={title} className={className} loading="lazy" onError={() => setBrokenSrc(src)} />;
-}
+export { SafeImg };
 
 const UI = {
   tagline: { en: 'A post-match coach that shows its evidence.', zh: '一位拿证据说话的赛后教练。' },
@@ -105,14 +98,6 @@ const BENCH: { key: string; label: Bi; invert?: boolean }[] = [
   { key: 'tower_damage', label: { en: 'Tower damage', zh: '建筑伤害' } },
 ];
 
-const clock = (s: number) => `${s < 0 ? '-' : ''}${Math.floor(Math.abs(s) / 60)}:${String(Math.abs(Math.round(s)) % 60).padStart(2, '0')}`;
-const k = (n: number) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
-
-function useLang() {
-  const { lang, setLang } = useI18n();
-  const L = (b: Bi | undefined | null) => (b ? b[lang as Lang] ?? b.en : '');
-  return { lang: lang as Lang, setLang, L };
-}
 
 /* ---------------------------------------------------------------- shell */
 
@@ -263,8 +248,8 @@ export const CoachReportPage: React.FC = () => {
             <BenchCard player={player} />
             <ItemsCard player={player} review={review} />
             <ThreatCard review={review} report={report} />
-            {review.item_timeline && review.item_timeline.length > 0 && <TimelineCard review={review} />}
-            {review.deaths && review.deaths.length > 0 && <DeathsCard review={review} report={report} />}
+            {!review.chapters?.items && review.item_timeline && review.item_timeline.length > 0 && <TimelineCard review={review} />}
+            {!review.chapters?.deaths && review.deaths && review.deaths.length > 0 && <DeathsCard review={review} report={report} />}
           </aside>
         </div>
       ) : (
@@ -274,6 +259,7 @@ export const CoachReportPage: React.FC = () => {
         </div>
       )}
       {report.timeline && <GoldGraph report={report} review={review} />}
+      {review && <Chapters review={review} report={report} />}
       {report.data_gaps.length > 0 && (
         <ParsePanel
           report={report}
