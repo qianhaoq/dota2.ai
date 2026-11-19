@@ -121,3 +121,46 @@ export interface CoachReport {
   timeline: { radiant_gold_adv: number[] } | null;
   data_gaps: Bi[];
 }
+
+/* ------------------------------------------------ case studies (/cases) */
+
+export interface CaseCard {
+  match_id: number;
+  slot: number;
+  hero: { id: number; en: string; zh: string; img: string | null; icon: string | null };
+  same_hero: boolean;
+  who: Bi;
+  teams: Bi | null;
+  league: string | null;
+  won: boolean;
+  kda: number[];
+  duration: number;
+  start_time: number | null;
+}
+
+export interface CaseMetric {
+  key: string;
+  label: Bi;
+  mine: Bi | null;
+  positive: Bi | null;
+  negative: Bi | null;
+  better: 'lower' | 'higher';
+}
+
+export interface CaseTheme {
+  key: 'deaths' | 'fights' | 'laning' | 'items' | 'tempo';
+  title: Bi;
+  metrics: CaseMetric[];
+  positive: CaseCard | null;
+  negative: CaseCard | null;
+  analysis: Bi[];
+  summary: Bi[];
+}
+
+export interface CaseStudies {
+  key_enemy: number | null;
+  damage_type: string | null;
+  pool: { total: number; same_hero: number };
+  themes: CaseTheme[];
+  note: Bi;
+}

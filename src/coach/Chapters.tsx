@@ -1,6 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { SafeImg, clock, k, signedK, useLang } from './ui';
 import { AskPanel, type AskHandle } from './AskPanel';
+import { Cases } from './Cases';
 import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroRef, Review } from './types';
 
 /**
@@ -64,13 +65,14 @@ const T = {
     story: { en: 'About how the game went: ', zh: '关于比赛经过：' }, laning: { en: 'About my lane: ', zh: '关于对线：' },
     deaths: { en: 'About my deaths: ', zh: '关于我的死亡：' }, items: { en: 'About my build: ', zh: '关于出装和承伤：' },
     fights: { en: 'About the team fights: ', zh: '关于团战：' }, plan: { en: 'About the practice plan: ', zh: '关于下一局的练习：' },
+    cases: { en: 'About the pro games (positive / negative): ', zh: '关于职业对局的正例和反例：' },
   },
 } satisfies Record<string, Bi | Record<string, Bi>>;
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-type Key = 'story' | 'laning' | 'deaths' | 'items' | 'fights' | 'plan';
-const ORDER: Exclude<Key, 'plan'>[] = ['story', 'laning', 'deaths', 'items', 'fights'];
+type Key = 'story' | 'laning' | 'deaths' | 'items' | 'fights' | 'plan' | 'cases';
+const ORDER: Exclude<Key, 'plan' | 'cases'>[] = ['story', 'laning', 'deaths', 'items', 'fights'];
 
 /** Numbers, times and percentages in a sentence, emphasised for scanning. */
 export function Emph({ text }: { text: string }) {
@@ -112,6 +114,7 @@ export const Chapters: React.FC<{ review: Review; report: CoachReport; pos: numb
       {ch.items && <Items ch={ch.items} heroById={heroById} onAsk={() => onAsk('items')} />}
       {ch.fights && <Fights ch={ch.fights} onAsk={() => onAsk('fights')} />}
       {ch.plan.length > 0 && <Plan plan={ch.plan} onAsk={() => onAsk('plan')} />}
+      {report.match.parsed && <Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => onAsk('cases')} />}
       {/* One conversation per match + player + position: switching player resets it. */}
       <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={ask} report={report} review={review} pos={pos} />
     </section>
@@ -119,7 +122,7 @@ export const Chapters: React.FC<{ review: Review; report: CoachReport; pos: numb
 };
 
 const Chapter: React.FC<{
-  id: Exclude<Key, 'plan'>; title: Bi; takeaway: Bi; points: Bi[]; note: Bi; onAsk: () => void;
+  id: Exclude<Key, 'plan' | 'cases'>; title: Bi; takeaway: Bi; points: Bi[]; note: Bi; onAsk: () => void;
   visual?: React.ReactNode; children?: React.ReactNode; aside?: React.ReactNode;
 }> = ({ id, title, takeaway, points, note, onAsk, visual, children, aside }) => {
   const { L } = useLang();
