@@ -30,6 +30,11 @@ for (const id of Object.keys(NAMES.heroes)) {
 }
 const od = async (name) => (await fetch(`https://api.opendota.com/api/constants/${name}`)).json();
 const [heroAbilities, abilities] = [await od('hero_abilities'), await od('abilities')];
+// Passive ultimates are never "cast": the fight audit must skip them.
+for (const u of Object.values(ultimates)) {
+  const b = abilities[u.key]?.behavior;
+  if ((Array.isArray(b) ? b : [b]).includes('Passive')) u.passive = true;
+}
 const DT = { Physical: 'P', Magical: 'M', Pure: 'U' };
 const dmg_types = {};
 for (const { abilities: list } of Object.values(heroAbilities)) {

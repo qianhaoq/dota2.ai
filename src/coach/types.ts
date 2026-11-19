@@ -66,7 +66,7 @@ export interface Chapters {
     lane: 'top' | 'mid' | 'bot';
     rows: { slot: number; hero: number; ally: boolean; lh5: number | null; lh10: number | null; dn10: number | null; gold10: number | null; xp10: number | null }[];
     gold: [number, number]; diff: number; outcome: 'stomp' | 'won' | 'draw' | 'lost' | 'stomped'; outcome_label: Bi;
-    deaths: number; towers: { ours: number | null; theirs: number | null };
+    deaths: number | null; towers: { ours: number | null; theirs: number | null };
     read: Bi; note: Bi;
   } | null;
   deaths: {

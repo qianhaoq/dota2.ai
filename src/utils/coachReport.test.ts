@@ -426,9 +426,32 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
     expect(f.read.en).not.toMatch(/outside recorded fights/);
   });
 
+  it('no death timeline: the lane chapter claims nothing about lane deaths', () => {
+    const raw = m();
+    for (const p of raw.players) { delete p.deaths_log; delete p.kills_log; }
+    const r = buildCoachReport(raw);
+    const l = r.reviews[slotOf(r, 'tidehunter')].chapters!.laning!;
+    expect(l.deaths).toBeNull();
+    expect(l.read.en).not.toMatch(/did not die/);
+    expect(l.read.zh).not.toMatch(/没有死亡/);
+  });
+
+  it('the defence plan keeps the damage-type split and the top hero as separate facts', () => {
+    const p = ch('tidehunter').plan.find((x) => x.key === 'items.defense_order')!;
+    expect(p.why.en).toMatch(/^Most of the damage you took was physical \(\d+% of all sources\); the hero who hurt you most was Ursa \(50% of hero damage\)\.$/);
+  });
+
   it('unparsed matches get no chapters', () => {
     const r = buildCoachReport(unparsed());
     expect(r.reviews.every((rv) => rv.chapters == null)).toBe(true);
+  });
+
+  it('auto-triggered and passive ultimates are never audited as "not cast" (Reincarnation)', () => {
+    const raw = JSON.parse(readFileSync(new URL('../fixtures/match9035042364.parsed.json', import.meta.url), 'utf8'));
+    const r = buildCoachReport(raw);
+    const wk = r.reviews[slotOf(r, 'skeleton_king')].chapters!;
+    expect(wk.fights?.ultimate ?? null).toBeNull();
+    expect(wk.plan.some((p) => p.key === 'fights.ult_unused')).toBe(false);
   });
 
   it('an incomplete death timeline says so instead of presenting it as the total', () => {
