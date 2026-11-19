@@ -10,7 +10,8 @@ import { buildCaseStudies } from '../../lib/coach/cases.js';
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'zh', setLang: () => {} }) }));
 const fetchCoachCases = vi.fn();
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), fetchCoachCases: (...a: unknown[]) => fetchCoachCases(...a) }));
-const { Cases } = await import('./Cases');
+const { Cases, isRetryableCasesError } = await import('./Cases');
+const { CoachApiError } = await import('./api');
 
 const read = (p: string) => JSON.parse(readFileSync(path.join(process.cwd(), p), 'utf8'));
 const match = read('src/fixtures/coach/match9091400302.parsed.json');
@@ -37,9 +38,36 @@ describe('Cases', () => {
     expect(theme.querySelector('table')?.textContent).toContain('死于熊战士');
   });
 
-  it('a failed load says so and can retry', async () => {
-    fetchCoachCases.mockRejectedValueOnce(new Error('502')).mockResolvedValueOnce({ ...studies, themes: [] });
-    render(<Cases matchId="9091400302" slot={0} pos={null} />);
+  it('an upstream failure is retried once silently, then shows the cases', async () => {
+    fetchCoachCases
+      .mockRejectedValueOnce(new CoachApiError('upstream', 'Could not load', 502))
+      .mockResolvedValueOnce(studies);
+    render(<Cases matchId="9091400302" slot={0} pos={null} retryDelayMs={1} />);
+    await waitFor(() => expect(screen.getByText('你死于熊战士 8 次')).toBeTruthy());
+    expect(fetchCoachCases).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/职业对局暂时加载不了/)).toBeNull();
+  });
+
+  it('only upstream and network errors are retried', () => {
+    expect(isRetryableCasesError(new CoachApiError('upstream', 'x', 502))).toBe(true);
+    expect(isRetryableCasesError(new CoachApiError('upstream', 'x', 0))).toBe(true);
+    expect(isRetryableCasesError(new TypeError('Failed to fetch'))).toBe(true);
+    for (const st of [400, 404, 422, 429]) expect(isRetryableCasesError(new CoachApiError('x', 'x', st))).toBe(false);
+  });
+
+  it('a client error is not retried', async () => {
+    fetchCoachCases.mockRejectedValueOnce(new CoachApiError('needs_parse', 'x', 422));
+    render(<Cases matchId="9091400302" slot={0} pos={null} retryDelayMs={1} />);
+    await waitFor(() => expect(screen.getByText(/职业对局暂时加载不了/)).toBeTruthy());
+    expect(fetchCoachCases).toHaveBeenCalledTimes(1);
+  });
+
+  it('when the silent retry also fails it says so and offers a manual retry', async () => {
+    fetchCoachCases
+      .mockRejectedValueOnce(new CoachApiError('upstream', 'x', 502))
+      .mockRejectedValueOnce(new CoachApiError('upstream', 'x', 502))
+      .mockResolvedValueOnce({ ...studies, themes: [] });
+    render(<Cases matchId="9091400302" slot={0} pos={null} retryDelayMs={1} />);
     await waitFor(() => expect(screen.getByText(/职业对局暂时加载不了/)).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: '重试' }));
     await waitFor(() => expect(screen.getByText('没有找到和这局足够相似的职业对局。')).toBeTruthy());
