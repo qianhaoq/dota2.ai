@@ -7,6 +7,8 @@ import { buildCoachReport as buildRaw, isParsed, objectiveTeam, dataGaps, detect
 import type { CoachReport } from '../coach/types';
 import { THREAT_TAGS, ANSWERS, BUILT_IN_IMMUNITY, ALWAYS_KEY_ITEMS, heroTags } from '../../lib/coach/knowledge.js';
 import { createCoachRouter, parseCoachQuery } from '../../lib/coach/router.js';
+import { parseAskBody, reportContext, askMessages } from '../../lib/coach/ask.js';
+import { streamFollowUpCompletion } from '../../lib/matchReview/followUpCompletion.js';
 
 // express ships no types in this repo; load it the way other route tests do.
 const express = createRequire(import.meta.url)('express');
@@ -574,5 +576,180 @@ describe('GET /api/coach/:matchId', () => {
   it('answers 422 when OpenDota has no roster yet', async () => {
     const base = await start(async () => ({ match_id: 5, players: [] }));
     expect((await fetch(`${base}/api/coach/5`)).status).toBe(422);
+  });
+});
+
+describe('POST /api/coach/:matchId/ask (follow-up questions)', () => {
+  let server: Server | null = null;
+  afterEach(() => { server?.close(); server = null; });
+  const parsedReal = () => JSON.parse(readFileSync(new URL('../fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
+
+  async function start(ask?: object) {
+    const app = express();
+    app.use(express.json());
+    app.use(createCoachRouter({
+      getMatchDetail: async () => parsedReal(),
+      resolveClientIp: () => '1.2.3.4',
+      mapError: () => ({ status: 502, body: { error: 'x' } }),
+      limiter: { tryConsume: () => ({ ok: true, retryAfterSec: 0 }) },
+      // Test doubles for the injected LLM deps; shapes checked by the route.
+      ask: ask as never,
+    }));
+    server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server!.once('listening', r));
+    return `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+  }
+  const post = (base: string, body: object) => fetch(`${base}/api/coach/9091400302/ask`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const frames = async (res: Response) => (await res.text()).split('\n\n').filter(Boolean).map((f) => JSON.parse(f.replace(/^data: /, '')));
+
+  it('validates the question, slot and position before any work', async () => {
+    expect(parseAskBody({ question: '  ', slot: 0 })).toEqual({ error: 'empty_question' });
+    expect(parseAskBody({ question: 'x'.repeat(501), slot: 0 })).toEqual({ error: 'question_too_long' });
+    expect(parseAskBody({ question: 'q', slot: 10 })).toEqual({ error: 'invalid_slot' });
+    expect(parseAskBody({ question: 'q', slot: 1, pos: 7 })).toEqual({ error: 'invalid_pos' });
+    const ok = parseAskBody({ question: ' q ', slot: 1, lang: 'zh', history: [{ q: 'a', a: 'b' }, { q: 1 }, { q: 'c', a: 'd' }, { q: 'e', a: 'f' }, { q: 'g', a: 'h' }] });
+    expect(ok).toMatchObject({ question: 'q', slot: 1, lang: 'zh' });
+    expect((ok as { history: unknown[] }).history).toHaveLength(3);
+    const base = await start();
+    expect((await post(base, { question: '', slot: 0 })).status).toBe(400);
+  });
+
+  it('the model context is this player\'s report and the rules forbid invented facts', () => {
+    const report = buildCoachReport(parsedReal());
+    const ctx = reportContext(report as never, 0, 'zh');
+    expect(ctx).toContain('潮汐猎人');
+    expect(ctx).toContain('死 12 次，其中 8 次死于熊战士');
+    expect(ctx).toContain('减少死于熊战士');
+    const msgs = askMessages({ report: report as never, slot: 0, lang: 'zh', question: '为什么？', history: [{ q: '上一问', a: '上一答' }] });
+    expect(msgs[0].content).toMatch(/只能使用下面"复盘数据"里的事实/);
+    expect(msgs.map((m: { role: string }) => m.role)).toEqual(['system', 'user', 'assistant', 'user', 'assistant', 'user']);
+    expect(msgs[msgs.length - 1].content).toBe('为什么？');
+  });
+
+  it('without a model it answers from the matching chapter, flagged as fallback', async () => {
+    const base = await start();
+    const res = await post(base, { question: '我为什么总死于熊战士？', slot: 0, lang: 'zh' });
+    expect(res.headers.get('content-type')).toMatch(/text\/event-stream/);
+    const f = await frames(res);
+    expect(f[0].fallback).toBe(true);
+    expect(f[0].text).toContain('**死 12 次，其中 8 次死于熊战士**');
+    expect(f[1].notice).toMatch(/AI 追问暂时不可用/);
+    expect(f[f.length - 1]).toEqual({ done: true });
+  });
+
+  it('streams the model answer; a tripped cost guard falls back, a rate limit is a 429', async () => {
+    let seen: { role: string; content: string }[] = [];
+    const providers = (messages: { role: string; content: string }[]) => { seen = messages; return [{ name: 'fake', create: async () => null }]; };
+    // A real completed stream: text forwarded and a terminal finish_reason.
+    const stream = async (o: { onText: (t: string) => void }) => { o.onText('第一句。'); o.onText('第二句。'); return { status: 'done', finishReason: 'stop', forwarded: true }; };
+    let gate: { ok: boolean; reason?: string; retryAfterSec?: number } = { ok: true };
+    const base = await start({
+      providers, stream, attemptMs: 1000,
+      llm: { acquire: () => gate, respondRateLimited: (_q: unknown, res: { status: (n: number) => { json: (b: object) => void } }) => res.status(429).json({ code: 'rate_limited' }) },
+    });
+    const f = await frames(await post(base, { question: '哪波团战最关键？', slot: 0, lang: 'zh' }));
+    expect(f.map((x) => x.text).filter(Boolean).join('')).toBe('第一句。第二句。');
+    expect(f.some((x) => x.fallback)).toBe(false);
+    expect(seen[1].content).toContain('毁灭');
+    gate = { ok: false, reason: 'cost_guard' };
+    const g = await frames(await post(base, { question: '团战', slot: 0, lang: 'en' }));
+    expect(g[0].fallback).toBe(true);
+    gate = { ok: false, reason: 'rate_limited', retryAfterSec: 5 };
+    expect((await post(base, { question: 'x', slot: 0 })).status).toBe(429);
+  });
+
+  it('a provider failure before any text degrades to the report text', async () => {
+    const base = await start({ providers: () => [{ name: 'fake', create: async () => null }], stream: async () => ({ status: 'failed' }), attemptMs: 1000 });
+    const f = await frames(await post(base, { question: 'lane?', slot: 0, lang: 'en' }));
+    expect(f[0].fallback).toBe(true);
+    expect(f[0].text).toMatch(/Top lane lost/);
+  });
+
+  it('a stream that stops without a terminal finish_reason is truncated: report text is appended', async () => {
+    const providers = () => [{
+      name: 'fake',
+      create: async () => (async function* gen() { yield { choices: [{ delta: { content: 'The most important mistake was' } }] }; })(),
+    }];
+    const base = await start({ providers, stream: streamFollowUpCompletion, attemptMs: 5000 });
+    const f = await frames(await post(base, { question: 'lane?', slot: 0, lang: 'en' }));
+    expect(f[0].text).toBe('The most important mistake was');
+    expect(f.some((x) => x.fallback && x.incomplete && /Top lane lost/.test(x.text))).toBe(true);
+    expect(f.some((x) => x.notice)).toBe(true);
+    expect(f[f.length - 1]).toEqual({ done: true });
+  });
+
+  it('a client that leaves while the match loads never reaches the LLM budget or a provider', async () => {
+    let release!: () => void;
+    const loaded = new Promise<void>((r) => { release = r; });
+    let acquired = 0; let built = 0;
+    const app = express();
+    app.use(express.json());
+    app.use(createCoachRouter({
+      getMatchDetail: async () => { await loaded; return parsedReal(); },
+      resolveClientIp: () => '1.2.3.4',
+      mapError: () => ({ status: 502, body: { error: 'x' } }),
+      limiter: { tryConsume: () => ({ ok: true, retryAfterSec: 0 }) },
+      ask: {
+        providers: () => { built += 1; return [{ name: 'fake', create: async () => null }]; },
+        stream: async () => ({ status: 'done', finishReason: 'stop', forwarded: true }),
+        attemptMs: 1000,
+        llm: { acquire: () => { acquired += 1; return { ok: true }; }, respondRateLimited: () => {} },
+      } as never,
+    }));
+    server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server!.once('listening', r));
+    const base = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
+    const ac = new AbortController();
+    const req = fetch(`${base}/api/coach/9091400302/ask`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: 'q', slot: 0 }), signal: ac.signal,
+    }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 100));
+    ac.abort();
+    await req;
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    await new Promise((r) => setTimeout(r, 150));
+    expect(acquired).toBe(0);
+    expect(built).toBe(0);
+  });
+
+  it('the client rejects a stream that ends without the terminal frame', async () => {
+    const { askCoach } = await import('../coach/api');
+    const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: {"text":"The most important mistake was"}\n\n')); c.close(); } });
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })) as typeof fetch;
+    try {
+      const got: string[] = [];
+      await expect(askCoach('1', { slot: 0, lang: 'en', question: 'q', history: [] }, { onText: (t) => got.push(t) })).rejects.toMatchObject({ code: 'incomplete' });
+      expect(got).toEqual(['The most important mistake was']);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it('no death durations at all: the takeaway gives the count only, never "0:00 spent dead"', () => {
+    const raw = parsedReal();
+    for (const p of raw.players) { delete p.life_state_dead; for (const d of p.deaths_log ?? []) delete d.time_dead; }
+    const r = buildCoachReport(raw);
+    const d = r.reviews[slotOf(r, 'shadow_shaman')].chapters!.deaths!;
+    expect(d.takeaway.en).toBe('19 deaths');
+    expect(d.summary.time_dead).toBeNull();
+    expect(d.read.en).not.toMatch(/0:00/);
+  });
+
+  it('every chapter carries a takeaway and points aligned in both languages', () => {
+    const r = buildCoachReport(parsedReal());
+    for (const rv of r.reviews) {
+      const ch = rv.chapters!;
+      for (const key of ['story', 'laning', 'deaths', 'items', 'fights'] as const) {
+        const c = ch[key];
+        if (!c) continue;
+        expect(c.takeaway.en && c.takeaway.zh).toBeTruthy();
+        expect(c.points.length).toBeGreaterThan(0);
+        for (const p of c.points) { expect(p.en).toBeTruthy(); expect(p.zh).toBeTruthy(); }
+      }
+    }
   });
 });

@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { SafeImg, clock, k, signedK, useLang } from './ui';
+import { AskPanel, type AskHandle } from './AskPanel';
 import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroRef, Review } from './types';
 
 /**
@@ -56,40 +57,89 @@ const T = {
   ult: { used: { en: 'cast', zh: '已放' }, cooldown: { en: 'on cooldown', zh: '冷却中' }, unused: { en: 'not cast', zh: '未放' } },
   why: { en: 'Why', zh: '依据' },
   check: { en: 'Next game', zh: '下一局' },
+  summary: { en: 'This game in five lines', zh: '一页看完这局' },
+  data: { en: 'Show the data', zh: '查看数据' },
+  ask: { en: 'Ask about this', zh: '追问这部分' },
+  askPrefix: {
+    story: { en: 'About how the game went: ', zh: '关于比赛经过：' }, laning: { en: 'About my lane: ', zh: '关于对线：' },
+    deaths: { en: 'About my deaths: ', zh: '关于我的死亡：' }, items: { en: 'About my build: ', zh: '关于出装和承伤：' },
+    fights: { en: 'About the team fights: ', zh: '关于团战：' }, plan: { en: 'About the practice plan: ', zh: '关于下一局的练习：' },
+  },
 } satisfies Record<string, Bi | Record<string, Bi>>;
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-export const Chapters: React.FC<{ review: Review; report: CoachReport }> = ({ review, report }) => {
+type Key = 'story' | 'laning' | 'deaths' | 'items' | 'fights' | 'plan';
+const ORDER: Exclude<Key, 'plan'>[] = ['story', 'laning', 'deaths', 'items', 'fights'];
+
+/** Numbers, times and percentages in a sentence, emphasised for scanning. */
+export function Emph({ text }: { text: string }) {
+  const parts = text.split(/(\d{1,2}:\d{2}|[−+]?\d+(?:\.\d+)?k?%?)/g);
+  return <>{parts.map((p, i) => (i % 2 ? <b key={i} className="cx-num-em">{p}</b> : <React.Fragment key={i}>{p}</React.Fragment>))}</>;
+}
+
+export const Chapters: React.FC<{ review: Review; report: CoachReport; pos: number | null }> = ({ review, report, pos }) => {
   const { L } = useLang();
   const ch = review.chapters;
   const heroById = useMemo(() => new Map(report.players.map((p) => [p.hero.id, p.hero])), [report]);
+  const ask = useRef<AskHandle>(null);
   if (!ch) return null;
-  const hasAny = ch.story || ch.laning || ch.deaths || ch.items || ch.fights;
+  const hasAny = ORDER.some((key) => ch[key]);
   if (!hasAny && !ch.plan.length) return null;
+  const onAsk = (key: Key) => ask.current?.prefill(L(T.askPrefix[key]));
   return (
     <section className="cx-chapters" aria-label={L(T.title)}>
       <header className="cx-chapters-head">
         <h2>{L(T.title)}</h2>
         <p className="cx-muted">{L(T.sub)}</p>
       </header>
-      {ch.story && <Story ch={ch.story} />}
-      {ch.laning && <Laning ch={ch.laning} heroById={heroById} slot={review.slot} />}
-      {ch.deaths && <Deaths ch={ch.deaths} heroById={heroById} />}
-      {ch.items && <Items ch={ch.items} heroById={heroById} />}
-      {ch.fights && <Fights ch={ch.fights} />}
-      {ch.plan.length > 0 && <Plan plan={ch.plan} />}
+      <nav className="cx-summary" aria-label={L(T.summary)}>
+        <h3>{L(T.summary)}</h3>
+        <ol>
+          {ORDER.filter((key) => ch[key]).map((key) => (
+            <li key={key}>
+              <a href={`#cx-ch-${key}`}><span className="cx-summary-k">{L(T[key]).replace(/^\d+ · /, '')}</span><span className="cx-summary-t"><Emph text={L(ch[key]!.takeaway)} /></span></a>
+            </li>
+          ))}
+        </ol>
+        {ch.plan.length > 0 && (
+          <p className="cx-summary-plan"><b>{L(T.check)}</b>{ch.plan.map((p) => L(p.title)).join(' · ')}</p>
+        )}
+      </nav>
+      {ch.story && <Story ch={ch.story} onAsk={() => onAsk('story')} />}
+      {ch.laning && <Laning ch={ch.laning} heroById={heroById} slot={review.slot} onAsk={() => onAsk('laning')} />}
+      {ch.deaths && <Deaths ch={ch.deaths} heroById={heroById} onAsk={() => onAsk('deaths')} />}
+      {ch.items && <Items ch={ch.items} heroById={heroById} onAsk={() => onAsk('items')} />}
+      {ch.fights && <Fights ch={ch.fights} onAsk={() => onAsk('fights')} />}
+      {ch.plan.length > 0 && <Plan plan={ch.plan} onAsk={() => onAsk('plan')} />}
+      {/* One conversation per match + player + position: switching player resets it. */}
+      <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={ask} report={report} review={review} pos={pos} />
     </section>
   );
 };
 
-const Chapter: React.FC<{ title: Bi; read: Bi; note: Bi; children?: React.ReactNode; aside?: React.ReactNode }> = ({ title, read, note, children, aside }) => {
+const Chapter: React.FC<{
+  id: Exclude<Key, 'plan'>; title: Bi; takeaway: Bi; points: Bi[]; note: Bi; onAsk: () => void;
+  visual?: React.ReactNode; children?: React.ReactNode; aside?: React.ReactNode;
+}> = ({ id, title, takeaway, points, note, onAsk, visual, children, aside }) => {
   const { L } = useLang();
   return (
-    <article className="cx-chapter">
-      <h3 className="cx-chapter-title">{L(title)}{aside}</h3>
-      <p className="cx-chapter-read">{L(read)}</p>
-      {children}
+    <article className="cx-chapter" id={`cx-ch-${id}`} aria-labelledby={`cx-ch-${id}-h`}>
+      <div className="cx-chapter-top">
+        <h3 className="cx-chapter-title" id={`cx-ch-${id}-h`}>{L(title)}{aside}</h3>
+        <button type="button" className="cx-askbtn" onClick={onAsk}>{L(T.ask)}</button>
+      </div>
+      <p className="cx-takeaway"><Emph text={L(takeaway)} /></p>
+      <ul className="cx-points">
+        {points.map((p, i) => <li key={i}><Emph text={L(p)} /></li>)}
+      </ul>
+      {visual}
+      {children && (
+        <details className="cx-data">
+          <summary>{L(T.data)}</summary>
+          {children}
+        </details>
+      )}
       <details className="cx-how">
         <summary>{L(T.how)}</summary>
         <p>{L(note)}</p>
@@ -120,10 +170,10 @@ const HeroTag: React.FC<{ hero: HeroRef | undefined | null }> = ({ hero }) => {
 
 const Lead: React.FC<{ v: number }> = ({ v }) => <span className={v > 0 ? 'is-up' : v < 0 ? 'is-down' : ''}>{signedK(v)}</span>;
 
-const Story: React.FC<{ ch: NonNullable<ChaptersT['story']> }> = ({ ch }) => {
+const Story: React.FC<{ ch: NonNullable<ChaptersT['story']>; onAsk: () => void }> = ({ ch, onAsk }) => {
   const { L } = useLang();
   return (
-    <Chapter title={T.story} read={ch.read} note={ch.note}>
+    <Chapter id="story" title={T.story} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}>
       <Table label={L(T.story)} head={[L(T.phase), L(T.lead), L(T.change), L(T.buildings), L(T.fightsWL), L(T.yourKD)]}>
         {ch.phases.map((p) => (
           <tr key={p.key}>
@@ -140,11 +190,11 @@ const Story: React.FC<{ ch: NonNullable<ChaptersT['story']> }> = ({ ch }) => {
   );
 };
 
-const Laning: React.FC<{ ch: NonNullable<ChaptersT['laning']>; heroById: Map<number, HeroRef>; slot: number }> = ({ ch, heroById, slot }) => {
+const Laning: React.FC<{ ch: NonNullable<ChaptersT['laning']>; heroById: Map<number, HeroRef>; slot: number; onAsk: () => void }> = ({ ch, heroById, slot, onAsk }) => {
   const { L } = useLang();
   const tone = ch.outcome === 'won' || ch.outcome === 'stomp' ? 'good' : ch.outcome === 'draw' ? 'even' : 'bad';
   return (
-    <Chapter title={T.laning} read={ch.read} note={ch.note} aside={<span className={`cx-pill cx-pill--${tone}`}>{L(T.laneResult)} · {L(ch.outcome_label)}</span>}>
+    <Chapter id="laning" title={T.laning} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} aside={<span className={`cx-pill cx-pill--${tone}`}>{L(T.laneResult)} · {L(ch.outcome_label)}</span>}>
       <Table label={L(T.laning)} head={[L(T.hero), L(T.lh5), L(T.lhdn10), L(T.gold10), L(T.xp10)]}>
         {ch.rows.map((r) => (
           <tr key={r.slot} className={`${r.ally ? 'is-ally' : 'is-enemy'} ${r.slot === slot ? 'is-me' : ''}`}>
@@ -160,10 +210,10 @@ const Laning: React.FC<{ ch: NonNullable<ChaptersT['laning']>; heroById: Map<num
   );
 };
 
-const Deaths: React.FC<{ ch: NonNullable<ChaptersT['deaths']>; heroById: Map<number, HeroRef> }> = ({ ch, heroById }) => {
+const Deaths: React.FC<{ ch: NonNullable<ChaptersT['deaths']>; heroById: Map<number, HeroRef>; onAsk: () => void }> = ({ ch, heroById, onAsk }) => {
   const { L } = useLang();
   return (
-    <Chapter title={T.deaths} read={ch.read} note={ch.note}>
+    <Chapter id="deaths" title={T.deaths} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}>
       <Table label={L(T.deaths)} head={[L(T.time), L(T.killer), L(T.context), L(T.goldLost), L(T.dead), L(T.after)]}>
         {ch.rows.map((d: DeathRow, i) => (
           <tr key={i} className={`ctx-${d.context}`}>
@@ -180,12 +230,12 @@ const Deaths: React.FC<{ ch: NonNullable<ChaptersT['deaths']>; heroById: Map<num
   );
 };
 
-const Items: React.FC<{ ch: NonNullable<ChaptersT['items']>; heroById: Map<number, HeroRef> }> = ({ ch, heroById }) => {
+const Items: React.FC<{ ch: NonNullable<ChaptersT['items']>; heroById: Map<number, HeroRef>; onAsk: () => void }> = ({ ch, heroById, onAsk }) => {
   const { L } = useLang();
   const dmg = ch.damage;
   const max = dmg?.by_hero[0]?.share ?? 1;
   return (
-    <Chapter title={T.items} read={ch.read} note={ch.note}>
+    <Chapter id="items" title={T.items} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} visual={<>
       {dmg && dmg.by_hero.length > 0 && (
         <div className="cx-dmg">
           <p className="cx-dmg-label">{L(T.dmgBy)}</p>
@@ -224,16 +274,16 @@ const Items: React.FC<{ ch: NonNullable<ChaptersT['items']>; heroById: Map<numbe
           ))}
         </ol>
       )}
-    </Chapter>
+    </>} />
   );
 };
 
-const Fights: React.FC<{ ch: NonNullable<ChaptersT['fights']> }> = ({ ch }) => {
+const Fights: React.FC<{ ch: NonNullable<ChaptersT['fights']>; onAsk: () => void }> = ({ ch, onAsk }) => {
   const { L } = useLang();
   const head = [L(T.time), L(T.result), L(T.kills), L(T.you), L(T.damage)];
   if (ch.ultimate) head.push(L(ch.ultimate));
   return (
-    <Chapter title={T.fights} read={ch.read} note={ch.note}>
+    <Chapter id="fights" title={T.fights} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}>
       <Table label={L(T.fights)} head={head}>
         {ch.rows.map((f: FightRow, i) => (
           <tr key={i} className={`res-${f.result} ${f.present ? '' : 'is-absent'}`}>
@@ -250,17 +300,20 @@ const Fights: React.FC<{ ch: NonNullable<ChaptersT['fights']> }> = ({ ch }) => {
   );
 };
 
-const Plan: React.FC<{ plan: ChaptersT['plan'] }> = ({ plan }) => {
+const Plan: React.FC<{ plan: ChaptersT['plan']; onAsk: () => void }> = ({ plan, onAsk }) => {
   const { L } = useLang();
   return (
-    <article className="cx-chapter cx-plan">
-      <h3 className="cx-chapter-title">{L(T.plan)}</h3>
+    <article className="cx-chapter cx-plan" id="cx-ch-plan">
+      <div className="cx-chapter-top">
+        <h3 className="cx-chapter-title">{L(T.plan)}</h3>
+        <button type="button" className="cx-askbtn" onClick={onAsk}>{L(T.ask)}</button>
+      </div>
       <ol>
         {plan.map((p) => (
           <li key={p.key}>
             <h4>{L(p.title)}</h4>
-            <p><b>{L(T.why)}</b>{L(p.why)}</p>
-            <p><b>{L(T.check)}</b>{L(p.check)}</p>
+            <p><b>{L(T.why)}</b><Emph text={L(p.why)} /></p>
+            <p><b>{L(T.check)}</b><Emph text={L(p.check)} /></p>
           </li>
         ))}
       </ol>
