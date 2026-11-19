@@ -622,6 +622,10 @@ describe('POST /api/coach/:matchId/ask (follow-up questions)', () => {
     expect(ctx).toContain('潮汐猎人');
     expect(ctx).toContain('死 12 次，其中 8 次死于熊战士');
     expect(ctx).toContain('减少死于熊战士');
+    // Row labels are localised: no raw codes for the model to echo.
+    expect(ctx).toContain('大招未放');
+    expect(ctx).toContain('输掉的团战');
+    expect(ctx).not.toMatch(/\b(unused|absent|fight_lost|cooldown)\b/);
     const msgs = askMessages({ report: report as never, slot: 0, lang: 'zh', question: '为什么？', history: [{ q: '上一问', a: '上一答' }] });
     expect(msgs[0].content).toMatch(/只能使用下面"复盘数据"里的事实/);
     expect(msgs.map((m: { role: string }) => m.role)).toEqual(['system', 'user', 'assistant', 'user', 'assistant', 'user']);
