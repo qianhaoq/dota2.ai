@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { buildCoachReport as buildRaw, isParsed, objectiveTeam, dataGaps, detectionBought } from '../../lib/coach/analyze.js';
 import type { CoachReport } from '../coach/types';
-import { THREAT_TAGS, ANSWERS, BUILT_IN_IMMUNITY, ALWAYS_KEY_ITEMS, heroTags } from '../../lib/coach/knowledge.js';
+import { THREAT_TAGS, ANSWERS, ANSWER_UNTIL, BUILT_IN_IMMUNITY, ALWAYS_KEY_ITEMS, answersFor, heroTags } from '../../lib/coach/knowledge.js';
 import { createCoachRouter, parseCoachQuery } from '../../lib/coach/router.js';
 import { parseAskBody, reportContext, askMessages } from '../../lib/coach/ask.js';
 import { streamFollowUpCompletion } from '../../lib/matchReview/followUpCompletion.js';
@@ -26,6 +26,38 @@ describe('coach knowledge', () => {
     for (const s of BUILT_IN_IMMUNITY) expect(slugs.has(s), s).toBe(true);
     for (const group of Object.values(ANSWERS)) for (const list of Object.values(group)) for (const i of list) expect(names.items[i], i).toBeTruthy();
     for (const i of ALWAYS_KEY_ITEMS) expect(names.items[i], i).toBeTruthy();
+  });
+
+  it('retired answers name a real answer and a known patch', () => {
+    for (const [item, byTag] of Object.entries(ANSWER_UNTIL)) {
+      for (const [tag, until] of Object.entries(byTag as Record<string, { patch: number; name: string }>)) {
+        const group = (ANSWERS as Record<string, Record<string, string[]>>)[tag];
+        expect([...group.core, ...group.support], `${item} in ${tag}`).toContain(item);
+        expect(until.patch).toBeGreaterThanOrEqual(58);
+      }
+    }
+  });
+
+  it('7.42 retired Bloodthorn as an evasion answer (no more Pierce); older patches keep it', () => {
+    expect(answersFor('evasion', 'core', 60)).toContain('bloodthorn'); // 7.41
+    expect(answersFor('evasion', 'core', 61)).not.toContain('bloodthorn'); // 7.42
+    expect(answersFor('evasion', 'core', null)).not.toContain('bloodthorn'); // unknown = current
+    expect(answersFor('evasion', 'core', 61)).toContain('monkey_king_bar');
+  });
+
+  it('a 7.42 game no longer counts Bloodthorn as covering Phantom Assassin', () => {
+    const game = (patch: number) => {
+      const m = unparsed();
+      m.patch = patch;
+      m.players[5].hero_id = 44; // Ursa -> Phantom Assassin, their best-performing hero
+      Object.assign(m.players[4], { item_0: 250, item_3: 116 }); // Spectre: Bloodthorn, and BKB covers the magic
+      return buildCoachReport(m).reviews[4].findings.find((f) => f.id === 'items.answer_missing');
+    };
+    expect(game(60)).toBeUndefined();
+    const miss = game(61)!;
+    expect(miss.title.en).toBe('No item answer to their evasion');
+    expect(miss.body.en).toContain('Monkey King Bar');
+    expect(miss.body.en).not.toContain('Bloodthorn');
   });
 
   it('OpenDota roles only fill in for heroes curation does not know', () => {
