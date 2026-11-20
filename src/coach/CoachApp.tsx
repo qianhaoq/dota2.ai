@@ -8,6 +8,7 @@ import { SafeImg, clock, k, useLang, type Lang } from './ui';
 import { Chapters } from './Chapters';
 import { CURRENT_PATCH, itemIcon } from './patch';
 import { trackEvent, trackReviewViewed } from '../services/analytics';
+import { activeGoal, checkGoal, goalChecks, goalFromFinding, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
 import './coach.css';
 
 const EXAMPLE_MATCH = '9091400302';
@@ -46,6 +47,17 @@ const UI = {
   allRecent: { en: 'All recent games', zh: '全部最近比赛' },
   reviewedTag: { en: 'Reviewed', zh: '已复盘' },
   newTag: { en: 'New', zh: '新' },
+  setGoal: { en: 'Make this my next-game goal', zh: '设为下局目标' },
+  goalSet: { en: 'Your next-game goal', zh: '已设为下局目标' },
+  goalClear: { en: 'Clear', zh: '取消' },
+  goalCheckTitle: { en: 'Your goal', zh: '你的目标' },
+  goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘' },
+  goalHere: { en: 'You set this goal from this game. Play your next one — the coach checks it automatically.', zh: '目标就是从这局定的。打下一局，教练会自动核验。' },
+  goalTally: { en: '{met} of {n} games met', zh: '{n} 局里达成 {met} 局' },
+  goalResult: {
+    met: { en: 'Met', zh: '达成' }, missed: { en: 'Missed', zh: '未达成' },
+    no_opportunity: { en: 'Did not come up', zh: '这局没遇到' }, unknown: { en: 'Can’t tell yet', zh: '暂时判断不了' },
+  } as Record<string, Bi>,
   win: { en: 'Win', zh: '胜' },
   loss: { en: 'Loss', zh: '负' },
   patchEyebrow: { en: 'New patch', zh: '新版本' },
@@ -172,6 +184,7 @@ const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
   const all = <Link to={`/p/${accountId}?lang=${lang}`} className="cx-account-known">{latest ? L(UI.allRecent) : L(UI.myGames)} →</Link>;
   if (!latest) return <p className="cx-example">{all}</p>;
   const reviewed = reviewedMatches().has(String(latest.match_id));
+  const goal = activeGoal();
   return (
     <div className="cx-latest">
       <p className="cx-eyebrow">{L(UI.latestTitle)}</p>
@@ -185,8 +198,30 @@ const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
         </span>
         <Link to={`/r/${latest.match_id}?p=${latest.slot}&lang=${lang}`} className="cx-patch-cta cx-latest-cta">{L(UI.latestCta)}</Link>
       </div>
+      {goal && <LatestGoal goal={goal} latest={latest} />}
       <p className="cx-example">{all}</p>
     </div>
+  );
+};
+
+/** Home: judge the newest game against the goal (one report fetch, only when it counts). */
+const LatestGoal: React.FC<{ goal: NonNullable<ReturnType<typeof activeGoal>>; latest: RecentMatch }> = ({ goal, latest }) => {
+  const { L } = useLang();
+  const [check, setCheck] = useState<GoalCheck | null>(null);
+  const counts = latest.match_id !== goal.fromMatch && (latest.start_time ?? 0) > goal.fromStart;
+  useEffect(() => {
+    if (!counts) return;
+    const ac = new AbortController();
+    fetchCoachReport(String(latest.match_id), { signal: ac.signal })
+      .then((r) => setCheck(checkGoal(goal, r, latest.slot)))
+      .catch(() => {});
+    return () => ac.abort();
+  }, [counts, goal, latest.match_id, latest.slot]);
+  return (
+    <p className="cx-latest-goal">
+      <span>{L(UI.goalCheckTitle)}：{L(goal.goal.label)}</span>
+      {check ? <ResultPill r={check.result} /> : !counts ? <span className="cx-muted"> · {L(UI.goalHere)}</span> : null}
+    </p>
   );
 };
 
@@ -469,6 +504,7 @@ export const CoachReportPage: React.FC = () => {
         </p>
       )}
       <Lineup report={report} selected={selected} onPick={(s) => setParam({ p: String(s), pos: null })} />
+      {review && <GoalBanner report={report} slot={review.slot} />}
       {report.timeline && <GoldGraph report={report} review={review} />}
       {review && <Chapters review={review} report={report} pos={posOverride} />}
       {review && player ? (
@@ -632,6 +668,36 @@ const Lineup: React.FC<{ report: CoachReport; selected: number | null; onPick: (
   );
 };
 
+const ResultPill: React.FC<{ r: string }> = ({ r }) => {
+  const { L } = useLang();
+  return <span className={`cx-goal-result is-${r}`}>{L(UI.goalResult[r])}</span>;
+};
+
+const tally = (goalId: string) => {
+  const counted = goalChecks(goalId).filter((c) => c.result === 'met' || c.result === 'missed');
+  return { n: counted.length, met: counted.filter((c) => c.result === 'met').length };
+};
+
+/** On a later game's review: did this game meet the goal? */
+const GoalBanner: React.FC<{ report: CoachReport; slot: number }> = ({ report, slot }) => {
+  const { L } = useLang();
+  const goal = useActiveGoal();
+  const [check, setCheck] = useState<GoalCheck | null>(null);
+  useEffect(() => { setCheck(goal ? checkGoal(goal, report, slot) : null); }, [goal, report, slot]);
+  if (!goal) return null;
+  const here = goal.fromMatch === report.match.id;
+  if (!here && !check) return null;
+  const tl = tally(goal.id);
+  return (
+    <section className="cx-goal" aria-label={L(UI.goalCheckTitle)}>
+      <p className="cx-eyebrow">{L(UI.goalCheckTitle)} · {L(UI.goalFrom).replace('{id}', String(goal.fromMatch))}</p>
+      <p className="cx-goal-label"><b>{L(goal.goal.label)}</b>{check && <ResultPill r={check.result} />}</p>
+      {check ? <p className="cx-goal-ev">{L(check.evidence)}</p> : <p className="cx-goal-ev">{L(UI.goalHere)}</p>}
+      {tl.n > 0 && <p className="cx-goal-tally">{L(UI.goalTally).replace('{n}', String(tl.n)).replace('{met}', String(tl.met))}</p>}
+    </section>
+  );
+};
+
 const ReadColumn: React.FC<{ review: Review; report: CoachReport }> = ({ review, report }) => {
   const { L } = useLang();
   const mine = review.findings.filter((f) => f.tone === 'fix' && !f.shared);
@@ -643,25 +709,28 @@ const ReadColumn: React.FC<{ review: Review; report: CoachReport }> = ({ review,
         <p className="cx-eyebrow">{L(UI.coachRead)}</p>
       </div>
       <h2 className="cx-headline">{L(review.headline)}</h2>
-      {mine.length > 0 && <Group title={L(UI.forYou)} findings={mine} report={report} />}
-      {team.length > 0 && <Group title={L(UI.forTeam)} findings={team} report={report} />}
-      {good.length > 0 && <Group title={L(UI.wentWell)} findings={good} report={report} />}
+      {mine.length > 0 && <Group title={L(UI.forYou)} findings={mine} report={report} slot={review.slot} />}
+      {team.length > 0 && <Group title={L(UI.forTeam)} findings={team} report={report} slot={review.slot} />}
+      {good.length > 0 && <Group title={L(UI.wentWell)} findings={good} report={report} slot={review.slot} />}
       {review.findings.length === 0 && <p className="cx-muted">{L(UI.noFindings)}</p>}
     </>
   );
 };
 
-const Group: React.FC<{ title: string; findings: Finding[]; report: CoachReport }> = ({ title, findings, report }) => (
+const Group: React.FC<{ title: string; findings: Finding[]; report: CoachReport; slot: number }> = ({ title, findings, report, slot }) => (
   <div className="cx-group">
     <h3 className="cx-group-title">{title}</h3>
     <ol className="cx-findings">
-      {findings.map((f) => <FindingCard key={f.id} f={f} report={report} />)}
+      {findings.map((f) => <FindingCard key={f.id} f={f} report={report} slot={slot} />)}
     </ol>
   </div>
 );
 
-const FindingCard: React.FC<{ f: Finding; report: CoachReport }> = ({ f, report }) => {
+const FindingCard: React.FC<{ f: Finding; report: CoachReport; slot: number }> = ({ f, report, slot }) => {
   const { L } = useLang();
+  const active = useActiveGoal();
+  const candidate = f.goal && f.tone === 'fix' && !f.shared ? goalFromFinding(report, slot, f.id, f.goal, f.action) : null;
+  const isActive = candidate != null && active?.id === candidate.id;
   return (
     <li className={`cx-card tone-${f.tone} sev-${f.severity}`}>
       <div className="cx-card-meta">
@@ -675,6 +744,16 @@ const FindingCard: React.FC<{ f: Finding; report: CoachReport }> = ({ f, report 
       <p className="cx-body">{L(f.body)}</p>
       <EvidenceRow evidence={f.evidence} report={report} />
       {f.caveat && <p className="cx-caveat">{L(f.caveat)}</p>}
+      {candidate && (isActive ? (
+        <p className="cx-goal-set">
+          <span>✓ {L(UI.goalSet)}：{L(candidate.goal.label)}</span>
+          <button type="button" className="cx-linkbtn" onClick={() => setGoal(null)}>{L(UI.goalClear)}</button>
+        </p>
+      ) : (
+        <button type="button" className="cx-goal-btn" onClick={() => setGoal(candidate)}>
+          {L(UI.setGoal)}<span>{L(candidate.goal.label)}</span>
+        </button>
+      ))}
     </li>
   );
 };
