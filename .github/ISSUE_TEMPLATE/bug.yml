@@ -1,0 +1,21 @@
+name: Bug
+description: 页面、API 或命令行出错 / Something broke on the site, the API or the CLI
+labels: ["bug"]
+body:
+  - type: input
+    id: where
+    attributes:
+      label: 在哪里 / Where
+      placeholder: "https://dota2.ai/r/… , /api/coach/… , dota2ai coach …"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么，期望是什么 / What happened, what you expected
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 浏览器 / 系统（可选）/ Browser / OS (optional)

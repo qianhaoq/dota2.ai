@@ -1,0 +1,15 @@
+name: 想法 / Idea
+description: 想让教练多做点什么 / Something you wish the coach did
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: moment
+    attributes:
+      label: 你在什么时候需要它 / When would you use it
+      description: 例如“打完一局想知道……” / e.g. "After a game I want to know…"
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你希望它怎么做 / What it would do

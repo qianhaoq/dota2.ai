@@ -74,11 +74,14 @@ jobs:
       # from YOUR ci.yml / e2e.yml / codex-gate.yml callers. No human label is
       # required: Playwright e2e plus the Codex gate replace the manual QA gate. "ci / Secret Scan"
       # is required so a red gitleaks run can never be auto-merged.
+      # "External PR Guard" labels fork PRs no-auto-merge; requiring its
+      # check makes a broken guard block merges (fail-closed).
       required_checks: |
         ci / Build & Test
         codex / Codex Review Gate
         ci / Secret Scan
         e2e
+        External PR Guard
       merge_method: squash
       # Copilot is retired as a merge gate. DISABLE_COPILOT_REVIEW=true
       # is already set operationally; the durable default is false.

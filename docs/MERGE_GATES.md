@@ -15,6 +15,9 @@ This page is the source of truth for merge policy.
 - `ci / Secret Scan`
 - `codex / Codex Review Gate`
 - `e2e`（Playwright 视觉基准 + axe，`e2e.yml`）
+- `External PR Guard`（`external-pr-guard.yml`；只在 `auto-merge.yml` 的 `required_checks` 和 watchdog 里要求，branch protection 不要求）
+
+**外部 PR 必须由仓库所有者审核（2026-11-20 起）：** 来自 fork 的 PR，每次 opened / reopened / synchronize / ready_for_review / edited 都会由 `External PR Guard` 加上 `no-auto-merge`。Auto Merge 和 watchdog 都会跳过带这个标签的 PR；第一次还会留言说明原因。所有者批准的方式是手动合并，或移除标签，让 Auto Merge 接手；作者再推送新代码会重新加标签，所以批准只覆盖审过的代码。这个 guard 是 Auto Merge 的必需 check：guard 出错时什么都不会合并（fail-closed）。它跑在 `pull_request_target` 上，只 checkout main 的 `.github/scripts`，从不检出或执行 PR 代码。同仓库分支的 PR（只有拥有写权限的人能推送）不受影响。
 
 **全自动流水线（2026-11-18 起）：** 不再需要任何人工标签。
 

@@ -1,0 +1,46 @@
+# External PR guard: a PR from a fork never merges or deploys without the
+# owner's review. Adds `no-auto-merge` on every new head of a fork PR (Auto
+# Merge and the pipeline watchdog skip labeled PRs) and explains why once.
+#
+# The owner approves by merging by hand, or by removing the label.
+#
+# SECURITY: pull_request_target runs main's YAML and script with a write
+# token. It never checks out or executes PR code: checkout below takes the
+# default (base) ref, and only the trusted script under .github/scripts runs.
+#
+# Its check "External PR Guard" is required by auto-merge.yml, so a broken
+# guard blocks merges instead of letting a fork PR through (fail-closed).
+# Logic and tests: .github/scripts/external-pr-guard.cjs,
+# src/utils/externalPrGuard.test.ts.
+name: External PR Guard
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: external-pr-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: External PR Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Base branch only (the pull_request_target default); never the PR head.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const guard = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/external-pr-guard.cjs`);
+            await guard.run({ github, context, core });

@@ -185,7 +185,7 @@ describe('pipeline watchdog check rollup pagination', () => {
     const run = (name: string) => ({ __typename: 'CheckRun', name, status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: new Date(ago(20)).toISOString(), completedAt: new Date(ago(19)).toISOString(), detailsUrl: '' });
     const pages: Record<string, { nodes: unknown[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } }> = {
       first: { nodes: [run('ci / Build & Test'), run('ci / Secret Scan'), run('e2e')], pageInfo: { hasNextPage: true, endCursor: 'c1' } },
-      c1: { nodes: [run('codex / Codex Review Gate')], pageInfo: { hasNextPage: false, endCursor: null } },
+      c1: { nodes: [run('codex / Codex Review Gate'), run('External PR Guard')], pageInfo: { hasNextPage: false, endCursor: null } },
     };
     const seen: (string | null)[] = [];
     const github = {

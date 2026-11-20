@@ -16,7 +16,7 @@
  */
 
 const DEFAULTS = {
-  required: ['ci / Build & Test', 'ci / Secret Scan', 'e2e', 'codex / Codex Review Gate'],
+  required: ['ci / Build & Test', 'ci / Secret Scan', 'e2e', 'codex / Codex Review Gate', 'External PR Guard'],
   codexWaitMin: 10, // between "@codex review" requests
   maxCodexRequests: 3, // per head commit, including the automatic first one
   missingCheckMin: 5, // a required check that never appeared

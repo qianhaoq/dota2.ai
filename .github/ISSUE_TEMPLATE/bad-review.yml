@@ -1,0 +1,28 @@
+name: 复盘说错了 / The review got it wrong
+description: 某场比赛的复盘结论不对、误导、或漏掉了关键问题 / A review conclusion was wrong, misleading, or missed the point
+title: "[review] "
+labels: ["review-quality"]
+body:
+  - type: input
+    id: link
+    attributes:
+      label: 复盘链接 / Review link
+      placeholder: "https://dota2.ai/r/9091400302?p=4"
+    validations:
+      required: true
+  - type: textarea
+    id: wrong
+    attributes:
+      label: 哪句不对，为什么 / Which line is wrong, and why
+      description: 引用原句，说明比赛里实际发生了什么（时间点越具体越好）/ Quote it and say what actually happened (times help)
+    validations:
+      required: true
+  - type: textarea
+    id: should
+    attributes:
+      label: 你认为教练该说什么 / What the coach should have said
+  - type: dropdown
+    id: rank
+    attributes:
+      label: 你的段位（可选）/ Your rank (optional)
+      options: ["先锋–卫士 / Herald–Guardian", "中军–统帅 / Crusader–Archon", "传奇–万古 / Legend–Ancient", "超凡–冠绝 / Divine–Immortal", "职业 / 教练 / Pro / coach"]
