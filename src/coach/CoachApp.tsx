@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { CoachApiError, fetchCoachReport, fetchRecentMatches, requestParse } from './api';
-import { parseAccountInput, rememberAccount, rememberedAccount } from './accountInput';
-import type { Bi, CoachReport, Evidence, Finding, Player, RecentMatches, Review } from './types';
+import { markReviewed, markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
+import type { Bi, CoachReport, Evidence, Finding, Player, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
 import { Chapters } from './Chapters';
 import { CURRENT_PATCH, itemIcon } from './patch';
@@ -41,6 +41,11 @@ const UI = {
     zh: '这个账号没有公开的比赛。如果是你的账号，请在 Dota 2 设置里打开「公开比赛数据」（Expose Public Match Data），打完一局再回来。',
   },
   notMe: { en: 'Not you? Forget this account', zh: '不是你？忘掉这个账号' },
+  latestTitle: { en: 'Your latest game', zh: '你刚打完的那局' },
+  latestCta: { en: 'Review it', zh: '复盘这局' },
+  allRecent: { en: 'All recent games', zh: '全部最近比赛' },
+  reviewedTag: { en: 'Reviewed', zh: '已复盘' },
+  newTag: { en: 'New', zh: '新' },
   win: { en: 'Win', zh: '胜' },
   loss: { en: 'Loss', zh: '负' },
   patchEyebrow: { en: 'New patch', zh: '新版本' },
@@ -155,6 +160,36 @@ const Shell: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ childr
 
 /* ----------------------------------------------------------------- home */
 
+/** Coming back after a game: the newest one, one tap from its review. */
+const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
+  const { lang, L } = useLang();
+  const [latest, setLatest] = useState<RecentMatch | null>(null);
+  useEffect(() => {
+    const ac = new AbortController();
+    fetchRecentMatches(accountId, ac.signal).then((r) => setLatest(r.matches[0] ?? null)).catch(() => {});
+    return () => ac.abort();
+  }, [accountId]);
+  const all = <Link to={`/p/${accountId}?lang=${lang}`} className="cx-account-known">{latest ? L(UI.allRecent) : L(UI.myGames)} →</Link>;
+  if (!latest) return <p className="cx-example">{all}</p>;
+  const reviewed = reviewedMatches().has(String(latest.match_id));
+  return (
+    <div className="cx-latest">
+      <p className="cx-eyebrow">{L(UI.latestTitle)}</p>
+      <div className="cx-latest-row">
+        {latest.hero.icon ? <SafeImg src={latest.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
+        <span className="cx-latest-text">
+          <b>{latest.hero[lang]}</b>{' '}
+          <span className={latest.won ? 'is-win' : latest.won === false ? 'is-loss' : ''}>{latest.won == null ? '' : L(latest.won ? UI.win : UI.loss)}</span>{' '}
+          <span className="cx-recent-kda">{latest.kda.join('/')}</span>
+          {reviewed && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
+        </span>
+        <Link to={`/r/${latest.match_id}?p=${latest.slot}&lang=${lang}`} className="cx-patch-cta cx-latest-cta">{L(UI.latestCta)}</Link>
+      </div>
+      <p className="cx-example">{all}</p>
+    </div>
+  );
+};
+
 const AccountForm: React.FC = () => {
   const { lang, L } = useLang();
   const navigate = useNavigate();
@@ -172,7 +207,7 @@ const AccountForm: React.FC = () => {
   return (
     <div className="cx-account">
       {known ? (
-        <p className="cx-example"><Link to={`/p/${known}?lang=${lang}`} className="cx-account-known">{L(UI.myGames)} →</Link></p>
+        <LatestGame accountId={known} />
       ) : !open ? (
         <p className="cx-example"><button type="button" aria-expanded="false" onClick={() => setOpen(true)}>{L(UI.useAccount)}</button></p>
       ) : (
@@ -200,6 +235,9 @@ export const CoachPlayerPage: React.FC = () => {
   const navigate = useNavigate();
   const [data, setData] = useState<RecentMatches | null>(null);
   const [error, setError] = useState<CoachApiError | null>(null);
+  // Read once per visit, before this visit marks the list as seen.
+  const [seen] = useState(() => (rememberedAccount() === accountId ? seenUntil() : null));
+  const [reviewed] = useState(() => reviewedMatches());
   const valid = /^[1-9]\d{0,9}$/.test(accountId) && Number(accountId) <= 2 ** 32 - 1;
   const load = useCallback(async (signal?: AbortSignal) => {
     if (!valid) return;
@@ -207,7 +245,10 @@ export const CoachPlayerPage: React.FC = () => {
     try {
       const r = await fetchRecentMatches(accountId, signal);
       setData(r);
-      if (r.matches.length) rememberAccount(accountId);
+      if (r.matches.length) {
+        rememberAccount(accountId);
+        markSeen(Math.max(...r.matches.map((x) => x.start_time ?? 0)));
+      }
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       setError(e instanceof CoachApiError ? e : new CoachApiError('upstream', String(e), 0));
@@ -238,7 +279,11 @@ export const CoachPlayerPage: React.FC = () => {
               <li key={m.match_id}>
                 <Link to={`/r/${m.match_id}?p=${m.slot}&lang=${lang}`} className="cx-recent-row">
                   {m.hero.icon ? <SafeImg src={m.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
-                  <span className="cx-recent-hero">{m.hero[lang]}</span>
+                  <span className="cx-recent-hero">
+                    {m.hero[lang]}
+                    {seen != null && (m.start_time ?? 0) > seen && <span className="cx-tag cx-tag--new">{L(UI.newTag)}</span>}
+                    {reviewed.has(String(m.match_id)) && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
+                  </span>
                   <span className={`cx-recent-result ${m.won ? 'is-win' : m.won === false ? 'is-loss' : ''}`}>
                     {m.won == null ? '—' : L(m.won ? UI.win : UI.loss)}
                   </span>
@@ -383,6 +428,7 @@ export const CoachReportPage: React.FC = () => {
   const viewedParsed = report?.match.parsed;
   useEffect(() => {
     if (viewedId == null) return;
+    markReviewed(viewedId);
     trackReviewViewed(viewedId, {
       ui: 'coach', surface: 'web', lang, state: viewedParsed ? 'parsed' : 'unparsed',
       ...(ref === 'team' || ref === 'share' ? { ref } : {}),
