@@ -71,9 +71,9 @@ export function rememberAccount(id: string | null): void {
 }
 
 /** Matches this browser has opened a review for (newest last, capped). */
-export const REVIEWED_STORAGE_KEY = 'dota2ai.coach.reviewed';
+export const REVIEWED_STORAGE_KEY = 'dota2ai.coach.reviewed'; // gitleaks:allow (storage key name, not a secret)
 /** Start time of the newest game the player has already seen in their list. */
-export const SEEN_STORAGE_KEY = 'dota2ai.coach.seenUntil';
+export const SEEN_STORAGE_KEY = 'dota2ai.coach.seenUntil'; // gitleaks:allow (storage key name, not a secret)
 const MAX_REVIEWED = 200;
 
 export function reviewedMatches(): Set<string> {
