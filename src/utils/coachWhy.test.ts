@@ -137,6 +137,10 @@ describe('positioning and vision (team-fight death positions, observer logs)', (
     for (const p of radiant) p.obs_log = (p.obs_log ?? []).filter((o: any) => !(o.time > 1100 && o.time < 1600));
     const v = buildCoachReport(m).reviews[2].chapters.story.why.find((c: any) => c.id === 'vision.blind');
     expect(v.evidence.length).toBeGreaterThanOrEqual(4);
+    // One player's log missing = unknown coverage: no zero-ward claim at all.
+    const partial = structuredClone(m);
+    delete partial.players.find((p: any) => p.isRadiant).obs_log;
+    expect(buildCoachReport(partial).reviews[2].chapters.story.why.find((c: any) => c.id === 'vision.blind')).toBeUndefined();
     expect(v.mine).toBe(true); // Warlock is a support
     expect(v.fix.zh).toContain('先在那里插一个假眼');
   });
