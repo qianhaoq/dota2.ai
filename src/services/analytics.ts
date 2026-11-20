@@ -81,7 +81,7 @@ export function trackEvent(event: AnalyticsEventName, props?: AnalyticsProps): v
  * 三结论首屏展示时上报，每个 matchId 每次会话只发一次。v2 页面传字符串
  * ID（与数字 ID 共享同一去重键），事件名与 props 与 legacy 完全一致。
  */
-export function trackReviewViewed(matchId: number | string): void {
+export function trackReviewViewed(matchId: number | string, extra: AnalyticsProps = {}): void {
   const id = typeof matchId === 'number' ? String(matchId) : matchId;
   const valid = typeof matchId === 'number' ? Number.isFinite(matchId) : /^\d{1,20}$/.test(id);
   if (!valid || reviewViewedMatches.has(id)) return;
@@ -91,5 +91,5 @@ export function trackReviewViewed(matchId: number | string): void {
   try { session = typeof window !== 'undefined' ? window.sessionStorage : null; } catch { session = null; }
   if (session && !claimReviewViewed(session, id)) return;
   // 比赛 ID 超过服务端数值 props 上限（1e9），以标识字符串形式上报。
-  trackEvent('review_viewed', { matchId: id });
+  trackEvent('review_viewed', { ...extra, matchId: id });
 }

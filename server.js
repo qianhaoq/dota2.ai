@@ -2502,6 +2502,13 @@ app.use(createV1Router({ fetchMatch: getMatchDetail, replayIngest, phrasingCompl
 // Coach report (deterministic, no LLM): GET /api/coach/:matchId
 // Case studies: pro games via OpenDota Explorer, profiled once and cached.
 // Raw pro matches bypass matchDetailCache so they never evict viewers' games.
+let builtIndexHtml;
+function readBuiltIndexHtml() {
+  if (builtIndexHtml === undefined) {
+    try { builtIndexHtml = fs.readFileSync(path.join(__dirname, 'dist', 'index.html'), 'utf8'); } catch { builtIndexHtml = null; }
+  }
+  return builtIndexHtml;
+}
 const opendotaKeyParam = opendotaApiKey ? `api_key=${encodeURIComponent(opendotaApiKey)}` : '';
 const coachCases = createCaseService({
   explorer: (sql) => fetchWithRetry(`${OPENDOTA_API}/explorer?sql=${encodeURIComponent(sql)}${opendotaKeyParam ? `&${opendotaKeyParam}` : ''}`, 1, 1000, { timeoutMs: 20000 }),
@@ -2515,6 +2522,8 @@ app.use(createCoachRouter({
   mapError: mapOpenDotaFetchError,
   log: (msg) => console.warn(`[coach] ${msg}`),
   cases: coachCases,
+  // Link previews for /r/:matchId (built app only; dev serves via Vite).
+  page: { html: readBuiltIndexHtml },
   // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
   ask: {
     guard: (req) => {

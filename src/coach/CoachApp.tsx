@@ -6,6 +6,7 @@ import type { Bi, CoachReport, Evidence, Finding, Player, Review } from './types
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
 import { Chapters } from './Chapters';
 import { CURRENT_PATCH, itemIcon } from './patch';
+import { trackEvent, trackReviewViewed } from '../services/analytics';
 import './coach.css';
 
 const EXAMPLE_MATCH = '9091400302';
@@ -80,7 +81,13 @@ const UI = {
   confidence: { high: { en: 'high confidence', zh: '高置信' }, medium: { en: 'medium confidence', zh: '中等置信' }, low: { en: 'low confidence', zh: '低置信' } } as Record<string, Bi>,
   needsParse: { en: 'needs parse', zh: '需解析' },
   noFindings: { en: 'Nothing in the data stands out for this seat.', zh: '数据里没有针对这个位置的突出问题。' },
-  share: { en: 'Copy link', zh: '复制链接' },
+  share: { en: 'Copy my link', zh: '复制我的链接' },
+  shareTeam: { en: 'Send to my team', zh: '发给队友' },
+  shareTeamText: {
+    en: 'Our game #{id} reviewed by dota2.ai — pick your hero and see the one thing worth fixing:',
+    zh: '我们那局 #{id} 的复盘（dota2.ai）——点开选你玩的英雄，看看你最该改的一件事：',
+  },
+  teamCopied: { en: 'Link copied — paste it to your team', zh: '链接已复制，发到队伍群里吧' },
   ranked: { en: 'Ranked', zh: '天梯' },
   footer: { en: 'Not affiliated with Valve. Match data from OpenDota.', zh: '粉丝项目，与 Valve 无关。比赛数据来自 OpenDota。' },
   classic: { en: 'Classic tools', zh: '旧版工具' },
@@ -246,6 +253,19 @@ export const CoachReportPage: React.FC = () => {
     return () => ac.abort();
   }, [load]);
 
+  // One review_viewed per match per session; `ref` says whether a teammate's link brought them.
+  const ref = search.get('ref');
+  const viewedId = report?.match.id;
+  const viewedParsed = report?.match.parsed;
+  useEffect(() => {
+    if (viewedId == null) return;
+    trackReviewViewed(viewedId, {
+      ui: 'coach', surface: 'web', lang, state: viewedParsed ? 'parsed' : 'unparsed',
+      ...(ref === 'team' || ref === 'share' ? { ref } : {}),
+    });
+  // Only when a new match loads; lang/ref changes are not new views.
+  }, [viewedId]);
+
   const setParam = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(search);
     for (const [key, v] of Object.entries(patch)) (v == null ? next.delete(key) : next.set(key, v));
@@ -270,7 +290,7 @@ export const CoachReportPage: React.FC = () => {
 
   return (
     <Shell wide>
-      <MatchHeader report={report} />
+      <MatchHeader report={report} slot={selected} pos={posOverride} />
       {notice && <p className="cx-notice" role="status">{notice}</p>}
       {error && (
         <p className="cx-notice cx-notice--error" role="alert">
@@ -339,10 +359,40 @@ const Skeleton: React.FC<{ label: string }> = ({ label }) => (
   </div>
 );
 
-const MatchHeader: React.FC<{ report: CoachReport }> = ({ report }) => {
-  const { L } = useLang();
+/** Share links: `ref` tells the next visit how it arrived; the team link has no seat, so each teammate picks their own. */
+export function shareLinks(origin: string, matchId: number, slot: number | null, lang: Lang, pos: number | null = null) {
+  const team = new URLSearchParams({ ref: 'team' });
+  const self = new URLSearchParams();
+  if (slot != null) self.set('p', String(slot));
+  // A corrected role changes the review itself: the personal link must show the same review.
+  if (slot != null && pos != null && Number.isInteger(pos) && pos >= 1 && pos <= 5) self.set('pos', String(pos));
+  self.set('ref', 'share');
+  if (lang === 'zh') { team.set('lang', 'zh'); self.set('lang', 'zh'); }
+  return { team: `${origin}/r/${matchId}?${team}`, self: `${origin}/r/${matchId}?${self}` };
+}
+
+const MatchHeader: React.FC<{ report: CoachReport; slot: number | null; pos: number | null }> = ({ report, slot, pos }) => {
+  const { lang, L } = useLang();
   const m = report.match;
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'self' | 'team' | null>(null);
+  const links = shareLinks(window.location.origin, m.id, slot, lang, pos);
+  const flash = (which: 'self' | 'team') => { setCopied(which); setTimeout(() => setCopied(null), 1800); };
+  const copy = (text: string, which: 'self' | 'team') => {
+    void navigator.clipboard?.writeText(text).then(() => {
+      flash(which);
+      trackEvent('report_shared', { target: which, method: 'copy', matchId: String(m.id) });
+    }).catch(() => {});
+  };
+  const shareTeam = () => {
+    const text = L(UI.shareTeamText).replace('{id}', String(m.id));
+    if (typeof navigator.share === 'function' && window.matchMedia?.('(pointer: coarse)').matches) {
+      navigator.share({ text, url: links.team })
+        .then(() => trackEvent('report_shared', { target: 'team', method: 'native', matchId: String(m.id) }))
+        .catch(() => {});
+      return;
+    }
+    copy(`${text} ${links.team}`, 'team');
+  };
   const date = m.start_time ? new Date(m.start_time * 1000).toLocaleDateString() : null;
   const winner = m.radiant_win ? UI.radiant : UI.dire;
   return (
@@ -360,10 +410,12 @@ const MatchHeader: React.FC<{ report: CoachReport }> = ({ report }) => {
           <span className={`cx-pill ${m.parsed ? 'ok' : 'warn'}`}>{m.parsed ? L(UI.parsed) : L(UI.needsParse)}</span>
         </p>
       </div>
-      <button
-        type="button" className="cx-ghost"
-        onClick={() => { void navigator.clipboard?.writeText(window.location.href).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
-      >{copied ? L(UI.copied) : L(UI.share)}</button>
+      <div className="cx-share">
+        <button type="button" className="cx-share-team" onClick={shareTeam}>{copied === 'team' ? L(UI.teamCopied) : L(UI.shareTeam)}</button>
+        {slot != null && (
+          <button type="button" className="cx-ghost" onClick={() => copy(links.self, 'self')}>{copied === 'self' ? L(UI.copied) : L(UI.share)}</button>
+        )}
+      </div>
     </header>
   );
 };
