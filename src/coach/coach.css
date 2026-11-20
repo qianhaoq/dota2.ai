@@ -93,6 +93,16 @@
 .cx-recent-result.is-loss { color: var(--dire); }
 .cx-recent-kda { grid-area: kda; font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 13.5px; }
 .cx-recent-meta { grid-area: meta; color: var(--text-3); font-size: 12.5px; }
+.cx-tag { display: inline-block; margin-left: 8px; padding: 0 7px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 11.5px; font-weight: 400; color: var(--text-3); vertical-align: 1px; }
+.cx-tag--new { color: var(--accent); border-color: rgba(227, 163, 70, 0.45); }
+.cx-latest { margin-top: 18px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.cx-latest .cx-eyebrow { margin: 0 0 8px; }
+.cx-latest .cx-example { margin-top: 10px; }
+.cx-latest-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cx-latest-text { flex: 1 1 160px; min-width: 0; }
+.cx-latest-text .is-win { color: var(--good); }
+.cx-latest-text .is-loss { color: var(--dire); }
+.cx-latest-cta { text-decoration: none; display: inline-block; }
 .cx-patch { margin: 0 0 28px; padding: 22px 22px 18px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 14px; }
 .cx-patch-head .cx-eyebrow { margin: 0 0 4px; }
 .cx-patch-head h2 { font-family: var(--serif); font-weight: 400; font-size: 24px; margin: 0 0 12px; }
