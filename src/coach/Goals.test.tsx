@@ -35,9 +35,10 @@ describe('training goal loop', () => {
     const btn = screen.getAllByText('设为下局目标').map((b) => b.closest('button')!).find((b) => b.textContent!.includes('每 10 分钟死亡'))!;
     fireEvent.click(btn);
     expect(activeGoal()).toMatchObject({ fromMatch: 9091400302, findingId: 'deaths.high', goal: { kind: 'deaths_per10_max', max: 2.2 } });
-    expect(screen.getByText(/已设为下局目标/)).toBeTruthy();
+    // The card and the banner update from the goal event: wait for the render, do not race it.
+    expect(await screen.findByText(/已设为下局目标/)).toBeTruthy();
     // On the game it came from, the banner says "play your next one".
-    expect(screen.getByText(/目标就是从这局定的/)).toBeTruthy();
+    expect(await screen.findByText(/目标就是从这局定的/)).toBeTruthy();
     cleanup();
 
     at('/r/9091400999?p=4');
@@ -56,7 +57,7 @@ describe('training goal loop', () => {
     at('/r/9091400302?p=4');
     await waitFor(() => expect(screen.getAllByText('设为下局目标').length).toBeGreaterThan(0));
     fireEvent.click(screen.getAllByText('设为下局目标')[0].closest('button')!);
-    fireEvent.click(screen.getByText('取消'));
+    fireEvent.click(await screen.findByText('取消'));
     expect(window.localStorage.getItem(GOAL_STORAGE_KEY)).toBeNull();
   });
 });

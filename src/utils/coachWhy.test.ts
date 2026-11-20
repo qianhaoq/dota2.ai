@@ -114,3 +114,57 @@ describe('story "why": the gap split into causes', () => {
     expect(ans).toContain('- 怎么做：');
   });
 });
+
+describe('positioning and vision (team-fight death positions, observer logs)', () => {
+  const r = buildCoachReport(raw);
+  it('places each lost fight on the map and summarises where they were', () => {
+    const behind = r.reviews[0].chapters.story.why.find((c: any) => c.id === 'fights.behind');
+    expect(behind.evidence.map((e: any) => e.zh)).toEqual(expect.arrayContaining([
+      '19:44：落后 6.0k，5 打 5，在你们半场',
+      '22:09：落后 7.9k，5 打 5，在河道',
+      '地点：7 波在你们半场、1 波在河道、1 波在对方半场（按团战死亡位置）',
+    ]));
+  });
+
+  it('only calls vision a cause when it is a pattern (a third of the lost fights)', () => {
+    // Here only 22:09 and 42:23 (2 of 10) had their observer and none of yours.
+    expect(r.reviews[0].chapters.story.why.find((c: any) => c.id === 'vision.blind')).toBeUndefined();
+    const m = structuredClone(raw);
+    // Give Dire an observer at 23:55's and 25:02's spots too (alive across those fights).
+    const dire = m.players.find((p: any) => !p.isRadiant);
+    dire.obs_log = [...(dire.obs_log ?? []), { time: 1400, x: 120, y: 100, ehandle: 9001 }, { time: 1480, x: 99, y: 123, ehandle: 9002 }];
+    const radiant = m.players.filter((p: any) => p.isRadiant);
+    for (const p of radiant) p.obs_log = (p.obs_log ?? []).filter((o: any) => !(o.time > 1100 && o.time < 1600));
+    const v = buildCoachReport(m).reviews[2].chapters.story.why.find((c: any) => c.id === 'vision.blind');
+    expect(v.evidence.length).toBeGreaterThanOrEqual(4);
+    // One player's log missing = unknown coverage: no zero-ward claim at all.
+    const partial = structuredClone(m);
+    delete partial.players.find((p: any) => p.isRadiant).obs_log;
+    expect(buildCoachReport(partial).reviews[2].chapters.story.why.find((c: any) => c.id === 'vision.blind')).toBeUndefined();
+    expect(v.mine).toBe(true); // Warlock is a support
+    expect(v.fix.zh).toContain('先在那里插一个假眼');
+  });
+
+  it('flags lost fights taken in their half while far behind', () => {
+    const m = structuredClone(raw);
+    // Move two lost late fights' deaths across the river into Dire's half.
+    for (const start of [2203, 2379]) {
+      const f = m.teamfights.find((x: any) => x.start === start);
+      for (const p of f.players) if (p.deaths_pos && Object.keys(p.deaths_pos).length) p.deaths_pos = { 160: { 160: 1 } };
+    }
+    const deep = buildCoachReport(m).reviews[0].chapters.story.why.find((c: any) => c.id === 'position.deep');
+    // The two moved fights, plus 37:26, which really was in their half at 26k+ behind.
+    expect(deep.title.zh).toBe('3 波输掉的团战，是落后 5k 以上时在对方半场打的');
+    expect(deep.evidence.map((e: any) => e.zh.slice(0, 5))).toEqual(['36:43', '37:26', '39:39']);
+    expect(deep.fix.zh).toContain('不要成群过河');
+  });
+
+  it('knows nothing without positions or ward logs', () => {
+    const m = structuredClone(raw);
+    for (const f of m.teamfights) for (const p of f.players) delete p.deaths_pos;
+    for (const p of m.players) { delete p.obs_log; delete p.obs_left_log; }
+    const why = buildCoachReport(m).reviews[0].chapters.story.why;
+    expect(why.find((c: any) => ['vision.blind', 'position.deep'].includes(c.id))).toBeUndefined();
+    expect(JSON.stringify(why)).not.toContain('地点：');
+  });
+});

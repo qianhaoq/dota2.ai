@@ -4,7 +4,7 @@
  * Evaluation is the engine's pure `evaluateGoal`, so the web page, the API
  * and a future CLI judge a goal the same way.
  */
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { evaluateGoal } from '../../lib/coach/goals.js';
 import type { Bi, CoachReport, GoalSpec } from './types';
 
@@ -85,21 +85,29 @@ export function checkGoal(goal: ActiveGoal, report: CoachReport, slot: number): 
   return check;
 }
 
-/** Re-renders when the goal changes anywhere on the page (or in another tab). */
+/**
+ * Re-renders when the goal changes anywhere on the page (or in another tab).
+ * useSyncExternalStore re-reads the store after subscribing, so a change made
+ * between render and subscription (a click before effects ran) is not lost.
+ * The snapshot is cached by its raw stored string: same goal, same object, so
+ * effects that depend on it do not re-run.
+ */
+let cachedRaw: string | null | undefined;
+let cachedGoal: ActiveGoal | null = null;
+function goalSnapshot(): ActiveGoal | null {
+  let raw: string | null = null;
+  try { raw = window.localStorage.getItem(GOAL_STORAGE_KEY); } catch { raw = null; }
+  if (raw !== cachedRaw) { cachedRaw = raw; cachedGoal = activeGoal(); }
+  return cachedGoal;
+}
+function subscribe(onChange: () => void): () => void {
+  window.addEventListener(CHANGED, onChange);
+  window.addEventListener('storage', onChange);
+  return () => { window.removeEventListener(CHANGED, onChange); window.removeEventListener('storage', onChange); };
+}
+
 export function useActiveGoal(): ActiveGoal | null {
-  const [goal, set] = useState<ActiveGoal | null>(() => activeGoal());
-  useEffect(() => {
-    // Keep the same object while the stored goal is unchanged, so effects
-    // that depend on it (checks) do not re-run on unrelated storage events.
-    const sync = () => {
-      const next = activeGoal();
-      set((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
-    };
-    window.addEventListener(CHANGED, sync);
-    window.addEventListener('storage', sync);
-    return () => { window.removeEventListener(CHANGED, sync); window.removeEventListener('storage', sync); };
-  }, []);
-  return goal;
+  return useSyncExternalStore(subscribe, goalSnapshot, () => null);
 }
 
 export function goalFromFinding(report: CoachReport, slot: number, findingId: string, goal: GoalSpec, action: Bi): ActiveGoal {
