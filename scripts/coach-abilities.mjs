@@ -3,8 +3,8 @@
  * Regenerates lib/coach/data/abilities.json: each hero's ultimate (key,
  * English + Chinese name, cooldown per level) from Valve's public datafeed,
  * each hero's castable abilities with Valve's own flags (damage type, whether
- * they pierce spell immunity, how they can be dispelled, basic damage spells'
- * cooldowns) for the "why"
+ * they pierce spell immunity, how they can be dispelled, the cooldown of
+ * basic spells that open a trading window) for the "why"
  * explanations,
  * and every hero ability's damage type (P/M/U = physical/magical/pure) from
  * OpenDota constants — used to split the damage a player took by type.
@@ -31,6 +31,20 @@ const feed = async (id, language) => {
 const DMG = { 1: 'P', 2: 'M', 4: 'U' };
 const PIERCE = { 3: true, 4: false };
 const DISPEL = { 1: 'strong', 2: 'basic', 3: 'no' };
+// A spell opens a trading window only when it is cast (not passive, not an
+// auto-cast attack modifier), its threat is over once used (no lasting effect
+// over 1.5 s: Blade Fury, Swarm, Battle Hunger stay dangerous after the cast)
+// and its cooldown is long enough to act in (8 s at level 1).
+const PASSIVE = 2n; const AUTOCAST = 4096n;
+function tradeWindow(a) {
+  let beh; try { beh = BigInt(a.behavior ?? 0); } catch { return false; }
+  if (beh & PASSIVE || beh & AUTOCAST) return false;
+  const cd = a.cooldowns;
+  if (!Array.isArray(cd) || !(cd[0] >= 8)) return false;
+  const lasting = [...(a.durations ?? []), ...(a.special_values ?? [])
+    .filter((v) => v.name === 'duration').flatMap((v) => v.values_float ?? [])];
+  return !lasting.some((d) => d > 1.5);
+}
 const ultimates = {};
 const heroes = {};
 for (const id of Object.keys(NAMES.heroes)) {
@@ -46,9 +60,9 @@ for (const id of Object.keys(NAMES.heroes)) {
         ...(DMG[a.damage] ? { dmg: DMG[a.damage] } : {}),
         ...(a.immunity in PIERCE ? { pierces: PIERCE[a.immunity] } : {}),
         ...(DISPEL[a.dispellable] ? { dispel: DISPEL[a.dispellable] } : {}),
-        // Cooldown per level for basic damage spells: the lane advice names
-        // the window ("trade after X, cooldown N s"). Ultimates keep theirs in `ultimates`.
-        ...(a.type !== 1 && DMG[a.damage] && Array.isArray(a.cooldowns) && a.cooldowns.some((c) => c > 0) ? { cd: a.cooldowns } : {}),
+        // Cooldown per level, only for basic damage spells whose use opens a
+        // trading window (see tradeWindow). Ultimates keep theirs in `ultimates`.
+        ...(a.type !== 1 && DMG[a.damage] && tradeWindow(a) ? { trade_cd: a.cooldowns } : {}),
       };
     });
   const ult = en.abilities.find((a) => a.type === 1);

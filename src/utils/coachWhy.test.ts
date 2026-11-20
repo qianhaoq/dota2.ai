@@ -35,7 +35,10 @@ describe('story "why": the gap split into causes', () => {
 
   it('names the lane killers\' spell that hurt you most, with Valve\'s cooldowns, and says it is a whole-game number', () => {
     const bot = byKey(2, 'lane.1'); // Warlock, killed in lane by Dawnbreaker and Weaver
-    expect(bot.fix.zh).toContain('破晓辰星的星破天惊（冷却 17/15/13/11 秒）');
+    expect(bot.fix.zh).toContain('等破晓辰星的星破天惊（冷却 17/15/13/11 秒）放出来之后');
+    // Weaver's top spell is the Swarm, which keeps hurting for 16 s after the cast:
+    // no window, so Weaver is not named — not a weaker spell in its place either.
+    expect(bot.fix.zh).not.toMatch(/编织者的/);
     expect(bot.fix.zh).toContain('放出来之后再上前补刀、换血');
     const ev = bot.evidence.at(-1).zh;
     expect(ev).toMatch(/^整局对你伤害最高的小技能：破晓辰星的星破天惊 [\d.]+k/);
@@ -44,6 +47,25 @@ describe('story "why": the gap split into causes', () => {
     const warlock = raw.players.find((p: any) => p.hero_id === 37);
     expect(ev).toContain(`${(warlock.damage_inflictor_received.dawnbreaker_fire_wreath / 1000).toFixed(1)}k`);
     expect(bot.fix.zh).not.toContain('天光现世');
+    // Passive procs and lasting effects never open a window (Valve data).
+    const ABIL = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/abilities.json'), 'utf8'));
+    const spell = (hero: number, id: string) => ABIL.heroes[hero].find((a: any) => a.id === id);
+    expect(spell(2, 'axe_counter_helix').trade_cd).toBeUndefined();
+    expect(spell(8, 'juggernaut_blade_fury').trade_cd).toBeUndefined();
+    expect(spell(101, 'skywrath_mage_arcane_bolt').trade_cd).toBeUndefined(); // 5 s: too short to act in
+    // The named spell follows the damage you took: make Celestial Hammer the top one.
+    const juggy = JSON.parse(JSON.stringify(raw));
+    const w = juggy.players.find((p: any) => p.hero_id === 37);
+    w.damage_inflictor_received = { ...w.damage_inflictor_received, dawnbreaker_celestial_hammer: 99999 };
+    expect(spell(135, 'dawnbreaker_celestial_hammer').trade_cd).toBeDefined();
+    const c2 = buildCoachReport(juggy).reviews[2].chapters.story.why.find((x: any) => x.id === 'lane.1');
+    expect(c2.fix.zh).toContain('破晓辰星的上界重锤');
+    // A top spell with no window (Ursa's Fury Swipes, passive) drops Ursa from the advice.
+    const top = JSON.parse(JSON.stringify(raw));
+    const tide = top.players.find((p: any) => p.hero_id === 29);
+    tide.damage_inflictor_received = { ...tide.damage_inflictor_received, ursa_fury_swipes: 99999 };
+    const c3 = buildCoachReport(top).reviews[0].chapters.story.why.find((x: any) => x.id === 'lane.3');
+    expect(c3.fix.zh).not.toMatch(/熊战士的/);
     // Without the damage breakdown, the advice stays generic and no spell is named.
     const bare = JSON.parse(JSON.stringify(raw));
     for (const p of bare.players) delete p.damage_inflictor_received;
