@@ -3,7 +3,8 @@
  * Regenerates lib/coach/data/abilities.json: each hero's ultimate (key,
  * English + Chinese name, cooldown per level) from Valve's public datafeed,
  * each hero's castable abilities with Valve's own flags (damage type, whether
- * they pierce spell immunity, how they can be dispelled) for the "why"
+ * they pierce spell immunity, how they can be dispelled, basic damage spells'
+ * cooldowns) for the "why"
  * explanations,
  * and every hero ability's damage type (P/M/U = physical/magical/pure) from
  * OpenDota constants — used to split the damage a player took by type.
@@ -45,6 +46,9 @@ for (const id of Object.keys(NAMES.heroes)) {
         ...(DMG[a.damage] ? { dmg: DMG[a.damage] } : {}),
         ...(a.immunity in PIERCE ? { pierces: PIERCE[a.immunity] } : {}),
         ...(DISPEL[a.dispellable] ? { dispel: DISPEL[a.dispellable] } : {}),
+        // Cooldown per level for basic damage spells: the lane advice names
+        // the window ("trade after X, cooldown N s"). Ultimates keep theirs in `ultimates`.
+        ...(a.type !== 1 && DMG[a.damage] && Array.isArray(a.cooldowns) && a.cooldowns.some((c) => c > 0) ? { cd: a.cooldowns } : {}),
       };
     });
   const ult = en.abilities.find((a) => a.type === 1);

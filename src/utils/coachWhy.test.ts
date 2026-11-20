@@ -33,6 +33,25 @@ describe('story "why": the gap split into causes', () => {
     expect(byKey(3, 'lane.2').fix.zh).toContain('破晓辰星从别的线游走过来'); // Pudge's view of mid
   });
 
+  it('names the lane killers\' spell that hurt you most, with Valve\'s cooldowns, and says it is a whole-game number', () => {
+    const bot = byKey(2, 'lane.1'); // Warlock, killed in lane by Dawnbreaker and Weaver
+    expect(bot.fix.zh).toContain('破晓辰星的星破天惊（冷却 17/15/13/11 秒）');
+    expect(bot.fix.zh).toContain('放出来之后再上前补刀、换血');
+    const ev = bot.evidence.at(-1).zh;
+    expect(ev).toMatch(/^整局对你伤害最高的小技能：破晓辰星的星破天惊 [\d.]+k/);
+    expect(ev).toContain('冷却取自官方 7.42 数据');
+    // The amount is the raw damage-received entry, no ultimates.
+    const warlock = raw.players.find((p: any) => p.hero_id === 37);
+    expect(ev).toContain(`${(warlock.damage_inflictor_received.dawnbreaker_fire_wreath / 1000).toFixed(1)}k`);
+    expect(bot.fix.zh).not.toContain('天光现世');
+    // Without the damage breakdown, the advice stays generic and no spell is named.
+    const bare = JSON.parse(JSON.stringify(raw));
+    for (const p of bare.players) delete p.damage_inflictor_received;
+    const c = buildCoachReport(bare).reviews[2].chapters.story.why.find((x: any) => x.id === 'lane.1');
+    expect(c.fix.zh).toContain('只在对方关键技能冷却时换血');
+    expect(c.evidence.map((e: any) => e.zh).join()).not.toContain('整局对你伤害最高');
+  });
+
   it('explains the lost fights: numbers, the gold they started from, who carried them', () => {
     const behind = byKey(0, 'fights.behind');
     expect(behind.title.zh).toMatch(/^\d+ 波输掉的团战，开打时平均落后 [\d.]+k 经济$/);
