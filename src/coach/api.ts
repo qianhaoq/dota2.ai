@@ -1,4 +1,4 @@
-import type { CaseStudies, CoachReport } from './types';
+import type { CaseStudies, CoachReport, RecentMatches } from './types';
 
 export class CoachApiError extends Error {
   constructor(public code: string, message: string, public status: number, public retryAfterSec?: number) {
@@ -94,4 +94,12 @@ export async function askCoach(
   }
   // EOF without the terminal frame: a proxy or the server cut the answer.
   throw new CoachApiError('incomplete', 'The answer stream ended early', 0);
+}
+
+/** A player's recent games (Steam friend code -> match picker). */
+export async function fetchRecentMatches(accountId: string, signal?: AbortSignal): Promise<RecentMatches> {
+  const res = await fetch(`/api/coach/players/${encodeURIComponent(accountId)}/recent`, { signal });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status, body.retryAfterSec);
+  return body as RecentMatches;
 }

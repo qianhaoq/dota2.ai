@@ -73,6 +73,26 @@
 .cx-example button { background: none; border: 0; padding: 0; color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }
 .cx-share { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; justify-content: flex-end; }
 .cx-share-team { background: var(--accent); color: var(--ink); border: 0; border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+.cx-account { margin-top: 10px; }
+.cx-account-form label { display: block; color: var(--text-3); font-size: 13.5px; margin: 0 2px 6px; }
+.cx-account-form > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.cx-account-form input { flex: 1 1 220px; min-width: 0; background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 12px; color: var(--text); font-size: 14px; }
+.cx-account-form button { background: none; border: 1px solid var(--line-2); border-radius: 10px; padding: 9px 14px; color: var(--text-2); font-size: 14px; cursor: pointer; }
+.cx-account-known { color: var(--accent); text-underline-offset: 3px; }
+.cx-recent { padding-top: 24px; }
+.cx-recent .cx-h2 { font-family: var(--serif); font-weight: 400; font-size: 26px; margin: 4px 0 18px; }
+.cx-recent-empty { color: var(--text-2); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.cx-recent-list { list-style: none; margin: 0 0 18px; padding: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.cx-recent-list li + li { border-top: 1px solid var(--line); }
+.cx-recent-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto auto; grid-template-areas: "icon hero result kda" "icon meta meta meta"; align-items: center; gap: 2px 12px; padding: 10px 14px; color: var(--text); text-decoration: none; background: var(--ink); }
+.cx-recent-row:hover, .cx-recent-row:focus-visible { background: var(--panel); }
+.cx-recent-icon { grid-area: icon; width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: var(--panel-2); }
+.cx-recent-hero { grid-area: hero; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cx-recent-result { grid-area: result; font-size: 13px; color: var(--text-3); }
+.cx-recent-result.is-win { color: var(--good); }
+.cx-recent-result.is-loss { color: var(--dire); }
+.cx-recent-kda { grid-area: kda; font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 13.5px; }
+.cx-recent-meta { grid-area: meta; color: var(--text-3); font-size: 12.5px; }
 .cx-patch { margin: 0 0 28px; padding: 22px 22px 18px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 14px; }
 .cx-patch-head .cx-eyebrow { margin: 0 0 4px; }
 .cx-patch-head h2 { font-family: var(--serif); font-weight: 400; font-size: 24px; margin: 0 0 12px; }

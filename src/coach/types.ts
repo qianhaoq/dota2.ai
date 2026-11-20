@@ -164,3 +164,17 @@ export interface CaseStudies {
   themes: CaseTheme[];
   note: Bi;
 }
+
+export interface RecentMatch {
+  match_id: number;
+  start_time: number | null;
+  duration: number | null;
+  hero: { id: number; en: string; zh: string; icon: string | null };
+  slot: number;
+  radiant: boolean;
+  won: boolean | null;
+  kda: [number, number, number];
+  mode: Bi | null;
+  ranked: boolean;
+}
+export interface RecentMatches { account_id: number; matches: RecentMatch[]; empty_hint: string | null }
