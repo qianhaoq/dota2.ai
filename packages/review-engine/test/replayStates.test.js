@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { existsSync, mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { adaptReplayEvents, applyReplayArtifact, isVerifiedReplay } from '../src/replay.js';
@@ -42,6 +42,9 @@ describe('bounded hero-state sampling from a states trace', () => {
     traceDir = mkdtempSync(join(tmpdir(),'replay-states-'));
     writeFileSync(join(traceDir,'states.jsonl'), statesLines().join('\n')+'\n');
   });
+  // Temp traces must not outlive the run: 94 leftover dirs once filled a dev disk.
+  const made = [];
+  afterAll(() => { for (const d of [traceDir, ...made]) if (d) rmSync(d, { recursive: true, force: true }); });
 
   it('keeps ~30 s cadence rows with real game_time, HP/mana and compact cooldowns', async () => {
     const sup = await supplementTo(traceDir, events);
@@ -79,6 +82,7 @@ describe('bounded hero-state sampling from a states trace', () => {
 
   it('flags all-null trace visibility instead of inventing fog', async () => {
     const nullDir = mkdtempSync(join(tmpdir(),'replay-states-null-'));
+    made.push(nullDir);
     writeFileSync(join(nullDir,'states.jsonl'), statesLines(false).join('\n')+'\n'); // same rows, visibility stays null
     const sup = await supplementTo(nullDir, events);
     expect(sup.heroStates.visibility).toBe('null_in_trace');
