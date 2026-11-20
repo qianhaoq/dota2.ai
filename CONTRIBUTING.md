@@ -45,7 +45,7 @@ node --check server.js # 服务端语法
 
 ## 外部 PR 如何合并
 
-来自 fork 的 PR 会被自动加上 `no-auto-merge` 标签（`External PR Guard`）：CI 和 Codex 审查照常运行，但**只有维护者人工审核后才会合并上线**。之后每次推送新提交都会重新加上这个标签。维护者批准的方式是手动合并，或者移除标签，让自动合并接手。
+只有仓库所有者本人的 PR 会自动合并。其他所有 PR（fork、Dependabot 等机器人、协作者的分支）都会被自动加上 `no-auto-merge` 标签（`External PR Guard`）：CI 和 Codex 审查照常运行，但**只有所有者人工审核后才会合并上线**。之后每次推送新提交都会重新加上这个标签。维护者批准的方式是手动合并，或者移除标签，让自动合并接手。
 
 ## 约定
 
@@ -108,7 +108,7 @@ npm test && npx tsc --noEmit && npm run build && node --check server.js
 
 ## How external PRs merge
 
-PRs from forks get the `no-auto-merge` label automatically (`External PR Guard`). CI and the Codex review still run, but **nothing from a fork merges or deploys until a maintainer has reviewed it**. The label is re-added on every new push. A maintainer approves by merging by hand, or by removing the label so Auto Merge can take over.
+Only the repository owner's own PRs merge automatically. Every other PR (forks, Dependabot and other bots, collaborators' branches) gets the `no-auto-merge` label automatically (`External PR Guard`). CI and the Codex review still run, but **nothing merges or deploys until the owner has reviewed it**. The label is re-added on every new push. A maintainer approves by merging by hand, or by removing the label so Auto Merge can take over.
 
 ## Conventions
 
