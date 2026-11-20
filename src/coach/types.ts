@@ -43,6 +43,8 @@ export interface Review {
   won: boolean;
   headline: Bi;
   threats: { tag: string; label: Bi; heroes: number[]; score: number }[];
+  /** Engine >= 1.3.0: every threat tag the enemy brought (threats is a shortlist). */
+  threat_tags?: string[];
   primary_threat: number | null;
   opponent: number | null;
   findings: Finding[];

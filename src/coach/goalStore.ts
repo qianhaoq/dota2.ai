@@ -11,6 +11,7 @@ import type { Bi, CoachReport, GoalSpec } from './types';
 export const GOAL_STORAGE_KEY = 'dota2ai.coach.goal'; // gitleaks:allow (storage key name, not a secret)
 export const GOAL_CHECKS_STORAGE_KEY = 'dota2ai.coach.goalChecks'; // gitleaks:allow (storage key name, not a secret)
 const CHANGED = 'dota2ai:goal';
+const CHECKED = 'dota2ai:goal-checks';
 const MAX_CHECKS = 30;
 
 export interface ActiveGoal {
@@ -36,14 +37,15 @@ function read<T>(key: string, fallback: T): T {
     return fallback;
   }
 }
-function write(key: string, value: unknown): void {
+/** `event` says what changed: the goal itself, or only its check history. */
+function write(key: string, value: unknown, event: string): void {
   try {
     if (value == null) window.localStorage.removeItem(key);
     else window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // Storage blocked: the goal lasts for this page only.
   }
-  window.dispatchEvent(new Event(CHANGED));
+  window.dispatchEvent(new Event(event));
 }
 
 export function activeGoal(): ActiveGoal | null {
@@ -52,7 +54,7 @@ export function activeGoal(): ActiveGoal | null {
 }
 
 export function setGoal(g: ActiveGoal | null): void {
-  write(GOAL_STORAGE_KEY, g);
+  write(GOAL_STORAGE_KEY, g, CHANGED);
 }
 
 export function goalChecks(goalId: string): GoalCheck[] {
@@ -63,7 +65,8 @@ export function goalChecks(goalId: string): GoalCheck[] {
 function recordCheck(c: GoalCheck): void {
   const all = read<GoalCheck[]>(GOAL_CHECKS_STORAGE_KEY, []).filter((x) => !(x.goalId === c.goalId && x.matchId === c.matchId));
   all.push(c);
-  write(GOAL_CHECKS_STORAGE_KEY, all.slice(-MAX_CHECKS));
+  // Not a goal change: listeners of the active goal must not re-run checks.
+  write(GOAL_CHECKS_STORAGE_KEY, all.slice(-MAX_CHECKS), CHECKED);
 }
 
 /**
@@ -86,7 +89,12 @@ export function checkGoal(goal: ActiveGoal, report: CoachReport, slot: number): 
 export function useActiveGoal(): ActiveGoal | null {
   const [goal, set] = useState<ActiveGoal | null>(() => activeGoal());
   useEffect(() => {
-    const sync = () => set(activeGoal());
+    // Keep the same object while the stored goal is unchanged, so effects
+    // that depend on it (checks) do not re-run on unrelated storage events.
+    const sync = () => {
+      const next = activeGoal();
+      set((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+    };
     window.addEventListener(CHANGED, sync);
     window.addEventListener('storage', sync);
     return () => { window.removeEventListener(CHANGED, sync); window.removeEventListener('storage', sync); };

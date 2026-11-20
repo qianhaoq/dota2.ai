@@ -45,6 +45,11 @@ describe('training goal loop', () => {
     expect(screen.getByText(/死亡 3 次/)).toBeTruthy();
     expect(screen.getByText('1 局里达成 1 局')).toBeTruthy();
     expect(goalChecks(activeGoal()!.id)).toEqual([expect.objectContaining({ matchId: 9091400999, result: 'met' })]);
+    // Staying on the page must not loop: recording a check is not a goal change.
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    await new Promise((r) => setTimeout(r, 300));
+    expect(writes).not.toHaveBeenCalled();
+    writes.mockRestore();
   });
 
   it('clearing the goal removes it', async () => {

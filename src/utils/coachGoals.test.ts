@@ -56,6 +56,29 @@ describe('evaluateGoal on a later game', () => {
     expect(evaluateGoal({ ...goal, tag: 'evasion' }, other, none).result).toBe('no_opportunity');
   });
 
+  it('checks threat presence on the full enemy profile, not the 4-item display shortlist', () => {
+    const r = structuredClone(other);
+    const rv = r.reviews[0];
+    rv.threats = []; // shortlist missed it
+    rv.threat_tags = ['evasion'];
+    const goal = { kind: 'answer_item', tag: 'evasion', items: ['monkey_king_bar'], label: {} as any };
+    expect(evaluateGoal(goal, r, 0).result).toBe('missed');
+    expect(other.reviews[0].threat_tags.length).toBeGreaterThanOrEqual(other.reviews[0].threats.length);
+  });
+
+  it('does not count an answer the evaluated game\'s patch retired (7.42 Bloodthorn vs evasion)', () => {
+    const r = structuredClone(other);
+    r.reviews[0].threat_tags = ['evasion'];
+    r.players[0].items = [{ key: 'bloodthorn', en: 'Bloodthorn', zh: '血棘', cost: 0, img: null }];
+    const goal = { kind: 'answer_item', tag: 'evasion', items: ['monkey_king_bar', 'bloodthorn'], label: {} as any };
+    r.match.patch = '7.42';
+    expect(evaluateGoal(goal, r, 0).result).toBe('missed');
+    r.match.patch = '7.41';
+    expect(evaluateGoal(goal, r, 0).result).toBe('met');
+    r.match.patch = null;
+    expect(evaluateGoal(goal, r, 0).result).toBe('missed');
+  });
+
   it('never guesses: wards and lanes need a parse', () => {
     expect(evaluateGoal({ kind: 'obs_per10_min', min: 2, label: {} as any }, unparsed, 1).result).toBe('unknown');
     expect(evaluateGoal({ kind: 'lane_not_lost', label: {} as any }, unparsed, 3).result).toBe('unknown');
