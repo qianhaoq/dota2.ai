@@ -60,9 +60,57 @@ export function rememberedAccount(): string | null {
 
 export function rememberAccount(id: string | null): void {
   try {
+    const prev = window.localStorage.getItem(ACCOUNT_STORAGE_KEY);
+    // "New" is per account: switching or forgetting starts over.
+    if (prev !== id) window.localStorage.removeItem(SEEN_STORAGE_KEY);
     if (id) window.localStorage.setItem(ACCOUNT_STORAGE_KEY, id);
     else window.localStorage.removeItem(ACCOUNT_STORAGE_KEY);
   } catch {
     // Private mode / blocked storage: the page still works without it.
+  }
+}
+
+/** Matches this browser has opened a review for (newest last, capped). */
+export const REVIEWED_STORAGE_KEY = 'dota2ai.coach.reviewed'; // gitleaks:allow (storage key name, not a secret)
+/** Start time of the newest game the player has already seen in their list. */
+export const SEEN_STORAGE_KEY = 'dota2ai.coach.seenUntil'; // gitleaks:allow (storage key name, not a secret)
+const MAX_REVIEWED = 200;
+
+export function reviewedMatches(): Set<string> {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(REVIEWED_STORAGE_KEY) ?? '[]');
+    return new Set(Array.isArray(raw) ? raw.filter((x) => typeof x === 'string' && /^\d{1,20}$/.test(x)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markReviewed(matchId: string | number): void {
+  try {
+    const id = String(matchId);
+    const list = [...reviewedMatches()].filter((x) => x !== id);
+    list.push(id);
+    window.localStorage.setItem(REVIEWED_STORAGE_KEY, JSON.stringify(list.slice(-MAX_REVIEWED)));
+  } catch {
+    // Storage blocked: nothing to remember.
+  }
+}
+
+/** The newest start time already seen, or null on a first visit. */
+export function seenUntil(): number | null {
+  try {
+    const n = Number(window.localStorage.getItem(SEEN_STORAGE_KEY));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+export function markSeen(startTime: number | null | undefined): void {
+  if (!startTime) return;
+  try {
+    if (startTime > (seenUntil() ?? 0)) window.localStorage.setItem(SEEN_STORAGE_KEY, String(startTime));
+  } catch {
+    // ignore
   }
 }

@@ -3,12 +3,13 @@ import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { ACCOUNT_STORAGE_KEY } from './accountInput';
+import { ACCOUNT_STORAGE_KEY, SEEN_STORAGE_KEY, markReviewed } from './accountInput';
 
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'zh', setLang: () => {} }) }));
 const recent = vi.fn();
 vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), fetchRecentMatches: (...a: unknown[]) => recent(...a) }));
 const { CoachPlayerPage, CoachHome } = await import('./CoachApp');
+const GAME = { match_id: 9096792210, start_time: 1795000000, duration: 2549, hero: { id: 44, en: 'Phantom Assassin', zh: '幻影刺客', icon: null }, slot: 7, radiant: false, won: false, kda: [7, 5, 23], mode: { en: 'All Pick', zh: '全英雄选择' }, ranked: true };
 
 afterEach(() => { cleanup(); window.localStorage.clear(); recent.mockReset(); });
 const at = (url: string) => render(
@@ -58,9 +59,54 @@ describe('home: start from a friend code', () => {
     await waitFor(() => expect(recent).toHaveBeenCalledWith('86745912', expect.anything()));
   });
 
-  it('offers "my recent games" once an account is remembered', () => {
+  it('offers "my recent games" once an account is remembered (no games loaded yet / none)', async () => {
     window.localStorage.setItem(ACCOUNT_STORAGE_KEY, '86745912');
+    recent.mockResolvedValue({ account_id: 86745912, empty_hint: 'private_or_no_matches', matches: [] });
     at('/');
     expect(screen.getByText(/我的最近比赛/).closest('a')?.getAttribute('href')).toBe('/p/86745912?lang=zh');
+    await waitFor(() => expect(recent).toHaveBeenCalled());
+    expect(screen.getByText(/我的最近比赛/)).toBeTruthy();
+  });
+
+  it('puts the latest game one tap from its review, and marks it once reviewed', async () => {
+    window.localStorage.setItem(ACCOUNT_STORAGE_KEY, '86745912');
+    recent.mockResolvedValue({ account_id: 86745912, empty_hint: null, matches: [GAME] });
+    const first = at('/');
+    await waitFor(() => expect(screen.getByText('复盘这局')).toBeTruthy());
+    expect(screen.getByText('复盘这局').closest('a')?.getAttribute('href')).toBe('/r/9096792210?p=7&lang=zh');
+    expect(screen.getByText(/全部最近比赛/).closest('a')?.getAttribute('href')).toBe('/p/86745912?lang=zh');
+    expect(screen.queryByText('已复盘')).toBeNull();
+    first.unmount();
+    markReviewed(9096792210);
+    at('/');
+    await waitFor(() => expect(screen.getByText('已复盘')).toBeTruthy());
+  });
+});
+
+describe('recent games: new and reviewed', () => {
+  it('tags games newer than the last visit, and games already reviewed', async () => {
+    const older = { ...GAME, match_id: 1, start_time: 1794000000 };
+    recent.mockResolvedValue({ account_id: 86745912, empty_hint: null, matches: [GAME, older] });
+    window.localStorage.setItem(ACCOUNT_STORAGE_KEY, '86745912');
+    window.localStorage.setItem(SEEN_STORAGE_KEY, '1794500000');
+    markReviewed(1);
+    const { container } = at('/p/86745912');
+    await waitFor(() => expect(container.querySelectorAll('.cx-recent-row')).toHaveLength(2));
+    const rows = [...container.querySelectorAll('.cx-recent-row')];
+    expect(rows[0].textContent).toContain('新');
+    expect(rows[0].textContent).not.toContain('已复盘');
+    expect(rows[1].textContent).toContain('已复盘');
+    expect(rows[1].textContent).not.toContain('新');
+    // This visit has now seen everything up to the newest game.
+    expect(window.localStorage.getItem(SEEN_STORAGE_KEY)).toBe(String(GAME.start_time));
+  });
+
+  it('shows no "new" tags on a first visit or for a different account', async () => {
+    recent.mockResolvedValue({ account_id: 2, empty_hint: null, matches: [GAME] });
+    window.localStorage.setItem(ACCOUNT_STORAGE_KEY, '86745912');
+    window.localStorage.setItem(SEEN_STORAGE_KEY, '1');
+    const { container } = at('/p/2');
+    await waitFor(() => expect(container.querySelectorAll('.cx-recent-row')).toHaveLength(1));
+    expect(container.querySelector('.cx-tag--new')).toBeNull();
   });
 });
