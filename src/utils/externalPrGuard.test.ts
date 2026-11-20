@@ -8,12 +8,18 @@ const guard = require('../../.github/scripts/external-pr-guard.cjs');
 const { decide, run, LABEL, MARKER, CHECK_NAME } = guard;
 const root = join(__dirname, '../..');
 
-const base = { action: 'opened', baseRepo: 'qianhaoq/dota2.ai', headRepo: 'qianhaoq/dota2.ai', labels: [], commented: false };
+const base = { action: 'opened', baseRepo: 'qianhaoq/dota2.ai', headRepo: 'qianhaoq/dota2.ai', author: 'qianhaoq', owner: 'qianhaoq', labels: [], commented: false };
 
 describe('external PR guard: decide', () => {
-  it('leaves same-repository PRs alone (pushing a branch needs write access)', () => {
+  it("leaves only the owner's own same-repository PRs alone", () => {
     expect(decide(base)).toEqual({ external: false, addLabel: false, comment: false });
-    expect(decide({ ...base, headRepo: 'QianHaoQ/Dota2.ai' }).external).toBe(false);
+    expect(decide({ ...base, headRepo: 'QianHaoQ/Dota2.ai', author: 'QianHaoQ' }).external).toBe(false);
+  });
+
+  it('holds same-repository PRs from anyone else: bots, collaborators, a deleted account', () => {
+    for (const author of ['dependabot[bot]', 'Copilot', 'a-collaborator', null]) {
+      expect(decide({ ...base, author }), String(author)).toEqual({ external: true, addLabel: true, comment: true });
+    }
   });
 
   it('holds a fork PR for review and explains once', () => {
@@ -38,9 +44,9 @@ describe('external PR guard: decide', () => {
 });
 
 describe('external PR guard: run', () => {
-  const ctx = (headRepo: string | null, action = 'opened') => ({
+  const ctx = (headRepo: string | null, action = 'opened', author = 'qianhaoq') => ({
     repo: { owner: 'qianhaoq', repo: 'dota2.ai' },
-    payload: { action, pull_request: { number: 7, head: { sha: 'abc123', repo: headRepo ? { full_name: headRepo } : null }, labels: [] } },
+    payload: { action, pull_request: { number: 7, user: { login: author }, head: { sha: 'abc123', repo: headRepo ? { full_name: headRepo } : null }, labels: [] } },
   });
   const gh = (comments: { body: string }[] = []) => ({
     paginate: vi.fn(async () => comments),
@@ -65,7 +71,14 @@ describe('external PR guard: run', () => {
     expect(github.rest.issues.createComment).not.toHaveBeenCalled();
   });
 
-  it('only publishes the head check on a same-repo PR', async () => {
+  it('labels a Dependabot PR from a branch of this repository', async () => {
+    const github = gh();
+    await run({ github, context: ctx('qianhaoq/dota2.ai', 'opened', 'dependabot[bot]'), core });
+    expect(github.rest.issues.addLabels).toHaveBeenCalled();
+    expect(github.rest.checks.create).toHaveBeenCalledWith(expect.objectContaining({ output: expect.objectContaining({ title: 'Held for owner review' }) }));
+  });
+
+  it("only publishes the head check on the owner's own PR", async () => {
     const github = gh();
     await run({ github, context: ctx('qianhaoq/dota2.ai'), core });
     expect(github.paginate).not.toHaveBeenCalled();
