@@ -125,6 +125,7 @@
 .cx-why-cause { margin: 0 0 4px; font-weight: 500; color: var(--text); }
 .cx-why-ev { margin: 0 0 6px; padding-left: 16px; color: var(--text-2); font-size: 13.5px; display: grid; gap: 2px; }
 .cx-why .cx-do { margin-top: 6px; }
+.cx-why-pro { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--accent); text-underline-offset: 3px; }
 .cx-patch { margin: 0 0 28px; padding: 22px 22px 18px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 14px; }
 .cx-patch-head .cx-eyebrow { margin: 0 0 4px; }
 .cx-patch-head h2 { font-family: var(--serif); font-weight: 400; font-size: 24px; margin: 0 0 12px; }

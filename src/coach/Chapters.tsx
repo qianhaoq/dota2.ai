@@ -108,7 +108,7 @@ export const Chapters: React.FC<{ review: Review; report: CoachReport; pos: numb
           <p className="cx-summary-plan"><b>{L(T.check)}</b>{ch.plan.map((p) => L(p.title)).join(' · ')}</p>
         )}
       </nav>
-      {ch.story && <Story ch={ch.story} onAsk={() => onAsk('story')} />}
+      {ch.story && <Story ch={ch.story} onAsk={() => onAsk('story')} withCases={report.match.parsed} />}
       {ch.laning && <Laning ch={ch.laning} heroById={heroById} slot={review.slot} onAsk={() => onAsk('laning')} />}
       {ch.deaths && <Deaths ch={ch.deaths} heroById={heroById} onAsk={() => onAsk('deaths')} />}
       {ch.items && <Items ch={ch.items} heroById={heroById} onAsk={() => onAsk('items')} />}
@@ -180,9 +180,24 @@ const WHY = {
   late: { en: 'Late game', zh: '后期' },
   you: { en: 'you', zh: '你' },
   todo: { en: 'What to do', zh: '怎么做' },
+  pro: { en: 'Pro games on this: one that did it, one that did not ↓', zh: '看职业对局：同样的问题，一场做到了、一场没做到 ↓' },
 };
 
-const Why: React.FC<{ causes: WhyCause[] }> = ({ causes }) => {
+/** The pro-case theme that shows the same problem, by cause. */
+export const CASE_THEME_FOR: Record<string, string> = {
+  'lane.1': 'laning', 'lane.2': 'laning', 'lane.3': 'laning',
+  'fights.outnumbered': 'fights', 'fights.behind': 'fights', 'fights.my_ult': 'fights',
+  'position.deep': 'fights', 'vision.blind': 'fights',
+  'fights.carrier': 'items',
+};
+
+/** Jump to that theme once the cases have loaded; the cases chapter otherwise. */
+function jumpToCases(theme: string) {
+  const el = document.getElementById(`cx-case-${theme}`) ?? document.getElementById('cx-ch-cases');
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+const Why: React.FC<{ causes: WhyCause[]; withCases: boolean }> = ({ causes, withCases }) => {
   const { L } = useLang();
   const phases = (['early', 'mid', 'late'] as const).filter((p) => causes.some((c) => c.phase === p));
   return (
@@ -197,6 +212,10 @@ const Why: React.FC<{ causes: WhyCause[] }> = ({ causes }) => {
                 <p className="cx-why-cause">{L(c.title)}{c.mine && <span className="cx-tag cx-tag--new">{L(WHY.you)}</span>}</p>
                 <ul className="cx-why-ev">{c.evidence.map((e, i) => <li key={i}>{L(e)}</li>)}</ul>
                 {c.fix && <p className="cx-do"><span>{L(WHY.todo)}</span>{L(c.fix)}</p>}
+                {withCases && c.mine && CASE_THEME_FOR[c.id] && (
+                  <a className="cx-why-pro" href={`#cx-case-${CASE_THEME_FOR[c.id]}`}
+                    onClick={(e) => { e.preventDefault(); jumpToCases(CASE_THEME_FOR[c.id]); }}>{L(WHY.pro)}</a>
+                )}
               </li>
             ))}
           </ol>
@@ -206,11 +225,11 @@ const Why: React.FC<{ causes: WhyCause[] }> = ({ causes }) => {
   );
 };
 
-const Story: React.FC<{ ch: NonNullable<ChaptersT['story']>; onAsk: () => void }> = ({ ch, onAsk }) => {
+const Story: React.FC<{ ch: NonNullable<ChaptersT['story']>; onAsk: () => void; withCases: boolean }> = ({ ch, onAsk, withCases }) => {
   const { L } = useLang();
   return (
     <Chapter id="story" title={T.story} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}
-      visual={ch.why?.length ? <Why causes={ch.why} /> : undefined}>
+      visual={ch.why?.length ? <Why causes={ch.why} withCases={withCases} /> : undefined}>
       <Table label={L(T.story)} head={[L(T.phase), L(T.lead), L(T.change), L(T.buildings), L(T.fightsWL), L(T.yourKD)]}>
         {ch.phases.map((p) => (
           <tr key={p.key}>
