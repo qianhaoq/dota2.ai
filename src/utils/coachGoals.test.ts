@@ -75,6 +75,8 @@ describe('evaluateGoal on a later game', () => {
     expect(evaluateGoal(goal, r, 0).result).toBe('missed');
     r.match.patch = '7.41';
     expect(evaluateGoal(goal, r, 0).result).toBe('met');
+    // Item names, not keys.
+    expect(evaluateGoal(goal, r, 0).evidence).toEqual({ en: 'Finished with Bloodthorn', zh: '终局装备里有血棘' });
     r.match.patch = null;
     expect(evaluateGoal(goal, r, 0).result).toBe('missed');
   });
