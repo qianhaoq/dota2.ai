@@ -71,6 +71,8 @@
 .cx-err { color: var(--dire); margin: 10px 2px 0; font-size: 14px; }
 .cx-example { color: var(--text-3); font-size: 13.5px; margin: 14px 2px 0; }
 .cx-example button { background: none; border: 0; padding: 0; color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }
+.cx-share { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; justify-content: flex-end; }
+.cx-share-team { background: var(--accent); color: var(--ink); border: 0; border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13.5px; cursor: pointer; }
 .cx-patch { margin: 0 0 28px; padding: 22px 22px 18px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 14px; }
 .cx-patch-head .cx-eyebrow { margin: 0 0 4px; }
 .cx-patch-head h2 { font-family: var(--serif); font-weight: 400; font-size: 24px; margin: 0 0 12px; }

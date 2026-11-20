@@ -14,6 +14,7 @@ describe('validateAnalyticsEvent', () => {
       ['followup_clicked', { kind: 'preset', position: 2 }, { kind: 'preset' }],
       ['fakedoor_clicked', { kind: 'steam_autoreview' }, { kind: 'steam_autoreview' }],
       ['return_visit', { kind: 'preset' }, {}],
+      ['report_shared', { target: 'team', method: 'copy', matchId: '9091400302', who: 'x' }, { target: 'team', method: 'copy', matchId: '9091400302' }],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
     for (const [event, props, expected] of cases) {
