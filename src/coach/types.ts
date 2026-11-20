@@ -22,7 +22,18 @@ export interface Finding {
   evidence: Evidence[];
   caveat?: Bi | null;
   window?: [number, number];
+  /** Engine >= 1.3.0: a check the next game can pass or fail. */
+  goal?: GoalSpec;
 }
+
+/** lib/coach/goals.js goalFor() output. */
+export type GoalSpec = { label: Bi; role_kind?: 'core' | 'support' } & (
+  | { kind: 'deaths_per10_max'; max: number }
+  | { kind: 'bench_min'; key: string; min: number }
+  | { kind: 'answer_item'; tag: string; items: string[] }
+  | { kind: 'obs_per10_min'; min: number }
+  | { kind: 'lane_not_lost' }
+);
 
 export interface Role { pos: number | null; kind: 'core' | 'support'; confidence: string; source: 'lanes' | 'farm' | 'user'; label: Bi; farm_rank?: number }
 
@@ -95,6 +106,7 @@ export interface Player {
   radiant: boolean;
   hero: HeroRef;
   name: string | null;
+  account_id?: number | null;
   rank_tier: number | null;
   kda: [number, number, number];
   last_hits: number;
@@ -105,6 +117,8 @@ export interface Player {
   hero_damage: number;
   tower_damage: number;
   level: number | null;
+  /** Engine >= 1.3.0; null before a parse. */
+  obs_placed?: number | null;
   items: ItemRef[];
   benchmarks: Record<string, { raw: number; pct: number }> | null;
 }
