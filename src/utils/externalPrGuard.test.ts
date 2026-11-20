@@ -52,7 +52,7 @@ describe('external PR guard: run', () => {
     const github = gh();
     await run({ github, context: ctx('someone/dota2.ai'), core });
     expect(github.rest.issues.addLabels).toHaveBeenCalledWith({ owner: 'qianhaoq', repo: 'dota2.ai', issue_number: 7, labels: [LABEL] });
-    expect(github.rest.issues.createComment.mock.calls[0][0].body).toContain(MARKER);
+    expect((github.rest.issues.createComment.mock.calls as unknown as [{ body: string }][])[0]?.[0].body).toContain(MARKER);
   });
 
   it('does not comment twice', async () => {
