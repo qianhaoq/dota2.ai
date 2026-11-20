@@ -290,7 +290,7 @@ export const CoachReportPage: React.FC = () => {
 
   return (
     <Shell wide>
-      <MatchHeader report={report} slot={selected} />
+      <MatchHeader report={report} slot={selected} pos={posOverride} />
       {notice && <p className="cx-notice" role="status">{notice}</p>}
       {error && (
         <p className="cx-notice cx-notice--error" role="alert">
@@ -360,20 +360,22 @@ const Skeleton: React.FC<{ label: string }> = ({ label }) => (
 );
 
 /** Share links: `ref` tells the next visit how it arrived; the team link has no seat, so each teammate picks their own. */
-export function shareLinks(origin: string, matchId: number, slot: number | null, lang: Lang) {
+export function shareLinks(origin: string, matchId: number, slot: number | null, lang: Lang, pos: number | null = null) {
   const team = new URLSearchParams({ ref: 'team' });
   const self = new URLSearchParams();
   if (slot != null) self.set('p', String(slot));
+  // A corrected role changes the review itself: the personal link must show the same review.
+  if (slot != null && pos != null && Number.isInteger(pos) && pos >= 1 && pos <= 5) self.set('pos', String(pos));
   self.set('ref', 'share');
   if (lang === 'zh') { team.set('lang', 'zh'); self.set('lang', 'zh'); }
   return { team: `${origin}/r/${matchId}?${team}`, self: `${origin}/r/${matchId}?${self}` };
 }
 
-const MatchHeader: React.FC<{ report: CoachReport; slot: number | null }> = ({ report, slot }) => {
+const MatchHeader: React.FC<{ report: CoachReport; slot: number | null; pos: number | null }> = ({ report, slot, pos }) => {
   const { lang, L } = useLang();
   const m = report.match;
   const [copied, setCopied] = useState<'self' | 'team' | null>(null);
-  const links = shareLinks(window.location.origin, m.id, slot, lang);
+  const links = shareLinks(window.location.origin, m.id, slot, lang, pos);
   const flash = (which: 'self' | 'team') => { setCopied(which); setTimeout(() => setCopied(null), 1800); };
   const copy = (text: string, which: 'self' | 'team') => {
     void navigator.clipboard?.writeText(text).then(() => {

@@ -67,6 +67,11 @@ describe('share preview meta', () => {
       self: 'https://dota2.ai/r/9091400302?p=4&ref=share&lang=zh',
     });
     expect(shareLinks('https://dota2.ai', 1, null, 'en').team).toBe('https://dota2.ai/r/1?ref=team');
+    // A corrected role travels with the personal link (it changes the review), never with the team link.
+    expect(shareLinks('https://dota2.ai', 9091400302, 4, 'en', 2)).toEqual({
+      team: 'https://dota2.ai/r/9091400302?ref=team',
+      self: 'https://dota2.ai/r/9091400302?p=4&pos=2&ref=share',
+    });
   });
 
   it('accepts the share analytics events and nothing looser', () => {
@@ -112,6 +117,14 @@ describe('GET /r/:matchId', () => {
     expect(tag(html, 'og:url')).toBe('https://dota2.ai/r/9091400302?p=4&amp;lang=zh');
     expect(html).not.toContain('SecretName');
     expect(logs).toContain('share-visit ref=team match=9091400302');
+  });
+
+  it('applies the shared role override to the preview, like the page does', async () => {
+    const base = await start();
+    const html = await (await fetch(`${base}/r/9091400302?p=4&pos=1`)).text();
+    const forced = buildCoachReport(withNames(), { overrides: { 4: 1 } });
+    expect(tag(html, 'og:url')).toBe('https://dota2.ai/r/9091400302?p=4&amp;pos=1');
+    expect(tag(html, 'og:description')?.startsWith(forced.reviews[4].headline.en.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))).toBe(true);
   });
 
   it('falls back to the generic preview when the match is slow, missing or rate-limited', async () => {
