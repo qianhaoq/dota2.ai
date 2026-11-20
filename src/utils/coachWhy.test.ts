@@ -177,8 +177,20 @@ describe('official ability facts (Valve datafeed herodata)', async () => {
 
   it('describes the hero who carried the lost fights with Valve\'s own flags, patch-stamped', () => {
     const c = buildCoachReport(raw).reviews[0].chapters.story.why.find((x: any) => x.id === 'fights.carrier');
-    expect(c.evidence.map((e: any) => e.zh)).toContain(`官方技能数据（${ABIL.patch}）：怒意狂击：物理伤害，无视技能免疫；激怒（大招）：不可驱散`);
+    expect(c.evidence.map((e: any) => e.zh)).toContain(`官方技能数据（${ABIL.patch}）：怒意狂击：物理伤害，无视技能免疫`);
     expect(abilityFacts(999999)).toBeNull();
+  });
+
+  it('never presents a per-modifier dispel flag as a fact about the whole ability', () => {
+    // Wraith King: Valve flags Reincarnation dispellable (its slow), not the revival.
+    for (const id of Object.keys(ABIL.heroes)) {
+      const f = abilityFacts(Number(id));
+      if (f) expect(JSON.stringify(f.line)).not.toMatch(/驱散|dispel/i);
+    }
+  });
+
+  it('keeps damage types of abilities removed by later patches, for older matches', () => {
+    expect(ABIL.dmg_types.juggernaut_swift_slash).toBe('P');
   });
 
   it('notes when your BKB cannot stop their damage', () => {

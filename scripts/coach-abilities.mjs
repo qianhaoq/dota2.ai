@@ -25,7 +25,8 @@ const feed = async (id, language) => {
 
 // Valve's enums (datafeed herodata): damage 1/2/4 = physical/magical/pure;
 // immunity 3 = ENEMIES_YES (pierces spell immunity), 4 = ENEMIES_NO;
-// dispellable 1 = strong dispels only, 2 = any dispel, 3 = cannot be dispelled.
+// dispellable 1 = strong dispels only, 2 = any dispel, 3 = cannot be dispelled
+// (per modifier, not per ability: stored, never shown as a whole-ability fact).
 const DMG = { 1: 'P', 2: 'M', 4: 'U' };
 const PIERCE = { 3: true, 4: false };
 const DISPEL = { 1: 'strong', 2: 'basic', 3: 'no' };
@@ -66,5 +67,15 @@ for (const { abilities: list } of Object.values(heroAbilities)) {
     if (code) dmg_types[key] = code;
   }
 }
-writeFileSync(OUT, `${JSON.stringify({ source: 'Valve datafeed herodata + OpenDota constants', patch: NAMES.patch, ultimates, dmg_types, heroes }, null, 0)}\n`);
-console.log(`wrote ${Object.keys(ultimates).length} ultimates, ${Object.keys(dmg_types).length} damage types, ${Object.keys(heroes).length} heroes' abilities`);
+// Merge, never drop: matches from older patches still reference abilities a
+// later patch removed (e.g. juggernaut_swift_slash), and their damage must
+// keep its type.
+let previous = {};
+try { previous = JSON.parse(readFileSync(OUT, 'utf8')); } catch { previous = {}; }
+const merged = {
+  ultimates: { ...(previous.ultimates ?? {}), ...ultimates },
+  dmg_types: { ...(previous.dmg_types ?? {}), ...dmg_types },
+  heroes: { ...(previous.heroes ?? {}), ...heroes },
+};
+writeFileSync(OUT, `${JSON.stringify({ source: 'Valve datafeed herodata + OpenDota constants', patch: NAMES.patch, ...merged }, null, 0)}\n`);
+console.log(`wrote ${Object.keys(merged.ultimates).length} ultimates, ${Object.keys(merged.dmg_types).length} damage types (${Object.keys(dmg_types).length} current), ${Object.keys(merged.heroes).length} heroes' abilities`);
