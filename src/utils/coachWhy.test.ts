@@ -39,8 +39,59 @@ describe('story "why": the gap split into causes', () => {
     expect(behind.evidence[0].zh).toMatch(/人数不少于对方——输在装备和等级/);
     const carrier = byKey(0, 'fights.carrier');
     expect(carrier.title.zh).toBe('10 波输掉的团战里，7 波伤害最高的是熊战士');
-    const out = byKey(0, 'fights.outnumbered');
-    expect(out.evidence.map((e: any) => e.zh)).toEqual(['23:55：3 打 4，缺暗影萨满、术士', '37:26：3 打 4，缺潮汐猎人、术士']);
+    // Shadow Shaman and Warlock healed in 23:55 and 37:26: present, like the fights chapter says.
+    expect(byKey(0, 'fights.outnumbered')).toBeUndefined();
+  });
+
+  it('agrees with the fights chapter on who was there: healing-only counts as present', () => {
+    const m = structuredClone(raw);
+    const f = m.teamfights.find((x: any) => x.start === 1435);
+    for (const i of [1, 2]) Object.assign(f.players[i], { healing: 0, ability_uses: {}, item_uses: {} });
+    const g = m.teamfights.find((x: any) => x.start === 2246);
+    for (const i of [1, 2]) Object.assign(g.players[i], { healing: 0, ability_uses: {}, item_uses: {} });
+    const out = buildCoachReport(m).reviews[0].chapters.story.why.find((c: any) => c.id === 'fights.outnumbered');
+    expect(out.evidence.map((e: any) => e.zh)).toEqual(['23:55：3 打 4，缺暗影萨满、术士', '37:26：2 打 4，缺潮汐猎人、暗影萨满、术士']);
+  });
+
+  it('never fills missing data: no XP line without XP timelines, no deficit without the gold graph', () => {
+    const m = structuredClone(raw);
+    for (const p of m.players) if (p.isRadiant && [29, 27].includes(p.hero_id)) delete p.xp_t; // Tidehunter, Shadow Shaman
+    const top = buildCoachReport(m).reviews[0].chapters.story.why.find((c: any) => c.id === 'lane.3');
+    expect(top.evidence.some((e: any) => e.zh.startsWith('经验'))).toBe(false);
+    const n = structuredClone(raw);
+    for (const p of n.players) if (p.isRadiant) { delete p.networth_t; }
+    const behind = buildCoachReport(n).reviews[0].chapters.story.why.find((c: any) => c.id === 'fights.behind');
+    // Deficits come from the team gold graph, not summed player timelines.
+    expect(behind.evidence[1].zh).toBe(byKey(0, 'fights.behind').evidence[1].zh);
+    delete n.radiant_gold_adv;
+    expect(buildCoachReport(n).reviews[0].chapters?.story?.why?.find((c: any) => c.id === 'fights.behind')).toBeUndefined();
+  });
+
+  it('leaves roaming players out of lane totals and lane advice', () => {
+    const o = buildCoachReport(load('match9094562824.parsed.json'));
+    const roamer = o.players.findIndex((_: any, i: number) => load('match9094562824.parsed.json').players[i].is_roaming);
+    expect(roamer).toBeGreaterThanOrEqual(0);
+    const why = o.reviews[roamer].chapters.story.why ?? [];
+    expect(why.filter((c: any) => c.phase === 'early' && c.mine)).toEqual([]);
+  });
+
+  it('times the lesson on the first answer bought, even if it was sold later', () => {
+    const m = structuredClone(raw);
+    const shaman = m.players.find((p: any) => p.hero_id === 27);
+    shaman.purchase_log = [{ time: 600, key: 'ghost' }, ...shaman.purchase_log];
+    const fix = buildCoachReport(m).reviews[1].chapters.story.why.find((c: any) => c.id === 'fights.carrier').fix.zh;
+    expect(fix).not.toContain('29:47');
+    expect(fix).toContain('你在 10:00 就有了幽魂权杖');
+  });
+
+  it('does not recommend or credit BKB against a BKB-piercing disabler', () => {
+    const m = structuredClone(raw);
+    const ursa = m.players.find((p: any) => p.hero_id === 70);
+    ursa.hero_id = 33; // Enigma: disable + piercing
+    const c = buildCoachReport(m).reviews[4].chapters.story.why.find((x: any) => x.id === 'fights.carrier');
+    expect(c.title.zh).toBe('10 波输掉的团战里，7 波伤害最高的是谜团');
+    expect(c.fix.zh).not.toContain('黑皇杖');
+    expect(c.evidence.map((e: any) => e.zh).join('')).not.toContain('黑皇杖');
   });
 
   it('turns an answer item you already had into a timing lesson, from the purchase log', () => {
