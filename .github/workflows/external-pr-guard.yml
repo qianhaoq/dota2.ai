@@ -1,6 +1,7 @@
-# External PR guard: a PR from a fork never merges or deploys without the
-# owner's review. Adds `no-auto-merge` on every new head of a fork PR (Auto
-# Merge and the pipeline watchdog skip labeled PRs) and explains why once.
+# External PR guard: only the repository owner's own PRs merge without the
+# owner's review. Every other PR (forks, Dependabot and other bots,
+# collaborators) gets `no-auto-merge` on every new head (Auto Merge and the
+# pipeline watchdog skip labeled PRs) and an explanation once.
 #
 # The owner approves by merging by hand, or by removing the label.
 #
@@ -12,7 +13,7 @@
 # commit (this job's own check lands on main's commit under
 # pull_request_target, so it cannot be the gate). auto-merge.yml and the
 # watchdog require that head check, so a broken guard blocks merges instead
-# of letting a fork PR through (fail-closed).
+# of letting a non-owner PR through (fail-closed).
 # Logic and tests: .github/scripts/external-pr-guard.cjs,
 # src/utils/externalPrGuard.test.ts.
 name: External PR Guard
@@ -34,7 +35,7 @@ concurrency:
 jobs:
   guard:
     # Not "External PR Guard": that name belongs to the head check the script publishes.
-    name: Label fork PRs
+    name: Hold non-owner PRs
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
