@@ -14,13 +14,17 @@
  * - Same-repository PR (only people with write access can push branches) →
  *   nothing to do.
  *
- * The job's own check, "External PR Guard", is a required check of Auto
- * Merge: if this guard ever fails, nothing merges (fail-closed).
+ * It then publishes a check run named "External PR Guard" on the PR head
+ * commit (a pull_request_target job's own check lands on main's commit, not
+ * the head, so it cannot be the gate). Auto Merge and the watchdog require
+ * that head check: if the guard fails before publishing it, nothing merges
+ * (fail-closed). The label, not the check, is what holds a fork PR.
  *
  * `decide()` is pure and unit-tested in src/utils/externalPrGuard.test.ts.
  */
 
 const LABEL = 'no-auto-merge';
+const CHECK_NAME = 'External PR Guard';
 const MARKER = '<!-- external-pr-guard -->';
 // Events that put new, unreviewed code on the PR (or bring it back).
 const CODE_EVENTS = new Set(['opened', 'reopened', 'synchronize', 'ready_for_review', 'edited']);
@@ -70,6 +74,13 @@ async function run({ github, context, core }) {
   core.info(`PR #${issue_number} head=${state.headRepo ?? '(deleted fork)'} action=${state.action} → ${JSON.stringify(d)}`);
   if (d.addLabel) await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [LABEL] });
   if (d.comment) await github.rest.issues.createComment({ owner, repo, issue_number, body: COMMENT });
+  // Only after the label is in place: the head check is what Auto Merge waits for.
+  await github.rest.checks.create({
+    owner, repo, name: CHECK_NAME, head_sha: pr.head.sha, status: 'completed', conclusion: 'success',
+    output: d.external
+      ? { title: 'Fork PR: held for owner review', summary: `\`${LABEL}\` is on this PR. A maintainer merges by hand after review, or removes the label to let Auto Merge proceed. Every new push re-adds it.` }
+      : { title: 'Same-repository PR', summary: 'Pushed by someone with write access; no extra review hold.' },
+  });
 }
 
-module.exports = { decide, run, LABEL, MARKER };
+module.exports = { decide, run, LABEL, MARKER, CHECK_NAME };

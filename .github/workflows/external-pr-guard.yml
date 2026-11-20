@@ -8,8 +8,11 @@
 # token. It never checks out or executes PR code: checkout below takes the
 # default (base) ref, and only the trusted script under .github/scripts runs.
 #
-# Its check "External PR Guard" is required by auto-merge.yml, so a broken
-# guard blocks merges instead of letting a fork PR through (fail-closed).
+# The script publishes a check run "External PR Guard" on the PR head
+# commit (this job's own check lands on main's commit under
+# pull_request_target, so it cannot be the gate). auto-merge.yml and the
+# watchdog require that head check, so a broken guard blocks merges instead
+# of letting a fork PR through (fail-closed).
 # Logic and tests: .github/scripts/external-pr-guard.cjs,
 # src/utils/externalPrGuard.test.ts.
 name: External PR Guard
@@ -22,6 +25,7 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
+  checks: write   # the head-commit "External PR Guard" check run
 
 concurrency:
   group: external-pr-guard-${{ github.event.pull_request.number }}
@@ -29,7 +33,8 @@ concurrency:
 
 jobs:
   guard:
-    name: External PR Guard
+    # Not "External PR Guard": that name belongs to the head check the script publishes.
+    name: Label fork PRs
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
