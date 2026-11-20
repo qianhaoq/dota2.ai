@@ -127,7 +127,7 @@ Docker → Google Cloud Run. Keys come from Secret Manager (`--update-secrets`),
 
 懂 Dota 就能参与：教练的判断来自一张带出处的小表（谁是魔法爆发、什么装备克闪避），每个版本都要更新，不需要任何 key。从 [good first issue](https://github.com/qianhaoq/dota2.ai/labels/good%20first%20issue) 开始，或者[告诉我们哪份复盘说错了](https://github.com/qianhaoq/dota2.ai/issues/new?template=bad-review.yml)。
 
-One focused PR per change, evidence in the description (commands and output), and never weaken a test to get green. Gates and review severity: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/MERGE_GATES.md`](docs/MERGE_GATES.md). PRs from forks are merged only after a maintainer's review.
+One focused PR per change, evidence in the description (commands and output), and never weaken a test to get green. Gates and review severity: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/MERGE_GATES.md`](docs/MERGE_GATES.md). Only the owner's own PRs merge automatically; every other PR waits for the owner's review.
 
 ---
 
