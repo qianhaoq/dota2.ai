@@ -116,6 +116,15 @@
 .cx-goal-result.is-missed { color: var(--dire); border-color: rgba(208, 106, 85, 0.45); }
 .cx-goal-result.is-no_opportunity, .cx-goal-result.is-unknown { color: var(--text-3); }
 .cx-latest-goal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 0; font-size: 13.5px; color: var(--text-2); }
+.cx-why { margin: 16px 0 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.cx-why-title { font-family: var(--serif); font-weight: 400; font-size: 19px; margin: 0 0 10px; }
+.cx-why-phase + .cx-why-phase { margin-top: 14px; }
+.cx-why-phase .cx-eyebrow { margin: 0 0 6px; }
+.cx-why-list { margin: 0; padding-left: 20px; display: grid; gap: 14px; }
+.cx-why-list > li.is-mine::marker { color: var(--accent); }
+.cx-why-cause { margin: 0 0 4px; font-weight: 500; color: var(--text); }
+.cx-why-ev { margin: 0 0 6px; padding-left: 16px; color: var(--text-2); font-size: 13.5px; display: grid; gap: 2px; }
+.cx-why .cx-do { margin-top: 6px; }
 .cx-patch { margin: 0 0 28px; padding: 22px 22px 18px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 14px; }
 .cx-patch-head .cx-eyebrow { margin: 0 0 4px; }
 .cx-patch-head h2 { font-family: var(--serif); font-weight: 400; font-size: 24px; margin: 0 0 12px; }

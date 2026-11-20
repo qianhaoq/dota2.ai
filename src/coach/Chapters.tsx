@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { SafeImg, clock, k, signedK, useLang } from './ui';
 import { AskPanel, type AskHandle } from './AskPanel';
 import { Cases } from './Cases';
-import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroRef, Review } from './types';
+import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroRef, Review, WhyCause } from './types';
 
 /**
  * The deep review: the game phase by phase, the lane, every death, the build
@@ -173,10 +173,44 @@ const HeroTag: React.FC<{ hero: HeroRef | undefined | null }> = ({ hero }) => {
 
 const Lead: React.FC<{ v: number }> = ({ v }) => <span className={v > 0 ? 'is-up' : v < 0 ? 'is-down' : ''}>{signedK(v)}</span>;
 
+const WHY = {
+  title: { en: 'Why it went this way', zh: '为什么会这样' },
+  early: { en: 'Lanes, 0–10 min', zh: '对线期（0–10 分钟）' },
+  mid: { en: 'Team fights', zh: '团战' },
+  late: { en: 'Late game', zh: '后期' },
+  you: { en: 'you', zh: '你' },
+  todo: { en: 'What to do', zh: '怎么做' },
+};
+
+const Why: React.FC<{ causes: WhyCause[] }> = ({ causes }) => {
+  const { L } = useLang();
+  const phases = (['early', 'mid', 'late'] as const).filter((p) => causes.some((c) => c.phase === p));
+  return (
+    <section className="cx-why" aria-label={L(WHY.title)}>
+      <h4 className="cx-why-title">{L(WHY.title)}</h4>
+      {phases.map((ph) => (
+        <div key={ph} className="cx-why-phase">
+          <p className="cx-eyebrow">{L(WHY[ph])}</p>
+          <ol className="cx-why-list">
+            {causes.filter((c) => c.phase === ph).map((c) => (
+              <li key={c.id} className={c.mine ? 'is-mine' : ''}>
+                <p className="cx-why-cause">{L(c.title)}{c.mine && <span className="cx-tag cx-tag--new">{L(WHY.you)}</span>}</p>
+                <ul className="cx-why-ev">{c.evidence.map((e, i) => <li key={i}>{L(e)}</li>)}</ul>
+                {c.fix && <p className="cx-do"><span>{L(WHY.todo)}</span>{L(c.fix)}</p>}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+    </section>
+  );
+};
+
 const Story: React.FC<{ ch: NonNullable<ChaptersT['story']>; onAsk: () => void }> = ({ ch, onAsk }) => {
   const { L } = useLang();
   return (
-    <Chapter id="story" title={T.story} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}>
+    <Chapter id="story" title={T.story} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}
+      visual={ch.why?.length ? <Why causes={ch.why} /> : undefined}>
       <Table label={L(T.story)} head={[L(T.phase), L(T.lead), L(T.change), L(T.buildings), L(T.fightsWL), L(T.yourKD)]}>
         {ch.phases.map((p) => (
           <tr key={p.key}>

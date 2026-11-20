@@ -75,6 +75,8 @@ export interface Chapters {
     }[];
     peak: { min: number; v: number } | null;
     low: { min: number; v: number } | null;
+    /** Engine >= 1.3.0: where the gap came from, biggest first (lib/coach/why.js). */
+    why?: WhyCause[] | null;
     read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   laning: {
@@ -194,3 +196,14 @@ export interface RecentMatch {
   ranked: boolean;
 }
 export interface RecentMatches { account_id: number; matches: RecentMatch[]; empty_hint: string | null }
+
+export interface WhyCause {
+  id: string;
+  phase: 'early' | 'mid' | 'late';
+  /** The cause is in your lane or on you; `fix` is then written for your seat. */
+  mine: boolean;
+  impact: number;
+  title: Bi;
+  evidence: Bi[];
+  fix: Bi | null;
+}
