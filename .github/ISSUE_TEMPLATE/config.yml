@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 试一场复盘 / Try a review
+    url: https://dota2.ai
+    about: 贴一个比赛 ID，看看教练怎么说。Paste a match ID and see the coach's read.
+  - name: 安全问题 / Security issue
+    url: https://github.com/qianhaoq/dota2.ai/blob/main/SECURITY.md
+    about: 先读安全策略：不要在 issue 里贴可用的利用代码或密钥。Read the policy first — no working exploits or secrets in issues.

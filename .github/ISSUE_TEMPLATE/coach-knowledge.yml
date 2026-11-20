@@ -1,0 +1,36 @@
+name: 教练知识 / Coach knowledge
+description: 某个英雄的威胁类型、某件装备能应对什么、新版本改动没跟上 / A hero's threat, an item's answer, a patch change the coach missed
+title: "[knowledge] "
+labels: ["knowledge"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        教练只收**有官方出处**的知识。改动通常只涉及 `lib/coach/knowledge.js`，不需要 API key（见 CONTRIBUTING 的免 key 快速路径）。
+        The coach only takes knowledge with an **official source**. Usually a change to `lib/coach/knowledge.js`, no API key needed.
+  - type: input
+    id: subject
+    attributes:
+      label: 英雄或装备 / Hero or item
+      placeholder: "Caduceus / 双蛇杖"
+    validations:
+      required: true
+  - type: textarea
+    id: claim
+    attributes:
+      label: 应该怎么改 / What should change
+      description: 例如“X 应归入 magic 威胁”或“Y 应作为 physical 的核心应对装备” / e.g. "X belongs in the magic threat list", "Y answers physical for cores"
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: 官方出处 / Official source
+      description: 官方更新日志的具体条目、或技能/装备说明原文。没有出处的不收。/ The exact patch-note line or ability/item text. No source, no change.
+      placeholder: "https://www.dota2.com/patches/7.42 — “…”"
+    validations:
+      required: true
+  - type: input
+    id: match
+    attributes:
+      label: 能体现问题的比赛 ID（可选）/ A match that shows it (optional)

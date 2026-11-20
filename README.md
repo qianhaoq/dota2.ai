@@ -7,6 +7,8 @@
 
 [dota2.ai](https://dota2.ai) · [Try a match](https://dota2.ai/r/9091400302) · [API](#for-agents-and-scripts) · [中文](#中文)
 
+[![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Patch 7.42](https://img.shields.io/badge/Dota%202-7.42-c23c2a.svg)](https://www.dota2.com/patches/7.42) [![good first issues](https://img.shields.io/github/issues/qianhaoq/dota2.ai/good%20first%20issue.svg?label=good%20first%20issues)](https://github.com/qianhaoq/dota2.ai/labels/good%20first%20issue)
+
 </div>
 
 ---
@@ -121,7 +123,11 @@ Docker → Google Cloud Run. Keys come from Secret Manager (`--update-secrets`),
 
 ## Contributing
 
-One focused PR per change, evidence in the description (commands and output), and never weaken a test to get green. Gates and review severity: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/MERGE_GATES.md`](docs/MERGE_GATES.md).
+**Know Dota? You can help without writing much code.** The coach's judgment lives in a small, sourced table — which heroes are magic burst, which items answer evasion — and every patch moves it. No API key needed: `npm ci && npx vitest run src/utils/coach`. Start with a [good first issue](https://github.com/qianhaoq/dota2.ai/labels/good%20first%20issue), or [tell us where a review got it wrong](https://github.com/qianhaoq/dota2.ai/issues/new?template=bad-review.yml).
+
+懂 Dota 就能参与：教练的判断来自一张带出处的小表（谁是魔法爆发、什么装备克闪避），每个版本都要更新，不需要任何 key。从 [good first issue](https://github.com/qianhaoq/dota2.ai/labels/good%20first%20issue) 开始，或者[告诉我们哪份复盘说错了](https://github.com/qianhaoq/dota2.ai/issues/new?template=bad-review.yml)。
+
+One focused PR per change, evidence in the description (commands and output), and never weaken a test to get green. Gates and review severity: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/MERGE_GATES.md`](docs/MERGE_GATES.md). PRs from forks are merged only after a maintainer's review.
 
 ---
 

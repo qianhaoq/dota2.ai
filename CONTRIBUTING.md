@@ -2,17 +2,39 @@
 
 感谢参与 / Thanks for helping. 中文在前，English below.
 
-## 快速开始（中文）
+## 免 key 快速路径（大多数贡献只需要这个）
+
+改教练知识表、英雄/装备名称、复盘规则、文案或前端，**不需要任何 API key**。复盘引擎是纯函数，不联网、不调大模型：
 
 ```bash
-git clone <your-fork>
-cd dota2.ai
+git clone <your-fork> && cd dota2.ai
 npm ci
+npx vitest run src/utils/coach    # 教练相关测试，几秒跑完
+npm start                         # 可选：先 npm run build；不配 key 也能跑，复盘照常出，追问会退回确定性回答
+```
+
+常见的入门改动：
+
+| 想改什么 | 文件 | 验证 |
+|---|---|---|
+| 某英雄算什么威胁（魔法爆发、连控、闪避…） | `lib/coach/knowledge.js` → `THREAT_TAGS` | `npx vitest run src/utils/coachReport.test.ts` |
+| 哪些装备能应对某类威胁 | `lib/coach/knowledge.js` → `ANSWERS` | 同上；装备 key 必须存在于 `lib/coach/data/names.json` |
+| 新版本的英雄/装备名称 | `node scripts/coach-names.mjs <版本号>` | `npx vitest run src/utils/coachNames742.test.ts src/coach` |
+
+每条知识改动**必须在 PR 里附官方出处**（[官方更新日志](https://www.dota2.com/patches) 的具体条目，或技能/装备说明原文）。凭感觉或二手攻略的数字不收。
+
+## 完整开发环境（需要 key）
+
+只有改大模型相关功能（追问、旧版战术室）时才需要：
+
+```bash
 cp .env.example .env   # 填入你自己的 DEEPSEEK_API_KEY
 npm run start:dev      # Vite (5173) + Express (8080)
 ```
 
-提交 PR 前，以下命令必须全部通过（CI 会跑同样的检查）：
+## 提交 PR 前
+
+不管走哪条路径，以下命令都必须全部通过（CI 会跑同样的检查）。这些命令都不需要 key：
 
 ```bash
 npm test               # vitest
@@ -20,6 +42,10 @@ npx tsc --noEmit       # 类型检查
 npm run build          # 生产构建
 node --check server.js # 服务端语法
 ```
+
+## 外部 PR 如何合并
+
+来自 fork 的 PR 会被自动加上 `no-auto-merge` 标签（`External PR Guard`）：CI 和 Codex 审查照常运行，但**只有维护者人工审核后才会合并上线**。之后每次推送新提交都会重新加上这个标签。维护者批准的方式是手动合并，或者移除标签，让自动合并接手。
 
 ## 约定
 
@@ -44,19 +70,45 @@ node --check server.js # 服务端语法
 
 ---
 
-## Getting started (EN)
+## No-key quick path (EN) — most contributions need only this
+
+Changing the coach's knowledge tables, hero/item names, review rules, copy or UI needs **no API key**. The review engine is pure: no network, no LLM.
 
 ```bash
+git clone <your-fork> && cd dota2.ai
 npm ci
+npx vitest run src/utils/coach    # coach tests, a few seconds
+npm start                         # optional, after npm run build; runs without keys (follow-ups fall back to deterministic answers)
+```
+
+| To change | File | Check with |
+|---|---|---|
+| Which threat a hero poses (magic burst, chain disables, evasion…) | `lib/coach/knowledge.js` → `THREAT_TAGS` | `npx vitest run src/utils/coachReport.test.ts` |
+| Which items answer a threat | `lib/coach/knowledge.js` → `ANSWERS` | same; item keys must exist in `lib/coach/data/names.json` |
+| Names after a new patch | `node scripts/coach-names.mjs <patch>` | `npx vitest run src/utils/coachNames742.test.ts src/coach` |
+
+Every knowledge change **must cite an official source** in the PR (the exact line from the [patch notes](https://www.dota2.com/patches), or the ability/item text). Numbers from memory or third-party guides are not accepted.
+
+## Full setup (EN, needs a key)
+
+Only for LLM features (follow-up questions, the legacy tactical room):
+
+```bash
 cp .env.example .env    # add your own DEEPSEEK_API_KEY
 npm run start:dev       # Vite dev server + Express API
 ```
 
-All of these must pass before a PR (CI runs the same checks):
+## Before you open a PR (EN)
+
+Whichever path you took, all of these must pass (CI runs the same checks; none needs a key):
 
 ```bash
 npm test && npx tsc --noEmit && npm run build && node --check server.js
 ```
+
+## How external PRs merge
+
+PRs from forks get the `no-auto-merge` label automatically (`External PR Guard`). CI and the Codex review still run, but **nothing from a fork merges or deploys until a maintainer has reviewed it**. The label is re-added on every new push. A maintainer approves by merging by hand, or by removing the label so Auto Merge can take over.
 
 ## Conventions
 
