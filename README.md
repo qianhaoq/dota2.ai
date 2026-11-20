@@ -11,7 +11,7 @@
 
 ---
 
-Paste a match ID. Pick the hero you played. You get the two or three things most worth fixing — each one opened with a question for you, backed by the numbers it rests on, and honest about what the data cannot show.
+Paste a match ID. Pick the hero you played. You get the two or three things most worth fixing — each one ending in a concrete next-game action, backed by the numbers it rests on, and honest about what the data cannot show.
 
 ```text
 $ node packages/cli/bin/dota2ai.js coach 9091400302 --hero spectre
@@ -36,7 +36,7 @@ Biggest lever: no item answer to their magic burst.
 1. **Teach judgment, don't play for you.** Post-match and pre-match only. Nothing runs while you are in a game.
 2. **Every claim has a receipt.** Findings link to the stats behind them. No invented patch numbers, no win-rate promises.
 3. **Say what you can't see.** Most matches are not parsed when you look at them. The coach still works — on what the data supports — lists what is missing, and gives you a button to parse the rest.
-4. **Ask before telling.** Each finding starts with a question. Prefer answers? Hit *Just tell me*.
+4. **Tell, with receipts.** Each finding ends in one thing to do next game, with pro games on similar heroes that did it — and didn't.
 5. **Agents are users too.** The web page, the JSON API and the CLI render the same report.
 
 ## What the coach looks at
@@ -105,7 +105,7 @@ npm run test:e2e                                                          # Play
 lib/coach/            analyze.js   pure report engine — no IO, no clock, no LLM
                       knowledge.js curated threat tags and item answers
                       router.js    GET /api/coach/:matchId
-                      data/        names snapshot (Valve datafeed + OpenDota constants)
+                      data/        names snapshot (Valve datafeed + OpenDota constants); refresh after a patch with `node scripts/coach-names.mjs <patch>`
 src/coach/            the web coach (home + report)
 packages/cli          dota2ai coach | review
 server.js             Express: static app, coach route, legacy /api/* routes
@@ -127,14 +127,14 @@ One focused PR per change, evidence in the description (commands and output), an
 
 ## 中文
 
-**贴一场比赛，选你玩的英雄，得到最值得改的两三件事。** 每一条都先抛给你一个问题，附上它依据的数据，并且老实说明数据看不到什么。
+**贴一场比赛，选你玩的英雄，得到最值得改的两三件事。** 每一条都落到下一局要做的一件事，附上它依据的数据，并且老实说明数据看不到什么。
 
 **它的原则**
 
 1. **教判断，不替你打。** 只做赛前赛后，游戏进行中什么都不运行。
 2. **每条结论都有出处。** 不编造版本数值，不承诺胜率。
 3. **说清楚看不到什么。** 大多数比赛在你查看时还没被解析。教练照样给出数据撑得住的结论，列出缺失项，并提供一键解析。
-4. **先问，再讲。** 想直接看结论，点「直接告诉我」。
+4. **直接说怎么做，并给出处。** 每条发现都落到下一局要做的一件事，附相似英雄职业对局的正例和反例。
 5. **Agent 也是用户。** 网页、JSON API 和命令行输出的是同一份报告。
 
 **它看什么**：未解析时看位置（核心/辅助）、终局装备与对方威胁的匹配、死亡与经济相对同英雄对局的分位、全队有没有人针对对方滚起来的英雄；解析后再加 1–5 号位、10 分钟对线、死亡分类（被抓 / 团战 / 被转化成目标）、比赛转折的三分钟、视野与反隐、关键装备时间。

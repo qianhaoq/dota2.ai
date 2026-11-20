@@ -5,6 +5,7 @@ import { CoachApiError, fetchCoachReport, requestParse } from './api';
 import type { Bi, CoachReport, Evidence, Finding, Player, Review } from './types';
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
 import { Chapters } from './Chapters';
+import { CURRENT_PATCH, itemIcon } from './patch';
 import './coach.css';
 
 const EXAMPLE_MATCH = '9091400302';
@@ -20,10 +21,16 @@ const UI = {
   tryExample: { en: 'Try an example', zh: '试试示例' },
   p1t: { en: 'Evidence first', zh: '证据先行' },
   p1: { en: 'Every point links to the numbers behind it. No vibes, no invented patch facts.', zh: '每条结论都附带依据。不靠感觉，不编造版本数据。' },
-  p2t: { en: 'Asks before it tells', zh: '先问，再讲' },
-  p2: { en: 'Each finding starts with a question for you. Judgment is the skill you are training.', zh: '每条发现都先抛给你一个问题。你要练的是判断。' },
+  p2t: { en: 'Tells you what to do', zh: '直接告诉你怎么做' },
+  p2: { en: 'Each finding ends in one thing to do next game — with pro games on similar heroes that did it, and did not.', zh: '每条发现都落到下一局要做的一件事，并附上相似英雄职业对局的正例和反例。' },
   p3t: { en: 'Says what it can’t see', zh: '说清楚看不到什么' },
   p3: { en: 'Unparsed match? You get what the data supports — and a button to parse the rest.', zh: '比赛还没解析？只给数据撑得住的结论，并提供一键解析。' },
+  patchEyebrow: { en: 'New patch', zh: '新版本' },
+  patchTitle: { en: 'Patch {v} is live', zh: '{v} 版本已上线' },
+  patchNewItems: { en: 'New items', zh: '新装备' },
+  patchNotes: { en: 'Full patch notes', zh: '完整更新日志' },
+  patchForCoach: { en: 'For your review', zh: '对复盘的影响' },
+  patchCta: { en: 'Review your first {v} game', zh: '复盘你的第一场 {v}' },
   loading: { en: 'Reading the match…', zh: '正在读取比赛…' },
   radiant: { en: 'Radiant', zh: '天辉' },
   dire: { en: 'Dire', zh: '夜魇' },
@@ -124,11 +131,46 @@ const Shell: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ childr
 
 /* ----------------------------------------------------------------- home */
 
+const PatchNews: React.FC<{ onCta: () => void }> = ({ onCta }) => {
+  const { lang, L } = useLang();
+  const p = CURRENT_PATCH;
+  const v = (b: Bi) => L(b).replace('{v}', p.version);
+  return (
+    <section className="cx-patch" aria-labelledby="cx-patch-title">
+      <div className="cx-patch-head">
+        <p className="cx-eyebrow">{L(UI.patchEyebrow)} · <time dateTime={p.date}>{p.date}</time></p>
+        <h2 id="cx-patch-title">{v(UI.patchTitle)}</h2>
+      </div>
+      <ul className="cx-patch-list">
+        {p.highlights.map((h, i) => <li key={i}>{L(h)}</li>)}
+      </ul>
+      <div className="cx-patch-items">
+        <span className="cx-patch-label">{L(UI.patchNewItems)}</span>
+        {p.newItems.map((it) => {
+          const name = lang === 'zh' ? it.zh : it.en;
+          return (
+            <span key={it.key} className="cx-patch-item" title={name}>
+              <SafeImg src={itemIcon(it.key)} alt="" className="cx-patch-icon" />
+              <span>{name}</span>
+            </span>
+          );
+        })}
+      </div>
+      <p className="cx-patch-coach"><strong>{L(UI.patchForCoach)}</strong> {L(p.forCoach)}</p>
+      <div className="cx-patch-actions">
+        <button type="button" className="cx-patch-cta" onClick={onCta}>{v(UI.patchCta)}</button>
+        <a href={p.notesUrl} target="_blank" rel="noreferrer">{L(UI.patchNotes)} ↗</a>
+      </div>
+    </section>
+  );
+};
+
 export const CoachHome: React.FC = () => {
   const { lang, L } = useLang();
   const navigate = useNavigate();
   const [value, setValue] = useState('');
   const [error, setError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
   const go = (raw: string) => {
     const id = parseMatchInput(raw);
     if (!id) { setError(true); return; }
@@ -141,7 +183,7 @@ export const CoachHome: React.FC = () => {
         <h1 className="cx-h1">{L(UI.heroTitle).split('\n').map((line, i) => <span key={i}>{line}</span>)}</h1>
         <form className="cx-search" onSubmit={(e) => { e.preventDefault(); go(value); }}>
           <input
-            aria-label={L(UI.placeholder)} placeholder={L(UI.placeholder)} value={value} inputMode="text" autoFocus
+            ref={inputRef} aria-label={L(UI.placeholder)} placeholder={L(UI.placeholder)} value={value} inputMode="text" autoFocus
             onChange={(e) => { setValue(e.target.value); setError(false); }}
           />
           <button type="submit">{L(UI.review)}</button>
@@ -151,6 +193,7 @@ export const CoachHome: React.FC = () => {
           {L(UI.tryExample)}: <button type="button" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button>
         </p>
       </section>
+      <PatchNews onCta={() => { inputRef.current?.focus(); inputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }} />
       <section className="cx-principles">
         {[['p1t', 'p1'], ['p2t', 'p2'], ['p3t', 'p3']].map(([tk, bk], i) => (
           <div key={tk} className="cx-principle">
