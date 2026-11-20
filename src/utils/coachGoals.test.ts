@@ -79,6 +79,21 @@ describe('evaluateGoal on a later game', () => {
     expect(evaluateGoal(goal, r, 0).result).toBe('missed');
   });
 
+  it('does not count BKB against disables when this game has a BKB-piercing ultimate', () => {
+    const r = structuredClone(other);
+    const me = r.players[0];
+    r.reviews[0].threat_tags = ['disable'];
+    me.items = [{ key: 'black_king_bar', en: 'Black King Bar', zh: '黑皇杖', cost: 0, img: null }];
+    const goal = { kind: 'answer_item', tag: 'disable', items: ['black_king_bar', 'sphere'], label: {} as any };
+    const enemy = r.players.find((p: any) => p.radiant !== me.radiant);
+    enemy.hero = { ...enemy.hero, slug: 'antimage' };
+    expect(evaluateGoal(goal, r, 0).result).toBe('met');
+    enemy.hero = { ...enemy.hero, slug: 'faceless_void' };
+    expect(evaluateGoal(goal, r, 0).result).toBe('missed');
+    me.items.push({ key: 'sphere', en: "Linken's Sphere", zh: '林肯法球', cost: 0, img: null });
+    expect(evaluateGoal(goal, r, 0).result).toBe('met');
+  });
+
   it('never guesses: wards and lanes need a parse', () => {
     expect(evaluateGoal({ kind: 'obs_per10_min', min: 2, label: {} as any }, unparsed, 1).result).toBe('unknown');
     expect(evaluateGoal({ kind: 'lane_not_lost', label: {} as any }, unparsed, 3).result).toBe('unknown');
