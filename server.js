@@ -127,6 +127,7 @@ import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyt
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { createCaseService } from './lib/coach/caseSource.js';
+import { createRecentService } from './lib/coach/recent.js';
 import { createLlmRateLimit } from './lib/llmRateLimit.js';
 import { rateLimitKey } from './lib/rateLimitKey.js';
 import { validateChatRequest, chatRequestErrorMessage } from './lib/chatRequest.js';
@@ -2524,6 +2525,10 @@ app.use(createCoachRouter({
   cases: coachCases,
   // Link previews for /r/:matchId (built app only; dev serves via Vite).
   page: { html: readBuiltIndexHtml },
+  // "Your recent games" from a Steam friend code (OpenDota recentMatches).
+  recent: createRecentService({
+    fetchRecent: (id) => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches${opendotaKeyParam ? `?${opendotaKeyParam}` : ''}`, 1, 1000, { timeoutMs: 10000 }),
+  }),
   // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
   ask: {
     guard: (req) => {

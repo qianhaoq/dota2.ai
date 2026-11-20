@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { parseMatchInput } from '../v2/parseMatchInput';
-import { CoachApiError, fetchCoachReport, requestParse } from './api';
-import type { Bi, CoachReport, Evidence, Finding, Player, Review } from './types';
+import { CoachApiError, fetchCoachReport, fetchRecentMatches, requestParse } from './api';
+import { parseAccountInput, rememberAccount, rememberedAccount } from './accountInput';
+import type { Bi, CoachReport, Evidence, Finding, Player, RecentMatches, Review } from './types';
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
 import { Chapters } from './Chapters';
 import { CURRENT_PATCH, itemIcon } from './patch';
@@ -26,6 +27,22 @@ const UI = {
   p2: { en: 'Each finding ends in one thing to do next game — with pro games on similar heroes that did it, and did not.', zh: '每条发现都落到下一局要做的一件事，并附上相似英雄职业对局的正例和反例。' },
   p3t: { en: 'Says what it can’t see', zh: '说清楚看不到什么' },
   p3: { en: 'Unparsed match? You get what the data supports — and a button to parse the rest.', zh: '比赛还没解析？只给数据撑得住的结论，并提供一键解析。' },
+  useAccount: { en: 'No match ID? Use your Steam friend code', zh: '找不到比赛 ID？用 Steam 好友代码' },
+  orAccount: { en: 'Your Steam friend code — we list your recent games:', zh: '输入你的 Steam 好友代码，列出你最近的比赛：' },
+  accountPlaceholder: { en: 'Friend code, SteamID64 or profile link', zh: '好友代码、SteamID64 或个人资料链接' },
+  showRecent: { en: 'Show my games', zh: '列出我的比赛' },
+  accountInvalid: { en: 'That is not a friend code. In Dota 2 or Steam, open your profile: the friend code is the number under your name.', zh: '这不是好友代码。在 Dota 2 或 Steam 里打开你的个人资料，名字下面那串数字就是好友代码。' },
+  accountVanity: { en: 'Custom Steam URLs can’t be looked up. Paste your friend code or a steamcommunity.com/profiles/… link instead.', zh: '自定义的 Steam 链接没法查询。请改贴好友代码，或 steamcommunity.com/profiles/… 形式的链接。' },
+  myGames: { en: 'My recent games', zh: '我的最近比赛' },
+  recentTitle: { en: 'Your recent games', zh: '你最近的比赛' },
+  recentSub: { en: 'Pick a game — the review opens on your hero.', zh: '选一场，复盘会直接打开你的英雄。' },
+  recentEmpty: {
+    en: 'No public games for this account. If it is yours, turn on “Expose Public Match Data” in Dota 2’s settings, play a game, then come back.',
+    zh: '这个账号没有公开的比赛。如果是你的账号，请在 Dota 2 设置里打开「公开比赛数据」（Expose Public Match Data），打完一局再回来。',
+  },
+  notMe: { en: 'Not you? Forget this account', zh: '不是你？忘掉这个账号' },
+  win: { en: 'Win', zh: '胜' },
+  loss: { en: 'Loss', zh: '负' },
   patchEyebrow: { en: 'New patch', zh: '新版本' },
   patchTitle: { en: 'Patch {v} is live', zh: '{v} 版本已上线' },
   patchNewItems: { en: 'New items', zh: '新装备' },
@@ -138,6 +155,112 @@ const Shell: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ childr
 
 /* ----------------------------------------------------------------- home */
 
+const AccountForm: React.FC = () => {
+  const { lang, L } = useLang();
+  const navigate = useNavigate();
+  const [value, setValue] = useState('');
+  const [error, setError] = useState<'invalid' | 'vanity' | null>(null);
+  // Collapsed by default: the match box stays the page's one primary input.
+  const [open, setOpen] = useState(false);
+  const known = rememberedAccount();
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const r = parseAccountInput(value);
+    if (!r.ok) { setError(r.reason); return; }
+    navigate(`/p/${r.accountId}?lang=${lang}`);
+  };
+  return (
+    <div className="cx-account">
+      {known ? (
+        <p className="cx-example"><Link to={`/p/${known}?lang=${lang}`} className="cx-account-known">{L(UI.myGames)} →</Link></p>
+      ) : !open ? (
+        <p className="cx-example"><button type="button" aria-expanded="false" onClick={() => setOpen(true)}>{L(UI.useAccount)}</button></p>
+      ) : (
+        <form className="cx-account-form" onSubmit={submit}>
+          <label htmlFor="cx-account-input">{L(UI.orAccount)}</label>
+          <div>
+            <input
+              id="cx-account-input" autoFocus value={value} placeholder={L(UI.accountPlaceholder)} inputMode="text"
+              onChange={(e) => { setValue(e.target.value); setError(null); }}
+            />
+            <button type="submit">{L(UI.showRecent)}</button>
+          </div>
+          {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : UI.accountInvalid)}</p>}
+        </form>
+      )}
+    </div>
+  );
+};
+
+/* --------------------------------------------------------- recent games */
+
+export const CoachPlayerPage: React.FC = () => {
+  const { accountId = '' } = useParams();
+  const { lang, L } = useLang();
+  const navigate = useNavigate();
+  const [data, setData] = useState<RecentMatches | null>(null);
+  const [error, setError] = useState<CoachApiError | null>(null);
+  const valid = /^[1-9]\d{0,9}$/.test(accountId) && Number(accountId) <= 2 ** 32 - 1;
+  const load = useCallback(async (signal?: AbortSignal) => {
+    if (!valid) return;
+    setError(null); setData(null);
+    try {
+      const r = await fetchRecentMatches(accountId, signal);
+      setData(r);
+      if (r.matches.length) rememberAccount(accountId);
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      setError(e instanceof CoachApiError ? e : new CoachApiError('upstream', String(e), 0));
+    }
+  }, [accountId, valid]);
+  useEffect(() => {
+    const ac = new AbortController();
+    void load(ac.signal);
+    return () => ac.abort();
+  }, [load]);
+
+  if (!valid) return <Shell><ErrorBlock text={L(UI.accountInvalid)} /></Shell>;
+  if (error) {
+    const text = error.status === 429 ? L(UI.rateLimited) : L(UI.upstream);
+    return <Shell><ErrorBlock text={text} onRetry={() => void load()} /></Shell>;
+  }
+  if (!data) return <Shell><Skeleton label={L(UI.loading)} /></Shell>;
+  return (
+    <Shell>
+      <section className="cx-recent">
+        <p className="cx-eyebrow">{L(UI.recentTitle)}</p>
+        <h1 className="cx-h2">{L(UI.recentSub)}</h1>
+        {data.matches.length === 0 ? (
+          <p className="cx-recent-empty">{L(UI.recentEmpty)}</p>
+        ) : (
+          <ul className="cx-recent-list">
+            {data.matches.map((m) => (
+              <li key={m.match_id}>
+                <Link to={`/r/${m.match_id}?p=${m.slot}&lang=${lang}`} className="cx-recent-row">
+                  {m.hero.icon ? <SafeImg src={m.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
+                  <span className="cx-recent-hero">{m.hero[lang]}</span>
+                  <span className={`cx-recent-result ${m.won ? 'is-win' : m.won === false ? 'is-loss' : ''}`}>
+                    {m.won == null ? '—' : L(m.won ? UI.win : UI.loss)}
+                  </span>
+                  <span className="cx-recent-kda">{m.kda.join('/')}</span>
+                  <span className="cx-recent-meta">
+                    {m.mode ? L(m.mode) : ''}{m.ranked ? ` · ${L(UI.ranked)}` : ''}
+                    {m.duration != null ? ` · ${clock(m.duration)}` : ''}
+                    {m.start_time ? ` · ${new Date(m.start_time * 1000).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US')}` : ''}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="cx-example">
+          <button type="button" onClick={() => { rememberAccount(null); navigate(`/?lang=${lang}`); }}>{L(UI.notMe)}</button>
+        </p>
+      </section>
+    </Shell>
+  );
+};
+
 const PatchNews: React.FC<{ onCta: () => void }> = ({ onCta }) => {
   const { lang, L } = useLang();
   const p = CURRENT_PATCH;
@@ -199,6 +322,7 @@ export const CoachHome: React.FC = () => {
         <p className="cx-example">
           {L(UI.tryExample)}: <button type="button" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button>
         </p>
+        <AccountForm />
       </section>
       <PatchNews onCta={() => { inputRef.current?.focus(); inputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }} />
       <section className="cx-principles">

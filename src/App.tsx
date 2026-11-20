@@ -9,7 +9,7 @@ import V2Shell from './v2/V2Shell';
 import EmptyState from './v2/components/EmptyState';
 import NewPage from './v2/pages/NewPage';
 import MatchPage from './v2/pages/MatchPage';
-import { CoachHome, CoachReportPage } from './coach/CoachApp';
+import { CoachHome, CoachPlayerPage, CoachReportPage } from './coach/CoachApp';
 
 /**
  * Legacy app — unchanged behavior, but the language now comes from the shared
@@ -82,6 +82,7 @@ export const AppRoutes: React.FC = () => {
         <Route path="/m/:matchId" element={<MatchPage />} />
         <Route path="/m" element={<MatchPage />} />
         <Route path="/r/:matchId" element={<CoachReportPage />} />
+        <Route path="/p/:accountId" element={<CoachPlayerPage />} />
         <Route path="/legacy/*" element={<LegacyApp />} />
         <Route path="/" element={coachHome} />
         <Route path="*" element={coachHome} />
