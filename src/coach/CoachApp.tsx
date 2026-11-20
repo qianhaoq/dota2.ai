@@ -27,7 +27,8 @@ const UI = {
   p2: { en: 'Each finding ends in one thing to do next game — with pro games on similar heroes that did it, and did not.', zh: '每条发现都落到下一局要做的一件事，并附上相似英雄职业对局的正例和反例。' },
   p3t: { en: 'Says what it can’t see', zh: '说清楚看不到什么' },
   p3: { en: 'Unparsed match? You get what the data supports — and a button to parse the rest.', zh: '比赛还没解析？只给数据撑得住的结论，并提供一键解析。' },
-  orAccount: { en: 'Don’t have the match ID? Use your Steam friend code:', zh: '找不到比赛 ID？输入你的 Steam 好友代码：' },
+  useAccount: { en: 'No match ID? Use your Steam friend code', zh: '找不到比赛 ID？用 Steam 好友代码' },
+  orAccount: { en: 'Your Steam friend code — we list your recent games:', zh: '输入你的 Steam 好友代码，列出你最近的比赛：' },
   accountPlaceholder: { en: 'Friend code, SteamID64 or profile link', zh: '好友代码、SteamID64 或个人资料链接' },
   showRecent: { en: 'Show my games', zh: '列出我的比赛' },
   accountInvalid: { en: 'That is not a friend code. In Dota 2 or Steam, open your profile: the friend code is the number under your name.', zh: '这不是好友代码。在 Dota 2 或 Steam 里打开你的个人资料，名字下面那串数字就是好友代码。' },
@@ -159,6 +160,8 @@ const AccountForm: React.FC = () => {
   const navigate = useNavigate();
   const [value, setValue] = useState('');
   const [error, setError] = useState<'invalid' | 'vanity' | null>(null);
+  // Collapsed by default: the match box stays the page's one primary input.
+  const [open, setOpen] = useState(false);
   const known = rememberedAccount();
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,12 +173,14 @@ const AccountForm: React.FC = () => {
     <div className="cx-account">
       {known ? (
         <p className="cx-example"><Link to={`/p/${known}?lang=${lang}`} className="cx-account-known">{L(UI.myGames)} →</Link></p>
+      ) : !open ? (
+        <p className="cx-example"><button type="button" aria-expanded="false" onClick={() => setOpen(true)}>{L(UI.useAccount)}</button></p>
       ) : (
         <form className="cx-account-form" onSubmit={submit}>
           <label htmlFor="cx-account-input">{L(UI.orAccount)}</label>
           <div>
             <input
-              id="cx-account-input" value={value} placeholder={L(UI.accountPlaceholder)} inputMode="text"
+              id="cx-account-input" autoFocus value={value} placeholder={L(UI.accountPlaceholder)} inputMode="text"
               onChange={(e) => { setValue(e.target.value); setError(null); }}
             />
             <button type="submit">{L(UI.showRecent)}</button>

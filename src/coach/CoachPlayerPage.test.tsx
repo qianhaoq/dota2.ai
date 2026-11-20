@@ -46,6 +46,9 @@ describe('home: start from a friend code', () => {
   it('turns a Steam profile link into the recent-games page, and explains vanity URLs', async () => {
     recent.mockResolvedValue({ account_id: 86745912, empty_hint: null, matches: [] });
     at('/');
+    // Collapsed until asked for: the match ID box stays the one primary input.
+    expect(screen.queryByPlaceholderText('好友代码、SteamID64 或个人资料链接')).toBeNull();
+    fireEvent.click(screen.getByText('找不到比赛 ID？用 Steam 好友代码'));
     const input = screen.getByPlaceholderText('好友代码、SteamID64 或个人资料链接');
     fireEvent.change(input, { target: { value: 'https://steamcommunity.com/id/someone' } });
     fireEvent.click(screen.getByText('列出我的比赛'));
