@@ -102,7 +102,7 @@ export const Cases: React.FC<{ matchId: string; slot: number; pos: number | null
 const Theme: React.FC<{ th: CaseTheme }> = ({ th }) => {
   const { L } = useLang();
   return (
-    <section className="cx-case-theme" aria-label={L(th.title)}>
+    <section className="cx-case-theme" id={`cx-case-${th.key}`} aria-label={L(th.title)}>
       <h4 className="cx-case-title">{L(th.title)}</h4>
       <div className="cx-case-cards">
         {th.negative && <Card c={th.negative} kind="negative" />}
