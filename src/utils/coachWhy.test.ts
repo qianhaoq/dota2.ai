@@ -168,3 +168,44 @@ describe('positioning and vision (team-fight death positions, observer logs)', (
     expect(JSON.stringify(why)).not.toContain('地点：');
   });
 });
+
+describe('official ability facts (Valve datafeed herodata)', async () => {
+  const { abilityFacts } = await import('../../lib/coach/why.js');
+  const ABIL = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/abilities.json'), 'utf8'));
+  const NAMES = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/names.json'), 'utf8'));
+  const { THREAT_TAGS } = await import('../../lib/coach/knowledge.js');
+
+  it('describes the hero who carried the lost fights with Valve\'s own flags, patch-stamped', () => {
+    const c = buildCoachReport(raw).reviews[0].chapters.story.why.find((x: any) => x.id === 'fights.carrier');
+    expect(c.evidence.map((e: any) => e.zh)).toContain(`官方技能数据（${ABIL.patch}）：怒意狂击：物理伤害，无视技能免疫`);
+    expect(abilityFacts(999999)).toBeNull();
+  });
+
+  it('never presents a per-modifier dispel flag as a fact about the whole ability', () => {
+    // Wraith King: Valve flags Reincarnation dispellable (its slow), not the revival.
+    for (const id of Object.keys(ABIL.heroes)) {
+      const f = abilityFacts(Number(id));
+      if (f) expect(JSON.stringify(f.line)).not.toMatch(/驱散|dispel/i);
+    }
+  });
+
+  it('keeps damage types of abilities removed by later patches, for older matches', () => {
+    expect(ABIL.dmg_types.juggernaut_swift_slash).toBe('P');
+  });
+
+  it('notes when your BKB cannot stop their damage', () => {
+    const m = structuredClone(raw);
+    const tide = m.players.find((p: any) => p.hero_id === 29);
+    tide.item_5 = 116; // Black King Bar
+    const fix = buildCoachReport(m).reviews[0].chapters.story.why.find((x: any) => x.id === 'fights.carrier').fix.zh;
+    expect(fix).toContain('你的黑皇杖挡不住熊战士的怒意狂击。');
+  });
+
+  it('agrees with the curated BKB-piercing list: every listed hero has a piercing ultimate', () => {
+    const idBySlug = new Map(Object.entries(NAMES.heroes).map(([id, h]: any) => [h.slug, id]));
+    for (const slug of THREAT_TAGS.piercing) {
+      const ult = ABIL.heroes[idBySlug.get(slug) as string].find((a: any) => a.ult);
+      expect(ult.pierces, slug).toBe(true);
+    }
+  });
+});
