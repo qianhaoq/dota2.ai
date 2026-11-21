@@ -198,7 +198,7 @@ function jumpToCases(theme: string) {
 }
 
 const HEAT = {
-  title: { en: 'Where you stood, 0–10 min (replay positions)', zh: '前 10 分钟站位（录像位置采样）' },
+  title: { en: 'Where you stood, pregame to 10:00 (replay positions)', zh: '开局前到 10 分钟站位（录像位置采样）' },
   yours: { en: 'your half', zh: '你们半场' },
   theirs: { en: 'their half', zh: '对方半场' },
 };

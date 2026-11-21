@@ -270,17 +270,35 @@ describe('story "why": where you stood in lane (replay positions)', () => {
 
   it('compares time over the river for every laner, from the replay samples', () => {
     const bot = lane(2, 'lane.1');
-    const line = bot.evidence.find((e: any) => e.zh.startsWith('前 10 分钟站在对方半场的时间'));
-    expect(line.zh).toBe(`前 10 分钟站在对方半场的时间（录像位置采样）：术士 ${over(37)}、幽鬼 ${over(67)} 对 编织者 ${over(63)}、破晓辰星 ${over(135)}`);
+    const line = bot.evidence.find((e: any) => e.zh.startsWith('开局前到 10 分钟站在对方半场的时间'));
+    expect(line.zh).toBe(`开局前到 10 分钟站在对方半场的时间（录像位置采样）：术士 ${over(37)}、幽鬼 ${over(67)} 对 编织者 ${over(63)}、破晓辰星 ${over(135)}`);
     // Ursa pressed into Tidehunter's half; the evidence shows it.
     expect(lane(0, 'lane.3').evidence.map((e: any) => e.zh).join()).toContain(`熊战士 ${over(70)}`);
   });
 
-  it('adds the positioning fact to your lane fix only when you stood over far more than they did', () => {
-    const fix = lane(2, 'lane.1').fix.zh; // Warlock 16% vs Dawnbreaker 5%, died in lane
-    expect(fix).toContain(`录像显示你前 10 分钟有 ${over(37)} 的时间站在河道对面，而破晓辰星站到你们这一侧只有 ${over(135)}`);
+  it('adds the positioning fact only when it holds for 0:00–10:00 even if all pregame time was over the river', () => {
+    // 690 samples: one a second from 1:29 before the horn to 10:00. Warlock's 16%
+    // could be mostly pregame (89 samples), so no advice from it.
+    const warlock = raw.players.find((x: any) => x.hero_id === 37);
+    const n = Object.values(warlock.lane_pos as Record<string, Record<string, number>>).reduce((s, ys) => s + Object.values(ys).reduce((a, b) => a + b, 0), 0);
+    expect(n).toBe(690);
+    expect(lane(2, 'lane.1').fix.zh).not.toContain('录像显示');
+    // Move 150 of Warlock's own-half samples to a spot past the bottom river: now
+    // at least (16%·690 + 150 − 89) / 601 of laning was over there.
+    const deep = JSON.parse(JSON.stringify(raw));
+    const w = deep.players.find((x: any) => x.hero_id === 37);
+    let moved = 0;
+    for (const [x, ys] of Object.entries(w.lane_pos as Record<string, Record<string, number>>)) {
+      for (const [y, c] of Object.entries(ys)) {
+        if (moved >= 150 || Number(x) + Number(y) >= 246) continue;
+        const take = Math.min(c, 150 - moved); ys[y] = c - take; moved += take;
+      }
+    }
+    w.lane_pos['170'] = { ...(w.lane_pos['170'] ?? {}), 110: (w.lane_pos['170']?.['110'] ?? 0) + 150 };
+    const fix = buildCoachReport(deep).reviews[2].chapters.story.why.find((c: any) => c.id === 'lane.1').fix.zh;
+    expect(fix).toMatch(/录像显示 0–10 分钟你至少有 \d+% 的时间站在河道对面（即使开局前的时间全算在对面也是如此），而破晓辰星站到你们这一侧最多 \d+%/);
     expect(fix.match(/等级追上之前/g)).toHaveLength(1);
-    expect(lane(0, 'lane.3').fix.zh).not.toContain('录像显示'); // Tidehunter 3%: not the issue
+    expect(lane(0, 'lane.3').fix.zh).not.toContain('录像显示'); // Tidehunter stayed home
   });
 
   it('ships a heat map for your lane only, against the hero who killed you most there', () => {

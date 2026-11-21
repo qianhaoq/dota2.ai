@@ -206,7 +206,7 @@ export interface WhyCause {
   title: Bi;
   evidence: Bi[];
   fix: Bi | null;
-  /** Your lane only: first-10-minute replay positions, yours and one opponent's ([x, y, samples] on 128-unit cells). */
+  /** Your lane only: replay positions from before the horn to 10:00, yours and one opponent's ([x, y, samples] on 128-unit cells). */
   heat?: LaneHeat;
 }
 
