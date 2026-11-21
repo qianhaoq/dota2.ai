@@ -51,6 +51,8 @@ export interface Review {
   opponent: number | null;
   /** Engine >= 1.7: your hero against each enemy hero in pro games; nulls when the sample is too small. */
   matchups?: HeroMatchup[];
+  /** Engine >= 1.10: the bracket the public-game numbers are read at — your medal, else the match's median medal. */
+  bracket?: { key: RankBracket; basis: 'player' | 'match'; known: number; label: Bi } | null;
   /** Engine >= 1.8: finished items pros on your hero buy clearly more often against each enemy hero. */
   counter_items?: { hero: number; items: { item: ItemRef; rate: number; base: number; n: number }[] }[];
   findings: Finding[];
@@ -94,6 +96,8 @@ export interface Chapters {
     deaths: number | null; towers: { ours: number | null; theirs: number | null };
     /** The same core matchup in pro games, and where this lane sat against it. */
     baseline?: LaneBaseline | null;
+    /** Engine >= 1.10: your hero's lanes against their lane core in public games at your bracket (STRATZ). */
+    rank_lane?: { bracket: RankBracket; hero: number; vs: number; n: number; won: number; even: number; lost: number; stomped: number; usual_won: number; usual_lost: number; verdict: MatchupVerdict } | null;
     read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   deaths: {
@@ -156,7 +160,11 @@ export interface CoachReport {
   /** Per slot: finished key items and Aegis pickups from the replay; null when not parsed. */
   spikes?: (PowerSpikes | null)[] | null;
   /** Where the pro baselines come from (engine >= 1.7). */
-  baselines?: { source: string; since: string; games: number; fetched: string; item_rule?: { min_games: number; min_lift: number; se: number; top: number } };
+  baselines?: {
+    source: string; since: string; games: number; fetched: string; item_rule?: { min_games: number; min_lift: number; se: number; top: number };
+    /** Engine >= 1.10: public games by rank bracket. Show `attribution` wherever these numbers appear. */
+    rank?: { source: string; attribution: { en: string; url: string }; patch: string; weeks: { from: string; to: string; count: number }; fetched: string };
+  };
   data_gaps: Bi[];
 }
 
@@ -241,8 +249,19 @@ export interface WhyCause {
 
 export type MatchupVerdict = 'favoured' | 'unfavoured' | 'even';
 
+export type RankBracket = 'hg' | 'ca' | 'la' | 'di';
+
+/** Engine >= 1.10: the same pair in public games at the review's bracket (STRATZ). */
+export interface RankMatchup {
+  bracket: RankBracket;
+  n: number | null; wr: number | null; base: number | null; verdict: MatchupVerdict | null;
+  /** usual_*: the hero's own lanes against everyone at that bracket — the verdict is relative to these. */
+  lane: { n: number; won: number; even: number; lost: number; stomped: number; usual_won: number; usual_lost: number; verdict: MatchupVerdict } | null;
+}
+
 export interface HeroMatchup {
   hero: number; n: number | null; wr: number | null; base: number | null; verdict: MatchupVerdict | null;
+  rank?: RankMatchup | null;
 }
 
 export interface LaneBaseline {

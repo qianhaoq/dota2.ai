@@ -46,7 +46,7 @@ export function createCoachHandlers(options = {}) {
       const { evaluateGoal } = await loadGoals();
       return { match_id: report.match.id, seat, ...evaluateGoal(args.goal, report, seat) };
     },
-    hero_matchup: (args) => api.matchup(args.hero, args.vs),
+    hero_matchup: (args) => api.matchup(args.hero, args.vs, args.rank),
   };
 }
 
@@ -123,8 +123,8 @@ export function createMcpServer(options = {}) {
       inputSchema: { ...base, hero, goal: z.record(z.string(), z.unknown()) },
     }, call('goal_check'));
     server.registerTool('hero_matchup', {
-      description: 'Hero vs hero from professional games, no match needed: pro win rate and lane gold at 10:00 (verdict only when the gap is real, always with the sample size), the finished items pros on each side build clearly more often against the other, and Valve data on the other hero\'s abilities (damage type, goes through spell immunity). `lines` has the same in plain English and Chinese. hero / vs: id, slug, English or Chinese name.',
-      inputSchema: { hero, vs: hero },
+      description: 'Hero vs hero from professional games, no match needed: pro win rate and lane gold at 10:00 (verdict only when the gap is real, always with the sample size), the finished items pros on each side build clearly more often against the other, and Valve data on the other hero\'s abilities (damage type, goes through spell immunity). `by_rank`: the same pair in public games per rank bracket (hg Herald–Guardian, ca Crusader–Archon, la Legend–Ancient, di Divine–Immortal) from STRATZ: win rate and same-lane won/even/lost; credit STRATZ (`rank_source.attribution`) when you quote it. `lines` has the same in plain English and Chinese (rank lines only for the `rank` asked). hero / vs: id, slug, English or Chinese name.',
+      inputSchema: { hero, vs: hero, rank: z.string().max(20).optional().describe('Rank bracket: hg | ca | la | di, a medal name (e.g. legend) or an OpenDota rank_tier (e.g. 54)') },
     }, call('hero_matchup'));
   }
   return server;

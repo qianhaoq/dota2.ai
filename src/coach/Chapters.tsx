@@ -60,6 +60,11 @@ const T = {
   proItemsUsually: { en: '{p} usually', zh: '平时 {p}' },
   proItemsTip: { en: '{n} pro games against this hero', zh: '对上这个英雄的职业比赛 {n} 场' },
   muVerdict: { favoured: { en: 'favours you', zh: '你占优' }, unfavoured: { en: 'against you', zh: '你吃亏' } },
+  muRankHead: { en: 'Second line: {bracket} public games', zh: '第二行：{bracket}路人局' },
+  muRankWr: { en: 'win {wr}', zh: '胜率 {wr}' },
+  muRankLane: { en: 'lane lost {lost} (usually {usual})', zh: '对线输 {lost}（平时 {usual}）' },
+  muLaneVerdict: { favoured: { en: 'easier lane', zh: '更好打的线' }, unfavoured: { en: 'harder lane', zh: '更难打的线' } },
+  muRankNote: { en: '{bracket} public games ({patch}, {weeks} weeks to {to}) · Data:', zh: '{bracket}路人局（{patch}，截至 {to} 的 {weeks} 周）· 数据：' },
   context: { en: 'Context', zh: '场景' },
   goldLost: { en: 'Gold lost', zh: '掉金' },
   dead: { en: 'Dead for', zh: '阵亡时长' },
@@ -313,7 +318,8 @@ export const Chapters: React.FC<ChaptersProps> = ({
 
           {ch.laning && show('laning') && (
             <Laning ch={ch.laning} heroById={heroById} slot={review.slot} onAsk={() => onAsk('laning')} defaultOpen={!viewAll}
-              matchups={review.matchups} since={report.baselines?.since ?? null} />
+              matchups={review.matchups} since={report.baselines?.since ?? null}
+              bracket={review.bracket} rankSource={report.baselines?.rank} />
           )}
 
           {ch.deaths && show('deaths') && (
@@ -611,13 +617,15 @@ const Laning: React.FC<{
   defaultOpen?: boolean;
   matchups?: HeroMatchup[];
   since: string | null;
-}> = ({ ch, heroById, slot, onAsk, defaultOpen, matchups, since }) => {
+  bracket?: Review['bracket'];
+  rankSource?: NonNullable<CoachReport['baselines']>['rank'];
+}> = ({ ch, heroById, slot, onAsk, defaultOpen, matchups, since, bracket, rankSource }) => {
   const { L } = useLang();
   const tone = ch.outcome === 'won' || ch.outcome === 'stomp' ? 'good' : ch.outcome === 'draw' ? 'even' : 'bad';
   return (
     <Chapter id="laning" title={T.laning} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} defaultOpen={defaultOpen}
       aside={<span className={`cx-pill cx-pill--${tone}`}>{L(T.laneResult)} · {L(ch.outcome_label)}</span>}
-      visual={matchups?.length ? <Matchups list={matchups} heroById={heroById} since={since} /> : undefined}>
+      visual={matchups?.length ? <Matchups list={matchups} heroById={heroById} since={since} bracket={bracket} rankSource={rankSource} /> : undefined}>
       <Table label={L(T.laning)} head={[L(T.hero), L(T.lh5), L(T.lhdn10), L(T.gold10), L(T.xp10)]}>
         {ch.rows.map((r) => (
           <tr key={r.slot} className={`${r.ally ? 'is-ally' : 'is-enemy'} ${r.slot === slot ? 'is-me' : ''}`}>
@@ -633,22 +641,53 @@ const Laning: React.FC<{
   );
 };
 
-/** Your hero against each enemy hero in pro games: a verdict only when the gap is real (engine rule). */
-const Matchups: React.FC<{ list: HeroMatchup[]; heroById: Map<number, HeroRef>; since: string | null }> = ({ list, heroById, since }) => {
+/**
+ * Your hero against each enemy hero: pro win rate, and the same pair in public
+ * games at your bracket (STRATZ, credited). A verdict only when the gap is real (engine rule).
+ */
+export const Matchups: React.FC<{
+  list: HeroMatchup[]; heroById: Map<number, HeroRef>; since: string | null;
+  bracket?: Review['bracket']; rankSource?: NonNullable<CoachReport['baselines']>['rank'];
+}> = ({ list, heroById, since, bracket, rankSource }) => {
   const { L } = useLang();
+  const anyRank = Boolean(bracket && rankSource && list.some((m) => m.rank));
   return (
     <div className="cx-matchups">
       <p className="cx-dmg-label">{L(T.muTitle).replace('{since}', since ?? '—')}</p>
+      {anyRank && bracket && <p className="cx-dmg-label cx-mu-rank-head">{L(T.muRankHead).replace('{bracket}', L(bracket.label))}</p>}
       <ul>
-        {list.map((m) => (
-          <li key={m.hero} className={`is-${m.verdict ?? 'na'}`}>
-            <HeroTag hero={heroById.get(m.hero)} />
-            <span className="cx-mu-wr">{m.wr != null ? pct(m.wr) : '—'}</span>
-            <small>{m.n != null ? L(T.muGames).replace('{n}', String(m.n)) : L(T.muThin)}</small>
-            {m.verdict && m.verdict !== 'even' && <span className="cx-mu-verdict">{L(T.muVerdict[m.verdict])}</span>}
-          </li>
-        ))}
+        {list.map((m) => {
+          const rv = m.rank?.verdict ?? null;
+          const lv = m.rank?.lane?.verdict ?? null;
+          return (
+            <li key={m.hero} className={`is-${m.verdict ?? rv ?? 'na'}`}>
+              <HeroTag hero={heroById.get(m.hero)} />
+              <span className="cx-mu-wr">{m.wr != null ? pct(m.wr) : '—'}</span>
+              <small>{m.n != null ? L(T.muGames).replace('{n}', String(m.n)) : L(T.muThin)}</small>
+              {m.verdict && m.verdict !== 'even' && <span className="cx-mu-verdict">{L(T.muVerdict[m.verdict])}</span>}
+              {anyRank && bracket && (
+                <span className="cx-mu-rank">
+                  {m.rank ? (
+                    <>
+                      {m.rank.wr != null && <span>{L(T.muRankWr).replace('{wr}', pct(m.rank.wr))}</span>}
+                      {rv && rv !== 'even' && <span className={`cx-mu-verdict is-${rv}`}>{L(T.muVerdict[rv])}</span>}
+                      {m.rank.lane && <span>{L(T.muRankLane).replace('{lost}', pct(m.rank.lane.lost)).replace('{usual}', pct(m.rank.lane.usual_lost))}</span>}
+                      {lv && lv !== 'even' && <span className={`cx-mu-verdict is-${lv}`}>{L(T.muLaneVerdict[lv])}</span>}
+                    </>
+                  ) : <small>{L(T.muThin)}</small>}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
+      {anyRank && bracket && rankSource && (
+        <p className="cx-muted cx-mu-credit">
+          {L(T.muRankNote).replace('{bracket}', L(bracket.label)).replace('{patch}', rankSource.patch)
+            .replace('{weeks}', String(rankSource.weeks.count)).replace('{to}', rankSource.weeks.to)}{' '}
+          <a href={rankSource.attribution.url} target="_blank" rel="noopener noreferrer">STRATZ</a>
+        </p>
+      )}
     </div>
   );
 };

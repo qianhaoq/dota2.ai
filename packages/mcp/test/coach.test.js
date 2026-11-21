@@ -26,8 +26,8 @@ const coach = {
   recent: async (account) => ({ account_id: Number(account), matches: [{ match_id: 9091400302, slot: 0 }] }),
   ask: async (_id, seat, question) => ({ text: `answer about seat ${seat}: ${question}`, fallback: true, notice: 'from the report' }),
   // Same body as GET /api/coach/matchup.
-  matchup: async (hero, vs) => {
-    const b = matchupBrief(hero, vs);
+  matchup: async (hero, vs, rank) => {
+    const b = matchupBrief(hero, vs, { rank });
     if (b.error) throw Object.assign(new Error(b.error), { code: 'INVALID_INPUT' });
     return { ...b, lines: { en: matchupLines(b, 'en'), zh: matchupLines(b, 'zh') } };
   },
@@ -109,6 +109,15 @@ describe('hero_matchup', () => {
     expect(r.your_items_vs_them[0].item.key).toBe('cyclone');
     expect(r.lines.zh[0]).toBe('潮汐猎人 对 熊战士（职业比赛，7.41 以来）');
     expect(await call(client, 'hero_matchup', { hero: 'nobody', vs: 'ursa' })).toEqual({ error: 'Unknown hero: nobody' });
+  });
+
+  it('passes rank through: by_rank for every bracket, lines for the one asked, STRATZ credited', async () => {
+    const client = await connect({ coach });
+    const r = await call(client, 'hero_matchup', { hero: 'tidehunter', vs: 'ursa', rank: 'ca' });
+    expect(r.rank).toBe('ca');
+    expect(Object.keys(r.by_rank)).toEqual(['hg', 'ca', 'la', 'di']);
+    expect(r.rank_source.attribution).toEqual({ en: 'Data: STRATZ', url: 'https://stratz.com' });
+    expect(r.lines.en.some((x) => x.startsWith('Crusader–Archon public games ('))).toBe(true);
   });
 });
 

@@ -227,6 +227,19 @@ describe('dota2ai matchup', () => {
     for (const a of b.their_abilities) expect(a).not.toHaveProperty('dispel');
   });
 
+  it('--rank adds public games at that bracket, credited to STRATZ; an unknown rank exits 2', async () => {
+    const out = sink();
+    expect(await run(['matchup', 'tidehunter', 'ursa', '--rank', 'di'], { stdout: out, stderr: sink(), env })).toBe(0);
+    expect(out.text).toMatch(/Divine–Immortal public games \(7\.\d+, \d+ weeks to \d{4}-\d\d-\d\d, data: STRATZ\)/);
+    expect(out.text).toMatch(/Same lane: Tidehunter won \d+%/);
+    const json = sink();
+    expect(await run(['matchup', 'tidehunter', 'ursa', '--rank', 'legend', '--json'], { stdout: json, stderr: sink(), env })).toBe(0);
+    expect(JSON.parse(json.text).rank).toBe('la');
+    const err = sink();
+    expect(await run(['matchup', 'tidehunter', 'ursa', '--rank', 'mythic'], { stdout: sink(), stderr: err, env })).toBe(2);
+    expect(err.text).toContain('Unknown rank: mythic');
+  });
+
   it('exits 2 on a missing or unknown hero', async () => {
     const err = sink();
     expect(await run(['matchup', 'tidehunter'], { stdout: sink(), stderr: err, env })).toBe(2);

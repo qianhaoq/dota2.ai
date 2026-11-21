@@ -80,7 +80,9 @@ describe('ask context carries the new evidence', () => {
     const c = reportContext(r, 0, 'zh');
     expect(c).toContain('## 对方关键装时间线（本局购买记录）');
     expect(c).toContain('- 熊战士: 狂战斧 14:31、闪烁匕首 16:56');
-    expect(c).toContain('## 对位（职业比赛统计，7.41 以来；统计关联，不是因果）');
+    // The section mixes pro and public-game numbers, so each line names its source.
+    expect(c).toContain('## 对位（统计关联，不是因果）');
+    expect(c).toMatch(/- 职业比赛（7\.41 以来），对上[^\n]+：潮汐猎人胜率 \d+%（\d+ 场，平时 \d+%）/);
     expect(c).toContain('- 职业潮汐猎人对上熊战士时更常出：Eul的神圣法杖 37%（平时 8%，98 场）');
     expect(c).toContain('22:25 击杀者：熊战士，输掉的团战，掉金 206，击杀者当时最新关键装 阿哈利姆魔晶 18:57');
     // Allies' item timelines are not "enemy" timelines.
@@ -96,6 +98,6 @@ describe('ask context carries the new evidence', () => {
     const u = buildCoachReport(load('match9091400302.unparsed.json')) as any;
     const c = reportContext(u, 0, 'zh');
     expect(c).not.toContain('对方关键装时间线');
-    expect(c).toContain('## 对位（职业比赛统计');
+    expect(c).toContain('## 对位（统计关联，不是因果）');
   });
 });

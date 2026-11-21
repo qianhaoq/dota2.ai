@@ -3,7 +3,7 @@
  *   GET  /api/coach/:id                      the full coach report
  *   GET  /api/coach/:id/cases?slot=          pro games on the same problem
  *   GET  /api/coach/players/:account/recent  a player's recent public games
- *   GET  /api/coach/matchup?hero=&vs=         hero vs hero from pro games (no match needed)
+ *   GET  /api/coach/matchup?hero=&vs=[&rank=]  hero vs hero: pro games + public games by rank (no match needed)
  *   POST /api/coach/:id/ask                  a follow-up question (SSE)
  * Origin: DOTA2AI_API_BASE, default https://dota2.ai. No keys needed.
  *
@@ -112,7 +112,7 @@ export function createCoachApi({ env = process.env, fetchImpl = (...a) => global
     /** A player's recent public games; `account` is a friend code or profile link. */
     recent: (account) => getJson(`/api/coach/players/${parseAccount(account)}/recent`),
     /** Hero vs hero from pro games: lane baseline, win rate, counter items both ways, Valve ability facts. */
-    matchup: (hero, vs) => getJson(`/api/coach/matchup?hero=${encodeURIComponent(String(hero ?? ''))}&vs=${encodeURIComponent(String(vs ?? ''))}`),
+    matchup: (hero, vs, rank) => getJson(`/api/coach/matchup?hero=${encodeURIComponent(String(hero ?? ''))}&vs=${encodeURIComponent(String(vs ?? ''))}${rank ? `&rank=${encodeURIComponent(String(rank))}` : ''}`),
     /**
      * Ask a follow-up about one seat. Streams text to onText, resolves with the
      * whole answer, whether it came from the report fallback (no AI), and the

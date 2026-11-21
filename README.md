@@ -119,6 +119,8 @@ node packages/cli/bin/dota2ai.js goal check
 
 # Hero vs hero from pro games — no match needed
 node packages/cli/bin/dota2ai.js matchup tidehunter ursa
+# …plus public games at your rank (hg | ca | la | di, a medal name or a rank tier; data: STRATZ)
+node packages/cli/bin/dota2ai.js matchup tidehunter ursa --rank legend
 ```
 
 Every command takes `--lang en|zh` and `--json`; point it at another server with `DOTA2AI_API_BASE`.
@@ -155,7 +157,7 @@ claude mcp add dota2ai -- node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2
 | `coach_cases` | `{ match_id, hero }` | Pro games that did and didn't solve the same problem |
 | `coach_ask` | `{ match_id, hero, question }` | A grounded follow-up answer (`fallback: true` when no LLM is available) |
 | `goal_check` | `{ match_id, hero, goal }` | Checks a later match against a finding's `goal` |
-| `hero_matchup` | `{ hero, vs }` | Hero vs hero from pro games, no match needed: win rate, lane at 10:00, counter items each way, Valve ability facts |
+| `hero_matchup` | `{ hero, vs, rank? }` | Hero vs hero, no match needed: pro win rate, lane at 10:00, counter items each way, Valve ability facts; win rate and same-lane outcome in public games per rank bracket (data: STRATZ) |
 | `review_match` | `{ match_id, hero?, lang? }` | Review v1 structured JSON (`dota2.ai/review@1`) |
 | `get_evidence` | `{ match_id, hero, insight_id }` | Facts, citations and data gaps for one v1 insight |
 
@@ -222,7 +224,7 @@ dota2.ai is licensed under the [**PolyForm Noncommercial License 1.0.0**](LICENS
 - ❌ **Needs a commercial license:** paid hosting or SaaS, subscriptions, paywalls, ads, API resale, or bundling the code, reports, CLI or MCP server into paid coaching, boosting, betting or analytics products.
 - 💬 For a commercial license, contact the repository owner through GitHub.
 
-<sub>Fan project, not affiliated with, endorsed or sponsored by Valve Corporation. Dota, Dota 2 and Steam are trademarks of Valve Corporation. Match data from public OpenDota / STRATZ endpoints.</sub>
+<sub>Fan project, not affiliated with, endorsed or sponsored by Valve Corporation. Dota, Dota 2 and Steam are trademarks of Valve Corporation. Match data from public OpenDota / STRATZ endpoints; rank-bracket matchup statistics: [STRATZ](https://stratz.com).</sub>
 
 ---
 
@@ -303,6 +305,8 @@ node packages/cli/bin/dota2ai.js goal check
 
 # 英雄对英雄的职业数据——不需要比赛
 node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --lang zh
+# 再加上你所在分段的路人局数据（hg | ca | la | di、段位名或 rank tier；数据来自 STRATZ）
+node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --lang zh
 ```
 
 > [!TIP]
@@ -339,7 +343,7 @@ claude mcp add dota2ai -- node /你的绝对路径/dota2.ai/packages/mcp/bin/dot
 | `coach_cases` | `{ match_id, hero }` | 同一问题上做到和没做到的职业比赛 |
 | `coach_ask` | `{ match_id, hero, question }` | 只依据本局事实的追问回答（没有 LLM 时 `fallback: true`） |
 | `goal_check` | `{ match_id, hero, goal }` | 用后续比赛核验训练目标 |
-| `hero_matchup` | `{ hero, vs }` | 英雄对英雄的职业数据（不需要比赛）：胜率、10 分钟对线、双方针对出装、Valve 技能事实 |
+| `hero_matchup` | `{ hero, vs, rank? }` | 英雄对英雄（不需要比赛）：职业胜率、10 分钟对线、双方针对出装、Valve 技能事实；各分段路人局的胜率与同线对线结果（数据来自 STRATZ） |
 | `review_match` | `{ match_id, hero?, lang? }` | Review v1 结构化复盘 JSON |
 | `get_evidence` | `{ match_id, hero, insight_id }` | 单条 v1 结论对应的事实、引用和数据缺口 |
 
@@ -370,4 +374,4 @@ dota2.ai 采用 [**PolyForm Noncommercial License 1.0.0**](LICENSE) 许可。
 - ❌ **需要商业授权：** 付费托管或 SaaS、会员订阅、付费墙、广告变现、API 转售，或把代码、复盘报告、CLI、MCP 集成进付费教学、代练、竞猜或商业数据分析产品。
 - 💬 如需商业授权，请通过 GitHub 联系仓库所有者。
 
-<sub>本项目为玩家粉丝项目，与 Valve Corporation 无关，未获其认可或赞助。Dota、Dota 2 与 Steam 为 Valve Corporation 的商标；比赛数据来自公开的 OpenDota / STRATZ 接口。</sub>
+<sub>本项目为玩家粉丝项目，与 Valve Corporation 无关，未获其认可或赞助。Dota、Dota 2 与 Steam 为 Valve Corporation 的商标；比赛数据来自公开的 OpenDota / STRATZ 接口；分段对位统计数据来自 [STRATZ](https://stratz.com)。</sub>

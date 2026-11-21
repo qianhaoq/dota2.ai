@@ -7,7 +7,7 @@
  *   dota2ai goal set   <matchId> --hero h [--finding id] [--json]
  *   dota2ai goal show  [--json]
  *   dota2ai goal check [matchId] [--hero h] [--account a] [--json]
- *   dota2ai matchup <hero> <vs> [--lang en|zh] [--json]   (pro games, no match needed)
+ *   dota2ai matchup <hero> <vs> [--rank hg|ca|la|di|<medal>] [--lang en|zh] [--json]   (pro + public games by rank, no match needed)
  *
  * The training goal lives in $DOTA2AI_HOME/goal.json (default ~/.dota2ai),
  * on this machine only. `goal check` judges a later game with the same pure
@@ -194,12 +194,12 @@ async function runGoal(args, io) {
   throw apiError('INVALID_INPUT', 'Usage: dota2ai goal set|show|check …');
 }
 
-/** Hero vs hero from pro games: lane baseline, win rate, counter items both ways, Valve ability facts. */
+/** Hero vs hero: pro lane baseline, win rate, counter items both ways, Valve ability facts; public games at a rank (STRATZ). */
 async function runMatchup(args, io) {
-  const { pos, flags } = parseFlags(args.slice(1), { values: ['--lang'] });
+  const { pos, flags } = parseFlags(args.slice(1), { values: ['--lang', '--rank'] });
   const [hero, vs] = pos;
-  if (!hero || !vs) throw apiError('INVALID_INPUT', 'Usage: dota2ai matchup <hero> <vs> [--lang en|zh] [--json]');
-  const brief = await io.api.matchup(hero, vs);
+  if (!hero || !vs) throw apiError('INVALID_INPUT', 'Usage: dota2ai matchup <hero> <vs> [--rank hg|ca|la|di|<medal>] [--lang en|zh] [--json]');
+  const brief = await io.api.matchup(hero, vs, flags.rank);
   if (flags.json) return io.out(brief);
   return io.say(...(brief.lines?.[flags.lang ?? 'en'] ?? []));
 }
