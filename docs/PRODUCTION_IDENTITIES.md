@@ -1,7 +1,8 @@
 # PR2: separate production runtime and deployment identities
 
-Scope: independent of other changes, based on `4976b414`. This PR supplies a
-migration tool, not a production migration. No cloud validation has been done.
+Scope: independent of other changes, originally audited at `4976b414`.
+Upstream main updates are incorporated through normal merges, without rewriting
+history. This PR supplies a migration tool, not a production migration. No cloud validation has been done.
 The original compute account's Editor, Run Admin, Service Account User and
 Artifact Writer grants are **not removed**. Detaching two consumers does not
 retire that account or remove project Editor.
@@ -39,8 +40,10 @@ The inline global GitHub trigger, **not repository YAML**, is authoritative.
 Only its `serviceAccount` is updated via `gcloud builds triggers update github
 --service-account`. The full trigger except that field is fingerprinted, including
 inline steps, GitHub settings, filters, substitutions and options. Cloud Run gets
-only `services update --service-account`; no image/env/traffic flag is emitted.
-This creates a revision with the same configuration and new runtime identity.
+`services update` with `--image` set to the exact immutable digest of the currently
+serving Ready revision and `--service-account` set to the new runtime identity,
+preserving the same image bytes. No env/traffic flags are emitted. This creates a
+revision with the same configuration and image bytes and new runtime identity.
 No existing IAM bindings or worker/preview invokers are removed.
 
 ## Operator prerequisites and permissions
