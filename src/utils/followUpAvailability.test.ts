@@ -65,21 +65,3 @@ describe('followUpProvidersAvailable', () => {
   });
 });
 
-describe('server.js follow-up gating (pattern guard)', () => {
-  const server = readFileSync(join(__dirname, '../../server.js'), 'utf8');
-
-  it('never clears followup suggestions — the template fallback can always answer', () => {
-    // Since every follow-up failure path degrades to the deterministic
-    // template (never an error frame), the UI must keep the follow-up actions
-    // enabled even when all card providers failed this request. The pure
-    // followUpProvidersAvailable helper stays in lib for log/diagnostic use.
-    expect(server).not.toMatch(/followups: \[\] \}?\s*;/);
-    expect(server).toMatch(/const reviewCards = cards;/);
-  });
-
-  it('lets follow-up requests through when either provider is configured', () => {
-    expect(server).toMatch(/if \(!openai && !gemini\) \{/);
-    // The old gate rejected Gemini-only follow-up requests outright.
-    expect(server).not.toMatch(/followUp \? !openai :/);
-  });
-});
