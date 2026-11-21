@@ -716,3 +716,15 @@
 @media (prefers-reduced-motion: reduce) {
   .cx-death-dot::after, .cx-sample-pill, .cx-verdict { transition: none; }
 }
+
+/* Laning: your hero vs each enemy hero, pro win rates */
+.cx-matchups { margin: 4px 0 14px; }
+.cx-matchups ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.cx-matchups li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.cx-matchups li small { color: var(--text-3); }
+.cx-mu-wr { font-weight: 600; font-variant-numeric: tabular-nums; }
+.cx-mu-verdict { font-size: 11.5px; padding: 0 6px; border-radius: 999px; border: 1px solid currentColor; }
+.cx-matchups li.is-favoured { border-color: rgba(143, 191, 136, 0.45); }
+.cx-matchups li.is-favoured .cx-mu-verdict { color: var(--good); }
+.cx-matchups li.is-unfavoured { border-color: rgba(208, 106, 85, 0.45); }
+.cx-matchups li.is-unfavoured .cx-mu-verdict { color: var(--dire); }

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SafeImg, clock, k, signedK, useLang } from './ui';
 import { AskPanel, type AskHandle } from './AskPanel';
 import { Cases } from './Cases';
-import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroRef, LaneHeat, Review, WhyCause } from './types';
+import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroMatchup, HeroRef, LaneHeat, Review, WhyCause } from './types';
 
 /**
  * The deep review workspace: segmented chapter tabs + "All in one page" toggle
@@ -53,6 +53,10 @@ const T = {
   laneResult: { en: 'Lane result', zh: '对线结果' },
   time: { en: 'Time', zh: '时间' },
   killer: { en: 'Killer', zh: '击杀者' },
+  muTitle: { en: 'Your hero vs theirs — pro win rate since {since}', zh: '你的英雄对上他们——职业胜率（{since} 以来）' },
+  muGames: { en: '{n} games', zh: '{n} 场' },
+  muThin: { en: 'too few games', zh: '样本不足' },
+  muVerdict: { favoured: { en: 'favours you', zh: '你占优' }, unfavoured: { en: 'against you', zh: '你吃亏' } },
   context: { en: 'Context', zh: '场景' },
   goldLost: { en: 'Gold lost', zh: '掉金' },
   dead: { en: 'Dead for', zh: '阵亡时长' },
@@ -305,7 +309,8 @@ export const Chapters: React.FC<ChaptersProps> = ({
           )}
 
           {ch.laning && show('laning') && (
-            <Laning ch={ch.laning} heroById={heroById} slot={review.slot} onAsk={() => onAsk('laning')} defaultOpen={!viewAll} />
+            <Laning ch={ch.laning} heroById={heroById} slot={review.slot} onAsk={() => onAsk('laning')} defaultOpen={!viewAll}
+              matchups={review.matchups} since={report.baselines?.since ?? null} />
           )}
 
           {ch.deaths && show('deaths') && (
@@ -600,12 +605,15 @@ const Laning: React.FC<{
   slot: number;
   onAsk: () => void;
   defaultOpen?: boolean;
-}> = ({ ch, heroById, slot, onAsk, defaultOpen }) => {
+  matchups?: HeroMatchup[];
+  since: string | null;
+}> = ({ ch, heroById, slot, onAsk, defaultOpen, matchups, since }) => {
   const { L } = useLang();
   const tone = ch.outcome === 'won' || ch.outcome === 'stomp' ? 'good' : ch.outcome === 'draw' ? 'even' : 'bad';
   return (
     <Chapter id="laning" title={T.laning} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} defaultOpen={defaultOpen}
-      aside={<span className={`cx-pill cx-pill--${tone}`}>{L(T.laneResult)} · {L(ch.outcome_label)}</span>}>
+      aside={<span className={`cx-pill cx-pill--${tone}`}>{L(T.laneResult)} · {L(ch.outcome_label)}</span>}
+      visual={matchups?.length ? <Matchups list={matchups} heroById={heroById} since={since} /> : undefined}>
       <Table label={L(T.laning)} head={[L(T.hero), L(T.lh5), L(T.lhdn10), L(T.gold10), L(T.xp10)]}>
         {ch.rows.map((r) => (
           <tr key={r.slot} className={`${r.ally ? 'is-ally' : 'is-enemy'} ${r.slot === slot ? 'is-me' : ''}`}>
@@ -618,6 +626,26 @@ const Laning: React.FC<{
         ))}
       </Table>
     </Chapter>
+  );
+};
+
+/** Your hero against each enemy hero in pro games: a verdict only when the gap is real (engine rule). */
+const Matchups: React.FC<{ list: HeroMatchup[]; heroById: Map<number, HeroRef>; since: string | null }> = ({ list, heroById, since }) => {
+  const { L } = useLang();
+  return (
+    <div className="cx-matchups">
+      <p className="cx-dmg-label">{L(T.muTitle).replace('{since}', since ?? '—')}</p>
+      <ul>
+        {list.map((m) => (
+          <li key={m.hero} className={`is-${m.verdict ?? 'na'}`}>
+            <HeroTag hero={heroById.get(m.hero)} />
+            <span className="cx-mu-wr">{m.wr != null ? pct(m.wr) : '—'}</span>
+            <small>{m.n != null ? L(T.muGames).replace('{n}', String(m.n)) : L(T.muThin)}</small>
+            {m.verdict && m.verdict !== 'even' && <span className="cx-mu-verdict">{L(T.muVerdict[m.verdict])}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 };
 

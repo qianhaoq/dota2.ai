@@ -47,6 +47,8 @@ export interface Review {
   threat_tags?: string[];
   primary_threat: number | null;
   opponent: number | null;
+  /** Engine >= 1.7: your hero against each enemy hero in pro games; nulls when the sample is too small. */
+  matchups?: HeroMatchup[];
   findings: Finding[];
   deaths: { time: number; killer: number | null; in_fight: boolean | null; converted: boolean | null }[] | null;
   item_timeline: { time: number; item: ItemRef }[] | null;
@@ -86,6 +88,8 @@ export interface Chapters {
     rows: { slot: number; hero: number; ally: boolean; lh5: number | null; lh10: number | null; dn10: number | null; gold10: number | null; xp10: number | null }[];
     gold: [number, number]; diff: number; outcome: 'stomp' | 'won' | 'draw' | 'lost' | 'stomped'; outcome_label: Bi;
     deaths: number | null; towers: { ours: number | null; theirs: number | null };
+    /** The same core matchup in pro games, and where this lane sat against it. */
+    baseline?: LaneBaseline | null;
     read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   deaths: {
@@ -147,6 +151,8 @@ export interface CoachReport {
   timeline: { radiant_gold_adv: number[] } | null;
   /** Per slot: finished key items and Aegis pickups from the replay; null when not parsed. */
   spikes?: (PowerSpikes | null)[] | null;
+  /** Where the pro baselines come from (engine >= 1.7). */
+  baselines?: { source: string; since: string; games: number; fetched: string };
   data_gaps: Bi[];
 }
 
@@ -225,6 +231,19 @@ export interface WhyCause {
   fix: Bi | null;
   /** Your lane only: replay positions from before the horn to 10:00, yours and one opponent's ([x, y, samples] on 128-unit cells). */
   heat?: LaneHeat;
+  /** Lane causes: the same core matchup in pro games. */
+  baseline?: LaneBaseline;
+}
+
+export type MatchupVerdict = 'favoured' | 'unfavoured' | 'even';
+
+export interface HeroMatchup {
+  hero: number; n: number | null; wr: number | null; base: number | null; verdict: MatchupVerdict | null;
+}
+
+export interface LaneBaseline {
+  hero: number; vs: number; n: number; mean: number; p25: number; p75: number; ahead: number;
+  verdict: MatchupVerdict; actual: number; standing: 'worse' | 'typical' | 'better';
 }
 
 export interface LaneHeat {
