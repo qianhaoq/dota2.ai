@@ -154,7 +154,6 @@ const UI = {
   teamCopied: { en: 'Link copied — paste it to your team', zh: '链接已复制，发到队伍群里吧' },
   ranked: { en: 'Ranked', zh: '天梯' },
   footer: { en: 'Not affiliated with Valve. Match data from OpenDota.', zh: '粉丝项目，与 Valve 无关。比赛数据来自 OpenDota。' },
-  classic: { en: 'Classic tools', zh: '旧版工具' },
   parsed: { en: 'Parsed', zh: '已解析' },
   fromStratz: { en: 'Data from STRATZ (OpenDota unavailable)', zh: '数据来自 STRATZ（OpenDota 暂不可用）' },
   copied: { en: 'Copied', zh: '已复制' },
@@ -240,7 +239,6 @@ const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome?: bool
       <main className={wide ? 'cx-main cx-main--wide' : 'cx-main'}>{children}</main>
       <footer className="cx-foot">
         <span>{L(UI.footer)}</span>
-        <a href="/legacy">{L(UI.classic)}</a>
       </footer>
     </div>
   );
@@ -1421,7 +1419,8 @@ const CardFeed: React.FC<{
 
   if (!surface) return null;
   const has = (component: string) => surface.cards.some((c) => c.component === component);
-  const ask = (q: Bi) => askRef.current?.prefill(L(q));
+  // A question asked from a card carries that card as its context ("当前围绕：…").
+  const ask = (q: Bi, from?: Card) => askRef.current?.prefill(L(q), from ? L(from.title) : undefined);
   const scrollTo = (id: string) => document.getElementById(cardDom(id))?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 
   const run = (a: CardAction) => {
@@ -1430,7 +1429,7 @@ const CardFeed: React.FC<{
         setJump({ target: a.target, row: a.row ?? null, seq: Date.now() });
         scrollTo(`chapter:${a.target}`);
         break;
-      case 'ask': ask(a.question); break;
+      case 'ask': ask(a.question, surface.cards.find((c) => c.actions.includes(a))); break;
       case 'save_goal': {
         const card = surface.cards.find((c) => c.actions.includes(a));
         const f = card?.data.finding as Finding | undefined;
@@ -1447,7 +1446,7 @@ const CardFeed: React.FC<{
   const onAskChapter = (key: string) => () => {
     const c = surface.cards.find((x) => x.id === `chapter:${key}`);
     const q = c?.actions.find((x) => x.action === 'ask') as Extract<CardAction, { action: 'ask' }> | undefined;
-    if (q) ask(q.question); else askRef.current?.focus();
+    if (q) ask(q.question, c); else askRef.current?.focus();
   };
 
   const body = (c: Card): React.ReactNode => {

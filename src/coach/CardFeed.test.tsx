@@ -81,4 +81,14 @@ describe('card feed (review #206)', () => {
     await waitFor(() => expect(screen.getByText('潮汐猎人 对 熊战士')).toBeTruthy());
     expect(matchup).toHaveBeenCalledWith(29, 70, 'ca', expect.anything());
   });
+
+  it('a question asked from a card carries that card as its context', async () => {
+    fetchReport.mockResolvedValue(parsed);
+    const { container } = page('/r/9091400302?p=0');
+    await waitFor(() => expect(container.querySelector('.cxv-feed')).toBeTruthy());
+    const f = parsed.reviews[0].findings[0];
+    const card = container.querySelector(`#card-finding-${f.id.replace(/[^a-z0-9_-]/gi, '-')}`) as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: '问教练' }));
+    await waitFor(() => expect(screen.getByText(new RegExp(`当前围绕：${f.title.zh.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))).toBeTruthy());
+  });
 });
