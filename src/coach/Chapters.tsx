@@ -143,6 +143,7 @@ export const Chapters: React.FC<ChaptersProps> = ({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [highlightDeath, setHighlightDeath] = useState<number | null>(null);
   const [highlightFight, setHighlightFight] = useState<number | null>(null);
+  const [pendingCaseTheme, setPendingCaseTheme] = useState<string | null>(null);
 
   // Reset per-player tab highlights when switching hero or position.
   useEffect(() => {
@@ -179,6 +180,13 @@ export const Chapters: React.FC<ChaptersProps> = ({
     ask.current?.focus();
   }, [askTriggerSeq]);
 
+  // Scroll to a pro-case theme once the cases tab is visible.
+  useEffect(() => {
+    if (!pendingCaseTheme || activeTab !== 'cases') return;
+    jumpToCases(pendingCaseTheme);
+    setPendingCaseTheme(null);
+  }, [pendingCaseTheme, activeTab]);
+
   // Close mobile bottom sheet on Escape.
   useEffect(() => {
     if (!sheetOpen) return;
@@ -200,8 +208,10 @@ export const Chapters: React.FC<ChaptersProps> = ({
   };
 
   const openCaseTheme = (theme: string) => {
-    if (!viewAll) setActiveTab('cases');
-    jumpToCases(theme);
+    if (viewAll || activeTab === 'cases') { jumpToCases(theme); return; }
+    // The cases panel is display:none until the tab switch commits — scroll after it renders.
+    setPendingCaseTheme(theme);
+    setActiveTab('cases');
   };
 
   const show = (tab: ChapterTab) => viewAll || activeTab === tab;

@@ -132,7 +132,7 @@ describe('CoachPlayerPage training hub', () => {
     const goal = goalFromFinding(unparsedReport as any, 4, f.id, f.goal as any, f.action);
     setGoal(goal);
     const laterRaw = loadFixture('match9091400302.unparsed.json');
-    laterRaw.match_id = 9091400999; laterRaw.start_time += 3600; laterRaw.players[4].deaths = 2;
+    laterRaw.match_id = 9091400999; laterRaw.start_time += 3600; laterRaw.players[4].item_5 = 116; // Black King Bar: meets the "finish one answer item" goal
     const laterReport = buildCoachReport(laterRaw);
     checkGoal(goal, laterReport as any, 4);
     markReviewed(9091400302);
