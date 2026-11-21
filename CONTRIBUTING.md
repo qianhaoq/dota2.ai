@@ -20,6 +20,7 @@ npm start                         # 可选：先 npm run build；不配 key 也�
 | 某英雄算什么威胁（魔法爆发、连控、闪避…） | `lib/coach/knowledge.js` → `THREAT_TAGS` | `npx vitest run src/utils/coachReport.test.ts` |
 | 哪些装备能应对某类威胁 | `lib/coach/knowledge.js` → `ANSWERS` | 同上；装备 key 必须存在于 `lib/coach/data/names.json` |
 | 新版本的英雄/装备名称 | `node scripts/coach-names.mjs <版本号>` | `npx vitest run src/utils/coachNames742.test.ts src/coach` |
+| 新版本的全部数据快照（OpenDota 常量 + 名称 + 技能 + 职业出装） | `node scripts/refresh-data.mjs --all` | `npx vitest run src/utils/constantsSnapshot.test.ts src/utils/coach*` |
 
 每条知识改动**必须在 PR 里附官方出处**（[官方更新日志](https://www.dota2.com/patches) 的具体条目，或技能/装备说明原文）。凭感觉或二手攻略的数字不收。
 
@@ -86,6 +87,7 @@ npm start                         # optional, after npm run build; runs without 
 | Which threat a hero poses (magic burst, chain disables, evasion…) | `lib/coach/knowledge.js` → `THREAT_TAGS` | `npx vitest run src/utils/coachReport.test.ts` |
 | Which items answer a threat | `lib/coach/knowledge.js` → `ANSWERS` | same; item keys must exist in `lib/coach/data/names.json` |
 | Names after a new patch | `node scripts/coach-names.mjs <patch>` | `npx vitest run src/utils/coachNames742.test.ts src/coach` |
+| Every data snapshot after a patch (OpenDota constants, names, abilities, pro items) | `node scripts/refresh-data.mjs --all` | `npx vitest run src/utils/constantsSnapshot.test.ts src/utils/coach*` |
 
 Every knowledge change **must cite an official source** in the PR (the exact line from the [patch notes](https://www.dota2.com/patches), or the ability/item text). Numbers from memory or third-party guides are not accepted.
 

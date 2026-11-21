@@ -131,6 +131,7 @@ import { createRecentService } from './lib/coach/recent.js';
 import { createLlmRateLimit } from './lib/llmRateLimit.js';
 import { rateLimitKey } from './lib/rateLimitKey.js';
 import { createOpenDotaClient, OPENDOTA_BASE } from './lib/upstream/opendota.js';
+import { loadConstantsSnapshot } from './lib/constantsSnapshot.js';
 import { validateChatRequest, chatRequestErrorMessage } from './lib/chatRequest.js';
 import { normalizeFeedbackSubmission } from './lib/feedbackStore.js';
 
@@ -222,6 +223,10 @@ const MATCHES_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes for pro/public matche
 const REVIEW_SUGGESTIONS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes for coach review suggestions
 const REVIEW_SUGGESTIONS_DEFAULT_LIMIT = 6;
 const REVIEW_SUGGESTIONS_MAX_LIMIT = 6;
+
+// OpenDota constants shipped with the build (scripts/refresh-data.mjs): no
+// constants requests at runtime. Without a snapshot the getters fetch, as before.
+const CONSTANTS = loadConstantsSnapshot();
 
 // ============ Cache Storage ============
 const cache = {
@@ -501,6 +506,10 @@ function getHeroName(heroId, useZh = false, heroStats = null) {
 // ============ OpenDota Constants Fetchers ============
 
 async function getHeroConstants(fetchOptions = {}) {
+  if (CONSTANTS.heroes) {
+    if (!cache.heroes.data) cache.heroes = { data: CONSTANTS.heroes, timestamp: Date.now() };
+    return CONSTANTS.heroes;
+  }
   const now = Date.now();
   if (cache.heroes.data && (now - cache.heroes.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.heroes.data;
@@ -517,6 +526,10 @@ async function getHeroConstants(fetchOptions = {}) {
 }
 
 async function getItemConstants(fetchOptions = {}) {
+  if (CONSTANTS.items) {
+    if (!cache.items.data) cache.items = { data: CONSTANTS.items, timestamp: Date.now() };
+    return CONSTANTS.items;
+  }
   const now = Date.now();
   if (cache.items.data && (now - cache.items.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.items.data;
@@ -533,6 +546,10 @@ async function getItemConstants(fetchOptions = {}) {
 }
 
 async function getAbilityConstants(fetchOptions = {}) {
+  if (CONSTANTS.abilities) {
+    if (!cache.abilities.data) cache.abilities = { data: CONSTANTS.abilities, timestamp: Date.now() };
+    return CONSTANTS.abilities;
+  }
   const now = Date.now();
   if (cache.abilities.data && (now - cache.abilities.timestamp) < CONSTANTS_CACHE_TTL_MS) {
     return cache.abilities.data;
