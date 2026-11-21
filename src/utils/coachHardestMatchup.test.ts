@@ -24,7 +24,8 @@ describe('draft.hardest_matchup', () => {
           .sort((a: any, b: any) => a.m.diff - b.m.diff);
         expect(fd.title.en).toBe(`${cands[0].h.en} is your hardest matchup at ${v.bracket.label.en}`);
         expect(fd.evidence[0].k.en).toContain('data: STRATZ');
-        expect(fd.action.en).toMatch(itemLifts(me.id, cands[0].h.id).length ? /pro .+ build/ : /\(Valve data\)/);
+        // Measured pro items, else the curated threat list, else (uncurated non-Carry heroes only) Valve ability data.
+        expect(fd.action.en).toMatch(itemLifts(me.id, cands[0].h.id).length ? /pro .+ build/ : new RegExp(`^(${cands[0].h.en}'s damage is mostly (magic|physical)|More than half of ${cands[0].h.en}'s damaging abilities deal (magic|physical) damage \\(Valve data\\))`));
         expect(v.headline.en).not.toContain('hardest matchup');
         expect(fd.goal).toBeUndefined();
       }
@@ -66,5 +67,33 @@ describe('draft.hardest_matchup — pure damage (review #204)', () => {
     expect(itemLifts(89, 98)).toEqual([]);
     expect(naga.findings.map((x: any) => x.id)).not.toContain(ID);
     for (const f of naga.findings) expect(f.action.en).not.toMatch(/Timbersaw's damaging abilities deal magic/);
+  });
+});
+
+describe('draft.hardest_matchup — right-click carries (review #204)', () => {
+  it('Bloodseeker vs Chaos Knight: curated physical, never magic-resistance items', () => {
+    const m = load('match9079014980.turbo.unparsed.json');
+    m.players.filter((p: any) => p.player_slot < 128)[0].hero_id = 4; // Bloodseeker
+    m.players.filter((p: any) => p.player_slot >= 128)[0].hero_id = 81; // Chaos Knight
+    for (const p of m.players) p.rank_tier = 80;
+    const r = buildCoachReport(m) as any;
+    const bs = r.reviews.find((v: any) => r.players[v.slot].hero.id === 4);
+    for (const f of bs.findings) {
+      expect(f.action.en).not.toMatch(/Pipe of Insight|Eternal Shroud|Mage Slayer/);
+      expect(f.action.en).not.toMatch(/Chaos Knight's damaging abilities deal magic/);
+    }
+  });
+
+  it('every Valve-based plan in the fixtures is for a hero the threat list does not know, and never a Carry', () => {
+    const NAMES = JSON.parse(readFileSync(new URL('../../lib/coach/data/names.json', import.meta.url), 'utf8'));
+    for (const f of FIXTURES) {
+      const r = buildCoachReport(load(f)) as any;
+      for (const v of r.reviews) {
+        const fd = v.findings.find((x: any) => x.id === ID);
+        if (!fd || !/Valve data/.test(fd.action.en)) continue;
+        const vs = r.players.find((p: any) => fd.title.en.startsWith(p.hero.en)).hero;
+        expect(NAMES.heroes[vs.id].roles).not.toContain('Carry');
+      }
+    }
   });
 });
