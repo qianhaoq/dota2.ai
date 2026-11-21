@@ -36,6 +36,17 @@ Build receives no direct secret access. **Deploy is a trusted code boundary:**
 its actAs permission lets it deploy code running as runtime, and that code can
 read runtime secrets. This migration does not prevent that indirect access.
 
+Cloud Run imports deployment images through its **Cloud Run service agent**, not
+through the web runtime identity. The deployer also needs repository read access
+(already included in its scoped Writer role). Do not add an unnecessary runtime
+Artifact Registry grant based on the old runtime's Editor role. Before apply,
+verify that the existing Cloud Run service agent retains `roles/run.serviceAgent`
+with `artifactregistry.repositories.downloadArtifacts`, including any effective
+IAM restrictions. This tool does not change or repair service-agent permissions.
+See [Cloud Run deployment permissions and image import](https://docs.cloud.google.com/run/docs/deploying).
+A real staging same-digest identity update remains required; read-only IAM
+inspection is not a successful deployment test.
+
 The inline global GitHub trigger, **not repository YAML**, is authoritative.
 Only its `serviceAccount` is updated via `gcloud builds triggers update github
 --service-account`. The full trigger except that field is fingerprinted, including
