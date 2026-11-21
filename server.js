@@ -129,6 +129,7 @@ import {
 } from './lib/aiLanguage.js';
 import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyticsEvents.js';
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
+import { createDraftRequestBoundary } from './lib/draftRequest.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { createCaseService } from './lib/coach/caseSource.js';
 import { createRecentService } from './lib/coach/recent.js';
@@ -1812,8 +1813,11 @@ const reviewLlmLimit = createLlmRateLimit({
   name: 'review',
 });
 
+// Bound all draft work before either handler can perform grounding IO.
+const draftRequestBoundary = createDraftRequestBoundary({ resolveClientIp });
+
 // ============ Playbook API - 本局打法 ============
-app.post('/api/playbook', async (req, res) => {
+app.post('/api/playbook', draftRequestBoundary('playbook'), async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
 
@@ -2134,7 +2138,7 @@ ${statsSection}
   }
 });
 
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/analyze', draftRequestBoundary('analyze'), async (req, res) => {
   const acceptHeader = req.headers.accept || '';
   const wantsStream = acceptHeader.includes('text/event-stream');
 
