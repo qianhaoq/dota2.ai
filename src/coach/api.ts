@@ -103,3 +103,12 @@ export async function fetchRecentMatches(accountId: string, signal?: AbortSignal
   if (!res.ok) throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status, body.retryAfterSec);
   return body as RecentMatches;
 }
+
+/** Hero vs hero brief (pro + public games at a bracket), ready-made lines in both languages. */
+export async function fetchMatchup(hero: number, vs: number, rank?: string | null, signal?: AbortSignal): Promise<{ lines: { en: string[]; zh: string[] } }> {
+  const q = `hero=${hero}&vs=${vs}${rank ? `&rank=${encodeURIComponent(rank)}` : ''}`;
+  const res = await fetch(`/api/coach/matchup?${q}`, { signal });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status);
+  return body;
+}

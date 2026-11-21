@@ -33,8 +33,13 @@ describe('CoachReportPage header', () => {
       expect(icons.length).toBe(report.players[i].items.length);
     });
     expect(screen.getAllByTitle('清莲宝珠').length).toBeGreaterThan(0);
-    const order = [...container.querySelectorAll('.cx-lineup, .cx-graph, .cx-chapters')].map((e) => e.classList[0]);
-    expect(order).toEqual(['cx-lineup', 'cx-graph', 'cx-chapters']);
+    // Lineup first, then the card feed: headline card, then the gold graph card.
+    const order = [...container.querySelectorAll('.cx-lineup, .cxv-feed')].map((e) => e.classList[0]);
+    expect(order).toEqual(['cx-lineup', 'cxv-feed']);
+    const cards = [...container.querySelectorAll('.cxv-main > .cxv-card')];
+    expect(cards[0].classList.contains('is-headline')).toBe(true);
+    expect(cards[1].classList.contains('is-goldgraph')).toBe(true);
+    expect(cards[1].querySelector('.cx-graph')).toBeTruthy();
     // Labels are HTML (not stretched SVG text): 10-minute ticks and the range.
     const ticks = [...container.querySelectorAll('.cx-graph-axis span')].map((e) => e.textContent);
     expect(ticks).toEqual(['0′', '10′', '20′', '30′', '40′']);
