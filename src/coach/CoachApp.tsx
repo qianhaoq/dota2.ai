@@ -1513,7 +1513,7 @@ const CardFeed: React.FC<{
               <h3>{L(CARD_UI.casesTitle)}</h3>
               <button type="button" className="cxv-x" onClick={() => setCases(null)} aria-label={L(CARD_UI.close)}>×</button>
             </header>
-            <div className="cxv-card-body" id="cx-ch-cases"><Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => askRef.current?.focus()} /></div>
+            <div className="cxv-card-body"><Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => askRef.current?.focus()} /></div>
           </section>
         )}
       </div>
