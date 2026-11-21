@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { parseAccountInput, rememberedAccount } from './accountInput';
@@ -59,6 +60,7 @@ export const QuickJump: React.FC = () => {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const known = rememberedAccount();
 
   useEffect(() => {
@@ -111,12 +113,12 @@ export const QuickJump: React.FC = () => {
 
   return (
     <>
-      <button type="button" className="cx-qj-trigger" aria-label={L(T.trigger)} onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}>
+      <button ref={triggerRef} type="button" className="cx-qj-trigger" aria-label={L(T.trigger)} onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}>
         <span className="cx-qj-icon" aria-hidden="true">⌕</span>
         <span className="cx-qj-label">{L(T.trigger)}</span>
         <kbd className="cx-kbd" aria-hidden="true">⌘K</kbd>
       </button>
-      {open && (
+      {open && createPortal(
         <div className="cx-modal-backdrop" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
           <div className="cx-modal" role="dialog" aria-modal="true" aria-labelledby="cx-qj-title">
             <div className="cx-modal-head">
@@ -158,7 +160,10 @@ export const QuickJump: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        // Outside .cx-top: its backdrop-filter makes it the containing block for fixed
+        // descendants, so the backdrop would only cover the header. Stay inside .cx for its tokens.
+        triggerRef.current?.closest('.cx') ?? document.body,
       )}
     </>
   );
