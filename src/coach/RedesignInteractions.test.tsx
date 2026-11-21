@@ -3,7 +3,8 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { buildSurface } from '../../lib/coach/cards.js';
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { detectSmartInput } from './QuickJump';
@@ -68,7 +69,7 @@ describe('CoachHome smart omnibox', () => {
 });
 
 describe('CoachReportPage redesigned workspace', () => {
-  it('renders sticky context bar, inline role override, verdict hero, linked timeline and dual-tab dock', async () => {
+  it('renders sticky context bar, verdict hero, linked timeline and the engine card surface', async () => {
     fetchReport.mockResolvedValue(parsedReport);
     const { container } = render(
       <MemoryRouter initialEntries={['/r/9091400302?p=0']}>
@@ -99,21 +100,27 @@ describe('CoachReportPage redesigned workspace', () => {
     expect(container.querySelector('#cx-ch-fights')).toBeTruthy();
     expect(container.querySelector('#cx-fight-row-0.is-highlighted')).toBeTruthy();
 
-    // Right sticky dock toggles between Ask Coach and Player Profile, and "追问这部分" brings Ask back with context.
-    fireEvent.click(screen.getByRole('tab', { name: '选手档案' }));
-    expect(screen.getByText('对比同英雄的其他对局')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '追问这部分' }));
-    expect(screen.getByText(/当前围绕：5 · 逐波团战/)).toBeTruthy();
+    // The review is the engine's card surface, in the engine's order, with only each card's own actions.
+    const surface = buildSurface(parsedReport, 0) as any;
+    const expected = surface.cards.map((c: any) => c.component.toLowerCase())
+      .filter((c: string) => c !== 'matchheader' && c !== 'matchups'); // header is the page's own; the lane chapter carries matchups
+    const shown = [...container.querySelectorAll('.cxv-main > .cxv-card')].map((el) => [...el.classList].find((x) => x.startsWith('is-') && !['is-good', 'is-fix', 'is-neutral'].includes(x))!.slice(3));
+    expect(shown).toEqual(expected);
+    const allowed = new Set(surface.cards.flatMap((c: any) => c.actions.map((x: any) => x.label.zh)));
+    // A compare button also names the enemy hero ("对比 · 熊战士").
+    for (const btn of container.querySelectorAll('.cxv-act')) expect(allowed.has(btn.textContent!.split(' · ')[0])).toBe(true);
 
-    // "长页全览" shows all chapters simultaneously.
-    fireEvent.click(screen.getByRole('button', { name: '长页全览' }));
-    expect(container.querySelector('#cx-ch-story')).toBeTruthy();
-    expect(container.querySelector('#cx-ch-laning')).toBeTruthy();
-    expect(container.querySelector('#cx-ch-deaths')).toBeTruthy();
-    expect(container.querySelector('#cx-ch-fights')).toBeTruthy();
+    // A finding's "问教练" fills the docked conversation with that finding.
+    const first = parsedReport.reviews[0].findings[0];
+    const card = container.querySelector(`#card-finding-${first.id.replace(/[^a-z0-9_-]/gi, '-')}`)!;
+    fireEvent.click(within(card as HTMLElement).getByRole('button', { name: '问教练' }));
+    await waitFor(() => expect((container.querySelector('.cxv-rail textarea') as HTMLTextAreaElement).value).toContain(first.title.zh));
+
+    // Every chapter is on the page at once: no tabs to hunt through.
+    for (const id of ['story', 'laning', 'deaths', 'fights']) expect(container.querySelector(`#cx-ch-${id}`)).toBeTruthy();
   });
 
-  it('places ParsePanel above the lineup for unparsed matches', async () => {
+  it('unparsed: the parse card comes right after the headline, before any finding', async () => {
     fetchReport.mockResolvedValue(unparsedReport);
     const { container } = render(
       <MemoryRouter initialEntries={['/r/9091400302?p=4']}>
@@ -121,8 +128,11 @@ describe('CoachReportPage redesigned workspace', () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(container.querySelector('.cx-gaps--priority')).toBeTruthy());
-    const order = [...container.querySelectorAll('.cx-gaps--priority, .cx-lineup')].map((el) => el.classList[0]);
-    expect(order).toEqual(['cx-gaps', 'cx-lineup']);
+    const cards = [...container.querySelectorAll('.cxv-main > .cxv-card')];
+    expect(cards[0].classList.contains('is-headline')).toBe(true);
+    expect(cards[1].classList.contains('is-datagaps')).toBe(true);
+    expect(cards[1].querySelector('.cx-gaps--priority')).toBeTruthy();
+    expect(cards.slice(2).every((c) => !c.classList.contains('is-datagaps'))).toBe(true);
   });
 });
 
@@ -173,11 +183,11 @@ describe('review follow-ups (#192)', () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(container.querySelector('.cx-ctx-ask')).toBeTruthy());
-    expect(container.querySelector('.cx-chapters')).toBeNull();
+    expect(container.querySelector('#cx-ch-deaths')).toBeNull(); // unparsed: no chapter cards
     fireEvent.click(container.querySelector('.cx-ctx-ask')!);
     await waitFor(() => {
       const active = document.activeElement as HTMLElement | null;
-      expect(active && container.querySelector('.cx-side')!.contains(active) && /^(TEXTAREA|INPUT)$/.test(active.tagName)).toBe(true);
+      expect(active && container.querySelector('.cxv-rail')!.contains(active) && /^(TEXTAREA|INPUT)$/.test(active.tagName)).toBe(true);
     });
   });
 

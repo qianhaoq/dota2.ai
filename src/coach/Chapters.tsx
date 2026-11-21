@@ -487,7 +487,7 @@ export const CASE_THEME_FOR: Record<string, string> = {
 };
 
 /** Open the row's data disclosure (the user may have collapsed it) and scroll to the row. */
-function revealRow(id: string) {
+export function revealRow(id: string) {
   const row = document.getElementById(id);
   const details = row?.closest('details');
   if (details && !details.open) details.open = true;
@@ -495,7 +495,7 @@ function revealRow(id: string) {
 }
 
 /** Jump to that theme once the cases have loaded; the cases chapter otherwise. */
-function jumpToCases(theme: string) {
+export function jumpToCases(theme: string) {
   const el = document.getElementById(`cx-case-${theme}`) ?? document.getElementById('cx-ch-cases');
   el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 }
@@ -583,7 +583,7 @@ const Why: React.FC<{ causes: WhyCause[]; withCases: boolean; onOpenCase: (theme
   );
 };
 
-const Story: React.FC<{
+export const Story: React.FC<{
   ch: NonNullable<ChaptersT['story']>;
   onAsk: () => void;
   withCases: boolean;
@@ -609,7 +609,7 @@ const Story: React.FC<{
   );
 };
 
-const Laning: React.FC<{
+export const Laning: React.FC<{
   ch: NonNullable<ChaptersT['laning']>;
   heroById: Map<number, HeroRef>;
   slot: number;
@@ -694,7 +694,7 @@ export const Matchups: React.FC<{
 
 type DeathFilter = 'all' | 'caught' | 'fight' | 'converted';
 
-const Deaths: React.FC<{
+export const Deaths: React.FC<{
   ch: NonNullable<ChaptersT['deaths']>;
   heroById: Map<number, HeroRef>;
   onAsk: () => void;
@@ -758,7 +758,7 @@ const Deaths: React.FC<{
   );
 };
 
-const Items: React.FC<{
+export const Items: React.FC<{
   ch: NonNullable<ChaptersT['items']>; heroById: Map<number, HeroRef>; onAsk: () => void;
   counterItems?: NonNullable<Review['counter_items']>; myHero?: HeroRef; since: string | null;
 }> = ({ ch, heroById, onAsk, counterItems, myHero, since }) => {
@@ -831,7 +831,7 @@ const Items: React.FC<{
 
 type FightFilter = 'all' | 'lost' | 'ult_unused' | 'absent';
 
-const Fights: React.FC<{
+export const Fights: React.FC<{
   ch: NonNullable<ChaptersT['fights']>;
   onAsk: () => void;
   defaultOpen?: boolean;
@@ -892,7 +892,7 @@ const Fights: React.FC<{
   );
 };
 
-const Plan: React.FC<{ plan: ChaptersT['plan']; onAsk: () => void }> = ({ plan, onAsk }) => {
+export const Plan: React.FC<{ plan: ChaptersT['plan']; onAsk: () => void }> = ({ plan, onAsk }) => {
   const { L } = useLang();
   return (
     <article className="cx-chapter cx-plan" id="cx-ch-plan">
