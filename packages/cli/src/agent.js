@@ -149,11 +149,18 @@ async function runGoal(args, io) {
   if (sub === 'check') {
     const goal = state.goal;
     if (!goal) throw apiError('NOT_FOUND', 'No goal set: dota2ai goal set <matchId> --hero h');
+    // Same identity rule as the web page (goalStore.checkGoal): a game counts
+    // only when it is the goal owner's. Known accounts must match; a seat is
+    // never guessed from the hero the goal came from.
+    const owner = goal.accountId ?? null;
+    if (flags.account != null && owner != null && String(flags.account) !== String(owner)) {
+      throw apiError('INVALID_INPUT', `This goal belongs to account ${owner}, not ${flags.account}`);
+    }
     let matchId = pos[0] ?? null;
     let seat = null;
     if (!matchId) {
-      const account = flags.account ?? goal.accountId;
-      if (account == null) throw apiError('INVALID_INPUT', 'Give a match id, or --account <friend code> (this goal has no account)');
+      const account = flags.account ?? owner;
+      if (account == null) throw apiError('INVALID_INPUT', 'Give a match id and --hero, or --account <friend code> (this goal has no account)');
       const recent = await io.api.recent(String(account));
       const next = recent.matches.filter((m) => m.match_id !== goal.fromMatch && (m.start_time ?? 0) > goal.fromStart)
         .sort((a, b) => b.start_time - a.start_time)[0];
@@ -164,10 +171,15 @@ async function runGoal(args, io) {
     const report = await io.api.report(matchId);
     if (report.match.id === goal.fromMatch || !(report.match.start_time > goal.fromStart)) throw apiError('INVALID_INPUT', 'That game is not after the one the goal came from');
     if (seat == null) {
-      seat = flags.hero != null ? findSeat(report, flags.hero)
-        : report.players.findIndex((p) => goal.accountId != null && p.account_id === goal.accountId);
-      if (seat == null || seat < 0) seat = report.players.findIndex((p) => p.hero.id === goal.heroId);
-      if (seat < 0) throw apiError('INVALID_INPUT', 'Which hero were you? Add --hero');
+      if (flags.hero != null) seat = findSeat(report, flags.hero);
+      else if (owner != null) {
+        seat = report.players.findIndex((p) => p.account_id === owner);
+        if (seat < 0) throw apiError('INVALID_INPUT', 'Your account is not in this match (or it is anonymous): add --hero to say which hero was you');
+      } else throw apiError('INVALID_INPUT', 'Which hero were you? Add --hero');
+    }
+    const acct = report.players[seat]?.account_id ?? null;
+    if (owner != null && acct != null && acct !== owner) {
+      throw apiError('INVALID_INPUT', `That seat is account ${acct}; this goal belongs to account ${owner}`);
     }
     const { evaluateGoal } = await loadGoals();
     const r = evaluateGoal(goal.goal, report, seat);

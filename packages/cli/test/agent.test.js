@@ -9,6 +9,8 @@ import { buildCoachReport } from '../../../lib/coach/analyze.js';
 import { run } from '../src/cli.js';
 import { parseAccount } from '../src/coachApi.js';
 import { readGoalState } from '../src/agent.js';
+import { createCoachApi, ASK_TIMEOUT_MS } from '../src/coachApi.js';
+import { writeFileSync } from 'node:fs';
 
 /**
  * The CLI against the real coach router + engine on a local port, over the
@@ -28,7 +30,10 @@ beforeAll(async () => {
     getMatchDetail: async (id) => {
       const m = matches.get(Number(id));
       if (!m) throw Object.assign(new Error('HTTP 404'), { status: 404, upstream: 'opendota' });
-      return structuredClone(m);
+      const copy = structuredClone(m);
+      // The later game names one player (Hoodwink, seat 3) for the identity checks.
+      if (Number(id) === 9094562824) copy.players[3].account_id = 222;
+      return copy;
     },
     resolveClientIp: () => 'test',
     mapError: (e) => ({ status: e.status === 404 ? 404 : 502, body: { error: e.message } }),
@@ -151,5 +156,45 @@ describe('dota2ai goal', () => {
     expect((await cli('goal', 'check', '9091400302')).code).toBe(2);
     const show = await cli('goal', 'show', '--lang', 'zh');
     expect(show.out).toContain('9094562824');
+  });
+});
+
+describe('dota2ai goal identity', () => {
+  const save = (accountId) => {
+    const goal = { id: `9091400302:0:x`, goal: report.reviews[0].findings.find((f) => f.goal).goal, action: { en: 'a', zh: 'a' }, findingId: 'x', fromMatch: 9091400302, fromStart: matches.get(9091400302).start_time, accountId, heroId: 29, setAt: 0 };
+    writeFileSync(join(home, 'goal.json'), JSON.stringify({ goal, checks: [] }));
+  };
+
+  it('never records another account\'s game as yours', async () => {
+    save(111);
+    // A different --account than the goal's owner.
+    expect((await cli('goal', 'check', '--account', '222')).code).toBe(2);
+    // An explicit seat that belongs to someone else.
+    const r = await cli('goal', 'check', '9094562824', '--hero', 'hoodwink');
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/belongs to account 111/);
+    // The owner is not in the match: ask which hero, never guess from the old hero.
+    expect((await cli('goal', 'check', '9094562824')).err).toMatch(/add --hero/);
+    expect(readGoalState(env).checks).toEqual([]);
+  });
+
+  it('without a known account, a seat must be named', async () => {
+    save(null);
+    expect((await cli('goal', 'check', '9094562824')).err).toMatch(/Which hero were you/);
+    expect((await cli('goal', 'check', '9094562824', '--hero', 'hoodwink')).code).toBe(0);
+  });
+});
+
+describe('ask timeout', () => {
+  it('outlives the JSON timeout: the server may run its whole provider chain', async () => {
+    expect(ASK_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
+    const slow = (ms) => async (_url, init) => {
+      await new Promise((r, reject) => { const t = setTimeout(r, ms); init.signal.addEventListener('abort', () => { clearTimeout(t); reject(init.signal.reason); }); });
+      const body = new TextEncoder().encode('data: {"text":"ok"}\n\ndata: {"done":true}\n\n');
+      return { ok: true, status: 200, body: (async function* () { yield body; })(), json: async () => ({}) };
+    };
+    const api = createCoachApi({ env: { DOTA2AI_API_BASE: 'http://x' }, fetchImpl: slow(60), timeoutMs: 10, askTimeoutMs: 1000 });
+    expect((await api.ask(1, 0, 'q')).text).toBe('ok');
+    await expect(api.report(1)).rejects.toMatchObject({ code: 'UPSTREAM' });
   });
 });

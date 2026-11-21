@@ -72,14 +72,18 @@ export function findSeat(report, hero) {
 /**
  * @param {{ env?: Record<string, string|undefined>, fetchImpl?: typeof fetch, timeoutMs?: number }} [options]
  */
-export function createCoachApi({ env = process.env, fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 30000 } = {}) {
+// A follow-up can take the server's whole provider chain (40 s per model,
+// a second model, then the report fallback): give it room to finish.
+export const ASK_TIMEOUT_MS = 180_000;
+
+export function createCoachApi({ env = process.env, fetchImpl = (...a) => globalThis.fetch(...a), timeoutMs = 30000, askTimeoutMs = ASK_TIMEOUT_MS } = {}) {
   const base = env.DOTA2AI_API_BASE || 'https://dota2.ai';
   const url = (path) => new URL(path, base);
 
-  async function request(path, init = {}) {
+  async function request(path, init = {}, ms = timeoutMs) {
     let res;
     try {
-      res = await fetchImpl(url(path), { ...init, headers: { Accept: 'application/json', ...(init.headers ?? {}) }, signal: AbortSignal.timeout(timeoutMs) });
+      res = await fetchImpl(url(path), { ...init, headers: { Accept: 'application/json', ...(init.headers ?? {}) }, signal: AbortSignal.timeout(ms) });
     } catch {
       throw apiError('UPSTREAM', 'dota2.ai request failed');
     }
@@ -116,7 +120,7 @@ export function createCoachApi({ env = process.env, fetchImpl = (...a) => global
         method: 'POST',
         headers: { 'content-type': 'application/json', Accept: 'text/event-stream' },
         body: JSON.stringify({ question, slot: Number(seat), lang: lang === 'zh' ? 'zh' : 'en' }),
-      });
+      }, askTimeoutMs);
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         const msg = body?.error ?? `HTTP ${res.status}`;
