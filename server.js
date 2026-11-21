@@ -1813,7 +1813,7 @@ const reviewLlmLimit = createLlmRateLimit({
   name: 'review',
 });
 
-// Bound all draft work before either handler can perform grounding IO.
+// Bound all draft work before any handler can perform grounding IO.
 const draftRequestBoundary = createDraftRequestBoundary({ resolveClientIp });
 
 // ============ Playbook API - 本局打法 ============
@@ -2289,7 +2289,7 @@ app.get('/api/suggestions', (_req, res) => {
 });
 
 // Next hero suggestions based on OpenDota matchup data
-app.post('/api/suggestions', async (req, res) => {
+app.post('/api/suggestions', draftRequestBoundary('suggestions'), async (req, res) => {
   try {
     const { allies = [], enemies = [], side = 'radiant', limit = 8, role } = req.body;
 
@@ -2300,9 +2300,10 @@ app.post('/api/suggestions', async (req, res) => {
 
     // Count only now: the data-availability short-circuit above answers for
     // free, everything below does the OpenDota-driven compute. This route
-    // never calls an LLM, so it has no global cost guard at all (no global
+    // never calls an LLM. Its existing compute limiter has no global cost guard (no global
     // bucket that could mask a full per-IP bucket); only the per-IP limit
-    // applies and answers 429.
+    // applies and answers 429. Separate pre-grounding work admission above
+    // also bounds unavailable-data attempts and aggregate upstream work.
     const llmGate = suggestionsLlmLimit.acquire(req);
     if (!llmGate.ok) {
       return suggestionsLlmLimit.respondRateLimited(req, res, llmGate.retryAfterSec);
