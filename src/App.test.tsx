@@ -49,26 +49,16 @@ describe('App routes', () => {
     expect(document.querySelector('meta[name="robots"]')).toBeNull();
   });
 
-  // Retired pages redirect: the coach is the only UI.
+  // Retired pages are gone: every path but /, /r/:id and /p/:id goes home (keeping ?lang).
   it.each([
     ['/new', '/'],
     ['/new/anything?lang=zh', '/?lang=zh'],
     ['/legacy', '/'],
     ['/legacy/tools?lang=en', '/?lang=en'],
     ['/m', '/'],
-    ['/m/9091400302', '/r/9091400302'],
-    ['/m/9091400302?hero=pudge&lang=zh', '/r/9091400302?lang=zh'],
-    ['/m/not-a-number', '/'],
-  ])('%s redirects to %s', async (from, to) => {
-    renderRoute(from);
-    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(to));
-  });
-
-  it.each([
-    ['/#/match/9091400302', '/r/9091400302'],
-    ['/#/m/9091400302', '/r/9091400302'],
-    ['/?lang=zh#training', '/?lang=zh'],
-  ])('legacy hash link %s goes to %s', async (from, to) => {
+    ['/m/9091400302?hero=pudge&lang=zh', '/?lang=zh'],
+    ['/anything/else', '/'],
+  ])('%s goes to %s', async (from, to) => {
     renderRoute(from);
     await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(to));
   });

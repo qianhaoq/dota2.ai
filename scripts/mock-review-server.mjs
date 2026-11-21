@@ -5,7 +5,6 @@
  *
  * Serves ./dist and the real /api/v1 router using raw OpenDota fixtures for
  * 9035042364 and 8985182860. No outbound fetches or LLM completion.
- * Try /new/m/9035042364?hero=pudge to force the v2 UI.
  * Legacy /api/review GET/POST fixtures and feedback/event acknowledgements
  * remain available. Other match IDs return MATCH_NOT_FOUND.
  *
@@ -165,11 +164,6 @@ app.use(express.static(DIST));
 app.use(staticNotFound());
 
 app.get('*', (req, res) => {
-  // Mirror the production SPA rule: /new and /legacy are unlisted surfaces.
-  const p = req.path.toLowerCase();
-  if (p === '/new' || p.startsWith('/new/') || p === '/legacy' || p.startsWith('/legacy/')) {
-    res.set('X-Robots-Tag', 'noindex');
-  }
   res.sendFile(path.join(DIST, 'index.html'));
 });
 

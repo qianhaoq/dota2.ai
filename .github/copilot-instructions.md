@@ -20,7 +20,7 @@ Live site: `dota2.ai`. Contact / deploy owner: personal project of `qianhaoq`.
 ## Architecture map
 
 - `src/components/` — UI (DraftAssistant, LoreChat, HeroCard, …)
-- `src/services/` — client/API helpers (e.g. dotaApiService, geminiService naming may lag; prefer current DeepSeek paths)
+- `src/services/` — client helpers (analytics; the legacy dotaApiService / geminiService were removed with the old UI). Old note: (e.g. dotaApiService, geminiService naming may lag; prefer current DeepSeek paths)
 - `src/types.ts`, `src/constants.ts`, `src/data/` — shared types, constants, static data
 - `server.js` — `/health`, `/api/health`, `/api/analyze`, `/api/chat` (streaming-sensitive)
 
