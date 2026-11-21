@@ -25,3 +25,12 @@ function stage(name) {
   Object.keys(manifest.dependencies ?? {}).forEach(stage);
 }
 stage('ajv');
+
+// The goal check runs the web page's own pure judge (lib/coach/goals.js and
+// the knowledge table it reads), vendored so the tarball needs no checkout.
+const vendor = new URL('../src/vendor/', import.meta.url);
+rmSync(vendor, { recursive: true, force: true });
+mkdirSync(vendor, { recursive: true });
+for (const file of ['goals.js', 'knowledge.js']) {
+  cpSync(new URL(`../../../lib/coach/${file}`, import.meta.url), new URL(file, vendor));
+}

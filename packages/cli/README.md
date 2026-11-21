@@ -22,6 +22,39 @@ Use a directory containing only the desired tarball when using the wildcard.
 Packing bundles the workspace engine and its runtime dependencies; it does not
 publish anything. The tarball also includes the agent skill in `skills/`.
 
+## Coach commands (for you and your agent)
+
+```sh
+node packages/cli/bin/dota2ai.js help
+node packages/cli/bin/dota2ai.js recent <friend code | profile link>
+node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --lang zh
+node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section why --json
+node packages/cli/bin/dota2ai.js cases 9091400302 --hero tidehunter
+node packages/cli/bin/dota2ai.js ask 9091400302 --hero tidehunter "Which death was the most avoidable?"
+node packages/cli/bin/dota2ai.js goal set 9091400302 --hero tidehunter
+node packages/cli/bin/dota2ai.js goal check            # your next public game
+```
+
+- `coach --section`: `summary` (default: the causes that decided the game,
+  yours first; what to practise; findings), `why`, `lane`, `deaths`, `items`,
+  `fights`, `plan`, `all`. `--json` prints `{schema, engine, match, player,
+  review, data_gaps, url}` for the seat, or `{section, value}` with `--section`.
+- `goal` keeps the goal in `$DOTA2AI_HOME/goal.json` (default `~/.dota2ai`) and
+  judges later games with the same function as the web page.
+- Same exit codes as below; same origin override (`DOTA2AI_API_BASE`).
+
+### Use it from your agent
+
+The skill [`skills/dota2ai-coach/SKILL.md`](skills/dota2ai-coach/SKILL.md)
+tells an agent when to call which command and how to read the output.
+
+- **Claude Code**: copy the folder into your skills directory —
+  `cp -r packages/cli/skills/dota2ai-coach ~/.claude/skills/` (all projects) or
+  `.claude/skills/` (one project). Then ask "review my last Dota game".
+- **Codex / other agents**: point `AGENTS.md` (or the agent's instructions) at
+  the skill file, or paste its body; the agent needs a shell in this checkout.
+- **MCP clients**: see [the MCP guide](../mcp/README.md).
+
 ## Inputs and network access
 
 ```text
@@ -63,7 +96,7 @@ its gaps instead of filling them. Private matches and a learning loop on the
 public request path are unsupported. This CLI reuses the public Review API or
 local engine; it does not start a second AI runtime.
 
-Agents: [dota2ai-review skill](skills/dota2ai-review/SKILL.md).
+Agents: [dota2ai-coach skill](skills/dota2ai-coach/SKILL.md) (the coach) and [dota2ai-review skill](skills/dota2ai-review/SKILL.md) (the v1 review).
 Optional existing MCP: [MCP guide](../mcp/README.md).
 
 ## Verification

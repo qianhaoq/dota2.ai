@@ -6,7 +6,10 @@
     "dota2ai": "./bin/dota2ai.js"
   },
   "exports": {
-    "./client": "./src/client.js"
+    "./client": "./src/client.js",
+    "./coach": "./src/coachApi.js",
+    "./agent": "./src/agent.js",
+    "./render": "./src/coach.js"
   },
   "files": [
     "bin",
@@ -25,6 +28,6 @@
   ],
   "scripts": {
     "prepack": "node scripts/prepare-pack.js",
-    "postpack": "node -e \"require('node:fs').rmSync('node_modules/@dota2ai/review-engine', {recursive:true,force:true})\""
+    "postpack": "node -e \"const fs=require('node:fs');fs.rmSync('node_modules/@dota2ai/review-engine',{recursive:true,force:true});fs.rmSync('src/vendor',{recursive:true,force:true})\""
   }
 }
