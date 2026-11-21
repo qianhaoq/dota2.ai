@@ -30,6 +30,7 @@ node packages/cli/bin/dota2ai.js help
 | A follow-up question | `dota2ai ask <matchId> --hero <hero> "question" --json` |
 | Next-game goal | `dota2ai goal set <matchId> --hero <hero>` · `goal show` · `goal check [matchId]` |
 | Hero vs hero (pro games, no match needed) | `dota2ai matchup <hero> <vs> --json` |
+| Same, at the player's rank (public games, STRATZ) | `dota2ai matchup <hero> <vs> --rank <hg\|ca\|la\|di\|medal> --json` |
 
 `<hero>`: slug (`tidehunter`), English or Chinese name, or hero id. Without
 `--hero`, `coach` returns the roster: ask the user which hero was theirs —
@@ -43,7 +44,7 @@ later; say so).
 With the MCP server instead of a shell (`packages/mcp`, stdio), the same
 calls are tools: `recent_matches`, `coach_report` (`section`), `coach_cases`,
 `coach_ask`, `goal_check` (pass the finding's `goal` object; keep it yourself
-between sessions), `hero_matchup` (`hero`, `vs`).
+between sessions), `hero_matchup` (`hero`, `vs`, optional `rank`).
 
 ## Reading the review
 
@@ -74,7 +75,8 @@ each, and the one thing to practise → offer `goal set`.
 (fix). Then offer `cases` to see a pro game on the same problem.
 
 **"How do I play against X?" / "Is this a bad matchup?"**: `matchup <their hero>
-<X> --json` → lead with the lane verdict and the win-rate verdict *with their
+<X> --json` (add `--rank` with their medal when you know it: `by_rank` is public
+games at that bracket, say "data: STRATZ" and the game count) → lead with the lane verdict and the win-rate verdict *with their
 game counts* (`null` = too few pro games: say so, do not guess), then the
 items pros on their hero build more often against X (`your_items_vs_them`:
 "pros do this more often", never "this wins"), then the Valve facts about X's

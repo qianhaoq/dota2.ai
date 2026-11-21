@@ -103,7 +103,12 @@ describe('report: was the lane hard before it started?', () => {
     expect(mu.find((x: any) => x.hero === WEAVER).verdict).toBe('favoured');
     expect(mu.find((x: any) => x.hero === URSA).verdict).toBe('even');
     const IV = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/item-vs.json'), 'utf8'));
-    expect(r.baselines).toEqual({ source: 'OpenDota explorer, professional matches', since: DATA.since, games: DATA.games, fetched: DATA.fetched, item_rule: IV.rule });
+    const RK = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/matchups-rank.json'), 'utf8'));
+    expect(r.baselines).toEqual({
+      source: 'OpenDota explorer, professional matches', since: DATA.since, games: DATA.games, fetched: DATA.fetched, item_rule: IV.rule,
+      // Engine 1.10: public games by rank bracket, with the STRATZ credit.
+      rank: { source: RK.source, attribution: { en: 'Data: STRATZ', url: 'https://stratz.com' }, patch: RK.patch, weeks: RK.weeks, fetched: RK.fetched },
+    });
   });
 
   it('still lists hero matchups for an unparsed match (they need only the draft)', () => {

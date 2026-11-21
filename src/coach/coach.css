@@ -728,6 +728,15 @@
 .cx-matchups li.is-favoured .cx-mu-verdict { color: var(--good); }
 .cx-matchups li.is-unfavoured { border-color: rgba(208, 106, 85, 0.45); }
 .cx-matchups li.is-unfavoured .cx-mu-verdict { color: var(--dire); }
+.cx-mu-rank { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.cx-mu-rank .cx-mu-verdict { font-size: 11px; }
+/* The public-game badges keep their own colour whatever the pro verdict tints the card. */
+.cx-matchups li .cx-mu-rank .cx-mu-verdict.is-favoured { color: var(--good); }
+.cx-matchups li .cx-mu-rank .cx-mu-verdict.is-unfavoured { color: var(--dire); }
+.cx-mu-rank-head { margin-top: -2px; }
+.cx-mu-rank { padding-top: 4px; border-top: 1px dashed var(--line); }
+.cx-mu-credit { font-size: 12px; margin-top: 6px; }
+.cx-mu-credit a { color: inherit; text-decoration: underline; }
 
 /* Items: what pros on your hero build more often against each enemy hero */
 .cx-proitems { margin: 4px 0 14px; }

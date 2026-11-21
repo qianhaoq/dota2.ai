@@ -5,7 +5,7 @@ import { CoachApiError, fetchCoachReport, fetchRecentMatches, requestParse } fro
 import { markReviewed, markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, CoachReport, Evidence, Finding, Player, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
-import { Chapters, type ChapterJumpSignal } from './Chapters';
+import { Chapters, Matchups, type ChapterJumpSignal } from './Chapters';
 import { GoldTimeline } from './GoldTimeline';
 import { QuickJump, detectSmartInput } from './QuickJump';
 import { AskPanel, type AskHandle } from './AskPanel';
@@ -112,6 +112,7 @@ const UI = {
   fixRole: { en: 'Wrong seat? Set it:', zh: '位置不对？手动指定：' },
   vsHero: { en: 'vs. other games on this hero', zh: '对比同英雄的其他对局' },
   items: { en: 'Final items', zh: '终局装备' },
+  matchups: { en: 'Matchups', zh: '对位' },
   threats: { en: 'What the enemy brought', zh: '对方阵容的威胁' },
   timeline: { en: 'Key item timings', zh: '关键装备时间' },
   deaths: { en: 'Deaths', zh: '死亡记录' },
@@ -733,6 +734,7 @@ export const CoachReportPage: React.FC = () => {
       <BenchCard player={player} />
       <ItemsCard player={player} review={review} />
       <ThreatCard review={review} report={report} />
+      {!review.chapters?.laning && <MatchupsCard review={review} report={report} />}
       {!review.chapters?.items && review.item_timeline && review.item_timeline.length > 0 && <TimelineCard review={review} />}
       {!review.chapters?.deaths && review.deaths && review.deaths.length > 0 && <DeathsCard review={review} report={report} />}
     </>
@@ -1305,6 +1307,20 @@ const ThreatCard: React.FC<{ review: Review; report: CoachReport }> = ({ review,
           </li>
         ))}
       </ul>
+    </div>
+  );
+};
+
+/** Matchups need no replay: shown here when there is no laning chapter to carry them (unparsed matches). */
+const MatchupsCard: React.FC<{ review: Review; report: CoachReport }> = ({ review, report }) => {
+  const { L } = useLang();
+  const list = review.matchups ?? [];
+  if (!list.some((m) => m.n != null || m.rank)) return null;
+  const heroById = new Map(report.players.map((p) => [p.hero.id, p.hero]));
+  return (
+    <div className="cx-box">
+      <h3>{L(UI.matchups)}</h3>
+      <Matchups list={list} heroById={heroById} since={report.baselines?.since ?? null} bracket={review.bracket} rankSource={report.baselines?.rank} />
     </div>
   );
 };
