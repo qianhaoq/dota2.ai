@@ -49,6 +49,8 @@ export interface Review {
   opponent: number | null;
   /** Engine >= 1.7: your hero against each enemy hero in pro games; nulls when the sample is too small. */
   matchups?: HeroMatchup[];
+  /** Engine >= 1.8: finished items pros on your hero buy clearly more often against each enemy hero. */
+  counter_items?: { hero: number; items: { item: ItemRef; rate: number; base: number; n: number }[] }[];
   findings: Finding[];
   deaths: { time: number; killer: number | null; in_fight: boolean | null; converted: boolean | null }[] | null;
   item_timeline: { time: number; item: ItemRef }[] | null;
@@ -152,7 +154,7 @@ export interface CoachReport {
   /** Per slot: finished key items and Aegis pickups from the replay; null when not parsed. */
   spikes?: (PowerSpikes | null)[] | null;
   /** Where the pro baselines come from (engine >= 1.7). */
-  baselines?: { source: string; since: string; games: number; fetched: string };
+  baselines?: { source: string; since: string; games: number; fetched: string; item_rule?: { min_games: number; min_lift: number; se: number; top: number } };
   data_gaps: Bi[];
 }
 
