@@ -251,6 +251,60 @@ describe('official ability facts (Valve datafeed herodata)', async () => {
   });
 });
 
+describe('story "why": where you stood in lane (replay positions)', () => {
+  const raw = load('match9091400302.parsed.json');
+  const r = buildCoachReport(raw);
+  const lane = (slot: number, id: string) => r.reviews[slot].chapters.story.why.find((c: any) => c.id === id);
+  // Share of a player's lane_pos samples in the enemy half (river band ±10 cells excluded).
+  const over = (heroId: number) => {
+    const p = raw.players.find((x: any) => x.hero_id === heroId);
+    let n = 0; let e = 0;
+    for (const [x, ys] of Object.entries(p.lane_pos as Record<string, Record<string, number>>)) {
+      for (const [y, c] of Object.entries(ys)) {
+        n += c; const s = Number(x) + Number(y) - 256;
+        if (Math.abs(s) > 10 && (s > 0) === (p.player_slot < 128)) e += c;
+      }
+    }
+    return `${Math.round((100 * e) / n)}%`;
+  };
+
+  it('compares time over the river for every laner, from the replay samples', () => {
+    const bot = lane(2, 'lane.1');
+    const line = bot.evidence.find((e: any) => e.zh.startsWith('前 10 分钟站在对方半场的时间'));
+    expect(line.zh).toBe(`前 10 分钟站在对方半场的时间（录像位置采样）：术士 ${over(37)}、幽鬼 ${over(67)} 对 编织者 ${over(63)}、破晓辰星 ${over(135)}`);
+    // Ursa pressed into Tidehunter's half; the evidence shows it.
+    expect(lane(0, 'lane.3').evidence.map((e: any) => e.zh).join()).toContain(`熊战士 ${over(70)}`);
+  });
+
+  it('adds the positioning fact to your lane fix only when you stood over far more than they did', () => {
+    const fix = lane(2, 'lane.1').fix.zh; // Warlock 16% vs Dawnbreaker 5%, died in lane
+    expect(fix).toContain(`录像显示你前 10 分钟有 ${over(37)} 的时间站在河道对面，而破晓辰星站到你们这一侧只有 ${over(135)}`);
+    expect(fix.match(/等级追上之前/g)).toHaveLength(1);
+    expect(lane(0, 'lane.3').fix.zh).not.toContain('录像显示'); // Tidehunter 3%: not the issue
+  });
+
+  it('ships a heat map for your lane only, against the hero who killed you most there', () => {
+    const c = lane(2, 'lane.1');
+    expect(c.heat.me.hero.id).toBe(37);
+    expect(c.heat.opp.hero.id).toBe(135); // Dawnbreaker: 3 of Warlock's lane deaths
+    const sum = (cells: number[][]) => cells.reduce((s, x) => s + x[2], 0);
+    const total = (heroId: number) => Object.values(raw.players.find((x: any) => x.hero_id === heroId).lane_pos as Record<string, Record<string, number>>)
+      .reduce((s, ys) => s + Object.values(ys).reduce((a, b) => a + b, 0), 0);
+    expect(sum(c.heat.me.cells)).toBe(total(37));
+    for (const other of r.reviews[2].chapters.story.why.filter((x: any) => x.id !== 'lane.1')) expect(other.heat).toBeUndefined();
+    expect(r.reviews[7].chapters.story.why.some((x: any) => x.heat)).toBe(false); // the winners' lanes were not lost
+  });
+
+  it('says nothing about positions when any laner has no samples', () => {
+    const partial = JSON.parse(JSON.stringify(raw));
+    delete partial.players.find((p: any) => p.hero_id === 63).lane_pos; // Weaver
+    const c = buildCoachReport(partial).reviews[2].chapters.story.why.find((x: any) => x.id === 'lane.1');
+    expect(c.evidence.map((e: any) => e.zh).join()).not.toContain('录像位置采样');
+    expect(c.fix.zh).not.toContain('录像显示');
+    expect(c.heat).toBeUndefined();
+  });
+});
+
 describe('story "why": your hero\'s core item against pro builds', () => {
   const raw = load('match9091400302.parsed.json');
   const HI = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/hero-items.json'), 'utf8'));

@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { SafeImg, clock, k, signedK, useLang } from './ui';
 import { AskPanel, type AskHandle } from './AskPanel';
 import { Cases } from './Cases';
-import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroRef, Review, WhyCause } from './types';
+import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroRef, LaneHeat, Review, WhyCause } from './types';
 
 /**
  * The deep review: the game phase by phase, the lane, every death, the build
@@ -197,6 +197,60 @@ function jumpToCases(theme: string) {
   el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+const HEAT = {
+  title: { en: 'Where you stood, 0–10 min (replay positions)', zh: '前 10 分钟站位（录像位置采样）' },
+  yours: { en: 'your half', zh: '你们半场' },
+  theirs: { en: 'their half', zh: '对方半场' },
+};
+
+/**
+ * Two players' first-10-minute positions on the map, cropped to the lane.
+ * Cells are OpenDota's 128-unit grid with y pointing up (Dire top-right);
+ * the river runs along x + y = 256.
+ */
+const LaneHeatMap: React.FC<{ heat: LaneHeat }> = ({ heat }) => {
+  const { L, lang } = useLang();
+  const all = [...heat.me.cells, ...heat.opp.cells];
+  if (!all.length) return null;
+  const xs = all.map((c) => c[0]); const ys = all.map((c) => 256 - c[1]);
+  const pad = 6;
+  let x0 = Math.min(...xs) - pad; let x1 = Math.max(...xs) + pad;
+  let y0 = Math.min(...ys) - pad; let y1 = Math.max(...ys) + pad;
+  const side = Math.max(x1 - x0, y1 - y0, 40);
+  const cx = (x0 + x1) / 2; const cy = (y0 + y1) / 2;
+  x0 = cx - side / 2; x1 = cx + side / 2; y0 = cy - side / 2; y1 = cy + side / 2;
+  const max = Math.max(...all.map((c) => c[2]));
+  const dots = (cells: [number, number, number][], cls: string) => cells.map(([x, y, n], i) => (
+    <circle key={`${cls}${i}`} className={cls} cx={x} cy={256 - y} r={0.8 + 1.8 * Math.sqrt(n / max)} />
+  ));
+  // Own half: below the river line for Radiant (x + y < 256 → screen y > x).
+  const ownBelow = heat.radiant;
+  const label = (pos: 'own' | 'theirs') => {
+    const below = pos === 'own' ? ownBelow : !ownBelow;
+    return { x: below ? x0 + side * 0.03 : x1 - side * 0.03, y: below ? y1 - side * 0.03 : y0 + side * 0.08, anchor: below ? 'start' : 'end' } as const;
+  };
+  const own = label('own'); const theirs = label('theirs');
+  const name = (h: HeroRef) => (lang === 'zh' ? h.zh : h.en);
+  return (
+    <figure className="cx-heat">
+      <svg viewBox={`${x0} ${y0} ${side} ${side}`} role="img"
+        aria-label={`${L(HEAT.title)}: ${name(heat.me.hero)} / ${name(heat.opp.hero)}`}>
+        <rect x={x0} y={y0} width={side} height={side} className="cx-heat-bg" />
+        <line x1={x0} y1={x0} x2={x1} y2={x1} strokeWidth={side * 0.05} className="cx-heat-river" />
+        <text x={own.x} y={own.y} textAnchor={own.anchor} fontSize={side * 0.055} className="cx-heat-label">{L(HEAT.yours)}</text>
+        <text x={theirs.x} y={theirs.y} textAnchor={theirs.anchor} fontSize={side * 0.055} className="cx-heat-label">{L(HEAT.theirs)}</text>
+        {dots(heat.opp.cells, 'cx-heat-opp')}
+        {dots(heat.me.cells, 'cx-heat-me')}
+      </svg>
+      <figcaption>
+        <span className="cx-heat-cap">{L(HEAT.title)}</span>
+        <span><span className="cx-heat-key is-me" />{name(heat.me.hero)}</span>
+        <span><span className="cx-heat-key is-opp" />{name(heat.opp.hero)}</span>
+      </figcaption>
+    </figure>
+  );
+};
+
 const Why: React.FC<{ causes: WhyCause[]; withCases: boolean }> = ({ causes, withCases }) => {
   const { L } = useLang();
   const phases = (['early', 'mid', 'late'] as const).filter((p) => causes.some((c) => c.phase === p));
@@ -211,6 +265,7 @@ const Why: React.FC<{ causes: WhyCause[]; withCases: boolean }> = ({ causes, wit
               <li key={c.id} className={c.mine ? 'is-mine' : ''}>
                 <p className="cx-why-cause">{L(c.title)}{c.mine && <span className="cx-tag cx-tag--new">{L(WHY.you)}</span>}</p>
                 <ul className="cx-why-ev">{c.evidence.map((e, i) => <li key={i}>{L(e)}</li>)}</ul>
+                {c.heat && <LaneHeatMap heat={c.heat} />}
                 {c.fix && <p className="cx-do"><span>{L(WHY.todo)}</span>{L(c.fix)}</p>}
                 {withCases && c.mine && CASE_THEME_FOR[c.id] && (
                   <a className="cx-why-pro" href={`#cx-case-${CASE_THEME_FOR[c.id]}`}

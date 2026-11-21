@@ -206,4 +206,12 @@ export interface WhyCause {
   title: Bi;
   evidence: Bi[];
   fix: Bi | null;
+  /** Your lane only: first-10-minute replay positions, yours and one opponent's ([x, y, samples] on 128-unit cells). */
+  heat?: LaneHeat;
+}
+
+export interface LaneHeat {
+  radiant: boolean;
+  me: { hero: HeroRef; cells: [number, number, number][] };
+  opp: { hero: HeroRef; cells: [number, number, number][] };
 }

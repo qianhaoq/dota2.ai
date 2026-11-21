@@ -125,6 +125,18 @@
 .cx-why-cause { margin: 0 0 4px; font-weight: 500; color: var(--text); }
 .cx-why-ev { margin: 0 0 6px; padding-left: 16px; color: var(--text-2); font-size: 13.5px; display: grid; gap: 2px; }
 .cx-why .cx-do { margin-top: 6px; }
+.cx-heat { margin: 8px 0 6px; max-width: 240px; }
+.cx-heat svg { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); }
+.cx-heat-bg { fill: var(--panel-2); }
+.cx-heat-river { stroke: #5b8db8; stroke-opacity: .45; }
+.cx-heat-label { fill: var(--text-2); font-family: var(--sans); }
+.cx-heat-me { fill: var(--accent); fill-opacity: .75; }
+.cx-heat-opp { fill: var(--dire); fill-opacity: .6; }
+.cx-heat figcaption { margin-top: 4px; font-size: 12px; color: var(--text-3); display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; }
+.cx-heat-cap { flex-basis: 100%; }
+.cx-heat-key { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+.cx-heat-key.is-me { background: var(--accent); }
+.cx-heat-key.is-opp { background: var(--dire); }
 .cx-why-pro { display: inline-block; margin-top: 6px; font-size: 13px; color: var(--accent); text-underline-offset: 3px; }
 .cx-patch { margin: 0 0 28px; padding: 22px 22px 18px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 14px; }
 .cx-patch-head .cx-eyebrow { margin: 0 0 4px; }
