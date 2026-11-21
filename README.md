@@ -217,7 +217,6 @@ dota2.ai is licensed under the [**PolyForm Noncommercial License 1.0.0**](LICENS
 - ✅ **Allowed:** personal match review, study, research, non-commercial community sharing, and running, changing or connecting it (CLI / MCP) for your own non-commercial use. Keep the license and the `Required Notice` line with any copy you pass on.
 - ❌ **Needs a commercial license:** paid hosting or SaaS, subscriptions, paywalls, ads, API resale, or bundling the code, reports, CLI or MCP server into paid coaching, boosting, betting or analytics products.
 - 💬 For a commercial license, contact the repository owner through GitHub.
-- Versions published before this change were released under MIT and remain available under MIT.
 
 <sub>Fan project, not affiliated with, endorsed or sponsored by Valve Corporation. Dota, Dota 2 and Steam are trademarks of Valve Corporation. Match data from public OpenDota / STRATZ endpoints.</sub>
 
@@ -362,6 +361,5 @@ dota2.ai 采用 [**PolyForm Noncommercial License 1.0.0**](LICENSE) 许可。
 - ✅ **允许：** 个人复盘、学习研究、非商业社区分享，以及为自己的非商业用途运行、修改、接入（CLI / MCP）。转给他人时须附上许可证和 `Required Notice` 那一行。
 - ❌ **需要商业授权：** 付费托管或 SaaS、会员订阅、付费墙、广告变现、API 转售，或把代码、复盘报告、CLI、MCP 集成进付费教学、代练、竞猜或商业数据分析产品。
 - 💬 如需商业授权，请通过 GitHub 联系仓库所有者。
-- 本次变更之前发布的版本采用 MIT 许可，这些版本仍可按 MIT 使用。
 
 <sub>本项目为玩家粉丝项目，与 Valve Corporation 无关，未获其认可或赞助。Dota、Dota 2 与 Steam 为 Valve Corporation 的商标；比赛数据来自公开的 OpenDota / STRATZ 接口。</sub>
