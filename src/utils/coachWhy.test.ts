@@ -250,3 +250,62 @@ describe('official ability facts (Valve datafeed herodata)', async () => {
     }
   });
 });
+
+describe('story "why": your hero\'s core item against pro builds', () => {
+  const raw = load('match9091400302.parsed.json');
+  const HI = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/hero-items.json'), 'utf8'));
+  const cause = (r: any, slot: number) => r.reviews[slot].chapters.story.why?.find((c: any) => c.id === 'items.key_item');
+  const pct = (hero: string, key: string) => {
+    const h = HI.heroes[hero];
+    return Math.round((100 * h.items.find((x: any) => x.key === key).n) / h.games);
+  };
+
+  it('names a late consensus item, what came first, and the fights lost before it', () => {
+    const c = cause(buildCoachReport(raw), 0); // Tidehunter, Blink at 29:20
+    const tide = raw.players.find((p: any) => p.hero_id === 29);
+    const blinkAt = tide.purchase_log.find((x: any) => x.key === 'blink').time;
+    expect(HI.heroes['29'].items[0].key).toBe('blink');
+    expect(pct('29', 'blink')).toBeGreaterThanOrEqual(50);
+    expect(c.title.zh).toBe(`核心装备：闪烁匕首 ${Math.floor(blinkAt / 60)}:${String(blinkAt % 60).padStart(2, '0')} 才买，职业选手的潮汐猎人 ${pct('29', 'blink')}% 的比赛在 25 分钟前就买了`);
+    expect(c.evidence[0].zh).toContain(`${HI.heroes['29'].games} 场职业比赛的潮汐猎人`);
+    expect(c.evidence[0].zh).toContain(`闪烁匕首 ${pct('29', 'blink')}%`);
+    expect(c.evidence[0].zh).toContain(`OpenDota 职业比赛，${HI.fetched}`);
+    // Finished items only (no Void Stone, no Phase Boots), in purchase order.
+    expect(c.evidence[1].zh).toMatch(/^买闪烁匕首之前你完成了：法师克星 16:\d\d、圣化护服 21:\d\d$/);
+    expect(c.evidence[2].zh).toMatch(/^闪烁匕首到手前，10 分钟后输了 \d+ 波团战；你在场 \d+ 波，其中放出大招 \d+ 波$/);
+    expect(c.fix.zh).toBe('下一局把闪烁匕首排在法师克星之前：多数职业选手的潮汐猎人在 25 分钟前就有它。');
+  });
+
+  it('never calls another consensus item or a component of the item a detour', () => {
+    // Spectre: Radiance (also consensus) came before Yasha; only Orchid counts.
+    const c = cause(buildCoachReport(raw), 4);
+    expect(c.evidence[1].zh).not.toContain('辉耀');
+    expect(c.fix.zh).not.toContain('辉耀之前');
+    // Each listed item carries its recursive components, which never count as "instead".
+    expect(HI.parts.yasha).toContain('blade_of_alacrity');
+    // Without Orchid, nothing but Radiance came first: no genuine alternative, no cause.
+    const only = JSON.parse(JSON.stringify(raw));
+    const sp = only.players.find((p: any) => p.hero_id === 67);
+    sp.purchase_log = sp.purchase_log.filter((x: any) => x.key !== 'orchid' && x.key !== 'bloodthorn');
+    expect(cause(buildCoachReport(only), 4)).toBeUndefined();
+  });
+
+  it('only recommends items still sold in the current patch', () => {
+    // Removed items (bought in older pro games) are filtered out at generation.
+    expect(HI.source).toMatch(/finished items seen in \d+\.\d+ pro matches/);
+    const listed = new Set(Object.values(HI.heroes).flatMap((h: any) => h.items.map((x: any) => x.key)));
+    expect(listed.has('helm_of_the_overlord')).toBe(false);
+  });
+
+  it('says nothing when the item came in the mid game, the pro data is split, or there is no purchase log', () => {
+    const early = JSON.parse(JSON.stringify(raw));
+    early.players.find((p: any) => p.hero_id === 29).purchase_log.find((x: any) => x.key === 'blink').time = 1200;
+    expect(cause(buildCoachReport(early), 0)).toBeUndefined();
+    // Pudge: no item reaches half of pro games.
+    expect(HI.heroes['14'].items.every((x: any) => x.n / HI.heroes['14'].games < 0.5)).toBe(true);
+    expect(cause(buildCoachReport(raw), 3)).toBeUndefined();
+    const bare = JSON.parse(JSON.stringify(raw));
+    for (const p of bare.players) delete p.purchase_log;
+    expect(cause(buildCoachReport(bare), 0)).toBeUndefined();
+  });
+});
