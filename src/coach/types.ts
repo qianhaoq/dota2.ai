@@ -133,6 +133,8 @@ export interface CoachReport {
   match: {
     id: number; duration: number; radiant_win: boolean; score: [number, number]; patch: string | null;
     mode: Bi; ranked: boolean; start_time: number | null; parsed: boolean; replay_available: boolean; turbo: boolean;
+    /** 'stratz' when OpenDota was unavailable and the data came from STRATZ. */
+    source?: 'opendota' | 'stratz';
   };
   players: Player[];
   reviews: Review[];
