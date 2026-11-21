@@ -1401,9 +1401,9 @@ const CardFeed: React.FC<{
   const [jump, setJump] = useState<{ target: string; row: number | null; seq: number } | null>(null);
   const [compare, setCompare] = useState<{ hero: number; vs: number } | null>(null);
   const [cases, setCases] = useState<{ theme: string; seq: number } | null>(null);
-  // Per-player state resets when the reviewed player changes; the feed itself stays mounted
+  // Per-match/player state resets when either changes; the feed itself stays mounted
   // so a pending replay parse keeps polling (its card has the same id for every player).
-  useEffect(() => { setJump(null); setCompare(null); setCases(null); }, [review.slot, pos]);
+  useEffect(() => { setJump(null); setCompare(null); setCases(null); }, [report.match.id, review.slot, pos]);
   // Opening pro cases goes to the requested theme (or the loading panel) once it is on the page.
   useEffect(() => {
     if (!cases) return undefined;
