@@ -42,7 +42,7 @@ it('SDK lists tools, returns structured reviews, and reports tool errors cleanly
   try {
     await server.connect(left); await client.connect(right);
     // v1 review tools, then the coach tools (stdio / in-process servers only).
-    expect((await client.listTools()).tools.map(t => t.name)).toEqual(['review_match', 'get_evidence', 'recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check']);
+    expect((await client.listTools()).tools.map(t => t.name)).toEqual(['review_match', 'get_evidence', 'recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup']);
     const result = await client.callTool({ name: 'review_match', arguments: args });
     expect(validateReview(result.structuredContent).ok).toBe(true);
     const error = await client.callTool({ name: 'get_evidence', arguments: { ...args, insight_id: 'bad' } });
@@ -53,7 +53,7 @@ it('stdio bin speaks MCP without stdout diagnostics', async () => {
   const client = new Client({ name: 'stdio-test', version: '1' });
   try {
     await client.connect(new StdioClientTransport({ command: process.execPath, args: [new URL('../bin/dota2ai-mcp.js', import.meta.url).pathname, '--offline'] }));
-    expect((await client.listTools()).tools.map(t => t.name)).toEqual(['review_match', 'get_evidence', 'recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check']);
+    expect((await client.listTools()).tools.map(t => t.name)).toEqual(['review_match', 'get_evidence', 'recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup']);
   } finally { await client.close(); }
 });
 it('remote /mcp initializes, lists tools and uses injected fetchMatch', async () => {

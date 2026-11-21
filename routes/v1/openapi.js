@@ -29,9 +29,10 @@ Coach (the main review, deterministic, bilingual en/zh objects):
 - GET /api/coach/{matchId}/cases?slot={seat} returns pro games on the same problem (parsed matches only).
 - POST /api/coach/{matchId}/ask with {question, slot, lang} streams SSE data frames {text}, then {done:true}; {fallback:true} marks an answer taken from the report.
 - GET /api/coach/players/{friendCode}/recent returns a player's recent public games with their seat.
-- CLI: node packages/cli/bin/dota2ai.js help — recent, coach --section why|lane|deaths|items|fights|plan, cases, ask, goal set|show|check; --json everywhere.
+- GET /api/coach/matchup?hero={hero}&vs={hero} returns hero vs hero from pro games (no match needed): win_rate, lane (gold at 10:00), your_items_vs_them / their_items_vs_you (items pros build clearly more often), their_abilities (Valve: damage type, pierces spell immunity), lines {en, zh}. Verdicts only on real gaps; null means too few pro games.
+- CLI: node packages/cli/bin/dota2ai.js help — recent, coach --section why|lane|deaths|items|fights|plan, cases, ask, goal set|show|check, matchup <hero> <vs>; --json everywhere.
 - Agent skill: packages/cli/skills/dota2ai-coach/SKILL.md
-- Stdio MCP coach tools (repository checkout): recent_matches, coach_report({match_id,hero?,section?}), coach_cases, coach_ask, goal_check.
+- Stdio MCP coach tools (repository checkout): recent_matches, coach_report({match_id,hero?,section?}), coach_cases, coach_ask, goal_check, hero_matchup({hero,vs}).
 Coach rate limit: 40 requests/minute/IP. Respect Retry-After.
 
 Review page (v1): /m/{matchId}?hero=pudge&lang=en (also zh).

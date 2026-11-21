@@ -7,7 +7,7 @@
 [![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial-d6b46a.svg)](LICENSE)
 [![Dota 2 Patch 7.42](https://img.shields.io/badge/Dota%202-7.42-c23c2a.svg)](https://www.dota2.com/patches/7.42)
-[![MCP ready](https://img.shields.io/badge/MCP-7%20tools-2f9e5b.svg)](#cli-mcp)
+[![MCP ready](https://img.shields.io/badge/MCP-8%20tools-2f9e5b.svg)](#cli-mcp)
 [![good first issues](https://img.shields.io/github/issues/qianhaoq/dota2.ai/good%20first%20issue.svg?label=good%20first%20issues)](https://github.com/qianhaoq/dota2.ai/labels/good%20first%20issue)
 
 </div>
@@ -116,6 +116,9 @@ node packages/cli/bin/dota2ai.js ask 9091400302 --hero tidehunter "Which death h
 # Training goal loop (stored locally in ~/.dota2ai/goal.json)
 node packages/cli/bin/dota2ai.js goal set 9091400302 --hero tidehunter
 node packages/cli/bin/dota2ai.js goal check
+
+# Hero vs hero from pro games — no match needed
+node packages/cli/bin/dota2ai.js matchup tidehunter ursa
 ```
 
 Every command takes `--lang en|zh` and `--json`; point it at another server with `DOTA2AI_API_BASE`.
@@ -143,7 +146,7 @@ claude mcp add dota2ai -- node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2
 ```
 
 <details>
-<summary><strong>All 7 MCP tools</strong></summary>
+<summary><strong>All 8 MCP tools</strong></summary>
 
 | Tool | Parameters | What it returns |
 |---|---|---|
@@ -152,6 +155,7 @@ claude mcp add dota2ai -- node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2
 | `coach_cases` | `{ match_id, hero }` | Pro games that did and didn't solve the same problem |
 | `coach_ask` | `{ match_id, hero, question }` | A grounded follow-up answer (`fallback: true` when no LLM is available) |
 | `goal_check` | `{ match_id, hero, goal }` | Checks a later match against a finding's `goal` |
+| `hero_matchup` | `{ hero, vs }` | Hero vs hero from pro games, no match needed: win rate, lane at 10:00, counter items each way, Valve ability facts |
 | `review_match` | `{ match_id, hero?, lang? }` | Review v1 structured JSON (`dota2.ai/review@1`) |
 | `get_evidence` | `{ match_id, hero, insight_id }` | Facts, citations and data gaps for one v1 insight |
 
@@ -296,6 +300,9 @@ node packages/cli/bin/dota2ai.js ask 9091400302 --hero 潮汐猎人 "我哪一�
 # 设定并核验下局训练目标（保存在本地 ~/.dota2ai/goal.json）
 node packages/cli/bin/dota2ai.js goal set 9091400302 --hero 潮汐猎人
 node packages/cli/bin/dota2ai.js goal check
+
+# 英雄对英雄的职业数据——不需要比赛
+node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --lang zh
 ```
 
 > [!TIP]
@@ -323,7 +330,7 @@ claude mcp add dota2ai -- node /你的绝对路径/dota2.ai/packages/mcp/bin/dot
 ```
 
 <details>
-<summary><strong>全部 7 个 MCP 工具</strong></summary>
+<summary><strong>全部 8 个 MCP 工具</strong></summary>
 
 | 工具 | 参数 | 返回 |
 |---|---|---|
@@ -332,6 +339,7 @@ claude mcp add dota2ai -- node /你的绝对路径/dota2.ai/packages/mcp/bin/dot
 | `coach_cases` | `{ match_id, hero }` | 同一问题上做到和没做到的职业比赛 |
 | `coach_ask` | `{ match_id, hero, question }` | 只依据本局事实的追问回答（没有 LLM 时 `fallback: true`） |
 | `goal_check` | `{ match_id, hero, goal }` | 用后续比赛核验训练目标 |
+| `hero_matchup` | `{ hero, vs }` | 英雄对英雄的职业数据（不需要比赛）：胜率、10 分钟对线、双方针对出装、Valve 技能事实 |
 | `review_match` | `{ match_id, hero?, lang? }` | Review v1 结构化复盘 JSON |
 | `get_evidence` | `{ match_id, hero, insight_id }` | 单条 v1 结论对应的事实、引用和数据缺口 |
 

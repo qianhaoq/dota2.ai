@@ -33,12 +33,18 @@ node packages/cli/bin/dota2ai.js cases 9091400302 --hero tidehunter
 node packages/cli/bin/dota2ai.js ask 9091400302 --hero tidehunter "Which death was the most avoidable?"
 node packages/cli/bin/dota2ai.js goal set 9091400302 --hero tidehunter
 node packages/cli/bin/dota2ai.js goal check            # your next public game
+node packages/cli/bin/dota2ai.js matchup tidehunter ursa --lang zh   # pro games, no match needed
 ```
 
 - `coach --section`: `summary` (default: the causes that decided the game,
   yours first; what to practise; findings), `why`, `lane`, `deaths`, `items`,
   `fights`, `plan`, `all`. `--json` prints `{schema, engine, match, player,
   review, data_gaps, url}` for the seat, or `{section, value}` with `--section`.
+- `matchup <hero> <vs>`: from pro games since the previous patch — win rate and
+  lane gold at 10:00 (a verdict only when the gap is real, always with the
+  number of games), the items pros on each side build clearly more often
+  against the other, and Valve's damage-type / spell-immunity facts for the
+  other hero's abilities. `--json` prints the structured brief plus `lines`.
 - `goal` keeps the goal in `$DOTA2AI_HOME/goal.json` (default `~/.dota2ai`) and
   judges later games with the same function as the web page.
 - Same exit codes as below; same origin override (`DOTA2AI_API_BASE`).
