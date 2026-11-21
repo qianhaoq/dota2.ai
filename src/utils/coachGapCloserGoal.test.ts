@@ -73,3 +73,44 @@ describe('goals.js stays safe for the browser and the packed CLI', () => {
     expect(k).not.toMatch(/^import /m);
   });
 });
+
+describe('the goal never passes on incomplete data (review #201)', () => {
+  const g = finding(0).goal;
+
+  it('an incomplete death timeline: unknown when the missing deaths could change the verdict', () => {
+    const cut = structuredClone(later);
+    cut.reviews[0].chapters.deaths.rows = cut.reviews[0].chapters.deaths.rows.slice(0, 1);
+    expect(cut.players[0].kda[1]).toBeGreaterThan(g.max);
+    const e = evaluateGoal(g, cut, 0);
+    expect(e.result).toBe('unknown');
+    expect(e.evidence.zh).toMatch(/^被已有位移装的敌人击杀至少 \d+ 次、至多 \d+ 次（目标 ≤ 3）：时间线缺了 \d+ 次死亡，无法判定。$/);
+    // Already over the max with what is recorded: missed regardless of the gap.
+    const over = structuredClone(later);
+    over.reviews[0].chapters.deaths.rows.pop();
+    expect(evaluateGoal(g, over, 0).result).toBe('missed');
+  });
+
+  it('missing purchase logs are unknown, never "no gap closer"', () => {
+    const none = structuredClone(later);
+    for (const p of none.players) if (p.radiant !== none.players[0].radiant) none.spikes[p.slot] = null;
+    expect(evaluateGoal(g, none, 0).result).toBe('unknown');
+    // Seat 1 (later game): 5 deaths — 1 to Outworld Destroyer after his Blink (qualifies), 2 to
+    // Earth Spirit and 2 to Pugna (neither bought a gap closer). Met with full logs.
+    expect(evaluateGoal(g, later, 1).result).toBe('met');
+    // Without Earth Spirit's and Pugna's purchase logs those 4 deaths might qualify: 1..5 vs max 3.
+    const two = structuredClone(later);
+    for (const p of two.players) if ([107, 45].includes(p.hero.id)) two.spikes[p.slot] = null;
+    const e = evaluateGoal(g, two, 1);
+    expect(e.result).toBe('unknown');
+    expect(e.evidence.zh).toBe('被已有位移装的敌人击杀至少 1 次、至多 5 次（目标 ≤ 3）：部分击杀者没有购买记录，无法判定。');
+  });
+
+  it('a deathless parsed game meets the goal when an enemy had a gap closer', () => {
+    const clean = structuredClone(later);
+    clean.players[0].kda = [5, 0, 10];
+    clean.reviews[0].chapters.deaths = null;
+    const e = evaluateGoal(g, clean, 0);
+    expect(e.result).toBe('met');
+    expect(e.evidence.zh.startsWith('被已有位移装的敌人击杀 0 次（目标 ≤ 3）')).toBe(true);
+  });
+});
