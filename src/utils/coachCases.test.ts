@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { buildCaseStudies, candidateProfile, keyEnemyOf, profileOf, similarHeroes, similarity, withDamageType } from '../../lib/coach/cases.js';
-import { caseCandidatesSql, chooseCandidates, createCaseService, UNUSABLE_TTL_MS } from '../../lib/coach/caseSource.js';
+import { caseCandidatesSql, caseWindowStart, chooseCandidates, createCaseService, UNUSABLE_TTL_MS } from '../../lib/coach/caseSource.js';
 import { createCoachRouter } from '../../lib/coach/router.js';
 import { fallbackAnswer, reportContext } from '../../lib/coach/ask.js';
 
@@ -186,11 +186,23 @@ describe('case studies — unknown is never zero (Codex #153)', () => {
 
 describe('case source', () => {
   it('builds SQL from integers only', () => {
-    const sql = caseCandidatesSql({ heroIds: [29, 7], enemyId: 70, excludeMatchId: 9091400302 });
+    const sql = caseCandidatesSql({ heroIds: [29, 7], enemyId: 70, excludeMatchId: 9091400302, since: 1779408000 });
     expect(sql).toContain('pm.hero_id IN (29,7)');
     expect(sql).toContain('e.hero_id = 70');
     expect(sql).toContain('m.match_id <> 9091400302');
-    expect(() => caseCandidatesSql({ heroIds: ['29; DROP' as never], enemyId: 70, excludeMatchId: 1 })).toThrow();
+    expect(() => caseCandidatesSql({ heroIds: ['29; DROP' as never], enemyId: 70, excludeMatchId: 1, since: 1 })).toThrow();
+    expect(() => caseCandidatesSql({ heroIds: [29], enemyId: 70, excludeMatchId: 1, since: undefined as never })).toThrow();
+  });
+
+  it('filters by a literal start time, stable within a UTC day (OpenDota times out on now() - interval)', () => {
+    const sql = caseCandidatesSql({ heroIds: [29], enemyId: 70, excludeMatchId: 1, since: 1779408000 });
+    expect(sql).toContain('m.start_time > 1779408000 ');
+    expect(sql).not.toMatch(/now\(\)|interval/);
+    const day = 86_400_000;
+    const t = Date.UTC(2026, 10, 21, 7, 30);
+    expect(caseWindowStart(t)).toBe(Date.UTC(2026, 4, 25) / 1000); // 180 days back, at 00:00 UTC
+    expect(caseWindowStart(t + 3 * 60 * 60 * 1000)).toBe(caseWindowStart(t)); // same day, same SQL
+    expect(caseWindowStart(t + day)).toBe(caseWindowStart(t) + 86_400);
   });
 
   it('takes the same hero first and fills with similar heroes only when short', () => {
