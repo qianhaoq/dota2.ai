@@ -2503,7 +2503,7 @@ const matchDetailCache = createMatchDetailCache({
       // abort): a basic, unparsed copy from STRATZ beats an error page.
       if (!stratz || err?.status === 404 || options.signal?.aborted) throw err;
       try {
-        return await stratz.fetchMatch(matchId);
+        return await stratz.fetchMatch(matchId, { signal: options.signal });
       } catch (fallbackErr) {
         console.warn(`[stratz] fallback for ${matchId} failed: ${fallbackErr?.message || fallbackErr}`);
         throw err;

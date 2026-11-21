@@ -49,6 +49,9 @@ describe('STRATZ fallback mapping', () => {
     const noTeam = mapStratzMatch({ ...stratzMatch, radiantKills: null, direKills: null }) as any;
     expect([noTeam.radiant_score, noTeam.dire_score]).toEqual([heroKills(true), heroKills(false)]);
     expect(m.patch).toBe(60); // started on 7.41
+    // STRATZ leads are net worth: never passed off as OpenDota's earned-gold series.
+    expect(m.radiant_gold_adv).toBeUndefined();
+    expect(m.radiant_net_worth_adv).toEqual(stratzMatch.radiantNetworthLeads);
     expect(m.players.map((p: any) => p.player_slot)).toEqual([0, 1, 2, 3, 4, 128, 129, 130, 131, 132]);
     for (const p of m.players) {
       const o = od.players.find((x: any) => x.player_slot === p.player_slot);
@@ -89,6 +92,15 @@ describe('STRATZ client', () => {
     expect(c.snapshot()).toMatchObject({ calls: 1, ok: 1 });
   });
 
+  it('a caller abort cancels the request at once and is not counted as a STRATZ error', async () => {
+    const c = createStratzClient({ token: 't', fetchImpl: (_u: string, init: any) => new Promise((_r, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason))) });
+    const ac = new AbortController();
+    const p = c.fetchMatch(1, { signal: ac.signal });
+    ac.abort();
+    await expect(p).rejects.toBeTruthy();
+    expect(c.snapshot().errors).toBe(0);
+  });
+
   it('a missing match is a 404, an HTTP error keeps its status', async () => {
     const none = createStratzClient({ token: 't', fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: { match: null } }) }) });
     await expect(none.fetchMatch(1)).rejects.toMatchObject({ status: 404, upstream: 'stratz' });
@@ -102,9 +114,11 @@ describe('server wiring', () => {
     const server = readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
     expect(server).toMatch(/process\.env\.STRATZ_API_TOKEN\s*\?/);
     const fn = server.slice(server.indexOf('const matchDetailCache = createMatchDetailCache('));
-    const fallback = fn.slice(0, fn.indexOf('stratz.fetchMatch(matchId)'));
+    const fallback = fn.slice(0, fn.indexOf('stratz.fetchMatch(matchId'));
+    // The caller's cancellation reaches the fallback.
+    expect(fn).toContain('stratz.fetchMatch(matchId, { signal: options.signal })');
     expect(fallback).toMatch(/if \(!stratz \|\| err\?\.status === 404 \|\| options\.signal\?\.aborted\) throw err;/);
     // A STRATZ copy is returned as-is: never written to the parsed-match store.
-    expect(fn.indexOf('return await stratz.fetchMatch(matchId)')).toBeLessThan(fn.indexOf('matchStore?.putMatch(matchId, data)'));
+    expect(fn.indexOf('return await stratz.fetchMatch(matchId')).toBeLessThan(fn.indexOf('matchStore?.putMatch(matchId, data)'));
   });
 });
