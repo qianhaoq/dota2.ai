@@ -38,3 +38,18 @@ describe('why -> pro cases', () => {
     theme.remove();
   });
 });
+
+describe('why -> lane heat map', () => {
+  it('draws your and your lane killer\'s first-10-minute positions on your lane only', () => {
+    const { container } = render(<Chapters review={report.reviews[2]} report={report} pos={null} />); // Warlock
+    const figs = container.querySelectorAll('figure.cx-heat');
+    expect(figs).toHaveLength(1);
+    const heat = report.reviews[2].chapters.story.why.find((c: any) => c.heat).heat;
+    expect(figs[0].querySelectorAll('circle.cx-heat-me')).toHaveLength(heat.me.cells.length);
+    expect(figs[0].querySelectorAll('circle.cx-heat-opp')).toHaveLength(heat.opp.cells.length);
+    expect(figs[0].textContent).toContain('开局前到 10 分钟站位（录像位置采样）');
+    expect(figs[0].textContent).toContain('术士');
+    expect(figs[0].textContent).toContain('破晓辰星');
+    expect(figs[0].querySelector('svg')!.getAttribute('aria-label')).toContain('术士 / 破晓辰星');
+  });
+});
