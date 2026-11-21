@@ -129,6 +129,7 @@ export function createCoachApi({ env = process.env, fetchImpl = (...a) => global
       let text = '';
       let fallback = false;
       let notice = null;
+      let done = false;
       let buf = '';
       const decoder = new TextDecoder();
       const take = (frame) => {
@@ -139,6 +140,7 @@ export function createCoachApi({ env = process.env, fetchImpl = (...a) => global
         if (typeof msg.text === 'string') { text += msg.text; onText(msg.text); }
         if (msg.fallback) fallback = true;
         if (msg.notice) notice = msg.notice;
+        if (msg.done) done = true;
         if (msg.error) throw apiError('UPSTREAM', String(msg.error));
       };
       for await (const chunk of res.body) {
@@ -147,6 +149,9 @@ export function createCoachApi({ env = process.env, fetchImpl = (...a) => global
         while ((i = buf.indexOf('\n\n')) >= 0) { take(buf.slice(0, i)); buf = buf.slice(i + 2); }
       }
       if (buf.trim()) take(buf);
+      // A stream that ends without the terminal frame was cut off: never
+      // hand a truncated answer over as a complete one (same as the web client).
+      if (!done) throw apiError('UPSTREAM', 'The answer was cut off before it finished; ask again', { partial: text });
       return { text, fallback, notice };
     },
   };

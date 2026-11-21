@@ -197,4 +197,13 @@ describe('ask timeout', () => {
     expect((await api.ask(1, 0, 'q')).text).toBe('ok');
     await expect(api.report(1)).rejects.toMatchObject({ code: 'UPSTREAM' });
   });
+
+  it('a stream cut off before its terminal frame is an error, not an answer', async () => {
+    const cut = async () => {
+      const body = new TextEncoder().encode('data: {"text":"You should buy"}\n\n');
+      return { ok: true, status: 200, body: (async function* () { yield body; })(), json: async () => ({}) };
+    };
+    const api = createCoachApi({ env: { DOTA2AI_API_BASE: 'http://x' }, fetchImpl: cut });
+    await expect(api.ask(1, 0, 'q')).rejects.toMatchObject({ code: 'UPSTREAM', partial: 'You should buy' });
+  });
 });
