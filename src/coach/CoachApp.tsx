@@ -5,13 +5,22 @@ import { CoachApiError, fetchCoachReport, fetchRecentMatches, requestParse } fro
 import { markReviewed, markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, CoachReport, Evidence, Finding, Player, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
-import { Chapters } from './Chapters';
+import { Chapters, type ChapterJumpSignal } from './Chapters';
+import { GoldTimeline } from './GoldTimeline';
+import { QuickJump, detectSmartInput } from './QuickJump';
+import { AskPanel } from './AskPanel';
 import { CURRENT_PATCH, itemIcon } from './patch';
 import { trackEvent, trackReviewViewed } from '../services/analytics';
 import { activeGoal, checkGoal, goalChecks, goalFromFinding, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
 import './coach.css';
 
 const EXAMPLE_MATCH = '9091400302';
+
+const SAMPLE_SEATS: { slot: number; label: Bi }[] = [
+  { slot: 0, label: { en: 'Tidehunter (Pos 3)', zh: '潮汐猎人 · 3号位' } },
+  { slot: 2, label: { en: 'Warlock (Pos 5)', zh: '术士 · 5号位' } },
+  { slot: 4, label: { en: 'Spectre (Pos 1)', zh: '幽鬼 · 1号位' } },
+];
 
 export { SafeImg };
 
@@ -22,6 +31,8 @@ const UI = {
   review: { en: 'Review', zh: '开始复盘' },
   invalid: { en: 'That does not look like a match ID.', zh: '这看起来不是一个比赛 ID。' },
   tryExample: { en: 'Try an example', zh: '试试示例' },
+  detectedMatch: { en: 'Detected match #{id}', zh: '已识别为比赛 #{id}' },
+  detectedAccount: { en: 'Detected Steam account {id} — opens recent games', zh: '已识别为 Steam 账号 {id}，将打开最近比赛' },
   p1t: { en: 'Evidence first', zh: '证据先行' },
   p1: { en: 'Every point links to the numbers behind it. No vibes, no invented patch facts.', zh: '每条结论都附带依据。不靠感觉，不编造版本数据。' },
   p2t: { en: 'Tells you what to do', zh: '直接告诉你怎么做' },
@@ -35,12 +46,17 @@ const UI = {
   accountInvalid: { en: 'That is not a friend code. In Dota 2 or Steam, open your profile: the friend code is the number under your name.', zh: '这不是好友代码。在 Dota 2 或 Steam 里打开你的个人资料，名字下面那串数字就是好友代码。' },
   accountVanity: { en: 'Custom Steam URLs can’t be looked up. Paste your friend code or a steamcommunity.com/profiles/… link instead.', zh: '自定义的 Steam 链接没法查询。请改贴好友代码，或 steamcommunity.com/profiles/… 形式的链接。' },
   myGames: { en: 'My recent games', zh: '我的最近比赛' },
+  myGamesShort: { en: 'My games', zh: '我的比赛' },
   recentTitle: { en: 'Your recent games', zh: '你最近的比赛' },
   recentSub: { en: 'Pick a game — the review opens on your hero.', zh: '选一场，复盘会直接打开你的英雄。' },
   recentEmpty: {
     en: 'No public games for this account. If it is yours, turn on “Expose Public Match Data” in Dota 2’s settings, play a game, then come back.',
     zh: '这个账号没有公开的比赛。如果是你的账号，请在 Dota 2 设置里打开「公开比赛数据」（Expose Public Match Data），打完一局再回来。',
   },
+  recentFilterAll: { en: 'All', zh: '全部' },
+  recentFilterUnreviewed: { en: 'Unreviewed', zh: '未复盘' },
+  recentFilterRanked: { en: 'Ranked', zh: '天梯' },
+  recentFilterEmpty: { en: 'No recent games match this filter.', zh: '当前筛选条件下没有比赛。' },
   notMe: { en: 'Not you? Forget this account', zh: '不是你？忘掉这个账号' },
   latestTitle: { en: 'Your latest game', zh: '你刚打完的那局' },
   latestCta: { en: 'Review it', zh: '复盘这局' },
@@ -51,6 +67,7 @@ const UI = {
   goalSet: { en: 'Your next-game goal', zh: '已设为下局目标' },
   goalClear: { en: 'Clear', zh: '取消' },
   goalCheckTitle: { en: 'Your goal', zh: '你的目标' },
+  goalPill: { en: 'Goal', zh: '目标' },
   goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘' },
   goalHere: { en: 'You set this goal from this game. Play your next one — the coach checks it automatically.', zh: '目标就是从这局定的。打下一局，教练会自动核验。' },
   goalTally: { en: '{met} of {n} games met', zh: '{n} 局里达成 {met} 局' },
@@ -66,12 +83,23 @@ const UI = {
   patchNotes: { en: 'Full patch notes', zh: '完整更新日志' },
   patchForCoach: { en: 'For your review', zh: '对复盘的影响' },
   patchCta: { en: 'Review your first {v} game', zh: '复盘你的第一场 {v}' },
+  patchMore: { en: 'Key changes & impact on reviews', zh: '查看核心改动与对复盘的影响' },
   loading: { en: 'Reading the match…', zh: '正在读取比赛…' },
   radiant: { en: 'Radiant', zh: '天辉' },
   dire: { en: 'Dire', zh: '夜魇' },
   victory: { en: 'victory', zh: '胜利' },
   pick: { en: 'Which hero were you?', zh: '你玩的是哪个英雄？' },
   pickSub: { en: 'Pick one to get a review written for that seat.', zh: '选一个英雄，复盘会针对这个位置来写。' },
+  rosterExpand: { en: 'Full 10-player items', zh: '展开 10 人详情' },
+  rosterCompact: { en: 'Compact strip', zh: '收起为紧凑条' },
+  askQuick: { en: 'Ask coach', zh: '追问教练' },
+  verdictEyebrow: { en: 'Biggest lever', zh: '本局核心结论' },
+  vitalLane: { en: 'Lane', zh: '对线' },
+  vitalDeaths: { en: 'Deaths', zh: '死亡' },
+  vitalDamage: { en: 'Damage taken', zh: '主承伤' },
+  vitalFights: { en: 'Fights', zh: '团战' },
+  vitalGpm: { en: 'GPM', zh: '每分钟经济' },
+  vitalDmg: { en: 'Hero dmg', zh: '英雄伤害' },
   coachRead: { en: 'Coach’s read', zh: '教练结论' },
   forYou: { en: 'For you', zh: '你的问题' },
   forTeam: { en: 'For your team', zh: '全队的问题' },
@@ -91,8 +119,6 @@ const UI = {
   fight: { en: 'in a fight', zh: '团战中' },
   notHeroTitle: { en: 'No hero got the kill: tower, creeps or neutrals', zh: '击杀者不是英雄：防御塔、小兵或野怪' },
   converted: { en: '→ objective lost', zh: '→ 丢了目标' },
-  gold: { en: 'Gold lead', zh: '经济差' },
-  yourDeaths: { en: 'your deaths', zh: '你的死亡' },
   cantSee: { en: 'Not parsed yet — here is what we can’t see', zh: '比赛尚未解析——以下内容暂时看不到' },
   cantSeeSub: {
     en: 'OpenDota has not parsed the replay. The read above uses end-of-game data only. Parsing usually takes a few minutes while the replay is still available.',
@@ -145,21 +171,66 @@ const BENCH: { key: string; label: Bi; invert?: boolean }[] = [
   { key: 'tower_damage', label: { en: 'Tower damage', zh: '建筑伤害' } },
 ];
 
+const tally = (goalId: string) => {
+  const counted = goalChecks(goalId).filter((c) => c.result === 'met' || c.result === 'missed');
+  return { n: counted.length, met: counted.filter((c) => c.result === 'met').length };
+};
 
 /* ---------------------------------------------------------------- shell */
 
-const Shell: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ children, wide }) => {
+/** Compact active-goal indicator in the top bar; details open on click. */
+const GoalNavBadge: React.FC = () => {
+  const { lang, L } = useLang();
+  const goal = useActiveGoal();
+  const [open, setOpen] = useState(false);
+  if (!goal) return null;
+  const tl = tally(goal.id);
+  return (
+    <div className="cx-goal-nav">
+      <button type="button" className="cx-goal-pill" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <span className="cx-goal-dot" aria-hidden="true" />
+        <span>{L(UI.goalPill)}{tl.n > 0 ? ` ${tl.met}/${tl.n}` : ''}</span>
+      </button>
+      {open && (
+        <div className="cx-popover cx-goal-pop" role="dialog" aria-label={L(UI.goalCheckTitle)}>
+          <p className="cx-eyebrow">{L(UI.goalCheckTitle)} · {L(UI.goalFrom).replace('{id}', String(goal.fromMatch))}</p>
+          <p className="cx-goal-pop-label"><b>{L(goal.goal.label)}</b></p>
+          {tl.n > 0 && <p className="cx-muted">{L(UI.goalTally).replace('{n}', String(tl.n)).replace('{met}', String(tl.met))}</p>}
+          <div className="cx-goal-pop-actions">
+            <Link to={`/r/${goal.fromMatch}?lang=${lang}`} onClick={() => setOpen(false)}>#{goal.fromMatch} →</Link>
+            <button type="button" className="cx-linkbtn" onClick={() => { setGoal(null); setOpen(false); }}>{L(UI.goalClear)}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome?: boolean; hideMyGames?: boolean }> = ({
+  children,
+  wide,
+  isHome = false,
+  hideMyGames = false,
+}) => {
   const { lang, setLang, L } = useLang();
+  const known = rememberedAccount();
   return (
     <div className="cx">
       <header className="cx-top">
         <Link to={`/?lang=${lang}`} className="cx-brand" aria-label="dota2.ai home">
-          <span className="cx-mark" aria-hidden>◆</span> dota2<span className="cx-dot">.ai</span>
+          <span className="cx-mark" aria-hidden="true">◆</span> dota2<span className="cx-dot">.ai</span>
           <span className="cx-brand-sub">coach</span>
         </Link>
-        <div className="cx-lang" role="group" aria-label="Language">
-          <button type="button" aria-pressed={lang === 'en'} onClick={() => setLang('en')}>EN</button>
-          <button type="button" aria-pressed={lang === 'zh'} onClick={() => setLang('zh')}>中文</button>
+        <div className="cx-top-right">
+          {!isHome && <QuickJump />}
+          {known && !hideMyGames && (
+            <Link to={`/p/${known}?lang=${lang}`} className="cx-top-link">{L(UI.myGamesShort)}</Link>
+          )}
+          <GoalNavBadge />
+          <div className="cx-lang" role="group" aria-label="Language">
+            <button type="button" aria-pressed={lang === 'en'} onClick={() => setLang('en')}>EN</button>
+            <button type="button" aria-pressed={lang === 'zh'} onClick={() => setLang('zh')}>中文</button>
+          </div>
         </div>
       </header>
       <main className={wide ? 'cx-main cx-main--wide' : 'cx-main'}>{children}</main>
@@ -177,6 +248,7 @@ const Shell: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ childr
 const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
   const { lang, L } = useLang();
   const [latest, setLatest] = useState<RecentMatch | null>(null);
+  const goal = useActiveGoal();
   useEffect(() => {
     const ac = new AbortController();
     fetchRecentMatches(accountId, ac.signal).then((r) => setLatest(r.matches[0] ?? null)).catch(() => {});
@@ -185,22 +257,23 @@ const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
   const all = <Link to={`/p/${accountId}?lang=${lang}`} className="cx-account-known">{latest ? L(UI.allRecent) : L(UI.myGames)} →</Link>;
   if (!latest) return <p className="cx-example">{all}</p>;
   const reviewed = reviewedMatches().has(String(latest.match_id));
-  const goal = activeGoal();
   return (
-    <div className="cx-latest">
-      <p className="cx-eyebrow">{L(UI.latestTitle)}</p>
-      <div className="cx-latest-row">
-        {latest.hero.icon ? <SafeImg src={latest.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
-        <span className="cx-latest-text">
-          <b>{latest.hero[lang]}</b>{' '}
-          <span className={latest.won ? 'is-win' : latest.won === false ? 'is-loss' : ''}>{latest.won == null ? '' : L(latest.won ? UI.win : UI.loss)}</span>{' '}
-          <span className="cx-recent-kda">{latest.kda.join('/')}</span>
-          {reviewed && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
-        </span>
-        <Link to={`/r/${latest.match_id}?p=${latest.slot}&lang=${lang}`} className="cx-patch-cta cx-latest-cta">{L(UI.latestCta)}</Link>
+    <div className={`cx-latest ${goal ? 'has-goal' : ''}`}>
+      <div className="cx-latest-card">
+        <p className="cx-eyebrow">{L(UI.latestTitle)}</p>
+        <div className="cx-latest-row">
+          {latest.hero.icon ? <SafeImg src={latest.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
+          <span className="cx-latest-text">
+            <b>{latest.hero[lang]}</b>{' '}
+            <span className={latest.won ? 'is-win' : latest.won === false ? 'is-loss' : ''}>{latest.won == null ? '' : L(latest.won ? UI.win : UI.loss)}</span>{' '}
+            <span className="cx-recent-kda">{latest.kda.join('/')}</span>
+            {reviewed && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
+          </span>
+          <Link to={`/r/${latest.match_id}?p=${latest.slot}&lang=${lang}`} className="cx-patch-cta cx-latest-cta">{L(UI.latestCta)}</Link>
+        </div>
+        <p className="cx-example">{all}</p>
       </div>
       {goal && <LatestGoal goal={goal} latest={latest} />}
-      <p className="cx-example">{all}</p>
     </div>
   );
 };
@@ -218,11 +291,16 @@ const LatestGoal: React.FC<{ goal: NonNullable<ReturnType<typeof activeGoal>>; l
       .catch(() => {});
     return () => ac.abort();
   }, [counts, goal, latest.match_id, latest.slot]);
+  const tl = tally(goal.id);
   return (
-    <p className="cx-latest-goal">
-      <span>{L(UI.goalCheckTitle)}：{L(goal.goal.label)}</span>
-      {check ? <ResultPill r={check.result} /> : !counts ? <span className="cx-muted"> · {L(UI.goalHere)}</span> : null}
-    </p>
+    <div className="cx-latest-goal-card">
+      <p className="cx-eyebrow">{L(UI.goalCheckTitle)}{tl.n > 0 ? ` · ${L(UI.goalTally).replace('{n}', String(tl.n)).replace('{met}', String(tl.met))}` : ''}</p>
+      <p className="cx-latest-goal">
+        <span>{L(goal.goal.label)}</span>
+        {check ? <ResultPill r={check.result} /> : !counts ? <span className="cx-muted"> · {L(UI.goalHere)}</span> : null}
+      </p>
+      {check && <p className="cx-muted">{L(check.evidence)}</p>}
+    </div>
   );
 };
 
@@ -265,12 +343,17 @@ const AccountForm: React.FC = () => {
 
 /* --------------------------------------------------------- recent games */
 
+type RecentFilter = 'all' | 'unreviewed' | 'ranked';
+
 export const CoachPlayerPage: React.FC = () => {
   const { accountId = '' } = useParams();
   const { lang, L } = useLang();
   const navigate = useNavigate();
   const [data, setData] = useState<RecentMatches | null>(null);
   const [error, setError] = useState<CoachApiError | null>(null);
+  const [filter, setFilter] = useState<RecentFilter>('all');
+  const [heroFilter, setHeroFilter] = useState<number | null>(null);
+  const goal = useActiveGoal();
   // Read once per visit, before this visit marks the list as seen.
   const [seen] = useState(() => (rememberedAccount() === accountId ? seenUntil() : null));
   const [reviewed] = useState(() => reviewedMatches());
@@ -296,47 +379,136 @@ export const CoachPlayerPage: React.FC = () => {
     return () => ac.abort();
   }, [load]);
 
-  if (!valid) return <Shell><ErrorBlock text={L(UI.accountInvalid)} /></Shell>;
+  const checkByMatch = useMemo(() => {
+    if (!goal) return new Map<number, GoalCheck>();
+    return new Map(goalChecks(goal.id).map((c) => [c.matchId, c]));
+  }, [goal]);
+
+  const topHeroes = useMemo(() => {
+    if (!data) return [];
+    const map = new Map<number, { hero: RecentMatch['hero']; count: number }>();
+    for (const m of data.matches) {
+      const prev = map.get(m.hero.id);
+      map.set(m.hero.id, { hero: m.hero, count: (prev?.count ?? 0) + 1 });
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 6);
+  }, [data]);
+
+  if (!valid) return <Shell hideMyGames><ErrorBlock text={L(UI.accountInvalid)} /></Shell>;
   if (error) {
     const text = error.status === 429 ? L(UI.rateLimited) : L(UI.upstream);
-    return <Shell><ErrorBlock text={text} onRetry={() => void load()} /></Shell>;
+    return <Shell hideMyGames><ErrorBlock text={text} onRetry={() => void load()} /></Shell>;
   }
-  if (!data) return <Shell><Skeleton label={L(UI.loading)} /></Shell>;
+  if (!data) return <Shell hideMyGames><Skeleton label={L(UI.loading)} /></Shell>;
+
+  const filtered = data.matches.filter((m) => {
+    if (filter === 'unreviewed' && reviewed.has(String(m.match_id))) return false;
+    if (filter === 'ranked' && !m.ranked) return false;
+    if (heroFilter != null && m.hero.id !== heroFilter) return false;
+    return true;
+  });
+
+  const tl = goal ? tally(goal.id) : null;
+
   return (
-    <Shell>
+    <Shell hideMyGames>
       <section className="cx-recent">
-        <p className="cx-eyebrow">{L(UI.recentTitle)}</p>
-        <h1 className="cx-h2">{L(UI.recentSub)}</h1>
+        <div className="cx-recent-head">
+          <div>
+            <p className="cx-eyebrow">{L(UI.recentTitle)} · #{accountId}</p>
+            <h1 className="cx-h2">{L(UI.recentSub)}</h1>
+          </div>
+          <button type="button" className="cx-ghost" onClick={() => { rememberAccount(null); navigate(`/?lang=${lang}`); }}>
+            {L(UI.notMe)}
+          </button>
+        </div>
+
+        {goal && (
+          <div className="cx-goal cx-recent-goal">
+            <div className="cx-recent-goal-top">
+              <div>
+                <p className="cx-eyebrow">{L(UI.goalCheckTitle)} · {L(UI.goalFrom).replace('{id}', String(goal.fromMatch))}</p>
+                <p className="cx-goal-label"><b>{L(goal.goal.label)}</b></p>
+                {tl && tl.n > 0 && <p className="cx-goal-tally">{L(UI.goalTally).replace('{n}', String(tl.n)).replace('{met}', String(tl.met))}</p>}
+              </div>
+              <button type="button" className="cx-linkbtn" onClick={() => setGoal(null)}>{L(UI.goalClear)}</button>
+            </div>
+          </div>
+        )}
+
         {data.matches.length === 0 ? (
           <p className="cx-recent-empty">{L(UI.recentEmpty)}</p>
         ) : (
-          <ul className="cx-recent-list">
-            {data.matches.map((m) => (
-              <li key={m.match_id}>
-                <Link to={`/r/${m.match_id}?p=${m.slot}&lang=${lang}`} className="cx-recent-row">
-                  {m.hero.icon ? <SafeImg src={m.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
-                  <span className="cx-recent-hero">
-                    {m.hero[lang]}
-                    {seen != null && (m.start_time ?? 0) > seen && <span className="cx-tag cx-tag--new">{L(UI.newTag)}</span>}
-                    {reviewed.has(String(m.match_id)) && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
-                  </span>
-                  <span className={`cx-recent-result ${m.won ? 'is-win' : m.won === false ? 'is-loss' : ''}`}>
-                    {m.won == null ? '—' : L(m.won ? UI.win : UI.loss)}
-                  </span>
-                  <span className="cx-recent-kda">{m.kda.join('/')}</span>
-                  <span className="cx-recent-meta">
-                    {m.mode ? L(m.mode) : ''}{m.ranked ? ` · ${L(UI.ranked)}` : ''}
-                    {m.duration != null ? ` · ${clock(m.duration)}` : ''}
-                    {m.start_time ? ` · ${new Date(m.start_time * 1000).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US')}` : ''}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className="cx-recent-controls">
+              <div className="cx-filter-bar" role="group" aria-label={L(UI.recentTitle)}>
+                {([
+                  ['all', UI.recentFilterAll],
+                  ['unreviewed', UI.recentFilterUnreviewed],
+                  ['ranked', UI.recentFilterRanked],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`cx-filter-pill ${filter === id ? 'is-on' : ''}`}
+                    aria-pressed={filter === id}
+                    onClick={() => setFilter(id)}
+                  >
+                    {L(label)}
+                  </button>
+                ))}
+              </div>
+              {topHeroes.length > 1 && (
+                <div className="cx-hero-filters" role="group" aria-label="Hero filter">
+                  {topHeroes.map(({ hero }) => (
+                    <button
+                      key={hero.id}
+                      type="button"
+                      className={`cx-hero-chip ${heroFilter === hero.id ? 'is-on' : ''}`}
+                      aria-pressed={heroFilter === hero.id}
+                      onClick={() => setHeroFilter((cur) => (cur === hero.id ? null : hero.id))}
+                    >
+                      {hero.icon && <SafeImg src={hero.icon} alt="" />}
+                      <span>{hero[lang]}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {filtered.length === 0 ? (
+              <p className="cx-recent-empty">{L(UI.recentFilterEmpty)}</p>
+            ) : (
+              <ul className="cx-recent-list">
+                {filtered.map((m) => {
+                  const gc = checkByMatch.get(m.match_id);
+                  return (
+                    <li key={m.match_id}>
+                      <Link to={`/r/${m.match_id}?p=${m.slot}&lang=${lang}`} className="cx-recent-row">
+                        {m.hero.icon ? <SafeImg src={m.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
+                        <span className="cx-recent-hero">
+                          {m.hero[lang]}
+                          {seen != null && (m.start_time ?? 0) > seen && <span className="cx-tag cx-tag--new">{L(UI.newTag)}</span>}
+                          {reviewed.has(String(m.match_id)) && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
+                          {gc && <ResultPill r={gc.result} />}
+                        </span>
+                        <span className={`cx-recent-result ${m.won ? 'is-win' : m.won === false ? 'is-loss' : ''}`}>
+                          {m.won == null ? '—' : L(m.won ? UI.win : UI.loss)}
+                        </span>
+                        <span className="cx-recent-kda">{m.kda.join('/')}</span>
+                        <span className="cx-recent-meta">
+                          {m.mode ? L(m.mode) : ''}{m.ranked ? ` · ${L(UI.ranked)}` : ''}
+                          {m.duration != null ? ` · ${clock(m.duration)}` : ''}
+                          {m.start_time ? ` · ${new Date(m.start_time * 1000).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US')}` : ''}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </>
         )}
-        <p className="cx-example">
-          <button type="button" onClick={() => { rememberAccount(null); navigate(`/?lang=${lang}`); }}>{L(UI.notMe)}</button>
-        </p>
       </section>
     </Shell>
   );
@@ -348,13 +520,16 @@ const PatchNews: React.FC<{ onCta: () => void }> = ({ onCta }) => {
   const v = (b: Bi) => L(b).replace('{v}', p.version);
   return (
     <section className="cx-patch" aria-labelledby="cx-patch-title">
-      <div className="cx-patch-head">
-        <p className="cx-eyebrow">{L(UI.patchEyebrow)} · <time dateTime={p.date}>{p.date}</time></p>
-        <h2 id="cx-patch-title">{v(UI.patchTitle)}</h2>
+      <div className="cx-patch-top">
+        <div className="cx-patch-head">
+          <p className="cx-eyebrow">{L(UI.patchEyebrow)} · <time dateTime={p.date}>{p.date}</time></p>
+          <h2 id="cx-patch-title">{v(UI.patchTitle)}</h2>
+        </div>
+        <div className="cx-patch-actions">
+          <button type="button" className="cx-patch-cta" onClick={onCta}>{v(UI.patchCta)}</button>
+          <a href={p.notesUrl} target="_blank" rel="noreferrer">{L(UI.patchNotes)} ↗</a>
+        </div>
       </div>
-      <ul className="cx-patch-list">
-        {p.highlights.map((h, i) => <li key={i}>{L(h)}</li>)}
-      </ul>
       <div className="cx-patch-items">
         <span className="cx-patch-label">{L(UI.patchNewItems)}</span>
         {p.newItems.map((it) => {
@@ -367,12 +542,37 @@ const PatchNews: React.FC<{ onCta: () => void }> = ({ onCta }) => {
           );
         })}
       </div>
-      <p className="cx-patch-coach"><strong>{L(UI.patchForCoach)}</strong> {L(p.forCoach)}</p>
-      <div className="cx-patch-actions">
-        <button type="button" className="cx-patch-cta" onClick={onCta}>{v(UI.patchCta)}</button>
-        <a href={p.notesUrl} target="_blank" rel="noreferrer">{L(UI.patchNotes)} ↗</a>
-      </div>
+      <details className="cx-patch-details">
+        <summary>{L(UI.patchMore)}</summary>
+        <ul className="cx-patch-list">
+          {p.highlights.map((h, i) => <li key={i}>{L(h)}</li>)}
+        </ul>
+        <p className="cx-patch-coach"><strong>{L(UI.patchForCoach)}</strong> {L(p.forCoach)}</p>
+      </details>
     </section>
+  );
+};
+
+const AgentSnippets: React.FC<{ matchId: string }> = ({ matchId }) => {
+  const { L } = useLang();
+  const [tab, setTab] = useState<'cli' | 'http' | 'mcp'>('cli');
+  const code = {
+    cli: `node packages/cli/bin/dota2ai.js coach ${matchId} --hero tidehunter --section why\nnode packages/cli/bin/dota2ai.js coach ${matchId} --hero spectre --lang zh`,
+    http: `curl https://dota2.ai/api/coach/${matchId}\ncurl https://dota2.ai/llms.txt`,
+    mcp: `node packages/mcp/bin/dota2ai-mcp.js\n# Tools: coach_recent, coach_report, coach_cases, coach_ask, coach_goal_check`,
+  }[tab];
+  return (
+    <details className="cx-api cx-api-drawer">
+      <summary>{L(UI.api)}</summary>
+      <div className="cx-api-tabs" role="tablist" aria-label={L(UI.api)}>
+        {(['cli', 'http', 'mcp'] as const).map((kTab) => (
+          <button key={kTab} type="button" role="tab" aria-selected={tab === kTab} className={tab === kTab ? 'is-on' : ''} onClick={() => setTab(kTab)}>
+            {kTab.toUpperCase()}
+          </button>
+        ))}
+      </div>
+      <pre><code>{code}</code></pre>
+    </details>
   );
 };
 
@@ -380,29 +580,48 @@ export const CoachHome: React.FC = () => {
   const { lang, L } = useLang();
   const navigate = useNavigate();
   const [value, setValue] = useState('');
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<'invalid' | 'vanity' | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const detected = useMemo(() => detectSmartInput(value), [value]);
+
   const go = (raw: string) => {
-    const id = parseMatchInput(raw);
-    if (!id) { setError(true); return; }
-    navigate(`/r/${id}?lang=${lang}`);
+    const r = detectSmartInput(raw);
+    if (r.kind === 'match') { navigate(`/r/${r.id}?lang=${lang}`); return; }
+    if (r.kind === 'account') { navigate(`/p/${r.id}?lang=${lang}`); return; }
+    setError(r.kind === 'vanity' ? 'vanity' : 'invalid');
   };
+
   return (
-    <Shell>
+    <Shell isHome>
       <section className="cx-hero">
         <p className="cx-eyebrow">{L(UI.tagline)}</p>
         <h1 className="cx-h1">{L(UI.heroTitle).split('\n').map((line, i) => <span key={i}>{line}</span>)}</h1>
         <form className="cx-search" onSubmit={(e) => { e.preventDefault(); go(value); }}>
           <input
             ref={inputRef} aria-label={L(UI.placeholder)} placeholder={L(UI.placeholder)} value={value} inputMode="text" autoFocus
-            onChange={(e) => { setValue(e.target.value); setError(false); }}
+            onChange={(e) => { setValue(e.target.value); setError(null); }}
           />
-          <button type="submit">{L(UI.review)}</button>
+          <button type="submit">{detected.kind === 'account' ? L(UI.showRecent) : L(UI.review)}</button>
         </form>
-        {error && <p className="cx-err" role="alert">{L(UI.invalid)}</p>}
-        <p className="cx-example">
-          {L(UI.tryExample)}: <button type="button" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button>
-        </p>
+        {detected.kind === 'match' && value.trim() !== detected.id && (
+          <p className="cx-detect-pill is-match">{L(UI.detectedMatch).replace('{id}', detected.id)}</p>
+        )}
+        {detected.kind === 'account' && (
+          <p className="cx-detect-pill is-account">{L(UI.detectedAccount).replace('{id}', detected.id)}</p>
+        )}
+        {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : UI.invalid)}</p>}
+        <div className="cx-example-row">
+          <p className="cx-example">
+            {L(UI.tryExample)}: <button type="button" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button>
+          </p>
+          <div className="cx-sample-pills">
+            {SAMPLE_SEATS.map((s) => (
+              <Link key={s.slot} to={`/r/${EXAMPLE_MATCH}?p=${s.slot}&lang=${lang}`} className="cx-sample-pill">
+                {L(s.label)} →
+              </Link>
+            ))}
+          </div>
+        </div>
         <AccountForm />
       </section>
       <PatchNews onCta={() => { inputRef.current?.focus(); inputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }} />
@@ -415,10 +634,7 @@ export const CoachHome: React.FC = () => {
           </div>
         ))}
       </section>
-      <section className="cx-api">
-        <h2>{L(UI.api)}</h2>
-        <pre><code>{`curl https://dota2.ai/api/coach/${EXAMPLE_MATCH}\nnode packages/cli/bin/dota2ai.js coach ${EXAMPLE_MATCH} --hero spectre --lang zh`}</code></pre>
-      </section>
+      <AgentSnippets matchId={EXAMPLE_MATCH} />
     </Shell>
   );
 };
@@ -433,6 +649,9 @@ export const CoachReportPage: React.FC = () => {
   const [error, setError] = useState<CoachApiError | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
+  const [rosterExpanded, setRosterExpanded] = useState(false);
+  const [jumpSignal, setJumpSignal] = useState<ChapterJumpSignal | null>(null);
+  const [askSeq, setAskSeq] = useState(0);
   const slot = search.has('p') ? Number(search.get('p')) : null;
   const posOverride = search.has('pos') ? Number(search.get('pos')) : null;
   const valid = parseMatchInput(matchId) === matchId;
@@ -493,10 +712,41 @@ export const CoachReportPage: React.FC = () => {
   const selected = slot != null && slot >= 0 && slot <= 9 ? slot : null;
   const review = selected != null ? report.reviews[selected] : null;
   const player = selected != null ? report.players[selected] : null;
+  const hasChapters = Boolean(
+    review?.chapters && (
+      review.chapters.story || review.chapters.laning || review.chapters.deaths
+      || review.chapters.items || review.chapters.fights || review.chapters.plan.length > 0
+    ),
+  );
+
+  const profileCards = review && player ? (
+    <>
+      <RoleCard review={review} onSet={(pos) => setParam({ pos: String(pos) })} />
+      <BenchCard player={player} />
+      <ItemsCard player={player} review={review} />
+      <ThreatCard review={review} report={report} />
+      {!review.chapters?.items && review.item_timeline && review.item_timeline.length > 0 && <TimelineCard review={review} />}
+      {!review.chapters?.deaths && review.deaths && review.deaths.length > 0 && <DeathsCard review={review} report={report} />}
+    </>
+  ) : null;
 
   return (
     <Shell wide>
-      <MatchHeader report={report} slot={selected} pos={posOverride} />
+      {review && player ? (
+        <StickyContextBar
+          report={report}
+          review={review}
+          player={player}
+          pos={posOverride}
+          onSetPos={(pos) => setParam({ pos: String(pos) })}
+          rosterExpanded={rosterExpanded}
+          onToggleRoster={() => setRosterExpanded((v) => !v)}
+          onAskClick={() => setAskSeq((n) => n + 1)}
+        />
+      ) : (
+        <MatchHeader report={report} slot={selected} pos={posOverride} />
+      )}
+
       {notice && <p className="cx-notice" role="status">{notice}</p>}
       {error && (
         <p className="cx-notice cx-notice--error" role="alert">
@@ -504,31 +754,71 @@ export const CoachReportPage: React.FC = () => {
           <button type="button" className="cx-inline-btn" onClick={() => void load()}>{L(UI.retry)}</button>
         </p>
       )}
-      <Lineup report={report} selected={selected} onPick={(s) => setParam({ p: String(s), pos: null })} />
+
+      {/* Unparsed matches put the parse action up top so users never hunt for it at the bottom. */}
+      {!m.parsed && report.data_gaps.length > 0 && (
+        <ParsePanel
+          report={report}
+          priority
+          onParsed={async () => {
+            const r = await load();
+            if (r?.match.parsed) setNotice(L(UI.parsedReady));
+          }}
+          lang={lang}
+        />
+      )}
+
+      <Lineup
+        report={report}
+        selected={selected}
+        compact={selected != null && !rosterExpanded}
+        onPick={(s) => setParam({ p: String(s), pos: null })}
+      />
+
       {review && <GoalBanner report={report} slot={review.slot} />}
-      {report.timeline && <GoldGraph report={report} review={review} />}
-      {review && <Chapters review={review} report={report} pos={posOverride} />}
+      {review && player && <VerdictHero review={review} player={player} loading={loading} />}
+
+      {report.timeline && (
+        <GoldTimeline
+          report={report}
+          review={review}
+          onSelectDeath={review?.chapters?.deaths ? (idx) => setJumpSignal({ tab: 'deaths', rowIndex: idx, seq: Date.now() }) : undefined}
+          onSelectFight={review?.chapters?.fights ? (idx) => setJumpSignal({ tab: 'fights', rowIndex: idx, seq: Date.now() }) : undefined}
+        />
+      )}
+
       {review && player ? (
-        <div className={`cx-grid ${loading ? 'is-loading' : ''}`}>
-          <section className="cx-read" aria-label={L(UI.coachRead)}>
-            <ReadColumn review={review} report={report} />
-          </section>
-          <aside className="cx-side">
-            <RoleCard review={review} onSet={(pos) => setParam({ pos: String(pos) })} />
-            <BenchCard player={player} />
-            <ItemsCard player={player} review={review} />
-            <ThreatCard review={review} report={report} />
-            {!review.chapters?.items && review.item_timeline && review.item_timeline.length > 0 && <TimelineCard review={review} />}
-            {!review.chapters?.deaths && review.deaths && review.deaths.length > 0 && <DeathsCard review={review} report={report} />}
-          </aside>
-        </div>
+        hasChapters ? (
+          <div className={loading ? 'is-loading' : ''}>
+            <Chapters
+              review={review}
+              report={report}
+              pos={posOverride}
+              findingsSlot={<ReadColumn review={review} report={report} compactHead />}
+              profileSlot={profileCards}
+              jumpSignal={jumpSignal}
+              askTriggerSeq={askSeq}
+            />
+          </div>
+        ) : (
+          <div className={`cx-grid ${loading ? 'is-loading' : ''}`}>
+            <section className="cx-read" aria-label={L(UI.coachRead)}>
+              <ReadColumn review={review} report={report} compactHead />
+            </section>
+            <aside className="cx-side">
+              {profileCards}
+              <AskPanel key={`${m.id}-${review.slot}-${posOverride ?? ''}`} report={report} review={review} pos={posOverride} docked />
+            </aside>
+          </div>
+        )
       ) : (
         <div className="cx-pick">
           <h2>{L(UI.pick)}</h2>
           <p>{L(UI.pickSub)}</p>
         </div>
       )}
-      {report.data_gaps.length > 0 && (
+
+      {m.parsed && report.data_gaps.length > 0 && (
         <ParsePanel
           report={report}
           onParsed={async () => {
@@ -538,10 +828,8 @@ export const CoachReportPage: React.FC = () => {
           lang={lang}
         />
       )}
-      <section className="cx-api cx-api--inline">
-        <h2>{L(UI.api)}</h2>
-        <pre><code>{`curl https://dota2.ai/api/coach/${m.id}`}</code></pre>
-      </section>
+
+      <AgentSnippets matchId={String(m.id)} />
     </Shell>
   );
 };
@@ -578,28 +866,160 @@ export function shareLinks(origin: string, matchId: number, slot: number | null,
   return { team: `${origin}/r/${matchId}?${team}`, self: `${origin}/r/${matchId}?${self}` };
 }
 
-const MatchHeader: React.FC<{ report: CoachReport; slot: number | null; pos: number | null }> = ({ report, slot, pos }) => {
+function useShareActions(matchId: number, slot: number | null, pos: number | null) {
   const { lang, L } = useLang();
-  const m = report.match;
   const [copied, setCopied] = useState<'self' | 'team' | null>(null);
-  const links = shareLinks(window.location.origin, m.id, slot, lang, pos);
+  const links = shareLinks(window.location.origin, matchId, slot, lang, pos);
   const flash = (which: 'self' | 'team') => { setCopied(which); setTimeout(() => setCopied(null), 1800); };
   const copy = (text: string, which: 'self' | 'team') => {
     void navigator.clipboard?.writeText(text).then(() => {
       flash(which);
-      trackEvent('report_shared', { target: which, method: 'copy', matchId: String(m.id) });
+      trackEvent('report_shared', { target: which, method: 'copy', matchId: String(matchId) });
     }).catch(() => {});
   };
   const shareTeam = () => {
-    const text = L(UI.shareTeamText).replace('{id}', String(m.id));
+    const text = L(UI.shareTeamText).replace('{id}', String(matchId));
     if (typeof navigator.share === 'function' && window.matchMedia?.('(pointer: coarse)').matches) {
       navigator.share({ text, url: links.team })
-        .then(() => trackEvent('report_shared', { target: 'team', method: 'native', matchId: String(m.id) }))
+        .then(() => trackEvent('report_shared', { target: 'team', method: 'native', matchId: String(matchId) }))
         .catch(() => {});
       return;
     }
     copy(`${text} ${links.team}`, 'team');
   };
+  return { copied, copySelf: () => copy(links.self, 'self'), shareTeam };
+}
+
+/** Compact sticky bar once a hero is picked: inline position override + match meta + share + quick ask. */
+const StickyContextBar: React.FC<{
+  report: CoachReport;
+  review: Review;
+  player: Player;
+  pos: number | null;
+  onSetPos: (pos: number) => void;
+  rosterExpanded: boolean;
+  onToggleRoster: () => void;
+  onAskClick: () => void;
+}> = ({ report, review, player, pos, onSetPos, rosterExpanded, onToggleRoster, onAskClick }) => {
+  const { L } = useLang();
+  const m = report.match;
+  const [roleOpen, setRoleOpen] = useState(false);
+  const { copied, copySelf, shareTeam } = useShareActions(m.id, review.slot, pos);
+  const winner = m.radiant_win ? UI.radiant : UI.dire;
+  const roleNote = review.role.source === 'user' ? UI.roleUser : review.role.source === 'lanes' ? UI.roleLanes : UI.roleInferred;
+
+  return (
+    <header className="cx-ctxbar">
+      <div className="cx-ctxbar-hero">
+        {player.hero.icon ? <SafeImg src={player.hero.icon} alt="" className="cx-ctxbar-icon" /> : <span className="cx-ctxbar-icon" />}
+        <div className="cx-ctxbar-id">
+          <div className="cx-ctxbar-name-row">
+            <h1 className="cx-ctxbar-name">{L(player.hero)}</h1>
+            <div className="cx-role-inline">
+              <button
+                type="button"
+                className="cx-role-trigger"
+                aria-expanded={roleOpen}
+                onClick={() => setRoleOpen((v) => !v)}
+              >
+                {L(review.role.label)} ▾
+              </button>
+              {roleOpen && (
+                <div className="cx-popover cx-role-pop" role="dialog" aria-label={L(UI.role)}>
+                  <p className="cx-muted">{L(roleNote)}</p>
+                  <p className="cx-muted cx-fix-label">{L(UI.fixRole)}</p>
+                  <div className="cx-posrow">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        aria-pressed={review.role.pos === n}
+                        onClick={() => { onSetPos(n); setRoleOpen(false); }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <span className={`cx-ctxbar-wl ${review.won ? 'is-win' : 'is-loss'}`}>{L(review.won ? UI.win : UI.loss)}</span>
+            <span className="cx-ctxbar-kda">{player.kda.join('/')}</span>
+          </div>
+          <p className="cx-meta cx-ctxbar-meta">
+            <span>#{m.id}</span>
+            <span className={m.radiant_win ? 'is-radiant' : 'is-dire'}>{L(winner)} {L(UI.victory)}</span>
+            <span className="cx-score"><b className="r">{m.score[0]}</b>–<b className="d">{m.score[1]}</b></span>
+            <span>{clock(m.duration)}</span>
+            {m.patch && <span>{m.patch}</span>}
+            <span className={`cx-pill ${m.parsed ? 'ok' : 'warn'}`}>{m.parsed ? L(UI.parsed) : L(UI.needsParse)}</span>
+            {m.source === 'stratz' && <span className="cx-pill">{L(UI.fromStratz)}</span>}
+          </p>
+        </div>
+      </div>
+
+      <div className="cx-share">
+        <button type="button" className="cx-ghost" aria-expanded={rosterExpanded} onClick={onToggleRoster}>
+          {L(rosterExpanded ? UI.rosterCompact : UI.rosterExpand)}
+        </button>
+        <button type="button" className="cx-ghost" onClick={copySelf}>{copied === 'self' ? L(UI.copied) : L(UI.share)}</button>
+        <button type="button" className="cx-share-team" onClick={shareTeam}>{copied === 'team' ? L(UI.teamCopied) : L(UI.shareTeam)}</button>
+        <button type="button" className="cx-ghost cx-ctx-ask" onClick={onAskClick}>✦ {L(UI.askQuick)}</button>
+      </div>
+    </header>
+  );
+};
+
+/** Above-the-fold verdict summary: surfaces the headline + 4 key vitals right at the top. */
+const VerdictHero: React.FC<{ review: Review; player: Player; loading: boolean }> = ({ review, player, loading }) => {
+  const { L } = useLang();
+  const ch = review.chapters;
+  const vitals: { label: Bi; value: string; tone?: 'good' | 'bad' | 'warn' }[] = [];
+
+  if (ch?.laning) {
+    const tone = ch.laning.outcome === 'won' || ch.laning.outcome === 'stomp' ? 'good' : ch.laning.outcome === 'draw' ? undefined : 'bad';
+    vitals.push({ label: UI.vitalLane, value: L(ch.laning.outcome_label), tone });
+  }
+  if (ch?.deaths) {
+    const share = ch.deaths.summary.share_dead != null ? ` (${Math.round(ch.deaths.summary.share_dead * 100)}%)` : '';
+    vitals.push({ label: UI.vitalDeaths, value: `${ch.deaths.summary.deaths}${share}`, tone: ch.deaths.summary.deaths >= 8 ? 'bad' : undefined });
+  } else {
+    vitals.push({ label: UI.vitalDeaths, value: String(player.kda[1]), tone: player.kda[1] >= 10 ? 'bad' : undefined });
+  }
+  if (ch?.items?.damage?.types) {
+    const t = ch.items.damage.types;
+    const dominant = t.physical >= t.magic ? { pct: t.physical, zh: '物理', en: 'Physical' } : { pct: t.magic, zh: '魔法', en: 'Magical' };
+    vitals.push({ label: UI.vitalDamage, value: `${Math.round(dominant.pct * 100)}% ${L({ en: dominant.en, zh: dominant.zh })}` });
+  } else {
+    vitals.push({ label: UI.vitalGpm, value: String(Math.round(player.gpm)) });
+  }
+  if (ch?.fights) {
+    const f = ch.fights.summary;
+    vitals.push({ label: UI.vitalFights, value: `${f.won}W–${f.lost}L`, tone: f.lost > f.won ? 'bad' : f.won > f.lost ? 'good' : undefined });
+  } else {
+    vitals.push({ label: UI.vitalDmg, value: k(player.hero_damage) });
+  }
+
+  return (
+    <section className={`cx-verdict ${loading ? 'is-loading' : ''}`} aria-label={L(UI.verdictEyebrow)}>
+      <p className="cx-eyebrow">{L(UI.verdictEyebrow)}</p>
+      <h2 className="cx-verdict-headline">{L(review.headline)}</h2>
+      <dl className="cx-vitals">
+        {vitals.map((v, i) => (
+          <div key={i} className={`cx-vital ${v.tone ? `is-${v.tone}` : ''}`}>
+            <dt>{L(v.label)}</dt>
+            <dd>{v.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+};
+
+const MatchHeader: React.FC<{ report: CoachReport; slot: number | null; pos: number | null }> = ({ report, slot, pos }) => {
+  const { L } = useLang();
+  const m = report.match;
+  const { copied, copySelf, shareTeam } = useShareActions(m.id, slot, pos);
   const date = m.start_time ? new Date(m.start_time * 1000).toLocaleDateString() : null;
   const winner = m.radiant_win ? UI.radiant : UI.dire;
   return (
@@ -621,7 +1041,7 @@ const MatchHeader: React.FC<{ report: CoachReport; slot: number | null; pos: num
       <div className="cx-share">
         <button type="button" className="cx-share-team" onClick={shareTeam}>{copied === 'team' ? L(UI.teamCopied) : L(UI.shareTeam)}</button>
         {slot != null && (
-          <button type="button" className="cx-ghost" onClick={() => copy(links.self, 'self')}>{copied === 'self' ? L(UI.copied) : L(UI.share)}</button>
+          <button type="button" className="cx-ghost" onClick={copySelf}>{copied === 'self' ? L(UI.copied) : L(UI.share)}</button>
         )}
       </div>
     </header>
@@ -633,14 +1053,19 @@ const HeroImg: React.FC<{ hero: Player['hero']; size?: 'icon' | 'card' }> = ({ h
   const src = size === 'icon' ? hero.icon : hero.img;
   return src
     ? <img className={`cx-hero-img cx-hero-img--${size}`} src={src} alt={hero[lang]} loading="lazy" />
-    : <span className={`cx-hero-img cx-hero-img--${size} cx-hero-img--blank`} aria-hidden />;
+    : <span className={`cx-hero-img cx-hero-img--${size} cx-hero-img--blank`} aria-hidden="true" />;
 };
 
-const Lineup: React.FC<{ report: CoachReport; selected: number | null; onPick: (slot: number) => void }> = ({ report, selected, onPick }) => {
+const Lineup: React.FC<{ report: CoachReport; selected: number | null; compact?: boolean; onPick: (slot: number) => void }> = ({
+  report,
+  selected,
+  compact = false,
+  onPick,
+}) => {
   const { L } = useLang();
   const side = (radiant: boolean) => report.players.filter((p) => p.radiant === radiant);
   return (
-    <section className="cx-lineup" aria-label={L(UI.pick)}>
+    <section className={`cx-lineup ${compact ? 'is-compact' : ''}`} aria-label={L(UI.pick)}>
       {[true, false].map((radiant) => (
         <div key={String(radiant)} className={`cx-team ${radiant ? 'is-radiant' : 'is-dire'}`}>
           <h3>{L(radiant ? UI.radiant : UI.dire)}{(radiant === report.match.radiant_win) ? ' ✓' : ''}</h3>
@@ -675,11 +1100,6 @@ const ResultPill: React.FC<{ r: string }> = ({ r }) => {
   return <span className={`cx-goal-result is-${r}`}>{L(UI.goalResult[r])}</span>;
 };
 
-const tally = (goalId: string) => {
-  const counted = goalChecks(goalId).filter((c) => c.result === 'met' || c.result === 'missed');
-  return { n: counted.length, met: counted.filter((c) => c.result === 'met').length };
-};
-
 /** On a later game's review: did this game meet the goal? */
 const GoalBanner: React.FC<{ report: CoachReport; slot: number }> = ({ report, slot }) => {
   const { L } = useLang();
@@ -700,22 +1120,26 @@ const GoalBanner: React.FC<{ report: CoachReport; slot: number }> = ({ report, s
   );
 };
 
-const ReadColumn: React.FC<{ review: Review; report: CoachReport }> = ({ review, report }) => {
+const ReadColumn: React.FC<{ review: Review; report: CoachReport; compactHead?: boolean }> = ({ review, report, compactHead = false }) => {
   const { L } = useLang();
   const mine = review.findings.filter((f) => f.tone === 'fix' && !f.shared);
   const team = review.findings.filter((f) => f.tone === 'fix' && f.shared);
   const good = review.findings.filter((f) => f.tone === 'good');
   return (
-    <>
-      <div className="cx-read-head">
-        <p className="cx-eyebrow">{L(UI.coachRead)}</p>
-      </div>
-      <h2 className="cx-headline">{L(review.headline)}</h2>
+    <div className="cx-read-block">
+      {!compactHead && (
+        <>
+          <div className="cx-read-head">
+            <p className="cx-eyebrow">{L(UI.coachRead)}</p>
+          </div>
+          <h2 className="cx-headline">{L(review.headline)}</h2>
+        </>
+      )}
       {mine.length > 0 && <Group title={L(UI.forYou)} findings={mine} report={report} slot={review.slot} />}
       {team.length > 0 && <Group title={L(UI.forTeam)} findings={team} report={report} slot={review.slot} />}
       {good.length > 0 && <Group title={L(UI.wentWell)} findings={good} report={report} slot={review.slot} />}
       {review.findings.length === 0 && <p className="cx-muted">{L(UI.noFindings)}</p>}
-    </>
+    </div>
   );
 };
 
@@ -828,7 +1252,7 @@ const BenchCard: React.FC<{ player: Player }> = ({ player }) => {
           return (
             <li key={key}>
               <span className="cx-bench-label">{L(label)}</span>
-              <span className="cx-bar" aria-hidden><i style={{ width: `${Math.max(2, p)}%` }} className={p < 30 ? 'lo' : p >= 70 ? 'hi' : ''} /></span>
+              <span className="cx-bar" aria-hidden="true"><i style={{ width: `${Math.max(2, p)}%` }} className={p < 30 ? 'lo' : p >= 70 ? 'hi' : ''} /></span>
               <span className="cx-bench-val">{p}<small>%</small></span>
             </li>
           );
@@ -845,8 +1269,8 @@ const ItemsCard: React.FC<{ player: Player; review: Review }> = ({ player }) => 
       <h3>{L(UI.items)}</h3>
       <div className="cx-items">
         {player.items.length === 0 && <span className="cx-muted">—</span>}
-        {player.items.map((it) => (
-          <figure key={it.key} title={L(it)}>
+        {player.items.map((it, idx) => (
+          <figure key={`${it.key}-${idx}`} title={L(it)}>
             {it.img ? <SafeImg src={it.img} alt={L(it)} /> : <span className="cx-img-missing" />}
             <figcaption>{L(it)}</figcaption>
           </figure>
@@ -883,8 +1307,8 @@ const TimelineCard: React.FC<{ review: Review }> = ({ review }) => {
     <div className="cx-box">
       <h3>{L(UI.timeline)}</h3>
       <ol className="cx-tl">
-        {review.item_timeline!.slice(0, 10).map((x) => (
-          <li key={x.item.key}>
+        {review.item_timeline!.slice(0, 10).map((x, idx) => (
+          <li key={`${x.item.key}-${idx}`}>
             <time>{clock(x.time)}</time>
             {x.item.img && <SafeImg src={x.item.img} alt="" />}
             <span>{L(x.item)}</span>
@@ -918,54 +1342,12 @@ const DeathsCard: React.FC<{ review: Review; report: CoachReport }> = ({ review,
   );
 };
 
-const GoldGraph: React.FC<{ report: CoachReport; review: Review | null }> = ({ report, review }) => {
-  const { L } = useLang();
-  const adv = report.timeline!.radiant_gold_adv;
-  const W = 760; const H = 140; const pad = 6;
-  const max = Math.max(2000, ...adv.map((v) => Math.abs(v)));
-  const x = (i: number) => pad + (i / Math.max(1, adv.length - 1)) * (W - pad * 2);
-  const y = (v: number) => H / 2 - (v / max) * (H / 2 - pad);
-  const line = adv.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  const area = `${line} L${x(adv.length - 1)},${H / 2} L${x(0)},${H / 2} Z`;
-  const tp = review?.findings.find((f) => f.window)?.window;
-  const ticks = Array.from({ length: Math.floor((adv.length - 1) / 10) + 1 }, (_, i) => i * 10);
-  return (
-    <section className="cx-graph" aria-label={L(UI.gold)}>
-      <h3>{L(UI.gold)} <small><span className="r">{L(UI.radiant)} ▲</span> <span className="d">{L(UI.dire)} ▼</span></small></h3>
-      <div className="cx-graph-plot">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={L(UI.gold)}>
-        <defs>
-          <clipPath id="cx-top"><rect x="0" y="0" width={W} height={H / 2} /></clipPath>
-          <clipPath id="cx-bot"><rect x="0" y={H / 2} width={W} height={H / 2} /></clipPath>
-        </defs>
-        {tp && <rect className="cx-tp" x={x(tp[0] / 60)} width={x(tp[1] / 60) - x(tp[0] / 60)} y="0" height={H} />}
-        {ticks.slice(1).map((m) => <line key={m} x1={x(m)} x2={x(m)} y1="0" y2={H} className="cx-grid-v" />)}
-        <line x1="0" x2={W} y1={H / 2} y2={H / 2} className="cx-axis" />
-        <path d={area} className="cx-area-r" clipPath="url(#cx-top)" />
-        <path d={area} className="cx-area-d" clipPath="url(#cx-bot)" />
-        <path d={line} className="cx-line" />
-      </svg>
-      {/* Labels are HTML over the stretched SVG so text never distorts. */}
-      {review?.deaths && review.deaths.length > 0 && (
-        <div className="cx-graph-deaths" aria-hidden="true">
-          {review.deaths.map((d, i) => <i key={i} style={{ left: `${(x(d.time / 60) / W) * 100}%` }} />)}
-        </div>
-      )}
-      <div className="cx-graph-y" aria-hidden="true">
-        <span style={{ top: `${(y(max) / H) * 100}%` }}>+{k(max)}</span>
-        <span style={{ top: '50%' }}>0</span>
-        <span style={{ top: `${(y(-max) / H) * 100}%` }}>−{k(max)}</span>
-      </div>
-      </div>
-      <div className="cx-graph-axis" aria-hidden="true">
-        {ticks.map((m) => <span key={m} style={{ left: `${(x(m) / W) * 100}%` }}>{m}′</span>)}
-      </div>
-      {review?.deaths && review.deaths.length > 0 && <p className="cx-graph-legend"><i className="cx-death-key" /> {L(UI.yourDeaths)}</p>}
-    </section>
-  );
-};
-
-const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>; lang: Lang }> = ({ report, onParsed, lang }) => {
+const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>; lang: Lang; priority?: boolean }> = ({
+  report,
+  onParsed,
+  lang,
+  priority = false,
+}) => {
   const { L } = useLang();
   const [state, setState] = useState<'idle' | 'pending' | 'throttled' | 'failed' | 'gaveup'>('idle');
   const timer = useRef<number | null>(null);
@@ -1013,13 +1395,17 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
   };
   const msg = { pending: UI.parsePending, throttled: UI.parseThrottled, failed: UI.parseFailed, gaveup: UI.parseGaveUp }[state as 'pending'];
   return (
-    <section className="cx-gaps">
-      <h3>{L(report.match.parsed ? UI.partialGaps : UI.cantSee)}</h3>
+    <section className={`cx-gaps ${priority ? 'cx-gaps--priority' : ''}`}>
+      <div className="cx-gaps-top">
+        <div>
+          <h3>{L(report.match.parsed ? UI.partialGaps : UI.cantSee)}</h3>
+          {!report.match.parsed && <p className="cx-muted">{L(UI.cantSeeSub)}</p>}
+        </div>
+        {!report.match.parsed && report.match.replay_available && state !== 'pending' && (
+          <button type="button" className="cx-primary" onClick={() => void start()}>{L(UI.parseBtn)}</button>
+        )}
+      </div>
       <ul>{report.data_gaps.map((g, i) => <li key={i}>{L(g)}</li>)}</ul>
-      {!report.match.parsed && <p className="cx-muted">{L(UI.cantSeeSub)}</p>}
-      {!report.match.parsed && report.match.replay_available && state !== 'pending' && (
-        <button type="button" className="cx-primary" onClick={() => void start()}>{L(UI.parseBtn)}</button>
-      )}
       {msg && <p className="cx-notice" role="status">{L(msg)}</p>}
     </section>
   );

@@ -9,7 +9,10 @@ import type { Bi, CoachReport, Review } from './types';
  * falls back to the report's own text when no model is available.
  */
 
-export interface AskHandle { prefill: (text: string) => void }
+export interface AskHandle {
+  prefill: (text: string, contextLabel?: string) => void;
+  focus: () => void;
+}
 
 const T = {
   title: { en: 'Ask the coach', zh: '追问教练' },
@@ -24,6 +27,9 @@ const T = {
   failed: { en: 'Could not get an answer. Try again.', zh: '没有拿到回答，请重试。' },
   incomplete: { en: 'The answer was cut off — ask again for the full version.', zh: '回答被中断了，内容不完整，请重新提问。' },
   tooLong: { en: 'Keep the question under 500 characters.', zh: '问题请控制在 500 字以内。' },
+  context: { en: 'Context', zh: '当前围绕' },
+  close: { en: 'Back to review', zh: '收起回原处' },
+  clearCtx: { en: 'Clear context', zh: '清除上下文' },
 } satisfies Record<string, Bi>;
 
 interface Turn { q: string; a: string; notice?: string; error?: string; pending: boolean }
@@ -65,25 +71,41 @@ function Answer({ text }: { text: string }) {
   return <>{blocks}</>;
 }
 
-export const AskPanel = forwardRef<AskHandle, { report: CoachReport; review: Review; pos: number | null }>(({ report, review, pos }, ref) => {
+export interface AskPanelProps {
+  report: CoachReport;
+  review: Review;
+  pos: number | null;
+  /** When true, the panel is already visible in a docked rail/sheet and should not yank page scroll. */
+  docked?: boolean;
+  /** Mobile bottom-sheet close action when opened as an overlay. */
+  onCloseSheet?: () => void;
+}
+
+export const AskPanel = forwardRef<AskHandle, AskPanelProps>(({ report, review, pos, docked = false, onCloseSheet }, ref) => {
   const { lang, L } = useLang();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
+  const [contextLabel, setContextLabel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const panel = useRef<HTMLElement>(null);
+  const turnsEnd = useRef<HTMLDivElement>(null);
   const abort = useRef<AbortController | null>(null);
   const chips = useMemo(() => suggestions(report, review, lang), [report, review, lang]);
   // Abort an in-flight answer when this conversation goes away (player switch).
   useEffect(() => () => abort.current?.abort(), []);
 
   useImperativeHandle(ref, () => ({
-    prefill: (text: string) => {
+    prefill: (text: string, ctx?: string) => {
       setDraft(text);
-      panel.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      window.setTimeout(() => { input.current?.focus(); input.current?.setSelectionRange(text.length, text.length); }, 250);
+      if (ctx) setContextLabel(ctx);
+      if (!docked) panel.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => { input.current?.focus(); input.current?.setSelectionRange(text.length, text.length); }, docked ? 40 : 250);
     },
-  }), []);
+    focus: () => {
+      window.setTimeout(() => input.current?.focus(), 40);
+    },
+  }), [docked]);
 
   const ask = async (question: string) => {
     const q = question.trim();
@@ -91,8 +113,10 @@ export const AskPanel = forwardRef<AskHandle, { report: CoachReport; review: Rev
     if (q.length > 500) { setTurns((t) => [...t, { q, a: '', error: L(T.tooLong), pending: false }]); return; }
     const history: AskTurn[] = turns.filter((t) => t.a && !t.error).slice(-3).map((t) => ({ q: t.q, a: t.a }));
     setDraft('');
+    setContextLabel(null);
     setBusy(true);
     setTurns((t) => [...t, { q, a: '', pending: true }]);
+    window.setTimeout(() => turnsEnd.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }), 30);
     const ac = new AbortController();
     abort.current = ac;
     // Functional updates only: chunks append to the last turn.
@@ -115,9 +139,16 @@ export const AskPanel = forwardRef<AskHandle, { report: CoachReport; review: Rev
   };
 
   return (
-    <section className="cx-ask-panel" ref={panel} aria-labelledby="cx-ask-h">
-      <h3 id="cx-ask-h" className="cx-chapter-title">{L(T.title)}</h3>
-      <p className="cx-muted">{L(T.sub)}</p>
+    <section className={`cx-ask-panel ${docked ? 'is-docked' : ''}`} ref={panel} aria-labelledby="cx-ask-h">
+      <div className="cx-ask-head">
+        <div>
+          <h3 id="cx-ask-h" className="cx-chapter-title">{L(T.title)}</h3>
+          <p className="cx-muted">{L(T.sub)}</p>
+        </div>
+        {onCloseSheet && (
+          <button type="button" className="cx-ghost cx-sheet-close" onClick={onCloseSheet}>{L(T.close)}</button>
+        )}
+      </div>
       {turns.length > 0 && (
         <ol className="cx-turns" aria-live="polite">
           {turns.map((t, i) => (
@@ -133,9 +164,16 @@ export const AskPanel = forwardRef<AskHandle, { report: CoachReport; review: Rev
           ))}
         </ol>
       )}
+      <div ref={turnsEnd} />
       <div className="cx-chips">
         {chips.map((c) => <button key={c} type="button" className="cx-chip-btn" disabled={busy} onClick={() => void ask(c)}>{c}</button>)}
       </div>
+      {contextLabel && (
+        <p className="cx-ask-ctx">
+          <span>{L(T.context)}：{contextLabel}</span>
+          <button type="button" onClick={() => setContextLabel(null)} aria-label={L(T.clearCtx)}>✕</button>
+        </p>
+      )}
       <form className="cx-ask-form" onSubmit={(e) => { e.preventDefault(); void ask(draft); }}>
         <label htmlFor="cx-ask-input" className="cx-sr">{L(T.title)}</label>
         <textarea
