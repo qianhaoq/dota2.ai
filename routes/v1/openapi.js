@@ -31,6 +31,7 @@ Coach (the main review, deterministic, bilingual en/zh objects):
 - GET /api/coach/players/{friendCode}/recent returns a player's recent public games with their seat.
 - CLI: node packages/cli/bin/dota2ai.js help — recent, coach --section why|lane|deaths|items|fights|plan, cases, ask, goal set|show|check; --json everywhere.
 - Agent skill: packages/cli/skills/dota2ai-coach/SKILL.md
+- Stdio MCP coach tools (repository checkout): recent_matches, coach_report({match_id,hero?,section?}), coach_cases, coach_ask, goal_check.
 Coach rate limit: 40 requests/minute/IP. Respect Retry-After.
 
 Review page (v1): /m/{matchId}?hero=pudge&lang=en (also zh).

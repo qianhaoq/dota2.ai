@@ -39,6 +39,11 @@ Exit codes: `0` ok · `2` invalid input (wrong hero, bad id) · `3` not found or
 no data yet (private profile, match not parsed) · `4` upstream failure (retry
 later; say so).
 
+With the MCP server instead of a shell (`packages/mcp`, stdio), the same
+calls are tools: `recent_matches`, `coach_report` (`section`), `coach_cases`,
+`coach_ask`, `goal_check` (pass the finding's `goal` object; keep it yourself
+between sessions).
+
 ## Reading the review
 
 - `--section why` returns causes, the player's own first (`mine: true`), each

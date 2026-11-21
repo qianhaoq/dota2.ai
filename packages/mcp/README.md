@@ -16,7 +16,34 @@ Stdio defaults to the public API. Set `DOTA2AI_API_BASE` to override its origin.
 `--offline` or `DOTA2AI_OFFLINE=1` uses OpenDota + template phrasing without keys.
 Optional: `OPENDOTA_API_KEY`. Stdout is reserved for MCP protocol messages.
 
-Tools:
+### Add it to your agent
+
+- **Claude Code**: `claude mcp add dota2ai -- node /absolute/path/to/packages/mcp/bin/dota2ai-mcp.js`
+- **Any MCP client** (JSON config):
+  ```json
+  { "mcpServers": { "dota2ai": { "command": "node", "args": ["/absolute/path/to/packages/mcp/bin/dota2ai-mcp.js"] } } }
+  ```
+- Pair it with the skill `packages/cli/skills/dota2ai-coach/SKILL.md` (how to
+  read the results, workflows, what never to do).
+
+Coach tools (local stdio server; same public API and shapes as the `dota2ai` CLI):
+
+- `recent_matches({account})`: a player's recent public games; `account` is a
+  Steam friend code or a Steam/OpenDota/Dotabuff/STRATZ profile link.
+- `coach_report({match_id, hero?, section?, lang?})`: without `hero`, the roster
+  (ask the user which hero was theirs). `section`: `summary` (default), `why`,
+  `lane`, `deaths`, `items`, `fights`, `plan`, `all`.
+- `coach_cases({match_id, hero})`: pro games on the same problem.
+- `coach_ask({match_id, hero, question})`: a follow-up answered from the report;
+  `fallback: true` when no AI was available.
+- `goal_check({match_id, hero, goal})`: judge a later game against a finding's
+  `goal` (`met | missed | no_opportunity | unknown` + evidence). Only for the
+  goal owner's own games.
+
+The shared HTTP endpoint (`/mcp`, below) keeps to the review tools: coach calls
+from every agent would otherwise share one IP and one rate limit.
+
+Review tools:
 
 - `review_match({match_id, hero?, lang?})`: full Review JSON.
 - `get_evidence({match_id, hero, insight_id})`: insight, referenced facts,
