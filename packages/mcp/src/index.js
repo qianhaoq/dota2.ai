@@ -46,6 +46,7 @@ export function createCoachHandlers(options = {}) {
       const { evaluateGoal } = await loadGoals();
       return { match_id: report.match.id, seat, ...evaluateGoal(args.goal, report, seat) };
     },
+    hero_matchup: (args) => api.matchup(args.hero, args.vs),
   };
 }
 
@@ -121,6 +122,10 @@ export function createMcpServer(options = {}) {
       description: "Judge a later game against a training goal: met | missed | no_opportunity | unknown, with evidence. goal: a finding's `goal` object from coach_report (section all). Only check the goal owner's own games.",
       inputSchema: { ...base, hero, goal: z.record(z.string(), z.unknown()) },
     }, call('goal_check'));
+    server.registerTool('hero_matchup', {
+      description: 'Hero vs hero from professional games, no match needed: pro win rate and lane gold at 10:00 (verdict only when the gap is real, always with the sample size), the finished items pros on each side build clearly more often against the other, and Valve data on the other hero\'s abilities (damage type, goes through spell immunity). `lines` has the same in plain English and Chinese. hero / vs: id, slug, English or Chinese name.',
+      inputSchema: { hero, vs: hero },
+    }, call('hero_matchup'));
   }
   return server;
 }

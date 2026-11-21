@@ -9,6 +9,7 @@ export const HELP = `dota2ai — the dota2.ai coach in your terminal (and for yo
   dota2ai cases  <matchId> --hero h                    pro games on the same problem
   dota2ai ask    <matchId> --hero h "question"         a follow-up, answered from the report
   dota2ai goal   set <matchId> --hero h | show | check  a next-game goal, checked on your next game
+  dota2ai matchup <hero> <vs>                          hero vs hero from pro games (no match needed)
   dota2ai review <matchId> [--hero h] [--offline]      the v1 evidence review (dota2.ai/review@1)
 
 Every command takes --lang en|zh and --json (stable machine output).

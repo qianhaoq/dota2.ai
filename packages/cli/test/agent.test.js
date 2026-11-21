@@ -207,3 +207,32 @@ describe('ask timeout', () => {
     await expect(api.ask(1, 0, 'q')).rejects.toMatchObject({ code: 'UPSTREAM', partial: 'You should buy' });
   });
 });
+
+describe('dota2ai matchup', () => {
+  it('prints the pro matchup brief from the server, no match needed', async () => {
+    const out = sink(); const err = sink();
+    const code = await run(['matchup', 'tidehunter', '熊战士', '--lang', 'zh'], { stdout: out, stderr: err, env });
+    expect(code).toBe(0);
+    expect(out.text).toContain('潮汐猎人 对 熊战士（职业比赛，7.41 以来）');
+    expect(out.text).toContain('职业潮汐猎人对上熊战士时更常出：Eul的神圣法杖 37%（平时 8%）');
+    expect(out.text).toContain('怒意狂击: 物理伤害，无视技能免疫');
+  });
+
+  it('--json returns the structured brief', async () => {
+    const out = sink();
+    expect(await run(['matchup', '29', 'ursa', '--json'], { stdout: out, stderr: sink(), env })).toBe(0);
+    const b = JSON.parse(out.text);
+    expect(b.lane.verdict).toBe('unfavoured');
+    expect(b.source.since).toBe('7.41');
+    for (const a of b.their_abilities) expect(a).not.toHaveProperty('dispel');
+  });
+
+  it('exits 2 on a missing or unknown hero', async () => {
+    const err = sink();
+    expect(await run(['matchup', 'tidehunter'], { stdout: sink(), stderr: err, env })).toBe(2);
+    expect(err.text).toContain('Usage: dota2ai matchup');
+    const err2 = sink();
+    expect(await run(['matchup', 'tidehunter', 'nobody'], { stdout: sink(), stderr: err2, env })).toBe(2);
+    expect(err2.text).toContain('Unknown hero: nobody');
+  });
+});

@@ -7,6 +7,7 @@
  *   dota2ai goal set   <matchId> --hero h [--finding id] [--json]
  *   dota2ai goal show  [--json]
  *   dota2ai goal check [matchId] [--hero h] [--account a] [--json]
+ *   dota2ai matchup <hero> <vs> [--lang en|zh] [--json]   (pro games, no match needed)
  *
  * The training goal lives in $DOTA2AI_HOME/goal.json (default ~/.dota2ai),
  * on this machine only. `goal check` judges a later game with the same pure
@@ -193,7 +194,17 @@ async function runGoal(args, io) {
   throw apiError('INVALID_INPUT', 'Usage: dota2ai goal set|show|check …');
 }
 
-const COMMANDS = { recent: runRecent, cases: runCases, ask: runAsk, goal: runGoal };
+/** Hero vs hero from pro games: lane baseline, win rate, counter items both ways, Valve ability facts. */
+async function runMatchup(args, io) {
+  const { pos, flags } = parseFlags(args.slice(1), { values: ['--lang'] });
+  const [hero, vs] = pos;
+  if (!hero || !vs) throw apiError('INVALID_INPUT', 'Usage: dota2ai matchup <hero> <vs> [--lang en|zh] [--json]');
+  const brief = await io.api.matchup(hero, vs);
+  if (flags.json) return io.out(brief);
+  return io.say(...(brief.lines?.[flags.lang ?? 'en'] ?? []));
+}
+
+const COMMANDS = { recent: runRecent, cases: runCases, ask: runAsk, goal: runGoal, matchup: runMatchup };
 export const AGENT_COMMANDS = Object.keys(COMMANDS);
 
 export async function runAgentCommand(args, { stdout, stderr, env = process.env, fetchImpl = globalThis.fetch } = {}) {

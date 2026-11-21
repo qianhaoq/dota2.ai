@@ -7,6 +7,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { createMcpServer, attachMcp } from '../src/index.js';
 import { buildCoachReport } from '../../../lib/coach/analyze.js';
 import { buildCaseStudies } from '../../../lib/coach/cases.js';
+import { matchupBrief, matchupLines } from '../../../lib/coach/matchupBrief.js';
 
 const load = (f) => JSON.parse(readFileSync(new URL(`../../../src/fixtures/coach/${f}`, import.meta.url), 'utf8'));
 const raw = load('match9091400302.parsed.json');
@@ -24,6 +25,12 @@ const coach = {
   cases: async (_id, seat) => buildCaseStudies({ report, slot: seat, match: raw, candidates: profiles }),
   recent: async (account) => ({ account_id: Number(account), matches: [{ match_id: 9091400302, slot: 0 }] }),
   ask: async (_id, seat, question) => ({ text: `answer about seat ${seat}: ${question}`, fallback: true, notice: 'from the report' }),
+  // Same body as GET /api/coach/matchup.
+  matchup: async (hero, vs) => {
+    const b = matchupBrief(hero, vs);
+    if (b.error) throw Object.assign(new Error(b.error), { code: 'INVALID_INPUT' });
+    return { ...b, lines: { en: matchupLines(b, 'en'), zh: matchupLines(b, 'zh') } };
+  },
 };
 
 async function connect(options) {
@@ -43,7 +50,7 @@ describe('coach MCP tools (stdio)', () => {
   it('lists the coach tools next to the v1 review tools', async () => {
     const client = await connect({ coach });
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(names).toEqual(['coach_ask', 'coach_cases', 'coach_report', 'get_evidence', 'goal_check', 'recent_matches', 'review_match']);
+    expect(names).toEqual(['coach_ask', 'coach_cases', 'coach_report', 'get_evidence', 'goal_check', 'hero_matchup', 'recent_matches', 'review_match']);
   });
 
   it('coach_report: roster without a hero, the causes with one', async () => {
@@ -91,3 +98,17 @@ it('the shared HTTP /mcp keeps to the review tools (one IP must not carry every 
     server.close();
   }
 });
+
+describe('hero_matchup', () => {
+  it('returns the pro matchup brief with ready-made lines, and a readable error for an unknown hero', async () => {
+    const client = await connect({ coach });
+    const r = await call(client, 'hero_matchup', { hero: 'tidehunter', vs: '熊战士' });
+    expect(r.hero).toMatchObject({ id: 29, en: 'Tidehunter' });
+    expect(r.vs).toMatchObject({ id: 70, zh: '熊战士' });
+    expect(r.lane).toMatchObject({ verdict: 'unfavoured' });
+    expect(r.your_items_vs_them[0].item.key).toBe('cyclone');
+    expect(r.lines.zh[0]).toBe('潮汐猎人 对 熊战士（职业比赛，7.41 以来）');
+    expect(await call(client, 'hero_matchup', { hero: 'nobody', vs: 'ursa' })).toEqual({ error: 'Unknown hero: nobody' });
+  });
+});
+

@@ -39,6 +39,10 @@ Coach tools (local stdio server; same public API and shapes as the `dota2ai` CLI
 - `goal_check({match_id, hero, goal})`: judge a later game against a finding's
   `goal` (`met | missed | no_opportunity | unknown` + evidence). Only for the
   goal owner's own games.
+- `hero_matchup({hero, vs})`: hero vs hero from pro games, no match needed —
+  win rate and lane gold at 10:00 (verdict only on a real gap, with the number
+  of games; `null` when too few), counter items pros build each way, Valve
+  facts on the other hero's abilities, and `lines` in English and Chinese.
 
 The shared HTTP endpoint (`/mcp`, below) keeps to the review tools: coach calls
 from every agent would otherwise share one IP and one rate limit.
