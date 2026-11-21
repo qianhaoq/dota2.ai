@@ -28,6 +28,18 @@ describe('item-vs.json snapshot', () => {
   });
 });
 
+describe('item-vs.json: only items still sold in the current patch (review #199)', () => {
+  it('filters at generation by what current-patch pro games bought; removed items never appear', () => {
+    expect(DATA.source).toMatch(/finished items seen in \d+\.\d+ pro matches/);
+    expect(DATA.available_in).toBe(NAMES.patch);
+    const listed = new Set(Object.values(DATA.item_vs).flatMap((row: any) => Object.values(row).flatMap((l: any) => l.map((x: any) => x[0]))));
+    // Removed in 7.42 but still in names.json (historical entries are kept there).
+    expect(NAMES.items.helm_of_the_overlord).toBeTruthy();
+    expect(listed.has('helm_of_the_overlord')).toBe(false);
+    expect(itemLifts(38, 3).map((x) => x.key)).not.toContain('helm_of_the_overlord'); // Beastmaster vs Bane, the case from review
+  });
+});
+
 describe('itemLifts / answersByPro', () => {
   it("reads pro Tidehunter's Eul's Scepter against Ursa from the snapshot", () => {
     const [key, rate, base, n] = DATA.item_vs[TIDE][URSA][0];

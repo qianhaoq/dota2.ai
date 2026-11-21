@@ -13,7 +13,10 @@
  * Top 4 per pair, biggest lift first:  item_vs[h][v] = [[key, rate, base, n], ...]
  *
  * Finished items only (built from a recipe and 2000+ gold, or a listed key
- * item such as Blink), so components never count as a choice.
+ * item such as Blink), so components never count as a choice. Available
+ * items only: an item must have been bought in a pro match of the current
+ * patch (same rule as coach-hero-items.mjs), so an item a patch removed —
+ * still in names.json and in older games — is never suggested.
  *
  * About 130 queries. The coach engine is pure and never fetches; run this
  * after a patch:  node scripts/coach-item-vs.mjs
@@ -40,10 +43,16 @@ const MIN_LIFT = 0.10;
 const TOP = 4;
 
 const patches = await get('https://api.opendota.com/api/constants/patch');
+const current = patches.at(-1);
 const previous = patches.at(-2);
 const since = Math.floor(Date.parse(previous.date) / 1000);
+const currentSince = Math.floor(Date.parse(current.date) / 1000);
+const available = new Set((await sql(`select distinct e->>'key' k
+  from player_matches pm join matches m using(match_id), unnest(pm.purchase_log) e
+  where m.start_time >= ${currentSince}`)).map((r) => r.k));
+if (available.size < 50) throw new Error(`only ${available.size} items seen in ${current.name} pro matches: too early to tell what exists`);
 const finished = Object.entries(NAMES.items)
-  .filter(([k, it]) => !k.startsWith('recipe_') && (ALWAYS_KEY_ITEMS.includes(k) || (it.built === true && it.cost >= KEY_ITEM_MIN_COST)))
+  .filter(([k, it]) => !k.startsWith('recipe_') && available.has(k) && (ALWAYS_KEY_ITEMS.includes(k) || (it.built === true && it.cost >= KEY_ITEM_MIN_COST)))
   .map(([k]) => k);
 const inList = finished.map((k) => `'${k}'`).join(',');
 const heroIds = Object.keys(NAMES.heroes).map(Number).sort((a, b) => a - b);
@@ -105,11 +114,12 @@ for (let i = 0; i < heroIds.length; i += 2) {
 process.stdout.write('\n');
 
 writeFileSync(OUT, `${JSON.stringify({
-  source: 'OpenDota SQL explorer, professional matches',
+  source: `OpenDota SQL explorer, professional matches; finished items seen in ${current.name} pro matches`,
   fetched: new Date().toISOString().slice(0, 10),
   patch: NAMES.patch,
   since: previous.name,
   since_time: since,
+  available_in: current.name,
   rule: { min_games: MIN_GAMES, min_lift: MIN_LIFT, se: 2, top: TOP },
   item_vs: out,
 })}\n`);
