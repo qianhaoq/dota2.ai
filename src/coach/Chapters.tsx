@@ -423,8 +423,8 @@ const Plan: React.FC<{ plan: ChaptersT['plan']; onAsk: () => void }> = ({ plan, 
         {plan.map((p) => (
           <li key={p.key}>
             <h4>{L(p.title)}</h4>
-            <p><b>{L(T.why)}</b><Emph text={L(p.why)} /></p>
-            <p><b>{L(T.check)}</b><Emph text={L(p.check)} /></p>
+            <p><span className="cx-plan-k">{L(T.why)}</span><Emph text={L(p.why)} /></p>
+            <p><span className="cx-plan-k">{L(T.check)}</span><Emph text={L(p.check)} /></p>
           </li>
         ))}
       </ol>

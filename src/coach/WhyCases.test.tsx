@@ -53,3 +53,18 @@ describe('why -> lane heat map', () => {
     expect(figs[0].querySelector('svg')!.getAttribute('aria-label')).toContain('术士 / 破晓辰星');
   });
 });
+
+describe('plan chapter', () => {
+  it('styles only the row labels, never the numbers inside the text', () => {
+    const { container } = render(<Chapters review={report.reviews[0]} report={report} pos={null} />);
+    const plan = container.querySelector('#cx-ch-plan')!;
+    const labels = [...plan.querySelectorAll('.cx-plan-k')].map((x) => x.textContent);
+    expect(labels.length).toBeGreaterThan(0);
+    expect(new Set(labels)).toEqual(new Set(['依据', '下一局']));
+    // Numbers are emphasised with b.cx-num-em; the label rule must not reach them.
+    expect(plan.querySelectorAll('b.cx-num-em').length).toBeGreaterThan(0);
+    const css = readFileSync(path.join(process.cwd(), 'src/coach/coach.css'), 'utf8');
+    expect(css).not.toMatch(/\.cx-plan p b\b/);
+    expect(css).toMatch(/\.cx-plan \.cx-plan-k \{/);
+  });
+});
