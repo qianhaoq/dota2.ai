@@ -130,6 +130,7 @@ import { createCaseService } from './lib/coach/caseSource.js';
 import { createRecentService } from './lib/coach/recent.js';
 import { createLlmRateLimit } from './lib/llmRateLimit.js';
 import { rateLimitKey } from './lib/rateLimitKey.js';
+import { createOpenDotaClient, OPENDOTA_BASE } from './lib/upstream/opendota.js';
 import { validateChatRequest, chatRequestErrorMessage } from './lib/chatRequest.js';
 import { normalizeFeedbackSubmission } from './lib/feedbackStore.js';
 
@@ -210,7 +211,7 @@ const gemini = geminiApiKey ? new OpenAI({
 const GEMINI_REVIEW_MODEL = process.env.GEMINI_REVIEW_MODEL || 'gemini-3.5-flash-lite';
 
 // ============ External API URLs ============
-const OPENDOTA_API = 'https://api.opendota.com/api';
+const OPENDOTA_API = OPENDOTA_BASE;
 const STEAM_API = 'https://api.steampowered.com';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
 
@@ -272,8 +273,19 @@ function enrichUpstreamError(err, url, status) {
   return error;
 }
 
+// Every OpenDota request goes through one client: API key, token bucket,
+// in-flight merging, Retry-After and a 429 cooldown (lib/upstream/opendota.js).
+const opendota = createOpenDotaClient({
+  apiKey: process.env.OPENDOTA_API_KEY || '',
+  rpm: parsePositiveInt(process.env.OPENDOTA_RPM, 0, { max: 100000 }) || undefined,
+  log: (msg) => console.warn(`[opendota] ${msg}`),
+});
+
 async function fetchWithRetry(url, retries = 2, delay = 500, options = {}) {
-  const { timeoutMs, signal: callerSignal, ...fetchOptions } = options;
+  const { timeoutMs, signal: callerSignal, priority, ...fetchOptions } = options;
+  if (opendota.isOpenDota(url)) {
+    return opendota.getJson(url, { retries, delay, timeoutMs, signal: callerSignal, priority });
+  }
   const safeUrl = redactFetchUrl(url);
 
   for (let i = 0; i <= retries; i++) {
@@ -1264,6 +1276,14 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0'
   });
+});
+
+// OpenDota usage on this instance: calls and errors per endpoint, 429s,
+// merged requests, queue state, and the remaining quota OpenDota reports.
+// Counts only — no keys, no URLs with query strings.
+app.get('/api/health/upstream', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ opendota: opendota.snapshot() });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -2510,10 +2530,10 @@ function readBuiltIndexHtml() {
   }
   return builtIndexHtml;
 }
-const opendotaKeyParam = opendotaApiKey ? `api_key=${encodeURIComponent(opendotaApiKey)}` : '';
+// Pro cases are background work: they queue behind pages a user is waiting on.
 const coachCases = createCaseService({
-  explorer: (sql) => fetchWithRetry(`${OPENDOTA_API}/explorer?sql=${encodeURIComponent(sql)}${opendotaKeyParam ? `&${opendotaKeyParam}` : ''}`, 1, 1000, { timeoutMs: 20000 }),
-  fetchMatch: (id) => fetchWithRetry(`${OPENDOTA_API}/matches/${id}${opendotaKeyParam ? `?${opendotaKeyParam}` : ''}`, 1, 1000, { timeoutMs: 20000 }),
+  explorer: (sql) => fetchWithRetry(`${OPENDOTA_API}/explorer?sql=${encodeURIComponent(sql)}`, 1, 1000, { timeoutMs: 20000, priority: 'low' }),
+  fetchMatch: (id) => fetchWithRetry(`${OPENDOTA_API}/matches/${id}`, 1, 1000, { timeoutMs: 20000, priority: 'low' }),
   log: (msg) => console.warn(`[coach-cases] ${msg}`),
 });
 
@@ -2527,7 +2547,7 @@ app.use(createCoachRouter({
   page: { html: readBuiltIndexHtml },
   // "Your recent games" from a Steam friend code (OpenDota recentMatches).
   recent: createRecentService({
-    fetchRecent: (id) => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches${opendotaKeyParam ? `?${opendotaKeyParam}` : ''}`, 1, 1000, { timeoutMs: 10000 }),
+    fetchRecent: (id) => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches`, 1, 1000, { timeoutMs: 10000 }),
   }),
   // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
   ask: {

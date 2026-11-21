@@ -4,17 +4,7 @@ import { parseReviewParseStatus } from '../utils/parseStatus';
 import { serverErrorMessage } from '../utils/serverErrorMessage';
 import { bodyRetryAfterSec, retryAfterFrom } from '../utils/retryAfter';
 
-const OPENDOTA_API = 'https://api.opendota.com/api';
 const VALVE_CDN = 'https://cdn.cloudflare.steamstatic.com';
-
-interface OpenDotaHero {
-  id: number;
-  name: string;
-  localized_name: string;
-  primary_attr: string;
-  img: string; 
-  icon: string;
-}
 
 interface MetaHero {
   id: number;
@@ -68,36 +58,12 @@ export const fetchHeroes = async (lang: string = 'en'): Promise<Hero[]> => {
       })).sort((a, b) => a.name.localeCompare(b.name, lang === 'zh' ? 'zh-CN' : 'en'));
     }
     throw new Error('Server meta API unavailable');
-  } catch {
-    console.log('Falling back to OpenDota heroStats API');
-    return fetchHeroesFromOpenDota();
-  }
-};
-
-const fetchHeroesFromOpenDota = async (): Promise<Hero[]> => {
-  try {
-    const response = await fetch(`${OPENDOTA_API}/heroStats`);
-    if (!response.ok) throw new Error('Failed to fetch hero stats');
-    
-    const data: OpenDotaHero[] = await response.json();
-    return data.map(mapOpenDotaHero).sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
-    console.error("OpenDota API Error:", error);
+    // Only our own server talks to OpenDota (keyed, rate-limited, cached);
+    // the browser never calls it directly.
+    console.error('Hero list unavailable:', error);
     return [];
   }
-};
-
-const mapOpenDotaHero = (apiHero: OpenDotaHero): Hero => {
-  const attr = mapPrimaryAttr(apiHero.primary_attr);
-  const shortName = apiHero.name.replace('npc_dota_hero_', '');
-  const fullImgUrl = `${VALVE_CDN}/apps/dota2/images/heroes/${shortName}_vert.jpg`;
-
-  return {
-    id: apiHero.id,
-    name: apiHero.localized_name,
-    attribute: attr,
-    img: fullImgUrl
-  };
 };
 
 export class MatchFactsError extends Error {
