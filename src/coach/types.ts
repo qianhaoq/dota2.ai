@@ -33,6 +33,8 @@ export type GoalSpec = { label: Bi; role_kind?: 'core' | 'support' } & (
   | { kind: 'answer_item'; tag: string; items: string[] }
   | { kind: 'obs_per10_min'; min: number }
   | { kind: 'lane_not_lost' }
+  /** Engine >= 1.9: deaths to enemies who already owned one of `items` (gap closers). */
+  | { kind: 'deaths_to_gap_closer_max'; max: number; items: string[] }
 );
 
 export interface Role { pos: number | null; kind: 'core' | 'support'; confidence: string; source: 'lanes' | 'farm' | 'user'; label: Bi; farm_rank?: number }
