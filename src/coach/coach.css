@@ -728,3 +728,13 @@
 .cx-matchups li.is-favoured .cx-mu-verdict { color: var(--good); }
 .cx-matchups li.is-unfavoured { border-color: rgba(208, 106, 85, 0.45); }
 .cx-matchups li.is-unfavoured .cx-mu-verdict { color: var(--dire); }
+
+/* Items: what pros on your hero build more often against each enemy hero */
+.cx-proitems { margin: 4px 0 14px; }
+.cx-proitems ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cx-proitems li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cx-proitems-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.cx-proitem { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 12.5px; }
+.cx-proitem b { font-variant-numeric: tabular-nums; }
+.cx-proitem small { color: var(--text-3); }
+.cx-proitem-img { width: 22px; height: 16px; border-radius: 3px; object-fit: cover; }

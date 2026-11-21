@@ -56,6 +56,9 @@ const T = {
   muTitle: { en: 'Your hero vs theirs — pro win rate since {since}', zh: '你的英雄对上他们——职业胜率（{since} 以来）' },
   muGames: { en: '{n} games', zh: '{n} 场' },
   muThin: { en: 'too few games', zh: '样本不足' },
+  proItemsTitle: { en: 'What pro {hero} players build more often against them (since {since})', zh: '职业{hero}对上他们时明显更常出的装备（{since} 以来）' },
+  proItemsUsually: { en: '{p} usually', zh: '平时 {p}' },
+  proItemsTip: { en: '{n} pro games against this hero', zh: '对上这个英雄的职业比赛 {n} 场' },
   muVerdict: { favoured: { en: 'favours you', zh: '你占优' }, unfavoured: { en: 'against you', zh: '你吃亏' } },
   context: { en: 'Context', zh: '场景' },
   goldLost: { en: 'Gold lost', zh: '掉金' },
@@ -325,7 +328,8 @@ export const Chapters: React.FC<ChaptersProps> = ({
           )}
 
           {ch.items && show('items') && (
-            <Items ch={ch.items} heroById={heroById} onAsk={() => onAsk('items')} />
+            <Items ch={ch.items} heroById={heroById} onAsk={() => onAsk('items')}
+              counterItems={review.counter_items} myHero={heroById.get(report.players[review.slot].hero.id)} since={report.baselines?.since ?? null} />
           )}
 
           {ch.fights && show('fights') && (
@@ -715,12 +719,35 @@ const Deaths: React.FC<{
   );
 };
 
-const Items: React.FC<{ ch: NonNullable<ChaptersT['items']>; heroById: Map<number, HeroRef>; onAsk: () => void }> = ({ ch, heroById, onAsk }) => {
+const Items: React.FC<{
+  ch: NonNullable<ChaptersT['items']>; heroById: Map<number, HeroRef>; onAsk: () => void;
+  counterItems?: NonNullable<Review['counter_items']>; myHero?: HeroRef; since: string | null;
+}> = ({ ch, heroById, onAsk, counterItems, myHero, since }) => {
   const { L } = useLang();
   const dmg = ch.damage;
   const max = dmg?.by_hero[0]?.share ?? 1;
   return (
     <Chapter id="items" title={T.items} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} visual={<>
+      {counterItems && counterItems.length > 0 && myHero && (
+        <div className="cx-proitems">
+          <p className="cx-dmg-label">{L(T.proItemsTitle).replace('{hero}', L(myHero)).replace('{since}', since ?? '—')}</p>
+          <ul>
+            {counterItems.map((c) => (
+              <li key={c.hero}>
+                <HeroTag hero={heroById.get(c.hero)} />
+                <span className="cx-proitems-list">
+                  {c.items.map((x) => (
+                    <span key={x.item.key} className="cx-proitem" title={L(T.proItemsTip).replace('{n}', String(x.n))}>
+                      {x.item.img && <SafeImg src={x.item.img} alt="" className="cx-proitem-img" />}
+                      {L(x.item)} <b>{pct(x.rate)}</b> <small>{L(T.proItemsUsually).replace('{p}', pct(x.base))}</small>
+                    </span>
+                  ))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {dmg && dmg.by_hero.length > 0 && (
         <div className="cx-dmg">
           <p className="cx-dmg-label">{L(T.dmgBy)}</p>

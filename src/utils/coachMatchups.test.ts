@@ -102,7 +102,8 @@ describe('report: was the lane hard before it started?', () => {
     expect(mu.map((x: any) => x.hero).sort()).toEqual(r.players.filter((p: any) => !p.radiant).map((p: any) => p.hero.id).sort());
     expect(mu.find((x: any) => x.hero === WEAVER).verdict).toBe('favoured');
     expect(mu.find((x: any) => x.hero === URSA).verdict).toBe('even');
-    expect(r.baselines).toEqual({ source: 'OpenDota explorer, professional matches', since: DATA.since, games: DATA.games, fetched: DATA.fetched });
+    const IV = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/item-vs.json'), 'utf8'));
+    expect(r.baselines).toEqual({ source: 'OpenDota explorer, professional matches', since: DATA.since, games: DATA.games, fetched: DATA.fetched, item_rule: IV.rule });
   });
 
   it('still lists hero matchups for an unparsed match (they need only the draft)', () => {
