@@ -45,3 +45,26 @@ describe('draft.hardest_matchup', () => {
     for (const v of r.reviews) expect(v.findings.map((x: any) => x.id)).not.toContain(ID);
   });
 });
+
+describe('draft.hardest_matchup — pure damage (review #204)', () => {
+  it('Naga Siren vs Timbersaw (3 pure, 1 magic abilities): never "mostly magic", never magic items', () => {
+    const m = load('match9079014980.turbo.unparsed.json');
+    const radiant = m.players.filter((p: any) => p.player_slot < 128);
+    const dire = m.players.filter((p: any) => p.player_slot >= 128);
+    radiant[0].hero_id = 89; // Naga Siren
+    dire[0].hero_id = 98; // Timbersaw
+    for (const p of m.players) p.rank_tier = 80; // Divine–Immortal
+    const r = buildCoachReport(m) as any;
+    const naga = r.reviews.find((v: any) => r.players[v.slot].hero.id === 89);
+    // Timbersaw is the clearest disadvantage (the case Codex found)…
+    const worst = r.players.filter((p: any) => !p.radiant)
+      .map((p: any) => ({ id: p.hero.id, m: heroVsRank(89, p.hero.id, 'di') }))
+      .filter((x: any) => x.m && x.m.verdict === 'unfavoured' && x.m.diff <= -0.03)
+      .sort((a: any, b: any) => a.m.diff - b.m.diff)[0];
+    expect(worst.id).toBe(98);
+    // …with no pro item data, so only the Valve fallback could speak, and pure damage has no majority type.
+    expect(itemLifts(89, 98)).toEqual([]);
+    expect(naga.findings.map((x: any) => x.id)).not.toContain(ID);
+    for (const f of naga.findings) expect(f.action.en).not.toMatch(/Timbersaw's damaging abilities deal magic/);
+  });
+});
