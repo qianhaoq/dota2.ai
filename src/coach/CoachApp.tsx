@@ -385,9 +385,10 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
   }, [load]);
 
   const checkByMatch = useMemo(() => {
-    if (!goal) return new Map<number, GoalCheck>();
+    // Goal results belong to the goal's player: never show them on another account's games.
+    if (!goal || (goal.accountId != null && String(goal.accountId) !== accountId)) return new Map<number, GoalCheck>();
     return new Map(goalChecks(goal.id).map((c) => [c.matchId, c]));
-  }, [goal]);
+  }, [goal, accountId]);
 
   const topHeroes = useMemo(() => {
     if (!data) return [];

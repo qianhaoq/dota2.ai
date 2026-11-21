@@ -160,12 +160,12 @@ export const Chapters: React.FC<ChaptersProps> = ({
     if (jumpSignal.tab === 'deaths' && jumpSignal.rowIndex != null) {
       setHighlightDeath(jumpSignal.rowIndex);
       window.setTimeout(() => {
-        document.getElementById(`cx-death-row-${jumpSignal.rowIndex}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        revealRow(`cx-death-row-${jumpSignal.rowIndex}`);
       }, 60);
     } else if (jumpSignal.tab === 'fights' && jumpSignal.rowIndex != null) {
       setHighlightFight(jumpSignal.rowIndex);
       window.setTimeout(() => {
-        document.getElementById(`cx-fight-row-${jumpSignal.rowIndex}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        revealRow(`cx-fight-row-${jumpSignal.rowIndex}`);
       }, 60);
     }
   }, [jumpSignal]);
@@ -470,6 +470,14 @@ export const CASE_THEME_FOR: Record<string, string> = {
   'position.deep': 'fights', 'vision.blind': 'fights',
   'fights.carrier': 'items',
 };
+
+/** Open the row's data disclosure (the user may have collapsed it) and scroll to the row. */
+function revealRow(id: string) {
+  const row = document.getElementById(id);
+  const details = row?.closest('details');
+  if (details && !details.open) details.open = true;
+  row?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+}
 
 /** Jump to that theme once the cases have loaded; the cases chapter otherwise. */
 function jumpToCases(theme: string) {

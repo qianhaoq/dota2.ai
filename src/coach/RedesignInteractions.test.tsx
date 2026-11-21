@@ -220,3 +220,60 @@ describe('review follow-ups (#192)', () => {
     await waitFor(() => expect(container.querySelectorAll('.cx-recent-row')).toHaveLength(2));
   });
 });
+
+describe('review follow-ups, round 2 (#192)', () => {
+  it('a timeline jump reopens a data disclosure the user collapsed', async () => {
+    fetchReport.mockResolvedValue(parsedReport);
+    const { container } = render(
+      <MemoryRouter initialEntries={['/r/9091400302?p=0']}>
+        <Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelector('.cx-death-dot')).toBeTruthy());
+    const dot = container.querySelector('.cx-death-dot') as HTMLButtonElement;
+    fireEvent.click(dot);
+    const details = container.querySelector('#cx-death-row-0')!.closest('details')!;
+    details.open = false;
+    fireEvent.click(dot);
+    await waitFor(() => expect(container.querySelector('#cx-death-row-0')!.closest('details')!.open).toBe(true));
+  });
+
+  it("goal results show only on the goal owner's recent games", async () => {
+    const f = unparsedReport.reviews[4].findings.find((x: any) => x.goal)!;
+    const goal = { ...goalFromFinding(unparsedReport as any, 4, f.id, f.goal as any, f.action), accountId: 111 };
+    setGoal(goal);
+    const laterRaw = loadFixture('match9091400302.unparsed.json');
+    laterRaw.match_id = 9091400999; laterRaw.start_time += 3600;
+    expect(checkGoal(goal, buildCoachReport(laterRaw) as any, 4)).toBeTruthy();
+    const recent = (account_id: number) => ({
+      account_id, empty_hint: null,
+      matches: [{ match_id: 9091400999, start_time: laterRaw.start_time, duration: 2500, hero: { id: 67, en: 'Spectre', zh: '幽鬼', icon: null }, slot: 4, radiant: true, won: true, kda: [1, 1, 1], mode: { en: 'All Pick', zh: '全英雄选择' }, ranked: true }],
+    });
+    fetchRecent.mockImplementation(async (account: string) => recent(Number(account)));
+    const { container } = render(
+      <MemoryRouter initialEntries={['/p/222']}>
+        <Link to="/p/111">owner</Link>
+        <Routes><Route path="/p/:accountId" element={<CoachPlayerPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelectorAll('.cx-recent-row')).toHaveLength(1));
+    expect(container.querySelector('.cx-recent-row .cx-goal-result')).toBeNull();
+    fireEvent.click(screen.getByText('owner'));
+    await waitFor(() => expect(container.querySelector('.cx-recent-row .cx-goal-result')).toBeTruthy());
+  });
+
+  it('the quick-jump overlay renders outside the blurred header', async () => {
+    fetchReport.mockResolvedValue(parsedReport);
+    const { container } = render(
+      <MemoryRouter initialEntries={['/r/9091400302?p=0']}>
+        <Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelector('.cx-qj-trigger')).toBeTruthy());
+    fireEvent.click(container.querySelector('.cx-qj-trigger')!);
+    const backdrop = document.querySelector('.cx-modal-backdrop')!;
+    expect(backdrop).toBeTruthy();
+    expect(backdrop.closest('.cx-top')).toBeNull();
+    expect(backdrop.closest('.cx')).toBeTruthy();
+  });
+});
