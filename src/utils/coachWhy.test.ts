@@ -298,6 +298,13 @@ describe('story "why": where you stood in lane (replay positions)', () => {
     const fix = buildCoachReport(deep).reviews[2].chapters.story.why.find((c: any) => c.id === 'lane.1').fix.zh;
     expect(fix).toMatch(/录像显示 0–10 分钟你至少有 \d+% 的时间站在河道对面（即使开局前的时间全算在对面也是如此），而破晓辰星站到你们这一侧最多 \d+%/);
     expect(fix.match(/等级追上之前/g)).toHaveLength(1);
+    // "At most" for Dawnbreaker is the 0:00–10:00 upper bound: all its over-river samples / 601.
+    const dawn = raw.players.find((x: any) => x.hero_id === 135);
+    let e = 0;
+    for (const [x, ys] of Object.entries(dawn.lane_pos as Record<string, Record<string, number>>)) {
+      for (const [y, c] of Object.entries(ys)) if (Number(x) + Number(y) - 256 < -10) e += c;
+    }
+    expect(fix).toContain(`破晓辰星站到你们这一侧最多 ${Math.round((100 * Math.min(1, e / 601)))}%`);
     expect(lane(0, 'lane.3').fix.zh).not.toContain('录像显示'); // Tidehunter stayed home
   });
 
