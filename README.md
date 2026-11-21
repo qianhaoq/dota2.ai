@@ -86,7 +86,8 @@ Open <http://localhost:5173/r/9091400302>. `server.js` reads `process.env` only 
 | Variable | Needed for |
 |---|---|
 | — | the coach (`/`, `/r/:id`, `/api/coach/:id`) |
-| `OPENDOTA_API_KEY` | optional; parse requests |
+| `OPENDOTA_API_KEY` | optional, recommended: sent on every OpenDota request (paid tier limits) |
+| `OPENDOTA_RPM` | optional; OpenDota requests per minute per instance (default 1200 with key, 50 without) |
 | `DEEPSEEK_API_KEY` | legacy LLM surfaces (`/legacy`, `/m/:id`, chat, playbook) |
 | `GEMINI_API_KEY` | optional fallback for legacy review cards |
 | `STEAM_WEB_API_KEY` | optional localized hero names in legacy tools |
