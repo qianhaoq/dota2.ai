@@ -19,11 +19,6 @@ import './cards.css';
 
 const EXAMPLE_MATCH = '9091400302';
 
-const SAMPLE_SEATS: { slot: number; label: Bi }[] = [
-  { slot: 0, label: { en: 'Tidehunter (Pos 3)', zh: '潮汐猎人 · 3号位' } },
-  { slot: 2, label: { en: 'Warlock (Pos 5)', zh: '术士 · 5号位' } },
-  { slot: 4, label: { en: 'Spectre (Pos 1)', zh: '幽鬼 · 1号位' } },
-];
 
 export { SafeImg };
 
@@ -306,43 +301,6 @@ const LatestGoal: React.FC<{ goal: NonNullable<ReturnType<typeof activeGoal>>; l
   );
 };
 
-const AccountForm: React.FC = () => {
-  const { lang, L } = useLang();
-  const navigate = useNavigate();
-  const [value, setValue] = useState('');
-  const [error, setError] = useState<'invalid' | 'vanity' | null>(null);
-  // Collapsed by default: the match box stays the page's one primary input.
-  const [open, setOpen] = useState(false);
-  const known = rememberedAccount();
-  const submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const r = parseAccountInput(value);
-    if (!r.ok) { setError(r.reason); return; }
-    navigate(`/p/${r.accountId}?lang=${lang}`);
-  };
-  return (
-    <div className="cx-account">
-      {known ? (
-        <LatestGame accountId={known} />
-      ) : !open ? (
-        <p className="cx-example"><button type="button" aria-expanded="false" onClick={() => setOpen(true)}>{L(UI.useAccount)}</button></p>
-      ) : (
-        <form className="cx-account-form" onSubmit={submit}>
-          <label htmlFor="cx-account-input">{L(UI.orAccount)}</label>
-          <div>
-            <input
-              id="cx-account-input" autoFocus value={value} placeholder={L(UI.accountPlaceholder)} inputMode="text"
-              onChange={(e) => { setValue(e.target.value); setError(null); }}
-            />
-            <button type="submit">{L(UI.showRecent)}</button>
-          </div>
-          {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : UI.accountInvalid)}</p>}
-        </form>
-      )}
-    </div>
-  );
-};
-
 /* --------------------------------------------------------- recent games */
 
 type RecentFilter = 'all' | 'unreviewed' | 'ranked';
@@ -584,58 +542,130 @@ const AgentSnippets: React.FC<{ matchId: string }> = ({ matchId }) => {
   );
 };
 
+/** The example match's three seats, with facts from that match (the fixture behind every sample link). */
+const SAMPLE_CARDS: { slot: number; slug: string; hero: Bi; role: Bi; kda: string; lane: Bi }[] = [
+  { slot: 0, slug: 'tidehunter', hero: { en: 'Tidehunter', zh: '潮汐猎人' }, role: { en: 'Pos 3 · offlane', zh: '3 号位 · 劣势路' }, kda: '6/12/15', lane: { en: 'Lost the lane to Ursa', zh: '对线输给熊战士' } },
+  { slot: 2, slug: 'warlock', hero: { en: 'Warlock', zh: '术士' }, role: { en: 'Pos 5 · support', zh: '5 号位 · 辅助' }, kda: '4/14/19', lane: { en: 'Against Dawnbreaker', zh: '对线破晓辰星' } },
+  { slot: 4, slug: 'spectre', hero: { en: 'Spectre', zh: '幽鬼' }, role: { en: 'Pos 1 · carry', zh: '1 号位 · 优势路' }, kda: '12/15/9', lane: { en: 'Farm fell behind', zh: '经济落后' } },
+];
+const HERO_ART = (slug: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
+
+const HOME = {
+  title: { en: 'Paste a match.', zh: '贴一场比赛。' },
+  sub: { en: 'Match ID, a match link or your friend code. See where the game was lost — and what to practise next.', zh: '比赛 ID、对局链接或好友码。看清这局输在哪，下一局练什么。' },
+  hint: { en: 'Match ID, link, or friend code', zh: '比赛 ID、链接或好友码' },
+  samplesTitle: { en: 'Or open a sample review', zh: '或者，打开一份示例复盘' },
+  samplesSub: { en: 'Match {id} · Dire victory', zh: '比赛 {id} · 夜魇胜利' },
+  open: { en: 'Open the review', zh: '打开复盘' },
+  modeLabel: { en: 'What are you pasting?', zh: '你要输入什么？' },
+  modeMatch: { en: 'Match', zh: '比赛' },
+  modeAccount: { en: 'Friend code', zh: '好友码' },
+};
+
 export const CoachHome: React.FC = () => {
   const { lang, L } = useLang();
   const navigate = useNavigate();
   const [value, setValue] = useState('');
-  const [error, setError] = useState<'invalid' | 'vanity' | null>(null);
+  const [error, setError] = useState<'invalid' | 'vanity' | 'account' | null>(null);
+  // A bare number is both a valid match ID and a valid friend code: the mode says which one it is.
+  const [mode, setMode] = useState<'match' | 'account'>('match');
   const inputRef = useRef<HTMLInputElement>(null);
-  const detected = useMemo(() => detectSmartInput(value), [value]);
+  const detected = useMemo(() => {
+    if (mode === 'match') return detectSmartInput(value);
+    const r = parseAccountInput(value);
+    return r.ok ? { kind: 'account' as const, id: r.accountId } : { kind: 'none' as const };
+  }, [value, mode]);
+  const known = rememberedAccount();
 
   const go = (raw: string) => {
+    if (mode === 'account') {
+      const a = parseAccountInput(raw);
+      if (a.ok) { navigate(`/p/${a.accountId}?lang=${lang}`); return; }
+      setError(a.reason === 'vanity' ? 'vanity' : 'account');
+      return;
+    }
     const r = detectSmartInput(raw);
     if (r.kind === 'match') { navigate(`/r/${r.id}?lang=${lang}`); return; }
     if (r.kind === 'account') { navigate(`/p/${r.id}?lang=${lang}`); return; }
     setError(r.kind === 'vanity' ? 'vanity' : 'invalid');
   };
 
+  // The river lights up once the box holds something we can open (the page's one memorable moment).
+  const state = detected.kind === 'match' || detected.kind === 'account' ? detected.kind : 'idle';
+
   return (
     <Shell isHome>
-      <section className="cx-hero">
-        <p className="cx-eyebrow">{L(UI.tagline)}</p>
-        <h1 className="cx-h1">{L(UI.heroTitle).split('\n').map((line, i) => <span key={i}>{line}</span>)}</h1>
-        <form className="cx-search" onSubmit={(e) => { e.preventDefault(); go(value); }}>
-          <input
-            ref={inputRef} aria-label={L(UI.placeholder)} placeholder={L(UI.placeholder)} value={value} inputMode="text" autoFocus
-            onChange={(e) => { setValue(e.target.value); setError(null); }}
-          />
-          <button type="submit">{detected.kind === 'account' ? L(UI.showRecent) : L(UI.review)}</button>
-        </form>
-        {detected.kind === 'match' && value.trim() !== detected.id && (
-          <p className="cx-detect-pill is-match">{L(UI.detectedMatch).replace('{id}', detected.id)}</p>
-        )}
-        {detected.kind === 'account' && (
-          <p className="cx-detect-pill is-account">{L(UI.detectedAccount).replace('{id}', detected.id)}</p>
-        )}
-        {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : UI.invalid)}</p>}
-        <div className="cx-example-row">
-          <p className="cx-example">
-            {L(UI.tryExample)}: <button type="button" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button>
-          </p>
-          <div className="cx-sample-pills">
-            {SAMPLE_SEATS.map((s) => (
-              <Link key={s.slot} to={`/r/${EXAMPLE_MATCH}?p=${s.slot}&lang=${lang}`} className="cx-sample-pill">
-                {L(s.label)} →
-              </Link>
+      <section className="cx-hero hm-map" data-state={state}>
+        <svg className="hm-minimap" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <polygon className="hm-radiant" points="0,100 0,52 48,100" />
+          <polygon className="hm-dire" points="100,0 52,0 100,48" />
+          <path className="hm-lane" d="M6,94 L6,8 L92,8" />
+          <path className="hm-lane" d="M8,94 L94,94 L94,8" />
+          <path className="hm-lane" d="M10,90 L90,10" />
+          <path className="hm-river" d="M0,30 C 28,40 40,62 70,100" />
+        </svg>
+        <div className="hm-core">
+          <p className="cx-eyebrow">{L(UI.tagline)}</p>
+          <h1 className="cx-h1 hm-title">{L(HOME.title)}</h1>
+          <p className="hm-sub">{L(HOME.sub)}</p>
+          <div className="hm-mode" role="radiogroup" aria-label={L(HOME.modeLabel)}>
+            {(['match', 'account'] as const).map((m) => (
+              <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'is-on' : ''}
+                onClick={() => { setMode(m); setError(null); inputRef.current?.focus(); }}>
+                {L(m === 'match' ? HOME.modeMatch : HOME.modeAccount)}
+              </button>
             ))}
           </div>
+          <form className="cx-search hm-ford" onSubmit={(e) => { e.preventDefault(); go(value); }}>
+            <input
+              ref={inputRef} aria-label={L(mode === 'match' ? UI.placeholder : UI.accountPlaceholder)}
+              placeholder={L(mode === 'match' ? UI.placeholder : UI.accountPlaceholder)} value={value} inputMode="text" autoFocus
+              onChange={(e) => { setValue(e.target.value); setError(null); }}
+            />
+            <button type="submit">{detected.kind === 'account' ? L(UI.showRecent) : L(UI.review)}</button>
+          </form>
+          <p className="hm-status" aria-live="polite">
+            {mode === 'match' && detected.kind === 'match' && value.trim() !== detected.id
+              ? <span className="cx-detect-pill is-match">{L(UI.detectedMatch).replace('{id}', detected.id)}</span>
+              : detected.kind === 'account'
+                ? <span className="cx-detect-pill is-account">{L(UI.detectedAccount).replace('{id}', detected.id)}</span>
+                : mode === 'account' ? <span className="hm-hint">{L(UI.accountPlaceholder)}</span>
+                : <span className="hm-hint">{L(HOME.hint)} · {L(UI.tryExample)}: <button type="button" className="hm-example" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button></span>}
+          </p>
+          {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : error === 'account' ? UI.accountInvalid : UI.invalid)}</p>}
         </div>
-        <AccountForm />
       </section>
-      <PatchNews onCta={() => { inputRef.current?.focus(); inputRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }} />
-      <section className="cx-principles">
+
+      {known && <div className="hm-latest"><LatestGame accountId={known} /></div>}
+
+      <section className="hm-samples" aria-labelledby="hm-samples-title">
+        <div className="hm-samples-head">
+          <h2 id="hm-samples-title">{L(HOME.samplesTitle)}</h2>
+          <span>{L(HOME.samplesSub).replace('{id}', EXAMPLE_MATCH)}</span>
+        </div>
+        <ul>
+          {SAMPLE_CARDS.map((c) => (
+            <li key={c.slot}>
+              <Link to={`/r/${EXAMPLE_MATCH}?p=${c.slot}&lang=${lang}`} className="hm-sample">
+                <SafeImg src={HERO_ART(c.slug)} alt="" className="hm-sample-art" />
+                <span className="hm-sample-text">
+                  <b>{L(c.hero)}</b>
+                  <small>{L(c.role)} · {c.kda}</small>
+                  <span>{L(c.lane)}</span>
+                </span>
+                <span className="hm-sample-go" aria-hidden="true">→</span>
+                <span className="cx-sr">{L(HOME.open)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <PatchNews onCta={() => { inputRef.current?.focus(); inputRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }); }} />
+
+      <section className="cx-principles hm-how">
         {[['p1t', 'p1'], ['p2t', 'p2'], ['p3t', 'p3']].map(([tk, bk], i) => (
-          <div key={tk} className="cx-principle">
+          <div key={tk} className="hm-how-item">
             <span className="cx-num">0{i + 1}</span>
             <h2>{L(UI[tk as 'p1t'])}</h2>
             <p>{L(UI[bk as 'p1'])}</p>
