@@ -557,18 +557,33 @@ const HOME = {
   samplesTitle: { en: 'Or open a sample review', zh: '或者，打开一份示例复盘' },
   samplesSub: { en: 'Match {id} · Dire victory', zh: '比赛 {id} · 夜魇胜利' },
   open: { en: 'Open the review', zh: '打开复盘' },
+  modeLabel: { en: 'What are you pasting?', zh: '你要输入什么？' },
+  modeMatch: { en: 'Match', zh: '比赛' },
+  modeAccount: { en: 'Friend code', zh: '好友码' },
 };
 
 export const CoachHome: React.FC = () => {
   const { lang, L } = useLang();
   const navigate = useNavigate();
   const [value, setValue] = useState('');
-  const [error, setError] = useState<'invalid' | 'vanity' | null>(null);
+  const [error, setError] = useState<'invalid' | 'vanity' | 'account' | null>(null);
+  // A bare number is both a valid match ID and a valid friend code: the mode says which one it is.
+  const [mode, setMode] = useState<'match' | 'account'>('match');
   const inputRef = useRef<HTMLInputElement>(null);
-  const detected = useMemo(() => detectSmartInput(value), [value]);
+  const detected = useMemo(() => {
+    if (mode === 'match') return detectSmartInput(value);
+    const r = parseAccountInput(value);
+    return r.ok ? { kind: 'account' as const, id: r.accountId } : { kind: 'none' as const };
+  }, [value, mode]);
   const known = rememberedAccount();
 
   const go = (raw: string) => {
+    if (mode === 'account') {
+      const a = parseAccountInput(raw);
+      if (a.ok) { navigate(`/p/${a.accountId}?lang=${lang}`); return; }
+      setError(a.reason === 'vanity' ? 'vanity' : 'account');
+      return;
+    }
     const r = detectSmartInput(raw);
     if (r.kind === 'match') { navigate(`/r/${r.id}?lang=${lang}`); return; }
     if (r.kind === 'account') { navigate(`/p/${r.id}?lang=${lang}`); return; }
@@ -593,21 +608,31 @@ export const CoachHome: React.FC = () => {
           <p className="cx-eyebrow">{L(UI.tagline)}</p>
           <h1 className="cx-h1 hm-title">{L(HOME.title)}</h1>
           <p className="hm-sub">{L(HOME.sub)}</p>
+          <div className="hm-mode" role="radiogroup" aria-label={L(HOME.modeLabel)}>
+            {(['match', 'account'] as const).map((m) => (
+              <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'is-on' : ''}
+                onClick={() => { setMode(m); setError(null); inputRef.current?.focus(); }}>
+                {L(m === 'match' ? HOME.modeMatch : HOME.modeAccount)}
+              </button>
+            ))}
+          </div>
           <form className="cx-search hm-ford" onSubmit={(e) => { e.preventDefault(); go(value); }}>
             <input
-              ref={inputRef} aria-label={L(UI.placeholder)} placeholder={L(UI.placeholder)} value={value} inputMode="text" autoFocus
+              ref={inputRef} aria-label={L(mode === 'match' ? UI.placeholder : UI.accountPlaceholder)}
+              placeholder={L(mode === 'match' ? UI.placeholder : UI.accountPlaceholder)} value={value} inputMode="text" autoFocus
               onChange={(e) => { setValue(e.target.value); setError(null); }}
             />
             <button type="submit">{detected.kind === 'account' ? L(UI.showRecent) : L(UI.review)}</button>
           </form>
           <p className="hm-status" aria-live="polite">
-            {detected.kind === 'match' && value.trim() !== detected.id
+            {mode === 'match' && detected.kind === 'match' && value.trim() !== detected.id
               ? <span className="cx-detect-pill is-match">{L(UI.detectedMatch).replace('{id}', detected.id)}</span>
               : detected.kind === 'account'
                 ? <span className="cx-detect-pill is-account">{L(UI.detectedAccount).replace('{id}', detected.id)}</span>
+                : mode === 'account' ? <span className="hm-hint">{L(UI.accountPlaceholder)}</span>
                 : <span className="hm-hint">{L(HOME.hint)} · {L(UI.tryExample)}: <button type="button" className="hm-example" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button></span>}
           </p>
-          {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : UI.invalid)}</p>}
+          {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : error === 'account' ? UI.accountInvalid : UI.invalid)}</p>}
         </div>
       </section>
 

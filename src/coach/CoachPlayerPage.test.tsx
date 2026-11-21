@@ -59,6 +59,27 @@ describe('home: start from a friend code', () => {
     await waitFor(() => expect(recent).toHaveBeenCalledWith('86745912', expect.anything()));
   });
 
+  it('a bare friend code needs the friend-code mode: in match mode the same number is a match ID (review #211)', async () => {
+    recent.mockResolvedValue({ account_id: 86745912, empty_hint: null, matches: [] });
+    at('/');
+    fireEvent.click(screen.getByRole('radio', { name: '好友码' }));
+    const input = screen.getByPlaceholderText('好友代码、SteamID64 或个人资料链接');
+    fireEvent.change(input, { target: { value: '86745912' } });
+    expect(screen.getByRole('button', { name: '列出我的比赛' })).toBeTruthy();
+    fireEvent.submit(input.closest('form')!);
+    await waitFor(() => expect(recent).toHaveBeenCalledWith('86745912', expect.anything()));
+  });
+
+  it('friend-code mode rejects what is not an account instead of opening a match', () => {
+    at('/');
+    fireEvent.click(screen.getByRole('radio', { name: '好友码' }));
+    const input = screen.getByPlaceholderText('好友代码、SteamID64 或个人资料链接');
+    fireEvent.change(input, { target: { value: 'not an id' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(recent).not.toHaveBeenCalled();
+  });
+
   it('offers "my recent games" once an account is remembered (no games loaded yet / none)', async () => {
     window.localStorage.setItem(ACCOUNT_STORAGE_KEY, '86745912');
     recent.mockResolvedValue({ account_id: 86745912, empty_hint: 'private_or_no_matches', matches: [] });
