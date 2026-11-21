@@ -72,6 +72,7 @@ import {
 import { publicModelName, resolveDeepSeekConfig, loggableModelName } from './lib/llmConfig.js';
 import { jsonBodyErrorHandler } from './lib/jsonBodyErrors.js';
 import { matchPathRedirect } from './lib/matchPathRedirect.js';
+import { staticNotFound } from './lib/staticNotFound.js';
 import { parsePositiveInt } from './lib/positiveInt.js';
 import {
   buildFollowUpFallbackText,
@@ -3368,6 +3369,8 @@ app.post('/api/events', (req, res) => {
 app.get('/match/:id', matchPathRedirect);
 
 app.use(express.static(path.join(__dirname, 'dist')));
+// A missing build file 404s instead of becoming index.html (lib/staticNotFound.js).
+app.use(staticNotFound());
 
 app.get('*', (req, res) => {
   // The /new and /legacy surfaces are gated/unlisted — keep them out of
