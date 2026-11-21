@@ -5,7 +5,7 @@ import { CoachApiError, fetchCoachReport, fetchMatchup, fetchRecentMatches, requ
 import { markReviewed, markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, CoachReport, Evidence, Finding, Player, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
-import { Chapters, revealRow, Deaths as DeathsChapter, Fights as FightsChapter, Items as ItemsChapter, Laning as LaningChapter, Matchups, Plan as PlanChapter, Story as StoryChapter, type ChapterJumpSignal } from './Chapters';
+import { Chapters, jumpToCases, revealRow, Deaths as DeathsChapter, Fights as FightsChapter, Items as ItemsChapter, Laning as LaningChapter, Matchups, Plan as PlanChapter, Story as StoryChapter, type ChapterJumpSignal } from './Chapters';
 import { Cases } from './Cases';
 import { buildSurface } from '../../lib/coach/cards.js';
 import { GoldTimeline } from './GoldTimeline';
@@ -757,7 +757,6 @@ export const CoachReportPage: React.FC = () => {
 
       {review && player ? (
         <CardFeed
-          key={`${m.id}-${review.slot}-${posOverride ?? ''}`}
           report={report}
           review={review}
           player={player}
@@ -1401,7 +1400,16 @@ const CardFeed: React.FC<{
   const heroById = useMemo(() => new Map(report.players.map((p) => [p.hero.id, p.hero])), [report]);
   const [jump, setJump] = useState<{ target: string; row: number | null; seq: number } | null>(null);
   const [compare, setCompare] = useState<{ hero: number; vs: number } | null>(null);
-  const [cases, setCases] = useState(false);
+  const [cases, setCases] = useState<{ theme: string; seq: number } | null>(null);
+  // Per-player state resets when the reviewed player changes; the feed itself stays mounted
+  // so a pending replay parse keeps polling (its card has the same id for every player).
+  useEffect(() => { setJump(null); setCompare(null); setCases(null); }, [review.slot, pos]);
+  // Opening pro cases goes to the requested theme (or the loading panel) once it is on the page.
+  useEffect(() => {
+    if (!cases) return undefined;
+    const timer = setTimeout(() => jumpToCases(cases.theme), 0);
+    return () => clearTimeout(timer);
+  }, [cases]);
   useEffect(() => { if (askSeq > 0) askRef.current?.focus(); }, [askSeq]);
   // A jump to a row reopens its data disclosure (the user may have collapsed it) once the chapter has re-rendered.
   useEffect(() => {
@@ -1431,7 +1439,7 @@ const CardFeed: React.FC<{
       }
       case 'parse': scrollTo('gaps'); break;
       case 'compare': setCompare({ hero: a.hero, vs: a.vs }); break;
-      case 'open_cases': setCases(true); break;
+      case 'open_cases': setCases({ theme: a.theme, seq: Date.now() }); break;
       default: break;
     }
   };
@@ -1455,8 +1463,10 @@ const CardFeed: React.FC<{
         ) : null;
       case 'Finding': return <ul className="cx-cards"><FindingCard f={d.finding as Finding} report={report} slot={review.slot} /></ul>;
       case 'Matchups':
+        // The laning chapter already shows the strip: keep only this card's compare actions.
+        if (has('Lane')) return null;
         return <Matchups list={d.list} heroById={heroById} since={d.since} bracket={d.bracket} rankSource={d.rank_source ?? undefined} />;
-      case 'Story': return <StoryChapter ch={d.chapter} onAsk={onAskChapter('story')} withCases={report.match.parsed} onOpenCase={() => setCases(true)} />;
+      case 'Story': return <StoryChapter ch={d.chapter} onAsk={onAskChapter('story')} withCases={report.match.parsed} onOpenCase={(theme) => setCases({ theme, seq: Date.now() })} />;
       case 'Lane':
         return <LaningChapter ch={d.chapter} heroById={heroById} slot={review.slot} onAsk={onAskChapter('laning')} defaultOpen
           matchups={review.matchups} since={report.baselines?.since ?? null} bracket={review.bracket} rankSource={report.baselines?.rank} />;
@@ -1478,15 +1488,16 @@ const CardFeed: React.FC<{
   const cards = [...surface.cards];
   const gaps = cards.findIndex((c) => c.component === 'DataGaps' && c.actions.some((a) => a.action === 'parse'));
   if (gaps > 2) cards.splice(2, 0, ...cards.splice(gaps, 1));
-  // The laning chapter carries the matchup strip itself.
-  const shown = cards.filter((c) => c.component !== 'MatchHeader' && !(c.component === 'Matchups' && has('Lane')));
+  // (Matchups stays: with a laning chapter its body is empty but its compare actions remain.)
+  const shown = cards.filter((c) => c.component !== 'MatchHeader');
   const rail = shown.filter((c) => c.component === 'Matchups');
   const main = shown.filter((c) => c.component !== 'Matchups');
   // Chapter components render their own heading and ask button.
   const selfTitled = ['Headline', 'GoldGraph', 'Story', 'Lane', 'Deaths', 'Items', 'Fights', 'Plan', 'DataGaps'];
   const card = (c: Card) => (
     <CardShell key={c.id} card={c} onAction={run} hideTitle={selfTitled.includes(c.component) || c.component === 'Finding'}
-      skip={c.component === 'Finding' ? ['save_goal'] : selfTitled.includes(c.component) ? ['ask'] : []}
+      // Findings and the parse panel render their own goal / parse buttons.
+      skip={c.component === 'Finding' ? ['save_goal'] : c.component === 'DataGaps' ? ['ask', 'parse'] : selfTitled.includes(c.component) ? ['ask'] : []}
       labelFor={(a) => (a.action === 'compare' ? `${L(a.label)} · ${heroById.get(a.vs)?.[lang] ?? ''}` : L(a.label))}>
       {body(c)}
     </CardShell>
@@ -1500,16 +1511,16 @@ const CardFeed: React.FC<{
             <header className="cxv-card-head">
               <span className="cxv-auth is-statistic">{L(CARD_UI.authority.statistic)}</span>
               <h3>{L(CARD_UI.casesTitle)}</h3>
-              <button type="button" className="cxv-x" onClick={() => setCases(false)} aria-label={L(CARD_UI.close)}>×</button>
+              <button type="button" className="cxv-x" onClick={() => setCases(null)} aria-label={L(CARD_UI.close)}>×</button>
             </header>
-            <div className="cxv-card-body"><Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => askRef.current?.focus()} /></div>
+            <div className="cxv-card-body" id="cx-ch-cases"><Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => askRef.current?.focus()} /></div>
           </section>
         )}
       </div>
       <aside className="cxv-rail">
         {compare && <CompareCard hero={compare.hero} vs={compare.vs} rank={review.bracket?.key ?? null} onClose={() => setCompare(null)} />}
         {rail.map(card)}
-        <AskPanel ref={askRef} report={report} review={review} pos={pos} docked />
+        <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={askRef} report={report} review={review} pos={pos} docked />
       </aside>
     </div>
   );

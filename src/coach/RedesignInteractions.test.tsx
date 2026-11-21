@@ -107,7 +107,8 @@ describe('CoachReportPage redesigned workspace', () => {
     const shown = [...container.querySelectorAll('.cxv-main > .cxv-card')].map((el) => [...el.classList].find((x) => x.startsWith('is-') && !['is-good', 'is-fix', 'is-neutral'].includes(x))!.slice(3));
     expect(shown).toEqual(expected);
     const allowed = new Set(surface.cards.flatMap((c: any) => c.actions.map((x: any) => x.label.zh)));
-    for (const btn of container.querySelectorAll('.cxv-act')) expect(allowed.has(btn.textContent!)).toBe(true);
+    // A compare button also names the enemy hero ("对比 · 熊战士").
+    for (const btn of container.querySelectorAll('.cxv-act')) expect(allowed.has(btn.textContent!.split(' · ')[0])).toBe(true);
 
     // A finding's "问教练" fills the docked conversation with that finding.
     const first = parsedReport.reviews[0].findings[0];

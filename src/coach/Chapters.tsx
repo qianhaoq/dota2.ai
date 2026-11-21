@@ -495,7 +495,7 @@ export function revealRow(id: string) {
 }
 
 /** Jump to that theme once the cases have loaded; the cases chapter otherwise. */
-function jumpToCases(theme: string) {
+export function jumpToCases(theme: string) {
   const el = document.getElementById(`cx-case-${theme}`) ?? document.getElementById('cx-ch-cases');
   el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 }
