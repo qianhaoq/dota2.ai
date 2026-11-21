@@ -54,6 +54,9 @@ for (const [key, it] of Object.entries(odItems)) {
     // Valve leaves brand-new items untranslated for a while; fall back to English.
     zh: v.name_loc || v.name_english_loc || it.dname,
     cost: it.cost || prev?.cost || 0,
+    // Built from a recipe (Blink is bought outright, so it is not): tells a
+    // finished item from a component on a purchase timeline.
+    ...(it.created ? { built: true } : {}),
   };
   note(prev, next);
   names.items[key] = next;

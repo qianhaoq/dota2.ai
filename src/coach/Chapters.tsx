@@ -669,7 +669,12 @@ const Deaths: React.FC<{
           {rows.map(({ row: d, idx }) => (
             <tr key={idx} id={`cx-death-row-${idx}`} className={`ctx-${d.context} ${highlightIndex === idx ? 'is-highlighted' : ''}`}>
               <th scope="row">{clock(d.time)}</th>
-              <td><HeroTag hero={d.killer != null ? heroById.get(d.killer) : null} /></td>
+              <td>
+                <HeroTag hero={d.killer != null ? heroById.get(d.killer) : null} />
+                {d.killer_item && (
+                  <small className="cx-killer-state">{L(d.killer_item.item)} {clock(d.killer_item.time)}</small>
+                )}
+              </td>
               <td><span className="cx-ctx">{L(T.ctx[d.context])}</span></td>
               <td>{d.gold_lost != null ? d.gold_lost : '—'}</td>
               <td>{d.time_dead != null ? `${d.time_dead}s` : '—'}</td>
