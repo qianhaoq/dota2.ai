@@ -23,6 +23,7 @@ import { mapOpenDotaFetchError } from '../lib/matchReview/openDotaErrors.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { staticNotFound } from '../lib/staticNotFound.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -160,6 +161,8 @@ app.post('/api/feedback', (_req, res) => {
 });
 
 app.use(express.static(DIST));
+// A missing build file 404s instead of becoming index.html (lib/staticNotFound.js).
+app.use(staticNotFound());
 
 app.get('*', (req, res) => {
   // Mirror the production SPA rule: /new and /legacy are unlisted surfaces.
