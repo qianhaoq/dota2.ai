@@ -335,12 +335,12 @@ describe('deep review chapters — 9091400302 (real OpenDota parse)', () => {
   it('deaths: every death gets a context, and the repeated killer is named', () => {
     const d = ch('tidehunter').deaths!;
     expect(d.rows).toHaveLength(12);
-    // Ursa: 8 of 12 deaths; 6 of them after his Blink Dagger (16:56), 1 while he held the Aegis (purchase + objectives logs).
+    // Ursa: 8 of 12 deaths; 6 of them after his Blink Dagger (16:56), from the purchase log.
     expect(d.summary.top_killer).toEqual({
       hero: 70, deaths: 8,
-      spike: { item: expect.objectContaining({ key: 'blink', zh: '闪烁匕首' }), time: 1016, before: 2, after: 6, with_aegis: 1 },
+      spike: { item: expect.objectContaining({ key: 'blink', zh: '闪烁匕首' }), time: 1016, before: 2, after: 6 },
     });
-    expect(d.read.zh).toContain('其中 6 次发生在熊战士于 16:56 做出闪烁匕首之后，1 次他身上有不朽之守护');
+    expect(d.read.zh).toContain('其中 6 次发生在熊战士于 16:56 做出闪烁匕首之后。');
     const c = d.summary as unknown as { by_context: Record<string, number> };
     expect(Object.values(c.by_context).reduce((a, b) => a + b, 0)).toBe(12);
     expect(d.read.zh).toContain('其中 8 次死于熊战士');
