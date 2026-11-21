@@ -8,10 +8,18 @@
  * Try /new/m/9035042364?hero=pudge to force the v2 UI.
  * Legacy /api/review GET/POST fixtures and feedback/event acknowledgements
  * remain available. Other match IDs return MATCH_NOT_FOUND.
+ *
+ * The coach (/r/9091400302, /api/coach/*) runs the real router and engine on
+ * the parsed 9091400302 fixture; pro cases come from the recorded
+ * Tidehunter-vs-Ursa profiles, and "ask" answers with the deterministic
+ * fallback (no LLM).
  */
 
 import express from 'express';
 import { createV1Router } from '../routes/v1/index.js';
+import { createCoachRouter } from '../lib/coach/router.js';
+import { buildCaseStudies } from '../lib/coach/cases.js';
+import { mapOpenDotaFetchError } from '../lib/matchReview/openDotaErrors.js';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,6 +62,26 @@ app.use(createV1Router({
     : undefined,
 }));
 
+
+const coachMatches = new Map([
+  [9091400302, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))],
+]);
+const caseProfiles = JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/cases.tidehunter-vs-ursa.profiles.json'), 'utf8')).profiles;
+app.use(createCoachRouter({
+  getMatchDetail: async (id) => {
+    const match = coachMatches.get(Number(id));
+    if (!match) throw Object.assign(new Error('HTTP 404'), { status: 404, upstream: 'opendota' });
+    return structuredClone(match);
+  },
+  resolveClientIp: (req) => req.ip || 'local',
+  mapError: mapOpenDotaFetchError,
+  // Local fixture server: no per-IP limit (e2e runs many page loads a minute).
+  limiter: { tryConsume: () => ({ ok: true, retryAfterSec: 0 }) },
+  cases: {
+    get: async ({ report, slot, match }) => buildCaseStudies({ report, slot, match, candidates: caseProfiles }),
+    peek: () => null,
+  },
+}));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, mock: true });
