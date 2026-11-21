@@ -5,185 +5,335 @@
 **A post-match Dota 2 coach that shows its evidence.**
 **一位拿证据说话的 Dota 2 赛后教练。**
 
-[dota2.ai](https://dota2.ai) · [Try a match](https://dota2.ai/r/9091400302) · [Use it from your agent](#use-it-from-your-agent) · [中文](#中文)
+[Website](https://dota2.ai) · [Live Example](https://dota2.ai/r/9091400302) · [CLI & MCP](#cli--mcp) · [License (Non-Commercial)](#license--non-commercial-only) · [**中文文档 →**](#中文)
 
-[![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![Patch 7.42](https://img.shields.io/badge/Dota%202-7.42-c23c2a.svg)](https://www.dota2.com/patches/7.42) [![good first issues](https://img.shields.io/github/issues/qianhaoq/dota2.ai/good%20first%20issue.svg?label=good%20first%20issues)](https://github.com/qianhaoq/dota2.ai/labels/good%20first%20issue)
+[![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml)
+[![License: Non-Commercial Only](https://img.shields.io/badge/license-Non--Commercial%20Only-d97706.svg)](#license--non-commercial-only)
+[![Dota 2 Patch 7.42](https://img.shields.io/badge/Dota%202-7.42-c23c2a.svg)](https://www.dota2.com/patches/7.42)
+[![good first issues](https://img.shields.io/github/issues/qianhaoq/dota2.ai/good%20first%20issue.svg?label=good%20first%20issues)](https://github.com/qianhaoq/dota2.ai/labels/good%20first%20issue)
 
 </div>
 
+> [!IMPORTANT]
+> **Non-Commercial Use Only** — Free for personal gameplay review, learning, research, and personal CLI/MCP agent use. **Commercial use of any kind is prohibited** without prior written permission from the author. ([Full terms](#license--non-commercial-only))
+
 ---
 
-Paste a match ID — or your Steam friend code to pick from your recent games. Pick the hero you played. You get **why the game went the way it did**: the gap split into causes (your lane, the fights, your build), each with the replay numbers behind it and **one thing to do next game** — then pro games that faced the same problem, a follow-up chat, and a goal that is checked on your next game.
+## What It Does
+
+Paste a **match ID** or **Steam friend code**, pick your hero, and get a deterministic post-match breakdown:
+
+- **Why the game swung** — lane gold/positions, fight deficits, late core items, each backed by match numbers.
+- **One thing to fix next game** — concrete action + pro games on the same hero & matchup (one that did it and won, one that didn't and lost).
+- **Closed training loop** — set a measurable goal; the coach automatically checks it on your next game.
+- **No guessing** — unparsed matches state exact data gaps and offer one-click parsing.
+
+```mermaid
+flowchart LR
+    Web["Web · dota2.ai"] --> Engine["Deterministic Coach Engine (OpenDota + Valve Data)"]
+    CLI["CLI · dota2ai"] --> Engine
+    MCP["AI Agents · MCP / Skill"] --> Engine
+    Engine --> Out["Why + Heatmap + Pro Cases + Grounded Q&A + Next-Game Goal"]
+```
+
+### Real Output (`--section why`)
 
 ```text
-$ dota2ai coach 9091400302 --hero tidehunter --section why
+$ node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section why
 
 #9091400302 · Dire victory 34–75 · 45:22 · 7.41 · parsed
 Tidehunter · Pos 3 · offlane · 6/12/15 · loss
 
 1. 9 lost fights started 19.3k behind on average  [you]
-   - 9 of them were even or more on numbers: you lost on items and levels, not on heroes present.
-   - Where: 7 in your half, 1 at the river, 1 in their half (from fight death positions)
-   What to do: When you are 5k+ behind, do not take open 5v5 fights: defend under towers …
-2. Your Blink Dagger came at 29:20; pros on Tidehunter have it by 25:00 in 61% of games  [you]
-   - In 1390 pro games on Tidehunter, bought between 10:00 and 25:00: Blink Dagger 61%, …
-   - Before it you finished: Mage Slayer 16:06, Consecrated Wraps 21:25
-   - 5 fights lost after 10:00 before it; you were in 5, cast your ultimate in 3
-   What to do: Next game, get Blink Dagger before Mage Slayer.
-3. Top lane: Ursa, Hoodwink beat Tidehunter, Shadow Shaman, 724 gold by 10:00  [you]
-   - Time in the enemy half, pregame to 10:00 (replay positions): Tidehunter 3% … vs Ursa 35% …
-   - Their basic spell that hurt you most this game: Hoodwink's Acorn Shot 2.5k (cooldowns: Valve data, 7.42)
-   What to do: step up to trade or last-hit right after Hoodwink's Acorn Shot (cooldown 19/16/13/10s)
-               is used, and back off before it comes back …
+   - Even on numbers in 9/9 fights — lost on items and levels.
+   → Next game: behind 5k+, avoid open 5v5s; defend under towers.
+
+2. Blink Dagger at 29:20 (pros have it by 25:00 in 61% of 1,390 games)  [you]
+   - Bought first: Mage Slayer (16:06), Consecrated Wraps (21:25).
+   → Next game: finish Blink Dagger before Mage Slayer.
+
+3. Top lane lost by 724 gold at 10:00 (Ursa & Hoodwink vs Tidehunter & Shaman)  [you]
+   - Replay positions (0–10m): 3% in enemy half vs Ursa 35%.
+   → Next game: trade right after Hoodwink's Acorn Shot (CD 19/16/13/10s).
 ```
 
-## What it believes
+---
 
-1. **Teach judgment, don't play for you.** Post-match only. Nothing runs while you are in a game.
-2. **Every claim has a receipt.** Each cause lists the numbers it rests on and says their scope — whole game or laning, which patch's data, how many pro games. No invented patch numbers, no win-rate promises.
-3. **Say what you can't see.** Most matches are not parsed when you look at them. The coach still works on what the data supports, lists what is missing, and gives you a button to parse the rest.
-4. **End in an action.** Every cause on you ends in one thing to do next game; a goal you set is judged on your next game.
-5. **Agents are users too.** The page, the JSON API, the CLI, the agent skill and the MCP tools all read the same report.
+## Pick Your Way In
 
-## What the coach looks at
-
-| | Unparsed match | Parsed match (replay data) |
+| Mode | Best for | Start in 10 seconds |
 |---|---|---|
-| Why it went this way | — | the gap split into causes: each lane at 10:00, lost fights (numbers, gold deficit, who carried them, where, vision), your late core item |
-| Lane | — | last hits, XP, deaths and rotations at 10:00; **where everyone stood** (position samples, heat map); the lane killer's spell to wait out, with **Valve's cooldowns** |
-| Items | final build vs. the enemy's threat profile | + purchase timings; your hero's **pro-consensus mid-game item** (OpenDota pro matches, current patch) and what you built before it |
-| Deaths | count vs. same-hero games | + caught alone vs. in a fight; converted into a tower or Roshan |
-| Fights | — | every fight: result, presence, your ultimate (cast / on cooldown / held) |
-| Pro cases | — | one pro game that avoided your problem, one that repeated it |
-| Next game | the findings' actions | + a goal (deaths, lane, an item answer, wards…) checked on your next game |
+| **Web** | Visual review, heat maps, timeline | Open [dota2.ai](https://dota2.ai) or [match #9091400302](https://dota2.ai/r/9091400302) |
+| **CLI** | Terminals, scripts, shell agents | `node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter` |
+| **MCP** | Claude Code, Cursor, Claude Desktop | `claude mcp add dota2ai -- node /path/to/packages/mcp/bin/dota2ai-mcp.js` |
 
-Hero traits and item answers are a small, sourced table in [`lib/coach/knowledge.js`](lib/coach/knowledge.js); ability facts come from Valve's datafeed and pro item data from OpenDota, refreshed per patch into [`lib/coach/data/`](lib/coach/data).
+---
 
-**Limits, stated plainly.** OpenDota has positions only for the first 10 minutes (pregame included) and for team-fight deaths — so the coach never claims to know where you were caught outside a fight. Damage-by-spell totals are whole-game. Benchmarks are per hero, not per bracket. Pro cases show what went with winning, not proof of cause. A good report is a good set of questions — not a verdict.
+## CLI & MCP
 
-## Use it from your agent
+All web features work locally from CLI or MCP with **zero API keys**.
 
-Everything the page shows is available to a script or a personal agent (Claude Code, Codex, any MCP client). No keys.
+### Setup Once (Node ≥ 20.10)
 
 ```bash
-# from a checkout (Node ≥ 20.10, npm ci once)
-node packages/cli/bin/dota2ai.js help
-node packages/cli/bin/dota2ai.js recent <friend code | profile link>           # your recent games
-node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter             # summary: the causes on you, what to practise
-node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section why --json
-node packages/cli/bin/dota2ai.js cases 9091400302 --hero tidehunter             # pro games on the same problem
-node packages/cli/bin/dota2ai.js ask 9091400302 --hero tidehunter "Which death was the most avoidable?"
-node packages/cli/bin/dota2ai.js goal set 9091400302 --hero tidehunter && node packages/cli/bin/dota2ai.js goal check
+git clone https://github.com/qianhaoq/dota2.ai.git
+cd dota2.ai && npm ci
 ```
 
-`--section`: `summary` · `why` · `lane` · `deaths` · `items` · `fights` · `plan` · `all`. Every command takes `--lang en|zh` and `--json`. Exit codes: `0` ok · `2` invalid input · `3` not found / no data yet · `4` upstream.
+> [!NOTE]
+> Packages are not published to npm yet. Run directly from a checkout, or pack a local tarball with `cd packages/cli && npm pack`.
 
-- **Skill** — [`packages/cli/skills/dota2ai-coach/SKILL.md`](packages/cli/skills/dota2ai-coach/SKILL.md) tells an agent when to call what, how to read the causes, and what never to invent. Claude Code: `cp -r packages/cli/skills/dota2ai-coach ~/.claude/skills/`, then ask *"review my last Dota game"*.
-- **MCP (stdio)** — `claude mcp add dota2ai -- node /path/to/packages/mcp/bin/dota2ai-mcp.js`: tools `recent_matches`, `coach_report`, `coach_cases`, `coach_ask`, `goal_check`. See [packages/mcp](packages/mcp/README.md).
-- **HTTP** — `GET /api/coach/:id` (schema `dota2.ai/coach-report@1`), `/api/coach/:id/cases?slot=`, `POST /api/coach/:id/ask` (SSE), `/api/coach/players/:friendCode/recent`. Summary for LLMs: [`/llms.txt`](https://dota2.ai/llms.txt).
-
-The older Review v1 surface (`/api/v1/review/:id`, `dota2ai review`, `/mcp`) is still available.
-
-## Run it
+### Option A — CLI (`dota2ai`)
 
 ```bash
-npm ci
-cp .env.example .env        # the coach itself needs no keys
-npm run start:dev           # Vite :5173 + Express :8080
+# Find your recent public games
+node packages/cli/bin/dota2ai.js recent <friend-code-or-profile-url>
+
+# Full or sectioned review (--section: summary | why | lane | deaths | items | fights | plan | all)
+node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section why --lang en
+
+# Pro games on the same problem & grounded follow-up Q&A
+node packages/cli/bin/dota2ai.js cases 9091400302 --hero tidehunter
+node packages/cli/bin/dota2ai.js ask 9091400302 --hero tidehunter "Which death hurt most?"
+
+# Training goal loop (saved locally in ~/.dota2ai/goal.json)
+node packages/cli/bin/dota2ai.js goal set 9091400302 --hero tidehunter
+node packages/cli/bin/dota2ai.js goal check
 ```
 
-Open <http://localhost:5173/r/9091400302>. `server.js` reads `process.env` only — export your variables or use a loader.
+Every command supports `--lang en|zh` and `--json`. Override the server with `DOTA2AI_API_BASE`.
+Exit codes: `0` ok · `2` invalid input · `3` not found / unparsed · `4` upstream error. ([CLI docs](packages/cli/README.md))
+
+### Option B — MCP Server (`@dota2ai/mcp`)
+
+**Claude Code (one line):**
+
+```bash
+claude mcp add dota2ai -- node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js
+```
+
+**Cursor / Claude Desktop / Any MCP Client:**
+
+```json
+{
+  "mcpServers": {
+    "dota2ai": {
+      "command": "node",
+      "args": ["/absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js"]
+    }
+  }
+}
+```
+
+<details>
+<summary><strong>All 7 MCP tools & parameters</strong> (click to expand)</summary>
+
+| Tool | Parameters | Description |
+|---|---|---|
+| `recent_matches` | `{ account }` | Recent public matches by friend code, SteamID64, or profile URL |
+| `coach_report` | `{ match_id, hero?, section?, lang? }` | Coach report by section; omit `hero` to get the 10-player roster |
+| `coach_cases` | `{ match_id, hero }` | Positive & negative pro-game comparisons |
+| `coach_ask` | `{ match_id, hero, question }` | Grounded follow-up Q&A (`fallback: true` if no LLM available) |
+| `goal_check` | `{ match_id, hero, goal }` | Checks a later match against a finding's `goal` spec |
+| `review_match` | `{ match_id, hero?, lang? }` | Review v1 structured JSON (`dota2.ai/review@1`) |
+| `get_evidence` | `{ match_id, hero, insight_id }` | Facts, citations, and data gaps for a v1 insight |
+
+Streamable HTTP MCP is also mounted at `/mcp` (`review_match`, `get_evidence`). Add `--offline` to query OpenDota directly. Full guide: [`packages/mcp/README.md`](packages/mcp/README.md).
+
+</details>
+
+### Option C — Agent Skill & HTTP API
+
+- **Agent Skill**: `cp -r packages/cli/skills/dota2ai-coach ~/.claude/skills/` → ask *"review my last Dota game"*. ([`SKILL.md`](packages/cli/skills/dota2ai-coach/SKILL.md))
+- **HTTP API**: `GET /api/coach/:id` · `GET /api/coach/:id/cases?slot=` · `POST /api/coach/:id/ask` (SSE) · [`/llms.txt`](https://dota2.ai/llms.txt)
+
+---
+
+## Coverage & Honest Limits
+
+| Area | Unparsed Match | Parsed Match (Replay) |
+|---|---|---|
+| **Root causes (`why`)** | — | Lanes, lost fights, vision, late core item |
+| **Laning** | — | 5m/10m stats, 0–10m position heat map, Valve spell CDs |
+| **Items & Damage** | Final items vs. enemy threats | + Timings, damage breakdown, pro-consensus core timing |
+| **Deaths & Fights** | Death count vs. hero benchmark | + Caught vs. fight, objective loss, ultimate cast status |
+| **Pro Cases & Goals** | Goal from end-of-game findings | + Pro positive/negative comparisons + auto goal check |
+
+> [!NOTE]
+> **Limits, stated plainly:** Position samples exist only for pregame–10:00 and team-fight deaths. Spell damage is whole-game. Benchmarks are per hero, not per rank. Pro cases show association, not causation.
+
+---
+
+## Local Development & Architecture
+
+```bash
+npm ci && npm run start:dev    # Vite :5173 + Express :8080 → http://localhost:5173/r/9091400302
+```
+
+<details>
+<summary><strong>Environment variables, tests & directory structure</strong> (click to expand)</summary>
+
+#### Environment Variables (all optional for core coach)
 
 | Variable | Needed for |
 |---|---|
-| — | the coach (`/`, `/r/:id`, `/api/coach/*`) |
-| `OPENDOTA_API_KEY` | optional, recommended in production: sent on every OpenDota request (paid limits). Keep it in Secret Manager, never in the image or plain env vars |
-| `OPENDOTA_RPM` | optional; OpenDota requests per minute per instance (default 1200 with a key, 50 without) |
-| `MATCH_CACHE_BUCKET` | optional; GCS bucket: parsed matches kept once for every instance + the shared OpenDota cooldown ([docs/MATCH_CACHE.md](docs/MATCH_CACHE.md)) |
-| `STRATZ_API_TOKEN` | optional; STRATZ as a fallback when OpenDota fails (a basic, unparsed copy, labelled on the page) |
-| `DEEPSEEK_API_KEY` | the "ask" follow-ups and the legacy LLM surfaces (`/legacy`, `/m/:id`); without it, answers come from the report |
-| `GEMINI_API_KEY` | optional second model for follow-ups and legacy review cards |
+| `OPENDOTA_API_KEY` | Recommended in production (higher OpenDota rate limits; store in Secret Manager) |
+| `OPENDOTA_RPM` | Per-instance OpenDota RPM cap (`1200` with key, `50` without) |
+| `MATCH_CACHE_BUCKET` | GCS bucket for shared parsed-match cache & 429 cooldown ([`docs/MATCH_CACHE.md`](docs/MATCH_CACHE.md)) |
+| `STRATZ_API_TOKEN` | Fallback data source when OpenDota fails |
+| `DEEPSEEK_API_KEY` | Streaming `/ask` follow-ups (falls back to report text without it) |
+| `GEMINI_API_KEY` | Optional fallback model for follow-ups & legacy review cards |
 
-Full list, rate-limit knobs and proxy settings: [`.env.example`](.env.example).
-
-**OpenDota usage** goes through one client ([`lib/upstream/opendota.js`](lib/upstream/opendota.js)): key on every call, a token bucket that serves waiting pages first, merged duplicate requests, `Retry-After`, and a 429 cooldown shared by all instances. Hero, item and ability constants ship with the build (`node scripts/refresh-data.mjs --all` after a patch). Live counters: [`/api/health/upstream`](https://dota2.ai/api/health/upstream).
-
-## Check it
+#### Verification Commands
 
 ```bash
-npx tsc --noEmit && node --check server.js && npm run build && npm test   # what CI runs
-npx vitest run src/utils/coachWhy.test.ts                                 # the "why" engine
-npm run test:e2e                                                          # Playwright on a zero-outbound mock, incl. /r
-node scripts/smoke-coach.mjs                                              # after a deploy: live API vs. live page
+npx tsc --noEmit && node --check server.js && npm run build && npm test   # CI gate
+npm run test:e2e                                                          # Playwright + axe (mock server)
+node scripts/smoke-coach.mjs                                              # Live API vs. live page check
 ```
 
-## How it is built
+#### Project Layout
 
-```
-lib/coach/        analyze.js   pure report engine — no IO, no clock, no LLM
-                  why.js       "why it went this way": causes, evidence, fixes
-                  chapters.js  story, lane, deaths, items, fights, plan
-                  goals.js     next-game goals and their checks (shared with the CLI)
-                  cases.js     pro games on the same problem
-                  knowledge.js curated threat tags and item answers
-                  data/        names, Valve ability data, pro item shares — refreshed per patch
-                  router.js    /api/coach/*, /r/:id link previews
-lib/upstream/     the OpenDota client, the shared cooldown, the STRATZ fallback
-lib/matchStore.js parsed matches in GCS
-src/coach/        the web coach (home, report, player page)
-packages/cli      dota2ai CLI + the agent skill
-packages/mcp      MCP server (stdio + /mcp)
-server.js         Express: static app, routes, wiring
+```text
+lib/coach/        Pure deterministic engine (analyze, why, chapters, goals, cases, router, data/)
+lib/upstream/     OpenDota client (token bucket, coalescing), shared cooldown, STRATZ fallback
+lib/matchStore.js GCS cache for parsed matches and explorer queries
+src/coach/        Web workspace (Home, Player Hub, Report, GoldTimeline, Chapters, Cases, Ask, QuickJump)
+packages/cli/     dota2ai CLI + agent skill (SKILL.md)
+packages/mcp/     MCP server (stdio + Streamable HTTP /mcp)
+server.js         Express host
 ```
 
-The engine is deterministic: the same match data always produces the same report, so behaviour is pinned with real (anonymized) match fixtures in [`src/fixtures/coach/`](src/fixtures/coach).
-
-## Deploy
-
-Docker → Google Cloud Run. Keys come from Secret Manager (`--update-secrets`), never the image or `--set-env-vars`. The Express routes have no app-level auth — only per-IP limits — so put Cloud Run IAM, IAP or an API gateway in front of anything that spends money. Details and rollback: [`SECURITY.md`](SECURITY.md), [`docs/ROLLBACK.md`](docs/ROLLBACK.md).
-
-## Contributing
-
-**Know Dota? You can help without writing much code.** The coach's judgment lives in a small, sourced table — which heroes are magic burst, which items answer evasion — and every patch moves it. No API key needed: `npm ci && npx vitest run src/utils/coach`. Start with a [good first issue](https://github.com/qianhaoq/dota2.ai/labels/good%20first%20issue), or [tell us where a review got it wrong](https://github.com/qianhaoq/dota2.ai/issues/new?template=bad-review.yml).
-
-One focused PR per change, evidence in the description (commands and output), and never weaken a test to get green. Gates and review severity: [`CONTRIBUTING.md`](CONTRIBUTING.md), [`docs/MERGE_GATES.md`](docs/MERGE_GATES.md). Only the owner's own PRs merge automatically; every other PR waits for the owner's review.
+</details>
 
 ---
 
-## 中文
+## License & Non-Commercial Only
 
-**贴一场比赛，或者填你的 Steam 好友码从最近的比赛里选；再选你玩的英雄。** 你会看到**这局为什么会这样**：经济差拆成几条原因（你的对线、团战、出装），每条都附上录像里的数字和**下一局要做的一件事**；然后是遇到同样问题的职业对局、可以追问的教练、以及下一局自动检查的训练目标。
+**Copyright © 2026 dota2.ai contributors. All rights reserved for commercial use.**
 
-**它的原则**
+- **Allowed (Non-Commercial Only):** Personal match review, study, research, non-commercial community sharing, and personal CLI / MCP integration — keep copyright and attribution notices intact.
+- **Not Allowed (without prior written permission):**
+  - Any commercial use, commercial hosting, paid SaaS, subscriptions, paywalls, ad monetization, or API resale;
+  - Bundling the code, reports, CLI, or MCP server into paid coaching, boosting, betting, or commercial analytics products;
+  - Commercial redistribution or sublicensing.
+- Contact the repository owner for commercial licensing inquiries.
+- *Fan project, not affiliated with Valve Corporation. Dota, Dota 2, and Steam are trademarks of Valve Corporation. Match data via OpenDota / STRATZ.*
 
-1. **教判断，不替你打。** 只做赛后，游戏进行中什么都不运行。
-2. **每条结论都有出处。** 每条原因都列出依据的数字，并写明口径：整局还是对线期、哪个版本的数据、多少场职业比赛。不编造版本数值，不承诺胜率。
-3. **说清楚看不到什么。** 大多数比赛在你查看时还没被解析。教练照样给出数据撑得住的结论，列出缺失项，并提供一键解析。
-4. **落到一个动作。** 和你有关的每条原因都以"下一局怎么做"结尾；设下的目标会在你下一局自动检查。
-5. **Agent 也是用户。** 网页、JSON API、命令行、Agent skill 和 MCP 工具读的是同一份报告。
+---
 
-**它看什么**（已解析的比赛）：
-- 对线：10 分钟补刀、经验、阵亡和游走；每个人**站在哪**（录像位置采样、热力图）；对线击杀者该等哪个技能放完再上（**Valve 官方冷却**）。
-- 团战：输掉的团战开打时落后多少、谁打出来的、在哪打的、视野；每一波团你的大招是放了、在冷却，还是没放。
-- 出装：购买时间；你这个英雄的**职业共识中期大件**（OpenDota 当前版本职业比赛统计）以及你在它之前做了什么。
-- 职业对照：一场避开了你这个问题的职业比赛，一场重复了它的。
-- 未解析的比赛也能看核心/辅助定位、终局装备与对方威胁的匹配、死亡与经济的同英雄分位。
+<a id="中文"></a>
 
-**诚实的边界**：OpenDota 只提供开局前到 10 分钟的位置和团战里的死亡位置，所以教练从不声称知道你在团战外是在哪被抓的。按技能统计的伤害是整局数字。分位基准按英雄统计，不区分段位。职业案例说明的是"什么做法和胜负一起出现"，不证明因果。好的报告是一组好问题，而不是判决。
+# ◆ dota2.ai（中文说明）
 
-**给你的 Agent 用**（不需要任何 key）：
+> [!IMPORTANT]
+> **仅限非商业用途** — 本仓库及网页、CLI、MCP 工具免费供个人赛后复盘、学习研究与个人 Agent 接入使用。未经作者事先书面许可，**严禁任何形式的商业使用**（详见[许可与非商业声明](#许可与非商业声明)）。
+
+### 它做什么
+
+贴入 **比赛 ID** 或 **Steam 好友代码**，选你玩的英雄，直接得到一份拿数字说话的赛后复盘：
+
+- **讲清为什么会这样**：把经济差拆成具体归因（对线、团战、核心装节奏），每条都附录像原始数据。
+- **落到下一局一件事**：给出明确动作 + 同英雄、同关键对手的职业正反例对比。
+- **自动闭环核验**：把建议设为下局目标，打完下一局自动检查是否达成。
+- **诚实说明边界**：未解析比赛明确列出缺失项，并提供一键解析。
+
+### 3 种使用方式
+
+| 方式 | 适合人群 | 10 秒上手 |
+|---|---|---|
+| **网页版** | 看热力图、经济时间轴、交互式复盘 | 打开 [dota2.ai](https://dota2.ai) 或 [示例对局 #9091400302](https://dota2.ai/r/9091400302?lang=zh) |
+| **CLI 命令行** | 终端用户、脚本自动化、Shell Agent | `node packages/cli/bin/dota2ai.js coach 9091400302 --hero 潮汐猎人 --lang zh` |
+| **MCP 接入** | Claude Code、Cursor、Claude Desktop | `claude mcp add dota2ai -- node /路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js` |
+
+---
+
+### CLI 与 MCP 接入
+
+全部复盘能力均可免费接入本地终端或个人 AI Agent，**不需要任何 API Key**（需 **Node ≥ 20.10**）：
 
 ```bash
+git clone https://github.com/qianhaoq/dota2.ai.git
+cd dota2.ai && npm ci
+```
+
+#### 1. CLI 常用命令
+
+```bash
+# 查看最近公开比赛（支持好友码、SteamID64、Steam/OpenDota/Dotabuff/STRATZ 链接）
 node packages/cli/bin/dota2ai.js recent <好友码或主页链接>
+
+# 复盘指定比赛（--section 可选：summary / why / lane / deaths / items / fights / plan / all）
 node packages/cli/bin/dota2ai.js coach 9091400302 --hero 潮汐猎人 --section why --lang zh
-node packages/cli/bin/dota2ai.js goal set 9091400302 --hero 潮汐猎人 && node packages/cli/bin/dota2ai.js goal check
+
+# 职业正反例对比 & 基于本局数据的追问
+node packages/cli/bin/dota2ai.js cases 9091400302 --hero 潮汐猎人 --lang zh
+node packages/cli/bin/dota2ai.js ask 9091400302 --hero 潮汐猎人 "我哪一次死亡最不应该？" --lang zh
+
+# 设定并核验下局训练目标（保存在本地 ~/.dota2ai/goal.json）
+node packages/cli/bin/dota2ai.js goal set 9091400302 --hero 潮汐猎人
+node packages/cli/bin/dota2ai.js goal check
 ```
 
-- Claude Code：`cp -r packages/cli/skills/dota2ai-coach ~/.claude/skills/`，然后说"复盘我上一局 Dota"。
-- MCP：`claude mcp add dota2ai -- node /路径/packages/mcp/bin/dota2ai-mcp.js`。
+> [!TIP]
+> 所有命令都支持 `--json`（便于脚本或 Agent 解析）与 `DOTA2AI_API_BASE`（指向本地服务）。退出码：`0` 成功 · `2` 参数无效 · `3` 比赛不存在/未解析 · `4` 上游失败。
 
-本地运行：`npm ci && npm run start:dev`，打开 <http://localhost:5173/r/9091400302>。教练功能本身不需要任何 key；生产环境的 OpenDota key 放在 Secret Manager，以 secret 引用挂到 Cloud Run，不要写进镜像或普通环境变量。
+#### 2. MCP 接入
+
+- **Claude Code 一键添加**：
+  ```bash
+  claude mcp add dota2ai -- node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js
+  ```
+- **Cursor / Claude Desktop / 通用 MCP 客户端 JSON**：
+  ```json
+  {
+    "mcpServers": {
+      "dota2ai": {
+        "command": "node",
+        "args": ["/你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js"]
+      }
+    }
+  }
+  ```
+
+<details>
+<summary><strong>查看全部 7 个 MCP 工具速查表</strong>（点击展开）</summary>
+
+| 工具名 | 参数 | 说明 |
+|---|---|---|
+| `recent_matches` | `{ account }` | 查询玩家最近公开比赛 |
+| `coach_report` | `{ match_id, hero?, section?, lang? }` | 获取分章节复盘；不传 `hero` 返回 10 人阵容 |
+| `coach_cases` | `{ match_id, hero }` | 获取职业比赛正反例对比 |
+| `coach_ask` | `{ match_id, hero, question }` | 仅基于本局事实回答追问（无 LLM 时自动降级） |
+| `goal_check` | `{ match_id, hero, goal }` | 用后续比赛核验训练目标是否达成 |
+| `review_match` | `{ match_id, hero?, lang? }` | Review v1 结构化复盘 JSON |
+| `get_evidence` | `{ match_id, hero, insight_id }` | 获取单条 v1 结论对应的事实与引用 |
+
+服务端同时在 `/mcp` 提供无状态 Streamable HTTP MCP 接口；详见 [`packages/mcp/README.md`](packages/mcp/README.md)。
+
+</details>
+
+#### 3. Agent Skill 与 HTTP 接口
+
+- **Claude Code Skill**：`cp -r packages/cli/skills/dota2ai-coach ~/.claude/skills/`，之后直接说「复盘我上一局 Dota」即可自动调用。
+- **HTTP 接口**：`GET /api/coach/:id`、`GET /api/coach/:id/cases?slot=`、`POST /api/coach/:id/ask`（SSE）、[`/llms.txt`](https://dota2.ai/llms.txt)。
 
 ---
 
-MIT © 2026 dota2.ai contributors. A fan project, not affiliated with Valve. Dota 2 and its assets belong to Valve Corporation; match data comes from the public OpenDota API (STRATZ as a fallback). 粉丝项目，与 Valve 无关。
+### 本地运行
+
+```bash
+npm ci && npm run start:dev    # 启动本地开发服务 → http://localhost:5173/r/9091400302
+```
+
+### 许可与非商业声明
+
+**Copyright © 2026 dota2.ai contributors. 保留商业使用的一切权利。**
+
+- **允许（仅限非商业用途）**：个人复盘、学习研究、非商业社区分享，以及个人非商业场景下的本地运行、修改、CLI 调用与 MCP 接入（须保留版权与来源说明）。
+- **未经作者事先书面许可，严禁**：
+  - 任何形式的商业使用、商业托管、付费 SaaS、会员订阅、付费墙、广告变现或 API 转售；
+  - 将本代码、复盘报告、CLI 或 MCP 集成至付费教学、代练、竞猜或商业数据分析服务；
+  - 以营利为目的的二次分发或再许可。
+- 如需商业授权，请联系仓库所有者。
+- *本项目为玩家粉丝项目，与 Valve Corporation 无关。Dota、Dota 2 与 Steam 为 Valve Corporation 注册商标；比赛数据来自公开 OpenDota / STRATZ 接口。*
