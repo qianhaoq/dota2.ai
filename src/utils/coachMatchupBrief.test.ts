@@ -37,6 +37,17 @@ describe('matchupBrief', () => {
     expect(matchupLines(b, 'zh').join('\n')).not.toMatch(/驱散/);
   });
 
+  it('keeps a missing immunity flag unknown (null), never a confirmed "does not pierce" (review #200)', () => {
+    const ABIL = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/abilities.json'), 'utf8'));
+    const wk = (matchupBrief(29, 114) as any).their_abilities;
+    for (const raw of ABIL.heroes['114']) {
+      const a = wk.find((x: any) => x.key === raw.id);
+      expect(a.pierces_immunity, raw.id).toBe(raw.pierces === true ? true : raw.pierces === false ? false : null);
+    }
+    expect(wk.some((a: any) => a.pierces_immunity === null)).toBe(true);
+    expect(b.their_abilities.find((a: any) => a.key === 'ursa_earthshock').pierces_immunity).toBe(false);
+  });
+
   it('says "too few games" instead of a verdict on thin samples', () => {
     const thin = matchupBrief(1, 2) as any; // 11 lane games, 15 win-rate games in the snapshot
     expect(thin.lane).toBeNull();
