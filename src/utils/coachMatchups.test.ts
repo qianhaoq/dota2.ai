@@ -110,3 +110,23 @@ describe('report: was the lane hard before it started?', () => {
     expect(u.reviews[0].matchups).toHaveLength(5);
   });
 });
+
+describe('framing never contradicts the core matchup (review #198)', () => {
+  it('a core who beat the baseline in a lane lost on support gold is told the lane was lost elsewhere', () => {
+    const m = load('match9091400302.parsed.json');
+    const slotOf = (id: number) => m.players.findIndex((p: any) => p.hero_id === id);
+    const setG10 = (slot: number, g: number) => { m.players[slot].gold_t = m.players[slot].gold_t.map((x: number, i: number) => (i === 10 ? g : x)); };
+    const tide = slotOf(TIDE);
+    const shaman = m.players.findIndex((p: any, i: number) => i !== tide && p.lane === m.players[tide].lane && (p.player_slot < 128) === (m.players[tide].player_slot < 128));
+    const ursa = slotOf(URSA);
+    const hood = m.players.findIndex((p: any, i: number) => i !== ursa && p.lane === m.players[ursa].lane && (p.player_slot < 128) === (m.players[ursa].player_slot < 128));
+    setG10(tide, 4663); setG10(shaman, 1000); setG10(hood, 3000);
+    const lane = (buildCoachReport(m) as any).reviews[tide].chapters.story.why.find((c: any) => c.id === 'lane.3');
+    expect(lane.impact).toBeLessThan(0); // the lane as a whole is still lost
+    expect(lane.baseline.actual).toBeGreaterThan(lane.baseline.p75);
+    expect(lane.baseline.standing).toBe('better');
+    expect(lane.fix.zh.startsWith('潮汐猎人对熊战士的核心对位打得好于四分之三的职业对局：这条线的经济差不是输在核心对位上。')).toBe(true);
+    expect(lane.fix.zh).not.toContain('目标是少亏');
+    expect(lane.fix.zh).not.toContain('在正常范围');
+  });
+});
