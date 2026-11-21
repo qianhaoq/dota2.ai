@@ -8,7 +8,7 @@ import { SafeImg, clock, k, useLang, type Lang } from './ui';
 import { Chapters, type ChapterJumpSignal } from './Chapters';
 import { GoldTimeline } from './GoldTimeline';
 import { QuickJump, detectSmartInput } from './QuickJump';
-import { AskPanel } from './AskPanel';
+import { AskPanel, type AskHandle } from './AskPanel';
 import { CURRENT_PATCH, itemIcon } from './patch';
 import { trackEvent, trackReviewViewed } from '../services/analytics';
 import { activeGoal, checkGoal, goalChecks, goalFromFinding, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
@@ -345,8 +345,13 @@ const AccountForm: React.FC = () => {
 
 type RecentFilter = 'all' | 'unreviewed' | 'ranked';
 
+/** Keyed by account: opening another player starts with fresh filters and a fresh "seen" mark. */
 export const CoachPlayerPage: React.FC = () => {
   const { accountId = '' } = useParams();
+  return <PlayerPage key={accountId} accountId={accountId} />;
+};
+
+const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
   const { lang, L } = useLang();
   const navigate = useNavigate();
   const [data, setData] = useState<RecentMatches | null>(null);
@@ -652,6 +657,8 @@ export const CoachReportPage: React.FC = () => {
   const [rosterExpanded, setRosterExpanded] = useState(false);
   const [jumpSignal, setJumpSignal] = useState<ChapterJumpSignal | null>(null);
   const [askSeq, setAskSeq] = useState(0);
+  // Matches without chapters render their own AskPanel; the context bar's Ask button focuses it directly.
+  const fallbackAsk = useRef<AskHandle>(null);
   const slot = search.has('p') ? Number(search.get('p')) : null;
   const posOverride = search.has('pos') ? Number(search.get('pos')) : null;
   const valid = parseMatchInput(matchId) === matchId;
@@ -741,7 +748,7 @@ export const CoachReportPage: React.FC = () => {
           onSetPos={(pos) => setParam({ pos: String(pos) })}
           rosterExpanded={rosterExpanded}
           onToggleRoster={() => setRosterExpanded((v) => !v)}
-          onAskClick={() => setAskSeq((n) => n + 1)}
+          onAskClick={() => (hasChapters ? setAskSeq((n) => n + 1) : fallbackAsk.current?.focus())}
         />
       ) : (
         <MatchHeader report={report} slot={selected} pos={posOverride} />
@@ -807,7 +814,7 @@ export const CoachReportPage: React.FC = () => {
             </section>
             <aside className="cx-side">
               {profileCards}
-              <AskPanel key={`${m.id}-${review.slot}-${posOverride ?? ''}`} report={report} review={review} pos={posOverride} docked />
+              <AskPanel ref={fallbackAsk} key={`${m.id}-${review.slot}-${posOverride ?? ''}`} report={report} review={review} pos={posOverride} docked />
             </aside>
           </div>
         )

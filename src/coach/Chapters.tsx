@@ -315,6 +315,7 @@ export const Chapters: React.FC<ChaptersProps> = ({
               onAsk={() => onAsk('deaths')}
               defaultOpen={!viewAll || highlightDeath != null}
               highlightIndex={highlightDeath}
+              jumpSeq={jumpSignal?.tab === 'deaths' ? jumpSignal.seq : undefined}
             />
           )}
 
@@ -328,6 +329,7 @@ export const Chapters: React.FC<ChaptersProps> = ({
               onAsk={() => onAsk('fights')}
               defaultOpen={!viewAll || highlightFight != null}
               highlightIndex={highlightFight}
+              jumpSeq={jumpSignal?.tab === 'fights' ? jumpSignal.seq : undefined}
             />
           )}
 
@@ -619,13 +621,15 @@ const Deaths: React.FC<{
   onAsk: () => void;
   defaultOpen?: boolean;
   highlightIndex?: number | null;
-}> = ({ ch, heroById, onAsk, defaultOpen, highlightIndex }) => {
+  /** Changes on every timeline jump into this chapter, including repeat jumps to the same row. */
+  jumpSeq?: number;
+}> = ({ ch, heroById, onAsk, defaultOpen, highlightIndex, jumpSeq }) => {
   const { L } = useLang();
   const [filter, setFilter] = useState<DeathFilter>('all');
 
   useEffect(() => {
     if (highlightIndex != null) setFilter('all');
-  }, [highlightIndex]);
+  }, [highlightIndex, jumpSeq]);
 
   const rows = ch.rows.map((row, idx) => ({ row, idx })).filter(({ row }) => {
     if (filter === 'caught') return row.context === 'caught';
@@ -725,13 +729,15 @@ const Fights: React.FC<{
   onAsk: () => void;
   defaultOpen?: boolean;
   highlightIndex?: number | null;
-}> = ({ ch, onAsk, defaultOpen, highlightIndex }) => {
+  /** Changes on every timeline jump into this chapter, including repeat jumps to the same row. */
+  jumpSeq?: number;
+}> = ({ ch, onAsk, defaultOpen, highlightIndex, jumpSeq }) => {
   const { L } = useLang();
   const [filter, setFilter] = useState<FightFilter>('all');
 
   useEffect(() => {
     if (highlightIndex != null) setFilter('all');
-  }, [highlightIndex]);
+  }, [highlightIndex, jumpSeq]);
 
   const head = [L(T.time), L(T.result), L(T.kills), L(T.you), L(T.damage)];
   if (ch.ultimate) head.push(L(ch.ultimate));

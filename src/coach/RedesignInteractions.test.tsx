@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { detectSmartInput } from './QuickJump';
 import { GOAL_STORAGE_KEY, checkGoal, goalFromFinding, setGoal } from './goalStore';
@@ -161,5 +161,62 @@ describe('CoachPlayerPage training hub', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '天梯' }));
     expect(container.querySelectorAll('.cx-recent-row')).toHaveLength(1);
+  });
+});
+
+describe('review follow-ups (#192)', () => {
+  it('the context bar Ask button focuses the chapterless conversation on unparsed matches', async () => {
+    fetchReport.mockResolvedValue(unparsedReport);
+    const { container } = render(
+      <MemoryRouter initialEntries={['/r/9091400302?p=4']}>
+        <Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelector('.cx-ctx-ask')).toBeTruthy());
+    expect(container.querySelector('.cx-chapters')).toBeNull();
+    fireEvent.click(container.querySelector('.cx-ctx-ask')!);
+    await waitFor(() => {
+      const active = document.activeElement as HTMLElement | null;
+      expect(active && container.querySelector('.cx-side')!.contains(active) && /^(TEXTAREA|INPUT)$/.test(active.tagName)).toBe(true);
+    });
+  });
+
+  it('a repeat timeline jump to the same death clears a row filter that hides it', async () => {
+    fetchReport.mockResolvedValue(parsedReport);
+    const { container } = render(
+      <MemoryRouter initialEntries={['/r/9091400302?p=0']}>
+        <Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelector('.cx-death-dot')).toBeTruthy());
+    const dot = container.querySelector('.cx-death-dot') as HTMLButtonElement;
+    fireEvent.click(dot);
+    expect(container.querySelector('#cx-death-row-0')).toBeTruthy();
+    // Death 0 is a lane death, so "caught alone" hides it.
+    fireEvent.click(screen.getByRole('button', { name: '团战外被抓' }));
+    expect(container.querySelector('#cx-death-row-0')).toBeNull();
+    fireEvent.click(dot);
+    await waitFor(() => expect(container.querySelector('#cx-death-row-0.is-highlighted')).toBeTruthy());
+  });
+
+  it('opening another player clears the hero filter from the previous one', async () => {
+    const row = (match_id: number, id: number, en: string) => ({
+      match_id, start_time: 1794747997 - match_id % 1000, duration: 2500, hero: { id, en, zh: en, icon: null }, slot: 0, radiant: true,
+      won: true, kda: [1, 1, 1], mode: { en: 'All Pick', zh: '全英雄选择' }, ranked: true,
+    });
+    fetchRecent.mockImplementation(async (account: string) => (account === '111'
+      ? { account_id: 111, empty_hint: null, matches: [row(1, 1, 'Anti-Mage'), row(2, 2, 'Axe')] }
+      : { account_id: 222, empty_hint: null, matches: [row(3, 3, 'Bane'), row(4, 4, 'Bloodseeker')] }));
+    const { container } = render(
+      <MemoryRouter initialEntries={['/p/111']}>
+        <Link to="/p/222">other player</Link>
+        <Routes><Route path="/p/:accountId" element={<CoachPlayerPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelectorAll('.cx-recent-row')).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', { name: /Anti-Mage/ }));
+    expect(container.querySelectorAll('.cx-recent-row')).toHaveLength(1);
+    fireEvent.click(screen.getByText('other player'));
+    await waitFor(() => expect(container.querySelectorAll('.cx-recent-row')).toHaveLength(2));
   });
 });
