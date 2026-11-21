@@ -1,18 +1,26 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SafeImg, clock, k, signedK, useLang } from './ui';
 import { AskPanel, type AskHandle } from './AskPanel';
 import { Cases } from './Cases';
 import type { Bi, Chapters as ChaptersT, CoachReport, DeathRow, FightRow, HeroRef, LaneHeat, Review, WhyCause } from './types';
 
 /**
- * The deep review: the game phase by phase, the lane, every death, the build
- * against what hurt you, every fight, then what to practise. Each chapter
- * shows the coach's read, the table it rests on, and how it was computed.
+ * The deep review workspace: segmented chapter tabs + "All in one page" toggle
+ * on the left, paired with a sticky contextual dock on the right (Ask Coach +
+ * Player Profile) so asking a follow-up never yanks scroll away from the data.
  */
 
+export type ChapterTab = 'overview' | 'laning' | 'deaths' | 'items' | 'fights' | 'cases';
+
+export interface ChapterJumpSignal {
+  tab: ChapterTab;
+  rowIndex?: number;
+  seq: number;
+}
+
 const T = {
-  title: { en: 'The full review', zh: '完整复盘' },
-  sub: { en: 'Phase by phase, with the numbers behind every sentence.', zh: '按比赛阶段逐项拆解，每句话都有对应的数据。' },
+  title: { en: 'The full review', zh: '深度复盘工作台' },
+  sub: { en: 'Switch dimensions or open all at once — every sentence links back to match data.', zh: '按维度快速切换，或一键展开全览；每句话都有对应数据。' },
   how: { en: 'How this is computed', zh: '怎么算的' },
   story: { en: '1 · How the game went', zh: '1 · 比赛经过' },
   laning: { en: '2 · Laning', zh: '2 · 对线' },
@@ -20,6 +28,17 @@ const T = {
   items: { en: '4 · Build vs. what hurt you', zh: '4 · 出装与承伤' },
   fights: { en: '5 · Every team fight', zh: '5 · 逐波团战' },
   plan: { en: 'Next game: practise this', zh: '下一局：练这几件事' },
+  tabOverview: { en: 'Overview & Why', zh: '核心归因' },
+  tabLaning: { en: 'Laning', zh: '对线' },
+  tabDeaths: { en: 'Deaths', zh: '死亡' },
+  tabItems: { en: 'Items & Damage', zh: '出装承伤' },
+  tabFights: { en: 'Fights', zh: '团战' },
+  tabCases: { en: 'Pro cases', zh: '职业对照' },
+  viewAll: { en: 'All in one page', zh: '长页全览' },
+  viewTabs: { en: 'Tabbed view', zh: '分页模式' },
+  dockAsk: { en: 'Ask coach', zh: '追问教练' },
+  dockProfile: { en: 'Player profile', zh: '选手档案' },
+  fabAsk: { en: 'Ask coach', zh: '追问教练' },
   phase: { en: 'Phase', zh: '阶段' },
   lead: { en: 'Your lead', zh: '我方经济差' },
   change: { en: 'Change', zh: '变化' },
@@ -44,6 +63,14 @@ const T = {
     fight_won: { en: 'Fight · won', zh: '团战 · 赢' }, fight_lost: { en: 'Fight · lost', zh: '团战 · 输' }, fight_even: { en: 'Fight · even', zh: '团战 · 均势' },
     fight: { en: 'Fight', zh: '团战' }, unknown: { en: 'Unknown', zh: '无法判断' },
   },
+  filterAll: { en: 'All', zh: '全部' },
+  filterCaught: { en: 'Caught alone', zh: '团战外被抓' },
+  filterFight: { en: 'In fights', zh: '团战中' },
+  filterConverted: { en: 'Lost objective', zh: '丢了目标' },
+  filterFightLost: { en: 'Lost fights', zh: '输掉的团' },
+  filterUltUnused: { en: 'Ult not cast', zh: '未放大招' },
+  filterAbsent: { en: 'Absent', zh: '不在场' },
+  filterEmpty: { en: 'No rows match this filter.', zh: '该筛选下没有记录。' },
   dmgBy: { en: 'Hero damage you took, by source', zh: '你承受的英雄伤害（按来源）' },
   dmgType: { en: 'All damage you took, by type', zh: '你承受的全部伤害（按类型）' },
   physical: { en: 'Physical', zh: '物理' }, magic: { en: 'Magical', zh: '魔法' }, pure: { en: 'Pure', zh: '纯粹' }, other: { en: 'Other', zh: '其他' },
@@ -67,6 +94,12 @@ const T = {
     fights: { en: 'About the team fights: ', zh: '关于团战：' }, plan: { en: 'About the practice plan: ', zh: '关于下一局的练习：' },
     cases: { en: 'About the pro games (positive / negative): ', zh: '关于职业对局的正例和反例：' },
   },
+  ctxLabel: {
+    story: { en: 'How the game went', zh: '1 · 比赛经过' }, laning: { en: 'Laning', zh: '2 · 对线' },
+    deaths: { en: 'Every death', zh: '3 · 逐次死亡' }, items: { en: 'Build & damage', zh: '4 · 出装与承伤' },
+    fights: { en: 'Team fights', zh: '5 · 逐波团战' }, plan: { en: 'Practice plan', zh: '下一局练习' },
+    cases: { en: 'Pro cases', zh: '职业对局参考' },
+  },
 } satisfies Record<string, Bi | Record<string, Bi>>;
 
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -80,51 +113,298 @@ export function Emph({ text }: { text: string }) {
   return <>{parts.map((p, i) => (i % 2 ? <b key={i} className="cx-num-em">{p}</b> : <React.Fragment key={i}>{p}</React.Fragment>))}</>;
 }
 
-export const Chapters: React.FC<{ review: Review; report: CoachReport; pos: number | null }> = ({ review, report, pos }) => {
+export interface ChaptersProps {
+  review: Review;
+  report: CoachReport;
+  pos: number | null;
+  findingsSlot?: React.ReactNode;
+  profileSlot?: React.ReactNode;
+  jumpSignal?: ChapterJumpSignal | null;
+  askTriggerSeq?: number;
+}
+
+export const Chapters: React.FC<ChaptersProps> = ({
+  review,
+  report,
+  pos,
+  findingsSlot,
+  profileSlot,
+  jumpSignal,
+  askTriggerSeq,
+}) => {
   const { L } = useLang();
   const ch = review.chapters;
   const heroById = useMemo(() => new Map(report.players.map((p) => [p.hero.id, p.hero])), [report]);
   const ask = useRef<AskHandle>(null);
+
+  const [activeTab, setActiveTab] = useState<ChapterTab>('overview');
+  const [viewAll, setViewAll] = useState(false);
+  const [dockTab, setDockTab] = useState<'ask' | 'profile'>('ask');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [highlightDeath, setHighlightDeath] = useState<number | null>(null);
+  const [highlightFight, setHighlightFight] = useState<number | null>(null);
+  const [pendingCaseTheme, setPendingCaseTheme] = useState<string | null>(null);
+
+  // Reset per-player tab highlights when switching hero or position.
+  useEffect(() => {
+    setActiveTab('overview');
+    setHighlightDeath(null);
+    setHighlightFight(null);
+    setSheetOpen(false);
+  }, [report.match.id, review.slot, pos]);
+
+  // Handle cross-linked jumps from GoldTimeline clicks.
+  useEffect(() => {
+    if (!jumpSignal) return;
+    setActiveTab(jumpSignal.tab);
+    if (jumpSignal.tab === 'deaths' && jumpSignal.rowIndex != null) {
+      setHighlightDeath(jumpSignal.rowIndex);
+      window.setTimeout(() => {
+        document.getElementById(`cx-death-row-${jumpSignal.rowIndex}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    } else if (jumpSignal.tab === 'fights' && jumpSignal.rowIndex != null) {
+      setHighlightFight(jumpSignal.rowIndex);
+      window.setTimeout(() => {
+        document.getElementById(`cx-fight-row-${jumpSignal.rowIndex}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    }
+  }, [jumpSignal]);
+
+  // Handle top context-bar "Ask coach" button trigger.
+  useEffect(() => {
+    if (!askTriggerSeq) return;
+    setDockTab('ask');
+    if (typeof window !== 'undefined' && window.innerWidth < 1080) {
+      setSheetOpen(true);
+    }
+    ask.current?.focus();
+  }, [askTriggerSeq]);
+
+  // Scroll to a pro-case theme once the cases tab is visible.
+  useEffect(() => {
+    if (!pendingCaseTheme || activeTab !== 'cases') return;
+    jumpToCases(pendingCaseTheme);
+    setPendingCaseTheme(null);
+  }, [pendingCaseTheme, activeTab]);
+
+  // Close mobile bottom sheet on Escape.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSheetOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sheetOpen]);
+
   if (!ch) return null;
   const hasAny = ORDER.some((key) => ch[key]);
   if (!hasAny && !ch.plan.length) return null;
-  const onAsk = (key: Key) => ask.current?.prefill(L(T.askPrefix[key]));
+
+  const isMobile = () => typeof window !== 'undefined' && window.innerWidth < 1080;
+
+  const onAsk = (key: Key) => {
+    setDockTab('ask');
+    if (isMobile()) setSheetOpen(true);
+    ask.current?.prefill(L(T.askPrefix[key]), L(T.ctxLabel[key]));
+  };
+
+  const openCaseTheme = (theme: string) => {
+    if (viewAll || activeTab === 'cases') { jumpToCases(theme); return; }
+    // The cases panel is display:none until the tab switch commits — scroll after it renders.
+    setPendingCaseTheme(theme);
+    setActiveTab('cases');
+  };
+
+  const show = (tab: ChapterTab) => viewAll || activeTab === tab;
+
+  const tabs: { id: ChapterTab; label: string; count?: number }[] = [
+    { id: 'overview', label: L(T.tabOverview) },
+  ];
+  if (ch.laning) tabs.push({ id: 'laning', label: L(T.tabLaning) });
+  if (ch.deaths) tabs.push({ id: 'deaths', label: L(T.tabDeaths), count: ch.deaths.rows.length });
+  if (ch.items) tabs.push({ id: 'items', label: L(T.tabItems) });
+  if (ch.fights) tabs.push({ id: 'fights', label: L(T.tabFights), count: ch.fights.rows.length });
+  if (report.match.parsed) tabs.push({ id: 'cases', label: L(T.tabCases) });
+
+  const handleSummaryClick = (e: React.MouseEvent, key: Exclude<Key, 'plan' | 'cases'>) => {
+    const targetTab: ChapterTab = key === 'story' ? 'overview' : key;
+    if (!viewAll && targetTab !== activeTab) {
+      e.preventDefault();
+      setActiveTab(targetTab);
+      window.setTimeout(() => {
+        document.getElementById(`cx-ch-${key}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      }, 40);
+    }
+  };
+
   return (
     <section className="cx-chapters" aria-label={L(T.title)}>
       <header className="cx-chapters-head">
-        <h2>{L(T.title)}</h2>
-        <p className="cx-muted">{L(T.sub)}</p>
+        <div>
+          <h2>{L(T.title)}</h2>
+          <p className="cx-muted">{L(T.sub)}</p>
+        </div>
+        <button
+          type="button"
+          className={`cx-view-toggle ${viewAll ? 'is-on' : ''}`}
+          aria-pressed={viewAll}
+          onClick={() => setViewAll((v) => !v)}
+        >
+          {L(viewAll ? T.viewTabs : T.viewAll)}
+        </button>
       </header>
-      <nav className="cx-summary" aria-label={L(T.summary)}>
-        <h3>{L(T.summary)}</h3>
-        <ol>
-          {ORDER.filter((key) => ch[key]).map((key) => (
-            <li key={key}>
-              <a href={`#cx-ch-${key}`}><span className="cx-summary-k">{L(T[key]).replace(/^\d+ · /, '')}</span><span className="cx-summary-t"><Emph text={L(ch[key]!.takeaway)} /></span></a>
-            </li>
+
+      {!viewAll && (
+        <div className="cx-tabbar" role="tablist" aria-label={L(T.title)}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              className={`cx-tab ${activeTab === tab.id ? 'is-on' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <span>{tab.label}</span>
+              {tab.count != null && <span className="cx-tab-count">{tab.count}</span>}
+            </button>
           ))}
-        </ol>
-        {ch.plan.length > 0 && (
-          <p className="cx-summary-plan"><b>{L(T.check)}</b>{ch.plan.map((p) => L(p.title)).join(' · ')}</p>
-        )}
-      </nav>
-      {ch.story && <Story ch={ch.story} onAsk={() => onAsk('story')} withCases={report.match.parsed} />}
-      {ch.laning && <Laning ch={ch.laning} heroById={heroById} slot={review.slot} onAsk={() => onAsk('laning')} />}
-      {ch.deaths && <Deaths ch={ch.deaths} heroById={heroById} onAsk={() => onAsk('deaths')} />}
-      {ch.items && <Items ch={ch.items} heroById={heroById} onAsk={() => onAsk('items')} />}
-      {ch.fights && <Fights ch={ch.fights} onAsk={() => onAsk('fights')} />}
-      {ch.plan.length > 0 && <Plan plan={ch.plan} onAsk={() => onAsk('plan')} />}
-      {report.match.parsed && <Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => onAsk('cases')} />}
-      {/* One conversation per match + player + position: switching player resets it. */}
-      <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={ask} report={report} review={review} pos={pos} />
+        </div>
+      )}
+
+      <div className="cx-workspace">
+        <div className="cx-workspace-main">
+          {show('overview') && (
+            <>
+              <nav className="cx-summary" aria-label={L(T.summary)}>
+                <h3>{L(T.summary)}</h3>
+                <ol>
+                  {ORDER.filter((key) => ch[key]).map((key) => (
+                    <li key={key}>
+                      <a href={`#cx-ch-${key}`} onClick={(e) => handleSummaryClick(e, key)}>
+                        <span className="cx-summary-k">{L(T[key]).replace(/^\d+ · /, '')}</span>
+                        <span className="cx-summary-t"><Emph text={L(ch[key]!.takeaway)} /></span>
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+                {ch.plan.length > 0 && (
+                  <p className="cx-summary-plan"><b>{L(T.check)}</b>{ch.plan.map((p) => L(p.title)).join(' · ')}</p>
+                )}
+              </nav>
+              {ch.story && (
+                <Story
+                  ch={ch.story}
+                  onAsk={() => onAsk('story')}
+                  withCases={report.match.parsed}
+                  onOpenCase={openCaseTheme}
+                />
+              )}
+              {ch.plan.length > 0 && <Plan plan={ch.plan} onAsk={() => onAsk('plan')} />}
+              {findingsSlot && <div className="cx-findings-slot">{findingsSlot}</div>}
+            </>
+          )}
+
+          {ch.laning && show('laning') && (
+            <Laning ch={ch.laning} heroById={heroById} slot={review.slot} onAsk={() => onAsk('laning')} defaultOpen={!viewAll} />
+          )}
+
+          {ch.deaths && show('deaths') && (
+            <Deaths
+              ch={ch.deaths}
+              heroById={heroById}
+              onAsk={() => onAsk('deaths')}
+              defaultOpen={!viewAll || highlightDeath != null}
+              highlightIndex={highlightDeath}
+              jumpSeq={jumpSignal?.tab === 'deaths' ? jumpSignal.seq : undefined}
+            />
+          )}
+
+          {ch.items && show('items') && (
+            <Items ch={ch.items} heroById={heroById} onAsk={() => onAsk('items')} />
+          )}
+
+          {ch.fights && show('fights') && (
+            <Fights
+              ch={ch.fights}
+              onAsk={() => onAsk('fights')}
+              defaultOpen={!viewAll || highlightFight != null}
+              highlightIndex={highlightFight}
+              jumpSeq={jumpSignal?.tab === 'fights' ? jumpSignal.seq : undefined}
+            />
+          )}
+
+          {/* Keep Cases mounted for parsed matches so pro studies prefetch in background and jump links work immediately. */}
+          {report.match.parsed && (
+            <div className={show('cases') ? '' : 'is-tab-hidden'}>
+              <Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => onAsk('cases')} />
+            </div>
+          )}
+        </div>
+
+        <aside className={`cx-dock ${sheetOpen ? 'is-sheet-open' : ''}`} aria-label={L(T.dockAsk)}>
+          {sheetOpen && <div className="cx-sheet-backdrop" role="presentation" onClick={() => setSheetOpen(false)} />}
+          <div className="cx-dock-inner">
+            {profileSlot && (
+              <div className="cx-dock-tabs" role="tablist" aria-label="Coach panel">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={dockTab === 'ask'}
+                  className={dockTab === 'ask' ? 'is-on' : ''}
+                  onClick={() => setDockTab('ask')}
+                >
+                  ✦ {L(T.dockAsk)}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={dockTab === 'profile'}
+                  className={dockTab === 'profile' ? 'is-on' : ''}
+                  onClick={() => setDockTab('profile')}
+                >
+                  {L(T.dockProfile)}
+                </button>
+              </div>
+            )}
+
+            <div className={dockTab === 'ask' || !profileSlot ? 'cx-dock-pane' : 'is-tab-hidden'}>
+              {/* One conversation per match + player + position: switching player resets it. */}
+              <AskPanel
+                key={`${report.match.id}-${review.slot}-${pos ?? ''}`}
+                ref={ask}
+                report={report}
+                review={review}
+                pos={pos}
+                docked
+                onCloseSheet={sheetOpen ? () => setSheetOpen(false) : undefined}
+              />
+            </div>
+
+            {profileSlot && (
+              <div className={dockTab === 'profile' ? 'cx-dock-pane cx-dock-profile' : 'is-tab-hidden'}>
+                {profileSlot}
+              </div>
+            )}
+          </div>
+        </aside>
+      </div>
+
+      {/* Mobile floating quick-ask trigger: opens the dock as a bottom sheet without losing scroll position. */}
+      <button
+        type="button"
+        className="cx-fab-ask"
+        onClick={() => { setDockTab('ask'); setSheetOpen(true); ask.current?.focus(); }}
+      >
+        ✦ {L(T.fabAsk)}
+      </button>
     </section>
   );
 };
 
 const Chapter: React.FC<{
   id: Exclude<Key, 'plan' | 'cases'>; title: Bi; takeaway: Bi; points: Bi[]; note: Bi; onAsk: () => void;
-  visual?: React.ReactNode; children?: React.ReactNode; aside?: React.ReactNode;
-}> = ({ id, title, takeaway, points, note, onAsk, visual, children, aside }) => {
+  visual?: React.ReactNode; children?: React.ReactNode; aside?: React.ReactNode; defaultOpen?: boolean;
+}> = ({ id, title, takeaway, points, note, onAsk, visual, children, aside, defaultOpen = false }) => {
   const { L } = useLang();
   return (
     <article className="cx-chapter" id={`cx-ch-${id}`} aria-labelledby={`cx-ch-${id}-h`}>
@@ -138,7 +418,7 @@ const Chapter: React.FC<{
       </ul>
       {visual}
       {children && (
-        <details className="cx-data">
+        <details className="cx-data" open={defaultOpen || undefined}>
           <summary>{L(T.data)}</summary>
           {children}
         </details>
@@ -194,7 +474,7 @@ export const CASE_THEME_FOR: Record<string, string> = {
 /** Jump to that theme once the cases have loaded; the cases chapter otherwise. */
 function jumpToCases(theme: string) {
   const el = document.getElementById(`cx-case-${theme}`) ?? document.getElementById('cx-ch-cases');
-  el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 }
 
 const HEAT = {
@@ -251,7 +531,7 @@ const LaneHeatMap: React.FC<{ heat: LaneHeat }> = ({ heat }) => {
   );
 };
 
-const Why: React.FC<{ causes: WhyCause[]; withCases: boolean }> = ({ causes, withCases }) => {
+const Why: React.FC<{ causes: WhyCause[]; withCases: boolean; onOpenCase: (theme: string) => void }> = ({ causes, withCases, onOpenCase }) => {
   const { L } = useLang();
   const phases = (['early', 'mid', 'late'] as const).filter((p) => causes.some((c) => c.phase === p));
   return (
@@ -269,7 +549,7 @@ const Why: React.FC<{ causes: WhyCause[]; withCases: boolean }> = ({ causes, wit
                 {c.fix && <p className="cx-do"><span>{L(WHY.todo)}</span>{L(c.fix)}</p>}
                 {withCases && c.mine && CASE_THEME_FOR[c.id] && (
                   <a className="cx-why-pro" href={`#cx-case-${CASE_THEME_FOR[c.id]}`}
-                    onClick={(e) => { e.preventDefault(); jumpToCases(CASE_THEME_FOR[c.id]); }}>{L(WHY.pro)}</a>
+                    onClick={(e) => { e.preventDefault(); onOpenCase(CASE_THEME_FOR[c.id]); }}>{L(WHY.pro)}</a>
                 )}
               </li>
             ))}
@@ -280,11 +560,16 @@ const Why: React.FC<{ causes: WhyCause[]; withCases: boolean }> = ({ causes, wit
   );
 };
 
-const Story: React.FC<{ ch: NonNullable<ChaptersT['story']>; onAsk: () => void; withCases: boolean }> = ({ ch, onAsk, withCases }) => {
+const Story: React.FC<{
+  ch: NonNullable<ChaptersT['story']>;
+  onAsk: () => void;
+  withCases: boolean;
+  onOpenCase: (theme: string) => void;
+}> = ({ ch, onAsk, withCases, onOpenCase }) => {
   const { L } = useLang();
   return (
     <Chapter id="story" title={T.story} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}
-      visual={ch.why?.length ? <Why causes={ch.why} withCases={withCases} /> : undefined}>
+      visual={ch.why?.length ? <Why causes={ch.why} withCases={withCases} onOpenCase={onOpenCase} /> : undefined}>
       <Table label={L(T.story)} head={[L(T.phase), L(T.lead), L(T.change), L(T.buildings), L(T.fightsWL), L(T.yourKD)]}>
         {ch.phases.map((p) => (
           <tr key={p.key}>
@@ -301,11 +586,18 @@ const Story: React.FC<{ ch: NonNullable<ChaptersT['story']>; onAsk: () => void; 
   );
 };
 
-const Laning: React.FC<{ ch: NonNullable<ChaptersT['laning']>; heroById: Map<number, HeroRef>; slot: number; onAsk: () => void }> = ({ ch, heroById, slot, onAsk }) => {
+const Laning: React.FC<{
+  ch: NonNullable<ChaptersT['laning']>;
+  heroById: Map<number, HeroRef>;
+  slot: number;
+  onAsk: () => void;
+  defaultOpen?: boolean;
+}> = ({ ch, heroById, slot, onAsk, defaultOpen }) => {
   const { L } = useLang();
   const tone = ch.outcome === 'won' || ch.outcome === 'stomp' ? 'good' : ch.outcome === 'draw' ? 'even' : 'bad';
   return (
-    <Chapter id="laning" title={T.laning} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} aside={<span className={`cx-pill cx-pill--${tone}`}>{L(T.laneResult)} · {L(ch.outcome_label)}</span>}>
+    <Chapter id="laning" title={T.laning} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} defaultOpen={defaultOpen}
+      aside={<span className={`cx-pill cx-pill--${tone}`}>{L(T.laneResult)} · {L(ch.outcome_label)}</span>}>
       <Table label={L(T.laning)} head={[L(T.hero), L(T.lh5), L(T.lhdn10), L(T.gold10), L(T.xp10)]}>
         {ch.rows.map((r) => (
           <tr key={r.slot} className={`${r.ally ? 'is-ally' : 'is-enemy'} ${r.slot === slot ? 'is-me' : ''}`}>
@@ -321,22 +613,63 @@ const Laning: React.FC<{ ch: NonNullable<ChaptersT['laning']>; heroById: Map<num
   );
 };
 
-const Deaths: React.FC<{ ch: NonNullable<ChaptersT['deaths']>; heroById: Map<number, HeroRef>; onAsk: () => void }> = ({ ch, heroById, onAsk }) => {
+type DeathFilter = 'all' | 'caught' | 'fight' | 'converted';
+
+const Deaths: React.FC<{
+  ch: NonNullable<ChaptersT['deaths']>;
+  heroById: Map<number, HeroRef>;
+  onAsk: () => void;
+  defaultOpen?: boolean;
+  highlightIndex?: number | null;
+  /** Changes on every timeline jump into this chapter, including repeat jumps to the same row. */
+  jumpSeq?: number;
+}> = ({ ch, heroById, onAsk, defaultOpen, highlightIndex, jumpSeq }) => {
   const { L } = useLang();
+  const [filter, setFilter] = useState<DeathFilter>('all');
+
+  useEffect(() => {
+    if (highlightIndex != null) setFilter('all');
+  }, [highlightIndex, jumpSeq]);
+
+  const rows = ch.rows.map((row, idx) => ({ row, idx })).filter(({ row }) => {
+    if (filter === 'caught') return row.context === 'caught';
+    if (filter === 'fight') return row.context.startsWith('fight');
+    if (filter === 'converted') return Boolean(row.converted);
+    return true;
+  });
+
+  const filters: { id: DeathFilter; label: Bi }[] = [
+    { id: 'all', label: T.filterAll },
+    { id: 'caught', label: T.filterCaught },
+    { id: 'fight', label: T.filterFight },
+    { id: 'converted', label: T.filterConverted },
+  ];
+
   return (
-    <Chapter id="deaths" title={T.deaths} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}>
-      <Table label={L(T.deaths)} head={[L(T.time), L(T.killer), L(T.context), L(T.goldLost), L(T.dead), L(T.after)]}>
-        {ch.rows.map((d: DeathRow, i) => (
-          <tr key={i} className={`ctx-${d.context}`}>
-            <th scope="row">{clock(d.time)}</th>
-            <td><HeroTag hero={d.killer != null ? heroById.get(d.killer) : null} /></td>
-            <td><span className="cx-ctx">{L(T.ctx[d.context])}</span></td>
-            <td>{d.gold_lost != null ? d.gold_lost : '—'}</td>
-            <td>{d.time_dead != null ? `${d.time_dead}s` : '—'}</td>
-            <td>{d.converted ? L(T.objective) : ''}</td>
-          </tr>
+    <Chapter id="deaths" title={T.deaths} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} defaultOpen={defaultOpen || filter !== 'all'}>
+      <div className="cx-filter-bar" role="group" aria-label={L(T.deaths)}>
+        {filters.map((f) => (
+          <button key={f.id} type="button" className={`cx-filter-pill ${filter === f.id ? 'is-on' : ''}`} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
+            {L(f.label)}
+          </button>
         ))}
-      </Table>
+      </div>
+      {rows.length === 0 ? (
+        <p className="cx-muted">{L(T.filterEmpty)}</p>
+      ) : (
+        <Table label={L(T.deaths)} head={[L(T.time), L(T.killer), L(T.context), L(T.goldLost), L(T.dead), L(T.after)]}>
+          {rows.map(({ row: d, idx }) => (
+            <tr key={idx} id={`cx-death-row-${idx}`} className={`ctx-${d.context} ${highlightIndex === idx ? 'is-highlighted' : ''}`}>
+              <th scope="row">{clock(d.time)}</th>
+              <td><HeroTag hero={d.killer != null ? heroById.get(d.killer) : null} /></td>
+              <td><span className="cx-ctx">{L(T.ctx[d.context])}</span></td>
+              <td>{d.gold_lost != null ? d.gold_lost : '—'}</td>
+              <td>{d.time_dead != null ? `${d.time_dead}s` : '—'}</td>
+              <td>{d.converted ? L(T.objective) : ''}</td>
+            </tr>
+          ))}
+        </Table>
+      )}
     </Chapter>
   );
 };
@@ -389,24 +722,65 @@ const Items: React.FC<{ ch: NonNullable<ChaptersT['items']>; heroById: Map<numbe
   );
 };
 
-const Fights: React.FC<{ ch: NonNullable<ChaptersT['fights']>; onAsk: () => void }> = ({ ch, onAsk }) => {
+type FightFilter = 'all' | 'lost' | 'ult_unused' | 'absent';
+
+const Fights: React.FC<{
+  ch: NonNullable<ChaptersT['fights']>;
+  onAsk: () => void;
+  defaultOpen?: boolean;
+  highlightIndex?: number | null;
+  /** Changes on every timeline jump into this chapter, including repeat jumps to the same row. */
+  jumpSeq?: number;
+}> = ({ ch, onAsk, defaultOpen, highlightIndex, jumpSeq }) => {
   const { L } = useLang();
+  const [filter, setFilter] = useState<FightFilter>('all');
+
+  useEffect(() => {
+    if (highlightIndex != null) setFilter('all');
+  }, [highlightIndex, jumpSeq]);
+
   const head = [L(T.time), L(T.result), L(T.kills), L(T.you), L(T.damage)];
   if (ch.ultimate) head.push(L(ch.ultimate));
+
+  const rows = ch.rows.map((row, idx) => ({ row, idx })).filter(({ row }) => {
+    if (filter === 'lost') return row.result === 'lost';
+    if (filter === 'ult_unused') return row.ult_state === 'unused';
+    if (filter === 'absent') return !row.present;
+    return true;
+  });
+
+  const filters: { id: FightFilter; label: Bi }[] = [
+    { id: 'all', label: T.filterAll },
+    { id: 'lost', label: T.filterFightLost },
+    ...(ch.ultimate ? [{ id: 'ult_unused' as const, label: T.filterUltUnused }] : []),
+    { id: 'absent', label: T.filterAbsent },
+  ];
+
   return (
-    <Chapter id="fights" title={T.fights} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk}>
-      <Table label={L(T.fights)} head={head}>
-        {ch.rows.map((f: FightRow, i) => (
-          <tr key={i} className={`res-${f.result} ${f.present ? '' : 'is-absent'}`}>
-            <th scope="row">{clock(f.start)}</th>
-            <td><span className={`cx-res cx-res--${f.result}`}>{L(T[f.result])}</span></td>
-            <td>{f.kills[0]}–{f.kills[1]}</td>
-            <td>{f.present ? (f.died ? L(T.diedShort) : '✓') : L(T.absent)}</td>
-            <td>{f.present ? k(f.damage) : '—'}</td>
-            {ch.ultimate && <td>{f.ult_state ? L(T.ult[f.ult_state]) : f.ult_used ? L(T.ult.used) : '—'}</td>}
-          </tr>
+    <Chapter id="fights" title={T.fights} takeaway={ch.takeaway} points={ch.points} note={ch.note} onAsk={onAsk} defaultOpen={defaultOpen || filter !== 'all'}>
+      <div className="cx-filter-bar" role="group" aria-label={L(T.fights)}>
+        {filters.map((f) => (
+          <button key={f.id} type="button" className={`cx-filter-pill ${filter === f.id ? 'is-on' : ''}`} aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>
+            {L(f.label)}
+          </button>
         ))}
-      </Table>
+      </div>
+      {rows.length === 0 ? (
+        <p className="cx-muted">{L(T.filterEmpty)}</p>
+      ) : (
+        <Table label={L(T.fights)} head={head}>
+          {rows.map(({ row: f, idx }) => (
+            <tr key={idx} id={`cx-fight-row-${idx}`} className={`res-${f.result} ${f.present ? '' : 'is-absent'} ${highlightIndex === idx ? 'is-highlighted' : ''}`}>
+              <th scope="row">{clock(f.start)}</th>
+              <td><span className={`cx-res cx-res--${f.result}`}>{L(T[f.result])}</span></td>
+              <td>{f.kills[0]}–{f.kills[1]}</td>
+              <td>{f.present ? (f.died ? L(T.diedShort) : '✓') : L(T.absent)}</td>
+              <td>{f.present ? k(f.damage) : '—'}</td>
+              {ch.ultimate && <td>{f.ult_state ? L(T.ult[f.ult_state]) : f.ult_used ? L(T.ult.used) : '—'}</td>}
+            </tr>
+          ))}
+        </Table>
+      )}
     </Chapter>
   );
 };

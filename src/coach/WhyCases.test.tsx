@@ -31,6 +31,9 @@ describe('why -> pro cases', () => {
     const toChapter = vi.fn(); chapter.scrollIntoView = toChapter;
     fireEvent.click(screen.getAllByText(/看职业对局/)[0]);
     expect(toChapter).toHaveBeenCalled();
+    // The link switches the workspace to the cases tab; go back to the overview to click it again.
+    expect(screen.getByRole('tab', { name: '职业对照' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(screen.getByRole('tab', { name: '核心归因' }));
     const theme = document.createElement('section'); theme.id = 'cx-case-laning';
     const toTheme = vi.fn(); theme.scrollIntoView = toTheme; document.body.appendChild(theme);
     fireEvent.click(screen.getAllByText(/看职业对局/)[0]);
