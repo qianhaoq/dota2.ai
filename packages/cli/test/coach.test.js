@@ -8,7 +8,9 @@ const sink = () => { let s = ''; return { write: (x) => { s += x; }, get text() 
 
 describe('dota2ai coach', () => {
   it('parses arguments strictly', () => {
-    expect(parseCoachArgs(['coach', '9091400302', '--hero', 'spectre', '--lang', 'zh', '--json'])).toEqual({ matchId: '9091400302', hero: 'spectre', lang: 'zh', json: true });
+    expect(parseCoachArgs(['coach', '9091400302', '--hero', 'spectre', '--lang', 'zh', '--json'])).toEqual({ matchId: '9091400302', hero: 'spectre', lang: 'zh', json: true, section: null });
+    expect(parseCoachArgs(['coach', '1', '--hero', 'axe', '--section', 'why']).section).toBe('why');
+    expect(() => parseCoachArgs(['coach', '1', '--hero', 'axe', '--section', 'nope'])).toThrow(/Section/);
     expect(() => parseCoachArgs(['coach', 'x'])).toThrow(/Usage/);
     expect(() => parseCoachArgs(['coach', '1', '--lang', 'fr'])).toThrow(/Language/);
   });

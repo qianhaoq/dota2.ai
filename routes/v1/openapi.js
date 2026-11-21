@@ -23,7 +23,17 @@ export const openapi = {
 export const llms = `# dota2.ai
 Dota 2 match reviews grounded in OpenDota facts. Never invent numbers; all displayed numbers come from match evidence. Five-minute adverse gold windows determine turning points; death minutes use floor(time/60). Missing data is disclosed.
 
-Review page: /m/{matchId}?hero=pudge&lang=en (also zh).
+Coach (the main review, deterministic, bilingual en/zh objects):
+- Page: /r/{matchId}?p={seat 0-9}&lang=zh
+- GET /api/coach/{matchId} returns dota2.ai/coach-report@1: match, players[10], reviews[10] (findings, chapters: story.why causes {id, phase, mine, impact, title, evidence[], fix}, laning, deaths, items, fights, plan), data_gaps.
+- GET /api/coach/{matchId}/cases?slot={seat} returns pro games on the same problem (parsed matches only).
+- POST /api/coach/{matchId}/ask with {question, slot, lang} streams SSE data frames {text}, then {done:true}; {fallback:true} marks an answer taken from the report.
+- GET /api/coach/players/{friendCode}/recent returns a player's recent public games with their seat.
+- CLI: node packages/cli/bin/dota2ai.js help — recent, coach --section why|lane|deaths|items|fights|plan, cases, ask, goal set|show|check; --json everywhere.
+- Agent skill: packages/cli/skills/dota2ai-coach/SKILL.md
+Coach rate limit: 40 requests/minute/IP. Respect Retry-After.
+
+Review page (v1): /m/{matchId}?hero=pudge&lang=en (also zh).
 GET /api/v1/review/{matchId}?hero=pudge&lang=en returns Review JSON; omit hero for roster selection.
 GET /api/v1/review/{matchId}/stream returns SSE v1 with cached Last-Event-ID replay.
 POST /api/v1/review/{matchId}/ask accepts {hero,lang,followup_id?,question?}. Presets include death_list, laning_0_10 and item_timings. Unsupported questions receive a data-gap refusal.
