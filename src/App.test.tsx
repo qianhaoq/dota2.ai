@@ -2,26 +2,25 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { AppRoutes } from './App';
 import { I18nProvider } from './v2/i18n/I18nProvider';
 import { FlagsProvider } from './v2/FlagsProvider';
 
-// Keep the legacy shell out of route tests (network/heavy deps) — we only
-// assert which route the router picked.
-vi.mock('./app/WorkspaceShell', () => ({
-  default: () => <div data-testid="legacy-shell" />,
-}));
-
-// The v2 match page fetches review data on mount; route tests only care about
-// which shell renders, so fetch fails fast (the page shows its error state).
+// Pages fetch on mount; route tests only care where the router lands.
 const fetchMock = vi.fn(() => Promise.reject(new Error('no network in route tests')));
+
+const Where: React.FC = () => {
+  const l = useLocation();
+  return <output data-testid="where">{`${l.pathname}${l.search}`}</output>;
+};
 
 function renderRoute(entry: string) {
   return render(
     <MemoryRouter initialEntries={[entry]}>
       <I18nProvider>
         <FlagsProvider>
+          <Where />
           <AppRoutes />
         </FlagsProvider>
       </I18nProvider>
@@ -40,7 +39,7 @@ describe('App routes', () => {
     vi.unstubAllGlobals();
   });
 
-  it('/ shows the coach home (the v2 conversational home moved to /new)', () => {
+  it('/ shows the coach home', () => {
     renderRoute('/');
     expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Paste a match.');
     expect(screen.getByPlaceholderText('Match ID or OpenDota / Dotabuff / STRATZ link')).toBeTruthy();
@@ -50,60 +49,28 @@ describe('App routes', () => {
     expect(document.querySelector('meta[name="robots"]')).toBeNull();
   });
 
-  it('/new shows the v2 empty state with the composer placeholder', () => {
-    renderRoute('/new');
-    expect(screen.getByText('Review your Dota 2 match.')).toBeTruthy();
-    expect(screen.getByPlaceholderText('Paste match ID or link')).toBeTruthy();
-    expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex');
+  // Retired pages redirect: the coach is the only UI.
+  it.each([
+    ['/new', '/'],
+    ['/new/anything?lang=zh', '/?lang=zh'],
+    ['/legacy', '/'],
+    ['/legacy/tools?lang=en', '/?lang=en'],
+    ['/m', '/'],
+    ['/m/9091400302', '/r/9091400302'],
+    ['/m/9091400302?hero=pudge&lang=zh', '/r/9091400302?lang=zh'],
+    ['/m/not-a-number', '/'],
+  ])('%s redirects to %s', async (from, to) => {
+    renderRoute(from);
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(to));
   });
 
-  it('/m/:matchId shows the match chip and the load error state', async () => {
-    renderRoute('/m/9035042364?hero=pudge');
-    expect(screen.getByText('9035042364')).toBeTruthy();
-    await screen.findByRole('button', { name: 'Retry' });
-    // /m pages are indexable: no noindex meta
-    expect(document.querySelector('meta[name="robots"]')).toBeNull();
-  });
-
-  it('/m/:matchId?lang=zh renders Chinese copy and sets html lang zh-CN', async () => {
-    renderRoute('/m/9035042364?hero=pudge&lang=zh');
-    expect(await screen.findByText('比赛')).toBeTruthy();
-    expect(screen.getByPlaceholderText('粘贴比赛 ID 或链接')).toBeTruthy();
-    expect(document.documentElement.lang).toBe('zh-CN');
-  });
-
-  it('non-numeric match id gets a friendly message', () => {
-    renderRoute('/m/not-a-match');
-    expect(screen.getByText(/doesn’t look like a match ID/)).toBeTruthy();
-  });
-
-  it('bare /m (no match id) renders the invalid-match view, not the legacy shell', () => {
-    const { unmount } = renderRoute('/m');
-    expect(screen.getByText(/doesn’t look like a match ID/)).toBeTruthy();
-    unmount();
-    renderRoute('/m/');
-    expect(screen.getByText(/doesn’t look like a match ID/)).toBeTruthy();
-  });
-
-  it('/legacy renders the legacy shell', () => {
-    renderRoute('/legacy');
-    expect(screen.getByTestId('legacy-shell')).toBeTruthy();
-  });
-
-  it('legacy hash deep links on / redirect to /legacy + hash', async () => {
-    renderRoute('/#training');
-    await waitFor(() => expect(screen.getByTestId('legacy-shell')).toBeTruthy());
-  });
-
-  it('legacy hash #/match/:id on / redirects to /m/:id', async () => {
-    renderRoute('/#/match/9035042364');
-    await waitFor(() => expect(screen.getByText('9035042364')).toBeTruthy());
-    expect(screen.queryByText('Review your Dota 2 match.')).toBeNull();
-  });
-
-  it('legacy hash #/m/:id on / redirects to /m/:id', async () => {
-    renderRoute('/#/m/9035042364');
-    await waitFor(() => expect(screen.getByText('9035042364')).toBeTruthy());
+  it.each([
+    ['/#/match/9091400302', '/r/9091400302'],
+    ['/#/m/9091400302', '/r/9091400302'],
+    ['/?lang=zh#training', '/?lang=zh'],
+  ])('legacy hash link %s goes to %s', async (from, to) => {
+    renderRoute(from);
+    await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(to));
   });
 
   it('unknown routes fall back to the coach home', () => {
