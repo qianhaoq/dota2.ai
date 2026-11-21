@@ -250,3 +250,38 @@ describe('official ability facts (Valve datafeed herodata)', async () => {
     }
   });
 });
+
+describe('story "why": your hero\'s core item against pro builds', () => {
+  const raw = load('match9091400302.parsed.json');
+  const HI = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/hero-items.json'), 'utf8'));
+  const cause = (r: any, slot: number) => r.reviews[slot].chapters.story.why?.find((c: any) => c.id === 'items.key_item');
+
+  it('names a late consensus item, what came first, and the fights lost before it', () => {
+    const c = cause(buildCoachReport(raw), 0); // Tidehunter, Blink at 29:20
+    const tide = raw.players.find((p: any) => p.hero_id === 29);
+    const blinkAt = tide.purchase_log.find((x: any) => x.key === 'blink').time;
+    expect(c.title.zh).toBe(`核心装备：闪烁匕首 ${Math.floor(blinkAt / 60)}:${String(blinkAt % 60).padStart(2, '0')} 才买，职业选手的潮汐猎人中期最常出的大件就是它`);
+    const [top, next] = HI.heroes['29'];
+    expect(top.key).toBe('blink');
+    expect(top.n).toBeGreaterThanOrEqual(1.5 * next.n);
+    expect(c.evidence[0].zh).toContain(`闪烁匕首 ${top.n} 次`);
+    expect(c.evidence[0].zh).toContain(`OpenDota 职业样本，${HI.fetched}`);
+    // Finished items only (no Void Stone, no Phase Boots), in purchase order.
+    expect(c.evidence[1].zh).toMatch(/^买闪烁匕首之前你完成了：法师克星 16:\d\d、圣化护服 21:\d\d$/);
+    expect(c.evidence[2].zh).toMatch(/^闪烁匕首到手前，10 分钟后输了 \d+ 波团战；你在场 \d+ 波，其中放出大招 \d+ 波$/);
+    expect(c.fix.zh).toBe('下一局把闪烁匕首排在法师克星之前：这是职业选手玩潮汐猎人时中期最常出的大件。');
+  });
+
+  it('says nothing when the item came in the mid game, the pro data is split, or there is no purchase log', () => {
+    const early = JSON.parse(JSON.stringify(raw));
+    early.players.find((p: any) => p.hero_id === 29).purchase_log.find((x: any) => x.key === 'blink').time = 1200;
+    expect(cause(buildCoachReport(early), 0)).toBeUndefined();
+    // Warlock: Glimmer Cape vs Solar Crest is no consensus.
+    const [a, b] = HI.heroes['37'];
+    expect(a.n).toBeLessThan(1.5 * b.n);
+    expect(cause(buildCoachReport(raw), 2)).toBeUndefined();
+    const bare = JSON.parse(JSON.stringify(raw));
+    for (const p of bare.players) delete p.purchase_log;
+    expect(cause(buildCoachReport(bare), 0)).toBeUndefined();
+  });
+});
