@@ -1,4 +1,4 @@
-import type { Language } from '../../types';
+export type Language = 'en' | 'zh';
 
 /**
  * Pure language resolution for the d2ai shell. Priority:

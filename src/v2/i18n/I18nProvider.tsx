@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import type { Language } from '../../types';
+import type { Language } from './resolveLang';
 import { en, type DictKey } from './en';
 import { zh } from './zh';
 import {

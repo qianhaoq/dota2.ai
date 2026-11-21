@@ -65,7 +65,9 @@ describe('review_ai_validation provider field', () => {
 });
 
 import { cardAttemptDeadlineMs } from '../../lib/completionDeadline.js';
-import { REVIEW_CLIENT_TIMEOUT_MS } from '../services/geminiService';
+// The retired web client's review timeout (src/services/geminiService.ts, removed with the old UI).
+// Kept so the server budget stays inside it until /api/review itself is removed.
+const REVIEW_CLIENT_TIMEOUT_MS = 180000;
 import fs from 'node:fs';
 
 describe('review timing budget', () => {

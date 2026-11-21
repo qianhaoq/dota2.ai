@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { clampFollowUpAttemptMs, DEFAULT_FOLLOW_UP_ATTEMPT_MS } from '../../lib/matchReview/followUpTimeout.js';
-import { REVIEW_CLIENT_TIMEOUT_MS } from '../services/geminiService';
+// The retired web client's review timeout (src/services/geminiService.ts, removed with the old UI).
+// Kept so the server budget stays inside it until /api/review itself is removed.
+const REVIEW_CLIENT_TIMEOUT_MS = 180000;
 
 const budgets = { fetchBudgetMs: 90000, requestBudgetMs: 170000, maxAttempts: 2, minAttemptMs: 5000 };
 

@@ -71,7 +71,7 @@ import {
 } from './lib/llmErrors.js';
 import { publicModelName, resolveDeepSeekConfig, loggableModelName } from './lib/llmConfig.js';
 import { jsonBodyErrorHandler } from './lib/jsonBodyErrors.js';
-import { matchPathRedirect } from './lib/matchPathRedirect.js';
+import { matchPathRedirect, retiredPathRedirect } from './lib/matchPathRedirect.js';
 import { staticNotFound } from './lib/staticNotFound.js';
 import { parsePositiveInt } from './lib/positiveInt.js';
 import {
@@ -3362,10 +3362,9 @@ app.post('/api/events', (req, res) => {
   return res.status(202).json({ ok: true });
 });
 
-// Legacy /match/:id permalinks → canonical /m/:id, 301 with the query string
-// preserved (lib/matchPathRedirect.js; non-numeric ids fall through to the
-// SPA below). Must stay before static/SPA. Hash routes (#/m/:id,
-// #/match/:id) never reach the server — the fragment is handled client-side.
+// URLs that are not pages any more (lib/matchPathRedirect.js), before
+// static/SPA: /match/:id → /r/:id; /new, /m, /legacy → / (keeping ?lang).
+app.use(retiredPathRedirect);
 app.get('/match/:id', matchPathRedirect);
 
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -3373,12 +3372,6 @@ app.use(express.static(path.join(__dirname, 'dist')));
 app.use(staticNotFound());
 
 app.get('*', (req, res) => {
-  // The /new and /legacy surfaces are gated/unlisted — keep them out of
-  // search indexes (case-insensitive; / and /m stay indexable).
-  const p = req.path.toLowerCase();
-  if (p === '/new' || p.startsWith('/new/') || p === '/legacy' || p.startsWith('/legacy/')) {
-    res.set('X-Robots-Tag', 'noindex');
-  }
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 

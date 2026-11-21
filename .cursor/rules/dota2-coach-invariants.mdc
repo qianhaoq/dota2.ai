@@ -10,6 +10,8 @@ Encoded from repeated Codex P1 findings: PR #54 (coach draft/review/practice iso
 PR #56 (streaming markdown emphasis). Every rule below was a real P1 bug once. When touching
 these files, scan this list before and after your diff.
 
+> **Retired (2026-11-21):** the legacy/v2 UI (`src/components`, `src/v2`, `src/features`, `CoachView`, `markdownLines`, `geminiService`) was removed; the coach (`src/coach`, `lib/coach`, `dota-coach-ui/2` cards) is the only UI. Sections A–B below apply only if that code returns; section C (AI output language) still applies to server routes.
+
 ## A. CoachView / draft / practice (#54) — CRITICAL
 
 1. **Revision + cancel go together.** Any draft / side / practice change that invalidates
