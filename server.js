@@ -34,6 +34,9 @@ import {
   createParseRequestBudget,
 } from './lib/matchReview/matchParse.js';
 import { createMatchDetailCache } from './lib/matchReview/matchDetailCache.js';
+import { isMatchParsed } from './lib/matchReview/matchParse.js';
+import { createGcsBucket } from './lib/matchReview/replayIngest/gcs.js';
+import { createMatchStore } from './lib/matchStore.js';
 import {
   createReadOnlyParseStatusResolver,
   createReviewParseRequestHandler,
@@ -1300,7 +1303,7 @@ app.get('/health', (req, res) => {
 // Counts only — no keys, no URLs with query strings.
 app.get('/api/health/upstream', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ opendota: opendota.snapshot() });
+  res.json({ opendota: opendota.snapshot(), matchStore: matchStore ? matchStore.snapshot() : { configured: false } });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -2452,12 +2455,30 @@ app.post('/api/chat', async (req, res) => {
 // ============ Match Replay Review ============
 // Unparsed entries live under a short TTL and never overwrite parsed data
 // (see lib/matchReview/matchDetailCache.js).
+// Parsed matches never change: with MATCH_CACHE_BUCKET set they are kept in
+// GCS, shared by every instance and every deploy (lib/matchStore.js). Reads
+// are bounded and any store failure is a miss, so OpenDota stays the source.
+const matchStore = (() => {
+  const name = (process.env.MATCH_CACHE_BUCKET || '').trim();
+  if (!name) return null;
+  try {
+    return createMatchStore({ bucket: createGcsBucket(name), isParsed: isMatchParsed, log: (msg) => console.warn(`[match-store] ${msg}`) });
+  } catch (err) {
+    console.warn(`[match-store] disabled: ${err?.message || err}`);
+    return null;
+  }
+})();
+
 const matchDetailCache = createMatchDetailCache({
   fetchMatch: async (matchId, options = {}) => {
+    const stored = matchStore ? await matchStore.getMatch(matchId) : null;
+    if (stored) return stored;
     const raw = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
       ...options, timeoutMs: options.timeoutMs ?? 25000,
     });
-    return { ...raw, opendota_fetched_at: new Date().toISOString() };
+    const data = { ...raw, opendota_fetched_at: new Date().toISOString() };
+    matchStore?.putMatch(matchId, data); // only if parsed; fire-and-forget
+    return data;
   },
   log: (msg) => console.warn(`[match-detail-cache] ${msg}`),
 });
@@ -2548,9 +2569,24 @@ function readBuiltIndexHtml() {
   return builtIndexHtml;
 }
 // Pro cases are background work: they queue behind pages a user is waiting on.
+// Pro games and their candidate lists are shared through the match store too:
+// a cold instance does not re-run the explorer query or re-fetch every case game.
+const CASE_POOL_STORE_MS = 12 * 60 * 60 * 1000;
 const coachCases = createCaseService({
-  explorer: (sql) => fetchWithRetry(`${OPENDOTA_API}/explorer?sql=${encodeURIComponent(sql)}`, 1, 1000, { timeoutMs: 20000, priority: 'low' }),
-  fetchMatch: (id) => fetchWithRetry(`${OPENDOTA_API}/matches/${id}`, 1, 1000, { timeoutMs: 20000, priority: 'low' }),
+  explorer: async (sql) => {
+    const stored = matchStore ? await matchStore.getResult(`explorer:${sql}`, CASE_POOL_STORE_MS) : null;
+    if (stored) return stored;
+    const out = await fetchWithRetry(`${OPENDOTA_API}/explorer?sql=${encodeURIComponent(sql)}`, 1, 1000, { timeoutMs: 20000, priority: 'low' });
+    if (Array.isArray(out?.rows)) matchStore?.putResult(`explorer:${sql}`, { rows: out.rows });
+    return out;
+  },
+  fetchMatch: async (id) => {
+    const stored = matchStore ? await matchStore.getMatch(id) : null;
+    if (stored) return stored;
+    const raw = await fetchWithRetry(`${OPENDOTA_API}/matches/${id}`, 1, 1000, { timeoutMs: 20000, priority: 'low' });
+    matchStore?.putMatch(id, raw);
+    return raw;
+  },
   log: (msg) => console.warn(`[coach-cases] ${msg}`),
 });
 
