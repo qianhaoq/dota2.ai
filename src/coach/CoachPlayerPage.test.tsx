@@ -44,19 +44,40 @@ describe('recent games page', () => {
 });
 
 describe('home: start from a friend code', () => {
-  it('turns a Steam profile link into the recent-games page, and explains vanity URLs', async () => {
+  it('the one input turns a Steam profile link into the recent-games page, and explains vanity URLs', async () => {
     recent.mockResolvedValue({ account_id: 86745912, empty_hint: null, matches: [] });
     at('/');
-    // Collapsed until asked for: the match ID box stays the one primary input.
-    expect(screen.queryByPlaceholderText('好友代码、SteamID64 或个人资料链接')).toBeNull();
-    fireEvent.click(screen.getByText('找不到比赛 ID？用 Steam 好友代码'));
-    const input = screen.getByPlaceholderText('好友代码、SteamID64 或个人资料链接');
+    // One box takes a match ID or a friend code: no second form.
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    const input = screen.getByPlaceholderText('比赛 ID，或 OpenDota / Dotabuff / STRATZ 链接');
     fireEvent.change(input, { target: { value: 'https://steamcommunity.com/id/someone' } });
-    fireEvent.click(screen.getByText('列出我的比赛'));
+    fireEvent.submit(input.closest('form')!);
     expect(screen.getByRole('alert').textContent).toMatch(/自定义的 Steam 链接/);
     fireEvent.change(input, { target: { value: 'https://steamcommunity.com/profiles/76561198047011640' } });
-    fireEvent.click(screen.getByText('列出我的比赛'));
+    expect(screen.getByRole('button', { name: '列出我的比赛' })).toBeTruthy(); // the button follows what was recognised
+    fireEvent.click(screen.getByRole('button', { name: '列出我的比赛' }));
     await waitFor(() => expect(recent).toHaveBeenCalledWith('86745912', expect.anything()));
+  });
+
+  it('a bare friend code needs the friend-code mode: in match mode the same number is a match ID (review #211)', async () => {
+    recent.mockResolvedValue({ account_id: 86745912, empty_hint: null, matches: [] });
+    at('/');
+    fireEvent.click(screen.getByRole('radio', { name: '好友码' }));
+    const input = screen.getByPlaceholderText('好友代码、SteamID64 或个人资料链接');
+    fireEvent.change(input, { target: { value: '86745912' } });
+    expect(screen.getByRole('button', { name: '列出我的比赛' })).toBeTruthy();
+    fireEvent.submit(input.closest('form')!);
+    await waitFor(() => expect(recent).toHaveBeenCalledWith('86745912', expect.anything()));
+  });
+
+  it('friend-code mode rejects what is not an account instead of opening a match', () => {
+    at('/');
+    fireEvent.click(screen.getByRole('radio', { name: '好友码' }));
+    const input = screen.getByPlaceholderText('好友代码、SteamID64 或个人资料链接');
+    fireEvent.change(input, { target: { value: 'not an id' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(recent).not.toHaveBeenCalled();
   });
 
   it('offers "my recent games" once an account is remembered (no games loaded yet / none)', async () => {
