@@ -126,6 +126,7 @@ const UI = {
   footer: { en: 'Not affiliated with Valve. Match data from OpenDota.', zh: '粉丝项目，与 Valve 无关。比赛数据来自 OpenDota。' },
   classic: { en: 'Classic tools', zh: '旧版工具' },
   parsed: { en: 'Parsed', zh: '已解析' },
+  fromStratz: { en: 'Data from STRATZ (OpenDota unavailable)', zh: '数据来自 STRATZ（OpenDota 暂不可用）' },
   copied: { en: 'Copied', zh: '已复制' },
 } satisfies Record<string, Bi | Record<string, Bi>>;
 
@@ -614,6 +615,7 @@ const MatchHeader: React.FC<{ report: CoachReport; slot: number | null; pos: num
           {m.patch && <span>{m.patch}</span>}
           <span>{L(m.mode)}{m.ranked ? ` · ${L(UI.ranked)}` : ''}</span>
           <span className={`cx-pill ${m.parsed ? 'ok' : 'warn'}`}>{m.parsed ? L(UI.parsed) : L(UI.needsParse)}</span>
+          {m.source === 'stratz' && <span className="cx-pill">{L(UI.fromStratz)}</span>}
         </p>
       </div>
       <div className="cx-share">
