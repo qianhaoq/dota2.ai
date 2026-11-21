@@ -65,6 +65,9 @@ export interface DeathRow {
   time: number; killer: number | null; phase: 'early' | 'mid' | 'late';
   context: 'lane' | 'caught' | 'fight_won' | 'fight_lost' | 'fight_even' | 'fight' | 'unknown';
   gold_lost: number | null; time_dead: number | null; converted: boolean | null;
+  /** The killer's latest finished key item at that moment, and whether they held the Aegis (parsed replays). */
+  killer_item?: { item: ItemRef; time: number } | null;
+  killer_aegis?: boolean | null;
 }
 
 export interface Chapters {
@@ -88,7 +91,11 @@ export interface Chapters {
   } | null;
   deaths: {
     rows: DeathRow[];
-    summary: { deaths: number; recorded: number; time_dead: number | null; share_dead: number | null; gold_lost: number; top_killer: { hero: number; deaths: number } | null };
+    summary: { deaths: number; recorded: number; time_dead: number | null; share_dead: number | null; gold_lost: number; top_killer: {
+      hero: number; deaths: number;
+      /** Deaths to this killer split by their first gap closer (or first key item) in this replay. */
+      spike?: { item: ItemRef; time: number; before: number; after: number; with_aegis: number } | null;
+    } | null };
     read: Bi; note: Bi; takeaway: Bi; points: Bi[];
   } | null;
   items: {
@@ -139,7 +146,15 @@ export interface CoachReport {
   players: Player[];
   reviews: Review[];
   timeline: { radiant_gold_adv: number[] } | null;
+  /** Per slot: finished key items and Aegis windows from the replay; null when not parsed. */
+  spikes?: (PowerSpikes | null)[] | null;
   data_gaps: Bi[];
+}
+
+export interface PowerSpikes {
+  slot: number;
+  items: { time: number; item: ItemRef }[];
+  aegis: { time: number; until: number }[];
 }
 
 /* ------------------------------------------------ case studies (/cases) */

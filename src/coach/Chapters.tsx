@@ -53,6 +53,7 @@ const T = {
   laneResult: { en: 'Lane result', zh: '对线结果' },
   time: { en: 'Time', zh: '时间' },
   killer: { en: 'Killer', zh: '击杀者' },
+  aegis: { en: 'held Aegis', zh: '持盾' },
   context: { en: 'Context', zh: '场景' },
   goldLost: { en: 'Gold lost', zh: '掉金' },
   dead: { en: 'Dead for', zh: '阵亡时长' },
@@ -669,7 +670,15 @@ const Deaths: React.FC<{
           {rows.map(({ row: d, idx }) => (
             <tr key={idx} id={`cx-death-row-${idx}`} className={`ctx-${d.context} ${highlightIndex === idx ? 'is-highlighted' : ''}`}>
               <th scope="row">{clock(d.time)}</th>
-              <td><HeroTag hero={d.killer != null ? heroById.get(d.killer) : null} /></td>
+              <td>
+                <HeroTag hero={d.killer != null ? heroById.get(d.killer) : null} />
+                {(d.killer_item || d.killer_aegis) && (
+                  <small className="cx-killer-state">
+                    {d.killer_item ? `${L(d.killer_item.item)} ${clock(d.killer_item.time)}` : ''}
+                    {d.killer_aegis ? `${d.killer_item ? ' · ' : ''}${L(T.aegis)}` : ''}
+                  </small>
+                )}
+              </td>
               <td><span className="cx-ctx">{L(T.ctx[d.context])}</span></td>
               <td>{d.gold_lost != null ? d.gold_lost : '—'}</td>
               <td>{d.time_dead != null ? `${d.time_dead}s` : '—'}</td>
