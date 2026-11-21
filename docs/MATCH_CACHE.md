@@ -9,9 +9,15 @@ kept there too, for 12 hours.
 - `matches/{id}.json` — parsed matches only, written once (create-only).
   Unparsed matches and STRATZ fallbacks are never written.
 - `results/{sha256}.json` — time-boxed results, `{ at, value }`.
+- `ratelimit/opendota.json` — the OpenDota 429 cooldown every instance shares
+  (`{ until, reason, at }`, `lib/upstream/sharedCooldown.js`): when one
+  instance is told to back off, all of them stop calling OpenDota until
+  `until` and serve the data they have. Each instance re-reads it at most every
+  5 s. Last writer wins, so this is an approximate global limiter, not an
+  exact one.
 - Reads are bounded (1.5 s) and every failure is a cache miss: the bucket can
   be slow, missing or misconfigured without breaking a review.
-- Usage: `GET /api/health/upstream` → `matchStore` (hits, misses, writes, errors).
+- Usage: `GET /api/health/upstream` → `matchStore` (hits, misses, writes, errors) and `cooldown`.
 
 ## One-time setup (run by the project owner)
 

@@ -134,6 +134,7 @@ import { createRecentService } from './lib/coach/recent.js';
 import { createLlmRateLimit } from './lib/llmRateLimit.js';
 import { rateLimitKey } from './lib/rateLimitKey.js';
 import { createOpenDotaClient, OPENDOTA_BASE } from './lib/upstream/opendota.js';
+import { createSharedCooldown } from './lib/upstream/sharedCooldown.js';
 import { loadConstantsSnapshot } from './lib/constantsSnapshot.js';
 import { validateChatRequest, chatRequestErrorMessage } from './lib/chatRequest.js';
 import { normalizeFeedbackSubmission } from './lib/feedbackStore.js';
@@ -283,9 +284,23 @@ function enrichUpstreamError(err, url, status) {
 
 // Every OpenDota request goes through one client: API key, token bucket,
 // in-flight merging, Retry-After and a 429 cooldown (lib/upstream/opendota.js).
+// One GCS bucket (MATCH_CACHE_BUCKET) backs both the durable match cache and
+// the OpenDota cooldown that every instance shares. Unset: memory only.
+const cacheBucket = (() => {
+  const name = (process.env.MATCH_CACHE_BUCKET || '').trim();
+  if (!name) return null;
+  try { return createGcsBucket(name); } catch (err) {
+    console.warn(`[match-store] disabled: ${err?.message || err}`);
+    return null;
+  }
+})();
+const opendotaCooldown = cacheBucket
+  ? createSharedCooldown({ bucket: cacheBucket, log: (msg) => console.warn(`[opendota-cooldown] ${msg}`) })
+  : undefined;
 const opendota = createOpenDotaClient({
   apiKey: process.env.OPENDOTA_API_KEY || '',
   rpm: parsePositiveInt(process.env.OPENDOTA_RPM, 0, { max: 100000 }) || undefined,
+  cooldown: opendotaCooldown,
   log: (msg) => console.warn(`[opendota] ${msg}`),
 });
 
@@ -1303,7 +1318,11 @@ app.get('/health', (req, res) => {
 // Counts only — no keys, no URLs with query strings.
 app.get('/api/health/upstream', (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json({ opendota: opendota.snapshot(), matchStore: matchStore ? matchStore.snapshot() : { configured: false } });
+  res.json({
+    opendota: opendota.snapshot(),
+    cooldown: opendotaCooldown ? opendotaCooldown.snapshot() : { shared: false },
+    matchStore: matchStore ? matchStore.snapshot() : { configured: false },
+  });
 });
 
 app.get('/api/health', async (req, res) => {
@@ -2458,16 +2477,9 @@ app.post('/api/chat', async (req, res) => {
 // Parsed matches never change: with MATCH_CACHE_BUCKET set they are kept in
 // GCS, shared by every instance and every deploy (lib/matchStore.js). Reads
 // are bounded and any store failure is a miss, so OpenDota stays the source.
-const matchStore = (() => {
-  const name = (process.env.MATCH_CACHE_BUCKET || '').trim();
-  if (!name) return null;
-  try {
-    return createMatchStore({ bucket: createGcsBucket(name), isParsed: isMatchParsed, log: (msg) => console.warn(`[match-store] ${msg}`) });
-  } catch (err) {
-    console.warn(`[match-store] disabled: ${err?.message || err}`);
-    return null;
-  }
-})();
+const matchStore = cacheBucket
+  ? createMatchStore({ bucket: cacheBucket, isParsed: isMatchParsed, log: (msg) => console.warn(`[match-store] ${msg}`) })
+  : null;
 
 const matchDetailCache = createMatchDetailCache({
   fetchMatch: async (matchId, options = {}) => {
