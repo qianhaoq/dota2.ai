@@ -147,4 +147,70 @@ describe('opendota client', () => {
     expect(createOpenDotaClient({}).snapshot().rpm).toBe(50);
     expect(createOpenDotaClient({ apiKey: 'k' }).snapshot().rpm).toBe(1200);
   });
+  it('a request queued for a token re-checks the cooldown before sending', async () => {
+    vi.useFakeTimers();
+    const sent: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const c = createOpenDotaClient({
+      rpm: 60, maxQueueWaitMs: 60_000, sleep: async () => {},
+      fetchImpl: async (u: string) => {
+        const p = new URL(u).pathname; sent.push(p);
+        if (p === '/api/slow') { await gate; return json({}, 429, { 'retry-after': '60' }); }
+        return json({});
+      },
+    });
+    const burst = Array.from({ length: 5 }, (_, i) => c.getJson(`${BASE}/b/${i}`));
+    const slow = c.getJson(`${BASE}/slow`, { retries: 0 });
+    await Promise.all(burst);
+    const queued = c.getJson(`${BASE}/queued`, { retries: 0 }); // bucket empty: waits for a token
+    await vi.advanceTimersByTimeAsync(0);
+    release(); // the in-flight request gets a 429 → cooldown
+    await expect(slow).rejects.toMatchObject({ status: 429 });
+    const q = expect(queued).rejects.toMatchObject({ status: 429 });
+    await vi.advanceTimersByTimeAsync(2000); // a token frees up
+    await q;
+    expect(sent).not.toContain('/api/queued');
+  });
+
+  it('retries a body that fails to read, and marks the final failure as upstream', async () => {
+    let n = 0;
+    const bad = { ok: true, status: 200, headers: { get: () => null }, json: async () => { throw new SyntaxError('Unexpected end of JSON'); } };
+    const c = createOpenDotaClient({ rpm: 6000, sleep: async () => {}, fetchImpl: async () => (n++ === 0 ? bad : json({ ok: 1 })) });
+    expect(await c.getJson(`${BASE}/matches/6`)).toEqual({ ok: 1 });
+    const always = createOpenDotaClient({ rpm: 6000, sleep: async () => {}, fetchImpl: async () => bad });
+    await expect(always.getJson(`${BASE}/matches/7`, { retries: 1 })).rejects.toMatchObject({ upstream: 'opendota', retryable: true });
+  });
+
+  it('a 503 with a long Retry-After fails fast instead of retrying early', async () => {
+    let calls = 0;
+    const waits: number[] = [];
+    const c = createOpenDotaClient({ rpm: 6000, sleep: async (ms: number) => { waits.push(ms); }, fetchImpl: async () => { calls += 1; return json({}, 503, { 'retry-after': '60' }); } });
+    await expect(c.getJson(`${BASE}/heroStats`, { retries: 3 })).rejects.toMatchObject({ status: 503, retryAfterSec: 60 });
+    expect(calls).toBe(1);
+    expect(waits).toEqual([]);
+  });
+
+  it('an already-aborted caller starts nothing and leaves no unhandled rejection', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      let calls = 0;
+      const c = createOpenDotaClient({ rpm: 6000, fetchImpl: async () => { calls += 1; return json({}); } });
+      const ac = new AbortController(); ac.abort();
+      await expect(c.getJson(`${BASE}/heroStats`, { signal: ac.signal })).rejects.toBeTruthy();
+      expect(calls).toBe(0);
+      // Every caller aborts while the shared request then fails: still handled.
+      const cool = createOpenDotaClient({ rpm: 6000, cooldown: { get: () => Date.now() + 60_000, set: () => {} } });
+      const ac2 = new AbortController();
+      const p = cool.getJson(`${BASE}/matches/8`, { signal: ac2.signal });
+      ac2.abort();
+      await expect(p).rejects.toBeTruthy();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
 });
