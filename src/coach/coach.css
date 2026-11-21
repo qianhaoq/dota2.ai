@@ -363,7 +363,7 @@
 .cx-plan ol { margin: 0; padding-left: 22px; display: grid; gap: 14px; }
 .cx-plan h4 { margin: 0 0 4px; font-family: var(--serif); font-weight: 400; font-size: 18px; }
 .cx-plan p { margin: 2px 0 0; color: var(--text-2); }
-.cx-plan p b { display: inline-block; min-width: 4.5em; color: var(--text-3); font-weight: 500; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; margin-right: 6px; }
+.cx-plan .cx-plan-k { display: inline-block; min-width: 4.5em; color: var(--text-3); font-weight: 500; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; margin-right: 6px; }
 @media (max-width: 720px) {
   .cx-chapter { padding: 14px; }
   .cx-dmg-bars li { grid-template-columns: minmax(90px, 120px) 1fr auto; }
