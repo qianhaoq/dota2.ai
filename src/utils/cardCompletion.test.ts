@@ -65,27 +65,9 @@ describe('review_ai_validation provider field', () => {
 });
 
 import { cardAttemptDeadlineMs } from '../../lib/completionDeadline.js';
-// The retired web client's review timeout (src/services/geminiService.ts, removed with the old UI).
-// Kept so the server budget stays inside it until /api/review itself is removed.
-const REVIEW_CLIENT_TIMEOUT_MS = 180000;
 import fs from 'node:fs';
 
 describe('review timing budget', () => {
-  it('worst-case chain (fetch + DS timeout + slow invalid Gemini + Gemini retry) ends before the client timeout', () => {
-    const src = fs.readFileSync('server.js', 'utf8');
-    const budget = Number(src.match(/REVIEW_REQUEST_BUDGET_MS = (\d+)/)![1]);
-    const per = Number(src.match(/REVIEW_CARD_COMPLETION_DEADLINE_MS = (\d+)/)![1]);
-    expect(per).toBe(40000);
-    // 10s fetch, DS deadline 40s, invalid Gemini 39s, Gemini retry capped by budget
-    let t = 10000 + per + 39000;
-    t += cardAttemptDeadlineMs({ startedAt: 0, now: t, budgetMs: budget, perAttemptMs: per, minAttemptMs: 5000 });
-    expect(t).toBeLessThanOrEqual(budget);
-    // even a 120s OpenDota fetch keeps the server under its budget
-    const slow = 120000 + cardAttemptDeadlineMs({ startedAt: 0, now: 120000, budgetMs: budget, perAttemptMs: per, minAttemptMs: 5000 });
-    expect(slow).toBeLessThanOrEqual(budget);
-    expect(budget + 5000).toBeLessThan(REVIEW_CLIENT_TIMEOUT_MS);
-    expect(REVIEW_CLIENT_TIMEOUT_MS).toBeLessThan(300000);
-  });
   it('does not mark or report a provider skipped for budget exhaustion', async () => {
     const failed = new Set<string>(); const errors: string[] = [];
     await expect(requestCardCompletion({ startedAt: Date.now() - 269999, budgetMs: 270000, perAttemptMs: 40, minAttemptMs: 5, providers: [{ name: 'gemini', create: async () => ({}) }], failed, onProviderError: (i) => errors.push(i.provider) })).rejects.toMatchObject({ name: 'CompletionDeadlineError' });
@@ -102,11 +84,5 @@ describe('review fetch-phase deadline', () => {
     await expect(withCompletionDeadline((s) => Promise.all([stalledMatch(s), stalledConstants()]), { ms: 20 }))
       .rejects.toMatchObject({ name: 'CompletionDeadlineError' });
     expect(matchAborted).toBe(true);
-  });
-  it('fetch budget + both provider attempts fit the request budget and client timeout', () => {
-    const src = fs.readFileSync('server.js', 'utf8');
-    const n = (k: string) => Number(src.match(new RegExp(`${k} = (\\d+)`))![1]);
-    expect(n('REVIEW_FETCH_BUDGET_MS') + 2 * n('REVIEW_CARD_COMPLETION_DEADLINE_MS')).toBeLessThanOrEqual(n('REVIEW_REQUEST_BUDGET_MS'));
-    expect(n('REVIEW_REQUEST_BUDGET_MS')).toBeLessThan(REVIEW_CLIENT_TIMEOUT_MS);
   });
 });

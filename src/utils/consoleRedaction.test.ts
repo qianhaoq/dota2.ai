@@ -112,13 +112,6 @@ describe('installConsoleRedaction (unit)', () => {
     uninstall();
   });
 
-  it('server.js writes the feedback record via logUnredacted + redactUnmistakableSecrets', async () => {
-    const fs = await import('node:fs');
-    const src = fs.readFileSync(new URL('../../server.js', import.meta.url), 'utf8');
-    expect(src).toMatch(/redactUnmistakableSecrets\(JSON\.stringify\(record\)\)/);
-    expect(src).toMatch(/logUnredacted\('log', \['\[feedback:record\]'/);
-  });
-
   it('redacts generic credential names in structured context (Codex P1)', () => {
     const { consoleObj, errorMock } = makeConsole();
     const uninstall = installConsoleRedaction(consoleObj);

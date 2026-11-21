@@ -199,19 +199,17 @@ describe('internalErrorForClient + server.js fallthrough guard', () => {
     expect(redactSecrets(syntaxErr.message)).not.toContain('sk-abc');
   });
 
-  it('server.js routes provider/fetch error logging through redaction (no raw console dumps)', async () => {
+  it('server.js never prints a raw error: every console.error argument after the label goes through redaction', async () => {
     const { readFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const src = readFileSync(join(process.cwd(), 'server.js'), 'utf8');
-    // Every call site that used to print the raw error object/message from
-    // provider/fetch paths is now a structured logLlmError / redactSecrets line.
-    expect(src).not.toMatch(/console\.error\("Suggestions Error:", error\)/);
-    expect(src).not.toMatch(/console\.error\('Review suggestions error:', err\)/);
-    expect(src).not.toMatch(/console\.error\('Match facts error:', error\)/);
-    expect(src).not.toMatch(/console\.error\('OpenDota fetch error:', err\.message\)/);
-    expect(src).toMatch(/logLlmError\(console\.error, \{ event: 'suggestions_error', error \}\)/);
-    expect(src).toMatch(/logLlmError\(console\.error, \{ event: 'review_suggestions_error', error: err \}\)/);
-    expect(src).toMatch(/logLlmError\(console\.error, \{ event: 'match_facts_error', error \}\)/);
-    expect(src).toMatch(/console\.error\('OpenDota fetch error:', redactSecrets\(err\?\.message \?\? err\)\)/);
+    const calls = src.match(/console\.error\([^;]*\);/g) ?? [];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      // A label string, then only redacted values (or none).
+      const rest = call.replace(/^console\.error\(\s*(['`"]).*?\1\s*,?\s*/, '');
+      if (rest.trim() === ');') continue;
+      expect(rest, call).toMatch(/^(redactSecrets|logLlmError|internalErrorForClient)\(/);
+    }
   });
 });
