@@ -223,8 +223,9 @@ export function immunityWindows(trace, args = {}) {
     if (!watch) return row;
     const s = stateAt(trace, watch.h, w.from);
     const left = cooldownLeft(watch.entry, w.from);
-    // No logged removal: the window is open until the game ends, the same reading ability_audit uses.
-    const end = w.to ?? gameEnd(trace);
+    // The window is [from, to): the same reading ability_audit uses, so a cast in the tenth of a second the
+    // immunity was removed is after it in both. No logged removal: open until the game ends.
+    const during = (t) => t >= w.from && (w.to == null ? t <= gameEnd(trace) : t < w.to);
     const target = nameId(trace, trace.heroes[w.hero].npc);
     const last = trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[0] <= w.from).at(-1);
     return {
@@ -234,7 +235,7 @@ export function immunityWindows(trace, args = {}) {
         ...(left > 0 ? { cooldown_left: left } : {}),
         ...(last ? { last_cast: { t: last[0], clock: clock(last[0]), target: nameOf(trace, last[3]), seconds_before: Math.round((w.from - last[0]) * 10) / 10 } } : {}),
         // During means during: a cast seconds before the window opened was spent before the immunity, not into it.
-        cast_on_this_hero_during: trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[3] === target && c[0] >= w.from && c[0] <= end).map((c) => ({ t: c[0], clock: clock(c[0]), row: c[4] })),
+        cast_on_this_hero_during: trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[3] === target && during(c[0])).map((c) => ({ t: c[0], clock: clock(c[0]), row: c[4] })),
         cast_on_this_hero_in_the_3s_before: trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[3] === target && c[0] >= w.from - 3 && c[0] < w.from).map((c) => ({ t: c[0], clock: clock(c[0]), seconds_before: Math.round((w.from - c[0]) * 10) / 10, row: c[4] })),
         distance: s && stateAt(trace, w.hero, w.from) ? dist(s, stateAt(trace, w.hero, w.from)) : null,
       },

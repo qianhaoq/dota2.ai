@@ -129,6 +129,15 @@ describe('review findings on #232', () => {
     expect(a.seconds_alive_and_ready).toBeLessThan(a.seconds_alive_since_learned);
   });
 
+  it('a cast in the tenth of a second the immunity ended is after it, in both tools', () => {
+    // Phantom Assassin's BKB is removed at 2373.6 (row 88320); Skywrath's Arcane Bolt on her is the next row, same rounded time.
+    const w = run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'skywrath_mage', watch_ability: 'arcane_bolt' }).windows.find((x) => x.to === 2373.6);
+    expect(w).toBeTruthy();
+    expect(w.watched.cast_on_this_hero_during.map((c) => c.t)).not.toContain(2373.6);
+    const bolt = run('ability_audit', { hero: 'skywrath_mage', ability: 'arcane_bolt' }).casts.find((c) => c.t === 2373.6 && c.target === 'phantom_assassin');
+    expect(bolt.target_spell_immune).toBe(false);
+  });
+
   it('a passive with a cooldown is not an unused ability', () => {
     // Counter Helix has a cooldown and no mana cost, and is never cast.
     const axe = run('death_context', { hero: 'axe' });
