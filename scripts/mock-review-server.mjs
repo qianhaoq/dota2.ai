@@ -54,7 +54,7 @@ const coachMatches = new Map([
 const caseProfiles = JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/cases.tidehunter-vs-ursa.profiles.json'), 'utf8')).profiles;
 const mockAgent = createMockAgent({ root: ROOT, resolveClientIp: (req) => req.ip || 'local' });
 const coachGetMatch = async (id) => {
-  if (mockAgent.known.has(Number(id))) return mockAgent.getMatchDetail(id);
+  if (mockAgent.knows(id)) return mockAgent.getMatchDetail(id);
   const match = coachMatches.get(Number(id));
   if (!match) throw Object.assign(new Error('HTTP 404'), { status: 404, upstream: 'opendota' });
   return structuredClone(match);

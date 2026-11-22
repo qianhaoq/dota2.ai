@@ -12,7 +12,7 @@ describe('goalFromReview', () => {
   it('hold_item: only items pros build on this hero that the player never held; code writes the label', () => {
     expect(from({ kind: 'hold_item', items: ['blink', 'item_black_king_bar', 'ultimate_scepter', 'divine_rapier', 'blink'], finding: 2 })).toEqual({
       finding: 2,
-      spec: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38, label: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: '用兽王时：出一件闪烁匕首或黑皇杖' } },
+      spec: { kind: 'hold_item', items: ['blink', 'black_king_bar'], accept: ['blink', 'black_king_bar', 'overwhelming_blink', 'swift_blink', 'arcane_blink'], hero_id: 38, label: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: '用兽王时：出一件闪烁匕首或黑皇杖' } },
     });
     // Held this game (Aghanim's at 16:48), or not something pros build here: no goal rather than a made-up one.
     expect(from({ kind: 'hold_item', items: ['ultimate_scepter', 'divine_rapier'], finding: 1 })).toBeNull();
@@ -34,6 +34,8 @@ describe('evaluateGoal: hold_item', () => {
   it('met with one of the items, missed without, and never on a guess', () => {
     expect(evaluateGoal(goal, game(38, [{ key: 'arcane_boots', en: 'Arcane Boots', zh: '奥术鞋' }, { key: 'blink', en: 'Blink Dagger', zh: '闪烁匕首' }]), 0)).toEqual({ result: 'met', evidence: { en: 'Finished with Blink Dagger', zh: '终局装备里有闪烁匕首' } });
     expect(evaluateGoal(goal, game(38, [{ key: 'pipe', en: 'Pipe', zh: '烟斗' }]), 0)).toMatchObject({ result: 'missed' });
+    // The item upgraded before the end still meets the goal.
+    expect(evaluateGoal(goal, game(38, [{ key: 'overwhelming_blink', en: 'Overwhelming Blink', zh: '盛势闪光' }]), 0)).toEqual({ result: 'met', evidence: { en: 'Finished with Overwhelming Blink', zh: '终局装备里有盛势闪光' } });
     expect(evaluateGoal(goal, game(2, [{ key: 'blink', en: 'Blink Dagger', zh: '闪烁匕首' }]), 0)).toMatchObject({ result: 'no_opportunity', evidence: { zh: '这局你玩的是别的英雄。' } });
     expect(evaluateGoal(goal, game(38, undefined), 0)).toMatchObject({ result: 'unknown' });
   });
@@ -47,7 +49,7 @@ describe('the review carries its goal', () => {
 
   it('a valid pick becomes review.goal, tied to its finding', async () => {
     const r: any = await runDeepReview({ complete: model({ ...base, findings: [finding('a'), finding('build')], goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], finding: 2 } }), trace, hero: 'beastmaster', lang: 'zh' });
-    expect(r.review.goal).toEqual({ kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38, label: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: '用兽王时：出一件闪烁匕首或黑皇杖' }, finding: 2 });
+    expect(r.review.goal).toEqual({ kind: 'hold_item', items: ['blink', 'black_king_bar'], accept: ['blink', 'black_king_bar', 'overwhelming_blink', 'swift_blink', 'arcane_blink'], hero_id: 38, label: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: '用兽王时：出一件闪烁匕首或黑皇杖' }, finding: 2 });
   });
   it('a goal follows its finding: dropped with it, renumbered when an earlier one is dropped', async () => {
     const invented = { title: 'x', claim: '19:19 崩了', evidence: [{ refs: ['pro_items:beastmaster'], fact: 'x' }], fix: 'f' };

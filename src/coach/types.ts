@@ -34,7 +34,7 @@ export type GoalSpec = { label: Bi; role_kind?: 'core' | 'support' } & (
   | { kind: 'obs_per10_min'; min: number }
   | { kind: 'lane_not_lost' }
   /** From a replay review: on `hero_id`, finish the game holding one of `items`. */
-  | { kind: 'hold_item'; items: string[]; hero_id: number }
+  | { kind: 'hold_item'; items: string[]; accept?: string[]; hero_id: number }
   /** Engine >= 1.9: deaths to enemies who already owned one of `items` (gap closers). */
   | { kind: 'deaths_to_gap_closer_max'; max: number; items: string[] }
 );

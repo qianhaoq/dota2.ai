@@ -42,10 +42,15 @@ test('home: one input, and the four steps of what happens next', async ({ page }
   await noSideScroll(page);
 });
 
-test('from no replay to a review in one click: fetch, read, the coach, the review', async ({ page, request }, testInfo) => {
-  // One "fresh" match id per project, so the two projects do not share its state.
-  const id = testInfo.project.name.startsWith('mobile') ? '9100904098' : '9100904099';
-  expect((await request.post(`/api/mock/forget/${id}`)).ok()).toBe(true);
+test('from no replay to a review in one click: fetch, read, the coach, the review', async ({ page, request }) => {
+  // An id with no replay that nobody has used: ask the server until one is untouched.
+  let id = '';
+  for (let i = 0; i < 20 && !id; i += 1) {
+    const candidate = String(9100904100 + Math.floor(Math.random() * 900));
+    const a = await (await request.get(`/api/agent/${candidate}`)).json();
+    if (!a.trace && a.parse.status === 'none') id = candidate;
+  }
+  expect(id).not.toBe('');
   await page.goto(`/r/${id}?lang=zh`);
   // The roster comes from the scoreboard: there is no replay yet.
   await page.getByRole('button', { name: /兽王/ }).click();
@@ -129,7 +134,7 @@ test('the review\'s goal becomes the next-game goal', async ({ page }) => {
   await card.getByRole('button', { name: '设为下一局目标' }).click();
   await expect(card).toContainText('✓ 已设为下一局目标 · 对应问题 2');
   const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!));
-  expect(stored).toMatchObject({ id: `${MATCH}:beastmaster:agent`, goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38 }, fromMatch: Number(MATCH), heroId: 38 });
+  expect(stored).toMatchObject({ id: `${MATCH}:beastmaster:agent:hold_item:blink+black_king_bar`, goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], accept: expect.arrayContaining(['blink', 'overwhelming_blink', 'black_king_bar']), hero_id: 38 }, fromMatch: Number(MATCH), heroId: 38 });
   // It survives a reload, and the same game is not judged against its own goal.
   await page.reload();
   await expect(page.locator('.ag-goal')).toContainText('✓ 已设为下一局目标');

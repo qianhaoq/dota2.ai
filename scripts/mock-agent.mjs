@@ -5,9 +5,9 @@
  * leaves the machine and every run gives the same review.
  *
  * - 9100904020: the trace is there from the start.
- * - 9100904098 / 9100904099: the same game under ids with no trace yet; the
- *   fake pipeline "fetches" it in about five seconds (one id per e2e project,
- *   so their runs do not share state). POST /api/mock/forget/:id starts over.
+ * - 9100904100 – 9100904999: the same game under ids with no trace yet; the
+ *   fake pipeline "fetches" one in about five seconds. A test takes an id
+ *   nobody has used, so a run never meets state left by another.
  * - 8000000001: the replay is gone.
  * The scoreboard for all of them is the identity-free fixture.
  */
@@ -19,7 +19,8 @@ import { createAgentService } from '../lib/agent/service.js';
 import { createJsonStore, createTraceStore } from '../lib/agent/stores.js';
 
 export const AGENT_MATCH = 9100904020;
-export const AGENT_FRESH = [9100904098, 9100904099];
+/** Ids that start with no replay. */
+export const isFreshId = (id) => Number(id) >= 9100904100 && Number(id) <= 9100904999;
 export const AGENT_GONE = 8000000001;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -114,16 +115,16 @@ export function createMockAgent({ root, resolveClientIp }) {
   const objects = new Map([[`${AGENT_MATCH}.trace.json.gz`, traceFor(AGENT_MATCH)]]);
   const blobs = { get: async (key) => objects.get(key) ?? null, put: async (key, body) => { objects.set(key, body); } };
   const traces = createTraceStore(blobs, { keep: 6 });
-  const known = new Set([AGENT_MATCH, ...AGENT_FRESH, AGENT_GONE]);
+  const knows = (id) => Number(id) === AGENT_MATCH || Number(id) === AGENT_GONE || isFreshId(id);
   /** The scoreboard of the fixture game, under whichever of the mock ids was asked for. */
   const getMatchDetail = async (id) => {
-    if (!known.has(Number(id))) throw Object.assign(new Error('HTTP 404'), { status: 404, upstream: 'opendota' });
+    if (!knows(id)) throw Object.assign(new Error('HTTP 404'), { status: 404, upstream: 'opendota' });
     return { ...structuredClone(scoreboard), match_id: Number(id) };
   };
   const pipeline = {
     async run(id, { onStage = () => {} } = {}) {
       if (Number(id) === AGENT_GONE) return { ok: false, reason: 'replay_gone' };
-      if (!AGENT_FRESH.includes(Number(id))) return { ok: false, reason: 'no_replay_url' };
+      if (!isFreshId(id)) return { ok: false, reason: 'no_replay_url' };
       for (const stage of ['locating', 'downloading', 'extracting', 'building', 'storing']) { onStage(stage); await sleep(1000); }
       await traces.put(id, traceFor(Number(id)));
       return { ok: true };
@@ -134,11 +135,5 @@ export function createMockAgent({ root, resolveClientIp }) {
     service: createAgentService({ traces, pipeline, complete, model: 'mock', docs: createJsonStore(blobs), getMatchDetail }),
     resolveClientIp, readLimiter: noLimit, reviewLimiter: noLimit, chatLimiter: noLimit, parseLimiter: noLimit, parseDailyMax: 1e9,
   });
-  // Mock only: forget everything about one of the "fresh" ids, so a test starts from no replay.
-  router.post('/api/mock/forget/:id', (req, res) => {
-    if (!AGENT_FRESH.includes(Number(req.params.id))) return res.status(400).json({ ok: false });
-    for (const key of [...objects.keys()]) if (key.startsWith(`${req.params.id}.`)) objects.delete(key);
-    return res.json({ ok: true });
-  });
-  return { router, getMatchDetail, known };
+  return { router, getMatchDetail, knows };
 }

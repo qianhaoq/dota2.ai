@@ -82,9 +82,11 @@ export interface GoalContext { fromStart: number; accountId: number | null; hero
 const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx: GoalContext }> = ({ matchId, review, lang, ctx }) => {
   const active = useActiveGoal();
   const goal = review.goal!;
-  const id = `${matchId}:${review.hero}:agent`;
-  const mine = active?.id === id;
   const { finding, ...spec } = goal;
+  // The goal itself is part of its identity: the same game reviewed in another language can propose a
+  // different one, and that card must not claim to be the goal already set.
+  const id = `${matchId}:${review.hero}:agent:${spec.kind}:${spec.kind === 'hold_item' ? spec.items.join('+') : spec.kind === 'deaths_per10_max' ? spec.max : ''}`;
+  const mine = active?.id === id;
   const make = (): ActiveGoal => ({ id, goal: spec, action: spec.label, findingId: `agent:${finding}`, fromMatch: Number(matchId), fromStart: ctx.fromStart, accountId: ctx.accountId, heroId: ctx.heroId, setAt: Date.now() });
   return (
     <div className={`ag-goal ${mine ? 'is-set' : ''}`}>

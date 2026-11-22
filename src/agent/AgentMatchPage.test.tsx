@@ -229,12 +229,25 @@ describe('AgentMatchPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Make this my next-game goal' }));
     expect(await screen.findByText(/✓ Your next-game goal · From finding 1/)).toBeTruthy();
     const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
-    expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent', goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38 }, action: goal.label, fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38 });
+    expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:hold_item:blink+black_king_bar', goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38 }, action: goal.label, fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38 });
     expect(stored.goal).not.toHaveProperty('finding');
     // The game the goal came from is not judged against it.
     expect(screen.queryByText('Your goal, in this game')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(window.localStorage.getItem('dota2ai.coach.goal')).toBeNull());
+    // The same game reviewed in another language proposed a different goal: that card is not "already set".
+    fireEvent.click(await screen.findByRole('button', { name: 'Make this my next-game goal' }));
+    cleanup();
+    mockFetch({
+      '/api/coach/9100904020': { ...board, match: { id: 9100904020, patch: '7.42', start_time: 1795344198, duration: 2551 } },
+      'ref=overview': overview,
+      '/review?': { status: 'ready', review: { ...review, goal: { kind: 'deaths_per10_max', max: 1.7, label: { en: 'At most 1.7 deaths per 10 minutes', zh: 'x' }, finding: 1 } }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByText('At most 1.7 deaths per 10 minutes')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Make this my next-game goal' })).toBeTruthy();
+    expect(screen.queryByText(/✓ Your next-game goal/)).toBeNull();
   });
 
   it('a later game is judged against the goal, at the top of its page', async () => {
