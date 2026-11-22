@@ -119,6 +119,28 @@ describe('review findings on #232', () => {
     expect(w.cast_on_this_hero_in_the_3s_before).toEqual([{ t: 3, clock: '0:03', seconds_before: 2, row: 1 }]);
   });
 
+  it('a passive with a cooldown is not an unused ability', () => {
+    // Counter Helix has a cooldown and no mana cost, and is never cast.
+    const axe = run('death_context', { hero: 'axe' });
+    expect(axe.deaths.length).toBeGreaterThan(5);
+    for (const d of axe.deaths) expect(d.ready_not_cast).not.toContain('axe_counter_helix');
+    expect(axe.deaths.some((d) => d.at_window_start.abilities.some((a) => a.ability === 'axe_berserkers_call'))).toBe(true);
+  });
+
+  it('an immunity with no logged end stays open: a later cast on that hero is during it', () => {
+    const b = createTraceBuilder();
+    for (let t = 0; t <= 12; t += 0.25) { b.addState(state(t, { abilities: [{ name: 'axe_culling_blade', level: 1, cooldown: 0, mana_cost: 60 }] })); b.addState(lina(t)); }
+    const ev = (type, t, extra) => ({ type, t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_hero_lina', target_hero: true, target_illusion: false, ...extra });
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 5, { inflictor: 'modifier_black_king_bar_immune', attacker: 'npc_dota_hero_lina' }), 1);
+    b.addEvent(ev('DOTA_COMBATLOG_ABILITY', 7, { inflictor: 'axe_culling_blade' }), 2);
+    const tr = b.finish();
+    const w = runTraceTool(tr, 'immunity_windows', { hero: 'lina', watch_hero: 'axe', watch_ability: 'culling_blade' }).windows[0];
+    expect(w).toMatchObject({ to: null, seconds: null });
+    expect(w.watched.cast_on_this_hero_during).toEqual([{ t: 7, clock: '0:07', row: 2 }]);
+    // ability_audit reads the same cast the same way.
+    expect(runTraceTool(tr, 'ability_audit', { hero: 'axe', ability: 'culling_blade' }).casts[0].target_spell_immune).toBe(true);
+  });
+
   it('events in the same tenth of a second keep the combat log\'s order', () => {
     // Axe's Culling Blade on Sven (row 59214) comes before Sven's death (row 59236); both round to 27:48.4.
     const rows = run('fight_timeline', { from: '27:45', to: '27:50' }).events.filter((e) => e.clock === '27:48');

@@ -32,15 +32,16 @@ function needHero(trace, hero) {
 }
 
 /**
- * Abilities this hero can cast: cast at least once, seen on cooldown, or
- * costing mana (so an active ability the player never pressed still counts
- * as "ready, not used"). A never-cast ability that costs nothing cannot be
- * told from a passive in the replay: a stated gap, not a guess.
+ * Abilities this hero can cast: cast at least once, or costing mana (so an
+ * active ability the player never pressed still counts as "ready, not
+ * used"). A cooldown alone proves nothing: passives have them too (Counter
+ * Helix). A never-cast ability that costs nothing cannot be told from a
+ * passive in the replay: a stated gap, not a guess.
  */
 function castable(trace, h, npc) {
   const set = new Set();
   for (const c of trace.casts) if (c[1] === npc) set.add(trace.names[c[2]]);
-  for (const [k, e] of Object.entries(trace.abilities[h])) if (e.cd.length || e.mana > 0) set.add(k);
+  for (const [k, e] of Object.entries(trace.abilities[h])) if (e.mana > 0) set.add(k);
   return set;
 }
 
@@ -215,7 +216,8 @@ export function immunityWindows(trace, args = {}) {
     if (!watch) return row;
     const s = stateAt(trace, watch.h, w.from);
     const left = cooldownLeft(watch.entry, w.from);
-    const end = w.to ?? w.from;
+    // No logged removal: the window is open until the trace ends, the same reading ability_audit uses.
+    const end = w.to ?? trace.t0 + trace.n - 1;
     const target = nameId(trace, trace.heroes[w.hero].npc);
     const last = trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[0] <= w.from).at(-1);
     return {
