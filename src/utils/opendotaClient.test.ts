@@ -214,3 +214,79 @@ describe('opendota client', () => {
     }
   });
 });
+
+describe('opendota outage breaker (PR-A)', () => {
+  const setup = (respond: (n: number) => any, o: any = {}) => {
+    let t = 1_000_000;
+    let calls = 0;
+    const c = createOpenDotaClient({
+      rpm: 6000, now: () => t, sleep: async () => {},
+      fetchImpl: async () => { calls += 1; const r = respond(calls); if (r instanceof Error) throw r; return r; },
+      ...o,
+    });
+    return { c, calls: () => calls, advance: (ms: number) => { t += ms; } };
+  };
+  const get = (c: any) => c.getJson(`${BASE}/matches/1`, { retries: 0 });
+
+  it('3 consecutive 520s open the breaker; the 4th call fails fast without fetching', async () => {
+    const h = setup(() => json({}, 520));
+    for (let i = 0; i < 3; i++) await expect(get(h.c)).rejects.toMatchObject({ status: 520 });
+    expect(h.calls()).toBe(3);
+    await expect(get(h.c)).rejects.toMatchObject({ status: 503, retryable: true, upstream: 'opendota' });
+    expect(h.calls()).toBe(3);
+    const snap = h.c.snapshot();
+    expect(snap.outageTrips).toBe(1);
+    expect(snap.outageRejects).toBe(1);
+    expect(snap.lastOutageAt).toBeTruthy();
+  });
+
+  it('a 200 between failures resets the count: 2 × 520, 200, 2 × 520 never trips', async () => {
+    const seq = [520, 520, 200, 520, 520];
+    const h = setup((n) => json({ ok: 1 }, seq[n - 1]));
+    for (const st of seq) {
+      if (st === 200) await expect(get(h.c)).resolves.toEqual({ ok: 1 });
+      else await expect(get(h.c)).rejects.toMatchObject({ status: 520 });
+    }
+    expect(h.c.snapshot().outageTrips).toBe(0);
+    expect(h.calls()).toBe(5);
+  });
+
+  it('404s are answers, not an outage', async () => {
+    const h = setup(() => json({}, 404));
+    for (let i = 0; i < 5; i++) await expect(get(h.c)).rejects.toMatchObject({ status: 404 });
+    expect(h.calls()).toBe(5);
+    expect(h.c.snapshot().outageTrips).toBe(0);
+  });
+
+  it('network timeouts count too, and the breaker stops retries inside one request', async () => {
+    const h = setup(() => Object.assign(new Error('t'), { name: 'TimeoutError' }));
+    await expect(h.c.getJson(`${BASE}/matches/1`, { retries: 6 })).rejects.toMatchObject({ status: 503 });
+    expect(h.calls()).toBe(3);
+  });
+
+  it('after the cooldown it lets a call through; one more failure re-opens it, a success closes it', async () => {
+    let status = 522;
+    const h = setup(() => json({ ok: 1 }, status), { outageCooldownMs: 60_000 });
+    for (let i = 0; i < 3; i++) await expect(get(h.c)).rejects.toMatchObject({ status: 522 });
+    h.advance(60_001);
+    await expect(get(h.c)).rejects.toMatchObject({ status: 522 }); // half-open probe fails…
+    await expect(get(h.c)).rejects.toMatchObject({ status: 503 }); // …and it is open again
+    expect(h.c.snapshot().outageTrips).toBe(2);
+    h.advance(60_001);
+    status = 200;
+    await expect(get(h.c)).resolves.toEqual({ ok: 1 });
+    status = 522;
+    await expect(get(h.c)).rejects.toMatchObject({ status: 522 }); // closed: needs 3 again
+    await expect(get(h.c)).rejects.toMatchObject({ status: 522 });
+    expect(h.c.snapshot().outageTrips).toBe(2);
+  });
+
+  it('writes the outage to the shared cooldown so other instances back off', async () => {
+    const set = vi.fn();
+    const h = setup(() => json({}, 524), { cooldown: { get: () => 0, set } });
+    for (let i = 0; i < 3; i++) await expect(get(h.c)).rejects.toBeTruthy();
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(set.mock.calls[0][1]).toMatch(/^outage: HTTP 524/);
+  });
+});
+
