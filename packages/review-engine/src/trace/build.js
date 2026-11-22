@@ -9,7 +9,10 @@
  *
  * What is kept:
  * - hero state once a second (position, health, mana, level, alive);
- * - every ability/item cooldown as [from, to] intervals, ability levels as
+ * - every ability/item cooldown as [from, to, seconds left at from] intervals
+ *   (an interval can end before the cooldown would: the item left the
+ *   inventory, the trace ended, the cooldown was reset — so the sampled value
+ *   is kept, not inferred from `to`), ability levels as
  *   change points, held items and control states (stunned, silenced, …) as
  *   intervals — all from the 4 Hz samples, so times are within 0.25 s;
  * - the hero-relevant combat log: casts, item uses, hero deaths, purchases,
@@ -29,10 +32,16 @@ const IMMUNITY = /black_king_bar_immune|magic_immune|debuff_immune|spell_immun/;
 const BUILDING = /_(tower\d|fort|melee_rax|range_rax)/;
 const r1 = (n) => Math.round(n * 10) / 10;
 
-/** Open/close [from, to] intervals for a boolean that is sampled over time. */
-function track(list, state, on, t) {
-  if (on && state.from == null) state.from = t;
-  else if (!on && state.from != null) { list.push([r1(state.from), r1(t)]); state.from = null; }
+/**
+ * Open/close [from, to] intervals for a boolean that is sampled over time.
+ * `value` (optional) is kept from the sample that opened the interval, as a
+ * third element: for a cooldown, the seconds it had left at `from`.
+ */
+function track(list, state, on, t, value) {
+  if (on && state.from == null) { state.from = t; state.value = value; } else if (!on && state.from != null) {
+    list.push(state.value == null ? [r1(state.from), r1(t)] : [r1(state.from), r1(t), r1(state.value)]);
+    state.from = null; state.value = undefined;
+  }
 }
 
 export function createTraceBuilder() {
@@ -64,7 +73,7 @@ export function createTraceBuilder() {
     const cooling = cd > 0;
     // A cooldown that jumps up while still running is a new cast (refresh, charges).
     if (cooling && entry.cdState.from != null && cd > entry.lastCd + 1) track(entry.cd, entry.cdState, false, t);
-    track(entry.cd, entry.cdState, cooling, t);
+    track(entry.cd, entry.cdState, cooling, t, cd);
     entry.lastCd = cd;
   }
 
@@ -86,7 +95,8 @@ export function createTraceBuilder() {
       for (const a of row.abilities ?? []) {
         if (typeof a?.name !== 'string' || a.name.startsWith('special_bonus')) continue;
         let e = h.abilities.get(a.name);
-        if (!e) { e = { levels: [], cd: [], cdState: { from: null }, lastCd: 0, level: 0 }; h.abilities.set(a.name, e); }
+        if (!e) { e = { levels: [], cd: [], cdState: { from: null }, lastCd: 0, level: 0, mana: 0 }; h.abilities.set(a.name, e); }
+        if (a.mana_cost > e.mana) e.mana = a.mana_cost;
         if (a.level !== e.level) { e.level = a.level; e.levels.push([r1(t), a.level]); }
         cooldown(e, Number(a.cooldown) || 0, t);
       }
@@ -142,7 +152,7 @@ export function createTraceBuilder() {
           const stun = Number(e.stun_duration) > 0 ? r1(Number(e.stun_duration)) : 0;
           const control = add && (stun > 0 || e.silence === true || e.root === true);
           if (!immune && !control) break;
-          modifiers.push([t, id(e.target), id(e.inflictor), id(e.attacker), add ? 1 : 0, stun, immune ? 'i' : e.root === true ? 'r' : e.silence === true ? 's' : 't']);
+          modifiers.push([t, id(e.target), id(e.inflictor), id(e.attacker), add ? 1 : 0, stun, immune ? 'i' : e.root === true ? 'r' : e.silence === true ? 's' : 't', row]);
           break;
         }
         case 'DOTA_COMBATLOG_DAMAGE': {
@@ -175,7 +185,7 @@ export function createTraceBuilder() {
           for (const [sec, v] of h.samples) { const i = sec - t0; if (i >= 0 && i < n) for (const c of cols) s[c][i] = v[c]; }
           return s;
         }),
-        abilities: list.map((h) => { closeAll(h.abilities.values(), lastT); return Object.fromEntries([...h.abilities].filter(([, e]) => e.levels.some(([, lv]) => lv > 0)).map(([k, e]) => [k, { levels: e.levels, cd: e.cd }])); }),
+        abilities: list.map((h) => { closeAll(h.abilities.values(), lastT); return Object.fromEntries([...h.abilities].filter(([, e]) => e.levels.some(([, lv]) => lv > 0)).map(([k, e]) => [k, { levels: e.levels, cd: e.cd, ...(e.mana > 0 ? { mana: Math.round(e.mana) } : {}) }])); }),
         items: list.map((h) => { closeAll(h.items.values(), lastT); return Object.fromEntries([...h.items].map(([k, e]) => [k, { held: e.held, cd: e.cd }])); }),
         controls: list.map((h) => { closeAll(h.controls.values(), lastT); return Object.fromEntries([...h.controls].filter(([, e]) => e.list.length).map(([k, e]) => [k, e.list])); }),
         names,
@@ -192,6 +202,7 @@ export function createTraceBuilder() {
           { topic: 'creeps', reason: 'no_creep_entities_in_trace' },
           { topic: 'roshan', reason: 'no_reliable_roshan_event' },
           { topic: 'ability_immunity', reason: 'only_item_spell_immunity_modifiers_tracked' },
+          { topic: 'unused_free_abilities', reason: 'an_ability_never_cast_with_no_mana_cost_cannot_be_told_from_a_passive' },
         ],
       };
       return out;

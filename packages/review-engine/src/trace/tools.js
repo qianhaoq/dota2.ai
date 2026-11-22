@@ -31,11 +31,16 @@ function needHero(trace, hero) {
   return h < 0 ? { err: fail('unknown_hero', { heroes: heroKeys(trace) }) } : { h, npc: nameId(trace, trace.heroes[h].npc) };
 }
 
-/** Abilities this hero can cast: cast at least once, or seen on cooldown. Passives never show either. */
+/**
+ * Abilities this hero can cast: cast at least once, seen on cooldown, or
+ * costing mana (so an active ability the player never pressed still counts
+ * as "ready, not used"). A never-cast ability that costs nothing cannot be
+ * told from a passive in the replay: a stated gap, not a guess.
+ */
 function castable(trace, h, npc) {
   const set = new Set();
   for (const c of trace.casts) if (c[1] === npc) set.add(trace.names[c[2]]);
-  for (const [k, e] of Object.entries(trace.abilities[h])) if (e.cd.length) set.add(k);
+  for (const [k, e] of Object.entries(trace.abilities[h])) if (e.cd.length || e.mana > 0) set.add(k);
   return set;
 }
 
@@ -130,7 +135,7 @@ export function deathContext(trace, args = {}) {
       other_deaths: trace.deaths.filter((o) => o !== d && Math.abs(o[0] - t) <= 20).map((o) => deathRow(trace, o, t)),
     };
   });
-  return { hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, deaths: out, gaps: gapsFor(trace, ['vision', 'creeps']) };
+  return { hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, deaths: out, gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
 }
 
 /** The ability key of hero h that `name` means: exact, with the hero prefix, or a unique suffix. */
@@ -219,7 +224,9 @@ export function immunityWindows(trace, args = {}) {
         state: abilityLevel(watch.entry, w.from) === 0 ? 'not_learned' : !s ? 'unknown' : !s.alive ? 'dead' : left > 0 ? 'on_cooldown' : 'ready',
         ...(left > 0 ? { cooldown_left: left } : {}),
         ...(last ? { last_cast: { t: last[0], clock: clock(last[0]), target: nameOf(trace, last[3]), seconds_before: Math.round((w.from - last[0]) * 10) / 10 } } : {}),
-        cast_on_this_hero_during: trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[3] === target && c[0] >= w.from - 3 && c[0] <= end).map((c) => ({ t: c[0], clock: clock(c[0]), row: c[4] })),
+        // During means during: a cast seconds before the window opened was spent before the immunity, not into it.
+        cast_on_this_hero_during: trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[3] === target && c[0] >= w.from && c[0] <= end).map((c) => ({ t: c[0], clock: clock(c[0]), row: c[4] })),
+        cast_on_this_hero_in_the_3s_before: trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[3] === target && c[0] >= w.from - 3 && c[0] < w.from).map((c) => ({ t: c[0], clock: clock(c[0]), seconds_before: Math.round((w.from - c[0]) * 10) / 10, row: c[4] })),
         distance: s && stateAt(trace, w.hero, w.from) ? dist(s, stateAt(trace, w.hero, w.from)) : null,
       },
     };
@@ -236,7 +243,7 @@ export function fightTimeline(trace, args = {}) {
   const rows = [];
   for (const d of trace.deaths) if (inWindow(d[0])) rows.push({ p: 0, t: d[0], kind: 'death', hero: nameOf(trace, d[1]), killer: nameOf(trace, d[2]), row: d[3] });
   for (const b of trace.buildings) if (inWindow(b[0])) rows.push({ p: 0, t: b[0], kind: 'building', building: unit(trace.names[b[1]]), taken_by: TEAM[b[2]] ?? null, row: b[3] });
-  for (const m of trace.modifiers) if (m[6] === 'i' && m[4] === 1 && inWindow(m[0])) rows.push({ p: 0, t: m[0], kind: 'spell_immune', hero: nameOf(trace, m[1]), modifier: trace.names[m[2]].replace(/^modifier_/, '') });
+  for (const m of trace.modifiers) if (m[6] === 'i' && m[4] === 1 && inWindow(m[0])) rows.push({ p: 0, t: m[0], kind: 'spell_immune', hero: nameOf(trace, m[1]), modifier: trace.names[m[2]].replace(/^modifier_/, ''), ...(m[7] == null ? {} : { row: m[7] }) });
   for (const u of trace.item_uses) if (inWindow(u[0]) && !NOISE_ITEMS.test(trace.names[u[2]])) rows.push({ p: 1, t: u[0], kind: 'item', hero: nameOf(trace, u[1]), item: trace.names[u[2]].replace(/^item_/, ''), row: u[3] });
   for (const c of trace.casts) if (inWindow(c[0])) rows.push({ p: heroOfName(trace, c[3]) >= 0 ? 1 : 2, t: c[0], kind: 'cast', hero: nameOf(trace, c[1]), ability: trace.names[c[2]], ...(c[3] >= 0 ? { target: nameOf(trace, c[3]) } : {}), row: c[4] });
   let kept = rows; let truncated = false;
@@ -261,7 +268,8 @@ export function fightTimeline(trace, args = {}) {
     from, to, clock: `${clock(from)}–${clock(to)}`,
     positions_at_start: positions(from),
     ...(firstDeath ? { positions_at_first_death: { t: firstDeath[0], clock: clock(firstDeath[0]), heroes: positions(firstDeath[0]) } } : {}),
-    events: kept.sort((a, b) => a.t - b.t).map(({ p, ...r }) => ({ clock: clock(r.t), ...r })),
+    // Times are rounded to 0.1 s: within one, the combat log's own order decides.
+    events: kept.sort((a, b) => a.t - b.t || (a.row ?? 0) - (b.row ?? 0)).map(({ p, ...r }) => ({ clock: clock(r.t), ...r })),
     ...(truncated ? { truncated: 'casts_without_a_hero_target_dropped_first' } : {}),
     damage_to_heroes_by_unit: top(dealt),
     damage_taken_by_hero: top(taken),
