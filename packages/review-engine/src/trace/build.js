@@ -71,10 +71,15 @@ export function createTraceBuilder() {
 
   function cooldown(entry, cd, t) {
     const cooling = cd > 0;
-    // A cooldown that jumps up while still running is a new cast (refresh, charges).
-    if (cooling && entry.cdState.from != null && cd > entry.lastCd + 1) track(entry.cd, entry.cdState, false, t);
+    // While a cooldown runs, the next sample should be the last one minus the time between them. One that
+    // is clearly higher is a new cast (refresh, charges); one clearly lower was cut by an effect. Either
+    // way the countdown starts over from this sample, so the interval is closed and a new one opened.
+    if (cooling && entry.cdState.from != null) {
+      const expected = entry.lastCd - (t - (entry.lastT ?? t));
+      if (cd > entry.lastCd + 1 || cd < expected - 1) track(entry.cd, entry.cdState, false, t);
+    }
     track(entry.cd, entry.cdState, cooling, t, cd);
-    entry.lastCd = cd;
+    entry.lastCd = cd; entry.lastT = t;
   }
 
   return {

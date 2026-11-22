@@ -92,6 +92,16 @@ describe('review findings on #232', () => {
     expect(d.ready_not_cast).toEqual([]);
   });
 
+  it('a running cooldown that an effect cuts short counts down from the cut value', () => {
+    const b = createTraceBuilder();
+    // 100 s, cut to 35 at t=5 (a cooldown-reducing effect), then running on.
+    for (let t = 0; t <= 10; t += 0.25) { b.addState(state(t, { abilities: [{ name: 'axe_culling_blade', level: 1, cooldown: t < 5 ? 100 - t : 35 - (t - 5), mana_cost: 60 }] })); b.addState(lina(t)); }
+    b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 10, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
+    const tr = b.finish();
+    expect(tr.abilities[0].axe_culling_blade.cd).toEqual([[0, 5, 100], [5, 10, 35]]);
+    expect(runTraceTool(tr, 'death_context', { hero: 'axe', window: 4 }).deaths[0].at_window_start.abilities).toEqual([{ ability: 'axe_culling_blade', level: 1, cooldown_left: 34 }]);
+  });
+
   it('an active ability the player never pressed still shows as ready and not used', () => {
     const b = createTraceBuilder();
     for (let t = 0; t <= 30; t += 0.25) {
