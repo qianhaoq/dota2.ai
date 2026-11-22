@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { AgentApiError, askAgent, type ChatTurn, type ToolStep } from './api';
 
 /**
@@ -58,6 +58,9 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
   const input = useRef<HTMLTextAreaElement>(null);
   const t = (b: Record<Lang, string>) => b[lang];
   const busy = turns.some((x) => x.pending);
+  // Leaving the conversation (another page, hero or language) cancels the answer being worked on: the
+  // server stops its lookups and model calls when the connection closes.
+  useEffect(() => () => abort.current?.abort(), []);
 
   useImperativeHandle(ref, () => ({
     ask: (label, refs) => { setContext({ label, refs }); input.current?.focus(); input.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); },

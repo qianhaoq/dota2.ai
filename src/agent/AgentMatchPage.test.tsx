@@ -167,6 +167,45 @@ describe('AgentMatchPage', () => {
     expect(screen.getByRole('region', { name: 'Scoreboard' })).toBeTruthy();
   });
 
+  it('a failed first availability request is asked again, not read as "switched off"', async () => {
+    let n = 0;
+    mockFetch({ '/api/coach/9100904020': board, '/review?': { status: 'none' }, '/api/agent/9100904020': () => { n += 1; return n === 1 ? new Response('bad gateway', { status: 502 }) : { trace: true, model_configured: true, can_parse: true, heroes }; } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    await waitFor(() => expect(n).toBe(1));
+    expect(screen.queryByRole('heading', { name: 'Replay reviews are not switched on here' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Review this game' }, { timeout: 6000 })).toBeTruthy();
+    expect(n).toBe(2);
+  }, 15000);
+
+  it('a start still out for one hero does not block another\'s; leaving a chat cancels its answer', async () => {
+    const posted: string[] = []; let chatSignal: AbortSignal | undefined;
+    mockFetch({
+      '/chat': (_u: string, init?: RequestInit) => { chatSignal = init?.signal ?? undefined; return new Promise(() => {}); },
+      'ref=overview': overview,
+      '/review?hero=axe': { status: 'ready', review: { ...review, hero: 'axe' }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 1 },
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => { if (init?.method !== 'POST') return null; const hero = JSON.parse(String(init.body)).hero; posted.push(hero); return hero === 'beastmaster' ? new Promise(() => {}) : { status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes: [...heroes, { hero: 'sven', team: 'dire', hero_id: 18, en: 'Sven', zh: '斯温' }] },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(posted).toEqual(['beastmaster']));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Sven/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(posted).toEqual(['beastmaster', 'sven']));
+    // A chat in progress is cancelled when the reader leaves that conversation.
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    const chat = await screen.findByRole('complementary', { name: 'Ask the coach' });
+    fireEvent.change(within(chat).getByRole('textbox'), { target: { value: 'q' } });
+    fireEvent.click(within(chat).getByRole('button', { name: 'Ask' }));
+    await waitFor(() => expect(chatSignal).toBeTruthy());
+    expect(chatSignal!.aborted).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    await waitFor(() => expect(chatSignal!.aborted).toBe(true));
+  });
+
   it('a failed status request does not stop the wait: the page asks again', async () => {
     let n = 0;
     mockFetch({

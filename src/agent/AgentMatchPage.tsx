@@ -113,8 +113,8 @@ export const AgentMatchPage: React.FC = () => {
       setAvail(next);
     } catch (e) {
       if ((e as Error).name === 'AbortError' || onMatch.current !== matchId) return;
-      // A request that failed while we already know the state changes nothing: keep what we have and ask again.
-      setAvail((prev) => prev ?? { trace: false, model_configured: false, can_parse: false, heroes: [], parse: { status: 'none' } });
+      // A request that failed tells us nothing: keep what we know. With nothing known yet the page stays on
+      // "opening" and asks again (below), rather than conclude that reviews are switched off.
     }
     setAvailTick((n) => n + 1);
   }, [matchId]);
@@ -134,6 +134,15 @@ export const AgentMatchPage: React.FC = () => {
     if (avail?.trace) return avail.heroes;
     return (board?.players ?? []).map((p) => ({ hero: p.hero.slug, team: p.radiant ? 'radiant' as const : 'dire' as const, hero_id: p.hero.id, en: p.hero.en, zh: p.hero.zh }));
   }, [avail, board]);
+
+  // The first answer has not come (the request failed): ask again every few seconds.
+  useEffect(() => {
+    if (!valid || avail || availTick === 0) return undefined;
+    // After a handful of tries the page stops waiting and says what it can (the scoreboard, if that loaded).
+    if (availTick >= 5) { setAvail({ trace: false, model_configured: false, can_parse: false, heroes: [], parse: { status: 'none' } }); return undefined; }
+    const timer = setTimeout(() => { void loadAvail(); }, 3000);
+    return () => clearTimeout(timer);
+  }, [valid, avail, availTick, loadAvail]);
 
   // ?hero=<key>, or an older ?p=<slot> link resolved through the scoreboard.
   const hero = useMemo(() => {
@@ -211,12 +220,13 @@ export const AgentMatchPage: React.FC = () => {
   };
   // One start per click: the request is marked in flight before it leaves, so the effect that carries on
   // after a parse cannot send a second one while the first has not answered.
-  const beginning = useRef(false);
+  // The lock belongs to a selection: a start still out for another hero does not block this one's.
+  const beginning = useRef<string | null>(null);
   const begin = useCallback(async () => {
-    if (!heroKey || beginning.current) return;
-    beginning.current = true;
     const asked = `${matchId}|${heroKey}|${lang}`;
-    try { const next = await startReview(matchId, heroKey, lang); if (selected.current === asked) setState(next); } catch (e) { if (selected.current === asked) refuse(e); } finally { beginning.current = false; }
+    if (!heroKey || beginning.current === asked) return;
+    beginning.current = asked;
+    try { const next = await startReview(matchId, heroKey, lang); if (selected.current === asked) setState(next); } catch (e) { if (selected.current === asked) refuse(e); } finally { if (beginning.current === asked) beginning.current = null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, heroKey, lang]);
 
