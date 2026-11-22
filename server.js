@@ -668,12 +668,17 @@ const recentSources = () => sourceOrder('recent', { primary: upstreamPrimary.pri
 // A stored match is final, with one exception: a copy we parsed ourselves has
 // no percentiles. When OpenDota is the primary source and answering, its
 // parsed copy is the fuller one; otherwise (or if it has none) ours stands.
+const isSelfParsed = (match) => match?.data_source === 'steam_gc+odota_parser';
 async function fullerStoredCopy(stored, matchId, options = {}) {
-  if (stored.data_source !== 'steam_gc+odota_parser') return stored;
+  if (!isSelfParsed(stored)) return stored;
   if (upstreamPrimary.primary !== 'opendota' || opendota.outageOpen()) return stored;
   try {
     const raw = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 1, 500, { ...options, timeoutMs: options.timeoutMs ?? 15000 });
-    return isMatchParsed(raw) ? { ...raw, opendota_fetched_at: new Date().toISOString() } : stored;
+    if (!isMatchParsed(raw)) return stored;
+    const fuller = { ...raw, opendota_fetched_at: new Date().toISOString() };
+    // Keep it: the next cold instance, or an outage, should find OpenDota's copy.
+    matchStore.replaceMatch(matchId, fuller, isSelfParsed);
+    return fuller;
   } catch (err) {
     if (options.signal?.aborted) throw err;
     return stored;

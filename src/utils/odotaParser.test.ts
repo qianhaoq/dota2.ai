@@ -532,6 +532,55 @@ describe('self-hosted parse request', () => {
     await submit.idle();
   });
 
+  it('a slow failure is still backed off: the cooldown counts from the failure', async () => {
+    let fail: any;
+    const { submit, tracker, tick, calls } = setup({ parse: () => new Promise((_r, reject) => { fail = reject; }) });
+    expect((await submit(ID, 'ip')).status).toBe('requested');
+    await new Promise((r) => setTimeout(r, 5));
+    tick(90_000); // the parser takes a minute and a half, then fails
+    fail(Object.assign(new Error('replay parser timeout'), { code: 'parser_failed' }));
+    await submit.idle();
+    expect(tracker.active(ID)).toMatchObject({ failed: true, retryAfterSec: 60 });
+    expect((await submit(ID, 'ip')).status).toBe('failed'); // not a second parse
+    tick(59_000);
+    expect((await submit(ID, 'ip')).status).toBe('failed');
+    tick(2_000);
+    expect((await submit(ID, 'ip')).status).toBe('requested');
+    await new Promise((r) => setTimeout(r, 5));
+    fail(new Error('again'));
+    await submit.idle();
+    expect(calls.gc).toBe(2);
+    // The same when storing the result is what failed.
+    let store: any;
+    const b = setup({ parse: async () => { await new Promise((r) => { store = r; }); return clone(fx.blob); }, onParsed: () => { throw new Error('disk'); } });
+    await b.submit(ID, 'ip');
+    await new Promise((r) => setTimeout(r, 5));
+    b.tick(90_000);
+    store();
+    await b.submit.idle();
+    expect(b.tracker.active(ID)).toMatchObject({ failed: true, retryAfterSec: 60 });
+  });
+
+  it('a caller who leaves during the replay check starts no parse and leaves no failure behind', async () => {
+    const gone = new AbortController();
+    const { submit, calls, tracker, tick } = setup({ replayAvailable: async () => { gone.abort(); return true; } });
+    await expect(submit(ID, 'ip', { matchData: gc(), signal: gone.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    await submit.idle();
+    expect(calls).toMatchObject({ gc: 0, parse: [], stored: [] });
+    expect(tracker.active(ID)).toMatchObject({ failed: false, aborted: true });
+    tick(61_000); // the short abort window, not the five-minute one
+    expect((await submit(ID, 'ip', { matchData: gc() })).status).toBe('requested');
+    await submit.idle();
+    expect(calls.parse).toEqual([URL_OK]);
+    // Leaving after the request was accepted does not stop the parse.
+    const later = new AbortController();
+    const c = setup();
+    expect((await c.submit(ID, 'ip', { matchData: gc(), signal: later.signal })).status).toBe('requested');
+    later.abort();
+    await c.submit.idle();
+    expect(c.calls.stored).toHaveLength(1);
+  });
+
   it('logs no replay address, salt or account', async () => {
     const { submit, logs } = setup();
     await submit(ID, '9.9.9.9');
