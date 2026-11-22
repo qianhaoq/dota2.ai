@@ -22,12 +22,82 @@ vi.mock('./api', async (orig) => ({
   requestParse: (...a: unknown[]) => parse(...a),
   fetchMatchup: (...a: unknown[]) => matchup(...a),
 }));
-const { CoachReportPage } = await import('./CoachApp');
+const { CoachReportPage, reportErrorCopy } = await import('./CoachApp');
+const { CoachApiError } = await import('./api');
 
 afterEach(() => { cleanup(); fetchReport.mockReset(); parse.mockReset(); matchup.mockReset(); });
 const page = (url: string) => render(
   <MemoryRouter initialEntries={[url]}><Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes></MemoryRouter>,
 );
+
+describe('when the report does not load, the page says why', () => {
+  // The codes lib/coach/router.js reportFor() sends, with their statuses.
+  const cases: [string, number, RegExp, RegExp][] = [
+    ['not_found', 404, /找不到这场比赛/, /does not know this match/],
+    ['rate_limited', 429, /请求太频繁/, /too many requests/],
+    ['insufficient', 422, /玩家数据还没准备好/, /player data is not available yet/],
+    ['internal', 500, /这是我们这边的问题/, /fault is on our side/],
+    ['upstream', 503, /OpenDota 暂时没有响应/, /did not answer in time/],
+    ['upstream', 502, /OpenDota 暂时没有响应/, /did not answer in time/],
+    ['network', 0, /连不上 dota2\.ai/, /Could not reach dota2\.ai/],
+    ['invalid_match_id', 400, /不是一个比赛 ID/, /does not look like a match ID/],
+  ];
+
+  it.each(cases)('code %s (HTTP %i): its own message in both languages', (code, status, zh, en) => {
+    const copy = reportErrorCopy({ code, status });
+    expect(copy.zh).toMatch(zh);
+    expect(copy.en).toMatch(en);
+  });
+
+  it('only a real upstream failure blames OpenDota', () => {
+    for (const [code, status] of cases) {
+      const copy = reportErrorCopy({ code, status });
+      if (code !== 'upstream' && code !== 'not_found') expect(`${copy.zh} ${copy.en}`).not.toMatch(/OpenDota/);
+    }
+  });
+
+  it('an answer without a known code falls back on the status', () => {
+    expect(reportErrorCopy({ code: 'something_new', status: 404 }).zh).toMatch(/找不到这场比赛/);
+    expect(reportErrorCopy({ code: 'something_new', status: 429 }).zh).toMatch(/请求太频繁/);
+    expect(reportErrorCopy({ code: 'something_new', status: 422 }).zh).toMatch(/还没准备好/);
+    expect(reportErrorCopy({ code: 'something_new', status: 0 }).zh).toMatch(/连不上/);
+    expect(reportErrorCopy({ code: 'something_new', status: 500 }).zh).toMatch(/暂时没有响应/); // e.g. a proxy's error page
+  });
+
+  it('every code the server sends for a report has a message here', () => {
+    const router = readFileSync(path.join(process.cwd(), 'lib/coach/router.js'), 'utf8');
+    const fn = router.slice(router.indexOf('async function reportFor('), router.indexOf("router.get('/api/coach/:matchId/cases'"));
+    const sent = [...fn.matchAll(/code: (?:[^,}]*\? )?'([a-z_]+)'(?: : '([a-z_]+)')?/g)].flatMap((m) => [m[1], m[2]]).filter(Boolean);
+    expect([...new Set(sent)].sort()).toEqual(['insufficient', 'internal', 'not_found', 'rate_limited', 'upstream']);
+    expect(fn).toContain('code: q.error'); // invalid_match_id / invalid_slot_pos
+    // With a status that says nothing, each code still gets its own message, not the upstream one.
+    const upstream = reportErrorCopy({ code: 'upstream', status: 599 });
+    for (const code of [...sent, 'invalid_match_id', 'invalid_slot_pos']) {
+      if (code !== 'upstream') expect(reportErrorCopy({ code: code!, status: 599 }), code).not.toBe(upstream);
+    }
+  });
+
+  it('on the page: a match with no player data yet, then a retry that works', async () => {
+    fetchReport.mockRejectedValueOnce(new CoachApiError('insufficient', 'OpenDota has no player data for this match yet', 422)).mockResolvedValue(parsed);
+    const { container } = page('/r/9091400302?p=0');
+    await waitFor(() => expect(screen.getByText(/这场比赛的玩家数据还没准备好/)).toBeTruthy());
+    expect(screen.queryByText(/OpenDota 暂时没有响应/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /重试/ }));
+    await waitFor(() => expect(container.querySelector('.rv-headline')).toBeTruthy());
+  });
+
+  it('on the page: our own failure and a dropped connection are not blamed on OpenDota', async () => {
+    fetchReport.mockRejectedValueOnce(new CoachApiError('internal', 'Could not build the report', 500));
+    page('/r/9091400302?p=0');
+    await waitFor(() => expect(screen.getByText(/复盘生成失败。这是我们这边的问题/)).toBeTruthy());
+    expect(document.querySelector('.cx-error')?.textContent).not.toMatch(/OpenDota/);
+    cleanup();
+    fetchReport.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    const { container } = page('/r/9091400302?p=0');
+    await waitFor(() => expect(screen.getByText(/连不上 dota2\.ai/)).toBeTruthy());
+    expect(container.querySelector('.cx-error')?.textContent).not.toMatch(/OpenDota/);
+  });
+});
 
 describe('review page from the card surface (review #206)', () => {
   it('a pending parse keeps going when the reviewed player changes', async () => {

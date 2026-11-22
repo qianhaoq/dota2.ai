@@ -133,6 +133,9 @@ const UI = {
   notFound: { en: 'OpenDota does not know this match. Check the ID — private or very new matches may not be visible yet.', zh: 'OpenDota 找不到这场比赛。请检查 ID——私密比赛或刚结束的比赛可能暂时不可见。' },
   upstream: { en: 'OpenDota did not answer in time. Try again in a moment.', zh: 'OpenDota 暂时没有响应，请稍后重试。' },
   rateLimited: { en: 'Slow down a little — too many requests from your network.', zh: '请求太频繁了，请稍等。' },
+  insufficient: { en: 'This match’s player data is not available yet. That is usual for a game that ended a few minutes ago: try again shortly.', zh: '这场比赛的玩家数据还没准备好。比赛刚结束的几分钟内常会这样，请稍后重试。' },
+  internalError: { en: 'We could not build this review. The fault is on our side, not in your match ID. Try again in a moment.', zh: '复盘生成失败。这是我们这边的问题，不是你的比赛 ID 有误。请稍后重试。' },
+  network: { en: 'Could not reach dota2.ai. Check your connection and try again.', zh: '连不上 dota2.ai，请检查网络后重试。' },
   retry: { en: 'Try again', zh: '重试' },
   refreshFailed: { en: 'Could not update the report — what you see may not reflect your latest change.', zh: '报告没能更新——当前显示的可能不是你最新的选择。' },
   newMatch: { en: 'Another match', zh: '换一场' },
@@ -333,7 +336,7 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
       }
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
-      setError(e instanceof CoachApiError ? e : new CoachApiError('upstream', String(e), 0));
+      setError(e instanceof CoachApiError ? e : new CoachApiError('network', String(e), 0));
     }
   }, [accountId, valid]);
   useEffect(() => {
@@ -366,7 +369,7 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
 
   if (!valid) return <Shell hideMyGames><ErrorBlock text={L(UI.accountInvalid)} /></Shell>;
   if (error) {
-    const text = error.status === 429 ? L(UI.rateLimited) : L(UI.upstream);
+    const text = error.status === 429 ? L(UI.rateLimited) : error.code === 'network' ? L(UI.network) : L(UI.upstream);
     return <Shell hideMyGames><ErrorBlock text={text} onRetry={() => void load()} /></Shell>;
   }
   if (!data) return <Shell hideMyGames><Skeleton label={L(UI.loading)} /></Shell>;
@@ -687,7 +690,8 @@ export const CoachReportPage: React.FC = () => {
       return r;
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
-      setError(e instanceof CoachApiError ? e : new CoachApiError('upstream', String(e), 0));
+      // Not an answer from the server at all: the request never got through.
+      setError(e instanceof CoachApiError ? e : new CoachApiError('network', String(e), 0));
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -723,8 +727,7 @@ export const CoachReportPage: React.FC = () => {
     return <Shell><ErrorBlock text={L(UI.invalid)} /></Shell>;
   }
   if (error && !report) {
-    const text = error.status === 404 ? L(UI.notFound) : error.status === 429 ? L(UI.rateLimited) : L(UI.upstream);
-    return <Shell><ErrorBlock text={text} onRetry={() => void load()} /></Shell>;
+    return <Shell><ErrorBlock text={L(reportErrorCopy(error))} onRetry={() => void load()} /></Shell>;
   }
   if (!report) {
     return <Shell wide><Skeleton label={L(UI.loading)} /></Shell>;
@@ -793,6 +796,29 @@ export const CoachReportPage: React.FC = () => {
     </Shell>
   );
 };
+
+/**
+ * What to tell the reader when a report did not load. The server says why in
+ * `code` (lib/coach/router.js reportFor); the status is the fallback for an
+ * answer without one (a proxy's error page). Only a real upstream failure
+ * blames the data source.
+ */
+export function reportErrorCopy(error: Pick<CoachApiError, 'code' | 'status'>): Bi {
+  switch (error.code) {
+    case 'not_found': return UI.notFound;
+    case 'rate_limited': return UI.rateLimited;
+    case 'insufficient': return UI.insufficient;
+    case 'internal': return UI.internalError;
+    case 'network': return UI.network;
+    case 'invalid_match_id': case 'invalid_slot_pos': return UI.invalid;
+    default: break;
+  }
+  if (error.status === 404) return UI.notFound;
+  if (error.status === 429) return UI.rateLimited;
+  if (error.status === 422) return UI.insufficient;
+  if (error.status === 0) return UI.network;
+  return UI.upstream;
+}
 
 const ErrorBlock: React.FC<{ text: string; onRetry?: () => void }> = ({ text, onRetry }) => {
   const { lang, L } = useLang();
