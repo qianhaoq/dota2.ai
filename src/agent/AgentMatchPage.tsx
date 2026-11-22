@@ -7,7 +7,7 @@ import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
 import { trackReviewViewed } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
-import { AgentApiError, fetchAvailability, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ReviewState } from './api';
+import { AgentApiError, fetchAvailability, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { ReviewDoc } from './ReviewDoc';
 import './agent.css';
@@ -174,14 +174,23 @@ export const AgentMatchPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [state, loadReview]);
 
+  /** What prepare answered is the parse state now: a refresh that fails right after must not lose it. */
+  const applyParse = (p: ParseState) => {
+    if (p.status === 'running' || p.status === 'failed') setAvail((prev) => (prev && !prev.trace ? { ...prev, parse: p } : prev));
+    setAvailTick((n) => n + 1);
+  };
   const refuse = (e: unknown) => {
     const status = e instanceof AgentApiError ? e.status : 0;
     setNotice(t(status === 429 ? T.rate : status === 503 ? T.busy : T.unavailable));
     want(false);
   };
+  // One start per click: the request is marked in flight before it leaves, so the effect that carries on
+  // after a parse cannot send a second one while the first has not answered.
+  const beginning = useRef(false);
   const begin = useCallback(async () => {
-    if (!heroKey) return;
-    try { setState(await startReview(matchId, heroKey, lang)); } catch (e) { refuse(e); }
+    if (!heroKey || beginning.current) return;
+    beginning.current = true;
+    try { setState(await startReview(matchId, heroKey, lang)); } catch (e) { refuse(e); } finally { beginning.current = false; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, heroKey, lang]);
 
@@ -189,7 +198,7 @@ export const AgentMatchPage: React.FC = () => {
   async function go() {
     setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
-    try { await prepareMatch(matchId); await loadAvail(); } catch (e) { refuse(e); }
+    try { applyParse(await prepareMatch(matchId)); void loadAvail(); } catch (e) { refuse(e); }
   }
 
   // The reader said go, then came back to a parse that is no longer running (it died with its instance,
@@ -197,7 +206,7 @@ export const AgentMatchPage: React.FC = () => {
   useEffect(() => {
     if (!intent || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
     resumed.current = true;
-    prepareMatch(matchId).then(() => loadAvail()).catch(refuse);
+    prepareMatch(matchId).then((p) => { applyParse(p); void loadAvail(); }).catch(refuse);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, avail, matchId, loadAvail]);
 

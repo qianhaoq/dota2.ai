@@ -30,7 +30,7 @@ function mockFetch(routes: Record<string, Handler | any>) {
     const url = String(input);
     calls.push({ url, init });
     const key = Object.keys(routes).find((k) => url.includes(k));
-    const body = key ? (typeof routes[key] === 'function' ? routes[key](url, init) : routes[key]) : null;
+    const body = key ? await (typeof routes[key] === 'function' ? routes[key](url, init) : routes[key]) : null;
     if (body instanceof Response) return body;
     return new Response(JSON.stringify(body ?? { code: 'not_found' }), { status: body ? (body.__status ?? 200) : 404, headers: { 'content-type': 'application/json' } });
   }));
@@ -85,6 +85,34 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(calls.filter((c) => c.url.endsWith('/api/agent/9100904020')).length).toBeGreaterThanOrEqual(2));
     expect(prepared).toBe(1);
   });
+
+  it('one click is one start, and a refresh that fails right after prepare does not strand the wait', async () => {
+    // With a trace: the start answers slowly; the carry-on effect must not send a second one meanwhile.
+    let starts = 0;
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/review?': { status: 'none' },
+      '/review': async (_u: string, init?: RequestInit) => { if (init?.method !== 'POST') return null; starts += 1; await new Promise((r) => setTimeout(r, 300)); return { status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(document.querySelector('.ag-journey')).toBeTruthy());
+    await new Promise((r) => setTimeout(r, 600));
+    expect(starts).toBe(1);
+    cleanup(); window.sessionStorage.clear();
+    // Without a trace: prepare says running, the refresh right after it fails; the page still shows and polls the parse.
+    let n = 0;
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': { status: 'running', stage: 'downloading' },
+      '/api/agent/9100904020': () => { n += 1; return n === 1 ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } : n === 2 ? new Response('bad gateway', { status: 502 }) : { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'running', stage: 'extracting' } }; },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(n).toBeGreaterThanOrEqual(3), { timeout: 9000 });
+    await waitFor(() => expect(document.querySelector('.ag-journey li.is-live strong')?.textContent).toBe('Read the replay'));
+  }, 20000);
 
   it('a failed status request does not stop the wait: the page asks again', async () => {
     let n = 0;
