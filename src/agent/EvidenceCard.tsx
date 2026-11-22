@@ -162,7 +162,11 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   }
   if (data.kind === 'timeline') {
     const pos = r.positions_at_first_death?.heroes ?? r.positions_at_start;
-    const rows = r.events.filter((e: any) => e.kind !== 'cast' || e.target).slice(0, 40);
+    // Deaths, immunity and buildings always show; casts on a hero and key items fill what room is left, in order.
+    const key = (e: any) => e.kind === 'death' || e.kind === 'spell_immune' || e.kind === 'building';
+    const room = Math.max(0, 48 - r.events.filter(key).length);
+    let extra = 0;
+    const rows = r.events.filter((e: any) => key(e) || ((e.kind !== 'cast' || e.target) && (extra += 1) <= room));
     const max = Math.max(...r.damage_to_heroes_by_unit.map((d: any) => d.value), 1);
     return (
       <div className="ag-rec ag-rec--split">

@@ -3,13 +3,14 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Shell } from '../coach/CoachApp';
 import { fetchCoachReport } from '../coach/api';
 import { markReviewed } from '../coach/accountInput';
+import { checkGoal, useActiveGoal, type GoalCheck } from '../coach/goalStore';
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
 import { trackReviewViewed } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
-import { ReviewDoc } from './ReviewDoc';
+import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import './agent.css';
 
 /**
@@ -65,10 +66,11 @@ const T = {
   dropped: { en: 'removed for lack of evidence', zh: '条因缺少依据被删去' },
   q1: { en: 'Which of my deaths was the most avoidable?', zh: '我哪一次阵亡最不应该？' },
   qFinding: { en: 'what exactly should I have done instead?', zh: '具体应该怎么打？' },
+  goalCheck: { en: 'Your goal, in this game', zh: '你的目标，这一局' },
+  goalResult: { met: { en: 'Met', zh: '达成' }, missed: { en: 'Missed', zh: '未达成' }, no_opportunity: { en: 'Did not come up', zh: '这局没遇到' }, unknown: { en: 'Can’t tell yet', zh: '暂时判断不了' } } as Record<string, Bi>,
 } as const;
 
 type Lang = 'en' | 'zh';
-type Bi = Record<Lang, string>;
 /** The four steps of the wait, and which one is live. */
 export function journeyStep(avail: Availability | null, state: ReviewState | null): number {
   if (state?.status === 'running') return state.steps.length >= 6 ? 3 : 2;
@@ -76,6 +78,7 @@ export function journeyStep(avail: Availability | null, state: ReviewState | nul
   return avail?.trace ? 2 : 0;
 }
 
+type Bi = Record<'en' | 'zh', string>;
 const intentKey = (matchId: string, hero: string, lang: string) => `dota2ai.review-intent.${matchId}.${hero}.${lang}`;
 const session = () => { try { return window.sessionStorage; } catch { return null; } };
 
@@ -200,6 +203,14 @@ export const AgentMatchPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, matchId, heroKey]);
 
+  // The player's seat on the scoreboard: what a goal needs, and what a later game is judged by.
+  const seat = board && hero ? board.players.find((p) => p.hero.id === hero.hero_id) ?? null : null;
+  const goalContext: GoalContext | null = board && seat && board.match.start_time ? { fromStart: board.match.start_time, accountId: seat.account_id ?? null, heroId: seat.hero.id } : null;
+  // A goal set from an earlier game is checked against this one (same judge as the games page).
+  const activeGoalNow = useActiveGoal();
+  const [goalCheck, setGoalCheck] = useState<GoalCheck | null>(null);
+  useEffect(() => { setGoalCheck(activeGoalNow && board && seat ? checkGoal(activeGoalNow, board, seat.slot) : null); }, [activeGoalNow, board, seat]);
+
   const ask = (label: string, refs: string[]) => chat.current?.ask(label, refs);
   const suggestions = useMemo(() => {
     if (state?.status !== 'ready') return [];
@@ -220,6 +231,14 @@ export const AgentMatchPage: React.FC = () => {
           <span className={`ag-team is-${hero.team}`}>{t(T[hero.team])}</span>
           <button type="button" className="ag-link" onClick={() => pickHero(null)}>{t(T.change)}</button>
         </div>
+      )}
+      {goalCheck && activeGoalNow && (
+        <p className="ag-goalcheck">
+          <span>{t(T.goalCheck)}</span>
+          <b>{activeGoalNow.action[lang]}</b>
+          <span className={`cx-goal-result is-${goalCheck.result}`}>{t(T.goalResult[goalCheck.result])}</span>
+          <em>{goalCheck.evidence[lang]}</em>
+        </p>
       )}
     </header>
   );
@@ -275,7 +294,7 @@ export const AgentMatchPage: React.FC = () => {
         {header}
         <div className="ag-layout">
           <div>
-            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} />
+            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} goalContext={goalContext} />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
           </div>
           <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} />

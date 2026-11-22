@@ -12,6 +12,10 @@
  * the parsed 9091400302 fixture; pro cases come from the recorded
  * Tidehunter-vs-Ursa profiles, and "ask" answers with the deterministic
  * fallback (no LLM).
+ *
+ * The review agent (/r/9100904020, /api/agent/*) runs the real router,
+ * service, tools and verifier with a scripted model and a fake replay
+ * pipeline: scripts/mock-agent.mjs.
  */
 
 import express from 'express';
@@ -24,6 +28,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { staticNotFound } from '../lib/staticNotFound.js';
+import { createMockAgent } from './mock-agent.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -47,7 +52,9 @@ const coachMatches = new Map([
   [9091400302, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))],
 ]);
 const caseProfiles = JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/cases.tidehunter-vs-ursa.profiles.json'), 'utf8')).profiles;
+const mockAgent = createMockAgent({ root: ROOT, resolveClientIp: (req) => req.ip || 'local' });
 const coachGetMatch = async (id) => {
+  if (mockAgent.known.has(Number(id))) return mockAgent.getMatchDetail(id);
   const match = coachMatches.get(Number(id));
   if (!match) throw Object.assign(new Error('HTTP 404'), { status: 404, upstream: 'opendota' });
   return structuredClone(match);
@@ -65,6 +72,7 @@ const coachService = createCoachService({
   cases: coachCaseService,
   limiter: noLimit,
 });
+app.use(mockAgent.router);
 app.use(createCoachRouter({
   getMatchDetail: coachGetMatch,
   resolveClientIp: (req) => req.ip || 'local',

@@ -19,7 +19,7 @@ const review = {
   findings: [{ title: 'Roar on the wrong target', claim: 'Three of ten went to Axe.', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: 'Roared into her BKB; stunned 3.4 s.' }], fix: 'Keep it for her.' }],
   did_well: ['Aghanim\'s at 16:48.'], next_game: ['Keep the roar for the carry.'], blind_spots: ['Vision.'],
 };
-const board = { match: { patch: '7.42' }, players: [{ slot: 0, radiant: true, kda: [4, 12, 14], hero: { id: 2, en: 'Axe', zh: '斧王', slug: 'axe', img: null } }, { slot: 6, radiant: false, kda: [9, 11, 18], hero: { id: 38, en: 'Beastmaster', zh: '兽王', slug: 'beastmaster', img: null } }] };
+const board = { match: { patch: '7.42' }, players: [{ slot: 0, radiant: true, kda: [4, 12, 14], hero: { id: 2, en: 'Axe', zh: '斧王', slug: 'axe', img: null } }, { slot: 1, radiant: false, kda: [9, 11, 18], account_id: 77, hero: { id: 38, en: 'Beastmaster', zh: '兽王', slug: 'beastmaster', img: null } }] };
 const cast = { status: 'ok', ref: 'cast:beastmaster:primal_roar:6', kind: 'cast', names: { phantom_assassin: 'Phantom Assassin', sven: 'Sven' }, record: { clock: '27:27', target: 'phantom_assassin', target_hp: { hp: 1980, max_hp: 1980 }, target_spell_immune: true, target_stunned_seconds: 3.4, allies_within_1300: ['sven'], enemies_within_1300: ['phantom_assassin'], deaths_within_12s: [{ hero: 'phantom_assassin', side: 'enemy', dt: 10.8 }] } };
 const overview = { status: 'ok', ref: 'overview', kind: 'overview', names: {}, record: { duration: { t: 2551 }, fights: [{ ref: 'fight:11', from: 1826, to: 1848, clock: '30:26–30:48', my_team_deaths: 5, enemy_deaths: 3, my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: -4298 }] } };
 
@@ -43,7 +43,7 @@ const page = (path: string) => render(
   </MemoryRouter>,
 );
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.sessionStorage.clear(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.sessionStorage.clear(); window.localStorage.clear(); });
 
 describe('AgentMatchPage', () => {
   it('no parsed replay yet: the roster comes from the scoreboard, and one click runs replay → parse → review', async () => {
@@ -157,6 +157,38 @@ describe('AgentMatchPage', () => {
     expect(within(chat).getByText('Was that right?')).toBeTruthy();
     const sent = JSON.parse(String(calls.find((c) => c.url.includes('/chat'))!.init!.body));
     expect(sent).toEqual({ hero: 'beastmaster', lang: 'en', question: 'Was that right?\n(about cast:beastmaster:primal_roar:6)', history: [] });
+  });
+
+  it('the review\'s goal can be set as the next-game goal, and removed', async () => {
+    const goal = { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38, label: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: '用兽王时：出一件闪烁匕首或黑皇杖' }, finding: 1 };
+    mockFetch({
+      '/api/coach/9100904020': { ...board, match: { id: 9100904020, patch: '7.42', start_time: 1795344198, duration: 2551 } },
+      'ref=overview': overview,
+      '/review?': { status: 'ready', review: { ...review, goal }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByText('On Beastmaster: finish with Blink Dagger or Black King Bar')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Make this my next-game goal' }));
+    expect(await screen.findByText(/✓ Your next-game goal · From finding 1/)).toBeTruthy();
+    const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
+    expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent', goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38 }, action: goal.label, fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38 });
+    expect(stored.goal).not.toHaveProperty('finding');
+    // The game the goal came from is not judged against it.
+    expect(screen.queryByText('Your goal, in this game')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(window.localStorage.getItem('dota2ai.coach.goal')).toBeNull());
+  });
+
+  it('a later game is judged against the goal, at the top of its page', async () => {
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: '9100904020:beastmaster:agent', goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38, label: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: 'x' } }, action: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: 'x' }, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 }));
+    const later = { match: { id: 9100999999, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: [board.players[0], { ...board.players[1], items: [{ key: 'blink', en: 'Blink Dagger', zh: '闪烁匕首' }] }], reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
+    mockFetch({ '/api/coach/9100999999': later, '/api/agent/9100999999': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } });
+    page('/r/9100999999?hero=beastmaster&lang=en');
+    expect(await screen.findByText('Your goal, in this game')).toBeTruthy();
+    expect(screen.getByText('Met')).toBeTruthy();
+    expect(screen.getByText('Finished with Blink Dagger')).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!)).toEqual([expect.objectContaining({ goalId: '9100904020:beastmaster:agent', matchId: 9100999999, result: 'met' })]);
   });
 
   it('an invalid match id never calls the server', async () => {

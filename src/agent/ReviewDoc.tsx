@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchEvidence, type DeepReview } from './api';
 import { EvidenceCard } from './EvidenceCard';
+import { setGoal, useActiveGoal, type ActiveGoal } from '../coach/goalStore';
 
 /** The review as a document: verdict, the game's fights with the turn marked, the findings with their evidence, what to change. */
 
@@ -16,6 +17,12 @@ const T = {
   well: { en: 'What you did well', zh: '做得好的' },
   blind: { en: 'What the replay could not show', zh: '录像看不到的' },
   askFight: { en: 'the fight at', zh: '这波团战' },
+  goalTitle: { en: 'Make it checkable', zh: '定一个能核验的目标' },
+  goalSet: { en: 'Make this my next-game goal', zh: '设为下一局目标' },
+  goalIs: { en: 'Your next-game goal', zh: '已设为下一局目标' },
+  goalHow: { en: 'Play your next game, then open it here or on your games page: the coach checks it against the scoreboard.', zh: '打完下一局，在这里或「我的比赛」里打开它，教练会按记分板核验。' },
+  goalUndo: { en: 'Remove', zh: '取消' },
+  goalFrom: { en: 'From finding', zh: '对应问题' },
 } as const;
 
 interface Fight { ref: string; from: number; to: number; clock: string; my_team_deaths: number; enemy_deaths: number; my_team_gold_lead_before?: number | null; my_team_gold_lead_2min_after?: number | null }
@@ -47,7 +54,7 @@ const FightStrip: React.FC<{ fights: Fight[]; duration: number; lang: Lang; onAs
   const turn = turningFight(fights);
   return (
     <figure className="ag-strip">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={T.fights[lang]}>
+      <svg viewBox={`0 0 ${W} ${H}`} role="group" aria-label={T.fights[lang]}>
         <line x1={pad} y1={mid} x2={W - pad} y2={mid} className="ag-strip-axis" />
         {gold.length > 1 && <polyline className="ag-strip-gold" points={gold.map((f) => `${x(f.from)},${y(f.my_team_gold_lead_before!)}`).join(' ')} />}
         {fights.map((f) => {
@@ -55,7 +62,7 @@ const FightStrip: React.FC<{ fights: Fight[]; duration: number; lang: Lang; onAs
           const h = Math.max(4, Math.abs(diff) * 9);
           return (
             <g key={f.ref} className={`ag-strip-fight ${diff > 0 ? 'is-won' : diff < 0 ? 'is-lost' : 'is-even'} ${turn?.ref === f.ref ? 'is-turn' : ''}`}
-              role="button" tabIndex={0} onClick={() => onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref])}
+              role="button" tabIndex={0} aria-label={`${T.askFight[lang]} ${f.clock}, ${f.my_team_deaths}:${f.enemy_deaths}`} onClick={() => onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref])}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref]); } }}>
               <rect x={x(f.from) - 5} y={diff >= 0 ? mid - h : mid} width="10" height={h} rx="2"><title>{`${f.clock} · ${f.my_team_deaths}:${f.enemy_deaths}`}</title></rect>
               {turn?.ref === f.ref && <text x={x(f.from)} y={H - 4} textAnchor="middle">▲ {f.clock.split('–')[0]} {T.turn[lang]}</text>}
@@ -68,7 +75,30 @@ const FightStrip: React.FC<{ fights: Fight[]; duration: number; lang: Lang; onAs
   );
 };
 
-export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void }> = ({ matchId, review, lang, onAsk }) => {
+/** What a goal needs to know about the game it came from (from the scoreboard). */
+export interface GoalContext { fromStart: number; accountId: number | null; heroId: number }
+
+/** The review's one checkable goal: set it, and later games are judged against it (goalStore). */
+const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx: GoalContext }> = ({ matchId, review, lang, ctx }) => {
+  const active = useActiveGoal();
+  const goal = review.goal!;
+  const id = `${matchId}:${review.hero}:agent`;
+  const mine = active?.id === id;
+  const { finding, ...spec } = goal;
+  const make = (): ActiveGoal => ({ id, goal: spec, action: spec.label, findingId: `agent:${finding}`, fromMatch: Number(matchId), fromStart: ctx.fromStart, accountId: ctx.accountId, heroId: ctx.heroId, setAt: Date.now() });
+  return (
+    <div className={`ag-goal ${mine ? 'is-set' : ''}`}>
+      <p className="ag-goal-eyebrow">{mine ? `✓ ${T.goalIs[lang]}` : T.goalTitle[lang]} · {T.goalFrom[lang]} {finding}</p>
+      <p className="ag-goal-label">{spec.label[lang]}</p>
+      <p className="ag-goal-how">{T.goalHow[lang]}</p>
+      {mine
+        ? <button type="button" className="ag-link" onClick={() => setGoal(null)}>{T.goalUndo[lang]}</button>
+        : <button type="button" className="ag-btn is-primary" onClick={() => setGoal(make())}>{T.goalSet[lang]}</button>}
+    </div>
+  );
+};
+
+export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; goalContext?: GoalContext | null }> = ({ matchId, review, lang, onAsk, goalContext = null }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   const [overview, setOverview] = useState<{ fights: Fight[]; duration: { t: number } | null } | null>(null);
   useEffect(() => {
@@ -104,6 +134,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       <section className="ag-next">
         <h2>{t(T.next)}</h2>
         <ol>{review.next_game.map((line, i) => <li key={i}>{line}</li>)}</ol>
+        {review.goal && goalContext && <GoalCard matchId={matchId} review={review} lang={lang} ctx={goalContext} />}
       </section>
 
       {review.did_well.length > 0 && <section><h2>{t(T.well)}</h2><ul className="ag-plain">{review.did_well.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}

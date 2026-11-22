@@ -170,3 +170,14 @@
 .ag-journey strong { font-weight: 500; font-size: 17px; }
 .ag-journey .ag-steps { margin: 8px 0 0; }
 @media (prefers-reduced-motion: reduce) { .ag-journey > li.is-live .ag-journey-dot { animation: none; } }
+
+/* the review's one checkable goal */
+.ag-goal { margin-top: 18px; padding: 16px 18px; border: 1px dashed var(--line-2); border-radius: 12px; }
+.ag-goal.is-set { border-style: solid; border-color: rgba(143, 191, 136, 0.5); background: rgba(143, 191, 136, 0.06); }
+.ag-goal-eyebrow { margin: 0 0 6px; font-size: var(--fs-meta); letter-spacing: 0.08em; color: var(--text-3); }
+.ag-goal.is-set .ag-goal-eyebrow { color: var(--good); }
+.ag-goal-label { margin: 0 0 6px; font-size: 17px; }
+.ag-goal-how { margin: 0 0 12px; color: var(--text-2); font-size: var(--fs-meta); line-height: 1.6; }
+.ag-goalcheck { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; font-size: var(--fs-meta); color: var(--text-3); }
+.ag-goalcheck b { color: var(--text); font-weight: 500; }
+.ag-goalcheck em { font-style: normal; color: var(--text-2); }

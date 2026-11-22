@@ -1,4 +1,5 @@
 /** Client for the review agent (lib/agent/router.js). */
+import type { GoalSpec } from '../coach/types';
 
 export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string }
 /** Where the replay parse stands when there is no trace yet. `final`: trying again will not help (the replay is gone). */
@@ -10,6 +11,8 @@ export interface ReviewFinding { title: string; claim: string; evidence: Evidenc
 export interface DeepReview {
   schema: string; match_id: number; hero: string; lang: 'en' | 'zh';
   verdict: string; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
+  /** One thing the next game can be checked on (lib/agent/goal.js), tied to finding `finding` (1-based). */
+  goal?: GoalSpec & { finding: number };
 }
 export interface ToolStep { tool: string; args: Record<string, unknown> }
 export type ReviewState =
