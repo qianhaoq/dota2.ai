@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatObjectiveLabel } from '../../lib/matchReview/objectiveLabels.js';
+import { formatObjectiveLabel } from '../../packages/review-engine/src/objectiveLabels.js';
 
 describe('formatObjectiveLabel', () => {
   it('localizes building kills with the losing side and destroyer in Chinese', () => {

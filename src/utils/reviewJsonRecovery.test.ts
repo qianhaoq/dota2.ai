@@ -104,7 +104,7 @@ describe('saved 9035042364 outputs through the production parse + validate path'
   it('recovered outputs validate, except the disallowed death_pattern one', async () => {
     const { readFileSync } = await import('node:fs');
     const path = await import('node:path');
-    const { buildMatchFact } = await import('../../lib/matchReview/matchFacts.js');
+    const { buildMatchFact } = await import('../../packages/review-engine/src/matchFacts.js');
     const rc = await import('../../lib/matchReview/reviewCards.js');
     const match = JSON.parse(readFileSync(path.join(__dirname, '../fixtures/match9035042364.parsed.json'), 'utf8'));
     for (const s of samples) {

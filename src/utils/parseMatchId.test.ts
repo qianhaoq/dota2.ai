@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMatchId } from '../../lib/matchReview/parseMatchId.js';
+import { parseMatchId } from '../../packages/review-engine/src/parseMatchId.js';
 
 describe('parseMatchId — raw ids', () => {
   it('parses a plain numeric id (string or number)', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildHeroNamesMap, resolveHeroEnglishName, internalSlugFromInternalName } from '../../lib/matchReview/heroNamesMap.js';
+import { buildHeroNamesMap, resolveHeroEnglishName, internalSlugFromInternalName } from '../../packages/review-engine/src/heroNamesMap.js';
 
 const HERO_NAMES_CN = {
   1: { nameZh: '敌法师' },

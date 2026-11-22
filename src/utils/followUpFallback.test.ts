@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
+import { buildMatchFact } from '../../packages/review-engine/src/matchFacts.js';
 import { buildThreeConclusions } from '../../lib/matchReview/threeConclusions.js';
 import {
   buildFollowUpFallbackText,

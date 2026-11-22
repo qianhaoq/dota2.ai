@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { buildMatchFact, parseMatchId, matchFactToPrompt, selectTimelineForDisplay, sanitizePlayerNameForPrompt } from '../../lib/matchReview/matchFacts.js';
-import { buildHeroNamesMap } from '../../lib/matchReview/heroNamesMap.js';
-import { LANE_CLUSTER_SOURCE } from '../../lib/matchReview/laneResolver.js';
-import { formatObjectiveLabel } from '../../lib/matchReview/objectiveLabels.js';
+import { buildMatchFact, parseMatchId, matchFactToPrompt, selectTimelineForDisplay, sanitizePlayerNameForPrompt } from '../../packages/review-engine/src/matchFacts.js';
+import { buildHeroNamesMap } from '../../packages/review-engine/src/heroNamesMap.js';
+import { LANE_CLUSTER_SOURCE } from '../../packages/review-engine/src/laneResolver.js';
+import { formatObjectiveLabel } from '../../packages/review-engine/src/objectiveLabels.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixture = JSON.parse(

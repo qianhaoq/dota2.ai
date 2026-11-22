@@ -8,7 +8,7 @@ import {
   computeLaneCentroid,
   LANE_CLUSTER_SOURCE,
   LANE_FALLBACK_SOURCE,
-} from '../../lib/matchReview/laneResolver.js';
+} from '../../packages/review-engine/src/laneResolver.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixture = JSON.parse(
