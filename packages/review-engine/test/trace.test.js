@@ -138,6 +138,37 @@ describe('review findings on #232', () => {
     expect(bolt.target_spell_immune).toBe(false);
   });
 
+  it('a cast at an illusion is not a cast at the real hero', () => {
+    const b = createTraceBuilder();
+    for (let t = 0; t <= 12; t += 0.25) { b.addState(state(t, { abilities: [{ name: 'axe_culling_blade', level: 1, cooldown: 0, mana_cost: 60 }] })); b.addState(lina(t)); }
+    const ev = (type, t, extra) => ({ type, t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_hero_lina', target_hero: true, target_illusion: false, ...extra });
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 2, { inflictor: 'modifier_black_king_bar_immune', attacker: 'npc_dota_hero_lina' }), 1);
+    b.addEvent(ev('DOTA_COMBATLOG_ABILITY', 3, { inflictor: 'axe_culling_blade', target_illusion: true }), 2);
+    b.addEvent(ev('DOTA_COMBATLOG_ABILITY', 4, { inflictor: 'axe_culling_blade' }), 3);
+    b.addEvent(ev('DOTA_COMBATLOG_DEATH', 9, { attacker: 'npc_dota_hero_axe' }), 4);
+    const tr = b.finish();
+    const casts = runTraceTool(tr, 'ability_audit', { hero: 'axe', ability: 'culling_blade' }).casts;
+    expect(casts.map((c) => [c.target, c.target_spell_immune, c.target_hp])).toEqual([['illusion:lina', null, null], ['lina', true, { hp: 500, max_hp: 600 }]]);
+    expect(runTraceTool(tr, 'ability_audit', { hero: 'axe', ability: 'culling_blade' }).by_target).toEqual({ 'illusion:lina': 1, lina: 1 });
+    // Only the cast at the real hero is a cast on her during her immunity, or a cast on her before she died.
+    expect(runTraceTool(tr, 'immunity_windows', { hero: 'lina', watch_hero: 'axe', watch_ability: 'culling_blade' }).windows[0].watched.cast_on_this_hero_during.map((c) => c.t)).toEqual([4]);
+    expect(runTraceTool(tr, 'death_context', { hero: 'lina' }).deaths[0].enemy_casts_on_me.map((c) => c.row)).toEqual([3]);
+  });
+
+  it('an ability that leaves the hero is no longer ready-and-unused', () => {
+    const b = createTraceBuilder();
+    for (let t = 0; t <= 30; t += 0.25) {
+      b.addState(state(t, { abilities: [{ name: 'axe_berserkers_call', level: 1, cooldown: 0, mana_cost: 80 }, ...(t <= 4 ? [{ name: 'lina_laguna_blade', level: 1, cooldown: t >= 2 ? 50 - t : 0, mana_cost: 250 }] : [])] }));
+      b.addState(lina(t));
+    }
+    b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 25, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
+    const tr = b.finish();
+    expect(tr.abilities[0].lina_laguna_blade).toEqual({ levels: [[0, 1], [4.3, 0]], cd: [[2, 4.3, 48]], mana: 250 });
+    const d = runTraceTool(tr, 'death_context', { hero: 'axe' }).deaths[0];
+    expect(d.at_window_start.abilities.map((a) => a.ability)).toEqual(['axe_berserkers_call']);
+    expect(d.ready_not_cast).toEqual(['axe_berserkers_call']);
+  });
+
   it('a passive with a cooldown is not an unused ability', () => {
     // Counter Helix has a cooldown and no mana cost, and is never cast.
     const axe = run('death_context', { hero: 'axe' });

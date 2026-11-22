@@ -100,6 +100,14 @@ export function createTraceBuilder() {
         if (a.level !== e.level) { e.level = a.level; e.levels.push([r1(t), a.level]); }
         cooldown(e, Number(a.cooldown) || 0, t);
       }
+      // An ability gone from the samples (a stolen spell lost, a form ended) is no longer available:
+      // close it at level 0 rather than leave its last level standing.
+      const present = new Set((row.abilities ?? []).map((a) => a?.name));
+      for (const [name, e] of h.abilities) {
+        if (present.has(name) || e.level === 0) continue;
+        e.level = 0; e.levels.push([r1(t), 0]);
+        track(e.cd, e.cdState, false, t);
+      }
       const seen = new Set();
       for (const i of row.items ?? []) {
         if (typeof i?.name !== 'string' || !usableSlot(i.slot)) continue;
@@ -129,7 +137,11 @@ export function createTraceBuilder() {
       const realHero = (isHero, isIllusion) => isHero === true && isIllusion !== true;
       switch (e.type) {
         case 'DOTA_COMBATLOG_ABILITY':
-          if (realHero(e.attacker_hero, e.attacker_illusion)) casts.push([t, id(e.attacker), id(e.inflictor), id(e.target), row]);
+          // A cast at an illusion keeps that: its target is not the real hero (no health, no immunity of theirs).
+          if (realHero(e.attacker_hero, e.attacker_illusion)) {
+            const target = e.target_illusion === true && typeof e.target === 'string' ? `illusion:${e.target}` : e.target;
+            casts.push([t, id(e.attacker), id(e.inflictor), id(target), row]);
+          }
           break;
         case 'DOTA_COMBATLOG_ITEM':
           if (realHero(e.attacker_hero, e.attacker_illusion)) itemUses.push([t, id(e.attacker), id(e.inflictor), row]);
