@@ -165,6 +165,18 @@ describe('review findings on #232', () => {
     expect(runTraceTool(tr, 'death_context', { hero: 'lina' }).deaths[0].enemy_casts_on_me.map((c) => c.row)).toEqual([3]);
   });
 
+  it('damage by an illusion is not damage by the hero', () => {
+    const b = createTraceBuilder();
+    for (let t = 0; t <= 12; t += 0.25) { b.addState(state(t)); b.addState(lina(t)); }
+    const hit = (t, value, extra = {}) => ({ type: 'DOTA_COMBATLOG_DAMAGE', t, value, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, inflictor: 'dota_unknown', ...extra });
+    b.addEvent(hit(5, 100), 1);
+    b.addEvent(hit(5.2, 30, { attacker_illusion: true }), 2);
+    b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 6, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 3);
+    const tr = b.finish();
+    expect(runTraceTool(tr, 'death_context', { hero: 'axe', window: 4 }).deaths[0].damage_taken).toEqual([{ from: 'lina', by: 'attack', value: 100 }, { from: 'illusion:lina', by: 'attack', value: 30 }]);
+    expect(runTraceTool(tr, 'fight_timeline', { from: 0, to: 10 }).damage_to_heroes_by_unit).toEqual([{ unit: 'lina', value: 100 }, { unit: 'illusion:lina', value: 30 }]);
+  });
+
   it('an ability that leaves the hero is no longer ready-and-unused', () => {
     const b = createTraceBuilder();
     for (let t = 0; t <= 30; t += 0.25) {

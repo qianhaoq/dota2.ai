@@ -176,7 +176,9 @@ export function createTraceBuilder() {
           const toHero = realHero(e.target_hero, e.target_illusion);
           if (!toHero && !(typeof e.target === 'string' && BUILDING.test(e.target))) break;
           if (!(e.value > 0)) break;
-          const key = `${Math.floor(e.t)}|${id(e.attacker)}|${id(e.target)}|${id(e.inflictor)}`;
+          // An illusion's damage is its own line, not the real hero's.
+          const attacker = e.attacker_illusion === true && typeof e.attacker === 'string' ? `illusion:${e.attacker}` : e.attacker;
+          const key = `${Math.floor(e.t)}|${id(attacker)}|${id(e.target)}|${id(e.inflictor)}`;
           damage.set(key, (damage.get(key) ?? 0) + e.value);
           break;
         }
