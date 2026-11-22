@@ -279,6 +279,23 @@ describe('parse jobs in the service', () => {
     expect(await b.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'failed', reason: 'no_review' });
   });
 
+  it('a review retried on another instance is what both instances report', async () => {
+    const blobs = new Map<string, any>();
+    const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
+    const trace = JSON.parse(fixture.toString());
+    const traces = { get: async () => trace };
+    const clock = { t: 1000 };
+    const a: any = createAgentService({ traces, docs, now: () => clock.t, complete: async () => ({ text: 'no review' }) });
+    const b: any = createAgentService({ traces, docs, now: () => clock.t, complete: () => new Promise(() => {}) });
+    await a.start(ID, 'beastmaster', 'en');
+    await vi.waitFor(async () => expect((await a.status(ID, 'beastmaster', 'en')).status).toBe('failed'));
+    clock.t += 1000;
+    expect(await b.start(ID, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+    // A's own attempt failed, but the newer one on B is running: A says running, and a start on A joins it.
+    expect(await a.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+    expect(await a.start(ID, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+  });
+
   it('only the request that starts a parse is charged; a refusal starts nothing', async () => {
     const h = makeService(async () => new Promise(() => {}));
     const svc = h.service();
