@@ -88,6 +88,32 @@ describe('mapGcMatch: Valve GC scoreboard → OpenDota shape', () => {
     expect(() => mapGcMatch({ ...g, players: g.players.map((p: any, i: number) => (i === 2 ? { ...p, kills: undefined } : p)) })).toThrow(/scoreboard incomplete/);
   });
 
+  it('permanent buffs: consumed Scepter, Shard and Moon Shard become OpenDota\'s flags; no list, no flags', () => {
+    const g = toGc(od) as any;
+    // Buff lists of a real game (match 9100809044), where OpenDota reports a Shard for exactly these two players.
+    g.players[0].permanent_buffs = [{ permanent_buff: 12, stack_count: 0, grant_time: 1846 }];
+    g.players[1].permanent_buffs = [{ permanent_buff: 14, stack_count: 3, grant_time: 1238 }];
+    g.players[2].permanent_buffs = [];
+    g.players[3].permanent_buffs = [{ permanentBuff: 2, stackCount: 0, grantTime: 900 }, { permanent_buff: 1 }, { stack_count: 4 }];
+    const out = mapGcMatch(g) as any;
+    const at = (i: number) => out.players.find((p: any) => p.player_slot === (g.players[i].team_number === 'DOTA_GC_TEAM_GOOD_GUYS' ? 0 : 128) + g.players[i].team_slot);
+    expect(at(0)).toMatchObject({ aghanims_shard: 1, aghanims_scepter: 0, moonshard: 0, permanent_buffs: [{ permanent_buff: 12, stack_count: 0, grant_time: 1846 }] });
+    expect(at(1)).toMatchObject({ aghanims_shard: 0, aghanims_scepter: 0, moonshard: 0 });
+    expect(at(2)).toMatchObject({ aghanims_shard: 0, aghanims_scepter: 0, moonshard: 0, permanent_buffs: [] });
+    expect(at(3)).toMatchObject({ aghanims_shard: 0, aghanims_scepter: 1, moonshard: 1, permanent_buffs: [{ permanent_buff: 2, stack_count: 0, grant_time: 900 }, { permanent_buff: 1, stack_count: 0, grant_time: 0 }] });
+    // The GC sent no list for this player: unknown, not "has none".
+    for (const k of ['aghanims_shard', 'aghanims_scepter', 'moonshard', 'permanent_buffs']) expect(at(4)).not.toHaveProperty(k);
+    // The Shard shows among the player's items in the report.
+    const report = buildCoachReport(out) as any;
+    const keysOf = (i: number) => report.players[out.players.indexOf(at(i))].items.map((x: any) => x.key);
+    const before = (buildCoachReport(mapGcMatch(toGc(od))) as any).players;
+    expect(keysOf(0)).toContain('aghanims_shard');
+    expect(keysOf(3)).toContain('ultimate_scepter');
+    expect(keysOf(1)).not.toContain('aghanims_shard');
+    expect(report.players.filter((p: any) => p.items.some((x: any) => x.key === 'aghanims_shard')).length)
+      .toBe(before.filter((p: any) => p.items.some((x: any) => x.key === 'aghanims_shard')).length + 1);
+  });
+
   it('the coach engine builds a full unparsed report and card surface from it, with no NaN', () => {
     const r = buildCoachReport(m) as any;
     const ref = buildCoachReport(od) as any;
