@@ -370,6 +370,13 @@ describe('retriever: wire format, end to end with the site adapter', () => {
     const decoded = codec.decodeMatchDetailsResponse(bytes);
     expect(decoded.match.match_id).toBe(ID); // uint64 as a string: no precision loss
     expect(decoded.match.players[0]).not.toHaveProperty('item_9'); // unsent stays unsent
+    expect(decoded.match.players[0]).not.toHaveProperty('permanent_buffs');
+    // Permanent buffs survive the wire (field 57) and reach the adapter's flags.
+    const withBuff = gcMatch(od) as any;
+    withBuff.players[0].permanent_buffs = [{ permanent_buff: 12, stack_count: 0, grant_time: 1846 }];
+    const again = codec.decodeMatchDetailsResponse(wire(T.matchRes, { result: 1, match: withBuff }));
+    expect(again.match.players[0].permanent_buffs).toEqual([{ permanent_buff: 12, stack_count: 0, grant_time: 1846 }]);
+    expect((mapGcMatch(again.match) as any).players[0]).toMatchObject({ aghanims_shard: 1, aghanims_scepter: 0 });
     const { base, gc } = await serve({ gc: fakeGc({ matchDetails: async () => decoded }) });
     const client = (createSteamGcClient as any)({ baseUrl: base, secret: SECRET });
     const m = await client.fetchMatch(ID);
