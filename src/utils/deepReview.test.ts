@@ -100,6 +100,20 @@ describe('review findings on #233', () => {
     expect(at(['cast:x:roar:1', 'audit:x:roar'], 'at 1:00, one of 5555 casts, stunned 3.4 s')).toEqual([]);
   });
 
+  it('a percentage is checked as what it says', () => {
+    const sources = [{ ref: 'pro_items:x', items: [{ item: 'blink', share_of_pro_games: 0.71 }], lane_efficiency_pct: 75 }];
+    const at = (fact: string) => verifyReview(review([{ title: 't', claim: 'c', evidence: [{ refs: ['pro_items:x'], fact }], fix: 'f' }], { verdict: 'v', mainline: [] }), sources).problems.map((p: any) => p.text);
+    expect(at('Blink Dagger appears in 71% of professional games')).toEqual([]);
+    expect(at('a share of 0.71')).toEqual([]);
+    expect(at('lane efficiency 75%')).toEqual([]);
+    // 0.71% is not what a share of 0.71 says.
+    expect(at('Blink Dagger appears in 0.71% of professional games')).toEqual(['0.71% (not in pro_items:x)']);
+    expect(at('in 17% of games')).toEqual(['17% (not in pro_items:x)']);
+    expect(statedFacts('71％ 的职业局').numbers[0]).toMatchObject({ text: '71%', value: 71, percent: true });
+    // In prose too.
+    expect(verifyReview(review([], { verdict: 'Blink in 71% of pro games, BKB in 9%', mainline: [] }), sources).problems).toEqual([{ where: 'verdict', index: 0, kind: 'number', text: '9%' }]);
+  });
+
   it('the review can still be handed in after the last lookup is spent', async () => {
     const m = scripted([investigate, { toolCalls: [call('submit_review', review([good]), 's')] }]);
     // Three lookups allowed, three used: the next turn offers only submit_review, and it is accepted.

@@ -196,18 +196,22 @@ function resolveAbility(trace, h, name) {
   return keys.find((x) => x === k) ?? keys.find((x) => x === `${trace.heroes[h].key}_${k}`) ?? (keys.filter((x) => x.endsWith(`_${k}`)).length === 1 ? keys.find((x) => x.endsWith(`_${k}`)) : null) ?? null;
 }
 
+/** A projectile takes time to arrive: a stun the caster applies up to this long after the cast is the cast's. */
+const STUN_LANDS_WITHIN = 3;
+
 /**
  * Seconds the target was stunned by THIS cast, or 0. A stun counts only when
- * the combat log shows the caster applying a stun to the target at the cast
- * (within 0.6 s): several abilities often land on one hero in the same
+ * the combat log shows the caster applying a stun to the target from the
+ * cast until `until` (three seconds, or the caster's next cast of the same
+ * ability if sooner): several abilities often land on one hero in the same
  * second, and another hero's stun must not be read as this ability working.
- * The length is the one measured from the state samples when there is one
- * (a stun can be cut short), else the duration the log gives.
+ * The length is the one measured from the state samples around the moment
+ * the stun was applied (it can be cut short), else the duration the log gives.
  */
-function stunnedByCast(trace, h, casterNpc, targetNpc, t) {
-  const applied = trace.modifiers.find((m) => m[4] === 1 && m[6] === 't' && m[1] === targetNpc && m[3] === casterNpc && Math.abs(m[0] - t) <= 0.6);
+function stunnedByCast(trace, h, casterNpc, targetNpc, t, until) {
+  const applied = trace.modifiers.find((m) => m[4] === 1 && m[6] === 't' && m[1] === targetNpc && m[3] === casterNpc && m[0] >= t - 0.2 && m[0] <= until);
   if (!applied) return 0;
-  const iv = (trace.controls[h]?.stunned ?? []).find(([a]) => a >= t - 0.5 && a <= t + 1.5);
+  const iv = (trace.controls[h]?.stunned ?? []).find(([a]) => a >= applied[0] - 0.5 && a <= applied[0] + 0.5);
   return iv ? Math.round((iv[1] - iv[0]) * 10) / 10 : applied[5];
 }
 
@@ -238,7 +242,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       target_hp: ts ? { hp: ts.hp, max_hp: ts.max_hp } : null,
       target_spell_immune: target >= 0 ? Boolean(during) : null,
       // What the replay shows this cast did (a stun the log attributes to the caster), whatever the ability is supposed to do.
-      target_stunned_seconds: target >= 0 ? stunnedByCast(trace, target, npc, c[3], t) : null,
+      target_stunned_seconds: target >= 0 ? stunnedByCast(trace, target, npc, c[3], t, Math.min(t + STUN_LANDS_WITHIN, (rows[ci + 1]?.[0] ?? Infinity) - 0.2)) : null,
       ...(soonAfter ? { target_became_immune_dt: Math.round((soonAfter.from - t) * 10) / 10 } : {}),
       me: me ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
       allies_within_1300: allies.map((a) => a.hero), enemies_within_1300: enemies.map((e) => e.hero),
