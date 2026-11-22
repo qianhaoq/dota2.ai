@@ -223,14 +223,17 @@ describe('parse jobs in the service', () => {
     const h = makeService(async () => new Promise(() => {}));
     const svc = h.service();
     let asked = 0;
-    const admit = () => { asked += 1; return true; };
+    const admit = () => { asked += 1; return null; };
     const all = await Promise.all(Array.from({ length: 20 }, () => svc.prepare(ID, { admit })));
     expect(all.every((r: any) => r.status === 'running')).toBe(true);
     expect(asked).toBe(1);
     expect(await svc.prepare(ID, { admit })).toMatchObject({ status: 'running' });
     expect(asked).toBe(1);
     const other = makeService(async () => ({ ok: true }));
-    expect(await other.service().prepare(ID, { admit: () => false })).toEqual({ status: 'refused' });
+    const no = { status: 429, body: { code: 'rate_limited' } };
+    // Two requests share the refused start: both get the refusal back.
+    const shared = other.service();
+    expect(await Promise.all([shared.prepare(ID, { admit: () => no }), shared.prepare(ID, { admit: () => no })])).toEqual([{ status: 'refused', refusal: no }, { status: 'refused', refusal: no }]);
     expect(other.pipeline.run).not.toHaveBeenCalled();
   });
 
