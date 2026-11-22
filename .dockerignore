@@ -43,3 +43,6 @@ docker-compose*.yml
 # Never bake local feedback submissions into the image
 data/*.jsonl
 data/**/*.jsonl
+
+# Separate service with its own image (services/steam-retriever/Dockerfile)
+services

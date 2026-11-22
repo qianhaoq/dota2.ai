@@ -1,0 +1,5 @@
+node_modules
+# Refresh tokens and quota counters: never in git.
+data
+*.token
+.env

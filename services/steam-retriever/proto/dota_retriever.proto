@@ -1,0 +1,101 @@
+// The subset of Valve's Dota 2 Game Coordinator messages this service uses.
+// Field numbers and wire types are Valve's (SteamDatabase/Protobufs, dota2/):
+// run `npm run verify-protos` to check them against upstream. Fields left out
+// here are skipped on decode, which is how protobuf treats unknown fields.
+// Enum fields are declared as their varint type, so values arrive as numbers.
+syntax = "proto2";
+
+// dota_gcmessages_client.proto
+message CMsgGCMatchDetailsRequest {
+	optional uint64 match_id = 1;
+}
+
+message CMsgGCMatchDetailsResponse {
+	optional uint32 result = 1;
+	optional CMsgDOTAMatch match = 2;
+}
+
+message CMsgDOTAGetPlayerMatchHistory {
+	optional uint32 account_id = 1;
+	optional uint64 start_at_match_id = 2;
+	optional uint32 matches_requested = 3;
+	optional int32 hero_id = 4;
+	optional uint32 request_id = 5;
+	optional bool include_practice_matches = 7;
+	optional bool include_custom_games = 8;
+	optional bool include_event_games = 9;
+}
+
+message CMsgDOTAGetPlayerMatchHistoryResponse {
+	message Match {
+		optional uint64 match_id = 1;
+		optional uint32 start_time = 2;
+		optional int32 hero_id = 3;
+		optional bool winner = 4;
+		optional uint32 game_mode = 5;
+		optional uint32 lobby_type = 8;
+		optional bool abandon = 10;
+		optional uint32 duration = 11;
+	}
+
+	repeated Match matches = 1;
+	optional uint32 request_id = 2;
+}
+
+// dota_gcmessages_common.proto
+message CMsgDOTAMatch {
+	message Player {
+		optional uint32 account_id = 1;
+		optional uint32 player_slot = 2;
+		optional int32 hero_id = 3;
+		optional int32 item_0 = 4 [default = -1];
+		optional int32 item_1 = 5 [default = -1];
+		optional int32 item_2 = 6 [default = -1];
+		optional int32 item_3 = 7 [default = -1];
+		optional int32 item_4 = 8 [default = -1];
+		optional int32 item_5 = 9 [default = -1];
+		optional int32 item_6 = 59 [default = -1];
+		optional int32 item_7 = 60 [default = -1];
+		optional int32 item_8 = 61 [default = -1];
+		optional int32 item_9 = 76 [default = -1];
+		optional uint32 kills = 14;
+		optional uint32 deaths = 15;
+		optional uint32 assists = 16;
+		optional uint32 leaver_status = 17;
+		optional uint32 gold = 18;
+		optional uint32 last_hits = 19;
+		optional uint32 denies = 20;
+		optional uint32 gold_per_min = 21;
+		optional uint32 xp_per_min = 22;
+		optional uint32 gold_spent = 23;
+		optional uint32 hero_damage = 24;
+		optional uint32 tower_damage = 25;
+		optional uint32 hero_healing = 26;
+		optional uint32 level = 27;
+		optional uint32 net_worth = 52;
+		optional uint32 team_number = 80; // enum DOTA_GC_TEAM: 0 radiant, 1 dire
+		optional uint32 team_slot = 81;
+		optional uint32 selected_facet = 82;
+	}
+
+	optional uint32 duration = 3;
+	optional fixed32 starttime = 4;
+	repeated Player players = 5;
+	optional uint64 match_id = 6;
+	repeated uint32 tower_status = 8;
+	repeated uint32 barracks_status = 9;
+	optional uint32 cluster = 10;
+	optional uint32 first_blood_time = 12;
+	optional fixed32 replay_salt = 13;
+	optional uint32 lobby_type = 16;
+	optional uint32 human_players = 17;
+	optional uint32 leagueid = 22;
+	optional uint32 game_mode = 31; // enum DOTA_GameMode
+	optional uint64 match_seq_num = 33;
+	optional uint32 replay_state = 34; // enum ReplayState: 0 available, 1 not recorded, 2 expired
+	optional uint32 engine = 44;
+	optional uint32 radiant_team_score = 48;
+	optional uint32 dire_team_score = 49;
+	optional uint32 match_outcome = 50; // enum EMatchOutcome: 2 radiant, 3 dire
+	optional uint32 pre_game_duration = 53;
+}

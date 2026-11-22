@@ -1,0 +1,19 @@
+{
+  "name": "dota2ai-steam-retriever",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Small always-on service: asks the Dota 2 Game Coordinator for match details and player match history over a logged-in Steam session, and serves them as JSON to dota2.ai.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "login": "node login.mjs",
+    "verify-protos": "node scripts/verify-protos.mjs"
+  },
+  "engines": { "node": ">=20.10.0" },
+  "dependencies": {
+    "protobufjs": "^8.8.1",
+    "steam-user": "^5.3.0"
+  }
+}
