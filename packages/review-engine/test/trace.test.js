@@ -119,6 +119,16 @@ describe('review findings on #232', () => {
     expect(w.cast_on_this_hero_in_the_3s_before).toEqual([{ t: 3, clock: '0:03', seconds_before: 2, row: 1 }]);
   });
 
+  it('ability readiness is counted to the end of the game, not of the samples', () => {
+    // The fixture's samples run 145 s past the Ancient's fall (42:31).
+    expect(trace.t0 + trace.n - 1).toBeGreaterThan(2551 + 100);
+    const a = run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' });
+    expect(a.learned_at.t).toBe(450.1);
+    // Alive seconds can be at most the game's seconds since the ability was learned.
+    expect(a.seconds_alive_since_learned).toBeLessThanOrEqual(2551 - 450);
+    expect(a.seconds_alive_and_ready).toBeLessThan(a.seconds_alive_since_learned);
+  });
+
   it('a passive with a cooldown is not an unused ability', () => {
     // Counter Helix has a cooldown and no mana cost, and is never cast.
     const axe = run('death_context', { hero: 'axe' });

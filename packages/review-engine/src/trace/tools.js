@@ -26,6 +26,12 @@ const gapsFor = (trace, topics) => (trace.gaps ?? []).filter((g) => topics.inclu
 const heroKeys = (trace) => trace.heroes.map((h) => h.key);
 const where = (s) => (s ? { x: s.x, y: s.y, region: region(s.x, s.y) } : null);
 
+/** The last second of the game: when the Ancient fell, else the last sample. An extract can run on into the post-game. */
+function gameEnd(trace) {
+  const fort = trace.buildings.find((b) => /_fort$/.test(trace.names[b[1]]));
+  return fort ? fort[0] : trace.t0 + trace.n - 1;
+}
+
 function needHero(trace, hero) {
   const h = heroIndex(trace, hero);
   return h < 0 ? { err: fail('unknown_hero', { heroes: heroKeys(trace) }) } : { h, npc: nameId(trace, trace.heroes[h].npc) };
@@ -179,7 +185,8 @@ export function abilityAudit(trace, args = {}) {
   });
   let alive = 0; let idle = 0;
   if (learned != null) {
-    for (let t = Math.max(0, Math.ceil(learned)); t < trace.t0 + trace.n; t += 1) {
+    // Up to the end of the game, not of the samples: post-game seconds are not time the ability sat unused.
+    for (let t = Math.max(0, Math.ceil(learned)); t <= gameEnd(trace); t += 1) {
       const s = stateAt(trace, h, t);
       if (!s?.alive) continue;
       alive += 1;
@@ -216,8 +223,8 @@ export function immunityWindows(trace, args = {}) {
     if (!watch) return row;
     const s = stateAt(trace, watch.h, w.from);
     const left = cooldownLeft(watch.entry, w.from);
-    // No logged removal: the window is open until the trace ends, the same reading ability_audit uses.
-    const end = w.to ?? trace.t0 + trace.n - 1;
+    // No logged removal: the window is open until the game ends, the same reading ability_audit uses.
+    const end = w.to ?? gameEnd(trace);
     const target = nameId(trace, trace.heroes[w.hero].npc);
     const last = trace.casts.filter((c) => c[1] === watch.npc && c[2] === watch.id && c[0] <= w.from).at(-1);
     return {
