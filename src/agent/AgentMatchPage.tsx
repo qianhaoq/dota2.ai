@@ -237,6 +237,9 @@ export const AgentMatchPage: React.FC = () => {
     try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e); }
   }
 
+  // A parse seen running may yet die with its instance: seeing it run re-arms the one-time restart below.
+  useEffect(() => { if (parsing) resumed.current = false; }, [parsing]);
+
   // The reader said go, then came back to a parse that is no longer running (it died with its instance,
   // or failed and its retry time passed): start it again once, rather than wait on nothing.
   useEffect(() => {

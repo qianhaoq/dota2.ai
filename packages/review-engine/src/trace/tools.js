@@ -291,7 +291,9 @@ export function immunityWindows(trace, args = {}) {
   }
   const nth = new Map();
   const windows = immunityIntervals(trace).map((w) => { const n = (nth.get(w.hero) ?? 0) + 1; nth.set(w.hero, n); return { ...w, n }; }).filter((w) => (only < 0 || w.hero === only) && (team == null || trace.heroes[w.hero].team === team)).map((w) => {
-    const row = { ref: `immune:${trace.heroes[w.hero].key}:${w.n}`, hero: trace.heroes[w.hero].key, team: TEAM[trace.heroes[w.hero].team], modifier: w.modifier.replace(/^modifier_/, ''), from: w.from, clock: clock(w.from), to: w.to, seconds: w.to == null ? null : Math.round((w.to - w.from) * 10) / 10 };
+    // A window looked at while watching an ability says so in its ref (the watched state is part of the record).
+    const watched = watch ? `:${trace.heroes[watch.h].key}-${watch.key.startsWith(`${trace.heroes[watch.h].key}_`) ? watch.key.slice(trace.heroes[watch.h].key.length + 1) : watch.key}` : '';
+    const row = { ref: `immune:${trace.heroes[w.hero].key}:${w.n}${watched}`, hero: trace.heroes[w.hero].key, team: TEAM[trace.heroes[w.hero].team], modifier: w.modifier.replace(/^modifier_/, ''), from: w.from, clock: clock(w.from), to: w.to, seconds: w.to == null ? null : Math.round((w.to - w.from) * 10) / 10 };
     if (!watch) return row;
     const s = stateAt(trace, watch.h, w.from);
     const left = cooldownLeft(watch.entry, w.from);

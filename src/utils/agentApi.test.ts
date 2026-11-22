@@ -199,7 +199,11 @@ describe('agent API', () => {
     expect(death).toMatchObject({ kind: 'death', record: { clock: '36:05', killer: 'necrolyte' }, names: { necrolyte: 'Necrophos', beastmaster_primal_roar: 'Primal Roar', pipe: 'Pipe of Insight', modifier_necrolyte_reapers_scythe: "Reaper's Scythe" } });
     expect(death.record).not.toHaveProperty('gaps');
     // An immunity window comes with where the player's ultimate was.
-    expect((await ev('immune:phantom_assassin:3')).body.record).toMatchObject({ clock: '30:34', watched: { state: 'on_cooldown', last_cast: { target: 'necrolyte' } } });
+    expect((await ev('immune:phantom_assassin:3:beastmaster-primal_roar')).body.record).toMatchObject({ clock: '30:34', watched: { state: 'on_cooldown', last_cast: { target: 'necrolyte' } } });
+    // The same window watched for another ability shows that ability, and without a watch shows none.
+    expect((await ev('immune:phantom_assassin:3:beastmaster-wild_axes')).body.record.watched).toMatchObject({ state: 'ready' });
+    expect((await ev('immune:phantom_assassin:3')).body.record).not.toHaveProperty('watched');
+    expect((await ev('immune:phantom_assassin:3:nonsense')).status).toBe(404);
     expect((await ev('fight:11')).body.record).toMatchObject({ my_team_deaths: 5, enemy_deaths: 3 });
     expect((await ev('timeline:1805-1860')).body.record.events.length).toBeGreaterThan(10);
     expect((await ev('item:phantom_assassin:black_king_bar')).body.record.first_held.clock).toBe('21:29');
