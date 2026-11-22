@@ -47,7 +47,7 @@ function reviewEvents(review, cache, totalMs) {
   return events;
 }
 /** The cache adapter only needs get(key) and set(key, value, ttlMs). */
-export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, now = Date.now, logger = console, cache = createCache({ now }), knowledgeSnapshot }) {
+export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, coachForRequest, now = Date.now, logger = console, cache = createCache({ now }), knowledgeSnapshot }) {
   let knowledge = [];
   try {
     knowledge = parseSiteKnowledge(knowledgeSnapshot ?? JSON.parse(readFileSync(new URL('../../data/site-knowledge.v1.json', import.meta.url), 'utf8')));
@@ -205,7 +205,7 @@ export function createV1Router({ fetchMatch, replayIngest, phrasingCompletion, n
   attachMcp(router, { reviewForRequest: (req, res) => async args => {
     const params = input({ params: { matchId: String(args.match_id) }, query: { hero: args.hero, lang: args.lang } });
     return (await load(params, req, res)).review;
-  } });
+  }, coachForRequest });
   router.use('/api/v1', (req, res, next) => { if (req.method === 'GET') res.set({ 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Retry-After' }); next(); });
   router.get('/api/v1/config', (req, res) => res.json({ flags: { ui_v2: uiV2FromEnv(), llm_phrasing: process.env.LLM_PHRASING !== 'false' }, versions: { api: '1', engine: ENGINE_VERSION } }));
   router.get('/api/v1/review/:matchId', handle(false, false));

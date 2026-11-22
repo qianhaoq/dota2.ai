@@ -87,8 +87,11 @@ export function createMcpServer(options = {}) {
   };
   server.registerTool('review_match', { description: 'Review a Dota 2 match using OpenDota evidence', inputSchema: fields }, invoke('review_match'));
   server.registerTool('get_evidence', { description: 'Get the facts and citations supporting one insight', inputSchema: { ...fields, hero: z.union([z.string(), z.number()]), insight_id: z.string().min(1) } }, invoke('get_evidence'));
-  // Coach tools: local (stdio) servers only by default. A shared HTTP endpoint
-  // would send every agent's coach calls from one IP into one rate limit.
+  // Coach tools: on for local (stdio) servers, which call dota2.ai over HTTP as
+  // the user. A remote HTTP endpoint turns them on only with an in-process coach
+  // per request (attachMcp's coachForRequest), rate-limited as that caller —
+  // never by calling the site over HTTP, which would put every agent behind
+  // one IP and one bucket.
   if (options.coachTools !== false) {
     const coach = createCoachHandlers(options);
     const call = (name) => async (args) => {
@@ -96,7 +99,8 @@ export function createMcpServer(options = {}) {
         const result = await coach[name](args);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
       } catch (error) {
-        const known = error.code === 'INVALID_INPUT' || error.code === 'NOT_FOUND';
+        // Rate limits say so (with the wait), so an agent backs off instead of retrying blind.
+        const known = error.code === 'INVALID_INPUT' || error.code === 'NOT_FOUND' || error.code === 'RATE_LIMITED';
         return { isError: true, content: [{ type: 'text', text: known ? error.message : 'Coach request failed' }] };
       }
     };
@@ -130,9 +134,15 @@ export function createMcpServer(options = {}) {
   return server;
 }
 /** Attach stateless Streamable HTTP; each request owns its server and cleanup. */
-export function attachMcp(app, { path = '/mcp', reviewForRequest, ...options } = {}) {
+export function attachMcp(app, { path = '/mcp', reviewForRequest, coachForRequest, ...options } = {}) {
   app.post(path, async (req, res, next) => {
-    const server = createMcpServer({ coachTools: false, ...options, ...(reviewForRequest ? { review: reviewForRequest(req, res) } : {}) });
+    const server = createMcpServer({
+      coachTools: false,
+      ...options,
+      ...(reviewForRequest ? { review: reviewForRequest(req, res) } : {}),
+      // All 8 tools only with an in-process coach for this caller (lib/coach/service.js).
+      ...(coachForRequest ? { coachTools: true, coach: coachForRequest(req, res) } : {}),
+    });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.once('close', () => { void server.close().catch(() => {}); });
     try {

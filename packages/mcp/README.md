@@ -48,8 +48,11 @@ Coach tools (local stdio server; same public API and shapes as the `dota2ai` CLI
   `rank` to get that bracket in `lines`. Credit STRATZ
   (`rank_source.attribution`) when you quote these numbers.
 
-The shared HTTP endpoint (`/mcp`, below) keeps to the review tools: coach calls
-from every agent would otherwise share one IP and one rate limit.
+The hosted endpoint `https://dota2.ai/mcp` serves **all 8 tools** with no install
+(`claude mcp add --transport http dota2ai https://dota2.ai/mcp`). Its coach tools
+run in process on the server (`lib/coach/service.js`) and share the web coach's
+per-caller rate limit (IPv6 grouped by /64); a rate-limited call returns `isError`
+with the wait and sets `Retry-After`.
 
 Review tools:
 
@@ -64,5 +67,7 @@ Tool failures return MCP `isError` responses.
 mounts stateless Streamable HTTP at `/mcp` (override with `path`). Mount
 `express.json()` first. Supply `fetchMatch` to use a local template pipeline,
 or `reviewForRequest(req, res)` returning a review function to reuse an existing
-pipeline. Each request gets a fresh transport; GET and DELETE return 405.
+pipeline. Coach tools are registered only when `coachForRequest(req, res)` is
+given: it returns an in-process coach for that caller with the CLI client's shape
+(`report`, `cases`, `recent`, `matchup`, `ask`). Each request gets a fresh transport; GET and DELETE return 405.
 The application server shares the API's fetch concurrency, cache and rate limits.

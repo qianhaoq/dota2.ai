@@ -84,7 +84,7 @@ Three ways in, one engine behind them.
 |---|---|---|
 | 🌐 **Web** | Visual review, heat maps, timeline | Open [dota2.ai](https://dota2.ai) or [match #9091400302](https://dota2.ai/r/9091400302) |
 | ⌨️ **CLI** | Terminals, scripts, shell agents | `node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter` |
-| 🤖 **MCP** | Claude Code, Cursor, Claude Desktop | `claude mcp add dota2ai -- node /path/to/packages/mcp/bin/dota2ai-mcp.js` |
+| 🤖 **MCP** | Claude Code, Cursor, Claude Desktop | `claude mcp add --transport http dota2ai https://dota2.ai/mcp` (hosted, 8 tools) |
 
 <a id="cli-mcp"></a>
 
@@ -128,7 +128,13 @@ Exit codes: `0` ok · `2` invalid input · `3` not found / unparsed · `4` upstr
 
 ### MCP server — `@dota2ai/mcp`
 
-**Claude Code:**
+**Hosted, no install** (all 8 tools, per-caller rate limit):
+
+```bash
+claude mcp add --transport http dota2ai https://dota2.ai/mcp
+```
+
+**Local, from a repository checkout (Claude Code):**
 
 ```bash
 claude mcp add dota2ai -- node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js
@@ -161,7 +167,7 @@ claude mcp add dota2ai -- node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2
 | `review_match` | `{ match_id, hero?, lang? }` | Review v1 structured JSON (`dota2.ai/review@1`) |
 | `get_evidence` | `{ match_id, hero, insight_id }` | Facts, citations and data gaps for one v1 insight |
 
-The server also mounts a Streamable HTTP MCP endpoint at `/mcp` (`review_match`, `get_evidence`). Add `--offline` to query OpenDota directly. Full guide: [`packages/mcp/README.md`](packages/mcp/README.md).
+The server also mounts a Streamable HTTP MCP endpoint at `/mcp` with the same 8 tools. Add `--offline` to query OpenDota directly. Full guide: [`packages/mcp/README.md`](packages/mcp/README.md).
 
 </details>
 
@@ -273,7 +279,7 @@ dota2.ai is licensed under the [**PolyForm Noncommercial License 1.0.0**](LICENS
 |---|---|---|
 | 🌐 **网页** | 看热力图、经济时间轴、交互式复盘 | 打开 [dota2.ai](https://dota2.ai) 或[示例对局 #9091400302](https://dota2.ai/r/9091400302?lang=zh) |
 | ⌨️ **CLI** | 终端用户、脚本、Shell Agent | `node packages/cli/bin/dota2ai.js coach 9091400302 --hero 潮汐猎人 --lang zh` |
-| 🤖 **MCP** | Claude Code、Cursor、Claude Desktop | `claude mcp add dota2ai -- node /路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js` |
+| 🤖 **MCP** | Claude Code、Cursor、Claude Desktop | `claude mcp add --transport http dota2ai https://dota2.ai/mcp`（线上直连，8 个工具） |
 
 <a id="zh-cli-mcp"></a>
 
@@ -314,7 +320,13 @@ node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --
 
 #### MCP 接入
 
-**Claude Code：**
+**线上直连，无需安装**（全部 8 个工具，按调用方限流）：
+
+```bash
+claude mcp add --transport http dota2ai https://dota2.ai/mcp
+```
+
+**本地运行（clone 仓库后，Claude Code）：**
 
 ```bash
 claude mcp add dota2ai -- node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js
@@ -347,7 +359,7 @@ claude mcp add dota2ai -- node /你的绝对路径/dota2.ai/packages/mcp/bin/dot
 | `review_match` | `{ match_id, hero?, lang? }` | Review v1 结构化复盘 JSON |
 | `get_evidence` | `{ match_id, hero, insight_id }` | 单条 v1 结论对应的事实、引用和数据缺口 |
 
-服务端同时在 `/mcp` 提供 Streamable HTTP MCP 接口；详见 [`packages/mcp/README.md`](packages/mcp/README.md)。
+服务端同时在 `/mcp` 提供 Streamable HTTP MCP 接口，同样是 8 个工具；详见 [`packages/mcp/README.md`](packages/mcp/README.md)。
 
 </details>
 

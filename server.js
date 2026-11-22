@@ -72,6 +72,7 @@ import { parseTrustedProxyHops, resolveClientIp as resolveClientIpFromParts } fr
 import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyticsEvents.js';
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
 import { createCoachRouter } from './lib/coach/router.js';
+import { createCoachService } from './lib/coach/service.js';
 import { createCaseService } from './lib/coach/caseSource.js';
 import { createRecentService } from './lib/coach/recent.js';
 import { createLlmRateLimit } from './lib/llmRateLimit.js';
@@ -686,7 +687,6 @@ const handleMatchReviewParseRequest = createReviewParseRequestHandler({
   log: (msg) => console.log(`[review:parse-request] ${msg}`),
 });
 
-app.use(createV1Router({ fetchMatch: getMatchDetail, replayIngest, phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined }));
 
 // Coach report (deterministic, no LLM): GET /api/coach/:matchId
 // Case studies: pro games via OpenDota Explorer, profiled once and cached.
@@ -720,32 +720,59 @@ const coachCases = createCaseService({
   log: (msg) => console.warn(`[coach-cases] ${msg}`),
 });
 
+// "Your recent games" from a Steam friend code (OpenDota recentMatches).
+const coachRecent = createRecentService({
+  fetchRecent: (id) => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches`, 1, 1000, { timeoutMs: 10000 }),
+});
+// Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
+const coachAskDeps = {
+  llm: reviewLlmLimit,
+  providers: (messages) => [
+    ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ model: DEEPSEEK_MODEL, messages, stream: true, ...deepseekExtraBody }, { signal }) }] : []),
+    ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ model: GEMINI_REVIEW_MODEL, messages, stream: true }, { signal, maxRetries: 0 }) }] : []),
+  ],
+  stream: streamFollowUpCompletion,
+  attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
+};
+// One coach service for the web routes and the remote MCP coach tools: one
+// budget per caller (IPv6 /64), whichever surface they use (lib/coach/service.js).
+const coachService = createCoachService({
+  getMatchDetail,
+  resolveClientIp,
+  mapError: mapOpenDotaFetchError,
+  cases: coachCases,
+  recent: coachRecent,
+  ask: coachAskDeps,
+  log: (msg) => console.warn(`[coach] ${msg}`),
+});
+
 app.use(createCoachRouter({
   getMatchDetail,
   resolveClientIp,
   mapError: mapOpenDotaFetchError,
   log: (msg) => console.warn(`[coach] ${msg}`),
+  limiter: coachService.limiter,
   cases: coachCases,
   // Link previews for /r/:matchId (built app only; dev serves via Vite).
   page: { html: readBuiltIndexHtml },
-  // "Your recent games" from a Steam friend code (OpenDota recentMatches).
-  recent: createRecentService({
-    fetchRecent: (id) => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches`, 1, 1000, { timeoutMs: 10000 }),
-  }),
-  // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
+  recent: coachRecent,
   ask: {
+    // Same-origin guard for the browser route only; MCP callers are agents.
     guard: (req) => {
       const g = validateReviewPostRequest(req);
       return g.ok ? g : { ok: false, status: g.status, error: g.errorEn };
     },
-    llm: reviewLlmLimit,
-    providers: (messages) => [
-      ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ model: DEEPSEEK_MODEL, messages, stream: true, ...deepseekExtraBody }, { signal }) }] : []),
-      ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ model: GEMINI_REVIEW_MODEL, messages, stream: true }, { signal, maxRetries: 0 }) }] : []),
-    ],
-    stream: streamFollowUpCompletion,
-    attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
+    ...coachAskDeps,
   },
+}));
+
+// Review v1 API, OpenAPI/llms docs and the remote MCP endpoint (/mcp), whose
+// coach tools run in process through coachService.
+app.use(createV1Router({
+  fetchMatch: getMatchDetail,
+  replayIngest,
+  phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined,
+  coachForRequest: coachService.forRequest,
 }));
 
 // Explicit OpenDota parse submission — the ONLY path that calls submitParseRequest

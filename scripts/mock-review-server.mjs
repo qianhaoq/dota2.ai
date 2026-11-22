@@ -17,6 +17,7 @@
 import express from 'express';
 import { createV1Router } from '../routes/v1/index.js';
 import { createCoachRouter } from '../lib/coach/router.js';
+import { createCoachService } from '../lib/coach/service.js';
 import { buildCaseStudies } from '../lib/coach/cases.js';
 import { mapOpenDotaFetchError } from '../lib/matchReview/openDotaErrors.js';
 import { readFileSync } from 'node:fs';
@@ -41,6 +42,37 @@ const rawMatches = new Map([
   [9035042364, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/match9035042364.parsed.json'), 'utf8'))],
   [8985182860, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/match8985182860.json'), 'utf8'))],
 ]);
+
+const coachMatches = new Map([
+  [9091400302, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))],
+]);
+const caseProfiles = JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/cases.tidehunter-vs-ursa.profiles.json'), 'utf8')).profiles;
+const coachGetMatch = async (id) => {
+  const match = coachMatches.get(Number(id));
+  if (!match) throw Object.assign(new Error('HTTP 404'), { status: 404, upstream: 'opendota' });
+  return structuredClone(match);
+};
+const coachCaseService = {
+  get: async ({ report, slot, match }) => buildCaseStudies({ report, slot, match, candidates: caseProfiles }),
+  peek: () => null,
+};
+// Local fixture server: no per-IP limit (e2e runs many page loads a minute).
+const noLimit = { tryConsume: () => ({ ok: true, retryAfterSec: 0 }) };
+const coachService = createCoachService({
+  getMatchDetail: coachGetMatch,
+  resolveClientIp: (req) => req.ip || 'local',
+  mapError: mapOpenDotaFetchError,
+  cases: coachCaseService,
+  limiter: noLimit,
+});
+app.use(createCoachRouter({
+  getMatchDetail: coachGetMatch,
+  resolveClientIp: (req) => req.ip || 'local',
+  mapError: mapOpenDotaFetchError,
+  limiter: noLimit,
+  cases: coachCaseService,
+}));
+
 app.use(createV1Router({
   fetchMatch: async (id) => {
     const match = rawMatches.get(Number(id));
@@ -48,30 +80,12 @@ app.use(createV1Router({
     return structuredClone(match);
   },
   phrasingCompletion: undefined,
+  // Remote MCP coach tools in process over the coach fixtures, like production.
+  coachForRequest: coachService.forRequest,
   // Optional synthetic snapshot for local learning-flow acceptance, never a production upload.
   knowledgeSnapshot: process.env.SITE_KNOWLEDGE_PREVIEW_FILE
     ? JSON.parse(readFileSync(process.env.SITE_KNOWLEDGE_PREVIEW_FILE, 'utf8'))
     : undefined,
-}));
-
-const coachMatches = new Map([
-  [9091400302, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))],
-]);
-const caseProfiles = JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/cases.tidehunter-vs-ursa.profiles.json'), 'utf8')).profiles;
-app.use(createCoachRouter({
-  getMatchDetail: async (id) => {
-    const match = coachMatches.get(Number(id));
-    if (!match) throw Object.assign(new Error('HTTP 404'), { status: 404, upstream: 'opendota' });
-    return structuredClone(match);
-  },
-  resolveClientIp: (req) => req.ip || 'local',
-  mapError: mapOpenDotaFetchError,
-  // Local fixture server: no per-IP limit (e2e runs many page loads a minute).
-  limiter: { tryConsume: () => ({ ok: true, retryAfterSec: 0 }) },
-  cases: {
-    get: async ({ report, slot, match }) => buildCaseStudies({ report, slot, match, candidates: caseProfiles }),
-    peek: () => null,
-  },
 }));
 
 app.get('/api/health', (_req, res) => {
