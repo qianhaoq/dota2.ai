@@ -119,6 +119,47 @@ describe('review findings on #232', () => {
     expect(w.cast_on_this_hero_in_the_3s_before).toEqual([{ t: 3, clock: '0:03', seconds_before: 2, row: 1 }]);
   });
 
+  it('ability readiness is counted to the end of the game, not of the samples', () => {
+    // The fixture's samples run 145 s past the Ancient's fall (42:31).
+    expect(trace.t0 + trace.n - 1).toBeGreaterThan(2551 + 100);
+    const a = run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' });
+    expect(a.learned_at.t).toBe(450.1);
+    // Alive seconds can be at most the game's seconds since the ability was learned.
+    expect(a.seconds_alive_since_learned).toBeLessThanOrEqual(2551 - 450);
+    expect(a.seconds_alive_and_ready).toBeLessThan(a.seconds_alive_since_learned);
+  });
+
+  it('a cast in the tenth of a second the immunity ended is after it, in both tools', () => {
+    // Phantom Assassin's BKB is removed at 2373.6 (row 88320); Skywrath's Arcane Bolt on her is the next row, same rounded time.
+    const w = run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'skywrath_mage', watch_ability: 'arcane_bolt' }).windows.find((x) => x.to === 2373.6);
+    expect(w).toBeTruthy();
+    expect(w.watched.cast_on_this_hero_during.map((c) => c.t)).not.toContain(2373.6);
+    const bolt = run('ability_audit', { hero: 'skywrath_mage', ability: 'arcane_bolt' }).casts.find((c) => c.t === 2373.6 && c.target === 'phantom_assassin');
+    expect(bolt.target_spell_immune).toBe(false);
+  });
+
+  it('a passive with a cooldown is not an unused ability', () => {
+    // Counter Helix has a cooldown and no mana cost, and is never cast.
+    const axe = run('death_context', { hero: 'axe' });
+    expect(axe.deaths.length).toBeGreaterThan(5);
+    for (const d of axe.deaths) expect(d.ready_not_cast).not.toContain('axe_counter_helix');
+    expect(axe.deaths.some((d) => d.at_window_start.abilities.some((a) => a.ability === 'axe_berserkers_call'))).toBe(true);
+  });
+
+  it('an immunity with no logged end stays open: a later cast on that hero is during it', () => {
+    const b = createTraceBuilder();
+    for (let t = 0; t <= 12; t += 0.25) { b.addState(state(t, { abilities: [{ name: 'axe_culling_blade', level: 1, cooldown: 0, mana_cost: 60 }] })); b.addState(lina(t)); }
+    const ev = (type, t, extra) => ({ type, t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_hero_lina', target_hero: true, target_illusion: false, ...extra });
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 5, { inflictor: 'modifier_black_king_bar_immune', attacker: 'npc_dota_hero_lina' }), 1);
+    b.addEvent(ev('DOTA_COMBATLOG_ABILITY', 7, { inflictor: 'axe_culling_blade' }), 2);
+    const tr = b.finish();
+    const w = runTraceTool(tr, 'immunity_windows', { hero: 'lina', watch_hero: 'axe', watch_ability: 'culling_blade' }).windows[0];
+    expect(w).toMatchObject({ to: null, seconds: null });
+    expect(w.watched.cast_on_this_hero_during).toEqual([{ t: 7, clock: '0:07', row: 2 }]);
+    // ability_audit reads the same cast the same way.
+    expect(runTraceTool(tr, 'ability_audit', { hero: 'axe', ability: 'culling_blade' }).casts[0].target_spell_immune).toBe(true);
+  });
+
   it('events in the same tenth of a second keep the combat log\'s order', () => {
     // Axe's Culling Blade on Sven (row 59214) comes before Sven's death (row 59236); both round to 27:48.4.
     const rows = run('fight_timeline', { from: '27:45', to: '27:50' }).events.filter((e) => e.clock === '27:48');
