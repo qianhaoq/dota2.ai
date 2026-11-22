@@ -347,7 +347,8 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
     // Goal results belong to the goal's player: never show them on another account's games.
     if (!goal || !isGoalOwner) return new Map<number, GoalCheck>();
     return new Map(goalChecks(goal.id).map((c) => [c.matchId, c]));
-  }, [goal, accountId]);
+    // isGoalOwner can flip once the page remembers this account (after its games load).
+  }, [goal, accountId, isGoalOwner]);
 
   const topHeroes = useMemo(() => {
     if (!data) return [];
