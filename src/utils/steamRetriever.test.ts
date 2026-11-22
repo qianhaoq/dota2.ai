@@ -323,7 +323,7 @@ describe('retriever: daily budget', () => {
 
   it('history has its own budget and does not eat match requests', async () => {
     const quota = createDailyQuota({ historyPerAccount: 1 });
-    const { get } = await serve({ quota });
+    const { get } = await serve({ quota, historyEnabled: true });
     expect((await get('/history/5')).status).toBe(200);
     expect((await get('/history/6')).status).toBe(429);
     expect(quota.snapshot(1)).toMatchObject({ matchUsed: 0, historyUsed: 1 });
@@ -336,7 +336,7 @@ describe('retriever: player history', () => {
     const rows = [{ match_id: '9091400302', start_time: 1, hero_id: 14, winner: true, duration: 2000 }];
     const gc = fakeGc({});
     gc.history = async (account: string, accountId: number, limit: number) => { gc.calls.push({ account, accountId, limit }); return { matches: rows, request_id: 3 }; };
-    const { get } = await serve({ gc });
+    const { get } = await serve({ gc, historyEnabled: true });
     const res = await get('/history/123456?limit=5');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ matches: rows });
@@ -345,8 +345,20 @@ describe('retriever: player history', () => {
     expect(gc.calls).toEqual([{ account: 'a1', accountId: 123456, limit: 5 }, { account: 'a1', accountId: 123456, limit: 20 }]);
   });
 
+  it('is off by default: 501 at once, no GC request, no budget (the live GC only answers for its own account)', async () => {
+    const quota = createDailyQuota();
+    const { get, gc, base } = await serve({ quota });
+    const res = await get('/history/123456?limit=5');
+    expect([res.status, await res.json()]).toEqual([501, { code: 'history_unsupported' }]);
+    expect(gc.calls).toEqual([]);
+    expect(quota.snapshot(1).historyUsed).toBe(0);
+    expect((await get('/history/123456', null)).status).toBe(401); // still behind the secret
+    // The site adapter reports it as not retryable.
+    await expect((createSteamGcClient as any)({ baseUrl: base, secret: SECRET }).fetchRecent(123456)).rejects.toMatchObject({ status: 501, retryable: false });
+  });
+
   it('a private profile (no matches in the answer) is an empty list, not an error', async () => {
-    const { get } = await serve({ gc: fakeGc({ history: async () => ({}) }) });
+    const { get } = await serve({ historyEnabled: true, gc: fakeGc({ history: async () => ({}) }) });
     const res = await get('/history/5');
     expect([res.status, await res.json()]).toEqual([200, { matches: [] }]);
   });
@@ -370,7 +382,9 @@ describe('retriever: wire format, end to end with the site adapter', () => {
     const decoded = codec.decodeMatchDetailsResponse(bytes);
     expect(decoded.match.match_id).toBe(ID); // uint64 as a string: no precision loss
     expect(decoded.match.players[0]).not.toHaveProperty('item_9'); // unsent stays unsent
-    expect(decoded.match.players[0]).not.toHaveProperty('permanent_buffs');
+    // No buffs sent means the player has none: an empty list, so the flags read 0 as in OpenDota.
+    expect(decoded.match.players.every((p: any) => Array.isArray(p.permanent_buffs) && p.permanent_buffs.length === 0)).toBe(true);
+    expect((mapGcMatch(decoded.match) as any).players[0]).toMatchObject({ aghanims_scepter: 0, aghanims_shard: 0, moonshard: 0 });
     // Permanent buffs survive the wire (field 57) and reach the adapter's flags.
     const withBuff = gcMatch(od) as any;
     withBuff.players[0].permanent_buffs = [{ permanent_buff: 12, stack_count: 0, grant_time: 1846 }];
@@ -416,7 +430,7 @@ describe('retriever: wire format, end to end with the site adapter', () => {
     ] });
     const decoded = codec.decodeHistoryResponse(bytes);
     expect(decoded.request_id).toBe(9);
-    const { base } = await serve({ gc: fakeGc({ history: async () => decoded }) });
+    const { base } = await serve({ historyEnabled: true, gc: fakeGc({ history: async () => decoded }) });
     const rows = await (createSteamGcClient as any)({ baseUrl: base, secret: SECRET }).fetchRecent(123456);
     expect(rows).toEqual(mapGcHistory(decoded));
     expect(rows.map((r: any) => [r.match_id, r.player_won, r.hero_id])).toEqual([[Number(ID), true, 14], [9091400301, false, 2]]);

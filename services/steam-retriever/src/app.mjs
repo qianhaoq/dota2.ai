@@ -4,7 +4,7 @@
  *
  *   GET /healthz            no auth; counts only, nothing secret
  *   GET /match/:matchId     { match: CMsgDOTAMatch }
- *   GET /history/:accountId?limit=20   { matches: [...] }
+ *   GET /history/:accountId?limit=20   501 unless historyEnabled (see below)
  *
  * Everything but /healthz needs `Authorization: Bearer <secret>`.
  * Statuses the caller (lib/upstream/steamGc.js) relies on:
@@ -48,14 +48,14 @@ function ttlCache(max, now) {
  *         history(account: string, accountId: number, limit: number, o: { timeoutMs: number }): Promise<{ matches?: any[] }> },
  *   quota: ReturnType<import('./quota.mjs').createDailyQuota>,
  *   now?: () => number, log?: (line: string) => void,
- *   gcTimeoutMs?: number, minIntervalMs?: number, maxQueueMs?: number,
+ *   gcTimeoutMs?: number, minIntervalMs?: number, maxQueueMs?: number, historyEnabled?: boolean,
  *   okTtlMs?: number, missTtlMs?: number, historyTtlMs?: number,
  * }} o
  * @returns {(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void}
  */
 export function createRetrieverApp({
   secret, gc, quota, now = Date.now, log = () => {},
-  gcTimeoutMs = 6000, minIntervalMs = 250, maxQueueMs = 4000,
+  gcTimeoutMs = 6000, minIntervalMs = 250, maxQueueMs = 4000, historyEnabled = false,
   okTtlMs = 10 * 60_000, missTtlMs = 60_000, historyTtlMs = 60_000,
 }) {
   if (typeof secret !== 'string' || secret.length < 24) {
@@ -185,6 +185,10 @@ export function createRetrieverApp({
       const raw = url.searchParams.get('limit');
       const limit = raw == null ? 20 : Number(raw);
       if (!Number.isInteger(limit) || limit < 1 || limit > 50) return reply(res, { status: 400, code: 'invalid_limit' });
+      // The GC answers this for the logged-in account only; for anyone else it
+      // stays silent. Off by default so callers get a fast, clear answer
+      // instead of a timeout that also spends budget.
+      if (!historyEnabled) return reply(res, { status: 501, code: 'history_unsupported' });
       work = history(Number(id), limit);
     } else {
       // Not 404: to the caller a 404 means "Valve has no such match".

@@ -6,6 +6,7 @@
  *   PORT / HOST             default 5700 / 0.0.0.0
  *   MAX_MATCHES_PER_ACCOUNT_DAY (95) · MAX_MATCHES_PER_IP_DAY (480)
  *   MAX_HISTORY_PER_ACCOUNT_DAY (300) · GC_TIMEOUT_MS (6000)
+ *   ENABLE_GC_HISTORY=1     turn /history on (the GC only answers for the logged-in account)
  * Accounts are added with `npm run login`, never through the environment.
  */
 import { createServer } from 'node:http';
@@ -55,7 +56,7 @@ const quota = createDailyQuota({
 });
 
 const gc = createSteamPool({ accounts, dataDir: join(dataDir, 'steam'), onRefreshToken: (label, token) => writeToken(dataDir, label, token), log });
-const app = createRetrieverApp({ secret, gc, quota, log, gcTimeoutMs: positiveInt('GC_TIMEOUT_MS', 6000) });
+const app = createRetrieverApp({ secret, gc, quota, log, gcTimeoutMs: positiveInt('GC_TIMEOUT_MS', 6000), historyEnabled: process.env.ENABLE_GC_HISTORY === '1' });
 
 const port = positiveInt('PORT', 5700);
 const host = process.env.HOST || '0.0.0.0';

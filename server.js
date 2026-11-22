@@ -822,8 +822,6 @@ const coachCases = createCaseService({
 const coachRecent = createRecentService({
   fetchRecent: async (id) => (await fetchFromSources(recentSources(), {
     opendota: () => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches`, 1, 1000, { timeoutMs: 10000 }),
-    // GC history: no K/D/A or seat (shown as unknown, never 0/0/0).
-    steam_gc: () => steamGc.fetchRecent(id),
   }, { onFallback: (from, to, err) => console.warn(`[upstream] recent: ${from} failed (${err?.status ?? err?.message ?? err}); trying ${to}`) })).value,
 });
 // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
