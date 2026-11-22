@@ -16,3 +16,4 @@ export * from './phrasing/phraser.js';
 export * from './phrasing/stream.js';
 export * from './phrasing/budget.js';
 export * from './phrasing/followups.js';
+export * from './trace/index.js';

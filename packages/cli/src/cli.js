@@ -1,6 +1,7 @@
 import { createReviewClient, invalid, normalizeInput } from './client.js';
 import { runCoach } from './coach.js';
 import { AGENT_COMMANDS, runAgentCommand } from './agent.js';
+import { runTrace } from './trace.js';
 
 export const HELP = `dota2ai — the dota2.ai coach in your terminal (and for your agent)
 
@@ -11,6 +12,7 @@ export const HELP = `dota2ai — the dota2.ai coach in your terminal (and for yo
   dota2ai goal   set <matchId> --hero h | show | check  a next-game goal, checked on your next game
   dota2ai matchup <hero> <vs> [--rank di]              hero vs hero: pro games + public games at a rank (no match needed)
   dota2ai review <matchId> [--hero h] [--offline]      the v1 evidence review (dota2.ai/review@1)
+  dota2ai trace  [<tool> --trace file …]               ask a parsed replay: deaths, ability casts, fights (JSON; no tool = list them)
 
 Every command takes --lang en|zh and --json (stable machine output).
 Exit codes: 0 ok · 2 invalid input · 3 not found / no data yet · 4 upstream.
@@ -36,6 +38,7 @@ export function parseArgs(args) {
 }
 export async function run(args, { stdout = process.stdout, stderr = process.stderr, ...dependencies } = {}) {
   if (args[0] === 'coach') return runCoach(args, { stdout, stderr, env: dependencies.env, fetchImpl: dependencies.fetchImpl });
+  if (args[0] === 'trace') return runTrace(args, { stdout, stderr });
   if (AGENT_COMMANDS.includes(args[0])) return runAgentCommand(args, { stdout, stderr, env: dependencies.env, fetchImpl: dependencies.fetchImpl });
   if (args[0] === 'help' || args[0] === '--help' || args[0] === '-h' || args.length === 0) { stdout.write(`${HELP}\n`); return 0; }
   try {

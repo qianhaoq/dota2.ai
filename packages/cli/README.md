@@ -61,6 +61,40 @@ tells an agent when to call which command and how to read the output.
   the skill file, or paste its body; the agent needs a shell in this checkout.
 - **MCP clients**: see [the MCP guide](../mcp/README.md).
 
+## Replay questions (`trace`)
+
+The coach commands above read the scoreboard-level match data. `trace` reads a
+parsed replay: where every hero stood each second, every cooldown, every cast.
+It is offline and always prints JSON.
+
+```bash
+# 1. Parse the replay with the extractor (docs/REPLAY_INGEST.md), then compact it:
+node scripts/build-trace.mjs <extractDir> match.trace.json.gz --match <matchId>
+
+# 2. Ask it things:
+dota2ai trace                                              # the tools and their arguments
+dota2ai trace match_overview   --trace match.trace.json.gz
+dota2ai trace death_context    --trace match.trace.json.gz --hero beastmaster --index 9
+dota2ai trace ability_audit    --trace match.trace.json.gz --hero beastmaster --ability primal_roar
+dota2ai trace immunity_windows --trace match.trace.json.gz --hero phantom_assassin \
+                               --watch-hero beastmaster --watch-ability primal_roar
+dota2ai trace fight_timeline   --trace match.trace.json.gz --from 30:05 --to 31:00
+```
+
+- `match_overview`: line-ups, every fight and who lost fewer heroes, buildings.
+- `death_context`: the seconds before each death — who was near, what was
+  ready, who dealt the damage, which disables landed.
+- `ability_audit`: every cast of one ability — target, whether the target was
+  spell immune, who died after — and the deaths with it ready and not cast.
+- `immunity_windows`: every Black King Bar, and what a watched ability was
+  doing when it opened.
+- `fight_timeline`: up to 180 seconds, event by event.
+
+The tools report facts with their game time and the combat-log row behind
+them; they do not judge. What a replay does not hold (fog of war, creeps,
+Roshan) is listed under `gaps`, never guessed. Exit codes: 0 ok, 2 invalid
+input, 3 trace file missing or not a trace.
+
 ## Inputs and network access
 
 ```text
