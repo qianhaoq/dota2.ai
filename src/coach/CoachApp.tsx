@@ -70,6 +70,7 @@ const UI = {
   goalPill: { en: 'Goal', zh: '目标' },
   goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘' },
   goalHere: { en: 'You set this goal from this game. Play your next one — the coach checks it automatically.', zh: '目标就是从这局定的。打下一局，教练会自动核验。' },
+  goalPending: { en: 'No game checked against it yet — play your next one, then open it here.', zh: '还没有对局核验过这个目标——打完下一局，再在这里打开它。' },
   goalTally: { en: '{met} of {n} games met', zh: '{n} 局里达成 {met} 局' },
   goalResult: {
     met: { en: 'Met', zh: '达成' }, missed: { en: 'Missed', zh: '未达成' },
@@ -337,9 +338,14 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
     return () => ac.abort();
   }, [load]);
 
+  // A goal belongs to the player it was set from. One without a recorded account (older
+  // goals) is shown only on the account this browser remembers: unknown is not "yours".
+  const isGoalOwner = Boolean(goal) && (goal!.accountId != null
+    ? String(goal!.accountId) === accountId
+    : rememberedAccount() === accountId);
   const checkByMatch = useMemo(() => {
     // Goal results belong to the goal's player: never show them on another account's games.
-    if (!goal || (goal.accountId != null && String(goal.accountId) !== accountId)) return new Map<number, GoalCheck>();
+    if (!goal || !isGoalOwner) return new Map<number, GoalCheck>();
     return new Map(goalChecks(goal.id).map((c) => [c.matchId, c]));
   }, [goal, accountId]);
 
@@ -382,13 +388,23 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
           </button>
         </div>
 
-        {goal && (
+        {goal && isGoalOwner && (
           <div className="cx-goal cx-recent-goal">
             <div className="cx-recent-goal-top">
               <div>
                 <p className="cx-eyebrow">{L(UI.goalCheckTitle)} · {L(UI.goalFrom).replace('{id}', String(goal.fromMatch))}</p>
                 <p className="cx-goal-label"><b>{L(goal.goal.label)}</b></p>
-                {tl && tl.n > 0 && <p className="cx-goal-tally">{L(UI.goalTally).replace('{n}', String(tl.n)).replace('{met}', String(tl.met))}</p>}
+                {tl && tl.n > 0 ? (
+                  <div className="pl-progress">
+                    <div className="pl-bar" role="progressbar" aria-valuemin={0} aria-valuemax={tl.n} aria-valuenow={tl.met} aria-label={L(UI.goalCheckTitle)}>
+                      <span style={{ width: `${Math.round((tl.met / tl.n) * 100)}%` }} />
+                    </div>
+                    <p className="cx-goal-tally">{L(UI.goalTally).replace('{n}', String(tl.n)).replace('{met}', String(tl.met))}</p>
+                  </div>
+                ) : (
+                  // Nothing checked yet: say so, never a "0/0" bar.
+                  <p className="cx-goal-tally">{L(UI.goalPending)}</p>
+                )}
               </div>
               <button type="button" className="cx-linkbtn" onClick={() => setGoal(null)}>{L(UI.goalClear)}</button>
             </div>
