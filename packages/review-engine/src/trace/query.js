@@ -27,7 +27,7 @@ export function heroIndex(trace, hero) {
 }
 
 /** A unit's name without the engine prefixes: "npc_dota_hero_axe" → "axe". */
-export const unit = (s) => (typeof s === 'string' ? s.replace(/^npc_dota_hero_/, '').replace(/^npc_dota_/, '') : null);
+export const unit = (s) => (typeof s === 'string' ? s.replace(/^(illusion:)?npc_dota_hero_/, '$1').replace(/^npc_dota_/, '') : null);
 export const nameOf = (trace, i) => (i >= 0 ? unit(trace.names[i]) : null);
 /** Index of a hero from an index into `trace.names`, or -1 when that name is not a hero of this match. */
 export function heroOfName(trace, i) {
