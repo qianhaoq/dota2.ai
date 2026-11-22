@@ -71,6 +71,7 @@ import { parseTrustedProxyHops, resolveClientIp as resolveClientIpFromParts } fr
 
 import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyticsEvents.js';
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
+import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { createCoachService } from './lib/coach/service.js';
 import { createCaseService } from './lib/coach/caseSource.js';
@@ -82,6 +83,8 @@ import { createSharedCooldown } from './lib/upstream/sharedCooldown.js';
 import { createStratzClient } from './lib/upstream/stratz.js';
 import { parseUpstreamPrimary, sourceOrder, fetchFromSources } from './lib/upstream/sourceOrder.js';
 import { createSteamGcClient } from './lib/upstream/steamGc.js';
+import { createIdTokenProvider, createOdotaParserClient } from './lib/upstream/odotaParser.js';
+import { chooseParseSubmitter, createSelfHostedParseSubmitter } from './lib/matchReview/selfHostedParse.js';
 import { loadConstantsSnapshot } from './lib/constantsSnapshot.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -495,6 +498,7 @@ app.get('/api/health/upstream', (req, res) => {
     matchStore: matchStore ? matchStore.snapshot() : { configured: false },
     stratz: stratz ? stratz.snapshot() : { configured: false },
     steamGc: steamGc ? steamGc.snapshot() : { configured: false },
+    parser: odotaParser ? { ...odotaParser.snapshot(), usable: Boolean(steamGc) } : { configured: false },
     sources: { primary: upstreamPrimary.primary, match: matchSources(), recent: recentSources() },
   });
 });
@@ -628,6 +632,27 @@ const steamGc = (() => {
   }
 })();
 
+// Our own odota/parser instance (docs/SELF_HOSTED_PARSER.md): parses a Valve
+// replay when OpenDota cannot. Off unless ODOTA_PARSER_URL is set, and only
+// useful with the Steam GC retriever (it supplies the replay address).
+// ODOTA_PARSER_AUDIENCE: send a Google ID token for that audience (a private
+// Cloud Run service).
+const odotaParser = (() => {
+  const url = (process.env.ODOTA_PARSER_URL || '').trim();
+  if (!url) return null;
+  try {
+    const audience = (process.env.ODOTA_PARSER_AUDIENCE || '').trim();
+    return createOdotaParserClient({
+      baseUrl: url,
+      authHeader: audience ? createIdTokenProvider({ audience }) : undefined,
+      log: (msg) => console.warn(`[odota-parser] ${msg}`),
+    });
+  } catch (err) {
+    console.warn(`[odota-parser] disabled: ${err?.message || err}`);
+    return null;
+  }
+})();
+
 const matchStore = cacheBucket
   ? createMatchStore({ bucket: cacheBucket, isParsed: isMatchParsed, log: (msg) => console.warn(`[match-store] ${msg}`) })
   : null;
@@ -640,10 +665,25 @@ if (upstreamPrimary.invalid) console.warn(`[upstream] UPSTREAM_PRIMARY=${upstrea
 const matchSources = () => sourceOrder('match', { primary: upstreamPrimary.primary, configured: { opendota: true, steam_gc: Boolean(steamGc), stratz: Boolean(stratz) } });
 const recentSources = () => sourceOrder('recent', { primary: upstreamPrimary.primary, configured: { opendota: true, steam_gc: Boolean(steamGc) } });
 
+// A stored match is final, with one exception: a copy we parsed ourselves has
+// no percentiles. When OpenDota is the primary source and answering, its
+// parsed copy is the fuller one; otherwise (or if it has none) ours stands.
+async function fullerStoredCopy(stored, matchId, options = {}) {
+  if (stored.data_source !== 'steam_gc+odota_parser') return stored;
+  if (upstreamPrimary.primary !== 'opendota' || opendota.outageOpen()) return stored;
+  try {
+    const raw = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 1, 500, { ...options, timeoutMs: options.timeoutMs ?? 15000 });
+    return isMatchParsed(raw) ? { ...raw, opendota_fetched_at: new Date().toISOString() } : stored;
+  } catch (err) {
+    if (options.signal?.aborted) throw err;
+    return stored;
+  }
+}
+
 const matchDetailCache = createMatchDetailCache({
   fetchMatch: async (matchId, options = {}) => {
     const stored = matchStore ? await matchStore.getMatch(matchId) : null;
-    if (stored) return stored;
+    if (stored) return fullerStoredCopy(stored, matchId, options);
     const { value } = await fetchFromSources(matchSources(), {
       opendota: async () => {
         const raw = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
@@ -693,7 +733,7 @@ const opendotaApiKey = process.env.OPENDOTA_API_KEY || '';
 // entry to a short abort-retry window (the aborted POST may never have reached
 // OpenDota, so it must not hold the full success cooldown either); only real
 // timeouts/upstream failures are recorded as failures.
-const submitParseRequest = createParseRequestSubmitter({
+const submitOpenDotaParse = createParseRequestSubmitter({
   tracker: parseRequestTracker,
   budget: parseRequestBudget,
   baseUrl: OPENDOTA_API,
@@ -701,6 +741,35 @@ const submitParseRequest = createParseRequestSubmitter({
   timeoutMs: PARSE_REQUEST_TIMEOUT_MS,
   log: (msg) => console.log(`[review:parse-request] ${msg}`),
   warn: (msg) => console.warn(`[review:parse-request] ${msg}`),
+});
+
+// The same request through our own parser (Steam GC + odota/parser), sharing
+// the tracker and budget above. Used when OpenDota is not the place to ask:
+// UPSTREAM_PRIMARY=steam_gc, the outage breaker is open, or the copy we hold
+// already came from the GC because OpenDota could not serve this match.
+const submitSelfHostedParse = steamGc && odotaParser
+  ? createSelfHostedParseSubmitter({
+    tracker: parseRequestTracker,
+    budget: parseRequestBudget,
+    steamGc,
+    parser: odotaParser,
+    isParsed: isMatchParsed,
+    heroNpcName: (heroId) => { const slug = heroInfo(heroId).slug; return slug ? `npc_dota_hero_${slug}` : null; },
+    onParsed: (matchId, match) => {
+      matchDetailCache.put(matchId, match);
+      matchStore?.putMatch(matchId, match);
+    },
+    log: (msg) => console.log(`[review:parse-request] ${msg}`),
+    warn: (msg) => console.warn(`[review:parse-request] ${msg}`),
+  })
+  : null;
+const parseGoesSelfHosted = (matchData) => Boolean(submitSelfHostedParse)
+  && (upstreamPrimary.primary === 'steam_gc' || opendota.outageOpen() || matchData?.data_source === 'steam_gc');
+
+const submitParseRequest = chooseParseSubmitter({
+  openDota: submitOpenDotaParse,
+  selfHosted: submitSelfHostedParse,
+  useSelfHosted: parseGoesSelfHosted,
 });
 
 // Explicit parse-request endpoint — the ONLY path that calls submitParseRequest.

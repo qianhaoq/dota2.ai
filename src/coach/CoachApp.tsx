@@ -126,6 +126,8 @@ const UI = {
   parseThrottled: { en: 'Too many parse requests right now. Try again in a minute.', zh: '解析请求太多，请一分钟后再试。' },
   parseFailed: { en: 'OpenDota could not take the request. The replay may have expired.', zh: 'OpenDota 没有接受请求，录像可能已过期。' },
   parsedReady: { en: 'Full parse is ready — the review now includes laning, deaths and the gold graph.', zh: '解析完成——复盘已加入对线、死亡与经济曲线。' },
+  parseFailedSelf: { en: 'The parse did not go through. Try again in a minute.', zh: '解析没有成功，请一分钟后再试。' },
+  parseGone: { en: 'Valve no longer has this replay (replays are kept about two weeks), so this match cannot be parsed.', zh: 'Valve 已不再保存这场比赛的录像（录像大约保留两周），无法解析这场比赛。' },
   parseGaveUp: { en: 'Still not parsed after 10 minutes. Come back later; the link keeps working.', zh: '10 分钟后仍未解析完成。稍后再来，链接一直有效。' },
   notFound: { en: 'OpenDota does not know this match. Check the ID — private or very new matches may not be visible yet.', zh: 'OpenDota 找不到这场比赛。请检查 ID——私密比赛或刚结束的比赛可能暂时不可见。' },
   upstream: { en: 'OpenDota did not answer in time. Try again in a moment.', zh: 'OpenDota 暂时没有响应，请稍后重试。' },
@@ -148,6 +150,7 @@ const UI = {
   footer: { en: 'Not affiliated with Valve. Match data from OpenDota.', zh: '粉丝项目，与 Valve 无关。比赛数据来自 OpenDota。' },
   parsed: { en: 'Parsed', zh: '已解析' },
   fromSteamGc: { en: 'Scoreboard from Valve’s game coordinator (OpenDota unavailable): no timeline yet', zh: '数据来自 Valve 游戏协调器（OpenDota 暂不可用）：只有终局计分板，暂无时间线' },
+  fromSteamGcParsed: { en: 'Parsed by dota2.ai from Valve’s replay (OpenDota unavailable): no percentile comparison', zh: '由 dota2.ai 解析 Valve 录像（OpenDota 暂不可用）：暂无百分位对比' },
   fromStratz: { en: 'Data from STRATZ (OpenDota unavailable)', zh: '数据来自 STRATZ（OpenDota 暂不可用）' },
   copied: { en: 'Copied', zh: '已复制' },
 } satisfies Record<string, Bi | Record<string, Bi>>;
@@ -899,7 +902,7 @@ const ReviewHeader: React.FC<{
             {m.patch && <span>{m.patch}</span>}
             {!m.parsed && <span className="cx-pill warn">{L(UI.needsParse)}</span>}
             {m.source === 'stratz' && <span className="cx-pill">{L(UI.fromStratz)}</span>}
-            {m.source === 'steam_gc' && <span className="cx-pill">{L(UI.fromSteamGc)}</span>}
+            {m.source === 'steam_gc' && <span className="cx-pill">{L(m.parsed ? UI.fromSteamGcParsed : UI.fromSteamGc)}</span>}
           </p>
         </div>
         <div className="rv-actions">
@@ -948,7 +951,7 @@ const MatchHeader: React.FC<{ report: CoachReport; slot: number | null; pos: num
           <span>{L(m.mode)}{m.ranked ? ` · ${L(UI.ranked)}` : ''}</span>
           <span className={`cx-pill ${m.parsed ? 'ok' : 'warn'}`}>{m.parsed ? L(UI.parsed) : L(UI.needsParse)}</span>
           {m.source === 'stratz' && <span className="cx-pill">{L(UI.fromStratz)}</span>}
-            {m.source === 'steam_gc' && <span className="cx-pill">{L(UI.fromSteamGc)}</span>}
+            {m.source === 'steam_gc' && <span className="cx-pill">{L(m.parsed ? UI.fromSteamGcParsed : UI.fromSteamGc)}</span>}
         </p>
       </div>
       <div className="cx-share">
@@ -1415,7 +1418,7 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
   priority = false,
 }) => {
   const { L } = useLang();
-  const [state, setState] = useState<'idle' | 'pending' | 'throttled' | 'failed' | 'gaveup'>('idle');
+  const [state, setState] = useState<'idle' | 'pending' | 'throttled' | 'failed' | 'failedSelf' | 'gone' | 'gaveup'>('idle');
   const timer = useRef<number | null>(null);
   // Always call the latest callback: the user may change seat or position
   // while a parse is pending, and completion must reload *that* view.
@@ -1440,7 +1443,7 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
     }
     if (res.status === 'parsed') { await onParsedRef.current(); return; }
     if (res.status === 'throttled') { setState('throttled'); return; }
-    if (res.status === 'failed') { setState('failed'); return; }
+    if (res.status === 'failed') { setState(res.reason === 'replay_gone' ? 'gone' : res.provider === 'self_hosted' ? 'failedSelf' : 'failed'); return; }
     // The user may have left while the request was in flight.
     if (!mounted.current) return;
     const began = Date.now();
@@ -1459,7 +1462,7 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
       } catch { /* keep polling */ }
     }, 20_000);
   };
-  const msg = { pending: UI.parsePending, throttled: UI.parseThrottled, failed: UI.parseFailed, gaveup: UI.parseGaveUp }[state as 'pending'];
+  const msg = { pending: UI.parsePending, throttled: UI.parseThrottled, failed: UI.parseFailed, failedSelf: UI.parseFailedSelf, gone: UI.parseGone, gaveup: UI.parseGaveUp }[state as 'pending'];
   return (
     <section className={`cx-gaps ${priority ? 'cx-gaps--priority' : ''}`}>
       <div className="cx-gaps-top">
@@ -1467,7 +1470,7 @@ const ParsePanel: React.FC<{ report: CoachReport; onParsed: () => Promise<void>;
           <h3>{L(report.match.parsed ? UI.partialGaps : UI.cantSee)}</h3>
           {!report.match.parsed && <p className="cx-muted">{L(UI.cantSeeSub)}</p>}
         </div>
-        {!report.match.parsed && report.match.replay_available && state !== 'pending' && (
+        {!report.match.parsed && report.match.replay_available && state !== 'pending' && state !== 'gone' && (
           <button type="button" className="cx-primary" onClick={() => void start()}>{L(UI.parseBtn)}</button>
         )}
       </div>

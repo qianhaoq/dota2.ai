@@ -36,9 +36,10 @@ export async function fetchCoachCases(
   return body as CaseStudies;
 }
 
-export interface ParseStatus { status: string; jobId?: number | null; retryAfterSec?: number | null; message?: string }
+/** `provider: 'self_hosted'` when our own parser handled it; `reason: 'replay_gone'` when Valve no longer has the replay. */
+export interface ParseStatus { status: string; jobId?: number | null; retryAfterSec?: number | null; message?: string; provider?: string; reason?: string }
 
-/** Reuses the existing budgeted OpenDota parse-request endpoint. */
+/** The budgeted parse-request endpoint (OpenDota, or our own parser when OpenDota is unavailable). */
 export async function requestParse(matchId: string, lang: 'en' | 'zh'): Promise<ParseStatus> {
   const res = await fetch(`/api/review/${encodeURIComponent(matchId)}/parse-request`, {
     method: 'POST',
