@@ -76,6 +76,34 @@ describe('review page from the card surface (review #206)', () => {
     expect(screen.queryByText(/只有终局计分板/)).toBeNull();
   });
 
+  it('offers the parse when OpenDota has no replay address yet (it only fetches one once a parse is requested)', async () => {
+    // What OpenDota returns for a game nobody has asked it to parse: has_gcdata false, no replay_url.
+    const raw = load('match9091400302.unparsed.json');
+    delete raw.replay_url; delete raw.replay_salt;
+    const fresh = buildCoachReport({ ...raw, od_data: { has_api: true, has_gcdata: false, has_parsed: false } });
+    expect(fresh.match).toMatchObject({ parsed: false, replay_available: true, source: 'opendota' });
+    fetchReport.mockResolvedValue(fresh);
+    parse.mockResolvedValue({ status: 'requested' });
+    page('/r/9091400302?p=4');
+    await waitFor(() => expect(screen.getByRole('button', { name: '解析这场比赛' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '解析这场比赛' }));
+    await waitFor(() => expect(parse).toHaveBeenCalledWith('9091400302', 'zh'));
+    await waitFor(() => expect(screen.getByText(/已提交解析/)).toBeTruthy());
+  });
+
+  it('does not offer it when the game coordinator says the match has no replay', async () => {
+    const raw = load('match9091400302.unparsed.json');
+    delete raw.replay_url;
+    const none = buildCoachReport({ ...raw, data_source: 'steam_gc', cluster: 0, replay_salt: 0, od_data: { has_parsed: false } });
+    expect(none.match).toMatchObject({ parsed: false, replay_available: false, source: 'steam_gc' });
+    const some = buildCoachReport({ ...raw, data_source: 'steam_gc', replay_url: 'http://replay181.valve.net/570/9091400302_1.dem.bz2', od_data: { has_parsed: false } });
+    expect(some.match.replay_available).toBe(true);
+    fetchReport.mockResolvedValue(none);
+    const { container } = page('/r/9091400302?p=4');
+    await waitFor(() => expect(container.querySelector('.cx-gaps--priority')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: '解析这场比赛' })).toBeNull();
+  });
+
   it('opening pro cases scrolls to the requested theme section', async () => {
     fetchReport.mockResolvedValue(parsed);
     const scrolled: string[] = [];

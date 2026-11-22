@@ -150,6 +150,7 @@ export interface CoachReport {
   engine: string;
   match: {
     id: number; duration: number; radiant_win: boolean; score: [number, number]; patch: string | null;
+    /** replay_available: a parse can be requested (false only when the GC says the match has no replay). */
     mode: Bi; ranked: boolean; start_time: number | null; parsed: boolean; replay_available: boolean; turbo: boolean;
     /** 'stratz' / 'steam_gc' when OpenDota was unavailable and the data came from there. */
     source?: 'opendota' | 'stratz' | 'steam_gc';
