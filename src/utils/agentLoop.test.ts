@@ -47,6 +47,16 @@ describe('runAgent', () => {
     expect(JSON.parse((r.messages.filter((x: any) => x.role === 'tool')[2] as any).content)).toEqual({ error: 'tool_budget_spent' });
   });
 
+  it('tools that end the run stay available after the lookup budget is spent', async () => {
+    const m = scripted([{ toolCalls: [call('lookup')] }, { toolCalls: [call('lookup'), call('submit', { answer: 1 })] }]);
+    const runTool = vi.fn(async () => ({ ok: 1 }));
+    const r = await runAgent({ complete: m.complete, system: 's', messages: [], tools, runTool, maxToolCalls: 1, isFinal: (c: any) => c.name === 'submit', finalTools: ['submit'] });
+    expect(m.seen[1].tools.map((t: any) => t.name)).toEqual(['submit']);
+    expect(r).toMatchObject({ status: 'final', final: { answer: 1 } });
+    // The extra lookup the model asked for on that turn is not run.
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
   it('stops at the step budget and on abort', async () => {
     const m = scripted([{ toolCalls: [call('lookup')] }]);
     expect(await runAgent({ complete: m.complete, system: 's', messages: [], tools, runTool: async () => ({}), maxSteps: 3, maxToolCalls: 99 })).toMatchObject({ status: 'budget', steps: 3 });

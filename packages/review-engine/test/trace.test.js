@@ -37,9 +37,10 @@ describe('trace builder', () => {
     expect(tr.states[0].x[0]).toBe(100);
     expect(tr.states[0].mana[4]).toBe(100);
     expect(tr.states[0].alive.slice(8)).toEqual([1, 1, 0]);
-    expect(tr.abilities[0]).toEqual({ axe_berserkers_call: { levels: [[2, 1]], cd: [[3, 7]] } });
+    // A cooldown interval keeps the seconds left when it began (4 at t=3).
+    expect(tr.abilities[0]).toEqual({ axe_berserkers_call: { levels: [[2, 1]], cd: [[3, 7, 4]] } });
     // Backpack items are not held; the item on cooldown gets its interval.
-    expect(tr.items[0]).toEqual({ item_blink: { held: [[0, 10]], cd: [[5, 6]] } });
+    expect(tr.items[0]).toEqual({ item_blink: { held: [[0, 10]], cd: [[5, 6, 1]] } });
     expect(tr.controls[0]).toEqual({ stunned: [[8, 9]] });
   });
 
@@ -71,7 +72,103 @@ describe('trace builder', () => {
     expect(tr.buildings.map((x) => [n(x[1]), x[2], x[3]])).toEqual([['npc_dota_badguys_tower1_mid', 2, 16]]);
     expect(tr.purchases.map((p) => [p[0], n(p[1]), n(p[2])])).toEqual([[-80, 'npc_dota_hero_lina', 'item_blink']]);
     expect(tr.source.event_rows).toBe(17);
-    expect(tr.gaps.map((g) => g.topic)).toEqual(['vision', 'creeps', 'roshan', 'ability_immunity']);
+    expect(tr.gaps.map((g) => g.topic)).toEqual(['vision', 'creeps', 'roshan', 'ability_immunity', 'unused_free_abilities']);
+  });
+});
+
+describe('review findings on #232', () => {
+  const state = (t, extra = {}) => ({ entity_kind: 'real_hero', t, hero: 'axe', team: 2, player_index: 0, x: 0, y: 0, hp: 500, max_hp: 600, mana: 100, level: 6, life_state: 0, abilities: [], items: [], controls: {}, ...extra });
+  const lina = (t) => ({ ...state(t), hero: 'lina', team: 3, player_index: 5 });
+
+  it('time left on a cooldown is the sampled value counted down, not the distance to where the interval was cut', () => {
+    const b = createTraceBuilder();
+    // A 100 s cooldown, but the trace ends at t=10.
+    for (let t = 0; t <= 10; t += 0.25) { b.addState(state(t, { abilities: [{ name: 'axe_culling_blade', level: 1, cooldown: 100 - t, mana_cost: 60 }] })); b.addState(lina(t)); }
+    b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 9, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
+    const tr = b.finish();
+    expect(tr.abilities[0].axe_culling_blade.cd).toEqual([[0, 10, 100]]);
+    const d = runTraceTool(tr, 'death_context', { hero: 'axe', window: 4 }).deaths[0];
+    expect(d.at_window_start.abilities).toEqual([{ ability: 'axe_culling_blade', level: 1, cooldown_left: 95 }]);
+    expect(d.ready_not_cast).toEqual([]);
+  });
+
+  it('an active ability the player never pressed still shows as ready and not used', () => {
+    const b = createTraceBuilder();
+    for (let t = 0; t <= 30; t += 0.25) {
+      b.addState(state(t, { abilities: [{ name: 'axe_berserkers_call', level: 1, cooldown: 0, mana_cost: 80 }, { name: 'axe_counter_helix', level: 1, cooldown: 0, mana_cost: 0 }] }));
+      b.addState(lina(t));
+    }
+    b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 25, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
+    const out = runTraceTool(b.finish(), 'death_context', { hero: 'axe' });
+    expect(out.deaths[0].at_window_start.abilities).toEqual([{ ability: 'axe_berserkers_call', level: 1, cooldown_left: 0 }]);
+    expect(out.deaths[0].ready_not_cast).toEqual(['axe_berserkers_call']);
+    // The free one cannot be told from a passive: said, not guessed.
+    expect(out.gaps.map((g) => g.topic)).toContain('unused_free_abilities');
+  });
+
+  it('a cast seconds before the immunity is not a cast during it', () => {
+    const b = createTraceBuilder();
+    for (let t = 0; t <= 12; t += 0.25) { b.addState(state(t, { abilities: [{ name: 'axe_culling_blade', level: 1, cooldown: t >= 3 && t < 8 ? 8 - t : 0, mana_cost: 60 }] })); b.addState(lina(t)); }
+    const ev = (type, t, extra) => ({ type, t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_hero_lina', target_hero: true, target_illusion: false, ...extra });
+    b.addEvent(ev('DOTA_COMBATLOG_ABILITY', 3, { inflictor: 'axe_culling_blade' }), 1);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 5, { inflictor: 'modifier_black_king_bar_immune', attacker: 'npc_dota_hero_lina' }), 2);
+    b.addEvent(ev('DOTA_COMBATLOG_ABILITY', 9, { inflictor: 'axe_culling_blade' }), 3);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_REMOVE', 9.5, { inflictor: 'modifier_black_king_bar_immune', attacker: 'npc_dota_hero_lina' }), 4);
+    const w = runTraceTool(b.finish(), 'immunity_windows', { hero: 'lina', watch_hero: 'axe', watch_ability: 'culling_blade' }).windows[0].watched;
+    expect(w.cast_on_this_hero_during).toEqual([{ t: 9, clock: '0:09', row: 3 }]);
+    expect(w.cast_on_this_hero_in_the_3s_before).toEqual([{ t: 3, clock: '0:03', seconds_before: 2, row: 1 }]);
+  });
+
+  it('ability readiness is counted to the end of the game, not of the samples', () => {
+    // The fixture's samples run 145 s past the Ancient's fall (42:31).
+    expect(trace.t0 + trace.n - 1).toBeGreaterThan(2551 + 100);
+    const a = run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' });
+    expect(a.learned_at.t).toBe(450.1);
+    // Alive seconds can be at most the game's seconds since the ability was learned.
+    expect(a.seconds_alive_since_learned).toBeLessThanOrEqual(2551 - 450);
+    expect(a.seconds_alive_and_ready).toBeLessThan(a.seconds_alive_since_learned);
+  });
+
+  it('a cast in the tenth of a second the immunity ended is after it, in both tools', () => {
+    // Phantom Assassin's BKB is removed at 2373.6 (row 88320); Skywrath's Arcane Bolt on her is the next row, same rounded time.
+    const w = run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'skywrath_mage', watch_ability: 'arcane_bolt' }).windows.find((x) => x.to === 2373.6);
+    expect(w).toBeTruthy();
+    expect(w.watched.cast_on_this_hero_during.map((c) => c.t)).not.toContain(2373.6);
+    const bolt = run('ability_audit', { hero: 'skywrath_mage', ability: 'arcane_bolt' }).casts.find((c) => c.t === 2373.6 && c.target === 'phantom_assassin');
+    expect(bolt.target_spell_immune).toBe(false);
+  });
+
+  it('a passive with a cooldown is not an unused ability', () => {
+    // Counter Helix has a cooldown and no mana cost, and is never cast.
+    const axe = run('death_context', { hero: 'axe' });
+    expect(axe.deaths.length).toBeGreaterThan(5);
+    for (const d of axe.deaths) expect(d.ready_not_cast).not.toContain('axe_counter_helix');
+    expect(axe.deaths.some((d) => d.at_window_start.abilities.some((a) => a.ability === 'axe_berserkers_call'))).toBe(true);
+  });
+
+  it('an immunity with no logged end stays open: a later cast on that hero is during it', () => {
+    const b = createTraceBuilder();
+    for (let t = 0; t <= 12; t += 0.25) { b.addState(state(t, { abilities: [{ name: 'axe_culling_blade', level: 1, cooldown: 0, mana_cost: 60 }] })); b.addState(lina(t)); }
+    const ev = (type, t, extra) => ({ type, t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_hero_lina', target_hero: true, target_illusion: false, ...extra });
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 5, { inflictor: 'modifier_black_king_bar_immune', attacker: 'npc_dota_hero_lina' }), 1);
+    b.addEvent(ev('DOTA_COMBATLOG_ABILITY', 7, { inflictor: 'axe_culling_blade' }), 2);
+    const tr = b.finish();
+    const w = runTraceTool(tr, 'immunity_windows', { hero: 'lina', watch_hero: 'axe', watch_ability: 'culling_blade' }).windows[0];
+    expect(w).toMatchObject({ to: null, seconds: null });
+    expect(w.watched.cast_on_this_hero_during).toEqual([{ t: 7, clock: '0:07', row: 2 }]);
+    // ability_audit reads the same cast the same way.
+    expect(runTraceTool(tr, 'ability_audit', { hero: 'axe', ability: 'culling_blade' }).casts[0].target_spell_immune).toBe(true);
+  });
+
+  it('events in the same tenth of a second keep the combat log\'s order', () => {
+    // Axe's Culling Blade on Sven (row 59214) comes before Sven's death (row 59236); both round to 27:48.4.
+    const rows = run('fight_timeline', { from: '27:45', to: '27:50' }).events.filter((e) => e.clock === '27:48');
+    const cull = rows.findIndex((e) => e.kind === 'cast' && e.ability === 'axe_culling_blade');
+    const death = rows.findIndex((e) => e.kind === 'death' && e.hero === 'sven');
+    expect(cull).toBeGreaterThanOrEqual(0);
+    expect(cull).toBeLessThan(death);
+    const all = run('fight_timeline', { from: '30:05', to: '31:00' }).events;
+    for (let i = 1; i < all.length; i += 1) if (all[i].t === all[i - 1].t && all[i].row != null && all[i - 1].row != null) expect(all[i].row).toBeGreaterThan(all[i - 1].row);
   });
 });
 
@@ -172,6 +269,23 @@ describe('trace tools on a real game', () => {
     expect(o.buildings.at(-1).ref).toBe('building:badguys_fort');
     expect(run('fight_timeline', { from: '30:05', to: '31:00' }).ref).toBe('timeline:1805-1860');
     expect(run('item_timeline', { hero: 'phantom_assassin' }).items.find((i) => i.item === 'black_king_bar').ref).toBe('item:phantom_assassin:black_king_bar');
+  });
+
+  it('a stun counts for a cast only when the combat log attributes it to the caster', () => {
+    // 27:27: Beastmaster's roar stunned Phantom Assassin. Skywrath's Arcane Bolt hit her in the same second and did not.
+    const bolts = run('ability_audit', { hero: 'skywrath_mage', ability: 'arcane_bolt' }).casts.filter((c) => c.target === 'phantom_assassin' && Math.abs(c.t - 1647.4) < 3);
+    expect(bolts.length).toBeGreaterThan(0);
+    for (const c of bolts) expect(c.target_stunned_seconds).toBe(0);
+    expect(run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }).casts.find((c) => c.clock === '27:27').target_stunned_seconds).toBe(3.4);
+  });
+
+  it('a tool\'s totals carry a summary ref', () => {
+    expect(run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' })).toMatchObject({ ref: 'audit:beastmaster:primal_roar', ref_scope: 'summary' });
+    expect(run('death_context', { hero: 'beastmaster', index: 1 })).toMatchObject({ ref: 'deaths:beastmaster', ref_scope: 'summary' });
+    expect(run('immunity_windows', { hero: 'phantom_assassin' })).toMatchObject({ ref: 'immunity:phantom_assassin', ref_scope: 'summary' });
+    expect(run('immunity_windows', { team: 'dire' }).ref).toBe('immunity:dire');
+    expect(run('immunity_windows', {}).ref).toBe('immunity:all');
+    expect(run('match_overview')).toMatchObject({ ref: 'overview', ref_scope: 'summary' });
   });
 
   it('counts are stated by the tools, not left to the reader', () => {
