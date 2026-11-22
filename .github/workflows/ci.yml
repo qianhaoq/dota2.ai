@@ -31,7 +31,7 @@ jobs:
     with:
       runs_on: 'ubuntu-latest'
       node_version: '20'          # '' skips setup-node
-      python_version: ''          # '' skips setup-python
+      python_version: '3.12'      # stdlib identity migration tests
       setup_command: 'npm ci'     # '' skips the setup step
-      test_command: 'npx tsc --noEmit && node --check server.js && npm run build && npm test'    # required
+      test_command: 'python3 -m unittest discover -s tests/identity -v && npx tsc --noEmit && node --check server.js && npm run build && npm test'    # required
       working_directory: '.'      # e.g. 'web' for a monorepo subdir

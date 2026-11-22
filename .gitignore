@@ -46,3 +46,7 @@ auth.json
 /test-results/
 /playwright-report/
 /blob-report/
+
+# Offline identity migration Python bytecode
+/scripts/identity/__pycache__/
+/tests/identity/__pycache__/
