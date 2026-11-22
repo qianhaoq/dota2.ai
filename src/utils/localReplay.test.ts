@@ -94,14 +94,48 @@ describe('openReplayFile', () => {
     expect((await f.done).demSha256).toBe(createHash('sha256').update(DEM).digest('hex'));
   });
 
-  it('a file that will not decompress is an error on `done`, not an empty replay', async () => {
-    const f = await openReplayFile(file('bad.dem.bz2', Buffer.concat([Buffer.from('BZh9'), Buffer.from('not bzip2 at all')])));
+  // The bzip2 path runs a program. Stand-ins written in Node, so the test does not depend on what is installed.
+  const BZ = Buffer.concat([Buffer.from('BZh9'), Buffer.from('compressed bytes')]);
+  const program = (script: string) => ({ bz2: { command: process.execPath, args: ['-e', script] } });
+
+  it('a replay decompressed by a program comes out whole when the program exits cleanly', async () => {
+    const f = await openReplayFile(file('ok.dem.bz2', BZ), { programs: program(`process.stdin.resume(); process.stdin.on('end', () => process.stdout.write(${JSON.stringify(DEM.toString('latin1'))}, 'latin1'))`) });
     expect(f.format).toBe('bz2');
-    const read = drain(f.stream).catch((e) => e);
-    const err = await f.done.catch((e) => e);
-    await read;
-    // bunzip2 present: it rejects the data. Absent: the tool says what to install.
-    expect(['replay_unreadable', 'decompressor_missing']).toContain(err.code);
+    expect((await drain(f.stream)).equals(DEM)).toBe(true);
+    expect(await f.done).toEqual({ demBytes: DEM.length, demSha256: createHash('sha256').update(DEM).digest('hex') });
+  });
+
+  it('output from a program that then fails is not a replay: `done` rejects even though bytes were written and stdout closed first', async () => {
+    // What a decompressor does on a truncated file: writes what it has, closes stdout, exits non-zero a moment later.
+    const script = `process.stdin.resume(); process.stdin.on('end', () => { process.stdout.write('PBDEMS2\\0 half a replay', () => { process.stdout.end(); setTimeout(() => process.exit(2), 150); }); })`;
+    const f = await openReplayFile(file('truncated.dem.bz2', BZ), { programs: program(script) });
+    const read = drain(f.stream).then((b) => ({ bytes: b.length }), (e) => ({ error: e }));
+    const err: any = await f.done.then(() => null, (e) => e);
+    expect(err).toMatchObject({ code: 'replay_unreadable' });
+    expect(await read).toHaveProperty('error'); // the reader of the stream sees the failure too, not a clean end
+  });
+
+  it('a program killed by a signal, and a program that is not installed, are errors too', async () => {
+    const killed = await openReplayFile(file('k.dem.bz2', BZ), { programs: program(`process.stdout.write('x'); process.kill(process.pid, 'SIGKILL')`) });
+    drain(killed.stream).catch(() => {});
+    await expect(killed.done).rejects.toMatchObject({ code: 'replay_unreadable' });
+    const missing = await openReplayFile(file('m.dem.bz2', BZ), { programs: { bz2: { command: 'no-such-decompressor-anywhere', args: [] } } });
+    drain(missing.stream).catch(() => {});
+    await expect(missing.done).rejects.toMatchObject({ code: 'decompressor_missing', message: expect.stringMatching(/install bzip2/) });
+  });
+
+  it('Node\'s own decompressor failing is reported the same way', async () => {
+    const zerr = () => new Transform({ transform(_c, _e, cb) { cb(Object.assign(new Error('unexpected end of file'), { code: 'Z_BUF_ERROR' })); } });
+    const f = await openReplayFile(file('cut.dem.zst', Buffer.concat([Buffer.from([0x28, 0xb5, 0x2f, 0xfd]), Buffer.from('cut short')])), { zstdStream: zerr });
+    drain(f.stream).catch(() => {});
+    await expect(f.done).rejects.toMatchObject({ code: 'replay_unreadable', message: expect.stringMatching(/corrupt or truncated/) });
+  });
+
+  it('with the real decompressor: data that is not bzip2 is refused (or bunzip2 is reported missing)', async () => {
+    const f = await openReplayFile(file('bad.dem.bz2', BZ));
+    drain(f.stream).catch(() => {});
+    const err: any = await f.done.then(() => null, (e) => e);
+    expect(['replay_unreadable', 'decompressor_missing']).toContain(err?.code);
   });
 
   it('refuses what is not a replay, a directory, and a missing file', async () => {
