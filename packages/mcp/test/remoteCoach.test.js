@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
 import { readFileSync } from 'node:fs';
 import express from 'express';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -138,5 +140,64 @@ describe('remote /mcp rate limits per caller, shared with the web coach', () => 
     for (let i = 0; i < 3; i++) expect((await c.callTool({ name: 'hero_matchup', arguments: { hero: 'tidehunter', vs: 'ursa' } })).isError).toBeFalsy();
     expect(upstream()).toBe(0);
     expect((await c.callTool({ name: 'coach_report', arguments: { match_id: 9091400302 } })).isError).toBeFalsy();
+  });
+});
+
+describe('coach_ask never spends the LLM budget for a caller who left (review #215 P1)', () => {
+  const { EventEmitter } = require('node:events');
+  /** A service whose match load can be paused, with an LLM that records whether it was touched. */
+  function setup() {
+    const touched = { acquire: 0, providers: 0, stream: 0 };
+    // Every match load waits here until the test releases it.
+    const pending = [];
+    const service = createCoachService({
+      getMatchDetail: async () => { await new Promise((r) => pending.push(r)); return structuredClone(coachMatch); },
+      resolveClientIp: () => '192.0.2.50',
+      ask: {
+        llm: { acquire: () => { touched.acquire++; return { ok: true }; } },
+        providers: () => { touched.providers++; return [{ name: 'fake', create: async () => [] }]; },
+        stream: async () => { touched.stream++; return { status: 'done', forwarded: true }; },
+        attemptMs: 1000,
+      },
+    });
+    const req = new EventEmitter();
+    const res = Object.assign(new EventEmitter(), { writableEnded: false, headersSent: false, set() {} });
+    /** Resolves with the release function of the next match load once it has started. */
+    const nextLoad = async () => { while (!pending.length) await new Promise((r) => setTimeout(r, 1)); return pending.shift(); };
+    return { service, req, res, touched, nextLoad };
+  }
+
+  it('gone during the hero lookup (the report load before ask): no budget, no completion', async () => {
+    const t = setup();
+    const coach = t.service.forRequest(t.req, t.res);
+    const lookup = coach.report(9091400302);
+    const release = await t.nextLoad();
+    t.res.emit('close'); // the caller disconnects while the match loads
+    release();
+    await lookup;
+    const ask = coach.ask(9091400302, 0, 'Why?', { lang: 'en' });
+    await expect(ask).rejects.toMatchObject({ code: 'UPSTREAM', message: 'Caller disconnected' });
+    expect(t.touched).toEqual({ acquire: 0, providers: 0, stream: 0 });
+  });
+
+  it('gone during ask’s own match load: no budget, no completion', async () => {
+    const t = setup();
+    const coach = t.service.forRequest(t.req, t.res);
+    const ask = coach.ask(9091400302, 0, 'Why?', { lang: 'en' });
+    const release = await t.nextLoad();
+    t.res.emit('close');
+    release();
+    await expect(ask).rejects.toMatchObject({ code: 'UPSTREAM', message: 'Caller disconnected' });
+    expect(t.touched).toEqual({ acquire: 0, providers: 0, stream: 0 });
+  });
+
+  it('a caller who stays gets the answer (the LLM is used)', async () => {
+    const t = setup();
+    const coach = t.service.forRequest(t.req, t.res);
+    const ask = coach.ask(9091400302, 0, 'Why?', { lang: 'en' });
+    (await t.nextLoad())();
+    await ask;
+    expect(t.touched.acquire).toBe(1);
+    expect(t.touched.stream).toBe(1);
   });
 });
