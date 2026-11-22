@@ -232,7 +232,8 @@ export interface RecentMatch {
   mode: Bi | null;
   ranked: boolean;
 }
-export interface RecentMatches { account_id: number; matches: RecentMatch[]; empty_hint: string | null }
+/** `source: 'steam_web_api'`: the fallback list while OpenDota is unavailable (no result, K/D/A or duration). */
+export interface RecentMatches { account_id: number; matches: RecentMatch[]; empty_hint: string | null; source?: 'opendota' | 'steam_web_api' }
 
 export interface WhyCause {
   id: string;

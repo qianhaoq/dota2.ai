@@ -12,9 +12,16 @@ describe('UPSTREAM_PRIMARY', () => {
     const all = { opendota: true, steam_gc: true, stratz: true };
     expect(sourceOrder('match', { configured: all })).toEqual(['opendota', 'steam_gc', 'stratz']);
     expect(sourceOrder('match', { primary: 'steam_gc', configured: all })).toEqual(['steam_gc', 'opendota', 'stratz']);
-    // Recent matches: OpenDota only. The live GC answers player history for the logged-in account alone.
+    // Recent matches: OpenDota, then the Steam Web API. Never the GC (it answers history for its own account alone).
     expect(sourceOrder('recent', { primary: 'steam_gc', configured: all })).toEqual(['opendota']);
     expect(sourceOrder('recent', { configured: all })).toEqual(['opendota']);
+    const web = { ...all, steam_web_api: true };
+    expect(sourceOrder('recent', { configured: web })).toEqual(['opendota', 'steam_web_api']);
+    // UPSTREAM_PRIMARY=steam_gc is the operator saying OpenDota is down: do not wait on it first.
+    expect(sourceOrder('recent', { primary: 'steam_gc', configured: web })).toEqual(['steam_web_api', 'opendota']);
+    expect(sourceOrder('recent', { configured: { opendota: true, steam_web_api: false } })).toEqual(['opendota']);
+    // The Web API is not a source of single matches.
+    expect(sourceOrder('match', { configured: web })).toEqual(['opendota', 'steam_gc', 'stratz']);
     // steam_gc asked for but not deployed: today's chain, unchanged.
     expect(sourceOrder('match', { primary: 'steam_gc', configured: { opendota: true, stratz: false } })).toEqual(['opendota']);
   });

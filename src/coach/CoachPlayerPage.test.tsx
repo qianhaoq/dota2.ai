@@ -35,6 +35,30 @@ describe('recent games page', () => {
     expect(window.localStorage.getItem(ACCOUNT_STORAGE_KEY)).toBe('86745912');
   });
 
+  it('the Steam fallback list: says what is missing, shows no made-up result or K/D/A, and still opens the review on the seat', async () => {
+    recent.mockResolvedValue({ account_id: 86745912, empty_hint: null, source: 'steam_web_api', matches: [
+      { match_id: 9096792210, start_time: 1795000000, duration: null, hero: { id: 44, en: 'Phantom Assassin', zh: '幻影刺客', icon: null }, slot: 7, radiant: false, won: null, kda: null, mode: null, ranked: true },
+    ] });
+    const { container } = at('/p/86745912');
+    await waitFor(() => expect(screen.getByText('幻影刺客')).toBeTruthy());
+    expect(screen.getByRole('status').textContent).toMatch(/OpenDota 暂时不可用，这份列表来自 Steam/);
+    expect(container.querySelector('a.cx-recent-row')?.getAttribute('href')).toBe('/r/9096792210?p=7&lang=zh');
+    expect(container.querySelector('.cx-recent-result')?.textContent).toBe('—');
+    expect(container.querySelector('.cx-recent-kda')?.textContent).toBe('—');
+    expect(screen.queryByText('胜')).toBeNull();
+    expect(screen.queryByText('负')).toBeNull();
+    // Only what is known, with no separator left dangling in front.
+    expect(container.querySelector('.cx-recent-meta')?.textContent).toMatch(/^天梯 · \d{4}\/\d{1,2}\/\d{1,2}$/);
+  });
+
+  it('an OpenDota list carries no fallback notice', async () => {
+    recent.mockResolvedValue({ account_id: 86745912, empty_hint: null, source: 'opendota', matches: [GAME] });
+    const { container } = at('/p/86745912');
+    await waitFor(() => expect(screen.getByText('幻影刺客')).toBeTruthy());
+    expect(screen.queryByText(/这份列表来自 Steam/)).toBeNull();
+    expect(container.querySelector('.cx-recent-meta')?.textContent).toMatch(/^全英雄选择 · 天梯 · 42:29 · /);
+  });
+
   it('explains a private profile and does not remember it', async () => {
     recent.mockResolvedValue({ account_id: 1, empty_hint: 'private_or_no_matches', matches: [] });
     at('/p/1');

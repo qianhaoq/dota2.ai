@@ -83,6 +83,7 @@ import { createSharedCooldown } from './lib/upstream/sharedCooldown.js';
 import { createStratzClient } from './lib/upstream/stratz.js';
 import { parseUpstreamPrimary, sourceOrder, fetchFromSources } from './lib/upstream/sourceOrder.js';
 import { createSteamGcClient } from './lib/upstream/steamGc.js';
+import { createSteamWebApiClient } from './lib/upstream/steamWebApi.js';
 import { createIdTokenProvider, createOdotaParserClient } from './lib/upstream/odotaParser.js';
 import { chooseParseSubmitter, createSelfHostedParseSubmitter } from './lib/matchReview/selfHostedParse.js';
 import { loadConstantsSnapshot } from './lib/constantsSnapshot.js';
@@ -498,6 +499,7 @@ app.get('/api/health/upstream', (req, res) => {
     matchStore: matchStore ? matchStore.snapshot() : { configured: false },
     stratz: stratz ? stratz.snapshot() : { configured: false },
     steamGc: steamGc ? steamGc.snapshot() : { configured: false },
+    steamWebApi: steamWebApi ? steamWebApi.snapshot() : { configured: false },
     parser: odotaParser ? { ...odotaParser.snapshot(), usable: Boolean(steamGc) } : { configured: false },
     sources: { primary: upstreamPrimary.primary, match: matchSources(), recent: recentSources() },
   });
@@ -663,7 +665,12 @@ const matchStore = cacheBucket
 const upstreamPrimary = parseUpstreamPrimary(process.env.UPSTREAM_PRIMARY);
 if (upstreamPrimary.invalid) console.warn(`[upstream] UPSTREAM_PRIMARY=${upstreamPrimary.invalid} is not opendota|steam_gc; using opendota`);
 const matchSources = () => sourceOrder('match', { primary: upstreamPrimary.primary, configured: { opendota: true, steam_gc: Boolean(steamGc), stratz: Boolean(stratz) } });
-const recentSources = () => sourceOrder('recent', { primary: upstreamPrimary.primary, configured: { opendota: true, steam_gc: Boolean(steamGc) } });
+// Recent matches when OpenDota cannot answer: the Steam Web API, with the key
+// already used for hero names. A bare list (lib/upstream/steamWebApi.js).
+const steamWebApi = steamApiKey
+  ? createSteamWebApiClient({ key: steamApiKey, log: (msg) => console.warn(`[steam-web-api] ${msg}`) })
+  : null;
+const recentSources = () => sourceOrder('recent', { primary: upstreamPrimary.primary, configured: { opendota: true, steam_web_api: Boolean(steamWebApi) } });
 
 // A stored match is final, with one exception: a copy we parsed ourselves has
 // no percentiles. When OpenDota is the primary source and answering, its
@@ -820,9 +827,13 @@ const coachCases = createCaseService({
 
 // "Your recent games" from a Steam friend code (OpenDota recentMatches).
 const coachRecent = createRecentService({
-  fetchRecent: async (id) => (await fetchFromSources(recentSources(), {
-    opendota: () => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches`, 1, 1000, { timeoutMs: 10000 }),
-  }, { onFallback: (from, to, err) => console.warn(`[upstream] recent: ${from} failed (${err?.status ?? err?.message ?? err}); trying ${to}`) })).value,
+  fetchRecent: async (id) => {
+    const { source, value } = await fetchFromSources(recentSources(), {
+      opendota: () => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches`, 1, 1000, { timeoutMs: 10000 }),
+      steam_web_api: () => steamWebApi.fetchRecent(id),
+    }, { onFallback: (from, to, err) => console.warn(`[upstream] recent: ${from} failed (${err?.status ?? err?.message ?? err}); trying ${to}`) });
+    return { rows: value, source };
+  },
 });
 // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
 const coachAskDeps = {

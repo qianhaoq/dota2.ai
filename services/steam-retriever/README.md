@@ -116,7 +116,8 @@ The plan was to serve a player's recent matches from the GC
 sends no reply at all for any other account (several request shapes tried,
 with accounts whose match data is public; match details and profile cards for
 the same accounts were answered). So the route is off by default and the site
-does not use the GC for recent matches. Match details are unaffected.
+does not use the GC for recent matches (its fallback for those is the Steam
+Web API, `lib/upstream/steamWebApi.js`). Match details are unaffected.
 
 ## Upkeep
 
