@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
+import { buildMatchFact } from '../../packages/review-engine/src/matchFacts.js';
 import {
   buildDeterministicReviewCards,
   buildPrimaryMistakeCategoryPromptTable,

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { buildDeathTimeline, isSameTeamKill } from '../../lib/matchReview/deathTimeline.js';
-import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
+import { buildDeathTimeline, isSameTeamKill } from '../../packages/review-engine/src/deathTimeline.js';
+import { buildMatchFact } from '../../packages/review-engine/src/matchFacts.js';
 import type { MatchFact } from '../types/matchReview';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../fixtures');
@@ -446,7 +446,7 @@ describe('buildMatchFact — death timeline integration', () => {
 
 describe('parsed-empty guard uses scoreboard deaths too', () => {
   it('stays unavailable when kills_log empty and kills 0 but some deaths > 0 (neutral/Roshan deaths)', async () => {
-    const { buildDeathTimeline } = await import('../../lib/matchReview/deathTimeline.js');
+    const { buildDeathTimeline } = await import('../../packages/review-engine/src/deathTimeline.js');
     const players = Array.from({ length: 10 }, (_, i) => ({
       hero_id: i + 1, player_slot: i < 5 ? i : 128 + i - 5, kills: 0, deaths: i === 0 ? 1 : 0, kills_log: [],
     }));
@@ -456,7 +456,7 @@ describe('parsed-empty guard uses scoreboard deaths too', () => {
 
 describe('parsed-empty guard requires complete scoreboard', () => {
   it('unavailable when a player omits deaths, or roster empty', async () => {
-    const { buildDeathTimeline } = await import('../../lib/matchReview/deathTimeline.js');
+    const { buildDeathTimeline } = await import('../../packages/review-engine/src/deathTimeline.js');
     const players: any[] = Array.from({ length: 10 }, (_, i) => ({
       hero_id: i + 1, player_slot: i < 5 ? i : 128 + i - 5, kills: 0, deaths: 0, kills_log: [],
     }));

@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { buildThreeConclusions } from '../../lib/matchReview/threeConclusions.js';
-import { derivePrimaryDeathPattern } from '../../lib/matchReview/deathTimeline.js';
-import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
+import { derivePrimaryDeathPattern } from '../../packages/review-engine/src/deathTimeline.js';
+import { buildMatchFact } from '../../packages/review-engine/src/matchFacts.js';
 import type { MatchFact } from '../types/matchReview';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../fixtures');

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
+import { buildMatchFact } from '../../packages/review-engine/src/matchFacts.js';
 import {
   buildFallbackAiCards,
   buildDeterministicReviewCards,
@@ -10,7 +10,7 @@ import {
   describeReviewCardsInvalidReason,
   isReviewAiCardsComplete,
 } from '../../lib/matchReview/reviewCards.js';
-import { LANE_CLUSTER_SOURCE } from '../../lib/matchReview/laneResolver.js';
+import { LANE_CLUSTER_SOURCE } from '../../packages/review-engine/src/laneResolver.js';
 import {
   isMatchParsed,
   createParseRequestTracker,

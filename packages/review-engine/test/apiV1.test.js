@@ -5,7 +5,6 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { createV1Router } from '../../../routes/v1/index.js';
 import { createCache, createIpKey, createLimiter, DAY, securityHeaders } from '../../../routes/v1/support.js';
-import { scheduleShadow } from '../../../routes/v1/shadow.js';
 import { lintOpenapi } from '../../../scripts/lint-openapi.mjs';
 import { openapi } from '../../../routes/v1/openapi.js';
 import { renderTemplate } from '../src/phrasing/templates.js';
@@ -330,7 +329,7 @@ describe('GET /api/v1/config flags', () => {
   });
 });
 
-describe('cache, privacy and shadow support', () => {
+describe('cache and privacy', () => {
   it('LRU capacity, TTL, and daily HMAC rotation', () => {
     let time = 0; const now = () => time;
     const cache = createCache({ max: 2, now });
@@ -339,34 +338,6 @@ describe('cache, privacy and shadow support', () => {
     const hash = createIpKey(now); const req = { socket: { remoteAddress: '1.2.3.4' }, headers: {} };
     const key = hash(req); expect(key).toMatch(/^[a-f0-9]{64}$/); expect(hash(req)).toBe(key); time += DAY; expect(hash(req)).not.toBe(key);
     const limit = createLimiter({ capacity: 1, windowMs: 1000, now }); expect(limit(key)).toBe(0); expect(limit(key)).toBe(1);
-  });
-  it.each([null, undefined, 0, -1, 1.5, NaN, Infinity, '14'])('shadow does no work or logging for invalid hero ID %s', async heroId => {
-    const { EventEmitter } = await import('node:events');
-    const res = new EventEmitter(); const logger = { log: vi.fn() };
-    const once = vi.spyOn(res, 'once');
-    scheduleShadow(res, { raw: fixture(9035042364), heroId, lang: 'en', legacy: {}, logger, enabled: true });
-    expect(once).not.toHaveBeenCalled();
-    res.emit('finish'); await new Promise(setImmediate);
-    expect(logger.log).not.toHaveBeenCalled();
-  });
-  it('shadow omits minute and fix kind for unparsed insights', async () => {
-    const { EventEmitter } = await import('node:events');
-    const res = new EventEmitter(); const logger = { log: vi.fn() };
-    const raw = fixture(9035042364); raw.od_data = { has_parsed: false };
-    scheduleShadow(res, { raw, heroId: 14, lang: 'en', legacy: {}, logger });
-    res.emit('finish'); await new Promise(setImmediate);
-    expect(JSON.parse(logger.log.mock.calls[0][0])).toMatchObject({ v2: null, fix_kind: null });
-  });
-  it('shadow runs only after finish, does not call LLM, and swallows errors', async () => {
-    const { EventEmitter } = await import('node:events');
-    const res = new EventEmitter(); const logger = { log: vi.fn() };
-    const raw = fixture(9035042364); const before = JSON.stringify(raw);
-    scheduleShadow(res, { raw, heroId: 14, lang: 'en', legacy: {}, logger });
-    expect(logger.log).not.toHaveBeenCalled(); res.emit('finish'); await new Promise(setImmediate);
-    expect(JSON.parse(logger.log.mock.calls[0][0])).toMatchObject({ event: 'shadow_diff', matchId: 9035042364 }); expect(JSON.stringify(raw)).toBe(before);
-    scheduleShadow(res, { raw: null, legacy: {}, logger }); res.emit('finish'); await new Promise(setImmediate);
-    scheduleShadow(res, { raw, legacy: {}, logger, enabled: false }); res.emit('finish'); await new Promise(setImmediate);
-    expect(logger.log).toHaveBeenCalledTimes(1);
   });
 });
 

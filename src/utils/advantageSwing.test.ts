@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { detectAdvantageSwing, COMEBACK_LEAD_THRESHOLD, LEAD_FLIP_THRESHOLD } from '../../lib/matchReview/advantageSwing.js';
-import { buildMatchFact } from '../../lib/matchReview/matchFacts.js';
+import { detectAdvantageSwing, COMEBACK_LEAD_THRESHOLD, LEAD_FLIP_THRESHOLD } from '../../packages/review-engine/src/advantageSwing.js';
+import { buildMatchFact } from '../../packages/review-engine/src/matchFacts.js';
 import type { MatchFact } from '../types/matchReview';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../fixtures');
