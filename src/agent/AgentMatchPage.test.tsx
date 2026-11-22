@@ -114,6 +114,37 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(document.querySelector('.ag-journey li.is-live strong')?.textContent).toBe('Read the replay'));
   }, 20000);
 
+  it('an answer for the previous hero does not replace the one on screen; a failed poll is not a failed review', async () => {
+    let slow: any; let polls = 0;
+    mockFetch({
+      'ref=overview': overview,
+      // Beastmaster's status answers late; Axe's review is ready at once.
+      '/review?hero=beastmaster': () => new Promise((r) => { slow = () => r({ status: 'running', steps: [] }); }),
+      '/review?hero=axe': { status: 'ready', review: { ...review, hero: 'axe', verdict: 'Axe verdict.' }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 1 },
+      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    await waitFor(() => expect(slow).toBeTypeOf('function'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Axe verdict.' })).toBeTruthy();
+    slow();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.getByRole('heading', { level: 1, name: 'Axe verdict.' })).toBeTruthy();
+    cleanup();
+    // Running, then a poll fails (502), then ready: the page never shows "the review did not come out".
+    mockFetch({
+      'ref=overview': overview,
+      '/review?': () => { polls += 1; return polls === 1 ? { status: 'running', steps: [] } : polls === 2 ? new Response('bad gateway', { status: 502 }) : { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 1 }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    await waitFor(() => expect(polls).toBeGreaterThanOrEqual(2), { timeout: 5000 });
+    expect(screen.queryByRole('heading', { name: 'The review did not come out' })).toBeNull();
+    expect(await screen.findByRole('heading', { level: 1, name: review.verdict }, { timeout: 6000 })).toBeTruthy();
+  }, 20000);
+
   it('a failed status request does not stop the wait: the page asks again', async () => {
     let n = 0;
     mockFetch({

@@ -151,9 +151,24 @@ export const AgentMatchPage: React.FC = () => {
   useEffect(() => { setIntent(heroKey ? session()?.getItem(intentKey(matchId, heroKey, lang)) === '1' : false); setNotice(null); }, [matchId, heroKey, lang]);
   const want = (on: boolean) => { if (!heroKey) return; setIntent(on); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang)); } catch { /* storage blocked */ } };
 
+  // What the reader is looking at now. An answer that was asked for under another hero or language
+  // belongs to that selection and is dropped when it arrives.
+  const selection = `${matchId}|${heroKey}|${lang}`;
+  const selected = useRef(selection);
+  selected.current = selection;
+  const [reviewTick, setReviewTick] = useState(0);
   const loadReview = useCallback(async (signal?: AbortSignal) => {
     if (!heroKey) return;
-    try { setState(await fetchReview(matchId, heroKey, lang, signal)); } catch (e) { if ((e as Error).name !== 'AbortError') setState({ status: 'failed' }); }
+    const asked = `${matchId}|${heroKey}|${lang}`;
+    try {
+      const next = await fetchReview(matchId, heroKey, lang, signal);
+      if (selected.current === asked) setState(next);
+    } catch (e) {
+      if ((e as Error).name === 'AbortError' || selected.current !== asked) return;
+      // A request that failed is not a review that failed: while one is running, keep waiting and ask again.
+      setState((prev) => (prev?.status === 'running' ? prev : { status: 'failed' }));
+    }
+    if (selected.current === asked) setReviewTick((n) => n + 1);
   }, [matchId, heroKey, lang]);
 
   useEffect(() => {
@@ -175,7 +190,7 @@ export const AgentMatchPage: React.FC = () => {
     if (state?.status !== 'running') return undefined;
     const timer = setTimeout(() => { void loadReview(); }, 2500);
     return () => clearTimeout(timer);
-  }, [state, loadReview]);
+  }, [state, reviewTick, loadReview]);
 
   /** What prepare answered is the parse state now: a refresh that fails right after must not lose it. */
   const applyParse = (p: ParseState) => {
@@ -193,7 +208,8 @@ export const AgentMatchPage: React.FC = () => {
   const begin = useCallback(async () => {
     if (!heroKey || beginning.current) return;
     beginning.current = true;
-    try { setState(await startReview(matchId, heroKey, lang)); } catch (e) { refuse(e); } finally { beginning.current = false; }
+    const asked = `${matchId}|${heroKey}|${lang}`;
+    try { const next = await startReview(matchId, heroKey, lang); if (selected.current === asked) setState(next); } catch (e) { if (selected.current === asked) refuse(e); } finally { beginning.current = false; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, heroKey, lang]);
 

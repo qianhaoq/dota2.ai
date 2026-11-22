@@ -205,6 +205,11 @@ describe('agent API', () => {
     expect((await ev('item:phantom_assassin:black_king_bar')).body.record.first_held.clock).toBe('21:29');
     expect((await ev('overview')).body.record).toMatchObject({ result: 'my_team_lost', fights_total: 16 });
     expect((await ev('pro_items:beastmaster')).body.record.mid_game_items.items[0].item).toBe('blink');
+    // A death looked at with a wider window is shown with that window, not the default one.
+    const narrow = (await ev('death:beastmaster:2')).body.record; const wide = (await ev('death:beastmaster:2:w30')).body.record;
+    expect([narrow.snapshots[0].dt, wide.snapshots[0].dt]).toEqual([-12, -30]);
+    expect(wide.ref).toBe('death:beastmaster:2:w30');
+    expect((await ev('death:beastmaster:2:w999')).status).toBe(404);
     // A tool's summary ref shows its totals, not the records listed below them.
     const audit = (await ev('audit:beastmaster:primal_roar')).body;
     expect(audit).toMatchObject({ kind: 'audit', record: { casts_total: 10, by_target: { phantom_assassin: 4 }, casts_on_spell_immune_target: 2 } });

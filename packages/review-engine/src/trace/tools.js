@@ -166,7 +166,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const myCasts = trace.casts.filter((c) => c[1] === npc && inWindow(c[0]));
     const castNames = new Set(myCasts.map((c) => trace.names[c[2]]));
     return {
-      ref: `death:${trace.heroes[h].key}:${n}`, n, t, clock: clock(t), killer: nameOf(trace, d[2]), row: d[3],
+      // The window is part of what the record says (its damage, its snapshots): a non-default one is in the ref.
+      ref: `death:${trace.heroes[h].key}:${n}${window === 12 ? '' : `:w${window}`}`, n, t, clock: clock(t), killer: nameOf(trace, d[2]), row: d[3],
       at: where(stateAt(trace, h, t - 1)),
       level: stateAt(trace, h, t - 1)?.level ?? null,
       snapshots,

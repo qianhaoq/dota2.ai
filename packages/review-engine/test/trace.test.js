@@ -348,6 +348,13 @@ describe('trace tools on a real game', () => {
     expect(run('match_overview')).toMatchObject({ ref: 'overview', ref_scope: 'summary' });
   });
 
+  it('a death record asked for with another window says so in its ref', () => {
+    expect(run('death_context', { hero: 'beastmaster', index: 2 }).deaths[0].ref).toBe('death:beastmaster:2');
+    const wide = run('death_context', { hero: 'beastmaster', index: 2, window: 30 }).deaths[0];
+    expect(wide.ref).toBe('death:beastmaster:2:w30');
+    expect(wide.snapshots[0].dt).toBe(-30);
+  });
+
   it('counts are stated by the tools, not left to the reader', () => {
     expect(run('death_context', { hero: 'beastmaster', index: 1 }).killed_by).toEqual({ venomancer: 1, phantom_assassin: 7, mirana: 1, necrolyte: 2 });
     expect(run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'primal_roar' })).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });
