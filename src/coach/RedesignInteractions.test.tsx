@@ -103,7 +103,7 @@ describe('CoachReportPage redesigned workspace', () => {
     // The review is the engine's card surface, in the engine's order, with only each card's own actions.
     const surface = buildSurface(parsedReport, 0) as any;
     const expected = surface.cards.map((c: any) => c.component.toLowerCase())
-      .filter((c: string) => c !== 'matchheader' && c !== 'matchups'); // header is the page's own; the lane chapter carries matchups
+      .filter((c: string) => c !== 'matchheader'); // the header is the page's own; every other card is in the centre column (the inspector holds evidence, chat, compare)
     const shown = [...container.querySelectorAll('.cxv-main > .cxv-card')].map((el) => [...el.classList].find((x) => x.startsWith('is-') && !['is-good', 'is-fix', 'is-neutral'].includes(x))!.slice(3));
     expect(shown).toEqual(expected);
     const allowed = new Set(surface.cards.flatMap((c: any) => c.actions.map((x: any) => x.label.zh)));
@@ -115,6 +115,17 @@ describe('CoachReportPage redesigned workspace', () => {
     const card = container.querySelector(`#card-finding-${first.id.replace(/[^a-z0-9_-]/gi, '-')}`)!;
     fireEvent.click(within(card as HTMLElement).getByRole('button', { name: '问教练' }));
     await waitFor(() => expect((container.querySelector('.cxv-rail textarea') as HTMLTextAreaElement).value).toContain(first.title.zh));
+
+    // A finding's "证据" opens its evidence in the inspector; the chat stays mounted behind its tab.
+    fireEvent.click(within(card as HTMLElement).getByRole('button', { name: '证据' }));
+    const evidencePanel = container.querySelector('#wb-panel-evidence') as HTMLElement;
+    expect(evidencePanel.hidden).toBe(false);
+    expect(evidencePanel.querySelector('h3')?.textContent).toBe(first.title.zh);
+    expect(evidencePanel.querySelectorAll('.cx-ev').length).toBe(first.evidence.length);
+    expect((container.querySelector('#wb-panel-ask') as HTMLElement).hidden).toBe(true);
+    // An item no player owns (a pro counter item) shows its icon, never a raw key like "cyclone".
+    for (const chip of evidencePanel.querySelectorAll('.cx-chip')) expect(chip.textContent).not.toMatch(/^[a-z_]+$/);
+    expect(container.querySelector('#wb-panel-ask textarea')).toBeTruthy();
 
     // Every chapter is on the page at once: no tabs to hunt through.
     for (const id of ['story', 'laning', 'deaths', 'fights']) expect(container.querySelector(`#cx-ch-${id}`)).toBeTruthy();

@@ -5,10 +5,11 @@ import { CoachApiError, fetchCoachReport, fetchMatchup, fetchRecentMatches, requ
 import { markReviewed, markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, CoachReport, Evidence, Finding, Player, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
-import { Chapters, jumpToCases, revealRow, Deaths as DeathsChapter, Fights as FightsChapter, Items as ItemsChapter, Laning as LaningChapter, Matchups, Plan as PlanChapter, Story as StoryChapter, type ChapterJumpSignal } from './Chapters';
+import { Chapters, jumpToCases, revealRow, Deaths as DeathsChapter, Fights as FightsChapter, Items as ItemsChapter, Laning as LaningChapter, Matchups, Plan as PlanChapter, Story as StoryChapter } from './Chapters';
 import { Cases } from './Cases';
 import { buildSurface } from '../../lib/coach/cards.js';
 import { AccessModes, LiveSample } from './HomeBlocks';
+import { InspectorDrawer, type InspectorTab } from './InspectorDrawer';
 import { accessSnippets } from './accessSnippets';
 import { GoldTimeline } from './GoldTimeline';
 import { QuickJump, detectSmartInput } from './QuickJump';
@@ -20,7 +21,6 @@ import './coach.css';
 import './cards.css';
 
 const EXAMPLE_MATCH = '9091400302';
-
 
 export { SafeImg };
 
@@ -161,15 +161,6 @@ const AREA: Record<Finding['area'], Bi> = {
   fights: { en: 'Fights', zh: '团战' }, objectives: { en: 'Objectives', zh: '目标' }, team: { en: 'Team', zh: '全队' },
   laning: { en: 'Laning', zh: '对线' }, vision: { en: 'Vision', zh: '视野' },
 };
-
-const BENCH: { key: string; label: Bi; invert?: boolean }[] = [
-  { key: 'gold_per_min', label: { en: 'Gold / min', zh: '每分钟经济' } },
-  { key: 'xp_per_min', label: { en: 'XP / min', zh: '每分钟经验' } },
-  { key: 'last_hits_per_min', label: { en: 'Last hits / min', zh: '每分钟正补' } },
-  { key: 'hero_damage_per_min', label: { en: 'Hero damage / min', zh: '每分钟英雄伤害' } },
-  { key: 'deaths_per_min', label: { en: 'Staying alive', zh: '存活' }, invert: true },
-  { key: 'tower_damage', label: { en: 'Tower damage', zh: '建筑伤害' } },
-];
 
 const tally = (goalId: string) => {
   const counted = goalChecks(goalId).filter((c) => c.result === 'met' || c.result === 'missed');
@@ -742,12 +733,14 @@ export const CoachReportPage: React.FC = () => {
         </p>
       )}
 
+      <div className={`wb ${review ? 'has-review' : ''}`}>
       <Lineup
         report={report}
         selected={selected}
         compact={selected != null && !rosterExpanded}
         onPick={(s) => setParam({ p: String(s), pos: null })}
       />
+      <div className="wb-body">
 
       {review && <GoalBanner report={report} slot={review.slot} />}
 
@@ -773,6 +766,8 @@ export const CoachReportPage: React.FC = () => {
           </div>
         </>
       )}
+      </div>
+      </div>
 
       <AgentSnippets matchId={String(m.id)} />
     </Shell>
@@ -1065,38 +1060,6 @@ const GoalBanner: React.FC<{ report: CoachReport; slot: number }> = ({ report, s
   );
 };
 
-const ReadColumn: React.FC<{ review: Review; report: CoachReport; compactHead?: boolean }> = ({ review, report, compactHead = false }) => {
-  const { L } = useLang();
-  const mine = review.findings.filter((f) => f.tone === 'fix' && !f.shared);
-  const team = review.findings.filter((f) => f.tone === 'fix' && f.shared);
-  const good = review.findings.filter((f) => f.tone === 'good');
-  return (
-    <div className="cx-read-block">
-      {!compactHead && (
-        <>
-          <div className="cx-read-head">
-            <p className="cx-eyebrow">{L(UI.coachRead)}</p>
-          </div>
-          <h2 className="cx-headline">{L(review.headline)}</h2>
-        </>
-      )}
-      {mine.length > 0 && <Group title={L(UI.forYou)} findings={mine} report={report} slot={review.slot} />}
-      {team.length > 0 && <Group title={L(UI.forTeam)} findings={team} report={report} slot={review.slot} />}
-      {good.length > 0 && <Group title={L(UI.wentWell)} findings={good} report={report} slot={review.slot} />}
-      {review.findings.length === 0 && <p className="cx-muted">{L(UI.noFindings)}</p>}
-    </div>
-  );
-};
-
-const Group: React.FC<{ title: string; findings: Finding[]; report: CoachReport; slot: number }> = ({ title, findings, report, slot }) => (
-  <div className="cx-group">
-    <h3 className="cx-group-title">{title}</h3>
-    <ol className="cx-findings">
-      {findings.map((f) => <FindingCard key={f.id} f={f} report={report} slot={slot} />)}
-    </ol>
-  </div>
-);
-
 const FindingCard: React.FC<{ f: Finding; report: CoachReport; slot: number }> = ({ f, report, slot }) => {
   const { L } = useLang();
   const active = useActiveGoal();
@@ -1144,7 +1107,10 @@ const EvidenceRow: React.FC<{ evidence: Evidence[]; report: CoachReport }> = ({ 
               <span className="cx-icons">
                 {e.items.length === 0 ? '—' : e.items.map((key) => {
                   const it = itemByKey.get(key);
-                  return it?.img ? <img key={key} src={it.img} alt={L(it)} title={L(it)} /> : <span key={key} className="cx-chip">{it ? L(it) : key}</span>;
+                  if (it?.img) return <img key={key} src={it.img} alt={L(it)} title={L(it)} />;
+                  // Not in anyone's inventory (e.g. a pro counter item): the official icon by key;
+                  // the row's label already names it, so the icon is decorative — never the raw key.
+                  return <SafeImg key={key} src={itemIcon(key)} alt="" />;
                 })}
               </span>
             )}
@@ -1161,143 +1127,6 @@ const EvidenceRow: React.FC<{ evidence: Evidence[]; report: CoachReport }> = ({ 
         </div>
       ))}
     </dl>
-  );
-};
-
-const RoleCard: React.FC<{ review: Review; onSet: (pos: number) => void }> = ({ review, onSet }) => {
-  const { L } = useLang();
-  const r = review.role;
-  const note = r.source === 'user' ? UI.roleUser : r.source === 'lanes' ? UI.roleLanes : UI.roleInferred;
-  return (
-    <div className="cx-box">
-      <h3>{L(UI.role)}</h3>
-      <p className="cx-role">{L(r.label)}</p>
-      <p className="cx-muted">{L(note)}</p>
-      <p className="cx-muted cx-fix-label">{L(UI.fixRole)}</p>
-      <div className="cx-posrow">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} type="button" aria-pressed={r.pos === n} onClick={() => onSet(n)}>{n}</button>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const BenchCard: React.FC<{ player: Player }> = ({ player }) => {
-  const { L } = useLang();
-  if (!player.benchmarks) return null;
-  return (
-    <div className="cx-box">
-      <h3>{L(UI.vsHero)}</h3>
-      <ul className="cx-bench">
-        {BENCH.map(({ key, label }) => {
-          const b = player.benchmarks?.[key];
-          if (!b) return null;
-          const p = Math.round(b.pct * 100);
-          return (
-            <li key={key}>
-              <span className="cx-bench-label">{L(label)}</span>
-              <span className="cx-bar" aria-hidden="true"><i style={{ width: `${Math.max(2, p)}%` }} className={p < 30 ? 'lo' : p >= 70 ? 'hi' : ''} /></span>
-              <span className="cx-bench-val">{p}<small>%</small></span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-};
-
-const ItemsCard: React.FC<{ player: Player; review: Review }> = ({ player }) => {
-  const { L } = useLang();
-  return (
-    <div className="cx-box">
-      <h3>{L(UI.items)}</h3>
-      <div className="cx-items">
-        {player.items.length === 0 && <span className="cx-muted">—</span>}
-        {player.items.map((it, idx) => (
-          <figure key={`${it.key}-${idx}`} title={L(it)}>
-            {it.img ? <SafeImg src={it.img} alt={L(it)} /> : <span className="cx-img-missing" />}
-            <figcaption>{L(it)}</figcaption>
-          </figure>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const ThreatCard: React.FC<{ review: Review; report: CoachReport }> = ({ review, report }) => {
-  const { L } = useLang();
-  if (!review.threats.length) return null;
-  const hero = (id: number) => report.players.find((p) => p.hero.id === id)?.hero;
-  return (
-    <div className="cx-box">
-      <h3>{L(UI.threats)}</h3>
-      <ul className="cx-threats">
-        {review.threats.map((x) => (
-          <li key={x.tag}>
-            <span>{L(x.label)}</span>
-            <span className="cx-icons">
-              {x.heroes.map((id) => { const h = hero(id); return h?.icon ? <img key={id} src={h.icon} alt={L(h)} title={L(h)} className="is-hero" /> : null; })}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-};
-
-/** Matchups need no replay: shown here when there is no laning chapter to carry them (unparsed matches). */
-const MatchupsCard: React.FC<{ review: Review; report: CoachReport }> = ({ review, report }) => {
-  const { L } = useLang();
-  const list = review.matchups ?? [];
-  if (!list.some((m) => m.n != null || m.rank)) return null;
-  const heroById = new Map(report.players.map((p) => [p.hero.id, p.hero]));
-  return (
-    <div className="cx-box">
-      <h3>{L(UI.matchups)}</h3>
-      <Matchups list={list} heroById={heroById} since={report.baselines?.since ?? null} bracket={review.bracket} rankSource={report.baselines?.rank} />
-    </div>
-  );
-};
-
-const TimelineCard: React.FC<{ review: Review }> = ({ review }) => {
-  const { L } = useLang();
-  return (
-    <div className="cx-box">
-      <h3>{L(UI.timeline)}</h3>
-      <ol className="cx-tl">
-        {review.item_timeline!.slice(0, 10).map((x, idx) => (
-          <li key={`${x.item.key}-${idx}`}>
-            <time>{clock(x.time)}</time>
-            {x.item.img && <SafeImg src={x.item.img} alt="" />}
-            <span>{L(x.item)}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-};
-
-const DeathsCard: React.FC<{ review: Review; report: CoachReport }> = ({ review, report }) => {
-  const { L } = useLang();
-  const hero = (id: number | null) => (id == null ? null : report.players.find((p) => p.hero.id === id)?.hero ?? null);
-  return (
-    <div className="cx-box">
-      <h3>{L(UI.deaths)} · {review.deaths!.length}{report.players[review.slot].kda[1] !== review.deaths!.length ? ` / ${report.players[review.slot].kda[1]}` : ''}</h3>
-      <ol className="cx-deaths">
-        {review.deaths!.map((d, i) => {
-          const h = hero(d.killer);
-          return (
-            <li key={i} className={d.in_fight === false ? 'is-caught' : ''}>
-              <time>{clock(d.time)}</time>
-              {h?.icon ? <SafeImg src={h.icon} alt={L(h)} title={L(h)} /> : d.killer == null ? <span className="cx-nothero" title={L(UI.notHeroTitle)} aria-label={L(UI.notHeroTitle)} role="img">—</span> : <span className="cx-blank" />}
-              <span>{d.in_fight == null ? '' : d.in_fight ? L(UI.fight) : L(UI.caught)}</span>
-              {d.converted && <em>{L(UI.converted)}</em>}
-            </li>
-          );
-        })}
-      </ol>
-    </div>
   );
 };
 
@@ -1323,6 +1152,10 @@ const CARD_UI = {
     statistic: { en: 'Statistics', zh: '统计' },
   },
   compareTitle: { en: 'Matchup', zh: '对位' },
+  evidence: { en: 'Evidence', zh: '证据' },
+  evidenceEmpty: { en: 'Pick a finding’s “Evidence” to see the numbers behind it here.', zh: '点一条发现的「证据」，这里会显示它背后的数据。' },
+  askTab: { en: 'Ask', zh: '追问' },
+  compareEmpty: { en: 'Use “Compare” on a matchup to see that hero against yours here.', zh: '在对位卡片上点「对比」，这里会显示那个英雄和你的对位数据。' },
   casesTitle: { en: 'Pro games on the same problem', zh: '同问题的职业对局' },
   close: { en: 'Close', zh: '关闭' },
   loadFailed: { en: 'Could not load this. Try again.', zh: '加载失败，请重试。' },
@@ -1397,16 +1230,19 @@ const CardFeed: React.FC<{
   const [jump, setJump] = useState<{ target: string; row: number | null; seq: number } | null>(null);
   const [compare, setCompare] = useState<{ hero: number; vs: number } | null>(null);
   const [cases, setCases] = useState<{ theme: string; seq: number } | null>(null);
+  // The inspector beside the feed: which tab, and which finding's evidence it shows.
+  const [tab, setTab] = useState<InspectorTab>('ask');
+  const [focus, setFocus] = useState<string | null>(null);
   // Per-match/player state resets when either changes; the feed itself stays mounted
   // so a pending replay parse keeps polling (its card has the same id for every player).
-  useEffect(() => { setJump(null); setCompare(null); setCases(null); }, [report.match.id, review.slot, pos]);
+  useEffect(() => { setJump(null); setCompare(null); setCases(null); setFocus(null); setTab('ask'); }, [report.match.id, review.slot, pos]);
   // Opening pro cases goes to the requested theme (or the loading panel) once it is on the page.
   useEffect(() => {
     if (!cases) return undefined;
     const timer = setTimeout(() => jumpToCases(cases.theme), 0);
     return () => clearTimeout(timer);
   }, [cases]);
-  useEffect(() => { if (askSeq > 0) askRef.current?.focus(); }, [askSeq]);
+  useEffect(() => { if (askSeq > 0) { setTab('ask'); askRef.current?.focus(); } }, [askSeq]);
   // A jump to a row reopens its data disclosure (the user may have collapsed it) once the chapter has re-rendered.
   useEffect(() => {
     if (!jump || jump.row == null || (jump.target !== 'deaths' && jump.target !== 'fights')) return undefined;
@@ -1427,7 +1263,7 @@ const CardFeed: React.FC<{
         setJump({ target: a.target, row: a.row ?? null, seq: Date.now() });
         scrollTo(`chapter:${a.target}`);
         break;
-      case 'ask': ask(a.question, surface.cards.find((c) => c.actions.includes(a))); break;
+      case 'ask': setTab('ask'); ask(a.question, surface.cards.find((c) => c.actions.includes(a))); break;
       case 'save_goal': {
         const card = surface.cards.find((c) => c.actions.includes(a));
         const f = card?.data.finding as Finding | undefined;
@@ -1435,7 +1271,7 @@ const CardFeed: React.FC<{
         break;
       }
       case 'parse': scrollTo('gaps'); break;
-      case 'compare': setCompare({ hero: a.hero, vs: a.vs }); break;
+      case 'compare': setCompare({ hero: a.hero, vs: a.vs }); setTab('compare'); break;
       case 'open_cases': setCases({ theme: a.theme, seq: Date.now() }); break;
       default: break;
     }
@@ -1458,7 +1294,13 @@ const CardFeed: React.FC<{
             onSelectDeath={has('Deaths') ? (i) => run({ action: 'inspect', label: c.title, target: 'deaths', row: i }) : undefined}
             onSelectFight={has('Fights') ? (i) => run({ action: 'inspect', label: c.title, target: 'fights', row: i }) : undefined} />
         ) : null;
-      case 'Finding': return <ul className="cx-cards"><FindingCard f={d.finding as Finding} report={report} slot={review.slot} /></ul>;
+      case 'Finding': return (
+        <>
+          <ul className="cx-cards"><FindingCard f={d.finding as Finding} report={report} slot={review.slot} /></ul>
+          {/* Page affordance (not an engine action): this finding's evidence in the inspector. */}
+          <button type="button" className="wb-inspect" onClick={() => { setFocus(c.id); setTab('evidence'); }}>{L(CARD_UI.evidence)}</button>
+        </>
+      );
       case 'Matchups':
         // The laning chapter already shows the strip: keep only this card's compare actions.
         if (has('Lane')) return null;
@@ -1487,8 +1329,8 @@ const CardFeed: React.FC<{
   if (gaps > 2) cards.splice(2, 0, ...cards.splice(gaps, 1));
   // (Matchups stays: with a laning chapter its body is empty but its compare actions remain.)
   const shown = cards.filter((c) => c.component !== 'MatchHeader');
-  const rail = shown.filter((c) => c.component === 'Matchups');
-  const main = shown.filter((c) => c.component !== 'Matchups');
+  // Every card is content in the centre column; the inspector holds evidence, the chat and comparisons.
+  const main = shown;
   // Chapter components render their own heading and ask button.
   const selfTitled = ['Headline', 'GoldGraph', 'Story', 'Lane', 'Deaths', 'Items', 'Fights', 'Plan', 'DataGaps'];
   const card = (c: Card) => (
@@ -1514,11 +1356,42 @@ const CardFeed: React.FC<{
           </section>
         )}
       </div>
-      <aside className="cxv-rail">
-        {compare && <CompareCard hero={compare.hero} vs={compare.vs} rank={review.bracket?.key ?? null} onClose={() => setCompare(null)} />}
-        {rail.map(card)}
-        <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={askRef} report={report} review={review} pos={pos} docked />
-      </aside>
+      <InspectorDrawer
+        active={tab}
+        onTab={setTab}
+        panels={[
+          {
+            id: 'evidence', label: CARD_UI.evidence, badge: focus != null,
+            content: (() => {
+              const fc = focus ? surface.cards.find((x) => x.id === focus) : null;
+              const f = fc?.data.finding as Finding | undefined;
+              if (!f) return <p className="cx-muted wb-empty">{L(CARD_UI.evidenceEmpty)}</p>;
+              return (
+                <section className="wb-evidence" aria-label={L(f.title)}>
+                  <h3>{L(f.title)}</h3>
+                  <p className="cx-body">{L(f.body)}</p>
+                  <EvidenceRow evidence={f.evidence} report={report} />
+                  {f.caveat && <p className="cx-caveat">{L(f.caveat)}</p>}
+                </section>
+              );
+            })(),
+          },
+          {
+            id: 'ask', label: CARD_UI.askTab,
+            content: <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={askRef} report={report} review={review} pos={pos} docked />,
+          },
+          {
+            id: 'compare', label: CARD_UI.compareTitle, badge: compare != null,
+            content: (
+              <>
+                {compare
+                  ? <CompareCard hero={compare.hero} vs={compare.vs} rank={review.bracket?.key ?? null} onClose={() => setCompare(null)} />
+                  : <p className="cx-muted wb-empty">{L(CARD_UI.compareEmpty)}</p>}
+              </>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 };
