@@ -3,7 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { useVisualViewportHeight } from './app/useVisualViewportHeight';
 import { I18nProvider } from './v2/i18n/I18nProvider';
 import { FlagsProvider } from './v2/FlagsProvider';
-import { CoachHome, CoachPlayerPage, CoachReportPage } from './coach/CoachApp';
+import { CoachHome, CoachPlayerPage } from './coach/CoachApp';
+import { AgentMatchPage } from './agent/AgentMatchPage';
 
 /** Any path that is not a page goes home, keeping the language choice. */
 const ToHome: React.FC = () => {
@@ -21,7 +22,7 @@ export const AppRoutes: React.FC = () => {
   useVisualViewportHeight();
   return (
     <Routes>
-      <Route path="/r/:matchId" element={<CoachReportPage />} />
+      <Route path="/r/:matchId" element={<AgentMatchPage />} />
       <Route path="/p/:accountId" element={<CoachPlayerPage />} />
       <Route path="/" element={<CoachHome />} />
       <Route path="*" element={<ToHome />} />
