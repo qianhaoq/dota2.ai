@@ -81,6 +81,34 @@ describe('fact collection', () => {
   });
 });
 
+describe('review findings on #233', () => {
+  it('evidence may state only what its cited records hold: a scoreboard number does not pass under a death', () => {
+    const sources = [{ scoreboard: { net_worth: 16953 } }, { deaths_total: 1, deaths: [{ ref: 'death:x:1', t: 600, clock: '10:00', hp: 100 }] }];
+    const at = (fact: string, refs = ['death:x:1']) => verifyReview(review([{ title: 't', claim: 'c', evidence: [{ refs, fact }], fix: 'f' }], { verdict: 'v', mainline: [] }), sources).problems;
+    expect(at('At 10:00 you had 16953 HP')).toEqual([{ where: 'finding', index: 0, kind: 'moment', text: '16953 (not in death:x:1)' }]);
+    expect(at('At 10:00 you had 100 HP')).toEqual([]);
+  });
+
+  it('a tool\'s counts have their own ref, which covers those counts and nothing nested below', () => {
+    const sources = [{ ref: 'audit:x:roar', ref_scope: 'summary', casts_total: 5555, by_target: { pa: 4444 }, casts: [{ ref: 'cast:x:roar:1', t: 60, clock: '1:00', target_stunned_seconds: 3.4, damage: 777 }] }];
+    const at = (refs: string[], fact: string) => verifyReview(review([{ title: 't', claim: 'c', evidence: [{ refs, fact }], fix: 'f' }], { verdict: 'v', mainline: [] }), sources).problems.map((p: any) => p.text);
+    expect(at(['audit:x:roar'], '5555 casts, 4444 on her')).toEqual([]);
+    // Inside one cast record, not among the audit's totals: citing the summary does not cover it.
+    expect(at(['audit:x:roar'], 'stunned 3.4 s for 777 damage')).toEqual(['3.4 (not in audit:x:roar)', '777 (not in audit:x:roar)']);
+    // One of the audit's totals, without citing the audit.
+    expect(at(['cast:x:roar:1'], '5555 casts in all')).toEqual(['5555 (not in cast:x:roar:1)']);
+    expect(at(['cast:x:roar:1', 'audit:x:roar'], 'at 1:00, one of 5555 casts, stunned 3.4 s')).toEqual([]);
+  });
+
+  it('the review can still be handed in after the last lookup is spent', async () => {
+    const m = scripted([investigate, { toolCalls: [call('submit_review', review([good]), 's')] }]);
+    // Three lookups allowed, three used: the next turn offers only submit_review, and it is accepted.
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh', maxToolCalls: 3 });
+    expect(r.status).toBe('ok');
+    expect(m.seen[1].tools.map((t: any) => t.name)).toEqual(['submit_review']);
+  });
+});
+
 describe('runDeepReview', () => {
   it('investigates with the trace tools and returns the verified review', async () => {
     const m = scripted([investigate, { toolCalls: [call('submit_review', review([good]), 's')] }]);

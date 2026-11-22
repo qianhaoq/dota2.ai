@@ -206,7 +206,19 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       </div>
     );
   }
-  return <div className="ag-rec"><p className="ag-rec-head">{r.clock ?? data.ref}</p></div>;
+  // A tool's totals (audit:…, deaths:…, immunity:…): the counts themselves.
+  const flat: [string, string][] = [];
+  for (const [k, v] of Object.entries(r)) {
+    if (k === 'ref' || k === 'ref_scope' || k === 'hero' || k === 'team' || k === 'ability') continue;
+    if (typeof v === 'number') flat.push([pretty(k), String(v)]);
+    else if (v && typeof v === 'object' && !Array.isArray(v)) for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) if (typeof v2 === 'number') flat.push([`${pretty(k)} · ${N(k2)}`, String(v2)]);
+  }
+  return (
+    <div className="ag-rec">
+      <p className="ag-rec-head">{r.clock ?? [r.hero, r.ability].filter(Boolean).map((x: string) => N(x)).join(' · ')}</p>
+      {flat.length > 0 && <p className="ag-rec-line">{flat.slice(0, 14).map(([k, v]) => <span key={k} className="ag-chip">{k} <em>{v}</em></span>)}</p>}
+    </div>
+  );
 }
 
 export const EvidenceCard: React.FC<{ matchId: string; hero: string; lang: Lang; item: EvidenceItem; onAsk: (label: string, refs: string[]) => void }> = ({ matchId, hero, lang, item, onAsk }) => {

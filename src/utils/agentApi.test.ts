@@ -74,8 +74,17 @@ describe('runChat', () => {
     expect(await runChat({ complete: async () => ({ text: ' ' }), trace, hero: 'beastmaster', question: 'q' })).toMatchObject({ status: 'no_answer' });
     expect(await runChat({ complete: async () => ({ text: 'x' }), trace, hero: 'pudge', question: 'q' })).toEqual({ status: 'unknown_hero' });
   });
+  it('an earlier answer backs a later one only if it came back clean', async () => {
+    const trace = await createFileTraceStore(dir).get(MATCH);
+    const say = async () => ({ text: '你在 19:19 死了。' });
+    // The earlier answer stated 19:19 and was returned with it flagged: it is not evidence now.
+    expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q', history: [{ q: 'a', a: '你在 19:19 死了。', clean: false }] })).unverified).toEqual([{ kind: 'time', text: '19:19' }]);
+    expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q', history: [{ q: 'a', a: '你在 19:19 死了。' }] } as any)).unverified).toEqual([{ kind: 'time', text: '19:19' }]);
+    expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q', history: [{ q: 'a', a: '你在 19:19 死了。', clean: true }] })).unverified).toEqual([]);
+  });
+
   it('validates the request body', () => {
-    expect(parseChatBody({ question: ' hi ', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b' }, { q: 1 }, { q: '', a: 'x' }] })).toEqual({ question: 'hi', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b' }] });
+    expect(parseChatBody({ question: ' hi ', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b' }, { q: 1 }, { q: '', a: 'x' }, { q: 'c', a: 'd', clean: true }, { q: 'e', a: 'f', clean: 'yes' }] })).toEqual({ question: 'hi', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b', clean: false }, { q: 'c', a: 'd', clean: true }, { q: 'e', a: 'f', clean: false }] });
     expect(parseChatBody({ question: 'x', hero: 'axe', history: Array.from({ length: 9 }, (_, i) => ({ q: `q${i}`, a: 'a' })) }).history).toHaveLength(6);
     expect([parseChatBody({}), parseChatBody({ question: 'x'.repeat(501), hero: 'a' }), parseChatBody({ question: 'x' })].map((r: any) => r.error)).toEqual(['empty_question', 'question_too_long', 'invalid_hero']);
   });
@@ -159,9 +168,32 @@ describe('agent API', () => {
     expect((await ev('item:phantom_assassin:black_king_bar')).body.record.first_held.clock).toBe('21:29');
     expect((await ev('overview')).body.record).toMatchObject({ result: 'my_team_lost', fights_total: 16 });
     expect((await ev('pro_items:beastmaster')).body.record.mid_game_items.items[0].item).toBe('blink');
+    // A tool's summary ref shows its totals, not the records listed below them.
+    const audit = (await ev('audit:beastmaster:primal_roar')).body;
+    expect(audit).toMatchObject({ kind: 'audit', record: { casts_total: 10, by_target: { phantom_assassin: 4 }, casts_on_spell_immune_target: 2 } });
+    expect(audit.record).not.toHaveProperty('casts');
+    expect((await ev('deaths:beastmaster')).body.record).toMatchObject({ deaths_total: 11, killed_by: { phantom_assassin: 7 } });
+    expect((await ev('immunity:phantom_assassin')).body.record).toMatchObject({ windows_total: 7 });
     for (const bad of ['cast:beastmaster:primal_roar:99', 'death:beastmaster:0', 'nope:1', 'timeline:0-99999', '../etc', 'death:pudge:1']) expect((await ev(bad)).status).toBe(404);
     expect((await get(`/api/agent/${MATCH}/evidence?hero=beastmaster`)).status).toBe(400);
     expect((await get('/api/agent/999/evidence?hero=axe&ref=overview')).status).toBe(404);
+  });
+
+  it('two starts arriving together are one job; a refused model budget uses up no review slot', async () => {
+    const before = m.seen.length;
+    const [a, b] = await Promise.all([post(`/api/agent/${MATCH}/review`, { hero: 'dark_willow', lang: 'en' }, '10.0.1.1'), post(`/api/agent/${MATCH}/review`, { hero: 'dark_willow', lang: 'en' }, '10.0.1.2')]);
+    expect([a.body.status, b.body.status]).toEqual(['running', 'running']);
+    let now: any;
+    for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=dark_willow&lang=en`)).body; if (now.status !== 'running') break; await new Promise((r) => setTimeout(r, 20)); }
+    // One investigation: two model calls (look up, submit), not four.
+    expect(m.seen.length - before).toBe(2);
+    // The model budget says no three times; the caller's three review slots are all still there afterwards.
+    budget = { ok: false, reason: 'client', retryAfterSec: 5 };
+    for (const hero of ['necrolyte', 'venomancer', 'skywrath_mage']) expect((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.1.9')).status).toBe(429);
+    budget = { ok: true };
+    const statuses = [];
+    for (const hero of ['necrolyte', 'venomancer', 'skywrath_mage', 'phantom_assassin']) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.1.9')).status);
+    expect(statuses).toEqual([202, 202, 202, 429]);
   });
 
   it('chat: streams the tool steps, then the checked answer', async () => {
