@@ -43,7 +43,8 @@ describe('training goal loop', () => {
 
     at('/r/9091400999?p=4');
     await waitFor(() => expect(screen.getByText('达成')).toBeTruthy());
-    expect(screen.getByText(/死亡 3 次/)).toBeTruthy();
+    // The check's evidence in the goal banner (a finding title may also mention the death count).
+    expect(document.querySelector('.cx-goal .cx-goal-ev')?.textContent).toMatch(/死亡 3 次/);
     expect(screen.getByText('1 局里达成 1 局')).toBeTruthy();
     expect(goalChecks(activeGoal()!.id)).toEqual([expect.objectContaining({ matchId: 9091400999, result: 'met' })]);
     // Staying on the page must not loop: recording a check is not a goal change.

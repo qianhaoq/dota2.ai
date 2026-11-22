@@ -137,8 +137,9 @@ describe('story "why": the gap split into causes', () => {
 
   it('turns an answer item you already had into a timing lesson, from the purchase log', () => {
     expect(byKey(0, 'fights.carrier').fix.zh).toContain('你出了幽魂权杖，但在 41:46 才做出，此前已经输了 9 波');
-    // Spectre had no answer: name the options for a core instead.
-    expect(byKey(4, 'fights.carrier').fix.zh).toContain('你作为核心，在下一波大团前做出 幽魂权杖、天堂之戟、刃甲 之一');
+    // Spectre had no answer: name the options for a right-click core — never Ghost Scepter, which stops his own attacks.
+    expect(byKey(4, 'fights.carrier').fix.zh).toContain('你作为核心，在下一波大团前做出 天堂之戟、刃甲、希瓦的守护 之一');
+    expect(byKey(4, 'fights.carrier').fix.zh).not.toContain('幽魂权杖');
   });
 
   it('is absent without a parse, never invented', () => {

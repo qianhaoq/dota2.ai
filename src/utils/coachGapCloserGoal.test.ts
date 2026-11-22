@@ -12,8 +12,12 @@ const finding = (seat: number) => r.reviews[seat].findings.find((f: any) => f.id
 const SPECTRE = r.players.findIndex((p: any) => p.hero.id === 67);
 
 describe('deaths.high: the advice follows where the deaths happened', () => {
-  it('Tidehunter died to Ursa mostly in fights after his Blink: positioning and timing', () => {
-    expect(finding(0).action.zh).toContain('熊战士在 16:56 做出闪烁匕首后，又杀了你 6 次，其中 5 次在团战里：开团前站在队伍后面');
+  it('Tidehunter died to Ursa mostly in fights after his Blink: as the initiator, the race is his own Blink (#PR-2)', () => {
+    // Tidehunter starts the fights (frontline initiator): never "stand behind your team".
+    expect(finding(0).action.zh).toContain('熊战士在 16:56 做出闪烁匕首后，又杀了你 6 次，其中 5 次在团战里。潮汐猎人是开团的人');
+    expect(finding(0).action.zh).toContain('你的闪烁匕首 29:20 才做出，比他晚 12:24（61% 的职业潮汐猎人在 25 分钟前做出）');
+    expect(finding(0).action.zh).not.toMatch(/站在队伍后面|站在前排身后/);
+    expect(finding(0).action.en).not.toMatch(/stand behind your (team|frontline)/);
     expect(finding(0).action.zh).not.toContain('不要单独待在没有视野的地方');
   });
 
