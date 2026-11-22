@@ -56,6 +56,7 @@ const UI = {
   recentFilterAll: { en: 'All', zh: '全部' },
   recentFilterUnreviewed: { en: 'Unreviewed', zh: '未复盘' },
   recentFilterRanked: { en: 'Ranked', zh: '天梯' },
+  recentLimited: { en: 'OpenDota is unavailable right now, so this list comes from Steam: results, K/D/A and game length are not shown. Open a game to review it.', zh: 'OpenDota 暂时不可用，这份列表来自 Steam：暂不显示胜负、KDA 和比赛时长。点开任意一场即可复盘。' },
   recentFilterEmpty: { en: 'No recent games match this filter.', zh: '当前筛选条件下没有比赛。' },
   notMe: { en: 'Not you? Forget this account', zh: '不是你？忘掉这个账号' },
   latestTitle: { en: 'Your latest game', zh: '你刚打完的那局' },
@@ -419,6 +420,7 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
           <p className="cx-recent-empty">{L(UI.recentEmpty)}</p>
         ) : (
           <>
+            {data.source === 'steam_web_api' && <p className="cx-notice" role="status">{L(UI.recentLimited)}</p>}
             <div className="cx-recent-controls">
               <div className="cx-filter-bar" role="group" aria-label={L(UI.recentTitle)}>
                 {([
@@ -476,9 +478,13 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
                         </span>
                         <span className="cx-recent-kda">{m.kda ? m.kda.join('/') : '—'}</span>
                         <span className="cx-recent-meta">
-                          {m.mode ? L(m.mode) : ''}{m.ranked ? ` · ${L(UI.ranked)}` : ''}
-                          {m.duration != null ? ` · ${clock(m.duration)}` : ''}
-                          {m.start_time ? ` · ${new Date(m.start_time * 1000).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US')}` : ''}
+                          {/* Only what the source gave: no stray separators around a missing part. */}
+                          {[
+                            m.mode ? L(m.mode) : null,
+                            m.ranked ? L(UI.ranked) : null,
+                            m.duration != null ? clock(m.duration) : null,
+                            m.start_time ? new Date(m.start_time * 1000).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US') : null,
+                          ].filter(Boolean).join(' · ')}
                         </span>
                       </Link>
                     </li>

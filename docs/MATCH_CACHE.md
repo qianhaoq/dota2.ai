@@ -77,5 +77,10 @@ sources are tried in the order `sources.match` shows: `UPSTREAM_PRIMARY`
 self-hosted Steam GC retriever is configured
 (`services/steam-retriever/README.md`).
 
+"Your recent games" during an outage comes from the Steam Web API when
+`STEAM_WEB_API_KEY` is set (`lib/upstream/steamWebApi.js`): the list of
+games with hero and seat, without result, K/D/A or duration; the page says
+so. `/api/health/upstream` → `steamWebApi`, `sources.recent`.
+
 "Parse this match" during an outage goes through our own parser when it is
 configured: `docs/SELF_HOSTED_PARSER.md`.
