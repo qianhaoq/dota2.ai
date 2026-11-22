@@ -238,6 +238,28 @@ describe('agent API', () => {
     } finally { budget = { ok: true }; await new Promise((r) => srv.close(r)); }
   });
 
+  it('sixty requests for the same review at once are one job and one charge', async () => {
+    let acquired = 0;
+    const app2 = express();
+    app2.use(express.json());
+    // A trace store that answers slowly, so every request is past its status check before any job exists.
+    const slow = createFileTraceStore(dir);
+    const traces = { get: async (id: any) => { await new Promise((r) => setTimeout(r, 30)); return slow.get(id); } };
+    app2.use(createAgentRouter({ service: createAgentService({ traces, complete: m.complete, model: 'test-model' }), resolveClientIp: (req: any) => String(req.headers['x-test-ip']), llm: { acquire: () => { acquired += 1; return { ok: true }; } } }));
+    const srv = app2.listen(0, '127.0.0.1');
+    await new Promise((r) => srv.once('listening', r));
+    const at = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    const send = (hero: string, ip: string) => fetch(`${at}/api/agent/${MATCH}/review`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-test-ip': ip }, body: JSON.stringify({ hero, lang: 'en' }) });
+    try {
+      const all = await Promise.all(Array.from({ length: 60 }, (_, i) => send('sven', `10.7.0.${i}`)));
+      expect(all.every((r) => r.status === 202)).toBe(true);
+      expect(acquired).toBe(1);
+      // The hour's sixty slots are not gone: another hero's review still starts.
+      expect((await send('mirana', '10.7.1.1')).status).toBe(202);
+      expect(acquired).toBe(2);
+    } finally { await new Promise((r) => srv.close(r)); }
+  });
+
   it('chat: streams the tool steps, then the checked answer', async () => {
     const r = await post(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', lang: 'zh', question: '36 分钟那次我怎么死的？' });
     expect(r.status).toBe(200);

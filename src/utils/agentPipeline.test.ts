@@ -219,6 +219,21 @@ describe('parse jobs in the service', () => {
     expect(h.pipeline.run).toHaveBeenCalledTimes(2);
   });
 
+  it('only the request that starts a parse is charged; a refusal starts nothing', async () => {
+    const h = makeService(async () => new Promise(() => {}));
+    const svc = h.service();
+    let asked = 0;
+    const admit = () => { asked += 1; return true; };
+    const all = await Promise.all(Array.from({ length: 20 }, () => svc.prepare(ID, { admit })));
+    expect(all.every((r: any) => r.status === 'running')).toBe(true);
+    expect(asked).toBe(1);
+    expect(await svc.prepare(ID, { admit })).toMatchObject({ status: 'running' });
+    expect(asked).toBe(1);
+    const other = makeService(async () => ({ ok: true }));
+    expect(await other.service().prepare(ID, { admit: () => false })).toEqual({ status: 'refused' });
+    expect(other.pipeline.run).not.toHaveBeenCalled();
+  });
+
   it('a pipeline that throws is a failed parse, not a crash; without a pipeline prepare is unavailable', async () => {
     const h = makeService(async () => { throw new Error('boom'); });
     const svc = h.service();
