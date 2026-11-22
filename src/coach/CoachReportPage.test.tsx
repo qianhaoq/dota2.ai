@@ -3,7 +3,7 @@ import React from 'react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 
@@ -19,13 +19,17 @@ const { CoachReportPage } = await import('./CoachApp');
 afterEach(cleanup);
 
 describe('CoachReportPage header', () => {
-  it('shows every player\'s final items in the lineup and the gold graph before the full review', async () => {
+  it('every player\'s final items are one click away, and the gold graph sits in "how the game swung"', async () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/r/9091400302?p=0']}>
         <Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes>
       </MemoryRouter>,
     );
-    await waitFor(() => expect(container.querySelector('.cx-lineup')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.rv-head')).toBeTruthy());
+    // The header strip switches between all ten; the full lineup with items opens on demand.
+    expect(container.querySelectorAll('.rv-seat')).toHaveLength(10);
+    expect(container.querySelector('.cx-lineup')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '展开 10 人详情' }));
     const seats = [...container.querySelectorAll('.cx-seat')];
     expect(seats).toHaveLength(10);
     seats.forEach((seat, i) => {
@@ -33,13 +37,10 @@ describe('CoachReportPage header', () => {
       expect(icons.length).toBe(report.players[i].items.length);
     });
     expect(screen.getAllByTitle('清莲宝珠').length).toBeGreaterThan(0);
-    // Lineup first, then the card feed: headline card, then the gold graph card.
-    const order = [...container.querySelectorAll('.cx-lineup, .cxv-feed')].map((e) => e.classList[0]);
-    expect(order).toEqual(['cx-lineup', 'cxv-feed']);
-    const cards = [...container.querySelectorAll('.cxv-main > .cxv-card')];
-    expect(cards[0].classList.contains('is-headline')).toBe(true);
-    expect(cards[1].classList.contains('is-goldgraph')).toBe(true);
-    expect(cards[1].querySelector('.cx-graph')).toBeTruthy();
+    // Reading order: header, verdict, the next-game list, then the areas (the graph is in the first one).
+    const order = [...container.querySelectorAll('.rv-head, .rv-verdict, #cx-ch-plan, .rv-sections')].map((e) => e.classList[0]);
+    expect(order).toEqual(['rv-head', 'rv-verdict', 'rv-next', 'rv-sections']);
+    expect(container.querySelector('#rv-sec-story .cx-graph')).toBeTruthy();
     // Labels are HTML (not stretched SVG text): 10-minute ticks and the range.
     const ticks = [...container.querySelectorAll('.cx-graph-axis span')].map((e) => e.textContent);
     expect(ticks).toEqual(['0′', '10′', '20′', '30′', '40′']);

@@ -29,7 +29,7 @@ const page = (url: string) => render(
   <MemoryRouter initialEntries={[url]}><Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes></MemoryRouter>,
 );
 
-describe('card feed (review #206)', () => {
+describe('review page from the card surface (review #206)', () => {
   it('a pending parse keeps going when the reviewed player changes', async () => {
     fetchReport.mockResolvedValue(unparsed);
     parse.mockResolvedValue({ status: 'pending' });
@@ -38,11 +38,10 @@ describe('card feed (review #206)', () => {
     fireEvent.click(screen.getByRole('button', { name: '解析这场比赛' }));
     await waitFor(() => expect(screen.getByText(/已提交解析/)).toBeTruthy());
     const panel = container.querySelector('.cx-gaps--priority')!;
-    // Switch to another player in the lineup.
-    fireEvent.click(screen.getByRole('button', { name: '展开 10 人详情' }));
-    fireEvent.click(container.querySelectorAll('.cx-seat')[0] as HTMLElement);
+    // Switch to another player from the header's hero strip.
+    fireEvent.click(container.querySelectorAll('.rv-seat')[0] as HTMLElement);
     await waitFor(() => expect(fetchReport).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(container.querySelector('.cx-verdict-headline')?.textContent).toBe(unparsed.reviews[0].headline.zh));
+    await waitFor(() => expect(container.querySelector('.rv-headline')?.textContent).toBe(unparsed.reviews[0].headline.zh));
     // Same panel instance, still pending (not reset to the idle button).
     expect(container.querySelector('.cx-gaps--priority')).toBe(panel);
     expect(screen.getByText(/已提交解析/)).toBeTruthy();
@@ -55,7 +54,7 @@ describe('card feed (review #206)', () => {
     Element.prototype.scrollIntoView = function (this: Element) { scrolled.push(this.id); } as never;
     try {
       const { container } = page('/r/9091400302?p=0');
-      await waitFor(() => expect(container.querySelector('.cxv-feed')).toBeTruthy());
+      await waitFor(() => expect(container.querySelector('.rv-sections')).toBeTruthy());
       const btn = screen.getAllByRole('button', { name: '同问题的职业对局' })[0];
       fireEvent.click(btn);
       await waitFor(() => expect(container.querySelector('#cx-ch-cases')).toBeTruthy());
@@ -74,9 +73,11 @@ describe('card feed (review #206)', () => {
     matchup.mockResolvedValue({ lines: { en: ['Tidehunter vs Ursa'], zh: ['潮汐猎人 对 熊战士'] } });
     const { container } = page('/r/9091400302?p=0');
     await waitFor(() => expect(container.querySelector('#cx-ch-laning')).toBeTruthy());
-    const card = container.querySelector('.cxv-card.is-matchups') as HTMLElement;
+    // The matchups card's compare actions live in the laning area, under its chapter.
+    const card = container.querySelector('#rv-sec-laning .rv-compare') as HTMLElement;
     expect(card).toBeTruthy();
     expect(card.querySelector('.cx-matchups')).toBeNull(); // the strip is in the laning chapter, not duplicated
+    expect(container.querySelectorAll('#rv-sec-laning .cx-matchups')).toHaveLength(1);
     fireEvent.click(within(card).getByRole('button', { name: '对比 · 熊战士' }));
     await waitFor(() => expect(screen.getByText('潮汐猎人 对 熊战士')).toBeTruthy());
     expect(matchup).toHaveBeenCalledWith(29, 70, 'ca', expect.anything());
@@ -85,7 +86,7 @@ describe('card feed (review #206)', () => {
   it('a question asked from a card carries that card as its context', async () => {
     fetchReport.mockResolvedValue(parsed);
     const { container } = page('/r/9091400302?p=0');
-    await waitFor(() => expect(container.querySelector('.cxv-feed')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.rv-sections')).toBeTruthy());
     const f = parsed.reviews[0].findings[0];
     const card = container.querySelector(`#card-finding-${f.id.replace(/[^a-z0-9_-]/gi, '-')}`) as HTMLElement;
     fireEvent.click(within(card).getByRole('button', { name: '问教练' }));

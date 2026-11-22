@@ -33,15 +33,6 @@
     var(--ink);
 }
 
-.cxv-feed { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; margin-top: 14px; }
-.cxv-feed.is-loading { opacity: 0.6; }
-.cxv-main, .cxv-rail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.cxv-rail { position: sticky; top: 76px; }
-@media (max-width: 980px) {
-  .cxv-feed { grid-template-columns: minmax(0, 1fr); }
-  .cxv-rail { position: static; }
-}
-
 .cxv-card {
   position: relative;
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
@@ -69,28 +60,8 @@
 .cxv-x { margin-left: auto; background: none; border: 0; color: var(--text-3); font-size: var(--fs-h); cursor: pointer; line-height: 1; }
 .cxv-x:hover { color: var(--text); }
 
-/* Embedded legacy blocks lose their own frame inside a card. */
-.cxv-card-body > .cx-verdict, .cxv-card-body .cx-box, .cxv-card-body .cx-graph, .cxv-card-body > .cx-chapter, .cxv-card-body .cx-parse {
-  margin: 0; border: 0; background: none; box-shadow: none; padding: 0;
-}
-.cxv-card-body .cx-cards { margin: 0; padding: 0; list-style: none; }
-.cxv-card-body .cx-cards > .cx-card { background: none; margin: 0; padding: 0 0 0 12px; border-top: 0; border-right: 0; border-bottom: 0; }
-
-.cxv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
-.cxv-act {
-  font: inherit; font-size: var(--fs-meta); color: var(--text-2); background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--line-2); border-radius: 3px; padding: 5px 10px; cursor: pointer;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
-}
-.cxv-act:hover, .cxv-act:focus-visible { color: var(--text); border-color: var(--accent); background: rgba(214, 164, 71, 0.08); outline: none; }
-.cxv-act.is-ask { color: var(--accent); }
-
 .cxv-lines { margin: 0; padding-left: 16px; font-size: var(--fs-body); line-height: 1.6; color: var(--text-2); }
 .cxv-lines li + li { margin-top: 2px; }
-
-/* The headline card is the page's hero moment. */
-.cxv-card.is-headline { padding: 20px 22px; border-color: var(--edge); }
-.cxv-card.is-headline .cx-verdict-headline { font-family: var(--serif); letter-spacing: 0.01em; }
 
 /* ---------------------------------------------------------------- home + player
  * Same card language outside the review: every block is a card on the slate. */
@@ -272,49 +243,8 @@
 .hm-patchbar .cx-patch-actions { display: flex; align-items: center; gap: 12px; }
 @media (max-width: 1023px) { .hm-first .hm-map { min-height: 0; } }
 
-/* ---------------------------------------------------------------- review workbench (PR-4)
- * ≥1200px: lineup rail | feed (timeline on top) | inspector (evidence / ask / compare).
- * Narrower: one column, the inspector below the feed. */
-.wb-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
-.wb-tabs button { font: inherit; font-size: var(--fs-body); color: var(--text-2); background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 12px; cursor: pointer; position: relative; }
-.wb-tabs button.is-on { color: var(--text); border-bottom-color: var(--accent); }
-.wb-tabs button.has-badge::after { content: ''; position: absolute; top: 8px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-.wb-panel[hidden] { display: none; }
-.wb-empty { padding: 8px 2px; }
-.wb-evidence h3 { margin: 0 0 6px; font-size: var(--fs-h); }
-.wb-inspect { font: inherit; font-size: var(--fs-meta); color: var(--accent); background: none; border: 0; padding: 6px 0 0; cursor: pointer; display: none; }
-.cx-num, .cx-recent-kda, .cx-seat-kda, .cx-seat-nw, .cx-vital dd, .hm-code pre { font-variant-numeric: tabular-nums; }
+.cx-num, .cx-recent-kda, .cx-seat-kda, .cx-seat-nw, .hm-code pre { font-variant-numeric: tabular-nums; }
 
-@media (min-width: 1200px) {
-  .wb.has-review { display: grid; grid-template-columns: 196px minmax(0, 1fr); gap: 16px; align-items: start; }
-  .wb.has-review > .cx-lineup { position: sticky; top: 72px; grid-template-columns: 1fr; gap: 10px; padding: 14px 0; max-height: calc(100vh - 84px); overflow-y: auto; }
-  .wb.has-review > .cx-lineup .cx-team-row { grid-template-columns: 1fr; gap: 4px; }
-  .wb.has-review > .cx-lineup .cx-seat { flex-direction: row; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; }
-  .wb.has-review > .cx-lineup .cx-seat img { width: 44px; height: auto; }
-  /* Compact rail only: "Full 10-player items" (not compact) shows inventories and net worth again. */
-  .wb.has-review > .cx-lineup.is-compact .cx-seat-items, .wb.has-review > .cx-lineup.is-compact .cx-seat-nw { display: none; }
-  .wb.has-review > .cx-lineup:not(.is-compact) .cx-seat { flex-wrap: wrap; }
-  .wb.has-review > .cx-lineup:not(.is-compact) .cx-seat-items { flex-basis: 100%; }
-  .wb.has-review > .cx-lineup .cx-seat-name { margin-top: 0; }
-  .wb-body { min-width: 0; }
-  .wb-body .cxv-feed { margin-top: 0; }
-  .wb-body .cxv-feed { grid-template-columns: minmax(0, 1fr) 360px; }
-  /* Findings stay short in the feed; their evidence opens in the inspector. */
-  .wb-body .cxv-main .cx-card .cx-evidence, .wb-body .cxv-main .cx-card .cx-caveat { display: none; }
-  .wb-inspect { display: inline-block; }
-  .wb-inspector { position: sticky; top: 72px; max-height: calc(100vh - 84px); overflow-y: auto; }
-}
-/* The gold graph rides along on wide and tall screens only. */
-@media (min-width: 1200px) and (min-height: 820px) {
-  .cxv-card.is-goldgraph { position: sticky; top: 64px; z-index: 3; padding: 8px 12px; }
-  .cxv-card.is-goldgraph .cxv-actions { display: none; }
-}
-@media (min-width: 1200px) and (min-height: 820px) {
-  /* Compact while it rides along (about 96px of plot): the axis stays, the legend and hint go. */
-  .cxv-card.is-goldgraph .cx-graph svg { height: 72px; }
-  .cxv-card.is-goldgraph .cx-graph-legend, .cxv-card.is-goldgraph .cx-graph-hint, .cxv-card.is-goldgraph .cxv-card-head { display: none; }
-  .cxv-card.is-goldgraph .cx-graph h3 { margin-bottom: 2px; }
-}
 /* ---------------------------------------------------------------- player page (PR-5)
  * Recent games as a compact table: hairline rows, a 2px result edge, tabular numbers.
  * (Replaces the card-per-row shell: Oil UI's "cards nested in cards / left accent bars".) */

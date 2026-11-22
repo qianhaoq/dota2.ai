@@ -23,8 +23,16 @@ test.beforeEach(async ({ page }) => {
 
 async function open(page: Page, slot: number) {
   await page.goto(`/r/9091400302?lang=zh&p=${slot}`);
-  await expect(page.locator('#cx-ch-story')).toBeVisible();
+  // First screen: the verdict and the next-game list; areas are one line each until opened.
+  await expect(page.locator('#cx-ch-plan')).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
+}
+
+/** Open one area of the review (its summary line), as a reader would. */
+async function area(page: Page, key: 'story' | 'laning' | 'deaths' | 'items' | 'fights') {
+  const sec = page.locator(`#rv-sec-${key}`);
+  if (!(await sec.evaluate((d) => (d as HTMLDetailsElement).open))) await sec.locator('> summary').click();
+  await expect(page.locator(`#cx-ch-${key}`)).toBeVisible();
 }
 
 async function noSideScroll(page: Page) {
@@ -32,8 +40,25 @@ async function noSideScroll(page: Page) {
   expect(sw).toBeLessThanOrEqual(cw);
 }
 
+test('first screen: the verdict and the first thing to do next game, without scrolling; the page stays short', async ({ page }) => {
+  await open(page, 0);
+  const vh = page.viewportSize()!.height;
+  const headline = page.locator('.rv-headline');
+  await expect(headline).toHaveText(report.reviews[0].headline.zh);
+  expect((await headline.boundingBox())!.y).toBeLessThan(vh);
+  const first = page.locator('#cx-ch-plan .rv-things > li').first();
+  await expect(first).toContainText(report.reviews[0].chapters.plan[0].title.zh);
+  const box = (await first.boundingBox())!;
+  expect(box.y + box.height).toBeLessThanOrEqual(vh);
+  // Areas closed: the whole review is a few screens, not a scroll of every number.
+  const h = await page.evaluate(() => (document.querySelector('.cx') as HTMLElement).scrollHeight);
+  expect(h).toBeLessThan(vh * 3);
+  await noSideScroll(page);
+});
+
 test('Tidehunter: every "why" cause, the spell to wait out, the core item and lane positions are on screen', async ({ page }) => {
   await open(page, 0);
+  await area(page, 'story');
   const story = page.locator('#cx-ch-story');
   // Titles share a line with the "you" tag: match the title text inside it.
   for (const c of why(0)) await expect(story.getByText(c.title.zh).first()).toBeVisible();
@@ -73,6 +98,7 @@ test('the plan chapter shows numbers as text, not as row labels (#181)', async (
 
 test('Warlock: the heat map follows the seat — Warlock against Dawnbreaker', async ({ page }) => {
   await open(page, 2);
+  await area(page, 'story');
   const heat = page.locator('#cx-ch-story figure.cx-heat');
   await expect(heat).toHaveCount(1);
   await expect(heat).toContainText('术士');
@@ -82,6 +108,7 @@ test('Warlock: the heat map follows the seat — Warlock against Dawnbreaker', a
 
 test('a cause on you links to the pro cases, and the cases load', async ({ page }) => {
   await open(page, 0);
+  await area(page, 'story');
   await page.getByText(/看职业对局/).first().click();
   await expect(page.locator('#cx-ch-cases')).toBeVisible();
   await expect(page.locator('#cx-case-laning')).toBeVisible();

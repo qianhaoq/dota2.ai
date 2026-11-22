@@ -1,0 +1,134 @@
+/* ---------------------------------------------------------------- review page (/r/:id)
+ * Read top to bottom: who and the result → one verdict → the few things to do
+ * next game → each area as one summary line you open on demand. Ask the coach
+ * sits beside the reading column on wide screens, below it otherwise.
+ * One reading column (≤720px); hairlines, not boxes; colour only for
+ * win/loss and the numbered things. */
+
+.rv-head { padding: 18px 0 14px; border-bottom: 1px solid var(--line); }
+.rv-who { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.rv-who-icon { width: 52px; height: 52px; border-radius: 6px; object-fit: cover; background: var(--panel-2); flex: none; }
+.rv-who-text { flex: 1 1 260px; min-width: 0; }
+.rv-who-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.rv-name { margin: 0; font-family: var(--serif); font-weight: 600; font-size: var(--fs-display); line-height: 1.15; letter-spacing: 0.01em; }
+.rv-role {
+  font: inherit; font-size: var(--fs-meta); color: var(--text-2); background: none; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: 4px; padding: 2px 8px;
+}
+.rv-role:hover, .rv-role:focus-visible { color: var(--text); border-color: var(--accent); outline: none; }
+.rv-wl { font-size: var(--fs-meta); font-weight: 700; letter-spacing: 0.04em; }
+.rv-wl.is-win { color: var(--radiant); }
+.rv-wl.is-loss { color: var(--dire); }
+.rv-kda { font-size: var(--fs-body); color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+.rv-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 4px 0 0; font-size: var(--fs-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.rv-meta .is-radiant { color: var(--radiant); }
+.rv-meta .is-dire { color: var(--dire); }
+.rv-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.rv-ask-btn {
+  font: inherit; font-size: var(--fs-meta); font-weight: 600; color: var(--accent-ink); background: var(--accent);
+  border: 0; border-radius: 4px; padding: 7px 14px; cursor: pointer;
+}
+.rv-ask-btn:hover, .rv-ask-btn:focus-visible { filter: brightness(1.08); outline: none; }
+
+/* All ten heroes, one row: switch player without a sidebar. */
+.rv-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 14px; }
+.rv-side { display: flex; gap: 4px; padding-left: 8px; border-left: 2px solid var(--radiant); }
+.rv-side.is-dire { border-left-color: var(--dire); }
+.rv-seat {
+  width: 40px; height: 40px; padding: 0; border-radius: 4px; border: 1px solid transparent; cursor: pointer;
+  background: var(--panel-2); overflow: hidden; opacity: 0.62; transition: opacity 0.15s, border-color 0.15s;
+}
+.rv-seat img, .rv-seat-blank { display: block; width: 100%; height: 100%; object-fit: cover; }
+.rv-seat:hover, .rv-seat:focus-visible { opacity: 1; outline: none; border-color: var(--line-2); }
+.rv-seat.is-on { opacity: 1; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.rv-roster-btn { font: inherit; font-size: var(--fs-meta); color: var(--text-2); background: none; border: 0; padding: 4px 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+.rv-roster-btn:hover, .rv-roster-btn:focus-visible { color: var(--text); outline: none; }
+
+/* ---- layout: reading column + coach rail */
+.rv { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; margin-top: 8px; }
+.rv.is-loading .rv-main { opacity: 0.55; }
+.rv-main { min-width: 0; max-width: 720px; }
+.rv-rail { min-width: 0; }
+@media (min-width: 1100px) {
+  .rv { grid-template-columns: minmax(0, 720px) minmax(300px, 1fr); gap: 40px; }
+  .rv-rail { position: sticky; top: 76px; align-self: start; }
+}
+
+/* ---- the verdict: one sentence, the biggest thing */
+.rv-verdict { padding: 22px 0 6px; }
+.rv-headline { margin: 0; font-family: var(--sans); font-weight: 500; font-size: clamp(21px, 2.6vw, var(--fs-display)); line-height: 1.4; color: var(--text); }
+
+.rv-h2 { margin: 0 0 12px; font-size: var(--fs-meta); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+
+/* ---- next game: a short numbered list, the reason you came */
+.rv-next { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.rv-things { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.rv-things > li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; align-items: start; }
+.rv-num {
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  font-size: var(--fs-meta); font-weight: 700; color: var(--accent-ink); background: var(--accent); font-variant-numeric: tabular-nums;
+}
+.rv-things h3 { margin: 2px 0 4px; font-size: var(--fs-h); font-weight: 600; line-height: 1.35; color: var(--text); }
+.rv-things p { margin: 0; font-size: var(--fs-body); line-height: 1.65; color: var(--text-2); }
+.rv-goals { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0 40px; }
+.rv-goals .cx-goal-btn { margin: 0; }
+.rv-goals .cx-goal-set { margin: 0; }
+
+/* ---- areas: one line each, opened on demand */
+.rv-sections { margin-top: 30px; }
+.rv-sec { border-top: 1px solid var(--line); }
+.rv-sections .rv-sec:last-child, .rv-sec.is-gaps, .rv-sec.is-more { border-bottom: 1px solid var(--line); }
+.rv-sec.is-gaps, .rv-sec.is-more { margin-top: 18px; }
+.rv-sec > summary {
+  list-style: none; cursor: pointer; display: grid; grid-template-columns: 96px minmax(0, 1fr) auto 16px; align-items: baseline;
+  gap: 4px 14px; padding: 14px 2px;
+}
+.rv-sec > summary::-webkit-details-marker { display: none; }
+.rv-sec > summary::after { content: "›"; grid-column: -2 / -1; grid-row: 1; color: var(--text-3); font-size: var(--fs-h); line-height: 1; transition: transform 0.15s; justify-self: end; }
+.rv-sec[open] > summary::after { transform: rotate(90deg); }
+.rv-sec > summary:hover .rv-sec-title, .rv-sec > summary:focus-visible .rv-sec-title { color: var(--accent); }
+.rv-sec > summary:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.rv-sec-title { font-size: var(--fs-body); font-weight: 600; color: var(--text); }
+.rv-sec-take { font-size: var(--fs-body); color: var(--text-2); line-height: 1.5; min-width: 0; }
+.rv-flag { font-size: var(--fs-meta); color: var(--accent); white-space: nowrap; }
+.rv-sec-body { padding: 2px 2px 22px; }
+
+/* The chapter inside an area: its own title and one-liner are already in the summary. */
+.rv-sec-body .cx-chapter { margin: 0; padding: 0; border: 0; background: none; }
+.rv-sec-body .cx-chapter-title, .rv-sec-body .cx-takeaway { display: none; }
+.rv-sec-body .cx-chapter-top { justify-content: flex-end; margin: 0; }
+.rv-sec-body .cx-graph { margin-top: 4px; }
+
+/* A finding, inside its area: no box, a hairline under it. */
+.rv-finding { padding: 4px 0 16px; margin-bottom: 14px; border-bottom: 1px dashed var(--line-2); }
+.rv-finding h4 { margin: 0 0 6px; font-size: var(--fs-body); font-weight: 600; color: var(--text); line-height: 1.45; }
+.rv-finding.tone-fix h4::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin: 0 8px 2px 0; }
+.rv-do, .rv-body { margin: 0 0 8px; font-size: var(--fs-body); line-height: 1.65; color: var(--text-2); }
+.rv-do b { color: var(--accent); font-weight: 600; margin-right: 4px; }
+.rv-row-actions { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; }
+
+.rv-compare { margin-top: 14px; }
+.rv-compare-btn {
+  font: inherit; font-size: var(--fs-meta); color: var(--text-2); background: none; cursor: pointer;
+  border: 1px solid var(--line-2); border-radius: 4px; padding: 4px 10px;
+}
+.rv-compare-btn[aria-pressed='true'], .rv-compare-btn:hover, .rv-compare-btn:focus-visible { color: var(--text); border-color: var(--accent); outline: none; }
+.rv-compare .cxv-card { margin-top: 12px; }
+
+.rv-cases { margin-top: 26px; padding-top: 16px; border-top: 1px solid var(--line); }
+.rv-cases-head { display: flex; align-items: center; justify-content: space-between; }
+
+.rv-main > .cx-gaps--priority { margin-top: 18px; }
+
+@media (max-width: 720px) {
+  .rv-actions { margin-left: 0; width: 100%; }
+  .rv-actions > * { flex: 1 1 auto; }
+  .rv-seat { width: 34px; height: 34px; }
+  .rv-strip { gap: 8px; }
+  .rv-sec > summary { grid-template-columns: minmax(0, 1fr) auto 16px; }
+  .rv-sec-take { grid-column: 1 / -1; grid-row: 2; }
+  .rv-goals { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-sec > summary::after, .rv-seat { transition: none; }
+}

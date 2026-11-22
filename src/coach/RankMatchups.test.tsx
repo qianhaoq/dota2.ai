@@ -44,7 +44,7 @@ describe('matchups with public games at your rank', () => {
     for (const p of m.players) p.rank_tier = null;
     report = buildCoachReport(m);
     const { container } = page(0);
-    await waitFor(() => expect(container.querySelector('.cx-lineup')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.cx-matchups')).toBeTruthy()); // rendered: the pro rows are there
     expect(container.querySelector('.cx-mu-rank')).toBeNull();
     expect(container.querySelector('.cx-mu-credit')).toBeNull();
   });

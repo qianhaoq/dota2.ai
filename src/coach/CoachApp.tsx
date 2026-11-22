@@ -5,11 +5,10 @@ import { CoachApiError, fetchCoachReport, fetchMatchup, fetchRecentMatches, requ
 import { markReviewed, markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, CoachReport, Evidence, Finding, Player, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, k, useLang, type Lang } from './ui';
-import { Chapters, jumpToCases, revealRow, Deaths as DeathsChapter, Fights as FightsChapter, Items as ItemsChapter, Laning as LaningChapter, Matchups, Plan as PlanChapter, Story as StoryChapter } from './Chapters';
+import { Emph, jumpToCases, revealRow, Deaths as DeathsChapter, Fights as FightsChapter, Items as ItemsChapter, Laning as LaningChapter, Matchups, Story as StoryChapter } from './Chapters';
 import { Cases } from './Cases';
 import { buildSurface } from '../../lib/coach/cards.js';
 import { AccessModes, LiveSample } from './HomeBlocks';
-import { InspectorDrawer, type InspectorTab } from './InspectorDrawer';
 import { accessSnippets } from './accessSnippets';
 import { GoldTimeline } from './GoldTimeline';
 import { QuickJump, detectSmartInput } from './QuickJump';
@@ -19,6 +18,7 @@ import { trackEvent, trackReviewViewed } from '../services/analytics';
 import { activeGoal, checkGoal, goalChecks, goalFromFinding, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
 import './coach.css';
 import './cards.css';
+import './review.css';
 
 const EXAMPLE_MATCH = '9091400302';
 
@@ -92,15 +92,9 @@ const UI = {
   pick: { en: 'Which hero were you?', zh: '你玩的是哪个英雄？' },
   pickSub: { en: 'Pick one to get a review written for that seat.', zh: '选一个英雄，复盘会针对这个位置来写。' },
   rosterExpand: { en: 'Full 10-player items', zh: '展开 10 人详情' },
-  rosterCompact: { en: 'Compact strip', zh: '收起为紧凑条' },
+  rosterCompact: { en: 'Hide the items', zh: '收起 10 人详情' },
   askQuick: { en: 'Ask coach', zh: '追问教练' },
   verdictEyebrow: { en: 'Biggest lever', zh: '本局核心结论' },
-  vitalLane: { en: 'Lane', zh: '对线' },
-  vitalDeaths: { en: 'Deaths', zh: '死亡' },
-  vitalDamage: { en: 'Damage taken', zh: '主承伤' },
-  vitalFights: { en: 'Fights', zh: '团战' },
-  vitalGpm: { en: 'GPM', zh: '每分钟经济' },
-  vitalDmg: { en: 'Hero dmg', zh: '英雄伤害' },
   coachRead: { en: 'Coach’s read', zh: '教练结论' },
   forYou: { en: 'For you', zh: '你的问题' },
   forTeam: { en: 'For your team', zh: '全队的问题' },
@@ -734,13 +728,14 @@ export const CoachReportPage: React.FC = () => {
   return (
     <Shell wide>
       {review && player ? (
-        <StickyContextBar
+        <ReviewHeader
           report={report}
           review={review}
           player={player}
           pos={posOverride}
           onSetPos={(pos) => setParam({ pos: String(pos) })}
-          rosterExpanded={rosterExpanded}
+          onPick={(s) => setParam({ p: String(s), pos: null })}
+          rosterOpen={rosterExpanded}
           onToggleRoster={() => setRosterExpanded((v) => !v)}
           onAskClick={() => setAskSeq((n) => n + 1)}
         />
@@ -756,32 +751,27 @@ export const CoachReportPage: React.FC = () => {
         </p>
       )}
 
-      <div className={`wb ${review ? 'has-review' : ''}`}>
-      <Lineup
-        report={report}
-        selected={selected}
-        compact={selected != null && !rosterExpanded}
-        onPick={(s) => setParam({ p: String(s), pos: null })}
-      />
-      <div className="wb-body">
-
-      {review && <GoalBanner report={report} slot={review.slot} />}
-
       {review && player ? (
-        <CardFeed
-          report={report}
-          review={review}
-          player={player}
-          pos={posOverride}
-          loading={loading}
-          askSeq={askSeq}
-          onParsed={async () => {
-            const r = await load();
-            if (r?.match.parsed) setNotice(L(UI.parsedReady));
-          }}
-        />
+        <>
+          {/* Every player's final items, on demand: the header strip is enough to switch. */}
+          {rosterExpanded && <Lineup report={report} selected={selected} onPick={(s) => setParam({ p: String(s), pos: null })} />}
+          <GoalBanner report={report} slot={review.slot} />
+          <ReviewBody
+            report={report}
+            review={review}
+            player={player}
+            pos={posOverride}
+            loading={loading}
+            askSeq={askSeq}
+            onParsed={async () => {
+              const r = await load();
+              if (r?.match.parsed) setNotice(L(UI.parsedReady));
+            }}
+          />
+        </>
       ) : (
         <>
+          <Lineup report={report} selected={selected} onPick={(s) => setParam({ p: String(s), pos: null })} />
           {report.timeline && <GoldTimeline report={report} review={null} />}
           <div className="cx-pick">
             <h2>{L(UI.pick)}</h2>
@@ -789,8 +779,6 @@ export const CoachReportPage: React.FC = () => {
           </div>
         </>
       )}
-      </div>
-      </div>
 
       <AgentSnippets matchId={String(m.id)} />
     </Shell>
@@ -854,37 +842,38 @@ function useShareActions(matchId: number, slot: number | null, pos: number | nul
 }
 
 /** Compact sticky bar once a hero is picked: inline position override + match meta + share + quick ask. */
-const StickyContextBar: React.FC<{
+/**
+ * The review's header: who (hero, role, result, K/D/A), the match line, and a
+ * strip of all ten heroes to switch player. Two actions only: share, ask.
+ */
+const ReviewHeader: React.FC<{
   report: CoachReport;
   review: Review;
   player: Player;
   pos: number | null;
   onSetPos: (pos: number) => void;
-  rosterExpanded: boolean;
+  onPick: (slot: number) => void;
+  rosterOpen: boolean;
   onToggleRoster: () => void;
   onAskClick: () => void;
-}> = ({ report, review, player, pos, onSetPos, rosterExpanded, onToggleRoster, onAskClick }) => {
+}> = ({ report, review, player, pos, onSetPos, onPick, rosterOpen, onToggleRoster, onAskClick }) => {
   const { L } = useLang();
   const m = report.match;
   const [roleOpen, setRoleOpen] = useState(false);
   const { copied, copySelf, shareTeam } = useShareActions(m.id, review.slot, pos);
   const winner = m.radiant_win ? UI.radiant : UI.dire;
   const roleNote = review.role.source === 'user' ? UI.roleUser : review.role.source === 'lanes' ? UI.roleLanes : UI.roleInferred;
+  const side = (radiant: boolean) => report.players.filter((p) => p.radiant === radiant);
 
   return (
-    <header className="cx-ctxbar">
-      <div className="cx-ctxbar-hero">
-        {player.hero.icon ? <SafeImg src={player.hero.icon} alt="" className="cx-ctxbar-icon" /> : <span className="cx-ctxbar-icon" />}
-        <div className="cx-ctxbar-id">
-          <div className="cx-ctxbar-name-row">
-            <h1 className="cx-ctxbar-name">{L(player.hero)}</h1>
+    <header className="rv-head">
+      <div className="rv-who">
+        {player.hero.icon ? <SafeImg src={player.hero.icon} alt="" className="rv-who-icon" /> : <span className="rv-who-icon" />}
+        <div className="rv-who-text">
+          <div className="rv-who-row">
+            <h1 className="rv-name">{L(player.hero)}</h1>
             <div className="cx-role-inline">
-              <button
-                type="button"
-                className="cx-role-trigger"
-                aria-expanded={roleOpen}
-                onClick={() => setRoleOpen((v) => !v)}
-              >
+              <button type="button" className="rv-role" aria-expanded={roleOpen} onClick={() => setRoleOpen((v) => !v)}>
                 {L(review.role.label)} ▾
               </button>
               {roleOpen && (
@@ -893,90 +882,49 @@ const StickyContextBar: React.FC<{
                   <p className="cx-muted cx-fix-label">{L(UI.fixRole)}</p>
                   <div className="cx-posrow">
                     {[1, 2, 3, 4, 5].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        aria-pressed={review.role.pos === n}
-                        onClick={() => { onSetPos(n); setRoleOpen(false); }}
-                      >
-                        {n}
-                      </button>
+                      <button key={n} type="button" aria-pressed={review.role.pos === n} onClick={() => { onSetPos(n); setRoleOpen(false); }}>{n}</button>
                     ))}
                   </div>
                 </div>
               )}
             </div>
-            <span className={`cx-ctxbar-wl ${review.won ? 'is-win' : 'is-loss'}`}>{L(review.won ? UI.win : UI.loss)}</span>
-            <span className="cx-ctxbar-kda">{player.kda.join('/')}</span>
+            <span className={`rv-wl ${review.won ? 'is-win' : 'is-loss'}`}>{L(review.won ? UI.win : UI.loss)}</span>
+            <span className="rv-kda">{player.kda.join('/')}</span>
           </div>
-          <p className="cx-meta cx-ctxbar-meta">
+          <p className="rv-meta">
             <span>#{m.id}</span>
             <span className={m.radiant_win ? 'is-radiant' : 'is-dire'}>{L(winner)} {L(UI.victory)}</span>
             <span className="cx-score"><b className="r">{m.score[0]}</b>–<b className="d">{m.score[1]}</b></span>
             <span>{clock(m.duration)}</span>
             {m.patch && <span>{m.patch}</span>}
-            <span className={`cx-pill ${m.parsed ? 'ok' : 'warn'}`}>{m.parsed ? L(UI.parsed) : L(UI.needsParse)}</span>
+            {!m.parsed && <span className="cx-pill warn">{L(UI.needsParse)}</span>}
             {m.source === 'stratz' && <span className="cx-pill">{L(UI.fromStratz)}</span>}
             {m.source === 'steam_gc' && <span className="cx-pill">{L(UI.fromSteamGc)}</span>}
           </p>
         </div>
+        <div className="rv-actions">
+          <button type="button" className="cx-ghost" onClick={copySelf}>{copied === 'self' ? L(UI.copied) : L(UI.share)}</button>
+          <button type="button" className="cx-ghost" onClick={shareTeam}>{copied === 'team' ? L(UI.teamCopied) : L(UI.shareTeam)}</button>
+          <button type="button" className="rv-ask-btn cx-ctx-ask" onClick={onAskClick}>{L(UI.askQuick)}</button>
+        </div>
       </div>
-
-      <div className="cx-share">
-        <button type="button" className="cx-ghost" aria-expanded={rosterExpanded} onClick={onToggleRoster}>
-          {L(rosterExpanded ? UI.rosterCompact : UI.rosterExpand)}
-        </button>
-        <button type="button" className="cx-ghost" onClick={copySelf}>{copied === 'self' ? L(UI.copied) : L(UI.share)}</button>
-        <button type="button" className="cx-share-team" onClick={shareTeam}>{copied === 'team' ? L(UI.teamCopied) : L(UI.shareTeam)}</button>
-        <button type="button" className="cx-ghost cx-ctx-ask" onClick={onAskClick}>✦ {L(UI.askQuick)}</button>
-      </div>
-    </header>
-  );
-};
-
-/** Above-the-fold verdict summary: surfaces the headline + 4 key vitals right at the top. */
-const VerdictHero: React.FC<{ review: Review; player: Player; loading: boolean }> = ({ review, player, loading }) => {
-  const { L } = useLang();
-  const ch = review.chapters;
-  const vitals: { label: Bi; value: string; tone?: 'good' | 'bad' | 'warn' }[] = [];
-
-  if (ch?.laning) {
-    const tone = ch.laning.outcome === 'won' || ch.laning.outcome === 'stomp' ? 'good' : ch.laning.outcome === 'draw' ? undefined : 'bad';
-    vitals.push({ label: UI.vitalLane, value: L(ch.laning.outcome_label), tone });
-  }
-  if (ch?.deaths) {
-    const share = ch.deaths.summary.share_dead != null ? ` (${Math.round(ch.deaths.summary.share_dead * 100)}%)` : '';
-    vitals.push({ label: UI.vitalDeaths, value: `${ch.deaths.summary.deaths}${share}`, tone: ch.deaths.summary.deaths >= 8 ? 'bad' : undefined });
-  } else {
-    vitals.push({ label: UI.vitalDeaths, value: String(player.kda[1]), tone: player.kda[1] >= 10 ? 'bad' : undefined });
-  }
-  if (ch?.items?.damage?.types) {
-    const t = ch.items.damage.types;
-    const dominant = t.physical >= t.magic ? { pct: t.physical, zh: '物理', en: 'Physical' } : { pct: t.magic, zh: '魔法', en: 'Magical' };
-    vitals.push({ label: UI.vitalDamage, value: `${Math.round(dominant.pct * 100)}% ${L({ en: dominant.en, zh: dominant.zh })}` });
-  } else {
-    vitals.push({ label: UI.vitalGpm, value: String(Math.round(player.gpm)) });
-  }
-  if (ch?.fights) {
-    const f = ch.fights.summary;
-    vitals.push({ label: UI.vitalFights, value: `${f.won}W–${f.lost}L`, tone: f.lost > f.won ? 'bad' : f.won > f.lost ? 'good' : undefined });
-  } else {
-    vitals.push({ label: UI.vitalDmg, value: k(player.hero_damage) });
-  }
-
-  return (
-    <section className={`cx-verdict ${loading ? 'is-loading' : ''}`} aria-label={L(UI.verdictEyebrow)}>
-      <p className="cx-eyebrow">{L(UI.verdictEyebrow)}</p>
-      <h2 className="cx-verdict-headline">{L(review.headline)}</h2>
-      <dl className="cx-vitals">
-        {vitals.map((v, i) => (
-          <div key={i} className={`cx-vital ${v.tone ? `is-${v.tone}` : ''}`}>
-            <dt>{L(v.label)}</dt>
-            <dd>{v.value}</dd>
+      <nav className="rv-strip" aria-label={L(RV.seats)}>
+        {[true, false].map((radiant) => (
+          <div key={String(radiant)} className={`rv-side ${radiant ? 'is-radiant' : 'is-dire'}`}>
+            {side(radiant).map((p) => (
+              <button key={p.slot} type="button" className={`rv-seat ${p.slot === review.slot ? 'is-on' : ''}`}
+                aria-pressed={p.slot === review.slot} aria-label={`${L(p.hero)} ${p.kda.join('/')}`} title={`${L(p.hero)} ${p.kda.join('/')}`}
+                onClick={() => onPick(p.slot)}>
+                {p.hero.icon ? <SafeImg src={p.hero.icon} alt="" /> : <span className="rv-seat-blank" />}
+              </button>
+            ))}
           </div>
         ))}
-      </dl>
-    </section>
+        <button type="button" className="rv-roster-btn" aria-expanded={rosterOpen} onClick={onToggleRoster}>
+          {L(rosterOpen ? UI.rosterCompact : UI.rosterExpand)}
+        </button>
+      </nav>
+    </header>
   );
 };
 
@@ -1085,38 +1033,6 @@ const GoalBanner: React.FC<{ report: CoachReport; slot: number }> = ({ report, s
   );
 };
 
-const FindingCard: React.FC<{ f: Finding; report: CoachReport; slot: number }> = ({ f, report, slot }) => {
-  const { L } = useLang();
-  const active = useActiveGoal();
-  const candidate = f.goal && f.tone === 'fix' && !f.shared ? goalFromFinding(report, slot, f.id, f.goal, f.action) : null;
-  const isActive = candidate != null && active?.id === candidate.id;
-  return (
-    <li className={`cx-card tone-${f.tone} sev-${f.severity}`}>
-      <div className="cx-card-meta">
-        <span className="cx-area">{L(AREA[f.area])}</span>
-        <span className="cx-conf">{L(UI.confidence[f.confidence])}</span>
-      </div>
-      <h4>{L(f.title)}</h4>
-      {f.tone === 'fix' && (
-        <p className="cx-do"><span>{L(UI.doNext)}</span>{L(f.action ?? f.ask)}</p>
-      )}
-      <p className="cx-body">{L(f.body)}</p>
-      <EvidenceRow evidence={f.evidence} report={report} />
-      {f.caveat && <p className="cx-caveat">{L(f.caveat)}</p>}
-      {candidate && (isActive ? (
-        <p className="cx-goal-set">
-          <span>✓ {L(UI.goalSet)}：{L(candidate.goal.label)}</span>
-          <button type="button" className="cx-linkbtn" onClick={() => setGoal(null)}>{L(UI.goalClear)}</button>
-        </p>
-      ) : (
-        <button type="button" className="cx-goal-btn" onClick={() => setGoal(candidate)}>
-          {L(UI.setGoal)}<span>{L(candidate.goal.label)}</span>
-        </button>
-      ))}
-    </li>
-  );
-};
-
 const EvidenceRow: React.FC<{ evidence: Evidence[]; report: CoachReport }> = ({ evidence, report }) => {
   const { L } = useLang();
   const heroById = useMemo(() => new Map(report.players.map((p) => [p.hero.id, p.hero])), [report]);
@@ -1177,10 +1093,6 @@ const CARD_UI = {
     statistic: { en: 'Statistics', zh: '统计' },
   },
   compareTitle: { en: 'Matchup', zh: '对位' },
-  evidence: { en: 'Evidence', zh: '证据' },
-  evidenceEmpty: { en: 'Pick a finding’s “Evidence” to see the numbers behind it here.', zh: '点一条发现的「证据」，这里会显示它背后的数据。' },
-  askTab: { en: 'Ask', zh: '追问' },
-  compareEmpty: { en: 'Use “Compare” on a matchup to see that hero against yours here.', zh: '在对位卡片上点「对比」，这里会显示那个英雄和你的对位数据。' },
   casesTitle: { en: 'Pro games on the same problem', zh: '同问题的职业对局' },
   close: { en: 'Close', zh: '关闭' },
   loadFailed: { en: 'Could not load this. Try again.', zh: '加载失败，请重试。' },
@@ -1189,30 +1101,6 @@ const CARD_UI = {
 const cardDom = (id: string) => `card-${id.replace(/[^a-z0-9_-]/gi, '-')}`;
 
 /** One card's frame: eyebrow (what backs it), title, body, action bar. */
-const CardShell: React.FC<{
-  card: Card; children: React.ReactNode; onAction: (a: CardAction) => void; hideTitle?: boolean; skip?: CardAction['action'][];
-  labelFor?: (a: CardAction) => string;
-}> = ({ card, children, onAction, hideTitle, skip = [], labelFor }) => {
-  const { L } = useLang();
-  const actions = card.actions.filter((a) => !skip.includes(a.action));
-  return (
-    <section id={cardDom(card.id)} className={`cxv-card is-${card.tone} is-${card.component.toLowerCase()}`} aria-label={L(card.title)}>
-      <header className="cxv-card-head">
-        <span className={`cxv-auth is-${card.authority}`}>{L(CARD_UI.authority[card.authority])}</span>
-        {!hideTitle && <h3>{L(card.title)}</h3>}
-      </header>
-      <div className="cxv-card-body">{children}</div>
-      {actions.length > 0 && (
-        <div className="cxv-actions">
-          {actions.map((a, i) => (
-            <button key={i} type="button" className={`cxv-act is-${a.action}`} onClick={() => onAction(a)}>{labelFor ? labelFor(a) : L(a.label)}</button>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-};
-
 /** Hero vs hero lines for a compare action (pro + your bracket). */
 const CompareCard: React.FC<{ hero: number; vs: number; rank: string | null; onClose: () => void }> = ({ hero, vs, rank, onClose }) => {
   const { lang, L } = useLang();
@@ -1240,186 +1128,282 @@ const CompareCard: React.FC<{ hero: number; vs: number; rank: string | null; onC
   );
 };
 
+type SectionKey = 'story' | 'laning' | 'deaths' | 'items' | 'fights';
+const SECTION_ORDER: SectionKey[] = ['story', 'laning', 'deaths', 'items', 'fights'];
+const SECTION_COMPONENT: Record<SectionKey, string> = { story: 'Story', laning: 'Lane', deaths: 'Deaths', items: 'Items', fights: 'Fights' };
+
+const RV = {
+  next: { en: 'Next game, do just these', zh: '下一局只做这几件事' },
+  nextFew: { en: 'What to change next game', zh: '下一局要改的' },
+  detail: { en: 'The detail, area by area', zh: '分项细节' },
+  findings: { en: 'Findings', zh: '发现' },
+  more: { en: 'Other findings', zh: '其他发现' },
+  seats: { en: 'Switch player', zh: '切换玩家' },
+  gaps: { en: 'What this data cannot show', zh: '这份数据看不到的' },
+  matchups: { en: 'Your hero vs theirs', zh: '你的英雄对上他们' },
+  compare: { en: 'Compare', zh: '对比' },
+};
+
+/** A finding's "make it my next-game goal" (only fixes of this player's own, with a checkable goal). */
+const GoalButton: React.FC<{ f: Finding; report: CoachReport; slot: number }> = ({ f, report, slot }) => {
+  const { L } = useLang();
+  const active = useActiveGoal();
+  const candidate = f.goal && f.tone === 'fix' && !f.shared ? goalFromFinding(report, slot, f.id, f.goal, f.action) : null;
+  if (!candidate) return null;
+  return active?.id === candidate.id ? (
+    <p className="cx-goal-set">
+      <span>✓ {L(UI.goalSet)}：{L(candidate.goal.label)}</span>
+      <button type="button" className="cx-linkbtn" onClick={() => setGoal(null)}>{L(UI.goalClear)}</button>
+    </p>
+  ) : (
+    <button type="button" className="cx-goal-btn" onClick={() => setGoal(candidate)}>
+      {L(UI.setGoal)}<span>{L(candidate.goal.label)}</span>
+    </button>
+  );
+};
+
+/** One finding inside its area: what happened, what to do, the numbers behind it. */
+const FindingBlock: React.FC<{ card: Card; report: CoachReport; onAsk: () => void; onCases?: () => void }> = ({ card, report, onAsk, onCases }) => {
+  const { L } = useLang();
+  const f = card.data.finding as Finding;
+  // The engine's own action labels (dota-coach-ui/2), not page copy.
+  const label = (kind: CardAction['action'], fallback: Bi) => L(card.actions.find((x) => x.action === kind)?.label ?? fallback);
+  return (
+    <article className={`rv-finding tone-${f.tone}`} id={cardDom(card.id)}>
+      <h4>{L(f.title)}</h4>
+      {f.tone === 'fix' && <p className="rv-do"><b>{L(UI.doNext)}</b> {L(f.action ?? f.ask)}</p>}
+      <p className="rv-body">{L(f.body)}</p>
+      {f.evidence?.length > 0 && <EvidenceRow evidence={f.evidence} report={report} />}
+      {f.caveat && <p className="cx-caveat">{L(f.caveat)}</p>}
+      <div className="rv-row-actions">
+        <button type="button" className="cx-linkbtn" onClick={onAsk}>{label('ask', UI.askQuick)}</button>
+        {onCases && <button type="button" className="cx-linkbtn" onClick={onCases}>{label('open_cases', CARD_UI.casesTitle)}</button>}
+      </div>
+    </article>
+  );
+};
+
 /**
- * The review as the engine's card surface: each card's component picks its
- * renderer, and only the card's own whitelisted actions are offered.
+ * The review, from the engine's card surface (dota-coach-ui/2), laid out for
+ * reading: the verdict, the few things to do next game, then each area as a
+ * one-line summary you open when you want the detail. Ask the coach sits
+ * beside (wide screens) or below. Nothing is said twice on the first screen.
  */
-const CardFeed: React.FC<{
+const ReviewBody: React.FC<{
   report: CoachReport; review: Review; player: Player; pos: number | null; loading: boolean; askSeq: number;
   onParsed: () => Promise<void>;
 }> = ({ report, review, player, pos, loading, askSeq, onParsed }) => {
   const { lang, L } = useLang();
   const askRef = useRef<AskHandle>(null);
+  const railRef = useRef<HTMLElement>(null);
   const surface = useMemo(() => buildSurface(report, review.slot) as { cards: Card[] } | null, [report, review.slot]);
   const heroById = useMemo(() => new Map(report.players.map((p) => [p.hero.id, p.hero])), [report]);
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const [jump, setJump] = useState<{ target: string; row: number | null; seq: number } | null>(null);
   const [compare, setCompare] = useState<{ hero: number; vs: number } | null>(null);
   const [cases, setCases] = useState<{ theme: string; seq: number } | null>(null);
-  // The inspector beside the feed: which tab, and which finding's evidence it shows.
-  const [tab, setTab] = useState<InspectorTab>('ask');
-  const [focus, setFocus] = useState<string | null>(null);
-  // Per-match/player state resets when either changes; the feed itself stays mounted
-  // so a pending replay parse keeps polling (its card has the same id for every player).
-  useEffect(() => { setJump(null); setCompare(null); setCases(null); setFocus(null); setTab('ask'); }, [report.match.id, review.slot, pos]);
-  // Opening pro cases goes to the requested theme (or the loading panel) once it is on the page.
+  // Per-match/player state resets when either changes. The body stays mounted, so a pending
+  // replay parse keeps polling (its panel is in the same place for every player).
+  useEffect(() => { setJump(null); setCompare(null); setCases(null); setOpen(new Set()); }, [report.match.id, review.slot, pos]);
   useEffect(() => {
     if (!cases) return undefined;
     const timer = setTimeout(() => jumpToCases(cases.theme), 0);
     return () => clearTimeout(timer);
   }, [cases]);
   useEffect(() => { if (askSeq > 0) openAsk(); }, [askSeq]);
-  // A jump to a row reopens its data disclosure (the user may have collapsed it) once the chapter has re-rendered.
+  // A jump to a row opens its area and reopens the row's data disclosure (the user may have collapsed it).
   useEffect(() => {
-    if (!jump || jump.row == null || (jump.target !== 'deaths' && jump.target !== 'fights')) return undefined;
-    const id = `cx-${jump.target === 'deaths' ? 'death' : 'fight'}-row-${jump.row}`;
-    const timer = setTimeout(() => revealRow(id), 0);
+    if (!jump) return undefined;
+    const timer = setTimeout(() => {
+      if (jump.row != null && (jump.target === 'deaths' || jump.target === 'fights')) revealRow(`cx-${jump.target === 'deaths' ? 'death' : 'fight'}-row-${jump.row}`);
+      else document.getElementById(`rv-sec-${jump.target}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    }, 0);
     return () => clearTimeout(timer);
   }, [jump]);
 
   if (!surface) return null;
-  const has = (component: string) => surface.cards.some((c) => c.component === component);
-  // A question asked from a card carries that card as its context ("当前围绕：…").
-  // Every way into the chat selects the Ask tab first, then focuses or prefills once
-  // the panel is visible (a hidden panel cannot take focus).
-  const openAsk = (then: () => void = () => askRef.current?.focus()) => { setTab('ask'); setTimeout(then, 0); };
-  const ask = (q: Bi, from?: Card) => openAsk(() => askRef.current?.prefill(L(q), from ? L(from.title) : undefined));
-  const scrollTo = (id: string) => document.getElementById(cardDom(id))?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  const cards = surface.cards;
+  const card = (component: string) => cards.find((c) => c.component === component);
+  const has = (component: string) => Boolean(card(component));
+  const findings = cards.filter((c) => c.component === 'Finding');
+  const targetOf = (c: Card) => (c.actions.find((a) => a.action === 'inspect') as Extract<CardAction, { action: 'inspect' }> | undefined)?.target;
 
-  const run = (a: CardAction) => {
-    switch (a.action) {
-      case 'inspect':
-        setJump({ target: a.target, row: a.row ?? null, seq: Date.now() });
-        scrollTo(`chapter:${a.target}`);
-        break;
-      case 'ask': ask(a.question, surface.cards.find((c) => c.actions.includes(a))); break;
-      case 'save_goal': {
-        const card = surface.cards.find((c) => c.actions.includes(a));
-        const f = card?.data.finding as Finding | undefined;
-        if (f?.goal) setGoal(goalFromFinding(report, review.slot, f.id, f.goal, f.action));
-        break;
-      }
-      case 'parse': scrollTo('gaps'); break;
-      case 'compare': setCompare({ hero: a.hero, vs: a.vs }); setTab('compare'); break;
-      case 'open_cases': setCases({ theme: a.theme, seq: Date.now() }); break;
-      default: break;
-    }
+  const openAsk = (then: () => void = () => askRef.current?.focus()) => {
+    railRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(then, 0);
   };
-
-  const onAskChapter = (key: string) => () => {
-    const c = surface.cards.find((x) => x.id === `chapter:${key}`);
+  const ask = (q: Bi, from?: Card) => openAsk(() => askRef.current?.prefill(L(q), from ? L(from.title) : undefined));
+  const askOf = (c: Card | undefined) => () => {
     const q = c?.actions.find((x) => x.action === 'ask') as Extract<CardAction, { action: 'ask' }> | undefined;
     if (q) ask(q.question, c); else openAsk();
   };
+  const casesOf = (c: Card) => {
+    const a = c.actions.find((x) => x.action === 'open_cases') as Extract<CardAction, { action: 'open_cases' }> | undefined;
+    return a ? () => setCases({ theme: a.theme, seq: Date.now() }) : undefined;
+  };
+  const setSection = (key: string, isOpen: boolean) => setOpen((prev) => {
+    if (prev.has(key) === isOpen) return prev;
+    const next = new Set(prev);
+    if (isOpen) next.add(key); else next.delete(key);
+    return next;
+  });
+  const inspect = (target: SectionKey, row: number | null = null) => {
+    setSection(target, true);
+    setJump({ target, row, seq: Date.now() });
+  };
 
-  const body = (c: Card): React.ReactNode => {
+  // The few things to do next game: the engine's plan; on an unparsed match (no plan) its fixes.
+  const plan = (card('Plan')?.data.plan as { key: string; title: Bi; check: Bi }[] | undefined) ?? [];
+  const fixes = findings.map((c) => c.data.finding as Finding).filter((f) => f.tone === 'fix');
+  const things = plan.length ? plan.map((p) => ({ title: p.title, text: p.check }))
+    : fixes.slice(0, 3).map((f) => ({ title: f.title, text: f.action ?? f.ask }));
+  const goalFindings = fixes.filter((f) => f.goal && !f.shared);
+
+  const sections = SECTION_ORDER.filter((key) => cards.some((c) => c.id === `chapter:${key}`));
+  const orphans = findings.filter((c) => { const t = targetOf(c); return !t || !sections.includes(t as SectionKey); });
+  const matchups = card('Matchups');
+  const gaps = card('DataGaps');
+  const parsed = report.match.parsed;
+
+  const compareBar = matchups && (
+    <div className="rv-compare">
+      {!has('Lane') && <Matchups list={matchups.data.list as never} heroById={heroById} since={matchups.data.since as never} bracket={matchups.data.bracket as never} rankSource={(matchups.data.rank_source ?? undefined) as never} />}
+      <div className="rv-row-actions">
+        {matchups.actions.filter((a) => a.action === 'compare').map((a, i) => {
+          const c = a as Extract<CardAction, { action: 'compare' }>;
+          return (
+            <button key={i} type="button" className="rv-compare-btn" aria-pressed={compare?.vs === c.vs} onClick={() => setCompare({ hero: c.hero, vs: c.vs })}>
+              {L(a.label)} · {heroById.get(c.vs)?.[lang] ?? ''}
+            </button>
+          );
+        })}
+      </div>
+      {compare && <CompareCard hero={compare.hero} vs={compare.vs} rank={review.bracket?.key ?? null} onClose={() => setCompare(null)} />}
+    </div>
+  );
+
+  const chapterBody = (key: SectionKey, c: Card) => {
     const d = c.data as Record<string, any>;
-    switch (c.component) {
-      case 'MatchHeader': return null; // the page header and lineup already show it
-      case 'Headline': return <VerdictHero review={review} player={player} loading={loading} />;
-      case 'GoldGraph':
-        return report.timeline ? (
-          <GoldTimeline report={report} review={review}
-            onSelectDeath={has('Deaths') ? (i) => run({ action: 'inspect', label: c.title, target: 'deaths', row: i }) : undefined}
-            onSelectFight={has('Fights') ? (i) => run({ action: 'inspect', label: c.title, target: 'fights', row: i }) : undefined} />
-        ) : null;
-      case 'Finding': return (
+    switch (key) {
+      case 'story': return (
         <>
-          <ul className="cx-cards"><FindingCard f={d.finding as Finding} report={report} slot={review.slot} /></ul>
-          {/* Page affordance (not an engine action): this finding's evidence in the inspector. */}
-          <button type="button" className="wb-inspect" onClick={() => { setFocus(c.id); setTab('evidence'); }}>{L(CARD_UI.evidence)}</button>
+          {report.timeline && (
+            <GoldTimeline report={report} review={review}
+              onSelectDeath={sections.includes('deaths') ? (i) => inspect('deaths', i) : undefined}
+              onSelectFight={sections.includes('fights') ? (i) => inspect('fights', i) : undefined} />
+          )}
+          <StoryChapter ch={d.chapter} onAsk={askOf(c)} withCases={parsed} onOpenCase={(theme) => setCases({ theme, seq: Date.now() })} />
         </>
       );
-      case 'Matchups':
-        // The laning chapter already shows the strip: keep only this card's compare actions.
-        if (has('Lane')) return null;
-        return <Matchups list={d.list} heroById={heroById} since={d.since} bracket={d.bracket} rankSource={d.rank_source ?? undefined} />;
-      case 'Story': return <StoryChapter ch={d.chapter} onAsk={onAskChapter('story')} withCases={report.match.parsed} onOpenCase={(theme) => setCases({ theme, seq: Date.now() })} />;
-      case 'Lane':
-        return <LaningChapter ch={d.chapter} heroById={heroById} slot={review.slot} onAsk={onAskChapter('laning')} defaultOpen
-          matchups={review.matchups} since={report.baselines?.since ?? null} bracket={review.bracket} rankSource={report.baselines?.rank} />;
-      case 'Deaths':
-        return <DeathsChapter ch={d.chapter} heroById={heroById} onAsk={onAskChapter('deaths')} defaultOpen
-          highlightIndex={jump?.target === 'deaths' ? jump.row : null} jumpSeq={jump?.target === 'deaths' ? jump.seq : undefined} />;
-      case 'Items':
-        return <ItemsChapter ch={d.chapter} heroById={heroById} onAsk={onAskChapter('items')} counterItems={review.counter_items} myHero={player.hero} since={report.baselines?.since ?? null} />;
-      case 'Fights':
-        return <FightsChapter ch={d.chapter} onAsk={onAskChapter('fights')} defaultOpen
-          highlightIndex={jump?.target === 'fights' ? jump.row : null} jumpSeq={jump?.target === 'fights' ? jump.seq : undefined} />;
-      case 'Plan': return <PlanChapter plan={d.plan} onAsk={() => openAsk()} />;
-      case 'DataGaps': return <ParsePanel report={report} priority={!report.match.parsed} onParsed={onParsed} lang={lang} />;
+      case 'laning': return (
+        <>
+          <LaningChapter ch={d.chapter} heroById={heroById} slot={review.slot} onAsk={askOf(c)} defaultOpen
+            matchups={review.matchups} since={report.baselines?.since ?? null} bracket={review.bracket} rankSource={report.baselines?.rank} />
+          {compareBar}
+        </>
+      );
+      case 'deaths': return <DeathsChapter ch={d.chapter} heroById={heroById} onAsk={askOf(c)} defaultOpen
+        highlightIndex={jump?.target === 'deaths' ? jump.row : null} jumpSeq={jump?.target === 'deaths' ? jump.seq : undefined} />;
+      case 'items': return <ItemsChapter ch={d.chapter} heroById={heroById} onAsk={askOf(c)} counterItems={review.counter_items} myHero={player.hero} since={report.baselines?.since ?? null} />;
+      case 'fights': return <FightsChapter ch={d.chapter} onAsk={askOf(c)} defaultOpen
+        highlightIndex={jump?.target === 'fights' ? jump.row : null} jumpSeq={jump?.target === 'fights' ? jump.seq : undefined} />;
       default: return null;
     }
   };
 
-  // Presentation only: the parse action goes right under the headline when it is the next step.
-  const cards = [...surface.cards];
-  const gaps = cards.findIndex((c) => c.component === 'DataGaps' && c.actions.some((a) => a.action === 'parse'));
-  if (gaps > 2) cards.splice(2, 0, ...cards.splice(gaps, 1));
-  // (Matchups stays: with a laning chapter its body is empty but its compare actions remain.)
-  const shown = cards.filter((c) => c.component !== 'MatchHeader');
-  // Every card is content in the centre column; the inspector holds evidence, the chat and comparisons.
-  const main = shown;
-  // Chapter components render their own heading and ask button.
-  const selfTitled = ['Headline', 'GoldGraph', 'Story', 'Lane', 'Deaths', 'Items', 'Fights', 'Plan', 'DataGaps'];
-  const card = (c: Card) => (
-    <CardShell key={c.id} card={c} onAction={run} hideTitle={selfTitled.includes(c.component) || c.component === 'Finding'}
-      // Findings and the parse panel render their own goal / parse buttons.
-      skip={c.component === 'Finding' ? ['save_goal'] : c.component === 'DataGaps' ? ['ask', 'parse'] : selfTitled.includes(c.component) ? ['ask'] : []}
-      labelFor={(a) => (a.action === 'compare' ? `${L(a.label)} · ${heroById.get(a.vs)?.[lang] ?? ''}` : L(a.label))}>
-      {body(c)}
-    </CardShell>
-  );
+  const parsePanel = gaps && <ParsePanel key="parse" report={report} priority={!parsed} onParsed={onParsed} lang={lang} />;
+
   return (
-    <div className={`cxv-feed ${loading ? 'is-loading' : ''}`}>
-      <div className="cxv-main">
-        {main.map(card)}
-        {cases && report.match.parsed && (
-          <section className="cxv-card is-neutral is-cases" aria-label={L(CARD_UI.casesTitle)}>
-            <header className="cxv-card-head">
-              <span className="cxv-auth is-statistic">{L(CARD_UI.authority.statistic)}</span>
-              <h3>{L(CARD_UI.casesTitle)}</h3>
-              <button type="button" className="cxv-x" onClick={() => setCases(null)} aria-label={L(CARD_UI.close)}>×</button>
-            </header>
-            <div className="cxv-card-body"><Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => openAsk()} /></div>
+    <div className={`rv ${loading ? 'is-loading' : ''}`}>
+      <div className="rv-main">
+        <section className="rv-verdict" aria-label={L(UI.verdictEyebrow)}>
+          <h2 className="rv-headline">{L(review.headline)}</h2>
+        </section>
+
+        {/* Unparsed: getting the replay parsed is the next step, before anything else. */}
+        {!parsed && parsePanel}
+
+        {things.length > 0 && (
+          <section className="rv-next" id="cx-ch-plan" aria-labelledby="rv-next-h">
+            <h2 id="rv-next-h" className="rv-h2">{L(things.length > 1 ? RV.next : RV.nextFew)}</h2>
+            <ol className="rv-things">
+              {things.map((p, i) => (
+                <li key={i}>
+                  <span className="rv-num" aria-hidden="true">{i + 1}</span>
+                  <div>
+                    <h3>{L(p.title)}</h3>
+                    <p><Emph text={L(p.text)} /></p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            {goalFindings.length > 0 && (
+              <div className="rv-goals">{goalFindings.map((f) => <GoalButton key={f.id} f={f} report={report} slot={review.slot} />)}</div>
+            )}
           </section>
         )}
-      </div>
-      <InspectorDrawer
-        active={tab}
-        onTab={setTab}
-        panels={[
-          {
-            id: 'evidence', label: CARD_UI.evidence, badge: focus != null,
-            content: (() => {
-              const fc = focus ? surface.cards.find((x) => x.id === focus) : null;
-              const f = fc?.data.finding as Finding | undefined;
-              if (!f) return <p className="cx-muted wb-empty">{L(CARD_UI.evidenceEmpty)}</p>;
+
+        {sections.length > 0 && (
+          <section className="rv-sections" aria-labelledby="rv-sec-h">
+            <h2 id="rv-sec-h" className="rv-h2">{L(RV.detail)}</h2>
+            {sections.map((key) => {
+              const c = cards.find((x) => x.id === `chapter:${key}`)!;
+              const ch = (c.data as { chapter: { takeaway: Bi } }).chapter;
+              const mine = findings.filter((x) => targetOf(x) === key);
               return (
-                <section className="wb-evidence" aria-label={L(f.title)}>
-                  <h3>{L(f.title)}</h3>
-                  <p className="cx-body">{L(f.body)}</p>
-                  <EvidenceRow evidence={f.evidence} report={report} />
-                  {f.caveat && <p className="cx-caveat">{L(f.caveat)}</p>}
-                </section>
+                <details key={key} id={`rv-sec-${key}`} className={`rv-sec is-${SECTION_COMPONENT[key].toLowerCase()}`} open={open.has(key)}
+                  onToggle={(e) => setSection(key, (e.currentTarget as HTMLDetailsElement).open)}>
+                  <summary>
+                    <span className="rv-sec-title">{L(c.title)}</span>
+                    <span className="rv-sec-take"><Emph text={L(ch.takeaway)} /></span>
+                    {mine.some((x) => x.tone === 'fix') && <span className="rv-flag">{L(RV.findings)} {mine.length}</span>}
+                  </summary>
+                  <div className="rv-sec-body">
+                    {mine.map((x) => <FindingBlock key={x.id} card={x} report={report} onAsk={askOf(x)} onCases={casesOf(x)} />)}
+                    {chapterBody(key, c)}
+                  </div>
+                </details>
               );
-            })(),
-          },
-          {
-            id: 'ask', label: CARD_UI.askTab,
-            content: <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={askRef} report={report} review={review} pos={pos} docked />,
-          },
-          {
-            id: 'compare', label: CARD_UI.compareTitle, badge: compare != null,
-            content: (
-              <>
-                {compare
-                  ? <CompareCard hero={compare.hero} vs={compare.vs} rank={review.bracket?.key ?? null} onClose={() => setCompare(null)} />
-                  : <p className="cx-muted wb-empty">{L(CARD_UI.compareEmpty)}</p>}
-              </>
-            ),
-          },
-        ]}
-      />
+            })}
+          </section>
+        )}
+
+        {/* No area for them (an unparsed match has none): listed on their own, open when they are all there is. */}
+        {(orphans.length > 0 || (matchups && !sections.includes('laning'))) && (
+          <details className="rv-sec is-more" open={sections.length === 0 || open.has('more')}
+            onToggle={(e) => setSection('more', (e.currentTarget as HTMLDetailsElement).open)}>
+            <summary>
+              <span className="rv-sec-title">{L(sections.length ? RV.more : RV.findings)}</span>
+              <span className="rv-sec-take">{orphans.map((x) => L(x.title)).join(' · ')}</span>
+            </summary>
+            <div className="rv-sec-body">
+              {orphans.map((x) => <FindingBlock key={x.id} card={x} report={report} onAsk={askOf(x)} onCases={casesOf(x)} />)}
+              {!sections.includes('laning') && compareBar}
+            </div>
+          </details>
+        )}
+
+        {cases && parsed && (
+          <section className="rv-cases" aria-label={L(CARD_UI.casesTitle)}>
+            <div className="rv-cases-head">
+              <h2 className="rv-h2">{L(CARD_UI.casesTitle)}</h2>
+              <button type="button" className="cxv-x" onClick={() => setCases(null)} aria-label={L(CARD_UI.close)}>×</button>
+            </div>
+            <Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => openAsk()} />
+          </section>
+        )}
+
+        {parsed && gaps && (
+          <details className="rv-sec is-gaps">
+            <summary><span className="rv-sec-title">{L(RV.gaps)}</span><span className="rv-sec-take">{(report.data_gaps ?? []).length}</span></summary>
+            <div className="rv-sec-body">{parsePanel}</div>
+          </details>
+        )}
+      </div>
+
+      <aside className="rv-rail" ref={railRef} aria-label={L(UI.askQuick)}>
+        <AskPanel key={`${report.match.id}-${review.slot}-${pos ?? ''}`} ref={askRef} report={report} review={review} pos={pos} docked />
+      </aside>
     </div>
   );
 };
