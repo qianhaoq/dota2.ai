@@ -219,6 +219,27 @@ describe('parse jobs in the service', () => {
     expect(h.pipeline.run).toHaveBeenCalledTimes(2);
   });
 
+  it('a slow stage marker cannot land after the terminal one', async () => {
+    const blobs = new Map<string, any>();
+    let slowDone: any;
+    const docs = {
+      get: async (k: string) => blobs.get(k) ?? null,
+      // The "downloading" marker takes long; everything else is immediate.
+      put: async (k: string, v: any) => { if (v.stage === 'downloading' && v.state === 'running') await new Promise((r) => { slowDone = r; }); blobs.set(k, v); },
+    };
+    const traces = { get: async () => null };
+    const pipeline = { run: async (_id: any, o: any) => { o.onStage('downloading'); return { ok: false, reason: 'worker_failed' }; } };
+    const a: any = createAgentService({ traces, complete: null, pipeline, docs });
+    const b: any = createAgentService({ traces, complete: null, pipeline: null, docs });
+    await a.prepare(ID);
+    await vi.waitFor(() => expect(slowDone).toBeTypeOf('function'));
+    slowDone();
+    await vi.waitFor(async () => expect((await b.availability(ID)).parse.status).toBe('failed'));
+    await settle();
+    // Another instance sees the failure, not a parse still "running".
+    expect((await b.availability(ID)).parse).toMatchObject({ status: 'failed', reason: 'worker_failed' });
+  });
+
   it('only the request that starts a parse is charged; a refusal starts nothing', async () => {
     const h = makeService(async () => new Promise(() => {}));
     const svc = h.service();
