@@ -332,6 +332,13 @@ describe('trace tools on a real game', () => {
     expect(run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }).casts.find((c) => c.clock === '27:27').target_stunned_seconds).toBe(3.4);
   });
 
+  it('a projectile\'s stun lands after the cast and still belongs to it', () => {
+    // Sven casts Storm Bolt on Necrophos at 427.8; the log has Sven's stun on him at 428.6.
+    const bolt = run('ability_audit', { hero: 'sven', ability: 'storm_bolt' }).casts.find((c) => c.t === 427.8);
+    expect(bolt.target).toBe('necrolyte');
+    expect(bolt.target_stunned_seconds).toBeGreaterThan(0);
+  });
+
   it('a tool\'s totals carry a summary ref', () => {
     expect(run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' })).toMatchObject({ ref: 'audit:beastmaster:primal_roar', ref_scope: 'summary' });
     expect(run('death_context', { hero: 'beastmaster', index: 1 })).toMatchObject({ ref: 'deaths:beastmaster', ref_scope: 'summary' });
