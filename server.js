@@ -895,15 +895,17 @@ const agentBlobs = (() => {
   if (!name) return null;
   try { return createBucketStore(createGcsBucket(name), 'agent/'); } catch (err) { console.warn(`WARNING: AGENT_BUCKET ignored (${err?.message ?? err})`); return null; }
 })();
-const agentTraces = createTraceStore(agentBlobs ?? (process.env.AGENT_TRACE_DIR ? createFileStore(process.env.AGENT_TRACE_DIR) : null));
+// Where traces are kept, or null: without it nothing can be parsed, whatever else is configured.
+const agentTraceBlobs = agentBlobs ?? (process.env.AGENT_TRACE_DIR ? createFileStore(process.env.AGENT_TRACE_DIR) : null);
+const agentTraces = createTraceStore(agentTraceBlobs);
 const agentPipeline = (() => {
   const worker = (process.env.TRACE_WORKER_URL || '').trim();
-  if (worker) {
+  if (worker && agentTraceBlobs) {
     const audience = (process.env.TRACE_WORKER_AUDIENCE || '').trim();
     return createRemotePipeline({ url: worker, getMatchDetail, auth: audience ? createIdTokenProvider({ audience }) : undefined });
   }
   const bin = process.env.DOTA_EXTRACT_BIN || '';
-  return bin && agentTraces ? createTracePipeline({ getMatchDetail, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;
+  return bin && agentTraceBlobs ? createTracePipeline({ getMatchDetail, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;
 })();
 app.use(createAgentRouter({
   service: createAgentService({
