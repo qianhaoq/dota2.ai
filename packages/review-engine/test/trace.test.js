@@ -83,8 +83,8 @@ describe('trace helpers', () => {
 });
 
 describe('trace tools on a real game', () => {
-  it('lists five tools with JSON-schema inputs', () => {
-    expect(TRACE_TOOLS.map((t) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline']);
+  it('lists the tools with JSON-schema inputs', () => {
+    expect(TRACE_TOOLS.map((t) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline']);
     for (const t of TRACE_TOOLS) expect(t.input_schema).toMatchObject({ type: 'object', additionalProperties: false });
   });
 
@@ -151,6 +151,52 @@ describe('trace tools on a real game', () => {
     expect(f.positions_at_start).toHaveLength(10);
     expect(f.events.length).toBeLessThanOrEqual(150);
     for (let i = 1; i < f.events.length; i += 1) expect(f.events[i].t).toBeGreaterThanOrEqual(f.events[i - 1].t);
+  });
+
+  it('ability_audit says whether the stun landed, including through spell immunity', () => {
+    const a = run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' });
+    expect(a).toMatchObject({ casts_on_spell_immune_target: 2, of_those_target_was_stunned: 2, deaths_with_it_ready_and_not_cast_total: 3 });
+    expect(a.casts.find((c) => c.clock === '27:27')).toMatchObject({ target_spell_immune: true, target_stunned_seconds: 3.4 });
+    expect(a.casts.every((c) => c.target_stunned_seconds > 0)).toBe(true);
+  });
+
+  it('counts are stated by the tools, not left to the reader', () => {
+    expect(run('death_context', { hero: 'beastmaster', index: 1 }).killed_by).toEqual({ venomancer: 1, phantom_assassin: 7, mirana: 1, necrolyte: 2 });
+    expect(run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'primal_roar' })).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });
+  });
+
+  it('item_timeline: when a hero first held each item, for the player and for an enemy', () => {
+    const mine = run('item_timeline', { hero: 'beastmaster' }).items;
+    const at = (list, item) => list.find((i) => i.item === item)?.first_held.clock;
+    expect([at(mine, 'ultimate_scepter'), at(mine, 'pipe'), at(mine, 'assault')]).toEqual(['16:48', '29:08', '38:58']);
+    expect(mine.find((i) => i.item === 'assault').held_at_end).toBe(true);
+    expect(mine.find((i) => i.item === 'ogre_axe')).toMatchObject({ held_at_end: false, last_held: { clock: expect.any(String) } });
+    for (const never of ['blink', 'black_king_bar', 'tango', 'tpscroll']) expect(at(mine, never)).toBeUndefined();
+    const pa = run('item_timeline', { hero: 'phantom_assassin' }).items;
+    expect([at(pa, 'bfury'), at(pa, 'black_king_bar')]).toEqual(['15:47', '21:29']);
+  });
+
+  it('told from a player, sides replace Radiant/Dire and the gold sign', () => {
+    const adv = new Array(45).fill(0); adv[30] = 745; adv[32] = 4298;
+    const ctx = { perspective: 'beastmaster', match: { radiant_gold_adv: adv } };
+    const o = runTraceTool(trace, 'match_overview', {}, ctx);
+    expect(o).toMatchObject({ told_from: { hero: 'beastmaster' }, result: 'my_team_lost', fights_total: 16, fights_tally: { my_team_lost_fewer: 6, enemy_lost_fewer: 9, even: 1 } });
+    expect(o).not.toHaveProperty('winner');
+    expect(o.heroes.find((h) => h.hero === 'beastmaster')).toEqual({ hero: 'beastmaster', side: 'me', deaths: 11, final_level: 21 });
+    expect(o.heroes.filter((h) => h.side === 'enemy')).toHaveLength(5);
+    // The wipe: five of mine for three of theirs, and a lead of -745 became -4298.
+    expect(o.fights.find((f) => f.clock.startsWith('30:'))).toMatchObject({ my_team_deaths: 5, enemy_deaths: 3, lost_fewer_heroes: 'enemy', my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: -4298 });
+    expect(o.buildings[0]).toMatchObject({ building: 'goodguys_tower1_top', lost_by: 'enemy' });
+    expect(o.buildings.at(-1)).toMatchObject({ building: 'badguys_fort', lost_by: 'my_team' });
+    expect(JSON.stringify(o)).not.toMatch(/"radiant"|"dire"|radiant_gold/);
+    // A Radiant player reads the same fight the other way round.
+    expect(runTraceTool(trace, 'match_overview', {}, { ...ctx, perspective: 'axe' }).fights.find((f) => f.clock.startsWith('30:'))).toMatchObject({ my_team_deaths: 3, enemy_deaths: 5, lost_fewer_heroes: 'my_team', my_team_gold_lead_before: 745 });
+    const f = runTraceTool(trace, 'fight_timeline', { from: '30:05', to: '31:00' }, ctx);
+    expect(f.positions_at_start.find((p) => p.hero === 'sven').side).toBe('ally');
+    expect(f.events.filter((e) => e.kind === 'death').map((e) => e.side)).toEqual(['enemy', 'enemy', 'enemy', 'ally', 'ally', 'ally', 'me', 'ally']);
+    expect(runTraceTool(trace, 'ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, ctx).casts[3].deaths_within_12s).toEqual([expect.objectContaining({ hero: 'beastmaster', side: 'me' })]);
+    // An unknown perspective is ignored, not guessed.
+    expect(runTraceTool(trace, 'match_overview', {}, { perspective: 'pudge' })).toHaveProperty('winner', 'radiant');
   });
 
   it('answers bad input with an error object, never a guess', () => {

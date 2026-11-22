@@ -26,6 +26,20 @@ const gapsFor = (trace, topics) => (trace.gaps ?? []).filter((g) => topics.inclu
 const heroKeys = (trace) => trace.heroes.map((h) => h.key);
 const where = (s) => (s ? { x: s.x, y: s.y, region: region(s.x, s.y) } : null);
 
+/**
+ * Whose side the answer is told from: `ctx.perspective` is a hero of the
+ * match. With it, heroes carry `side` (me / ally / enemy) and fights, gold
+ * and buildings are stated as my team's and the enemy's, so a reader never
+ * has to translate Radiant/Dire or the sign of a gold difference.
+ */
+function viewer(trace, ctx) {
+  const h = ctx?.perspective == null ? -1 : heroIndex(trace, ctx.perspective);
+  return h < 0 ? null : { h, team: trace.heroes[h].team, key: trace.heroes[h].key };
+}
+const sideOf = (v, trace, h) => (!v || h < 0 ? {} : { side: h === v.h ? 'me' : trace.heroes[h].team === v.team ? 'ally' : 'enemy' });
+/** Team that owns a building, from its engine name (goodguys = Radiant). */
+const buildingTeam = (name) => (/goodguys/.test(name) ? 2 : /badguys/.test(name) ? 3 : 0);
+
 function needHero(trace, hero) {
   const h = heroIndex(trace, hero);
   return h < 0 ? { err: fail('unknown_hero', { heroes: heroKeys(trace) }) } : { h, npc: nameId(trace, trace.heroes[h].npc) };
@@ -49,9 +63,9 @@ function fights(trace) {
   return out.filter((f) => f.deaths.length >= FIGHT_MIN_DEATHS);
 }
 
-function deathRow(trace, d, t0 = null) {
+function deathRow(trace, d, t0 = null, view = null) {
   const v = heroOfName(trace, d[1]);
-  return { t: d[0], clock: clock(d[0]), ...(t0 == null ? {} : { dt: Math.round((d[0] - t0) * 10) / 10 }), hero: nameOf(trace, d[1]), team: v >= 0 ? TEAM[trace.heroes[v].team] : null, killer: nameOf(trace, d[2]), row: d[3] };
+  return { t: d[0], clock: clock(d[0]), ...(t0 == null ? {} : { dt: Math.round((d[0] - t0) * 10) / 10 }), hero: nameOf(trace, d[1]), ...(view ? sideOf(view, trace, v) : { team: v >= 0 ? TEAM[trace.heroes[v].team] : null }), killer: nameOf(trace, d[2]), row: d[3] };
 }
 
 export function matchOverview(trace, _args = {}, ctx = {}) {
@@ -59,31 +73,51 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
   // a creep), which is not the scoreboard's kill credit.
   const died = trace.heroes.map(() => 0);
   for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) died[v] += 1; }
+  const view = viewer(trace, ctx);
   const adv = Array.isArray(ctx.match?.radiant_gold_adv) ? ctx.match.radiant_gold_adv : null;
   const advAt = (t) => (adv && Number.isFinite(adv[Math.floor(t / 60)]) ? adv[Math.floor(t / 60)] : null);
+  const mine = (radiantAdv) => (radiantAdv == null ? null : view.team === 2 ? radiantAdv : -radiantAdv);
   const end = trace.buildings.find((b) => /_fort$/.test(trace.names[b[1]]));
-  return {
-    match_id: trace.match_id,
-    duration: end ? { t: end[0], clock: clock(end[0]) } : null,
-    winner: end ? TEAM[end[2]] ?? null : null,
-    heroes: trace.heroes.map((h, i) => ({ hero: h.key, team: TEAM[h.team], deaths: died[i], final_level: stateAt(trace, i, trace.t0 + trace.n - 1)?.level ?? null })),
-    fights: fights(trace).map((f) => {
-      const lost = { radiant: 0, dire: 0 };
-      for (const d of f.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) lost[TEAM[trace.heroes[v].team]] += 1; }
+  const tally = { my_team_lost_fewer: 0, enemy_lost_fewer: 0, even: 0 };
+  const fightRows = fights(trace).map((f) => {
+    const lost = { 2: 0, 3: 0 };
+    for (const d of f.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) lost[trace.heroes[v].team] += 1; }
+    const base = { from: f.from, to: f.to, clock: `${clock(f.from)}–${clock(f.to)}` };
+    if (!view) {
       return {
-        from: f.from, to: f.to, clock: `${clock(f.from)}–${clock(f.to)}`,
-        deaths: lost,
-        fewer_deaths: lost.radiant === lost.dire ? 'even' : lost.radiant < lost.dire ? 'radiant' : 'dire',
+        ...base, deaths: { radiant: lost[2], dire: lost[3] },
+        fewer_deaths: lost[2] === lost[3] ? 'even' : lost[2] < lost[3] ? 'radiant' : 'dire',
         victims: f.deaths.map((d) => nameOf(trace, d[1])),
         ...(adv ? { radiant_gold_adv_before: advAt(f.from), radiant_gold_adv_2min_after: advAt(f.to + 120) } : {}),
       };
-    }),
-    buildings: trace.buildings.map((b) => ({ t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]), taken_by: TEAM[b[2]] ?? null, row: b[3] })),
+    }
+    const my = lost[view.team]; const their = lost[view.team === 2 ? 3 : 2];
+    const fewer = my === their ? 'even' : my < their ? 'my_team' : 'enemy';
+    tally[fewer === 'even' ? 'even' : fewer === 'my_team' ? 'my_team_lost_fewer' : 'enemy_lost_fewer'] += 1;
+    return {
+      ...base, my_team_deaths: my, enemy_deaths: their, lost_fewer_heroes: fewer,
+      victims: f.deaths.map((d) => ({ hero: nameOf(trace, d[1]), ...sideOf(view, trace, heroOfName(trace, d[1])) })),
+      ...(adv ? { my_team_gold_lead_before: mine(advAt(f.from)), my_team_gold_lead_2min_after: mine(advAt(f.to + 120)) } : {}),
+    };
+  });
+  return {
+    match_id: trace.match_id,
+    duration: end ? { t: end[0], clock: clock(end[0]) } : null,
+    ...(view ? { told_from: { hero: view.key, note: 'my_team is this hero\'s team; a negative gold lead means my_team was behind' }, result: end ? (end[2] === view.team ? 'my_team_won' : 'my_team_lost') : null } : { winner: end ? TEAM[end[2]] ?? null : null }),
+    heroes: trace.heroes.map((h, i) => ({ hero: h.key, ...(view ? sideOf(view, trace, i) : { team: TEAM[h.team] }), deaths: died[i], final_level: stateAt(trace, i, trace.t0 + trace.n - 1)?.level ?? null })),
+    ...(view ? { fights_total: fightRows.length, fights_tally: tally } : {}),
+    fights: fightRows,
+    buildings: trace.buildings.map((b) => ({
+      t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]),
+      ...(view ? { lost_by: buildingTeam(trace.names[b[1]]) === view.team ? 'my_team' : 'enemy' } : { taken_by: TEAM[b[2]] ?? null }),
+      row: b[3],
+    })),
     gaps: [...gapsFor(trace, ['roshan', 'vision']), ...(adv ? [] : [{ topic: 'gold_advantage', reason: 'not_in_trace' }])],
   };
 }
 
-export function deathContext(trace, args = {}) {
+export function deathContext(trace, args = {}, ctx = {}) {
+  const view = viewer(trace, ctx);
   const { h, npc, err } = needHero(trace, args.hero);
   if (err) return err;
   const window = Math.min(30, Math.max(4, Number(args.window) || 12));
@@ -127,10 +161,12 @@ export function deathContext(trace, args = {}) {
       my_item_uses: trace.item_uses.filter((u) => u[1] === npc && inWindow(u[0])).map((u) => ({ dt: dt(u[0]), item: trace.names[u[2]].replace(/^item_/, ''), row: u[3] })),
       enemy_casts_on_me: trace.casts.filter((c) => c[3] === npc && c[1] !== npc && inWindow(c[0]) && heroOfName(trace, c[1]) >= 0 && trace.heroes[heroOfName(trace, c[1])].team !== trace.heroes[h].team)
         .map((c) => ({ dt: dt(c[0]), by: nameOf(trace, c[1]), ability: trace.names[c[2]], row: c[4] })),
-      other_deaths: trace.deaths.filter((o) => o !== d && Math.abs(o[0] - t) <= 20).map((o) => deathRow(trace, o, t)),
+      other_deaths: trace.deaths.filter((o) => o !== d && Math.abs(o[0] - t) <= 20).map((o) => deathRow(trace, o, t, view)),
     };
   });
-  return { hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, deaths: out, gaps: gapsFor(trace, ['vision', 'creeps']) };
+  const killers = {};
+  for (const d of all) { const k = nameOf(trace, d[2]) ?? 'unknown'; killers[k] = (killers[k] ?? 0) + 1; }
+  return { hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, deaths: out, gaps: gapsFor(trace, ['vision', 'creeps']) };
 }
 
 /** The ability key of hero h that `name` means: exact, with the hero prefix, or a unique suffix. */
@@ -141,7 +177,14 @@ function resolveAbility(trace, h, name) {
   return keys.find((x) => x === k) ?? keys.find((x) => x === `${trace.heroes[h].key}_${k}`) ?? (keys.filter((x) => x.endsWith(`_${k}`)).length === 1 ? keys.find((x) => x.endsWith(`_${k}`)) : null) ?? null;
 }
 
-export function abilityAudit(trace, args = {}) {
+/** Seconds the hero was stunned by a stun that began around t (from the 4 Hz state flags), or 0. */
+function stunnedFrom(trace, h, t) {
+  const iv = (trace.controls[h]?.stunned ?? []).find(([a]) => a >= t - 0.5 && a <= t + 1.5);
+  return iv ? Math.round((iv[1] - iv[0]) * 10) / 10 : 0;
+}
+
+export function abilityAudit(trace, args = {}, ctx = {}) {
+  const view = viewer(trace, ctx);
   const { h, npc, err } = needHero(trace, args.hero);
   if (err) return err;
   const can = [...castable(trace, h, npc)].filter((k) => trace.abilities[h][k]);
@@ -165,10 +208,12 @@ export function abilityAudit(trace, args = {}) {
       t, clock: clock(t), row: c[4], target: targetName,
       target_hp: ts ? { hp: ts.hp, max_hp: ts.max_hp } : null,
       target_spell_immune: target >= 0 ? Boolean(during) : null,
+      // What the replay shows happened, whatever the ability is supposed to do.
+      target_stunned_seconds: target >= 0 ? stunnedFrom(trace, target, t) : null,
       ...(soonAfter ? { target_became_immune_dt: Math.round((soonAfter.from - t) * 10) / 10 } : {}),
       me: me ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
       allies_within_1300: allies.map((a) => a.hero), enemies_within_1300: enemies.map((e) => e.hero),
-      deaths_within_12s: trace.deaths.filter((d) => d[0] >= t && d[0] - t <= 12).map((d) => deathRow(trace, d, t)),
+      deaths_within_12s: trace.deaths.filter((d) => d[0] >= t && d[0] - t <= 12).map((d) => deathRow(trace, d, t, view)),
     };
   });
   let alive = 0; let idle = 0;
@@ -185,7 +230,10 @@ export function abilityAudit(trace, args = {}) {
     hero: trace.heroes[h].key, ability: key,
     learned_at: learned == null ? null : { t: learned, clock: clock(learned) },
     casts_total: casts.length, by_target: byTarget,
+    casts_on_spell_immune_target: casts.filter((c) => c.target_spell_immune).length,
+    of_those_target_was_stunned: casts.filter((c) => c.target_spell_immune && c.target_stunned_seconds > 0).length,
     seconds_alive_since_learned: alive, seconds_alive_and_ready: idle,
+    deaths_with_it_ready_and_not_cast_total: myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12)).length,
     deaths_with_it_ready_and_not_cast: myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12))
       .map((d) => ({ t: d[0], clock: clock(d[0]), killer: nameOf(trace, d[2]), row: d[3] })),
     casts,
@@ -224,19 +272,25 @@ export function immunityWindows(trace, args = {}) {
       },
     };
   });
-  return { ...(watch ? { watching: { hero: trace.heroes[watch.h].key, ability: watch.key } } : {}), windows, gaps: gapsFor(trace, ['ability_immunity']) };
+  const states = {};
+  if (watch) for (const w of windows) states[w.watched.state] = (states[w.watched.state] ?? 0) + 1;
+  return {
+    ...(watch ? { watching: { hero: trace.heroes[watch.h].key, ability: watch.key }, watched_state_when_window_opened: states, windows_with_a_cast_on_the_immune_hero: windows.filter((w) => w.watched.cast_on_this_hero_during.length).length } : {}),
+    windows_total: windows.length, windows, gaps: gapsFor(trace, ['ability_immunity']),
+  };
 }
 
-export function fightTimeline(trace, args = {}) {
+export function fightTimeline(trace, args = {}, ctx = {}) {
+  const view = viewer(trace, ctx);
   const from = seconds(args.from); const to = seconds(args.to);
   if (from == null || to == null || to <= from) return fail('invalid_window');
   if (to - from > MAX_FIGHT_WINDOW) return fail('window_too_long', { max_seconds: MAX_FIGHT_WINDOW });
   const inWindow = (t) => t >= from && t <= to;
-  const positions = (t) => trace.heroes.map((h, i) => { const s = stateAt(trace, i, t); return { hero: h.key, team: TEAM[h.team], ...(s ? { alive: s.alive, hp: s.hp, max_hp: s.max_hp, ...where(s) } : { alive: null }) }; });
+  const positions = (t) => trace.heroes.map((h, i) => { const s = stateAt(trace, i, t); return { hero: h.key, ...(view ? sideOf(view, trace, i) : { team: TEAM[h.team] }), ...(s ? { alive: s.alive, hp: s.hp, max_hp: s.max_hp, ...where(s) } : { alive: null }) }; });
   const rows = [];
-  for (const d of trace.deaths) if (inWindow(d[0])) rows.push({ p: 0, t: d[0], kind: 'death', hero: nameOf(trace, d[1]), killer: nameOf(trace, d[2]), row: d[3] });
-  for (const b of trace.buildings) if (inWindow(b[0])) rows.push({ p: 0, t: b[0], kind: 'building', building: unit(trace.names[b[1]]), taken_by: TEAM[b[2]] ?? null, row: b[3] });
-  for (const m of trace.modifiers) if (m[6] === 'i' && m[4] === 1 && inWindow(m[0])) rows.push({ p: 0, t: m[0], kind: 'spell_immune', hero: nameOf(trace, m[1]), modifier: trace.names[m[2]].replace(/^modifier_/, '') });
+  for (const d of trace.deaths) if (inWindow(d[0])) rows.push({ p: 0, t: d[0], kind: 'death', hero: nameOf(trace, d[1]), ...sideOf(view, trace, heroOfName(trace, d[1])), killer: nameOf(trace, d[2]), row: d[3] });
+  for (const b of trace.buildings) if (inWindow(b[0])) rows.push({ p: 0, t: b[0], kind: 'building', building: unit(trace.names[b[1]]), ...(view ? { lost_by: buildingTeam(trace.names[b[1]]) === view.team ? 'my_team' : 'enemy' } : { taken_by: TEAM[b[2]] ?? null }), row: b[3] });
+  for (const m of trace.modifiers) if (m[6] === 'i' && m[4] === 1 && inWindow(m[0])) rows.push({ p: 0, t: m[0], kind: 'spell_immune', hero: nameOf(trace, m[1]), ...sideOf(view, trace, heroOfName(trace, m[1])), modifier: trace.names[m[2]].replace(/^modifier_/, '') });
   for (const u of trace.item_uses) if (inWindow(u[0]) && !NOISE_ITEMS.test(trace.names[u[2]])) rows.push({ p: 1, t: u[0], kind: 'item', hero: nameOf(trace, u[1]), item: trace.names[u[2]].replace(/^item_/, ''), row: u[3] });
   for (const c of trace.casts) if (inWindow(c[0])) rows.push({ p: heroOfName(trace, c[3]) >= 0 ? 1 : 2, t: c[0], kind: 'cast', hero: nameOf(trace, c[1]), ability: trace.names[c[2]], ...(c[3] >= 0 ? { target: nameOf(trace, c[3]) } : {}), row: c[4] });
   let kept = rows; let truncated = false;
@@ -267,6 +321,21 @@ export function fightTimeline(trace, args = {}) {
     damage_taken_by_hero: top(taken),
     gaps: gapsFor(trace, ['vision', 'ability_immunity']),
   };
+}
+
+/** Items that are bought to be used up, or are parts of nothing worth a line. */
+const CONSUMABLE = /^item_(tango|clarity|flask|faerie_fire|branches|ward_|enchanted_mango|famango|great_famango|tpscroll|smoke_of_deceit|dust|blood_grenade|tome_of_knowledge|infused_raindrop|bottle|madstone|recipe_)/;
+
+/** When a hero first held each item (in a usable slot), in order. Works for any hero of the match. */
+export function itemTimeline(trace, args = {}) {
+  const { h, err } = needHero(trace, args.hero);
+  if (err) return err;
+  const end = trace.t0 + trace.n - 1;
+  const items = Object.entries(trace.items[h]).filter(([k, e]) => !CONSUMABLE.test(k) && e.held.length).map(([k, e]) => {
+    const first = e.held[0][0]; const last = e.held.at(-1)[1];
+    return { item: k.replace(/^item_/, ''), first_held: { t: first, clock: clock(first) }, held_at_end: last >= end - 2, ...(last >= end - 2 ? {} : { last_held: { t: last, clock: clock(last) } }) };
+  }).sort((a, b) => a.first_held.t - b.first_held.t);
+  return { hero: trace.heroes[h].key, items, note: 'first_held is when the item first sat in an inventory, TP or neutral slot; components appear until they are built into something else' };
 }
 
 const HERO = { type: 'string', description: 'Hero as in match_overview.heroes[].hero, e.g. "beastmaster".' };
@@ -303,6 +372,12 @@ export const TRACE_TOOLS = [
     description: 'A stretch of the game second by second (at most 180 s): where all ten heroes stood at the start and at the first death, then every cast, key item use, spell-immunity activation, death and building kill in order, and who dealt and took the damage.',
     input_schema: { type: 'object', properties: { from: TIME, to: TIME }, required: ['from', 'to'], additionalProperties: false },
     run: fightTimeline,
+  },
+  {
+    name: 'item_timeline',
+    description: "When a hero first held each item, in order, and whether they still had it at the end. Works for any hero of the match: use it for the player's build and for when an enemy finished a key item.",
+    input_schema: { type: 'object', properties: { hero: HERO }, required: ['hero'], additionalProperties: false },
+    run: itemTimeline,
   },
 ];
 
