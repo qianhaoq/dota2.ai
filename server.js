@@ -81,6 +81,7 @@ import { createOpenDotaClient, OPENDOTA_BASE } from './lib/upstream/opendota.js'
 import { createSharedCooldown } from './lib/upstream/sharedCooldown.js';
 import { createStratzClient } from './lib/upstream/stratz.js';
 import { parseUpstreamPrimary, sourceOrder, fetchFromSources } from './lib/upstream/sourceOrder.js';
+import { createSteamGcClient } from './lib/upstream/steamGc.js';
 import { loadConstantsSnapshot } from './lib/constantsSnapshot.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -493,7 +494,8 @@ app.get('/api/health/upstream', (req, res) => {
     cooldown: opendotaCooldown ? opendotaCooldown.snapshot() : { shared: false },
     matchStore: matchStore ? matchStore.snapshot() : { configured: false },
     stratz: stratz ? stratz.snapshot() : { configured: false },
-    sources: { primary: upstreamPrimary.primary, match: matchSources() },
+    steamGc: steamGc ? steamGc.snapshot() : { configured: false },
+    sources: { primary: upstreamPrimary.primary, match: matchSources(), recent: recentSources() },
   });
 });
 
@@ -611,6 +613,21 @@ const stratz = process.env.STRATZ_API_TOKEN
   ? createStratzClient({ token: process.env.STRATZ_API_TOKEN, log: (msg) => console.warn(`[stratz] ${msg}`) })
   : null;
 
+// Self-hosted Steam GC retriever (services/steam-retriever): Valve's own
+// scoreboard when OpenDota is down. Off unless both env vars are set; a bad
+// value disables it with a warning (the secret is never logged).
+const steamGc = (() => {
+  const url = (process.env.STEAM_RETRIEVER_URL || '').trim();
+  const secret = process.env.STEAM_RETRIEVER_SECRET || '';
+  if (!url && !secret) return null;
+  try {
+    return createSteamGcClient({ baseUrl: url, secret, log: (msg) => console.warn(`[steam-gc] ${msg}`) });
+  } catch (err) {
+    console.warn(`[steam-gc] disabled: ${err?.message || err}`);
+    return null;
+  }
+})();
+
 const matchStore = cacheBucket
   ? createMatchStore({ bucket: cacheBucket, isParsed: isMatchParsed, log: (msg) => console.warn(`[match-store] ${msg}`) })
   : null;
@@ -620,7 +637,8 @@ const matchStore = cacheBucket
 // not a caller abort) falls through; a basic copy beats an error page.
 const upstreamPrimary = parseUpstreamPrimary(process.env.UPSTREAM_PRIMARY);
 if (upstreamPrimary.invalid) console.warn(`[upstream] UPSTREAM_PRIMARY=${upstreamPrimary.invalid} is not opendota|steam_gc; using opendota`);
-const matchSources = () => sourceOrder('match', { primary: upstreamPrimary.primary, configured: { opendota: true, stratz: Boolean(stratz) } });
+const matchSources = () => sourceOrder('match', { primary: upstreamPrimary.primary, configured: { opendota: true, steam_gc: Boolean(steamGc), stratz: Boolean(stratz) } });
+const recentSources = () => sourceOrder('recent', { primary: upstreamPrimary.primary, configured: { opendota: true, steam_gc: Boolean(steamGc) } });
 
 const matchDetailCache = createMatchDetailCache({
   fetchMatch: async (matchId, options = {}) => {
@@ -635,6 +653,7 @@ const matchDetailCache = createMatchDetailCache({
         matchStore?.putMatch(matchId, data); // only if parsed; fire-and-forget
         return data;
       },
+      steam_gc: () => steamGc.fetchMatch(matchId, { signal: options.signal }),
       stratz: () => stratz.fetchMatch(matchId, { signal: options.signal }),
     }, {
       signal: options.signal,
@@ -727,7 +746,11 @@ const coachCases = createCaseService({
 
 // "Your recent games" from a Steam friend code (OpenDota recentMatches).
 const coachRecent = createRecentService({
-  fetchRecent: (id) => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches`, 1, 1000, { timeoutMs: 10000 }),
+  fetchRecent: async (id) => (await fetchFromSources(recentSources(), {
+    opendota: () => fetchWithRetry(`${OPENDOTA_API}/players/${id}/recentMatches`, 1, 1000, { timeoutMs: 10000 }),
+    // GC history: no K/D/A or seat (shown as unknown, never 0/0/0).
+    steam_gc: () => steamGc.fetchRecent(id),
+  }, { onFallback: (from, to, err) => console.warn(`[upstream] recent: ${from} failed (${err?.status ?? err?.message ?? err}); trying ${to}`) })).value,
 });
 // Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
 const coachAskDeps = {

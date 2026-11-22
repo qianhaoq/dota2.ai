@@ -67,7 +67,7 @@ async function runRecent(args, io) {
   const zh = flags.lang === 'zh';
   if (!body.matches.length) return io.say(zh ? '没有公开比赛：资料可能未公开（Dota 2 设置 → 公开比赛数据）。' : 'No public games: the profile may hide match data (Dota 2 settings → Expose Public Match Data).');
   for (const m of body.matches) {
-    io.say(`${m.match_id}  ${date(m.start_time)}  ${L(m.hero).padEnd(12)} ${m.kda.join('/').padEnd(9)} ${m.won == null ? '?' : m.won ? (zh ? '胜' : 'W') : (zh ? '负' : 'L')}  ${m.duration ? clock(m.duration) : ''}`);
+    io.say(`${m.match_id}  ${date(m.start_time)}  ${L(m.hero).padEnd(12)} ${(m.kda ? m.kda.join('/') : '—').padEnd(9)} ${m.won == null ? '?' : m.won ? (zh ? '胜' : 'W') : (zh ? '负' : 'L')}  ${m.duration ? clock(m.duration) : ''}`);
   }
   io.say('', zh ? `复盘某一局：dota2ai coach <比赛ID> --hero <英雄>` : 'Review one: dota2ai coach <matchId> --hero <hero>');
 }
