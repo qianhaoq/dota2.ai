@@ -216,6 +216,8 @@ describe('agent API', () => {
     expect(audit.record).not.toHaveProperty('casts');
     expect((await ev('deaths:beastmaster')).body.record).toMatchObject({ deaths_total: 11, killed_by: { phantom_assassin: 7 } });
     expect((await ev('immunity:phantom_assassin')).body.record).toMatchObject({ windows_total: 7 });
+    // With what was watched, the totals that back "her BKB opened with the roar on cooldown three times" are shown too.
+    expect((await ev('immunity:phantom_assassin:beastmaster:primal_roar')).body.record).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });
     for (const bad of ['cast:beastmaster:primal_roar:99', 'death:beastmaster:0', 'nope:1', 'timeline:0-99999', '../etc', 'death:pudge:1']) expect((await ev(bad)).status).toBe(404);
     expect((await get(`/api/agent/${MATCH}/evidence?hero=beastmaster`)).status).toBe(400);
     expect((await get('/api/agent/999/evidence?hero=axe&ref=overview')).status).toBe(404);

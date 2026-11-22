@@ -103,9 +103,16 @@ export const AgentMatchPage: React.FC = () => {
   const resumed = useRef(false);
   const chat = useRef<ChatHandle>(null);
 
+  // The match on screen now. An availability answer for a match the reader has left is dropped.
+  const onMatch = useRef(matchId);
+  onMatch.current = matchId;
   const loadAvail = useCallback(async (signal?: AbortSignal) => {
-    try { setAvail(await fetchAvailability(matchId, signal)); } catch (e) {
-      if ((e as Error).name === 'AbortError') return;
+    try {
+      const next = await fetchAvailability(matchId, signal);
+      if (onMatch.current !== matchId) return;
+      setAvail(next);
+    } catch (e) {
+      if ((e as Error).name === 'AbortError' || onMatch.current !== matchId) return;
       // A request that failed while we already know the state changes nothing: keep what we have and ask again.
       setAvail((prev) => prev ?? { trace: false, model_configured: false, can_parse: false, heroes: [], parse: { status: 'none' } });
     }
@@ -217,7 +224,7 @@ export const AgentMatchPage: React.FC = () => {
   async function go() {
     setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
-    try { applyParse(await prepareMatch(matchId)); void loadAvail(); } catch (e) { refuse(e); }
+    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e); }
   }
 
   // The reader said go, then came back to a parse that is no longer running (it died with its instance,
@@ -225,7 +232,7 @@ export const AgentMatchPage: React.FC = () => {
   useEffect(() => {
     if (!intent || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
     resumed.current = true;
-    prepareMatch(matchId).then((p) => { applyParse(p); void loadAvail(); }).catch(refuse);
+    prepareMatch(matchId).then((p) => { if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); }).catch((e) => { if (onMatch.current === matchId) refuse(e); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, avail, matchId, loadAvail]);
 

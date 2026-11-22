@@ -343,6 +343,8 @@ describe('trace tools on a real game', () => {
     expect(run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' })).toMatchObject({ ref: 'audit:beastmaster:primal_roar', ref_scope: 'summary' });
     expect(run('death_context', { hero: 'beastmaster', index: 1 })).toMatchObject({ ref: 'deaths:beastmaster', ref_scope: 'summary' });
     expect(run('immunity_windows', { hero: 'phantom_assassin' })).toMatchObject({ ref: 'immunity:phantom_assassin', ref_scope: 'summary' });
+    // What was watched is in the ref.
+    expect(run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'beastmaster_primal_roar' }).ref).toBe('immunity:phantom_assassin:beastmaster:primal_roar');
     expect(run('immunity_windows', { team: 'dire' }).ref).toBe('immunity:dire');
     expect(run('immunity_windows', {}).ref).toBe('immunity:all');
     expect(run('match_overview')).toMatchObject({ ref: 'overview', ref_scope: 'summary' });

@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { AgentMatchPage, journeyStep } from './AgentMatchPage';
 import { turningFight } from './ReviewDoc';
 import { stepLabel } from './ChatRail';
@@ -144,6 +144,28 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByRole('heading', { name: 'The review did not come out' })).toBeNull();
     expect(await screen.findByRole('heading', { level: 1, name: review.verdict }, { timeout: 6000 })).toBeTruthy();
   }, 20000);
+
+  it('an availability answer for the match the reader left does not replace the new match\'s', async () => {
+    let late: any;
+    mockFetch({
+      '/api/coach/9100904020': board, '/api/coach/8000000009': board,
+      '/review?': { status: 'none' },
+      // The first match answers late, with a parsed trace; the second has none.
+      '/api/agent/9100904020': () => new Promise((r) => { late = () => r({ trace: true, model_configured: true, can_parse: true, heroes }); }),
+      '/api/agent/8000000009': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } },
+    });
+    const Jump = () => { const go = useNavigate(); return <button type="button" onClick={() => go('/r/8000000009?hero=beastmaster&lang=en')}>jump</button>; };
+    render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=en']}><Jump /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
+    await waitFor(() => expect(late).toBeTypeOf('function'));
+    fireEvent.click(screen.getByRole('button', { name: 'jump' }));
+    expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
+    late();
+    await new Promise((r) => setTimeout(r, 100));
+    // Still the new match, still without a trace: the old answer was dropped.
+    expect(screen.getByText(/Match 8000000009/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Review this game' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Scoreboard' })).toBeTruthy();
+  });
 
   it('a failed status request does not stop the wait: the page asks again', async () => {
     let n = 0;

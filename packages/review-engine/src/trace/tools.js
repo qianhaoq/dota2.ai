@@ -317,7 +317,8 @@ export function immunityWindows(trace, args = {}) {
   if (watch) for (const w of windows) states[w.watched.state] = (states[w.watched.state] ?? 0) + 1;
   return {
     ...(watch ? { watching: { hero: trace.heroes[watch.h].key, ability: watch.key }, watched_state_when_window_opened: states, windows_with_a_cast_on_the_immune_hero: windows.filter((w) => w.watched.cast_on_this_hero_during.length).length } : {}),
-    ref: `immunity:${only >= 0 ? trace.heroes[only].key : team === 2 ? 'radiant' : team === 3 ? 'dire' : 'all'}`, ref_scope: 'summary',
+    // What was watched is part of what the totals say: it is in the ref, so the same answer can be shown again.
+    ref: `immunity:${only >= 0 ? trace.heroes[only].key : team === 2 ? 'radiant' : team === 3 ? 'dire' : 'all'}${watch ? `:${trace.heroes[watch.h].key}:${watch.key.startsWith(`${trace.heroes[watch.h].key}_`) ? watch.key.slice(trace.heroes[watch.h].key.length + 1) : watch.key}` : ''}`, ref_scope: 'summary',
     windows_total: windows.length, windows, gaps: gapsFor(trace, ['ability_immunity']),
   };
 }
