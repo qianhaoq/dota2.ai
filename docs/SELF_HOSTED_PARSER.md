@@ -141,6 +141,37 @@ gone, failures and "busy" refusals on this instance.
 | `failed` + `reason: "replay_gone"` | Valve no longer has the replay (kept about two weeks); remembered for six hours, asking again costs nothing |
 | `parsed` | already parsed |
 
+## A replay file you hold (no Valve download, no GC request for the replay)
+
+For a game whose replay Valve no longer serves (older than about two weeks,
+or hidden), the Dota 2 client may still have the file: download the replay in
+the client, then look under `…/dota 2 beta/game/dota/replays/<match_id>.dem`.
+
+```bash
+# on a machine that can reach the parser (default http://127.0.0.1:5600)
+node scripts/parse-local-dem.mjs <match_id> <file> --store
+```
+
+It parses the file, checks the parse really is that match, merges it with the
+match's scoreboard and writes the parsed match to a JSON file; `--store` also
+puts it in the match cache (`MATCH_CACHE_BUCKET`), where the site reads it
+within a minute. Options and exit statuses are at the top of the script.
+
+- **Which file formats:** a raw `.dem`, or a zstd- or bzip2-compressed one.
+  The format is read from the file's first bytes: Valve serves zstd under
+  names ending in `.dem.bz2`.
+- **Scoreboard:** `--source gc` (the retriever, one request of its budget),
+  `opendota`, or a saved match JSON. Default: the retriever when configured.
+- **Is it the right game?** The parser does not report a match id, so the
+  tool compares the parse with the scoreboard: game length, and every
+  player's kills and last hits by seat. On real games the right replay agrees
+  on kills for 9 to 10 players and on last hits for all ten; another game on
+  at most 2. A file that does not pass is refused and nothing is written.
+- **Not a public upload.** It runs where the operator runs it. A replay is
+  50 to 150 MB, above Cloud Run's 32 MB request limit, so a browser upload
+  would have to go straight to the bucket; that is not built.
+- A match the scoreboard source already has parsed is refused: nothing to do.
+
 ## Known limits
 
 - The parse runs after the HTTP response. On Cloud Run with request-based
