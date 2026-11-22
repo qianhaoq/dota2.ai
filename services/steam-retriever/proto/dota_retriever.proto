@@ -43,6 +43,12 @@ message CMsgDOTAGetPlayerMatchHistoryResponse {
 }
 
 // dota_gcmessages_common.proto
+message CMatchPlayerPermanentBuff {
+	optional uint32 permanent_buff = 1;
+	optional uint32 stack_count = 2;
+	optional uint32 grant_time = 3;
+}
+
 message CMsgDOTAMatch {
 	message Player {
 		optional uint32 account_id = 1;
@@ -73,6 +79,7 @@ message CMsgDOTAMatch {
 		optional uint32 hero_healing = 26;
 		optional uint32 level = 27;
 		optional uint32 net_worth = 52;
+		repeated CMatchPlayerPermanentBuff permanent_buffs = 57;
 		optional uint32 team_number = 80; // enum DOTA_GC_TEAM: 0 radiant, 1 dire
 		optional uint32 team_slot = 81;
 		optional uint32 selected_facet = 82;
