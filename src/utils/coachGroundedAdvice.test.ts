@@ -115,3 +115,38 @@ describe('zero invention', () => {
     }
   });
 });
+
+describe('review #217 P1s', () => {
+  it('an item\'s own components are progress, never "move X after it" (Dawnbreaker: Dragon Lance → Harpoon)', () => {
+    const m = load('match9091400302.parsed.json');
+    const db = m.players.findIndex((p: any) => p.hero_id === 135);
+    m.players[db].purchase_log = [...m.players[db].purchase_log.filter((x: any) => !['dragon_lance', 'harpoon', 'echo_sabre'].includes(x.key)),
+      { time: 600, key: 'echo_sabre' }, { time: 800, key: 'dragon_lance' }, { time: 1800, key: 'harpoon' }].sort((a: any, b: any) => a.time - b.time);
+    const f = (buildCoachReport(m) as any).reviews[db].findings.find((x: any) => x.id === 'items.core_late');
+    expect(f.title.en).toBe('Harpoon at 30:00: 51% of pro Dawnbreaker finish it before 25:00');
+    expect(f.action.en).not.toContain('Dragon Lance');
+    expect(f.action.zh).not.toContain(NAMES.items.dragon_lance.zh);
+  });
+
+  it('an answer a carry already owns still counts (a Pipe is never "nothing that answers it")', () => {
+    const m = load('match9091400302.parsed.json');
+    const sp = m.players.findIndex((p: any) => p.hero_id === 67);
+    m.players[sp].item_5 = NAMES.items.pipe.id;
+    const v = (buildCoachReport(m) as any).reviews[sp];
+    const miss = v.findings.find((x: any) => x.id === 'items.answer_missing');
+    expect(miss?.goal?.tag).not.toBe('magic');
+    expect(textOf(v)).not.toMatch(/nothing that answers it[^.]*magic|魔法爆发[^。]*没有任何应对/);
+    // …while Pipe is still never recommended to him.
+    for (const f of v.findings) expect(f.action.en).not.toMatch(/(build|plan|Other options:)[^.]*Pipe of Insight/);
+  });
+
+  it('a turning point never says an item came before a loss it followed (9094562824)', () => {
+    const r = reports[2];
+    const f = r.reviews.map((v: any) => v.findings.find((x: any) => x.id === 'team.turning_point')).find(Boolean);
+    expect(f.action.en).toContain('In this window: Radiant lost mid T3 tower');
+    expect(f.action.en).toContain("Around it, Doom's Shiva's Guard (29:35) and Outworld Destroyer's Scythe of Vyse (30:15) came online too");
+    expect(f.action.en).not.toMatch(/came first|, then:/);
+    // And when the items do come first, the order is stated (9091400302).
+    expect(findingOf(TIDE, 'team.turning_point').action.en).toMatch(/^Ursa's Abyssal Blade \(39:19\)[^.]* came first, then: /);
+  });
+});
