@@ -1242,7 +1242,7 @@ const CardFeed: React.FC<{
     const timer = setTimeout(() => jumpToCases(cases.theme), 0);
     return () => clearTimeout(timer);
   }, [cases]);
-  useEffect(() => { if (askSeq > 0) { setTab('ask'); askRef.current?.focus(); } }, [askSeq]);
+  useEffect(() => { if (askSeq > 0) openAsk(); }, [askSeq]);
   // A jump to a row reopens its data disclosure (the user may have collapsed it) once the chapter has re-rendered.
   useEffect(() => {
     if (!jump || jump.row == null || (jump.target !== 'deaths' && jump.target !== 'fights')) return undefined;
@@ -1254,7 +1254,10 @@ const CardFeed: React.FC<{
   if (!surface) return null;
   const has = (component: string) => surface.cards.some((c) => c.component === component);
   // A question asked from a card carries that card as its context ("当前围绕：…").
-  const ask = (q: Bi, from?: Card) => askRef.current?.prefill(L(q), from ? L(from.title) : undefined);
+  // Every way into the chat selects the Ask tab first, then focuses or prefills once
+  // the panel is visible (a hidden panel cannot take focus).
+  const openAsk = (then: () => void = () => askRef.current?.focus()) => { setTab('ask'); setTimeout(then, 0); };
+  const ask = (q: Bi, from?: Card) => openAsk(() => askRef.current?.prefill(L(q), from ? L(from.title) : undefined));
   const scrollTo = (id: string) => document.getElementById(cardDom(id))?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 
   const run = (a: CardAction) => {
@@ -1263,7 +1266,7 @@ const CardFeed: React.FC<{
         setJump({ target: a.target, row: a.row ?? null, seq: Date.now() });
         scrollTo(`chapter:${a.target}`);
         break;
-      case 'ask': setTab('ask'); ask(a.question, surface.cards.find((c) => c.actions.includes(a))); break;
+      case 'ask': ask(a.question, surface.cards.find((c) => c.actions.includes(a))); break;
       case 'save_goal': {
         const card = surface.cards.find((c) => c.actions.includes(a));
         const f = card?.data.finding as Finding | undefined;
@@ -1280,7 +1283,7 @@ const CardFeed: React.FC<{
   const onAskChapter = (key: string) => () => {
     const c = surface.cards.find((x) => x.id === `chapter:${key}`);
     const q = c?.actions.find((x) => x.action === 'ask') as Extract<CardAction, { action: 'ask' }> | undefined;
-    if (q) ask(q.question, c); else askRef.current?.focus();
+    if (q) ask(q.question, c); else openAsk();
   };
 
   const body = (c: Card): React.ReactNode => {
@@ -1317,7 +1320,7 @@ const CardFeed: React.FC<{
       case 'Fights':
         return <FightsChapter ch={d.chapter} onAsk={onAskChapter('fights')} defaultOpen
           highlightIndex={jump?.target === 'fights' ? jump.row : null} jumpSeq={jump?.target === 'fights' ? jump.seq : undefined} />;
-      case 'Plan': return <PlanChapter plan={d.plan} onAsk={() => askRef.current?.focus()} />;
+      case 'Plan': return <PlanChapter plan={d.plan} onAsk={() => openAsk()} />;
       case 'DataGaps': return <ParsePanel report={report} priority={!report.match.parsed} onParsed={onParsed} lang={lang} />;
       default: return null;
     }
@@ -1352,7 +1355,7 @@ const CardFeed: React.FC<{
               <h3>{L(CARD_UI.casesTitle)}</h3>
               <button type="button" className="cxv-x" onClick={() => setCases(null)} aria-label={L(CARD_UI.close)}>×</button>
             </header>
-            <div className="cxv-card-body"><Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => askRef.current?.focus()} /></div>
+            <div className="cxv-card-body"><Cases matchId={String(report.match.id)} slot={review.slot} pos={pos} onAsk={() => openAsk()} /></div>
           </section>
         )}
       </div>

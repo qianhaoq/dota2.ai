@@ -291,7 +291,10 @@
   .wb.has-review > .cx-lineup .cx-team-row { grid-template-columns: 1fr; gap: 4px; }
   .wb.has-review > .cx-lineup .cx-seat { flex-direction: row; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 4px; }
   .wb.has-review > .cx-lineup .cx-seat img { width: 44px; height: auto; }
-  .wb.has-review > .cx-lineup .cx-seat-items, .wb.has-review > .cx-lineup .cx-seat-nw { display: none; }
+  /* Compact rail only: "Full 10-player items" (not compact) shows inventories and net worth again. */
+  .wb.has-review > .cx-lineup.is-compact .cx-seat-items, .wb.has-review > .cx-lineup.is-compact .cx-seat-nw { display: none; }
+  .wb.has-review > .cx-lineup:not(.is-compact) .cx-seat { flex-wrap: wrap; }
+  .wb.has-review > .cx-lineup:not(.is-compact) .cx-seat-items { flex-basis: 100%; }
   .wb.has-review > .cx-lineup .cx-seat-name { margin-top: 0; }
   .wb-body { min-width: 0; }
   .wb-body .cxv-feed { margin-top: 0; }

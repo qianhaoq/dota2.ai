@@ -298,3 +298,30 @@ describe('review follow-ups, round 2 (#192)', () => {
     expect(backdrop.closest('.cx')).toBeTruthy();
   });
 });
+
+describe('workbench inspector (review #219 P1s)', () => {
+  it('every "ask" entry point selects the Ask tab, even from Evidence or Compare', async () => {
+    fetchReport.mockResolvedValue(parsedReport);
+    const { container } = render(
+      <MemoryRouter initialEntries={['/r/9091400302?p=0']}>
+        <Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelector('.cxv-feed')).toBeTruthy());
+    const askPanel = () => container.querySelector('#wb-panel-ask') as HTMLElement;
+    const toEvidence = () => fireEvent.click(screen.getByRole('tab', { name: '证据' }));
+    // Chapter-level ask (the laning chapter's own button).
+    toEvidence();
+    expect(askPanel().hidden).toBe(true);
+    const laning = container.querySelector('#cx-ch-laning') as HTMLElement;
+    fireEvent.click(within(laning).getAllByRole('button', { name: /追问/ })[0]);
+    await waitFor(() => expect(askPanel().hidden).toBe(false));
+    // The practice plan's ask.
+    toEvidence();
+    const plan = container.querySelector('#cx-ch-plan') as HTMLElement;
+    fireEvent.click(within(plan).getAllByRole('button', { name: /追问/ })[0]);
+    await waitFor(() => expect(askPanel().hidden).toBe(false));
+    // And the chat really takes focus once visible.
+    await waitFor(() => expect(askPanel().contains(document.activeElement)).toBe(true));
+  });
+});
