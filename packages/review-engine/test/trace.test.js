@@ -160,6 +160,20 @@ describe('trace tools on a real game', () => {
     expect(a.casts.every((c) => c.target_stunned_seconds > 0)).toBe(true);
   });
 
+  it('every moment record carries a ref a review can cite', () => {
+    const a = run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' });
+    expect(a.casts.map((c) => c.ref)).toEqual(Array.from({ length: 10 }, (_, i) => `cast:beastmaster:primal_roar:${i + 1}`));
+    expect(a.deaths_with_it_ready_and_not_cast.map((d) => d.ref)).toEqual(['death:beastmaster:5', 'death:beastmaster:9', 'death:beastmaster:11']);
+    expect(run('death_context', { hero: 'beastmaster', index: 9 }).deaths[0].ref).toBe('death:beastmaster:9');
+    // A window keeps its number whatever the filter: the necrolyte's only window is his first.
+    expect(run('immunity_windows', { team: 'radiant' }).windows.map((w) => w.ref)).toEqual([...Array.from({ length: 7 }, (_, i) => `immune:phantom_assassin:${i + 1}`), 'immune:necrolyte:1']);
+    const o = run('match_overview');
+    expect(o.fights.map((f) => f.ref)).toEqual(o.fights.map((_, i) => `fight:${i + 1}`));
+    expect(o.buildings.at(-1).ref).toBe('building:badguys_fort');
+    expect(run('fight_timeline', { from: '30:05', to: '31:00' }).ref).toBe('timeline:1805-1860');
+    expect(run('item_timeline', { hero: 'phantom_assassin' }).items.find((i) => i.item === 'black_king_bar').ref).toBe('item:phantom_assassin:black_king_bar');
+  });
+
   it('counts are stated by the tools, not left to the reader', () => {
     expect(run('death_context', { hero: 'beastmaster', index: 1 }).killed_by).toEqual({ venomancer: 1, phantom_assassin: 7, mirana: 1, necrolyte: 2 });
     expect(run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'primal_roar' })).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });

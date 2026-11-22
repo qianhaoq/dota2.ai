@@ -4,7 +4,10 @@
  * feeds the agent's function schema, the MCP server and the CLI.
  *
  * Every answer is a list of facts with their game time and, where one event
- * backs it, the row of trace/events.jsonl it came from. Tools report; they do
+ * backs it, the row of trace/events.jsonl it came from. A record that
+ * describes one moment (a death, a cast, a fight, an immunity window, an
+ * item) carries a `ref`: a stable handle a review cites as its evidence, so
+ * a reader — or a checker — can see exactly which record a sentence is about. Tools report; they do
  * not judge. What the trace cannot show is returned under `gaps`, never
  * guessed: an absent value is unknown, not false.
  */
@@ -79,10 +82,10 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
   const mine = (radiantAdv) => (radiantAdv == null ? null : view.team === 2 ? radiantAdv : -radiantAdv);
   const end = trace.buildings.find((b) => /_fort$/.test(trace.names[b[1]]));
   const tally = { my_team_lost_fewer: 0, enemy_lost_fewer: 0, even: 0 };
-  const fightRows = fights(trace).map((f) => {
+  const fightRows = fights(trace).map((f, fi) => {
     const lost = { 2: 0, 3: 0 };
     for (const d of f.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) lost[trace.heroes[v].team] += 1; }
-    const base = { from: f.from, to: f.to, clock: `${clock(f.from)}–${clock(f.to)}` };
+    const base = { ref: `fight:${fi + 1}`, from: f.from, to: f.to, clock: `${clock(f.from)}–${clock(f.to)}` };
     if (!view) {
       return {
         ...base, deaths: { radiant: lost[2], dire: lost[3] },
@@ -108,7 +111,7 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
     ...(view ? { fights_total: fightRows.length, fights_tally: tally } : {}),
     fights: fightRows,
     buildings: trace.buildings.map((b) => ({
-      t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]),
+      ref: `building:${unit(trace.names[b[1]])}`, t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]),
       ...(view ? { lost_by: buildingTeam(trace.names[b[1]]) === view.team ? 'my_team' : 'enemy' } : { taken_by: TEAM[b[2]] ?? null }),
       row: b[3],
     })),
@@ -147,7 +150,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const myCasts = trace.casts.filter((c) => c[1] === npc && inWindow(c[0]));
     const castNames = new Set(myCasts.map((c) => trace.names[c[2]]));
     return {
-      n, t, clock: clock(t), killer: nameOf(trace, d[2]), row: d[3],
+      ref: `death:${trace.heroes[h].key}:${n}`, n, t, clock: clock(t), killer: nameOf(trace, d[2]), row: d[3],
       at: where(stateAt(trace, h, t - 1)),
       level: stateAt(trace, h, t - 1)?.level ?? null,
       snapshots,
@@ -196,7 +199,8 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   const learned = entry.levels.find(([, lv]) => lv > 0)?.[0] ?? null;
   const rows = trace.casts.filter((c) => c[1] === npc && c[2] === abilityId).sort((a, b) => a[0] - b[0]);
   const byTarget = {};
-  const casts = rows.map((c) => {
+  const short = key.startsWith(`${trace.heroes[h].key}_`) ? key.slice(trace.heroes[h].key.length + 1) : key;
+  const casts = rows.map((c, ci) => {
     const t = c[0]; const target = heroOfName(trace, c[3]);
     const { me, allies, enemies } = nearby(trace, h, t, 1300);
     const ts = target >= 0 ? stateAt(trace, target, t) : null;
@@ -205,7 +209,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     const during = target >= 0 ? immune.find((w) => w.hero === target && w.from <= t && (w.to == null || t < w.to)) : null;
     const soonAfter = target >= 0 && !during ? immune.find((w) => w.hero === target && w.from > t && w.from <= t + 3) : null;
     return {
-      t, clock: clock(t), row: c[4], target: targetName,
+      ref: `cast:${trace.heroes[h].key}:${short}:${ci + 1}`, t, clock: clock(t), row: c[4], target: targetName,
       target_hp: ts ? { hp: ts.hp, max_hp: ts.max_hp } : null,
       target_spell_immune: target >= 0 ? Boolean(during) : null,
       // What the replay shows happened, whatever the ability is supposed to do.
@@ -225,7 +229,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       if (cooldownLeft(entry, t) === 0) idle += 1;
     }
   }
-  const myDeaths = trace.deaths.filter((d) => d[1] === npc);
+  const myDeaths = trace.deaths.filter((d) => d[1] === npc).sort((a, b) => a[0] - b[0]);
   return {
     hero: trace.heroes[h].key, ability: key,
     learned_at: learned == null ? null : { t: learned, clock: clock(learned) },
@@ -235,7 +239,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     seconds_alive_since_learned: alive, seconds_alive_and_ready: idle,
     deaths_with_it_ready_and_not_cast_total: myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12)).length,
     deaths_with_it_ready_and_not_cast: myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12))
-      .map((d) => ({ t: d[0], clock: clock(d[0]), killer: nameOf(trace, d[2]), row: d[3] })),
+      .map((d) => ({ ref: `death:${trace.heroes[h].key}:${myDeaths.indexOf(d) + 1}`, t: d[0], clock: clock(d[0]), killer: nameOf(trace, d[2]), row: d[3] })),
     casts,
     gaps: gapsFor(trace, ['ability_immunity', 'vision']),
   };
@@ -253,8 +257,9 @@ export function immunityWindows(trace, args = {}) {
     if (!key) return fail('unknown_ability', { abilities: Object.keys(trace.abilities[w.h]) });
     watch = { ...w, key, entry: trace.abilities[w.h][key], id: nameId(trace, key) };
   }
-  const windows = immunityIntervals(trace).filter((w) => (only < 0 || w.hero === only) && (team == null || trace.heroes[w.hero].team === team)).map((w) => {
-    const row = { hero: trace.heroes[w.hero].key, team: TEAM[trace.heroes[w.hero].team], modifier: w.modifier.replace(/^modifier_/, ''), from: w.from, clock: clock(w.from), to: w.to, seconds: w.to == null ? null : Math.round((w.to - w.from) * 10) / 10 };
+  const nth = new Map();
+  const windows = immunityIntervals(trace).map((w) => { const n = (nth.get(w.hero) ?? 0) + 1; nth.set(w.hero, n); return { ...w, n }; }).filter((w) => (only < 0 || w.hero === only) && (team == null || trace.heroes[w.hero].team === team)).map((w) => {
+    const row = { ref: `immune:${trace.heroes[w.hero].key}:${w.n}`, hero: trace.heroes[w.hero].key, team: TEAM[trace.heroes[w.hero].team], modifier: w.modifier.replace(/^modifier_/, ''), from: w.from, clock: clock(w.from), to: w.to, seconds: w.to == null ? null : Math.round((w.to - w.from) * 10) / 10 };
     if (!watch) return row;
     const s = stateAt(trace, watch.h, w.from);
     const left = cooldownLeft(watch.entry, w.from);
@@ -312,7 +317,7 @@ export function fightTimeline(trace, args = {}, ctx = {}) {
   const top = (m) => [...m].sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => ({ unit: k, value: v }));
   const firstDeath = trace.deaths.filter((d) => inWindow(d[0])).sort((a, b) => a[0] - b[0])[0];
   return {
-    from, to, clock: `${clock(from)}–${clock(to)}`,
+    ref: `timeline:${Math.round(from)}-${Math.round(to)}`, from, to, clock: `${clock(from)}–${clock(to)}`,
     positions_at_start: positions(from),
     ...(firstDeath ? { positions_at_first_death: { t: firstDeath[0], clock: clock(firstDeath[0]), heroes: positions(firstDeath[0]) } } : {}),
     events: kept.sort((a, b) => a.t - b.t).map(({ p, ...r }) => ({ clock: clock(r.t), ...r })),
@@ -333,7 +338,7 @@ export function itemTimeline(trace, args = {}) {
   const end = trace.t0 + trace.n - 1;
   const items = Object.entries(trace.items[h]).filter(([k, e]) => !CONSUMABLE.test(k) && e.held.length).map(([k, e]) => {
     const first = e.held[0][0]; const last = e.held.at(-1)[1];
-    return { item: k.replace(/^item_/, ''), first_held: { t: first, clock: clock(first) }, held_at_end: last >= end - 2, ...(last >= end - 2 ? {} : { last_held: { t: last, clock: clock(last) } }) };
+    return { ref: `item:${trace.heroes[h].key}:${k.replace(/^item_/, '')}`, item: k.replace(/^item_/, ''), first_held: { t: first, clock: clock(first) }, held_at_end: last >= end - 2, ...(last >= end - 2 ? {} : { last_held: { t: last, clock: clock(last) } }) };
   }).sort((a, b) => a.first_held.t - b.first_held.t);
   return { hero: trace.heroes[h].key, items, note: 'first_held is when the item first sat in an inventory, TP or neutral slot; components appear until they are built into something else' };
 }

@@ -9,7 +9,7 @@ const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-
 describe('knowledge tools', () => {
   it('hero_abilities: Valve\'s flags, in the reader\'s language, with the patch', () => {
     const r: any = heroAbilities(trace, { hero: 'Beastmaster' }, { lang: 'zh' });
-    expect(r).toMatchObject({ hero: 'beastmaster', patch: expect.any(String), source: expect.any(String) });
+    expect(r).toMatchObject({ ref: 'abilities:beastmaster', hero: 'beastmaster', patch: expect.any(String), source: expect.any(String) });
     expect(r.abilities.find((a: any) => a.ultimate)).toMatchObject({ ability: 'beastmaster_primal_roar', name: '原始咆哮', damage_type: 'magical', goes_through_spell_immunity: true, cooldown_by_level: [90, 75, 60] });
     // A flag Valve does not give is left out, not reported as false.
     expect(r.abilities.find((a: any) => a.ability === 'beastmaster_summon_raptor')).not.toHaveProperty('goes_through_spell_immunity');

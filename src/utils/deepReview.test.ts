@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { collectFacts, deepReviewSystem, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { collectFacts, deepReviewSystem, nameHeroes, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
@@ -15,10 +15,17 @@ const investigate = { toolCalls: [
 const good = {
   title: '咆哮没有留给幻影刺客的 BKB',
   claim: '幻影刺客开了 7 次 BKB，只有 27:27 那次你的咆哮吼中了她。',
-  evidence: [{ clock: '27:27', fact: '咆哮吼中开着 BKB 的幻影刺客，她 11 秒后阵亡' }, { clock: '30:25', fact: '咆哮给了瘟疫法师，9 秒后幻影刺客开 BKB' }, { clock: '36:05', fact: '满血 2915，咆哮就绪没放' }],
+  evidence: [
+    { refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 咆哮吼中开着 BKB 的幻影刺客，她 11 秒后（27:38）阵亡' },
+    { refs: ['immune:phantom_assassin:3'], fact: '30:34 她开 BKB 时咆哮还在冷却，9 秒前 30:25 给了瘟疫法师' },
+    { refs: ['death:beastmaster:9'], fact: '36:05 满血 2915，咆哮就绪没放' },
+  ],
   fix: '对面核心有 BKB 时，咆哮只留给他。',
 };
-const invented = { title: '打钱', claim: '你 19:19 的经济只有 9,876。', evidence: [{ clock: '19:19', fact: '落后 4.2k' }], fix: '多刷野。' };
+const invented = { title: '打钱', claim: '你 19:19 的经济只有 9,876。', evidence: [{ refs: ['fight:99'], fact: '落后 4.2k' }], fix: '多刷野。' };
+/** What the reader gets: each evidence item with the game time of the first record it cites. */
+const shown = (f: any, clocks: string[]) => ({ ...f, evidence: f.evidence.map((e: any, i: number) => ({ refs: e.refs, clock: clocks[i], fact: e.fact })) });
+const goodShown = shown(good, ['27:27', '30:34', '36:05']);
 const review = (findings: any[], extra: any = {}) => ({ verdict: '咆哮没有留给幻影刺客的 BKB。', mainline: ['30:25 的咆哮给了瘟疫法师。'], findings, next_game: ['咆哮留给带 BKB 的核心'], blind_spots: ['视野'], ...extra });
 
 describe('fact collection', () => {
@@ -43,10 +50,20 @@ describe('fact collection', () => {
     ]);
   });
   it('passes what the tools said and names what they did not', () => {
-    const sources = [{ deaths_total: 11, killed_by: { phantom_assassin: 7 }, gold: 4298, deaths: [{ t: 1647.4, hp: 2915, deaths_within_12s: [{ dt: 10.8 }] }] }];
-    const fine = { title: 't', claim: '27:25 时 2915 血，领先 4.3k', evidence: [{ clock: '27:27', fact: '11 秒后阵亡，剩 2915 血' }], fix: '站到 700 码外，留 25 秒' };
-    expect(verifyReview(review([fine], { verdict: '11 次阵亡里 7 次死于幻影刺客', mainline: [] }), sources)).toEqual({ ok: true, problems: [] });
-    const bad = { title: 't', claim: '经济只有 9,876，1.3 秒就倒了', evidence: [{ clock: '19:19', fact: 'x' }, { clock: '27:27', fact: '25 秒后阵亡' }], fix: 'f' };
+    const sources = [{ deaths_total: 11, killed_by: { phantom_assassin: 7 }, gold: 4298, deaths: [{ ref: 'death:x:6', t: 1647.4, hp: 2915, deaths_within_12s: [{ t: 1658.2, dt: 10.8 }] }, { ref: 'death:x:4', t: 1321, hp: 1476 }] }];
+    const fine = { title: 't', claim: '27:25 时 2915 血，领先 4.3k', evidence: [{ refs: ['death:x:6'], fact: '27:27 之后 11 秒（27:38）阵亡，剩 2915 血' }], fix: '站到 700 码外，留 25 秒' };
+    expect(verifyReview(review([fine], { verdict: '11 次阵亡里 7 次死于幻影刺客', mainline: [] }), sources)).toMatchObject({ ok: true, problems: [] });
+    const bad = {
+      title: 't', claim: '经济只有 9,876，1.3 秒就倒了',
+      evidence: [
+        { refs: ['death:x:99'], fact: 'x' },
+        { fact: 'no ref at all' },
+        // A real time and a real number, attached to the wrong record.
+        { refs: ['death:x:4'], fact: '22:01 之后 27:38 阵亡，剩 2915 血' },
+        { refs: ['death:x:6'], fact: '25 秒后阵亡' },
+      ],
+      fix: 'f',
+    };
     expect(verifyReview(review([bad], { verdict: '19:19 输了，8 次被杀', mainline: ['27:27 好', '5:00 坏'], did_well: ['打了 3000 伤害'] }), sources).problems).toEqual([
       { where: 'verdict', index: 0, kind: 'time', text: '19:19' },
       // 8 is nowhere among the tools' counts (7 and 11 are).
@@ -55,9 +72,11 @@ describe('fact collection', () => {
       { where: 'did_well', index: 0, kind: 'number', text: '3000' },
       { where: 'finding', index: 0, kind: 'number', text: '9,876' },
       { where: 'finding', index: 0, kind: 'number', text: '1.3' },
-      { where: 'finding', index: 0, kind: 'time', text: '19:19' },
-      // 25 exists nowhere near 27:27: the tools said 10.8 there.
-      { where: 'finding', index: 0, kind: 'moment', text: '25 (at 27:27)' },
+      { where: 'finding', index: 0, kind: 'ref', text: 'death:x:99' },
+      { where: 'finding', index: 0, kind: 'ref', text: '(no ref)' },
+      { where: 'finding', index: 0, kind: 'moment', text: '27:38 (not in death:x:4)' },
+      { where: 'finding', index: 0, kind: 'moment', text: '2915 (not in death:x:4)' },
+      { where: 'finding', index: 0, kind: 'moment', text: '25 (not in death:x:6)' },
     ]);
   });
 });
@@ -67,7 +86,7 @@ describe('runDeepReview', () => {
     const m = scripted([investigate, { toolCalls: [call('submit_review', review([good]), 's')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'Beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
-    expect(r.review).toMatchObject({ schema: DEEP_REVIEW_SCHEMA, match_id: 9100904020, hero: 'beastmaster', lang: 'zh', findings: [good], verdict: '咆哮没有留给幻影刺客的 BKB。' });
+    expect(r.review).toMatchObject({ schema: DEEP_REVIEW_SCHEMA, match_id: 9100904020, hero: 'beastmaster', lang: 'zh', findings: [goodShown], verdict: '咆哮没有留给幻影刺客的 BKB。' });
     expect(r.verification).toEqual({ repaired: false, first_pass_problems: 0, dropped: 0, problems: [] });
     expect(r.tool_calls.map((c: any) => c.name)).toEqual(['ability_audit', 'immunity_windows', 'death_context']);
     // The model is told who it reviews and what to call the heroes, in the reader's language.
@@ -83,21 +102,21 @@ describe('runDeepReview', () => {
     const m = scripted([investigate, { toolCalls: [call('submit_review', review([good, invented]), 's1')] }, { toolCalls: [call('submit_review', review([good, invented], { verdict: '19:19 崩了', mainline: ['27:27 吼中', '19:19 崩'] }), 's2')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
-    expect(r.review.findings).toEqual([good]);
+    expect(r.review.findings).toEqual([goodShown]);
     expect(r.review.mainline).toEqual(['27:27 吼中']);
     // An unsupported verdict falls back to the first finding that stands.
     expect(r.review.verdict).toBe(good.title);
     expect(r.verification).toMatchObject({ repaired: true, dropped: 1 });
     const repair = JSON.parse(m.seen[2].messages.at(-1).content);
-    expect(repair).toMatchObject({ error: 'unsupported_facts', problems: expect.arrayContaining([{ in: 'finding 2', text: '19:19', why: 'this time is not in any tool result' }]) });
+    expect(repair).toMatchObject({ error: 'unsupported_facts', problems: expect.arrayContaining([{ in: 'finding 2', text: '19:19', why: 'this time is not in any tool result' }, expect.objectContaining({ in: 'finding 2', text: 'fight:99' })]) });
     expect(m.seen).toHaveLength(3);
   });
 
   it('a repair that looks the fact up is accepted', async () => {
-    const lane = { title: '一血', claim: '0:47 被击杀时身边没有队友。', evidence: [{ clock: '0:47', fact: '一血' }], fix: '等兵线。' };
+    const lane = { title: '一血', claim: '0:47 被击杀时身边没有队友。', evidence: [{ refs: ['death:beastmaster:1'], fact: '0:47 一血' }], fix: '等兵线。' };
     const m = scripted([investigate, { toolCalls: [call('submit_review', review([good, lane]), 's1')] }, { toolCalls: [call('death_context', { hero: 'beastmaster', index: 1 }, 'd')] }, { toolCalls: [call('submit_review', review([good, lane]), 's2')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster' });
-    expect(r.review.findings).toEqual([good, lane]);
+    expect(r.review.findings).toEqual([goodShown, shown(lane, ['0:47'])]);
     expect(r.verification).toMatchObject({ repaired: true, dropped: 0, problems: [] });
   });
 
@@ -116,12 +135,21 @@ describe('runDeepReview', () => {
     expect(first).not.toContain('123456789');
   });
 
+  it('engine hero keys that slip through are replaced with the reader\'s names, refs untouched', () => {
+    const out: any = nameHeroes({ verdict: 'sven 先死，然后 skywrath_mage；svens 不变', mainline: ['dark_willow 收掉 axe'], findings: [{ title: 'undying', claim: 'c', fix: 'sven', evidence: [{ refs: ['death:sven:1'], fact: 'sven 阵亡' }] }] }, { sven: '斯温', skywrath_mage: '天怒法师', dark_willow: '邪影芳灵', undying: '不朽尸王', axe: 'axe' });
+    expect(out.verdict).toBe('斯温 先死，然后 天怒法师；svens 不变');
+    expect(out.mainline).toEqual(['邪影芳灵 收掉 axe']);
+    expect(out.findings[0]).toMatchObject({ title: '不朽尸王', fix: '斯温', evidence: [{ refs: ['death:sven:1'], fact: '斯温 阵亡' }] });
+  });
+
   it('the prompt states the rules the verifier enforces', () => {
     const s = deepReviewSystem('en');
     expect(s).toContain('MUST write ALL analysis and advice in English');
     expect(s).toContain('must be one a tool returned in this conversation');
     expect(s).toContain('my_team_gold_lead is negative when the player\'s team is behind');
     expect(s).toContain('never assume it did not');
+    expect(s).toContain('Never join a fact from one record to a different moment');
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.evidence.items.required).toEqual(['refs', 'fact']);
     expect(s).toContain('submit_review exactly once');
     expect(SUBMIT_REVIEW.input_schema.properties.findings.maxItems).toBe(3);
   });
