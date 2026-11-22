@@ -240,6 +240,45 @@ describe('parse jobs in the service', () => {
     expect((await b.availability(ID)).parse).toMatchObject({ status: 'failed', reason: 'worker_failed' });
   });
 
+  it('a parse retried on another instance is what both instances report', async () => {
+    const blobs = new Map<string, any>();
+    const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
+    const traces = { get: async () => null };
+    const clock = { t: 1000 };
+    const a: any = createAgentService({ traces, complete: null, docs, now: () => clock.t, pipeline: { run: async () => ({ ok: false, reason: 'download_failed' }) } });
+    const b: any = createAgentService({ traces, complete: null, docs, now: () => clock.t, pipeline: { run: async (_id: any, o: any) => { o.onStage('downloading'); return new Promise(() => {}); } } });
+    await a.prepare(ID); await settle();
+    expect((await a.availability(ID)).parse.status).toBe('failed');
+    clock.t += 1000;
+    await b.prepare(ID); await settle();
+    // A's own attempt failed, but the newer one on B is running: A says running too.
+    expect((await a.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' });
+    expect((await b.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' });
+  });
+
+  it('a slow progress marker cannot land after a review\'s terminal one', async () => {
+    const blobs = new Map<string, any>();
+    let slowDone: any;
+    const docs = {
+      get: async (k: string) => blobs.get(k) ?? null,
+      // The marker written for the first tool step takes long; everything else is immediate.
+      put: async (k: string, v: any) => { if (k.endsWith('.job.json') && v.state === 'running' && v.steps?.length === 1) await new Promise((r) => { slowDone = r; }); blobs.set(k, v); },
+    };
+    const trace = JSON.parse(fixture.toString());
+    const traces = { get: async () => trace };
+    // One lookup, then plain text instead of a submitted review: the job fails with no_review.
+    let i = 0;
+    const complete = async () => (i++ === 0 ? { toolCalls: [{ id: 'a', name: 'match_overview', args: {} }] } : { text: 'no review' });
+    const a: any = createAgentService({ traces, complete, docs });
+    const b: any = createAgentService({ traces, complete: null, docs });
+    await a.start(ID, 'beastmaster', 'en');
+    await vi.waitFor(() => expect(slowDone).toBeTypeOf('function'));
+    slowDone();
+    await vi.waitFor(async () => expect((await b.status(ID, 'beastmaster', 'en')).status).toBe('failed'));
+    await settle();
+    expect(await b.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'failed', reason: 'no_review' });
+  });
+
   it('only the request that starts a parse is charged; a refusal starts nothing', async () => {
     const h = makeService(async () => new Promise(() => {}));
     const svc = h.service();
