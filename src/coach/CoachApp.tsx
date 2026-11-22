@@ -8,6 +8,8 @@ import { SafeImg, clock, k, useLang, type Lang } from './ui';
 import { Chapters, jumpToCases, revealRow, Deaths as DeathsChapter, Fights as FightsChapter, Items as ItemsChapter, Laning as LaningChapter, Matchups, Plan as PlanChapter, Story as StoryChapter, type ChapterJumpSignal } from './Chapters';
 import { Cases } from './Cases';
 import { buildSurface } from '../../lib/coach/cards.js';
+import { AccessModes, LiveSample } from './HomeBlocks';
+import { accessSnippets } from './accessSnippets';
 import { GoldTimeline } from './GoldTimeline';
 import { QuickJump, detectSmartInput } from './QuickJump';
 import { AskPanel, type AskHandle } from './AskPanel';
@@ -480,79 +482,70 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
   );
 };
 
+/** The patch as one line; new items and what changed for reviews are one click away. */
 const PatchNews: React.FC<{ onCta: () => void }> = ({ onCta }) => {
   const { lang, L } = useLang();
   const p = CURRENT_PATCH;
   const v = (b: Bi) => L(b).replace('{v}', p.version);
   return (
-    <section className="cx-patch" aria-labelledby="cx-patch-title">
-      <div className="cx-patch-top">
-        <div className="cx-patch-head">
-          <p className="cx-eyebrow">{L(UI.patchEyebrow)} · <time dateTime={p.date}>{p.date}</time></p>
-          <h2 id="cx-patch-title">{v(UI.patchTitle)}</h2>
-        </div>
-        <div className="cx-patch-actions">
-          <button type="button" className="cx-patch-cta" onClick={onCta}>{v(UI.patchCta)}</button>
-          <a href={p.notesUrl} target="_blank" rel="noreferrer">{L(UI.patchNotes)} ↗</a>
-        </div>
-      </div>
-      <div className="cx-patch-items">
-        <span className="cx-patch-label">{L(UI.patchNewItems)}</span>
-        {p.newItems.map((it) => {
-          const name = lang === 'zh' ? it.zh : it.en;
-          return (
-            <span key={it.key} className="cx-patch-item" title={name}>
-              <SafeImg src={itemIcon(it.key)} alt="" className="cx-patch-icon" />
-              <span>{name}</span>
-            </span>
-          );
-        })}
-      </div>
+    <section className="cx-patch hm-patchbar" aria-labelledby="cx-patch-title">
       <details className="cx-patch-details">
-        <summary>{L(UI.patchMore)}</summary>
+        <summary>
+          <span className="hm-patch-line">
+            <time dateTime={p.date}>{p.date}</time>
+            <h2 id="cx-patch-title">{v(UI.patchTitle)}</h2>
+            <span className="hm-patch-count">{L(UI.patchNewItems)} {p.newItems.length}</span>
+          </span>
+        </summary>
+        <div className="cx-patch-items">
+          {p.newItems.map((it) => {
+            const name = lang === 'zh' ? it.zh : it.en;
+            return (
+              <span key={it.key} className="cx-patch-item" title={name}>
+                <SafeImg src={itemIcon(it.key)} alt="" className="cx-patch-icon" />
+                <span>{name}</span>
+              </span>
+            );
+          })}
+        </div>
         <ul className="cx-patch-list">
           {p.highlights.map((h, i) => <li key={i}>{L(h)}</li>)}
         </ul>
         <p className="cx-patch-coach"><strong>{L(UI.patchForCoach)}</strong> {L(p.forCoach)}</p>
       </details>
+      <div className="cx-patch-actions">
+        <button type="button" className="cx-patch-cta" onClick={onCta}>{v(UI.patchCta)}</button>
+        <a href={p.notesUrl} target="_blank" rel="noreferrer">{L(UI.patchNotes)} ↗</a>
+      </div>
     </section>
   );
 };
 
+/** The review page's snippets: same commands and tool names as the home page (accessSnippets.ts). */
 const AgentSnippets: React.FC<{ matchId: string }> = ({ matchId }) => {
   const { L } = useLang();
-  const [tab, setTab] = useState<'cli' | 'http' | 'mcp'>('cli');
-  const code = {
-    cli: `node packages/cli/bin/dota2ai.js coach ${matchId} --hero tidehunter --section why\nnode packages/cli/bin/dota2ai.js coach ${matchId} --hero spectre --lang zh`,
-    http: `curl https://dota2.ai/api/coach/${matchId}\ncurl https://dota2.ai/llms.txt`,
-    mcp: `node packages/mcp/bin/dota2ai-mcp.js\n# Tools: coach_recent, coach_report, coach_cases, coach_ask, coach_goal_check`,
-  }[tab];
+  const snippets = accessSnippets(matchId).filter((m) => m.lines.length);
+  const [tab, setTab] = useState(snippets[0].mode);
+  const cur = snippets.find((m) => m.mode === tab)!;
   return (
     <details className="cx-api cx-api-drawer">
       <summary>{L(UI.api)}</summary>
       <div className="cx-api-tabs" role="tablist" aria-label={L(UI.api)}>
-        {(['cli', 'http', 'mcp'] as const).map((kTab) => (
-          <button key={kTab} type="button" role="tab" aria-selected={tab === kTab} className={tab === kTab ? 'is-on' : ''} onClick={() => setTab(kTab)}>
-            {kTab.toUpperCase()}
+        {snippets.map((m) => (
+          <button key={m.mode} type="button" role="tab" aria-selected={tab === m.mode} className={tab === m.mode ? 'is-on' : ''} onClick={() => setTab(m.mode)}>
+            {L(m.label)}
           </button>
         ))}
       </div>
-      <pre><code>{code}</code></pre>
+      <pre><code>{cur.lines.join('\n')}</code></pre>
+      <p className="cx-muted">{L(cur.note)}</p>
     </details>
   );
 };
 
-/** The example match's three seats, with facts from that match (the fixture behind every sample link). */
-const SAMPLE_CARDS: { slot: number; slug: string; hero: Bi; role: Bi; kda: string; lane: Bi }[] = [
-  { slot: 0, slug: 'tidehunter', hero: { en: 'Tidehunter', zh: '潮汐猎人' }, role: { en: 'Pos 3 · offlane', zh: '3 号位 · 劣势路' }, kda: '6/12/15', lane: { en: 'Lost the lane to Ursa', zh: '对线输给熊战士' } },
-  { slot: 2, slug: 'warlock', hero: { en: 'Warlock', zh: '术士' }, role: { en: 'Pos 5 · support', zh: '5 号位 · 辅助' }, kda: '4/14/19', lane: { en: 'Against Dawnbreaker', zh: '对线破晓辰星' } },
-  { slot: 4, slug: 'spectre', hero: { en: 'Spectre', zh: '幽鬼' }, role: { en: 'Pos 1 · carry', zh: '1 号位 · 优势路' }, kda: '12/15/9', lane: { en: 'Farm fell behind', zh: '经济落后' } },
-];
-const HERO_ART = (slug: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${slug}.png`;
-
 const HOME = {
   title: { en: 'Paste a match.', zh: '贴一场比赛。' },
-  sub: { en: 'Match ID, a match link or your friend code. See where the game was lost — and what to practise next.', zh: '比赛 ID、对局链接或好友码。看清这局输在哪，下一局练什么。' },
+  sub: { en: 'A post-match coach for Dota 2. Every point cites the numbers behind it, and it says plainly what the data cannot show — then tells you what to practise next game.', zh: 'Dota 2 赛后教练。每条结论都标明依据，数据看不到的会直说，然后告诉你下一局练什么。' },
   hint: { en: 'Match ID, link, or friend code', zh: '比赛 ID、链接或好友码' },
   samplesTitle: { en: 'Or open a sample review', zh: '或者，打开一份示例复盘' },
   samplesSub: { en: 'Match {id} · Dire victory', zh: '比赛 {id} · 夜魇胜利' },
@@ -590,11 +583,14 @@ export const CoachHome: React.FC = () => {
     setError(r.kind === 'vanity' ? 'vanity' : 'invalid');
   };
 
+  const focusInput = () => { inputRef.current?.focus(); inputRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }); };
   // The river lights up once the box holds something we can open (the page's one memorable moment).
   const state = detected.kind === 'match' || detected.kind === 'account' ? detected.kind : 'idle';
 
   return (
-    <Shell isHome>
+    <Shell isHome wide>
+      <div className="hm-first">
+      <div className="hm-left">
       <section className="cx-hero hm-map" data-state={state}>
         <svg className="hm-minimap" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
           <polygon className="hm-radiant" points="0,100 0,52 48,100" />
@@ -637,42 +633,14 @@ export const CoachHome: React.FC = () => {
       </section>
 
       {known && <div className="hm-latest"><LatestGame accountId={known} /></div>}
+      </div>
+      {/* The first screen's working object: the engine's own review of a real match, live. */}
+      <LiveSample matchId={EXAMPLE_MATCH} />
+      </div>
 
-      <section className="hm-samples" aria-labelledby="hm-samples-title">
-        <div className="hm-samples-head">
-          <h2 id="hm-samples-title">{L(HOME.samplesTitle)}</h2>
-          <span>{L(HOME.samplesSub).replace('{id}', EXAMPLE_MATCH)}</span>
-        </div>
-        <ul>
-          {SAMPLE_CARDS.map((c) => (
-            <li key={c.slot}>
-              <Link to={`/r/${EXAMPLE_MATCH}?p=${c.slot}&lang=${lang}`} className="hm-sample">
-                <SafeImg src={HERO_ART(c.slug)} alt="" className="hm-sample-art" />
-                <span className="hm-sample-text">
-                  <b>{L(c.hero)}</b>
-                  <small>{L(c.role)} · {c.kda}</small>
-                  <span>{L(c.lane)}</span>
-                </span>
-                <span className="hm-sample-go" aria-hidden="true">→</span>
-                <span className="cx-sr">{L(HOME.open)}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </section>
+      <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />
 
-      <PatchNews onCta={() => { inputRef.current?.focus(); inputRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }); }} />
-
-      <section className="cx-principles hm-how">
-        {[['p1t', 'p1'], ['p2t', 'p2'], ['p3t', 'p3']].map(([tk, bk], i) => (
-          <div key={tk} className="hm-how-item">
-            <span className="cx-num">0{i + 1}</span>
-            <h2>{L(UI[tk as 'p1t'])}</h2>
-            <p>{L(UI[bk as 'p1'])}</p>
-          </div>
-        ))}
-      </section>
-      <AgentSnippets matchId={EXAMPLE_MATCH} />
+      <PatchNews onCta={focusInput} />
     </Shell>
   );
 };

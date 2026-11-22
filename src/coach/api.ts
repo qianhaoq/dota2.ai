@@ -112,3 +112,35 @@ export async function fetchMatchup(hero: number, vs: number, rank?: string | nul
   if (!res.ok) throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status);
   return body;
 }
+
+/** A validated `dota-coach-ui/2` surface, as `lib/coach/cards.js` emits it. */
+export interface CardSurface {
+  catalog: string; engine: string; match_id: number; slot: number;
+  cards: { id: string; component: string; title: { en: string; zh: string }; authority: string; tone: string; data: Record<string, unknown>; actions: unknown[]; evidence: unknown[] }[];
+}
+
+// One request per match+seat per session: switching seats back and forth must
+// not spend the caller's rate limit. Failures are not cached (retry later).
+const cardsCache = new Map<string, Promise<CardSurface>>();
+
+/** GET /api/coach/:id/cards?seat= — validated (wrong catalog or shape → error, never rendered). */
+export function fetchCoachCards(matchId: string, seat: number): Promise<CardSurface> {
+  const key = `${matchId}:${seat}`;
+  const hit = cardsCache.get(key);
+  if (hit) return hit;
+  const p = (async () => {
+    const res = await fetch(`/api/coach/${encodeURIComponent(matchId)}/cards?seat=${seat}`);
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new CoachApiError(body?.code ?? 'upstream', body?.error ?? `HTTP ${res.status}`, res.status, body?.retryAfterSec);
+    const { validateSurface } = await import('../../lib/coach/cards.js');
+    const surface = validateSurface(body) as CardSurface | null;
+    if (!surface) throw new CoachApiError('invalid', 'Unexpected cards payload', res.status);
+    return surface;
+  })();
+  cardsCache.set(key, p);
+  p.catch(() => cardsCache.delete(key));
+  return p;
+}
+
+/** Test hook: forget cached surfaces. */
+export function clearCardsCache() { cardsCache.clear(); }
