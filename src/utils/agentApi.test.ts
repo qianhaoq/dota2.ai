@@ -103,9 +103,12 @@ describe('agent API', () => {
 
   it('says whether a replay trace exists and for which heroes', async () => {
     const a = await get(`/api/agent/${MATCH}`);
-    expect(a.body).toMatchObject({ trace: true, model_configured: true });
+    expect(a.body).toMatchObject({ trace: true, model_configured: true, can_parse: false });
     expect(a.body.heroes).toContainEqual({ hero: 'beastmaster', team: 'dire', hero_id: 38, en: 'Beastmaster', zh: '兽王' });
-    expect((await get('/api/agent/999')).body).toEqual({ trace: false, model_configured: true, heroes: [] });
+    expect((await get('/api/agent/999')).body).toEqual({ trace: false, model_configured: true, can_parse: false, heroes: [], parse: { status: 'none' } });
+    // Without a pipeline nothing can be parsed, and the answer says so.
+    expect(await post('/api/agent/999/prepare', {})).toMatchObject({ status: 503, body: { status: 'unavailable' } });
+    expect(await post(`/api/agent/${MATCH}/prepare`, {})).toMatchObject({ status: 200, body: { status: 'ready' } });
     expect((await get('/api/agent/abc')).status).toBe(400);
   });
 
@@ -117,7 +120,7 @@ describe('agent API', () => {
     for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=zh`)).body; if (now.status === 'ready') break; await new Promise((r) => setTimeout(r, 20)); }
     expect(now).toMatchObject({ status: 'ready', model: 'test-model', tool_calls: 2, verification: { repaired: false, dropped: 0 }, review: { schema: 'dota2.ai/deep-review@1', hero: 'beastmaster', lang: 'zh', verdict: submit.verdict } });
     expect(now.review.findings[0].evidence[0]).toEqual({ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: finding.evidence[0].fact });
-    expect(readdirSync(reviewDir)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
+    expect(readdirSync(reviewDir).sort()).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.job\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
     const calls = m.seen.length;
     budget = { ok: false, reason: 'client', retryAfterSec: 9 };
     expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'zh' })).toMatchObject({ status: 200, body: { status: 'ready' } });

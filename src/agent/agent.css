@@ -155,3 +155,18 @@
 }
 @media (prefers-reduced-motion: reduce) { .ag-pulse, .ag-steps li.is-live { animation: none; } }
 .ag-x { font-weight: 600; }
+
+/* the wait, as a line of four steps */
+.ag-pick-sub { color: var(--text-2); margin: -12px 0 24px; }
+.ag-journey { list-style: none; margin: 28px 0 0; padding: 0; display: grid; gap: 0; }
+.ag-journey > li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 14px; padding-bottom: 22px; position: relative; color: var(--text-3); }
+.ag-journey > li:not(:last-child)::before { content: ''; position: absolute; left: 6px; top: 16px; bottom: 0; width: 1px; background: var(--line-2); }
+.ag-journey > li.is-done:not(:last-child)::before { background: var(--good); }
+.ag-journey-dot { width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--ink); margin-top: 4px; position: relative; z-index: 1; }
+.ag-journey > li.is-done { color: var(--text-2); }
+.ag-journey > li.is-done .ag-journey-dot { background: var(--good); border-color: var(--good); }
+.ag-journey > li.is-live { color: var(--text); }
+.ag-journey > li.is-live .ag-journey-dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 5px rgba(227, 163, 70, 0.16); animation: ag-pulse 1.4s ease-in-out infinite; }
+.ag-journey strong { font-weight: 500; font-size: 17px; }
+.ag-journey .ag-steps { margin: 8px 0 0; }
+@media (prefers-reduced-motion: reduce) { .ag-journey > li.is-live .ag-journey-dot { animation: none; } }

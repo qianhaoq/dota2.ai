@@ -50,3 +50,6 @@ auth.json
 # Offline identity migration Python bytecode
 /scripts/identity/__pycache__/
 /tests/identity/__pycache__/
+
+# The pinned replay extractor is copied in for a worker image build, never committed.
+vendor/

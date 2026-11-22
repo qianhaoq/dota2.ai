@@ -4,7 +4,7 @@ import { CoachApiError, fetchCoachReport, fetchRecentMatches } from './api';
 import { markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, Evidence, Finding, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, useLang, type Lang } from './ui';
-import { AccessModes, LiveSample } from './HomeBlocks';
+import { AccessModes, HowItWorks } from './HomeBlocks';
 import { accessSnippets } from './accessSnippets';
 import { QuickJump, detectSmartInput } from './QuickJump';
 import { CURRENT_PATCH, itemIcon } from './patch';
@@ -18,7 +18,7 @@ const EXAMPLE_MATCH = '9091400302';
 export { SafeImg };
 
 const UI = {
-  tagline: { en: 'A post-match coach that shows its evidence.', zh: '一位拿证据说话的赛后教练。' },
+  tagline: { en: 'A Dota 2 coach that watches the replay.', zh: '看录像复盘的 Dota 2 教练。' },
   heroTitle: { en: 'Paste a match.\nGet a coach’s read.', zh: '贴一场比赛，\n得到一份教练复盘。' },
   placeholder: { en: 'Match ID or OpenDota / Dotabuff / STRATZ link', zh: '比赛 ID，或 OpenDota / Dotabuff / STRATZ 链接' },
   review: { en: 'Review', zh: '开始复盘' },
@@ -144,7 +144,7 @@ const UI = {
   },
   teamCopied: { en: 'Link copied — paste it to your team', zh: '链接已复制，发到队伍群里吧' },
   ranked: { en: 'Ranked', zh: '天梯' },
-  footer: { en: 'Not affiliated with Valve. Match data from OpenDota.', zh: '粉丝项目，与 Valve 无关。比赛数据来自 OpenDota。' },
+  footer: { en: 'Not affiliated with Valve. Reviews are read from the game\'s replay; scoreboards from OpenDota.', zh: '粉丝项目，与 Valve 无关。复盘读的是对局录像；记分板来自 OpenDota。' },
   parsed: { en: 'Parsed', zh: '已解析' },
   fromSteamGc: { en: 'Scoreboard from Valve’s game coordinator (OpenDota unavailable): no timeline yet', zh: '数据来自 Valve 游戏协调器（OpenDota 暂不可用）：只有终局计分板，暂无时间线' },
   fromSteamGcParsed: { en: 'Parsed by dota2.ai from Valve’s replay (OpenDota unavailable): no percentile comparison', zh: '由 dota2.ai 解析 Valve 录像（OpenDota 暂不可用）：暂无百分位对比' },
@@ -558,7 +558,7 @@ const AgentSnippets: React.FC<{ matchId: string }> = ({ matchId }) => {
 
 const HOME = {
   title: { en: 'Paste a match.', zh: '贴一场比赛。' },
-  sub: { en: 'A post-match coach for Dota 2. Every point cites the numbers behind it, and it says plainly what the data cannot show — then tells you what to practise next game.', zh: 'Dota 2 赛后教练。每条结论都标明依据，数据看不到的会直说，然后告诉你下一局练什么。' },
+  sub: { en: 'A coach that watches your replay. It finds what decided the game, shows the moments that prove it, and tells you what to change next time.', zh: '一位会看你录像的教练。找出这局输赢的关键，把证明它的时刻摆给你看，再告诉你下一把改什么。' },
   hint: { en: 'Match ID, link, or friend code', zh: '比赛 ID、链接或好友码' },
   samplesTitle: { en: 'Or open a sample review', zh: '或者，打开一份示例复盘' },
   samplesSub: { en: 'Match {id} · Dire victory', zh: '比赛 {id} · 夜魇胜利' },
@@ -647,8 +647,7 @@ export const CoachHome: React.FC = () => {
 
       {known && <div className="hm-latest"><LatestGame accountId={known} /></div>}
       </div>
-      {/* The first screen's working object: the engine's own review of a real match, live. */}
-      <LiveSample matchId={EXAMPLE_MATCH} />
+      <HowItWorks />
       </div>
 
       <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />

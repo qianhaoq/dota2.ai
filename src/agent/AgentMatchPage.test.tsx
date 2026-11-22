@@ -3,7 +3,7 @@ import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { AgentMatchPage } from './AgentMatchPage';
+import { AgentMatchPage, journeyStep } from './AgentMatchPage';
 import { turningFight } from './ReviewDoc';
 import { stepLabel } from './ChatRail';
 
@@ -19,6 +19,7 @@ const review = {
   findings: [{ title: 'Roar on the wrong target', claim: 'Three of ten went to Axe.', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: 'Roared into her BKB; stunned 3.4 s.' }], fix: 'Keep it for her.' }],
   did_well: ['Aghanim\'s at 16:48.'], next_game: ['Keep the roar for the carry.'], blind_spots: ['Vision.'],
 };
+const board = { match: { patch: '7.42' }, players: [{ slot: 0, radiant: true, kda: [4, 12, 14], hero: { id: 2, en: 'Axe', zh: '斧王', slug: 'axe', img: null } }, { slot: 6, radiant: false, kda: [9, 11, 18], hero: { id: 38, en: 'Beastmaster', zh: '兽王', slug: 'beastmaster', img: null } }] };
 const cast = { status: 'ok', ref: 'cast:beastmaster:primal_roar:6', kind: 'cast', names: { phantom_assassin: 'Phantom Assassin', sven: 'Sven' }, record: { clock: '27:27', target: 'phantom_assassin', target_hp: { hp: 1980, max_hp: 1980 }, target_spell_immune: true, target_stunned_seconds: 3.4, allies_within_1300: ['sven'], enemies_within_1300: ['phantom_assassin'], deaths_within_12s: [{ hero: 'phantom_assassin', side: 'enemy', dt: 10.8 }] } };
 const overview = { status: 'ok', ref: 'overview', kind: 'overview', names: {}, record: { duration: { t: 2551 }, fights: [{ ref: 'fight:11', from: 1826, to: 1848, clock: '30:26–30:48', my_team_deaths: 5, enemy_deaths: 3, my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: -4298 }] } };
 
@@ -42,22 +43,64 @@ const page = (path: string) => render(
   </MemoryRouter>,
 );
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.sessionStorage.clear(); });
 
 describe('AgentMatchPage', () => {
-  it('without a parsed replay it says so and shows nothing in its place', async () => {
-    mockFetch({ '/api/agent/8000000001': { trace: false, model_configured: true, heroes: [] } });
-    page('/r/8000000001?lang=en');
-    expect(await screen.findByRole('heading', { name: 'This game has no parsed replay yet' })).toBeTruthy();
-    expect(screen.queryByText('Ask the coach')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Review my game' })).toBeNull();
-  });
-
-  it('asks which hero, then offers to start; the start is the reader\'s click, never automatic', async () => {
-    const calls = mockFetch({ '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+  it('no parsed replay yet: the roster comes from the scoreboard, and one click runs replay → parse → review', async () => {
+    let polls = 0; let started = 0;
+    const calls = mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => ({ status: 'running', stage: 'locating' }),
+      '/review?': () => (started ? { status: 'running', steps: [{ tool: 'match_overview', args: {} }] } : { status: 'none' }),
+      '/review': (_u: string, init?: RequestInit) => { if (init?.method === 'POST') { started += 1; return { status: 'running', steps: [] }; } return null; },
+      // First the parse is running; two polls later the trace is there.
+      '/api/agent/9100904020': () => { polls += 1; return polls <= 1 ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } : polls === 2 ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'running', stage: 'extracting' } } : { trace: true, model_configured: true, can_parse: true, heroes }; },
+    });
     page('/r/9100904020?lang=en');
     fireEvent.click(await screen.findByRole('button', { name: /Beastmaster/ }));
-    expect(await screen.findByRole('heading', { name: 'No review of this hero yet' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
+    // Nothing that costs a download or a model call has started on its own.
+    expect(calls.some((c) => c.init?.method === 'POST')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    await waitFor(() => expect(document.querySelector('.ag-journey li.is-live strong')?.textContent).toBe('Read the replay'));
+    // The trace arrives: the review starts without a second click.
+    await waitFor(() => expect(started).toBe(1), { timeout: 8000 });
+    expect(await screen.findByText('Reading the whole game', {}, { timeout: 8000 })).toBeTruthy();
+    expect(calls.filter((c) => c.url.includes('/prepare'))).toHaveLength(1);
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/review') && c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
+  }, 20000);
+
+  it('a replay that is gone is said plainly, with the scoreboard and no review in its place', async () => {
+    mockFetch({ '/api/coach/8000000001': board, '/api/agent/8000000001': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'failed', reason: 'replay_gone', final: true } } });
+    page('/r/8000000001?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('heading', { name: 'The replay of this game is no longer available' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Scoreboard' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Review my game' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByText('Ask the coach')).toBeNull();
+  });
+
+  it('other dead ends: parsing switched off, a parse that failed (retry offered), a match nobody knows', async () => {
+    mockFetch({ '/api/coach/8000000002': board, '/api/agent/8000000002': { trace: false, model_configured: true, can_parse: false, heroes: [], parse: { status: 'none' } } });
+    page('/r/8000000002?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('heading', { name: 'Replay reviews are not switched on here' })).toBeTruthy();
+    cleanup();
+    mockFetch({ '/api/coach/8000000003': board, '/api/agent/8000000003': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'failed', reason: 'download_failed', final: false } } });
+    page('/r/8000000003?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('heading', { name: 'The replay could not be read' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    cleanup();
+    mockFetch({ '/api/agent/8000000004': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } });
+    page('/r/8000000004?lang=en');
+    expect(await screen.findByRole('heading', { name: 'This match could not be opened' })).toBeTruthy();
+  });
+
+  it('with a trace: pick a hero, then the start is the reader\'s click, never automatic', async () => {
+    const calls = mockFetch({ '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes } });
+    page('/r/9100904020?lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: /Beastmaster/ }));
+    expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
     expect(calls.some((c) => c.init?.method === 'POST')).toBe(false);
     expect(calls.some((c) => c.url.includes('/review?hero=beastmaster&lang=en'))).toBe(true);
   });
@@ -130,6 +173,13 @@ describe('helpers', () => {
     expect(turningFight([f('a', 3565, 2800), f('b', -745, -4298), f('c', -8039, -20144)])?.ref).toBe('b');
     expect(turningFight([f('a', 500, -400), f('b', null, null)])).toBeNull();
     expect(turningFight([])).toBeNull();
+  });
+  it('the wait is four steps, and the live one follows the work', () => {
+    const noTrace = (stage: string | null) => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'running' as const, stage } });
+    const withTrace = { trace: true, model_configured: true, can_parse: true, heroes: [] };
+    const steps = (n: number) => ({ status: 'running' as const, steps: Array.from({ length: n }, () => ({ tool: 'x', args: {} })) });
+    expect([journeyStep(noTrace('locating'), null), journeyStep(noTrace('downloading'), null), journeyStep(noTrace('extracting'), null), journeyStep(noTrace('storing'), null)]).toEqual([0, 0, 1, 1]);
+    expect([journeyStep(withTrace, { status: 'none' }), journeyStep(withTrace, steps(2)), journeyStep(withTrace, steps(6))]).toEqual([2, 2, 3]);
   });
   it('names the agent\'s steps for the reader', () => {
     expect(stepLabel({ tool: 'fight_timeline', args: { from: 1805, to: 1860 } }, 'zh')).toBe('回放团战 30:05–31:00');

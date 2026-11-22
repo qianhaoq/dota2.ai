@@ -31,7 +31,7 @@ describe('current patch on the home page', () => {
     expect(screen.getByRole('link', { name: /完整更新日志/ }).getAttribute('href')).toBe('https://www.dota2.com/patches/7.42');
     // Home v3 order: the search box, the live sample review, the four ways to use it, then the patch as one line.
     // (The three "principles" cards are gone; their message is in the subtitle.)
-    const order = [...container.querySelectorAll('.cx-hero, .hm-live, .hm-ways, .cx-patch, .cx-principles')].map((e) => e.classList[0]);
-    expect(order).toEqual(['cx-hero', 'hm-live', 'hm-ways', 'cx-patch']);
+    const order = [...container.querySelectorAll('.cx-hero, .hm-how, .hm-ways, .cx-patch, .cx-principles')].map((e) => e.classList[0]);
+    expect(order).toEqual(['cx-hero', 'hm-how', 'hm-ways', 'cx-patch']);
   });
 });

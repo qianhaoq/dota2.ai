@@ -13,33 +13,13 @@
  *
  * No network. Exit status: 0 written · 2 usage · 4 unreadable extract.
  */
-import { createReadStream } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 import { gzipSync } from 'node:zlib';
-import { createTraceBuilder } from '../packages/review-engine/src/trace/build.js';
+import { buildTraceFromExtract } from '../lib/agent/traceBuild.js';
+
+export { buildTraceFromExtract };
 
 const USAGE = 'Usage: node scripts/build-trace.mjs <extractDir> <out.json.gz> [--match <id>]';
-
-async function eachRow(path, fn) {
-  const input = createReadStream(path);
-  const lines = createInterface({ input, crlfDelay: Infinity });
-  let index = 0;
-  try {
-    for await (const line of lines) { if (line) fn(JSON.parse(line), index); index += 1; }
-  } finally { lines.close(); input.destroy(); }
-  return index;
-}
-
-/** Stream an extract directory into a trace object. */
-export async function buildTraceFromExtract(extractDir, meta = {}) {
-  const builder = createTraceBuilder();
-  const dir = join(extractDir, 'trace');
-  await eachRow(join(dir, 'states.jsonl'), (row) => builder.addState(row));
-  await eachRow(join(dir, 'events.jsonl'), (row, index) => builder.addEvent(row, index));
-  return builder.finish(meta);
-}
 
 async function main(argv) {
   const rest = []; let matchId = null;

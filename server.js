@@ -74,7 +74,9 @@ import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
 import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { createAgentRouter } from './lib/agent/router.js';
-import { createAgentService, createFileTraceStore } from './lib/agent/service.js';
+import { createAgentService } from './lib/agent/service.js';
+import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from './lib/agent/stores.js';
+import { createRemotePipeline, createTracePipeline } from './lib/agent/tracePipeline.js';
 import { deepReviewProvider } from './lib/agent/providers.js';
 import { openAiCompatible } from './lib/agent/loop.js';
 import { createCoachService } from './lib/coach/service.js';
@@ -881,21 +883,41 @@ app.use(createCoachRouter({
   },
 }));
 
-// The review agent: deep reviews and chat over a parsed replay (lib/agent).
-// Off unless AGENT_TRACE_DIR holds traces (scripts/build-trace.mjs); without
-// a model key the routes answer but start nothing.
+// The review agent: replay → trace → deep review → chat (lib/agent).
+// Storage: AGENT_BUCKET (GCS, objects under agent/) or AGENT_TRACE_DIR /
+// AGENT_REVIEW_DIR on disk. Parsing: TRACE_WORKER_URL (the private worker,
+// scripts/trace-worker.mjs) or, on a machine that has the extractor,
+// DOTA_EXTRACT_BIN in process. With none of these every match answers
+// "no parsed replay" and nothing can be started.
 const agentModel = deepReviewProvider('deepseek', process.env);
+const agentBlobs = (() => {
+  const name = (process.env.AGENT_BUCKET || '').trim();
+  if (!name) return null;
+  try { return createBucketStore(createGcsBucket(name), 'agent/'); } catch (err) { console.warn(`WARNING: AGENT_BUCKET ignored (${err?.message ?? err})`); return null; }
+})();
+const agentTraces = createTraceStore(agentBlobs ?? (process.env.AGENT_TRACE_DIR ? createFileStore(process.env.AGENT_TRACE_DIR) : null));
+const agentPipeline = (() => {
+  const worker = (process.env.TRACE_WORKER_URL || '').trim();
+  if (worker) {
+    const audience = (process.env.TRACE_WORKER_AUDIENCE || '').trim();
+    return createRemotePipeline({ url: worker, getMatchDetail, auth: audience ? createIdTokenProvider({ audience }) : undefined });
+  }
+  const bin = process.env.DOTA_EXTRACT_BIN || '';
+  return bin && agentTraces ? createTracePipeline({ getMatchDetail, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;
+})();
 app.use(createAgentRouter({
   service: createAgentService({
-    traces: createFileTraceStore(process.env.AGENT_TRACE_DIR || null),
+    traces: agentTraces,
+    pipeline: agentPipeline,
     complete: agentModel.ok ? openAiCompatible({ client: new OpenAI({ baseURL: agentModel.baseURL, apiKey: agentModel.apiKey }), model: agentModel.model, extraBody: agentModel.extraBody }) : null,
     model: agentModel.ok ? agentModel.model : null,
-    reviewDir: process.env.AGENT_REVIEW_DIR || null,
+    docs: agentBlobs ? createJsonStore(agentBlobs) : (process.env.AGENT_REVIEW_DIR ? createJsonStore(createFileStore(process.env.AGENT_REVIEW_DIR)) : null),
     getMatchDetail,
     log: (msg) => console.warn(`[agent] ${msg}`),
   }),
   resolveClientIp,
   llm: reviewLlmLimit,
+  parseDailyMax: Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : undefined,
   guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
   log: (msg) => console.warn(`[agent] ${msg}`),
 }));

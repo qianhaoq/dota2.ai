@@ -1,7 +1,9 @@
 /** Client for the review agent (lib/agent/router.js). */
 
 export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string }
-export interface Availability { trace: boolean; model_configured: boolean; heroes: AgentHero[] }
+/** Where the replay parse stands when there is no trace yet. `final`: trying again will not help (the replay is gone). */
+export type ParseState = { status: 'none' } | { status: 'running'; stage: string | null } | { status: 'failed'; reason: string; final: boolean } | { status: 'ready' } | { status: 'unavailable' };
+export interface Availability { trace: boolean; model_configured: boolean; can_parse: boolean; heroes: AgentHero[]; parse?: ParseState }
 
 export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
 export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string }
@@ -32,6 +34,10 @@ const enc = encodeURIComponent;
 
 export const fetchAvailability = (matchId: string, signal?: AbortSignal) =>
   fetch(`/api/agent/${enc(matchId)}`, { signal }).then((r) => json<Availability>(r));
+
+/** Start parsing the replay into a trace (or learn that it is already running / impossible). */
+export const prepareMatch = (matchId: string) =>
+  fetch(`/api/agent/${enc(matchId)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => json<ParseState>(r));
 
 export const fetchReview = (matchId: string, hero: string, lang: string, signal?: AbortSignal) =>
   fetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}`, { signal }).then((r) => json<ReviewState>(r));
