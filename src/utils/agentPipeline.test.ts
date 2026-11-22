@@ -205,6 +205,20 @@ describe('parse jobs in the service', () => {
     expect((await other.availability(ID)).parse).toEqual({ status: 'none' });
   });
 
+  it('a game with no replay address yet can be tried again; two prepares arriving together fetch once', async () => {
+    let answer: any = { ok: false, reason: 'no_replay_url' };
+    const h = makeService(async (id: any, _o: any, traces: any) => { if (answer.ok) await traces.put(id, gzipSync(fixture)); return answer; });
+    const svc = h.service();
+    await svc.prepare(ID); await settle();
+    expect((await svc.availability(ID)).parse).toEqual({ status: 'failed', reason: 'no_replay_url', final: false });
+    // Minutes later the address exists: the same match parses, without waiting out anything.
+    answer = { ok: true };
+    const [a, b] = await Promise.all([svc.prepare(ID), svc.prepare(ID)]);
+    expect([a.status, b.status]).toEqual(['running', 'running']);
+    await vi.waitFor(async () => expect((await svc.availability(ID)).trace).toBe(true), { timeout: 5000 });
+    expect(h.pipeline.run).toHaveBeenCalledTimes(2);
+  });
+
   it('a pipeline that throws is a failed parse, not a crash; without a pipeline prepare is unavailable', async () => {
     const h = makeService(async () => { throw new Error('boom'); });
     const svc = h.service();

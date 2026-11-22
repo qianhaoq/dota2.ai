@@ -61,7 +61,8 @@ export function fetchEvidence(matchId: string, hero: string, lang: string, ref: 
   return p;
 }
 
-export interface ChatTurn { q: string; a: string }
+/** `clean`: the answer came back with nothing unsupported; only such answers back a later one (lib/agent/chat.js). */
+export interface ChatTurn { q: string; a: string; clean: boolean }
 export interface ChatEvents { onStep: (step: ToolStep) => void; onText: (text: string, unverified: { kind: string; text: string }[]) => void; onError: (code: string) => void }
 
 /** One chat turn over SSE: `{step}` frames while the agent looks things up, then `{text}`, then `{done}`. */
