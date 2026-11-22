@@ -85,6 +85,23 @@ describe('openAiCompatible', () => {
     }, { signal });
     expect(out).toEqual({ text: '', toolCalls: [{ id: 't1', name: 'lookup', args: { q: 2 } }, { id: 't2', name: 'lookup', args: {}, argsError: true }, { id: 't3', name: 'lookup', args: {}, argsError: true }], usage: { input: 7, output: 3 } });
   });
+  it('a thinking model\'s reasoning travels back with its tool calls', async () => {
+    const replies = [
+      { choices: [{ message: { content: '', reasoning_content: 'look it up first', tool_calls: [{ id: 't1', function: { name: 'lookup', arguments: '{}' } }] } }] },
+      { choices: [{ message: { content: 'done', reasoning_content: 'now answer' } }] },
+    ];
+    let i = 0;
+    const create = vi.fn(async (_body: any) => replies[i++]);
+    const complete = openAiCompatible({ client: { chat: { completions: { create } } }, model: 'deepseek-flash', extraBody: { thinking: { type: 'enabled' } } });
+    const r = await runAgent({ complete, system: 's', messages: [{ role: 'user', content: 'u' }], tools, runTool: async () => ({ ok: 1 }) });
+    expect(r.text).toBe('done');
+    // The second request carries the first reply's reasoning on the assistant message that made the tool call.
+    const second = (create.mock.calls[1] as any[])[0].messages;
+    expect(second[2]).toEqual({ role: 'assistant', content: '', reasoning_content: 'look it up first', tool_calls: [{ id: 't1', type: 'function', function: { name: 'lookup', arguments: '{}' } }] });
+    // The final answer's reasoning is not stored: a new turn starts without it.
+    expect(r.messages.at(-1)).toEqual({ role: 'assistant', content: 'done' });
+  });
+
   it('omits tools when there are none and tolerates an empty reply', async () => {
     const create = vi.fn(async () => ({}));
     const out = await openAiCompatible({ client: { chat: { completions: { create } } }, model: 'm' })({ system: 's', messages: [], tools: [] });
