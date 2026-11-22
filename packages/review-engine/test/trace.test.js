@@ -343,9 +343,26 @@ describe('trace tools on a real game', () => {
     expect(run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' })).toMatchObject({ ref: 'audit:beastmaster:primal_roar', ref_scope: 'summary' });
     expect(run('death_context', { hero: 'beastmaster', index: 1 })).toMatchObject({ ref: 'deaths:beastmaster', ref_scope: 'summary' });
     expect(run('immunity_windows', { hero: 'phantom_assassin' })).toMatchObject({ ref: 'immunity:phantom_assassin', ref_scope: 'summary' });
+    // What was watched is in the ref.
+    expect(run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'beastmaster_primal_roar' }).ref).toBe('immunity:phantom_assassin:beastmaster:primal_roar');
     expect(run('immunity_windows', { team: 'dire' }).ref).toBe('immunity:dire');
     expect(run('immunity_windows', {}).ref).toBe('immunity:all');
     expect(run('match_overview')).toMatchObject({ ref: 'overview', ref_scope: 'summary' });
+  });
+
+  it('a death record asked for with another window says so in its ref', () => {
+    expect(run('death_context', { hero: 'beastmaster', index: 2 }).deaths[0].ref).toBe('death:beastmaster:2');
+    const wide = run('death_context', { hero: 'beastmaster', index: 2, window: 30 }).deaths[0];
+    expect(wide.ref).toBe('death:beastmaster:2:w30');
+    expect(wide.snapshots[0].dt).toBe(-30);
+  });
+
+  it('a timeline asked for with fractional bounds covers the whole seconds its ref names', () => {
+    const f = run('fight_timeline', { from: 80.6, to: 100.6 });
+    expect(f).toMatchObject({ ref: 'timeline:80-101', from: 80, to: 101 });
+    // The same window from its ref gives the same events.
+    expect(run('fight_timeline', { from: 80, to: 101 }).events).toEqual(f.events);
+    expect(run('fight_timeline', { from: 80.2, to: 80.4 })).toMatchObject({ ref: 'timeline:80-81' });
   });
 
   it('counts are stated by the tools, not left to the reader', () => {

@@ -1,87 +1,43 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SafeImg, useLang } from './ui';
-import { fetchCoachCards, type CardSurface } from './api';
 import { accessSnippets, agentPrompt, type AccessMode } from './accessSnippets';
 import type { Bi } from './types';
 
 const T = {
-  sampleTitle: { en: 'A real review, live', zh: '一份真实复盘（实时）' },
-  sampleSub: { en: 'Match {id} · built by the engine as you look', zh: '比赛 {id} · 引擎实时生成' },
-  open: { en: 'Open the full review →', zh: '打开完整复盘 →' },
-  unavailable: { en: 'The sample is unavailable right now — open the review directly.', zh: '示例暂时不可用——可以直接打开完整复盘。' },
-  doNext: { en: 'Do next game', zh: '下一局' },
+  howTitle: { en: 'What happens next', zh: '接下来会发生什么' },
+  how: [
+    { t: { en: 'You pick your hero', zh: '选你玩的英雄' }, d: { en: 'The review is written for one player.', zh: '复盘是写给一个人的。' } },
+    { t: { en: 'The coach watches the replay', zh: '教练看录像' }, d: { en: 'Every death, every ultimate, the fights that turned the game, your build. Two to three minutes.', zh: '每次阵亡、每个大招、转折的团战、你的出装。两到三分钟。' } },
+    { t: { en: 'You get the review', zh: '拿到复盘' }, d: { en: 'One verdict, at most three things that decided it — each with the replay record behind it — and what to change next game.', zh: '一句结论，最多三个决定胜负的问题，每条都能点开对应的录像记录，再加下一把该改什么。' } },
+    { t: { en: 'Ask anything', zh: '想问就问' }, d: { en: '"How should I have played the fight at 30:26?" The coach goes back to the replay before answering.', zh: '「30:26 那波团我该怎么打？」教练会回到录像里查了再答。' } },
+  ] as { t: Bi; d: Bi }[],
+  howNote: { en: 'Times and numbers are checked against the replay. What a replay cannot show — vision, voice chat — the coach says it cannot see.', zh: '时间点和数字都和录像核对过。录像里没有的——视野、语音——教练会直说看不到。' },
   waysTitle: { en: 'Four ways to use it', zh: '四种用法' },
   copy: { en: 'Copy', zh: '复制' },
   copied: { en: 'Copied', zh: '已复制' },
   promptTitle: { en: 'Or send this to your agent', zh: '或者，把这段话发给你的 Agent' },
-  seatGroup: { en: 'Seat in the sample match', zh: '示例比赛中的座位' },
 };
 
-/** Seats of the sample match shown on the home page (facts of that match). */
-export const SAMPLE_SEATS: { slot: number; slug: string; hero: Bi }[] = [
-  { slot: 0, slug: 'tidehunter', hero: { en: 'Tidehunter', zh: '潮汐猎人' } },
-  { slot: 2, slug: 'warlock', hero: { en: 'Warlock', zh: '术士' } },
-  { slot: 4, slug: 'spectre', hero: { en: 'Spectre', zh: '幽鬼' } },
-];
-const ICON = (slug: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${slug}.png`;
-
-type Finding = { title: Bi; action: Bi; tone: string };
-
 /**
- * The first screen's working object: the engine's own cards for one seat of
- * the sample match, fetched live (GET /api/coach/:id/cards). Headline + the
- * first finding and its "do next game". Fixed height while loading; on
- * failure a plain link, never made-up content.
+ * The first screen's second half: what happens after you paste a match, in
+ * the same four steps the match page shows while it works. No sample numbers:
+ * a review is about one real game, so the page shows the shape, not a fake.
  */
-export const LiveSample: React.FC<{ matchId: string }> = ({ matchId }) => {
-  const { lang, L } = useLang();
-  const [slot, setSlot] = useState(SAMPLE_SEATS[0].slot);
-  const [state, setState] = useState<{ status: 'loading' | 'ok' | 'error'; surface?: CardSurface }>({ status: 'loading' });
-  useEffect(() => {
-    let live = true;
-    setState({ status: 'loading' });
-    fetchCoachCards(matchId, slot)
-      .then((surface) => { if (live) setState({ status: 'ok', surface }); })
-      .catch(() => { if (live) setState({ status: 'error' }); });
-    return () => { live = false; };
-  }, [matchId, slot]);
-
-  const cards = state.surface?.cards ?? [];
-  const headline = cards.find((c) => c.component === 'Headline')?.data?.text as Bi | undefined;
-  const finding = cards.find((c) => c.component === 'Finding')?.data?.finding as Finding | undefined;
-  const href = `/r/${matchId}?p=${slot}&lang=${lang}`;
-
+export const HowItWorks: React.FC = () => {
+  const { L } = useLang();
   return (
-    <section className="hm-live" aria-labelledby="hm-live-title" aria-busy={state.status === 'loading'}>
-      <div className="hm-live-head">
-        <h2 id="hm-live-title">{L(T.sampleTitle)}</h2>
-        <span>{L(T.sampleSub).replace('{id}', matchId)}</span>
-      </div>
-      <div className="hm-seats" role="radiogroup" aria-label={L(T.seatGroup)}>
-        {SAMPLE_SEATS.map((s) => (
-          <button key={s.slot} type="button" role="radio" aria-checked={slot === s.slot} className={slot === s.slot ? 'is-on' : ''} onClick={() => setSlot(s.slot)}>
-            <SafeImg src={ICON(s.slug)} alt="" className="hm-seat-icon" />{L(s.hero)}
-          </button>
+    <section className="hm-how" aria-labelledby="hm-how-title">
+      <h2 id="hm-how-title">{L(T.howTitle)}</h2>
+      <ol className="hm-how-steps">
+        {T.how.map((step, i) => (
+          <li key={i}>
+            <span className="hm-how-dot" aria-hidden="true" />
+            <div><strong>{L(step.t)}</strong><p>{L(step.d)}</p></div>
+          </li>
         ))}
-      </div>
-      <div className="hm-live-body">
-        {state.status === 'loading' && <div className="hm-skeleton" aria-hidden="true"><span /><span /><span /></div>}
-        {state.status === 'error' && <p className="hm-live-err">{L(T.unavailable)}</p>}
-        {state.status === 'ok' && (
-          <>
-            {headline && <p className="hm-live-headline">{L(headline)}</p>}
-            {finding && (
-              <div className="hm-live-finding">
-                {/* The headline is usually this finding's title: never say it twice. */}
-                {!(headline && L(headline).includes(L(finding.title))) && <h3>{L(finding.title)}</h3>}
-                <p><b>{L(T.doNext)}</b>{L(finding.action)}</p>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-      <Link to={href} className="hm-live-open">{L(T.open)}</Link>
+      </ol>
+      <p className="hm-how-note">{L(T.howNote)}</p>
     </section>
   );
 };
@@ -101,6 +57,7 @@ const CopyButton: React.FC<{ text: string; label: string }> = ({ text, label }) 
     </button>
   );
 };
+
 
 /** Web / Agent (MCP) / CLI / HTTP, each with commands that work as written, plus a prompt for any agent. */
 export const AccessModes: React.FC<{ matchId: string; onWeb: () => void }> = ({ matchId, onWeb }) => {

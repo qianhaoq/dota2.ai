@@ -17,7 +17,7 @@ const good = {
   claim: '幻影刺客开了 7 次 BKB，只有 27:27 那次你的咆哮吼中了她。',
   evidence: [
     { refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 咆哮吼中开着 BKB 的幻影刺客，她 11 秒后（27:38）阵亡' },
-    { refs: ['immune:phantom_assassin:3'], fact: '30:34 她开 BKB 时咆哮还在冷却，9 秒前 30:25 给了瘟疫法师' },
+    { refs: ['immune:phantom_assassin:3:beastmaster-primal_roar'], fact: '30:34 她开 BKB 时咆哮还在冷却，9 秒前 30:25 给了瘟疫法师' },
     { refs: ['death:beastmaster:9'], fact: '36:05 满血 2915，咆哮就绪没放' },
   ],
   fix: '对面核心有 BKB 时，咆哮只留给他。',

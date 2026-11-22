@@ -1,10 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
 /**
- * PR7 e2e: evidence sheet (390) + panel (1280), visual baselines, axe,
- * keyboard/focus and screen-digit assertions against the fixture review.
- * The webServer builds the app and serves it with the zero-outbound mock
- * (scripts/mock-review-server.mjs) — match 9035042364, hero pudge.
+ * e2e at 390 and 1280 wide: the home page, the match page's journey from no
+ * replay to a review, evidence records, the chat, the next-game goal, axe and
+ * keyboard. The webServer builds the app and serves it with the zero-outbound
+ * fixture server (scripts/mock-review-server.mjs): the real agent over the
+ * trace of match 9100904020, with a scripted model (scripts/mock-agent.mjs).
  */
 export default defineConfig({
   testDir: './e2e',

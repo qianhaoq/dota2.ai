@@ -1,0 +1,90 @@
+/** Client for the review agent (lib/agent/router.js). */
+import type { GoalSpec } from '../coach/types';
+
+export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string }
+/** Where the replay parse stands when there is no trace yet. `final`: trying again will not help (the replay is gone). */
+export type ParseState = { status: 'none' } | { status: 'running'; stage: string | null } | { status: 'failed'; reason: string; final: boolean } | { status: 'ready' } | { status: 'unavailable' };
+export interface Availability { trace: boolean; model_configured: boolean; can_parse: boolean; heroes: AgentHero[]; parse?: ParseState }
+
+export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
+export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string }
+export interface DeepReview {
+  schema: string; match_id: number; hero: string; lang: 'en' | 'zh';
+  verdict: string; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
+  /** One thing the next game can be checked on (lib/agent/goal.js), tied to finding `finding` (1-based). */
+  goal?: GoalSpec & { finding: number };
+}
+export interface ToolStep { tool: string; args: Record<string, unknown> }
+export type ReviewState =
+  | { status: 'none' | 'no_trace' | 'unknown_hero' }
+  | { status: 'running'; steps: ToolStep[] }
+  | { status: 'ready'; review: DeepReview; verification: { repaired: boolean; dropped: number }; model: string | null; tool_calls: number }
+  | { status: 'failed'; reason?: string }
+  | { status: 'unavailable'; reason?: string };
+
+export interface EvidenceRecord { status: 'ok'; ref: string; kind: string; record: any; names: Record<string, string> }
+
+export class AgentApiError extends Error {
+  constructor(public code: string, public status: number, public retryAfterSec?: number) { super(code); }
+}
+
+async function json<T>(res: Response): Promise<T> {
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok && !body.status) throw new AgentApiError(body.code ?? 'failed', res.status, body.retryAfterSec);
+  return body as T;
+}
+const enc = encodeURIComponent;
+
+export const fetchAvailability = (matchId: string, signal?: AbortSignal) =>
+  fetch(`/api/agent/${enc(matchId)}`, { signal }).then((r) => json<Availability>(r));
+
+/** Start parsing the replay into a trace (or learn that it is already running / impossible). */
+export const prepareMatch = (matchId: string) =>
+  fetch(`/api/agent/${enc(matchId)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => json<ParseState>(r));
+
+export const fetchReview = (matchId: string, hero: string, lang: string, signal?: AbortSignal) =>
+  fetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}`, { signal }).then((r) => json<ReviewState>(r));
+
+export const startReview = (matchId: string, hero: string, lang: string) =>
+  fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero, lang }) }).then((r) => json<ReviewState>(r));
+
+const evidenceCache = new Map<string, Promise<EvidenceRecord>>();
+/** The tool record behind a ref. Records are pure functions of the replay, so they are cached for the session. */
+export function fetchEvidence(matchId: string, hero: string, lang: string, ref: string): Promise<EvidenceRecord> {
+  const key = `${matchId}|${hero}|${lang}|${ref}`;
+  let p = evidenceCache.get(key);
+  if (!p) {
+    p = fetch(`/api/agent/${enc(matchId)}/evidence?hero=${enc(hero)}&lang=${lang}&ref=${enc(ref)}`).then((r) => json<EvidenceRecord>(r));
+    p.catch(() => evidenceCache.delete(key));
+    evidenceCache.set(key, p);
+  }
+  return p;
+}
+
+/** `clean`: the answer came back with nothing unsupported; only such answers back a later one (lib/agent/chat.js). */
+export interface ChatTurn { q: string; a: string; clean: boolean }
+export interface ChatEvents { onStep: (step: ToolStep) => void; onText: (text: string, unverified: { kind: string; text: string }[]) => void; onError: (code: string) => void }
+
+/** One chat turn over SSE: `{step}` frames while the agent looks things up, then `{text}`, then `{done}`. */
+export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[] }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+  if (!res.ok || !res.body) { const b = await res.json().catch(() => ({})); throw new AgentApiError(b.code ?? 'failed', res.status, b.retryAfterSec); }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf('\n\n')) >= 0) {
+      const frame = buffer.slice(0, cut); buffer = buffer.slice(cut + 2);
+      if (!frame.startsWith('data: ')) continue;
+      let msg: any;
+      try { msg = JSON.parse(frame.slice(6)); } catch { continue; }
+      if (msg.step) ev.onStep(msg.step);
+      else if (typeof msg.text === 'string') ev.onText(msg.text, msg.unverified ?? []);
+      else if (msg.error) ev.onError(String(msg.error));
+    }
+  }
+}

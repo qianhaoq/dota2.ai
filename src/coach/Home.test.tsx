@@ -18,26 +18,16 @@ const { CoachHome } = await import('./CoachApp');
 afterEach(() => { cleanup(); cards.mockReset(); });
 const home = () => render(<MemoryRouter><CoachHome /></MemoryRouter>);
 
-describe('home: the live sample review', () => {
-  it('shows the engine’s headline and first finding for the chosen seat, and switches seats', async () => {
-    cards.mockImplementation(async (_id: string, seat: number) => buildSurface(report, seat));
+describe('home: what happens next', () => {
+  it('explains the four steps of a review and what the coach cannot see, without sample numbers', () => {
     const { container } = home();
-    const live = container.querySelector('.hm-live') as HTMLElement;
-    await waitFor(() => expect(live.querySelector('.hm-live-headline')?.textContent).toBe(report.reviews[0].headline.en));
-    expect(live.querySelector('.hm-live-finding h3')?.textContent).toBe(report.reviews[0].findings[0].title.en);
-    expect(cards).toHaveBeenCalledWith('9091400302', 0);
-    fireEvent.click(within(live).getByRole('radio', { name: /Spectre/ }));
-    await waitFor(() => expect(live.querySelector('.hm-live-headline')?.textContent).toBe(report.reviews[4].headline.en));
-    expect(within(live).getByRole('link', { name: /Open the full review/ }).getAttribute('href')).toBe('/r/9091400302?p=4&lang=en');
-  });
-
-  it('an unavailable sample says so and still links to the review — no made-up content', async () => {
-    cards.mockRejectedValue(new Error('down'));
-    const { container } = home();
-    const live = container.querySelector('.hm-live') as HTMLElement;
-    await waitFor(() => expect(live.textContent).toContain('The sample is unavailable right now'));
-    expect(live.querySelector('.hm-live-headline')).toBeNull();
-    expect(within(live).getByRole('link', { name: /Open the full review/ })).toBeTruthy();
+    const how = container.querySelector('.hm-how') as HTMLElement;
+    expect(within(how).getByRole('heading', { name: 'What happens next' })).toBeTruthy();
+    expect([...how.querySelectorAll('.hm-how-steps strong')].map((x) => x.textContent)).toEqual(['You pick your hero', 'The coach watches the replay', 'You get the review', 'Ask anything']);
+    expect(how.textContent).toContain('the coach says it cannot see');
+    // The old sample fetched the rule engine's cards; the home page no longer calls it.
+    expect(cards).not.toHaveBeenCalled();
+    expect(container.querySelector('.hm-live')).toBeNull();
   });
 });
 

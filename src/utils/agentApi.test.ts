@@ -146,9 +146,12 @@ describe('agent API', () => {
 
   it('says whether a replay trace exists and for which heroes', async () => {
     const a = await get(`/api/agent/${MATCH}`);
-    expect(a.body).toMatchObject({ trace: true, model_configured: true });
-    expect(a.body.heroes).toContainEqual({ hero: 'beastmaster', team: 'dire' });
-    expect((await get('/api/agent/999')).body).toEqual({ trace: false, model_configured: true, heroes: [] });
+    expect(a.body).toMatchObject({ trace: true, model_configured: true, can_parse: false });
+    expect(a.body.heroes).toContainEqual({ hero: 'beastmaster', team: 'dire', hero_id: 38, en: 'Beastmaster', zh: '兽王' });
+    expect((await get('/api/agent/999')).body).toEqual({ trace: false, model_configured: true, can_parse: false, heroes: [], parse: { status: 'none' } });
+    // Without a pipeline nothing can be parsed, and the answer says so.
+    expect(await post('/api/agent/999/prepare', {})).toMatchObject({ status: 503, body: { status: 'unavailable' } });
+    expect(await post(`/api/agent/${MATCH}/prepare`, {})).toMatchObject({ status: 200, body: { status: 'ready' } });
     expect((await get('/api/agent/abc')).status).toBe(400);
   });
 
@@ -160,7 +163,7 @@ describe('agent API', () => {
     for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=zh`)).body; if (now.status === 'ready') break; await new Promise((r) => setTimeout(r, 20)); }
     expect(now).toMatchObject({ status: 'ready', model: 'test-model', tool_calls: 2, verification: { repaired: false, dropped: 0 }, review: { schema: 'dota2.ai/deep-review@1', hero: 'beastmaster', lang: 'zh', verdict: submit.verdict } });
     expect(now.review.findings[0].evidence[0]).toEqual({ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: finding.evidence[0].fact });
-    expect(readdirSync(reviewDir)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
+    expect(readdirSync(reviewDir).sort()).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.job\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
     const calls = m.seen.length;
     budget = { ok: false, reason: 'client', retryAfterSec: 9 };
     expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'zh' })).toMatchObject({ status: 200, body: { status: 'ready' } });
@@ -186,6 +189,42 @@ describe('agent API', () => {
     const statuses = [];
     for (const hero of ['axe', 'sven', 'mirana', 'undying']) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.0.9')).status);
     expect(statuses).toEqual([202, 202, 202, 429]);
+  });
+
+  it('evidence: the record behind a ref, recomputed from the replay, with display names', async () => {
+    const ev = (ref: string, lang = 'zh') => get(`/api/agent/${MATCH}/evidence?hero=beastmaster&lang=${lang}&ref=${encodeURIComponent(ref)}`);
+    const cast = (await ev('cast:beastmaster:primal_roar:6')).body;
+    expect(cast).toMatchObject({ status: 'ok', kind: 'cast', record: { clock: '27:27', target: 'phantom_assassin', target_spell_immune: true, target_stunned_seconds: 3.4 }, names: { phantom_assassin: '幻影刺客' } });
+    const death = (await ev('death:beastmaster:9', 'en')).body;
+    expect(death).toMatchObject({ kind: 'death', record: { clock: '36:05', killer: 'necrolyte' }, names: { necrolyte: 'Necrophos', beastmaster_primal_roar: 'Primal Roar', pipe: 'Pipe of Insight', modifier_necrolyte_reapers_scythe: "Reaper's Scythe" } });
+    expect(death.record).not.toHaveProperty('gaps');
+    // An immunity window comes with where the player's ultimate was.
+    expect((await ev('immune:phantom_assassin:3:beastmaster-primal_roar')).body.record).toMatchObject({ clock: '30:34', watched: { state: 'on_cooldown', last_cast: { target: 'necrolyte' } } });
+    // The same window watched for another ability shows that ability, and without a watch shows none.
+    expect((await ev('immune:phantom_assassin:3:beastmaster-wild_axes')).body.record.watched).toMatchObject({ state: 'ready' });
+    expect((await ev('immune:phantom_assassin:3')).body.record).not.toHaveProperty('watched');
+    expect((await ev('immune:phantom_assassin:3:nonsense')).status).toBe(404);
+    expect((await ev('fight:11')).body.record).toMatchObject({ my_team_deaths: 5, enemy_deaths: 3 });
+    expect((await ev('timeline:1805-1860')).body.record.events.length).toBeGreaterThan(10);
+    expect((await ev('item:phantom_assassin:black_king_bar')).body.record.first_held.clock).toBe('21:29');
+    expect((await ev('overview')).body.record).toMatchObject({ result: 'my_team_lost', fights_total: 16 });
+    expect((await ev('pro_items:beastmaster')).body.record.mid_game_items.items[0].item).toBe('blink');
+    // A death looked at with a wider window is shown with that window, not the default one.
+    const narrow = (await ev('death:beastmaster:2')).body.record; const wide = (await ev('death:beastmaster:2:w30')).body.record;
+    expect([narrow.snapshots[0].dt, wide.snapshots[0].dt]).toEqual([-12, -30]);
+    expect(wide.ref).toBe('death:beastmaster:2:w30');
+    expect((await ev('death:beastmaster:2:w999')).status).toBe(404);
+    // A tool's summary ref shows its totals, not the records listed below them.
+    const audit = (await ev('audit:beastmaster:primal_roar')).body;
+    expect(audit).toMatchObject({ kind: 'audit', record: { casts_total: 10, by_target: { phantom_assassin: 4 }, casts_on_spell_immune_target: 2 } });
+    expect(audit.record).not.toHaveProperty('casts');
+    expect((await ev('deaths:beastmaster')).body.record).toMatchObject({ deaths_total: 11, killed_by: { phantom_assassin: 7 } });
+    expect((await ev('immunity:phantom_assassin')).body.record).toMatchObject({ windows_total: 7 });
+    // With what was watched, the totals that back "her BKB opened with the roar on cooldown three times" are shown too.
+    expect((await ev('immunity:phantom_assassin:beastmaster:primal_roar')).body.record).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });
+    for (const bad of ['cast:beastmaster:primal_roar:99', 'death:beastmaster:0', 'nope:1', 'timeline:0-99999', '../etc', 'death:pudge:1']) expect((await ev(bad)).status).toBe(404);
+    expect((await get(`/api/agent/${MATCH}/evidence?hero=beastmaster`)).status).toBe(400);
+    expect((await get('/api/agent/999/evidence?hero=axe&ref=overview')).status).toBe(404);
   });
 
   it('two starts arriving together are one job; a refused model budget uses up no review slot', async () => {

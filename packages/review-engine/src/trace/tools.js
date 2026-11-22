@@ -166,7 +166,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const myCasts = trace.casts.filter((c) => c[1] === npc && inWindow(c[0]));
     const castNames = new Set(myCasts.map((c) => trace.names[c[2]]));
     return {
-      ref: `death:${trace.heroes[h].key}:${n}`, n, t, clock: clock(t), killer: nameOf(trace, d[2]), row: d[3],
+      // The window is part of what the record says (its damage, its snapshots): a non-default one is in the ref.
+      ref: `death:${trace.heroes[h].key}:${n}${window === 12 ? '' : `:w${window}`}`, n, t, clock: clock(t), killer: nameOf(trace, d[2]), row: d[3],
       at: where(stateAt(trace, h, t - 1)),
       level: stateAt(trace, h, t - 1)?.level ?? null,
       snapshots,
@@ -290,7 +291,9 @@ export function immunityWindows(trace, args = {}) {
   }
   const nth = new Map();
   const windows = immunityIntervals(trace).map((w) => { const n = (nth.get(w.hero) ?? 0) + 1; nth.set(w.hero, n); return { ...w, n }; }).filter((w) => (only < 0 || w.hero === only) && (team == null || trace.heroes[w.hero].team === team)).map((w) => {
-    const row = { ref: `immune:${trace.heroes[w.hero].key}:${w.n}`, hero: trace.heroes[w.hero].key, team: TEAM[trace.heroes[w.hero].team], modifier: w.modifier.replace(/^modifier_/, ''), from: w.from, clock: clock(w.from), to: w.to, seconds: w.to == null ? null : Math.round((w.to - w.from) * 10) / 10 };
+    // A window looked at while watching an ability says so in its ref (the watched state is part of the record).
+    const watched = watch ? `:${trace.heroes[watch.h].key}-${watch.key.startsWith(`${trace.heroes[watch.h].key}_`) ? watch.key.slice(trace.heroes[watch.h].key.length + 1) : watch.key}` : '';
+    const row = { ref: `immune:${trace.heroes[w.hero].key}:${w.n}${watched}`, hero: trace.heroes[w.hero].key, team: TEAM[trace.heroes[w.hero].team], modifier: w.modifier.replace(/^modifier_/, ''), from: w.from, clock: clock(w.from), to: w.to, seconds: w.to == null ? null : Math.round((w.to - w.from) * 10) / 10 };
     if (!watch) return row;
     const s = stateAt(trace, watch.h, w.from);
     const left = cooldownLeft(watch.entry, w.from);
@@ -316,15 +319,19 @@ export function immunityWindows(trace, args = {}) {
   if (watch) for (const w of windows) states[w.watched.state] = (states[w.watched.state] ?? 0) + 1;
   return {
     ...(watch ? { watching: { hero: trace.heroes[watch.h].key, ability: watch.key }, watched_state_when_window_opened: states, windows_with_a_cast_on_the_immune_hero: windows.filter((w) => w.watched.cast_on_this_hero_during.length).length } : {}),
-    ref: `immunity:${only >= 0 ? trace.heroes[only].key : team === 2 ? 'radiant' : team === 3 ? 'dire' : 'all'}`, ref_scope: 'summary',
+    // What was watched is part of what the totals say: it is in the ref, so the same answer can be shown again.
+    ref: `immunity:${only >= 0 ? trace.heroes[only].key : team === 2 ? 'radiant' : team === 3 ? 'dire' : 'all'}${watch ? `:${trace.heroes[watch.h].key}:${watch.key.startsWith(`${trace.heroes[watch.h].key}_`) ? watch.key.slice(trace.heroes[watch.h].key.length + 1) : watch.key}` : ''}`, ref_scope: 'summary',
     windows_total: windows.length, windows, gaps: gapsFor(trace, ['ability_immunity']),
   };
 }
 
 export function fightTimeline(trace, args = {}, ctx = {}) {
   const view = viewer(trace, ctx);
-  const from = seconds(args.from); const to = seconds(args.to);
-  if (from == null || to == null || to <= from) return fail('invalid_window');
+  // Whole seconds, widened outward: the window the answer covers is exactly the one its ref names, so the
+  // same answer can be made again from the ref.
+  const f0 = seconds(args.from); const t0 = seconds(args.to);
+  if (f0 == null || t0 == null || t0 <= f0) return fail('invalid_window');
+  const from = Math.floor(f0); const to = Math.ceil(t0);
   if (to - from > MAX_FIGHT_WINDOW) return fail('window_too_long', { max_seconds: MAX_FIGHT_WINDOW });
   const inWindow = (t) => t >= from && t <= to;
   const positions = (t) => trace.heroes.map((h, i) => { const s = stateAt(trace, i, t); return { hero: h.key, ...(view ? sideOf(view, trace, i) : { team: TEAM[h.team] }), ...(s ? { alive: s.alive, hp: s.hp, max_hp: s.max_hp, ...where(s) } : { alive: null }) }; });
