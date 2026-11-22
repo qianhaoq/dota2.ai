@@ -327,8 +327,11 @@ export function immunityWindows(trace, args = {}) {
 
 export function fightTimeline(trace, args = {}, ctx = {}) {
   const view = viewer(trace, ctx);
-  const from = seconds(args.from); const to = seconds(args.to);
-  if (from == null || to == null || to <= from) return fail('invalid_window');
+  // Whole seconds, widened outward: the window the answer covers is exactly the one its ref names, so the
+  // same answer can be made again from the ref.
+  const f0 = seconds(args.from); const t0 = seconds(args.to);
+  if (f0 == null || t0 == null || t0 <= f0) return fail('invalid_window');
+  const from = Math.floor(f0); const to = Math.ceil(t0);
   if (to - from > MAX_FIGHT_WINDOW) return fail('window_too_long', { max_seconds: MAX_FIGHT_WINDOW });
   const inWindow = (t) => t >= from && t <= to;
   const positions = (t) => trace.heroes.map((h, i) => { const s = stateAt(trace, i, t); return { hero: h.key, ...(view ? sideOf(view, trace, i) : { team: TEAM[h.team] }), ...(s ? { alive: s.alive, hp: s.hp, max_hp: s.max_hp, ...where(s) } : { alive: null }) }; });

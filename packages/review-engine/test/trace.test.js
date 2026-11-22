@@ -357,6 +357,14 @@ describe('trace tools on a real game', () => {
     expect(wide.snapshots[0].dt).toBe(-30);
   });
 
+  it('a timeline asked for with fractional bounds covers the whole seconds its ref names', () => {
+    const f = run('fight_timeline', { from: 80.6, to: 100.6 });
+    expect(f).toMatchObject({ ref: 'timeline:80-101', from: 80, to: 101 });
+    // The same window from its ref gives the same events.
+    expect(run('fight_timeline', { from: 80, to: 101 }).events).toEqual(f.events);
+    expect(run('fight_timeline', { from: 80.2, to: 80.4 })).toMatchObject({ ref: 'timeline:80-81' });
+  });
+
   it('counts are stated by the tools, not left to the reader', () => {
     expect(run('death_context', { hero: 'beastmaster', index: 1 }).killed_by).toEqual({ venomancer: 1, phantom_assassin: 7, mirana: 1, necrolyte: 2 });
     expect(run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'primal_roar' })).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });
