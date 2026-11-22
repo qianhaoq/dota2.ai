@@ -251,6 +251,17 @@ describe('agent API', () => {
       const all = await Promise.all(Array.from({ length: 60 }, (_, i) => send('sven', `10.7.0.${i}`)));
       expect(all.every((r) => r.status === 202)).toBe(true);
       expect(acquired).toBe(1);
+      // A refused start is refused to everyone who shared it, each on their own response.
+      const refusing = express();
+      refusing.use(express.json());
+      refusing.use(createAgentRouter({ service: createAgentService({ traces, complete: m.complete, model: 'test-model' }), resolveClientIp: (req: any) => String(req.headers['x-test-ip']), llm: { acquire: () => ({ ok: false, reason: 'cost_guard' }) } }));
+      const srv2 = refusing.listen(0, '127.0.0.1');
+      await new Promise((r) => srv2.once('listening', r));
+      const at2 = `http://127.0.0.1:${(srv2.address() as AddressInfo).port}`;
+      const two = await Promise.all(['10.7.2.1', '10.7.2.2'].map((ip) => fetch(`${at2}/api/agent/${MATCH}/review`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-test-ip': ip }, body: JSON.stringify({ hero: 'sven', lang: 'en' }), signal: AbortSignal.timeout(5000) })));
+      expect(two.map((r) => r.status)).toEqual([503, 503]);
+      expect(await two[1].json()).toMatchObject({ code: 'busy' });
+      await new Promise((r) => srv2.close(r));
       // The hour's sixty slots are not gone: another hero's review still starts.
       expect((await send('mirana', '10.7.1.1')).status).toBe(202);
       expect(acquired).toBe(2);
