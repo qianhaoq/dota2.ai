@@ -126,6 +126,6 @@ describe('server wiring', () => {
     expect(opendotaFetcher).toContain('matchStore?.putMatch(matchId, data)');
     expect(body.split('matchStore?.putMatch(').length).toBe(2);
     // STRATZ is only in the chain when configured.
-    expect(server).toMatch(/configured: \{ opendota: true, stratz: Boolean\(stratz\) \}/);
+    expect(server).toMatch(/configured: \{ opendota: true, steam_gc: Boolean\(steamGc\), stratz: Boolean\(stratz\) \}/);
   });
 });

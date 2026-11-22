@@ -63,3 +63,18 @@ describe('player page: the training goal belongs to its owner (review v2.1 item 
     expect((await at(OWNER)).querySelector('.cx-recent-goal')).toBeTruthy();
   });
 });
+
+describe('player page: rows from Steam GC history (no K/D/A, no seat)', () => {
+  it('shows unknown K/D/A as "—" (never 0/0/0) and links to the match without a seat', async () => {
+    recent.mockResolvedValue({ account_id: OWNER, empty_hint: null, matches: [
+      { match_id: 9100000002, start_time: 1795000000, duration: 2400, hero: { id: 67, en: 'Spectre', zh: '幽鬼', icon: null }, slot: null, radiant: null, won: true, kda: null, mode: null, ranked: true },
+    ] });
+    const r = render(<MemoryRouter initialEntries={[`/p/${OWNER}`]}><Routes><Route path="/p/:accountId" element={<CoachPlayerPage />} /></Routes></MemoryRouter>);
+    await waitFor(() => expect(r.container.querySelector('.cx-recent-row')).toBeTruthy());
+    expect(r.container.querySelector('.cx-recent-kda')!.textContent).toBe('—');
+    const href = r.container.querySelector('.cx-recent-row')!.getAttribute('href')!;
+    expect(href).toBe('/r/9100000002?lang=en');
+    expect(r.container.textContent).not.toContain('0/0/0');
+  });
+});
+

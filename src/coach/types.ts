@@ -151,8 +151,8 @@ export interface CoachReport {
   match: {
     id: number; duration: number; radiant_win: boolean; score: [number, number]; patch: string | null;
     mode: Bi; ranked: boolean; start_time: number | null; parsed: boolean; replay_available: boolean; turbo: boolean;
-    /** 'stratz' when OpenDota was unavailable and the data came from STRATZ. */
-    source?: 'opendota' | 'stratz';
+    /** 'stratz' / 'steam_gc' when OpenDota was unavailable and the data came from there. */
+    source?: 'opendota' | 'stratz' | 'steam_gc';
   };
   players: Player[];
   reviews: Review[];
@@ -223,10 +223,12 @@ export interface RecentMatch {
   start_time: number | null;
   duration: number | null;
   hero: { id: number; en: string; zh: string; icon: string | null };
-  slot: number;
-  radiant: boolean;
+  /** Seat 0-9; null when the source does not say (Steam GC history). */
+  slot: number | null;
+  radiant: boolean | null;
   won: boolean | null;
-  kda: [number, number, number];
+  /** null when the source has no K/D/A (Steam GC history): never 0/0/0. */
+  kda: [number, number, number] | null;
   mode: Bi | null;
   ranked: boolean;
 }

@@ -153,6 +153,7 @@ const UI = {
   ranked: { en: 'Ranked', zh: '天梯' },
   footer: { en: 'Not affiliated with Valve. Match data from OpenDota.', zh: '粉丝项目，与 Valve 无关。比赛数据来自 OpenDota。' },
   parsed: { en: 'Parsed', zh: '已解析' },
+  fromSteamGc: { en: 'Scoreboard from Valve’s game coordinator (OpenDota unavailable): no timeline yet', zh: '数据来自 Valve 游戏协调器（OpenDota 暂不可用）：只有终局计分板，暂无时间线' },
   fromStratz: { en: 'Data from STRATZ (OpenDota unavailable)', zh: '数据来自 STRATZ（OpenDota 暂不可用）' },
   copied: { en: 'Copied', zh: '已复制' },
 } satisfies Record<string, Bi | Record<string, Bi>>;
@@ -257,10 +258,10 @@ const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
           <span className="cx-latest-text">
             <b>{latest.hero[lang]}</b>{' '}
             <span className={latest.won ? 'is-win' : latest.won === false ? 'is-loss' : ''}>{latest.won == null ? '' : L(latest.won ? UI.win : UI.loss)}</span>{' '}
-            <span className="cx-recent-kda">{latest.kda.join('/')}</span>
+            <span className="cx-recent-kda">{latest.kda ? latest.kda.join('/') : '—'}</span>
             {reviewed && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
           </span>
-          <Link to={`/r/${latest.match_id}?p=${latest.slot}&lang=${lang}`} className="cx-patch-cta cx-latest-cta">{L(UI.latestCta)}</Link>
+          <Link to={`/r/${latest.match_id}?${latest.slot != null ? `p=${latest.slot}&` : ''}lang=${lang}`} className="cx-patch-cta cx-latest-cta">{L(UI.latestCta)}</Link>
         </div>
         <p className="cx-example">{all}</p>
       </div>
@@ -278,7 +279,12 @@ const LatestGoal: React.FC<{ goal: NonNullable<ReturnType<typeof activeGoal>>; l
     if (!counts) return;
     const ac = new AbortController();
     fetchCoachReport(String(latest.match_id), { signal: ac.signal })
-      .then((r) => setCheck(checkGoal(goal, r, latest.slot)))
+      .then((r) => {
+        // Steam GC history has no seat: find this account in the game, or judge nothing.
+        const acct = Number(goal.accountId ?? rememberedAccount());
+        const seat = latest.slot ?? r.players.find((p) => p.account_id != null && p.account_id === acct)?.slot;
+        if (seat != null) setCheck(checkGoal(goal, r, seat));
+      })
       .catch(() => {});
     return () => ac.abort();
   }, [counts, goal, latest.match_id, latest.slot]);
@@ -460,7 +466,7 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
                   const gc = checkByMatch.get(m.match_id);
                   return (
                     <li key={m.match_id}>
-                      <Link to={`/r/${m.match_id}?p=${m.slot}&lang=${lang}`} className="cx-recent-row">
+                      <Link to={`/r/${m.match_id}?${m.slot != null ? `p=${m.slot}&` : ''}lang=${lang}`} className="cx-recent-row">
                         {m.hero.icon ? <SafeImg src={m.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
                         <span className="cx-recent-hero">
                           {m.hero[lang]}
@@ -471,7 +477,7 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
                         <span className={`cx-recent-result ${m.won ? 'is-win' : m.won === false ? 'is-loss' : ''}`}>
                           {m.won == null ? '—' : L(m.won ? UI.win : UI.loss)}
                         </span>
-                        <span className="cx-recent-kda">{m.kda.join('/')}</span>
+                        <span className="cx-recent-kda">{m.kda ? m.kda.join('/') : '—'}</span>
                         <span className="cx-recent-meta">
                           {m.mode ? L(m.mode) : ''}{m.ranked ? ` · ${L(UI.ranked)}` : ''}
                           {m.duration != null ? ` · ${clock(m.duration)}` : ''}
@@ -911,6 +917,7 @@ const StickyContextBar: React.FC<{
             {m.patch && <span>{m.patch}</span>}
             <span className={`cx-pill ${m.parsed ? 'ok' : 'warn'}`}>{m.parsed ? L(UI.parsed) : L(UI.needsParse)}</span>
             {m.source === 'stratz' && <span className="cx-pill">{L(UI.fromStratz)}</span>}
+            {m.source === 'steam_gc' && <span className="cx-pill">{L(UI.fromSteamGc)}</span>}
           </p>
         </div>
       </div>
@@ -993,6 +1000,7 @@ const MatchHeader: React.FC<{ report: CoachReport; slot: number | null; pos: num
           <span>{L(m.mode)}{m.ranked ? ` · ${L(UI.ranked)}` : ''}</span>
           <span className={`cx-pill ${m.parsed ? 'ok' : 'warn'}`}>{m.parsed ? L(UI.parsed) : L(UI.needsParse)}</span>
           {m.source === 'stratz' && <span className="cx-pill">{L(UI.fromStratz)}</span>}
+            {m.source === 'steam_gc' && <span className="cx-pill">{L(UI.fromSteamGc)}</span>}
         </p>
       </div>
       <div className="cx-share">
