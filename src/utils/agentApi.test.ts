@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import { copyFileSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -91,6 +91,30 @@ describe('runChat', () => {
     expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q', review, history: [{ q: 'a', a: 'You died 9 times.', clean: true }] })).unverified).toEqual([]);
     // A flagged earlier answer backs nothing.
     expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q', review, history: [{ q: 'a', a: 'You died 9 times.', clean: false }] })).unverified).toEqual([{ kind: 'count', text: '9' }]);
+  });
+
+  it('a review\'s advice is not evidence: only its checked part backs a later answer', async () => {
+    const trace = await createFileTraceStore(dir).get(MATCH);
+    const review = { verdict: 'v at 27:27', findings: [{ title: 't', claim: 'c', evidence: [{ refs: ['x'], clock: '30:25', fact: 'f' }], fix: 'At 19:19 you lost 99999 gold.' }], next_game: ['Farm 88888 by 18:18.'], blind_spots: ['17:17'] };
+    const say = (text: string) => runChat({ complete: async () => ({ text }), trace, hero: 'beastmaster', question: 'q', review });
+    expect((await say('At 19:19 you lost 99999 gold.')).unverified).toEqual([{ kind: 'time', text: '19:19' }, { kind: 'number', text: '99999' }]);
+    expect((await say('Farm 88888 by 18:18, see 17:17.')).unverified!.map((u: any) => u.text)).toEqual(['18:18', '17:17', '88888']);
+    expect((await say('At 27:27 and 30:25.')).unverified).toEqual([]);
+  });
+
+  it('the repair round runs on what is left of the turn\'s budget', async () => {
+    const trace = await createFileTraceStore(dir).get(MATCH);
+    let lookups = 0; let turn = 0;
+    const six = Array.from({ length: 6 }, (_, i) => call('hero_abilities', { hero: 'beastmaster' }, `h${i}`));
+    const offered: number[] = [];
+    const complete = async (o: any) => { turn += 1; offered.push(o.tools.length); const last = o.messages.at(-1); if (last.role === 'user' && String(last.content).startsWith('These are not in')) return { text: 'ok.', toolCalls: six }; if (last.role === 'tool') return { text: 'You died at 19:19.' }; return { toolCalls: six }; };
+    const r = await runChat({ complete, trace, hero: 'beastmaster', question: 'q', onEvent: (e: any) => { if (e.type === 'tool_start') lookups += 1; } });
+    // Six lookups in the turn, none more in the repair: it is offered no tools and must answer.
+    expect(lookups).toBe(6);
+    expect(r).toMatchObject({ status: 'ok', text: 'ok.' });
+    expect(turn).toBe(3);
+    // Turn 1 has every tool; turn 2 (budget spent) and the repair have none.
+    expect(offered.slice(1)).toEqual([0, 0]);
   });
 
   it('validates the request body', () => {
@@ -266,6 +290,25 @@ describe('agent API', () => {
       expect((await send('mirana', '10.7.1.1')).status).toBe(202);
       expect(acquired).toBe(2);
     } finally { await new Promise((r) => srv.close(r)); }
+  });
+
+  it('a caller who leaves while the trace is being read is neither admitted nor investigated for', async () => {
+    let acquired = 0; let chats = 0; let release: any;
+    const app3 = express();
+    app3.use(express.json());
+    const service: any = { availability: () => new Promise((r) => { release = () => r({ trace: true, model_configured: true, heroes: [{ hero: 'beastmaster' }] }); }), chat: async () => { chats += 1; return { status: 'ok', text: 'x', unverified: [] }; } };
+    app3.use(createAgentRouter({ service, resolveClientIp: () => '10.8.0.1', llm: { acquire: () => { acquired += 1; return { ok: true }; } } }));
+    const srv = app3.listen(0, '127.0.0.1');
+    await new Promise((r) => srv.once('listening', r));
+    const ac = new AbortController();
+    const pending = fetch(`http://127.0.0.1:${(srv.address() as AddressInfo).port}/api/agent/${MATCH}/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hero: 'beastmaster', question: 'q' }), signal: ac.signal }).catch(() => null);
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    ac.abort(); await pending;
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    await new Promise((r) => setTimeout(r, 50));
+    expect([acquired, chats]).toEqual([0, 0]);
+    await new Promise((r) => srv.close(r));
   });
 
   it('chat: streams the tool steps, then the checked answer', async () => {
