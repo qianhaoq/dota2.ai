@@ -557,54 +557,15 @@
 .cx-hero-chip img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
 .cx-hero-chip.is-on { border-color: rgba(227, 163, 70, 0.6); color: var(--text); background: rgba(227, 163, 70, 0.1); }
 
-/* report sticky context bar */
-.cx-ctxbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; padding: 18px 0 14px; border-bottom: 1px solid var(--line); }
-.cx-ctxbar-hero { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.cx-ctxbar-icon { width: 46px; height: 46px; border-radius: 10px; object-fit: cover; background: var(--panel-2); flex: none; border: 1px solid var(--line-2); }
-.cx-ctxbar-id { min-width: 0; }
-.cx-ctxbar-name-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
-.cx-ctxbar-name { margin: 0; font-family: var(--serif); font-weight: 400; font-size: clamp(22px, 3vw, 28px); line-height: 1.1; }
-.cx-ctxbar-wl { font-size: var(--fs-meta); font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-2); }
-.cx-ctxbar-wl.is-win { color: var(--good); border-color: rgba(143, 191, 136, 0.4); }
-.cx-ctxbar-wl.is-loss { color: var(--dire); border-color: rgba(208, 106, 85, 0.4); }
-.cx-ctxbar-kda { font-size: var(--fs-body); color: var(--text-2); font-weight: 500; }
-.cx-ctxbar-meta { margin-top: 4px; font-size: var(--fs-meta); gap: 4px 10px; }
-.cx-ctxbar-meta .is-radiant { color: var(--radiant); }
-.cx-ctxbar-meta .is-dire { color: var(--dire); }
 .cx-role-inline { position: relative; }
-.cx-role-trigger { background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 10px; font-size: var(--fs-meta); color: var(--accent); }
-.cx-role-trigger:hover { border-color: rgba(227, 163, 70, 0.6); }
 .cx-role-pop { left: 0; right: auto; width: 240px; }
 .cx-ctx-ask { border-color: rgba(227, 163, 70, 0.45); color: var(--accent); }
-
-/* compact 10-hero roster strip once a hero is picked */
-.cx-lineup.is-compact { padding: 12px 0; gap: 12px; }
-.cx-lineup.is-compact .cx-team h3 { margin-bottom: 6px; font-size: var(--fs-meta); }
-.cx-lineup.is-compact .cx-team-row { gap: 6px; }
-.cx-lineup.is-compact .cx-seat { padding: 4px 5px 5px; border-radius: 8px; }
-.cx-lineup.is-compact .cx-hero-img--card { aspect-ratio: 22 / 9; }
-.cx-lineup.is-compact .cx-seat-name { font-size: var(--fs-meta); margin-top: 3px; }
-.cx-lineup.is-compact .cx-seat-kda { font-size: var(--fs-meta); }
-.cx-lineup.is-compact .cx-seat-nw { display: none; }
-.cx-lineup.is-compact .cx-seat-items { grid-template-columns: repeat(6, 1fr); gap: 1px; margin-top: 3px; }
 
 /* priority parse banner */
 .cx-gaps--priority { margin: 16px 0 6px; background: rgba(227, 163, 70, 0.06); }
 .cx-gaps-top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 18px; margin-bottom: 10px; }
 .cx-gaps-top h3 { margin: 0 0 4px; }
 .cx-gaps-top .cx-primary { margin-top: 0; flex: none; }
-
-/* above-the-fold verdict hero */
-.cx-verdict { margin: 14px 0 0; padding: 18px 20px; background: linear-gradient(135deg, rgba(227, 163, 70, 0.1), rgba(21, 23, 26, 0.96) 55%); border: 1px solid rgba(227, 163, 70, 0.32); border-radius: 14px; transition: opacity .2s; }
-.cx-verdict.is-loading { opacity: 0.55; }
-.cx-verdict-headline { font-family: var(--serif); font-weight: 400; font-size: clamp(22px, 3vw, 30px); line-height: 1.22; letter-spacing: -0.01em; margin: 6px 0 14px; }
-.cx-vitals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
-.cx-vital { background: rgba(13, 14, 16, 0.55); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 0; }
-.cx-vital dt { font-size: var(--fs-meta); color: var(--text-3); }
-.cx-vital dd { margin: 2px 0 0; font-size: var(--fs-body); font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cx-vital.is-good dd { color: var(--good); }
-.cx-vital.is-bad dd { color: var(--dire); }
-.cx-vital.is-warn dd { color: var(--accent); }
 
 /* interactive gold timeline */
 .cx-graph { margin-top: 16px; overflow-x: clip; }
@@ -707,14 +668,11 @@
   .cx-qj-label, .cx-kbd { display: none; }
   .cx-latest.has-goal { grid-template-columns: 1fr; }
   .cx-latest-goal-card { padding-left: 0; padding-top: 12px; border-left: 0; border-top: 1px solid var(--line); }
-  .cx-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .cx-ctxbar { padding: 14px 0 12px; }
-  .cx-lineup.is-compact .cx-seat-items { grid-template-columns: repeat(3, 1fr); }
   .cx-graph-hint { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cx-death-dot::after, .cx-sample-pill, .cx-verdict { transition: none; }
+  .cx-death-dot::after, .cx-sample-pill { transition: none; }
 }
 
 /* Laning: your hero vs each enemy hero, pro win rates */

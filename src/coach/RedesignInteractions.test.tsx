@@ -69,69 +69,74 @@ describe('CoachHome smart omnibox', () => {
 });
 
 describe('CoachReportPage redesigned workspace', () => {
-  it('renders sticky context bar, verdict hero, linked timeline and the engine card surface', async () => {
+  it('reads top to bottom: header, verdict, next-game list, then each area on demand — all from the engine surface', async () => {
     fetchReport.mockResolvedValue(parsedReport);
     const { container } = render(
       <MemoryRouter initialEntries={['/r/9091400302?p=0']}>
         <Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes>
       </MemoryRouter>,
     );
-    await waitFor(() => expect(container.querySelector('.cx-ctxbar')).toBeTruthy());
+    await waitFor(() => expect(container.querySelector('.rv-head')).toBeTruthy());
+    const surface = buildSurface(parsedReport, 0) as any;
+    const rv = parsedReport.reviews[0];
 
-    // Compact roster by default once hero is selected, expandable on click.
-    expect(container.querySelector('.cx-lineup.is-compact')).toBeTruthy();
+    // Full lineup on demand only.
+    expect(container.querySelector('.cx-lineup')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '展开 10 人详情' }));
-    expect(container.querySelector('.cx-lineup.is-compact')).toBeNull();
+    expect(container.querySelector('.cx-lineup')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '收起 10 人详情' }));
+    expect(container.querySelector('.cx-lineup')).toBeNull();
 
-    // Verdict hero surfaces headline above the timeline and chapters.
-    expect(container.querySelector('.cx-verdict-headline')?.textContent).toBe(parsedReport.reviews[0].headline.zh);
+    // One verdict, then the plan's things in order.
+    expect(container.querySelector('.rv-headline')?.textContent).toBe(rv.headline.zh);
+    const things = [...container.querySelectorAll('#cx-ch-plan .rv-things h3')].map((e) => e.textContent);
+    expect(things).toEqual(rv.chapters.plan.map((p: any) => p.title.zh));
 
-    // Clicking a death dot on the timeline jumps straight to the Deaths tab and highlights the row.
-    const deathDot = container.querySelector('.cx-death-dot') as HTMLButtonElement;
-    expect(deathDot).toBeTruthy();
-    fireEvent.click(deathDot);
-    expect(container.querySelector('#cx-ch-deaths')).toBeTruthy();
+    // The first screen says nothing twice: the headline text appears once, and no finding body is open.
+    expect(container.textContent!.split(rv.headline.zh).length - 1).toBe(1);
+    for (const d of container.querySelectorAll('.rv-sec')) expect((d as HTMLDetailsElement).open).toBe(false);
+
+    // Areas in the engine's chapter order, each summarised by its takeaway.
+    const chapters = surface.cards.filter((c: any) => c.id.startsWith('chapter:'));
+    const areas = [...container.querySelectorAll('.rv-sections > .rv-sec')];
+    expect(areas.map((d) => d.id)).toEqual(chapters.map((c: any) => `rv-sec-${c.id.slice(8)}`));
+    areas.forEach((d, n) => expect(d.querySelector('.rv-sec-take')!.textContent).toBe(chapters[n].data.chapter.takeaway.zh.replace(/\*\*/g, '')));
+
+    // Every finding card is shown exactly once, inside the area its inspect action points to.
+    for (const c of surface.cards.filter((x: any) => x.component === 'Finding')) {
+      const el = container.querySelectorAll(`#card-${c.id.replace(/[^a-z0-9_-]/gi, '-')}`);
+      expect(el).toHaveLength(1);
+      const target = c.actions.find((a: any) => a.action === 'inspect')?.target;
+      if (target) expect(el[0].closest('.rv-sec')!.id).toBe(`rv-sec-${target}`);
+    }
+
+    // Clicking a death dot opens Deaths and highlights the row; a fight tick does the same for Fights.
+    fireEvent.click(container.querySelector('.cx-death-dot') as HTMLButtonElement);
+    await waitFor(() => expect((container.querySelector('#rv-sec-deaths') as HTMLDetailsElement).open).toBe(true));
     expect(container.querySelector('#cx-death-row-0.is-highlighted')).toBeTruthy();
-
-    // Clicking a fight tick jumps straight to the Fights tab and highlights that fight.
-    const fightTick = container.querySelector('.cx-fight-tick') as HTMLButtonElement;
-    expect(fightTick).toBeTruthy();
-    fireEvent.click(fightTick);
-    expect(container.querySelector('#cx-ch-fights')).toBeTruthy();
+    fireEvent.click(container.querySelector('.cx-fight-tick') as HTMLButtonElement);
+    await waitFor(() => expect((container.querySelector('#rv-sec-fights') as HTMLDetailsElement).open).toBe(true));
     expect(container.querySelector('#cx-fight-row-0.is-highlighted')).toBeTruthy();
 
-    // The review is the engine's card surface, in the engine's order, with only each card's own actions.
-    const surface = buildSurface(parsedReport, 0) as any;
-    const expected = surface.cards.map((c: any) => c.component.toLowerCase())
-      .filter((c: string) => c !== 'matchheader'); // the header is the page's own; every other card is in the centre column (the inspector holds evidence, chat, compare)
-    const shown = [...container.querySelectorAll('.cxv-main > .cxv-card')].map((el) => [...el.classList].find((x) => x.startsWith('is-') && !['is-good', 'is-fix', 'is-neutral'].includes(x))!.slice(3));
-    expect(shown).toEqual(expected);
-    const allowed = new Set(surface.cards.flatMap((c: any) => c.actions.map((x: any) => x.label.zh)));
-    // A compare button also names the enemy hero ("对比 · 熊战士").
-    for (const btn of container.querySelectorAll('.cxv-act')) expect(allowed.has(btn.textContent!.split(' · ')[0])).toBe(true);
+    // A finding's "问教练" fills the coach rail with that finding.
+    const first = rv.findings[0];
+    const card = container.querySelector(`#card-finding-${first.id.replace(/[^a-z0-9_-]/gi, '-')}`) as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: '问教练' }));
+    await waitFor(() => expect((container.querySelector('.rv-rail textarea') as HTMLTextAreaElement).value).toContain(first.title.zh));
 
-    // A finding's "问教练" fills the docked conversation with that finding.
-    const first = parsedReport.reviews[0].findings[0];
-    const card = container.querySelector(`#card-finding-${first.id.replace(/[^a-z0-9_-]/gi, '-')}`)!;
-    fireEvent.click(within(card as HTMLElement).getByRole('button', { name: '问教练' }));
-    await waitFor(() => expect((container.querySelector('.cxv-rail textarea') as HTMLTextAreaElement).value).toContain(first.title.zh));
+    // Its evidence is shown with it; an item no player owns shows its icon, never a raw key like "cyclone".
+    expect(card.querySelectorAll('.cx-ev').length).toBe(first.evidence.length);
+    for (const chip of card.querySelectorAll('.cx-chip')) expect(chip.textContent).not.toMatch(/^[a-z_]+$/);
 
-    // A finding's "证据" opens its evidence in the inspector; the chat stays mounted behind its tab.
-    fireEvent.click(within(card as HTMLElement).getByRole('button', { name: '证据' }));
-    const evidencePanel = container.querySelector('#wb-panel-evidence') as HTMLElement;
-    expect(evidencePanel.hidden).toBe(false);
-    expect(evidencePanel.querySelector('h3')?.textContent).toBe(first.title.zh);
-    expect(evidencePanel.querySelectorAll('.cx-ev').length).toBe(first.evidence.length);
-    expect((container.querySelector('#wb-panel-ask') as HTMLElement).hidden).toBe(true);
-    // An item no player owns (a pro counter item) shows its icon, never a raw key like "cyclone".
-    for (const chip of evidencePanel.querySelectorAll('.cx-chip')) expect(chip.textContent).not.toMatch(/^[a-z_]+$/);
-    expect(container.querySelector('#wb-panel-ask textarea')).toBeTruthy();
+    // Compare buttons are only the engine's own compare actions.
+    const allowed = new Set(surface.cards.flatMap((c: any) => c.actions.filter((x: any) => x.action === 'compare').map((x: any) => x.label.zh)));
+    for (const btn of container.querySelectorAll('.rv-compare-btn')) expect(allowed.has(btn.textContent!.split(' · ')[0])).toBe(true);
 
-    // Every chapter is on the page at once: no tabs to hunt through.
+    // Every chapter is in the page (collapsed, not behind tabs).
     for (const id of ['story', 'laning', 'deaths', 'fights']) expect(container.querySelector(`#cx-ch-${id}`)).toBeTruthy();
   });
 
-  it('unparsed: the parse card comes right after the headline, before any finding', async () => {
+  it('unparsed: the parse panel comes right after the verdict, before the next-game list and any finding', async () => {
     fetchReport.mockResolvedValue(unparsedReport);
     const { container } = render(
       <MemoryRouter initialEntries={['/r/9091400302?p=4']}>
@@ -139,11 +144,14 @@ describe('CoachReportPage redesigned workspace', () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(container.querySelector('.cx-gaps--priority')).toBeTruthy());
-    const cards = [...container.querySelectorAll('.cxv-main > .cxv-card')];
-    expect(cards[0].classList.contains('is-headline')).toBe(true);
-    expect(cards[1].classList.contains('is-datagaps')).toBe(true);
-    expect(cards[1].querySelector('.cx-gaps--priority')).toBeTruthy();
-    expect(cards.slice(2).every((c) => !c.classList.contains('is-datagaps'))).toBe(true);
+    const blocks = [...container.querySelector('.rv-main')!.children];
+    expect(blocks[0].classList.contains('rv-verdict')).toBe(true);
+    expect(blocks[1].classList.contains('cx-gaps--priority')).toBe(true);
+    expect(blocks.slice(2).some((b) => b.querySelector('.cx-gaps'))).toBe(false);
+    // No chapters: the next-game list comes from the engine's fixes, and the findings are open below it.
+    const fixes = unparsedReport.reviews[4].findings.filter((f: any) => f.tone === 'fix').slice(0, 3);
+    expect([...container.querySelectorAll('#cx-ch-plan .rv-things h3')].map((e) => e.textContent)).toEqual(fixes.map((f: any) => f.title.zh));
+    expect((container.querySelector('.rv-sec.is-more') as HTMLDetailsElement).open).toBe(true);
   });
 });
 
@@ -186,7 +194,7 @@ describe('CoachPlayerPage training hub', () => {
 });
 
 describe('review follow-ups (#192)', () => {
-  it('the context bar Ask button focuses the chapterless conversation on unparsed matches', async () => {
+  it('the header Ask button focuses the conversation on unparsed matches (no chapters)', async () => {
     fetchReport.mockResolvedValue(unparsedReport);
     const { container } = render(
       <MemoryRouter initialEntries={['/r/9091400302?p=4']}>
@@ -194,11 +202,11 @@ describe('review follow-ups (#192)', () => {
       </MemoryRouter>,
     );
     await waitFor(() => expect(container.querySelector('.cx-ctx-ask')).toBeTruthy());
-    expect(container.querySelector('#cx-ch-deaths')).toBeNull(); // unparsed: no chapter cards
+    expect(container.querySelector('#cx-ch-deaths')).toBeNull(); // unparsed: no chapters
     fireEvent.click(container.querySelector('.cx-ctx-ask')!);
     await waitFor(() => {
       const active = document.activeElement as HTMLElement | null;
-      expect(active && container.querySelector('.cxv-rail')!.contains(active) && /^(TEXTAREA|INPUT)$/.test(active.tagName)).toBe(true);
+      expect(active && container.querySelector('.rv-rail')!.contains(active) && /^(TEXTAREA|INPUT)$/.test(active.tagName)).toBe(true);
     });
   });
 
@@ -299,29 +307,25 @@ describe('review follow-ups, round 2 (#192)', () => {
   });
 });
 
-describe('workbench inspector (review #219 P1s)', () => {
-  it('every "ask" entry point selects the Ask tab, even from Evidence or Compare', async () => {
+describe('every way into the conversation (review #219)', () => {
+  it('chapter, plan-area and finding asks all reach the coach rail and focus it', async () => {
     fetchReport.mockResolvedValue(parsedReport);
     const { container } = render(
       <MemoryRouter initialEntries={['/r/9091400302?p=0']}>
         <Routes><Route path="/r/:matchId" element={<CoachReportPage />} /></Routes>
       </MemoryRouter>,
     );
-    await waitFor(() => expect(container.querySelector('.cxv-feed')).toBeTruthy());
-    const askPanel = () => container.querySelector('#wb-panel-ask') as HTMLElement;
-    const toEvidence = () => fireEvent.click(screen.getByRole('tab', { name: '证据' }));
-    // Chapter-level ask (the laning chapter's own button).
-    toEvidence();
-    expect(askPanel().hidden).toBe(true);
+    await waitFor(() => expect(container.querySelector('.rv-sections')).toBeTruthy());
+    const rail = () => container.querySelector('.rv-rail') as HTMLElement;
+    const box = () => container.querySelector('.rv-rail textarea') as HTMLTextAreaElement;
+    // A chapter's own ask (laning), prefilled with that chapter's question.
     const laning = container.querySelector('#cx-ch-laning') as HTMLElement;
     fireEvent.click(within(laning).getAllByRole('button', { name: /追问/ })[0]);
-    await waitFor(() => expect(askPanel().hidden).toBe(false));
-    // The practice plan's ask.
-    toEvidence();
-    const plan = container.querySelector('#cx-ch-plan') as HTMLElement;
-    fireEvent.click(within(plan).getAllByRole('button', { name: /追问/ })[0]);
-    await waitFor(() => expect(askPanel().hidden).toBe(false));
-    // And the chat really takes focus once visible.
-    await waitFor(() => expect(askPanel().contains(document.activeElement)).toBe(true));
+    await waitFor(() => expect(rail().contains(document.activeElement)).toBe(true));
+    expect(box().value.length).toBeGreaterThan(0);
+    // The header's ask.
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(container.querySelector('.cx-ctx-ask')!);
+    await waitFor(() => expect(rail().contains(document.activeElement)).toBe(true));
   });
 });
