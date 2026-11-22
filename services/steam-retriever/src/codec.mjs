@@ -1,8 +1,8 @@
 /**
  * Protobuf encode/decode for the GC messages this service uses, and the
- * message ids. Decoded objects carry only the fields the GC actually sent
- * (no defaults filled in: an absent field stays absent, so the consumer can
- * tell "0" from "not sent"), uint64 as decimal strings, enums as numbers.
+ * message ids. Decoded objects carry only the scalar fields the GC actually
+ * sent (no defaults filled in: an absent field stays absent, so the consumer
+ * can tell "0" from "not sent"), uint64 as decimal strings, enums as numbers.
  */
 import { fileURLToPath } from 'node:url';
 import protobuf from 'protobufjs';
@@ -33,7 +33,14 @@ const plain = (type, buf) => type.toObject(type.decode(buf), { longs: String, en
 const bytes = (type, obj) => Buffer.from(type.encode(type.fromObject(obj)).finish());
 
 export const encodeMatchDetailsRequest = (matchId) => bytes(T.matchReq, { match_id: String(matchId) });
-export const decodeMatchDetailsResponse = (buf) => plain(T.matchRes, buf);
+export function decodeMatchDetailsResponse(buf) {
+  const res = plain(T.matchRes, buf);
+  // A repeated field with no entries is not on the wire at all. For a player
+  // of a match the GC did send, that means "no permanent buffs", so say so
+  // rather than leave it looking unknown.
+  for (const p of res.match?.players ?? []) p.permanent_buffs ??= [];
+  return res;
+}
 export const encodeHistoryRequest = ({ accountId, limit, requestId }) => bytes(T.histReq, {
   account_id: accountId, matches_requested: limit, request_id: requestId,
 });

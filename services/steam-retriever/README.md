@@ -7,7 +7,7 @@ HTTP:
 | Route | Answer |
 |---|---|
 | `GET /match/:matchId` | `{ "match": CMsgDOTAMatch }`: the final scoreboard of all ten players, plus `cluster` and `replay_salt` (the replay's address) |
-| `GET /history/:accountId?limit=20` | `{ "matches": [...] }`: a player's recent public matches (hero, win/loss, duration; no K/D/A) |
+| `GET /history/:accountId?limit=20` | `501 history_unsupported` by default. See "Player history" below |
 | `GET /healthz` | counts only: accounts, accounts online, today's usage. No auth |
 
 `/match` and `/history` need `Authorization: Bearer <STEAM_RETRIEVER_SECRET>`.
@@ -83,7 +83,8 @@ Either:
 | `PORT`, `HOST` | `5700`, `0.0.0.0` | |
 | `MAX_MATCHES_PER_ACCOUNT_DAY` | `95` | |
 | `MAX_MATCHES_PER_IP_DAY` | `480` | All accounts share the machine's IP |
-| `MAX_HISTORY_PER_ACCOUNT_DAY` | `300` | Valve publishes no limit for history; this is a cautious guess |
+| `ENABLE_GC_HISTORY` | unset | `1` turns `/history` on. Only useful for the logged-in account's own games |
+| `MAX_HISTORY_PER_ACCOUNT_DAY` | `300` | Only with `ENABLE_GC_HISTORY=1`. Valve publishes no limit; this is a cautious guess |
 | `GC_TIMEOUT_MS` | `6000` | |
 
 Accounts are never configured through the environment: no password is stored
@@ -102,9 +103,20 @@ anywhere, and logs name accounts only by the label you gave at login.
 | 503 `busy` | too many requests are already waiting for the GC | retry in a moment, or use another source |
 | 504 `gc_timeout` | the GC did not answer in time | retry later |
 | 502 | the GC answered something unexpected | retry later |
+| 501 `history_unsupported` | `/history` is off (the default) | not ask |
 
 Counters reset at 00:00 UTC and survive a restart. Requests for the same
 match at the same time, or again within ten minutes, cost one GC request.
+
+## Player history
+
+The plan was to serve a player's recent matches from the GC
+(`k_EMsgDOTAGetPlayerMatchHistory`). Measured against the live GC on
+2026-11-22: it answers that request for the logged-in account itself, and
+sends no reply at all for any other account (several request shapes tried,
+with accounts whose match data is public; match details and profile cards for
+the same accounts were answered). So the route is off by default and the site
+does not use the GC for recent matches. Match details are unaffected.
 
 ## Upkeep
 

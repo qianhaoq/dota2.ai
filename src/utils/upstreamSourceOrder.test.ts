@@ -12,7 +12,9 @@ describe('UPSTREAM_PRIMARY', () => {
     const all = { opendota: true, steam_gc: true, stratz: true };
     expect(sourceOrder('match', { configured: all })).toEqual(['opendota', 'steam_gc', 'stratz']);
     expect(sourceOrder('match', { primary: 'steam_gc', configured: all })).toEqual(['steam_gc', 'opendota', 'stratz']);
-    expect(sourceOrder('recent', { primary: 'steam_gc', configured: all })).toEqual(['steam_gc', 'opendota']);
+    // Recent matches: OpenDota only. The live GC answers player history for the logged-in account alone.
+    expect(sourceOrder('recent', { primary: 'steam_gc', configured: all })).toEqual(['opendota']);
+    expect(sourceOrder('recent', { configured: all })).toEqual(['opendota']);
     // steam_gc asked for but not deployed: today's chain, unchanged.
     expect(sourceOrder('match', { primary: 'steam_gc', configured: { opendota: true, stratz: false } })).toEqual(['opendota']);
   });
