@@ -201,3 +201,25 @@ describe('coach_ask never spends the LLM budget for a caller who left (review #2
     expect(t.touched.stream).toBe(1);
   });
 });
+
+describe('coach tool errors tell the agent what to do', () => {
+  it('an upstream outage says it is temporary (not a bare "Coach request failed")', async () => {
+    const service = createCoachService({
+      getMatchDetail: async () => { throw Object.assign(new Error('HTTP 520'), { status: 520 }); },
+      resolveClientIp: () => '192.0.2.70',
+      mapError: () => ({ status: 502, body: {} }),
+      recent: { get: async () => { throw Object.assign(new Error('HTTP 520'), { status: 520 }); } },
+    });
+    const app = express();
+    app.use(express.json());
+    app.use(createV1Router({ fetchMatch: async () => { throw new Error('unused'); }, coachForRequest: service.forRequest }));
+    const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+    servers.push(server);
+    const client = await connect(`http://127.0.0.1:${server.address().port}`);
+    const recent = await client.callTool({ name: 'recent_matches', arguments: { account: '86745912' } });
+    expect(recent.isError).toBe(true);
+    expect(recent.content[0].text).toBe('Could not load recent games right now (temporary; retry later)');
+    const report = await client.callTool({ name: 'coach_report', arguments: { match_id: 9091400302 } });
+    expect(report.content[0].text).toBe('Could not load the match right now (temporary; retry later)');
+  });
+});
