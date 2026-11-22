@@ -122,6 +122,21 @@ A running job leaves a marker in the store, so another instance reports
 "running" instead of offering a second start; a marker older than 15 minutes
 (parse) or 10 minutes (review) is treated as dead.
 
+## Known follow-ups
+
+- **A parse is claimed per instance, not across instances.** Two site
+  instances that get a prepare for the same match in the same moment can both
+  start it. The result is the same trace written twice, and each start counts
+  against the caller's and the day's limits. Closing it needs a create-only
+  write in the blob store plus an expiry rule for claims left by an instance
+  that died.
+- **Jobs depend on the page while CPU is throttled** (see above).
+- **The chat answer arrives whole**, after the tool steps, not token by token.
+- The older replay ingest (`lib/matchReview/replayIngest` job store, queue,
+  `scripts/replay-worker.mjs`, the `dota2-ai-replay-worker` service) is not
+  used by this path beyond its download, discovery, extractor and capacity
+  modules, and can be retired.
+
 ## The rules that must not be weakened
 
 - The replay address comes from the match record, must be a Valve / Perfect
