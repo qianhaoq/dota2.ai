@@ -109,12 +109,22 @@ address to stored trace; deep review with DeepSeek 4.1 Flash (thinking on)
 100–130 s, 130–270k input and 17–24k output tokens. A trace and a review are
 made once per match / per (match, hero, language) and kept.
 
+## Where the replay address comes from
+
+`lib/agent/replaySource.js`. The match record first (OpenDota's `replay_url`,
+or cluster + salt when the record came from the game coordinator). OpenDota
+has an address only for games it has already dealt with, which most games
+just played are not: then, if the Steam GC retriever is configured
+(`STEAM_RETRIEVER_URL`), the coordinator is asked for cluster and salt. A GC
+request is scarce (about a hundred a day per Steam account), so it is made
+only when the record has no address.
+
 ## What can go wrong, and what the page says
 
 | Reason | Meaning | Page |
 |---|---|---|
 | `replay_gone` | Valve no longer has the replay (about two weeks) | says so; scoreboard only; no retry |
-| `no_replay_url` | no address yet (a game that just ended, or OpenDota has none) | "not ready yet", retry |
+| `no_replay_url` | no source has an address: the match record has none and the game coordinator was not configured, had no budget left, or does not know the match | "not ready yet", retry |
 | `download_failed`, `extract_failed`, `worker_failed`, `timeout` | transient | "could not be read", retry (allowed again after 5 min) |
 | `too_large`, `wrong_match` | over the caps; the file is not that match | final |
 

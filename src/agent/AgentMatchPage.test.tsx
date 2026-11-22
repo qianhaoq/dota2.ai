@@ -206,6 +206,22 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(chatSignal!.aborted).toBe(true));
   });
 
+  it('prepare answers "ready" and the next refresh fails: the page keeps asking until it has the trace', async () => {
+    let n = 0; let started = 0;
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': { status: 'ready' },
+      '/review?': () => (started ? { status: 'running', steps: [] } : { status: 'none' }),
+      '/review': (_u: string, init?: RequestInit) => { if (init?.method === 'POST') { started += 1; return { status: 'running', steps: [] }; } return null; },
+      // No trace at first; the refresh right after prepare fails; then the trace is there.
+      '/api/agent/9100904020': () => { n += 1; return n === 1 ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } : n === 2 ? new Response('bad gateway', { status: 502 }) : { trace: true, model_configured: true, can_parse: true, heroes }; },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(started).toBe(1), { timeout: 9000 });
+    expect(n).toBeGreaterThanOrEqual(3);
+  }, 20000);
+
   it('a failed status request does not stop the wait: the page asks again', async () => {
     let n = 0;
     mockFetch({

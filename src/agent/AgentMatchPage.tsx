@@ -101,6 +101,9 @@ export const AgentMatchPage: React.FC = () => {
   // Counts finished availability requests, successful or not, so the poll below always gets its next turn.
   const [availTick, setAvailTick] = useState(0);
   const resumed = useRef(false);
+  // The match whose trace is known to exist but has not been loaded here yet; it means nothing for another match.
+  const [expectFor, setExpectFor] = useState<string | null>(null);
+  const expectTrace = expectFor === matchId;
   const chat = useRef<ChatHandle>(null);
 
   // The match on screen now. An availability answer for a match the reader has left is dropped.
@@ -198,10 +201,11 @@ export const AgentMatchPage: React.FC = () => {
   // While something is being worked on, ask how far it is every couple of seconds.
   const parsing = parse?.status === 'running';
   useEffect(() => {
-    if (!parsing) return undefined;
+    // Also while a trace is known to exist that this page has not loaded yet (prepare answered "ready").
+    if (!parsing && !(expectTrace && !hasTrace)) return undefined;
     const timer = setTimeout(() => { void loadAvail(); }, 2500);
     return () => clearTimeout(timer);
-  }, [parsing, availTick, loadAvail]);
+  }, [parsing, expectTrace, hasTrace, availTick, loadAvail]);
   useEffect(() => {
     if (state?.status !== 'running') return undefined;
     const timer = setTimeout(() => { void loadReview(); }, 2500);
@@ -211,6 +215,8 @@ export const AgentMatchPage: React.FC = () => {
   /** What prepare answered is the parse state now: a refresh that fails right after must not lose it. */
   const applyParse = (p: ParseState) => {
     if (p.status === 'running' || p.status === 'failed') setAvail((prev) => (prev && !prev.trace ? { ...prev, parse: p } : prev));
+    // Someone else's parse finished in between: the trace is there but this page has not seen it yet.
+    if (p.status === 'ready') setExpectFor(matchId);
     setAvailTick((n) => n + 1);
   };
   const refuse = (e: unknown) => {

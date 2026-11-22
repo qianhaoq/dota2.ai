@@ -77,6 +77,7 @@ import { createAgentRouter } from './lib/agent/router.js';
 import { createAgentService } from './lib/agent/service.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from './lib/agent/stores.js';
 import { createRemotePipeline, createTracePipeline } from './lib/agent/tracePipeline.js';
+import { createReplaySource } from './lib/agent/replaySource.js';
 import { deepReviewProvider } from './lib/agent/providers.js';
 import { openAiCompatible } from './lib/agent/loop.js';
 import { createCoachService } from './lib/coach/service.js';
@@ -898,14 +899,16 @@ const agentBlobs = (() => {
 // Where traces are kept, or null: without it nothing can be parsed, whatever else is configured.
 const agentTraceBlobs = agentBlobs ?? (process.env.AGENT_TRACE_DIR ? createFileStore(process.env.AGENT_TRACE_DIR) : null);
 const agentTraces = createTraceStore(agentTraceBlobs);
+// The replay address: the match record's, else the game coordinator's (when a retriever is configured).
+const agentReplaySource = createReplaySource({ getMatchDetail, gc: steamGc, log: (msg) => console.warn(`[agent] ${msg}`) });
 const agentPipeline = (() => {
   const worker = (process.env.TRACE_WORKER_URL || '').trim();
   if (worker && agentTraceBlobs) {
     const audience = (process.env.TRACE_WORKER_AUDIENCE || '').trim();
-    return createRemotePipeline({ url: worker, getMatchDetail, auth: audience ? createIdTokenProvider({ audience }) : undefined });
+    return createRemotePipeline({ url: worker, getMatchDetail: agentReplaySource, auth: audience ? createIdTokenProvider({ audience }) : undefined });
   }
   const bin = process.env.DOTA_EXTRACT_BIN || '';
-  return bin && agentTraceBlobs ? createTracePipeline({ getMatchDetail, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;
+  return bin && agentTraceBlobs ? createTracePipeline({ getMatchDetail: agentReplaySource, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;
 })();
 app.use(createAgentRouter({
   service: createAgentService({
