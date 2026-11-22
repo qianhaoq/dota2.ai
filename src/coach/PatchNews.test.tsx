@@ -29,8 +29,9 @@ describe('current patch on the home page', () => {
     expect(container.querySelectorAll('.cx-patch-item')).toHaveLength(CURRENT_PATCH.newItems.length);
     expect(screen.getByText('双蛇杖')).toBeTruthy();
     expect(screen.getByRole('link', { name: /完整更新日志/ }).getAttribute('href')).toBe('https://www.dota2.com/patches/7.42');
-    // The section sits between the search box and the principles.
-    const order = [...container.querySelectorAll('.cx-hero, .cx-patch, .cx-principles')].map((e) => e.classList[0]);
-    expect(order).toEqual(['cx-hero', 'cx-patch', 'cx-principles']);
+    // Home v3 order: the search box, the live sample review, the four ways to use it, then the patch as one line.
+    // (The three "principles" cards are gone; their message is in the subtitle.)
+    const order = [...container.querySelectorAll('.cx-hero, .hm-live, .hm-ways, .cx-patch, .cx-principles')].map((e) => e.classList[0]);
+    expect(order).toEqual(['cx-hero', 'hm-live', 'hm-ways', 'cx-patch']);
   });
 });
