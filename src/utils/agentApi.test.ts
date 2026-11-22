@@ -83,6 +83,16 @@ describe('runChat', () => {
     expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q', history: [{ q: 'a', a: '你在 19:19 死了。', clean: true }] })).unverified).toEqual([]);
   });
 
+  it('a count the review or a clean earlier answer stated may be repeated', async () => {
+    const trace = await createFileTraceStore(dir).get(MATCH);
+    const say = async () => ({ text: 'You cast it 7 times and died 9 times.' });
+    const review = { verdict: 'She used Black King Bar 7 times.' };
+    expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q' })).unverified).toEqual([{ kind: 'count', text: '7' }, { kind: 'count', text: '9' }]);
+    expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q', review, history: [{ q: 'a', a: 'You died 9 times.', clean: true }] })).unverified).toEqual([]);
+    // A flagged earlier answer backs nothing.
+    expect((await runChat({ complete: say, trace, hero: 'beastmaster', question: 'q', review, history: [{ q: 'a', a: 'You died 9 times.', clean: false }] })).unverified).toEqual([{ kind: 'count', text: '9' }]);
+  });
+
   it('validates the request body', () => {
     expect(parseChatBody({ question: ' hi ', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b' }, { q: 1 }, { q: '', a: 'x' }, { q: 'c', a: 'd', clean: true }, { q: 'e', a: 'f', clean: 'yes' }] })).toEqual({ question: 'hi', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b', clean: false }, { q: 'c', a: 'd', clean: true }, { q: 'e', a: 'f', clean: false }] });
     expect(parseChatBody({ question: 'x', hero: 'axe', history: Array.from({ length: 9 }, (_, i) => ({ q: `q${i}`, a: 'a' })) }).history).toHaveLength(6);
@@ -169,6 +179,35 @@ describe('agent API', () => {
     const statuses = [];
     for (const hero of ['necrolyte', 'venomancer', 'skywrath_mage', 'phantom_assassin']) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.1.9')).status);
     expect(statuses).toEqual([202, 202, 202, 429]);
+  });
+
+  it('a request that cannot be served, or is refused, reserves nothing', async () => {
+    let acquired = 0;
+    const counting = express();
+    counting.use(express.json());
+    const service = createAgentService({ traces: createFileTraceStore(dir), complete: m.complete, model: 'test-model' });
+    counting.use(createAgentRouter({ service, resolveClientIp: (req: any) => String(req.headers['x-test-ip'] ?? '10.9.0.1'), llm: { acquire: () => { acquired += 1; return budget; } } }));
+    const srv = counting.listen(0, '127.0.0.1');
+    await new Promise((r) => srv.once('listening', r));
+    const at = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    const send = (path: string, body: any, ip = '10.9.0.1') => fetch(at + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-test-ip': ip }, body: JSON.stringify(body) });
+    try {
+      // No trace, or a hero not in the game: the model budget is never touched.
+      for (let i = 0; i < 30; i += 1) await send('/api/agent/999/chat', { hero: 'axe', question: 'q' });
+      await send(`/api/agent/${MATCH}/chat`, { hero: 'pudge', question: 'q' });
+      await send('/api/agent/999/review', { hero: 'axe' });
+      expect(acquired).toBe(0);
+      // Twelve chat turns a minute per caller: the thirteenth is refused without taking model budget.
+      for (let i = 0; i < 12; i += 1) expect((await send(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', question: 'q' }, '10.9.0.2')).status).toBe(200);
+      expect(acquired).toBe(12);
+      expect((await send(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', question: 'q' }, '10.9.0.2')).status).toBe(429);
+      expect(acquired).toBe(12);
+      // The model budget says no: the caller's chat slots are untouched (twelve still go through afterwards).
+      budget = { ok: false, reason: 'client', retryAfterSec: 5 };
+      for (let i = 0; i < 5; i += 1) expect((await send(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', question: 'q' }, '10.9.0.3')).status).toBe(429);
+      budget = { ok: true };
+      for (let i = 0; i < 12; i += 1) expect((await send(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', question: 'q' }, '10.9.0.3')).status).toBe(200);
+    } finally { budget = { ok: true }; await new Promise((r) => srv.close(r)); }
   });
 
   it('chat: streams the tool steps, then the checked answer', async () => {
