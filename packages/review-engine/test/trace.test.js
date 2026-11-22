@@ -230,6 +230,23 @@ describe('trace tools on a real game', () => {
     expect(run('item_timeline', { hero: 'phantom_assassin' }).items.find((i) => i.item === 'black_king_bar').ref).toBe('item:phantom_assassin:black_king_bar');
   });
 
+  it('a stun counts for a cast only when the combat log attributes it to the caster', () => {
+    // 27:27: Beastmaster's roar stunned Phantom Assassin. Skywrath's Arcane Bolt hit her in the same second and did not.
+    const bolts = run('ability_audit', { hero: 'skywrath_mage', ability: 'arcane_bolt' }).casts.filter((c) => c.target === 'phantom_assassin' && Math.abs(c.t - 1647.4) < 3);
+    expect(bolts.length).toBeGreaterThan(0);
+    for (const c of bolts) expect(c.target_stunned_seconds).toBe(0);
+    expect(run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }).casts.find((c) => c.clock === '27:27').target_stunned_seconds).toBe(3.4);
+  });
+
+  it('a tool\'s totals carry a summary ref', () => {
+    expect(run('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' })).toMatchObject({ ref: 'audit:beastmaster:primal_roar', ref_scope: 'summary' });
+    expect(run('death_context', { hero: 'beastmaster', index: 1 })).toMatchObject({ ref: 'deaths:beastmaster', ref_scope: 'summary' });
+    expect(run('immunity_windows', { hero: 'phantom_assassin' })).toMatchObject({ ref: 'immunity:phantom_assassin', ref_scope: 'summary' });
+    expect(run('immunity_windows', { team: 'dire' }).ref).toBe('immunity:dire');
+    expect(run('immunity_windows', {}).ref).toBe('immunity:all');
+    expect(run('match_overview')).toMatchObject({ ref: 'overview', ref_scope: 'summary' });
+  });
+
   it('counts are stated by the tools, not left to the reader', () => {
     expect(run('death_context', { hero: 'beastmaster', index: 1 }).killed_by).toEqual({ venomancer: 1, phantom_assassin: 7, mirana: 1, necrolyte: 2 });
     expect(run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'primal_roar' })).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });

@@ -7,7 +7,10 @@
  * backs it, the row of trace/events.jsonl it came from. A record that
  * describes one moment (a death, a cast, a fight, an immunity window, an
  * item) carries a `ref`: a stable handle a review cites as its evidence, so
- * a reader — or a checker — can see exactly which record a sentence is about. Tools report; they do
+ * a reader — or a checker — can see exactly which record a sentence is about.
+ * A tool's own counts and totals (deaths_total, by_target, …) belong to the
+ * result's top-level `ref` with `ref_scope: 'summary'`: citing it covers those
+ * numbers only, not everything nested below. Tools report; they do
  * not judge. What the trace cannot show is returned under `gaps`, never
  * guessed: an absent value is unknown, not false.
  */
@@ -109,6 +112,7 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
     };
   });
   return {
+    ref: 'overview', ref_scope: 'summary',
     match_id: trace.match_id,
     duration: end ? { t: end[0], clock: clock(end[0]) } : null,
     ...(view ? { told_from: { hero: view.key, note: 'my_team is this hero\'s team; a negative gold lead means my_team was behind' }, result: end ? (end[2] === view.team ? 'my_team_won' : 'my_team_lost') : null } : { winner: end ? TEAM[end[2]] ?? null : null }),
@@ -174,7 +178,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
   });
   const killers = {};
   for (const d of all) { const k = nameOf(trace, d[2]) ?? 'unknown'; killers[k] = (killers[k] ?? 0) + 1; }
-  return { hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, deaths: out, gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+  return { ref: `deaths:${trace.heroes[h].key}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, deaths: out, gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
 }
 
 /** The ability key of hero h that `name` means: exact, with the hero prefix, or a unique suffix. */
@@ -185,10 +189,19 @@ function resolveAbility(trace, h, name) {
   return keys.find((x) => x === k) ?? keys.find((x) => x === `${trace.heroes[h].key}_${k}`) ?? (keys.filter((x) => x.endsWith(`_${k}`)).length === 1 ? keys.find((x) => x.endsWith(`_${k}`)) : null) ?? null;
 }
 
-/** Seconds the hero was stunned by a stun that began around t (from the 4 Hz state flags), or 0. */
-function stunnedFrom(trace, h, t) {
+/**
+ * Seconds the target was stunned by THIS cast, or 0. A stun counts only when
+ * the combat log shows the caster applying a stun to the target at the cast
+ * (within 0.6 s): several abilities often land on one hero in the same
+ * second, and another hero's stun must not be read as this ability working.
+ * The length is the one measured from the state samples when there is one
+ * (a stun can be cut short), else the duration the log gives.
+ */
+function stunnedByCast(trace, h, casterNpc, targetNpc, t) {
+  const applied = trace.modifiers.find((m) => m[4] === 1 && m[6] === 't' && m[1] === targetNpc && m[3] === casterNpc && Math.abs(m[0] - t) <= 0.6);
+  if (!applied) return 0;
   const iv = (trace.controls[h]?.stunned ?? []).find(([a]) => a >= t - 0.5 && a <= t + 1.5);
-  return iv ? Math.round((iv[1] - iv[0]) * 10) / 10 : 0;
+  return iv ? Math.round((iv[1] - iv[0]) * 10) / 10 : applied[5];
 }
 
 export function abilityAudit(trace, args = {}, ctx = {}) {
@@ -217,8 +230,8 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       ref: `cast:${trace.heroes[h].key}:${short}:${ci + 1}`, t, clock: clock(t), row: c[4], target: targetName,
       target_hp: ts ? { hp: ts.hp, max_hp: ts.max_hp } : null,
       target_spell_immune: target >= 0 ? Boolean(during) : null,
-      // What the replay shows happened, whatever the ability is supposed to do.
-      target_stunned_seconds: target >= 0 ? stunnedFrom(trace, target, t) : null,
+      // What the replay shows this cast did (a stun the log attributes to the caster), whatever the ability is supposed to do.
+      target_stunned_seconds: target >= 0 ? stunnedByCast(trace, target, npc, c[3], t) : null,
       ...(soonAfter ? { target_became_immune_dt: Math.round((soonAfter.from - t) * 10) / 10 } : {}),
       me: me ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
       allies_within_1300: allies.map((a) => a.hero), enemies_within_1300: enemies.map((e) => e.hero),
@@ -236,6 +249,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   }
   const myDeaths = trace.deaths.filter((d) => d[1] === npc).sort((a, b) => a[0] - b[0]);
   return {
+    ref: `audit:${trace.heroes[h].key}:${short}`, ref_scope: 'summary',
     hero: trace.heroes[h].key, ability: key,
     learned_at: learned == null ? null : { t: learned, clock: clock(learned) },
     casts_total: casts.length, by_target: byTarget,
@@ -288,6 +302,7 @@ export function immunityWindows(trace, args = {}) {
   if (watch) for (const w of windows) states[w.watched.state] = (states[w.watched.state] ?? 0) + 1;
   return {
     ...(watch ? { watching: { hero: trace.heroes[watch.h].key, ability: watch.key }, watched_state_when_window_opened: states, windows_with_a_cast_on_the_immune_hero: windows.filter((w) => w.watched.cast_on_this_hero_during.length).length } : {}),
+    ref: `immunity:${only >= 0 ? trace.heroes[only].key : team === 2 ? 'radiant' : team === 3 ? 'dire' : 'all'}`, ref_scope: 'summary',
     windows_total: windows.length, windows, gaps: gapsFor(trace, ['ability_immunity']),
   };
 }
