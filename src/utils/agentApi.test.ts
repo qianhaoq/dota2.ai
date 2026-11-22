@@ -1,0 +1,159 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createRequire } from 'node:module';
+import { copyFileSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { AddressInfo } from 'node:net';
+import { createAgentRouter } from '../../lib/agent/router.js';
+import { createAgentService, createFileTraceStore } from '../../lib/agent/service.js';
+import { chatSystem, parseChatBody, runChat } from '../../lib/agent/chat.js';
+
+const express = createRequire(import.meta.url)('express');
+const MATCH = '9100904020';
+const dir = mkdtempSync(join(tmpdir(), 'agent-api-'));
+copyFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url), join(dir, `${MATCH}.trace.json.gz`));
+copyFileSync(new URL('../../package.json', import.meta.url), join(dir, '123.trace.json.gz'));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+const call = (name: string, args: any, id: string) => ({ id, name, args });
+const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。' };
+const submit = { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], next_game: ['留咆哮'], blind_spots: ['视野'] };
+/** A model that looks things up, then submits a review; for chat questions it looks up one death and answers. */
+function model() {
+  const seen: any[] = [];
+  const complete = async (o: any) => {
+    seen.push(JSON.parse(JSON.stringify(o)));
+    const last = o.messages.at(-1);
+    const isChat = !o.tools.some((t: any) => t.name === 'submit_review');
+    if (isChat) {
+      if (last.role === 'tool') return { text: '36:05 你满血 2915，被 axe 先手。' };
+      if (String(last.content).startsWith('These are not in')) return { text: '36:05 你被先手。' };
+      if (String(last.content).includes('编')) return { text: '你在 19:19 死了。' };
+      return { toolCalls: [call('death_context', { hero: 'beastmaster', index: 9 }, 'd')] };
+    }
+    if (last.role === 'user') return { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a'), call('immunity_windows', { hero: 'phantom_assassin' }, 'b')] };
+    return { toolCalls: [call('submit_review', submit, 's')] };
+  };
+  return { seen, complete };
+}
+
+describe('trace store', () => {
+  it('reads a trace by match id, and nothing else', async () => {
+    const store = createFileTraceStore(dir);
+    expect((await store.get(MATCH)).heroes).toHaveLength(10);
+    expect(await store.get(Number(MATCH))).toBe(await store.get(MATCH));
+    for (const bad of ['123', '999', '../x', '', '0']) expect(await store.get(bad)).toBeNull();
+    expect(await createFileTraceStore(null).get(MATCH)).toBeNull();
+  });
+});
+
+describe('runChat', () => {
+  it('looks the moment up and answers from it, in the reader\'s names', async () => {
+    const m = model();
+    const trace = await createFileTraceStore(dir).get(MATCH);
+    const steps: any[] = [];
+    const r = await runChat({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh', question: '36 分钟那次我怎么死的？', history: [{ q: '之前的问题', a: '之前的回答' }], onEvent: (e: any) => steps.push(e) });
+    expect(r).toMatchObject({ status: 'ok', text: '36:05 你满血 2915，被 斧王 先手。', unverified: [], tool_calls: [{ name: 'death_context', args: { hero: 'beastmaster', index: 9 } }] });
+    expect(steps[0]).toEqual({ type: 'tool_start', name: 'death_context', args: { hero: 'beastmaster', index: 9 } });
+    // The model sees the context, the earlier turn, the question, and only lookup tools.
+    expect(m.seen[0].messages.map((x: any) => x.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'user']);
+    expect(m.seen[0].messages[0].content).toContain('Review of this game: none yet');
+    expect(m.seen[0].tools.map((t: any) => t.name)).not.toContain('submit_review');
+    expect(m.seen[0].system).toBe(chatSystem('zh'));
+  });
+  it('asks once for a correction, and reports what is still unsupported', async () => {
+    const trace = await createFileTraceStore(dir).get(MATCH);
+    const fixed = await runChat({ complete: model().complete, trace, hero: 'beastmaster', question: '编一个' });
+    expect(fixed).toMatchObject({ status: 'ok', text: '36:05 你被先手。' });
+    // 36:05 is in no tool result of that conversation either: it is flagged, not hidden.
+    expect(fixed.unverified).toEqual([{ kind: 'time', text: '36:05' }]);
+    const stubborn = await runChat({ complete: async () => ({ text: '你在 19:19 死了。' }), trace, hero: 'beastmaster', question: 'q' });
+    expect(stubborn.unverified).toEqual([{ kind: 'time', text: '19:19' }]);
+    // A time the review already holds needs no lookup.
+    expect((await runChat({ complete: async () => ({ text: '27:27 那次。' }), trace, hero: 'beastmaster', question: 'q', review: { findings: [{ evidence: [{ clock: '27:27' }] }] } })).unverified).toEqual([]);
+    expect(await runChat({ complete: async () => ({ text: ' ' }), trace, hero: 'beastmaster', question: 'q' })).toMatchObject({ status: 'no_answer' });
+    expect(await runChat({ complete: async () => ({ text: 'x' }), trace, hero: 'pudge', question: 'q' })).toEqual({ status: 'unknown_hero' });
+  });
+  it('validates the request body', () => {
+    expect(parseChatBody({ question: ' hi ', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b' }, { q: 1 }, { q: '', a: 'x' }] })).toEqual({ question: 'hi', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b' }] });
+    expect(parseChatBody({ question: 'x', hero: 'axe', history: Array.from({ length: 9 }, (_, i) => ({ q: `q${i}`, a: 'a' })) }).history).toHaveLength(6);
+    expect([parseChatBody({}), parseChatBody({ question: 'x'.repeat(501), hero: 'a' }), parseChatBody({ question: 'x' })].map((r: any) => r.error)).toEqual(['empty_question', 'question_too_long', 'invalid_hero']);
+  });
+});
+
+describe('agent API', () => {
+  let server: any; let base = '';
+  const m = model();
+  const reviewDir = join(dir, 'reviews');
+  let budget = { ok: true } as any;
+  let guardOk = true;
+  beforeAll(async () => {
+    const service = createAgentService({ traces: createFileTraceStore(dir), complete: m.complete, model: 'test-model', reviewDir, getMatchDetail: async () => { throw new Error('upstream down'); } });
+    const app = express();
+    app.use(express.json());
+    app.use(createAgentRouter({ service, resolveClientIp: (req: any) => String(req.headers['x-test-ip'] ?? '10.0.0.1'), llm: { acquire: () => budget }, guard: () => (guardOk ? { ok: true } : { ok: false, status: 403, error: 'Cross-origin' }) }));
+    server = app.listen(0, '127.0.0.1');
+    await new Promise((r) => server.once('listening', r));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+  afterAll(() => new Promise((r) => server.close(r)));
+  const get = async (path: string) => { const r = await fetch(base + path); return { status: r.status, body: await r.json() }; };
+  const post = async (path: string, body: any, ip = '10.0.0.1') => { const r = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-test-ip': ip }, body: JSON.stringify(body) }); return { status: r.status, body: r.headers.get('content-type')?.includes('json') ? await r.json() : await r.text() }; };
+  const frames = (sse: string) => sse.split('\n\n').filter(Boolean).map((f) => JSON.parse(f.replace(/^data: /, '')));
+
+  it('says whether a replay trace exists and for which heroes', async () => {
+    const a = await get(`/api/agent/${MATCH}`);
+    expect(a.body).toMatchObject({ trace: true, model_configured: true });
+    expect(a.body.heroes).toContainEqual({ hero: 'beastmaster', team: 'dire' });
+    expect((await get('/api/agent/999')).body).toEqual({ trace: false, model_configured: true, heroes: [] });
+    expect((await get('/api/agent/abc')).status).toBe(400);
+  });
+
+  it('review: none → start (202) → ready, kept on disk; a second start spends nothing', async () => {
+    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=zh`)).body).toEqual({ status: 'none' });
+    const started = await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'zh' });
+    expect(started).toMatchObject({ status: 202, body: { status: 'running' } });
+    let now: any;
+    for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=zh`)).body; if (now.status === 'ready') break; await new Promise((r) => setTimeout(r, 20)); }
+    expect(now).toMatchObject({ status: 'ready', model: 'test-model', tool_calls: 2, verification: { repaired: false, dropped: 0 }, review: { schema: 'dota2.ai/deep-review@1', hero: 'beastmaster', lang: 'zh', verdict: submit.verdict } });
+    expect(now.review.findings[0].evidence[0]).toEqual({ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: finding.evidence[0].fact });
+    expect(readdirSync(reviewDir)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
+    const calls = m.seen.length;
+    budget = { ok: false, reason: 'client', retryAfterSec: 9 };
+    expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'zh' })).toMatchObject({ status: 200, body: { status: 'ready' } });
+    budget = { ok: true };
+    expect(m.seen.length).toBe(calls);
+    // Another language is another review.
+    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=en`)).body).toEqual({ status: 'none' });
+  });
+
+  it('review: bad input, missing trace, limits and the guard', async () => {
+    expect((await get(`/api/agent/${MATCH}/review`)).status).toBe(400);
+    expect(await get(`/api/agent/${MATCH}/review?hero=pudge`)).toMatchObject({ body: { status: 'unknown_hero' } });
+    expect(await post('/api/agent/999/review', { hero: 'axe' })).toMatchObject({ status: 404, body: { status: 'no_trace' } });
+    expect((await post(`/api/agent/${MATCH}/review`, { hero: 'x;y' })).status).toBe(400);
+    budget = { ok: false, reason: 'cost_guard' };
+    expect(await post(`/api/agent/${MATCH}/review`, { hero: 'axe' }, '10.0.0.7')).toMatchObject({ status: 503, body: { code: 'busy' } });
+    budget = { ok: true };
+    guardOk = false;
+    expect((await post(`/api/agent/${MATCH}/review`, { hero: 'axe' })).status).toBe(403);
+    expect((await post(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', question: 'q' })).status).toBe(403);
+    guardOk = true;
+    // Three starts per caller per ten minutes.
+    const statuses = [];
+    for (const hero of ['axe', 'sven', 'mirana', 'undying']) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.0.9')).status);
+    expect(statuses).toEqual([202, 202, 202, 429]);
+  });
+
+  it('chat: streams the tool steps, then the checked answer', async () => {
+    const r = await post(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', lang: 'zh', question: '36 分钟那次我怎么死的？' });
+    expect(r.status).toBe(200);
+    expect(frames(r.body as string)).toEqual([{ step: { tool: 'death_context', args: { hero: 'beastmaster', index: 9 } } }, { text: '36:05 你满血 2915，被 斧王 先手。' }, { done: true }]);
+    // The finished review travels with the question.
+    expect(m.seen.at(-2).messages[0].content).toContain('"verdict":"咆哮没有留给幻影刺客。"');
+    const flagged = frames((await post(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', lang: 'zh', question: '编一个' })).body as string);
+    expect(flagged[0]).toMatchObject({ text: '36:05 你被先手。' });
+    expect(frames((await post('/api/agent/999/chat', { hero: 'axe', question: 'q' })).body as string)).toEqual([{ error: 'no_trace' }, { done: true }]);
+    expect((await post(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster' })).status).toBe(400);
+  });
+});

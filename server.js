@@ -73,6 +73,10 @@ import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyt
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
 import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
+import { createAgentRouter } from './lib/agent/router.js';
+import { createAgentService, createFileTraceStore } from './lib/agent/service.js';
+import { deepReviewProvider } from './lib/agent/providers.js';
+import { openAiCompatible } from './lib/agent/loop.js';
 import { createCoachService } from './lib/coach/service.js';
 import { createCaseService } from './lib/coach/caseSource.js';
 import { createRecentService } from './lib/coach/recent.js';
@@ -875,6 +879,25 @@ app.use(createCoachRouter({
     },
     ...coachAskDeps,
   },
+}));
+
+// The review agent: deep reviews and chat over a parsed replay (lib/agent).
+// Off unless AGENT_TRACE_DIR holds traces (scripts/build-trace.mjs); without
+// a model key the routes answer but start nothing.
+const agentModel = deepReviewProvider('deepseek', process.env);
+app.use(createAgentRouter({
+  service: createAgentService({
+    traces: createFileTraceStore(process.env.AGENT_TRACE_DIR || null),
+    complete: agentModel.ok ? openAiCompatible({ client: new OpenAI({ baseURL: agentModel.baseURL, apiKey: agentModel.apiKey }), model: agentModel.model, extraBody: agentModel.extraBody }) : null,
+    model: agentModel.ok ? agentModel.model : null,
+    reviewDir: process.env.AGENT_REVIEW_DIR || null,
+    getMatchDetail,
+    log: (msg) => console.warn(`[agent] ${msg}`),
+  }),
+  resolveClientIp,
+  llm: reviewLlmLimit,
+  guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
+  log: (msg) => console.warn(`[agent] ${msg}`),
 }));
 
 // Review v1 API, OpenAPI/llms docs and the remote MCP endpoint (/mcp), whose
