@@ -101,7 +101,9 @@ export const AgentMatchPage: React.FC = () => {
   // Counts finished availability requests, successful or not, so the poll below always gets its next turn.
   const [availTick, setAvailTick] = useState(0);
   const resumed = useRef(false);
-  const [expectTrace, setExpectTrace] = useState(false);
+  // The match whose trace is known to exist but has not been loaded here yet; it means nothing for another match.
+  const [expectFor, setExpectFor] = useState<string | null>(null);
+  const expectTrace = expectFor === matchId;
   const chat = useRef<ChatHandle>(null);
 
   // The match on screen now. An availability answer for a match the reader has left is dropped.
@@ -214,7 +216,7 @@ export const AgentMatchPage: React.FC = () => {
   const applyParse = (p: ParseState) => {
     if (p.status === 'running' || p.status === 'failed') setAvail((prev) => (prev && !prev.trace ? { ...prev, parse: p } : prev));
     // Someone else's parse finished in between: the trace is there but this page has not seen it yet.
-    if (p.status === 'ready') setExpectTrace(true);
+    if (p.status === 'ready') setExpectFor(matchId);
     setAvailTick((n) => n + 1);
   };
   const refuse = (e: unknown) => {
