@@ -1,5 +1,7 @@
 # PR2: separate production runtime and deployment identities
 
+> Production identifiers (project ID, project number, trigger ID) are not committed: this repository is public. Pass them as `--project`, `--project-number` and `--trigger`; read the number with `gcloud projects describe <PROJECT_ID> --format='value(projectNumber)'` and the trigger ID with `gcloud builds triggers list --region=global`.
+
 Scope: independent of other changes, originally audited at `4976b414`.
 Upstream main updates are incorporated through normal merges, without rewriting
 history. This PR supplies a migration tool, not a production migration. No cloud validation has been done.
@@ -21,13 +23,13 @@ records the original baseline before any cloud writes.
 | New principal | Allow binding | Resource scope |
 | --- | --- | --- |
 | Web runtime | Secret Accessor | Each of deepseek-api-key, gemini-api-key, steam-web-api-key, opendota-api-key individually |
-| Web runtime | Storage Object Admin | `aegis-assistant-488913-replay-facts-t348u` only |
+| Web runtime | Storage Object Admin | `<PROJECT_ID>-replay-facts-t348u` only |
 | Web runtime | Cloud Run Invoker | `dota2-ai-replay-worker` only |
 | Build/deploy | Cloud Run Developer | Existing `dota2-ai` only |
 | Build/deploy | Service Account User | New web runtime SA only |
 | Build/deploy | Artifact Registry Writer | `asia-east1/cloud-run-source-deploy` only |
 | Build/deploy | Logs Writer | Project (existing inline build must use CLOUD_LOGGING_ONLY) |
-| Build/deploy, optional | Storage Object Viewer | `aegis-assistant-488913_cloudbuild`, only with reviewed `--source-reader` |
+| Build/deploy, optional | Storage Object Viewer | `<PROJECT_ID>_cloudbuild`, only with reviewed `--source-reader` |
 
 Bucket-scoped Object Admin is intentional: the transaction store needs object
 read/write/list/delete. Neither target receives Editor, Run Admin, Token Creator,
@@ -76,7 +78,7 @@ IAM Analyzer needs `cloudasset.assets.analyzeIamPolicy`,
 `iam.roles.get` and `serviceusage.services.use` at the root audit scope, plus
 Workspace `groups.read` when group expansion is necessary. Missing/incomplete
 analysis fails closed. Use `organizations/NUMBER` for a parented project; use
-`projects/623152404086` only if project ancestry confirms no organization.
+`projects/<PROJECT_NUMBER>` only if project ancestry confirms no organization.
 The tool checks that scope against ancestry. New identity names must not already
 exist; only accounts marked by this journal's migration ID can be resumed.
 Unexpected conditional, inherited or expanded group grants outside the table
@@ -122,9 +124,10 @@ source does not require `--source-reader`; that grant remains opt-in.
 
    ```bash
    python3 scripts/identity/migrate.py \
-     --runtime dota2-web-runtime-v2@aegis-assistant-488913.iam.gserviceaccount.com \
-     --build dota2-web-deploy-v2@aegis-assistant-488913.iam.gserviceaccount.com \
-     --audit-scope projects/623152404086 \
+     --project <PROJECT_ID> --project-number <PROJECT_NUMBER> --trigger <TRIGGER_ID> \
+     --runtime dota2-web-runtime-v2@<PROJECT_ID>.iam.gserviceaccount.com \
+     --build dota2-web-deploy-v2@<PROJECT_ID>.iam.gserviceaccount.com \
+     --audit-scope projects/<PROJECT_NUMBER> \
      --journal /private/operator/pr2-identity-journal.json
    ```
 

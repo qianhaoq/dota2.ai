@@ -11,15 +11,27 @@ import subprocess
 import sys
 import uuid
 
-PROJECT = 'aegis-assistant-488913'
-NUMBER = '623152404086'
+# Production identifiers are not committed (public repository): main() sets them
+# from required flags via configure(); tests configure fictitious values.
+PROJECT = NUMBER = TRIGGER = LEGACY = BUCKET = SOURCE = None
 REGION = 'asia-east1'
 WEB = 'dota2-ai'
 WORKER = 'dota2-ai-replay-worker'
-TRIGGER = '0a392e9a-9a47-4dd1-8e20-d42ab0c3720a'
-LEGACY = NUMBER + '-compute@developer.gserviceaccount.com'
-BUCKET = PROJECT + '-replay-facts-t348u'
-SOURCE = PROJECT + '_cloudbuild'
+
+
+def configure(project, number, trigger):
+    """Set the target project, its number and the Cloud Build trigger id (validated)."""
+    global PROJECT, NUMBER, TRIGGER, LEGACY, BUCKET, SOURCE
+    if not re.fullmatch(r'[a-z][a-z0-9-]{4,28}[a-z0-9]', project or ''):
+        raise Unsafe('Invalid --project')
+    if not re.fullmatch(r'[0-9]{6,20}', number or ''):
+        raise Unsafe('Invalid --project-number')
+    if not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', trigger or ''):
+        raise Unsafe('Invalid --trigger (Cloud Build trigger UUID)')
+    PROJECT, NUMBER, TRIGGER = project, number, trigger
+    LEGACY = NUMBER + '-compute@developer.gserviceaccount.com'
+    BUCKET = PROJECT + '-replay-facts-t348u'
+    SOURCE = PROJECT + '_cloudbuild'
 REPO = 'cloud-run-source-deploy'
 SECRETS = {'deepseek-api-key': 'latest', 'gemini-api-key': 'latest',
            'steam-web-api-key': 'latest', 'opendota-api-key': '1'}
@@ -407,6 +419,9 @@ class Migration:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--project', required=True, help='GCP project ID')
+    parser.add_argument('--project-number', required=True, help='GCP project number (from `gcloud projects describe`)')
+    parser.add_argument('--trigger', required=True, help='Cloud Build trigger UUID of the web deploy')
     parser.add_argument('--runtime', required=True)
     parser.add_argument('--build', required=True)
     parser.add_argument('--audit-scope', required=True, help='Root organization, or project for an unparented project')
@@ -416,9 +431,10 @@ def main():
     parser.add_argument('--rollback', action='store_true')
     parser.add_argument('--acknowledge')
     args = parser.parse_args()
+    configure(args.project, args.project_number, args.trigger)
     require(not args.apply or args.acknowledge == ACK, 'Apply requires explicit production write acknowledgement')
     migration = Migration(Gcloud(), args.runtime, args.build, args.audit_scope, args.source_reader)
-    identity = {'runtime': args.runtime, 'build': args.build, 'scope': args.audit_scope, 'project': PROJECT, 'sourceReader': args.source_reader, 'version': 2}
+    identity = {'runtime': args.runtime, 'build': args.build, 'scope': args.audit_scope, 'project': PROJECT, 'trigger': TRIGGER, 'sourceReader': args.source_reader, 'version': 2}
     require(not args.journal.is_symlink(), 'Journal cannot be a symlink')
     journal = json.loads(args.journal.read_text()) if args.journal.exists() else None
     require(not args.rollback or journal is not None, 'Rollback requires original journal')

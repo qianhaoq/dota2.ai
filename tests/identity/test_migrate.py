@@ -15,6 +15,9 @@ MODULE = Path(__file__).resolve().parents[2] / 'scripts/identity/migrate.py'
 spec = importlib.util.spec_from_file_location('migrate', MODULE)
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
+# Fictitious identifiers: production ones are passed as flags, never committed.
+TEST_PROJECT, TEST_NUMBER, TEST_TRIGGER = 'example-project-1', '100000000001', '00000000-0000-4000-8000-000000000001'
+m.configure(TEST_PROJECT, TEST_NUMBER, TEST_TRIGGER)
 RUNTIME = 'web-runtime-v2@' + m.PROJECT + '.iam.gserviceaccount.com'
 BUILD = 'web-deploy-v2@' + m.PROJECT + '.iam.gserviceaccount.com'
 WORKER = 'replay-worker@' + m.PROJECT + '.iam.gserviceaccount.com'
@@ -154,7 +157,7 @@ class MigrationTests(unittest.TestCase):
     def cli(self, *flags):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'journal.json'
-            argv = ['migrate', '--runtime', RUNTIME, '--build', BUILD, '--audit-scope', 'projects/' + m.NUMBER,
+            argv = ['migrate', '--project', TEST_PROJECT, '--project-number', TEST_NUMBER, '--trigger', TEST_TRIGGER, '--runtime', RUNTIME, '--build', BUILD, '--audit-scope', 'projects/' + m.NUMBER,
                     '--journal', str(path), *flags]
             with patch.object(sys, 'argv', argv), patch.object(m, 'Gcloud', return_value=self.cloud), patch('sys.stdout', new_callable=io.StringIO) as output:
                 m.main()
@@ -301,25 +304,25 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(len(extra), 1)
         args, resource, role, member = extra[0]
         self.assertEqual(args, ['storage', 'buckets', 'add-iam-policy-binding',
-                                'gs://aegis-assistant-488913_cloudbuild'])
-        self.assertEqual(resource, '//storage.googleapis.com/aegis-assistant-488913_cloudbuild')
+                                'gs://example-project-1_cloudbuild'])
+        self.assertEqual(resource, '//storage.googleapis.com/example-project-1_cloudbuild')
         self.assertEqual((role, member), ('roles/storage.objectViewer', BUILD))
 
     def test_independent_binding_contract(self):
         bindings = m.grants(RUNTIME, BUILD)
         runtime_roles = {(role, resource) for _, resource, role, member in bindings if member == RUNTIME}
         expected = {('roles/secretmanager.secretAccessor',
-                     '//secretmanager.googleapis.com/projects/623152404086/secrets/' + name)
+                     '//secretmanager.googleapis.com/projects/100000000001/secrets/' + name)
                     for name in ('deepseek-api-key', 'gemini-api-key', 'steam-web-api-key', 'opendota-api-key')}
-        expected |= {('roles/storage.objectAdmin', '//storage.googleapis.com/aegis-assistant-488913-replay-facts-t348u'),
-                     ('roles/run.invoker', '//run.googleapis.com/projects/aegis-assistant-488913/locations/asia-east1/services/dota2-ai-replay-worker')}
+        expected |= {('roles/storage.objectAdmin', '//storage.googleapis.com/example-project-1-replay-facts-t348u'),
+                     ('roles/run.invoker', '//run.googleapis.com/projects/example-project-1/locations/asia-east1/services/dota2-ai-replay-worker')}
         self.assertEqual(runtime_roles, expected)
         build_roles = {(role, resource) for _, resource, role, member in bindings if member == BUILD}
         self.assertEqual(build_roles, {
-            ('roles/run.developer', '//run.googleapis.com/projects/aegis-assistant-488913/locations/asia-east1/services/dota2-ai'),
-            ('roles/iam.serviceAccountUser', '//iam.googleapis.com/projects/aegis-assistant-488913/serviceAccounts/' + RUNTIME),
-            ('roles/artifactregistry.writer', '//artifactregistry.googleapis.com/projects/aegis-assistant-488913/locations/asia-east1/repositories/cloud-run-source-deploy'),
-            ('roles/logging.logWriter', '//cloudresourcemanager.googleapis.com/projects/aegis-assistant-488913')})
+            ('roles/run.developer', '//run.googleapis.com/projects/example-project-1/locations/asia-east1/services/dota2-ai'),
+            ('roles/iam.serviceAccountUser', '//iam.googleapis.com/projects/example-project-1/serviceAccounts/' + RUNTIME),
+            ('roles/artifactregistry.writer', '//artifactregistry.googleapis.com/projects/example-project-1/locations/asia-east1/repositories/cloud-run-source-deploy'),
+            ('roles/logging.logWriter', '//cloudresourcemanager.googleapis.com/projects/example-project-1')})
 
     def test_new_targets_must_be_owned_even_on_recovery(self):
         j = self.journal()
@@ -483,6 +486,34 @@ class MigrationTests(unittest.TestCase):
                 with self.assertRaises(m.Unsafe) as error:
                     m.Gcloud()(['projects', 'describe', m.PROJECT])
             self.assertNotIn('SECRET-RESPONSE', str(error.exception))
+
+
+class ConfigureTests(unittest.TestCase):
+    """Production identifiers come from flags, validated, never from the source."""
+
+    def tearDown(self):
+        m.configure(TEST_PROJECT, TEST_NUMBER, TEST_TRIGGER)
+
+    def test_rejects_malformed_identifiers(self):
+        for bad in [('Bad_Project', TEST_NUMBER, TEST_TRIGGER), (TEST_PROJECT, '12ab', TEST_TRIGGER),
+                    (TEST_PROJECT, TEST_NUMBER, 'not-a-uuid'), ('', TEST_NUMBER, TEST_TRIGGER)]:
+            with self.assertRaises(m.Unsafe):
+                m.configure(*bad)
+
+    def test_derives_legacy_account_and_buckets(self):
+        m.configure('other-project-2', '200000000002', TEST_TRIGGER)
+        self.assertEqual(m.LEGACY, '200000000002-compute@developer.gserviceaccount.com')
+        self.assertEqual(m.BUCKET, 'other-project-2-replay-facts-t348u')
+        self.assertEqual(m.SOURCE, 'other-project-2_cloudbuild')
+
+    def test_main_requires_the_identifier_flags_before_any_gcloud_call(self):
+        calls = []
+        argv = ['migrate', '--runtime', 'a@x', '--build', 'b@x', '--audit-scope', 'projects/1', '--journal', '/tmp/none.json']
+        with patch.object(sys, 'argv', argv), patch.object(m, 'Gcloud', side_effect=lambda: calls.append(1)), \
+                patch('sys.stderr', new_callable=io.StringIO):
+            with self.assertRaises(SystemExit):
+                m.main()
+        self.assertEqual(calls, [])
 
 
 if __name__ == '__main__':
