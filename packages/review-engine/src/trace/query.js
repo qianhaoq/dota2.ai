@@ -60,10 +60,17 @@ export function abilityLevel(entry, t) {
   return lv;
 }
 
-/** Seconds until an ability/item entry is off cooldown at t: 0 = ready. */
+/**
+ * Seconds until an ability/item entry is off cooldown at t: 0 = ready.
+ * From the cooldown sampled when the interval began, counted down — not from
+ * the interval's end, which can come early (the item left the inventory, the
+ * trace ended, the cooldown was reset). Inside an interval it is never 0.
+ */
 export function cooldownLeft(entry, t) {
   const iv = within(entry?.cd, t);
-  return iv ? Math.round((iv[1] - t) * 10) / 10 : 0;
+  if (!iv) return 0;
+  const left = typeof iv[2] === 'number' ? iv[2] - (t - iv[0]) : iv[1] - t;
+  return Math.max(0.1, Math.round(left * 10) / 10);
 }
 
 export const heldAt = (entry, t) => within(entry?.held, t) != null;

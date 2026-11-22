@@ -72,7 +72,7 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
     setNote(null);
     // The agent resolves the moment from the ref; the reader sees only their own words.
     const sent = context ? `${question}\n(about ${context.refs.join(', ')})` : question;
-    const history: ChatTurn[] = turns.filter((x) => x.a && !x.error).slice(-6).map((x) => ({ q: x.q, a: x.a }));
+    const history: ChatTurn[] = turns.filter((x) => x.a && !x.error).slice(-6).map((x) => ({ q: x.q, a: x.a, clean: (x.unverified ?? []).length === 0 }));
     setTurns((prev) => [...prev, { q: question, a: '', steps: [], pending: true }]);
     setDraft(''); setContext(null);
     const ac = new AbortController(); abort.current = ac;

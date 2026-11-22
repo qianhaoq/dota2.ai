@@ -71,6 +71,35 @@ describe('AgentMatchPage', () => {
     expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/review') && c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
   }, 20000);
 
+  it('the reader\'s "go" outlives a parse that died: on return it is started again, once', async () => {
+    window.sessionStorage.setItem('dota2ai.review-intent.9100904020.beastmaster.en', '1');
+    let prepared = 0;
+    const calls = mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { prepared += 1; return { status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepared ? { status: 'running', stage: 'downloading' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    await waitFor(() => expect(prepared).toBe(1));
+    await waitFor(() => expect(calls.filter((c) => c.url.endsWith('/api/agent/9100904020')).length).toBeGreaterThanOrEqual(2));
+    expect(prepared).toBe(1);
+  });
+
+  it('a failed status request does not stop the wait: the page asks again', async () => {
+    let n = 0;
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/review?': { status: 'running', steps: [] },
+      // Running, then one request fails, then the trace is there.
+      '/api/agent/9100904020': () => { n += 1; if (n === 2) return new Response('bad gateway', { status: 502 }); return n < 2 ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'running', stage: 'extracting' } } : { trace: true, model_configured: true, can_parse: true, heroes }; },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    await waitFor(() => expect(n).toBeGreaterThanOrEqual(3), { timeout: 9000 });
+    await waitFor(() => expect(document.querySelector('.ag-journey li.is-live strong')?.textContent).toBe('The coach goes through it'), { timeout: 4000 });
+  }, 20000);
+
   it('a replay that is gone is said plainly, with the scoreboard and no review in its place', async () => {
     mockFetch({ '/api/coach/8000000001': board, '/api/agent/8000000001': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'failed', reason: 'replay_gone', final: true } } });
     page('/r/8000000001?hero=beastmaster&lang=en');

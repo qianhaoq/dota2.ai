@@ -95,12 +95,18 @@ export const AgentMatchPage: React.FC = () => {
   const [state, setState] = useState<ReviewState | null>(null);
   const [intent, setIntent] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Counts finished availability requests, successful or not, so the poll below always gets its next turn.
+  const [availTick, setAvailTick] = useState(0);
+  const resumed = useRef(false);
   const chat = useRef<ChatHandle>(null);
 
   const loadAvail = useCallback(async (signal?: AbortSignal) => {
     try { setAvail(await fetchAvailability(matchId, signal)); } catch (e) {
-      if ((e as Error).name !== 'AbortError') setAvail((prev) => prev ?? { trace: false, model_configured: false, can_parse: false, heroes: [], parse: { status: 'none' } });
+      if ((e as Error).name === 'AbortError') return;
+      // A request that failed while we already know the state changes nothing: keep what we have and ask again.
+      setAvail((prev) => prev ?? { trace: false, model_configured: false, can_parse: false, heroes: [], parse: { status: 'none' } });
     }
+    setAvailTick((n) => n + 1);
   }, [matchId]);
 
   useEffect(() => {
@@ -161,7 +167,7 @@ export const AgentMatchPage: React.FC = () => {
     if (!parsing) return undefined;
     const timer = setTimeout(() => { void loadAvail(); }, 2500);
     return () => clearTimeout(timer);
-  }, [parsing, avail, loadAvail]);
+  }, [parsing, availTick, loadAvail]);
   useEffect(() => {
     if (state?.status !== 'running') return undefined;
     const timer = setTimeout(() => { void loadReview(); }, 2500);
@@ -181,10 +187,19 @@ export const AgentMatchPage: React.FC = () => {
 
   /** The one click: fetch and parse the replay if needed, then the review follows on its own. */
   async function go() {
-    setNotice(null); want(true);
+    setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
     try { await prepareMatch(matchId); await loadAvail(); } catch (e) { refuse(e); }
   }
+
+  // The reader said go, then came back to a parse that is no longer running (it died with its instance,
+  // or failed and its retry time passed): start it again once, rather than wait on nothing.
+  useEffect(() => {
+    if (!intent || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
+    resumed.current = true;
+    prepareMatch(matchId).then(() => loadAvail()).catch(refuse);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent, avail, matchId, loadAvail]);
 
   // The replay just became available and the reader asked for a review: carry on without a second click.
   useEffect(() => {
