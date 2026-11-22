@@ -99,9 +99,13 @@ export function createMcpServer(options = {}) {
         const result = await coach[name](args);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
       } catch (error) {
-        // Rate limits say so (with the wait), so an agent backs off instead of retrying blind.
-        const known = error.code === 'INVALID_INPUT' || error.code === 'NOT_FOUND' || error.code === 'RATE_LIMITED';
-        return { isError: true, content: [{ type: 'text', text: known ? error.message : 'Coach request failed' }] };
+        // Known codes carry our own fixed wording (never raw upstream data), so the
+        // agent can tell "retry later" (UPSTREAM, RATE_LIMITED with its wait) from
+        // "fix the input" (INVALID_INPUT) or "no such match/player" (NOT_FOUND).
+        const known = ['INVALID_INPUT', 'NOT_FOUND', 'RATE_LIMITED', 'UPSTREAM'].includes(error.code);
+        const text = !known ? 'Coach request failed'
+          : error.code === 'UPSTREAM' ? `${error.message} (temporary; retry later)` : error.message;
+        return { isError: true, content: [{ type: 'text', text }] };
       }
     };
     const hero = z.union([z.string(), z.number()]);
