@@ -8,20 +8,28 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 function fakeBucket(opts: { failReads?: number; slowMs?: number } = {}) {
   const objects = new Map<string, string>();
   const calls = { download: 0, save: 0 };
+  const generations = new Map<string, number>();
   return {
-    objects, calls,
+    objects, calls, generations,
     file(key: string) {
       return {
-        async download() {
+        async download(_o?: any) {
           calls.download += 1;
           if (opts.slowMs) await new Promise((r) => setTimeout(r, opts.slowMs));
           if (opts.failReads) throw Object.assign(new Error('gcs_request_failed'), { code: opts.failReads });
           if (!objects.has(key)) throw Object.assign(new Error('gcs_request_failed'), { code: 404 });
           return [Buffer.from(objects.get(key)!)];
         },
+        async getMetadata() {
+          if (!objects.has(key)) throw Object.assign(new Error('gcs_request_failed'), { code: 404 });
+          return [{ generation: String(generations.get(key) ?? 1) }];
+        },
         async save(body: string, o: any = {}) {
           calls.save += 1;
-          if (o.preconditionOpts?.ifGenerationMatch === 0 && objects.has(key)) throw Object.assign(new Error('gcs_request_failed'), { code: 412 });
+          const want = o.preconditionOpts?.ifGenerationMatch;
+          if (want === 0 && objects.has(key)) throw Object.assign(new Error('gcs_request_failed'), { code: 412 });
+          if (want != null && want !== 0 && String(want) !== String(generations.get(key) ?? 1)) throw Object.assign(new Error('gcs_request_failed'), { code: 412 });
+          generations.set(key, objects.has(key) ? (generations.get(key) ?? 1) + 1 : 1);
           objects.set(key, body);
         },
       };
@@ -53,6 +61,50 @@ describe('match store (GCS)', () => {
     expect(bucket.calls.save).toBe(0);
     bucket.objects.set('matches/2.json', JSON.stringify(unparsed));
     expect(await s.getMatch(2)).toBeNull();
+  });
+
+  it('replaceMatch: a fuller copy replaces a lesser stored one, and only that way round', async () => {
+    const lesser = { match_id: 1, version: 22, data_source: 'steam_gc+odota_parser', players: [] };
+    const fuller = { match_id: 1, version: 22, players: [{ benchmarks: {} }] };
+    const isLesser = (m: any) => m?.data_source === 'steam_gc+odota_parser';
+    const bucket = fakeBucket();
+    const s = createMatchStore({ bucket, isParsed });
+    s.putMatch(1, lesser);
+    await flush();
+    s.replaceMatch(1, fuller, isLesser);
+    await flush(); await flush();
+    expect(await s.getMatch(1)).toEqual(fuller);
+    // The other way round is refused: by the copy offered, and by the copy stored.
+    s.replaceMatch(1, lesser, isLesser);
+    s.replaceMatch(1, { ...fuller, players: [] }, isLesser);
+    await flush(); await flush();
+    expect(await s.getMatch(1)).toEqual(fuller);
+    // Never an unparsed copy, never a bad id, nothing when there is no stored match.
+    s.replaceMatch(1, unparsed, isLesser);
+    s.replaceMatch('../x' as any, fuller, isLesser);
+    s.replaceMatch(9, fuller, isLesser);
+    await flush(); await flush();
+    expect(bucket.objects.has('matches/9.json')).toBe(false);
+    expect(s.snapshot().writeErrors).toBe(0);
+  });
+
+  it('replaceMatch: loses cleanly when the stored copy changed after it was read', async () => {
+    const lesser = { match_id: 1, version: 22, data_source: 'steam_gc+odota_parser' };
+    const isLesser = (m: any) => m?.data_source === 'steam_gc+odota_parser';
+    const bucket = fakeBucket();
+    bucket.objects.set('matches/1.json', JSON.stringify(lesser));
+    const s = createMatchStore({ bucket, isParsed });
+    const file = bucket.file('matches/1.json');
+    const realFile = bucket.file.bind(bucket);
+    // Another instance writes between our read and our write.
+    (bucket as any).file = (key: string) => {
+      const f = realFile(key);
+      return { ...f, async download(o: any) { const out = await f.download(o); await file.save(JSON.stringify({ match_id: 1, version: 22, by: 'other' })); return out; } };
+    };
+    s.replaceMatch(1, { match_id: 1, version: 22, by: 'us' }, isLesser);
+    await flush(); await flush();
+    expect(JSON.parse(bucket.objects.get('matches/1.json')!).by).toBe('other');
+    expect(s.snapshot()).toMatchObject({ writeErrors: 0 });
   });
 
   it('create-only: a second writer losing the race is not an error', async () => {

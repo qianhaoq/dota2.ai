@@ -75,4 +75,7 @@ sources are tried in the order `sources.match` shows: `UPSTREAM_PRIMARY`
 (`opendota`, default, or `steam_gc`) first, then the other configured ones
 (`lib/upstream/sourceOrder.js`). `steam_gc` only takes effect once the
 self-hosted Steam GC retriever is configured
-(`docs/STEAM_GC_OPENDOTA_ALTERNATIVE_PLAN.md`, PR-B).
+(`services/steam-retriever/README.md`).
+
+"Parse this match" during an outage goes through our own parser when it is
+configured: `docs/SELF_HOSTED_PARSER.md`.

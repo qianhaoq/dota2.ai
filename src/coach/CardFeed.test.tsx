@@ -47,6 +47,35 @@ describe('review page from the card surface (review #206)', () => {
     expect(screen.getByText(/已提交解析/)).toBeTruthy();
   });
 
+  it('a replay Valve no longer has: says so and takes the parse button away', async () => {
+    fetchReport.mockResolvedValue(unparsed);
+    parse.mockResolvedValue({ status: 'failed', provider: 'self_hosted', reason: 'replay_gone' });
+    page('/r/9091400302?p=4');
+    await waitFor(() => expect(screen.getByRole('button', { name: '解析这场比赛' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '解析这场比赛' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Valve 已不再保存这场比赛的录像（录像大约保留两周），无法解析这场比赛。'));
+    expect(screen.queryByRole('button', { name: '解析这场比赛' })).toBeNull();
+  });
+
+  it('a failed parse says who failed: our own parser or OpenDota, and can be retried', async () => {
+    fetchReport.mockResolvedValue(unparsed);
+    parse.mockResolvedValueOnce({ status: 'failed', provider: 'self_hosted' }).mockResolvedValueOnce({ status: 'failed' });
+    page('/r/9091400302?p=4');
+    await waitFor(() => expect(screen.getByRole('button', { name: '解析这场比赛' })).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: '解析这场比赛' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('解析没有成功，请一分钟后再试。'));
+    fireEvent.click(screen.getByRole('button', { name: '解析这场比赛' }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('OpenDota 没有接受请求，录像可能已过期。'));
+  });
+
+  it('a match parsed by our own parser is labelled so, without the "no timeline" note', async () => {
+    fetchReport.mockResolvedValue({ ...parsed, match: { ...parsed.match, source: 'steam_gc' } });
+    const { container } = page('/r/9091400302?p=0');
+    await waitFor(() => expect(container.querySelector('.rv-sections')).toBeTruthy());
+    expect(screen.getByText(/由 dota2\.ai 解析 Valve 录像/)).toBeTruthy();
+    expect(screen.queryByText(/只有终局计分板/)).toBeNull();
+  });
+
   it('opening pro cases scrolls to the requested theme section', async () => {
     fetchReport.mockResolvedValue(parsed);
     const scrolled: string[] = [];
