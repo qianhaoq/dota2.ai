@@ -49,3 +49,30 @@ gcloud run services update dota2-ai --region $REGION --project $PROJECT \
 
 Check: open any parsed match twice, then `curl https://dota2.ai/api/health/upstream`
 shows `matchStore.writes ≥ 1` and, on another instance or after a deploy, `hits ≥ 1`.
+
+### Verify it is on
+
+```bash
+curl -s https://dota2.ai/api/health/upstream | jq '{store: .matchStore.configured, shared: .cooldown.shared, sources}'
+# expect: store true, shared true
+```
+
+`matchStore.configured: false` means `MATCH_CACHE_BUCKET` is unset or the
+bucket could not be opened (look for `[match-store] disabled:` in the logs).
+
+## When OpenDota is down
+
+`lib/upstream/opendota.js` has an outage breaker: 3 consecutive 5xx answers
+(Cloudflare 520/522/524 included) or network timeouts open it for 60 s, and
+calls then fail fast with a retryable 503 so requests move to the next source
+instead of each waiting out its own timeouts. With the bucket configured the
+breaker is written to `ratelimit/opendota.json`, so every instance backs off.
+`/api/health/upstream` → `opendota.outageTrips`, `outageRejects`,
+`lastOutageAt`, `consecutiveOutages`.
+
+Already-parsed matches in the bucket keep working through an outage. Other
+sources are tried in the order `sources.match` shows: `UPSTREAM_PRIMARY`
+(`opendota`, default, or `steam_gc`) first, then the other configured ones
+(`lib/upstream/sourceOrder.js`). `steam_gc` only takes effect once the
+self-hosted Steam GC retriever is configured
+(`docs/STEAM_GC_OPENDOTA_ALTERNATIVE_PLAN.md`, PR-B).

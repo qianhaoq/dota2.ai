@@ -114,11 +114,18 @@ describe('server wiring', () => {
     const server = readFileSync(path.join(process.cwd(), 'server.js'), 'utf8');
     expect(server).toMatch(/process\.env\.STRATZ_API_TOKEN\s*\?/);
     const fn = server.slice(server.indexOf('const matchDetailCache = createMatchDetailCache('));
-    const fallback = fn.slice(0, fn.indexOf('stratz.fetchMatch(matchId'));
+    const body = fn.slice(0, fn.indexOf('\n});'));
+    // Fallback order and its stop rules (404, caller abort) live in fetchFromSources:
+    // behaviour-tested in upstreamSourceOrder.test.ts.
+    expect(body).toContain('await fetchFromSources(matchSources(), {');
+    expect(body).toMatch(/signal: options\.signal,\n\s+onFallback/);
     // The caller's cancellation reaches the fallback.
-    expect(fn).toContain('stratz.fetchMatch(matchId, { signal: options.signal })');
-    expect(fallback).toMatch(/if \(!stratz \|\| err\?\.status === 404 \|\| options\.signal\?\.aborted\) throw err;/);
-    // A STRATZ copy is returned as-is: never written to the parsed-match store.
-    expect(fn.indexOf('return await stratz.fetchMatch(matchId')).toBeLessThan(fn.indexOf('matchStore?.putMatch(matchId, data)'));
+    expect(body).toContain("stratz: () => stratz.fetchMatch(matchId, { signal: options.signal })");
+    // A STRATZ copy is returned as-is: only the OpenDota fetcher writes to the parsed-match store.
+    const opendotaFetcher = body.slice(body.indexOf('opendota: async () => {'), body.indexOf('stratz: () =>'));
+    expect(opendotaFetcher).toContain('matchStore?.putMatch(matchId, data)');
+    expect(body.split('matchStore?.putMatch(').length).toBe(2);
+    // STRATZ is only in the chain when configured.
+    expect(server).toMatch(/configured: \{ opendota: true, stratz: Boolean\(stratz\) \}/);
   });
 });

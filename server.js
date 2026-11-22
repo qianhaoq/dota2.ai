@@ -80,6 +80,7 @@ import { rateLimitKey } from './lib/rateLimitKey.js';
 import { createOpenDotaClient, OPENDOTA_BASE } from './lib/upstream/opendota.js';
 import { createSharedCooldown } from './lib/upstream/sharedCooldown.js';
 import { createStratzClient } from './lib/upstream/stratz.js';
+import { parseUpstreamPrimary, sourceOrder, fetchFromSources } from './lib/upstream/sourceOrder.js';
 import { loadConstantsSnapshot } from './lib/constantsSnapshot.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -492,6 +493,7 @@ app.get('/api/health/upstream', (req, res) => {
     cooldown: opendotaCooldown ? opendotaCooldown.snapshot() : { shared: false },
     matchStore: matchStore ? matchStore.snapshot() : { configured: false },
     stratz: stratz ? stratz.snapshot() : { configured: false },
+    sources: { primary: upstreamPrimary.primary, match: matchSources() },
   });
 });
 
@@ -613,29 +615,32 @@ const matchStore = cacheBucket
   ? createMatchStore({ bucket: cacheBucket, isParsed: isMatchParsed, log: (msg) => console.warn(`[match-store] ${msg}`) })
   : null;
 
+// Source order for a match: UPSTREAM_PRIMARY (opendota | steam_gc), then the
+// other configured sources. OpenDota down or rate-limited (not "no such match",
+// not a caller abort) falls through; a basic copy beats an error page.
+const upstreamPrimary = parseUpstreamPrimary(process.env.UPSTREAM_PRIMARY);
+if (upstreamPrimary.invalid) console.warn(`[upstream] UPSTREAM_PRIMARY=${upstreamPrimary.invalid} is not opendota|steam_gc; using opendota`);
+const matchSources = () => sourceOrder('match', { primary: upstreamPrimary.primary, configured: { opendota: true, stratz: Boolean(stratz) } });
+
 const matchDetailCache = createMatchDetailCache({
   fetchMatch: async (matchId, options = {}) => {
     const stored = matchStore ? await matchStore.getMatch(matchId) : null;
     if (stored) return stored;
-    let raw;
-    try {
-      raw = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
-        ...options, timeoutMs: options.timeoutMs ?? 25000,
-      });
-    } catch (err) {
-      // OpenDota down or rate-limited (not "no such match", not a caller
-      // abort): a basic, unparsed copy from STRATZ beats an error page.
-      if (!stratz || err?.status === 404 || options.signal?.aborted) throw err;
-      try {
-        return await stratz.fetchMatch(matchId, { signal: options.signal });
-      } catch (fallbackErr) {
-        console.warn(`[stratz] fallback for ${matchId} failed: ${fallbackErr?.message || fallbackErr}`);
-        throw err;
-      }
-    }
-    const data = { ...raw, opendota_fetched_at: new Date().toISOString() };
-    matchStore?.putMatch(matchId, data); // only if parsed; fire-and-forget
-    return data;
+    const { value } = await fetchFromSources(matchSources(), {
+      opendota: async () => {
+        const raw = await fetchWithRetry(`${OPENDOTA_API}/matches/${matchId}`, 4, 1000, {
+          ...options, timeoutMs: options.timeoutMs ?? 25000,
+        });
+        const data = { ...raw, opendota_fetched_at: new Date().toISOString() };
+        matchStore?.putMatch(matchId, data); // only if parsed; fire-and-forget
+        return data;
+      },
+      stratz: () => stratz.fetchMatch(matchId, { signal: options.signal }),
+    }, {
+      signal: options.signal,
+      onFallback: (from, to, err) => console.warn(`[upstream] match ${matchId}: ${from} failed (${err?.status ?? err?.message ?? err}); trying ${to}`),
+    });
+    return value;
   },
   log: (msg) => console.warn(`[match-detail-cache] ${msg}`),
 });
