@@ -71,10 +71,15 @@ export function createTraceBuilder() {
 
   function cooldown(entry, cd, t) {
     const cooling = cd > 0;
-    // A cooldown that jumps up while still running is a new cast (refresh, charges).
-    if (cooling && entry.cdState.from != null && cd > entry.lastCd + 1) track(entry.cd, entry.cdState, false, t);
+    // While a cooldown runs, the next sample should be the last one minus the time between them. One that
+    // is clearly higher is a new cast (refresh, charges); one clearly lower was cut by an effect. Either
+    // way the countdown starts over from this sample, so the interval is closed and a new one opened.
+    if (cooling && entry.cdState.from != null) {
+      const expected = entry.lastCd - (t - (entry.lastT ?? t));
+      if (cd > entry.lastCd + 1 || cd < expected - 1) track(entry.cd, entry.cdState, false, t);
+    }
     track(entry.cd, entry.cdState, cooling, t, cd);
-    entry.lastCd = cd;
+    entry.lastCd = cd; entry.lastT = t;
   }
 
   return {
@@ -99,6 +104,14 @@ export function createTraceBuilder() {
         if (a.mana_cost > e.mana) e.mana = a.mana_cost;
         if (a.level !== e.level) { e.level = a.level; e.levels.push([r1(t), a.level]); }
         cooldown(e, Number(a.cooldown) || 0, t);
+      }
+      // An ability gone from the samples (a stolen spell lost, a form ended) is no longer available:
+      // close it at level 0 rather than leave its last level standing.
+      const present = new Set((row.abilities ?? []).map((a) => a?.name));
+      for (const [name, e] of h.abilities) {
+        if (present.has(name) || e.level === 0) continue;
+        e.level = 0; e.levels.push([r1(t), 0]);
+        track(e.cd, e.cdState, false, t);
       }
       const seen = new Set();
       for (const i of row.items ?? []) {
@@ -129,7 +142,11 @@ export function createTraceBuilder() {
       const realHero = (isHero, isIllusion) => isHero === true && isIllusion !== true;
       switch (e.type) {
         case 'DOTA_COMBATLOG_ABILITY':
-          if (realHero(e.attacker_hero, e.attacker_illusion)) casts.push([t, id(e.attacker), id(e.inflictor), id(e.target), row]);
+          // A cast at an illusion keeps that: its target is not the real hero (no health, no immunity of theirs).
+          if (realHero(e.attacker_hero, e.attacker_illusion)) {
+            const target = e.target_illusion === true && typeof e.target === 'string' ? `illusion:${e.target}` : e.target;
+            casts.push([t, id(e.attacker), id(e.inflictor), id(target), row]);
+          }
           break;
         case 'DOTA_COMBATLOG_ITEM':
           if (realHero(e.attacker_hero, e.attacker_illusion)) itemUses.push([t, id(e.attacker), id(e.inflictor), row]);
@@ -159,7 +176,9 @@ export function createTraceBuilder() {
           const toHero = realHero(e.target_hero, e.target_illusion);
           if (!toHero && !(typeof e.target === 'string' && BUILDING.test(e.target))) break;
           if (!(e.value > 0)) break;
-          const key = `${Math.floor(e.t)}|${id(e.attacker)}|${id(e.target)}|${id(e.inflictor)}`;
+          // An illusion's damage is its own line, not the real hero's.
+          const attacker = e.attacker_illusion === true && typeof e.attacker === 'string' ? `illusion:${e.attacker}` : e.attacker;
+          const key = `${Math.floor(e.t)}|${id(attacker)}|${id(e.target)}|${id(e.inflictor)}`;
           damage.set(key, (damage.get(key) ?? 0) + e.value);
           break;
         }
