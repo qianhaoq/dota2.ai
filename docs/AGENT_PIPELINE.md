@@ -70,6 +70,31 @@ gcloud run services update <site-service> --region "$REGION" \
 `--max-instances 2` on the worker with `--concurrency 1` is two parses at once;
 a third caller gets "busy" from Cloud Run and the page offers to try again.
 
+## What is deployed (2026-11-22)
+
+Verified on Google Cloud, project `aegis-assistant-488913`, region `asia-east1`:
+
+| Thing | Value |
+|---|---|
+| Worker | Cloud Run `dota2-ai-trace-worker`, private (anonymous calls get 403), 4 Gi / 2 CPU / concurrency 1, runs as the existing `dota2-ai-replay-worker-t348u` service account |
+| Bucket | `aegis-assistant-488913-replay-facts-t348u`, objects under `agent/`; the site's, the preview's and the worker's service accounts already hold `objectAdmin` on it |
+| Preview | `dota2-ai-preview`, revision tag `agent` (its own URL; the service's main traffic was left on its old revision), with `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
+| Production site (`dota2-ai`) | **not changed.** It needs the same three variables (step 4 above) before a build containing the new match page is deployed, and `roles/run.invoker` on the worker for its service account |
+
+Measured there on match 9100904020: worker alone 47 s (cold start included);
+from the preview revision, prepare → trace in 36 s through the worker with a
+metadata-server ID token, deep review 123 s with DeepSeek 4.1 Flash, chat fine.
+
+**CPU outside requests.** The site service throttles CPU when no request is in
+flight (`run.googleapis.com/cpu-throttling: true`). A parse or a review is a
+background job on the instance that accepted the click; it advances while the
+page polls every 2.5 s, which is the normal case. If every tab watching it is
+closed, the job stalls until the next request to that instance, and after 10
+(review) or 15 (parse) minutes its marker counts as dead, so the next visitor
+is offered a fresh start. To make jobs independent of the page, deploy the
+site with `--no-cpu-throttling` (billed for idle CPU) or move the review job to
+the worker.
+
 ## Limits and cost
 
 | What | Limit | Where |
