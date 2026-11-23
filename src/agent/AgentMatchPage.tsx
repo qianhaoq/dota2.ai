@@ -67,6 +67,7 @@ const T = {
   q1: { en: 'Which of my deaths was the most avoidable?', zh: '我哪一次阵亡最不应该？' },
   qFinding: { en: 'what exactly should I have done instead?', zh: '具体应该怎么打？' },
   goalCheck: { en: 'Your goal, in this game', zh: '你的目标，这一局' },
+  goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘' },
   ruleChecks: { en: 'Your rule, in this game', zh: '你的规则，这一局' },
   goalResult: { met: { en: 'Met', zh: '达成' }, missed: { en: 'Missed', zh: '未达成' }, no_opportunity: { en: 'Did not come up', zh: '这局没遇到' }, unknown: { en: 'Can’t tell yet', zh: '暂时判断不了' } } as Record<string, Bi>,
 } as const;
@@ -320,7 +321,9 @@ export const AgentMatchPage: React.FC = () => {
       {goalCheck && activeGoalNow && (
         <p className="ag-goalcheck">
           <span>{t(T.goalCheck)}</span>
-          <b>{activeGoalNow.action[lang]}</b>
+          {/* The check's own label: it reads the same on any hero. The goal came from another game, so say which. */}
+          <b>{activeGoalNow.goal.label[lang]}</b>
+          <Link to={`/r/${activeGoalNow.fromMatch}?lang=${lang}`} className="ag-link">{t(T.goalFrom).replace('{id}', String(activeGoalNow.fromMatch))}</Link>
           <span className={`cx-goal-result is-${goalCheck.result}`}>{t(T.goalResult[goalCheck.result])}</span>
           <em>{goalCheck.evidence[lang]}</em>
         </p>

@@ -421,6 +421,18 @@ describe('AgentMatchPage', () => {
     expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!)).toEqual([expect.objectContaining({ goalId: '9100904020:beastmaster:agent', matchId: 9100999999, result: 'met' })]);
   });
 
+  it('a goal carried from another game shows its check, not that game\'s advice, and says which game it came from', async () => {
+    // A goal stored by an older page kept the whole advice paragraph of the game it came from (another hero's) as `action`.
+    const label = { en: 'At most 3 deaths to enemies who already have a Blink-type item', zh: '被已有跳刀类位移装的敌人击杀不超过 3 次' };
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: '9091400302:3:deaths.high', goal: { kind: 'hold_item', items: ['blink'], hero_id: 38, label }, action: { en: 'As Tidehunter you start the fights.', zh: '潮汐猎人是开团的人。' }, findingId: 'deaths.high', fromMatch: 9091400302, fromStart: 1795344198, accountId: 77, heroId: 29, setAt: 1 }));
+    const later = { match: { id: 9100999999, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: [board.players[0], { ...board.players[1], items: [{ key: 'blink', en: 'Blink Dagger', zh: '闪烁匕首' }] }], reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
+    mockFetch({ '/api/coach/9100999999': later, '/api/agent/9100999999': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } });
+    page('/r/9100999999?hero=beastmaster&lang=en');
+    expect(await screen.findByText(label.en)).toBeTruthy();
+    expect(screen.queryByText(/Tidehunter/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'set after game #9091400302' }).getAttribute('href')).toBe('/r/9091400302?lang=en');
+  });
+
   it('a review whose rules name a count offers them as the next-game check, with what the next replay is counted on', async () => {
     const check = { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 deaths that began below half health (12 s before) (this game: 3)', zh: 'x' } };
     const alone = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 deaths with no ally within 2200 (this game: 4)', zh: 'x' } };
