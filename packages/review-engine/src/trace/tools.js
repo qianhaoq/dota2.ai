@@ -15,7 +15,7 @@
  * guessed: an absent value is unknown, not false.
  */
 import {
-  abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, nameId, nameOf, nearby, region, seconds, stateAt, unit,
+  abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, manaCost, mostMana, nameId, nameOf, nearby, region, seconds, stateAt, unit,
 } from './query.js';
 
 const TEAM = { 2: 'radiant', 3: 'dire' };
@@ -152,14 +152,19 @@ export function deathContext(trace, args = {}, ctx = {}) {
       return { dt: -back, me: me ? { hp: me.hp, max_hp: me.max_hp, mana: me.mana, ...where(me) } : null, allies, enemies };
     });
     const abilities = Object.entries(trace.abilities[h]).filter(([k, e]) => can.has(k) && abilityLevel(e, from) > 0)
-      .map(([k, e]) => ({ ability: k, level: abilityLevel(e, from), cooldown_left: cooldownLeft(e, from) }));
+      .map(([k, e]) => ({ ability: k, level: abilityLevel(e, from), cooldown_left: cooldownLeft(e, from), mana_cost: manaCost(e, from) }));
+    // Ready is not castable: with less mana all window long than it costs, it was never an option.
+    const mana = mostMana(trace, h, from, t);
+    const noMana = (a) => a.mana_cost != null && mana != null && mana < a.mana_cost;
     const items = Object.entries(trace.items[h]).filter(([, e]) => heldAt(e, from))
       .map(([k, e]) => ({ item: k.replace(/^item_/, ''), ...(e.cd.length ? { cooldown_left: cooldownLeft(e, from) } : {}) }));
-    const dmg = new Map(); let firstHero = null; const attackers = new Set();
+    const dmg = new Map(); const sources = new Map(); let firstHero = null; const attackers = new Set();
     for (const [sec, a, target, infl, value] of trace.damage) {
       if (target !== npc || sec < Math.floor(from) || sec > t) continue;
       const key = `${a}|${infl}`;
       dmg.set(key, (dmg.get(key) ?? 0) + value);
+      const src = `${nameOf(trace, a) ?? 'unknown'}: ${infl >= 0 ? 'abilities and items' : 'attacks'}`;
+      sources.set(src, (sources.get(src) ?? 0) + value);
       const ah = heroOfName(trace, a);
       if (ah >= 0 && (firstHero == null || sec < firstHero)) firstHero = sec;
       if (ah >= 0 && trace.heroes[ah].team !== trace.heroes[h].team) attackers.add(ah);
@@ -180,7 +185,12 @@ export function deathContext(trace, args = {}, ctx = {}) {
       level: stateAt(trace, h, t - 1)?.level ?? null,
       snapshots,
       at_window_start: { abilities, items },
-      ready_not_cast: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability)).map((a) => a.ability),
+      most_mana_in_window: mana,
+      ready_not_cast: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && !noMana(a)).map((a) => a.ability),
+      off_cooldown_without_the_mana: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && noMana(a)).map((a) => a.ability),
+      health_share_at_window_start: share(snapshots[0]?.me),
+      // Null where the hero's own position was not sampled: no ally listed is then unknown, not alone.
+      allies_within_2200: { at_window_start: snapshots[0].me ? snapshots[0].allies.length : null, at_death: snapshots.at(-1).me ? snapshots.at(-1).allies.length : null, most_in_any_snapshot: snapshots.every((x) => x.me) ? Math.max(...snapshots.map((x) => x.allies.length)) : null },
       first_hero_damage_dt: firstHero == null ? null : Math.round(firstHero - t),
       // Counted over every damage row of the window, not over the ten largest listed below.
       enemy_heroes_dealing_damage: attackers.size,
@@ -193,11 +203,45 @@ export function deathContext(trace, args = {}, ctx = {}) {
       enemy_casts_on_me: trace.casts.filter((c) => c[3] === npc && c[1] !== npc && inWindow(c[0]) && heroOfName(trace, c[1]) >= 0 && trace.heroes[heroOfName(trace, c[1])].team !== trace.heroes[h].team)
         .map((c) => ({ dt: dt(c[0]), by: nameOf(trace, c[1]), ability: trace.names[c[2]], row: c[4] })),
       other_deaths: trace.deaths.filter((o) => o !== d && Math.abs(o[0] - t) <= 20).map((o) => deathRow(trace, o, t, view)),
+      damage_sources: sources,
     };
   });
   const killers = {};
   for (const d of all) { const k = nameOf(trace, d[2]) ?? 'unknown'; killers[k] = (killers[k] ?? 0) + 1; }
-  return { ref: `deaths:${trace.heroes[h].key}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, ...leftUnused(out, trace.heroes[h].key), deaths: args.index == null ? out : [out[args.index - 1]], gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+  return { ref: `deaths:${trace.heroes[h].key}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, ...deathPatterns(trace, out), ...leftUnused(out, trace.heroes[h].key), deaths: args.index == null ? out : [out[args.index - 1]], gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+}
+
+const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 : null);
+
+/**
+ * What the hero's deaths have in common, counted: each entry lists the deaths
+ * (by number) it is true of, so a habit shows as a count over the game and
+ * not as one more anecdote. And where the damage in those windows came
+ * from — one enemy's attacks, or many heroes' abilities — which is what an
+ * item answer has to match. Facts only: unknown health or position leaves a
+ * death out of a list, it does not put it in.
+ */
+function deathPatterns(trace, deaths) {
+  const of = (test) => deaths.filter(test).map((d) => d.n);
+  const by = new Map(); let total = 0;
+  for (const d of deaths) {
+    // Over every damage row of each window, not the ten largest a record lists.
+    for (const [key, value] of d.damage_sources) { by.set(key, (by.get(key) ?? 0) + value); total += value; }
+    delete d.damage_sources;
+  }
+  const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  return {
+    deaths_where: {
+      health_below_half_at_window_start: of((d) => d.health_share_at_window_start != null && d.health_share_at_window_start < 0.5),
+      no_ally_within_2200_in_any_snapshot: of((d) => d.allies_within_2200.most_in_any_snapshot === 0),
+      no_ally_within_2200_at_death: of((d) => d.allies_within_2200.at_death === 0),
+      three_or_more_enemy_heroes_dealing_damage: of((d) => d.enemy_heroes_dealing_damage >= 3),
+      nothing_cast_and_no_item_used: of((d) => d.my_casts.length === 0 && d.my_item_uses.length === 0),
+    },
+    damage_in_death_windows_total: total,
+    damage_in_death_windows: Object.fromEntries(top),
+    damage_share_in_death_windows: Object.fromEntries(top.map(([k, v]) => [k, total ? Math.round((v / total) * 100) / 100 : null])),
+  };
 }
 
 /**
@@ -212,12 +256,11 @@ const DISABLED = ['stunned', 'taunted', 'silenced', 'rooted'];
 const LEFT_UNUSED_RULE = 'most own abilities ready at the start of the window and never cast in it; then highest share of health at the start; then longest time before the first disable landed; then the earlier death';
 function leftUnused(deaths, heroKey) {
   const rows = deaths.map((d) => {
-    const start = d.snapshots[0]?.me;
     return {
       death: d.n, clock: d.clock, killer: d.killer,
       // The hero's own abilities, by their key: map actions every hero has (capturing an outpost, a twin gate) are not something left unused in a fight.
       ready_not_cast: d.ready_not_cast.filter((a) => a.startsWith(`${heroKey}_`)),
-      health_share_at_window_start: start?.max_hp ? Math.round((start.hp / start.max_hp) * 100) / 100 : null,
+      health_share_at_window_start: d.health_share_at_window_start,
       seconds_before_first_disable: d.seconds_before_first_disable,
       enemy_heroes_dealing_damage: d.enemy_heroes_dealing_damage,
     };
@@ -235,6 +278,8 @@ function resolveAbility(trace, h, name) {
   return keys.find((x) => x === k) ?? keys.find((x) => x === `${trace.heroes[h].key}_${k}`) ?? (keys.filter((x) => x.endsWith(`_${k}`)).length === 1 ? keys.find((x) => x.endsWith(`_${k}`)) : null) ?? null;
 }
 
+/** Damage an ability deals up to this long after the cast is that cast's (a wave travels, a ward ticks). */
+const HIT_WITHIN = 4;
 /** A projectile takes time to arrive: a stun the caster applies up to this long after the cast is the cast's. */
 const STUN_LANDS_WITHIN = 3;
 
@@ -268,8 +313,13 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   const rows = trace.casts.filter((c) => c[1] === npc && c[2] === abilityId).sort((a, b) => a[0] - b[0]);
   const byTarget = {};
   const short = key.startsWith(`${trace.heroes[h].key}_`) ? key.slice(trace.heroes[h].key.length + 1) : key;
+  // Whether this ability shows in the damage log at all: only then does "damaged nobody" mean something.
+  const damaging = trace.damage.some((r) => r[1] === npc && r[3] === abilityId);
   const casts = rows.map((c, ci) => {
     const t = c[0]; const target = heroOfName(trace, c[3]);
+    const until = Math.min(t + HIT_WITHIN, (rows[ci + 1]?.[0] ?? Infinity) - 0.2);
+    const hit = new Set();
+    if (damaging) for (const r of trace.damage) { if (r[1] !== npc || r[3] !== abilityId || r[0] < Math.floor(t) || r[0] > until) continue; const th = heroOfName(trace, r[2]); if (th >= 0 && trace.heroes[th].team !== trace.heroes[h].team) hit.add(trace.heroes[th].key); }
     const { me, allies, enemies } = nearby(trace, h, t, 1300);
     const ts = target >= 0 ? stateAt(trace, target, t) : null;
     const targetName = nameOf(trace, c[3]);
@@ -285,6 +335,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       ...(soonAfter ? { target_became_immune_dt: Math.round((soonAfter.from - t) * 10) / 10 } : {}),
       me: me ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
       allies_within_1300: allies.map((a) => a.hero), enemies_within_1300: enemies.map((e) => e.hero),
+      ...(damaging ? { enemy_heroes_damaged: [...hit] } : {}),
       deaths_within_12s: trace.deaths.filter((d) => d[0] >= t && d[0] - t <= 12).map((d) => deathRow(trace, d, t, view)),
     };
   });
@@ -299,6 +350,9 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     }
   }
   const myDeaths = trace.deaths.filter((d) => d[1] === npc).sort((a, b) => a[0] - b[0]);
+  // Off cooldown with less mana in those 12 seconds than it costs is not "ready and not cast".
+  const afford = (d) => { const cost = manaCost(entry, d[0] - 12); const mana = mostMana(trace, h, d[0] - 12, d[0]); return cost == null || mana == null || mana >= cost; };
+  const unused = myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12)).filter(afford);
   return {
     ref: `audit:${trace.heroes[h].key}:${short}`, ref_scope: 'summary',
     hero: trace.heroes[h].key, ability: key,
@@ -307,8 +361,8 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     casts_on_spell_immune_target: casts.filter((c) => c.target_spell_immune).length,
     of_those_target_was_stunned: casts.filter((c) => c.target_spell_immune && c.target_stunned_seconds > 0).length,
     seconds_alive_since_learned: alive, seconds_alive_and_ready: idle,
-    deaths_with_it_ready_and_not_cast_total: myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12)).length,
-    deaths_with_it_ready_and_not_cast: myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12))
+    deaths_with_it_ready_and_not_cast_total: unused.length,
+    deaths_with_it_ready_and_not_cast: unused
       .map((d) => ({ ref: `death:${trace.heroes[h].key}:${myDeaths.indexOf(d) + 1}`, t: d[0], clock: clock(d[0]), killer: nameOf(trace, d[2]), row: d[3] })),
     casts,
     gaps: gapsFor(trace, ['ability_immunity', 'vision']),
@@ -438,13 +492,13 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'death_context',
-    description: "What led to a hero's deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed, what they cast, and who else died around it. Without `index`, every death. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
+    description: "What led to a hero's deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed, what they cast, and who else died around it. Without `index`, every death. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready. `deaths_where` counts what the deaths have in common (began below half health, no ally near, three or more enemies) and `damage_share_in_death_windows` says where the damage came from — use them for what to change, and for which item answers the damage. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
     input_schema: { type: 'object', properties: { hero: HERO, index: { type: 'integer', minimum: 1, description: 'Which death, counting from 1. Omit for all.' }, window: { type: 'number', minimum: 4, maximum: 30, description: 'Seconds before the death to look at (default 12).' } }, required: ['hero'], additionalProperties: false },
     run: deathContext,
   },
   {
     name: 'ability_audit',
-    description: "Every cast of one ability by one hero: the target and its health, whether the target was spell immune at that moment, who was near, and which heroes died in the next 12 seconds. Also how long the ability sat ready while the hero was alive, and the hero's deaths with it ready and not cast.",
+    description: "Every cast of one ability by one hero: the target and its health, whether the target was spell immune at that moment, who was near, which enemy heroes it damaged (`enemy_heroes_damaged`, for an ability that deals damage), and which heroes died in the next 12 seconds. Also how long the ability sat ready while the hero was alive, and the hero's deaths with it ready and not cast.",
     input_schema: { type: 'object', properties: { hero: HERO, ability: { type: 'string', description: 'Ability key, with or without the hero prefix, e.g. "primal_roar".' } }, required: ['hero', 'ability'], additionalProperties: false },
     run: abilityAudit,
   },

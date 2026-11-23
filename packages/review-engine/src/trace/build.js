@@ -100,8 +100,10 @@ export function createTraceBuilder() {
       for (const a of row.abilities ?? []) {
         if (typeof a?.name !== 'string' || a.name.startsWith('special_bonus')) continue;
         let e = h.abilities.get(a.name);
-        if (!e) { e = { levels: [], cd: [], cdState: { from: null }, lastCd: 0, level: 0, mana: 0 }; h.abilities.set(a.name, e); }
+        if (!e) { e = { levels: [], cd: [], cdState: { from: null }, lastCd: 0, level: 0, mana: 0, costs: new Map() }; h.abilities.set(a.name, e); }
         if (a.mana_cost > e.mana) e.mana = a.mana_cost;
+        // What it costs at each level it was seen at: "ready" is not "could be cast" without the mana.
+        if (a.level > 0 && a.mana_cost > 0 && !(e.costs.get(a.level) >= a.mana_cost)) e.costs.set(a.level, a.mana_cost);
         if (a.level !== e.level) { e.level = a.level; e.levels.push([r1(t), a.level]); }
         cooldown(e, Number(a.cooldown) || 0, t);
       }
@@ -204,7 +206,7 @@ export function createTraceBuilder() {
           for (const [sec, v] of h.samples) { const i = sec - t0; if (i >= 0 && i < n) for (const c of cols) s[c][i] = v[c]; }
           return s;
         }),
-        abilities: list.map((h) => { closeAll(h.abilities.values(), lastT); return Object.fromEntries([...h.abilities].filter(([, e]) => e.levels.some(([, lv]) => lv > 0)).map(([k, e]) => [k, { levels: e.levels, cd: e.cd, ...(e.mana > 0 ? { mana: Math.round(e.mana) } : {}) }])); }),
+        abilities: list.map((h) => { closeAll(h.abilities.values(), lastT); return Object.fromEntries([...h.abilities].filter(([, e]) => e.levels.some(([, lv]) => lv > 0)).map(([k, e]) => [k, { levels: e.levels, cd: e.cd, ...(e.mana > 0 ? { mana: Math.round(e.mana) } : {}), ...(e.costs.size ? { costs: [...e.costs].sort((x, y) => x[0] - y[0]).map(([lv, c]) => [lv, Math.round(c)]) } : {}) }])); }),
         items: list.map((h) => { closeAll(h.items.values(), lastT); return Object.fromEntries([...h.items].map(([k, e]) => [k, { held: e.held, cd: e.cd }])); }),
         controls: list.map((h) => { closeAll(h.controls.values(), lastT); return Object.fromEntries([...h.controls].filter(([, e]) => e.list.length).map(([k, e]) => [k, e.list])); }),
         names,

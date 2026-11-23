@@ -73,6 +73,32 @@ export function cooldownLeft(entry, t) {
   return Math.max(0.1, Math.round(left * 10) / 10);
 }
 
+/**
+ * Mana an ability costs at t, or null when the trace cannot say: 0 for one
+ * never seen with a cost; the cost sampled at its level then (`costs`); in a
+ * trace without per-level costs, the highest cost seen — but only once the
+ * ability is at the highest level it reached, where that is its cost.
+ */
+export function manaCost(entry, t) {
+  if (!entry?.mana) return 0;
+  const lv = abilityLevel(entry, t);
+  const at = (entry.costs ?? []).find(([level]) => level === lv);
+  if (at) return at[1];
+  if (entry.costs) return null;
+  return lv > 0 && lv === Math.max(...entry.levels.map(([, level]) => level)) ? entry.mana : null;
+}
+
+/** The most mana hero h had at any sampled second from `from` to `to`, or null with no sample. */
+export function mostMana(trace, h, from, to) {
+  let best = null;
+  for (let sec = Math.floor(from); sec <= Math.ceil(to); sec += 1) {
+    const i = sec - trace.t0;
+    const m = i >= 0 && i < trace.n ? trace.states[h].mana[i] : null;
+    if (m != null && (best == null || m > best)) best = m;
+  }
+  return best;
+}
+
 export const heldAt = (entry, t) => within(entry?.held, t) != null;
 
 /**

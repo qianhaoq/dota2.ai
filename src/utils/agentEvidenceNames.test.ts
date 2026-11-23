@@ -21,4 +21,8 @@ describe('names for the engine keys in a record', () => {
     expect(tidyKey('mirana')).toBeNull();
     expect(tidyKey('modifier_')).toBeNull();
   });
+
+  it('a damage source is named by its unit', () => {
+    expect(namesIn({ damage_share_in_death_windows: { 'ursa: attacks': 0.65, 'skywrath_mage: abilities and items': 0.11 } }, 'zh')).toEqual({ ursa: '熊战士', skywrath_mage: '天怒法师' });
+  });
 });

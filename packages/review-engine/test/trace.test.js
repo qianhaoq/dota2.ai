@@ -88,7 +88,7 @@ describe('review findings on #232', () => {
     const tr = b.finish();
     expect(tr.abilities[0].axe_culling_blade.cd).toEqual([[0, 10, 100]]);
     const d = runTraceTool(tr, 'death_context', { hero: 'axe', window: 4 }).deaths[0];
-    expect(d.at_window_start.abilities).toEqual([{ ability: 'axe_culling_blade', level: 1, cooldown_left: 95 }]);
+    expect(d.at_window_start.abilities).toEqual([{ ability: 'axe_culling_blade', level: 1, cooldown_left: 95, mana_cost: 60 }]);
     expect(d.ready_not_cast).toEqual([]);
   });
 
@@ -99,7 +99,7 @@ describe('review findings on #232', () => {
     b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 10, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
     const tr = b.finish();
     expect(tr.abilities[0].axe_culling_blade.cd).toEqual([[0, 5, 100], [5, 10, 35]]);
-    expect(runTraceTool(tr, 'death_context', { hero: 'axe', window: 4 }).deaths[0].at_window_start.abilities).toEqual([{ ability: 'axe_culling_blade', level: 1, cooldown_left: 34 }]);
+    expect(runTraceTool(tr, 'death_context', { hero: 'axe', window: 4 }).deaths[0].at_window_start.abilities).toEqual([{ ability: 'axe_culling_blade', level: 1, cooldown_left: 34, mana_cost: 60 }]);
   });
 
   it('an active ability the player never pressed still shows as ready and not used', () => {
@@ -110,7 +110,7 @@ describe('review findings on #232', () => {
     }
     b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 25, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
     const out = runTraceTool(b.finish(), 'death_context', { hero: 'axe' });
-    expect(out.deaths[0].at_window_start.abilities).toEqual([{ ability: 'axe_berserkers_call', level: 1, cooldown_left: 0 }]);
+    expect(out.deaths[0].at_window_start.abilities).toEqual([{ ability: 'axe_berserkers_call', level: 1, cooldown_left: 0, mana_cost: 80 }]);
     expect(out.deaths[0].ready_not_cast).toEqual(['axe_berserkers_call']);
     // The free one cannot be told from a passive: said, not guessed.
     expect(out.gaps.map((g) => g.topic)).toContain('unused_free_abilities');
@@ -185,10 +185,38 @@ describe('review findings on #232', () => {
     }
     b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 25, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
     const tr = b.finish();
-    expect(tr.abilities[0].lina_laguna_blade).toEqual({ levels: [[0, 1], [4.3, 0]], cd: [[2, 4.3, 48]], mana: 250 });
+    expect(tr.abilities[0].lina_laguna_blade).toEqual({ levels: [[0, 1], [4.3, 0]], cd: [[2, 4.3, 48]], mana: 250, costs: [[1, 250]] });
     const d = runTraceTool(tr, 'death_context', { hero: 'axe' }).deaths[0];
     expect(d.at_window_start.abilities.map((a) => a.ability)).toEqual(['axe_berserkers_call']);
     expect(d.ready_not_cast).toEqual(['axe_berserkers_call']);
+  });
+
+  it('off cooldown without the mana for it is not ready: the cost is the one at the level it had then', () => {
+    const run = (mana, extra = {}) => {
+      const b = createTraceBuilder();
+      for (let t = 0; t <= 60; t += 0.25) {
+        // Level 1 costs 80 until 40 s, level 2 costs 110 after: the hero dies at 25 s, at level 1.
+        b.addState(state(t, { mana, abilities: [{ name: 'axe_berserkers_call', level: t < 40 ? 1 : 2, cooldown: 0, mana_cost: t < 40 ? 80 : 110 }], ...extra }));
+        b.addState(lina(t));
+      }
+      b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 25, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
+      return b.finish();
+    };
+    const poor = run(60);
+    expect(poor.abilities[0].axe_berserkers_call).toMatchObject({ mana: 110, costs: [[1, 80], [2, 110]] });
+    const d = runTraceTool(poor, 'death_context', { hero: 'axe' }).deaths[0];
+    expect(d).toMatchObject({ most_mana_in_window: 60, ready_not_cast: [], off_cooldown_without_the_mana: ['axe_berserkers_call'] });
+    expect(d.at_window_start.abilities[0].mana_cost).toBe(80);
+    expect(runTraceTool(poor, 'ability_audit', { hero: 'axe', ability: 'berserkers_call' }).deaths_with_it_ready_and_not_cast_total).toBe(0);
+    // 90 mana pays for level 1 (80), though not for the highest cost the game saw (110).
+    const rich = run(90);
+    expect(runTraceTool(rich, 'death_context', { hero: 'axe' }).deaths[0]).toMatchObject({ ready_not_cast: ['axe_berserkers_call'], off_cooldown_without_the_mana: [] });
+    expect(runTraceTool(rich, 'ability_audit', { hero: 'axe', ability: 'berserkers_call' }).deaths_with_it_ready_and_not_cast_total).toBe(1);
+    // A trace made before costs were kept per level: the cost at level 1 is unknown, and unknown is not "could not".
+    const old = run(60); delete old.abilities[0].axe_berserkers_call.costs;
+    const od = runTraceTool(old, 'death_context', { hero: 'axe' }).deaths[0];
+    expect(od.at_window_start.abilities[0].mana_cost).toBeNull();
+    expect(od).toMatchObject({ ready_not_cast: ['axe_berserkers_call'], off_cooldown_without_the_mana: [] });
   });
 
   it('a passive with a cooldown is not an unused ability', () => {
@@ -392,6 +420,38 @@ describe('trace tools on a real game', () => {
     expect(sven.most_left_unused.find((r) => r.death === 8).seconds_before_first_disable).toBe(0);
     // A row is not a record of its own: it must not carry a ref that would stand in for the death's.
     expect(all.most_left_unused.every((r) => !('ref' in r))).toBe(true);
+  });
+
+  it('death_context counts what the deaths have in common and where the damage came from', () => {
+    const all = run('death_context', { hero: 'beastmaster' });
+    expect(all.deaths_where).toEqual({
+      health_below_half_at_window_start: [],
+      no_ally_within_2200_in_any_snapshot: [2],
+      no_ally_within_2200_at_death: [2],
+      three_or_more_enemy_heroes_dealing_damage: [4, 6, 7, 8, 9],
+      nothing_cast_and_no_item_used: [],
+    });
+    // Phantom Assassin's attacks are the largest single source: 44% of everything taken in the eleven windows.
+    expect(all.damage_in_death_windows_total).toBe(23757);
+    expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);
+    expect(Object.keys(all.damage_in_death_windows)).toHaveLength(6);
+    expect(all.deaths[1]).toMatchObject({ health_share_at_window_start: 0.75, allies_within_2200: { at_window_start: 0, at_death: 0, most_in_any_snapshot: 0 } });
+    // The working list behind the totals is not part of a record.
+    expect(all.deaths.every((d) => !('damage_sources' in d))).toBe(true);
+    // The same for one death asked for: the counts are over all of them.
+    expect(run('death_context', { hero: 'beastmaster', index: 3 }).deaths_where).toEqual(all.deaths_where);
+  });
+
+  it('ability_audit names the enemy heroes a cast damaged, for an ability that deals damage', () => {
+    const axes = run('ability_audit', { hero: 'beastmaster', ability: 'wild_axes' });
+    expect(axes.casts[0]).toMatchObject({ clock: '2:33', enemy_heroes_damaged: ['phantom_assassin', 'venomancer'] });
+    expect(axes.casts[2]).toMatchObject({ clock: '2:51', enemy_heroes_damaged: ['phantom_assassin'] });
+    // An ability the damage log never names says nothing about whom it damaged.
+    const b = createTraceBuilder();
+    const st = (t, hero, team) => ({ entity_kind: 'real_hero', t, hero, team, player_index: team === 2 ? 0 : 5, x: 0, y: 0, hp: 500, max_hp: 600, mana: 300, level: 6, life_state: 0, abilities: hero === 'axe' ? [{ name: 'axe_berserkers_call', level: 1, cooldown: 0, mana_cost: 80 }] : [], items: [], controls: {} });
+    for (let t = 0; t <= 10; t += 0.25) { b.addState(st(t, 'axe', 2)); b.addState(st(t, 'lina', 3)); }
+    b.addEvent({ type: 'DOTA_COMBATLOG_ABILITY', t: 3, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, inflictor: 'axe_berserkers_call' }, 1);
+    expect('enemy_heroes_damaged' in runTraceTool(b.finish(), 'ability_audit', { hero: 'axe', ability: 'berserkers_call' }).casts[0]).toBe(false);
   });
 
   it('counts are stated by the tools, not left to the reader', () => {
