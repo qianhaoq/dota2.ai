@@ -325,6 +325,16 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/10453/)).toBeNull();
   });
 
+  it('a finding shows its rule for the next game: the situation, the action, how often this game', async () => {
+    const ruled = { ...review, findings: [{ ...review.findings[0], rule: { when: 'Her Black King Bar is still unused', do: 'hold the roar until it ends', this_game: '6 of 7 windows' } }], next_game: ['Her Black King Bar is still unused: hold the roar until it ends'] };
+    mockFetch({ 'ref=overview': overview, '/review?': { status: 'ready', review: ruled, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/8000000022': { trace: true, model_configured: true, heroes } });
+    ui.lang = 'en';
+    page('/r/8000000022?hero=beastmaster&lang=en');
+    const rule = await screen.findByLabelText('Rule for next game');
+    expect(rule.textContent).toBe('WhenHer Black King Bar is still unusedDohold the roar until it endsThis game6 of 7 windows');
+    expect(screen.getByText('Keep it for her.')).toBeTruthy();
+  });
+
   it('a refused start explains itself', async () => {
     mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 429, code: 'rate_limited', retryAfterSec: 60 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=en');

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { collectFacts, deepReviewSystem, nameHeroes, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { collectFacts, deepReviewSystem, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
@@ -245,6 +245,44 @@ describe('runDeepReview', () => {
     expect(out.verdict).toBe('斯温 先死，然后 天怒法师；svens 不变');
     expect(out.mainline).toEqual(['邪影芳灵 收掉 axe']);
     expect(out.findings[0]).toMatchObject({ title: '不朽尸王', fix: '斯温', evidence: [{ refs: ['death:sven:1'], fact: '斯温 阵亡' }] });
+  });
+
+  it('a finding carries a rule for the next game; what it says happened this game is checked', async () => {
+    const rule = { when: '对面核心的黑皇杖还没开', do: '咆哮留着，等她开完再吼', this_game: '7 次黑皇杖里只有 27:27 那次吼中了她' };
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.required).toContain('rule');
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.required).toEqual(['when', 'do', 'this_game']);
+    // The model no longer writes a second list beside its findings.
+    expect('next_game' in SUBMIT_REVIEW.input_schema.properties).toBe(false);
+    const m = scripted([investigate, { toolCalls: [call('submit_review', review([{ ...good, rule }, { ...good, title: '第二条', rule: { when: '  ', do: '买闪烁匕首' } }]), 's')] }]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r.status).toBe('ok');
+    expect(r.review.findings[0].rule).toEqual(rule);
+    // Half a rule is not shown as one; that finding's fix stands in for it.
+    expect(r.review.findings[1].rule).toBeUndefined();
+    expect(r.review.next_game).toEqual(['对面核心的黑皇杖还没开：咆哮留着，等她开完再吼', '对面核心有 BKB 时，咆哮只留给他。']);
+    // A time the tools never gave, stated as what happened this game, fails like one in the claim.
+    const bad = verifyReview(review([{ ...good, rule: { ...rule, this_game: '19:19 那次也是' } }]), [JSON.parse(m.seen[1].messages.find((x: any) => x.tool_call_id === 'a').content)]);
+    expect(bad.problems).toContainEqual({ where: 'finding', index: 0, kind: 'time', text: '19:19' });
+    // The situation and the action are advice: a threshold in them is not a fact about the game.
+    expect(verifyReview(review([{ ...good, rule: { when: '血量低于 50% 而熊战士在 1000 码内', do: '回家补给', this_game: rule.this_game } }]), m.seen.at(-1).messages.filter((x: any) => x.role === 'tool').map((x: any) => JSON.parse(x.content))).problems).toEqual([]);
+  });
+
+  it('next game is the findings\' rules in their order, in the reader\'s punctuation', () => {
+    const f = [{ rule: { when: 'Below half health in lane', do: 'walk back to the tower' }, fix: 'x' }, { fix: 'Buy Blink by 20:00.' }, { fix: ' ' }];
+    expect(nextGame(f, 'en')).toEqual(['Below half health in lane: walk back to the tower', 'Buy Blink by 20:00.']);
+    expect(nextGame(undefined, 'zh')).toEqual([]);
+    // Engine keys in a rule get the reader's names like the rest of the review.
+    expect(nameHeroes({ verdict: 'v', findings: [{ title: 't', claim: 'c', fix: 'f', evidence: [], rule: { when: 'phantom_assassin 在场', do: '等 phantom_assassin', this_game: '7 次' } }] }, { phantom_assassin: '幻影刺客' }).findings[0].rule).toEqual({ when: '幻影刺客 在场', do: '等 幻影刺客', this_game: '7 次' });
+  });
+
+  it('the prompt asks for counted patterns, a checkable rule, and a fair share of the blame', () => {
+    const s = deepReviewSystem('en');
+    expect(s).toContain('deaths_where');
+    expect(s).toContain('damage_share_in_death_windows');
+    expect(s).toContain('off_cooldown_without_the_mana could not be cast');
+    expect(s).toContain('"It was ready and not pressed" is not a finding on its own');
+    expect(s).toContain('do not charge the team\'s lost fights to them');
+    expect(s).toContain('was not wasted because one of them was spell immune');
   });
 
   it('the prompt states the rules the verifier enforces', () => {
