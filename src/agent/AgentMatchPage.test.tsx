@@ -449,25 +449,28 @@ describe('AgentMatchPage', () => {
   it('a later game is counted on the rules from its own replay; without the replay nothing is called met', async () => {
     const check = { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 low', zh: 'x' } };
     const alone = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
-    const goal = { id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1, rules: [{ finding: 2, when: 'No teammate near you', do: 'stay on your side of the river', check: alone }] };
+    const roar = { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 roars', zh: 'x' } };
+    const goal = { id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1, rules: [{ finding: 2, when: 'No teammate near you', do: 'stay on your side of the river', check: alone }, { finding: 3, when: 'The carry has not used Black King Bar', do: 'keep the roar', check: roar }] };
     window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal));
     const later = { match: { id: 9100999998, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
     // Not parsed yet: both are unknown, and the page says what is needed.
     mockFetch({ '/api/coach/9100999998': later, '/api/agent/9100999998': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } });
     page('/r/9100999998?hero=beastmaster&lang=en');
-    expect(await screen.findByText('Your rule, in this game')).toBeTruthy();
-    expect(screen.getAllByText('Can’t tell yet')).toHaveLength(2);
-    expect(screen.getAllByText('Needs this game\'s replay: open its replay review.')).toHaveLength(2);
+    expect(await screen.findAllByText('Your rule, in this game')).toHaveLength(2);
+    expect(screen.getAllByText('Can’t tell yet')).toHaveLength(3);
+    expect(screen.getAllByText('Needs this game\'s replay: open its replay review.')).toHaveLength(3);
     cleanup();
     // Parsed: the same counts, from this game's replay.
     const calls = mockFetch({
       '/api/coach/9100999998': later,
       'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 6, deaths_where: { health_below_half_at_window_start: ['12:40'], no_ally_within_2200_at_death: ['3:00', '9:10', '21:05'] }, deaths_not_known: { health_at_window_start: 0, allies_at_death: 0 } } },
+      // The rule about the roar is counted on this game's audit of it.
+      'ref=audit%3Abeastmaster%3Aprimal_roar': { status: 'ok', ref: 'audit:beastmaster:primal_roar', kind: 'audit', names: {}, record: { learned_at: { t: 400, clock: '6:40' }, casts_total: 7, casts_where: { enemy_hero_target_alive_12s_later: ['9:00'] } } },
       '/review?': { status: 'none' },
       '/api/agent/9100999998': { trace: true, model_configured: true, can_parse: true, heroes },
     });
     page('/r/9100999998?hero=beastmaster&lang=en');
-    expect(await screen.findByText('Met')).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText('Met')).toHaveLength(2));
     expect(screen.getByText('Missed')).toBeTruthy();
     expect(screen.getByText('No teammate near you: stay on your side of the river')).toBeTruthy();
     expect(screen.getByText('3 deaths with no ally within 2200 (3:00, 9:10, 21:05); goal ≤ 2')).toBeTruthy();
@@ -475,12 +478,13 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!)).toEqual([
       expect.objectContaining({ goalId: 'g', matchId: 9100999998, result: 'met' }),
       expect.objectContaining({ goalId: 'g#2', matchId: 9100999998, result: 'missed' }),
+      expect.objectContaining({ goalId: 'g#3', matchId: 9100999998, result: 'met', evidence: expect.objectContaining({ en: '1 Primal Roar casts on an enemy hero still alive 12 s later (9:00); goal ≤ 2' }) }),
     ]));
     // The games page has only the scoreboard: asked there, the goal answers with what the replay already settled.
     const store = await import('../coach/goalStore');
     expect(store.checkGoal(goal as any, later as any, 1)).toMatchObject({ result: 'met' });
     expect(store.checkRules(goal as any, later as any, 1, null)[0].check).toMatchObject({ result: 'missed' });
-    expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!).map((c: any) => c.result)).toEqual(['met', 'missed']);
+    expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!).map((c: any) => c.result)).toEqual(['met', 'missed', 'met']);
   });
 
   it('an invalid match id never calls the server', async () => {

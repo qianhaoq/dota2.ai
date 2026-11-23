@@ -291,7 +291,7 @@ describe('runDeepReview', () => {
 
   it('a rule that names a count gets its next-game check from the replay, not from the model', async () => {
     const rule = { when: '三个敌人同时出现在你面前', do: '先退到队友身后', this_game: '11 次阵亡里有 5 次' };
-    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties.counted_by.enum).toEqual(['low_health', 'alone', 'outnumbered', 'nothing_pressed']);
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties.counted_by.enum).toEqual(['low_health', 'alone', 'outnumbered', 'nothing_pressed', 'cast_into_immunity', 'target_survived', 'reached_few', 'died_holding']);
     const m = scripted([investigate, { toolCalls: [call('death_context', { hero: 'beastmaster' }, 'dc')] }, { toolCalls: [call('submit_review', review([
       // The model's own numbers for a check are not taken: only which count it is.
       { ...good, rule: { ...rule, counted_by: 'outnumbered', check: { max: 99 } } },
@@ -300,6 +300,28 @@ describe('runDeepReview', () => {
       // Once in this game (2:51) is not a habit: the rule stands, without a check.
       { ...good, title: '第三条', rule: { ...rule, counted_by: 'alone' } },
     ]), 's')] }]);
+    // A count over one of the hero's own abilities: the ability comes with it, by any spelling ability_audit takes.
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', review([
+      { ...good, rule: { ...rule, counted_by: 'target_survived', counted_ability: 'beastmaster_primal_roar' } },
+      // The same count of another ability is its own check; the same one again is not.
+      { ...good, title: '第二条', rule: { ...rule, counted_by: 'died_holding', counted_ability: 'primal_roar' } },
+      { ...good, title: '第三条', rule: { ...rule, counted_by: 'target_survived', counted_ability: 'primal_roar' } },
+    ]), 's')] }]);
+    const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r2.review.findings.map((f: any) => f.rule.check)).toEqual([
+      { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）' } },
+      expect.objectContaining({ habit: 'died_holding', ability: 'primal_roar', max: 1, baseline: 3 }),
+      undefined,
+    ]);
+    expect(r2.review.findings[0].rule).not.toHaveProperty('counted_ability');
+    // No ability named, an ability the hero does not have, or another hero's: no check.
+    const m3 = scripted([investigate, { toolCalls: [call('submit_review', review([
+      { ...good, rule: { ...rule, counted_by: 'target_survived' } },
+      { ...good, title: '第二条', rule: { ...rule, counted_by: 'target_survived', counted_ability: 'phantom_assassin_stifling_dagger' } },
+      { ...good, title: '第三条', rule: { ...rule, counted_by: 'target_survived', counted_ability: 'nonsense' } },
+    ]), 's')] }]);
+    const r3: any = await runDeepReview({ complete: m3.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r3.review.findings.map((f: any) => f.rule.check)).toEqual([undefined, undefined, undefined]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
     expect(r.review.findings.map((f: any) => f.rule)).toEqual([
