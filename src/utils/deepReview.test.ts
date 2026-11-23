@@ -289,6 +289,26 @@ describe('runDeepReview', () => {
     expect(verifyReview(review([{ ...good, rule: { when: '血量低于 50% 而熊战士在 1000 码内', do: '回家补给', this_game: rule.this_game } }]), m.seen.at(-1).messages.filter((x: any) => x.role === 'tool').map((x: any) => JSON.parse(x.content))).problems).toEqual([]);
   });
 
+  it('a rule that names a count gets its next-game check from the replay, not from the model', async () => {
+    const rule = { when: '三个敌人同时出现在你面前', do: '先退到队友身后', this_game: '11 次阵亡里有 5 次' };
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties.counted_by.enum).toEqual(['low_health', 'alone', 'outnumbered', 'nothing_pressed']);
+    const m = scripted([investigate, { toolCalls: [call('death_context', { hero: 'beastmaster' }, 'dc')] }, { toolCalls: [call('submit_review', review([
+      // The model's own numbers for a check are not taken: only which count it is.
+      { ...good, rule: { ...rule, counted_by: 'outnumbered', check: { max: 99 } } },
+      // The same count twice is one check, on the first rule that named it.
+      { ...good, title: '第二条', rule: { ...rule, counted_by: 'outnumbered' } },
+      // Once in this game (2:51) is not a habit: the rule stands, without a check.
+      { ...good, title: '第三条', rule: { ...rule, counted_by: 'alone' } },
+    ]), 's')] }]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r.status).toBe('ok');
+    expect(r.review.findings.map((f: any) => f.rule)).toEqual([
+      { when: rule.when, do: rule.do, this_game: rule.this_game, check: { kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）' } } },
+      { when: rule.when, do: rule.do, this_game: rule.this_game },
+      { when: rule.when, do: rule.do, this_game: rule.this_game },
+    ]);
+  });
+
   it('next game is the findings\' rules in their order, in the reader\'s punctuation', () => {
     const f = [{ rule: { when: 'Below half health in lane', do: 'walk back to the tower' }, fix: 'x' }, { fix: 'Buy Blink by 20:00.' }, { fix: ' ' }];
     expect(nextGame(f, 'en')).toEqual(['Below half health in lane: walk back to the tower', 'Buy Blink by 20:00.']);

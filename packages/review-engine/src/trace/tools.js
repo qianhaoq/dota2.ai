@@ -249,6 +249,11 @@ function deathPatterns(trace, deaths) {
       three_or_more_enemy_heroes_dealing_damage: of((d) => d.enemy_heroes_dealing_damage >= 3),
       nothing_cast_and_no_item_used: of((d) => d.my_casts.length === 0 && d.my_item_uses.length === 0),
     },
+    // Deaths a list above could not be decided for (health or position not sampled): a count over the game is only as sure as these are few.
+    deaths_not_known: {
+      health_at_window_start: deaths.filter((d) => d.below_half_health_at_window_start == null).length,
+      allies_at_death: deaths.filter((d) => d.allies_within_2200.at_death == null).length,
+    },
     damage_in_death_windows_total: total,
     damage_in_death_windows: Object.fromEntries(top),
     damage_share_in_death_windows: Object.fromEntries(top.map(([k, v]) => [k, total ? Math.round((v / total) * 100) / 100 : null])),

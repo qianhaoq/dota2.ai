@@ -12,7 +12,7 @@ export const GOAL_STORAGE_KEY = 'dota2ai.coach.goal'; // gitleaks:allow (storage
 export const GOAL_CHECKS_STORAGE_KEY = 'dota2ai.coach.goalChecks'; // gitleaks:allow (storage key name, not a secret)
 const CHANGED = 'dota2ai:goal';
 const CHECKED = 'dota2ai:goal-checks';
-const MAX_CHECKS = 30;
+const MAX_CHECKS = 60;
 
 export interface ActiveGoal {
   id: string;
@@ -24,7 +24,12 @@ export interface ActiveGoal {
   accountId: number | null;
   heroId: number;
   setAt: number;
+  /** From a replay review: the rules the next game's replay is counted on, each with its check (lib/coach/goals.js habitGoal). */
+  rules?: GoalRule[];
 }
+export interface GoalRule { finding: number; when: string; do: string; check: GoalSpec }
+/** death_context's summary for one hero of one game (the `deaths:<hero>` evidence record). */
+export type ReplayDeaths = { deaths_where?: Record<string, string[]>; deaths_not_known?: Record<string, number> } | null;
 
 export type GoalResult = 'met' | 'missed' | 'no_opportunity' | 'unknown';
 export interface GoalCheck { goalId: string; matchId: number; result: GoalResult; evidence: Bi }
@@ -74,15 +79,47 @@ function recordCheck(c: GoalCheck): void {
  * played after the game the goal came from, and by the same account when
  * both are known. Records the result once per match.
  */
-export function checkGoal(goal: ActiveGoal, report: CoachReport, slot: number): GoalCheck | null {
-  const m = report.match;
-  if (m.id === goal.fromMatch || !m.start_time || m.start_time <= goal.fromStart) return null;
-  const acct = report.players[slot]?.account_id ?? null;
-  if (goal.accountId != null && acct != null && acct !== goal.accountId) return null;
-  const r = evaluateGoal(goal.goal, report, slot) as { result: GoalResult; evidence: Bi };
-  const check: GoalCheck = { goalId: goal.id, matchId: m.id, result: r.result, evidence: r.evidence };
+export function checkGoal(goal: ActiveGoal, report: CoachReport, slot: number, replay: ReplayDeaths = null): GoalCheck | null {
+  if (!counts(goal, report, slot)) return null;
+  return judge(goal.id, goal.goal, report, slot, replay);
+}
+
+/**
+ * Judge one spec and record it. A check that needs the replay, asked without
+ * one (the games page has only the scoreboard), answers with what the replay
+ * page already recorded for this game rather than replace it with "unknown".
+ */
+function judge(goalId: string, spec: GoalSpec, report: CoachReport, slot: number, replay: ReplayDeaths): GoalCheck {
+  const matchId = report.match.id;
+  if (spec.kind === 'replay_habit' && !replay) {
+    const kept = goalChecks(goalId).find((c) => c.matchId === matchId && c.result !== 'unknown');
+    if (kept) return kept;
+  }
+  const r = evaluateGoal(spec, report, slot, replay) as { result: GoalResult; evidence: Bi };
+  const check: GoalCheck = { goalId, matchId, result: r.result, evidence: r.evidence };
   recordCheck(check);
   return check;
+}
+
+/** Does this game count for the goal: played after the game it came from, by the same account when both are known. */
+function counts(goal: ActiveGoal, report: CoachReport, slot: number): boolean {
+  const m = report.match;
+  if (m.id === goal.fromMatch || !m.start_time || m.start_time <= goal.fromStart) return false;
+  const acct = report.players[slot]?.account_id ?? null;
+  return !(goal.accountId != null && acct != null && acct !== goal.accountId);
+}
+
+/** A goal that needs the later game's replay (its own check, or one of its rules'), not only its scoreboard. */
+export const needsReplay = (goal: ActiveGoal): boolean => goal.goal.kind === 'replay_habit' || (goal.rules ?? []).length > 0;
+
+/**
+ * The goal's rules, each judged on `replay` (this game's death counts; null
+ * while its replay is not parsed, which is "unknown", never a pass). Recorded
+ * once per rule and match, like the goal itself.
+ */
+export function checkRules(goal: ActiveGoal, report: CoachReport, slot: number, replay: ReplayDeaths): { rule: GoalRule; check: GoalCheck }[] {
+  if (!counts(goal, report, slot)) return [];
+  return (goal.rules ?? []).map((rule) => ({ rule, check: judge(`${goal.id}#${rule.finding}`, rule.check, report, slot, replay) }));
 }
 
 /**

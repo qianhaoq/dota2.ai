@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchEvidence, type DeepReview } from './api';
 import { EvidenceCard } from './EvidenceCard';
-import { setGoal, useActiveGoal, type ActiveGoal } from '../coach/goalStore';
+import { setGoal, useActiveGoal, type ActiveGoal, type GoalRule } from '../coach/goalStore';
 
 /** The review as a document: verdict, the game's fights with the turn marked, the findings with their evidence, what to change. */
 
@@ -25,6 +25,9 @@ const T = {
   goalSet: { en: 'Make this my next-game goal', zh: '设为下一局目标' },
   goalIs: { en: 'Your next-game goal', zh: '已设为下一局目标' },
   goalHow: { en: 'Play your next game, then open it here or on your games page: the coach checks it against the scoreboard.', zh: '打完下一局，在这里或「我的比赛」里打开它，教练会按记分板核验。' },
+  goalHowReplay: { en: 'Play your next game, then open its replay review here: the coach counts the same things in that replay and tells you which rules held.', zh: '打完下一局，在这里打开它的录像复盘：教练会在那盘录像里数同样的事，逐条告诉你规则守住了没有。' },
+  goalRules: { en: 'Counted in your next replay', zh: '下一盘录像里会数的' },
+  ruleCheck: { en: 'Next game', zh: '下一盘' },
   goalUndo: { en: 'Remove', zh: '取消' },
   goalFrom: { en: 'From finding', zh: '对应问题' },
 } as const;
@@ -82,21 +85,38 @@ const FightStrip: React.FC<{ fights: Fight[]; duration: number; lang: Lang; onAs
 /** What a goal needs to know about the game it came from (from the scoreboard). */
 export interface GoalContext { fromStart: number; accountId: number | null; heroId: number }
 
-/** The review's one checkable goal: set it, and later games are judged against it (goalStore). */
+/** The rules of a review that the next game's replay can be counted on. */
+export const checkedRules = (review: DeepReview): GoalRule[] =>
+  review.findings.flatMap((f, i) => (f.rule?.check ? [{ finding: i + 1, when: f.rule.when, do: f.rule.do, check: f.rule.check }] : []));
+
+/**
+ * What the next game is checked on: the review's scoreboard goal if it has
+ * one, and every rule that names a count the next replay can be counted on.
+ * Set it, and later games are judged against it (goalStore).
+ */
 const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx: GoalContext }> = ({ matchId, review, lang, ctx }) => {
   const active = useActiveGoal();
-  const goal = review.goal!;
-  const { finding, ...spec } = goal;
+  const rules = checkedRules(review);
+  // Without a scoreboard goal the first counted rule is the goal; the rest are checked beside it.
+  const { finding, ...spec } = review.goal ?? { ...rules[0].check, finding: rules[0].finding };
+  const more = review.goal ? rules : rules.slice(1);
   // The goal itself is part of its identity: the same game reviewed in another language can propose a
   // different one, and that card must not claim to be the goal already set.
-  const id = `${matchId}:${review.hero}:agent:${spec.kind}:${spec.kind === 'hold_item' ? spec.items.join('+') : spec.kind === 'deaths_per10_max' ? spec.max : ''}`;
+  const sig = (g: GoalRule['check']) => (g.kind === 'hold_item' ? g.items.join('+') : g.kind === 'deaths_per10_max' ? g.max : g.kind === 'replay_habit' ? `${g.habit}${g.max}` : '');
+  const id = `${matchId}:${review.hero}:agent:${spec.kind}:${sig(spec)}${more.length ? `:r${more.map((r) => sig(r.check)).join('+')}` : ''}`;
   const mine = active?.id === id;
-  const make = (): ActiveGoal => ({ id, goal: spec, action: spec.label, findingId: `agent:${finding}`, fromMatch: Number(matchId), fromStart: ctx.fromStart, accountId: ctx.accountId, heroId: ctx.heroId, setAt: Date.now() });
+  const make = (): ActiveGoal => ({ id, goal: spec, action: spec.label, findingId: `agent:${finding}`, fromMatch: Number(matchId), fromStart: ctx.fromStart, accountId: ctx.accountId, heroId: ctx.heroId, setAt: Date.now(), ...(more.length ? { rules: more } : {}) });
   return (
     <div className={`ag-goal ${mine ? 'is-set' : ''}`}>
       <p className="ag-goal-eyebrow">{mine ? `✓ ${T.goalIs[lang]}` : T.goalTitle[lang]} · {T.goalFrom[lang]} {finding}</p>
       <p className="ag-goal-label">{spec.label[lang]}</p>
-      <p className="ag-goal-how">{T.goalHow[lang]}</p>
+      {more.length > 0 && (
+        <>
+          <p className="ag-goal-eyebrow">{T.goalRules[lang]}</p>
+          <ul className="ag-goal-rules">{more.map((r) => <li key={r.finding}><span className="ag-num">{r.finding}</span>{r.check.label[lang]}</li>)}</ul>
+        </>
+      )}
+      <p className="ag-goal-how">{spec.kind === 'replay_habit' || more.length ? T.goalHowReplay[lang] : T.goalHow[lang]}</p>
       {mine
         ? <button type="button" className="ag-link" onClick={() => setGoal(null)}>{T.goalUndo[lang]}</button>
         : <button type="button" className="ag-btn is-primary" onClick={() => setGoal(make())}>{T.goalSet[lang]}</button>}
@@ -137,6 +157,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
                 <div><dt>{t(T.ruleWhen)}</dt><dd>{f.rule.when}</dd></div>
                 <div><dt>{t(T.ruleDo)}</dt><dd>{f.rule.do}</dd></div>
                 {f.rule.this_game && <div className="ag-rule-seen"><dt>{t(T.ruleSeen)}</dt><dd>{f.rule.this_game}</dd></div>}
+                {f.rule.check && <div className="ag-rule-check"><dt>{t(T.ruleCheck)}</dt><dd>{f.rule.check.label[lang]}</dd></div>}
               </dl>
             )}
             {f.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{f.fix}</p>}
@@ -147,7 +168,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       <section className="ag-next">
         <h2>{t(T.next)}</h2>
         {review.next_game.length > 0 && <ol>{review.next_game.map((line, i) => <li key={i}>{line}</li>)}</ol>}
-        {review.goal && goalContext && <GoalCard matchId={matchId} review={review} lang={lang} ctx={goalContext} />}
+        {(review.goal || checkedRules(review).length > 0) && goalContext && <GoalCard matchId={matchId} review={review} lang={lang} ctx={goalContext} />}
       </section>
 
       {review.did_well.length > 0 && <section><h2>{t(T.well)}</h2><ul className="ag-plain">{review.did_well.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}

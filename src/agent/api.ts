@@ -8,7 +8,7 @@ export interface Availability { trace: boolean; model_configured: boolean; can_p
 
 export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
 /** The one rule a finding sends into the next game: a situation the player can see, one action, and how often it came up this game. */
-export interface FindingRule { when: string; do: string; this_game?: string }
+export interface FindingRule { when: string; do: string; this_game?: string; /** What the next game's replay is counted on for this rule (lib/coach/goals.js habitGoal). */ check?: GoalSpec }
 export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string; rule?: FindingRule }
 export interface DeepReview {
   schema: string; match_id: number; hero: string; lang: 'en' | 'zh';
