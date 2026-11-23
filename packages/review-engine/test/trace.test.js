@@ -348,6 +348,10 @@ describe('trace tools on a real game', () => {
     expect(f.events.find((e) => e.kind === 'spell_immune')).toMatchObject({ hero: 'phantom_assassin', clock: '30:34' });
     expect(f.damage_to_heroes_by_unit[0]).toMatchObject({ unit: 'phantom_assassin' });
     expect(f.positions_at_start).toHaveLength(10);
+    // The sides' losses are counted by the tool (Beastmaster is Dire): eight hero deaths, five of them his team's.
+    expect(f.hero_deaths_in_window).toEqual({ radiant: 3, dire: 5 });
+    expect(runTraceTool(trace, 'fight_timeline', { from: '30:05', to: '31:00' }, { perspective: 'beastmaster' }).hero_deaths_in_window).toEqual({ my_team: 5, enemy: 3 });
+    expect(run('fight_timeline', { from: '1:00', to: '1:20' }).hero_deaths_in_window).toEqual({ radiant: 0, dire: 0 });
     expect(f.events.length).toBeLessThanOrEqual(150);
     for (let i = 1; i < f.events.length; i += 1) expect(f.events[i].t).toBeGreaterThanOrEqual(f.events[i - 1].t);
   });

@@ -289,6 +289,16 @@ describe('runDeepReview', () => {
     expect(verifyReview(review([{ ...good, rule: { when: '血量低于 50% 而熊战士在 1000 码内', do: '回家补给', this_game: rule.this_game } }]), m.seen.at(-1).messages.filter((x: any) => x.role === 'tool').map((x: any) => JSON.parse(x.content))).problems).toEqual([]);
   });
 
+  it('how many heroes each side lost in a fight is backed by the timeline that is cited for it', async () => {
+    const { runTraceTool } = await import('../../packages/review-engine/src/trace/index.js');
+    const fight = runTraceTool(trace, 'fight_timeline', { from: 1805, to: 1860 }, { perspective: 'beastmaster' });
+    const f = (fact: string) => review([{ title: '中路团', claim: '这波团打输了。', fix: '等队友。', evidence: [{ refs: ['timeline:1805-1860'], fact }] }]);
+    const problems = (fact: string) => verifyReview(f(fact), [fight]).problems.filter((p: any) => p.where === 'finding');
+    expect(problems('30:26 开始的这波团，你们死 5 人、对面死 3 人。')).toEqual([]);
+    // A count the timeline does not give is still refused.
+    expect(problems('30:26 开始的这波团，你们死 7 人。')).not.toEqual([]);
+  });
+
   it('a finding sent without its heading is asked for one, and otherwise opens with its own claim', async () => {
     const { title, ...untitled } = good as any;
     expect(verifyReview(review([untitled]), []).problems).toContainEqual({ where: 'title', index: 0, kind: 'missing', text: 'title' });
