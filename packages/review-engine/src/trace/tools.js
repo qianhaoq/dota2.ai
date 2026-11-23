@@ -141,8 +141,9 @@ export function deathContext(trace, args = {}, ctx = {}) {
   if (err) return err;
   const window = Math.min(30, Math.max(4, Number(args.window) || 12));
   const all = trace.deaths.filter((d) => d[1] === npc).sort((a, b) => a[0] - b[0]);
-  const pick = args.index == null ? all.map((d, i) => [d, i + 1]) : all[args.index - 1] ? [[all[args.index - 1], args.index]] : null;
-  if (!pick) return fail('no_such_death', { deaths: all.length });
+  if (args.index != null && !all[args.index - 1]) return fail('no_such_death', { deaths: all.length });
+  // Every death is worked out, also when one is asked for: the order below is over all of them.
+  const pick = all.map((d, i) => [d, i + 1]);
   const can = castable(trace, h, npc);
   const out = pick.map(([d, n]) => {
     const t = d[0]; const from = t - window;
@@ -154,16 +155,23 @@ export function deathContext(trace, args = {}, ctx = {}) {
       .map(([k, e]) => ({ ability: k, level: abilityLevel(e, from), cooldown_left: cooldownLeft(e, from) }));
     const items = Object.entries(trace.items[h]).filter(([, e]) => heldAt(e, from))
       .map(([k, e]) => ({ item: k.replace(/^item_/, ''), ...(e.cd.length ? { cooldown_left: cooldownLeft(e, from) } : {}) }));
-    const dmg = new Map(); let firstHero = null;
+    const dmg = new Map(); let firstHero = null; const attackers = new Set();
     for (const [sec, a, target, infl, value] of trace.damage) {
       if (target !== npc || sec < Math.floor(from) || sec > t) continue;
       const key = `${a}|${infl}`;
       dmg.set(key, (dmg.get(key) ?? 0) + value);
-      if (heroOfName(trace, a) >= 0 && (firstHero == null || sec < firstHero)) firstHero = sec;
+      const ah = heroOfName(trace, a);
+      if (ah >= 0 && (firstHero == null || sec < firstHero)) firstHero = sec;
+      if (ah >= 0 && trace.heroes[ah].team !== trace.heroes[h].team) attackers.add(ah);
     }
     const inWindow = (x) => x >= from && x <= t + 0.05;
     const dt = (x) => Math.round((x - t) * 10) / 10;
     const myCasts = trace.casts.filter((c) => c[1] === npc && inWindow(c[0]));
+    // The first moment in the window the hero could not act freely: a disable sampled as already on at its
+    // start counts from 0, whether or not the log shows it being applied inside the window.
+    let disabledAt = null;
+    for (const kind of DISABLED) for (const [a, b] of trace.controls[h]?.[kind] ?? []) if (b > from && a <= t) { const at = Math.max(a, from); if (disabledAt == null || at < disabledAt) disabledAt = at; }
+    for (const m of trace.modifiers) if (m[1] === npc && m[4] === 1 && m[6] !== 'i' && inWindow(m[0]) && (disabledAt == null || m[0] < disabledAt)) disabledAt = m[0];
     const castNames = new Set(myCasts.map((c) => trace.names[c[2]]));
     return {
       // The window is part of what the record says (its damage, its snapshots): a non-default one is in the ref.
@@ -174,6 +182,9 @@ export function deathContext(trace, args = {}, ctx = {}) {
       at_window_start: { abilities, items },
       ready_not_cast: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability)).map((a) => a.ability),
       first_hero_damage_dt: firstHero == null ? null : Math.round(firstHero - t),
+      // Counted over every damage row of the window, not over the ten largest listed below.
+      enemy_heroes_dealing_damage: attackers.size,
+      seconds_before_first_disable: disabledAt == null ? null : Math.max(0, Math.round((disabledAt - from) * 10) / 10),
       damage_taken: [...dmg].map(([k, v]) => { const [a, i] = k.split('|').map(Number); return { from: nameOf(trace, a), by: i >= 0 ? trace.names[i].replace(/^item_/, '') : 'attack', value: v }; }).sort((x, y) => y.value - x.value).slice(0, 10),
       controls_on_me: trace.modifiers.filter((m) => m[1] === npc && m[4] === 1 && m[6] !== 'i' && inWindow(m[0]))
         .map((m) => ({ dt: dt(m[0]), modifier: trace.names[m[2]], from: nameOf(trace, m[3]), kind: { t: 'stun', r: 'root', s: 'silence' }[m[6]], ...(m[5] ? { duration: m[5] } : {}) })),
@@ -186,7 +197,34 @@ export function deathContext(trace, args = {}, ctx = {}) {
   });
   const killers = {};
   for (const d of all) { const k = nameOf(trace, d[2]) ?? 'unknown'; killers[k] = (killers[k] ?? 0) + 1; }
-  return { ref: `deaths:${trace.heroes[h].key}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, deaths: out, gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+  return { ref: `deaths:${trace.heroes[h].key}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, ...leftUnused(out, trace.heroes[h].key), deaths: args.index == null ? out : [out[args.index - 1]], gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+}
+
+/**
+ * The deaths in a fixed order of how much the hero still had when it began.
+ * "Which death was the most avoidable" has no single right answer, but it
+ * should not have a different one each time it is asked: the order is made
+ * here, by a stated rule, from the facts of each record. It weighs only what
+ * the hero had (not the state of the game, not what could be seen).
+ */
+/** The sampled states in which a hero cannot use what it has. */
+const DISABLED = ['stunned', 'taunted', 'silenced', 'rooted'];
+const LEFT_UNUSED_RULE = 'most own abilities ready at the start of the window and never cast in it; then highest share of health at the start; then longest time before the first disable landed; then the earlier death';
+function leftUnused(deaths, heroKey) {
+  const rows = deaths.map((d) => {
+    const start = d.snapshots[0]?.me;
+    return {
+      death: d.n, clock: d.clock, killer: d.killer,
+      // The hero's own abilities, by their key: map actions every hero has (capturing an outpost, a twin gate) are not something left unused in a fight.
+      ready_not_cast: d.ready_not_cast.filter((a) => a.startsWith(`${heroKey}_`)),
+      health_share_at_window_start: start?.max_hp ? Math.round((start.hp / start.max_hp) * 100) / 100 : null,
+      seconds_before_first_disable: d.seconds_before_first_disable,
+      enemy_heroes_dealing_damage: d.enemy_heroes_dealing_damage,
+    };
+  });
+  const free = (r) => r.seconds_before_first_disable ?? Infinity;
+  rows.sort((a, b) => b.ready_not_cast.length - a.ready_not_cast.length || (b.health_share_at_window_start ?? 0) - (a.health_share_at_window_start ?? 0) || free(b) - free(a) || a.death - b.death);
+  return { most_left_unused_rule: LEFT_UNUSED_RULE, most_left_unused: rows };
 }
 
 /** The ability key of hero h that `name` means: exact, with the hero prefix, or a unique suffix. */
@@ -400,7 +438,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'death_context',
-    description: "What led to a hero's deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed, what they cast, and who else died around it. Without `index`, every death.",
+    description: "What led to a hero's deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed, what they cast, and who else died around it. Without `index`, every death. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
     input_schema: { type: 'object', properties: { hero: HERO, index: { type: 'integer', minimum: 1, description: 'Which death, counting from 1. Omit for all.' }, window: { type: 'number', minimum: 4, maximum: 30, description: 'Seconds before the death to look at (default 12).' } }, required: ['hero'], additionalProperties: false },
     run: deathContext,
   },
