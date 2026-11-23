@@ -146,6 +146,14 @@ describe('what the check removed is kept beside the review', () => {
     const kept = JSON.parse(readFileSync(join(reviewDir, file), 'utf8'));
     expect(kept.dropped_findings).toEqual([madeUp]);
     expect(kept.problems).toContainEqual({ where: 'finding', index: 1, kind: 'ref', text: 'fight:99' });
+    expect(kept.status).toBe('ok');
+    // A review the check rejected whole leaves the same record: that is when it is needed most.
+    const none = join(dir, 'none');
+    const all: any = createAgentService({ traces: createFileTraceStore(dir), complete: async (o: any) => (o.messages.at(-1).role === 'user' ? { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a')] } : { toolCalls: [call('submit_review', { ...submit, findings: [madeUp] }, 's')] }), model: 'm', reviewDir: none });
+    await all.start(MATCH, 'beastmaster', 'en');
+    await vi.waitFor(async () => expect((await all.status(MATCH, 'beastmaster', 'en')).status).toBe('failed'), { timeout: 5000 });
+    const lost = JSON.parse(readFileSync(join(none, readdirSync(none).find((f) => f.endsWith('.unverified.json'))!), 'utf8'));
+    expect(lost).toMatchObject({ status: 'unverified', dropped_findings: [madeUp] });
     // A review with nothing wrong leaves no such file.
     const clean = join(dir, 'clean');
     const ok: any = createAgentService({ traces: createFileTraceStore(dir), complete: model().complete, model: 'm', reviewDir: clean });
