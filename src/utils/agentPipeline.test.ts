@@ -281,6 +281,59 @@ describe('parse jobs in the service', () => {
     await vi.waitFor(async () => expect(await b.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'failed', reason: 'no_review' }));
   });
 
+  it('a review whose instance died is offered again after a minute and a half, not while it still reports in', async () => {
+    const blobs = new Map<string, any>();
+    const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
+    const trace = JSON.parse(fixture.toString());
+    const traces = { get: async () => trace };
+    const clock = { t: 1000 };
+    const thinking = () => new Promise(() => {});
+    // Alive: the model has been thinking for five minutes, and the job keeps saying it is running.
+    const alive: any = createAgentService({ traces, docs, now: () => clock.t, complete: thinking, beatMs: 5 });
+    const other: any = createAgentService({ traces, docs, now: () => clock.t, complete: thinking, beatMs: 5 });
+    expect(await alive.start(ID, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+    clock.t += 5 * 60_000;
+    await vi.waitFor(() => expect(blobs.get([...blobs.keys()].find((k) => k.endsWith('.job.json'))!).at).toBe(clock.t));
+    expect(await other.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+
+    // Dead: nothing reports in any more (the instance is gone). Still "running" a minute later, startable after 90 s.
+    const blobs2 = new Map<string, any>();
+    const docs2 = { get: async (k: string) => blobs2.get(k) ?? null, put: async (k: string, v: any) => { blobs2.set(k, v); } };
+    const dead: any = createAgentService({ traces, docs: docs2, now: () => clock.t, complete: thinking, beatMs: 2 ** 30 });
+    const next: any = createAgentService({ traces, docs: docs2, now: () => clock.t, complete: thinking, beatMs: 2 ** 30 });
+    await dead.start(ID, 'beastmaster', 'en');
+    clock.t += 60_000;
+    expect(await next.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+    clock.t += 31_000;
+    expect(await next.status(ID, 'beastmaster', 'en')).toEqual({ status: 'none' });
+    const admit = vi.fn(() => null);
+    expect(await next.start(ID, 'beastmaster', 'en', { admit })).toMatchObject({ status: 'running' });
+    expect(admit).toHaveBeenCalledTimes(1);
+  });
+
+  it('an instance told to stop hands its running review back at once, and a late step does not take it again', async () => {
+    const blobs = new Map<string, any>();
+    const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
+    const trace = JSON.parse(fixture.toString());
+    const traces = { get: async () => trace };
+    let answer: any; let turns = 0;
+    // The first model turn is in flight when the instance is stopped; it then asks for a lookup (a progress marker).
+    const complete = () => { turns += 1; return turns === 1 ? new Promise((r) => { answer = () => r({ toolCalls: [{ id: 'a', name: 'match_overview', args: {} }] }); }) : new Promise(() => {}); };
+    const a: any = createAgentService({ traces, docs, complete, beatMs: 5 });
+    const b: any = createAgentService({ traces, docs, complete: () => new Promise(() => {}) });
+    await a.start(ID, 'beastmaster', 'en');
+    await vi.waitFor(() => expect(answer).toBeTypeOf('function'));
+    expect(await b.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+    await a.shutdown();
+    expect(await b.status(ID, 'beastmaster', 'en')).toEqual({ status: 'none' });
+    answer();
+    await vi.waitFor(() => expect(turns).toBe(2));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(await b.status(ID, 'beastmaster', 'en')).toEqual({ status: 'none' });
+    // Nothing running here: stopping is a no-op, not an error.
+    await expect(b.shutdown()).resolves.toBeUndefined();
+  });
+
   it('a review retried on another instance is what both instances report', async () => {
     const blobs = new Map<string, any>();
     const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
