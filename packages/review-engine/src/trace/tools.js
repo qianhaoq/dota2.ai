@@ -152,6 +152,9 @@ export function deathContext(trace, args = {}, ctx = {}) {
       return { dt: -back, me: me ? { hp: me.hp, max_hp: me.max_hp, mana: me.mana, ...where(me) } : null, allies, enemies };
     });
     const atDeath = nearby(trace, h, t, 2200);
+    // Every second of the window and the death itself, not only the snapshots: an ally who came and went between two of them was there.
+    let mostAllies = atDeath.me ? atDeath.allies.length : null;
+    for (let sec = Math.ceil(from); mostAllies != null && sec < t; sec += 1) { const at = nearby(trace, h, sec, 2200); mostAllies = at.me ? Math.max(mostAllies, at.allies.length) : null; }
     const abilities = Object.entries(trace.abilities[h]).filter(([k, e]) => can.has(k) && abilityLevel(e, from) > 0)
       .map(([k, e]) => ({ ability: k, level: abilityLevel(e, from), cooldown_left: cooldownLeft(e, from), mana_cost: manaCost(e, from) }));
     // Ready is not castable: with less mana all window long than it costs, it was never an option.
@@ -192,7 +195,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
       health_share_at_window_start: share(snapshots[0]?.me),
       // Null where the hero's own position was not sampled: no ally listed is then unknown, not alone.
       // "At death" is the moment itself, not the last snapshot a second before: an ally can arrive in that second.
-      allies_within_2200: { at_window_start: snapshots[0].me ? snapshots[0].allies.length : null, at_death: atDeath.me ? atDeath.allies.length : null, most_at_any_checked_moment: atDeath.me && snapshots.every((x) => x.me) ? Math.max(atDeath.allies.length, ...snapshots.map((x) => x.allies.length)) : null },
+      allies_within_2200: { at_window_start: snapshots[0].me ? snapshots[0].allies.length : null, at_death: atDeath.me ? atDeath.allies.length : null, most_in_any_second: mostAllies },
       first_hero_damage_dt: firstHero == null ? null : Math.round(firstHero - t),
       // Counted over every damage row of the window, not over the ten largest listed below.
       enemy_heroes_dealing_damage: attackers.size,
@@ -236,8 +239,8 @@ function deathPatterns(trace, deaths) {
   return {
     deaths_where: {
       health_below_half_at_window_start: of((d) => d.health_share_at_window_start != null && d.health_share_at_window_start < 0.5),
-      // At every moment looked at: each snapshot of the window and the death itself.
-      no_ally_within_2200_throughout: of((d) => d.allies_within_2200.most_at_any_checked_moment === 0),
+      // In every second of the window and at the death itself.
+      no_ally_within_2200_throughout: of((d) => d.allies_within_2200.most_in_any_second === 0),
       no_ally_within_2200_at_death: of((d) => d.allies_within_2200.at_death === 0),
       three_or_more_enemy_heroes_dealing_damage: of((d) => d.enemy_heroes_dealing_damage >= 3),
       nothing_cast_and_no_item_used: of((d) => d.my_casts.length === 0 && d.my_item_uses.length === 0),

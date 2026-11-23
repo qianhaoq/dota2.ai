@@ -447,10 +447,15 @@ describe('trace tools on a real game', () => {
     expect(all.damage_in_death_windows_total).toBe(23757);
     expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);
     expect(Object.keys(all.damage_in_death_windows)).toHaveLength(6);
-    expect(all.deaths[1]).toMatchObject({ health_share_at_window_start: 0.75, allies_within_2200: { at_window_start: 0, at_death: 0, most_at_any_checked_moment: 0 } });
+    expect(all.deaths[1]).toMatchObject({ health_share_at_window_start: 0.75, allies_within_2200: { at_window_start: 0, at_death: 0, most_in_any_second: 0 } });
+    // Every second is looked at, not only the snapshots: with a 26 s window Undying is within 2200 at −25 s of the 2:51 death.
+    const long = run('death_context', { hero: 'beastmaster', window: 26 });
+    expect(long.deaths[1].snapshots.every((x) => x.allies.length === 0)).toBe(true);
+    expect(long.deaths[1].allies_within_2200).toMatchObject({ at_death: 0, most_in_any_second: 1 });
+    expect(long.deaths_where.no_ally_within_2200_throughout).not.toContain(2);
     // Allies who arrive in the last second were there at the death: Mirana's fourth (35:43) was not alone, though every snapshot before it was.
     const mirana = run('death_context', { hero: 'mirana' });
-    expect(mirana.deaths[3]).toMatchObject({ clock: '35:43', allies_within_2200: { at_window_start: 0, at_death: 2, most_at_any_checked_moment: 2 } });
+    expect(mirana.deaths[3]).toMatchObject({ clock: '35:43', allies_within_2200: { at_window_start: 0, at_death: 2, most_in_any_second: 2 } });
     expect(mirana.deaths_where.no_ally_within_2200_at_death).not.toContain(4);
     expect(mirana.deaths_where.no_ally_within_2200_throughout).not.toContain(4);
     // The working list behind the totals is not part of a record.
