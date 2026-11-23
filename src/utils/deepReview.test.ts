@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { collectFacts, deepReviewSystem, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { collectFacts, deepReviewSystem, headingOf, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
@@ -287,6 +287,29 @@ describe('runDeepReview', () => {
     expect(r3.dropped_findings).toEqual([invented]);
     // The situation and the action are advice: a threshold in them is not a fact about the game.
     expect(verifyReview(review([{ ...good, rule: { when: '血量低于 50% 而熊战士在 1000 码内', do: '回家补给', this_game: rule.this_game } }]), m.seen.at(-1).messages.filter((x: any) => x.role === 'tool').map((x: any) => JSON.parse(x.content))).problems).toEqual([]);
+  });
+
+  it('a finding sent without its heading is asked for one, and otherwise opens with its own claim', async () => {
+    const { title, ...untitled } = good as any;
+    expect(verifyReview(review([untitled]), []).problems).toContainEqual({ where: 'title', index: 0, kind: 'missing', text: 'title' });
+    // Asked once; the repair supplies it.
+    const m = scripted([investigate, { toolCalls: [call('submit_review', review([untitled]), 's1')] }, { toolCalls: [call('submit_review', review([good]), 's2')] }]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster' });
+    expect(JSON.parse(m.seen[2].messages.at(-1).content).problems).toEqual([{ in: 'finding 1, title', text: 'title', why: 'this finding has no title: give it a heading of a few words' }]);
+    expect(r.review.findings[0].title).toBe(title);
+    expect(r.verification).toMatchObject({ repaired: true, dropped: 0, problems: [] });
+    // Still none after the repair: the finding stays, headed by the opening sentence of its own claim.
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', review([untitled]), 's1')] }, { toolCalls: [call('submit_review', review([{ ...untitled, title: '  ' }]), 's2')] }]);
+    const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster' });
+    expect(r2.status).toBe('ok');
+    expect(r2.verification.dropped).toBe(0);
+    expect(r2.review.findings[0].title).toBe(headingOf({ claim: good.claim }));
+    expect(good.claim.startsWith(r2.review.findings[0].title.replace(/…$/, ''))).toBe(true);
+    expect(headingOf({ title: 'Kept', claim: 'x' })).toBe('Kept');
+    expect(headingOf({ claim: '12 次死亡里有 4 次身边没有队友；其中 19:29 最亏。后面还有。' })).toBe('12 次死亡里有 4 次身边没有队友');
+    expect(headingOf({ claim: 'Four of twelve deaths had no ally near. The 19:29 one cost most.' })).toBe('Four of twelve deaths had no ally near');
+    // A time such as 4:21 or a number such as 1.7 is not the end of a sentence.
+    expect(headingOf({ claim: 'At 4:21 you had 1.7 deaths per ten minutes. More.' })).toBe('At 4:21 you had 1.7 deaths per ten minutes');
   });
 
   it('a rule that names a count gets its next-game check from the replay, not from the model', async () => {
