@@ -321,16 +321,21 @@ describe('agent API', () => {
     let acquired = 0;
     const app2 = express();
     app2.use(express.json());
-    // Every request must be past its status check before any job exists. Two things make that so: the trace
-    // store answers nobody until all sixty requests have arrived (sixty connections do not always open within
-    // a fixed delay on a busy machine), and then answers each read slowly, so the requests move through their
-    // steps together.
+    // Every request must be past its status check before any job exists, or a late one is told "running" (200)
+    // and never reaches the shared start. Waiting a fixed time, or for all sixty to arrive, does not make that so
+    // on a busy machine: the check reads the disk, and a fast request can start the job while a slow one is still
+    // reading. So no request is given its answer until all sixty have theirs.
     const slow = createFileTraceStore(dir);
-    let arrived = 0; let open!: () => void;
-    const allIn = new Promise<void>((r) => { open = r; });
-    app2.use((_req: any, _res: any, next: any) => { arrived += 1; if (arrived >= 60) open(); next(); });
-    const traces = { get: async (id: any) => { await allIn; await new Promise((r) => setTimeout(r, 30)); return slow.get(id); } };
-    app2.use(createAgentRouter({ service: createAgentService({ traces, complete: m.complete, model: 'test-model' }), resolveClientIp: (req: any) => String(req.headers['x-test-ip']), llm: { acquire: () => { acquired += 1; return { ok: true }; } } }));
+    // Read and parsed once, then handed out after the same delay: after the check the sixty move together, and
+    // the one that begins the job waits on a timer set after everyone else's.
+    const loaded = new Map<string, Promise<any>>();
+    const once = (id: any) => { const k = String(id); if (!loaded.has(k)) loaded.set(k, slow.get(id)); return loaded.get(k)!; };
+    const traces = { get: async (id: any) => { await new Promise((r) => setTimeout(r, 30)); return once(id); } };
+    const real = createAgentService({ traces, complete: m.complete, model: 'test-model' });
+    let checked = 0; let open!: () => void;
+    const allChecked = new Promise<void>((r) => { open = r; });
+    const gated = { ...real, status: async (...a: [any, any, any]) => { const out = await real.status(...a); checked += 1; if (checked >= 60) open(); await allChecked; return out; } };
+    app2.use(createAgentRouter({ service: gated, resolveClientIp: (req: any) => String(req.headers['x-test-ip']), llm: { acquire: () => { acquired += 1; return { ok: true }; } } }));
     const srv = app2.listen(0, '127.0.0.1');
     await new Promise((r) => srv.once('listening', r));
     const at = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
