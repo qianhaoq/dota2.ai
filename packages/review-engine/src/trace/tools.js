@@ -485,8 +485,12 @@ export function fightTimeline(trace, args = {}, ctx = {}) {
   }
   const top = (m) => [...m].sort((x, y) => y[1] - x[1]).slice(0, 10).map(([k, v]) => ({ unit: k, value: v }));
   const firstDeath = trace.deaths.filter((d) => inWindow(d[0])).sort((a, b) => a[0] - b[0])[0];
+  // How many heroes each side lost in the window, counted here so a sentence about the fight does not have to count rows.
+  const lost = { 2: 0, 3: 0 };
+  for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (inWindow(d[0]) && v >= 0 && d[1] === nameId(trace, trace.heroes[v].npc)) lost[trace.heroes[v].team] += 1; }
   return {
     ref: `timeline:${Math.round(from)}-${Math.round(to)}`, from, to, clock: `${clock(from)}–${clock(to)}`,
+    hero_deaths_in_window: view ? { my_team: lost[view.team], enemy: lost[view.team === 2 ? 3 : 2] } : { radiant: lost[2], dire: lost[3] },
     positions_at_start: positions(from),
     ...(firstDeath ? { positions_at_first_death: { t: firstDeath[0], clock: clock(firstDeath[0]), heroes: positions(firstDeath[0]) } } : {}),
     // Times are rounded to 0.1 s: within one, the combat log's own order decides.
@@ -544,7 +548,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'fight_timeline',
-    description: 'A stretch of the game second by second (at most 180 s): where all ten heroes stood at the start and at the first death, then every cast, key item use, spell-immunity activation, death and building kill in order, and who dealt and took the damage.',
+    description: 'A stretch of the game second by second (at most 180 s): where all ten heroes stood at the start and at the first death, then every cast, key item use, spell-immunity activation, death and building kill in order, how many heroes each side lost in it (hero_deaths_in_window), and who dealt and took the damage.',
     input_schema: { type: 'object', properties: { from: TIME, to: TIME }, required: ['from', 'to'], additionalProperties: false },
     run: fightTimeline,
   },
