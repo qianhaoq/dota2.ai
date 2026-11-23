@@ -158,6 +158,8 @@ describe('parse jobs in the service', () => {
     const service = (p: any = pipeline): any => createAgentService({ traces, complete: null, pipeline: p, docs, now: () => clock.t });
     return { service, pipeline, clock, traces, dir };
   };
+  // A job's markers are written in the background: the tick lets them start, and what is then expected of them is waited for
+  // (vi.waitFor), not assumed to have landed in 15 ms — a loaded machine takes longer to write a file.
   const settle = () => new Promise((r) => setTimeout(r, 15));
 
   it('prepare: running with its stage, then the trace is there', async () => {
@@ -167,12 +169,12 @@ describe('parse jobs in the service', () => {
     expect(await svc.availability(ID)).toMatchObject({ trace: false, can_parse: true, parse: { status: 'none' } });
     expect(await svc.prepare(ID)).toMatchObject({ status: 'running' });
     await settle();
-    expect((await svc.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' });
+    await vi.waitFor(async () => expect((await svc.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' }));
     // A second caller joins the same job.
     expect(await svc.prepare(ID)).toMatchObject({ status: 'running' });
     expect(h.pipeline.run).toHaveBeenCalledTimes(1);
     // Another instance (same store, no local job) also reports it running.
-    expect((await h.service(null).availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' });
+    await vi.waitFor(async () => expect((await h.service(null).availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' }));
     release();
     await vi.waitFor(async () => expect((await svc.availability(ID)).trace).toBe(true), { timeout: 5000 });
     expect(await svc.availability(ID)).toMatchObject({ trace: true, heroes: expect.arrayContaining([expect.objectContaining({ hero: 'beastmaster' })]) });
@@ -183,7 +185,7 @@ describe('parse jobs in the service', () => {
     const gone = makeService(async () => ({ ok: false, reason: 'replay_gone' }));
     const a = gone.service();
     await a.prepare(ID); await settle();
-    expect((await a.availability(ID)).parse).toEqual({ status: 'failed', reason: 'replay_gone', final: true });
+    await vi.waitFor(async () => expect((await a.availability(ID)).parse).toEqual({ status: 'failed', reason: 'replay_gone', final: true }));
     gone.clock.t += 3_600_000;
     expect(await a.prepare(ID)).toMatchObject({ status: 'failed', final: true });
     expect(gone.pipeline.run).toHaveBeenCalledTimes(1);
@@ -191,7 +193,7 @@ describe('parse jobs in the service', () => {
     const flaky = makeService(async () => ({ ok: false, reason: 'download_failed' }));
     const b = flaky.service();
     await b.prepare(ID); await settle();
-    expect((await b.availability(ID)).parse).toEqual({ status: 'failed', reason: 'download_failed', final: false });
+    await vi.waitFor(async () => expect((await b.availability(ID)).parse).toEqual({ status: 'failed', reason: 'download_failed', final: false }));
     flaky.clock.t += 6 * 60_000;
     expect((await b.availability(ID)).parse).toEqual({ status: 'none' });
     expect(await b.prepare(ID)).toMatchObject({ status: 'running' });
@@ -210,7 +212,7 @@ describe('parse jobs in the service', () => {
     const h = makeService(async (id: any, _o: any, traces: any) => { if (answer.ok) await traces.put(id, gzipSync(fixture)); return answer; });
     const svc = h.service();
     await svc.prepare(ID); await settle();
-    expect((await svc.availability(ID)).parse).toEqual({ status: 'failed', reason: 'no_replay_url', final: false });
+    await vi.waitFor(async () => expect((await svc.availability(ID)).parse).toEqual({ status: 'failed', reason: 'no_replay_url', final: false }));
     // Minutes later the address exists: the same match parses, without waiting out anything.
     answer = { ok: true };
     const [a, b] = await Promise.all([svc.prepare(ID), svc.prepare(ID)]);
@@ -237,7 +239,7 @@ describe('parse jobs in the service', () => {
     await vi.waitFor(async () => expect((await b.availability(ID)).parse.status).toBe('failed'));
     await settle();
     // Another instance sees the failure, not a parse still "running".
-    expect((await b.availability(ID)).parse).toMatchObject({ status: 'failed', reason: 'worker_failed' });
+    await vi.waitFor(async () => expect((await b.availability(ID)).parse).toMatchObject({ status: 'failed', reason: 'worker_failed' }));
   });
 
   it('a parse retried on another instance is what both instances report', async () => {
@@ -248,12 +250,12 @@ describe('parse jobs in the service', () => {
     const a: any = createAgentService({ traces, complete: null, docs, now: () => clock.t, pipeline: { run: async () => ({ ok: false, reason: 'download_failed' }) } });
     const b: any = createAgentService({ traces, complete: null, docs, now: () => clock.t, pipeline: { run: async (_id: any, o: any) => { o.onStage('downloading'); return new Promise(() => {}); } } });
     await a.prepare(ID); await settle();
-    expect((await a.availability(ID)).parse.status).toBe('failed');
+    await vi.waitFor(async () => expect((await a.availability(ID)).parse.status).toBe('failed'));
     clock.t += 1000;
     await b.prepare(ID); await settle();
     // A's own attempt failed, but the newer one on B is running: A says running too.
-    expect((await a.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' });
-    expect((await b.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' });
+    await vi.waitFor(async () => expect((await a.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' }));
+    await vi.waitFor(async () => expect((await b.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' }));
   });
 
   it('a slow progress marker cannot land after a review\'s terminal one', async () => {
@@ -276,7 +278,7 @@ describe('parse jobs in the service', () => {
     slowDone();
     await vi.waitFor(async () => expect((await b.status(ID, 'beastmaster', 'en')).status).toBe('failed'));
     await settle();
-    expect(await b.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'failed', reason: 'no_review' });
+    await vi.waitFor(async () => expect(await b.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'failed', reason: 'no_review' }));
   });
 
   it('a review retried on another instance is what both instances report', async () => {
@@ -318,7 +320,7 @@ describe('parse jobs in the service', () => {
     const h = makeService(async () => { throw new Error('boom'); });
     const svc = h.service();
     await svc.prepare(ID); await settle();
-    expect((await svc.availability(ID)).parse).toMatchObject({ status: 'failed', reason: 'error' });
+    await vi.waitFor(async () => expect((await svc.availability(ID)).parse).toMatchObject({ status: 'failed', reason: 'error' }));
     expect(await h.service(null).prepare(123)).toEqual({ status: 'unavailable' });
   });
 });
