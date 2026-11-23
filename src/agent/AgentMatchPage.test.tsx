@@ -7,7 +7,8 @@ import { AgentMatchPage, journeyStep } from './AgentMatchPage';
 import { turningFight } from './ReviewDoc';
 import { stepLabel } from './ChatRail';
 
-vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en', setLang: () => {} }) }));
+const ui = vi.hoisted(() => ({ lang: 'en' }));
+vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: ui.lang, setLang: () => {} }) }));
 
 const heroes = [
   { hero: 'axe', team: 'radiant', hero_id: 2, en: 'Axe', zh: '斧王' },
@@ -43,7 +44,7 @@ const page = (path: string) => render(
   </MemoryRouter>,
 );
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); window.sessionStorage.clear(); window.localStorage.clear(); });
+afterEach(() => { ui.lang = 'en'; cleanup(); vi.unstubAllGlobals(); window.sessionStorage.clear(); window.localStorage.clear(); });
 
 describe('AgentMatchPage', () => {
   it('no parsed replay yet: the roster comes from the scoreboard, and one click runs replay → parse → review', async () => {
@@ -281,6 +282,26 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByText('Reading the whole game')).toBeTruthy();
     expect(screen.getByText('Replaying a fight 30:05–31:00')).toBeTruthy();
     expect(JSON.parse(String(calls.find((c) => c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
+  });
+
+  it('a tool\'s totals are shown in the reader\'s language, a moment as its clock', async () => {
+    const totals = { ref: 'audit:beastmaster:primal_roar', kind: 'audit', names: { beastmaster: '兽王', beastmaster_primal_roar: '原始咆哮', phantom_assassin: '幻影刺客' }, record: { ref: 'audit:beastmaster:primal_roar', ref_scope: 'summary', hero: 'beastmaster', ability: 'beastmaster_primal_roar', learned_at: { t: 450.1, clock: '7:30' }, casts_total: 10, by_target: { phantom_assassin: 4 }, deaths_with_it_ready_and_not_cast_total: 3 } };
+    mockFetch({
+      'ref=overview': overview,
+      '/evidence?': totals,
+      '/review?': { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    const chip = (text: string) => screen.getByText((_, el) => el?.className === 'ag-chip' && el.textContent === text);
+    expect(await screen.findByText('兽王 · 原始咆哮')).toBeTruthy();
+    expect(chip('学会于 7:30')).toBeTruthy();
+    expect(chip('施放次数 10')).toBeTruthy();
+    expect(chip('目标 · 幻影刺客 4')).toBeTruthy();
+    expect(chip('技能就绪未放就阵亡 3')).toBeTruthy();
+    expect(screen.queryByText(/casts total|by target|learned at/)).toBeNull();
   });
 
   it('a refused start explains itself', async () => {
