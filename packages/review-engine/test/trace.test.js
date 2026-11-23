@@ -380,6 +380,16 @@ describe('trace tools on a real game', () => {
     expect(one.deaths.map((d) => d.n)).toEqual([5]);
     expect(one.most_left_unused).toEqual(all.most_left_unused);
     expect(run('death_context', { hero: 'beastmaster', index: 12 })).toMatchObject({ error: 'no_such_death' });
+    // Enemy heroes that dealt damage are counted over the whole window, wherever they stood (30:42: three).
+    expect(all.most_left_unused.find((r) => r.death === 8).enemy_heroes_dealing_damage).toBe(3);
+    expect(all.deaths[7].enemy_heroes_dealing_damage).toBe(3);
+    // Only the hero's own abilities count as left unused: a twin gate being ready is not one.
+    const sven = run('death_context', { hero: 'sven' });
+    expect(sven.most_left_unused.flatMap((r) => r.ready_not_cast).every((k) => k.startsWith('sven_'))).toBe(true);
+    const at = (n) => sven.most_left_unused.findIndex((r) => r.death === n);
+    expect(at(3)).toBeLessThan(at(6));
+    // Silenced since before the window began (39:16): no free time, not "10.9 s before the first disable".
+    expect(sven.most_left_unused.find((r) => r.death === 8).seconds_before_first_disable).toBe(0);
     // A row is not a record of its own: it must not carry a ref that would stand in for the death's.
     expect(all.most_left_unused.every((r) => !('ref' in r))).toBe(true);
   });
