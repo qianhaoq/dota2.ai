@@ -46,7 +46,7 @@ describe('fact collection', () => {
       { text: '2,915', value: 2915, approx: false, decimal: false, counted: false },
       { text: '4.2k', value: 4200, approx: true, decimal: false, counted: false },
       { text: '7', value: 7, approx: false, decimal: false, counted: true },
-      { text: '1.3', value: 1.3, approx: false, decimal: true, counted: true },
+      { text: '1.3', value: 1.3, approx: false, decimal: true, counted: true, seconds: true },
     ]);
   });
   it('passes what the tools said and names what they did not', () => {
@@ -99,6 +99,17 @@ describe('who could see whom is never in the replay data', () => {
     expect(verifyText('Axe stood next to you and you did not roar him.', []).ok).toBe(true);
     const r = verifyReview({ verdict: 'You lost.', findings: [{ title: 'Roar', claim: '斧王一直在你视野里。', evidence: [] }] }, []);
     expect(r.problems).toContainEqual({ where: 'finding', index: 0, kind: 'sight', text: '在你视野' });
+  });
+});
+
+describe('a whole number of seconds may be a tool\'s number rounded', () => {
+  const src = [{ before_death: 7.6 }];
+  it('"8 s" for 7.6 passes, in either language; a count does not get the same leeway', () => {
+    expect(verifyText('阵亡前 8 秒召唤了野猪。', src).ok).toBe(true);
+    expect(verifyText('Summoned 8 seconds before the death.', src).ok).toBe(true);
+    expect(verifyText('阵亡前 7 秒。', src).ok).toBe(true);
+    expect(verifyText('阵亡前 9 秒。', src).problems).toEqual([{ kind: 'count', text: '9' }]);
+    expect(verifyText('死了 8 次。', src).problems).toEqual([{ kind: 'count', text: '8' }]);
   });
 });
 
