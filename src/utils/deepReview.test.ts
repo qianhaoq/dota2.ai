@@ -260,9 +260,23 @@ describe('runDeepReview', () => {
     // Half a rule is not shown as one; that finding's fix stands in for it.
     expect(r.review.findings[1].rule).toBeUndefined();
     expect(r.review.next_game).toEqual(['对面核心的黑皇杖还没开：咆哮留着，等她开完再吼', '对面核心有 BKB 时，咆哮只留给他。']);
-    // A time the tools never gave, stated as what happened this game, fails like one in the claim.
+    // A time the tools never gave, stated as what happened this game, fails like one in the claim — on the rule's own account.
     const bad = verifyReview(review([{ ...good, rule: { ...rule, this_game: '19:19 那次也是' } }]), [JSON.parse(m.seen[1].messages.find((x: any) => x.tool_call_id === 'a').content)]);
-    expect(bad.problems).toContainEqual({ where: 'finding', index: 0, kind: 'time', text: '19:19' });
+    expect(bad.problems).toContainEqual({ where: 'rule', index: 0, kind: 'time', text: '19:19' });
+    // It costs that sentence, not the finding: the situation and the action stay, and the model is told where to look.
+    const wrong = { ...good, rule: { ...rule, this_game: '19:19 那次也是' } };
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', review([wrong]), 's')] }, { toolCalls: [call('submit_review', review([wrong]), 's2')] }]);
+    const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r2.status).toBe('ok');
+    expect(r2.review.findings[0].rule).toEqual({ when: rule.when, do: rule.do });
+    expect(r2.verification).toMatchObject({ repaired: true, dropped: 0 });
+    expect(r2.dropped_findings).toEqual([]);
+    expect(JSON.parse(m2.seen[2].messages.at(-1).content).problems).toEqual([{ in: 'finding 1, rule.this_game', text: '19:19', why: 'this time is not in any tool result' }]);
+    // A finding that is dropped is kept as it was written, for whoever has to find out why.
+    const m3 = scripted([investigate, { toolCalls: [call('submit_review', review([good, invented]), 's')] }, { toolCalls: [call('submit_review', review([good, invented]), 's2')] }]);
+    const r3: any = await runDeepReview({ complete: m3.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r3.verification.dropped).toBe(1);
+    expect(r3.dropped_findings).toEqual([invented]);
     // The situation and the action are advice: a threshold in them is not a fact about the game.
     expect(verifyReview(review([{ ...good, rule: { when: '血量低于 50% 而熊战士在 1000 码内', do: '回家补给', this_game: rule.this_game } }]), m.seen.at(-1).messages.filter((x: any) => x.role === 'tool').map((x: any) => JSON.parse(x.content))).problems).toEqual([]);
   });

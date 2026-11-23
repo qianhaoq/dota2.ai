@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
-import { copyFileSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -126,6 +126,41 @@ describe('runChat', () => {
     expect(parseChatBody({ question: ' hi ', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b' }, { q: 1 }, { q: '', a: 'x' }, { q: 'c', a: 'd', clean: true }, { q: 'e', a: 'f', clean: 'yes' }] })).toEqual({ question: 'hi', hero: 'axe', lang: 'zh', history: [{ q: 'a', a: 'b', clean: false }, { q: 'c', a: 'd', clean: true }, { q: 'e', a: 'f', clean: false }] });
     expect(parseChatBody({ question: 'x', hero: 'axe', history: Array.from({ length: 9 }, (_, i) => ({ q: `q${i}`, a: 'a' })) }).history).toHaveLength(6);
     expect([parseChatBody({}), parseChatBody({ question: 'x'.repeat(501), hero: 'a' }), parseChatBody({ question: 'x' })].map((r: any) => r.error)).toEqual(['empty_question', 'question_too_long', 'invalid_hero']);
+  });
+});
+
+describe('what the check removed is kept beside the review', () => {
+  it('the dropped finding and the reasons are saved, and not sent to the reader', async () => {
+    const madeUp = { title: '打钱', claim: '你 19:19 的经济只有 9,876。', evidence: [{ refs: ['fight:99'], fact: '落后 4.2k' }], fix: '多刷野。' };
+    const complete = async (o: any) => (o.messages.at(-1).role === 'user'
+      ? { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a'), call('immunity_windows', { hero: 'phantom_assassin' }, 'b')] }
+      : { toolCalls: [call('submit_review', { ...submit, findings: [finding, madeUp] }, 's')] });
+    const reviewDir = join(dir, 'kept');
+    const service: any = createAgentService({ traces: createFileTraceStore(dir), complete, model: 'm', reviewDir });
+    expect(await service.start(MATCH, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+    let now: any;
+    await vi.waitFor(async () => { now = await service.status(MATCH, 'beastmaster', 'en'); expect(now.status).toBe('ready'); }, { timeout: 5000 });
+    expect(now.verification).toEqual({ repaired: true, dropped: 1 });
+    expect(now.review.findings).toHaveLength(1);
+    const file = readdirSync(reviewDir).find((f) => f.endsWith('.unverified.json'))!;
+    const kept = JSON.parse(readFileSync(join(reviewDir, file), 'utf8'));
+    expect(kept.dropped_findings).toEqual([madeUp]);
+    expect(kept.problems).toContainEqual({ where: 'finding', index: 1, kind: 'ref', text: 'fight:99' });
+    expect(kept.status).toBe('ok');
+    // A review the check rejected whole leaves the same record: that is when it is needed most.
+    const none = join(dir, 'none');
+    const all: any = createAgentService({ traces: createFileTraceStore(dir), complete: async (o: any) => (o.messages.at(-1).role === 'user' ? { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a')] } : { toolCalls: [call('submit_review', { ...submit, findings: [madeUp] }, 's')] }), model: 'm', reviewDir: none });
+    await all.start(MATCH, 'beastmaster', 'en');
+    await vi.waitFor(async () => expect((await all.status(MATCH, 'beastmaster', 'en')).status).toBe('failed'), { timeout: 5000 });
+    const lost = JSON.parse(readFileSync(join(none, readdirSync(none).find((f) => f.endsWith('.unverified.json'))!), 'utf8'));
+    expect(lost).toMatchObject({ status: 'unverified', dropped_findings: [madeUp] });
+    // A review with nothing wrong leaves no such file.
+    const clean = join(dir, 'clean');
+    const ok: any = createAgentService({ traces: createFileTraceStore(dir), complete: model().complete, model: 'm', reviewDir: clean });
+    await ok.start(MATCH, 'beastmaster', 'en');
+    await vi.waitFor(async () => expect((await ok.status(MATCH, 'beastmaster', 'en')).status).toBe('ready'), { timeout: 5000 });
+    expect(readdirSync(clean).some((f) => f.endsWith('.unverified.json'))).toBe(false);
+    expect(existsSync(clean)).toBe(true);
   });
 });
 
