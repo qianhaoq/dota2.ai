@@ -476,6 +476,11 @@ describe('AgentMatchPage', () => {
       expect.objectContaining({ goalId: 'g', matchId: 9100999998, result: 'met' }),
       expect.objectContaining({ goalId: 'g#2', matchId: 9100999998, result: 'missed' }),
     ]));
+    // The games page has only the scoreboard: asked there, the goal answers with what the replay already settled.
+    const store = await import('../coach/goalStore');
+    expect(store.checkGoal(goal as any, later as any, 1)).toMatchObject({ result: 'met' });
+    expect(store.checkRules(goal as any, later as any, 1, null)[0].check).toMatchObject({ result: 'missed' });
+    expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!).map((c: any) => c.result)).toEqual(['met', 'missed']);
   });
 
   it('an invalid match id never calls the server', async () => {

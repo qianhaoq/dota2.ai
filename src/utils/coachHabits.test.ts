@@ -63,3 +63,20 @@ describe('evaluateHabit', () => {
     expect(evaluateGoal(goal, report, 0, where({ health_below_half_at_window_start: [] }))).toMatchObject({ result: 'met' });
   });
 });
+
+describe('the deaths summary of a hero who never died', () => {
+  it('resolves with every count at zero, so a deathless game meets its rules', async () => {
+    const { resolveRef } = await import('../../lib/agent/evidence.js');
+    // The same replay with Beastmaster's deaths taken out of it.
+    const full: any = resolveRef(trace, 'deaths:beastmaster', { hero: 'beastmaster' });
+    expect(full.record.deaths_total).toBe(11);
+    const mine = new Set(trace.deaths.filter((d: any) => deaths.deaths.some((x: any) => x.row === d[3])).map((d: any) => d[3]));
+    expect(mine.size).toBe(11);
+    const deathless = { ...trace, deaths: trace.deaths.filter((d: any) => !mine.has(d[3])) };
+    const none: any = resolveRef(deathless, 'deaths:beastmaster', { hero: 'beastmaster' });
+    expect(none).not.toBeNull();
+    expect(none.record).toMatchObject({ ref: 'deaths:beastmaster', deaths_total: 0, deaths_where: { health_below_half_at_window_start: [], no_ally_within_2200_at_death: [] }, deaths_not_known: { health_at_window_start: 0, allies_at_death: 0 } });
+    const goal = habitGoal('outnumbered', deaths)!;
+    expect(evaluateHabit(goal, none.record, 40)).toMatchObject({ result: 'met' });
+  });
+});

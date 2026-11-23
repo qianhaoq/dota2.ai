@@ -81,8 +81,22 @@ function recordCheck(c: GoalCheck): void {
  */
 export function checkGoal(goal: ActiveGoal, report: CoachReport, slot: number, replay: ReplayDeaths = null): GoalCheck | null {
   if (!counts(goal, report, slot)) return null;
-  const r = evaluateGoal(goal.goal, report, slot, replay) as { result: GoalResult; evidence: Bi };
-  const check: GoalCheck = { goalId: goal.id, matchId: report.match.id, result: r.result, evidence: r.evidence };
+  return judge(goal.id, goal.goal, report, slot, replay);
+}
+
+/**
+ * Judge one spec and record it. A check that needs the replay, asked without
+ * one (the games page has only the scoreboard), answers with what the replay
+ * page already recorded for this game rather than replace it with "unknown".
+ */
+function judge(goalId: string, spec: GoalSpec, report: CoachReport, slot: number, replay: ReplayDeaths): GoalCheck {
+  const matchId = report.match.id;
+  if (spec.kind === 'replay_habit' && !replay) {
+    const kept = goalChecks(goalId).find((c) => c.matchId === matchId && c.result !== 'unknown');
+    if (kept) return kept;
+  }
+  const r = evaluateGoal(spec, report, slot, replay) as { result: GoalResult; evidence: Bi };
+  const check: GoalCheck = { goalId, matchId, result: r.result, evidence: r.evidence };
   recordCheck(check);
   return check;
 }
@@ -105,12 +119,7 @@ export const needsReplay = (goal: ActiveGoal): boolean => goal.goal.kind === 're
  */
 export function checkRules(goal: ActiveGoal, report: CoachReport, slot: number, replay: ReplayDeaths): { rule: GoalRule; check: GoalCheck }[] {
   if (!counts(goal, report, slot)) return [];
-  return (goal.rules ?? []).map((rule) => {
-    const r = evaluateGoal(rule.check, report, slot, replay) as { result: GoalResult; evidence: Bi };
-    const check: GoalCheck = { goalId: `${goal.id}#${rule.finding}`, matchId: report.match.id, result: r.result, evidence: r.evidence };
-    recordCheck(check);
-    return { rule, check };
-  });
+  return (goal.rules ?? []).map((rule) => ({ rule, check: judge(`${goal.id}#${rule.finding}`, rule.check, report, slot, replay) }));
 }
 
 /**
