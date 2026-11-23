@@ -185,7 +185,7 @@ describe('review findings on #232', () => {
     }
     b.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 25, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
     const tr = b.finish();
-    expect(tr.abilities[0].lina_laguna_blade).toEqual({ levels: [[0, 1], [4.3, 0]], cd: [[2, 4.3, 48]], mana: 250, costs: [[1, 250]] });
+    expect(tr.abilities[0].lina_laguna_blade).toEqual({ levels: [[0, 1], [4.3, 0]], cd: [[2, 4.3, 48]], mana: 250, costs: [[0, 250]] });
     const d = runTraceTool(tr, 'death_context', { hero: 'axe' }).deaths[0];
     expect(d.at_window_start.abilities.map((a) => a.ability)).toEqual(['axe_berserkers_call']);
     expect(d.ready_not_cast).toEqual(['axe_berserkers_call']);
@@ -203,7 +203,7 @@ describe('review findings on #232', () => {
       return b.finish();
     };
     const poor = run(60);
-    expect(poor.abilities[0].axe_berserkers_call).toMatchObject({ mana: 110, costs: [[1, 80], [2, 110]] });
+    expect(poor.abilities[0].axe_berserkers_call).toMatchObject({ mana: 110, costs: [[0, 80], [40, 110]] });
     const d = runTraceTool(poor, 'death_context', { hero: 'axe' }).deaths[0];
     expect(d).toMatchObject({ most_mana_in_window: 60, ready_not_cast: [], off_cooldown_without_the_mana: ['axe_berserkers_call'] });
     expect(d.at_window_start.abilities[0].mana_cost).toBe(80);
@@ -221,6 +221,15 @@ describe('review findings on #232', () => {
     expect(sp.states[0].mana_peak[20]).toBe(100);
     expect(runTraceTool(sp, 'death_context', { hero: 'axe' }).deaths[0]).toMatchObject({ most_mana_in_window: 100, ready_not_cast: ['axe_berserkers_call'], off_cooldown_without_the_mana: [] });
     expect(runTraceTool(sp, 'ability_audit', { hero: 'axe', ability: 'berserkers_call' }).deaths_with_it_ready_and_not_cast_total).toBe(1);
+    // A cost that changes without a level (100 until 10 s, 80 after): 90 mana pays for it in a window where it cost 80.
+    const sale = createTraceBuilder();
+    for (let t = 0; t <= 30; t += 0.25) { sale.addState(state(t, { mana: 90, abilities: [{ name: 'axe_berserkers_call', level: 1, cooldown: 0, mana_cost: t < 10 ? 100 : 80 }] })); sale.addState(lina(t)); }
+    sale.addEvent({ type: 'DOTA_COMBATLOG_DEATH', t: 25, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, attacker: 'npc_dota_hero_lina', attacker_hero: true, attacker_illusion: false }, 1);
+    const sl = sale.finish();
+    expect(sl.abilities[0].axe_berserkers_call.costs).toEqual([[0, 100], [10, 80]]);
+    expect(runTraceTool(sl, 'death_context', { hero: 'axe' }).deaths[0]).toMatchObject({ ready_not_cast: ['axe_berserkers_call'], off_cooldown_without_the_mana: [] });
+    expect(runTraceTool(sl, 'death_context', { hero: 'axe' }).deaths[0].at_window_start.abilities[0].mana_cost).toBe(80);
+    expect(runTraceTool(sl, 'ability_audit', { hero: 'axe', ability: 'berserkers_call' }).deaths_with_it_ready_and_not_cast_total).toBe(1);
     // A trace that kept one sample a second cannot rule a peak out: nothing is moved out of "ready".
     const flat = run(60); delete flat.states[0].mana_peak;
     expect(runTraceTool(flat, 'death_context', { hero: 'axe' }).deaths[0]).toMatchObject({ most_mana_in_window: null, ready_not_cast: ['axe_berserkers_call'], off_cooldown_without_the_mana: [] });
@@ -453,6 +462,11 @@ describe('trace tools on a real game', () => {
     expect(long.deaths[1].snapshots.every((x) => x.allies.length === 0)).toBe(true);
     expect(long.deaths[1].allies_within_2200).toMatchObject({ at_death: 0, most_in_any_second: 1 });
     expect(long.deaths_where.no_ally_within_2200_throughout).not.toContain(2);
+    // The second the window starts in is looked at too: Venomancer stands 586 away at the start of Phantom Assassin's first death (16 s window).
+    const pa = run('death_context', { hero: 'phantom_assassin', window: 16 });
+    expect(pa.deaths[0].snapshots[0].allies.length).toBeGreaterThan(0);
+    expect(pa.deaths[0].allies_within_2200.most_in_any_second).toBeGreaterThan(0);
+    expect(pa.deaths_where.no_ally_within_2200_throughout).not.toContain(1);
     // Allies who arrive in the last second were there at the death: Mirana's fourth (35:43) was not alone, though every snapshot before it was.
     const mirana = run('death_context', { hero: 'mirana' });
     expect(mirana.deaths[3]).toMatchObject({ clock: '35:43', allies_within_2200: { at_window_start: 0, at_death: 2, most_in_any_second: 2 } });

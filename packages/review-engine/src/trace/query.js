@@ -74,18 +74,22 @@ export function cooldownLeft(entry, t) {
 }
 
 /**
- * Mana an ability costs at t, or null when the trace cannot say: 0 for one
- * never seen with a cost; the cost sampled at its level then (`costs`); in a
- * trace without per-level costs, the highest cost seen — but only once the
- * ability is at the highest level it reached, where that is its cost.
+ * The least mana an ability cost at any moment from `from` to `to`, or null
+ * when the trace cannot say: 0 for one never seen with a cost; otherwise
+ * from the sampled cost and when it changed (`costs`). The least, because
+ * the question it answers is "could it have been cast at some point here".
+ * A trace without `costs` knows only the highest cost of the game, which
+ * is not the cost at this moment: null.
  */
-export function manaCost(entry, t) {
+export function manaCost(entry, from, to = from) {
   if (!entry?.mana) return 0;
-  const lv = abilityLevel(entry, t);
-  const at = (entry.costs ?? []).find(([level]) => level === lv);
-  if (at) return at[1];
-  if (entry.costs) return null;
-  return lv > 0 && lv === Math.max(...entry.levels.map(([, level]) => level)) ? entry.mana : null;
+  if (!Array.isArray(entry.costs)) return null;
+  let least = null;
+  entry.costs.forEach(([at, cost], i) => {
+    const until = entry.costs[i + 1]?.[0] ?? Infinity;
+    if (at <= to && until > from && (least == null || cost < least)) least = cost;
+  });
+  return least;
 }
 
 /**

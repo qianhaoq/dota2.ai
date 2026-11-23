@@ -154,10 +154,10 @@ export function deathContext(trace, args = {}, ctx = {}) {
     });
     const atDeath = nearby(trace, h, t, 2200);
     // Every second of the window and the death itself, not only the snapshots: an ally who came and went between two of them was there.
-    let mostAllies = atDeath.me ? atDeath.allies.length : null;
-    for (let sec = Math.ceil(from); mostAllies != null && sec < t; sec += 1) { const at = nearby(trace, h, sec, 2200); mostAllies = at.me ? Math.max(mostAllies, at.allies.length) : null; }
+    let mostAllies = atDeath.me && snapshots.every((x) => x.me) ? Math.max(atDeath.allies.length, ...snapshots.map((x) => x.allies.length)) : null;
+    for (let sec = Math.floor(from); mostAllies != null && sec < t; sec += 1) { const at = nearby(trace, h, sec, 2200); mostAllies = at.me ? Math.max(mostAllies, at.allies.length) : null; }
     const abilities = Object.entries(trace.abilities[h]).filter(([k, e]) => can.has(k) && abilityLevel(e, from) > 0)
-      .map(([k, e]) => ({ ability: k, level: abilityLevel(e, from), cooldown_left: cooldownLeft(e, from), mana_cost: manaCost(e, from) }));
+      .map(([k, e]) => ({ ability: k, level: abilityLevel(e, from), cooldown_left: cooldownLeft(e, from), mana_cost: manaCost(e, from, t) }));
     // Ready is not castable: with less mana all window long than it costs, it was never an option.
     const mana = mostMana(trace, h, from, t);
     const noMana = (a) => a.mana_cost != null && mana != null && mana < a.mana_cost;
@@ -365,7 +365,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   }
   const myDeaths = trace.deaths.filter((d) => d[1] === npc).sort((a, b) => a[0] - b[0]);
   // Off cooldown with less mana in those 12 seconds than it costs is not "ready and not cast".
-  const afford = (d) => { const cost = manaCost(entry, d[0] - 12); const mana = mostMana(trace, h, d[0] - 12, d[0]); return cost == null || mana == null || mana >= cost; };
+  const afford = (d) => { const cost = manaCost(entry, d[0] - 12, d[0]); const mana = mostMana(trace, h, d[0] - 12, d[0]); return cost == null || mana == null || mana >= cost; };
   const unused = myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12)).filter(afford);
   return {
     ref: `audit:${trace.heroes[h].key}:${short}`, ref_scope: 'summary',
