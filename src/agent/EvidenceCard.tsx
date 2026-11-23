@@ -47,6 +47,7 @@ const T = {
   events: { en: 'What happened', zh: '经过' },
   dealt: { en: 'Damage to heroes', zh: '对英雄伤害' },
   firstHeld: { en: 'First held', zh: '首次持有' },
+  watching: { en: 'watching', zh: '观察' },
   proShare: { en: 'of pro games', zh: '职业局' },
   never: { en: 'never held', zh: '从未持有' },
   pierces: { en: 'goes through spell immunity', zh: '无视技能免疫' },
@@ -54,6 +55,26 @@ const T = {
   ultimate: { en: 'ultimate', zh: '大招' },
   sec: { en: 's', zh: '秒' },
 } as const;
+
+/** What a tool's totals are called. A key not listed here is shown as it is, with spaces. */
+const TOTALS: Record<string, Record<Lang, string>> = {
+  learned_at: { en: 'Learned at', zh: '学会于' },
+  casts_total: { en: 'Casts', zh: '施放次数' },
+  by_target: { en: 'On', zh: '目标' },
+  casts_on_spell_immune_target: { en: 'Cast on a spell-immune target', zh: '施放在技能免疫目标上' },
+  of_those_target_was_stunned: { en: 'of those, the target was stunned', zh: '其中目标仍被眩晕' },
+  seconds_alive_since_learned: { en: 'Seconds alive since learned', zh: '学会后存活秒数' },
+  seconds_alive_and_ready: { en: 'Seconds alive with it ready', zh: '存活且技能就绪秒数' },
+  deaths_with_it_ready_and_not_cast_total: { en: 'Deaths with it ready and not cast', zh: '技能就绪未放就阵亡' },
+  window: { en: 'Seconds before each death', zh: '每次阵亡前秒数' },
+  deaths_total: { en: 'Deaths', zh: '阵亡次数' },
+  killed_by: { en: 'Killed by', zh: '击杀者' },
+  windows_total: { en: 'Spell-immunity windows', zh: '技能免疫次数' },
+  watched_state_when_window_opened: { en: 'When it opened, the watched ability was', zh: '开启时所观察技能' },
+  windows_with_a_cast_on_the_immune_hero: { en: 'Windows with a cast on the immune hero', zh: '期间对免疫目标施放' },
+  on_cooldown: { en: 'on cooldown', zh: '冷却中' }, ready: { en: 'ready', zh: '就绪' }, dead: { en: 'caster dead', zh: '施法者已阵亡' },
+  not_learned: { en: 'not learned', zh: '未学' }, no_mana: { en: 'no mana', zh: '没蓝' },
+};
 
 const pretty = (key: string) => key.replace(/^modifier_/, '').replace(/^item_/, '').replace(/_/g, ' ');
 const SIDE_CLASS: Record<string, string> = { me: 'is-me', ally: 'is-ally', enemy: 'is-enemy' };
@@ -214,12 +235,15 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   const flat: [string, string][] = [];
   for (const [k, v] of Object.entries(r)) {
     if (k === 'ref' || k === 'ref_scope' || k === 'hero' || k === 'team' || k === 'ability') continue;
-    if (typeof v === 'number') flat.push([pretty(k), String(v)]);
-    else if (v && typeof v === 'object' && !Array.isArray(v)) for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) if (typeof v2 === 'number') flat.push([`${pretty(k)} · ${N(k2)}`, String(v2)]);
+    const label = (key: string) => (TOTALS[key] ? t(TOTALS[key]) : null);
+    if (typeof v === 'number') flat.push([label(k) ?? pretty(k), String(v)]);
+    // A moment (learned_at) reads as its clock, not as its raw seconds.
+    else if (v && typeof v === 'object' && typeof (v as any).clock === 'string') flat.push([label(k) ?? pretty(k), (v as any).clock]);
+    else if (v && typeof v === 'object' && !Array.isArray(v)) for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) if (typeof v2 === 'number') flat.push([`${label(k) ?? pretty(k)} · ${label(k2) ?? N(k2)}`, String(v2)]);
   }
   return (
     <div className="ag-rec">
-      <p className="ag-rec-head">{r.clock ?? [r.hero, r.ability].filter(Boolean).map((x: string) => N(x)).join(' · ')}</p>
+      <p className="ag-rec-head">{r.clock ?? [r.hero, r.ability].filter(Boolean).map((x: string) => N(x)).join(' · ')}{r.watching ? `${r.hero ? ' · ' : ''}${t(T.watching)} ${N(r.watching.hero)} · ${N(r.watching.ability)}` : ''}</p>
       {flat.length > 0 && <p className="ag-rec-line">{flat.slice(0, 14).map(([k, v]) => <span key={k} className="ag-chip">{k} <em>{v}</em></span>)}</p>}
     </div>
   );

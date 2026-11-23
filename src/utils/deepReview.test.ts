@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { collectFacts, deepReviewSystem, nameHeroes, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { collectFacts, deepReviewSystem, nameHeroes, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
@@ -78,6 +78,27 @@ describe('fact collection', () => {
       { where: 'finding', index: 0, kind: 'moment', text: '2915 (not in death:x:4)' },
       { where: 'finding', index: 0, kind: 'moment', text: '25 (not in death:x:6)' },
     ]);
+  });
+});
+
+describe('who could see whom is never in the replay data', () => {
+  it('a statement about vision is found in either language; saying the data lacks it is not one', () => {
+    expect(sightClaims('那段时间斧王就站在你视野里，你只要把咆哮先手给斧王。')).toEqual(['站在你视野']);
+    expect(sightClaims('Axe was in your vision the whole time.')).toEqual(['in your vision']);
+    expect(sightClaims('对方看到了你进野区。')).toEqual(['看到了你']);
+    expect(sightClaims('They could see you coming.')).toEqual(['could see']);
+    // The honest version, and plain distances, pass.
+    expect(sightClaims('录像数据里没有视野，无法判断对方是否看得见你。')).toEqual([]);
+    expect(sightClaims('The replay has no vision data, so we cannot tell whether they could see you.')).toEqual([]);
+    expect(sightClaims('斧王在 137 码内。他跳了进来。')).toEqual([]);
+    expect(sightClaims(undefined as any)).toEqual([]);
+  });
+
+  it('it fails the check of an answer and of a review, with nothing else wrong', () => {
+    expect(verifyText('Axe stood in your vision and you did not roar him.', [])).toEqual({ ok: false, problems: [{ kind: 'sight', text: 'in your vision' }] });
+    expect(verifyText('Axe stood next to you and you did not roar him.', []).ok).toBe(true);
+    const r = verifyReview({ verdict: 'You lost.', findings: [{ title: 'Roar', claim: '斧王一直在你视野里。', evidence: [] }] }, []);
+    expect(r.problems).toContainEqual({ where: 'finding', index: 0, kind: 'sight', text: '在你视野' });
   });
 });
 
