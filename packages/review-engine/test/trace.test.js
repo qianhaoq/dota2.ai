@@ -438,7 +438,7 @@ describe('trace tools on a real game', () => {
     const all = run('death_context', { hero: 'beastmaster' });
     expect(all.deaths_where).toEqual({
       health_below_half_at_window_start: [],
-      no_ally_within_2200_in_any_snapshot: [2],
+      no_ally_within_2200_throughout: [2],
       no_ally_within_2200_at_death: [2],
       three_or_more_enemy_heroes_dealing_damage: [4, 6, 7, 8, 9],
       nothing_cast_and_no_item_used: [],
@@ -447,7 +447,12 @@ describe('trace tools on a real game', () => {
     expect(all.damage_in_death_windows_total).toBe(23757);
     expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);
     expect(Object.keys(all.damage_in_death_windows)).toHaveLength(6);
-    expect(all.deaths[1]).toMatchObject({ health_share_at_window_start: 0.75, allies_within_2200: { at_window_start: 0, at_death: 0, most_in_any_snapshot: 0 } });
+    expect(all.deaths[1]).toMatchObject({ health_share_at_window_start: 0.75, allies_within_2200: { at_window_start: 0, at_death: 0, most_at_any_checked_moment: 0 } });
+    // Allies who arrive in the last second were there at the death: Mirana's fourth (35:43) was not alone, though every snapshot before it was.
+    const mirana = run('death_context', { hero: 'mirana' });
+    expect(mirana.deaths[3]).toMatchObject({ clock: '35:43', allies_within_2200: { at_window_start: 0, at_death: 2, most_at_any_checked_moment: 2 } });
+    expect(mirana.deaths_where.no_ally_within_2200_at_death).not.toContain(4);
+    expect(mirana.deaths_where.no_ally_within_2200_throughout).not.toContain(4);
     // The working list behind the totals is not part of a record.
     expect(all.deaths.every((d) => !('damage_sources' in d))).toBe(true);
     // The counts are over the window asked for, so another window is another summary, with its own ref.
@@ -466,6 +471,14 @@ describe('trace tools on a real game', () => {
     // Damage that starts seconds after the cast is still the cast's: a maze walked into five seconds later (3:08 → 3:14).
     const maze = run('ability_audit', { hero: 'dark_willow', ability: 'bramble_maze' }).casts.find((c) => c.clock === '3:08');
     expect(maze.enemy_heroes_damaged_within_15s).toEqual(['mirana']);
+    // Damage is kept per whole second: the second a recast falls in belongs to the recast, not to both casts.
+    const two = createTraceBuilder();
+    const hs = (t, hero, team, i) => ({ entity_kind: 'real_hero', t, hero, team, player_index: i, x: 0, y: 0, hp: 500, max_hp: 600, mana: 300, level: 6, life_state: 0, abilities: hero === 'axe' ? [{ name: 'axe_battle_hunger', level: 1, cooldown: 0, mana_cost: 50 }] : [], items: [], controls: {} });
+    for (let t = 0; t <= 30; t += 0.25) { two.addState(hs(t, 'axe', 2, 0)); two.addState(hs(t, 'lina', 3, 5)); two.addState(hs(t, 'sven', 3, 6)); }
+    const castAt = (t, row) => two.addEvent({ type: 'DOTA_COMBATLOG_ABILITY', t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, inflictor: 'axe_battle_hunger' }, row);
+    const hurt = (t, target, row) => two.addEvent({ type: 'DOTA_COMBATLOG_DAMAGE', t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: `npc_dota_hero_${target}`, target_hero: true, target_illusion: false, inflictor: 'axe_battle_hunger', value: 40 }, row);
+    castAt(10.2, 1); hurt(10.3, 'lina', 2); castAt(20.2, 3); hurt(20.3, 'sven', 4);
+    expect(runTraceTool(two.finish(), 'ability_audit', { hero: 'axe', ability: 'battle_hunger' }).casts.map((c) => c.enemy_heroes_damaged_within_15s)).toEqual([['lina'], ['sven']]);
     // An ability the damage log never names says nothing about whom it damaged.
     const b = createTraceBuilder();
     const st = (t, hero, team) => ({ entity_kind: 'real_hero', t, hero, team, player_index: team === 2 ? 0 : 5, x: 0, y: 0, hp: 500, max_hp: 600, mana: 300, level: 6, life_state: 0, abilities: hero === 'axe' ? [{ name: 'axe_berserkers_call', level: 1, cooldown: 0, mana_cost: 80 }] : [], items: [], controls: {} });
