@@ -321,9 +321,15 @@ describe('agent API', () => {
     let acquired = 0;
     const app2 = express();
     app2.use(express.json());
-    // A trace store that answers slowly, so every request is past its status check before any job exists.
+    // Every request must be past its status check before any job exists. Two things make that so: the trace
+    // store answers nobody until all sixty requests have arrived (sixty connections do not always open within
+    // a fixed delay on a busy machine), and then answers each read slowly, so the requests move through their
+    // steps together.
     const slow = createFileTraceStore(dir);
-    const traces = { get: async (id: any) => { await new Promise((r) => setTimeout(r, 30)); return slow.get(id); } };
+    let arrived = 0; let open!: () => void;
+    const allIn = new Promise<void>((r) => { open = r; });
+    app2.use((_req: any, _res: any, next: any) => { arrived += 1; if (arrived >= 60) open(); next(); });
+    const traces = { get: async (id: any) => { await allIn; await new Promise((r) => setTimeout(r, 30)); return slow.get(id); } };
     app2.use(createAgentRouter({ service: createAgentService({ traces, complete: m.complete, model: 'test-model' }), resolveClientIp: (req: any) => String(req.headers['x-test-ip']), llm: { acquire: () => { acquired += 1; return { ok: true }; } } }));
     const srv = app2.listen(0, '127.0.0.1');
     await new Promise((r) => srv.once('listening', r));
