@@ -88,12 +88,19 @@ export function manaCost(entry, t) {
   return lv > 0 && lv === Math.max(...entry.levels.map(([, level]) => level)) ? entry.mana : null;
 }
 
-/** The most mana hero h had at any sampled second from `from` to `to`, or null with no sample. */
+/**
+ * The most mana hero h had in any second from `from` to `to`, over every
+ * sample of each second (`mana_peak`). Null with no sample — and in a trace
+ * that kept one sample a second only: a peak between those is not seen, so
+ * such a trace cannot say the hero never had the mana.
+ */
 export function mostMana(trace, h, from, to) {
+  const peak = trace.states[h].mana_peak;
+  if (!peak) return null;
   let best = null;
   for (let sec = Math.floor(from); sec <= Math.ceil(to); sec += 1) {
     const i = sec - trace.t0;
-    const m = i >= 0 && i < trace.n ? trace.states[h].mana[i] : null;
+    const m = i >= 0 && i < trace.n ? peak[i] : null;
     if (m != null && (best == null || m > best)) best = m;
   }
   return best;

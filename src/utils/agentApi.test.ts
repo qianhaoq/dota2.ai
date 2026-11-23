@@ -219,6 +219,10 @@ describe('agent API', () => {
     expect(audit).toMatchObject({ kind: 'audit', record: { casts_total: 10, by_target: { phantom_assassin: 4 }, casts_on_spell_immune_target: 2 } });
     expect(audit.record).not.toHaveProperty('casts');
     expect((await ev('deaths:beastmaster')).body.record).toMatchObject({ deaths_total: 11, killed_by: { phantom_assassin: 7 } });
+    // A summary over another window resolves to that window's counts, not the default's.
+    expect((await ev('deaths:beastmaster')).body.record).toMatchObject({ window: 12, damage_in_death_windows_total: 23757 });
+    expect((await ev('deaths:beastmaster:w4')).body.record).toMatchObject({ ref: 'deaths:beastmaster:w4', window: 4, damage_in_death_windows_total: 18106 });
+    expect((await ev('deaths:beastmaster:nope')).status).toBe(404);
     expect((await ev('immunity:phantom_assassin')).body.record).toMatchObject({ windows_total: 7 });
     // With what was watched, the totals that back "her BKB opened with the roar on cooldown three times" are shown too.
     expect((await ev('immunity:phantom_assassin:beastmaster:primal_roar')).body.record).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });

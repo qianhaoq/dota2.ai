@@ -208,7 +208,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
   });
   const killers = {};
   for (const d of all) { const k = nameOf(trace, d[2]) ?? 'unknown'; killers[k] = (killers[k] ?? 0) + 1; }
-  return { ref: `deaths:${trace.heroes[h].key}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, ...deathPatterns(trace, out), ...leftUnused(out, trace.heroes[h].key), deaths: args.index == null ? out : [out[args.index - 1]], gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+  // The counts below are over this window: a non-default one is in the summary's ref, as in each death's.
+  return { ref: `deaths:${trace.heroes[h].key}${window === 12 ? '' : `:w${window}`}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, ...deathPatterns(trace, out), ...leftUnused(out, trace.heroes[h].key), deaths: args.index == null ? out : [out[args.index - 1]], gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
 }
 
 const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 : null);
@@ -278,8 +279,11 @@ function resolveAbility(trace, h, name) {
   return keys.find((x) => x === k) ?? keys.find((x) => x === `${trace.heroes[h].key}_${k}`) ?? (keys.filter((x) => x.endsWith(`_${k}`)).length === 1 ? keys.find((x) => x.endsWith(`_${k}`)) : null) ?? null;
 }
 
-/** Damage an ability deals up to this long after the cast is that cast's (a wave travels, a ward ticks). */
-const HIT_WITHIN = 4;
+/**
+ * Damage by an ability in this long after a cast (or until its next cast) is counted to that cast: a wave
+ * travels, a maze waits to be walked into, a plague ticks. What comes later is not seen, and the field says so.
+ */
+const HIT_WITHIN = 15;
 /** A projectile takes time to arrive: a stun the caster applies up to this long after the cast is the cast's. */
 const STUN_LANDS_WITHIN = 3;
 
@@ -335,7 +339,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       ...(soonAfter ? { target_became_immune_dt: Math.round((soonAfter.from - t) * 10) / 10 } : {}),
       me: me ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
       allies_within_1300: allies.map((a) => a.hero), enemies_within_1300: enemies.map((e) => e.hero),
-      ...(damaging ? { enemy_heroes_damaged: [...hit] } : {}),
+      ...(damaging ? { enemy_heroes_damaged_within_15s: [...hit] } : {}),
       deaths_within_12s: trace.deaths.filter((d) => d[0] >= t && d[0] - t <= 12).map((d) => deathRow(trace, d, t, view)),
     };
   });
@@ -498,7 +502,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'ability_audit',
-    description: "Every cast of one ability by one hero: the target and its health, whether the target was spell immune at that moment, who was near, which enemy heroes it damaged (`enemy_heroes_damaged`, for an ability that deals damage), and which heroes died in the next 12 seconds. Also how long the ability sat ready while the hero was alive, and the hero's deaths with it ready and not cast.",
+    description: "Every cast of one ability by one hero: the target and its health, whether the target was spell immune at that moment, who was near, which enemy heroes it damaged in the 15 seconds after, or until its next cast (`enemy_heroes_damaged_within_15s`, for an ability that deals damage), and which heroes died in the next 12 seconds. Also how long the ability sat ready while the hero was alive, and the hero's deaths with it ready and not cast.",
     input_schema: { type: 'object', properties: { hero: HERO, ability: { type: 'string', description: 'Ability key, with or without the hero prefix, e.g. "primal_roar".' } }, required: ['hero', 'ability'], additionalProperties: false },
     run: abilityAudit,
   },
