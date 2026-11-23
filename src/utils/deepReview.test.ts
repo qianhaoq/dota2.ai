@@ -240,6 +240,13 @@ describe('runDeepReview', () => {
     const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r2.review.findings).toEqual([goodShown]);
     expect(r2.verification).toMatchObject({ dropped: 1 });
+    // A finding that is no finding (null, or evidence that is no list) is dropped like any other; the job does not fail.
+    const broken = [good, null, { ...good, evidence: { refs: ['death:beastmaster:9'], fact: '36:05' } }];
+    const m4 = scripted([investigate, { toolCalls: [call('submit_review', review(broken), 's1')] }, { toolCalls: [call('submit_review', review(broken), 's2')] }]);
+    const r4: any = await runDeepReview({ complete: m4.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r4.status).toBe('ok');
+    expect(r4.review.findings).toEqual([goodShown]);
+    expect(r4.verification).toMatchObject({ dropped: 2 });
     // Its own claim unsupported: good evidence does not save it.
     const wrong = { ...good, claim: '你 19:19 的经济只有 9,876。' };
     const m3 = scripted([investigate, { toolCalls: [call('submit_review', review([good, wrong]), 's1')] }, { toolCalls: [call('submit_review', review([good, wrong]), 's2')] }]);
