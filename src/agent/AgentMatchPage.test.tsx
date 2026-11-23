@@ -305,7 +305,7 @@ describe('AgentMatchPage', () => {
   });
 
   it('the deaths\' totals say what they have in common and where the damage came from', async () => {
-    const totals = { ref: 'deaths:beastmaster', kind: 'deaths', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客' }, record: { ref: 'deaths:beastmaster', ref_scope: 'summary', hero: 'beastmaster', deaths_total: 11, killed_by: { phantom_assassin: 7 }, deaths_where: { health_below_half_at_window_start: [], no_ally_within_2200_at_death: [2] }, damage_in_death_windows_total: 23757, damage_in_death_windows: { 'phantom_assassin: attacks': 10453 }, damage_share_in_death_windows: { 'phantom_assassin: attacks': 0.44 } } };
+    const totals = { ref: 'deaths:beastmaster', kind: 'deaths', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客' }, record: { ref: 'deaths:beastmaster', ref_scope: 'summary', hero: 'beastmaster', deaths_total: 11, killed_by: { phantom_assassin: 7 }, deaths_where: { health_below_half_at_window_start: [], no_ally_within_2200_at_death: ['2:51'] }, damage_in_death_windows_total: 23757, damage_in_death_windows: { 'phantom_assassin: attacks': 10453 }, damage_share_in_death_windows: { 'phantom_assassin: attacks': 0.44 } } };
     mockFetch({
       'ref=overview': overview,
       '/evidence?': totals,

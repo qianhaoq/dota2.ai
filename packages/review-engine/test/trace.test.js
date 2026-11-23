@@ -447,9 +447,10 @@ describe('trace tools on a real game', () => {
     const all = run('death_context', { hero: 'beastmaster' });
     expect(all.deaths_where).toEqual({
       health_below_half_at_window_start: [],
-      no_ally_within_2200_throughout: [2],
-      no_ally_within_2200_at_death: [2],
-      three_or_more_enemy_heroes_dealing_damage: [4, 6, 7, 8, 9],
+      // By game time: that is how a death is named to a player.
+      no_ally_within_2200_throughout: ['2:51'],
+      no_ally_within_2200_at_death: ['2:51'],
+      three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06', '25:30', '30:42', '36:05'],
       nothing_cast_and_no_item_used: [],
     });
     // Phantom Assassin's attacks are the largest single source: 44% of everything taken in the eleven windows.
@@ -461,17 +462,17 @@ describe('trace tools on a real game', () => {
     const long = run('death_context', { hero: 'beastmaster', window: 26 });
     expect(long.deaths[1].snapshots.every((x) => x.allies.length === 0)).toBe(true);
     expect(long.deaths[1].allies_within_2200).toMatchObject({ at_death: 0, most_in_any_second: 1 });
-    expect(long.deaths_where.no_ally_within_2200_throughout).not.toContain(2);
+    expect(long.deaths_where.no_ally_within_2200_throughout).not.toContain('2:51');
     // The second the window starts in is looked at too: Venomancer stands 586 away at the start of Phantom Assassin's first death (16 s window).
     const pa = run('death_context', { hero: 'phantom_assassin', window: 16 });
     expect(pa.deaths[0].snapshots[0].allies.length).toBeGreaterThan(0);
     expect(pa.deaths[0].allies_within_2200.most_in_any_second).toBeGreaterThan(0);
-    expect(pa.deaths_where.no_ally_within_2200_throughout).not.toContain(1);
+    expect(pa.deaths_where.no_ally_within_2200_throughout).not.toContain(pa.deaths[0].clock);
     // Allies who arrive in the last second were there at the death: Mirana's fourth (35:43) was not alone, though every snapshot before it was.
     const mirana = run('death_context', { hero: 'mirana' });
     expect(mirana.deaths[3]).toMatchObject({ clock: '35:43', allies_within_2200: { at_window_start: 0, at_death: 2, most_in_any_second: 2 } });
-    expect(mirana.deaths_where.no_ally_within_2200_at_death).not.toContain(4);
-    expect(mirana.deaths_where.no_ally_within_2200_throughout).not.toContain(4);
+    expect(mirana.deaths_where.no_ally_within_2200_at_death).not.toContain('35:43');
+    expect(mirana.deaths_where.no_ally_within_2200_throughout).not.toContain('35:43');
     // The working list behind the totals is not part of a record.
     expect(all.deaths.every((d) => !('damage_sources' in d))).toBe(true);
     // The counts are over the window asked for, so another window is another summary, with its own ref.
@@ -483,7 +484,7 @@ describe('trace tools on a real game', () => {
     expect(run('death_context', { hero: 'beastmaster', window: 4.4 })).toMatchObject({ ref: 'deaths:beastmaster:w4', window: 4 });
     const m13 = run('death_context', { hero: 'mirana', window: 13 });
     expect(m13.deaths[1]).toMatchObject({ clock: '13:21', health_share_at_window_start: 0.5, below_half_health_at_window_start: true });
-    expect(m13.deaths_where.health_below_half_at_window_start).toContain(2);
+    expect(m13.deaths_where.health_below_half_at_window_start).toContain('13:21');
     // The same for one death asked for: the counts are over all of them.
     expect(run('death_context', { hero: 'beastmaster', index: 3 }).deaths_where).toEqual(all.deaths_where);
   });

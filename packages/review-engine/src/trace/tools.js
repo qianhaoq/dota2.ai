@@ -224,14 +224,15 @@ const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 
 
 /**
  * What the hero's deaths have in common, counted: each entry lists the deaths
- * (by number) it is true of, so a habit shows as a count over the game and
+ * (by game time) it is true of, so a habit shows as a count over the game and
  * not as one more anecdote. And where the damage in those windows came
  * from — one enemy's attacks, or many heroes' abilities — which is what an
  * item answer has to match. Facts only: unknown health or position leaves a
  * death out of a list, it does not put it in.
  */
 function deathPatterns(trace, deaths) {
-  const of = (test) => deaths.filter(test).map((d) => d.n);
+  // By game time, which is how a death is named to a player (and what a sentence citing this summary will state).
+  const of = (test) => deaths.filter(test).map((d) => d.clock);
   const by = new Map(); let total = 0;
   for (const d of deaths) {
     // Over every damage row of each window, not the ten largest a record lists.
@@ -506,7 +507,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'death_context',
-    description: "What led to a hero's deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed, what they cast, and who else died around it. Without `index`, every death. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready. `deaths_where` counts what the deaths have in common (began below half health, no ally near, three or more enemies) and `damage_share_in_death_windows` says where the damage came from — use them for what to change, and for which item answers the damage. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
+    description: "What led to a hero's deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed, what they cast, and who else died around it. Without `index`, every death. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready. `deaths_where` lists, by game time, the deaths that have something in common (began below half health, no ally near, three or more enemies) and `damage_share_in_death_windows` says where the damage came from — use them for what to change, and for which item answers the damage. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
     input_schema: { type: 'object', properties: { hero: HERO, index: { type: 'integer', minimum: 1, description: 'Which death, counting from 1. Omit for all.' }, window: { type: 'number', minimum: 4, maximum: 30, description: 'Seconds before the death to look at (default 12).' } }, required: ['hero'], additionalProperties: false },
     run: deathContext,
   },
