@@ -7,7 +7,9 @@ export type ParseState = { status: 'none' } | { status: 'running'; stage: string
 export interface Availability { trace: boolean; model_configured: boolean; can_parse: boolean; heroes: AgentHero[]; parse?: ParseState }
 
 export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
-export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string }
+/** The one rule a finding sends into the next game: a situation the player can see, one action, and how often it came up this game. */
+export interface FindingRule { when: string; do: string; this_game?: string }
+export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string; rule?: FindingRule }
 export interface DeepReview {
   schema: string; match_id: number; hero: string; lang: 'en' | 'zh';
   verdict: string; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];

@@ -13,6 +13,10 @@ const T = {
   turn: { en: 'the turn', zh: '转折' },
   findings: { en: 'What decided it', zh: '核心问题' },
   fix: { en: 'Do instead', zh: '改法' },
+  ruleWhen: { en: 'When', zh: '当' },
+  ruleDo: { en: 'Do', zh: '就' },
+  ruleSeen: { en: 'This game', zh: '本局' },
+  rule: { en: 'Rule for next game', zh: '下一把的规则' },
   next: { en: 'Next game, change these', zh: '下一把只改这几件事' },
   well: { en: 'What you did well', zh: '做得好的' },
   blind: { en: 'What the replay could not show', zh: '录像看不到的' },
@@ -128,14 +132,21 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
             <h3><span className="ag-num">{i + 1}</span>{f.title}</h3>
             <p className="ag-claim">{f.claim}</p>
             <ul className="ag-evidence">{f.evidence.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>
-            <p className="ag-fix"><span>{t(T.fix)}</span>{f.fix}</p>
+            {f.rule && (
+              <dl className="ag-rule" aria-label={t(T.rule)}>
+                <div><dt>{t(T.ruleWhen)}</dt><dd>{f.rule.when}</dd></div>
+                <div><dt>{t(T.ruleDo)}</dt><dd>{f.rule.do}</dd></div>
+                {f.rule.this_game && <div className="ag-rule-seen"><dt>{t(T.ruleSeen)}</dt><dd>{f.rule.this_game}</dd></div>}
+              </dl>
+            )}
+            {f.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{f.fix}</p>}
           </div>
         ))}
       </section>
 
       <section className="ag-next">
         <h2>{t(T.next)}</h2>
-        <ol>{review.next_game.map((line, i) => <li key={i}>{line}</li>)}</ol>
+        {review.next_game.length > 0 && <ol>{review.next_game.map((line, i) => <li key={i}>{line}</li>)}</ol>}
         {review.goal && goalContext && <GoalCard matchId={matchId} review={review} lang={lang} ctx={goalContext} />}
       </section>
 

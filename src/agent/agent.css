@@ -72,6 +72,13 @@
 .ag-ev-fact { margin: 0; color: var(--text-2); line-height: 1.6; }
 .ag-ev-actions { display: flex; gap: 16px; margin: 6px 0 0 56px; }
 .ag-ev-records { margin: 12px 0 0 56px; display: grid; gap: 10px; }
+.ag-rule { margin: 0 0 10px; padding: 12px 14px; background: rgba(227, 163, 70, 0.08); border-left: 2px solid var(--accent); border-radius: 0 8px 8px 0; display: grid; gap: 8px; }
+.ag-rule > div { display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.ag-rule dt { font-size: var(--fs-meta); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.ag-rule dd { margin: 0; line-height: 1.6; color: var(--text); font-weight: 600; }
+.ag-rule-seen dd { font-weight: 400; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ag-rule + .ag-fix { background: none; border-left-color: var(--line); color: var(--text-2); }
+.ag-rule + .ag-fix span { color: var(--text-3); }
 .ag-fix { margin: 0; padding: 12px 14px; background: rgba(227, 163, 70, 0.08); border-left: 2px solid var(--accent); border-radius: 0 8px 8px 0; line-height: 1.65; }
 .ag-fix span { display: block; font-size: var(--fs-meta); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
 .ag-next ol { margin: 0; padding-left: 22px; display: grid; gap: 10px; line-height: 1.65; font-size: 17px; }
