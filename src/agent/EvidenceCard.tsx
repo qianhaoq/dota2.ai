@@ -54,6 +54,16 @@ const T = {
   noPierce: { en: 'blocked by spell immunity', zh: '被技能免疫挡住' },
   ultimate: { en: 'ultimate', zh: '大招' },
   sec: { en: 's', zh: '秒' },
+  lane: { top: { en: 'Top lane', zh: '上路' }, mid: { en: 'Mid lane', zh: '中路' }, bot: { en: 'Bottom lane', zh: '下路' } } as Record<string, Record<Lang, string>>,
+  laneAt10: { en: 'at 10:00', zh: '10 分钟时' },
+  laneResult: { 'won big': { en: 'won big', zh: '大优' }, won: { en: 'won', zh: '优势' }, even: { en: 'even', zh: '均势' }, lost: { en: 'lost', zh: '劣势' }, 'lost badly': { en: 'lost badly', zh: '大劣' } } as Record<string, Record<Lang, string>>,
+  laneCols: { en: ['Hero', 'LH 5:00', 'LH 10:00', 'Denies', 'Gold', 'XP'], zh: ['英雄', '5 分补刀', '10 分补刀', '反补', '金钱', '经验'] },
+  laneDeaths: { en: 'Deaths before 10:00', zh: '10 分钟前阵亡' },
+  laneNoEconomy: { en: 'No per-minute gold or last hits for this game.', zh: '这局没有逐分钟的金钱和补刀数据。' },
+  lanePro: { en: 'pro games, core vs core at 10:00', zh: '场职业局，双方核心 10 分钟经济差' },
+  laneProMean: { en: 'usually', zh: '通常' }, laneThis: { en: 'this game', zh: '这局' }, laneAhead: { en: 'ahead in', zh: '领先的比例' },
+  lanePub: { en: 'lanes in public games of this bracket (STRATZ)', zh: '条同分段路人局对线（STRATZ）' },
+  lanePubWon: { en: 'won', zh: '赢' }, lanePubLost: { en: 'lost', zh: '输' },
 } as const;
 
 /** What a tool's totals are called. A key not listed here is shown as it is, with spaces. */
@@ -224,6 +234,36 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     );
   }
   if (data.kind === 'item') return <div className="ag-rec"><p className="ag-rec-head"><b>{r.first_held.clock}</b> · {N(r.item)} · {t(T.firstHeld)}</p></div>;
+  if (data.kind === 'lane') {
+    const pc = (v: number) => `${Math.round(v * 100)}%`;
+    const signed = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}`;
+    const pro = r.same_cores_in_pro_games; const pub = r.same_lane_in_public_games_of_this_bracket;
+    return (
+      <div className="ag-rec">
+        {r.lane
+          ? <p className="ag-rec-head">{T.lane[r.lane] ? t(T.lane[r.lane]) : r.lane} · {t(T.laneAt10)} {r.lane_gold_at_10_00.my_team} : {r.lane_gold_at_10_00.enemy}{r.lane_result && T.laneResult[r.lane_result] ? <> · <b>{t(T.laneResult[r.lane_result])}</b></> : null}</p>
+          : <p className="ag-rec-note">{t(T.laneNoEconomy)}</p>}
+        {r.lane && (
+          <div className="ag-lane-scroll">
+            <table className="ag-lane">
+              <thead><tr>{T.laneCols[lang].map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
+              <tbody>
+                {Object.entries(r.heroes_in_lane as Record<string, string>).map(([h, side]) => (
+                  <tr key={h} className={SIDE_CLASS[side] ?? ''}>
+                    <th scope="row">{N(h)}</th>
+                    {['last_hits_at_5_00', 'last_hits_at_10_00', 'denies_at_10_00', 'gold_at_10_00', 'xp_at_10_00'].map((m) => <td key={m}>{r[m]?.[h] ?? '–'}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {r.my_deaths_before_10_00.length > 0 && <p className="ag-rec-line"><span>{t(T.laneDeaths)}</span>{r.my_deaths_before_10_00.map((d: any) => <span key={d.clock} className="ag-chip">{d.clock}{d.killer ? ` ← ${N(d.killer)}` : ''}</span>)}</p>}
+        {pro && <p className="ag-rec-line"><span>{N(pro.my_side_core)} : {N(pro.enemy_core)} · {pro.pro_games} {t(T.lanePro)}</span><span className="ag-chip">{t(T.laneProMean)} <em>{signed(pro.core_gold_difference_at_10_00.mean)}</em></span><span className="ag-chip">{t(T.laneThis)} <em>{signed(pro.core_gold_difference_at_10_00.this_game)}</em></span><span className="ag-chip">{N(pro.my_side_core)} {t(T.laneAhead)} <em>{pc(pro.share_of_pro_games_my_side_core_was_ahead)}</em></span></p>}
+        {pub && <p className="ag-rec-line"><span>{N(pub.hero)} : {N(pub.against)} · {pub.lanes} {t(T.lanePub)}</span><span className="ag-chip">{t(T.lanePubWon)} <em>{pc(pub.share_won)}</em></span><span className="ag-chip">{t(T.lanePubLost)} <em>{pc(pub.share_lost)}</em></span></p>}
+      </div>
+    );
+  }
   if (data.kind === 'pro_items') {
     return (
       <div className="ag-rec">

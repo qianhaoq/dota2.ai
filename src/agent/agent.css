@@ -194,3 +194,10 @@
 .ag-goal-rules { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; font-size: var(--fs-meta); line-height: 1.5; }
 .ag-goal-rules li { display: flex; gap: 8px; align-items: baseline; }
 .ag-rulechecks { list-style: none; margin: 0; padding: 0; }
+
+/* The lane at 10:00: one row per hero in it. Scrolls inside its own box on a narrow screen. */
+.ag-lane-scroll { overflow-x: auto; margin: 4px 0 8px; }
+.ag-lane { border-collapse: collapse; font-size: var(--fs-meta); font-variant-numeric: tabular-nums; min-width: 100%; }
+.ag-lane th, .ag-lane td { padding: 4px 10px 4px 0; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.ag-lane thead th { color: var(--text-3); font-weight: 400; }
+.ag-lane th:first-child { text-align: left; color: var(--text); font-weight: 500; }
