@@ -76,7 +76,7 @@ describe('lane_report', () => {
   it('the lane at 10:00 from the match data, the early deaths from the replay, the matchup from the snapshots', () => {
     const r: any = laneReport(lane9091, { hero: 'Tidehunter' }, { match });
     expect(r).toMatchObject({
-      ref: 'lane:tidehunter', hero: 'tidehunter', lane: 'top',
+      ref: 'lane:tidehunter', hero: 'tidehunter', lane: 'top', measured_at: ['5:00', '10:00'],
       my_deaths_before_10_00_total: 3,
       my_deaths_before_10_00: [{ clock: '4:21', killer: 'hoodwink' }, { clock: '6:07', killer: 'ursa' }, { clock: '8:12', killer: 'ursa' }],
       lane_gold_at_10_00: { my_team: 4715, enemy: 5439 }, lane_result: 'lost', my_role: 'core',
@@ -129,6 +129,10 @@ describe('lane_report', () => {
     const claimed = (claim: string) => verifyReview({ verdict: 'v', mainline: [], findings: [{ title: '对线', claim, fix: 'x', evidence: [{ refs: ['lane:tidehunter'], fact: '上路对线。' }] }] }, [record]).problems.filter((p: any) => p.where === 'finding');
     expect(claimed('10 分钟时你 41 个补刀，熊战士 37 个补刀；10 分钟前你阵亡 3 次。')).toEqual([]);
     expect(claimed('10 分钟时你只有 28 个补刀。')).not.toEqual([]);
+    // The two checkpoints are game times the record states, in evidence and in a claim alike.
+    expect(problems('At 5:00 you had 15 last hits, at 10:00 41.')).toEqual([]);
+    expect(claimed('5:00 时你 15 个补刀，10:00 时 41 个。')).toEqual([]);
+    expect(problems('At 7:30 you had 15 last hits.')).not.toEqual([]);
   });
 
   it('win_lane is a goal only for a lane the report calls lost, and is the engine\'s own lane check', () => {
