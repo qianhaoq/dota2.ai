@@ -248,10 +248,10 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
             <table className="ag-lane">
               <thead><tr>{T.laneCols[lang].map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
               <tbody>
-                {r.heroes_in_lane_at_10_00.map((x: any) => (
-                  <tr key={x.hero} className={SIDE_CLASS[x.side] ?? ''}>
-                    <th scope="row">{N(x.hero)}</th>
-                    <td>{x.last_hits_at_5_00 ?? '–'}</td><td>{x.last_hits_at_10_00 ?? '–'}</td><td>{x.denies_at_10_00 ?? '–'}</td><td>{x.gold_at_10_00 ?? '–'}</td><td>{x.xp_at_10_00 ?? '–'}</td>
+                {Object.entries(r.heroes_in_lane as Record<string, string>).map(([h, side]) => (
+                  <tr key={h} className={SIDE_CLASS[side] ?? ''}>
+                    <th scope="row">{N(h)}</th>
+                    {['last_hits_at_5_00', 'last_hits_at_10_00', 'denies_at_10_00', 'gold_at_10_00', 'xp_at_10_00'].map((m) => <td key={m}>{r[m]?.[h] ?? '–'}</td>)}
                   </tr>
                 ))}
               </tbody>

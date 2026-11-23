@@ -82,12 +82,14 @@ describe('lane_report', () => {
       lane_gold_at_10_00: { my_team: 4715, enemy: 5439 }, lane_result: 'lost', my_role: 'core',
       first_tower_fell: { my_team: '16:14', enemy: '20:08' },
     });
-    expect(r.heroes_in_lane_at_10_00).toEqual([
-      { hero: 'tidehunter', side: 'me', last_hits_at_5_00: 15, last_hits_at_10_00: 41, denies_at_10_00: 5, gold_at_10_00: 2986, xp_at_10_00: 2850 },
-      { hero: 'shadow_shaman', side: 'ally', last_hits_at_5_00: 3, last_hits_at_10_00: 3, denies_at_10_00: 1, gold_at_10_00: 1729, xp_at_10_00: 2274 },
-      { hero: 'ursa', side: 'enemy', last_hits_at_5_00: 24, last_hits_at_10_00: 37, denies_at_10_00: 2, gold_at_10_00: 3663, xp_at_10_00: 3279 },
-      { hero: 'hoodwink', side: 'enemy', last_hits_at_5_00: 4, last_hits_at_10_00: 6, denies_at_10_00: 4, gold_at_10_00: 1776, xp_at_10_00: 2343 },
-    ]);
+    expect(r).toMatchObject({
+      heroes_in_lane: { tidehunter: 'me', shadow_shaman: 'ally', ursa: 'enemy', hoodwink: 'enemy' },
+      last_hits_at_5_00: { tidehunter: 15, shadow_shaman: 3, ursa: 24, hoodwink: 4 },
+      last_hits_at_10_00: { tidehunter: 41, shadow_shaman: 3, ursa: 37, hoodwink: 6 },
+      denies_at_10_00: { tidehunter: 5, shadow_shaman: 1, ursa: 2, hoodwink: 4 },
+      gold_at_10_00: { tidehunter: 2986, shadow_shaman: 1729, ursa: 3663, hoodwink: 1776 },
+      xp_at_10_00: { tidehunter: 2850, shadow_shaman: 2274, ursa: 3279, hoodwink: 2343 },
+    });
     // The same numbers the coach report's laning chapter holds: one source, not a second computation.
     const chapter = buildCoachReport(match).reviews[0].chapters.laning;
     expect(r.same_cores_in_pro_games).toEqual({
@@ -108,7 +110,8 @@ describe('lane_report', () => {
       expect(r).toMatchObject({ ref: 'lane:tidehunter', lane: null, my_deaths_before_10_00_total: 3 });
       expect(r.gaps[0]).toEqual({ topic: 'lane_economy', reason });
       expect(r).not.toHaveProperty('lane_result');
-      expect(r).not.toHaveProperty('heroes_in_lane_at_10_00');
+      expect(r).not.toHaveProperty('heroes_in_lane');
+      expect(r).not.toHaveProperty('last_hits_at_10_00');
     }
     expect(laneReport(lane9091, { hero: 'pudge_x' }, { match })).toMatchObject({ error: 'unknown_hero' });
   });
@@ -122,6 +125,10 @@ describe('lane_report', () => {
     const problems = (fact: string) => verifyReview(review(fact), [record]).problems.filter((p: any) => p.where === 'finding');
     expect(problems('10 分钟时你 41 个补刀、2986 金钱，熊战士 37 个补刀、3663 金钱；10 分钟前你阵亡 3 次：4:21、6:07、8:12。')).toEqual([]);
     expect(problems('10 分钟时你只有 28 个补刀。')).not.toEqual([]);
+    // In the claim itself, where a count ("41 个") must be one a tool states: the per-hero maps are such counts.
+    const claimed = (claim: string) => verifyReview({ verdict: 'v', mainline: [], findings: [{ title: '对线', claim, fix: 'x', evidence: [{ refs: ['lane:tidehunter'], fact: '上路对线。' }] }] }, [record]).problems.filter((p: any) => p.where === 'finding');
+    expect(claimed('10 分钟时你 41 个补刀，熊战士 37 个补刀；10 分钟前你阵亡 3 次。')).toEqual([]);
+    expect(claimed('10 分钟时你只有 28 个补刀。')).not.toEqual([]);
   });
 
   it('win_lane is a goal only for a lane the report calls lost, and is the engine\'s own lane check', () => {
