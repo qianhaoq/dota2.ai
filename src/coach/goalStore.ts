@@ -158,16 +158,3 @@ function subscribe(onChange: () => void): () => void {
 export function useActiveGoal(): ActiveGoal | null {
   return useSyncExternalStore(subscribe, goalSnapshot, () => null);
 }
-
-export function goalFromFinding(report: CoachReport, slot: number, findingId: string, goal: GoalSpec, action: Bi): ActiveGoal {
-  const m = report.match;
-  return {
-    id: `${m.id}:${slot}:${findingId}`,
-    goal, action, findingId,
-    fromMatch: m.id,
-    fromStart: m.start_time ?? 0,
-    accountId: report.players[slot]?.account_id ?? null,
-    heroId: report.players[slot]?.hero.id ?? 0,
-    setAt: Date.now(),
-  };
-}

@@ -109,7 +109,7 @@ async function runAsk(args, io) {
   if (answer.notice) io.say(`(${typeof answer.notice === 'string' ? answer.notice : tr(flags.lang ?? 'en')(answer.notice)})`);
 }
 
-/** The same goal record the web page keeps (src/coach/goalStore.ts goalFromFinding). */
+/** The same goal record the web page keeps (src/coach/goalStore.ts ActiveGoal). */
 export function goalRecord(report, seat, finding) {
   const m = report.match;
   return {
