@@ -304,6 +304,27 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/casts total|by target|learned at/)).toBeNull();
   });
 
+  it('the deaths\' totals say what they have in common and where the damage came from', async () => {
+    const totals = { ref: 'deaths:beastmaster', kind: 'deaths', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客' }, record: { ref: 'deaths:beastmaster', ref_scope: 'summary', hero: 'beastmaster', deaths_total: 11, killed_by: { phantom_assassin: 7 }, deaths_where: { health_below_half_at_window_start: [], no_ally_within_2200_at_death: [2] }, damage_in_death_windows_total: 23757, damage_in_death_windows: { 'phantom_assassin: attacks': 10453 }, damage_share_in_death_windows: { 'phantom_assassin: attacks': 0.44 } } };
+    mockFetch({
+      'ref=overview': overview,
+      '/evidence?': totals,
+      '/review?': { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/agent/8000000021': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    // Another match id: evidence is remembered per match.
+    page('/r/8000000021?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    const chip = (text: string) => screen.getByText((_, el) => el?.className === 'ag-chip' && el.textContent === text);
+    expect(await screen.findByText((_, el) => el?.className === 'ag-chip' && el.textContent === '阵亡时 2200 码内没有队友 1')).toBeTruthy();
+    expect(chip('其中 · 幻影刺客 普通攻击 44%')).toBeTruthy();
+    expect(chip('各次阵亡前承受的伤害 23757')).toBeTruthy();
+    // A list no death is in is not a chip; the amounts behind the shares are not repeated.
+    expect(screen.queryByText(/起步不到半血/)).toBeNull();
+    expect(screen.queryByText(/10453/)).toBeNull();
+  });
+
   it('a refused start explains itself', async () => {
     mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 429, code: 'rate_limited', retryAfterSec: 60 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=en');

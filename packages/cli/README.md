@@ -83,9 +83,12 @@ dota2ai trace fight_timeline   --trace match.trace.json.gz --from 30:05 --to 31:
 
 - `match_overview`: line-ups, every fight and who lost fewer heroes, buildings.
 - `death_context`: the seconds before each death — who was near, what was
-  ready, who dealt the damage, which disables landed.
+  ready, who dealt the damage, which disables landed. Over all the deaths:
+  how many began below half health, with no ally near, against three or more
+  enemies, and where the damage came from (one hero's attacks, or abilities).
+  An ability off cooldown the hero had no mana for is not listed as ready.
 - `ability_audit`: every cast of one ability — target, whether the target was
-  spell immune, who died after — and the deaths with it ready and not cast.
+  spell immune, which enemy heroes it damaged in the next 15 seconds, who died after — and the deaths with it ready and not cast.
 - `immunity_windows`: every Black King Bar, and what a watched ability was
   doing when it opened.
 - `fight_timeline`: up to 180 seconds, event by event.

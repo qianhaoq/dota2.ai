@@ -63,7 +63,7 @@ export function createTraceBuilder() {
   function hero(key, row) {
     let h = heroes.get(key);
     if (!h) {
-      h = { key, team: row.team, player_index: row.player_index ?? null, samples: new Map(), abilities: new Map(), items: new Map(), controls: new Map() };
+      h = { key, team: row.team, player_index: row.player_index ?? null, samples: new Map(), peaks: new Map(), abilities: new Map(), items: new Map(), controls: new Map() };
       heroes.set(key, h);
     }
     return h;
@@ -92,6 +92,8 @@ export function createTraceBuilder() {
       if (t > lastT) lastT = t;
       if (t < firstT) firstT = t;
       const sec = Math.round(t);
+      // The most mana seen in this second over every sample, not only the one kept: a peak between kept samples is mana the hero had.
+      if (Number.isFinite(row.mana) && !(h.peaks.get(sec) >= row.mana)) h.peaks.set(sec, row.mana);
       const prev = h.samples.get(sec);
       const off = Math.abs(t - sec);
       if (!prev || off < prev.off) {
@@ -100,8 +102,10 @@ export function createTraceBuilder() {
       for (const a of row.abilities ?? []) {
         if (typeof a?.name !== 'string' || a.name.startsWith('special_bonus')) continue;
         let e = h.abilities.get(a.name);
-        if (!e) { e = { levels: [], cd: [], cdState: { from: null }, lastCd: 0, level: 0, mana: 0 }; h.abilities.set(a.name, e); }
+        if (!e) { e = { levels: [], cd: [], cdState: { from: null }, lastCd: 0, level: 0, mana: 0, cost: null, costs: [] }; h.abilities.set(a.name, e); }
         if (a.mana_cost > e.mana) e.mana = a.mana_cost;
+        // What it cost and from when, each time the sampled cost changed (a level, a talent, a facet): "ready" is not "could be cast" without the mana.
+        if (a.level > 0 && Number.isFinite(a.mana_cost) && a.mana_cost !== e.cost) { e.cost = a.mana_cost; e.costs.push([r1(t), Math.round(a.mana_cost)]); }
         if (a.level !== e.level) { e.level = a.level; e.levels.push([r1(t), a.level]); }
         cooldown(e, Number(a.cooldown) || 0, t);
       }
@@ -202,9 +206,11 @@ export function createTraceBuilder() {
         states: list.map((h) => {
           const s = Object.fromEntries(cols.map((c) => [c, new Array(n).fill(null)]));
           for (const [sec, v] of h.samples) { const i = sec - t0; if (i >= 0 && i < n) for (const c of cols) s[c][i] = v[c]; }
+          s.mana_peak = new Array(n).fill(null);
+          for (const [sec, v] of h.peaks) { const i = sec - t0; if (i >= 0 && i < n) s.mana_peak[i] = Math.round(v); }
           return s;
         }),
-        abilities: list.map((h) => { closeAll(h.abilities.values(), lastT); return Object.fromEntries([...h.abilities].filter(([, e]) => e.levels.some(([, lv]) => lv > 0)).map(([k, e]) => [k, { levels: e.levels, cd: e.cd, ...(e.mana > 0 ? { mana: Math.round(e.mana) } : {}) }])); }),
+        abilities: list.map((h) => { closeAll(h.abilities.values(), lastT); return Object.fromEntries([...h.abilities].filter(([, e]) => e.levels.some(([, lv]) => lv > 0)).map(([k, e]) => [k, { levels: e.levels, cd: e.cd, ...(e.mana > 0 ? { mana: Math.round(e.mana) } : {}), ...(e.mana > 0 && e.costs.length ? { costs: e.costs } : {}) }])); }),
         items: list.map((h) => { closeAll(h.items.values(), lastT); return Object.fromEntries([...h.items].map(([k, e]) => [k, { held: e.held, cd: e.cd }])); }),
         controls: list.map((h) => { closeAll(h.controls.values(), lastT); return Object.fromEntries([...h.controls].filter(([, e]) => e.list.length).map(([k, e]) => [k, e.list])); }),
         names,

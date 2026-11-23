@@ -73,6 +73,43 @@ export function cooldownLeft(entry, t) {
   return Math.max(0.1, Math.round(left * 10) / 10);
 }
 
+/**
+ * The least mana an ability cost at any moment from `from` to `to`, or null
+ * when the trace cannot say: 0 for one never seen with a cost; otherwise
+ * from the sampled cost and when it changed (`costs`). The least, because
+ * the question it answers is "could it have been cast at some point here".
+ * A trace without `costs` knows only the highest cost of the game, which
+ * is not the cost at this moment: null.
+ */
+export function manaCost(entry, from, to = from) {
+  if (!entry?.mana) return 0;
+  if (!Array.isArray(entry.costs)) return null;
+  let least = null;
+  entry.costs.forEach(([at, cost], i) => {
+    const until = entry.costs[i + 1]?.[0] ?? Infinity;
+    if (at <= to && until > from && (least == null || cost < least)) least = cost;
+  });
+  return least;
+}
+
+/**
+ * The most mana hero h had in any second from `from` to `to`, over every
+ * sample of each second (`mana_peak`). Null with no sample — and in a trace
+ * that kept one sample a second only: a peak between those is not seen, so
+ * such a trace cannot say the hero never had the mana.
+ */
+export function mostMana(trace, h, from, to) {
+  const peak = trace.states[h].mana_peak;
+  if (!peak) return null;
+  let best = null;
+  for (let sec = Math.floor(from); sec <= Math.ceil(to); sec += 1) {
+    const i = sec - trace.t0;
+    const m = i >= 0 && i < trace.n ? peak[i] : null;
+    if (m != null && (best == null || m > best)) best = m;
+  }
+  return best;
+}
+
 export const heldAt = (entry, t) => within(entry?.held, t) != null;
 
 /**

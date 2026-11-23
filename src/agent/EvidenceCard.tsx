@@ -74,6 +74,14 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   windows_with_a_cast_on_the_immune_hero: { en: 'Windows with a cast on the immune hero', zh: '期间对免疫目标施放' },
   on_cooldown: { en: 'on cooldown', zh: '冷却中' }, ready: { en: 'ready', zh: '就绪' }, dead: { en: 'caster dead', zh: '施法者已阵亡' },
   not_learned: { en: 'not learned', zh: '未学' }, no_mana: { en: 'no mana', zh: '没蓝' },
+  damage_in_death_windows_total: { en: 'Damage taken before the deaths', zh: '各次阵亡前承受的伤害' },
+  damage_share_in_death_windows: { en: 'Share of it', zh: '其中' },
+  attacks: { en: 'attacks', zh: '普通攻击' }, 'abilities and items': { en: 'abilities and items', zh: '技能和物品' },
+  health_below_half_at_window_start: { en: 'Deaths that began below half health', zh: '起步不到半血的阵亡' },
+  no_ally_within_2200_throughout: { en: 'Deaths with no ally within 2200 throughout', zh: '全程 2200 码内没有队友的阵亡' },
+  no_ally_within_2200_at_death: { en: 'Deaths with no ally within 2200 at the end', zh: '阵亡时 2200 码内没有队友' },
+  three_or_more_enemy_heroes_dealing_damage: { en: 'Deaths to three or more enemy heroes', zh: '被三个以上敌方英雄打死' },
+  nothing_cast_and_no_item_used: { en: 'Deaths with nothing cast or used', zh: '什么都没按就阵亡' },
 };
 
 const pretty = (key: string) => key.replace(/^modifier_/, '').replace(/^item_/, '').replace(/_/g, ' ');
@@ -233,18 +241,31 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   }
   // A tool's totals (audit:…, deaths:…, immunity:…): the counts themselves.
   const flat: [string, string][] = [];
+  const late: [string, unknown][] = [];
   for (const [k, v] of Object.entries(r)) {
     if (k === 'ref' || k === 'ref_scope' || k === 'hero' || k === 'team' || k === 'ability') continue;
     const label = (key: string) => (TOTALS[key] ? t(TOTALS[key]) : null);
+    // The amounts behind the shares would say the same thing twice.
+    if (k === 'damage_in_death_windows') continue;
+    if (k === 'damage_share_in_death_windows' || k === 'deaths_where') { late.push([k, v]); continue; }
     if (typeof v === 'number') flat.push([label(k) ?? pretty(k), String(v)]);
     // A moment (learned_at) reads as its clock, not as its raw seconds.
     else if (v && typeof v === 'object' && typeof (v as any).clock === 'string') flat.push([label(k) ?? pretty(k), (v as any).clock]);
     else if (v && typeof v === 'object' && !Array.isArray(v)) for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) if (typeof v2 === 'number') flat.push([`${label(k) ?? pretty(k)} · ${label(k2) ?? N(k2)}`, String(v2)]);
   }
+  // What the deaths have in common, then where the damage came from: a count of deaths, a share as a percentage.
+  const tl = (key: string) => (TOTALS[key] ? t(TOTALS[key]) : pretty(key));
+  for (const [k, v] of late) {
+    if (!v || typeof v !== 'object') continue;
+    for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
+      if (k === 'deaths_where' && Array.isArray(v2)) { if (v2.length) flat.push([tl(k2), String(v2.length)]); }
+      else if (k !== 'deaths_where' && typeof v2 === 'number') { const cut = k2.indexOf(': '); flat.push([`${tl(k)} · ${cut > 0 ? `${N(k2.slice(0, cut))} ${tl(k2.slice(cut + 2))}` : N(k2)}`, `${Math.round(v2 * 100)}%`]); }
+    }
+  }
   return (
     <div className="ag-rec">
       <p className="ag-rec-head">{r.clock ?? [r.hero, r.ability].filter(Boolean).map((x: string) => N(x)).join(' · ')}{r.watching ? `${r.hero ? ' · ' : ''}${t(T.watching)} ${N(r.watching.hero)} · ${N(r.watching.ability)}` : ''}</p>
-      {flat.length > 0 && <p className="ag-rec-line">{flat.slice(0, 14).map(([k, v]) => <span key={k} className="ag-chip">{k} <em>{v}</em></span>)}</p>}
+      {flat.length > 0 && <p className="ag-rec-line">{flat.slice(0, 18).map(([k, v]) => <span key={k} className="ag-chip">{k} <em>{v}</em></span>)}</p>}
     </div>
   );
 }
