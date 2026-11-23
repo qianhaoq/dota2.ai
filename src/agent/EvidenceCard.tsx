@@ -81,6 +81,9 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   no_ally_within_2200_throughout: { en: 'Deaths with no ally within 2200 throughout', zh: '全程 2200 码内没有队友的阵亡' },
   no_ally_within_2200_at_death: { en: 'Deaths with no ally within 2200 at the end', zh: '阵亡时 2200 码内没有队友' },
   three_or_more_enemy_heroes_dealing_damage: { en: 'Deaths to three or more enemy heroes', zh: '被三个以上敌方英雄打死' },
+  target_spell_immune_and_not_stunned: { en: 'Casts on a spell-immune target, no stun', zh: '放给魔免目标且没晕住' },
+  enemy_hero_target_alive_12s_later: { en: 'Casts whose target was alive 12 s later', zh: '放出 12 秒后目标仍存活' },
+  no_hero_target_and_at_most_one_enemy_hero_damaged: { en: 'Casts that damaged at most one enemy hero', zh: '至多只伤到一名敌方英雄' },
   nothing_cast_and_no_item_used: { en: 'Deaths with nothing cast or used', zh: '什么都没按就阵亡' },
 };
 
@@ -247,7 +250,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     const label = (key: string) => (TOTALS[key] ? t(TOTALS[key]) : null);
     // The amounts behind the shares would say the same thing twice.
     if (k === 'damage_in_death_windows' || k === 'deaths_not_known') continue;
-    if (k === 'damage_share_in_death_windows' || k === 'deaths_where') { late.push([k, v]); continue; }
+    if (k === 'damage_share_in_death_windows' || k === 'deaths_where' || k === 'casts_where') { late.push([k, v]); continue; }
     if (typeof v === 'number') flat.push([label(k) ?? pretty(k), String(v)]);
     // A moment (learned_at) reads as its clock, not as its raw seconds.
     else if (v && typeof v === 'object' && typeof (v as any).clock === 'string') flat.push([label(k) ?? pretty(k), (v as any).clock]);
@@ -258,8 +261,8 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   for (const [k, v] of late) {
     if (!v || typeof v !== 'object') continue;
     for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
-      if (k === 'deaths_where' && Array.isArray(v2)) { if (v2.length) flat.push([tl(k2), String(v2.length)]); }
-      else if (k !== 'deaths_where' && typeof v2 === 'number') { const cut = k2.indexOf(': '); flat.push([`${tl(k)} · ${cut > 0 ? `${N(k2.slice(0, cut))} ${tl(k2.slice(cut + 2))}` : N(k2)}`, `${Math.round(v2 * 100)}%`]); }
+      if ((k === 'deaths_where' || k === 'casts_where') && Array.isArray(v2)) { if (v2.length) flat.push([tl(k2), String(v2.length)]); }
+      else if (k === 'damage_share_in_death_windows' && typeof v2 === 'number') { const cut = k2.indexOf(': '); flat.push([`${tl(k)} · ${cut > 0 ? `${N(k2.slice(0, cut))} ${tl(k2.slice(cut + 2))}` : N(k2)}`, `${Math.round(v2 * 100)}%`]); }
     }
   }
   return (

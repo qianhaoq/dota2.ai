@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Shell } from '../coach/CoachApp';
 import { fetchCoachReport } from '../coach/api';
 import { markReviewed } from '../coach/accountInput';
-import { checkGoal, checkRules, needsReplay, useActiveGoal, type GoalCheck, type GoalRule, type ReplayDeaths } from '../coach/goalStore';
+import { checkGoal, checkRules, needsReplay, replayRefs, useActiveGoal, type GoalCheck, type GoalRule, type ReplayRecords } from '../coach/goalStore';
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
 import { trackReviewViewed } from '../services/analytics';
@@ -277,17 +277,20 @@ export const AgentMatchPage: React.FC = () => {
   const activeGoalNow = useActiveGoal();
   const [goalCheck, setGoalCheck] = useState<GoalCheck | null>(null);
   const [ruleChecks, setRuleChecks] = useState<{ rule: GoalRule; check: GoalCheck }[]>([]);
-  // What a rule is counted on comes from this game's replay: its death counts, once the replay is parsed.
+  // What a rule is counted on comes from this game's replay: the tool summaries its checks name, once the replay is parsed.
   // `for` ties the counts to the selection they were read for, so another hero's never judge this one.
   const wantsReplay = Boolean(activeGoalNow && needsReplay(activeGoalNow) && hasTrace && heroKey);
-  const [replayDeaths, setReplayDeaths] = useState<{ for: string; record: ReplayDeaths } | null>(null);
+  const [replayCounts, setReplayCounts] = useState<{ for: string; records: Record<string, unknown> } | null>(null);
+  const refs = useMemo(() => (wantsReplay && activeGoalNow && heroKey ? replayRefs(activeGoalNow, heroKey) : []), [wantsReplay, activeGoalNow, heroKey]);
   useEffect(() => {
     if (!wantsReplay || !heroKey) return undefined;
     let alive = true;
-    fetchEvidence(matchId, heroKey, lang, `deaths:${heroKey}`).then((r) => { if (alive) setReplayDeaths({ for: `${matchId}|${heroKey}`, record: r.record }); }).catch(() => {});
+    // A summary that cannot be read stays out: its check is then "unknown", never a pass.
+    Promise.all(refs.map((ref) => fetchEvidence(matchId, heroKey, lang, ref).then((r) => [ref, r.record] as const).catch(() => null)))
+      .then((got) => { if (alive) setReplayCounts({ for: `${matchId}|${heroKey}`, records: Object.fromEntries(got.filter((x): x is readonly [string, unknown] => x !== null)) }); });
     return () => { alive = false; };
-  }, [wantsReplay, matchId, heroKey, lang]);
-  const replay = replayDeaths && replayDeaths.for === `${matchId}|${heroKey}` ? replayDeaths.record : null;
+  }, [wantsReplay, refs, matchId, heroKey, lang]);
+  const replay = useMemo<ReplayRecords>(() => (heroKey && replayCounts && replayCounts.for === `${matchId}|${heroKey}` ? { hero: heroKey, records: replayCounts.records } : null), [replayCounts, matchId, heroKey]);
   useEffect(() => {
     setGoalCheck(activeGoalNow && board && seat ? checkGoal(activeGoalNow, board, seat.slot, replay) : null);
     setRuleChecks(activeGoalNow && board && seat ? checkRules(activeGoalNow, board, seat.slot, replay) : []);

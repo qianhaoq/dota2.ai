@@ -334,6 +334,8 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   const short = key.startsWith(`${trace.heroes[h].key}_`) ? key.slice(trace.heroes[h].key.length + 1) : key;
   // Whether this ability shows in the damage log at all: only then does "damaged nobody" mean something.
   const damaging = trace.damage.some((r) => r[1] === npc && r[3] === abilityId);
+  // What the casts have in common, by game time (like deaths_where): a habit is a count over the game.
+  const intoImmunity = []; const targetLived = []; const reachedFew = [];
   const casts = rows.map((c, ci) => {
     const t = c[0]; const target = heroOfName(trace, c[3]);
     // Damage is kept per whole second: the second a recast falls in is counted to the recast, never to both casts.
@@ -346,12 +348,18 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     if (targetName) byTarget[targetName] = (byTarget[targetName] ?? 0) + 1;
     const during = target >= 0 ? immune.find((w) => w.hero === target && w.from <= t && (w.to == null || t < w.to)) : null;
     const soonAfter = target >= 0 && !during ? immune.find((w) => w.hero === target && w.from > t && w.from <= t + 3) : null;
+    const stunned = target >= 0 ? stunnedByCast(trace, target, npc, c[3], t, Math.min(t + STUN_LANDS_WITHIN, (rows[ci + 1]?.[0] ?? Infinity) - 0.2)) : null;
+    if (during && !(stunned > 0)) intoImmunity.push(clock(t));
+    // Aimed at an enemy hero (the hero itself, not an illusion of it) who did not die in the next 12 seconds.
+    if (target >= 0 && trace.heroes[target].team !== trace.heroes[h].team && targetName === trace.heroes[target].key && !trace.deaths.some((d) => d[1] === c[3] && d[0] >= t && d[0] - t <= 12)) targetLived.push(clock(t));
+    // Not aimed at a hero, and its damage reached one enemy hero or none.
+    if (damaging && target < 0 && hit.size <= 1) reachedFew.push(clock(t));
     return {
       ref: `cast:${trace.heroes[h].key}:${short}:${ci + 1}`, t, clock: clock(t), row: c[4], target: targetName,
       target_hp: ts ? { hp: ts.hp, max_hp: ts.max_hp } : null,
       target_spell_immune: target >= 0 ? Boolean(during) : null,
       // What the replay shows this cast did (a stun the log attributes to the caster), whatever the ability is supposed to do.
-      target_stunned_seconds: target >= 0 ? stunnedByCast(trace, target, npc, c[3], t, Math.min(t + STUN_LANDS_WITHIN, (rows[ci + 1]?.[0] ?? Infinity) - 0.2)) : null,
+      target_stunned_seconds: stunned,
       ...(soonAfter ? { target_became_immune_dt: Math.round((soonAfter.from - t) * 10) / 10 } : {}),
       me: me ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
       allies_within_1300: allies.map((a) => a.hero), enemies_within_1300: enemies.map((e) => e.hero),
@@ -380,6 +388,12 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     casts_total: casts.length, by_target: byTarget,
     casts_on_spell_immune_target: casts.filter((c) => c.target_spell_immune).length,
     of_those_target_was_stunned: casts.filter((c) => c.target_spell_immune && c.target_stunned_seconds > 0).length,
+    casts_where: {
+      target_spell_immune_and_not_stunned: intoImmunity,
+      enemy_hero_target_alive_12s_later: targetLived,
+      // Only for an ability that shows in the damage log at all: otherwise "damaged nobody" says nothing.
+      ...(damaging ? { no_hero_target_and_at_most_one_enemy_hero_damaged: reachedFew } : {}),
+    },
     seconds_alive_since_learned: alive, seconds_alive_and_ready: idle,
     deaths_with_it_ready_and_not_cast_total: unused.length,
     deaths_with_it_ready_and_not_cast: unused
