@@ -246,7 +246,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     if (k === 'ref' || k === 'ref_scope' || k === 'hero' || k === 'team' || k === 'ability') continue;
     const label = (key: string) => (TOTALS[key] ? t(TOTALS[key]) : null);
     // The amounts behind the shares would say the same thing twice.
-    if (k === 'damage_in_death_windows') continue;
+    if (k === 'damage_in_death_windows' || k === 'deaths_not_known') continue;
     if (k === 'damage_share_in_death_windows' || k === 'deaths_where') { late.push([k, v]); continue; }
     if (typeof v === 'number') flat.push([label(k) ?? pretty(k), String(v)]);
     // A moment (learned_at) reads as its clock, not as its raw seconds.

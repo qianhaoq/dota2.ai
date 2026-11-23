@@ -35,6 +35,8 @@ export type GoalSpec = { label: Bi; role_kind?: 'core' | 'support' } & (
   | { kind: 'lane_not_lost' }
   /** From a replay review: on `hero_id`, finish the game holding one of `items`. */
   | { kind: 'hold_item'; items: string[]; accept?: string[]; hero_id: number }
+  /** From a replay review's rule (lib/coach/goals.js habitGoal): at most `max` deaths of one counted kind; judged from the next game's replay. */
+  | { kind: 'replay_habit'; habit: string; max: number; baseline: number }
   /** Engine >= 1.9: deaths to enemies who already owned one of `items` (gap closers). */
   | { kind: 'deaths_to_gap_closer_max'; max: number; items: string[] }
 );

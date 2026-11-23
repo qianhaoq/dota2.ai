@@ -453,6 +453,8 @@ describe('trace tools on a real game', () => {
       three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06', '25:30', '30:42', '36:05'],
       nothing_cast_and_no_item_used: [],
     });
+    // Every death here had its health and position sampled: nothing a count could be missing.
+    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, allies_at_death: 0 });
     // Phantom Assassin's attacks are the largest single source: 44% of everything taken in the eleven windows.
     expect(all.damage_in_death_windows_total).toBe(23757);
     expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);

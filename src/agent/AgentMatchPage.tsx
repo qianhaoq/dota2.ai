@@ -3,12 +3,12 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Shell } from '../coach/CoachApp';
 import { fetchCoachReport } from '../coach/api';
 import { markReviewed } from '../coach/accountInput';
-import { checkGoal, useActiveGoal, type GoalCheck } from '../coach/goalStore';
+import { checkGoal, checkRules, needsReplay, useActiveGoal, type GoalCheck, type GoalRule, type ReplayDeaths } from '../coach/goalStore';
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
 import { trackReviewViewed } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
-import { AgentApiError, fetchAvailability, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
+import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import './agent.css';
@@ -67,6 +67,7 @@ const T = {
   q1: { en: 'Which of my deaths was the most avoidable?', zh: '我哪一次阵亡最不应该？' },
   qFinding: { en: 'what exactly should I have done instead?', zh: '具体应该怎么打？' },
   goalCheck: { en: 'Your goal, in this game', zh: '你的目标，这一局' },
+  ruleChecks: { en: 'Your rule, in this game', zh: '你的规则，这一局' },
   goalResult: { met: { en: 'Met', zh: '达成' }, missed: { en: 'Missed', zh: '未达成' }, no_opportunity: { en: 'Did not come up', zh: '这局没遇到' }, unknown: { en: 'Can’t tell yet', zh: '暂时判断不了' } } as Record<string, Bi>,
 } as const;
 
@@ -275,7 +276,22 @@ export const AgentMatchPage: React.FC = () => {
   // A goal set from an earlier game is checked against this one (same judge as the games page).
   const activeGoalNow = useActiveGoal();
   const [goalCheck, setGoalCheck] = useState<GoalCheck | null>(null);
-  useEffect(() => { setGoalCheck(activeGoalNow && board && seat ? checkGoal(activeGoalNow, board, seat.slot) : null); }, [activeGoalNow, board, seat]);
+  const [ruleChecks, setRuleChecks] = useState<{ rule: GoalRule; check: GoalCheck }[]>([]);
+  // What a rule is counted on comes from this game's replay: its death counts, once the replay is parsed.
+  // `for` ties the counts to the selection they were read for, so another hero's never judge this one.
+  const wantsReplay = Boolean(activeGoalNow && needsReplay(activeGoalNow) && hasTrace && heroKey);
+  const [replayDeaths, setReplayDeaths] = useState<{ for: string; record: ReplayDeaths } | null>(null);
+  useEffect(() => {
+    if (!wantsReplay || !heroKey) return undefined;
+    let alive = true;
+    fetchEvidence(matchId, heroKey, lang, `deaths:${heroKey}`).then((r) => { if (alive) setReplayDeaths({ for: `${matchId}|${heroKey}`, record: r.record }); }).catch(() => {});
+    return () => { alive = false; };
+  }, [wantsReplay, matchId, heroKey, lang]);
+  const replay = replayDeaths && replayDeaths.for === `${matchId}|${heroKey}` ? replayDeaths.record : null;
+  useEffect(() => {
+    setGoalCheck(activeGoalNow && board && seat ? checkGoal(activeGoalNow, board, seat.slot, replay) : null);
+    setRuleChecks(activeGoalNow && board && seat ? checkRules(activeGoalNow, board, seat.slot, replay) : []);
+  }, [activeGoalNow, board, seat, replay]);
 
   const ask = (label: string, refs: string[]) => chat.current?.ask(label, refs);
   const suggestions = useMemo(() => {
@@ -305,6 +321,18 @@ export const AgentMatchPage: React.FC = () => {
           <span className={`cx-goal-result is-${goalCheck.result}`}>{t(T.goalResult[goalCheck.result])}</span>
           <em>{goalCheck.evidence[lang]}</em>
         </p>
+      )}
+      {ruleChecks.length > 0 && (
+        <ul className="ag-rulechecks" aria-label={t(T.ruleChecks)}>
+          {ruleChecks.map(({ rule, check }) => (
+            <li key={rule.finding} className="ag-goalcheck">
+              <span>{t(T.ruleChecks)}</span>
+              <b>{rule.when}{lang === 'zh' ? '：' : ': '}{rule.do}</b>
+              <span className={`cx-goal-result is-${check.result}`}>{t(T.goalResult[check.result])}</span>
+              <em>{check.evidence[lang]}</em>
+            </li>
+          ))}
+        </ul>
       )}
     </header>
   );

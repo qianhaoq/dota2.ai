@@ -188,3 +188,9 @@
 .ag-goalcheck { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; font-size: var(--fs-meta); color: var(--text-3); }
 .ag-goalcheck b { color: var(--text); font-weight: 500; }
 .ag-goalcheck em { font-style: normal; color: var(--text-2); }
+
+/* What the next game's replay is counted on for a rule, and how a later game did against it. */
+.ag-rule-check dd { font-weight: 400; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ag-goal-rules { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; font-size: var(--fs-meta); line-height: 1.5; }
+.ag-goal-rules li { display: flex; gap: 8px; align-items: baseline; }
+.ag-rulechecks { list-style: none; margin: 0; padding: 0; }
