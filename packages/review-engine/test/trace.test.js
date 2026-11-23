@@ -365,6 +365,25 @@ describe('trace tools on a real game', () => {
     expect(run('fight_timeline', { from: 80.2, to: 80.4 })).toMatchObject({ ref: 'timeline:80-81' });
   });
 
+  it('the deaths come in a fixed order of what the hero still had, the same however they are asked for', () => {
+    const all = run('death_context', { hero: 'beastmaster' });
+    expect(all.most_left_unused.map((r) => r.death)).toEqual([9, 11, 8, 10, 6, 5, 7, 3, 4, 2, 1]);
+    expect(all.most_left_unused[0]).toEqual({
+      death: 9, clock: '36:05', killer: 'necrolyte',
+      // Capturing an outpost is ready at every death: it is not something left unused.
+      ready_not_cast: ['beastmaster_wild_axes', 'beastmaster_summon_thunderhide', 'beastmaster_primal_roar'],
+      health_share_at_window_start: 1, seconds_before_first_disable: 8.4, enemy_heroes_dealing_damage: 4,
+    });
+    expect(all.most_left_unused_rule).toMatch(/^most own abilities ready/);
+    // Asking for one death does not change the order: it is over all of them.
+    const one = run('death_context', { hero: 'beastmaster', index: 5 });
+    expect(one.deaths.map((d) => d.n)).toEqual([5]);
+    expect(one.most_left_unused).toEqual(all.most_left_unused);
+    expect(run('death_context', { hero: 'beastmaster', index: 12 })).toMatchObject({ error: 'no_such_death' });
+    // A row is not a record of its own: it must not carry a ref that would stand in for the death's.
+    expect(all.most_left_unused.every((r) => !('ref' in r))).toBe(true);
+  });
+
   it('counts are stated by the tools, not left to the reader', () => {
     expect(run('death_context', { hero: 'beastmaster', index: 1 }).killed_by).toEqual({ venomancer: 1, phantom_assassin: 7, mirana: 1, necrolyte: 2 });
     expect(run('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'primal_roar' })).toMatchObject({ windows_total: 7, watched_state_when_window_opened: { on_cooldown: 3, ready: 3, dead: 1 }, windows_with_a_cast_on_the_immune_hero: 2 });

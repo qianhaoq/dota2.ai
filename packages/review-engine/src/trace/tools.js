@@ -141,8 +141,9 @@ export function deathContext(trace, args = {}, ctx = {}) {
   if (err) return err;
   const window = Math.min(30, Math.max(4, Number(args.window) || 12));
   const all = trace.deaths.filter((d) => d[1] === npc).sort((a, b) => a[0] - b[0]);
-  const pick = args.index == null ? all.map((d, i) => [d, i + 1]) : all[args.index - 1] ? [[all[args.index - 1], args.index]] : null;
-  if (!pick) return fail('no_such_death', { deaths: all.length });
+  if (args.index != null && !all[args.index - 1]) return fail('no_such_death', { deaths: all.length });
+  // Every death is worked out, also when one is asked for: the order below is over all of them.
+  const pick = all.map((d, i) => [d, i + 1]);
   const can = castable(trace, h, npc);
   const out = pick.map(([d, n]) => {
     const t = d[0]; const from = t - window;
@@ -186,7 +187,34 @@ export function deathContext(trace, args = {}, ctx = {}) {
   });
   const killers = {};
   for (const d of all) { const k = nameOf(trace, d[2]) ?? 'unknown'; killers[k] = (killers[k] ?? 0) + 1; }
-  return { ref: `deaths:${trace.heroes[h].key}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, deaths: out, gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+  return { ref: `deaths:${trace.heroes[h].key}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, ...leftUnused(out), deaths: args.index == null ? out : [out[args.index - 1]], gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+}
+
+/**
+ * The deaths in a fixed order of how much the hero still had when it began.
+ * "Which death was the most avoidable" has no single right answer, but it
+ * should not have a different one each time it is asked: the order is made
+ * here, by a stated rule, from the facts of each record. It weighs only what
+ * the hero had (not the state of the game, not what could be seen).
+ */
+const LEFT_UNUSED_RULE = 'most own abilities ready at the start of the window and never cast in it; then highest share of health at the start; then longest time before the first disable landed; then the earlier death';
+function leftUnused(deaths) {
+  const rows = deaths.map((d) => {
+    const start = d.snapshots[0]?.me;
+    const firstDisable = d.controls_on_me.length ? Math.min(...d.controls_on_me.map((c) => c.dt)) : null;
+    const attackers = new Set(d.damage_taken.map((x) => x.from).filter((f) => d.snapshots.some((s) => s.enemies.some((e) => e.hero === f))));
+    return {
+      death: d.n, clock: d.clock, killer: d.killer,
+      // The hero's own abilities: map actions every hero has (capturing an outpost) are not something left unused in a fight.
+      ready_not_cast: d.ready_not_cast.filter((a) => !a.startsWith('ability_')),
+      health_share_at_window_start: start?.max_hp ? Math.round((start.hp / start.max_hp) * 100) / 100 : null,
+      seconds_before_first_disable: firstDisable == null ? null : Math.round((d.snapshots[0].dt * -1 + firstDisable) * 10) / 10,
+      enemy_heroes_dealing_damage: attackers.size,
+    };
+  });
+  const free = (r) => r.seconds_before_first_disable ?? Infinity;
+  rows.sort((a, b) => b.ready_not_cast.length - a.ready_not_cast.length || (b.health_share_at_window_start ?? 0) - (a.health_share_at_window_start ?? 0) || free(b) - free(a) || a.death - b.death);
+  return { most_left_unused_rule: LEFT_UNUSED_RULE, most_left_unused: rows };
 }
 
 /** The ability key of hero h that `name` means: exact, with the hero prefix, or a unique suffix. */
@@ -400,7 +428,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'death_context',
-    description: "What led to a hero's deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed, what they cast, and who else died around it. Without `index`, every death.",
+    description: "What led to a hero's deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed, what they cast, and who else died around it. Without `index`, every death. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
     input_schema: { type: 'object', properties: { hero: HERO, index: { type: 'integer', minimum: 1, description: 'Which death, counting from 1. Omit for all.' }, window: { type: 'number', minimum: 4, maximum: 30, description: 'Seconds before the death to look at (default 12).' } }, required: ['hero'], additionalProperties: false },
     run: deathContext,
   },
