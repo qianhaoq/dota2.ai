@@ -153,6 +153,14 @@ describe('review findings on #233', () => {
     expect(at(['cast:x:roar:1', 'audit:x:roar'], 'at 1:00, one of 5555 casts, stunned 3.4 s')).toEqual([]);
   });
 
+  it('a deaths summary backs the game times it lists its deaths by, and no others', () => {
+    const src = { tool: 'death_context', ref: 'deaths:beastmaster', ref_scope: 'summary', deaths_total: 11, deaths_where: { no_ally_within_2200_at_death: ['2:51'], three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06', '25:30', '30:42', '36:05'] }, deaths: [{ ref: 'death:beastmaster:1', t: 47, clock: '0:47' }] };
+    const f = (fact: string) => verifyReview({ verdict: 'v', findings: [{ title: 't', claim: 'c', evidence: [{ refs: ['deaths:beastmaster'], fact }] }] }, [src]).problems;
+    expect(f('11 次阵亡里有 5 次是被三个以上敌人打死的：8:27、22:06、25:30、30:42、36:05；2:51 那次身边没有队友。')).toEqual([]);
+    // A death's own time is in its record, not in the summary: 0:47 is not one the summary lists.
+    expect(f('0:47 那次也是。')).toEqual([{ where: 'finding', index: 0, kind: 'moment', text: '0:47 (not in deaths:beastmaster)' }]);
+  });
+
   it('a finding with no cited evidence is not accepted, whatever it says', async () => {
     const bare = { title: 'Alone', claim: 'You repeatedly fought alone.', fix: 'Stay with the team.' };
     expect(verifyReview(review([bare], { verdict: 'v', mainline: [] }), []).problems).toEqual([{ where: 'finding', index: 0, kind: 'ref', text: '(no evidence)' }]);
