@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { collectFacts, deepReviewSystem, nameHeroes, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { collectFacts, deepReviewSystem, nameHeroes, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
@@ -99,6 +99,27 @@ describe('who could see whom is never in the replay data', () => {
     expect(verifyText('Axe stood next to you and you did not roar him.', []).ok).toBe(true);
     const r = verifyReview({ verdict: 'You lost.', findings: [{ title: 'Roar', claim: '斧王一直在你视野里。', evidence: [] }] }, []);
     expect(r.problems).toContainEqual({ where: 'finding', index: 0, kind: 'sight', text: '在你视野' });
+  });
+});
+
+describe('places are named in the reader\'s language', () => {
+  it('every region the tools can name has a name in both languages', () => {
+    const zh: Record<string, string> = placeNames('zh'); const en: Record<string, string> = placeNames('en');
+    for (const side of ['radiant', 'dire', 'river']) for (const area of ['mid', 'top_lane', 'top_jungle', 'bot_lane', 'bot_jungle']) { expect(zh[`${side}_${area}`]).toMatch(/^[\u4e00-\u9fff]+$/); expect(en[`${side}_${area}`]).toMatch(/^[A-Za-z ]+$/); }
+    expect(zh).toMatchObject({ dire_top_lane: '夜魇上路', radiant_bot_jungle: '天辉下路野区', river_mid: '河道中路', dire_base: '夜魇基地', dire: '夜魇', Dire: '夜魇' });
+    expect(en).toMatchObject({ dire_top_lane: 'Dire top lane', radiant_base: 'Radiant base' });
+    // In English the bare word is left alone ("a dire mistake").
+    expect('dire' in en).toBe(false);
+  });
+
+  it('a key, or half of one, left in the text is replaced; other words are not', () => {
+    const names = { axe: '斧王' };
+    expect(nameHeroes({ verdict: '在 dire 上路被杀；dire_top_lane 再死；Dire 一方；radiant_base 里。dire_tower 不动，by axe now' }, names, placeNames('zh')).verdict)
+      .toBe('在夜魇上路被杀；夜魇上路再死；夜魇一方；天辉基地里。dire_tower 不动，by 斧王 now');
+    expect(nameHeroes({ verdict: 'A dire mistake in dire_top_lane near radiant_base. Dire won.' }, {}, placeNames('en')).verdict)
+      .toBe('A dire mistake in Dire top lane near Radiant base. Dire won.');
+    // Numbers and times next to a name keep their spacing.
+    expect(nameHeroes({ verdict: '36:05 dire 3 人' }, names, placeNames('zh')).verdict).toBe('36:05 夜魇 3 人');
   });
 });
 
