@@ -225,6 +225,56 @@ describe('runDeepReview', () => {
     expect(m.seen).toHaveLength(3);
   });
 
+  it('one evidence item the cited record does not hold is left out; the finding stays on the rest', async () => {
+    // Seen in production: a finding about the ultimate lost whole because one of six items cited the summary for a stun length.
+    const stray = { refs: ['audit:beastmaster:primal_roar'], fact: '咆哮定住了 98.7 秒。' };
+    const mixed = { ...good, evidence: [...good.evidence, stray] };
+    const m = scripted([investigate, { toolCalls: [call('submit_review', review([mixed]), 's1')] }, { toolCalls: [call('submit_review', review([mixed]), 's2')] }]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r.status).toBe('ok');
+    expect(r.review.findings).toEqual([goodShown]);
+    expect(r.verification).toMatchObject({ repaired: true, dropped: 0, problems: [{ where: 'finding', index: 0, kind: 'moment', text: '98.7 (not in audit:beastmaster:primal_roar)' }] });
+    // Nothing left to stand on: the finding goes, as before.
+    const hollow = { ...good, evidence: [stray] };
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', review([good, hollow]), 's1')] }, { toolCalls: [call('submit_review', review([good, hollow]), 's2')] }]);
+    const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r2.review.findings).toEqual([goodShown]);
+    expect(r2.verification).toMatchObject({ dropped: 1 });
+    // Its own claim unsupported: good evidence does not save it.
+    const wrong = { ...good, claim: '你 19:19 的经济只有 9,876。' };
+    const m3 = scripted([investigate, { toolCalls: [call('submit_review', review([good, wrong]), 's1')] }, { toolCalls: [call('submit_review', review([good, wrong]), 's2')] }]);
+    const r3: any = await runDeepReview({ complete: m3.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r3.review.findings).toEqual([goodShown]);
+    expect(r3.verification).toMatchObject({ dropped: 1 });
+  });
+
+  it('a line in English inside a Chinese review is sent back, and dropped if it stays', async () => {
+    const ruled = { ...good, rule: { when: '幻影刺客开了黑皇杖', do: '咆哮留给她', this_game: '3 of 10 casts: 27:27, 30:34' } };
+    const m = scripted([investigate, { toolCalls: [call('submit_review', review([ruled], { did_well: ['Good farm overall', '27:27 吼中'] }), 's1')] }, { toolCalls: [call('submit_review', review([ruled], { did_well: ['Good farm overall', '27:27 吼中'] }), 's2')] }]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(JSON.parse(m.seen[2].messages.at(-1).content).problems).toEqual(expect.arrayContaining([
+      { in: 'finding 1, rule.this_game', text: '3 of 10 casts: 27:27, 30:34', why: 'write this in the language of the rest of the review' },
+      { in: 'did_well 1', text: 'Good farm overall', why: 'write this in the language of the rest of the review' },
+    ]));
+    expect(r.review.did_well).toEqual(['27:27 吼中']);
+    expect(r.review.findings[0].rule).toEqual({ when: '幻影刺客开了黑皇杖', do: '咆哮留给她' });
+    // An English review is not held to this, and names in Latin letters inside a Chinese line are fine.
+    expect(verifyReview({ verdict: 'Roar was not saved.', did_well: ['Good farm overall'], findings: [] }, []).problems).toEqual([]);
+    expect(verifyReview({ verdict: '咆哮没有留住。', did_well: ['BKB 出得及时', 'Eul 的神圣法杖没出'], findings: [] }, []).problems).toEqual([]);
+  });
+
+  it('record handles written into a sentence in brackets are taken out; refs stay', () => {
+    const out: any = nameHeroes({
+      verdict: '对线没崩（lane:beastmaster）。',
+      did_well: ['两次都定住了（audit:beastmaster:primal_roar、cast:beastmaster:primal_roar:6/9）。', '8 次死于熊战士 (deaths:tidehunter)，4:21（第一次）最早 (见 12:30)'],
+      findings: [{ title: 't', claim: 'c', fix: 'f', rule: { when: 'w', do: 'd', this_game: '12 次里 8 次（deaths:sven）' }, evidence: [{ refs: ['death:sven:1'], fact: 'sven 阵亡 (death:sven:1)' }] }],
+    }, { sven: '斯温' });
+    expect(out.verdict).toBe('对线没崩。');
+    expect(out.did_well).toEqual(['两次都定住了。', '8 次死于熊战士，4:21（第一次）最早 (见 12:30)']);
+    expect(out.findings[0].rule.this_game).toBe('12 次里 8 次');
+    expect(out.findings[0].evidence).toEqual([{ refs: ['death:sven:1'], fact: '斯温 阵亡' }]);
+  });
+
   it('a repair that looks the fact up is accepted', async () => {
     const lane = { title: '一血', claim: '0:47 被击杀时身边没有队友。', evidence: [{ refs: ['death:beastmaster:1'], fact: '0:47 一血' }], fix: '等兵线。' };
     const m = scripted([investigate, { toolCalls: [call('submit_review', review([good, lane]), 's1')] }, { toolCalls: [call('death_context', { hero: 'beastmaster', index: 1 }, 'd')] }, { toolCalls: [call('submit_review', review([good, lane]), 's2')] }]);
