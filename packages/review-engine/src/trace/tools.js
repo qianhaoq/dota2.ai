@@ -139,7 +139,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const view = viewer(trace, ctx);
   const { h, npc, err } = needHero(trace, args.hero);
   if (err) return err;
-  const window = Math.min(30, Math.max(4, Number(args.window) || 12));
+  // Whole seconds: the window is part of the records' refs, and a ref has to resolve to the same window.
+  const window = Math.round(Math.min(30, Math.max(4, Number(args.window) || 12)));
   const all = trace.deaths.filter((d) => d[1] === npc).sort((a, b) => a[0] - b[0]);
   if (args.index != null && !all[args.index - 1]) return fail('no_such_death', { deaths: all.length });
   // Every death is worked out, also when one is asked for: the order below is over all of them.
@@ -193,6 +194,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
       ready_not_cast: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && !noMana(a)).map((a) => a.ability),
       off_cooldown_without_the_mana: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && noMana(a)).map((a) => a.ability),
       health_share_at_window_start: share(snapshots[0]?.me),
+      // From the health itself, not the rounded share: 495 of 1000 is below half.
+      below_half_health_at_window_start: snapshots[0]?.me?.max_hp ? snapshots[0].me.hp * 2 < snapshots[0].me.max_hp : null,
       // Null where the hero's own position was not sampled: no ally listed is then unknown, not alone.
       // "At death" is the moment itself, not the last snapshot a second before: an ally can arrive in that second.
       allies_within_2200: { at_window_start: snapshots[0].me ? snapshots[0].allies.length : null, at_death: atDeath.me ? atDeath.allies.length : null, most_in_any_second: mostAllies },
@@ -238,7 +241,7 @@ function deathPatterns(trace, deaths) {
   const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 6);
   return {
     deaths_where: {
-      health_below_half_at_window_start: of((d) => d.health_share_at_window_start != null && d.health_share_at_window_start < 0.5),
+      health_below_half_at_window_start: of((d) => d.below_half_health_at_window_start === true),
       // In every second of the window and at the death itself.
       no_ally_within_2200_throughout: of((d) => d.allies_within_2200.most_in_any_second === 0),
       no_ally_within_2200_at_death: of((d) => d.allies_within_2200.at_death === 0),

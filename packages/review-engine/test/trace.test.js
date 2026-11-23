@@ -465,6 +465,11 @@ describe('trace tools on a real game', () => {
     const short = run('death_context', { hero: 'beastmaster', window: 4 });
     expect(short).toMatchObject({ ref: 'deaths:beastmaster:w4', damage_in_death_windows_total: 18106 });
     expect(short.deaths_where.health_below_half_at_window_start).toHaveLength(4);
+    // A fractional window is a whole number of seconds, so its refs resolve; 495 of 1000 health is below half though it rounds to 0.5.
+    expect(run('death_context', { hero: 'beastmaster', window: 4.4 })).toMatchObject({ ref: 'deaths:beastmaster:w4', window: 4 });
+    const m13 = run('death_context', { hero: 'mirana', window: 13 });
+    expect(m13.deaths[1]).toMatchObject({ clock: '13:21', health_share_at_window_start: 0.5, below_half_health_at_window_start: true });
+    expect(m13.deaths_where.health_below_half_at_window_start).toContain(2);
     // The same for one death asked for: the counts are over all of them.
     expect(run('death_context', { hero: 'beastmaster', index: 3 }).deaths_where).toEqual(all.deaths_where);
   });
