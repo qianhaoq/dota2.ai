@@ -910,16 +910,23 @@ const agentPipeline = (() => {
   const bin = process.env.DOTA_EXTRACT_BIN || '';
   return bin && agentTraceBlobs ? createTracePipeline({ getMatchDetail: agentReplaySource, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;
 })();
+const agentService = createAgentService({
+  traces: agentTraces,
+  pipeline: agentPipeline,
+  complete: agentModel.ok ? openAiCompatible({ client: new OpenAI({ baseURL: agentModel.baseURL, apiKey: agentModel.apiKey }), model: agentModel.model, extraBody: agentModel.extraBody }) : null,
+  model: agentModel.ok ? agentModel.model : null,
+  docs: agentBlobs ? createJsonStore(agentBlobs) : (process.env.AGENT_REVIEW_DIR ? createJsonStore(createFileStore(process.env.AGENT_REVIEW_DIR)) : null),
+  getMatchDetail,
+  log: (msg) => console.warn(`[agent] ${msg}`),
+});
+// A deploy or scale-down stops the instance with SIGTERM and a few seconds of grace. A review running here
+// cannot finish in that time: say so in its marker, so the next instance starts it again instead of
+// reporting "running" until the marker goes stale.
+process.once('SIGTERM', () => {
+  Promise.race([agentService.shutdown(), new Promise((r) => setTimeout(r, 5000))]).catch(() => {}).finally(() => process.exit(0));
+});
 app.use(createAgentRouter({
-  service: createAgentService({
-    traces: agentTraces,
-    pipeline: agentPipeline,
-    complete: agentModel.ok ? openAiCompatible({ client: new OpenAI({ baseURL: agentModel.baseURL, apiKey: agentModel.apiKey }), model: agentModel.model, extraBody: agentModel.extraBody }) : null,
-    model: agentModel.ok ? agentModel.model : null,
-    docs: agentBlobs ? createJsonStore(agentBlobs) : (process.env.AGENT_REVIEW_DIR ? createJsonStore(createFileStore(process.env.AGENT_REVIEW_DIR)) : null),
-    getMatchDetail,
-    log: (msg) => console.warn(`[agent] ${msg}`),
-  }),
+  service: agentService,
   resolveClientIp,
   llm: reviewLlmLimit,
   parseDailyMax: Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : undefined,
