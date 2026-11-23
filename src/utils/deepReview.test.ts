@@ -279,6 +279,8 @@ describe('runDeepReview', () => {
     expect(out.verdict).toBe('对线没崩。');
     expect(out.did_well).toEqual(['两次都定住了。', '8 次死于熊战士，4:21（第一次）最早 (见 12:30)']);
     expect(out.findings[0].rule.this_game).toBe('12 次里 8 次');
+    // A handle whose first part is a range or carries a dash (seen in production: timeline:480-550).
+    expect(nameHeroes({ verdict: '整段 8:00–9:10 我方 6 死（timeline:480-550）。她开了黑皇杖（immune:phantom_assassin:7:beastmaster-primal_roar），比分 3:1（上半场）' }, { sven: '斯温' }).verdict).toBe('整段 8:00–9:10 我方 6 死。她开了黑皇杖，比分 3:1（上半场）');
     expect(out.findings[0].evidence).toEqual([{ refs: ['death:sven:1'], fact: '斯温 阵亡' }]);
   });
 
