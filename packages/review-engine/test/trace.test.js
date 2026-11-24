@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { createTraceBuilder, TRACE_SCHEMA, TRACE_TOOLS, runTraceTool, traceSeconds, traceRegion } from '../src/trace/index.js';
+import { createTraceBuilder, TRACE_SCHEMA, TRACE_TOOLS, runTraceTool, traceSeconds, traceRegion, goldAdvantage } from '../src/trace/index.js';
 
 /**
  * A real ranked game (9100904020, Beastmaster on Dire, lost in 42:31), built
@@ -271,6 +271,53 @@ describe('review findings on #232', () => {
     expect(cull).toBeLessThan(death);
     const all = run('fight_timeline', { from: '30:05', to: '31:00' }).events;
     for (let i = 1; i < all.length; i += 1) if (all[i].t === all[i - 1].t && all[i].row != null && all[i - 1].row != null) expect(all[i].row).toBeGreaterThan(all[i - 1].row);
+  });
+});
+
+describe('net worth from the replay\'s match metadata', () => {
+  const state = (t, hero, team) => ({ entity_kind: 'real_hero', t, hero, team, player_index: team === 2 ? 0 : 5, x: 0, y: 0, hp: 500, max_hp: 600, mana: 100, level: 1, life_state: 0, abilities: [], items: [], controls: {} });
+  const built = (metadataRows) => {
+    const b = createTraceBuilder();
+    for (const t of [0, 1]) { b.addState(state(t, 'axe', 2)); b.addState(state(t, 'lina', 3)); }
+    for (const row of metadataRows) b.addMetadata(row);
+    return b.finish({ match_id: 7 });
+  };
+  // The graph is in tens of gold (seen in 9100904020: first point 60 = the 600 starting purse; ×10 at the
+  // end is within 0.3% of every player's scoreboard net worth).
+  const meta = (axe, lina) => ({ players: [{ dota_team: 2, hero_key: 'npc_dota_hero_axe', graph_net_worth: axe }, { dota_team: 3, hero_key: 'npc_dota_hero_lina', graph_net_worth: lina }] });
+
+  it('keeps each hero\'s net worth per minute, in gold, in hero order; the last metadata row wins', () => {
+    const tr = built([meta([60, 61], [60, 62]), meta([60, 66.26462, 81.43333], [59.800003, 63.987694, 82.04603])]);
+    expect(tr.net_worth).toEqual([[600, 663, 814], [598, 640, 820]]);
+    // Radiant's lead: the teams' sums minute by minute.
+    expect(goldAdvantage(tr, {})).toEqual([2, 23, -6]);
+  });
+
+  it('a graph whose first point is no starting purse is not trusted: no net worth, so no team lead (the tools then name the gap)', () => {
+    const tr = built([meta([600, 663], [598, 640])]);
+    expect(tr.net_worth).toBeUndefined();
+    expect(goldAdvantage(tr, {})).toBeNull();
+    // No metadata at all (an older extract): the same.
+    expect(built([]).net_worth).toBeUndefined();
+  });
+
+  it('a hero the metadata does not name has no graph, and then there is no team lead', () => {
+    const tr = built([{ players: [{ dota_team: 2, hero_key: 'npc_dota_hero_axe', graph_net_worth: [60, 70] }, { dota_team: 3, hero_key: null, graph_net_worth: [60, 70] }] }]);
+    expect(tr.net_worth).toEqual([[600, 700], null]);
+    expect(goldAdvantage(tr, {})).toBeNull();
+  });
+
+  it('the match record\'s curve is used when the caller has it; the tools fall back to the replay\'s', () => {
+    expect(goldAdvantage({ heroes: [], net_worth: [] }, { match: { radiant_gold_adv: [0, 5] } })).toEqual([0, 5]);
+    // The real game with a net worth graph and no match record: the overview's fights carry a gold lead, and no gap says it is missing.
+    const minutes = Math.ceil((trace.t0 + trace.n) / 60) + 1;
+    const withWorth = { ...trace, net_worth: trace.heroes.map((h) => Array.from({ length: minutes }, (_, m) => (h.team === 2 ? 1000 : 600) * (m + 1))) };
+    const ov = runTraceTool(withWorth, 'match_overview', {}, { perspective: 'beastmaster' });
+    expect(ov.gaps.map((g) => g.topic)).not.toContain('gold_advantage');
+    const f = ov.fights[0];
+    expect(f.my_team_gold_lead_before).toBe(-2000 * (Math.floor(f.from / 60) + 1));
+    // Without either, as before.
+    expect(runTraceTool(trace, 'match_overview', {}, { perspective: 'beastmaster' }).gaps.map((g) => g.topic)).toContain('gold_advantage');
   });
 });
 

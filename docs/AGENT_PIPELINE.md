@@ -232,3 +232,16 @@ A running job leaves a marker in the store, so another instance reports
   (`lib/agent/deepReview.js`). Evidence shown to the reader is recomputed from
   the trace, not taken from the model (`lib/agent/evidence.js`).
 - What the replay does not hold (vision, creeps, Roshan) is a stated gap.
+
+## Net worth from the replay
+
+The extractor's `trace/metadata.jsonl` carries the replay's match metadata,
+including each player's `graph_net_worth`: one point per game minute, in tens
+of gold (on 9100904020 the first point is 60, the 600 starting purse, and ×10
+at the end is within 0.3% of every scoreboard net worth). The trace builder
+keeps it as `net_worth` (gold, per hero, per minute) only when the first point
+is a starting purse. The tools use OpenDota's `radiant_gold_adv` when the match
+record has it, else the teams' summed net worth from the trace; the review page
+draws the same curve, labelled as coming from the replay. A trace built before
+this has no `net_worth`: it appears after the worker is redeployed and the
+match is parsed again.

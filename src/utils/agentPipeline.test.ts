@@ -6,6 +6,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { createRemotePipeline, createTracePipeline, replayUrlIsFor } from '../../lib/agent/tracePipeline.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from '../../lib/agent/stores.js';
 import { createAgentService } from '../../lib/agent/service.js';
+import { buildTraceFromExtract } from '../../lib/agent/traceBuild.js';
 
 const root = mkdtempSync(join(tmpdir(), 'agent-pipe-'));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -335,6 +336,24 @@ describe('parse jobs in the service', () => {
       status: 'ready', model: 'm', tool_calls: 4,
       review: { schema: 'dota2.ai/deep-review@1', verdict: '经济从 -4972 掉到 -7895。', mainline: ['一起倒下（4 换 3），比分 3:1'], findings: [{ title: 't', claim: 'c', evidence: [{ refs: ['fight:3', 'timeline:2194-2233'], clock: '20:20', fact: '死 3 个' }] }] },
     });
+  });
+
+  it('an extract with match metadata gives the trace net worth per minute, and the page the replay\'s lead', async () => {
+    const dir = mkdtempSync(join(root, 'extract-'));
+    mkdirSync(join(dir, 'trace'));
+    const st = (t: number, hero: string, team: number) => JSON.stringify({ entity_kind: 'real_hero', t, hero, team, player_index: team === 2 ? 0 : 5, x: 0, y: 0, hp: 1, max_hp: 1, mana: 0, level: 1, life_state: 0, abilities: [], items: [], controls: {} });
+    writeFileSync(join(dir, 'trace', 'states.jsonl'), [st(0, 'axe', 2), st(0, 'lina', 3)].join('\n'));
+    writeFileSync(join(dir, 'trace', 'events.jsonl'), '');
+    writeFileSync(join(dir, 'trace', 'metadata.jsonl'), JSON.stringify({ players: [{ dota_team: 2, hero_key: 'npc_dota_hero_axe', graph_net_worth: [60, 80] }, { dota_team: 3, hero_key: 'npc_dota_hero_lina', graph_net_worth: [60, 70] }] }));
+    const built: any = await buildTraceFromExtract(dir, { match_id: ID });
+    expect(built.net_worth).toEqual([[600, 800], [600, 700]]);
+    const svc: any = createAgentService({ traces: { get: async () => built }, complete: null });
+    expect((await svc.availability(ID)).radiant_net_worth_lead).toEqual([0, 100]);
+    // An extract from an older extractor, without the file: no net worth, and the answer has no lead.
+    rmSync(join(dir, 'trace', 'metadata.jsonl'));
+    const older: any = await buildTraceFromExtract(dir, { match_id: ID });
+    expect(older.net_worth).toBeUndefined();
+    expect((await createAgentService({ traces: { get: async () => older }, complete: null } as any).availability(ID))).not.toHaveProperty('radiant_net_worth_lead');
   });
 
   it('a slow progress marker cannot land after a review\'s terminal one', async () => {
