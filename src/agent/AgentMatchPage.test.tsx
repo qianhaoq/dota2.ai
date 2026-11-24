@@ -407,6 +407,13 @@ describe('AgentMatchPage', () => {
     expect(chip('随后拆到建筑')).toBeTruthy();
     expect(chip('20:54 · 中路 1 塔')).toBeTruthy();
     expect(screen.queryByText(/took_a_building|badguys|juggernaut/)).toBeNull();
+    cleanup();
+    // A fight the enemy won: what the player's team took back is the player's team's (review of #306).
+    mockFetch({ 'ref=overview': overview, '/evidence?': { ...point, ref: 'decision:spectre:5', record: { ...point.record, ref: 'decision:spectre:5', won_by: 'enemy', winners_did: 'neither', buildings_winners_took: [], losers_took_back: [{ building: 'badguys_tower2_top', clock: '22:10' }] } }, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['decision:spectre:5'], fact: '20:58 输团。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText('我方反拆')).toBeTruthy();
+    expect(screen.queryByText('对方反拆')).toBeNull();
   });
 
   it('a Roshan is shown as who held the Aegis, who was there, what became of it, and what each side took after', async () => {

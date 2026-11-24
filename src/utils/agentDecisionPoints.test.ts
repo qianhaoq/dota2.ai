@@ -49,6 +49,27 @@ describe('decision_points: what each side did with the fights it won', () => {
     for (const x of r.points) for (const d of x.losers_respawn_in) expect(d.seconds === null || d.seconds > 0).toBe(true);
   });
 
+  it('a push begun during the fight and still going after it is listed, with the player\'s hits in the window (review of #306)', () => {
+    const pa: any = decisionPoints(trace, { hero: 'phantom_assassin' });
+    const p = pa.points.find((x: any) => x.fight === 'fight:16');
+    expect(p).toMatchObject({ won_by: 'my_team', winners_did: 'took_a_building', me: 'hit_a_building' });
+    expect(p.pushes).toEqual([expect.objectContaining({ building: 'badguys_fort', took_it: true, hitting: expect.arrayContaining(['phantom_assassin']) })]);
+  });
+
+  it('a building its own side denied is nobody\'s objective, as tempo_report counts it (review of #306)', () => {
+    const denied = JSON.parse(JSON.stringify(trace));
+    const fights = matchFights(denied);
+    const f = fights[7];
+    // A Dire tower destroyed by Dire itself, five seconds into fight 8.
+    const name = 'npc_dota_badguys_tower2_bot';
+    let id = denied.names.indexOf(name); if (id < 0) { denied.names.push(name); id = denied.names.length - 1; }
+    denied.buildings = denied.buildings.filter((b: any) => !(b[0] >= f.from && b[0] <= f.to + 120)).concat([[f.from + 5, id, 3, 0]]);
+    const before = (decisionPoints(denied, { hero: 'axe' }) as any).points.find((x: any) => x.fight === 'fight:8');
+    expect(before.buildings_winners_took).toEqual([]);
+    expect(before.losers_took_back).toEqual([]);
+    expect(before.winners_did).not.toBe('took_a_building');
+  });
+
   it('refs resolve; one moment\'s facts need its own ref; the model gets the tool and the rule', () => {
     const one = resolveRef(trace, r.points[0].ref, { hero: 'beastmaster', lang: 'zh' })!;
     expect(one.record.fight).toBe(r.points[0].fight);

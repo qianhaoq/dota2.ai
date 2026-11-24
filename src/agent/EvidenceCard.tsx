@@ -110,7 +110,8 @@ const T = {
   wonBy: { my_team: { en: 'Your team won the fight', zh: '我方赢团' }, enemy: { en: 'They won the fight', zh: '对方赢团' } } as Record<string, Record<Lang, string>>,
   stillDead: { en: 'Still dead 10 s after', zh: '10 秒后仍未复活' },
   winnersDid: { took_a_building: { en: 'then took a building', zh: '随后拆到建筑' }, took_roshan: { en: 'then took Roshan', zh: '随后打了肉山' }, pushed_and_took_nothing: { en: 'then pushed and took nothing', zh: '随后推了没拆掉' }, neither: { en: 'then took nothing', zh: '随后什么都没拿' } } as Record<string, Record<Lang, string>>,
-  tookBack: { en: 'They took back', zh: '对方反拆' },
+  // The losers of the fight took these back: the enemy when your team won it, your team when they did.
+  tookBack: { my_team: { en: 'They took back', zh: '对方反拆' }, enemy: { en: 'Your team took back', zh: '我方反拆' } } as Record<string, Record<Lang, string>>,
   roshanBy: { my_team: { en: 'Your team took Roshan', zh: '我方打掉肉山' }, enemy: { en: 'They took Roshan', zh: '对方打掉肉山' } } as Record<string, Record<Lang, string>>,
   aegisHolder: { en: 'Aegis', zh: '不朽盾' },
   aegisEnd: { used: { en: 'used', zh: '用掉' }, expired: { en: 'expired', zh: '过期' }, game_ended: { en: 'game ended', zh: '比赛结束' }, unknown: { en: 'unknown', zh: '不明' } } as Record<string, Record<Lang, string>>,
@@ -579,7 +580,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           {r.buildings_winners_took.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}
           {r.roshan_at && <span className="ag-chip">{t(T.roshanBy[r.won_by])} {r.roshan_at}</span>}
         </p>
-        {r.losers_took_back.length > 0 && <p className="ag-rec-line"><span>{t(T.tookBack)}</span>{r.losers_took_back.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}</p>}
+        {r.losers_took_back.length > 0 && <p className="ag-rec-line"><span>{t(T.tookBack[r.won_by])}</span>{r.losers_took_back.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}</p>}
       </div>
     );
   }
