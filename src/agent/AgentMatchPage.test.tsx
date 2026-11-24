@@ -493,6 +493,32 @@ describe('AgentMatchPage', () => {
     expect(within(await screen.findByRole('radiogroup')).getByRole('radio', { name: 'Don\'t say' }).getAttribute('aria-checked')).toBe('true');
   });
 
+  it('what the player\'s items served is a table by plan, with the plan they named first', async () => {
+    // The record as the server serves it (a summary keeps maps and drops lists, measured_at among them).
+    const { resolveRef } = await import('../../lib/agent/evidence.js');
+    const { gunzipSync } = await import('node:zlib');
+    const { readFileSync } = await import('node:fs');
+    // A path from the working directory: under jsdom import.meta.url is not a file URL.
+    const fixtureTrace = JSON.parse(gunzipSync(readFileSync(`${process.cwd()}/packages/review-engine/test/fixtures/trace-9100904020.json.gz`)).toString());
+    const served: any = resolveRef(fixtureTrace, 'build_plan:beastmaster:push', { hero: 'beastmaster', lang: 'zh' });
+    expect(served.record).not.toHaveProperty('measured_at');
+    const bp = { status: 'ok', ...served };
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': bp, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['build_plan:beastmaster:push'], fact: '推进装 38:58 才出。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    expect(await screen.findByText('你的思路')).toBeTruthy();
+    expect(chip('第一件 强袭胸甲 38:58')).toBeTruthy();
+    expect(chip('之前花在其他大件上 7925')).toBeTruthy();
+    expect(chip('占大件金额 39%')).toBeTruthy();
+    // The 15:00 and 25:00 columns are there although the served record has no list of marks.
+    expect(screen.getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['', '截至 15:00', '截至 25:00', '全场', '第一件']);
+    expect(screen.getByRole('row', { name: '线优转推进 0 0 5125 38:58' }).className).toBe('is-me');
+    expect(screen.getByRole('row', { name: '抓人带节奏 0 0 0 –' })).toBeTruthy();
+    expect(screen.queryByText(/gold in items|push/)).toBeNull();
+  });
+
   it('a tool\'s totals are shown in the reader\'s language, a moment as its clock', async () => {
     const totals = { ref: 'audit:beastmaster:primal_roar', kind: 'audit', names: { beastmaster: '兽王', beastmaster_primal_roar: '原始咆哮', phantom_assassin: '幻影刺客' }, record: { ref: 'audit:beastmaster:primal_roar', ref_scope: 'summary', hero: 'beastmaster', ability: 'beastmaster_primal_roar', learned_at: { t: 450.1, clock: '7:30' }, casts_total: 10, by_target: { phantom_assassin: 4 }, deaths_with_it_ready_and_not_cast_total: 3 } };
     mockFetch({
