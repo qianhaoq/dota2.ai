@@ -18,12 +18,16 @@ export interface ReviewFinding { title: string; claim: string; evidence: Evidenc
 export interface GamePlan {
   /** When each side had its chance (window_report). */
   window?: string;
+  /** The game read against the plan the player named (only when they named one). */
+  against_your_plan?: string;
   line_ups?: string; course?: string; your_part?: string; strengths?: string;
   /** What the course is mostly down to; present only together with the sentence that argues it. */
   main_reason?: 'your_play' | 'team_play' | 'enemy_play' | 'line_ups' | 'unclear'; why?: string;
   evidence: EvidenceItem[];
 }
 export interface DeepReview {
+  /** The plan the player named before the review, if they did (lib/agent/plans.js). */
+  plan?: string;
   schema: string; match_id: number; hero: string; lang: 'en' | 'zh';
   verdict: string; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
   game_plan?: GamePlan;
@@ -60,11 +64,12 @@ export const fetchAvailability = (matchId: string, signal?: AbortSignal) =>
 export const prepareMatch = (matchId: string) =>
   fetch(`/api/agent/${enc(matchId)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => json<ParseState>(r));
 
-export const fetchReview = (matchId: string, hero: string, lang: string, signal?: AbortSignal) =>
-  fetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}`, { signal }).then((r) => json<ReviewState>(r));
+/** `plan`: the plan the reader named, if any — a review made for it is its own review. */
+export const fetchReview = (matchId: string, hero: string, lang: string, signal?: AbortSignal, plan?: string | null) =>
+  fetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}${plan ? `&plan=${enc(plan)}` : ''}`, { signal }).then((r) => json<ReviewState>(r));
 
-export const startReview = (matchId: string, hero: string, lang: string) =>
-  fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero, lang }) }).then((r) => json<ReviewState>(r));
+export const startReview = (matchId: string, hero: string, lang: string, plan?: string | null) =>
+  fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}) }) }).then((r) => json<ReviewState>(r));
 
 const evidenceCache = new Map<string, Promise<EvidenceRecord>>();
 /** The tool record behind a ref. Records are pure functions of the replay, so they are cached for the session. */
@@ -107,7 +112,7 @@ export async function readChatStream(res: Response, ev: ChatEvents): Promise<voi
 }
 
 /** One chat turn about a match. */
-export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[] }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
+export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[]; plan?: string }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
   const res = await fetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
   return readChatStream(res, ev);
 }
