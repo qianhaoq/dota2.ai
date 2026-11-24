@@ -97,6 +97,11 @@ describe('the data of the patch a game was played on', () => {
     expect(isBigItemIn(patchData('7.42'), 'skypiercer', rule)).toBe(true);
     expect(isBigItemIn(patchData('7.42'), 'recipe_skypiercer', rule)).toBe(false);
     expect(isBigItemIn(patchData('7.42'), 'blink', rule)).toBe(true);
+    // Upgraded Dagons are built from a recipe with no component list: still big items, in every release, as in the live tables.
+    for (const k of ['dagon_2', 'dagon_3', 'dagon_4', 'dagon_5']) for (const r of ['7.40', '7.41c', '7.42']) expect([k, r, isBigItemIn(patchData(r), k, rule)]).toEqual([k, r, true]);
+    // Every item the live tables call big is big in 7.42's snapshot, and the other way round.
+    const live = patchData(null); const snap = patchData('7.42');
+    for (const k of Object.keys(snap.items)) expect([k, isBigItemIn(snap, k, rule)]).toEqual([k, isBigItemIn(live, k, rule)]);
     // Gold on top of a held part uses the patch's prices: Talisman of Evasion went into a 7.41 Halberd, not a 7.42 one.
     expect(goldOnTop(['talisman_of_evasion', 'heavens_halberd'], patchData('7.41f').items)).toEqual([null, 3300 - patchData('7.41f').items.talisman_of_evasion.cost]);
     expect(goldOnTop(['talisman_of_evasion', 'heavens_halberd'], patchData('7.42').items)).toEqual([null, null]);

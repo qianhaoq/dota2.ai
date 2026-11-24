@@ -139,7 +139,9 @@ function pruneItems(all) {
     const abilities = (it.abilities ?? []).filter((a) => a?.title && a?.description).map((a) => ({ type: a.type, title: a.title, description: a.description }));
     // Valve's hints and notes too: the tools read an item's whole text ("Armor reduction works on buildings." is a note).
     const hint = (Array.isArray(it.hint) ? it.hint : []).filter((h) => typeof h === 'string' && h.trim());
-    out[key] = { dname: it.dname ?? key, cost: it.cost, components: Array.isArray(it.components) && it.components.length ? it.components : null, ...(attrib.length ? { attrib } : {}), ...(abilities.length ? { abilities } : {}), ...(hint.length ? { hint } : {}), ...(typeof it.notes === 'string' && it.notes.trim() ? { notes: it.notes } : {}) };
+    out[key] = { dname: it.dname ?? key, cost: it.cost, components: Array.isArray(it.components) && it.components.length ? it.components : null, ...(attrib.length ? { attrib } : {}), ...(abilities.length ? { abilities } : {}), ...(hint.length ? { hint } : {}), ...(typeof it.notes === 'string' && it.notes.trim() ? { notes: it.notes } : {}),
+      // Built from a recipe: Dagon 2–5 are, with no component list (an upgrade of the item itself).
+      ...(it.created === true ? { created: true } : {}) };
   }
   return out;
 }
