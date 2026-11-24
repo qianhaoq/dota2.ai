@@ -273,3 +273,15 @@
 /* Which patch a review's numbers are from; a warning when it could not be told. */
 .ag-patch { margin: 8px 0 0; font-size: var(--fs-meta); color: var(--text-3); }
 .ag-patch.is-unknown { color: var(--fix); }
+
+/* The plan the player went for, asked before the review (optional). */
+.ag-planpick { border: 0; padding: 0; margin: 4px 0 22px; }
+.ag-planpick legend { padding: 0; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.ag-planpick p { margin: 0 0 10px; color: var(--text-3); font-size: var(--fs-meta); line-height: 1.6; max-width: 60ch; }
+.ag-planpick-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ag-chip-btn { background: var(--panel); border: 1px solid var(--line-2); color: var(--text-2); border-radius: 999px; padding: 6px 14px; font-size: var(--fs-meta); cursor: pointer; }
+.ag-chip-btn:hover, .ag-chip-btn:focus-visible { border-color: var(--accent); color: var(--text); }
+.ag-chip-btn.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.ag-plan-yours dt span { display: block; margin-top: 2px; color: var(--accent); letter-spacing: 0; text-transform: none; }
+.ag-plan-parts > .ag-plan-yours { padding: 10px 12px; margin: 0 -12px; background: rgba(227, 163, 70, 0.08); border-radius: 8px; }
+.ag-plan-yours dd { font-weight: 500; }

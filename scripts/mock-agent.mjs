@@ -113,6 +113,11 @@ export const MOCK_REVIEW = {
     goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], finding: 2 },
   },
 };
+/** The scripted reading against a named plan: every time and number is in window_report or tempo_report. */
+export const MOCK_AGAINST = {
+  zh: '你的打法贴合这个思路：16 波团战你到场 15 波，18:45 和 19:46 两座外塔你都打了。但窗口只开了 19:00 到 29:00，这段时间你们拆了 2 座建筑、对面拆了 3 座；幻影刺客 21:29 出了黑皇杖，就在这段领先之内。断在队伍没有把领先换成塔，不在你。',
+  en: 'Your play fit the plan: you were at 15 of the 16 fights and hit both outer towers that fell at 18:45 and 19:46. But the window ran only from 19:00 to 29:00, and in it your team took 2 buildings and the enemy 3; Phantom Assassin finished Black King Bar at 21:29, inside that lead. It broke on the team not turning the lead into towers, not on you.',
+};
 export const MOCK_ANSWER = {
   zh: '36:05 那次最不应该：你满血 2915，咆哮就绪，被先手后一个技能都没按出来。\n\n下次看到斧王靠近，先把咆哮交给离你最近的威胁。',
   en: 'The one at 36:05: you were on 2915 health with the roar ready, and never got a spell off after the initiation.\n\nNext time Axe closes in, spend the roar on the nearest threat first.',
@@ -138,7 +143,10 @@ async function complete({ system, messages, tools }) {
         call('tempo_report', { hero: 'beastmaster' }, 'g'), call('lineup_timing', {}, 'h'), call('window_report', { hero: 'beastmaster' }, 'i'),
       ] };
     }
-    return { toolCalls: [call('submit_review', MOCK_REVIEW[lang], 's')] };
+    // A review for a plan the player named reads the game against it.
+    const stated = /their plan this game was to/.test(messages[0]?.content ?? '');
+    const review = stated ? { ...MOCK_REVIEW[lang], game_plan: { ...MOCK_REVIEW[lang].game_plan, against_your_plan: MOCK_AGAINST[lang] } } : MOCK_REVIEW[lang];
+    return { toolCalls: [call('submit_review', review, 's')] };
   }
   // A question about the player's plan is answered from the tempo of the game, like the real coach is told to.
   const asked = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
