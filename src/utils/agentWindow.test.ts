@@ -68,7 +68,7 @@ describe('window_report on a real game', () => {
     for (const m of [null, { ...match, radiant_gold_adv: undefined }]) {
       const r = report('beastmaster', m);
       expect(r.windows).toBeNull();
-      expect(r.gaps[0]).toEqual({ topic: 'gold_lead_by_minute', reason: 'no_per_minute_gold_in_the_match_data' });
+      expect(r.gaps[0]).toEqual({ topic: 'gold_lead_by_minute', reason: 'no_per_minute_gold_in_the_match_data_or_the_replay' });
       expect(r).not.toHaveProperty('highest_lead');
     }
     // Net worth at the end is the scoreboard's, which is there without the curve; with no match data it is not.

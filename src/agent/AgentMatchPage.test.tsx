@@ -493,6 +493,22 @@ describe('AgentMatchPage', () => {
     expect(within(await screen.findByRole('radiogroup')).getByRole('radio', { name: 'Don\'t say' }).getAttribute('aria-checked')).toBe('true');
   });
 
+  it('a building the team took shows who on the other side was alive and near; a window shows who got richer', async () => {
+    const building = { status: 'ok', ref: 'farm:beastmaster:b2', kind: 'farm', names: { axe: '斧王' }, record: { ref: 'farm:beastmaster:b2', clock: '18:45', building: 'goodguys_tower1_mid', enemy_heroes_alive: 3, enemy_heroes_near_your_team: [] } };
+    const win = { status: 'ok', ref: 'farm:beastmaster:w2', kind: 'farm', names: { phantom_assassin: '幻影刺客', sven: '斯温' }, record: { ref: 'farm:beastmaster:w2', window: 'window:beastmaster:2', clock: '19:00–29:00', ahead: 'my_team', gained: { phantom_assassin: 7000, sven: 5000 }, gained_most: { my_team: 'sven', enemy: 'phantom_assassin' } } };
+    ui.lang = 'zh';
+    mockFetch({ 'ref=farm%3Abeastmaster%3Ab2': building, 'ref=farm%3Abeastmaster%3Aw2': win, 'ref=overview': overview, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['farm:beastmaster:b2'], fact: 'a' }, { refs: ['farm:beastmaster:w2'], fact: 'b' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    const opens = await screen.findAllByRole('button', { name: '看原始记录' });
+    fireEvent.click(opens[0]); fireEvent.click(opens[1]);
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    expect(await screen.findByText('· 中路 1 塔', { exact: false })).toBeTruthy();
+    expect(chip('对方存活 3')).toBeTruthy();
+    expect(chip('没有人')).toBeTruthy();
+    expect(screen.getByRole('row', { name: '幻影刺客 7000' }).className).toBe('is-me');
+    expect(screen.getByText('19:00–29:00')).toBeTruthy();
+  });
+
   it('what the player\'s items served is a table by plan, with the plan they named first', async () => {
     // The record as the server serves it (a summary keeps maps and drops lists, measured_at among them).
     const { resolveRef } = await import('../../lib/agent/evidence.js');
