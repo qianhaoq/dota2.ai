@@ -76,6 +76,14 @@ describe('the data of the patch a game was played on', () => {
       const pick = (x: any) => ({ id: x.id, ult: Boolean(x.ult), dmg: x.dmg ?? null, pierces: x.pierces ?? null, dispel: x.dispel ?? null });
       expect([id, got.map(pick).sort((a, b) => a.id.localeCompare(b.id))]).toEqual([id, list.map(pick).sort((a, b) => a.id.localeCompare(b.id))]);
     }
+    // Each hero's main ultimate, its names and cooldowns, as the live table has them — Invoke too, which is not in Invoker's list.
+    // A passive ultimate has no cooldown in the game files and [0] in Valve's table: the same thing.
+    const cdOf = (cd: any) => (Array.isArray(cd) && cd.some((x: number) => x > 0) ? cd : null);
+    for (const [id, u] of Object.entries(live.ultimates) as [string, any][]) {
+      const got = snap.ultimate(Number(id));
+      expect([id, got && { ...got, cd: cdOf(got.cd) }]).toEqual([id, { key: u.key, en: u.en, zh: u.zh, cd: cdOf(u.cd) }]);
+    }
+    expect(snap.ultimate(74)).toMatchObject({ key: 'invoker_invoke' });
     // The cases that showed it: Ringmaster's abilities outside the slots, and two ultimates for Dark Willow.
     expect(snap.heroAbilities(131)!.map((a) => a.id)).toEqual(expect.arrayContaining(['ringmaster_funhouse_mirror', 'ringmaster_summon_unicycle']));
     expect(snap.heroAbilities(119)!.filter((a) => a.ult).length).toBe(2);
