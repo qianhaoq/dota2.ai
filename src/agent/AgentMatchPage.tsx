@@ -6,7 +6,7 @@ import { markReviewed } from '../coach/accountInput';
 import { checkGoal, checkRules, needsReplay, replayRefs, useActiveGoal, type GoalCheck, type GoalRule, type ReplayRecords } from '../coach/goalStore';
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
-import { trackReviewViewed } from '../services/analytics';
+import { trackEvent, trackOnce, trackReviewViewed } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
@@ -256,7 +256,10 @@ export const AgentMatchPage: React.FC = () => {
     const status = e instanceof AgentApiError ? e.status : 0;
     const after = e instanceof AgentApiError ? e.retryAfterSec ?? 0 : 0;
     const here = asked.includes(selected.current);
-    if ((status === 429 || status === 503) && after > 0 && after <= MAX_AUTO_WAIT_SEC) {
+    const waits = (status === 429 || status === 503) && after > 0 && after <= MAX_AUTO_WAIT_SEC;
+    // `waits`: the page counts this one down and goes again by itself.
+    trackEvent('review_refused', { matchId, reason: status === 429 ? 'rate' : status === 503 ? 'busy' : 'unavailable', waits });
+    if (waits) {
       // The reader still wants it: keep the intent, and go again when the server said it may.
       if (here) setNotice(null);
       const next = { until: Date.now() + after * 1000, kind: status === 429 ? 'rate' as const : 'busy' as const };
@@ -286,6 +289,7 @@ export const AgentMatchPage: React.FC = () => {
   const joined = useRef<Set<string>>(new Set());
   async function go() {
     if (wait) return;
+    trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan) });
     setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
     await sendPrepare();
@@ -351,9 +355,19 @@ export const AgentMatchPage: React.FC = () => {
     if (!ready || !heroKey) return;
     want(false);
     markReviewed(matchId);
-    trackReviewViewed(matchId, { hero: heroKey, kind: 'agent' });
+    trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang });
+    // The review the reader asked for here, and waited out, is done: counted once per review, whatever was
+    // seen on this match before (a review that was already there counts as viewed, not as this).
+    if (intent) trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}`, 'review_ready', { matchId, hero: heroKey, lang });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, matchId, heroKey]);
+
+  // Someone opened this game's page: the top of the funnel, once per match per session, before anything
+  // has loaded, so one who leaves while it loads is counted too.
+  useEffect(() => {
+    if (valid) trackOnce(matchId, 'match_opened', { matchId, lang });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId]);
 
   // The player's seat on the scoreboard: what a goal needs, and what a later game is judged by.
   const seat = board && hero ? board.players.find((p) => p.hero.id === hero.hero_id) ?? null : null;

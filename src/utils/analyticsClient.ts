@@ -11,7 +11,12 @@ export type AnalyticsEventName =
   | 'followup_clicked'
   | 'fakedoor_clicked'
   | 'return_visit'
-  | 'report_shared';
+  | 'report_shared'
+  | 'match_opened'
+  | 'review_requested'
+  | 'review_refused'
+  | 'chat_asked'
+  | 'review_ready';
 
 export type AnalyticsProps = Record<string, string | number | boolean>;
 

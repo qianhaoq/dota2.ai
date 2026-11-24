@@ -15,6 +15,11 @@ describe('validateAnalyticsEvent', () => {
       ['fakedoor_clicked', { kind: 'steam_autoreview' }, { kind: 'steam_autoreview' }],
       ['return_visit', { kind: 'preset' }, {}],
       ['report_shared', { target: 'team', method: 'copy', matchId: '9091400302', who: 'x' }, { target: 'team', method: 'copy', matchId: '9091400302' }],
+      ['match_opened', { matchId: '9100904020', lang: 'zh', has_trace: false, url: '/r/x' }, { matchId: '9100904020', lang: 'zh' }],
+      ['review_ready', { matchId: '9100904020', lang: 'en', hero: 'beastmaster', own: true }, { matchId: '9100904020', lang: 'en', hero: 'beastmaster' }],
+      ['review_requested', { matchId: '9100904020', lang: 'en', hero: 'beastmaster', step: 'parse', plan: true, ip: '1.2.3.4' }, { matchId: '9100904020', lang: 'en', hero: 'beastmaster', step: 'parse', plan: true }],
+      ['review_refused', { matchId: '9100904020', reason: 'rate', waits: true }, { matchId: '9100904020', reason: 'rate', waits: true }],
+      ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
     for (const [event, props, expected] of cases) {
@@ -122,6 +127,20 @@ describe('createAnalyticsRateLimiter', () => {
     expect(limiter.tryConsume('1.1.1.1', now)).toBe(true);
     expect(limiter.tryConsume('2.2.2.2', now)).toBe(true);
     expect(limiter.tryConsume('3.3.3.3', now)).toBe(false);
+  });
+});
+
+describe('review page funnel props', () => {
+  it('a review seen on the agent page keeps its hero and language', () => {
+    const props = { matchId: '9100904020', ui: 'agent', hero: 'beastmaster', lang: 'zh' };
+    expect(sanitizeAnalyticsProps(props, 'review_viewed')).toEqual(props);
+  });
+  it('a hero is a key, never text a person typed', () => {
+    for (const hero of ['Beast Master', 'a@b.com', 'beastmaster1', 'x', '1.2.3.4', 'npc_dota_hero_axe'.toUpperCase()]) {
+      expect(sanitizeAnalyticsProps({ hero }, 'chat_asked')).toEqual({});
+    }
+    expect(sanitizeAnalyticsProps({ step: 'download', reason: 'other', plan: 'yes' }, 'review_requested')).toEqual({});
+    expect(sanitizeAnalyticsProps({ reason: 'other', waits: 1 }, 'review_refused')).toEqual({});
   });
 });
 
