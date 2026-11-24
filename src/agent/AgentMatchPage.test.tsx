@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { AgentMatchPage, journeyStep } from './AgentMatchPage';
 import { turningFight } from './ReviewDoc';
 import { stepLabel } from './ChatRail';
+import { buildingLabel } from './EvidenceCard';
 
 const ui = vi.hoisted(() => ({ lang: 'en' }));
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: ui.lang, setLang: () => {} }) }));
@@ -282,6 +283,63 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByText('Reading the whole game')).toBeTruthy();
     expect(screen.getByText('Replaying a fight 30:05–31:00')).toBeTruthy();
     expect(JSON.parse(String(calls.find((c) => c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
+  });
+
+  it('a stretch of the game and the game\'s tempo are shown as what was taken, lost and where the hero was', async () => {
+    const phase = { status: 'ok', ref: 'phase:beastmaster:3', kind: 'phase', names: { radiant_top_lane: '天辉上路', beastmaster: '兽王' }, record: {
+      ref: 'phase:beastmaster:3', from: 1200, to: 1800, clock: '20:00–30:00', buildings_team_took: 1, buildings_opponents_took: 1,
+      buildings: [{ building: 'badguys_tower1_mid', t: 1202, clock: '20:02', taken_by: 'opponents' }, { building: 'goodguys_tower2_top', t: 1505.9, clock: '25:05', taken_by: 'team', hero_damaged_it: true, heroes_who_damaged_it: ['beastmaster'] }],
+      team_hero_deaths: 10, opponents_hero_deaths: 9, hero_deaths: 2,
+      fights: [{ overview_fight: 'fight:7', clock: '21:59', team_deaths: 3, opponents_deaths: 1, lost_fewer_heroes: 'opponents', hero_was_there: true }, { overview_fight: 'fight:8', clock: '22:57', team_deaths: 0, opponents_deaths: 3, lost_fewer_heroes: 'team', hero_was_there: false }],
+      hero_alive_seconds: 504, hero_dead_seconds: 96,
+      hero_share_of_alive_time: { on_own_side_of_the_map: 0.44, around_the_river: 0.22, on_the_opponents_side: 0.34, with_no_ally_within_2200: 0.32, with_one_ally_within_2200: 0.17, with_two_or_more_allies_within_2200: 0.52, with_three_or_more_opponents_within_2200: null },
+      hero_most_time_in: [{ place: 'radiant_top_lane', share_of_alive_time: 0.32 }], hero_damage_to_buildings: 248, team_heroes_damage_to_buildings: 455,
+    } };
+    const tempo = { status: 'ok', ref: 'tempo:beastmaster', kind: 'tempo', names: { beastmaster: '兽王' }, record: {
+      ref: 'tempo:beastmaster', ref_scope: 'summary', hero: 'beastmaster', duration: { t: 2551, clock: '42:31' }, phases_total: 2, buildings_total: { team_took: 4, opponents_took: 18 },
+      first_building_taken: { by_team: '18:07', by_opponents: null },
+      buildings_team_took_by_phase: { '0:00–10:00': 0, '10:00–20:00': 3 }, buildings_opponents_took_by_phase: { '0:00–10:00': 0, '10:00–20:00': 0 }, team_hero_deaths_by_phase: { '0:00–10:00': 12, '10:00–20:00': 7 }, opponents_hero_deaths_by_phase: { '0:00–10:00': 12, '10:00–20:00': 10 },
+      fights_total: 16, fights_where: { team_lost_fewer_heroes: ['4:43', '6:08'], team_lost_fewer_heroes_and_took_a_building_within_120s: ['6:08'], opponents_lost_fewer_heroes: ['2:35', '10:39', '21:59'], opponents_lost_fewer_heroes_and_took_a_building_within_120s: ['10:39', '21:59'], hero_was_there: ['2:35'], hero_was_not_there: [], hero_presence_not_known: [] },
+      buildings_team_took_where: { hero_damaged_it: ['18:45', '19:46', '25:05'], hero_did_not_damage_it: ['18:07'], not_known: [] }, team_heroes_damage_to_buildings: { beastmaster: 540 },
+    } };
+    const cites = (ref: string) => ({ ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: [ref], fact: '赢了团没有换成塔。' }] }] });
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': phase, '/review?': { status: 'ready', review: cites('phase:beastmaster:3'), verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText('20:00–30:00')).toBeTruthy();
+    // A building is named by its lane and kind, and by whose it was: the one the team took was the other side's.
+    expect(chip('20:02 · 己方 中路 1 塔')).toBeTruthy();
+    expect(chip('25:05 · 对方 上路 2 塔')).toBeTruthy();
+    expect(chip('21:59 · 3 : 1')).toBeTruthy();
+    expect(chip('22:57 · 0 : 3不在场')).toBeTruthy();
+    expect(chip('在己方半场 44%')).toBeTruthy();
+    // A share that could not be measured is a dash, not zero.
+    expect(chip('身边三名以上敌人 –')).toBeTruthy();
+    expect(chip('天辉上路 32%')).toBeTruthy();
+    expect(chip('队伍英雄合计 455')).toBeTruthy();
+    expect(screen.queryByText(/radiant_top_lane|tower1|on own side/)).toBeNull();
+    cleanup();
+
+    mockFetch({ 'ref=overview': overview, '/evidence?': tempo, '/review?': { status: 'ready', review: cites('tempo:beastmaster'), verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText('兽王 · 42:31')).toBeTruthy();
+    expect(screen.getByRole('row', { name: '10:00–20:00 3 0 7 10' })).toBeTruthy();
+    expect(chip('己方 18:07')).toBeTruthy();
+    expect(chip('对方 –')).toBeTruthy();
+    expect(chip('之后两分钟内拆到建筑 1')).toBeTruthy();
+    expect(chip('之后两分钟内拆到建筑 2')).toBeTruthy();
+    expect(chip('1 / 16')).toBeTruthy();
+    expect(chip('3 / 4')).toBeTruthy();
+  });
+
+  it('names a tempo step and a building in the reader\'s language', () => {
+    expect(stepLabel({ tool: 'tempo_report', args: { hero: 'beastmaster' } }, 'zh')).toBe('看各阶段的推进和节奏');
+    expect(stepLabel({ tool: 'tempo_report', args: { hero: 'beastmaster' } }, 'en')).toBe('Reading who took the map, and when');
+    expect([buildingLabel('badguys_tower1_mid', 'en'), buildingLabel('goodguys_melee_rax_top', 'en'), buildingLabel('badguys_tower4', 'en'), buildingLabel('goodguys_fort', 'en')]).toEqual(['mid tier-1 tower', 'top melee barracks', 'tier-4 tower', 'Ancient']);
+    expect([buildingLabel('badguys_range_rax_bot', 'zh'), buildingLabel('badguys_tower4', 'zh'), buildingLabel('goodguys_fort', 'zh'), buildingLabel('npc_something_else', 'zh')]).toEqual(['下路远程兵营', '4 塔', '遗迹', 'npc something else']);
   });
 
   it('a tool\'s totals are shown in the reader\'s language, a moment as its clock', async () => {
