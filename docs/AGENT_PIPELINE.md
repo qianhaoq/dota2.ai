@@ -179,8 +179,8 @@ the worker.
 
 | What | Limit | Where |
 |---|---|---|
-| Parses | 3 per caller per 10 min; `AGENT_PARSE_DAILY_MAX` (default 300) a day | `lib/agent/router.js` |
-| Deep reviews | 3 per caller per 10 min; 60 an hour; the shared LLM budget | same |
+| Parses | 5 per caller per 10 min; `AGENT_PARSE_DAILY_MAX` (default 300) a day | `lib/agent/router.js` |
+| Deep reviews | 5 per caller per 10 min; 60 an hour; the shared LLM budget | same |
 | Chat | 12 turns a minute per caller; 6 tool calls a turn; the shared LLM budget | same, `lib/agent/chat.js` |
 | Download | 256 MB; extractor input 512 MB, output 1.5 GB | `replayIngest/capacity.js` |
 

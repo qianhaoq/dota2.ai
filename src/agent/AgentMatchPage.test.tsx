@@ -593,6 +593,52 @@ describe('AgentMatchPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Too many reviews');
   });
 
+  it('a refused start says how long, keeps the button off until then, and starts by itself when the wait is over', async () => {
+    let posts = 0;
+    const calls = mockFetch({
+      '/review?': { status: 'none' },
+      '/review': () => (++posts === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 2 } : { __status: 202, status: 'running', steps: [] }),
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    const button = await screen.findByRole('button', { name: '开始复盘' });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/^从这里发起的复盘太多了，0:0[12] 后自动开始。$/);
+    const again = screen.getByRole('button', { name: '开始复盘' }) as HTMLButtonElement;
+    expect(again.disabled).toBe(true);
+    // Clicking while it counts down sends nothing.
+    fireEvent.click(again);
+    expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(1);
+    await waitFor(() => expect(posts).toBe(2), { timeout: 4000 });
+    await screen.findByText('正在准备你的复盘');
+  }, 8000);
+
+  it('two quick clicks before the replay is parsed send one parse request', async () => {
+    let release: (v: unknown) => void = () => {};
+    const calls = mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => new Promise((r) => { release = r; }),
+      '/api/agent/9100904020': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const button = await screen.findByRole('button', { name: 'Review my game' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(calls.filter((c) => c.url.includes('/prepare'))).toHaveLength(1);
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 30 });
+    expect((await screen.findByRole('alert')).textContent).toMatch(/It starts on its own in 0:(29|30)\.$/);
+  });
+
+  it('a refusal too long to wait out on the page is said once, and the button stays usable', async () => {
+    mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 503, code: 'busy', retryAfterSec: 3600 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const button = await screen.findByRole('button', { name: 'Review my game' });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toBe('The coach is at capacity. Try again later.');
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('under the verdict: which patch the numbers are from and how that is known, or a warning when it is not known', async () => {
     const show = async (data_patch: any, lang: 'en' | 'zh') => {
       cleanup();

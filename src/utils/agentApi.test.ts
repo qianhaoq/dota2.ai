@@ -225,10 +225,10 @@ describe('agent API', () => {
     expect((await post(`/api/agent/${MATCH}/review`, { hero: 'axe' })).status).toBe(403);
     expect((await post(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', question: 'q' })).status).toBe(403);
     guardOk = true;
-    // Three starts per caller per ten minutes.
+    // Five starts per caller per ten minutes.
     const statuses = [];
-    for (const hero of ['axe', 'sven', 'mirana', 'undying']) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.0.9')).status);
-    expect(statuses).toEqual([202, 202, 202, 429]);
+    for (const [hero, lang] of [['axe', 'en'], ['sven', 'en'], ['mirana', 'en'], ['undying', 'en'], ['necrolyte', 'zh'], ['venomancer', 'zh']]) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang }, '10.0.0.9')).status);
+    expect(statuses).toEqual([202, 202, 202, 202, 202, 429]);
   });
 
   it('evidence: the record behind a ref, recomputed from the replay, with display names', async () => {
@@ -279,13 +279,14 @@ describe('agent API', () => {
     for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=dark_willow&lang=en`)).body; if (now.status !== 'running') break; await new Promise((r) => setTimeout(r, 20)); }
     // One investigation: two model calls (look up, submit), not four.
     expect(m.seen.length - before).toBe(2);
-    // The model budget says no three times; the caller's three review slots are all still there afterwards.
+    // The model budget says no five times; the caller's five review slots are all still there afterwards.
+    const six = [['necrolyte', 'en'], ['venomancer', 'en'], ['skywrath_mage', 'en'], ['phantom_assassin', 'en'], ['mirana', 'zh'], ['undying', 'zh']];
     budget = { ok: false, reason: 'client', retryAfterSec: 5 };
-    for (const hero of ['necrolyte', 'venomancer', 'skywrath_mage']) expect((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.1.9')).status).toBe(429);
+    for (const [hero, lang] of six.slice(0, 5)) expect((await post(`/api/agent/${MATCH}/review`, { hero, lang }, '10.0.1.9')).status).toBe(429);
     budget = { ok: true };
     const statuses = [];
-    for (const hero of ['necrolyte', 'venomancer', 'skywrath_mage', 'phantom_assassin']) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.1.9')).status);
-    expect(statuses).toEqual([202, 202, 202, 429]);
+    for (const [hero, lang] of six) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang }, '10.0.1.9')).status);
+    expect(statuses).toEqual([202, 202, 202, 202, 202, 429]);
   });
 
   it('a request that cannot be served, or is refused, reserves nothing', async () => {
