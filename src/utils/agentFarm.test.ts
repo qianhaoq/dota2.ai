@@ -60,6 +60,13 @@ describe('farm_report', () => {
     const blind = { ...trace, states: trace.states.map((s: any, i: number) => (i === pa ? { ...s, x: s.x.map(() => null) } : s)) };
     const b2 = (farmReport(blind, { hero: 'beastmaster' }, { match }) as any).buildings_your_team_took[1];
     expect(b2.enemy_heroes_near_your_team).toBeNull();
+    // Nor how many of them were alive: she may have been (review of #285).
+    expect(b2.enemy_heroes_alive).toBeNull();
+    // An ally whose position was not sampled may have stood next to an enemy: "nobody near" is not concluded either.
+    const sv = trace.heroes.findIndex((h: any) => h.key === 'sven');
+    const allyBlind = { ...trace, states: trace.states.map((s: any, i: number) => (i === sv ? { ...s, x: s.x.map(() => null) } : s)) };
+    const a2 = (farmReport(allyBlind, { hero: 'beastmaster' }, { match }) as any).buildings_your_team_took[1];
+    expect(a2).toMatchObject({ enemy_heroes_alive: 3, enemy_heroes_near_your_team: null });
     expect((farmReport(blind, { hero: 'beastmaster' }, { match }) as any).buildings_your_team_took_with_no_enemy_near).toEqual([]);
     expect(farmReport(trace, { hero: 'pudge' }, {})).toMatchObject({ error: 'unknown_hero' });
   });
@@ -75,6 +82,33 @@ describe('farm_report', () => {
     expect(ev(['farm:beastmaster:w2'], '19:00 到 29:00 你们领先时，幻影刺客多赚了 7000，是对面最多的。')).toEqual([]);
     expect(ev(['farm:beastmaster:b2'], '18:45 拆中路一塔时对面 3 人存活，没有人在你们附近。')).toEqual([]);
     expect(ev(['farm:beastmaster:b2'], '18:45 拆中路一塔时对面 5 人存活。')).toEqual([expect.objectContaining({ kind: 'moment' })]);
+  });
+});
+
+describe('farm_report when a money source does not reach the end of the game (review of #285)', () => {
+  // One hero's match-data gold stops at 10:00.
+  const short = { ...withGold, players: withGold.players.map((p: any, i: number) => (i === 0 ? { ...p, gold_t: p.gold_t.slice(0, 11), lh_t: p.lh_t.slice(0, 11) } : p)) };
+  it('a complete source is preferred to one that stops early', () => {
+    const r: any = farmReport(withNetWorth, { hero: 'beastmaster' }, { match: short });
+    expect(r.money).toBe('replay_net_worth');
+    expect(r.windows.find((w: any) => w.ahead === 'my_team').gained.phantom_assassin).toBe(7000);
+  });
+  it('with none complete, gains after its end are unknown, and no one is named as gaining most', () => {
+    const r: any = farmReport(trace, { hero: 'beastmaster' }, { match: short });
+    expect(r.money).toBe('match_data_gold_earned');
+    expect(r.gaps).toContainEqual({ topic: 'money_by_minute', reason: 'ends_at_10:00; gains after it are unknown' });
+    expect(r.stretches[0].gained.phantom_assassin).toBe(7000);
+    // 19:00–29:00 lies after the end: unknown, not zero, and nobody gained most.
+    const w = r.windows.find((x: any) => x.ahead === 'my_team');
+    expect(Object.values(w.gained)).toEqual(Array(10).fill(null));
+    expect(w.gained_most).toEqual({ my_team: null, enemy: null });
+    expect(w.gained_total).toEqual({ my_team: null, enemy: null });
+    expect(r.gained_most_over_the_game).toEqual({ my_team: null, enemy: null });
+  });
+  it('every stretch and window record says what it measured', () => {
+    const r: any = farmReport(withNetWorth, { hero: 'beastmaster' }, {});
+    for (const x of [...r.stretches, ...r.windows]) expect(x.money).toBe('replay_net_worth');
+    expect(resolveRef(withNetWorth, 'farm:beastmaster:2', { hero: 'beastmaster' })!.record.money).toBe('replay_net_worth');
   });
 });
 
