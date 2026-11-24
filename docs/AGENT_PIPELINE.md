@@ -26,6 +26,46 @@ On one machine (development, or a VM that has the extractor) no worker is
 needed: set `DOTA_EXTRACT_BIN`, `AGENT_TRACE_DIR` and `AGENT_REVIEW_DIR` and the
 site parses in process.
 
+## Jobs that outlive a deploy
+
+A parse or a deep review takes minutes. Run as a background job of the
+instance that took the click, it ends when that instance does (every deploy
+replaces it), and Cloud Run gives almost no CPU to work outside a request.
+
+With a queue configured the click only queues the job (Cloud Tasks). The queue
+calls the site back at `POST /internal/agent/run`, and the work is done inside
+that request, which is answered when the job is over:
+
+- Cloud Run lets a request that is being processed finish when traffic moves
+  to a new revision, so a deploy does not end a running review;
+- the instance keeps its CPU for as long as the request runs, also after the
+  reader closes the page;
+- a delivery that fails (the instance crashed, or was stopped: the route
+  answers 503) is made again, up to the queue's retry limit.
+
+The route trusts only Google's ID token for the site's own service account
+and URL; the service itself stays public. Without the three variables below,
+or when queueing fails, jobs run in the background as before.
+
+```bash
+gcloud services enable cloudtasks.googleapis.com
+gcloud tasks queues create agent-jobs --location "$REGION" \
+  --max-attempts 5 --min-backoff 10s --max-backoff 120s --max-concurrent-dispatches 20
+# The site queues tasks, and the queue calls back as the site's own service account.
+gcloud tasks queues add-iam-policy-binding agent-jobs --location "$REGION" \
+  --member "serviceAccount:$SITE_SA" --role roles/cloudtasks.enqueuer
+gcloud iam service-accounts add-iam-policy-binding "$SITE_SA" \
+  --member "serviceAccount:$SITE_SA" --role roles/iam.serviceAccountUser
+# A review may take 15 minutes: the request that carries it must be allowed that long.
+gcloud run services update <site-service> --region "$REGION" --timeout 1800 --min 1 \
+  --update-env-vars AGENT_TASKS_QUEUE=projects/$PROJECT/locations/$REGION/queues/agent-jobs,AGENT_RUN_URL=$SITE_URL,AGENT_RUN_SA=$SITE_SA
+```
+
+`--min 1` keeps one instance warm (no cold start for the first reader after
+a quiet spell or a deploy). The build trigger skips pushes that change only
+tests, docs and CI files (`ignoredFiles` on the Cloud Build trigger), so a
+merge that cannot change the running site does not roll a new revision.
+
 ## Deploying
 
 The extractor is built from the companion repository and its checksum is

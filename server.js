@@ -75,6 +75,7 @@ import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { createAgentRouter } from './lib/agent/router.js';
 import { createAgentService } from './lib/agent/service.js';
+import { createTaskAuth, createTaskDispatcher } from './lib/agent/tasks.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from './lib/agent/stores.js';
 import { createRemotePipeline, createTracePipeline } from './lib/agent/tracePipeline.js';
 import { createReplaySource } from './lib/agent/replaySource.js';
@@ -910,23 +911,48 @@ const agentPipeline = (() => {
   const bin = process.env.DOTA_EXTRACT_BIN || '';
   return bin && agentTraceBlobs ? createTracePipeline({ getMatchDetail: agentReplaySource, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;
 })();
+// AGENT_TASKS_QUEUE (projects/<p>/locations/<l>/queues/<q>) + AGENT_RUN_URL (this service's own https
+// origin) + AGENT_RUN_SA (the service account the queue calls back as): a started parse or review is queued
+// and runs inside the request that delivers it (lib/agent/tasks.js), so a deploy does not end it. Without
+// all three it runs in the background of the instance that started it.
+const agentTasks = (() => {
+  const queue = (process.env.AGENT_TASKS_QUEUE || '').trim();
+  const url = (process.env.AGENT_RUN_URL || '').trim().replace(/\/+$/, '');
+  const serviceAccount = (process.env.AGENT_RUN_SA || '').trim();
+  if (!queue && !url && !serviceAccount) return null;
+  if (!/^projects\/[^/]+\/locations\/[^/]+\/queues\/[^/]+$/.test(queue) || !/^https:\/\/[^/]+$/.test(url) || !serviceAccount.includes('@')) {
+    console.warn('WARNING: AGENT_TASKS_QUEUE / AGENT_RUN_URL / AGENT_RUN_SA ignored (all three are needed, well formed)');
+    return null;
+  }
+  console.log('INFO: agent parses and reviews are queued (Cloud Tasks) and run inside their own request.');
+  return { dispatch: createTaskDispatcher({ queue, url, serviceAccount }), auth: createTaskAuth({ audience: url, serviceAccount }) };
+})();
 const agentService = createAgentService({
   traces: agentTraces,
   pipeline: agentPipeline,
+  dispatch: agentTasks?.dispatch ?? null,
   complete: agentModel.ok ? openAiCompatible({ client: new OpenAI({ baseURL: agentModel.baseURL, apiKey: agentModel.apiKey }), model: agentModel.model, extraBody: agentModel.extraBody }) : null,
   model: agentModel.ok ? agentModel.model : null,
   docs: agentBlobs ? createJsonStore(agentBlobs) : (process.env.AGENT_REVIEW_DIR ? createJsonStore(createFileStore(process.env.AGENT_REVIEW_DIR)) : null),
   getMatchDetail,
   log: (msg) => console.warn(`[agent] ${msg}`),
 });
-// A deploy or scale-down stops the instance with SIGTERM and a few seconds of grace. A review running here
-// cannot finish in that time: say so in its marker, so the next instance starts it again instead of
-// reporting "running" until the marker goes stale.
+// A deploy or scale-down stops the instance with SIGTERM and ten seconds of grace. A review running here
+// cannot finish in that time: say so in its marker, so the next instance (or the queue) starts it again
+// instead of reporting "running" until the marker goes stale. Requests already here are not cut off at once:
+// the server stops taking new connections and exits when they are done, or after 8.5 s at the latest.
+let httpServer = null;
 process.once('SIGTERM', () => {
-  Promise.race([agentService.shutdown(), new Promise((r) => setTimeout(r, 5000))]).catch(() => {}).finally(() => process.exit(0));
+  const marked = Promise.race([agentService.shutdown(), new Promise((r) => setTimeout(r, 5000))]).catch(() => {});
+  const exit = () => marked.finally(() => process.exit(0));
+  setTimeout(exit, 8500).unref();
+  if (!httpServer) return void exit();
+  httpServer.close(exit);
+  httpServer.closeIdleConnections?.();
 });
 app.use(createAgentRouter({
   service: agentService,
+  runAuth: agentTasks?.auth ?? null,
   resolveClientIp,
   llm: reviewLlmLimit,
   parseDailyMax: Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : undefined,
@@ -1020,7 +1046,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, HOST, () => {
+httpServer = app.listen(PORT, HOST, () => {
   console.log(`Server is running on http://${HOST}:${PORT}`);
   console.log(`Health check available at http://${HOST}:${PORT}/health`);
 });
