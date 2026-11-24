@@ -335,6 +335,33 @@ describe('AgentMatchPage', () => {
     expect(chip('3 / 4')).toBeTruthy();
   });
 
+  it('line-up timing is a table of each hero\'s win rate by game length, with this game\'s column marked', async () => {
+    const hero = (h: string, a: number | null, b: number | null, c: number | null, lean: string | null) => ({ hero: h, games: 1000, win_rate: 0.5, win_rate_under_35_min: a, win_rate_from_35_to_45_min: b, win_rate_over_45_min: c, change_from_short_to_long_games_in_points: -8.8, wins_more_in: lean });
+    const timing = { status: 'ok', ref: 'lineup_timing', kind: 'lineup_timing', names: { sven: '斯温', beastmaster: '兽王', phantom_assassin: '幻影刺客' }, record: {
+      ref: 'lineup_timing', source: 'STRATZ (https://stratz.com)', patch: '7.41', weeks: { from: '2026-10-15', to: '2026-11-11', count: 4 }, bracket: 'la', bracket_name: '传奇–万古', bracket_from: 'the_players_medal',
+      this_game: { length: '42:31', group: 'from_35_to_45_min' },
+      my_team: { heroes: [hero('sven', 0.564, 0.524, 0.475, 'shorter_games'), hero('beastmaster', null, 0.43, 0.449, null)], mean_win_rate_of_its_heroes: { under_35_min: null, from_35_to_45_min: 0.477, over_45_min: 0.462 } },
+      enemy: { heroes: [hero('phantom_assassin', 0.444, 0.536, 0.533, 'longer_games')], mean_win_rate_of_its_heroes: { under_35_min: 0.444, from_35_to_45_min: 0.536, over_45_min: 0.533 } },
+      mean_change_from_short_to_long_games_in_points: { my_team: null, enemy: 8.9 }, longer_games_favour: null,
+    } };
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': timing, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['lineup_timing'], fact: '你方的英雄在短局里赢得更多。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText('STRATZ (https://stratz.com) · 7.41 · 2026-10-15 – 2026-11-11')).toBeTruthy();
+    expect(screen.getByRole('row', { name: '斯温 56.4% 52.4% 47.5% 短局' })).toBeTruthy();
+    // A win rate the data does not have is a dash, and so is a lean it cannot call.
+    expect(screen.getByRole('row', { name: '兽王 – 43.0% 44.9% –' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '幻影刺客 44.4% 53.6% 53.3% 长局' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '我方 · 五人平均 – 47.7% 46.2%' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '敌方 · 五人平均 44.4% 53.6% 53.3%' })).toBeTruthy();
+    // The group this game fell in is the marked column.
+    expect(screen.getByText('52.4%').className).toBe('is-now');
+    expect(screen.getByText('56.4%').className).toBe('');
+    expect(screen.getByText('每个英雄单独统计，不代表整套阵容的胜率。')).toBeTruthy();
+    expect(stepLabel({ tool: 'lineup_timing', args: {} }, 'zh')).toBe('查双方英雄在长局、短局的胜率');
+  });
+
   it('names a tempo step and a building in the reader\'s language', () => {
     expect(stepLabel({ tool: 'tempo_report', args: { hero: 'beastmaster' } }, 'zh')).toBe('看各阶段的推进和节奏');
     expect(stepLabel({ tool: 'tempo_report', args: { hero: 'beastmaster' } }, 'en')).toBe('Reading who took the map, and when');

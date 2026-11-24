@@ -201,3 +201,5 @@
 .ag-lane th, .ag-lane td { padding: 4px 10px 4px 0; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 .ag-lane thead th { color: var(--text-3); font-weight: 400; }
 .ag-lane th:first-child { text-align: left; color: var(--text); font-weight: 500; }
+.ag-lane-sum th, .ag-lane-sum td { color: var(--text-3); font-weight: 400; }
+.ag-lane td.is-now { color: var(--text); font-weight: 600; }

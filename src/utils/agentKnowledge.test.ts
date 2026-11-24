@@ -41,7 +41,7 @@ describe('knowledge tools', () => {
   });
 
   it('registers both with a required hero', () => {
-    expect(KNOWLEDGE_TOOLS.map((t) => [t.name, t.input_schema.required])).toEqual([['hero_abilities', ['hero']], ['pro_item_choices', ['hero']], ['lane_report', ['hero']]]);
+    expect(KNOWLEDGE_TOOLS.map((t) => [t.name, t.input_schema.required])).toEqual([['hero_abilities', ['hero']], ['pro_item_choices', ['hero']], ['lane_report', ['hero']], ['lineup_timing', undefined]]);
   });
 });
 

@@ -84,6 +84,13 @@ const T = {
   tempoFights: { en: 'Fights', zh: '团战' },
   tempoAway: { en: 'not there', zh: '不在场' },
   tempoBuildings: { en: 'Buildings', zh: '建筑' },
+  timingCols: { en: ['Hero', 'Under 35 min', '35–45 min', '45 min or more', 'Wins more in'], zh: ['英雄', '35 分钟内', '35–45 分钟', '45 分钟以上', '更常赢在'] },
+  timingLean: { shorter_games: { en: 'shorter games', zh: '短局' }, longer_games: { en: 'longer games', zh: '长局' }, neither: { en: 'no clear lean', zh: '无明显倾向' } } as Record<string, Record<Lang, string>>,
+  timingSides: { my_team: { en: 'Your team', zh: '我方' }, enemy: { en: 'Enemy', zh: '敌方' }, radiant: { en: 'Radiant', zh: '天辉' }, dire: { en: 'Dire', zh: '夜魇' } } as Record<string, Record<Lang, string>>,
+  timingMean: { en: 'mean of the five', zh: '五人平均' },
+  timingThis: { en: 'This game', zh: '这局' },
+  timingPublic: { en: 'public games, win rate by game length', zh: '路人局，按比赛时长的胜率' },
+  timingAlone: { en: 'Each hero on its own: not a line-up\'s win rate.', zh: '每个英雄单独统计，不代表整套阵容的胜率。' },
   building: {
     tower: { en: 'tier-{n} tower', zh: '{n} 塔' }, melee_rax: { en: 'melee barracks', zh: '近战兵营' }, range_rax: { en: 'ranged barracks', zh: '远程兵营' }, fort: { en: 'Ancient', zh: '遗迹' },
     top: { en: 'top', zh: '上路' }, mid: { en: 'mid', zh: '中路' }, bot: { en: 'bottom', zh: '下路' },
@@ -335,6 +342,39 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         <p className="ag-rec-line">{Object.entries(r.hero_share_of_alive_time as Record<string, number | null>).map(([k, v]) => <span key={k} className="ag-chip">{T.tempoShare[k] ? t(T.tempoShare[k]) : pretty(k)} <em>{pc(v)}</em></span>)}</p>
         {r.hero_most_time_in && r.hero_most_time_in.length > 0 && <p className="ag-rec-line"><span>{t(T.tempoMost)}</span>{r.hero_most_time_in.map((x: any) => <span key={x.place} className="ag-chip">{N(x.place)} <em>{pc(x.share_of_alive_time)}</em></span>)}</p>}
         <p className="ag-rec-line"><span>{t(T.tempoDamage)}</span><span className="ag-chip">{r.hero_damage_to_buildings}</span><span className="ag-chip">{t(T.tempoOfTeam)} <em>{r.team_heroes_damage_to_buildings}</em></span></p>
+      </div>
+    );
+  }
+  if (data.kind === 'lineup_timing') {
+    const pc = (v: number | null | undefined) => (v == null ? '–' : `${(v * 100).toFixed(1)}%`);
+    const groups = ['under_35_min', 'from_35_to_45_min', 'over_45_min'];
+    const sides = ['my_team', 'enemy', 'radiant', 'dire'].filter((k) => r[k]);
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head">{r.bracket_name} · {t(T.timingPublic)}{r.this_game ? <> · {t(T.timingThis)} <b>{r.this_game.length}</b></> : null}</p>
+        <p className="ag-rec-sub">{r.source} · {r.patch} · {r.weeks.from} – {r.weeks.to}</p>
+        <div className="ag-lane-scroll">
+          <table className="ag-lane">
+            <thead><tr>{T.timingCols[lang].map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
+            {sides.map((k) => (
+              <tbody key={k}>
+                {r[k].heroes.map((h: any) => (
+                  <tr key={h.hero} className={SIDE_CLASS[k === 'my_team' ? 'ally' : k === 'enemy' ? 'enemy' : ''] ?? ''}>
+                    <th scope="row">{N(h.hero)}</th>
+                    {groups.map((g) => <td key={g} className={r.this_game?.group === g ? 'is-now' : ''}>{pc(h[`win_rate_${g}`])}</td>)}
+                    <td>{h.wins_more_in && T.timingLean[h.wins_more_in] ? t(T.timingLean[h.wins_more_in]) : '–'}</td>
+                  </tr>
+                ))}
+                <tr className="ag-lane-sum">
+                  <th scope="row">{t(T.timingSides[k])} · {t(T.timingMean)}</th>
+                  {groups.map((g) => <td key={g}>{pc(r[k].mean_win_rate_of_its_heroes[g])}</td>)}
+                  <td />
+                </tr>
+              </tbody>
+            ))}
+          </table>
+        </div>
+        <p className="ag-rec-note">{t(T.timingAlone)}</p>
       </div>
     );
   }
