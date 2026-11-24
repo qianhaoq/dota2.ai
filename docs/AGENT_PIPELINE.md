@@ -85,8 +85,17 @@ verdict instead of the release.
 
 After a release: `scripts/refresh-data.mjs --all` (needs a dotaconstants
 checkout for the snapshots, see the script), then `scripts/patch-match-ids.mjs`
-(needs `STRATZ_API_TOKEN`) once STRATZ has the new games. Professional item
-shares span several patches and are not split by release.
+(needs `STRATZ_API_TOKEN`) once STRATZ has the new games.
+
+What professional players built (`pro_item_choices`, `build_check`) is counted
+per release too (`scripts/coach-pro-items-by-release.mjs`, run by `--all` after
+the snapshots; `lib/agent/proItems.js` reads it): a game is told the pro games
+of its own release, with the releases just before it in the same patch added
+when that release alone has fewer than 30 games of the hero, and never a later
+release. A patch only days old gives what it has, marked `few_games`, and the
+patch before is told apart, never mixed in. The counter items against each
+enemy hero need many games of each pairing: they are still measured over whole
+patches since the previous one, and a game older than that is told so.
 
 ### A review that was cut off continues
 
@@ -179,8 +188,8 @@ the worker.
 
 | What | Limit | Where |
 |---|---|---|
-| Parses | 3 per caller per 10 min; `AGENT_PARSE_DAILY_MAX` (default 300) a day | `lib/agent/router.js` |
-| Deep reviews | 3 per caller per 10 min; 60 an hour; the shared LLM budget | same |
+| Parses | 5 per caller per 10 min; `AGENT_PARSE_DAILY_MAX` (default 300) a day | `lib/agent/router.js` |
+| Deep reviews | 5 per caller per 10 min; 60 an hour; the shared LLM budget | same |
 | Chat | 12 turns a minute per caller; 6 tool calls a turn; the shared LLM budget | same, `lib/agent/chat.js` |
 | Download | 256 MB; extractor input 512 MB, output 1.5 GB | `replayIngest/capacity.js` |
 

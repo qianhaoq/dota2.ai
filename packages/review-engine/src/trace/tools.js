@@ -73,6 +73,11 @@ function castable(trace, h, npc) {
 }
 
 /** Hero deaths grouped into fights: [{ from, to, deaths: [[t, victimName, killerName, row]] }]. */
+/** The fights match_overview numbers ("fight:N" is the Nth): three or more hero deaths, each within FIGHT_GAP seconds of the last. */
+export function matchFights(trace) {
+  return fights(trace);
+}
+
 function fights(trace) {
   const out = [];
   for (const d of [...trace.deaths].sort((a, b) => a[0] - b[0])) {

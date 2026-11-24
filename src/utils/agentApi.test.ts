@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { createAgentRouter } from '../../lib/agent/router.js';
+import { proItemsFor } from '../../lib/agent/proItems.js';
+import { patchData } from '../../lib/agent/patchData.js';
 import { createAgentService, createFileTraceStore } from '../../lib/agent/service.js';
 import { chatSystem, parseChatBody, runChat } from '../../lib/agent/chat.js';
 
@@ -225,10 +227,10 @@ describe('agent API', () => {
     expect((await post(`/api/agent/${MATCH}/review`, { hero: 'axe' })).status).toBe(403);
     expect((await post(`/api/agent/${MATCH}/chat`, { hero: 'beastmaster', question: 'q' })).status).toBe(403);
     guardOk = true;
-    // Three starts per caller per ten minutes.
+    // Five starts per caller per ten minutes.
     const statuses = [];
-    for (const hero of ['axe', 'sven', 'mirana', 'undying']) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.0.9')).status);
-    expect(statuses).toEqual([202, 202, 202, 429]);
+    for (const [hero, lang] of [['axe', 'en'], ['sven', 'en'], ['mirana', 'en'], ['undying', 'en'], ['necrolyte', 'zh'], ['venomancer', 'zh']]) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang }, '10.0.0.9')).status);
+    expect(statuses).toEqual([202, 202, 202, 202, 202, 429]);
   });
 
   it('evidence: the record behind a ref, recomputed from the replay, with display names', async () => {
@@ -248,7 +250,10 @@ describe('agent API', () => {
     expect((await ev('timeline:1805-1860')).body.record.events.length).toBeGreaterThan(10);
     expect((await ev('item:phantom_assassin:black_king_bar')).body.record.first_held.clock).toBe('21:29');
     expect((await ev('overview')).body.record).toMatchObject({ result: 'my_team_lost', fights_total: 16 });
-    expect((await ev('pro_items:beastmaster')).body.record.mid_game_items.items[0].item).toBe('blink');
+    // The fixture game is 7.42's: the pro items are those of 7.42's own pro games.
+    const pro = (await ev('pro_items:beastmaster')).body.record.mid_game_items;
+    expect(pro.played_on_releases).toEqual(['7.42']);
+    expect(pro.items[0].item).toBe(proItemsFor(38, patchData('7.42'))!.items[0][0]);
     // A death looked at with a wider window is shown with that window, not the default one.
     const narrow = (await ev('death:beastmaster:2')).body.record; const wide = (await ev('death:beastmaster:2:w30')).body.record;
     expect([narrow.snapshots[0].dt, wide.snapshots[0].dt]).toEqual([-12, -30]);
@@ -279,13 +284,14 @@ describe('agent API', () => {
     for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=dark_willow&lang=en`)).body; if (now.status !== 'running') break; await new Promise((r) => setTimeout(r, 20)); }
     // One investigation: two model calls (look up, submit), not four.
     expect(m.seen.length - before).toBe(2);
-    // The model budget says no three times; the caller's three review slots are all still there afterwards.
+    // The model budget says no five times; the caller's five review slots are all still there afterwards.
+    const six = [['necrolyte', 'en'], ['venomancer', 'en'], ['skywrath_mage', 'en'], ['phantom_assassin', 'en'], ['mirana', 'zh'], ['undying', 'zh']];
     budget = { ok: false, reason: 'client', retryAfterSec: 5 };
-    for (const hero of ['necrolyte', 'venomancer', 'skywrath_mage']) expect((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.1.9')).status).toBe(429);
+    for (const [hero, lang] of six.slice(0, 5)) expect((await post(`/api/agent/${MATCH}/review`, { hero, lang }, '10.0.1.9')).status).toBe(429);
     budget = { ok: true };
     const statuses = [];
-    for (const hero of ['necrolyte', 'venomancer', 'skywrath_mage', 'phantom_assassin']) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang: 'en' }, '10.0.1.9')).status);
-    expect(statuses).toEqual([202, 202, 202, 429]);
+    for (const [hero, lang] of six) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang }, '10.0.1.9')).status);
+    expect(statuses).toEqual([202, 202, 202, 202, 202, 429]);
   });
 
   it('a request that cannot be served, or is refused, reserves nothing', async () => {

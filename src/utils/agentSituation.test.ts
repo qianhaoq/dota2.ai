@@ -7,6 +7,8 @@ import { resolveRef } from '../../lib/agent/evidence.js';
 import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, approachClaims, collectFacts, deepReviewSystem, planOf, reviewToolkit, verifyReview, wordingProblems } from '../../lib/agent/deepReview.js';
 import { HABITS, evaluateHabit, habitGoal } from '../../lib/coach/goals.js';
 import { ANSWERS, GAP_CLOSERS } from '../../lib/coach/knowledge.js';
+import { MIN_FEW_GAMES, proItemsFor } from '../../lib/agent/proItems.js';
+import { patchData } from '../../lib/agent/patchData.js';
 import { deathContext, itemTimeline } from '../../packages/review-engine/src/trace/index.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
@@ -88,9 +90,17 @@ describe('build_check: the build against what killed the player', () => {
   it('the hero\'s most-built professional items stand next to when the player had them, and the gap closers next to each other', () => {
     const core = r.most_built_by_pros_on_this_hero;
     expect(core.window).toBe('finished between 10:00 and 24:59');
-    expect(core.items[0]).toMatchObject({ item: 'blink', name: '闪烁匕首', player_first_held: null, built_for: ['initiation_or_gap_closer'] });
-    expect(core.items[0]).not.toHaveProperty('player_had_it_by_24_59');
+    // The fixture game was played on 7.42, days after it came out: the pro games are 7.42's own, few, and said to be.
+    const sample = proItemsFor(38, patchData('7.42'))!;
+    expect(sample.games).toBeGreaterThanOrEqual(MIN_FEW_GAMES);
+    expect(core).toMatchObject({ pro_games: sample.games, played_on_releases: ['7.42'] });
+    expect(Boolean(core.few_games)).toBe(Boolean(sample.few_games));
+    expect(core).not.toHaveProperty('from_the_patch_before_this_game');
+    expect(core.items.map((i: any) => i.item)).toEqual(sample.items.map(([k]) => k).slice(0, 3));
+    expect(core.items.find((i: any) => i.item === 'blink')).toMatchObject({ name: '闪烁匕首', player_first_held: null, built_for: ['initiation_or_gap_closer'] });
+    expect(core.items.find((i: any) => i.item === 'blink')).not.toHaveProperty('player_had_it_by_24_59');
     expect(core.items.find((i: any) => i.item === 'ultimate_scepter')).toMatchObject({ player_first_held: '16:48', player_had_it_by_24_59: true });
+    if (sample.few_games) expect(r.gaps.find((g: any) => g.topic === 'pro_mid_game_items').reason).toContain(`only_${sample.games}_pro_games`);
     // The player never held a gap closer; one enemy did.
     expect(r.gap_closers.mine).toBeNull();
     const first = (itemTimeline(trace, { hero: 'axe' }) as any).items.find((i: any) => GAP_CLOSERS.includes(i.item));
@@ -159,7 +169,7 @@ describe('power_spikes: when each side became strong', () => {
 describe('the review agent has both tools, and their records can be cited and shown', () => {
   it('registered with a required hero, offered to the model, and named in the method', () => {
     expect(SITUATION_TOOLS.map((t) => [t.name, t.input_schema.required])).toEqual([['build_check', ['hero']], ['power_spikes', ['hero']]]);
-    expect(KNOWLEDGE_TOOLS.map((t) => t.name).slice(-2)).toEqual(['build_check', 'power_spikes']);
+    expect(KNOWLEDGE_TOOLS.map((t) => t.name).slice(-4)).toEqual(['build_check', 'power_spikes', 'fight_report', 'game_state']);
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh', match });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['build_check', 'power_spikes']));
     expect(kit.runTool('build_check', { hero: 'beastmaster' })).toMatchObject({ tool: 'build_check', ref: 'build:beastmaster' });

@@ -292,6 +292,48 @@ describe('AgentMatchPage', () => {
     expect(JSON.parse(String(calls.find((c) => c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
   });
 
+  it('a fight is shown from both sides: who was in it, what was ready, and where the others were (review of #296)', async () => {
+    const names = { beastmaster: '兽王', undying: '不朽尸王', dark_willow: '邪影芳灵', sven: '斯温', skywrath_mage: '天怒法师', axe: '斧王', phantom_assassin: '幻影刺客', mirana: '米拉娜', undying_flesh_golem: '腐肉傀儡', beastmaster_primal_roar: '原始咆哮', dire_bot_lane: '夜魇下路', radiant_top_lane: '天辉上路' };
+    const fight = { status: 'ok', ref: 'fights:beastmaster:9', kind: 'fights', names, record: {
+      ref: 'fights:beastmaster:9', fight: 'fight:9', clock: '25:25', engaged_at: '25:10', lost_fewer_heroes: 'enemy', more_heroes_took_part: 'enemy', me: 'took_part', my_team_gold_lead: -5200,
+      my_team: { deaths: 2, took_part_count: 3, took_part: ['beastmaster', 'undying', 'dark_willow'], levels_of_those_in_it: 42,
+        ultimates_ready: [{ hero: 'beastmaster', ability: 'beastmaster_primal_roar' }], ultimates_not_ready: [{ hero: 'undying', ability: 'undying_flesh_golem', why: 'cooldown', seconds_left: 124 }], black_king_bars_ready: [],
+        not_in_it: [{ hero: 'sven', doing: 'none_of_these', place: 'dire_bot_lane', distance: 14151, tp_ready: null }, { hero: 'skywrath_mage', doing: 'none_of_these', place: 'radiant_top_lane', distance: 1631, tp_ready: true }] },
+      enemy: { deaths: 1, took_part_count: 2, took_part: ['axe', 'phantom_assassin'], levels_of_those_in_it: 30, ultimates_ready: [], ultimates_not_ready: [], black_king_bars_ready: ['phantom_assassin'], not_in_it: [{ hero: 'mirana', doing: 'dead', respawn_in: 32 }] },
+    } };
+    const cites = (ref: string) => ({ ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: [ref], fact: '3 打 4。' }] }] });
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': fight, '/review?': { status: 'ready', review: cites('fights:beastmaster:9'), verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText(/开打 25:10/)).toBeTruthy();
+    expect(chip('斯温 · 夜魇下路14151 码外')).toBeTruthy();
+    expect(chip('天怒法师 · 天辉上路1631 码外TP 可用')).toBeTruthy();
+    expect(chip('米拉娜 · 阵亡复活还要 32秒')).toBeTruthy();
+    expect(chip('不朽尸王 · 冷却124秒')).toBeTruthy();
+    // In the fight, and with Black King Bar ready.
+    expect(screen.getAllByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '幻影刺客')).toHaveLength(2);
+    expect(screen.getByText('-5200')).toBeTruthy();
+    expect(screen.queryByText(/dire_bot_lane|none_of_these|tp_ready/)).toBeNull();
+  });
+
+  it('a moment is shown as all ten heroes: where, doing what, and what was ready (review of #296)', async () => {
+    const h = (hero: string, extra: any) => ({ hero, alive: true, place: 'dire_bot_lane', doing: 'none_of_these', level: 16, hp_pct: 100, mana: 800, tp_ready: null, black_king_bar_ready: null, ...extra });
+    const state = { status: 'ok', ref: 'state:beastmaster:1510', kind: 'state', names: { beastmaster: '兽王', sven: '斯温', axe: '斧王', dire_bot_lane: '夜魇下路', radiant_top_lane: '天辉上路' }, record: {
+      ref: 'state:beastmaster:1510', clock: '25:10', my_team_gold_lead: -2500,
+      my_team: { alive: 2, trading_damage_with_enemy_heroes: 1, ultimates_ready: 1, heroes: [h('beastmaster', { doing: 'trading_damage_with_enemy_heroes', ultimate: { ability: 'beastmaster_primal_roar', ready: true }, tp_ready: false }), h('sven', { alive: false, doing: 'dead', respawn_in: 12, place: undefined })] },
+      enemy: { alive: 1, trading_damage_with_enemy_heroes: 1, ultimates_ready: 0, heroes: [h('axe', { place: 'radiant_top_lane', ultimate: { ability: 'axe_culling_blade', ready: false, why: 'cooldown', seconds_left: 40 }, black_king_bar_ready: true })] },
+    } };
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': state, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['state:beastmaster:1510'], fact: '25:10 斯温阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByRole('row', { name: '兽王 夜魇下路 · 在和敌方英雄交手 16 100% 是 – 否' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '斯温 阵亡 · 复活还要 12秒 16 100% – – –' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '斧王 天辉上路 16 100% 否 · 40秒 是 –' })).toBeTruthy();
+  });
+
   it('a stretch of the game and the game\'s tempo are shown as what was taken, lost and where the hero was', async () => {
     const phase = { status: 'ok', ref: 'phase:beastmaster:3', kind: 'phase', names: { radiant_top_lane: '天辉上路', beastmaster: '兽王' }, record: {
       ref: 'phase:beastmaster:3', from: 1200, to: 1800, clock: '20:00–30:00', buildings_team_took: 1, buildings_opponents_took: 1,
@@ -611,7 +653,8 @@ describe('AgentMatchPage', () => {
     expect((await events()).map((e) => e.event)).toEqual(['match_opened', 'review_requested', 'review_refused', 'review_requested', 'review_viewed', 'review_ready']);
     expect(sent[0].props).toEqual({ matchId: '8000000031', lang: 'en' });
     expect(sent[1].props).toEqual({ matchId: '8000000031', lang: 'en', hero: 'beastmaster', step: 'review', plan: false });
-    expect(sent[2].props).toEqual({ matchId: '8000000031', reason: 'rate' });
+    // Too long to wait out on the page: said once, not counted down.
+    expect(sent[2].props).toEqual({ matchId: '8000000031', reason: 'rate', waits: false });
     expect(sent[4].props).toEqual({ ui: 'agent', hero: 'beastmaster', lang: 'en', matchId: '8000000031' });
     expect((await events())[5].props).toEqual({ matchId: '8000000031', hero: 'beastmaster', lang: 'en' });
     // Opening the same game again in this session is not a second visitor.
@@ -647,6 +690,14 @@ describe('AgentMatchPage', () => {
     expect((await events()).filter((e) => e.event === 'review_viewed')).toHaveLength(1);
   }, 10000);
 
+  it('a refusal the page counts down is counted as one it waits out', async () => {
+    mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 429, code: 'rate_limited', retryAfterSec: 60 }, '/api/agent/8000000035': { trace: true, model_configured: true, heroes } });
+    page('/r/8000000035?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await screen.findByRole('alert');
+    await waitFor(async () => expect((await events()).find((e) => e.event === 'review_refused')?.props).toEqual({ matchId: '8000000035', reason: 'rate', waits: true }));
+  });
+
   it('a question to the coach is counted, and what was asked never leaves in the event', async () => {
     const calls = mockFetch({
       '/chat': () => sse([{ text: '答。' }, { done: true }]),
@@ -673,6 +724,186 @@ describe('AgentMatchPage', () => {
     page('/r/9100904020?hero=beastmaster&lang=en');
     fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
     expect((await screen.findByRole('alert')).textContent).toContain('Too many reviews');
+  });
+
+  it('a refused start says how long, keeps the button off until then, and starts by itself when the wait is over', async () => {
+    let posts = 0;
+    const calls = mockFetch({
+      '/review?': { status: 'none' },
+      '/review': () => (++posts === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 2 } : { __status: 202, status: 'running', steps: [] }),
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    const button = await screen.findByRole('button', { name: '开始复盘' });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/^从这里发起的复盘太多了，0:0[12] 后自动开始。$/);
+    const again = screen.getByRole('button', { name: '开始复盘' }) as HTMLButtonElement;
+    expect(again.disabled).toBe(true);
+    // Clicking while it counts down sends nothing.
+    fireEvent.click(again);
+    expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(1);
+    await waitFor(() => expect(posts).toBe(2), { timeout: 4000 });
+    await screen.findByText('正在准备你的复盘');
+  }, 8000);
+
+  it('a wait belongs to the review that was refused: picking another plan meanwhile frees the button, and only that review starts', async () => {
+    const bodies: any[] = [];
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return bodies.length === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 2 } : { __status: 202, status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    // The plan's own review was never refused: nothing counts down for it.
+    const free = await screen.findByRole('button', { name: 'Review my game' }) as HTMLButtonElement;
+    expect(free.disabled).toBe(false);
+    expect(screen.queryByRole('alert')).toBeNull();
+    // The refused review's wait runs out while the reader is on another plan: nothing is sent for either.
+    await new Promise((r) => { setTimeout(r, 3200); });
+    expect(bodies).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toEqual({ hero: 'beastmaster', lang: 'en', plan: 'gank' });
+  }, 10000);
+
+  it('a refused parse is picked up again when the reader comes back to it after its wait ran out elsewhere', async () => {
+    let prepares = 0;
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { if (++prepares > 20) throw new Error('prepare loop'); return prepares === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 1 } : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    // Away on another plan while the wait runs out: nothing is sent for the one left behind.
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    await new Promise((r) => { setTimeout(r, 2200); });
+    expect(prepares).toBe(1);
+    // Back to it: the reader's go still stands, and the parse is asked for again.
+    fireEvent.click(await screen.findByRole('radio', { name: 'Don\'t say' }));
+    await waitFor(() => expect(prepares).toBe(2), { timeout: 3000 });
+  }, 10000);
+
+  it('a refusal that arrives after the reader moved to another hero is that first hero\'s, not the new one\'s', async () => {
+    let prepares = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { prepares += 1; return prepares === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(prepares).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    await screen.findByRole('button', { name: 'Review my game' });
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 2 });
+    await new Promise((r) => { setTimeout(r, 300); });
+    // Axe was never refused: no countdown, and the button works while the first hero's wait runs.
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
+    // That wait running out sends nothing for Axe, who has no go.
+    await new Promise((r) => { setTimeout(r, 2500); });
+    expect(prepares).toBe(1);
+  }, 10000);
+
+  it('a go for a second hero while the first one\'s parse request is out shares its refusal, and its wait', async () => {
+    let prepares = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { prepares += 1; return prepares === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(prepares).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    // Axe's go joins the parse request already out: nothing new is sent.
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect(prepares).toBe(1);
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 1 });
+    // The refusal is Axe's too: it counts down, then asks again.
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    await waitFor(() => expect(prepares).toBe(2), { timeout: 4000 });
+  }, 10000);
+
+  it('each review keeps its own wait: a second refusal for another plan does not cut the first one short', async () => {
+    const bodies: any[] = [];
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return { __status: 429, code: 'rate_limited', retryAfterSec: bodies.length === 1 ? 30 : 20 }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(29|30)\.$/);
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(19|20)\.$/);
+    // Back to the first: still its own countdown, and nothing is sent before it ends.
+    fireEvent.click(screen.getByRole('radio', { name: 'Don\'t say' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(2[89]|30)\.$/);
+    await new Promise((r) => { setTimeout(r, 1200); });
+    expect(bodies).toHaveLength(2);
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(true);
+  }, 10000);
+
+  it('a review start refused after the reader moved to another hero keeps its wait for when they come back', async () => {
+    let posts = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': () => { posts += 1; return posts === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(posts).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    await screen.findByRole('button', { name: 'Review my game' });
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 30 });
+    await new Promise((r) => { setTimeout(r, 100); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    // Back to Beastmaster: the refusal's wait is there, and nothing is sent before it ends.
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Beastmaster/ }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own in 0:(29|30)\.$/);
+    await new Promise((r) => { setTimeout(r, 1200); });
+    expect(posts).toBe(1);
+  }, 10000);
+
+  it('two quick clicks before the replay is parsed send one parse request', async () => {
+    let release: (v: unknown) => void = () => {};
+    const calls = mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => new Promise((r) => { release = r; }),
+      '/api/agent/9100904020': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const button = await screen.findByRole('button', { name: 'Review my game' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(calls.filter((c) => c.url.includes('/prepare'))).toHaveLength(1);
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 30 });
+    expect((await screen.findByRole('alert')).textContent).toMatch(/It starts on its own in 0:(29|30)\.$/);
+  });
+
+  it('a refusal too long to wait out on the page is said once, and the button stays usable', async () => {
+    mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 503, code: 'busy', retryAfterSec: 3600 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const button = await screen.findByRole('button', { name: 'Review my game' });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toBe('The coach is at capacity. Try again later.');
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('under the verdict: which patch the numbers are from and how that is known, or a warning when it is not known', async () => {
