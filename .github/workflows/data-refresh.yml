@@ -1,0 +1,107 @@
+# Refreshes the data snapshots the coach reads, once a week, and opens (or
+# updates) one pull request with what changed: OpenDota constants and names,
+# Valve's ability data and patch notes, professional matchups and items, the
+# past-patch snapshots, and — with STRATZ_API_TOKEN — public matchups by
+# bracket, win rate by game length, and win and pick rates since the patch.
+# Logic and tests: .github/scripts/data-refresh.cjs, src/utils/dataRefresh.test.ts.
+#
+# Thursday 06:00 UTC: STRATZ counts its weeks Thursday to Wednesday, so the
+# week just ended is complete, and the patch numbers' last day has settled.
+#
+# Secrets:
+# - PIPELINE_TOKEN (the owner's fine-grained PAT, see pipeline-watchdog.yml):
+#   a pull request opened with GITHUB_TOKEN starts no checks, so it could never
+#   merge. Without it the run still refreshes and reports, and opens nothing.
+# - STRATZ_API_TOKEN: the three STRATZ steps are skipped, and said so, without it.
+# - OPENDOTA_API_KEY (optional): higher OpenDota limits.
+#
+# The pull request is the usual way in: CI, Codex review and auto-merge. When
+# the tests fail here it is opened as a draft with no-auto-merge. A new game
+# patch is reported, not taken up: src/coach/patch.ts is written by hand.
+
+name: Data Refresh
+
+on:
+  schedule:
+    - cron: '0 6 * * 4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BRANCH: chore/data-refresh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PIPELINE_TOKEN || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Run the data scripts
+        env:
+          STRATZ_API_TOKEN: ${{ secrets.STRATZ_API_TOKEN }}
+          OPENDOTA_API_KEY: ${{ secrets.OPENDOTA_API_KEY }}
+        run: node .github/scripts/data-refresh.cjs refresh "$RUNNER_TEMP/report.json"
+
+      - name: Keep only real changes
+        id: settle
+        run: |
+          node .github/scripts/data-refresh.cjs settle "$RUNNER_TEMP/report.json"
+          if [ -n "$(git status --porcelain)" ]; then echo "changed=true" >> "$GITHUB_OUTPUT"; else echo "changed=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Typecheck, build and test
+        id: gate
+        if: steps.settle.outputs.changed == 'true'
+        continue-on-error: true
+        run: npx tsc --noEmit && node --check server.js && npm run build && npm test
+
+      - name: Open or update the pull request
+        if: steps.settle.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+          TESTS: ${{ steps.gate.outcome == 'success' && 'ok' || 'failed' }}
+        run: |
+          node .github/scripts/data-refresh.cjs body "$RUNNER_TEMP/report.json" "$TESTS" > "$RUNNER_TEMP/body.md"
+          cat "$RUNNER_TEMP/body.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::No PIPELINE_TOKEN secret: the refresh is in this run's summary, and no pull request was opened (one opened with GITHUB_TOKEN would start no checks)."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add -A
+          git commit -q -m "chore(data): scheduled refresh of the coach's data snapshots ($(date -u +%Y-%m-%d))"
+          git push -q --force origin "$BRANCH"
+          title="chore(data): scheduled refresh of the coach's data snapshots ($(date -u +%Y-%m-%d))"
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          fi
+          if [ "$TESTS" != "ok" ]; then
+            gh pr edit "$pr" --add-label no-auto-merge
+            gh pr ready "$pr" --undo || true
+          else
+            gh pr edit "$pr" --remove-label no-auto-merge || true
+          fi
+
+      - name: Nothing changed
+        if: steps.settle.outputs.changed != 'true'
+        run: |
+          node .github/scripts/data-refresh.cjs body "$RUNNER_TEMP/report.json" ok >> "$GITHUB_STEP_SUMMARY"
+          echo "No data changed beyond fetch dates: no pull request."
