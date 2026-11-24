@@ -13,6 +13,8 @@
  *   enemy observers near them. Placements only, not what each side saw.
  * - After won fights (decision_points): by how many of the losers were still dead 10 s after, what the winners did —
  *   took a building, took Roshan, pushed and took nothing, or neither.
+ * - After towers fell (decision_points): for each tier 1–3 tower taken, by tier and whether a won fight came first,
+ *   what the takers did in the next 120 s and how often they lost a building of their own meanwhile.
  * - Roshans (roshan_report): each Aegis pickup, whether it was used or expired, and the buildings each side took
  *   in the 300 s after.
  *
@@ -28,7 +30,7 @@ import { gunzipSync } from 'node:zlib';
 import { fightReport } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
-import { afterWonFights } from '../lib/agent/decisionPoints.js';
+import { afterWonFights, afterTowersFell } from '../lib/agent/decisionPoints.js';
 import { linkHeroNames, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
 import { observersNear } from '../packages/review-engine/src/trace/state.js';
@@ -43,6 +45,7 @@ const moments = [];
 const roshans = [];
 let wardGames = 0;
 const afterWins = [];
+const afterTowers = [];
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
   const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(dir, f)))));
@@ -65,6 +68,7 @@ for (const f of files) {
     });
   }
   for (const x of afterWonFights(trace)) afterWins.push({ stillDead: x.still_dead.length, did: x.did });
+  for (const x of afterTowersFell(trace)) afterTowers.push({ tier: x.tier, fight: x.fight != null, did: x.did, traded: x.lostBack.length > 0 });
   for (const x of roshanReport(trace, { hero: first.key }).takes ?? []) {
     roshans.push({ aegis: x.aegis, took: x.buildings_taking_side_took_count, lost: x.buildings_other_side_took_in_the_next_300s.length, fights: x.fights_in_the_next_300s });
   }
@@ -142,6 +146,11 @@ out.wards = {
   ]),
 };
 const DID = ['took_a_building', 'took_roshan', 'pushed_and_took_nothing', 'neither'];
+const TDID = ['took_another_building', 'took_roshan', 'pushed_and_took_nothing', 'neither'];
+out.after_towers_fell = [1, 2, 3].flatMap((tier) => [true, false].map((fight) => {
+  const list = afterTowers.filter((x) => x.tier === tier && x.fight === fight);
+  return { tier, after_a_won_fight: fight, towers: list.length, ...Object.fromEntries(TDID.map((d) => [d, list.filter((x) => x.did === d).length])), takers_lost_a_building_meanwhile: list.filter((x) => x.traded).length };
+}));
 out.after_won_fights = [0, 1, 2, 3, 4].map((n) => {
   const list = afterWins.filter((x) => (n === 4 ? x.stillDead >= 4 : x.stillDead === n));
   return { losers_still_dead_10s_after: n === 4 ? '4 or more' : String(n), fights: list.length, ...Object.fromEntries(DID.map((d) => [d, list.filter((x) => x.did === d).length])) };
@@ -168,6 +177,8 @@ else {
   console.log(`\n${deaths.length} deaths; share traded (an enemy hero died within 15 s)\n`);
   for (const x of out.deaths.traded_by_allies_within_2200_at_death) console.log(`${`  allies within 2200 at death: ${x.allies}`.padEnd(46)} ${String(x.traded).padStart(4)}/${String(x.deaths).padEnd(5)} ${x.rate}%`);
   console.log(`\n${afterWins.length} won fights; what the winners did (a building from the fight's start to 120 s after it, Roshan, a push for nothing, or neither)\n`);
+  console.log(`\n${afterTowers.length} tier 1–3 towers taken; what the takers did in the next 120 s, and how often they lost one meanwhile\n`);
+  for (const x of out.after_towers_fell) console.log(`${`  tier ${x.tier}, ${x.after_a_won_fight ? 'after a won fight' : 'no won fight'}`.padEnd(46)} n=${String(x.towers).padEnd(4)} another ${x.took_another_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}  lost one ${x.takers_lost_a_building_meanwhile}`);
   for (const x of out.after_won_fights) console.log(`${`  losers still dead 10 s after: ${x.losers_still_dead_10s_after}`.padEnd(46)} n=${String(x.fights).padEnd(4)} building ${x.took_a_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}`);
   const ro = out.roshans;
   console.log(`\n${ro.takes} Roshans (Aegis pickups): used ${ro.aegis.used}, expired ${ro.aegis.expired}, game ended ${ro.aegis.game_ended}`);

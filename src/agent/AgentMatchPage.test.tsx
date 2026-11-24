@@ -416,6 +416,25 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText('对方反拆')).toBeNull();
   });
 
+  it('a tower that fell is shown with what its takers did next, what they lost meanwhile, and where the player was', async () => {
+    const point = { status: 'ok', ref: 'decision:spectre:20', kind: 'decision', names: { sven: '斯温', radiant_jungle: '天辉野区' }, record: {
+      ref: 'decision:spectre:20', kind: 'after_a_tower_fell', building: 'goodguys_tower1_top', tier: 1, clock: '18:07', taken_by: 'enemy', after_won_fight: null,
+      hitting: ['sven'], takers_did: 'neither', buildings_takers_took_next: [], pushes: [], owners_took_back: [{ building: 'badguys_tower1_mid', clock: '18:50' }],
+      me: 'elsewhere', my_place: 'radiant_jungle', distance_from_its_hitters: 5200,
+    } };
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': point, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['decision:spectre:20'], fact: '18:07 掉上路 1 塔。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText(/对方拆掉 上路 1 塔/)).toBeTruthy();
+    expect(chip('随后什么都没拿')).toBeTruthy();
+    expect(screen.getByText('同时我方拆掉')).toBeTruthy();
+    expect(chip('18:50 · 中路 1 塔')).toBeTruthy();
+    expect(chip('你在别处 · 天辉野区5200 码外')).toBeTruthy();
+    expect(screen.queryByText(/after_a_tower_fell|goodguys|radiant_jungle|elsewhere/)).toBeNull();
+  });
+
   it('a Roshan is shown as who held the Aegis, who was there, what became of it, and what each side took after', async () => {
     const take = { status: 'ok', ref: 'roshan:beastmaster:1', kind: 'roshan', names: { phantom_assassin: '幻影刺客', axe: '斧王', mirana: '米拉娜', river_top_jungle: '河道上路野区' }, record: {
       ref: 'roshan:beastmaster:1', clock: '32:18', taken_by: 'enemy', aegis_holder: 'phantom_assassin', place: 'river_top_jungle', taking_side_near: ['axe', 'mirana'], other_side_near: [], me: 'not_there',
