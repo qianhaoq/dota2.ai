@@ -19,9 +19,9 @@ const label = {
   requested: 'asked for a review',
   refused: 'were refused at least once',
   viewed: 'saw a finished review',
-  own: 'saw the review they asked for',
+  own: 'got the review they asked for',
   asked: 'asked the coach a question',
-  returned: 'came back on a later day',
+  returned: 'came back (of those who opened: on a later day than their first match page)',
 };
 console.log(`days: ${out.days[0] ?? '-'} … ${out.days.at(-1) ?? '-'}   events: ${Object.entries(out.events).map(([k, v]) => `${k}=${v}`).join(' ')}`);
 console.log(`browsers (by anonId; ${out.anonymous} events had none):`);

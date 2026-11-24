@@ -607,16 +607,44 @@ describe('AgentMatchPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
     await waitFor(async () => expect((await events()).map((e) => e.event)).toContain('review_viewed'), { timeout: 6000 });
     const sent = await events();
-    expect(sent.map((e) => e.event)).toEqual(['match_opened', 'review_requested', 'review_refused', 'review_requested', 'review_viewed']);
-    expect(sent[0].props).toEqual({ matchId: '8000000031', lang: 'en', has_trace: true });
+    await waitFor(async () => expect((await events()).map((e) => e.event)).toContain('review_ready'));
+    expect((await events()).map((e) => e.event)).toEqual(['match_opened', 'review_requested', 'review_refused', 'review_requested', 'review_viewed', 'review_ready']);
+    expect(sent[0].props).toEqual({ matchId: '8000000031', lang: 'en' });
     expect(sent[1].props).toEqual({ matchId: '8000000031', lang: 'en', hero: 'beastmaster', step: 'review', plan: false });
     expect(sent[2].props).toEqual({ matchId: '8000000031', reason: 'rate' });
-    expect(sent[4].props).toEqual({ ui: 'agent', hero: 'beastmaster', lang: 'en', own: true, matchId: '8000000031' });
+    expect(sent[4].props).toEqual({ ui: 'agent', hero: 'beastmaster', lang: 'en', matchId: '8000000031' });
+    expect((await events())[5].props).toEqual({ matchId: '8000000031', hero: 'beastmaster', lang: 'en' });
     // Opening the same game again in this session is not a second visitor.
     cleanup();
     page('/r/8000000031?hero=beastmaster&lang=en');
     await screen.findByRole('heading', { level: 1 });
     expect((await events()).filter((e) => e.event === 'match_opened')).toHaveLength(1);
+  }, 10000);
+
+  it('the page counts as opened before anything has loaded, so a reader who leaves while it loads is counted', async () => {
+    mockFetch({ '/api/agent/8000000033': () => new Promise(() => {}), '/api/coach/8000000033': () => new Promise(() => {}) });
+    page('/r/8000000033?lang=en');
+    await waitFor(async () => expect((await events()).map((e) => e.event)).toEqual(['match_opened']));
+    expect((await events())[0].props).toEqual({ matchId: '8000000033', lang: 'en' });
+  });
+
+  it('a review asked for after another one on the same game was seen is still counted as got', async () => {
+    let started: any = null;
+    mockFetch({
+      'ref=overview': overview,
+      '/review?': (url: string) => (!url.includes('plan=') || started ? { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 } : { status: 'none' }),
+      '/review': (_u: string, init?: RequestInit) => { started = JSON.parse(String(init?.body)); return { __status: 202, status: 'running', steps: [] }; },
+      '/api/agent/8000000034': { trace: true, model_configured: true, heroes },
+    });
+    render(<MemoryRouter initialEntries={['/r/8000000034?hero=beastmaster&lang=en']}><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
+    // The review already there is seen first.
+    await waitFor(async () => expect((await events()).map((e) => e.event)).toContain('review_viewed'));
+    cleanup();
+    render(<MemoryRouter initialEntries={['/r/8000000034?hero=beastmaster&lang=en&plan=push']}><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(started).toEqual({ hero: 'beastmaster', lang: 'en', plan: 'push' }));
+    await waitFor(async () => expect((await events()).map((e) => e.event)).toContain('review_ready'), { timeout: 5000 });
+    expect((await events()).filter((e) => e.event === 'review_viewed')).toHaveLength(1);
   }, 10000);
 
   it('a question to the coach is counted, and what was asked never leaves in the event', async () => {
@@ -634,8 +662,9 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/chat'))).toBe(true));
     const sent = await events();
     expect(sent.find((e) => e.event === 'chat_asked')?.props).toEqual({ matchId: '8000000032', lang: 'zh', hero: 'beastmaster' });
-    // A review that was already there when the page opened is not one this reader asked for.
-    expect(sent.find((e) => e.event === 'review_viewed')?.props).toMatchObject({ ui: 'agent', own: false });
+    // A review that was already there when the page opened is viewed, not one this reader asked for.
+    expect(sent.find((e) => e.event === 'review_viewed')?.props).toMatchObject({ ui: 'agent' });
+    expect(sent.some((e) => e.event === 'review_ready')).toBe(false);
     expect(JSON.stringify(sent)).not.toContain('为什么');
   });
 

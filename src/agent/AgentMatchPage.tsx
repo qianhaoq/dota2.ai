@@ -281,17 +281,19 @@ export const AgentMatchPage: React.FC = () => {
     if (!ready || !heroKey) return;
     want(false);
     markReviewed(matchId);
-    // `own`: the reader asked for it here (and waited), rather than opened one that was already there.
-    trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang, own: intent });
+    trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang });
+    // The review the reader asked for here, and waited out, is done: counted once per review, whatever was
+    // seen on this match before (a review that was already there counts as viewed, not as this).
+    if (intent) trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}`, 'review_ready', { matchId, hero: heroKey, lang });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, matchId, heroKey]);
 
-  // Someone opened this game's page: the top of the funnel, once per match per session.
-  const opened = avail !== null;
+  // Someone opened this game's page: the top of the funnel, once per match per session, before anything
+  // has loaded, so one who leaves while it loads is counted too.
   useEffect(() => {
-    if (opened && valid) trackOnce(matchId, 'match_opened', { matchId, lang, has_trace: hasTrace });
+    if (valid) trackOnce(matchId, 'match_opened', { matchId, lang });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened, matchId]);
+  }, [matchId]);
 
   // The player's seat on the scoreboard: what a goal needs, and what a later game is judged by.
   const seat = board && hero ? board.players.find((p) => p.hero.id === hero.hero_id) ?? null : null;

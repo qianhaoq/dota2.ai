@@ -15,7 +15,8 @@ describe('validateAnalyticsEvent', () => {
       ['fakedoor_clicked', { kind: 'steam_autoreview' }, { kind: 'steam_autoreview' }],
       ['return_visit', { kind: 'preset' }, {}],
       ['report_shared', { target: 'team', method: 'copy', matchId: '9091400302', who: 'x' }, { target: 'team', method: 'copy', matchId: '9091400302' }],
-      ['match_opened', { matchId: '9100904020', lang: 'zh', has_trace: false, url: '/r/x' }, { matchId: '9100904020', lang: 'zh', has_trace: false }],
+      ['match_opened', { matchId: '9100904020', lang: 'zh', has_trace: false, url: '/r/x' }, { matchId: '9100904020', lang: 'zh' }],
+      ['review_ready', { matchId: '9100904020', lang: 'en', hero: 'beastmaster', own: true }, { matchId: '9100904020', lang: 'en', hero: 'beastmaster' }],
       ['review_requested', { matchId: '9100904020', lang: 'en', hero: 'beastmaster', step: 'parse', plan: true, ip: '1.2.3.4' }, { matchId: '9100904020', lang: 'en', hero: 'beastmaster', step: 'parse', plan: true }],
       ['review_refused', { matchId: '9100904020', reason: 'rate', waits: true }, { matchId: '9100904020', reason: 'rate', waits: true }],
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
@@ -130,8 +131,8 @@ describe('createAnalyticsRateLimiter', () => {
 });
 
 describe('review page funnel props', () => {
-  it('a review seen on the agent page keeps its hero, language and whether the reader asked for it', () => {
-    const props = { matchId: '9100904020', ui: 'agent', hero: 'beastmaster', lang: 'zh', own: true };
+  it('a review seen on the agent page keeps its hero and language', () => {
+    const props = { matchId: '9100904020', ui: 'agent', hero: 'beastmaster', lang: 'zh' };
     expect(sanitizeAnalyticsProps(props, 'review_viewed')).toEqual(props);
   });
   it('a hero is a key, never text a person typed', () => {
