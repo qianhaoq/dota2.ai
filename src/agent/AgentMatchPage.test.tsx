@@ -614,6 +614,29 @@ describe('AgentMatchPage', () => {
     await screen.findByText('正在准备你的复盘');
   }, 8000);
 
+  it('a wait belongs to the review that was refused: picking another plan meanwhile frees the button, and only that review starts', async () => {
+    const bodies: any[] = [];
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return bodies.length === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 2 } : { __status: 202, status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    // The plan's own review was never refused: nothing counts down for it.
+    const free = await screen.findByRole('button', { name: 'Review my game' }) as HTMLButtonElement;
+    expect(free.disabled).toBe(false);
+    expect(screen.queryByRole('alert')).toBeNull();
+    // The refused review's wait runs out while the reader is on another plan: nothing is sent for either.
+    await new Promise((r) => { setTimeout(r, 3200); });
+    expect(bodies).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toEqual({ hero: 'beastmaster', lang: 'en', plan: 'gank' });
+  }, 10000);
+
   it('two quick clicks before the replay is parsed send one parse request', async () => {
     let release: (v: unknown) => void = () => {};
     const calls = mockFetch({

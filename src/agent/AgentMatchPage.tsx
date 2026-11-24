@@ -108,11 +108,14 @@ export const AgentMatchPage: React.FC = () => {
   const [avail, setAvail] = useState<Availability | null>(null);
   const [report, setReport] = useState<CoachReport | null | 'failed'>(null);
   const [state, setState] = useState<ReviewState | null>(null);
-  const [intent, setIntent] = useState(false);
+  // The selection (match|hero|lang|plan) the reader said "go" for. Kept as that key, not a flag, so the render in
+  // which the selection changes cannot carry one selection's go over to the next.
+  const [intentOf, setIntentOf] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // Refused for now with a time to come back (429/503 + retryAfterSec): the page counts down and goes again
   // by itself, rather than leave a button that only earns the reader more refusals.
-  const [wait, setWait] = useState<{ until: number; kind: 'rate' | 'busy' } | null>(null);
+  // `for`: the selection (match, hero, language, plan) it was given for; another selection does not wait on it.
+  const [waitState, setWait] = useState<{ until: number; kind: 'rate' | 'busy'; for: string } | null>(null);
   const [, setClock] = useState(0);
   // Counts finished availability requests, successful or not, so the poll below always gets its next turn.
   const [availTick, setAvailTick] = useState(0);
@@ -190,14 +193,17 @@ export const AgentMatchPage: React.FC = () => {
   };
 
   // The reader's "go" survives a reload of this tab, so a parse they started still ends in their review.
-  useEffect(() => { setIntent(heroKey ? session()?.getItem(intentKey(matchId, heroKey, lang, plan)) === '1' : false); setNotice(null); }, [matchId, heroKey, lang, plan]);
-  const want = (on: boolean) => { if (!heroKey) return; setIntent(on); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang, plan), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang, plan)); } catch { /* storage blocked */ } };
+  useEffect(() => { setIntentOf(heroKey && session()?.getItem(intentKey(matchId, heroKey, lang, plan)) === '1' ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}` : null); setNotice(null); }, [matchId, heroKey, lang, plan]);
+  const want = (on: boolean) => { if (!heroKey) return; setIntentOf(on ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}` : null); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang, plan), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang, plan)); } catch { /* storage blocked */ } };
 
   // What the reader is looking at now. An answer that was asked for under another hero or language
   // belongs to that selection and is dropped when it arrives.
   const selection = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
   const selected = useRef(selection);
   selected.current = selection;
+  const intent = intentOf === selection;
+  /** The refusal's wait, when it was for what is on screen now. */
+  const wait = waitState && waitState.for === selection ? waitState : null;
   const [reviewTick, setReviewTick] = useState(0);
   const loadReview = useCallback(async (signal?: AbortSignal) => {
     if (!heroKey) return;
@@ -248,7 +254,7 @@ export const AgentMatchPage: React.FC = () => {
     if ((status === 429 || status === 503) && after > 0 && after <= MAX_AUTO_WAIT_SEC) {
       // The reader still wants it: keep the intent, and go again when the server said it may.
       setNotice(null);
-      setWait({ until: Date.now() + after * 1000, kind: status === 429 ? 'rate' : 'busy' });
+      setWait({ until: Date.now() + after * 1000, kind: status === 429 ? 'rate' : 'busy', for: selected.current });
       return;
     }
     setNotice(t(status === 429 ? T.rate : status === 503 ? T.busy : T.unavailable));
@@ -280,24 +286,23 @@ export const AgentMatchPage: React.FC = () => {
   const goRef = useRef(go);
   goRef.current = go;
 
-  // A wait belongs to the page it was given on: another match or hero starts without it.
-  useEffect(() => { setWait(null); }, [matchId, heroKey]);
-  // Count the wait down each second; when it is over, go again if the reader still wants the review.
+  // Count the wait down each second; when it is over, go again if the reader still wants that review.
   useEffect(() => {
-    if (!wait) return undefined;
+    if (!waitState) return undefined;
     const timer = setInterval(() => {
-      if (Date.now() < wait.until) { setClock((n) => n + 1); return; }
+      if (Date.now() < waitState.until) { setClock((n) => n + 1); return; }
       clearInterval(timer);
       setWait(null);
     }, 1000);
     return () => clearInterval(timer);
-  }, [wait]);
-  const waited = useRef(wait);
+  }, [waitState]);
+  const waited = useRef(waitState);
   useEffect(() => {
     const was = waited.current;
-    waited.current = wait;
-    if (was && !wait && intent) void goRef.current();
-  }, [wait, intent]);
+    waited.current = waitState;
+    // Only for the selection that was refused: one the reader moved to in between has its own intent.
+    if (was && !waitState && was.for === selection && intent) void goRef.current();
+  }, [waitState, intent, selection]);
   const waitNotice = wait ? t(wait.kind === 'rate' ? T.rateWait : T.busyWait).replace('{t}', clockOf(Math.max(0, Math.ceil((wait.until - Date.now()) / 1000)))) : null;
 
   // A parse seen running may yet die with its instance: seeing it run re-arms the one-time restart below.
