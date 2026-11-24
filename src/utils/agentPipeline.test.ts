@@ -258,6 +258,73 @@ describe('parse jobs in the service', () => {
     await vi.waitFor(async () => expect((await b.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' }));
   });
 
+  it('a parse whose instance died is offered again after a minute and a half, not while it still reports in', async () => {
+    const blobs = new Map<string, any>();
+    const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
+    const traces = { get: async () => null };
+    const clock = { t: 1000 };
+    const reading = { run: async (_id: any, o: any) => { o.onStage('extracting'); return new Promise<any>(() => {}); } };
+    // Alive: the extractor has been on one stage for five minutes, and the job keeps saying it is running.
+    const alive: any = createAgentService({ traces, complete: null, docs, now: () => clock.t, pipeline: reading, beatMs: 5 });
+    const other: any = createAgentService({ traces, complete: null, docs, now: () => clock.t, pipeline: reading, beatMs: 5 });
+    expect(await alive.prepare(ID)).toMatchObject({ status: 'running' });
+    clock.t += 5 * 60_000;
+    await vi.waitFor(() => expect(blobs.get(`${ID}.parse.json`).at).toBe(clock.t));
+    expect((await other.availability(ID)).parse).toEqual({ status: 'running', stage: 'extracting' });
+    expect((await alive.availability(ID)).parse).toEqual({ status: 'running', stage: 'extracting' });
+
+    // Dead: nothing reports in any more. Still "running" a minute later, startable after 90 s.
+    const blobs2 = new Map<string, any>();
+    const docs2 = { get: async (k: string) => blobs2.get(k) ?? null, put: async (k: string, v: any) => { blobs2.set(k, v); } };
+    const dead: any = createAgentService({ traces, complete: null, docs: docs2, now: () => clock.t, pipeline: reading, beatMs: 2 ** 30 });
+    const ran = vi.fn(() => new Promise<any>(() => {}));
+    const next: any = createAgentService({ traces, complete: null, docs: docs2, now: () => clock.t, pipeline: { run: ran }, beatMs: 2 ** 30 });
+    await dead.prepare(ID); await settle();
+    clock.t += 60_000;
+    expect((await next.availability(ID)).parse).toEqual({ status: 'running', stage: 'extracting' });
+    expect(await next.prepare(ID)).toMatchObject({ status: 'running' });
+    expect(ran).not.toHaveBeenCalled();
+    clock.t += 31_000;
+    expect((await next.availability(ID)).parse).toEqual({ status: 'none' });
+    // The one doing it does not take a late timer for its own death: it is running until it ends.
+    expect((await dead.availability(ID)).parse).toEqual({ status: 'running', stage: 'extracting' });
+    expect(await next.prepare(ID)).toMatchObject({ status: 'running' });
+    expect(ran).toHaveBeenCalledTimes(1);
+  });
+
+  it('an instance told to stop hands its running parse back at once; a queued one stays running for its next delivery', async () => {
+    const blobs = new Map<string, any>();
+    const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
+    const traces = { get: async () => null };
+    let stage: any;
+    const reading = { run: async (_id: any, o: any) => { stage = o.onStage; o.onStage('downloading'); return new Promise<any>(() => {}); } };
+    const a: any = createAgentService({ traces, complete: null, docs, pipeline: reading, beatMs: 5 });
+    const b: any = createAgentService({ traces, complete: null, docs, pipeline: reading });
+    await a.prepare(ID); await settle();
+    expect((await b.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' });
+    await a.shutdown();
+    expect((await b.availability(ID)).parse).toEqual({ status: 'none' });
+    // A stage reported after the stop, and the beats, do not take it again.
+    stage('extracting');
+    await new Promise((r) => setTimeout(r, 30));
+    expect((await b.availability(ID)).parse).toEqual({ status: 'none' });
+
+    // From the queue: the delivery answers "interrupted" (so it is made again) and the marker stays "running".
+    const blobs2 = new Map<string, any>();
+    const docs2 = { get: async (k: string) => blobs2.get(k) ?? null, put: async (k: string, v: any) => { blobs2.set(k, v); } };
+    const q: any = createAgentService({ traces, complete: null, docs: docs2, pipeline: reading, beatMs: 5 });
+    const delivery = q.run({ kind: 'parse', matchId: String(ID) });
+    await vi.waitFor(() => expect(blobs2.get(`${ID}.parse.json`)).toMatchObject({ state: 'running', stage: 'downloading' }));
+    // Another instance gets the same task while this one is reporting in: it does not parse beside it.
+    const ran = vi.fn(() => new Promise<any>(() => {}));
+    const second: any = createAgentService({ traces, complete: null, docs: docs2, pipeline: { run: ran } });
+    expect(await second.run({ kind: 'parse', matchId: String(ID) })).toEqual({ status: 'busy' });
+    expect(ran).not.toHaveBeenCalled();
+    await q.shutdown();
+    expect(await delivery).toEqual({ status: 'interrupted' });
+    expect(blobs2.get(`${ID}.parse.json`)).toMatchObject({ state: 'running', stage: 'downloading' });
+  });
+
   it('a stored review is shown without the record handles written into its text; its refs stay', async () => {
     const { DEEP_REVIEW_PROMPT_VERSION } = await import('../../lib/agent/deepReview.js');
     const kept = { review: { schema: 'dota2.ai/deep-review@1', verdict: '经济从 -4972 掉到 -7895（overview、fight:3、fight:4）。', mainline: ['一起倒下（4 换 3，timeline:2194-2233），比分 3:1'], findings: [{ title: 't', claim: 'c', evidence: [{ refs: ['fight:3', 'timeline:2194-2233'], clock: '20:20', fact: '死 3 个 (fight:3)' }] }] }, model: 'm', tool_calls: 4 };
