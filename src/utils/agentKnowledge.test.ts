@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { heroAbilities, KNOWLEDGE_TOOLS, laneReport, proItemChoices } from '../../lib/agent/knowledgeTools.js';
+import { proItemsFor } from '../../lib/agent/proItems.js';
+import { patchData } from '../../lib/agent/patchData.js';
 import { goalFromReview } from '../../lib/agent/goal.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { verifyReview } from '../../lib/agent/deepReview.js';
@@ -26,9 +28,13 @@ describe('knowledge tools', () => {
   it('pro_item_choices: what pros build, next to when the player held it', () => {
     const r: any = proItemChoices(trace, { hero: 'beastmaster' }, { lang: 'zh' });
     const item = (k: string) => r.mid_game_items.items.find((i: any) => i.item === k);
-    expect(r.mid_game_items.pro_games).toBeGreaterThan(100);
+    // The game was played on 7.42: pro games of 7.42 only, and the patch before told apart.
+    const sample = proItemsFor(38, patchData('7.42'))!;
+    expect(r.mid_game_items).toMatchObject({ pro_games: sample.games, played_on_releases: ['7.42'] });
+    expect(r.mid_game_items.items.map((i: any) => [i.item, i.share_of_pro_games])).toEqual(sample.items.slice(0, 5).map(([k, n]) => [k, Math.round((n / sample.games) * 100) / 100]));
+    if (sample.few_games) expect(r.mid_game_items_in_the_patch_before.played_on_releases.at(-1)).toBe('7.41f');
+    else expect(r).not.toHaveProperty('mid_game_items_in_the_patch_before');
     expect(item('blink')).toMatchObject({ name: '闪烁匕首', player_first_held: null });
-    expect(item('blink').share_of_pro_games).toBeGreaterThan(item('black_king_bar').share_of_pro_games);
     expect(item('ultimate_scepter').player_first_held).toBe('16:48');
     // Only this match's enemies, each with its sample size.
     const enemies = new Set(trace.heroes.filter((h: any) => h.team === 2).map((h: any) => h.key));
