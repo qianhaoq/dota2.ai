@@ -215,7 +215,7 @@
 @media (max-width: 520px) { .ag-plan-parts > div { grid-template-columns: 1fr; gap: 2px; } }
 
 /* scoreboard: result, gold by minute, both line-ups with items */
-.ag-board { margin: 8px 0 36px; }
+.ag-board { margin: 8px 0 36px; container-type: inline-size; container-name: board; }
 .ag-board h2 { font-size: var(--fs-meta); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); font-weight: 500; margin: 0 0 10px; }
 .ag-board-head .is-radiant, .ag-gold-end .is-radiant, .ag-gold-axis .is-radiant { color: var(--radiant); }
 .ag-board-head .is-dire, .ag-gold-end .is-dire, .ag-gold-axis .is-dire { color: var(--dire); }
@@ -258,8 +258,10 @@
 .ag-items { display: flex; flex-wrap: wrap; gap: 3px; }
 .ag-items.is-empty { color: var(--text-3); }
 .ag-item { width: 28px; height: 21px; border-radius: 3px; object-fit: cover; background: var(--panel-2); }
+.ag-gold-none { margin: 0 0 14px; font-size: var(--fs-meta); color: var(--text-3); }
 .ag-item.is-text { width: auto; height: auto; padding: 1px 5px; font-size: 11px; }
-@media (max-width: 760px) {
+/* By the board's own width, not the window's: beside the chat column the board is narrow on a wide screen too. */
+@container board (max-width: 660px) {
   .ag-cols { display: none; }
   .ag-side li { grid-template-columns: 1fr auto auto; }
   .ag-row-lh, .ag-row-gpm, .ag-row-dmg { display: none; }

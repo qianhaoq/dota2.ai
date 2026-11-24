@@ -17,6 +17,7 @@ const T = {
   goldUp: { en: 'Radiant ahead', zh: '天辉领先' },
   goldDown: { en: 'Dire ahead', zh: '夜魇领先' },
   goldEnd: { en: 'at the end', zh: '结束时' },
+  goldNone: { en: 'No minute-by-minute gold for this game: it comes with OpenDota\'s parse of the match, which this game does not have yet.', zh: '这局还没有每分钟经济：它来自 OpenDota 对这场比赛的解析，这局目前还没有。' },
   hero: { en: 'Hero', zh: '英雄' },
   level: { en: 'Lvl', zh: '等级' },
   kda: { en: 'K / D / A', zh: '杀 / 死 / 助' },
@@ -143,7 +144,7 @@ export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; l
           {m.mode?.[lang] && <span>{m.mode[lang]}</span>}
         </p>
       )}
-      {adv.length > 2 && <GoldCurve adv={adv} lang={lang} />}
+      {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}
       {sides.map((radiant) => {
         const team = players.filter((p) => p.radiant === radiant);
         if (!team.length) return null;

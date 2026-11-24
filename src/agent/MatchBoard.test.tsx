@@ -63,6 +63,15 @@ describe('MatchBoard', () => {
     expect(board.querySelector('.ag-side')!.classList.contains('is-radiant')).toBe(true);
   });
 
+  it('without OpenDota\'s gold record the board says so instead of drawing nothing', () => {
+    render(<MatchBoard report={{ ...report, timeline: null } as CoachReport} hero="ursa" lang="en" />);
+    const board = screen.getByRole('region', { name: 'Scoreboard' });
+    expect(board.querySelector('.ag-gold')).toBeNull();
+    expect(board.textContent).toContain('No minute-by-minute gold for this game');
+    // The rest is there: final net worth, items.
+    expect(board.textContent).toContain('33.9k');
+  });
+
   it('a scoreboard with little in it still shows who played, and no made-up numbers', () => {
     const bare = { match: { patch: '7.42' }, players: [{ slot: 0, radiant: true, kda: [4, 12, 14], hero: { id: 2, en: 'Axe', zh: '斧王', slug: 'axe', img: null } }] } as unknown as CoachReport;
     render(<MatchBoard report={bare} lang="en" />);
