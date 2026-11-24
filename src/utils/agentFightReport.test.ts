@@ -7,7 +7,7 @@ import { gunzipSync } from 'node:zlib';
 import { fightReport, gameState, FIGHT_TOOLS } from '../../lib/agent/fightReport.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
-import { reviewToolkit, deepReviewSystem, DEEP_REVIEW_PROMPT_VERSION } from '../../lib/agent/deepReview.js';
+import { reviewToolkit, deepReviewSystem, verifyReview, DEEP_REVIEW_PROMPT_VERSION } from '../../lib/agent/deepReview.js';
 import { chatSystem } from '../../lib/agent/chat.js';
 import { heroStateAt, matchOverview } from '../../packages/review-engine/src/trace/index.js';
 
@@ -76,6 +76,25 @@ describe('fight_report on a real game', () => {
     expect(r.lost_fights_with_an_ally_alive_tp_ready_not_in_it).toContainEqual({ fight: 'fight:9', clock: '25:25', hero: 'skywrath_mage', place: 'radiant_top_lane', distance: 1631 });
   });
 
+  it('fight 1 (2:35) is the two-on-two at the deaths, not the exchanges elsewhere on the map at the same time (review of #296)', () => {
+    const f = r.fights[0];
+    expect(f).toMatchObject({ fight: 'fight:1', clock: '2:35', engaged_at: '2:23' });
+    expect(f.my_team.took_part).toEqual(['beastmaster', 'undying']);
+    expect(f.enemy.took_part).toEqual(['phantom_assassin', 'venomancer']);
+    // Skywrath was trading damage with Necrophos elsewhere: not in this fight, and said to be busy.
+    expect(f.my_team.not_in_it).toContainEqual(expect.objectContaining({ hero: 'skywrath_mage', doing: 'trading_damage_with_enemy_heroes' }));
+  });
+
+  it('a claim about one fight cannot be carried by the summary ref; it needs that fight\'s own (review of #296)', () => {
+    const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'en' });
+    const record = kit.runTool('fight_report', { hero: 'beastmaster' });
+    expect(record.ref_scope).toBe('summary');
+    const ev = (refs: string[], fact: string) => verifyReview({ verdict: 'v', mainline: [], findings: [], game_plan: { course: 'c', evidence: [{ refs, fact }] } }, [record]).problems.filter((p: any) => p.where === 'plan_evidence');
+    expect(ev(['fights:beastmaster'], 'At 25:25, the carry was 14151 units away.')).not.toEqual([]);
+    expect(ev(['fights:beastmaster:9'], 'At 25:25, the carry was 14151 units away.')).toEqual([]);
+    expect(ev(['fights:beastmaster'], `${r.fights_total} fights in the game.`)).toEqual([]);
+  });
+
   it('the same fight read from the other side is the mirror', () => {
     const other: any = fightReport(trace, { hero: 'axe' });
     r.fights.forEach((f: any, i: number) => {
@@ -114,6 +133,29 @@ describe('who took part is measured, not guessed from distance', () => {
     expect(f.enemy.took_part).toEqual(['pudge', 'zuus']);
     expect(f.engaged_at).toBe('1:35');
     expect(f.lost_fewer_heroes).toBe('enemy');
+  });
+
+  it('a hero damaged in the same seconds far from the fight is not in it, nor is whoever traded with them', () => {
+    const t: any = synth({
+      heroes,
+      pos: { axe: [0, 0], lina: [100, 0], pudge: [0, 100], zuus: [100, 100], sven: [-6000, -6000], lion: [-6000, -5900] },
+      damage: [[95, 'axe', 'pudge'], [97, 'zuus', 'lina'], [96, 'sven', 'lion'], [97, 'lion', 'sven']],
+      deaths: [[100, 'axe'], [104, 'lina'], [108, 'pudge']],
+      dead: { axe: [100, 140], lina: [104, 150], pudge: [108, 160] },
+    });
+    const f = (fightReport(t, { hero: 'axe' }) as any).fights[0];
+    expect(f.my_team.took_part).toEqual(['axe', 'lina']);
+    expect(f.enemy.took_part).toEqual(['pudge', 'zuus']);
+    expect(f.enemy.not_in_it).toEqual([expect.objectContaining({ hero: 'lion', doing: 'trading_damage_with_enemy_heroes' })]);
+  });
+
+  it('with Boots of Travel the teleport is the scroll: its cooldown decides (review of #296)', () => {
+    const held = { held: [[0, 200]] };
+    const at60 = (items: any) => (heroStateAt(synth({ heroes, items: { axe: items } }), 0, 60) as any).tp_ready;
+    expect(at60({ item_tpscroll: { ...held, cd: [[40, 120, 80]] }, item_travel_boots: { ...held, cd: [] } })).toBe(false);
+    expect(at60({ item_tpscroll: { ...held, cd: [] }, item_travel_boots: { ...held, cd: [] } })).toBe(true);
+    // No scroll held: the boots' own cooldown.
+    expect(at60({ item_travel_boots: { ...held, cd: [[50, 100, 50]] } })).toBe(false);
   });
 
   it('a dead hero has no place or distance, only when they come back; a hero with no TP is null, not "not ready"', () => {

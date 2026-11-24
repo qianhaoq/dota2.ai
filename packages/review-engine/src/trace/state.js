@@ -24,6 +24,8 @@ import { abilityLevel, cooldownLeft, dist, heldAt, heroOfName, manaCost, region,
 export const STATE_NEAR = 3;
 /** Seconds before a fight's first death that its hero damage is looked for. */
 export const ENGAGE_LEAD = 15;
+/** A damage exchange belongs to a fight only with both heroes this close to where one of its heroes died. */
+export const ENGAGE_RADIUS = 3000;
 const TP_ITEMS = ['item_tpscroll', 'item_travel_boots', 'item_travel_boots_2'];
 const BUILDING = /_(tower\d|fort|melee_rax|range_rax)/;
 const teamOfBuilding = (name) => (/goodguys/.test(name) ? 2 : /badguys/.test(name) ? 3 : null);
@@ -94,7 +96,10 @@ export function heroStateAt(trace, h, t, o = {}) {
   const own = hero.team === 2 ? 'radiant_base' : 'dire_base';
   const doing = !s.alive ? 'dead' : trading ? 'trading_damage_with_enemy_heroes' : hitting ? 'hitting_enemy_buildings' : place === own ? 'in_own_base' : 'none_of_these';
   const items = trace.items?.[h] ?? {};
-  const tp = TP_ITEMS.filter((k) => heldAt(items[k], t));
+  // Boots of Travel upgrade the Town Portal Scroll (Valve's item text): with the scroll held, its cooldown is the
+  // teleport's. The boots' own cooldown is read only when no scroll is held.
+  const scroll = heldAt(items.item_tpscroll, t);
+  const tp = scroll ? ['item_tpscroll'] : TP_ITEMS.filter((k) => heldAt(items[k], t));
   const bkb = items.item_black_king_bar && heldAt(items.item_black_king_bar, t) ? (cooldownLeft(items.item_black_king_bar, t) === 0) : null;
   const ult = o.ultimate ? abilityReady(trace.abilities?.[h]?.[o.ultimate], s.mana, t, { passive: o.passiveUltimate }) : null;
   return {
@@ -116,19 +121,31 @@ export function heroStateAt(trace, h, t, o = {}) {
 }
 
 /**
- * Who took part in a fight (a match_overview fight: { from, to, deaths }): every hero that dealt damage to an
- * enemy hero, or took it, from ENGAGE_LEAD seconds before its first death to its last, plus the heroes that died
- * in it. `engaged_at` is the second of the first such damage. The place is where the dead were, a second before.
+ * Who took part in a fight (a match_overview fight: { from, to, deaths }). From ENGAGE_LEAD seconds before its
+ * first death to its last, the heroes that died in it, and every hero joined to them by damage between enemy
+ * heroes — dealt to or taken from one already in it, directly or through others — with both heroes of that
+ * exchange within ENGAGE_RADIUS of where one of the fight's heroes died. Damage traded elsewhere on the map at
+ * the same time is another encounter, not this fight. `engaged_at` is the second of the first exchange in it;
+ * `at` the middle of where the dead were, a second before.
  */
 export function fightParticipation(trace, fight) {
   const ix = index(trace);
-  const took = new Set(); let engagedAt = null;
-  for (let sec = Math.floor(fight.from - ENGAGE_LEAD); sec <= Math.ceil(fight.to); sec += 1) {
-    for (const [a, b] of ix.heroes.get(sec) ?? []) { took.add(a); took.add(b); if (engagedAt == null) engagedAt = sec; }
-  }
   const victims = fight.deaths.map((d) => heroOfName(trace, d[1])).filter((v) => v >= 0);
-  for (const v of victims) took.add(v);
-  const pts = fight.deaths.map((d) => { const v = heroOfName(trace, d[1]); return v >= 0 ? stateAt(trace, v, d[0] - 1) : null; }).filter(Boolean);
-  const at = pts.length ? { x: Math.round(pts.reduce((n, p) => n + p.x, 0) / pts.length), y: Math.round(pts.reduce((n, p) => n + p.y, 0) / pts.length) } : null;
+  const spots = fight.deaths.map((d) => { const v = heroOfName(trace, d[1]); return v >= 0 ? stateAt(trace, v, d[0] - 1) : null; }).filter(Boolean);
+  const near = (h, sec) => { const s = stateAt(trace, h, sec); return !!s && spots.some((p) => dist(s, p) <= ENGAGE_RADIUS); };
+  const edges = [];
+  for (let sec = Math.floor(fight.from - ENGAGE_LEAD); sec <= Math.ceil(fight.to); sec += 1) {
+    for (const [a, b] of ix.heroes.get(sec) ?? []) if (near(a, sec) && near(b, sec)) edges.push([sec, a, b]);
+  }
+  const took = new Set(victims); let engagedAt = null;
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const [sec, a, b] of edges) {
+      if (!took.has(a) && !took.has(b)) continue;
+      if (engagedAt == null || sec < engagedAt) engagedAt = sec;
+      for (const x of [a, b]) if (!took.has(x)) { took.add(x); grew = true; }
+    }
+  }
+  const at = spots.length ? { x: Math.round(spots.reduce((n, p) => n + p.x, 0) / spots.length), y: Math.round(spots.reduce((n, p) => n + p.y, 0) / spots.length) } : null;
   return { took_part: took, engaged_at: engagedAt ?? Math.floor(fight.from), at, victims };
 }
