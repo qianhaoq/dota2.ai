@@ -115,7 +115,7 @@ describe('siege_report on a real game', () => {
 
   it('the mid tier-1 at 20:02: Phantom Assassin alone, none of Dire near, every Dire hero 7000 or more away', () => {
     const p = r.pushes.find((x: any) => x.building === 'badguys_tower1_mid' && x.took_it);
-    expect(p).toMatchObject({ clock: '19:59', fell_at: '20:02', pushed_by: 'enemy', hitting: ['phantom_assassin'], owners_near: [], me: 'neither' });
+    expect(p).toMatchObject({ clock: '19:59', fell_at: '20:02', pushed_by: 'enemy', hitting: ['phantom_assassin'], owners_near: [], me: 'not_near' });
     expect(p.owners_not_near).toHaveLength(5);
     expect(Math.min(...p.owners_not_near.map((x: any) => x.distance))).toBeGreaterThan(7000);
   });
@@ -124,6 +124,15 @@ describe('siege_report on a real game', () => {
     const p = r.pushes[17];
     expect(p).toMatchObject({ ref: 'sieges:beastmaster:18', building: 'badguys_tower4', clock: '40:26', hitting: ['phantom_assassin', 'mirana', 'venomancer', 'necrolyte'] });
     expect([...p.owners_near].sort()).toEqual(['beastmaster', 'dark_willow', 'skywrath_mage', 'sven', 'undying']);
+  });
+
+  it('a player on the pushing side who did not hit is "not_hitting", not absent: Necrophos 114 from the hitter at 35:49 (review of #302)', () => {
+    const n: any = siegeReport(trace, { hero: 'necrolyte' });
+    const p = n.pushes[10];
+    expect(p).toMatchObject({ ref: 'sieges:necrolyte:11', clock: '35:49', pushed_by: 'my_team', me: 'not_hitting' });
+    // Where he was is in his row: close by, and fighting.
+    expect(p.pushing_side_not_hitting.find((x: any) => x.hero === 'necrolyte')).toMatchObject({ doing: 'trading_damage_with_enemy_heroes' });
+    expect(n.pushes.every((x: any) => (x.pushed_by === 'my_team' ? ['hitting', 'not_hitting'] : ['near', 'not_near']).includes(x.me))).toBe(true);
   });
 
   it('each push states its counts, and who was dead when it began even if they came near later (review of #302)', () => {

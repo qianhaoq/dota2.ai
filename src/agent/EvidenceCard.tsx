@@ -107,7 +107,7 @@ const T = {
   tookIt: { en: 'fell', zh: '被拆' }, stood: { en: 'stood', zh: '没拆掉' },
   hitting: { en: 'Hitting it', zh: '打建筑' }, ownersNear: { en: 'Owners near', zh: '守方在附近' },
   pushOthers: { en: 'Rest of the pushing side', zh: '推塔方其余' }, ownersAway: { en: 'Owners not near', zh: '守方不在附近' },
-  meAt: { hitting: { en: 'you hit it', zh: '你在打' }, near: { en: 'you were near', zh: '你在附近' }, neither: { en: 'you were elsewhere', zh: '你不在' } } as Record<string, Record<Lang, string>>,
+  meAt: { hitting: { en: 'you hit it', zh: '你在打' }, near: { en: 'you were near', zh: '你在附近' }, not_hitting: { en: 'you did not hit it', zh: '你没打塔' }, not_near: { en: 'you were not near', zh: '你不在附近' } } as Record<string, Record<Lang, string>>,
   stateCols: { en: ['Hero', 'Where / doing', 'Lv', 'HP', 'Ultimate', 'BKB', 'TP'], zh: ['英雄', '位置 / 在做', '等级', '血量', '大招', 'BKB', 'TP'] },
   tempoLost: { en: 'Fights with more heroes lost', zh: '多死人的团战' },
   tempoThen: { en: 'a building within 2 min after', zh: '之后两分钟内拆到建筑' },
