@@ -125,6 +125,11 @@ describe('fight_report on a real game', () => {
     expect(resolveRef(trace, 'state:beastmaster:1510', { hero: 'beastmaster' })?.record.clock).toBe('25:10');
     expect(resolveRef(trace, 'fights:beastmaster:17', { hero: 'beastmaster' })).toBeNull();
     expect(resolveRef(trace, 'state:beastmaster:99999', { hero: 'beastmaster' })).toBeNull();
+    // A second before the horn is a game time like any other (review of #296).
+    const early: any = { ...synth({ heroes: [['axe', 2], ['pudge', 3]] }), t0: -90 };
+    const pre: any = gameState(early, { hero: 'axe', at: -30 });
+    expect(pre.ref).toBe('state:axe:-30');
+    expect(resolveRef(early, pre.ref, { hero: 'axe' })?.record).toMatchObject({ ref: 'state:axe:-30', clock: pre.clock });
   });
 });
 
