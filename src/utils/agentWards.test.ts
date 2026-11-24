@@ -6,7 +6,7 @@ import { gunzipSync } from 'node:zlib';
 import { createTraceBuilder, runTraceTool, observersNear, boughtBackAfter, WARD_NEAR } from '../../packages/review-engine/src/trace/index.js';
 import { buildTraceFromExtract } from '../../lib/agent/traceBuild.js';
 import { fightReport, gapsOf } from '../../lib/agent/fightReport.js';
-import { deepReviewSystem } from '../../lib/agent/deepReview.js';
+import { deepReviewSystem, verifyReview } from '../../lib/agent/deepReview.js';
 import { chatSystem } from '../../lib/agent/chat.js';
 
 /** A real ranked game (9100904020), its trace built before wards and buybacks were read. */
@@ -101,6 +101,14 @@ describe('what the tools say with them, and without', () => {
     const gaps = gapsOf(t);
     expect(gaps.map((g: any) => g.topic)).not.toContain('buyback');
     expect(gaps.find((g: any) => g.topic === 'vision')?.reason).toMatch(/ward placements are in the trace, not what each side saw/);
+  });
+
+  it('a measure in a summary\'s field name backs the number: "no ally within 2200" citing deaths:<hero> (a real review had it refused)', () => {
+    const record = runTraceTool(old, 'death_context', { hero: 'beastmaster' });
+    const ev = (fact: string) => verifyReview({ verdict: 'v', mainline: [], findings: [], game_plan: { course: 'c', evidence: [{ refs: ['deaths:beastmaster'], fact }] } }, [record]).problems.filter((p: any) => p.where === 'plan_evidence');
+    expect(ev('11 次阵亡里只有 2:51 那次身边 2200 码内没有队友。')).toEqual([]);
+    // A radius no field states is still refused.
+    expect(ev('11 次阵亡里只有 2:51 那次身边 2500 码内没有队友。')).not.toEqual([]);
   });
 
   it('the review and the chat are told what a ward near a spot does and does not show', () => {
