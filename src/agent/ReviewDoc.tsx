@@ -152,7 +152,7 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
   );
 };
 
-export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; goalContext?: GoalContext | null }> = ({ matchId, review, lang, onAsk, onPlan, goalContext = null }) => {
+export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode }> = ({ matchId, review, lang, onAsk, onPlan, goalContext = null, board = null }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   // A plan picked while the coach is still answering is not sent: say so instead of doing nothing.
   const [planHeld, setPlanHeld] = useState(false);
@@ -168,6 +168,8 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         <p className="cx-eyebrow">{t(T.verdict)}</p>
         <h1>{review.verdict}</h1>
       </section>
+
+      {board}
 
       <section>
         <h2>{t(T.story)}</h2>

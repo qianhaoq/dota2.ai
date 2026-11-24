@@ -540,6 +540,24 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/发育拖后期再打团/)).toBeNull();
   });
 
+  it('ready: the scoreboard (both line-ups, the reader marked) sits right under the verdict', async () => {
+    mockFetch({
+      'ref=overview': overview,
+      '/review?': { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/coach/9100904020': board,
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const verdict = await screen.findByRole('heading', { level: 1, name: review.verdict });
+    const scoreboard = await screen.findByRole('region', { name: 'Scoreboard' });
+    expect(scoreboard.querySelectorAll('li')).toHaveLength(board.players.length);
+    expect(scoreboard.querySelector('li.is-me')?.textContent).toContain('Beastmaster');
+    // Under the verdict, before the story of the game.
+    expect(verdict.compareDocumentPosition(scoreboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const story = screen.getByRole('heading', { level: 2, name: 'How the game went' });
+    expect(scoreboard.compareDocumentPosition(story) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('ready: the review, its evidence record on demand, and a question about that moment', async () => {
     const calls = mockFetch({
       '/chat': () => sse([{ step: { tool: 'ability_audit', args: {} } }, { text: 'She was stunned 3.4 s.\n\nKeep it for her.', unverified: [{ kind: 'time', text: '19:19' }] }, { done: true }]),
