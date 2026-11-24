@@ -679,6 +679,25 @@ describe('AgentMatchPage', () => {
     expect(bodies[1]).toEqual({ hero: 'beastmaster', lang: 'en', plan: 'gank' });
   }, 10000);
 
+  it('a refused parse is picked up again when the reader comes back to it after its wait ran out elsewhere', async () => {
+    let prepares = 0;
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { if (++prepares > 20) throw new Error('prepare loop'); return prepares === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 1 } : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    // Away on another plan while the wait runs out: nothing is sent for the one left behind.
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    await new Promise((r) => { setTimeout(r, 2200); });
+    expect(prepares).toBe(1);
+    // Back to it: the reader's go still stands, and the parse is asked for again.
+    fireEvent.click(await screen.findByRole('radio', { name: 'Don\'t say' }));
+    await waitFor(() => expect(prepares).toBe(2), { timeout: 3000 });
+  }, 10000);
+
   it('two quick clicks before the replay is parsed send one parse request', async () => {
     let release: (v: unknown) => void = () => {};
     const calls = mockFetch({

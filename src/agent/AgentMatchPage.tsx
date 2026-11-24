@@ -307,15 +307,18 @@ export const AgentMatchPage: React.FC = () => {
 
   // A parse seen running may yet die with its instance: seeing it run re-arms the one-time restart below.
   useEffect(() => { if (parsing) resumed.current = false; }, [parsing]);
+  // So does coming back to a selection: one the reader said go for, left during a wait, and came back to after
+  // it ran out is picked up again rather than left saying "working" with nothing running.
+  useEffect(() => { resumed.current = false; }, [selection]);
 
   // The reader said go, then came back to a parse that is no longer running (it died with its instance,
   // or failed and its retry time passed): start it again once, rather than wait on nothing.
   useEffect(() => {
-    if (!intent || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
+    if (!intent || wait || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
     resumed.current = true;
     prepareMatch(matchId).then((p) => { if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); }).catch((e) => { if (onMatch.current === matchId) refuse(e); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [intent, avail, matchId, loadAvail]);
+  }, [intent, avail, matchId, loadAvail, wait]);
 
   // The replay just became available and the reader asked for a review: carry on without a second click.
   useEffect(() => {
