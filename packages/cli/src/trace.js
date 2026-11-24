@@ -11,7 +11,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { TRACE_TOOLS, runTraceTool } from '@dota2ai/review-engine';
+import { TRACE_TOOLS, runTraceTool, linkHeroNames } from '@dota2ai/review-engine';
 
 const invalid = (message) => Object.assign(new Error(message), { exit: 2 });
 
@@ -21,7 +21,7 @@ export function readTraceFile(path, read = readFileSync) {
   try {
     const trace = JSON.parse((body[0] === 0x1f && body[1] === 0x8b ? gunzipSync(body) : body).toString('utf8'));
     if (trace?.schema !== 'dota2.ai/match-trace@1') throw new Error('schema');
-    return trace;
+    return linkHeroNames(trace);
   } catch { throw Object.assign(new Error('Not a match trace (expected dota2.ai/match-trace@1; build one with scripts/build-trace.mjs)'), { exit: 3 }); }
 }
 
