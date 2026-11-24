@@ -114,6 +114,13 @@ const T = {
   timingThis: { en: 'This game', zh: '这局' },
   timingPublic: { en: 'public games, win rate by game length', zh: '路人局，按比赛时长的胜率' },
   timingAlone: { en: 'Each hero on its own: not a line-up\'s win rate.', zh: '每个英雄单独统计，不代表整套阵容的胜率。' },
+  fmGained: { en: 'Gained', zh: '增长' }, fmLh: { en: 'Last hits', zh: '补刀' },
+  fmMost: { en: 'Gained most', zh: '涨得最多' },
+  fmGold: { en: 'gold earned', zh: '赚到的金钱' }, fmNw: { en: 'net worth', zh: '身价' },
+  fmAlive: { en: 'Enemy heroes alive', zh: '对方存活' },
+  fmNear: { en: 'Near your team as it fell', zh: '倒下时在我方附近' },
+  fmNobody: { en: 'nobody', zh: '没有人' },
+  fmUnknown: { en: 'not known', zh: '不清楚' },
   bpPlan: { push: { en: 'Lanes into towers', zh: '线优转推进' }, gank: { en: 'Ganks and pressure', zh: '抓人带节奏' }, split: { en: 'Split push', zh: '带线牵制' }, late: { en: 'Farm for late', zh: '发育拖后期' } } as Record<string, Record<Lang, string>>,
   bpGold: { en: 'Gold in items for each plan', zh: '各思路的装备金额' },
   bpBy: { en: 'by', zh: '截至' }, bpAll: { en: 'in all', zh: '全场' },
@@ -348,6 +355,41 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.my_deaths_before_10_00.length > 0 && <p className="ag-rec-line"><span>{t(T.laneDeaths)}</span>{r.my_deaths_before_10_00.map((d: any) => <span key={d.clock} className="ag-chip">{d.clock}{d.killer ? ` ← ${N(d.killer)}` : ''}</span>)}</p>}
         {pro && <p className="ag-rec-line"><span>{N(pro.my_side_core)} : {N(pro.enemy_core)} · {pro.pro_games} {t(T.lanePro)}</span><span className="ag-chip">{t(T.laneProMean)} <em>{signed(pro.core_gold_difference_at_10_00.mean)}</em></span><span className="ag-chip">{t(T.laneThis)} <em>{signed(pro.core_gold_difference_at_10_00.this_game)}</em></span><span className="ag-chip">{N(pro.my_side_core)} {t(T.laneAhead)} <em>{pc(pro.share_of_pro_games_my_side_core_was_ahead)}</em></span></p>}
         {pub && <p className="ag-rec-line"><span>{N(pub.hero)} : {N(pub.against)} · {pub.lanes} {t(T.lanePub)}</span><span className="ag-chip">{t(T.lanePubWon)} <em>{pc(pub.share_won)}</em></span><span className="ag-chip">{t(T.lanePubLost)} <em>{pc(pub.share_lost)}</em></span></p>}
+      </div>
+    );
+  }
+  if (data.kind === 'farm') {
+    // One building the team took.
+    if (r.building) {
+      return (
+        <div className="ag-rec">
+          <p className="ag-rec-head"><b>{r.clock}</b> · {buildingLabel(r.building, lang)}</p>
+          <p className="ag-rec-line"><span className="ag-chip">{t(T.fmAlive)} <em>{r.enemy_heroes_alive}</em></span></p>
+          <p className="ag-rec-line"><span>{t(T.fmNear)}</span>{r.enemy_heroes_near_your_team == null ? <span className="ag-chip">{t(T.fmUnknown)}</span> : r.enemy_heroes_near_your_team.length ? r.enemy_heroes_near_your_team.map((h: string) => <span key={h} className="ag-chip is-enemy">{N(h)}</span>) : <span className="ag-chip">{t(T.fmNobody)}</span>}</p>
+        </div>
+      );
+    }
+    const gained: Record<string, number | null> | undefined = r.gained ?? r.gained_over_the_game;
+    const most = r.gained_most ?? r.gained_most_over_the_game;
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head">{r.clock ? <b>{r.clock}</b> : N(r.hero)}{r.ahead ? ` · ${t(r.ahead === 'my_team' ? T.winOurs : T.winTheirs)}` : ''}{r.money ? ` · ${t(r.money === 'replay_net_worth' ? T.fmNw : T.fmGold)}` : ''}</p>
+        {gained && (
+          <div className="ag-lane-scroll">
+            <table className="ag-lane">
+              <thead><tr><th scope="col" />{gained ? <th scope="col">{t(T.fmGained)}</th> : null}{r.last_hits ? <th scope="col">{t(T.fmLh)}</th> : null}</tr></thead>
+              <tbody>
+                {Object.entries(gained).sort((a, b) => (b[1] ?? -1) - (a[1] ?? -1)).map(([h, v]) => (
+                  <tr key={h} className={most && (most.my_team === h || most.enemy === h) ? 'is-me' : ''}>
+                    <th scope="row">{N(h)}</th><td>{v ?? '–'}</td>{r.last_hits ? <td>{r.last_hits[h] ?? '–'}</td> : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {most && <p className="ag-rec-line"><span>{t(T.fmMost)}</span>{most.my_team && <span className="ag-chip is-ally">{N(most.my_team)}</span>}{most.enemy && <span className="ag-chip is-enemy">{N(most.enemy)}</span>}</p>}
+        {r.buildings_your_team_took_total != null && !gained && <p className="ag-rec-line"><span className="ag-chip">{t(T.winTook)} <em>{r.buildings_your_team_took_total}</em></span></p>}
       </div>
     );
   }
