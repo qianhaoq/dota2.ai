@@ -95,6 +95,19 @@ describe('fight_report on a real game', () => {
     expect(ev(['fights:beastmaster'], `${r.fights_total} fights in the game.`)).toEqual([]);
   });
 
+  it('without the replay\'s own net worth, the match record\'s gold lead is used, as match_overview does (review of #296)', () => {
+    const match: any = { radiant_gold_adv: Array.from({ length: 43 }, (_, m) => m * 100) };
+    expect(r.fights[8]).not.toHaveProperty('my_team_gold_lead');
+    const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'en', match });
+    // Beastmaster is Dire: Radiant's +2500 at 25:00 is his team's -2500.
+    expect(kit.runTool('fight_report', { hero: 'beastmaster' }).fights[8].my_team_gold_lead).toBe(-2500);
+    expect(kit.runTool('game_state', { hero: 'beastmaster', at: 1510 }).my_team_gold_lead).toBe(-2500);
+    expect(resolveRef(trace, 'fights:beastmaster:9', { hero: 'beastmaster', match })?.record.my_team_gold_lead).toBe(-2500);
+    expect(resolveRef(trace, 'state:beastmaster:1510', { hero: 'beastmaster', match })?.record.my_team_gold_lead).toBe(-2500);
+    // Places are named on the card.
+    expect(resolveRef(trace, 'fights:beastmaster:9', { hero: 'beastmaster', lang: 'zh' })?.names.dire_bot_lane).toBe('夜魇下路');
+  });
+
   it('the same fight read from the other side is the mirror', () => {
     const other: any = fightReport(trace, { hero: 'axe' });
     r.fights.forEach((f: any, i: number) => {
