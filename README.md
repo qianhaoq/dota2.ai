@@ -4,7 +4,7 @@
 
 **A Dota 2 coach that watches your replay, and can prove what it says.**
 
-[Website](https://dota2.ai) · [A real review](https://dota2.ai/r/9100904020?hero=beastmaster) · [How it works](#how-it-works) · [CLI & MCP](#from-a-terminal-or-an-agent) · [简体中文](README.zh-CN.md)
+[Website](https://dota2.ai) · [A real review](https://dota2.ai/r/9100904020?hero=beastmaster) · [How it works](#how-it-works) · [For agents](#one-line-for-your-agent) · [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial-d6b46a.svg)](LICENSE)
@@ -100,9 +100,32 @@ A replay does not contain everything, and the review says so instead of guessing
 
 **On the web.** Open [dota2.ai](https://dota2.ai) and paste a match ID, or a Steam friend code to list your recent games. English and Chinese.
 
-### From a terminal or an agent
+The CLI and the MCP server give the instant, rule-based tier: a sectioned report from match data, pro games on the same problem, hero matchups and next-game goals. Neither needs an API key.
 
-The CLI and the MCP server give the instant, rule-based tier: a sectioned report from match data, pro games on the same problem, hero matchups and next-game goals. They need no API key.
+### One line for your agent
+
+The hosted MCP server needs no install and no key. One line connects it:
+
+| Agent | Run this once |
+|---|---|
+| **Claude Code** | `claude mcp add --transport http dota2ai https://dota2.ai/mcp` |
+| **Codex** | `codex mcp add dota2ai --url https://dota2.ai/mcp` |
+| **Gemini CLI** | `gemini mcp add --transport http dota2ai https://dota2.ai/mcp` |
+| **VS Code** (Copilot) | `code --add-mcp '{"name":"dota2ai","type":"http","url":"https://dota2.ai/mcp"}'` |
+| **Cursor** | [Add to Cursor](https://cursor.com/en/install-mcp?name=dota2ai&config=eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9), or put `{ "mcpServers": { "dota2ai": { "url": "https://dota2.ai/mcp" } } }` in `~/.cursor/mcp.json` |
+| **Any other MCP client** | Give it the address `https://dota2.ai/mcp` (Streamable HTTP) |
+
+Then say it in one sentence:
+
+> Review my Dota 2 match 9100904020 — I played Beastmaster.
+
+No MCP in your agent? Any agent that can fetch a URL works with this instead:
+
+> Review my Dota 2 match 9100904020, I played Beastmaster. Call the API described at https://dota2.ai/llms.txt, quote only what it returns, and say when a sample is too small.
+
+The server has 8 tools ([reference](packages/mcp/README.md)). To run it locally over stdio instead, use `node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js` as the command. There is also an agent skill at [`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md).
+
+### From a terminal
 
 ```bash
 git clone https://github.com/qianhaoq/dota2.ai.git && cd dota2.ai && npm ci
@@ -113,20 +136,6 @@ node packages/cli/bin/dota2ai.js matchup tidehunter ursa --rank legend
 ```
 
 Every command takes `--lang en|zh` and `--json`. Full reference: [`packages/cli/README.md`](packages/cli/README.md).
-
-Connect an agent to the hosted MCP server (8 tools, nothing to install):
-
-```bash
-claude mcp add --transport http dota2ai https://dota2.ai/mcp
-```
-
-Or run it locally over stdio, for Claude Code, Cursor, Claude Desktop or any MCP client:
-
-```json
-{ "mcpServers": { "dota2ai": { "command": "node", "args": ["/absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js"] } } }
-```
-
-Tools and parameters: [`packages/mcp/README.md`](packages/mcp/README.md). There is also an agent skill at [`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md) and an [`llms.txt`](https://dota2.ai/llms.txt).
 
 ### Query a replay yourself
 

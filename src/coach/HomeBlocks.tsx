@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SafeImg, useLang } from './ui';
-import { accessSnippets, agentPrompt, type AccessMode } from './accessSnippets';
+import { accessSnippets, agentAsk, agentPrompt, type AccessMode } from './accessSnippets';
 import type { Bi } from './types';
 
 const T = {
@@ -17,6 +17,9 @@ const T = {
   copy: { en: 'Copy', zh: '复制' },
   copied: { en: 'Copied', zh: '已复制' },
   promptTitle: { en: 'Or send this to your agent', zh: '或者，把这段话发给你的 Agent' },
+  clients: { en: 'Your agent', zh: '你用的 Agent' },
+  oneLine: { en: 'One line connects it:', zh: '一行接入：' },
+  thenSay: { en: 'Then just say:', zh: '然后说一句：' },
 };
 
 /**
@@ -65,6 +68,9 @@ export const AccessModes: React.FC<{ matchId: string; onWeb: () => void }> = ({ 
   const modes = accessSnippets(matchId);
   const [mode, setMode] = useState<AccessMode>('mcp');
   const cur = modes.find((m) => m.mode === mode)!;
+  const [clientId, setClientId] = useState(cur.clients?.[0]?.id ?? '');
+  const client = cur.clients?.find((c) => c.id === clientId) ?? cur.clients?.[0] ?? null;
+  const lines = client ? [client.line] : cur.lines;
   const prompt = agentPrompt(lang);
   return (
     <section className="hm-ways" aria-labelledby="hm-ways-title">
@@ -78,12 +84,29 @@ export const AccessModes: React.FC<{ matchId: string; onWeb: () => void }> = ({ 
         ))}
       </div>
       <div className="hm-ways-panel" role="tabpanel">
-        {cur.lines.length > 0 && (
-          <div className="hm-code">
-            <pre><code>{cur.lines.join('\n')}</code></pre>
-            <CopyButton text={cur.lines.join('\n')} label={L(cur.label)} />
+        {cur.clients && (
+          <div className="hm-clients" role="group" aria-label={L(T.clients)}>
+            <span className="hm-clients-lead">{L(T.oneLine)}</span>
+            {cur.clients.map((c) => (
+              <button key={c.id} type="button" aria-pressed={client?.id === c.id} className={client?.id === c.id ? 'is-on' : ''} onClick={() => setClientId(c.id)}>
+                {L(c.label)}
+              </button>
+            ))}
           </div>
         )}
+        {lines.length > 0 && (
+          <div className="hm-code">
+            <pre><code>{lines.join('\n')}</code></pre>
+            <CopyButton text={lines.join('\n')} label={client ? L(client.label) : L(cur.label)} />
+          </div>
+        )}
+        {client && (client.where || client.install) && (
+          <p className="hm-ways-note hm-client-where">
+            {client.where && L(client.where)}
+            {client.install && <a href={client.install.href} target="_blank" rel="noopener noreferrer">{L(client.install.label)}</a>}
+          </p>
+        )}
+        {client && <p className="hm-say"><span>{L(T.thenSay)}</span> <q>{agentAsk(lang)}</q></p>}
         <p className="hm-ways-note">{L(cur.note)}{cur.links && <> {cur.links.map((l) => <a key={l.href} href={l.href}>{l.label}</a>)}</>}</p>
       </div>
       <div className="hm-prompt">

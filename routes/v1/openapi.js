@@ -32,7 +32,7 @@ Coach (the main review, deterministic, bilingual en/zh objects):
 - GET /api/coach/matchup?hero={hero}&vs={hero}[&rank=hg|ca|la|di|medal|tier] returns hero vs hero (no match needed); by_rank = public games per rank bracket (data: STRATZ, credit rank_source.attribution); from pro games: win_rate, lane (gold at 10:00), your_items_vs_them / their_items_vs_you (items pros build clearly more often), their_abilities (Valve: damage type, pierces spell immunity), lines {en, zh}. Verdicts only on real gaps; null means too few pro games.
 - CLI: node packages/cli/bin/dota2ai.js help — recent, coach --section why|lane|deaths|items|fights|plan, cases, ask, goal set|show|check, matchup <hero> <vs> [--rank]; --json everywhere.
 - Agent skill: packages/cli/skills/dota2ai-coach/SKILL.md
-- Remote MCP (no install): claude mcp add --transport http dota2ai https://dota2.ai/mcp — all 8 tools: review_match, get_evidence, recent_matches, coach_report({match_id,hero?,section?}), coach_cases, coach_ask, goal_check, hero_matchup({hero,vs,rank?}).
+- Remote MCP (no install), one line per client: claude mcp add --transport http dota2ai https://dota2.ai/mcp · codex mcp add dota2ai --url https://dota2.ai/mcp · gemini mcp add --transport http dota2ai https://dota2.ai/mcp · any other client: the address https://dota2.ai/mcp (Streamable HTTP) — all 8 tools: review_match, get_evidence, recent_matches, coach_report({match_id,hero?,section?}), coach_cases, coach_ask, goal_check, hero_matchup({hero,vs,rank?}).
 Coach rate limit: 40 requests/minute/IP. Respect Retry-After.
 
 Review page: /r/{matchId}?p={seat 0-9}&lang=en (also zh). Player page: /p/{friend code}.

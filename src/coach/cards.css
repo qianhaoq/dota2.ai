@@ -210,6 +210,14 @@
   position: absolute; top: 8px; right: 8px; font: inherit; font-size: var(--fs-meta); color: var(--accent-ink); background: var(--accent);
   border: 0; border-radius: 3px; padding: 4px 10px; cursor: pointer;
 }
+.hm-clients { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; }
+.hm-clients-lead { color: var(--text-2); font-size: var(--fs-body); margin-right: 4px; }
+.hm-clients button { font: inherit; font-size: var(--fs-meta); color: var(--text-2); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; min-height: 32px; cursor: pointer; }
+.hm-clients button:hover { color: var(--text); }
+.hm-clients button.is-on { color: var(--text); border-color: var(--accent); }
+.hm-ways-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.hm-say { margin: 10px 0 0; font-size: var(--fs-body); color: var(--text-2); line-height: 1.6; }
+.hm-say q { color: var(--text); quotes: '“' '”'; }
 .hm-prompt { margin-top: 16px; }
 .hm-prompt h3 { margin: 0 0 8px; font-size: var(--fs-body); color: var(--text-2); font-weight: 600; }
 .hm-prompt pre { white-space: pre-wrap; }
