@@ -10,8 +10,8 @@
  * /constants/*; abilities trimmed to the fields the server reads) and
  * meta.json (patch + date). `--all` also runs
  * scripts/coach-names.mjs <patch>, coach-abilities.mjs and coach-hero-items.mjs,
- * and coach-patch-snapshots.mjs (the item and ability data of each finished
- * patch, so an older game is told its own prices: needs github.com).
+ * and coach-patch-snapshots.mjs (the item and ability data of each earlier
+ * release, letter releases included; needs DOTACONSTANTS_DIR, see that script).
  * Uses OPENDOTA_API_KEY when set (higher limits); the key is never written.
  */
 import { execFileSync } from 'node:child_process';
@@ -52,6 +52,8 @@ if (process.argv.includes('--all')) {
   run('./coach-names.mjs', patch);
   run('./coach-abilities.mjs');
   run('./coach-hero-items.mjs');
-  run('./coach-patch-snapshots.mjs');
+  // The release snapshots need OpenDota's builder checked out (see the script); skipped without one.
+  if (process.env.DOTACONSTANTS_DIR) run('./coach-patch-snapshots.mjs', '--builder', process.env.DOTACONSTANTS_DIR);
+  else console.log('release snapshots skipped: set DOTACONSTANTS_DIR to a dotaconstants checkout (scripts/coach-patch-snapshots.mjs)');
 }
 console.log(`snapshot for ${patch} written`);
