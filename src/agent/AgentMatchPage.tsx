@@ -6,7 +6,7 @@ import { markReviewed } from '../coach/accountInput';
 import { checkGoal, checkRules, needsReplay, replayRefs, useActiveGoal, type GoalCheck, type GoalRule, type ReplayRecords } from '../coach/goalStore';
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
-import { trackReviewViewed } from '../services/analytics';
+import { trackEvent, trackOnce, trackReviewViewed } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
@@ -235,6 +235,7 @@ export const AgentMatchPage: React.FC = () => {
   };
   const refuse = (e: unknown) => {
     const status = e instanceof AgentApiError ? e.status : 0;
+    trackEvent('review_refused', { matchId, reason: status === 429 ? 'rate' : status === 503 ? 'busy' : 'unavailable' });
     setNotice(t(status === 429 ? T.rate : status === 503 ? T.busy : T.unavailable));
     want(false);
   };
@@ -252,6 +253,7 @@ export const AgentMatchPage: React.FC = () => {
 
   /** The one click: fetch and parse the replay if needed, then the review follows on its own. */
   async function go() {
+    trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan) });
     setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
     try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e); }
@@ -279,9 +281,17 @@ export const AgentMatchPage: React.FC = () => {
     if (!ready || !heroKey) return;
     want(false);
     markReviewed(matchId);
-    trackReviewViewed(matchId, { hero: heroKey, kind: 'agent' });
+    // `own`: the reader asked for it here (and waited), rather than opened one that was already there.
+    trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang, own: intent });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, matchId, heroKey]);
+
+  // Someone opened this game's page: the top of the funnel, once per match per session.
+  const opened = avail !== null;
+  useEffect(() => {
+    if (opened && valid) trackOnce(matchId, 'match_opened', { matchId, lang, has_trace: hasTrace });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened, matchId]);
 
   // The player's seat on the scoreboard: what a goal needs, and what a later game is judged by.
   const seat = board && hero ? board.players.find((p) => p.hero.id === hero.hero_id) ?? null : null;

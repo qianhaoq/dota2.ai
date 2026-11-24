@@ -1,0 +1,30 @@
+#!/usr/bin/env node
+/**
+ * The review page's funnel over the last days of /api/events (lib/analyticsFunnel.js).
+ *
+ *   gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="dota2-ai" AND jsonPayload.type="analytics"' \
+ *     --project <project> --freshness=7d --limit 50000 --format=json | node scripts/funnel.mjs
+ *
+ * Also reads one JSON object per line (a local server's stdout, filtered to the analytics lines).
+ */
+import { parseLogText, summarizeFunnel } from '../lib/analyticsFunnel.js';
+
+const chunks = [];
+for await (const c of process.stdin) chunks.push(c);
+const out = summarizeFunnel(parseLogText(Buffer.concat(chunks).toString('utf8')));
+const open = out.browsers.opened;
+const pct = (n) => (open ? ` (${Math.round((n / open) * 100)}%)` : '');
+const label = {
+  opened: 'opened a match page',
+  requested: 'asked for a review',
+  refused: 'were refused at least once',
+  viewed: 'saw a finished review',
+  own: 'saw the review they asked for',
+  asked: 'asked the coach a question',
+  returned: 'came back on a later day',
+};
+console.log(`days: ${out.days[0] ?? '-'} … ${out.days.at(-1) ?? '-'}   events: ${Object.entries(out.events).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+console.log(`browsers (by anonId; ${out.anonymous} events had none):`);
+for (const [step, text] of Object.entries(label)) {
+  console.log(`  ${String(out.browsers[step]).padStart(5)}  ${text}${step === 'opened' ? '' : `   — of those who opened: ${out.ofOpened[step]}${pct(out.ofOpened[step])}`}`);
+}

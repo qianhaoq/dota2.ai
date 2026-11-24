@@ -1,5 +1,6 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { AgentApiError, askAgent, type ChatTurn, type ToolStep } from './api';
+import { trackEvent } from '../services/analytics';
 
 /**
  * The coach, beside the review. Each question goes to the agent, which looks
@@ -91,6 +92,8 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
     if (!question || busy) return;
     if (question.length > 500) { setNote(t(T.tooLong)); return; }
     setNote(null);
+    // That a question was asked, never what: no text leaves in the event.
+    trackEvent('chat_asked', { matchId, lang, hero });
     // The agent resolves the moment from the ref; the reader sees only their own words.
     const sent = about && context ? `${question}\n(about ${context.refs.join(', ')})` : question;
     const history: ChatTurn[] = turns.filter((x) => x.a && !x.error).slice(-6).map((x) => ({ q: x.q, a: x.a, clean: (x.unverified ?? []).length === 0 }));

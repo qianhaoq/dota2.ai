@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AgentMatchPage, journeyStep } from './AgentMatchPage';
@@ -26,6 +26,13 @@ const cast = { status: 'ok', ref: 'cast:beastmaster:primal_roar:6', kind: 'cast'
 const overview = { status: 'ok', ref: 'overview', kind: 'overview', names: {}, record: { duration: { t: 2551 }, fights: [{ ref: 'fight:11', from: 1826, to: 1848, clock: '30:26–30:48', my_team_deaths: 5, enemy_deaths: 3, my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: -4298 }] } };
 
 type Handler = (url: string, init?: RequestInit) => any;
+// Events leave by beacon, as in a browser, so they are not among the page's own requests.
+const beacons: Promise<any>[] = [];
+const events = async () => Promise.all(beacons);
+const readBlob = (b: Blob) => new Promise<string>((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.readAsText(b); });
+beforeEach(() => { (navigator as any).sendBeacon = (_url: string, body: Blob) => { beacons.push(readBlob(body).then((t) => JSON.parse(t))); return true; }; });
+afterEach(() => { delete (navigator as any).sendBeacon; beacons.length = 0; });
+
 function mockFetch(routes: Record<string, Handler | any>) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal('fetch', vi.fn(async (input: any, init?: RequestInit) => {
@@ -584,6 +591,52 @@ describe('AgentMatchPage', () => {
     const rule = await screen.findByLabelText('Rule for next game');
     expect(rule.textContent).toBe('WhenHer Black King Bar is still unusedDohold the roar until it endsThis game6 of 7 windows');
     expect(screen.getByText('Keep it for her.')).toBeTruthy();
+  });
+
+  it('the funnel: the page says it was opened, a review was asked for, refused, and seen', async () => {
+    let posts = 0;
+    mockFetch({
+      '/review?': () => (posts < 2 ? { status: 'none' } : { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }),
+      'ref=overview': overview,
+      '/review': () => (++posts === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 3600 } : { __status: 202, status: 'running', steps: [] }),
+      '/api/agent/8000000031': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/8000000031?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
+    await waitFor(async () => expect((await events()).map((e) => e.event)).toContain('review_viewed'), { timeout: 6000 });
+    const sent = await events();
+    expect(sent.map((e) => e.event)).toEqual(['match_opened', 'review_requested', 'review_refused', 'review_requested', 'review_viewed']);
+    expect(sent[0].props).toEqual({ matchId: '8000000031', lang: 'en', has_trace: true });
+    expect(sent[1].props).toEqual({ matchId: '8000000031', lang: 'en', hero: 'beastmaster', step: 'review', plan: false });
+    expect(sent[2].props).toEqual({ matchId: '8000000031', reason: 'rate' });
+    expect(sent[4].props).toEqual({ ui: 'agent', hero: 'beastmaster', lang: 'en', own: true, matchId: '8000000031' });
+    // Opening the same game again in this session is not a second visitor.
+    cleanup();
+    page('/r/8000000031?hero=beastmaster&lang=en');
+    await screen.findByRole('heading', { level: 1 });
+    expect((await events()).filter((e) => e.event === 'match_opened')).toHaveLength(1);
+  }, 10000);
+
+  it('a question to the coach is counted, and what was asked never leaves in the event', async () => {
+    const calls = mockFetch({
+      '/chat': () => sse([{ text: '答。' }, { done: true }]),
+      'ref=overview': overview,
+      '/review?': { status: 'ready', review: { ...review, lang: 'zh' }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/agent/8000000032': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    page('/r/8000000032?hero=beastmaster&lang=zh');
+    const box = await screen.findByRole('textbox', { name: '问教练' });
+    fireEvent.change(box, { target: { value: '我第二次为什么死？' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/chat'))).toBe(true));
+    const sent = await events();
+    expect(sent.find((e) => e.event === 'chat_asked')?.props).toEqual({ matchId: '8000000032', lang: 'zh', hero: 'beastmaster' });
+    // A review that was already there when the page opened is not one this reader asked for.
+    expect(sent.find((e) => e.event === 'review_viewed')?.props).toMatchObject({ ui: 'agent', own: false });
+    expect(JSON.stringify(sent)).not.toContain('为什么');
   });
 
   it('a refused start explains itself', async () => {
