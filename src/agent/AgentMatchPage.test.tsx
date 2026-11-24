@@ -744,6 +744,52 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(prepares).toBe(2), { timeout: 4000 });
   }, 10000);
 
+  it('each review keeps its own wait: a second refusal for another plan does not cut the first one short', async () => {
+    const bodies: any[] = [];
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return { __status: 429, code: 'rate_limited', retryAfterSec: bodies.length === 1 ? 30 : 20 }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(29|30)\.$/);
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(19|20)\.$/);
+    // Back to the first: still its own countdown, and nothing is sent before it ends.
+    fireEvent.click(screen.getByRole('radio', { name: 'Don\'t say' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(2[89]|30)\.$/);
+    await new Promise((r) => { setTimeout(r, 1200); });
+    expect(bodies).toHaveLength(2);
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(true);
+  }, 10000);
+
+  it('a review start refused after the reader moved to another hero keeps its wait for when they come back', async () => {
+    let posts = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': () => { posts += 1; return posts === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(posts).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    await screen.findByRole('button', { name: 'Review my game' });
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 30 });
+    await new Promise((r) => { setTimeout(r, 100); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    // Back to Beastmaster: the refusal's wait is there, and nothing is sent before it ends.
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Beastmaster/ }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own in 0:(29|30)\.$/);
+    await new Promise((r) => { setTimeout(r, 1200); });
+    expect(posts).toBe(1);
+  }, 10000);
+
   it('two quick clicks before the replay is parsed send one parse request', async () => {
     let release: (v: unknown) => void = () => {};
     const calls = mockFetch({
