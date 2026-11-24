@@ -467,7 +467,7 @@ describe('trace tools on a real game', () => {
     expect(all.deaths.map((d) => d.in_a_fight)).toEqual([false, false, true, true, true, true, true, true, true, true, true]);
     expect([...all.deaths_where.in_a_fight, ...all.deaths_where.outside_fights]).toHaveLength(all.deaths_total);
     // Every death here had its health and position sampled: nothing a count could be missing.
-    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, allies_at_death: 0 });
+    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, allies_at_death: 0, in_a_fight: 0, health_below_half_at_window_start_outside_fights: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 });
     // Phantom Assassin's attacks are the largest single source: 44% of everything taken in the eleven windows.
     expect(all.damage_in_death_windows_total).toBe(23757);
     expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);

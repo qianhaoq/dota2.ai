@@ -270,6 +270,12 @@ function deathPatterns(trace, deaths, { allSources = false } = {}) {
     deaths_not_known: {
       health_at_window_start: deaths.filter((d) => d.below_half_health_at_window_start == null).length,
       allies_at_death: deaths.filter((d) => d.allies_within_2200.at_death == null).length,
+      // Whether a death was in a fight is unknown where the hero's position was not sampled.
+      in_a_fight: deaths.filter((d) => d.in_a_fight == null).length,
+      // For each outside-fights list, the deaths it can neither include nor rule out: neither in a fight for sure
+      // nor outside one with the condition for sure. A count over the next game is only as sure as these are few.
+      health_below_half_at_window_start_outside_fights: deaths.filter((d) => d.in_a_fight !== true && d.below_half_health_at_window_start !== false && !(d.in_a_fight === false && d.below_half_health_at_window_start === true)).length,
+      three_or_more_enemy_heroes_dealing_damage_outside_fights: deaths.filter((d) => d.in_a_fight == null && d.enemy_heroes_dealing_damage >= 3).length,
     },
     damage_in_death_windows_total: total,
     damage_in_death_windows: Object.fromEntries(top),
