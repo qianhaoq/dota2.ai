@@ -38,6 +38,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { transformSync } from 'esbuild';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -187,7 +188,11 @@ for (const [i, r] of releases.entries()) {
   if (kept?.first_match_id_after) Object.assign(entry, { last_match_id_before: kept.last_match_id_before, first_match_id_after: kept.first_match_id_after });
   index.push(entry);
 }
+// The live tables this list calls the current release's data: lib/agent/patchData.js checks them against this, so
+// tables refreshed without this list being rebuilt are not taken for the release named here.
+const sha = (path) => createHash('sha256').update(readFileSync(new URL(path, import.meta.url))).digest('hex');
 writeFileSync(INDEX, `${JSON.stringify({
   source: 'Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told.',
   releases: index,
+  current_tables: { items: sha('../lib/data/constants/items.json'), abilities: sha('../lib/coach/data/abilities.json') },
 }, null, 2)}\n`);

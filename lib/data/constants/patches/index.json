@@ -122,5 +122,9 @@
       "last_match_id_before": 9095855376,
       "first_match_id_after": 9095870072
     }
-  ]
+  ],
+  "current_tables": {
+    "items": "14b79154f22e32b3760772fcfc4cf0b0d949fc18e10a5c23a9d49fc196994c8f",
+    "abilities": "2156620fcbb8fcd22f30ceee8a6207eed32f7b88800085425854df36a3967b5e"
+  }
 }

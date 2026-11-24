@@ -46,6 +46,25 @@ describe('the data of the patch a game was played on', () => {
     expect(snap741f).toMatchObject({ release: '7.41f', major: '7.41', major_id: 60, game_files: expect.stringContaining('the last game update before 7.42') });
   });
 
+  it('the live tables are the current release\'s only while they are the ones the release list was built with', async () => {
+    const { LIVE_TABLES_MATCH } = await import('../../lib/agent/patchData.js');
+    expect(index.current_tables).toMatchObject({ items: expect.stringMatching(/^[0-9a-f]{64}$/), abilities: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(LIVE_TABLES_MATCH).toBe(true);
+    expect(patchData('7.42')).toMatchObject({ exact: true });
+    // Refreshed to a newer release without the list being rebuilt: still the live tables, no longer called 7.42's.
+    expect(patchData('7.42', { liveMatches: false })).toMatchObject({ name: '7.42', exact: false, reason: "live_tables_changed_since_the_release_list_was_built; may not be 7.42's" });
+    // An older release is read from its own snapshot either way.
+    expect(patchData('7.41c', { liveMatches: false })).toMatchObject({ exact: true });
+  });
+
+  it('a full data refresh will not start without the builder that rebuilds the release list', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const env = { ...process.env }; delete env.DOTACONSTANTS_DIR;
+    const r = spawnSync(process.execPath, ['scripts/refresh-data.mjs', '--all'], { env, encoding: 'utf8', timeout: 20_000 });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('Nothing was written');
+  });
+
   it('OpenDota\'s patch number names a patch, not its letter: its last release is used, and said to be a guess unless it is the only one', () => {
     expect(patchData(60)).toMatchObject({ name: '7.41f', exact: false, reason: 'letter_release_unknown; 7.41f data used' });
     expect(patchData(61)).toMatchObject({ name: '7.42', exact: true, reason: null });
