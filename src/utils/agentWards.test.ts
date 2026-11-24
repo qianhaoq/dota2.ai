@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
+import { execFileSync } from 'node:child_process';
 import { createTraceBuilder, runTraceTool, observersNear, boughtBackAfter, WARD_NEAR } from '../../packages/review-engine/src/trace/index.js';
 import { buildTraceFromExtract } from '../../lib/agent/traceBuild.js';
 import { fightReport, gapsOf } from '../../lib/agent/fightReport.js';
@@ -126,5 +127,29 @@ describe('what the tools say with them, and without', () => {
     expect(deepReviewSystem('en')).toMatch(/An observer near a spot is a ward near it, not proof it saw the player/);
     expect(deepReviewSystem('en')).toContain('deaths_where.no_own_observer_within_1600');
     expect(chatSystem('en')).toContain('Asked about wards or vision');
+  });
+
+  it('the calibration script splits deaths and moments by observers near, only from traces with a ward list', () => {
+    const calibrate = (trace: any) => {
+      const dir = mkdtempSync(join(tmpdir(), 'wards-'));
+      writeFileSync(join(dir, '1.trace.json.gz'), gzipSync(JSON.stringify(trace)));
+      return JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' })).wards;
+    };
+    // Without a ward list: no game counted and nothing in any row (unknown, not "no observer").
+    const none = calibrate(old);
+    expect(none.games_with_wards).toBe(0);
+    for (const x of [...none.deaths_traded, ...none.died_within_20s]) expect(x.deaths ?? x.moments).toBe(0);
+    // An empty list is known: every death has no observer near.
+    const empty = calibrate({ ...old, wards: [] });
+    const deaths = empty.deaths_traded.find((x: any) => x.case === 'no observer of either side within 1600').deaths;
+    expect(empty.games_with_wards).toBe(1);
+    expect(deaths).toBeGreaterThan(0);
+    expect(empty.deaths_traded.find((x: any) => x.case === 'enemy observer within 1600').deaths).toBe(0);
+    // A Dire observer standing all game at the first Radiant hero's first death: that death counts under the enemy's.
+    const dc: any = runTraceTool(old, 'death_context', { hero: old.heroes.find((h: any) => h.team === 2).key });
+    const at = dc.deaths.find((d: any) => d.allies_within_2200.at_death != null).at;
+    const one = calibrate({ ...old, wards: [[null, null, 3, 'o', at.x, at.y]] });
+    expect(one.deaths_traded.find((x: any) => x.case === 'enemy observer within 1600').deaths).toBeGreaterThan(0);
+    expect(one.died_within_20s.some((x: any) => x.case === 'enemy observer within 1600' && x.moments > 0)).toBe(true);
   });
 });

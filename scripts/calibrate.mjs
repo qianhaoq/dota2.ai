@@ -8,6 +8,9 @@
  * - Deaths (death_context): how often a death was traded (an enemy hero died within 15 s), by how many allies
  *   were within 2200 at it; and, every 5 s from 10:00, how often a living hero died in the next 20 s, by
  *   allies near and side of the map — whether standing alone is itself the danger.
+ * - Wards (traces with a ward list): the same two questions split by observer wards within 1600 — a death's trade
+ *   rate by whether the dead hero's side or the enemy had one near it, and the 20 s death rate of a living hero by
+ *   enemy observers near them. Placements only, not what each side saw.
  * - Roshans (roshan_report): each Aegis pickup, whether it was used or expired, and the buildings each side took
  *   in the 300 s after.
  *
@@ -25,6 +28,7 @@ import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
 import { linkHeroNames, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
+import { observersNear } from '../packages/review-engine/src/trace/state.js';
 
 const dir = process.argv[2];
 if (!dir) { console.error('usage: calibrate.mjs <dir> [--json]'); process.exit(2); }
@@ -34,14 +38,16 @@ const pushes = [];
 const deaths = [];
 const moments = [];
 const roshans = [];
+let wardGames = 0;
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
   const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(dir, f)))));
   // From Radiant's first hero: my_team = Radiant. Every fight is read once.
   const first = trace.heroes.find((h) => h.team === 2);
   for (const hero of trace.heroes) {
-    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }).deaths ?? []) if (d.allies_within_2200.at_death != null) deaths.push({ allies: d.allies_within_2200.at_death, traded: d.traded_within_15s });
+    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }).deaths ?? []) if (d.allies_within_2200.at_death != null) deaths.push({ allies: d.allies_within_2200.at_death, traded: d.traded_within_15s, obs: d.observers_within_1600 ?? null });
   }
+  if (Array.isArray(trace.wards)) wardGames += 1;
   // Every 5 s from 10:00 to 20 s before the end: each living hero, and whether they died in the next 20 s.
   const died = trace.heroes.map((_, i) => trace.deaths.filter((d) => heroOfName(trace, d[1]) === i).map((d) => d[0]));
   for (let sec = 600; sec < trace.t0 + trace.n - 20; sec += 5) {
@@ -50,7 +56,8 @@ for (const f of files) {
       const s = at[i]; if (!s?.alive) return;
       const allies = trace.heroes.filter((o, j) => j !== i && o.team === h.team && at[j]?.alive && dist(at[j], s) <= 2200).length;
       const side = region(s.x, s.y); const enemyHalf = h.team === 2 ? side.startsWith('dire') : side.startsWith('radiant');
-      moments.push({ allies, enemyHalf, died: died[i].some((d) => d > sec && d <= sec + 20) });
+      const o = observersNear(trace, s, sec);
+      moments.push({ allies, enemyHalf, died: died[i].some((d) => d > sec && d <= sec + 20), obs: o && { mine: o[h.team], enemy: o[h.team === 2 ? 3 : 2] } });
     });
   }
   for (const x of roshanReport(trace, { hero: first.key }).takes ?? []) {
@@ -111,6 +118,24 @@ out.deaths = {
   traded_by_allies_within_2200_at_death: [0, 1, 2].map((n) => ({ allies: alliesLabel(n), ...traded(deaths.filter((d) => (n >= 2 ? d.allies >= 2 : d.allies === n))) })),
   died_within_20s_by_allies_near: [true, false].flatMap((half) => [0, 1, 2].map((n) => ({ side: half ? 'enemy half' : 'own half or river', allies: alliesLabel(n), ...risk(moments.filter((m) => m.enemyHalf === half && (n >= 2 ? m.allies >= 2 : m.allies === n))) }))),
 };
+// Only deaths and moments from traces with a ward list: an older trace has no wards, not zero wards.
+const wd = deaths.filter((d) => d.obs); const wm = moments.filter((m) => m.obs);
+out.wards = {
+  games_with_wards: wardGames,
+  deaths_traded: [
+    { case: 'no observer of either side within 1600', ...traded(wd.filter((d) => !d.obs.my_team && !d.obs.enemy)) },
+    { case: 'own observer within 1600', ...traded(wd.filter((d) => d.obs.my_team > 0)) },
+    { case: 'no own observer within 1600', ...traded(wd.filter((d) => d.obs.my_team === 0)) },
+    { case: 'enemy observer within 1600', ...traded(wd.filter((d) => d.obs.enemy > 0)) },
+    { case: 'enemy observer near, no own one, no ally within 2200', ...traded(wd.filter((d) => d.obs.enemy > 0 && !d.obs.my_team && d.allies === 0)) },
+  ],
+  died_within_20s: [true, false].flatMap((half) => [
+    { side: half ? 'enemy half' : 'own half or river', case: 'enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.obs.enemy > 0)) },
+    { side: half ? 'enemy half' : 'own half or river', case: 'no enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.obs.enemy === 0)) },
+    { side: half ? 'enemy half' : 'own half or river', case: 'alone, enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.allies === 0 && m.obs.enemy > 0)) },
+    { side: half ? 'enemy half' : 'own half or river', case: 'alone, no enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.allies === 0 && m.obs.enemy === 0)) },
+  ]),
+};
 const fightsAfter = roshans.flatMap((x) => x.fights);
 out.roshans = {
   takes: roshans.length,
@@ -136,6 +161,11 @@ else {
   console.log(`\n${ro.takes} Roshans (Aegis pickups): used ${ro.aegis.used}, expired ${ro.aegis.expired}, game ended ${ro.aegis.game_ended}`);
   console.log(`  in the 300 s after: the taking side took ${ro.buildings_in_the_next_300s.taking_side} buildings, the other side ${ro.buildings_in_the_next_300s.other_side}; takes with no building after: ${ro.takes_with_no_building_after}`);
   console.log(`  fights in those 300 s: ${ro.fights_in_the_next_300s.fights}, the taking side lost fewer in ${ro.fights_in_the_next_300s.taking_side_lost_fewer}, the other side in ${ro.fights_in_the_next_300s.other_side_lost_fewer}`);
+  const w = out.wards;
+  console.log(`\n${w.games_with_wards} games with a ward list (placements, not sight): share of deaths traded\n`);
+  for (const x of w.deaths_traded) console.log(`${`  ${x.case}`.padEnd(56)} ${String(x.traded).padStart(4)}/${String(x.deaths).padEnd(5)} ${x.rate}%`);
+  console.log(`\n  living heroes every 5 s from 10:00 in those games; share dead within 20 s\n`);
+  for (const x of w.died_within_20s) console.log(`${`  ${x.side}, ${x.case}`.padEnd(56)} ${String(x.died_within_20s).padStart(5)}/${String(x.moments).padEnd(6)} ${x.rate}%`);
   console.log(`\nliving heroes every 5 s from 10:00; share dead within 20 s\n`);
   for (const x of out.deaths.died_within_20s_by_allies_near) console.log(`${`  ${x.side}, allies near: ${x.allies}`.padEnd(46)} ${String(x.died_within_20s).padStart(5)}/${String(x.moments).padEnd(6)} ${x.rate}%`);
 }
