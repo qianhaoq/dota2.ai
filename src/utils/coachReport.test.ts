@@ -5,7 +5,8 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { buildCoachReport as buildRaw, isParsed, objectiveTeam, dataGaps, detectionBought } from '../../lib/coach/analyze.js';
 import type { CoachReport } from '../coach/types';
-import { THREAT_TAGS, ANSWERS, ANSWER_UNTIL, BUILT_IN_IMMUNITY, ALWAYS_KEY_ITEMS, answersFor, heroTags } from '../../lib/coach/knowledge.js';
+import { THREAT_TAGS, ANSWERS, ANSWER_UNTIL, ANSWER_SINCE, GAP_CLOSERS, BUILT_IN_IMMUNITY, ALWAYS_KEY_ITEMS, answersFor, heroTags } from '../../lib/coach/knowledge.js';
+import { withUpgrades } from '../../lib/agent/goal.js';
 import { createCoachRouter, parseCoachQuery } from '../../lib/coach/router.js';
 import { parseAskBody, reportContext, askMessages } from '../../lib/coach/ask.js';
 import { streamFollowUpCompletion } from '../../lib/matchReview/followUpCompletion.js';
@@ -43,6 +44,28 @@ describe('coach knowledge', () => {
     expect(answersFor('evasion', 'core', 61)).not.toContain('bloodthorn'); // 7.42
     expect(answersFor('evasion', 'core', null)).not.toContain('bloodthorn'); // unknown = current
     expect(answersFor('evasion', 'core', 61)).toContain('monkey_king_bar');
+  });
+
+  it('7.42 items that keep an older answer\'s active are answers from 7.42 on, never in an earlier game', () => {
+    for (const [item, since] of Object.entries(ANSWER_SINCE as Record<string, { patch: number; name: string }>)) {
+      expect(names.items[item], item).toBeTruthy();
+      expect(Object.values(ANSWERS).flatMap((g) => [...g.core, ...g.support]), item).toContain(item);
+      expect(since.patch).toBeGreaterThanOrEqual(58);
+    }
+    // Skypiercer: "Active: Disarm" (built from Heaven's Halberd). Caduceus: "Active: Force. Identical to Force Staff's active".
+    expect(answersFor('physical', 'core', 61)).toContain('skypiercer');
+    expect(answersFor('physical', 'core', null)).toContain('skypiercer'); // unknown = current
+    expect(answersFor('physical', 'core', 60)).not.toContain('skypiercer'); // 7.41: not in the game
+    expect(answersFor('physical', 'core', 60)).toContain('heavens_halberd');
+    for (const tag of ['magic', 'disable', 'physical']) {
+      expect(answersFor(tag, 'support', 61), tag).toContain('caduceus');
+      expect(answersFor(tag, 'support', 60), tag).not.toContain('caduceus');
+    }
+    expect(GAP_CLOSERS).toContain('caduceus');
+    // Holding the upgrade is holding the item it was built from.
+    expect(withUpgrades(['force_staff'])).toContain('caduceus');
+    expect(withUpgrades(['heavens_halberd'])).toContain('skypiercer');
+    expect(withUpgrades(['blink'])).not.toContain('caduceus');
   });
 
   it('a 7.42 game no longer counts Bloodthorn as covering Phantom Assassin', () => {
