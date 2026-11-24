@@ -74,6 +74,7 @@ const T = {
   buildPros: { en: 'Most built by pros on this hero (by 24:59)', zh: '职业选手这个英雄最常出（24:59 前）' },
   buildGaps: { en: 'First gap closer', zh: '第一件位移装' },
   buildYou: { en: 'you', zh: '你' },
+  dataPatch: { en: 'Prices and item effects of patch', zh: '价格与装备效果按版本' },
   purpose: {
     initiation_or_gap_closer: { en: 'initiation / gap closer', zh: '先手 / 位移' }, answer_to_spell_damage: { en: 'answers spell damage', zh: '应对技能伤害' },
     answer_to_attack_damage: { en: 'answers attack damage', zh: '应对普攻伤害' }, answer_to_disables: { en: 'answers disables', zh: '应对控制' },
@@ -407,6 +408,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     const answers = (list: any[]) => list.slice(0, 10).map((x: any) => <span key={x.item} className={`ag-chip ${x.player_first_held ? 'is-good' : ''}`}>{x.name} <em>{x.player_first_held ?? t(T.never)}</em></span>);
     return (
       <div className="ag-rec">
+        {r.data_patch && <p className="ag-rec-sub">{t(T.dataPatch)} {r.data_patch}</p>}
         <p className="ag-rec-line"><span>{t(T.buildDamage)}</span><span className="ag-chip">{t(T.buildAttacks)} <em>{pc(d.share_from_enemy_attacks)}</em></span><span className="ag-chip">{t(T.buildSpells)} <em>{pc(d.share_from_enemy_abilities_and_items)}</em></span></p>
         <p className="ag-rec-line">{d.by_enemy.slice(0, 5).map((e: any) => <span key={e.enemy} className="ag-chip is-enemy">{N(e.enemy)} · {e.kills_of_me} {t(T.buildKills)} <em>{t(T.buildAttacks)} {pc(e.share_from_their_attacks)} · {t(T.buildSpells)} {pc(e.share_from_their_abilities_and_items)}</em></span>)}</p>
         {r.my_big_items_in_order.length > 0 && (
