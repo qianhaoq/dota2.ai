@@ -10,6 +10,7 @@ import { trackReviewViewed } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
+import { MatchBoard } from './MatchBoard';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import './agent.css';
 
@@ -342,20 +343,7 @@ export const AgentMatchPage: React.FC = () => {
       )}
     </header>
   );
-  const scoreboard = board && (
-    <section className="ag-board" aria-label={t(T.scoreboard)}>
-      <h2>{t(T.scoreboard)}</h2>
-      <ul>
-        {board.players.map((p) => (
-          <li key={p.slot} className={p.radiant ? 'is-radiant' : 'is-dire'}>
-            {p.hero.img ? <SafeImg src={p.hero.img} alt={p.hero[lang]} className="ag-portrait" /> : <span className="ag-portrait ag-portrait--blank" />}
-            <span>{p.hero[lang]}</span>
-            <span className="ag-kda">{p.kda.join(' / ')}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
+  const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} />;
   const dead = (title: Bi, body: Bi, retry = false) => (
     <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={go}>{t(T.retry)}</button>}{notice && <p className="ag-warn" role="alert">{notice}</p>}</div>{scoreboard}</Shell>
   );
@@ -394,7 +382,7 @@ export const AgentMatchPage: React.FC = () => {
         {header}
         <div className="ag-layout">
           <div>
-            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} goalContext={goalContext} />
+            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} goalContext={goalContext} board={scoreboard} />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
           </div>
           <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} />
