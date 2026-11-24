@@ -600,6 +600,13 @@ describe('trace tools on a real game', () => {
     expect(r.phases.at(-1)).toMatchObject({ clock: '40:00–42:31', to: 2551, buildings_opponents_took: 12 });
     expect(r.phases.at(-1).buildings.at(-1)).toMatchObject({ building: 'badguys_fort', clock: '42:31' });
     expect(sum(Object.fromEntries(r.phases.map((p) => [p.ref, p.hero_damage_to_buildings])))).toBe(540);
+    // The stretches and the whole game are sums over the same damage rows, for either side — the second the Ancient fell included.
+    for (const hero of ['beastmaster', 'axe']) {
+      const x = runTraceTool(trace, 'tempo_report', { hero });
+      expect(x.phases.reduce((a, p) => a + p.team_heroes_damage_to_buildings, 0)).toBe(sum(x.team_heroes_damage_to_buildings));
+      expect(x.phases.reduce((a, p) => a + p.hero_damage_to_buildings, 0)).toBe(x.team_heroes_damage_to_buildings[hero]);
+    }
+    expect(runTraceTool(trace, 'tempo_report', { hero: 'axe' }).team_heroes_damage_to_buildings.axe).toBe(1065);
     // No gold in the trace: a stated gap, and no lead in the stretches. With the match's per-minute lead, each stretch has it from the hero's side.
     expect(r.gaps.map((g) => g.topic)).toEqual(['vision', 'creeps', 'roshan', 'building_damage_by_summoned_units_and_illusions', 'gold_advantage']);
     expect(p3).not.toHaveProperty('team_gold_lead');
@@ -635,6 +642,20 @@ describe('trace tools on a real game', () => {
     expect(r.fights_where.hero_was_not_there).toEqual([]);
     expect(r.fights_where.hero_was_there.length + r.fights_where.hero_presence_not_known.length).toBe(16);
     expect(r.fights_where.hero_presence_not_known.length).toBeGreaterThan(0);
+    // Sampled far from the first death of a fight and not at all at the later ones: he may have been at those. Unknown, not absent.
+    expect(runTraceTool(trace, 'tempo_report', { hero: 'beastmaster' }).fights_where.hero_was_not_there).toEqual(['37:46']);
+    const i0 = 2270 - trace.t0; const i1 = 2280 - trace.t0;
+    const partly = { ...trace, states: trace.states.map((s, i) => (i === h ? { ...s, x: s.x.map((v, j) => (j >= i0 && j <= i1 ? null : v)) } : s)) };
+    const half = runTraceTool(partly, 'tempo_report', { hero: 'beastmaster' }).fights_where;
+    expect(half.hero_was_not_there).toEqual([]);
+    expect(half.hero_presence_not_known).toEqual(['37:46']);
+    expect(half.hero_was_there).toHaveLength(15);
+    // One tower beside the Ancient left in the log (the other never fell): damage to either is under the one name, so who hit this one is still not known.
+    const t4 = trace.buildings.findIndex((b) => /badguys_tower4$/.test(trace.names[b[1]]));
+    const single = { ...trace, buildings: trace.buildings.filter((_, i) => i !== t4) };
+    const one = runTraceTool(single, 'tempo_report', { hero: 'phantom_assassin' });
+    expect(one.buildings_team_took_where.not_known).toEqual(['41:52']);
+    expect(one.phases.at(-1).buildings.find((b) => b.building === 'badguys_tower4')).toMatchObject({ hero_damaged_it: null });
     // A building its own side destroyed is nobody's objective.
     const b0 = trace.buildings.findIndex((b) => /goodguys_tower1_top/.test(trace.names[b[1]]));
     const denied = { ...trace, buildings: trace.buildings.map((b, i) => (i === b0 ? [b[0], b[1], 2, b[3]] : b)) };

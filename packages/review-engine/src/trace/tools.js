@@ -519,6 +519,8 @@ export function itemTimeline(trace, args = {}) {
 
 /** Buildings that are objectives: towers, barracks, the Ancient. Not the filler buildings around a base. */
 const OBJECTIVE = /_(tower\d|melee_rax|range_rax|fort)(_(top|mid|bot))?$/;
+/** Buildings that share their name with another: each side's two towers beside its Ancient. */
+const SHARED_NAME = /_tower4$/;
 /** The game is read in stretches of this many seconds. */
 const PHASE_SECONDS = 600;
 /** A building taken this long after a fight (or during it) is counted as following from the fight. */
@@ -561,11 +563,13 @@ export function tempoReport(trace, args = {}, ctx = {}) {
     const name = trace.names[target];
     if (!name || !OBJECTIVE.test(name)) continue;
     const ah = heroOfName(trace, a);
-    if (ah >= 0 && trace.heroes[ah].team !== buildingTeam(name)) hits.push([sec, ah, target, value]);
+    // Up to the second the Ancient fell, like the buildings themselves: the whole game's sums and the stretches' are over the same rows.
+    if (ah >= 0 && trace.heroes[ah].team !== buildingTeam(name) && sec <= end + 1) hits.push([sec, ah, target, value]);
   }
   // Two buildings with one name (the towers beside the Ancient) cannot be told apart in the damage log: who
-  // damaged which is then unknown (null), not "nobody".
-  const twins = new Set(objectives.filter((b, i) => objectives.some((o, j) => j !== i && o.id === b.id)).map((b) => b.id));
+  // damaged which is then unknown (null), not "nobody" — also when only one of the two fell, or the other
+  // was denied: the damage to the one still standing is logged under the same name.
+  const twins = new Set(objectives.filter((b, i) => SHARED_NAME.test(b.name) || objectives.some((o, j) => j !== i && o.id === b.id)).map((b) => b.id));
   const damagedBy = (b) => (twins.has(b.id) ? null : [...new Set(hits.filter((x) => x[2] === b.id && x[0] <= b.t).map((x) => x[1]))]);
   const buildingRow = (b) => {
     const mine = b.owner !== team;
@@ -579,15 +583,15 @@ export function tempoReport(trace, args = {}, ctx = {}) {
 
   const all = fights(trace).map((f, fi) => {
     const lost = { 2: 0, 3: 0 };
-    let died = false; let near = false; let known = false;
+    let died = false; let near = false; let compared = 0; let missing = 0;
     for (const d of f.deaths) {
       const v = heroOfName(trace, d[1]);
-      if (v < 0) continue;
+      if (v < 0) { missing += 1; continue; }
       lost[trace.heroes[v].team] += 1;
       if (v === h) { died = true; continue; }
       const at = stateAt(trace, v, d[0]); const me = stateAt(trace, h, d[0]);
-      if (!at || !me) continue;
-      known = true;
+      if (!at || !me) { missing += 1; continue; }
+      compared += 1;
       if (me.alive && dist(at, me) <= NEAR) near = true;
     }
     const fewer = lost[team] === lost[other] ? 'even' : lost[team] < lost[other] ? 'team' : 'opponents';
@@ -595,8 +599,9 @@ export function tempoReport(trace, args = {}, ctx = {}) {
     return {
       ref: `fight:${fi + 1}`, from: f.from, to: f.to, clock: clock(f.from), fewer,
       team_deaths: lost[team], opponents_deaths: lost[other],
-      // Null when no position was sampled to compare: unknown, not absent.
-      there: died || near ? true : known ? false : null,
+      // "Not there" needs every death of the fight compared: with a position missing at any of them the hero
+      // may have been at that one. Null then: unknown, not absent.
+      there: died || near ? true : compared > 0 && missing === 0 ? false : null,
       team_took_a_building: followed(team), opponents_took_a_building: followed(other),
     };
   });
@@ -627,7 +632,8 @@ export function tempoReport(trace, args = {}, ctx = {}) {
     for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0 && inPhase(d[0])) lost[trace.heroes[v].team] += 1; }
     const fought = all.filter((f) => inPhase(f.from));
     const dmg = { hero: 0, team: 0 };
-    for (const [sec, ah, , value] of hits) { if (sec < from || sec >= to || trace.heroes[ah].team !== team) continue; dmg.team += value; if (ah === h) dmg.hero += value; }
+    // By the same rule as buildings and deaths: the second the Ancient falls belongs to the last stretch.
+    for (const [sec, ah, , value] of hits) { if (!inPhase(sec) || trace.heroes[ah].team !== team) continue; dmg.team += value; if (ah === h) dmg.hero += value; }
     phases.push({
       ref: `phase:${key}:${n}`, from, to, clock: `${clock(from)}–${clock(to)}`,
       buildings_team_took: taken.filter((b) => b.taken_by === 'team').length,
@@ -675,7 +681,7 @@ export function tempoReport(trace, args = {}, ctx = {}) {
       opponents_lost_fewer_heroes_and_took_a_building_within_120s: clocks(lostF.filter((f) => f.opponents_took_a_building)),
       hero_was_there: clocks(all.filter((f) => f.there === true)),
       hero_was_not_there: clocks(all.filter((f) => f.there === false)),
-      // No position sampled to compare at that moment: in neither list above.
+      // A position was not sampled at one of the fight's deaths, and nothing else places the hero there: in neither list above.
       hero_presence_not_known: clocks(all.filter((f) => f.there === null)),
     },
     fights_where_rule: 'a fight is three or more hero deaths within 15 seconds of each other; "there" means the hero died in it or was alive within 2200 units of a hero who died, at that moment; a building counts when it fell during the fight or within 120 seconds after it',
