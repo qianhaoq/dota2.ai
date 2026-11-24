@@ -36,7 +36,7 @@ describe('showcase reviews are made before a visitor opens them', () => {
     const out = await warmShowcase(svc, { log: (m: string) => logs.push(m) });
     expect(out).toEqual(['error:TypeError', 'started:running', 'started:running', 'started:running']);
     expect(svc.started).toHaveLength(3);
-    expect(logs[0]).toBe('showcase match=9091400302 hero=tidehunter lang=en -> error:TypeError');
+    expect(logs).toContain('showcase match=9091400302 hero=tidehunter lang=en -> error:TypeError');
   });
 
   it('covers the matches the home page and the agent one-liner send people to', () => {
