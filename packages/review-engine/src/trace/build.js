@@ -91,6 +91,11 @@ export function createTraceBuilder() {
     return i;
   };
   const casts = []; const itemUses = []; const deaths = []; const purchases = []; const buildings = []; const modifiers = [];
+  /** Buybacks as the log has them: [t, player slot]. The slot is the states' player_index, matched to a hero at finish. */
+  const buybackRows = [];
+  /** @type {Map<string, { from: number | null, to: number | null, team: number, kind: string, x: number, y: number }>} by entity id */
+  const wards = new Map();
+  let wardRows = 0;
   /** @type {Map<string, number>} */
   const damage = new Map();
   let stateRows = 0; let eventRows = 0; let lastT = -Infinity; let firstT = Infinity;
@@ -202,6 +207,11 @@ export function createTraceBuilder() {
         case 'DOTA_COMBATLOG_PURCHASE':
           purchases.push([t, id(e.target), id(e.value_name || e.inflictor), row]);
           break;
+        case 'DOTA_COMBATLOG_BUYBACK':
+          // The log names no unit: `value` is the player slot (checked on 9102822299: slot 8 Legion Commander was
+          // alive again at 51:28, the second of the buyback; slot 1 Queen of Pain at 53:08).
+          if (Number.isInteger(e.value) && e.value >= 0 && e.value <= 23) buybackRows.push([t, e.value]);
+          break;
         case 'DOTA_COMBATLOG_TEAM_BUILDING_KILL':
           // The log names the team that took the building, not a unit.
           buildings.push([t, id(e.target), e.attacker_team === 2 || e.attacker_team === 3 ? e.attacker_team : 0, row]);
@@ -228,6 +238,24 @@ export function createTraceBuilder() {
           break;
         }
         default:
+      }
+    },
+
+    /**
+     * One row of the extractor's wards-native.jsonl: { entity_id, event: created | present | deleted, kind: observer |
+     * sentry, team, t, x, y }. "present" is a ward already standing when the replay began (its placing is not seen).
+     * A deletion is the ward's end: it expired or was destroyed, the file does not say which.
+     */
+    addWard(row) {
+      wardRows += 1;
+      if (!row || typeof row.entity_id !== 'string' || !Number.isFinite(row.t)) return;
+      const t = r1(row.t);
+      if (row.event === 'created' || row.event === 'present') {
+        if (!(row.team === 2 || row.team === 3) || !(row.kind === 'observer' || row.kind === 'sentry') || !Number.isFinite(row.x) || !Number.isFinite(row.y)) return;
+        wards.set(row.entity_id, { from: row.event === 'created' ? t : null, to: null, team: row.team, kind: row.kind, x: Math.round(row.x), y: Math.round(row.y) });
+      } else if (row.event === 'deleted') {
+        const w = wards.get(row.entity_id);
+        if (w && w.to == null) w.to = t;
       }
     },
 
@@ -286,9 +314,15 @@ export function createTraceBuilder() {
         damage: [...damage].map(([k, v]) => [...k.split('|').map(Number), Math.round(v)]),
         // Per hero, in hero order: net worth at 0:00, 1:00, 2:00 … (null for a hero the metadata did not name).
         ...(perMinute ? { net_worth: list.map(graphOf) } : {}),
+        // [t, hero index] for each buyback whose slot is a hero of this match. An empty list is "none" only when the
+        // extract was read with this builder: a trace without the field does not know.
+        buybacks: buybackRows.map(([bt, slot]) => [bt, list.findIndex((h) => h.player_index === slot)]).filter(([, i]) => i >= 0),
+        // Every ward seen: [placed (null: standing when the replay began), ended (null: still up at the end), team,
+        // 'o' observer / 's' sentry, x, y]. Only when the extract had a ward file.
+        ...(wardRows ? { wards: [...wards.values()].map((w) => [w.from, w.to, w.team, w.kind === 'observer' ? 'o' : 's', w.x, w.y]).sort((a, b) => (a[0] ?? -1e9) - (b[0] ?? -1e9)) } : {}),
         source: { state_rows: stateRows, event_rows: eventRows, sample_hz: 1, extractor: meta.extractor ?? null },
         gaps: [
-          { topic: 'vision', reason: 'no_fog_of_war_in_trace' },
+          { topic: 'vision', reason: wardRows ? 'ward_placements_only_not_what_each_side_saw' : 'no_fog_of_war_in_trace' },
           { topic: 'creeps', reason: 'no_creep_entities_in_trace' },
           { topic: 'roshan', reason: 'no_reliable_roshan_event' },
           { topic: 'ability_immunity', reason: 'only_item_spell_immunity_modifiers_tracked' },

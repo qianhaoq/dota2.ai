@@ -150,6 +150,36 @@ export function fightParticipation(trace, fight) {
   return { took_part: took, engaged_at: engagedAt ?? Math.floor(fight.from), at, victims };
 }
 
+/** Observer wards this close count as "near" a spot (an observer's day vision is 1600: near is a distance, not a claim of sight). */
+export const WARD_NEAR = 1600;
+
+/**
+ * Observer wards standing at second t within WARD_NEAR of a spot, per team: { 2: n, 3: n }. Null when the trace has
+ * no ward list (built before wards were read, or from an extract without them): unknown, not none.
+ */
+export function observersNear(trace, at, t) {
+  if (!Array.isArray(trace?.wards) || !at) return null;
+  const out = { 2: 0, 3: 0 };
+  for (const [from, to, team, kind, x, y] of trace.wards) {
+    if (kind !== 'o' || (from != null && from > t) || (to != null && to <= t)) continue;
+    if (Math.hypot(x - at.x, y - at.y) <= WARD_NEAR) out[team] += 1;
+  }
+  return out;
+}
+
+/**
+ * Whether hero h bought back while dead after a death at second t: the buyback's clock, false, or null when the trace
+ * does not record buybacks (built before they were read).
+ */
+export function boughtBackAfter(trace, h, t) {
+  if (!Array.isArray(trace?.buybacks)) return null;
+  const alive = trace.states[h].alive;
+  let back = null;
+  for (let i = Math.max(0, Math.ceil(t) - trace.t0 + 1); i < trace.n; i += 1) if (alive[i] === 1) { back = i + trace.t0; break; }
+  const b = trace.buybacks.find(([bt, i]) => i === h && bt >= t && (back == null || bt <= back + 1));
+  return b ? b[0] : false;
+}
+
 /** Hits on one building more than this many seconds apart are two pushes. */
 export const SIEGE_GAP = 30;
 /** A push is at least this many hero-seconds of damage to the building. */

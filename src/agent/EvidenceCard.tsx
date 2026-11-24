@@ -103,6 +103,8 @@ const T = {
     hitting_enemy_buildings: { en: 'hitting a building', zh: '在打建筑' }, none_of_these: { en: '', zh: '' },
   } as Record<string, Record<Lang, string>>,
   why: { cooldown: { en: 'cooldown', zh: '冷却' }, mana: { en: 'no mana', zh: '缺蓝' }, not_learned: { en: 'not learned', zh: '未学' } } as Record<string, Record<Lang, string>>,
+  observers: { en: 'Observer wards within 1600', zh: '1600 码内的假眼' },
+  boughtBack: { en: 'bought back', zh: '买活' },
   traded: { true: { en: 'traded: an enemy hero died within 15 s', zh: '换到了：15 秒内对面也死了英雄' }, false: { en: 'not traded: no enemy hero died within 15 s', zh: '没换到：15 秒内对面没死英雄' } } as Record<string, Record<Lang, string>>,
   alliesElsewhere: { en: 'Allies not near', zh: '不在附近的队友' },
   roshanBy: { my_team: { en: 'Your team took Roshan', zh: '我方打掉肉山' }, enemy: { en: 'They took Roshan', zh: '对方打掉肉山' } } as Record<string, Record<Lang, string>>,
@@ -222,6 +224,9 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   traded_within_15s: { en: 'Deaths traded (an enemy hero died within 15 s)', zh: '换到了（15 秒内对面也死了英雄）' },
   not_traded_within_15s: { en: 'Deaths not traded', zh: '没换到' },
   no_ally_within_2200_at_death_and_not_traded: { en: 'No ally within 2200 and not traded', zh: '身边没人且没换到' },
+  no_own_observer_within_1600: { en: 'Deaths with no own observer within 1600', zh: '身边 1600 码内没有己方假眼的阵亡' },
+  enemy_observer_within_1600: { en: 'Deaths with an enemy observer within 1600', zh: '1600 码内有敌方假眼的阵亡' },
+  bought_back: { en: 'Deaths bought back', zh: '买活的阵亡' },
   // fight_report's totals (fights:<hero>).
   fights_total: { en: 'Fights', zh: '团战' },
   fights_my_team_lost_fewer: { en: 'Your team lost fewer heroes', zh: '我方少死人' },
@@ -318,6 +323,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         </table>
         {r.ready_not_cast.length > 0 && <p className="ag-rec-line"><span>{t(T.readyUnused)}</span>{r.ready_not_cast.map((a: string) => <span key={a} className="ag-chip is-warn">{N(a)}</span>)}</p>}
         {r.controls_on_me.length > 0 && <p className="ag-rec-line"><span>{t(T.disables)}</span>{r.controls_on_me.map((c: any, i: number) => <span key={i} className="ag-chip">{N(c.modifier)} · {N(c.from)}{c.duration ? ` · ${c.duration}${t(T.sec)}` : ''}</span>)}</p>}
+        {r.observers_within_1600 && <p className="ag-rec-line"><span>{t(T.observers)}</span><span className="ag-chip is-ally">{t(T.mine)} {r.observers_within_1600.my_team}</span><span className="ag-chip is-enemy">{t(T.theirs)} {r.observers_within_1600.enemy}</span>{typeof r.bought_back === 'string' && <span className="ag-chip">{t(T.boughtBack)} {r.bought_back}</span>}</p>}
         {typeof r.traded_within_15s === 'boolean' && <p className="ag-rec-line"><span className={`ag-chip ${r.traded_within_15s ? 'is-good' : 'is-warn'}`}>{t(T.traded[String(r.traded_within_15s)])}</span></p>}
         {r.allies_elsewhere?.length > 0 && <p className="ag-rec-line"><span>{t(T.alliesElsewhere)}</span>{r.allies_elsewhere.map((h: any) => <span key={h.hero} className="ag-chip">{N(h.hero)}{doingOf(h) && ` · ${doingOf(h)}`}{h.distance != null && <em>{h.distance} {t(T.away)}</em>}{h.respawn_in != null && <em>{t(T.respawn)} {h.respawn_in}{t(T.sec)}</em>}{h.tp_ready != null && <em>{t(T.tp[String(h.tp_ready)])}</em>}</span>)}</p>}
         <p className="ag-rec-sub">{t(T.damage)}</p>
@@ -528,6 +534,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         <p className="ag-rec-line"><span>{t(T.tookPart)} {s.took_part_count}</span>{s.took_part.map((h: string) => <span key={h} className={`ag-chip ${cls}`}>{N(h)}</span>)}</p>
         {s.ultimates_ready.length > 0 && <p className="ag-rec-line"><span>{t(T.ultsReady)}</span>{s.ultimates_ready.map((u: any) => <span key={u.hero} className="ag-chip is-good">{N(u.hero)} · {N(u.ability)}</span>)}</p>}
         {s.ultimates_not_ready.length > 0 && <p className="ag-rec-line"><span>{t(T.ultsNot)}</span>{s.ultimates_not_ready.map((u: any) => <span key={u.hero} className="ag-chip is-warn">{N(u.hero)} · {T.why[u.why] ? t(T.why[u.why]) : u.why}{u.seconds_left != null && <em>{u.seconds_left}{t(T.sec)}</em>}</span>)}</p>}
+        {typeof s.observers_within_1600_of_the_fight === 'number' && <p className="ag-rec-line"><span>{t(T.observers)}</span><span className="ag-chip">{s.observers_within_1600_of_the_fight}</span></p>}
         {s.black_king_bars_ready.length > 0 && <p className="ag-rec-line"><span>{t(T.bkbReady)}</span>{s.black_king_bars_ready.map((h: string) => <span key={h} className="ag-chip">{N(h)}</span>)}</p>}
         {s.not_in_it.length > 0 && (
           <p className="ag-rec-line"><span>{t(T.notInIt)}</span>{s.not_in_it.map((h: any) => (
