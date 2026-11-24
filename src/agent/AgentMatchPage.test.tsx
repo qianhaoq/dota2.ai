@@ -352,7 +352,7 @@ describe('AgentMatchPage', () => {
       ref: 'death:beastmaster:9', n: 9, t: 2165, clock: '36:05', killer: 'phantom_assassin',
       snapshots: [{ dt: -1, me: { hp: 300, max_hp: 2915 }, allies: [], enemies: [{ hero: 'phantom_assassin', dist: 150 }] }],
       ready_not_cast: [], controls_on_me: [], damage_taken: [{ from: 'phantom_assassin', by: 'attack', value: 2600 }],
-      traded_within_15s: false,
+      traded_within_15s: false, observers_within_1600: { my_team: 0, enemy: 2 }, bought_back: '36:20',
       allies_elsewhere: [{ hero: 'sven', place: 'radiant_top_lane', distance: 9100, tp_ready: true }, { hero: 'skywrath_mage', doing: 'dead', respawn_in: 25 }],
     } };
     const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
@@ -361,6 +361,16 @@ describe('AgentMatchPage', () => {
     page('/r/9100904020?hero=beastmaster&lang=zh');
     fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
     expect(await screen.findByText('没换到：15 秒内对面没死英雄')).toBeTruthy();
+    expect(chip('我方 0')).toBeTruthy();
+    expect(chip('敌方 2')).toBeTruthy();
+    expect(chip('买活 36:20')).toBeTruthy();
+    cleanup();
+    // A buyback is shown without wards too (a trace with buybacks and no ward file; review of #305).
+    mockFetch({ 'ref=overview': overview, '/evidence?': { ...death, ref: 'death:beastmaster:10', record: { ...death.record, ref: 'death:beastmaster:10', observers_within_1600: null, bought_back: '36:20' } }, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['death:beastmaster:10'], fact: '36:05 阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '买活 36:20')).toBeTruthy();
+    expect(screen.queryByText('1600 码内的假眼')).toBeNull();
     expect(chip('斯温 · 天辉上路9100 码外TP 可用')).toBeTruthy();
     expect(chip('天怒法师 · 阵亡复活还要 25秒')).toBeTruthy();
     cleanup();

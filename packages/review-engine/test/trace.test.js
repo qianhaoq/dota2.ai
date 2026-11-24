@@ -545,6 +545,10 @@ describe('trace tools on a real game', () => {
       traded_within_15s: ['2:51', '6:13', '8:27', '22:06', '25:30', '30:42', '39:21'],
       not_traded_within_15s: ['0:47', '11:03', '36:05', '41:57'],
       no_ally_within_2200_at_death_and_not_traded: [],
+      // This trace was built before wards and buybacks were read: unknown, so no death is in these lists.
+      no_own_observer_within_1600: [],
+      enemy_observer_within_1600: [],
+      bought_back: [],
     });
     expect(all.deaths.map((d) => d.in_a_fight)).toEqual([false, false, true, true, true, true, true, true, true, true, true]);
     expect([...all.deaths_where.in_a_fight, ...all.deaths_where.outside_fights]).toHaveLength(all.deaths_total);

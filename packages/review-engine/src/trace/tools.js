@@ -15,7 +15,7 @@
  * guessed: an absent value is unknown, not false.
  */
 import { heroByKey } from '../staticHeroes.js';
-import { heroStateAt } from './state.js';
+import { heroStateAt, observersNear, boughtBackAfter } from './state.js';
 import {
   abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, manaCost, mostMana, nameId, nameOf, nearby, region, seconds, stateAt, unit,
 } from './query.js';
@@ -241,6 +241,10 @@ export function deathContext(trace, args = {}, ctx = {}) {
       traded_within_15s: trace.deaths.some((o) => { const v = heroOfName(trace, o[1]); return v >= 0 && trace.heroes[v].team !== trace.heroes[h].team && Math.abs(o[0] - t) <= TRADE_SECONDS; }),
       // The allies who were not within 2200 at the death: what the replay shows them doing, where, how far.
       allies_elsewhere: alliesElsewhere(trace, h, t, atDeath),
+      // Observer wards standing within 1600 of where the hero died, each side's. Null: the trace has no ward list.
+      observers_within_1600: wardsAt(trace, h, atDeath, t),
+      // The clock of a buyback after this death, false when none, null when the trace does not record buybacks.
+      bought_back: (() => { const b = boughtBackAfter(trace, h, t); return b == null || b === false ? b : clock(b); })(),
       damage_sources: sources,
     };
   });
@@ -251,6 +255,14 @@ export function deathContext(trace, args = {}, ctx = {}) {
 }
 
 const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 : null);
+
+/** Each side's observers within 1600 of the hero at a death, told as my_team / enemy; null when unknown. */
+function wardsAt(trace, h, atDeath, t) {
+  const near = observersNear(trace, atDeath?.me ? { x: atDeath.me.x, y: atDeath.me.y } : null, t);
+  if (!near) return null;
+  const team = trace.heroes[h].team;
+  return { my_team: near[team], enemy: near[team === 2 ? 3 : 2] };
+}
 
 /** A death is traded when an enemy hero dies this close to it in time. */
 export const TRADE_SECONDS = 15;
@@ -310,6 +322,10 @@ function deathPatterns(trace, deaths, { allSources = false } = {}) {
       traded_within_15s: of((d) => d.traded_within_15s),
       not_traded_within_15s: of((d) => !d.traded_within_15s),
       no_ally_within_2200_at_death_and_not_traded: of((d) => d.allies_within_2200.at_death === 0 && !d.traded_within_15s),
+      // Only where the trace has wards (a death with no ward list is in neither).
+      no_own_observer_within_1600: of((d) => d.observers_within_1600?.my_team === 0),
+      enemy_observer_within_1600: of((d) => d.observers_within_1600?.enemy > 0),
+      bought_back: of((d) => typeof d.bought_back === 'string'),
     },
     // Deaths a list above could not be decided for (health or position not sampled): a count over the game is only as sure as these are few.
     deaths_not_known: {
