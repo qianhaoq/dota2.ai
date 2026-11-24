@@ -12,77 +12,98 @@
 
 <br>
 
-<a href="https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster"><img src="docs/assets/review-verdict.zh.png" alt="dota2.ai 的一份复盘：一句结论、整局团战的时间线，以及可以追问的教练" width="100%"></a>
+<a href="https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster"><img src="docs/assets/review-verdict.zh.png" alt="dota2.ai 的一份复盘：一句结论、带双方阵容出装和经济曲线的记分板，以及可以追问的教练" width="100%"></a>
 
 </div>
 
 <br>
 
-贴一个比赛编号，选你玩的英雄，等两到三分钟。教练会取回这局的录像，用一组查询工具把它过一遍——每一次阵亡、每一个大招、每一波团战、你的出装——然后写一份只给你一个人的复盘：**一句结论，最多三件决定了这局的事，以及每一件下一把该怎么改。**
+贴一个比赛编号，选你玩的英雄。两三分钟后，你会拿到一份只写给你一个人的复盘：**一句结论，最多三件决定了这局的事，以及每一件下一把该怎么改。**
 
-写完之后，由代码拿录像去核对这份复盘。每一个时间点、每一个数字、每一条引用的记录，都必须出现在工具实际返回的内容里。对不上的会被退回重写一次，还是拿不出依据就删掉。
+里面没有录像撑不住的观点。Agent 先用一组查询工具把这局过一遍——每一次阵亡、你关键技能的每一次释放、每一波团战、双方的出装——然后由普通代码把每一个时间点、每一个数字、每一条引用的记录，拿去和工具实际返回的内容核对。对不上的退回重写一次，还是拿不出依据就删掉。
 
-## 一条问题长什么样
+## 你会拿到什么
 
-<img align="right" width="42%" src="docs/assets/review-finding.zh.png" alt="一条问题：结论、带时间点的几条证据、下一把的规则，以及改法">
+<img align="right" width="44%" src="docs/assets/review-finding.zh.png" alt="一条问题：结论、带时间点和出处的证据、下一把的规则，以及改法">
 
 右边是[比赛 9100904020](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) 三条问题里的第 2 条，原样截图。
 
-**针对你的打法下结论。** 不是"打得稳一点"，而是：*11 次死亡里有 3 次原始咆哮已经就绪却没有放出去*。
+**针对你的打法下结论。** 不是"出装再想想"，而是：*11 次死亡里幻影刺客杀了 7 次，她的普攻占死亡前伤害的 44%；你第一件针对普攻的强袭胸甲 38:58 才到，那时你已经死了 9 次。*
 
-**每条证据都带着出处。** 每一行都标明来自录像里的哪条记录。点"看原始记录"就能打开它：某次阵亡前的十二秒、某个技能的某一次释放、某波团战的逐秒经过。
+**每条证据都带着出处。** 点"看原始记录"，就能打开这一行读自哪里：某次阵亡前的十二秒、某个技能的每一次释放、某波团战的逐秒经过、你的出装对照到底是什么杀了你。
 
-**一条记得住的规则。** *当*两三个敌人已经贴上来、大招是亮的，*就*当场按出去。短到打的时候想得起来。
+**一条记得住的规则。** *当*你自己屏幕上能看到某个情况，*就*做一件事。短到打的时候想得起来。
 
-**一个下一把能数的数。** "原始咆哮就绪却没放的阵亡不超过 1 次（这局 3 次）。"打完下一局再打开，教练会在那盘录像里数同一件事。
+**下一把还会再查。** 同一份复盘的第 3 条数出了*原始咆哮就绪却没按的阵亡有 3 次*。把它设成目标，教练会在你下一盘录像里数同一件事。
 
 **可以跟它争。** 任何一行都能追问。它会先回到录像里查，再回答；回答同样要过核对。
 
+<br clear="right">
+
 在这几条问题之外，每份复盘还有：
 
+- **记分板**——双方阵容的等级、击杀/死亡/助攻、正补、经济、伤害和出装，以及每分钟的经济差（比赛没被 OpenDota 解析时，直接取自录像）；
 - **对局主线**——时间线上的每一波团战，以及转折的那一波；
-- **运营思路**——谁拿了地图，赢下的团战有没有换成建筑；
+- **运营思路**——双方各自什么时候占优，赢下的团战有没有换成建筑；
+- **你的思路（可选）**——复盘前说一句你这局想推进、抓人、带线还是拖后期，复盘就会对照它来读这局；
 - **做得好的**，同样要有依据；
 - **录像看不到的**，列出来，而不是去猜。
 
-<br clear="right">
+复盘里的价格、装备效果和技能冷却，按这局比赛当时的版本（7.41b、7.41c、7.42……），不是今天的。
 
 ## 工作原理
 
 ```mermaid
 flowchart LR
-    R["录像<br/>.dem 文件"] --> T["Trace<br/>约 250 KB 的事件"]
+    R["录像<br/>.dem 文件"] --> T["Trace<br/>约 250 KB"]
     T --> A["Agent<br/>自己去查"]
-    A <--> L["11 个查询工具"]
+    A <--> L["16 个查询工具"]
     A --> V{"校验器<br/>是代码，不是模型"}
     V -- "没有依据：<br/>退回重写一次" --> A
     V -- "有依据" --> D["复盘"]
 ```
 
-**1. 录像变成 trace。** 解析服务下载录像，提取出发生过的事：位置、施法、伤害、阵亡、物品、建筑。结果是一个很小的文件，工具能在毫秒内查询它。
+**1. 录像变成 trace。** 解析服务下载录像，把发生过的事——位置、施法、伤害、阵亡、购买、建筑、每个英雄的净值——提取成一个很小的文件，工具能在毫秒内查询它。
 
-**2. Agent 自己调查。** 给模型的是一套方法，不是结论。查什么由它决定，而它了解这局比赛的唯一途径是工具：
+**2. Agent 自己调查。** 给模型的是一套方法，不是结论；它了解这局比赛的唯一途径是工具。
+
+<details>
+<summary><b>16 个工具</b></summary>
+
+来自录像：
 
 | 工具 | 回答什么 |
 |---|---|
 | `match_overview` | 双方阵容、每一波团战和谁少死人、每座建筑什么时候倒 |
-| `death_context` | 每次阵亡前的几秒：谁在附近、血量、什么技能亮着没用、伤害来自谁 |
+| `death_context` | 每次阵亡前的几秒：谁在附近、血量、什么亮着没用、伤害来自谁 |
 | `ability_audit` | 一个技能的每一次释放：打了谁、对方是否技能免疫、这一下换来了什么 |
-| `immunity_windows` | 每一段黑皇杖时间，以及它开启时你的关键技能在干什么 |
+| `immunity_windows` | 每一段黑皇杖时间，以及这段时间里你的关键技能在干什么 |
 | `fight_timeline` | 逐秒还原一段比赛，含十个英雄的站位 |
 | `item_timeline` | 一个英雄每件装备第一次到手的时间 |
-| `lane_report` | 前十分钟：正补、经济、阵亡，以及这个对位通常谁占优 |
 | `tempo_report` | 每十分钟一段：建筑、团战、团战之后有没有拿到建筑、你当时在哪 |
-| `hero_abilities` | Valve 的数据：技能做什么、是否无视技能免疫 |
-| `pro_item_choices` | 职业选手在这个英雄上出什么，面对这些对手又出什么 |
-| `lineup_timing` | 这十个英雄里，哪些在短局胜率更高，哪些在长局更高 |
 
-**3. 代码核对结果。** 校验器是普通代码，里面没有模型：
+围绕录像：
+
+| 工具 | 回答什么 |
+|---|---|
+| `window_report` | 双方各自什么时候领先，领先时拿到了什么、做出了什么 |
+| `farm_report` | 你们占优的时候，对面在干什么 |
+| `power_spikes` | 每个英雄什么时候到等级、出大件，前后各杀了你几次 |
+| `build_check` | 你的出装顺序，对照到底是什么杀了你 |
+| `build_for_plan` | 你的装备有没有服务于你想打的思路 |
+| `lane_report` | 前十分钟：正补、经济、阵亡，以及这个对位通常谁占优 |
+| `hero_abilities` | 这局所在版本的 Valve 数据：技能做什么、是否无视技能免疫 |
+| `pro_item_choices` | 职业选手在这个英雄上出什么，面对这些对手又出什么 |
+| `lineup_timing` | 这十个英雄里，哪些短局胜率更高，哪些长局更高 |
+
+</details>
+
+**3. 代码核对结果。** 校验器里没有模型：
 
 - 每个时间点都必须是某个工具返回过的时间；
-- 每个不小于 100 的数字、每个小数、每个次数，都必须出现在工具结果里；
+- 每个不小于 100 的数字、每个小数、百分比和次数，都必须出现在工具结果里；
 - 每条证据必须能在*它自己引用的那条记录里*找到，所以一个真实的数字不能被安到别的时刻上；
-- 任何"谁看得见谁"的说法一律不接受，因为录像里没有战争迷雾。
+- 任何"谁看得见谁"的说法一律不接受——录像里没有战争迷雾。
 
 对不上的地方，模型有一次重写的机会。之后，没有依据的句子删掉，没有依据的证据删掉，删到站不住脚的整条问题也删掉。页面上会写明删了几条。
 
@@ -98,13 +119,11 @@ flowchart LR
 
 ## 怎么用
 
-**在网页上。** 打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛编号；或者贴 Steam 好友代码，列出你最近的比赛。支持中文和英文。
-
-CLI 和 MCP 提供的是即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标。都不需要 API Key。
+**在网页上。** 打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛编号或 OpenDota / Dotabuff / STRATZ 的比赛链接；或者贴 Steam 好友代码，列出你最近的比赛。支持中文和英文。首页还有一个版本顾问：7.42 改了什么，某个英雄改版后表现如何。
 
 ### 一行接入你的 Agent
 
-线上的 MCP 服务不用安装，也不需要 Key。一行命令接入：
+线上的 MCP 服务不用安装，也不需要 Key：
 
 | Agent | 运行一次 |
 |---|---|
@@ -113,17 +132,17 @@ CLI 和 MCP 提供的是即时的规则引擎一档：基于比赛数据的分�
 | **Gemini CLI** | `gemini mcp add --transport http dota2ai https://dota2.ai/mcp` |
 | **VS Code**（Copilot） | `code --add-mcp '{"name":"dota2ai","type":"http","url":"https://dota2.ai/mcp"}'` |
 | **Cursor** | [一键添加到 Cursor](https://cursor.com/en/install-mcp?name=dota2ai&config=eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9)，或把 `{ "mcpServers": { "dota2ai": { "url": "https://dota2.ai/mcp" } } }` 写进 `~/.cursor/mcp.json` |
-| **其他 MCP 客户端** | 填入地址 `https://dota2.ai/mcp`（Streamable HTTP） |
+| **其他 MCP 客户端** | 填入 `https://dota2.ai/mcp`（Streamable HTTP） |
 
 然后说一句话：
 
 > 复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。
 
-你的 Agent 不支持 MCP？只要它能访问网址，把这句话发给它：
+不支持 MCP？只要你的 Agent 能访问网址，把这句话发给它：
 
 > 帮我复盘 Dota 2 比赛 9100904020，我玩的是兽王。按 https://dota2.ai/llms.txt 调用接口，只引用接口返回的数据，样本不足就直说。
 
-服务共 8 个工具（[说明](packages/mcp/README.md)）。想在本地通过 stdio 运行，把命令设为 `node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`。另有一个 Agent Skill：[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)。
+服务的 8 个工具——`review_match`、`get_evidence`、`recent_matches`、`coach_report`、`coach_cases`、`coach_ask`、`goal_check`、`hero_matchup`——属于即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标（[说明](packages/mcp/README.md)）。想在本地通过 stdio 运行，用 `node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`。另有一个 Agent Skill：[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)。
 
 ### 在终端里用
 
@@ -135,11 +154,11 @@ node packages/cli/bin/dota2ai.js coach 9091400302 --hero 潮汐猎人 --section 
 node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --lang zh
 ```
 
-所有命令都支持 `--lang en|zh` 和 `--json`。完整说明见 [`packages/cli/README.md`](packages/cli/README.md)。
+所有命令都支持 `--lang en|zh` 和 `--json`，都不需要 Key。完整说明见 [`packages/cli/README.md`](packages/cli/README.md)。
 
 ### 自己查一盘录像
 
-仓库里带着上面那场比赛的 trace，所以 Agent 用的那些工具可以离线运行：
+仓库里带着上面那场比赛的 trace，所以 Agent 用的录像工具可以离线运行：
 
 ```bash
 T=packages/review-engine/test/fixtures/trace-9100904020.json.gz
@@ -180,15 +199,15 @@ npm run start:dev        # Vite 在 :5173，Express 在 :8080
 | `AGENT_BUCKET`、`TRACE_WORKER_URL` | 在独立的解析服务上解析，结果存进存储桶 |
 | `OPENDOTA_API_KEY`、`STRATZ_API_TOKEN` | 更高的请求额度，以及比赛数据的备用来源 |
 
-录像提取器由另一个配套仓库构建，不包含在这里。生产环境的搭建——解析服务、让复盘不被上线打断的任务队列、各项限额和成本——见 [`docs/AGENT_PIPELINE.md`](docs/AGENT_PIPELINE.md)。
+录像提取器由另一个配套仓库构建，不包含在这里。生产环境——解析服务、让复盘不被上线打断的任务队列、各项限额和成本——见 [`docs/AGENT_PIPELINE.md`](docs/AGENT_PIPELINE.md)。
 
 ```text
-lib/agent/                       复盘 Agent：循环、工具、校验器、任务、追问
-packages/review-engine/src/trace trace 格式和查询工具（纯函数，不联网）
-lib/coach/                       CLI 和 MCP 背后的规则引擎
-src/agent/、src/coach/           复盘页面；首页和玩家页面
-packages/cli/、packages/mcp/     CLI 和 MCP 服务
-server.js                        Express 主程序
+lib/agent/                        复盘 Agent：循环、工具、校验器、任务、追问
+packages/review-engine/src/trace  trace 格式和录像工具（纯函数，不联网）
+lib/coach/                        CLI 和 MCP 背后的规则引擎
+src/agent/、src/coach/            复盘页面；首页和玩家页面
+packages/cli/、packages/mcp/      CLI 和 MCP 服务
+server.js                         Express 主程序
 ```
 
 提 PR 之前，先跑一遍 CI 用的同一套检查：
@@ -197,7 +216,7 @@ server.js                        Express 主程序
 npx tsc --noEmit && node --check server.js && npm run build && npm test
 ```
 
-另见 [`CONTRIBUTING.md`](CONTRIBUTING.md) 和 [`AGENTS.md`](AGENTS.md)。
+另见 [`CONTRIBUTING.md`](CONTRIBUTING.md) 和 [`AGENTS.md`](AGENTS.md)。最有用的贡献是一局复盘说错了的比赛：[#164](https://github.com/qianhaoq/dota2.ai/issues/164)。
 
 ## 许可
 
