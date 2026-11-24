@@ -24,7 +24,9 @@
  *   commit instead of the latest. A copy is written next to it with three
  *   changes, each checked to apply: the game-file commit comes from the
  *   environment, only items / abilities / hero_abilities are built, and the
- *   neutral-items reader accepts the older file layout. Game files from before
+ *   neutral-items reader accepts the older file layout. The copies are compiled
+ *   from TypeScript to JavaScript with esbuild (the builder is TypeScript that
+ *   only a Node of 22.6 or later runs as is; the site supports Node 20). Game files from before
  *   Valve split npc_heroes.txt into #base includes (September 2026) are read
  *   by the builder as of e7705ee975eb, the last one written for them.
  *
@@ -35,6 +37,7 @@
  * Match ids on either side of each rollout are added by scripts/patch-match-ids.mjs.
  */
 import { execFileSync } from 'node:child_process';
+import { transformSync } from 'esbuild';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -106,10 +109,18 @@ patched = patched.replace(neutral, `const getNeutralItemNameTierMap = (neutrals)
 return patched;
 }
 const git = (...a) => execFileSync('git', a, { cwd: BUILDER }).toString();
-writeFileSync(join(BUILDER, 'tasks/updateconstants.dota2ai.ts'), patchBuilder(readFileSync(join(BUILDER, 'tasks/updateconstants.ts'), 'utf8'), 'current'));
-// The older builder imports its own util.ts: both are written next to the current ones under other names.
-writeFileSync(join(BUILDER, 'tasks/util.dota2ai-old.ts'), git('show', `${OLD_BUILDER}:tasks/util.ts`));
-writeFileSync(join(BUILDER, 'tasks/updateconstants.dota2ai-old.ts'), patchBuilder(git('show', `${OLD_BUILDER}:tasks/updateconstants.ts`).replace('from "./util.ts"', 'from "./util.dota2ai-old.ts"'), OLD_BUILDER));
+/** TypeScript to an ES module any supported Node runs; its import of util.ts pointed at the compiled `util`. */
+const compile = (ts, util) => {
+  const js = transformSync(ts, { loader: 'ts', format: 'esm', target: 'node20' }).code;
+  if (util && !js.includes('"./util.ts"')) throw new Error('builder changed: its import of ./util.ts not found');
+  return util ? js.replace('"./util.ts"', `"./${util}"`) : js;
+};
+const BUILT = { current: 'tasks/updateconstants.dota2ai.mjs', old: 'tasks/updateconstants.dota2ai-old.mjs' };
+writeFileSync(join(BUILDER, 'tasks/util.dota2ai.mjs'), compile(readFileSync(join(BUILDER, 'tasks/util.ts'), 'utf8')));
+writeFileSync(join(BUILDER, BUILT.current), compile(patchBuilder(readFileSync(join(BUILDER, 'tasks/updateconstants.ts'), 'utf8'), 'current'), 'util.dota2ai.mjs'));
+// The older builder has its own util.ts.
+writeFileSync(join(BUILDER, 'tasks/util.dota2ai-old.mjs'), compile(git('show', `${OLD_BUILDER}:tasks/util.ts`)));
+writeFileSync(join(BUILDER, BUILT.old), compile(patchBuilder(git('show', `${OLD_BUILDER}:tasks/updateconstants.ts`), OLD_BUILDER), 'util.dota2ai-old.mjs'));
 const splitHeroes = async (sha) => {
   const res = await fetch(`https://raw.githubusercontent.com/dotabuff/d2vpkr/${sha}/dota/scripts/npc/npc_heroes.txt`);
   if (!res.ok) throw new Error(`npc_heroes.txt at ${sha} failed`);
@@ -156,7 +167,7 @@ for (const [i, r] of releases.entries()) {
   if (next) {
     const data = [...commits].reverse().find((c) => c.at < next.rollout.at);
     const split = await splitHeroes(data.sha);
-    execFileSync(process.execPath, [split ? 'tasks/updateconstants.dota2ai.ts' : 'tasks/updateconstants.dota2ai-old.ts'], { cwd: BUILDER, env: { ...process.env, D2VPKR_REF: data.sha, ONLY_KEYS: 'items,abilities,hero_abilities' }, stdio: ['ignore', 'ignore', 'pipe'] });
+    execFileSync(process.execPath, [split ? BUILT.current : BUILT.old], { cwd: BUILDER, env: { ...process.env, D2VPKR_REF: data.sha, ONLY_KEYS: 'items,abilities,hero_abilities' }, stdio: ['ignore', 'ignore', 'pipe'] });
     const read = (f) => JSON.parse(readFileSync(join(BUILDER, 'build', `${f}.json`), 'utf8'));
     const snapshot = {
       release: r.name, major: entry.major, major_id: entry.major_id,
