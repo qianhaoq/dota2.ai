@@ -206,7 +206,7 @@ describe('runDeepReview', () => {
     expect(m.seen[0].system).toContain('简体中文');
     expect(m.seen[0].messages[0].content).toContain('"player_hero":"beastmaster"');
     expect(m.seen[0].messages[0].content).toContain('"necrolyte":"瘟疫法师"');
-    expect(m.seen[0].tools.map((t: any) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline', 'tempo_report', 'hero_abilities', 'pro_item_choices', 'lane_report', 'lineup_timing', 'window_report', 'build_for_plan', 'farm_report', 'build_check', 'power_spikes', 'ability_counters', 'item_counters', 'hero_counters', 'submit_review']);
+    expect(m.seen[0].tools.map((t: any) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline', 'tempo_report', 'hero_abilities', 'pro_item_choices', 'lane_report', 'lineup_timing', 'window_report', 'build_for_plan', 'farm_report', 'build_check', 'power_spikes', 'ability_counters', 'item_counters', 'hero_counters', 'lane_phase', 'learn_from_pros', 'submit_review']);
     // The tool results the model read are the real ones, told from the player's side.
     expect(JSON.parse(m.seen[1].messages.find((x: any) => x.tool_call_id === 'a').content).casts_total).toBe(10);
   });
@@ -378,7 +378,7 @@ describe('runDeepReview', () => {
   it('a finding carries a rule for the next game; what it says happened this game is checked', async () => {
     const rule = { when: '对面核心的黑皇杖还没开', do: '咆哮留着，等她开完再吼', this_game: '7 次黑皇杖里只有 27:27 那次吼中了她' };
     expect(SUBMIT_REVIEW.input_schema.properties.findings.items.required).toContain('rule');
-    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.required).toEqual(['when', 'do', 'this_game']);
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.required).toEqual(['when', 'do', 'this_game', 'why', 'depends_on']);
     // The model no longer writes a second list beside its findings.
     expect('next_game' in SUBMIT_REVIEW.input_schema.properties).toBe(false);
     const m = scripted([investigate, { toolCalls: [call('submit_review', review([{ ...good, rule }, { ...good, title: '第二条', rule: { when: '  ', do: '买闪烁匕首' } }]), 's')] }]);

@@ -21,6 +21,16 @@ const T = {
   ruleDo: { en: 'Do', zh: '就' },
   ruleSeen: { en: 'This game', zh: '本局' },
   rule: { en: 'Rule for next game', zh: '下一把的规则' },
+  ruleWhy: { en: 'Why', zh: '为什么' },
+  ruleDepends: { en: 'Holds when', zh: '前提' },
+  inference: { en: 'Our reading (not a fact)', zh: '推断（不是事实）' },
+  unknown: { en: 'Not in the data', zh: '数据看不到' },
+  learn: { en: 'Learn from professionals', zh: '向高手学什么' },
+  learnSub: { en: 'Choices with their reason, when they apply and what they cost — not a build to copy.', zh: '每条都有原因、适用条件和代价——不是照抄的出装表。' },
+  learnWhy: { en: 'Why', zh: '原因' },
+  learnWhen: { en: 'When it applies', zh: '适用条件' },
+  learnCost: { en: 'Trade-off', zh: '代价' },
+  learnTopic: { hero_choice: { en: 'Hero choice', zh: '选人' }, items: { en: 'Items', zh: '出装' }, skills: { en: 'Skill build', zh: '加点' }, lane: { en: 'Laning', zh: '对线' }, macro: { en: 'Mid game', zh: '运营' } } as Record<string, Record<Lang, string>>,
   next: { en: 'Next game, change these', zh: '下一把只改这几件事' },
   well: { en: 'What you did well', zh: '做得好的' },
   blind: { en: 'What the replay could not show', zh: '录像看不到的' },
@@ -225,10 +235,14 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
             <h3><span className="ag-num">{i + 1}</span>{f.title}</h3>
             <p className="ag-claim">{f.claim}</p>
             <ul className="ag-evidence">{f.evidence.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>
+            {f.inference && <p className="ag-inference"><span>{t(T.inference)}</span>{f.inference}</p>}
+            {f.unknown && <p className="ag-unknown"><span>{t(T.unknown)}</span>{f.unknown}</p>}
             {f.rule && (
               <dl className="ag-rule" aria-label={t(T.rule)}>
                 <div><dt>{t(T.ruleWhen)}</dt><dd>{f.rule.when}</dd></div>
                 <div><dt>{t(T.ruleDo)}</dt><dd>{f.rule.do}</dd></div>
+                {f.rule.why && <div className="ag-rule-why"><dt>{t(T.ruleWhy)}</dt><dd>{f.rule.why}</dd></div>}
+                {f.rule.depends_on && <div className="ag-rule-depends"><dt>{t(T.ruleDepends)}</dt><dd>{f.rule.depends_on}</dd></div>}
                 {f.rule.this_game && <div className="ag-rule-seen"><dt>{t(T.ruleSeen)}</dt><dd>{f.rule.this_game}</dd></div>}
                 {f.rule.check && <div className="ag-rule-check"><dt>{t(T.ruleCheck)}</dt><dd>{f.rule.check.label[lang]}</dd></div>}
               </dl>
@@ -237,6 +251,25 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
           </div>
         ))}
       </section>
+
+      {(review.learn_from_pros?.length ?? 0) > 0 && (
+        <section className="ag-learn">
+          <h2>{t(T.learn)}</h2>
+          <p className="ag-plan-sub">{t(T.learnSub)}</p>
+          <ol className="ag-learn-list">
+            {review.learn_from_pros!.map((e, i) => (
+              <li key={i}>
+                <h3><span className="ag-learn-topic">{T.learnTopic[e.topic] ? t(T.learnTopic[e.topic]) : e.topic}</span>{e.advice}</h3>
+                <dl className="ag-rule">
+                  <div><dt>{t(T.learnWhy)}</dt><dd>{e.why}</dd></div>
+                  <div><dt>{t(T.learnWhen)}</dt><dd>{e.applies_when}</dd></div>
+                  <div><dt>{t(T.learnCost)}</dt><dd>{e.trade_off}</dd></div>
+                </dl>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <section className="ag-next">
         <h2>{t(T.next)}</h2>

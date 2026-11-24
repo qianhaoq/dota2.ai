@@ -359,6 +359,21 @@ describe('AgentMatchPage', () => {
     expect(stepLabel({ tool: 'build_check', args: { hero: 'beastmaster' } }, 'zh')).toBe('核对出装和致死伤害');
   });
 
+  it('a finding shows its inference and what the data cannot show apart from the facts; rules say why and when; learn_from_pros shows reason, conditions and cost', async () => {
+    const finding = { ...review.findings[0], inference: '更像一波 2v2 换血打输了。', unknown: '小兵位置和视野录像里没有。', rule: { when: '白天对线，辅助倒下', do: '退到己方一塔', why: 'Void 入夜才附带微晕', depends_on: '两名对线英雄都在线上' } };
+    const learn = [{ topic: 'skills', advice: '4 级前点出伤残恐惧', why: '沉默驱散不掉', applies_when: '下路对斯拉克', trade_off: '少一点午夜盛宴', refs: ['learn:night_stalker'] }];
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [finding], learn_from_pros: learn }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    expect((await screen.findByText('推断（不是事实）')).parentElement!.textContent).toBe('推断（不是事实）更像一波 2v2 换血打输了。');
+    expect(screen.getByText('数据看不到').parentElement!.textContent).toBe('数据看不到小兵位置和视野录像里没有。');
+    expect(screen.getByText('Void 入夜才附带微晕')).toBeTruthy();
+    expect(screen.getByText('两名对线英雄都在线上')).toBeTruthy();
+    const section = screen.getByRole('heading', { name: '向高手学什么' }).parentElement!;
+    expect(within(section).getByRole('heading', { level: 3 }).textContent).toBe('加点4 级前点出伤残恐惧');
+    expect(within(section).getByText('少一点午夜盛宴')).toBeTruthy();
+  });
+
   it('the strengths record: levels of both sides, the matchup with its numbers, an enemy\'s kills before and after each item', async () => {
     const spikes = { status: 'ok', ref: 'spikes:beastmaster', kind: 'spikes', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客', axe: '斧王' }, record: {
       ref: 'spikes:beastmaster', hero: 'beastmaster', kills_of_me: { phantom_assassin: 7 }, kills_of_me_before_their_item: {}, kills_of_me_from_their_item_on: {},

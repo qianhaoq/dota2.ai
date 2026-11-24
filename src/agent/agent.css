@@ -285,3 +285,11 @@
 .ag-plan-yours dt span { display: block; margin-top: 2px; color: var(--accent); letter-spacing: 0; text-transform: none; }
 .ag-plan-parts > .ag-plan-yours { padding: 10px 12px; margin: 0 -12px; background: rgba(227, 163, 70, 0.08); border-radius: 8px; }
 .ag-plan-yours dd { font-weight: 500; }
+
+/* A judgment and what the data cannot show, kept apart from the cited facts. */
+.ag-inference, .ag-unknown { margin: .5rem 0; font-size: .92em; }
+.ag-inference span, .ag-unknown span { display: inline-block; margin-right: .5em; font-weight: 600; opacity: .8; }
+.ag-unknown { opacity: .8; }
+.ag-learn-list { padding-left: 1.2rem; }
+.ag-learn-list h3 { font-size: 1rem; margin: .75rem 0 .25rem; }
+.ag-learn-topic { display: inline-block; margin-right: .5em; padding: 0 .4em; border-radius: 4px; font-size: .8em; border: 1px solid currentColor; opacity: .85; }
