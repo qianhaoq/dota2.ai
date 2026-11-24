@@ -656,6 +656,186 @@ describe('AgentMatchPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Too many reviews');
   });
 
+  it('a refused start says how long, keeps the button off until then, and starts by itself when the wait is over', async () => {
+    let posts = 0;
+    const calls = mockFetch({
+      '/review?': { status: 'none' },
+      '/review': () => (++posts === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 2 } : { __status: 202, status: 'running', steps: [] }),
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    const button = await screen.findByRole('button', { name: '开始复盘' });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/^从这里发起的复盘太多了，0:0[12] 后自动开始。$/);
+    const again = screen.getByRole('button', { name: '开始复盘' }) as HTMLButtonElement;
+    expect(again.disabled).toBe(true);
+    // Clicking while it counts down sends nothing.
+    fireEvent.click(again);
+    expect(calls.filter((c) => c.init?.method === 'POST')).toHaveLength(1);
+    await waitFor(() => expect(posts).toBe(2), { timeout: 4000 });
+    await screen.findByText('正在准备你的复盘');
+  }, 8000);
+
+  it('a wait belongs to the review that was refused: picking another plan meanwhile frees the button, and only that review starts', async () => {
+    const bodies: any[] = [];
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return bodies.length === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 2 } : { __status: 202, status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    // The plan's own review was never refused: nothing counts down for it.
+    const free = await screen.findByRole('button', { name: 'Review my game' }) as HTMLButtonElement;
+    expect(free.disabled).toBe(false);
+    expect(screen.queryByRole('alert')).toBeNull();
+    // The refused review's wait runs out while the reader is on another plan: nothing is sent for either.
+    await new Promise((r) => { setTimeout(r, 3200); });
+    expect(bodies).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).toEqual({ hero: 'beastmaster', lang: 'en', plan: 'gank' });
+  }, 10000);
+
+  it('a refused parse is picked up again when the reader comes back to it after its wait ran out elsewhere', async () => {
+    let prepares = 0;
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { if (++prepares > 20) throw new Error('prepare loop'); return prepares === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 1 } : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    // Away on another plan while the wait runs out: nothing is sent for the one left behind.
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    await new Promise((r) => { setTimeout(r, 2200); });
+    expect(prepares).toBe(1);
+    // Back to it: the reader's go still stands, and the parse is asked for again.
+    fireEvent.click(await screen.findByRole('radio', { name: 'Don\'t say' }));
+    await waitFor(() => expect(prepares).toBe(2), { timeout: 3000 });
+  }, 10000);
+
+  it('a refusal that arrives after the reader moved to another hero is that first hero\'s, not the new one\'s', async () => {
+    let prepares = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { prepares += 1; return prepares === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(prepares).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    await screen.findByRole('button', { name: 'Review my game' });
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 2 });
+    await new Promise((r) => { setTimeout(r, 300); });
+    // Axe was never refused: no countdown, and the button works while the first hero's wait runs.
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
+    // That wait running out sends nothing for Axe, who has no go.
+    await new Promise((r) => { setTimeout(r, 2500); });
+    expect(prepares).toBe(1);
+  }, 10000);
+
+  it('a go for a second hero while the first one\'s parse request is out shares its refusal, and its wait', async () => {
+    let prepares = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { prepares += 1; return prepares === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(prepares).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    // Axe's go joins the parse request already out: nothing new is sent.
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect(prepares).toBe(1);
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 1 });
+    // The refusal is Axe's too: it counts down, then asks again.
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    await waitFor(() => expect(prepares).toBe(2), { timeout: 4000 });
+  }, 10000);
+
+  it('each review keeps its own wait: a second refusal for another plan does not cut the first one short', async () => {
+    const bodies: any[] = [];
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return { __status: 429, code: 'rate_limited', retryAfterSec: bodies.length === 1 ? 30 : 20 }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(29|30)\.$/);
+    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(19|20)\.$/);
+    // Back to the first: still its own countdown, and nothing is sent before it ends.
+    fireEvent.click(screen.getByRole('radio', { name: 'Don\'t say' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(2[89]|30)\.$/);
+    await new Promise((r) => { setTimeout(r, 1200); });
+    expect(bodies).toHaveLength(2);
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(true);
+  }, 10000);
+
+  it('a review start refused after the reader moved to another hero keeps its wait for when they come back', async () => {
+    let posts = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': () => { posts += 1; return posts === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(posts).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    await screen.findByRole('button', { name: 'Review my game' });
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 30 });
+    await new Promise((r) => { setTimeout(r, 100); });
+    expect(screen.queryByRole('alert')).toBeNull();
+    // Back to Beastmaster: the refusal's wait is there, and nothing is sent before it ends.
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Beastmaster/ }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own in 0:(29|30)\.$/);
+    await new Promise((r) => { setTimeout(r, 1200); });
+    expect(posts).toBe(1);
+  }, 10000);
+
+  it('two quick clicks before the replay is parsed send one parse request', async () => {
+    let release: (v: unknown) => void = () => {};
+    const calls = mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => new Promise((r) => { release = r; }),
+      '/api/agent/9100904020': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const button = await screen.findByRole('button', { name: 'Review my game' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(calls.filter((c) => c.url.includes('/prepare'))).toHaveLength(1);
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 30 });
+    expect((await screen.findByRole('alert')).textContent).toMatch(/It starts on its own in 0:(29|30)\.$/);
+  });
+
+  it('a refusal too long to wait out on the page is said once, and the button stays usable', async () => {
+    mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 503, code: 'busy', retryAfterSec: 3600 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const button = await screen.findByRole('button', { name: 'Review my game' });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toBe('The coach is at capacity. Try again later.');
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('under the verdict: which patch the numbers are from and how that is known, or a warning when it is not known', async () => {
     const show = async (data_patch: any, lang: 'en' | 'zh') => {
       cleanup();

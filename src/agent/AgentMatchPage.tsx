@@ -65,6 +65,8 @@ const T = {
   unavailable: { en: 'The coach is not available right now.', zh: '教练暂时不可用。' },
   rate: { en: 'Too many reviews started from here. Try again in a few minutes.', zh: '从这里发起的复盘太多了，过几分钟再试。' },
   busy: { en: 'The coach is at capacity. Try again later.', zh: '教练现在忙不过来，稍后再试。' },
+  rateWait: { en: 'Too many reviews started from here. It starts on its own in {t}.', zh: '从这里发起的复盘太多了，{t} 后自动开始。' },
+  busyWait: { en: 'The coach is at capacity. It tries again on its own in {t}.', zh: '教练现在忙不过来，{t} 后自动再试。' },
   unknownHero: { en: 'That hero is not in this game.', zh: '这局里没有这个英雄。' },
   scoreboard: { en: 'Scoreboard', zh: '记分板' },
   checked: { en: 'Times and numbers in this review were checked against the replay records.', zh: '这份复盘里的时间点和数字已经和录像记录核对过。' },
@@ -78,6 +80,9 @@ const T = {
 } as const;
 
 type Lang = 'en' | 'zh';
+/** Longer than this (a day's parse ceiling, say), a refusal is said once and not waited out on the page. */
+const MAX_AUTO_WAIT_SEC = 15 * 60;
+const clockOf = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 /** The four steps of the wait, and which one is live. */
 export function journeyStep(avail: Availability | null, state: ReviewState | null): number {
   if (state?.status === 'running') return state.steps.length >= 6 ? 3 : 2;
@@ -103,8 +108,17 @@ export const AgentMatchPage: React.FC = () => {
   const [avail, setAvail] = useState<Availability | null>(null);
   const [report, setReport] = useState<CoachReport | null | 'failed'>(null);
   const [state, setState] = useState<ReviewState | null>(null);
-  const [intent, setIntent] = useState(false);
+  // The selection (match|hero|lang|plan) the reader said "go" for. Kept as that key, not a flag, so the render in
+  // which the selection changes cannot carry one selection's go over to the next.
+  const [intentOf, setIntentOf] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Refused for now with a time to come back (429/503 + retryAfterSec): the page counts down and goes again
+  // by itself, rather than leave a button that only earns the reader more refusals.
+  // `for`: the selection (match, hero, language, plan) it was given for; another selection does not wait on it.
+  // Each selection (match|hero|lang|plan) waits out its own refusal: a later one for another selection does not
+  // replace it. A parse is the match's, so a refused one is waited out by every selection that joined it.
+  const [waits, setWaits] = useState<Record<string, { until: number; kind: 'rate' | 'busy' }>>({});
+  const [, setClock] = useState(0);
   // Counts finished availability requests, successful or not, so the poll below always gets its next turn.
   const [availTick, setAvailTick] = useState(0);
   const resumed = useRef(false);
@@ -181,14 +195,17 @@ export const AgentMatchPage: React.FC = () => {
   };
 
   // The reader's "go" survives a reload of this tab, so a parse they started still ends in their review.
-  useEffect(() => { setIntent(heroKey ? session()?.getItem(intentKey(matchId, heroKey, lang, plan)) === '1' : false); setNotice(null); }, [matchId, heroKey, lang, plan]);
-  const want = (on: boolean) => { if (!heroKey) return; setIntent(on); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang, plan), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang, plan)); } catch { /* storage blocked */ } };
+  useEffect(() => { setIntentOf(heroKey && session()?.getItem(intentKey(matchId, heroKey, lang, plan)) === '1' ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}` : null); setNotice(null); }, [matchId, heroKey, lang, plan]);
+  const want = (on: boolean) => { if (!heroKey) return; setIntentOf(on ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}` : null); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang, plan), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang, plan)); } catch { /* storage blocked */ } };
 
   // What the reader is looking at now. An answer that was asked for under another hero or language
   // belongs to that selection and is dropped when it arrives.
   const selection = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
   const selected = useRef(selection);
   selected.current = selection;
+  const intent = intentOf === selection;
+  /** The refusal's wait, when it was for what is on screen now. */
+  const wait = waits[selection] ?? null;
   const [reviewTick, setReviewTick] = useState(0);
   const loadReview = useCallback(async (signal?: AbortSignal) => {
     if (!heroKey) return;
@@ -233,8 +250,21 @@ export const AgentMatchPage: React.FC = () => {
     if (p.status === 'ready') setExpectFor(matchId);
     setAvailTick((n) => n + 1);
   };
-  const refuse = (e: unknown) => {
+  /** `askedFor`: the selection(s) the refused request was sent for, which the reader may since have left. */
+  const refuse = (e: unknown, askedFor: string | string[] = selected.current) => {
+    const asked = Array.isArray(askedFor) ? askedFor : [askedFor];
     const status = e instanceof AgentApiError ? e.status : 0;
+    const after = e instanceof AgentApiError ? e.retryAfterSec ?? 0 : 0;
+    const here = asked.includes(selected.current);
+    if ((status === 429 || status === 503) && after > 0 && after <= MAX_AUTO_WAIT_SEC) {
+      // The reader still wants it: keep the intent, and go again when the server said it may.
+      if (here) setNotice(null);
+      const next = { until: Date.now() + after * 1000, kind: status === 429 ? 'rate' as const : 'busy' as const };
+      setWaits((prev) => ({ ...prev, ...Object.fromEntries(asked.map((k) => [k, next])) }));
+      return;
+    }
+    // Refused for good for a selection the reader has left: nothing on this one changes.
+    if (!here) return;
     setNotice(t(status === 429 ? T.rate : status === 503 ? T.busy : T.unavailable));
     want(false);
   };
@@ -246,33 +276,75 @@ export const AgentMatchPage: React.FC = () => {
     const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
     if (!heroKey || beginning.current === asked) return;
     beginning.current = asked;
-    try { const next = await startReview(matchId, heroKey, lang, plan); if (selected.current === asked) setState(next); } catch (e) { if (selected.current === asked) refuse(e); } finally { if (beginning.current === asked) beginning.current = null; }
+    try { const next = await startReview(matchId, heroKey, lang, plan); if (selected.current === asked) setState(next); } catch (e) { refuse(e, asked); } finally { if (beginning.current === asked) beginning.current = null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, heroKey, lang, plan]);
 
   /** The one click: fetch and parse the replay if needed, then the review follows on its own. */
+  const preparing = useRef<string | null>(null);
+  /** The selections waiting on the parse request that is out now. */
+  const joined = useRef<Set<string>>(new Set());
   async function go() {
+    if (wait) return;
     setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
-    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e); }
+    await sendPrepare();
   }
+  /**
+   * Ask for this match's parse. One request out at a time per match: a go for another hero or plan of the
+   * same match joins the one already out, and its answer (a refusal and its wait too) is that selection's too.
+   */
+  async function sendPrepare() {
+    if (preparing.current === matchId) { joined.current.add(selection); return; }
+    preparing.current = matchId;
+    joined.current = new Set([selection]);
+    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e, [...joined.current]); } finally { if (preparing.current === matchId) preparing.current = null; }
+  }
+  const goRef = useRef(go);
+  goRef.current = go;
+
+  // Count the wait on screen down each second. It ends only while its selection is on screen: one that ran
+  // out while the reader was elsewhere ends (and goes again) when they come back to it, not before.
+  useEffect(() => {
+    if (!wait) return undefined;
+    const sel = selection;
+    const end = () => setWaits((prev) => { const { [sel]: _done, ...rest } = prev; return rest; });
+    if (Date.now() >= wait.until) { end(); return undefined; }
+    const timer = setInterval(() => {
+      if (Date.now() < wait.until) { setClock((n) => n + 1); return; }
+      clearInterval(timer);
+      end();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [wait, selection]);
+  // When the wait on screen ends, go again if the reader still wants that review.
+  const waited = useRef<{ sel: string; wait: typeof wait }>({ sel: selection, wait });
+  useEffect(() => {
+    const was = waited.current;
+    waited.current = { sel: selection, wait };
+    if (was.sel === selection && was.wait && !wait && intent) void goRef.current();
+  }, [wait, intent, selection]);
+  const waitNotice = wait ? t(wait.kind === 'rate' ? T.rateWait : T.busyWait).replace('{t}', clockOf(Math.max(0, Math.ceil((wait.until - Date.now()) / 1000)))) : null;
 
   // A parse seen running may yet die with its instance: seeing it run re-arms the one-time restart below.
   useEffect(() => { if (parsing) resumed.current = false; }, [parsing]);
+  // So does coming back to a selection: one the reader said go for, left during a wait, and came back to after
+  // it ran out is picked up again rather than left saying "working" with nothing running.
+  useEffect(() => { resumed.current = false; }, [selection]);
 
   // The reader said go, then came back to a parse that is no longer running (it died with its instance,
   // or failed and its retry time passed): start it again once, rather than wait on nothing.
   useEffect(() => {
-    if (!intent || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
+    if (!intent || wait || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
     resumed.current = true;
-    prepareMatch(matchId).then((p) => { if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); }).catch((e) => { if (onMatch.current === matchId) refuse(e); });
+    void sendPrepare();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [intent, avail, matchId, loadAvail]);
+  }, [intent, avail, matchId, loadAvail, wait]);
 
   // The replay just became available and the reader asked for a review: carry on without a second click.
   useEffect(() => {
-    if (intent && hasTrace && state?.status === 'none') void begin();
-  }, [intent, hasTrace, state, begin]);
+    if (intent && hasTrace && state?.status === 'none' && !wait) void begin();
+  }, [intent, hasTrace, state, begin, wait]);
 
   const ready = state?.status === 'ready';
   useEffect(() => {
@@ -356,7 +428,7 @@ export const AgentMatchPage: React.FC = () => {
   );
   const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} replayLead={avail?.trace ? avail.radiant_net_worth_lead ?? null : null} />;
   const dead = (title: Bi, body: Bi, retry = false) => (
-    <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={go}>{t(T.retry)}</button>}{notice && <p className="ag-warn" role="alert">{notice}</p>}</div>{scoreboard}</Shell>
+    <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={go} disabled={Boolean(wait)}>{t(T.retry)}</button>}{(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}</div>{scoreboard}</Shell>
   );
 
   if (roster.length === 0) return dead(T.notFound, T.notFoundBody);
@@ -413,7 +485,7 @@ export const AgentMatchPage: React.FC = () => {
   if (state?.status === 'unavailable' || (hasTrace && !avail.model_configured)) return dead(T.failedTitle, T.unavailable);
 
   // Something is running, or the reader said go and the next request is about to leave.
-  const working = parsing || state?.status === 'running' || (intent && !notice && (!hasTrace || state === null || state.status === 'none'));
+  const working = parsing || state?.status === 'running' || (intent && !notice && !wait && (!hasTrace || state === null || state.status === 'none'));
   if (working) {
     const live = journeyStep(avail, state);
     const steps = [T.s1, T.s2, T.s3, T.s4];
@@ -458,9 +530,9 @@ export const AgentMatchPage: React.FC = () => {
                 ))}
               </div>
             </fieldset>
-            <button type="button" className="ag-btn is-primary" onClick={go}>{t(T.go)}</button>
+            <button type="button" className="ag-btn is-primary" onClick={go} disabled={Boolean(wait)}>{t(T.go)}</button>
             {state?.status === 'unknown_hero' && <p className="ag-warn">{t(T.unknownHero)}</p>}
-            {notice && <p className="ag-warn" role="alert">{notice}</p>}
+            {(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}
           </>
         )}
       </div>
