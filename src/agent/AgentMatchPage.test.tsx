@@ -602,7 +602,7 @@ describe('AgentMatchPage', () => {
       await screen.findByRole('heading', { level: 1 });
       return document.querySelector('.ag-patch');
     };
-    expect((await show({ name: '7.41', exact: true, known_from: 'match_id' }, 'zh'))!.textContent).toBe('本复盘中的价格、装备效果和技能冷却按 7.41 版本（依据比赛编号）');
+    expect((await show({ name: '7.41c', exact: true, known_from: 'match_id' }, 'zh'))!.textContent).toBe('本复盘中的价格、装备效果和技能冷却按 7.41c 版本（依据比赛编号）');
     expect((await show({ name: '7.42', exact: true, known_from: 'match_data' }, 'en'))!.textContent).toBe('Prices, item effects and cooldowns in this review are those of patch 7.42 (from the match record)');
     const warn = (await show({ name: '7.42', exact: false, reason: 'older_than_7.40' }, 'zh'))!;
     expect(warn.textContent).toBe('这局的版本无法确定：价格、装备效果和技能冷却按当前 7.42 版本，可能与当时不同。');

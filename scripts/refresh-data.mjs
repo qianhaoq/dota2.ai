@@ -10,8 +10,11 @@
  * /constants/*; abilities trimmed to the fields the server reads) and
  * meta.json (patch + date). `--all` also runs
  * scripts/coach-names.mjs <patch>, coach-abilities.mjs and coach-hero-items.mjs,
- * and coach-patch-snapshots.mjs (the item and ability data of each finished
- * patch, so an older game is told its own prices: needs github.com).
+ * and coach-patch-snapshots.mjs (the item and ability data of each earlier
+ * release, letter releases included; --all needs DOTACONSTANTS_DIR, see that script,
+ * and refuses to start without it). Without --all the live tables change and the
+ * release list no longer matches them: the current release is then not called exact
+ * until the snapshots are rebuilt.
  * Uses OPENDOTA_API_KEY when set (higher limits); the key is never written.
  */
 import { execFileSync } from 'node:child_process';
@@ -29,6 +32,13 @@ const get = async (name) => {
   throw new Error(`constants/${name} failed`);
 };
 
+// --all replaces the live tables, which are the current release's data: the release snapshots must be rebuilt in
+// the same run, or the release list would go on calling the old release's data the live tables. Checked first,
+// before anything is written.
+if (process.argv.includes('--all') && !process.env.DOTACONSTANTS_DIR) {
+  console.error('--all needs DOTACONSTANTS_DIR: a dotaconstants checkout to rebuild the release snapshots with (scripts/coach-patch-snapshots.mjs). Nothing was written.');
+  process.exit(2);
+}
 mkdirSync(OUT, { recursive: true });
 const patches = await get('patch');
 const patch = patches.at(-1)?.name;
@@ -52,6 +62,7 @@ if (process.argv.includes('--all')) {
   run('./coach-names.mjs', patch);
   run('./coach-abilities.mjs');
   run('./coach-hero-items.mjs');
-  run('./coach-patch-snapshots.mjs');
+  // Last: the release list records a fingerprint of the live tables written above.
+  run('./coach-patch-snapshots.mjs', '--builder', process.env.DOTACONSTANTS_DIR);
 }
 console.log(`snapshot for ${patch} written`);

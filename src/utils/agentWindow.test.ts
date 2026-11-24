@@ -133,11 +133,12 @@ describe('window_report as evidence', () => {
 describe('review of #280: what the window report must agree on', () => {
   it('reads the game\'s patch as power_spikes does, also when the match data has no patch', async () => {
     const { powerSpikes } = await import('../../lib/agent/situationTools.js');
-    // A game of 7.41 by its start time, with no patch in the match data: both tools read 7.41's items.
+    // A game of 7.41f by its start time (7.41f rolled out 2026-09-15, 7.42 on 2026-11-18), with no patch in the
+    // match data: both tools read 7.41f's items.
     const older = { ...match, patch: undefined, start_time: Date.parse('2026-10-20T00:00:00Z') / 1000 };
     const w: any = windowReport(trace, { hero: 'beastmaster' }, { match: older });
     const p: any = powerSpikes(trace, { hero: 'beastmaster' }, { match: older });
-    expect(w.data_patch).toBe('7.41');
+    expect(w.data_patch).toBe('7.41f');
     expect(w.data_patch).toBe(p.data_patch);
     // The same items are big to both: every big item power_spikes lists for an enemy inside window 2 is in it.
     const inWindow = (t: string) => { const [m, sec] = t.split(':').map(Number); const x = m * 60 + sec; return x >= 1140 && x < 1740; };

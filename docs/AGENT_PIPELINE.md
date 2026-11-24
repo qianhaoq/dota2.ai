@@ -61,26 +61,32 @@ gcloud run services update <site-service> --region "$REGION" --timeout 1800 --mi
   --update-env-vars AGENT_TASKS_QUEUE=projects/$PROJECT/locations/$REGION/queues/agent-jobs,AGENT_RUN_URL=$SITE_URL,AGENT_RUN_SA=$SITE_SA
 ```
 
-### Older games are told their own patch's numbers
+### Older games are told their own release's numbers
 
-The site's item and ability tables are the current patch's. A game from an
-earlier patch reads prices, recipes, item effects, cooldowns and spell-immunity
-flags from `lib/data/constants/patches/<patch>.json`, written by
-`scripts/coach-patch-snapshots.mjs` from OpenDota's constants repository as it
-stood at the end of that patch (its last letter release: OpenDota's patch
-number does not tell 7.41c from 7.41f). Items that did not exist then are not
-offered. The game's patch is OpenDota's patch number when the match data has
-it, else the release its start time falls after, else the release its match id
-falls after: `lib/data/constants/patches/index.json` holds the ids on either
-side of each release (`scripts/patch-match-ids.mjs`, start times from STRATZ),
-so the patch is known even when OpenDota is down. An id inside a release's
-boundary, or older than the kept patches, is not guessed: the current tables
-are used and the tools say so (`data_patch`, gaps). The review records the
-patch (`data_patch`) and the page shows it under the verdict, with a warning
-when it could not be told. `scripts/refresh-data.mjs --all`
-rebuilds the snapshots after a patch; run `scripts/patch-match-ids.mjs` (needs
-`STRATZ_API_TOKEN`) a day after a release so the new boundary is in the index. Professional item shares span several
-patches and are not split by patch.
+The site's item and ability tables are the current release's. A game from an
+earlier release — letter releases included (7.41b, 7.41c …) — reads prices,
+recipes, item effects, cooldowns and spell-immunity flags from
+`lib/data/constants/patches/<release>.json`. `scripts/coach-patch-snapshots.mjs`
+builds them from Valve's game files (github.com/dotabuff/d2vpkr, one commit per
+game update) with OpenDota's own builder, each as it stood just before the next
+release rolled out, so hotfixes between letters are included. Items that did
+not exist then are not offered.
+
+`lib/data/constants/patches/index.json` lists the releases: when each rolled out
+(the game update's commit; the repository is polled every 20 minutes, so the
+rollout lies in the 20 minutes before it) and the match ids on either side
+(`scripts/patch-match-ids.mjs`, start times from STRATZ). A game's release is
+read from its start time when the match data has one, else from its match id —
+so it is known even when OpenDota is down. A game that started during a
+rollout, one older than 7.40, or one known only by OpenDota's patch number
+(which names the major patch, not the letter) is flagged as not exact; the
+tools then say so (`data_patch`, gaps), and the page shows a warning under the
+verdict instead of the release.
+
+After a release: `scripts/refresh-data.mjs --all` (needs a dotaconstants
+checkout for the snapshots, see the script), then `scripts/patch-match-ids.mjs`
+(needs `STRATZ_API_TOKEN`) once STRATZ has the new games. Professional item
+shares span several patches and are not split by release.
 
 ### A review that was cut off continues
 
