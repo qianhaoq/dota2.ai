@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
-import { decisionPoints, afterWonFights, afterTowersFell, DECISION_TOOL, AFTER_SECONDS } from '../../lib/agent/decisionPoints.js';
+import { decisionPoints, afterWonFights, afterTowersFell, fightsAfterBigItems, DECISION_TOOL, AFTER_SECONDS, ITEM_SECONDS } from '../../lib/agent/decisionPoints.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { deepReviewSystem, reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
@@ -183,6 +183,57 @@ describe('decision_points: after a tier 1–3 tower fell', () => {
     const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
     expect(out.after_towers_fell).toHaveLength(6);
     expect(out.after_towers_fell.reduce((n: number, x: any) => n + x.towers, 0)).toBe(afterTowersFell(trace).length);
+  });
+});
+
+describe('decision_points: fights begun soon after a big item', () => {
+  const r: any = decisionPoints(trace, { hero: 'beastmaster' });
+  const fights = r.points.filter((p: any) => p.kind === 'fight_after_a_big_item');
+
+  it('they follow the tower points; each lists the big items first held in the 120 s before the fight, of either side', () => {
+    const before = r.points.filter((p: any) => p.kind !== 'fight_after_a_big_item');
+    expect(r.points.slice(0, before.length)).toEqual(before);
+    expect(fights.length).toBeGreaterThan(0);
+    expect(ITEM_SECONDS).toBe(120);
+    const from = (p: any) => matchFights(trace)[Number(p.fight.split(':')[1]) - 1].from;
+    const sec = (c: string) => { const [m, s2] = c.split(':').map(Number); return m * 60 + s2; };
+    for (const p of fights) {
+      expect(p.items.length).toBeGreaterThan(0);
+      for (const it of p.items) { expect(sec(it.clock)).toBeLessThanOrEqual(Math.floor(from(p))); expect(sec(it.clock)).toBeGreaterThanOrEqual(Math.floor(from(p) - 121)); expect(it.ref).toBe(`item:${it.hero}:${it.item}`); }
+      const sides = new Set(p.items.map((it: any) => it.side));
+      expect(p.items_from).toBe(sides.size === 2 ? 'both' : [...sides][0]);
+      expect(p.lost_fewer).toBe(p.deaths.my_team < p.deaths.enemy ? 'my_team' : p.deaths.my_team > p.deaths.enemy ? 'enemy' : 'even');
+    }
+  });
+
+  it('items are big as power_spikes and window_report call them: Blink and BKB, not a component; mirrored from the other side', () => {
+    const all = fightsAfterBigItems(trace).fights.flatMap((x: any) => x.items.map((it: any) => it.item));
+    expect(all).toContain('black_king_bar');
+    expect(all).not.toContain('ogre_axe');
+    const other: any = decisionPoints(trace, { hero: 'axe' });
+    expect(other.fights_after_enemy_big_items.fights).toBe(r.fights_after_my_team_big_items.fights);
+    expect(other.fights_after_my_team_big_items).toEqual({ fights: r.fights_after_enemy_big_items.fights, my_team_lost_fewer: r.fights_after_enemy_big_items.enemy_lost_fewer, enemy_lost_fewer: r.fights_after_enemy_big_items.my_team_lost_fewer, even: r.fights_after_enemy_big_items.even });
+    const only = fights.filter((p: any) => p.items_from === 'enemy');
+    expect(r.fights_after_enemy_big_items.fights).toBe(only.length);
+  });
+
+  it('refs resolve with the items named; the review is told a fresh item mostly marks the richer side', () => {
+    const p = fights[0];
+    const one = resolveRef(trace, p.ref, { hero: 'beastmaster', lang: 'zh' })!;
+    expect(one.record.kind).toBe('fight_after_a_big_item');
+    expect(one.names[p.items[0].item]).toBeTruthy();
+    expect(DECISION_TOOL.description).toContain('fight_after_a_big_item');
+    expect(deepReviewSystem('zh')).toMatch(/say a fresh item came with the gold lead, not that it won the fight by itself/);
+    expect(chatSystem('zh')).toContain('fight_after_a_big_item');
+  });
+
+  it('the calibration script splits these fights by the item side\'s gold lead, beside the gold-ahead side\'s rate otherwise', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'items-'));
+    copyFileSync(FIXTURE, join(dir, '9100904020.trace.json.gz'));
+    const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
+    const fb = out.fights_after_big_items;
+    expect(Object.keys(fb)).toEqual(['one_side_only', 'item_side_ahead_in_gold', 'item_side_behind_in_gold', 'no_fresh_big_item']);
+    expect(fb.item_side_ahead_in_gold.fights + fb.item_side_behind_in_gold.fights).toBeLessThanOrEqual(fb.one_side_only.fights);
   });
 });
 
