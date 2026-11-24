@@ -476,6 +476,24 @@ describe('AgentMatchPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Too many reviews');
   });
 
+  it('under the verdict: which patch the numbers are from and how that is known, or a warning when it is not known', async () => {
+    const show = async (data_patch: any, lang: 'en' | 'zh') => {
+      cleanup();
+      ui.lang = lang;
+      mockFetch({ 'ref=overview': overview, '/review?': { status: 'ready', review: { ...review, lang, ...(data_patch ? { data_patch } : {}) }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+      page(`/r/9100904020?hero=beastmaster&lang=${lang}`);
+      await screen.findByRole('heading', { level: 1 });
+      return document.querySelector('.ag-patch');
+    };
+    expect((await show({ name: '7.41', exact: true, known_from: 'match_id' }, 'zh'))!.textContent).toBe('本复盘中的价格、装备效果和技能冷却按 7.41 版本（依据比赛编号）');
+    expect((await show({ name: '7.42', exact: true, known_from: 'match_data' }, 'en'))!.textContent).toBe('Prices, item effects and cooldowns in this review are those of patch 7.42 (from the match record)');
+    const warn = (await show({ name: '7.42', exact: false, reason: 'older_than_7.40' }, 'zh'))!;
+    expect(warn.textContent).toBe('这局的版本无法确定：价格、装备效果和技能冷却按当前 7.42 版本，可能与当时不同。');
+    expect(warn.getAttribute('role')).toBe('note');
+    // A review stored before the patch was kept says nothing rather than guess.
+    expect(await show(null, 'en')).toBeNull();
+  });
+
   it('the game plan is its own section; a plan the reader picks is one question to the coach, without the moment pinned for another', async () => {
     const game_plan = { course: 'Your team took 3 outer towers from 18:07 to 19:46.', your_part: 'You were at 15 of the 16 fights.', line_ups: 'Sven wins more in shorter public games.', strengths: 'Phantom Assassin had Battle Fury at 15:47 and killed you 5 times after it.', main_reason: 'team_play', why: 'The team did not turn fights into towers.', evidence: [{ refs: ['phase:beastmaster:3'], clock: '20:00', fact: 'The enemy took 3 towers.' }] };
     const calls = mockFetch({
