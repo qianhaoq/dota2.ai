@@ -367,7 +367,7 @@ describe('AgentMatchPage', () => {
         { enemy: 'phantom_assassin', kills_of_me_total: 7, reached: { level_6: '6:14', level_12: '17:18', level_18: '25:31' }, big_items: [{ item: 'bfury', name: '狂战斧', first_held: '15:47', kills_of_me_before: 2, kills_of_me_from_then_on: 5 }], my_hero_against_them_in_public_games: { bracket: 'la', games: 800, win_rate: 0.44, my_hero_usually: 0.48, matchup: 'unfavoured' } },
         { enemy: 'axe', kills_of_me_total: 0, reached: { level_6: '8:01' }, big_items: [{ item: 'blink', name: '闪烁匕首', first_held: '20:18', gap_closer: true }] },
       ],
-      level_at: {},
+      level_at: [],
     } };
     ui.lang = 'zh';
     mockFetch({ 'ref=overview': overview, '/evidence?': spikes, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['spikes:beastmaster'], fact: '幻影刺客 15:47 做出狂战斧。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });

@@ -39,7 +39,7 @@ describe('build_check: the build against what killed the player', () => {
     const by = Object.fromEntries(r.my_big_items_in_order.map((i: any) => [i.item, i]));
     expect(r.my_big_items_in_order.map((i: any) => i.first_held)).toEqual(['16:48', '29:08', '38:58']);
     // Pipe: curated as an answer to spell damage, and Valve lists magic resistance on it.
-    expect(by.pipe).toMatchObject({ ref: 'item:beastmaster:pipe', name: '洞察烟斗', cost: items.pipe.cost, built_for: ['answer_to_spell_damage', 'magic_resistance'] });
+    expect(by.pipe).toMatchObject({ name: '洞察烟斗', cost: items.pipe.cost, built_for: ['answer_to_spell_damage', 'magic_resistance'] });
     expect(by.pipe.does[0]).toMatchObject({ title: 'Barrier', valve_text: items.pipe.abilities[0].description.replace(/\s+/g, ' ') });
     expect(by.assault.built_for).toEqual(['answer_to_attack_damage', 'armor']);
     // Aghanim's Scepter is in no list: no purpose is made up for it, and it is not called an offensive item.
@@ -59,6 +59,10 @@ describe('build_check: the build against what killed the player', () => {
     // Two separate parts both count; an unrelated item, or the part bought after, does not.
     expect(goldOnTop(['heavens_halberd', 'sange', 'skypiercer'])).toEqual([null, null, items.skypiercer.cost - items.heavens_halberd.cost - items.sange.cost]);
     expect(goldOnTop(['arcane_blink', 'blink', 'black_king_bar'])).toEqual([null, null, null]);
+    // A part that went into one item is not there for the next: Soul Booster into Bloodstone, then an Octarine Core in full.
+    const shared = goldOnTop(['soul_booster', 'bloodstone', 'octarine_core']);
+    expect(shared).toEqual([null, items.bloodstone.cost - items.soul_booster.cost, null]);
+    expect(items.soul_booster.cost + shared[1]! + items.octarine_core.cost).toBe(items.bloodstone.cost + items.octarine_core.cost);
     const spent = Object.values(pa.gold_in_big_items_by_purpose as Record<string, { gold: number; items: string[] }>).filter((v) => v.items.includes('Abyssal Blade') && v.items.includes('Skull Basher'));
     for (const v of spent) expect(v.gold).toBeLessThan(pa.my_big_items_in_order.filter((i: any) => v.items.includes(i.name)).reduce((a: number, i: any) => a + i.cost, 0));
   });
@@ -104,14 +108,17 @@ describe('power_spikes: when each side became strong', () => {
     expect(r.me.big_items.map((i: any) => [i.item, i.first_held])).toEqual([['ultimate_scepter', '16:48'], ['pipe', '29:08'], ['assault', '38:58']]);
     const pa = r.enemies[0];
     expect(pa).toMatchObject({ enemy: 'phantom_assassin', kills_of_me_total: 7, reached: { level_6: '6:14', level_12: '17:18', level_18: '25:31' } });
-    expect(r.level_at['20:00']).toMatchObject({ me: 12, phantom_assassin: 14 });
-    expect(Object.keys(r.level_at)).toEqual(['10:00', '20:00', '30:00']);
+    expect(r.level_at.map((x: any) => x.at)).toEqual(['10:00', '20:00', '30:00']);
+    expect(r.level_at[1]).toMatchObject({ at: '20:00', me: 12, phantom_assassin: 14 });
+    // The items here have no ref of their own: what stands beside them (kill counts, cost) is this record's.
+    expect(JSON.stringify(r)).not.toContain('"ref":"item:');
+    expect(JSON.stringify(buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match }))).not.toContain('"ref":"item:');
   });
 
   it('an enemy\'s kills of the player are counted before and after each of that enemy\'s items, and add up', () => {
     const pa = r.enemies[0];
     const bf = pa.big_items.find((i: any) => i.item === 'bfury');
-    expect(bf).toMatchObject({ ref: 'item:phantom_assassin:bfury', name: '狂战斧', first_held: '15:47', kills_of_me_before: 2, kills_of_me_from_then_on: 5 });
+    expect(bf).toMatchObject({ name: '狂战斧', first_held: '15:47', kills_of_me_before: 2, kills_of_me_from_then_on: 5 });
     for (const i of pa.big_items) expect(i.kills_of_me_before + i.kills_of_me_from_then_on).toBe(pa.kills_of_me_total);
     // The same counts at the top of the record, where a sentence's count is looked for.
     expect(r.kills_of_me).toMatchObject({ phantom_assassin: 7 });
@@ -172,6 +179,10 @@ describe('the review agent has both tools, and their records can be cited and sh
       rule: { when: 'w', do: 'd', this_game: '幻影刺客杀了你 7 次。' },
     }] };
     expect(verifyReview(review, [build, spikes]).problems).toEqual([]);
+    // A level at one of the marks is a fact of the strengths record; the kill counts are not facts of the item's own record.
+    const marks = { ...review, findings: [{ ...review.findings[0], evidence: [{ refs: ['spikes:beastmaster'], fact: '20:00 时你 12 级，幻影刺客 14 级。' }] }] };
+    expect(verifyReview(marks, [build, spikes]).problems).toEqual([]);
+    expect(collectFacts([build, spikes]).refs.has('item:phantom_assassin:bfury')).toBe(false);
     // A number neither record holds is still caught.
     const wrong = { ...review, findings: [{ ...review.findings[0], evidence: [{ refs: ['build:beastmaster'], fact: '洞察烟斗 21:08 才拿到。' }] }] };
     expect(verifyReview(wrong, [build, spikes]).problems).toEqual([expect.objectContaining({ kind: 'moment' })]);
@@ -211,7 +222,7 @@ describe('game_plan.strengths', () => {
     const ok = verifyReview({ verdict: 'v', mainline: [], findings: [], blind_spots: [], game_plan: plan }, [spikes]);
     expect(ok.problems).toEqual([]);
     expect(planOf(plan, ok.problems, ok.refs)).toMatchObject({ strengths: plan.strengths, course: plan.course, main_reason: 'enemy_play' });
-    const bad = { ...plan, strengths: '幻影刺客 9:59 做出狂战斧。' };
+    const bad = { ...plan, strengths: '幻影刺客 13:13 做出狂战斧。' };
     const check = verifyReview({ verdict: 'v', mainline: [], findings: [], blind_spots: [], game_plan: bad }, [spikes]);
     expect(check.problems).toEqual([expect.objectContaining({ where: 'plan', index: 4, kind: 'time' })]);
     const kept: any = planOf(bad, check.problems, check.refs);
