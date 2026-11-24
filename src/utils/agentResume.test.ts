@@ -127,6 +127,26 @@ describe('runDeepReview: continued from a checkpoint', () => {
     expect(r5.usage).toEqual(whole.usage);
   });
 
+  it('a lookup asked for in the same turn as the review is handed in is not run, and does not unsettle a later checkpoint', async () => {
+    // Turn 3 hands the (unsupported) review in together with one more lookup: the loop takes the review and runs nothing.
+    const withExtra = (cutAt?: number) => {
+      const m = model({ submit: bad, cutAt });
+      const inner = m.complete;
+      m.complete = async (o: any) => { const r = await inner(o); if (r.toolCalls?.[0]?.id === 's') r.toolCalls.unshift(call('match_overview', {}, 'x')); return r; };
+      return m;
+    };
+    const whole: any = await runDeepReview({ complete: withExtra().complete, trace: trace(), hero: 'beastmaster', lang: 'zh' });
+    expect(whole).toMatchObject({ status: 'ok', verification: { repaired: true } });
+    expect(whole.tool_calls.map((c: any) => c.name)).toEqual(['ability_audit', 'immunity_windows', 'death_context']);
+    const points: any[] = [];
+    await expect(runDeepReview({ complete: withExtra(5).complete, trace: trace(), hero: 'beastmaster', lang: 'zh', onCheckpoint: (c: any) => points.push(stored(c)) })).rejects.toBe(CUT);
+    expect(points.at(-1).run.messages.some((x: any) => x.content === '{"error":"not_run"}')).toBe(true);
+    const next = withExtra();
+    const r: any = await runDeepReview({ complete: next.complete, trace: trace(), hero: 'beastmaster', lang: 'zh', checkpoint: points.at(-1) });
+    expect(next.turns).toEqual([5]);
+    expect(r.review).toEqual(whole.review);
+  });
+
   it('a checkpoint that is not this game, hero and language, or is damaged, is ignored: the review starts over', async () => {
     const points: any[] = [];
     await expect(runDeepReview({ complete: model({ cutAt: 3 }).complete, trace: trace(), hero: 'beastmaster', lang: 'zh', onCheckpoint: (c: any) => points.push(stored(c)) })).rejects.toBe(CUT);
@@ -195,6 +215,27 @@ describe('the service keeps a checkpoint while a review runs, and continues from
     expect(ready).toMatchObject({ status: 'ready', tool_calls: 2, review: { verdict: good.verdict } });
     // The review is in: nothing is left to continue from.
     expect(w.checkpoint()).toEqual({ v: 0 });
+  });
+
+  it('a checkpoint still being written when the instance is stopped is waited for', async () => {
+    const w = world();
+    // A store that takes its time over checkpoints.
+    const put = w.docs.put;
+    let slow = 0;
+    w.docs.put = async (k: string, v: any) => { if (k.endsWith('.checkpoint.json')) { slow += 1; await new Promise((r) => setTimeout(r, 60)); } return put(k, v); };
+    const a: any = createAgentService({ traces: w.traces, docs: w.docs, complete: hanging().complete, model: 'm1' });
+    const running = a.run(task);
+    await vi.waitFor(() => expect(slow).toBeGreaterThan(0));
+    expect(w.checkpoint()).toBeUndefined();
+    await a.shutdown();
+    await running;
+    // Stopped, and what it had found out is in the store.
+    expect(w.checkpoint()?.run?.steps).toBeGreaterThanOrEqual(1);
+    const next = model();
+    const b: any = createAgentService({ traces: w.traces, docs: w.docs, complete: next.complete, model: 'm1' });
+    await vi.waitFor(() => expect(w.checkpoint()?.run?.steps).toBe(2));
+    expect(await b.run(task)).toEqual({ status: 'ready' });
+    expect(next.turns).toEqual([3]);
   });
 
   it('a review that fails leaves no checkpoint, and one from another model or from long ago is not used', async () => {
