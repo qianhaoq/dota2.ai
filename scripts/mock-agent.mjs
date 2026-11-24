@@ -17,6 +17,8 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { createAgentRouter } from '../lib/agent/router.js';
 import { createAgentService } from '../lib/agent/service.js';
 import { createJsonStore, createTraceStore } from '../lib/agent/stores.js';
+import { proItemsFor } from '../lib/agent/proItems.js';
+import { patchForGame } from '../lib/agent/patchData.js';
 
 export const AGENT_MATCH = 9100904020;
 /** Ids that start with no replay. */
@@ -26,10 +28,11 @@ export const AGENT_GONE = 8000000001;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The pro numbers the scripted finding quotes, read from the same snapshot the pro_item_choices tool answers
-// from (Beastmaster is hero 38; shares rounded as the tool rounds them), so a data refresh never leaves the
+// from (lib/agent/proItems.js; Beastmaster is hero 38; shares rounded as the tool rounds them), so a data refresh never leaves the
 // script quoting last week's sample and the verifier removing the finding.
-const PRO_BM = JSON.parse(readFileSync(new URL('../lib/coach/data/hero-items.json', import.meta.url), 'utf8')).heroes['38'];
-const proShare = (key) => Math.round((PRO_BM.items.find((i) => i.key === key).n / PRO_BM.games) * 100) / 100;
+// The sample is the one of the release the fixture game was played on (7.42), as the tool picks it.
+const PRO_BM = proItemsFor(38, patchForGame(AGENT_MATCH, null));
+const proShare = (key) => Math.round(((PRO_BM.items.find(([k]) => k === key)?.[1] ?? 0) / PRO_BM.games) * 100) / 100;
 const call = (name, args, id) => ({ id, name, args });
 
 /** The review the scripted model hands in. Every time and number is in the tool results it asked for. */
