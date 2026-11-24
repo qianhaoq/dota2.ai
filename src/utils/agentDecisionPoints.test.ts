@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync, mkdtempSync, copyFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, copyFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { gunzipSync } from 'node:zlib';
-import { decisionPoints, afterWonFights, afterTowersFell, fightsAfterBigItems, DECISION_TOOL, AFTER_SECONDS, ITEM_SECONDS } from '../../lib/agent/decisionPoints.js';
+import { gunzipSync, gzipSync } from 'node:zlib';
+import { decisionPoints, afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, DECISION_TOOL, AFTER_SECONDS, ITEM_SECONDS, LONG_RESPAWN } from '../../lib/agent/decisionPoints.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { deepReviewSystem, reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
@@ -236,6 +236,53 @@ describe('decision_points: fights begun soon after a big item', () => {
     const fb = out.fights_after_big_items;
     expect(Object.keys(fb)).toEqual(['one_side_only', 'item_side_ahead_in_gold', 'item_side_behind_in_gold', 'no_fresh_big_item']);
     expect(fb.item_side_ahead_in_gold.fights + fb.item_side_behind_in_gold.fights).toBeLessThanOrEqual(fb.one_side_only.fights);
+  });
+});
+
+describe('decision_points: whether the losers\' richest hero was still dead after a won fight', () => {
+  // The fixture has no money by minute: give every hero a flat series, the first Dire hero the most.
+  const minutes = Math.ceil((trace.t0 + trace.n) / 60) + 1;
+  const rich = trace.heroes.findIndex((h: any) => h.team === 3);
+  const withMoney = { ...trace, net_worth: trace.heroes.map((_: any, i: number) => Array.from({ length: minutes }, () => (i === rich ? 9000 : 3000 + i))) };
+
+  it('no money by minute: no field and no count — unknown, not "alive"', () => {
+    const r: any = decisionPoints(trace, { hero: 'beastmaster' });
+    expect(r).not.toHaveProperty('money_source');
+    expect(r.points.some((p: any) => 'losers_richest' in p)).toBe(false);
+  });
+
+  it('with it, each won fight names the losers\' richest and whether they were still dead, as the respawn list says', () => {
+    const r: any = decisionPoints(withMoney, { hero: 'axe' });
+    expect(r.money_source).toBe('replay_net_worth');
+    const fights = r.points.filter((p: any) => p.kind === 'after_a_won_fight');
+    for (const p of fights) {
+      const loserTeam = p.won_by === 'my_team' ? 3 : 2;
+      const expected = richestOf(withMoney, { series: new Map(withMoney.heroes.map((h: any, i: number) => [h.key, withMoney.net_worth[i]])), last: minutes - 1 }, loserTeam, 0);
+      expect(p.losers_richest.hero).toBe(withMoney.heroes[expected!].key);
+      const row = p.losers_respawn_in.find((x: any) => x.hero === p.losers_richest.hero);
+      expect(p.losers_richest.still_dead_10s_after).toBe(row != null);
+      if (row) expect(p.losers_richest.respawn_in).toBe(row.seconds);
+    }
+    const long = fights.filter((p: any) => p.won_by === 'my_team' && p.losers_richest.still_dead_10s_after && p.losers_richest.respawn_in >= LONG_RESPAWN);
+    expect(r.my_team_wins_with_enemy_richest_long_dead.fights).toBe(long.length);
+  });
+
+  it('a tie for richest is no richest; the review is told what the corpus says', () => {
+    const tied = { ...withMoney, net_worth: withMoney.heroes.map(() => Array.from({ length: minutes }, () => 5000)) };
+    const money = { series: new Map(tied.heroes.map((h: any, i: number) => [h.key, tied.net_worth[i]])), last: minutes - 1 };
+    expect(richestOf(tied, money, 3, 10)).toBeNull();
+    expect(richestOf(tied, null, 3, 10)).toBeNull();
+    expect(deepReviewSystem('zh')).toMatch(/losers_richest, 30 s or more from respawning\): in the corpus such wins took a building in 38 of 60/);
+    expect(chatSystem('zh')).toContain('whether their richest hero was one of them');
+  });
+
+  it('the calibration script splits wins with three or more still dead by the losers\' richest', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'richest-'));
+    writeFileSync(join(dir, '1.trace.json.gz'), gzipSync(JSON.stringify(withMoney)));
+    const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
+    const rows = out.after_won_fights_three_or_more_still_dead_by_losers_richest;
+    expect(rows.map((x: any) => x.losers_richest)).toEqual(['dead_30s_or_more', 'dead_under_30s', 'alive']);
+    expect(rows.reduce((n: number, x: any) => n + x.fights, 0)).toBe(afterWonFights(withMoney).filter((x: any) => x.still_dead.length >= 3).length);
   });
 });
 
