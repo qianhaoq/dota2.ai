@@ -220,3 +220,7 @@
 .ag-intent-row .ag-btn { padding: 7px 16px; }
 .ag-intent p.ag-intent-note { margin: 10px 0 0; color: var(--text-3); font-size: var(--fs-meta); }
 @media (max-width: 520px) { .ag-plan-parts > div { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Which patch a review's numbers are from; a warning when it could not be told. */
+.ag-patch { margin: 8px 0 0; font-size: var(--fs-meta); color: var(--text-3); }
+.ag-patch.is-unknown { color: var(--fix); }

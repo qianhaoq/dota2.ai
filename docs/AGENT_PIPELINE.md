@@ -69,9 +69,17 @@ flags from `lib/data/constants/patches/<patch>.json`, written by
 `scripts/coach-patch-snapshots.mjs` from OpenDota's constants repository as it
 stood at the end of that patch (its last letter release: OpenDota's patch
 number does not tell 7.41c from 7.41f). Items that did not exist then are not
-offered. With no match data the patch is unknown and the current tables are
-used; the tools then say so (`data_patch`, gaps). `scripts/refresh-data.mjs --all`
-rebuilds the snapshots after a patch. Professional item shares span several
+offered. The game's patch is OpenDota's patch number when the match data has
+it, else the release its start time falls after, else the release its match id
+falls after: `lib/data/constants/patches/index.json` holds the ids on either
+side of each release (`scripts/patch-match-ids.mjs`, start times from STRATZ),
+so the patch is known even when OpenDota is down. An id inside a release's
+boundary, or older than the kept patches, is not guessed: the current tables
+are used and the tools say so (`data_patch`, gaps). The review records the
+patch (`data_patch`) and the page shows it under the verdict, with a warning
+when it could not be told. `scripts/refresh-data.mjs --all`
+rebuilds the snapshots after a patch; run `scripts/patch-match-ids.mjs` (needs
+`STRATZ_API_TOKEN`) a day after a release so the new boundary is in the index. Professional item shares span several
 patches and are not split by patch.
 
 ### A review that was cut off continues
