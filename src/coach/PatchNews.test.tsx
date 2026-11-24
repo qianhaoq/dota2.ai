@@ -33,5 +33,8 @@ describe('current patch on the home page', () => {
     // (The three "principles" cards are gone; their message is in the subtitle.)
     const order = [...container.querySelectorAll('.cx-hero, .hm-how, .hm-ways, .cx-patch, .cx-principles')].map((e) => e.classList[0]);
     expect(order).toEqual(['cx-hero', 'hm-how', 'hm-ways', 'cx-patch']);
+    // The patch advisor stands right after the first screen, before the ways to connect.
+    const withAdvisor = [...container.querySelectorAll('.hm-how, .pa, .hm-ways')].map((el) => el.className.split(' ')[0]);
+    expect(withAdvisor).toEqual(['hm-how', 'pa', 'hm-ways']);
   });
 });
