@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { collectFacts, deepReviewSystem, headingOf, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { collectFacts, deepReviewSystem, headingOf, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, wordingProblems, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
@@ -282,6 +282,67 @@ describe('runDeepReview', () => {
     // A handle whose first part is a range or carries a dash (seen in production: timeline:480-550).
     expect(nameHeroes({ verdict: '整段 8:00–9:10 我方 6 死（timeline:480-550）。她开了黑皇杖（immune:phantom_assassin:7:beastmaster-primal_roar），比分 3:1（上半场）' }, { sven: '斯温' }).verdict).toBe('整段 8:00–9:10 我方 6 死。她开了黑皇杖，比分 3:1（上半场）');
     expect(out.findings[0].evidence).toEqual([{ refs: ['death:sven:1'], fact: '斯温 阵亡' }]);
+  });
+
+  it('handles listed in a bracket beside other words, and tool names, are taken out too', () => {
+    // Seen in production (p15): the sources of a line listed after it, bare or after other words.
+    const out: any = nameHeroes({
+      verdict: '团队经济从 -4972 掉到 -7895（overview、fight:3、fight:4）。',
+      mainline: ['一起倒下（4 换 3，timeline:2194-2233），但兵营已破', 'between 28:28 and 28:30 (fight:5, three heroes to none) while', 'in this game (immunity:dire, zero windows), so', 'two fights ended even (fight:3 at 20:20–20:39, fight:4 at 24:10)'],
+    }, { sven: '斯温' });
+    expect(out.verdict).toBe('团队经济从 -4972 掉到 -7895。');
+    // The last one cannot be cut without breaking the sentence: it is left for the repair round (below).
+    expect(out.mainline).toEqual(['一起倒下（4 换 3），但兵营已破', 'between 28:28 and 28:30 (three heroes to none) while', 'in this game (zero windows), so', 'two fights ended even (fight:3 at 20:20–20:39, fight:4 at 24:10)']);
+  });
+
+  it('wording: a tool key in a sentence, a hero name one character off, a time picked out of a list it is not in', () => {
+    const names = { hero_names: { skywrath_mage: '天怒法师', storm_spirit: '风暴之灵', sven: '斯温' }, place_names: { dire_top_lane: '夜魇上路' } };
+    expect(wordingProblems('天赋法师在 dire_top_lane 靠 no_ally_within_1200 抓你，skywrath_mage 配合风暴之拳，见 audit:sven:storm_hammer（lane:sven）', names)).toEqual([
+      { kind: 'key', text: 'audit:sven:storm_hammer' },
+      { kind: 'key', text: 'no_ally_within_1200' },
+      { kind: 'name', text: '天赋法师 (天怒法师?)' },
+    ]);
+    // Not named: keys that are replaced afterwards, a real ability one character from a hero (风暴之拳 / 风暴之灵),
+    // a web address, a score, a hyphenated word, handles that are stripped.
+    expect(wordingProblems('风暴之拳砸中天怒法师，比分 3:1，mid-game 见 https://dota2.ai/r/1_2（overview、fight:3）', names)).toEqual([]);
+    // The sentence production shipped (tidehunter p15), and its English form.
+    expect(wordingProblems('6 次死亡是三个以上敌人同时在打你，4 次死时身边没有队友（18:31、19:29、25:33、32:34），其中 37:14 那次身边一个队友都没有。')).toEqual([{ kind: 'list', text: '37:14 (not among 18:31、19:29、25:33、32:34)' }]);
+    expect(wordingProblems('Four deaths had no ally near (18:31, 19:29 and 25:33), of which the 37:14 one was at full health.')).toEqual([{ kind: 'list', text: '37:14 (not among 18:31, 19:29 and 25:33)' }]);
+    // Sentences production shipped that are fine: the time is in the list; the bracket is not a list of times; "其中" is about something else.
+    expect(wordingProblems('4 次身边没有队友（18:31、19:29、25:33、32:34），其中 25:33 那次满血。')).toEqual([]);
+    expect(wordingProblems('三次妖术（11:28 帕吉 988/1644、13:38 力丸 912/912、16:42 露娜 1210/1264）的目标在之后全都还活着，其中 13:41 和 16:49 是你交出整套之后阵亡。')).toEqual([]);
+    expect(wordingProblems('两次黑皇杖（34:44 那次 9 秒、38:26 那次 3.2 秒），唯一死在其中的就是 34:53 这一次')).toEqual([]);
+  });
+
+  it('wording is sent back once and never costs a finding, a line or an evidence item', async () => {
+    const worded = {
+      ...good,
+      claim: '幻影剌客开了 7 次 BKB，只有 27:27 那次你的咆哮吼中了她（killed_by 里她最多）。',
+      rule: { when: '幻影刺客开了黑皇杖', do: '咆哮留给她', this_game: '吼中的两次（27:27、30:25），其中 36:05 那次没放。' },
+    };
+    const sent = review([worded], { mainline: ['30:25 的咆哮给了瘟疫法师，见 cast:beastmaster:primal_roar:6 那次。'] });
+    const m = scripted([investigate, { toolCalls: [call('submit_review', sent, 's1')] }, { toolCalls: [call('submit_review', sent, 's2')] }]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(JSON.parse(m.seen[2].messages.at(-1).content).problems).toEqual(expect.arrayContaining([
+      { in: 'finding 1', text: '幻影剌客 (幻影刺客?)', why: expect.stringContaining('hero_names') },
+      { in: 'finding 1', text: 'killed_by', why: expect.stringContaining('key or field name') },
+      { in: 'finding 1, rule.this_game', text: '36:05 (not among 27:27、30:25)', why: expect.stringContaining('agree with itself') },
+      { in: 'mainline 1', text: 'cast:beastmaster:primal_roar:6', why: expect.stringContaining('key or field name') },
+    ]));
+    // Still there after the repair round: it ships as written, and what was wrong with it is on record.
+    expect(r.status).toBe('ok');
+    expect(r.verification).toMatchObject({ repaired: true, dropped: 0 });
+    expect(r.verification.problems.every((p: any) => p.soft)).toBe(true);
+    expect(r.review.mainline).toHaveLength(1);
+    expect(r.review.findings[0].claim).toBe(worded.claim);
+    expect(r.review.findings[0].evidence).toHaveLength(3);
+    expect(r.review.findings[0].rule.this_game).toBe(worded.rule.this_game);
+    // A repair that words it properly comes back clean.
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', sent, 's1')] }, { toolCalls: [call('submit_review', review([good]), 's2')] }]);
+    const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r2.verification).toMatchObject({ repaired: true, dropped: 0, problems: [] });
+    // A chat answer is not held to wording.
+    expect(verifyText('killed_by 里她最多', [])).toEqual({ ok: true, problems: [] });
   });
 
   it('a repair that looks the fact up is accepted', async () => {
