@@ -8,6 +8,7 @@ import { AccessModes, HowItWorks } from './HomeBlocks';
 import { accessSnippets } from './accessSnippets';
 import { QuickJump, detectSmartInput } from './QuickJump';
 import { CURRENT_PATCH, itemIcon } from './patch';
+import { PatchAdvisor } from '../patch/PatchAdvisor';
 import { activeGoal, checkGoal, goalChecks, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
 import './coach.css';
 import './cards.css';
@@ -649,6 +650,8 @@ export const CoachHome: React.FC = () => {
       </div>
       <HowItWorks />
       </div>
+
+      <PatchAdvisor lang={lang} version={CURRENT_PATCH.version} notesUrl={CURRENT_PATCH.notesUrl} />
 
       <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />
 

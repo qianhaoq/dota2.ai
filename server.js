@@ -75,6 +75,7 @@ import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { createAgentRouter } from './lib/agent/router.js';
 import { createAgentService } from './lib/agent/service.js';
+import { createPatchRouter } from './lib/patch/router.js';
 import { createTaskAuth, createTaskDispatcher } from './lib/agent/tasks.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from './lib/agent/stores.js';
 import { createRemotePipeline, createTracePipeline } from './lib/agent/tracePipeline.js';
@@ -927,11 +928,13 @@ const agentTasks = (() => {
   console.log('INFO: agent parses and reviews are queued (Cloud Tasks) and run inside their own request.');
   return { dispatch: createTaskDispatcher({ queue, url, serviceAccount }), auth: createTaskAuth({ audience: url, serviceAccount }) };
 })();
+// One model client for everything the agents ask: the match review, its chat, and the patch advisor.
+const agentComplete = agentModel.ok ? openAiCompatible({ client: new OpenAI({ baseURL: agentModel.baseURL, apiKey: agentModel.apiKey }), model: agentModel.model, extraBody: agentModel.extraBody }) : null;
 const agentService = createAgentService({
   traces: agentTraces,
   pipeline: agentPipeline,
   dispatch: agentTasks?.dispatch ?? null,
-  complete: agentModel.ok ? openAiCompatible({ client: new OpenAI({ baseURL: agentModel.baseURL, apiKey: agentModel.apiKey }), model: agentModel.model, extraBody: agentModel.extraBody }) : null,
+  complete: agentComplete,
   model: agentModel.ok ? agentModel.model : null,
   docs: agentBlobs ? createJsonStore(agentBlobs) : (process.env.AGENT_REVIEW_DIR ? createJsonStore(createFileStore(process.env.AGENT_REVIEW_DIR)) : null),
   getMatchDetail,
@@ -958,6 +961,16 @@ app.use(createAgentRouter({
   parseDailyMax: Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : undefined,
   guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
   log: (msg) => console.warn(`[agent] ${msg}`),
+}));
+
+// The patch advisor: what the current patch changed and how heroes are doing since (lib/patch). Its chat
+// calls the same model under the same budget as the review's.
+app.use(createPatchRouter({
+  complete: agentComplete,
+  resolveClientIp,
+  llm: reviewLlmLimit,
+  guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
+  log: (msg) => console.warn(`[patch] ${msg}`),
 }));
 
 // Review v1 API, OpenAPI/llms docs and the remote MCP endpoint (/mcp), whose
