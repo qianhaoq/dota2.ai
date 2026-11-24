@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
-import { decisionPoints, afterWonFights, DECISION_TOOL, AFTER_SECONDS } from '../../lib/agent/decisionPoints.js';
+import { decisionPoints, afterWonFights, afterTowersFell, DECISION_TOOL, AFTER_SECONDS } from '../../lib/agent/decisionPoints.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { deepReviewSystem, reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
@@ -16,7 +16,9 @@ const FIXTURE = new URL('../../packages/review-engine/test/fixtures/trace-910090
 const trace = JSON.parse(gunzipSync(readFileSync(FIXTURE)).toString());
 
 describe('decision_points: what each side did with the fights it won', () => {
-  const r: any = decisionPoints(trace, { hero: 'beastmaster' });
+  const all: any = decisionPoints(trace, { hero: 'beastmaster' });
+  // This block reads the won-fight points; the tower points are the next block's.
+  const r: any = { ...all, points: all.points.filter((p: any) => p.kind === 'after_a_won_fight') };
 
   it('one point per fight with a winner, told from the player\'s side, mirrored from the other', () => {
     const won = matchFights(trace).length;
@@ -100,7 +102,7 @@ describe('decision_points: what each side did with the fights it won', () => {
     const one = resolveRef(trace, r.points[0].ref, { hero: 'beastmaster', lang: 'zh' })!;
     expect(one.record.fight).toBe(r.points[0].fight);
     expect(resolveRef(trace, 'decision:beastmaster', { hero: 'beastmaster' })?.record).not.toHaveProperty('points');
-    expect(resolveRef(trace, `decision:beastmaster:${r.points.length + 1}`, { hero: 'beastmaster' })).toBeNull();
+    expect(resolveRef(trace, `decision:beastmaster:${all.points.length + 1}`, { hero: 'beastmaster' })).toBeNull();
     const record = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' })!.runTool('decision_points', { hero: 'beastmaster' });
     const ev = (refs: string[], fact: string) => verifyReview({ verdict: 'v', mainline: [], findings: [], game_plan: { course: 'c', evidence: [{ refs, fact }] } }, [record]).problems.filter((x: any) => x.where === 'plan_evidence');
     expect(ev([r.points[0].ref], `${r.points[0].clock} 那波团后对面还有 ${r.points[0].losers_still_dead_10s_after} 人没复活。`)).toEqual([]);
@@ -119,3 +121,68 @@ describe('decision_points: what each side did with the fights it won', () => {
     expect(out.after_won_fights.reduce((n: number, x: any) => n + x.fights, 0)).toBe(afterWonFights(trace).length);
   });
 });
+
+describe('decision_points: after a tier 1–3 tower fell', () => {
+  const r: any = decisionPoints(trace, { hero: 'beastmaster' });
+  const towers = r.points.filter((p: any) => p.kind === 'after_a_tower_fell');
+
+  it('the fight points keep their numbers; tower points follow them, one per tower taken by the other side', () => {
+    const fights = r.points.filter((p: any) => p.kind === 'after_a_won_fight');
+    expect(r.points.slice(0, fights.length)).toEqual(fights);
+    expect(r.points.map((p: any) => p.ref)).toEqual(r.points.map((_: any, i: number) => `decision:beastmaster:${i + 1}`));
+    const fell = trace.buildings.filter((b: any) => /_tower[123]_(top|mid|bot)$/.test(trace.names[b[1]]) && b[2] !== (/goodguys/.test(trace.names[b[1]]) ? 2 : 3));
+    expect(towers).toHaveLength(fell.length);
+    expect(towers.length).toBeGreaterThan(0);
+    expect(r.fights_my_team_won + r.fights_enemy_won).toBe(fights.length);
+  });
+
+  it('what the takers did agrees with what fell; a push took its building only if it is listed; mirrored from the other side', () => {
+    for (const p of towers) {
+      expect(p.takers_did === 'took_another_building').toBe(p.buildings_takers_took_next.length > 0);
+      for (const q of p.pushes.filter((x: any) => x.took_it)) expect(p.buildings_takers_took_next.map((b: any) => b.building)).toContain(q.building);
+      expect(p.me === 'hit_it').toBe(p.hitting.includes('beastmaster'));
+      if (p.me === 'near' || p.me === 'elsewhere') expect(p.me === 'near').toBe(p.distance_from_its_hitters <= 1800);
+    }
+    const other: any = decisionPoints(trace, { hero: 'axe' });
+    expect(other.towers_my_team_took).toEqual(r.towers_enemy_took);
+    expect(other.towers_enemy_took).toEqual(r.towers_my_team_took);
+    const mine = towers.filter((p: any) => p.taken_by === 'my_team');
+    expect(r.towers_my_team_took.towers).toBe(mine.length);
+    expect(r.towers_my_team_took.lost_a_building_meanwhile).toBe(mine.filter((p: any) => p.owners_took_back.length).length);
+    const w = r.when_my_team_lost_a_tower_i_was;
+    expect(w.near_it + w.was_dead + w.elsewhere + w.not_known).toBe(w.towers);
+    expect(w.towers).toBe(r.towers_enemy_took.towers);
+  });
+
+  it('a tower its own side denied is no point; one that fell in a won fight\'s window names that fight', () => {
+    const t2 = JSON.parse(JSON.stringify(trace));
+    const row = t2.buildings.find((b: any) => /_tower1_/.test(t2.names[b[1]]));
+    row[2] = /goodguys/.test(t2.names[row[1]]) ? 2 : 3;
+    expect(afterTowersFell(t2)).toHaveLength(afterTowersFell(trace).length - 1);
+    const wins = afterWonFights(trace);
+    for (const x of afterTowersFell(trace)) {
+      const w = wins.find((f: any) => f.winner === x.taker && x.at >= f.from && x.at <= f.to + AFTER_SECONDS);
+      expect(x.fight).toBe(w ? w.fight : null);
+    }
+  });
+
+  it('refs resolve with the player\'s place named; the review and the chat are told what "elsewhere" does not show', () => {
+    const p = towers.find((x: any) => x.my_place) ?? towers[0];
+    const one = resolveRef(trace, p.ref, { hero: 'beastmaster', lang: 'zh' })!;
+    expect(one.record.kind).toBe('after_a_tower_fell');
+    if (p.my_place) expect(one.names[p.my_place]).toBeTruthy();
+    expect(DECISION_TOOL.description).toContain('after_a_tower_fell');
+    expect(deepReviewSystem('zh')).toContain('kind after_a_tower_fell');
+    expect(deepReviewSystem('zh')).toMatch(/"elsewhere" when a tower fell was not necessarily wrong/);
+    expect(chatSystem('zh')).toContain('after_a_tower_fell');
+  });
+
+  it('the calibration script reports what followed a tower, by tier and whether a won fight came first', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'towers-'));
+    copyFileSync(FIXTURE, join(dir, '9100904020.trace.json.gz'));
+    const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
+    expect(out.after_towers_fell).toHaveLength(6);
+    expect(out.after_towers_fell.reduce((n: number, x: any) => n + x.towers, 0)).toBe(afterTowersFell(trace).length);
+  });
+});
+
