@@ -93,3 +93,19 @@ export function trackReviewViewed(matchId: number | string, extra: AnalyticsProp
   // 比赛 ID 超过服务端数值 props 上限（1e9），以标识字符串形式上报。
   trackEvent('review_viewed', { ...extra, matchId: id });
 }
+
+/**
+ * An event that counts once per browser session for `key` (a match opened, say): a refresh or a second
+ * render does not count it again.
+ */
+const sentOnce = new Set<string>();
+export function trackOnce(key: string, event: AnalyticsEventName, props: AnalyticsProps = {}): void {
+  const k = `dota2ai.once.${event}.${key}`;
+  if (sentOnce.has(k)) return;
+  sentOnce.add(k);
+  try {
+    const session = typeof window !== 'undefined' ? window.sessionStorage : null;
+    if (session) { if (session.getItem(k) === '1') return; session.setItem(k, '1'); }
+  } catch { /* storage blocked: the in-memory set still holds it for this page */ }
+  trackEvent(event, props);
+}
