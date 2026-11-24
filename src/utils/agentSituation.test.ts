@@ -169,7 +169,7 @@ describe('power_spikes: when each side became strong', () => {
 describe('the review agent has both tools, and their records can be cited and shown', () => {
   it('registered with a required hero, offered to the model, and named in the method', () => {
     expect(SITUATION_TOOLS.map((t) => [t.name, t.input_schema.required])).toEqual([['build_check', ['hero']], ['power_spikes', ['hero']]]);
-    expect(KNOWLEDGE_TOOLS.map((t) => t.name).slice(-5)).toEqual(['build_check', 'power_spikes', 'fight_report', 'game_state', 'siege_report']);
+    expect(KNOWLEDGE_TOOLS.map((t) => t.name).slice(-6)).toEqual(['build_check', 'power_spikes', 'fight_report', 'game_state', 'siege_report', 'roshan_report']);
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh', match });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['build_check', 'power_spikes']));
     expect(kit.runTool('build_check', { hero: 'beastmaster' })).toMatchObject({ tool: 'build_check', ref: 'build:beastmaster' });

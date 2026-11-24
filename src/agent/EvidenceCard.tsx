@@ -105,6 +105,13 @@ const T = {
   why: { cooldown: { en: 'cooldown', zh: '冷却' }, mana: { en: 'no mana', zh: '缺蓝' }, not_learned: { en: 'not learned', zh: '未学' } } as Record<string, Record<Lang, string>>,
   traded: { true: { en: 'traded: an enemy hero died within 15 s', zh: '换到了：15 秒内对面也死了英雄' }, false: { en: 'not traded: no enemy hero died within 15 s', zh: '没换到：15 秒内对面没死英雄' } } as Record<string, Record<Lang, string>>,
   alliesElsewhere: { en: 'Allies not near', zh: '不在附近的队友' },
+  roshanBy: { my_team: { en: 'Your team took Roshan', zh: '我方打掉肉山' }, enemy: { en: 'They took Roshan', zh: '对方打掉肉山' } } as Record<string, Record<Lang, string>>,
+  aegisHolder: { en: 'Aegis', zh: '不朽盾' },
+  aegisEnd: { used: { en: 'used', zh: '用掉' }, expired: { en: 'expired', zh: '过期' }, game_ended: { en: 'game ended', zh: '比赛结束' }, unknown: { en: 'unknown', zh: '不明' } } as Record<string, Record<Lang, string>>,
+  atRoshan: { en: 'At Roshan', zh: '在场' },
+  roshanMe: { holder: { en: 'you held the Aegis', zh: '盾在你身上' }, there: { en: 'you were there', zh: '你在场' }, not_there: { en: 'you were not there', zh: '你不在场' } } as Record<string, Record<Lang, string>>,
+  next300: { en: 'Buildings taken in the next 300 s', zh: '之后 300 秒拆掉的建筑' },
+  fightsAfter: { en: 'Fights in the next 300 s', zh: '之后 300 秒的团战' },
   pushedBy: { my_team: { en: 'Your team pushed', zh: '我方推' }, enemy: { en: 'They pushed', zh: '对方推' } } as Record<string, Record<Lang, string>>,
   tookIt: { en: 'fell', zh: '被拆' }, stood: { en: 'stood', zh: '没拆掉' },
   hitting: { en: 'Hitting it', zh: '打建筑' }, ownersNear: { en: 'Owners near', zh: '守方在附近' },
@@ -225,6 +232,15 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   fights_i_took_part_in: { en: 'Fights you took part in', zh: '你参战的团战' },
   fights_with_unequal_numbers: { en: 'fights', zh: '场数' },
   the_side_with_more_lost_fewer: { en: 'the side with more lost fewer', zh: '人多一方少死人' },
+  // roshan_report's totals (roshan:<hero>).
+  roshans_my_team_took: { en: 'Roshans your team took', zh: '我方肉山' },
+  roshans_enemy_took: { en: 'Roshans the enemy took', zh: '对方肉山' },
+  my_team_aegis_used: { en: 'Your Aegis used', zh: '我方不朽盾用掉' },
+  my_team_aegis_expired: { en: 'Your Aegis expired', zh: '我方不朽盾过期' },
+  buildings_my_team_took_with_aegis: { en: 'Buildings your team took with the Aegis', zh: '我方持盾期间拆掉建筑' },
+  buildings_enemy_took_with_aegis: { en: 'Buildings the enemy took with the Aegis', zh: '对方持盾期间拆掉建筑' },
+  my_team_roshans_with_no_building_after: { en: 'Your Roshans with no building after', zh: '我方打完肉山没拆到建筑' },
+  roshans_i_was_at: { en: 'Roshans you were at', zh: '你在场的肉山' },
   // siege_report's totals (sieges:<hero>).
   my_team_pushes: { en: 'Your team\'s pushes', zh: '我方推塔' },
   my_team_pushes_that_took_it: { en: 'Your pushes that took the building', zh: '我方推掉的' },
@@ -526,6 +542,27 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.my_team_gold_lead != null && <p className="ag-rec-line"><span>{t(T.gold)}</span><span className="ag-chip">{r.my_team_gold_lead}</span></p>}
         {side(r.my_team, 'is-ally', t(T.mine))}
         {side(r.enemy, 'is-enemy', t(T.theirs))}
+      </div>
+    );
+  }
+  if (data.kind === 'roshan' && r.aegis_holder) {
+    const mine = r.taken_by === 'my_team';
+    const heroes = (list: string[] | null, cls: string) => (list == null ? <span className="ag-none">–</span> : list.length ? list.map((h) => <span key={h} className={`ag-chip ${cls}`}>{N(h)}</span>) : <span className="ag-none">{t(T.nobody)}</span>);
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.roshanBy[r.taken_by])}{r.place && <> · {N(r.place)}</>}</p>
+        <p className="ag-rec-line">
+          <span className="ag-chip">{t(T.aegisHolder)} {N(r.aegis_holder)} · {t(T.aegisEnd[r.aegis] ?? T.aegisEnd.unknown)}{(r.aegis_used_at ?? r.aegis_expired_at) && <em>{r.aegis_used_at ?? r.aegis_expired_at}</em>}</span>
+          {r.me && T.roshanMe[r.me] && <span className="ag-chip is-me">{t(T.roshanMe[r.me])}</span>}
+        </p>
+        <p className="ag-rec-line"><span>{t(T.atRoshan)}</span>{heroes(r.taking_side_near, mine ? 'is-ally' : 'is-enemy')}{heroes(r.other_side_near, mine ? 'is-enemy' : 'is-ally')}</p>
+        <p className="ag-rec-line"><span>{t(T.next300)}</span>
+          {[...r.buildings_taking_side_took_in_the_next_300s.map((b: any) => ({ ...b, cls: mine ? 'is-good' : 'is-warn' })), ...r.buildings_other_side_took_in_the_next_300s.map((b: any) => ({ ...b, cls: mine ? 'is-warn' : 'is-good' }))]
+            .sort((a: any, b: any) => a.clock.localeCompare(b.clock, undefined, { numeric: true }))
+            .map((b: any, i: number) => <span key={i} className={`ag-chip ${b.cls}`}>{b.clock} · {buildingLabel(b.building, lang)}</span>)}
+          {r.buildings_taking_side_took_in_the_next_300s.length + r.buildings_other_side_took_in_the_next_300s.length === 0 && <span className="ag-none">{t(T.nobody)}</span>}
+        </p>
+        {r.fights_in_the_next_300s.length > 0 && <p className="ag-rec-line"><span>{t(T.fightsAfter)}</span>{r.fights_in_the_next_300s.map((f: any) => <span key={f.fight} className="ag-chip">{f.clock} · {f.aegis_side_deaths} : {f.other_side_deaths}</span>)}</p>}
       </div>
     );
   }

@@ -381,6 +381,25 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/traded/)).toBeNull();
   });
 
+  it('a Roshan is shown as who held the Aegis, who was there, what became of it, and what each side took after', async () => {
+    const take = { status: 'ok', ref: 'roshan:beastmaster:1', kind: 'roshan', names: { phantom_assassin: '幻影刺客', axe: '斧王', mirana: '米拉娜', river_top_jungle: '河道上路野区' }, record: {
+      ref: 'roshan:beastmaster:1', clock: '32:18', taken_by: 'enemy', aegis_holder: 'phantom_assassin', place: 'river_top_jungle', taking_side_near: ['axe', 'mirana'], other_side_near: [], me: 'not_there',
+      aegis: 'used', aegis_used_at: '36:43', buildings_taking_side_took_in_the_next_300s: [{ clock: '36:22', building: 'badguys_tower2_top' }], buildings_other_side_took_in_the_next_300s: [], buildings_taking_side_took_count: 1,
+      fights_in_the_next_300s: [{ fight: 'fight:12', clock: '33:31', aegis_side_deaths: 3, other_side_deaths: 1 }], taking_side_pushes_in_the_next_300s: { pushes: 2, took_it: 1 },
+    } };
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': take, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['roshan:beastmaster:1'], fact: '32:18 对面打掉肉山。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText(/对方打掉肉山 · 河道上路野区/)).toBeTruthy();
+    expect(chip('不朽盾 幻影刺客 · 用掉36:43')).toBeTruthy();
+    expect(chip('你不在场')).toBeTruthy();
+    expect(chip('36:22 · 上路 2 塔')).toBeTruthy();
+    expect(chip('33:31 · 3 : 1')).toBeTruthy();
+    expect(screen.queryByText(/river_top|badguys|aegis/)).toBeNull();
+  });
+
   it('a push is shown as who hit the building, which owners were near, whether it fell, and where the rest were', async () => {
     const push = { status: 'ok', ref: 'sieges:beastmaster:5', kind: 'sieges', names: { phantom_assassin: '幻影刺客', sven: '斯温', beastmaster: '兽王', axe: '斧王', dire_top_lane: '夜魇上路', radiant_bot_jungle: '天辉下路野区' }, record: {
       ref: 'sieges:beastmaster:5', building: 'badguys_tower1_mid', clock: '19:59', until: '20:01', pushed_by: 'enemy', took_it: true, fell_at: '20:02',

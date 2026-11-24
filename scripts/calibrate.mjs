@@ -8,6 +8,8 @@
  * - Deaths (death_context): how often a death was traded (an enemy hero died within 15 s), by how many allies
  *   were within 2200 at it; and, every 5 s from 10:00, how often a living hero died in the next 20 s, by
  *   allies near and side of the map — whether standing alone is itself the danger.
+ * - Roshans (roshan_report): each Aegis pickup, whether it was used or expired, and the buildings each side took
+ *   in the 300 s after.
  *
  *   node scripts/calibrate.mjs <dir with *.trace.json.gz> [--json]
  *
@@ -20,6 +22,7 @@ import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { fightReport } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
+import { roshanReport } from '../lib/agent/roshanReport.js';
 import { linkHeroNames, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
 
@@ -30,6 +33,7 @@ const rows = [];
 const pushes = [];
 const deaths = [];
 const moments = [];
+const roshans = [];
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
   const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(dir, f)))));
@@ -48,6 +52,9 @@ for (const f of files) {
       const side = region(s.x, s.y); const enemyHalf = h.team === 2 ? side.startsWith('dire') : side.startsWith('radiant');
       moments.push({ allies, enemyHalf, died: died[i].some((d) => d > sec && d <= sec + 20) });
     });
+  }
+  for (const x of roshanReport(trace, { hero: first.key }).takes ?? []) {
+    roshans.push({ aegis: x.aegis, took: x.buildings_taking_side_took_count, lost: x.buildings_other_side_took_in_the_next_300s.length, fights: x.fights_in_the_next_300s });
   }
   for (const p of siegeReport(trace, { hero: first.key }).pushes ?? []) {
     pushes.push({ took: p.took_it, margin: p.hitting_minus_owners_near, deadOwners: p.owners_dead_when_it_began });
@@ -104,6 +111,14 @@ out.deaths = {
   traded_by_allies_within_2200_at_death: [0, 1, 2].map((n) => ({ allies: alliesLabel(n), ...traded(deaths.filter((d) => (n >= 2 ? d.allies >= 2 : d.allies === n))) })),
   died_within_20s_by_allies_near: [true, false].flatMap((half) => [0, 1, 2].map((n) => ({ side: half ? 'enemy half' : 'own half or river', allies: alliesLabel(n), ...risk(moments.filter((m) => m.enemyHalf === half && (n >= 2 ? m.allies >= 2 : m.allies === n))) }))),
 };
+const fightsAfter = roshans.flatMap((x) => x.fights);
+out.roshans = {
+  takes: roshans.length,
+  aegis: { used: roshans.filter((x) => x.aegis === 'used').length, expired: roshans.filter((x) => x.aegis === 'expired').length, game_ended: roshans.filter((x) => x.aegis === 'game_ended').length },
+  buildings_in_the_next_300s: { taking_side: roshans.reduce((n, x) => n + x.took, 0), other_side: roshans.reduce((n, x) => n + x.lost, 0) },
+  takes_with_no_building_after: roshans.filter((x) => x.took === 0).length,
+  fights_in_the_next_300s: { fights: fightsAfter.length, taking_side_lost_fewer: fightsAfter.filter((f) => f.aegis_side_deaths < f.other_side_deaths).length, other_side_lost_fewer: fightsAfter.filter((f) => f.aegis_side_deaths > f.other_side_deaths).length },
+};
 if (process.argv.includes('--json')) console.log(JSON.stringify(out, null, 2));
 else {
   console.log(`${out.games} games, ${out.fights_with_a_winner} fights where one side lost fewer heroes\n`);
@@ -117,6 +132,10 @@ else {
   for (const x of out.pushes.by_owners_dead_when_it_began) line(`  owners dead when it began: ${x.value}`, x);
   console.log(`\n${deaths.length} deaths; share traded (an enemy hero died within 15 s)\n`);
   for (const x of out.deaths.traded_by_allies_within_2200_at_death) console.log(`${`  allies within 2200 at death: ${x.allies}`.padEnd(46)} ${String(x.traded).padStart(4)}/${String(x.deaths).padEnd(5)} ${x.rate}%`);
+  const ro = out.roshans;
+  console.log(`\n${ro.takes} Roshans (Aegis pickups): used ${ro.aegis.used}, expired ${ro.aegis.expired}, game ended ${ro.aegis.game_ended}`);
+  console.log(`  in the 300 s after: the taking side took ${ro.buildings_in_the_next_300s.taking_side} buildings, the other side ${ro.buildings_in_the_next_300s.other_side}; takes with no building after: ${ro.takes_with_no_building_after}`);
+  console.log(`  fights in those 300 s: ${ro.fights_in_the_next_300s.fights}, the taking side lost fewer in ${ro.fights_in_the_next_300s.taking_side_lost_fewer}, the other side in ${ro.fights_in_the_next_300s.other_side_lost_fewer}`);
   console.log(`\nliving heroes every 5 s from 10:00; share dead within 20 s\n`);
   for (const x of out.deaths.died_within_20s_by_allies_near) console.log(`${`  ${x.side}, allies near: ${x.allies}`.padEnd(46)} ${String(x.died_within_20s).padStart(5)}/${String(x.moments).padEnd(6)} ${x.rate}%`);
 }
