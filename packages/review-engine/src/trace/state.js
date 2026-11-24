@@ -230,7 +230,8 @@ export function sieges(trace) {
       const fell = deaths.find((d) => d >= r.from - 1 && d <= r.to + 15);
       // Dead when it began, whatever they did later (one who respawned and came near is also in `near`). Unknown position: not counted.
       const deadAtStart = trace.heroes.filter((h, i) => h.team === owner && stateAt(trace, i, r.from)?.alive === false).length;
-      out.push({ building: target, name, owner, from: r.from, to: r.to, hitters: [...new Set(r.hits.map((h) => h[1]))], near: [...near], dead_owners_at_start: deadAtStart, spot, fell_at: fell ?? null, same_name: /_tower4$/.test(name) });
+      // hits: every [second, hero] of it, for a caller that needs who hit within part of it.
+      out.push({ building: target, name, owner, from: r.from, to: r.to, hitters: [...new Set(r.hits.map((h) => h[1]))], hits: r.hits, near: [...near], dead_owners_at_start: deadAtStart, spot, fell_at: fell ?? null, same_name: /_tower4$/.test(name) });
     }
   }
   return out.sort((x, y) => x.from - y.from);

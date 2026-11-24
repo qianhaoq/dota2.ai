@@ -107,6 +107,11 @@ const T = {
   boughtBack: { en: 'bought back', zh: '买活' },
   traded: { true: { en: 'traded: an enemy hero died within 15 s', zh: '换到了：15 秒内对面也死了英雄' }, false: { en: 'not traded: no enemy hero died within 15 s', zh: '没换到：15 秒内对面没死英雄' } } as Record<string, Record<Lang, string>>,
   alliesElsewhere: { en: 'Allies not near', zh: '不在附近的队友' },
+  wonBy: { my_team: { en: 'Your team won the fight', zh: '我方赢团' }, enemy: { en: 'They won the fight', zh: '对方赢团' } } as Record<string, Record<Lang, string>>,
+  stillDead: { en: 'Still dead 10 s after', zh: '10 秒后仍未复活' },
+  winnersDid: { took_a_building: { en: 'then took a building', zh: '随后拆到建筑' }, took_roshan: { en: 'then took Roshan', zh: '随后打了肉山' }, pushed_and_took_nothing: { en: 'then pushed and took nothing', zh: '随后推了没拆掉' }, neither: { en: 'then took nothing', zh: '随后什么都没拿' } } as Record<string, Record<Lang, string>>,
+  // The losers of the fight took these back: the enemy when your team won it, your team when they did.
+  tookBack: { my_team: { en: 'They took back', zh: '对方反拆' }, enemy: { en: 'Your team took back', zh: '我方反拆' } } as Record<string, Record<Lang, string>>,
   roshanBy: { my_team: { en: 'Your team took Roshan', zh: '我方打掉肉山' }, enemy: { en: 'They took Roshan', zh: '对方打掉肉山' } } as Record<string, Record<Lang, string>>,
   aegisHolder: { en: 'Aegis', zh: '不朽盾' },
   aegisEnd: { used: { en: 'used', zh: '用掉' }, expired: { en: 'expired', zh: '过期' }, game_ended: { en: 'game ended', zh: '比赛结束' }, unknown: { en: 'unknown', zh: '不明' } } as Record<string, Record<Lang, string>>,
@@ -237,6 +242,17 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   fights_i_took_part_in: { en: 'Fights you took part in', zh: '你参战的团战' },
   fights_with_unequal_numbers: { en: 'fights', zh: '场数' },
   the_side_with_more_lost_fewer: { en: 'the side with more lost fewer', zh: '人多一方少死人' },
+  // decision_points' totals (decision:<hero>).
+  fights_my_team_won: { en: 'Fights your team won', zh: '我方赢的团' },
+  fights_enemy_won: { en: 'Fights the enemy won', zh: '对方赢的团' },
+  my_team_after_its_wins: { en: 'After your wins', zh: '我方赢团后' },
+  my_team_wins_with_three_or_more_still_dead: { en: 'Your wins with 3+ enemies still dead', zh: '赢团后对面 3 人以上未复活' },
+  enemy_after_its_wins: { en: 'After their wins', zh: '对方赢团后' },
+  took_a_building: { en: 'took a building', zh: '拆到建筑' },
+  took_roshan: { en: 'took Roshan', zh: '打了肉山' },
+  pushed_and_took_nothing: { en: 'pushed, took nothing', zh: '推了没拆掉' },
+  neither: { en: 'took nothing', zh: '什么都没拿' },
+  fights: { en: 'fights', zh: '场数' },
   // roshan_report's totals (roshan:<hero>).
   roshans_my_team_took: { en: 'Roshans your team took', zh: '我方肉山' },
   roshans_enemy_took: { en: 'Roshans the enemy took', zh: '对方肉山' },
@@ -551,6 +567,20 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.my_team_gold_lead != null && <p className="ag-rec-line"><span>{t(T.gold)}</span><span className="ag-chip">{r.my_team_gold_lead}</span></p>}
         {side(r.my_team, 'is-ally', t(T.mine))}
         {side(r.enemy, 'is-enemy', t(T.theirs))}
+      </div>
+    );
+  }
+  if (data.kind === 'decision' && r.kind === 'after_a_won_fight') {
+    const mine = r.won_by === 'my_team';
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.wonBy[r.won_by])} · {r.deaths.my_team} : {r.deaths.enemy}</p>
+        <p className="ag-rec-line"><span>{t(T.stillDead)} {r.losers_still_dead_10s_after}</span>{r.losers_respawn_in.map((x: any) => <span key={x.hero} className={`ag-chip ${mine ? 'is-enemy' : 'is-ally'}`}>{N(x.hero)}{x.seconds != null && <em>{x.seconds}{t(T.sec)}</em>}</span>)}</p>
+        <p className="ag-rec-line"><span className={`ag-chip ${r.winners_did === 'took_a_building' ? (mine ? 'is-good' : 'is-warn') : r.winners_did === 'neither' && mine ? 'is-warn' : ''}`}>{t(T.winnersDid[r.winners_did])}</span>
+          {r.buildings_winners_took.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}
+          {r.roshan_at && <span className="ag-chip">{t(T.roshanBy[r.won_by])} {r.roshan_at}</span>}
+        </p>
+        {r.losers_took_back.length > 0 && <p className="ag-rec-line"><span>{t(T.tookBack[r.won_by])}</span>{r.losers_took_back.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}</p>}
       </div>
     );
   }

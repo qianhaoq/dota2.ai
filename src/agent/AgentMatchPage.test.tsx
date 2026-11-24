@@ -391,6 +391,31 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/traded/)).toBeNull();
   });
 
+  it('a won fight is shown with who was still dead and for how long, and what the winners did with it', async () => {
+    const point = { status: 'ok', ref: 'decision:spectre:4', kind: 'decision', names: { juggernaut: '主宰', lion: '莱恩', zuus: '宙斯', silencer: '沉默术士' }, record: {
+      ref: 'decision:spectre:4', kind: 'after_a_won_fight', fight: 'fight:4', clock: '20:58', won_by: 'my_team', deaths: { my_team: 2, enemy: 4 },
+      losers_still_dead_10s_after: 4, losers_respawn_in: [{ hero: 'juggernaut', seconds: 17 }, { hero: 'lion', seconds: 15 }, { hero: 'zuus', seconds: 31 }, { hero: 'silencer', seconds: 22 }],
+      winners_did: 'took_a_building', buildings_winners_took: [{ building: 'badguys_tower1_mid', clock: '20:54', during_the_fight: true }], pushes: [], losers_took_back: [], me: 'did_not_hit',
+    } };
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': point, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['decision:spectre:4'], fact: '20:58 赢团。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText(/我方赢团 · 2 : 4/)).toBeTruthy();
+    expect(chip('宙斯31秒')).toBeTruthy();
+    expect(chip('随后拆到建筑')).toBeTruthy();
+    expect(chip('20:54 · 中路 1 塔')).toBeTruthy();
+    expect(screen.queryByText(/took_a_building|badguys|juggernaut/)).toBeNull();
+    cleanup();
+    // A fight the enemy won: what the player's team took back is the player's team's (review of #306).
+    mockFetch({ 'ref=overview': overview, '/evidence?': { ...point, ref: 'decision:spectre:5', record: { ...point.record, ref: 'decision:spectre:5', won_by: 'enemy', winners_did: 'neither', buildings_winners_took: [], losers_took_back: [{ building: 'badguys_tower2_top', clock: '22:10' }] } }, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['decision:spectre:5'], fact: '20:58 输团。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText('我方反拆')).toBeTruthy();
+    expect(screen.queryByText('对方反拆')).toBeNull();
+  });
+
   it('a Roshan is shown as who held the Aegis, who was there, what became of it, and what each side took after', async () => {
     const take = { status: 'ok', ref: 'roshan:beastmaster:1', kind: 'roshan', names: { phantom_assassin: '幻影刺客', axe: '斧王', mirana: '米拉娜', river_top_jungle: '河道上路野区' }, record: {
       ref: 'roshan:beastmaster:1', clock: '32:18', taken_by: 'enemy', aegis_holder: 'phantom_assassin', place: 'river_top_jungle', taking_side_near: ['axe', 'mirana'], other_side_near: [], me: 'not_there',
