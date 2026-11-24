@@ -37,6 +37,7 @@ const T = {
   planSub: { en: 'The game as a whole: what the teams did with the map, and where you were.', zh: '整局来看：双方怎么用地图和团战，你当时在哪里。' },
   planLineUps: { en: 'The line-ups', zh: '阵容' },
   planStrengths: { en: 'What you were up against', zh: '对位与强势期' },
+  planWindow: { en: 'Your chance', zh: '窗口期' },
   planCourse: { en: 'How it went', zh: '走势' },
   planYou: { en: 'Your part', zh: '你的部分' },
   planReason: {
@@ -190,6 +191,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
             <>
               <p className="ag-plan-sub">{t(T.planSub)}</p>
               <dl className="ag-plan-parts">
+                {review.game_plan.window && <div><dt>{t(T.planWindow)}</dt><dd>{review.game_plan.window}</dd></div>}
                 {review.game_plan.strengths && <div><dt>{t(T.planStrengths)}</dt><dd>{review.game_plan.strengths}</dd></div>}
                 {review.game_plan.course && <div><dt>{t(T.planCourse)}</dt><dd>{review.game_plan.course}</dd></div>}
                 {review.game_plan.your_part && <div><dt>{t(T.planYou)}</dt><dd>{review.game_plan.your_part}</dd></div>}
