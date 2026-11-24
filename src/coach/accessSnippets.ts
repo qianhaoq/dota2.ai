@@ -18,6 +18,44 @@ export const MCP_TOOLS = [
 
 export type AccessMode = 'web' | 'mcp' | 'cli' | 'http';
 
+/**
+ * One line that connects each agent tool to the hosted MCP server. A command
+ * is run in a terminal; `where` says where a line that is not a command goes.
+ * Claude Code comes first: it is the line the other surfaces show by default.
+ */
+export interface AgentClient {
+  id: string;
+  label: Bi;
+  line: string;
+  where?: Bi;
+  /** A link that does the same in one click (Cursor's install page). */
+  install?: { href: string; label: Bi };
+}
+
+const CURSOR_CONFIG = 'eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9'; // base64 of {"url":"https://dota2.ai/mcp"}
+export const CURSOR_INSTALL = `https://cursor.com/en/install-mcp?name=dota2ai&config=${CURSOR_CONFIG}`;
+
+export const AGENT_CLIENTS: AgentClient[] = [
+  { id: 'claude', label: { en: 'Claude Code', zh: 'Claude Code' }, line: `claude mcp add --transport http dota2ai ${MCP_URL}` },
+  { id: 'codex', label: { en: 'Codex', zh: 'Codex' }, line: `codex mcp add dota2ai --url ${MCP_URL}` },
+  { id: 'gemini', label: { en: 'Gemini CLI', zh: 'Gemini CLI' }, line: `gemini mcp add --transport http dota2ai ${MCP_URL}` },
+  { id: 'vscode', label: { en: 'VS Code', zh: 'VS Code' }, line: `code --add-mcp '{"name":"dota2ai","type":"http","url":"${MCP_URL}"}'` },
+  {
+    id: 'cursor', label: { en: 'Cursor', zh: 'Cursor' }, line: `{ "mcpServers": { "dota2ai": { "url": "${MCP_URL}" } } }`,
+    where: { en: 'Goes in ~/.cursor/mcp.json.', zh: '写进 ~/.cursor/mcp.json。' },
+    install: { href: CURSOR_INSTALL, label: { en: 'Or add it to Cursor in one click', zh: '或者一键添加到 Cursor' } },
+  },
+  {
+    id: 'other', label: { en: 'Any other', zh: '其他' }, line: MCP_URL,
+    where: { en: 'Any client that takes a remote MCP server (Streamable HTTP): give it this address.', zh: '任何支持远程 MCP（Streamable HTTP）的客户端：把这个地址填进去。' },
+  },
+];
+
+/** What to say once the agent is connected. */
+export function agentAsk(lang: 'en' | 'zh'): string {
+  return lang === 'zh' ? '复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。' : 'Review my Dota 2 match 9100904020 — I played Beastmaster.';
+}
+
 export interface AccessSnippet {
   mode: AccessMode;
   label: Bi;
@@ -25,6 +63,8 @@ export interface AccessSnippet {
   lines: string[];
   note: Bi;
   links?: { href: string; label: string }[];
+  /** The same connection for each agent tool; the first one's line is `lines`. */
+  clients?: AgentClient[];
 }
 
 const CLI = 'node packages/cli/bin/dota2ai.js';
@@ -40,7 +80,8 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
     {
       mode: 'mcp',
       label: { en: 'Agent (MCP)', zh: 'Agent（MCP）' },
-      lines: [`claude mcp add --transport http dota2ai ${MCP_URL}`],
+      lines: [AGENT_CLIENTS[0].line],
+      clients: AGENT_CLIENTS,
       note: {
         en: `Hosted, no install. Any client that supports remote MCP can use ${MCP_URL}. ${MCP_TOOLS.length} tools: ${MCP_TOOLS.join(', ')}.`,
         zh: `线上直连，无需安装；支持远程 MCP 的客户端填 ${MCP_URL} 即可。共 ${MCP_TOOLS.length} 个工具：${MCP_TOOLS.join('、')}。`,
