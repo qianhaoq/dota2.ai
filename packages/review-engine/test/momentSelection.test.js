@@ -659,6 +659,10 @@ it('resolves official names from the same real ids, with neutral unknown fallbac
  expect(evidenceName('snapfire','zh')).toBe('电炎绝手');expect(evidenceName('snapfire','en')).toBe('Snapfire');
  expect(evidenceName('unregistered_spell','zh')).toBe('未知单位或技能');expect(itemName('unregistered_item','en')).toBe('Unknown item');
 });
+it('names the items 7.42 added, in both languages, instead of "unknown item"',()=>{
+ const added={quarterstaff:['Quarterstaff','短棍'],horn_of_battle_greater:['Greater Horn of Battle','大战斗号角'],bloodslinger:['Bloodslinger','血腥投带'],caduceus:['Caduceus','双蛇杖'],ristuls_devotion:["Ristul's Devotion",'瑞斯图尔的奉献'],berserkers_sabatons:['Sabatons of Mordiggian','莫尔迪基安的护足'],skypiercer:['Skypiercer','破天之矛'],starforge:['Starforge','锻星炉']};
+ for(const [key,[en,zh]] of Object.entries(added)){expect(itemName(key,'en')).toBe(en);expect(itemName(`item_${key}`,'zh')).toBe(zh);expect(evidenceName(key,'zh')).toBe(zh);}
+});
 it.each([40,90,110])('never splices a TP to a death %ss later',delay=>{
  const result={facts:{d:{id:'d',citation:'r1'}},deaths:[{t:100+delay,killer:'lion',fact_id:'d'}]};
  const moments=buildMoments(result,{item_use_log:[{t:100,key:'tpscroll'}],purchase_log:[{time:-79,key:'recipe_null_talisman'}]},'zh');

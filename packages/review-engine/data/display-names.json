@@ -441,7 +441,8 @@
       "zh": "玄冥盾牌"
     },
     "chasm_stone": {
-      "en": "Chasm Stone"
+      "en": "Chasm Stone",
+      "zh": "裂隙之石"
     },
     "clarity": {
       "en": "Clarity",
@@ -676,7 +677,8 @@
       "zh": "图纸（恢复头巾）"
     },
     "recipe_hydras_breath": {
-      "en": "Hydra's Breath Recipe"
+      "en": "Hydra's Breath Recipe",
+      "zh": "图纸（怪蛇之息）"
     },
     "recipe_heart": {
       "en": "Heart of Tarrasque Recipe",
@@ -759,7 +761,8 @@
       "zh": "图纸（林肯法球）"
     },
     "recipe_specialists_array": {
-      "en": "Specialist's Array Recipe"
+      "en": "Specialist's Array Recipe",
+      "zh": "图纸（行家阵列）"
     },
     "recipe_spirit_vessel": {
       "en": "Spirit Vessel Recipe",
@@ -892,6 +895,50 @@
     "wizard_hat": {
       "en": "Wizard Hat",
       "zh": "巫师帽"
+    },
+    "quarterstaff": {
+      "en": "Quarterstaff",
+      "zh": "短棍"
+    },
+    "horn_of_battle_greater": {
+      "en": "Greater Horn of Battle",
+      "zh": "大战斗号角"
+    },
+    "bloodslinger": {
+      "en": "Bloodslinger",
+      "zh": "血腥投带"
+    },
+    "caduceus": {
+      "en": "Caduceus",
+      "zh": "双蛇杖"
+    },
+    "ristuls_devotion": {
+      "en": "Ristul's Devotion",
+      "zh": "瑞斯图尔的奉献"
+    },
+    "berserkers_sabatons": {
+      "en": "Sabatons of Mordiggian",
+      "zh": "莫尔迪基安的护足"
+    },
+    "skypiercer": {
+      "en": "Skypiercer",
+      "zh": "破天之矛"
+    },
+    "starforge": {
+      "en": "Starforge",
+      "zh": "锻星炉"
+    },
+    "recipe_caduceus": {
+      "en": "Caduceus Recipe",
+      "zh": "图纸（双蛇杖）"
+    },
+    "recipe_starforge": {
+      "en": "Starforge Recipe",
+      "zh": "图纸（锻星炉）"
+    },
+    "recipe_skypiercer": {
+      "en": "Skypiercer Recipe",
+      "zh": "图纸（破天之矛）"
     }
   },
   "abilities": {
