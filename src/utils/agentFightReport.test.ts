@@ -218,7 +218,7 @@ describe('the agent has the tools and is told how to read them', () => {
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['fight_report', 'game_state']));
     expect(kit.runTool('fight_report', { hero: 'beastmaster' }).fights_total).toBe(16);
-    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(30);
+    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(31);
     const review = deepReviewSystem('zh');
     expect(review).toContain('fight_report for the player first');
     expect(review).toMatch(/never that they refused, ignored the call or were farming/);
@@ -236,5 +236,15 @@ describe('the agent has the tools and is told how to read them', () => {
     const uneven = fights.filter((f: any) => f.more_heroes_took_part !== 'even');
     const more = out.measures.find((m: any) => m.measure === 'more heroes took part');
     expect(more).toMatchObject({ fights: uneven.length, side_ahead_won: uneven.filter((f: any) => f.more_heroes_took_part === f.lost_fewer_heroes).length });
+  });
+
+  it('the calibration script counts ultimate edges and what followed; the review is told they explain little alone', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ults-'));
+    copyFileSync(FIXTURE, join(dir, '9100904020.trace.json.gz'));
+    const ue = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' })).ultimate_edges;
+    expect(ue.moments).toBeGreaterThan(0);
+    expect(ue.fight_within_90s).toBeLessThanOrEqual(ue.moments);
+    expect(ue.edge_side_lost_fewer + ue.edge_side_lost_more + ue.even).toBe(ue.fight_within_90s);
+    expect(deepReviewSystem('zh')).toMatch(/Do not explain a fight by ultimates ready alone/);
   });
 });

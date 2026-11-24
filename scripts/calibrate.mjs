@@ -17,6 +17,8 @@
  *   what the takers did in the next 120 s and how often they lost a building of their own meanwhile.
  * - Fights after big items (decision_points): of the fights begun within 120 s after big items of one side only, how
  *   often that side lost fewer heroes, by whether it was ahead in gold; and the gold-ahead side's rate in the others.
+ * - Ultimate edges: every moment a side came to have two or more ultimates ready than the other, whether a fight
+ *   began within 90 s, and how it went for that side.
  * - Roshans (roshan_report): each Aegis pickup, whether it was used or expired, and the buildings each side took
  *   in the 300 s after.
  *
@@ -29,7 +31,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import { fightReport } from '../lib/agent/fightReport.js';
+import { fightReport, stateOf } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
 import { afterWonFights, afterTowersFell, fightsAfterBigItems } from '../lib/agent/decisionPoints.js';
@@ -48,6 +50,7 @@ const roshans = [];
 let wardGames = 0;
 const afterWins = [];
 const afterTowers = [];
+const ultEdges = [];
 const itemFights = [];
 const plainFights = [];
 for (const f of files) {
@@ -86,6 +89,27 @@ for (const f of files) {
     const side = [...sides][0];
     itemFights.push({ won: side === winner, ahead: Number.isFinite(lead) && lead ? (lead > 0) === (side === 2) : null });
   });
+  // Every 5 s from 10:00: the moment a side came to have two or more ultimates ready than the other (living heroes,
+  // four or more of its own alive), at most once a minute; then whether a fight began within 90 s and how it went.
+  {
+    const fights = matchFights(trace);
+    const readyOf = (sec, team) => { let r = 0; let alive = 0; trace.heroes.forEach((h, i) => { if (h.team !== team) return; const st = stateOf(trace, i, sec); if (st?.alive === false) return; alive += 1; if (st?.ultimate?.ready === true) r += 1; }); return { r, alive }; };
+    const prev = { 2: false, 3: false }; const last = { 2: -Infinity, 3: -Infinity };
+    for (let sec = 600; sec < trace.t0 + trace.n - 90; sec += 5) {
+      const by = { 2: readyOf(sec, 2), 3: readyOf(sec, 3) };
+      for (const team of [2, 3]) {
+        const o = team === 2 ? 3 : 2; const on = by[team].r - by[o].r >= 2 && by[team].alive >= 4;
+        if (on && !prev[team] && sec - last[team] > 60) {
+          const fg = fights.find((x) => x.from > sec && x.from <= sec + 90);
+          let result = null;
+          if (fg) { const lost = { 2: 0, 3: 0 }; for (const d of fg.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) lost[trace.heroes[v].team] += 1; } result = lost[team] < lost[o] ? 'fewer' : lost[team] > lost[o] ? 'more' : 'even'; }
+          ultEdges.push({ result });
+        }
+        if (on) last[team] = sec;
+        prev[team] = on;
+      }
+    }
+  }
   for (const x of afterTowersFell(trace)) afterTowers.push({ tier: x.tier, fight: x.fight != null, did: x.did, traded: x.lostBack.length > 0 });
   for (const x of roshanReport(trace, { hero: first.key }).takes ?? []) {
     roshans.push({ aegis: x.aegis, took: x.buildings_taking_side_took_count, lost: x.buildings_other_side_took_in_the_next_300s.length, fights: x.fights_in_the_next_300s });
@@ -176,6 +200,13 @@ out.fights_after_big_items = {
   item_side_behind_in_gold: rate(itemFights.filter((x) => x.ahead === false), 'item_side_lost_fewer'),
   no_fresh_big_item: rate(plainFights, 'side_ahead_in_gold_lost_fewer'),
 };
+out.ultimate_edges = {
+  moments: ultEdges.length,
+  fight_within_90s: ultEdges.filter((x) => x.result).length,
+  edge_side_lost_fewer: ultEdges.filter((x) => x.result === 'fewer').length,
+  edge_side_lost_more: ultEdges.filter((x) => x.result === 'more').length,
+  even: ultEdges.filter((x) => x.result === 'even').length,
+};
 out.after_won_fights = [0, 1, 2, 3, 4].map((n) => {
   const list = afterWins.filter((x) => (n === 4 ? x.stillDead >= 4 : x.stillDead === n));
   return { losers_still_dead_10s_after: n === 4 ? '4 or more' : String(n), fights: list.length, ...Object.fromEntries(DID.map((d) => [d, list.filter((x) => x.did === d).length])) };
@@ -208,6 +239,8 @@ else {
   console.log(`${'  item side ahead in gold'.padEnd(46)} ${fb.item_side_ahead_in_gold.item_side_lost_fewer}/${fb.item_side_ahead_in_gold.fights}`);
   console.log(`${'  item side behind in gold'.padEnd(46)} ${fb.item_side_behind_in_gold.item_side_lost_fewer}/${fb.item_side_behind_in_gold.fights}`);
   console.log(`${'  no fresh big item: side ahead in gold'.padEnd(46)} ${fb.no_fresh_big_item.side_ahead_in_gold_lost_fewer}/${fb.no_fresh_big_item.fights}`);
+  const ue = out.ultimate_edges;
+  console.log(`\n${ue.moments} moments a side came to have 2+ more ultimates ready; a fight within 90 s in ${ue.fight_within_90s}: that side lost fewer ${ue.edge_side_lost_fewer}, more ${ue.edge_side_lost_more}, even ${ue.even}`);
   console.log(`\n${afterTowers.length} tier 1–3 towers taken; what the takers did in the next 120 s, and how often they lost one meanwhile\n`);
   for (const x of out.after_towers_fell) console.log(`${`  tier ${x.tier}, ${x.after_a_won_fight ? 'after a won fight' : 'no won fight'}`.padEnd(46)} n=${String(x.towers).padEnd(4)} another ${x.took_another_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}  lost one ${x.takers_lost_a_building_meanwhile}`);
   for (const x of out.after_won_fights) console.log(`${`  losers still dead 10 s after: ${x.losers_still_dead_10s_after}`.padEnd(46)} n=${String(x.fights).padEnd(4)} building ${x.took_a_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}`);
