@@ -75,6 +75,7 @@ import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { createAgentRouter } from './lib/agent/router.js';
 import { createAgentService } from './lib/agent/service.js';
+import { warmShowcase } from './lib/agent/showcase.js';
 import { createPatchRouter } from './lib/patch/router.js';
 import { createTaskAuth, createTaskDispatcher } from './lib/agent/tasks.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from './lib/agent/stores.js';
@@ -1059,9 +1060,19 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-httpServer = app.listen(PORT, HOST, () => {
-  console.log(`Server is running on http://${HOST}:${PORT}`);
-  console.log(`Health check available at http://${HOST}:${PORT}/health`);
+// The example reviews a first visitor is sent to are asked for before this instance takes requests, if this
+// prompt version has none yet (lib/agent/showcase.js). Before, not after: Cloud Run gives an instance CPU
+// while it starts and then only while a request is in flight (cpu-throttling), and this is a few store
+// reads and queue calls (the reviews run in their own queued requests). At most 5 s; off with
+// AGENT_SHOWCASE_WARM=0.
+const showcaseWarm = process.env.AGENT_SHOWCASE_WARM === '0'
+  ? Promise.resolve()
+  : Promise.race([warmShowcase(agentService, { log: (msg) => console.warn(`[agent] ${msg}`) }), new Promise((r) => { setTimeout(r, 5000).unref(); })]);
+showcaseWarm.finally(() => {
+  httpServer = app.listen(PORT, HOST, () => {
+    console.log(`Server is running on http://${HOST}:${PORT}`);
+    console.log(`Health check available at http://${HOST}:${PORT}/health`);
+  });
 });
 
 // Warm-load OpenDota constants at startup so /api/health does not report
