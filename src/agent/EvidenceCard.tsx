@@ -211,6 +211,10 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   enemy_hero_target_alive_12s_later: { en: 'Casts whose target was alive 12 s later', zh: '放出 12 秒后目标仍存活' },
   no_hero_target_and_at_most_one_enemy_hero_damaged: { en: 'Casts that damaged at most one enemy hero', zh: '至多只伤到一名敌方英雄' },
   nothing_cast_and_no_item_used: { en: 'Deaths with nothing cast or used', zh: '什么都没按就阵亡' },
+  // death_context's trade lists (deaths:<hero>).
+  traded_within_15s: { en: 'Deaths traded (an enemy hero died within 15 s)', zh: '换到了（15 秒内对面也死了英雄）' },
+  not_traded_within_15s: { en: 'Deaths not traded', zh: '没换到' },
+  no_ally_within_2200_at_death_and_not_traded: { en: 'No ally within 2200 and not traded', zh: '身边没人且没换到' },
   // fight_report's totals (fights:<hero>).
   fights_total: { en: 'Fights', zh: '团战' },
   fights_my_team_lost_fewer: { en: 'Your team lost fewer heroes', zh: '我方少死人' },

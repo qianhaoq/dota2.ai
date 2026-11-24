@@ -363,6 +363,20 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByText('没换到：15 秒内对面没死英雄')).toBeTruthy();
     expect(chip('斯温 · 天辉上路9100 码外TP 可用')).toBeTruthy();
     expect(chip('天怒法师 · 阵亡复活还要 25秒')).toBeTruthy();
+    cleanup();
+
+    // The totals: the trade lists are counted and labelled in the reader's language.
+    const totals = { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: { beastmaster: '兽王' }, record: {
+      ref: 'deaths:beastmaster', ref_scope: 'summary', hero: 'beastmaster', deaths_total: 11,
+      deaths_where: { traded_within_15s: ['2:51', '6:13', '8:27'], not_traded_within_15s: ['0:47', '11:03'], no_ally_within_2200_at_death_and_not_traded: ['0:47'] },
+    } };
+    mockFetch({ 'ref=overview': overview, '/evidence?': totals, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['deaths:beastmaster'], fact: '11 次阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '没换到 2')).toBeTruthy();
+    expect(chip('换到了（15 秒内对面也死了英雄） 3')).toBeTruthy();
+    expect(chip('身边没人且没换到 1')).toBeTruthy();
+    expect(screen.queryByText(/traded/)).toBeNull();
   });
 
   it('a push is shown as who hit the building, which owners were near, whether it fell, and where the rest were', async () => {
