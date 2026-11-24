@@ -10,9 +10,17 @@ export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
 /** The one rule a finding sends into the next game: a situation the player can see, one action, and how often it came up this game. */
 export interface FindingRule { when: string; do: string; this_game?: string; /** What the next game's replay is counted on for this rule (lib/coach/goals.js habitGoal). */ check?: GoalSpec }
 export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string; rule?: FindingRule }
+/** How the game was played as a whole (lib/agent/deepReview.js planOf): only what the check let through. */
+export interface GamePlan {
+  line_ups?: string; course?: string; your_part?: string;
+  /** What the course is mostly down to; present only together with the sentence that argues it. */
+  main_reason?: 'your_play' | 'team_play' | 'enemy_play' | 'line_ups' | 'unclear'; why?: string;
+  evidence: EvidenceItem[];
+}
 export interface DeepReview {
   schema: string; match_id: number; hero: string; lang: 'en' | 'zh';
   verdict: string; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
+  game_plan?: GamePlan;
   /** One thing the next game can be checked on (lib/agent/goal.js), tied to finding `finding` (1-based). */
   goal?: GoalSpec & { finding: number };
 }

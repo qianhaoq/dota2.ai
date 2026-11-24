@@ -203,3 +203,20 @@
 .ag-lane th:first-child { text-align: left; color: var(--text); font-weight: 500; }
 .ag-lane-sum th, .ag-lane-sum td { color: var(--text-3); font-weight: 400; }
 .ag-lane td.is-now { color: var(--text); font-weight: 600; }
+
+/* The game plan: the game as a whole, beside the findings. */
+.ag-plan-sub { margin: -4px 0 14px; color: var(--text-3); font-size: var(--fs-meta); }
+.ag-plan-parts { margin: 0 0 14px; display: grid; gap: 10px; }
+.ag-plan-parts > div { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.ag-plan-parts dt { font-size: var(--fs-meta); letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); }
+.ag-plan-parts dd { margin: 0; line-height: 1.7; color: var(--text); }
+.ag-plan-why { margin: 0 0 14px; padding: 12px 14px; background: var(--panel-2); border-left: 2px solid var(--line-2); border-radius: 0 8px 8px 0; line-height: 1.65; }
+.ag-plan-tag { display: block; font-size: var(--fs-meta); letter-spacing: 0.08em; color: var(--text-2); margin-bottom: 4px; font-weight: 600; }
+.ag-plan-tag.is-your_play { color: var(--fix); }
+.ag-plan-tag.is-team_play, .ag-plan-tag.is-enemy_play, .ag-plan-tag.is-line_ups { color: var(--good); }
+.ag-intent { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.ag-intent p { margin: 0 0 10px; color: var(--text-2); line-height: 1.6; }
+.ag-intent-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ag-intent-row .ag-btn { padding: 7px 16px; }
+.ag-intent p.ag-intent-note { margin: 10px 0 0; color: var(--text-3); font-size: var(--fs-meta); }
+@media (max-width: 520px) { .ag-plan-parts > div { grid-template-columns: 1fr; gap: 2px; } }

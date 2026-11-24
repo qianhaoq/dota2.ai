@@ -427,6 +427,69 @@ describe('AgentMatchPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Too many reviews');
   });
 
+  it('the game plan is its own section; a plan the reader picks is one question to the coach, without the moment pinned for another', async () => {
+    const game_plan = { course: 'Your team took 3 outer towers from 18:07 to 19:46.', your_part: 'You were at 15 of the 16 fights.', line_ups: 'Sven wins more in shorter public games.', main_reason: 'team_play', why: 'The team did not turn fights into towers.', evidence: [{ refs: ['phase:beastmaster:3'], clock: '20:00', fact: 'The enemy took 3 towers.' }] };
+    const calls = mockFetch({
+      '/chat': () => sse([{ step: { tool: 'tempo_report', args: { hero: 'beastmaster' } } }, { text: 'Your play fit the plan.', unverified: [] }, { done: true }]),
+      'ref=overview': overview,
+      '/evidence?': cast,
+      '/review?': { status: 'ready', review: { ...review, game_plan }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const section = (await screen.findByRole('heading', { level: 2, name: 'The game plan' })).closest('section')!;
+    const plan = within(section as HTMLElement);
+    expect(plan.getByText('How it went').nextElementSibling!.textContent).toBe(game_plan.course);
+    expect(plan.getByText('Your part').nextElementSibling!.textContent).toBe(game_plan.your_part);
+    expect(plan.getByText('The line-ups').nextElementSibling!.textContent).toBe(game_plan.line_ups);
+    expect(plan.getByText('Mostly the team, not you').parentElement!.textContent).toBe('Mostly the team, not youThe team did not turn fights into towers.');
+    // Its evidence opens like a finding's.
+    expect(plan.getByText('The enemy took 3 towers.')).toBeTruthy();
+    expect(plan.getByText('20:00')).toBeTruthy();
+    // It stands before the findings: the game as a whole, then the player's own play.
+    const heads = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(heads.indexOf('The game plan')).toBeLessThan(heads.indexOf('What decided it'));
+    expect(heads.indexOf('The game plan')).toBeGreaterThan(heads.indexOf('How the game went'));
+
+    // A moment is pinned for a typed question; picking a plan does not send it along, and leaves it pinned.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ask about this' })[0]);
+    expect(await screen.findByText('About')).toBeTruthy();
+    fireEvent.click(plan.getByRole('button', { name: 'Lanes into towers' }));
+    await waitFor(() => expect(screen.getByText('Your play fit the plan.')).toBeTruthy());
+    const sent = JSON.parse(String(calls.find((c) => c.url.includes('/chat'))!.init!.body));
+    expect(sent).toEqual({ hero: 'beastmaster', lang: 'en', question: 'My plan this game was to win the lanes and take towers early. Did my play fit it? Was it sound against their line-up? And where it failed, was that my play, the plan, or what the enemy did?', history: [] });
+    expect(screen.getByText('Reading who took the map, and when')).toBeTruthy();
+    expect(screen.getByText('About')).toBeTruthy();
+    // The reader's own words are shown as the question.
+    expect(screen.getByText(/My plan this game was to win the lanes/)).toBeTruthy();
+  });
+
+  it('a review without a game plan still offers to check the reader\'s plan; while the coach is answering, a second pick is not sent', async () => {
+    let chats = 0;
+    mockFetch({
+      '/chat': () => { chats += 1; return new Promise(() => {}); },
+      'ref=overview': overview,
+      '/review?': { status: 'ready', review: { ...review, lang: 'zh' }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    const section = (await screen.findByRole('heading', { level: 2, name: '运营思路' })).closest('section')!;
+    const plan = within(section as HTMLElement);
+    expect(plan.queryByText('走势')).toBeNull();
+    expect(plan.getByText('这局你本来想怎么打？告诉教练，它会对照录像回答。')).toBeTruthy();
+    expect(plan.getAllByRole('button').map((b) => b.textContent)).toEqual(['线优转推进', '抓人带节奏', '带线牵制', '发育拖后期']);
+    fireEvent.click(plan.getByRole('button', { name: '抓人带节奏' }));
+    await waitFor(() => expect(chats).toBe(1));
+    expect(screen.getByText(/我这局的思路是「抓人带节奏、打压制」/)).toBeTruthy();
+    expect(plan.queryByRole('status')).toBeNull();
+    fireEvent.click(plan.getByRole('button', { name: '发育拖后期' }));
+    // Not sent, and the reader is told why.
+    expect((await plan.findByRole('status')).textContent).toBe('教练还在回答上一个问题，等它答完再选。');
+    expect(chats).toBe(1);
+    expect(screen.queryByText(/发育拖后期再打团/)).toBeNull();
+  });
+
   it('ready: the review, its evidence record on demand, and a question about that moment', async () => {
     const calls = mockFetch({
       '/chat': () => sse([{ step: { tool: 'ability_audit', args: {} } }, { text: 'She was stunned 3.4 s.\n\nKeep it for her.', unverified: [{ kind: 'time', text: '19:19' }] }, { done: true }]),

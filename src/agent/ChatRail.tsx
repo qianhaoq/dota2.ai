@@ -7,7 +7,7 @@ import { AgentApiError, askAgent, type ChatTurn, type ToolStep } from './api';
  */
 
 type Lang = 'en' | 'zh';
-export interface ChatHandle { ask: (label: string, refs: string[]) => void }
+export interface ChatHandle { ask: (label: string, refs: string[]) => void; /** Ask this question now, as if typed and sent. False when the coach is still answering the last one. */ send: (question: string) => boolean }
 
 const T = {
   title: { en: 'Ask the coach', zh: '问教练' },
@@ -65,22 +65,32 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
   // server stops its lookups and model calls when the connection closes.
   useEffect(() => () => abort.current?.abort(), []);
 
+  // The latest `send` for the handle below: it closes over the turns so far.
+  const sendRef = useRef<(text: string) => void>(() => {});
+  const busyRef = useRef(false);
   useImperativeHandle(ref, () => ({
     ask: (label, refs) => { setContext({ label, refs }); input.current?.focus(); input.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); },
+    send: (question) => {
+      if (busyRef.current) { input.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); return false; }
+      sendRef.current(question);
+      input.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+      return true;
+    },
   }), []);
 
   const patch = (fn: (last: Turn) => Turn) => setTurns((prev) => prev.map((x, i) => (i === prev.length - 1 ? fn(x) : x)));
 
-  async function send(text: string) {
+  /** `about`: false sends the words alone — a question that is not about the moment picked in the document. */
+  async function send(text: string, about = true) {
     const question = text.trim();
     if (!question || busy) return;
     if (question.length > 500) { setNote(t(T.tooLong)); return; }
     setNote(null);
     // The agent resolves the moment from the ref; the reader sees only their own words.
-    const sent = context ? `${question}\n(about ${context.refs.join(', ')})` : question;
+    const sent = about && context ? `${question}\n(about ${context.refs.join(', ')})` : question;
     const history: ChatTurn[] = turns.filter((x) => x.a && !x.error).slice(-6).map((x) => ({ q: x.q, a: x.a, clean: (x.unverified ?? []).length === 0 }));
     setTurns((prev) => [...prev, { q: question, a: '', steps: [], pending: true }]);
-    setDraft(''); setContext(null);
+    if (about) { setDraft(''); setContext(null); }
     const ac = new AbortController(); abort.current = ac;
     try {
       await askAgent(matchId, { hero, lang, question: sent.slice(0, 500), history }, {
@@ -96,6 +106,9 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
       if (aborted) setTurns((prev) => prev.filter((x, i) => i !== prev.length - 1 || x.a));
     }
   }
+
+  // After every render: the handle above always reaches the turns and the pinned moment as they are now.
+  useEffect(() => { sendRef.current = (text) => { void send(text, false); }; busyRef.current = busy; });
 
   return (
     <aside className="ag-chat" aria-label={t(T.title)}>
