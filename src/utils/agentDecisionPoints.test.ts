@@ -56,6 +56,20 @@ describe('decision_points: what each side did with the fights it won', () => {
     expect(p.pushes).toEqual([expect.objectContaining({ building: 'badguys_fort', took_it: true, hitting: expect.arrayContaining(['phantom_assassin']) })]);
   });
 
+  it('a single hit on a building counts as hitting one, though too short to be a push (review of #306)', () => {
+    // Undying hits a tower at 1444 after fight 8, Skywrath Mage at 874 and 876 after fight 6: no push run of three.
+    expect((decisionPoints(trace, { hero: 'undying' }) as any).points.find((x: any) => x.fight === 'fight:8').me).toBe('hit_a_building');
+    expect((decisionPoints(trace, { hero: 'skywrath_mage' }) as any).points.find((x: any) => x.fight === 'fight:6').me).toBe('hit_a_building');
+  });
+
+  it('a push is taken only when its building fell inside the window, as buildings_winners_took says (review of #306)', () => {
+    // Fight 15 ends at 2363.1; the tier-4 it pushed falls at 2506, after the 120 s.
+    const p = r.points.find((x: any) => x.fight === 'fight:15');
+    for (const q of p.pushes.filter((x: any) => x.took_it)) expect(p.buildings_winners_took.map((b: any) => b.building)).toContain(q.building);
+    expect(p.pushes.some((x: any) => /tower4/.test(x.building) && !x.took_it)).toBe(true);
+    for (const x of r.points) for (const q of x.pushes.filter((y: any) => y.took_it)) expect(x.buildings_winners_took.map((b: any) => b.building)).toContain(q.building);
+  });
+
   it('a building its own side denied is nobody\'s objective, as tempo_report counts it (review of #306)', () => {
     const denied = JSON.parse(JSON.stringify(trace));
     const fights = matchFights(denied);
