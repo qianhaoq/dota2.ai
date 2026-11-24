@@ -364,6 +364,13 @@ describe('AgentMatchPage', () => {
     expect(chip('我方 0')).toBeTruthy();
     expect(chip('敌方 2')).toBeTruthy();
     expect(chip('买活 36:20')).toBeTruthy();
+    cleanup();
+    // A buyback is shown without wards too (a trace with buybacks and no ward file; review of #305).
+    mockFetch({ 'ref=overview': overview, '/evidence?': { ...death, ref: 'death:beastmaster:10', record: { ...death.record, ref: 'death:beastmaster:10', observers_within_1600: null, bought_back: '36:20' } }, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['death:beastmaster:10'], fact: '36:05 阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '买活 36:20')).toBeTruthy();
+    expect(screen.queryByText('1600 码内的假眼')).toBeNull();
     expect(chip('斯温 · 天辉上路9100 码外TP 可用')).toBeTruthy();
     expect(chip('天怒法师 · 阵亡复活还要 25秒')).toBeTruthy();
     cleanup();

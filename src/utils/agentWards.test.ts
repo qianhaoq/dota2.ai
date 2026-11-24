@@ -92,6 +92,17 @@ describe('what the tools say with them, and without', () => {
     expect(r.deaths_where).toMatchObject({ no_own_observer_within_1600: [], enemy_observer_within_1600: [], bought_back: [] });
   });
 
+  it('a buyback belongs to one death: never to an earlier one past which the hero died again (review of #305)', () => {
+    const t: any = built({ buyback: false });
+    const lina = t.heroes.findIndex((h: any) => h.key === 'lina');
+    // Died at 20, back at 30 by the clock, died again at 30.3, bought back at 30.7.
+    t.states[lina].alive = t.states[lina].alive.map((_: number, i: number) => (i >= 20 && i < 30 ? 0 : 1));
+    t.deaths = [[20, t.names.indexOf('npc_dota_hero_lina'), -1, 0], [30.3, t.names.indexOf('npc_dota_hero_lina'), -1, 1]];
+    t.buybacks = [[30.7, lina]];
+    expect(boughtBackAfter(t, lina, 20)).toBe(false);
+    expect(boughtBackAfter(t, lina, 30.3)).toBe(30.7);
+  });
+
   it('fight_report gives each side\'s observers near a fight, null without wards; the gaps say what the trace knows', () => {
     expect((fightReport(old, { hero: 'beastmaster' }) as any).fights[0].my_team.observers_within_1600_of_the_fight).toBeNull();
     const oldGaps = gapsOf(old).map((g: any) => g.topic);

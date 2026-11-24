@@ -323,7 +323,9 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         </table>
         {r.ready_not_cast.length > 0 && <p className="ag-rec-line"><span>{t(T.readyUnused)}</span>{r.ready_not_cast.map((a: string) => <span key={a} className="ag-chip is-warn">{N(a)}</span>)}</p>}
         {r.controls_on_me.length > 0 && <p className="ag-rec-line"><span>{t(T.disables)}</span>{r.controls_on_me.map((c: any, i: number) => <span key={i} className="ag-chip">{N(c.modifier)} · {N(c.from)}{c.duration ? ` · ${c.duration}${t(T.sec)}` : ''}</span>)}</p>}
-        {r.observers_within_1600 && <p className="ag-rec-line"><span>{t(T.observers)}</span><span className="ag-chip is-ally">{t(T.mine)} {r.observers_within_1600.my_team}</span><span className="ag-chip is-enemy">{t(T.theirs)} {r.observers_within_1600.enemy}</span>{typeof r.bought_back === 'string' && <span className="ag-chip">{t(T.boughtBack)} {r.bought_back}</span>}</p>}
+        {r.observers_within_1600 && <p className="ag-rec-line"><span>{t(T.observers)}</span><span className="ag-chip is-ally">{t(T.mine)} {r.observers_within_1600.my_team}</span><span className="ag-chip is-enemy">{t(T.theirs)} {r.observers_within_1600.enemy}</span></p>}
+        {/* Known on its own: a trace with buybacks and no wards, or a death whose position was not sampled, still shows it. */}
+        {typeof r.bought_back === 'string' && <p className="ag-rec-line"><span className="ag-chip">{t(T.boughtBack)} {r.bought_back}</span></p>}
         {typeof r.traded_within_15s === 'boolean' && <p className="ag-rec-line"><span className={`ag-chip ${r.traded_within_15s ? 'is-good' : 'is-warn'}`}>{t(T.traded[String(r.traded_within_15s)])}</span></p>}
         {r.allies_elsewhere?.length > 0 && <p className="ag-rec-line"><span>{t(T.alliesElsewhere)}</span>{r.allies_elsewhere.map((h: any) => <span key={h.hero} className="ag-chip">{N(h.hero)}{doingOf(h) && ` · ${doingOf(h)}`}{h.distance != null && <em>{h.distance} {t(T.away)}</em>}{h.respawn_in != null && <em>{t(T.respawn)} {h.respawn_in}{t(T.sec)}</em>}{h.tp_ready != null && <em>{t(T.tp[String(h.tp_ready)])}</em>}</span>)}</p>}
         <p className="ag-rec-sub">{t(T.damage)}</p>

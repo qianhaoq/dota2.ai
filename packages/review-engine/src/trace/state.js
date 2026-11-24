@@ -176,7 +176,9 @@ export function boughtBackAfter(trace, h, t) {
   const alive = trace.states[h].alive;
   let back = null;
   for (let i = Math.max(0, Math.ceil(t) - trace.t0 + 1); i < trace.n; i += 1) if (alive[i] === 1) { back = i + trace.t0; break; }
-  const b = trace.buybacks.find(([bt, i]) => i === h && bt >= t && (back == null || bt <= back + 1));
+  // Never past the hero's next death: a buyback after it belongs to that death (review of #305).
+  const next = (trace.deaths ?? []).filter((d) => heroOfName(trace, d[1]) === h && d[0] > t).reduce((m, d) => Math.min(m, d[0]), Infinity);
+  const b = trace.buybacks.find(([bt, i]) => i === h && bt >= t && bt < next && (back == null || bt <= back + 1));
   return b ? b[0] : false;
 }
 
