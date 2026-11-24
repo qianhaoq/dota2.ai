@@ -476,7 +476,7 @@ describe('runDeepReview', () => {
 
   it('a rule that names a count gets its next-game check from the replay, not from the model', async () => {
     const rule = { when: '三个敌人同时出现在你面前', do: '先退到队友身后', this_game: '11 次阵亡里有 5 次' };
-    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties.counted_by.enum).toEqual(['low_health', 'alone', 'low_health_outside_fights', 'outnumbered_outside_fights', 'outnumbered', 'nothing_pressed', 'cast_into_immunity', 'target_survived', 'reached_few', 'died_holding']);
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties.counted_by.enum).toEqual(['low_health', 'alone', 'alone_not_traded', 'low_health_outside_fights', 'outnumbered_outside_fights', 'outnumbered', 'nothing_pressed', 'cast_into_immunity', 'target_survived', 'reached_few', 'died_holding']);
     const m = scripted([investigate, { toolCalls: [call('death_context', { hero: 'beastmaster' }, 'dc')] }, { toolCalls: [call('submit_review', review([
       // The model's own numbers for a check are not taken: only which count it is.
       { ...good, rule: { ...rule, counted_by: 'outnumbered', check: { max: 99 } } },

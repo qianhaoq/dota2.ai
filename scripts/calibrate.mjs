@@ -5,6 +5,9 @@
  *   pre-fight measure of fight_report won it.
  * - Pushes (siege_report): how often a push took its building, by how many more heroes hit it than its
  *   owners had near, and by how many of the owners were dead when it began.
+ * - Deaths (death_context): how often a death was traded (an enemy hero died within 15 s), by how many allies
+ *   were within 2200 at it; and, every 5 s from 10:00, how often a living hero died in the next 20 s, by
+ *   allies near and side of the map — whether standing alone is itself the danger.
  *
  *   node scripts/calibrate.mjs <dir with *.trace.json.gz> [--json]
  *
@@ -17,18 +20,35 @@ import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { fightReport } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
-import { linkHeroNames } from '../packages/review-engine/src/trace/index.js';
+import { linkHeroNames, runTraceTool } from '../packages/review-engine/src/trace/index.js';
+import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
 
 const dir = process.argv[2];
 if (!dir) { console.error('usage: calibrate.mjs <dir> [--json]'); process.exit(2); }
 const files = readdirSync(dir).filter((f) => f.endsWith('.trace.json.gz'));
 const rows = [];
 const pushes = [];
+const deaths = [];
+const moments = [];
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
   const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(dir, f)))));
   // From Radiant's first hero: my_team = Radiant. Every fight is read once.
   const first = trace.heroes.find((h) => h.team === 2);
+  for (const hero of trace.heroes) {
+    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }).deaths ?? []) if (d.allies_within_2200.at_death != null) deaths.push({ allies: d.allies_within_2200.at_death, traded: d.traded_within_15s });
+  }
+  // Every 5 s from 10:00 to 20 s before the end: each living hero, and whether they died in the next 20 s.
+  const died = trace.heroes.map((_, i) => trace.deaths.filter((d) => heroOfName(trace, d[1]) === i).map((d) => d[0]));
+  for (let sec = 600; sec < trace.t0 + trace.n - 20; sec += 5) {
+    const at = trace.heroes.map((_, i) => stateAt(trace, i, sec));
+    trace.heroes.forEach((h, i) => {
+      const s = at[i]; if (!s?.alive) return;
+      const allies = trace.heroes.filter((o, j) => j !== i && o.team === h.team && at[j]?.alive && dist(at[j], s) <= 2200).length;
+      const side = region(s.x, s.y); const enemyHalf = h.team === 2 ? side.startsWith('dire') : side.startsWith('radiant');
+      moments.push({ allies, enemyHalf, died: died[i].some((d) => d > sec && d <= sec + 20) });
+    });
+  }
   for (const p of siegeReport(trace, { hero: first.key }).pushes ?? []) {
     pushes.push({ took: p.took_it, margin: p.hitting_minus_owners_near, deadOwners: p.owners_dead_when_it_began });
   }
@@ -77,6 +97,13 @@ out.pushes = {
   at_most_one_more_hitting_than_near: share(pushes.filter((p) => p.margin <= 1)),
   by_owners_dead_when_it_began: bucket((p) => p.deadOwners, 0, 4),
 };
+const traded = (list) => ({ deaths: list.length, traded: list.filter((d) => d.traded).length, rate: list.length ? Math.round((list.filter((d) => d.traded).length / list.length) * 100) : null });
+const risk = (list) => ({ moments: list.length, died_within_20s: list.filter((m) => m.died).length, rate: list.length ? Math.round((list.filter((m) => m.died).length / list.length) * 1000) / 10 : null });
+const alliesLabel = (n) => (n >= 2 ? '2 or more' : String(n));
+out.deaths = {
+  traded_by_allies_within_2200_at_death: [0, 1, 2].map((n) => ({ allies: alliesLabel(n), ...traded(deaths.filter((d) => (n >= 2 ? d.allies >= 2 : d.allies === n))) })),
+  died_within_20s_by_allies_near: [true, false].flatMap((half) => [0, 1, 2].map((n) => ({ side: half ? 'enemy half' : 'own half or river', allies: alliesLabel(n), ...risk(moments.filter((m) => m.enemyHalf === half && (n >= 2 ? m.allies >= 2 : m.allies === n))) }))),
+};
 if (process.argv.includes('--json')) console.log(JSON.stringify(out, null, 2));
 else {
   console.log(`${out.games} games, ${out.fights_with_a_winner} fights where one side lost fewer heroes\n`);
@@ -88,4 +115,8 @@ else {
   line('at most one more hitting than near', out.pushes.at_most_one_more_hitting_than_near);
   for (const x of out.pushes.by_heroes_hitting_minus_owners_near) line(`  hitting minus near: ${x.value}`, x);
   for (const x of out.pushes.by_owners_dead_when_it_began) line(`  owners dead when it began: ${x.value}`, x);
+  console.log(`\n${deaths.length} deaths; share traded (an enemy hero died within 15 s)\n`);
+  for (const x of out.deaths.traded_by_allies_within_2200_at_death) console.log(`${`  allies within 2200 at death: ${x.allies}`.padEnd(46)} ${String(x.traded).padStart(4)}/${String(x.deaths).padEnd(5)} ${x.rate}%`);
+  console.log(`\nliving heroes every 5 s from 10:00; share dead within 20 s\n`);
+  for (const x of out.deaths.died_within_20s_by_allies_near) console.log(`${`  ${x.side}, allies near: ${x.allies}`.padEnd(46)} ${String(x.died_within_20s).padStart(5)}/${String(x.moments).padEnd(6)} ${x.rate}%`);
 }

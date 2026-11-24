@@ -103,6 +103,8 @@ const T = {
     hitting_enemy_buildings: { en: 'hitting a building', zh: '在打建筑' }, none_of_these: { en: '', zh: '' },
   } as Record<string, Record<Lang, string>>,
   why: { cooldown: { en: 'cooldown', zh: '冷却' }, mana: { en: 'no mana', zh: '缺蓝' }, not_learned: { en: 'not learned', zh: '未学' } } as Record<string, Record<Lang, string>>,
+  traded: { true: { en: 'traded: an enemy hero died within 15 s', zh: '换到了：15 秒内对面也死了英雄' }, false: { en: 'not traded: no enemy hero died within 15 s', zh: '没换到：15 秒内对面没死英雄' } } as Record<string, Record<Lang, string>>,
+  alliesElsewhere: { en: 'Allies not near', zh: '不在附近的队友' },
   pushedBy: { my_team: { en: 'Your team pushed', zh: '我方推' }, enemy: { en: 'They pushed', zh: '对方推' } } as Record<string, Record<Lang, string>>,
   tookIt: { en: 'fell', zh: '被拆' }, stood: { en: 'stood', zh: '没拆掉' },
   hitting: { en: 'Hitting it', zh: '打建筑' }, ownersNear: { en: 'Owners near', zh: '守方在附近' },
@@ -209,6 +211,10 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   enemy_hero_target_alive_12s_later: { en: 'Casts whose target was alive 12 s later', zh: '放出 12 秒后目标仍存活' },
   no_hero_target_and_at_most_one_enemy_hero_damaged: { en: 'Casts that damaged at most one enemy hero', zh: '至多只伤到一名敌方英雄' },
   nothing_cast_and_no_item_used: { en: 'Deaths with nothing cast or used', zh: '什么都没按就阵亡' },
+  // death_context's trade lists (deaths:<hero>).
+  traded_within_15s: { en: 'Deaths traded (an enemy hero died within 15 s)', zh: '换到了（15 秒内对面也死了英雄）' },
+  not_traded_within_15s: { en: 'Deaths not traded', zh: '没换到' },
+  no_ally_within_2200_at_death_and_not_traded: { en: 'No ally within 2200 and not traded', zh: '身边没人且没换到' },
   // fight_report's totals (fights:<hero>).
   fights_total: { en: 'Fights', zh: '团战' },
   fights_my_team_lost_fewer: { en: 'Your team lost fewer heroes', zh: '我方少死人' },
@@ -274,6 +280,8 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   const r = data.record;
   const chips = (list: { hero: string; dist?: number }[]) => (list.length ? list.map((h) => <span key={h.hero} className="ag-chip">{N(h.hero)}{h.dist != null && <em>{h.dist}</em>}</span>) : <span className="ag-none">{t(T.nobody)}</span>);
 
+  // A hero not in a fight, or at a moment: what the replay shows them doing, and where (a dead hero has no place).
+  const doingOf = (h: any) => [h.place ? N(h.place) : null, h.doing && T.doing[h.doing] ? t(T.doing[h.doing]) : null].filter(Boolean).join(' · ');
   if (data.kind === 'death') {
     const max = Math.max(...r.damage_taken.map((d: any) => d.value), 1);
     return (
@@ -294,6 +302,8 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         </table>
         {r.ready_not_cast.length > 0 && <p className="ag-rec-line"><span>{t(T.readyUnused)}</span>{r.ready_not_cast.map((a: string) => <span key={a} className="ag-chip is-warn">{N(a)}</span>)}</p>}
         {r.controls_on_me.length > 0 && <p className="ag-rec-line"><span>{t(T.disables)}</span>{r.controls_on_me.map((c: any, i: number) => <span key={i} className="ag-chip">{N(c.modifier)} · {N(c.from)}{c.duration ? ` · ${c.duration}${t(T.sec)}` : ''}</span>)}</p>}
+        {typeof r.traded_within_15s === 'boolean' && <p className="ag-rec-line"><span className={`ag-chip ${r.traded_within_15s ? 'is-good' : 'is-warn'}`}>{t(T.traded[String(r.traded_within_15s)])}</span></p>}
+        {r.allies_elsewhere?.length > 0 && <p className="ag-rec-line"><span>{t(T.alliesElsewhere)}</span>{r.allies_elsewhere.map((h: any) => <span key={h.hero} className="ag-chip">{N(h.hero)}{doingOf(h) && ` · ${doingOf(h)}`}{h.distance != null && <em>{h.distance} {t(T.away)}</em>}{h.respawn_in != null && <em>{t(T.respawn)} {h.respawn_in}{t(T.sec)}</em>}{h.tp_ready != null && <em>{t(T.tp[String(h.tp_ready)])}</em>}</span>)}</p>}
         <p className="ag-rec-sub">{t(T.damage)}</p>
         <ul className="ag-bars">{r.damage_taken.slice(0, 5).map((d: any, i: number) => <Bar key={i} label={`${N(d.from)} · ${d.by === 'attack' ? t(T.attack) : N(d.by)}`} value={d.value} max={max} />)}</ul>
       </div>
@@ -495,8 +505,6 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       </div>
     );
   }
-  // A hero not in a fight, or at a moment: what the replay shows them doing, and where (a dead hero has no place).
-  const doingOf = (h: any) => [h.place ? N(h.place) : null, h.doing && T.doing[h.doing] ? t(T.doing[h.doing]) : null].filter(Boolean).join(' · ');
   if (data.kind === 'fights' && r.my_team) {
     const side = (s: any, cls: string, label: string) => (
       <div key={label}>
@@ -722,9 +730,14 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   }
   // What the deaths have in common, then where the damage came from: a count of deaths, a share as a percentage.
   const tl = (key: string) => (TOTALS[key] ? t(TOTALS[key]) : pretty(key));
+  // The trade counts have a line of their own: the counters below are cut at 18, and these are what a review cites for
+  // its lone deaths (review of #303).
+  const TRADES = ['traded_within_15s', 'not_traded_within_15s', 'no_ally_within_2200_at_death_and_not_traded'];
+  const trades: [string, string][] = [];
   for (const [k, v] of late) {
     if (!v || typeof v !== 'object') continue;
     for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
+      if (k === 'deaths_where' && TRADES.includes(k2) && Array.isArray(v2)) { trades.push([tl(k2), String(v2.length)]); continue; }
       if ((k === 'deaths_where' || k === 'casts_where') && Array.isArray(v2)) { if (v2.length) flat.push([tl(k2), String(v2.length)]); }
       else if (k === 'damage_share_in_death_windows' && typeof v2 === 'number') { const cut = k2.indexOf(': '); flat.push([`${tl(k)} · ${cut > 0 ? `${N(k2.slice(0, cut))} ${tl(k2.slice(cut + 2))}` : N(k2)}`, `${Math.round(v2 * 100)}%`]); }
     }
@@ -732,6 +745,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   return (
     <div className="ag-rec">
       <p className="ag-rec-head">{r.clock ?? [r.hero, r.ability].filter(Boolean).map((x: string) => N(x)).join(' · ')}{r.watching ? `${r.hero ? ' · ' : ''}${t(T.watching)} ${N(r.watching.hero)} · ${N(r.watching.ability)}` : ''}</p>
+      {trades.length > 0 && <p className="ag-rec-line">{trades.map(([k, v]) => <span key={k} className="ag-chip">{k} <em>{v}</em></span>)}</p>}
       {flat.length > 0 && <p className="ag-rec-line">{flat.slice(0, 18).map(([k, v]) => <span key={k} className="ag-chip">{k} <em>{v}</em></span>)}</p>}
     </div>
   );
