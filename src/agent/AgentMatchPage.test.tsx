@@ -285,6 +285,48 @@ describe('AgentMatchPage', () => {
     expect(JSON.parse(String(calls.find((c) => c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
   });
 
+  it('a fight is shown from both sides: who was in it, what was ready, and where the others were (review of #296)', async () => {
+    const names = { beastmaster: '兽王', undying: '不朽尸王', dark_willow: '邪影芳灵', sven: '斯温', skywrath_mage: '天怒法师', axe: '斧王', phantom_assassin: '幻影刺客', mirana: '米拉娜', undying_flesh_golem: '腐肉傀儡', beastmaster_primal_roar: '原始咆哮', dire_bot_lane: '夜魇下路', radiant_top_lane: '天辉上路' };
+    const fight = { status: 'ok', ref: 'fights:beastmaster:9', kind: 'fights', names, record: {
+      ref: 'fights:beastmaster:9', fight: 'fight:9', clock: '25:25', engaged_at: '25:10', lost_fewer_heroes: 'enemy', more_heroes_took_part: 'enemy', me: 'took_part', my_team_gold_lead: -5200,
+      my_team: { deaths: 2, took_part_count: 3, took_part: ['beastmaster', 'undying', 'dark_willow'], levels_of_those_in_it: 42,
+        ultimates_ready: [{ hero: 'beastmaster', ability: 'beastmaster_primal_roar' }], ultimates_not_ready: [{ hero: 'undying', ability: 'undying_flesh_golem', why: 'cooldown', seconds_left: 124 }], black_king_bars_ready: [],
+        not_in_it: [{ hero: 'sven', doing: 'none_of_these', place: 'dire_bot_lane', distance: 14151, tp_ready: null }, { hero: 'skywrath_mage', doing: 'none_of_these', place: 'radiant_top_lane', distance: 1631, tp_ready: true }] },
+      enemy: { deaths: 1, took_part_count: 2, took_part: ['axe', 'phantom_assassin'], levels_of_those_in_it: 30, ultimates_ready: [], ultimates_not_ready: [], black_king_bars_ready: ['phantom_assassin'], not_in_it: [{ hero: 'mirana', doing: 'dead', respawn_in: 32 }] },
+    } };
+    const cites = (ref: string) => ({ ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: [ref], fact: '3 打 4。' }] }] });
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': fight, '/review?': { status: 'ready', review: cites('fights:beastmaster:9'), verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText(/开打 25:10/)).toBeTruthy();
+    expect(chip('斯温 · 夜魇下路14151 码外')).toBeTruthy();
+    expect(chip('天怒法师 · 天辉上路1631 码外TP 可用')).toBeTruthy();
+    expect(chip('米拉娜 · 阵亡复活还要 32秒')).toBeTruthy();
+    expect(chip('不朽尸王 · 冷却124秒')).toBeTruthy();
+    // In the fight, and with Black King Bar ready.
+    expect(screen.getAllByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '幻影刺客')).toHaveLength(2);
+    expect(screen.getByText('-5200')).toBeTruthy();
+    expect(screen.queryByText(/dire_bot_lane|none_of_these|tp_ready/)).toBeNull();
+  });
+
+  it('a moment is shown as all ten heroes: where, doing what, and what was ready (review of #296)', async () => {
+    const h = (hero: string, extra: any) => ({ hero, alive: true, place: 'dire_bot_lane', doing: 'none_of_these', level: 16, hp_pct: 100, mana: 800, tp_ready: null, black_king_bar_ready: null, ...extra });
+    const state = { status: 'ok', ref: 'state:beastmaster:1510', kind: 'state', names: { beastmaster: '兽王', sven: '斯温', axe: '斧王', dire_bot_lane: '夜魇下路', radiant_top_lane: '天辉上路' }, record: {
+      ref: 'state:beastmaster:1510', clock: '25:10', my_team_gold_lead: -2500,
+      my_team: { alive: 2, trading_damage_with_enemy_heroes: 1, ultimates_ready: 1, heroes: [h('beastmaster', { doing: 'trading_damage_with_enemy_heroes', ultimate: { ability: 'beastmaster_primal_roar', ready: true }, tp_ready: false }), h('sven', { alive: false, doing: 'dead', respawn_in: 12, place: undefined })] },
+      enemy: { alive: 1, trading_damage_with_enemy_heroes: 1, ultimates_ready: 0, heroes: [h('axe', { place: 'radiant_top_lane', ultimate: { ability: 'axe_culling_blade', ready: false, why: 'cooldown', seconds_left: 40 }, black_king_bar_ready: true })] },
+    } };
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': state, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['state:beastmaster:1510'], fact: '25:10 斯温阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByRole('row', { name: '兽王 夜魇下路 · 在和敌方英雄交手 16 100% 是 – 否' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '斯温 阵亡 · 复活还要 12秒 16 100% – – –' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '斧王 天辉上路 16 100% 否 · 40秒 是 –' })).toBeTruthy();
+  });
+
   it('a stretch of the game and the game\'s tempo are shown as what was taken, lost and where the hero was', async () => {
     const phase = { status: 'ok', ref: 'phase:beastmaster:3', kind: 'phase', names: { radiant_top_lane: '天辉上路', beastmaster: '兽王' }, record: {
       ref: 'phase:beastmaster:3', from: 1200, to: 1800, clock: '20:00–30:00', buildings_team_took: 1, buildings_opponents_took: 1,

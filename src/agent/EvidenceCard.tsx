@@ -89,6 +89,21 @@ const T = {
   spikeUlt: { en: 'Ultimate cooldown by level', zh: '大招各级冷却' },
   tempoCols: { en: ['Stretch', 'Buildings taken', 'Buildings lost', 'Team deaths', 'Enemy deaths'], zh: ['阶段', '拆掉建筑', '丢掉建筑', '己方阵亡', '对方阵亡'] },
   tempoWon: { en: 'Fights with fewer heroes lost', zh: '少死人的团战' },
+  engaged: { en: 'first damage', zh: '开打' },
+  tookPart: { en: 'In the fight', zh: '参战' },
+  notInIt: { en: 'Not in it', zh: '没参战' },
+  ultsReady: { en: 'Ultimates ready', zh: '大招就绪' },
+  ultsNot: { en: 'Not ready', zh: '大招未就绪' },
+  bkbReady: { en: 'Black King Bar ready', zh: 'BKB 就绪' },
+  tp: { true: { en: 'TP ready', zh: 'TP 可用' }, false: { en: 'TP on cooldown', zh: 'TP 冷却中' } } as Record<string, Record<Lang, string>>,
+  respawn: { en: 'respawns in', zh: '复活还要' },
+  away: { en: 'away', zh: '码外' },
+  doing: {
+    dead: { en: 'dead', zh: '阵亡' }, in_own_base: { en: 'in base', zh: '在基地' }, trading_damage_with_enemy_heroes: { en: 'fighting heroes', zh: '在和敌方英雄交手' },
+    hitting_enemy_buildings: { en: 'hitting a building', zh: '在打建筑' }, none_of_these: { en: '', zh: '' },
+  } as Record<string, Record<Lang, string>>,
+  why: { cooldown: { en: 'cooldown', zh: '冷却' }, mana: { en: 'no mana', zh: '缺蓝' }, not_learned: { en: 'not learned', zh: '未学' } } as Record<string, Record<Lang, string>>,
+  stateCols: { en: ['Hero', 'Where / doing', 'Lv', 'HP', 'Ultimate', 'BKB', 'TP'], zh: ['英雄', '位置 / 在做', '等级', '血量', '大招', 'BKB', 'TP'] },
   tempoLost: { en: 'Fights with more heroes lost', zh: '多死人的团战' },
   tempoThen: { en: 'a building within 2 min after', zh: '之后两分钟内拆到建筑' },
   tempoThere: { en: 'Fights this hero was at', zh: '该英雄在场的团战' },
@@ -451,6 +466,58 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       <div className="ag-rec">
         <p className="ag-rec-line"><span>{t(T.winLead)}</span>{Object.entries(r.my_team_gold_lead_at as Record<string, number>).map(([c, v]) => <span key={c} className={`ag-chip ${v > 0 ? 'is-ally' : v < 0 ? 'is-enemy' : ''}`}>{c} <em>{money(v)}</em></span>)}</p>
         <p className="ag-rec-line"><span className="ag-chip">{t(T.winHigh)} {r.highest_lead.clock} <em>{money(r.highest_lead.value)}</em></span><span className="ag-chip">{t(T.winLow)} {r.deepest_deficit.clock} <em>{money(r.deepest_deficit.value)}</em></span></p>
+      </div>
+    );
+  }
+  // A hero not in a fight, or at a moment: what the replay shows them doing, and where (a dead hero has no place).
+  const doingOf = (h: any) => [h.place ? N(h.place) : null, h.doing && T.doing[h.doing] ? t(T.doing[h.doing]) : null].filter(Boolean).join(' · ');
+  if (data.kind === 'fights' && r.my_team) {
+    const side = (s: any, cls: string, label: string) => (
+      <div key={label}>
+        <p className="ag-rec-sub">{label} · {t(T.lost)} {s.deaths}</p>
+        <p className="ag-rec-line"><span>{t(T.tookPart)} {s.took_part_count}</span>{s.took_part.map((h: string) => <span key={h} className={`ag-chip ${cls}`}>{N(h)}</span>)}</p>
+        {s.ultimates_ready.length > 0 && <p className="ag-rec-line"><span>{t(T.ultsReady)}</span>{s.ultimates_ready.map((u: any) => <span key={u.hero} className="ag-chip is-good">{N(u.hero)} · {N(u.ability)}</span>)}</p>}
+        {s.ultimates_not_ready.length > 0 && <p className="ag-rec-line"><span>{t(T.ultsNot)}</span>{s.ultimates_not_ready.map((u: any) => <span key={u.hero} className="ag-chip is-warn">{N(u.hero)} · {T.why[u.why] ? t(T.why[u.why]) : u.why}{u.seconds_left != null && <em>{u.seconds_left}{t(T.sec)}</em>}</span>)}</p>}
+        {s.black_king_bars_ready.length > 0 && <p className="ag-rec-line"><span>{t(T.bkbReady)}</span>{s.black_king_bars_ready.map((h: string) => <span key={h} className="ag-chip">{N(h)}</span>)}</p>}
+        {s.not_in_it.length > 0 && (
+          <p className="ag-rec-line"><span>{t(T.notInIt)}</span>{s.not_in_it.map((h: any) => (
+            <span key={h.hero} className="ag-chip">{N(h.hero)}{doingOf(h) && ` · ${doingOf(h)}`}{h.distance != null && <em>{h.distance} {t(T.away)}</em>}{h.respawn_in != null && <em>{t(T.respawn)} {h.respawn_in}{t(T.sec)}</em>}{h.tp_ready != null && <em>{t(T.tp[String(h.tp_ready)])}</em>}</span>
+          ))}</p>
+        )}
+      </div>
+    );
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.fight)} · {t(T.engaged)} {r.engaged_at}</p>
+        {r.my_team_gold_lead != null && <p className="ag-rec-line"><span>{t(T.gold)}</span><span className="ag-chip">{r.my_team_gold_lead}</span></p>}
+        {side(r.my_team, 'is-ally', t(T.mine))}
+        {side(r.enemy, 'is-enemy', t(T.theirs))}
+      </div>
+    );
+  }
+  if (data.kind === 'state') {
+    const yes = (v: boolean | null | undefined) => (v == null ? '–' : t(v ? T.yes : T.no));
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b>{r.my_team_gold_lead != null && <> · {t(T.gold)} {r.my_team_gold_lead}</>}</p>
+        <div className="ag-lane-scroll">
+          <table className="ag-lane">
+            <thead><tr>{T.stateCols[lang].map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
+            <tbody>
+              {[['my_team', 'is-ally'], ['enemy', 'is-enemy']].flatMap(([k, cls]) => (r[k]?.heroes ?? []).map((h: any) => (
+                <tr key={h.hero} className={cls}>
+                  <th scope="row">{N(h.hero)}</th>
+                  <td>{h.alive === false ? `${t(T.doing.dead)}${h.respawn_in != null ? ` · ${t(T.respawn)} ${h.respawn_in}${t(T.sec)}` : ''}` : doingOf(h) || '–'}</td>
+                  <td>{h.level ?? '–'}</td>
+                  <td>{h.hp_pct != null ? `${h.hp_pct}%` : '–'}</td>
+                  <td>{h.ultimate ? (h.ultimate.ready === true ? t(T.yes) : h.ultimate.ready === false ? `${t(T.no)}${h.ultimate.seconds_left != null ? ` · ${h.ultimate.seconds_left}${t(T.sec)}` : ''}` : '–') : '–'}</td>
+                  <td>{yes(h.black_king_bar_ready)}</td>
+                  <td>{yes(h.tp_ready)}</td>
+                </tr>
+              )))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
