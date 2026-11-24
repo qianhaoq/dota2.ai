@@ -52,6 +52,28 @@ describe('a push is measured from the damage log', () => {
     expect(s[1]).toMatchObject({ from: 200, to: 202, fell_at: 210 });
   });
 
+  it('a hero\'s attack and spell in the same second are one hero-second (review of #302)', () => {
+    const tower = 'badguys_tower1_mid';
+    // Two seconds of hits, each with two damage rows (an attack and a spell): two hero-seconds, not a push.
+    const t: any = synth({ heroes, hits: [[100, 'axe', tower], [100, 'axe', tower], [101, 'axe', tower], [101, 'axe', tower]] });
+    t.damage = t.damage.map((row: any[], i: number) => [row[0], row[1], row[2], i % 2 ? 7 : -1, 100]);
+    expect(sieges(t)).toEqual([]);
+  });
+
+  it('an owner is near when within 1800 of a hitter at the second that hitter hit, wherever the others stood (review of #302)', () => {
+    const tower = 'badguys_tower2_top';
+    // Axe hits from the west, Lina from the east, 4000 apart: their middle is 2000 from each. Pudge stands 1500 from Axe.
+    const t: any = synth({
+      heroes,
+      pos: { axe: [-2000, 0], lina: [2000, 0], pudge: [-2000, 1500], zuus: [0, 2100] },
+      hits: [[100, 'axe', tower], [101, 'lina', tower], [102, 'axe', tower]],
+    });
+    const near = sieges(t)[0].near.map((i: number) => t.heroes[i].key);
+    expect(near).toContain('pudge');
+    // Zeus is 2100 from the middle and about 2900 from each hitter: not near.
+    expect(near).not.toContain('zuus');
+  });
+
   it('a hero hitting their own side\'s building is not a push, and the two towers by an Ancient are flagged as one name', () => {
     const t: any = synth({ heroes, hits: [[50, 'pudge', 'badguys_tower1_mid'], [51, 'pudge', 'badguys_tower1_mid'], [52, 'pudge', 'badguys_tower1_mid'], [60, 'axe', 'badguys_tower4'], [61, 'axe', 'badguys_tower4'], [62, 'axe', 'badguys_tower4']] });
     const s = sieges(t);
@@ -96,6 +118,12 @@ describe('siege_report on a real game', () => {
     expect(p).toMatchObject({ clock: '19:59', fell_at: '20:02', pushed_by: 'enemy', hitting: ['phantom_assassin'], owners_near: [], me: 'neither' });
     expect(p.owners_not_near).toHaveLength(5);
     expect(Math.min(...p.owners_not_near.map((x: any) => x.distance))).toBeGreaterThan(7000);
+  });
+
+  it('push 18 (the tower by the Ancient at 40:26): all five of Dire were near one of the four hitters (review of #302)', () => {
+    const p = r.pushes[17];
+    expect(p).toMatchObject({ ref: 'sieges:beastmaster:18', building: 'badguys_tower4', clock: '40:26', hitting: ['phantom_assassin', 'mirana', 'venomancer', 'necrolyte'] });
+    expect([...p.owners_near].sort()).toEqual(['beastmaster', 'dark_willow', 'skywrath_mage', 'sven', 'undying']);
   });
 
   it('refs resolve, places are named, and one push\'s facts need that push\'s ref', () => {
