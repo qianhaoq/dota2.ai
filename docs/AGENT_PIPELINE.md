@@ -61,6 +61,19 @@ gcloud run services update <site-service> --region "$REGION" --timeout 1800 --mi
   --update-env-vars AGENT_TASKS_QUEUE=projects/$PROJECT/locations/$REGION/queues/agent-jobs,AGENT_RUN_URL=$SITE_URL,AGENT_RUN_SA=$SITE_SA
 ```
 
+### A review that was cut off continues
+
+A request that is being processed is normally left to finish, but an instance
+can still stop or crash mid-review. A running review therefore saves a
+checkpoint after every finished round of lookups (`<review key>.checkpoint.json`:
+the conversation so far and which tools were asked, not their answers). When
+the review is started or delivered again it continues after that round instead
+of asking the model for the whole investigation a second time; the tools'
+answers are computed again from the replay, and the checkpoint is used only if
+every one of them still reads as the model read it (same replay, same tools),
+for the same hero, language and model, and less than an hour old. The
+checkpoint is removed when the review is stored or fails.
+
 `--min 1` keeps one instance warm (no cold start for the first reader after
 a quiet spell or a deploy). The build trigger skips pushes that change only
 tests, docs and CI files (`ignoredFiles` on the Cloud Build trigger), so a
