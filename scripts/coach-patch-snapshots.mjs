@@ -145,13 +145,19 @@ function pruneItems(all) {
   }
   return out;
 }
+// The abilities the site's hero table lists outside the numbered slots (Ringmaster's wheel: Funhouse Mirror,
+// Strongman Tonic …) are not in OpenDota's hero_abilities: they are added wherever the release's data has them.
+const SITE_ABILITIES = JSON.parse(readFileSync(new URL('../lib/coach/data/abilities.json', import.meta.url))).heroes;
+const { STATIC_HEROES } = await import('../packages/review-engine/src/staticHeroes.js');
+const SITE_BY_NPC = Object.fromEntries(Object.values(STATIC_HEROES).map((h) => [h.internalName, (SITE_ABILITIES[String(h.id)] ?? []).map((a) => a.id)]));
 const DMG = { Physical: 'P', Magical: 'M', Pure: 'U' };
 const PIERCE = { Yes: true, No: false };
 const DISPEL = { 'Strong Dispels Only': 'strong', Yes: 'basic', No: 'no' };
 function pruneHeroes(heroAbilities, abilities) {
   const heroes = {};
   for (const [npc, h] of Object.entries(heroAbilities)) {
-    const list = (h?.abilities ?? []).filter((k) => typeof k === 'string' && k !== 'generic_hidden' && !k.includes('_empty') && abilities[k]?.dname);
+    const slots = (h?.abilities ?? []).filter((k) => typeof k === 'string' && k !== 'generic_hidden' && !k.includes('_empty') && abilities[k]?.dname);
+    const list = [...slots, ...(SITE_BY_NPC[npc] ?? []).filter((k) => !slots.includes(k) && abilities[k]?.dname)];
     heroes[npc] = list.map((k) => {
       const a = abilities[k]; const cd = nums(a.cd);
       return { id: k, en: a.dname, ...(DMG[a.dmg_type] ? { dmg: DMG[a.dmg_type] } : {}), ...(a.bkbpierce in PIERCE ? { pierces: PIERCE[a.bkbpierce] } : {}), ...(DISPEL[a.dispellable] ? { dispel: DISPEL[a.dispellable] } : {}), ...(cd.length ? { cd } : {}) };

@@ -68,6 +68,22 @@ describe('the data of the patch a game was played on', () => {
     expect(r.stderr).toContain('Nothing was written');
   });
 
+  it('7.42\'s snapshot shows each hero\'s abilities as the live table does: the same abilities, ultimates and flags', () => {
+    const live = JSON.parse(readFileSync(new URL('../../lib/coach/data/abilities.json', import.meta.url), 'utf8'));
+    const snap = patchData('7.42');
+    for (const [id, list] of Object.entries(live.heroes) as [string, any[]][]) {
+      const got = snap.heroAbilities(Number(id)) ?? [];
+      const pick = (x: any) => ({ id: x.id, ult: Boolean(x.ult), dmg: x.dmg ?? null, pierces: x.pierces ?? null, dispel: x.dispel ?? null });
+      expect([id, got.map(pick).sort((a, b) => a.id.localeCompare(b.id))]).toEqual([id, list.map(pick).sort((a, b) => a.id.localeCompare(b.id))]);
+    }
+    // The cases that showed it: Ringmaster's abilities outside the slots, and two ultimates for Dark Willow.
+    expect(snap.heroAbilities(131)!.map((a) => a.id)).toEqual(expect.arrayContaining(['ringmaster_funhouse_mirror', 'ringmaster_summon_unicycle']));
+    expect(snap.heroAbilities(119)!.filter((a) => a.ult).length).toBe(2);
+    expect(snap.ultimate(119)?.key).toBe(live.ultimates['119'].key);
+    // An ally buff is not said to go through spell immunity: Valve's table says nothing there, and neither does the snapshot.
+    expect(snap.heroAbilities(18)!.find((a) => a.id === 'sven_warcry')).not.toHaveProperty('pierces');
+  });
+
   it('OpenDota\'s patch number names a patch, not its letter: its last release is used, and said to be a guess unless it is the only one', () => {
     expect(patchData(60)).toMatchObject({ name: '7.41f', exact: false, reason: 'letter_release_unknown; 7.41f data used' });
     expect(patchData(61)).toMatchObject({ name: '7.42', exact: true, reason: null });
