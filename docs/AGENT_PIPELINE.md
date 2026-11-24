@@ -61,6 +61,19 @@ gcloud run services update <site-service> --region "$REGION" --timeout 1800 --mi
   --update-env-vars AGENT_TASKS_QUEUE=projects/$PROJECT/locations/$REGION/queues/agent-jobs,AGENT_RUN_URL=$SITE_URL,AGENT_RUN_SA=$SITE_SA
 ```
 
+### Older games are told their own patch's numbers
+
+The site's item and ability tables are the current patch's. A game from an
+earlier patch reads prices, recipes, item effects, cooldowns and spell-immunity
+flags from `lib/data/constants/patches/<patch>.json`, written by
+`scripts/coach-patch-snapshots.mjs` from OpenDota's constants repository as it
+stood at the end of that patch (its last letter release: OpenDota's patch
+number does not tell 7.41c from 7.41f). Items that did not exist then are not
+offered. With no match data the patch is unknown and the current tables are
+used; the tools then say so (`data_patch`, gaps). `scripts/refresh-data.mjs --all`
+rebuilds the snapshots after a patch. Professional item shares span several
+patches and are not split by patch.
+
 ### A review that was cut off continues
 
 A request that is being processed is normally left to finish, but an instance
