@@ -73,8 +73,10 @@ export function createTraceBuilder() {
   /** @type {Map<string, number>} */
   const damage = new Map();
   let stateRows = 0; let eventRows = 0; let lastT = -Infinity; let firstT = Infinity;
-  /** @type {Map<string, number[]>} hero key → net worth per game minute */
+  /** @type {Map<string, number[]>} hero key without underscores → net worth per game minute */
   const netWorth = new Map();
+  // The states name a hero `queen_of_pain`, the metadata `npc_dota_hero_queenofpain`: the same hero once the underscores go.
+  const squash = (key) => key.replace(/_/g, '');
 
   function hero(key, row) {
     let h = heroes.get(key);
@@ -216,7 +218,7 @@ export function createTraceBuilder() {
         const graph = Array.isArray(p?.graph_net_worth) ? p.graph_net_worth : null;
         if (!key || !graph?.length || !graph.every(Number.isFinite)) continue;
         if (!(graph[0] >= NET_WORTH_START[0] && graph[0] <= NET_WORTH_START[1])) continue;
-        netWorth.set(key, graph.map((v) => Math.round(v * NET_WORTH_SCALE)));
+        netWorth.set(squash(key), graph.map((v) => Math.round(v * NET_WORTH_SCALE)));
       }
     },
 
@@ -255,7 +257,7 @@ export function createTraceBuilder() {
         modifiers,
         damage: [...damage].map(([k, v]) => [...k.split('|').map(Number), Math.round(v)]),
         // Per hero, in hero order: net worth at 0:00, 1:00, 2:00 … (null for a hero the metadata did not name).
-        ...(perMinute ? { net_worth: list.map((h) => netWorth.get(h.key) ?? null) } : {}),
+        ...(perMinute ? { net_worth: list.map((h) => netWorth.get(squash(h.key)) ?? null) } : {}),
         source: { state_rows: stateRows, event_rows: eventRows, sample_hz: 1, extractor: meta.extractor ?? null },
         gaps: [
           { topic: 'vision', reason: 'no_fog_of_war_in_trace' },
