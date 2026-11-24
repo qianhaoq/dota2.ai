@@ -248,15 +248,19 @@ export const AgentMatchPage: React.FC = () => {
     if (p.status === 'ready') setExpectFor(matchId);
     setAvailTick((n) => n + 1);
   };
-  const refuse = (e: unknown) => {
+  /** `asked`: the selection the refused request was sent for, which the reader may since have left. */
+  const refuse = (e: unknown, asked: string = selected.current) => {
     const status = e instanceof AgentApiError ? e.status : 0;
     const after = e instanceof AgentApiError ? e.retryAfterSec ?? 0 : 0;
+    const here = asked === selected.current;
     if ((status === 429 || status === 503) && after > 0 && after <= MAX_AUTO_WAIT_SEC) {
       // The reader still wants it: keep the intent, and go again when the server said it may.
-      setNotice(null);
-      setWait({ until: Date.now() + after * 1000, kind: status === 429 ? 'rate' : 'busy', for: selected.current });
+      if (here) setNotice(null);
+      setWait({ until: Date.now() + after * 1000, kind: status === 429 ? 'rate' : 'busy', for: asked });
       return;
     }
+    // Refused for good for a selection the reader has left: nothing on this one changes.
+    if (!here) return;
     setNotice(t(status === 429 ? T.rate : status === 503 ? T.busy : T.unavailable));
     want(false);
   };
@@ -281,7 +285,8 @@ export const AgentMatchPage: React.FC = () => {
     // One parse request out at a time for this match: a second click while it is out sends nothing.
     if (preparing.current === matchId) return;
     preparing.current = matchId;
-    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e); } finally { if (preparing.current === matchId) preparing.current = null; }
+    const asked = selection;
+    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e, asked); } finally { if (preparing.current === matchId) preparing.current = null; }
   }
   const goRef = useRef(go);
   goRef.current = go;
@@ -316,7 +321,8 @@ export const AgentMatchPage: React.FC = () => {
   useEffect(() => {
     if (!intent || wait || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
     resumed.current = true;
-    prepareMatch(matchId).then((p) => { if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); }).catch((e) => { if (onMatch.current === matchId) refuse(e); });
+    const asked = selection;
+    prepareMatch(matchId).then((p) => { if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); }).catch((e) => { if (onMatch.current === matchId) refuse(e, asked); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, avail, matchId, loadAvail, wait]);
 

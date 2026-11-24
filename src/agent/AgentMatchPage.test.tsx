@@ -698,6 +698,30 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(prepares).toBe(2), { timeout: 3000 });
   }, 10000);
 
+  it('a refusal that arrives after the reader moved to another hero is that first hero\'s, not the new one\'s', async () => {
+    let prepares = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { prepares += 1; return prepares === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(prepares).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    await screen.findByRole('button', { name: 'Review my game' });
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 2 });
+    await new Promise((r) => { setTimeout(r, 300); });
+    // Axe was never refused: no countdown, and the button works while the first hero's wait runs.
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
+    // That wait running out sends nothing for Axe, who has no go.
+    await new Promise((r) => { setTimeout(r, 2500); });
+    expect(prepares).toBe(1);
+  }, 10000);
+
   it('two quick clicks before the replay is parsed send one parse request', async () => {
     let release: (v: unknown) => void = () => {};
     const calls = mockFetch({
