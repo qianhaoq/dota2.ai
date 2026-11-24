@@ -594,7 +594,11 @@ describe('trace tools on a real game', () => {
     expect(p3.fights.some((f) => 'ref' in f)).toBe(false);
     // Shares are of the seconds alive, and the three sides of the map add up to all of them.
     expect(p3.hero_alive_seconds + p3.hero_dead_seconds).toBe(600);
+    expect(r.phases.map((p) => p.hero_seconds_not_sampled)).toEqual([0, 0, 0, 0, 0]);
     const s = p3.hero_share_of_alive_time;
+    // Dire's side of the map is his own: the first ten minutes in his own bottom lane, the end in his base.
+    expect(r.phases.map((p) => p.hero_share_of_alive_time.on_own_side_of_the_map)).toEqual([0.75, 0.51, 0.44, 0.76, 1]);
+    expect(s).toEqual({ on_own_side_of_the_map: 0.44, around_the_river: 0.22, on_the_opponents_side: 0.34, with_no_ally_within_2200: 0.32, with_one_ally_within_2200: 0.17, with_two_or_more_allies_within_2200: 0.52, with_three_or_more_opponents_within_2200: 0.19 });
     expect(s.on_own_side_of_the_map + s.around_the_river + s.on_the_opponents_side).toBeCloseTo(1, 1);
     expect(s.with_no_ally_within_2200 + s.with_one_ally_within_2200 + s.with_two_or_more_allies_within_2200).toBeCloseTo(1, 1);
     expect(p3.hero_most_time_in[0]).toEqual({ place: 'radiant_top_lane', share_of_alive_time: 0.32 });
@@ -638,12 +642,22 @@ describe('trace tools on a real game', () => {
     const h = trace.heroes.findIndex((x) => x.key === 'beastmaster');
     const blank = { ...trace, states: trace.states.map((s, i) => (i === h ? { ...s, x: s.x.map(() => null), y: s.y.map(() => null) } : s)) };
     const r = runTraceTool(blank, 'tempo_report', { hero: 'beastmaster' });
-    expect(r.phases[1]).toMatchObject({ hero_alive_seconds: 0, hero_dead_seconds: 0, hero_most_time_in: [] });
+    expect(r.phases[1]).toMatchObject({ hero_alive_seconds: 0, hero_dead_seconds: 0, hero_seconds_not_sampled: 600, hero_most_time_in: null });
     expect(Object.values(r.phases[1].hero_share_of_alive_time)).toEqual([null, null, null, null, null, null, null]);
     // He died in some of them (that is in the combat log); for the rest nothing can be said.
     expect(r.fights_where.hero_was_not_there).toEqual([]);
     expect(r.fights_where.hero_was_there.length + r.fights_where.hero_presence_not_known.length).toBe(16);
     expect(r.fights_where.hero_presence_not_known.length).toBeGreaterThan(0);
+    // One sample of his own left in a stretch: a share of the one second seen is not a share of the stretch. None is stated.
+    const keep = 1500 - trace.t0;
+    const sliver = { ...trace, states: trace.states.map((s, i) => (i === h ? { ...s, x: s.x.map((v, j) => (j >= 1200 - trace.t0 && j < 1800 - trace.t0 && j !== keep ? null : v)) } : s)) };
+    const thin = runTraceTool(sliver, 'tempo_report', { hero: 'beastmaster' }).phases[2];
+    // A sample stands for the two seconds either side of it, as everywhere in the trace tools: five seconds around
+    // 25:00, and two at each end of the stretch from the samples just outside it.
+    expect(thin).toMatchObject({ hero_alive_seconds: 9, hero_seconds_not_sampled: 591, hero_most_time_in: null });
+    expect(Object.values(thin.hero_share_of_alive_time)).toEqual([null, null, null, null, null, null, null]);
+    // The stretches around it were sampled throughout and keep their shares.
+    expect(runTraceTool(sliver, 'tempo_report', { hero: 'beastmaster' }).phases[1]).toMatchObject({ hero_seconds_not_sampled: 0, hero_share_of_alive_time: { on_own_side_of_the_map: 0.51 } });
     // The other heroes' positions gone, his own kept: where he was is known, who was near him is not — not "alone".
     const others = { ...trace, states: trace.states.map((s, i) => (i === h ? s : { ...s, x: s.x.map(() => null), y: s.y.map(() => null) })) };
     const lone = runTraceTool(others, 'tempo_report', { hero: 'beastmaster' }).phases[2];

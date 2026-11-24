@@ -615,17 +615,18 @@ export function tempoReport(trace, args = {}, ctx = {}) {
     // Who was near is known for a second only when every hero of that side has a position then: one without a
     // sample may have been standing next to the hero. Counted apart, so a missing sample is not "nobody near".
     const company = [0, 0, 0]; let companyKnown = 0; let crowded = 0; let crowdKnown = 0;
+    // Seconds of the stretch with no sample of the hero (none within two seconds either): where they were then,
+    // and whether they were alive, is not known.
+    let unsampled = 0;
     for (let sec = from; sec < to; sec += 1) {
-      const i = sec - trace.t0;
-      const s = trace.states[h];
-      if (i < 0 || i >= trace.n || s.x[i] == null) continue;
-      if (s.alive[i] !== 1) { dead += 1; continue; }
+      const me = stateAt(trace, h, sec);
+      if (!me) { unsampled += 1; continue; }
+      if (!me.alive) { dead += 1; continue; }
       alive += 1;
-      const place = region(s.x[i], s.y[i]);
+      const place = region(me.x, me.y);
       places.set(place, (places.get(place) ?? 0) + 1);
       const side = place.split('_')[0];
       sides[side === 'river' ? 'river' : side === own ? 'own' : 'enemy'] += 1;
-      const me = { x: s.x[i], y: s.y[i] };
       const near = { [team]: 0, [other]: 0 }; const unseen = { [team]: false, [other]: false };
       trace.heroes.forEach((o, j) => {
         if (j === h) return;
@@ -636,8 +637,9 @@ export function tempoReport(trace, args = {}, ctx = {}) {
       if (!unseen[team]) { companyKnown += 1; company[Math.min(2, near[team])] += 1; }
       if (!unseen[other]) { crowdKnown += 1; if (near[other] >= 3) crowded += 1; }
     }
-    // A share of the living time needs the whole of it: with seconds where it cannot be told, none is stated.
-    const whole = (n, known) => (known === alive ? r2(n, alive) : null);
+    // A share of the living time needs the whole of it: with seconds where it cannot be told — the hero's own
+    // (they may have been alive and elsewhere), or for who was near, another hero's — none is stated.
+    const whole = (n, known = alive) => (unsampled === 0 && known === alive ? r2(n, alive) : null);
     const taken = objectives.filter((b) => inPhase(b.t)).map(buildingRow);
     const lost = { [team]: 0, [other]: 0 };
     for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0 && inPhase(d[0])) lost[trace.heroes[v].team] += 1; }
@@ -656,13 +658,14 @@ export function tempoReport(trace, args = {}, ctx = {}) {
       // `overview_fight` names the same fight in match_overview, which holds its deaths and gold.
       fights: fought.map((f) => ({ overview_fight: f.ref, clock: f.clock, team_deaths: f.team_deaths, opponents_deaths: f.opponents_deaths, lost_fewer_heroes: f.fewer, hero_was_there: f.there })),
       ...(adv ? { team_gold_lead: { at_start: leadAt(from), at_end: leadAt(to) } } : {}),
-      hero_alive_seconds: alive, hero_dead_seconds: dead,
+      hero_alive_seconds: alive, hero_dead_seconds: dead, hero_seconds_not_sampled: unsampled,
       hero_share_of_alive_time: {
-        on_own_side_of_the_map: r2(sides.own, alive), around_the_river: r2(sides.river, alive), on_the_opponents_side: r2(sides.enemy, alive),
+        on_own_side_of_the_map: whole(sides.own), around_the_river: whole(sides.river), on_the_opponents_side: whole(sides.enemy),
         with_no_ally_within_2200: whole(company[0], companyKnown), with_one_ally_within_2200: whole(company[1], companyKnown), with_two_or_more_allies_within_2200: whole(company[2], companyKnown),
         with_three_or_more_opponents_within_2200: whole(crowded, crowdKnown),
       },
-      hero_most_time_in: [...places].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([place, sec]) => ({ place, share_of_alive_time: r2(sec, alive) })),
+      // Null (not an empty list) when the stretch was not sampled throughout: the place they spent most time in may be one never seen.
+      hero_most_time_in: unsampled === 0 ? [...places].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([place, sec]) => ({ place, share_of_alive_time: r2(sec, alive) })) : null,
       hero_damage_to_buildings: dmg.hero, team_heroes_damage_to_buildings: dmg.team,
     });
   }
@@ -706,7 +709,7 @@ export function tempoReport(trace, args = {}, ctx = {}) {
     },
     team_heroes_damage_to_buildings: byHero,
     phases,
-    note: 'Buildings are towers, barracks and the Ancient. Shares are of the seconds the hero was alive in that stretch; a share is null when it could not be told for all of them. What happened before 0:00 is counted in the first stretch. Where a hero stood says nothing about creep waves: time in a lane is not time spent pushing it.',
+    note: 'Buildings are towers, barracks and the Ancient. Shares are of the seconds the hero was alive in that stretch; a share is null when it could not be told for all of them (hero_seconds_not_sampled counts the seconds with no sample of the hero). What happened before 0:00 is counted in the first stretch. Where a hero stood says nothing about creep waves: time in a lane is not time spent pushing it.',
     gaps: [
       ...gapsFor(trace, ['creeps', 'roshan', 'vision']),
       { topic: 'building_damage_by_summoned_units_and_illusions', reason: 'only_damage_dealt_by_heroes_themselves_is_counted' },
