@@ -15,9 +15,12 @@
  *                     here: a stomp is not also counted as a win or loss);
  *                     total >= 50 kept.
  *
- * Window: the last N completed calendar weeks (Monday 00:00 UTC) that lie
- * wholly inside one patch. STRATZ keys these aggregates by week, not patch:
- * an in-progress week returns partial data, so it is never used.
+ * Window: the last N completed STRATZ weeks that lie wholly inside one
+ * patch. STRATZ numbers its weeks from the unix epoch (week = floor(seconds /
+ * 604800), so a week runs Thursday 00:00 UTC to Wednesday) and keys these
+ * aggregates by that week, not by patch; the `week` argument takes any second
+ * inside the week wanted. An in-progress week returns partial data, so it is
+ * never used.
  * Not filtered by game mode (STRATZ's matchUp/laneOutcome take no mode
  * argument): some unranked games are in the sample.
  *
@@ -52,13 +55,14 @@ const patches = await (await fetch('https://api.opendota.com/api/constants/patch
 const starts = patches.map((p) => ({ name: p.name, at: Math.floor(Date.parse(p.date) / 1000) })).sort((a, b) => a.at - b.at);
 const patchAt = (s) => starts.filter((p) => p.at <= s).at(-1);
 
+const WEEK = 7 * DAY;
 const now = Math.floor(Date.now() / 1000);
-const today = Math.floor(now / DAY) * DAY;
-const thisMonday = today - ((new Date(today * 1000).getUTCDay() + 6) % 7) * DAY;
+// The week running now, by STRATZ's own count: weeks start on Thursday 00:00 UTC.
+const current = Math.floor(now / WEEK) * WEEK;
 const weeks = [];
 let patch = null;
-for (let w = thisMonday - 7 * DAY; weeks.length < WEEKS && w > thisMonday - 60 * 7 * DAY; w -= 7 * DAY) {
-  const a = patchAt(w); const b = patchAt(w + 7 * DAY - 1);
+for (let w = current - WEEK; weeks.length < WEEKS && w > current - 60 * WEEK; w -= WEEK) {
+  const a = patchAt(w); const b = patchAt(w + WEEK - 1);
   if (a.name !== b.name) { if (weeks.length) break; continue; } // a patch landed inside this week
   if (patch && a.name !== patch) break;
   patch = a.name;
