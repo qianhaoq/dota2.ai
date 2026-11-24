@@ -97,6 +97,9 @@ jobs:
             gh pr edit "$pr" --add-label no-auto-merge
             gh pr ready "$pr" --undo || true
           else
+            # A passing refresh after a failed one: back to ready for review (codex-request and the watchdog skip
+            # drafts), and the hold lifted.
+            gh pr ready "$pr" || true
             gh pr edit "$pr" --remove-label no-auto-merge || true
           fi
 

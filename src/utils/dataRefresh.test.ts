@@ -75,3 +75,23 @@ describe('data refresh: the pull request body', () => {
     expect(body(report({ steps: [{ name: 'x', source: 's', outcome: 'failed', detail: 'a|b' }] }), 'ok')).toContain('x — a\\|b');
   });
 });
+
+describe('data refresh: the workflow keeps its one PR moving (review of #289)', () => {
+  const yml = readFileSync('.github/workflows/data-refresh.yml', 'utf8');
+  const prStep = yml.slice(yml.indexOf('- name: Open or update the pull request'), yml.indexOf('- name: Nothing changed'));
+  it('a failed gate holds the PR as a draft; a passing one makes it ready again and lifts the hold', () => {
+    const failed = prStep.slice(prStep.indexOf('if [ "$TESTS" != "ok" ]; then'), prStep.indexOf('else', prStep.indexOf('if [ "$TESTS" != "ok" ]; then')));
+    const passed = prStep.slice(prStep.indexOf('else', prStep.indexOf('if [ "$TESTS" != "ok" ]; then')), prStep.indexOf('fi', prStep.lastIndexOf('gh pr ready')));
+    expect(failed).toContain('--add-label no-auto-merge');
+    expect(failed).toContain('gh pr ready "$pr" --undo');
+    // codex-request and the watchdog skip drafts: a draft left behind would never be reviewed or merged.
+    expect(passed).toMatch(/gh pr ready "\$pr" \|\| true/);
+    expect(passed).not.toContain('--undo');
+    expect(passed).toContain('--remove-label no-auto-merge');
+  });
+  it('opens nothing without PIPELINE_TOKEN, since a PR made with GITHUB_TOKEN starts no checks', () => {
+    expect(prStep).toContain('GH_TOKEN: ${{ secrets.PIPELINE_TOKEN }}');
+    expect(prStep).toMatch(/if \[ -z "\$GH_TOKEN" \]; then[\s\S]*?exit 0/);
+  });
+});
+
