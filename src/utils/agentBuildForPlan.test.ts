@@ -40,7 +40,9 @@ describe('build_for_plan on a real game', () => {
     const r = run('beastmaster');
     expect(r).toMatchObject({ ref: 'build_plan:beastmaster', ref_scope: 'summary', hero: 'beastmaster', big_items_total: 3, gold_in_big_items: 13050, measured_at: ['15:00', '25:00'] });
     expect(r.items.map((i: any) => [i.first_held, i.item, i.cost, i.serves])).toEqual([['16:48', 'ultimate_scepter', 4200, []], ['29:08', 'pipe', 3725, []], ['38:58', 'assault', 5125, ['push']]]);
-    expect(r.items[2]).toMatchObject({ ref: 'item:beastmaster:assault', valve_says: 'decreases nearby enemy unit and structure armor' });
+    expect(r.items[2]).toMatchObject({ item: 'assault', valve_says: 'decreases nearby enemy unit and structure armor' });
+    // No item_timeline refs inside: that record would not show the price, gold or Valve's line these items carry (review of #284).
+    expect(JSON.stringify(r)).not.toMatch(/"ref":"item:/);
     expect(r.items[0]).not.toHaveProperty('valve_says');
     expect(r.gold_in_items_for_each_plan).toEqual({ push: 5125, gank: 0, split: 0, late: 0 });
     expect(r.gold_in_items_for_each_plan_by_25_00).toEqual({ push: 0, gank: 0, split: 0, late: 0 });
@@ -60,6 +62,21 @@ describe('build_for_plan on a real game', () => {
     const pa = run('phantom_assassin');
     expect(pa.items.find((i: any) => i.item === 'abyssal_blade')).toMatchObject({ cost: 6150, gold: 3275 });
     expect(pa.gold_in_big_items).toBe(pa.items.reduce((a: number, i: any) => a + i.gold, 0));
+  });
+
+  it('an item is classified only by the text of this game\'s patch (review of #284)', () => {
+    // Desolator's "Armor reduction works on buildings." is 7.42's text; 7.41's says otherwise.
+    const older = { ...match, patch: 60 };
+    const r: any = buildForPlan(trace, { hero: 'phantom_assassin', plan: 'push' }, { match: older });
+    expect(r.data_patch).toBe('7.41');
+    expect(r.items.find((i: any) => i.item === 'desolator')).toMatchObject({ serves: [], effect_text_differs_in_this_patch: true });
+    expect(r.items.find((i: any) => i.item === 'desolator')).not.toHaveProperty('valve_says');
+    expect(r.stated_plan).toMatchObject({ first_item_for_it: null });
+    expect(r.gaps).toContainEqual({ topic: 'items_whose_effect_text_differs_in_this_patch', reason: 'not_classified: desolator' });
+    // Battle Fury's text is the same in 7.41: still read as farming.
+    expect(r.items.find((i: any) => i.item === 'bfury')).toMatchObject({ serves: ['late'] });
+    // In the current patch the Desolator is read as before.
+    expect(run('phantom_assassin', 'push').stated_plan).toMatchObject({ first_item_for_it: 'desolator' });
   });
 
   it('with the plan the player named: the first item for it, what came before it, and its share', () => {
