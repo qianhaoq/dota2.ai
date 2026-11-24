@@ -24,7 +24,7 @@ export interface DeepReview {
   /** One thing the next game can be checked on (lib/agent/goal.js), tied to finding `finding` (1-based). */
   goal?: GoalSpec & { finding: number };
 }
-export interface ToolStep { tool: string; args: Record<string, unknown> }
+export interface ToolStep { tool: string; args: Record<string, unknown>; /** What the lookup is about, named for the reader (the patch advisor sends it). */ about?: string }
 export type ReviewState =
   | { status: 'none' | 'no_trace' | 'unknown_hero' }
   | { status: 'running'; steps: ToolStep[] }
@@ -75,9 +75,8 @@ export function fetchEvidence(matchId: string, hero: string, lang: string, ref: 
 export interface ChatTurn { q: string; a: string; clean: boolean }
 export interface ChatEvents { onStep: (step: ToolStep) => void; onText: (text: string, unverified: { kind: string; text: string }[]) => void; onError: (code: string) => void }
 
-/** One chat turn over SSE: `{step}` frames while the agent looks things up, then `{text}`, then `{done}`. */
-export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[] }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
-  const res = await fetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+/** Read a chat answer sent as SSE: `{step}` frames while the agent looks things up, then `{text}` (or `{error}`), then `{done}`. */
+export async function readChatStream(res: Response, ev: ChatEvents): Promise<void> {
   if (!res.ok || !res.body) { const b = await res.json().catch(() => ({})); throw new AgentApiError(b.code ?? 'failed', res.status, b.retryAfterSec); }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -97,4 +96,10 @@ export async function askAgent(matchId: string, body: { hero: string; lang: stri
       else if (msg.error) ev.onError(String(msg.error));
     }
   }
+}
+
+/** One chat turn about a match. */
+export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[] }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+  return readChatStream(res, ev);
 }

@@ -29,6 +29,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { staticNotFound } from '../lib/staticNotFound.js';
 import { createMockAgent } from './mock-agent.mjs';
+import { createMockPatch } from './mock-patch.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -73,6 +74,7 @@ const coachService = createCoachService({
   limiter: noLimit,
 });
 app.use(mockAgent.router);
+app.use(createMockPatch({ resolveClientIp: (req) => req.ip || 'local' }).router);
 app.use(createCoachRouter({
   getMatchDetail: coachGetMatch,
   resolveClientIp: (req) => req.ip || 'local',
