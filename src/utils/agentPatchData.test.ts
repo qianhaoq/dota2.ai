@@ -141,6 +141,11 @@ describe('which patch a game was played on, when the match data is not at hand',
     expect(gamePatch(9091400302, null)).toMatchObject({ release: '7.41f', id: 60, how: 'match_id', exact: true });
     for (const id of [9099561801, 9100904020, 9102822298]) expect(gamePatch(id, null)).toMatchObject({ release: '7.42', id: 61, how: 'match_id', exact: true });
     expect(gamePatch(index.releases[0].last_match_id_before, null)).toMatchObject({ release: null, reason: 'older_than_7.40' });
+    // OpenDota says a newer patch than the site knows: not placed in the last known release by time or id.
+    const later = { patch: 62, start_time: at(release('7.42').rollout_by) + 40 * 86400 };
+    expect(gamePatch(9200000000, later)).toEqual({ release: null, id: 62, how: 'match_data', exact: false, reason: 'patch_newer_than_the_site_data' });
+    expect(patchForGame(9200000000, later)).toMatchObject({ name: CURRENT_RELEASE, exact: false, how: null, reason: 'patch_newer_than_the_site_data' });
+    expect(patchForGame(9200000000, { ...later, patch: 61 })).toMatchObject({ name: '7.42', exact: true, how: 'start_time' });
     // Neither a start time nor an id it can place: only OpenDota's patch number, which names no letter.
     expect(gamePatch(0, { patch: 60 })).toEqual({ release: null, id: 60, how: 'match_data', exact: false, reason: 'letter_release_unknown' });
     expect(gamePatch('not an id', null)).toMatchObject({ release: null, reason: 'patch_of_this_game_unknown' });
