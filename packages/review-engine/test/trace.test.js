@@ -313,6 +313,17 @@ describe('net worth from the replay\'s match metadata', () => {
     expect(built([meta([60, 61, 62, 63], [60, 61, 62, 63])]).net_worth).toBeUndefined();
   });
 
+  it('a hero whose state name has underscores the metadata name lacks still gets its graph', () => {
+    // Seen in 9102724734, 9101399999 and 9099013525: the states say queen_of_pain, vengeful_spirit, anti_mage,
+    // the metadata npc_dota_hero_queenofpain, npc_dota_hero_vengefulspirit, npc_dota_hero_antimage.
+    const b = createTraceBuilder();
+    for (const t of [0, 1, 150]) { b.addState(state(t, 'queen_of_pain', 2)); b.addState(state(t, 'anti_mage', 3)); }
+    b.addMetadata({ players: [{ dota_team: 2, hero_key: 'npc_dota_hero_queenofpain', graph_net_worth: [60, 70] }, { dota_team: 3, hero_key: 'npc_dota_hero_antimage', graph_net_worth: [60, 65] }] });
+    const tr = b.finish({ match_id: 7 });
+    expect(tr.net_worth).toEqual([[600, 700], [600, 650]]);
+    expect(goldAdvantage(tr, {})).toEqual([0, 50]);
+  });
+
   it('a hero the metadata does not name has no graph, and then there is no team lead', () => {
     const tr = built([{ players: [{ dota_team: 2, hero_key: 'npc_dota_hero_axe', graph_net_worth: [60, 70] }, { dota_team: 3, hero_key: null, graph_net_worth: [60, 70] }] }]);
     expect(tr.net_worth).toEqual([[600, 700], null]);
