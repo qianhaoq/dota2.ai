@@ -118,6 +118,8 @@ const T = {
   // The tower's owners took these meanwhile: a trade. The enemy when your team took the tower, your team when they did.
   tradedBack: { my_team: { en: 'Meanwhile they took', zh: '同时对方拆掉' }, enemy: { en: 'Meanwhile your team took', zh: '同时我方拆掉' } } as Record<string, Record<Lang, string>>,
   meAtTower: { hit_it: { en: 'you hit it', zh: '你在打' }, near: { en: 'you were near', zh: '你在附近' }, dead: { en: 'you were dead', zh: '你阵亡中' }, elsewhere: { en: 'you were elsewhere', zh: '你在别处' }, alive_tower_spot_unknown: { en: 'you were alive', zh: '你存活' } } as Record<string, Record<Lang, string>>,
+  afterItems: { en: 'Fight after big items', zh: '大件后的团战' },
+  lostFewer: { my_team: { en: 'your team lost fewer', zh: '我方少死' }, enemy: { en: 'they lost fewer', zh: '对方少死' }, even: { en: 'even', zh: '持平' } } as Record<string, Record<Lang, string>>,
   roshanBy: { my_team: { en: 'Your team took Roshan', zh: '我方打掉肉山' }, enemy: { en: 'They took Roshan', zh: '对方打掉肉山' } } as Record<string, Record<Lang, string>>,
   aegisHolder: { en: 'Aegis', zh: '不朽盾' },
   aegisEnd: { used: { en: 'used', zh: '用掉' }, expired: { en: 'expired', zh: '过期' }, game_ended: { en: 'game ended', zh: '比赛结束' }, unknown: { en: 'unknown', zh: '不明' } } as Record<string, Record<Lang, string>>,
@@ -259,6 +261,11 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   pushed_and_took_nothing: { en: 'pushed, took nothing', zh: '推了没拆掉' },
   neither: { en: 'took nothing', zh: '什么都没拿' },
   fights: { en: 'fights', zh: '场数' },
+  fights_after_enemy_big_items: { en: 'Fights after only their big items', zh: '只有对方刚出大件后的团战' },
+  fights_after_my_team_big_items: { en: 'Fights after only your big items', zh: '只有我方刚出大件后的团战' },
+  my_team_lost_fewer: { en: 'your team lost fewer', zh: '我方少死' },
+  enemy_lost_fewer: { en: 'they lost fewer', zh: '对方少死' },
+  even: { en: 'even', zh: '持平' },
   towers_my_team_took: { en: 'Towers your team took', zh: '我方拆塔后' },
   towers_enemy_took: { en: 'Towers the enemy took', zh: '对方拆塔后' },
   when_my_team_lost_a_tower_i_was: { en: 'When your team lost a tower, you were', zh: '我方掉塔时你' },
@@ -614,6 +621,18 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.owners_took_back.length > 0 && <p className="ag-rec-line"><span>{t(T.tradedBack[r.taken_by])}</span>{chips(r.owners_took_back, mine ? 'is-warn' : 'is-good')}</p>}
         {r.hitting.length > 0 && <p className="ag-rec-line"><span>{t(T.hitting)} {r.hitting.length}</span>{r.hitting.map((h: string) => <span key={h} className={`ag-chip ${mine ? 'is-ally' : 'is-enemy'}`}>{N(h)}</span>)}</p>}
         {T.meAtTower[r.me] && <p className="ag-rec-line"><span className="ag-chip is-me">{t(T.meAtTower[r.me])}{r.my_place && <> · {N(r.my_place)}</>}{r.distance_from_its_hitters != null && <em>{r.distance_from_its_hitters} {t(T.away)}</em>}</span></p>}
+      </div>
+    );
+  }
+  if (data.kind === 'decision' && r.kind === 'fight_after_a_big_item') {
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.afterItems)} · {r.deaths.my_team} : {r.deaths.enemy}</p>
+        <p className="ag-rec-line">{r.items.map((it: any, i: number) => <span key={i} className={`ag-chip ${it.side === 'my_team' ? 'is-ally' : 'is-enemy'}`}>{N(it.hero)} · {N(it.item)}<em>{it.clock}</em></span>)}</p>
+        <p className="ag-rec-line">
+          <span className={`ag-chip ${r.lost_fewer === 'my_team' ? 'is-good' : r.lost_fewer === 'enemy' ? 'is-warn' : ''}`}>{t(T.lostFewer[r.lost_fewer])}</span>
+          {r.my_team_gold_lead != null && <><span>{t(T.gold)}</span><span className="ag-chip">{r.my_team_gold_lead}</span></>}
+        </p>
       </div>
     );
   }

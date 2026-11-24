@@ -435,6 +435,23 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/after_a_tower_fell|goodguys|radiant_jungle|elsewhere/)).toBeNull();
   });
 
+  it('a fight after big items is shown with whose items, which, when, and who lost fewer', async () => {
+    const point = { status: 'ok', ref: 'decision:spectre:30', kind: 'decision', names: { phantom_assassin: '幻影刺客', black_king_bar: '黑皇杖', sven: '斯温', armlet: '莫尔迪基安的臂章' }, record: {
+      ref: 'decision:spectre:30', kind: 'fight_after_a_big_item', fight: 'fight:7', clock: '21:59',
+      items: [{ hero: 'phantom_assassin', side: 'enemy', item: 'black_king_bar', clock: '21:29', ref: 'item:phantom_assassin:black_king_bar' }, { hero: 'sven', side: 'my_team', item: 'armlet', clock: '21:37', ref: 'item:sven:armlet' }],
+      items_from: 'both', deaths: { my_team: 3, enemy: 1 }, lost_fewer: 'enemy',
+    } };
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': point, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['decision:spectre:30'], fact: '21:59 团战。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText(/大件后的团战 · 3 : 1/)).toBeTruthy();
+    expect(chip('幻影刺客 · 黑皇杖21:29')).toBeTruthy();
+    expect(chip('对方少死')).toBeTruthy();
+    expect(screen.queryByText(/black_king_bar|phantom_assassin|lost_fewer/)).toBeNull();
+  });
+
   it('a Roshan is shown as who held the Aegis, who was there, what became of it, and what each side took after', async () => {
     const take = { status: 'ok', ref: 'roshan:beastmaster:1', kind: 'roshan', names: { phantom_assassin: '幻影刺客', axe: '斧王', mirana: '米拉娜', river_top_jungle: '河道上路野区' }, record: {
       ref: 'roshan:beastmaster:1', clock: '32:18', taken_by: 'enemy', aegis_holder: 'phantom_assassin', place: 'river_top_jungle', taking_side_near: ['axe', 'mirana'], other_side_near: [], me: 'not_there',
