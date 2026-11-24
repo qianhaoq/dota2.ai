@@ -64,6 +64,28 @@ const T = {
   laneProMean: { en: 'usually', zh: '通常' }, laneThis: { en: 'this game', zh: '这局' }, laneAhead: { en: 'ahead in', zh: '领先的比例' },
   lanePub: { en: 'lanes in public games of this bracket (STRATZ)', zh: '条同分段路人局对线（STRATZ）' },
   lanePubWon: { en: 'won', zh: '赢' }, lanePubLost: { en: 'lost', zh: '输' },
+  buildDamage: { en: 'Damage in your deaths', zh: '阵亡前受到的伤害' },
+  buildAttacks: { en: 'attacks', zh: '普攻' }, buildSpells: { en: 'abilities and items', zh: '技能与物品' },
+  buildKills: { en: 'kills', zh: '次击杀' },
+  buildItems: { en: 'Your big items, in order', zh: '你的大件，按时间' },
+  buildCols: { en: ['Time', 'Item', 'Gold', 'What it is for'], zh: ['时间', '物品', '金币', '用途'] },
+  buildAnswers: { en: 'Items that answer attack damage', zh: '应对普攻伤害的装备' },
+  buildSpellAnswers: { en: 'Items that answer spell damage', zh: '应对技能伤害的装备' },
+  buildPros: { en: 'Most built by pros on this hero (by 24:59)', zh: '职业选手这个英雄最常出（24:59 前）' },
+  buildGaps: { en: 'First gap closer', zh: '第一件位移装' },
+  buildYou: { en: 'you', zh: '你' },
+  purpose: {
+    initiation_or_gap_closer: { en: 'initiation / gap closer', zh: '先手 / 位移' }, answer_to_spell_damage: { en: 'answers spell damage', zh: '应对技能伤害' },
+    answer_to_attack_damage: { en: 'answers attack damage', zh: '应对普攻伤害' }, answer_to_disables: { en: 'answers disables', zh: '应对控制' },
+    answer_to_silences: { en: 'answers silences', zh: '应对沉默' }, answer_to_evasion: { en: 'answers evasion', zh: '应对闪避' },
+    answer_to_invisibility: { en: 'answers invisibility', zh: '应对隐身' }, answer_to_illusions: { en: 'answers illusions', zh: '应对幻象' },
+    answer_to_healing: { en: 'answers healing', zh: '应对治疗' }, magic_resistance: { en: 'magic resistance', zh: '魔法抗性' }, armor: { en: 'armor', zh: '护甲' },
+    not_classified: { en: 'not classified', zh: '未分类' },
+  } as Record<string, Record<Lang, string>>,
+  spikeCols: { en: ['Hero', 'Lv 6', 'Lv 12', 'Lv 18', 'Killed you', 'Your hero vs them (public)'], zh: ['英雄', '6 级', '12 级', '18 级', '击杀你', '你的英雄对上他（路人局）'] },
+  spikeMatchup: { favoured: { en: 'favoured', zh: '占优' }, unfavoured: { en: 'unfavoured', zh: '吃亏' }, even: { en: 'even', zh: '持平' } } as Record<string, Record<Lang, string>>,
+  spikeItems: { en: 'Their items, and their kills of you before → from then on', zh: '他的装备，以及做出前 → 做出后击杀你的次数' },
+  spikeUlt: { en: 'Ultimate cooldown by level', zh: '大招各级冷却' },
   tempoCols: { en: ['Stretch', 'Buildings taken', 'Buildings lost', 'Team deaths', 'Enemy deaths'], zh: ['阶段', '拆掉建筑', '丢掉建筑', '己方阵亡', '对方阵亡'] },
   tempoWon: { en: 'Fights with fewer heroes lost', zh: '少死人的团战' },
   tempoLost: { en: 'Fights with more heroes lost', zh: '多死人的团战' },
@@ -375,6 +397,55 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           </table>
         </div>
         <p className="ag-rec-note">{t(T.timingAlone)}</p>
+      </div>
+    );
+  }
+  if (data.kind === 'build') {
+    const pc = (v: number) => `${Math.round(v * 100)}%`;
+    const why = (list: string[]) => (list.length ? list : ['not_classified']).map((p) => (T.purpose[p] ? t(T.purpose[p]) : pretty(p))).join(' · ');
+    const d = r.damage_in_my_deaths;
+    const answers = (list: any[]) => list.slice(0, 10).map((x: any) => <span key={x.item} className={`ag-chip ${x.player_first_held ? 'is-good' : ''}`}>{x.name} <em>{x.player_first_held ?? t(T.never)}</em></span>);
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-line"><span>{t(T.buildDamage)}</span><span className="ag-chip">{t(T.buildAttacks)} <em>{pc(d.share_from_enemy_attacks)}</em></span><span className="ag-chip">{t(T.buildSpells)} <em>{pc(d.share_from_enemy_abilities_and_items)}</em></span></p>
+        <p className="ag-rec-line">{d.by_enemy.slice(0, 5).map((e: any) => <span key={e.enemy} className="ag-chip is-enemy">{N(e.enemy)} · {e.kills_of_me} {t(T.buildKills)} <em>{t(T.buildAttacks)} {pc(e.share_from_their_attacks)} · {t(T.buildSpells)} {pc(e.share_from_their_abilities_and_items)}</em></span>)}</p>
+        {r.my_big_items_in_order.length > 0 && (
+          <div className="ag-lane-scroll">
+            <table className="ag-lane">
+              <caption className="ag-rec-sub">{t(T.buildItems)}</caption>
+              <thead><tr>{T.buildCols[lang].map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
+              <tbody>{r.my_big_items_in_order.map((i: any) => <tr key={i.item}><td>{i.first_held}</td><th scope="row">{i.name}</th><td>{i.cost ?? '–'}</td><td>{why(i.built_for)}</td></tr>)}</tbody>
+            </table>
+          </div>
+        )}
+        {r.items_that_answer_attack_damage.length > 0 && <p className="ag-rec-line"><span>{t(T.buildAnswers)}</span>{answers(r.items_that_answer_attack_damage)}</p>}
+        {r.items_that_answer_spell_damage.length > 0 && <p className="ag-rec-line"><span>{t(T.buildSpellAnswers)}</span>{answers(r.items_that_answer_spell_damage)}</p>}
+        {r.most_built_by_pros_on_this_hero && <><p className="ag-rec-sub">{t(T.buildPros)} · {r.most_built_by_pros_on_this_hero.pro_games}</p><ul className="ag-bars">{r.most_built_by_pros_on_this_hero.items.map((i: any) => <Bar key={i.item} label={`${i.name} · ${i.player_first_held ?? t(T.never)}`} value={Math.round(i.share_of_pro_games_with_it_by_24_59 * 100)} max={100} />)}</ul></>}
+        {(r.gap_closers.mine || r.gap_closers.enemies.length > 0) && <p className="ag-rec-line"><span>{t(T.buildGaps)}</span>{r.gap_closers.mine && <span className="ag-chip is-me">{t(T.buildYou)} · {r.gap_closers.mine.name} <em>{r.gap_closers.mine.first_held}</em></span>}{r.gap_closers.enemies.map((g: any) => <span key={g.enemy} className="ag-chip is-enemy">{N(g.enemy)} · {g.name} <em>{g.first_held}</em></span>)}</p>}
+      </div>
+    );
+  }
+  if (data.kind === 'spikes') {
+    const pc = (v: number) => `${(v * 100).toFixed(0)}%`;
+    const lv = (x: any, n: number) => x.reached?.[`level_${n}`] ?? '–';
+    return (
+      <div className="ag-rec">
+        <div className="ag-lane-scroll">
+          <table className="ag-lane">
+            <thead><tr>{T.spikeCols[lang].map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
+            <tbody>
+              <tr className={SIDE_CLASS.me ?? ''}><th scope="row">{N(r.hero)}</th><td>{lv(r.me, 6)}</td><td>{lv(r.me, 12)}</td><td>{lv(r.me, 18)}</td><td /><td /></tr>
+              {r.enemies.map((e: any) => { const m = e.my_hero_against_them_in_public_games; return (
+                <tr key={e.enemy} className={SIDE_CLASS.enemy ?? ''}><th scope="row">{N(e.enemy)}</th><td>{lv(e, 6)}</td><td>{lv(e, 12)}</td><td>{lv(e, 18)}</td><td>{e.kills_of_me_total}</td><td>{m ? `${pc(m.win_rate)} (${pc(m.my_hero_usually)}) · ${T.spikeMatchup[m.matchup] ? t(T.spikeMatchup[m.matchup]) : m.matchup}` : '–'}</td></tr>
+              ); })}
+            </tbody>
+          </table>
+        </div>
+        {r.me.ultimate?.cooldown_by_level && <p className="ag-rec-line"><span>{t(T.spikeUlt)}</span><span className="ag-chip">{r.me.ultimate.name} <em>{r.me.ultimate.cooldown_by_level.join(' / ')}</em></span></p>}
+        {r.me.big_items.length > 0 && <p className="ag-rec-line"><span>{t(T.buildYou)}</span>{r.me.big_items.map((i: any) => <span key={i.item} className="ag-chip is-me">{i.name} <em>{i.first_held}</em></span>)}</p>}
+        {r.enemies.filter((e: any) => e.kills_of_me_total > 0 && e.big_items.length > 0).slice(0, 2).map((e: any) => (
+          <p key={e.enemy} className="ag-rec-line"><span>{N(e.enemy)} · {t(T.spikeItems)}</span>{e.big_items.slice(0, 6).map((i: any) => <span key={i.item} className="ag-chip is-enemy">{i.name} <em>{i.first_held} · {i.kills_of_me_before} → {i.kills_of_me_from_then_on}</em></span>)}</p>
+        ))}
       </div>
     );
   }

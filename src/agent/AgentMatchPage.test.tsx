@@ -335,6 +335,55 @@ describe('AgentMatchPage', () => {
     expect(chip('3 / 4')).toBeTruthy();
   });
 
+  it('the build record: where the damage came from, each big item with what it is for, the answers held or not, the gap closers', async () => {
+    const build = { status: 'ok', ref: 'build:beastmaster', kind: 'build', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客', axe: '斧王' }, record: {
+      ref: 'build:beastmaster', hero: 'beastmaster', my_role: 'core', deaths_total: 11, killed_by: { phantom_assassin: 7 },
+      damage_in_my_deaths: { share_from_enemy_attacks: 0.44, share_from_enemy_abilities_and_items: 0.48, by_enemy: [{ enemy: 'phantom_assassin', kills_of_me: 7, share_from_their_attacks: 0.44, share_from_their_abilities_and_items: 0.16 }] },
+      my_big_items_in_order: [{ ref: 'item:beastmaster:ultimate_scepter', item: 'ultimate_scepter', name: '阿哈利姆神杖', first_held: '16:48', cost: 4200, built_for: [] }, { ref: 'item:beastmaster:pipe', item: 'pipe', name: '洞察烟斗', first_held: '29:08', cost: 3725, built_for: ['answer_to_spell_damage', 'magic_resistance'] }],
+      gold_in_big_items_by_purpose: {},
+      items_that_answer_attack_damage: [{ item: 'ghost', name: '幽魂权杖', player_first_held: null }, { item: 'assault', name: '强袭胸甲', player_first_held: '38:58' }],
+      items_that_answer_spell_damage: [],
+      most_built_by_pros_on_this_hero: { pro_games: 1116, window: 'finished between 10:00 and 24:59', items: [{ item: 'blink', name: '闪烁匕首', share_of_pro_games_with_it_by_24_59: 0.71, player_first_held: null, built_for: ['initiation_or_gap_closer'] }] },
+      gap_closers: { mine: null, enemies: [{ enemy: 'axe', item: 'blink', name: '闪烁匕首', first_held: '20:18' }] },
+    } };
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': build, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['build:beastmaster'], fact: '洞察烟斗 29:08 才出。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByRole('row', { name: '29:08 洞察烟斗 3725 应对技能伤害 · 魔法抗性' })).toBeTruthy();
+    // An item the data does not classify says so; it is not given a purpose.
+    expect(screen.getByRole('row', { name: '16:48 阿哈利姆神杖 4200 未分类' })).toBeTruthy();
+    expect(screen.getByText('阵亡前受到的伤害').parentElement!.textContent).toBe('阵亡前受到的伤害普攻 44%技能与物品 48%');
+    expect(screen.getByText('应对普攻伤害的装备').parentElement!.textContent).toBe('应对普攻伤害的装备幽魂权杖 从未持有强袭胸甲 38:58');
+    expect(screen.getByText('第一件位移装').parentElement!.textContent).toBe('第一件位移装斧王 · 闪烁匕首 20:18');
+    expect(stepLabel({ tool: 'build_check', args: { hero: 'beastmaster' } }, 'zh')).toBe('核对出装和致死伤害');
+  });
+
+  it('the strengths record: levels of both sides, the matchup with its numbers, an enemy\'s kills before and after each item', async () => {
+    const spikes = { status: 'ok', ref: 'spikes:beastmaster', kind: 'spikes', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客', axe: '斧王' }, record: {
+      ref: 'spikes:beastmaster', hero: 'beastmaster', kills_of_me: { phantom_assassin: 7 }, kills_of_me_before_their_item: {}, kills_of_me_from_their_item_on: {},
+      me: { reached: { level_6: '7:28', level_12: '18:39' }, ultimate: { ability: 'beastmaster_primal_roar', name: '原始咆哮', cooldown_by_level: [90, 75, 60] }, big_items: [{ item: 'pipe', name: '洞察烟斗', first_held: '29:08' }] },
+      enemies: [
+        { enemy: 'phantom_assassin', kills_of_me_total: 7, reached: { level_6: '6:14', level_12: '17:18', level_18: '25:31' }, big_items: [{ item: 'bfury', name: '狂战斧', first_held: '15:47', kills_of_me_before: 2, kills_of_me_from_then_on: 5 }], my_hero_against_them_in_public_games: { bracket: 'la', games: 800, win_rate: 0.44, my_hero_usually: 0.48, matchup: 'unfavoured' } },
+        { enemy: 'axe', kills_of_me_total: 0, reached: { level_6: '8:01' }, big_items: [{ item: 'blink', name: '闪烁匕首', first_held: '20:18', gap_closer: true }] },
+      ],
+      level_at: {},
+    } };
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': spikes, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['spikes:beastmaster'], fact: '幻影刺客 15:47 做出狂战斧。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    // A level not reached, and a matchup the data does not have, are dashes.
+    expect(await screen.findByRole('row', { name: '兽王 7:28 18:39 –' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '幻影刺客 6:14 17:18 25:31 7 44% (48%) · 吃亏' })).toBeTruthy();
+    expect(screen.getByRole('row', { name: '斧王 8:01 – – 0 –' })).toBeTruthy();
+    expect(screen.getByText('大招各级冷却').parentElement!.textContent).toBe('大招各级冷却原始咆哮 90 / 75 / 60');
+    // Only for an enemy who killed the player: their items with the kills before → from then on.
+    expect(screen.getByText('狂战斧').textContent).toBe('狂战斧 15:47 · 2 → 5');
+    expect(screen.queryByText(/闪烁匕首 20:18/)).toBeNull();
+    expect(stepLabel({ tool: 'power_spikes', args: { hero: 'beastmaster' } }, 'zh')).toBe('看双方的强势期');
+  });
+
   it('line-up timing is a table of each hero\'s win rate by game length, with this game\'s column marked', async () => {
     const hero = (h: string, a: number | null, b: number | null, c: number | null, lean: string | null) => ({ hero: h, games: 1000, win_rate: 0.5, win_rate_under_35_min: a, win_rate_from_35_to_45_min: b, win_rate_over_45_min: c, change_from_short_to_long_games_in_points: -8.8, wins_more_in: lean });
     const timing = { status: 'ok', ref: 'lineup_timing', kind: 'lineup_timing', names: { sven: '斯温', beastmaster: '兽王', phantom_assassin: '幻影刺客' }, record: {
@@ -428,7 +477,7 @@ describe('AgentMatchPage', () => {
   });
 
   it('the game plan is its own section; a plan the reader picks is one question to the coach, without the moment pinned for another', async () => {
-    const game_plan = { course: 'Your team took 3 outer towers from 18:07 to 19:46.', your_part: 'You were at 15 of the 16 fights.', line_ups: 'Sven wins more in shorter public games.', main_reason: 'team_play', why: 'The team did not turn fights into towers.', evidence: [{ refs: ['phase:beastmaster:3'], clock: '20:00', fact: 'The enemy took 3 towers.' }] };
+    const game_plan = { course: 'Your team took 3 outer towers from 18:07 to 19:46.', your_part: 'You were at 15 of the 16 fights.', line_ups: 'Sven wins more in shorter public games.', strengths: 'Phantom Assassin had Battle Fury at 15:47 and killed you 5 times after it.', main_reason: 'team_play', why: 'The team did not turn fights into towers.', evidence: [{ refs: ['phase:beastmaster:3'], clock: '20:00', fact: 'The enemy took 3 towers.' }] };
     const calls = mockFetch({
       '/chat': () => sse([{ step: { tool: 'tempo_report', args: { hero: 'beastmaster' } } }, { text: 'Your play fit the plan.', unverified: [] }, { done: true }]),
       'ref=overview': overview,
@@ -442,6 +491,7 @@ describe('AgentMatchPage', () => {
     expect(plan.getByText('How it went').nextElementSibling!.textContent).toBe(game_plan.course);
     expect(plan.getByText('Your part').nextElementSibling!.textContent).toBe(game_plan.your_part);
     expect(plan.getByText('The line-ups').nextElementSibling!.textContent).toBe(game_plan.line_ups);
+    expect(plan.getByText('What you were up against').nextElementSibling!.textContent).toBe(game_plan.strengths);
     expect(plan.getByText('Mostly the team, not you').parentElement!.textContent).toBe('Mostly the team, not youThe team did not turn fights into towers.');
     // Its evidence opens like a finding's.
     expect(plan.getByText('The enemy took 3 towers.')).toBeTruthy();
