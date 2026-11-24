@@ -228,7 +228,7 @@ describe('the agent has the tools and is told how to read them', () => {
   it('the calibration script reproduces its table from a directory of traces', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fights-'));
     copyFileSync(FIXTURE, join(dir, '9100904020.trace.json.gz'));
-    const out = JSON.parse(execFileSync('node', ['scripts/fight-calibration.mjs', dir, '--json'], { encoding: 'utf8' }));
+    const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
     expect(out.games).toBe(1);
     // Read once, from Radiant: the fights with a winner, and of those the ones a side brought more heroes to.
     const fights = (fightReport(trace, { hero: 'axe' }) as any).fights.filter((f: any) => f.lost_fewer_heroes !== 'even');

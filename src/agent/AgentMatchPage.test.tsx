@@ -318,6 +318,56 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/dire_bot_lane|none_of_these|tp_ready/)).toBeNull();
   });
 
+  it('the totals of pushes and of fights are labelled in the reader\'s language, never as field names (review of #302)', async () => {
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    const cites = (ref: string) => ({ status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: [ref], fact: '对方推了 19 次。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 });
+    const sieges = { status: 'ok', ref: 'sieges:beastmaster', kind: 'sieges', names: { beastmaster: '兽王' }, record: {
+      ref: 'sieges:beastmaster', ref_scope: 'summary', hero: 'beastmaster', my_team_pushes: 5, my_team_pushes_that_took_it: 4, enemy_pushes: 19, enemy_pushes_that_took_it: 17,
+      pushes_with_two_or_more_hitting_than_near: { pushes: 12, took_it: 9 }, pushes_with_at_most_one_more_hitting_than_near: { pushes: 12, took_it: 12 }, my_team_pushes_i_hit: 3, my_buildings_taken_with_me_not_near: 14,
+    } };
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': sieges, '/review?': cites('sieges:beastmaster'), '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '对方推塔 19')).toBeTruthy();
+    expect(chip('打塔人数比守方多 2 人及以上 · 被拆 9')).toBeTruthy();
+    expect(chip('己方丢塔时你不在附近 14')).toBeTruthy();
+    expect(screen.queryByText(/my team|pushes that|took it|with me/)).toBeNull();
+    cleanup();
+
+    const fights = { status: 'ok', ref: 'fights:beastmaster', kind: 'fights', names: { beastmaster: '兽王' }, record: {
+      ref: 'fights:beastmaster', ref_scope: 'summary', hero: 'beastmaster', fights_total: 16, fights_my_team_lost_fewer: 6, fights_enemy_lost_fewer: 9, fights_with_more_of_my_team: 5, fights_with_more_of_the_enemy: 2,
+      fights_the_side_with_more_heroes_lost_fewer: { fights_with_unequal_numbers: 7, the_side_with_more_lost_fewer: 3 }, fights_i_took_part_in: 16,
+    } };
+    mockFetch({ 'ref=overview': overview, '/evidence?': fights, '/review?': cites('fights:beastmaster'), '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '团战 16')).toBeTruthy();
+    expect(chip('人数不等的团战 · 人多一方少死人 3')).toBeTruthy();
+    expect(screen.queryByText(/fights total|lost fewer|took part/)).toBeNull();
+  });
+
+  it('a push is shown as who hit the building, which owners were near, whether it fell, and where the rest were', async () => {
+    const push = { status: 'ok', ref: 'sieges:beastmaster:5', kind: 'sieges', names: { phantom_assassin: '幻影刺客', sven: '斯温', beastmaster: '兽王', axe: '斧王', dire_top_lane: '夜魇上路', radiant_bot_jungle: '天辉下路野区' }, record: {
+      ref: 'sieges:beastmaster:5', building: 'badguys_tower1_mid', clock: '19:59', until: '20:01', pushed_by: 'enemy', took_it: true, fell_at: '20:02',
+      hitting: ['phantom_assassin'], owners_near: [], hitting_minus_owners_near: 1, me: 'not_near',
+      pushing_side_not_hitting: [{ hero: 'axe', place: 'radiant_bot_jungle', distance: 5356, tp_ready: false }],
+      owners_not_near: [{ hero: 'sven', place: 'dire_top_lane', distance: 8297, tp_ready: true }, { hero: 'beastmaster', doing: 'dead', respawn_in: 20 }],
+    } };
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': push, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['sieges:beastmaster:5'], fact: '20:02 中路一塔被拆。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText(/中路 1 塔 · 对方推/)).toBeTruthy();
+    expect(chip('被拆 20:02')).toBeTruthy();
+    expect(chip('你不在附近')).toBeTruthy();
+    expect(chip('斯温 · 夜魇上路8297 码外TP 可用')).toBeTruthy();
+    expect(chip('兽王 · 阵亡复活还要 20秒')).toBeTruthy();
+    expect(chip('斧王 · 天辉下路野区5356 码外TP 冷却中')).toBeTruthy();
+    expect(screen.queryByText(/badguys_tower|dire_top_lane|owners_near/)).toBeNull();
+  });
+
   it('a moment is shown as all ten heroes: where, doing what, and what was ready (review of #296)', async () => {
     const h = (hero: string, extra: any) => ({ hero, alive: true, place: 'dire_bot_lane', doing: 'none_of_these', level: 16, hp_pct: 100, mana: 800, tp_ready: null, black_king_bar_ready: null, ...extra });
     const state = { status: 'ok', ref: 'state:beastmaster:1510', kind: 'state', names: { beastmaster: '兽王', sven: '斯温', axe: '斧王', dire_bot_lane: '夜魇下路', radiant_top_lane: '天辉上路' }, record: {

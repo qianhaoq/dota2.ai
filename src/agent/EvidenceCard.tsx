@@ -103,6 +103,11 @@ const T = {
     hitting_enemy_buildings: { en: 'hitting a building', zh: '在打建筑' }, none_of_these: { en: '', zh: '' },
   } as Record<string, Record<Lang, string>>,
   why: { cooldown: { en: 'cooldown', zh: '冷却' }, mana: { en: 'no mana', zh: '缺蓝' }, not_learned: { en: 'not learned', zh: '未学' } } as Record<string, Record<Lang, string>>,
+  pushedBy: { my_team: { en: 'Your team pushed', zh: '我方推' }, enemy: { en: 'They pushed', zh: '对方推' } } as Record<string, Record<Lang, string>>,
+  tookIt: { en: 'fell', zh: '被拆' }, stood: { en: 'stood', zh: '没拆掉' },
+  hitting: { en: 'Hitting it', zh: '打建筑' }, ownersNear: { en: 'Owners near', zh: '守方在附近' },
+  pushOthers: { en: 'Rest of the pushing side', zh: '推塔方其余' }, ownersAway: { en: 'Owners not near', zh: '守方不在附近' },
+  meAt: { hitting: { en: 'you hit it', zh: '你在打' }, near: { en: 'you were near', zh: '你在附近' }, not_hitting: { en: 'you did not hit it', zh: '你没打塔' }, not_near: { en: 'you were not near', zh: '你不在附近' } } as Record<string, Record<Lang, string>>,
   stateCols: { en: ['Hero', 'Where / doing', 'Lv', 'HP', 'Ultimate', 'BKB', 'TP'], zh: ['英雄', '位置 / 在做', '等级', '血量', '大招', 'BKB', 'TP'] },
   tempoLost: { en: 'Fights with more heroes lost', zh: '多死人的团战' },
   tempoThen: { en: 'a building within 2 min after', zh: '之后两分钟内拆到建筑' },
@@ -204,6 +209,27 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   enemy_hero_target_alive_12s_later: { en: 'Casts whose target was alive 12 s later', zh: '放出 12 秒后目标仍存活' },
   no_hero_target_and_at_most_one_enemy_hero_damaged: { en: 'Casts that damaged at most one enemy hero', zh: '至多只伤到一名敌方英雄' },
   nothing_cast_and_no_item_used: { en: 'Deaths with nothing cast or used', zh: '什么都没按就阵亡' },
+  // fight_report's totals (fights:<hero>).
+  fights_total: { en: 'Fights', zh: '团战' },
+  fights_my_team_lost_fewer: { en: 'Your team lost fewer heroes', zh: '我方少死人' },
+  fights_enemy_lost_fewer: { en: 'Enemy lost fewer heroes', zh: '对方少死人' },
+  fights_with_more_of_my_team: { en: 'Your team brought more heroes', zh: '我方参战人数更多' },
+  fights_with_more_of_the_enemy: { en: 'Enemy brought more heroes', zh: '对方参战人数更多' },
+  fights_the_side_with_more_heroes_lost_fewer: { en: 'Fights one side brought more heroes to', zh: '人数不等的团战' },
+  fights_i_took_part_in: { en: 'Fights you took part in', zh: '你参战的团战' },
+  fights_with_unequal_numbers: { en: 'fights', zh: '场数' },
+  the_side_with_more_lost_fewer: { en: 'the side with more lost fewer', zh: '人多一方少死人' },
+  // siege_report's totals (sieges:<hero>).
+  my_team_pushes: { en: 'Your team\'s pushes', zh: '我方推塔' },
+  my_team_pushes_that_took_it: { en: 'Your pushes that took the building', zh: '我方推掉的' },
+  enemy_pushes: { en: 'Enemy pushes', zh: '对方推塔' },
+  enemy_pushes_that_took_it: { en: 'Enemy pushes that took it', zh: '对方推掉的' },
+  pushes_with_two_or_more_hitting_than_near: { en: 'Pushes with 2+ more hitting than owners near', zh: '打塔人数比守方多 2 人及以上' },
+  pushes_with_at_most_one_more_hitting_than_near: { en: 'Pushes with at most 1 more hitting', zh: '打塔人数最多多 1 人' },
+  pushes: { en: 'pushes', zh: '次数' },
+  took_it: { en: 'fell', zh: '被拆' },
+  my_team_pushes_i_hit: { en: 'Your pushes you hit', zh: '我方推塔你出手的' },
+  my_buildings_taken_with_me_not_near: { en: 'Your buildings lost with you not near', zh: '己方丢塔时你不在附近' },
 };
 
 const pretty = (key: string) => key.replace(/^modifier_/, '').replace(/^item_/, '').replace(/_/g, ' ');
@@ -492,6 +518,24 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.my_team_gold_lead != null && <p className="ag-rec-line"><span>{t(T.gold)}</span><span className="ag-chip">{r.my_team_gold_lead}</span></p>}
         {side(r.my_team, 'is-ally', t(T.mine))}
         {side(r.enemy, 'is-enemy', t(T.theirs))}
+      </div>
+    );
+  }
+  if (data.kind === 'sieges' && r.building) {
+    const row = (h: any) => <span key={h.hero} className="ag-chip">{N(h.hero)}{doingOf(h) && ` · ${doingOf(h)}`}{h.distance != null && <em>{h.distance} {t(T.away)}</em>}{h.respawn_in != null && <em>{t(T.respawn)} {h.respawn_in}{t(T.sec)}</em>}{h.tp_ready != null && <em>{t(T.tp[String(h.tp_ready)])}</em>}</span>;
+    const list = (heroes: string[], cls: string) => (heroes.length ? heroes.map((h) => <span key={h} className={`ag-chip ${cls}`}>{N(h)}</span>) : <span className="ag-none">{t(T.nobody)}</span>);
+    const mine = r.pushed_by === 'my_team';
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}–{r.until}</b> · {buildingLabel(r.building, lang)} · {t(T.pushedBy[r.pushed_by])}</p>
+        <p className="ag-rec-line">
+          <span className={`ag-chip ${r.took_it ? (mine ? 'is-good' : 'is-warn') : ''}`}>{r.took_it ? `${t(T.tookIt)} ${r.fell_at}` : t(T.stood)}</span>
+          {T.meAt[r.me] && <span className="ag-chip is-me">{t(T.meAt[r.me])}</span>}
+        </p>
+        <p className="ag-rec-line"><span>{t(T.hitting)} {r.hitting.length}</span>{list(r.hitting, mine ? 'is-ally' : 'is-enemy')}</p>
+        <p className="ag-rec-line"><span>{t(T.ownersNear)} {r.owners_near.length}</span>{list(r.owners_near, mine ? 'is-enemy' : 'is-ally')}</p>
+        {r.owners_not_near.length > 0 && <p className="ag-rec-line"><span>{t(T.ownersAway)}</span>{r.owners_not_near.map(row)}</p>}
+        {r.pushing_side_not_hitting.length > 0 && <p className="ag-rec-line"><span>{t(T.pushOthers)}</span>{r.pushing_side_not_hitting.map(row)}</p>}
       </div>
     );
   }
