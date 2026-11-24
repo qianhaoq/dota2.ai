@@ -343,7 +343,7 @@ export const AgentMatchPage: React.FC = () => {
       )}
     </header>
   );
-  const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} />;
+  const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} replayLead={avail?.trace ? avail.radiant_net_worth_lead ?? null : null} />;
   const dead = (title: Bi, body: Bi, retry = false) => (
     <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={go}>{t(T.retry)}</button>}{notice && <p className="ag-warn" role="alert">{notice}</p>}</div>{scoreboard}</Shell>
   );

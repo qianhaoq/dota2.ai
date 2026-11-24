@@ -4,7 +4,11 @@ import type { GoalSpec } from '../coach/types';
 export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string }
 /** Where the replay parse stands when there is no trace yet. `final`: trying again will not help (the replay is gone). */
 export type ParseState = { status: 'none' } | { status: 'running'; stage: string | null } | { status: 'failed'; reason: string; final: boolean } | { status: 'ready' } | { status: 'unavailable' };
-export interface Availability { trace: boolean; model_configured: boolean; can_parse: boolean; heroes: AgentHero[]; parse?: ParseState }
+export interface Availability {
+  trace: boolean; model_configured: boolean; can_parse: boolean; heroes: AgentHero[]; parse?: ParseState;
+  /** Radiant's net worth lead per game minute, from the replay itself (absent when the trace has no net worth graph). */
+  radiant_net_worth_lead?: number[];
+}
 
 export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
 /** The one rule a finding sends into the next game: a situation the player can see, one action, and how often it came up this game. */
