@@ -82,6 +82,18 @@ describe('decision_points: what each side did with the fights it won', () => {
     expect(before.buildings_winners_took).toEqual([]);
     expect(before.losers_took_back).toEqual([]);
     expect(before.winners_did).not.toBe('took_a_building');
+    // A push on a building its owners then denied did not take it either.
+    const t2 = JSON.parse(JSON.stringify(trace));
+    const f8 = matchFights(t2)[7];
+    const rows = t2.buildings.filter((b: any) => b[0] >= f8.from && b[0] <= f8.to + 120 && /goodguys|badguys/.test(t2.names[b[1]]));
+    expect(rows.length).toBeGreaterThan(0);
+    {
+      // Every building that fell in the window, destroyed by its own side.
+      for (const r of rows) r[2] = /goodguys/.test(t2.names[r[1]]) ? 2 : 3;
+      const p8 = (decisionPoints(t2, { hero: 'axe' }) as any).points.find((x: any) => x.fight === 'fight:8');
+      expect(p8.buildings_winners_took).toEqual([]);
+      for (const q of p8.pushes) expect(q.took_it).toBe(false);
+    }
   });
 
   it('refs resolve; one moment\'s facts need its own ref; the model gets the tool and the rule', () => {
