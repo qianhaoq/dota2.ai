@@ -66,9 +66,11 @@ describe('build_for_plan on a real game', () => {
 
   it('an item is classified only by the text of this game\'s patch (review of #284)', () => {
     // Desolator's "Armor reduction works on buildings." is 7.42's text; 7.41's says otherwise.
-    const older = { ...match, patch: 60 };
+    // A game of 7.41f: OpenDota's patch 60 and a start time in 7.41f (match 9091400302's). The start time decides the
+    // release, so it must agree with the patch number: a 7.42 start time would place the game in 7.42.
+    const older = { ...match, patch: 60, start_time: 1794747997 };
     const r: any = buildForPlan(trace, { hero: 'phantom_assassin', plan: 'push' }, { match: older });
-    expect(r.data_patch).toBe('7.41');
+    expect(r.data_patch).toBe('7.41f');
     expect(r.items.find((i: any) => i.item === 'desolator')).toMatchObject({ serves: [], effect_text_differs_in_this_patch: true });
     expect(r.items.find((i: any) => i.item === 'desolator')).not.toHaveProperty('valve_says');
     expect(r.stated_plan).toMatchObject({ first_item_for_it: null });
