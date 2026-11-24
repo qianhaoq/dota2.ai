@@ -324,6 +324,14 @@ describe('net worth from the replay\'s match metadata', () => {
     expect(goldAdvantage(tr, {})).toEqual([0, 50]);
   });
 
+  it('a metadata player with no hero name is matched by player id and team (9016476539 names no hero)', () => {
+    const tr = built([{ players: [{ dota_team: 2, game_player_id: 0, hero_key: null, graph_net_worth: [60, 70] }, { dota_team: 3, game_player_id: 5, hero_key: null, graph_net_worth: [60, 64] }] }]);
+    expect(tr.net_worth).toEqual([[600, 700], [600, 640]]);
+    expect(goldAdvantage(tr, {})).toEqual([0, 60]);
+    // The id on the other team is someone else: no graph.
+    expect(built([{ players: [{ dota_team: 3, game_player_id: 0, hero_key: null, graph_net_worth: [60, 70] }] }]).net_worth).toEqual([null, null]);
+  });
+
   it('a hero the metadata does not name has no graph, and then there is no team lead', () => {
     const tr = built([{ players: [{ dota_team: 2, hero_key: 'npc_dota_hero_axe', graph_net_worth: [60, 70] }, { dota_team: 3, hero_key: null, graph_net_worth: [60, 70] }] }]);
     expect(tr.net_worth).toEqual([[600, 700], null]);
