@@ -24,6 +24,12 @@ export const isFreshId = (id) => Number(id) >= 9100904100 && Number(id) <= 91009
 export const AGENT_GONE = 8000000001;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// The pro numbers the scripted finding quotes, read from the same snapshot the pro_item_choices tool answers
+// from (Beastmaster is hero 38; shares rounded as the tool rounds them), so a data refresh never leaves the
+// script quoting last week's sample and the verifier removing the finding.
+const PRO_BM = JSON.parse(readFileSync(new URL('../lib/coach/data/hero-items.json', import.meta.url), 'utf8')).heroes['38'];
+const proShare = (key) => Math.round((PRO_BM.items.find((i) => i.key === key).n / PRO_BM.games) * 100) / 100;
 const call = (name, args, id) => ({ id, name, args });
 
 /** The review the scripted model hands in. Every time and number is in the tool results it asked for. */
@@ -46,7 +52,7 @@ export const MOCK_REVIEW = {
       {
         title: '没有跳刀也没有黑皇杖',
         claim: '职业比赛里兽王最常出的两件装备，你这局一件都没有。',
-        evidence: [{ refs: ['pro_items:beastmaster'], fact: '1108 场职业比赛里，闪烁匕首的比例是 0.71，黑皇杖是 0.37；你从未持有。' }],
+        evidence: [{ refs: ['pro_items:beastmaster'], fact: `${PRO_BM.games} 场职业比赛里，闪烁匕首的比例是 ${proShare('blink')}，黑皇杖是 ${proShare('black_king_bar')}；你从未持有。` }],
         fix: '神杖之后先补闪烁匕首或黑皇杖。',
       },
     ],
@@ -73,7 +79,7 @@ export const MOCK_REVIEW = {
       {
         title: 'No Blink Dagger, no Black King Bar',
         claim: 'The two items professionals build most on Beastmaster: you held neither.',
-        evidence: [{ refs: ['pro_items:beastmaster'], fact: 'In 1108 professional games the share with Blink Dagger is 0.71 and with Black King Bar 0.37; you never held either.' }],
+        evidence: [{ refs: ['pro_items:beastmaster'], fact: `In ${PRO_BM.games} professional games the share with Blink Dagger is ${proShare('blink')} and with Black King Bar ${proShare('black_king_bar')}; you never held either.` }],
         fix: 'After Aghanim\'s, Blink Dagger or Black King Bar comes first.',
       },
     ],
