@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { buildCheck, powerSpikes, SITUATION_TOOLS } from '../../lib/agent/situationTools.js';
+import { buildCheck, goldOnTop, powerSpikes, SITUATION_TOOLS } from '../../lib/agent/situationTools.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, collectFacts, deepReviewSystem, planOf, reviewToolkit, verifyReview, wordingProblems } from '../../lib/agent/deepReview.js';
@@ -52,6 +52,13 @@ describe('build_check: the build against what killed the player', () => {
     const basher = pa.my_big_items_in_order.find((i: any) => i.item === 'basher'); const abyssal = pa.my_big_items_in_order.find((i: any) => i.item === 'abyssal_blade');
     expect(basher).not.toHaveProperty('gold_on_top_of_items_already_held');
     expect(abyssal).toMatchObject({ cost: items.abyssal_blade.cost, gold_on_top_of_items_already_held: items.abyssal_blade.cost - items.basher.cost });
+    // A chain: the three add up to the last one's price, with nothing charged twice and nothing left out.
+    const chain = goldOnTop(['kaya', 'meteor_hammer', 'starforge']);
+    expect(chain).toEqual([null, items.meteor_hammer.cost - items.kaya.cost, items.starforge.cost - items.meteor_hammer.cost]);
+    expect(items.kaya.cost + chain[1]! + chain[2]!).toBe(items.starforge.cost);
+    // Two separate parts both count; an unrelated item, or the part bought after, does not.
+    expect(goldOnTop(['heavens_halberd', 'sange', 'skypiercer'])).toEqual([null, null, items.skypiercer.cost - items.heavens_halberd.cost - items.sange.cost]);
+    expect(goldOnTop(['arcane_blink', 'blink', 'black_king_bar'])).toEqual([null, null, null]);
     const spent = Object.values(pa.gold_in_big_items_by_purpose as Record<string, { gold: number; items: string[] }>).filter((v) => v.items.includes('Abyssal Blade') && v.items.includes('Skull Basher'));
     for (const v of spent) expect(v.gold).toBeLessThan(pa.my_big_items_in_order.filter((i: any) => v.items.includes(i.name)).reduce((a: number, i: any) => a + i.cost, 0));
   });
