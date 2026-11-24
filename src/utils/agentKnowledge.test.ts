@@ -41,7 +41,7 @@ describe('knowledge tools', () => {
   });
 
   it('registers both with a required hero', () => {
-    expect(KNOWLEDGE_TOOLS.map((t) => [t.name, t.input_schema.required])).toEqual([['hero_abilities', ['hero']], ['pro_item_choices', ['hero']], ['lane_report', ['hero']], ['lineup_timing', undefined], ['window_report', ['hero']], ['build_for_plan', ['hero']], ['farm_report', ['hero']], ['build_check', ['hero']], ['power_spikes', ['hero']], ['fight_report', ['hero']], ['game_state', ['hero', 'at']]]);
+    expect(KNOWLEDGE_TOOLS.map((t) => [t.name, t.input_schema.required])).toEqual([['hero_abilities', ['hero']], ['pro_item_choices', ['hero']], ['lane_report', ['hero']], ['lineup_timing', undefined], ['window_report', ['hero']], ['build_for_plan', ['hero']], ['farm_report', ['hero']], ['build_check', ['hero']], ['power_spikes', ['hero']], ['fight_report', ['hero']], ['game_state', ['hero', 'at']], ['siege_report', ['hero']]]);
   });
 });
 

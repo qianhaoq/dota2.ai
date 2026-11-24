@@ -149,3 +149,50 @@ export function fightParticipation(trace, fight) {
   const at = spots.length ? { x: Math.round(spots.reduce((n, p) => n + p.x, 0) / spots.length), y: Math.round(spots.reduce((n, p) => n + p.y, 0) / spots.length) } : null;
   return { took_part: took, engaged_at: engagedAt ?? Math.floor(fight.from), at, victims };
 }
+
+/** Hits on one building more than this many seconds apart are two pushes. */
+export const SIEGE_GAP = 30;
+/** A push is at least this many hero-seconds of damage to the building. */
+export const SIEGE_MIN_HITS = 3;
+/** The owners' heroes this close to where the hitters stood are counted as near the building. */
+export const SIEGE_NEAR = 1800;
+const OBJECTIVE = /_(tower\d|melee_rax|range_rax|fort)(_(top|mid|bot))?$/;
+
+/**
+ * Every push on a building: enemy heroes damaging it, hits no more than SIEGE_GAP seconds apart, at least
+ * SIEGE_MIN_HITS hero-seconds. For each: { building (name id), owner team, from, to, hitters (hero indexes),
+ * near (owners' heroes alive within SIEGE_NEAR of where the hitters stood, at any second of it), spot, fell_at }.
+ * `fell_at` is the building's death when it came during the push or within 15 s after; null when it stood.
+ * Two towers beside each Ancient share one name: their damage cannot be told apart (`same_name`).
+ */
+export function sieges(trace) {
+  const by = new Map();
+  for (const [sec, a, target] of trace.damage ?? []) {
+    const name = trace.names[target];
+    if (!name || !OBJECTIVE.test(name)) continue;
+    const owner = teamOfBuilding(name); const ah = heroOfName(trace, a);
+    if (!owner || ah < 0 || trace.heroes[ah].team === owner) continue;
+    let l = by.get(target); if (!l) by.set(target, (l = [])); l.push([sec, ah]);
+  }
+  const out = [];
+  for (const [target, hits] of by) {
+    const name = trace.names[target]; const owner = teamOfBuilding(name);
+    const deaths = (trace.buildings ?? []).filter((b) => b[1] === target).map((b) => b[0]);
+    hits.sort((x, y) => x[0] - y[0]);
+    const runs = [];
+    for (const h of hits) { const l = runs.at(-1); if (l && h[0] - l.to <= SIEGE_GAP) { l.to = h[0]; l.hits.push(h); } else runs.push({ from: h[0], to: h[0], hits: [h] }); }
+    for (const r of runs) {
+      if (r.hits.length < SIEGE_MIN_HITS) continue;
+      const pts = r.hits.map(([s, h]) => stateAt(trace, h, s)).filter(Boolean);
+      if (!pts.length) continue;
+      const spot = { x: Math.round(pts.reduce((n, p) => n + p.x, 0) / pts.length), y: Math.round(pts.reduce((n, p) => n + p.y, 0) / pts.length) };
+      const near = new Set();
+      for (let s = Math.floor(r.from); s <= Math.ceil(r.to); s += 1) {
+        trace.heroes.forEach((h, i) => { if (h.team !== owner || near.has(i)) return; const st = stateAt(trace, i, s); if (st?.alive && dist(st, spot) <= SIEGE_NEAR) near.add(i); });
+      }
+      const fell = deaths.find((d) => d >= r.from - 1 && d <= r.to + 15);
+      out.push({ building: target, name, owner, from: r.from, to: r.to, hitters: [...new Set(r.hits.map((h) => h[1]))], near: [...near], spot, fell_at: fell ?? null, same_name: /_tower4$/.test(name) });
+    }
+  }
+  return out.sort((x, y) => x.from - y.from);
+}

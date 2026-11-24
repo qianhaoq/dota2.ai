@@ -218,7 +218,7 @@ describe('the agent has the tools and is told how to read them', () => {
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['fight_report', 'game_state']));
     expect(kit.runTool('fight_report', { hero: 'beastmaster' }).fights_total).toBe(16);
-    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(23);
+    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(24);
     const review = deepReviewSystem('zh');
     expect(review).toContain('fight_report for the player first');
     expect(review).toMatch(/never that they refused, ignored the call or were farming/);
@@ -228,7 +228,7 @@ describe('the agent has the tools and is told how to read them', () => {
   it('the calibration script reproduces its table from a directory of traces', () => {
     const dir = mkdtempSync(join(tmpdir(), 'fights-'));
     copyFileSync(FIXTURE, join(dir, '9100904020.trace.json.gz'));
-    const out = JSON.parse(execFileSync('node', ['scripts/fight-calibration.mjs', dir, '--json'], { encoding: 'utf8' }));
+    const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
     expect(out.games).toBe(1);
     // Read once, from Radiant: the fights with a winner, and of those the ones a side brought more heroes to.
     const fights = (fightReport(trace, { hero: 'axe' }) as any).fights.filter((f: any) => f.lost_fewer_heroes !== 'even');
