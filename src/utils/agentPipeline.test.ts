@@ -342,7 +342,7 @@ describe('parse jobs in the service', () => {
     const dir = mkdtempSync(join(root, 'extract-'));
     mkdirSync(join(dir, 'trace'));
     const st = (t: number, hero: string, team: number) => JSON.stringify({ entity_kind: 'real_hero', t, hero, team, player_index: team === 2 ? 0 : 5, x: 0, y: 0, hp: 1, max_hp: 1, mana: 0, level: 1, life_state: 0, abilities: [], items: [], controls: {} });
-    writeFileSync(join(dir, 'trace', 'states.jsonl'), [st(0, 'axe', 2), st(0, 'lina', 3)].join('\n'));
+    writeFileSync(join(dir, 'trace', 'states.jsonl'), [st(0, 'axe', 2), st(0, 'lina', 3), st(75, 'axe', 2), st(75, 'lina', 3)].join('\n'));
     writeFileSync(join(dir, 'trace', 'events.jsonl'), '');
     writeFileSync(join(dir, 'trace', 'metadata.jsonl'), JSON.stringify({ players: [{ dota_team: 2, hero_key: 'npc_dota_hero_axe', graph_net_worth: [60, 80] }, { dota_team: 3, hero_key: 'npc_dota_hero_lina', graph_net_worth: [60, 70] }] }));
     const built: any = await buildTraceFromExtract(dir, { match_id: ID });

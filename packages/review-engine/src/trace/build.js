@@ -21,7 +21,10 @@
  * - each hero's net worth once a game minute, from the replay's match metadata
  *   (`trace/metadata.jsonl`, `graph_net_worth`). The graph stores net worth
  *   divided by ten: it is multiplied back only when its first point is a
- *   starting purse (NET_WORTH_START), else left out. Net worth, not gold earned;
+ *   starting purse (NET_WORTH_START), else left out. A point is read as one
+ *   game minute only when the graph is not denser than that: some replays'
+ *   graphs hold about two points a minute (9080127650: 63 for 31:47), and
+ *   then nothing is kept and `gaps` says why. Net worth, not gold earned;
  *   which second of a minute a point was taken is not recorded.
  *
  * What the extractor does not have stays absent (see `gaps`): fog of war,
@@ -224,6 +227,9 @@ export function createTraceBuilder() {
       const n = Number.isFinite(lastT) ? Math.round(lastT) - t0 + 1 : 0;
       const closeAll = (entries, t) => { for (const e of entries) { if (e.cdState) track(e.cd, e.cdState, false, t); if (e.heldState) track(e.held, e.heldState, false, t); if (e.state) track(e.list, e.state, false, t); } };
       const cols = ['x', 'y', 'hp', 'max_hp', 'mana', 'level', 'alive'];
+      // One point a game minute at most (0:00 … the last full minute): a denser graph's points are not minutes.
+      const minutes = Number.isFinite(lastT) && lastT > 0 ? Math.floor(lastT / 60) + 1 : 0;
+      const perMinute = netWorth.size > 0 && [...netWorth.values()].every((g) => g.length <= minutes);
       const out = {
         schema: TRACE_SCHEMA,
         match_id: meta.match_id ?? null,
@@ -249,7 +255,7 @@ export function createTraceBuilder() {
         modifiers,
         damage: [...damage].map(([k, v]) => [...k.split('|').map(Number), Math.round(v)]),
         // Per hero, in hero order: net worth at 0:00, 1:00, 2:00 … (null for a hero the metadata did not name).
-        ...(netWorth.size ? { net_worth: list.map((h) => netWorth.get(h.key) ?? null) } : {}),
+        ...(perMinute ? { net_worth: list.map((h) => netWorth.get(h.key) ?? null) } : {}),
         source: { state_rows: stateRows, event_rows: eventRows, sample_hz: 1, extractor: meta.extractor ?? null },
         gaps: [
           { topic: 'vision', reason: 'no_fog_of_war_in_trace' },
@@ -257,6 +263,7 @@ export function createTraceBuilder() {
           { topic: 'roshan', reason: 'no_reliable_roshan_event' },
           { topic: 'ability_immunity', reason: 'only_item_spell_immunity_modifiers_tracked' },
           { topic: 'unused_free_abilities', reason: 'an_ability_never_cast_with_no_mana_cost_cannot_be_told_from_a_passive' },
+          ...(netWorth.size && !perMinute ? [{ topic: 'net_worth', reason: 'metadata_graph_denser_than_one_point_a_minute' }] : []),
         ],
       };
       return out;

@@ -278,7 +278,8 @@ describe('net worth from the replay\'s match metadata', () => {
   const state = (t, hero, team) => ({ entity_kind: 'real_hero', t, hero, team, player_index: team === 2 ? 0 : 5, x: 0, y: 0, hp: 500, max_hp: 600, mana: 100, level: 1, life_state: 0, abilities: [], items: [], controls: {} });
   const built = (metadataRows) => {
     const b = createTraceBuilder();
-    for (const t of [0, 1]) { b.addState(state(t, 'axe', 2)); b.addState(state(t, 'lina', 3)); }
+    // A game of 2:30: points for 0:00, 1:00 and 2:00 at most.
+    for (const t of [0, 1, 150]) { b.addState(state(t, 'axe', 2)); b.addState(state(t, 'lina', 3)); }
     for (const row of metadataRows) b.addMetadata(row);
     return b.finish({ match_id: 7 });
   };
@@ -299,6 +300,17 @@ describe('net worth from the replay\'s match metadata', () => {
     expect(goldAdvantage(tr, {})).toBeNull();
     // No metadata at all (an older extract): the same.
     expect(built([]).net_worth).toBeUndefined();
+  });
+
+  it('a graph denser than one point a minute is not read as minutes: nothing is kept, and the trace says why', () => {
+    // 9080127650's graphs: 63 points for a 31:47 game. Here: six points for 2:30.
+    const tr = built([meta([60, 61, 62, 63, 64, 65], [60, 61, 62, 63, 64, 65])]);
+    expect(tr.net_worth).toBeUndefined();
+    expect(tr.gaps).toContainEqual({ topic: 'net_worth', reason: 'metadata_graph_denser_than_one_point_a_minute' });
+    expect(goldAdvantage(tr, {})).toBeNull();
+    // One point a minute for the minutes played is fine, and so is a graph that stops early.
+    expect(built([meta([60, 61, 62], [60, 61, 62])]).net_worth).toEqual([[600, 610, 620], [600, 610, 620]]);
+    expect(built([meta([60, 61, 62, 63], [60, 61, 62, 63])]).net_worth).toBeUndefined();
   });
 
   it('a hero the metadata does not name has no graph, and then there is no team lead', () => {
