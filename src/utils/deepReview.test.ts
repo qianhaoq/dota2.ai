@@ -134,6 +134,38 @@ describe('a whole number of seconds may be a tool\'s number rounded', () => {
   });
 });
 
+describe('a number stated plainly must be a tool\'s own, not one near an unrelated value (#295)', () => {
+  // The real case: fight_report gave a distance of 11112; farm_report had a gold gain of 11297; the review wrote 11300.
+  const src = [{ distance: 11112 }, { gained: { legion_commander: 11297 } }, { lead: 2915.4 }];
+  it('a plain number passes only as the value itself, give or take rounding', () => {
+    expect(verifyText('离战场 11300。', src).problems).toEqual([{ kind: 'number', text: '11300' }]);
+    expect(verifyText('离战场 11112。', src).ok).toBe(true);
+    expect(verifyText('领先 2915。', src).ok).toBe(true);
+    expect(verifyText('领先 2916。', src).ok).toBe(true);
+    expect(verifyText('领先 2930。', src).problems).toEqual([{ kind: 'number', text: '2930' }]);
+    // The same in a review's own lines (did_well is where it slipped through).
+    const r = verifyReview(review([], { verdict: 'v', mainline: [], did_well: ['离战场 11300、回城卷轴可用。'] }), src);
+    expect(r.problems).toEqual([expect.objectContaining({ where: 'did_well', kind: 'number', text: '11300' })]);
+  });
+
+  it('a number the text calls approximate keeps the slack, in either language', () => {
+    for (const t of ['离战场约 11000。', '离战场大约 11,000。', '离战场 11000 左右。', 'About 11,000 away.', 'roughly 11000 away', '~11000 away', '11k away']) expect(verifyText(t, src).ok).toBe(true);
+    expect(verifyText('离战场约 13000。', src).ok).toBe(false);
+    // 左右 after a unit (review of #300).
+    for (const t of ['离战场 11100 码左右。', '差 11000 金左右。', '离战场 11000 码上下。']) expect(verifyText(t, src).ok).toBe(true);
+  });
+
+  it('a word that ends in 约 is not "about": 节约 11000 is exact (review of #300)', () => {
+    const saved = [{ gold_saved: 10500 }];
+    expect(verifyText('节约 11000 金币。', saved).ok).toBe(false);
+    expect(verifyText('预约 11000。', saved).ok).toBe(false);
+    expect(verifyText('节约 10500 金币。', saved).ok).toBe(true);
+    // A bare 约 after any other word is still "about".
+    expect(verifyText('省下约 11000 金币。', saved).ok).toBe(true);
+    expect(verifyText('离战场约 11000。', [{ distance: 11112 }]).ok).toBe(true);
+  });
+});
+
 describe('review findings on #233', () => {
   it('evidence may state only what its cited records hold: a scoreboard number does not pass under a death', () => {
     const sources = [{ scoreboard: { net_worth: 16953 } }, { deaths_total: 1, deaths: [{ ref: 'death:x:1', t: 600, clock: '10:00', hp: 100 }] }];
