@@ -11,6 +11,8 @@
  * - Wards (traces with a ward list): the same two questions split by observer wards within 1600 — a death's trade
  *   rate by whether the dead hero's side or the enemy had one near it, and the 20 s death rate of a living hero by
  *   enemy observers near them. Placements only, not what each side saw.
+ * - After won fights (decision_points): by how many of the losers were still dead 10 s after, what the winners did —
+ *   took a building, took Roshan, pushed and took nothing, or neither.
  * - Roshans (roshan_report): each Aegis pickup, whether it was used or expired, and the buildings each side took
  *   in the 300 s after.
  *
@@ -26,6 +28,7 @@ import { gunzipSync } from 'node:zlib';
 import { fightReport } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
+import { afterWonFights } from '../lib/agent/decisionPoints.js';
 import { linkHeroNames, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
 import { observersNear } from '../packages/review-engine/src/trace/state.js';
@@ -39,6 +42,7 @@ const deaths = [];
 const moments = [];
 const roshans = [];
 let wardGames = 0;
+const afterWins = [];
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
   const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(dir, f)))));
@@ -60,6 +64,7 @@ for (const f of files) {
       moments.push({ allies, enemyHalf, died: died[i].some((d) => d > sec && d <= sec + 20), obs: o && { mine: o[h.team], enemy: o[h.team === 2 ? 3 : 2] } });
     });
   }
+  for (const x of afterWonFights(trace)) afterWins.push({ stillDead: x.still_dead.length, did: x.did });
   for (const x of roshanReport(trace, { hero: first.key }).takes ?? []) {
     roshans.push({ aegis: x.aegis, took: x.buildings_taking_side_took_count, lost: x.buildings_other_side_took_in_the_next_300s.length, fights: x.fights_in_the_next_300s });
   }
@@ -136,6 +141,11 @@ out.wards = {
     { side: half ? 'enemy half' : 'own half or river', case: 'alone, no enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.allies === 0 && m.obs.enemy === 0)) },
   ]),
 };
+const DID = ['took_a_building', 'took_roshan', 'pushed_and_took_nothing', 'neither'];
+out.after_won_fights = [0, 1, 2, 3, 4].map((n) => {
+  const list = afterWins.filter((x) => (n === 4 ? x.stillDead >= 4 : x.stillDead === n));
+  return { losers_still_dead_10s_after: n === 4 ? '4 or more' : String(n), fights: list.length, ...Object.fromEntries(DID.map((d) => [d, list.filter((x) => x.did === d).length])) };
+});
 const fightsAfter = roshans.flatMap((x) => x.fights);
 out.roshans = {
   takes: roshans.length,
@@ -157,6 +167,8 @@ else {
   for (const x of out.pushes.by_owners_dead_when_it_began) line(`  owners dead when it began: ${x.value}`, x);
   console.log(`\n${deaths.length} deaths; share traded (an enemy hero died within 15 s)\n`);
   for (const x of out.deaths.traded_by_allies_within_2200_at_death) console.log(`${`  allies within 2200 at death: ${x.allies}`.padEnd(46)} ${String(x.traded).padStart(4)}/${String(x.deaths).padEnd(5)} ${x.rate}%`);
+  console.log(`\n${afterWins.length} won fights; what the winners did (a building from the fight's start to 120 s after it, Roshan, a push for nothing, or neither)\n`);
+  for (const x of out.after_won_fights) console.log(`${`  losers still dead 10 s after: ${x.losers_still_dead_10s_after}`.padEnd(46)} n=${String(x.fights).padEnd(4)} building ${x.took_a_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}`);
   const ro = out.roshans;
   console.log(`\n${ro.takes} Roshans (Aegis pickups): used ${ro.aegis.used}, expired ${ro.aegis.expired}, game ended ${ro.aegis.game_ended}`);
   console.log(`  in the 300 s after: the taking side took ${ro.buildings_in_the_next_300s.taking_side} buildings, the other side ${ro.buildings_in_the_next_300s.other_side}; takes with no building after: ${ro.takes_with_no_building_after}`);
