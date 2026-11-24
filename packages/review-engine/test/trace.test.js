@@ -589,7 +589,9 @@ describe('trace tools on a real game', () => {
     expect(p3.buildings.map((b) => [b.building, b.clock, b.taken_by])).toEqual([['badguys_tower1_mid', '20:02', 'opponents'], ['badguys_tower1_bot', '24:28', 'opponents'], ['goodguys_tower2_top', '25:05', 'team'], ['badguys_tower1_top', '25:59', 'opponents']]);
     expect(p3.buildings[2]).toMatchObject({ hero_damaged_it: true, heroes_who_damaged_it: ['undying', 'beastmaster', 'skywrath_mage'] });
     expect(p3.buildings[0]).not.toHaveProperty('hero_damaged_it');
-    expect(p3.fights.map((f) => f.ref)).toEqual(['fight:7', 'fight:8', 'fight:9', 'fight:10']);
+    // A fight inside a stretch is not a record of its own: it says which fight of match_overview it is, and has no ref.
+    expect(p3.fights.map((f) => f.overview_fight)).toEqual(['fight:7', 'fight:8', 'fight:9', 'fight:10']);
+    expect(p3.fights.some((f) => 'ref' in f)).toBe(false);
     // Shares are of the seconds alive, and the three sides of the map add up to all of them.
     expect(p3.hero_alive_seconds + p3.hero_dead_seconds).toBe(600);
     const s = p3.hero_share_of_alive_time;
@@ -642,6 +644,16 @@ describe('trace tools on a real game', () => {
     expect(r.fights_where.hero_was_not_there).toEqual([]);
     expect(r.fights_where.hero_was_there.length + r.fights_where.hero_presence_not_known.length).toBe(16);
     expect(r.fights_where.hero_presence_not_known.length).toBeGreaterThan(0);
+    // The other heroes' positions gone, his own kept: where he was is known, who was near him is not — not "alone".
+    const others = { ...trace, states: trace.states.map((s, i) => (i === h ? s : { ...s, x: s.x.map(() => null), y: s.y.map(() => null) })) };
+    const lone = runTraceTool(others, 'tempo_report', { hero: 'beastmaster' }).phases[2];
+    expect(lone.hero_alive_seconds).toBe(504);
+    expect(lone.hero_share_of_alive_time).toMatchObject({ on_own_side_of_the_map: 0.44, with_no_ally_within_2200: null, with_one_ally_within_2200: null, with_two_or_more_allies_within_2200: null, with_three_or_more_opponents_within_2200: null });
+    // One ally unsampled: nothing about allies; the opponents were all sampled, so that share stands.
+    const sven = trace.heroes.findIndex((x) => x.key === 'sven');
+    const oneGone = { ...trace, states: trace.states.map((s, i) => (i === sven ? { ...s, x: s.x.map(() => null), y: s.y.map(() => null) } : s)) };
+    const partial = runTraceTool(oneGone, 'tempo_report', { hero: 'beastmaster' }).phases[2].hero_share_of_alive_time;
+    expect(partial).toMatchObject({ with_no_ally_within_2200: null, with_two_or_more_allies_within_2200: null, with_three_or_more_opponents_within_2200: 0.19 });
     // Sampled far from the first death of a fight and not at all at the later ones: he may have been at those. Unknown, not absent.
     expect(runTraceTool(trace, 'tempo_report', { hero: 'beastmaster' }).fights_where.hero_was_not_there).toEqual(['37:46']);
     const i0 = 2270 - trace.t0; const i1 = 2280 - trace.t0;

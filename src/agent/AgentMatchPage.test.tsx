@@ -290,7 +290,7 @@ describe('AgentMatchPage', () => {
       ref: 'phase:beastmaster:3', from: 1200, to: 1800, clock: '20:00–30:00', buildings_team_took: 1, buildings_opponents_took: 1,
       buildings: [{ building: 'badguys_tower1_mid', t: 1202, clock: '20:02', taken_by: 'opponents' }, { building: 'goodguys_tower2_top', t: 1505.9, clock: '25:05', taken_by: 'team', hero_damaged_it: true, heroes_who_damaged_it: ['beastmaster'] }],
       team_hero_deaths: 10, opponents_hero_deaths: 9, hero_deaths: 2,
-      fights: [{ ref: 'fight:7', clock: '21:59', team_deaths: 3, opponents_deaths: 1, lost_fewer_heroes: 'opponents', hero_was_there: true }, { ref: 'fight:8', clock: '22:57', team_deaths: 0, opponents_deaths: 3, lost_fewer_heroes: 'team', hero_was_there: false }],
+      fights: [{ overview_fight: 'fight:7', clock: '21:59', team_deaths: 3, opponents_deaths: 1, lost_fewer_heroes: 'opponents', hero_was_there: true }, { overview_fight: 'fight:8', clock: '22:57', team_deaths: 0, opponents_deaths: 3, lost_fewer_heroes: 'team', hero_was_there: false }],
       hero_alive_seconds: 504, hero_dead_seconds: 96,
       hero_share_of_alive_time: { on_own_side_of_the_map: 0.44, around_the_river: 0.22, on_the_opponents_side: 0.34, with_no_ally_within_2200: 0.32, with_one_ally_within_2200: 0.17, with_two_or_more_allies_within_2200: 0.52, with_three_or_more_opponents_within_2200: null },
       hero_most_time_in: [{ place: 'radiant_top_lane', share_of_alive_time: 0.32 }], hero_damage_to_buildings: 248, team_heroes_damage_to_buildings: 455,
