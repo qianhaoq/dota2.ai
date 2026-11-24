@@ -147,6 +147,11 @@ export function deathContext(trace, args = {}, ctx = {}) {
   // Every death is worked out, also when one is asked for: the order below is over all of them.
   const pick = all.map((d, i) => [d, i + 1]);
   const can = castable(trace, h, npc);
+  // The fights of the game as match_overview groups them (three or more hero deaths, none more than 15 s after
+  // the one before). That grouping is by time alone, over the whole map: a death counts as "in a fight" only if
+  // it is one of them and an ally was within 2200 at some second before it — a hero picked off alone while a
+  // fight went on elsewhere was not in it.
+  const fought = new Set(fights(trace).flatMap((f) => f.deaths));
   const out = pick.map(([d, n]) => {
     const t = d[0]; const from = t - window;
     const snapshots = [...new Set([window, 8, 4, 1].filter((x) => x <= window))].map((back) => {
@@ -197,6 +202,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
       health_share_at_window_start: share(snapshots[0]?.me),
       // From the health itself, not the rounded share: 495 of 1000 is below half.
       below_half_health_at_window_start: snapshots[0]?.me?.max_hp ? snapshots[0].me.hp * 2 < snapshots[0].me.max_hp : null,
+      // Null where the hero's position was not sampled: whether an ally was near is then unknown.
+      in_a_fight: !fought.has(d) ? false : mostAllies == null ? null : mostAllies >= 1,
       // Null where the hero's own position was not sampled: no ally listed is then unknown, not alone.
       // "At death" is the moment itself, not the last snapshot a second before: an ally can arrive in that second.
       allies_within_2200: { at_window_start: snapshots[0].me ? snapshots[0].allies.length : null, at_death: atDeath.me ? atDeath.allies.length : null, most_in_any_second: mostAllies },
@@ -250,12 +257,25 @@ function deathPatterns(trace, deaths, { allSources = false } = {}) {
       no_ally_within_2200_throughout: of((d) => d.allies_within_2200.most_in_any_second === 0),
       no_ally_within_2200_at_death: of((d) => d.allies_within_2200.at_death === 0),
       three_or_more_enemy_heroes_dealing_damage: of((d) => d.enemy_heroes_dealing_damage >= 3),
+      // In a fight (one of three or more hero deaths close together in time, with an ally within 2200 before it)
+      // or not. Dying low or to several enemies in a fight is what fights are; outside one it is where the hero
+      // chose to be. Hence the two lists after. A death whose position was not sampled is in neither list.
+      in_a_fight: of((d) => d.in_a_fight === true),
+      outside_fights: of((d) => d.in_a_fight === false),
+      health_below_half_at_window_start_outside_fights: of((d) => d.below_half_health_at_window_start === true && d.in_a_fight === false),
+      three_or_more_enemy_heroes_dealing_damage_outside_fights: of((d) => d.enemy_heroes_dealing_damage >= 3 && d.in_a_fight === false),
       nothing_cast_and_no_item_used: of((d) => d.my_casts.length === 0 && d.my_item_uses.length === 0),
     },
     // Deaths a list above could not be decided for (health or position not sampled): a count over the game is only as sure as these are few.
     deaths_not_known: {
       health_at_window_start: deaths.filter((d) => d.below_half_health_at_window_start == null).length,
       allies_at_death: deaths.filter((d) => d.allies_within_2200.at_death == null).length,
+      // Whether a death was in a fight is unknown where the hero's position was not sampled.
+      in_a_fight: deaths.filter((d) => d.in_a_fight == null).length,
+      // For each outside-fights list, the deaths it can neither include nor rule out: neither in a fight for sure
+      // nor outside one with the condition for sure. A count over the next game is only as sure as these are few.
+      health_below_half_at_window_start_outside_fights: deaths.filter((d) => d.in_a_fight !== true && d.below_half_health_at_window_start !== false && !(d.in_a_fight === false && d.below_half_health_at_window_start === true)).length,
+      three_or_more_enemy_heroes_dealing_damage_outside_fights: deaths.filter((d) => d.in_a_fight == null && d.enemy_heroes_dealing_damage >= 3).length,
     },
     damage_in_death_windows_total: total,
     damage_in_death_windows: Object.fromEntries(top),

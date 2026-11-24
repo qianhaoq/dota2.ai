@@ -4,7 +4,8 @@ import { gunzipSync } from 'node:zlib';
 import { buildCheck, goldOnTop, powerSpikes, SITUATION_TOOLS } from '../../lib/agent/situationTools.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
-import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, collectFacts, deepReviewSystem, planOf, reviewToolkit, verifyReview, wordingProblems } from '../../lib/agent/deepReview.js';
+import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, approachClaims, collectFacts, deepReviewSystem, planOf, reviewToolkit, verifyReview, wordingProblems } from '../../lib/agent/deepReview.js';
+import { HABITS, evaluateHabit, habitGoal } from '../../lib/coach/goals.js';
 import { ANSWERS, GAP_CLOSERS } from '../../lib/coach/knowledge.js';
 import { deathContext, itemTimeline } from '../../packages/review-engine/src/trace/index.js';
 
@@ -165,7 +166,7 @@ describe('the review agent has both tools, and their records can be cited and sh
     expect(kit.runTool('power_spikes', { hero: 'beastmaster' })).toMatchObject({ tool: 'power_spikes', ref: 'spikes:beastmaster' });
     const system = deepReviewSystem('zh');
     for (const word of ['build_check', 'power_spikes', 'Read choices, not minds', 'No vague amounts', 'most_built_by_pros_on_this_hero']) expect(system).toContain(word);
-    expect(DEEP_REVIEW_PROMPT_VERSION).toBeGreaterThanOrEqual(17);
+    expect(DEEP_REVIEW_PROMPT_VERSION).toBeGreaterThanOrEqual(18);
   });
 
   it('a sentence may state what the records hold, citing them; the evidence route resolves them with display names', () => {
@@ -228,5 +229,63 @@ describe('game_plan.strengths', () => {
     const kept: any = planOf(bad, check.problems, check.refs);
     expect(kept).not.toHaveProperty('strengths');
     expect(kept).toMatchObject({ course: plan.course, your_part: plan.your_part, why: plan.why });
+  });
+});
+
+describe('deaths in a fight are told apart from deaths outside one', () => {
+  it('a death whose position was not sampled is neither in a fight nor outside one, and keeps a check from passing', () => {
+    // The fixture with the hero's positions removed around its five deaths to three or more enemies (all in fights).
+    const t = JSON.parse(JSON.stringify(trace));
+    const h = t.heroes.findIndex((x: any) => x.key === 'beastmaster');
+    const full: any = deathContext(trace, { hero: 'beastmaster' });
+    for (const d of full.deaths.filter((x: any) => full.deaths_where.three_or_more_enemy_heroes_dealing_damage.includes(x.clock))) {
+      for (let s = Math.floor(d.t) - 13; s <= Math.ceil(d.t) + 1; s += 1) { const i = s - t.t0; if (i >= 0 && i < t.n) t.states[h].x[i] = null; }
+    }
+    const blind: any = deathContext(t, { hero: 'beastmaster' });
+    expect(blind.deaths_where.three_or_more_enemy_heroes_dealing_damage).toHaveLength(5);
+    expect(blind.deaths_where.three_or_more_enemy_heroes_dealing_damage_outside_fights).toEqual([]);
+    expect(blind.deaths_not_known).toMatchObject({ in_a_fight: 5, three_or_more_enemy_heroes_dealing_damage_outside_fights: 5 });
+    // None of the five is known to be outside a fight, and none is known to be in one: "none outside fights" is not a pass.
+    const goal = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 1, baseline: 3, label: { en: 'x', zh: 'x' } };
+    expect(evaluateHabit(goal, blind, 40).result).toBe('unknown');
+    expect(evaluateHabit(goal, full, 40).result).toBe('met');
+    // Low health outside fights: a death of unknown fight status with health below half, or unknown, is undecided too.
+    expect(blind.deaths_not_known.health_below_half_at_window_start_outside_fights).toBeGreaterThanOrEqual(blind.deaths_not_known.in_a_fight - blind.deaths.filter((d: any) => d.in_a_fight == null && d.below_half_health_at_window_start === false).length);
+    expect(evaluateHabit({ ...goal, habit: 'low_health_outside_fights', max: 0 }, { ...blind, deaths_not_known: { ...blind.deaths_not_known, health_below_half_at_window_start_outside_fights: 1 } }, 40).result).toBe('unknown');
+  });
+
+  it('the outside-fights counts are habits the next game is checked on, and the fight deaths are not in them', () => {
+    const summary: any = deathContext(trace, { hero: 'beastmaster' });
+    expect(HABITS.low_health_outside_fights.at).toEqual(['deaths_where', 'health_below_half_at_window_start_outside_fights']);
+    expect(HABITS.outnumbered_outside_fights.at).toEqual(['deaths_where', 'three_or_more_enemy_heroes_dealing_damage_outside_fights']);
+    // Five deaths to three or more enemies, all of them in fights: over every death that is a habit to check, outside fights it is not one.
+    expect(habitGoal('outnumbered', summary)).toMatchObject({ kind: 'replay_habit', habit: 'outnumbered', baseline: 5 });
+    expect(habitGoal('outnumbered_outside_fights', summary)).toBeNull();
+    // The next game, judged on the same list: three such deaths outside fights miss a goal of one.
+    const goal = { kind: 'replay_habit', habit: 'low_health_outside_fights', max: 1, baseline: 3, label: { en: 'x', zh: 'x' } };
+    const next = { ...summary, deaths_where: { ...summary.deaths_where, health_below_half_at_window_start_outside_fights: ['4:21', '6:07', '9:00'] }, deaths_not_known: { ...summary.deaths_not_known, health_below_half_at_window_start_outside_fights: 0 } };
+    expect(evaluateHabit(goal, next, 40).result).toBe('missed');
+    expect(evaluateHabit(goal, { ...next, deaths_where: { ...next.deaths_where, health_below_half_at_window_start_outside_fights: ['4:21'] } }, 40).result).toBe('met');
+    // A replay summary from before these lists existed has no such count: unknown, never a pass.
+    const { health_below_half_at_window_start_outside_fights: _gone, ...old } = summary.deaths_where;
+    expect(evaluateHabit(goal, { ...summary, deaths_where: old }, 40).result).toBe('unknown');
+    const system = deepReviewSystem('en');
+    for (const word of ['in_a_fight', '_outside_fights', 'missing from the minimap']) expect(system).toContain(word);
+  });
+});
+
+describe('a rule cannot start from seeing an enemy come', () => {
+  it('names the phrase in a rule\'s situation; what the player always has on screen is fine', () => {
+    expect(approachClaims('小地图上你周围没有队友，而屏幕上已有敌人朝你这边走')).toEqual(['屏幕上已有敌人朝你这边走']);
+    expect(approachClaims('enemies are walking toward you')).toEqual(['enemies are walking toward you']);
+    for (const fine of ['小地图上有三个敌方英雄不见了', 'three enemy heroes are missing from the minimap', '你的血量低于一半、熊战士就在你攻击距离附近时', '比赛到 20:00，你身上还没有闪烁匕首', '']) expect(approachClaims(fine)).toEqual([]);
+    expect(approachClaims(undefined as any)).toEqual([]);
+  });
+  it('it is asked about in the repair round; the finding and its rule are kept', () => {
+    const build = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match });
+    const review = { verdict: 'v', mainline: [], blind_spots: [], findings: [{ title: 't', claim: '洞察烟斗 29:08 才出。', fix: 'f', evidence: [{ refs: ['build:beastmaster'], fact: '洞察烟斗 29:08 才拿到。' }], rule: { when: '屏幕上已有敌人朝你这边走', do: '往回走', this_game: 'x' } }] };
+    const check = verifyReview(review, [build]);
+    expect(check.problems).toEqual([{ where: 'finding', index: 0, kind: 'approach', text: '屏幕上已有敌人朝你这边走', soft: true }]);
+    expect(check.unsupported.findings.size).toBe(0);
   });
 });
