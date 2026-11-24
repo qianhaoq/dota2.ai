@@ -9,7 +9,7 @@ import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { deepReviewSystem, reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
 import { chatSystem } from '../../lib/agent/chat.js';
-import { runTraceTool, matchFights } from '../../packages/review-engine/src/trace/index.js';
+import { runTraceTool, matchFights, fightParticipation } from '../../packages/review-engine/src/trace/index.js';
 
 const FIXTURE = new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url);
 /** A real ranked game (9100904020): Beastmaster on Dire, lost in 42:31. */
@@ -195,10 +195,12 @@ describe('decision_points: fights begun soon after a big item', () => {
     expect(r.points.slice(0, before.length)).toEqual(before);
     expect(fights.length).toBeGreaterThan(0);
     expect(ITEM_SECONDS).toBe(120);
-    const from = (p: any) => matchFights(trace)[Number(p.fight.split(':')[1]) - 1].from;
+    // From the fight's first damage exchange, not its first death (review of #310).
+    const from = (p: any) => fightParticipation(trace, matchFights(trace)[Number(p.fight.split(':')[1]) - 1]).engaged_at;
     const sec = (c: string) => { const [m, s2] = c.split(':').map(Number); return m * 60 + s2; };
     for (const p of fights) {
       expect(p.items.length).toBeGreaterThan(0);
+      expect(p.clock).toBe(`${Math.floor(from(p) / 60)}:${String(Math.floor(from(p) % 60)).padStart(2, '0')}`);
       for (const it of p.items) { expect(sec(it.clock)).toBeLessThanOrEqual(Math.floor(from(p))); expect(sec(it.clock)).toBeGreaterThanOrEqual(Math.floor(from(p) - 121)); expect(it.ref).toBe(`item:${it.hero}:${it.item}`); }
       const sides = new Set(p.items.map((it: any) => it.side));
       expect(p.items_from).toBe(sides.size === 2 ? 'both' : [...sides][0]);
