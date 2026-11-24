@@ -87,12 +87,13 @@ test('the game plan: how the game went as a whole, its records, and a plan of th
   await review(page);
   const plan = page.locator('.ag-plan');
   await expect(plan.getByRole('heading', { name: '运营思路' })).toBeVisible();
-  await expect(plan.locator('.ag-plan-parts dt')).toHaveText(['走势', '你的部分']);
-  await expect(plan.locator('.ag-plan-parts dd').first()).toContainText('16 波团战里你们少死人的有 6 波，其中只有 22:57 那一波之后两分钟内拆到了建筑');
+  await expect(plan.locator('.ag-plan-parts dt')).toHaveText(['窗口期', '走势', '你的部分']);
+  await expect(plan.locator('.ag-plan-parts dd').first()).toContainText('幻影刺客在 21:29 出了黑皇杖，就在这段领先之内');
+  await expect(plan.locator('.ag-plan-parts dd').nth(1)).toContainText('16 波团战里你们少死人的有 6 波，其中只有 22:57 那一波之后两分钟内拆到了建筑');
   await expect(plan.locator('.ag-plan-tag')).toHaveText('主要在队伍，不在你');
-  // It passed the same check as the findings: both evidence lines are there, the stretch with the time it began.
-  await expect(plan.locator('.ag-ev')).toHaveCount(2);
-  await expect(plan.locator('.ag-ev-clock')).toHaveText(['20:00']);
+  // It passed the same check as the findings: all three evidence lines are there, each record with the time it began.
+  await expect(plan.locator('.ag-ev')).toHaveCount(3);
+  await expect(plan.locator('.ag-ev-clock')).toHaveText(['19:00', '20:00']);
   // The whole game's tempo, recomputed by the server: a row per ten minutes.
   await plan.locator('.ag-ev').nth(0).getByRole('button', { name: '看原始记录' }).click();
   const tempo = plan.locator('.ag-ev').nth(0).locator('.ag-rec');
@@ -100,11 +101,17 @@ test('the game plan: how the game went as a whole, its records, and a plan of th
   await expect(tempo.getByRole('row', { name: '10:00–20:00 3 0 7 10' })).toBeVisible();
   await expect(tempo.getByText('15 / 16')).toBeVisible();
   // One stretch: what fell, and where the player was.
-  await plan.locator('.ag-ev').nth(1).getByRole('button', { name: '看原始记录' }).click();
-  const stretch = plan.locator('.ag-ev').nth(1).locator('.ag-rec');
+  await plan.locator('.ag-ev').nth(2).getByRole('button', { name: '看原始记录' }).click();
+  const stretch = plan.locator('.ag-ev').nth(2).locator('.ag-rec');
   await expect(stretch.getByText('25:05 · 对方 上路 2 塔')).toBeVisible();
   await expect(stretch.getByText('天辉上路 32%')).toBeVisible();
   await expect(stretch.getByText('身边两名以上队友 52%')).toBeVisible();
+  // The window: when the team was ahead, what each side took, what the enemy finished just before it ended.
+  await plan.locator('.ag-ev').nth(1).getByRole('button', { name: '看原始记录' }).click();
+  const win = plan.locator('.ag-ev').nth(1).locator('.ag-rec');
+  await expect(win.locator('.ag-rec-head')).toHaveText('19:00–29:00 · 我方领先 · 峰值 3565 (25:00)');
+  await expect(win.getByText('21:29 · 幻影刺客 黑皇杖')).toBeVisible();
+  await expect(win.getByText('26:44 · 幻影刺客 碎颅锤')).toHaveCount(2);
   // The reader says what they were going for; the coach looks at the tempo and answers.
   const chat = page.getByRole('complementary', { name: '问教练' });
   const sent = page.waitForRequest((r) => r.url().endsWith('/chat') && r.method() === 'POST');

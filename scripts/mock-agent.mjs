@@ -57,12 +57,14 @@ export const MOCK_REVIEW = {
       },
     ],
     game_plan: {
+      window: '你们在 19:00 到 29:00 领先，25:00 时最多领先 3565；这段时间你们拆了 2 座建筑、对面拆了 3 座。幻影刺客在 21:29 出了黑皇杖，就在这段领先之内。',
       course: '你们在 18:07 到 19:46 先拆了 3 座外塔，之后只在 25:05 再拆 1 座；对面从 20:02 起拆了 18 座。16 波团战里你们少死人的有 6 波，其中只有 22:57 那一波之后两分钟内拆到了建筑；对面少死人的 9 波里有 5 波之后拆到了。',
       your_part: '16 波团战你到场 15 波。20:00 到 30:00 你 52% 的存活时间身边有两名以上队友，对建筑的伤害是 248。',
       main_reason: 'team_play',
       why: '你几乎每波团都在，但 6 波少死人的团只换来 1 次建筑：这主要是队伍没有把团战变成推进，不是你一个人的问题。',
       evidence: [
         { refs: ['tempo:beastmaster'], fact: '16 波团战里你们少死人的 6 波，之后两分钟内拆到建筑的只有 22:57 这 1 波。' },
+        { refs: ['window:2'], fact: '19:00 到 29:00 你们领先，最多领先 3565（25:00），期间你们拆了 2 座建筑、对面拆了 3 座。' },
         { refs: ['phase:beastmaster:3'], fact: '20:00 到 30:00 对面拆了 3 座塔（20:02、24:28、25:59），你们在 25:05 拆了 1 座。' },
       ],
     },
@@ -94,12 +96,14 @@ export const MOCK_REVIEW = {
       },
     ],
     game_plan: {
+      window: 'Your team was ahead from 19:00 to 29:00, by 3565 at most at 25:00; in that time it took 2 buildings and the enemy 3. Phantom Assassin finished Black King Bar at 21:29, inside that lead.',
       course: 'Your team took 3 outer towers from 18:07 to 19:46 and only 1 more, at 25:05; the enemy took 18 buildings from 20:02 on. Of the 16 fights your team lost fewer heroes in 6, and a building followed only the one at 22:57; the enemy lost fewer in 9 fights and took a building after 5 of them.',
       your_part: 'You were at 15 of the 16 fights. From 20:00 to 30:00 you spent 52% of your time alive with two or more allies near, and dealt 248 damage to buildings.',
       main_reason: 'team_play',
       why: 'You were at nearly every fight, yet the 6 fights your team came out ahead in brought 1 building: the team did not turn fights into towers, and that is not on you alone.',
       evidence: [
         { refs: ['tempo:beastmaster'], fact: 'Of the 16 fights your team lost fewer heroes in 6; a building followed within two minutes only after the one at 22:57.' },
+        { refs: ['window:2'], fact: 'From 19:00 to 29:00 your team was ahead, by 3565 at most (25:00); it took 2 buildings in that time and the enemy 3.' },
         { refs: ['phase:beastmaster:3'], fact: 'From 20:00 to 30:00 the enemy took 3 towers (20:02, 24:28, 25:59) and your team 1, at 25:05.' },
       ],
     },
@@ -131,7 +135,7 @@ async function complete({ system, messages, tools }) {
         call('match_overview', {}, 'a'), call('death_context', { hero: 'beastmaster' }, 'b'), call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'c'),
         call('immunity_windows', { hero: 'phantom_assassin', watch_hero: 'beastmaster', watch_ability: 'primal_roar' }, 'd'),
         call('fight_timeline', { from: 1805, to: 1860 }, 'e'), call('pro_item_choices', { hero: 'beastmaster' }, 'f'),
-        call('tempo_report', { hero: 'beastmaster' }, 'g'), call('lineup_timing', {}, 'h'),
+        call('tempo_report', { hero: 'beastmaster' }, 'g'), call('lineup_timing', {}, 'h'), call('window_report', { hero: 'beastmaster' }, 'i'),
       ] };
     }
     return { toolCalls: [call('submit_review', MOCK_REVIEW[lang], 's')] };

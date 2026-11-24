@@ -6,6 +6,7 @@ import { chatSystem, checkedPart, runChat, CHAT_MAX_QUESTION } from '../../lib/a
 import { MOCK_PLAN_ANSWER, MOCK_REVIEW } from '../../scripts/mock-agent.mjs';
 import { PLAN_INTENTS, planQuestion } from '../agent/ReviewDoc';
 
+const SCOREBOARD = JSON.parse(readFileSync(new URL('../fixtures/agent/match9100904020.scoreboard.json', import.meta.url), 'utf8'));
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
 const call = (name: string, args: any, id: string) => ({ id, name, args });
@@ -116,9 +117,10 @@ describe('the game plan of a review', () => {
 
   it('the scripted review of the fixture server passes the same check, in both languages', async () => {
     for (const lang of ['zh', 'en'] as const) {
-      const m = scripted([investigate, submit((MOCK_REVIEW as any)[lang])]);
+      // The script's plan rests on the window report too, which reads the match's per-minute gold.
+      const m = scripted([{ toolCalls: [...investigate.toolCalls, call('window_report', { hero: 'beastmaster' }, 'w')] }, submit((MOCK_REVIEW as any)[lang])]);
       // The script's findings cite records this short investigation did not fetch; only the plan is under test here.
-      const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang });
+      const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang, match: SCOREBOARD });
       expect(r.verification.problems.filter((p: any) => p.where.startsWith('plan'))).toEqual([]);
     }
   });
@@ -143,7 +145,10 @@ describe('the prompts know the game plan', () => {
   it('the chat is told how to answer a stated plan, and may lean on the plan the review checked', () => {
     const s = chatSystem('en');
     expect(s).toContain('take that as their plan');
-    expect(s).toContain('tempo_report for the player first');
+    // The game's windows first, then who took what in each stretch.
+    expect(s).toContain('window_report for the player first');
+    expect(s).toContain('then tempo_report');
+    expect(s).toContain('not that it closed the window');
     expect(s).toContain('Never tell the player what they "intended"');
     const part: any = checkedPart({ verdict: 'v', findings: [], game_plan: { course: 'c', your_part: 'y', line_ups: 'l', main_reason: 'team_play', why: 'w', evidence: [{ refs: ['tempo:x'], clock: '20:00', fact: 'f' }] } });
     // The reason it names is a judgment: not part of what backs a later answer.

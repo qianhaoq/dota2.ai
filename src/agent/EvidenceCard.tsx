@@ -114,6 +114,17 @@ const T = {
   timingThis: { en: 'This game', zh: '这局' },
   timingPublic: { en: 'public games, win rate by game length', zh: '路人局，按比赛时长的胜率' },
   timingAlone: { en: 'Each hero on its own: not a line-up\'s win rate.', zh: '每个英雄单独统计，不代表整套阵容的胜率。' },
+  winLead: { en: 'Your team\'s gold lead', zh: '我方经济领先' },
+  winHigh: { en: 'Highest', zh: '最高' }, winLow: { en: 'Lowest', zh: '最低' },
+  winList: { en: 'Windows', zh: '窗口期' },
+  winOurs: { en: 'your team ahead', zh: '我方领先' }, winTheirs: { en: 'enemy ahead', zh: '对方领先' },
+  winPeak: { en: 'peak', zh: '峰值' },
+  winTook: { en: 'Buildings taken', zh: '拆掉建筑' },
+  winFights: { en: 'Fights won · lost', zh: '团战 少死人 · 多死人' },
+  winItems: { en: 'Big items finished in it', zh: '期间完成的大件' },
+  winLast: { en: 'Finished in its last 3 minutes', zh: '结束前 3 分钟内完成' },
+  winEnded: { en: 'Ended', zh: '结束' }, winGameEnd: { en: 'with the game', zh: '比赛结束' },
+  winNone: { en: 'No per-minute gold for this game: no windows.', zh: '这局没有逐分钟经济数据，划不出窗口期。' },
   building: {
     tower: { en: 'tier-{n} tower', zh: '{n} 塔' }, melee_rax: { en: 'melee barracks', zh: '近战兵营' }, range_rax: { en: 'ranged barracks', zh: '远程兵营' }, fort: { en: 'Ancient', zh: '遗迹' },
     top: { en: 'top', zh: '上路' }, mid: { en: 'mid', zh: '中路' }, bot: { en: 'bottom', zh: '下路' },
@@ -325,6 +336,33 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.my_deaths_before_10_00.length > 0 && <p className="ag-rec-line"><span>{t(T.laneDeaths)}</span>{r.my_deaths_before_10_00.map((d: any) => <span key={d.clock} className="ag-chip">{d.clock}{d.killer ? ` ← ${N(d.killer)}` : ''}</span>)}</p>}
         {pro && <p className="ag-rec-line"><span>{N(pro.my_side_core)} : {N(pro.enemy_core)} · {pro.pro_games} {t(T.lanePro)}</span><span className="ag-chip">{t(T.laneProMean)} <em>{signed(pro.core_gold_difference_at_10_00.mean)}</em></span><span className="ag-chip">{t(T.laneThis)} <em>{signed(pro.core_gold_difference_at_10_00.this_game)}</em></span><span className="ag-chip">{N(pro.my_side_core)} {t(T.laneAhead)} <em>{pc(pro.share_of_pro_games_my_side_core_was_ahead)}</em></span></p>}
         {pub && <p className="ag-rec-line"><span>{N(pub.hero)} : {N(pub.against)} · {pub.lanes} {t(T.lanePub)}</span><span className="ag-chip">{t(T.lanePubWon)} <em>{pc(pub.share_won)}</em></span><span className="ag-chip">{t(T.lanePubLost)} <em>{pc(pub.share_lost)}</em></span></p>}
+      </div>
+    );
+  }
+  if (data.kind === 'window') {
+    const money = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}`;
+    const itemChips = (list: any[]) => list.map((x: any) => <span key={x.ref} className="ag-chip">{x.clock} · {N(x.hero)} {x.name}</span>);
+    // One window (window:N).
+    if (r.ahead) {
+      const lastKey = Object.keys(r).find((k) => /_big_items_in_the_last_\d+s$/.test(k));
+      const sideOf = (k: string) => (k === 'my_team' ? t(T.mine) : t(T.theirs));
+      return (
+        <div className="ag-rec">
+          <p className="ag-rec-head"><b>{r.clock}</b> · {t(r.ahead === 'my_team' ? T.winOurs : T.winTheirs)} · {t(T.winPeak)} {r.peak_lead.value} ({r.peak_lead.clock})</p>
+          <p className="ag-rec-line"><span>{t(T.winTook)}</span><span className="ag-chip is-ally">{t(T.mine)} <em>{r.buildings_taken.my_team}</em></span><span className="ag-chip is-enemy">{t(T.theirs)} <em>{r.buildings_taken.enemy}</em></span></p>
+          <p className="ag-rec-line"><span>{t(T.winFights)}</span><span className="ag-chip">{r.fights_lost_fewer_heroes.my_team} · {r.fights_lost_fewer_heroes.enemy}</span></p>
+          {(['my_team', 'enemy'] as const).map((k) => r.big_items_finished[k].length > 0 && <p key={k} className="ag-rec-line"><span>{t(T.winItems)} · {sideOf(k)}</span>{itemChips(r.big_items_finished[k])}</p>)}
+          {lastKey && r[lastKey].length > 0 && <p className="ag-rec-line"><span>{t(T.winLast)} · {sideOf(lastKey.startsWith('enemy') ? 'enemy' : 'my_team')}</span>{itemChips(r[lastKey])}</p>}
+          <p className="ag-rec-note">{t(T.winEnded)} {r.ended.clock}{r.ended.by ? ` · ${t(T.winGameEnd)}` : ` · ${t(T.winLead)} ${money(r.ended.my_team_gold_lead)}`}</p>
+        </div>
+      );
+    }
+    // The whole game's lead and its windows (window).
+    if (!r.my_team_gold_lead_at) return <div className="ag-rec"><p className="ag-rec-note">{t(T.winNone)}</p></div>;
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-line"><span>{t(T.winLead)}</span>{Object.entries(r.my_team_gold_lead_at as Record<string, number>).map(([c, v]) => <span key={c} className={`ag-chip ${v > 0 ? 'is-ally' : v < 0 ? 'is-enemy' : ''}`}>{c} <em>{money(v)}</em></span>)}</p>
+        <p className="ag-rec-line"><span className="ag-chip">{t(T.winHigh)} {r.highest_lead.clock} <em>{money(r.highest_lead.value)}</em></span><span className="ag-chip">{t(T.winLow)} {r.deepest_deficit.clock} <em>{money(r.deepest_deficit.value)}</em></span></p>
       </div>
     );
   }
