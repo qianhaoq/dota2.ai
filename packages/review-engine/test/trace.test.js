@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { createTraceBuilder, TRACE_SCHEMA, TRACE_TOOLS, runTraceTool, traceSeconds, traceRegion, goldAdvantage } from '../src/trace/index.js';
+import { createTraceBuilder, linkHeroNames, TRACE_SCHEMA, TRACE_TOOLS, runTraceTool, traceSeconds, traceRegion, goldAdvantage } from '../src/trace/index.js';
 
 /**
  * A real ranked game (9100904020, Beastmaster on Dire, lost in 42:31), built
@@ -785,5 +785,36 @@ describe('trace tools on a real game', () => {
     expect(run('fight_timeline', { from: 0, to: 600 })).toMatchObject({ error: 'window_too_long' });
     expect(run('nope')).toMatchObject({ error: 'unknown_tool' });
     expect(runTraceTool({ schema: 'other' }, 'match_overview')).toEqual({ error: 'invalid_trace' });
+  });
+});
+
+describe('a hero the states name differently from the combat log', () => {
+  // Seen in 9102724734: the states say queen_of_pain, the combat log npc_dota_hero_queenofpain. Her 4 deaths
+  // and 522 casts were not hers, and match_overview said she never died.
+  const state = (t, hero, team, player_index) => ({ entity_kind: 'real_hero', t, hero, team, player_index, x: 0, y: 0, hp: 500, max_hp: 600, mana: 100, level: 1, life_state: 0, abilities: [], items: [], controls: {} });
+  const build = () => {
+    const b = createTraceBuilder();
+    for (const t of [0, 1, 100]) { b.addState(state(t, 'queen_of_pain', 2, 0)); b.addState(state(t, 'anti_mage', 3, 5)); }
+    b.addEvent({ t: 50, type: 'DOTA_COMBATLOG_DEATH', target: 'npc_dota_hero_queenofpain', target_hero: true, attacker: 'npc_dota_hero_antimage', attacker_hero: true });
+    b.addEvent({ t: 40, type: 'DOTA_COMBATLOG_ABILITY', attacker: 'npc_dota_hero_queenofpain', attacker_hero: true, inflictor: 'queenofpain_blink', target: 'npc_dota_hero_queenofpain' });
+    return b.finish({ match_id: 7 });
+  };
+
+  it('takes the combat log name, so the hero\'s deaths and casts are hers', () => {
+    const tr = build();
+    expect(tr.heroes.map((h) => h.npc)).toEqual(['npc_dota_hero_queenofpain', 'npc_dota_hero_antimage']);
+    const overview = runTraceTool(tr, 'match_overview', { hero: 'queen_of_pain' });
+    expect(overview.heroes.find((h) => h.hero === 'queen_of_pain').deaths).toBe(1);
+  });
+
+  it('a trace stored before this is linked when read, and a hero the log never names keeps its own name', () => {
+    const old = build();
+    old.heroes[0].npc = 'npc_dota_hero_queen_of_pain';
+    expect(runTraceTool(old, 'match_overview', { hero: 'queen_of_pain' }).heroes.find((h) => h.hero === 'queen_of_pain').deaths).toBe(0);
+    const linked = linkHeroNames(old);
+    expect(linked.heroes.map((h) => h.npc)).toEqual(['npc_dota_hero_queenofpain', 'npc_dota_hero_antimage']);
+    expect(runTraceTool(linked, 'match_overview', { hero: 'queen_of_pain' }).heroes.find((h) => h.hero === 'queen_of_pain').deaths).toBe(1);
+    const quiet = { names: ['npc_dota_hero_queenofpain'], heroes: [{ key: 'void_spirit', npc: 'npc_dota_hero_void_spirit' }] };
+    expect(linkHeroNames(quiet).heroes[0].npc).toBe('npc_dota_hero_void_spirit');
   });
 });

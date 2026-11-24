@@ -147,6 +147,13 @@ describe('stores', () => {
     await expect(store.put('x/../y', Buffer.from(''))).rejects.toThrow('invalid_match');
     expect(existsSync(join(dir, `${ID}.trace.json.gz`))).toBe(true);
   });
+  it('trace store: a stored trace whose hero name differs from the combat log\'s is linked when read (9102724734\'s Queen of Pain)', async () => {
+    const dir = join(root, 'traces-names'); mkdirSync(dir, { recursive: true });
+    const old = { schema: 'dota2.ai/match-trace@1', match_id: 79, names: ['npc_dota_hero_queenofpain'], heroes: [{ key: 'queen_of_pain', npc: 'npc_dota_hero_queen_of_pain', team: 2, player_index: 0 }] };
+    writeFileSync(join(dir, '79.trace.json.gz'), gzipSync(Buffer.from(JSON.stringify(old))));
+    const t = await createTraceStore(createFileStore(dir)).get(79);
+    expect(t.heroes[0].npc).toBe('npc_dota_hero_queenofpain');
+  });
 });
 
 describe('parse jobs in the service', () => {
