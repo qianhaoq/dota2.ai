@@ -455,10 +455,19 @@ describe('trace tools on a real game', () => {
       no_ally_within_2200_throughout: ['2:51'],
       no_ally_within_2200_at_death: ['2:51'],
       three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06', '25:30', '30:42', '36:05'],
+      // Nine of the eleven deaths were in a fight (three or more hero deaths close together, an ally near before).
+      // 2:51 falls inside such a group by time, but no ally was within 2200: picked off alone, not in the fight.
+      in_a_fight: ['6:13', '8:27', '11:03', '22:06', '25:30', '30:42', '36:05', '39:21', '41:57'],
+      outside_fights: ['0:47', '2:51'],
+      // Every death to three or more enemies was in a fight: outside them the count is none.
+      health_below_half_at_window_start_outside_fights: [],
+      three_or_more_enemy_heroes_dealing_damage_outside_fights: [],
       nothing_cast_and_no_item_used: [],
     });
+    expect(all.deaths.map((d) => d.in_a_fight)).toEqual([false, false, true, true, true, true, true, true, true, true, true]);
+    expect([...all.deaths_where.in_a_fight, ...all.deaths_where.outside_fights]).toHaveLength(all.deaths_total);
     // Every death here had its health and position sampled: nothing a count could be missing.
-    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, allies_at_death: 0 });
+    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, allies_at_death: 0, in_a_fight: 0, health_below_half_at_window_start_outside_fights: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 });
     // Phantom Assassin's attacks are the largest single source: 44% of everything taken in the eleven windows.
     expect(all.damage_in_death_windows_total).toBe(23757);
     expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);

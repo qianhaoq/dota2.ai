@@ -13,16 +13,16 @@ const report = (hero = 'beastmaster', m: any = match, lang = 'en'): any => windo
 describe('window_report on a real game', () => {
   it('cuts the game into runs one side stayed ahead, and keeps those that reached the peak', () => {
     const r = report();
-    expect(r).toMatchObject({ ref: 'window', ref_scope: 'summary', hero: 'beastmaster', duration: { clock: '42:31' }, data_patch: expect.any(String) });
+    expect(r).toMatchObject({ ref: 'window:beastmaster', ref_scope: 'summary', hero: 'beastmaster', duration: { clock: '42:31' }, data_patch: expect.any(String) });
     // Beastmaster is Dire: the lead is Radiant's, turned round. At 20:00 Radiant was 2245 behind.
     expect(r.my_team_gold_lead_at).toMatchObject({ '5:00': -1654, '20:00': 2245, '25:00': 3565, '30:00': -745, '40:00': -12847 });
     expect(r.highest_lead).toEqual({ clock: '25:00', value: 3565 });
     expect(r.deepest_deficit).toEqual({ clock: '42:00', value: -27728 });
     expect(r.windows.map((w: any) => [w.ref, w.clock, w.ahead, w.peak_lead])).toEqual([
-      ['window:1', '1:00–9:00', 'enemy', { clock: '6:00', value: 2585 }],
+      ['window:beastmaster:1', '1:00–9:00', 'enemy', { clock: '6:00', value: 2585 }],
       // Ahead from 19:00 (by 1713) to 28:00 (by 82); behind at 29:00. The runs either side were too small or the other side's.
-      ['window:2', '19:00–29:00', 'my_team', { clock: '25:00', value: 3565 }],
-      ['window:3', '29:00–42:31', 'enemy', { clock: '42:00', value: 27728 }],
+      ['window:beastmaster:2', '19:00–29:00', 'my_team', { clock: '25:00', value: 3565 }],
+      ['window:beastmaster:3', '29:00–42:31', 'enemy', { clock: '42:00', value: 27728 }],
     ]);
     expect(r.windows_total).toEqual({ my_team: 1, enemy: 2 });
     // The run from 11:00 to 14:00 (ahead by at most 869) never reached the peak: not a window.
@@ -93,39 +93,95 @@ describe('window_report as evidence', () => {
 
   it('is a tool of the agent, and its refs resolve to the records a reader is shown', () => {
     expect(kit.tools.map((t: any) => t.name)).toContain('window_report');
-    expect(record).toMatchObject({ tool: 'window_report', ref: 'window' });
-    const whole: any = resolveRef(trace, 'window', { hero: 'beastmaster', lang: 'zh', match });
+    expect(record).toMatchObject({ tool: 'window_report', ref: 'window:beastmaster' });
+    const whole: any = resolveRef(trace, 'window:beastmaster', { hero: 'beastmaster', lang: 'zh', match });
     expect(whole).toMatchObject({ kind: 'window', record: { highest_lead: { value: 3565 } } });
     // The summary is the counts: no windows, no gaps.
     expect(whole.record).not.toHaveProperty('windows');
     expect(whole.record).not.toHaveProperty('gaps');
-    const one: any = resolveRef(trace, 'window:2', { hero: 'beastmaster', lang: 'zh', match });
+    const one: any = resolveRef(trace, 'window:beastmaster:2', { hero: 'beastmaster', lang: 'zh', match });
     expect(one).toMatchObject({ kind: 'window', record: { clock: '19:00–29:00', ahead: 'my_team' }, names: { phantom_assassin: '幻影刺客' } });
     // An item in a window resolves through item_timeline, the record it came from.
     expect(resolveRef(trace, 'item:phantom_assassin:black_king_bar', { hero: 'beastmaster', match })!.record.first_held.clock).toBe('21:29');
-    for (const bad of ['window:9', 'window:x', 'window:2:1', 'windows']) expect(resolveRef(trace, bad, { hero: 'beastmaster', match })).toBeNull();
+    for (const bad of ['window:beastmaster:9', 'window:x', 'window:2:1', 'windows']) expect(resolveRef(trace, bad, { hero: 'beastmaster', match })).toBeNull();
     // Without the match data a window cannot be resolved.
-    expect(resolveRef(trace, 'window:2', { hero: 'beastmaster' })).toBeNull();
+    expect(resolveRef(trace, 'window:beastmaster:2', { hero: 'beastmaster' })).toBeNull();
   });
 
   it('a sentence may state a window\'s times and numbers, and an item only by the record it came from', () => {
     const plan = (fact: string, refs: string[]) => ({ verdict: 'v', mainline: [], findings: [], game_plan: { window: '你们在 19:00 到 29:00 领先，25:00 时最多领先 3565。', course: 'c', your_part: 'y', main_reason: 'team_play', why: 'w', evidence: [{ refs, fact }] } });
     const problems = (fact: string, refs: string[]) => verifyReview(plan(fact, refs), [kit.context, record]).problems.filter((p: any) => p.where.startsWith('plan'));
-    expect(problems('19:00 到 29:00 你们领先，最多领先 3565（25:00），期间你们拆了 2 座建筑、对面拆了 3 座。', ['window:2'])).toEqual([]);
+    expect(problems('19:00 到 29:00 你们领先，最多领先 3565（25:00），期间你们拆了 2 座建筑、对面拆了 3 座。', ['window:beastmaster:2'])).toEqual([]);
     expect(problems('幻影刺客在 21:29 出了黑皇杖。', ['item:phantom_assassin:black_king_bar'])).toEqual([]);
     // The peak of another window is not in this one.
-    expect(problems('19:00 到 29:00 最多领先 27728。', ['window:2'])).toEqual([expect.objectContaining({ kind: 'moment' })]);
-    const shown = planOf(plan('19:00 到 29:00 你们领先。', ['window:2']).game_plan, [], verifyReview(plan('x', ['window:2']), [kit.context, record]).refs)!;
+    expect(problems('19:00 到 29:00 最多领先 27728。', ['window:beastmaster:2'])).toEqual([expect.objectContaining({ kind: 'moment' })]);
+    const shown = planOf(plan('19:00 到 29:00 你们领先。', ['window:beastmaster:2']).game_plan, [], verifyReview(plan('x', ['window:beastmaster:2']), [kit.context, record]).refs)!;
     expect(shown.window).toBe('你们在 19:00 到 29:00 领先，25:00 时最多领先 3565。');
-    expect(shown.evidence[0]).toMatchObject({ refs: ['window:2'], clock: '19:00' });
+    expect(shown.evidence[0]).toMatchObject({ refs: ['window:beastmaster:2'], clock: '19:00' });
     // A plan with only its window sentence left still shows.
-    expect(planOf({ window: 'w', evidence: [{ refs: ['window:2'], fact: 'f' }] }, [], new Map())).toMatchObject({ window: 'w' });
+    expect(planOf({ window: 'w', evidence: [{ refs: ['window:beastmaster:2'], fact: 'f' }] }, [], new Map())).toMatchObject({ window: 'w' });
     // A window sentence that fails the check is left out by itself.
-    expect(planOf({ window: 'w', course: 'c', evidence: [{ refs: ['window:2'], fact: 'f' }] }, [{ where: 'plan', index: 5 } as any], new Map())).not.toHaveProperty('window');
+    expect(planOf({ window: 'w', course: 'c', evidence: [{ refs: ['window:beastmaster:2'], fact: 'f' }] }, [{ where: 'plan', index: 5 } as any], new Map())).not.toHaveProperty('window');
   });
 
   it('fights in a window are match_overview\'s, under the same refs', () => {
     const o = runTraceTool(trace, 'match_overview', {}, { perspective: 'beastmaster', match }) as any;
     for (const f of report().windows[1].fights) expect(o.fights.find((x: any) => x.ref === f.fight)).toMatchObject({ my_team_deaths: f.my_team_deaths, enemy_deaths: f.enemy_deaths });
+  });
+});
+
+describe('review of #280: what the window report must agree on', () => {
+  it('reads the game\'s patch as power_spikes does, also when the match data has no patch', async () => {
+    const { powerSpikes } = await import('../../lib/agent/situationTools.js');
+    // A game of 7.41 by its start time, with no patch in the match data: both tools read 7.41's items.
+    const older = { ...match, patch: undefined, start_time: Date.parse('2026-10-20T00:00:00Z') / 1000 };
+    const w: any = windowReport(trace, { hero: 'beastmaster' }, { match: older });
+    const p: any = powerSpikes(trace, { hero: 'beastmaster' }, { match: older });
+    expect(w.data_patch).toBe('7.41');
+    expect(w.data_patch).toBe(p.data_patch);
+    // The same items are big to both: every big item power_spikes lists for an enemy inside window 2 is in it.
+    const inWindow = (t: string) => { const [m, sec] = t.split(':').map(Number); const x = m * 60 + sec; return x >= 1140 && x < 1740; };
+    const theirs = p.enemies.flatMap((e: any) => e.big_items.filter((i: any) => inWindow(i.first_held)).map((i: any) => `${e.enemy}:${i.item}`)).sort();
+    expect(w.windows[1].big_items_finished.enemy.map((x: any) => `${x.hero}:${x.item}`).sort()).toEqual(theirs);
+    // With the patch in the match data, that is the patch.
+    expect((windowReport(trace, { hero: 'beastmaster' }, { match }) as any).data_patch).toBe((powerSpikes(trace, { hero: 'beastmaster' }, { match }) as any).data_patch);
+  });
+
+  it('a building that falls at the minute the lead changes sides is the next window\'s, never both', () => {
+    // A tower moved to 29:00 exactly, the minute the enemy went ahead.
+    const i = trace.buildings.findIndex((b: any) => /badguys_tower1_top$/.test(trace.names[b[1]]));
+    const moved = { ...trace, buildings: trace.buildings.map((b: any, j: number) => (j === i ? [1740, b[1], b[2], b[3]] : b)) };
+    const w: any = windowReport(moved, { hero: 'beastmaster' }, { match });
+    const where = w.windows.filter((x: any) => x.buildings.some((b: any) => b.clock === '29:00')).map((x: any) => x.ref);
+    expect(where).toEqual(['window:beastmaster:3']);
+    // Each building of the game is in at most one window, and the Ancient, at the end of the game, is in the last.
+    const all = w.windows.flatMap((x: any) => x.buildings.map((b: any) => `${b.clock} ${b.building}`));
+    expect(new Set(all).size).toBe(all.length);
+    expect(w.windows.at(-1).buildings.at(-1)).toMatchObject({ building: 'badguys_fort', clock: '42:31' });
+  });
+
+  it('the lead at each 5-minute mark can be stated, citing the summary', () => {
+    const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh', match });
+    const record = kit.runTool('window_report', { hero: 'beastmaster' });
+    expect(record.measured_at).toEqual(['5:00', '10:00', '15:00', '20:00', '25:00', '30:00', '35:00', '40:00']);
+    // Only the summary is a source: no other tool states 10:00 in this check.
+    const sources = [record];
+    const review = (fact: string, line: string) => ({ verdict: 'v', mainline: [], findings: [], game_plan: { window: line, course: 'c', evidence: [{ refs: ['window:beastmaster'], fact }] } });
+    const problems = verifyReview(review('10:00 时你们落后 482。', '10:00 时你们还落后 482，20:00 已经领先 2245。'), sources).problems.filter((p: any) => p.where.startsWith('plan'));
+    expect(problems).toEqual([]);
+    // A mark the report does not read at is not backed.
+    expect(verifyReview(review('12:00 时你们落后 482。', 'x'), sources).problems.filter((p: any) => p.where === 'plan_evidence')).toEqual([expect.objectContaining({ kind: 'moment', text: expect.stringContaining('12:00') })]);
+  });
+
+  it('a window read from another hero\'s side has its own refs, and they open the same record', () => {
+    const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'en', match });
+    const axe = kit.runTool('window_report', { hero: 'axe' });
+    expect(axe.ref).toBe('window:axe');
+    const three = axe.windows[2];
+    expect(three).toMatchObject({ ref: 'window:axe:3', ahead: 'my_team', buildings_taken: { my_team: 15, enemy: 0 } });
+    // Opened inside Beastmaster's review, the ref is still Axe's side of the game.
+    const opened: any = resolveRef(trace, 'window:axe:3', { hero: 'beastmaster', lang: 'en', match });
+    expect(opened.record).toMatchObject({ ref: 'window:axe:3', ahead: 'my_team', buildings_taken: { my_team: 15, enemy: 0 } });
+    expect(resolveRef(trace, 'window:beastmaster:3', { hero: 'beastmaster', match })!.record).toMatchObject({ ahead: 'enemy', buildings_taken: { my_team: 0, enemy: 15 } });
   });
 });
