@@ -16,6 +16,8 @@ export interface FindingRule { when: string; do: string; this_game?: string; /**
 export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string; rule?: FindingRule }
 /** How the game was played as a whole (lib/agent/deepReview.js planOf): only what the check let through. */
 export interface GamePlan {
+  /** When each side had its chance (window_report). */
+  window?: string;
   line_ups?: string; course?: string; your_part?: string; strengths?: string;
   /** What the course is mostly down to; present only together with the sentence that argues it. */
   main_reason?: 'your_play' | 'team_play' | 'enemy_play' | 'line_ups' | 'unclear'; why?: string;
