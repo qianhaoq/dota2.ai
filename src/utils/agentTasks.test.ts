@@ -80,6 +80,27 @@ describe('a started review is queued and done inside the request that delivers i
     expect(m.calls).toBe(2);
   });
 
+  it('two deliveries of one review arriving together on one instance are one review', async () => {
+    const w = world();
+    const m = model();
+    const a: any = createAgentService({ traces: w.traces, docs: w.docs, complete: m.complete });
+    const task = { kind: 'review', matchId: String(ID), hero: 'beastmaster', lang: 'en' };
+    // The same seat under another spelling is the same job.
+    const out = await Promise.all([a.run(task), a.run({ ...task, hero: 'Beastmaster' }), a.run(task)]);
+    expect(out.map((o: any) => o.status).sort()).toEqual(['busy', 'busy', 'ready']);
+    expect(m.calls).toBe(2);
+    // The claim is given back: a later delivery is answered from what is stored.
+    expect(await a.run(task)).toEqual({ status: 'ready' });
+    expect(m.calls).toBe(2);
+    // A parse likewise: one run of the pipeline.
+    const store = new Map<string, any>();
+    const ran = vi.fn(async (id: any) => { await new Promise((r) => setTimeout(r, 10)); store.set(String(id), JSON.parse(fixture.toString())); return { ok: true }; });
+    const p: any = createAgentService({ traces: { get: async (id: any) => store.get(String(id)) ?? null }, docs: world().docs, complete: null, pipeline: { run: ran } });
+    const parsed = await Promise.all([p.run({ kind: 'parse', matchId: String(ID) }), p.run({ kind: 'parse', matchId: ID })]);
+    expect(parsed.map((o: any) => o.status).sort()).toEqual(['busy', 'ready']);
+    expect(ran).toHaveBeenCalledTimes(1);
+  });
+
   it('an instance told to stop answers "interrupted" and leaves the review running for the next delivery', async () => {
     const w = world();
     const a: any = createAgentService({ traces: w.traces, docs: w.docs, complete: () => new Promise(() => {}), beatMs: 5 });
