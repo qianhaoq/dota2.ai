@@ -9,7 +9,9 @@
  * Writes lib/data/constants/{heroes,items,abilities}.json (OpenDota
  * /constants/*; abilities trimmed to the fields the server reads) and
  * meta.json (patch + date). `--all` also runs
- * scripts/coach-names.mjs <patch>, coach-abilities.mjs and coach-hero-items.mjs.
+ * scripts/coach-names.mjs <patch>, coach-abilities.mjs and coach-hero-items.mjs,
+ * and coach-patch-snapshots.mjs (the item and ability data of each finished
+ * patch, so an older game is told its own prices: needs github.com).
  * Uses OPENDOTA_API_KEY when set (higher limits); the key is never written.
  */
 import { execFileSync } from 'node:child_process';
@@ -50,5 +52,6 @@ if (process.argv.includes('--all')) {
   run('./coach-names.mjs', patch);
   run('./coach-abilities.mjs');
   run('./coach-hero-items.mjs');
+  run('./coach-patch-snapshots.mjs');
 }
 console.log(`snapshot for ${patch} written`);
