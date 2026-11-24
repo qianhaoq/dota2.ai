@@ -30,7 +30,34 @@ const T = {
   ruleCheck: { en: 'Next game', zh: '下一盘' },
   goalUndo: { en: 'Remove', zh: '取消' },
   goalFrom: { en: 'From finding', zh: '对应问题' },
+  plan: { en: 'The game plan', zh: '运营思路' },
+  planSub: { en: 'The game as a whole: what the teams did with the map, and where you were.', zh: '整局来看：双方怎么用地图和团战，你当时在哪里。' },
+  planLineUps: { en: 'The line-ups', zh: '阵容' },
+  planCourse: { en: 'How it went', zh: '走势' },
+  planYou: { en: 'Your part', zh: '你的部分' },
+  planReason: {
+    your_play: { en: 'Mostly your own play', zh: '主要在你自己的打法' }, team_play: { en: 'Mostly the team, not you', zh: '主要在队伍，不在你' },
+    enemy_play: { en: 'Mostly what the enemy did', zh: '主要是对面做对了' }, line_ups: { en: 'Mostly the line-ups', zh: '主要在阵容' }, unclear: { en: 'The data does not settle it', zh: '数据定不了' },
+  } as Record<string, Record<Lang, string>>,
+  intentBusy: { en: 'The coach is still answering your last question. Pick again when it is done.', zh: '教练还在回答上一个问题，等它答完再选。' },
+  intentAsk: { en: 'What were you going for this game? Tell the coach: it checks your plan against the replay.', zh: '这局你本来想怎么打？告诉教练，它会对照录像回答。' },
 } as const;
+
+/** What a player may have been going for. The label is the button; `said` is how it reads inside the question. */
+export const PLAN_INTENTS: { key: string; label: Record<Lang, string>; said: Record<Lang, string> }[] = [
+  { key: 'push', label: { en: 'Lanes into towers', zh: '线优转推进' }, said: { en: 'win the lanes and take towers early', zh: '线优转推进' } },
+  { key: 'gank', label: { en: 'Ganks and pressure', zh: '抓人带节奏' }, said: { en: 'gank and keep them down', zh: '抓人带节奏、打压制' } },
+  { key: 'split', label: { en: 'Split push', zh: '带线牵制' }, said: { en: 'split push and stay out of fights', zh: '带线牵制、避开正面团' } },
+  { key: 'late', label: { en: 'Farm for late', zh: '发育拖后期' }, said: { en: 'farm and fight late', zh: '发育拖后期再打团' } },
+];
+/** The question a chosen plan sends to the coach: the three things a plan is checked on. */
+export const planQuestion = (key: string, lang: Lang): string | null => {
+  const said = PLAN_INTENTS.find((p) => p.key === key)?.said[lang];
+  if (!said) return null;
+  return lang === 'zh'
+    ? `我这局的思路是「${said}」。我的打法和这个思路一致吗？面对对面的阵容，这个思路站得住吗？没打成的话，是我没做好、思路不对，还是被对面针对了？`
+    : `My plan this game was to ${said}. Did my play fit it? Was it sound against their line-up? And where it failed, was that my play, the plan, or what the enemy did?`;
+};
 
 interface Fight { ref: string; from: number; to: number; clock: string; my_team_deaths: number; enemy_deaths: number; my_team_gold_lead_before?: number | null; my_team_gold_lead_2min_after?: number | null }
 
@@ -124,8 +151,10 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
   );
 };
 
-export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; goalContext?: GoalContext | null }> = ({ matchId, review, lang, onAsk, goalContext = null }) => {
+export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; goalContext?: GoalContext | null }> = ({ matchId, review, lang, onAsk, onPlan, goalContext = null }) => {
   const t = (b: Record<Lang, string>) => b[lang];
+  // A plan picked while the coach is still answering is not sent: say so instead of doing nothing.
+  const [planHeld, setPlanHeld] = useState(false);
   const [overview, setOverview] = useState<{ fights: Fight[]; duration: { t: number } | null } | null>(null);
   useEffect(() => {
     let alive = true;
@@ -144,6 +173,33 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         {overview && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} lang={lang} onAsk={onAsk} />}
         {review.mainline.length > 0 && <ol className="ag-mainline">{review.mainline.map((line, i) => <li key={i}>{line}</li>)}</ol>}
       </section>
+
+      {(review.game_plan || onPlan) && (
+        <section className="ag-plan">
+          <h2>{t(T.plan)}</h2>
+          {review.game_plan && (
+            <>
+              <p className="ag-plan-sub">{t(T.planSub)}</p>
+              <dl className="ag-plan-parts">
+                {review.game_plan.course && <div><dt>{t(T.planCourse)}</dt><dd>{review.game_plan.course}</dd></div>}
+                {review.game_plan.your_part && <div><dt>{t(T.planYou)}</dt><dd>{review.game_plan.your_part}</dd></div>}
+                {review.game_plan.line_ups && <div><dt>{t(T.planLineUps)}</dt><dd>{review.game_plan.line_ups}</dd></div>}
+              </dl>
+              {review.game_plan.main_reason && review.game_plan.why && T.planReason[review.game_plan.main_reason] && (
+                <p className="ag-plan-why"><span className={`ag-plan-tag is-${review.game_plan.main_reason}`}>{t(T.planReason[review.game_plan.main_reason])}</span>{review.game_plan.why}</p>
+              )}
+              <ul className="ag-evidence">{review.game_plan.evidence.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>
+            </>
+          )}
+          {onPlan && (
+            <div className="ag-intent">
+              <p>{t(T.intentAsk)}</p>
+              <div className="ag-intent-row">{PLAN_INTENTS.map((p) => <button key={p.key} type="button" className="ag-btn" onClick={() => setPlanHeld(!onPlan(planQuestion(p.key, lang)!))}>{p.label[lang]}</button>)}</div>
+              {planHeld && <p className="ag-intent-note" role="status">{t(T.intentBusy)}</p>}
+            </div>
+          )}
+        </section>
+      )}
 
       <section>
         <h2>{t(T.findings)}</h2>
