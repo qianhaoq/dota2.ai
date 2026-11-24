@@ -70,7 +70,8 @@ const GoldCurve: React.FC<{ adv: number[]; lang: Lang; title?: Bi }> = ({ adv, l
       </svg>
       <div className="ag-gold-axis" aria-hidden="true">
         <span className="is-radiant">▲ {T.goldUp[lang]}</span>
-        <span>{ticks.map((i) => <i key={i} style={{ left: `${(x(i) / W) * 100}%` }}>{i}:00</i>)}</span>
+        {/* A minute label under a side label (the first and last eighth of the width) would be cut: only its line is drawn. */}
+        <span>{ticks.filter((i) => x(i) / W > 0.14 && x(i) / W < 0.86).map((i) => <i key={i} style={{ left: `${(x(i) / W) * 100}%` }}>{i}:00</i>)}</span>
         <span className="is-dire">▼ {T.goldDown[lang]}</span>
       </div>
     </figure>
