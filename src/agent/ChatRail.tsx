@@ -40,6 +40,8 @@ const TOOLS: Record<string, Record<Lang, string>> = {
   lane_report: { en: 'Reading the lane', zh: '看对线期' },
   tempo_report: { en: 'Reading who took the map, and when', zh: '看各阶段的推进和节奏' },
   lineup_timing: { en: 'Checking which heroes win short or long games', zh: '查双方英雄在长局、短局的胜率' },
+  build_check: { en: 'Checking the build against what killed you', zh: '核对出装和致死伤害' },
+  power_spikes: { en: 'Reading when each side became strong', zh: '看双方的强势期' },
 };
 const clockOf = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}` : String(v); };
 export function stepLabel(step: ToolStep, lang: Lang): string {
