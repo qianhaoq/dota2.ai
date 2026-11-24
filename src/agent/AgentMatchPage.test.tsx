@@ -368,6 +368,8 @@ describe('AgentMatchPage', () => {
     // The totals: the trade lists are counted and labelled in the reader's language.
     const totals = { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: { beastmaster: '兽王' }, record: {
       ref: 'deaths:beastmaster', ref_scope: 'summary', hero: 'beastmaster', deaths_total: 11,
+      // Twenty other counters ahead of them: the trade counts still show, on a line of their own (review of #303).
+      killed_by: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`hero_${i}`, 1])),
       deaths_where: { traded_within_15s: ['2:51', '6:13', '8:27'], not_traded_within_15s: ['0:47', '11:03'], no_ally_within_2200_at_death_and_not_traded: ['0:47'] },
     } };
     mockFetch({ 'ref=overview': overview, '/evidence?': totals, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['deaths:beastmaster'], fact: '11 次阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });

@@ -730,9 +730,14 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   }
   // What the deaths have in common, then where the damage came from: a count of deaths, a share as a percentage.
   const tl = (key: string) => (TOTALS[key] ? t(TOTALS[key]) : pretty(key));
+  // The trade counts have a line of their own: the counters below are cut at 18, and these are what a review cites for
+  // its lone deaths (review of #303).
+  const TRADES = ['traded_within_15s', 'not_traded_within_15s', 'no_ally_within_2200_at_death_and_not_traded'];
+  const trades: [string, string][] = [];
   for (const [k, v] of late) {
     if (!v || typeof v !== 'object') continue;
     for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
+      if (k === 'deaths_where' && TRADES.includes(k2) && Array.isArray(v2)) { trades.push([tl(k2), String(v2.length)]); continue; }
       if ((k === 'deaths_where' || k === 'casts_where') && Array.isArray(v2)) { if (v2.length) flat.push([tl(k2), String(v2.length)]); }
       else if (k === 'damage_share_in_death_windows' && typeof v2 === 'number') { const cut = k2.indexOf(': '); flat.push([`${tl(k)} · ${cut > 0 ? `${N(k2.slice(0, cut))} ${tl(k2.slice(cut + 2))}` : N(k2)}`, `${Math.round(v2 * 100)}%`]); }
     }
@@ -740,6 +745,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   return (
     <div className="ag-rec">
       <p className="ag-rec-head">{r.clock ?? [r.hero, r.ability].filter(Boolean).map((x: string) => N(x)).join(' · ')}{r.watching ? `${r.hero ? ' · ' : ''}${t(T.watching)} ${N(r.watching.hero)} · ${N(r.watching.ability)}` : ''}</p>
+      {trades.length > 0 && <p className="ag-rec-line">{trades.map(([k, v]) => <span key={k} className="ag-chip">{k} <em>{v}</em></span>)}</p>}
       {flat.length > 0 && <p className="ag-rec-line">{flat.slice(0, 18).map(([k, v]) => <span key={k} className="ag-chip">{k} <em>{v}</em></span>)}</p>}
     </div>
   );

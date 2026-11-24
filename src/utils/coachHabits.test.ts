@@ -25,6 +25,8 @@ describe('habitGoal', () => {
     expect(habitGoal('outnumbered', deaths)).toEqual({ kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）' } });
     expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))).toMatchObject({ max: 1, baseline: 3 });
     expect(habitGoal('alone', where({ no_ally_within_2200_at_death: ['1:00', '2:00'] }))).toMatchObject({ max: 1, baseline: 2 });
+    // Lone deaths that bought nothing are their own count: four alone, two of them traded, is a baseline of two (review of #303).
+    expect(habitGoal('alone_not_traded', where({ no_ally_within_2200_at_death: ['1:00', '2:00', '3:00', '4:00'], no_ally_within_2200_at_death_and_not_traded: ['1:00', '3:00'] }))).toMatchObject({ habit: 'alone_not_traded', max: 1, baseline: 2 });
   });
   it('once is not a habit, and an unknown count or habit is no check', () => {
     // One death alone (2:51), none below half health.
