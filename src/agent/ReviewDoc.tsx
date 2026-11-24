@@ -8,6 +8,9 @@ import { setGoal, useActiveGoal, type ActiveGoal, type GoalRule } from '../coach
 type Lang = 'en' | 'zh';
 const T = {
   verdict: { en: 'The verdict', zh: '结论' },
+  patchExact: { en: 'Prices, item effects and cooldowns in this review are those of patch {p}', zh: '本复盘中的价格、装备效果和技能冷却按 {p} 版本' },
+  patchFrom: { match_data: { en: 'from the match record', zh: '依据比赛记录' }, start_time: { en: 'from when the game was played', zh: '依据比赛开始时间' }, match_id: { en: 'from the match id', zh: '依据比赛编号' } } as Record<string, Record<Lang, string>>,
+  patchUnknown: { en: 'The patch of this game could not be told: prices, item effects and cooldowns are those of the current patch {p} and may differ from what they were then.', zh: '这局的版本无法确定：价格、装备效果和技能冷却按当前 {p} 版本，可能与当时不同。' },
   story: { en: 'How the game went', zh: '对局主线' },
   fights: { en: 'Fights: bars above the line are fights your team lost fewer heroes in; the line is your team\'s gold lead.', zh: '团战：横线上方是我方少死人的团，下方是多死人的团；折线是我方经济领先。' },
   turn: { en: 'the turn', zh: '转折' },
@@ -167,6 +170,9 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       <section className="ag-verdict">
         <p className="cx-eyebrow">{t(T.verdict)}</p>
         <h1>{review.verdict}</h1>
+        {review.data_patch && (review.data_patch.exact
+          ? <p className="ag-patch">{t(T.patchExact).replace('{p}', review.data_patch.name)}{review.data_patch.known_from && T.patchFrom[review.data_patch.known_from] ? (lang === 'zh' ? `（${t(T.patchFrom[review.data_patch.known_from])}）` : ` (${t(T.patchFrom[review.data_patch.known_from])})`) : ''}</p>
+          : <p className="ag-patch is-unknown" role="note">{t(T.patchUnknown).replace('{p}', review.data_patch.name)}</p>)}
       </section>
 
       {board}

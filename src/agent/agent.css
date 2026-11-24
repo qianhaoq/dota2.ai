@@ -269,3 +269,7 @@
   .ag-row-lvl { margin-left: 4px; }
   .ag-gold-axis > span:nth-child(2) { display: none; }
 }
+
+/* Which patch a review's numbers are from; a warning when it could not be told. */
+.ag-patch { margin: 8px 0 0; font-size: var(--fs-meta); color: var(--text-3); }
+.ag-patch.is-unknown { color: var(--fix); }

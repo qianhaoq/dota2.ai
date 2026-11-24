@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { CURRENT_PATCH, PATCH_NAMES, isBigItemIn, patchData } from '../../lib/agent/patchData.js';
+import { CURRENT_PATCH, PATCH_NAMES, gamePatch, isBigItemIn, patchData, patchForGame } from '../../lib/agent/patchData.js';
 import { buildCheck, goldOnTop, powerSpikes } from '../../lib/agent/situationTools.js';
 import { heroAbilities, proItemChoices } from '../../lib/agent/knowledgeTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
-import { deepReviewSystem } from '../../lib/agent/deepReview.js';
+import { deepReviewSystem, reviewToolkit, runDeepReview } from '../../lib/agent/deepReview.js';
 import { ALWAYS_KEY_ITEMS, KEY_ITEM_MIN_COST } from '../../lib/coach/knowledge.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scoreboard = JSON.parse(readFileSync(new URL('../fixtures/agent/match9100904020.scoreboard.json', import.meta.url), 'utf8'));
 const items742 = JSON.parse(readFileSync(new URL('../../lib/data/constants/items.json', import.meta.url), 'utf8'));
 const snap741 = JSON.parse(readFileSync(new URL('../../lib/data/constants/patches/7.41.json', import.meta.url), 'utf8'));
+/** The fixture game with no match id the site can place: its patch is not known. */
+const unplaced = { ...trace, match_id: 0 };
+const index = JSON.parse(readFileSync(new URL('../../lib/data/constants/patches/index.json', import.meta.url), 'utf8'));
 /** The fixture game as if it had been played in 7.41 (OpenDota patch 60). */
 const as741 = { ...scoreboard, patch: 60 };
 
@@ -81,7 +84,7 @@ describe('the review tools tell a 7.41 game its own numbers', () => {
     expect(now.data_patch).toBe('7.42');
     expect(now.items_that_answer_attack_damage.find((x: any) => x.item === 'heavens_halberd')).toMatchObject({ cost: items742.heavens_halberd.cost });
     expect(now.gaps.map((g: any) => g.topic)).not.toContain('pro_items_removed_since_this_game_patch');
-    const unknown: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh' });
+    const unknown: any = buildCheck(unplaced, { hero: 'beastmaster' }, { lang: 'zh' });
     expect(unknown.gaps).toContainEqual({ topic: 'item_and_ability_data_of_this_game_patch', reason: 'patch_of_this_game_unknown; 7.42 data used' });
   });
 
@@ -89,7 +92,9 @@ describe('the review tools tell a 7.41 game its own numbers', () => {
     expect(powerSpikes(trace, { hero: 'beastmaster' }, { lang: 'zh', match: as741 })).toMatchObject({ data_patch: '7.41', me: { ultimate: { cooldown_by_level: [90, 75, 60] } } });
     expect(heroAbilities(trace, { hero: 'beastmaster' }, { lang: 'zh', match: as741 })).toMatchObject({ patch: '7.41', source: expect.stringContaining('end of that patch') });
     expect(heroAbilities(trace, { hero: 'beastmaster' }, { lang: 'zh', match: scoreboard })).toMatchObject({ patch: '7.42' });
-    expect((heroAbilities(trace, { hero: 'beastmaster' }, { lang: 'zh' }) as any).gaps[0].topic).toBe('ability_data_of_this_game_patch');
+    expect((heroAbilities(unplaced, { hero: 'beastmaster' }, { lang: 'zh' }) as any).gaps[0].topic).toBe('ability_data_of_this_game_patch');
+    // Without match data the patch comes from the match id: the fixture (9100904020) was played in 7.42.
+    expect(heroAbilities(trace, { hero: 'beastmaster' }, { lang: 'zh' })).toMatchObject({ patch: '7.42', patch_known_from: 'match_id' });
     const pro: any = proItemChoices(trace, { hero: 'beastmaster' }, { lang: 'zh', match: as741 });
     expect(pro.data_patch).toBe('7.41');
     for (const i of [...pro.mid_game_items.items, ...pro.built_more_against_these_enemies]) expect(patchData(60).has(i.item)).toBe(true);
@@ -97,5 +102,40 @@ describe('the review tools tell a 7.41 game its own numbers', () => {
     expect(card.record.data_patch).toBe('7.41');
     expect(card.record.items_that_answer_attack_damage.find((x: any) => x.item === 'heavens_halberd').cost).toBe(3300);
     expect(deepReviewSystem('zh')).toContain('data_patch');
+  });
+});
+
+describe('which patch a game was played on, when the match data is not at hand', () => {
+  it('match data first, then its start time, then its match id; an id at a release, or older than the data, is not guessed', () => {
+    const p742 = index.patches.find((p: any) => p.name === '7.42');
+    expect(p742).toMatchObject({ id: 61, released: '2026-11-18T21:28:07.000Z' });
+    // The games this site has reviewed, against OpenDota's own patch numbers for them.
+    expect(gamePatch(9091400302, null)).toEqual({ id: 60, how: 'match_id' });
+    for (const id of [9099561801, 9100904020, 9102822298]) expect(gamePatch(id, null)).toEqual({ id: 61, how: 'match_id' });
+    expect(gamePatch(p742.first_match_id_after, null)).toEqual({ id: 61, how: 'match_id' });
+    expect(gamePatch(p742.last_match_id_before, null)).toEqual({ id: 60, how: 'match_id' });
+    for (let id = p742.last_match_id_before + 1; id < p742.first_match_id_after; id += 1) expect(gamePatch(id, null)).toMatchObject({ id: null, reason: 'match_id_at_a_patch_release' });
+    expect(gamePatch(index.patches[0].last_match_id_before, null)).toMatchObject({ id: null, reason: 'older_than_7.40' });
+    expect(gamePatch('not an id', null)).toMatchObject({ id: null, reason: 'patch_of_this_game_unknown' });
+    // The match data wins over the id; a start time is used when the patch number is missing.
+    expect(gamePatch(9091400302, { patch: 61 })).toEqual({ id: 61, how: 'match_data' });
+    expect(gamePatch(9091400302, { start_time: Date.parse(p742.released) / 1000 })).toEqual({ id: 61, how: 'start_time' });
+    expect(gamePatch(9091400302, { start_time: Date.parse(p742.released) / 1000 - 1 })).toEqual({ id: 60, how: 'start_time' });
+    expect(patchForGame(9091400302, null)).toMatchObject({ name: '7.41', exact: true, how: 'match_id' });
+    expect(patchForGame(8600000000, null)).toMatchObject({ name: CURRENT_PATCH, exact: false, how: null, reason: 'older_than_7.40' });
+    // The ids are in order, and each patch's first id follows its last-before.
+    for (const [i, p] of index.patches.entries()) { expect(p.first_match_id_after).toBeGreaterThan(p.last_match_id_before); if (i) expect(p.last_match_id_before).toBeGreaterThan(index.patches[i - 1].first_match_id_after); }
+  });
+
+  it('the review says which patch its numbers are from, and how that is known', async () => {
+    expect(reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' })!.patch).toEqual({ name: '7.42', exact: true, known_from: 'match_id' });
+    expect(reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh', match: as741 })!.patch).toEqual({ name: '7.41', exact: true, known_from: 'match_data' });
+    expect(reviewToolkit({ trace: unplaced, hero: 'beastmaster', lang: 'zh' })!.patch).toEqual({ name: '7.42', exact: false, reason: 'patch_of_this_game_unknown' });
+    const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。', rule: { when: 'w', do: 'd', this_game: 'x' } };
+    const complete = async (o: any) => (o.messages.at(-1).role === 'user'
+      ? { toolCalls: [{ id: 'a', name: 'ability_audit', args: { hero: 'beastmaster', ability: 'primal_roar' } }] }
+      : { toolCalls: [{ id: 's', name: 'submit_review', args: { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], blind_spots: [] } }] });
+    const out: any = await runDeepReview({ complete, trace, hero: 'beastmaster', lang: 'zh', match: as741 });
+    expect(out.review.data_patch).toEqual({ name: '7.41', exact: true, known_from: 'match_data' });
   });
 });
