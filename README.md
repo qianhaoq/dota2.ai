@@ -12,99 +12,118 @@
 
 <br>
 
-<a href="https://dota2.ai/r/9100904020?hero=beastmaster"><img src="docs/assets/review-verdict.png" alt="A review on dota2.ai: one verdict, the fights of the game on a timeline, and a coach to ask" width="100%"></a>
+<a href="https://dota2.ai/r/9100904020?hero=beastmaster"><img src="docs/assets/review-verdict.png" alt="A review on dota2.ai: the verdict, the scoreboard with both line-ups, items and the gold lead, and a coach to ask" width="100%"></a>
 
 </div>
 
 <br>
 
-Paste a match ID, pick the hero you played, and wait two to three minutes. The coach fetches the replay, goes through it with a set of lookup tools — every death, every ultimate, the fights, your build — and writes a review for one player: **one verdict, at most three things that decided the game, and what to do about each next time.**
+Paste a match ID and pick the hero you played. Two or three minutes later you have a review written for you alone: **one verdict, at most three things that decided the game, and what to do about each next time.**
 
-Then code checks the review against the replay. Every clock time, every number and every cited record has to be in what the tools actually returned. What is not gets sent back once, and is removed if it still cannot be backed.
+There is no opinion in it that the replay cannot back. An agent goes through the game with lookup tools — every death, every cast of your key ability, the fights, both teams' items — and then ordinary code checks every time, number and cited record against what those tools returned. What does not hold up is sent back once, and removed if it still does not.
 
-## What a finding looks like
+## What you get
 
-<img align="right" width="42%" src="docs/assets/review-finding.png" alt="One finding: the claim, five pieces of evidence with game times, a rule for next game, and what to do instead">
+<img align="right" width="44%" src="docs/assets/review-finding.png" alt="One finding: the claim, its evidence with game times and records, a rule for next game, and what to do instead">
 
 This is finding 2 of 3 from [match 9100904020](https://dota2.ai/r/9100904020?hero=beastmaster), unedited.
 
-**A claim about your play.** Not "play safer" — *three of your eleven deaths came with Primal Roar ready and never pressed*.
+**A claim about your play.** Not "itemize better" — *you never held Blink Dagger, which 71% of 1,116 professional Beastmaster games finish by 24:59, while 44% of the damage in your deaths was Phantom Assassin's attacks.*
 
-**The evidence, each with its record.** Every line cites the replay record it comes from. *Show the record* opens it: the twelve seconds before a death, one cast of an ability, a fight second by second.
+**Evidence, each line with its record.** *Show the record* opens what the line was read from: the twelve seconds before a death, every cast of an ability, one fight second by second, a build against what killed you.
 
-**A rule you can keep.** *When* a fight has started and no stun has landed on you, *do* spend the roar first. Small enough to remember mid-game.
+**A rule you can keep.** *When* you can see it on your own screen, *do* one thing. Small enough to remember mid-game.
 
-**A count for next time.** "At most 1 death with Primal Roar ready and not cast (this game: 3)." Open your next game and the coach counts the same thing in that replay.
+**A check for next time.** Finding 3 of the same review counts *three of your eleven deaths with Primal Roar ready and never cast*. Take it as your goal, and the coach counts the same thing in your next replay.
 
 **A coach you can argue with.** Ask about any line. It goes back to the replay before it answers, and its answer is checked the same way.
 
+<br clear="right">
+
 Around the findings, every review also has:
 
-- **How the game went** — the fights on a timeline, with the one where it turned;
-- **The game plan** — who took the map, and whether won fights became buildings;
+- **The scoreboard** — both line-ups with level, K/D/A, last hits, net worth, damage and items, and the gold lead minute by minute (from the replay itself when no match parse exists);
+- **How the game went** — the fights on a timeline, and the one where it turned;
+- **The game plan** — when each side had its chance, and whether won fights became buildings;
+- **Your plan, if you name it** — say before the review whether you were pushing, ganking, split-pushing or farming for late, and the review reads the game against that;
 - **What you did well**, held to the same evidence;
 - **What the replay could not show**, listed instead of guessed.
 
-<br clear="right">
+Prices, item effects and cooldowns are those of the release the game was played on (7.41b, 7.41c, 7.42 …), not today's.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    R["Replay<br/>.dem file"] --> T["Trace<br/>~250 KB of events"]
+    R["Replay<br/>.dem file"] --> T["Trace<br/>~250 KB"]
     T --> A["Agent<br/>investigates"]
-    A <--> L["11 lookup tools"]
+    A <--> L["16 lookup tools"]
     A --> V{"Verifier<br/>code, not a model"}
     V -- "unsupported:<br/>one repair round" --> A
     V -- "backed" --> D["Review"]
 ```
 
-**1. The replay becomes a trace.** A worker downloads the replay and extracts what happened: positions, casts, damage, deaths, items, buildings. The result is a compact file the tools can query in milliseconds.
+**1. The replay becomes a trace.** A worker downloads the replay and extracts what happened — positions, casts, damage, deaths, purchases, buildings, each hero's net worth — into a compact file the tools query in milliseconds.
 
-**2. An agent investigates.** The model is given a method, not conclusions. It decides what to look up, and can only learn about the game through tools:
+**2. An agent investigates.** The model is given a method, not conclusions, and learns about the game only through tools.
+
+<details>
+<summary><b>The 16 tools</b></summary>
+
+From the replay:
 
 | Tool | What it answers |
 |---|---|
 | `match_overview` | Line-ups, every fight and who lost fewer heroes, when each building fell |
-| `death_context` | The seconds before each death: who was near, health, what was ready and not used, who dealt the damage |
-| `ability_audit` | Every cast of one ability: target, whether it was spell immune, what the cast achieved |
-| `immunity_windows` | Each Black King Bar window, and what your key ability was doing when it opened |
+| `death_context` | The seconds before each death: who was near, health, what was ready and not used, whose damage it was |
+| `ability_audit` | Every cast of one ability: target, spell immunity, what the cast achieved |
+| `immunity_windows` | Each Black King Bar window, and what your key ability did while it lasted |
 | `fight_timeline` | A stretch of the game second by second, with where all ten heroes stood |
 | `item_timeline` | When a hero first held each item |
-| `lane_report` | The first ten minutes: last hits, gold, deaths, and how the matchup usually goes |
 | `tempo_report` | Ten-minute stretches: buildings, fights, whether a fight led to a building, where you were |
-| `hero_abilities` | Valve's data: what an ability does, whether it goes through spell immunity |
+
+Around it:
+
+| Tool | What it answers |
+|---|---|
+| `window_report` | When each side was ahead, and what it took — and finished — while it was |
+| `farm_report` | What the other side was doing while your team had its chance |
+| `power_spikes` | When each hero got their levels and big items, and how often they killed you before and after |
+| `build_check` | Your items in order against what actually killed you |
+| `build_for_plan` | Whether your items served the plan you went for |
+| `lane_report` | The first ten minutes: last hits, gold, deaths, and how the matchup usually goes |
+| `hero_abilities` | Valve's data for the game's release: what an ability does, whether it pierces immunity |
 | `pro_item_choices` | What professionals build on this hero, and against these enemies |
-| `lineup_timing` | Which of the ten heroes win more in short or in long games |
+| `lineup_timing` | Which of the ten heroes win more in short games or in long ones |
 
-**3. Code checks the result.** The verifier is ordinary code with no model in it:
+</details>
 
-- every clock time must be a time some tool returned;
-- every number of 100 or more, every decimal and every count must be in a tool result;
-- each evidence line must be found *inside the record it cites*, so a real number cannot be attached to the wrong moment;
-- a statement about who could see whom is never accepted, because a replay holds no fog of war.
+**3. Code checks the result.** The verifier has no model in it:
 
-The model gets one round to repair what fails. After that, an unsupported sentence is removed, an unsupported evidence line is removed, and a finding with nothing left to stand on is removed. The page says how many were.
+- every clock time must be one some tool returned;
+- every number of 100 or more, every decimal, percentage and count must be in a tool result;
+- each evidence line must be found *inside the record it cites*, so a real number cannot be pinned to the wrong moment;
+- a claim about who could see whom is never accepted — a replay holds no fog of war.
+
+The model gets one round to repair what fails. Then an unsupported sentence goes, an unsupported evidence line goes, and a finding with nothing left to stand on goes. The page says how many did.
 
 ## What it cannot see
 
-A replay does not contain everything, and the review says so instead of guessing.
+A replay does not hold everything, and the review says so instead of guessing.
 
 - **No vision.** Fog of war and wards are not in the data. The coach states distances and positions, never what you could see.
 - **No creep waves.** Where you stood in a lane is known; what the wave was doing is not.
 - **Only item-based spell immunity** is tracked, and Roshan timings are not reliable.
-- **Replays expire.** Valve keeps them for about two weeks. Without a replay there is nothing to review honestly, so nothing is shown in its place.
+- **Replays expire.** Valve keeps them for about two weeks. Without one there is nothing to review honestly, so nothing is shown in its place.
 - **It is a language model.** The verifier checks facts, not judgment. A finding can be true and still not be the most important thing about your game.
 
 ## Use it
 
-**On the web.** Open [dota2.ai](https://dota2.ai) and paste a match ID, or a Steam friend code to list your recent games. English and Chinese.
-
-The CLI and the MCP server give the instant, rule-based tier: a sectioned report from match data, pro games on the same problem, hero matchups and next-game goals. Neither needs an API key.
+**On the web.** Open [dota2.ai](https://dota2.ai), paste a match ID or a match link from OpenDota, Dotabuff or STRATZ — or a Steam friend code to list your recent games. English and Chinese. The home page also has a patch advisor: what 7.42 changed, and how a hero has done since.
 
 ### One line for your agent
 
-The hosted MCP server needs no install and no key. One line connects it:
+The hosted MCP server needs no install and no key:
 
 | Agent | Run this once |
 |---|---|
@@ -113,17 +132,17 @@ The hosted MCP server needs no install and no key. One line connects it:
 | **Gemini CLI** | `gemini mcp add --transport http dota2ai https://dota2.ai/mcp` |
 | **VS Code** (Copilot) | `code --add-mcp '{"name":"dota2ai","type":"http","url":"https://dota2.ai/mcp"}'` |
 | **Cursor** | [Add to Cursor](https://cursor.com/en/install-mcp?name=dota2ai&config=eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9), or put `{ "mcpServers": { "dota2ai": { "url": "https://dota2.ai/mcp" } } }` in `~/.cursor/mcp.json` |
-| **Any other MCP client** | Give it the address `https://dota2.ai/mcp` (Streamable HTTP) |
+| **Any other MCP client** | Give it `https://dota2.ai/mcp` (Streamable HTTP) |
 
-Then say it in one sentence:
+Then one sentence:
 
 > Review my Dota 2 match 9100904020 — I played Beastmaster.
 
-No MCP in your agent? Any agent that can fetch a URL works with this instead:
+No MCP? Any agent that can fetch a URL works with this instead:
 
 > Review my Dota 2 match 9100904020, I played Beastmaster. Call the API described at https://dota2.ai/llms.txt, quote only what it returns, and say when a sample is too small.
 
-The server has 8 tools ([reference](packages/mcp/README.md)). To run it locally over stdio instead, use `node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js` as the command. There is also an agent skill at [`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md).
+The server's 8 tools — `review_match`, `get_evidence`, `recent_matches`, `coach_report`, `coach_cases`, `coach_ask`, `goal_check`, `hero_matchup` — are the instant, rule-based tier: a sectioned report from match data, pro games on the same problem, matchups and next-game goals ([reference](packages/mcp/README.md)). To run it locally over stdio, use `node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`. There is also an agent skill at [`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md).
 
 ### From a terminal
 
@@ -135,11 +154,11 @@ node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section wh
 node packages/cli/bin/dota2ai.js matchup tidehunter ursa --rank legend
 ```
 
-Every command takes `--lang en|zh` and `--json`. Full reference: [`packages/cli/README.md`](packages/cli/README.md).
+Every command takes `--lang en|zh` and `--json`, and none needs a key. Full reference: [`packages/cli/README.md`](packages/cli/README.md).
 
-### Query a replay yourself
+### Ask a replay yourself
 
-The repository includes the trace of the match shown above, so the same tools the agent uses run offline:
+The trace of the match above ships with the repository, so the agent's replay tools run offline:
 
 ```bash
 T=packages/review-engine/test/fixtures/trace-9100904020.json.gz
@@ -180,24 +199,24 @@ npm run start:dev        # Vite on :5173, Express on :8080
 | `AGENT_BUCKET`, `TRACE_WORKER_URL` | Parsing on a separate worker, with storage in a bucket |
 | `OPENDOTA_API_KEY`, `STRATZ_API_TOKEN` | Higher rate limits and a second source for match data |
 
-The replay extractor is built from a companion repository and is not included here. Production setup — the worker, the queue that lets a review outlive a deploy, limits and costs — is in [`docs/AGENT_PIPELINE.md`](docs/AGENT_PIPELINE.md).
+The replay extractor is built from a companion repository and is not included here. Production — the worker, the queue that lets a review outlive a deploy, limits and costs — is described in [`docs/AGENT_PIPELINE.md`](docs/AGENT_PIPELINE.md).
 
 ```text
-lib/agent/                       the review agent: loop, tools, verifier, jobs, chat
-packages/review-engine/src/trace the trace format and the lookup tools (pure, no network)
-lib/coach/                       the rule-based engine behind the CLI and MCP
-src/agent/, src/coach/           the review page; the home and player pages
-packages/cli/, packages/mcp/     the CLI and the MCP server
-server.js                        the Express host
+lib/agent/                        the review agent: loop, tools, verifier, jobs, chat
+packages/review-engine/src/trace  the trace format and the replay tools (pure, no network)
+lib/coach/                        the rule-based engine behind the CLI and MCP
+src/agent/, src/coach/            the review page; the home and player pages
+packages/cli/, packages/mcp/      the CLI and the MCP server
+server.js                         the Express host
 ```
 
-Before a pull request, the same gate CI runs:
+Before a pull request, the gate CI runs:
 
 ```bash
 npx tsc --noEmit && node --check server.js && npm run build && npm test
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md). A game where the review got it wrong is the most useful thing you can send: [#164](https://github.com/qianhaoq/dota2.ai/issues/164).
 
 ## License
 
