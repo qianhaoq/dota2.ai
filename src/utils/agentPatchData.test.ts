@@ -46,15 +46,18 @@ describe('the data of the patch a game was played on', () => {
     expect(snap741f).toMatchObject({ release: '7.41f', major: '7.41', major_id: 60, game_files: expect.stringContaining('the last game update before 7.42') });
   });
 
-  it('the live tables are the current release\'s only while they are the ones the release list was built with', async () => {
-    const { LIVE_TABLES_MATCH } = await import('../../lib/agent/patchData.js');
-    expect(index.current_tables).toMatchObject({ items: expect.stringMatching(/^[0-9a-f]{64}$/), abilities: expect.stringMatching(/^[0-9a-f]{64}$/) });
-    expect(LIVE_TABLES_MATCH).toBe(true);
-    expect(patchData('7.42')).toMatchObject({ exact: true });
-    // Refreshed to a newer release without the list being rebuilt: still the live tables, no longer called 7.42's.
-    expect(patchData('7.42', { liveMatches: false })).toMatchObject({ name: '7.42', exact: false, reason: "live_tables_changed_since_the_release_list_was_built; may not be 7.42's" });
-    // An older release is read from its own snapshot either way.
-    expect(patchData('7.41c', { liveMatches: false })).toMatchObject({ exact: true });
+  it('every release\'s data is its own snapshot, the newest one too: never the live tables a refresh may not have reached', () => {
+    expect(index.releases.map((r: any) => r.data)).toEqual(index.releases.map((r: any) => `${r.name}.json`));
+    expect(index.releases_checked_at).toMatch(/^\d{4}-\d\d-\d\dT/);
+    const now = patchData('7.42');
+    expect(now.items).not.toBe(items742);
+    // Built from 7.42's own game files, it agrees with the live tables: same prices and recipes.
+    for (const [k, v] of Object.entries(now.items) as [string, any][]) if (items742[k]) expect([k, v.cost, v.components]).toEqual([k, items742[k].cost, items742[k].components ?? null]);
+    // Only an unknown release falls back to the live tables, and says so.
+    expect(patchData(null)).toMatchObject({ exact: false, reason: 'patch_of_this_game_unknown' });
+    expect(patchData(null).items.desolator).toEqual(items742.desolator);
+    // The whole of Valve's text is kept, notes included.
+    expect(now.items.desolator.notes).toBe(items742.desolator.notes);
   });
 
   it('a full data refresh will not start without the builder that rebuilds the release list', async () => {
@@ -165,6 +168,14 @@ describe('which patch a game was played on, when the match data is not at hand',
     expect(gamePatch(9200000000, later)).toEqual({ release: null, id: 62, how: 'match_data', exact: false, reason: 'patch_newer_than_the_site_data' });
     expect(patchForGame(9200000000, later)).toMatchObject({ name: CURRENT_RELEASE, exact: false, how: null, reason: 'patch_newer_than_the_site_data' });
     expect(patchForGame(9200000000, { ...later, patch: 61 })).toMatchObject({ name: '7.42', exact: true, how: 'start_time' });
+    // A newer release whose match ids are not indexed yet (between the two refresh steps): an id past the last
+    // indexed boundary may be in it, so it is not called exact — unless OpenDota's patch number names the newer patch.
+    const behind = index.releases.map((r: any) => (r.name === '7.42' ? { ...r, last_match_id_before: undefined, first_match_id_after: undefined } : r));
+    expect(gamePatch(9100904020, null, { releases: behind })).toEqual({ release: '7.41f', id: 60, how: 'match_id', exact: false, reason: 'may_be_7.42_or_later_whose_match_ids_are_not_indexed' });
+    expect(gamePatch(9100904020, { patch: 61 }, { releases: behind })).toEqual({ release: null, id: 61, how: 'match_data', exact: false, reason: 'letter_release_unknown' });
+    expect(gamePatch(9091400302, null, { releases: behind })).toMatchObject({ release: '7.41f', exact: false });
+    // With every boundary indexed, the same games are placed exactly.
+    expect(gamePatch(9100904020, null)).toMatchObject({ release: '7.42', exact: true });
     // Neither a start time nor an id it can place: only OpenDota's patch number, which names no letter.
     expect(gamePatch(0, { patch: 60 })).toEqual({ release: null, id: 60, how: 'match_data', exact: false, reason: 'letter_release_unknown' });
     expect(gamePatch('not an id', null)).toMatchObject({ release: null, reason: 'patch_of_this_game_unknown' });

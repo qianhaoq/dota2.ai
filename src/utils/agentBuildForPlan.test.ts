@@ -65,18 +65,28 @@ describe('build_for_plan on a real game', () => {
   });
 
   it('an item is classified only by the text of this game\'s patch (review of #284)', () => {
-    // Desolator's "Armor reduction works on buildings." is 7.42's text; 7.41's says otherwise.
     // A game of 7.41f: OpenDota's patch 60 and a start time in 7.41f (match 9091400302's). The start time decides the
     // release, so it must agree with the patch number: a 7.42 start time would place the game in 7.42.
     const older = { ...match, patch: 60, start_time: 1794747997 };
     const r: any = buildForPlan(trace, { hero: 'phantom_assassin', plan: 'push' }, { match: older });
     expect(r.data_patch).toBe('7.41f');
-    expect(r.items.find((i: any) => i.item === 'desolator')).toMatchObject({ serves: [], effect_text_differs_in_this_patch: true });
-    expect(r.items.find((i: any) => i.item === 'desolator')).not.toHaveProperty('valve_says');
-    expect(r.stated_plan).toMatchObject({ first_item_for_it: null });
-    expect(r.gaps).toContainEqual({ topic: 'items_whose_effect_text_differs_in_this_patch', reason: 'not_classified: desolator' });
+    // Desolator's note "Armor reduction works on buildings." is in Valve's data for 7.40 through 7.42 (OpenDota's own
+    // 7.41 build has it too): it serves pushing in 7.41f as well. (An earlier test said 7.41 lacked it; that came from
+    // release data that had dropped item notes.)
+    expect(r.items.find((i: any) => i.item === 'desolator')).toMatchObject({ serves: ['push'], valve_says: 'Armor reduction works on buildings.' });
     // Battle Fury's text is the same in 7.41: still read as farming.
     expect(r.items.find((i: any) => i.item === 'bfury')).toMatchObject({ serves: ['late'] });
+    // Meteor Hammer's "Deals 75% damage to buildings." is 7.42's text (7.42: "now deals 75% Impact and Burn Damage to
+    // buildings instead of having separate values"). The same game with that Desolator as a Meteor Hammer instead:
+    const h = trace.heroes.findIndex((x: any) => x.key === 'phantom_assassin');
+    const swapped = JSON.parse(JSON.stringify(trace));
+    swapped.items[h].item_meteor_hammer = swapped.items[h].item_desolator; delete swapped.items[h].item_desolator;
+    const old: any = buildForPlan(swapped, { hero: 'phantom_assassin', plan: 'push' }, { match: older });
+    expect(old.items.find((i: any) => i.item === 'meteor_hammer')).toMatchObject({ serves: [], effect_text_differs_in_this_patch: true });
+    expect(old.items.find((i: any) => i.item === 'meteor_hammer')).not.toHaveProperty('valve_says');
+    expect(old.gaps).toContainEqual({ topic: 'items_whose_effect_text_differs_in_this_patch', reason: 'not_classified: meteor_hammer' });
+    const now: any = buildForPlan(swapped, { hero: 'phantom_assassin', plan: 'push' }, { match });
+    expect(now.items.find((i: any) => i.item === 'meteor_hammer')).toMatchObject({ serves: ['push'], valve_says: 'Deals 75% damage to buildings.' });
     // In the current patch the Desolator is read as before.
     expect(run('phantom_assassin', 'push').stated_plan).toMatchObject({ first_item_for_it: 'desolator' });
   });

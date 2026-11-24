@@ -1,5 +1,6 @@
 {
   "source": "Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told.",
+  "releases_checked_at": "2026-11-24T13:00:22.211Z",
   "releases": [
     {
       "name": "7.40",
@@ -118,13 +119,9 @@
       "rollout_by": "2026-11-18T20:00:48.000Z",
       "rollout_from": "2026-11-18T19:40:48.000Z",
       "rollout_update": "Client 6978 (5efc826e3060)",
-      "data": "current",
+      "data": "7.42.json",
       "last_match_id_before": 9095855376,
       "first_match_id_after": 9095870072
     }
-  ],
-  "current_tables": {
-    "items": "14b79154f22e32b3760772fcfc4cf0b0d949fc18e10a5c23a9d49fc196994c8f",
-    "abilities": "2156620fcbb8fcd22f30ceee8a6207eed32f7b88800085425854df36a3967b5e"
-  }
+  ]
 }

@@ -30,15 +30,15 @@
  *   Valve split npc_heroes.txt into #base includes (September 2026) are read
  *   by the builder as of e7705ee975eb, the last one written for them.
  *
- * Kept per item: name, cost, recipe, numeric stats, active/passive text. Per
+ * Kept per item: name, cost, recipe, numeric stats, active/passive text, hints and notes. Per
  * hero: the ability list and, per ability, its name, damage type, whether it
  * goes through spell immunity, how it is dispelled and its cooldowns.
- * The current release is not written: the site's live tables are its data.
+ * The newest release is written too, from the latest game update: no release's
+ * data is the site's live tables, which a refresh may not have brought to it.
  * Match ids on either side of each rollout are added by scripts/patch-match-ids.mjs.
  */
 import { execFileSync } from 'node:child_process';
 import { transformSync } from 'esbuild';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -137,7 +137,9 @@ function pruneItems(all) {
     if (!it || typeof it !== 'object' || !Number.isFinite(it.cost)) continue;
     const attrib = (it.attrib ?? []).map((a) => ({ key: a?.key, value: a?.value })).filter((a) => typeof a.key === 'string' && num(a.value) != null);
     const abilities = (it.abilities ?? []).filter((a) => a?.title && a?.description).map((a) => ({ type: a.type, title: a.title, description: a.description }));
-    out[key] = { dname: it.dname ?? key, cost: it.cost, components: Array.isArray(it.components) && it.components.length ? it.components : null, ...(attrib.length ? { attrib } : {}), ...(abilities.length ? { abilities } : {}) };
+    // Valve's hints and notes too: the tools read an item's whole text ("Armor reduction works on buildings." is a note).
+    const hint = (Array.isArray(it.hint) ? it.hint : []).filter((h) => typeof h === 'string' && h.trim());
+    out[key] = { dname: it.dname ?? key, cost: it.cost, components: Array.isArray(it.components) && it.components.length ? it.components : null, ...(attrib.length ? { attrib } : {}), ...(abilities.length ? { abilities } : {}), ...(hint.length ? { hint } : {}), ...(typeof it.notes === 'string' && it.notes.trim() ? { notes: it.notes } : {}) };
   }
   return out;
 }
@@ -165,34 +167,31 @@ for (const [i, r] of releases.entries()) {
     name: r.name, major: majorOf(r.name), major_id: MAJOR_IDS[majorOf(r.name)] ?? null,
     rollout_by: iso(r.rollout.at), rollout_from: iso(r.rollout.at - POLL_MINUTES * 60_000), rollout_update: `${r.rollout.build} (${r.rollout.sha.slice(0, 12)})`,
   };
-  if (next) {
-    const data = [...commits].reverse().find((c) => c.at < next.rollout.at);
+  {
+    // The newest release too: its data is its own game files (the latest update), never the site's live tables,
+    // which a refresh may or may not have brought to this release.
+    const data = next ? [...commits].reverse().find((c) => c.at < next.rollout.at) : commits.at(-1);
     const split = await splitHeroes(data.sha);
     execFileSync(process.execPath, [split ? BUILT.current : BUILT.old], { cwd: BUILDER, env: { ...process.env, D2VPKR_REF: data.sha, ONLY_KEYS: 'items,abilities,hero_abilities' }, stdio: ['ignore', 'ignore', 'pipe'] });
     const read = (f) => JSON.parse(readFileSync(join(BUILDER, 'build', `${f}.json`), 'utf8'));
     const snapshot = {
       release: r.name, major: entry.major, major_id: entry.major_id,
-      game_files: `dotabuff/d2vpkr ${data.sha.slice(0, 12)} (${data.build}, ${iso(data.at).slice(0, 10)}): the last game update before ${next.name}`,
+      game_files: `dotabuff/d2vpkr ${data.sha.slice(0, 12)} (${data.build}, ${iso(data.at).slice(0, 10)}): ${next ? `the last game update before ${next.name}` : `the latest game update when this was built (${iso(Date.now()).slice(0, 10)})`}`,
       built_with: `odota/dotaconstants tasks/updateconstants.ts at ${split ? git('rev-parse', '--short=12', 'HEAD').trim() : OLD_BUILDER}`,
       items: pruneItems(read('items')), heroes: pruneHeroes(read('hero_abilities'), read('abilities')),
     };
     writeFileSync(new URL(`${r.name}.json`, OUT), `${JSON.stringify(snapshot)}\n`);
     entry.data = `${r.name}.json`;
     console.log(`${r.name}: rolled out by ${iso(r.rollout.at)}; data ${snapshot.game_files.split(':')[0]}; ${Object.keys(snapshot.items).length} items`);
-  } else {
-    entry.data = 'current';
-    console.log(`${r.name}: rolled out by ${iso(r.rollout.at)}; current release (live tables)`);
   }
   // Match ids found earlier for the same rollout are kept; a moved rollout needs scripts/patch-match-ids.mjs again.
   const kept = old.releases?.find((x) => x.name === r.name && x.rollout_by === entry.rollout_by);
   if (kept?.first_match_id_after) Object.assign(entry, { last_match_id_before: kept.last_match_id_before, first_match_id_after: kept.first_match_id_after });
   index.push(entry);
 }
-// The live tables this list calls the current release's data: lib/agent/patchData.js checks them against this, so
-// tables refreshed without this list being rebuilt are not taken for the release named here.
-const sha = (path) => createHash('sha256').update(readFileSync(new URL(path, import.meta.url))).digest('hex');
 writeFileSync(INDEX, `${JSON.stringify({
   source: 'Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told.',
+  // Valve's list was read then: a release out since is not in it, and its games are placed in the last one here.
+  releases_checked_at: iso(Date.now()),
   releases: index,
-  current_tables: { items: sha('../lib/data/constants/items.json'), abilities: sha('../lib/coach/data/abilities.json') },
 }, null, 2)}\n`);
