@@ -494,12 +494,15 @@ describe('AgentMatchPage', () => {
   });
 
   it('what the player\'s items served is a table by plan, with the plan they named first', async () => {
-    const bp = { status: 'ok', ref: 'build_plan:beastmaster:push', kind: 'build_plan', names: { assault: '强袭胸甲' }, record: {
-      ref: 'build_plan:beastmaster:push', ref_scope: 'summary', hero: 'beastmaster', measured_at: ['15:00', '25:00'], big_items_total: 3, gold_in_big_items: 13050,
-      gold_in_items_for_each_plan: { push: 5125, gank: 0, split: 0, late: 0 }, gold_in_items_for_each_plan_by_15_00: { push: 0, gank: 0, split: 0, late: 0 }, gold_in_items_for_each_plan_by_25_00: { push: 0, gank: 0, split: 0, late: 0 },
-      first_item_for_each_plan: { push: '38:58', gank: null, split: null, late: null },
-      stated_plan: { plan: 'push', name: '线优转推进', first_item_for_it: 'assault', first_item_for_it_name: '强袭胸甲', first_item_for_it_at: '38:58', gold_in_other_big_items_before_it: 7925, share_of_big_item_gold_for_it: 0.39 },
-    } };
+    // The record as the server serves it (a summary keeps maps and drops lists, measured_at among them).
+    const { resolveRef } = await import('../../lib/agent/evidence.js');
+    const { gunzipSync } = await import('node:zlib');
+    const { readFileSync } = await import('node:fs');
+    // A path from the working directory: under jsdom import.meta.url is not a file URL.
+    const fixtureTrace = JSON.parse(gunzipSync(readFileSync(`${process.cwd()}/packages/review-engine/test/fixtures/trace-9100904020.json.gz`)).toString());
+    const served: any = resolveRef(fixtureTrace, 'build_plan:beastmaster:push', { hero: 'beastmaster', lang: 'zh' });
+    expect(served.record).not.toHaveProperty('measured_at');
+    const bp = { status: 'ok', ...served };
     ui.lang = 'zh';
     mockFetch({ 'ref=overview': overview, '/evidence?': bp, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['build_plan:beastmaster:push'], fact: '推进装 38:58 才出。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=zh');
@@ -509,6 +512,8 @@ describe('AgentMatchPage', () => {
     expect(chip('第一件 强袭胸甲 38:58')).toBeTruthy();
     expect(chip('之前花在其他大件上 7925')).toBeTruthy();
     expect(chip('占大件金额 39%')).toBeTruthy();
+    // The 15:00 and 25:00 columns are there although the served record has no list of marks.
+    expect(screen.getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['', '截至 15:00', '截至 25:00', '全场', '第一件']);
     expect(screen.getByRole('row', { name: '线优转推进 0 0 5125 38:58' }).className).toBe('is-me');
     expect(screen.getByRole('row', { name: '抓人带节奏 0 0 0 –' })).toBeTruthy();
     expect(screen.queryByText(/gold in items|push/)).toBeNull();

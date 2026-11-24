@@ -353,7 +353,9 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   }
   if (data.kind === 'build_plan') {
     const plans = Object.keys(r.gold_in_items_for_each_plan ?? {});
-    const marks: string[] = r.measured_at ?? [];
+    // The marks from the maps themselves (gold_in_items_for_each_plan_by_15_00, …): the record as served keeps
+    // those, while its lists (measured_at among them) are left out of a summary.
+    const marks: string[] = Object.keys(r).map((k) => k.match(/^gold_in_items_for_each_plan_by_(\d+)_00$/)).filter((m): m is RegExpMatchArray => Boolean(m)).map((m) => `${m[1]}:00`).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
     const sp = r.stated_plan;
     return (
       <div className="ag-rec">

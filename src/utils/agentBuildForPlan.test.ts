@@ -49,12 +49,25 @@ describe('build_for_plan on a real game', () => {
     expect(r).not.toHaveProperty('stated_plan');
   });
 
+  it('an item built from one already counted adds only what it costs on top (review of #284)', () => {
+    // Sven's Armlet (2500) went into Berserker's Sabatons (5950): the Sabatons add 3450, so the total is 14950, not 17450.
+    const sven = run('sven');
+    expect(sven.items.map((i: any) => [i.item, i.cost, i.gold])).toEqual([['echo_sabre', 2700, 2700], ['armlet', 2500, 2500], ['berserkers_sabatons', 5950, 3450], ['blink', 2250, 2250], ['black_king_bar', 4050, 4050]]);
+    expect(sven.items[2]).toMatchObject({ gold_on_top_of_items_already_counted: 3450 });
+    expect(sven.items[0]).not.toHaveProperty('gold_on_top_of_items_already_counted');
+    expect(sven.gold_in_big_items).toBe(14950);
+    // Phantom Assassin's Skull Basher went into Abyssal Blade.
+    const pa = run('phantom_assassin');
+    expect(pa.items.find((i: any) => i.item === 'abyssal_blade')).toMatchObject({ cost: 6150, gold: 3275 });
+    expect(pa.gold_in_big_items).toBe(pa.items.reduce((a: number, i: any) => a + i.gold, 0));
+  });
+
   it('with the plan the player named: the first item for it, what came before it, and its share', () => {
     const r = run('beastmaster', 'push', 'zh');
     expect(r.ref).toBe('build_plan:beastmaster:push');
     expect(r.stated_plan).toMatchObject({ plan: 'push', name: '线优转推进', first_item_for_it: 'assault', first_item_for_it_name: '强袭胸甲', first_item_for_it_at: '38:58', gold_in_other_big_items_before_it: 7925, share_of_big_item_gold_for_it: 0.39 });
     // Sven never bought an item for pushing: none, all his big-item gold went elsewhere.
-    expect(run('sven', 'push').stated_plan).toMatchObject({ items_for_it: [], first_item_for_it: null, first_item_for_it_at: null, gold_in_other_big_items_before_it: 17450, share_of_big_item_gold_for_it: 0 });
+    expect(run('sven', 'push').stated_plan).toMatchObject({ items_for_it: [], first_item_for_it: null, first_item_for_it_at: null, gold_in_other_big_items_before_it: 14950, share_of_big_item_gold_for_it: 0 });
     // Phantom Assassin's Battle Fury at 15:47 is her first item for farming; Sven's Blink at 26:17 his first for ganks.
     expect(run('phantom_assassin', 'late').stated_plan).toMatchObject({ first_item_for_it: 'bfury', first_item_for_it_at: '15:47', gold_in_other_big_items_before_it: 0 });
     expect(run('sven', 'gank').stated_plan).toMatchObject({ first_item_for_it: 'blink', first_item_for_it_at: '26:17' });
