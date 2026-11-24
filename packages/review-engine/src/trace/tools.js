@@ -15,6 +15,7 @@
  * guessed: an absent value is unknown, not false.
  */
 import { heroByKey } from '../staticHeroes.js';
+import { heroStateAt } from './state.js';
 import {
   abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, manaCost, mostMana, nameId, nameOf, nearby, region, seconds, stateAt, unit,
 } from './query.js';
@@ -236,6 +237,10 @@ export function deathContext(trace, args = {}, ctx = {}) {
       enemy_casts_on_me: trace.casts.filter((c) => c[3] === npc && c[1] !== npc && inWindow(c[0]) && heroOfName(trace, c[1]) >= 0 && trace.heroes[heroOfName(trace, c[1])].team !== trace.heroes[h].team)
         .map((c) => ({ dt: dt(c[0]), by: nameOf(trace, c[1]), ability: trace.names[c[2]], row: c[4] })),
       other_deaths: trace.deaths.filter((o) => o !== d && Math.abs(o[0] - t) <= 20).map((o) => deathRow(trace, o, t, view)),
+      // Whether the team got a hero back for it: an enemy hero died within TRADE_SECONDS of this death, before or after.
+      traded_within_15s: trace.deaths.some((o) => { const v = heroOfName(trace, o[1]); return v >= 0 && trace.heroes[v].team !== trace.heroes[h].team && Math.abs(o[0] - t) <= TRADE_SECONDS; }),
+      // The allies who were not within 2200 at the death: what the replay shows them doing, where, how far.
+      allies_elsewhere: alliesElsewhere(trace, h, t, atDeath),
       damage_sources: sources,
     };
   });
@@ -246,6 +251,25 @@ export function deathContext(trace, args = {}, ctx = {}) {
 }
 
 const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 : null);
+
+/** A death is traded when an enemy hero dies this close to it in time. */
+export const TRADE_SECONDS = 15;
+/**
+ * The hero's allies not within 2200 at second t, as the replay shows them: dead and respawning in, or where,
+ * doing what (only what the replay shows: in base, trading damage, at a building), how far, TP ready. Empty
+ * when the hero's own position was not sampled (who was near is then unknown, and so who was not).
+ */
+function alliesElsewhere(trace, h, t, atDeath) {
+  if (!atDeath?.me) return [];
+  const near = new Set(atDeath.allies.map((a) => a.hero));
+  const from = { x: atDeath.me.x, y: atDeath.me.y };
+  return trace.heroes.map((o, i) => i).filter((i) => i !== h && trace.heroes[i].team === trace.heroes[h].team && !near.has(trace.heroes[i].key)).map((i) => {
+    const s = heroStateAt(trace, i, t, { from });
+    if (!s.known) return { hero: s.hero, known: false };
+    if (!s.alive) return { hero: s.hero, doing: 'dead', respawn_in: s.respawn_in };
+    return { hero: s.hero, ...(s.doing !== 'none_of_these' ? { doing: s.doing } : {}), place: s.place, distance: s.distance, ...(s.tp_ready != null ? { tp_ready: s.tp_ready } : {}) };
+  });
+}
 
 /**
  * What the hero's deaths have in common, counted: each entry lists the deaths
@@ -282,6 +306,10 @@ function deathPatterns(trace, deaths, { allSources = false } = {}) {
       health_below_half_at_window_start_outside_fights: of((d) => d.below_half_health_at_window_start === true && d.in_a_fight === false),
       three_or_more_enemy_heroes_dealing_damage_outside_fights: of((d) => d.enemy_heroes_dealing_damage >= 3 && d.in_a_fight === false),
       nothing_cast_and_no_item_used: of((d) => d.my_casts.length === 0 && d.my_item_uses.length === 0),
+      // Whether the team got an enemy hero back within 15 s. A death not traded bought nothing.
+      traded_within_15s: of((d) => d.traded_within_15s),
+      not_traded_within_15s: of((d) => !d.traded_within_15s),
+      no_ally_within_2200_at_death_and_not_traded: of((d) => d.allies_within_2200.at_death === 0 && !d.traded_within_15s),
     },
     // Deaths a list above could not be decided for (health or position not sampled): a count over the game is only as sure as these are few.
     deaths_not_known: {

@@ -541,6 +541,10 @@ describe('trace tools on a real game', () => {
       health_below_half_at_window_start_outside_fights: [],
       three_or_more_enemy_heroes_dealing_damage_outside_fights: [],
       nothing_cast_and_no_item_used: [],
+      // An enemy hero died within 15 s of seven of them; the four others bought nothing. 2:51, the one alone, was traded.
+      traded_within_15s: ['2:51', '6:13', '8:27', '22:06', '25:30', '30:42', '39:21'],
+      not_traded_within_15s: ['0:47', '11:03', '36:05', '41:57'],
+      no_ally_within_2200_at_death_and_not_traded: [],
     });
     expect(all.deaths.map((d) => d.in_a_fight)).toEqual([false, false, true, true, true, true, true, true, true, true, true]);
     expect([...all.deaths_where.in_a_fight, ...all.deaths_where.outside_fights]).toHaveLength(all.deaths_total);

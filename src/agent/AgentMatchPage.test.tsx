@@ -347,6 +347,24 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/fights total|lost fewer|took part/)).toBeNull();
   });
 
+  it('a death says whether it was traded, and where the allies who were not near were', async () => {
+    const death = { status: 'ok', ref: 'death:beastmaster:9', kind: 'death', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客', sven: '斯温', skywrath_mage: '天怒法师', radiant_top_lane: '天辉上路' }, record: {
+      ref: 'death:beastmaster:9', n: 9, t: 2165, clock: '36:05', killer: 'phantom_assassin',
+      snapshots: [{ dt: -1, me: { hp: 300, max_hp: 2915 }, allies: [], enemies: [{ hero: 'phantom_assassin', dist: 150 }] }],
+      ready_not_cast: [], controls_on_me: [], damage_taken: [{ from: 'phantom_assassin', by: 'attack', value: 2600 }],
+      traded_within_15s: false,
+      allies_elsewhere: [{ hero: 'sven', place: 'radiant_top_lane', distance: 9100, tp_ready: true }, { hero: 'skywrath_mage', doing: 'dead', respawn_in: 25 }],
+    } };
+    const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
+    ui.lang = 'zh';
+    mockFetch({ 'ref=overview': overview, '/evidence?': death, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['death:beastmaster:9'], fact: '36:05 阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText('没换到：15 秒内对面没死英雄')).toBeTruthy();
+    expect(chip('斯温 · 天辉上路9100 码外TP 可用')).toBeTruthy();
+    expect(chip('天怒法师 · 阵亡复活还要 25秒')).toBeTruthy();
+  });
+
   it('a push is shown as who hit the building, which owners were near, whether it fell, and where the rest were', async () => {
     const push = { status: 'ok', ref: 'sieges:beastmaster:5', kind: 'sieges', names: { phantom_assassin: '幻影刺客', sven: '斯温', beastmaster: '兽王', axe: '斧王', dire_top_lane: '夜魇上路', radiant_bot_jungle: '天辉下路野区' }, record: {
       ref: 'sieges:beastmaster:5', building: 'badguys_tower1_mid', clock: '19:59', until: '20:01', pushed_by: 'enemy', took_it: true, fell_at: '20:02',
