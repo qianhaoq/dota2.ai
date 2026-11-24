@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
-import { fightReport, gameState, FIGHT_TOOLS } from '../../lib/agent/fightReport.js';
+import { fightReport, gameState, ultimateEdges, FIGHT_TOOLS } from '../../lib/agent/fightReport.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { reviewToolkit, deepReviewSystem, verifyReview, DEEP_REVIEW_PROMPT_VERSION } from '../../lib/agent/deepReview.js';
 import { chatSystem } from '../../lib/agent/chat.js';
-import { heroStateAt, matchOverview } from '../../packages/review-engine/src/trace/index.js';
+import { fightParticipation, heroStateAt, matchFights, matchOverview } from '../../packages/review-engine/src/trace/index.js';
 
 const FIXTURE = new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url);
 /** A real ranked game (9100904020): Beastmaster on Dire, lost in 42:31. */
@@ -246,5 +246,14 @@ describe('the agent has the tools and is told how to read them', () => {
     expect(ue.fight_within_90s).toBeLessThanOrEqual(ue.moments);
     expect(ue.edge_side_lost_fewer + ue.edge_side_lost_more + ue.even).toBe(ue.fight_within_90s);
     expect(deepReviewSystem('zh')).toMatch(/Do not explain a fight by ultimates ready alone/);
+    // Each edge's fight began after it, at its first damage exchange — not merely its first death (review of #310).
+    const edges = ultimateEdges(trace);
+    expect(edges.length).toBe(ue.moments);
+    for (const e of edges.filter((x: any) => x.fight)) {
+      const f = matchFights(trace)[(e.fight as number) - 1];
+      expect(e.engaged_at).toBe(fightParticipation(trace, f).engaged_at);
+      expect(e.engaged_at).toBeGreaterThan(e.t);
+      expect(e.engaged_at).toBeLessThanOrEqual(e.t + 90);
+    }
   });
 });

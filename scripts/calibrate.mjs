@@ -18,7 +18,7 @@
  * - Fights after big items (decision_points): of the fights begun within 120 s after big items of one side only, how
  *   often that side lost fewer heroes, by whether it was ahead in gold; and the gold-ahead side's rate in the others.
  * - Ultimate edges: every moment a side came to have two or more ultimates ready than the other, whether a fight
- *   began within 90 s, and how it went for that side.
+ *   began (its first damage exchange) within 90 s, and how it went for that side.
  * - Roshans (roshan_report): each Aegis pickup, whether it was used or expired, and the buildings each side took
  *   in the 300 s after.
  *
@@ -31,11 +31,11 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import { fightReport, stateOf } from '../lib/agent/fightReport.js';
+import { fightReport, ultimateEdges } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
 import { afterWonFights, afterTowersFell, fightsAfterBigItems } from '../lib/agent/decisionPoints.js';
-import { goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
+import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
 import { observersNear } from '../packages/review-engine/src/trace/state.js';
 
@@ -89,27 +89,7 @@ for (const f of files) {
     const side = [...sides][0];
     itemFights.push({ won: side === winner, ahead: Number.isFinite(lead) && lead ? (lead > 0) === (side === 2) : null });
   });
-  // Every 5 s from 10:00: the moment a side came to have two or more ultimates ready than the other (living heroes,
-  // four or more of its own alive), at most once a minute; then whether a fight began within 90 s and how it went.
-  {
-    const fights = matchFights(trace);
-    const readyOf = (sec, team) => { let r = 0; let alive = 0; trace.heroes.forEach((h, i) => { if (h.team !== team) return; const st = stateOf(trace, i, sec); if (st?.alive === false) return; alive += 1; if (st?.ultimate?.ready === true) r += 1; }); return { r, alive }; };
-    const prev = { 2: false, 3: false }; const last = { 2: -Infinity, 3: -Infinity };
-    for (let sec = 600; sec < trace.t0 + trace.n - 90; sec += 5) {
-      const by = { 2: readyOf(sec, 2), 3: readyOf(sec, 3) };
-      for (const team of [2, 3]) {
-        const o = team === 2 ? 3 : 2; const on = by[team].r - by[o].r >= 2 && by[team].alive >= 4;
-        if (on && !prev[team] && sec - last[team] > 60) {
-          const fg = fights.find((x) => x.from > sec && x.from <= sec + 90);
-          let result = null;
-          if (fg) { const lost = { 2: 0, 3: 0 }; for (const d of fg.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) lost[trace.heroes[v].team] += 1; } result = lost[team] < lost[o] ? 'fewer' : lost[team] > lost[o] ? 'more' : 'even'; }
-          ultEdges.push({ result });
-        }
-        if (on) last[team] = sec;
-        prev[team] = on;
-      }
-    }
-  }
+  for (const x of ultimateEdges(trace)) ultEdges.push({ result: x.result });
   for (const x of afterTowersFell(trace)) afterTowers.push({ tier: x.tier, fight: x.fight != null, did: x.did, traded: x.lostBack.length > 0 });
   for (const x of roshanReport(trace, { hero: first.key }).takes ?? []) {
     roshans.push({ aegis: x.aegis, took: x.buildings_taking_side_took_count, lost: x.buildings_other_side_took_in_the_next_300s.length, fights: x.fights_in_the_next_300s });
