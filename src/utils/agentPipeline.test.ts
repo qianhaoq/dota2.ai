@@ -325,6 +325,18 @@ describe('parse jobs in the service', () => {
     expect(blobs2.get(`${ID}.parse.json`)).toMatchObject({ state: 'running', stage: 'downloading' });
   });
 
+  it('a stored review is shown without the record handles written into its text; its refs stay', async () => {
+    const { DEEP_REVIEW_PROMPT_VERSION } = await import('../../lib/agent/deepReview.js');
+    const kept = { review: { schema: 'dota2.ai/deep-review@1', verdict: '经济从 -4972 掉到 -7895（overview、fight:3、fight:4）。', mainline: ['一起倒下（4 换 3，timeline:2194-2233），比分 3:1'], findings: [{ title: 't', claim: 'c', evidence: [{ refs: ['fight:3', 'timeline:2194-2233'], clock: '20:20', fact: '死 3 个 (fight:3)' }] }] }, model: 'm', tool_calls: 4 };
+    const blobs = new Map<string, any>([[`${ID}.beastmaster.zh.p${DEEP_REVIEW_PROMPT_VERSION}.review.json`, kept]]);
+    const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
+    const svc: any = createAgentService({ traces: { get: async () => JSON.parse(fixture.toString()) }, complete: null, docs });
+    expect(await svc.status(ID, 'beastmaster', 'zh')).toEqual({
+      status: 'ready', model: 'm', tool_calls: 4,
+      review: { schema: 'dota2.ai/deep-review@1', verdict: '经济从 -4972 掉到 -7895。', mainline: ['一起倒下（4 换 3），比分 3:1'], findings: [{ title: 't', claim: 'c', evidence: [{ refs: ['fight:3', 'timeline:2194-2233'], clock: '20:20', fact: '死 3 个' }] }] },
+    });
+  });
+
   it('a slow progress marker cannot land after a review\'s terminal one', async () => {
     const blobs = new Map<string, any>();
     let slowDone: any;
