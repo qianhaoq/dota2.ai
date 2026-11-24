@@ -217,7 +217,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const killers = {};
   for (const d of all) { const k = nameOf(trace, d[2]) ?? 'unknown'; killers[k] = (killers[k] ?? 0) + 1; }
   // The counts below are over this window: a non-default one is in the summary's ref, as in each death's.
-  return { ref: `deaths:${trace.heroes[h].key}${window === 12 ? '' : `:w${window}`}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, ...deathPatterns(trace, out), ...leftUnused(out, trace.heroes[h].key), deaths: args.index == null ? out : [out[args.index - 1]], gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
+  return { ref: `deaths:${trace.heroes[h].key}${window === 12 ? '' : `:w${window}`}`, ref_scope: 'summary', hero: trace.heroes[h].key, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers, ...deathPatterns(trace, out, { allSources: args.all_damage_sources === true }), ...leftUnused(out, trace.heroes[h].key), deaths: args.index == null ? out : [out[args.index - 1]], gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']) };
 }
 
 const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 : null);
@@ -230,7 +230,7 @@ const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 
  * item answer has to match. Facts only: unknown health or position leaves a
  * death out of a list, it does not put it in.
  */
-function deathPatterns(trace, deaths) {
+function deathPatterns(trace, deaths, { allSources = false } = {}) {
   // By game time, which is how a death is named to a player (and what a sentence citing this summary will state).
   const of = (test) => deaths.filter(test).map((d) => d.clock);
   const by = new Map(); let total = 0;
@@ -239,7 +239,9 @@ function deathPatterns(trace, deaths) {
     for (const [key, value] of d.damage_sources) { by.set(key, (by.get(key) ?? 0) + value); total += value; }
     delete d.damage_sources;
   }
-  const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 6);
+  // The six largest for a reader; every source for a caller that adds them up (all_damage_sources).
+  const sorted = [...by].sort((a, b) => b[1] - a[1]);
+  const top = allSources ? sorted : sorted.slice(0, 6);
   return {
     deaths_where: {
       health_below_half_at_window_start: of((d) => d.below_half_health_at_window_start === true),

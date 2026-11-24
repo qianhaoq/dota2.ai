@@ -16,9 +16,19 @@ describe('build_check: the build against what killed the player', () => {
   const r: any = buildCheck(trace, { hero: 'Beastmaster' }, { lang: 'zh', match });
 
   it('where the damage in the deaths came from is the death tool\'s own shares, regrouped by enemy', () => {
-    const d: any = deathContext(trace, { hero: 'beastmaster' });
+    const d: any = deathContext(trace, { hero: 'beastmaster', all_damage_sources: true });
     expect(r).toMatchObject({ ref: 'build:beastmaster', hero: 'beastmaster', deaths_total: d.deaths_total });
-    expect(r.damage_in_my_deaths.share_from_enemy_attacks).toBe(0.44);
+    // Over every source of damage in the death windows, not the six largest the death tool shows a reader:
+    // Phantom Assassin's attacks are 0.44 of it, and the other enemies' attacks bring the heroes' share to 0.48.
+    expect(Object.keys((deathContext(trace, { hero: 'beastmaster' }) as any).damage_share_in_death_windows)).toHaveLength(6);
+    expect(Object.keys(d.damage_share_in_death_windows).length).toBeGreaterThan(6);
+    expect(r.damage_in_my_deaths.share_from_enemy_attacks).toBe(0.48);
+    expect(r.damage_in_my_deaths.share_from_enemy_abilities_and_items).toBe(0.49);
+    const heroAttacks = trace.heroes.filter((h: any) => h.team !== trace.heroes.find((x: any) => x.key === 'beastmaster').team).reduce((a: number, h: any) => a + (d.damage_in_death_windows[`${h.key}: attacks`] ?? 0), 0);
+    expect(r.damage_in_my_deaths.share_from_enemy_attacks).toBe(Math.round((heroAttacks / d.damage_in_death_windows_total) * 100) / 100);
+    // A creep's or a ward's attacks are in the total and in neither sum.
+    expect(Object.keys(d.damage_in_death_windows).some((k) => k.startsWith('creep_'))).toBe(true);
+    expect(r.damage_in_my_deaths.by_enemy.find((e: any) => e.enemy === 'venomancer').share_from_their_attacks).toBe(d.damage_share_in_death_windows['venomancer: attacks']);
     expect(r.damage_in_my_deaths.by_enemy[0]).toMatchObject({ enemy: 'phantom_assassin', kills_of_me: d.killed_by.phantom_assassin, share_from_their_attacks: d.damage_share_in_death_windows['phantom_assassin: attacks'], share_from_their_abilities_and_items: d.damage_share_in_death_windows['phantom_assassin: abilities and items'], known_for: ['physical', 'evasion'] });
     // An enemy who neither killed the player nor damaged them in a death is not listed; one with no curated trait has no "known_for".
     for (const e of r.damage_in_my_deaths.by_enemy) expect(e.kills_of_me + e.share_from_their_attacks + e.share_from_their_abilities_and_items).toBeGreaterThan(0);
@@ -37,6 +47,13 @@ describe('build_check: the build against what killed the player', () => {
     expect(r.gold_in_big_items_by_purpose.not_classified).toEqual({ gold: items.ultimate_scepter.cost, items: ['阿哈利姆神杖'], first_at: '16:48' });
     expect(r.gold_in_big_items_by_purpose.answer_to_spell_damage).toEqual({ gold: items.pipe.cost, items: ['洞察烟斗'], first_at: '29:08' });
     expect(r.note).toContain('not "offensive"');
+    // An item built from a big item already held is charged only for the rest: Skull Basher into Abyssal Blade.
+    const pa: any = buildCheck(trace, { hero: 'phantom_assassin' }, { lang: 'en' });
+    const basher = pa.my_big_items_in_order.find((i: any) => i.item === 'basher'); const abyssal = pa.my_big_items_in_order.find((i: any) => i.item === 'abyssal_blade');
+    expect(basher).not.toHaveProperty('gold_on_top_of_items_already_held');
+    expect(abyssal).toMatchObject({ cost: items.abyssal_blade.cost, gold_on_top_of_items_already_held: items.abyssal_blade.cost - items.basher.cost });
+    const spent = Object.values(pa.gold_in_big_items_by_purpose as Record<string, { gold: number; items: string[] }>).filter((v) => v.items.includes('Abyssal Blade') && v.items.includes('Skull Basher'));
+    for (const v of spent) expect(v.gold).toBeLessThan(pa.my_big_items_in_order.filter((i: any) => v.items.includes(i.name)).reduce((a: number, i: any) => a + i.cost, 0));
   });
 
   it('the answers are the curated lists for this role, with what each does and whether the player held it', () => {
@@ -143,8 +160,8 @@ describe('the review agent has both tools, and their records can be cited and sh
     const facts = collectFacts([build, spikes]);
     expect([...facts.refs.keys()]).toEqual(expect.arrayContaining(['build:beastmaster', 'spikes:beastmaster']));
     const review = { verdict: 'v', mainline: [], blind_spots: [], findings: [{
-      title: '烟斗 29:08 才出', claim: '你阵亡前的伤害里 44% 是普攻。', fix: 'f',
-      evidence: [{ refs: ['build:beastmaster'], fact: '洞察烟斗 29:08 才拿到，花了 3725 金币；阵亡伤害里 44% 来自普攻。' }, { refs: ['spikes:beastmaster'], fact: '幻影刺客 15:47 做出狂战斧，之后杀了你 5 次，之前 2 次。' }],
+      title: '烟斗 29:08 才出', claim: '你阵亡前的伤害里 48% 是普攻。', fix: 'f',
+      evidence: [{ refs: ['build:beastmaster'], fact: '洞察烟斗 29:08 才拿到，花了 3725 金币；阵亡伤害里 48% 来自敌方英雄的普攻。' }, { refs: ['spikes:beastmaster'], fact: '幻影刺客 15:47 做出狂战斧，之后杀了你 5 次，之前 2 次。' }],
       rule: { when: 'w', do: 'd', this_game: '幻影刺客杀了你 7 次。' },
     }] };
     expect(verifyReview(review, [build, spikes]).problems).toEqual([]);
