@@ -24,6 +24,7 @@ import OpenAI from 'openai';
 import { DEEP_REVIEW_PROVIDERS, deepReviewProvider } from '../lib/agent/providers.js';
 import { openAiCompatible } from '../lib/agent/loop.js';
 import { runDeepReview } from '../lib/agent/deepReview.js';
+import { linkHeroNames } from '../packages/review-engine/src/trace/build.js';
 
 const USAGE = 'Usage: node scripts/deep-review.mjs <trace.json.gz> --hero <hero> [--lang en|zh] [--provider deepseek|glm] [--match <match.json>] [--out <file.json>] [--steps]';
 
@@ -47,7 +48,7 @@ async function main(argv) {
   const cfg = deepReviewProvider(o.provider, process.env);
   if (!cfg.ok) { console.error(`${cfg.needs ?? 'Provider'} is not set.`); return 3; }
   let trace; let match = null;
-  try { trace = await readJson(o.trace); if (o.match) match = await readJson(o.match); } catch { console.error('Could not read the trace or match file.'); return 3; }
+  try { trace = linkHeroNames(await readJson(o.trace)); if (o.match) match = await readJson(o.match); } catch { console.error('Could not read the trace or match file.'); return 3; }
   const client = new OpenAI({ baseURL: cfg.baseURL, apiKey: cfg.apiKey });
   const started = Date.now();
   const result = await runDeepReview({

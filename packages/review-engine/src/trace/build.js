@@ -58,6 +58,27 @@ function track(list, state, on, t, value) {
   }
 }
 
+/**
+ * The combat log's name for each hero. The states name some heroes differently from the combat log
+ * (`queen_of_pain` there, `npc_dota_hero_queenofpain` here; also anti_mage, vengeful_spirit), and a hero's
+ * casts, deaths and damage are only found through its `npc`. A hero whose `npc` is not among the logged
+ * names takes the one logged name that is the same once underscores go. Also for traces stored before this
+ * (they are read through it), so the hero's events are found without a re-parse. Returns the same trace.
+ * @param {any} trace
+ */
+export function linkHeroNames(trace) {
+  if (!Array.isArray(trace?.heroes) || !Array.isArray(trace?.names)) return trace;
+  const logged = new Set(trace.names);
+  const PREFIX = 'npc_dota_hero_';
+  for (const h of trace.heroes) {
+    if (typeof h?.key !== 'string' || logged.has(h.npc)) continue;
+    const want = h.key.replace(/_/g, '');
+    const found = trace.names.filter((n) => typeof n === 'string' && n.startsWith(PREFIX) && n.slice(PREFIX.length).replace(/_/g, '') === want);
+    if (found.length === 1) h.npc = found[0];
+  }
+  return trace;
+}
+
 export function createTraceBuilder() {
   /** @type {Map<string, any>} */
   const heroes = new Map();
@@ -275,7 +296,7 @@ export function createTraceBuilder() {
           ...(graphs.length && !perMinute ? [{ topic: 'net_worth', reason: 'metadata_graph_denser_than_one_point_a_minute' }] : []),
         ],
       };
-      return out;
+      return linkHeroNames(out);
     },
   };
 }
