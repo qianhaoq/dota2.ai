@@ -115,7 +115,8 @@ export const AgentMatchPage: React.FC = () => {
   // Refused for now with a time to come back (429/503 + retryAfterSec): the page counts down and goes again
   // by itself, rather than leave a button that only earns the reader more refusals.
   // `for`: the selection (match, hero, language, plan) it was given for; another selection does not wait on it.
-  const [waitState, setWait] = useState<{ until: number; kind: 'rate' | 'busy'; for: string } | null>(null);
+  // A parse is the match's, so a refused one is waited out by every selection that was waiting on it.
+  const [waitState, setWait] = useState<{ until: number; kind: 'rate' | 'busy'; for: string[] } | null>(null);
   const [, setClock] = useState(0);
   // Counts finished availability requests, successful or not, so the poll below always gets its next turn.
   const [availTick, setAvailTick] = useState(0);
@@ -203,7 +204,7 @@ export const AgentMatchPage: React.FC = () => {
   selected.current = selection;
   const intent = intentOf === selection;
   /** The refusal's wait, when it was for what is on screen now. */
-  const wait = waitState && waitState.for === selection ? waitState : null;
+  const wait = waitState && waitState.for.includes(selection) ? waitState : null;
   const [reviewTick, setReviewTick] = useState(0);
   const loadReview = useCallback(async (signal?: AbortSignal) => {
     if (!heroKey) return;
@@ -248,11 +249,12 @@ export const AgentMatchPage: React.FC = () => {
     if (p.status === 'ready') setExpectFor(matchId);
     setAvailTick((n) => n + 1);
   };
-  /** `asked`: the selection the refused request was sent for, which the reader may since have left. */
-  const refuse = (e: unknown, asked: string = selected.current) => {
+  /** `askedFor`: the selection(s) the refused request was sent for, which the reader may since have left. */
+  const refuse = (e: unknown, askedFor: string | string[] = selected.current) => {
+    const asked = Array.isArray(askedFor) ? askedFor : [askedFor];
     const status = e instanceof AgentApiError ? e.status : 0;
     const after = e instanceof AgentApiError ? e.retryAfterSec ?? 0 : 0;
-    const here = asked === selected.current;
+    const here = asked.includes(selected.current);
     if ((status === 429 || status === 503) && after > 0 && after <= MAX_AUTO_WAIT_SEC) {
       // The reader still wants it: keep the intent, and go again when the server said it may.
       if (here) setNotice(null);
@@ -278,15 +280,23 @@ export const AgentMatchPage: React.FC = () => {
 
   /** The one click: fetch and parse the replay if needed, then the review follows on its own. */
   const preparing = useRef<string | null>(null);
+  /** The selections waiting on the parse request that is out now. */
+  const joined = useRef<Set<string>>(new Set());
   async function go() {
     if (wait) return;
     setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
-    // One parse request out at a time for this match: a second click while it is out sends nothing.
-    if (preparing.current === matchId) return;
+    await sendPrepare();
+  }
+  /**
+   * Ask for this match's parse. One request out at a time per match: a go for another hero or plan of the
+   * same match joins the one already out, and its answer (a refusal and its wait too) is that selection's too.
+   */
+  async function sendPrepare() {
+    if (preparing.current === matchId) { joined.current.add(selection); return; }
     preparing.current = matchId;
-    const asked = selection;
-    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e, asked); } finally { if (preparing.current === matchId) preparing.current = null; }
+    joined.current = new Set([selection]);
+    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e, [...joined.current]); } finally { if (preparing.current === matchId) preparing.current = null; }
   }
   const goRef = useRef(go);
   goRef.current = go;
@@ -306,7 +316,7 @@ export const AgentMatchPage: React.FC = () => {
     const was = waited.current;
     waited.current = waitState;
     // Only for the selection that was refused: one the reader moved to in between has its own intent.
-    if (was && !waitState && was.for === selection && intent) void goRef.current();
+    if (was && !waitState && was.for.includes(selection) && intent) void goRef.current();
   }, [waitState, intent, selection]);
   const waitNotice = wait ? t(wait.kind === 'rate' ? T.rateWait : T.busyWait).replace('{t}', clockOf(Math.max(0, Math.ceil((wait.until - Date.now()) / 1000)))) : null;
 
@@ -321,8 +331,7 @@ export const AgentMatchPage: React.FC = () => {
   useEffect(() => {
     if (!intent || wait || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
     resumed.current = true;
-    const asked = selection;
-    prepareMatch(matchId).then((p) => { if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); }).catch((e) => { if (onMatch.current === matchId) refuse(e, asked); });
+    void sendPrepare();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, avail, matchId, loadAvail, wait]);
 

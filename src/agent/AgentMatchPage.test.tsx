@@ -722,6 +722,28 @@ describe('AgentMatchPage', () => {
     expect(prepares).toBe(1);
   }, 10000);
 
+  it('a go for a second hero while the first one\'s parse request is out shares its refusal, and its wait', async () => {
+    let prepares = 0;
+    let release: (v: unknown) => void = () => {};
+    mockFetch({
+      '/api/coach/9100904020': board,
+      '/prepare': () => { prepares += 1; return prepares === 1 ? new Promise((r) => { release = r; }) : { __status: 202, status: 'running', stage: 'locating' }; },
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(prepares).toBe(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Change hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
+    // Axe's go joins the parse request already out: nothing new is sent.
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect(prepares).toBe(1);
+    release({ __status: 429, code: 'rate_limited', retryAfterSec: 1 });
+    // The refusal is Axe's too: it counts down, then asks again.
+    expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
+    await waitFor(() => expect(prepares).toBe(2), { timeout: 4000 });
+  }, 10000);
+
   it('two quick clicks before the replay is parsed send one parse request', async () => {
     let release: (v: unknown) => void = () => {};
     const calls = mockFetch({
