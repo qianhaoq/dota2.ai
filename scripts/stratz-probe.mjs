@@ -27,7 +27,8 @@ if (!TOKEN) { console.error('STRATZ_API_TOKEN not set (env or .env)'); process.e
 const HERO = Number(process.argv[2] ?? 29); // Tidehunter
 const MATCH = Number(process.argv[3] ?? 9035042364);
 
-// Week stamps: Monday 00:00 UTC, unix seconds.
+// Week stamps: any second inside the week wanted. STRATZ's weeks run Thursday 00:00 UTC to Wednesday
+// (week = floor(unix seconds / 604800)), so a Monday stamp selects the week that began the Thursday before.
 const DAY = 86400;
 const now = Math.floor(Date.now() / 1000);
 const thisMonday = Math.floor((now - ((new Date().getUTCDay() + 6) % 7) * DAY) / DAY) * DAY;

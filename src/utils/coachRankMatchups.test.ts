@@ -33,9 +33,12 @@ describe('snapshot and verdict rules', () => {
     expect(RANK_SOURCE.attribution).toEqual({ en: 'Data: STRATZ', url: 'https://stratz.com' });
     expect(RANK_SOURCE.source).toMatch(/STRATZ/);
     expect(RANK_SOURCE.weeks.count).toBeGreaterThanOrEqual(1);
-    // Monday to Sunday, count weeks apart.
+    // STRATZ weeks run Thursday to Wednesday (week = floor(unix seconds / 604800)), count weeks apart.
     const from = Date.parse(RANK_SOURCE.weeks.from); const to = Date.parse(RANK_SOURCE.weeks.to);
-    expect(new Date(from).getUTCDay()).toBe(1);
+    expect(new Date(from).getUTCDay()).toBe(4);
+    // The same STRATZ weeks as the hero-timing snapshot when both were made in the same window: the same games.
+    const timing = JSON.parse(readFileSync(new URL('../../lib/coach/data/hero-timing.json', import.meta.url), 'utf8'));
+    if (timing.weeks.from === RANK_SOURCE.weeks.from && timing.weeks.to === RANK_SOURCE.weeks.to) for (const b of BRACKETS) expect(Math.abs(timing.games[b] - RANK_SOURCE.games[b])).toBeLessThanOrEqual(1);
     expect((to - from) / 86400000 + 1).toBe(7 * RANK_SOURCE.weeks.count);
     for (const b of BRACKETS) {
       expect(RANK_SOURCE.games[b]).toBeGreaterThan(1000);
