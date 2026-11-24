@@ -10,8 +10,9 @@
  * /constants/*; abilities trimmed to the fields the server reads) and
  * meta.json (patch + date). `--all` also runs
  * scripts/coach-names.mjs <patch>, coach-abilities.mjs and coach-hero-items.mjs,
- * and coach-patch-snapshots.mjs (the item and ability data of each earlier
- * release, letter releases included; --all needs DOTACONSTANTS_DIR, see that script,
+ * coach-patch-snapshots.mjs (the item and ability data of each earlier
+ * release, letter releases included) and coach-pro-items-by-release.mjs (what pros
+ * built on each release; --all needs DOTACONSTANTS_DIR, see that script,
  * and refuses to start without it). Without --all the live tables change and the
  * release list no longer matches them: the current release is then not called exact
  * until the snapshots are rebuilt.
@@ -64,5 +65,7 @@ if (process.argv.includes('--all')) {
   run('./coach-hero-items.mjs');
   // Last: the release list records a fingerprint of the live tables written above.
   run('./coach-patch-snapshots.mjs', '--builder', process.env.DOTACONSTANTS_DIR);
+  // Pro items per release: reads the release list and each release's item data just written.
+  run('./coach-pro-items-by-release.mjs');
 }
 console.log(`snapshot for ${patch} written`);
