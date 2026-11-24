@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { BRACKET_NAME, META_SOURCE, PATCH, PATCH_BRACKETS, allHeroMeta, findHero, findNotedItem, heroMeta, heroNotes, metaFromCounts } from '../../lib/patch/data.js';
 import { PATCH_TOOLS, runPatchTool } from '../../lib/patch/tools.js';
-import { ADVISOR_MAX_QUESTION, advisorContext, advisorSystem, parseAdvisorBody, runAdvisor } from '../../lib/patch/advisor.js';
+import { ADVISOR_MAX_QUESTION, advisorContext, advisorSystem, parseAdvisorBody, plainVerdicts, runAdvisor } from '../../lib/patch/advisor.js';
 import { aboutOf, createPatchRouter } from '../../lib/patch/router.js';
 import { mockPatchAnswer } from '../../scripts/mock-patch.mjs';
 import { CURRENT_PATCH } from '../coach/patch';
@@ -267,6 +267,24 @@ describe('the advisor', () => {
     expect(await runAdvisor({ complete: scripted([{ text: '  ' }]).complete, lang: 'en', question: 'q' })).toMatchObject({ status: 'no_answer' });
   });
 
+  it('a verdict copied as the tools spell it is put in the reader\'s words', async () => {
+    // What the live model wrote on 2026-11-24: the key in quotes, then its own gloss.
+    expect(plainVerdicts('胜率**全部是"fell"（下降）**，出场率在所有分段都是"rose"。', 'zh')).toBe('胜率**全部是下降**，出场率在所有分段都是上升。');
+    expect(plainVerdicts('判定为 “about_the_same”，也就是 about_the_same。', 'zh')).toBe('判定为 基本不变，也就是 基本不变。');
+    expect(plainVerdicts('它的胜率 `fell` 了 2.6 点。', 'zh')).toBe('它的胜率 下降 了 2.6 点。');
+    // A gloss after a space goes too; an "s" after the key is not taken for one.
+    expect(plainVerdicts('判定 "rose" （上升），"fell" (下降)。', 'zh')).toBe('判定 上升，下降。');
+    expect(plainVerdicts('"rose"s（上升）', 'zh')).toBe('上升s（上升）');
+    // English: a quoted key becomes the word, a bare key becomes words, an ordinary "rose" or "fell" stays.
+    expect(plainVerdicts('Its win rate is "about_the_same"; pick rate about_the_same. It rose 2 points and fell later.', 'en')).toBe('Its win rate is about the same; pick rate about the same. It rose 2 points and fell later.');
+    // Nothing else is touched: words that only contain a key, other quoted words.
+    expect(plainVerdicts('"Rose" is a hero? 玫瑰 "rosemary" fellow about_the_samey', 'zh')).toBe('"Rose" is a hero? 玫瑰 "rosemary" fellow about_the_samey');
+    for (const v of ['', null, undefined]) expect(plainVerdicts(v as any, 'zh')).toBe(v);
+    // Applied to what the advisor returns.
+    const m = { complete: async () => ({ text: '混沌骑士的胜率是"fell"。' }) };
+    expect(((await runAdvisor({ complete: m.complete, lang: 'zh', question: 'q' })) as any).text).toBe('混沌骑士的胜率是下降。');
+  });
+
   it('the prompt says what an answer may rest on and what it must not claim', () => {
     const s = advisorSystem('en');
     expect(s).toContain(`patch ${PATCH.version}`);
@@ -275,6 +293,7 @@ describe('the advisor', () => {
     expect(s).toContain('too few games');
     expect(s).toContain('unknown, not false');
     expect(s).toContain('never translate a medal\'s name yourself');
+    expect(s).toContain('say them in the reader\'s language');
     expect(advisorContext('zh').language).toBe('zh');
   });
 
