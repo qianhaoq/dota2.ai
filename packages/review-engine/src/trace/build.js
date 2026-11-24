@@ -77,6 +77,8 @@ export function createTraceBuilder() {
   const netWorth = new Map();
   // The states name a hero `queen_of_pain`, the metadata `npc_dota_hero_queenofpain`: the same hero once the underscores go.
   const squash = (key) => key.replace(/_/g, '');
+  /** @type {Map<string, number[]>} `team:player id` → graph, for a metadata player with no hero name (seen in 9016476539) */
+  const netWorthBySlot = new Map();
 
   function hero(key, row) {
     let h = heroes.get(key);
@@ -214,11 +216,14 @@ export function createTraceBuilder() {
      */
     addMetadata(row) {
       for (const p of Array.isArray(row?.players) ? row.players : []) {
-        const key = typeof p?.hero_key === 'string' ? p.hero_key.replace(/^npc_dota_hero_/, '') : null;
+        const key = typeof p?.hero_key === 'string' && p.hero_key ? p.hero_key.replace(/^npc_dota_hero_/, '') : null;
+        // Without a hero name, the player's id and team: the same numbers as the states' player_index and team (checked on 9100904020).
+        const slot = key == null && Number.isInteger(p?.game_player_id) && (p?.dota_team === 2 || p?.dota_team === 3) ? `${p.dota_team}:${p.game_player_id}` : null;
         const graph = Array.isArray(p?.graph_net_worth) ? p.graph_net_worth : null;
-        if (!key || !graph?.length || !graph.every(Number.isFinite)) continue;
+        if ((!key && !slot) || !graph?.length || !graph.every(Number.isFinite)) continue;
         if (!(graph[0] >= NET_WORTH_START[0] && graph[0] <= NET_WORTH_START[1])) continue;
-        netWorth.set(squash(key), graph.map((v) => Math.round(v * NET_WORTH_SCALE)));
+        const gold = graph.map((v) => Math.round(v * NET_WORTH_SCALE));
+        if (key) netWorth.set(squash(key), gold); else netWorthBySlot.set(slot, gold);
       }
     },
 
@@ -231,7 +236,9 @@ export function createTraceBuilder() {
       const cols = ['x', 'y', 'hp', 'max_hp', 'mana', 'level', 'alive'];
       // One point a game minute at most (0:00 … the last full minute): a denser graph's points are not minutes.
       const minutes = Number.isFinite(lastT) && lastT > 0 ? Math.floor(lastT / 60) + 1 : 0;
-      const perMinute = netWorth.size > 0 && [...netWorth.values()].every((g) => g.length <= minutes);
+      const graphs = [...netWorth.values(), ...netWorthBySlot.values()];
+      const perMinute = graphs.length > 0 && graphs.every((g) => g.length <= minutes);
+      const graphOf = (h) => netWorth.get(squash(h.key)) ?? (h.player_index == null ? null : netWorthBySlot.get(`${h.team}:${h.player_index}`)) ?? null;
       const out = {
         schema: TRACE_SCHEMA,
         match_id: meta.match_id ?? null,
@@ -257,7 +264,7 @@ export function createTraceBuilder() {
         modifiers,
         damage: [...damage].map(([k, v]) => [...k.split('|').map(Number), Math.round(v)]),
         // Per hero, in hero order: net worth at 0:00, 1:00, 2:00 … (null for a hero the metadata did not name).
-        ...(perMinute ? { net_worth: list.map((h) => netWorth.get(squash(h.key)) ?? null) } : {}),
+        ...(perMinute ? { net_worth: list.map(graphOf) } : {}),
         source: { state_rows: stateRows, event_rows: eventRows, sample_hz: 1, extractor: meta.extractor ?? null },
         gaps: [
           { topic: 'vision', reason: 'no_fog_of_war_in_trace' },
@@ -265,7 +272,7 @@ export function createTraceBuilder() {
           { topic: 'roshan', reason: 'no_reliable_roshan_event' },
           { topic: 'ability_immunity', reason: 'only_item_spell_immunity_modifiers_tracked' },
           { topic: 'unused_free_abilities', reason: 'an_ability_never_cast_with_no_mana_cost_cannot_be_told_from_a_passive' },
-          ...(netWorth.size && !perMinute ? [{ topic: 'net_worth', reason: 'metadata_graph_denser_than_one_point_a_minute' }] : []),
+          ...(graphs.length && !perMinute ? [{ topic: 'net_worth', reason: 'metadata_graph_denser_than_one_point_a_minute' }] : []),
         ],
       };
       return out;
