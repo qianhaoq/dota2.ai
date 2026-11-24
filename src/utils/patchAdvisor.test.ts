@@ -156,6 +156,9 @@ describe('patch tools', () => {
     expect(finger.lines[0]).toBe('Damage decreased from 600/725/850 to 570/685/800');
     expect(lion).toMatchObject(heroMeta(findHero('lion')!.id)!);
     expect(Object.keys(lion.win_rate_change_in_points_by_bracket)).toEqual(PATCH_BRACKETS);
+    // The per-bracket maps are keyed by bracket keys; their names travel with them, in the reader's language.
+    expect(lion.bracket_names).toEqual({ all: 'all brackets', hg: 'Herald–Guardian', ca: 'Crusader–Archon', la: 'Legend–Ancient', di: 'Divine–Immortal' });
+    expect(tool('hero_patch', { hero: 'lion' }, 'zh').bracket_names).toEqual({ all: '全部分段', hg: '先锋–卫士', ca: '中军–统帅', la: '传奇–万古', di: '超凡–冠绝' });
     // The same hero in Chinese and in one bracket: Valve's Chinese lines, that bracket's numbers, the bracket in the ref.
     const zh = tool('hero_patch', { hero: '莱恩', bracket: 'di' }, 'zh');
     expect(zh).toMatchObject({ ref: 'hero_patch:lion:di', name: '莱恩', bracket_name: '超凡–冠绝', games_after: META.heroes.di[findHero('lion')!.id][2] });
@@ -271,6 +274,7 @@ describe('the advisor', () => {
     expect(s).toContain('After is not because');
     expect(s).toContain('too few games');
     expect(s).toContain('unknown, not false');
+    expect(s).toContain('never translate a medal\'s name yourself');
     expect(advisorContext('zh').language).toBe('zh');
   });
 
