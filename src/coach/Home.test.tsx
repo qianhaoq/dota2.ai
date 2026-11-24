@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { buildSurface } from '../../lib/coach/cards.js';
-import { MCP_TOOLS, MCP_URL } from './accessSnippets';
+import { AGENT_CLIENTS, CURSOR_INSTALL, MCP_TOOLS, MCP_URL } from './accessSnippets';
 
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en', setLang: () => {} }) }));
 const report = buildCoachReport(JSON.parse(readFileSync(path.join(process.cwd(), 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))) as any;
@@ -47,6 +47,45 @@ describe('home: four ways to use it', () => {
     fireEvent.click(within(ways).getByRole('tab', { name: 'HTTP' }));
     expect(ways.querySelector('pre')?.textContent).toContain('curl https://dota2.ai/api/coach/9091400302');
     expect(within(ways).getByRole('link', { name: 'llms.txt' }).getAttribute('href')).toBe('/llms.txt');
+  });
+
+  it('one line per agent tool: picking one swaps the line, and Copy takes the line shown', async () => {
+    cards.mockImplementation(async (_id: string, seat: number) => buildSurface(report, seat));
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const { container } = home();
+    const ways = container.querySelector('.hm-ways') as HTMLElement;
+    const picker = within(ways).getByRole('group', { name: 'Your agent' });
+    expect(within(picker).getAllByRole('button').map((b) => b.textContent)).toEqual(['Claude Code', 'Codex', 'Gemini CLI', 'VS Code', 'Cursor', 'Any other']);
+    expect(within(picker).getByRole('button', { name: 'Claude Code' }).getAttribute('aria-pressed')).toBe('true');
+    // Every line names the hosted endpoint, and is one line.
+    for (const c of AGENT_CLIENTS) { expect(c.line).toContain(MCP_URL); expect(c.line).not.toContain('\n'); }
+    const lines: Record<string, string> = {
+      Codex: `codex mcp add dota2ai --url ${MCP_URL}`,
+      'Gemini CLI': `gemini mcp add --transport http dota2ai ${MCP_URL}`,
+      'VS Code': `code --add-mcp '{"name":"dota2ai","type":"http","url":"${MCP_URL}"}'`,
+      Cursor: `{ "mcpServers": { "dota2ai": { "url": "${MCP_URL}" } } }`,
+      'Any other': MCP_URL,
+    };
+    for (const [name, line] of Object.entries(lines)) {
+      fireEvent.click(within(picker).getByRole('button', { name }));
+      expect(ways.querySelector('pre')?.textContent).toBe(line);
+      // A JSON line that is shown must parse.
+      if (line.startsWith('{')) expect(JSON.parse(line).mcpServers.dota2ai.url).toBe(MCP_URL);
+    }
+    fireEvent.click(within(picker).getByRole('button', { name: 'Codex' }));
+    fireEvent.click(within(ways).getAllByRole('button', { name: /^Copy/ })[0]);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(lines.Codex));
+    // What to say once it is connected, and Cursor's one-click link carrying the same address.
+    expect(ways.textContent).toContain('Review my Dota 2 match 9100904020 — I played Beastmaster.');
+    fireEvent.click(within(picker).getByRole('button', { name: 'Cursor' }));
+    const link = within(ways).getByRole('link', { name: 'Or add it to Cursor in one click' });
+    expect(link.getAttribute('href')).toBe(CURSOR_INSTALL);
+    expect(JSON.parse(atob(new URL(CURSOR_INSTALL).searchParams.get('config')!))).toEqual({ url: MCP_URL });
+    // The picker belongs to the agent tab only.
+    fireEvent.click(within(ways).getByRole('tab', { name: 'CLI' }));
+    expect(within(ways).queryByRole('group', { name: 'Your agent' })).toBeNull();
+    expect(ways.textContent).not.toContain('Then just say');
   });
 
   it('Copy puts exactly the shown command on the clipboard, and the agent prompt is copyable too', async () => {

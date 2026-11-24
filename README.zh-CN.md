@@ -4,7 +4,7 @@
 
 **看你的录像做复盘的 Dota 2 教练，说的每句话都拿得出依据。**
 
-[网站](https://dota2.ai/?lang=zh) · [一份真实的复盘](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) · [工作原理](#工作原理) · [CLI 与 MCP](#在终端或-agent-里用) · [English](README.md)
+[网站](https://dota2.ai/?lang=zh) · [一份真实的复盘](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) · [工作原理](#工作原理) · [接入 Agent](#一行接入你的-agent) · [English](README.md)
 
 [![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial-d6b46a.svg)](LICENSE)
@@ -100,9 +100,32 @@ flowchart LR
 
 **在网页上。** 打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛编号；或者贴 Steam 好友代码，列出你最近的比赛。支持中文和英文。
 
-### 在终端或 Agent 里用
+CLI 和 MCP 提供的是即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标。都不需要 API Key。
 
-CLI 和 MCP 提供的是即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标。不需要任何 API Key。
+### 一行接入你的 Agent
+
+线上的 MCP 服务不用安装，也不需要 Key。一行命令接入：
+
+| Agent | 运行一次 |
+|---|---|
+| **Claude Code** | `claude mcp add --transport http dota2ai https://dota2.ai/mcp` |
+| **Codex** | `codex mcp add dota2ai --url https://dota2.ai/mcp` |
+| **Gemini CLI** | `gemini mcp add --transport http dota2ai https://dota2.ai/mcp` |
+| **VS Code**（Copilot） | `code --add-mcp '{"name":"dota2ai","type":"http","url":"https://dota2.ai/mcp"}'` |
+| **Cursor** | [一键添加到 Cursor](https://cursor.com/en/install-mcp?name=dota2ai&config=eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9)，或把 `{ "mcpServers": { "dota2ai": { "url": "https://dota2.ai/mcp" } } }` 写进 `~/.cursor/mcp.json` |
+| **其他 MCP 客户端** | 填入地址 `https://dota2.ai/mcp`（Streamable HTTP） |
+
+然后说一句话：
+
+> 复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。
+
+你的 Agent 不支持 MCP？只要它能访问网址，把这句话发给它：
+
+> 帮我复盘 Dota 2 比赛 9100904020，我玩的是兽王。按 https://dota2.ai/llms.txt 调用接口，只引用接口返回的数据，样本不足就直说。
+
+服务共 8 个工具（[说明](packages/mcp/README.md)）。想在本地通过 stdio 运行，把命令设为 `node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`。另有一个 Agent Skill：[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)。
+
+### 在终端里用
 
 ```bash
 git clone https://github.com/qianhaoq/dota2.ai.git && cd dota2.ai && npm ci
@@ -113,20 +136,6 @@ node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --
 ```
 
 所有命令都支持 `--lang en|zh` 和 `--json`。完整说明见 [`packages/cli/README.md`](packages/cli/README.md)。
-
-把 Agent 接到线上的 MCP 服务（8 个工具，不用安装）：
-
-```bash
-claude mcp add --transport http dota2ai https://dota2.ai/mcp
-```
-
-或者在本地通过 stdio 运行，适用于 Claude Code、Cursor、Claude Desktop 和其他 MCP 客户端：
-
-```json
-{ "mcpServers": { "dota2ai": { "command": "node", "args": ["/你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js"] } } }
-```
-
-工具和参数见 [`packages/mcp/README.md`](packages/mcp/README.md)。另有一个 Agent Skill（[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)）和 [`llms.txt`](https://dota2.ai/llms.txt)。
 
 ### 自己查一盘录像
 
