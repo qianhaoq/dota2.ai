@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AgentMatchPage, journeyStep } from './AgentMatchPage';
 import { turningFight } from './ReviewDoc';
 import { stepLabel } from './ChatRail';
@@ -416,6 +416,81 @@ describe('AgentMatchPage', () => {
     expect(stepLabel({ tool: 'tempo_report', args: { hero: 'beastmaster' } }, 'en')).toBe('Reading who took the map, and when');
     expect([buildingLabel('badguys_tower1_mid', 'en'), buildingLabel('goodguys_melee_rax_top', 'en'), buildingLabel('badguys_tower4', 'en'), buildingLabel('goodguys_fort', 'en')]).toEqual(['mid tier-1 tower', 'top melee barracks', 'tier-4 tower', 'Ancient']);
     expect([buildingLabel('badguys_range_rax_bot', 'zh'), buildingLabel('badguys_tower4', 'zh'), buildingLabel('goodguys_fort', 'zh'), buildingLabel('npc_something_else', 'zh')]).toEqual(['下路远程兵营', '4 塔', '遗迹', 'npc something else']);
+  });
+
+  it('the reader can say their plan before the review: it goes in the link, the start, every poll and the chat', async () => {
+    let started: any = null;
+    const calls = mockFetch({
+      '/chat': () => sse([{ text: '答。' }, { done: true }]),
+      'ref=overview': overview,
+      '/review?': (url: string) => (started ? { status: 'ready', review: { ...review, lang: 'zh', plan: 'push', game_plan: { against_your_plan: '你说要线优转推进，19:00 到 29:00 领先时只拆了 2 座建筑。', course: 'c', evidence: [{ refs: ['window:2'], clock: '19:00', fact: 'f' }] } }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 } : { status: 'none' }),
+      '/review': (_u: string, init?: RequestInit) => { if (init?.method !== 'POST') return null; started = JSON.parse(String(init.body)); return { status: 'running', steps: [] }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    const Where = () => { const l = useLocation(); return <p data-testid="where">{l.search}</p>; };
+    render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=zh']}><Where /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
+    const group = await screen.findByRole('radiogroup', { name: '这局你想怎么打？（可选）' });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.map((r) => r.textContent)).toEqual(['不说', '线优转推进', '抓人带节奏', '带线牵制', '发育拖后期']);
+    // Saying nothing is the default.
+    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', 'false', 'false']);
+    fireEvent.click(within(group).getByRole('radio', { name: '线优转推进' }));
+    expect(screen.getByTestId('where').textContent).toContain('plan=push');
+    expect(within(group).getByRole('radio', { name: '线优转推进' }).getAttribute('aria-checked')).toBe('true');
+    // The review for that plan is asked about, not the plan-free one.
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/review?') && c.url.includes('plan=push'))).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: '开始复盘' }));
+    await waitFor(() => expect(started).toEqual({ hero: 'beastmaster', lang: 'zh', plan: 'push' }));
+    // The review reads the game against it, under the plan's name.
+    // The page asks again 2.5 s after the start.
+    const yours = (await screen.findByText((_, el) => el?.tagName === 'DT' && (el.textContent ?? '').startsWith('对照你的思路'), {}, { timeout: 5000 })).closest('div')!;
+    expect(yours.textContent).toBe('对照你的思路线优转推进你说要线优转推进，19:00 到 29:00 领先时只拆了 2 座建筑。');
+    // A question goes with the plan, so the coach reads the review made for it.
+    const box = screen.getByRole('textbox', { name: '问教练' });
+    fireEvent.change(box, { target: { value: '怎么推？' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/chat'))).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/chat'))!.init!.body))).toMatchObject({ question: '怎么推？', plan: 'push' });
+  });
+
+  it('from a review made without a plan, the reader can have it made again for one: the start opens with that plan picked', async () => {
+    mockFetch({
+      '/chat': () => sse([{ text: '答。' }, { done: true }]),
+      'ref=overview': overview,
+      '/review?': (url: string) => (url.includes('plan=') ? { status: 'none' } : { status: 'ready', review: { ...review, lang: 'zh' }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }),
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    ui.lang = 'zh';
+    const Where = () => { const l = useLocation(); return <p data-testid="where">{l.search}</p>; };
+    render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=zh']}><Where /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
+    const section = (await screen.findByRole('heading', { level: 2, name: '运营思路' })).closest('section')!;
+    // Nothing is offered until the reader asks about a plan.
+    expect(within(section as HTMLElement).queryByRole('button', { name: '重写' })).toBeNull();
+    fireEvent.click(within(section as HTMLElement).getByRole('button', { name: '抓人带节奏' }));
+    const note = await within(section as HTMLElement).findByText(/也可以按「抓人带节奏」重写整份复盘/);
+    fireEvent.click(within(note as HTMLElement).getByRole('button', { name: '重写' }));
+    expect(screen.getByTestId('where').textContent).toContain('plan=gank');
+    const group = await screen.findByRole('radiogroup', { name: '这局你想怎么打？（可选）' });
+    expect(within(group).getByRole('radio', { name: '抓人带节奏' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByRole('button', { name: '开始复盘' })).toBeTruthy();
+  });
+
+  it('going back to "don\'t say" takes the plan out of the link and the requests', async () => {
+    const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { status: 'running', steps: [] } : null), '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en&plan=late');
+    const group = await screen.findByRole('radiogroup', { name: 'What were you going for this game? (optional)' });
+    expect(within(group).getByRole('radio', { name: 'Farm for late' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(within(group).getByRole('radio', { name: 'Don\'t say' }));
+    // Another plan is another review: the page asks about it again before the start is offered.
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(calls.some((c) => c.init?.method === 'POST')).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
+    // A plan in a link that is none of the four is no plan.
+    cleanup();
+    mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en&plan=cheese');
+    expect(within(await screen.findByRole('radiogroup')).getByRole('radio', { name: 'Don\'t say' }).getAttribute('aria-checked')).toBe('true');
   });
 
   it('a tool\'s totals are shown in the reader\'s language, a moment as its clock', async () => {

@@ -87,13 +87,25 @@ function deathRow(trace, d, t0 = null, view = null) {
   return { t: d[0], clock: clock(d[0]), ...(t0 == null ? {} : { dt: Math.round((d[0] - t0) * 10) / 10 }), hero: nameOf(trace, d[1]), ...(view ? sideOf(view, trace, v) : { team: v >= 0 ? TEAM[trace.heroes[v].team] : null }), killer: nameOf(trace, d[2]), row: d[3] };
 }
 
+/**
+ * Radiant's lead per game minute: the match record's (OpenDota's) when the caller has it, else the replay's own
+ * net worth graph summed by team (the trace's `net_worth`), when every hero has one. Null when neither.
+ */
+export function goldAdvantage(trace, ctx = {}) {
+  if (Array.isArray(ctx.match?.radiant_gold_adv) && ctx.match.radiant_gold_adv.length) return ctx.match.radiant_gold_adv;
+  const nw = Array.isArray(trace?.net_worth) ? trace.net_worth : null;
+  if (!nw || nw.length !== trace.heroes.length || nw.some((g) => !Array.isArray(g) || !g.length)) return null;
+  const minutes = Math.min(...nw.map((g) => g.length));
+  return Array.from({ length: minutes }, (_, m) => trace.heroes.reduce((sum, h, i) => sum + (h.team === 2 ? 1 : h.team === 3 ? -1 : 0) * nw[i][m], 0));
+}
+
 export function matchOverview(trace, _args = {}, ctx = {}) {
   // Deaths only: the log names the unit that landed the last hit (a summon,
   // a creep), which is not the scoreboard's kill credit.
   const died = trace.heroes.map(() => 0);
   for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) died[v] += 1; }
   const view = viewer(trace, ctx);
-  const adv = Array.isArray(ctx.match?.radiant_gold_adv) ? ctx.match.radiant_gold_adv : null;
+  const adv = goldAdvantage(trace, ctx);
   const advAt = (t) => (adv && Number.isFinite(adv[Math.floor(t / 60)]) ? adv[Math.floor(t / 60)] : null);
   const mine = (radiantAdv) => (radiantAdv == null ? null : view.team === 2 ? radiantAdv : -radiantAdv);
   const end = trace.buildings.find((b) => /_fort$/.test(trace.names[b[1]]));
@@ -573,7 +585,7 @@ export function tempoReport(trace, args = {}, ctx = {}) {
   const own = team === 2 ? 'radiant' : 'dire';
   const end = Math.floor(gameEnd(trace));
   if (!(end > 0)) return fail('no_game_time');
-  const adv = Array.isArray(ctx.match?.radiant_gold_adv) ? ctx.match.radiant_gold_adv : null;
+  const adv = goldAdvantage(trace, ctx);
   const leadAt = (t) => { const v = adv ? adv[Math.floor(t / 60)] : null; return Number.isFinite(v) ? (team === 2 ? v : -v) : null; };
   const r2 = (n, d) => (d > 0 ? Math.round((n / d) * 100) / 100 : null);
 

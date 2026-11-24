@@ -11,6 +11,7 @@ import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { MatchBoard } from './MatchBoard';
+import { PLANS, planKey } from '../../lib/agent/plans.js';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import './agent.css';
 
@@ -41,6 +42,9 @@ const T = {
   goTitle: { en: 'Review this game', zh: '复盘这一局' },
   goBody: { en: 'The coach watches the replay — every death, every ultimate, the fights that turned the game, your build — and writes what to change. About two to three minutes.', zh: '教练会把录像看一遍——每次阵亡、每个大招、转折的团战、你的出装——然后写出该改什么。大约两到三分钟。' },
   go: { en: 'Review my game', zh: '开始复盘' },
+  planAsk: { en: 'What were you going for this game? (optional)', zh: '这局你想怎么打？（可选）' },
+  planWhy: { en: 'Say it, and the review reads the game against it: whether your play fit it, whether it suited these line-ups, and where it broke. The replay cannot show what you meant to do.', zh: '选了，复盘就会对照它来读这局：你的打法是否贴合，这个思路面对双方阵容是否站得住，没打成断在哪里。录像本身看不出你想怎么打。' },
+  planNone: { en: 'Don\'t say', zh: '不说' },
   working: { en: 'Working on your review', zh: '正在准备你的复盘' },
   leave: { en: 'You can keep this page open; the review appears here when it is done.', zh: '页面开着就行，写完会出现在这里。' },
   s1: { en: 'Fetch the replay', zh: '取录像' },
@@ -82,7 +86,7 @@ export function journeyStep(avail: Availability | null, state: ReviewState | nul
 }
 
 type Bi = Record<'en' | 'zh', string>;
-const intentKey = (matchId: string, hero: string, lang: string) => `dota2ai.review-intent.${matchId}.${hero}.${lang}`;
+const intentKey = (matchId: string, hero: string, lang: string, plan: string | null = null) => `dota2ai.review-intent.${matchId}.${hero}.${lang}${plan ? `.${plan}` : ''}`;
 const session = () => { try { return window.sessionStorage; } catch { return null; } };
 
 const Portrait: React.FC<{ hero: AgentHero; report: CoachReport | null; lang: Lang }> = ({ hero, report, lang }) => {
@@ -159,6 +163,13 @@ export const AgentMatchPage: React.FC = () => {
     return id != null ? roster.find((h) => h.hero_id === id) ?? null : null;
   }, [roster, search, board]);
   const heroKey = hero?.hero ?? null;
+  // The plan the reader named for this game (?plan=), if any: a review made for it is its own review.
+  const plan = planKey(search.get('plan'));
+  const pickPlan = (key: string | null) => {
+    const next = new URLSearchParams(search);
+    if (key) next.set('plan', key); else next.delete('plan');
+    setSearch(next, { replace: true });
+  };
   const hasTrace = avail?.trace === true;
   const parse = avail && !avail.trace ? avail.parse ?? { status: 'none' as const } : null;
 
@@ -170,20 +181,20 @@ export const AgentMatchPage: React.FC = () => {
   };
 
   // The reader's "go" survives a reload of this tab, so a parse they started still ends in their review.
-  useEffect(() => { setIntent(heroKey ? session()?.getItem(intentKey(matchId, heroKey, lang)) === '1' : false); setNotice(null); }, [matchId, heroKey, lang]);
-  const want = (on: boolean) => { if (!heroKey) return; setIntent(on); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang)); } catch { /* storage blocked */ } };
+  useEffect(() => { setIntent(heroKey ? session()?.getItem(intentKey(matchId, heroKey, lang, plan)) === '1' : false); setNotice(null); }, [matchId, heroKey, lang, plan]);
+  const want = (on: boolean) => { if (!heroKey) return; setIntent(on); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang, plan), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang, plan)); } catch { /* storage blocked */ } };
 
   // What the reader is looking at now. An answer that was asked for under another hero or language
   // belongs to that selection and is dropped when it arrives.
-  const selection = `${matchId}|${heroKey}|${lang}`;
+  const selection = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
   const selected = useRef(selection);
   selected.current = selection;
   const [reviewTick, setReviewTick] = useState(0);
   const loadReview = useCallback(async (signal?: AbortSignal) => {
     if (!heroKey) return;
-    const asked = `${matchId}|${heroKey}|${lang}`;
+    const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
     try {
-      const next = await fetchReview(matchId, heroKey, lang, signal);
+      const next = await fetchReview(matchId, heroKey, lang, signal, plan);
       if (selected.current === asked) setState(next);
     } catch (e) {
       if ((e as Error).name === 'AbortError' || selected.current !== asked) return;
@@ -191,7 +202,7 @@ export const AgentMatchPage: React.FC = () => {
       setState((prev) => (prev?.status === 'running' ? prev : { status: 'failed' }));
     }
     if (selected.current === asked) setReviewTick((n) => n + 1);
-  }, [matchId, heroKey, lang]);
+  }, [matchId, heroKey, lang, plan]);
 
   useEffect(() => {
     setState(null);
@@ -232,12 +243,12 @@ export const AgentMatchPage: React.FC = () => {
   // The lock belongs to a selection: a start still out for another hero does not block this one's.
   const beginning = useRef<string | null>(null);
   const begin = useCallback(async () => {
-    const asked = `${matchId}|${heroKey}|${lang}`;
+    const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
     if (!heroKey || beginning.current === asked) return;
     beginning.current = asked;
-    try { const next = await startReview(matchId, heroKey, lang); if (selected.current === asked) setState(next); } catch (e) { if (selected.current === asked) refuse(e); } finally { if (beginning.current === asked) beginning.current = null; }
+    try { const next = await startReview(matchId, heroKey, lang, plan); if (selected.current === asked) setState(next); } catch (e) { if (selected.current === asked) refuse(e); } finally { if (beginning.current === asked) beginning.current = null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId, heroKey, lang]);
+  }, [matchId, heroKey, lang, plan]);
 
   /** The one click: fetch and parse the replay if needed, then the review follows on its own. */
   async function go() {
@@ -343,7 +354,7 @@ export const AgentMatchPage: React.FC = () => {
       )}
     </header>
   );
-  const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} />;
+  const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} replayLead={avail?.trace ? avail.radiant_net_worth_lead ?? null : null} />;
   const dead = (title: Bi, body: Bi, retry = false) => (
     <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={go}>{t(T.retry)}</button>}{notice && <p className="ag-warn" role="alert">{notice}</p>}</div>{scoreboard}</Shell>
   );
@@ -382,10 +393,10 @@ export const AgentMatchPage: React.FC = () => {
         {header}
         <div className="ag-layout">
           <div>
-            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} goalContext={goalContext} board={scoreboard} />
+            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
           </div>
-          <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} />
+          <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} plan={plan} />
         </div>
       </Shell>
     );
@@ -436,6 +447,17 @@ export const AgentMatchPage: React.FC = () => {
           <>
             <h1>{t(T.goTitle)}</h1>
             <p>{t(T.goBody)}</p>
+            <fieldset className="ag-planpick">
+              <legend>{t(T.planAsk)}</legend>
+              <p>{t(T.planWhy)}</p>
+              <div className="ag-planpick-row" role="radiogroup" aria-label={t(T.planAsk)}>
+                {[null, ...PLANS.map((p) => p.key)].map((k) => (
+                  <button key={k ?? 'none'} type="button" role="radio" aria-checked={plan === k} className={`ag-chip-btn ${plan === k ? 'is-on' : ''}`} onClick={() => pickPlan(k)}>
+                    {k ? PLANS.find((p) => p.key === k)!.label[lang] : t(T.planNone)}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
             <button type="button" className="ag-btn is-primary" onClick={go}>{t(T.go)}</button>
             {state?.status === 'unknown_hero' && <p className="ag-warn">{t(T.unknownHero)}</p>}
             {notice && <p className="ag-warn" role="alert">{notice}</p>}

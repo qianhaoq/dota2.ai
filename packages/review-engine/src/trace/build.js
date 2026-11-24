@@ -17,7 +17,15 @@
  *   intervals — all from the 4 Hz samples, so times are within 0.25 s;
  * - the hero-relevant combat log: casts, item uses, hero deaths, purchases,
  *   building kills, control / spell-immunity modifiers, and damage to heroes
- *   and buildings summed per second by (attacker, target, inflictor).
+ *   and buildings summed per second by (attacker, target, inflictor);
+ * - each hero's net worth once a game minute, from the replay's match metadata
+ *   (`trace/metadata.jsonl`, `graph_net_worth`). The graph stores net worth
+ *   divided by ten: it is multiplied back only when its first point is a
+ *   starting purse (NET_WORTH_START), else left out. A point is read as one
+ *   game minute only when the graph is not denser than that: some replays'
+ *   graphs hold about two points a minute (9080127650: 63 for 31:47), and
+ *   then nothing is kept and `gaps` says why. Net worth, not gold earned;
+ *   which second of a minute a point was taken is not recorded.
  *
  * What the extractor does not have stays absent (see `gaps`): fog of war,
  * creeps, Roshan. Nothing is estimated.
@@ -31,6 +39,12 @@ const usableSlot = (slot) => (slot >= 0 && slot <= 5) || (slot >= 15 && slot <= 
 const IMMUNITY = /black_king_bar_immune|magic_immune|debuff_immune|spell_immun/;
 const BUILDING = /_(tower\d|fort|melee_rax|range_rax)/;
 const r1 = (n) => Math.round(n * 10) / 10;
+/**
+ * The metadata graph's unit is ten gold. Its first point (0:00) is the starting purse, 600 in recent patches:
+ * a first point this far from 60 means the unit is not what this builder knows, and nothing is kept.
+ */
+const NET_WORTH_SCALE = 10;
+const NET_WORTH_START = [40, 80];
 
 /**
  * Open/close [from, to] intervals for a boolean that is sampled over time.
@@ -59,6 +73,8 @@ export function createTraceBuilder() {
   /** @type {Map<string, number>} */
   const damage = new Map();
   let stateRows = 0; let eventRows = 0; let lastT = -Infinity; let firstT = Infinity;
+  /** @type {Map<string, number[]>} hero key → net worth per game minute */
+  const netWorth = new Map();
 
   function hero(key, row) {
     let h = heroes.get(key);
@@ -190,6 +206,20 @@ export function createTraceBuilder() {
       }
     },
 
+    /**
+     * One row of metadata.jsonl (the replay's match metadata). A later row replaces an earlier one's graph:
+     * the file can hold one row per metadata callback, and the last is the whole game.
+     */
+    addMetadata(row) {
+      for (const p of Array.isArray(row?.players) ? row.players : []) {
+        const key = typeof p?.hero_key === 'string' ? p.hero_key.replace(/^npc_dota_hero_/, '') : null;
+        const graph = Array.isArray(p?.graph_net_worth) ? p.graph_net_worth : null;
+        if (!key || !graph?.length || !graph.every(Number.isFinite)) continue;
+        if (!(graph[0] >= NET_WORTH_START[0] && graph[0] <= NET_WORTH_START[1])) continue;
+        netWorth.set(key, graph.map((v) => Math.round(v * NET_WORTH_SCALE)));
+      }
+    },
+
     /** @param {{ match_id?: number | null, extractor?: object | null }} [meta] */
     finish(meta = {}) {
       const list = [...heroes.values()].sort((a, b) => a.team - b.team || (a.player_index ?? 0) - (b.player_index ?? 0));
@@ -197,6 +227,9 @@ export function createTraceBuilder() {
       const n = Number.isFinite(lastT) ? Math.round(lastT) - t0 + 1 : 0;
       const closeAll = (entries, t) => { for (const e of entries) { if (e.cdState) track(e.cd, e.cdState, false, t); if (e.heldState) track(e.held, e.heldState, false, t); if (e.state) track(e.list, e.state, false, t); } };
       const cols = ['x', 'y', 'hp', 'max_hp', 'mana', 'level', 'alive'];
+      // One point a game minute at most (0:00 … the last full minute): a denser graph's points are not minutes.
+      const minutes = Number.isFinite(lastT) && lastT > 0 ? Math.floor(lastT / 60) + 1 : 0;
+      const perMinute = netWorth.size > 0 && [...netWorth.values()].every((g) => g.length <= minutes);
       const out = {
         schema: TRACE_SCHEMA,
         match_id: meta.match_id ?? null,
@@ -221,6 +254,8 @@ export function createTraceBuilder() {
         buildings,
         modifiers,
         damage: [...damage].map(([k, v]) => [...k.split('|').map(Number), Math.round(v)]),
+        // Per hero, in hero order: net worth at 0:00, 1:00, 2:00 … (null for a hero the metadata did not name).
+        ...(perMinute ? { net_worth: list.map((h) => netWorth.get(h.key) ?? null) } : {}),
         source: { state_rows: stateRows, event_rows: eventRows, sample_hz: 1, extractor: meta.extractor ?? null },
         gaps: [
           { topic: 'vision', reason: 'no_fog_of_war_in_trace' },
@@ -228,6 +263,7 @@ export function createTraceBuilder() {
           { topic: 'roshan', reason: 'no_reliable_roshan_event' },
           { topic: 'ability_immunity', reason: 'only_item_spell_immunity_modifiers_tracked' },
           { topic: 'unused_free_abilities', reason: 'an_ability_never_cast_with_no_mana_cost_cannot_be_told_from_a_passive' },
+          ...(netWorth.size && !perMinute ? [{ topic: 'net_worth', reason: 'metadata_graph_denser_than_one_point_a_minute' }] : []),
         ],
       };
       return out;

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchEvidence, type DeepReview } from './api';
 import { EvidenceCard } from './EvidenceCard';
+import { PLANS, planByKey } from '../../lib/agent/plans.js';
 import { setGoal, useActiveGoal, type ActiveGoal, type GoalRule } from '../coach/goalStore';
 
 /** The review as a document: verdict, the game's fights with the turn marked, the findings with their evidence, what to change. */
@@ -38,23 +39,21 @@ const T = {
   planLineUps: { en: 'The line-ups', zh: '阵容' },
   planStrengths: { en: 'What you were up against', zh: '对位与强势期' },
   planWindow: { en: 'Your chance', zh: '窗口期' },
+  planYours: { en: 'Against your plan', zh: '对照你的思路' },
   planCourse: { en: 'How it went', zh: '走势' },
   planYou: { en: 'Your part', zh: '你的部分' },
   planReason: {
     your_play: { en: 'Mostly your own play', zh: '主要在你自己的打法' }, team_play: { en: 'Mostly the team, not you', zh: '主要在队伍，不在你' },
     enemy_play: { en: 'Mostly what the enemy did', zh: '主要是对面做对了' }, line_ups: { en: 'Mostly the line-ups', zh: '主要在阵容' }, unclear: { en: 'The data does not settle it', zh: '数据定不了' },
   } as Record<string, Record<Lang, string>>,
+  replan: { en: 'You can also have the whole review rewritten against “{p}” (about two to three minutes).', zh: '也可以按「{p}」重写整份复盘（约 2–3 分钟）。' },
+  replanGo: { en: 'Rewrite it', zh: '重写' },
   intentBusy: { en: 'The coach is still answering your last question. Pick again when it is done.', zh: '教练还在回答上一个问题，等它答完再选。' },
   intentAsk: { en: 'What were you going for this game? Tell the coach: it checks your plan against the replay.', zh: '这局你本来想怎么打？告诉教练，它会对照录像回答。' },
 } as const;
 
-/** What a player may have been going for. The label is the button; `said` is how it reads inside the question. */
-export const PLAN_INTENTS: { key: string; label: Record<Lang, string>; said: Record<Lang, string> }[] = [
-  { key: 'push', label: { en: 'Lanes into towers', zh: '线优转推进' }, said: { en: 'win the lanes and take towers early', zh: '线优转推进' } },
-  { key: 'gank', label: { en: 'Ganks and pressure', zh: '抓人带节奏' }, said: { en: 'gank and keep them down', zh: '抓人带节奏、打压制' } },
-  { key: 'split', label: { en: 'Split push', zh: '带线牵制' }, said: { en: 'split push and stay out of fights', zh: '带线牵制、避开正面团' } },
-  { key: 'late', label: { en: 'Farm for late', zh: '发育拖后期' }, said: { en: 'farm and fight late', zh: '发育拖后期再打团' } },
-];
+/** What a player may have been going for (lib/agent/plans.js). The label is the button; `said` is how it reads inside the question. */
+export const PLAN_INTENTS: readonly { key: string; label: Record<Lang, string>; said: Record<Lang, string> }[] = PLANS;
 /** The question a chosen plan sends to the coach: the three things a plan is checked on. */
 export const planQuestion = (key: string, lang: Lang): string | null => {
   const said = PLAN_INTENTS.find((p) => p.key === key)?.said[lang];
@@ -156,10 +155,12 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
   );
 };
 
-export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode }> = ({ matchId, review, lang, onAsk, onPlan, goalContext = null, board = null }) => {
+export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, goalContext = null, board = null }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   // A plan picked while the coach is still answering is not sent: say so instead of doing nothing.
   const [planHeld, setPlanHeld] = useState(false);
+  // The plan last asked about: the reader may want the whole review made for it, not only an answer.
+  const [asked, setAsked] = useState<string | null>(null);
   const [overview, setOverview] = useState<{ fights: Fight[]; duration: { t: number } | null } | null>(null);
   useEffect(() => {
     let alive = true;
@@ -191,6 +192,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
             <>
               <p className="ag-plan-sub">{t(T.planSub)}</p>
               <dl className="ag-plan-parts">
+                {review.game_plan.against_your_plan && <div className="ag-plan-yours"><dt>{t(T.planYours)}{planByKey(review.plan ?? '') ? <span>{planByKey(review.plan ?? '')!.label[lang]}</span> : null}</dt><dd>{review.game_plan.against_your_plan}</dd></div>}
                 {review.game_plan.window && <div><dt>{t(T.planWindow)}</dt><dd>{review.game_plan.window}</dd></div>}
                 {review.game_plan.strengths && <div><dt>{t(T.planStrengths)}</dt><dd>{review.game_plan.strengths}</dd></div>}
                 {review.game_plan.course && <div><dt>{t(T.planCourse)}</dt><dd>{review.game_plan.course}</dd></div>}
@@ -206,8 +208,11 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
           {onPlan && (
             <div className="ag-intent">
               <p>{t(T.intentAsk)}</p>
-              <div className="ag-intent-row">{PLAN_INTENTS.map((p) => <button key={p.key} type="button" className="ag-btn" onClick={() => setPlanHeld(!onPlan(planQuestion(p.key, lang)!))}>{p.label[lang]}</button>)}</div>
+              <div className="ag-intent-row">{PLAN_INTENTS.map((p) => <button key={p.key} type="button" className="ag-btn" onClick={() => { const sent = onPlan(planQuestion(p.key, lang)!); setPlanHeld(!sent); if (sent) setAsked(p.key); }}>{p.label[lang]}</button>)}</div>
               {planHeld && <p className="ag-intent-note" role="status">{t(T.intentBusy)}</p>}
+              {asked && onReplan && asked !== review.plan && planByKey(asked) && (
+                <p className="ag-intent-note">{t(T.replan).replace('{p}', planByKey(asked)!.label[lang])} <button type="button" className="ag-link" onClick={() => onReplan(asked)}>{t(T.replanGo)}</button></p>
+              )}
             </div>
           )}
         </section>

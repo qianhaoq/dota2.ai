@@ -17,7 +17,8 @@ const T = {
   goldUp: { en: 'Radiant ahead', zh: '天辉领先' },
   goldDown: { en: 'Dire ahead', zh: '夜魇领先' },
   goldEnd: { en: 'at the end', zh: '结束时' },
-  goldNone: { en: 'No minute-by-minute gold for this game: it comes with OpenDota\'s parse of the match, which this game does not have yet.', zh: '这局还没有每分钟经济：它来自 OpenDota 对这场比赛的解析，这局目前还没有。' },
+  goldReplay: { en: 'Net worth lead by minute (from the replay)', zh: '每分钟净值差（来自录像）' },
+  goldNone: { en: 'No minute-by-minute gold for this game yet: it comes with the replay review or with OpenDota\'s parse of the match.', zh: '这局还没有每分钟经济：录像复盘或 OpenDota 解析之后才有。' },
   hero: { en: 'Hero', zh: '英雄' },
   level: { en: 'Lvl', zh: '等级' },
   kda: { en: 'K / D / A', zh: '杀 / 死 / 助' },
@@ -40,7 +41,7 @@ const k = (n: number) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : St
  * line around zero: above is Radiant ahead, below is Dire ahead. Team colours,
  * not "good / bad", so it reads the same whichever hero the review is for.
  */
-const GoldCurve: React.FC<{ adv: number[]; lang: Lang }> = ({ adv, lang }) => {
+const GoldCurve: React.FC<{ adv: number[]; lang: Lang; title?: Bi }> = ({ adv, lang, title = T.gold }) => {
   const W = 640; const H = 132; const pad = 6;
   const max = Math.max(2000, ...adv.map((v) => Math.abs(v)));
   const x = (i: number) => pad + (i / Math.max(1, adv.length - 1)) * (W - 2 * pad);
@@ -52,11 +53,11 @@ const GoldCurve: React.FC<{ adv: number[]; lang: Lang }> = ({ adv, lang }) => {
   return (
     <figure className="ag-gold">
       <figcaption>
-        <span>{T.gold[lang]}</span>
+        <span>{title[lang]}</span>
         <span className="ag-gold-end">{T.goldEnd[lang]} <b className={end >= 0 ? 'is-radiant' : 'is-dire'}>{end >= 0 ? T.radiant[lang] : T.dire[lang]} +{thousands(Math.abs(Math.round(end)))}</b></span>
       </figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img"
-        aria-label={`${T.gold[lang]}: ${T.goldEnd[lang]} ${end >= 0 ? T.radiant[lang] : T.dire[lang]} +${thousands(Math.abs(Math.round(end)))}`}>
+        aria-label={`${title[lang]}: ${T.goldEnd[lang]} ${end >= 0 ? T.radiant[lang] : T.dire[lang]} +${thousands(Math.abs(Math.round(end)))}`}>
         <defs>
           <clipPath id="ag-gold-up"><rect x="0" y="0" width={W} height={H / 2} /></clipPath>
           <clipPath id="ag-gold-down"><rect x="0" y={H / 2} width={W} height={H / 2} /></clipPath>
@@ -69,7 +70,8 @@ const GoldCurve: React.FC<{ adv: number[]; lang: Lang }> = ({ adv, lang }) => {
       </svg>
       <div className="ag-gold-axis" aria-hidden="true">
         <span className="is-radiant">▲ {T.goldUp[lang]}</span>
-        <span>{ticks.map((i) => <i key={i} style={{ left: `${(x(i) / W) * 100}%` }}>{i}:00</i>)}</span>
+        {/* A minute label under a side label (the first and last eighth of the width) would be cut: only its line is drawn. */}
+        <span>{ticks.filter((i) => x(i) / W > 0.14 && x(i) / W < 0.86).map((i) => <i key={i} style={{ left: `${(x(i) / W) * 100}%` }}>{i}:00</i>)}</span>
         <span className="is-dire">▼ {T.goldDown[lang]}</span>
       </div>
     </figure>
@@ -117,14 +119,17 @@ const Row: React.FC<{ p: Player; me: boolean; spikes: Map<string, number>; lang:
  * All of it is the match record (the coach report), not the review's words.
  * `hero` is the player the review is for: their side comes first and their row is marked.
  */
-export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; lang: Lang }> = ({ report, hero = null, lang }) => {
+export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; lang: Lang; /** The replay's own net worth lead per minute: used when the match record has no gold curve. */ replayLead?: number[] | null }> = ({ report, hero = null, lang, replayLead = null }) => {
   const players = Array.isArray(report.players) ? report.players : [];
   const me = hero ? players.find((p) => p.hero?.slug === hero) ?? null : null;
   const sides: boolean[] = me && !me.radiant ? [false, true] : [true, false];
   const m = report.match ?? ({} as CoachReport['match']);
   const winner = typeof m.radiant_win === 'boolean' ? m.radiant_win : null;
   const score = Array.isArray(m.score) ? m.score : null;
-  const adv = Array.isArray(report.timeline?.radiant_gold_adv) ? report.timeline!.radiant_gold_adv.filter(num) : [];
+  const recorded = Array.isArray(report.timeline?.radiant_gold_adv) ? report.timeline!.radiant_gold_adv.filter(num) : [];
+  // OpenDota's curve when the match record has it (what the review's tools were told); else the replay's own.
+  const adv = recorded.length > 2 ? recorded : Array.isArray(replayLead) ? replayLead.filter(num) : [];
+  const fromReplay = recorded.length <= 2 && adv.length > 2;
   const spikesBySlot = new Map<number, Map<string, number>>();
   for (const s of Array.isArray(report.spikes) ? report.spikes : []) {
     if (!s) continue;
@@ -144,7 +149,7 @@ export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; l
           {m.mode?.[lang] && <span>{m.mode[lang]}</span>}
         </p>
       )}
-      {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}
+      {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} title={fromReplay ? T.goldReplay : T.gold} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}
       {sides.map((radiant) => {
         const team = players.filter((p) => p.radiant === radiant);
         if (!team.length) return null;

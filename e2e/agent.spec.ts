@@ -125,6 +125,36 @@ test('the game plan: how the game went as a whole, its records, and a plan of th
   expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
 });
 
+test('the reader names a plan before the review, and the review reads the game against it', async ({ page }) => {
+  // The two viewports share one server: each names its own plan, so each starts a review of its own.
+  const [key, label] = test.info().project.name.startsWith('mobile') ? ['push', '线优转推进'] : ['split', '带线牵制'];
+  // The game already has a review without a plan (as most games someone opened will): the way in is from it.
+  await review(page);
+  await page.locator('.ag-plan').getByRole('button', { name: label }).click();
+  const note = page.locator('.ag-intent-note', { hasText: `也可以按「${label}」重写整份复盘` });
+  await note.getByRole('button', { name: '重写' }).click();
+  await expect(page).toHaveURL(new RegExp(`plan=${key}`));
+  // A review for a plan is its own review: its start is offered, with the plan already picked.
+  const group = page.getByRole('radiogroup', { name: '这局你想怎么打？（可选）' });
+  await expect(group.getByRole('radio', { name: label })).toHaveAttribute('aria-checked', 'true');
+  const posted = page.waitForRequest((r) => r.url().endsWith(`/api/agent/${MATCH}/review`) && r.method() === 'POST');
+  await page.getByRole('button', { name: '开始复盘' }).click();
+  expect((await posted).postDataJSON()).toEqual({ hero: 'beastmaster', lang: 'zh', plan: key });
+  const plan = page.locator('.ag-plan');
+  await expect(plan).toBeVisible({ timeout: 30_000 });
+  const yours = plan.locator('.ag-plan-yours');
+  await expect(yours.locator('dt')).toHaveText(`对照你的思路${label}`);
+  await expect(yours.locator('dd')).toContainText('断在队伍没有把领先换成塔，不在你');
+  await expect(plan.locator('.ag-plan-parts dt').first()).toHaveText(`对照你的思路${label}`);
+  // The chat is about this review: its questions carry the plan.
+  const sent = page.waitForRequest((r) => r.url().endsWith('/chat') && r.method() === 'POST');
+  const chat = page.getByRole('complementary', { name: '问教练' });
+  await chat.getByRole('textbox').fill('那我该怎么推？');
+  await chat.getByRole('textbox').press('Enter');
+  expect((await sent).postDataJSON()).toMatchObject({ question: '那我该怎么推？', plan: key });
+  await noSideScroll(page);
+});
+
 test('evidence: the replay record behind a sentence, on demand', async ({ page }) => {
   await review(page);
   const first = page.locator('.ag-finding').first().locator('.ag-ev');

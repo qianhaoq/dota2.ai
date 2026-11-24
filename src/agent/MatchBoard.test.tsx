@@ -72,6 +72,23 @@ describe('MatchBoard', () => {
     expect(board.textContent).toContain('33.9k');
   });
 
+  it('without OpenDota\'s curve the replay\'s own net worth lead is drawn, and says where it is from', () => {
+    render(<MatchBoard report={{ ...report, timeline: null } as CoachReport} hero="ursa" lang="zh" replayLead={[-8, 47, 464, 993, 35038]} />);
+    const board = screen.getByRole('region', { name: '记分板' });
+    expect(within(board).getByRole('img', { name: '每分钟净值差（来自录像）: 结束时 天辉 +35,038' })).toBeTruthy();
+    expect(board.querySelector('.ag-gold-none')).toBeNull();
+    cleanup();
+    // 46 minutes: ticks at 10, 20, 30, 40. The 40:00 label would sit under "Dire ahead": its line is drawn, its label is not.
+    const long = Array.from({ length: 46 }, (_, m) => m * 100);
+    const { container } = render(<MatchBoard report={{ ...report, timeline: null } as CoachReport} lang="en" replayLead={long} />);
+    expect([...container.querySelectorAll('.ag-gold-axis i')].map((e) => e.textContent)).toEqual(['10:00', '20:00', '30:00']);
+    expect(container.querySelectorAll('.ag-gold-tick')).toHaveLength(4);
+    cleanup();
+    // OpenDota's curve, when the record has it, is the one drawn.
+    render(<MatchBoard report={report} hero="ursa" lang="en" replayLead={[1, 2, 3, 4]} />);
+    expect(screen.getByRole('img', { name: 'Gold lead by minute: at the end Dire +43,787' })).toBeTruthy();
+  });
+
   it('a scoreboard with little in it still shows who played, and no made-up numbers', () => {
     const bare = { match: { patch: '7.42' }, players: [{ slot: 0, radiant: true, kda: [4, 12, 14], hero: { id: 2, en: 'Axe', zh: '斧王', slug: 'axe', img: null } }] } as unknown as CoachReport;
     render(<MatchBoard report={bare} lang="en" />);
