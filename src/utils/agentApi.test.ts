@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { createAgentRouter } from '../../lib/agent/router.js';
+import { proItemsFor } from '../../lib/agent/proItems.js';
+import { patchData } from '../../lib/agent/patchData.js';
 import { createAgentService, createFileTraceStore } from '../../lib/agent/service.js';
 import { chatSystem, parseChatBody, runChat } from '../../lib/agent/chat.js';
 
@@ -248,7 +250,10 @@ describe('agent API', () => {
     expect((await ev('timeline:1805-1860')).body.record.events.length).toBeGreaterThan(10);
     expect((await ev('item:phantom_assassin:black_king_bar')).body.record.first_held.clock).toBe('21:29');
     expect((await ev('overview')).body.record).toMatchObject({ result: 'my_team_lost', fights_total: 16 });
-    expect((await ev('pro_items:beastmaster')).body.record.mid_game_items.items[0].item).toBe('blink');
+    // The fixture game is 7.42's: the pro items are those of 7.42's own pro games.
+    const pro = (await ev('pro_items:beastmaster')).body.record.mid_game_items;
+    expect(pro.played_on_releases).toEqual(['7.42']);
+    expect(pro.items[0].item).toBe(proItemsFor(38, patchData('7.42'))!.items[0][0]);
     // A death looked at with a wider window is shown with that window, not the default one.
     const narrow = (await ev('death:beastmaster:2')).body.record; const wide = (await ev('death:beastmaster:2:w30')).body.record;
     expect([narrow.snapshots[0].dt, wide.snapshots[0].dt]).toEqual([-12, -30]);
