@@ -206,7 +206,7 @@ describe('runDeepReview', () => {
     expect(m.seen[0].system).toContain('简体中文');
     expect(m.seen[0].messages[0].content).toContain('"player_hero":"beastmaster"');
     expect(m.seen[0].messages[0].content).toContain('"necrolyte":"瘟疫法师"');
-    expect(m.seen[0].tools.map((t: any) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline', 'tempo_report', 'hero_abilities', 'pro_item_choices', 'lane_report', 'lineup_timing', 'window_report', 'build_for_plan', 'build_check', 'power_spikes', 'submit_review']);
+    expect(m.seen[0].tools.map((t: any) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline', 'tempo_report', 'hero_abilities', 'pro_item_choices', 'lane_report', 'lineup_timing', 'window_report', 'build_for_plan', 'farm_report', 'build_check', 'power_spikes', 'submit_review']);
     // The tool results the model read are the real ones, told from the player's side.
     expect(JSON.parse(m.seen[1].messages.find((x: any) => x.tool_call_id === 'a').content).casts_total).toBe(10);
   });
