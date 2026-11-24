@@ -14,6 +14,7 @@
  * not judge. What the trace cannot show is returned under `gaps`, never
  * guessed: an absent value is unknown, not false.
  */
+import { heroByKey } from '../staticHeroes.js';
 import {
   abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, manaCost, mostMana, nameId, nameOf, nearby, region, seconds, stateAt, unit,
 } from './query.js';
@@ -277,7 +278,8 @@ function leftUnused(deaths, heroKey) {
     return {
       death: d.n, clock: d.clock, killer: d.killer,
       // The hero's own abilities, by their key: map actions every hero has (capturing an outpost, a twin gate) are not something left unused in a fight.
-      ready_not_cast: d.ready_not_cast.filter((a) => a.startsWith(`${heroKey}_`)),
+      // The hero's own abilities: named after the internal slug ("queenofpain_…"), which is not always the replay's key for the hero.
+      ready_not_cast: d.ready_not_cast.filter((a) => a.startsWith(`${heroKey}_`) || a.startsWith(`${heroByKey(heroKey)?.internalSlug ?? heroKey}_`)),
       health_share_at_window_start: d.health_share_at_window_start,
       seconds_before_first_disable: d.seconds_before_first_disable,
       enemy_heroes_dealing_damage: d.enemy_heroes_dealing_damage,
