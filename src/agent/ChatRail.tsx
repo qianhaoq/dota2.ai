@@ -38,6 +38,7 @@ const TOOLS: Record<string, Record<Lang, string>> = {
   hero_abilities: { en: 'Looking up ability data', zh: '查技能数据' },
   pro_item_choices: { en: 'Comparing with pro builds', zh: '对照职业出装' },
   lane_report: { en: 'Reading the lane', zh: '看对线期' },
+  tempo_report: { en: 'Reading who took the map, and when', zh: '看各阶段的推进和节奏' },
 };
 const clockOf = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}` : String(v); };
 export function stepLabel(step: ToolStep, lang: Lang): string {

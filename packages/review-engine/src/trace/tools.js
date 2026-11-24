@@ -517,6 +517,185 @@ export function itemTimeline(trace, args = {}) {
   return { hero: trace.heroes[h].key, items, note: 'first_held is when the item first sat in an inventory, TP or neutral slot; components appear until they are built into something else' };
 }
 
+/** Buildings that are objectives: towers, barracks, the Ancient. Not the filler buildings around a base. */
+const OBJECTIVE = /_(tower\d|melee_rax|range_rax|fort)(_(top|mid|bot))?$/;
+/** The game is read in stretches of this many seconds. */
+const PHASE_SECONDS = 600;
+/** A building taken this long after a fight (or during it) is counted as following from the fight. */
+const FOLLOW_UP_SECONDS = 120;
+/** "Near": the same distance death_context uses for allies and enemies around a hero. */
+const NEAR = 2200;
+
+/**
+ * What a hero's team did with the game, stretch by stretch, and where the
+ * hero was while it happened: buildings taken and lost, hero deaths, fights
+ * and whether a building followed them, and for the hero the share of their
+ * living time on each side of the map, alone or with allies, and their damage
+ * to buildings.
+ *
+ * Told from the hero's own side whoever asks: `team` is the hero's team,
+ * `opponents` the other. Numbers only — whether a stretch was "pushing" or
+ * "farming" is the reader's judgment, and the trace has no creeps to settle
+ * it: time in a lane is not time spent pushing it.
+ */
+export function tempoReport(trace, args = {}, ctx = {}) {
+  const { h, err } = needHero(trace, args.hero);
+  if (err) return err;
+  const view = viewer(trace, ctx);
+  const key = trace.heroes[h].key;
+  const team = trace.heroes[h].team; const other = team === 2 ? 3 : 2;
+  const own = team === 2 ? 'radiant' : 'dire';
+  const end = Math.floor(gameEnd(trace));
+  if (!(end > 0)) return fail('no_game_time');
+  const adv = Array.isArray(ctx.match?.radiant_gold_adv) ? ctx.match.radiant_gold_adv : null;
+  const leadAt = (t) => { const v = adv ? adv[Math.floor(t / 60)] : null; return Number.isFinite(v) ? (team === 2 ? v : -v) : null; };
+  const r2 = (n, d) => (d > 0 ? Math.round((n / d) * 100) / 100 : null);
+
+  // A building its own side destroyed (a deny) is nobody's objective.
+  const objectives = trace.buildings.filter((b) => OBJECTIVE.test(trace.names[b[1]]) && b[0] <= end + 1)
+    .map((b) => ({ t: b[0], id: b[1], name: unit(trace.names[b[1]]), owner: buildingTeam(trace.names[b[1]]), by: b[2] }))
+    .filter((b) => b.owner && b.by !== b.owner);
+  // Damage heroes themselves dealt to the other side's buildings: [second, hero index, building name id, value].
+  const hits = [];
+  for (const [sec, a, target, , value] of trace.damage) {
+    const name = trace.names[target];
+    if (!name || !OBJECTIVE.test(name)) continue;
+    const ah = heroOfName(trace, a);
+    if (ah >= 0 && trace.heroes[ah].team !== buildingTeam(name)) hits.push([sec, ah, target, value]);
+  }
+  // Two buildings with one name (the towers beside the Ancient) cannot be told apart in the damage log: who
+  // damaged which is then unknown (null), not "nobody".
+  const twins = new Set(objectives.filter((b, i) => objectives.some((o, j) => j !== i && o.id === b.id)).map((b) => b.id));
+  const damagedBy = (b) => (twins.has(b.id) ? null : [...new Set(hits.filter((x) => x[2] === b.id && x[0] <= b.t).map((x) => x[1]))]);
+  const buildingRow = (b) => {
+    const mine = b.owner !== team;
+    const by = damagedBy(b);
+    return {
+      building: b.name, t: b.t, clock: clock(b.t), taken_by: mine ? 'team' : 'opponents',
+      ...(mine && by ? { heroes_who_damaged_it: by.filter((i) => trace.heroes[i].team === team).map((i) => trace.heroes[i].key) } : {}),
+      ...(mine ? { hero_damaged_it: by ? by.includes(h) : null } : {}),
+    };
+  };
+
+  const all = fights(trace).map((f, fi) => {
+    const lost = { 2: 0, 3: 0 };
+    let died = false; let near = false; let known = false;
+    for (const d of f.deaths) {
+      const v = heroOfName(trace, d[1]);
+      if (v < 0) continue;
+      lost[trace.heroes[v].team] += 1;
+      if (v === h) { died = true; continue; }
+      const at = stateAt(trace, v, d[0]); const me = stateAt(trace, h, d[0]);
+      if (!at || !me) continue;
+      known = true;
+      if (me.alive && dist(at, me) <= NEAR) near = true;
+    }
+    const fewer = lost[team] === lost[other] ? 'even' : lost[team] < lost[other] ? 'team' : 'opponents';
+    const followed = (side) => objectives.some((b) => b.owner !== side && b.t >= f.from && b.t <= f.to + FOLLOW_UP_SECONDS);
+    return {
+      ref: `fight:${fi + 1}`, from: f.from, to: f.to, clock: clock(f.from), fewer,
+      team_deaths: lost[team], opponents_deaths: lost[other],
+      // Null when no position was sampled to compare: unknown, not absent.
+      there: died || near ? true : known ? false : null,
+      team_took_a_building: followed(team), opponents_took_a_building: followed(other),
+    };
+  });
+
+  const phases = [];
+  for (let from = 0, n = 1; from < end; from += PHASE_SECONDS, n += 1) {
+    const to = Math.min(from + PHASE_SECONDS, end);
+    // What happened before the horn belongs to the first stretch; the Ancient's fall to the last.
+    const inPhase = (t) => (t >= from || from === 0) && (t < to || (to === end && t <= end + 1));
+    let alive = 0; let dead = 0; const sides = { own: 0, river: 0, enemy: 0 }; const places = new Map();
+    const company = [0, 0, 0]; let crowded = 0;
+    for (let sec = from; sec < to; sec += 1) {
+      const i = sec - trace.t0;
+      const s = trace.states[h];
+      if (i < 0 || i >= trace.n || s.x[i] == null) continue;
+      if (s.alive[i] !== 1) { dead += 1; continue; }
+      alive += 1;
+      const place = region(s.x[i], s.y[i]);
+      places.set(place, (places.get(place) ?? 0) + 1);
+      const side = place.split('_')[0];
+      sides[side === 'river' ? 'river' : side === own ? 'own' : 'enemy'] += 1;
+      const around = nearby(trace, h, sec, NEAR);
+      company[Math.min(2, around.allies.length)] += 1;
+      if (around.enemies.length >= 3) crowded += 1;
+    }
+    const taken = objectives.filter((b) => inPhase(b.t)).map(buildingRow);
+    const lost = { [team]: 0, [other]: 0 };
+    for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0 && inPhase(d[0])) lost[trace.heroes[v].team] += 1; }
+    const fought = all.filter((f) => inPhase(f.from));
+    const dmg = { hero: 0, team: 0 };
+    for (const [sec, ah, , value] of hits) { if (sec < from || sec >= to || trace.heroes[ah].team !== team) continue; dmg.team += value; if (ah === h) dmg.hero += value; }
+    phases.push({
+      ref: `phase:${key}:${n}`, from, to, clock: `${clock(from)}–${clock(to)}`,
+      buildings_team_took: taken.filter((b) => b.taken_by === 'team').length,
+      buildings_opponents_took: taken.filter((b) => b.taken_by === 'opponents').length,
+      buildings: taken,
+      team_hero_deaths: lost[team], opponents_hero_deaths: lost[other],
+      hero_deaths: trace.deaths.filter((d) => heroOfName(trace, d[1]) === h && inPhase(d[0])).length,
+      fights: fought.map((f) => ({ ref: f.ref, clock: f.clock, team_deaths: f.team_deaths, opponents_deaths: f.opponents_deaths, lost_fewer_heroes: f.fewer, hero_was_there: f.there })),
+      ...(adv ? { team_gold_lead: { at_start: leadAt(from), at_end: leadAt(to) } } : {}),
+      hero_alive_seconds: alive, hero_dead_seconds: dead,
+      hero_share_of_alive_time: {
+        on_own_side_of_the_map: r2(sides.own, alive), around_the_river: r2(sides.river, alive), on_the_opponents_side: r2(sides.enemy, alive),
+        with_no_ally_within_2200: r2(company[0], alive), with_one_ally_within_2200: r2(company[1], alive), with_two_or_more_allies_within_2200: r2(company[2], alive),
+        with_three_or_more_opponents_within_2200: r2(crowded, alive),
+      },
+      hero_most_time_in: [...places].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([place, sec]) => ({ place, share_of_alive_time: r2(sec, alive) })),
+      hero_damage_to_buildings: dmg.hero, team_heroes_damage_to_buildings: dmg.team,
+    });
+  }
+
+  const label = (list, f) => Object.fromEntries(list.map((p) => [p.clock, f(p)]));
+  const mine = objectives.filter((b) => b.owner !== team); const theirs = objectives.filter((b) => b.owner === team);
+  const clocks = (list) => list.map((f) => f.clock);
+  const wonF = all.filter((f) => f.fewer === 'team'); const lostF = all.filter((f) => f.fewer === 'opponents');
+  const byHero = {};
+  for (const [, ah, , value] of hits) if (trace.heroes[ah].team === team) byHero[trace.heroes[ah].key] = (byHero[trace.heroes[ah].key] ?? 0) + value;
+  return {
+    ref: `tempo:${key}`, ref_scope: 'summary', hero: key, ...sideOf(view, trace, h),
+    told_from: { hero: key, note: 'team is this hero\'s team, opponents the other; "hero" is this hero' },
+    duration: { t: end, clock: clock(end) },
+    phases_total: phases.length,
+    buildings_total: { team_took: mine.length, opponents_took: theirs.length },
+    first_building_taken: { by_team: mine[0] ? clock(mine[0].t) : null, by_opponents: theirs[0] ? clock(theirs[0].t) : null },
+    // One map per count, keyed by the stretch of the game: the tool's own counts, which a sentence may quote.
+    buildings_team_took_by_phase: label(phases, (p) => p.buildings_team_took),
+    buildings_opponents_took_by_phase: label(phases, (p) => p.buildings_opponents_took),
+    team_hero_deaths_by_phase: label(phases, (p) => p.team_hero_deaths),
+    opponents_hero_deaths_by_phase: label(phases, (p) => p.opponents_hero_deaths),
+    fights_total: all.length,
+    // Fights by the game time they began, like death_context's deaths_where: a fight can be in several lists.
+    fights_where: {
+      team_lost_fewer_heroes: clocks(wonF),
+      team_lost_fewer_heroes_and_took_a_building_within_120s: clocks(wonF.filter((f) => f.team_took_a_building)),
+      opponents_lost_fewer_heroes: clocks(lostF),
+      opponents_lost_fewer_heroes_and_took_a_building_within_120s: clocks(lostF.filter((f) => f.opponents_took_a_building)),
+      hero_was_there: clocks(all.filter((f) => f.there === true)),
+      hero_was_not_there: clocks(all.filter((f) => f.there === false)),
+      // No position sampled to compare at that moment: in neither list above.
+      hero_presence_not_known: clocks(all.filter((f) => f.there === null)),
+    },
+    fights_where_rule: 'a fight is three or more hero deaths within 15 seconds of each other; "there" means the hero died in it or was alive within 2200 units of a hero who died, at that moment; a building counts when it fell during the fight or within 120 seconds after it',
+    buildings_team_took_where: {
+      hero_damaged_it: mine.filter((b) => damagedBy(b)?.includes(h)).map((b) => clock(b.t)),
+      hero_did_not_damage_it: mine.filter((b) => damagedBy(b)?.includes(h) === false).map((b) => clock(b.t)),
+      // Two buildings share the name (the towers beside the Ancient): the log cannot say which one a hero hit.
+      not_known: mine.filter((b) => damagedBy(b) == null).map((b) => clock(b.t)),
+    },
+    team_heroes_damage_to_buildings: byHero,
+    phases,
+    note: 'Buildings are towers, barracks and the Ancient. Shares are of the seconds the hero was alive in that stretch. What happened before 0:00 is counted in the first stretch. Where a hero stood says nothing about creep waves: time in a lane is not time spent pushing it.',
+    gaps: [
+      ...gapsFor(trace, ['creeps', 'roshan', 'vision']),
+      { topic: 'building_damage_by_summoned_units_and_illusions', reason: 'only_damage_dealt_by_heroes_themselves_is_counted' },
+      ...(adv ? [] : [{ topic: 'gold_advantage', reason: 'not_in_trace' }]),
+    ],
+  };
+}
+
 const HERO = { type: 'string', description: 'Hero as in match_overview.heroes[].hero, e.g. "beastmaster".' };
 const TIME = { type: ['number', 'string'], description: 'Game time: seconds, or "mm:ss".' };
 
@@ -557,6 +736,12 @@ export const TRACE_TOOLS = [
     description: "When a hero first held each item, in order, and whether they still had it at the end. Works for any hero of the match: use it for the player's build and for when an enemy finished a key item.",
     input_schema: { type: 'object', properties: { hero: HERO }, required: ['hero'], additionalProperties: false },
     run: itemTimeline,
+  },
+  {
+    name: 'tempo_report',
+    description: "What a hero's team did with the game, in stretches of ten minutes, and where the hero was meanwhile: buildings each side took, hero deaths, each fight with who lost fewer heroes, whether a building followed it within 120 seconds and whether the hero was there; and for the hero the share of their living time on each side of the map, alone or with allies near, and their damage to buildings next to their teammates'. `team` is that hero's team, `opponents` the other. Use it for how the game was played as a whole — who was taking the map and when, whether won fights turned into buildings, whether the hero was where their team was — not for one moment.",
+    input_schema: { type: 'object', properties: { hero: HERO }, required: ['hero'], additionalProperties: false },
+    run: tempoReport,
   },
 ];
 

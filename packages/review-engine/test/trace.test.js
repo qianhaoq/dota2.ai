@@ -283,7 +283,7 @@ describe('trace helpers', () => {
 
 describe('trace tools on a real game', () => {
   it('lists the tools with JSON-schema inputs', () => {
-    expect(TRACE_TOOLS.map((t) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline']);
+    expect(TRACE_TOOLS.map((t) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline', 'tempo_report']);
     for (const t of TRACE_TOOLS) expect(t.input_schema).toMatchObject({ type: 'object', additionalProperties: false });
   });
 
@@ -555,6 +555,92 @@ describe('trace tools on a real game', () => {
     expect(runTraceTool(trace, 'ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, ctx).casts[3].deaths_within_12s).toEqual([expect.objectContaining({ hero: 'beastmaster', side: 'me' })]);
     // An unknown perspective is ignored, not guessed.
     expect(runTraceTool(trace, 'match_overview', {}, { perspective: 'pudge' })).toHaveProperty('winner', 'radiant');
+  });
+
+  it('tempo_report: who took the map and when, whether fights became buildings, and where the hero was', () => {
+    const r = runTraceTool(trace, 'tempo_report', { hero: 'Beastmaster' }, { perspective: 'beastmaster' });
+    expect(r).toMatchObject({ ref: 'tempo:beastmaster', ref_scope: 'summary', hero: 'beastmaster', side: 'me', duration: { clock: '42:31' }, phases_total: 5, fights_total: 16 });
+    // Read off the building kills of the combat log: Dire took the three outer Radiant towers at 18:07–19:46 and one more; Radiant took everything after 20:02.
+    expect(r.buildings_total).toEqual({ team_took: 4, opponents_took: 18 });
+    expect(r.first_building_taken).toEqual({ by_team: '18:07', by_opponents: '20:02' });
+    expect(r.buildings_team_took_by_phase).toEqual({ '0:00–10:00': 0, '10:00–20:00': 3, '20:00–30:00': 1, '30:00–40:00': 0, '40:00–42:31': 0 });
+    expect(r.buildings_opponents_took_by_phase).toEqual({ '0:00–10:00': 0, '10:00–20:00': 0, '20:00–30:00': 3, '30:00–40:00': 3, '40:00–42:31': 12 });
+    // The filler buildings around the base are not objectives.
+    expect(trace.buildings.filter((b) => /fillers/.test(trace.names[b[1]]))).not.toHaveLength(0);
+    expect(JSON.stringify(r)).not.toMatch(/fillers/);
+    // Every hero death of the game is in exactly one stretch.
+    const sum = (m) => Object.values(m).reduce((a, b) => a + b, 0);
+    expect(sum(r.team_hero_deaths_by_phase) + sum(r.opponents_hero_deaths_by_phase)).toBe(trace.deaths.length);
+    // The same fights as match_overview, by when they began: six with fewer lost, nine with more, one even.
+    const o = runTraceTool(trace, 'match_overview', {}, { perspective: 'beastmaster' });
+    expect(r.fights_where.team_lost_fewer_heroes).toHaveLength(o.fights_tally.my_team_lost_fewer);
+    expect(r.fights_where.opponents_lost_fewer_heroes).toHaveLength(o.fights_tally.enemy_lost_fewer);
+    // One of the six became a building within two minutes; five of the enemy's nine did.
+    expect(r.fights_where.team_lost_fewer_heroes_and_took_a_building_within_120s).toEqual(['22:57']);
+    expect(r.fights_where.opponents_lost_fewer_heroes_and_took_a_building_within_120s).toEqual(['25:25', '30:26', '35:40', '39:16', '41:57']);
+    expect(r.fights_where.hero_was_not_there).toEqual(['37:46']);
+    expect(r.fights_where.hero_was_there).toHaveLength(15);
+    expect(r.fights_where.hero_presence_not_known).toEqual([]);
+    expect(r.buildings_team_took_where).toEqual({ hero_damaged_it: ['18:45', '19:46', '25:05'], hero_did_not_damage_it: ['18:07'], not_known: [] });
+    expect(r.team_heroes_damage_to_buildings).toEqual({ skywrath_mage: 512, undying: 137, dark_willow: 242, sven: 480, beastmaster: 540 });
+
+    const p3 = r.phases[2];
+    expect(p3).toMatchObject({ ref: 'phase:beastmaster:3', from: 1200, to: 1800, clock: '20:00–30:00', buildings_team_took: 1, buildings_opponents_took: 3, team_hero_deaths: 10, opponents_hero_deaths: 9, hero_deaths: 2 });
+    expect(p3.buildings.map((b) => [b.building, b.clock, b.taken_by])).toEqual([['badguys_tower1_mid', '20:02', 'opponents'], ['badguys_tower1_bot', '24:28', 'opponents'], ['goodguys_tower2_top', '25:05', 'team'], ['badguys_tower1_top', '25:59', 'opponents']]);
+    expect(p3.buildings[2]).toMatchObject({ hero_damaged_it: true, heroes_who_damaged_it: ['undying', 'beastmaster', 'skywrath_mage'] });
+    expect(p3.buildings[0]).not.toHaveProperty('hero_damaged_it');
+    expect(p3.fights.map((f) => f.ref)).toEqual(['fight:7', 'fight:8', 'fight:9', 'fight:10']);
+    // Shares are of the seconds alive, and the three sides of the map add up to all of them.
+    expect(p3.hero_alive_seconds + p3.hero_dead_seconds).toBe(600);
+    const s = p3.hero_share_of_alive_time;
+    expect(s.on_own_side_of_the_map + s.around_the_river + s.on_the_opponents_side).toBeCloseTo(1, 1);
+    expect(s.with_no_ally_within_2200 + s.with_one_ally_within_2200 + s.with_two_or_more_allies_within_2200).toBeCloseTo(1, 1);
+    expect(p3.hero_most_time_in[0]).toEqual({ place: 'radiant_top_lane', share_of_alive_time: 0.32 });
+    // The last stretch is cut at the Ancient's fall, which belongs to it.
+    expect(r.phases.at(-1)).toMatchObject({ clock: '40:00–42:31', to: 2551, buildings_opponents_took: 12 });
+    expect(r.phases.at(-1).buildings.at(-1)).toMatchObject({ building: 'badguys_fort', clock: '42:31' });
+    expect(sum(Object.fromEntries(r.phases.map((p) => [p.ref, p.hero_damage_to_buildings])))).toBe(540);
+    // No gold in the trace: a stated gap, and no lead in the stretches. With the match's per-minute lead, each stretch has it from the hero's side.
+    expect(r.gaps.map((g) => g.topic)).toEqual(['vision', 'creeps', 'roshan', 'building_damage_by_summoned_units_and_illusions', 'gold_advantage']);
+    expect(p3).not.toHaveProperty('team_gold_lead');
+    const adv = new Array(45).fill(0); adv[20] = 1200; adv[30] = 745;
+    const g = runTraceTool(trace, 'tempo_report', { hero: 'beastmaster' }, { match: { radiant_gold_adv: adv } });
+    expect(g.phases[2].team_gold_lead).toEqual({ at_start: -1200, at_end: -745 });
+    expect(g.phases.at(-1).team_gold_lead).toEqual({ at_start: -0, at_end: -0 });
+    expect(g.gaps.map((x) => x.topic)).not.toContain('gold_advantage');
+    expect(g).not.toHaveProperty('side');
+  });
+
+  it('tempo_report is told from the hero asked about, whoever is reading', () => {
+    const pa = runTraceTool(trace, 'tempo_report', { hero: 'phantom_assassin' }, { perspective: 'beastmaster' });
+    expect(pa).toMatchObject({ ref: 'tempo:phantom_assassin', side: 'enemy', buildings_total: { team_took: 18, opponents_took: 4 }, first_building_taken: { by_team: '20:02', by_opponents: '18:07' } });
+    expect(pa.fights_where.team_lost_fewer_heroes).toHaveLength(9);
+    expect(pa.team_heroes_damage_to_buildings.phantom_assassin).toBe(18231);
+    // The two towers beside the Ancient share a name: who hit which is not known, and is in neither list.
+    expect(pa.buildings_team_took_where.not_known).toEqual(['41:46', '41:52']);
+    expect(pa.buildings_team_took_where.hero_damaged_it).toHaveLength(16);
+    const t4 = pa.phases.at(-1).buildings.find((b) => b.building === 'badguys_tower4');
+    expect(t4.hero_damaged_it).toBeNull();
+    expect(t4).not.toHaveProperty('heroes_who_damaged_it');
+  });
+
+  it('tempo_report does not turn what was not sampled into an answer', () => {
+    // Beastmaster's positions gone: no share of time anywhere, and no claim about which fights he was at.
+    const h = trace.heroes.findIndex((x) => x.key === 'beastmaster');
+    const blank = { ...trace, states: trace.states.map((s, i) => (i === h ? { ...s, x: s.x.map(() => null), y: s.y.map(() => null) } : s)) };
+    const r = runTraceTool(blank, 'tempo_report', { hero: 'beastmaster' });
+    expect(r.phases[1]).toMatchObject({ hero_alive_seconds: 0, hero_dead_seconds: 0, hero_most_time_in: [] });
+    expect(Object.values(r.phases[1].hero_share_of_alive_time)).toEqual([null, null, null, null, null, null, null]);
+    // He died in some of them (that is in the combat log); for the rest nothing can be said.
+    expect(r.fights_where.hero_was_not_there).toEqual([]);
+    expect(r.fights_where.hero_was_there.length + r.fights_where.hero_presence_not_known.length).toBe(16);
+    expect(r.fights_where.hero_presence_not_known.length).toBeGreaterThan(0);
+    // A building its own side destroyed is nobody's objective.
+    const b0 = trace.buildings.findIndex((b) => /goodguys_tower1_top/.test(trace.names[b[1]]));
+    const denied = { ...trace, buildings: trace.buildings.map((b, i) => (i === b0 ? [b[0], b[1], 2, b[3]] : b)) };
+    expect(runTraceTool(denied, 'tempo_report', { hero: 'beastmaster' }).buildings_total).toEqual({ team_took: 3, opponents_took: 18 });
+    expect(runTraceTool(trace, 'tempo_report', { hero: 'pudge' })).toMatchObject({ error: 'unknown_hero' });
+    expect(runTraceTool(trace, 'tempo_report', {})).toMatchObject({ error: 'unknown_hero' });
   });
 
   it('answers bad input with an error object, never a guess', () => {

@@ -82,6 +82,11 @@ dota2ai trace fight_timeline   --trace match.trace.json.gz --from 30:05 --to 31:
 ```
 
 - `match_overview`: line-ups, every fight and who lost fewer heroes, buildings.
+- `tempo_report` (`--hero`): the game in stretches of ten minutes from that
+  hero's side — buildings each side took, hero deaths, each fight with whether
+  a building followed within two minutes and whether the hero was there, and
+  where the hero spent their living time (which side of the map, alone or
+  with allies) and their damage to buildings.
 - `death_context`: the seconds before each death — who was near, what was
   ready, who dealt the damage, which disables landed. Over all the deaths:
   how many began below half health, with no ally near, against three or more

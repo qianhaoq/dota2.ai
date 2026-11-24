@@ -64,7 +64,41 @@ const T = {
   laneProMean: { en: 'usually', zh: '通常' }, laneThis: { en: 'this game', zh: '这局' }, laneAhead: { en: 'ahead in', zh: '领先的比例' },
   lanePub: { en: 'lanes in public games of this bracket (STRATZ)', zh: '条同分段路人局对线（STRATZ）' },
   lanePubWon: { en: 'won', zh: '赢' }, lanePubLost: { en: 'lost', zh: '输' },
+  tempoCols: { en: ['Stretch', 'Buildings taken', 'Buildings lost', 'Team deaths', 'Enemy deaths'], zh: ['阶段', '拆掉建筑', '丢掉建筑', '己方阵亡', '对方阵亡'] },
+  tempoWon: { en: 'Fights with fewer heroes lost', zh: '少死人的团战' },
+  tempoLost: { en: 'Fights with more heroes lost', zh: '多死人的团战' },
+  tempoThen: { en: 'a building within 2 min after', zh: '之后两分钟内拆到建筑' },
+  tempoThere: { en: 'Fights this hero was at', zh: '该英雄在场的团战' },
+  tempoHit: { en: 'Buildings taken that this hero damaged', zh: '拆掉的建筑里该英雄打过的' },
+  tempoFirst: { en: 'First building', zh: '首个建筑' },
+  tempoTeams: { team: { en: 'this side', zh: '己方' }, opponents: { en: 'other side', zh: '对方' } } as Record<string, Record<Lang, string>>,
+  tempoShare: {
+    on_own_side_of_the_map: { en: 'On own side of the map', zh: '在己方半场' }, around_the_river: { en: 'Around the river', zh: '在河道一带' }, on_the_opponents_side: { en: 'On the other side', zh: '在对方半场' },
+    with_no_ally_within_2200: { en: 'No ally within 2200', zh: '2200 码内没有队友' }, with_one_ally_within_2200: { en: 'One ally near', zh: '身边一名队友' }, with_two_or_more_allies_within_2200: { en: 'Two or more allies near', zh: '身边两名以上队友' },
+    with_three_or_more_opponents_within_2200: { en: 'Three or more enemies near', zh: '身边三名以上敌人' },
+  } as Record<string, Record<Lang, string>>,
+  tempoAlive: { en: 'of the time alive', zh: '占存活时间' },
+  tempoMost: { en: 'Most time in', zh: '停留最多' },
+  tempoDamage: { en: 'Damage to buildings', zh: '对建筑伤害' },
+  tempoOfTeam: { en: 'of the team\'s heroes\'', zh: '队伍英雄合计' },
+  tempoFights: { en: 'Fights', zh: '团战' },
+  tempoAway: { en: 'not there', zh: '不在场' },
+  tempoBuildings: { en: 'Buildings', zh: '建筑' },
+  building: {
+    tower: { en: 'tier-{n} tower', zh: '{n} 塔' }, melee_rax: { en: 'melee barracks', zh: '近战兵营' }, range_rax: { en: 'ranged barracks', zh: '远程兵营' }, fort: { en: 'Ancient', zh: '遗迹' },
+    top: { en: 'top', zh: '上路' }, mid: { en: 'mid', zh: '中路' }, bot: { en: 'bottom', zh: '下路' },
+  } as Record<string, Record<Lang, string>>,
 } as const;
+
+/** A building's engine key ("badguys_tower1_mid") in words: which kind, which lane. The side is told by the column it stands in. */
+export function buildingLabel(key: string, lang: Lang): string {
+  const m = key.match(/_(tower(\d)|melee_rax|range_rax|fort)(?:_(top|mid|bot))?$/);
+  if (!m) return pretty(key);
+  const kind = m[2] ? T.building.tower[lang].replace('{n}', m[2]) : T.building[m[1]][lang];
+  const lane = m[3] ? T.building[m[3]][lang] : '';
+  // Chinese sets a digit off from the words around it ("中路 1 塔"); a barracks has none ("下路远程兵营").
+  return lang === 'zh' ? `${lane}${lane && m[2] ? ' ' : ''}${kind}` : [lane, kind].filter(Boolean).join(' ');
+}
 
 /** What a tool's totals are called. A key not listed here is shown as it is, with spaces. */
 const TOTALS: Record<string, Record<Lang, string>> = {
@@ -261,6 +295,46 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.my_deaths_before_10_00.length > 0 && <p className="ag-rec-line"><span>{t(T.laneDeaths)}</span>{r.my_deaths_before_10_00.map((d: any) => <span key={d.clock} className="ag-chip">{d.clock}{d.killer ? ` ← ${N(d.killer)}` : ''}</span>)}</p>}
         {pro && <p className="ag-rec-line"><span>{N(pro.my_side_core)} : {N(pro.enemy_core)} · {pro.pro_games} {t(T.lanePro)}</span><span className="ag-chip">{t(T.laneProMean)} <em>{signed(pro.core_gold_difference_at_10_00.mean)}</em></span><span className="ag-chip">{t(T.laneThis)} <em>{signed(pro.core_gold_difference_at_10_00.this_game)}</em></span><span className="ag-chip">{N(pro.my_side_core)} {t(T.laneAhead)} <em>{pc(pro.share_of_pro_games_my_side_core_was_ahead)}</em></span></p>}
         {pub && <p className="ag-rec-line"><span>{N(pub.hero)} : {N(pub.against)} · {pub.lanes} {t(T.lanePub)}</span><span className="ag-chip">{t(T.lanePubWon)} <em>{pc(pub.share_won)}</em></span><span className="ag-chip">{t(T.lanePubLost)} <em>{pc(pub.share_lost)}</em></span></p>}
+      </div>
+    );
+  }
+  if (data.kind === 'tempo') {
+    const w = r.fights_where; const hit = r.buildings_team_took_where;
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head">{N(r.hero)} · {r.duration.clock}</p>
+        <div className="ag-lane-scroll">
+          <table className="ag-lane">
+            <thead><tr>{T.tempoCols[lang].map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
+            <tbody>
+              {Object.keys(r.buildings_team_took_by_phase as Record<string, number>).map((p) => (
+                <tr key={p}>
+                  <th scope="row">{p}</th>
+                  {['buildings_team_took_by_phase', 'buildings_opponents_took_by_phase', 'team_hero_deaths_by_phase', 'opponents_hero_deaths_by_phase'].map((m) => <td key={m}>{r[m]?.[p] ?? '–'}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="ag-rec-line"><span>{t(T.tempoFirst)}</span>{(['by_team', 'by_opponents'] as const).map((k) => <span key={k} className="ag-chip">{t(T.tempoTeams[k.slice(3)])} <em>{r.first_building_taken[k] ?? '–'}</em></span>)}</p>
+        <p className="ag-rec-line"><span>{t(T.tempoWon)}</span><span className="ag-chip">{w.team_lost_fewer_heroes.length}</span><span className="ag-chip">{t(T.tempoThen)} <em>{w.team_lost_fewer_heroes_and_took_a_building_within_120s.length}</em></span></p>
+        <p className="ag-rec-line"><span>{t(T.tempoLost)}</span><span className="ag-chip">{w.opponents_lost_fewer_heroes.length}</span><span className="ag-chip">{t(T.tempoThen)} <em>{w.opponents_lost_fewer_heroes_and_took_a_building_within_120s.length}</em></span></p>
+        <p className="ag-rec-line"><span>{t(T.tempoThere)}</span><span className="ag-chip">{w.hero_was_there.length} / {r.fights_total}</span></p>
+        <p className="ag-rec-line"><span>{t(T.tempoHit)}</span><span className="ag-chip">{hit.hero_damaged_it.length} / {r.buildings_total.team_took}</span></p>
+      </div>
+    );
+  }
+  if (data.kind === 'phase') {
+    const pc = (v: number | null) => (v == null ? '–' : `${Math.round(v * 100)}%`);
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b></p>
+        {r.buildings.length > 0 && <p className="ag-rec-line"><span>{t(T.tempoBuildings)}</span>{r.buildings.map((b: any, i: number) => <span key={i} className={`ag-chip ${b.taken_by === 'team' ? 'is-ally' : 'is-enemy'}`}>{b.clock} · {t(T.tempoTeams[b.taken_by === 'team' ? 'opponents' : 'team'])} {buildingLabel(b.building, lang)}</span>)}</p>}
+        {r.fights.length > 0 && <p className="ag-rec-line"><span>{t(T.tempoFights)}</span>{r.fights.map((f: any) => <span key={f.ref} className="ag-chip">{f.clock} · {f.team_deaths} : {f.opponents_deaths}{f.hero_was_there === false ? <em>{t(T.tempoAway)}</em> : null}</span>)}</p>}
+        <p className="ag-rec-sub">{t(T.tempoAlive)} · {r.hero_alive_seconds} {t(T.sec)}</p>
+        <p className="ag-rec-line">{Object.entries(r.hero_share_of_alive_time as Record<string, number | null>).map(([k, v]) => <span key={k} className="ag-chip">{T.tempoShare[k] ? t(T.tempoShare[k]) : pretty(k)} <em>{pc(v)}</em></span>)}</p>
+        {r.hero_most_time_in.length > 0 && <p className="ag-rec-line"><span>{t(T.tempoMost)}</span>{r.hero_most_time_in.map((x: any) => <span key={x.place} className="ag-chip">{N(x.place)} <em>{pc(x.share_of_alive_time)}</em></span>)}</p>}
+        <p className="ag-rec-line"><span>{t(T.tempoDamage)}</span><span className="ag-chip">{r.hero_damage_to_buildings}</span><span className="ag-chip">{t(T.tempoOfTeam)} <em>{r.team_heroes_damage_to_buildings}</em></span></p>
       </div>
     );
   }
