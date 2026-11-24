@@ -30,7 +30,7 @@ for (const f of files) {
   // From Radiant's first hero: my_team = Radiant. Every fight is read once.
   const first = trace.heroes.find((h) => h.team === 2);
   for (const p of siegeReport(trace, { hero: first.key }).pushes ?? []) {
-    pushes.push({ took: p.took_it, margin: p.hitting_minus_owners_near, deadOwners: p.owners_not_near.filter((x) => x.doing === 'dead').length });
+    pushes.push({ took: p.took_it, margin: p.hitting_minus_owners_near, deadOwners: p.owners_dead_when_it_began });
   }
   const r = fightReport(trace, { hero: first.key });
   if (r.error) continue;

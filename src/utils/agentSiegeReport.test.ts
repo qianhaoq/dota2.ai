@@ -126,6 +126,16 @@ describe('siege_report on a real game', () => {
     expect([...p.owners_near].sort()).toEqual(['beastmaster', 'dark_willow', 'skywrath_mage', 'sven', 'undying']);
   });
 
+  it('each push states its counts, and who was dead when it began even if they came near later (review of #302)', () => {
+    const p = r.pushes[17];
+    expect(p).toMatchObject({ hitting_count: 4, owners_near_count: 5, hitting_minus_owners_near: -1, owners_dead_when_it_began: 3 });
+    // A correct count of those near is backed by the push's own record.
+    const record = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' })!.runTool('siege_report', { hero: 'beastmaster' });
+    const ev = (fact: string) => verifyReview({ verdict: 'v', mainline: [], findings: [], game_plan: { course: 'c', evidence: [{ refs: ['sieges:beastmaster:18'], fact }] } }, [record]).problems.filter((x: any) => x.where === 'plan_evidence');
+    expect(ev('40:26 守方有 5 人在附近，4 人在打塔。')).toEqual([]);
+    expect(ev('40:26 守方有 3 人阵亡。')).toEqual([]);
+  });
+
   it('refs resolve, places are named, and one push\'s facts need that push\'s ref', () => {
     const one = resolveRef(trace, r.pushes[0].ref, { hero: 'beastmaster', lang: 'zh' });
     expect(one?.record.building).toBe(r.pushes[0].building);

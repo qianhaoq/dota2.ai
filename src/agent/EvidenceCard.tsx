@@ -209,6 +209,27 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   enemy_hero_target_alive_12s_later: { en: 'Casts whose target was alive 12 s later', zh: '放出 12 秒后目标仍存活' },
   no_hero_target_and_at_most_one_enemy_hero_damaged: { en: 'Casts that damaged at most one enemy hero', zh: '至多只伤到一名敌方英雄' },
   nothing_cast_and_no_item_used: { en: 'Deaths with nothing cast or used', zh: '什么都没按就阵亡' },
+  // fight_report's totals (fights:<hero>).
+  fights_total: { en: 'Fights', zh: '团战' },
+  fights_my_team_lost_fewer: { en: 'Your team lost fewer heroes', zh: '我方少死人' },
+  fights_enemy_lost_fewer: { en: 'Enemy lost fewer heroes', zh: '对方少死人' },
+  fights_with_more_of_my_team: { en: 'Your team brought more heroes', zh: '我方参战人数更多' },
+  fights_with_more_of_the_enemy: { en: 'Enemy brought more heroes', zh: '对方参战人数更多' },
+  fights_the_side_with_more_heroes_lost_fewer: { en: 'Fights one side brought more heroes to', zh: '人数不等的团战' },
+  fights_i_took_part_in: { en: 'Fights you took part in', zh: '你参战的团战' },
+  fights_with_unequal_numbers: { en: 'fights', zh: '场数' },
+  the_side_with_more_lost_fewer: { en: 'the side with more lost fewer', zh: '人多一方少死人' },
+  // siege_report's totals (sieges:<hero>).
+  my_team_pushes: { en: 'Your team\'s pushes', zh: '我方推塔' },
+  my_team_pushes_that_took_it: { en: 'Your pushes that took the building', zh: '我方推掉的' },
+  enemy_pushes: { en: 'Enemy pushes', zh: '对方推塔' },
+  enemy_pushes_that_took_it: { en: 'Enemy pushes that took it', zh: '对方推掉的' },
+  pushes_with_two_or_more_hitting_than_near: { en: 'Pushes with 2+ more hitting than owners near', zh: '打塔人数比守方多 2 人及以上' },
+  pushes_with_at_most_one_more_hitting_than_near: { en: 'Pushes with at most 1 more hitting', zh: '打塔人数最多多 1 人' },
+  pushes: { en: 'pushes', zh: '次数' },
+  took_it: { en: 'fell', zh: '被拆' },
+  my_team_pushes_i_hit: { en: 'Your pushes you hit', zh: '我方推塔你出手的' },
+  my_buildings_taken_with_me_not_near: { en: 'Your buildings lost with you not near', zh: '己方丢塔时你不在附近' },
 };
 
 const pretty = (key: string) => key.replace(/^modifier_/, '').replace(/^item_/, '').replace(/_/g, ' ');
