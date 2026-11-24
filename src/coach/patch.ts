@@ -33,12 +33,12 @@ export const CURRENT_PATCH = {
     },
   ] as Bi[],
   newItems: [
-    { key: 'bloodslinger', en: 'Bloodslinger', zh: 'Bloodslinger' },
+    { key: 'bloodslinger', en: 'Bloodslinger', zh: '血腥投带' },
     { key: 'caduceus', en: 'Caduceus', zh: '双蛇杖' },
-    { key: 'ristuls_devotion', en: "Ristul's Devotion", zh: "Ristul's Devotion" },
+    { key: 'ristuls_devotion', en: "Ristul's Devotion", zh: '瑞斯图尔的奉献' },
     { key: 'berserkers_sabatons', en: 'Sabatons of Mordiggian', zh: '莫尔迪基安的护足' },
-    { key: 'skypiercer', en: 'Skypiercer', zh: 'Skypiercer' },
-    { key: 'starforge', en: 'Starforge', zh: 'Starforge' },
+    { key: 'skypiercer', en: 'Skypiercer', zh: '破天之矛' },
+    { key: 'starforge', en: 'Starforge', zh: '锻星炉' },
   ],
   /** What the patch means for the review itself — honest about lagging comparisons. */
   forCoach: {
