@@ -114,6 +114,14 @@ const T = {
   timingThis: { en: 'This game', zh: '这局' },
   timingPublic: { en: 'public games, win rate by game length', zh: '路人局，按比赛时长的胜率' },
   timingAlone: { en: 'Each hero on its own: not a line-up\'s win rate.', zh: '每个英雄单独统计，不代表整套阵容的胜率。' },
+  bpPlan: { push: { en: 'Lanes into towers', zh: '线优转推进' }, gank: { en: 'Ganks and pressure', zh: '抓人带节奏' }, split: { en: 'Split push', zh: '带线牵制' }, late: { en: 'Farm for late', zh: '发育拖后期' } } as Record<string, Record<Lang, string>>,
+  bpGold: { en: 'Gold in items for each plan', zh: '各思路的装备金额' },
+  bpBy: { en: 'by', zh: '截至' }, bpAll: { en: 'in all', zh: '全场' },
+  bpFirst: { en: 'First item for it', zh: '第一件' },
+  bpYours: { en: 'Your plan', zh: '你的思路' },
+  bpBefore: { en: 'Gold in other big items before it', zh: '之前花在其他大件上' },
+  bpShare: { en: 'Share of big-item gold', zh: '占大件金额' },
+  bpNone: { en: 'none bought', zh: '没有出' },
   winLead: { en: 'Your team\'s gold lead', zh: '我方经济领先' },
   winHigh: { en: 'Highest', zh: '最高' }, winLow: { en: 'Lowest', zh: '最低' },
   winList: { en: 'Windows', zh: '窗口期' },
@@ -340,6 +348,38 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.my_deaths_before_10_00.length > 0 && <p className="ag-rec-line"><span>{t(T.laneDeaths)}</span>{r.my_deaths_before_10_00.map((d: any) => <span key={d.clock} className="ag-chip">{d.clock}{d.killer ? ` ← ${N(d.killer)}` : ''}</span>)}</p>}
         {pro && <p className="ag-rec-line"><span>{N(pro.my_side_core)} : {N(pro.enemy_core)} · {pro.pro_games} {t(T.lanePro)}</span><span className="ag-chip">{t(T.laneProMean)} <em>{signed(pro.core_gold_difference_at_10_00.mean)}</em></span><span className="ag-chip">{t(T.laneThis)} <em>{signed(pro.core_gold_difference_at_10_00.this_game)}</em></span><span className="ag-chip">{N(pro.my_side_core)} {t(T.laneAhead)} <em>{pc(pro.share_of_pro_games_my_side_core_was_ahead)}</em></span></p>}
         {pub && <p className="ag-rec-line"><span>{N(pub.hero)} : {N(pub.against)} · {pub.lanes} {t(T.lanePub)}</span><span className="ag-chip">{t(T.lanePubWon)} <em>{pc(pub.share_won)}</em></span><span className="ag-chip">{t(T.lanePubLost)} <em>{pc(pub.share_lost)}</em></span></p>}
+      </div>
+    );
+  }
+  if (data.kind === 'build_plan') {
+    const plans = Object.keys(r.gold_in_items_for_each_plan ?? {});
+    const marks: string[] = r.measured_at ?? [];
+    const sp = r.stated_plan;
+    return (
+      <div className="ag-rec">
+        {sp && (
+          <p className="ag-rec-line"><span>{t(T.bpYours)}</span><span className="ag-chip is-warn">{T.bpPlan[sp.plan] ? t(T.bpPlan[sp.plan]) : sp.plan}</span>
+            <span className="ag-chip">{t(T.bpFirst)} <em>{sp.first_item_for_it ? `${sp.first_item_for_it_name ?? N(sp.first_item_for_it)} ${sp.first_item_for_it_at}` : t(T.bpNone)}</em></span>
+            <span className="ag-chip">{t(T.bpBefore)} <em>{sp.gold_in_other_big_items_before_it}</em></span>
+            {sp.share_of_big_item_gold_for_it != null && <span className="ag-chip">{t(T.bpShare)} <em>{Math.round(sp.share_of_big_item_gold_for_it * 100)}%</em></span>}
+          </p>
+        )}
+        <div className="ag-lane-scroll">
+          <table className="ag-lane">
+            <caption className="ag-rec-sub">{t(T.bpGold)}</caption>
+            <thead><tr><th scope="col" /> {marks.map((m) => <th key={m} scope="col">{t(T.bpBy)} {m}</th>)}<th scope="col">{t(T.bpAll)}</th><th scope="col">{t(T.bpFirst)}</th></tr></thead>
+            <tbody>
+              {plans.map((p) => (
+                <tr key={p} className={sp?.plan === p ? 'is-me' : ''}>
+                  <th scope="row">{T.bpPlan[p] ? t(T.bpPlan[p]) : p}</th>
+                  {marks.map((m) => <td key={m}>{r[`gold_in_items_for_each_plan_by_${m.replace(':', '_')}`]?.[p] ?? '–'}</td>)}
+                  <td>{r.gold_in_items_for_each_plan[p]}</td>
+                  <td>{r.first_item_for_each_plan?.[p] ?? '–'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
