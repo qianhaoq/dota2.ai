@@ -244,22 +244,32 @@ sent to one of Kimi's four addresses and nowhere else (`KIMI_BASE_URL`): a
 Kimi Code membership key (`sk-kimi-…`) to `api.kimi.com/coding/v1`, a Moonshot
 platform key to `api.moonshot.cn/v1`.
 
-Timed on 2026-11-25 on one game (9091400302, Tidehunter, Chinese, a 45-minute game),
-one run each from `scripts/deep-review.mjs`, thinking at each provider's
-default; DeepSeek's row is production's runs of the same game the day before:
+Timed on 2026-11-25 on one game (9091400302, Tidehunter, Chinese, a 45-minute
+game), thinking at each provider's default. "Script" is one run of
+`scripts/deep-review.mjs` from a developer machine; "production" is a review
+started from the site (DeepSeek: its runs of that game over the day):
 
-| Model | Time | Input / output tokens | Rounds, lookups | Findings | Dropped by the check |
-|---|---|---|---|---|---|
-| DeepSeek 4.1 Flash | 2.1–2.5 min | 433–538k / 22–27k | 8–10, 16 | 3 | 0 |
-| GLM-5.3 Flash | 11.2 min | 359k / 35k | 7, 16 | 3 | 0 (one plan evidence line left out) |
-| Kimi K3.1 Pro | 13.4 min | 502k / 25k | 8, 26 | 3 | 0 |
-| GLM-5.3 | 23.6 min | 1,000k / 59k | 13, 21 | 3 | 0 |
+| Model | Where | Time | Input / output tokens | Rounds, lookups | Findings | Dropped by the check |
+|---|---|---|---|---|---|---|
+| DeepSeek 4.1 Flash | production | 2.1–2.5 min | 244–538k / 22–27k | 5–10, 16 | 3 | 0 |
+| Kimi K3.1 Pro | script | 13.4 min | 502k / 25k | 8, 26 | 3 | 0 |
+| Kimi K3.1 Pro | production | 13.0 min | 541k / 25k | 9, 25 | 3 | 0 |
+| GLM-5.3 Flash | script | 11.2 min | 359k / 35k | 7, 16 | 3 | 0 (one plan evidence line left out) |
+| GLM-5.3 Flash | production | 13.2 min | 562k / 39k | 9, 16 | 3 | 0 (one plan evidence line left out) |
+| GLM-5.3 | script | 23.6 min | 1,000k / 59k | 13, 21 | 3 | 0 |
 
-All four named the same three things to change (staying in lane at low
-health, deaths away from the team that bought nothing, magic resistance bought
-against a hero who kills with attacks). One game is not a ranking of their
-judgment; it does show that the other models take four to ten times as long,
-which is why the page states the wait and GLM-5.3 is not offered by default.
+These times are what the page tells a reader to expect (`models.js`
+`minutes`, shown on each model's button, before the start and while the review
+is being written): change them there when a model is timed again.
+
+All of them named the same two things to change (staying in lane at low
+health; magic resistance bought before Blink against a hero who kills with
+attacks). The third finding differed: deaths away from the team that bought
+nothing (DeepSeek, GLM), or fighting on outnumbered after Ravage (Kimi). In
+the production runs GLM-5.3 Flash listed no blind spots and gave no main
+reason, where the other two did. One game is not a ranking of their judgment;
+it does show that the other models take five to ten times as long, which is
+why the page states the wait and GLM-5.3 is not offered by default.
 
 ## Where the replay address comes from
 
