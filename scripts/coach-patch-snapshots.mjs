@@ -208,9 +208,14 @@ for (const [i, r] of releases.entries()) {
     steps.push({ c, data });
   }
   const hotfixes = [];
+  // Match ids found earlier for the same hotfix are kept (an unread one too: its ids are still where it rolled out).
+  const keptIds = (h) => {
+    const kept = old.releases?.find((x) => x.name === r.name)?.hotfixes?.find((x) => x.rollout_by === h.rollout_by);
+    return kept?.first_match_id_after ? { ...h, last_match_id_before: kept.last_match_id_before, first_match_id_after: kept.first_match_id_after } : h;
+  };
   for (const [n, { c, data }] of steps.entries()) {
     if (!data) {
-      hotfixes.push({ update: `${c.build} (${c.sha.slice(0, 12)})`, rollout_by: iso(c.at), rollout_from: iso(c.at - POLL_MINUTES * 60_000), data: null, reason: 'game_files_not_read_by_the_builder' });
+      hotfixes.push(keptIds({ update: `${c.build} (${c.sha.slice(0, 12)})`, rollout_by: iso(c.at), rollout_from: iso(c.at - POLL_MINUTES * 60_000), data: null, reason: 'game_files_not_read_by_the_builder' }));
       continue;
     }
     const file = n === 0 ? `${r.name}.json` : `${r.name}.${stamp(c.at)}.json`;
@@ -218,17 +223,15 @@ for (const [i, r] of releases.entries()) {
     const snapshot = {
       release: r.name, major: entry.major, major_id: entry.major_id,
       ...(n ? { hotfix: iso(c.at) } : {}),
-      game_files: `dotabuff/d2vpkr ${c.sha.slice(0, 12)} (${c.build}, ${iso(c.at).slice(0, 10)}): ${n ? 'a hotfix' : 'the release\'s rollout'}, in force until ${later ? `${later === next?.rollout ? next.name : 'the next hotfix'} (${iso(later.at).slice(0, 10)})` : `at least ${iso(Date.now()).slice(0, 10)}`}`,
+      game_files: `dotabuff/d2vpkr ${c.sha.slice(0, 12)} (${c.build}, ${iso(c.at).slice(0, 10)}): ${n ? 'a hotfix' : 'the release\'s rollout'}, in force until ${later ? `${later === next?.rollout ? next.name : 'the next hotfix'} (${iso(later.at).slice(0, 10)})` : 'a later game update'}`,
+      // When it was built: the weekly refresh leaves a file whose only change is this date as it was.
+      fetched: iso(Date.now()).slice(0, 10),
       built_with: data.built_with, items: data.items, heroes: data.heroes,
     };
     writeFileSync(new URL(file, OUT), `${JSON.stringify(snapshot)}\n`);
     if (n === 0) entry.data = file;
     else {
-      const h = { update: `${c.build} (${c.sha.slice(0, 12)})`, rollout_by: iso(c.at), rollout_from: iso(c.at - POLL_MINUTES * 60_000), data: file };
-      // Match ids found earlier for the same hotfix are kept.
-      const kept = old.releases?.find((x) => x.name === r.name)?.hotfixes?.find((x) => x.rollout_by === h.rollout_by);
-      if (kept?.first_match_id_after) Object.assign(h, { last_match_id_before: kept.last_match_id_before, first_match_id_after: kept.first_match_id_after });
-      hotfixes.push(h);
+      hotfixes.push(keptIds({ update: `${c.build} (${c.sha.slice(0, 12)})`, rollout_by: iso(c.at), rollout_from: iso(c.at - POLL_MINUTES * 60_000), data: file }));
     }
   }
   if (hotfixes.length) entry.hotfixes = hotfixes;
