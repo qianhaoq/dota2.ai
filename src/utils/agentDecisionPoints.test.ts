@@ -267,6 +267,22 @@ describe('decision_points: whether the losers\' richest hero was still dead afte
     expect(r.my_team_wins_with_enemy_richest_long_dead.fights).toBe(long.length);
   });
 
+  it('the richest not sampled 10 s after the fight is unknown, not alive (review of #312)', () => {
+    const r0: any = decisionPoints(withMoney, { hero: 'axe' });
+    const p = r0.points.find((x: any) => x.kind === 'after_a_won_fight' && x.losers_richest?.still_dead_10s_after === true);
+    expect(p).toBeTruthy();
+    const f = afterWonFights(withMoney).find((x: any) => `fight:${x.fight}` === p.fight)!;
+    // Remove the hero's samples around the checkpoint: their state there is then unknown.
+    const gap = JSON.parse(JSON.stringify(withMoney));
+    const i = gap.heroes.findIndex((h: any) => h.key === p.losers_richest.hero);
+    const k = Math.round(f.to + 10) - gap.t0;
+    const st = gap.states[i];
+    for (const key of Object.keys(st)) if (Array.isArray(st[key])) for (let j = k - 2; j <= k + 2; j += 1) st[key][j] = null;
+    const q = (decisionPoints(gap, { hero: 'axe' }) as any).points.find((x: any) => x.fight === p.fight);
+    expect(q.losers_richest.still_dead_10s_after).toBeNull();
+    expect(q.losers_richest).not.toHaveProperty('respawn_in');
+  });
+
   it('a tie for richest is no richest; the review is told what the corpus says', () => {
     const tied = { ...withMoney, net_worth: withMoney.heroes.map(() => Array.from({ length: minutes }, () => 5000)) };
     const money = { series: new Map(tied.heroes.map((h: any, i: number) => [h.key, tied.net_worth[i]])), last: minutes - 1 };

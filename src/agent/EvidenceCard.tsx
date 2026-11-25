@@ -606,7 +606,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           {r.buildings_winners_took.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}
           {r.roshan_at && <span className="ag-chip">{t(T.roshanBy[r.won_by])} {r.roshan_at}</span>}
         </p>
-        {r.losers_richest && <p className="ag-rec-line"><span>{t(T.richest[r.won_by])}</span><span className={`ag-chip ${mine ? 'is-enemy' : 'is-ally'}`}>{N(r.losers_richest.hero)}{r.losers_richest.still_dead_10s_after ? r.losers_richest.respawn_in != null && <em>{r.losers_richest.respawn_in}{t(T.sec)}</em> : <em>{t(T.richestAlive)}</em>}</span></p>}
+        {r.losers_richest && <p className="ag-rec-line"><span>{t(T.richest[r.won_by])}</span><span className={`ag-chip ${mine ? 'is-enemy' : 'is-ally'}`}>{N(r.losers_richest.hero)}{r.losers_richest.still_dead_10s_after === true ? r.losers_richest.respawn_in != null && <em>{r.losers_richest.respawn_in}{t(T.sec)}</em> : r.losers_richest.still_dead_10s_after === false && <em>{t(T.richestAlive)}</em>}</span></p>}
         {r.losers_took_back.length > 0 && <p className="ag-rec-line"><span>{t(T.tookBack[r.won_by])}</span>{r.losers_took_back.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}</p>}
       </div>
     );
