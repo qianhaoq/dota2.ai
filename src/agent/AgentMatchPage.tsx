@@ -222,6 +222,11 @@ export const AgentMatchPage: React.FC = () => {
   // the quick one): two to three minutes for the quick one and where no model is named at all; for a slow one
   // what it took when timed; nothing for one that was not timed.
   const writer = model ?? defaultModel;
+  // A link or a count outlives this server's setup, so it names the review by its writer's id — never by `model`,
+  // which is null for whatever is the default here: a link shared while Kimi was the default must still open
+  // Kimi's review once the default is another model, and DeepSeek's must still open DeepSeek's. (Null only
+  // where the server lists no models: then there is one writer and nothing to tell apart.)
+  const writtenBy = writer;
   const slow = writer != null && writesSlowly(writer);
   const timed = slow ? modelMinutes(writer) : null;
   const goTime = !slow ? t(T.goTime)
@@ -332,7 +337,7 @@ export const AgentMatchPage: React.FC = () => {
   const joined = useRef<Set<string>>(new Set());
   async function go() {
     if (wait) return;
-    trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan), ...(model ? { model } : {}) });
+    trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan), ...(writtenBy ? { model: writtenBy } : {}) });
     setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
     await sendPrepare();
@@ -401,7 +406,7 @@ export const AgentMatchPage: React.FC = () => {
     trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang, ...(arrivedBy ? { ref: arrivedBy } : {}) });
     // The review the reader asked for here, and waited out, is done: counted once per review, whatever was
     // seen on this match before (a review that was already there counts as viewed, not as this).
-    if (intent) { const src = trafficSource(); trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}${model ? `.${model}` : ''}`, 'review_ready', { matchId, hero: heroKey, lang, ...(src ? { src } : {}), ...(model ? { model } : {}) }); }
+    if (intent) { const src = trafficSource(); trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}${model ? `.${model}` : ''}`, 'review_ready', { matchId, hero: heroKey, lang, ...(src ? { src } : {}), ...(writtenBy ? { model: writtenBy } : {}) }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, matchId, heroKey]);
 
@@ -523,7 +528,7 @@ export const AgentMatchPage: React.FC = () => {
     return (
       <Shell wide>
         {header}
-        <ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={model} />
+        <ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />
         {offered.length > 1 && (
           <div className="ag-modelbar">
             <span>{t(T.modelBy)}</span>

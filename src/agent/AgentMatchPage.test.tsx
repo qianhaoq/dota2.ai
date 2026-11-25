@@ -773,6 +773,36 @@ describe('AgentMatchPage', () => {
     expect(calls.some((c) => c.url.includes('model='))).toBe(false);
   });
 
+  it('a personal link names the model that wrote the review, also when that model is the server\'s default (review of #327)', async () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { copied.push(text); } } });
+    const ready = { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'k3.1-pro', tool_calls: 9 };
+    // Kimi is this server's default: nothing in the page's requests names it…
+    const calls = mockFetch({ 'ref=overview': overview, '/review?': ready, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro'], default_model: 'kimi-k3.1-pro' } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy my link' }));
+    // …but the link does, so it opens Kimi's review on a server whose default has since become another model.
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).toContain('hero=beastmaster&model=kimi-k3.1-pro&ref=share');
+    expect(calls.some((c) => c.url.includes('model='))).toBe(false);
+    cleanup();
+    // So does a link to DeepSeek's review: without its name it would open whatever the default is.
+    copied.length = 0;
+    mockFetch({ 'ref=overview': overview, '/review?': { ...ready, model: 'deepseek-flash' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro', 'deepseek-flash'], default_model: 'kimi-k3.1-pro' } });
+    page('/r/9100904020?hero=beastmaster&lang=en&model=deepseek-flash');
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy my link' }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).toContain('hero=beastmaster&model=deepseek-flash&ref=share');
+    cleanup();
+    // A server that lists no models has one writer: its links name none, as before.
+    copied.length = 0;
+    mockFetch({ 'ref=overview': overview, '/review?': ready, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy my link' }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).not.toContain('model=');
+  });
+
   it('going back to "don\'t say" takes the plan out of the link and the requests', async () => {
     const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { status: 'running', steps: [] } : null), '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=en&plan=late');

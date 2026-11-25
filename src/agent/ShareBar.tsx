@@ -27,8 +27,9 @@ const T = {
 /**
  * Share links. The team link has no hero, plan or seat; the personal one keeps what makes this review this one,
  * its language included: reviews are kept per language, so a link without it opens in the recipient's own
- * language and asks for a review that may not exist. So is the model, when it is not the default one: the
- * review another model wrote is another review. The team link leaves the language to each teammate,
+ * language and asks for a review that may not exist. So is the model that wrote it, by its id, wherever the
+ * server offers more than it can tell apart without one: the review another model wrote is another review,
+ * and which model is the default can change after the link is sent. The team link leaves the language to each teammate,
  * except Chinese, which the sender's team chat is in.
  */
 export function shareLinks(origin: string, matchId: string, hero: string, lang: Lang, plan: string | null = null, model: string | null = null) {
