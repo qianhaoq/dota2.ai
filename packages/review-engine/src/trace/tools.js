@@ -19,6 +19,7 @@ import { heroStateAt, observersNear, boughtBackAfter } from './state.js';
 import {
   abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, manaCost, mostMana, nameId, nameOf, nearby, region, seconds, stateAt, unit,
 } from './query.js';
+import { TURN_RULE, turningFight } from './turningFight.js';
 
 const TEAM = { 2: 'radiant', 3: 'dire' };
 /** Hero deaths closer together than this belong to one fight. */
@@ -212,6 +213,8 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
       ...(adv ? { my_team_gold_lead_before: mine(advAt(f.from)), my_team_gold_lead_2min_after: mine(advAt(f.to + 120)) } : {}),
     };
   });
+  // The fight the game turned on, against the viewer's team: said only with a gold lead to read it from.
+  const turn = view && adv ? turningFight(fightRows) : null;
   return {
     ref: 'overview', ref_scope: 'summary',
     match_id: trace.match_id,
@@ -222,6 +225,10 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
     // What the gold leads below were read from: gold earned (the match record's, or summed from the replay's combat
     // log), or the replay's net worth graph — items and gold held, which a death or a buyback moves.
     ...(gold ? { gold_lead_source: GOLD_LEAD_SOURCE[gold.source] } : {}),
+    // The fight the game turned on, for a game my_team lost. null: no gold lead to tell from (see gaps).
+    // { none: true }: there is gold, and no fight cost my_team that much of its lead. Absent for a game my_team
+    // won or one with no Ancient down: the fight a winner's lead fell most in is not where the game turned.
+    ...(view && loser === view.team ? { turning_fight: !adv ? null : turn ? { ref: turn.ref, from: turn.from, to: turn.to, clock: turn.clock, my_team_deaths: turn.my_team_deaths, enemy_deaths: turn.enemy_deaths, my_team_gold_lead_before: turn.my_team_gold_lead_before, my_team_gold_lead_2min_after: turn.my_team_gold_lead_2min_after, rule: TURN_RULE } : { none: true } } : {}),
     fights: fightRows,
     buildings: trace.buildings.map((b) => ({
       ref: `building:${unit(trace.names[b[1]])}`, t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]),

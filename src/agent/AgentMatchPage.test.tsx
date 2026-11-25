@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AgentMatchPage, journeyStep } from './AgentMatchPage';
-import { turningFight } from './ReviewDoc';
 import { stepLabel } from './ChatRail';
 import { buildingLabel } from './EvidenceCard';
 
@@ -23,7 +22,7 @@ const review = {
 };
 const board = { match: { patch: '7.42' }, players: [{ slot: 0, radiant: true, kda: [4, 12, 14], hero: { id: 2, en: 'Axe', zh: '斧王', slug: 'axe', img: null } }, { slot: 1, radiant: false, kda: [9, 11, 18], account_id: 77, hero: { id: 38, en: 'Beastmaster', zh: '兽王', slug: 'beastmaster', img: null } }] };
 const cast = { status: 'ok', ref: 'cast:beastmaster:primal_roar:6', kind: 'cast', names: { phantom_assassin: 'Phantom Assassin', sven: 'Sven' }, record: { clock: '27:27', target: 'phantom_assassin', target_hp: { hp: 1980, max_hp: 1980 }, target_spell_immune: true, target_stunned_seconds: 3.4, allies_within_1300: ['sven'], enemies_within_1300: ['phantom_assassin'], deaths_within_12s: [{ hero: 'phantom_assassin', side: 'enemy', dt: 10.8 }] } };
-const overview = { status: 'ok', ref: 'overview', kind: 'overview', names: {}, record: { duration: { t: 2551 }, fights: [{ ref: 'fight:11', from: 1826, to: 1848, clock: '30:26–30:48', my_team_deaths: 5, enemy_deaths: 3, my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: -4298 }] } };
+const overview = { status: 'ok', ref: 'overview', kind: 'overview', names: {}, record: { duration: { t: 2551 }, fights: [{ ref: 'fight:11', from: 1826, to: 1848, clock: '30:26–30:48', my_team_deaths: 5, enemy_deaths: 3, my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: -4298 }], turning_fight: { ref: 'fight:11', clock: '30:26–30:48' } } };
 
 type Handler = (url: string, init?: RequestInit) => any;
 // Events leave by beacon, as in a browser, so they are not among the page's own requests.
@@ -1455,6 +1454,28 @@ describe('AgentMatchPage', () => {
     expect(story.compareDocumentPosition(scoreboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('the strip marks the fight the record names as the turn — it does not work one out — and none when the record names none', async () => {
+    const ready = { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 };
+    const fights = [
+      { ref: 'fight:11', from: 1826, to: 1848, clock: '30:26–30:48', my_team_deaths: 5, enemy_deaths: 3, my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: -4298 },
+      // A bigger fall, entered ahead: by the rule the page used to apply itself, this one would be marked.
+      { ref: 'fight:12', from: 2000, to: 2010, clock: '33:20–33:30', my_team_deaths: 4, enemy_deaths: 0, my_team_gold_lead_before: 9000, my_team_gold_lead_2min_after: 1000 },
+    ];
+    // Each case is its own game: the page keeps a game's overview for the session.
+    const show = async (id: string, turning_fight: unknown) => {
+      cleanup();
+      mockFetch({ 'ref=overview': { ...overview, record: { duration: { t: 2551 }, fights, ...(turning_fight === undefined ? {} : { turning_fight }) } }, '/review?': ready, [`/api/agent/${id}`]: { trace: true, model_configured: true, heroes } });
+      page(`/r/${id}?hero=beastmaster&lang=en`);
+      await waitFor(() => expect(document.querySelectorAll('.ag-strip-fight')).toHaveLength(2));
+      return Array.from(document.querySelectorAll('.ag-strip-fight.is-turn text')).map((t) => t.textContent);
+    };
+    expect(await show('8000000101', { ref: 'fight:11', clock: '30:26–30:48' })).toEqual(['▲ 30:26 the turn']);
+    // A game with gold and no fight that cost that much; a game with no gold to tell from; a game the player won (no field).
+    expect(await show('8000000102', { none: true })).toEqual([]);
+    expect(await show('8000000103', null)).toEqual([]);
+    expect(await show('8000000104', undefined)).toEqual([]);
+  });
+
   it('ready: the review, its evidence record on demand, and a question about that moment', async () => {
     const calls = mockFetch({
       '/chat': () => sse([{ step: { tool: 'ability_audit', args: {} } }, { text: 'She was stunned 3.4 s.\n\nKeep it for her.', unverified: [{ kind: 'time', text: '19:19' }] }, { done: true }]),
@@ -1470,8 +1491,10 @@ describe('AgentMatchPage', () => {
     expect(screen.getByText(review.verdict).closest('section')!.querySelector('h2')!.textContent).toBe('The whole game');
     expect(screen.getByRole('heading', { level: 2, name: 'Practise this next game' }).closest('section')!.textContent).toContain('Keep it for her.');
     expect(screen.getByText(/1 removed for lack of evidence/)).toBeTruthy();
-    // The turning fight is marked on the strip once the overview arrives.
+    // The turning fight is marked on the strip once the overview arrives: the one the record names, and no other —
+    // the page does not work it out again (the next fight cost more gold, and is not the one the review was sent to).
     expect(await screen.findByText(/▲ 30:26 the turn/)).toBeTruthy();
+    expect(document.querySelectorAll('.ag-strip-fight.is-turn')).toHaveLength(1);
     // The record behind the sentence is fetched only when asked for.
     expect(calls.some((c) => c.url.includes('ref=cast'))).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Show the record' }));
@@ -1630,12 +1653,6 @@ describe('AgentMatchPage', () => {
 });
 
 describe('helpers', () => {
-  it('the turning fight is the biggest fall while still in the game, not the last collapse', () => {
-    const f = (ref: string, before: number | null, after: number | null) => ({ ref, from: 0, to: 0, clock: '', my_team_deaths: 0, enemy_deaths: 0, my_team_gold_lead_before: before, my_team_gold_lead_2min_after: after });
-    expect(turningFight([f('a', 3565, 2800), f('b', -745, -4298), f('c', -8039, -20144)])?.ref).toBe('b');
-    expect(turningFight([f('a', 500, -400), f('b', null, null)])).toBeNull();
-    expect(turningFight([])).toBeNull();
-  });
   it('the wait is four steps, and the live one follows the work', () => {
     const noTrace = (stage: string | null) => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'running' as const, stage } });
     const withTrace = { trace: true, model_configured: true, can_parse: true, heroes: [] };
