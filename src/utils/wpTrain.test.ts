@@ -27,6 +27,12 @@ describe('wp-collect: one parsed match → one row', () => {
     const why = (over: object) => rowOf({ ...match(), ...over }).skip;
     expect(why({ human_players: 9 })).toBe('not_ten_players');
     expect(why({ game_mode: 23 })).toBe('game_mode');
+    // All Pick in an unranked or a practice lobby, and ranked Captains Mode: another population, whoever filtered the ids.
+    expect(why({ lobby_type: 0 })).toBe('not_ranked');
+    expect(why({ lobby_type: 1 })).toBe('not_ranked');
+    expect(why({ lobby_type: undefined })).toBe('not_ranked');
+    expect(why({ game_mode: 2 })).toBe('game_mode');
+    expect(why({ game_mode: 1 })).toBe('game_mode');
     expect(why({ duration: 899 })).toBe('under_15_minutes');
     expect(why({ radiant_gold_adv: null })).toBe('no_series');
     expect(why({ radiant_gold_adv: [0, 1, 2] })).toBe('series_shorter_than_the_game');
@@ -96,6 +102,9 @@ describe('wp-train', () => {
     expect(model.weights).toHaveLength(FEATURES.length);
     expect(model.data.games_fitted_on).toBeGreaterThan(1000);
     expect(model.data.left_out_with_a_leaver).toBeGreaterThanOrEqual(0);
+    // Fitted on ranked All Pick only: what else the data file held is counted, not used.
+    expect(model.data.left_out_not_ranked_all_pick).toBeGreaterThanOrEqual(0);
+    expect(model.data.games_collected - model.data.left_out_not_ranked_all_pick - model.data.left_out_with_a_leaver).toBe(model.data.games_fitted_on);
     // It was written only because, on games each fit had not seen, it beat the gold lead alone — which beats 50%.
     const cv = model.cross_validated;
     expect(cv.model.brier).toBeLessThan(cv.gold_lead_alone.brier);

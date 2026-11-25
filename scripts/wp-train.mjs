@@ -6,8 +6,8 @@
  *   node scripts/wp-train.mjs --data <dir with games.jsonl> [--out packages/review-engine/src/value/wp.v1.json] [--folds 5]
  *
  * One row per game minute from 1:00 to the last whole minute: the state then (gold-earned lead, barracks lost)
- * and who won. Games with a leaver are left out: an abandon moves the gold lead for a reason the model is not
- * given.
+ * and who won. Only ranked All Pick games are fitted on, whatever else the data file holds. Games with a leaver
+ * are left out: an abandon moves the gold lead for a reason the model is not given.
  *
  * How it does is measured on games it did not see: the games are cut in parts by id (a game is whole in one
  * part — never minutes of one game on both sides), and each part is scored by a fit on the others. Printed,
@@ -95,7 +95,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!data || !Number.isInteger(folds) || folds < 2 || folds > 20) { console.error('usage: node scripts/wp-train.mjs --data <dir> [--out <model.json>] [--folds 5]'); process.exit(2); }
   const all = readFileSync(join(data, 'games.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const games = [...new Map(all.map((g) => [g.id, g])).values()];
-  const clean = games.filter((g) => !g.leaver);
+  // The cohort the model file names, whatever the data file holds: ranked lobby, Ranked All Pick.
+  const cohort = games.filter((g) => g.lobby === 7 && g.mode === 22);
+  const clean = cohort.filter((g) => !g.leaver);
   if (clean.length < 200) { console.error(`too few games: ${clean.length}`); process.exit(3); }
   // Every row with its game and the part its game is in: [features, won, minute, game, fold].
   const rows = clean.flatMap((g) => rowsOf(g).map((r) => [...r, g, foldOf(g.id, folds)]));
@@ -125,7 +127,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     data: {
       source: 'OpenDota: public ranked All Pick matches it has parsed (scripts/wp-collect.mjs)',
       gold: 'gold earned lead (radiant_gold_adv) at each whole minute — the quantity goldLead gives as match_record and replay_gold_log; never the replay net worth graph',
-      games_collected: games.length, left_out_with_a_leaver: games.length - clean.length,
+      games_collected: games.length, left_out_not_ranked_all_pick: games.length - cohort.length, left_out_with_a_leaver: cohort.length - clean.length,
       games_fitted_on: clean.length, rows_fitted_on: rows.length,
       radiant_won_share: round(clean.filter((x) => x.win).length / clean.length, 3),
       match_ids: [ids[0], ids.at(-1)], opendota_patch_ids: [...new Set(clean.map((x) => x.patch))].sort(),
@@ -144,7 +146,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     },
     not_in_it: ['heroes and items', 'who is dead at the moment', 'buybacks', 'Aegis', 'experience', 'towers (measured: nothing once the gold lead is in)'],
   };
-  console.log(`games ${games.length} (${games.length - clean.length} with a leaver left out); ${clean.length} games / ${rows.length} rows, ${folds} parts`);
+  console.log(`games ${games.length} (${games.length - cohort.length} not ranked All Pick and ${cohort.length - clean.length} with a leaver left out); ${clean.length} games / ${rows.length} rows, ${folds} parts`);
   console.log(`weights: ${FEATURES.map((f, i) => `${f} ${model.weights[i]}`).join(', ')}`);
   console.log(`out of fold — Brier: model ${m.brier}, gold lead with the minute ${gt.brier}, gold lead alone ${g.brier}, always 50% 0.25; log loss: ${m.log_loss} / ${gt.log_loss} / ${g.log_loss} / ${round(Math.log(2))}`);
   console.log('said → Radiant won (rows):  ' + m.calibration.filter((c) => c.rows).map((c) => `${c.mean_said}→${c.radiant_won} (${c.rows})`).join('  '));

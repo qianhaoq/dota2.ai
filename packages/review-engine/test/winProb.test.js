@@ -129,6 +129,11 @@ describe('read on a parsed replay (9100904020, Radiant won)', () => {
     expect(modelInputs(graph)).toEqual({ unknown: 'net_worth_only' });
     expect(winProbabilityAt(model, graph, 1826)).toEqual({ unknown: 'net_worth_only' });
     expect(winProbabilitySwing(model, graph, 1826, 1968)).toEqual({ unknown: 'net_worth_only' });
+    // No building rows at all: which barracks stand is not known — not "none fell". An empty list is "none fell".
+    expect(modelInputs({ ...trace, buildings: undefined }, ctx)).toEqual({ unknown: 'no_buildings' });
+    expect(winProbabilityAt(model, { ...trace, buildings: undefined }, 1826, ctx)).toEqual({ unknown: 'no_buildings' });
+    expect(winProbabilitySwing(model, { ...trace, buildings: null }, 1826, 1968, ctx)).toEqual({ unknown: 'no_buildings' });
+    expect(winProbabilityAt(model, { ...trace, buildings: [] }, 1826, ctx)).toMatchObject({ barracks: 0, towers: 0, gold_source: 'match_record' });
     // A second outside the lead, and a model that is not one.
     expect(winProbabilityAt(model, trace, 99999, ctx)).toEqual({ unknown: 'outside_the_gold_lead' });
     expect(winProbabilityAt(model, trace, -30, ctx)).toEqual({ unknown: 'outside_the_gold_lead' });

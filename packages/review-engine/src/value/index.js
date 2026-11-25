@@ -1,6 +1,7 @@
 /**
  * The win-probability model with its fitted weights (wp.v1.json): what a caller uses.
  *   radiantWinProbabilityAt(trace, t, ctx)          → { radiant, minute, gold, towers, barracks, gold_source } | { unknown }
+ *     gold_source: 'match_record' | 'replay_gold_log' — which gold-earned lead was read (goldLead's source)
  *   radiantWinProbabilitySwing(trace, from, to, ctx) → { from, to, radiant_change } | { unknown }
  * `ctx` is the tools' ctx ({ match } when the caller has the match record). See winProb.js for what the number
  * is and is not, and fromTrace.js for when there is none.

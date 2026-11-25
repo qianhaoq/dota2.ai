@@ -15,20 +15,23 @@
  *   leaver (any player left), gold (radiant_gold_adv), xp (radiant_xp_adv),
  *   xp_t ([radiant players' xp by minute], [dire players']), b ([[time s, building name]…] in order),
  *   rosh ([[time s, side that killed it: 2 Radiant, 3 Dire, or null]…]).
- * What is skipped, and counted in <dir>/skipped.json: not 10 humans, not All Pick / Captains Mode / Ranked All
- * Pick, under 15 minutes, no gold or xp series, or the two series not as long as the game.
+ * What is skipped, and counted in <dir>/skipped.json: not 10 humans, not a ranked lobby, not Ranked All Pick,
+ * under 15 minutes, no gold or xp series, or the two series not as long as the game. The record itself is
+ * checked: with or without the STRATZ pre-filter below, only ranked All Pick games are kept.
  *
  * --reserve: stop when OpenDota says fewer than this many calls are left for the day from this address.
  *
  * Most matches OpenDota lists as parsed are Turbo (9 kept of the first 50 fetched), and each fetch is one of
  * about 2,800 a day. With STRATZ_API_TOKEN in the environment the ids are first asked of STRATZ, fifty to a
  * request (one unit of its quota): only ranked All Pick games of 15 minutes or more are then fetched. The token
- * is read from the environment and never printed. Without it every listed id is fetched.
+ * is read from the environment and never printed. Without it every listed id is fetched, and the same games
+ * are kept — it only costs more of the quota.
  */
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const MODES = new Set([1, 2, 22]); // All Pick, Captains Mode, Ranked All Pick
+/** The cohort: ranked matchmaking (lobby_type 7), Ranked All Pick (game_mode 22). Checked on the fetched record itself, whoever filtered the ids. */
+const RANKED_LOBBY = 7; const RANKED_ALL_PICK = 22;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let left = { minute: 60, day: Infinity };
 async function get(path) {
@@ -70,7 +73,8 @@ async function rankedOf(ids, token) {
 export function rowOf(m) {
   if (!m || typeof m.radiant_win !== 'boolean') return { skip: 'no_result' };
   if (m.human_players !== 10 || !Array.isArray(m.players) || m.players.length !== 10) return { skip: 'not_ten_players' };
-  if (!MODES.has(m.game_mode)) return { skip: 'game_mode' };
+  if (m.lobby_type !== RANKED_LOBBY) return { skip: 'not_ranked' };
+  if (m.game_mode !== RANKED_ALL_PICK) return { skip: 'game_mode' };
   if (!(m.duration >= 900)) return { skip: 'under_15_minutes' };
   const gold = m.radiant_gold_adv; const xp = m.radiant_xp_adv;
   if (!Array.isArray(gold) || !Array.isArray(xp) || !gold.every(Number.isFinite) || !xp.every(Number.isFinite)) return { skip: 'no_series' };

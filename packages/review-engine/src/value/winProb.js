@@ -6,11 +6,12 @@
  * ranks the moments of one game against each other. What it knows nothing of: the heroes, who is dead right
  * now, buybacks, Aegis, items, experience. Two games in the same state get the same number.
  *
- * What was tried and left out (five-fold cross-validation over 1,839 ranked games, scripts/wp-train.mjs):
+ * What was tried and left out (five-fold cross-validation over 1,839 games, scripts/wp-train.mjs):
  * tower counts and an Aegis flag changed nothing once the gold lead was in (a tower's gold is already in it);
  * the experience lead helped (Brier 0.1767 → 0.1746) but a trace has levels, not experience, and levels worked
- * out from a match record's experience were the trace's own level in only 30% of hero-minutes — not the same
- * quantity, so not used until the replay gives experience itself.
+ * out from a match record's experience (through OpenDota's level table, which is out of date) were the trace's
+ * own level in only 30% of hero-minutes — not the same quantity, so not used until the thresholds are measured
+ * or the replay gives experience itself.
  *
  * The gold lead is gold EARNED (the match record's radiant_gold_adv, or the same summed from the replay's combat
  * log — goldLead's `match_record` and `replay_gold_log`). The replay's net worth graph is another quantity,
