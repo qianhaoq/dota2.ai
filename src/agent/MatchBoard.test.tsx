@@ -58,7 +58,8 @@ describe('MatchBoard', () => {
     expect(tide.textContent).toContain('潮汐猎人');
     expect(within(tide).getByRole('img', { name: '闪烁匕首 · 成型 29:31' })).toBeTruthy();
     expect(within(tide).getByRole('img', { name: '法师克星 · 成型 16:06' })).toBeTruthy();
-    expect(within(board).getByRole('img', { name: '每分钟经济差: 结束时 夜魇 +43,787' })).toBeTruthy();
+    // Told from the reader's side (Tidehunter was Radiant): the other side led at the end.
+    expect(within(board).getByRole('img', { name: '每分钟经济差: 结束时 对方（夜魇） +43,787' })).toBeTruthy();
     // Radiant (the reader's side) first.
     expect(board.querySelector('.ag-side')!.classList.contains('is-radiant')).toBe(true);
   });
@@ -75,11 +76,11 @@ describe('MatchBoard', () => {
   it('without OpenDota\'s curve the replay\'s own net worth lead is drawn, and says where it is from', () => {
     render(<MatchBoard report={{ ...report, timeline: null } as CoachReport} hero="ursa" lang="zh" replayLead={[-8, 47, 464, 993, 35038]} />);
     const board = screen.getByRole('region', { name: '记分板' });
-    expect(within(board).getByRole('img', { name: '每分钟净值差（来自录像）: 结束时 天辉 +35,038' })).toBeTruthy();
+    expect(within(board).getByRole('img', { name: '每分钟净值差（来自录像）: 结束时 对方（天辉） +35,038' })).toBeTruthy();
     // The same place, with gold earned summed from the replay's combat log: named for what it is.
     cleanup();
     render(<MatchBoard report={{ ...report, timeline: null } as CoachReport} hero="ursa" lang="zh" replayLead={[-8, 47, 464, 993, 35038]} replayLeadIs="gold" />);
-    expect(screen.getByRole('img', { name: '每分钟经济差（来自录像）: 结束时 天辉 +35,038' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: '每分钟经济差（来自录像）: 结束时 对方（天辉） +35,038' })).toBeTruthy();
     expect(screen.queryByRole('img', { name: /净值差/ })).toBeNull();
     expect(board.querySelector('.ag-gold-none')).toBeNull();
     cleanup();
@@ -91,7 +92,50 @@ describe('MatchBoard', () => {
     cleanup();
     // OpenDota's curve, when the record has it, is the one drawn.
     render(<MatchBoard report={report} hero="ursa" lang="en" replayLead={[1, 2, 3, 4]} />);
-    expect(screen.getByRole('img', { name: 'Gold lead by minute: at the end Dire +43,787' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Gold lead by minute: at the end your side (Dire) +43,787' })).toBeTruthy();
+  });
+
+  it('the gold lead is told from the reader\'s side: theirs above the line, whichever team; team colours stay; no reader, Radiant above', () => {
+    // Radiant behind all game: -100, -2000, -4000.
+    const lead = [0, -100, -2000, -4000];
+    const look = () => {
+      const fig = document.querySelector('.ag-gold') as HTMLElement;
+      const ys = fig.querySelector('.ag-gold-line')!.getAttribute('points')!.split(' ').map((p) => Number(p.split(',')[1]));
+      return {
+        axis: Array.from(fig.querySelectorAll('.ag-gold-axis > span')).filter((_, i) => i !== 1).map((e) => [e.textContent, e.className]),
+        areas: Array.from(fig.querySelectorAll('.ag-gold-area')).map((e) => [e.getAttribute('class'), e.getAttribute('clip-path')]),
+        end: [fig.querySelector('.ag-gold-end b')!.textContent, fig.querySelector('.ag-gold-end b')!.className],
+        // 66 is the zero line of the 132-high drawing: smaller is above it.
+        lastIsAbove: ys.at(-1)! < 66,
+      };
+    };
+    const bare = { ...report, timeline: null } as CoachReport;
+    // A Dire reader (Ursa): Dire's lead is drawn upward, in Dire's colour, and called theirs.
+    render(<MatchBoard report={bare} hero="ursa" lang="en" replayLead={lead} />);
+    expect(look()).toEqual({
+      axis: [['▲ Your side ahead', 'is-dire'], ['▼ Their side ahead', 'is-radiant']],
+      areas: [['ag-gold-area is-dire', 'url(#ag-gold-up)'], ['ag-gold-area is-radiant', 'url(#ag-gold-down)']],
+      end: ['your side (Dire) +4,000', 'is-dire'], lastIsAbove: true,
+    });
+    cleanup();
+    // A Radiant reader (Tidehunter), the same game: the same curve the other way up.
+    render(<MatchBoard report={bare} hero="tidehunter" lang="zh" replayLead={lead} />);
+    expect(look()).toEqual({
+      axis: [['▲ 你方领先', 'is-radiant'], ['▼ 对方领先', 'is-dire']],
+      areas: [['ag-gold-area is-radiant', 'url(#ag-gold-up)'], ['ag-gold-area is-dire', 'url(#ag-gold-down)']],
+      end: ['对方（夜魇） +4,000', 'is-dire'], lastIsAbove: false,
+    });
+    cleanup();
+    // No reader, or a hero that is not in this game: nobody's side to tell it from.
+    for (const hero of [undefined, 'pudge']) {
+      render(<MatchBoard report={bare} hero={hero} lang="en" replayLead={lead} />);
+      expect([hero, look()]).toEqual([hero, {
+        axis: [['▲ Radiant ahead', 'is-radiant'], ['▼ Dire ahead', 'is-dire']],
+        areas: [['ag-gold-area is-radiant', 'url(#ag-gold-up)'], ['ag-gold-area is-dire', 'url(#ag-gold-down)']],
+        end: ['Dire +4,000', 'is-dire'], lastIsAbove: false,
+      }]);
+      cleanup();
+    }
   });
 
   it('a scoreboard with little in it still shows who played, and no made-up numbers', () => {
