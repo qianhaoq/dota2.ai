@@ -248,6 +248,18 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe(three, 'They took 3 buildings: 2 towers and 1 barracks.', names).pass).toBe(true);
     expect(gradeProbe({ ...two, expect: { buildings: 6 } }, 'They took 3 buildings: 2 towers and 1 barracks.', names)).toMatchObject({ pass: false, wrong: ['3'] });
     expect(gradeProbe(three, '拆了三座：两座塔、一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // A tier, a clock or a bracketed aside between two parts is not a count and does not stop them adding up.
+    expect(gradeProbe(three, 'We took two tier 2 towers and one tier 3 tower.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two tier 2 towers and one tier 3 tower.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(three, 'We took two T2 towers and one T3 tower.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'Two towers at 34:24 and 34:48 and one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'Two towers (at 32:52 and 33:31) and one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, '拆了两座二塔和一座三塔。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // A total set off by a comma only: it is the sum of the parts after it, so it is the total.
+    expect(gradeProbe(three, 'They took 3 buildings, 2 towers and 1 barracks.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two, expect: { buildings: 6 } }, 'They took 3 buildings, 2 towers and 1 barracks.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(gradeProbe(three, '拆了三座，两座塔、一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(three, 'They took 3 buildings including 2 towers and 1 barracks.', names).pass).toBe(true);
     expect(gradeProbe(two, 'In the two minutes after it, nothing fell.', names).pass).toBe(false);
     expect(gradeProbe(two, '两座：上路一塔和二塔。', { ...names, lang: 'zh' }).pass).toBe(true);
     const five = { kind: 'buildings_after_first_aegis', source: { args: {} }, expect: { buildings: 5 } };
