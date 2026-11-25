@@ -715,6 +715,37 @@ describe('AgentMatchPage', () => {
     expect(screen.getByRole('button', { name: '开始复盘' })).toBeTruthy();
   });
 
+  it('a word on a finding names the review on screen: its prompt version and its writer\'s own id, never "the default"', async () => {
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash' };
+    const ready = (extra: object) => ({ status: 'ready', review: { ...review, lang: 'zh' }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 1, ...extra });
+    const calls = mockFetch({ '/feedback': { status: 'ok' }, 'ref=overview': overview, '/review?': ready({ prompt_version: 37 }), '/api/agent/9100904020': offer });
+    ui.lang = 'zh';
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    const group = await screen.findByRole('group', { name: '这条说得对吗？' });
+    fireEvent.click(within(group).getByRole('button', { name: '说得对' }));
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/feedback'))).toBe(true));
+    const sent = JSON.parse(String(calls.find((c) => c.url.includes('/feedback'))!.init!.body));
+    // The default here is asked for by no name (`model` is null on this page), and still named by its id in the word.
+    expect(sent).toMatchObject({ hero: 'beastmaster', lang: 'zh', version: 37, model: 'deepseek-flash', finding: 0, title: review.findings[0].title, rating: 'right' });
+    cleanup();
+    // The same review once another model is the default here: another memory slot would be a second record, and
+    // the default's alias would be Kimi. The id says DeepSeek either way — and what was said is still shown.
+    mockFetch({ 'ref=overview': overview, '/review?': ready({ prompt_version: 37 }), '/api/agent/9100904020': { ...offer, default_model: 'kimi-k3.1-pro' } });
+    page('/r/9100904020?hero=beastmaster&lang=zh&model=deepseek-flash');
+    expect(within(await screen.findByRole('group', { name: '这条说得对吗？' })).getByRole('button', { name: '说得对' }).getAttribute('aria-pressed')).toBe('true');
+    cleanup();
+    // Written again under a newer prompt: unanswered, even with the same title.
+    mockFetch({ 'ref=overview': overview, '/review?': ready({ prompt_version: 38 }), '/api/agent/9100904020': offer });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    expect(within(await screen.findByRole('group', { name: '这条说得对吗？' })).getByRole('button', { name: '说得对' }).getAttribute('aria-pressed')).toBe('false');
+    cleanup();
+    // A server that does not say which version the review is: the question is not asked, since the word could not be placed.
+    mockFetch({ 'ref=overview': overview, '/review?': ready({}), '/api/agent/9100904020': offer });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    expect(await screen.findByRole('heading', { level: 1 })).toBeTruthy();
+    expect(screen.queryByRole('group', { name: '这条说得对吗？' })).toBeNull();
+  });
+
   it('the reader picks who writes the review: the model goes in the link, the start, every poll, the chat and the shared link', async () => {
     let started: any = null;
     const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro', 'glm-5.3'], default_model: 'deepseek-flash' };

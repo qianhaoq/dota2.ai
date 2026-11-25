@@ -182,8 +182,11 @@ export function createMockAgent({ root, resolveClientIp }) {
     },
   };
   const noLimit = { tryConsume: () => ({ ok: true, retryAfterSec: 0 }) };
+  // Readers' words on findings are kept apart from the reviews, as in production (agent/feedback/).
+  const said = new Map();
+  const feedback = createJsonStore({ get: async (key) => said.get(key) ?? null, put: async (key, body) => { said.set(key, body); } });
   const router = createAgentRouter({
-    service: createAgentService({ traces, pipeline, complete, model: 'mock', docs: createJsonStore(blobs), getMatchDetail }),
+    service: createAgentService({ traces, pipeline, complete, model: 'mock', docs: createJsonStore(blobs), feedback, getMatchDetail }),
     resolveClientIp, readLimiter: noLimit, reviewLimiter: noLimit, chatLimiter: noLimit, parseLimiter: noLimit, parseDailyMax: 1e9,
   });
   return { router, getMatchDetail, knows };

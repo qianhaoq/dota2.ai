@@ -231,6 +231,40 @@ test('a moment replayed on the map: the heroes around the cited second, played a
   await expect(replay).toHaveCount(0);
 });
 
+test('each finding is asked about: the word is kept, a reason follows, and the page remembers it', async ({ page }) => {
+  await review(page);
+  // Under the first finding's moments, once the reader has seen its claim, what to practise and the moments.
+  const lead = page.locator('.ag-moments .ag-fb');
+  await expect(lead.getByRole('group', { name: '这条说得对吗？' }).getByRole('button')).toHaveText(['说得对', '不对', '没用']);
+  const kept = page.waitForResponse((r) => r.url().includes('/feedback') && r.request().method() === 'POST');
+  await lead.getByRole('button', { name: '不对', exact: true }).click();
+  expect((await kept).status()).toBe(200);
+  await expect(lead.getByRole('status')).toHaveText('记下了，谢谢。');
+  await expect(lead.getByRole('button', { name: '不对', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  // Why, from three fixed answers: nothing is typed.
+  const why = lead.getByRole('group', { name: '哪里不对？' });
+  await expect(why.getByRole('button')).toHaveText(['事实不对', '事实对，结论不对', '这不是我能改的']);
+  await expect(lead.locator('input, textarea')).toHaveCount(0);
+  await why.getByRole('button', { name: '事实不对', exact: true }).click();
+  await expect(why.getByRole('button', { name: '事实不对', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await noSideScroll(page);
+  const axe = await new AxeBuilder({ page }).include('.ag-moments .ag-fb').analyze();
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
+  // The other findings are asked about inside their folds, each on its own.
+  const second = page.locator('details.ag-finding').first();
+  await second.locator('summary').click();
+  await expect(second.locator('.ag-fb').getByRole('button', { name: '说得对' })).toHaveAttribute('aria-pressed', 'false');
+  // Back another time: what was said is still shown, and nothing is sent on the way in.
+  let again = 0;
+  page.on('request', (r) => { if (r.url().includes('/feedback')) again += 1; });
+  await page.reload();
+  await expect(page.locator('.ag-doc')).toBeVisible({ timeout: 30_000 });
+  const back = page.locator('.ag-moments .ag-fb');
+  await expect(back.getByRole('button', { name: '不对', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(back.getByRole('button', { name: '事实不对', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(again).toBe(0);
+});
+
 test('ask the coach: the lookups show, then the answer; "ask about this" carries the moment', async ({ page }) => {
   await review(page);
   const chat = page.getByRole('complementary', { name: '问教练' });
