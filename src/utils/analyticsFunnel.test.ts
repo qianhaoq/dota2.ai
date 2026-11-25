@@ -51,6 +51,15 @@ describe('the review page funnel from event logs', () => {
     expect(out.events.arrived).toBe(4);
   });
 
+  it('first source means earliest in time, in whatever order the log comes (gcloud prints newest first)', () => {
+    const entries = [
+      line('arrived', 'anon_r', { src: 'nga', page: 'home' }, '2026-11-24T10:00:00Z'),
+      line('arrived', 'anon_r', { src: 'bili', page: 'home' }, '2026-11-25T10:00:00Z'),
+    ];
+    expect(summarizeFunnel(entries).bySource).toEqual({ nga: { came: 1, opened: 0, own: 0, shared: 0 } });
+    expect(summarizeFunnel([...entries].reverse()).bySource).toEqual({ nga: { came: 1, opened: 0, own: 0, shared: 0 } });
+  });
+
   it('reads gcloud JSON output (entries with jsonPayload) and one object per line', () => {
     const entries = [{ jsonPayload: line('match_opened', 'anon_a') }, { textPayload: 'Server is running' }];
     expect(summarizeFunnel(parseLogText(JSON.stringify(entries))).browsers.opened).toBe(1);
