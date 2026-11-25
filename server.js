@@ -908,6 +908,13 @@ const agentBlobs = (() => {
   if (!name) return null;
   try { return createBucketStore(createGcsBucket(name), 'agent/'); } catch (err) { console.warn(`WARNING: AGENT_BUCKET ignored (${err?.message ?? err})`); return null; }
 })();
+// Readers' words on a review's findings (lib/agent/feedback.js): objects under agent/feedback/ in the same
+// bucket, or files in AGENT_REVIEW_DIR/feedback. With neither, the page's buttons are answered "not kept here".
+const agentFeedbackBlobs = (() => {
+  const name = (process.env.AGENT_BUCKET || '').trim();
+  if (name && agentBlobs) { try { return createBucketStore(createGcsBucket(name), 'agent/feedback/'); } catch { return null; } }
+  return process.env.AGENT_REVIEW_DIR ? createFileStore(path.join(process.env.AGENT_REVIEW_DIR, 'feedback')) : null;
+})();
 // Where traces are kept, or null: without it nothing can be parsed, whatever else is configured.
 const agentTraceBlobs = agentBlobs ?? (process.env.AGENT_TRACE_DIR ? createFileStore(process.env.AGENT_TRACE_DIR) : null);
 const agentTraces = createTraceStore(agentTraceBlobs);
@@ -953,6 +960,7 @@ const agentService = createAgentService({
   models: agentEngines,
   defaultModel: agentOffer.default,
   docs: agentBlobs ? createJsonStore(agentBlobs) : (process.env.AGENT_REVIEW_DIR ? createJsonStore(createFileStore(process.env.AGENT_REVIEW_DIR)) : null),
+  feedback: agentFeedbackBlobs ? createJsonStore(agentFeedbackBlobs) : null,
   getMatchDetail,
   log: (msg) => console.warn(`[agent] ${msg}`),
 });

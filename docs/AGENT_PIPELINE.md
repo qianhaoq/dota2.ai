@@ -5,6 +5,7 @@
   POST /api/agent/:id/prepare    replay → trace          (the worker)
   POST /api/agent/:id/review     trace → verified review (the model)
   POST /api/agent/:id/chat       questions, answered from the replay
+  POST /api/agent/:id/feedback   a reader's word on one finding (no model)
 ```
 
 Code: `lib/agent/` (pipeline, stores, service, router, agent, verifier),
@@ -17,7 +18,7 @@ Code: `lib/agent/` (pipeline, stores, service, router, agent, verifier),
 |---|---|---|
 | Site (`server.js`) | the existing Cloud Run service | `DEEPSEEK_API_KEY` (and `KIMI_API_KEY`, `GLM_API_KEY` for the other models), `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
 | Replay worker (`Dockerfile.trace-worker`) | a second, private Cloud Run service | the pinned extractor in the image, `AGENT_BUCKET` |
-| Storage | one GCS bucket, objects under `agent/` | traces (`<id>.trace.json.gz`, ~250 KB), reviews, job markers |
+| Storage | one GCS bucket, objects under `agent/` | traces (`<id>.trace.json.gz`, ~250 KB), reviews, job markers; under `agent/feedback/`, what readers said of a finding (right / wrong / not useful — `lib/agent/feedback.js`, read with `scripts/feedback-report.mjs`) |
 
 The site never runs the extractor: its output is hundreds of megabytes of
 memory-backed temp files. The worker does one parse at a time.

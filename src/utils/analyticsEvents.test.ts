@@ -24,8 +24,11 @@ describe('validateAnalyticsEvent', () => {
       ['goal_checked', { result: 'met', evidence: 'died twice' }, { result: 'met' }],
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
       ['moment_played', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', t: 1825, fact: 'free text' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster' }],
+      ['finding_rated', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', rating: 'wrong', first: true, title: 'free text', reason: 'fact' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', rating: 'wrong', first: true }],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
+    // A rating is one of the three; anything else is dropped, not counted.
+    expect(validateAnalyticsEvent({ event: 'finding_rated', props: { matchId: '9100904020', rating: 'excellent' } })).toMatchObject({ ok: true, props: { matchId: '9100904020' } });
     // How a match page was arrived at: a shared link's ref, and no other value.
     expect(validateAnalyticsEvent({ event: 'match_opened', props: { matchId: '9100904020', lang: 'en', ref: 'team' } })).toMatchObject({ ok: true, props: { matchId: '9100904020', lang: 'en', ref: 'team' } });
     expect(validateAnalyticsEvent({ event: 'match_opened', props: { matchId: '9100904020', lang: 'en', ref: 'newsletter' } })).toMatchObject({ ok: true, props: { matchId: '9100904020', lang: 'en' } });

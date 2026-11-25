@@ -44,7 +44,7 @@ export interface ToolStep { tool: string; args: Record<string, unknown>; /** Wha
 export type ReviewState =
   | { status: 'none' | 'no_trace' | 'unknown_hero' }
   | { status: 'running'; steps: ToolStep[] }
-  | { status: 'ready'; review: DeepReview; verification: { repaired: boolean; dropped: number }; model: string | null; tool_calls: number }
+  | { status: 'ready'; review: DeepReview; verification: { repaired: boolean; dropped: number }; model: string | null; tool_calls: number; /** The prompt version the review was written under; absent from a server that does not say. */ prompt_version?: number }
   | { status: 'failed'; reason?: string }
   | { status: 'unavailable'; reason?: string };
 
@@ -106,6 +106,20 @@ export function fetchMoment(matchId: string, hero: string, lang: string, t: numb
     momentCache.set(key, p);
   }
   return p;
+}
+
+export type FindingRating = 'right' | 'wrong' | 'useless';
+/** Why a finding was wrong (fact, judgment, not_mine) or not useful (knew, vague, minor): lib/agent/feedback.js. */
+export type FindingReason = 'fact' | 'judgment' | 'not_mine' | 'knew' | 'vague' | 'minor';
+/**
+ * The reader's word on one finding of the review on screen. `id` is made up by the page for this finding: the
+ * same id again replaces what was said. True when the server kept it.
+ */
+export async function sendFindingFeedback(matchId: string, body: { hero: string; lang: string; version: number; finding: number; title: string; rating: FindingRating; reason: FindingReason | null; id: string; plan?: string; model?: string }): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/agent/${enc(matchId)}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return res.ok;
+  } catch { return false; }
 }
 
 const evidenceCache = new Map<string, Promise<EvidenceRecord>>();

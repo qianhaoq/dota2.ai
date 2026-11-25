@@ -107,6 +107,19 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-plain { margin: 0; padding-left: 20px; color: var(--text-2); line-height: 1.7; display: grid; gap: 6px; }
 .ag-blind .ag-plain { color: var(--text-3); font-size: var(--fs-meta); }
 .ag-checked { color: var(--text-3); font-size: var(--fs-meta); border-top: 1px solid var(--line); padding-top: 14px; }
+/* The reader's word on a finding: a quiet line under it, not a form. */
+.ag-fb { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid var(--line); }
+.ag-fb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ag-fb-row.is-why { margin-top: 10px; }
+.ag-fb-ask { color: var(--text-3); font-size: var(--fs-meta); margin-right: 4px; }
+/* Under the moments the list's own last line already closes the finding: no second one. */
+.ag-moments .ag-fb { border-top: 0; padding-top: 0; margin-top: 16px; }
+/* What was said is marked, not celebrated: an outline in the accent, where the model choice fills. */
+.ag-fb .ag-chip-btn.is-on { background: transparent; border-color: var(--accent); color: var(--accent); font-weight: 500; }
+.ag-fb .ag-chip-btn:disabled { opacity: 0.6; cursor: default; }
+.ag-fb-note { margin: 0; color: var(--text-3); font-size: var(--fs-meta); }
+.ag-fb-note:not(:empty) { margin-top: 10px; }
+.ag-fb-note.is-failed { color: var(--fix); }
 
 /* the record behind a sentence */
 .ag-rec { background: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: var(--fs-meta); color: var(--text-2); }
