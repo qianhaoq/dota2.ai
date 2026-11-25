@@ -279,10 +279,10 @@ describe('agent API', () => {
   it('moment: where the ten heroes were around a game time, with display names; a bad time or hero is refused', async () => {
     const at = (q: string) => get(`/api/agent/${MATCH}/moment?${q}`);
     const m = (await at('hero=beastmaster&lang=zh&t=1825')).body;
-    expect(m).toMatchObject({ status: 'ok', t: 1825, clock: '30:25', from: 1813, to: 1831, me: 'beastmaster', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客' } });
+    expect(m).toMatchObject({ status: 'ok', t: 1825, clock: '30:25', from: 1813, to: 1831, me: 'beastmaster', place: 'river_mid', place_name: '河道中路', away: [], not_known: [], names: { beastmaster: '兽王', phantom_assassin: '幻影刺客' } });
     expect(m.frames).toHaveLength(19);
     expect(m.heroes.filter((h: any) => h.side === 'me')).toEqual([{ hero: 'beastmaster', side: 'me' }]);
-    expect((await at('hero=beastmaster&lang=en&t=1825')).body.names.phantom_assassin).toBe('Phantom Assassin');
+    expect((await at('hero=beastmaster&lang=en&t=1825')).body).toMatchObject({ place_name: 'river mid', names: { phantom_assassin: 'Phantom Assassin' } });
     // Each hero's icon name is the game's own, which is not always the replay's key.
     expect(m.icons).toMatchObject({ beastmaster: 'beastmaster', phantom_assassin: 'phantom_assassin', necrolyte: 'necrolyte' });
     expect(Object.keys(m.icons)).toHaveLength(10);
