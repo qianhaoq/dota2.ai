@@ -238,7 +238,7 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   three_or_more_enemy_heroes_dealing_damage_outside_fights: { en: 'Outside fights, to three or more enemy heroes', zh: '团战之外、被三个以上敌方英雄打死' },
   target_spell_immune_and_not_stunned: { en: 'Casts on a spell-immune target, no stun', zh: '放给魔免目标且没晕住' },
   enemy_hero_target_alive_12s_later: { en: 'Casts whose target was alive 12 s later', zh: '放出 12 秒后目标仍存活' },
-  no_hero_target_and_at_most_one_enemy_hero_damaged: { en: 'Casts that damaged at most one enemy hero', zh: '至多只伤到一名敌方英雄' },
+  no_hero_target_near_enemies_at_most_one_damaged_and_none_died: { en: 'Casts near enemy heroes that damaged at most one and killed none', zh: '在敌方英雄附近放出、至多伤到一人且没有击杀' },
   nothing_cast_and_no_item_used: { en: 'Deaths with nothing cast or used', zh: '什么都没按就阵亡' },
   // death_context's trade lists (deaths:<hero>).
   traded_within_15s: { en: 'Deaths traded (an enemy hero died within 15 s)', zh: '换到了（15 秒内对面也死了英雄）' },

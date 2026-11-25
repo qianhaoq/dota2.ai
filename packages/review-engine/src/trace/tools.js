@@ -498,7 +498,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   // Whether this ability shows in the damage log at all: only then does "damaged nobody" mean something.
   const damaging = trace.damage.some((r) => r[1] === npc && r[3] === abilityId);
   // What the casts have in common, by game time (like deaths_where): a habit is a count over the game.
-  const intoImmunity = []; const targetLived = []; const reachedFew = [];
+  const intoImmunity = []; const targetLived = []; const cameToLittle = [];
   const casts = rows.map((c, ci) => {
     const t = c[0]; const target = heroOfName(trace, c[3]);
     // Damage is kept per whole second: the second a recast falls in is counted to the recast, never to both casts.
@@ -515,8 +515,13 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     if (during && !(stunned > 0)) intoImmunity.push(clock(t));
     // Aimed at an enemy hero (the hero itself, not an illusion of it) who did not die in the next 12 seconds.
     if (target >= 0 && trace.heroes[target].team !== trace.heroes[h].team && targetName === trace.heroes[target].key && !trace.deaths.some((d) => d[1] === c[3] && d[0] >= t && d[0] - t <= 12)) targetLived.push(clock(t));
-    // Not aimed at a hero, and its damage reached one enemy hero or none.
-    if (damaging && target < 0 && hit.size <= 1) reachedFew.push(clock(t));
+    // Not aimed at a hero, used where an enemy hero was, and it came to little: its damage reached one enemy hero
+    // or none, and no hero it damaged died in the next 12 seconds. A cast with no enemy hero within 1300 that
+    // damaged none is travel or farming, not a miss; one whose single target died is a pick-off. Over the
+    // ultimates of 32 parsed games, "at most one damaged" alone was 2001 casts: 1010 with nobody near, 348
+    // pick-offs, and 643 that are counted here.
+    const diedOfIt = [...hit].some((k) => trace.deaths.some((d) => d[0] >= t && d[0] - t <= 12 && trace.heroes[heroOfName(trace, d[1])]?.key === k));
+    if (damaging && target < 0 && hit.size <= 1 && (enemies.length > 0 || hit.size > 0) && !diedOfIt) cameToLittle.push(clock(t));
     return {
       ref: `cast:${trace.heroes[h].key}:${short}:${ci + 1}`, t, clock: clock(t), row: c[4], target: targetName,
       target_hp: ts ? { hp: ts.hp, max_hp: ts.max_hp } : null,
@@ -555,7 +560,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       target_spell_immune_and_not_stunned: intoImmunity,
       enemy_hero_target_alive_12s_later: targetLived,
       // Only for an ability that shows in the damage log at all: otherwise "damaged nobody" says nothing.
-      ...(damaging ? { no_hero_target_and_at_most_one_enemy_hero_damaged: reachedFew } : {}),
+      ...(damaging ? { no_hero_target_near_enemies_at_most_one_damaged_and_none_died: cameToLittle } : {}),
     },
     seconds_alive_since_learned: alive, seconds_alive_and_ready: idle,
     deaths_with_it_ready_and_not_cast_total: unused.length,
