@@ -1,6 +1,6 @@
 {
-  "source": "Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told.",
-  "releases_checked_at": "2026-11-24T13:41:11.552Z",
+  "source": "Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told. hotfixes: the game updates within a release that changed item or ability data, each with its own data and rollout window, read the same way.",
+  "releases_checked_at": "2026-11-25T05:37:04.284Z",
   "releases": [
     {
       "name": "7.40",
@@ -43,6 +43,33 @@
       "rollout_from": "2026-03-24T23:40:34.000Z",
       "rollout_update": "Client 6728 (bdc73e682c49)",
       "data": "7.41.json",
+      "hotfixes": [
+        {
+          "update": "Client 6735 (60b59d74172b)",
+          "rollout_by": "2026-03-25T21:20:27.000Z",
+          "rollout_from": "2026-03-25T21:00:27.000Z",
+          "data": "7.41.2026-03-25T2120.json",
+          "last_match_id_before": 8743888018,
+          "first_match_id_after": 8743906733
+        },
+        {
+          "update": "Client 6737 (8e8622eabd6d)",
+          "rollout_by": "2026-03-26T23:40:17.000Z",
+          "rollout_from": "2026-03-26T23:20:17.000Z",
+          "data": null,
+          "reason": "game_files_not_read_by_the_builder",
+          "last_match_id_before": 8745338305,
+          "first_match_id_after": 8745346946
+        },
+        {
+          "update": "Client 6739 (98225e9b398a)",
+          "rollout_by": "2026-03-27T03:00:18.000Z",
+          "rollout_from": "2026-03-27T02:40:18.000Z",
+          "data": "7.41.2026-03-27T0300.json",
+          "last_match_id_before": 8745444633,
+          "first_match_id_after": 8745454787
+        }
+      ],
       "last_match_id_before": 8742598005,
       "first_match_id_after": 8742607516
     },
@@ -54,6 +81,24 @@
       "rollout_from": "2026-03-27T22:00:21.000Z",
       "rollout_update": "Client 6743 (62894e2a7736)",
       "data": "7.41a.json",
+      "hotfixes": [
+        {
+          "update": "Client 6750 (f7cc966d3bcd)",
+          "rollout_by": "2026-03-30T23:20:18.000Z",
+          "rollout_from": "2026-03-30T23:00:18.000Z",
+          "data": "7.41a.2026-03-30T2320.json",
+          "last_match_id_before": 8751177857,
+          "first_match_id_after": 8751186482
+        },
+        {
+          "update": "Client 6756 (4bc1b7454672)",
+          "rollout_by": "2026-04-01T22:20:22.000Z",
+          "rollout_from": "2026-04-01T22:00:22.000Z",
+          "data": "7.41a.2026-04-01T2220.json",
+          "last_match_id_before": 8753743106,
+          "first_match_id_after": 8753753220
+        }
+      ],
       "last_match_id_before": 8746668084,
       "first_match_id_after": 8746685154
     },
@@ -65,6 +110,24 @@
       "rollout_from": "2026-04-07T20:20:19.000Z",
       "rollout_update": "Client 6761 (358719e0f935)",
       "data": "7.41b.json",
+      "hotfixes": [
+        {
+          "update": "Client 6763 (2b5f97370955)",
+          "rollout_by": "2026-04-09T22:00:19.000Z",
+          "rollout_from": "2026-04-09T21:40:19.000Z",
+          "data": "7.41b.2026-04-09T2200.json",
+          "last_match_id_before": 8764876120,
+          "first_match_id_after": 8764887486
+        },
+        {
+          "update": "Client 6772 (901343fd7b1b)",
+          "rollout_by": "2026-04-17T20:40:16.000Z",
+          "rollout_from": "2026-04-17T20:20:16.000Z",
+          "data": "7.41b.2026-04-17T2040.json",
+          "last_match_id_before": 8775525758,
+          "first_match_id_after": 8775544203
+        }
+      ],
       "last_match_id_before": 8762276871,
       "first_match_id_after": 8762290725
     },
@@ -98,6 +161,24 @@
       "rollout_from": "2026-07-31T00:00:27.000Z",
       "rollout_update": "Client 6874 (ca9626f58f1a)",
       "data": "7.41e.json",
+      "hotfixes": [
+        {
+          "update": "Client 6878 (199e88b4d21a)",
+          "rollout_by": "2026-07-31T17:20:18.000Z",
+          "rollout_from": "2026-07-31T17:00:18.000Z",
+          "data": "7.41e.2026-07-31T1720.json",
+          "last_match_id_before": 8922784169,
+          "first_match_id_after": 8922805091
+        },
+        {
+          "update": "Client 6879 (812ee677ca73)",
+          "rollout_by": "2026-07-31T20:20:23.000Z",
+          "rollout_from": "2026-07-31T20:00:23.000Z",
+          "data": "7.41e.2026-07-31T2020.json",
+          "last_match_id_before": 8923025599,
+          "first_match_id_after": 8923051557
+        }
+      ],
       "last_match_id_before": 8921727778,
       "first_match_id_after": 8921735212
     },
@@ -109,6 +190,16 @@
       "rollout_from": "2026-09-15T18:40:24.000Z",
       "rollout_update": "Client 6933 (969480b2e3c8)",
       "data": "7.41f.json",
+      "hotfixes": [
+        {
+          "update": "Client 6946 (4c0b3dc12ff0)",
+          "rollout_by": "2026-10-07T00:40:47.000Z",
+          "rollout_from": "2026-10-07T00:20:47.000Z",
+          "data": "7.41f.2026-10-07T0040.json",
+          "last_match_id_before": 9032787087,
+          "first_match_id_after": 9032790773
+        }
+      ],
       "last_match_id_before": 9000692834,
       "first_match_id_after": 9000714177
     },
@@ -122,6 +213,17 @@
       "data": "7.42.json",
       "last_match_id_before": 9095855376,
       "first_match_id_after": 9095870072
+    },
+    {
+      "name": "7.42a",
+      "major": "7.42",
+      "major_id": 61,
+      "rollout_by": "2026-11-24T23:40:19.000Z",
+      "rollout_from": "2026-11-24T23:20:19.000Z",
+      "rollout_update": "Client 6995 (8279244f8378)",
+      "data": "7.42a.json",
+      "last_match_id_before": 9104432246,
+      "first_match_id_after": 9104444250
     }
   ]
 }
