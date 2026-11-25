@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
-import { checkGoal, type ActiveGoal } from './goalStore';
+import { checkGoal, checkRules, goalChecks, type ActiveGoal } from './goalStore';
 import { HABIT_KEYS } from '../../lib/coach/goals.js';
 const HABIT = HABIT_KEYS[0];
 
@@ -26,6 +26,37 @@ describe('goal_checked: the next-game loop closing, counted', () => {
     const g = goal('g-met', 'deaths_per10_max');
     expect(checkGoal(g, report, 0)?.result).toBe('met');
     checkGoal(g, report, 0);
+    const events = (await Promise.all(sent)).filter((e) => e.event === 'goal_checked');
+    expect(events.map((e) => e.props)).toEqual([{ result: 'met' }]);
+  });
+
+  it('a later visit in a new browser session does not count the same game again', async () => {
+    const g = goal('g-again', 'deaths_per10_max');
+    checkGoal(g, report, 0);
+    // The player comes back another day: the tab's session is gone, the stored checks are not.
+    window.sessionStorage.clear();
+    vi.resetModules();
+    const later = await import('./goalStore');
+    expect(later.checkGoal(g, report, 0)?.result).toBe('met');
+    const events = (await Promise.all(sent)).filter((e) => e.event === 'goal_checked');
+    expect(events.map((e) => e.props)).toEqual([{ result: 'met' }]);
+  });
+
+  it('an "unknown" kept from an earlier visit is counted when it becomes a result', async () => {
+    const g = goal('g-later', 'deaths_per10_max');
+    window.localStorage.setItem('dota2ai.coach.goalChecks', JSON.stringify([{ goalId: g.id, matchId: report.match.id, result: 'unknown', evidence: { en: '', zh: '' } }]));
+    expect(checkGoal(g, report, 0)?.result).toBe('met');
+    expect((await Promise.all(sent)).filter((e) => e.event === 'goal_checked').map((e) => e.props)).toEqual([{ result: 'met' }]);
+    expect(goalChecks(g.id).map((c) => c.result)).toEqual(['met']);
+  });
+
+  it('the goal\'s extra rules are stored but not counted: one goal and one game is one event', async () => {
+    const rule = { kind: 'deaths_per10_max', max: 0, label: { en: 'r', zh: 'r' } } as never; // this one is missed
+    const g: ActiveGoal = { ...goal('g-rules', 'deaths_per10_max'), rules: [{ finding: 2, check: rule }, { finding: 3, check: { kind: 'deaths_per10_max', max: 99, label: { en: 'r', zh: 'r' } } as never }] };
+    expect(checkGoal(g, report, 0)?.result).toBe('met');
+    const rules = checkRules(g, report, 0, null);
+    expect(rules.map((r) => r.check.result)).toEqual(['missed', 'met']);
+    expect(goalChecks('g-rules#2').map((c) => c.result)).toEqual(['missed']); // kept for the page
     const events = (await Promise.all(sent)).filter((e) => e.event === 'goal_checked');
     expect(events.map((e) => e.props)).toEqual([{ result: 'met' }]);
   });

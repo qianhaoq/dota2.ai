@@ -46,6 +46,7 @@ const T = {
   goalIs: { en: 'Your next-game goal', zh: '已设为下一局目标' },
   goalHow: { en: 'Play your next game, then open it here or on your games page: the coach checks it against the scoreboard.', zh: '打完下一局，在这里或「我的比赛」里打开它，教练会按记分板核验。' },
   goalNext: { en: 'Your next game shows up on the dota2.ai home page with this goal already checked — open it after you play.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，这个目标已经核验好。' },
+  goalNextReplay: { en: 'Your next game shows up on the dota2.ai home page — open it from there. This goal is checked once that game’s replay has been read, not from the scoreboard.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，从那里点开它。这个目标要读完那一局的录像才能核验，光看记分板判断不了。' },
   goalHowReplay: { en: 'Play your next game, then open its replay review here: the coach counts the same things in that replay and tells you which rules held.', zh: '打完下一局，在这里打开它的录像复盘：教练会在那盘录像里数同样的事，逐条告诉你规则守住了没有。' },
   goalRules: { en: 'Counted in your next replay', zh: '下一盘录像里会数的' },
   ruleCheck: { en: 'Next game', zh: '下一盘' },
@@ -171,7 +172,8 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
         ? <button type="button" className="ag-link" onClick={() => setGoal(null)}>{T.goalUndo[lang]}</button>
         : <button type="button" className="ag-btn is-primary" onClick={() => { setGoal(make()); trackEvent('goal_set', { matchId: String(matchId), kind: spec.kind, account: ctx.accountId != null, rules: more.length }); }}>{T.goalSet[lang]}</button>}
       {/* Where the check will be waiting: the home page finds the next game by this account (CoachHome). */}
-      {mine && ctx.accountId != null && <p className="ag-goal-how ag-goal-next">{T.goalNext[lang]}</p>}
+      {/* A goal that needs the replay cannot be settled there from the scoreboard: do not promise it checked. */}
+      {mine && ctx.accountId != null && <p className="ag-goal-how ag-goal-next">{(spec.kind === 'replay_habit' || more.length ? T.goalNextReplay : T.goalNext)[lang]}</p>}
     </div>
   );
 };

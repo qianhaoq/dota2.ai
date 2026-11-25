@@ -1544,6 +1544,9 @@ describe('AgentMatchPage', () => {
     const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
     expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:replay_habit:low_health1:ralone2', goal: check, findingId: 'agent:1', accountId: 77 });
     expect(stored.rules).toEqual([{ finding: 2, when: 'No teammate on the minimap near you', do: 'stay on your side of the river', check: alone }]);
+    // These are counted in the replay: the home page is where the next game is found, not where it is already checked.
+    expect(screen.getByText(/open it from there\. This goal is checked once that game’s replay has been read/)).toBeTruthy();
+    expect(screen.queryByText(/with this goal already checked/)).toBeNull();
   });
 
   it('a later game is counted on the rules from its own replay; without the replay nothing is called met', async () => {

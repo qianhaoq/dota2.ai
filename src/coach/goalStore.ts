@@ -78,11 +78,19 @@ export function goalChecks(goalId: string): GoalCheck[] {
   return Array.isArray(all) ? all.filter((c) => c?.goalId === goalId) : [];
 }
 
-function recordCheck(c: GoalCheck): void {
-  // The loop closed: a goal set after one game was judged on a later one. Counted once per goal and game,
-  // and only once it is decided (an "unknown" may still become a result when the replay is read).
-  if (c.result !== 'unknown') trackOnce(`${c.goalId}.${c.matchId}`, 'goal_checked', { result: c.result });
-  const all = read<GoalCheck[]>(GOAL_CHECKS_STORAGE_KEY, []).filter((x) => !(x.goalId === c.goalId && x.matchId === c.matchId));
+/**
+ * Store a check. `closesLoop`: this is the goal itself (not one of its rules), so a decided result is the
+ * next-game loop closing and is counted — once per goal and game. The stored history is what says it was
+ * counted before: a later visit, in a new browser session, judges the same game again and must not count it
+ * twice. An "unknown" kept from an earlier visit may still become a result, and is counted then.
+ */
+function recordCheck(c: GoalCheck, closesLoop = false): void {
+  const stored = read<GoalCheck[]>(GOAL_CHECKS_STORAGE_KEY, []);
+  const earlier = Array.isArray(stored) ? stored : [];
+  const decidedBefore = earlier.some((x) => x?.goalId === c.goalId && x.matchId === c.matchId && x.result !== 'unknown');
+  // trackOnce still guards the page when storage is blocked and nothing above can be read back.
+  if (closesLoop && c.result !== 'unknown' && !decidedBefore) trackOnce(`${c.goalId}.${c.matchId}`, 'goal_checked', { result: c.result });
+  const all = earlier.filter((x) => !(x.goalId === c.goalId && x.matchId === c.matchId));
   all.push(c);
   // Not a goal change: listeners of the active goal must not re-run checks.
   write(GOAL_CHECKS_STORAGE_KEY, all.slice(-MAX_CHECKS), CHECKED);
@@ -95,7 +103,7 @@ function recordCheck(c: GoalCheck): void {
  */
 export function checkGoal(goal: ActiveGoal, report: CoachReport, slot: number, replay: ReplayRecords = null): GoalCheck | null {
   if (!counts(goal, report, slot)) return null;
-  return judge(goal.id, goal.goal, report, slot, replay);
+  return judge(goal.id, goal.goal, report, slot, replay, true);
 }
 
 /**
@@ -103,7 +111,7 @@ export function checkGoal(goal: ActiveGoal, report: CoachReport, slot: number, r
  * one (the games page has only the scoreboard), answers with what the replay
  * page already recorded for this game rather than replace it with "unknown".
  */
-function judge(goalId: string, spec: GoalSpec, report: CoachReport, slot: number, replay: ReplayRecords): GoalCheck {
+function judge(goalId: string, spec: GoalSpec, report: CoachReport, slot: number, replay: ReplayRecords, closesLoop = false): GoalCheck {
   const matchId = report.match.id;
   const ref = replay && spec.kind === 'replay_habit' ? (habitRef(spec, replay.hero) as string | null) : null;
   const summary = ref ? replay!.records[ref] ?? null : null;
@@ -113,7 +121,7 @@ function judge(goalId: string, spec: GoalSpec, report: CoachReport, slot: number
   }
   const r = evaluateGoal(spec, report, slot, summary) as { result: GoalResult; evidence: Bi };
   const check: GoalCheck = { goalId, matchId, result: r.result, evidence: r.evidence };
-  recordCheck(check);
+  recordCheck(check, closesLoop);
   return check;
 }
 
@@ -131,7 +139,8 @@ export const needsReplay = (goal: ActiveGoal): boolean => goal.goal.kind === 're
 /**
  * The goal's rules, each judged on `replay` (this game's counts; null
  * while its replay is not parsed, which is "unknown", never a pass). Recorded
- * once per rule and match, like the goal itself.
+ * once per rule and match, like the goal itself. A rule's result is not the
+ * goal's: it is stored, and never sent as `goal_checked`.
  */
 export function checkRules(goal: ActiveGoal, report: CoachReport, slot: number, replay: ReplayRecords): { rule: GoalRule; check: GoalCheck }[] {
   if (!counts(goal, report, slot)) return [];
