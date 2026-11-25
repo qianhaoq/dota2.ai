@@ -99,8 +99,34 @@ describe('review eval: against a rubric', () => {
       hit_weight: 1, weight: 3, hit_rate: 0.33,
       must_not: [],
       turning_fight_covered: false,
+      // It leads with neither of the two points the rubric accepts as the game's lesson.
+      lead: null, lead_ok: false,
       main_reason_ok: true,
     });
+  });
+
+  it('the first finding is the page\'s one lesson: lead_ok says whether it makes a point the rubric accepts there', () => {
+    const base = stored.review;
+    expect(rubric.lead_any).toEqual(['roar_spent_before_carry_immunity', 'no_blink_no_bkb']);
+    // The same findings the other way round: the item point, made second in the stored review, now leads.
+    const swapped = { review: { ...base, findings: [base.findings[1], base.findings[0], ...base.findings.slice(2)] } };
+    expect(rubricOf(swapped, rubric)).toMatchObject({ lead: 'no_blink_no_bkb', lead_ok: true });
+    expect(rubricOf(swapped, rubric).must_hit[1]).toEqual({ id: 'no_blink_no_bkb', hit: true, finding: 1 });
+    // What is said is the same either way: only where it stands differs.
+    expect(rubricOf(swapped, rubric).hit_rate).toBe(rubricOf(stored, rubric).hit_rate);
+    // A rubric that accepts only the Roar point there.
+    expect(rubricOf(swapped, { ...rubric, lead_any: ['roar_spent_before_carry_immunity'] })).toMatchObject({ lead: null, lead_ok: false });
+    // A rubric that does not say, or names something that is no point of its own: not judged, never "wrong".
+    expect(rubricOf(swapped, { ...rubric, lead_any: undefined })).toMatchObject({ lead: null, lead_ok: null });
+    expect(rubricOf(swapped, { ...rubric, lead_any: [] }).lead_ok).toBeNull();
+    expect(rubricOf(swapped, { ...rubric, lead_any: ['no_such_point'] }).lead_ok).toBeNull();
+    // A review with no finding leads with none of them.
+    expect(rubricOf({ review: { ...base, findings: [] } }, rubric)).toMatchObject({ lead: null, lead_ok: false });
+    // Over several reviews: the share that lead well, among those whose rubric says; a later run is judged on it.
+    const scores = [scoreReview(stored, rubric), scoreReview(swapped, rubric), scoreReview(swapped, { ...rubric, lead_any: undefined })];
+    expect(summarize(scores).rubric_approved).toMatchObject({ reviews: 3, lead_ok: 0.5 });
+    expect(summarize([scoreReview(stored, { ...rubric, lead_any: undefined })]).rubric_approved!.lead_ok).toBeNull();
+    expect(compareSummaries({ rubric_approved: { lead_ok: 0.5 } }, { rubric_approved: { lead_ok: 0.17 } }).worse).toEqual([{ key: 'rubric_approved.lead_ok', before: 0.5, after: 0.17 }]);
   });
 
   it('a point is made by a finding that stands on the rubric\'s records or times and names its words', () => {
@@ -188,7 +214,8 @@ describe('review eval: summary and comparison', () => {
     expect(s.matchup_both_ways).toBe(0.5);
     expect(s.repaired).toBe(1);
     expect(s.rubric_draft).toBeNull();
-    expect(s.rubric_approved).toEqual({ reviews: 1, hit_rate: 0.33, must_not_violations: 0, turning_fight_covered: 0, main_reason_ok: 1 });
+    // lead_ok: its first finding is neither of the two points the rubric accepts as the lesson.
+    expect(s.rubric_approved).toEqual({ reviews: 1, hit_rate: 0.33, must_not_violations: 0, turning_fight_covered: 0, lead_ok: 0, main_reason_ok: 1 });
     // A rubric nobody has checked is counted apart.
     expect(summarize([scoreReview(stored, { ...rubric, status: 'draft' })]).rubric_draft?.reviews).toBe(1);
   });
