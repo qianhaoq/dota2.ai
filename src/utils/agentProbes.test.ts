@@ -252,6 +252,12 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe(three, 'We took two tier 2 towers and one tier 3 tower.', names).pass).toBe(true);
     expect(gradeProbe(two, 'We took two tier 2 towers and one tier 3 tower.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
     expect(gradeProbe(three, 'We took two T2 towers and one T3 tower.', names).pass).toBe(true);
+    // However a tier is written, its number is never the count.
+    expect(buildingCounts('We took three tier-2 towers.')).toEqual([3]);
+    expect(gradeProbe(three, 'We took three tier-2 towers.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took three tier-2 towers.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(buildingCounts('The tier one tower fell, then 2 tier-3 towers and the T4 towers.')).toEqual([2]);
+    expect(buildingCounts('拆了 3 座 T2 塔，上路二塔和三塔都没了', 'zh')).toEqual([3]);
     expect(gradeProbe(three, 'Two towers at 34:24 and 34:48 and one barracks.', names).pass).toBe(true);
     expect(gradeProbe(three, 'Two towers (at 32:52 and 33:31) and one barracks.', names).pass).toBe(true);
     expect(gradeProbe(three, '拆了两座二塔和一座三塔。', { ...names, lang: 'zh' }).pass).toBe(true);
