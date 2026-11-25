@@ -14,12 +14,12 @@ node --check server.js
 
 Dev: `npm run start:dev` (Vite + Express). Prod-like: `npm run build && npm start` on port 8080.
 
-Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`. Recommended: `GEMINI_API_KEY` (review-card fallback provider).
+Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY` (the review agent and the chat). `.env.example` documents the rest. `server.js` does not load `.env` itself.
 
 ## Do
 
 - Keep PRs small; one issue → one focused PR.
-- Reuse `src/components`, `src/services`, `src/types.ts`.
+- Reuse what is there: the match page is `src/agent`, the home and player pages `src/coach`, the review agent `lib/agent`, the replay trace and its query tools `packages/review-engine/src/trace`. How a match ID becomes a review: `docs/AGENT_PIPELINE.md`; what the coach understands and how that is measured: `docs/GAME_UNDERSTANDING.md`.
 - Respect bilingual UI: English default, Chinese via toggle; DeepSeek/API output must follow UI lang.
 - Fill the PR template; call out streaming / API / deploy risk.
 - Prefer **ready-for-review** (not forever-draft) when CI should auto-merge.
@@ -27,21 +27,24 @@ Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY`. Recommended: 
 ## Don't
 
 - Commit `.env` or API keys.
-- Rewrite `server.js` wholesale or swap the AI provider without an explicit ask.
+- Rewrite `server.js` wholesale, or change the review agent's default model or add a provider (`lib/agent/providers.js`) without an explicit ask.
 - Skip TypeScript / build / tests.
 - Invent Dota lore or balance numbers not backed by repo data.
 
-## Coach invariants
+## Review agent invariants
 
-Worst pitfalls from Codex P1s (#54, #56) — full rules: `.cursor/rules/dota2-coach-invariants.mdc`.
+The match page is a review written by a tool-calling agent over a parsed replay (`lib/agent`). The rules below are what keeps it honest; each was a real review finding once. Longer list: `.cursor/rules/dota2-coach-invariants.mdc`.
 
-- Any draft / side / practice change that invalidates in-flight Analyze / Playbook / Next-pick MUST bump `contextRevision` (sync `contextRevisionRef` **before** `setContextRevision`) **and** call `cancelStream()` together, and retire stale suggestion cards (`clearStaleSuggestionsForRevision`). On leaving review (`applyLessonSwitch`), `cancelStream()` before the revision bump.
-- No-op interactions (re-tapping the already-selected "My side") MUST NOT bump the revision or cancel streams.
-- Respect explicit My side (`mySideExplicitRef`): never infer `mySide` from the first pick when the user set it; a practice-hero-only board is non-empty for side inference.
-- Accepting a suggestion / Next-pick binds to the request-time ally side + practice hero stamped on the message — not live controls.
-- Streaming `onChunk` functional-appends only (`setMessages(prev => appendStreamChunk(prev, …))`); never `messages.find` overwrite.
-- Analyze / Next-pick enablement derives from the resolved lineup (`resolveCoachingLineup`), not the raw empty draft.
-- DeepSeek output language follows UI `lang` (zh → 简体中文, en → English); preserve the product-approved default (English after #57).
+- **A review states only what the tools returned in that run.** `verifyReview` (`lib/agent/review/verify.js`) drops what is unsupported, and the evidence a reader opens is recomputed from the trace (`lib/agent/evidence.js`), never taken from the model. Do not loosen the check to let text through.
+- **Unknown is not false.** Data that is missing or cannot be established stays `null` or a `gaps` entry — never `0`, `false`, `[]` or "none". A field an older trace does not have is unknown. For anything derived from trace samples, write the tests that blank the source.
+- **No tool says who could see whom.** A sentence about vision is dropped unless a tool record backs it. The same goes for anything listed under a tool's `gaps`.
+- **What the model is told is pinned.** The prompt, the `submit_review` schema and every tool's definition are hashed in `src/utils/agentPromptPin.test.ts`. Changing any of them means raising `DEEP_REVIEW_PROMPT_VERSION` and updating the pin; a tool whose *answer* changes needs the bump too (stored reviews are kept per version).
+- **A feature reaches the model after it is calibrated.** A number quoted in the prompt or in `docs/GAME_UNDERSTANDING.md` comes from `scripts/calibrate.mjs`, not from intuition.
+- **Read a stored trace through `linkHeroNames`** (`packages/review-engine/src/trace`): without it some heroes lose their casts, deaths and damage.
+- **Tools speak from the player's side** (`me`, `ally`, `enemy`); nothing downstream translates to Radiant / Dire.
+- **Output language follows the UI `lang`** (zh → 简体中文, en → English; `lib/aiLanguage.js`). UI copy is bilingual; English is the default.
+- **A replay is fetched only from a Valve or Perfect World replay host, for that match, without following redirects**, and the worker that parses it is never public (`lib/matchReview/replayIngest/discovery.js`, `lib/agent/tracePipeline.js`).
+- **A bulk model run can draw on the account production uses.** Before probes, batch reviews or any run of more than a few dozen calls: query the provider's balance, state the expected spend, and stop well above zero.
 
 ## Handoff
 
