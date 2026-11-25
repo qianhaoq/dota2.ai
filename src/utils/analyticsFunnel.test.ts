@@ -17,8 +17,8 @@ describe('the review page funnel from event logs', () => {
       { type: 'other', event: 'match_opened', anonId: 'anon_x' },
     ];
     const out = summarizeFunnel(entries);
-    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0, goal: 0, checked: 0 });
-    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0, goal: 0, checked: 0 });
+    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0, goal: 0, checked: 0, played: 0, rated: 0 });
+    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0, goal: 0, checked: 0, played: 0, rated: 0 });
     expect(out.anonymous).toBe(1);
     expect(out.events).toMatchObject({ match_opened: 3, chat_asked: 2, review_viewed: 3 });
     expect(out.days).toEqual(['2026-11-24', '2026-11-25']);
@@ -67,6 +67,23 @@ describe('the review page funnel from event logs', () => {
     ]);
     expect(out.browsers).toMatchObject({ goal: 2, checked: 1 });
     expect(out.ofOpened).toMatchObject({ goal: 2, checked: 1 });
+  });
+
+  it('counts who replayed a moment and who rated a finding, and what was said', () => {
+    const e = (event: string, anonId: string | null, props: object = {}) => ({ type: 'analytics', event, anonId, props, ts: '2026-11-25T10:00:00.000Z' });
+    const out = summarizeFunnel([
+      e('match_opened', 'a'), e('match_opened', 'b'), e('match_opened', 'c'),
+      e('moment_played', 'a'), e('moment_played', 'a'), e('moment_played', 'b'), e('moment_played', 'z'),
+      e('finding_rated', 'a', { rating: 'right', first: true }), e('finding_rated', 'a', { rating: 'wrong', first: false }),
+      // A change of mind is a second event; one without a browser id still counts as a rating; a rating that is none does not.
+      e('finding_rated', 'a', { rating: 'useless', first: false }), e('finding_rated', null, { rating: 'wrong', first: true }), e('finding_rated', 'c', { rating: 'excellent' }),
+    ]);
+    // z replayed without opening a match page here (a waiting screen reached another way): a browser, not "of those who opened".
+    expect(out.browsers).toMatchObject({ opened: 3, played: 3, rated: 2 });
+    expect(out.ofOpened).toMatchObject({ played: 2, rated: 2 });
+    expect(out.ratings).toEqual({ right: 1, wrong: 2, useless: 1, on_the_first_finding: 2 });
+    // Nothing rated: zeros, and the script prints no line for it.
+    expect(summarizeFunnel([e('match_opened', 'a')]).ratings).toEqual({ right: 0, wrong: 0, useless: 0, on_the_first_finding: 0 });
   });
 
   it('reads gcloud JSON output (entries with jsonPayload) and one object per line', () => {

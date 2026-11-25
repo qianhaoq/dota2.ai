@@ -26,12 +26,16 @@ const label = {
   arrived: 'came in by a shared link',
   goal: 'set a next-game goal',
   checked: 'had that goal checked on a later game',
+  played: 'replayed a moment on the map',
+  rated: 'said whether a finding was right',
 };
 console.log(`days: ${out.days[0] ?? '-'} … ${out.days.at(-1) ?? '-'}   events: ${Object.entries(out.events).map(([k, v]) => `${k}=${v}`).join(' ')}`);
 console.log(`browsers (by anonId; ${out.anonymous} events had none):`);
 for (const [step, text] of Object.entries(label)) {
   console.log(`  ${String(out.browsers[step]).padStart(5)}  ${text}${step === 'opened' ? '' : `   — of those who opened: ${out.ofOpened[step]}${pct(out.ofOpened[step])}`}`);
 }
+const said = out.ratings.right + out.ratings.wrong + out.ratings.useless;
+if (said) console.log(`findings rated (events; a change of mind counts again): right ${out.ratings.right}, wrong ${out.ratings.wrong}, not useful ${out.ratings.useless} — ${out.ratings.on_the_first_finding} of ${said} about the first finding. The words themselves: scripts/feedback-report.mjs`);
 const sources = Object.entries(out.bySource).sort((a, b) => b[1].came - a[1].came);
 if (sources.length) {
   console.log('by community link (?src=): came / opened a match / got their review / shared');
