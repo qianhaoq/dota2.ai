@@ -50,6 +50,8 @@ const pushes = [];
 const deaths = [];
 const moments = [];
 const roshans = [];
+// Roshan read from its kill rows (traces built since they were kept): one row per kill a hero landed.
+const roshanKills = []; let gamesWithKillRows = 0; let pickupsWithNoKill = 0;
 let wardGames = 0;
 const afterWins = [];
 const afterTowers = [];
@@ -105,7 +107,14 @@ for (const f of files) {
   });
   for (const x of ultimateEdges(trace)) ultEdges.push({ result: x.result });
   for (const x of afterTowersFell(trace)) afterTowers.push({ tier: x.tier, fight: x.fight != null, did: x.did, traded: x.lostBack.length > 0 });
-  for (const x of roshanReport(trace, { hero: first.key }).takes ?? []) {
+  const ro = roshanReport(trace, { hero: first.key });
+  if (ro.read_from === 'roshan_kills_and_aegis_pickups') gamesWithKillRows += 1;
+  for (const x of ro.takes ?? []) {
+    // The kill, when the trace kept it: who hit Roshan, for how long, whether the Aegis followed.
+    if (x.attempt) roshanKills.push({ picked_up: x.seen_by === 'kill_and_aegis_pickup', hitters: x.attempt.heroes_hitting.length, others: x.attempt.other_side_hitting.length, seconds: x.attempt.seconds });
+    else if (ro.read_from === 'roshan_kills_and_aegis_pickups') pickupsWithNoKill += 1;
+    // The table below is over Aegis pickups, as it always was: a kill nobody picked the Aegis up after has none of this.
+    if (!x.aegis_holder) continue;
     roshans.push({ aegis: x.aegis, took: x.buildings_taking_side_took_count, lost: x.buildings_other_side_took_in_the_next_300s.length, fights: x.fights_in_the_next_300s });
   }
   for (const p of siegeReport(trace, { hero: first.key }).pushes ?? []) {
@@ -211,6 +220,20 @@ out.after_won_fights = [0, 1, 2, 3, 4].map((n) => {
   return { losers_still_dead_10s_after: n === 4 ? '4 or more' : String(n), fights: list.length, ...Object.fromEntries(DID.map((d) => [d, list.filter((x) => x.did === d).length])) };
 });
 const fightsAfter = roshans.flatMap((x) => x.fights);
+if (gamesWithKillRows) {
+  const secs = roshanKills.map((x) => x.seconds).sort((a, b) => a - b);
+  const quart = (p) => (secs.length ? secs[Math.min(secs.length - 1, Math.floor(p * secs.length))] : null);
+  out.roshan_kills = {
+    games_with_kill_rows: gamesWithKillRows,
+    kills: roshanKills.length,
+    aegis_picked_up_by_the_killing_side_within_30s: roshanKills.filter((x) => x.picked_up).length,
+    no_pickup_seen_within_30s: roshanKills.filter((x) => !x.picked_up).length,
+    aegis_pickups_with_no_kill_row: pickupsWithNoKill,
+    heroes_of_the_killing_side_hitting: Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, roshanKills.filter((x) => x.hitters === n).length])),
+    kills_the_other_side_also_hit: roshanKills.filter((x) => x.others > 0).length,
+    attempt_seconds_quartiles: [quart(0.25), quart(0.5), quart(0.75)],
+  };
+}
 out.roshans = {
   takes: roshans.length,
   aegis: { used: roshans.filter((x) => x.aegis === 'used').length, expired: roshans.filter((x) => x.aegis === 'expired').length, game_ended: roshans.filter((x) => x.aegis === 'game_ended').length },
@@ -246,6 +269,7 @@ else {
   for (const x of out.after_towers_fell) console.log(`${`  tier ${x.tier}, ${x.after_a_won_fight ? 'after a won fight' : 'no won fight'}`.padEnd(46)} n=${String(x.towers).padEnd(4)} another ${x.took_another_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}  lost one ${x.takers_lost_a_building_meanwhile}`);
   for (const x of out.after_won_fights) console.log(`${`  losers still dead 10 s after: ${x.losers_still_dead_10s_after}`.padEnd(46)} n=${String(x.fights).padEnd(4)} building ${x.took_a_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}`);
   const ro = out.roshans;
+  if (out.roshan_kills) { const k = out.roshan_kills; console.log(`\n${k.kills} Roshan kills in ${k.games_with_kill_rows} games with kill rows: Aegis picked up by the killing side within 30 s ${k.aegis_picked_up_by_the_killing_side_within_30s}, not ${k.no_pickup_seen_within_30s}; pickups with no kill row ${k.aegis_pickups_with_no_kill_row}; heroes hitting 1/2/3/4/5: ${[1, 2, 3, 4, 5].map((n) => k.heroes_of_the_killing_side_hitting[n]).join(' / ')}; the other side also hit ${k.kills_the_other_side_also_hit}; attempt seconds (quartiles) ${k.attempt_seconds_quartiles.join(' / ')}`); }
   console.log(`\n${ro.takes} Roshans (Aegis pickups): used ${ro.aegis.used}, expired ${ro.aegis.expired}, game ended ${ro.aegis.game_ended}`);
   console.log(`  in the 300 s after: the taking side took ${ro.buildings_in_the_next_300s.taking_side} buildings, the other side ${ro.buildings_in_the_next_300s.other_side}; takes with no building after: ${ro.takes_with_no_building_after}`);
   console.log(`  fights in those 300 s: ${ro.fights_in_the_next_300s.fights}, the taking side lost fewer in ${ro.fights_in_the_next_300s.taking_side_lost_fewer}, the other side in ${ro.fights_in_the_next_300s.other_side_lost_fewer}`);

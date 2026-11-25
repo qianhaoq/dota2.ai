@@ -132,6 +132,15 @@ const T = {
   atRoshan: { en: 'At Roshan', zh: '在场' },
   roshanMe: { holder: { en: 'you held the Aegis', zh: '盾在你身上' }, there: { en: 'you were there', zh: '你在场' }, not_there: { en: 'you were not there', zh: '你不在场' } } as Record<string, Record<Lang, string>>,
   next300: { en: 'Buildings taken in the next 300 s', zh: '之后 300 秒拆掉的建筑' },
+  // A Roshan the replay kept the kill of: who landed it, who hit it and for how long, and where the other side stood.
+  roshanKilledBy: { en: 'Killed by', zh: '击杀' },
+  roshanNoPickup: { en: 'no Aegis pickup seen within 30 s', zh: '30 秒内没看到有人捡盾' },
+  roshanAttempt: { en: 'The attempt', zh: '打肉山' },
+  roshanFrom: { en: 'from', zh: '从' },
+  roshanOthers: { my_team: { en: 'They, when it began', zh: '开打时对方' }, enemy: { en: 'Your team, when it began', zh: '开打时我方' } } as Record<string, Record<Lang, string>>,
+  roshanOtherHit: { en: 'also hit it', zh: '也打到了肉山' },
+  dead: { en: 'dead', zh: '阵亡中' },
+  noPosition: { en: 'no position in the replay', zh: '录像里没有位置' },
   fightsAfter: { en: 'Fights in the next 300 s', zh: '之后 300 秒的团战' },
   pushedBy: { my_team: { en: 'Your team pushed', zh: '我方推' }, enemy: { en: 'They pushed', zh: '对方推' } } as Record<string, Record<Lang, string>>,
   tookIt: { en: 'fell', zh: '被拆' }, stood: { en: 'stood', zh: '没拆掉' },
@@ -293,6 +302,11 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   buildings_enemy_took_with_aegis: { en: 'Buildings the enemy took with the Aegis', zh: '对方持盾期间拆掉建筑' },
   my_team_roshans_with_no_building_after: { en: 'Your Roshans with no building after', zh: '我方打完肉山没拆到建筑' },
   roshans_i_was_at: { en: 'Roshans you were at', zh: '你在场的肉山' },
+  roshan_kills_in_the_trace: { en: 'Roshan kills in the replay', zh: '录像里的肉山击杀' },
+  my_team_roshans_i_hit: { en: 'Your team\'s Roshans you hit', zh: '我方肉山里你出手的' },
+  roshans_the_other_side_also_hit: { en: 'Roshans the other side also hit', zh: '双方都打到的肉山' },
+  tormentors_my_team_took: { en: 'Tormentors your team took', zh: '我方痛苦魔方' },
+  tormentors_enemy_took: { en: 'Tormentors the enemy took', zh: '对方痛苦魔方' },
   // siege_report's totals (sieges:<hero>).
   my_team_pushes: { en: 'Your team\'s pushes', zh: '我方推塔' },
   my_team_pushes_that_took_it: { en: 'Your pushes that took the building', zh: '我方推掉的' },
@@ -645,16 +659,31 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       </div>
     );
   }
-  if (data.kind === 'roshan' && r.aegis_holder) {
+  if (data.kind === 'roshan' && (r.aegis_holder || r.killed_by || r.attempt)) {
     const mine = r.taken_by === 'my_team';
     const heroes = (list: string[] | null, cls: string) => (list == null ? <span className="ag-none">–</span> : list.length ? list.map((h) => <span key={h} className={`ag-chip ${cls}`}>{N(h)}</span>) : <span className="ag-none">{t(T.nobody)}</span>);
     return (
       <div className="ag-rec">
         <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.roshanBy[r.taken_by])}{r.place && <> · {N(r.place)}</>}</p>
         <p className="ag-rec-line">
-          <span className="ag-chip">{t(T.aegisHolder)} {N(r.aegis_holder)} · {t(T.aegisEnd[r.aegis] ?? T.aegisEnd.unknown)}{(r.aegis_used_at ?? r.aegis_expired_at) && <em>{r.aegis_used_at ?? r.aegis_expired_at}</em>}</span>
+          {r.killed_by && <span className="ag-chip">{t(T.roshanKilledBy)} {N(r.killed_by)}</span>}
+          {r.aegis_holder
+            ? <span className="ag-chip">{t(T.aegisHolder)} {N(r.aegis_holder)} · {t(T.aegisEnd[r.aegis] ?? T.aegisEnd.unknown)}{(r.aegis_used_at ?? r.aegis_expired_at) && <em>{r.aegis_used_at ?? r.aegis_expired_at}</em>}</span>
+            : <span className="ag-chip">{t(T.aegisHolder)} · {t(T.roshanNoPickup)}</span>}
           {r.me && T.roshanMe[r.me] && <span className="ag-chip is-me">{t(T.roshanMe[r.me])}</span>}
         </p>
+        {r.attempt && (
+          <>
+            <p className="ag-rec-line"><span>{t(T.roshanAttempt)} · {t(T.roshanFrom)} {r.attempt.started} · {r.attempt.seconds}{t(T.sec)}</span>
+              {r.attempt.heroes_hitting.map((x: any) => <span key={x.hero} className={`ag-chip ${mine ? 'is-ally' : 'is-enemy'}`}>{N(x.hero)}<em>{x.damage}</em></span>)}
+              {r.attempt.other_side_hitting.map((x: any) => <span key={x.hero} className={`ag-chip ${mine ? 'is-enemy' : 'is-ally'}`}>{N(x.hero)}<em>{t(T.roshanOtherHit)} · {x.damage}</em></span>)}
+            </p>
+            {/* Where the other side stood when the attempt began: a place and a distance, never what they could see. */}
+            <p className="ag-rec-line"><span>{t(T.roshanOthers[r.taken_by])}</span>
+              {r.attempt.other_side_when_it_began.map((x: any) => <span key={x.hero} className={`ag-chip ${mine ? 'is-enemy' : 'is-ally'}`}>{N(x.hero)}<em>{x.dead ? t(T.dead) : x.place == null ? t(T.noPosition) : <>{N(x.place)}{x.distance != null && <> · {x.distance} {t(T.away)}</>}</>}</em></span>)}
+            </p>
+          </>
+        )}
         <p className="ag-rec-line"><span>{t(T.atRoshan)}</span>{heroes(r.taking_side_near, mine ? 'is-ally' : 'is-enemy')}{heroes(r.other_side_near, mine ? 'is-enemy' : 'is-ally')}</p>
         <p className="ag-rec-line"><span>{t(T.next300)}</span>
           {[...r.buildings_taking_side_took_in_the_next_300s.map((b: any) => ({ ...b, cls: mine ? 'is-good' : 'is-warn' })), ...r.buildings_other_side_took_in_the_next_300s.map((b: any) => ({ ...b, cls: mine ? 'is-warn' : 'is-good' }))]

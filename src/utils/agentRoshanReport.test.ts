@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
-import { roshanReport, aegisTakes, ROSHAN_TOOL, AEGIS_SECONDS } from '../../lib/agent/roshanReport.js';
+import { roshanReport, aegisTakes, ROSHAN_TOOL, AEGIS_SECONDS, ATTEMPT_GAP, PICKUP_WITHIN } from '../../lib/agent/roshanReport.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { deepReviewSystem, reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
@@ -59,6 +59,118 @@ describe('a Roshan is an Aegis pickup', () => {
     // From the other side the same take is the enemy's, and the holder's own report says so.
     expect((roshanReport(t, { hero: 'axe' }) as any).takes[0].me).toBe('holder');
     expect((roshanReport(t, { hero: 'pudge' }) as any).takes[0]).toMatchObject({ taken_by: 'enemy', me: 'there' });
+  });
+});
+
+describe('a Roshan read from its kill', () => {
+  /** A synthetic game with kill rows: `kills` [second, killer, side], `hits` [second, hero, damage], `tormentors` [second, killer, side]. */
+  const withKills = (o: any, { kills = [], hits = [], tormentors = [] }: any) => {
+    const t: any = synth(o);
+    const idx = (key: string) => t.names.indexOf(`npc_dota_hero_${key}`);
+    return { ...t, roshan_kills: kills.map(([sec, who, side]: any) => [sec, idx(who), side, 0, null, null]), roshan_damage: hits.map(([sec, who, dmg]: any) => [sec, idx(who), dmg]), tormentor_kills: tormentors.map(([sec, who, side]: any) => [sec, idx(who), side, 0]) };
+  };
+  const pos = { axe: [0, 0], lina: [1000, 0], sven: [9000, 9000], pudge: [0, 2000], zuus: [5000, 0] };
+
+  it('the kill, the attempt behind it, who hit it, where the other side stood, and the pickup that followed', () => {
+    const t = withKills({ heroes, pos, items: { lina: { item_aegis: { held: [[204, 504]] } } }, deaths: [[150, 'zuus']] }, {
+      kills: [[200, 'axe', 2]],
+      // An earlier poke at 120 (more than ATTEMPT_GAP before the next hit) is not this attempt.
+      hits: [[120, 'axe', 300], [170, 'axe', 900], [176, 'lina', 400], [185, 'axe', 1200], [190, 'pudge', 150], [199, 'axe', 800]],
+    });
+    const r: any = roshanReport(t, { hero: 'sven' });
+    expect(r).toMatchObject({ read_from: 'roshan_kills_and_aegis_pickups', roshan_kills_in_the_trace: 1, roshans_my_team_took: 1, roshans_enemy_took: 0, my_team_roshans_i_hit: 0, roshans_the_other_side_also_hit: 1 });
+    expect(r.takes).toHaveLength(1);
+    expect(r.takes[0]).toMatchObject({
+      ref: 'roshan:sven:1', clock: '3:20', taken_by: 'my_team', seen_by: 'kill_and_aegis_pickup', killed_by: 'axe',
+      aegis_holder: 'lina', aegis_picked_up_at: '3:24', aegis: 'expired', me: 'not_there',
+      attempt: {
+        started: '2:50', seconds: 30,
+        heroes_hitting: [{ hero: 'axe', damage: 2900 }, { hero: 'lina', damage: 400 }],
+        other_side_hitting: [{ hero: 'pudge', damage: 150 }],
+        // Where Radiant's opponents stood at 2:50, and how far from where Roshan died (the killer's place).
+        other_side_when_it_began: [{ hero: 'pudge', place: expect.any(String), distance: 2000 }, { hero: 'zuus', place: expect.any(String), distance: 5000 }],
+        i_hit_it: false,
+      },
+    });
+    expect(ATTEMPT_GAP).toBe(10);
+    // Told from a hero who hit it, and from the other side.
+    expect((roshanReport(t, { hero: 'lina' }) as any)).toMatchObject({ my_team_roshans_i_hit: 1, takes: [{ me: 'holder', attempt: { i_hit_it: true } }] });
+    expect((roshanReport(t, { hero: 'pudge' }) as any).takes[0]).toMatchObject({ taken_by: 'enemy', me: 'there', attempt: { i_hit_it: true } });
+    // What followed is counted from the pickup, as before.
+    expect(r.takes[0].buildings_taking_side_took_count).toBe(0);
+  });
+
+  it('a hero of the other side who was dead, or had no position, when it began is said so — not placed', () => {
+    const t = withKills({ heroes, pos, deaths: [[150, 'zuus']] }, { kills: [[200, 'axe', 2]], hits: [[195, 'axe', 500]] });
+    const zuus = t.heroes.findIndex((h: any) => h.key === 'zuus'); const pudge = t.heroes.findIndex((h: any) => h.key === 'pudge');
+    t.states[zuus].alive.fill(0, 150, 260);
+    t.states[pudge].x.fill(null, 0, 1000); t.states[pudge].y.fill(null, 0, 1000);
+    const a = (roshanReport(t, { hero: 'sven' }) as any).takes[0].attempt;
+    expect(a.other_side_when_it_began).toEqual([{ hero: 'pudge', place: null }, { hero: 'zuus', dead: true }]);
+  });
+
+  it('a kill with no pickup by the killing side within 30 s is a take whose Aegis was not seen picked up', () => {
+    // Radiant kills at 200; Dire's Pudge picks the Aegis up at 210 (a steal), and Radiant's Lina only at 300.
+    const t = withKills({ heroes, pos, items: { pudge: { item_aegis: { held: [[210, 510]] } } } }, { kills: [[200, 'axe', 2]], hits: [[198, 'axe', 500]] });
+    const r: any = roshanReport(t, { hero: 'sven' });
+    expect(PICKUP_WITHIN).toBe(30);
+    expect(r.takes.map((x: any) => [x.clock, x.taken_by, x.seen_by, x.aegis, x.aegis_holder ?? null])).toEqual([
+      ['3:20', 'my_team', 'kill', 'no_pickup_seen_within_30s', null],
+      // The other side's pickup is its own take: an Aegis in their hands, with no kill of theirs behind it.
+      ['3:30', 'enemy', 'aegis_pickup', 'expired', 'pudge'],
+    ]);
+    expect(r).toMatchObject({ roshans_my_team_took: 1, roshans_enemy_took: 1, roshan_kills_in_the_trace: 1 });
+  });
+
+  it('a pickup with no kill row (the last hit was not a hero\'s) is still a take; two kills each keep their own pickup', () => {
+    const t = withKills({ heroes, pos, items: { axe: { item_aegis: { held: [[100, 250], [705, 900]] } }, pudge: { item_aegis: { held: [[400, 700]] } } }, deaths: [[250, 'axe']] }, {
+      kills: [[398, 'pudge', 3], [700, 'axe', 2]], hits: [[395, 'pudge', 900], [698, 'axe', 900]],
+    });
+    const r: any = roshanReport(t, { hero: 'sven' });
+    expect(r.takes.map((x: any) => [x.ref, x.clock, x.taken_by, x.seen_by, x.aegis_holder, x.aegis])).toEqual([
+      ['roshan:sven:1', '1:40', 'my_team', 'aegis_pickup', 'axe', 'used'],
+      ['roshan:sven:2', '6:38', 'enemy', 'kill_and_aegis_pickup', 'pudge', 'expired'],
+      ['roshan:sven:3', '11:40', 'my_team', 'kill_and_aegis_pickup', 'axe', expect.any(String)],
+    ]);
+    expect(r.takes[0]).not.toHaveProperty('attempt');
+    expect(r.roshan_kills_in_the_trace).toBe(2);
+  });
+
+  it('Tormentors a hero killed are listed apart; a trace built before any of this was kept does not know', () => {
+    const t = withKills({ heroes, pos }, { tormentors: [[1200, 'lina', 2], [1500, 'pudge', 3], [1700, 'zuus', 0]] });
+    const r: any = roshanReport(t, { hero: 'sven' });
+    expect(r).toMatchObject({ tormentors_my_team_took: 1, tormentors_enemy_took: 2, roshan_kills_in_the_trace: 0 });
+    expect(r.tormentors).toEqual([{ clock: '20:00', taken_by: 'my_team', killed_by: 'lina' }, { clock: '25:00', taken_by: 'enemy', killed_by: 'pudge' }, { clock: '28:20', taken_by: 'enemy', killed_by: 'zuus' }]);
+    expect(r.gaps.filter((g: any) => g.topic === 'roshan')).toEqual([{ topic: 'roshan', reason: expect.stringContaining('who could see an attempt is not in the replay data') }]);
+    // The older shape: pickups only, and every count that needs kills is null — unknown, not zero.
+    const older: any = roshanReport(synth({ heroes, pos, items: { axe: { item_aegis: { held: [[100, 400]] } } } }), { hero: 'sven' });
+    expect(older).toMatchObject({ read_from: 'aegis_pickups_only', roshan_kills_in_the_trace: null, my_team_roshans_i_hit: null, roshans_the_other_side_also_hit: null, tormentors_my_team_took: null, tormentors_enemy_took: null, roshans_my_team_took: 1 });
+    expect(older).not.toHaveProperty('tormentors');
+    expect(older.takes[0]).toMatchObject({ seen_by: 'aegis_pickup', clock: '1:40', aegis_holder: 'axe' });
+    expect(older.takes[0]).not.toHaveProperty('killed_by');
+    expect(older.gaps.find((g: any) => g.topic === 'roshan').reason).toContain('built before kills were kept');
+  });
+
+  it('on the real game: Phantom Assassin killed it at 32:18 after 26 seconds, with Mirana, and nobody of the player\'s team near', () => {
+    // The rows today's builder keeps for the committed game (packages/review-engine/test/fixtures/roshan-9100904020.json).
+    const rows = JSON.parse(readFileSync(new URL('../../packages/review-engine/test/fixtures/roshan-9100904020.json', import.meta.url), 'utf8'));
+    const idx = (npc: string | null) => (npc == null ? -1 : trace.names.indexOf(npc));
+    const withRows = { ...trace, roshan_kills: rows.roshan_kills.map((x: any[]) => [x[0], idx(x[1]), ...x.slice(2)]), roshan_damage: rows.roshan_damage.map((x: any[]) => [x[0], idx(x[1]), x[2]]), tormentor_kills: rows.tormentor_kills };
+    const r: any = roshanReport(withRows, { hero: 'beastmaster' });
+    expect(r).toMatchObject({ read_from: 'roshan_kills_and_aegis_pickups', roshan_kills_in_the_trace: 1, roshans_enemy_took: 1, roshans_my_team_took: 0, my_team_roshans_i_hit: 0, roshans_the_other_side_also_hit: 0, tormentors_my_team_took: 0, tormentors_enemy_took: 0 });
+    expect(r.takes).toHaveLength(1);
+    expect(r.takes[0]).toMatchObject({
+      clock: '32:18', taken_by: 'enemy', seen_by: 'kill_and_aegis_pickup', killed_by: 'phantom_assassin', aegis_holder: 'phantom_assassin', aegis_picked_up_at: '32:18', aegis: 'used', me: 'not_there',
+      attempt: { started: '31:52', seconds: 26, heroes_hitting: [{ hero: 'phantom_assassin', damage: 8840 }, { hero: 'mirana', damage: 1765 }], other_side_hitting: [], i_hit_it: false },
+    });
+    // The player's team when it began: Sven dead, the nearest of the others 4,270 away.
+    const others = r.takes[0].attempt.other_side_when_it_began;
+    expect(others.find((x: any) => x.hero === 'sven')).toEqual({ hero: 'sven', dead: true });
+    expect(others.filter((x: any) => !x.dead).map((x: any) => [x.hero, x.place, x.distance])).toEqual([['beastmaster', 'dire_base', 9621], ['undying', 'dire_top_lane', 4270], ['skywrath_mage', 'dire_mid', 5666], ['dark_willow', 'dire_mid', 7535]]);
+    // The same Roshan read from the pickup alone (the committed trace) is the same take, without the attempt.
+    const old: any = roshanReport(trace, { hero: 'beastmaster' });
+    expect(old.takes[0]).toMatchObject({ clock: '32:18', taken_by: 'enemy', seen_by: 'aegis_pickup', aegis_holder: 'phantom_assassin', aegis: 'used' });
+    expect(old.takes[0].buildings_taking_side_took_in_the_next_300s).toEqual(r.takes[0].buildings_taking_side_took_in_the_next_300s);
   });
 });
 
