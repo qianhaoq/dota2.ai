@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { CoachApiError, fetchCoachReport, fetchRecentMatches } from './api';
+import { CoachApiError, fetchCoachReport, fetchPatchNews, fetchRecentMatches } from './api';
 import { markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, Evidence, Finding, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, useLang, type Lang } from './ui';
 import { AccessModes, HowItWorks } from './HomeBlocks';
 import { accessSnippets } from './accessSnippets';
 import { QuickJump, detectSmartInput } from './QuickJump';
-import { CURRENT_PATCH, itemIcon } from './patch';
+import { CURRENT_PATCH, SHIPPED_NEWS, itemIcon, readPatchNews, type PatchNews as PatchNewsData } from './patch';
 import { PatchAdvisor } from '../patch/PatchAdvisor';
 import { activeGoal, checkGoal, goalChecks, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
 import './coach.css';
@@ -77,6 +77,8 @@ const UI = {
   patchTitle: { en: 'Patch {v} is live', zh: '{v} 版本已上线' },
   patchNewItems: { en: 'New items', zh: '新装备' },
   patchNotes: { en: 'Full patch notes', zh: '完整更新日志' },
+  patchUpdate: { en: 'Update {v}', zh: '{v} 更新' },
+  patchUpdateChanges: { en: '{h} heroes, {i} items changed', zh: '{h} 位英雄、{i} 件物品调整' },
   patchForCoach: { en: 'For your review', zh: '对复盘的影响' },
   patchCta: { en: 'Review your first {v} game', zh: '复盘你的第一场 {v}' },
   patchMore: { en: 'Key changes & impact on reviews', zh: '查看核心改动与对复盘的影响' },
@@ -496,10 +498,34 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
   );
 };
 
+/**
+ * The patch news from the server (live from Valve), starting from the one this build shipped with.
+ * While the server is still choosing the highlights it is asked again every 20 s, past the browser
+ * cache, up to PATCH_NEWS_RETRIES times.
+ */
+export const PATCH_NEWS_RETRIES = 6;
+function useLivePatchNews(): PatchNewsData {
+  const [news, setNews] = useState<PatchNewsData>(SHIPPED_NEWS);
+  useEffect(() => {
+    const ctl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async (attempt: number) => {
+      const got = await fetchPatchNews(ctl.signal, attempt > 0);
+      const read = got && readPatchNews(got.body);
+      if (ctl.signal.aborted) return;
+      if (read) setNews(read);
+      if (got?.picking && attempt < PATCH_NEWS_RETRIES) timer = setTimeout(() => void load(attempt + 1), 20_000);
+    };
+    void load(0);
+    return () => { ctl.abort(); if (timer) clearTimeout(timer); };
+  }, []);
+  return news;
+}
+
 /** The patch as one line; new items and what changed for reviews are one click away. */
 const PatchNews: React.FC<{ onCta: () => void }> = ({ onCta }) => {
   const { lang, L } = useLang();
-  const p = CURRENT_PATCH;
+  const p = useLivePatchNews();
   const v = (b: Bi) => L(b).replace('{v}', p.version);
   return (
     <section className="cx-patch hm-patchbar" aria-labelledby="cx-patch-title">
@@ -525,12 +551,19 @@ const PatchNews: React.FC<{ onCta: () => void }> = ({ onCta }) => {
         <ul className="cx-patch-list">
           {p.highlights.map((h, i) => <li key={i}>{L(h)}</li>)}
         </ul>
-        <p className="cx-patch-coach"><strong>{L(UI.patchForCoach)}</strong> {L(p.forCoach)}</p>
+        {p.forCoach && <p className="cx-patch-coach"><strong>{L(UI.patchForCoach)}</strong> {L(p.forCoach)}</p>}
       </details>
       <div className="cx-patch-actions">
         <button type="button" className="cx-patch-cta" onClick={onCta}>{v(UI.patchCta)}</button>
-        <a href={p.notesUrl} target="_blank" rel="noreferrer">{L(UI.patchNotes)} ↗</a>
+        <a href={p.url} target="_blank" rel="noreferrer">{L(UI.patchNotes)} ↗</a>
       </div>
+      {p.update && (
+        <p className="hm-patch-update">
+          <time dateTime={p.update.date}>{p.update.date}</time>
+          <a href={p.update.url} target="_blank" rel="noreferrer">{L(UI.patchUpdate).replace('{v}', p.update.version)} ↗</a>
+          <span>{L(UI.patchUpdateChanges).replace('{h}', String(p.update.changes.heroes)).replace('{i}', String(p.update.changes.items))}</span>
+        </p>
+      )}
     </section>
   );
 };
