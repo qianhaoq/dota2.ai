@@ -243,3 +243,38 @@ describe('review eval: the script', () => {
     expect(out.latest.rubric_draft?.reviews).toBe(1);
   });
 });
+
+describe('review eval: review findings on #325', () => {
+  it('the language a review was asked for decides whether its English is a leak, not what it happens to be written in', () => {
+    // Asked for in Chinese, came back in English: every word is a leak, and it counts among the Chinese reviews.
+    const allEnglish = styleOf(review({ lang: 'zh' }));
+    expect(allEnglish.english?.words).toBe(28);
+    expect(summarize([scoreReview(review({ lang: 'zh' }))]).chinese_reviews_with_english_words).toBe(1);
+    // Asked for in English, quoting a Chinese name: not a Chinese review.
+    expect(styleOf(review({ lang: 'en', verdict: 'Phantom Assassin (幻影刺客) killed you four times.', findings: [finding({ claim: '幻影刺客 had Black King Bar.' })] })).english).toBeNull();
+    // A record that does not say is judged by what it is written in.
+    expect(styleOf({ verdict: '这条线判为 lost。', findings: [] }).english).toEqual({ words: 1, texts: 1, examples: ['lost'] });
+    expect(styleOf({ verdict: 'You died alone.', findings: [] }).english).toBeNull();
+  });
+
+  it('a rubric record is that record, or one that continues it past a colon — never one whose number merely starts with it', () => {
+    const point = { id: 'lane', says: 'x', any: { refs: ['death:tidehunter:1'] } };
+    const cites = (ref: string) => review({ findings: [finding({ evidence: [{ refs: [ref], fact: 'x' }] })] });
+    expect(rubricOf(cites('death:tidehunter:1'), { must_hit: [point] }).must_hit[0].hit).toBe(true);
+    expect(rubricOf(cites('death:tidehunter:1:w20'), { must_hit: [point] }).must_hit[0].hit).toBe(true);
+    expect(rubricOf(cites('death:tidehunter:10'), { must_hit: [point] }).must_hit[0].hit).toBe(false);
+    expect(rubricOf(cites('death:tidehunter:12'), { must_hit: [point] }).must_hit[0].hit).toBe(false);
+    // A prefix is written with its colon.
+    const every = { id: 'roar', says: 'x', any: { refs: ['cast:beastmaster:primal_roar:'] } };
+    expect(rubricOf(cites('cast:beastmaster:primal_roar:7'), { must_hit: [every] }).must_hit[0].hit).toBe(true);
+    expect(rubricOf(cites('cast:beastmaster:primal_roar_2:7'), { must_hit: [every] }).must_hit[0].hit).toBe(false);
+  });
+
+  it('the Tidehunter rubric\'s lane point is not met by a death late in the game', () => {
+    const tide = json('../../evals/reviews/9091400302.tidehunter.json');
+    const late = review({ lang: 'en', findings: [finding({ claim: 'You died on low health.', evidence: [{ refs: ['death:tidehunter:10'], clock: '40:00', fact: '40:00: below half health.' }], rule: { when: 'a', do: 'b', this_game: 'At 40:00.' } })] });
+    expect(rubricOf(late, tide).must_hit.find((p: { id: string }) => p.id === 'lane_deaths_on_low_health')?.hit).toBe(false);
+    const early = review({ lang: 'en', findings: [finding({ claim: 'You died on low health in lane.', evidence: [{ refs: ['death:tidehunter:1'], clock: '4:21', fact: '4:21: below half health.' }] })] });
+    expect(rubricOf(early, tide).must_hit.find((p: { id: string }) => p.id === 'lane_deaths_on_low_health')?.hit).toBe(true);
+  });
+});
