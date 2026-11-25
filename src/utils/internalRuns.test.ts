@@ -34,8 +34,12 @@ describe('marking a browser as ours', () => {
     const broken = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); }, removeItem: () => { throw new Error('denied'); } };
     expect(resolveInternal(broken, '?internal=1')).toBe(true);
     expect(resolveInternal(broken, '')).toBe(false);
-    expect(resolveInternal(null, '?internal=1')).toBe(false);
-    expect(resolveInternal(undefined, '')).toBe(false);
+    // No store at all — what the page passes when reading `localStorage` itself throws. (The first version
+    // answered false here: optional chaining skipped every call, nothing threw, and the URL was never asked.)
+    for (const none of [null, undefined]) expect([resolveInternal(none, '?internal=1'), resolveInternal(none, '?internal=0'), resolveInternal(none, ''), resolveInternal(none, '?hero=axe')]).toEqual([true, false, false, false]);
+    // A store that reads but cannot be written to: the same.
+    const readOnly = { getItem: () => null, setItem: () => { throw new Error('quota'); }, removeItem: () => {} };
+    expect(resolveInternal(readOnly, '?internal=1')).toBe(true);
   });
 
   it('its events say so; a visitor\'s carry no such field at all', () => {
@@ -65,6 +69,44 @@ describe('the page of a marked browser', () => {
     const prepare = calls.find((c) => c[0].includes('/prepare'));
     expect(prepare[1].headers).toEqual({ 'Content-Type': 'application/json', [INTERNAL_HEADER]: '1' });
     expect(localStorage.getItem(INTERNAL_STORAGE_KEY)).toBe('1');
+  });
+
+  it('the mark is taken when the app starts, before its first navigation drops the query — with no event sent on that page', async () => {
+    // A fresh browser opened on the home page: no return visit, no ?src=, so the start sends nothing.
+    window.history.replaceState({}, '', '/?internal=1');
+    const calls: any[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => { calls.push([String(url), init]); return new Response(JSON.stringify({ status: 'running', stage: 'locating' }), { status: 202 }); }));
+    (navigator as any).sendBeacon = undefined;
+    const analytics = await import('../services/analytics');
+    const api = await import('../agent/api');
+    analytics.initAnalytics();
+    expect(calls).toEqual([]);
+    expect(localStorage.getItem(INTERNAL_STORAGE_KEY)).toBe('1');
+    // The app goes to a match page, as the quick jump does: the query is gone.
+    window.history.replaceState({}, '', '/r/9100904020?lang=en');
+    analytics.trackEvent('match_opened', { matchId: '9100904020', lang: 'en' });
+    await api.prepareMatch('9100904020');
+    expect(JSON.parse(String(calls.find((c) => c[0].includes('/api/events'))[1].body))).toMatchObject({ event: 'match_opened', internal: true });
+    expect(calls.find((c) => c[0].includes('/prepare'))[1].headers).toEqual({ 'Content-Type': 'application/json', [INTERNAL_HEADER]: '1' });
+  });
+
+  it('a browser whose storage cannot be read is still marked by the URL, for that page', async () => {
+    window.history.replaceState({}, '', '/r/9100904020?hero=beastmaster&internal=1');
+    const own = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('SecurityError'); } });
+    try {
+      const calls: any[] = [];
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => { calls.push([String(url), init]); return new Response('{}', { status: 202 }); }));
+      (navigator as any).sendBeacon = undefined;
+      const analytics = await import('../services/analytics');
+      expect(() => analytics.initAnalytics()).not.toThrow();
+      expect(analytics.isInternalBrowser()).toBe(true);
+      expect(analytics.internalHeaders()).toEqual({ [INTERNAL_HEADER]: '1' });
+      analytics.trackEvent('match_opened', { matchId: '9100904020', lang: 'en' });
+      expect(JSON.parse(String(calls.find((c) => c[0].includes('/api/events'))[1].body))).toMatchObject({ event: 'match_opened', internal: true });
+    } finally {
+      if (own) Object.defineProperty(window, 'localStorage', own); else delete (window as any).localStorage;
+    }
   });
 
   it('a visitor\'s page sends neither', async () => {

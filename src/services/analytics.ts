@@ -72,6 +72,9 @@ function captureSource(): void {
 export function initAnalytics(): void {
   if (initialized || typeof window === 'undefined') return;
   initialized = true;
+  // First, and whether or not any event follows: `?internal=1` is on the URL the browser was opened with, and the
+  // app's first navigation (to a match page) drops it. Read here, it is kept before that can happen.
+  try { isInternalBrowser(); } catch { /* 埋点永远不能搞挂应用。 */ }
   try {
     const { anonId } = resolveAnonId(window.localStorage);
     cachedAnonId = anonId;
@@ -91,7 +94,7 @@ export function initAnalytics(): void {
 }
 
 let internalBrowser: boolean | null = null;
-/** Is this browser marked as one of ours (`?internal=1`, kept in localStorage)? Read once a page load. */
+/** Is this browser marked as one of ours (`?internal=1`, kept in localStorage)? Read once a page load — by initAnalytics, when the app starts. */
 export function isInternalBrowser(): boolean {
   if (internalBrowser != null) return internalBrowser;
   if (typeof window === 'undefined') return false;

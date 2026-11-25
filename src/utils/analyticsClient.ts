@@ -62,15 +62,19 @@ export function internalFromSearch(search: string): boolean | null {
   return v === '1' ? true : v === '0' ? false : null;
 }
 
-/** Apply the URL's word to the store, then say whether this browser is marked. Never throws. */
+/**
+ * Apply the URL's word to the store, then say whether this browser is marked. Never throws.
+ * With no store at all (reading `localStorage` itself can throw), or one that refuses, the URL alone decides, for
+ * this page: `?internal=1` still marks what this page sends.
+ */
 export function resolveInternal(storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null | undefined, search: string): boolean {
   const said = internalFromSearch(search);
+  if (!storage) return said === true;
   try {
-    if (said === true) storage?.setItem(INTERNAL_STORAGE_KEY, '1');
-    if (said === false) storage?.removeItem(INTERNAL_STORAGE_KEY);
-    return storage?.getItem(INTERNAL_STORAGE_KEY) === '1';
+    if (said === true) storage.setItem(INTERNAL_STORAGE_KEY, '1');
+    if (said === false) storage.removeItem(INTERNAL_STORAGE_KEY);
+    return storage.getItem(INTERNAL_STORAGE_KEY) === '1';
   } catch {
-    // No storage (a private window): the URL alone decides, for this page.
     return said === true;
   }
 }
