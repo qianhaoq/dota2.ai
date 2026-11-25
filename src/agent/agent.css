@@ -285,3 +285,13 @@
 .ag-plan-yours dt span { display: block; margin-top: 2px; color: var(--accent); letter-spacing: 0; text-transform: none; }
 .ag-plan-parts > .ag-plan-yours { padding: 10px 12px; margin: 0 -12px; background: rgba(227, 163, 70, 0.08); border-radius: 8px; }
 .ag-plan-yours dd { font-weight: 500; }
+
+/* Share the finished review: to the team (no hero in the link), or this review itself. */
+.ag-share { margin: 4px 0 18px; }
+.ag-share-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.ag-share-row .ag-btn { padding: 7px 16px; }
+.ag-share-hint { color: var(--text-3); font-size: var(--fs-meta); margin: 6px 0 0; }
+.ag-share-manual { display: grid; gap: 4px; margin-top: 8px; font-size: var(--fs-meta); color: var(--text-2); max-width: 560px; }
+.ag-share-manual input { width: 100%; min-width: 0; background: var(--panel); border: 1px solid var(--line-2); color: var(--text); border-radius: 8px; padding: 7px 10px; font: inherit; }
+.ag-pick-from { color: var(--accent); font-size: var(--fs-meta); margin: -12px 0 16px; }
+.ag-pick-from + .ag-pick-sub { margin-top: 0; }
