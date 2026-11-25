@@ -591,6 +591,8 @@ export const AgentMatchPage: React.FC = () => {
         </div>
         {/* The replay is parsed and the review is being written: the reader's own deaths, to watch meanwhile. Outside the status region, so a screen reader is not read the whole list as progress. */}
         {hasTrace && heroKey && !parsing && <WaitDeaths matchId={matchId} hero={heroKey} lang={lang} />}
+        {/* The match record needs no replay: line-ups, items and the result are there from the first second of the wait, also while the replay is still being fetched. */}
+        {scoreboard}
       </Shell>
     );
   }
