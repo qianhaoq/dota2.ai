@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { buildProbes, gradeProbe, numbersIn, clocksIn, sideCounts, zhNumeral, scoreProbes, PROBE_KINDS } from '../../lib/agent/probes.js';
+import { buildProbes, gradeProbe, numbersIn, clocksIn, sideCounts, zhNumeral, namesPlace, scoreProbes, PROBE_KINDS } from '../../lib/agent/probes.js';
 import { reviewToolkit } from '../../lib/agent/deepReview.js';
 import { runChat } from '../../lib/agent/chat.js';
 
@@ -45,6 +45,23 @@ describe('probes: questions the replay settles, with the answer the tools give',
     expect(Math.min(...lost.map(sec))).toBe(sec(at('first_tower_lost').expect.clock));
   });
 
+  it('two-lookup probes: a moment from one tool, the answer from another', () => {
+    const at = (kind: string) => probes.find((p) => p.kind === kind);
+    // The fight is asked by its start, as fight_report gives it; decision_points gives the same fight by its end.
+    const won = kit.runTool('decision_points', { hero: 'beastmaster' }).points.find((p: any) => p.kind === 'after_a_won_fight' && p.won_by === 'my_team');
+    const start = kit.runTool('fight_report', { hero: 'beastmaster' }).fights.find((f: any) => f.fight === won.fight).clock;
+    expect(at('buildings_after_won_fight').question).toContain(` ${start}, `);
+    expect(start).not.toBe(won.clock);
+    expect(at('buildings_after_won_fight').expect).toEqual({ numbers: [won.buildings_winners_took.length] });
+    // Where I was at the second the first tower fell.
+    const tower = at('first_tower_lost').expect.clock;
+    expect(at('where_i_was_at_first_tower_lost').source).toEqual({ tool: 'game_state', args: { hero: 'beastmaster', at: tower } });
+    const me = kit.runTool('game_state', { hero: 'beastmaster', at: tower }).my_team.heroes.find((s: any) => s.hero === 'beastmaster');
+    expect(at('where_i_was_at_first_tower_lost').expect).toEqual(me.alive ? { my_team: 'dire', place: me.place } : { dead: true });
+    const aegis = kit.runTool('roshan_report', { hero: 'beastmaster' }).takes[0];
+    expect(at('buildings_after_first_aegis').expect).toEqual({ numbers: [aegis.buildings_taking_side_took_count] });
+  });
+
   it('asks in the reader\'s language', () => {
     const zh: any[] = buildProbes(trace, 'beastmaster', { lang: 'zh' }) as any[];
     expect(zh.map((p) => p.expect)).toEqual(probes.map((p) => p.expect));
@@ -64,7 +81,7 @@ describe('probes: questions the replay settles, with the answer the tools give',
     const rosh: any = reviewToolkit({ trace: noAegis, hero: 'beastmaster', lang: 'en' })!.runTool('roshan_report', { hero: 'beastmaster' });
     expect(rosh.takes).toEqual([]);
     const kinds = (buildProbes(noAegis, 'beastmaster') as any[]).map((p) => p.kind);
-    expect(kinds).toEqual(PROBE_KINDS.filter((k) => k !== 'first_aegis'));
+    expect(kinds).toEqual(PROBE_KINDS.filter((k) => k !== 'first_aegis' && k !== 'buildings_after_first_aegis'));
   });
 });
 
@@ -140,7 +157,9 @@ describe('probes: grading an answer', () => {
   it('reads a Chinese count whole, and only before a counter', () => {
     expect(numbersIn('你死了十四次', 'zh')).toEqual([14]);
     expect(numbersIn('你死了四次', 'zh')).toEqual([4]);
-    expect(numbersIn('二十个人头，一波团，一座塔', 'zh')).toEqual([20]);
+    expect(numbersIn('二十个人头，一波团', 'zh')).toEqual([20]);
+    // 座 counts buildings: "拆了一座" answers how many buildings.
+    expect(numbersIn('一座。之后拆了三座塔', 'zh')).toEqual([1, 3]);
     expect([zhNumeral('十'), zhNumeral('十四'), zhNumeral('二十'), zhNumeral('三十五'), zhNumeral('十十')]).toEqual([10, 14, 20, 35, null]);
     const d = { kind: 'deaths_before_10', source: { args: {} }, expect: { numbers: [1] } };
     expect(gradeProbe(d, '你一次都没死。', { ...names, lang: 'zh' }).pass).toBe(false);
@@ -161,6 +180,31 @@ describe('probes: grading an answer', () => {
     const p = { kind: 'heroes_in_lost_fight', source: { args: { hero: 'beastmaster' } }, expect: { my_team: 'dire', sides: [{ count: 2, heroes: ['beastmaster', 'undying'] }, { count: 4, heroes: ['axe', 'necrolyte', 'venomancer', 'mirana'] }] } };
     expect(gradeProbe(p, 'Your team brought two heroes, and the enemy brought four.', names).pass).toBe(true);
     expect(gradeProbe(p, 'Your team brought four heroes, and the enemy brought two.', names)).toMatchObject({ pass: false, wrong: ['my team 4', 'enemy 2'] });
+  });
+
+  it('a place is read the way a player says it, "your own" being the player\'s side', () => {
+    expect(namesPlace('you were in your own mid lane', 'dire_mid', 'en', 'dire')).toBe(true);
+    expect(namesPlace('you were in Radiant mid', 'dire_mid', 'en', 'dire')).toBe(false);
+    expect(namesPlace('in the bottom river', 'river_bot_lane', 'en', 'radiant')).toBe(true);
+    expect(namesPlace('in the top river', 'river_top_jungle', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('in the enemy top lane', 'river_top_lane', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('in the enemy top lane', 'dire_top_lane', 'en', 'radiant')).toBe(true);
+    expect(namesPlace('your bottom tier 1 fell', 'radiant_bot_lane', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('你在下路河道', 'river_bot_lane', 'zh', 'dire')).toBe(true);
+    expect(namesPlace('你在自家上路野区', 'dire_top_jungle', 'zh', 'dire')).toBe(true);
+    expect(namesPlace('你在自家上路', 'dire_top_jungle', 'zh', 'dire')).toBe(false);
+    expect(namesPlace('back in your base', 'radiant_base', 'en', 'radiant')).toBe(true);
+  });
+
+  it('"took nothing" is a zero, and a dead player is "dead"', () => {
+    const n = { kind: 'buildings_after_won_fight', source: { args: {} }, expect: { numbers: [0] } };
+    expect(gradeProbe(n, 'You took nothing in those two minutes.', names).pass).toBe(true);
+    expect(gradeProbe(n, '之后两分钟一座都没拆。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(n, 'You took one tower.', names).pass).toBe(false);
+    const d = { kind: 'where_i_was_at_first_tower_lost', source: { args: {} }, expect: { dead: true } };
+    expect(gradeProbe(d, 'You were dead, 20 s from respawning.', names).pass).toBe(true);
+    expect(gradeProbe(d, '你当时阵亡了。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(d, 'You were in the Dire jungle.', names).pass).toBe(false);
   });
 
   it('scores by kind', () => {
