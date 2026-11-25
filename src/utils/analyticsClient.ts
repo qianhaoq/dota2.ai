@@ -17,6 +17,7 @@ export type AnalyticsEventName =
   | 'review_refused'
   | 'chat_asked'
   | 'review_ready'
+  | 'moment_played'
   | 'arrived'
   | 'goal_set'
   | 'goal_checked';

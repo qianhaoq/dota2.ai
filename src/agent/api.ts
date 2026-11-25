@@ -76,6 +76,36 @@ export const fetchReview = (matchId: string, hero: string, lang: string, signal?
 export const startReview = (matchId: string, hero: string, lang: string, plan?: string | null, model?: string | null) =>
   fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}), ...(model ? { model } : {}) }) }).then((r) => json<ReviewState>(r));
 
+/** Where the ten heroes were around a game time (lib/agent/moment.js): what the page replays. */
+export interface Moment {
+  status: 'ok'; t: number; clock: string; from: number; to: number; me: string;
+  heroes: { hero: string; side: 'me' | 'ally' | 'enemy' }[];
+  /** One per second; `at[i]` is hero i's [x, y, alive], or null for a second the replay has no sample of them. */
+  frames: { t: number; at: ([number, number, 0 | 1] | null)[] }[];
+  deaths: { t: number; hero: string; killer: string | null }[];
+  /** The square of the map to show, in world units from its lower-left corner. */
+  box: { x: number; y: number; size: number };
+  /** Never near the player in the window, and the replay shows it for every second; `not_known`: not seen near, with a second the replay cannot speak for. */
+  away: string[]; not_known: string[];
+  /** Where on the map the player stood at the moment, in the reader's words; null without a sample. */
+  place: string | null; place_name: string | null;
+  names: Record<string, string>;
+  /** The game's own name for each hero, which its minimap icon is filed under. */
+  icons: Record<string, string>;
+}
+const momentCache = new Map<string, Promise<Moment>>();
+/** A moment is a pure function of the replay, so it is fetched once a session. */
+export function fetchMoment(matchId: string, hero: string, lang: string, t: number): Promise<Moment> {
+  const key = `${matchId}|${hero}|${lang}|${t}`;
+  let p = momentCache.get(key);
+  if (!p) {
+    p = fetch(`/api/agent/${enc(matchId)}/moment?hero=${enc(hero)}&lang=${lang}&t=${t}`).then((r) => json<Moment>(r));
+    p.catch(() => momentCache.delete(key));
+    momentCache.set(key, p);
+  }
+  return p;
+}
+
 const evidenceCache = new Map<string, Promise<EvidenceRecord>>();
 /** The tool record behind a ref. Records are pure functions of the replay, so they are cached for the session. */
 export function fetchEvidence(matchId: string, hero: string, lang: string, ref: string): Promise<EvidenceRecord> {

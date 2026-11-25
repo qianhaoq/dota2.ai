@@ -725,6 +725,11 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByText('DeepSeek 的结论。')).toBeTruthy();
     const bar = screen.getByRole('radiogroup', { name: '撰写模型' });
     expect(within(bar).getAllByRole('radio').map((r) => [r.textContent, r.getAttribute('aria-checked')])).toEqual([['DeepSeek 4.1 Flash · 约 2–3 分钟', 'true'], ['Kimi K3.1 Pro · 约 13 分钟', 'false'], ['GLM-5.3 · 约 24 分钟', 'false']]);
+    // It stands after the review, under the line that says the review was checked: nothing sits between the reader and the headline.
+    const headline = screen.getByRole('heading', { level: 1 });
+    expect(headline.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector('.ag-checked')!.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector('.ag-head')!.nextElementSibling!.className).toBe('ag-layout');
     fireEvent.click(within(bar).getByRole('radio', { name: 'Kimi K3.1 Pro · 约 13 分钟' }));
     expect(screen.getByTestId('where').textContent).toContain('model=kimi-k3.1-pro');
     // That model has no review of this game yet: the start is offered with it picked, and nothing has been started.

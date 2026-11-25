@@ -536,16 +536,17 @@ export const AgentMatchPage: React.FC = () => {
     return (
       <Shell wide>
         {header}
-        {offered.length > 1 && (
-          <div className="ag-modelbar">
-            <span>{t(T.modelBy)}</span>
-            {modelPick(t(T.modelBy))}
-          </div>
-        )}
         <div className="ag-layout">
           <div>
             <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />} quick={!slow} />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
+            {/* Which model wrote it, and the choice of another: after the review, not between the reader and its first line. */}
+            {offered.length > 1 && (
+              <div className="ag-modelbar is-after">
+                <span>{t(T.modelBy)}</span>
+                {modelPick(t(T.modelBy))}
+              </div>
+            )}
           </div>
           <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} plan={plan} model={model} />
         </div>

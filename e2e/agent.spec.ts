@@ -203,6 +203,31 @@ test('evidence: the replay record behind a sentence, on demand', async ({ page }
   await noSideScroll(page);
 });
 
+test('a moment replayed on the map: the heroes around the cited second, played and scrubbed', async ({ page }) => {
+  await review(page);
+  // 27:27, the Roar into her Black King Bar.
+  const first = page.locator('.ag-moments .ag-ev').first();
+  await first.getByRole('button', { name: '重放这一刻' }).click();
+  const replay = first.locator('.ag-replay');
+  await expect(replay.getByRole('img', { name: '27:15 到 27:33 的站位' })).toBeVisible();
+  // Asked for, it plays to its last second on its own.
+  const clock = replay.locator('.ag-replay-controls output');
+  await expect(clock).toHaveText('27:33', { timeout: 15_000 });
+  await expect(replay.getByRole('button', { name: '播放' })).toBeVisible();
+  // Back to the cited second: the player is on the map, marked, among the heroes who were there.
+  await replay.getByRole('slider', { name: '比赛时间' }).fill('12');
+  await expect(clock).toHaveText('27:27');
+  await expect(clock).toHaveClass(/is-moment/);
+  await expect(replay.locator('.ag-replay-hero.is-me text')).toHaveText('你');
+  expect(await replay.locator('.ag-replay-hero').count()).toBeGreaterThanOrEqual(4);
+  await expect(replay.locator('figcaption')).toContainText('不代表谁能看到谁');
+  await noSideScroll(page);
+  const axe = await new AxeBuilder({ page }).include('.ag-replay').analyze();
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
+  await first.getByRole('button', { name: '收起回放' }).click();
+  await expect(replay).toHaveCount(0);
+});
+
 test('ask the coach: the lookups show, then the answer; "ask about this" carries the moment', async ({ page }) => {
   await review(page);
   const chat = page.getByRole('complementary', { name: '问教练' });
