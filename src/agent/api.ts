@@ -3,8 +3,12 @@ import type { GoalSpec } from '../coach/types';
 import { internalHeaders } from '../services/analytics';
 
 export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string }
-/** Where the replay parse stands when there is no trace yet. `final`: trying again will not help (the replay is gone). */
-export type ParseState = { status: 'none' } | { status: 'running'; stage: string | null } | { status: 'failed'; reason: string; final: boolean } | { status: 'ready' } | { status: 'unavailable' };
+/**
+ * Where the replay parse stands when there is no trace yet. `final`: trying again will not help (the replay is gone).
+ * `retry_in_sec` (a failure that is not final): how long until asking again starts a new parse — sooner, the same
+ * failure is answered. 0: now.
+ */
+export type ParseState = { status: 'none' } | { status: 'running'; stage: string | null } | { status: 'failed'; reason: string; final: boolean; retry_in_sec?: number } | { status: 'ready' } | { status: 'unavailable' };
 export interface Availability {
   trace: boolean; model_configured: boolean; can_parse: boolean; heroes: AgentHero[]; parse?: ParseState;
   /** The models a review can be asked from here (ids of lib/agent/models.js), the default first; absent where there is no choice. */
@@ -47,7 +51,8 @@ export type ReviewState =
   | { status: 'running'; steps: ToolStep[] }
   | { status: 'ready'; review: DeepReview; verification: { repaired: boolean; dropped: number }; model: string | null; tool_calls: number; /** The prompt version the review was written under; absent from a server that does not say. */ prompt_version?: number }
   | { status: 'failed'; reason?: string }
-  | { status: 'unavailable'; reason?: string };
+  /** `retry_in_sec`: the model account refused a review a moment ago (out of credit, key refused) and none is started until then; it can be tried again. */
+  | { status: 'unavailable'; reason?: string; retry_in_sec?: number };
 
 export interface EvidenceRecord { status: 'ok'; ref: string; kind: string; record: any; names: Record<string, string> }
 

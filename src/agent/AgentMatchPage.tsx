@@ -584,7 +584,8 @@ export const AgentMatchPage: React.FC = () => {
   }
   if (!hasTrace && !avail.can_parse) return dead(T.offTitle, T.offBody);
   if (state?.status === 'failed') return dead(T.failedTitle, T.failedBody, true);
-  if (state?.status === 'unavailable' || (hasTrace && !avail.model_configured)) return dead(T.failedTitle, T.unavailable);
+  // Not available for a while (the model account refused a review a moment ago) is not a dead end: it can be tried again.
+  if (state?.status === 'unavailable' || (hasTrace && !avail.model_configured)) return dead(T.failedTitle, T.unavailable, state?.status === 'unavailable' && state.retry_in_sec != null);
 
   // Something is running, or the reader said go and the next request is about to leave.
   const working = parsing || state?.status === 'running' || (intent && !notice && !wait && (!hasTrace || state === null || state.status === 'none'));
