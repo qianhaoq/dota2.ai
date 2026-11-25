@@ -14,7 +14,8 @@ export interface PatchOverview {
   patch: string; major_patch?: string; released: string; notes: string;
   releases?: { version: string; released: string; url: string }[];
   heroes_changed: number; items_changed: number; neutral_items_changed: number;
-  numbers: { source: string; bracket: string; before_the_patch: Window; since_the_patch: Window; matches: { before_the_patch: number; since_the_patch: number } };
+  /** `numbers_patch`: the patch the windows are around (the STRATZ snapshot's); older than `major_patch` until it is refreshed. */
+  numbers: { source: string; bracket: string; numbers_patch?: string; before_the_patch: Window; since_the_patch: Window; matches: { before_the_patch: number; since_the_patch: number } };
   win_rate_rose_most: MoverRow[]; win_rate_fell_most: MoverRow[]; pick_rate_rose_most: MoverRow[]; pick_rate_fell_most: MoverRow[];
   /** Whether the server has a model to answer questions with. */
   advisor: boolean;

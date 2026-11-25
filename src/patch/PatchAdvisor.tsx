@@ -40,6 +40,7 @@ const T = {
   failed: { en: 'No answer came back. Try again.', zh: '没有拿到回答，请重试。' },
   unverified: { en: 'Not found in the notes or the numbers, treat with care:', zh: '以下内容在更新日志和数据里没有查到，请谨慎看待：' },
   noData: { en: 'The numbers could not be loaded.', zh: '数据没有加载出来。' },
+  oldNumbers: { en: 'These numbers are from before and after {n}, not yet {m}.', zh: '这些数字是 {n} 前后的，还不是 {m} 的。' },
 } as const;
 
 const SUGGEST: Bi[] = [
@@ -179,6 +180,9 @@ export const PatchAdvisor: React.FC<{ lang: Lang; version: string; notesUrl: str
               </div>
               {w && (
                 <p className="pa-muted">
+                  {w.numbers_patch && ready.major_patch && w.numbers_patch !== ready.major_patch && (
+                    <><strong className="pa-old-numbers">{t(T.oldNumbers).replace('{n}', w.numbers_patch).replace('{m}', ready.major_patch)}</strong>{' '}</>
+                  )}
                   {t(T.windows).replace('{b0}', w.before_the_patch.from).replace('{b1}', w.before_the_patch.to).replace('{bd}', String(w.before_the_patch.days)).replace('{a0}', w.since_the_patch.from).replace('{a1}', w.since_the_patch.to).replace('{ad}', String(w.since_the_patch.days))}
                   {' '}<a href="https://stratz.com" target="_blank" rel="noreferrer">{t(T.credit)}</a> · <a href={notesUrl} target="_blank" rel="noreferrer">{t(T.notes)} ↗</a>
                 </p>

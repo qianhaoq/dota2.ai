@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildReleaseNotes, currentReleases, mergeReleases } from '../../lib/patch/valveNotes.js';
-import { createLiveNotes } from '../../lib/patch/liveNotes.js';
+import { advances, createLiveNotes } from '../../lib/patch/liveNotes.js';
 import { createValveFetch } from '../../lib/patch/valveFetch.js';
 import { PATCH, useLiveNotes } from '../../lib/patch/data.js';
 import { runPatchTool } from '../../lib/patch/tools.js';
@@ -139,6 +139,47 @@ describe('the advisor on the live notes', () => {
     await live.ensure(5000);
     expect(applied.map((x) => x.version)).toEqual(['7.42']);
     expect(logs.some((m) => m.includes('7.42a not taken'))).toBe(true);
+  });
+
+  it('a rebuild that comes up short keeps the updates already in use (review of #335)', async () => {
+    const state: any = { names: ['7.42', '7.42a'], notes: { '7.42': notes('7.42', T, major), '7.42a': notes('7.42a', T + 6 * 86_400, update), '7.42b': notes('7.42b', T + 7 * 86_400, update) } };
+    let t = 0;
+    const applied: string[] = [];
+    const live = createLiveNotes({ fetchJson: valve(state).fetchJson, now: () => t, ttlMs: 1000, apply: (x: any) => applied.push(x.releases.map((r: any) => r.version).join()) });
+    await live.ensure(5000);
+    // 7.42b is out, and this time Valve does not serve 7.42a.
+    state.names = ['7.42', '7.42a', '7.42b'];
+    delete state.notes['7.42a'];
+    t += 1000; await live.ensure(5000);
+    expect(applied).toEqual(['7.42,7.42a']);
+    expect(live.inUse()).toBe('7.42,7.42a');
+  });
+
+  it('advances: forward only — more updates of the same major, or a newer major', () => {
+    expect(advances('7.42', null)).toBe(true);
+    expect(advances('7.42,7.42a', '7.42')).toBe(true);
+    expect(advances('7.42', '7.42,7.42a')).toBe(false);
+    expect(advances('7.42,7.42a', '7.42,7.42a')).toBe(false);
+    expect(advances('7.43', '7.42,7.42a,7.42b')).toBe(true);
+    expect(advances('7.9', '7.10')).toBe(false);
+  });
+
+  it('notes of a newer major than the numbers: tools and prompt say the numbers are the older patch\'s (review of #335)', () => {
+    const r743 = buildReleaseNotes({ version: '7.43', notes: notes('7.43', T, major), ...lists });
+    useLiveNotes(mergeReleases([r743], '2026-12-20'));
+    const gap = { topic: 'numbers_for_the_current_patch', reason: 'the_numbers_are_from_patch_7.42_not_7.43' };
+    const hero = runPatchTool('hero_patch', { hero: 'axe' }, { lang: 'en' });
+    expect(hero).toMatchObject({ patch: '7.43', numbers_patch: '7.42' });
+    expect(hero.gaps).toContainEqual(gap);
+    expect(runPatchTool('meta_movers', {}, { lang: 'en' }).gaps).toContainEqual(gap);
+    const o = runPatchTool('patch_overview', {}, { lang: 'en' });
+    expect(o.numbers.numbers_patch).toBe('7.42');
+    expect(o.gaps).toContainEqual(gap);
+    expect(advisorSystem('en')).toContain('never present it as how heroes are doing in 7.43');
+    expect(advisorContext('en').numbers.patch).toBe('7.42');
+    useLiveNotes(SNAPSHOT);
+    expect(runPatchTool('meta_movers', {}, { lang: 'en' }).gaps).not.toContainEqual(gap);
+    expect(advisorSystem('en')).not.toContain('never present it');
   });
 
   it('Valve down: the notes in use stay (the committed snapshot at first)', async () => {

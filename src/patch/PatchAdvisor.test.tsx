@@ -119,4 +119,27 @@ describe('PatchAdvisor', () => {
     expect(advisorStepLabel({ tool: 'patch_overview', args: {} }, 'zh')).toBe('看版本总览');
     expect(advisorStepLabel({ tool: 'something_new', args: {} }, 'en')).toBe('something_new');
   });
+
+  it('follows the server\'s release in the title and links every release; says when the numbers are an older patch\'s (review of #335)', async () => {
+    const o = overview('zh');
+    mockFetch({ '/api/patch?': {
+      ...o, patch: '7.43a', major_patch: '7.43', notes: 'https://www.dota2.com/patches/7.43a',
+      releases: [{ version: '7.43', released: '', url: 'https://www.dota2.com/patches/7.43' }, { version: '7.43a', released: '', url: 'https://www.dota2.com/patches/7.43a' }],
+      numbers: { ...o.numbers, numbers_patch: '7.42' },
+    } });
+    show('zh');
+    expect(await screen.findByRole('heading', { level: 2, name: '7.43a 版本顾问' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '7.43 ↗' }).getAttribute('href')).toBe('https://www.dota2.com/patches/7.43');
+    expect(screen.getByRole('link', { name: '7.43a ↗' }).getAttribute('href')).toBe('https://www.dota2.com/patches/7.43a');
+    expect(screen.getByText('这些数字是 7.42 前后的，还不是 7.43 的。')).toBeTruthy();
+  });
+
+  it('numbers of the same patch as the notes: no such line', async () => {
+    const o = overview('zh');
+    mockFetch({ '/api/patch?': o });
+    show('zh');
+    await screen.findByRole('table', { name: '胜率上升' });
+    expect(document.querySelector('.pa-old-numbers')).toBeNull();
+    expect(document.querySelector('.pa-releases')).toBeNull();
+  });
 });
