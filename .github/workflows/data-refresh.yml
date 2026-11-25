@@ -15,6 +15,9 @@
 # - STRATZ_API_TOKEN: the three STRATZ steps are skipped, and said so, without it.
 # - OPENDOTA_API_KEY (optional): higher OpenDota limits.
 #
+# New data under lib/ changes what the review tools answer: the refresh raises the
+# review version (and its pin) with it, so stored reviews are written again.
+#
 # The pull request is the usual way in: CI, Codex review and auto-merge. When
 # the tests fail here it is opened as a draft with no-auto-merge. A new game
 # patch is reported, not taken up: src/coach/patch.ts is written by hand.

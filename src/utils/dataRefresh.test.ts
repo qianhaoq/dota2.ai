@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-const { steps, sitePatch, onlyDateChanged, body } = createRequire(import.meta.url)('../../.github/scripts/data-refresh.cjs');
+const { steps, sitePatch, onlyDateChanged, body, bumpReviewVersion } = createRequire(import.meta.url)('../../.github/scripts/data-refresh.cjs');
 
 describe('data refresh: what counts as a change', () => {
   it('a file whose only change is its fetch date is no change; any data change is', () => {
@@ -107,3 +109,27 @@ describe('data refresh: the workflow keeps its one PR moving (review of #289)', 
   });
 });
 
+
+describe('data refresh: new data raises the review version', () => {
+  it('the version, its pin and every test that states it go up by one; nothing else changes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'refresh-'));
+    try {
+      cpSync('lib/agent/review/schema.js', join(root, 'lib/agent/review/schema.js'));
+      cpSync('src/utils', join(root, 'src/utils'), { recursive: true });
+      const now = Number(readFileSync('lib/agent/review/schema.js', 'utf8').match(/DEEP_REVIEW_PROMPT_VERSION = (\d+)/)![1]);
+      expect(bumpReviewVersion(root)).toEqual({ from: now, to: now + 1 });
+      expect(readFileSync(join(root, 'lib/agent/review/schema.js'), 'utf8')).toContain(`export const DEEP_REVIEW_PROMPT_VERSION = ${now + 1};`);
+      const pin = readFileSync(join(root, 'src/utils/agentPromptPin.test.ts'), 'utf8');
+      expect(pin).toContain(`const PIN = { version: ${now + 1}, `);
+      // The hash is the prompt's: unchanged, since the prompt text did not change.
+      expect(pin.match(/hash: '([0-9a-f]+)'/)![1]).toBe(readFileSync('src/utils/agentPromptPin.test.ts', 'utf8').match(/hash: '([0-9a-f]+)'/)![1]);
+      for (const f of readdirSync(join(root, 'src/utils')).filter((x) => x.endsWith('.test.ts'))) expect([f, readFileSync(join(root, 'src/utils', f), 'utf8').includes(`expect(DEEP_REVIEW_PROMPT_VERSION).toBe(${now});`)]).toEqual([f, false]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('the pull request says so', () => {
+    const text = body({ version: '7.42', steps: [], changed: ['lib/coach/data/item-vs.json'], review_version: { from: 35, to: 36 } }, 'ok');
+    expect(text).toContain('Review version raised from 35 to 36');
+    expect(body({ version: '7.42', steps: [], changed: [] }, 'ok')).not.toContain('Review version');
+  });
+});
