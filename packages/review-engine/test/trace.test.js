@@ -274,6 +274,160 @@ describe('review findings on #232', () => {
   });
 });
 
+describe('what a hero killed, gold by reason, Roshan', () => {
+  const state = (t, hero, team) => ({ entity_kind: 'real_hero', t, hero, team, player_index: team === 2 ? 0 : 5, x: 0, y: 0, hp: 500, max_hp: 600, mana: 100, level: 3, life_state: 0, abilities: [], items: [], controls: {} });
+  const kill = (t, target, extra = {}) => ({ type: 'DOTA_COMBATLOG_DEATH', t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, attacker_team: 2, target, target_hero: false, target_illusion: false, target_team: 3, last_hits: 7, networth: 1234.4, ...extra });
+  const gold = (t, target, reason, value) => ({ type: 'DOTA_COMBATLOG_GOLD', t, target, gold_reason: reason, value });
+  const named = (tr, rows) => rows.map(([t, who, ...rest]) => [t, who < 0 ? null : tr.names[who], ...rest]);
+
+  it('names what was killed: lane creep, deny, neutral, enemy ward, enemy courier, or something else', () => {
+    const b = createTraceBuilder();
+    b.addEvent(kill(60.04, 'npc_dota_creep_badguys_melee'));
+    b.addEvent(kill(61, 'npc_dota_creep_goodguys_ranged', { target_team: 2, last_hits: 7 }));
+    b.addEvent(kill(62, 'npc_dota_badguys_siege', { last_hits: 8 }));
+    b.addEvent(kill(63, 'npc_dota_neutral_satyr_soulstealer', { target_team: 4, last_hits: 9 }));
+    b.addEvent(kill(64, 'npc_dota_observer_wards'));
+    b.addEvent(kill(65, 'npc_dota_sentry_wards'));
+    b.addEvent(kill(66, 'npc_dota_courier'));
+    b.addEvent(kill(67, 'npc_dota_venomancer_plague_ward', { last_hits: 10 }));
+    const tr = b.finish();
+    expect(named(tr, tr.creep_kills)).toEqual([
+      [60, 'npc_dota_hero_axe', 'l', 7, 1234], [61, 'npc_dota_hero_axe', 'd', 7, 1234], [62, 'npc_dota_hero_axe', 'l', 8, 1234], [63, 'npc_dota_hero_axe', 'n', 9, 1234],
+      [64, 'npc_dota_hero_axe', 'o', 7, 1234], [65, 'npc_dota_hero_axe', 's', 7, 1234], [66, 'npc_dota_hero_axe', 'c', 7, 1234], [67, 'npc_dota_hero_axe', 'x', 10, 1234],
+    ]);
+  });
+
+  it('a side the log does not give is not guessed: a lane creep is "u", a ward or courier is not counted as the enemy\'s', () => {
+    const b = createTraceBuilder();
+    b.addEvent(kill(1, 'npc_dota_creep_badguys_melee', { attacker_team: undefined }));
+    b.addEvent(kill(2, 'npc_dota_creep_badguys_melee', { target_team: 0 }));
+    b.addEvent(kill(3, 'npc_dota_observer_wards', { target_team: undefined }));
+    b.addEvent(kill(4, 'npc_dota_observer_wards', { target_team: 2 }));
+    b.addEvent(kill(5, 'npc_dota_courier', { attacker_team: null }));
+    expect(b.finish().creep_kills.map((k) => k[2])).toEqual(['u', 'u', 'x', 'x', 'x']);
+  });
+
+  it('a row\'s running numbers are kept only when the log has them', () => {
+    const b = createTraceBuilder();
+    b.addEvent(kill(1, 'npc_dota_neutral_kobold', { last_hits: undefined, networth: null }));
+    b.addEvent(kill(2, 'npc_dota_neutral_kobold', { last_hits: -1, networth: -5 }));
+    b.addEvent(kill(3, 'npc_dota_neutral_kobold', { last_hits: 2.5, networth: 'x' }));
+    b.addEvent(kill(4, 'npc_dota_neutral_kobold', { last_hits: 0, networth: 0 }));
+    expect(b.finish().creep_kills.map((k) => [k[3], k[4]])).toEqual([[null, null], [null, null], [null, null], [0, 0]]);
+  });
+
+  it('an illusion\'s kill is the hero\'s; a kill by a unit that is no hero, and the death of a hero or of its illusion, are not rows', () => {
+    const b = createTraceBuilder();
+    b.addEvent(kill(1, 'npc_dota_creep_badguys_melee', { attacker_illusion: true }));
+    b.addEvent(kill(2, 'npc_dota_creep_badguys_melee', { attacker: 'npc_dota_beastmaster_boar', attacker_hero: false }));
+    b.addEvent(kill(3, 'npc_dota_hero_lina', { target_hero: true }));
+    b.addEvent(kill(4, 'npc_dota_hero_lina', { target_hero: true, target_illusion: true }));
+    const tr = b.finish();
+    expect(named(tr, tr.creep_kills)).toEqual([[1, 'npc_dota_hero_axe', 'l', 7, 1234]]);
+    expect(tr.deaths).toHaveLength(1);
+  });
+
+  it('gold is summed per game minute, hero and reason code; a loss is negative', () => {
+    const b = createTraceBuilder();
+    b.addEvent(gold(-90, 'npc_dota_hero_axe', 0, 600));
+    b.addEvent(gold(61, 'npc_dota_hero_axe', 13, 40));
+    b.addEvent(gold(119.9, 'npc_dota_hero_axe', 13, 38));
+    b.addEvent(gold(120, 'npc_dota_hero_axe', 13, 41));
+    b.addEvent(gold(65, 'npc_dota_hero_axe', 14, 22));
+    b.addEvent(gold(65, 'npc_dota_hero_lina', 13, 36));
+    // Dying for 19 gold, as the log writes it.
+    b.addEvent(gold(70, 'npc_dota_hero_lina', 1, 4294967277));
+    // A reason the builder has no name for is kept as it is.
+    b.addEvent(gold(71, 'npc_dota_hero_lina', 23, 160));
+    const tr = b.finish();
+    expect(named(tr, tr.gold.map(([m, who, reason, v]) => [m, who, reason, v]))).toEqual([
+      [-2, 'npc_dota_hero_axe', 0, 600], [1, 'npc_dota_hero_axe', 13, 78], [2, 'npc_dota_hero_axe', 13, 41], [1, 'npc_dota_hero_axe', 14, 22],
+      [1, 'npc_dota_hero_lina', 13, 36], [1, 'npc_dota_hero_lina', 1, -19], [1, 'npc_dota_hero_lina', 23, 160],
+    ]);
+  });
+
+  it('gold rows that name no hero, no reason or no amount are not counted; an extract without gold rows has no gold field', () => {
+    const b = createTraceBuilder();
+    b.addEvent(gold(1, 'npc_dota_creep_badguys_melee', 13, 40));
+    b.addEvent(gold(1, undefined, 13, 40));
+    b.addEvent(gold(1, 'npc_dota_hero_axe', undefined, 40));
+    b.addEvent(gold(1, 'npc_dota_hero_axe', 13, undefined));
+    b.addEvent(kill(2, 'npc_dota_neutral_kobold'));
+    const tr = b.finish();
+    // Unknown, not "no gold": the field is absent, as it is in a trace built before gold was kept.
+    expect('gold' in tr).toBe(false);
+    // The deaths were read: one kill, and an empty list would have meant none.
+    expect(tr.creep_kills).toHaveLength(1);
+    expect(createTraceBuilder().finish().creep_kills).toEqual([]);
+  });
+
+  it('a Roshan a hero killed: when, by whom, which side, the row, and the log\'s visibility flags as written', () => {
+    const b = createTraceBuilder();
+    b.addEvent(kill(1938.2, 'npc_dota_roshan', { attacker: 'npc_dota_hero_phantom_assassin', visible_radiant: true, visible_dire: null }), 69415);
+    b.addEvent(kill(2500, 'npc_dota_roshan', { attacker: 'npc_dota_hero_sven', attacker_team: 3, visible_radiant: false, visible_dire: true }), 80000);
+    b.addEvent(kill(2600, 'npc_dota_roshan', { attacker: 'npc_dota_hero_sven', attacker_team: undefined }), 80001);
+    const tr = b.finish();
+    expect(named(tr, tr.roshan_kills)).toEqual([
+      [1938.2, 'npc_dota_hero_phantom_assassin', 2, 69415, 1, null],
+      [2500, 'npc_dota_hero_sven', 3, 80000, 0, 1],
+      [2600, 'npc_dota_hero_sven', 0, 80001, null, null],
+    ]);
+    // Roshan is not a creep kill.
+    expect(tr.creep_kills).toEqual([]);
+  });
+
+  it('Roshan gold alone is not a Roshan: the Tormentor pays the same reason code', () => {
+    const b = createTraceBuilder();
+    for (const t of [0, 1]) { b.addState(state(t, 'axe', 2)); b.addState(state(t, 'lina', 3)); }
+    // 9102345221 at 22:02: five heroes are paid 125 each under reason 15, and what died was the Tormentor.
+    b.addEvent(gold(1322.03, 'npc_dota_hero_axe', 15, 125));
+    const tr = b.finish();
+    expect(tr.roshan_kills).toEqual([]);
+    expect(tr.tormentor_kills).toEqual([]);
+    // The gold itself is kept, under its code.
+    expect(tr.gold).toEqual([[22, tr.names.indexOf('npc_dota_hero_axe'), 15, 125]]);
+  });
+
+  it('Roshan gold in the second of a hero\'s kill is that kill, not another one', () => {
+    const b = createTraceBuilder();
+    b.addState(state(0, 'axe', 2));
+    b.addEvent(kill(900, 'npc_dota_roshan'), 5);
+    b.addEvent(gold(900, 'npc_dota_hero_axe', 15, 284));
+    b.addEvent(gold(900.9, 'npc_dota_hero_axe', 15, 125));
+    expect(b.finish().roshan_kills).toHaveLength(1);
+  });
+
+  it('a Tormentor a hero killed is its own row: not a Roshan, and not among the creep kills', () => {
+    const b = createTraceBuilder();
+    b.addEvent(kill(1322, 'npc_dota_miniboss', { attacker: 'npc_dota_hero_lina', attacker_team: 3 }), 40000);
+    b.addEvent(gold(1322, 'npc_dota_hero_lina', 15, 125));
+    b.addEvent(kill(2029, 'npc_dota_miniboss', { attacker_team: undefined }), 50000);
+    b.addEvent(kill(2100, 'npc_dota_miniboss', { attacker: 'npc_dota_beastmaster_boar', attacker_hero: false }), 50001);
+    const tr = b.finish();
+    expect(named(tr, tr.tormentor_kills)).toEqual([[1322, 'npc_dota_hero_lina', 3, 40000], [2029, 'npc_dota_hero_axe', 0, 50000]]);
+    expect(tr.roshan_kills).toEqual([]);
+    expect(tr.creep_kills).toEqual([]);
+  });
+
+  it('damage to Roshan is summed per second and hero, apart from the damage to heroes and buildings', () => {
+    const b = createTraceBuilder();
+    const hit = (t, extra = {}) => ({ type: 'DOTA_COMBATLOG_DAMAGE', t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_roshan', target_hero: false, value: 100, ...extra });
+    b.addEvent(hit(1912.1)); b.addEvent(hit(1912.8, { value: 50 })); b.addEvent(hit(1913, { attacker_illusion: true, value: 20 }));
+    b.addEvent(hit(1913.5, { attacker: 'npc_dota_hero_lina' }));
+    b.addEvent(hit(1914, { attacker: 'npc_dota_beastmaster_boar', attacker_hero: false }));
+    b.addEvent(hit(1914, { value: 0 }));
+    const tr = b.finish();
+    expect(named(tr, tr.roshan_damage.map(([sec, who, v]) => [sec, who, v]))).toEqual([[1912, 'npc_dota_hero_axe', 150], [1913, 'npc_dota_hero_axe', 20], [1913, 'npc_dota_hero_lina', 100]]);
+    expect(tr.damage).toEqual([]);
+  });
+
+  it('the tools still tell the model what they told it before: these fields are read by none of them yet', () => {
+    const b = createTraceBuilder();
+    b.addEvent(kill(1, 'npc_dota_roshan')); b.addEvent(kill(2, 'npc_dota_neutral_kobold')); b.addEvent(gold(3, 'npc_dota_hero_axe', 13, 40));
+    expect(b.finish().gaps.map((g) => `${g.topic}:${g.reason}`)).toEqual(['vision:no_fog_of_war_in_trace', 'creeps:no_creep_entities_in_trace', 'roshan:no_reliable_roshan_event', 'ability_immunity:only_item_spell_immunity_modifiers_tracked', 'unused_free_abilities:an_ability_never_cast_with_no_mana_cost_cannot_be_told_from_a_passive']);
+  });
+});
+
 describe('net worth from the replay\'s match metadata', () => {
   const state = (t, hero, team) => ({ entity_kind: 'real_hero', t, hero, team, player_index: team === 2 ? 0 : 5, x: 0, y: 0, hp: 500, max_hp: 600, mana: 100, level: 1, life_state: 0, abilities: [], items: [], controls: {} });
   const built = (metadataRows) => {
@@ -627,6 +781,28 @@ describe('trace tools on a real game', () => {
     for (const never of ['blink', 'black_king_bar', 'tango', 'tpscroll']) expect(at(mine, never)).toBeUndefined();
     const pa = run('item_timeline', { hero: 'phantom_assassin' }).items;
     expect([at(pa, 'bfury'), at(pa, 'black_king_bar')]).toEqual(['15:47', '21:29']);
+  });
+
+  it('who won is whose Ancient fell, not who landed the last hit on it', () => {
+    // In 7 of 32 parsed games the Ancient's kill row names no side (taker 0). Read off the taker, both teams
+    // were told they lost and a reader with no side was told nobody won.
+    const fortAt = trace.buildings.findIndex((b) => /_fort$/.test(trace.names[b[1]]));
+    expect(trace.names[trace.buildings[fortAt][1]]).toBe('npc_dota_badguys_fort');
+    const with_ = (taker) => ({ ...trace, buildings: trace.buildings.map((b, i) => (i === fortAt ? [b[0], b[1], taker, b[3]] : b)) });
+    for (const taker of [2, 0, 3, null]) {
+      const t = with_(taker);
+      expect([taker, runTraceTool(t, 'match_overview', {}, { perspective: 'beastmaster' }).result]).toEqual([taker, 'my_team_lost']);
+      expect([taker, runTraceTool(t, 'match_overview', {}, { perspective: 'axe' }).result]).toEqual([taker, 'my_team_won']);
+      expect([taker, runTraceTool(t, 'match_overview', {}, {}).winner]).toEqual([taker, 'radiant']);
+    }
+    // The other Ancient: the other answer.
+    const names = trace.names.map((n) => (n === 'npc_dota_badguys_fort' ? 'npc_dota_goodguys_fort' : n));
+    expect(runTraceTool({ ...with_(0), names }, 'match_overview', {}, { perspective: 'beastmaster' }).result).toBe('my_team_won');
+    expect(runTraceTool({ ...with_(0), names }, 'match_overview', {}, {}).winner).toBe('dire');
+    // No Ancient fell in the trace (a replay cut short): nobody is said to have won or lost.
+    const cut = { ...trace, buildings: trace.buildings.filter((_, i) => i !== fortAt) };
+    expect(runTraceTool(cut, 'match_overview', {}, { perspective: 'beastmaster' })).toMatchObject({ result: null, duration: null });
+    expect(runTraceTool(cut, 'match_overview', {}, {}).winner).toBeNull();
   });
 
   it('told from a player, sides replace Radiant/Dire and the gold sign', () => {

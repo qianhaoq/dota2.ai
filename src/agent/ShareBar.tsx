@@ -27,13 +27,16 @@ const T = {
 /**
  * Share links. The team link has no hero, plan or seat; the personal one keeps what makes this review this one,
  * its language included: reviews are kept per language, so a link without it opens in the recipient's own
- * language and asks for a review that may not exist. The team link leaves the language to each teammate,
+ * language and asks for a review that may not exist. So is the model that wrote it, by its id, wherever the
+ * server offers more than it can tell apart without one: the review another model wrote is another review,
+ * and which model is the default can change after the link is sent. The team link leaves the language to each teammate,
  * except Chinese, which the sender's team chat is in.
  */
-export function shareLinks(origin: string, matchId: string, hero: string, lang: Lang, plan: string | null = null) {
+export function shareLinks(origin: string, matchId: string, hero: string, lang: Lang, plan: string | null = null, model: string | null = null) {
   const team = new URLSearchParams({ ref: 'team' });
   const self = new URLSearchParams({ hero });
   if (plan) self.set('plan', plan);
+  if (model) self.set('model', model);
   self.set('ref', 'share');
   self.set('lang', lang);
   if (lang === 'zh') team.set('lang', 'zh');
@@ -46,11 +49,11 @@ async function copyText(text: string): Promise<boolean> {
 
 const touch = () => typeof navigator.share === 'function' && Boolean(window.matchMedia?.('(pointer: coarse)').matches);
 
-export const ShareBar: React.FC<{ matchId: string; hero: string; lang: Lang; plan?: string | null }> = ({ matchId, hero, lang, plan = null }) => {
+export const ShareBar: React.FC<{ matchId: string; hero: string; lang: Lang; plan?: string | null; model?: string | null }> = ({ matchId, hero, lang, plan = null, model = null }) => {
   const [copied, setCopied] = useState<Target | null>(null);
   const [manual, setManual] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const links = shareLinks(window.location.origin, matchId, hero, lang, plan);
+  const links = shareLinks(window.location.origin, matchId, hero, lang, plan, model);
   const text = (target: Target) => (target === 'team' ? T.teamText : T.selfText)[lang].replace('{id}', matchId);
 
   const share = async (target: Target) => {

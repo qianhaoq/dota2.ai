@@ -20,12 +20,16 @@ const as741 = { ...scoreboard, patch: 60, start_time: 1794747997 };
 const release = (name: string) => index.releases.find((r: any) => r.name === name);
 const at = (iso: string) => Date.parse(iso) / 1000;
 
+// The newest data the site has: the current release at its latest hotfix. The live tables are refreshed to it
+// (scheduled refresh), so this — not a release named here — is what they must agree with.
+const newest = () => patchData(CURRENT_RELEASE, { hotfix: (release(CURRENT_RELEASE).hotfixes ?? []).filter((h: any) => h.data).at(-1)?.rollout_by ?? null });
+
 describe('the data of the patch a game was played on', () => {
   it('each release has its own data, letters included; the current release is the live tables', () => {
     expect(CURRENT_PATCH).toBe('7.42');
-    expect(CURRENT_RELEASE).toBe('7.42');
+    expect(CURRENT_RELEASE).toBe('7.42a');
     expect(PATCH_NAMES[60]).toBe('7.41');
-    expect(RELEASES.map((r) => r.name)).toEqual(['7.40', '7.40b', '7.40c', '7.41', '7.41a', '7.41b', '7.41c', '7.41d', '7.41e', '7.41f', '7.42']);
+    expect(RELEASES.map((r) => r.name)).toEqual(['7.40', '7.40b', '7.40c', '7.41', '7.41a', '7.41b', '7.41c', '7.41d', '7.41e', '7.41f', '7.42', '7.42a']);
     // Valve's notes: 7.41c "Recipe cost increased from 600 to 700. Total cost increased from 5100g to 5200g" (Heart of Tarrasque);
     // 7.41d "Recipe cost decreased from 1150 to 1100" (Dagon).
     expect(patchData('7.41b').items.heart.cost).toBe(5100);
@@ -43,15 +47,15 @@ describe('the data of the patch a game was played on', () => {
     expect(now).toMatchObject({ name: '7.42', major: '7.42', id: 61, exact: true });
     expect(now.items.heavens_halberd.cost).toBe(items742.heavens_halberd.cost);
     expect(now.has('skypiercer')).toBe(true);
-    expect(snap741f).toMatchObject({ release: '7.41f', major: '7.41', major_id: 60, game_files: expect.stringContaining('the last game update before 7.42') });
+    expect(snap741f).toMatchObject({ release: '7.41f', major: '7.41', major_id: 60, game_files: expect.stringContaining('the release\'s rollout') });
   });
 
   it('every release\'s data is its own snapshot, the newest one too: never the live tables a refresh may not have reached', () => {
     expect(index.releases.map((r: any) => r.data)).toEqual(index.releases.map((r: any) => `${r.name}.json`));
     expect(index.releases_checked_at).toMatch(/^\d{4}-\d\d-\d\dT/);
-    const now = patchData('7.42');
+    const now = newest();
     expect(now.items).not.toBe(items742);
-    // Built from 7.42's own game files, it agrees with the live tables: same prices and recipes.
+    // Built from the newest release's own game files, it agrees with the live tables: same prices and recipes.
     for (const [k, v] of Object.entries(now.items) as [string, any][]) if (items742[k]) expect([k, v.cost, v.components]).toEqual([k, items742[k].cost, items742[k].components ?? null]);
     // Only an unknown release falls back to the live tables, and says so.
     expect(patchData(null)).toMatchObject({ exact: false, reason: 'patch_of_this_game_unknown' });
@@ -68,9 +72,9 @@ describe('the data of the patch a game was played on', () => {
     expect(r.stderr).toContain('Nothing was written');
   });
 
-  it('7.42\'s snapshot shows each hero\'s abilities as the live table does: the same abilities, ultimates and flags', () => {
+  it('the newest release\'s snapshot shows each hero\'s abilities as the live table does: the same abilities, ultimates and flags', () => {
     const live = JSON.parse(readFileSync(new URL('../../lib/coach/data/abilities.json', import.meta.url), 'utf8'));
-    const snap = patchData('7.42');
+    const snap = newest();
     for (const [id, list] of Object.entries(live.heroes) as [string, any[]][]) {
       const got = snap.heroAbilities(Number(id)) ?? [];
       const pick = (x: any) => ({ id: x.id, ult: Boolean(x.ult), dmg: x.dmg ?? null, pierces: x.pierces ?? null, dispel: x.dispel ?? null });
@@ -94,7 +98,7 @@ describe('the data of the patch a game was played on', () => {
 
   it('OpenDota\'s patch number names a patch, not its letter: its last release is used, and said to be a guess unless it is the only one', () => {
     expect(patchData(60)).toMatchObject({ name: '7.41f', exact: false, reason: 'letter_release_unknown; 7.41f data used' });
-    expect(patchData(61)).toMatchObject({ name: '7.42', exact: true, reason: null });
+    expect(patchData(61)).toMatchObject({ name: '7.42a', exact: false, reason: 'letter_release_unknown; 7.42a data used' });
     expect(patchData(null)).toMatchObject({ name: CURRENT_RELEASE, exact: false, reason: 'patch_of_this_game_unknown' });
     expect(patchData(undefined)).toMatchObject({ exact: false });
     expect(patchData(40)).toMatchObject({ name: CURRENT_RELEASE, exact: false, reason: 'no_data_kept_for_this_patch' });
@@ -123,8 +127,8 @@ describe('the data of the patch a game was played on', () => {
     expect(isBigItemIn(patchData('7.42'), 'blink', rule)).toBe(true);
     // Upgraded Dagons are built from a recipe with no component list: still big items, in every release, as in the live tables.
     for (const k of ['dagon_2', 'dagon_3', 'dagon_4', 'dagon_5']) for (const r of ['7.40', '7.41c', '7.42']) expect([k, r, isBigItemIn(patchData(r), k, rule)]).toEqual([k, r, true]);
-    // Every item the live tables call big is big in 7.42's snapshot, and the other way round.
-    const live = patchData(null); const snap = patchData('7.42');
+    // Every item the live tables call big is big in the newest snapshot, and the other way round.
+    const live = patchData(null); const snap = newest();
     for (const k of Object.keys(snap.items)) expect([k, isBigItemIn(snap, k, rule)]).toEqual([k, isBigItemIn(live, k, rule)]);
     // Gold on top of a held part uses the patch's prices: Talisman of Evasion went into a 7.41 Halberd, not a 7.42 one.
     expect(goldOnTop(['talisman_of_evasion', 'heavens_halberd'], patchData('7.41f').items)).toEqual([null, 3300 - patchData('7.41f').items.talisman_of_evasion.cost]);
@@ -153,7 +157,7 @@ describe('the review tools tell a 7.41 game its own numbers', () => {
     expect(now.items_that_answer_attack_damage.find((x: any) => x.item === 'heavens_halberd')).toMatchObject({ cost: items742.heavens_halberd.cost });
     expect(now.most_built_by_pros_on_this_hero.played_on_releases).toEqual(['7.42']);
     const unknown: any = buildCheck(unplaced, { hero: 'beastmaster' }, { lang: 'zh' });
-    expect(unknown.gaps).toContainEqual({ topic: 'item_and_ability_data_of_this_game_patch', reason: 'patch_of_this_game_unknown; 7.42 data used' });
+    expect(unknown.gaps).toContainEqual({ topic: 'item_and_ability_data_of_this_game_patch', reason: 'patch_of_this_game_unknown; 7.42a data used' });
   });
 
   it('power_spikes, hero_abilities and pro_item_choices answer for the game\'s patch, and the evidence card reads the same', () => {
@@ -185,7 +189,8 @@ describe('which patch a game was played on, when the match data is not at hand',
     const c = release('7.41c');
     expect(c).toMatchObject({ major: '7.41', major_id: 60, data: '7.41c.json', rollout_update: expect.stringContaining('Client') });
     // By start time: before the 20 minutes in which 7.41c rolled out, inside them, after them.
-    expect(gamePatch(0, { start_time: at(c.rollout_from) - 1 })).toEqual({ release: '7.41b', id: 60, how: 'start_time', exact: true });
+    // The last game before 7.41c was on 7.41b's last hotfix.
+    expect(gamePatch(0, { start_time: at(c.rollout_from) - 1 })).toEqual({ release: '7.41b', hotfix: release('7.41b').hotfixes.at(-1).rollout_by, id: 60, how: 'start_time', exact: true });
     expect(gamePatch(0, { start_time: at(c.rollout_from) + 60 })).toEqual({ release: '7.41c', id: 60, how: 'start_time', exact: false, reason: 'started_while_7.41c_was_rolling_out' });
     expect(gamePatch(0, { start_time: at(c.rollout_by) })).toEqual({ release: '7.41c', id: 60, how: 'start_time', exact: true });
     expect(gamePatch(0, { start_time: at(release('7.40').rollout_from) - 1 })).toMatchObject({ release: null, reason: 'older_than_7.40' });
@@ -207,11 +212,11 @@ describe('which patch a game was played on, when the match data is not at hand',
     const later = { patch: 62, start_time: at(release('7.42').rollout_by) + 40 * 86400 };
     expect(gamePatch(9200000000, later)).toEqual({ release: null, id: 62, how: 'match_data', exact: false, reason: 'patch_newer_than_the_site_data' });
     expect(patchForGame(9200000000, later)).toMatchObject({ name: CURRENT_RELEASE, exact: false, how: null, reason: 'patch_newer_than_the_site_data' });
-    expect(patchForGame(9200000000, { ...later, patch: 61 })).toMatchObject({ name: '7.42', exact: true, how: 'start_time' });
+    expect(patchForGame(9200000000, { ...later, patch: 61 })).toMatchObject({ name: '7.42a', exact: true, how: 'start_time' });
     // A newer release whose match ids are not indexed yet (between the two refresh steps): an id past the last
     // indexed boundary may be in it, so it is not called exact — unless OpenDota's patch number names the newer patch.
     const behind = index.releases.map((r: any) => (r.name === '7.42' ? { ...r, last_match_id_before: undefined, first_match_id_after: undefined } : r));
-    expect(gamePatch(9100904020, null, { releases: behind })).toEqual({ release: '7.41f', id: 60, how: 'match_id', exact: false, reason: 'may_be_7.42_or_later_whose_match_ids_are_not_indexed' });
+    expect(gamePatch(9100904020, null, { releases: behind })).toEqual({ release: '7.41f', hotfix: release('7.41f').hotfixes.at(-1).rollout_by, id: 60, how: 'match_id', exact: false, reason: 'may_be_7.42_or_later_whose_match_ids_are_not_indexed' });
     expect(gamePatch(9100904020, { patch: 61 }, { releases: behind })).toEqual({ release: null, id: 61, how: 'match_data', exact: false, reason: 'letter_release_unknown' });
     expect(gamePatch(9091400302, null, { releases: behind })).toMatchObject({ release: '7.41f', exact: false });
     // With every boundary indexed, the same games are placed exactly.
@@ -221,19 +226,85 @@ describe('which patch a game was played on, when the match data is not at hand',
     expect(gamePatch('not an id', null)).toMatchObject({ release: null, reason: 'patch_of_this_game_unknown' });
     expect(patchForGame(9091400302, null)).toMatchObject({ name: '7.41f', exact: true, how: 'match_id', reason: null });
     expect(patchForGame(0, { patch: 60 })).toMatchObject({ name: '7.41f', exact: false, how: 'match_data', reason: 'letter_release_unknown; 7.41f data used' });
-    expect(patchForGame(0, { patch: 61 })).toMatchObject({ name: '7.42', exact: true, how: 'match_data', reason: null });
+    expect(patchForGame(0, { patch: 61 })).toMatchObject({ name: '7.42a', exact: false, how: 'match_data', reason: 'letter_release_unknown; 7.42a data used' });
     expect(patchForGame(index.releases[0].last_match_id_before, null)).toMatchObject({ name: CURRENT_RELEASE, exact: false, how: null, reason: 'older_than_7.40' });
   });
 
   it('the review says which patch its numbers are from, and how that is known', async () => {
     expect(reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' })!.patch).toEqual({ name: '7.42', exact: true, known_from: 'match_id' });
-    expect(reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh', match: as741 })!.patch).toEqual({ name: '7.41f', exact: true, known_from: 'start_time' });
-    expect(reviewToolkit({ trace: unplaced, hero: 'beastmaster', lang: 'zh' })!.patch).toEqual({ name: '7.42', exact: false, reason: 'patch_of_this_game_unknown' });
+    // The 7.41f game was played after 7.41f's hotfix of 7 October: the record says so.
+    expect(reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh', match: as741 })!.patch).toEqual({ name: '7.41f', hotfix: release('7.41f').hotfixes[0].rollout_by, exact: true, known_from: 'start_time' });
+    expect(reviewToolkit({ trace: unplaced, hero: 'beastmaster', lang: 'zh' })!.patch).toEqual({ name: '7.42a', exact: false, reason: 'patch_of_this_game_unknown' });
     const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。', rule: { when: 'w', do: 'd', this_game: 'x' } };
     const complete = async (o: any) => (o.messages.at(-1).role === 'user'
       ? { toolCalls: [{ id: 'a', name: 'ability_audit', args: { hero: 'beastmaster', ability: 'primal_roar' } }] }
       : { toolCalls: [{ id: 's', name: 'submit_review', args: { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], blind_spots: [] } }] });
     const out: any = await runDeepReview({ complete, trace, hero: 'beastmaster', lang: 'zh', match: as741 });
-    expect(out.review.data_patch).toEqual({ name: '7.41f', exact: true, known_from: 'start_time' });
+    expect(out.review.data_patch).toEqual({ name: '7.41f', hotfix: release('7.41f').hotfixes[0].rollout_by, exact: true, known_from: 'start_time' });
+  });
+});
+
+describe('a letter release after the live tables moved on', () => {
+  it('7.42a shortened Reaper\'s Scythe: a 7.42 game is told 100 seconds, a 7.42a game 95', () => {
+    expect(patchData('7.42').ultimate(36)?.cd).toEqual([100]);
+    expect(patchData('7.42a').ultimate(36)?.cd).toEqual([95]);
+  });
+});
+
+describe('a hotfix within a release has numbers of its own', () => {
+  const f = () => release('7.41f');
+  it('each hotfix lies within its release, with its own snapshot or a reason there is none', () => {
+    for (const [k, r] of index.releases.entries()) {
+      const next = index.releases[k + 1];
+      let prev = Date.parse(r.rollout_by);
+      for (const h of r.hotfixes ?? []) {
+        expect(Date.parse(h.rollout_from)).toBeGreaterThanOrEqual(prev);
+        if (next) expect(Date.parse(h.rollout_by)).toBeLessThan(Date.parse(next.rollout_from));
+        prev = Date.parse(h.rollout_by);
+        if (h.data) expect(JSON.parse(readFileSync(new URL(`../../lib/data/constants/patches/${h.data}`, import.meta.url), 'utf8'))).toMatchObject({ release: r.name, hotfix: h.rollout_by });
+        else expect(h.reason).toBe('game_files_not_read_by_the_builder');
+      }
+    }
+  });
+
+  it('7.41f\'s hotfix of 7 October raised Necronomicon: a game before it is told 2050 gold, one after it 2700', () => {
+    const h = f().hotfixes[0];
+    expect(h.rollout_by.slice(0, 10)).toBe('2026-10-07');
+    const before = patchForGame(0, { start_time: at(h.rollout_from) - 3600 });
+    expect(before).toMatchObject({ name: '7.41f', hotfix: null, exact: true });
+    expect(before.items.necronomicon.cost).toBe(2050);
+    const after = patchForGame(0, { start_time: at(h.rollout_by) + 3600 });
+    expect(after).toMatchObject({ name: '7.41f', hotfix: h.rollout_by, exact: true });
+    expect(after.items.necronomicon.cost).toBe(2700);
+    // patchData of the release alone is the release as it rolled out.
+    expect(patchData('7.41f').items.necronomicon.cost).toBe(2050);
+    expect(patchData('7.41f', { hotfix: h.rollout_by }).items.necronomicon.cost).toBe(2700);
+    // During the twenty minutes the hotfix was rolling out: the release is known, the hotfix is not.
+    const during = patchForGame(0, { start_time: at(h.rollout_from) + 60 });
+    expect(during).toMatchObject({ name: '7.41f', exact: false, reason: `started_while_the_${h.rollout_by.slice(0, 16)}_hotfix_was_rolling_out` });
+    // The tools say which hotfix their numbers are from.
+    const r: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en', match: { ...scoreboard, patch: 60, start_time: at(h.rollout_by) + 3600 } });
+    expect(r).toMatchObject({ data_patch: '7.41f', data_hotfix: '2026-10-07' });
+    expect(buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en', match: { ...scoreboard, patch: 60, start_time: at(h.rollout_from) - 3600 } })).not.toHaveProperty('data_hotfix');
+  });
+
+  it('a hotfix the builder could not read is not filled with its neighbour\'s numbers as if they were its own', () => {
+    const r = release('7.41');
+    const n = r.hotfixes.findIndex((h: any) => !h.data);
+    expect(n).toBeGreaterThan(0);
+    const pd = patchForGame(0, { start_time: at(r.hotfixes[n].rollout_by) + 60 });
+    expect(pd).toMatchObject({ name: '7.41', exact: false, hotfix: r.hotfixes[n - 1].rollout_by });
+    expect(pd.reason).toContain('data_not_built');
+  });
+
+  it('by match id too: each hotfix\'s ids fall on either side of it', () => {
+    for (const r of index.releases) for (const [k, h] of (r.hotfixes ?? []).entries()) {
+      if (!h.first_match_id_after) continue;
+      expect(h.first_match_id_after).toBeGreaterThan(h.last_match_id_before);
+      expect(gamePatch(h.first_match_id_after, null)).toMatchObject({ release: r.name, hotfix: h.rollout_by });
+      const prior = gamePatch(h.last_match_id_before, null) as any;
+      expect(prior.release).toBe(r.name);
+      expect(prior.hotfix).toBe(k ? r.hotfixes[k - 1].rollout_by : undefined);
+    }
   });
 });

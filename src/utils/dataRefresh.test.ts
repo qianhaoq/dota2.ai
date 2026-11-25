@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-const { steps, sitePatch, onlyDateChanged, body } = createRequire(import.meta.url)('../../.github/scripts/data-refresh.cjs');
+const { steps, sitePatch, onlyDateChanged, body, bumpReviewVersion } = createRequire(import.meta.url)('../../.github/scripts/data-refresh.cjs');
 
 describe('data refresh: what counts as a change', () => {
   it('a file whose only change is its fetch date is no change; any data change is', () => {
@@ -28,12 +30,24 @@ describe('data refresh: what counts as a change', () => {
 describe('data refresh: the steps', () => {
   it('runs every data script once, Valve\'s notes before the numbers that read them, STRATZ marked', () => {
     const s = steps('7.42');
-    expect(s.map((x: any) => x.cmd[0])).toEqual(['scripts/refresh-data.mjs', 'scripts/coach-matchups.mjs', 'scripts/coach-item-vs.mjs', 'scripts/coach-patch-notes.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
+    expect(s.map((x: any) => x.cmd[0])).toEqual(['scripts/refresh-data.mjs', 'scripts/patch-match-ids.mjs', 'scripts/coach-matchups.mjs', 'scripts/coach-item-vs.mjs', 'scripts/coach-patch-notes.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
     expect(s.find((x: any) => x.cmd[0] === 'scripts/coach-patch-notes.mjs').cmd).toEqual(['scripts/coach-patch-notes.mjs', '7.42']);
-    expect(s.filter((x: any) => x.stratz).map((x: any) => x.cmd[0])).toEqual(['scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
+    expect(s.filter((x: any) => x.stratz).map((x: any) => x.cmd[0])).toEqual(['scripts/patch-match-ids.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
     expect(s.find((x: any) => x.cmd[0] === 'scripts/refresh-data.mjs').cmd).toContain('--all');
     // Every script it names exists.
     for (const x of s) expect(() => readFileSync(x.cmd[0])).not.toThrow();
+  });
+
+  it('the release snapshots can run: the workflow checks out OpenDota\'s builder and hands it over', () => {
+    // refresh-data.mjs --all refuses to start without DOTACONSTANTS_DIR (and writes nothing): the weekly run must set it.
+    const wf = readFileSync('.github/workflows/data-refresh.yml', 'utf8');
+    expect(wf).toContain('git clone --quiet https://github.com/odota/dotaconstants');
+    expect(wf).toMatch(/DOTACONSTANTS_DIR: \$\{\{ runner\.temp \}\}\/dotaconstants/);
+    // The pinned builder commit is the one the snapshot script documents.
+    const pinned = wf.match(/checkout --quiet ([0-9a-f]{7,40})/)![1];
+    expect(readFileSync('scripts/coach-patch-snapshots.mjs', 'utf8')).toContain(`git checkout ${pinned}`);
+    // When Valve's release list was read, and when a snapshot was built, are dates only: no weekly change on their own.
+    expect(onlyDateChanged(JSON.stringify({ releases_checked_at: '2026-11-24T13:41:11Z', releases: [1] }), JSON.stringify({ releases_checked_at: '2026-12-01T06:10:00Z', releases: [1] }))).toBe(true);
   });
 
   it('reads the patch the site presents from src/coach/patch.ts', () => {
@@ -95,3 +109,27 @@ describe('data refresh: the workflow keeps its one PR moving (review of #289)', 
   });
 });
 
+
+describe('data refresh: new data raises the review version', () => {
+  it('the version, its pin and every test that states it go up by one; nothing else changes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'refresh-'));
+    try {
+      cpSync('lib/agent/review/schema.js', join(root, 'lib/agent/review/schema.js'));
+      cpSync('src/utils', join(root, 'src/utils'), { recursive: true });
+      const now = Number(readFileSync('lib/agent/review/schema.js', 'utf8').match(/DEEP_REVIEW_PROMPT_VERSION = (\d+)/)![1]);
+      expect(bumpReviewVersion(root)).toEqual({ from: now, to: now + 1 });
+      expect(readFileSync(join(root, 'lib/agent/review/schema.js'), 'utf8')).toContain(`export const DEEP_REVIEW_PROMPT_VERSION = ${now + 1};`);
+      const pin = readFileSync(join(root, 'src/utils/agentPromptPin.test.ts'), 'utf8');
+      expect(pin).toContain(`const PIN = { version: ${now + 1}, `);
+      // The hash is the prompt's: unchanged, since the prompt text did not change.
+      expect(pin.match(/hash: '([0-9a-f]+)'/)![1]).toBe(readFileSync('src/utils/agentPromptPin.test.ts', 'utf8').match(/hash: '([0-9a-f]+)'/)![1]);
+      for (const f of readdirSync(join(root, 'src/utils')).filter((x) => x.endsWith('.test.ts'))) expect([f, readFileSync(join(root, 'src/utils', f), 'utf8').includes(`expect(DEEP_REVIEW_PROMPT_VERSION).toBe(${now});`)]).toEqual([f, false]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it('the pull request says so', () => {
+    const text = body({ version: '7.42', steps: [], changed: ['lib/coach/data/item-vs.json'], review_version: { from: 35, to: 36 } }, 'ok');
+    expect(text).toContain('Review version raised from 35 to 36');
+    expect(body({ version: '7.42', steps: [], changed: [] }, 'ok')).not.toContain('Review version');
+  });
+});

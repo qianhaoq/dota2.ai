@@ -276,6 +276,23 @@ describe('agent API', () => {
     expect((await get('/api/agent/999/evidence?hero=axe&ref=overview')).status).toBe(404);
   });
 
+  it('moment: where the ten heroes were around a game time, with display names; a bad time or hero is refused', async () => {
+    const at = (q: string) => get(`/api/agent/${MATCH}/moment?${q}`);
+    const m = (await at('hero=beastmaster&lang=zh&t=1825')).body;
+    expect(m).toMatchObject({ status: 'ok', t: 1825, clock: '30:25', from: 1813, to: 1831, me: 'beastmaster', place: 'river_mid', place_name: '河道中路', away: [], not_known: [], names: { beastmaster: '兽王', phantom_assassin: '幻影刺客' } });
+    expect(m.frames).toHaveLength(19);
+    expect(m.heroes.filter((h: any) => h.side === 'me')).toEqual([{ hero: 'beastmaster', side: 'me' }]);
+    expect((await at('hero=beastmaster&lang=en&t=1825')).body).toMatchObject({ place_name: 'river mid', names: { phantom_assassin: 'Phantom Assassin' } });
+    // Each hero's icon name is the game's own, which is not always the replay's key.
+    expect(m.icons).toMatchObject({ beastmaster: 'beastmaster', phantom_assassin: 'phantom_assassin', necrolyte: 'necrolyte' });
+    expect(Object.keys(m.icons)).toHaveLength(10);
+    // What is asked must be a hero and a game time in seconds.
+    for (const bad of ['hero=beastmaster', 'hero=beastmaster&t=abc', 'hero=beastmaster&t=1e3', 't=1825', 'hero=beastmaster&t=1825&t=1830']) expect((await at(bad)).status).toBe(400);
+    expect((await at('hero=beastmaster&t=99999')).status).toBe(404);
+    expect((await at('hero=pudge&t=1825')).status).toBe(404);
+    expect((await get('/api/agent/999/moment?hero=axe&t=10')).status).toBe(404);
+  });
+
   it('two starts arriving together are one job; a refused model budget uses up no review slot', async () => {
     const before = m.seen.length;
     const [a, b] = await Promise.all([post(`/api/agent/${MATCH}/review`, { hero: 'dark_willow', lang: 'en' }, '10.0.1.1'), post(`/api/agent/${MATCH}/review`, { hero: 'dark_willow', lang: 'en' }, '10.0.1.2')]);

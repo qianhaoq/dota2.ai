@@ -12,6 +12,7 @@ import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMa
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { MatchBoard } from './MatchBoard';
 import { PLANS, planKey } from '../../lib/agent/plans.js';
+import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelWait, writesSlowly } from '../../lib/agent/models.js';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import { ShareBar } from './ShareBar';
 import './agent.css';
@@ -42,11 +43,21 @@ const T = {
   dire: { en: 'Dire', zh: '夜魇' },
   change: { en: 'Change hero', zh: '换英雄' },
   goTitle: { en: 'Review this game', zh: '复盘这一局' },
-  goBody: { en: 'The coach watches the replay — every death, every ultimate, the fights that turned the game, your build — and writes what to change. About two to three minutes.', zh: '教练会把录像看一遍——每次阵亡、每个大招、转折的团战、你的出装——然后写出该改什么。大约两到三分钟。' },
+  goBody: { en: 'The coach watches the replay — every death, every ultimate, the fights that turned the game, your build — and writes what to change.', zh: '教练会把录像看一遍——每次阵亡、每个大招、转折的团战、你的出装——然后写出该改什么。' },
+  goTime: { en: 'About two to three minutes.', zh: '大约两到三分钟。' },
+  // A model that writes slowly: how long it took when it was timed (lib/agent/models.js), never a promise.
+  goTimeSlow: { en: 'With {m}, expect {t} (as timed on a real game)', zh: '用 {m} 写，预计{t}（按实测）' },
+  // …beside the quick one, when the reader can pick it here.
+  goTimeQuick: { en: '; {d} takes {t}.', zh: '；{d} {t}。' },
+  // While it is being written: who writes it and how long that takes, so a long wait is one the reader was told of.
+  workTime: { en: '{m} is writing it: expect {t}.', zh: '由 {m} 撰写，预计{t}。' },
   go: { en: 'Review my game', zh: '开始复盘' },
   planAsk: { en: 'What were you going for this game? (optional)', zh: '这局你想怎么打？（可选）' },
   planWhy: { en: 'Say it, and the review reads the game against it: whether your play fit it, whether it suited these line-ups, and where it broke. The replay cannot show what you meant to do.', zh: '选了，复盘就会对照它来读这局：你的打法是否贴合，这个思路面对双方阵容是否站得住，没打成断在哪里。录像本身看不出你想怎么打。' },
   planNone: { en: 'Don\'t say', zh: '不说' },
+  modelAsk: { en: 'Which model writes it?', zh: '由哪个模型来写？' },
+  modelWhy: { en: 'Each model reads the same replay with the same tools, and its review is checked against the replay the same way. A review by another model is kept beside the first, so you can compare them.', zh: '每个模型读的是同一份录像、用同一套工具，写出的复盘也按同样的方式和录像核对。换一个模型写的复盘会另存一份，可以对比着看。' },
+  modelBy: { en: 'Written by', zh: '撰写模型' },
   working: { en: 'Working on your review', zh: '正在准备你的复盘' },
   leave: { en: 'You can keep this page open; the review appears here when it is done.', zh: '页面开着就行，写完会出现在这里。' },
   s1: { en: 'Fetch the replay', zh: '取录像' },
@@ -93,7 +104,7 @@ export function journeyStep(avail: Availability | null, state: ReviewState | nul
 }
 
 type Bi = Record<'en' | 'zh', string>;
-const intentKey = (matchId: string, hero: string, lang: string, plan: string | null = null) => `dota2ai.review-intent.${matchId}.${hero}.${lang}${plan ? `.${plan}` : ''}`;
+const intentKey = (matchId: string, hero: string, lang: string, plan: string | null = null, model: string | null = null) => `dota2ai.review-intent.${matchId}.${hero}.${lang}${plan ? `.${plan}` : ''}${model ? `.m-${model}` : ''}`;
 const session = () => { try { return window.sessionStorage; } catch { return null; } };
 
 const Portrait: React.FC<{ hero: AgentHero; report: CoachReport | null; lang: Lang }> = ({ hero, report, lang }) => {
@@ -189,6 +200,46 @@ export const AgentMatchPage: React.FC = () => {
     if (key) next.set('plan', key); else next.delete('plan');
     setSearch(next, { replace: true });
   };
+  // The model the reader chose (?model=), when this server offers it and it is not the default: a review written
+  // by it is its own review. Anything else (none named, the default by name, one not offered here) is the default.
+  const offered = avail?.models ?? [];
+  const defaultModel = avail?.default_model ?? offered[0] ?? null;
+  const named = modelId(search.get('model'));
+  const model = named && named !== defaultModel && offered.includes(named) ? named : null;
+  const pickModel = (id: string) => {
+    const next = new URLSearchParams(search);
+    if (id !== defaultModel) next.set('model', id); else next.delete('model');
+    setSearch(next, { replace: true });
+  };
+  const modelPick = (label: string) => (
+    <div className="ag-planpick-row" role="radiogroup" aria-label={label}>
+      {offered.map((id) => (
+        <button key={id} type="button" role="radio" aria-checked={(model ?? defaultModel) === id} className={`ag-chip-btn ${(model ?? defaultModel) === id ? 'is-on' : ''}`} onClick={() => pickModel(id)}>
+          {modelLabel(id)}
+          {/* The wait is part of the choice: said on the button, before the reader picks. Nothing for a model that was not timed. */}
+          {modelWait(id, lang) && <span className="ag-chip-time"> · {modelWait(id, lang)}</span>}
+        </button>
+      ))}
+    </div>
+  );
+  // How long the wait is, by which model writes (the one picked, else this server's default — which need not be
+  // the quick one): two to three minutes for the quick one and where no model is named at all; for a slow one
+  // what it took when timed; nothing for one that was not timed.
+  const writer = model ?? defaultModel;
+  // A link or a count outlives this server's setup, so it names the review by its writer's id — never by `model`,
+  // which is null for whatever is the default here: a link shared while Kimi was the default must still open
+  // Kimi's review once the default is another model, and DeepSeek's must still open DeepSeek's. (Null only
+  // where the server lists no models: then there is one writer and nothing to tell apart.)
+  const writtenBy = writer;
+  const slow = writer != null && writesSlowly(writer);
+  const timed = writer != null ? modelWait(writer, lang) : null;
+  const quickWait = modelWait(DEFAULT_AGENT_MODEL, lang);
+  const goTime = !slow ? t(T.goTime)
+    : timed != null ? t(T.goTimeSlow).replace('{m}', modelLabel(writer)).replace('{t}', timed) + (offered.includes(DEFAULT_AGENT_MODEL) && quickWait ? t(T.goTimeQuick).replace('{d}', modelLabel(DEFAULT_AGENT_MODEL)).replace('{t}', quickWait) : lang === 'zh' ? '。' : '.')
+      : null;
+  // Said again while the review is being written, where the server names its models (else there is one writer,
+  // whose two to three minutes the reader was told before the click).
+  const workTime = writer != null && timed != null ? t(T.workTime).replace('{m}', modelLabel(writer)).replace('{t}', timed) : null;
   const hasTrace = avail?.trace === true;
   const parse = avail && !avail.trace ? avail.parse ?? { status: 'none' as const } : null;
 
@@ -200,12 +251,12 @@ export const AgentMatchPage: React.FC = () => {
   };
 
   // The reader's "go" survives a reload of this tab, so a parse they started still ends in their review.
-  useEffect(() => { setIntentOf(heroKey && session()?.getItem(intentKey(matchId, heroKey, lang, plan)) === '1' ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}` : null); setNotice(null); }, [matchId, heroKey, lang, plan]);
-  const want = (on: boolean) => { if (!heroKey) return; setIntentOf(on ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}` : null); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang, plan), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang, plan)); } catch { /* storage blocked */ } };
+  useEffect(() => { setIntentOf(heroKey && session()?.getItem(intentKey(matchId, heroKey, lang, plan, model)) === '1' ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}` : null); setNotice(null); }, [matchId, heroKey, lang, plan, model]);
+  const want = (on: boolean) => { if (!heroKey) return; setIntentOf(on ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}` : null); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang, plan, model), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang, plan, model)); } catch { /* storage blocked */ } };
 
   // What the reader is looking at now. An answer that was asked for under another hero or language
   // belongs to that selection and is dropped when it arrives.
-  const selection = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
+  const selection = `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}`;
   const selected = useRef(selection);
   selected.current = selection;
   const intent = intentOf === selection;
@@ -214,9 +265,9 @@ export const AgentMatchPage: React.FC = () => {
   const [reviewTick, setReviewTick] = useState(0);
   const loadReview = useCallback(async (signal?: AbortSignal) => {
     if (!heroKey) return;
-    const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
+    const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}`;
     try {
-      const next = await fetchReview(matchId, heroKey, lang, signal, plan);
+      const next = await fetchReview(matchId, heroKey, lang, signal, plan, model);
       if (selected.current === asked) setState(next);
     } catch (e) {
       if ((e as Error).name === 'AbortError' || selected.current !== asked) return;
@@ -224,7 +275,7 @@ export const AgentMatchPage: React.FC = () => {
       setState((prev) => (prev?.status === 'running' ? prev : { status: 'failed' }));
     }
     if (selected.current === asked) setReviewTick((n) => n + 1);
-  }, [matchId, heroKey, lang, plan]);
+  }, [matchId, heroKey, lang, plan, model]);
 
   useEffect(() => {
     setState(null);
@@ -281,12 +332,12 @@ export const AgentMatchPage: React.FC = () => {
   // The lock belongs to a selection: a start still out for another hero does not block this one's.
   const beginning = useRef<string | null>(null);
   const begin = useCallback(async () => {
-    const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}`;
+    const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}`;
     if (!heroKey || beginning.current === asked) return;
     beginning.current = asked;
-    try { const next = await startReview(matchId, heroKey, lang, plan); if (selected.current === asked) setState(next); } catch (e) { refuse(e, asked); } finally { if (beginning.current === asked) beginning.current = null; }
+    try { const next = await startReview(matchId, heroKey, lang, plan, model); if (selected.current === asked) setState(next); } catch (e) { refuse(e, asked); } finally { if (beginning.current === asked) beginning.current = null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId, heroKey, lang, plan]);
+  }, [matchId, heroKey, lang, plan, model]);
 
   /** The one click: fetch and parse the replay if needed, then the review follows on its own. */
   const preparing = useRef<string | null>(null);
@@ -294,7 +345,7 @@ export const AgentMatchPage: React.FC = () => {
   const joined = useRef<Set<string>>(new Set());
   async function go() {
     if (wait) return;
-    trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan) });
+    trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan), ...(writtenBy ? { model: writtenBy } : {}) });
     setNotice(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
     await sendPrepare();
@@ -363,7 +414,7 @@ export const AgentMatchPage: React.FC = () => {
     trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang, ...(arrivedBy ? { ref: arrivedBy } : {}) });
     // The review the reader asked for here, and waited out, is done: counted once per review, whatever was
     // seen on this match before (a review that was already there counts as viewed, not as this).
-    if (intent) { const src = trafficSource(); trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}`, 'review_ready', { matchId, hero: heroKey, lang, ...(src ? { src } : {}) }); }
+    if (intent) { const src = trafficSource(); trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}${model ? `.${model}` : ''}`, 'review_ready', { matchId, hero: heroKey, lang, ...(src ? { src } : {}), ...(writtenBy ? { model: writtenBy } : {}) }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, matchId, heroKey]);
 
@@ -485,13 +536,19 @@ export const AgentMatchPage: React.FC = () => {
     return (
       <Shell wide>
         {header}
-        <ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} />
         <div className="ag-layout">
           <div>
-            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} />
+            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />} quick={!slow} />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
+            {/* Which model wrote it, and the choice of another: after the review, not between the reader and its first line. */}
+            {offered.length > 1 && (
+              <div className="ag-modelbar is-after">
+                <span>{t(T.modelBy)}</span>
+                {modelPick(t(T.modelBy))}
+              </div>
+            )}
           </div>
-          <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} plan={plan} />
+          <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} plan={plan} model={model} />
         </div>
       </Shell>
     );
@@ -518,6 +575,7 @@ export const AgentMatchPage: React.FC = () => {
         <div className="ag-state" role="status">
           <h1>{t(T.working)}</h1>
           <p>{t(T.leave)}</p>
+          {workTime && <p className="ag-worktime">{workTime}</p>}
           <ol className="ag-journey">
             {steps.map((s, i) => (
               <li key={i} className={i < live ? 'is-done' : i === live ? 'is-live' : ''}>
@@ -541,7 +599,7 @@ export const AgentMatchPage: React.FC = () => {
         {hasTrace && !state ? <p className="ag-pulse" role="status">{t(T.loading)}</p> : (
           <>
             <h1>{t(T.goTitle)}</h1>
-            <p>{t(T.goBody)}</p>
+            <p>{t(T.goBody)}{lang === 'zh' ? '' : ' '}{goTime ?? ''}</p>
             <fieldset className="ag-planpick">
               <legend>{t(T.planAsk)}</legend>
               <p>{t(T.planWhy)}</p>
@@ -553,6 +611,13 @@ export const AgentMatchPage: React.FC = () => {
                 ))}
               </div>
             </fieldset>
+            {offered.length > 1 && (
+              <fieldset className="ag-planpick">
+                <legend>{t(T.modelAsk)}</legend>
+                <p>{t(T.modelWhy)}</p>
+                {modelPick(t(T.modelAsk))}
+              </fieldset>
+            )}
             <button type="button" className="ag-btn is-primary" onClick={go} disabled={Boolean(wait)}>{t(T.go)}</button>
             {state?.status === 'unknown_hero' && <p className="ag-warn">{t(T.unknownHero)}</p>}
             {(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}

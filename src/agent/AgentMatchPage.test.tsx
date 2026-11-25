@@ -136,10 +136,10 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(slow).toBeTypeOf('function'));
     fireEvent.click(await screen.findByRole('button', { name: 'Change hero' }));
     fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Axe verdict.' })).toBeTruthy();
+    expect(await screen.findByText('Axe verdict.')).toBeTruthy();
     slow();
     await new Promise((r) => setTimeout(r, 100));
-    expect(screen.getByRole('heading', { level: 1, name: 'Axe verdict.' })).toBeTruthy();
+    expect(screen.getByText('Axe verdict.')).toBeTruthy();
     cleanup();
     // Running, then a poll fails (502), then ready: the page never shows "the review did not come out".
     mockFetch({
@@ -151,7 +151,8 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
     await waitFor(() => expect(polls).toBeGreaterThanOrEqual(2), { timeout: 5000 });
     expect(screen.queryByRole('heading', { name: 'The review did not come out' })).toBeNull();
-    expect(await screen.findByRole('heading', { level: 1, name: review.verdict }, { timeout: 6000 })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: review.findings[0].title }, { timeout: 6000 })).toBeTruthy();
+    expect(screen.getByText(review.verdict)).toBeTruthy();
   }, 20000);
 
   it('an availability answer for the match the reader left does not replace the new match\'s', async () => {
@@ -474,9 +475,10 @@ describe('AgentMatchPage', () => {
   });
 
   it('a push is shown as who hit the building, which owners were near, whether it fell, and where the rest were', async () => {
-    const push = { status: 'ok', ref: 'sieges:beastmaster:5', kind: 'sieges', names: { phantom_assassin: '幻影刺客', sven: '斯温', beastmaster: '兽王', axe: '斧王', dire_top_lane: '夜魇上路', radiant_bot_jungle: '天辉下路野区' }, record: {
+    const push = { status: 'ok', ref: 'sieges:beastmaster:5', kind: 'sieges', names: { phantom_assassin: '幻影刺客', sven: '斯温', beastmaster: '兽王', axe: '斧王', dire_top_lane: '夜魇上路', radiant_bot_jungle: '天辉下路野区', river_bot_lane: '河道下路' }, record: {
       ref: 'sieges:beastmaster:5', building: 'badguys_tower1_mid', clock: '19:59', until: '20:01', pushed_by: 'enemy', took_it: true, fell_at: '20:02',
       hitting: ['phantom_assassin'], owners_near: [], hitting_minus_owners_near: 1, me: 'not_near',
+      me_when_it_fell: { place: 'river_bot_lane', distance: 6695, tp_ready: true },
       pushing_side_not_hitting: [{ hero: 'axe', place: 'radiant_bot_jungle', distance: 5356, tp_ready: false }],
       owners_not_near: [{ hero: 'sven', place: 'dire_top_lane', distance: 8297, tp_ready: true }, { hero: 'beastmaster', doing: 'dead', respawn_in: 20 }],
     } };
@@ -488,6 +490,10 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByText(/中路 1 塔 · 对方推/)).toBeTruthy();
     expect(chip('被拆 20:02')).toBeTruthy();
     expect(chip('你不在附近')).toBeTruthy();
+    // Where the player was at the second it fell, apart from the rows taken when the push began.
+    expect(chip('被拆时你 · 河道下路6695 码外')).toBeTruthy();
+    expect(screen.getByText('守方不在附近（推进开始时）')).toBeTruthy();
+    expect(screen.getByText('推塔方其余（推进开始时）')).toBeTruthy();
     expect(chip('斯温 · 夜魇上路8297 码外TP 可用')).toBeTruthy();
     expect(chip('兽王 · 阵亡复活还要 20秒')).toBeTruthy();
     expect(chip('斧王 · 天辉下路野区5356 码外TP 冷却中')).toBeTruthy();
@@ -689,7 +695,7 @@ describe('AgentMatchPage', () => {
     ui.lang = 'zh';
     const Where = () => { const l = useLocation(); return <p data-testid="where">{l.search}</p>; };
     render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=zh']}><Where /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
-    const section = (await screen.findByRole('heading', { level: 2, name: '运营思路' })).closest('section')!;
+    const section = (await screen.findByRole('heading', { level: 3, name: '运营思路' })).closest('details')!;
     // Nothing is offered until the reader asks about a plan.
     expect(within(section as HTMLElement).queryByRole('button', { name: '重写' })).toBeNull();
     fireEvent.click(within(section as HTMLElement).getByRole('button', { name: '抓人带节奏' }));
@@ -699,6 +705,133 @@ describe('AgentMatchPage', () => {
     const group = await screen.findByRole('radiogroup', { name: '这局你想怎么打？（可选）' });
     expect(within(group).getByRole('radio', { name: '抓人带节奏' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('button', { name: '开始复盘' })).toBeTruthy();
+  });
+
+  it('the reader picks who writes the review: the model goes in the link, the start, every poll, the chat and the shared link', async () => {
+    let started: any = null;
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro', 'glm-5.3'], default_model: 'deepseek-flash' };
+    const calls = mockFetch({
+      '/chat': () => sse([{ text: '答。' }, { done: true }]),
+      'ref=overview': overview,
+      // The default's review exists; the other model's does not until it is started.
+      '/review?': (url: string) => (!url.includes('model=') || started ? { status: 'ready', review: { ...review, lang: 'zh', verdict: url.includes('model=') ? 'Kimi 的结论。' : 'DeepSeek 的结论。' }, verification: { repaired: false, dropped: 0 }, model: url.includes('model=') ? 'k3.1-pro' : 'deepseek-flash', tool_calls: 9 } : { status: 'none' }),
+      '/review': (_u: string, init?: RequestInit) => { if (init?.method !== 'POST') return null; started = JSON.parse(String(init.body)); return { status: 'running', steps: [] }; },
+      '/api/agent/9100904020': offer,
+    });
+    ui.lang = 'zh';
+    const Where = () => { const l = useLocation(); return <p data-testid="where">{l.search}</p>; };
+    render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=zh']}><Where /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
+    // On the default's finished review: who wrote it, and the others to compare with.
+    expect(await screen.findByText('DeepSeek 的结论。')).toBeTruthy();
+    const bar = screen.getByRole('radiogroup', { name: '撰写模型' });
+    expect(within(bar).getAllByRole('radio').map((r) => [r.textContent, r.getAttribute('aria-checked')])).toEqual([['DeepSeek 4.1 Flash · 约 2–3 分钟', 'true'], ['Kimi K3.1 Pro · 约 13 分钟', 'false'], ['GLM-5.3 · 约 24 分钟', 'false']]);
+    // It stands after the review, under the line that says the review was checked: nothing sits between the reader and the headline.
+    const headline = screen.getByRole('heading', { level: 1 });
+    expect(headline.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector('.ag-checked')!.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector('.ag-head')!.nextElementSibling!.className).toBe('ag-layout');
+    fireEvent.click(within(bar).getByRole('radio', { name: 'Kimi K3.1 Pro · 约 13 分钟' }));
+    expect(screen.getByTestId('where').textContent).toContain('model=kimi-k3.1-pro');
+    // That model has no review of this game yet: the start is offered with it picked, and nothing has been started.
+    const group = await screen.findByRole('radiogroup', { name: '由哪个模型来写？' });
+    // Each button says how long that model takes, before the reader picks.
+    expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual(['DeepSeek 4.1 Flash · 约 2–3 分钟', 'Kimi K3.1 Pro · 约 13 分钟', 'GLM-5.3 · 约 24 分钟']);
+    expect(within(group).getByRole('radio', { name: 'Kimi K3.1 Pro · 约 13 分钟' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByText('DeepSeek 的结论。')).toBeNull();
+    // The wait it is told is that model's, as timed — not the default's two to three minutes.
+    expect(screen.getByText(/用 Kimi K3\.1 Pro 写，预计约 13 分钟（按实测）；DeepSeek 4\.1 Flash 约 2–3 分钟。/)).toBeTruthy();
+    expect(screen.queryByText(/然后写出该改什么。大约两到三分钟。/)).toBeNull();
+    expect(calls.some((c) => c.init?.method === 'POST')).toBe(false);
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/review?') && c.url.includes('model=kimi-k3.1-pro'))).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: '开始复盘' }));
+    await waitFor(() => expect(started).toEqual({ hero: 'beastmaster', lang: 'zh', model: 'kimi-k3.1-pro' }));
+    expect(await screen.findByText('Kimi 的结论。', {}, { timeout: 5000 })).toBeTruthy();
+    // A question goes to the model that wrote the review on screen.
+    const box = screen.getByRole('textbox', { name: '问教练' });
+    fireEvent.change(box, { target: { value: '怎么打？' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/chat'))).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/chat'))!.init!.body))).toMatchObject({ question: '怎么打？', model: 'kimi-k3.1-pro' });
+    // Back to the default: the model leaves the link and the requests, and the default's review is shown again.
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: '撰写模型' })).getByRole('radio', { name: 'DeepSeek 4.1 Flash · 约 2–3 分钟' }));
+    expect(screen.getByTestId('where').textContent).not.toContain('model=');
+    expect(await screen.findByText('DeepSeek 的结论。')).toBeTruthy();
+  });
+
+  it('with one model, or none listed, there is nothing to pick; a model the server does not offer is not asked for', async () => {
+    const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { status: 'running', steps: [] } : null), '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['deepseek-flash'], default_model: 'deepseek-flash' } });
+    // The link names a model this server does not offer (and one that is no model): the default is asked for.
+    page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.3');
+    expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
+    expect(screen.queryByRole('radiogroup', { name: 'Which model writes it?' })).toBeNull();
+    expect(screen.getByText(/and writes what to change\. About two to three minutes\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(calls.some((c) => c.init?.method === 'POST')).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/review') && c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
+    expect(calls.some((c) => c.url.includes('model='))).toBe(false);
+  });
+
+  it('the wait told is the writing model\'s, also when a slow model is the server\'s default (review of #327)', async () => {
+    // A server set up with Kimi alone: nothing to pick, no model in the requests, and Kimi's wait — not two to three minutes.
+    const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro'], default_model: 'kimi-k3.1-pro' } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
+    expect(screen.getByText(/and writes what to change\. With Kimi K3\.1 Pro, expect about 13 minutes \(as timed on a real game\)\.$/)).toBeTruthy();
+    expect(screen.queryByText(/two to three/)).toBeNull();
+    expect(calls.some((c) => c.url.includes('model='))).toBe(false);
+  });
+
+  it('while a review is being written the page says who writes it and how long to expect; a model that was not timed gets no time', async () => {
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'glm-5.3-flash', 'glm-5.4'], default_model: 'deepseek-flash' };
+    mockFetch({ 'ref=overview': overview, '/review?': { status: 'running', steps: [{ tool: 'match_overview', args: {} }] }, '/api/agent/9100904020': offer });
+    const first = page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.3-flash');
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    expect(screen.getByText('GLM-5.3 Flash is writing it: expect about 11–13 minutes.')).toBeTruthy();
+    first.unmount();
+    // The default's wait is said too, where the server names its models.
+    const second = page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByText('DeepSeek 4.1 Flash is writing it: expect about 2–3 minutes.')).toBeTruthy();
+    second.unmount();
+    // GLM-5.4 was never timed: its button and its wait say nothing about how long, rather than a guess.
+    const third = page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.4');
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    expect(screen.queryByText(/is writing it/)).toBeNull();
+    third.unmount();
+    mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': offer });
+    page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.4');
+    const group = await screen.findByRole('radiogroup', { name: 'Which model writes it?' });
+    expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual(['DeepSeek 4.1 Flash · about 2–3 minutes', 'GLM-5.3 Flash · about 11–13 minutes', 'GLM-5.4']);
+    expect(screen.queryByText(/expect about|two to three/)).toBeNull();
+  });
+
+  it('a personal link names the model that wrote the review, also when that model is the server\'s default (review of #327)', async () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text: string) => { copied.push(text); } } });
+    const ready = { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'k3.1-pro', tool_calls: 9 };
+    // Kimi is this server's default: nothing in the page's requests names it…
+    const calls = mockFetch({ 'ref=overview': overview, '/review?': ready, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro'], default_model: 'kimi-k3.1-pro' } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy my link' }));
+    // …but the link does, so it opens Kimi's review on a server whose default has since become another model.
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).toContain('hero=beastmaster&model=kimi-k3.1-pro&ref=share');
+    expect(calls.some((c) => c.url.includes('model='))).toBe(false);
+    cleanup();
+    // So does a link to DeepSeek's review: without its name it would open whatever the default is.
+    copied.length = 0;
+    mockFetch({ 'ref=overview': overview, '/review?': { ...ready, model: 'deepseek-flash' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro', 'deepseek-flash'], default_model: 'kimi-k3.1-pro' } });
+    page('/r/9100904020?hero=beastmaster&lang=en&model=deepseek-flash');
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy my link' }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).toContain('hero=beastmaster&model=deepseek-flash&ref=share');
+    cleanup();
+    // A server that lists no models has one writer: its links name none, as before.
+    copied.length = 0;
+    mockFetch({ 'ref=overview': overview, '/review?': ready, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy my link' }));
+    await waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).not.toContain('model=');
   });
 
   it('going back to "don\'t say" takes the plan out of the link and the requests', async () => {
@@ -1189,6 +1322,12 @@ describe('AgentMatchPage', () => {
     const warn = (await show({ name: '7.42', exact: false, reason: 'older_than_7.40' }, 'zh'))!;
     expect(warn.textContent).toBe('这局的版本无法确定：价格、装备效果和技能冷却按当前 7.42 版本，可能与当时不同。');
     expect(warn.getAttribute('role')).toBe('note');
+    // A game played after a hotfix of its release: the hotfix is named.
+    expect((await show({ name: '7.41f', hotfix: '2026-10-07T00:40:47.000Z', exact: true, known_from: 'start_time' }, 'zh'))!.textContent).toBe('本复盘中的价格、装备效果和技能冷却按 7.41f 版本 2026-10-07 热修复后的数值（依据比赛开始时间）');
+    expect((await show({ name: '7.41f', hotfix: '2026-10-07T00:40:47.000Z', exact: true, known_from: 'start_time' }, 'en'))!.textContent).toBe('Prices, item effects and cooldowns in this review are those of patch 7.41f after its hotfix of 2026-10-07 (from when the game was played)');
+    // The release known, the hotfix not (it was rolling out): not "the patch could not be told".
+    const hot = (await show({ name: '7.41f', exact: false, reason: 'started_while_the_2026-10-07T00:40_hotfix_was_rolling_out' }, 'zh'))!;
+    expect(hot.textContent).toBe('本复盘中的价格、装备效果和技能冷却按 7.41f 版本；这局前后该版本正好有一次热修复，个别数值可能是热修复前或后的。');
     // A review stored before the patch was kept says nothing rather than guess.
     expect(await show(null, 'en')).toBeNull();
   });
@@ -1203,20 +1342,26 @@ describe('AgentMatchPage', () => {
       '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
-    const section = (await screen.findByRole('heading', { level: 2, name: 'The game plan' })).closest('section')!;
+    const section = (await screen.findByRole('heading', { level: 3, name: 'The game plan' })).closest('details')!;
     const plan = within(section as HTMLElement);
     expect(plan.getByText('How it went').nextElementSibling!.textContent).toBe(game_plan.course);
     expect(plan.getByText('Your part').nextElementSibling!.textContent).toBe(game_plan.your_part);
     expect(plan.getByText('The line-ups').nextElementSibling!.textContent).toBe(game_plan.line_ups);
     expect(plan.getByText('What you were up against').nextElementSibling!.textContent).toBe(game_plan.strengths);
-    expect(plan.getByText('Mostly the team, not you').parentElement!.textContent).toBe('Mostly the team, not youThe team did not turn fights into towers.');
+    expect(section.querySelector('.ag-plan-why')!.textContent).toBe('Mostly the team, not youThe team did not turn fights into towers.');
+    // Folded, its heading already says what the game is put down to.
+    expect(section.querySelector('summary')!.textContent).toBe('The game planMostly the team, not you');
     // Its evidence opens like a finding's.
     expect(plan.getByText('The enemy took 3 towers.')).toBeTruthy();
     expect(plan.getByText('20:00')).toBeTruthy();
-    // It stands before the findings: the game as a whole, then the player's own play.
-    const heads = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(heads.indexOf('The game plan')).toBeLessThan(heads.indexOf('What decided it'));
-    expect(heads.indexOf('The game plan')).toBeGreaterThan(heads.indexOf('How the game went'));
+    // The reader's own lesson comes first; the game as a whole after it, folded, with the plan after the story.
+    const lesson = screen.getByRole('heading', { level: 2, name: 'Practise this next game' });
+    const whole = screen.getByRole('heading', { level: 2, name: 'The whole game' });
+    expect(lesson.compareDocumentPosition(whole) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(section.closest('section')!.querySelector('h2')).toBe(whole);
+    expect((section as HTMLDetailsElement).open).toBe(false);
+    const folds = Array.from(section.closest('section')!.querySelectorAll('details > summary h3')).map((h) => h.textContent);
+    expect(folds).toEqual(['How the game went', 'The game plan']);
 
     // A moment is pinned for a typed question; picking a plan does not send it along, and leaves it pinned.
     fireEvent.click(screen.getAllByRole('button', { name: 'Ask about this' })[0]);
@@ -1241,7 +1386,7 @@ describe('AgentMatchPage', () => {
     });
     ui.lang = 'zh';
     page('/r/9100904020?hero=beastmaster&lang=zh');
-    const section = (await screen.findByRole('heading', { level: 2, name: '运营思路' })).closest('section')!;
+    const section = (await screen.findByRole('heading', { level: 3, name: '运营思路' })).closest('details')!;
     const plan = within(section as HTMLElement);
     expect(plan.queryByText('走势')).toBeNull();
     expect(plan.getByText('这局你本来想怎么打？告诉教练，它会对照录像回答。')).toBeTruthy();
@@ -1257,7 +1402,7 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/发育拖后期再打团/)).toBeNull();
   });
 
-  it('ready: the scoreboard (both line-ups, the reader marked) sits right under the verdict', async () => {
+  it('ready: the scoreboard (both line-ups, the reader marked) is part of the whole game, folded, after the lesson', async () => {
     mockFetch({
       'ref=overview': overview,
       '/review?': { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
@@ -1265,14 +1410,18 @@ describe('AgentMatchPage', () => {
       '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
-    const verdict = await screen.findByRole('heading', { level: 1, name: review.verdict });
+    const lead = await screen.findByRole('heading', { level: 1, name: review.findings[0].title });
     const scoreboard = await screen.findByRole('region', { name: 'Scoreboard' });
     expect(scoreboard.querySelectorAll('li')).toHaveLength(board.players.length);
     expect(scoreboard.querySelector('li.is-me')?.textContent).toContain('Beastmaster');
-    // Under the verdict, before the story of the game.
-    expect(verdict.compareDocumentPosition(scoreboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const story = screen.getByRole('heading', { level: 2, name: 'How the game went' });
-    expect(scoreboard.compareDocumentPosition(story) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // After the lesson, in its own fold of the whole game, which starts closed; the story of the game comes before it.
+    expect(lead.compareDocumentPosition(scoreboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const fold = scoreboard.closest('details')!;
+    expect(fold.querySelector('summary')!.textContent).toBe('Line-ups and scoreboard');
+    expect(fold.open).toBe(false);
+    expect(fold.closest('section')!.querySelector('h2')!.textContent).toBe('The whole game');
+    const story = screen.getByRole('heading', { level: 3, name: 'How the game went' });
+    expect(story.compareDocumentPosition(scoreboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('ready: the review, its evidence record on demand, and a question about that moment', async () => {
@@ -1284,8 +1433,11 @@ describe('AgentMatchPage', () => {
       '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
-    expect(await screen.findByRole('heading', { level: 1, name: review.verdict })).toBeTruthy();
-    expect(screen.getByText('Roar on the wrong target')).toBeTruthy();
+    // The headline is the first finding; the sentence about the whole game stands with the whole game.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Roar on the wrong target' })).toBeTruthy();
+    expect(screen.getByText('Three of ten went to Axe.').className).toBe('ag-lead-claim');
+    expect(screen.getByText(review.verdict).closest('section')!.querySelector('h2')!.textContent).toBe('The whole game');
+    expect(screen.getByRole('heading', { level: 2, name: 'Practise this next game' }).closest('section')!.textContent).toContain('Keep it for her.');
     expect(screen.getByText(/1 removed for lack of evidence/)).toBeTruthy();
     // The turning fight is marked on the strip once the overview arrives.
     expect(await screen.findByText(/▲ 30:26 the turn/)).toBeTruthy();

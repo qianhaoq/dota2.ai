@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchEvidence, type EvidenceItem, type EvidenceRecord } from './api';
+import { MomentReplay } from './MomentReplay';
+import { trackEvent } from '../services/analytics';
 
 /**
  * Evidence under a finding: the coach's sentence, and — one click away — the
@@ -12,6 +14,8 @@ const T = {
   show: { en: 'Show the record', zh: '看原始记录' },
   hide: { en: 'Hide', zh: '收起' },
   ask: { en: 'Ask about this', zh: '就这一刻追问' },
+  replay: { en: 'Replay this moment', zh: '重放这一刻' },
+  replayHide: { en: 'Close the replay', zh: '收起回放' },
   loading: { en: 'Loading the record…', zh: '正在取记录…' },
   failed: { en: 'Could not load this record.', zh: '这条记录没有取到。' },
   killer: { en: 'Killed by', zh: '击杀者' },
@@ -132,7 +136,8 @@ const T = {
   pushedBy: { my_team: { en: 'Your team pushed', zh: '我方推' }, enemy: { en: 'They pushed', zh: '对方推' } } as Record<string, Record<Lang, string>>,
   tookIt: { en: 'fell', zh: '被拆' }, stood: { en: 'stood', zh: '没拆掉' },
   hitting: { en: 'Hitting it', zh: '打建筑' }, ownersNear: { en: 'Owners near', zh: '守方在附近' },
-  pushOthers: { en: 'Rest of the pushing side', zh: '推塔方其余' }, ownersAway: { en: 'Owners not near', zh: '守方不在附近' },
+  pushOthers: { en: 'Rest of the pushing side, when it began', zh: '推塔方其余（推进开始时）' }, ownersAway: { en: 'Owners not near, when it began', zh: '守方不在附近（推进开始时）' },
+  meWhenFell: { en: 'When it fell, you', zh: '被拆时你' }, placeUnknown: { en: 'position not known', zh: '位置未知' },
   meAt: { hitting: { en: 'you hit it', zh: '你在打' }, near: { en: 'you were near', zh: '你在附近' }, not_hitting: { en: 'you did not hit it', zh: '你没打塔' }, not_near: { en: 'you were not near', zh: '你不在附近' } } as Record<string, Record<Lang, string>>,
   stateCols: { en: ['Hero', 'Where / doing', 'Lv', 'HP', 'Ultimate', 'BKB', 'TP'], zh: ['英雄', '位置 / 在做', '等级', '血量', '大招', 'BKB', 'TP'] },
   tempoLost: { en: 'Fights with more heroes lost', zh: '多死人的团战' },
@@ -672,6 +677,8 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           <span className={`ag-chip ${r.took_it ? (mine ? 'is-good' : 'is-warn') : ''}`}>{r.took_it ? `${t(T.tookIt)} ${r.fell_at}` : t(T.stood)}</span>
           {T.meAt[r.me] && <span className="ag-chip is-me">{t(T.meAt[r.me])}</span>}
         </p>
+        {/* The rows further down are from the push's start; this one is the player at the second the building fell. */}
+        {r.me_when_it_fell && <p className="ag-rec-line"><span className="ag-chip is-me">{t(T.meWhenFell)} · {r.me_when_it_fell.known === false ? t(T.placeUnknown) : doingOf(r.me_when_it_fell)}{r.me_when_it_fell.distance != null && <em>{r.me_when_it_fell.distance} {t(T.away)}</em>}{r.me_when_it_fell.respawn_in != null && <em>{t(T.respawn)} {r.me_when_it_fell.respawn_in}{t(T.sec)}</em>}</span></p>}
         <p className="ag-rec-line"><span>{t(T.hitting)} {r.hitting.length}</span>{list(r.hitting, mine ? 'is-ally' : 'is-enemy')}</p>
         <p className="ag-rec-line"><span>{t(T.ownersNear)} {r.owners_near.length}</span>{list(r.owners_near, mine ? 'is-enemy' : 'is-ally')}</p>
         {r.owners_not_near.length > 0 && <p className="ag-rec-line"><span>{t(T.ownersAway)}</span>{r.owners_not_near.map(row)}</p>}
@@ -883,8 +890,19 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   );
 }
 
+/** Records that are a moment of the game (not a count over it, a build, or a ten-minute stretch): those can be replayed on the map. */
+const MOMENT_REF = /^(death|cast|immune|fight|fights|state|timeline):/;
+/** The game second an evidence line's clock names, when its record is a moment; else null. */
+export function momentOf(item: EvidenceItem): number | null {
+  const m = /^(-)?(\d{1,3}):([0-5]\d)$/.exec(item.clock ?? '');
+  if (!m || !MOMENT_REF.test(item.refs[0] ?? '')) return null;
+  return (m[1] ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]));
+}
+
 export const EvidenceCard: React.FC<{ matchId: string; hero: string; lang: Lang; item: EvidenceItem; onAsk: (label: string, refs: string[]) => void }> = ({ matchId, hero, lang, item, onAsk }) => {
   const [open, setOpen] = useState(false);
+  const [replay, setReplay] = useState(false);
+  const moment = momentOf(item);
   const [records, setRecords] = useState<(EvidenceRecord | null)[] | null>(null);
   useEffect(() => {
     if (!open || records) return;
@@ -901,8 +919,10 @@ export const EvidenceCard: React.FC<{ matchId: string; hero: string; lang: Lang;
       </div>
       <div className="ag-ev-actions">
         <button type="button" className="ag-link" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{t(open ? T.hide : T.show)}</button>
+        {moment != null && <button type="button" className="ag-link" aria-expanded={replay} onClick={() => { if (!replay) trackEvent('moment_played', { matchId, lang, hero }); setReplay((v) => !v); }}>{t(replay ? T.replayHide : T.replay)}</button>}
         <button type="button" className="ag-link" onClick={() => onAsk(item.clock ?? item.refs[0], item.refs)}>{t(T.ask)}</button>
       </div>
+      {replay && moment != null && <div className="ag-ev-records"><MomentReplay matchId={matchId} hero={hero} lang={lang} t={moment} /></div>}
       {open && (
         <div className="ag-ev-records">
           {!records && <p className="ag-none">{t(T.loading)}</p>}

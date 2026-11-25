@@ -15,8 +15,10 @@
  * - Releases and their dates: Valve's patch notes list (dota2.com datafeed).
  * - Game files: github.com/dotabuff/d2vpkr, one commit per game update. A
  *   release's rollout is the first update at or after Valve's date; its data is
- *   the last update before the next release rolled out, so hotfixes between
- *   letters are included. The update's commit time is the rollout time: the
+ *   that update's. Every later update before the next release whose item or
+ *   ability data differs is a hotfix with a snapshot of its own
+ *   (<release>.<date>T<hhmm>.json, listed under the release's `hotfixes`), so
+ *   a game is told the numbers of the hotfix it was played on. The update's commit time is the rollout time: the
  *   repository is polled every twenty minutes, so the rollout lies in the
  *   twenty minutes before it.
  * - Turning game files into item and ability data: OpenDota's own builder
@@ -169,36 +171,78 @@ mkdirSync(OUT, { recursive: true });
 const iso = (t) => new Date(t).toISOString();
 const old = existsSync(INDEX) ? JSON.parse(readFileSync(INDEX, 'utf8')) : { releases: [] };
 const index = [];
+/** The item and ability data of one game update, as the builder reads its game files. */
+async function build(c) {
+  const split = await splitHeroes(c.sha);
+  execFileSync(process.execPath, [split ? BUILT.current : BUILT.old], { cwd: BUILDER, env: { ...process.env, D2VPKR_REF: c.sha, ONLY_KEYS: 'items,abilities,hero_abilities' }, stdio: ['ignore', 'ignore', 'pipe'] });
+  const read = (f) => JSON.parse(readFileSync(join(BUILDER, 'build', `${f}.json`), 'utf8'));
+  return { built_with: `odota/dotaconstants tasks/updateconstants.ts at ${split ? git('rev-parse', '--short=12', 'HEAD').trim() : OLD_BUILDER}`, items: pruneItems(read('items')), heroes: pruneHeroes(read('hero_abilities'), read('abilities')) };
+}
+/** "2026-10-07T00:40" as a file-name part: 2026-10-07T0040. */
+const stamp = (t) => iso(t).slice(0, 16).replace(':', '');
 for (const [i, r] of releases.entries()) {
   const next = releases[i + 1];
   const entry = {
     name: r.name, major: majorOf(r.name), major_id: MAJOR_IDS[majorOf(r.name)] ?? null,
     rollout_by: iso(r.rollout.at), rollout_from: iso(r.rollout.at - POLL_MINUTES * 60_000), rollout_update: `${r.rollout.build} (${r.rollout.sha.slice(0, 12)})`,
   };
-  {
-    // The newest release too: its data is its own game files (the latest update), never the site's live tables,
-    // which a refresh may or may not have brought to this release.
-    const data = next ? [...commits].reverse().find((c) => c.at < next.rollout.at) : commits.at(-1);
-    const split = await splitHeroes(data.sha);
-    execFileSync(process.execPath, [split ? BUILT.current : BUILT.old], { cwd: BUILDER, env: { ...process.env, D2VPKR_REF: data.sha, ONLY_KEYS: 'items,abilities,hero_abilities' }, stdio: ['ignore', 'ignore', 'pipe'] });
-    const read = (f) => JSON.parse(readFileSync(join(BUILDER, 'build', `${f}.json`), 'utf8'));
+  // Every game update of this release, from its rollout to the last before the next release (to the latest for the
+  // newest): a hotfix between letters changes prices and numbers too. An update whose item and ability data is the
+  // same as the one before (a cosmetic or unit change) is not a step of its own.
+  const updates = commits.filter((c) => c.at >= r.rollout.at && (!next || c.at < next.rollout.at));
+  const steps = [];
+  let last = null;
+  for (const c of updates) {
+    let data;
+    try { data = await build(c); } catch (e) {
+      // OpenDota's builder cannot read every intermediate update's files: such an update is a step whose data is not
+      // known, so games played on it are told so rather than given the update before.
+      console.warn(`${r.name}: update ${c.sha.slice(0, 12)} (${iso(c.at)}) could not be built: ${String(e.stderr ?? e.message).split('\n').find((l) => /Error/.test(l)) ?? ''}`);
+      if (steps.length === 0) throw e;
+      if (last !== null) { steps.push({ c, data: null }); last = null; }
+      continue;
+    }
+    const same = JSON.stringify({ items: data.items, heroes: data.heroes });
+    if (same === last) continue;
+    last = same;
+    steps.push({ c, data });
+  }
+  const hotfixes = [];
+  // Match ids found earlier for the same hotfix are kept (an unread one too: its ids are still where it rolled out).
+  const keptIds = (h) => {
+    const kept = old.releases?.find((x) => x.name === r.name)?.hotfixes?.find((x) => x.rollout_by === h.rollout_by);
+    return kept?.first_match_id_after ? { ...h, last_match_id_before: kept.last_match_id_before, first_match_id_after: kept.first_match_id_after } : h;
+  };
+  for (const [n, { c, data }] of steps.entries()) {
+    if (!data) {
+      hotfixes.push(keptIds({ update: `${c.build} (${c.sha.slice(0, 12)})`, rollout_by: iso(c.at), rollout_from: iso(c.at - POLL_MINUTES * 60_000), data: null, reason: 'game_files_not_read_by_the_builder' }));
+      continue;
+    }
+    const file = n === 0 ? `${r.name}.json` : `${r.name}.${stamp(c.at)}.json`;
+    const later = steps[n + 1]?.c ?? next?.rollout;
     const snapshot = {
       release: r.name, major: entry.major, major_id: entry.major_id,
-      game_files: `dotabuff/d2vpkr ${data.sha.slice(0, 12)} (${data.build}, ${iso(data.at).slice(0, 10)}): ${next ? `the last game update before ${next.name}` : `the latest game update when this was built (${iso(Date.now()).slice(0, 10)})`}`,
-      built_with: `odota/dotaconstants tasks/updateconstants.ts at ${split ? git('rev-parse', '--short=12', 'HEAD').trim() : OLD_BUILDER}`,
-      items: pruneItems(read('items')), heroes: pruneHeroes(read('hero_abilities'), read('abilities')),
+      ...(n ? { hotfix: iso(c.at) } : {}),
+      game_files: `dotabuff/d2vpkr ${c.sha.slice(0, 12)} (${c.build}, ${iso(c.at).slice(0, 10)}): ${n ? 'a hotfix' : 'the release\'s rollout'}, in force until ${later ? `${later === next?.rollout ? next.name : 'the next hotfix'} (${iso(later.at).slice(0, 10)})` : 'a later game update'}`,
+      // When it was built: the weekly refresh leaves a file whose only change is this date as it was.
+      fetched: iso(Date.now()).slice(0, 10),
+      built_with: data.built_with, items: data.items, heroes: data.heroes,
     };
-    writeFileSync(new URL(`${r.name}.json`, OUT), `${JSON.stringify(snapshot)}\n`);
-    entry.data = `${r.name}.json`;
-    console.log(`${r.name}: rolled out by ${iso(r.rollout.at)}; data ${snapshot.game_files.split(':')[0]}; ${Object.keys(snapshot.items).length} items`);
+    writeFileSync(new URL(file, OUT), `${JSON.stringify(snapshot)}\n`);
+    if (n === 0) entry.data = file;
+    else {
+      hotfixes.push(keptIds({ update: `${c.build} (${c.sha.slice(0, 12)})`, rollout_by: iso(c.at), rollout_from: iso(c.at - POLL_MINUTES * 60_000), data: file }));
+    }
   }
+  if (hotfixes.length) entry.hotfixes = hotfixes;
+  console.log(`${r.name}: rolled out by ${iso(r.rollout.at)}; ${updates.length} game updates, ${steps.length - 1} hotfixes with other data (${hotfixes.map((h) => h.rollout_by.slice(0, 16)).join(', ')})`);
   // Match ids found earlier for the same rollout are kept; a moved rollout needs scripts/patch-match-ids.mjs again.
   const kept = old.releases?.find((x) => x.name === r.name && x.rollout_by === entry.rollout_by);
   if (kept?.first_match_id_after) Object.assign(entry, { last_match_id_before: kept.last_match_id_before, first_match_id_after: kept.first_match_id_after });
   index.push(entry);
 }
 writeFileSync(INDEX, `${JSON.stringify({
-  source: 'Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told.',
+  source: 'Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told. hotfixes: the game updates within a release that changed item or ability data, each with its own data and rollout window, read the same way.',
   // Valve's list was read then: a release out since is not in it, and its games are placed in the last one here.
   releases_checked_at: iso(Date.now()),
   releases: index,

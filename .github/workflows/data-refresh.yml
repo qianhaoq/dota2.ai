@@ -1,7 +1,7 @@
 # Refreshes the data snapshots the coach reads, once a week, and opens (or
 # updates) one pull request with what changed: OpenDota constants and names,
 # Valve's ability data and patch notes, professional matchups and items, the
-# past-patch snapshots, and — with STRATZ_API_TOKEN — public matchups by
+# release and hotfix snapshots, and — with STRATZ_API_TOKEN — public matchups by
 # bracket, win rate by game length, and win and pick rates since the patch.
 # Logic and tests: .github/scripts/data-refresh.cjs, src/utils/dataRefresh.test.ts.
 #
@@ -14,6 +14,9 @@
 #   merge. Without it the run still refreshes and reports, and opens nothing.
 # - STRATZ_API_TOKEN: the three STRATZ steps are skipped, and said so, without it.
 # - OPENDOTA_API_KEY (optional): higher OpenDota limits.
+#
+# New data under lib/ changes what the review tools answer: the refresh raises the
+# review version (and its pin) with it, so stored reviews are written again.
 #
 # The pull request is the usual way in: CI, Codex review and auto-merge. When
 # the tests fail here it is opened as a draft with no-auto-merge. A new game
@@ -49,10 +52,21 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # The release snapshots (scripts/coach-patch-snapshots.mjs, run by refresh-data.mjs --all) are built with
+      # OpenDota's own builder at a pinned commit; its history is needed for the builder of the older game files.
+      - name: OpenDota's builder for the release snapshots
+        run: |
+          git clone --quiet https://github.com/odota/dotaconstants "$RUNNER_TEMP/dotaconstants"
+          git -C "$RUNNER_TEMP/dotaconstants" checkout --quiet 0b0b4a6867a8
+          (cd "$RUNNER_TEMP/dotaconstants" && npm ci --ignore-scripts --no-audit --no-fund)
+
       - name: Run the data scripts
         env:
           STRATZ_API_TOKEN: ${{ secrets.STRATZ_API_TOKEN }}
           OPENDOTA_API_KEY: ${{ secrets.OPENDOTA_API_KEY }}
+          DOTACONSTANTS_DIR: ${{ runner.temp }}/dotaconstants
+          # GitHub's API for the game updates (dotabuff/d2vpkr): the run's own token lifts the anonymous limit.
+          GITHUB_TOKEN: ${{ github.token }}
         run: node .github/scripts/data-refresh.cjs refresh "$RUNNER_TEMP/report.json"
 
       - name: Keep only real changes

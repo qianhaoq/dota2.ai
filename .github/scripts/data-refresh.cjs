@@ -12,12 +12,15 @@
  * STRATZ_API_TOKEN is set.
  */
 const { spawnSync, execFileSync } = require('node:child_process');
-const { readFileSync, writeFileSync } = require('node:fs');
+const { readFileSync, writeFileSync, readdirSync } = require('node:fs');
+const path = require('node:path');
 
 /** The scripts, in the order they must run (patch-meta reads patch-notes). */
 function steps(version) {
   return [
     { name: 'OpenDota constants, names, abilities, pro mid-game items, past-patch snapshots', cmd: ['scripts/refresh-data.mjs', '--all'], source: 'OpenDota, Valve, GitHub' },
+    // After the snapshots: the match ids on either side of each new release and hotfix rollout they listed.
+    { name: 'Match ids at each release and hotfix rollout', cmd: ['scripts/patch-match-ids.mjs'], source: 'STRATZ', stratz: true },
     { name: 'Pro matchups and lanes', cmd: ['scripts/coach-matchups.mjs'], source: 'OpenDota explorer' },
     { name: 'Pro counter items', cmd: ['scripts/coach-item-vs.mjs'], source: 'OpenDota explorer' },
     { name: `Valve's ${version} patch notes`, cmd: ['scripts/coach-patch-notes.mjs', version], source: 'Valve' },
@@ -35,7 +38,8 @@ function sitePatch(root = '.') {
 }
 
 /** Top-level fields that only say when a file was made. */
-const DATE_ONLY = ['fetched'];
+// releases_checked_at: when Valve's release list was read (lib/data/constants/patches/index.json).
+const DATE_ONLY = ['fetched', 'releases_checked_at'];
 
 /**
  * True when two versions of a JSON data file differ only in when they were
@@ -69,6 +73,38 @@ function refresh(reportPath, env = process.env) {
 // Data files run to several megabytes: the default 1 MB buffer is far too small for `git show`.
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 });
 
+/**
+ * Every data file under lib/ is read by a review tool, so a refresh that changes one changes what the tools answer.
+ * Stored reviews are kept per review version (AGENTS.md, "What the model is told is pinned"): the version goes up
+ * with the data, or reviews written against the old numbers would stay current while their evidence is recomputed
+ * from the new ones.
+ */
+const TOOL_DATA = /^lib\//;
+const VERSION_FILE = 'lib/agent/review/schema.js';
+const PIN_FILE = 'src/utils/agentPromptPin.test.ts';
+
+/** Raises DEEP_REVIEW_PROMPT_VERSION by one, with its pin and every test that states it: the new version. */
+function bumpReviewVersion(root = '.') {
+  const at = (f) => path.join(root, f);
+  const src = readFileSync(at(VERSION_FILE), 'utf8');
+  const m = src.match(/export const DEEP_REVIEW_PROMPT_VERSION = (\d+);/);
+  if (!m) throw new Error(`no DEEP_REVIEW_PROMPT_VERSION in ${VERSION_FILE}`);
+  const from = Number(m[1]); const to = from + 1;
+  writeFileSync(at(VERSION_FILE), src.replace(m[0], `export const DEEP_REVIEW_PROMPT_VERSION = ${to};`));
+  const pin = readFileSync(at(PIN_FILE), 'utf8');
+  const pinned = pin.replace(`const PIN = { version: ${from}, `, `const PIN = { version: ${to}, `);
+  if (pinned === pin) throw new Error(`${PIN_FILE} does not pin version ${from}`);
+  writeFileSync(at(PIN_FILE), pinned);
+  // Other tests that state the exact version (a feature's "the prompt version moved").
+  const dir = at('src/utils');
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.test.ts'))) {
+    const text = readFileSync(path.join(dir, f), 'utf8');
+    const next = text.split(`expect(DEEP_REVIEW_PROMPT_VERSION).toBe(${from});`).join(`expect(DEEP_REVIEW_PROMPT_VERSION).toBe(${to});`);
+    if (next !== text) writeFileSync(path.join(dir, f), next);
+  }
+  return { from, to };
+}
+
 function settle(reportPath) {
   const report = JSON.parse(readFileSync(reportPath, 'utf8'));
   const changed = git('diff', '--name-only').split('\n').filter(Boolean);
@@ -81,6 +117,7 @@ function settle(reportPath) {
   }
   report.changed = [...kept, ...added];
   report.date_only = undone;
+  if (report.changed.some((f) => TOOL_DATA.test(f))) report.review_version = bumpReviewVersion();
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
   return report;
 }
@@ -99,6 +136,7 @@ function body(report, tests) {
     `Changed: ${report.changed?.length ? report.changed.map((f) => `\`${f}\``).join(', ') : 'nothing'}.`,
     '',
   ];
+  if (report.review_version) lines.push(`Review version raised from ${report.review_version.from} to ${report.review_version.to} (\`${VERSION_FILE}\` and its pin): the tools now answer from the new data, so stored reviews are written again on their next request.`, '');
   if (report.game_patch && report.game_patch !== report.version) {
     lines.push(`> **A new game patch: ${report.game_patch}.** The site still presents ${report.version} (\`src/coach/patch.ts\`), and the patch notes and their win rates follow it. Write ${report.game_patch}'s highlights and new items there; the next refresh then fetches its notes and numbers.`, '');
   }
@@ -127,7 +165,7 @@ function body(report, tests) {
   return lines.join('\n');
 }
 
-module.exports = { steps, sitePatch, onlyDateChanged, refresh, settle, body };
+module.exports = { steps, sitePatch, onlyDateChanged, refresh, settle, body, bumpReviewVersion };
 
 if (require.main === module) {
   const [cmd, report, tests] = process.argv.slice(2);

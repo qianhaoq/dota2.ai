@@ -1,1 +1,8 @@
 a9915dc338e8b03d3ffb0472e34b4fb552dc4718:src/utils/analyticsClient.ts:generic-api-key:24
+# #327: a made-up string in the shape of a Zhipu key, to test that the log redacts it
+6e6594aca3d24758fdc53aa4509321b51db13c4b:src/utils/agentModelChoice.test.ts:generic-api-key:254
+# #325: eval baseline keys are "<match id>.<hero>.<lang>.", not credentials
+1d7784ba87b61b367385842a6ffc46410f50e37b:data/eval-baseline.v1.json:generic-api-key:612
+1d7784ba87b61b367385842a6ffc46410f50e37b:data/eval-baseline.v1.json:generic-api-key:622
+# #327 as it was merged (the squash commit): the same made-up Zhipu-shaped string, in the redaction test
+0c4321d150dadbb53a584ab667397b769377b812:src/utils/agentModelChoice.test.ts:generic-api-key:313

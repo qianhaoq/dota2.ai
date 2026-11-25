@@ -48,7 +48,7 @@ describe('pro items by the release a game was played on', () => {
 
   it('a patch days old: its own few games, and the patch before apart, never mixed in', () => {
     // A hero with some but fewer than MIN_GAMES pro games in 7.42 (the data grows as the patch ages: found, not named).
-    const few = Number(Object.keys(DATA.releases.at(-1).heroes).find((h) => row('7.42', +h).games < MIN_GAMES));
+    const few = Number(Object.keys(DATA.releases.find((r: any) => r.name === '7.42').heroes).find((h) => row('7.42', +h).games < MIN_GAMES));
     expect(few).toBeGreaterThan(0);
     const t = proItemsFor(few, patchData('7.42'))!;
     expect(t).toMatchObject({ releases: ['7.42'], games: row('7.42', few).games, few_games: true });

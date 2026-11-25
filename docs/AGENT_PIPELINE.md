@@ -15,7 +15,7 @@ Code: `lib/agent/` (pipeline, stores, service, router, agent, verifier),
 
 | Piece | Where | Needs |
 |---|---|---|
-| Site (`server.js`) | the existing Cloud Run service | `DEEPSEEK_API_KEY`, `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
+| Site (`server.js`) | the existing Cloud Run service | `DEEPSEEK_API_KEY` (and `KIMI_API_KEY`, `GLM_API_KEY` for the other models), `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
 | Replay worker (`Dockerfile.trace-worker`) | a second, private Cloud Run service | the pinned extractor in the image, `AGENT_BUCKET` |
 | Storage | one GCS bucket, objects under `agent/` | traces (`<id>.trace.json.gz`, ~250 KB), reviews, job markers |
 
@@ -68,14 +68,26 @@ earlier release — letter releases included (7.41b, 7.41c …) — reads prices
 recipes, item effects, cooldowns and spell-immunity flags from
 `lib/data/constants/patches/<release>.json`. `scripts/coach-patch-snapshots.mjs`
 builds them from Valve's game files (github.com/dotabuff/d2vpkr, one commit per
-game update) with OpenDota's own builder, each as it stood just before the next
-release rolled out, so hotfixes between letters are included. Items that did
+game update) with OpenDota's own builder, each as it rolled out. Items that did
 not exist then are not offered.
+
+Hotfixes between letters change numbers too (7.41f's hotfix of 7 October 2026
+raised Necronomicon from 2050 to 2700 gold). Every game update within a release
+whose item or ability data differs from the one before is a hotfix with its own
+snapshot (`<release>.<date>T<hhmm>.json`, listed under the release's `hotfixes`
+in the index, each with its rollout window and match ids), and a game is told
+the numbers of the hotfix it was played on (`hotfix` in `data_patch`; the page
+names it). An update OpenDota's builder cannot read is listed with `data: null`:
+a game played on it is given the update before and told the numbers may differ
+(not exact), never that update's numbers as if known. A game that started while
+a hotfix was rolling out is in a known release but an unknown hotfix, and the
+page says just that. Professional item shares stay per letter release (a hotfix
+is too short for a pro sample).
 
 `lib/data/constants/patches/index.json` lists the releases: when each rolled out
 (the game update's commit; the repository is polled every 20 minutes, so the
 rollout lies in the 20 minutes before it) and the match ids on either side
-(`scripts/patch-match-ids.mjs`, start times from STRATZ). A game's release is
+(`scripts/patch-match-ids.mjs`, start times from STRATZ; hotfixes too). A game's release is
 read from its start time when the match data has one, else from its match id —
 so it is known even when OpenDota is down. A game that started during a
 rollout, one older than 7.40, or one known only by OpenDota's patch number
@@ -190,6 +202,7 @@ the worker.
 |---|---|---|
 | Parses | 5 per caller per 10 min; `AGENT_PARSE_DAILY_MAX` (default 300) a day | `lib/agent/router.js` |
 | Deep reviews | 5 per caller per 10 min; 60 an hour; the shared LLM budget | same |
+| Deep reviews by a model other than DeepSeek | also `AGENT_MODEL_HOURLY_MAX` (default 20) an hour per model; 25 min to finish instead of 15. Both by what the model is, also when it is the server's default | same, `lib/agent/service.js`, `models.js` `writesSlowly` |
 | Chat | 12 turns a minute per caller; 6 tool calls a turn; the shared LLM budget | same, `lib/agent/chat.js` |
 | Download | 256 MB; extractor input 512 MB, output 1.5 GB | `replayIngest/capacity.js` |
 
@@ -197,6 +210,66 @@ Measured on one 42-minute game (9100904020): replay 51 MB; worker 22 s from
 address to stored trace; deep review with DeepSeek 4.1 Flash (thinking on)
 100–130 s, 130–270k input and 17–24k output tokens. A trace and a review are
 made once per match / per (match, hero, language) and kept.
+
+## Which model writes the review
+
+The reader picks one on the review page; the default is DeepSeek 4.1 Flash.
+`lib/agent/models.js` lists what a page may show (an id, a name, how long the
+model took when timed); `lib/agent/providers.js` maps each id to its address,
+upstream model name and key, and only the server and the scripts import it.
+
+| id | Key | Offered by default |
+|---|---|---|
+| `deepseek-flash` | `DEEPSEEK_API_KEY` | yes (the default) |
+| `kimi-k3.1-pro` | `KIMI_API_KEY` | yes |
+| `glm-5.3-flash` | `GLM_API_KEY` | yes |
+| `glm-5.3` | `GLM_API_KEY` | no: `AGENT_MODELS` |
+| `glm-5.4` | `GLM_API_KEY` | no: the API answered 1220 (no access) on 2026-11-25 |
+
+A model is offered when its key is set (and `AGENT_MODELS`, a comma separated
+list of ids, does not leave it out). The page sends the id only. An id that is
+not offered is a 400; a review is never written by a model the reader did not
+ask for, and a failed review is not retried with another. Each model's review
+of a game is kept on its own (`….m-<id>.review.json`), so the same game can be
+read by two models; the key without a model is DeepSeek's, as every review was
+stored before there was a choice, and stays DeepSeek's on a server whose
+default is another model. A queued review names its model. The chat is
+answered by the model whose review is on screen.
+
+Keys: in the server's environment only, on Cloud Run from Secret Manager
+(`--update-secrets`, never `--set-env-vars`), never in a `VITE_*` variable.
+Every secret the process holds is redacted from its logs by value
+(`lib/llmErrors.js` `registerSecretValues`), whatever its shape. A Kimi key is
+sent to one of Kimi's four addresses and nowhere else (`KIMI_BASE_URL`): a
+Kimi Code membership key (`sk-kimi-…`) to `api.kimi.com/coding/v1`, a Moonshot
+platform key to `api.moonshot.cn/v1`.
+
+Timed on 2026-11-25 on one game (9091400302, Tidehunter, Chinese, a 45-minute
+game), thinking at each provider's default. "Script" is one run of
+`scripts/deep-review.mjs` from a developer machine; "production" is a review
+started from the site (DeepSeek: its runs of that game over the day):
+
+| Model | Where | Time | Input / output tokens | Rounds, lookups | Findings | Dropped by the check |
+|---|---|---|---|---|---|---|
+| DeepSeek 4.1 Flash | production | 2.1–2.5 min | 244–538k / 22–27k | 5–10, 16 | 3 | 0 |
+| Kimi K3.1 Pro | script | 13.4 min | 502k / 25k | 8, 26 | 3 | 0 |
+| Kimi K3.1 Pro | production | 13.0 min | 541k / 25k | 9, 25 | 3 | 0 |
+| GLM-5.3 Flash | script | 11.2 min | 359k / 35k | 7, 16 | 3 | 0 (one plan evidence line left out) |
+| GLM-5.3 Flash | production | 13.2 min | 562k / 39k | 9, 16 | 3 | 0 (one plan evidence line left out) |
+| GLM-5.3 | script | 23.6 min | 1,000k / 59k | 13, 21 | 3 | 0 |
+
+These times are what the page tells a reader to expect (`models.js`
+`minutes`, shown on each model's button, before the start and while the review
+is being written): change them there when a model is timed again.
+
+All of them named the same two things to change (staying in lane at low
+health; magic resistance bought before Blink against a hero who kills with
+attacks). The third finding differed: deaths away from the team that bought
+nothing (DeepSeek, GLM), or fighting on outnumbered after Ravage (Kimi). In
+the production runs GLM-5.3 Flash listed no blind spots and gave no main
+reason, where the other two did. One game is not a ranking of their judgment;
+it does show that the other models take five to ten times as long, which is
+why the page states the wait and GLM-5.3 is not offered by default.
 
 ## Where the replay address comes from
 
