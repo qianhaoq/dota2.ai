@@ -17,7 +17,8 @@ describe('habitGoal', () => {
       const h = HABITS[k as keyof typeof HABITS];
       const summary = h.from === 'deaths' ? deaths : roar;
       expect(h.at.length === 2 ? summary[h.at[0]] : summary, k).toHaveProperty(h.at[h.at.length - 1]);
-      if (h.unsure) expect(deaths.deaths_not_known).toHaveProperty(h.unsure);
+      // What it could not decide is kept beside it: over the deaths, or over the ability's casts.
+      if (h.unsure) expect(h.from === 'deaths' ? deaths.deaths_not_known : roar.casts_not_known, k).toHaveProperty(h.unsure);
     }
   });
   it('half as often as this game, from the replay\'s own count; code writes the label', () => {
@@ -123,6 +124,42 @@ describe('habits counted over one ability', () => {
     expect(HABITS.reached_few.at).toEqual(['casts_where', KEY]);
     const goal: any = habitGoal('reached_few', flare, { hero: 'skywrath_mage', hero_id: 101, ability: 'mystic_flare', name: { en: 'Mystic Flare', zh: '神秘之耀' } })!;
     expect(goal.label).toEqual({ en: expect.stringContaining('Mystic Flare casts near enemy heroes that damaged at most one and killed none'), zh: expect.stringContaining('在敌方英雄附近放出、至多伤到一人且没有击杀的神秘之耀') });
+  });
+
+  it('a cast whose surroundings were not sampled is neither counted nor ruled out, and the check then cannot say "met"', () => {
+    const KEY = 'no_hero_target_near_enemies_at_most_one_damaged_and_none_died';
+    const of = { hero: 'beastmaster', hero_id: 38, ability: 'wild_axes', name: { en: 'Wild Axes', zh: '野性之斧' } };
+    const full: any = abilityAudit(trace, { hero: 'beastmaster', ability: 'wild_axes' });
+    expect(full.casts_where[KEY]).toHaveLength(11);
+    expect(full.casts_not_known).toEqual({ enemy_heroes_near: 0 });
+    // The same game with every position sample gone: nothing about the casts, their damage or the deaths changes.
+    const blank = { ...trace, states: trace.states.map((st: any) => ({ ...st, x: st.x.map(() => null), y: st.y.map(() => null) })) };
+    const blind: any = abilityAudit(blank, { hero: 'beastmaster', ability: 'wild_axes' });
+    // Nine are still known to have been near an enemy hero: each damaged one. The other two, and the sixty thrown
+    // with nobody near, are now not known — not quietly read as travel or farming.
+    expect(blind.casts_where[KEY]).toEqual(['2:51', '3:38', '8:15', '10:12', '17:34', '22:02', '27:54', '28:12', '41:54']);
+    expect(blind.casts_not_known).toEqual({ enemy_heroes_near: 62 });
+    expect(blind.casts_where[KEY].length + blind.casts_not_known.enemy_heroes_near).toBe(11 + 60);
+    // One enemy hero unsampled is enough: a cast that damaged nobody could have been thrown beside her.
+    const pa = trace.heroes.findIndex((h: any) => h.key === 'phantom_assassin');
+    const onePartial: any = abilityAudit({ ...trace, states: trace.states.map((st: any, i: number) => (i === pa ? { ...st, x: st.x.map(() => null), y: st.y.map(() => null) } : st)) }, { hero: 'beastmaster', ability: 'wild_axes' });
+    expect(onePartial.casts_not_known.enemy_heroes_near).toBeGreaterThan(0);
+    expect(onePartial.casts_where[KEY].length).toBeLessThanOrEqual(11);
+
+    // The next game's check: a goal of at most 10.
+    const goal = { kind: 'replay_habit', habit: 'reached_few', max: 10, baseline: 20, ...of };
+    expect(evaluateHabit(goal, full, 40)).toMatchObject({ result: 'missed' });
+    expect(evaluateHabit({ ...goal, max: 11 }, full, 40)).toMatchObject({ result: 'met' });
+    // Nine counted and sixty-two not known: under the goal only if none of the sixty-two counts, which nobody can say.
+    expect(evaluateHabit(goal, blind, 40)).toEqual({ result: 'unknown', evidence: { en: '9 Wild Axes casts near enemy heroes that damaged at most one and killed none, but some casts have no position sample: cannot tell.', zh: '在敌方英雄附近放出、至多伤到一人且没有击杀的野性之斧 9 次，但有施放缺少位置采样，无法判定。' } });
+    // Over the goal on what is known alone: missed, whatever the rest was.
+    expect(evaluateHabit({ ...goal, max: 8 }, blind, 40)).toMatchObject({ result: 'missed' });
+    // A summary from before the count of the undecided was kept cannot rule them out.
+    const { casts_not_known: _gone, ...older } = full;
+    expect(evaluateHabit({ ...goal, max: 11 }, older, 40)).toMatchObject({ result: 'unknown' });
+    // The other counts over casts need no position, and their checks are as before.
+    expect(HABITS.target_survived.unsure).toBeNull();
+    expect(HABITS.reached_few.unsure).toBe('enemy_heroes_near');
   });
 
   it('the check carries whose ability it is, and is worded with the ability\'s name', () => {

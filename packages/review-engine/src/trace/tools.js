@@ -498,7 +498,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   // Whether this ability shows in the damage log at all: only then does "damaged nobody" mean something.
   const damaging = trace.damage.some((r) => r[1] === npc && r[3] === abilityId);
   // What the casts have in common, by game time (like deaths_where): a habit is a count over the game.
-  const intoImmunity = []; const targetLived = []; const cameToLittle = [];
+  const intoImmunity = []; const targetLived = []; const cameToLittle = []; let nearNotKnown = 0;
   const casts = rows.map((c, ci) => {
     const t = c[0]; const target = heroOfName(trace, c[3]);
     // Damage is kept per whole second: the second a recast falls in is counted to the recast, never to both casts.
@@ -521,7 +521,11 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     // ultimates of 32 parsed games, "at most one damaged" alone was 2001 casts: 1010 with nobody near, 348
     // pick-offs, and 643 that are counted here.
     const diedOfIt = [...hit].some((k) => trace.deaths.some((d) => d[0] >= t && d[0] - t <= 12 && trace.heroes[heroOfName(trace, d[1])]?.key === k));
-    if (damaging && target < 0 && hit.size <= 1 && (enemies.length > 0 || hit.size > 0) && !diedOfIt) cameToLittle.push(clock(t));
+    // Whether an enemy hero was near is known when a sampled one is within 1300 or the cast damaged one. With
+    // neither it is "no" only when the caster and every enemy hero have a position at that second; with a sample
+    // missing it is not known, and the cast is counted apart instead of being read as travel or farming.
+    const near = enemies.length > 0 || hit.size > 0 ? true : me != null && trace.heroes.every((o, i) => o.team === trace.heroes[h].team || stateAt(trace, i, t) != null) ? false : null;
+    if (damaging && target < 0 && hit.size <= 1 && !diedOfIt) { if (near) cameToLittle.push(clock(t)); else if (near == null) nearNotKnown += 1; }
     return {
       ref: `cast:${trace.heroes[h].key}:${short}:${ci + 1}`, t, clock: clock(t), row: c[4], target: targetName,
       target_hp: ts ? { hp: ts.hp, max_hp: ts.max_hp } : null,
@@ -562,6 +566,9 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       // Only for an ability that shows in the damage log at all: otherwise "damaged nobody" says nothing.
       ...(damaging ? { no_hero_target_near_enemies_at_most_one_damaged_and_none_died: cameToLittle } : {}),
     },
+    // Casts the list above could neither include nor rule out: no enemy hero damaged, and a position missing at
+    // that second, so whether one was near is not known. The count is at least the list, at most the list plus these.
+    ...(damaging ? { casts_not_known: { enemy_heroes_near: nearNotKnown } } : {}),
     seconds_alive_since_learned: alive, seconds_alive_and_ready: idle,
     deaths_with_it_ready_and_not_cast_total: unused.length,
     deaths_with_it_ready_and_not_cast: unused
