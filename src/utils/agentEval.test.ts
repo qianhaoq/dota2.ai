@@ -294,3 +294,17 @@ describe('review eval: the Beastmaster rubric\'s forbidden claim', () => {
     expect(en('Primal Roar cannot be blocked by spell immunity.')).toBe(0);
   });
 });
+
+describe('review eval: stability leaves out what cannot be compared', () => {
+  const cites = (refs: string[]) => review({ findings: [finding({ evidence: refs.length ? [{ refs, fact: 'x' }] : [] })] });
+
+  it('a review whose first finding cites nothing is not a disagreement', () => {
+    // One review cites, two do not: nothing to compare, so no number — not zero.
+    expect(stabilityOf([cites(['death:axe:1']), cites([]), cites([])]).first_finding_overlap).toBeNull();
+    expect(stabilityOf([cites(['death:axe:1']), review({ findings: [] }), cites([])]).first_finding_overlap).toBeNull();
+    // Two cite the same thing, one cites nothing: the two agree in full.
+    expect(stabilityOf([cites(['death:axe:1']), cites(['death:axe:1']), cites([])]).first_finding_overlap).toBe(1);
+    // Two that cite different things still disagree.
+    expect(stabilityOf([cites(['death:axe:1']), cites(['death:axe:2']), cites([])]).first_finding_overlap).toBe(0);
+  });
+});
