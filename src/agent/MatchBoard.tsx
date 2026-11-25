@@ -18,6 +18,7 @@ const T = {
   goldDown: { en: 'Dire ahead', zh: '夜魇领先' },
   goldEnd: { en: 'at the end', zh: '结束时' },
   goldReplay: { en: 'Net worth lead by minute (from the replay)', zh: '每分钟净值差（来自录像）' },
+  goldReplayEarned: { en: 'Gold lead by minute (from the replay)', zh: '每分钟经济差（来自录像）' },
   goldNone: { en: 'No minute-by-minute gold for this game yet: it comes with the replay review or with OpenDota\'s parse of the match.', zh: '这局还没有每分钟经济：录像复盘或 OpenDota 解析之后才有。' },
   hero: { en: 'Hero', zh: '英雄' },
   level: { en: 'Lvl', zh: '等级' },
@@ -119,7 +120,7 @@ const Row: React.FC<{ p: Player; me: boolean; spikes: Map<string, number>; lang:
  * All of it is the match record (the coach report), not the review's words.
  * `hero` is the player the review is for: their side comes first and their row is marked.
  */
-export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; lang: Lang; /** The replay's own net worth lead per minute: used when the match record has no gold curve. */ replayLead?: number[] | null }> = ({ report, hero = null, lang, replayLead = null }) => {
+export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; lang: Lang; /** The replay's own lead per minute: used when the match record has no gold curve. */ replayLead?: number[] | null; /** What that lead is: gold earned (summed from the replay's combat log) or net worth (the replay's graph). */ replayLeadIs?: 'gold' | 'net_worth' }> = ({ report, hero = null, lang, replayLead = null, replayLeadIs = 'net_worth' }) => {
   const players = Array.isArray(report.players) ? report.players : [];
   const me = hero ? players.find((p) => p.hero?.slug === hero) ?? null : null;
   const sides: boolean[] = me && !me.radiant ? [false, true] : [true, false];
@@ -149,7 +150,7 @@ export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; l
           {m.mode?.[lang] && <span>{m.mode[lang]}</span>}
         </p>
       )}
-      {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} title={fromReplay ? T.goldReplay : T.gold} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}
+      {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} title={fromReplay ? (replayLeadIs === 'gold' ? T.goldReplayEarned : T.goldReplay) : T.gold} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}
       {sides.map((radiant) => {
         const team = players.filter((p) => p.radiant === radiant);
         if (!team.length) return null;
