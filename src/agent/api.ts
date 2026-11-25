@@ -32,7 +32,7 @@ export interface DeepReview {
   verdict: string; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
   game_plan?: GamePlan;
   /** Which patch the review's prices, item effects and cooldowns are from (lib/agent/patchData.js); absent on reviews written before it was kept. */
-  data_patch?: { name: string; exact: boolean; known_from?: 'match_data' | 'start_time' | 'match_id'; reason?: string };
+  data_patch?: { name: string; hotfix?: string; exact: boolean; known_from?: 'match_data' | 'start_time' | 'match_id'; reason?: string };
   /** One thing the next game can be checked on (lib/agent/goal.js), tied to finding `finding` (1-based). */
   goal?: GoalSpec & { finding: number };
 }
