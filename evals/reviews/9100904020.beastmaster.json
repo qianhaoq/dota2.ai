@@ -1,0 +1,38 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9100904020,
+  "hero": "beastmaster",
+  "status": "draft",
+  "written": "2026-11-25",
+  "source": "Tool outputs on the committed trace (ability_audit of Primal Roar, immunity_windows, match_overview) and the hand review of 2026-11-22 that the owner judged better than the site's. Not yet checked by the owner.",
+  "must_hit": [
+    {
+      "id": "roar_spent_before_carry_immunity",
+      "says": "Primal Roar went on Necrophos at 30:25 and on Axe at 33:27. Phantom Assassin's Black King Bar opened 9 and 10 seconds later (30:34, 33:37) with Roar on cooldown. Roar stunned her through spell immunity twice (27:27, 37:56), so the one disable that works on her was spent just before she came in.",
+      "weight": 2,
+      "any": {
+        "refs": ["cast:beastmaster:primal_roar:7", "cast:beastmaster:primal_roar:8", "immune:phantom_assassin:3", "immune:phantom_assassin:4"],
+        "clocks": ["30:25", "30:34", "33:27", "33:37"],
+        "within": 10
+      },
+      "terms": { "zh": ["原始咆哮", "咆哮"], "en": ["Primal Roar", "Roar"] },
+      "and_terms": { "zh": ["黑皇杖", "魔法免疫", "魔免", "BKB"], "en": ["Black King Bar", "BKB", "spell immun"] }
+    },
+    {
+      "id": "no_blink_no_bkb",
+      "says": "No Blink Dagger and no Black King Bar all game.",
+      "weight": 1,
+      "terms": { "zh": ["闪烁匕首", "跳刀"], "en": ["Blink"] },
+      "and_terms": { "zh": ["黑皇杖", "BKB"], "en": ["Black King Bar", "BKB"] }
+    }
+  ],
+  "must_not": [
+    {
+      "id": "roar_stopped_by_immunity",
+      "says": "Primal Roar stunned the spell-immune Phantom Assassin twice in this game: a review must not say spell immunity stops it.",
+      "pattern": "咆哮[^。]{0,16}(?:无法|不能|穿不过|打不穿)[^。]{0,10}(?:黑皇杖|魔法免疫|魔免)|Roar[^.]{0,40}(?:does not|doesn't|cannot|can't)[^.]{0,20}(?:pierce|go through)"
+    }
+  ],
+  "turning_fight": { "fight": 11, "from": 1826, "to": 1848 },
+  "main_reason": ["team_play", "enemy_play"]
+}
