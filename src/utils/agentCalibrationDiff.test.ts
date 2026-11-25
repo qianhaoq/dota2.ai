@@ -12,7 +12,7 @@ describe('calibration diff: which quoted rates moved', () => {
   it('reads every table row with a count of cases, its outcomes over that count', () => {
     const rows = calibrationRows(KEPT);
     const fight = rows.find((r) => r.at === 'measures' && r.key === 'measure=more heroes took part');
-    expect(fight).toMatchObject({ cases: 'fights', n: KEPT.measures[0].fights, outcomes: { side_ahead_won: KEPT.measures[0].side_ahead_won } });
+    expect(fight).toMatchObject({ cases: 'fights', n: KEPT.measures[0].fights, outcomes: { side_ahead_won: { k: KEPT.measures[0].side_ahead_won, n: KEPT.measures[0].fights } } });
     // A tier is a label, not an outcome; the rate is never read as one.
     const tower = rows.find((r) => r.at === 'after_towers_fell');
     expect(tower!.key).toMatch(/^tier=\d after_a_won_fight=(true|false)$/);
@@ -20,6 +20,27 @@ describe('calibration diff: which quoted rates moved', () => {
     expect(rows.every((r) => !('rate' in r.outcomes))).toBe(true);
     // Nested objects too: the Roshan fights.
     expect(rows.find((r) => r.at === 'roshans.fights_in_the_next_300s')).toBeTruthy();
+  });
+
+  it('the Aegis outcomes are over the takes, and an ultimate edge is judged by the fights it decided', () => {
+    const rows = calibrationRows(KEPT);
+    const aegis = rows.find((r) => r.at === 'roshans.aegis');
+    expect(aegis).toMatchObject({ cases: 'takes', n: KEPT.roshans.takes, outcomes: { used: { k: KEPT.roshans.aegis.used, n: KEPT.roshans.takes }, expired: { k: KEPT.roshans.aegis.expired, n: KEPT.roshans.takes } } });
+    // Buildings after an Aegis are not a split of the takes (more buildings than takes): not read as a rate.
+    expect(rows.find((r) => r.at === 'roshans.buildings_in_the_next_300s')).toBeUndefined();
+    const u = KEPT.ultimate_edges;
+    expect(rows.find((r) => r.at === 'ultimate_edges')!.outcomes.edge_side_lost_fewer_of_decided).toEqual({ k: u.edge_side_lost_fewer, n: u.edge_side_lost_fewer + u.edge_side_lost_more });
+
+    // Codex's two cases: both are listed.
+    const noAegisUsed = structuredClone(KEPT);
+    noAegisUsed.roshans.aegis.expired += noAegisUsed.roshans.aegis.used; noAegisUsed.roshans.aegis.used = 0;
+    expect(compareCalibration(KEPT, noAegisUsed).shifted.map((x) => `${x.row} · ${x.outcome}`)).toEqual(expect.arrayContaining(['roshans.aegis | takes · used', 'roshans.aegis | takes · expired']));
+    const edge = structuredClone(KEPT);
+    const decided = u.edge_side_lost_fewer + u.edge_side_lost_more;
+    edge.ultimate_edges.edge_side_lost_fewer = Math.round(decided * 0.68); edge.ultimate_edges.edge_side_lost_more = decided - Math.round(decided * 0.68);
+    const shifted = compareCalibration(KEPT, edge).shifted.find((x) => x.outcome === 'edge_side_lost_fewer_of_decided');
+    expect(shifted).toMatchObject({ row: 'ultimate_edges | moments', after: { of: decided, rate: 68 } });
+    expect(shifted!.z).toBeGreaterThan(2);
   });
 
   it('the kept snapshot against itself: nothing moved, nothing new', () => {
