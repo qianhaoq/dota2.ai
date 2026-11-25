@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { runDeepReview, verifyReview } from '../../lib/agent/deepReview.js';
+import { reviewToolkit, runDeepReview, verifyReview } from '../../lib/agent/deepReview.js';
 import { linkHeroNames, runTraceTool } from '../../packages/review-engine/src/trace/index.js';
-import { STILL_IN_IT, TURN_DROP, TURN_RULE, turningFight } from '../../packages/review-engine/src/trace/turningFight.js';
+import { ENDED_WITHIN, STILL_IN_IT, TURN_DROP, TURN_RULE, turnOf, turningFight } from '../../packages/review-engine/src/trace/turningFight.js';
 
 /** Match 9100904020, Beastmaster on Dire. The committed trace has no gold; the match record gives it. */
 const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString()));
@@ -37,7 +37,37 @@ describe('the fight a lost game turned on', () => {
     expect(turningFight([f('won', 5000, -4700, 0, 3), f('lost', 300, -1900, 2, 1)])?.ref).toBe('lost');
     // Deaths not stated: not known to be a lost fight.
     expect(turningFight([{ ref: 'x', my_team_gold_lead_before: 0, my_team_gold_lead_2min_after: -9000 } as any])).toBeNull();
-    expect(TURN_RULE).toBe('of the fights my_team lost more heroes in, entered at a gold lead of -2000 or better: the one after which the lead fell the most by two minutes after it, if by more than 1500');
+    expect(TURN_RULE).toBe('of the fights my_team lost more heroes in, entered at a gold lead of -2000 or better: the one the game ended within two minutes of; else the one after which the lead fell the most by two minutes after it, if by more than 1500');
+  });
+
+  it('a lost fight the game ended within two minutes of is the turn, whatever fell before it', () => {
+    // Seen in 3 of 32 parsed games: level going into the last fight (once 3,442 ahead), and the Ancient down before
+    // two minutes were up — so that fight has no lead "two minutes on". The rule used to name an earlier swing.
+    const last = { ...f('last', 3442, null, 3, 0), to: 2596 };
+    const swing = { ...f('swing', 5179, -975, 5, 3), to: 2080 };
+    expect(turnOf([swing, last], { end: 2626 })).toEqual({ fight: last, by: 'game_ended_after_it', undecided: [] });
+    expect(turnOf([swing, last], { end: 2596 + ENDED_WITHIN }).fight).toBe(last);
+    // Entered already far behind, it is the end of a lost game, not its turn: the swing stands.
+    expect(turnOf([swing, { ...last, my_team_gold_lead_before: STILL_IN_IT - 1 }], { end: 2626 })).toEqual({ fight: swing, by: 'largest_fall', undecided: [] });
+    // Won or drawn, it is not it either.
+    expect(turnOf([swing, { ...last, my_team_deaths: 2, enemy_deaths: 2 }], { end: 2626 }).fight).toBe(swing);
+  });
+
+  it('a lost fight that could be it and has no gold to tell by makes the answer "not known" — never "none"', () => {
+    const swing = { ...f('swing', 5179, -975, 5, 3), to: 2080 };
+    // No lead two minutes on, and not because the game ended: the gold series stops short.
+    const cut = { ...f('cut', 300, null, 4, 1), to: 2400 };
+    expect(turnOf([swing, cut], { end: 2900 })).toEqual({ fight: null, by: null, undecided: [cut] });
+    expect(turnOf([cut], { end: 2900 })).toEqual({ fight: null, by: null, undecided: [cut] });
+    // Where the game ended is not known either: the same.
+    expect(turnOf([cut]).undecided).toEqual([cut]);
+    // No lead before it at all.
+    const blind = { ...f('blind', null, -3000, 4, 1), to: 900 };
+    expect(turnOf([blind, swing], { end: 2900 })).toEqual({ fight: null, by: null, undecided: [blind] });
+    // What cannot be the turn does not stand in the way: entered far behind, or not lost.
+    expect(turnOf([swing, { ...cut, my_team_gold_lead_before: -9000 }, { ...blind, my_team_deaths: 1, enemy_deaths: 4 }], { end: 2900 })).toEqual({ fight: swing, by: 'largest_fall', undecided: [] });
+    // turningFight is the fight alone: null for both "none" and "not known".
+    expect(turningFight([cut], { end: 2900 })).toBeNull();
   });
 
   it('match_overview names it for the player who lost, with the rule it was read by', () => {
@@ -48,10 +78,32 @@ describe('the fight a lost game turned on', () => {
   });
 
   it('gold with no fight that cost that much is "none"; no gold at all is unknown, and the gap says why', () => {
-    expect(overview({ radiant_gold_adv: gold([]) }).turning_fight).toEqual({ none: true });
+    const none = overview({ radiant_gold_adv: gold([]) });
+    expect(none.turning_fight).toEqual({ none: true });
+    expect(none.gaps.map((g: any) => g.topic)).not.toContain('turning_fight');
     const blind = overview(null);
     expect(blind.turning_fight).toBeNull();
     expect(blind.gaps).toContainEqual({ topic: 'gold_advantage', reason: 'not_in_trace' });
+  });
+
+  it('a gold series that stops before the fight is over is "not known", with its own gap — not "the game had no turn"', () => {
+    // The record's lead cut to 31 minutes: the 30:26 fight keeps its lead going in (-745) and loses the one two minutes on.
+    const cut = overview({ radiant_gold_adv: gold([[30, 745]]).slice(0, 31) });
+    expect(cut.fights.find((x: any) => x.ref === 'fight:11')).toMatchObject({ my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: null });
+    expect(cut.turning_fight).toBeNull();
+    expect(cut.gaps).toContainEqual({ topic: 'turning_fight', reason: 'no_gold_lead_around_a_lost_fight_that_could_be_it' });
+    // Nothing is asked of a review about a fight nobody could name.
+    expect(verifyReview({ verdict: '对线期送了。', mainline: [], findings: [], blind_spots: [] }, [cut]).problems.filter((p: any) => p.kind === 'turn')).toEqual([]);
+  });
+
+  it('match_overview names the last fight of a game that was level going into it', () => {
+    // The same game with a near-level gold lead as long as the game (43 minutes, Radiant 100 ahead throughout):
+    // 41:57–42:20, five of mine for none of theirs, and the Ancient fell at 42:31.
+    const level = overview({ radiant_gold_adv: new Array(43).fill(100) });
+    expect(level.turning_fight).toEqual({
+      ref: 'fight:16', from: 2517.8, to: 2540.6, clock: '41:57–42:20', my_team_deaths: 5, enemy_deaths: 0,
+      my_team_gold_lead_before: -100, my_team_gold_lead_2min_after: null, game_ended_within_two_minutes: true, rule: TURN_RULE,
+    });
   });
 
   it('is not named for a game the team won, for a reader with no side, or when no Ancient fell', () => {
@@ -103,13 +155,30 @@ describe('a review is asked about the turning fight', () => {
 
   it('is not asked when fight_report said the player was not in that fight; is asked when it said they were, or was not read', () => {
     const report = runTraceTool(trace, 'match_overview', {}, { match, perspective: 'beastmaster' }) as any;
-    const mine = { tool: 'fight_report', ref: 'fights:beastmaster', fights: report.fights.map((f: any) => ({ fight: f.ref, me: 'took_part' })) };
+    const mine = { tool: 'fight_report', ref: 'fights:beastmaster', hero: 'beastmaster', fights: report.fights.map((f: any) => ({ fight: f.ref, me: 'took_part' })) };
     const away = { ...mine, fights: mine.fights.map((f: any) => (f.fight === 'fight:11' ? { ...f, me: 'not_in_it' } : f)) };
     expect(turnNotes(review([finding()]), [overview(), lane, mine])).toHaveLength(1);
     expect(turnNotes(review([finding()]), [overview(), lane, away])).toEqual([]);
     // Another hero's report, or one that does not list the fight, says nothing about the player in it.
     expect(turnNotes(review([finding()]), [overview(), lane, { ...away, fights: away.fights.filter((f: any) => f.fight !== 'fight:11') }])).toHaveLength(1);
     expect(turnNotes(review([finding()]), [overview(), lane, { ...away, tool: 'tempo_report' }])).toHaveLength(1);
+  });
+
+  it('only the reviewed player\'s own fight_report says whether they were in it', async () => {
+    // The tools' real reports: Beastmaster took part in the 30:26 fight, Mirana (asked about in the same run) did not.
+    const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh', match } as any);
+    const mirana = await kit.runTool('fight_report', { hero: 'mirana' });
+    const beastmaster = await kit.runTool('fight_report', { hero: 'beastmaster' });
+    expect([mirana.hero, mirana.fights.find((x: any) => x.fight === 'fight:11').me]).toEqual(['mirana', 'not_in_it']);
+    expect([beastmaster.hero, beastmaster.fights.find((x: any) => x.fight === 'fight:11').me]).toEqual(['beastmaster', 'took_part']);
+    // Mirana's report, read first or alone, does not answer for the player.
+    expect(turnNotes(review([finding()]), [overview(), lane, mirana, beastmaster])).toHaveLength(1);
+    expect(turnNotes(review([finding()]), [overview(), lane, mirana])).toHaveLength(1);
+    // The player's own, saying they were not in it, does — whatever was read about anyone else.
+    const away = { ...beastmaster, fights: beastmaster.fights.map((x: any) => (x.fight === 'fight:11' ? { ...x, me: 'not_in_it' } : x)) };
+    expect(turnNotes(review([finding()]), [overview(), lane, mirana, away])).toEqual([]);
+    // A report that does not say whose it is answers for nobody.
+    expect(turnNotes(review([finding()]), [overview(), lane, { ...away, hero: undefined }])).toHaveLength(1);
   });
 
   it('the repair round is told which fight, once; a review that still does not look at it ships whole', async () => {
