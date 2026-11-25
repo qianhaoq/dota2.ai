@@ -6,7 +6,7 @@ import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { reviewToolkit, deepReviewSystem, verifyReview } from '../../lib/agent/deepReview.js';
 import { chatSystem } from '../../lib/agent/chat.js';
-import { sieges, SIEGE_NEAR } from '../../packages/review-engine/src/trace/index.js';
+import { sieges, SIEGE_NEAR, traceRegion } from '../../packages/review-engine/src/trace/index.js';
 
 /** A real ranked game (9100904020): Beastmaster on Dire, lost in 42:31. */
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
@@ -102,6 +102,44 @@ describe('a push is measured from the damage log', () => {
   });
 });
 
+describe('where the player was when their building fell is not where they were when the push began', () => {
+  const tower = 'goodguys_tower1_top';
+  // Pudge and Zeus hit a Radiant tower from 100 to 130; it falls at 133.7 (shown as 2:13). Axe, of Radiant, starts in
+  // his base and has walked to the middle of the map by the time it falls.
+  const game = (change: (t: any) => void = () => {}) => {
+    const t: any = synth({ heroes, pos: { pudge: [-5000, 5000], zuus: [-5200, 5000] }, hits: [[100, 'pudge', tower], [101, 'zuus', tower], [115, 'pudge', tower], [130, 'zuus', tower]], fell: [[133.7, tower]] });
+    const axe = t.states[0];
+    for (let i = 110; i < t.n; i += 1) { axe.x[i] = 0; axe.y[i] = 0; }
+    change(t);
+    return t;
+  };
+
+  it('the rows are from the push\'s start; me_when_it_fell is the player at the second the building fell', () => {
+    const p = (siegeReport(game(), { hero: 'axe' }) as any).pushes[0];
+    expect(p).toMatchObject({ clock: '1:40', until: '2:10', took_it: true, fell_at: '2:13', pushed_by: 'enemy', me: 'not_near' });
+    // When it began (1:40) Axe was in his base…
+    expect(p.owners_not_near.find((x: any) => x.hero === 'axe')).toMatchObject({ doing: 'in_own_base', place: 'radiant_base' });
+    // …and at 2:13, when it fell, in the middle of the map: the place a "where was I when it fell" is about.
+    expect(p.me_when_it_fell).toEqual({ place: traceRegion(0, 0), distance: expect.any(Number) });
+    expect(p.me_when_it_fell.place).not.toBe('radiant_base');
+    expect('hero' in p.me_when_it_fell).toBe(false);
+  });
+
+  it('dead at that second: dead and for how long; no sample at that second: not known, never a place', () => {
+    const dead = (siegeReport(game((t) => { for (let i = 125; i < 160; i += 1) t.states[0].alive[i] = 0; }), { hero: 'axe' }) as any).pushes[0];
+    expect(dead.me_when_it_fell).toEqual({ doing: 'dead', respawn_in: 27 });
+    const gone = (siegeReport(game((t) => { for (let i = 129; i < 139; i += 1) { t.states[0].x[i] = null; t.states[0].y[i] = null; } }), { hero: 'axe' }) as any).pushes[0];
+    expect(gone.me_when_it_fell).toEqual({ known: false });
+  });
+
+  it('only for the player\'s own building that fell: not for a push that failed, nor for one the player\'s team made', () => {
+    const stood: any = game((t) => { t.buildings = []; });
+    expect('me_when_it_fell' in (siegeReport(stood, { hero: 'axe' }) as any).pushes[0]).toBe(false);
+    // The same push told from the pushing side.
+    expect('me_when_it_fell' in (siegeReport(game(), { hero: 'pudge' }) as any).pushes[0]).toBe(false);
+  });
+});
+
 describe('siege_report on a real game', () => {
   const r: any = siegeReport(trace, { hero: 'beastmaster' });
 
@@ -158,6 +196,38 @@ describe('siege_report on a real game', () => {
     expect(ev(['sieges:beastmaster'], 'The mid tower fell at 20:02.')).not.toEqual([]);
     expect(ev([`sieges:beastmaster:${mid}`], 'The mid tower fell at 20:02.')).toEqual([]);
     expect(ev(['sieges:beastmaster'], 'They pushed 19 times and took 17.')).toEqual([]);
+  });
+
+  it('me_when_it_fell agrees with game_state at fell_at on every Dire building that fell, and differs from the push\'s start', () => {
+    const kit = reviewToolkit({ trace, hero: 'beastmaster', lang: 'en' })!;
+    const fell = r.pushes.filter((p: any) => p.pushed_by === 'enemy' && p.took_it);
+    expect(fell).toHaveLength(17);
+    for (const p of fell) {
+      const me = (kit.runTool('game_state', { hero: 'beastmaster', at: p.fell_at }) as any).my_team.heroes.find((x: any) => x.hero === 'beastmaster');
+      expect(p.me_when_it_fell).toMatchObject(me.alive ? { place: me.place } : { doing: 'dead', respawn_in: me.respawn_in });
+    }
+    for (const p of r.pushes.filter((x: any) => !(x.pushed_by === 'enemy' && x.took_it))) expect('me_when_it_fell' in p).toBe(false);
+    // 38:12–38:24, the bottom tier 2: fighting in Dire mid when the push began, in the Dire top jungle when it fell.
+    const t2 = r.pushes[12];
+    expect(t2).toMatchObject({ building: 'badguys_tower2_bot', clock: '38:12', fell_at: '38:24' });
+    expect(t2.owners_not_near.find((x: any) => x.hero === 'beastmaster')).toMatchObject({ place: 'dire_mid', doing: 'trading_damage_with_enemy_heroes' });
+    expect(t2.me_when_it_fell).toMatchObject({ place: 'dire_top_jungle' });
+    // 39:54–40:49, the top tier 3: dead when it began, alive in base when it fell 55 s later.
+    const t3 = r.pushes[13];
+    expect(t3.owners_not_near.find((x: any) => x.hero === 'beastmaster')).toMatchObject({ doing: 'dead', respawn_in: 48 });
+    expect(t3.me_when_it_fell).toMatchObject({ doing: 'in_own_base', place: 'dire_base' });
+    // The place at the fall is named like any other in the evidence.
+    expect(resolveRef(trace, t2.ref, { hero: 'beastmaster', lang: 'zh' })?.names.dire_top_jungle).toMatch(/[一-鿿]/);
+  });
+
+  it('the tool, the review and the chat all say the rows are from the push\'s start', () => {
+    expect(SIEGE_TOOL.description).not.toMatch(/when its own buildings fell/);
+    expect(SIEGE_TOOL.description).toMatch(/doing when the push began/);
+    expect(SIEGE_TOOL.description).toMatch(/use game_state at fell_at/);
+    expect(r.rule).toMatch(/as they were when the push began \(clock\), not when the building fell/);
+    expect(deepReviewSystem('en')).toMatch(/where everyone else was when it began/);
+    expect(deepReviewSystem('en')).toMatch(/"me_when_it_fell"/);
+    expect(chatSystem('en')).toMatch(/never give them as where a hero was when the building fell/);
   });
 
   it('the review and the chat get the tool and are told how to read it', () => {
