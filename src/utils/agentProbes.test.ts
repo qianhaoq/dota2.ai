@@ -266,6 +266,14 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe({ ...two, expect: { buildings: 6 } }, 'They took 3 buildings, 2 towers and 1 barracks.', names)).toMatchObject({ pass: false, wrong: ['3'] });
     expect(gradeProbe(three, '拆了三座，两座塔、一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(three, 'They took 3 buildings including 2 towers and 1 barracks.', names).pass).toBe(true);
+    // A verb after the join is still a join; a count after a word naming a side is not a part of ours.
+    expect(gradeProbe(three, 'We took two towers and destroyed one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two towers and destroyed one barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(two, 'We took two towers, and the enemy took one tower back.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'We took two towers, and the enemy took one tower back.', names)).toMatchObject({ pass: false, wrong: ['2'] });
+    expect(gradeProbe(three, '拆了两座塔，还拆了一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(two, '你们拆了两座塔，对面拆了一座。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(three, '拆了三座，分别是两座塔和一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(two, 'In the two minutes after it, nothing fell.', names).pass).toBe(false);
     expect(gradeProbe(two, '两座：上路一塔和二塔。', { ...names, lang: 'zh' }).pass).toBe(true);
     const five = { kind: 'buildings_after_first_aegis', source: { args: {} }, expect: { buildings: 5 } };

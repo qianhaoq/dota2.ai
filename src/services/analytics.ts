@@ -16,7 +16,10 @@ import {
   type AnalyticsProps,
   type StorageLike,
   claimReviewViewed,
+  pageKind,
+  sourceFrom,
 } from '../utils/analyticsClient';
+import { TRAFFIC_SOURCES } from '../../lib/analyticsEvents.js';
 
 const EVENTS_URL = '/api/events';
 
@@ -38,6 +41,31 @@ function resolveIdentity(): string | null {
   return cachedAnonId;
 }
 
+const SOURCE_SESSION_KEY = 'dota2ai.src';
+let sessionSource: string | null = null;
+
+/**
+ * The community a visit came from (`?src=` on the link it arrived by), kept for the browser session so the
+ * match page and the finished review are counted for it even after the reader has moved on from that URL.
+ * The first source of a session wins. Null when the visit did not come by such a link.
+ */
+export function trafficSource(): string | null {
+  // The session's storage is the record; the in-memory copy only stands in where storage is blocked.
+  try {
+    const kept = typeof window !== 'undefined' ? window.sessionStorage?.getItem(SOURCE_SESSION_KEY) : null;
+    if (kept && TRAFFIC_SOURCES.includes(kept)) return kept;
+  } catch { /* storage blocked */ }
+  return sessionSource;
+}
+
+function captureSource(): void {
+  const src = sourceFrom(window.location.search, TRAFFIC_SOURCES);
+  if (!src || trafficSource()) return;
+  sessionSource = src;
+  try { window.sessionStorage?.setItem(SOURCE_SESSION_KEY, src); } catch { /* the in-memory copy still holds */ }
+  trackEvent('arrived', { src, page: pageKind(window.location.pathname) });
+}
+
 /** 应用启动时调用一次：初始化 anonId，并按需发 return_visit。 */
 export function initAnalytics(): void {
   if (initialized || typeof window === 'undefined') return;
@@ -50,6 +78,11 @@ export function initAnalytics(): void {
     if (window.sessionStorage && decideReturnVisit(window.localStorage, window.sessionStorage, localDayStamp())) {
       trackEvent('return_visit', { days_since_first: days });
     }
+  } catch {
+    // 埋点永远不能搞挂应用。
+  }
+  try {
+    captureSource();
   } catch {
     // 埋点永远不能搞挂应用。
   }
