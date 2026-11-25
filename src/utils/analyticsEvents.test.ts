@@ -19,12 +19,18 @@ describe('validateAnalyticsEvent', () => {
       ['review_ready', { matchId: '9100904020', lang: 'en', hero: 'beastmaster', own: true }, { matchId: '9100904020', lang: 'en', hero: 'beastmaster' }],
       ['review_requested', { matchId: '9100904020', lang: 'en', hero: 'beastmaster', step: 'parse', plan: true, ip: '1.2.3.4' }, { matchId: '9100904020', lang: 'en', hero: 'beastmaster', step: 'parse', plan: true }],
       ['review_refused', { matchId: '9100904020', reason: 'rate', waits: true }, { matchId: '9100904020', reason: 'rate', waits: true }],
+      ['arrived', { src: 'nga', page: 'match', url: '/r/1?src=nga' }, { src: 'nga', page: 'match' }],
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
     // How a match page was arrived at: a shared link's ref, and no other value.
     expect(validateAnalyticsEvent({ event: 'match_opened', props: { matchId: '9100904020', lang: 'en', ref: 'team' } })).toMatchObject({ ok: true, props: { matchId: '9100904020', lang: 'en', ref: 'team' } });
     expect(validateAnalyticsEvent({ event: 'match_opened', props: { matchId: '9100904020', lang: 'en', ref: 'newsletter' } })).toMatchObject({ ok: true, props: { matchId: '9100904020', lang: 'en' } });
+    // A community source is one of a fixed list; anything else (free text, a URL) is dropped.
+    expect(validateAnalyticsEvent({ event: 'match_opened', props: { matchId: '9100904020', lang: 'zh', src: 'xhh' } })).toMatchObject({ ok: true, props: { matchId: '9100904020', lang: 'zh', src: 'xhh' } });
+    for (const src of ['NGA帖子', 'https://bbs.nga.cn/x', 'someone']) {
+      expect(validateAnalyticsEvent({ event: 'arrived', props: { src, page: 'home' } })).toMatchObject({ ok: true, props: { page: 'home' } });
+    }
     for (const [event, props, expected] of cases) {
       expect(validateAnalyticsEvent({ event, props, anonId: 'anon_123e4567-e89b-42d3-a456-426614174000' })).toEqual({
         ok: true, event, props: expected, anonId: 'anon_123e4567-e89b-42d3-a456-426614174000',
