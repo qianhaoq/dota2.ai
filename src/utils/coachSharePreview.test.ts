@@ -61,6 +61,18 @@ describe('share preview meta', () => {
     expect(html).not.toContain('content="old"');
   });
 
+  it('cuts a long verdict at a word, and keeps a short one whole', () => {
+    const p = report.players[4];
+    const long = `${'The fight at thirty minutes was started without the stun ready, '.repeat(4)}end.`;
+    const d = previewMeta(report, { slot: p.slot, lang: 'en', url: 'u', verdict: long }).description;
+    expect(d.startsWith('The fight at thirty minutes')).toBe(true);
+    expect(d).toMatch(/^[^…]{100,180}… /);
+    expect(d).not.toContain('end.');
+    expect(previewMeta(report, { slot: p.slot, lang: 'zh', url: 'u', verdict: '短。' }).description.startsWith('短。 ')).toBe(true);
+    // No seat, no verdict: the match preview.
+    expect(previewMeta(report, { lang: 'en', url: 'u', verdict: 'x' }).description).not.toContain('x ');
+  });
+
   it('builds team and personal share links', () => {
     expect(shareLinks('https://dota2.ai', 9091400302, 4, 'zh')).toEqual({
       team: 'https://dota2.ai/r/9091400302?ref=team&lang=zh',
@@ -87,7 +99,7 @@ describe('GET /r/:matchId', () => {
   let server: Server | null = null;
   const logs: string[] = [];
   afterEach(() => { server?.close(); server = null; logs.length = 0; });
-  async function start(opts: { match?: () => Promise<object>; html?: string | null; limited?: boolean; timeoutMs?: number } = {}) {
+  async function start(opts: { match?: () => Promise<object>; html?: string | null; limited?: boolean; timeoutMs?: number; review?: (...a: any[]) => Promise<any> } = {}) {
     const app = express();
     app.use(createCoachRouter({
       getMatchDetail: opts.match ?? (async () => withNames()),
@@ -98,6 +110,7 @@ describe('GET /r/:matchId', () => {
         html: () => (opts.html === undefined ? INDEX : opts.html),
         timeoutMs: opts.timeoutMs ?? 1000,
         limiter: { tryConsume: () => ({ ok: !opts.limited, retryAfterSec: 1 }) },
+        ...(opts.review ? { review: opts.review } : {}),
       },
     }));
     app.get('*', (_req: unknown, res: { send: (s: string) => void }) => res.send('spa-fallback'));
@@ -125,6 +138,42 @@ describe('GET /r/:matchId', () => {
     const forced = buildCoachReport(withNames(), { overrides: { 4: 1 } });
     expect(tag(html, 'og:url')).toBe('https://dota2.ai/r/9091400302?p=4&amp;pos=1');
     expect(tag(html, 'og:description')?.startsWith(forced.reviews[4].headline.en.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))).toBe(true);
+  });
+
+  it('a review page link (?hero=) previews that player, led by the verdict of their stored review', async () => {
+    const asked: unknown[][] = [];
+    const base = await start({ review: async (...a: unknown[]) => { asked.push(a); return { verdict: 'Ravage <late> & "alone" — every fight started a step behind.' }; } });
+    const p = buildCoachReport(withNames()).players[4];
+    const html = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}&plan=push&lang=zh&ref=share`)).text();
+    expect(asked).toEqual([[9091400302, p.hero.slug, 'zh', 'push']]);
+    expect(tag(html, 'og:title')).toContain(p.hero.zh);
+    expect(tag(html, 'og:description')?.startsWith('Ravage &lt;late&gt; &amp; &quot;alone&quot; — every fight started a step behind.')).toBe(true);
+    expect(tag(html, 'og:image')).toBe(p.hero.img);
+    // The canonical link keeps what makes the review this one, and drops the tracking ref.
+    expect(tag(html, 'og:url')).toBe(`https://dota2.ai/r/9091400302?hero=${p.hero.slug}&amp;plan=push&amp;lang=zh`);
+    expect(html).not.toContain('SecretName');
+  });
+
+  it('without a stored review (or with one that fails or is slow) the hero link still previews the player', async () => {
+    const p = buildCoachReport(withNames()).players[4];
+    const headline = buildCoachReport(withNames()).reviews.find((r: any) => r.slot === p.slot).headline.en;
+    for (const review of [async () => null, async () => { throw new Error('gcs'); }, () => new Promise(() => {})]) {
+      const base = await start({ review, timeoutMs: 300 });
+      const html = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}`)).text();
+      expect(tag(html, 'og:title')).toContain(p.hero.en);
+      expect(tag(html, 'og:description')?.startsWith(headline.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))).toBe(true);
+      server?.close(); server = null;
+    }
+  });
+
+  it('a hero not in this game, or not a hero key, previews the match and asks for no review', async () => {
+    const asked: unknown[] = [];
+    const base = await start({ review: async (...a: unknown[]) => { asked.push(a); return { verdict: 'x' }; } });
+    const html = await (await fetch(`${base}/r/9091400302?hero=crystal_maiden_x`)).text();
+    expect(tag(html, 'og:title')).toContain('match review');
+    expect(tag(html, 'og:description')).not.toContain('x Radiant');
+    await fetch(`${base}/r/9091400302?hero=${encodeURIComponent('../../etc')}`);
+    expect(asked).toHaveLength(1);
   });
 
   it('falls back to the generic preview when the match is slow, missing or rate-limited', async () => {
