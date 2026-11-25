@@ -78,6 +78,8 @@ import { createAgentService, SLOW_REVIEW_MAX_MS } from './lib/agent/service.js';
 import { warmShowcase } from './lib/agent/showcase.js';
 import { createPatchRouter } from './lib/patch/router.js';
 import { createPatchNews } from './lib/patch/news.js';
+import { createLiveNotes } from './lib/patch/liveNotes.js';
+import { createValveFetch } from './lib/patch/valveFetch.js';
 import { createTaskAuth, createTaskDispatcher } from './lib/agent/tasks.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from './lib/agent/stores.js';
 import { createRemotePipeline, createTracePipeline } from './lib/agent/tracePipeline.js';
@@ -980,10 +982,17 @@ app.use(createAgentRouter({
 
 // The patch advisor: what the current patch changed and how heroes are doing since (lib/patch). Its chat
 // calls the same model under the same budget as the review's.
+// Valve's datafeed, read for the home page's patch news and the advisor's notes alike (one cache).
+const valveFetch = createValveFetch();
+// The advisor's notes follow Valve's newest release (7.42 + 7.42a + …); the committed snapshot until then.
+const patchLiveNotes = process.env.PATCH_LIVE_NOTES_DISABLED === '1' ? null : createLiveNotes({ fetchJson: valveFetch, log: (msg) => console.warn(`[patch] ${msg}`) });
+void patchLiveNotes?.ensure(0);
 app.use(createPatchRouter({
   complete: agentComplete,
+  liveNotes: patchLiveNotes,
   // Home page patch news, live from Valve; the model only picks which of Valve's lines to show, once per patch (kept in AGENT_BUCKET).
   news: process.env.PATCH_NEWS_DISABLED === '1' ? null : createPatchNews({
+    fetchJson: valveFetch,
     complete: agentComplete,
     store: agentBlobs ? createJsonStore(agentBlobs) : null,
     log: (msg) => console.warn(`[patch] ${msg}`),

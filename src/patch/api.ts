@@ -10,7 +10,9 @@ export interface MoverRow {
 export interface Window { from: string; to: string; days: number }
 /** The patch at a glance (the patch_overview record of lib/patch/tools.js). */
 export interface PatchOverview {
-  patch: string; released: string; notes: string;
+  /** The newest release (7.42a); `major_patch` the patch it updates; `releases` every release whose notes are in, oldest first. */
+  patch: string; major_patch?: string; released: string; notes: string;
+  releases?: { version: string; released: string; url: string }[];
   heroes_changed: number; items_changed: number; neutral_items_changed: number;
   numbers: { source: string; bracket: string; before_the_patch: Window; since_the_patch: Window; matches: { before_the_patch: number; since_the_patch: number } };
   win_rate_rose_most: MoverRow[]; win_rate_fell_most: MoverRow[]; pick_rate_rose_most: MoverRow[]; pick_rate_fell_most: MoverRow[];
