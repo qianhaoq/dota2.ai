@@ -1172,6 +1172,12 @@ describe('AgentMatchPage', () => {
     const warn = (await show({ name: '7.42', exact: false, reason: 'older_than_7.40' }, 'zh'))!;
     expect(warn.textContent).toBe('这局的版本无法确定：价格、装备效果和技能冷却按当前 7.42 版本，可能与当时不同。');
     expect(warn.getAttribute('role')).toBe('note');
+    // A game played after a hotfix of its release: the hotfix is named.
+    expect((await show({ name: '7.41f', hotfix: '2026-10-07T00:40:47.000Z', exact: true, known_from: 'start_time' }, 'zh'))!.textContent).toBe('本复盘中的价格、装备效果和技能冷却按 7.41f 版本 2026-10-07 热修复后的数值（依据比赛开始时间）');
+    expect((await show({ name: '7.41f', hotfix: '2026-10-07T00:40:47.000Z', exact: true, known_from: 'start_time' }, 'en'))!.textContent).toBe('Prices, item effects and cooldowns in this review are those of patch 7.41f after its hotfix of 2026-10-07 (from when the game was played)');
+    // The release known, the hotfix not (it was rolling out): not "the patch could not be told".
+    const hot = (await show({ name: '7.41f', exact: false, reason: 'started_while_the_2026-10-07T00:40_hotfix_was_rolling_out' }, 'zh'))!;
+    expect(hot.textContent).toBe('本复盘中的价格、装备效果和技能冷却按 7.41f 版本；这局前后该版本正好有一次热修复，个别数值可能是热修复前或后的。');
     // A review stored before the patch was kept says nothing rather than guess.
     expect(await show(null, 'en')).toBeNull();
   });
