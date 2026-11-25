@@ -51,6 +51,14 @@ describe('probes: questions the replay settles, with the answer the tools give',
     expect(zh.find((p) => p.kind === 'where_was_ally').question).toMatch(/斯温/);
   });
 
+  it('the player\'s own Aegis: answered by "you" or by their hero, on the real fixture', () => {
+    const pa: any = (buildProbes(trace, 'phantom_assassin') as any[]).find((p) => p.kind === 'first_aegis');
+    expect(pa.expect).toEqual({ me: 'phantom_assassin', clock: '32:18' });
+    const n = { heroNames: reviewToolkit({ trace, hero: 'phantom_assassin', lang: 'en' })!.context.hero_names, placeNames: {}, lang: 'en' };
+    expect(gradeProbe(pa, 'Phantom Assassin took the first Aegis at 32:18.', n).pass).toBe(true);
+    expect(gradeProbe(pa, 'You took the first Aegis at 32:18.', n).pass).toBe(true);
+  });
+
   it('no Aegis pickup gives no Aegis probe, never one whose answer is "nobody"', () => {
     const noAegis = { ...trace, items: trace.items.map((it: any) => { const { item_aegis, ...rest } = it ?? {}; return rest; }) };
     const rosh: any = reviewToolkit({ trace: noAegis, hero: 'beastmaster', lang: 'en' })!.runTool('roshan_report', { hero: 'beastmaster' });
@@ -111,7 +119,9 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe(uneven, 'You, Undying, Sven and Dark Willow: 4 against 5.', names).pass).toBe(true);
     expect(gradeProbe(uneven, '4 of yours against 6.', names)).toMatchObject({ pass: false, wrong: ['enemy 6'] });
     expect(gradeProbe(uneven, 'Four of yours.', names)).toMatchObject({ pass: false, missing: ['5'] });
-    const own = { kind: 'first_aegis', source: { args: { hero: 'beastmaster' } }, expect: { me: true, clock: '32:18' } };
+    const own = { kind: 'first_aegis', source: { args: { hero: 'beastmaster' } }, expect: { me: 'beastmaster', clock: '32:18' } };
+    expect(gradeProbe(own, 'Beastmaster took it at 32:18.', names).pass).toBe(true);
+    expect(gradeProbe(own, 'Your team took it at 32:18.', names).pass).toBe(false);
     expect(gradeProbe(own, 'You took it at 32:18.', names).pass).toBe(true);
     expect(gradeProbe(own, '你在 32:18 拿的。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(own, 'Phantom Assassin took it at 32:18.', names).pass).toBe(false);
