@@ -783,6 +783,28 @@ describe('trace tools on a real game', () => {
     expect([at(pa, 'bfury'), at(pa, 'black_king_bar')]).toEqual(['15:47', '21:29']);
   });
 
+  it('who won is whose Ancient fell, not who landed the last hit on it', () => {
+    // In 7 of 32 parsed games the Ancient's kill row names no side (taker 0). Read off the taker, both teams
+    // were told they lost and a reader with no side was told nobody won.
+    const fortAt = trace.buildings.findIndex((b) => /_fort$/.test(trace.names[b[1]]));
+    expect(trace.names[trace.buildings[fortAt][1]]).toBe('npc_dota_badguys_fort');
+    const with_ = (taker) => ({ ...trace, buildings: trace.buildings.map((b, i) => (i === fortAt ? [b[0], b[1], taker, b[3]] : b)) });
+    for (const taker of [2, 0, 3, null]) {
+      const t = with_(taker);
+      expect([taker, runTraceTool(t, 'match_overview', {}, { perspective: 'beastmaster' }).result]).toEqual([taker, 'my_team_lost']);
+      expect([taker, runTraceTool(t, 'match_overview', {}, { perspective: 'axe' }).result]).toEqual([taker, 'my_team_won']);
+      expect([taker, runTraceTool(t, 'match_overview', {}, {}).winner]).toEqual([taker, 'radiant']);
+    }
+    // The other Ancient: the other answer.
+    const names = trace.names.map((n) => (n === 'npc_dota_badguys_fort' ? 'npc_dota_goodguys_fort' : n));
+    expect(runTraceTool({ ...with_(0), names }, 'match_overview', {}, { perspective: 'beastmaster' }).result).toBe('my_team_won');
+    expect(runTraceTool({ ...with_(0), names }, 'match_overview', {}, {}).winner).toBe('dire');
+    // No Ancient fell in the trace (a replay cut short): nobody is said to have won or lost.
+    const cut = { ...trace, buildings: trace.buildings.filter((_, i) => i !== fortAt) };
+    expect(runTraceTool(cut, 'match_overview', {}, { perspective: 'beastmaster' })).toMatchObject({ result: null, duration: null });
+    expect(runTraceTool(cut, 'match_overview', {}, {}).winner).toBeNull();
+  });
+
   it('told from a player, sides replace Radiant/Dire and the gold sign', () => {
     const adv = new Array(45).fill(0); adv[30] = 745; adv[32] = 4298;
     const ctx = { perspective: 'beastmaster', match: { radiant_gold_adv: adv } };
