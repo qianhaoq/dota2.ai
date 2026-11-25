@@ -15,14 +15,14 @@
   "rules_that_say_only_once": 0.01,
   "matchup_both_ways": 0.02,
   "repaired": 0.95,
-  "rubric_approved": null,
-  "rubric_draft": {
+  "rubric_approved": {
    "reviews": 5,
    "hit_rate": 0.73,
    "must_not_violations": 0,
    "turning_fight_covered": 0.33,
    "main_reason_ok": 1
   },
+  "rubric_draft": null,
   "main_reason_agreement": 0.71,
   "first_finding_overlap": 0.36
  },
@@ -41,14 +41,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p6": {
    "reviews": 2,
@@ -64,14 +64,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 2,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p7": {
    "reviews": 3,
@@ -87,14 +87,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.89,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p8": {
    "reviews": 1,
@@ -110,14 +110,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 1,
     "hit_rate": 0.25,
     "must_not_violations": 0,
     "turning_fight_covered": null,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p9": {
    "reviews": 1,
@@ -133,14 +133,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p10": {
    "reviews": 1,
@@ -156,14 +156,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p11": {
    "reviews": 2,
@@ -179,14 +179,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 2,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p12": {
    "reviews": 2,
@@ -202,14 +202,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 2,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p14": {
    "reviews": 3,
@@ -225,14 +225,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 2,
     "hit_rate": 0.5,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p15": {
    "reviews": 36,
@@ -248,14 +248,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 0.92,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.89,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": null
-   }
+   },
+   "rubric_draft": null
   },
   "p16": {
    "reviews": 9,
@@ -271,14 +271,14 @@
    "rules_that_say_only_once": 0.04,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 4,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p17": {
    "reviews": 5,
@@ -294,14 +294,14 @@
    "rules_that_say_only_once": 0.07,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p18": {
    "reviews": 1,
@@ -317,14 +317,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p22": {
    "reviews": 11,
@@ -340,14 +340,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 5,
     "hit_rate": 0.6,
     "must_not_violations": 0,
     "turning_fight_covered": 0.33,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p23": {
    "reviews": 4,
@@ -363,14 +363,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 4,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 0.5,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p24": {
    "reviews": 4,
@@ -386,14 +386,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 4,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 0.5,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p25": {
    "reviews": 3,
@@ -409,14 +409,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0.33,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.55,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p26": {
    "reviews": 3,
@@ -432,14 +432,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.78,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p27": {
    "reviews": 3,
@@ -455,14 +455,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0.33,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.55,
     "must_not_violations": 0,
     "turning_fight_covered": 0.5,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p28": {
    "reviews": 4,
@@ -478,14 +478,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 4,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p29": {
    "reviews": 3,
@@ -501,14 +501,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 0.67,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.69,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p30": {
    "reviews": 2,
@@ -524,14 +524,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 0.5,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 2,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p31": {
    "reviews": 2,
@@ -547,14 +547,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 2,
     "hit_rate": 0.88,
     "must_not_violations": 0,
     "turning_fight_covered": null,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p32": {
    "reviews": 3,
@@ -570,14 +570,14 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.55,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   },
   "p33": {
    "reviews": 8,
@@ -593,14 +593,14 @@
    "rules_that_say_only_once": 0.08,
    "matchup_both_ways": 0.13,
    "repaired": 1,
-   "rubric_approved": null,
-   "rubric_draft": {
+   "rubric_approved": {
     "reviews": 4,
     "hit_rate": 0.83,
     "must_not_violations": 0,
     "turning_fight_covered": 0.5,
     "main_reason_ok": 1
-   }
+   },
+   "rubric_draft": null
   }
  },
  "stability": {
@@ -818,7 +818,7 @@
    "thin_rules": 0,
    "matchup_both_ways": false,
    "rubric": {
-    "status": "draft",
+    "status": "approved",
     "must_hit": [
      {
       "id": "blink_after_magic_resistance",
@@ -857,7 +857,7 @@
    "thin_rules": 1,
    "matchup_both_ways": false,
    "rubric": {
-    "status": "draft",
+    "status": "approved",
     "must_hit": [
      {
       "id": "blink_after_magic_resistance",
@@ -1176,7 +1176,7 @@
    "thin_rules": 0,
    "matchup_both_ways": false,
    "rubric": {
-    "status": "draft",
+    "status": "approved",
     "must_hit": [
      {
       "id": "roar_spent_before_carry_immunity",
@@ -1210,7 +1210,7 @@
    "thin_rules": 0,
    "matchup_both_ways": true,
    "rubric": {
-    "status": "draft",
+    "status": "approved",
     "must_hit": [
      {
       "id": "roar_spent_before_carry_immunity",
@@ -1244,7 +1244,7 @@
    "thin_rules": 0,
    "matchup_both_ways": false,
    "rubric": {
-    "status": "draft",
+    "status": "approved",
     "must_hit": [
      {
       "id": "roar_spent_before_carry_immunity",
