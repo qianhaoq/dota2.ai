@@ -1,0 +1,180 @@
+{
+  "schema": "dota2.ai/win-probability@1",
+  "features": [
+    "bias",
+    "gold_k",
+    "gold_k_per_sqrt_t",
+    "barracks"
+  ],
+  "weights": [
+    0.060187,
+    -0.138285,
+    0.551938,
+    0.218354
+  ],
+  "trained": "2026-11-25",
+  "data": {
+    "source": "OpenDota: public ranked All Pick matches it has parsed (scripts/wp-collect.mjs)",
+    "gold": "gold earned lead (radiant_gold_adv) at each whole minute — the quantity goldLead gives as match_record and replay_gold_log; never the replay net worth graph",
+    "games_collected": 1900,
+    "left_out_with_a_leaver": 61,
+    "games_fitted_on": 1839,
+    "rows_fitted_on": 70254,
+    "radiant_won_share": 0.505,
+    "match_ids": [
+      9104905440,
+      9105110932
+    ],
+    "opendota_patch_ids": [
+      61
+    ],
+    "rank_tier_mean": 65.5,
+    "games_by_rank": {
+      "under_40": 193,
+      "from_40_to_59": 457,
+      "from_60": 1189,
+      "not_known": 0
+    }
+  },
+  "cross_validated": {
+    "how": "5 parts by game id; each game scored by a fit that did not see it. The weights above are fitted on all of them.",
+    "model": {
+      "brier": 0.1767,
+      "log_loss": 0.5215
+    },
+    "gold_lead_alone": {
+      "brier": 0.1815,
+      "log_loss": 0.5359
+    },
+    "gold_lead_with_the_minute": {
+      "brier": 0.1779,
+      "log_loss": 0.5247
+    },
+    "always_half": {
+      "brier": 0.25,
+      "log_loss": 0.6931
+    },
+    "calibration": [
+      {
+        "said": "0–10%",
+        "rows": 6379,
+        "mean_said": 0.046,
+        "radiant_won": 0.046
+      },
+      {
+        "said": "10–20%",
+        "rows": 5587,
+        "mean_said": 0.15,
+        "radiant_won": 0.17
+      },
+      {
+        "said": "20–30%",
+        "rows": 6251,
+        "mean_said": 0.252,
+        "radiant_won": 0.266
+      },
+      {
+        "said": "30–40%",
+        "rows": 7348,
+        "mean_said": 0.352,
+        "radiant_won": 0.343
+      },
+      {
+        "said": "40–50%",
+        "rows": 8550,
+        "mean_said": 0.451,
+        "radiant_won": 0.448
+      },
+      {
+        "said": "50–60%",
+        "rows": 9129,
+        "mean_said": 0.55,
+        "radiant_won": 0.54
+      },
+      {
+        "said": "60–70%",
+        "rows": 8060,
+        "mean_said": 0.649,
+        "radiant_won": 0.649
+      },
+      {
+        "said": "70–80%",
+        "rows": 6692,
+        "mean_said": 0.748,
+        "radiant_won": 0.738
+      },
+      {
+        "said": "80–90%",
+        "rows": 5998,
+        "mean_said": 0.849,
+        "radiant_won": 0.844
+      },
+      {
+        "said": "90–100%",
+        "rows": 6260,
+        "mean_said": 0.952,
+        "radiant_won": 0.965
+      }
+    ],
+    "by_stretch": [
+      {
+        "minutes": "1–10",
+        "rows": 16551,
+        "brier": 0.2304,
+        "gold_lead_alone": 0.2367
+      },
+      {
+        "minutes": "10–20",
+        "rows": 18376,
+        "brier": 0.1884,
+        "gold_lead_alone": 0.1934
+      },
+      {
+        "minutes": "20–30",
+        "rows": 17388,
+        "brier": 0.1494,
+        "gold_lead_alone": 0.1494
+      },
+      {
+        "minutes": "30–40",
+        "rows": 11527,
+        "brier": 0.1357,
+        "gold_lead_alone": 0.137
+      },
+      {
+        "minutes": "40–200",
+        "rows": 6412,
+        "brier": 0.1524,
+        "gold_lead_alone": 0.1715
+      }
+    ],
+    "by_rank": [
+      {
+        "rank": "Herald–Crusader (rank_tier under 40)",
+        "games": 193,
+        "rows": 8163,
+        "brier": 0.189
+      },
+      {
+        "rank": "Archon–Legend (40–59)",
+        "games": 457,
+        "rows": 18717,
+        "brier": 0.1888
+      },
+      {
+        "rank": "Ancient and above (60+)",
+        "games": 1189,
+        "rows": 43374,
+        "brier": 0.1692
+      }
+    ]
+  },
+  "not_in_it": [
+    "heroes and items",
+    "who is dead at the moment",
+    "buybacks",
+    "Aegis",
+    "experience",
+    "towers (measured: nothing once the gold lead is in)"
+  ]
+}
