@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BUDGET, DEFAULT_FLOOR, REVIEW_COST_ESTIMATE, parseRunArgs, planRuns, runAll, runFileName, spendVerdict } from '../../lib/agent/evalRun.js';
+import { DEFAULT_BUDGET, DEFAULT_FLOOR, REVIEW_COST_ESTIMATE, parseRunArgs, planRuns, reviewsAlreadyIn, runAll, runFileName, spendVerdict } from '../../lib/agent/evalRun.js';
 import { DEFAULT_BALANCE_FLOOR } from '../../lib/agent/modelBalance.js';
 import { evaluate, parseName } from '../../scripts/eval-review.mjs';
 
@@ -43,6 +43,34 @@ describe('planRuns', () => {
     expect(parseName('9100904020.beastmaster.zh.p38.review.json')).toMatchObject({ version: 38, run: null });
     expect(parseName('9100904020.beastmaster.zh.p38.plan-push.r3.review.json')).toMatchObject({ plan: 'push', run: 3 });
     expect(parseName('9100904020.beastmaster.zh.p38.r0.review.json')).toBeNull();
+  });
+});
+
+describe('a run writes into a directory of its own', () => {
+  it('finds the reviews an earlier run left, and nothing else', () => {
+    // After a three-review run, a one-review run would overwrite r1 and leave r2 and r3 to be scored with it.
+    expect(reviewsAlreadyIn(['9100904020.beastmaster.zh.p38.r3.review.json', 'notes.txt', '9100904020.beastmaster.zh.p38.r2.review.json', 'before.json', '9100904020.beastmaster.zh.p38.review.json']))
+      .toEqual(['9100904020.beastmaster.zh.p38.r2.review.json', '9100904020.beastmaster.zh.p38.r3.review.json', '9100904020.beastmaster.zh.p38.review.json']);
+    expect(reviewsAlreadyIn([])).toEqual([]);
+    expect(reviewsAlreadyIn(['summary.json', '.DS_Store'])).toEqual([]);
+    expect(reviewsAlreadyIn(undefined as any)).toEqual([]);
+  });
+
+  it('the script refuses such a directory before it reads the balance or calls a model', async () => {
+    const { mkdtempSync, writeFileSync, rmSync, readdirSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { execFileSync } = await import('node:child_process');
+    const dir = mkdtempSync(join(tmpdir(), 'eval-run-'));
+    try {
+      writeFileSync(join(dir, '1.axe.zh.p38.r2.review.json'), '{}');
+      let code = 0; let err = '';
+      // A key that reaches nothing: were the balance read or a model called, the run would fail another way.
+      try { execFileSync(process.execPath, ['scripts/eval-run.mjs', '--traces', dir, '--out', dir, '--games', '1.axe'], { env: { ...process.env, DEEPSEEK_API_KEY: 'k-test-not-a-key', EVAL_DEEPSEEK_API_KEY: '', HTTPS_PROXY: 'http://127.0.0.1:9', https_proxy: 'http://127.0.0.1:9' }, stdio: 'pipe', timeout: 60_000 }); } catch (e: any) { code = e.status; err = String(e.stderr); }
+      expect(code).toBe(3);
+      expect(err).toContain('already holds 1 review(s) (1.axe.zh.p38.r2.review.json)');
+      expect(readdirSync(dir)).toEqual(['1.axe.zh.p38.r2.review.json']);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 

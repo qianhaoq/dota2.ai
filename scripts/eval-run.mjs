@@ -13,6 +13,7 @@
  * game, as production gives the review (scoreboard, gold curve); a game without one is reviewed from the replay
  * alone, and the plan printed first says which. --runs: reviews per game, written one after another.
  * --budget / --floor: in the account's currency. --dry-run prints the plan and the balance and writes nothing.
+ * --out must hold no review yet: a run's files are scored together, so two runs do not share a directory.
  *
  * Then score them, and compare two runs:
  *   node scripts/eval-review.mjs <out of the run on main> --json before.json
@@ -21,17 +22,18 @@
  * Model: DeepSeek, as production runs it (lib/agent/providers.js). The key is EVAL_DEEPSEEK_API_KEY, else
  * DEEPSEEK_API_KEY — which is the account production bills, and the run says so.
  * Exit status: 0 every planned review written · 1 some were not (stopped, or the model gave no verifiable
- * review) · 2 usage · 3 not started (no key, no balance, over budget, under the floor, nothing to run).
+ * review) · 2 usage · 3 not started (no key, no balance, over budget, under the floor, nothing to run, or --out
+ * already holds reviews).
  */
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import OpenAI from 'openai';
 import { deepReviewProvider } from '../lib/agent/providers.js';
 import { openAiCompatible } from '../lib/agent/loop.js';
 import { DEEP_REVIEW_PROMPT_VERSION, runDeepReview } from '../lib/agent/deepReview.js';
-import { REVIEW_COST_ESTIMATE, parseRunArgs, planRuns, runAll } from '../lib/agent/evalRun.js';
+import { REVIEW_COST_ESTIMATE, parseRunArgs, planRuns, reviewsAlreadyIn, runAll } from '../lib/agent/evalRun.js';
 import { readBalance } from '../lib/agent/modelBalance.js';
 import { linkHeroNames } from '../packages/review-engine/src/trace/build.js';
 import { loadRubrics } from './eval-review.mjs';
@@ -44,6 +46,9 @@ async function main(argv) {
   const o = parseRunArgs(argv);
   if (!o) { console.error(USAGE); return 2; }
   const env = { ...process.env, ...(process.env.EVAL_DEEPSEEK_API_KEY ? { DEEPSEEK_API_KEY: process.env.EVAL_DEEPSEEK_API_KEY } : {}) };
+  // An earlier run's files in the same directory would be scored with this one's as a single experiment.
+  const stale = reviewsAlreadyIn(await readdir(o.out).catch(() => []));
+  if (stale.length) { console.error(`Not started: ${o.out} already holds ${stale.length} review(s) (${stale[0]}${stale.length > 1 ? ', …' : ''}). Give a directory of its own to each run.`); return 3; }
   const cfg = deepReviewProvider('deepseek', env);
   if (!cfg.ok) { console.error('No key: set EVAL_DEEPSEEK_API_KEY (an account of its own) or DEEPSEEK_API_KEY.'); return 3; }
   const games = o.games ?? [...(await loadRubrics(o.rubrics)).values()].map((r) => ({ match_id: r.match_id, hero: r.hero }));
