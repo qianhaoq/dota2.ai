@@ -82,7 +82,8 @@ for (const f of files) {
     const lost = { 2: 0, 3: 0 };
     for (const d of f.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) lost[trace.heroes[v].team] += 1; }
     if (lost[2] === lost[3]) return;
-    const winner = lost[2] < lost[3] ? 2 : 3; const lead = adv?.[Math.floor(f.from / 60)];
+    // The gold lead the minute it began: its first damage exchange, as fightsAfterBigItems reads it.
+    const winner = lost[2] < lost[3] ? 2 : 3; const lead = adv?.[Math.floor(fightParticipation(trace, f).engaged_at / 60)];
     const x = withItems.get(fi + 1);
     if (!x) { if (Number.isFinite(lead) && lead) plainFights.push({ aheadWon: (lead > 0) === (winner === 2) }); return; }
     const sides = new Set(x.items.map((it) => it.team)); if (sides.size !== 1) return;
