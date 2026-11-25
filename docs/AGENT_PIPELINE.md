@@ -286,10 +286,29 @@ only when the record has no address.
 
 | Reason | Meaning | Page |
 |---|---|---|
-| `replay_gone` | Valve no longer has the replay (about two weeks) | says so; scoreboard only; no retry |
-| `no_replay_url` | no source has an address: the match record has none and the game coordinator was not configured, had no budget left, or does not know the match | "not ready yet", retry |
-| `download_failed`, `extract_failed`, `worker_failed`, `timeout` | transient | "could not be read", retry (allowed again after 5 min) |
+| `replay_gone` | Valve no longer has the replay (about two weeks): the download answered 404 / 410, **or no source has an address and the match record's own times prove the game ended more than 14 days ago** (start + duration; with no duration, only when it began more than 15 days ago; with no start time, never) | says so; scoreboard only; no retry |
+| `no_replay_url` | no source has an address — the match record has none and the game coordinator was not configured, had no budget left, or does not know the match — for a game that ended within 14 days, or whose end time the record does not give | "not ready yet", retry |
+| `download_failed`, `extract_failed`, `worker_failed`, `timeout` | transient | "could not be read", retry |
 | `too_large`, `wrong_match` | over the caps; the file is not that match | final |
+
+A failure that is not final is answered with `retry_in_sec`: until then, asking again gets the same failure and
+starts nothing (60 s after `no_replay_url`, 10 s after anything else). An address that was not there a second ago is
+not there now, and a double click must not start two downloads — on 2026-11-25 one old game was asked for nine times
+in an hour, each a fresh parse that failed within a second. After five minutes the failure is forgotten.
+
+A review that fails records why, from the model error's HTTP status and class only (the provider's text is never
+logged or passed on; the class is read off the prototype chain, since the SDK's errors all have the name "Error"):
+
+| Reason | From | What follows |
+|---|---|---|
+| `model_out_of_credit` | 402 | no review is started for 5 minutes: `unavailable` with this reason and `retry_in_sec`, at once; the page keeps its retry button |
+| `model_refused_the_key` | 401, 403 | the same |
+| `model_rate_limited` | 429 | that review failed; the next one is tried |
+| `model_unavailable` | 5xx, the SDK's `APIConnectionError` | the same |
+| `timeout` | the SDK's `APIConnectionTimeoutError` or `APIUserAbortError` (the review's own deadline), a `TimeoutError` / `AbortError` | the same |
+| `error` | anything else | the same |
+
+The log line is `deep-review error match=… hero=… : reason=<reason> status=<status> (<error class>)`.
 
 A running job leaves a marker in the store, so another instance reports
 "running" instead of offering a second start; a marker older than 15 minutes
