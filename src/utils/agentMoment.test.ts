@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { MOMENT_FOCUS, MOMENT_NEAR, momentFrames } from '../../lib/agent/moment.js';
+import { MOMENT_CASTS, MOMENT_FOCUS, MOMENT_NEAR, momentFrames } from '../../lib/agent/moment.js';
 import { linkHeroNames } from '../../packages/review-engine/src/trace/index.js';
 
 /** Match 9100904020, Beastmaster on Dire: the committed trace. */
@@ -112,5 +112,59 @@ describe('a moment on the map', () => {
     expect(m.frames.every((f: any) => f.at[me] === null)).toBe(true);
     // The others' positions are still there.
     expect(m.frames[12].at[t.heroes.findIndex((h: any) => h.key === 'necrolyte')]).toEqual([-736, -632, 1]);
+  });
+  it('the abilities cast in the window, by the player and the heroes near them, in order — with the hero they were cast on', () => {
+    const m: any = momentFrames(trace, { hero: 'beastmaster', t: 1825 });
+    expect(m.casts).toHaveLength(24);
+    expect(m.casts.map((c: any) => c.t)).toEqual([...m.casts.map((c: any) => c.t)].sort((a, b) => a - b));
+    expect(m.casts.every((c: any) => c.t >= m.from && c.t <= m.to + 1)).toBe(true);
+    // The Roar on Necrophos, a tenth of a second kept; an ability with no hero target says none.
+    expect(m.casts).toContainEqual({ t: 1825.6, hero: 'beastmaster', ability: 'beastmaster_primal_roar', target: 'necrolyte' });
+    expect(m.casts).toContainEqual({ t: 1819.7, hero: 'sven', ability: 'sven_gods_strength', target: null });
+    // Only heroes: nothing cast by a summoned unit, and nobody who is not in this game.
+    const keys = new Set(m.heroes.map((h: any) => h.hero));
+    expect(m.casts.every((c: any) => keys.has(c.hero) && (c.target === null || keys.has(c.target)))).toBe(true);
+  });
+
+  it('a hero who was never near the player in the window is not in the list of casts; a long fight is cut at the cap', () => {
+    // Put Sven far away for the whole window: his God's Strength at 30:19 is his own business.
+    const far = load(); const sven = far.heroes.findIndex((h: any) => h.key === 'sven');
+    for (let s = 1813; s <= 1831; s += 1) { far.states[sven].x[s - far.t0] = 7000; far.states[sven].y[s - far.t0] = 7000; }
+    const m: any = momentFrames(far, { hero: 'beastmaster', t: 1825 });
+    expect(m.casts.some((c: any) => c.hero === 'sven')).toBe(false);
+    expect(m.casts.length).toBeLessThan(24);
+    expect(m.away).toContain('sven');
+    // Many casts: no more than the cap, the earliest kept.
+    const busy = load(); const roar = busy.casts.find((c: any) => busy.names[c[2]] === 'beastmaster_primal_roar' && Math.abs(c[0] - 1825.6) < 0.1);
+    busy.casts = [...busy.casts, ...Array.from({ length: 60 }, (_, k) => [1814 + k * 0.01, roar[1], roar[2], roar[3], 0])].sort((a: any, b: any) => a[0] - b[0]);
+    const many: any = momentFrames(busy, { hero: 'beastmaster', t: 1825 });
+    expect(many.casts).toHaveLength(MOMENT_CASTS);
+    expect(many.casts.at(-1).t).toBeLessThan(1816);
+  });
+
+  it('wards standing inside the square during the window, by whose they were; one gone before or placed after is not there', () => {
+    // The committed trace was built before wards were kept: not known, which is not "no wards".
+    expect((momentFrames(trace, { hero: 'beastmaster', t: 1825 }) as any).wards).toBeNull();
+    const t = load();
+    t.wards = [
+      [1700, 1900, 3, 'o', -500, -500],     // Dire's (the player's) observer, standing all window
+      [1600, 1820, 2, 's', -1000, -1000],   // Radiant's sentry, gone at 30:20: standing at the start of the window
+      [1600, 1813, 2, 'o', -600, -600],     // gone the second the window starts
+      [1832, 2100, 2, 'o', -700, -700],     // placed after the window
+      [null, 1900, 2, 'o', -800, -800],     // placing not recorded: counted until it is gone
+      [1700, null, 3, 's', -900, -900],     // never seen to go
+      [1700, 1900, 3, 'o', 7000, 7000],     // standing, but outside the square shown
+    ];
+    const m: any = momentFrames(t, { hero: 'beastmaster', t: 1825 });
+    expect(m.wards).toEqual([
+      { x: -500, y: -500, side: 'mine', kind: 'observer', from: 1700, to: 1900 },
+      { x: -1000, y: -1000, side: 'enemy', kind: 'sentry', from: 1600, to: 1820 },
+      { x: -800, y: -800, side: 'enemy', kind: 'observer', from: null, to: 1900 },
+      { x: -900, y: -900, side: 'mine', kind: 'sentry', from: 1700, to: null },
+    ]);
+    // An empty list is known: no wards.
+    expect((momentFrames({ ...t, wards: [] }, { hero: 'beastmaster', t: 1825 }) as any).wards).toEqual([]);
+    // No list of casts either: not known.
+    expect((momentFrames({ ...t, casts: undefined }, { hero: 'beastmaster', t: 1825 }) as any).casts).toBeNull();
   });
 });

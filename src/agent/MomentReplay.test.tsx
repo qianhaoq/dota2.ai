@@ -70,7 +70,74 @@ describe('MomentReplay', () => {
     await step(2);
     expect(heroes()).toEqual(['Queen of Pain', 'Lina (dead)', 'Axe']);
     expect(document.querySelector('.ag-replay-deaths li')!.textContent).toBe('1:42 Lina died');
-    expect(document.querySelector('.ag-replay-deaths li')!.className).toBe('is-past');
+    expect(document.querySelector('.ag-replay-deaths li.is-death')!.className).toContain('is-past');
+  });
+
+  it('what was cast is listed with the deaths, in order; the row of the second shown is marked, an ultimate is said to be one, and the caster\'s mark thickens', async () => {
+    serve(moment({
+      casts: [
+        { t: 100.4, hero: 'axe', ability: 'axe_battle_hunger', target: 'lina' },
+        { t: 102.2, hero: 'axe', ability: 'axe_culling_blade', target: 'lina', ultimate: true },
+        { t: 102.9, hero: 'queen_of_pain', ability: 'queenofpain_scream_of_pain', target: null },
+      ],
+      names: { axe: 'Axe', queen_of_pain: 'Queen of Pain', lina: 'Lina', axe_battle_hunger: 'Battle Hunger', axe_culling_blade: 'Culling Blade', queenofpain_scream_of_pain: 'Scream of Pain' },
+    }));
+    render(<MomentReplay matchId="7" hero="axe" lang="en" t={fresh()} />);
+    await flush();
+    const rows = () => Array.from(document.querySelectorAll('.ag-replay-deaths li')).map((li) => [li.textContent, li.className]);
+    // 1:40, the first second: the cast of that second is "now"; nothing else has happened yet.
+    expect(rows()).toEqual([
+      ['1:40 Axe: Battle Hunger on Lina', 'is-cast is-past is-now'],
+      ['1:42 Axe: Culling Blade on Lina · ultimate', 'is-cast is-ultimate'],
+      ['1:42 Lina died', 'is-death'],
+      ['1:42 Queen of Pain: Scream of Pain', 'is-cast'],
+    ]);
+    // The list scrolls inside its box: a keyboard can reach it.
+    expect(screen.getByRole('list', { name: 'What happened in these seconds' }).getAttribute('tabindex')).toBe('0');
+    const casting = () => Array.from(document.querySelectorAll('.ag-replay-hero.is-casting title')).map((t) => t.textContent);
+    expect(casting()).toEqual(['Axe']);
+    await step();
+    // 1:41: nobody casts in this second.
+    expect(casting()).toEqual([]);
+    await step();
+    // 1:42: the ultimate, the scream and the death all fall in this second.
+    expect(casting().sort()).toEqual(['Axe', 'Queen of Pain']);
+    expect(rows().map((r) => r[1])).toEqual(['is-cast is-past', 'is-cast is-past is-now is-ultimate', 'is-death is-past is-now', 'is-cast is-past is-now']);
+  });
+
+  it('wards are drawn where they stood, in their side\'s colour, only while they stood; the caption says a ward is a place, not what it showed', async () => {
+    serve(moment({ wards: [
+      { x: 500, y: 0, side: 'mine', kind: 'observer', from: 50, to: 400 },
+      { x: -500, y: 200, side: 'enemy', kind: 'sentry', from: 101, to: 103 },
+      { x: 0, y: 900, side: 'enemy', kind: 'observer', from: null, to: 102 },
+    ] }));
+    render(<MomentReplay matchId="7" hero="axe" lang="en" t={fresh()} />);
+    await flush();
+    const wards = () => Array.from(document.querySelectorAll('.ag-replay-ward')).map((g) => [g.querySelector('title')!.textContent, g.getAttribute('class'), g.getAttribute('transform'), g.firstElementChild!.nextElementSibling!.tagName]);
+    // 1:40: the sentry is not placed yet; the observer whose placing was not recorded counts until it is gone.
+    expect(wards()).toEqual([
+      ['Your side\'s ward · observer', 'ag-replay-ward is-mine is-observer', 'translate(240.0 160.0)', 'path'],
+      ['Their ward · observer', 'ag-replay-ward is-enemy is-observer', 'translate(160.0 16.0)', 'path'],
+    ]);
+    await step();
+    expect(wards().map((w) => w[0])).toEqual(['Your side\'s ward · observer', 'Their ward · sentry', 'Their ward · observer']);
+    expect(document.querySelector('.ag-replay-ward.is-sentry rect')).toBeTruthy();
+    await step(2);
+    // 1:43: the enemy observer went at 1:42 and the sentry at 1:43.
+    expect(wards().map((w) => w[0])).toEqual(['Your side\'s ward · observer']);
+    expect(document.querySelector('.ag-replay-legend .is-ward')!.textContent).toBe('Wards: ◆ observer · ■ sentry');
+    expect(document.querySelector('.ag-replay figcaption')!.textContent).toContain('A ward is drawn where it stood. What it let anyone see is not in the replay data.');
+  });
+
+  it('a replay without those lists draws no ward and lists only the deaths: nothing is said about wards at all', async () => {
+    serve(moment({ wards: null, casts: null }));
+    render(<MomentReplay matchId="7" hero="axe" lang="en" t={fresh()} />);
+    await flush();
+    expect(document.querySelectorAll('.ag-replay-ward')).toHaveLength(0);
+    expect(document.querySelector('.ag-replay-legend .is-ward')).toBeNull();
+    expect(document.querySelector('.ag-replay figcaption')!.textContent).not.toContain('ward');
+    expect(Array.from(document.querySelectorAll('.ag-replay-deaths li')).map((li) => li.textContent)).toEqual(['1:42 Lina died']);
+    expect(document.querySelectorAll('.ag-replay-hero.is-casting')).toHaveLength(0);
   });
 
   it('a trail is only ever consecutive seconds the replay has: it does not join across a missing second, nor through one outside the square', async () => {
