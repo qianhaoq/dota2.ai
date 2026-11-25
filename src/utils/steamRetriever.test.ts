@@ -7,6 +7,8 @@ import { createRetrieverApp } from '../../services/steam-retriever/src/app.mjs';
 import { createDailyQuota } from '../../services/steam-retriever/src/quota.mjs';
 import { readTokens, tokenExpiry, tokenProblem, writeToken } from '../../services/steam-retriever/src/tokens.mjs';
 import * as codec from '../../services/steam-retriever/src/codec.mjs';
+import { createPool } from '../../services/steam-retriever/src/pool.mjs';
+import { EventEmitter } from 'node:events';
 import { createSteamGcClient, mapGcHistory, mapGcMatch } from '../../lib/upstream/steamGc.js';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 
@@ -482,5 +484,178 @@ describe('retriever: tokens on disk', () => {
     expect(tokenProblem(jwt({ ...good, aud: ['web'] }), now)).toBe('not valid for the Steam client');
     expect(tokenProblem(jwt({ ...good, aud: 'client' }), now)).toBe('not valid for the Steam client');
     expect(tokenProblem(jwt({ ...good, exp: 1700000000 }), now)).toBe('expired');
+  });
+});
+
+describe('retriever: account pool keeps accounts online', () => {
+  const jwt = (payload: any) => `h.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.s`;
+  const TOKEN = jwt({ sub: '76561198000000001', iss: 'steam', aud: ['client'], exp: 1900000000 });
+  const WELCOME = (codec as any).MSG.clientWelcome;
+  const STATUS = (codec as any).MSG.clientConnectionStatus;
+  const HELLO = (codec as any).MSG.clientHello;
+
+  /** Stands in for a steam-user client: records what it is asked, emits what the test tells it to. */
+  class FakeClient extends EventEmitter {
+    calls: string[] = [];
+    sent: number[] = [];
+    logOn(d: any) { this.calls.push(`logOn:${d.refreshToken === TOKEN ? 'token' : 'other'}`); }
+    logOff() { this.calls.push('logOff'); }
+    requestFreeLicense() {}
+    gamesPlayed() { this.calls.push('gamesPlayed'); }
+    sendToGC(_app: number, type: number) { this.sent.push(type); }
+    /** Steam and the GC accept the session. */
+    comeUp() { this.emit('loggedOn'); this.emit('appLaunched', 570); this.emit('receivedFromGC', 570, WELCOME, Buffer.alloc(0)); }
+  }
+
+  function setup(over: any = {}) {
+    let t = 1_800_000_000_000;
+    const clients: FakeClient[] = [];
+    const logs: string[] = [];
+    const pool: any = createPool({
+      accounts: over.accounts ?? [{ label: 'acct-1', refreshToken: TOKEN }],
+      createClient: () => { const c = new FakeClient(); clients.push(c); return c; },
+      eresultName: (e: number) => ({ 3: 'NoConnection', 5: 'InvalidPassword', 20: 'ServiceUnavailable' } as any)[e],
+      log: (l: string) => logs.push(l), now: () => t, watchEveryMs: 0, ...over,
+    } as any);
+    return { pool, clients, logs, tick: (ms: number) => { t += ms; }, min: (n: number) => { t += n * 60_000; } };
+  }
+
+  it('an account is ready once the GC welcomes it', () => {
+    const { pool, clients } = setup();
+    expect(pool.ready()).toEqual([]);
+    expect(clients[0].calls).toEqual(['logOn:token']);
+    clients[0].comeUp();
+    expect(pool.ready()).toEqual(['acct-1']);
+    expect(pool.states()).toEqual({ ready: 1 });
+    expect(clients[0].sent).toContain(HELLO);
+    pool.stop();
+  });
+
+  it('what happened in production: disconnected, the client never comes back, a fresh session is started', () => {
+    const { pool, clients, logs, min } = setup();
+    clients[0].comeUp();
+    // The GC drops the session, then Steam does; the client's own reconnect stalls.
+    clients[0].emit('receivedFromGC', 570, STATUS, Buffer.from([0x08, 0x01]));
+    clients[0].emit('disconnected', 3);
+    expect(pool.ready()).toEqual([]);
+    expect(pool.states()).toEqual({ reconnecting: 1 });
+    min(2);
+    expect(pool.check()).toEqual([]); // still within the client's own time to recover
+    expect(clients).toHaveLength(1);
+    min(1.1);
+    expect(pool.check()).toEqual(['acct-1']);
+    expect(clients).toHaveLength(2);
+    expect(clients[0].calls).toContain('logOff');
+    expect(clients[1].calls).toEqual(['logOn:token']);
+    expect(logs.join('\n')).toMatch(/acct-1: not ready for 3 min \(reconnecting\), starting a fresh session/);
+    clients[1].comeUp();
+    expect(pool.ready()).toEqual(['acct-1']);
+    pool.stop();
+  });
+
+  it('a client that recovers by itself is left alone', () => {
+    const { pool, clients, min } = setup();
+    clients[0].comeUp();
+    clients[0].emit('disconnected', 3);
+    min(1);
+    clients[0].comeUp(); // steam-user's own reconnect worked
+    min(30);
+    expect(pool.check()).toEqual([]);
+    expect(clients).toHaveLength(1);
+    expect(pool.ready()).toEqual(['acct-1']);
+    pool.stop();
+  });
+
+  it('an account that never gets ready at start-up is retried too, waiting longer each time up to the cap', () => {
+    const { pool, clients, min } = setup();
+    const waits: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      let waited = 0;
+      while (pool.check().length === 0) { min(1); waited += 1; if (waited > 60) throw new Error('never retried'); }
+      waits.push(waited);
+    }
+    expect(waits).toEqual([3, 6, 12, 15, 15, 15]);
+    expect(clients).toHaveLength(7);
+    // Coming up resets the patience.
+    clients[6].comeUp();
+    clients[6].emit('disconnected', 3);
+    min(3);
+    expect(pool.check()).toEqual(['acct-1']);
+    pool.stop();
+  });
+
+  it('a discarded client can no longer change the account, and a late error from it does not crash', () => {
+    const { pool, clients, min } = setup();
+    clients[0].comeUp();
+    clients[0].emit('disconnected', 3);
+    min(4);
+    pool.check();
+    const old = clients[0];
+    expect(() => old.emit('error', Object.assign(new Error('late'), { eresult: 20 }))).not.toThrow();
+    old.comeUp(); // the stalled client wakes up after all
+    expect(pool.ready()).toEqual([]); // not counted: its session was replaced
+    clients[1].comeUp();
+    expect(pool.ready()).toEqual(['acct-1']);
+    old.emit('disconnected', 3);
+    expect(pool.ready()).toEqual(['acct-1']);
+    pool.stop();
+  });
+
+  it('a token Steam refuses stays down: no fresh sessions, no login loop', () => {
+    const { pool, clients, logs, min } = setup();
+    clients[0].emit('error', Object.assign(new Error('x'), { eresult: 5 }));
+    expect(pool.states()).toEqual({ needs_login: 1 });
+    min(600);
+    expect(pool.check()).toEqual([]);
+    expect(clients).toHaveLength(1);
+    expect(logs.join('\n')).toMatch(/Steam refused the stored token \(InvalidPassword\)/);
+    // Another kind of error is temporary: a fresh session follows.
+    const b = setup();
+    b.clients[0].comeUp();
+    b.clients[0].emit('error', Object.assign(new Error('x'), { eresult: 20 }));
+    expect(b.pool.states()).toEqual({ error: 1 });
+    b.min(3);
+    expect(b.pool.check()).toEqual(['acct-1']);
+    b.pool.stop(); pool.stop();
+  });
+
+  it('accounts are judged one by one: a healthy one is not restarted with a stuck one, an unusable token is never tried', () => {
+    const other = jwt({ sub: '76561198000000002', iss: 'steam', aud: ['client'], exp: 1900000000 });
+    const { pool, clients, min, logs } = setup({ accounts: [{ label: 'a', refreshToken: TOKEN }, { label: 'b', refreshToken: other }, { label: 'c', refreshToken: 'garbage' }] });
+    expect(clients).toHaveLength(2); // none for the garbage token
+    expect(pool.size()).toBe(3);
+    clients[0].comeUp(); clients[1].comeUp();
+    clients[1].emit('disconnected', 3);
+    min(4);
+    expect(pool.check()).toEqual(['b']);
+    expect(pool.ready()).toEqual(['a']);
+    expect(pool.states()).toEqual({ ready: 1, connecting: 1, needs_login: 1 });
+    expect(logs.join('\n')).not.toMatch(/garbage|eyJ|\.s\b/); // no token text in logs
+    pool.stop();
+  });
+
+  it('a GC that drops the session while Steam stays up: hello again, and a fresh session if that does not help', () => {
+    const { pool, clients, min } = setup();
+    clients[0].comeUp();
+    const before = clients[0].sent.filter((x) => x === HELLO).length;
+    clients[0].emit('receivedFromGC', 570, STATUS, Buffer.from([0x08, 0x02]));
+    expect(pool.ready()).toEqual([]);
+    expect(clients[0].sent.filter((x) => x === HELLO).length).toBe(before + 1);
+    // "Have session" (status 0) is not a drop.
+    const b = setup();
+    b.clients[0].comeUp();
+    b.clients[0].emit('receivedFromGC', 570, STATUS, Buffer.from([0x08, 0x00]));
+    expect(b.pool.ready()).toEqual(['acct-1']);
+    min(3);
+    expect(pool.check()).toEqual(['acct-1']);
+    b.pool.stop(); pool.stop();
+  });
+
+  it('a request on an account that is not ready is refused at once', async () => {
+    const { pool, clients } = setup();
+    await expect(pool.matchDetails('acct-1', '5', { timeoutMs: 50 })).rejects.toMatchObject({ code: 'not_ready' });
+    clients[0].comeUp();
+    await expect(pool.matchDetails('acct-1', '5', { timeoutMs: 30 })).rejects.toMatchObject({ code: 'gc_timeout' });
+    pool.stop();
   });
 });

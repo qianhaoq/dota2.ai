@@ -121,6 +121,13 @@ Web API, `lib/upstream/steamWebApi.js`). Match details are unaffected.
 
 ## Upkeep
 
+- **Reconnecting.** Steam drops sessions now and then (its weekly
+  maintenance, network blips). The client reconnects by itself; if an account
+  is still not ready after three minutes the service discards that session
+  and starts a fresh one, waiting longer between tries (up to fifteen
+  minutes). The log says `not ready for N min (…), starting a fresh session`.
+  `/healthz` shows `ok: false` while no account is ready.
+
 - **Token expiry.** A token lasts about 200 days and the service renews it
   while running. If an account shows `needs_login` in the log (password
   changed, token revoked or expired), run `npm run login` for it again with
