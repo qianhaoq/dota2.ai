@@ -2,9 +2,11 @@
   "schema": "dota2.ai/review-rubric@1",
   "match_id": 9100904020,
   "hero": "beastmaster",
-  "status": "draft",
+  "status": "approved",
   "written": "2026-11-25",
-  "source": "Tool outputs on the committed trace (ability_audit of Primal Roar, immunity_windows, match_overview) and the hand review of 2026-11-22 that the owner judged better than the site's. Not yet checked by the owner.",
+  "checked": "2026-11-25",
+  "checked_by": "Claude, re-reading every stated fact from the tools (ability_audit, immunity_windows, match_overview, item_timeline, fight_report); the owner delegated the check",
+  "source": "Tool outputs on the committed trace (ability_audit of Primal Roar, immunity_windows, match_overview) and the hand review of 2026-11-22 that the owner judged better than the site's.",
   "must_hit": [
     {
       "id": "roar_spent_before_carry_immunity",
