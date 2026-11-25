@@ -36,7 +36,7 @@ import { gunzipSync } from 'node:zlib';
 import { fightReport, ultimateEdges } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
-import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_RESPAWN } from '../lib/agent/decisionPoints.js';
+import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_RESPAWN, STILL_DEAD_AFTER } from '../lib/agent/decisionPoints.js';
 import { moneyOf } from '../lib/agent/farmReport.js';
 import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
@@ -82,7 +82,11 @@ for (const f of files) {
   for (const x of afterWonFights(trace)) {
     const rich = richestOf(trace, money, x.loser, Math.floor(x.from / 60));
     const dead = rich == null ? null : x.still_dead.find((d) => d.i === rich);
-    afterWins.push({ stillDead: x.still_dead.length, did: x.did, richest: rich == null ? null : dead && dead.respawn_in >= LONG_RESPAWN ? 'dead_30s_or_more' : dead ? 'dead_under_30s' : 'alive' });
+    // Dead with no known respawn time, or not sampled at that second: not known, never counted as alive (review of #312).
+    const richest = rich == null ? null
+      : dead ? (dead.respawn_in == null ? 'not_known' : dead.respawn_in >= LONG_RESPAWN ? 'dead_30s_or_more' : 'dead_under_30s')
+        : stateAt(trace, rich, x.to + STILL_DEAD_AFTER) ? 'alive' : 'not_known';
+    afterWins.push({ stillDead: x.still_dead.length, did: x.did, richest });
   }
   // Fights with a winner: those after big items of one side only (by that side's gold lead), and those after none.
   const withItems = new Map(fightsAfterBigItems(trace).fights.map((x) => [x.fight, x]));
@@ -198,7 +202,7 @@ out.ultimate_edges = {
   even: ultEdges.filter((x) => x.result === 'even').length,
 };
 // Wins with three or more losers still dead, by whether the losers' richest was one of them (games with net worth).
-out.after_won_fights_three_or_more_still_dead_by_losers_richest = ['dead_30s_or_more', 'dead_under_30s', 'alive'].map((k) => {
+out.after_won_fights_three_or_more_still_dead_by_losers_richest = ['dead_30s_or_more', 'dead_under_30s', 'alive', 'not_known'].map((k) => {
   const list = afterWins.filter((x) => x.stillDead >= 3 && x.richest === k);
   return { losers_richest: k, fights: list.length, took_a_building: list.filter((x) => x.did === 'took_a_building').length, neither: list.filter((x) => x.did === 'neither').length };
 });

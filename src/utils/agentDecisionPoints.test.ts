@@ -283,6 +283,25 @@ describe('decision_points: whether the losers\' richest hero was still dead afte
     expect(q.losers_richest).not.toHaveProperty('respawn_in');
   });
 
+  it('the calibration counts an unsampled richest as not known, never as alive (review of #312)', () => {
+    const p = (decisionPoints(withMoney, { hero: 'axe' }) as any).points.find((x: any) => x.kind === 'after_a_won_fight' && x.losers_richest?.still_dead_10s_after === true && x.losers_still_dead_10s_after >= 3);
+    expect(p).toBeTruthy();
+    const f = afterWonFights(withMoney).find((x: any) => `fight:${x.fight}` === p.fight)!;
+    const gap = JSON.parse(JSON.stringify(withMoney));
+    const i = gap.heroes.findIndex((h: any) => h.key === p.losers_richest.hero);
+    const k = Math.round(f.to + 10) - gap.t0;
+    for (const key of Object.keys(gap.states[i])) if (Array.isArray(gap.states[i][key])) for (let j = k - 2; j <= k + 2; j += 1) gap.states[i][key][j] = null;
+    const rows = (t: any) => {
+      const dir = mkdtempSync(join(tmpdir(), 'richest-gap-'));
+      writeFileSync(join(dir, '1.trace.json.gz'), gzipSync(JSON.stringify(t)));
+      return Object.fromEntries(JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' })).after_won_fights_three_or_more_still_dead_by_losers_richest.map((x: any) => [x.losers_richest, x.fights]));
+    };
+    const before = rows(withMoney); const after = rows(gap);
+    // That fight leaves the dead buckets only if it still has three dead: it goes to not_known, never to alive.
+    expect(after.alive).toBe(before.alive);
+    expect(after.not_known).toBeGreaterThanOrEqual(before.not_known);
+  });
+
   it('a tie for richest is no richest; the review is told what the corpus says', () => {
     const tied = { ...withMoney, net_worth: withMoney.heroes.map(() => Array.from({ length: minutes }, () => 5000)) };
     const money = { series: new Map(tied.heroes.map((h: any, i: number) => [h.key, tied.net_worth[i]])), last: minutes - 1 };
@@ -297,7 +316,7 @@ describe('decision_points: whether the losers\' richest hero was still dead afte
     writeFileSync(join(dir, '1.trace.json.gz'), gzipSync(JSON.stringify(withMoney)));
     const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
     const rows = out.after_won_fights_three_or_more_still_dead_by_losers_richest;
-    expect(rows.map((x: any) => x.losers_richest)).toEqual(['dead_30s_or_more', 'dead_under_30s', 'alive']);
+    expect(rows.map((x: any) => x.losers_richest)).toEqual(['dead_30s_or_more', 'dead_under_30s', 'alive', 'not_known']);
     expect(rows.reduce((n: number, x: any) => n + x.fights, 0)).toBe(afterWonFights(withMoney).filter((x: any) => x.still_dead.length >= 3).length);
   });
 });
