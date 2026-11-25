@@ -15,6 +15,7 @@ type Bi = Record<Lang, string>;
 
 const T = {
   title: { en: 'Patch {v} advisor', zh: '{v} 版本顾问' },
+  releases: { en: 'Notes from', zh: '更新日志：' },
   sub: { en: 'Ask what {v} changed, or how a hero is doing since. Changes are quoted from Valve\'s notes; win and pick rates are public matches before and since the patch.', zh: '问它 {v} 改了什么，或者某个英雄改动后表现如何。改动逐条引自官方更新日志；胜率和出场率来自补丁前后的路人局。' },
   winUp: { en: 'Win rate up', zh: '胜率上升' }, winDown: { en: 'Win rate down', zh: '胜率下降' },
   pickUp: { en: 'Picked more', zh: '出场率上升' }, pickDown: { en: 'Picked less', zh: '出场率下降' },
@@ -39,6 +40,7 @@ const T = {
   failed: { en: 'No answer came back. Try again.', zh: '没有拿到回答，请重试。' },
   unverified: { en: 'Not found in the notes or the numbers, treat with care:', zh: '以下内容在更新日志和数据里没有查到，请谨慎看待：' },
   noData: { en: 'The numbers could not be loaded.', zh: '数据没有加载出来。' },
+  oldNumbers: { en: 'These numbers are from before and after {n}, not yet {m}.', zh: '这些数字是 {n} 前后的，还不是 {m} 的。' },
 } as const;
 
 const SUGGEST: Bi[] = [
@@ -89,9 +91,14 @@ const Movers: React.FC<{ title: string; rows: MoverRow[]; by: 'win' | 'pick'; la
 
 interface Turn { q: string; a: string; steps: ToolStep[]; pending: boolean; error?: string; unverified?: string[] }
 
-export const PatchAdvisor: React.FC<{ lang: Lang; version: string; notesUrl: string }> = ({ lang, version, notesUrl }) => {
-  const t = (b: Bi) => b[lang].replace(/\{v\}/g, version);
+export const PatchAdvisor: React.FC<{ lang: Lang; version: string; notesUrl: string }> = ({ lang, version: shipped, notesUrl: shippedNotes }) => {
   const [data, setData] = useState<PatchOverview | null | 'failed'>(null);
+  // The server's notes follow Valve's newest release (7.42a); the version this build shipped with until it answers.
+  const overview = data && data !== 'failed' ? data : null;
+  const version = overview?.patch ?? shipped;
+  const notesUrl = overview?.notes ?? shippedNotes;
+  const releases = overview?.releases ?? [];
+  const t = (b: Bi) => b[lang].replace(/\{v\}/g, version);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
   const [note, setNote] = useState<string | null>(null);
@@ -148,6 +155,17 @@ export const PatchAdvisor: React.FC<{ lang: Lang; version: string; notesUrl: str
       <header className="pa-head">
         <h2 id="pa-title">{t(T.title)}</h2>
         <p>{t(T.sub)}</p>
+        {releases.length > 1 && (
+          <p className="pa-muted pa-releases">
+            {t(T.releases)}{' '}
+            {releases.map((r, i) => (
+              <React.Fragment key={r.version}>
+                {i > 0 && ' + '}
+                <a href={r.url} target="_blank" rel="noreferrer">{r.version} ↗</a>
+              </React.Fragment>
+            ))}
+          </p>
+        )}
       </header>
       <div className="pa-body">
         <div className="pa-data">
@@ -162,6 +180,9 @@ export const PatchAdvisor: React.FC<{ lang: Lang; version: string; notesUrl: str
               </div>
               {w && (
                 <p className="pa-muted">
+                  {w.numbers_patch && ready.major_patch && w.numbers_patch !== ready.major_patch && (
+                    <><strong className="pa-old-numbers">{t(T.oldNumbers).replace('{n}', w.numbers_patch).replace('{m}', ready.major_patch)}</strong>{' '}</>
+                  )}
                   {t(T.windows).replace('{b0}', w.before_the_patch.from).replace('{b1}', w.before_the_patch.to).replace('{bd}', String(w.before_the_patch.days)).replace('{a0}', w.since_the_patch.from).replace('{a1}', w.since_the_patch.to).replace('{ad}', String(w.since_the_patch.days))}
                   {' '}<a href="https://stratz.com" target="_blank" rel="noreferrer">{t(T.credit)}</a> · <a href={notesUrl} target="_blank" rel="noreferrer">{t(T.notes)} ↗</a>
                 </p>
