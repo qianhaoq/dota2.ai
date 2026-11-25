@@ -916,6 +916,23 @@ describe('AgentMatchPage', () => {
     });
   });
 
+  it('a visit that came by a community link counts the match page and the review it got for that source', async () => {
+    window.sessionStorage.setItem('dota2ai.src', 'xhh');
+    let posts = 0;
+    mockFetch({
+      '/review?': () => (posts < 1 ? { status: 'none' } : { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }),
+      'ref=overview': overview,
+      '/review': () => { posts += 1; return { __status: 202, status: 'running', steps: [] }; },
+      '/api/agent/8000000051': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/8000000051?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(async () => expect((await events()).map((e) => e.event)).toContain('review_ready'), { timeout: 6000 });
+    const sent = await events();
+    expect(sent.find((e) => e.event === 'match_opened').props).toEqual({ matchId: '8000000051', lang: 'en', src: 'xhh' });
+    expect(sent.find((e) => e.event === 'review_ready').props).toEqual({ matchId: '8000000051', hero: 'beastmaster', lang: 'en', src: 'xhh' });
+  }, 10000);
+
   it('the page counts as opened before anything has loaded, so a reader who leaves while it loads is counted', async () => {
     mockFetch({ '/api/agent/8000000033': () => new Promise(() => {}), '/api/coach/8000000033': () => new Promise(() => {}) });
     page('/r/8000000033?lang=en');
