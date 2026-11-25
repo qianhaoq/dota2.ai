@@ -28,12 +28,24 @@ describe('data refresh: what counts as a change', () => {
 describe('data refresh: the steps', () => {
   it('runs every data script once, Valve\'s notes before the numbers that read them, STRATZ marked', () => {
     const s = steps('7.42');
-    expect(s.map((x: any) => x.cmd[0])).toEqual(['scripts/refresh-data.mjs', 'scripts/coach-matchups.mjs', 'scripts/coach-item-vs.mjs', 'scripts/coach-patch-notes.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
+    expect(s.map((x: any) => x.cmd[0])).toEqual(['scripts/refresh-data.mjs', 'scripts/patch-match-ids.mjs', 'scripts/coach-matchups.mjs', 'scripts/coach-item-vs.mjs', 'scripts/coach-patch-notes.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
     expect(s.find((x: any) => x.cmd[0] === 'scripts/coach-patch-notes.mjs').cmd).toEqual(['scripts/coach-patch-notes.mjs', '7.42']);
-    expect(s.filter((x: any) => x.stratz).map((x: any) => x.cmd[0])).toEqual(['scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
+    expect(s.filter((x: any) => x.stratz).map((x: any) => x.cmd[0])).toEqual(['scripts/patch-match-ids.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
     expect(s.find((x: any) => x.cmd[0] === 'scripts/refresh-data.mjs').cmd).toContain('--all');
     // Every script it names exists.
     for (const x of s) expect(() => readFileSync(x.cmd[0])).not.toThrow();
+  });
+
+  it('the release snapshots can run: the workflow checks out OpenDota\'s builder and hands it over', () => {
+    // refresh-data.mjs --all refuses to start without DOTACONSTANTS_DIR (and writes nothing): the weekly run must set it.
+    const wf = readFileSync('.github/workflows/data-refresh.yml', 'utf8');
+    expect(wf).toContain('git clone --quiet https://github.com/odota/dotaconstants');
+    expect(wf).toMatch(/DOTACONSTANTS_DIR: \$\{\{ runner\.temp \}\}\/dotaconstants/);
+    // The pinned builder commit is the one the snapshot script documents.
+    const pinned = wf.match(/checkout --quiet ([0-9a-f]{7,40})/)![1];
+    expect(readFileSync('scripts/coach-patch-snapshots.mjs', 'utf8')).toContain(`git checkout ${pinned}`);
+    // When Valve's release list was read, and when a snapshot was built, are dates only: no weekly change on their own.
+    expect(onlyDateChanged(JSON.stringify({ releases_checked_at: '2026-11-24T13:41:11Z', releases: [1] }), JSON.stringify({ releases_checked_at: '2026-12-01T06:10:00Z', releases: [1] }))).toBe(true);
   });
 
   it('reads the patch the site presents from src/coach/patch.ts', () => {

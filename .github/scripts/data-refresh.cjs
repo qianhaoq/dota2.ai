@@ -18,6 +18,8 @@ const { readFileSync, writeFileSync } = require('node:fs');
 function steps(version) {
   return [
     { name: 'OpenDota constants, names, abilities, pro mid-game items, past-patch snapshots', cmd: ['scripts/refresh-data.mjs', '--all'], source: 'OpenDota, Valve, GitHub' },
+    // After the snapshots: the match ids on either side of each new release and hotfix rollout they listed.
+    { name: 'Match ids at each release and hotfix rollout', cmd: ['scripts/patch-match-ids.mjs'], source: 'STRATZ', stratz: true },
     { name: 'Pro matchups and lanes', cmd: ['scripts/coach-matchups.mjs'], source: 'OpenDota explorer' },
     { name: 'Pro counter items', cmd: ['scripts/coach-item-vs.mjs'], source: 'OpenDota explorer' },
     { name: `Valve's ${version} patch notes`, cmd: ['scripts/coach-patch-notes.mjs', version], source: 'Valve' },
@@ -35,7 +37,8 @@ function sitePatch(root = '.') {
 }
 
 /** Top-level fields that only say when a file was made. */
-const DATE_ONLY = ['fetched'];
+// releases_checked_at: when Valve's release list was read (lib/data/constants/patches/index.json).
+const DATE_ONLY = ['fetched', 'releases_checked_at'];
 
 /**
  * True when two versions of a JSON data file differ only in when they were
