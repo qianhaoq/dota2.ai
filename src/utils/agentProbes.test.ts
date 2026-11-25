@@ -201,6 +201,8 @@ describe('probes: grading an answer', () => {
     expect(namesPlace('你在下路河道', 'river_bot_lane', 'zh', 'dire')).toBe(true);
     expect(namesPlace('你在自家上路野区', 'dire_top_jungle', 'zh', 'dire')).toBe(true);
     expect(namesPlace('你在自家上路', 'dire_top_jungle', 'zh', 'dire')).toBe(false);
+    expect(namesPlace('你在自家上路。', 'dire_top_lane', 'zh', 'dire')).toBe(true);
+    expect(namesPlace('你在敌方下路。', 'radiant_bot_lane', 'zh', 'dire')).toBe(true);
     expect(namesPlace('back in your base', 'radiant_base', 'en', 'radiant')).toBe(true);
     // The side before the lane, in the same clause: never one named after it, or across a comma.
     expect(namesPlace('You were in Radiant mid, Dire took the tower.', 'dire_mid', 'en', 'radiant')).toBe(false);
@@ -224,6 +226,10 @@ describe('probes: grading an answer', () => {
     // Said of someone else, "alive" says nothing about the player.
     expect(gradeProbe(d, '你当时已经死了，在读秒。敌方活着的只有拉比克。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(d, 'You were dead; only Lion was alive near it.', names).pass).toBe(true);
+    // Someone else dead is not the player dead.
+    expect(gradeProbe(d, 'Lion was dead; you were farming mid.', names).pass).toBe(false);
+    expect(gradeProbe(d, '莱恩阵亡了，你在中路打钱。', { ...names, lang: 'zh' }).pass).toBe(false);
+    expect(gradeProbe(d, '那一刻你**已经死了**，正在读秒。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(d, '你当时是死的。你们活着的灰烬之灵在中路。', { ...names, lang: 'zh' }).pass).toBe(true);
     // Advice after the answer is not the answer.
     expect(gradeProbe(d, '那一刻你已经死了。下次你活着站在塔后，两个人推不动一塔。', { ...names, lang: 'zh' }).pass).toBe(true);
