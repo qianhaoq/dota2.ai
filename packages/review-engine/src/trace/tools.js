@@ -19,6 +19,7 @@ import { heroStateAt, observersNear, boughtBackAfter } from './state.js';
 import {
   abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, manaCost, mostMana, nameId, nameOf, nearby, region, seconds, stateAt, unit,
 } from './query.js';
+import { TURN_RULE, turnOf } from './turningFight.js';
 
 const TEAM = { 2: 'radiant', 3: 'dire' };
 /** Hero deaths closer together than this belong to one fight. */
@@ -212,6 +213,10 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
       ...(adv ? { my_team_gold_lead_before: mine(advAt(f.from)), my_team_gold_lead_2min_after: mine(advAt(f.to + 120)) } : {}),
     };
   });
+  // The fight the game turned on, against the viewer's team: said only with a gold lead to read it from.
+  const turn = view && adv ? turnOf(fightRows, { end: end ? end[0] : null }) : null;
+  // A lost fight that could be the turn has no gold lead around it, and the game did not end on a fight: not known.
+  const turnNotKnown = Boolean(view && loser === view.team && turn && !turn.fight && turn.undecided.length);
   return {
     ref: 'overview', ref_scope: 'summary',
     match_id: trace.match_id,
@@ -222,13 +227,18 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
     // What the gold leads below were read from: gold earned (the match record's, or summed from the replay's combat
     // log), or the replay's net worth graph — items and gold held, which a death or a buyback moves.
     ...(gold ? { gold_lead_source: GOLD_LEAD_SOURCE[gold.source] } : {}),
+    // The fight the game turned on, for a game my_team lost. null: not known — no gold lead at all, or none around a
+    // lost fight that could be it (see gaps). { none: true }: every such fight has its gold, and none cost my_team
+    // that much of its lead. Absent for a game my_team
+    // won or one with no Ancient down: the fight a winner's lead fell most in is not where the game turned.
+    ...(view && loser === view.team ? { turning_fight: !turn || turnNotKnown ? null : turn.fight ? { ref: turn.fight.ref, from: turn.fight.from, to: turn.fight.to, clock: turn.fight.clock, my_team_deaths: turn.fight.my_team_deaths, enemy_deaths: turn.fight.enemy_deaths, my_team_gold_lead_before: turn.fight.my_team_gold_lead_before, my_team_gold_lead_2min_after: turn.fight.my_team_gold_lead_2min_after, ...(turn.by === 'game_ended_after_it' ? { game_ended_within_two_minutes: true } : {}), rule: TURN_RULE } : { none: true } } : {}),
     fights: fightRows,
     buildings: trace.buildings.map((b) => ({
       ref: `building:${unit(trace.names[b[1]])}`, t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]),
       ...(view ? { lost_by: buildingTeam(trace.names[b[1]]) === view.team ? 'my_team' : 'enemy' } : { taken_by: TEAM[b[2]] ?? null }),
       row: b[3],
     })),
-    gaps: [...gapsFor(trace, ['roshan', 'vision']), ...(adv ? [] : [{ topic: 'gold_advantage', reason: 'not_in_trace' }])],
+    gaps: [...gapsFor(trace, ['roshan', 'vision']), ...(adv ? [] : [{ topic: 'gold_advantage', reason: 'not_in_trace' }]), ...(turnNotKnown ? [{ topic: 'turning_fight', reason: 'no_gold_lead_around_a_lost_fight_that_could_be_it' }] : [])],
   };
 }
 
@@ -498,7 +508,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   // Whether this ability shows in the damage log at all: only then does "damaged nobody" mean something.
   const damaging = trace.damage.some((r) => r[1] === npc && r[3] === abilityId);
   // What the casts have in common, by game time (like deaths_where): a habit is a count over the game.
-  const intoImmunity = []; const targetLived = []; const reachedFew = [];
+  const intoImmunity = []; const targetLived = []; const cameToLittle = []; let nearNotKnown = 0;
   const casts = rows.map((c, ci) => {
     const t = c[0]; const target = heroOfName(trace, c[3]);
     // Damage is kept per whole second: the second a recast falls in is counted to the recast, never to both casts.
@@ -515,8 +525,17 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     if (during && !(stunned > 0)) intoImmunity.push(clock(t));
     // Aimed at an enemy hero (the hero itself, not an illusion of it) who did not die in the next 12 seconds.
     if (target >= 0 && trace.heroes[target].team !== trace.heroes[h].team && targetName === trace.heroes[target].key && !trace.deaths.some((d) => d[1] === c[3] && d[0] >= t && d[0] - t <= 12)) targetLived.push(clock(t));
-    // Not aimed at a hero, and its damage reached one enemy hero or none.
-    if (damaging && target < 0 && hit.size <= 1) reachedFew.push(clock(t));
+    // Not aimed at a hero, used where an enemy hero was, and it came to little: its damage reached one enemy hero
+    // or none, and no hero it damaged died in the next 12 seconds. A cast with no enemy hero within 1300 that
+    // damaged none is travel or farming, not a miss; one whose single target died is a pick-off. Over the
+    // ultimates of 32 parsed games, "at most one damaged" alone was 2001 casts: 1010 with nobody near, 348
+    // pick-offs, and 643 that are counted here.
+    const diedOfIt = [...hit].some((k) => trace.deaths.some((d) => d[0] >= t && d[0] - t <= 12 && trace.heroes[heroOfName(trace, d[1])]?.key === k));
+    // Whether an enemy hero was near is known when a sampled one is within 1300 or the cast damaged one. With
+    // neither it is "no" only when the caster and every enemy hero have a position at that second; with a sample
+    // missing it is not known, and the cast is counted apart instead of being read as travel or farming.
+    const near = enemies.length > 0 || hit.size > 0 ? true : me != null && trace.heroes.every((o, i) => o.team === trace.heroes[h].team || stateAt(trace, i, t) != null) ? false : null;
+    if (damaging && target < 0 && hit.size <= 1 && !diedOfIt) { if (near) cameToLittle.push(clock(t)); else if (near == null) nearNotKnown += 1; }
     return {
       ref: `cast:${trace.heroes[h].key}:${short}:${ci + 1}`, t, clock: clock(t), row: c[4], target: targetName,
       target_hp: ts ? { hp: ts.hp, max_hp: ts.max_hp } : null,
@@ -555,8 +574,11 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       target_spell_immune_and_not_stunned: intoImmunity,
       enemy_hero_target_alive_12s_later: targetLived,
       // Only for an ability that shows in the damage log at all: otherwise "damaged nobody" says nothing.
-      ...(damaging ? { no_hero_target_and_at_most_one_enemy_hero_damaged: reachedFew } : {}),
+      ...(damaging ? { no_hero_target_near_enemies_at_most_one_damaged_and_none_died: cameToLittle } : {}),
     },
+    // Casts the list above could neither include nor rule out: no enemy hero damaged, and a position missing at
+    // that second, so whether one was near is not known. The count is at least the list, at most the list plus these.
+    ...(damaging ? { casts_not_known: { enemy_heroes_near: nearNotKnown } } : {}),
     seconds_alive_since_learned: alive, seconds_alive_and_ready: idle,
     deaths_with_it_ready_and_not_cast_total: unused.length,
     deaths_with_it_ready_and_not_cast: unused

@@ -86,31 +86,16 @@ export const planQuestion = (key: string, lang: Lang): string | null => {
 
 interface Fight { ref: string; from: number; to: number; clock: string; my_team_deaths: number; enemy_deaths: number; my_team_gold_lead_before?: number | null; my_team_gold_lead_2min_after?: number | null }
 
-/** A team this far behind is already losing: fights after that widen the gap, they do not turn the game. */
-const STILL_IN_IT = -2000;
-
 /**
- * The fight that turned the game against the team: the largest fall of the
- * gold lead among fights entered while still in it (needs the gold curve).
- * Null when no fight cost 1.5k or more — a game can be lost without one.
+ * `turn`: the ref of the fight the game turned on, as match_overview names it for a game the player's team lost
+ * (the fight the review was pointed at) — the strip marks that one and does not work it out again.
  */
-export function turningFight(fights: Fight[]): Fight | null {
-  let best: Fight | null = null; let drop = 1500;
-  for (const f of fights) {
-    if (f.my_team_gold_lead_before == null || f.my_team_gold_lead_2min_after == null || f.my_team_gold_lead_before < STILL_IN_IT) continue;
-    const d = f.my_team_gold_lead_before - f.my_team_gold_lead_2min_after;
-    if (d > drop) { drop = d; best = f; }
-  }
-  return best;
-}
-
-const FightStrip: React.FC<{ fights: Fight[]; duration: number; lang: Lang; onAsk: (label: string, refs: string[]) => void }> = ({ fights, duration, lang, onAsk }) => {
+const FightStrip: React.FC<{ fights: Fight[]; duration: number; turn: string | null; lang: Lang; onAsk: (label: string, refs: string[]) => void }> = ({ fights, duration, turn, lang, onAsk }) => {
   const W = 720; const H = 120; const mid = H / 2; const pad = 8;
   const x = (t: number) => pad + (Math.max(0, t) / Math.max(1, duration)) * (W - pad * 2);
   const gold = fights.filter((f) => f.my_team_gold_lead_before != null);
   const maxGold = Math.max(2000, ...gold.map((f) => Math.abs(f.my_team_gold_lead_before!)));
   const y = (v: number) => mid - (v / maxGold) * (mid - pad);
-  const turn = turningFight(fights);
   return (
     <figure className="ag-strip">
       <svg viewBox={`0 0 ${W} ${H}`} role="group" aria-label={T.fights[lang]}>
@@ -120,11 +105,11 @@ const FightStrip: React.FC<{ fights: Fight[]; duration: number; lang: Lang; onAs
           const diff = f.enemy_deaths - f.my_team_deaths;
           const h = Math.max(4, Math.abs(diff) * 9);
           return (
-            <g key={f.ref} className={`ag-strip-fight ${diff > 0 ? 'is-won' : diff < 0 ? 'is-lost' : 'is-even'} ${turn?.ref === f.ref ? 'is-turn' : ''}`}
+            <g key={f.ref} className={`ag-strip-fight ${diff > 0 ? 'is-won' : diff < 0 ? 'is-lost' : 'is-even'} ${turn === f.ref ? 'is-turn' : ''}`}
               role="button" tabIndex={0} aria-label={`${T.askFight[lang]} ${f.clock}, ${f.my_team_deaths}:${f.enemy_deaths}`} onClick={() => onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref])}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref]); } }}>
               <rect x={x(f.from) - 5} y={diff >= 0 ? mid - h : mid} width="10" height={h} rx="2"><title>{`${f.clock} · ${f.my_team_deaths}:${f.enemy_deaths}`}</title></rect>
-              {turn?.ref === f.ref && <text x={x(f.from)} y={H - 4} textAnchor="middle">▲ {f.clock.split('–')[0]} {T.turn[lang]}</text>}
+              {turn === f.ref && <text x={x(f.from)} y={H - 4} textAnchor="middle">▲ {f.clock.split('–')[0]} {T.turn[lang]}</text>}
             </g>
           );
         })}
@@ -187,7 +172,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
   const [planHeld, setPlanHeld] = useState(false);
   // The plan last asked about: the reader may want the whole review made for it, not only an answer.
   const [asked, setAsked] = useState<string | null>(null);
-  const [overview, setOverview] = useState<{ fights: Fight[]; duration: { t: number } | null } | null>(null);
+  const [overview, setOverview] = useState<{ fights: Fight[]; duration: { t: number } | null; turning_fight?: { ref: string } | { none: true } | null } | null>(null);
   useEffect(() => {
     let alive = true;
     fetchEvidence(matchId, review.hero, lang, 'overview').then((r) => { if (alive) setOverview(r.record); }).catch(() => {});
@@ -270,7 +255,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       <section className="ag-whole">
         <h2>{t(T.whole)}</h2>
         {first && <p className="ag-verdict"><span>{t(T.verdict)}</span>{review.verdict}</p>}
-        {overview && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} lang={lang} onAsk={onAsk} />}
+        {overview && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
         {review.mainline.length > 0 && (
           <details className="ag-fold">
             <summary><h3>{t(T.story)}</h3><span>{t(T.parts).replace('{n}', String(review.mainline.length))}</span></summary>
