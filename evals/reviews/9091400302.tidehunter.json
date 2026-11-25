@@ -31,6 +31,8 @@
       "terms": { "zh": ["半血", "残血", "血量", "血线", "血条"], "en": ["health"] }
     }
   ],
+  "lead_any": ["blink_after_magic_resistance", "killed_by_ursa_attacks"],
+  "lead_why": "The two are one lesson from two sides: 5700 gold on magic resistance and a Blink at 29:31, while Ursa's attacks took 8 of the 12 deaths. Two lane deaths below half health are a point to make, not the first one in a 45-minute game.",
   "must_not": [],
   "main_reason": ["enemy_play", "team_play"]
 }

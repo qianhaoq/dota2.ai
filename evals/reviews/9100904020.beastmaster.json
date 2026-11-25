@@ -28,6 +28,8 @@
       "and_terms": { "zh": ["黑皇杖", "BKB"], "en": ["Black King Bar", "BKB"] }
     }
   ],
+  "lead_any": ["roar_spent_before_carry_immunity", "no_blink_no_bkb"],
+  "lead_why": "Either is a lesson for a 42-minute loss in which Phantom Assassin took 7 of the 11 deaths: the ultimate spent before her Black King Bar, or no Black King Bar and no Blink all game. Two deaths in the first three minutes are not.",
   "must_not": [
     {
       "id": "roar_stopped_by_immunity",
