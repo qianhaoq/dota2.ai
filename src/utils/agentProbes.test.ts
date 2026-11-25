@@ -283,6 +283,31 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe(two, 'We took two towers and Dire took one tower.', names).pass).toBe(true);
     expect(gradeProbe(three, 'We took two towers and Dire took one tower.', names)).toMatchObject({ pass: false, wrong: ['2'] });
     expect(gradeProbe(two, '我们拆了两座塔，夜魇拆了一座。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // The parts given before the side changes still add up; the other side's count is not theirs.
+    expect(buildingCounts('We took two towers and one barracks, and Dire took one tower.')).toEqual([2, 1, 1]);
+    expect(gradeProbe(three, 'We took two towers and one barracks, and Dire took one tower.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two towers and one barracks, and Dire took one tower.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(four, 'We took two towers and one barracks, and Dire took one tower.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(three, '我们拆了两座塔和一座兵营，对面拆了一座塔。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // Whose building fell is not who acted: "enemy towers" are still ours to count.
+    expect(gradeProbe(three, 'We took two enemy towers and one enemy barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two enemy towers and one enemy barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(three, 'You took two of their towers and one of their tier 3 barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'We took two towers and their one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'Radiant took two Dire towers and one Dire barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, '我们拆了两座敌方塔和一座敌方兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(three, '你们拆了两座对面的塔，还有一座对面的兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // The same side named again goes on acting.
+    expect(gradeProbe(three, 'We took two towers and we destroyed one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two towers and we destroyed one barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(three, 'Dire took two towers, then Dire took one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, '我们拆了两座塔，我们又拆了一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // A different side acting still stops it, whoever's buildings are named.
+    expect(gradeProbe(two, 'We took two enemy towers, and they took one of our towers.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'We took two enemy towers, and they took one of our towers.', names)).toMatchObject({ pass: false, wrong: ['2'] });
+    expect(gradeProbe(two, 'Radiant took two towers and Dire took one.', names).pass).toBe(true);
+    // No side said to be acting at first: a side then named may be another one.
+    expect(gradeProbe(two, 'Two towers fell, and the enemy took one barracks.', names).pass).toBe(true);
     expect(gradeProbe(three, '拆了两座塔，还拆了一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(two, '你们拆了两座塔，对面拆了一座。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(three, '拆了三座，分别是两座塔和一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
