@@ -12,7 +12,7 @@ import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMa
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { MatchBoard } from './MatchBoard';
 import { PLANS, planKey } from '../../lib/agent/plans.js';
-import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelMinutes, writesSlowly } from '../../lib/agent/models.js';
+import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelWait, writesSlowly } from '../../lib/agent/models.js';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import { ShareBar } from './ShareBar';
 import './agent.css';
@@ -46,9 +46,11 @@ const T = {
   goBody: { en: 'The coach watches the replay — every death, every ultimate, the fights that turned the game, your build — and writes what to change.', zh: '教练会把录像看一遍——每次阵亡、每个大招、转折的团战、你的出装——然后写出该改什么。' },
   goTime: { en: 'About two to three minutes.', zh: '大约两到三分钟。' },
   // A model that writes slowly: how long it took when it was timed (lib/agent/models.js), never a promise.
-  goTimeSlow: { en: 'On the game we timed, {m} took about {n} minutes', zh: '在我们计时的那一局上，{m} 用了约 {n} 分钟' },
+  goTimeSlow: { en: 'With {m}, expect {t} (as timed on a real game)', zh: '用 {m} 写，预计{t}（按实测）' },
   // …beside the quick one, when the reader can pick it here.
-  goTimeQuick: { en: '; {d} takes two to three.', zh: '；{d} 是两到三分钟。' },
+  goTimeQuick: { en: '; {d} takes {t}.', zh: '；{d} {t}。' },
+  // While it is being written: who writes it and how long that takes, so a long wait is one the reader was told of.
+  workTime: { en: '{m} is writing it: expect {t}.', zh: '由 {m} 撰写，预计{t}。' },
   go: { en: 'Review my game', zh: '开始复盘' },
   planAsk: { en: 'What were you going for this game? (optional)', zh: '这局你想怎么打？（可选）' },
   planWhy: { en: 'Say it, and the review reads the game against it: whether your play fit it, whether it suited these line-ups, and where it broke. The replay cannot show what you meant to do.', zh: '选了，复盘就会对照它来读这局：你的打法是否贴合，这个思路面对双方阵容是否站得住，没打成断在哪里。录像本身看不出你想怎么打。' },
@@ -214,6 +216,8 @@ export const AgentMatchPage: React.FC = () => {
       {offered.map((id) => (
         <button key={id} type="button" role="radio" aria-checked={(model ?? defaultModel) === id} className={`ag-chip-btn ${(model ?? defaultModel) === id ? 'is-on' : ''}`} onClick={() => pickModel(id)}>
           {modelLabel(id)}
+          {/* The wait is part of the choice: said on the button, before the reader picks. Nothing for a model that was not timed. */}
+          {modelWait(id, lang) && <span className="ag-chip-time"> · {modelWait(id, lang)}</span>}
         </button>
       ))}
     </div>
@@ -228,10 +232,14 @@ export const AgentMatchPage: React.FC = () => {
   // where the server lists no models: then there is one writer and nothing to tell apart.)
   const writtenBy = writer;
   const slow = writer != null && writesSlowly(writer);
-  const timed = slow ? modelMinutes(writer) : null;
+  const timed = writer != null ? modelWait(writer, lang) : null;
+  const quickWait = modelWait(DEFAULT_AGENT_MODEL, lang);
   const goTime = !slow ? t(T.goTime)
-    : timed != null ? t(T.goTimeSlow).replace('{m}', modelLabel(writer)).replace('{n}', String(timed)) + (offered.includes(DEFAULT_AGENT_MODEL) ? t(T.goTimeQuick).replace('{d}', modelLabel(DEFAULT_AGENT_MODEL)) : lang === 'zh' ? '。' : '.')
+    : timed != null ? t(T.goTimeSlow).replace('{m}', modelLabel(writer)).replace('{t}', timed) + (offered.includes(DEFAULT_AGENT_MODEL) && quickWait ? t(T.goTimeQuick).replace('{d}', modelLabel(DEFAULT_AGENT_MODEL)).replace('{t}', quickWait) : lang === 'zh' ? '。' : '.')
       : null;
+  // Said again while the review is being written, where the server names its models (else there is one writer,
+  // whose two to three minutes the reader was told before the click).
+  const workTime = writer != null && timed != null ? t(T.workTime).replace('{m}', modelLabel(writer)).replace('{t}', timed) : null;
   const hasTrace = avail?.trace === true;
   const parse = avail && !avail.trace ? avail.parse ?? { status: 'none' as const } : null;
 
@@ -566,6 +574,7 @@ export const AgentMatchPage: React.FC = () => {
         <div className="ag-state" role="status">
           <h1>{t(T.working)}</h1>
           <p>{t(T.leave)}</p>
+          {workTime && <p className="ag-worktime">{workTime}</p>}
           <ol className="ag-journey">
             {steps.map((s, i) => (
               <li key={i} className={i < live ? 'is-done' : i === live ? 'is-live' : ''}>
