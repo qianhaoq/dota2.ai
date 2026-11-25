@@ -50,7 +50,8 @@ export type ReviewState =
   | { status: 'running'; steps: ToolStep[] }
   | { status: 'ready'; review: DeepReview; verification: { repaired: boolean; dropped: number }; model: string | null; tool_calls: number; /** The prompt version the review was written under; absent from a server that does not say. */ prompt_version?: number }
   | { status: 'failed'; reason?: string }
-  | { status: 'unavailable'; reason?: string };
+  /** `retry_in_sec`: the model account refused a review a moment ago (out of credit, key refused) and none is started until then; it can be tried again. */
+  | { status: 'unavailable'; reason?: string; retry_in_sec?: number };
 
 export interface EvidenceRecord { status: 'ok'; ref: string; kind: string; record: any; names: Record<string, string> }
 

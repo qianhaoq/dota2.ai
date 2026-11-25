@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { createRemotePipeline, createTracePipeline, replayPastKeeping, REPLAY_KEPT_DAYS } from '../../lib/agent/tracePipeline.js';
+import { APIConnectionError, APIConnectionTimeoutError, APIError, APIUserAbortError } from 'openai';
+import { createRemotePipeline, createTracePipeline, replayPastKeeping, LONGEST_GAME_HOURS, REPLAY_KEPT_DAYS } from '../../lib/agent/tracePipeline.js';
 import { createAgentService, reviewFailure, MODEL_DOWN_MS, PARSE_BACKOFF_DEFAULT_MS, PARSE_BACKOFF_MS } from '../../lib/agent/service.js';
 
 /**
@@ -29,12 +30,30 @@ describe('a game with no replay address', () => {
     expect(replayPastKeeping({ start_time: Math.floor((NOW - 14 * DAY) / 1000) - 3600, duration: 2 * 3600 }, NOW)).toBe(false);
     // No start time: not known, so not said.
     for (const m of [null, undefined, {}, { start_time: null }, { start_time: 0 }, { start_time: 'yesterday' }, { duration: 2400 }]) expect([m, replayPastKeeping(m as any, NOW)]).toEqual([m, false]);
+  });
+
+  it('with a start but no duration, "gone" is said only when even the longest game would have ended two weeks ago', () => {
+    expect(LONGEST_GAME_HOURS).toBe(24);
+    const began = (daysAgo: number, duration: any = undefined) => ({ match_id: ID, start_time: Math.floor((NOW - daysAgo * DAY) / 1000), ...(duration === undefined ? {} : { duration }) });
+    // Began 14 days and ten minutes ago, length unknown: an hour-long game ended inside the two weeks. Not said.
+    for (const d of [undefined, null, 0, 'long']) expect([d, replayPastKeeping(began(14 + 10 / 1440, d), NOW)]).toEqual([d, false]);
+    expect(replayPastKeeping(began(14.9), NOW)).toBe(false);
+    // Began more than fifteen days ago: whatever its length, it ended more than fourteen days ago.
+    expect(replayPastKeeping(began(15.01), NOW)).toBe(true);
+    expect(replayPastKeeping(began(300), NOW)).toBe(true);
+    // The same start with its length known is judged by its real end.
+    expect(replayPastKeeping(began(14 + 10 / 1440, 300), NOW)).toBe(true);
+    expect(replayPastKeeping(began(14 + 10 / 1440, 3600), NOW)).toBe(false);
     expect(replayPastKeeping(started(30), NaN)).toBe(false);
   });
 
   it('the pipeline says "gone" for an old game and "not yet" for a new one or one whose age it cannot tell', async () => {
     const run = (match: any) => createTracePipeline({ getMatchDetail: async () => match, extractorBin: '/nonexistent', store: { put: async () => {} }, now: () => NOW }).run(ID);
     expect(await run(started(300))).toMatchObject({ ok: false, reason: 'replay_gone' });
+    // A record with no duration (the STRATZ and game-coordinator mappings can give none): gone when it began months
+    // ago, "not yet" when it began 14 days and ten minutes ago.
+    expect(await run({ match_id: ID, start_time: Math.floor((NOW - 300 * DAY) / 1000), duration: null })).toMatchObject({ reason: 'replay_gone' });
+    expect(await run({ match_id: ID, start_time: Math.floor((NOW - 14 * DAY - 600_000) / 1000), duration: null })).toMatchObject({ reason: 'no_replay_url' });
     expect(await run(started(0.002))).toMatchObject({ ok: false, reason: 'no_replay_url' });
     expect(await run({ match_id: ID })).toMatchObject({ ok: false, reason: 'no_replay_url' });
     // An address that is not a replay host is still no address: old game, gone; new game, not yet.
@@ -110,7 +129,16 @@ describe('why a review\'s model call failed', () => {
     expect(reviewFailure(err(503))).toEqual({ reason: 'model_unavailable', status: 503 });
     expect(reviewFailure(err(undefined, 'TimeoutError'))).toEqual({ reason: 'timeout', status: null });
     expect(reviewFailure(err(undefined, 'AbortError'))).toEqual({ reason: 'timeout', status: null });
-    expect(reviewFailure(err(undefined, 'APIConnectionError'))).toEqual({ reason: 'model_unavailable', status: null });
+    // The SDK's own errors, as it makes them (openai 4.x): every one of these has the name "Error".
+    const sdk = { timeout: new APIConnectionTimeoutError(), connection: new APIConnectionError({ message: 'socket hang up' }), aborted: new APIUserAbortError(), credit: APIError.generate(402, { error: { message: 'Insufficient Balance' } }, '402 Insufficient Balance', {} as any), limited: APIError.generate(429, {}, '429', {} as any), down: APIError.generate(503, {}, '503', {} as any) };
+    expect(Object.values(sdk).map((e) => e.name)).toEqual(['Error', 'Error', 'Error', 'Error', 'Error', 'Error']);
+    expect(reviewFailure(sdk.timeout)).toEqual({ reason: 'timeout', status: null });
+    expect(reviewFailure(sdk.connection)).toEqual({ reason: 'model_unavailable', status: null });
+    // The service's own deadline firing reaches it as the SDK's abort error.
+    expect(reviewFailure(sdk.aborted)).toEqual({ reason: 'timeout', status: null });
+    expect(reviewFailure(sdk.credit)).toEqual({ reason: 'model_out_of_credit', status: 402 });
+    expect(reviewFailure(sdk.limited)).toEqual({ reason: 'model_rate_limited', status: 429 });
+    expect(reviewFailure(sdk.down)).toEqual({ reason: 'model_unavailable', status: 503 });
     expect(reviewFailure(err(undefined))).toEqual({ reason: 'error', status: null });
     expect(reviewFailure(err(400))).toEqual({ reason: 'error', status: 400 });
     for (const not of [null, undefined, 'boom', {}]) expect(reviewFailure(not)).toEqual({ reason: 'error', status: null });
@@ -133,8 +161,11 @@ describe('why a review\'s model call failed', () => {
     expect(h.lines.join('\\n')).not.toMatch(/Insufficient|sk-secret/);
     // The reader who tries again, and the next reader, are told at once — no slot charged, no model called.
     const admit = vi.fn(() => null);
-    expect(await h.service.start(ID, 'beastmaster', 'zh', { admit })).toEqual({ status: 'unavailable', reason: 'model_out_of_credit' });
-    expect(await h.service.start(ID, 'sven', 'zh', { admit })).toEqual({ status: 'unavailable', reason: 'model_out_of_credit' });
+    // With how long is left: the page keeps a way to try again.
+    expect(await h.service.start(ID, 'beastmaster', 'zh', { admit })).toEqual({ status: 'unavailable', reason: 'model_out_of_credit', retry_in_sec: 300 });
+    h.clock.t += 60_000;
+    expect(await h.service.start(ID, 'sven', 'zh', { admit })).toEqual({ status: 'unavailable', reason: 'model_out_of_credit', retry_in_sec: 240 });
+    h.clock.t -= 60_000;
     expect(admit).not.toHaveBeenCalled();
     expect(complete).toHaveBeenCalledTimes(1);
     // Five minutes on (time to top the account up) a review is tried again.
@@ -145,11 +176,13 @@ describe('why a review\'s model call failed', () => {
   });
 
   it('a rate limit or a timeout fails that review with its reason and holds nobody else back', async () => {
-    for (const [e, reason, tail] of [[err(429), 'model_rate_limited', 'reason=model_rate_limited status=429 (Error)'], [err(undefined, 'TimeoutError'), 'timeout', 'reason=timeout (TimeoutError)']] as const) {
+    // The SDK's real timeout and connection errors among them: the log names the class, since their name is "Error".
+    for (const [e, reason, tail] of [[err(429), 'model_rate_limited', 'reason=model_rate_limited status=429 (Error)'], [new APIConnectionTimeoutError(), 'timeout', 'reason=timeout (APIConnectionTimeoutError)'], [new APIUserAbortError(), 'timeout', 'reason=timeout (APIUserAbortError)'], [new APIConnectionError({ message: 'getaddrinfo ENOTFOUND secret-host' }), 'model_unavailable', 'reason=model_unavailable (APIConnectionError)']] as const) {
       const h = make(vi.fn(async () => { throw e; }));
       await h.service.start(ID, 'beastmaster', 'zh');
       expect(await failedReview(h)).toEqual({ status: 'failed', reason });
       expect(h.lines.find((l) => l.startsWith('deep-review error'))).toContain(tail);
+      expect(h.lines.join('\n')).not.toMatch(/ENOTFOUND|secret-host/);
       expect(await h.service.start(ID, 'sven', 'zh')).toMatchObject({ status: 'running' });
     }
   });

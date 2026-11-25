@@ -335,6 +335,28 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText('Ask the coach')).toBeNull();
   });
 
+  it('a review that cannot be started for a while (the model account refused one a moment ago) keeps a way to try again; one that cannot be started here at all does not', async () => {
+    let posts = 0;
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => { if (init?.method !== 'POST') return null; posts += 1; return { __status: 503, status: 'unavailable', reason: 'model_out_of_credit', retry_in_sec: 240 }; },
+      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect(await screen.findByText('The coach is not available right now.')).toBeTruthy();
+    expect(posts).toBe(1);
+    // Not a dead end: the reader can ask again, and the page does.
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(posts).toBe(2));
+    cleanup();
+    // No model is set up on this server: nothing to wait for, so nothing to retry.
+    mockFetch({ '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: false, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByText('The coach is not available right now.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
   it('other dead ends: parsing switched off, a parse that failed (retry offered), a match nobody knows', async () => {
     mockFetch({ '/api/coach/8000000002': board, '/api/agent/8000000002': { trace: false, model_configured: true, can_parse: false, heroes: [], parse: { status: 'none' } } });
     page('/r/8000000002?hero=beastmaster&lang=en');
