@@ -278,3 +278,19 @@ describe('review eval: review findings on #325', () => {
     expect(rubricOf(early, tide).must_hit.find((p: { id: string }) => p.id === 'lane_deaths_on_low_health')?.hit).toBe(true);
   });
 });
+
+describe('review eval: the Beastmaster rubric\'s forbidden claim', () => {
+  const says = (line: string) => rubricOf({ review: { ...stored.review, mainline: [line] } }, rubric).must_not.map((x: { id: string }) => x.id);
+
+  it('is that immunity stops Roar — not that Roar cannot be stopped by it', () => {
+    for (const wrong of ['原始咆哮穿不过黑皇杖，所以留着也没用。', '原始咆哮无法穿透魔法免疫。', '原始咆哮不能穿过黑皇杖。', '咆哮打不穿魔免。']) expect(says(wrong)).toEqual(['roar_stopped_by_immunity']);
+    // The passive says the opposite, and is what a correct review writes.
+    for (const right of ['原始咆哮不能被黑皇杖挡住，应该留给幻影刺客。', '黑皇杖无法被咆哮以外的技能打断。', '原始咆哮可以穿过黑皇杖。']) expect(says(right)).toEqual([]);
+  });
+
+  it('reads the English the same way', () => {
+    const en = (line: string) => rubricOf({ review: { ...stored.review, lang: 'en', mainline: [line] } }, rubric).must_not.length;
+    expect(en('Primal Roar does not go through Black King Bar.')).toBe(1);
+    expect(en('Primal Roar cannot be blocked by spell immunity.')).toBe(0);
+  });
+});

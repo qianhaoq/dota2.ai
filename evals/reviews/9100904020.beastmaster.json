@@ -30,7 +30,7 @@
     {
       "id": "roar_stopped_by_immunity",
       "says": "Primal Roar stunned the spell-immune Phantom Assassin twice in this game: a review must not say spell immunity stops it.",
-      "pattern": "咆哮[^。]{0,16}(?:无法|不能|穿不过|打不穿)[^。]{0,10}(?:黑皇杖|魔法免疫|魔免)|Roar[^.]{0,40}(?:does not|doesn't|cannot|can't)[^.]{0,20}(?:pierce|go through)"
+      "pattern": "咆哮[^。]{0,16}(?:无法|不能|穿不过|打不穿)(?!被)[^。被]{0,10}(?:黑皇杖|魔法免疫|魔免)|Roar[^.]{0,40}(?:does not|doesn't|cannot|can't)[^.]{0,20}(?:pierce|go through)"
     }
   ],
   "turning_fight": { "fight": 11, "from": 1826, "to": 1848 },
