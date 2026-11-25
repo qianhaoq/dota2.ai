@@ -15,6 +15,9 @@ const T = {
   teamWorth: { en: 'net worth', zh: '总经济' },
   gold: { en: 'Gold lead by minute', zh: '每分钟经济差' },
   goldUp: { en: 'Radiant ahead', zh: '天辉领先' },
+  goldMine: { en: 'Your side ahead', zh: '你方领先' },
+  goldTheirs: { en: 'Their side ahead', zh: '对方领先' },
+  theirSide: { en: 'their side', zh: '对方' },
   goldDown: { en: 'Dire ahead', zh: '夜魇领先' },
   goldEnd: { en: 'at the end', zh: '结束时' },
   goldReplay: { en: 'Net worth lead by minute (from the replay)', zh: '每分钟净值差（来自录像）' },
@@ -38,11 +41,20 @@ const thousands = (n: number) => n.toLocaleString('en-US');
 const k = (n: number) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
 
 /**
- * Radiant's gold lead per minute (OpenDota's radiant_gold_adv), drawn as one
- * line around zero: above is Radiant ahead, below is Dire ahead. Team colours,
- * not "good / bad", so it reads the same whichever hero the review is for.
+ * The gold lead per minute, drawn as one line around zero.
+ *
+ * `adv` is Radiant's lead (OpenDota's radiant_gold_adv, or the replay's own). When the review is for a player
+ * (`mine`: their side), the curve is told from that side, like every sentence of the review: above the line is
+ * "your side ahead", below is "their side ahead", whichever team they were on. The colours stay the teams' own
+ * (the same as the scoreboard under it), not "good / bad". With no player it reads Radiant above, Dire below.
  */
-const GoldCurve: React.FC<{ adv: number[]; lang: Lang; title?: Bi }> = ({ adv, lang, title = T.gold }) => {
+const GoldCurve: React.FC<{ adv: number[]; lang: Lang; title?: Bi; mine?: 'radiant' | 'dire' | null }> = ({ adv: radiantAdv, lang, title = T.gold, mine = null }) => {
+  // The side drawn above the line, and its lead.
+  const up: 'radiant' | 'dire' = mine ?? 'radiant';
+  const down: 'radiant' | 'dire' = up === 'radiant' ? 'dire' : 'radiant';
+  const adv = up === 'radiant' ? radiantAdv : radiantAdv.map((v) => -v);
+  const who = (side: 'radiant' | 'dire') => (mine ? `${(side === mine ? T.yourSide : T.theirSide)[lang]}${lang === 'zh' ? '（' : ' ('}${T[side][lang]}${lang === 'zh' ? '）' : ')'}` : T[side][lang]);
+  const ahead = (side: 'radiant' | 'dire') => (mine ? (side === mine ? T.goldMine : T.goldTheirs)[lang] : (side === 'radiant' ? T.goldUp : T.goldDown)[lang]);
   const W = 640; const H = 132; const pad = 6;
   const max = Math.max(2000, ...adv.map((v) => Math.abs(v)));
   const x = (i: number) => pad + (i / Math.max(1, adv.length - 1)) * (W - 2 * pad);
@@ -50,30 +62,31 @@ const GoldCurve: React.FC<{ adv: number[]; lang: Lang; title?: Bi }> = ({ adv, l
   const line = adv.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const area = `${x(0)},${H / 2} ${line} ${x(adv.length - 1)},${H / 2}`;
   const end = adv[adv.length - 1];
+  const leader = end >= 0 ? up : down;
   const ticks = adv.map((_, i) => i).filter((i) => i > 0 && i % 10 === 0);
   return (
     <figure className="ag-gold">
       <figcaption>
         <span>{title[lang]}</span>
-        <span className="ag-gold-end">{T.goldEnd[lang]} <b className={end >= 0 ? 'is-radiant' : 'is-dire'}>{end >= 0 ? T.radiant[lang] : T.dire[lang]} +{thousands(Math.abs(Math.round(end)))}</b></span>
+        <span className="ag-gold-end">{T.goldEnd[lang]} <b className={`is-${leader}`}>{who(leader)} +{thousands(Math.abs(Math.round(end)))}</b></span>
       </figcaption>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img"
-        aria-label={`${title[lang]}: ${T.goldEnd[lang]} ${end >= 0 ? T.radiant[lang] : T.dire[lang]} +${thousands(Math.abs(Math.round(end)))}`}>
+        aria-label={`${title[lang]}: ${T.goldEnd[lang]} ${who(leader)} +${thousands(Math.abs(Math.round(end)))}`}>
         <defs>
           <clipPath id="ag-gold-up"><rect x="0" y="0" width={W} height={H / 2} /></clipPath>
           <clipPath id="ag-gold-down"><rect x="0" y={H / 2} width={W} height={H / 2} /></clipPath>
         </defs>
         {ticks.map((i) => <line key={i} className="ag-gold-tick" x1={x(i)} x2={x(i)} y1={0} y2={H} />)}
-        <polygon className="ag-gold-area is-radiant" points={area} clipPath="url(#ag-gold-up)" />
-        <polygon className="ag-gold-area is-dire" points={area} clipPath="url(#ag-gold-down)" />
+        <polygon className={`ag-gold-area is-${up}`} points={area} clipPath="url(#ag-gold-up)" />
+        <polygon className={`ag-gold-area is-${down}`} points={area} clipPath="url(#ag-gold-down)" />
         <line className="ag-gold-zero" x1={0} x2={W} y1={H / 2} y2={H / 2} />
         <polyline className="ag-gold-line" points={line} />
       </svg>
       <div className="ag-gold-axis" aria-hidden="true">
-        <span className="is-radiant">▲ {T.goldUp[lang]}</span>
+        <span className={`is-${up}`}>▲ {ahead(up)}</span>
         {/* A minute label under a side label (the first and last eighth of the width) would be cut: only its line is drawn. */}
         <span>{ticks.filter((i) => x(i) / W > 0.14 && x(i) / W < 0.86).map((i) => <i key={i} style={{ left: `${(x(i) / W) * 100}%` }}>{i}:00</i>)}</span>
-        <span className="is-dire">▼ {T.goldDown[lang]}</span>
+        <span className={`is-${down}`}>▼ {ahead(down)}</span>
       </div>
     </figure>
   );
@@ -150,7 +163,7 @@ export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; l
           {m.mode?.[lang] && <span>{m.mode[lang]}</span>}
         </p>
       )}
-      {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} title={fromReplay ? (replayLeadIs === 'gold' ? T.goldReplayEarned : T.goldReplay) : T.gold} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}
+      {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} mine={me ? (me.radiant ? 'radiant' : 'dire') : null} title={fromReplay ? (replayLeadIs === 'gold' ? T.goldReplayEarned : T.goldReplay) : T.gold} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}
       {sides.map((radiant) => {
         const team = players.filter((p) => p.radiant === radiant);
         if (!team.length) return null;
