@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { createAgentRouter } from '../../lib/agent/router.js';
 import { createAgentService } from '../../lib/agent/service.js';
 import { parseChatBody } from '../../lib/agent/chat.js';
-import { AGENT_MODELS, AGENT_MODEL_IDS, DEFAULT_AGENT_MODEL, modelId, modelLabel, modelMinutes, writesSlowly } from '../../lib/agent/models.js';
+import { AGENT_MODELS, AGENT_MODEL_IDS, DEFAULT_AGENT_MODEL, modelId, modelLabel, modelMinutes, modelWait, writesSlowly } from '../../lib/agent/models.js';
 import { agentModel, agentModels, deepReviewProvider } from '../../lib/agent/providers.js';
 import { redactCredentials, redactSecrets, redactUnmistakableSecrets, registerSecretValues, secretValuesFromEnv } from '../../lib/llmErrors.js';
 import { shareUrl } from '../../lib/coach/sharePreview.js';
@@ -44,9 +44,14 @@ describe('the models a reader can choose', () => {
   it('are named by an id and a label, the default first', () => {
     expect(AGENT_MODEL_IDS).toEqual(['deepseek-flash', 'kimi-k3.1-pro', 'glm-5.3-flash', 'glm-5.3', 'glm-5.4']);
     expect(DEFAULT_AGENT_MODEL).toBe('deepseek-flash');
-    for (const m of AGENT_MODELS) expect(Object.keys(m).sort()).toEqual(['id', 'label', 'timed_minutes']);
+    for (const m of AGENT_MODELS) expect(Object.keys(m).sort()).toEqual(['id', 'label', 'minutes']);
     // What was not timed is not given a time.
-    expect([modelMinutes('deepseek-flash'), modelMinutes('kimi-k3.1-pro'), modelMinutes('glm-5.4'), modelMinutes('nope')]).toEqual([2, 13, null, null]);
+    expect([modelMinutes('deepseek-flash'), modelMinutes('kimi-k3.1-pro'), modelMinutes('glm-5.3-flash'), modelMinutes('glm-5.4'), modelMinutes('nope')]).toEqual([[2, 3], [13, 13], [11, 13], null, null]);
+    // The wait a reader is told: the measured span, one number when both runs agree, nothing when not timed.
+    expect(AGENT_MODEL_IDS.map((id) => modelWait(id, 'zh'))).toEqual(['约 2–3 分钟', '约 13 分钟', '约 11–13 分钟', '约 24 分钟', null]);
+    expect(AGENT_MODEL_IDS.map((id) => modelWait(id, 'en'))).toEqual(['about 2–3 minutes', 'about 13 minutes', 'about 11–13 minutes', 'about 24 minutes', null]);
+    expect(modelWait('nope', 'en')).toBeNull();
+    for (const m of AGENT_MODELS) if (m.minutes) expect(m.minutes[0] <= m.minutes[1] && m.minutes[0] > 0).toBe(true);
     // Which models need the longer time limit is a fact about the model, not about which one a server makes its
     // default (review of #327); one that was not timed is not assumed to be quick.
     expect(AGENT_MODEL_IDS.map((id) => [id, writesSlowly(id)])).toEqual([['deepseek-flash', false], ['kimi-k3.1-pro', true], ['glm-5.3-flash', true], ['glm-5.3', true], ['glm-5.4', true]]);
