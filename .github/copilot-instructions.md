@@ -2,27 +2,35 @@
 
 ## Product
 
-Dota2.ai is a DeepSeek-powered Dota 2 tactical assistant (English default UI, Chinese via toggle; DeepSeek/API output follows UI lang):
+dota2.ai is a Dota 2 coach that reviews one player's game from its replay (English default UI, Chinese via toggle; model output follows the UI language):
 
-- **Draft Strategy**: Radiant/Dire hero picks + optional strategy context → matchup analysis
-- **Lore Keeper**: chat with the Secret Shopkeeper about Dota 2 lore
+- **Match review** (`/r/:matchId`): the replay is parsed into a trace, an agent investigates it with lookup tools, and what it writes is checked against the tool results before it ships. Evidence, a rule per finding, a goal the next game is checked on, and a chat that goes back to the replay.
+- **Home and player pages** (`/`, `/p/…`): find a match by ID or friend code, recent games, the goal in progress, a patch advisor.
+- **For agents**: a CLI (`packages/cli`), an MCP server (`packages/mcp`, also at `/mcp`) and the `/api/v1` review API.
 
-Live site: `dota2.ai`. Contact / deploy owner: personal project of `qianhaoq`.
+Live site: `dota2.ai`. Contact / deploy owner: personal project of `qianhaoq`. Overview: `README.md`; how a match ID becomes a review: `docs/AGENT_PIPELINE.md`; what the coach understands and how that is measured: `docs/GAME_UNDERSTANDING.md`.
 
 ## Stack
 
 - Frontend: React 18 + TypeScript + Vite + Tailwind (`src/`)
-- Backend: Express in `server.js` (ESM, Node >= 18; CI uses Node 20)
-- AI: DeepSeek via `DEEPSEEK_API_KEY` (never commit secrets; use `.env.example` as the contract)
-- Tests: Vitest (`npm test`)
+- Backend: Express in `server.js` (ESM, Node >= 20.10; CI uses Node 20), routers in `lib/*/router.js` and `routes/v1`
+- Workspace packages (`packages/*`): `review-engine` (pure: no network, clock or model), `cli`, `mcp`
+- AI: DeepSeek through an OpenAI-compatible client, `DEEPSEEK_API_KEY` (never commit secrets; `.env.example` is the contract). The review agent's provider is chosen in `lib/agent/providers.js`.
+- Replays: a private worker (`Dockerfile.trace-worker`, `scripts/trace-worker.mjs`) runs the pinned extractor; traces and reviews are kept in a bucket
+- Tests: Vitest (`npm test`), Playwright (`npm run test:e2e`, against a zero-outbound fixture server)
 - Deploy: Docker → Google Cloud Run; CI on GitHub Actions
 
 ## Architecture map
 
-- `src/components/` — UI (DraftAssistant, LoreChat, HeroCard, …)
-- `src/services/` — client helpers (analytics; the legacy dotaApiService / geminiService were removed with the old UI). Old note: (e.g. dotaApiService, geminiService naming may lag; prefer current DeepSeek paths)
-- `src/types.ts`, `src/constants.ts`, `src/data/` — shared types, constants, static data
-- `server.js` — `/health`, `/api/health`, `/api/analyze`, `/api/chat` (streaming-sensitive)
+- `src/agent/` — the match page: review document, evidence cards, scoreboard, chat rail
+- `src/coach/` — home, player page, the goal kept in the browser (`goalStore.ts`)
+- `src/patch/` — patch advisor; `src/services/` — analytics client; `src/utils/` — pure helpers and most tests (tests for `lib/*.js` live here and import `../../lib/…`)
+- `lib/agent/` — the review agent: replay pipeline and stores, lookup tools (`*Report.js`, `knowledgeTools.js`, `situationTools.js`), the agent loop, the review (`review/`: schema, prompt, check, toolkit, run), chat, evidence, router
+- `packages/review-engine/src/trace/` — what a trace contains (`build.js`), state at a second (`state.js`), the trace query tools (`tools.js`)
+- `lib/coach/` — the deterministic engine behind the home and player pages and some agent tools; `lib/coach/data/` — snapshots (matchups, pro items, hero timing) refreshed by `scripts/refresh-data.mjs`
+- `lib/data/constants/patches/` — item and ability numbers per game release
+- `lib/upstream/` — OpenDota / STRATZ / Steam GC clients; `lib/matchReview/replayIngest/` — replay discovery and download
+- `server.js` — `/health`, `/api/health`, mounts `/api/agent/*` (prepare, review, evidence, chat), `/api/coach/*`, `/api/patch/*`, `/api/v1/*`, `/api/events`, then the built app
 
 ## Coding standards
 
@@ -33,14 +41,14 @@ Live site: `dota2.ai`. Contact / deploy owner: personal project of `qianhaoq`.
 - Prefer focused diffs. Do not drive-by refactor unrelated files.
 - Streaming / SSE / chunked responses: watch closure traps and aborted-request cleanup (called out in the PR template).
 
-### Coach / streaming invariants (Codex P1s #54, #56)
+### Review agent invariants
 
-- Draft / side / practice changes that invalidate in-flight Analyze / Playbook / Next-pick must bump `contextRevision` and call `cancelStream()` together; retire stale suggestion cards for the new revision.
-- Re-tapping the already-selected "My side" is a no-op — must not bump the revision or cancel streams.
-- Respect explicit My side (`mySideExplicitRef`); never infer `mySide` from the first pick when set explicitly, and treat a practice-hero-only board as non-empty for inference.
-- Accepting a suggestion / Next-pick uses the request-time ally side + practice hero stamped on the message, not live controls.
-- Streaming chunks functional-append only (`setMessages(prev => appendStreamChunk(prev, …))`); never `messages.find` overwrite.
-- Analyze / Next-pick enablement derives from the resolved lineup (`resolveCoachingLineup`), not the raw empty draft.
+- A review states only what the lookup tools returned in that run; the check (`lib/agent/review/verify.js`) drops the rest, and evidence shown to the reader is recomputed from the trace. Do not loosen the check.
+- Unknown is not false: missing or unestablished data stays `null` or a `gaps` entry, never `0`, `false`, `[]` or "none". Add the test that blanks the source.
+- No tool says who could see whom; tools state facts ("not in the fight"), not motives ("refused to come").
+- The prompt, the `submit_review` schema and the tool definitions are pinned (`src/utils/agentPromptPin.test.ts`): changing them, or a tool's answer, means raising `DEEP_REVIEW_PROMPT_VERSION`.
+- Read a stored trace through `linkHeroNames`; keep `packages/review-engine` pure.
+- Output language follows the UI `lang`; UI copy is bilingual.
 
 Full list: `.cursor/rules/dota2-coach-invariants.mdc`.
 
@@ -62,8 +70,8 @@ PRs must fill `.github/pull_request_template.md` and pass the `CI` workflow (`bu
 
 - Scope work to the issue / problem statement. Split large work; do not re-architect the app in one PR.
 - Open a **draft** PR when uncertain; leave a short note of what was verified.
-- Prefer extending existing components/services over adding parallel frameworks.
-- If a task needs `DEEPSEEK_API_KEY` for runtime smoke tests, use Copilot Agents secrets / env — never hardcode.
+- Prefer extending the existing page, tools and services over adding parallel frameworks. A new fact for the coach is a lookup tool with a `ref` and `gaps`, not a sentence in the prompt.
+- If a task needs `DEEPSEEK_API_KEY` for runtime smoke tests, use Copilot Agents secrets / env — never hardcode. A bulk model run can draw on the account production uses: check the balance and state the expected spend first.
 - Human owns merge. Copilot review is assistive, not a substitute for human review on risk areas (streaming, API, deploy).
 
 ## Review severity tagging (P0 / P1 / P2)
