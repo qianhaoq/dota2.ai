@@ -287,6 +287,11 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe(zero, 'Zero buildings. The bottom tier 1 tower stood until 16:36.', names).pass).toBe(true);
     expect(gradeProbe(zero, '两分钟里你们一座建筑都没拆。上路一塔 18:47 才丢。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(zero, '零。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // The number of a numbered list is formatting, not the count.
+    expect(buildingCounts('1. We took three towers.')).toEqual([3]);
+    expect(gradeProbe({ ...two, expect: { buildings: 3 } }, '1. We took three towers.\n2. The enemy took none back.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two, expect: { buildings: 1 } }, '1. We took three towers.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(buildingCounts('1) 拆了 3 座塔', 'zh')).toEqual([3]);
     expect(gradeProbe(five, '第一个不朽盾被拿走后，他们拆了 5 座建筑。', { ...names, lang: 'zh' }).pass).toBe(true);
   });
 
