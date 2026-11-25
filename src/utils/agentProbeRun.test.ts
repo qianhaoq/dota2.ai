@@ -108,10 +108,49 @@ describe('probe run: stops before the account runs dry', () => {
     expect(scoreProbes(r.rows)).toEqual({ probes: 3, passed: 2, not_graded: 1, by_kind: { a: { probes: 2, passed: 1 }, b: { probes: 1, passed: 1 } } });
   });
 
-  it('a re-grade keeps a row that never had an answer without one', async () => {
-    const saved = [{ status: 'ok', text: 'right' }, { status: 'error', error: '402 Insufficient Balance' }, { status: 'not_asked' }];
-    const r = await runProbes({ jobs: jobs(3), ask: async (j: any) => saved[Number(j.probe.id.slice(1))] as any, grade, concurrency: 1 });
-    expect(r.rows.map((x) => [x.status, x.pass])).toEqual([['ok', true], ['error', null], ['not_asked', null]]);
+  it('a re-grade spends nothing, so nothing stops it: every saved answer is graded, a saved 402 is one row without one', async () => {
+    const saved = [{ status: 'ok', text: 'right' }, { status: 'error', error: '402 Insufficient Balance' }, { status: 'ok', text: 'right' }, { status: 'not_asked' }, { status: 'ok', text: 'wrong' }, { status: 'ok', text: 'right' }];
+    let checks = 0;
+    for (const concurrency of [1, 3]) {
+      const r = await runProbes({ jobs: jobs(6), ask: async (j: any) => saved[Number(j.probe.id.slice(1))] as any, grade, live: false, guard: async () => { checks += 1; return { go: false, reason: 'never asked' }; }, every: 1, concurrency });
+      expect(r.stopped).toBeNull();
+      expect(r.rows.map((x) => [x.status, x.pass])).toEqual([['ok', true], ['error', null], ['ok', true], ['not_asked', null], ['ok', false], ['ok', true]]);
+    }
+    expect(checks).toBe(0);
+  });
+
+  it('no question is sent while a balance check is pending, whatever the concurrency', async () => {
+    let started = 0; const sentDuringCheck: number[] = [];
+    const guard = async () => { const at = started; await new Promise((res) => setTimeout(res, 25)); sentDuringCheck.push(started - at); return { go: true, reason: 'ok' }; };
+    const r = await runProbes({ jobs: jobs(13), ask: async () => { started += 1; await new Promise((res) => setTimeout(res, 1)); return ok(); }, grade, guard, every: 3, concurrency: 3 });
+    expect(r.stopped).toBeNull();
+    expect(r.rows.every((x) => x.pass === true)).toBe(true);
+    expect(sentDuringCheck.length).toBeGreaterThanOrEqual(4);
+    expect(sentDuringCheck.every((n) => n === 0)).toBe(true);
+    // And a check that says no stops every worker: nothing more is sent after it.
+    let sent = 0; let sentAtNo = -1;
+    const no = async () => { await new Promise((res) => setTimeout(res, 25)); sentAtNo = sent; return { go: false, reason: 'the balance, 49 CNY, is under the floor of 50' }; };
+    const s = await runProbes({ jobs: jobs(13), ask: async () => { sent += 1; await new Promise((res) => setTimeout(res, 1)); return ok(); }, grade, guard: no, every: 3, concurrency: 3 });
+    expect(s.stopped).toBe('the balance, 49 CNY, is under the floor of 50');
+    expect(sent).toBe(sentAtNo);
+    expect(s.rows.filter((x) => x.status === 'not_asked').length).toBe(13 - sent);
+  });
+
+  it('a failed call counts toward the next balance check: it may have been paid for', async () => {
+    let checks = 0;
+    const r = await runProbes({ jobs: jobs(45), ask: async () => { throw new Error('Request timed out.'); }, grade, guard: async () => { checks += 1; return { go: true, reason: 'ok' }; }, concurrency: 1 });
+    expect(checks).toBe(2);
+    expect(r.rows.every((x) => x.status === 'error' && x.pass === null)).toBe(true);
+    let n = 0;
+    const stop = await runProbes({ jobs: jobs(45), ask: async () => { n += 1; throw new Error('Request timed out.'); }, grade, guard: async () => ({ go: false, reason: 'the balance, 12 CNY, is under the floor of 50' }), concurrency: 1 });
+    expect(n).toBe(20);
+    expect(stop.stopped).toBe('the balance, 12 CNY, is under the floor of 50');
+  });
+
+  it('a balance check that throws stops the run: unknown is not enough', async () => {
+    const r = await runProbes({ jobs: jobs(4), ask: ok, grade, guard: async () => { throw Object.assign(new Error('boom'), { name: 'TypeError' }); }, every: 2, concurrency: 1 });
+    expect(r.stopped).toBe('the balance check failed (TypeError)');
+    expect(r.rows.map((x) => x.status)).toEqual(['ok', 'ok', 'not_asked', 'not_asked']);
   });
 });
 

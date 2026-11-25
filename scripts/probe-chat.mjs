@@ -14,7 +14,7 @@
  * the environment only (see scripts/deep-review.mjs).
  *
  * The model account is the site's: a key on this machine can bill the account production runs on. Before the
- * first question, and again every 20 answers, the run reads the account's balance (lib/agent/modelBalance.js) and
+ * first question, and again every 20 questions sent, the run reads the account's balance (lib/agent/modelBalance.js) and
  * does not start, or stops, when it is under --min-balance (default 50, in the account's currency) or cannot be
  * read. Probes it did not reach are written as not_asked and are not scored. --no-balance-check turns this off:
  * only for an account nothing else depends on.
@@ -89,6 +89,7 @@ async function main(argv) {
     jobs: asked,
     concurrency: o.concurrency,
     guard,
+    live,
     // A re-grade answers from the earlier run's file; a row it did not get an answer for stays without one.
     ask: earlier
       ? async ({ probe }) => { const was = earlier.get(probe.id); return { status: was.status, error: was.error, text: was.answer, tool_calls: (was.tool_calls ?? []).map((name) => ({ name })), unverified: { length: was.unverified ?? 0 }, usage: was.usage }; }
