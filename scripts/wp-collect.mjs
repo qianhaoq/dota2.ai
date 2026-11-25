@@ -16,7 +16,8 @@
  *   xp_t ([radiant players' xp by minute], [dire players']), b ([[time s, building name]…] in order),
  *   rosh ([[time s, side that killed it: 2 Radiant, 3 Dire, or null]…]).
  * What is skipped, and counted in <dir>/skipped.json: not 10 humans, not a ranked lobby, not Ranked All Pick,
- * under 15 minutes, no gold or xp series, or the two series not as long as the game. The record itself is
+ * under 15 minutes, no gold or xp series, the two series not as long as the game, or no list of objectives /
+ * one that does not reach the Ancient's fall (the buildings would be unknown, not "none fell"). The record itself is
  * checked: with or without the STRATZ pre-filter below, only ranked All Pick games are kept.
  *
  * --reserve: stop when OpenDota says fewer than this many calls are left for the day from this address.
@@ -84,13 +85,18 @@ export function rowOf(m) {
   const xpT = [side(true), side(false)];
   if (xpT.some((s) => s.length !== 5 || s.some((a) => !a))) return { skip: 'no_player_xp' };
   const ranks = m.players.map((p) => p.rank_tier).filter(Number.isInteger);
-  const objectives = Array.isArray(m.objectives) ? m.objectives : [];
+  // No objectives list is not "no building fell": such a record would train the model on zero barracks lost all
+  // game. A finished game's list ends with an Ancient; one that does not is cut short, and is not kept either.
+  if (!Array.isArray(m.objectives)) return { skip: 'no_objectives' };
+  const objectives = m.objectives;
+  const buildings = objectives.filter((o) => o.type === 'building_kill' && typeof o.key === 'string' && Number.isFinite(o.time)).map((o) => [o.time, o.key]);
+  if (!buildings.some((b) => /_fort$/.test(b[1]))) return { skip: 'no_ancient_fall_in_objectives' };
   return {
     id: m.match_id, win: m.radiant_win, dur: m.duration, patch: m.patch ?? null, mode: m.game_mode, lobby: m.lobby_type ?? null,
     rank: ranks.length ? Math.round((ranks.reduce((a, b) => a + b, 0) / ranks.length) * 10) / 10 : null,
     leaver: m.players.some((p) => (p.leaver_status ?? 0) > 1),
     gold, xp, xp_t: xpT,
-    b: objectives.filter((o) => o.type === 'building_kill' && typeof o.key === 'string' && Number.isFinite(o.time)).map((o) => [o.time, o.key]),
+    b: buildings,
     rosh: objectives.filter((o) => o.type === 'CHAT_MESSAGE_ROSHAN_KILL' && Number.isFinite(o.time)).map((o) => [o.time, o.team === 2 || o.team === 3 ? o.team : null]),
   };
 }

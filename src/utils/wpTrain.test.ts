@@ -10,13 +10,13 @@ const match = () => ({
   match_id: 42, radiant_win: true, duration: 1250, human_players: 10, game_mode: 22, lobby_type: 7, patch: 61,
   radiant_gold_adv: Array.from({ length: 21 }, (_, m) => m * 100), radiant_xp_adv: Array.from({ length: 21 }, (_, m) => m * 50),
   players: Array.from({ length: 10 }, (_, i) => ({ player_slot: i < 5 ? i : 128 + i - 5, isRadiant: i < 5, rank_tier: i === 0 ? null : 40 + i, leaver_status: 0, xp_t: Array.from({ length: 21 }, (_, m) => m * 300) })),
-  objectives: [{ type: 'building_kill', time: 700, key: 'npc_dota_badguys_tower1_mid' }, { type: 'CHAT_MESSAGE_ROSHAN_KILL', time: 900, team: 2 }, { type: 'CHAT_MESSAGE_FIRSTBLOOD', time: 80 }, { type: 'building_kill', key: 'npc_dota_badguys_tower2_mid' }],
+  objectives: [{ type: 'building_kill', time: 700, key: 'npc_dota_badguys_tower1_mid' }, { type: 'CHAT_MESSAGE_ROSHAN_KILL', time: 900, team: 2 }, { type: 'CHAT_MESSAGE_FIRSTBLOOD', time: 80 }, { type: 'building_kill', key: 'npc_dota_badguys_tower2_mid' }, { type: 'building_kill', time: 1249, key: 'npc_dota_badguys_fort' }],
 });
 
 describe('wp-collect: one parsed match → one row', () => {
   it('keeps the result, both series, each player\'s xp, the buildings in order and Roshan', () => {
     const r: any = rowOf(match());
-    expect(r).toMatchObject({ id: 42, win: true, dur: 1250, patch: 61, mode: 22, lobby: 7, leaver: false, b: [[700, 'npc_dota_badguys_tower1_mid']], rosh: [[900, 2]] });
+    expect(r).toMatchObject({ id: 42, win: true, dur: 1250, patch: 61, mode: 22, lobby: 7, leaver: false, b: [[700, 'npc_dota_badguys_tower1_mid'], [1249, 'npc_dota_badguys_fort']], rosh: [[900, 2]] });
     // The mean of the nine players who have a rank: the one without is not counted as zero.
     expect(r.rank).toBe(45);
     expect(r.gold).toHaveLength(21);
@@ -37,6 +37,11 @@ describe('wp-collect: one parsed match → one row', () => {
     expect(why({ radiant_gold_adv: null })).toBe('no_series');
     expect(why({ radiant_gold_adv: [0, 1, 2] })).toBe('series_shorter_than_the_game');
     expect(why({ radiant_win: null })).toBe('no_result');
+    // No objectives list is not "nothing fell"; nor is a list that stops before the Ancient.
+    expect(why({ objectives: undefined })).toBe('no_objectives');
+    expect(why({ objectives: null })).toBe('no_objectives');
+    expect(why({ objectives: [] })).toBe('no_ancient_fall_in_objectives');
+    expect(why({ objectives: [{ type: 'building_kill', time: 700, key: 'npc_dota_badguys_tower1_mid' }] })).toBe('no_ancient_fall_in_objectives');
     expect(rowOf(null).skip).toBe('no_result');
     const noXp = match(); noXp.players[3].xp_t = null as any;
     expect(rowOf(noXp).skip).toBe('no_player_xp');
@@ -104,7 +109,8 @@ describe('wp-train', () => {
     expect(model.data.left_out_with_a_leaver).toBeGreaterThanOrEqual(0);
     // Fitted on ranked All Pick only: what else the data file held is counted, not used.
     expect(model.data.left_out_not_ranked_all_pick).toBeGreaterThanOrEqual(0);
-    expect(model.data.games_collected - model.data.left_out_not_ranked_all_pick - model.data.left_out_with_a_leaver).toBe(model.data.games_fitted_on);
+    expect(model.data.left_out_without_the_buildings).toBeGreaterThanOrEqual(0);
+    expect(model.data.games_collected - model.data.left_out_not_ranked_all_pick - model.data.left_out_without_the_buildings - model.data.left_out_with_a_leaver).toBe(model.data.games_fitted_on);
     // It was written only because, on games each fit had not seen, it beat the gold lead alone — which beats 50%.
     const cv = model.cross_validated;
     expect(cv.model.brier).toBeLessThan(cv.gold_lead_alone.brier);

@@ -18,6 +18,7 @@
     "gold": "gold earned lead (radiant_gold_adv) at each whole minute — the quantity goldLead gives as match_record and replay_gold_log; never the replay net worth graph",
     "games_collected": 1900,
     "left_out_not_ranked_all_pick": 4,
+    "left_out_without_the_buildings": 0,
     "left_out_with_a_leaver": 61,
     "games_fitted_on": 1835,
     "rows_fitted_on": 70131,

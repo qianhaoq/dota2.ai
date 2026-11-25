@@ -97,7 +97,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const games = [...new Map(all.map((g) => [g.id, g])).values()];
   // The cohort the model file names, whatever the data file holds: ranked lobby, Ranked All Pick.
   const cohort = games.filter((g) => g.lobby === 7 && g.mode === 22);
-  const clean = cohort.filter((g) => !g.leaver);
+  // A game whose building rows do not reach an Ancient's fall has unknown buildings: not fitted on.
+  const whole = cohort.filter((g) => Array.isArray(g.b) && g.b.some((b) => /_fort$/.test(b[1])));
+  const clean = whole.filter((g) => !g.leaver);
   if (clean.length < 200) { console.error(`too few games: ${clean.length}`); process.exit(3); }
   // Every row with its game and the part its game is in: [features, won, minute, game, fold].
   const rows = clean.flatMap((g) => rowsOf(g).map((r) => [...r, g, foldOf(g.id, folds)]));
@@ -127,7 +129,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     data: {
       source: 'OpenDota: public ranked All Pick matches it has parsed (scripts/wp-collect.mjs)',
       gold: 'gold earned lead (radiant_gold_adv) at each whole minute — the quantity goldLead gives as match_record and replay_gold_log; never the replay net worth graph',
-      games_collected: games.length, left_out_not_ranked_all_pick: games.length - cohort.length, left_out_with_a_leaver: cohort.length - clean.length,
+      games_collected: games.length, left_out_not_ranked_all_pick: games.length - cohort.length, left_out_without_the_buildings: cohort.length - whole.length, left_out_with_a_leaver: whole.length - clean.length,
       games_fitted_on: clean.length, rows_fitted_on: rows.length,
       radiant_won_share: round(clean.filter((x) => x.win).length / clean.length, 3),
       match_ids: [ids[0], ids.at(-1)], opendota_patch_ids: [...new Set(clean.map((x) => x.patch))].sort(),
@@ -146,7 +148,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     },
     not_in_it: ['heroes and items', 'who is dead at the moment', 'buybacks', 'Aegis', 'experience', 'towers (measured: nothing once the gold lead is in)'],
   };
-  console.log(`games ${games.length} (${games.length - cohort.length} not ranked All Pick and ${cohort.length - clean.length} with a leaver left out); ${clean.length} games / ${rows.length} rows, ${folds} parts`);
+  console.log(`games ${games.length} (${games.length - cohort.length} not ranked All Pick, ${cohort.length - whole.length} without their buildings and ${whole.length - clean.length} with a leaver left out); ${clean.length} games / ${rows.length} rows, ${folds} parts`);
   console.log(`weights: ${FEATURES.map((f, i) => `${f} ${model.weights[i]}`).join(', ')}`);
   console.log(`out of fold — Brier: model ${m.brier}, gold lead with the minute ${gt.brier}, gold lead alone ${g.brier}, always 50% 0.25; log loss: ${m.log_loss} / ${gt.log_loss} / ${g.log_loss} / ${round(Math.log(2))}`);
   console.log('said → Radiant won (rows):  ' + m.calibration.filter((c) => c.rows).map((c) => `${c.mean_said}→${c.radiant_won} (${c.rows})`).join('  '));
