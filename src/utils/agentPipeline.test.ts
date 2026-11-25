@@ -201,7 +201,8 @@ describe('parse jobs in the service', () => {
     const flaky = makeService(async () => ({ ok: false, reason: 'download_failed' }));
     const b = flaky.service();
     await b.prepare(ID); await settle();
-    await vi.waitFor(async () => expect((await b.availability(ID)).parse).toEqual({ status: 'failed', reason: 'download_failed', final: false }));
+    // Not for good: asking again starts a new parse once the short back-off is over (10 s for a failed download).
+    await vi.waitFor(async () => expect((await b.availability(ID)).parse).toEqual({ status: 'failed', reason: 'download_failed', final: false, retry_in_sec: 10 }));
     flaky.clock.t += 6 * 60_000;
     expect((await b.availability(ID)).parse).toEqual({ status: 'none' });
     expect(await b.prepare(ID)).toMatchObject({ status: 'running' });
@@ -220,8 +221,9 @@ describe('parse jobs in the service', () => {
     const h = makeService(async (id: any, _o: any, traces: any) => { if (answer.ok) await traces.put(id, gzipSync(fixture)); return answer; });
     const svc = h.service();
     await svc.prepare(ID); await settle();
-    await vi.waitFor(async () => expect((await svc.availability(ID)).parse).toEqual({ status: 'failed', reason: 'no_replay_url', final: false }));
-    // Minutes later the address exists: the same match parses, without waiting out anything.
+    await vi.waitFor(async () => expect((await svc.availability(ID)).parse).toEqual({ status: 'failed', reason: 'no_replay_url', final: false, retry_in_sec: 60 }));
+    // Minutes later the address exists: the same match parses, without waiting out the five minutes a failure is remembered for.
+    h.clock.t += 2 * 60_000;
     answer = { ok: true };
     const [a, b] = await Promise.all([svc.prepare(ID), svc.prepare(ID)]);
     expect([a.status, b.status]).toEqual(['running', 'running']);
@@ -259,7 +261,8 @@ describe('parse jobs in the service', () => {
     const b: any = createAgentService({ traces, complete: null, docs, now: () => clock.t, pipeline: { run: async (_id: any, o: any) => { o.onStage('downloading'); return new Promise(() => {}); } } });
     await a.prepare(ID); await settle();
     await vi.waitFor(async () => expect((await a.availability(ID)).parse.status).toBe('failed'));
-    clock.t += 1000;
+    // Asked again once the ten-second back-off after a failure is over (sooner, B would answer with A's failure).
+    clock.t += 11_000;
     await b.prepare(ID); await settle();
     // A's own attempt failed, but the newer one on B is running: A says running too.
     await vi.waitFor(async () => expect((await a.availability(ID)).parse).toEqual({ status: 'running', stage: 'downloading' }));
