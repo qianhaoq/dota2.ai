@@ -319,7 +319,30 @@ node scripts/eval-review.mjs <目录> --all-versions --baseline data/eval-baseli
 
 两份评分表都已核对（2026-11-25）：里面写的每个时间和数字都重新从工具读了一遍。核对由 Claude 做，仓库所有者委托；它核对的是事实，"这局最该讲的是不是这几点"仍是一个判断，有不同看法就改评分表。
 
-还没做的：评分表扩到 12–15 局；重新生成复盘再打分（要花模型 token，必须先查余额，见 `--run` 的后续 PR）；用模型判断语义是否命中（现在只按记录、时间和词核对，会漏掉换了说法的命中）。
+**重新生成再打分**（`scripts/eval-run.mjs`，要花钱）。给已存的复盘打分不花钱，但改了提示词或工具之后，要知道复盘变好还是变差，只能让同一批比赛在改之前和改之后各重写几份：
+
+```bash
+# 在 main 上
+node scripts/eval-run.mjs --traces <trace 目录> --matches <比赛记录目录> --out runs/before --runs 3
+node scripts/eval-review.mjs runs/before --json before.json
+# 在改动的分支上
+node scripts/eval-run.mjs --traces <trace 目录> --matches <比赛记录目录> --out runs/after --runs 3
+node scripts/eval-review.mjs runs/after --baseline before.json
+```
+
+默认重写每份评分表对应的那局（`--games` 可以另指）。`--matches` 给每局的比赛记录（OpenDota 的 JSON），线上生成复盘时也带着它；不给就只凭录像，开跑前的清单会写明每局是哪种。写出的文件名是存量复盘的名字加 `.r<n>`，打分脚本把同一版本的几份都算进去，三份以上就有稳定性数字。
+
+花的是线上同一个 DeepSeek 账户的钱（2026-11-25 一次探针把余额跑空，一位访客的复盘因此失败），所以它这样约束自己（`lib/agent/evalRun.js`）：
+
+| 什么时候 | 做什么 |
+|---|---|
+| 开跑前 | 打印要写几份、预计花多少（每份按 0.25 估，实测 0.16）、预算、余额、保留线。余额读不到不跑；预计超出预算（`--budget`，默认 5）不跑；跑完会低于保留线（`--floor`，默认 50）不跑 |
+| 每写完一份 | 再读一次余额。低于保留线、账户已经少掉的钱达到预算、或者余额读不到了，就停，并列出没跑的 |
+| 始终 | 一次只写一份，不并行 |
+
+`--dry-run` 只打印清单和余额。设了 `EVAL_DEEPSEEK_API_KEY` 就用它（评测单独的账户），否则用 `DEEPSEEK_API_KEY` 并明说这是线上的账户。
+
+还没做的：评分表扩到 12–15 局；用模型判断语义是否命中（现在只按记录、时间和词核对，会漏掉换了说法的命中）。
 
 #### 读者怎么说：每条发现下的三个按钮
 

@@ -7,9 +7,11 @@
  *
  * The reviews are the files the site stores (`<match>.<hero>.<lang>.p<version>[.plan-<plan>].review.json`):
  *   gcloud storage cp 'gs://<agent bucket>/agent/*.review.json' <dir>
+ * or the ones scripts/eval-run.mjs writes (the same name with `.r<n>` before `.review.json`: the n-th review of
+ * that game written in one run).
  *
- * By default each game is scored once, by its review of the newest prompt version; --all-versions scores every
- * file and adds one row per prompt version. Stability is always read over every version of a game (a plan's
+ * By default each game is scored by its review of the newest prompt version — by each of them when a run wrote
+ * several; --all-versions scores every file and adds one row per prompt version. Stability is always read over every version of a game (a plan's
  * reviews apart): three or more reviews of one game, hero and language.
  *
  * A game with a rubric (evals/reviews/<match>.<hero>.json) is also scored against it; draft rubrics and
@@ -23,7 +25,7 @@ import { join } from 'node:path';
 import { RUBRIC_SCHEMA, compareSummaries, scoreReview, stabilityOf, summarize } from '../lib/agent/evalReview.js';
 
 const USAGE = 'Usage: node scripts/eval-review.mjs <dir of *.review.json> [--rubrics <dir>] [--all-versions] [--json <file>] [--baseline <file>]';
-const NAME = /^(\d+)\.([a-z_]+)\.(en|zh)\.p(\d+)(?:\.plan-([a-z_-]+))?\.review\.json$/;
+const NAME = /^(\d+)\.([a-z_]+)\.(en|zh)\.p(\d+)(?:\.plan-([a-z_-]+))?(?:\.r([1-9]\d?))?\.review\.json$/;
 
 export function parseArgs(argv) {
   const o = { dir: null, rubrics: 'evals/reviews', allVersions: false, json: null, baseline: null };
@@ -41,7 +43,7 @@ export function parseArgs(argv) {
 /** Which game, hero, language, prompt version and plan a stored review's file name says it is; null for another file. */
 export function parseName(file) {
   const m = NAME.exec(file);
-  return m ? { file, match_id: Number(m[1]), hero: m[2], lang: m[3], version: Number(m[4]), plan: m[5] ?? null } : null;
+  return m ? { file, match_id: Number(m[1]), hero: m[2], lang: m[3], version: Number(m[4]), plan: m[5] ?? null, run: m[6] ? Number(m[6]) : null } : null;
 }
 
 async function readJson(file) { try { return JSON.parse(await readFile(file, 'utf8')); } catch { return null; } }
@@ -68,7 +70,8 @@ export function evaluate(entries, rubrics, { allVersions = false } = {}) {
   const groups = new Map();
   for (const e of entries) groups.set(groupKey(e), [...(groups.get(groupKey(e)) ?? []), e]);
   const score = (e) => ({ ...e, stored: undefined, score: scoreReview(e.stored, rubrics.get(`${e.match_id}.${e.hero}`) ?? null) });
-  const latest = [...groups.values()].map((list) => list.reduce((a, b) => (b.version > a.version ? b : a))).map(score);
+  // A game's newest version: one stored review, or every review a run wrote of it.
+  const latest = [...groups.values()].flatMap((list) => { const newest = Math.max(...list.map((e) => e.version)); return list.filter((e) => e.version === newest); }).map(score);
   /** @type {Record<string, ReturnType<typeof summarize>> | null} */
   let byVersion = null;
   if (allVersions) {
@@ -105,7 +108,7 @@ async function main(argv) {
   const rubrics = await loadRubrics(o.rubrics);
   const out = evaluate(entries, rubrics, { allVersions: o.allVersions });
 
-  console.log(`${entries.length} stored reviews, ${out.games.length} games scored by their newest version, ${rubrics.size} rubric(s)\n`);
+  console.log(`${entries.length} stored reviews, ${out.games.length} scored (each game by its newest version: ${new Set(out.games.map((g) => `${g.match_id}.${g.hero}.${g.lang}.${g.plan ?? ''}`)).size} game(s)), ${rubrics.size} rubric(s)\n`);
   console.log('| number | value |\n|---|---|');
   for (const [k, v] of Object.entries(out.latest)) if (v == null || typeof v !== 'object') console.log(`| ${k} | ${fmt(v)} |`);
   for (const k of ['rubric_approved', 'rubric_draft']) if (out.latest[k]) for (const [kk, v] of Object.entries(out.latest[k])) console.log(`| ${k}.${kk} | ${fmt(v)} |`);

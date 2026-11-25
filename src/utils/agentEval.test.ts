@@ -211,7 +211,7 @@ describe('review eval: summary and comparison', () => {
 
 describe('review eval: the script', () => {
   it('reads what a stored review\'s file name says', () => {
-    expect(parseName('9100904020.beastmaster.zh.p33.review.json')).toEqual({ file: '9100904020.beastmaster.zh.p33.review.json', match_id: 9100904020, hero: 'beastmaster', lang: 'zh', version: 33, plan: null });
+    expect(parseName('9100904020.beastmaster.zh.p33.review.json')).toEqual({ file: '9100904020.beastmaster.zh.p33.review.json', match_id: 9100904020, hero: 'beastmaster', lang: 'zh', version: 33, plan: null, run: null });
     expect(parseName('9103304074.phantom_lancer.zh.p33.plan-late.review.json')?.plan).toBe('late');
     expect(parseName('9100904020.beastmaster.zh.p33.unverified.json')).toBeNull();
     expect(parseName('9100904020.trace.json.gz')).toBeNull();
