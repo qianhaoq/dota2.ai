@@ -544,7 +544,7 @@ export const AgentMatchPage: React.FC = () => {
         )}
         <div className="ag-layout">
           <div>
-            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />} quick={!slow} />
+            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />} quick={!slow} feedback={{ plan, model }} />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
           </div>
           <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} plan={plan} model={model} />

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { fetchEvidence, type DeepReview } from './api';
 import { EvidenceCard } from './EvidenceCard';
 import { PLANS, planByKey } from '../../lib/agent/plans.js';
+import { FindingFeedback } from './FindingFeedback';
 import { setGoal, useActiveGoal, type ActiveGoal, type GoalRule } from '../coach/goalStore';
 
 /**
@@ -172,7 +173,7 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
   );
 };
 
-export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode; /** Sharing the review, shown once the reader has something to share: after the findings. */ share?: React.ReactNode; /** The review is the default model's, whose rewrite takes the usual two to three minutes; false for another model's. */ quick?: boolean }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, goalContext = null, board = null, share = null, quick = true }) => {
+export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode; /** Sharing the review, shown once the reader has something to share: after the findings. */ share?: React.ReactNode; /** The review is the default model's, whose rewrite takes the usual two to three minutes; false for another model's. */ quick?: boolean; /** Ask under each finding whether it was right: the plan and model this review was asked with (they name the stored review the word is about). Absent: not asked. */ feedback?: { plan?: string | null; model?: string | null } | null }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, goalContext = null, board = null, feedback = null, share = null, quick = true }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   // The release, and the hotfix within it when the game was played after one ("7.41f（2026-10-07 热修复后）").
   const patchName = (dp: { name: string; hotfix?: string }) => t(dp.hotfix ? T.patchHotfix : T.patchPlain).replace('{p}', dp.name).replace('{d}', (dp.hotfix ?? '').slice(0, 10));
@@ -196,6 +197,8 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       {f.rule.check && <div className="ag-rule-check"><dt>{t(T.ruleCheck)}</dt><dd>{f.rule.check.label[lang]}</dd></div>}
     </dl>
   );
+  // Keyed by the finding it is about: another review of the same game starts unanswered.
+  const feedbackOf = (f: Finding, i: number) => feedback && <FindingFeedback key={`${i}:${f.title}`} matchId={matchId} hero={review.hero} lang={lang} plan={feedback.plan} model={feedback.model} index={i} title={f.title} />;
   const evidenceOf = (f: Finding) => <ul className="ag-evidence">{f.evidence.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>;
   const patch = review.data_patch && (review.data_patch.exact
     ? <p className="ag-patch">{t(T.patchExact).replace('{p}', patchName(review.data_patch))}{review.data_patch.known_from && T.patchFrom[review.data_patch.known_from] ? (lang === 'zh' ? `（${t(T.patchFrom[review.data_patch.known_from])}）` : ` (${t(T.patchFrom[review.data_patch.known_from])})`) : ''}</p>
@@ -210,6 +213,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         <h1>{first ? first.title : review.verdict}</h1>
         {first && <p className="ag-lead-claim">{first.claim}</p>}
         {patch}
+        {first && !(first.rule || first.fix) && first.evidence.length === 0 && feedbackOf(first, 0)}
       </section>
 
       {first && (first.rule || first.fix) && (
@@ -217,6 +221,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
           <h2>{t(T.lesson)}</h2>
           {ruleOf(first)}
           {first.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{first.fix}</p>}
+          {first.evidence.length === 0 && feedbackOf(first, 0)}
         </section>
       )}
 
@@ -224,6 +229,8 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         <section className="ag-moments">
           <h2>{t(T.moments)}</h2>
           {evidenceOf(first)}
+          {/* The first finding ends here: its claim, what to practise, the moments. Asked once the reader has seen all three. */}
+          {feedbackOf(first, 0)}
         </section>
       )}
 
@@ -237,6 +244,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
               {evidenceOf(f)}
               {ruleOf(f)}
               {f.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{f.fix}</p>}
+              {feedbackOf(f, i + 1)}
             </details>
           ))}
         </section>
