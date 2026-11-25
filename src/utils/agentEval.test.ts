@@ -94,7 +94,7 @@ describe('review eval: against a rubric', () => {
 
   it('the stored review misses the Roar point, makes the item point, and does not look at the turning fight', () => {
     expect(rubricOf(stored, rubric)).toEqual({
-      status: 'draft',
+      status: 'approved',
       must_hit: [{ id: 'roar_spent_before_carry_immunity', hit: false, finding: null }, { id: 'no_blink_no_bkb', hit: true, finding: 2 }],
       hit_weight: 1, weight: 3, hit_rate: 0.33,
       must_not: [],
@@ -187,8 +187,10 @@ describe('review eval: summary and comparison', () => {
     expect(s.rules_that_say_only_once).toBe(0.25);
     expect(s.matchup_both_ways).toBe(0.5);
     expect(s.repaired).toBe(1);
-    expect(s.rubric_approved).toBeNull();
-    expect(s.rubric_draft).toEqual({ reviews: 1, hit_rate: 0.33, must_not_violations: 0, turning_fight_covered: 0, main_reason_ok: 1 });
+    expect(s.rubric_draft).toBeNull();
+    expect(s.rubric_approved).toEqual({ reviews: 1, hit_rate: 0.33, must_not_violations: 0, turning_fight_covered: 0, main_reason_ok: 1 });
+    // A rubric nobody has checked is counted apart.
+    expect(summarize([scoreReview(stored, { ...rubric, status: 'draft' })]).rubric_draft?.reviews).toBe(1);
   });
 
   it('names what got worse and what got better, past a small tolerance', () => {
@@ -240,7 +242,7 @@ describe('review eval: the script', () => {
   it('a game with a rubric is scored against it', () => {
     const out = evaluate([{ ...parseName('9100904020.beastmaster.zh.p33.review.json')!, stored }], new Map([['9100904020.beastmaster', rubric]]));
     expect(out.games[0].rubric?.hit_rate).toBe(0.33);
-    expect(out.latest.rubric_draft?.reviews).toBe(1);
+    expect(out.latest.rubric_approved?.reviews).toBe(1);
   });
 });
 
