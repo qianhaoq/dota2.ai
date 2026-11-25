@@ -763,6 +763,16 @@ describe('AgentMatchPage', () => {
     expect(calls.some((c) => c.url.includes('model='))).toBe(false);
   });
 
+  it('the wait told is the writing model\'s, also when a slow model is the server\'s default (review of #327)', async () => {
+    // A server set up with Kimi alone: nothing to pick, no model in the requests, and Kimi's wait — not two to three minutes.
+    const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro'], default_model: 'kimi-k3.1-pro' } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
+    expect(screen.getByText(/and writes what to change\. On the game we timed, Kimi K3\.1 Pro took about 13 minutes\.$/)).toBeTruthy();
+    expect(screen.queryByText(/two to three/)).toBeNull();
+    expect(calls.some((c) => c.url.includes('model='))).toBe(false);
+  });
+
   it('going back to "don\'t say" takes the plan out of the link and the requests', async () => {
     const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { status: 'running', steps: [] } : null), '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=en&plan=late');

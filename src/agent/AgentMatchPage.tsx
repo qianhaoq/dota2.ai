@@ -12,7 +12,7 @@ import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMa
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { MatchBoard } from './MatchBoard';
 import { PLANS, planKey } from '../../lib/agent/plans.js';
-import { modelId, modelLabel, modelMinutes } from '../../lib/agent/models.js';
+import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelMinutes, writesSlowly } from '../../lib/agent/models.js';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import { ShareBar } from './ShareBar';
 import './agent.css';
@@ -45,8 +45,10 @@ const T = {
   goTitle: { en: 'Review this game', zh: '复盘这一局' },
   goBody: { en: 'The coach watches the replay — every death, every ultimate, the fights that turned the game, your build — and writes what to change.', zh: '教练会把录像看一遍——每次阵亡、每个大招、转折的团战、你的出装——然后写出该改什么。' },
   goTime: { en: 'About two to three minutes.', zh: '大约两到三分钟。' },
-  // Another model than the default: how long it took when it was timed (lib/agent/models.js), never a promise.
-  goTimeSlow: { en: 'On the game we timed, {m} took about {n} minutes; {d} takes two to three.', zh: '在我们计时的那一局上，{m} 用了约 {n} 分钟；{d} 是两到三分钟。' },
+  // A model that writes slowly: how long it took when it was timed (lib/agent/models.js), never a promise.
+  goTimeSlow: { en: 'On the game we timed, {m} took about {n} minutes', zh: '在我们计时的那一局上，{m} 用了约 {n} 分钟' },
+  // …beside the quick one, when the reader can pick it here.
+  goTimeQuick: { en: '; {d} takes two to three.', zh: '；{d} 是两到三分钟。' },
   go: { en: 'Review my game', zh: '开始复盘' },
   planAsk: { en: 'What were you going for this game? (optional)', zh: '这局你想怎么打？（可选）' },
   planWhy: { en: 'Say it, and the review reads the game against it: whether your play fit it, whether it suited these line-ups, and where it broke. The replay cannot show what you meant to do.', zh: '选了，复盘就会对照它来读这局：你的打法是否贴合，这个思路面对双方阵容是否站得住，没打成断在哪里。录像本身看不出你想怎么打。' },
@@ -216,10 +218,15 @@ export const AgentMatchPage: React.FC = () => {
       ))}
     </div>
   );
-  // How long the wait is: the default's is known; another model's is what it took when timed, and when it was
-  // not timed nothing is said.
-  const timed = model ? modelMinutes(model) : null;
-  const goTime = !model ? t(T.goTime) : timed != null && defaultModel ? t(T.goTimeSlow).replace('{m}', modelLabel(model)).replace('{n}', String(timed)).replace('{d}', modelLabel(defaultModel)) : null;
+  // How long the wait is, by which model writes (the one picked, else this server's default — which need not be
+  // the quick one): two to three minutes for the quick one and where no model is named at all; for a slow one
+  // what it took when timed; nothing for one that was not timed.
+  const writer = model ?? defaultModel;
+  const slow = writer != null && writesSlowly(writer);
+  const timed = slow ? modelMinutes(writer) : null;
+  const goTime = !slow ? t(T.goTime)
+    : timed != null ? t(T.goTimeSlow).replace('{m}', modelLabel(writer)).replace('{n}', String(timed)) + (offered.includes(DEFAULT_AGENT_MODEL) ? t(T.goTimeQuick).replace('{d}', modelLabel(DEFAULT_AGENT_MODEL)) : lang === 'zh' ? '。' : '.')
+      : null;
   const hasTrace = avail?.trace === true;
   const parse = avail && !avail.trace ? avail.parse ?? { status: 'none' as const } : null;
 
@@ -525,7 +532,7 @@ export const AgentMatchPage: React.FC = () => {
         )}
         <div className="ag-layout">
           <div>
-            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} quick={!model} />
+            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} quick={!slow} />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
           </div>
           <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} plan={plan} model={model} />

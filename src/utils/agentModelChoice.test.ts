@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { createAgentRouter } from '../../lib/agent/router.js';
 import { createAgentService } from '../../lib/agent/service.js';
 import { parseChatBody } from '../../lib/agent/chat.js';
-import { AGENT_MODELS, AGENT_MODEL_IDS, DEFAULT_AGENT_MODEL, modelId, modelLabel, modelMinutes } from '../../lib/agent/models.js';
+import { AGENT_MODELS, AGENT_MODEL_IDS, DEFAULT_AGENT_MODEL, modelId, modelLabel, modelMinutes, writesSlowly } from '../../lib/agent/models.js';
 import { agentModel, agentModels, deepReviewProvider } from '../../lib/agent/providers.js';
 import { redactCredentials, redactSecrets, redactUnmistakableSecrets, registerSecretValues, secretValuesFromEnv } from '../../lib/llmErrors.js';
 import { shareUrl } from '../../lib/coach/sharePreview.js';
@@ -47,6 +47,10 @@ describe('the models a reader can choose', () => {
     for (const m of AGENT_MODELS) expect(Object.keys(m).sort()).toEqual(['id', 'label', 'timed_minutes']);
     // What was not timed is not given a time.
     expect([modelMinutes('deepseek-flash'), modelMinutes('kimi-k3.1-pro'), modelMinutes('glm-5.4'), modelMinutes('nope')]).toEqual([2, 13, null, null]);
+    // Which models need the longer time limit is a fact about the model, not about which one a server makes its
+    // default (review of #327); one that was not timed is not assumed to be quick.
+    expect(AGENT_MODEL_IDS.map((id) => [id, writesSlowly(id)])).toEqual([['deepseek-flash', false], ['kimi-k3.1-pro', true], ['glm-5.3-flash', true], ['glm-5.3', true], ['glm-5.4', true]]);
+    expect(writesSlowly('nope')).toBe(true);
     expect([modelId('glm-5.3'), modelId('GLM-5.3'), modelId('gpt'), modelId(''), modelId(null), modelId(['glm-5.3']), modelId('__proto__')]).toEqual(['glm-5.3', null, null, null, null, null, null]);
     expect([modelLabel('kimi-k3.1-pro'), modelLabel('nope')]).toEqual(['Kimi K3.1 Pro', 'nope']);
   });
@@ -275,6 +279,31 @@ describe('the routes take the model, and refuse one that is not offered', () => 
       // The review already there is handed over without asking the ceiling.
       expect((await post({ hero: 'beastmaster', lang: 'zh', model: 'glm-5.3' })).status).toBe(200);
     } finally { server.close(); }
+  });
+});
+
+describe('a model keeps its hourly ceiling when it is the server\'s default (review of #327)', () => {
+  it('Kimi as the default is still held to its own ceiling; DeepSeek, default or not, has none of its own', async () => {
+    const serve = async (models: any, defaultModel: string) => {
+      const w = world();
+      const service: any = createAgentService({ traces: w.traces, docs: w.docs, models, defaultModel, getMatchDetail: async () => SCOREBOARD });
+      const app = express(); app.use(express.json());
+      app.use(createAgentRouter({ service, resolveClientIp: () => '10.7.0.2', modelHourlyMax: 1 }));
+      const server = app.listen(0);
+      const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+      const post = async (body: any) => (await fetch(`${base}/api/agent/${ID}/review`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).status;
+      return { post, close: () => server.close() };
+    };
+    const kimiFirst = await serve({ 'kimi-k3.1-pro': engine('k3.1-pro'), 'deepseek-flash': engine('deepseek-flash') }, 'kimi-k3.1-pro');
+    try {
+      // By no name and by its own, Kimi's reviews count against Kimi's hour.
+      expect(await kimiFirst.post({ hero: 'beastmaster', lang: 'zh' })).toBe(202);
+      expect(await kimiFirst.post({ hero: 'phantom_assassin', lang: 'zh' })).toBe(503);
+      expect(await kimiFirst.post({ hero: 'phantom_assassin', lang: 'zh', model: 'kimi-k3.1-pro' })).toBe(503);
+      // DeepSeek, not the default here, is held only by the shared limits.
+      expect(await kimiFirst.post({ hero: 'phantom_assassin', lang: 'zh', model: 'deepseek-flash' })).toBe(202);
+      expect(await kimiFirst.post({ hero: 'sven', lang: 'zh', model: 'deepseek-flash' })).toBe(202);
+    } finally { kimiFirst.close(); }
   });
 });
 

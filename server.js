@@ -83,6 +83,7 @@ import { createBucketStore, createFileStore, createJsonStore, createTraceStore }
 import { createRemotePipeline, createTracePipeline } from './lib/agent/tracePipeline.js';
 import { createReplaySource } from './lib/agent/replaySource.js';
 import { agentModels } from './lib/agent/providers.js';
+import { writesSlowly } from './lib/agent/models.js';
 import { openAiCompatible } from './lib/agent/loop.js';
 import { createCoachService } from './lib/coach/service.js';
 import { createCaseService } from './lib/coach/caseSource.js';
@@ -936,8 +937,9 @@ const agentTasks = (() => {
   return { dispatch: createTaskDispatcher({ queue, url, serviceAccount }), auth: createTaskAuth({ audience: url, serviceAccount }) };
 })();
 // One client per offered model. The default one also answers the patch advisor.
-// A model other than the default is given longer to finish: those timed took four to six times as long (models.js).
-const agentEngines = Object.fromEntries(agentOffer.models.map((m) => [m.id, { name: m.model, ...(m.id === agentOffer.default ? {} : { maxMs: SLOW_REVIEW_MAX_MS }), complete: openAiCompatible({ client: new OpenAI({ baseURL: m.baseURL, apiKey: m.apiKey }), model: m.model, extraBody: m.extraBody }) }]));
+// A model that writes slowly is given longer to finish: those timed took four to ten times as long as DeepSeek
+// (models.js). By what the model is, whether or not it is this server's default.
+const agentEngines = Object.fromEntries(agentOffer.models.map((m) => [m.id, { name: m.model, ...(writesSlowly(m.id) ? { maxMs: SLOW_REVIEW_MAX_MS } : {}), complete: openAiCompatible({ client: new OpenAI({ baseURL: m.baseURL, apiKey: m.apiKey }), model: m.model, extraBody: m.extraBody }) }]));
 const agentComplete = agentOffer.default ? agentEngines[agentOffer.default].complete : null;
 console.log(`INFO: review models offered: ${agentOffer.models.map((m) => m.id).join(', ') || 'none'}${agentOffer.default ? ` (default ${agentOffer.default})` : ''}`);
 // Named by id and by the variable that is missing or wrong, never by a value.

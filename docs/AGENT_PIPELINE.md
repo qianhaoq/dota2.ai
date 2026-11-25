@@ -202,7 +202,7 @@ the worker.
 |---|---|---|
 | Parses | 5 per caller per 10 min; `AGENT_PARSE_DAILY_MAX` (default 300) a day | `lib/agent/router.js` |
 | Deep reviews | 5 per caller per 10 min; 60 an hour; the shared LLM budget | same |
-| Deep reviews by a model other than the default | also `AGENT_MODEL_HOURLY_MAX` (default 20) an hour per model; 25 min to finish instead of 15 | same, `lib/agent/service.js` |
+| Deep reviews by a model other than DeepSeek | also `AGENT_MODEL_HOURLY_MAX` (default 20) an hour per model; 25 min to finish instead of 15. Both by what the model is, also when it is the server's default | same, `lib/agent/service.js`, `models.js` `writesSlowly` |
 | Chat | 12 turns a minute per caller; 6 tool calls a turn; the shared LLM budget | same, `lib/agent/chat.js` |
 | Download | 256 MB; extractor input 512 MB, output 1.5 GB | `replayIngest/capacity.js` |
 
