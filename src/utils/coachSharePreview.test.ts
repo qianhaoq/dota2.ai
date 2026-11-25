@@ -154,6 +154,16 @@ describe('GET /r/:matchId', () => {
     expect(html).not.toContain('SecretName');
   });
 
+  it('a hero whose replay key is not its scoreboard slug (queen_of_pain / queenofpain) is still found, and its review read by the replay key', async () => {
+    const asked: unknown[][] = [];
+    const qop = () => { const m = withNames(); m.players[4].hero_id = 39; return m; };
+    const base = await start({ match: async () => qop(), review: async (...a: unknown[]) => { asked.push(a); return { verdict: 'Blinked in before the stun.' }; } });
+    const html = await (await fetch(`${base}/r/9091400302?hero=queen_of_pain`)).text();
+    expect(asked).toEqual([[9091400302, 'queen_of_pain', 'en', null]]);
+    expect(tag(html, 'og:title')).toContain('Queen of Pain');
+    expect(tag(html, 'og:description')?.startsWith('Blinked in before the stun.')).toBe(true);
+  });
+
   it('without a stored review (or with one that fails or is slow) the hero link still previews the player', async () => {
     const p = buildCoachReport(withNames()).players[4];
     const headline = buildCoachReport(withNames()).reviews.find((r: any) => r.slot === p.slot).headline.en;
