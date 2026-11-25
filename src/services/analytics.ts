@@ -18,6 +18,8 @@ import {
   claimReviewViewed,
   pageKind,
   sourceFrom,
+  resolveInternal,
+  INTERNAL_HEADER,
 } from '../utils/analyticsClient';
 import { TRAFFIC_SOURCES } from '../../lib/analyticsEvents.js';
 
@@ -88,10 +90,25 @@ export function initAnalytics(): void {
   }
 }
 
+let internalBrowser: boolean | null = null;
+/** Is this browser marked as one of ours (`?internal=1`, kept in localStorage)? Read once a page load. */
+export function isInternalBrowser(): boolean {
+  if (internalBrowser != null) return internalBrowser;
+  if (typeof window === 'undefined') return false;
+  let storage: Storage | null = null;
+  try { storage = window.localStorage; } catch { storage = null; }
+  internalBrowser = resolveInternal(storage, window.location?.search ?? '');
+  return internalBrowser;
+}
+/** The header a request from a marked browser carries, for the server's log; nothing from any other. */
+export function internalHeaders(): Record<string, string> {
+  return isInternalBrowser() ? { [INTERNAL_HEADER]: '1' } : {};
+}
+
 /** 上报一条白名单事件；所有异常都被吞掉。 */
 export function trackEvent(event: AnalyticsEventName, props?: AnalyticsProps): void {
   try {
-    const body = JSON.stringify(buildEventPayload(event, props, resolveIdentity()));
+    const body = JSON.stringify(buildEventPayload(event, props, resolveIdentity(), isInternalBrowser()));
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
       const sent = navigator.sendBeacon(
         EVENTS_URL,

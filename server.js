@@ -1076,6 +1076,7 @@ app.post('/api/events', (req, res) => {
     event: validated.event,
     props: validated.props,
     anonId: validated.anonId,
+    ...(validated.internal ? { internal: true } : {}),
     ts: new Date().toISOString(),
   }));
   return res.status(202).json({ ok: true });

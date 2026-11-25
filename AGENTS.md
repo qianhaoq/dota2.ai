@@ -45,6 +45,7 @@ The match page is a review written by a tool-calling agent over a parsed replay 
 - **Output language follows the UI `lang`** (zh → 简体中文, en → English; `lib/aiLanguage.js`). UI copy is bilingual; English is the default.
 - **A replay is fetched only from a Valve or Perfect World replay host, for that match, without following redirects**, and the worker that parses it is never public (`lib/matchReview/replayIngest/discovery.js`, `lib/agent/tracePipeline.js`).
 - **A bulk model run can draw on the account production uses.** Before probes, batch reviews or any run of more than a few dozen calls: query the provider's balance, state the expected spend, and stop well above zero.
+- **Mark your own runs on the live site.** The funnel (`scripts/funnel.mjs`) and the logs are how we know whether a visitor who asked for a review got one, and our own checks used to be counted as visitors. A browser of ours: open any page once with `?internal=1` (it sticks in that browser's storage; `?internal=0` clears it) — a Playwright check opens its first page that way. A script or `curl` that starts a parse or a review on production: send `X-Dota2ai-Internal: 1`. The mark only labels: nothing is served differently.
 
 ## Handoff
 
