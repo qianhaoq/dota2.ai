@@ -49,7 +49,9 @@ const T = {
     your_play: { en: 'Mostly your own play', zh: '主要在你自己的打法' }, team_play: { en: 'Mostly the team, not you', zh: '主要在队伍，不在你' },
     enemy_play: { en: 'Mostly what the enemy did', zh: '主要是对面做对了' }, line_ups: { en: 'Mostly the line-ups', zh: '主要在阵容' }, unclear: { en: 'The data does not settle it', zh: '数据定不了' },
   } as Record<string, Record<Lang, string>>,
-  replan: { en: 'You can also have the whole review rewritten against “{p}” (about two to three minutes).', zh: '也可以按「{p}」重写整份复盘（约 2–3 分钟）。' },
+  replan: { en: 'You can also have the whole review rewritten against “{p}”{t}.', zh: '也可以按「{p}」重写整份复盘{t}。' },
+  // The default model's time. Another model's is said where the rewrite is started (the page), so not here.
+  replanTime: { en: ' (about two to three minutes)', zh: '（约 2–3 分钟）' },
   replanGo: { en: 'Rewrite it', zh: '重写' },
   intentBusy: { en: 'The coach is still answering your last question. Pick again when it is done.', zh: '教练还在回答上一个问题，等它答完再选。' },
   intentAsk: { en: 'What were you going for this game? Tell the coach: it checks your plan against the replay.', zh: '这局你本来想怎么打？告诉教练，它会对照录像回答。' },
@@ -158,7 +160,7 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
   );
 };
 
-export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, goalContext = null, board = null }) => {
+export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode; /** The review is the default model's, whose rewrite takes the usual two to three minutes; false for another model's. */ quick?: boolean }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, goalContext = null, board = null, quick = true }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   // The release, and the hotfix within it when the game was played after one ("7.41f（2026-10-07 热修复后）").
   const patchName = (dp: { name: string; hotfix?: string }) => t(dp.hotfix ? T.patchHotfix : T.patchPlain).replace('{p}', dp.name).replace('{d}', (dp.hotfix ?? '').slice(0, 10));
@@ -219,7 +221,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
               <div className="ag-intent-row">{PLAN_INTENTS.map((p) => <button key={p.key} type="button" className="ag-btn" onClick={() => { const sent = onPlan(planQuestion(p.key, lang)!); setPlanHeld(!sent); if (sent) setAsked(p.key); }}>{p.label[lang]}</button>)}</div>
               {planHeld && <p className="ag-intent-note" role="status">{t(T.intentBusy)}</p>}
               {asked && onReplan && asked !== review.plan && planByKey(asked) && (
-                <p className="ag-intent-note">{t(T.replan).replace('{p}', planByKey(asked)!.label[lang])} <button type="button" className="ag-link" onClick={() => onReplan(asked)}>{t(T.replanGo)}</button></p>
+                <p className="ag-intent-note">{t(T.replan).replace('{p}', planByKey(asked)!.label[lang]).replace('{t}', quick ? t(T.replanTime) : '')} <button type="button" className="ag-link" onClick={() => onReplan(asked)}>{t(T.replanGo)}</button></p>
               )}
             </div>
           )}
