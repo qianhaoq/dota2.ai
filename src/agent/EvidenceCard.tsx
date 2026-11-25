@@ -120,6 +120,8 @@ const T = {
   meAtTower: { hit_it: { en: 'you hit it', zh: '你在打' }, near: { en: 'you were near', zh: '你在附近' }, dead: { en: 'you were dead', zh: '你阵亡中' }, elsewhere: { en: 'you were elsewhere', zh: '你在别处' }, alive_tower_spot_unknown: { en: 'you were alive', zh: '你存活' } } as Record<string, Record<Lang, string>>,
   afterItems: { en: 'Fight after big items', zh: '大件后的团战' },
   lostFewer: { my_team: { en: 'your team lost fewer', zh: '我方少死' }, enemy: { en: 'they lost fewer', zh: '对方少死' }, even: { en: 'even', zh: '持平' } } as Record<string, Record<Lang, string>>,
+  richest: { my_team: { en: 'Their richest', zh: '对方经济最高' }, enemy: { en: 'Your richest', zh: '我方经济最高' } } as Record<string, Record<Lang, string>>,
+  richestAlive: { en: 'alive', zh: '已复活' },
   roshanBy: { my_team: { en: 'Your team took Roshan', zh: '我方打掉肉山' }, enemy: { en: 'They took Roshan', zh: '对方打掉肉山' } } as Record<string, Record<Lang, string>>,
   aegisHolder: { en: 'Aegis', zh: '不朽盾' },
   aegisEnd: { used: { en: 'used', zh: '用掉' }, expired: { en: 'expired', zh: '过期' }, game_ended: { en: 'game ended', zh: '比赛结束' }, unknown: { en: 'unknown', zh: '不明' } } as Record<string, Record<Lang, string>>,
@@ -261,6 +263,7 @@ const TOTALS: Record<string, Record<Lang, string>> = {
   pushed_and_took_nothing: { en: 'pushed, took nothing', zh: '推了没拆掉' },
   neither: { en: 'took nothing', zh: '什么都没拿' },
   fights: { en: 'fights', zh: '场数' },
+  my_team_wins_with_enemy_richest_long_dead: { en: 'Your wins with their richest dead 30 s+', zh: '赢团后对方经济最高者 30 秒以上未复活' },
   fights_after_enemy_big_items: { en: 'Fights after only their big items', zh: '只有对方刚出大件后的团战' },
   fights_after_my_team_big_items: { en: 'Fights after only your big items', zh: '只有我方刚出大件后的团战' },
   my_team_lost_fewer: { en: 'your team lost fewer', zh: '我方少死' },
@@ -603,6 +606,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           {r.buildings_winners_took.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}
           {r.roshan_at && <span className="ag-chip">{t(T.roshanBy[r.won_by])} {r.roshan_at}</span>}
         </p>
+        {r.losers_richest && <p className="ag-rec-line"><span>{t(T.richest[r.won_by])}</span><span className={`ag-chip ${mine ? 'is-enemy' : 'is-ally'}`}>{N(r.losers_richest.hero)}{r.losers_richest.still_dead_10s_after === true ? r.losers_richest.respawn_in != null && <em>{r.losers_richest.respawn_in}{t(T.sec)}</em> : r.losers_richest.still_dead_10s_after === false && <em>{t(T.richestAlive)}</em>}</span></p>}
         {r.losers_took_back.length > 0 && <p className="ag-rec-line"><span>{t(T.tookBack[r.won_by])}</span>{r.losers_took_back.map((b: any, i: number) => <span key={i} className="ag-chip">{b.clock} · {buildingLabel(b.building, lang)}</span>)}</p>}
       </div>
     );

@@ -19,6 +19,8 @@
  *   often that side lost fewer heroes, by whether it was ahead in gold; and the gold-ahead side's rate in the others.
  * - Ultimate edges: every moment a side came to have two or more ultimates ready than the other, whether a fight
  *   began (its first damage exchange) within 90 s, and how it went for that side.
+ * - After won fights, by the losers' richest hero (games with net worth): with three or more losers still dead, how
+ *   often the winners took a building when the richest was among them 30 s or more from respawning, or alive.
  * - Roshans (roshan_report): each Aegis pickup, whether it was used or expired, and the buildings each side took
  *   in the 300 s after.
  *
@@ -34,7 +36,8 @@ import { gunzipSync } from 'node:zlib';
 import { fightReport, ultimateEdges } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
-import { afterWonFights, afterTowersFell, fightsAfterBigItems } from '../lib/agent/decisionPoints.js';
+import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_RESPAWN, STILL_DEAD_AFTER } from '../lib/agent/decisionPoints.js';
+import { moneyOf } from '../lib/agent/farmReport.js';
 import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
 import { observersNear } from '../packages/review-engine/src/trace/state.js';
@@ -74,7 +77,17 @@ for (const f of files) {
       moments.push({ allies, enemyHalf, died: died[i].some((d) => d > sec && d <= sec + 20), obs: o && { mine: o[h.team], enemy: o[h.team === 2 ? 3 : 2] } });
     });
   }
-  for (const x of afterWonFights(trace)) afterWins.push({ stillDead: x.still_dead.length, did: x.did });
+  // The losers' richest at the fight's start (the replay's net worth here: no match data), null when unknown.
+  const money = moneyOf(trace, null, Math.floor((trace.t0 + trace.n - 1) / 60));
+  for (const x of afterWonFights(trace)) {
+    const rich = richestOf(trace, money, x.loser, Math.floor(x.from / 60));
+    const dead = rich == null ? null : x.still_dead.find((d) => d.i === rich);
+    // Dead with no known respawn time, or not sampled at that second: not known, never counted as alive (review of #312).
+    const richest = rich == null ? null
+      : dead ? (dead.respawn_in == null ? 'not_known' : dead.respawn_in >= LONG_RESPAWN ? 'dead_30s_or_more' : 'dead_under_30s')
+        : stateAt(trace, rich, x.to + STILL_DEAD_AFTER) ? 'alive' : 'not_known';
+    afterWins.push({ stillDead: x.still_dead.length, did: x.did, richest });
+  }
   // Fights with a winner: those after big items of one side only (by that side's gold lead), and those after none.
   const withItems = new Map(fightsAfterBigItems(trace).fights.map((x) => [x.fight, x]));
   const adv = goldAdvantage(trace);
@@ -188,6 +201,11 @@ out.ultimate_edges = {
   edge_side_lost_more: ultEdges.filter((x) => x.result === 'more').length,
   even: ultEdges.filter((x) => x.result === 'even').length,
 };
+// Wins with three or more losers still dead, by whether the losers' richest was one of them (games with net worth).
+out.after_won_fights_three_or_more_still_dead_by_losers_richest = ['dead_30s_or_more', 'dead_under_30s', 'alive', 'not_known'].map((k) => {
+  const list = afterWins.filter((x) => x.stillDead >= 3 && x.richest === k);
+  return { losers_richest: k, fights: list.length, took_a_building: list.filter((x) => x.did === 'took_a_building').length, neither: list.filter((x) => x.did === 'neither').length };
+});
 out.after_won_fights = [0, 1, 2, 3, 4].map((n) => {
   const list = afterWins.filter((x) => (n === 4 ? x.stillDead >= 4 : x.stillDead === n));
   return { losers_still_dead_10s_after: n === 4 ? '4 or more' : String(n), fights: list.length, ...Object.fromEntries(DID.map((d) => [d, list.filter((x) => x.did === d).length])) };
@@ -222,6 +240,8 @@ else {
   console.log(`${'  no fresh big item: side ahead in gold'.padEnd(46)} ${fb.no_fresh_big_item.side_ahead_in_gold_lost_fewer}/${fb.no_fresh_big_item.fights}`);
   const ue = out.ultimate_edges;
   console.log(`\n${ue.moments} moments a side came to have 2+ more ultimates ready; a fight within 90 s in ${ue.fight_within_90s}: that side lost fewer ${ue.edge_side_lost_fewer}, more ${ue.edge_side_lost_more}, even ${ue.even}`);
+  console.log(`\nwon fights with 3+ losers still dead 10 s after, by the losers' richest (games with net worth)\n`);
+  for (const x of out.after_won_fights_three_or_more_still_dead_by_losers_richest) console.log(`${`  richest ${x.losers_richest}`.padEnd(46)} n=${String(x.fights).padEnd(4)} building ${x.took_a_building}  neither ${x.neither}`);
   console.log(`\n${afterTowers.length} tier 1–3 towers taken; what the takers did in the next 120 s, and how often they lost one meanwhile\n`);
   for (const x of out.after_towers_fell) console.log(`${`  tier ${x.tier}, ${x.after_a_won_fight ? 'after a won fight' : 'no won fight'}`.padEnd(46)} n=${String(x.towers).padEnd(4)} another ${x.took_another_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}  lost one ${x.takers_lost_a_building_meanwhile}`);
   for (const x of out.after_won_fights) console.log(`${`  losers still dead 10 s after: ${x.losers_still_dead_10s_after}`.padEnd(46)} n=${String(x.fights).padEnd(4)} building ${x.took_a_building}  Roshan ${x.took_roshan}  push for nothing ${x.pushed_and_took_nothing}  neither ${x.neither}`);
