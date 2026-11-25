@@ -136,10 +136,10 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(slow).toBeTypeOf('function'));
     fireEvent.click(await screen.findByRole('button', { name: 'Change hero' }));
     fireEvent.click(await screen.findByRole('button', { name: /Axe/ }));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Axe verdict.' })).toBeTruthy();
+    expect(await screen.findByText('Axe verdict.')).toBeTruthy();
     slow();
     await new Promise((r) => setTimeout(r, 100));
-    expect(screen.getByRole('heading', { level: 1, name: 'Axe verdict.' })).toBeTruthy();
+    expect(screen.getByText('Axe verdict.')).toBeTruthy();
     cleanup();
     // Running, then a poll fails (502), then ready: the page never shows "the review did not come out".
     mockFetch({
@@ -151,7 +151,8 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
     await waitFor(() => expect(polls).toBeGreaterThanOrEqual(2), { timeout: 5000 });
     expect(screen.queryByRole('heading', { name: 'The review did not come out' })).toBeNull();
-    expect(await screen.findByRole('heading', { level: 1, name: review.verdict }, { timeout: 6000 })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: review.findings[0].title }, { timeout: 6000 })).toBeTruthy();
+    expect(screen.getByText(review.verdict)).toBeTruthy();
   }, 20000);
 
   it('an availability answer for the match the reader left does not replace the new match\'s', async () => {
@@ -694,7 +695,7 @@ describe('AgentMatchPage', () => {
     ui.lang = 'zh';
     const Where = () => { const l = useLocation(); return <p data-testid="where">{l.search}</p>; };
     render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=zh']}><Where /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
-    const section = (await screen.findByRole('heading', { level: 2, name: '运营思路' })).closest('section')!;
+    const section = (await screen.findByRole('heading', { level: 3, name: '运营思路' })).closest('details')!;
     // Nothing is offered until the reader asks about a plan.
     expect(within(section as HTMLElement).queryByRole('button', { name: '重写' })).toBeNull();
     fireEvent.click(within(section as HTMLElement).getByRole('button', { name: '抓人带节奏' }));
@@ -1311,20 +1312,26 @@ describe('AgentMatchPage', () => {
       '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
-    const section = (await screen.findByRole('heading', { level: 2, name: 'The game plan' })).closest('section')!;
+    const section = (await screen.findByRole('heading', { level: 3, name: 'The game plan' })).closest('details')!;
     const plan = within(section as HTMLElement);
     expect(plan.getByText('How it went').nextElementSibling!.textContent).toBe(game_plan.course);
     expect(plan.getByText('Your part').nextElementSibling!.textContent).toBe(game_plan.your_part);
     expect(plan.getByText('The line-ups').nextElementSibling!.textContent).toBe(game_plan.line_ups);
     expect(plan.getByText('What you were up against').nextElementSibling!.textContent).toBe(game_plan.strengths);
-    expect(plan.getByText('Mostly the team, not you').parentElement!.textContent).toBe('Mostly the team, not youThe team did not turn fights into towers.');
+    expect(section.querySelector('.ag-plan-why')!.textContent).toBe('Mostly the team, not youThe team did not turn fights into towers.');
+    // Folded, its heading already says what the game is put down to.
+    expect(section.querySelector('summary')!.textContent).toBe('The game planMostly the team, not you');
     // Its evidence opens like a finding's.
     expect(plan.getByText('The enemy took 3 towers.')).toBeTruthy();
     expect(plan.getByText('20:00')).toBeTruthy();
-    // It stands before the findings: the game as a whole, then the player's own play.
-    const heads = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(heads.indexOf('The game plan')).toBeLessThan(heads.indexOf('What decided it'));
-    expect(heads.indexOf('The game plan')).toBeGreaterThan(heads.indexOf('How the game went'));
+    // The reader's own lesson comes first; the game as a whole after it, folded, with the plan after the story.
+    const lesson = screen.getByRole('heading', { level: 2, name: 'Practise this next game' });
+    const whole = screen.getByRole('heading', { level: 2, name: 'The whole game' });
+    expect(lesson.compareDocumentPosition(whole) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(section.closest('section')!.querySelector('h2')).toBe(whole);
+    expect((section as HTMLDetailsElement).open).toBe(false);
+    const folds = Array.from(section.closest('section')!.querySelectorAll('details > summary h3')).map((h) => h.textContent);
+    expect(folds).toEqual(['How the game went', 'The game plan']);
 
     // A moment is pinned for a typed question; picking a plan does not send it along, and leaves it pinned.
     fireEvent.click(screen.getAllByRole('button', { name: 'Ask about this' })[0]);
@@ -1349,7 +1356,7 @@ describe('AgentMatchPage', () => {
     });
     ui.lang = 'zh';
     page('/r/9100904020?hero=beastmaster&lang=zh');
-    const section = (await screen.findByRole('heading', { level: 2, name: '运营思路' })).closest('section')!;
+    const section = (await screen.findByRole('heading', { level: 3, name: '运营思路' })).closest('details')!;
     const plan = within(section as HTMLElement);
     expect(plan.queryByText('走势')).toBeNull();
     expect(plan.getByText('这局你本来想怎么打？告诉教练，它会对照录像回答。')).toBeTruthy();
@@ -1365,7 +1372,7 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/发育拖后期再打团/)).toBeNull();
   });
 
-  it('ready: the scoreboard (both line-ups, the reader marked) sits right under the verdict', async () => {
+  it('ready: the scoreboard (both line-ups, the reader marked) is part of the whole game, folded, after the lesson', async () => {
     mockFetch({
       'ref=overview': overview,
       '/review?': { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
@@ -1373,14 +1380,18 @@ describe('AgentMatchPage', () => {
       '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
-    const verdict = await screen.findByRole('heading', { level: 1, name: review.verdict });
+    const lead = await screen.findByRole('heading', { level: 1, name: review.findings[0].title });
     const scoreboard = await screen.findByRole('region', { name: 'Scoreboard' });
     expect(scoreboard.querySelectorAll('li')).toHaveLength(board.players.length);
     expect(scoreboard.querySelector('li.is-me')?.textContent).toContain('Beastmaster');
-    // Under the verdict, before the story of the game.
-    expect(verdict.compareDocumentPosition(scoreboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const story = screen.getByRole('heading', { level: 2, name: 'How the game went' });
-    expect(scoreboard.compareDocumentPosition(story) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // After the lesson, in its own fold of the whole game, which starts closed; the story of the game comes before it.
+    expect(lead.compareDocumentPosition(scoreboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const fold = scoreboard.closest('details')!;
+    expect(fold.querySelector('summary')!.textContent).toBe('Line-ups and scoreboard');
+    expect(fold.open).toBe(false);
+    expect(fold.closest('section')!.querySelector('h2')!.textContent).toBe('The whole game');
+    const story = screen.getByRole('heading', { level: 3, name: 'How the game went' });
+    expect(story.compareDocumentPosition(scoreboard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('ready: the review, its evidence record on demand, and a question about that moment', async () => {
@@ -1392,8 +1403,11 @@ describe('AgentMatchPage', () => {
       '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
-    expect(await screen.findByRole('heading', { level: 1, name: review.verdict })).toBeTruthy();
-    expect(screen.getByText('Roar on the wrong target')).toBeTruthy();
+    // The headline is the first finding; the sentence about the whole game stands with the whole game.
+    expect(await screen.findByRole('heading', { level: 1, name: 'Roar on the wrong target' })).toBeTruthy();
+    expect(screen.getByText('Three of ten went to Axe.').className).toBe('ag-lead-claim');
+    expect(screen.getByText(review.verdict).closest('section')!.querySelector('h2')!.textContent).toBe('The whole game');
+    expect(screen.getByRole('heading', { level: 2, name: 'Practise this next game' }).closest('section')!.textContent).toContain('Keep it for her.');
     expect(screen.getByText(/1 removed for lack of evidence/)).toBeTruthy();
     // The turning fight is marked on the strip once the overview arrives.
     expect(await screen.findByText(/▲ 30:26 the turn/)).toBeTruthy();
