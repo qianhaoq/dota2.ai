@@ -166,6 +166,14 @@ describe('createPatchNews', () => {
     const news = createPatchNews({ fetchJson: valve({ list: list() }).fetchJson, now: () => (T742 + 31 * day) * 1000 });
     expect((await news.get())?.forCoach).toBeNull();
   });
+
+  it('the lag line goes at day 30 on an instance that built the news before it, with the same patch still newest (review of #326)', async () => {
+    let t = (T742 + 29 * day) * 1000;
+    const news = createPatchNews({ fetchJson: valve({ list: list() }).fetchJson, now: () => t, ttlMs: 1000 });
+    expect((await news.get())?.forCoach).not.toBeNull();
+    t = (T742 + 31 * day) * 1000;
+    expect((await news.get())?.forCoach).toBeNull();
+  });
 });
 
 describe('GET /api/patch/news', () => {

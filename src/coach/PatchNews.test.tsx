@@ -8,7 +8,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { CURRENT_PATCH, readPatchNews } from './patch';
 
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'zh', setLang: () => {} }) }));
-const { CoachHome } = await import('./CoachApp');
+const { CoachHome, PATCH_NEWS_RETRIES } = await import('./CoachApp');
 const NAMES = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/coach/data/names.json'), 'utf8'));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -46,7 +46,7 @@ describe('current patch on the home page', () => {
     update: { version: '7.43a', date: '2026-12-24', url: 'https://www.dota2.com/patches/7.43a', changes: { heroes: 40, items: 4 } },
   };
   const serve = (body: unknown, status = 200) => vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    expect(url).toBe('/api/patch/news');
+    if (url !== '/api/patch/news') return new Response('{}', { status: 404 });
     return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   }));
 
@@ -76,5 +76,50 @@ describe('current patch on the home page', () => {
     expect(readPatchNews({ ...live, version: CURRENT_PATCH.version, highlights: [], picking: true })?.highlights).toEqual(CURRENT_PATCH.highlights);
     expect(readPatchNews({ ...live, highlights: [], picking: true })?.highlights).toEqual([]);
     expect(readPatchNews({ ...live, forCoach: null, update: null })).toMatchObject({ forCoach: null, update: null });
+  });
+
+  it('while highlights are being chosen it asks again past the browser cache, until they are there (review of #326)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const answers = [{ ...live, highlights: [], picking: true }, { ...live, highlights: [], picking: true }, live];
+      const calls: (RequestInit | undefined)[] = [];
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+        if (url !== '/api/patch/news') return new Response('{}', { status: 404 });
+        calls.push(init);
+        return new Response(JSON.stringify(answers[Math.min(calls.length - 1, answers.length - 1)]), { status: 200 });
+      }));
+      const { container } = render(<MemoryRouter><CoachHome /></MemoryRouter>);
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0]?.cache).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(20_000);
+      await waitFor(() => expect(calls).toHaveLength(2));
+      await vi.advanceTimersByTimeAsync(20_000);
+      await waitFor(() => expect(container.querySelectorAll('.cx-patch-list li')).toHaveLength(2));
+      expect(calls).toHaveLength(3);
+      expect(calls.slice(1).map((c) => c?.cache)).toEqual(['no-store', 'no-store']);
+      // Done choosing: no more requests.
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(calls).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives up after PATCH_NEWS_RETRIES retries if the server never finishes choosing', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      let n = 0;
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+        if (url !== '/api/patch/news') return new Response('{}', { status: 404 });
+        n += 1;
+        return new Response(JSON.stringify({ ...live, highlights: [], picking: true }), { status: 200 });
+      }));
+      render(<MemoryRouter><CoachHome /></MemoryRouter>);
+      await waitFor(() => expect(n).toBe(1));
+      for (let i = 0; i < PATCH_NEWS_RETRIES + 3; i++) await vi.advanceTimersByTimeAsync(20_000);
+      expect(n).toBe(PATCH_NEWS_RETRIES + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

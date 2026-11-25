@@ -500,21 +500,23 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
 
 /**
  * The patch news from the server (live from Valve), starting from the one this build shipped with.
- * While the server is still choosing the highlights it is asked once more, 20 s later.
+ * While the server is still choosing the highlights it is asked again every 20 s, past the browser
+ * cache, up to PATCH_NEWS_RETRIES times.
  */
+export const PATCH_NEWS_RETRIES = 6;
 function useLivePatchNews(): PatchNewsData {
   const [news, setNews] = useState<PatchNewsData>(SHIPPED_NEWS);
   useEffect(() => {
     const ctl = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const load = async (again: boolean) => {
-      const got = await fetchPatchNews(ctl.signal);
+    const load = async (attempt: number) => {
+      const got = await fetchPatchNews(ctl.signal, attempt > 0);
       const read = got && readPatchNews(got.body);
       if (ctl.signal.aborted) return;
       if (read) setNews(read);
-      if (got?.picking && again) timer = setTimeout(() => void load(false), 20_000);
+      if (got?.picking && attempt < PATCH_NEWS_RETRIES) timer = setTimeout(() => void load(attempt + 1), 20_000);
     };
-    void load(true);
+    void load(0);
     return () => { ctl.abort(); if (timer) clearTimeout(timer); };
   }, []);
   return news;
