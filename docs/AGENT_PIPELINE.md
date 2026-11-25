@@ -68,14 +68,26 @@ earlier release — letter releases included (7.41b, 7.41c …) — reads prices
 recipes, item effects, cooldowns and spell-immunity flags from
 `lib/data/constants/patches/<release>.json`. `scripts/coach-patch-snapshots.mjs`
 builds them from Valve's game files (github.com/dotabuff/d2vpkr, one commit per
-game update) with OpenDota's own builder, each as it stood just before the next
-release rolled out, so hotfixes between letters are included. Items that did
+game update) with OpenDota's own builder, each as it rolled out. Items that did
 not exist then are not offered.
+
+Hotfixes between letters change numbers too (7.41f's hotfix of 7 October 2026
+raised Necronomicon from 2050 to 2700 gold). Every game update within a release
+whose item or ability data differs from the one before is a hotfix with its own
+snapshot (`<release>.<date>T<hhmm>.json`, listed under the release's `hotfixes`
+in the index, each with its rollout window and match ids), and a game is told
+the numbers of the hotfix it was played on (`hotfix` in `data_patch`; the page
+names it). An update OpenDota's builder cannot read is listed with `data: null`:
+a game played on it is given the update before and told the numbers may differ
+(not exact), never that update's numbers as if known. A game that started while
+a hotfix was rolling out is in a known release but an unknown hotfix, and the
+page says just that. Professional item shares stay per letter release (a hotfix
+is too short for a pro sample).
 
 `lib/data/constants/patches/index.json` lists the releases: when each rolled out
 (the game update's commit; the repository is polled every 20 minutes, so the
 rollout lies in the 20 minutes before it) and the match ids on either side
-(`scripts/patch-match-ids.mjs`, start times from STRATZ). A game's release is
+(`scripts/patch-match-ids.mjs`, start times from STRATZ; hotfixes too). A game's release is
 read from its start time when the match data has one, else from its match id —
 so it is known even when OpenDota is down. A game that started during a
 rollout, one older than 7.40, or one known only by OpenDota's patch number

@@ -4,7 +4,8 @@
  * ids on either side of its rollout: the last match that started before
  * `rollout_from` and the first that started at or after `rollout_by`
  * (scripts/coach-patch-snapshots.mjs writes those two times). Match ids grow
- * with time, so a game's release is then known from its id alone — without
+ * with time, so a game's release (and the hotfix within it: each of a release's
+ * `hotfixes` gets the same two ids) is then known from its id alone — without
  * the match data (OpenDota can be down; the replay trace has no date).
  *
  *   STRATZ_API_TOKEN=… node scripts/patch-match-ids.mjs
@@ -68,7 +69,11 @@ async function around(t, start) {
 
 // Newest first: each search starts from the ids the newer one found, a few million back instead of from the anchor.
 let from = await near(ANCHOR);
-for (const r of [...index.releases].sort((a, b) => Date.parse(b.rollout_by) - Date.parse(a.rollout_by))) {
+// A release's hotfixes have rollouts too: a game's hotfix is then known from its id as well.
+const labels = new Map();
+const rollouts = [...index.releases];
+for (const r of index.releases) for (const h of r.hotfixes ?? []) { labels.set(h, `${r.name} hotfix ${h.rollout_by.slice(0, 16)}`); rollouts.push(h); }
+for (const r of rollouts.sort((a, b) => Date.parse(b.rollout_by) - Date.parse(a.rollout_by))) {
   // Already found: the next search starts from this release's last match before its rollout.
   if (r.first_match_id_after) { from = await near(r.last_match_id_before); continue; }
   const by = await around(Math.floor(Date.parse(r.rollout_by) / 1000), from);
@@ -77,7 +82,7 @@ for (const r of [...index.releases].sort((a, b) => Date.parse(b.rollout_by) - Da
   r.first_match_id_after = by.after.id;
   // It started before this rollout and after every older one: where the next, older search starts.
   from = before.before;
-  console.log(`${r.name}: last match before ${r.rollout_from} ${r.last_match_id_before}, first at or after ${r.rollout_by} ${r.first_match_id_after}`);
+  console.log(`${labels.get(r) ?? r.name}: last match before ${r.rollout_from} ${r.last_match_id_before}, first at or after ${r.rollout_by} ${r.first_match_id_after}`);
 }
 writeFileSync(FILE, `${JSON.stringify(index, null, 2)}\n`);
 console.log(`${requests} requests`);
