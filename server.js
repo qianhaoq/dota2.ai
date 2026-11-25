@@ -77,6 +77,7 @@ import { createAgentRouter } from './lib/agent/router.js';
 import { createAgentService } from './lib/agent/service.js';
 import { warmShowcase } from './lib/agent/showcase.js';
 import { createPatchRouter } from './lib/patch/router.js';
+import { createPatchNews } from './lib/patch/news.js';
 import { createTaskAuth, createTaskDispatcher } from './lib/agent/tasks.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from './lib/agent/stores.js';
 import { createRemotePipeline, createTracePipeline } from './lib/agent/tracePipeline.js';
@@ -970,6 +971,12 @@ app.use(createAgentRouter({
 // calls the same model under the same budget as the review's.
 app.use(createPatchRouter({
   complete: agentComplete,
+  // Home page patch news, live from Valve; the model only picks which of Valve's lines to show, once per patch (kept in AGENT_BUCKET).
+  news: process.env.PATCH_NEWS_DISABLED === '1' ? null : createPatchNews({
+    complete: agentComplete,
+    store: agentBlobs ? createJsonStore(agentBlobs) : null,
+    log: (msg) => console.warn(`[patch] ${msg}`),
+  }),
   resolveClientIp,
   llm: reviewLlmLimit,
   guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },

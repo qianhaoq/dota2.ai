@@ -231,6 +231,8 @@
 .hm-patch-line h2 { margin: 0; font-size: var(--fs-body); display: inline; }
 .hm-patch-count { color: var(--text-2); font-size: var(--fs-meta); }
 .hm-patch-count::after { content: ' ▾'; color: var(--text-3); }
+.hm-patch-update { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 8px 0 0; font-size: var(--fs-meta); color: var(--text-2); }
+.hm-patch-update time { color: var(--text-3); }
 .hm-patchbar .cx-patch-items { margin-top: 10px; }
 .hm-patchbar .cx-patch-actions { display: flex; align-items: center; gap: 12px; }
 @media (max-width: 1023px) { .hm-first .hm-map { min-height: 0; } }
