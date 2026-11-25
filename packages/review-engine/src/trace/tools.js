@@ -20,6 +20,7 @@ import {
   abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, manaCost, mostMana, nameId, nameOf, nearby, region, seconds, stateAt, unit,
 } from './query.js';
 import { TURN_RULE, turnOf } from './turningFight.js';
+import { LANES_END, LANES_RULE, lostFromTheLanes } from './lanesLost.js';
 
 const TEAM = { 2: 'radiant', 3: 'dire' };
 /** Hero deaths closer together than this belong to one fight. */
@@ -180,8 +181,8 @@ export const GOLD_LEAD_SOURCE = { match_record: 'match_data_gold_lead', replay_g
 export function matchOverview(trace, _args = {}, ctx = {}) {
   // Deaths only: the log names the unit that landed the last hit (a summon,
   // a creep), which is not the scoreboard's kill credit.
-  const died = trace.heroes.map(() => 0);
-  for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) died[v] += 1; }
+  const died = trace.heroes.map(() => 0); const diedEarly = trace.heroes.map(() => 0);
+  for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) { died[v] += 1; if (d[0] < LANES_END) diedEarly[v] += 1; } }
   const view = viewer(trace, ctx);
   const gold = goldLead(trace, ctx);
   const adv = gold?.lead ?? null;
@@ -217,12 +218,14 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
   const turn = view && adv ? turnOf(fightRows, { end: end ? end[0] : null }) : null;
   // A lost fight that could be the turn has no gold lead around it, and the game did not end on a fight: not known.
   const turnNotKnown = Boolean(view && loser === view.team && turn && !turn.fight && turn.undecided.length);
+  // Was a lost game lost from the lanes? From the viewer's side, and only off a lead that is gold earned.
+  const lanes = view && loser === view.team ? lostFromTheLanes(adv ? adv.map((v) => mine(v)) : null, { source: gold?.source }) : null;
   return {
     ref: 'overview', ref_scope: 'summary',
     match_id: trace.match_id,
     duration: end ? { t: end[0], clock: clock(end[0]) } : null,
     ...(view ? { told_from: { hero: view.key, note: 'my_team is this hero\'s team; a negative gold lead means my_team was behind' }, result: loser ? (loser === view.team ? 'my_team_lost' : 'my_team_won') : null } : { winner: loser ? TEAM[loser === 2 ? 3 : 2] : null }),
-    heroes: trace.heroes.map((h, i) => ({ hero: h.key, ...(view ? sideOf(view, trace, i) : { team: TEAM[h.team] }), deaths: died[i], final_level: stateAt(trace, i, trace.t0 + trace.n - 1)?.level ?? null })),
+    heroes: trace.heroes.map((h, i) => ({ hero: h.key, ...(view ? sideOf(view, trace, i) : { team: TEAM[h.team] }), deaths: died[i], deaths_before_10: diedEarly[i], final_level: stateAt(trace, i, trace.t0 + trace.n - 1)?.level ?? null })),
     ...(view ? { fights_total: fightRows.length, fights_tally: tally } : {}),
     // What the gold leads below were read from: gold earned (the match record's, or summed from the replay's combat
     // log), or the replay's net worth graph — items and gold held, which a death or a buyback moves.
@@ -232,13 +235,15 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
     // that much of its lead. Absent for a game my_team
     // won or one with no Ancient down: the fight a winner's lead fell most in is not where the game turned.
     ...(view && loser === view.team ? { turning_fight: !turn || turnNotKnown ? null : turn.fight ? { ref: turn.fight.ref, from: turn.fight.from, to: turn.fight.to, clock: turn.fight.clock, my_team_deaths: turn.fight.my_team_deaths, enemy_deaths: turn.fight.enemy_deaths, my_team_gold_lead_before: turn.fight.my_team_gold_lead_before, my_team_gold_lead_2min_after: turn.fight.my_team_gold_lead_2min_after, ...(turn.by === 'game_ended_after_it' ? { game_ended_within_two_minutes: true } : {}), rule: TURN_RULE } : { none: true } } : {}),
+    // For a game my_team lost: was it lost from the lanes (lanesLost.js)? null: not known (see gaps) — never "no".
+    ...(lanes ? { lanes: lanes.unknown ? null : { ...lanes, rule: LANES_RULE } } : {}),
     fights: fightRows,
     buildings: trace.buildings.map((b) => ({
       ref: `building:${unit(trace.names[b[1]])}`, t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]),
       ...(view ? { lost_by: buildingTeam(trace.names[b[1]]) === view.team ? 'my_team' : 'enemy' } : { taken_by: TEAM[b[2]] ?? null }),
       row: b[3],
     })),
-    gaps: [...gapsFor(trace, ['roshan', 'vision']), ...(adv ? [] : [{ topic: 'gold_advantage', reason: 'not_in_trace' }]), ...(turnNotKnown ? [{ topic: 'turning_fight', reason: 'no_gold_lead_around_a_lost_fight_that_could_be_it' }] : [])],
+    gaps: [...gapsFor(trace, ['roshan', 'vision']), ...(adv ? [] : [{ topic: 'gold_advantage', reason: 'not_in_trace' }]), ...(turnNotKnown ? [{ topic: 'turning_fight', reason: 'no_gold_lead_around_a_lost_fight_that_could_be_it' }] : []), ...(lanes?.unknown && lanes.unknown !== 'no_gold_lead' ? [{ topic: 'lanes', reason: lanes.unknown }] : [])],
   };
 }
 
@@ -910,7 +915,7 @@ const TIME = { type: ['number', 'string'], description: 'Game time: seconds, or 
 export const TRACE_TOOLS = [
   {
     name: 'match_overview',
-    description: 'The whole game at a glance, from the replay: both line-ups with deaths and final level, every fight (three or more hero deaths close together) with who lost fewer heroes, and when each building fell. Start here to find the fights and moments worth a closer look.',
+    description: 'The whole game at a glance, from the replay: both line-ups with deaths and final level, every fight (three or more hero deaths close together) with who lost fewer heroes, and when each building fell. For a lost game, told from one hero: the fight it turned on, and whether it was lost from the lanes. Start here to find the fights and moments worth a closer look.',
     input_schema: { type: 'object', properties: {}, additionalProperties: false },
     run: matchOverview,
   },

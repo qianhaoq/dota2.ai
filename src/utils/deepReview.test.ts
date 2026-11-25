@@ -541,8 +541,13 @@ describe('runDeepReview', () => {
     expect(s).toContain('the one you would keep if you could keep only one');
     expect(s).toContain('The finding that accounts for the most of their deaths goes first');
     expect(s).toContain('what they did in the turning fight goes first when no other finding accounts for more than half of their deaths');
-    // Early deaths lead only when they are the bulk of the deaths or the game was short.
-    expect(s).toContain('Deaths before 10:00 go first only when they are the largest group of the player\'s deaths, or the game ended before 25:00');
+    // Early deaths lead only when they are the bulk of the deaths, or the game was lost from the lanes and the
+    // player's own lane was part of it. (A first version demoted them in every game of 25 minutes or more: a
+    // Luna who died five times before 10:00 in a game 4,096 behind at 10:00 then led with the lane in 1 review of 3.)
+    expect(s).toContain('Deaths before 10:00 go first only when they are the largest group of the player\'s deaths, or when the game was lost from the lanes and the player\'s own lane was part of it: match_overview\'s lanes.lost_from_the_lanes is true and the player\'s deaths_before_10 is four or more. Otherwise they are the second or third finding, however early they came.');
+    expect(s).not.toContain('the game ended before 25:00');
+    expect(s).toContain('lanes says whether it was lost from the lanes: lost_from_the_lanes is true when my_team was 2000 gold or more behind at 10:00 and not ahead in any minute after');
+    expect(s).toContain('(null: not known, do not say either way)');
     // The old rule ("…and earliest") put two lane deaths first in games of 42 and 45 minutes.
     expect(s).not.toContain('and earliest');
     // Still the player's own doing, and still no blame for the team's fights.
