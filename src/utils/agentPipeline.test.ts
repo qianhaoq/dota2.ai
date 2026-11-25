@@ -340,7 +340,8 @@ describe('parse jobs in the service', () => {
     const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
     const svc: any = createAgentService({ traces: { get: async () => JSON.parse(fixture.toString()) }, complete: null, docs });
     expect(await svc.status(ID, 'beastmaster', 'zh')).toEqual({
-      status: 'ready', model: 'm', tool_calls: 4,
+      // The version it was found under, for the page to say back with a reader's word on a finding.
+      status: 'ready', model: 'm', tool_calls: 4, prompt_version: DEEP_REVIEW_PROMPT_VERSION,
       review: { schema: 'dota2.ai/deep-review@1', verdict: '经济从 -4972 掉到 -7895。', mainline: ['一起倒下（4 换 3），比分 3:1'], findings: [{ title: 't', claim: 'c', evidence: [{ refs: ['fight:3', 'timeline:2194-2233'], clock: '20:20', fact: '死 3 个' }] }] },
     });
   });
