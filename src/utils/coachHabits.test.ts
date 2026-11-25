@@ -17,7 +17,8 @@ describe('habitGoal', () => {
       const h = HABITS[k as keyof typeof HABITS];
       const summary = h.from === 'deaths' ? deaths : roar;
       expect(h.at.length === 2 ? summary[h.at[0]] : summary, k).toHaveProperty(h.at[h.at.length - 1]);
-      if (h.unsure) expect(deaths.deaths_not_known).toHaveProperty(h.unsure);
+      // What it could not decide is kept beside it: over the deaths, or over the ability's casts.
+      if (h.unsure) expect(h.from === 'deaths' ? deaths.deaths_not_known : roar.casts_not_known, k).toHaveProperty(h.unsure);
     }
   });
   it('half as often as this game, from the replay\'s own count; code writes the label', () => {
@@ -93,10 +94,74 @@ describe('the deaths summary of a hero who never died', () => {
 describe('habits counted over one ability', () => {
   it('ability_audit counts what the casts have in common, by game time', () => {
     // Ten roars: none into spell immunity without a stun (it goes through), four whose target was alive 12 s later.
-    expect(roar.casts_where).toEqual({ target_spell_immune_and_not_stunned: [], enemy_hero_target_alive_12s_later: ['7:54', '17:32', '22:01', '37:56'], no_hero_target_and_at_most_one_enemy_hero_damaged: [] });
+    expect(roar.casts_where).toEqual({ target_spell_immune_and_not_stunned: [], enemy_hero_target_alive_12s_later: ['7:54', '17:32', '22:01', '37:56'], no_hero_target_near_enemies_at_most_one_damaged_and_none_died: [] });
     // Checked against the casts themselves.
     expect(roar.casts.filter((c: any) => !c.deaths_within_12s.some((d: any) => d.hero === c.target)).map((c: any) => c.clock)).toEqual(['7:54', '17:32', '22:01', '37:56']);
   });
+  it('a cast that came to little: near an enemy hero, at most one damaged, none of them dead — not travel or farming, not a pick-off', () => {
+    const KEY = 'no_hero_target_near_enemies_at_most_one_damaged_and_none_died';
+    const audit = (hero: string, ability: string): any => abilityAudit(trace, { hero, ability });
+    // What the count used to be: every cast with no hero target whose damage reached one enemy hero or none.
+    const atMostOne = (a: any) => a.casts.filter((c: any) => c.target == null && c.enemy_heroes_damaged_within_15s.length <= 1);
+    const nobodyNear = (c: any) => c.enemies_within_1300.length === 0 && c.enemy_heroes_damaged_within_15s.length === 0;
+    const pickOff = (c: any) => c.deaths_within_12s.some((d: any) => c.enemy_heroes_damaged_within_15s.includes(d.hero));
+
+    // Wild Axes, 98 casts: 90 reached one enemy hero or none. 60 of those were thrown with no enemy hero near (farming), and 19 killed the hero they hit.
+    const axes = audit('beastmaster', 'wild_axes');
+    expect([axes.casts_total, atMostOne(axes).length, atMostOne(axes).filter(nobodyNear).length, atMostOne(axes).filter((c: any) => !nobodyNear(c) && pickOff(c)).length]).toEqual([98, 90, 60, 19]);
+    expect(axes.casts_where[KEY]).toEqual(['2:51', '3:38', '7:26', '8:15', '10:12', '17:34', '22:02', '25:13', '27:54', '28:12', '41:54']);
+    // Mystic Flare, 24 casts: 19 reached one enemy hero or none — and 11 of those killed the hero they hit.
+    const flare = audit('skywrath_mage', 'mystic_flare');
+    expect([flare.casts_total, atMostOne(flare).length, atMostOne(flare).filter(pickOff).length]).toEqual([24, 19, 11]);
+    expect(flare.casts_where[KEY]).toEqual(['10:25', '15:19', '17:35', '24:01', '25:57', '36:00', '39:23', '39:41']);
+    // 17:35 hit Necrophos and it was Venomancer who died: somebody else's kill does not make it a pick-off.
+    expect(flare.casts.find((c: any) => c.clock === '17:35')).toMatchObject({ enemy_heroes_damaged_within_15s: ['necrolyte'], deaths_within_12s: [expect.objectContaining({ hero: 'venomancer' })] });
+    // Bedlam: of three casts that reached one hero, two killed her.
+    expect(audit('dark_willow', 'bedlam').casts_where[KEY]).toEqual(['22:03']);
+    // The count is exactly those three conditions, read back off the cast records.
+    for (const a of [axes, flare]) expect(a.casts_where[KEY]).toEqual(atMostOne(a).filter((c: any) => !nobodyNear(c) && !pickOff(c)).map((c: any) => c.clock));
+    // The habit a rule can be counted by reads this count, and says what it counts.
+    expect(HABITS.reached_few.at).toEqual(['casts_where', KEY]);
+    const goal: any = habitGoal('reached_few', flare, { hero: 'skywrath_mage', hero_id: 101, ability: 'mystic_flare', name: { en: 'Mystic Flare', zh: '神秘之耀' } })!;
+    expect(goal.label).toEqual({ en: expect.stringContaining('Mystic Flare casts near enemy heroes that damaged at most one and killed none'), zh: expect.stringContaining('在敌方英雄附近放出、至多伤到一人且没有击杀的神秘之耀') });
+  });
+
+  it('a cast whose surroundings were not sampled is neither counted nor ruled out, and the check then cannot say "met"', () => {
+    const KEY = 'no_hero_target_near_enemies_at_most_one_damaged_and_none_died';
+    const of = { hero: 'beastmaster', hero_id: 38, ability: 'wild_axes', name: { en: 'Wild Axes', zh: '野性之斧' } };
+    const full: any = abilityAudit(trace, { hero: 'beastmaster', ability: 'wild_axes' });
+    expect(full.casts_where[KEY]).toHaveLength(11);
+    expect(full.casts_not_known).toEqual({ enemy_heroes_near: 0 });
+    // The same game with every position sample gone: nothing about the casts, their damage or the deaths changes.
+    const blank = { ...trace, states: trace.states.map((st: any) => ({ ...st, x: st.x.map(() => null), y: st.y.map(() => null) })) };
+    const blind: any = abilityAudit(blank, { hero: 'beastmaster', ability: 'wild_axes' });
+    // Nine are still known to have been near an enemy hero: each damaged one. The other two, and the sixty thrown
+    // with nobody near, are now not known — not quietly read as travel or farming.
+    expect(blind.casts_where[KEY]).toEqual(['2:51', '3:38', '8:15', '10:12', '17:34', '22:02', '27:54', '28:12', '41:54']);
+    expect(blind.casts_not_known).toEqual({ enemy_heroes_near: 62 });
+    expect(blind.casts_where[KEY].length + blind.casts_not_known.enemy_heroes_near).toBe(11 + 60);
+    // One enemy hero unsampled is enough: a cast that damaged nobody could have been thrown beside her.
+    const pa = trace.heroes.findIndex((h: any) => h.key === 'phantom_assassin');
+    const onePartial: any = abilityAudit({ ...trace, states: trace.states.map((st: any, i: number) => (i === pa ? { ...st, x: st.x.map(() => null), y: st.y.map(() => null) } : st)) }, { hero: 'beastmaster', ability: 'wild_axes' });
+    expect(onePartial.casts_not_known.enemy_heroes_near).toBeGreaterThan(0);
+    expect(onePartial.casts_where[KEY].length).toBeLessThanOrEqual(11);
+
+    // The next game's check: a goal of at most 10.
+    const goal = { kind: 'replay_habit', habit: 'reached_few', max: 10, baseline: 20, ...of };
+    expect(evaluateHabit(goal, full, 40)).toMatchObject({ result: 'missed' });
+    expect(evaluateHabit({ ...goal, max: 11 }, full, 40)).toMatchObject({ result: 'met' });
+    // Nine counted and sixty-two not known: under the goal only if none of the sixty-two counts, which nobody can say.
+    expect(evaluateHabit(goal, blind, 40)).toEqual({ result: 'unknown', evidence: { en: '9 Wild Axes casts near enemy heroes that damaged at most one and killed none, but some casts have no position sample: cannot tell.', zh: '在敌方英雄附近放出、至多伤到一人且没有击杀的野性之斧 9 次，但有施放缺少位置采样，无法判定。' } });
+    // Over the goal on what is known alone: missed, whatever the rest was.
+    expect(evaluateHabit({ ...goal, max: 8 }, blind, 40)).toMatchObject({ result: 'missed' });
+    // A summary from before the count of the undecided was kept cannot rule them out.
+    const { casts_not_known: _gone, ...older } = full;
+    expect(evaluateHabit({ ...goal, max: 11 }, older, 40)).toMatchObject({ result: 'unknown' });
+    // The other counts over casts need no position, and their checks are as before.
+    expect(HABITS.target_survived.unsure).toBeNull();
+    expect(HABITS.reached_few.unsure).toBe('enemy_heroes_near');
+  });
+
   it('the check carries whose ability it is, and is worded with the ability\'s name', () => {
     expect(habitGoal('target_survived', roar, ROAR)).toEqual({
       kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, ...ROAR,
