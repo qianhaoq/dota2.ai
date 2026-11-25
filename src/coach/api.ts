@@ -145,3 +145,15 @@ export function fetchCoachCards(matchId: string, seat: number): Promise<CardSurf
 
 /** Test hook: forget cached surfaces. */
 export function clearCardsCache() { cardsCache.clear(); }
+
+/** The home page's patch news (live from Valve); the raw body, read by readPatchNews. Null when unavailable. */
+export async function fetchPatchNews(signal?: AbortSignal): Promise<{ body: unknown; picking: boolean } | null> {
+  try {
+    const res = await fetch('/api/patch/news', { signal });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return { body, picking: Boolean(body?.picking) };
+  } catch {
+    return null;
+  }
+}
