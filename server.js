@@ -875,7 +875,9 @@ app.use(createCoachRouter({
   limiter: coachService.limiter,
   cases: coachCases,
   // Link previews for /r/:matchId (built app only; dev serves via Vite).
-  page: { html: readBuiltIndexHtml },
+  // `review`: a shared review link's preview leads with that review's verdict, when it is stored.
+  // agentService is created below; it is only called per request, after startup.
+  page: { html: readBuiltIndexHtml, review: (matchId, hero, lang, plan) => agentService.peek(matchId, hero, lang, plan) },
   recent: coachRecent,
   ask: {
     // Same-origin guard for the browser route only; MCP callers are agents.

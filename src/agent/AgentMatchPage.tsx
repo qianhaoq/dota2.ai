@@ -13,6 +13,7 @@ import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { MatchBoard } from './MatchBoard';
 import { PLANS, planKey } from '../../lib/agent/plans.js';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
+import { ShareBar } from './ShareBar';
 import './agent.css';
 
 /**
@@ -36,6 +37,7 @@ const T = {
   notFoundBody: { en: 'Neither the match record nor a parsed replay could be found. Check the ID, or try again in a minute.', zh: '既没有找到比赛记录，也没有解析过的录像。请检查编号，或一分钟后再试。' },
   pick: { en: 'Which hero did you play?', zh: '你玩的是哪个英雄？' },
   pickSub: { en: 'The review is written for one player: what you could have done differently.', zh: '复盘是写给一个人的：你本可以怎么打。' },
+  fromTeam: { en: 'A teammate sent you this game.', zh: '队友把这局发给了你。' },
   radiant: { en: 'Radiant', zh: '天辉' },
   dire: { en: 'Dire', zh: '夜魇' },
   change: { en: 'Change hero', zh: '换英雄' },
@@ -103,6 +105,9 @@ export const AgentMatchPage: React.FC = () => {
   const { matchId = '' } = useParams();
   const [search, setSearch] = useSearchParams();
   const { lang } = useLang();
+  // How this visit arrived: a teammate's "send to my team" link, or someone's own review shared.
+  const refParam = search.get('ref');
+  const arrivedBy = refParam === 'team' || refParam === 'share' ? refParam : null;
   const t = (b: Bi) => b[lang];
   const valid = parseMatchInput(matchId) === matchId;
   const [avail, setAvail] = useState<Availability | null>(null);
@@ -355,7 +360,7 @@ export const AgentMatchPage: React.FC = () => {
     if (!ready || !heroKey) return;
     want(false);
     markReviewed(matchId);
-    trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang });
+    trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang, ...(arrivedBy ? { ref: arrivedBy } : {}) });
     // The review the reader asked for here, and waited out, is done: counted once per review, whatever was
     // seen on this match before (a review that was already there counts as viewed, not as this).
     if (intent) trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}`, 'review_ready', { matchId, hero: heroKey, lang });
@@ -365,7 +370,7 @@ export const AgentMatchPage: React.FC = () => {
   // Someone opened this game's page: the top of the funnel, once per match per session, before anything
   // has loaded, so one who leaves while it loads is counted too.
   useEffect(() => {
-    if (valid) trackOnce(matchId, 'match_opened', { matchId, lang });
+    if (valid) trackOnce(matchId, 'match_opened', { matchId, lang, ...(arrivedBy ? { ref: arrivedBy } : {}) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
@@ -453,6 +458,7 @@ export const AgentMatchPage: React.FC = () => {
         {header}
         <section className="ag-pick">
           <h1>{t(T.pick)}</h1>
+          {arrivedBy === 'team' && <p className="ag-pick-from">{t(T.fromTeam)}</p>}
           <p className="ag-pick-sub">{t(T.pickSub)}</p>
           {search.has('hero') && <p className="ag-warn" role="alert">{t(T.unknownHero)}</p>}
           {(['radiant', 'dire'] as const).map((team) => (
@@ -477,6 +483,7 @@ export const AgentMatchPage: React.FC = () => {
     return (
       <Shell wide>
         {header}
+        <ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} />
         <div className="ag-layout">
           <div>
             <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} />
