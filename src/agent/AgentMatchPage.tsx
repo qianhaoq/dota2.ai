@@ -498,7 +498,7 @@ export const AgentMatchPage: React.FC = () => {
       )}
     </header>
   );
-  const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} replayLead={avail?.trace ? avail.radiant_net_worth_lead ?? null : null} />;
+  const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} replayLead={avail?.trace ? avail.radiant_gold_lead ?? avail.radiant_net_worth_lead ?? null : null} replayLeadIs={avail?.trace && avail.radiant_gold_lead ? 'gold' : 'net_worth'} />;
   const dead = (title: Bi, body: Bi, retry = false) => (
     <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={go} disabled={Boolean(wait)}>{t(T.retry)}</button>}{(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}</div>{scoreboard}</Shell>
   );

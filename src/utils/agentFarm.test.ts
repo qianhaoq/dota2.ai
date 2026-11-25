@@ -120,4 +120,26 @@ describe('window_report without the match data\'s gold', () => {
     expect((windowReport(trace, { hero: 'beastmaster' }, { match }) as any).lead_source).toBe('match_data_gold_lead');
     expect((windowReport(trace, { hero: 'beastmaster' }, {}) as any).windows).toBeNull();
   });
+
+  it('with the replay\'s gold rows it reads gold earned from the combat log, to the last minute, and says so', () => {
+    // The rows today's builder keeps for this game (packages/review-engine/test/fixtures/gold-9100904020.json.gz).
+    const real = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/gold-9100904020.json.gz', import.meta.url))).toString());
+    const withRows = { ...trace, gold: real.gold.map(([m, npc, reason, sum]: [number, string, number, number]) => [m, trace.names.indexOf(npc), reason, sum]) };
+    const r: any = windowReport(withRows, { hero: 'beastmaster' }, {});
+    expect(r.lead_source).toBe('replay_gold_log_lead');
+    // Dire's lead as the match record has it (its radiant_gold_adv is 482 at 10:00 and 2245 the other way at 20:00), within a few gold.
+    expect([real.radiant_gold_adv[10], real.radiant_gold_adv[20]]).toEqual([482, -2245]);
+    expect(r.my_team_gold_lead_at).toMatchObject({ '10:00': -475, '20:00': 2246 });
+    expect(r.windows.length).toBeGreaterThan(0);
+    // The record wins when the caller has it; the net worth graph is read only when there are no rows.
+    expect((windowReport(withRows, { hero: 'beastmaster' }, { match: { ...match, radiant_gold_adv: real.radiant_gold_adv } }) as any).lead_source).toBe('match_data_gold_lead');
+    expect((windowReport({ ...withNetWorth, gold: withRows.gold }, { hero: 'beastmaster' }, {}) as any).lead_source).toBe('replay_gold_log_lead');
+  });
+
+  it('farm_report does not read a net worth graph that is not one point a minute', () => {
+    const sparse = { ...trace, net_worth: trace.heroes.map((h: any) => series(h.key).slice(0, 21).map((g) => g + 600)) };
+    const r: any = farmReport(sparse, { hero: 'beastmaster' }, {});
+    expect(r.money).toBeNull();
+    expect(r.gaps).toContainEqual({ topic: 'money_by_minute', reason: 'no_per_minute_gold_in_the_match_data_and_no_net_worth_in_the_replay' });
+  });
 });
