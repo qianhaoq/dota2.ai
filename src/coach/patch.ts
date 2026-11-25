@@ -48,3 +48,52 @@ export const CURRENT_PATCH = {
 };
 
 export const itemIcon = (key: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/${key}.png`;
+
+/** The home page's patch block. Live from GET /api/patch/news (lib/patch/news.js); CURRENT_PATCH until it answers. */
+export interface PatchNews {
+  version: string;
+  date: string;
+  url: string;
+  newItems: { key: string; en: string; zh: string }[];
+  highlights: Bi[];
+  forCoach: Bi | null;
+  update: { version: string; date: string; url: string; changes: { heroes: number; items: number } } | null;
+}
+
+export const SHIPPED_NEWS: PatchNews = {
+  version: CURRENT_PATCH.version,
+  date: CURRENT_PATCH.date,
+  url: CURRENT_PATCH.notesUrl,
+  newItems: CURRENT_PATCH.newItems,
+  highlights: CURRENT_PATCH.highlights,
+  forCoach: CURRENT_PATCH.forCoach,
+  update: null,
+};
+
+const str = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const VALVE = /^https:\/\/www\.dota2\.com\/patches\/[\w.]+$/;
+
+/**
+ * The server's answer as the page shows it, or null when it is not one (the page then keeps what it has).
+ * Valve's Chinese line is missing until Valve translates it: the English one stands in.
+ * Highlights still being chosen for the patch this build shipped with: the shipped ones stand in.
+ */
+export function readPatchNews(body: unknown): PatchNews | null {
+  const b = body as Record<string, any> | null;
+  if (!b || !str(b.version) || !DATE.test(b.date) || !VALVE.test(b.url) || !Array.isArray(b.newItems) || !Array.isArray(b.highlights)) return null;
+  const bi = (x: any): Bi | null => (x && str(x.en) ? { en: x.en, zh: str(x.zh) ? x.zh : x.en } : null);
+  const highlights = b.highlights.map(bi).filter((h: Bi | null): h is Bi => h !== null);
+  const u = b.update;
+  return {
+    version: b.version,
+    date: b.date,
+    url: b.url,
+    newItems: b.newItems.filter((it: any) => it && /^[a-z0-9_]+$/.test(it.key) && str(it.en)).map((it: any) => ({ key: it.key, en: it.en, zh: str(it.zh) ? it.zh : it.en })),
+    highlights: highlights.length ? highlights : b.version === SHIPPED_NEWS.version ? SHIPPED_NEWS.highlights : [],
+    forCoach: bi(b.forCoach),
+    update: u && str(u.version) && DATE.test(u.date) && VALVE.test(u.url) && Number.isInteger(u.changes?.heroes) && Number.isInteger(u.changes?.items)
+      ? { version: u.version, date: u.date, url: u.url, changes: { heroes: u.changes.heroes, items: u.changes.items } }
+      : null,
+  };
+}
