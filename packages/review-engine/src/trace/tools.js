@@ -115,6 +115,9 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
   const advAt = (t) => (adv && Number.isFinite(adv[Math.floor(t / 60)]) ? adv[Math.floor(t / 60)] : null);
   const mine = (radiantAdv) => (radiantAdv == null ? null : view.team === 2 ? radiantAdv : -radiantAdv);
   const end = trace.buildings.find((b) => /_fort$/.test(trace.names[b[1]]));
+  // Who lost is whose Ancient fell — never who landed the last hit on it: that row often names no side (7 of
+  // 32 parsed games), and read that way both teams were told they lost. 0: no Ancient fell in this trace.
+  const loser = end ? buildingTeam(trace.names[end[1]]) : 0;
   const tally = { my_team_lost_fewer: 0, enemy_lost_fewer: 0, even: 0 };
   const fightRows = fights(trace).map((f, fi) => {
     const lost = { 2: 0, 3: 0 };
@@ -141,7 +144,7 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
     ref: 'overview', ref_scope: 'summary',
     match_id: trace.match_id,
     duration: end ? { t: end[0], clock: clock(end[0]) } : null,
-    ...(view ? { told_from: { hero: view.key, note: 'my_team is this hero\'s team; a negative gold lead means my_team was behind' }, result: end ? (end[2] === view.team ? 'my_team_won' : 'my_team_lost') : null } : { winner: end ? TEAM[end[2]] ?? null : null }),
+    ...(view ? { told_from: { hero: view.key, note: 'my_team is this hero\'s team; a negative gold lead means my_team was behind' }, result: loser ? (loser === view.team ? 'my_team_lost' : 'my_team_won') : null } : { winner: loser ? TEAM[loser === 2 ? 3 : 2] : null }),
     heroes: trace.heroes.map((h, i) => ({ hero: h.key, ...(view ? sideOf(view, trace, i) : { team: TEAM[h.team] }), deaths: died[i], final_level: stateAt(trace, i, trace.t0 + trace.n - 1)?.level ?? null })),
     ...(view ? { fights_total: fightRows.length, fights_tally: tally } : {}),
     fights: fightRows,

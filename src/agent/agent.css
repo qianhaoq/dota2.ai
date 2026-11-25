@@ -334,6 +334,7 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 
 /* Share the finished review: to the team (no hero in the link), or this review itself. */
 .ag-modelbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 18px; color: var(--text-3); font-size: var(--fs-meta); }
+.ag-modelbar.is-after { margin: 14px 0 0; }
 .ag-share { margin: 4px 0 18px; }
 .ag-share-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .ag-share-row .ag-btn { padding: 7px 16px; }
