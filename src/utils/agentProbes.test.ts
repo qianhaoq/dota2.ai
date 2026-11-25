@@ -266,6 +266,14 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe({ ...two, expect: { buildings: 6 } }, 'They took 3 buildings, 2 towers and 1 barracks.', names)).toMatchObject({ pass: false, wrong: ['3'] });
     expect(gradeProbe(three, '拆了三座，两座塔、一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(three, 'They took 3 buildings including 2 towers and 1 barracks.', names).pass).toBe(true);
+    // Equal numbers are no evidence of a total: three parts of named kinds add up; a count of "buildings" followed
+    // by counts of towers and barracks is their total, whether or not the parts listed add up to it.
+    const four = { ...two, expect: { buildings: 4 } };
+    expect(gradeProbe(four, 'We took two towers and one melee barracks and one ranged barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two towers and one melee barracks and one ranged barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1+1'] });
+    expect(gradeProbe(four, '拆了两座塔、一座近战兵营和一座远程兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(three, 'They took 3 buildings, 2 towers and a barracks.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two, expect: { buildings: 1 } }, 'We took 1 building, 1 tower.', names).pass).toBe(true);
     // A verb after the join is still a join; a count after a word naming a side is not a part of ours.
     expect(gradeProbe(three, 'We took two towers and destroyed one barracks.', names).pass).toBe(true);
     expect(gradeProbe(two, 'We took two towers and destroyed one barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
