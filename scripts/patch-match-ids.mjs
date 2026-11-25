@@ -8,7 +8,7 @@
  * `hotfixes` gets the same two ids) is then known from its id alone — without
  * the match data (OpenDota can be down; the replay trace has no date).
  *
- *   STRATZ_API_TOKEN=… node scripts/patch-match-ids.mjs
+ *   STRATZ_API_TOKEN=… node scripts/patch-match-ids.mjs [match id to search back from]
  *
  * Start times of matches: STRATZ (match(id).startDateTime). Ids are searched by
  * halving the range, twenty neighbouring ids per request (not every id is a
@@ -20,8 +20,19 @@ const TOKEN = process.env.STRATZ_API_TOKEN?.trim();
 if (!TOKEN) { console.error('STRATZ_API_TOKEN is not set'); process.exit(2); }
 const FILE = new URL('../lib/data/constants/patches/index.json', import.meta.url);
 const index = JSON.parse(readFileSync(FILE, 'utf8'));
-/** A match known to have started after every rollout looked for (anchors the search). */
-const ANCHOR = Number(process.argv[2] ?? 9100904020);
+/**
+ * A match the search starts from, which must have started after the rollouts it looks for. Given, or by default a
+ * recent public match (OpenDota) set back a few hours: STRATZ has a game only some hours after it is played.
+ */
+const RECENT_LAG_IDS = 400_000;
+async function recentMatch() {
+  const res = await fetch('https://api.opendota.com/api/publicMatches', { headers: { 'user-agent': 'dota2.ai data refresh' } });
+  const list = res.ok ? await res.json() : [];
+  const newest = Math.max(...list.map((m) => Number(m.match_id)).filter(Number.isFinite));
+  if (!Number.isFinite(newest)) throw new Error('no recent match from OpenDota: pass a match id as the first argument');
+  return newest - RECENT_LAG_IDS;
+}
+const ANCHOR = process.argv[2] ? Number(process.argv[2]) : await recentMatch();
 const PROBE = 20;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -76,6 +87,8 @@ for (const r of index.releases) for (const h of r.hotfixes ?? []) { labels.set(h
 for (const r of rollouts.sort((a, b) => Date.parse(b.rollout_by) - Date.parse(a.rollout_by))) {
   // Already found: the next search starts from this release's last match before its rollout.
   if (r.first_match_id_after) { from = await near(r.last_match_id_before); continue; }
+  // Rolled out after the newest match STRATZ has: left for the next run (its games are told they may be in it).
+  if (Date.parse(r.rollout_by) / 1000 > from.start) { console.log(`${labels.get(r) ?? r.name}: rolled out after match ${from.id}, the newest searched from; left for a later run`); continue; }
   const by = await around(Math.floor(Date.parse(r.rollout_by) / 1000), from);
   const before = await around(Math.floor(Date.parse(r.rollout_from) / 1000), by.after);
   r.last_match_id_before = before.before.id;
