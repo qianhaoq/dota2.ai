@@ -17,13 +17,26 @@ describe('the review page funnel from event logs', () => {
       { type: 'other', event: 'match_opened', anonId: 'anon_x' },
     ];
     const out = summarizeFunnel(entries);
-    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2 });
-    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1 });
+    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0 });
+    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0 });
     expect(out.anonymous).toBe(1);
     expect(out.events).toMatchObject({ match_opened: 3, chat_asked: 2, review_viewed: 3 });
     expect(out.days).toEqual(['2026-11-24', '2026-11-25']);
     // A return before the first match page, or with no time on it, does not count as coming back.
     expect(summarizeFunnel([line('return_visit', 'anon_d', {}, '2026-11-23T10:00:00Z'), line('match_opened', 'anon_d'), { type: 'analytics', event: 'return_visit', anonId: 'anon_d', props: {} }]).ofOpened.returned).toBe(0);
+  });
+
+  it('counts who shared, and who came in by a shared link', () => {
+    const out = summarizeFunnel([
+      line('match_opened', 'anon_a'), line('report_shared', 'anon_a', { target: 'team', method: 'copy' }), line('report_shared', 'anon_a', { target: 'self', method: 'copy' }),
+      line('match_opened', 'anon_t', { ref: 'team' }), line('review_ready', 'anon_t'),
+      line('match_opened', 'anon_s', { ref: 'share' }),
+      // A ref the page does not send is not an arrival by link.
+      line('match_opened', 'anon_z', { ref: 'ad' }),
+    ]);
+    expect(out.browsers).toMatchObject({ opened: 4, shared: 1, arrived: 2, own: 1 });
+    expect(out.ofOpened).toMatchObject({ shared: 1, arrived: 2 });
+    expect(out.events.report_shared).toBe(2);
   });
 
   it('reads gcloud JSON output (entries with jsonPayload) and one object per line', () => {

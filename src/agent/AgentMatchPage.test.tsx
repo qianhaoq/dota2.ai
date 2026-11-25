@@ -840,6 +840,81 @@ describe('AgentMatchPage', () => {
     expect((await events()).filter((e) => e.event === 'match_opened')).toHaveLength(1);
   }, 10000);
 
+  describe('sharing the finished review', () => {
+    const readyRoutes = (id: string) => ({
+      'ref=overview': overview,
+      '/review?': { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      [`/api/agent/${id}`]: { trace: true, model_configured: true, heroes },
+    });
+    const clipboard = (impl: (t: string) => Promise<void>) => {
+      const writeText = vi.fn(impl);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      return writeText;
+    };
+    afterEach(() => { delete (navigator as any).clipboard; delete (navigator as any).share; });
+
+    it('"send to my team" copies a link with no hero in it; "copy my link" keeps the hero and the plan', async () => {
+      ui.lang = 'zh';
+      const writeText = clipboard(async () => {});
+      mockFetch(readyRoutes('8000000041'));
+      page('/r/8000000041?hero=beastmaster&plan=push&lang=zh');
+      fireEvent.click(await screen.findByRole('button', { name: '发给队友' }));
+      await screen.findByRole('button', { name: '链接已复制，发到队伍群里吧' });
+      const origin = window.location.origin;
+      expect(writeText).toHaveBeenLastCalledWith(`我把咱们这局 #8000000041 复盘了，选你玩的英雄，看看你这局能改什么： ${origin}/r/8000000041?ref=team&lang=zh`);
+      fireEvent.click(screen.getByRole('button', { name: '复制我的链接' }));
+      await screen.findByRole('button', { name: '已复制' });
+      expect(writeText).toHaveBeenLastCalledWith(`${origin}/r/8000000041?hero=beastmaster&plan=push&ref=share&lang=zh`);
+      const shared = (await events()).filter((e) => e.event === 'report_shared').map((e) => e.props);
+      expect(shared).toEqual([{ target: 'team', method: 'copy', matchId: '8000000041' }, { target: 'self', method: 'copy', matchId: '8000000041' }]);
+    });
+
+    it('a browser that refuses the clipboard is shown the link to copy by hand, and nothing is counted as shared', async () => {
+      clipboard(async () => { throw new Error('denied'); });
+      mockFetch(readyRoutes('8000000042'));
+      page('/r/8000000042?hero=beastmaster&lang=en');
+      fireEvent.click(await screen.findByRole('button', { name: 'Copy my link' }));
+      const box = await screen.findByLabelText('Copy this link:');
+      expect((box as HTMLInputElement).value).toBe(`${window.location.origin}/r/8000000042?hero=beastmaster&ref=share`);
+      expect((await events()).filter((e) => e.event === 'report_shared')).toEqual([]);
+    });
+
+    it('on a phone the share sheet opens; closing it neither copies nor counts', async () => {
+      const writeText = clipboard(async () => {});
+      const matchMedia = window.matchMedia;
+      window.matchMedia = ((q: string) => ({ matches: q === '(pointer: coarse)', media: q, addEventListener() {}, removeEventListener() {} })) as any;
+      let answer: () => Promise<void> = async () => {};
+      const share = vi.fn(() => answer());
+      (navigator as any).share = share;
+      try {
+        mockFetch(readyRoutes('8000000043'));
+        page('/r/8000000043?hero=beastmaster&lang=en');
+        fireEvent.click(await screen.findByRole('button', { name: 'Send to my team' }));
+        await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+        expect(share).toHaveBeenCalledWith({ text: 'I had our game #8000000043 reviewed — pick the hero you played and see what you could change:', url: `${window.location.origin}/r/8000000043?ref=team` });
+        await waitFor(async () => expect((await events()).filter((e) => e.event === 'report_shared').map((e) => e.props)).toEqual([{ target: 'team', method: 'native', matchId: '8000000043' }]));
+        answer = async () => { throw Object.assign(new Error('closed'), { name: 'AbortError' }); };
+        fireEvent.click(screen.getByRole('button', { name: 'Send to my team' }));
+        await waitFor(() => expect(share).toHaveBeenCalledTimes(2));
+        await new Promise((r) => setTimeout(r, 50));
+        expect(writeText).not.toHaveBeenCalled();
+        expect((await events()).filter((e) => e.event === 'report_shared')).toHaveLength(1);
+      } finally { window.matchMedia = matchMedia; }
+    });
+
+    it('a teammate who comes in by the team link is told so, picks their hero, and the visit is counted as arrived by it', async () => {
+      mockFetch(readyRoutes('8000000044'));
+      page('/r/8000000044?ref=team');
+      expect(await screen.findByText('A teammate sent you this game.')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: /Beastmaster/ }));
+      await screen.findByRole('button', { name: 'Send to my team' });
+      await waitFor(async () => expect((await events()).map((e) => e.event)).toContain('review_viewed'));
+      const sent = await events();
+      expect(sent.find((e) => e.event === 'match_opened').props).toEqual({ matchId: '8000000044', lang: 'en', ref: 'team' });
+      expect(sent.find((e) => e.event === 'review_viewed').props).toEqual({ ui: 'agent', hero: 'beastmaster', lang: 'en', ref: 'team', matchId: '8000000044' });
+    });
+  });
+
   it('the page counts as opened before anything has loaded, so a reader who leaves while it loads is counted', async () => {
     mockFetch({ '/api/agent/8000000033': () => new Promise(() => {}), '/api/coach/8000000033': () => new Promise(() => {}) });
     page('/r/8000000033?lang=en');

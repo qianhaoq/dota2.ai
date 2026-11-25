@@ -22,6 +22,9 @@ describe('validateAnalyticsEvent', () => {
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
+    // How a match page was arrived at: a shared link's ref, and no other value.
+    expect(validateAnalyticsEvent({ event: 'match_opened', props: { matchId: '9100904020', lang: 'en', ref: 'team' } })).toMatchObject({ ok: true, props: { matchId: '9100904020', lang: 'en', ref: 'team' } });
+    expect(validateAnalyticsEvent({ event: 'match_opened', props: { matchId: '9100904020', lang: 'en', ref: 'newsletter' } })).toMatchObject({ ok: true, props: { matchId: '9100904020', lang: 'en' } });
     for (const [event, props, expected] of cases) {
       expect(validateAnalyticsEvent({ event, props, anonId: 'anon_123e4567-e89b-42d3-a456-426614174000' })).toEqual({
         ok: true, event, props: expected, anonId: 'anon_123e4567-e89b-42d3-a456-426614174000',
