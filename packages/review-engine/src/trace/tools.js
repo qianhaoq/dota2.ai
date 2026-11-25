@@ -19,6 +19,7 @@ import { heroStateAt, observersNear, boughtBackAfter } from './state.js';
 import {
   abilityLevel, clock, cooldownLeft, dist, heldAt, heroIndex, heroOfName, immunityIntervals, manaCost, mostMana, nameId, nameOf, nearby, region, seconds, stateAt, unit,
 } from './query.js';
+import { TURN_RULE, turnOf } from './turningFight.js';
 
 const TEAM = { 2: 'radiant', 3: 'dire' };
 /** Hero deaths closer together than this belong to one fight. */
@@ -212,6 +213,10 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
       ...(adv ? { my_team_gold_lead_before: mine(advAt(f.from)), my_team_gold_lead_2min_after: mine(advAt(f.to + 120)) } : {}),
     };
   });
+  // The fight the game turned on, against the viewer's team: said only with a gold lead to read it from.
+  const turn = view && adv ? turnOf(fightRows, { end: end ? end[0] : null }) : null;
+  // A lost fight that could be the turn has no gold lead around it, and the game did not end on a fight: not known.
+  const turnNotKnown = Boolean(view && loser === view.team && turn && !turn.fight && turn.undecided.length);
   return {
     ref: 'overview', ref_scope: 'summary',
     match_id: trace.match_id,
@@ -222,13 +227,18 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
     // What the gold leads below were read from: gold earned (the match record's, or summed from the replay's combat
     // log), or the replay's net worth graph — items and gold held, which a death or a buyback moves.
     ...(gold ? { gold_lead_source: GOLD_LEAD_SOURCE[gold.source] } : {}),
+    // The fight the game turned on, for a game my_team lost. null: not known — no gold lead at all, or none around a
+    // lost fight that could be it (see gaps). { none: true }: every such fight has its gold, and none cost my_team
+    // that much of its lead. Absent for a game my_team
+    // won or one with no Ancient down: the fight a winner's lead fell most in is not where the game turned.
+    ...(view && loser === view.team ? { turning_fight: !turn || turnNotKnown ? null : turn.fight ? { ref: turn.fight.ref, from: turn.fight.from, to: turn.fight.to, clock: turn.fight.clock, my_team_deaths: turn.fight.my_team_deaths, enemy_deaths: turn.fight.enemy_deaths, my_team_gold_lead_before: turn.fight.my_team_gold_lead_before, my_team_gold_lead_2min_after: turn.fight.my_team_gold_lead_2min_after, ...(turn.by === 'game_ended_after_it' ? { game_ended_within_two_minutes: true } : {}), rule: TURN_RULE } : { none: true } } : {}),
     fights: fightRows,
     buildings: trace.buildings.map((b) => ({
       ref: `building:${unit(trace.names[b[1]])}`, t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]),
       ...(view ? { lost_by: buildingTeam(trace.names[b[1]]) === view.team ? 'my_team' : 'enemy' } : { taken_by: TEAM[b[2]] ?? null }),
       row: b[3],
     })),
-    gaps: [...gapsFor(trace, ['roshan', 'vision']), ...(adv ? [] : [{ topic: 'gold_advantage', reason: 'not_in_trace' }])],
+    gaps: [...gapsFor(trace, ['roshan', 'vision']), ...(adv ? [] : [{ topic: 'gold_advantage', reason: 'not_in_trace' }]), ...(turnNotKnown ? [{ topic: 'turning_fight', reason: 'no_gold_lead_around_a_lost_fight_that_could_be_it' }] : [])],
   };
 }
 
