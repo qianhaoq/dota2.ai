@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { buildProbes, gradeProbe, numbersIn, clocksIn, sideCounts, zhNumeral, namesPlace, scoreProbes, PROBE_KINDS } from '../../lib/agent/probes.js';
+import { buildProbes, gradeProbe, numbersIn, clocksIn, sideCounts, zhNumeral, namesPlace, buildingCounts, scoreProbes, PROBE_KINDS } from '../../lib/agent/probes.js';
 import { reviewToolkit } from '../../lib/agent/deepReview.js';
 import { runChat } from '../../lib/agent/chat.js';
 
@@ -52,14 +52,15 @@ describe('probes: questions the replay settles, with the answer the tools give',
     const start = kit.runTool('fight_report', { hero: 'beastmaster' }).fights.find((f: any) => f.fight === won.fight).clock;
     expect(at('buildings_after_won_fight').question).toContain(` ${start}, `);
     expect(start).not.toBe(won.clock);
-    expect(at('buildings_after_won_fight').expect).toEqual({ numbers: [won.buildings_winners_took.length] });
+    // After the fight: a building that fell while it was still going is not one taken after it.
+    expect(at('buildings_after_won_fight').expect).toEqual({ buildings: won.buildings_winners_took.filter((b: any) => !b.during_the_fight).length });
     // Where I was at the second the first tower fell.
     const tower = at('first_tower_lost').expect.clock;
     expect(at('where_i_was_at_first_tower_lost').source).toEqual({ tool: 'game_state', args: { hero: 'beastmaster', at: tower } });
     const me = kit.runTool('game_state', { hero: 'beastmaster', at: tower }).my_team.heroes.find((s: any) => s.hero === 'beastmaster');
     expect(at('where_i_was_at_first_tower_lost').expect).toEqual(me.alive ? { my_team: 'dire', place: me.place } : { dead: true });
     const aegis = kit.runTool('roshan_report', { hero: 'beastmaster' }).takes[0];
-    expect(at('buildings_after_first_aegis').expect).toEqual({ numbers: [aegis.buildings_taking_side_took_count] });
+    expect(at('buildings_after_first_aegis').expect).toEqual({ buildings: aegis.buildings_taking_side_took_count });
   });
 
   it('asks in the reader\'s language', () => {
@@ -194,17 +195,53 @@ describe('probes: grading an answer', () => {
     expect(namesPlace('你在自家上路野区', 'dire_top_jungle', 'zh', 'dire')).toBe(true);
     expect(namesPlace('你在自家上路', 'dire_top_jungle', 'zh', 'dire')).toBe(false);
     expect(namesPlace('back in your base', 'radiant_base', 'en', 'radiant')).toBe(true);
+    // The side before the lane, in the same clause: never one named after it, or across a comma.
+    expect(namesPlace('You were in Radiant mid, Dire took the tower.', 'dire_mid', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('You were in Radiant mid, Dire took the tower.', 'radiant_mid', 'en', 'radiant')).toBe(true);
+    expect(namesPlace('in Radiant mid while Dire pushed', 'dire_mid', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('你在天辉中路，夜魇拆了塔', 'dire_mid', 'zh', 'radiant')).toBe(false);
   });
 
   it('"took nothing" is a zero, and a dead player is "dead"', () => {
-    const n = { kind: 'buildings_after_won_fight', source: { args: {} }, expect: { numbers: [0] } };
+    const n = { kind: 'buildings_after_won_fight', source: { args: {} }, expect: { buildings: 0 } };
     expect(gradeProbe(n, 'You took nothing in those two minutes.', names).pass).toBe(true);
     expect(gradeProbe(n, '之后两分钟一座都没拆。', { ...names, lang: 'zh' }).pass).toBe(true);
-    expect(gradeProbe(n, 'You took one tower.', names).pass).toBe(false);
+    expect(gradeProbe(n, 'You took one tower.', names)).toMatchObject({ pass: false, wrong: ['1'] });
     const d = { kind: 'where_i_was_at_first_tower_lost', source: { args: {} }, expect: { dead: true } };
     expect(gradeProbe(d, 'You were dead, 20 s from respawning.', names).pass).toBe(true);
-    expect(gradeProbe(d, '你当时阵亡了。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(d, '你当时阵亡了，还要 12 秒复活。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(d, 'You were in the Dire jungle.', names).pass).toBe(false);
+    // Back already, or "not dead": wrong, though the words are there.
+    for (const t of ['You had already respawned and were farming mid.', 'You were not dead.', "You weren't dead then."]) expect(gradeProbe(d, t, names)).toMatchObject({ pass: false, wrong: ['alive'] });
+    for (const t of ['你当时已经复活，正在中路打钱。', '你当时没死。']) expect(gradeProbe(d, t, { ...names, lang: 'zh' })).toMatchObject({ pass: false, wrong: ['活着'] });
+    // Said of someone else, "alive" says nothing about the player.
+    expect(gradeProbe(d, '你当时已经死了，在读秒。敌方活着的只有拉比克。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(d, 'You were dead; only Lion was alive near it.', names).pass).toBe(true);
+    expect(gradeProbe(d, '你当时是死的。你们活着的灰烬之灵在中路。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // Advice after the answer is not the answer.
+    expect(gradeProbe(d, '那一刻你已经死了。下次你活着站在塔后，两个人推不动一塔。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(d, 'You were alive in mid. Had you died there, the tower would still have fallen.', names)).toMatchObject({ pass: false, wrong: ['alive'] });
+  });
+
+  it('a building count is a number said of buildings, never the minutes in the question', () => {
+    const two = { kind: 'buildings_after_won_fight', source: { args: {} }, expect: { buildings: 2 } };
+    expect(gradeProbe(two, 'We took one tower in the two minutes after the fight.', names)).toMatchObject({ pass: false, wrong: ['1'] });
+    expect(gradeProbe(two, 'Two buildings: the tier 1 top and the tier 2 top.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'One tower and one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'In the two minutes after it, nothing fell.', names).pass).toBe(false);
+    expect(gradeProbe(two, '两座：上路一塔和二塔。', { ...names, lang: 'zh' }).pass).toBe(true);
+    const five = { kind: 'buildings_after_first_aegis', source: { args: {} }, expect: { buildings: 5 } };
+    expect(gradeProbe(five, 'In the five minutes after it they took 3 towers.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(gradeProbe(five, 'They destroyed 5 buildings in the five minutes after.', names).pass).toBe(true);
+    expect(buildingCounts('拿盾后五分钟里拆了 5 座建筑', 'zh')).toEqual([5]);
+    // An answer that opens with the count; markup around a count; a tier is not a count.
+    expect(gradeProbe(five, 'Five — in the 300 seconds after, none of your team was near.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two }, 'Their side took **two** buildings: your bottom tier 2 and top tier 2.', names).pass).toBe(true);
+    const zero = { ...two, expect: { buildings: 0 } };
+    expect(gradeProbe(zero, 'Zero buildings. The bottom tier 1 tower stood until 16:36.', names).pass).toBe(true);
+    expect(gradeProbe(zero, '两分钟里你们一座建筑都没拆。上路一塔 18:47 才丢。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(zero, '零。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(five, '第一个不朽盾被拿走后，他们拆了 5 座建筑。', { ...names, lang: 'zh' }).pass).toBe(true);
   });
 
   it('scores by kind', () => {
