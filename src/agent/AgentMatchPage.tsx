@@ -72,6 +72,7 @@ const T = {
   goneBody: { en: 'Valve keeps replays for about two weeks. Without the replay there is nothing to review honestly, so nothing is shown in its place.', zh: 'Valve 只保留大约两周的录像。没有录像就没有可以诚实复盘的东西，所以这里不放替代内容。' },
   noUrlTitle: { en: 'The replay is not ready yet', zh: '录像还没准备好' },
   noUrlBody: { en: 'A game that just ended takes a few minutes before its replay can be fetched. Try again shortly.', zh: '刚打完的比赛要等几分钟才能取到录像。稍后再试。' },
+  noUrlWaiting: { en: 'A game that just ended takes a few minutes before its replay can be fetched. Leave this page open: it will try again by itself in a few minutes. Or come back later.', zh: '刚打完的比赛要等几分钟才能取到录像。这个页面开着就行，过几分钟会自动再试一次；也可以稍后再回来。' },
   parseFailedTitle: { en: 'The replay could not be read', zh: '录像没有解析出来' },
   parseFailedBody: { en: 'Fetching or reading the replay failed. It usually works on a second try.', zh: '取录像或解析时出了问题，通常再试一次就好。' },
   offTitle: { en: 'Replay reviews are not switched on here', zh: '这里还没有开启录像复盘' },
@@ -96,6 +97,12 @@ const T = {
 type Lang = 'en' | 'zh';
 /** Longer than this (a day's parse ceiling, say), a refusal is said once and not waited out on the page. */
 const MAX_AUTO_WAIT_SEC = 15 * 60;
+/**
+ * A replay that is not ready yet (the game just ended): how often the page asks whether it may be tried again,
+ * and how many times it goes again by itself before leaving it to the reader. The server allows a new try five
+ * minutes after a failed one. An object so a test can shorten the wait.
+ */
+export const REPLAY_NOT_READY = { askEveryMs: 30_000, triesByItself: 3 };
 const clockOf = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 /** The four steps of the wait, and which one is live. */
 export function journeyStep(avail: Availability | null, state: ReviewState | null): number {
@@ -389,6 +396,19 @@ export const AgentMatchPage: React.FC = () => {
 
   // A parse seen running may yet die with its instance: seeing it run re-arms the one-time restart below.
   useEffect(() => { if (parsing) resumed.current = false; }, [parsing]);
+
+  // The replay of a game that just ended has no address for a few minutes, and the try fails. The reader said go:
+  // keep asking, slowly, so that when the server lets it be tried again the restart below picks it up without
+  // a second click. A few times only — a game whose replay never comes is not asked about for ever.
+  const autoTries = useRef<Record<string, number>>({});
+  const awaitingReplay = intent && !wait && !hasTrace && parse?.status === 'failed' && parse.reason === 'no_replay_url' && !parse.final && (autoTries.current[selection] ?? 0) < REPLAY_NOT_READY.triesByItself;
+  // A try that failed at once was never seen running, so nothing re-armed the restart: waiting for a replay does.
+  useEffect(() => { if (awaitingReplay) resumed.current = false; }, [awaitingReplay]);
+  useEffect(() => {
+    if (!awaitingReplay) return undefined;
+    const timer = setTimeout(() => { void loadAvail(); }, REPLAY_NOT_READY.askEveryMs);
+    return () => clearTimeout(timer);
+  }, [awaitingReplay, availTick, loadAvail]);
   // So does coming back to a selection: one the reader said go for, left during a wait, and came back to after
   // it ran out is picked up again rather than left saying "working" with nothing running.
   useEffect(() => { resumed.current = false; }, [selection]);
@@ -398,6 +418,7 @@ export const AgentMatchPage: React.FC = () => {
   useEffect(() => {
     if (!intent || wait || resumed.current || !avail || avail.trace || !avail.can_parse || avail.parse?.status !== 'none') return;
     resumed.current = true;
+    autoTries.current[selection] = (autoTries.current[selection] ?? 0) + 1;
     void sendPrepare();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, avail, matchId, loadAvail, wait]);
@@ -558,7 +579,7 @@ export const AgentMatchPage: React.FC = () => {
   // No replay, and none to be had.
   if (parse?.status === 'failed') {
     if (parse.reason === 'replay_gone') return dead(T.goneTitle, T.goneBody);
-    if (parse.reason === 'no_replay_url') return dead(T.noUrlTitle, T.noUrlBody, true);
+    if (parse.reason === 'no_replay_url') return dead(T.noUrlTitle, awaitingReplay ? T.noUrlWaiting : T.noUrlBody, true);
     return dead(T.parseFailedTitle, T.parseFailedBody, !parse.final);
   }
   if (!hasTrace && !avail.can_parse) return dead(T.offTitle, T.offBody);
