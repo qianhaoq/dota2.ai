@@ -90,6 +90,13 @@ describe('probes: grading an answer', () => {
   const probes: any[] = buildProbes(trace, 'beastmaster') as any[];
   const at = (kind: string) => probes.find((p) => p.kind === kind);
 
+  it('a zero said of something else never answers a count of deaths', () => {
+    const d = { kind: 'deaths_before_10', source: { args: {} }, expect: { numbers: [0] } };
+    expect(gradeProbe(d, 'You died three times; none of those deaths were avoidable.', names).pass).toBe(false);
+    expect(gradeProbe(d, 'You died twice and took nothing for it.', names).pass).toBe(false);
+    expect(gradeProbe(d, 'You never died before 10:00.', names).pass).toBe(true);
+  });
+
   it('reads numbers in digits and words, never out of a clock', () => {
     expect(numbersIn('You died twice, at 6:13 and 8:27.')).toEqual([2]);
     expect(numbersIn('Four deaths: 0:47, 2:51')).toEqual([4]);
@@ -228,6 +235,13 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe(two, 'We took one tower in the two minutes after the fight.', names)).toMatchObject({ pass: false, wrong: ['1'] });
     expect(gradeProbe(two, 'Two buildings: the tier 1 top and the tier 2 top.', names).pass).toBe(true);
     expect(gradeProbe(two, 'One tower and one barracks.', names).pass).toBe(true);
+    // A total and its parts are told apart: parts alone add up, a total followed by its parts is the total.
+    const one = { ...two, expect: { buildings: 1 } };
+    expect(gradeProbe(one, 'One tower and one barracks.', names)).toMatchObject({ pass: false, wrong: ['1+1'] });
+    const three = { ...two, expect: { buildings: 3 } };
+    expect(gradeProbe(three, 'They took 3 buildings: 2 towers and 1 barracks.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two, expect: { buildings: 6 } }, 'They took 3 buildings: 2 towers and 1 barracks.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(gradeProbe(three, '拆了三座：两座塔、一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(two, 'In the two minutes after it, nothing fell.', names).pass).toBe(false);
     expect(gradeProbe(two, '两座：上路一塔和二塔。', { ...names, lang: 'zh' }).pass).toBe(true);
     const five = { kind: 'buildings_after_first_aegis', source: { args: {} }, expect: { buildings: 5 } };
