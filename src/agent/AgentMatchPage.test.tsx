@@ -875,7 +875,8 @@ describe('AgentMatchPage', () => {
       page('/r/8000000042?hero=beastmaster&lang=en');
       fireEvent.click(await screen.findByRole('button', { name: 'Copy my link' }));
       const box = await screen.findByLabelText('Copy this link:');
-      expect((box as HTMLInputElement).value).toBe(`${window.location.origin}/r/8000000042?hero=beastmaster&ref=share`);
+      // English is said in the link too: the review is the English one, whatever language the recipient last chose.
+      expect((box as HTMLInputElement).value).toBe(`${window.location.origin}/r/8000000042?hero=beastmaster&ref=share&lang=en`);
       expect((await events()).filter((e) => e.event === 'report_shared')).toEqual([]);
     });
 

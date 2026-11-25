@@ -24,13 +24,19 @@ const T = {
   manual: { en: 'Copy this link:', zh: '复制这个链接：' },
 } as const;
 
-/** Share links. The team link has no hero, plan or seat; the personal one keeps what makes this review this one. */
+/**
+ * Share links. The team link has no hero, plan or seat; the personal one keeps what makes this review this one,
+ * its language included: reviews are kept per language, so a link without it opens in the recipient's own
+ * language and asks for a review that may not exist. The team link leaves the language to each teammate,
+ * except Chinese, which the sender's team chat is in.
+ */
 export function shareLinks(origin: string, matchId: string, hero: string, lang: Lang, plan: string | null = null) {
   const team = new URLSearchParams({ ref: 'team' });
   const self = new URLSearchParams({ hero });
   if (plan) self.set('plan', plan);
   self.set('ref', 'share');
-  if (lang === 'zh') { team.set('lang', 'zh'); self.set('lang', 'zh'); }
+  self.set('lang', lang);
+  if (lang === 'zh') team.set('lang', 'zh');
   return { team: `${origin}/r/${matchId}?${team}`, self: `${origin}/r/${matchId}?${self}` };
 }
 
