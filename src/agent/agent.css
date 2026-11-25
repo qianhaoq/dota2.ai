@@ -141,6 +141,8 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-events li.is-death.is-enemy { color: var(--good); }
 .ag-events li.is-death.is-ally, .ag-events li.is-death.is-me { color: var(--dire); }
 .ag-events li.is-spell_immune { color: var(--fix); }
+/* Allies are blue, not the green of Radiant: the player may be on Dire, and red against green is the pair hardest to tell apart. */
+.ag-map, .ag-replay { --ally: #7fb2d9; }
 .ag-map { margin: 0; }
 .ag-map svg { width: 100%; height: auto; display: block; }
 .ag-map figcaption { color: var(--text-3); margin-top: 6px; }
@@ -149,7 +151,7 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-map-base.is-radiant { fill: rgba(127, 176, 122, 0.18); }
 .ag-map-base.is-dire { fill: rgba(208, 106, 85, 0.18); }
 .ag-map-dot circle { fill: var(--text-3); stroke: var(--ink); stroke-width: 1.5; }
-.ag-map-dot.is-ally circle { fill: var(--good); }
+.ag-map-dot.is-ally circle { fill: var(--ally); }
 .ag-map-dot.is-enemy circle { fill: var(--dire); }
 .ag-map-dot.is-me circle { fill: var(--accent); }
 .ag-map-dot.is-dead circle { fill-opacity: 0.15; stroke: currentColor; }
@@ -327,3 +329,37 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-share-manual input { width: 100%; min-width: 0; background: var(--panel); border: 1px solid var(--line-2); color: var(--text); border-radius: 8px; padding: 7px 10px; font: inherit; }
 .ag-pick-from { color: var(--accent); font-size: var(--fs-meta); margin: -12px 0 16px; }
 .ag-pick-from + .ag-pick-sub { margin-top: 0; }
+
+/* A moment replayed on the map (MomentReplay). */
+.ag-replay { margin: 0; max-width: 420px; }
+.ag-replay > svg { width: 100%; height: auto; display: block; }
+.ag-replay-bg { fill: var(--ink); stroke: var(--line-2); }
+.ag-replay-grid { fill: none; stroke: var(--line); stroke-width: 1; }
+.ag-replay-river { stroke: rgba(120, 160, 190, 0.22); stroke-width: 26; stroke-linecap: butt; }
+.ag-replay-trail { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; opacity: 0.45; }
+.ag-replay-trail.is-me { stroke: var(--accent); }
+.ag-replay-trail.is-ally { stroke: var(--ally); }
+.ag-replay-trail.is-enemy { stroke: var(--dire); }
+.ag-replay-ring { fill: var(--panel-2); stroke-width: 2; }
+.ag-replay-hero.is-me .ag-replay-ring { stroke: var(--accent); stroke-width: 2.5; }
+.ag-replay-hero.is-ally .ag-replay-ring { stroke: var(--ally); }
+.ag-replay-hero.is-enemy .ag-replay-ring { stroke: var(--dire); }
+.ag-replay-hero.is-dead { opacity: 0.35; }
+.ag-replay-hero.is-dead .ag-replay-ring { stroke-dasharray: 3 3; }
+.ag-replay-hero text { fill: var(--text); font-size: 11px; font-weight: 600; }
+.ag-replay-controls { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.ag-replay-play { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); display: grid; place-items: center; cursor: pointer; }
+.ag-replay-play:hover { border-color: var(--accent); color: var(--accent); }
+.ag-replay-controls input[type="range"] { flex: 1; min-width: 0; height: 44px; accent-color: var(--accent); }
+.ag-replay-controls output { flex: none; min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.ag-replay-controls output.is-moment { color: var(--accent); font-weight: 600; }
+.ag-replay-legend, .ag-replay-deaths { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--fs-meta); color: var(--text-2); }
+.ag-replay-legend li::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; border: 2px solid var(--text-3); }
+.ag-replay-legend li.is-me::before { border-color: var(--accent); }
+.ag-replay-legend li.is-ally::before { border-color: var(--ally); }
+.ag-replay-legend li.is-enemy::before { border-color: var(--dire); }
+.ag-replay-deaths li { color: var(--text-3); }
+.ag-replay-deaths li.is-past { color: var(--text-2); }
+.ag-replay-deaths time { font-variant-numeric: tabular-nums; }
+.ag-replay-place { margin: 2px 0 0; font-size: var(--fs-meta); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ag-replay-outside, .ag-replay figcaption { margin: 8px 0 0; font-size: var(--fs-meta); color: var(--text-3); line-height: 1.5; }
