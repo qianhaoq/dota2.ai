@@ -583,6 +583,10 @@ export const CoachHome: React.FC = () => {
     return r.ok ? { kind: 'account' as const, id: r.accountId } : { kind: 'none' as const };
   }, [value, mode]);
   const known = rememberedAccount();
+  // Whose latest game to show: the remembered friend code, or else the player a next-game goal was set
+  // for (a goal set from a review knows its account even when the games page was never opened).
+  const goalNow = useActiveGoal();
+  const latestFor = known ?? (goalNow?.accountId != null && goalNow.accountId > 0 && goalNow.accountId < 2 ** 32 - 1 ? String(goalNow.accountId) : null);
 
   const go = (raw: string) => {
     if (mode === 'account') {
@@ -646,7 +650,7 @@ export const CoachHome: React.FC = () => {
         </div>
       </section>
 
-      {known && <div className="hm-latest"><LatestGame accountId={known} /></div>}
+      {latestFor && <div className="hm-latest"><LatestGame accountId={latestFor} /></div>}
       </div>
       <HowItWorks />
       </div>

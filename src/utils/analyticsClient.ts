@@ -17,7 +17,9 @@ export type AnalyticsEventName =
   | 'review_refused'
   | 'chat_asked'
   | 'review_ready'
-  | 'arrived';
+  | 'arrived'
+  | 'goal_set'
+  | 'goal_checked';
 
 export type AnalyticsProps = Record<string, string | number | boolean>;
 

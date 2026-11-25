@@ -1321,6 +1321,9 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByText('On Beastmaster: finish with Blink Dagger or Black King Bar')).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: 'Make this my next-game goal' }));
     expect(await screen.findByText(/✓ Your next-game goal · From finding 1/)).toBeTruthy();
+    // The account is known (77): the reader is told where the check will be waiting.
+    expect(screen.getByText(/Your next game shows up on the dota2.ai home page with this goal already checked/)).toBeTruthy();
+    expect((await events()).filter((e) => e.event === 'goal_set').map((e) => e.props)).toEqual([{ matchId: '9100904020', kind: 'hold_item', account: true, rules: 0 }]);
     const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
     expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:hold_item:blink+black_king_bar', goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38 }, action: goal.label, fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38 });
     expect(stored.goal).not.toHaveProperty('finding');

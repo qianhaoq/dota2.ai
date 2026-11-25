@@ -4,6 +4,7 @@
  * Evaluation is the engine's pure `evaluateGoal`, so the web page, the API
  * and a future CLI judge a goal the same way.
  */
+import { trackOnce } from '../services/analytics';
 import { useSyncExternalStore } from 'react';
 import { evaluateGoal, habitRef } from '../../lib/coach/goals.js';
 import type { Bi, CoachReport, GoalSpec } from './types';
@@ -78,6 +79,9 @@ export function goalChecks(goalId: string): GoalCheck[] {
 }
 
 function recordCheck(c: GoalCheck): void {
+  // The loop closed: a goal set after one game was judged on a later one. Counted once per goal and game,
+  // and only once it is decided (an "unknown" may still become a result when the replay is read).
+  if (c.result !== 'unknown') trackOnce(`${c.goalId}.${c.matchId}`, 'goal_checked', { result: c.result });
   const all = read<GoalCheck[]>(GOAL_CHECKS_STORAGE_KEY, []).filter((x) => !(x.goalId === c.goalId && x.matchId === c.matchId));
   all.push(c);
   // Not a goal change: listeners of the active goal must not re-run checks.
