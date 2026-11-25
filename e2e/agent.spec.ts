@@ -64,21 +64,36 @@ test('from no replay to a review in one click: fetch, read, the coach, the revie
   await expect(live).toHaveText('解析录像', { timeout: 10_000 });
   await expect(live).toHaveText('教练看录像', { timeout: 15_000 });
   await expect(page.locator('.ag-journey .ag-steps li').first()).toHaveText('看整局概况', { timeout: 10_000 });
-  await expect(page.locator('.ag-verdict h1')).toContainText('原始咆哮没有留给幻影刺客', { timeout: 30_000 });
+  await expect(page.locator('.ag-lead h1')).toHaveText('咆哮给错了人', { timeout: 30_000 });
+  await expect(page.locator('.ag-whole .ag-verdict')).toContainText('原始咆哮没有留给幻影刺客');
   // One click by the reader: one parse, then the review started on its own.
   expect(posts).toEqual([`/api/agent/${id}/prepare`, `/api/agent/${id}/review`]);
   await noSideScroll(page);
 });
 
-test('the review: verdict, the turn marked on the fights, findings, what to change', async ({ page }) => {
+test('the review: one lesson first, the other finding folded, then the whole game with the turn marked', async ({ page }) => {
   await review(page);
-  await expect(page.locator('.ag-verdict h1')).toHaveText('原始咆哮没有留给幻影刺客：11 次阵亡里 7 次死在她手上，而她 7 次开黑皇杖时你的大招只吼中过 2 次。');
+  // The headline is the first finding; what to practise is its fix; its evidence are the moments.
+  await expect(page.locator('.ag-lead h1')).toHaveText('咆哮给错了人');
+  await expect(page.locator('.ag-lesson')).toContainText('对面核心带黑皇杖时，咆哮只留给她；她开了也照吼。');
+  // The second finding is folded: its heading shows, its body opens on a click.
+  const second = page.locator('details.ag-finding');
+  await expect(second.locator('summary h3')).toHaveText(['2没有跳刀也没有黑皇杖']);
+  await expect(second.locator('.ag-claim')).toBeHidden();
+  await second.locator('summary').click();
+  await expect(second.locator('.ag-claim')).toBeVisible();
+  await expect(second).toContainText('神杖之后先补闪烁匕首或黑皇杖。');
+  // The sentence about the whole game stands with the whole game.
+  await expect(page.locator('.ag-whole .ag-verdict')).toContainText('原始咆哮没有留给幻影刺客：11 次阵亡里 7 次死在她手上，而她 7 次开黑皇杖时你的大招只吼中过 2 次。');
   await expect(page.locator('.ag-strip-fight')).toHaveCount(16);
   await expect(page.locator('.ag-strip-fight.is-turn text')).toHaveText('▲ 30:26 转折');
-  await expect(page.locator('.ag-finding h3')).toHaveText(['1咆哮给错了人', '2没有跳刀也没有黑皇杖']);
   // Each evidence line carries the game time of the record it cites.
-  await expect(page.locator('.ag-finding').first().locator('.ag-ev-clock')).toHaveText(['27:27', '30:34', '36:05', '30:05']);
-  await expect(page.locator('.ag-next li')).toHaveCount(2);
+  await expect(page.locator('.ag-moments .ag-ev-clock')).toHaveText(['27:27', '30:34', '36:05', '30:05']);
+  // The story of the game is there for whoever opens it.
+  const story = page.locator('.ag-whole details.ag-fold').first();
+  await expect(story.locator('.ag-mainline li').first()).toBeHidden();
+  await story.locator('summary').click();
+  await expect(story.locator('.ag-mainline li').first()).toBeVisible();
   await expect(page.getByText('这份复盘里的时间点和数字已经和录像记录核对过。')).toBeVisible();
   await noSideScroll(page);
 });
@@ -87,6 +102,10 @@ test('the game plan: how the game went as a whole, its records, and a plan of th
   await review(page);
   const plan = page.locator('.ag-plan');
   await expect(plan.getByRole('heading', { name: '运营思路' })).toBeVisible();
+  // Folded, it already says what the game is put down to; it opens on a click.
+  await expect(plan.locator('summary')).toContainText('主要在队伍，不在你');
+  await expect(plan.locator('.ag-plan-parts')).toBeHidden();
+  await plan.locator('summary').click();
   await expect(plan.locator('.ag-plan-parts dt')).toHaveText(['窗口期', '走势', '你的部分']);
   await expect(plan.locator('.ag-plan-parts dd').first()).toContainText('幻影刺客在 21:29 出了黑皇杖，就在这段领先之内');
   await expect(plan.locator('.ag-plan-parts dd').nth(1)).toContainText('16 波团战里你们少死人的有 6 波，其中只有 22:57 那一波之后两分钟内拆到了建筑');
@@ -130,6 +149,8 @@ test('the reader names a plan before the review, and the review reads the game a
   const [key, label] = test.info().project.name.startsWith('mobile') ? ['push', '线优转推进'] : ['split', '带线牵制'];
   // The game already has a review without a plan (as most games someone opened will): the way in is from it.
   await review(page);
+  // The plan question is asked from the game plan, which is folded with the rest of the whole game.
+  await page.locator('.ag-plan summary').click();
   await page.locator('.ag-plan').getByRole('button', { name: label }).click();
   const note = page.locator('.ag-intent-note', { hasText: `也可以按「${label}」重写整份复盘` });
   await note.getByRole('button', { name: '重写' }).click();
@@ -157,7 +178,7 @@ test('the reader names a plan before the review, and the review reads the game a
 
 test('evidence: the replay record behind a sentence, on demand', async ({ page }) => {
   await review(page);
-  const first = page.locator('.ag-finding').first().locator('.ag-ev');
+  const first = page.locator('.ag-moments .ag-ev');
   // A cast: the target, that she was spell immune, and that the stun landed anyway.
   await first.nth(0).getByRole('button', { name: '看原始记录' }).click();
   const cast = first.nth(0).locator('.ag-rec');
@@ -182,6 +203,31 @@ test('evidence: the replay record behind a sentence, on demand', async ({ page }
   await noSideScroll(page);
 });
 
+test('a moment replayed on the map: the heroes around the cited second, played and scrubbed', async ({ page }) => {
+  await review(page);
+  // 27:27, the Roar into her Black King Bar.
+  const first = page.locator('.ag-moments .ag-ev').first();
+  await first.getByRole('button', { name: '重放这一刻' }).click();
+  const replay = first.locator('.ag-replay');
+  await expect(replay.getByRole('img', { name: '27:15 到 27:33 的站位' })).toBeVisible();
+  // Asked for, it plays to its last second on its own.
+  const clock = replay.locator('.ag-replay-controls output');
+  await expect(clock).toHaveText('27:33', { timeout: 15_000 });
+  await expect(replay.getByRole('button', { name: '播放' })).toBeVisible();
+  // Back to the cited second: the player is on the map, marked, among the heroes who were there.
+  await replay.getByRole('slider', { name: '比赛时间' }).fill('12');
+  await expect(clock).toHaveText('27:27');
+  await expect(clock).toHaveClass(/is-moment/);
+  await expect(replay.locator('.ag-replay-hero.is-me text')).toHaveText('你');
+  expect(await replay.locator('.ag-replay-hero').count()).toBeGreaterThanOrEqual(4);
+  await expect(replay.locator('figcaption')).toContainText('不代表谁能看到谁');
+  await noSideScroll(page);
+  const axe = await new AxeBuilder({ page }).include('.ag-replay').analyze();
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
+  await first.getByRole('button', { name: '收起回放' }).click();
+  await expect(replay).toHaveCount(0);
+});
+
 test('ask the coach: the lookups show, then the answer; "ask about this" carries the moment', async ({ page }) => {
   await review(page);
   const chat = page.getByRole('complementary', { name: '问教练' });
@@ -190,7 +236,7 @@ test('ask the coach: the lookups show, then the answer; "ask about this" carries
   await expect(chat.locator('.ag-answer')).toContainText('36:05 那次最不应该');
   await expect(chat.locator('.ag-warn')).toHaveCount(0);
   // From an evidence line: the chat shows what the question is about, and sends the record's ref.
-  await page.locator('.ag-finding .ag-ev').first().getByRole('button', { name: '就这一刻追问' }).click();
+  await page.locator('.ag-moments .ag-ev').first().getByRole('button', { name: '就这一刻追问' }).click();
   await expect(chat.locator('.ag-context')).toContainText('27:27');
   const sent = page.waitForRequest((r) => r.url().endsWith('/chat') && r.method() === 'POST');
   await chat.getByRole('textbox').fill('这一吼对吗？');
@@ -230,16 +276,17 @@ test('a replay that is gone: said plainly, scoreboard only, nothing to start', a
 
 test('English: the same review in the reader\'s language', async ({ page }) => {
   await review(page, 'en');
-  await expect(page.locator('.ag-verdict h1')).toContainText('Primal Roar was never kept for Phantom Assassin');
-  await page.locator('.ag-finding .ag-ev').first().getByRole('button', { name: 'Show the record' }).click();
-  await expect(page.locator('.ag-finding .ag-rec').first()).toContainText('Target Phantom Assassin');
+  await expect(page.locator('.ag-lead h1')).toHaveText('The roar went to the wrong heroes');
+  await expect(page.locator('.ag-whole .ag-verdict')).toContainText('Primal Roar was never kept for Phantom Assassin');
+  await page.locator('.ag-moments .ag-ev').first().getByRole('button', { name: 'Show the record' }).click();
+  await expect(page.locator('.ag-moments .ag-rec').first()).toContainText('Target Phantom Assassin');
   await expect(page.getByText('spell immune', { exact: true })).toBeVisible();
 });
 
 test('no serious accessibility violations: the review with a record open, and the hero pick', async ({ page }) => {
   await review(page);
-  await page.locator('.ag-finding .ag-ev').first().getByRole('button', { name: '看原始记录' }).click();
-  await expect(page.locator('.ag-finding .ag-rec')).toBeVisible();
+  await page.locator('.ag-moments .ag-ev').first().getByRole('button', { name: '看原始记录' }).click();
+  await expect(page.locator('.ag-moments .ag-rec')).toBeVisible();
   const scan = async () => (await new AxeBuilder({ page }).include('.cx').withTags(['wcag2a', 'wcag2aa']).disableRules(['color-contrast']).analyze())
     .violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${v.id}: ${v.nodes.length}`);
   expect(await scan()).toEqual([]);

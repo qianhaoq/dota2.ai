@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { fetchEvidence, type EvidenceItem, type EvidenceRecord } from './api';
+import { MomentReplay } from './MomentReplay';
+import { trackEvent } from '../services/analytics';
 
 /**
  * Evidence under a finding: the coach's sentence, and — one click away — the
@@ -12,6 +14,8 @@ const T = {
   show: { en: 'Show the record', zh: '看原始记录' },
   hide: { en: 'Hide', zh: '收起' },
   ask: { en: 'Ask about this', zh: '就这一刻追问' },
+  replay: { en: 'Replay this moment', zh: '重放这一刻' },
+  replayHide: { en: 'Close the replay', zh: '收起回放' },
   loading: { en: 'Loading the record…', zh: '正在取记录…' },
   failed: { en: 'Could not load this record.', zh: '这条记录没有取到。' },
   killer: { en: 'Killed by', zh: '击杀者' },
@@ -886,8 +890,19 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   );
 }
 
+/** Records that are a moment of the game (not a count over it, a build, or a ten-minute stretch): those can be replayed on the map. */
+const MOMENT_REF = /^(death|cast|immune|fight|fights|state|timeline):/;
+/** The game second an evidence line's clock names, when its record is a moment; else null. */
+export function momentOf(item: EvidenceItem): number | null {
+  const m = /^(-)?(\d{1,3}):([0-5]\d)$/.exec(item.clock ?? '');
+  if (!m || !MOMENT_REF.test(item.refs[0] ?? '')) return null;
+  return (m[1] ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]));
+}
+
 export const EvidenceCard: React.FC<{ matchId: string; hero: string; lang: Lang; item: EvidenceItem; onAsk: (label: string, refs: string[]) => void }> = ({ matchId, hero, lang, item, onAsk }) => {
   const [open, setOpen] = useState(false);
+  const [replay, setReplay] = useState(false);
+  const moment = momentOf(item);
   const [records, setRecords] = useState<(EvidenceRecord | null)[] | null>(null);
   useEffect(() => {
     if (!open || records) return;
@@ -904,8 +919,10 @@ export const EvidenceCard: React.FC<{ matchId: string; hero: string; lang: Lang;
       </div>
       <div className="ag-ev-actions">
         <button type="button" className="ag-link" aria-expanded={open} onClick={() => setOpen((v) => !v)}>{t(open ? T.hide : T.show)}</button>
+        {moment != null && <button type="button" className="ag-link" aria-expanded={replay} onClick={() => { if (!replay) trackEvent('moment_played', { matchId, lang, hero }); setReplay((v) => !v); }}>{t(replay ? T.replayHide : T.replay)}</button>}
         <button type="button" className="ag-link" onClick={() => onAsk(item.clock ?? item.refs[0], item.refs)}>{t(T.ask)}</button>
       </div>
+      {replay && moment != null && <div className="ag-ev-records"><MomentReplay matchId={matchId} hero={hero} lang={lang} t={moment} /></div>}
       {open && (
         <div className="ag-ev-records">
           {!records && <p className="ag-none">{t(T.loading)}</p>}

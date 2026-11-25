@@ -22,6 +22,7 @@
 # key output
 ```
 
+- [ ] 改了复盘提示词版本或工具输出时：已贴 `node scripts/eval-review.mjs <dir> --baseline data/eval-baseline.v1.json` 的对比 | Changed the review prompt version or a tool's output: eval-review comparison pasted
 - [ ] CI 通过 | CI passes
 - [ ] 本地测试 | Local testing
 - [ ] dota2.ai 线上验证 | Verified on dota2.ai

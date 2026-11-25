@@ -20,6 +20,10 @@ const as741 = { ...scoreboard, patch: 60, start_time: 1794747997 };
 const release = (name: string) => index.releases.find((r: any) => r.name === name);
 const at = (iso: string) => Date.parse(iso) / 1000;
 
+// The newest data the site has: the current release at its latest hotfix. The live tables are refreshed to it
+// (scheduled refresh), so this — not a release named here — is what they must agree with.
+const newest = () => patchData(CURRENT_RELEASE, { hotfix: (release(CURRENT_RELEASE).hotfixes ?? []).filter((h: any) => h.data).at(-1)?.rollout_by ?? null });
+
 describe('the data of the patch a game was played on', () => {
   it('each release has its own data, letters included; the current release is the live tables', () => {
     expect(CURRENT_PATCH).toBe('7.42');
@@ -49,9 +53,9 @@ describe('the data of the patch a game was played on', () => {
   it('every release\'s data is its own snapshot, the newest one too: never the live tables a refresh may not have reached', () => {
     expect(index.releases.map((r: any) => r.data)).toEqual(index.releases.map((r: any) => `${r.name}.json`));
     expect(index.releases_checked_at).toMatch(/^\d{4}-\d\d-\d\dT/);
-    const now = patchData('7.42');
+    const now = newest();
     expect(now.items).not.toBe(items742);
-    // Built from 7.42's own game files, it agrees with the live tables: same prices and recipes.
+    // Built from the newest release's own game files, it agrees with the live tables: same prices and recipes.
     for (const [k, v] of Object.entries(now.items) as [string, any][]) if (items742[k]) expect([k, v.cost, v.components]).toEqual([k, items742[k].cost, items742[k].components ?? null]);
     // Only an unknown release falls back to the live tables, and says so.
     expect(patchData(null)).toMatchObject({ exact: false, reason: 'patch_of_this_game_unknown' });
@@ -68,9 +72,9 @@ describe('the data of the patch a game was played on', () => {
     expect(r.stderr).toContain('Nothing was written');
   });
 
-  it('7.42\'s snapshot shows each hero\'s abilities as the live table does: the same abilities, ultimates and flags', () => {
+  it('the newest release\'s snapshot shows each hero\'s abilities as the live table does: the same abilities, ultimates and flags', () => {
     const live = JSON.parse(readFileSync(new URL('../../lib/coach/data/abilities.json', import.meta.url), 'utf8'));
-    const snap = patchData('7.42');
+    const snap = newest();
     for (const [id, list] of Object.entries(live.heroes) as [string, any[]][]) {
       const got = snap.heroAbilities(Number(id)) ?? [];
       const pick = (x: any) => ({ id: x.id, ult: Boolean(x.ult), dmg: x.dmg ?? null, pierces: x.pierces ?? null, dispel: x.dispel ?? null });
@@ -123,8 +127,8 @@ describe('the data of the patch a game was played on', () => {
     expect(isBigItemIn(patchData('7.42'), 'blink', rule)).toBe(true);
     // Upgraded Dagons are built from a recipe with no component list: still big items, in every release, as in the live tables.
     for (const k of ['dagon_2', 'dagon_3', 'dagon_4', 'dagon_5']) for (const r of ['7.40', '7.41c', '7.42']) expect([k, r, isBigItemIn(patchData(r), k, rule)]).toEqual([k, r, true]);
-    // Every item the live tables call big is big in 7.42's snapshot, and the other way round.
-    const live = patchData(null); const snap = patchData('7.42');
+    // Every item the live tables call big is big in the newest snapshot, and the other way round.
+    const live = patchData(null); const snap = newest();
     for (const k of Object.keys(snap.items)) expect([k, isBigItemIn(snap, k, rule)]).toEqual([k, isBigItemIn(live, k, rule)]);
     // Gold on top of a held part uses the patch's prices: Talisman of Evasion went into a 7.41 Halberd, not a 7.42 one.
     expect(goldOnTop(['talisman_of_evasion', 'heavens_halberd'], patchData('7.41f').items)).toEqual([null, 3300 - patchData('7.41f').items.talisman_of_evasion.cost]);
@@ -237,6 +241,13 @@ describe('which patch a game was played on, when the match data is not at hand',
       : { toolCalls: [{ id: 's', name: 'submit_review', args: { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], blind_spots: [] } }] });
     const out: any = await runDeepReview({ complete, trace, hero: 'beastmaster', lang: 'zh', match: as741 });
     expect(out.review.data_patch).toEqual({ name: '7.41f', hotfix: release('7.41f').hotfixes[0].rollout_by, exact: true, known_from: 'start_time' });
+  });
+});
+
+describe('a letter release after the live tables moved on', () => {
+  it('7.42a shortened Reaper\'s Scythe: a 7.42 game is told 100 seconds, a 7.42a game 95', () => {
+    expect(patchData('7.42').ultimate(36)?.cd).toEqual([100]);
+    expect(patchData('7.42a').ultimate(36)?.cd).toEqual([95]);
   });
 });
 

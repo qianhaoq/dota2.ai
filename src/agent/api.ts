@@ -6,6 +6,8 @@ export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: nu
 export type ParseState = { status: 'none' } | { status: 'running'; stage: string | null } | { status: 'failed'; reason: string; final: boolean } | { status: 'ready' } | { status: 'unavailable' };
 export interface Availability {
   trace: boolean; model_configured: boolean; can_parse: boolean; heroes: AgentHero[]; parse?: ParseState;
+  /** The models a review can be asked from here (ids of lib/agent/models.js), the default first; absent where there is no choice. */
+  models?: string[]; default_model?: string | null;
   /** Radiant's net worth lead per game minute, from the replay itself (absent when the trace has no net worth graph). */
   radiant_net_worth_lead?: number[];
 }
@@ -64,12 +66,45 @@ export const fetchAvailability = (matchId: string, signal?: AbortSignal) =>
 export const prepareMatch = (matchId: string) =>
   fetch(`/api/agent/${enc(matchId)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => json<ParseState>(r));
 
-/** `plan`: the plan the reader named, if any — a review made for it is its own review. */
-export const fetchReview = (matchId: string, hero: string, lang: string, signal?: AbortSignal, plan?: string | null) =>
-  fetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}${plan ? `&plan=${enc(plan)}` : ''}`, { signal }).then((r) => json<ReviewState>(r));
+/**
+ * `plan`: the plan the reader named, if any — a review made for it is its own review.
+ * `model`: the model the reader chose, when it is not the default — a review written by it is its own review too.
+ */
+export const fetchReview = (matchId: string, hero: string, lang: string, signal?: AbortSignal, plan?: string | null, model?: string | null) =>
+  fetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}${plan ? `&plan=${enc(plan)}` : ''}${model ? `&model=${enc(model)}` : ''}`, { signal }).then((r) => json<ReviewState>(r));
 
-export const startReview = (matchId: string, hero: string, lang: string, plan?: string | null) =>
-  fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}) }) }).then((r) => json<ReviewState>(r));
+export const startReview = (matchId: string, hero: string, lang: string, plan?: string | null, model?: string | null) =>
+  fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}), ...(model ? { model } : {}) }) }).then((r) => json<ReviewState>(r));
+
+/** Where the ten heroes were around a game time (lib/agent/moment.js): what the page replays. */
+export interface Moment {
+  status: 'ok'; t: number; clock: string; from: number; to: number; me: string;
+  heroes: { hero: string; side: 'me' | 'ally' | 'enemy' }[];
+  /** One per second; `at[i]` is hero i's [x, y, alive], or null for a second the replay has no sample of them. */
+  frames: { t: number; at: ([number, number, 0 | 1] | null)[] }[];
+  deaths: { t: number; hero: string; killer: string | null }[];
+  /** The square of the map to show, in world units from its lower-left corner. */
+  box: { x: number; y: number; size: number };
+  /** Never near the player in the window, and the replay shows it for every second; `not_known`: not seen near, with a second the replay cannot speak for. */
+  away: string[]; not_known: string[];
+  /** Where on the map the player stood at the moment, in the reader's words; null without a sample. */
+  place: string | null; place_name: string | null;
+  names: Record<string, string>;
+  /** The game's own name for each hero, which its minimap icon is filed under. */
+  icons: Record<string, string>;
+}
+const momentCache = new Map<string, Promise<Moment>>();
+/** A moment is a pure function of the replay, so it is fetched once a session. */
+export function fetchMoment(matchId: string, hero: string, lang: string, t: number): Promise<Moment> {
+  const key = `${matchId}|${hero}|${lang}|${t}`;
+  let p = momentCache.get(key);
+  if (!p) {
+    p = fetch(`/api/agent/${enc(matchId)}/moment?hero=${enc(hero)}&lang=${lang}&t=${t}`).then((r) => json<Moment>(r));
+    p.catch(() => momentCache.delete(key));
+    momentCache.set(key, p);
+  }
+  return p;
+}
 
 const evidenceCache = new Map<string, Promise<EvidenceRecord>>();
 /** The tool record behind a ref. Records are pure functions of the replay, so they are cached for the session. */
@@ -112,7 +147,7 @@ export async function readChatStream(res: Response, ev: ChatEvents): Promise<voi
 }
 
 /** One chat turn about a match. */
-export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[]; plan?: string }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
+export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[]; plan?: string; model?: string }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
   const res = await fetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
   return readChatStream(res, ev);
 }

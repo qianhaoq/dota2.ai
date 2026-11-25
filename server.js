@@ -74,15 +74,18 @@ import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
 import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { createAgentRouter } from './lib/agent/router.js';
-import { createAgentService } from './lib/agent/service.js';
+import { createAgentService, SLOW_REVIEW_MAX_MS } from './lib/agent/service.js';
 import { warmShowcase } from './lib/agent/showcase.js';
 import { createPatchRouter } from './lib/patch/router.js';
 import { createPatchNews } from './lib/patch/news.js';
+import { createLiveNotes } from './lib/patch/liveNotes.js';
+import { createValveFetch } from './lib/patch/valveFetch.js';
 import { createTaskAuth, createTaskDispatcher } from './lib/agent/tasks.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from './lib/agent/stores.js';
 import { createRemotePipeline, createTracePipeline } from './lib/agent/tracePipeline.js';
 import { createReplaySource } from './lib/agent/replaySource.js';
-import { deepReviewProvider } from './lib/agent/providers.js';
+import { agentModels } from './lib/agent/providers.js';
+import { writesSlowly } from './lib/agent/models.js';
 import { openAiCompatible } from './lib/agent/loop.js';
 import { createCoachService } from './lib/coach/service.js';
 import { createCaseService } from './lib/coach/caseSource.js';
@@ -878,7 +881,7 @@ app.use(createCoachRouter({
   // Link previews for /r/:matchId (built app only; dev serves via Vite).
   // `review`: a shared review link's preview leads with that review's verdict, when it is stored.
   // agentService is created below; it is only called per request, after startup.
-  page: { html: readBuiltIndexHtml, review: (matchId, hero, lang, plan) => agentService.peek(matchId, hero, lang, plan) },
+  page: { html: readBuiltIndexHtml, review: (matchId, hero, lang, plan, model) => agentService.peek(matchId, hero, lang, plan, model) },
   recent: coachRecent,
   ask: {
     // Same-origin guard for the browser route only; MCP callers are agents.
@@ -896,7 +899,10 @@ app.use(createCoachRouter({
 // scripts/trace-worker.mjs) or, on a machine that has the extractor,
 // DOTA_EXTRACT_BIN in process. With none of these every match answers
 // "no parsed replay" and nothing can be started.
-const agentModel = deepReviewProvider('deepseek', process.env);
+// Models: each one of lib/agent/models.js whose key is set (DEEPSEEK_API_KEY, KIMI_API_KEY, GLM_API_KEY) is
+// offered; AGENT_MODELS (comma separated ids) narrows or widens that. A reader picks one by its id only:
+// addresses, upstream model names and keys never leave this process.
+const agentOffer = agentModels(process.env);
 const agentBlobs = (() => {
   const name = (process.env.AGENT_BUCKET || '').trim();
   if (!name) return null;
@@ -932,14 +938,20 @@ const agentTasks = (() => {
   console.log('INFO: agent parses and reviews are queued (Cloud Tasks) and run inside their own request.');
   return { dispatch: createTaskDispatcher({ queue, url, serviceAccount }), auth: createTaskAuth({ audience: url, serviceAccount }) };
 })();
-// One model client for everything the agents ask: the match review, its chat, and the patch advisor.
-const agentComplete = agentModel.ok ? openAiCompatible({ client: new OpenAI({ baseURL: agentModel.baseURL, apiKey: agentModel.apiKey }), model: agentModel.model, extraBody: agentModel.extraBody }) : null;
+// One client per offered model. The default one also answers the patch advisor.
+// A model that writes slowly is given longer to finish: those timed took four to ten times as long as DeepSeek
+// (models.js). By what the model is, whether or not it is this server's default.
+const agentEngines = Object.fromEntries(agentOffer.models.map((m) => [m.id, { name: m.model, ...(writesSlowly(m.id) ? { maxMs: SLOW_REVIEW_MAX_MS } : {}), complete: openAiCompatible({ client: new OpenAI({ baseURL: m.baseURL, apiKey: m.apiKey }), model: m.model, extraBody: m.extraBody }) }]));
+const agentComplete = agentOffer.default ? agentEngines[agentOffer.default].complete : null;
+console.log(`INFO: review models offered: ${agentOffer.models.map((m) => m.id).join(', ') || 'none'}${agentOffer.default ? ` (default ${agentOffer.default})` : ''}`);
+// Named by id and by the variable that is missing or wrong, never by a value.
+for (const m of agentOffer.skipped) console.warn(`WARNING: review model ${m.id} not offered (${m.error}${m.needs ? `: ${m.needs}` : ''})`);
 const agentService = createAgentService({
   traces: agentTraces,
   pipeline: agentPipeline,
   dispatch: agentTasks?.dispatch ?? null,
-  complete: agentComplete,
-  model: agentModel.ok ? agentModel.model : null,
+  models: agentEngines,
+  defaultModel: agentOffer.default,
   docs: agentBlobs ? createJsonStore(agentBlobs) : (process.env.AGENT_REVIEW_DIR ? createJsonStore(createFileStore(process.env.AGENT_REVIEW_DIR)) : null),
   getMatchDetail,
   log: (msg) => console.warn(`[agent] ${msg}`),
@@ -963,16 +975,24 @@ app.use(createAgentRouter({
   resolveClientIp,
   llm: reviewLlmLimit,
   parseDailyMax: Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : undefined,
+  modelHourlyMax: Number(process.env.AGENT_MODEL_HOURLY_MAX) > 0 ? Number(process.env.AGENT_MODEL_HOURLY_MAX) : undefined,
   guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
   log: (msg) => console.warn(`[agent] ${msg}`),
 }));
 
 // The patch advisor: what the current patch changed and how heroes are doing since (lib/patch). Its chat
 // calls the same model under the same budget as the review's.
+// Valve's datafeed, read for the home page's patch news and the advisor's notes alike (one cache).
+const valveFetch = createValveFetch();
+// The advisor's notes follow Valve's newest release (7.42 + 7.42a + …); the committed snapshot until then.
+const patchLiveNotes = process.env.PATCH_LIVE_NOTES_DISABLED === '1' ? null : createLiveNotes({ fetchJson: valveFetch, log: (msg) => console.warn(`[patch] ${msg}`) });
+void patchLiveNotes?.ensure(0);
 app.use(createPatchRouter({
   complete: agentComplete,
+  liveNotes: patchLiveNotes,
   // Home page patch news, live from Valve; the model only picks which of Valve's lines to show, once per patch (kept in AGENT_BUCKET).
   news: process.env.PATCH_NEWS_DISABLED === '1' ? null : createPatchNews({
+    fetchJson: valveFetch,
     complete: agentComplete,
     store: agentBlobs ? createJsonStore(agentBlobs) : null,
     log: (msg) => console.warn(`[patch] ${msg}`),
