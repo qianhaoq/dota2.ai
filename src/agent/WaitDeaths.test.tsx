@@ -82,6 +82,19 @@ describe('WaitDeaths', () => {
     expect(played.map((e) => [e.event, e.props])).toEqual([['moment_played', { matchId: id, lang: 'en', hero: 'axe' }], ['moment_played', { matchId: id, lang: 'en', hero: 'axe' }]]);
   });
 
+  it('a death the replay has no positions for is still listed, at its time, without the labels that could not be told', async () => {
+    // 30:42 is in neither "in a fight" nor "outside one" (no position samples around it); the log still says an enemy
+    // died within 15 s. 36:05 is only in a list this page shows no label for.
+    record = summary({ deaths_total: 6, deaths_where: { ...summary().deaths_where, traded_within_15s: ['2:51', '8:27', '30:42'], nothing_cast_and_no_item_used: ['36:05'] } });
+    await show();
+    const rows = Array.from(document.querySelectorAll('.ag-wait-list > li')).map((li) => [li.querySelector('.ag-wait-clock')!.textContent, Array.from(li.querySelectorAll('.ag-wait-tags .ag-chip')).map((c) => c.textContent)]);
+    expect(rows.slice(-2)).toEqual([['30:42', ['an enemy died within 15 s']], ['36:05', []]]);
+    expect(rows).toHaveLength(6);
+    expect(document.querySelector('.ag-wait-note')).toBeNull();
+    // And it replays like any other.
+    expect(screen.getByRole('button', { name: 'Replay on the map · 36:05' })).toBeTruthy();
+  });
+
   it('deaths the summary gives no time for are counted, not hidden', async () => {
     record = summary({ deaths_total: 6 });
     await show();
@@ -91,7 +104,7 @@ describe('WaitDeaths', () => {
   });
 
   it('one death and none read as a person would say them', async () => {
-    record = summary({ deaths_total: 1, killed_by: { lina: 1 }, deaths_where: { in_a_fight: ['8:27'], outside_fights: [] } });
+    record = summary({ deaths_total: 1, killed_by: { lina: 1 }, deaths_where: { in_a_fight: ['8:27'], outside_fights: [], traded_within_15s: ['8:27'] } });
     await show();
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('While the coach reads the replay: your one death');
     cleanup();

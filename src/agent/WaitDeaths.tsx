@@ -4,7 +4,7 @@
  * A review takes two to three minutes; the replay is already parsed when it starts. Nothing here is a judgment:
  * the times and the labels are the death summary the review itself reads (`deaths:<hero>`, death_context), and
  * a label is shown only where that summary lists the death — a death it could not tell about gets no label,
- * not the opposite one. The replay is the same one the review's moments use.
+ * not the opposite one, and is still listed: its time is known from whichever list has it. The replay is the same one the review's moments use.
  */
 import React, { useEffect, useState } from 'react';
 import { fetchEvidence } from './api';
@@ -51,8 +51,10 @@ export const WaitDeaths: React.FC<{ matchId: string; hero: string; lang: Lang }>
 
   const { record, names } = data;
   const where = (k: string): string[] => (Array.isArray(record.deaths_where[k]) ? record.deaths_where[k] : []);
-  // Every death the summary gives a time for: it is in a fight or outside one. Told apart by time, in game order.
-  const rows = [...new Set([...where('in_a_fight'), ...where('outside_fights')])]
+  // Every death the summary gives a time for, in game order: the times of all its lists together. Not only "in a
+  // fight" and "outside one" — a death whose positions the replay lacks is in neither, and is still a death at a
+  // known time: it is listed, without the labels that could not be told.
+  const rows = [...new Set(Object.values(record.deaths_where).flatMap((list) => (Array.isArray(list) ? list.filter((c): c is string => typeof c === 'string') : [])))]
     .map((clock) => ({ clock, at: seconds(clock) }))
     .filter((r): r is { clock: string; at: number } => r.at != null)
     .sort((a, b) => a.at - b.at);
