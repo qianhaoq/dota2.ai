@@ -43,6 +43,40 @@ export interface AnalyticsEventPayload {
   event: AnalyticsEventName;
   props: AnalyticsProps;
   anonId: string | null;
+  /** Present (true) only from a browser marked as one of ours: the funnel leaves such a browser out. */
+  internal?: true;
+}
+
+/**
+ * A browser of ours — the owner's, a session's check, a script's — is marked once by opening any page with
+ * `?internal=1` (and unmarked with `?internal=0`). The mark lives in this browser only. Its events then say so, and
+ * so do its requests for a parse or a review, so the funnel and the logs can tell visitors from us.
+ */
+export const INTERNAL_STORAGE_KEY = 'dota2ai.internal';
+export const INTERNAL_HEADER = 'X-Dota2ai-Internal';
+
+/** What a page URL's query says about the mark: true to set it, false to clear it, null to leave it. */
+export function internalFromSearch(search: string): boolean | null {
+  let v: string | null = null;
+  try { v = new URLSearchParams(search).get('internal'); } catch { return null; }
+  return v === '1' ? true : v === '0' ? false : null;
+}
+
+/**
+ * Apply the URL's word to the store, then say whether this browser is marked. Never throws.
+ * With no store at all (reading `localStorage` itself can throw), or one that refuses, the URL alone decides, for
+ * this page: `?internal=1` still marks what this page sends.
+ */
+export function resolveInternal(storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null | undefined, search: string): boolean {
+  const said = internalFromSearch(search);
+  if (!storage) return said === true;
+  try {
+    if (said === true) storage.setItem(INTERNAL_STORAGE_KEY, '1');
+    if (said === false) storage.removeItem(INTERNAL_STORAGE_KEY);
+    return storage.getItem(INTERNAL_STORAGE_KEY) === '1';
+  } catch {
+    return said === true;
+  }
 }
 
 export const ANON_ID_STORAGE_KEY = 'dota2ai.anonId';
@@ -141,11 +175,13 @@ export function buildEventPayload(
   event: AnalyticsEventName,
   props?: AnalyticsProps,
   anonId?: string | null,
+  internal = false,
 ): AnalyticsEventPayload {
   return {
     event,
     props: props ?? {},
     anonId: isValidAnonId(anonId) ? anonId : null,
+    ...(internal ? { internal: true as const } : {}),
   };
 }
 

@@ -6,6 +6,9 @@
  *     --project <project> --freshness=7d --limit 50000 --format=json | node scripts/funnel.mjs
  *
  * Also reads one JSON object per line (a local server's stdout, filtered to the analytics lines).
+ *
+ * A browser of ours — the owner's, a session's check — is left out whole once it has been opened with
+ * `?internal=1` (lib/analyticsFunnel.js), and the count of what was left out is printed first.
  */
 import { parseLogText, summarizeFunnel } from '../lib/analyticsFunnel.js';
 
@@ -30,6 +33,7 @@ const label = {
   rated: 'said whether a finding was right',
 };
 console.log(`days: ${out.days[0] ?? '-'} … ${out.days.at(-1) ?? '-'}   events: ${Object.entries(out.events).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+if (out.internal.events) console.log(`left out as ours (a browser opened once with ?internal=1): ${out.internal.events} events from ${out.internal.browsers} browser(s)`);
 console.log(`browsers (by anonId; ${out.anonymous} events had none):`);
 for (const [step, text] of Object.entries(label)) {
   console.log(`  ${String(out.browsers[step]).padStart(5)}  ${text}${step === 'opened' ? '' : `   — of those who opened: ${out.ofOpened[step]}${pct(out.ofOpened[step])}`}`);

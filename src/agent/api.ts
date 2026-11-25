@@ -1,5 +1,6 @@
 /** Client for the review agent (lib/agent/router.js). */
 import type { GoalSpec } from '../coach/types';
+import { internalHeaders } from '../services/analytics';
 
 export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string }
 /**
@@ -71,7 +72,7 @@ export const fetchAvailability = (matchId: string, signal?: AbortSignal) =>
 
 /** Start parsing the replay into a trace (or learn that it is already running / impossible). */
 export const prepareMatch = (matchId: string) =>
-  fetch(`/api/agent/${enc(matchId)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then((r) => json<ParseState>(r));
+  fetch(`/api/agent/${enc(matchId)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: '{}' }).then((r) => json<ParseState>(r));
 
 /**
  * `plan`: the plan the reader named, if any — a review made for it is its own review.
@@ -81,7 +82,7 @@ export const fetchReview = (matchId: string, hero: string, lang: string, signal?
   fetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}${plan ? `&plan=${enc(plan)}` : ''}${model ? `&model=${enc(model)}` : ''}`, { signal }).then((r) => json<ReviewState>(r));
 
 export const startReview = (matchId: string, hero: string, lang: string, plan?: string | null, model?: string | null) =>
-  fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}), ...(model ? { model } : {}) }) }).then((r) => json<ReviewState>(r));
+  fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}), ...(model ? { model } : {}) }) }).then((r) => json<ReviewState>(r));
 
 /** Where the ten heroes were around a game time (lib/agent/moment.js): what the page replays. */
 export interface Moment {
@@ -126,7 +127,7 @@ export type FindingReason = 'fact' | 'judgment' | 'not_mine' | 'knew' | 'vague' 
  */
 export async function sendFindingFeedback(matchId: string, body: { hero: string; lang: string; version: number; finding: number; title: string; rating: FindingRating; reason: FindingReason | null; id: string; plan?: string; model?: string }): Promise<boolean> {
   try {
-    const res = await fetch(`/api/agent/${enc(matchId)}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(`/api/agent/${enc(matchId)}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify(body) });
     return res.ok;
   } catch { return false; }
 }
@@ -173,6 +174,6 @@ export async function readChatStream(res: Response, ev: ChatEvents): Promise<voi
 
 /** One chat turn about a match. */
 export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[]; plan?: string; model?: string }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
-  const res = await fetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+  const res = await fetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify(body), signal });
   return readChatStream(res, ev);
 }
