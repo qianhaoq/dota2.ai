@@ -54,13 +54,17 @@ const newId = () => {
 
 export const FindingFeedback: React.FC<{
   matchId: string; hero: string; lang: Lang;
-  /** The plan and the model the review on screen was asked with: together with the game, hero and language they name the stored review. */
-  plan?: string | null; model?: string | null;
+  /**
+   * Which review is on screen: the plan it was asked with, the id of the model that wrote it (the writer's own
+   * id, never "the default": which model that is changes), and the prompt version it was written under. Together
+   * with the game, hero and language they name the stored review — and this browser's memory of what was said.
+   */
+  plan?: string | null; model?: string | null; version: number;
   /** Which finding, from 0, and its title: the server takes the word only if that finding still stands in that place. */
   index: number; title: string;
-}> = ({ matchId, hero, lang, plan = null, model = null, index, title }) => {
+}> = ({ matchId, hero, lang, plan = null, model = null, version, index, title }) => {
   const t = (k: string) => T[k][lang];
-  const slot = `${matchId}.${hero}.${lang}.${plan ?? ''}.${model ?? ''}.${index}`;
+  const slot = `${matchId}.${hero}.${lang}.${plan ?? ''}.${model ?? ''}.p${version}.${index}`;
   const [said, setSaid] = useState<Said | null>(() => { const s = load()[slot]; return s && s.title === title && RATINGS.includes(s.rating) ? s : null; });
   const [note, setNote] = useState<'saved' | 'failed' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,7 +74,7 @@ export const FindingFeedback: React.FC<{
     const before = said;
     const next: Said = { id: before?.id ?? newId(), title, rating, reason };
     setSaid(next); setBusy(true); setNote(null);
-    const ok = await sendFindingFeedback(matchId, { hero, lang, finding: index, title, rating, reason, id: next.id, ...(plan ? { plan } : {}), ...(model ? { model } : {}) });
+    const ok = await sendFindingFeedback(matchId, { hero, lang, version, finding: index, title, rating, reason, id: next.id, ...(plan ? { plan } : {}), ...(model ? { model } : {}) });
     setBusy(false);
     // Not saved: the buttons go back to what the server has, and say so.
     if (!ok) { setSaid(before); setNote('failed'); return; }

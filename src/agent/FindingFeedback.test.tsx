@@ -15,7 +15,7 @@ const events = () => calls().filter((c) => String(c[0]).includes('/api/events'))
 const settle = async () => { await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); }); };
 const click = async (name: string) => { fireEvent.click(screen.getByRole('button', { name })); await settle(); };
 const pressed = () => screen.getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent);
-const show = (props: Partial<React.ComponentProps<typeof FindingFeedback>> = {}) => render(<FindingFeedback matchId="7" hero="axe" lang="en" index={0} title="Roar held" {...props} />);
+const show = (props: Partial<React.ComponentProps<typeof FindingFeedback>> = {}) => render(<FindingFeedback matchId="7" hero="axe" lang="en" version={37} index={0} title="Roar held" {...props} />);
 
 beforeEach(() => {
   answer = { ok: true };
@@ -46,7 +46,7 @@ describe('FindingFeedback', () => {
     expect(url).toBe('/api/agent/7/feedback');
     expect(init.method).toBe('POST');
     expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
-    expect(body).toEqual({ hero: 'axe', lang: 'en', finding: 2, title: 'No BKB', rating: 'right', reason: null, id: expect.stringMatching(/^[a-z0-9]{16}$/), plan: 'push', model: 'kimi-k3.1-pro' });
+    expect(body).toEqual({ hero: 'axe', lang: 'en', version: 37, finding: 2, title: 'No BKB', rating: 'right', reason: null, id: expect.stringMatching(/^[a-z0-9]{16}$/), plan: 'push', model: 'kimi-k3.1-pro' });
     expect(pressed()).toEqual(['Right']);
     expect(screen.getByRole('status').textContent).toBe('Noted. Thank you.');
     // No reason is asked of "right".
@@ -121,8 +121,9 @@ describe('FindingFeedback', () => {
     await click('Right');
     expect(sent().at(-1)!.body.id).toBe(id);
     cleanup();
-    // Another finding, another language, another model's review, or the same place holding another finding: unanswered.
-    for (const other of [{ index: 1 }, { lang: 'zh' as const }, { model: 'kimi-k3.1-pro' }, { plan: 'push' }, { title: 'Another finding' }, { matchId: '8' }, { hero: 'lina' }]) {
+    // Another finding, another language, another model's review, the review written again under a newer prompt
+    // (even with the same title), or the same place holding another finding: unanswered.
+    for (const other of [{ index: 1 }, { lang: 'zh' as const }, { model: 'kimi-k3.1-pro' }, { plan: 'push' }, { version: 38 }, { title: 'Another finding' }, { matchId: '8' }, { hero: 'lina' }]) {
       show(other);
       expect([other, screen.getAllByRole('button').filter((b) => b.getAttribute('aria-pressed') === 'true')]).toEqual([other, []]);
       cleanup();
@@ -158,14 +159,14 @@ describe('ReviewDoc: each finding is asked about, in its own place', () => {
   const doc = (r: DeepReview, feedback: React.ComponentProps<typeof ReviewDoc>['feedback']) => render(<ReviewDoc matchId="7" review={r} lang="en" onAsk={() => {}} feedback={feedback} />);
 
   it('one question per finding: the first after its moments, the others inside their folds; each sends its own place', async () => {
-    doc(review(), { plan: null, model: null });
+    doc(review(), { plan: null, model: 'deepseek-flash', version: 37 });
     const groups = screen.getAllByRole('group', { name: 'Was this right?', hidden: true });
     expect(groups).toHaveLength(3);
     expect(groups[0].closest('section')!.className).toBe('ag-moments');
     expect(groups.slice(1).map((g) => g.closest('details')!.querySelector('summary')!.textContent)).toEqual(['2Finding 2', '3Finding 3']);
     fireEvent.click(within(groups[2]).getByRole('button', { name: 'Not useful', hidden: true }));
     await settle();
-    expect(sent().map((s) => [s.body.finding, s.body.title, s.body.rating])).toEqual([[2, 'Finding 3', 'useless']]);
+    expect(sent().map((s) => [s.body.finding, s.body.title, s.body.rating, s.body.version, s.body.model])).toEqual([[2, 'Finding 3', 'useless', 37, 'deepseek-flash']]);
     fireEvent.click(within(groups[0]).getByRole('button', { name: 'Right' }));
     await settle();
     expect(sent().at(-1)!.body).toMatchObject({ finding: 0, title: 'Finding 1', rating: 'right' });
@@ -173,10 +174,10 @@ describe('ReviewDoc: each finding is asked about, in its own place', () => {
   });
 
   it('a first finding with no moments is asked about under what to practise; with neither, under its claim', () => {
-    doc(review([finding(1, { evidence: [] })]), {});
+    doc(review([finding(1, { evidence: [] })]), { version: 37 });
     expect(screen.getByRole('group', { name: 'Was this right?' }).closest('section')!.className).toBe('ag-lesson');
     cleanup();
-    doc(review([finding(1, { evidence: [], fix: '' })]), {});
+    doc(review([finding(1, { evidence: [], fix: '' })]), { version: 37 });
     expect(screen.getByRole('group', { name: 'Was this right?' }).closest('section')!.className).toBe('ag-lead');
   });
 
@@ -184,7 +185,7 @@ describe('ReviewDoc: each finding is asked about, in its own place', () => {
     doc(review(), null);
     expect(screen.queryByRole('group', { name: 'Was this right?', hidden: true })).toBeNull();
     cleanup();
-    doc(review([]), {});
+    doc(review([]), { version: 37 });
     expect(screen.queryByRole('group', { name: 'Was this right?', hidden: true })).toBeNull();
   });
 });

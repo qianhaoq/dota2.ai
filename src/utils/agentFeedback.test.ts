@@ -19,11 +19,11 @@ const review = {
   ],
 };
 const ID = 'abcdefghij0123456789';
-const word = (over: any = {}) => ({ hero: 'beastmaster', lang: 'zh', finding: 0, title: '咆哮给了瘟疫法师', rating: 'right', id: ID, ...over });
+const word = (over: any = {}) => ({ hero: 'beastmaster', lang: 'zh', version: P, finding: 0, title: '咆哮给了瘟疫法师', rating: 'right', id: ID, ...over });
 
 describe('parseFeedback', () => {
   it('takes a finding, its title, a rating, a reason of that rating, and the page\'s id for it', () => {
-    expect(parseFeedback(word())).toEqual({ finding: 0, title: '咆哮给了瘟疫法师', rating: 'right', reason: null, id: ID });
+    expect(parseFeedback(word())).toEqual({ version: P, finding: 0, title: '咆哮给了瘟疫法师', rating: 'right', reason: null, id: ID });
     expect(parseFeedback(word({ rating: 'wrong', reason: 'fact' }))).toMatchObject({ rating: 'wrong', reason: 'fact' });
     expect(parseFeedback(word({ rating: 'useless', reason: 'vague', finding: 2 }))).toMatchObject({ rating: 'useless', reason: 'vague', finding: 2 });
     // No reason is a rating on its own.
@@ -33,7 +33,7 @@ describe('parseFeedback', () => {
   it('refuses everything else: nothing is guessed into a rating', () => {
     const bad = [
       { rating: 'good' }, { rating: undefined }, { rating: 'right', reason: 'fact' }, { rating: 'wrong', reason: 'vague' }, { rating: 'useless', reason: 'because I said so' },
-      { finding: -1 }, { finding: 3 }, { finding: 1.5 }, { finding: '0' }, { title: '' }, { title: 'x'.repeat(301) }, { title: 7 },
+      { version: undefined }, { version: 0 }, { version: 36.5 }, { version: '37' }, { finding: -1 }, { finding: 3 }, { finding: 1.5 }, { finding: '0' }, { title: '' }, { title: 'x'.repeat(301) }, { title: 7 },
       { id: 'short' }, { id: 'UPPERCASE0123456789' }, { id: '../../etc/passwd0000' }, { id: undefined },
     ];
     for (const over of bad) expect([over, parseFeedback(word(over))]).toEqual([over, null]);
@@ -134,7 +134,35 @@ describe('service.feedback', () => {
     expect(await service.feedback(MATCH, 'beastmaster', 'zh', { plan: 'split', value: value() })).toEqual({ status: 'no_review' });
     expect(await service.feedback(MATCH, 'beastmaster', 'zh', { value: value({ finding: 2 }) })).toEqual({ status: 'no_such_finding' });
     expect(await service.feedback(MATCH, 'beastmaster', 'zh', { value: value({ title: '上一版的标题' }) })).toEqual({ status: 'stale' });
+    // The reader was looking at the review of another prompt version — same title or not, it is not this one.
+    expect(await service.feedback(MATCH, 'beastmaster', 'zh', { value: value({ version: P - 1 }) })).toEqual({ status: 'stale' });
+    expect(await service.feedback(MATCH, 'beastmaster', 'zh', { value: value({ version: P + 1 }) })).toEqual({ status: 'stale' });
     expect(kept.m.size).toBe(0);
+  });
+
+  it('a ready review says which prompt version it was written under, for the page to say back', async () => {
+    const { service } = make({ traces: { get: async () => ({ heroes: [{ key: 'beastmaster' }] }) } });
+    expect(await service.status(MATCH, 'beastmaster', 'zh')).toMatchObject({ status: 'ready', prompt_version: P, review: { hero: 'beastmaster' } });
+    // Asked a second time it comes from memory: the same answer.
+    expect(await service.status(MATCH, 'beastmaster', 'zh')).toMatchObject({ status: 'ready', prompt_version: P });
+  });
+
+  it('the word goes to the review of the model named by its own id, whichever model is the default here', async () => {
+    const other = `${reviewKey}.m-kimi-k3.1-pro`;
+    const kimiReview = { ...review, findings: [{ ...review.findings[0], title: 'Kimi 的发现' }] };
+    const engines = { 'deepseek-flash': { complete: async () => ({}) }, 'kimi-k3.1-pro': { complete: async () => ({}) } };
+    for (const defaultModel of ['deepseek-flash', 'kimi-k3.1-pro']) {
+      const { service, docs, kept } = make({ complete: undefined, model: undefined, models: engines, defaultModel });
+      docs.m.set(`${other}.review.json`, { review: kimiReview, verification: { repaired: false, dropped: 0 }, model: 'k3.1-pro' });
+      // DeepSeek's review, named by DeepSeek's id: found under its own key also once Kimi is the default.
+      expect([defaultModel, await service.feedback(MATCH, 'beastmaster', 'zh', { model: 'deepseek-flash', value: value() })]).toEqual([defaultModel, { status: 'ok' }]);
+      expect(kept.m.get(`${reviewKey}.f0.${ID}`)).toMatchObject({ model: 'deepseek-flash', finding: { title: '咆哮给了瘟疫法师' } });
+      // Kimi's review, named by Kimi's id: never DeepSeek's finding in the same place.
+      expect(await service.feedback(MATCH, 'beastmaster', 'zh', { model: 'kimi-k3.1-pro', value: value({ title: 'Kimi 的发现' }) })).toEqual({ status: 'ok' });
+      expect(kept.m.get(`${other}.f0.${ID}`)).toMatchObject({ model: 'kimi-k3.1-pro', finding: { title: 'Kimi 的发现' } });
+      expect(await service.feedback(MATCH, 'beastmaster', 'zh', { model: 'kimi-k3.1-pro', value: value() })).toEqual({ status: 'stale' });
+      expect(kept.m.size).toBe(2);
+    }
   });
 
   it('with nowhere to keep it, or a store that fails, it says so instead of answering "ok"', async () => {
@@ -164,7 +192,7 @@ describe('POST /api/agent/:matchId/feedback', () => {
   it('keeps the word and answers ok; a bad body is refused before anything is looked up', async () => {
     expect(await post(word({ rating: 'wrong', reason: 'fact' }))).toMatchObject({ status: 200, body: { status: 'ok' } });
     expect(kept.m.get(`${reviewKey}.f0.${ID}`)).toMatchObject({ rating: 'wrong', reason: 'fact', hero: 'beastmaster', lang: 'zh' });
-    for (const bad of [word({ rating: 'great' }), word({ rating: 'right', reason: 'fact' }), word({ hero: '' }), word({ finding: 9 }), word({ id: 'x' }), {}]) expect((await post(bad)).status).toBe(400);
+    for (const bad of [word({ version: undefined }), word({ rating: 'great' }), word({ rating: 'right', reason: 'fact' }), word({ hero: '' }), word({ finding: 9 }), word({ id: 'x' }), {}]) expect((await post(bad)).status).toBe(400);
     expect(await post(word({ plan: 'not-a-plan' }))).toMatchObject({ status: 400, body: { code: 'invalid_plan' } });
     expect(await post(word({ model: 'gpt-9' }))).toMatchObject({ status: 400, body: { code: 'invalid_model' } });
     expect((await post(word(), '10.0.0.1', 'abc')).status).toBe(400);
@@ -175,6 +203,7 @@ describe('POST /api/agent/:matchId/feedback', () => {
     const before = kept.m.size;
     expect(await post(word({ lang: 'en' }))).toMatchObject({ status: 404, body: { code: 'no_review' } });
     expect(await post(word({ title: '别的标题' }))).toMatchObject({ status: 404, body: { code: 'stale' } });
+    expect(await post(word({ version: P - 1 }))).toMatchObject({ status: 404, body: { code: 'stale' } });
     expect(await post(word({ finding: 2 }))).toMatchObject({ status: 404, body: { code: 'no_such_finding' } });
     expect(kept.m.size).toBe(before);
   });
