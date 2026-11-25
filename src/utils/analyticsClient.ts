@@ -18,7 +18,9 @@ export type AnalyticsEventName =
   | 'chat_asked'
   | 'review_ready'
   | 'moment_played'
-  | 'arrived';
+  | 'arrived'
+  | 'goal_set'
+  | 'goal_checked';
 
 export type AnalyticsProps = Record<string, string | number | boolean>;
 

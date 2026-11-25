@@ -1473,6 +1473,9 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByText('On Beastmaster: finish with Blink Dagger or Black King Bar')).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: 'Make this my next-game goal' }));
     expect(await screen.findByText(/✓ Your next-game goal · From finding 1/)).toBeTruthy();
+    // The account is known (77): the reader is told where the check will be waiting.
+    expect(screen.getByText(/Your next game shows up on the dota2.ai home page with this goal already checked/)).toBeTruthy();
+    expect((await events()).filter((e) => e.event === 'goal_set').map((e) => e.props)).toEqual([{ matchId: '9100904020', kind: 'hold_item', account: true, rules: 0 }]);
     const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
     expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:hold_item:blink+black_king_bar', goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38 }, action: goal.label, fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38 });
     expect(stored.goal).not.toHaveProperty('finding');
@@ -1541,6 +1544,9 @@ describe('AgentMatchPage', () => {
     const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
     expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:replay_habit:low_health1:ralone2', goal: check, findingId: 'agent:1', accountId: 77 });
     expect(stored.rules).toEqual([{ finding: 2, when: 'No teammate on the minimap near you', do: 'stay on your side of the river', check: alone }]);
+    // These are counted in the replay: the home page is where the next game is found, not where it is already checked.
+    expect(screen.getByText(/open it from there\. This goal is checked once that game’s replay has been read/)).toBeTruthy();
+    expect(screen.queryByText(/with this goal already checked/)).toBeNull();
   });
 
   it('a later game is counted on the rules from its own replay; without the replay nothing is called met', async () => {
