@@ -103,6 +103,10 @@ describe('probes: grading an answer', () => {
     const named = (side: any) => side.heroes.filter((x: string) => x !== 'beastmaster').map((x: string) => kit.context.hero_names[x]).join(', ');
     expect(gradeProbe(h, `You and ${named(mine)} against ${named(theirs)}.`, names).pass).toBe(true);
     expect(gradeProbe(h, `${mine.count} of yours against ${theirs.count}.`, names).pass).toBe(true);
+    // The player is in the list as "you" or by their hero, never taken as said.
+    expect(gradeProbe(h, `Only ${named(mine)} fought for your team, against ${named(theirs)}.`, names)).toMatchObject({ pass: false, missing: [String(mine.count)] });
+    expect(gradeProbe(h, `只有${kit.context.hero_names.undying}替你们打，对面是${named(theirs)}。`, { ...names, lang: 'zh' }).pass).toBe(false);
+    expect(gradeProbe(h, `Beastmaster and ${named(mine)} against ${named(theirs)}.`, names).pass).toBe(true);
     const uneven = { kind: 'heroes_in_lost_fight', source: { args: { hero: 'beastmaster' } }, expect: { sides: [{ count: 4, heroes: ['beastmaster', 'undying', 'sven', 'dark_willow'] }, { count: 5, heroes: ['axe', 'necrolyte', 'venomancer', 'mirana', 'phantom_assassin'] }] } };
     expect(gradeProbe(uneven, 'You, Undying, Sven and Dark Willow: 4 against 5.', names).pass).toBe(true);
     expect(gradeProbe(uneven, '4 of yours against 6.', names)).toMatchObject({ pass: false, wrong: ['enemy 6'] });
@@ -138,6 +142,9 @@ describe('probes: grading an answer', () => {
     expect(sideCounts('Your team brought two heroes, and the enemy brought four.')).toEqual({ mine: [2], theirs: [4] });
     expect(sideCounts("Radiant's 4 versus Dire's 5.", 'en', 'dire')).toEqual({ mine: [5], theirs: [4] });
     expect(sideCounts('你方 4 个英雄参战，敌方 5 个。', 'zh')).toEqual({ mine: [4], theirs: [5] });
+    expect(sideCounts('You fought 4v5.')).toEqual({ mine: [4], theirs: [5] });
+    expect(sideCounts('You fought 4 vs 5.')).toEqual({ mine: [4], theirs: [5] });
+    expect(sideCounts('你们 4 打 5。', 'zh')).toEqual({ mine: [4], theirs: [5] });
     const p = { kind: 'heroes_in_lost_fight', source: { args: { hero: 'beastmaster' } }, expect: { my_team: 'dire', sides: [{ count: 2, heroes: ['beastmaster', 'undying'] }, { count: 4, heroes: ['axe', 'necrolyte', 'venomancer', 'mirana'] }] } };
     expect(gradeProbe(p, 'Your team brought two heroes, and the enemy brought four.', names).pass).toBe(true);
     expect(gradeProbe(p, 'Your team brought four heroes, and the enemy brought two.', names)).toMatchObject({ pass: false, wrong: ['my team 4', 'enemy 2'] });
