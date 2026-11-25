@@ -145,7 +145,7 @@ describe('GET /r/:matchId', () => {
     const base = await start({ review: async (...a: unknown[]) => { asked.push(a); return { verdict: 'Ravage <late> & "alone" — every fight started a step behind.' }; } });
     const p = buildCoachReport(withNames()).players[4];
     const html = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}&plan=push&lang=zh&ref=share`)).text();
-    expect(asked).toEqual([[9091400302, p.hero.slug, 'zh', 'push']]);
+    expect(asked).toEqual([[9091400302, p.hero.slug, 'zh', 'push', null]]);
     expect(tag(html, 'og:title')).toContain(p.hero.zh);
     expect(tag(html, 'og:description')?.startsWith('Ravage &lt;late&gt; &amp; &quot;alone&quot; — every fight started a step behind.')).toBe(true);
     expect(tag(html, 'og:image')).toBe(p.hero.img);
@@ -154,12 +154,27 @@ describe('GET /r/:matchId', () => {
     expect(html).not.toContain('SecretName');
   });
 
+  it('a link to the review another model wrote (?model=) previews that review, and keeps the model in its address', async () => {
+    const asked: unknown[][] = [];
+    const base = await start({ review: async (...a: unknown[]) => { asked.push(a); return { verdict: 'Written by the other model.' }; } });
+    const p = buildCoachReport(withNames()).players[4];
+    const html = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}&model=glm-5.3-flash&ref=share`)).text();
+    expect(asked).toEqual([[9091400302, p.hero.slug, 'en', null, 'glm-5.3-flash']]);
+    expect(tag(html, 'og:description')?.startsWith('Written by the other model.')).toBe(true);
+    expect(tag(html, 'og:url')).toBe(`https://dota2.ai/r/9091400302?hero=${p.hero.slug}&amp;model=glm-5.3-flash`);
+    // Anything that is not a model of the list is no model: the default's review is looked up, and the address drops it.
+    asked.length = 0;
+    const odd = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}&model=%3Cscript%3E&model=x`)).text();
+    expect(asked).toEqual([[9091400302, p.hero.slug, 'en', null, null]]);
+    expect(tag(odd, 'og:url')).toBe(`https://dota2.ai/r/9091400302?hero=${p.hero.slug}`);
+  });
+
   it('a hero whose replay key is not its scoreboard slug (queen_of_pain / queenofpain) is still found, and its review read by the replay key', async () => {
     const asked: unknown[][] = [];
     const qop = () => { const m = withNames(); m.players[4].hero_id = 39; return m; };
     const base = await start({ match: async () => qop(), review: async (...a: unknown[]) => { asked.push(a); return { verdict: 'Blinked in before the stun.' }; } });
     const html = await (await fetch(`${base}/r/9091400302?hero=queen_of_pain`)).text();
-    expect(asked).toEqual([[9091400302, 'queen_of_pain', 'en', null]]);
+    expect(asked).toEqual([[9091400302, 'queen_of_pain', 'en', null, null]]);
     expect(tag(html, 'og:title')).toContain('Queen of Pain');
     expect(tag(html, 'og:description')?.startsWith('Blinked in before the stun.')).toBe(true);
   });

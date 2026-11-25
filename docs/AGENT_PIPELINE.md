@@ -15,7 +15,7 @@ Code: `lib/agent/` (pipeline, stores, service, router, agent, verifier),
 
 | Piece | Where | Needs |
 |---|---|---|
-| Site (`server.js`) | the existing Cloud Run service | `DEEPSEEK_API_KEY`, `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
+| Site (`server.js`) | the existing Cloud Run service | `DEEPSEEK_API_KEY` (and `KIMI_API_KEY`, `GLM_API_KEY` for the other models), `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
 | Replay worker (`Dockerfile.trace-worker`) | a second, private Cloud Run service | the pinned extractor in the image, `AGENT_BUCKET` |
 | Storage | one GCS bucket, objects under `agent/` | traces (`<id>.trace.json.gz`, ~250 KB), reviews, job markers |
 
@@ -202,6 +202,7 @@ the worker.
 |---|---|---|
 | Parses | 5 per caller per 10 min; `AGENT_PARSE_DAILY_MAX` (default 300) a day | `lib/agent/router.js` |
 | Deep reviews | 5 per caller per 10 min; 60 an hour; the shared LLM budget | same |
+| Deep reviews by a model other than DeepSeek | also `AGENT_MODEL_HOURLY_MAX` (default 20) an hour per model; 25 min to finish instead of 15. Both by what the model is, also when it is the server's default | same, `lib/agent/service.js`, `models.js` `writesSlowly` |
 | Chat | 12 turns a minute per caller; 6 tool calls a turn; the shared LLM budget | same, `lib/agent/chat.js` |
 | Download | 256 MB; extractor input 512 MB, output 1.5 GB | `replayIngest/capacity.js` |
 
@@ -209,6 +210,56 @@ Measured on one 42-minute game (9100904020): replay 51 MB; worker 22 s from
 address to stored trace; deep review with DeepSeek 4.1 Flash (thinking on)
 100–130 s, 130–270k input and 17–24k output tokens. A trace and a review are
 made once per match / per (match, hero, language) and kept.
+
+## Which model writes the review
+
+The reader picks one on the review page; the default is DeepSeek 4.1 Flash.
+`lib/agent/models.js` lists what a page may show (an id, a name, how long the
+model took when timed); `lib/agent/providers.js` maps each id to its address,
+upstream model name and key, and only the server and the scripts import it.
+
+| id | Key | Offered by default |
+|---|---|---|
+| `deepseek-flash` | `DEEPSEEK_API_KEY` | yes (the default) |
+| `kimi-k3.1-pro` | `KIMI_API_KEY` | yes |
+| `glm-5.3-flash` | `GLM_API_KEY` | yes |
+| `glm-5.3` | `GLM_API_KEY` | no: `AGENT_MODELS` |
+| `glm-5.4` | `GLM_API_KEY` | no: the API answered 1220 (no access) on 2026-11-25 |
+
+A model is offered when its key is set (and `AGENT_MODELS`, a comma separated
+list of ids, does not leave it out). The page sends the id only. An id that is
+not offered is a 400; a review is never written by a model the reader did not
+ask for, and a failed review is not retried with another. Each model's review
+of a game is kept on its own (`….m-<id>.review.json`), so the same game can be
+read by two models; the key without a model is DeepSeek's, as every review was
+stored before there was a choice, and stays DeepSeek's on a server whose
+default is another model. A queued review names its model. The chat is
+answered by the model whose review is on screen.
+
+Keys: in the server's environment only, on Cloud Run from Secret Manager
+(`--update-secrets`, never `--set-env-vars`), never in a `VITE_*` variable.
+Every secret the process holds is redacted from its logs by value
+(`lib/llmErrors.js` `registerSecretValues`), whatever its shape. A Kimi key is
+sent to one of Kimi's four addresses and nowhere else (`KIMI_BASE_URL`): a
+Kimi Code membership key (`sk-kimi-…`) to `api.kimi.com/coding/v1`, a Moonshot
+platform key to `api.moonshot.cn/v1`.
+
+Timed on 2026-11-25 on one game (9091400302, Tidehunter, Chinese, a 45-minute game),
+one run each from `scripts/deep-review.mjs`, thinking at each provider's
+default; DeepSeek's row is production's runs of the same game the day before:
+
+| Model | Time | Input / output tokens | Rounds, lookups | Findings | Dropped by the check |
+|---|---|---|---|---|---|
+| DeepSeek 4.1 Flash | 2.1–2.5 min | 433–538k / 22–27k | 8–10, 16 | 3 | 0 |
+| GLM-5.3 Flash | 11.2 min | 359k / 35k | 7, 16 | 3 | 0 (one plan evidence line left out) |
+| Kimi K3.1 Pro | 13.4 min | 502k / 25k | 8, 26 | 3 | 0 |
+| GLM-5.3 | 23.6 min | 1,000k / 59k | 13, 21 | 3 | 0 |
+
+All four named the same three things to change (staying in lane at low
+health, deaths away from the team that bought nothing, magic resistance bought
+against a hero who kills with attacks). One game is not a ranking of their
+judgment; it does show that the other models take four to ten times as long,
+which is why the page states the wait and GLM-5.3 is not offered by default.
 
 ## Where the replay address comes from
 
