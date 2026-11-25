@@ -81,7 +81,17 @@ export const MomentReplay: React.FC<{ matchId: string; hero: string; lang: Lang;
   const ra = Math.max(box.x, -(box.y + box.size)); const rb = Math.min(box.x + box.size, -box.y);
   // The player is drawn last, so no other mark covers them.
   const order = data.heroes.map((h, k) => ({ h, k })).sort((a, b) => Number(a.h.side === 'me') - Number(b.h.side === 'me'));
-  const trail = (k: number) => data.frames.slice(Math.max(0, i - TRAIL), i + 1).map((f) => f.at[k]).filter(inside).map((p) => `${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`).join(' ');
+  // Where a hero came from: back from this second, only while the replay has them, in the square, at every second.
+  // A second without a sample, or one outside the square, ends the trail: joining across it would draw a path nobody recorded.
+  const trail = (k: number) => {
+    const points: string[] = [];
+    for (let j = i; j >= Math.max(0, i - TRAIL); j -= 1) {
+      const p = data.frames[j].at[k];
+      if (!inside(p)) break;
+      points.unshift(`${px(p[0]).toFixed(1)},${py(p[1]).toFixed(1)}`);
+    }
+    return points.length > 1 ? points.join(' ') : '';
+  };
   const last = data.frames.length - 1;
   const toggle = () => { if (!playing && i >= last) setI(0); setPlaying((v) => !v); };
 
@@ -92,7 +102,7 @@ export const MomentReplay: React.FC<{ matchId: string; hero: string; lang: Lang;
         <rect x="0" y="0" width={S} height={S} rx="8" className="ag-replay-bg" />
         <path className="ag-replay-grid" d={[1, 2, 3].map((n) => `M0 ${(S / 4) * n}H${S}M${(S / 4) * n} 0V${S}`).join('')} />
         {rb > ra && <line className="ag-replay-river" x1={px(ra)} y1={py(-ra)} x2={px(rb)} y2={py(-rb)}><title>{say(T.river)}</title></line>}
-        {data.heroes.map((h, k) => (trail(k).includes(' ') ? <polyline key={`t${h.hero}`} className={`ag-replay-trail is-${h.side}`} points={trail(k)} /> : null))}
+        {data.heroes.map((h, k) => { const points = trail(k); return points ? <polyline key={`t${h.hero}`} className={`ag-replay-trail is-${h.side}`} points={points} /> : null; })}
         {order.map(({ h, k }) => {
           const p = frame.at[k];
           if (!inside(p)) return null;

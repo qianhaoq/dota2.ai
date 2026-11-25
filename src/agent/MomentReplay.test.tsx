@@ -73,6 +73,24 @@ describe('MomentReplay', () => {
     expect(document.querySelector('.ag-replay-deaths li')!.className).toBe('is-past');
   });
 
+  it('a trail is only ever consecutive seconds the replay has: it does not join across a missing second, nor through one outside the square', async () => {
+    serve(moment());
+    render(<MomentReplay matchId="7" hero="axe" lang="en" t={fresh()} />);
+    await flush();
+    const trails = () => Object.fromEntries(['me', 'ally', 'enemy'].map((side) => [side, document.querySelector(`.ag-replay-trail.is-${side}`)?.getAttribute('points') ?? null]));
+    // The square is 2000 wide on a 320 px map: 0.16 px a unit, y down.
+    const at = (x: number, y: number) => `${((x + 1000) * 0.16).toFixed(1)},${(320 - (y + 1000) * 0.16).toFixed(1)}`;
+    // 1:40, the first second: nobody has come from anywhere yet.
+    expect(trails()).toEqual({ me: null, ally: null, enemy: null });
+    await step(2);
+    // 1:42: the ally had no sample at 1:41, so her trail does not reach back to 1:40; the enemy was outside the
+    // square at 1:40, so his starts where he came into it.
+    expect(trails()).toEqual({ me: [at(0, 0), at(100, 0), at(200, 0)].join(' '), ally: null, enemy: [at(900, 0), at(800, 0)].join(' ') });
+    await step();
+    // 1:43: two consecutive seconds of the ally now, and still nothing drawn across the gap.
+    expect(trails().ally).toBe([at(600, 500), at(700, 500)].join(' '));
+  });
+
   it('the player is told apart, and each hero is drawn by the game\'s own icon for it', async () => {
     serve(moment());
     render(<MomentReplay matchId="7" hero="axe" lang="zh" t={fresh()} />);
