@@ -21,6 +21,7 @@ describe('validateAnalyticsEvent', () => {
       ['review_refused', { matchId: '9100904020', reason: 'rate', waits: true }, { matchId: '9100904020', reason: 'rate', waits: true }],
       ['arrived', { src: 'nga', page: 'match', url: '/r/1?src=nga' }, { src: 'nga', page: 'match' }],
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
+      ['moment_played', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', t: 1825, fact: 'free text' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster' }],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
     // How a match page was arrived at: a shared link's ref, and no other value.
