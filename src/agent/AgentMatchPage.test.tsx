@@ -392,10 +392,10 @@ describe('AgentMatchPage', () => {
   });
 
   it('a won fight is shown with who was still dead and for how long, and what the winners did with it', async () => {
-    const point = { status: 'ok', ref: 'decision:spectre:4', kind: 'decision', names: { juggernaut: '主宰', lion: '莱恩', zuus: '宙斯', silencer: '沉默术士' }, record: {
+    const point = { status: 'ok', ref: 'decision:spectre:4', kind: 'decision', names: { juggernaut: '主宰', lion: '莱恩', zuus: '宙斯', silencer: '沉默术士', invoker: '祈求者' }, record: {
       ref: 'decision:spectre:4', kind: 'after_a_won_fight', fight: 'fight:4', clock: '20:58', won_by: 'my_team', deaths: { my_team: 2, enemy: 4 },
       losers_still_dead_10s_after: 4, losers_respawn_in: [{ hero: 'juggernaut', seconds: 17 }, { hero: 'lion', seconds: 15 }, { hero: 'zuus', seconds: 31 }, { hero: 'silencer', seconds: 22 }],
-      winners_did: 'took_a_building', buildings_winners_took: [{ building: 'badguys_tower1_mid', clock: '20:54', during_the_fight: true }], pushes: [], losers_took_back: [], me: 'did_not_hit',
+      winners_did: 'took_a_building', buildings_winners_took: [{ building: 'badguys_tower1_mid', clock: '20:54', during_the_fight: true }], pushes: [], losers_took_back: [], me: 'did_not_hit', losers_richest: { hero: 'invoker', still_dead_10s_after: false },
     } };
     const chip = (text: string) => screen.getByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === text);
     ui.lang = 'zh';
@@ -406,6 +406,8 @@ describe('AgentMatchPage', () => {
     expect(chip('宙斯31秒')).toBeTruthy();
     expect(chip('随后拆到建筑')).toBeTruthy();
     expect(chip('20:54 · 中路 1 塔')).toBeTruthy();
+    expect(screen.getByText('对方经济最高')).toBeTruthy();
+    expect(chip('祈求者已复活')).toBeTruthy();
     expect(screen.queryByText(/took_a_building|badguys|juggernaut/)).toBeNull();
     cleanup();
     // A fight the enemy won: what the player's team took back is the player's team's (review of #306).
