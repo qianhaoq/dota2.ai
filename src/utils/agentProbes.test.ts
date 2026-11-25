@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { buildProbes, gradeProbe, numbersIn, clocksIn, scoreProbes, PROBE_KINDS } from '../../lib/agent/probes.js';
+import { buildProbes, gradeProbe, numbersIn, clocksIn, sideCounts, zhNumeral, scoreProbes, PROBE_KINDS } from '../../lib/agent/probes.js';
 import { reviewToolkit } from '../../lib/agent/deepReview.js';
 import { runChat } from '../../lib/agent/chat.js';
 
@@ -105,7 +105,8 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe(h, `${mine.count} of yours against ${theirs.count}.`, names).pass).toBe(true);
     const uneven = { kind: 'heroes_in_lost_fight', source: { args: { hero: 'beastmaster' } }, expect: { sides: [{ count: 4, heroes: ['beastmaster', 'undying', 'sven', 'dark_willow'] }, { count: 5, heroes: ['axe', 'necrolyte', 'venomancer', 'mirana', 'phantom_assassin'] }] } };
     expect(gradeProbe(uneven, 'You, Undying, Sven and Dark Willow: 4 against 5.', names).pass).toBe(true);
-    expect(gradeProbe(uneven, '4 of yours against 6.', names)).toMatchObject({ pass: false, missing: ['5'] });
+    expect(gradeProbe(uneven, '4 of yours against 6.', names)).toMatchObject({ pass: false, wrong: ['enemy 6'] });
+    expect(gradeProbe(uneven, 'Four of yours.', names)).toMatchObject({ pass: false, missing: ['5'] });
     const own = { kind: 'first_aegis', source: { args: { hero: 'beastmaster' } }, expect: { me: true, clock: '32:18' } };
     expect(gradeProbe(own, 'You took it at 32:18.', names).pass).toBe(true);
     expect(gradeProbe(own, '你在 32:18 拿的。', { ...names, lang: 'zh' }).pass).toBe(true);
@@ -118,8 +119,28 @@ describe('probes: grading an answer', () => {
     const pre = { kind: 'most_avoidable_death', source: { args: {} }, expect: { clock: '-0:37', among: ['-0:37'] } };
     expect(gradeProbe(pre, 'Your only death, at −0:37.', names).pass).toBe(true);
     expect(gradeProbe(pre, 'Your only death, at 0:37.', names).pass).toBe(false);
-    expect(numbersIn('你开局一次都没死。', 'zh')).toContain(0);
+    expect(numbersIn('你开局一次都没死。', 'zh')).toEqual([0]);
     expect(numbersIn('You never died before 10:00.')).toContain(0);
+  });
+
+  it('reads a Chinese count whole, and only before a counter', () => {
+    expect(numbersIn('你死了十四次', 'zh')).toEqual([14]);
+    expect(numbersIn('你死了四次', 'zh')).toEqual([4]);
+    expect(numbersIn('二十个人头，一波团，一座塔', 'zh')).toEqual([20]);
+    expect([zhNumeral('十'), zhNumeral('十四'), zhNumeral('二十'), zhNumeral('三十五'), zhNumeral('十十')]).toEqual([10, 14, 20, 35, null]);
+    const d = { kind: 'deaths_before_10', source: { args: {} }, expect: { numbers: [1] } };
+    expect(gradeProbe(d, '你一次都没死。', { ...names, lang: 'zh' }).pass).toBe(false);
+    expect(gradeProbe({ ...d, expect: { numbers: [4] } }, '你死了十四次。', { ...names, lang: 'zh' }).pass).toBe(false);
+    expect(gradeProbe({ ...d, expect: { numbers: [14] } }, '你死了十四次。', { ...names, lang: 'zh' }).pass).toBe(true);
+  });
+
+  it('a fight count belongs to the side it is said of', () => {
+    expect(sideCounts('Your team brought two heroes, and the enemy brought four.')).toEqual({ mine: [2], theirs: [4] });
+    expect(sideCounts("Radiant's 4 versus Dire's 5.", 'en', 'dire')).toEqual({ mine: [5], theirs: [4] });
+    expect(sideCounts('你方 4 个英雄参战，敌方 5 个。', 'zh')).toEqual({ mine: [4], theirs: [5] });
+    const p = { kind: 'heroes_in_lost_fight', source: { args: { hero: 'beastmaster' } }, expect: { my_team: 'dire', sides: [{ count: 2, heroes: ['beastmaster', 'undying'] }, { count: 4, heroes: ['axe', 'necrolyte', 'venomancer', 'mirana'] }] } };
+    expect(gradeProbe(p, 'Your team brought two heroes, and the enemy brought four.', names).pass).toBe(true);
+    expect(gradeProbe(p, 'Your team brought four heroes, and the enemy brought two.', names)).toMatchObject({ pass: false, wrong: ['my team 4', 'enemy 2'] });
   });
 
   it('scores by kind', () => {
