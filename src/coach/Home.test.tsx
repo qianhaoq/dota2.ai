@@ -12,11 +12,41 @@ import { AGENT_CLIENTS, CURSOR_INSTALL, MCP_TOOLS, MCP_URL } from './accessSnipp
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en', setLang: () => {} }) }));
 const report = buildCoachReport(JSON.parse(readFileSync(path.join(process.cwd(), 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))) as any;
 const cards = vi.fn();
-vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), fetchCoachCards: (...a: unknown[]) => cards(...a) }));
+const recent = vi.fn(async (_id: string) => ({ account_id: 0, empty_hint: null, matches: [] as unknown[] }));
+vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), fetchCoachCards: (...a: unknown[]) => cards(...a), fetchRecentMatches: (id: string) => recent(id) }));
 const { CoachHome } = await import('./CoachApp');
 
-afterEach(() => { cleanup(); cards.mockReset(); });
+afterEach(() => { cleanup(); cards.mockReset(); recent.mockClear(); window.localStorage.clear(); });
 const home = () => render(<MemoryRouter><CoachHome /></MemoryRouter>);
+
+describe('home: coming back after the next game', () => {
+  const goal = (accountId: number | null) => ({
+    id: 'g1', goal: { kind: 'deaths_per10_max', max: 2, label: { en: 'At most 2 deaths per 10 minutes', zh: 'x' } },
+    action: { en: 'a', zh: 'a' }, findingId: 'agent:1', fromMatch: 9091400302, fromStart: 1, accountId, heroId: 29, setAt: 1,
+  });
+
+  it('a goal set from a review brings that player\'s latest game to the home page, with no friend code saved', async () => {
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal(86745912)));
+    home();
+    await waitFor(() => expect(recent).toHaveBeenCalledWith('86745912'));
+  });
+
+  it('a saved friend code wins; a goal without an account (or an anonymous one) shows nothing', async () => {
+    window.localStorage.setItem('dota2ai.coach.account', '12345678');
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal(86745912)));
+    home();
+    await waitFor(() => expect(recent).toHaveBeenCalled());
+    expect(recent.mock.calls.map((c) => c[0])).toEqual(['12345678']);
+    cleanup(); recent.mockClear(); window.localStorage.clear();
+    for (const id of [null, 4294967295]) {
+      window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal(id)));
+      home();
+      await new Promise((r) => setTimeout(r, 20));
+      cleanup();
+    }
+    expect(recent).not.toHaveBeenCalled();
+  });
+});
 
 describe('home: what happens next', () => {
   it('explains the four steps of a review and what the coach cannot see, without sample numbers', () => {

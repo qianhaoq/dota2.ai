@@ -356,6 +356,14 @@ describe('parse jobs in the service', () => {
     expect(built.net_worth).toEqual([[600, 800], [600, 700]]);
     const svc: any = createAgentService({ traces: { get: async () => built }, complete: null });
     expect((await svc.availability(ID)).radiant_net_worth_lead).toEqual([0, 100]);
+    expect(await svc.availability(ID)).not.toHaveProperty('radiant_gold_lead');
+    // A trace that kept its gold rows: the lead is gold earned, summed from them, and is named for what it is.
+    // (This extract has no combat log, so its name table does not hold the heroes yet: the rows name them here.)
+    const names = [...built.names, ...built.heroes.map((h: any) => h.npc)];
+    const rows: any = { ...built, names, gold: [[0, names.indexOf(built.heroes[0].npc), 13, 90], [0, names.indexOf(built.heroes[1].npc), 13, 40]] };
+    const fromLog = await (createAgentService({ traces: { get: async () => rows }, complete: null } as any) as any).availability(ID);
+    expect(fromLog.radiant_gold_lead).toEqual([0, 50]);
+    expect(fromLog).not.toHaveProperty('radiant_net_worth_lead');
     // An extract from an older extractor, without the file: no net worth, and the answer has no lead.
     rmSync(join(dir, 'trace', 'metadata.jsonl'));
     const older: any = await buildTraceFromExtract(dir, { match_id: ID });

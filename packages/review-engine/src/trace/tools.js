@@ -93,17 +93,88 @@ function deathRow(trace, d, t0 = null, view = null) {
   return { t: d[0], clock: clock(d[0]), ...(t0 == null ? {} : { dt: Math.round((d[0] - t0) * 10) / 10 }), hero: nameOf(trace, d[1]), ...(view ? sideOf(view, trace, v) : { team: v >= 0 ? TEAM[trace.heroes[v].team] : null }), killer: nameOf(trace, d[2]), row: d[3] };
 }
 
+/** The combat log's gold reason for what selling an item gave back: money moved, not money earned. */
+const GOLD_SOLD = 6;
 /**
- * Radiant's lead per game minute: the match record's (OpenDota's) when the caller has it, else the replay's own
- * net worth graph summed by team (the trace's `net_worth`), when every hero has one. Null when neither.
+ * A net worth graph is read as one point a minute when it is short of the game's minutes by no more than this:
+ * three points, or 15% of the game if that is more. The 23 corpus graphs that are per minute are 0 to 3 short
+ * (34 for 35 minutes … 63 for 66); the one that is not has 36 points for 74.
  */
-export function goldAdvantage(trace, ctx = {}) {
-  if (Array.isArray(ctx.match?.radiant_gold_adv) && ctx.match.radiant_gold_adv.length) return ctx.match.radiant_gold_adv;
-  const nw = Array.isArray(trace?.net_worth) ? trace.net_worth : null;
-  if (!nw || nw.length !== trace.heroes.length || nw.some((g) => !Array.isArray(g) || !g.length)) return null;
-  const minutes = Math.min(...nw.map((g) => g.length));
-  return Array.from({ length: minutes }, (_, m) => trace.heroes.reduce((sum, h, i) => sum + (h.team === 2 ? 1 : h.team === 3 ? -1 : 0) * nw[i][m], 0));
+const GRAPH_SHORT_POINTS = 3;
+const GRAPH_SHORT_SHARE = 0.15;
+
+/**
+ * Radiant's lead in gold earned, per game minute, summed from the combat log's gold rows (the trace's `gold`):
+ * at minute m, what Radiant's heroes had gained before m:00 less what Dire's had — every gain but an item sold.
+ *
+ * The passive income is not in the log. It is the same for all ten heroes (checked per hero on 9100904020: each
+ * is short of the match record by the same 277 / 1152 / 2025 / 2897 gold at 10 / 20 / 30 / 40 minutes), so it
+ * cancels in a lead. Against the match record's radiant_gold_adv over the 17 corpus games that have both: 223
+ * gold a minute apart on average over 774 minutes, 15 of the games within 140. What it lacks is income only
+ * one side has and the log does not list: an abandoned ally's share (one game, 160 a minute after the
+ * abandon) and gold-per-minute items and talents (one game, about 240 a minute late on).
+ *
+ * Null for a trace built before the gold rows were kept: it does not know.
+ */
+function earnedLead(trace) {
+  if (!Array.isArray(trace?.gold) || !trace.gold.length || !Array.isArray(trace.heroes)) return null;
+  const last = Math.floor(gameEnd(trace) / 60);
+  if (!(last >= 0)) return null;
+  // step[m]: what was gained in the minute before m:00 (gold before the horn counts into minute 0's).
+  const step = new Array(last + 1).fill(0);
+  for (const [minute, who, reason, sum] of trace.gold) {
+    if (!(sum > 0) || reason === GOLD_SOLD) continue;
+    const h = heroOfName(trace, who);
+    const side = h < 0 ? 0 : trace.heroes[h].team === 2 ? 1 : trace.heroes[h].team === 3 ? -1 : 0;
+    const m = Math.max(0, minute + 1);
+    if (side && m <= last) step[m] += side * sum;
+  }
+  let lead = 0;
+  return step.map((v) => (lead += v));
 }
+
+/**
+ * The replay's net worth graph, per hero, when it can be read as one point a game minute: every hero has one,
+ * and the shortest covers the game. Some replays' graphs are sparser (9099561801: 36 points for 73:37): read as
+ * minutes they put minute 49's net worth at minute 24. The builder already leaves out a graph that is denser.
+ * Null otherwise.
+ */
+export function netWorthGraph(trace) {
+  const nw = Array.isArray(trace?.net_worth) ? trace.net_worth : null;
+  if (!nw || !Array.isArray(trace.heroes) || nw.length !== trace.heroes.length || nw.some((g) => !Array.isArray(g) || !g.length)) return null;
+  const minutes = Math.min(...nw.map((g) => g.length));
+  const game = Math.floor(gameEnd(trace) / 60) + 1;
+  if (game - minutes > Math.max(GRAPH_SHORT_POINTS, GRAPH_SHORT_SHARE * game)) return null;
+  return nw;
+}
+
+/**
+ * Radiant's lead per game minute and where it is from, best first:
+ * - `match_record`: the match record's gold lead (OpenDota's radiant_gold_adv), when the caller has it;
+ * - `replay_gold_log`: the same quantity — gold earned — summed from the replay's combat log (earnedLead);
+ * - `replay_net_worth`: the replay's net worth graph summed by team. Another quantity (items and gold held, so
+ *   a death or a buyback moves it), and which second of a minute a point was taken is not recorded: on the same
+ *   17 games it is 2898 a minute away from the record on average.
+ * Null when there is none of the three.
+ * @returns {{ lead: number[], source: 'match_record' | 'replay_gold_log' | 'replay_net_worth' } | null}
+ */
+export function goldLead(trace, ctx = {}) {
+  if (Array.isArray(ctx.match?.radiant_gold_adv) && ctx.match.radiant_gold_adv.length) return { lead: ctx.match.radiant_gold_adv, source: 'match_record' };
+  const earned = earnedLead(trace);
+  if (earned) return { lead: earned, source: 'replay_gold_log' };
+  const nw = netWorthGraph(trace);
+  if (!nw) return null;
+  const minutes = Math.min(...nw.map((g) => g.length));
+  return { lead: Array.from({ length: minutes }, (_, m) => trace.heroes.reduce((sum, h, i) => sum + (h.team === 2 ? 1 : h.team === 3 ? -1 : 0) * nw[i][m], 0)), source: 'replay_net_worth' };
+}
+
+/** Radiant's lead per game minute (goldLead), or null. */
+export function goldAdvantage(trace, ctx = {}) {
+  return goldLead(trace, ctx)?.lead ?? null;
+}
+
+/** What a tool says its gold lead was read from. */
+export const GOLD_LEAD_SOURCE = { match_record: 'match_data_gold_lead', replay_gold_log: 'replay_gold_log_lead', replay_net_worth: 'replay_net_worth_lead' };
 
 export function matchOverview(trace, _args = {}, ctx = {}) {
   // Deaths only: the log names the unit that landed the last hit (a summon,
@@ -111,7 +182,8 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
   const died = trace.heroes.map(() => 0);
   for (const d of trace.deaths) { const v = heroOfName(trace, d[1]); if (v >= 0) died[v] += 1; }
   const view = viewer(trace, ctx);
-  const adv = goldAdvantage(trace, ctx);
+  const gold = goldLead(trace, ctx);
+  const adv = gold?.lead ?? null;
   const advAt = (t) => (adv && Number.isFinite(adv[Math.floor(t / 60)]) ? adv[Math.floor(t / 60)] : null);
   const mine = (radiantAdv) => (radiantAdv == null ? null : view.team === 2 ? radiantAdv : -radiantAdv);
   const end = trace.buildings.find((b) => /_fort$/.test(trace.names[b[1]]));
@@ -147,6 +219,9 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
     ...(view ? { told_from: { hero: view.key, note: 'my_team is this hero\'s team; a negative gold lead means my_team was behind' }, result: loser ? (loser === view.team ? 'my_team_lost' : 'my_team_won') : null } : { winner: loser ? TEAM[loser === 2 ? 3 : 2] : null }),
     heroes: trace.heroes.map((h, i) => ({ hero: h.key, ...(view ? sideOf(view, trace, i) : { team: TEAM[h.team] }), deaths: died[i], final_level: stateAt(trace, i, trace.t0 + trace.n - 1)?.level ?? null })),
     ...(view ? { fights_total: fightRows.length, fights_tally: tally } : {}),
+    // What the gold leads below were read from: gold earned (the match record's, or summed from the replay's combat
+    // log), or the replay's net worth graph — items and gold held, which a death or a buyback moves.
+    ...(gold ? { gold_lead_source: GOLD_LEAD_SOURCE[gold.source] } : {}),
     fights: fightRows,
     buildings: trace.buildings.map((b) => ({
       ref: `building:${unit(trace.names[b[1]])}`, t: b[0], clock: clock(b[0]), building: unit(trace.names[b[1]]),
