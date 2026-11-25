@@ -58,6 +58,7 @@ describe('AgentMatchPage', () => {
     let polls = 0; let started = 0;
     const calls = mockFetch({
       '/api/coach/9100904020': board,
+      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: { phantom_assassin: 'Phantom Assassin' }, record: { deaths_total: 2, killed_by: { phantom_assassin: 2 }, deaths_where: { in_a_fight: ['8:27'], outside_fights: ['0:47'] } } },
       '/prepare': () => ({ status: 'running', stage: 'locating' }),
       '/review?': () => (started ? { status: 'running', steps: [{ tool: 'match_overview', args: {} }] } : { status: 'none' }),
       '/review': (_u: string, init?: RequestInit) => { if (init?.method === 'POST') { started += 1; return { status: 'running', steps: [] }; } return null; },
@@ -72,9 +73,16 @@ describe('AgentMatchPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
     expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
     await waitFor(() => expect(document.querySelector('.ag-journey li.is-live strong')?.textContent).toBe('Read the replay'));
+    // No replay parsed yet: nothing of the game to show while waiting, and nothing asked for.
+    expect(document.querySelector('.ag-wait')).toBeNull();
+    expect(calls.some((c) => c.url.includes('ref=deaths'))).toBe(false);
     // The trace arrives: the review starts without a second click.
     await waitFor(() => expect(started).toBe(1), { timeout: 8000 });
     expect(await screen.findByText('Reading the whole game', {}, { timeout: 8000 })).toBeTruthy();
+    // While the review is written: the reader's own deaths from the parsed replay, outside the progress region.
+    const wait = (await screen.findByRole('heading', { level: 2, name: 'While the coach reads the replay: your 2 deaths' })).closest('section')!;
+    expect(Array.from(wait.querySelectorAll('.ag-wait-clock')).map((e) => e.textContent)).toEqual(['0:47', '8:27']);
+    expect(wait.closest('[role="status"]')).toBeNull();
     expect(calls.filter((c) => c.url.includes('/prepare'))).toHaveLength(1);
     expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/review') && c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
   }, 20000);

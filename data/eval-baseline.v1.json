@@ -16,8 +16,8 @@
   "matchup_both_ways": 0.02,
   "repaired": 0.95,
   "rubric_approved": {
-   "reviews": 5,
-   "hit_rate": 0.73,
+   "reviews": 9,
+   "hit_rate": 0.85,
    "must_not_violations": 0,
    "turning_fight_covered": 0.33,
    "main_reason_ok": 1
@@ -249,8 +249,8 @@
    "matchup_both_ways": 0,
    "repaired": 0.92,
    "rubric_approved": {
-    "reviews": 3,
-    "hit_rate": 0.89,
+    "reviews": 5,
+    "hit_rate": 0.93,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
     "main_reason_ok": null
@@ -272,8 +272,8 @@
    "matchup_both_ways": 0,
    "repaired": 1,
    "rubric_approved": {
-    "reviews": 4,
-    "hit_rate": 0.67,
+    "reviews": 6,
+    "hit_rate": 0.78,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
     "main_reason_ok": 1
@@ -895,7 +895,27 @@
    "english_words": null,
    "thin_rules": 0,
    "matchup_both_ways": false,
-   "rubric": null
+   "rubric": {
+    "status": "approved",
+    "must_hit": [
+     {
+      "id": "deaths_with_three_or_more_enemies",
+      "hit": true,
+      "finding": 1
+     },
+     {
+      "id": "no_black_king_bar",
+      "hit": true,
+      "finding": 3
+     }
+    ],
+    "hit_weight": 3,
+    "weight": 3,
+    "hit_rate": 1,
+    "must_not": [],
+    "turning_fight_covered": null,
+    "main_reason_ok": true
+   }
   },
   {
    "file": "9091400302.ursa.zh.p16.review.json",
@@ -909,7 +929,27 @@
    "english_words": 0,
    "thin_rules": 0,
    "matchup_both_ways": false,
-   "rubric": null
+   "rubric": {
+    "status": "approved",
+    "must_hit": [
+     {
+      "id": "deaths_with_three_or_more_enemies",
+      "hit": true,
+      "finding": 1
+     },
+     {
+      "id": "no_black_king_bar",
+      "hit": true,
+      "finding": 3
+     }
+    ],
+    "hit_weight": 3,
+    "weight": 3,
+    "hit_rate": 1,
+    "must_not": [],
+    "turning_fight_covered": null,
+    "main_reason_ok": true
+   }
   },
   {
    "file": "9097822071.razor.zh.p16.review.json",
@@ -1077,7 +1117,27 @@
    "english_words": null,
    "thin_rules": 1,
    "matchup_both_ways": false,
-   "rubric": null
+   "rubric": {
+    "status": "approved",
+    "must_hit": [
+     {
+      "id": "five_deaths_before_ten",
+      "hit": true,
+      "finding": 1
+     },
+     {
+      "id": "died_alone_after_the_lane",
+      "hit": true,
+      "finding": 1
+     }
+    ],
+    "hit_weight": 3,
+    "weight": 3,
+    "hit_rate": 1,
+    "must_not": [],
+    "turning_fight_covered": null,
+    "main_reason_ok": null
+   }
   },
   {
    "file": "9099972085.luna.zh.p15.review.json",
@@ -1091,7 +1151,27 @@
    "english_words": 7,
    "thin_rules": 0,
    "matchup_both_ways": false,
-   "rubric": null
+   "rubric": {
+    "status": "approved",
+    "must_hit": [
+     {
+      "id": "five_deaths_before_ten",
+      "hit": true,
+      "finding": 1
+     },
+     {
+      "id": "died_alone_after_the_lane",
+      "hit": true,
+      "finding": 1
+     }
+    ],
+    "hit_weight": 3,
+    "weight": 3,
+    "hit_rate": 1,
+    "must_not": [],
+    "turning_fight_covered": null,
+    "main_reason_ok": null
+   }
   },
   {
    "file": "9100161762.phantom_lancer.zh.p15.review.json",

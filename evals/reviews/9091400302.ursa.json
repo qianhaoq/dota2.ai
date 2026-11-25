@@ -1,0 +1,94 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9091400302,
+  "hero": "ursa",
+  "status": "approved",
+  "written": "2026-11-25",
+  "checked": "2026-11-25",
+  "checked_by": "Claude, re-reading every stated fact from the tools (match_overview, death_context, build_check, pro_item_choices); the owner delegated the check",
+  "source": "Tool outputs on the trace rebuilt from the archived replay, with the match record. A game the player won (45:22): the rubric is what is worth changing in a win, and that the review knows it was one.",
+  "must_hit": [
+    {
+      "id": "deaths_with_three_or_more_enemies",
+      "says": "Five of the six deaths (9:05, 20:02, 23:53, 31:55, 35:02) came with three or more enemy heroes dealing damage. The team won 15 of 18 fights and Ursa's 6 deaths were the joint fewest on the team, so how those five happened is what there is to change.",
+      "weight": 2,
+      "any": {
+        "refs": [
+          "deaths:ursa",
+          "death:ursa:2",
+          "death:ursa:3",
+          "death:ursa:4",
+          "death:ursa:5",
+          "death:ursa:6"
+        ],
+        "clocks": [
+          "9:05",
+          "20:02",
+          "23:53",
+          "31:55",
+          "35:02"
+        ],
+        "within": 5
+      },
+      "terms": {
+        "zh": [
+          "三个",
+          "三名",
+          "3 个",
+          "3个",
+          "多打少",
+          "围"
+        ],
+        "en": [
+          "three",
+          "3 or more",
+          "outnumbered"
+        ]
+      }
+    },
+    {
+      "id": "no_black_king_bar",
+      "says": "No Black King Bar all game, while the damage in the death windows was mostly abilities and items (Pudge 22%, Spectre 19%, Shadow Shaman 14%, Tidehunter 11%) and the enemy had Shackles, Hex, Ravage and Dismember. 53% of 111 professional Ursas (7.41f) have it by 24:59.",
+      "weight": 1,
+      "any": {
+        "refs": [
+          "build:ursa",
+          "pro_items:ursa",
+          "spikes:ursa",
+          "deaths:ursa",
+          "abilities:shadow_shaman",
+          "abilities:tidehunter",
+          "abilities:pudge"
+        ]
+      },
+      "terms": {
+        "zh": [
+          "黑皇杖",
+          "BKB",
+          "魔免",
+          "魔法免疫"
+        ],
+        "en": [
+          "Black King Bar",
+          "BKB",
+          "spell immunity"
+        ]
+      }
+    }
+  ],
+  "lead_any": [
+    "deaths_with_three_or_more_enemies",
+    "no_black_king_bar"
+  ],
+  "must_not": [
+    {
+      "id": "calls_the_win_a_loss",
+      "says": "Ursa's team won. In 7 of 32 parsed games the Ancient's kill row names no side, and until 2026-11-25 both teams were then told they had lost: a review of a win must not say the game was lost.",
+      "pattern": "(?:这局|本局|这盘)[^。，；团波]{0,12}(?:输了|输掉|失利|落败|败局)|这场[^。，；团波战]{0,12}(?:输了|输掉|失利|落败|败局)|输掉(?:了)?(?:这局|本局|这场比赛|比赛)|(?:[Yy]ou|[Yy]our team) lost (?:this|the) (?:game|match)|(?:[Tt]his|[Tt]he) (?:game|match) was lost|\\b(?:[Ii]n|of) (?:this|the|a) (?:loss|defeat)\\b"
+    }
+  ],
+  "main_reason": [
+    "your_play",
+    "team_play"
+  ]
+}
