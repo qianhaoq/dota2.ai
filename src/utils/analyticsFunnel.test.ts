@@ -39,6 +39,18 @@ describe('the review page funnel from event logs', () => {
     expect(out.events.report_shared).toBe(2);
   });
 
+  it('splits browsers by the community link they came by, first source wins', () => {
+    const out = summarizeFunnel([
+      line('arrived', 'anon_n', { src: 'nga', page: 'match' }), line('match_opened', 'anon_n', { src: 'nga' }), line('review_ready', 'anon_n', { src: 'nga' }), line('report_shared', 'anon_n', { target: 'team' }),
+      line('arrived', 'anon_m', { src: 'nga', page: 'home' }),
+      // Came by Bilibili first, later by NGA: counted for Bilibili.
+      line('arrived', 'anon_b', { src: 'bili', page: 'home' }), line('match_opened', 'anon_b', { src: 'bili' }), line('arrived', 'anon_b', { src: 'nga', page: 'match' }),
+      line('match_opened', 'anon_plain'),
+    ]);
+    expect(out.bySource).toEqual({ nga: { came: 2, opened: 1, own: 1, shared: 1 }, bili: { came: 1, opened: 1, own: 0, shared: 0 } });
+    expect(out.events.arrived).toBe(4);
+  });
+
   it('reads gcloud JSON output (entries with jsonPayload) and one object per line', () => {
     const entries = [{ jsonPayload: line('match_opened', 'anon_a') }, { textPayload: 'Server is running' }];
     expect(summarizeFunnel(parseLogText(JSON.stringify(entries))).browsers.opened).toBe(1);
