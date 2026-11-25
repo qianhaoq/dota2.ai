@@ -186,6 +186,35 @@ describe('GET /r/:matchId', () => {
     expect(asked).toHaveLength(1);
   });
 
+  it('QQ\'s card tags (itemprop) say what Open Graph says, and a link with no picture of its own gets the site card', async () => {
+    const base = await start();
+    const html = await (await fetch(`${base}/r/9091400302?lang=zh`)).text();
+    const item = (k: string) => html.match(new RegExp(`<meta itemprop="${k}" content="([^"]*)"`))?.[1];
+    expect(item('name')).toBe(tag(html, 'og:title'));
+    expect(item('description')).toBe(tag(html, 'og:description'));
+    expect(tag(html, 'og:image')).toBe('https://dota2.ai/og-card.png');
+    expect(item('image')).toBe('https://dota2.ai/og-card.png');
+    expect(tag(html, 'twitter:card')).toBe('summary_large_image');
+    // A player's link keeps the hero's own art.
+    const p = buildCoachReport(withNames()).players[4];
+    const own = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}`)).text();
+    expect(own.match(/<meta itemprop="image" content="([^"]*)"/)?.[1]).toBe(p.hero.img);
+    // The page's own static tags are replaced, never doubled.
+    expect(html.match(/itemprop="name"/g)).toHaveLength(1);
+  });
+
+  it('the home page previews in the link\'s language, with the site card', async () => {
+    const base = await start({ html: INDEX.replace('</head>', '<meta itemprop="name" content="old" /></head>') });
+    const zh = await (await fetch(`${base}/?lang=zh`)).text();
+    expect(tag(zh, 'og:title')).toBe(GENERIC.zh.title);
+    expect(tag(zh, 'og:url')).toBe('https://dota2.ai/?lang=zh');
+    expect(zh.match(/<meta itemprop="name" content="([^"]*)"/g)).toEqual([`<meta itemprop="name" content="${GENERIC.zh.title}"`]);
+    expect(zh).toContain('<div id="root"></div>');
+    const en = await (await fetch(`${base}/`)).text();
+    expect(tag(en, 'og:title')).toBe(GENERIC.en.title);
+    expect(tag(en, 'og:image')).toBe('https://dota2.ai/og-card.png');
+  });
+
   it('falls back to the generic preview when the match is slow, missing or rate-limited', async () => {
     for (const opts of [
       { match: () => new Promise<object>((r) => setTimeout(() => r(withNames()), 500)), timeoutMs: 50 },
@@ -206,5 +235,6 @@ describe('GET /r/:matchId', () => {
     server?.close(); server = null;
     base = await start({ html: null });
     expect(await (await fetch(`${base}/r/9091400302`)).text()).toBe('spa-fallback');
+    expect(await (await fetch(`${base}/?lang=zh`)).text()).toBe('spa-fallback');
   });
 });
