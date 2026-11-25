@@ -76,6 +76,11 @@ describe('MatchBoard', () => {
     render(<MatchBoard report={{ ...report, timeline: null } as CoachReport} hero="ursa" lang="zh" replayLead={[-8, 47, 464, 993, 35038]} />);
     const board = screen.getByRole('region', { name: '记分板' });
     expect(within(board).getByRole('img', { name: '每分钟净值差（来自录像）: 结束时 天辉 +35,038' })).toBeTruthy();
+    // The same place, with gold earned summed from the replay's combat log: named for what it is.
+    cleanup();
+    render(<MatchBoard report={{ ...report, timeline: null } as CoachReport} hero="ursa" lang="zh" replayLead={[-8, 47, 464, 993, 35038]} replayLeadIs="gold" />);
+    expect(screen.getByRole('img', { name: '每分钟经济差（来自录像）: 结束时 天辉 +35,038' })).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /净值差/ })).toBeNull();
     expect(board.querySelector('.ag-gold-none')).toBeNull();
     cleanup();
     // 46 minutes: ticks at 10, 20, 30, 40. The 40:00 label would sit under "Dire ahead": its line is drawn, its label is not.

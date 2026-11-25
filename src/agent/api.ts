@@ -10,6 +10,8 @@ export interface Availability {
   models?: string[]; default_model?: string | null;
   /** Radiant's net worth lead per game minute, from the replay itself (absent when the trace has no net worth graph). */
   radiant_net_worth_lead?: number[];
+  /** Radiant's lead in gold earned per game minute, summed from the replay's combat log (a trace that kept its gold rows); then the net worth lead is absent. */
+  radiant_gold_lead?: number[];
 }
 
 export interface EvidenceItem { refs: string[]; clock?: string; fact: string }

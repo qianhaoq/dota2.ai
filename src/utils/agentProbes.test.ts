@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { buildProbes, gradeProbe, numbersIn, clocksIn, sideCounts, zhNumeral, scoreProbes, PROBE_KINDS } from '../../lib/agent/probes.js';
+import { buildProbes, gradeProbe, numbersIn, clocksIn, sideCounts, zhNumeral, namesPlace, buildingCounts, scoreProbes, PROBE_KINDS } from '../../lib/agent/probes.js';
 import { reviewToolkit } from '../../lib/agent/deepReview.js';
 import { runChat } from '../../lib/agent/chat.js';
 
@@ -45,6 +45,24 @@ describe('probes: questions the replay settles, with the answer the tools give',
     expect(Math.min(...lost.map(sec))).toBe(sec(at('first_tower_lost').expect.clock));
   });
 
+  it('two-lookup probes: a moment from one tool, the answer from another', () => {
+    const at = (kind: string) => probes.find((p) => p.kind === kind);
+    // The fight is asked by its start, as fight_report gives it; decision_points gives the same fight by its end.
+    const won = kit.runTool('decision_points', { hero: 'beastmaster' }).points.find((p: any) => p.kind === 'after_a_won_fight' && p.won_by === 'my_team');
+    const start = kit.runTool('fight_report', { hero: 'beastmaster' }).fights.find((f: any) => f.fight === won.fight).clock;
+    expect(at('buildings_after_won_fight').question).toContain(` ${start}, `);
+    expect(start).not.toBe(won.clock);
+    // After the fight: a building that fell while it was still going is not one taken after it.
+    expect(at('buildings_after_won_fight').expect).toEqual({ buildings: won.buildings_winners_took.filter((b: any) => !b.during_the_fight).length });
+    // Where I was at the second the first tower fell.
+    const tower = at('first_tower_lost').expect.clock;
+    expect(at('where_i_was_at_first_tower_lost').source).toEqual({ tool: 'game_state', args: { hero: 'beastmaster', at: tower } });
+    const me = kit.runTool('game_state', { hero: 'beastmaster', at: tower }).my_team.heroes.find((s: any) => s.hero === 'beastmaster');
+    expect(at('where_i_was_at_first_tower_lost').expect).toEqual(me.alive ? { my_team: 'dire', place: me.place } : { dead: true });
+    const aegis = kit.runTool('roshan_report', { hero: 'beastmaster' }).takes[0];
+    expect(at('buildings_after_first_aegis').expect).toEqual({ buildings: aegis.buildings_taking_side_took_count });
+  });
+
   it('asks in the reader\'s language', () => {
     const zh: any[] = buildProbes(trace, 'beastmaster', { lang: 'zh' }) as any[];
     expect(zh.map((p) => p.expect)).toEqual(probes.map((p) => p.expect));
@@ -64,13 +82,20 @@ describe('probes: questions the replay settles, with the answer the tools give',
     const rosh: any = reviewToolkit({ trace: noAegis, hero: 'beastmaster', lang: 'en' })!.runTool('roshan_report', { hero: 'beastmaster' });
     expect(rosh.takes).toEqual([]);
     const kinds = (buildProbes(noAegis, 'beastmaster') as any[]).map((p) => p.kind);
-    expect(kinds).toEqual(PROBE_KINDS.filter((k) => k !== 'first_aegis'));
+    expect(kinds).toEqual(PROBE_KINDS.filter((k) => k !== 'first_aegis' && k !== 'buildings_after_first_aegis'));
   });
 });
 
 describe('probes: grading an answer', () => {
   const probes: any[] = buildProbes(trace, 'beastmaster') as any[];
   const at = (kind: string) => probes.find((p) => p.kind === kind);
+
+  it('a zero said of something else never answers a count of deaths', () => {
+    const d = { kind: 'deaths_before_10', source: { args: {} }, expect: { numbers: [0] } };
+    expect(gradeProbe(d, 'You died three times; none of those deaths were avoidable.', names).pass).toBe(false);
+    expect(gradeProbe(d, 'You died twice and took nothing for it.', names).pass).toBe(false);
+    expect(gradeProbe(d, 'You never died before 10:00.', names).pass).toBe(true);
+  });
 
   it('reads numbers in digits and words, never out of a clock', () => {
     expect(numbersIn('You died twice, at 6:13 and 8:27.')).toEqual([2]);
@@ -140,7 +165,9 @@ describe('probes: grading an answer', () => {
   it('reads a Chinese count whole, and only before a counter', () => {
     expect(numbersIn('你死了十四次', 'zh')).toEqual([14]);
     expect(numbersIn('你死了四次', 'zh')).toEqual([4]);
-    expect(numbersIn('二十个人头，一波团，一座塔', 'zh')).toEqual([20]);
+    expect(numbersIn('二十个人头，一波团', 'zh')).toEqual([20]);
+    // 座 counts buildings: "拆了一座" answers how many buildings.
+    expect(numbersIn('一座。之后拆了三座塔', 'zh')).toEqual([1, 3]);
     expect([zhNumeral('十'), zhNumeral('十四'), zhNumeral('二十'), zhNumeral('三十五'), zhNumeral('十十')]).toEqual([10, 14, 20, 35, null]);
     const d = { kind: 'deaths_before_10', source: { args: {} }, expect: { numbers: [1] } };
     expect(gradeProbe(d, '你一次都没死。', { ...names, lang: 'zh' }).pass).toBe(false);
@@ -161,6 +188,148 @@ describe('probes: grading an answer', () => {
     const p = { kind: 'heroes_in_lost_fight', source: { args: { hero: 'beastmaster' } }, expect: { my_team: 'dire', sides: [{ count: 2, heroes: ['beastmaster', 'undying'] }, { count: 4, heroes: ['axe', 'necrolyte', 'venomancer', 'mirana'] }] } };
     expect(gradeProbe(p, 'Your team brought two heroes, and the enemy brought four.', names).pass).toBe(true);
     expect(gradeProbe(p, 'Your team brought four heroes, and the enemy brought two.', names)).toMatchObject({ pass: false, wrong: ['my team 4', 'enemy 2'] });
+  });
+
+  it('a place is read the way a player says it, "your own" being the player\'s side', () => {
+    expect(namesPlace('you were in your own mid lane', 'dire_mid', 'en', 'dire')).toBe(true);
+    expect(namesPlace('you were in Radiant mid', 'dire_mid', 'en', 'dire')).toBe(false);
+    expect(namesPlace('in the bottom river', 'river_bot_lane', 'en', 'radiant')).toBe(true);
+    expect(namesPlace('in the top river', 'river_top_jungle', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('in the enemy top lane', 'river_top_lane', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('in the enemy top lane', 'dire_top_lane', 'en', 'radiant')).toBe(true);
+    expect(namesPlace('your bottom tier 1 fell', 'radiant_bot_lane', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('你在下路河道', 'river_bot_lane', 'zh', 'dire')).toBe(true);
+    expect(namesPlace('你在自家上路野区', 'dire_top_jungle', 'zh', 'dire')).toBe(true);
+    expect(namesPlace('你在自家上路', 'dire_top_jungle', 'zh', 'dire')).toBe(false);
+    expect(namesPlace('你在自家上路。', 'dire_top_lane', 'zh', 'dire')).toBe(true);
+    expect(namesPlace('你在敌方下路。', 'radiant_bot_lane', 'zh', 'dire')).toBe(true);
+    expect(namesPlace('back in your base', 'radiant_base', 'en', 'radiant')).toBe(true);
+    // The side before the lane, in the same clause: never one named after it, or across a comma.
+    expect(namesPlace('You were in Radiant mid, Dire took the tower.', 'dire_mid', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('You were in Radiant mid, Dire took the tower.', 'radiant_mid', 'en', 'radiant')).toBe(true);
+    expect(namesPlace('in Radiant mid while Dire pushed', 'dire_mid', 'en', 'radiant')).toBe(false);
+    expect(namesPlace('你在天辉中路，夜魇拆了塔', 'dire_mid', 'zh', 'radiant')).toBe(false);
+  });
+
+  it('"took nothing" is a zero, and a dead player is "dead"', () => {
+    const n = { kind: 'buildings_after_won_fight', source: { args: {} }, expect: { buildings: 0 } };
+    expect(gradeProbe(n, 'You took nothing in those two minutes.', names).pass).toBe(true);
+    expect(gradeProbe(n, '之后两分钟一座都没拆。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(n, 'You took one tower.', names)).toMatchObject({ pass: false, wrong: ['1'] });
+    const d = { kind: 'where_i_was_at_first_tower_lost', source: { args: {} }, expect: { dead: true } };
+    expect(gradeProbe(d, 'You were dead, 20 s from respawning.', names).pass).toBe(true);
+    expect(gradeProbe(d, '你当时阵亡了，还要 12 秒复活。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(d, 'You were in the Dire jungle.', names).pass).toBe(false);
+    // Back already, or "not dead": wrong, though the words are there.
+    for (const t of ['You had already respawned and were farming mid.', 'You were not dead.', "You weren't dead then."]) expect(gradeProbe(d, t, names)).toMatchObject({ pass: false, wrong: ['alive'] });
+    for (const t of ['你当时已经复活，正在中路打钱。', '你当时没死。']) expect(gradeProbe(d, t, { ...names, lang: 'zh' })).toMatchObject({ pass: false, wrong: ['活着'] });
+    // Said of someone else, "alive" says nothing about the player.
+    expect(gradeProbe(d, '你当时已经死了，在读秒。敌方活着的只有拉比克。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(d, 'You were dead; only Lion was alive near it.', names).pass).toBe(true);
+    // Someone else dead is not the player dead.
+    expect(gradeProbe(d, 'Lion was dead; you were farming mid.', names).pass).toBe(false);
+    expect(gradeProbe(d, '莱恩阵亡了，你在中路打钱。', { ...names, lang: 'zh' }).pass).toBe(false);
+    expect(gradeProbe(d, '那一刻你**已经死了**，正在读秒。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(d, '你当时是死的。你们活着的灰烬之灵在中路。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // Advice after the answer is not the answer.
+    expect(gradeProbe(d, '那一刻你已经死了。下次你活着站在塔后，两个人推不动一塔。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(d, 'You were alive in mid. Had you died there, the tower would still have fallen.', names)).toMatchObject({ pass: false, wrong: ['alive'] });
+  });
+
+  it('a building count is a number said of buildings, never the minutes in the question', () => {
+    const two = { kind: 'buildings_after_won_fight', source: { args: {} }, expect: { buildings: 2 } };
+    expect(gradeProbe(two, 'We took one tower in the two minutes after the fight.', names)).toMatchObject({ pass: false, wrong: ['1'] });
+    expect(gradeProbe(two, 'Two buildings: the tier 1 top and the tier 2 top.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'One tower and one barracks.', names).pass).toBe(true);
+    // A total and its parts are told apart: parts alone add up, a total followed by its parts is the total.
+    const one = { ...two, expect: { buildings: 1 } };
+    expect(gradeProbe(one, 'One tower and one barracks.', names)).toMatchObject({ pass: false, wrong: ['1+1'] });
+    const three = { ...two, expect: { buildings: 3 } };
+    expect(gradeProbe(three, 'They took 3 buildings: 2 towers and 1 barracks.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two, expect: { buildings: 6 } }, 'They took 3 buildings: 2 towers and 1 barracks.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(gradeProbe(three, '拆了三座：两座塔、一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // A tier, a clock or a bracketed aside between two parts is not a count and does not stop them adding up.
+    expect(gradeProbe(three, 'We took two tier 2 towers and one tier 3 tower.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two tier 2 towers and one tier 3 tower.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(three, 'We took two T2 towers and one T3 tower.', names).pass).toBe(true);
+    // However a tier is written, its number is never the count.
+    expect(buildingCounts('We took three tier-2 towers.')).toEqual([3]);
+    expect(gradeProbe(three, 'We took three tier-2 towers.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took three tier-2 towers.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(buildingCounts('The tier one tower fell, then 2 tier-3 towers and the T4 towers.')).toEqual([2]);
+    expect(buildingCounts('拆了 3 座 T2 塔，上路二塔和三塔都没了', 'zh')).toEqual([3]);
+    expect(gradeProbe(three, 'Two towers at 34:24 and 34:48 and one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'Two towers (at 32:52 and 33:31) and one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, '拆了两座二塔和一座三塔。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // A total set off by a comma only: it is the sum of the parts after it, so it is the total.
+    expect(gradeProbe(three, 'They took 3 buildings, 2 towers and 1 barracks.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two, expect: { buildings: 6 } }, 'They took 3 buildings, 2 towers and 1 barracks.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(gradeProbe(three, '拆了三座，两座塔、一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(three, 'They took 3 buildings including 2 towers and 1 barracks.', names).pass).toBe(true);
+    // Equal numbers are no evidence of a total: three parts of named kinds add up; a count of "buildings" followed
+    // by counts of towers and barracks is their total, whether or not the parts listed add up to it.
+    const four = { ...two, expect: { buildings: 4 } };
+    expect(gradeProbe(four, 'We took two towers and one melee barracks and one ranged barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two towers and one melee barracks and one ranged barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1+1'] });
+    expect(gradeProbe(four, '拆了两座塔、一座近战兵营和一座远程兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(three, 'They took 3 buildings, 2 towers and a barracks.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two, expect: { buildings: 1 } }, 'We took 1 building, 1 tower.', names).pass).toBe(true);
+    // A verb after the join is still a join; a count after a word naming a side is not a part of ours.
+    expect(gradeProbe(three, 'We took two towers and destroyed one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two towers and destroyed one barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(two, 'We took two towers, and the enemy took one tower back.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'We took two towers, and the enemy took one tower back.', names)).toMatchObject({ pass: false, wrong: ['2'] });
+    // A team named outright changes the side just as "the enemy" does.
+    expect(gradeProbe(two, 'We took two towers and Dire took one tower.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'We took two towers and Dire took one tower.', names)).toMatchObject({ pass: false, wrong: ['2'] });
+    expect(gradeProbe(two, '我们拆了两座塔，夜魇拆了一座。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // The parts given before the side changes still add up; the other side's count is not theirs.
+    expect(buildingCounts('We took two towers and one barracks, and Dire took one tower.')).toEqual([2, 1, 1]);
+    expect(gradeProbe(three, 'We took two towers and one barracks, and Dire took one tower.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two towers and one barracks, and Dire took one tower.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(four, 'We took two towers and one barracks, and Dire took one tower.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(three, '我们拆了两座塔和一座兵营，对面拆了一座塔。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // Whose building fell is not who acted: "enemy towers" are still ours to count.
+    expect(gradeProbe(three, 'We took two enemy towers and one enemy barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two enemy towers and one enemy barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(three, 'You took two of their towers and one of their tier 3 barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'We took two towers and their one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'Radiant took two Dire towers and one Dire barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, '我们拆了两座敌方塔和一座敌方兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(three, '你们拆了两座对面的塔，还有一座对面的兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // The same side named again goes on acting.
+    expect(gradeProbe(three, 'We took two towers and we destroyed one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(two, 'We took two towers and we destroyed one barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
+    expect(gradeProbe(three, 'Dire took two towers, then Dire took one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, '我们拆了两座塔，我们又拆了一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // A different side acting still stops it, whoever's buildings are named.
+    expect(gradeProbe(two, 'We took two enemy towers, and they took one of our towers.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'We took two enemy towers, and they took one of our towers.', names)).toMatchObject({ pass: false, wrong: ['2'] });
+    expect(gradeProbe(two, 'Radiant took two towers and Dire took one.', names).pass).toBe(true);
+    // No side said to be acting at first: a side then named may be another one.
+    expect(gradeProbe(two, 'Two towers fell, and the enemy took one barracks.', names).pass).toBe(true);
+    expect(gradeProbe(three, '拆了两座塔，还拆了一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(two, '你们拆了两座塔，对面拆了一座。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(three, '拆了三座，分别是两座塔和一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(two, 'In the two minutes after it, nothing fell.', names).pass).toBe(false);
+    expect(gradeProbe(two, '两座：上路一塔和二塔。', { ...names, lang: 'zh' }).pass).toBe(true);
+    const five = { kind: 'buildings_after_first_aegis', source: { args: {} }, expect: { buildings: 5 } };
+    expect(gradeProbe(five, 'In the five minutes after it they took 3 towers.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(gradeProbe(five, 'They destroyed 5 buildings in the five minutes after.', names).pass).toBe(true);
+    expect(buildingCounts('拿盾后五分钟里拆了 5 座建筑', 'zh')).toEqual([5]);
+    // An answer that opens with the count; markup around a count; a tier is not a count.
+    expect(gradeProbe(five, 'Five — in the 300 seconds after, none of your team was near.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two }, 'Their side took **two** buildings: your bottom tier 2 and top tier 2.', names).pass).toBe(true);
+    const zero = { ...two, expect: { buildings: 0 } };
+    expect(gradeProbe(zero, 'Zero buildings. The bottom tier 1 tower stood until 16:36.', names).pass).toBe(true);
+    expect(gradeProbe(zero, '两分钟里你们一座建筑都没拆。上路一塔 18:47 才丢。', { ...names, lang: 'zh' }).pass).toBe(true);
+    expect(gradeProbe(zero, '零。', { ...names, lang: 'zh' }).pass).toBe(true);
+    // The number of a numbered list is formatting, not the count.
+    expect(buildingCounts('1. We took three towers.')).toEqual([3]);
+    expect(gradeProbe({ ...two, expect: { buildings: 3 } }, '1. We took three towers.\n2. The enemy took none back.', names).pass).toBe(true);
+    expect(gradeProbe({ ...two, expect: { buildings: 1 } }, '1. We took three towers.', names)).toMatchObject({ pass: false, wrong: ['3'] });
+    expect(buildingCounts('1) 拆了 3 座塔', 'zh')).toEqual([3]);
+    expect(gradeProbe(five, '第一个不朽盾被拿走后，他们拆了 5 座建筑。', { ...names, lang: 'zh' }).pass).toBe(true);
   });
 
   it('scores by kind', () => {

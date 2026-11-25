@@ -4,7 +4,7 @@
  *
  *   node scripts/probe-chat.mjs <dir with *.trace.json.gz> [--lang en|zh] [--provider deepseek|glm]
  *                               [--games N] [--kinds a,b] [--concurrency N] [--out <file.json>] [--dry]
- *                               [--regrade <earlier --out file>]
+ *                               [--regrade <earlier --out file>] [--only <probe id,…>]
  *
  * The player of each game is the hero in the seat given by the match id's last digit, so a run is repeatable and
  * covers both sides. No review goes in: the chat must look things up. --dry prints the probes and their expected
@@ -23,18 +23,19 @@ import { reviewToolkit } from '../lib/agent/deepReview.js';
 import { buildProbes, gradeProbe, scoreProbes, PROBE_KINDS } from '../lib/agent/probes.js';
 import { linkHeroNames } from '../packages/review-engine/src/trace/build.js';
 
-const USAGE = 'Usage: node scripts/probe-chat.mjs <dir> [--lang en|zh] [--provider deepseek|glm] [--games N] [--kinds a,b] [--concurrency N] [--out <file.json>] [--dry] [--regrade <file.json>]';
+const USAGE = 'Usage: node scripts/probe-chat.mjs <dir> [--lang en|zh] [--provider deepseek|glm] [--games N] [--kinds a,b] [--concurrency N] [--out <file.json>] [--dry] [--regrade <file.json>] [--only <id,…>]';
 
 function parseArgs(argv) {
-  const o = { lang: 'en', provider: 'deepseek', games: Infinity, kinds: PROBE_KINDS, concurrency: 3, out: null, dry: false, regrade: null }; const rest = [];
+  const o = { lang: 'en', provider: 'deepseek', games: Infinity, kinds: PROBE_KINDS, concurrency: 3, out: null, dry: false, regrade: null, only: null }; const rest = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--dry') o.dry = true;
-    else if (['--lang', '--provider', '--games', '--kinds', '--concurrency', '--out', '--regrade'].includes(a)) { const v = argv[i += 1]; if (!v || v.startsWith('--')) return null; o[a.slice(2)] = v; } else if (a.startsWith('--')) return null;
+    else if (['--lang', '--provider', '--games', '--kinds', '--concurrency', '--out', '--regrade', '--only'].includes(a)) { const v = argv[i += 1]; if (!v || v.startsWith('--')) return null; o[a.slice(2)] = v; } else if (a.startsWith('--')) return null;
     else rest.push(a);
   }
   o.games = Number(o.games); o.concurrency = Number(o.concurrency);
   if (typeof o.kinds === 'string') o.kinds = o.kinds.split(',');
+  if (typeof o.only === 'string') o.only = new Set(o.only.split(','));
   if (rest.length !== 1 || !['en', 'zh'].includes(o.lang) || !DEEP_REVIEW_PROVIDERS.includes(o.provider) || !(o.games > 0) || !(o.concurrency >= 1) || o.kinds.some((k) => !PROBE_KINDS.includes(k))) return null;
   return { ...o, dir: rest[0] };
 }
@@ -64,7 +65,7 @@ async function main(argv) {
     const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(o.dir, f))).toString('utf8')));
     const hero = trace.heroes[Number(String(trace.match_id).slice(-1))]?.key ?? trace.heroes[0].key;
     const kit = reviewToolkit({ trace, hero, lang: o.lang });
-    for (const probe of buildProbes(trace, hero, { lang: o.lang }) ?? []) if (o.kinds.includes(probe.kind)) jobs.push({ trace, hero, probe, names: { heroNames: kit.context.hero_names, placeNames: kit.context.place_names, lang: kit.language } });
+    for (const probe of buildProbes(trace, hero, { lang: o.lang }) ?? []) if (o.kinds.includes(probe.kind) && (!o.only || o.only.has(probe.id))) jobs.push({ trace, hero, probe, names: { heroNames: kit.context.hero_names, placeNames: kit.context.place_names, lang: kit.language } });
   }
   if (o.dry) { console.log(JSON.stringify(jobs.map((j) => j.probe), null, 2)); return 0; }
   const started = Date.now();
@@ -77,7 +78,7 @@ async function main(argv) {
     const answer = r.text ?? '';
     const grade = r.status === 'ok' ? gradeProbe(probe, answer, names) : { pass: false, missing: ['(no answer)'], wrong: [], also_named: [] };
     const calls = r.tool_calls ?? [];
-    const row = { id: probe.id, kind: probe.kind, question: probe.question, expect: probe.expect, status: r.status, ...grade, asked_source_tool: calls.some((c) => c.name === probe.source.tool), tool_calls: calls.map((c) => c.name), unverified: (r.unverified ?? []).length, answer, usage: r.usage };
+    const row = { id: probe.id, kind: probe.kind, question: probe.question, expect: probe.expect, status: r.status, ...(r.error ? { error: r.error } : {}), ...grade, asked_source_tool: calls.some((c) => c.name === probe.source.tool), tool_calls: calls.map((c) => c.name), unverified: (r.unverified ?? []).length, answer, usage: r.usage };
     console.error(`${row.pass ? 'PASS' : 'FAIL'} ${probe.id}${row.pass ? '' : ` missing=${grade.missing.join('|')} wrong=${grade.wrong.join('|')}`}`);
     return row;
   });

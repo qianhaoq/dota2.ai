@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { createTraceBuilder, linkHeroNames, TRACE_SCHEMA, TRACE_TOOLS, runTraceTool, traceSeconds, traceRegion, goldAdvantage } from '../src/trace/index.js';
+import { createTraceBuilder, linkHeroNames, TRACE_SCHEMA, TRACE_TOOLS, runTraceTool, traceSeconds, traceRegion, goldAdvantage, goldLead, netWorthGraph } from '../src/trace/index.js';
 
 /**
  * A real ranked game (9100904020, Beastmaster on Dire, lost in 42:31), built
@@ -503,6 +503,90 @@ describe('net worth from the replay\'s match metadata', () => {
     expect(f.my_team_gold_lead_before).toBe(-2000 * (Math.floor(f.from / 60) + 1));
     // Without either, as before.
     expect(runTraceTool(trace, 'match_overview', {}, { perspective: 'beastmaster' }).gaps.map((g) => g.topic)).toContain('gold_advantage');
+  });
+});
+
+describe('the gold lead, and where it is read from', () => {
+  // The committed trace of 9100904020 was built before gold rows were kept. These are the rows today's builder
+  // keeps for the same game, and the match record's lead (OpenDota's radiant_gold_adv) for it.
+  const real = JSON.parse(gunzipSync(readFileSync(new URL('./fixtures/gold-9100904020.json.gz', import.meta.url))));
+  const withGold = { ...trace, gold: real.gold.map(([m, npc, reason, sum]) => [m, trace.names.indexOf(npc), reason, sum]) };
+  const tiny = (gold, extra = {}) => ({ t0: 0, n: 181, names: ['npc_dota_hero_axe', 'npc_dota_hero_lina'], buildings: [], heroes: [{ key: 'axe', npc: 'npc_dota_hero_axe', team: 2 }, { key: 'lina', npc: 'npc_dota_hero_lina', team: 3 }], gold, ...extra });
+
+  it('summed from the combat log it is the match record\'s lead, minute for minute, on a real game', () => {
+    expect(withGold.gold).toHaveLength(988);
+    expect(withGold.gold.every((g) => g[1] >= 0)).toBe(true);
+    const g = goldLead(withGold, {});
+    expect(g.source).toBe('replay_gold_log');
+    expect(g.lead).toHaveLength(real.radiant_gold_adv.length);
+    const off = g.lead.map((v, m) => Math.abs(v - real.radiant_gold_adv[m]));
+    expect(Math.max(...off)).toBe(48);
+    expect(off.reduce((a, b) => a + b, 0) / off.length).toBeLessThan(18);
+    // The wipe at 30:26: Radiant 745 ahead going in and 4298 two minutes on by the record; 778 and 4331 by the log.
+    expect([real.radiant_gold_adv[30], g.lead[30], real.radiant_gold_adv[32], g.lead[32]]).toEqual([745, 778, 4298, 4331]);
+  });
+
+  it('counts every gain but an item sold; a loss is not a gain; gold from before the horn is there at 0:00', () => {
+    const g = goldLead(tiny([
+      [-2, 0, 0, 600], [-2, 1, 0, 625],   // before the horn: both purses, and a rune for Dire
+      [0, 0, 13, 100], [0, 1, 13, 40],    // 0:00–0:59
+      [1, 0, 6, 500],                     // an item sold: money moved, not earned
+      [1, 1, 1, -200],                    // lost on death: not a gain, and not a loss of what was earned
+      [2, 1, 12, 300],                    // 2:00–2:59
+      [5, 0, 13, 999],                    // after the last second of the trace
+      [0, 7, 13, 5000],                   // not one of the ten heroes
+    ]), {});
+    expect(g).toEqual({ lead: [-25, 35, 35, -265], source: 'replay_gold_log' });
+    expect(goldAdvantage(tiny([[0, 0, 13, 100]]), {})).toEqual([0, 100, 100, 100]);
+  });
+
+  it('best first: the match record, then the combat log, then the net worth graph — and each is named', () => {
+    const graph = [[600, 700, 800, 900], [600, 650, 700, 750]];
+    const both = tiny([[0, 0, 13, 100]], { net_worth: graph });
+    expect(goldLead(both, { match: { radiant_gold_adv: [0, 5, 9, 12] } })).toEqual({ lead: [0, 5, 9, 12], source: 'match_record' });
+    expect(goldLead(both, {}).source).toBe('replay_gold_log');
+    // A trace built before the gold rows were kept does not know them: the graph, as before.
+    const older = tiny(undefined, { net_worth: graph });
+    expect(goldLead(older, {})).toEqual({ lead: [0, 50, 100, 150], source: 'replay_net_worth' });
+    // An empty list is not a game in which nobody earned anything.
+    expect(goldLead(tiny([], { net_worth: graph }), {}).source).toBe('replay_net_worth');
+    expect(goldLead(tiny(undefined), {})).toBeNull();
+    expect(goldLead(tiny([]), {})).toBeNull();
+    expect(goldAdvantage(tiny(undefined), {})).toBeNull();
+  });
+
+  it('match_overview says which it read, to a player and to no one; with none it says nothing and the gap stands', () => {
+    const told = (t, ctx) => runTraceTool(t, 'match_overview', {}, ctx);
+    const fromLog = told(withGold, { perspective: 'beastmaster' });
+    expect(fromLog.gold_lead_source).toBe('replay_gold_log_lead');
+    expect(fromLog.fights.find((f) => f.clock.startsWith('30:'))).toMatchObject({ my_team_gold_lead_before: -778, my_team_gold_lead_2min_after: -4331 });
+    expect(fromLog.gaps.map((g) => g.topic)).not.toContain('gold_advantage');
+    expect(told(withGold, {}).gold_lead_source).toBe('replay_gold_log_lead');
+    expect(told(withGold, { perspective: 'beastmaster', match: { radiant_gold_adv: real.radiant_gold_adv } })).toMatchObject({ gold_lead_source: 'match_data_gold_lead' });
+    const minutes = Math.floor(trace.buildings.at(-1)[0] / 60) + 1;
+    const graph = { ...trace, net_worth: trace.heroes.map((h) => Array.from({ length: minutes }, (_, m) => (h.team === 2 ? 1000 : 600) * (m + 1))) };
+    expect(told(graph, { perspective: 'beastmaster' }).gold_lead_source).toBe('replay_net_worth_lead');
+    const none = told(trace, { perspective: 'beastmaster' });
+    expect(none).not.toHaveProperty('gold_lead_source');
+    expect(none.gaps.map((g) => g.topic)).toContain('gold_advantage');
+  });
+
+  it('a net worth graph that is not one point a minute is not read as minutes', () => {
+    // 9099561801: 36 points for a game of 73:37. Read as minutes, minute 49's net worth stood at minute 24.
+    const minutes = Math.floor(trace.buildings.at(-1)[0] / 60) + 1;
+    expect(minutes).toBe(43);
+    const graphOf = (points) => ({ ...trace, net_worth: trace.heroes.map((h) => Array.from({ length: points }, (_, m) => (h.team === 2 ? 1000 : 600) * (m + 1))) });
+    // The per-minute graphs of the corpus are 0 to 3 points short of the game's minutes.
+    for (const points of [43, 42, 40]) expect([points, netWorthGraph(graphOf(points)) != null, goldLead(graphOf(points), {})?.source]).toEqual([points, true, 'replay_net_worth']);
+    // Fifteen percent of 43 minutes is 6.45 points: 37 is still read, 36 is not.
+    expect(netWorthGraph(graphOf(37))).not.toBeNull();
+    for (const points of [36, 21, 1]) expect([points, netWorthGraph(graphOf(points)), goldLead(graphOf(points), {})]).toEqual([points, null, null]);
+    const sparse = runTraceTool(graphOf(21), 'match_overview', {}, { perspective: 'beastmaster' });
+    expect(sparse.fights[0]).not.toHaveProperty('my_team_gold_lead_before');
+    expect(sparse.gaps).toContainEqual({ topic: 'gold_advantage', reason: 'not_in_trace' });
+    // One hero without a graph, or a trace without the field: no graph.
+    expect(netWorthGraph({ ...graphOf(43), net_worth: graphOf(43).net_worth.map((g, i) => (i === 3 ? null : g)) })).toBeNull();
+    expect(netWorthGraph(trace)).toBeNull();
   });
 });
 
