@@ -283,7 +283,7 @@ describe('probes: grading an answer', () => {
   });
 
   it('scores by kind', () => {
-    expect(scoreProbes([{ kind: 'a', pass: true }, { kind: 'a', pass: false }, { kind: 'b', pass: true }] as any)).toEqual({ probes: 3, passed: 2, by_kind: { a: { probes: 2, passed: 1 }, b: { probes: 1, passed: 1 } } });
+    expect(scoreProbes([{ kind: 'a', pass: true }, { kind: 'a', pass: false }, { kind: 'b', pass: true }] as any)).toEqual({ probes: 3, passed: 2, not_graded: 0, by_kind: { a: { probes: 2, passed: 1 }, b: { probes: 1, passed: 1 } } });
   });
 
   it('a chat that looks the fact up passes; one that answers from nothing does not', async () => {
