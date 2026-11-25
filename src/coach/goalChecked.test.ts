@@ -52,7 +52,7 @@ describe('goal_checked: the next-game loop closing, counted', () => {
 
   it('the goal\'s extra rules are stored but not counted: one goal and one game is one event', async () => {
     const rule = { kind: 'deaths_per10_max', max: 0, label: { en: 'r', zh: 'r' } } as never; // this one is missed
-    const g: ActiveGoal = { ...goal('g-rules', 'deaths_per10_max'), rules: [{ finding: 2, check: rule }, { finding: 3, check: { kind: 'deaths_per10_max', max: 99, label: { en: 'r', zh: 'r' } } as never }] };
+    const g: ActiveGoal = { ...goal('g-rules', 'deaths_per10_max'), rules: [{ finding: 2, when: 'w', do: 'd', check: rule }, { finding: 3, when: 'w', do: 'd', check: { kind: 'deaths_per10_max', max: 99, label: { en: 'r', zh: 'r' } } as never }] };
     expect(checkGoal(g, report, 0)?.result).toBe('met');
     const rules = checkRules(g, report, 0, null);
     expect(rules.map((r) => r.check.result)).toEqual(['missed', 'met']);
