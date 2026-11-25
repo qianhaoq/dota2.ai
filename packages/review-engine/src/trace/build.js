@@ -32,13 +32,15 @@
  *   keeps only rows with a hero in them), but it is in the running count: on 9100904020 the count on each
  *   hero's last row was the scoreboard's last hits for nine heroes and one short for the tenth;
  * - gold each hero received or lost, summed per game minute and per reason code of the log (`gold`): 13 lane
- *   creeps, 14 neutrals, 12 hero kills and assists, 11 buildings, 15 Roshan, 17 bounty runes, 20 wards,
+ *   creeps, 14 neutrals, 12 hero kills and assists, 11 buildings, 15 Roshan and the Tormentor, 17 bounty runes, 20 wards,
  *   16 and 21 couriers, 6 selling, 1 dying (a loss), 0 the starting purse and what the log does not name —
  *   read off 9100904020 and 9102822299, where each code was matched against the deaths in the same instant.
  *   A code not listed here is kept as it is (23 on 9102822299: 160 gold, 49 times). The income every hero
  *   gets over time has no rows, so these do not add up to net worth. Only when the extract has gold rows;
- * - Roshan: every kill a hero made, or that paid out Roshan gold (`roshan_kills`), and the damage heroes dealt
- *   to Roshan per second (`roshan_damage`).
+ * - Roshan: every kill a hero landed (`roshan_kills`) and the damage heroes dealt to Roshan per second
+ *   (`roshan_damage`); and every Tormentor a hero killed (`tormentor_kills`). A kill whose last hit was not a
+ *   hero's has no row in the log and is not seen. Its gold cannot stand in for it: reason 15 is paid for
+ *   Roshan and for the Tormentor alike (9102345221: three of each, told apart only by their death rows).
  *
  * What the extractor does not have stays absent (see `gaps`): fog of war,
  * where the creeps stood. Nothing is estimated. (`gaps` still names creeps and Roshan as the tools tell them
@@ -55,8 +57,7 @@ const BUILDING = /_(tower\d|fort|melee_rax|range_rax)/;
 const ROSHAN = 'npc_dota_roshan';
 const LANE_CREEP = /^npc_dota_(?:creep_(?:goodguys|badguys)_|(?:goodguys|badguys)_siege)/;
 const NEUTRAL_CREEP = /^npc_dota_neutral_/;
-/** The log's reason code for the gold a Roshan kill pays (the killer's share and each teammate's). */
-const ROSHAN_GOLD = 15;
+const TORMENTOR = 'npc_dota_miniboss';
 const side = (team) => (team === 2 || team === 3 ? team : 0);
 /**
  * What a hero killed, when it is one of the things the trace keeps: 'l' a lane creep of the other side, 'd' one
@@ -138,7 +139,7 @@ export function createTraceBuilder() {
   let wardRows = 0;
   /** @type {Map<string, number>} */
   const damage = new Map();
-  const creepKills = []; const roshanDeaths = []; const roshanGold = [];
+  const creepKills = []; const roshanDeaths = []; const tormentorDeaths = [];
   /** @type {Map<string, number>} `minute|receiver|reason` → gold */
   const gold = new Map();
   /** @type {Map<string, number>} `second|attacker` → damage to Roshan */
@@ -252,6 +253,7 @@ export function createTraceBuilder() {
           else if (e.target_hero !== true && e.attacker_hero === true && typeof e.attacker === 'string') {
             // A kill by a hero or by its illusion: the gold and the last hit are the hero's either way.
             if (e.target === ROSHAN) roshanDeaths.push([t, id(e.attacker), side(e.attacker_team), row, flag(e.visible_radiant), flag(e.visible_dire)]);
+            else if (e.target === TORMENTOR) tormentorDeaths.push([t, id(e.attacker), side(e.attacker_team), row]);
             else creepKills.push([t, id(e.attacker), killKind(e), Number.isInteger(e.last_hits) && e.last_hits >= 0 ? e.last_hits : null, Number.isFinite(e.networth) && e.networth >= 0 ? Math.round(e.networth) : null]);
           }
           break;
@@ -262,7 +264,6 @@ export function createTraceBuilder() {
           const value = e.value > 0x7fffffff ? e.value - 0x100000000 : e.value;
           const key = `${Math.floor(e.t / 60)}|${id(e.target)}|${e.gold_reason}`;
           gold.set(key, (gold.get(key) ?? 0) + value);
-          if (e.gold_reason === ROSHAN_GOLD) roshanGold.push([t, id(e.target)]);
           break;
         }
         case 'DOTA_COMBATLOG_PURCHASE':
@@ -354,20 +355,6 @@ export function createTraceBuilder() {
       const graphs = [...netWorth.values(), ...netWorthBySlot.values()];
       const perMinute = graphs.length > 0 && graphs.every((g) => g.length <= minutes);
       const graphOf = (h) => netWorth.get(squash(h.key)) ?? (h.player_index == null ? null : netWorthBySlot.get(`${h.team}:${h.player_index}`)) ?? null;
-      // A Roshan a hero did not land the last hit on has no death row (the log keeps rows with a hero in them), but
-      // its gold is paid all the same: such a kill is read from the gold, with the side of the heroes it was paid to.
-      const teamOfName = (i) => { const name = names[i] ?? ''; const key = squash(name.replace(/^npc_dota_hero_/, '')); return list.find((h) => squash(h.key) === key)?.team ?? 0; };
-      const roshanKills = () => {
-        const kills = roshanDeaths.map((k) => [...k]);
-        const paid = new Map();
-        for (const [gt, who] of roshanGold) paid.set(gt, [...(paid.get(gt) ?? []), who]);
-        for (const [gt, receivers] of paid) {
-          if (kills.some((k) => Math.abs(k[0] - gt) <= 1)) continue;
-          const teams = new Set(receivers.map(teamOfName));
-          kills.push([gt, -1, teams.size === 1 ? side([...teams][0]) : 0, -1, null, null]);
-        }
-        return kills.sort((a, b) => a[0] - b[0]);
-      };
       const out = {
         schema: TRACE_SCHEMA,
         match_id: meta.match_id ?? null,
@@ -398,9 +385,11 @@ export function createTraceBuilder() {
         creep_kills: creepKills,
         // [game minute (negative before the horn), hero, the log's reason code, gold] — a loss is negative.
         ...(goldRows ? { gold: [...gold].map(([k, v]) => [...k.split('|').map(Number), Math.round(v)]) } : {}),
-        // [t, killer (-1: not a hero's row), the side that took it (0: not known), event row (-1: none), visible to
-        // Radiant, visible to Dire (the log's flags on the kill row: 1, 0 or null)].
-        roshan_kills: roshanKills(),
+        // [t, killer, the side that took it (0: the row does not say), event row, visible to Radiant, visible to
+        // Dire (the log's flags on the kill row: 1, 0 or null)]. Only kills a hero landed: see the header.
+        roshan_kills: roshanDeaths,
+        // [t, killer, the side that took it (0: the row does not say), event row].
+        tormentor_kills: tormentorDeaths,
         // [second, hero, damage dealt to Roshan in that second].
         roshan_damage: [...roshanDamage].map(([k, v]) => [...k.split('|').map(Number), Math.round(v)]),
         // Per hero, in hero order: net worth at 0:00, 1:00, 2:00 … (null for a hero the metadata did not name).
