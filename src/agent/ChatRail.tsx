@@ -58,7 +58,7 @@ export function stepLabel(step: ToolStep, lang: Lang): string {
 
 interface Turn { q: string; a: string; steps: ToolStep[]; pending: boolean; error?: string; unverified?: string[] }
 
-export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; lang: Lang; suggestions: string[]; plan?: string | null }>(({ matchId, hero, lang, suggestions, plan = null }, ref) => {
+export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; lang: Lang; suggestions: string[]; plan?: string | null; /** The model that wrote the review on screen, when not the default: it answers the questions too. */ model?: string | null }>(({ matchId, hero, lang, suggestions, plan = null, model = null }, ref) => {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
   const [context, setContext] = useState<{ label: string; refs: string[] } | null>(null);
@@ -101,7 +101,7 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
     if (about) { setDraft(''); setContext(null); }
     const ac = new AbortController(); abort.current = ac;
     try {
-      await askAgent(matchId, { hero, lang, question: sent.slice(0, 500), history, ...(plan ? { plan } : {}) }, {
+      await askAgent(matchId, { hero, lang, question: sent.slice(0, 500), history, ...(plan ? { plan } : {}), ...(model ? { model } : {}) }, {
         onStep: (step) => patch((x) => ({ ...x, steps: [...x.steps, step] })),
         onText: (a, unverified) => patch((x) => ({ ...x, a, unverified: unverified.map((u) => u.text) })),
         onError: () => patch((x) => ({ ...x, error: t(T.failed) })),

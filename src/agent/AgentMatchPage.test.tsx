@@ -701,6 +701,63 @@ describe('AgentMatchPage', () => {
     expect(screen.getByRole('button', { name: '开始复盘' })).toBeTruthy();
   });
 
+  it('the reader picks who writes the review: the model goes in the link, the start, every poll, the chat and the shared link', async () => {
+    let started: any = null;
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro', 'glm-5.3'], default_model: 'deepseek-flash' };
+    const calls = mockFetch({
+      '/chat': () => sse([{ text: '答。' }, { done: true }]),
+      'ref=overview': overview,
+      // The default's review exists; the other model's does not until it is started.
+      '/review?': (url: string) => (!url.includes('model=') || started ? { status: 'ready', review: { ...review, lang: 'zh', verdict: url.includes('model=') ? 'Kimi 的结论。' : 'DeepSeek 的结论。' }, verification: { repaired: false, dropped: 0 }, model: url.includes('model=') ? 'k3.1-pro' : 'deepseek-flash', tool_calls: 9 } : { status: 'none' }),
+      '/review': (_u: string, init?: RequestInit) => { if (init?.method !== 'POST') return null; started = JSON.parse(String(init.body)); return { status: 'running', steps: [] }; },
+      '/api/agent/9100904020': offer,
+    });
+    ui.lang = 'zh';
+    const Where = () => { const l = useLocation(); return <p data-testid="where">{l.search}</p>; };
+    render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=zh']}><Where /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
+    // On the default's finished review: who wrote it, and the others to compare with.
+    expect(await screen.findByText('DeepSeek 的结论。')).toBeTruthy();
+    const bar = screen.getByRole('radiogroup', { name: '撰写模型' });
+    expect(within(bar).getAllByRole('radio').map((r) => [r.textContent, r.getAttribute('aria-checked')])).toEqual([['DeepSeek 4.1 Flash', 'true'], ['Kimi K3.1 Pro', 'false'], ['GLM-5.3', 'false']]);
+    fireEvent.click(within(bar).getByRole('radio', { name: 'Kimi K3.1 Pro' }));
+    expect(screen.getByTestId('where').textContent).toContain('model=kimi-k3.1-pro');
+    // That model has no review of this game yet: the start is offered with it picked, and nothing has been started.
+    const group = await screen.findByRole('radiogroup', { name: '由哪个模型来写？' });
+    expect(within(group).getByRole('radio', { name: 'Kimi K3.1 Pro' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByText('DeepSeek 的结论。')).toBeNull();
+    // The wait it is told is that model's, as timed — not the default's two to three minutes.
+    expect(screen.getByText(/在我们计时的那一局上，Kimi K3\.1 Pro 用了约 13 分钟；DeepSeek 4\.1 Flash 是两到三分钟。/)).toBeTruthy();
+    expect(screen.queryByText(/然后写出该改什么。大约两到三分钟。/)).toBeNull();
+    expect(calls.some((c) => c.init?.method === 'POST')).toBe(false);
+    await waitFor(() => expect(calls.some((c) => c.url.includes('/review?') && c.url.includes('model=kimi-k3.1-pro'))).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: '开始复盘' }));
+    await waitFor(() => expect(started).toEqual({ hero: 'beastmaster', lang: 'zh', model: 'kimi-k3.1-pro' }));
+    expect(await screen.findByText('Kimi 的结论。', {}, { timeout: 5000 })).toBeTruthy();
+    // A question goes to the model that wrote the review on screen.
+    const box = screen.getByRole('textbox', { name: '问教练' });
+    fireEvent.change(box, { target: { value: '怎么打？' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith('/chat'))).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/chat'))!.init!.body))).toMatchObject({ question: '怎么打？', model: 'kimi-k3.1-pro' });
+    // Back to the default: the model leaves the link and the requests, and the default's review is shown again.
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: '撰写模型' })).getByRole('radio', { name: 'DeepSeek 4.1 Flash' }));
+    expect(screen.getByTestId('where').textContent).not.toContain('model=');
+    expect(await screen.findByText('DeepSeek 的结论。')).toBeTruthy();
+  });
+
+  it('with one model, or none listed, there is nothing to pick; a model the server does not offer is not asked for', async () => {
+    const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { status: 'running', steps: [] } : null), '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['deepseek-flash'], default_model: 'deepseek-flash' } });
+    // The link names a model this server does not offer (and one that is no model): the default is asked for.
+    page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.3');
+    expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
+    expect(screen.queryByRole('radiogroup', { name: 'Which model writes it?' })).toBeNull();
+    expect(screen.getByText(/and writes what to change\. About two to three minutes\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(calls.some((c) => c.init?.method === 'POST')).toBe(true));
+    expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/review') && c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
+    expect(calls.some((c) => c.url.includes('model='))).toBe(false);
+  });
+
   it('going back to "don\'t say" takes the plan out of the link and the requests', async () => {
     const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { status: 'running', steps: [] } : null), '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=en&plan=late');
