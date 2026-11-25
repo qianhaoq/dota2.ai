@@ -30,3 +30,8 @@ console.log(`browsers (by anonId; ${out.anonymous} events had none):`);
 for (const [step, text] of Object.entries(label)) {
   console.log(`  ${String(out.browsers[step]).padStart(5)}  ${text}${step === 'opened' ? '' : `   — of those who opened: ${out.ofOpened[step]}${pct(out.ofOpened[step])}`}`);
 }
+const sources = Object.entries(out.bySource).sort((a, b) => b[1].came - a[1].came);
+if (sources.length) {
+  console.log('by community link (?src=): came / opened a match / got their review / shared');
+  for (const [src, r] of sources) console.log(`  ${src.padEnd(8)} ${String(r.came).padStart(5)} ${String(r.opened).padStart(5)} ${String(r.own).padStart(5)} ${String(r.shared).padStart(5)}`);
+}

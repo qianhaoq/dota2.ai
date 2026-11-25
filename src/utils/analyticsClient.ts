@@ -16,9 +16,24 @@ export type AnalyticsEventName =
   | 'review_requested'
   | 'review_refused'
   | 'chat_asked'
-  | 'review_ready';
+  | 'review_ready'
+  | 'arrived';
 
 export type AnalyticsProps = Record<string, string | number | boolean>;
+
+/** The `?src=` of a link, when it is one of the known community sources (lib/analyticsEvents.js); else null. */
+export function sourceFrom(search: string, sources: readonly string[]): string | null {
+  let v: string | null = null;
+  try { v = new URLSearchParams(search).get('src'); } catch { return null; }
+  const s = v?.trim().toLowerCase() ?? '';
+  return sources.includes(s) ? s : null;
+}
+
+/** Which kind of page a path is, for the `arrived` event: never the path itself. */
+export function pageKind(pathname: string): 'home' | 'match' | 'other' {
+  if (pathname === '/' || pathname === '') return 'home';
+  return /^\/r\/\d+\/?$/.test(pathname) ? 'match' : 'other';
+}
 
 export interface AnalyticsEventPayload {
   event: AnalyticsEventName;

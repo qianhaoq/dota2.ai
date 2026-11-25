@@ -6,7 +6,7 @@ import { markReviewed } from '../coach/accountInput';
 import { checkGoal, checkRules, needsReplay, replayRefs, useActiveGoal, type GoalCheck, type GoalRule, type ReplayRecords } from '../coach/goalStore';
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
-import { trackEvent, trackOnce, trackReviewViewed } from '../services/analytics';
+import { trackEvent, trackOnce, trackReviewViewed, trafficSource } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
@@ -363,14 +363,16 @@ export const AgentMatchPage: React.FC = () => {
     trackReviewViewed(matchId, { ui: 'agent', hero: heroKey, lang, ...(arrivedBy ? { ref: arrivedBy } : {}) });
     // The review the reader asked for here, and waited out, is done: counted once per review, whatever was
     // seen on this match before (a review that was already there counts as viewed, not as this).
-    if (intent) trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}`, 'review_ready', { matchId, hero: heroKey, lang });
+    if (intent) { const src = trafficSource(); trackOnce(`${matchId}.${heroKey}.${lang}.${plan ?? ''}`, 'review_ready', { matchId, hero: heroKey, lang, ...(src ? { src } : {}) }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, matchId, heroKey]);
 
   // Someone opened this game's page: the top of the funnel, once per match per session, before anything
   // has loaded, so one who leaves while it loads is counted too.
   useEffect(() => {
-    if (valid) trackOnce(matchId, 'match_opened', { matchId, lang, ...(arrivedBy ? { ref: arrivedBy } : {}) });
+    // `src`: the community post this visit came from, if it came by one (kept for the session).
+    const src = trafficSource();
+    if (valid) trackOnce(matchId, 'match_opened', { matchId, lang, ...(arrivedBy ? { ref: arrivedBy } : {}), ...(src ? { src } : {}) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
