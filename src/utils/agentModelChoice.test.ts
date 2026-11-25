@@ -159,7 +159,8 @@ describe('a review by another model is its own review', () => {
     const back = service(w);
     await front.svc.start(ID, 'beastmaster', 'zh', { model: 'glm-5.3' });
     await front.svc.start(ID, 'beastmaster', 'zh');
-    expect(queue).toEqual([{ kind: 'review', matchId: String(ID), hero: 'beastmaster', lang: 'zh', model: 'glm-5.3' }, { kind: 'review', matchId: String(ID), hero: 'beastmaster', lang: 'zh' }]);
+    // Each task names its model, the default's too: what it is run by does not depend on what the default is when it arrives.
+    expect(queue).toEqual([{ kind: 'review', matchId: String(ID), hero: 'beastmaster', lang: 'zh', model: 'glm-5.3' }, { kind: 'review', matchId: String(ID), hero: 'beastmaster', lang: 'zh', model: 'deepseek-flash' }]);
     expect(await back.svc.run({ ...queue[0], model: 'kimi-k3.1-pro' })).toEqual({ status: 'invalid' });
     expect(await back.svc.run(queue[0])).toEqual({ status: 'ready' });
     expect([back.d.asked, back.g.asked > 0]).toEqual([0, true]);
@@ -186,6 +187,35 @@ describe('a review by another model is its own review', () => {
     expect(parseChatBody({ question: 'q', hero: 'axe', model: 'glm-5.3' }).model).toBe('glm-5.3');
     expect(parseChatBody({ question: 'q', hero: 'axe' }).model).toBeUndefined();
     expect(parseChatBody({ question: 'q', hero: 'axe', model: { $ne: 1 } }).model).toBe(false);
+  });
+
+  it('the key without a model is DeepSeek\'s alone: another model that becomes the default is not handed DeepSeek\'s reviews (review of #327)', async () => {
+    const w = world();
+    // A review DeepSeek wrote, stored as every review was before there was a choice.
+    const { svc: before } = service(w);
+    await before.start(ID, 'beastmaster', 'zh');
+    await until(() => before.status(ID, 'beastmaster', 'zh'), (s) => s.status === 'ready');
+    expect(reviews(w)).toEqual([expect.stringMatching(/\.p\d+\.review\.json$/)]);
+    // The server is now set up without DeepSeek: Kimi is the default, by no name or by its own.
+    const k = engine('k3.1-pro');
+    const queue: any[] = [];
+    const kimiOnly: any = createAgentService({ traces: w.traces, docs: w.docs, models: { 'kimi-k3.1-pro': k }, defaultModel: 'kimi-k3.1-pro', getMatchDetail: async () => SCOREBOARD, dispatch: async (task: any) => { queue.push(task); } });
+    expect(await kimiOnly.status(ID, 'beastmaster', 'zh')).toEqual({ status: 'none' });
+    expect(await kimiOnly.status(ID, 'beastmaster', 'zh', null, 'kimi-k3.1-pro')).toEqual({ status: 'none' });
+    expect(await kimiOnly.peek(ID, 'beastmaster', 'zh')).toBeNull();
+    // Its own review is written by it, under its own name; the task that carries it names it.
+    expect(await kimiOnly.start(ID, 'beastmaster', 'zh')).toMatchObject({ status: 'running' });
+    expect(queue).toEqual([{ kind: 'review', matchId: String(ID), hero: 'beastmaster', lang: 'zh', model: 'kimi-k3.1-pro' }]);
+    expect(await kimiOnly.run(queue[0])).toEqual({ status: 'ready' });
+    expect(k.asked).toBeGreaterThan(0);
+    expect(await kimiOnly.status(ID, 'beastmaster', 'zh')).toMatchObject({ status: 'ready', model: 'k3.1-pro' });
+    expect(reviews(w)).toEqual([expect.stringMatching(/\.p\d+\.m-kimi-k3\.1-pro\.review\.json$/), expect.stringMatching(/\.p\d+\.review\.json$/)]);
+    // DeepSeek's is still DeepSeek's, for a server that offers both, whichever is its default.
+    const both: any = createAgentService({ traces: w.traces, docs: w.docs, models: { 'kimi-k3.1-pro': k, 'deepseek-flash': engine('deepseek-flash') }, defaultModel: 'kimi-k3.1-pro' });
+    expect(await both.status(ID, 'beastmaster', 'zh', null, 'deepseek-flash')).toMatchObject({ status: 'ready', model: 'deepseek-flash' });
+    expect(await both.status(ID, 'beastmaster', 'zh')).toMatchObject({ status: 'ready', model: 'k3.1-pro' });
+    // A task queued while another model was the default is run by the model it names, or dropped: never by this server's default.
+    expect(await kimiOnly.run({ kind: 'review', matchId: String(ID), hero: 'phantom_assassin', lang: 'zh', model: 'deepseek-flash' })).toEqual({ status: 'invalid' });
   });
 
   it('a service given one model, as before there was a choice, lists none and keeps its keys', async () => {

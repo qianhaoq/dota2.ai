@@ -229,10 +229,12 @@ upstream model name and key, and only the server and the scripts import it.
 A model is offered when its key is set (and `AGENT_MODELS`, a comma separated
 list of ids, does not leave it out). The page sends the id only. An id that is
 not offered is a 400; a review is never written by a model the reader did not
-ask for, and a failed review is not retried with another. A review by a
-non-default model is kept beside the default's (`….m-<id>.review.json`), so
-the same game can be read by two models; the chat is answered by the model
-whose review is on screen.
+ask for, and a failed review is not retried with another. Each model's review
+of a game is kept on its own (`….m-<id>.review.json`), so the same game can be
+read by two models; the key without a model is DeepSeek's, as every review was
+stored before there was a choice, and stays DeepSeek's on a server whose
+default is another model. A queued review names its model. The chat is
+answered by the model whose review is on screen.
 
 Keys: in the server's environment only, on Cloud Run from Secret Manager
 (`--update-secrets`, never `--set-env-vars`), never in a `VITE_*` variable.
