@@ -336,7 +336,7 @@ describe('patch routes', () => {
   it('GET /api/patch and /api/patch/hero/:hero are the tools\' records, cacheable, in the language asked for', async () => {
     const res = await fetch(`${base}/api/patch?lang=zh`);
     expect(res.status).toBe(200);
-    expect(res.headers.get('cache-control')).toBe('public, max-age=600');
+    expect(res.headers.get('cache-control')).toBe('public, max-age=300');
     const o = await res.json();
     expect(o).toMatchObject({ patch: PATCH.version, advisor: true, numbers: { bracket: '全部分段' } });
     expect(o).not.toHaveProperty('tool');

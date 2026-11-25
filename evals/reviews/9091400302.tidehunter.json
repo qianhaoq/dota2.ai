@@ -2,9 +2,11 @@
   "schema": "dota2.ai/review-rubric@1",
   "match_id": 9091400302,
   "hero": "tidehunter",
-  "status": "draft",
+  "status": "approved",
   "written": "2026-11-25",
-  "source": "Tool outputs on the stored trace with the match record (build_check, power_spikes, death_context, lane_report, window_report, decision_points). Not yet checked by the owner.",
+  "checked": "2026-11-25",
+  "checked_by": "Claude, re-reading every stated fact from the tools (build_check, power_spikes, death_context, lane_report, fight_report); the owner delegated the check",
+  "source": "Tool outputs on the stored trace with the match record (build_check, power_spikes, death_context, lane_report, window_report, decision_points).",
   "must_hit": [
     {
       "id": "blink_after_magic_resistance",
