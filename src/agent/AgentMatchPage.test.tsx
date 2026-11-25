@@ -3,7 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { AgentMatchPage, journeyStep } from './AgentMatchPage';
+import { AgentMatchPage, journeyStep, REPLAY_NOT_READY } from './AgentMatchPage';
 import { stepLabel } from './ChatRail';
 import { buildingLabel } from './EvidenceCard';
 
@@ -106,6 +106,72 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(prepared).toBe(1));
     await waitFor(() => expect(calls.filter((c) => c.url.endsWith('/api/agent/9100904020')).length).toBeGreaterThanOrEqual(2));
     expect(prepared).toBe(1);
+  });
+
+  describe('a replay that is not ready yet (the game just ended)', () => {
+    const was = { ...REPLAY_NOT_READY };
+    beforeEach(() => { REPLAY_NOT_READY.askEveryMs = 40; });
+    afterEach(() => { Object.assign(REPLAY_NOT_READY, was); });
+    const notReady = { status: 'failed', reason: 'no_replay_url', final: false };
+    const availWith = (parse: object) => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse });
+
+    it('the reader said go: the page keeps asking and goes again by itself when the server allows it — no second click', async () => {
+      let prepared = 0; let allowed = false; let asks = 0;
+      const calls = mockFetch({
+        '/api/coach/9100904020': board,
+        // The first try fails for want of a replay address; the second one, once allowed, runs.
+        '/prepare': () => { prepared += 1; return prepared === 1 ? notReady : { status: 'running', stage: 'locating' }; },
+        '/api/agent/9100904020': () => { asks += 1; return availWith(prepared === 0 ? { status: 'none' } : prepared === 1 ? (allowed ? { status: 'none' } : notReady) : { status: 'running', stage: 'downloading' }); },
+      });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+      expect(await screen.findByRole('heading', { name: 'The replay is not ready yet' })).toBeTruthy();
+      // It says what will happen, and it is happening: the state is asked for again and again.
+      expect(screen.getByText(/Leave this page open: it will try again by itself in a few minutes/)).toBeTruthy();
+      const before = asks;
+      await waitFor(() => expect(asks).toBeGreaterThanOrEqual(before + 3));
+      expect(prepared).toBe(1);
+      // The server's retry time has passed: the next ask says so, and the parse is started again without a click.
+      allowed = true;
+      await waitFor(() => expect(prepared).toBe(2));
+      expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+      expect(calls.filter((c) => c.url.includes('/prepare'))).toHaveLength(2);
+    });
+
+    it('a reader who never said go is not waited for: the plain message, and nothing asked again', async () => {
+      let asks = 0;
+      mockFetch({ '/api/coach/9100904020': board, '/api/agent/9100904020': () => { asks += 1; return availWith(notReady); } });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      expect(await screen.findByRole('heading', { name: 'The replay is not ready yet' })).toBeTruthy();
+      expect(screen.getByText(/Try again shortly\./)).toBeTruthy();
+      expect(screen.queryByText(/Leave this page open/)).toBeNull();
+      const seen = asks;
+      await new Promise((r) => setTimeout(r, 300));
+      expect(asks).toBe(seen);
+    });
+
+    it('it goes again by itself a few times, then leaves it to the reader', async () => {
+      REPLAY_NOT_READY.triesByItself = 2;
+      let prepared = 0; let asks = 0; let lastAsk = 0;
+      mockFetch({
+        '/api/coach/9100904020': board,
+        '/prepare': () => { prepared += 1; lastAsk = asks; return notReady; },
+        // Every third ask after a try the server allows another one; every try fails the same way.
+        '/api/agent/9100904020': () => { asks += 1; return availWith(prepared === 0 || asks - lastAsk >= 3 ? { status: 'none' } : notReady); },
+      });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+      // The click, then two more by itself.
+      await waitFor(() => expect(prepared).toBe(3), { timeout: 6000 });
+      await waitFor(() => expect(screen.getByText(/Try again shortly\./)).toBeTruthy());
+      expect(screen.queryByText(/Leave this page open/)).toBeNull();
+      const seen = asks;
+      await new Promise((r) => setTimeout(r, 400));
+      expect(asks).toBe(seen);
+      expect(prepared).toBe(3);
+      // The reader can still ask for it.
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    }, 12000);
   });
 
   it('one click is one start, and a refresh that fails right after prepare does not strand the wait', async () => {
