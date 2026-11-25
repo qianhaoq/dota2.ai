@@ -310,6 +310,8 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-planpick-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .ag-chip-btn { background: var(--panel); border: 1px solid var(--line-2); color: var(--text-2); border-radius: 999px; padding: 6px 14px; font-size: var(--fs-meta); cursor: pointer; }
 .ag-chip-btn:hover, .ag-chip-btn:focus-visible { border-color: var(--accent); color: var(--text); }
+.ag-chip-time { font-weight: 400; opacity: 0.8; white-space: nowrap; }
+.ag-worktime { color: var(--text-2); font-size: var(--fs-meta); }
 .ag-chip-btn.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .ag-plan-yours dt span { display: block; margin-top: 2px; color: var(--accent); letter-spacing: 0; text-transform: none; }
 .ag-plan-parts > .ag-plan-yours { padding: 10px 12px; margin: 0 -12px; background: rgba(227, 163, 70, 0.08); border-radius: 8px; }

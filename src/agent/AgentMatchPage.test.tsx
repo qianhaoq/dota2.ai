@@ -724,15 +724,17 @@ describe('AgentMatchPage', () => {
     // On the default's finished review: who wrote it, and the others to compare with.
     expect(await screen.findByText('DeepSeek 的结论。')).toBeTruthy();
     const bar = screen.getByRole('radiogroup', { name: '撰写模型' });
-    expect(within(bar).getAllByRole('radio').map((r) => [r.textContent, r.getAttribute('aria-checked')])).toEqual([['DeepSeek 4.1 Flash', 'true'], ['Kimi K3.1 Pro', 'false'], ['GLM-5.3', 'false']]);
-    fireEvent.click(within(bar).getByRole('radio', { name: 'Kimi K3.1 Pro' }));
+    expect(within(bar).getAllByRole('radio').map((r) => [r.textContent, r.getAttribute('aria-checked')])).toEqual([['DeepSeek 4.1 Flash · 约 2–3 分钟', 'true'], ['Kimi K3.1 Pro · 约 13 分钟', 'false'], ['GLM-5.3 · 约 24 分钟', 'false']]);
+    fireEvent.click(within(bar).getByRole('radio', { name: 'Kimi K3.1 Pro · 约 13 分钟' }));
     expect(screen.getByTestId('where').textContent).toContain('model=kimi-k3.1-pro');
     // That model has no review of this game yet: the start is offered with it picked, and nothing has been started.
     const group = await screen.findByRole('radiogroup', { name: '由哪个模型来写？' });
-    expect(within(group).getByRole('radio', { name: 'Kimi K3.1 Pro' }).getAttribute('aria-checked')).toBe('true');
+    // Each button says how long that model takes, before the reader picks.
+    expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual(['DeepSeek 4.1 Flash · 约 2–3 分钟', 'Kimi K3.1 Pro · 约 13 分钟', 'GLM-5.3 · 约 24 分钟']);
+    expect(within(group).getByRole('radio', { name: 'Kimi K3.1 Pro · 约 13 分钟' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.queryByText('DeepSeek 的结论。')).toBeNull();
     // The wait it is told is that model's, as timed — not the default's two to three minutes.
-    expect(screen.getByText(/在我们计时的那一局上，Kimi K3\.1 Pro 用了约 13 分钟；DeepSeek 4\.1 Flash 是两到三分钟。/)).toBeTruthy();
+    expect(screen.getByText(/用 Kimi K3\.1 Pro 写，预计约 13 分钟（按实测）；DeepSeek 4\.1 Flash 约 2–3 分钟。/)).toBeTruthy();
     expect(screen.queryByText(/然后写出该改什么。大约两到三分钟。/)).toBeNull();
     expect(calls.some((c) => c.init?.method === 'POST')).toBe(false);
     await waitFor(() => expect(calls.some((c) => c.url.includes('/review?') && c.url.includes('model=kimi-k3.1-pro'))).toBe(true));
@@ -746,7 +748,7 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/chat'))).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/chat'))!.init!.body))).toMatchObject({ question: '怎么打？', model: 'kimi-k3.1-pro' });
     // Back to the default: the model leaves the link and the requests, and the default's review is shown again.
-    fireEvent.click(within(screen.getByRole('radiogroup', { name: '撰写模型' })).getByRole('radio', { name: 'DeepSeek 4.1 Flash' }));
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: '撰写模型' })).getByRole('radio', { name: 'DeepSeek 4.1 Flash · 约 2–3 分钟' }));
     expect(screen.getByTestId('where').textContent).not.toContain('model=');
     expect(await screen.findByText('DeepSeek 的结论。')).toBeTruthy();
   });
@@ -769,9 +771,32 @@ describe('AgentMatchPage', () => {
     const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro'], default_model: 'kimi-k3.1-pro' } });
     page('/r/9100904020?hero=beastmaster&lang=en');
     expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
-    expect(screen.getByText(/and writes what to change\. On the game we timed, Kimi K3\.1 Pro took about 13 minutes\.$/)).toBeTruthy();
+    expect(screen.getByText(/and writes what to change\. With Kimi K3\.1 Pro, expect about 13 minutes \(as timed on a real game\)\.$/)).toBeTruthy();
     expect(screen.queryByText(/two to three/)).toBeNull();
     expect(calls.some((c) => c.url.includes('model='))).toBe(false);
+  });
+
+  it('while a review is being written the page says who writes it and how long to expect; a model that was not timed gets no time', async () => {
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'glm-5.3-flash', 'glm-5.4'], default_model: 'deepseek-flash' };
+    mockFetch({ 'ref=overview': overview, '/review?': { status: 'running', steps: [{ tool: 'match_overview', args: {} }] }, '/api/agent/9100904020': offer });
+    const first = page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.3-flash');
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    expect(screen.getByText('GLM-5.3 Flash is writing it: expect about 11–13 minutes.')).toBeTruthy();
+    first.unmount();
+    // The default's wait is said too, where the server names its models.
+    const second = page('/r/9100904020?hero=beastmaster&lang=en');
+    expect(await screen.findByText('DeepSeek 4.1 Flash is writing it: expect about 2–3 minutes.')).toBeTruthy();
+    second.unmount();
+    // GLM-5.4 was never timed: its button and its wait say nothing about how long, rather than a guess.
+    const third = page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.4');
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    expect(screen.queryByText(/is writing it/)).toBeNull();
+    third.unmount();
+    mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': offer });
+    page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.4');
+    const group = await screen.findByRole('radiogroup', { name: 'Which model writes it?' });
+    expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual(['DeepSeek 4.1 Flash · about 2–3 minutes', 'GLM-5.3 Flash · about 11–13 minutes', 'GLM-5.4']);
+    expect(screen.queryByText(/expect about|two to three/)).toBeNull();
   });
 
   it('a personal link names the model that wrote the review, also when that model is the server\'s default (review of #327)', async () => {
