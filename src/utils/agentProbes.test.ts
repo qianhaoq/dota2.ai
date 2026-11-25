@@ -279,6 +279,10 @@ describe('probes: grading an answer', () => {
     expect(gradeProbe(two, 'We took two towers and destroyed one barracks.', names)).toMatchObject({ pass: false, wrong: ['2+1'] });
     expect(gradeProbe(two, 'We took two towers, and the enemy took one tower back.', names).pass).toBe(true);
     expect(gradeProbe(three, 'We took two towers, and the enemy took one tower back.', names)).toMatchObject({ pass: false, wrong: ['2'] });
+    // A team named outright changes the side just as "the enemy" does.
+    expect(gradeProbe(two, 'We took two towers and Dire took one tower.', names).pass).toBe(true);
+    expect(gradeProbe(three, 'We took two towers and Dire took one tower.', names)).toMatchObject({ pass: false, wrong: ['2'] });
+    expect(gradeProbe(two, '我们拆了两座塔，夜魇拆了一座。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(three, '拆了两座塔，还拆了一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(two, '你们拆了两座塔，对面拆了一座。', { ...names, lang: 'zh' }).pass).toBe(true);
     expect(gradeProbe(three, '拆了三座，分别是两座塔和一座兵营。', { ...names, lang: 'zh' }).pass).toBe(true);
