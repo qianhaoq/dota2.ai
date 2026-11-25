@@ -474,9 +474,10 @@ describe('AgentMatchPage', () => {
   });
 
   it('a push is shown as who hit the building, which owners were near, whether it fell, and where the rest were', async () => {
-    const push = { status: 'ok', ref: 'sieges:beastmaster:5', kind: 'sieges', names: { phantom_assassin: '幻影刺客', sven: '斯温', beastmaster: '兽王', axe: '斧王', dire_top_lane: '夜魇上路', radiant_bot_jungle: '天辉下路野区' }, record: {
+    const push = { status: 'ok', ref: 'sieges:beastmaster:5', kind: 'sieges', names: { phantom_assassin: '幻影刺客', sven: '斯温', beastmaster: '兽王', axe: '斧王', dire_top_lane: '夜魇上路', radiant_bot_jungle: '天辉下路野区', river_bot_lane: '河道下路' }, record: {
       ref: 'sieges:beastmaster:5', building: 'badguys_tower1_mid', clock: '19:59', until: '20:01', pushed_by: 'enemy', took_it: true, fell_at: '20:02',
       hitting: ['phantom_assassin'], owners_near: [], hitting_minus_owners_near: 1, me: 'not_near',
+      me_when_it_fell: { place: 'river_bot_lane', distance: 6695, tp_ready: true },
       pushing_side_not_hitting: [{ hero: 'axe', place: 'radiant_bot_jungle', distance: 5356, tp_ready: false }],
       owners_not_near: [{ hero: 'sven', place: 'dire_top_lane', distance: 8297, tp_ready: true }, { hero: 'beastmaster', doing: 'dead', respawn_in: 20 }],
     } };
@@ -488,6 +489,10 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByText(/中路 1 塔 · 对方推/)).toBeTruthy();
     expect(chip('被拆 20:02')).toBeTruthy();
     expect(chip('你不在附近')).toBeTruthy();
+    // Where the player was at the second it fell, apart from the rows taken when the push began.
+    expect(chip('被拆时你 · 河道下路6695 码外')).toBeTruthy();
+    expect(screen.getByText('守方不在附近（推进开始时）')).toBeTruthy();
+    expect(screen.getByText('推塔方其余（推进开始时）')).toBeTruthy();
     expect(chip('斯温 · 夜魇上路8297 码外TP 可用')).toBeTruthy();
     expect(chip('兽王 · 阵亡复活还要 20秒')).toBeTruthy();
     expect(chip('斧王 · 天辉下路野区5356 码外TP 冷却中')).toBeTruthy();

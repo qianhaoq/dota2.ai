@@ -132,7 +132,8 @@ const T = {
   pushedBy: { my_team: { en: 'Your team pushed', zh: '我方推' }, enemy: { en: 'They pushed', zh: '对方推' } } as Record<string, Record<Lang, string>>,
   tookIt: { en: 'fell', zh: '被拆' }, stood: { en: 'stood', zh: '没拆掉' },
   hitting: { en: 'Hitting it', zh: '打建筑' }, ownersNear: { en: 'Owners near', zh: '守方在附近' },
-  pushOthers: { en: 'Rest of the pushing side', zh: '推塔方其余' }, ownersAway: { en: 'Owners not near', zh: '守方不在附近' },
+  pushOthers: { en: 'Rest of the pushing side, when it began', zh: '推塔方其余（推进开始时）' }, ownersAway: { en: 'Owners not near, when it began', zh: '守方不在附近（推进开始时）' },
+  meWhenFell: { en: 'When it fell, you', zh: '被拆时你' }, placeUnknown: { en: 'position not known', zh: '位置未知' },
   meAt: { hitting: { en: 'you hit it', zh: '你在打' }, near: { en: 'you were near', zh: '你在附近' }, not_hitting: { en: 'you did not hit it', zh: '你没打塔' }, not_near: { en: 'you were not near', zh: '你不在附近' } } as Record<string, Record<Lang, string>>,
   stateCols: { en: ['Hero', 'Where / doing', 'Lv', 'HP', 'Ultimate', 'BKB', 'TP'], zh: ['英雄', '位置 / 在做', '等级', '血量', '大招', 'BKB', 'TP'] },
   tempoLost: { en: 'Fights with more heroes lost', zh: '多死人的团战' },
@@ -672,6 +673,8 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           <span className={`ag-chip ${r.took_it ? (mine ? 'is-good' : 'is-warn') : ''}`}>{r.took_it ? `${t(T.tookIt)} ${r.fell_at}` : t(T.stood)}</span>
           {T.meAt[r.me] && <span className="ag-chip is-me">{t(T.meAt[r.me])}</span>}
         </p>
+        {/* The rows further down are from the push's start; this one is the player at the second the building fell. */}
+        {r.me_when_it_fell && <p className="ag-rec-line"><span className="ag-chip is-me">{t(T.meWhenFell)} · {r.me_when_it_fell.known === false ? t(T.placeUnknown) : doingOf(r.me_when_it_fell)}{r.me_when_it_fell.distance != null && <em>{r.me_when_it_fell.distance} {t(T.away)}</em>}{r.me_when_it_fell.respawn_in != null && <em>{t(T.respawn)} {r.me_when_it_fell.respawn_in}{t(T.sec)}</em>}</span></p>}
         <p className="ag-rec-line"><span>{t(T.hitting)} {r.hitting.length}</span>{list(r.hitting, mine ? 'is-ally' : 'is-enemy')}</p>
         <p className="ag-rec-line"><span>{t(T.ownersNear)} {r.owners_near.length}</span>{list(r.owners_near, mine ? 'is-enemy' : 'is-ally')}</p>
         {r.owners_not_near.length > 0 && <p className="ag-rec-line"><span>{t(T.ownersAway)}</span>{r.owners_not_near.map(row)}</p>}
