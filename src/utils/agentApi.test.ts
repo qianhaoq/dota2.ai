@@ -283,6 +283,9 @@ describe('agent API', () => {
     expect(m.frames).toHaveLength(19);
     expect(m.heroes.filter((h: any) => h.side === 'me')).toEqual([{ hero: 'beastmaster', side: 'me' }]);
     expect((await at('hero=beastmaster&lang=en&t=1825')).body.names.phantom_assassin).toBe('Phantom Assassin');
+    // Each hero's icon name is the game's own, which is not always the replay's key.
+    expect(m.icons).toMatchObject({ beastmaster: 'beastmaster', phantom_assassin: 'phantom_assassin', necrolyte: 'necrolyte' });
+    expect(Object.keys(m.icons)).toHaveLength(10);
     // What is asked must be a hero and a game time in seconds.
     for (const bad of ['hero=beastmaster', 'hero=beastmaster&t=abc', 'hero=beastmaster&t=1e3', 't=1825', 'hero=beastmaster&t=1825&t=1830']) expect((await at(bad)).status).toBe(400);
     expect((await at('hero=beastmaster&t=99999')).status).toBe(404);
