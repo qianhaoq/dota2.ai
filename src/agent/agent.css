@@ -385,8 +385,24 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-replay-legend li.is-me::before { border-color: var(--accent); }
 .ag-replay-legend li.is-ally::before { border-color: var(--ally); }
 .ag-replay-legend li.is-enemy::before { border-color: var(--dire); }
-.ag-replay-deaths li { color: var(--text-3); }
+/* What happened in the window, in order: a short box that follows the second shown. */
+.ag-replay-deaths { display: block; position: relative; max-height: 168px; overflow-y: auto; margin-top: 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.ag-replay-deaths:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ag-replay-deaths li { padding: 2px 0; color: var(--text-3); }
 .ag-replay-deaths li.is-past { color: var(--text-2); }
+.ag-replay-deaths li.is-now { color: var(--text); }
+.ag-replay-deaths li.is-ultimate { font-weight: 600; }
+.ag-replay-deaths li.is-death { color: var(--dire); }
+.ag-replay-deaths li.is-death:not(.is-past) { opacity: 0.6; }
+.ag-replay-deaths time { font-variant-numeric: tabular-nums; color: var(--text-3); margin-right: 6px; font-weight: 400; }
+.ag-replay-ult { color: var(--accent); font-weight: 400; }
+/* A ward: a small mark where it stood, in its side's colour. Under the heroes. */
+.ag-replay-ward path, .ag-replay-ward rect { stroke: var(--bg, #0b0d10); stroke-width: 1; }
+.ag-replay-ward.is-mine path, .ag-replay-ward.is-mine rect { fill: var(--ally); }
+.ag-replay-ward.is-enemy path, .ag-replay-ward.is-enemy rect { fill: var(--dire); }
+.ag-replay-legend li.is-ward::before { display: none; }
+/* The second a hero casts, their ring thickens. */
+.ag-replay-hero.is-casting .ag-replay-ring { stroke-width: 4.5; }
 .ag-replay-deaths time { font-variant-numeric: tabular-nums; }
 .ag-replay-place { margin: 2px 0 0; font-size: var(--fs-meta); color: var(--text-2); font-variant-numeric: tabular-nums; }
 .ag-replay-outside, .ag-replay figcaption { margin: 8px 0 0; font-size: var(--fs-meta); color: var(--text-3); line-height: 1.5; }

@@ -223,6 +223,10 @@ test('a moment replayed on the map: the heroes around the cited second, played a
   await expect(clock).toHaveClass(/is-moment/);
   await expect(replay.locator('.ag-replay-hero.is-me text')).toHaveText('你');
   expect(await replay.locator('.ag-replay-hero').count()).toBeGreaterThanOrEqual(4);
+  // What happened in those seconds stands beside where everyone stood: the Roar of 27:27, named and marked as an ultimate.
+  const events = replay.getByRole('list', { name: '这几秒里发生的事' });
+  await expect(events.locator('li.is-now.is-ultimate')).toContainText('兽王：原始咆哮 → 幻影刺客');
+  await expect(replay.locator('.ag-replay-hero.is-me.is-casting')).toHaveCount(1);
   await expect(replay.locator('figcaption')).toContainText('不代表谁能看到谁');
   await noSideScroll(page);
   const axe = await new AxeBuilder({ page }).include('.ag-replay').analyze();

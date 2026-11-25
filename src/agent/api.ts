@@ -99,6 +99,10 @@ export interface Moment {
   names: Record<string, string>;
   /** The game's own name for each hero, which its minimap icon is filed under. */
   icons: Record<string, string>;
+  /** Abilities cast in the window by the player and the heroes near them; null (or absent) when the replay data has no list of casts. */
+  casts?: { t: number; hero: string; ability: string; target: string | null; ultimate?: boolean }[] | null;
+  /** Wards standing inside the square during the window, by whose they were; null (or absent) when the replay data has no list of wards. A ward is a place, not what it showed. */
+  wards?: { x: number; y: number; side: 'mine' | 'enemy'; kind: 'observer' | 'sentry'; from: number | null; to: number | null }[] | null;
 }
 const momentCache = new Map<string, Promise<Moment>>();
 /** A moment is a pure function of the replay, so it is fetched once a session. */

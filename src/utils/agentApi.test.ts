@@ -286,6 +286,12 @@ describe('agent API', () => {
     // Each hero's icon name is the game's own, which is not always the replay's key.
     expect(m.icons).toMatchObject({ beastmaster: 'beastmaster', phantom_assassin: 'phantom_assassin', necrolyte: 'necrolyte' });
     expect(Object.keys(m.icons)).toHaveLength(10);
+    // What was cast in those seconds, each ability by its name in the reader's language, ultimates marked from the ability data.
+    expect(m.casts.find((c: any) => c.ability === 'beastmaster_primal_roar')).toEqual({ t: 1825.6, hero: 'beastmaster', ability: 'beastmaster_primal_roar', target: 'necrolyte', ultimate: true });
+    expect(m.casts.find((c: any) => c.ability === 'beastmaster_summon_raptor')).not.toHaveProperty('ultimate');
+    expect(m.names).toMatchObject({ beastmaster_primal_roar: '原始咆哮', sven_gods_strength: '神之力量' });
+    // This trace was built before wards were kept: null, not an empty list.
+    expect(m.wards).toBeNull();
     // What is asked must be a hero and a game time in seconds.
     for (const bad of ['hero=beastmaster', 'hero=beastmaster&t=abc', 'hero=beastmaster&t=1e3', 't=1825', 'hero=beastmaster&t=1825&t=1830']) expect((await at(bad)).status).toBe(400);
     expect((await at('hero=beastmaster&t=99999')).status).toBe(404);
