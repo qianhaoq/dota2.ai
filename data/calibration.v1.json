@@ -1,0 +1,467 @@
+{
+  "games": 34,
+  "fights_with_a_winner": 335,
+  "measures": [
+    {
+      "measure": "more heroes took part",
+      "fights": 184,
+      "side_ahead_won": 137,
+      "rate": 74
+    },
+    {
+      "measure": "two or more heroes more took part",
+      "fights": 40,
+      "side_ahead_won": 29,
+      "rate": 73
+    },
+    {
+      "measure": "more ultimates ready",
+      "fights": 227,
+      "side_ahead_won": 133,
+      "rate": 59
+    },
+    {
+      "measure": "more Black King Bars ready",
+      "fights": 99,
+      "side_ahead_won": 62,
+      "rate": 63
+    },
+    {
+      "measure": "more levels among those in it",
+      "fights": 319,
+      "side_ahead_won": 226,
+      "rate": 71
+    },
+    {
+      "measure": "gold lead that minute",
+      "fights": 250,
+      "side_ahead_won": 165,
+      "rate": 66
+    },
+    {
+      "measure": "more heroes, else more ultimates, else gold",
+      "fights": 317,
+      "side_ahead_won": 208,
+      "rate": 66
+    },
+    {
+      "measure": "gold behind but more heroes took part",
+      "fights": 54,
+      "side_ahead_won": 39,
+      "rate": 72
+    }
+  ],
+  "pushes": {
+    "total": {
+      "pushes": 757,
+      "took_it": 568,
+      "rate": 75
+    },
+    "by_heroes_hitting_minus_owners_near": [
+      {
+        "value": "-1 or fewer",
+        "pushes": 115,
+        "took_it": 74,
+        "rate": 64
+      },
+      {
+        "value": "0",
+        "pushes": 131,
+        "took_it": 73,
+        "rate": 56
+      },
+      {
+        "value": "1",
+        "pushes": 231,
+        "took_it": 162,
+        "rate": 70
+      },
+      {
+        "value": "2",
+        "pushes": 141,
+        "took_it": 128,
+        "rate": 91
+      },
+      {
+        "value": "3 or more",
+        "pushes": 139,
+        "took_it": 131,
+        "rate": 94
+      }
+    ],
+    "two_or_more_hitting_than_near": {
+      "pushes": 280,
+      "took_it": 259,
+      "rate": 93
+    },
+    "at_most_one_more_hitting_than_near": {
+      "pushes": 477,
+      "took_it": 309,
+      "rate": 65
+    },
+    "by_owners_dead_when_it_began": [
+      {
+        "value": "0",
+        "pushes": 184,
+        "took_it": 121,
+        "rate": 66
+      },
+      {
+        "value": "1",
+        "pushes": 175,
+        "took_it": 125,
+        "rate": 71
+      },
+      {
+        "value": "2",
+        "pushes": 133,
+        "took_it": 95,
+        "rate": 71
+      },
+      {
+        "value": "3",
+        "pushes": 128,
+        "took_it": 107,
+        "rate": 84
+      },
+      {
+        "value": "4 or more",
+        "pushes": 137,
+        "took_it": 120,
+        "rate": 88
+      }
+    ]
+  },
+  "deaths": {
+    "traded_by_allies_within_2200_at_death": [
+      {
+        "allies": "0",
+        "deaths": 630,
+        "traded": 201,
+        "rate": 32
+      },
+      {
+        "allies": "1",
+        "deaths": 913,
+        "traded": 437,
+        "rate": 48
+      },
+      {
+        "allies": "2 or more",
+        "deaths": 1200,
+        "traded": 864,
+        "rate": 72
+      }
+    ],
+    "died_within_20s_by_allies_near": [
+      {
+        "side": "enemy half",
+        "allies": "0",
+        "moments": 7515,
+        "died_within_20s": 425,
+        "rate": 5.7
+      },
+      {
+        "side": "enemy half",
+        "allies": "1",
+        "moments": 6444,
+        "died_within_20s": 628,
+        "rate": 9.7
+      },
+      {
+        "side": "enemy half",
+        "allies": "2 or more",
+        "moments": 23609,
+        "died_within_20s": 1709,
+        "rate": 7.2
+      },
+      {
+        "side": "own half or river",
+        "allies": "0",
+        "moments": 39574,
+        "died_within_20s": 1587,
+        "rate": 4
+      },
+      {
+        "side": "own half or river",
+        "allies": "1",
+        "moments": 23930,
+        "died_within_20s": 1744,
+        "rate": 7.3
+      },
+      {
+        "side": "own half or river",
+        "allies": "2 or more",
+        "moments": 33998,
+        "died_within_20s": 2784,
+        "rate": 8.2
+      }
+    ]
+  },
+  "wards": {
+    "games_with_wards": 27,
+    "deaths_traded": [
+      {
+        "case": "no observer of either side within 1600",
+        "deaths": 1399,
+        "traded": 728,
+        "rate": 52
+      },
+      {
+        "case": "own observer within 1600",
+        "deaths": 347,
+        "traded": 229,
+        "rate": 66
+      },
+      {
+        "case": "no own observer within 1600",
+        "deaths": 1760,
+        "traded": 910,
+        "rate": 52
+      },
+      {
+        "case": "enemy observer within 1600",
+        "deaths": 437,
+        "traded": 230,
+        "rate": 53
+      },
+      {
+        "case": "enemy observer near, no own one, no ally within 2200",
+        "deaths": 90,
+        "traded": 27,
+        "rate": 30
+      }
+    ],
+    "died_within_20s": [
+      {
+        "side": "enemy half",
+        "case": "enemy observer within 1600",
+        "moments": 3385,
+        "died_within_20s": 396,
+        "rate": 11.7
+      },
+      {
+        "side": "enemy half",
+        "case": "no enemy observer within 1600",
+        "moments": 26573,
+        "died_within_20s": 1759,
+        "rate": 6.6
+      },
+      {
+        "side": "enemy half",
+        "case": "alone, enemy observer within 1600",
+        "moments": 577,
+        "died_within_20s": 61,
+        "rate": 10.6
+      },
+      {
+        "side": "enemy half",
+        "case": "alone, no enemy observer within 1600",
+        "moments": 5587,
+        "died_within_20s": 291,
+        "rate": 5.2
+      },
+      {
+        "side": "own half or river",
+        "case": "enemy observer within 1600",
+        "moments": 7308,
+        "died_within_20s": 988,
+        "rate": 13.5
+      },
+      {
+        "side": "own half or river",
+        "case": "no enemy observer within 1600",
+        "moments": 72783,
+        "died_within_20s": 3677,
+        "rate": 5.1
+      },
+      {
+        "side": "own half or river",
+        "case": "alone, enemy observer within 1600",
+        "moments": 2209,
+        "died_within_20s": 218,
+        "rate": 9.9
+      },
+      {
+        "side": "own half or river",
+        "case": "alone, no enemy observer within 1600",
+        "moments": 30251,
+        "died_within_20s": 994,
+        "rate": 3.3
+      }
+    ]
+  },
+  "after_towers_fell": [
+    {
+      "tier": 1,
+      "after_a_won_fight": true,
+      "towers": 54,
+      "took_another_building": 18,
+      "took_roshan": 1,
+      "pushed_and_took_nothing": 5,
+      "neither": 30,
+      "takers_lost_a_building_meanwhile": 9
+    },
+    {
+      "tier": 1,
+      "after_a_won_fight": false,
+      "towers": 117,
+      "took_another_building": 29,
+      "took_roshan": 2,
+      "pushed_and_took_nothing": 13,
+      "neither": 73,
+      "takers_lost_a_building_meanwhile": 38
+    },
+    {
+      "tier": 2,
+      "after_a_won_fight": true,
+      "towers": 62,
+      "took_another_building": 36,
+      "took_roshan": 3,
+      "pushed_and_took_nothing": 8,
+      "neither": 15,
+      "takers_lost_a_building_meanwhile": 4
+    },
+    {
+      "tier": 2,
+      "after_a_won_fight": false,
+      "towers": 72,
+      "took_another_building": 25,
+      "took_roshan": 4,
+      "pushed_and_took_nothing": 7,
+      "neither": 36,
+      "takers_lost_a_building_meanwhile": 16
+    },
+    {
+      "tier": 3,
+      "after_a_won_fight": true,
+      "towers": 59,
+      "took_another_building": 55,
+      "took_roshan": 0,
+      "pushed_and_took_nothing": 0,
+      "neither": 4,
+      "takers_lost_a_building_meanwhile": 1
+    },
+    {
+      "tier": 3,
+      "after_a_won_fight": false,
+      "towers": 35,
+      "took_another_building": 31,
+      "took_roshan": 0,
+      "pushed_and_took_nothing": 0,
+      "neither": 4,
+      "takers_lost_a_building_meanwhile": 3
+    }
+  ],
+  "fights_after_big_items": {
+    "one_side_only": {
+      "fights": 109,
+      "item_side_lost_fewer": 64
+    },
+    "item_side_ahead_in_gold": {
+      "fights": 52,
+      "item_side_lost_fewer": 35
+    },
+    "item_side_behind_in_gold": {
+      "fights": 35,
+      "item_side_lost_fewer": 14
+    },
+    "no_fresh_big_item": {
+      "fights": 47,
+      "side_ahead_in_gold_lost_fewer": 29
+    }
+  },
+  "ultimate_edges": {
+    "moments": 457,
+    "fight_within_90s": 160,
+    "edge_side_lost_fewer": 75,
+    "edge_side_lost_more": 64,
+    "even": 21
+  },
+  "after_won_fights_three_or_more_still_dead_by_losers_richest": [
+    {
+      "losers_richest": "dead_30s_or_more",
+      "fights": 80,
+      "took_a_building": 48,
+      "neither": 22
+    },
+    {
+      "losers_richest": "dead_under_30s",
+      "fights": 22,
+      "took_a_building": 10,
+      "neither": 8
+    },
+    {
+      "losers_richest": "alive",
+      "fights": 64,
+      "took_a_building": 29,
+      "neither": 28
+    },
+    {
+      "losers_richest": "not_known",
+      "fights": 1,
+      "took_a_building": 1,
+      "neither": 0
+    }
+  ],
+  "after_won_fights": [
+    {
+      "losers_still_dead_10s_after": "0",
+      "fights": 4,
+      "took_a_building": 1,
+      "took_roshan": 0,
+      "pushed_and_took_nothing": 0,
+      "neither": 3
+    },
+    {
+      "losers_still_dead_10s_after": "1",
+      "fights": 27,
+      "took_a_building": 3,
+      "took_roshan": 0,
+      "pushed_and_took_nothing": 4,
+      "neither": 20
+    },
+    {
+      "losers_still_dead_10s_after": "2",
+      "fights": 84,
+      "took_a_building": 31,
+      "took_roshan": 3,
+      "pushed_and_took_nothing": 8,
+      "neither": 42
+    },
+    {
+      "losers_still_dead_10s_after": "3",
+      "fights": 121,
+      "took_a_building": 64,
+      "took_roshan": 1,
+      "pushed_and_took_nothing": 13,
+      "neither": 43
+    },
+    {
+      "losers_still_dead_10s_after": "4 or more",
+      "fights": 99,
+      "took_a_building": 59,
+      "took_roshan": 2,
+      "pushed_and_took_nothing": 12,
+      "neither": 26
+    }
+  ],
+  "roshans": {
+    "takes": 56,
+    "aegis": {
+      "used": 36,
+      "expired": 15,
+      "game_ended": 5
+    },
+    "buildings_in_the_next_300s": {
+      "taking_side": 147,
+      "other_side": 21
+    },
+    "takes_with_no_building_after": 9,
+    "fights_in_the_next_300s": {
+      "fights": 63,
+      "taking_side_lost_fewer": 34,
+      "other_side_lost_fewer": 20
+    }
+  }
+}
