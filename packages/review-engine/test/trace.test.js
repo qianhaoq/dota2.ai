@@ -376,13 +376,16 @@ describe('what a hero killed, gold by reason, Roshan', () => {
     expect(tr.creep_kills).toEqual([]);
   });
 
-  it('a Roshan no hero landed the last hit on is read from its gold, with the side it was paid to', () => {
+  it('Roshan gold alone is not a Roshan: the Tormentor pays the same reason code', () => {
     const b = createTraceBuilder();
-    for (const t of [0, 1]) { b.addState(state(t, 'axe', 2)); b.addState(state(t, 'queen_of_pain', 2)); b.addState(state(t, 'lina', 3)); }
-    // The combat log names Queen of Pain without the underscores.
-    for (const who of ['npc_dota_hero_axe', 'npc_dota_hero_queenofpain']) b.addEvent(gold(900.03, who, 15, 125));
+    for (const t of [0, 1]) { b.addState(state(t, 'axe', 2)); b.addState(state(t, 'lina', 3)); }
+    // 9102345221 at 22:02: five heroes are paid 125 each under reason 15, and what died was the Tormentor.
+    b.addEvent(gold(1322.03, 'npc_dota_hero_axe', 15, 125));
     const tr = b.finish();
-    expect(tr.roshan_kills).toEqual([[900, -1, 2, -1, null, null]]);
+    expect(tr.roshan_kills).toEqual([]);
+    expect(tr.tormentor_kills).toEqual([]);
+    // The gold itself is kept, under its code.
+    expect(tr.gold).toEqual([[22, tr.names.indexOf('npc_dota_hero_axe'), 15, 125]]);
   });
 
   it('Roshan gold in the second of a hero\'s kill is that kill, not another one', () => {
@@ -394,14 +397,16 @@ describe('what a hero killed, gold by reason, Roshan', () => {
     expect(b.finish().roshan_kills).toHaveLength(1);
   });
 
-  it('gold paid to heroes of both sides, or to a hero the states do not have, gives no side', () => {
-    const both = createTraceBuilder();
-    both.addState(state(0, 'axe', 2)); both.addState(state(0, 'lina', 3));
-    both.addEvent(gold(900, 'npc_dota_hero_axe', 15, 125)); both.addEvent(gold(900, 'npc_dota_hero_lina', 15, 125));
-    expect(both.finish().roshan_kills).toEqual([[900, -1, 0, -1, null, null]]);
-    const stranger = createTraceBuilder();
-    stranger.addEvent(gold(900, 'npc_dota_hero_axe', 15, 125));
-    expect(stranger.finish().roshan_kills).toEqual([[900, -1, 0, -1, null, null]]);
+  it('a Tormentor a hero killed is its own row: not a Roshan, and not among the creep kills', () => {
+    const b = createTraceBuilder();
+    b.addEvent(kill(1322, 'npc_dota_miniboss', { attacker: 'npc_dota_hero_lina', attacker_team: 3 }), 40000);
+    b.addEvent(gold(1322, 'npc_dota_hero_lina', 15, 125));
+    b.addEvent(kill(2029, 'npc_dota_miniboss', { attacker_team: undefined }), 50000);
+    b.addEvent(kill(2100, 'npc_dota_miniboss', { attacker: 'npc_dota_beastmaster_boar', attacker_hero: false }), 50001);
+    const tr = b.finish();
+    expect(named(tr, tr.tormentor_kills)).toEqual([[1322, 'npc_dota_hero_lina', 3, 40000], [2029, 'npc_dota_hero_axe', 0, 50000]]);
+    expect(tr.roshan_kills).toEqual([]);
+    expect(tr.creep_kills).toEqual([]);
   });
 
   it('damage to Roshan is summed per second and hero, apart from the damage to heroes and buildings', () => {
