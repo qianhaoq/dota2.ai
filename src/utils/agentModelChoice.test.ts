@@ -310,7 +310,7 @@ describe('a model keeps its hourly ceiling when it is the server\'s default (rev
 describe('a key is redacted by its value, whatever it looks like', () => {
   it('a key with no known shape, alone in a line, does not reach the log once it is registered', () => {
     // The shape of a Zhipu key: hex, a dot, letters. No "sk-", no "Bearer", no "key=" beside it.
-    const key = '0123456789abcdef0123456789abcdef.AbCdEfGhIjKlMnOp';
+    const key = '0123456789abcdef0123456789abcdef.AbCdEfGhIjKlMnOp'; // gitleaks:allow (made up for this test, not a credential)
     const line = `upstream said: credential ${key} rejected`;
     expect(redactCredentials(line)).toContain(key);
     registerSecretValues([key, 'short', '', null, 42]);

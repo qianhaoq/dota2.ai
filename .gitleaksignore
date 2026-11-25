@@ -4,3 +4,5 @@ a9915dc338e8b03d3ffb0472e34b4fb552dc4718:src/utils/analyticsClient.ts:generic-ap
 # #325: eval baseline keys are "<match id>.<hero>.<lang>.", not credentials
 1d7784ba87b61b367385842a6ffc46410f50e37b:data/eval-baseline.v1.json:generic-api-key:612
 1d7784ba87b61b367385842a6ffc46410f50e37b:data/eval-baseline.v1.json:generic-api-key:622
+# #327 as it was merged (the squash commit): the same made-up Zhipu-shaped string, in the redaction test
+0c4321d150dadbb53a584ab667397b769377b812:src/utils/agentModelChoice.test.ts:generic-api-key:313
