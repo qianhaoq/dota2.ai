@@ -73,8 +73,12 @@ describe('AgentMatchPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
     expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
     await waitFor(() => expect(document.querySelector('.ag-journey li.is-live strong')?.textContent).toBe('Read the replay'));
-    // No replay parsed yet: nothing of the game to show while waiting, and nothing asked for.
+    // No replay parsed yet: none of the replay's facts to show, and none asked for — but the match record is
+    // there already, so the scoreboard is on the waiting screen from the start, outside the progress region.
     expect(document.querySelector('.ag-wait')).toBeNull();
+    const boardWhileParsing = screen.getByRole('region', { name: 'Scoreboard' });
+    expect(boardWhileParsing.closest('[role="status"]')).toBeNull();
+    expect(document.querySelector('.ag-state')!.compareDocumentPosition(boardWhileParsing) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(calls.some((c) => c.url.includes('ref=deaths'))).toBe(false);
     // The trace arrives: the review starts without a second click.
     await waitFor(() => expect(started).toBe(1), { timeout: 8000 });
@@ -83,6 +87,8 @@ describe('AgentMatchPage', () => {
     const wait = (await screen.findByRole('heading', { level: 2, name: 'While the coach reads the replay: your 2 deaths' })).closest('section')!;
     expect(Array.from(wait.querySelectorAll('.ag-wait-clock')).map((e) => e.textContent)).toEqual(['0:47', '8:27']);
     expect(wait.closest('[role="status"]')).toBeNull();
+    // Still there while the review is written, after the deaths.
+    expect(wait.compareDocumentPosition(screen.getByRole('region', { name: 'Scoreboard' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(calls.filter((c) => c.url.includes('/prepare'))).toHaveLength(1);
     expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/review') && c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
   }, 20000);
