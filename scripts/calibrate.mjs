@@ -117,7 +117,9 @@ for (const f of files) {
     else if (ro.read_from === 'roshan_kills_and_aegis_pickups') pickupsWithNoKill += 1;
     // The table below is over Aegis pickups, as it always was: a kill nobody picked the Aegis up after has none of this.
     if (!x.aegis_holder) continue;
-    roshans.push({ aegis: x.aegis, took: x.buildings_taking_side_took_count, lost: x.buildings_other_side_took_in_the_next_300s.length, fights: x.fights_in_the_next_300s });
+    // Read from the side that held the Aegis: after a steal, the killers' buildings are the other side's.
+    const ours = x.buildings_taking_side_took_count; const theirs = x.buildings_other_side_took_in_the_next_300s.length;
+    roshans.push({ aegis: x.aegis, took: x.aegis_stolen ? theirs : ours, lost: x.aegis_stolen ? ours : theirs, fights: x.fights_in_the_next_300s });
   }
   for (const p of siegeReport(trace, { hero: first.key }).pushes ?? []) {
     pushes.push({ took: p.took_it, margin: p.hitting_minus_owners_near, deadOwners: p.owners_dead_when_it_began });

@@ -275,6 +275,21 @@ describe('what the review found on #384', () => {
     expect(roshanReport({ ...trace, ...rows }, { hero: 'phantom_assassin' })).toMatchObject({ my_team_roshans_i_hit: 1, roshans_the_other_side_also_hit: 0 });
   });
 
+  it('after a steal, the calibration and the fights read from the side that held the Aegis (Codex on #384)', () => {
+    const pa = trace.heroes.findIndex((x: any) => x.key === 'phantom_assassin'); const bm = trace.heroes.findIndex((x: any) => x.key === 'beastmaster');
+    const items = trace.items.map((it: any) => ({ ...it }));
+    items[bm] = { ...items[bm], item_aegis: items[pa].item_aegis }; delete items[pa].item_aegis;
+    const stolen = { ...trace, items, ...realRows() };
+    const own: any = roshanReport({ ...trace, ...realRows() }, { hero: 'beastmaster' });
+    const st: any = roshanReport(stolen, { hero: 'beastmaster' });
+    // The same fights; the Aegis side's deaths and the other side's change places.
+    expect(st.takes[0].fights_in_the_next_300s.map((f: any) => [f.fight, f.aegis_side_deaths, f.other_side_deaths])).toEqual(own.takes[0].fights_in_the_next_300s.map((f: any) => [f.fight, f.other_side_deaths, f.aegis_side_deaths]));
+    const run = (t: any) => { const dir = mkdtempSync(join(tmpdir(), 'roshan-')); writeFileSync(join(dir, '9100904020.trace.json.gz'), gzipSync(JSON.stringify(t))); return JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' })).roshans; };
+    expect(run({ ...trace, ...realRows() }).buildings_in_the_next_300s).toEqual({ taking_side: 1, other_side: 0 });
+    // Beastmaster's side held it, took nothing, and lost the tower.
+    expect(run(stolen)).toMatchObject({ buildings_in_the_next_300s: { taking_side: 0, other_side: 1 }, takes_with_no_building_after: 1 });
+  }, 30000);
+
   it('the calibration\'s text report prints when what needs the hits is not known (Codex on #384)', () => {
     const rows = realRows();
     const dir = mkdtempSync(join(tmpdir(), 'roshan-'));
