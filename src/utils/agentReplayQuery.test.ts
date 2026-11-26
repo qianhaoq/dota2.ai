@@ -78,3 +78,19 @@ describe('hero_track: one hero over a window', () => {
     expect(r.gaps).toEqual([{ topic: 'samples', reason: 'some seconds have no sample' }]);
   });
 });
+
+describe('combat_log: smoke and runes (#405)', () => {
+  it('a smoked hero with who used it and until when; a rune; an old trace without them is a gap', () => {
+    const ix = (k: string) => trace.names.indexOf(`npc_dota_hero_${k}`);
+    const t2 = { ...trace, smokes: [[100.2, ix('sven'), ix('dark_willow'), 112.5], [100.4, ix('dark_willow'), ix('dark_willow'), null]], runes: [[130, ix('sven'), 'haste', 152]] };
+    const r: any = combatLog(t2, { from: 90, to: 140, kinds: ['smoke', 'rune'] });
+    expect(r.gaps).toEqual([]);
+    expect(r.rows.map((x: any) => [x.clock, x.kind, x.hero, x.used_by ?? x.rune, x.until])).toEqual([
+      ['1:40', 'smoke', 'sven', 'dark_willow', '1:52'],
+      // Still on when the log ended: null, not a made-up end.
+      ['1:40', 'smoke', 'dark_willow', 'dark_willow', null],
+      ['2:10', 'rune', 'sven', 'haste', '2:32'],
+    ]);
+    expect((combatLog(trace, { from: 90, to: 140, kinds: ['smoke', 'rune'] }) as any).gaps).toEqual([{ topic: 'smoke', reason: 'not_in_this_trace' }, { topic: 'rune', reason: 'not_in_this_trace' }]);
+  });
+});
