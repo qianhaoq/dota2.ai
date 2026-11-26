@@ -22,6 +22,8 @@ describe('validateAnalyticsEvent', () => {
       ['arrived', { src: 'nga', page: 'match', url: '/r/1?src=nga' }, { src: 'nga', page: 'match' }],
       ['goal_set', { matchId: '9100904020', kind: 'hold_item', account: true, rules: 2, label: 'Blink' }, { matchId: '9100904020', kind: 'hold_item', account: true, rules: 2 }],
       ['goal_checked', { result: 'met', evidence: 'died twice' }, { result: 'met' }],
+      ['goal_offered', { matchId: '9100904020', hero: 'axe' }, { matchId: '9100904020' }],
+      ['goal_seen', { matchId: '9100904020', text: 'x' }, { matchId: '9100904020' }],
       ['review_failed', { matchId: '8604512648', lang: 'en', hero: 'sven', stage: 'parse', reason: 'replay_gone', final: true, message: 'free text' }, { matchId: '8604512648', lang: 'en', hero: 'sven', stage: 'parse', reason: 'replay_gone', final: true }],
       ['goal_check_requested', { matchId: '9100999997', lang: 'en', hero: 'beastmaster', note: 'free text' }, { matchId: '9100999997', lang: 'en', hero: 'beastmaster' }],
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
