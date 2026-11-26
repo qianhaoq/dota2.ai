@@ -76,6 +76,7 @@ import { createCoachRouter } from './lib/coach/router.js';
 import { replayReview } from './lib/agent/replayTool.js';
 import { createAgentRouter } from './lib/agent/router.js';
 import { createAgentService, SLOW_REVIEW_MAX_MS } from './lib/agent/service.js';
+import { createBalanceMonitor } from './lib/agent/modelBalance.js';
 import { warmShowcase } from './lib/agent/showcase.js';
 import { createPatchRouter } from './lib/patch/router.js';
 import { createPatchNews } from './lib/patch/news.js';
@@ -955,12 +956,21 @@ const agentComplete = agentOffer.default ? agentEngines[agentOffer.default].comp
 console.log(`INFO: review models offered: ${agentOffer.models.map((m) => m.id).join(', ') || 'none'}${agentOffer.default ? ` (default ${agentOffer.default})` : ''}`);
 // Named by id and by the variable that is missing or wrong, never by a value.
 for (const m of agentOffer.skipped) console.warn(`WARNING: review model ${m.id} not offered (${m.error}${m.needs ? `: ${m.needs}` : ''})`);
+const balanceMonitor = process.env.AGENT_BALANCE_CHECK === '0' ? null : createBalanceMonitor({
+  models: agentOffer.models,
+  warnBelow: Number.isFinite(Number(process.env.AGENT_BALANCE_WARN)) ? Number(process.env.AGENT_BALANCE_WARN) : undefined,
+  pauseBelow: Number.isFinite(Number(process.env.AGENT_BALANCE_PAUSE)) ? Number(process.env.AGENT_BALANCE_PAUSE) : undefined,
+  log: (msg) => console.warn(`WARNING: [agent] ${msg}`),
+});
+balanceMonitor?.start();
 const agentService = createAgentService({
   traces: agentTraces,
   pipeline: agentPipeline,
+  reparseOldTraces: process.env.AGENT_REPARSE_OLD_TRACES !== '0',
   dispatch: agentTasks?.dispatch ?? null,
   models: agentEngines,
   defaultModel: agentOffer.default,
+  balanceMonitor,
   docs: agentBlobs ? createJsonStore(agentBlobs) : (process.env.AGENT_REVIEW_DIR ? createJsonStore(createFileStore(process.env.AGENT_REVIEW_DIR)) : null),
   feedback: agentFeedbackBlobs ? createJsonStore(agentFeedbackBlobs) : null,
   getMatchDetail,
@@ -972,6 +982,7 @@ const agentService = createAgentService({
 // the server stops taking new connections and exits when they are done, or after 8.5 s at the latest.
 let httpServer = null;
 process.once('SIGTERM', () => {
+  balanceMonitor?.stop();
   const marked = Promise.race([agentService.shutdown(), new Promise((r) => setTimeout(r, 5000))]).catch(() => {});
   const exit = () => marked.finally(() => process.exit(0));
   setTimeout(exit, 8500).unref();

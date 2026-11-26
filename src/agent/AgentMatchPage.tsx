@@ -78,6 +78,7 @@ const T = {
   parseFailedBody: { en: 'Fetching or reading the replay failed. It usually works on a second try.', zh: '取录像或解析时出了问题，通常再试一次就好。', ru: 'Ошибка загрузки или разбора реплея. Обычно повторная попытка помогает.' },
   offTitle: { en: 'Replay reviews are not switched on here', zh: '这里还没有开启录像复盘', ru: 'Разбор реплеев здесь не включён' },
   offBody: { en: 'This site cannot fetch replays right now, so it cannot review this game.', zh: '这个站点现在取不了录像，所以无法复盘这一局。', ru: 'Этот сервер сейчас не может скачивать реплеи.' },
+  unavailableTitle: { en: 'Cannot generate a review right now', zh: '暂时无法生成', ru: 'Сейчас не удаётся создать разбор' },
   unavailable: { en: 'The coach is not available right now.', zh: '教练暂时不可用。', ru: 'Тренер сейчас недоступен.' },
   rate: { en: 'Too many reviews started from here. Try again in a few minutes.', zh: '从这里发起的复盘太多了，过几分钟再试。', ru: 'Слишком много разборов с вашего адреса. Попробуйте через несколько минут.' },
   busy: { en: 'The coach is at capacity. Try again later.', zh: '教练现在忙不过来，稍后再试。', ru: 'Тренер сейчас перегружен. Попробуйте позже.' },
@@ -695,8 +696,8 @@ export const AgentMatchPage: React.FC = () => {
   }
   if (!hasTrace && !avail.can_parse) return dead(T.offTitle, T.offBody);
   if (state?.status === 'failed') return dead(T.failedTitle, T.failedBody, true);
-  // Not available for a while (the model account refused a review a moment ago) is not a dead end: it can be tried again.
-  if (state?.status === 'unavailable' || (hasTrace && !avail.model_configured)) return dead(T.failedTitle, T.unavailable, state?.status === 'unavailable' && state.retry_in_sec != null);
+  // Not available for a while (the model account refused a review a moment ago, or is under its balance floor) is not a dead end: it can be tried again.
+  if (state?.status === 'unavailable' || (hasTrace && !avail.model_configured)) return dead(T.unavailableTitle, T.unavailable, state?.status === 'unavailable' && state.retry_in_sec != null);
 
   // Something is running, or the reader said go and the next request is about to leave.
   const working = parsing || state?.status === 'running' || (intent && !notice && !wait && (!hasTrace || state === null || state.status === 'none'));

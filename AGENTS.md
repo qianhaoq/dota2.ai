@@ -14,6 +14,8 @@ node --check server.js
 
 Dev: `npm run start:dev` (Vite + Express). Prod-like: `npm run build && npm start` on port 8080.
 
+Multi-session workstation note: running two full `vitest` suites concurrently on one machine can exhaust memory and trigger `earlyoom`. On a shared workstation with multiple agent worktrees, serialize full `npm test` runs with `/run/user/1000/dota2ai-vitest.lock` (`L=/run/user/1000/dota2ai-vitest.lock; until mkdir "$L" 2>/dev/null; do sleep 5; done; trap 'rmdir "$L" 2>/dev/null' EXIT; npm test`), or target single test files (`npx vitest run <file>`) during iteration.
+
 Env: copy `.env.example` → `.env`. Required: `DEEPSEEK_API_KEY` (the review agent and the chat). `.env.example` documents the rest. `server.js` does not load `.env` itself.
 
 ## Do

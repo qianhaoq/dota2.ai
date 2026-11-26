@@ -385,11 +385,29 @@ describe('AgentMatchPage', () => {
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
     fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect(await screen.findByRole('heading', { name: 'Cannot generate a review right now' })).toBeTruthy();
     expect(await screen.findByText('The coach is not available right now.')).toBeTruthy();
     expect(posts).toBe(1);
     // Not a dead end: the reader can ask again, and the page does.
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(posts).toBe(2));
+    cleanup();
+    // Chinese says "暂时无法生成", not that a review ran and failed (#365).
+    cleanup(); window.sessionStorage.clear(); ui.lang = 'zh';
+    try {
+      mockFetch({
+        '/review?': { status: 'none' },
+        '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { __status: 503, status: 'unavailable', reason: 'model_out_of_credit', retry_in_sec: 240 } : null),
+        '/api/agent/8000000099': { trace: true, model_configured: true, heroes },
+      });
+      page('/r/8000000099?hero=beastmaster&lang=zh');
+      fireEvent.click(await screen.findByRole('button', { name: '开始复盘' }));
+      expect(await screen.findByRole('heading', { name: '暂时无法生成' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '再试一次' })).toBeTruthy();
+    } finally {
+      ui.lang = 'en';
+      window.sessionStorage.clear();
+    }
     cleanup();
     // No model is set up on this server: nothing to wait for, so nothing to retry.
     mockFetch({ '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: false, heroes } });
