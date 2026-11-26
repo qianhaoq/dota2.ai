@@ -8,51 +8,51 @@
     "gold_k_early"
   ],
   "weights": [
-    0.056078,
-    0.193005,
-    0.615879,
-    0.22189,
-    -0.368535
+    0.098055,
+    0.135328,
+    0.631656,
+    0.229331,
+    -0.303009
   ],
   "trained": "2026-11-26",
   "data": {
     "source": "OpenDota: public ranked All Pick matches it has parsed (scripts/wp-collect.mjs)",
     "gold": "gold earned lead (radiant_gold_adv) at each whole minute — the quantity goldLead gives as match_record and replay_gold_log; never the replay net worth graph",
-    "games_collected": 1900,
+    "games_collected": 3700,
     "left_out_not_ranked_all_pick": 4,
     "left_out_without_the_buildings": 0,
-    "left_out_with_a_leaver": 61,
-    "games_fitted_on": 1835,
-    "rows_fitted_on": 70131,
-    "radiant_won_share": 0.504,
+    "left_out_with_a_leaver": 125,
+    "games_fitted_on": 3571,
+    "rows_fitted_on": 132823,
+    "radiant_won_share": 0.516,
     "match_ids": [
       9104905440,
-      9105107043
+      9105748881
     ],
     "opendota_patch_ids": [
       61
     ],
-    "rank_tier_mean": 65.5,
+    "rank_tier_mean": 68.4,
     "games_by_rank": {
-      "under_40": 192,
-      "from_40_to_59": 455,
-      "from_60": 1188,
+      "under_40": 241,
+      "from_40_to_59": 587,
+      "from_60": 2743,
       "not_known": 0
     }
   },
   "cross_validated": {
     "how": "5 parts by game id; each game scored by a fit that did not see it. The weights above are fitted on all of them.",
     "model": {
-      "brier": 0.1765,
-      "log_loss": 0.5209
+      "brier": 0.1689,
+      "log_loss": 0.501
     },
     "gold_lead_alone": {
-      "brier": 0.1816,
-      "log_loss": 0.5361
+      "brier": 0.1731,
+      "log_loss": 0.5145
     },
     "gold_lead_with_the_minute": {
-      "brier": 0.1779,
-      "log_loss": 0.5249
+      "brier": 0.17,
+      "log_loss": 0.5043
     },
     "always_half": {
       "brier": 0.25,
@@ -61,115 +61,327 @@
     "calibration": [
       {
         "said": "0–10%",
-        "rows": 6508,
-        "mean_said": 0.046,
-        "radiant_won": 0.048
+        "rows": 13919,
+        "mean_said": 0.043,
+        "radiant_won": 0.046
       },
       {
         "said": "10–20%",
-        "rows": 5661,
-        "mean_said": 0.15,
-        "radiant_won": 0.171
+        "rows": 10088,
+        "mean_said": 0.149,
+        "radiant_won": 0.167
       },
       {
         "said": "20–30%",
-        "rows": 6011,
+        "rows": 10226,
         "mean_said": 0.251,
-        "radiant_won": 0.262
+        "radiant_won": 0.257
       },
       {
         "said": "30–40%",
-        "rows": 7003,
+        "rows": 11797,
         "mean_said": 0.352,
-        "radiant_won": 0.338
+        "radiant_won": 0.346
       },
       {
         "said": "40–50%",
-        "rows": 8896,
+        "rows": 15556,
         "mean_said": 0.452,
-        "radiant_won": 0.451
+        "radiant_won": 0.447
       },
       {
         "said": "50–60%",
-        "rows": 9611,
-        "mean_said": 0.549,
-        "radiant_won": 0.537
+        "rows": 17604,
+        "mean_said": 0.55,
+        "radiant_won": 0.546
       },
       {
         "said": "60–70%",
-        "rows": 7758,
+        "rows": 14532,
         "mean_said": 0.648,
-        "radiant_won": 0.654
+        "radiant_won": 0.642
       },
       {
         "said": "70–80%",
-        "rows": 6323,
+        "rows": 12045,
         "mean_said": 0.749,
-        "radiant_won": 0.739
+        "radiant_won": 0.737
       },
       {
         "said": "80–90%",
-        "rows": 6051,
+        "rows": 12053,
         "mean_said": 0.85,
-        "radiant_won": 0.844
+        "radiant_won": 0.853
       },
       {
         "said": "90–100%",
-        "rows": 6309,
-        "mean_said": 0.952,
-        "radiant_won": 0.963
+        "rows": 15003,
+        "mean_said": 0.956,
+        "radiant_won": 0.965
+      }
+    ],
+    "calibration_by_stretch": [
+      {
+        "minutes": "1",
+        "bands": [
+          {
+            "said": "50–60%",
+            "rows": 2877,
+            "mean_said": 0.543,
+            "favoured_won": 0.522
+          },
+          {
+            "said": "60–70%",
+            "rows": 644,
+            "mean_said": 0.631,
+            "favoured_won": 0.593
+          },
+          {
+            "said": "70–80%",
+            "rows": 50,
+            "mean_said": 0.722,
+            "favoured_won": 0.74
+          },
+          {
+            "said": "80–90%",
+            "rows": 0,
+            "mean_said": null,
+            "favoured_won": null
+          },
+          {
+            "said": "90–100%",
+            "rows": 0,
+            "mean_said": null,
+            "favoured_won": null
+          }
+        ]
+      },
+      {
+        "minutes": "2–3",
+        "bands": [
+          {
+            "said": "50–60%",
+            "rows": 4770,
+            "mean_said": 0.546,
+            "favoured_won": 0.54
+          },
+          {
+            "said": "60–70%",
+            "rows": 2041,
+            "mean_said": 0.638,
+            "favoured_won": 0.634
+          },
+          {
+            "said": "70–80%",
+            "rows": 316,
+            "mean_said": 0.733,
+            "favoured_won": 0.693
+          },
+          {
+            "said": "80–90%",
+            "rows": 15,
+            "mean_said": 0.815,
+            "favoured_won": 0.8
+          },
+          {
+            "said": "90–100%",
+            "rows": 0,
+            "mean_said": null,
+            "favoured_won": null
+          }
+        ]
+      },
+      {
+        "minutes": "4–5",
+        "bands": [
+          {
+            "said": "50–60%",
+            "rows": 3803,
+            "mean_said": 0.549,
+            "favoured_won": 0.569
+          },
+          {
+            "said": "60–70%",
+            "rows": 2311,
+            "mean_said": 0.644,
+            "favoured_won": 0.645
+          },
+          {
+            "said": "70–80%",
+            "rows": 888,
+            "mean_said": 0.738,
+            "favoured_won": 0.758
+          },
+          {
+            "said": "80–90%",
+            "rows": 137,
+            "mean_said": 0.827,
+            "favoured_won": 0.81
+          },
+          {
+            "said": "90–100%",
+            "rows": 3,
+            "mean_said": 0.908,
+            "favoured_won": 0.333
+          }
+        ]
+      },
+      {
+        "minutes": "6–10",
+        "bands": [
+          {
+            "said": "50–60%",
+            "rows": 6467,
+            "mean_said": 0.55,
+            "favoured_won": 0.55
+          },
+          {
+            "said": "60–70%",
+            "rows": 5494,
+            "mean_said": 0.648,
+            "favoured_won": 0.658
+          },
+          {
+            "said": "70–80%",
+            "rows": 3736,
+            "mean_said": 0.745,
+            "favoured_won": 0.742
+          },
+          {
+            "said": "80–90%",
+            "rows": 1841,
+            "mean_said": 0.841,
+            "favoured_won": 0.832
+          },
+          {
+            "said": "90–100%",
+            "rows": 317,
+            "mean_said": 0.924,
+            "favoured_won": 0.89
+          }
+        ]
+      },
+      {
+        "minutes": "11–20",
+        "bands": [
+          {
+            "said": "50–60%",
+            "rows": 7730,
+            "mean_said": 0.55,
+            "favoured_won": 0.554
+          },
+          {
+            "said": "60–70%",
+            "rows": 7548,
+            "mean_said": 0.65,
+            "favoured_won": 0.64
+          },
+          {
+            "said": "70–80%",
+            "rows": 7513,
+            "mean_said": 0.75,
+            "favoured_won": 0.73
+          },
+          {
+            "said": "80–90%",
+            "rows": 7561,
+            "mean_said": 0.85,
+            "favoured_won": 0.85
+          },
+          {
+            "said": "90–100%",
+            "rows": 5307,
+            "mean_said": 0.942,
+            "favoured_won": 0.943
+          }
+        ]
+      },
+      {
+        "minutes": "21–",
+        "bands": [
+          {
+            "said": "50–60%",
+            "rows": 7513,
+            "mean_said": 0.551,
+            "favoured_won": 0.55
+          },
+          {
+            "said": "60–70%",
+            "rows": 8291,
+            "mean_said": 0.652,
+            "favoured_won": 0.655
+          },
+          {
+            "said": "70–80%",
+            "rows": 9768,
+            "mean_said": 0.752,
+            "favoured_won": 0.746
+          },
+          {
+            "said": "80–90%",
+            "rows": 12587,
+            "mean_said": 0.853,
+            "favoured_won": 0.842
+          },
+          {
+            "said": "90–100%",
+            "rows": 23295,
+            "mean_said": 0.96,
+            "favoured_won": 0.964
+          }
+        ]
       }
     ],
     "by_stretch": [
       {
         "minutes": "1–10",
-        "rows": 16515,
-        "brier": 0.229,
-        "gold_lead_alone": 0.2368
+        "rows": 32139,
+        "brier": 0.2287,
+        "gold_lead_alone": 0.2352
       },
       {
         "minutes": "10–20",
-        "rows": 18336,
-        "brier": 0.1885,
-        "gold_lead_alone": 0.1936
+        "rows": 35682,
+        "brier": 0.1832,
+        "gold_lead_alone": 0.1872
       },
       {
         "minutes": "20–30",
-        "rows": 17350,
-        "brier": 0.1496,
-        "gold_lead_alone": 0.1496
+        "rows": 33756,
+        "brier": 0.1372,
+        "gold_lead_alone": 0.1373
       },
       {
         "minutes": "30–40",
-        "rows": 11518,
-        "brier": 0.1358,
-        "gold_lead_alone": 0.1371
+        "rows": 21637,
+        "brier": 0.119,
+        "gold_lead_alone": 0.1207
       },
       {
         "minutes": "40–200",
-        "rows": 6412,
-        "brier": 0.1522,
-        "gold_lead_alone": 0.1715
+        "rows": 9609,
+        "brier": 0.1396,
+        "gold_lead_alone": 0.1574
       }
     ],
     "by_rank": [
       {
         "rank": "Herald–Crusader (rank_tier under 40)",
-        "games": 192,
-        "rows": 8135,
-        "brier": 0.1891
+        "games": 241,
+        "rows": 10139,
+        "brier": 0.181
       },
       {
         "rank": "Archon–Legend (40–59)",
-        "games": 455,
-        "rows": 18650,
-        "brier": 0.1888
+        "games": 587,
+        "rows": 23923,
+        "brier": 0.1878
       },
       {
         "rank": "Ancient and above (60+)",
-        "games": 1188,
-        "rows": 43346,
-        "brier": 0.1687
+        "games": 2743,
+        "rows": 98761,
+        "brier": 0.1631
       }
     ]
   },
