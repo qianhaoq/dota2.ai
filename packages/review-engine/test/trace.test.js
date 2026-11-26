@@ -76,6 +76,26 @@ describe('trace builder', () => {
   });
 });
 
+describe('item uses keep the hero they went to (#358)', () => {
+  it('a Force Staff on an ally, a Glimmer Cape on oneself, a ward with no hero: the fifth column is the hero or null', () => {
+    const ev = (type, t, extra) => ({ type, t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_hero_lina', target_hero: true, target_illusion: false, ...extra });
+    const b = createTraceBuilder();
+    b.addEvent(ev('DOTA_COMBATLOG_ITEM', 20, { inflictor: 'item_force_staff', target: 'npc_dota_hero_lina', target_hero: true }), 1);
+    b.addEvent(ev('DOTA_COMBATLOG_ITEM', 21, { inflictor: 'item_glimmer_cape', target: 'npc_dota_hero_axe', target_hero: true }), 2);
+    b.addEvent(ev('DOTA_COMBATLOG_ITEM', 22, { inflictor: 'item_ward_observer', target: 'dota_unknown', target_hero: false }), 3);
+    b.addEvent(ev('DOTA_COMBATLOG_ITEM', 23, { inflictor: 'item_orchid', target: 'npc_dota_hero_lina', target_hero: true, target_illusion: true }), 4);
+    const tr = b.finish();
+    const n = (i) => (i == null ? null : tr.names[i]);
+    expect(tr.item_uses.map((u) => [u[0], n(u[1]), n(u[2]), u[3], n(u[4])])).toEqual([
+      [20, 'npc_dota_hero_axe', 'item_force_staff', 1, 'npc_dota_hero_lina'],
+      [21, 'npc_dota_hero_axe', 'item_glimmer_cape', 2, 'npc_dota_hero_axe'],
+      [22, 'npc_dota_hero_axe', 'item_ward_observer', 3, null],
+      // An illusion is not the hero: kept as one, as casts at illusions are.
+      [23, 'npc_dota_hero_axe', 'item_orchid', 4, 'illusion:npc_dota_hero_lina'],
+    ]);
+  });
+});
+
 describe('review findings on #232', () => {
   const state = (t, extra = {}) => ({ entity_kind: 'real_hero', t, hero: 'axe', team: 2, player_index: 0, x: 0, y: 0, hp: 500, max_hp: 600, mana: 100, level: 6, life_state: 0, abilities: [], items: [], controls: {}, ...extra });
   const lina = (t) => ({ ...state(t), hero: 'lina', team: 3, player_index: 5 });

@@ -40,6 +40,7 @@ import { fightReport, ultimateEdges } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
 import { keyMoments } from '../lib/agent/keyMoments.js';
+import { wardPlacers } from '../lib/agent/wardReport.js';
 import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_RESPAWN, STILL_DEAD_AFTER } from '../lib/agent/decisionPoints.js';
 import { moneyOf } from '../lib/agent/farmReport.js';
 import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
@@ -64,6 +65,8 @@ const itemFights = [];
 const plainFights = [];
 const notInFight = []; let gamesWithCreepKills = 0;
 const momentSides = []; const momentHeroes = [];
+const wardTeams = []; let wardsPlaced = 0; let wardsPlacerUnknown = 0;
+const saves = { ability: { n: 0, died: 0 }, item: { n: 0, died: 0 }, nothing: { n: 0, died: 0 }, heavy_given: { n: 0, died: 0 }, heavy_nothing: { n: 0, died: 0 } }; let saveGames = 0;
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
   const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(dir, f)))));
@@ -81,6 +84,27 @@ for (const f of files) {
       const part = fightParticipation(trace, fight);
       trace.heroes.forEach((_, i) => { if (part.took_part.has(i)) return; const s = heroStateAt(trace, i, fight.from); if (s.known && s.alive) notInFight.push(s.doing); });
     }
+  }
+  // ward_report: who placed each ward (an item use of the side within 0.2 s), and per team the two heroes who placed most observers.
+  // save_report: an ally under enemy-hero damage (the 3 s up to it), and whether they died within 5 s — after an ally's
+  // ability or item on them, or with nothing given (every 5 s from 10:00). Only traces whose item uses keep a target.
+  if ((trace.item_uses ?? []).some((u) => u.length >= 5)) {
+    saveGames += 1;
+    const nx = trace.heroes.map((h) => trace.names.indexOf(h.npc)); const seat = new Map(nx.map((x, i) => [x, i]));
+    const dmg = new Map();
+    for (const d of trace.damage) { const a = seat.get(d[1]); const b = seat.get(d[2]); if (a == null || b == null || trace.heroes[a].team === trace.heroes[b].team) continue; const k = `${d[0]}|${b}`; dmg.set(k, (dmg.get(k) ?? 0) + d[4]); }
+    const took = (i, s) => { let v = 0; for (let k = s - 3; k <= s; k += 1) v += dmg.get(`${k}|${i}`) ?? 0; return v; };
+    const died = (i, s) => trace.deaths.some((d) => d[1] === nx[i] && d[0] > s && d[0] <= s + 5);
+    const recv = trace.heroes.map(() => new Set());
+    const mark = (giver, to, s, kind) => { const a = seat.get(giver); const b = seat.get(to); if (a == null || b == null || a === b || trace.heroes[a].team !== trace.heroes[b].team) return; recv[b].add(Math.floor(s)); const tk = took(b, Math.floor(s)); if (tk <= 0) return; saves[kind].n += 1; if (died(b, s)) saves[kind].died += 1; if (tk >= 300) { saves.heavy_given.n += 1; if (died(b, s)) saves.heavy_given.died += 1; } };
+    for (const c of trace.casts) mark(c[1], c[3], c[0], 'ability');
+    for (const u of trace.item_uses) if (u.length >= 5 && u[4] != null) mark(u[1], u[4], u[0], 'item');
+    for (let s = 600; s < trace.t0 + trace.n - 6; s += 5) trace.heroes.forEach((_, i) => { if (trace.states[i].alive[s - trace.t0] !== 1) return; const tk = took(i, s); if (tk <= 0) return; for (let k = s - 3; k <= s + 1; k += 1) if (recv[i].has(k)) return; saves.nothing.n += 1; if (died(i, s)) saves.nothing.died += 1; if (tk >= 300) { saves.heavy_nothing.n += 1; if (died(i, s)) saves.heavy_nothing.died += 1; } });
+  }
+  const placers = wardPlacers(trace);
+  if (placers) {
+    trace.wards.forEach((w, j) => { if (w[0] == null) return; wardsPlaced += 1; if (placers[j] === null) wardsPlacerUnknown += 1; });
+    for (const tm of [2, 3]) { const c = trace.heroes.map((h, i) => i).filter((i) => trace.heroes[i].team === tm).map((i) => trace.wards.filter((w, j) => placers[j] === i && w[3] === 'o').length).sort((a, b) => b - a); wardTeams.push(c[0], c[1]); }
   }
   // Key moments, from each side once (its first hero), and every losing hero's split of the falls.
   for (const tm of [2, 3]) {
@@ -254,6 +278,11 @@ const fightsAfter = roshans.flatMap((x) => x.fights);
 if (gamesWithCreepKills) {
   const c = {}; for (const d of notInFight) c[d] = (c[d] ?? 0) + 1;
   out.not_in_a_fight = { games: gamesWithCreepKills, alive_heroes_not_in_a_fight: notInFight.length, doing: c };
+}
+if (saveGames) out.saves = { games: saveGames, ...saves };
+if (wardsPlaced) {
+  const s = wardTeams.slice().sort((a, b) => a - b); const q = (p) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
+  out.wards_placed = { wards: wardsPlaced, placer_not_known: wardsPlacerUnknown, two_most_warding_heroes_of_a_team_observers: [q(0.25), q(0.5), q(0.75)] };
 }
 if (momentSides.length) {
   const q = (arr) => { const s = arr.slice().sort((a, b) => a - b); return s.length ? [0.25, 0.5, 0.75].map((p) => s[Math.min(s.length - 1, Math.floor(p * s.length))]) : null; };
