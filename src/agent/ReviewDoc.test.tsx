@@ -158,3 +158,51 @@ describe('ReviewDoc: the goal card says whether readers reach it', () => {
   });
 });
 
+describe('ReviewDoc: fight presence strip (#363)', () => {
+  it('renders falls_by_my_part segments (including not_known when present) and omits zero/null shares', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes('ref=moments%3Aaxe')) {
+        return new Response(JSON.stringify({
+          status: 'ok',
+          ref: 'moments:axe',
+          kind: 'moments',
+          names: {},
+          record: {
+            read: true,
+            falls_by_my_part: { in_it: 0.62, elsewhere: 0.28, dead: 0, not_known: 0.1 },
+          },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ code: 'not_found' }), { status: 404 });
+    }));
+
+    render(<ReviewDoc matchId="701" review={review({ lang: 'zh' })} lang="zh" onAsk={() => {}} />);
+    const fig = await screen.findByRole('figure', { name: '己方掉势团战里，你当时在哪' });
+    expect(fig.textContent).toContain('在团里62%');
+    expect(fig.textContent).toContain('在别处28%');
+    expect(fig.textContent).toContain('缺少采样10%');
+    expect(fig.textContent).not.toContain('已阵亡');
+    expect(fig.textContent).toContain('不等同于谁的责任');
+  });
+
+  it('shows nothing when moments could not be read (net_worth_only) or no fight lost win chance', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).includes('ref=moments%3Aaxe')) {
+        return new Response(JSON.stringify({
+          status: 'ok',
+          ref: 'moments:axe',
+          kind: 'moments',
+          names: {},
+          record: { read: false },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ code: 'not_found' }), { status: 404 });
+    }));
+
+    render(<ReviewDoc matchId="702" review={review()} lang="en" onAsk={() => {}} />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(document.querySelector('.ag-presence')).toBeNull();
+  });
+});
+
