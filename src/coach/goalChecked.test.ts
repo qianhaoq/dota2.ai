@@ -70,9 +70,9 @@ describe('goal_checked: the next-game loop closing, counted', () => {
 
 describe('habitCurve: a habit\'s count game by game', () => {
   const habit = (rules = false): ActiveGoal => ({
-    id: 'h', goal: { kind: 'replay_habit', habit: HABIT, max: 1, baseline: 4, label: { en: 'x', zh: 'x' } } as never,
+    id: 'h', goal: { kind: 'replay_habit', habit: HABIT, max: 1, baseline: 4, baseline_exact: true, label: { en: 'x', zh: 'x' } } as never,
     action: { en: 'a', zh: 'a' }, findingId: 'f', fromMatch: 100, fromStart: 1, accountId: null, heroId: 29, setAt: 1,
-    ...(rules ? { rules: [{ finding: 2, when: 'w', do: 'd', check: { kind: 'replay_habit', habit: HABIT, max: 2, baseline: 5, label: { en: 'y', zh: 'y' } } as never }] } : {}),
+    ...(rules ? { rules: [{ finding: 2, when: 'w', do: 'd', check: { kind: 'replay_habit', habit: HABIT, max: 2, baseline: 5, baseline_exact: true, label: { en: 'y', zh: 'y' } } as never }] } : {}),
   });
   const store = (checks: object[]) => window.localStorage.setItem(GOAL_CHECKS_STORAGE_KEY, JSON.stringify(checks));
   const c = (goalId: string, matchId: number, result: string, count?: number) => ({ goalId, matchId, result, evidence: { en: '', zh: '' }, ...(count == null ? {} : { count }) });
@@ -86,6 +86,14 @@ describe('habitCurve: a habit\'s count game by game', () => {
     store([c('h#2', 200, 'missed', 4), c('h', 200, 'met', 1)]);
     expect(habitCurve(habit(true), 'h#2')).toEqual([{ matchId: 100, count: 5, from: true }, { matchId: 200, count: 4 }]);
     expect(habitCurve(habit(true), 'h#9')).toBeNull();
+  });
+
+  it('a baseline that was only a lower bound is not the first point: the curve starts at the later games, if two', () => {
+    const inexact = { ...habit(), goal: { kind: 'replay_habit', habit: HABIT, max: 1, baseline: 3, label: { en: 'x', zh: 'x' } } as never };
+    store([c('h', 200, 'missed', 4)]);
+    expect(habitCurve(inexact)).toBeNull();
+    store([c('h', 200, 'missed', 4), c('h', 300, 'met', 1)]);
+    expect(habitCurve(inexact)).toEqual([{ matchId: 200, count: 4 }, { matchId: 300, count: 1 }]);
   });
 
   it('nothing settled yet, a check stored before counts were kept, or a goal that is not a habit: no curve', () => {

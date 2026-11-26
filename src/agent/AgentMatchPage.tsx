@@ -369,6 +369,10 @@ export const AgentMatchPage: React.FC = () => {
     setNotice(null); setCheckingOnly(selection);
     await sendPrepare();
   }
+  const checkOnlyRef = useRef(checkOnly);
+  checkOnlyRef.current = checkOnly;
+  const checkingOnlyRef = useRef(checkingOnly);
+  checkingOnlyRef.current = checkingOnly;
   async function go() {
     if (wait) return;
     trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan), ...(writtenBy ? { model: writtenBy } : {}) });
@@ -409,6 +413,8 @@ export const AgentMatchPage: React.FC = () => {
     const was = waited.current;
     waited.current = { sel: selection, wait };
     if (was.sel === selection && was.wait && !wait && intent) void goRef.current();
+    // A goal-only check that was refused with a wait goes again the same way: a goal check, not a review.
+    else if (was.sel === selection && was.wait && !wait && checkingOnlyRef.current === selection) void checkOnlyRef.current();
   }, [wait, intent, selection]);
   const waitNotice = wait ? t(wait.kind === 'rate' ? T.rateWait : T.busyWait).replace('{t}', clockOf(Math.max(0, Math.ceil((wait.until - Date.now()) / 1000)))) : null;
 

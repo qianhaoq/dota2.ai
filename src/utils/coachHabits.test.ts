@@ -23,9 +23,14 @@ describe('habitGoal', () => {
   });
   it('half as often as this game, from the replay\'s own count; code writes the label', () => {
     // Five of the eleven deaths were to three or more enemy heroes.
-    expect(habitGoal('outnumbered', deaths)).toEqual({ kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）' } });
+    // Nothing in this count can be undecided: the baseline is exact.
+    expect(habitGoal('outnumbered', deaths)).toEqual({ kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）' } });
     expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))).toMatchObject({ max: 1, baseline: 3 });
     expect(habitGoal('alone', where({ no_ally_within_2200_at_death: ['1:00', '2:00'] }))).toMatchObject({ max: 1, baseline: 2 });
+    // With deaths the replay could not decide, the baseline is only a lower bound, and says so by not claiming to be exact.
+    expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, { health_at_window_start: 2, allies_at_death: 0 }))).not.toHaveProperty('baseline_exact');
+    expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, { health_at_window_start: 0, allies_at_death: 0 }))).toMatchObject({ baseline_exact: true });
+    expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, null))).not.toHaveProperty('baseline_exact');
     // Lone deaths that bought nothing are their own count: four alone, two of them traded, is a baseline of two (review of #303).
     expect(habitGoal('alone_not_traded', where({ no_ally_within_2200_at_death: ['1:00', '2:00', '3:00', '4:00'], no_ally_within_2200_at_death_and_not_traded: ['1:00', '3:00'] }))).toMatchObject({ habit: 'alone_not_traded', max: 1, baseline: 2 });
   });
@@ -180,7 +185,7 @@ describe('habits counted over one ability', () => {
 
   it('the check carries whose ability it is, and is worded with the ability\'s name', () => {
     expect(habitGoal('target_survived', roar, ROAR)).toEqual({
-      kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, ...ROAR,
+      kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, baseline_exact: true, ...ROAR,
       label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）' },
     });
     // A plain number counts too: three deaths with it ready and not cast.

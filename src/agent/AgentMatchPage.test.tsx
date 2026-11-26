@@ -1747,7 +1747,7 @@ describe('AgentMatchPage', () => {
   });
 
   it('a goal that waits on this game\'s replay can be checked alone: the replay is parsed, no review is written, the check reads it', async () => {
-    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
+    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, baseline_exact: true, label: { en: 'At most 2 alone', zh: 'x' } };
     // Its own game id: the evidence client keeps a record for the session, and another test reads 9100999998's.
     const goal = { id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 };
     window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal));
@@ -1801,6 +1801,25 @@ describe('AgentMatchPage', () => {
     const events = (await Promise.all(beacons)).map((e: any) => e.event);
     expect(events.filter((e) => e === 'goal_check_requested')).toHaveLength(2);
     expect(events).not.toContain('review_requested');
+  });
+
+  it('a goal-only check refused with a short wait goes again by itself when the wait ends — as a goal check', async () => {
+    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 }));
+    const later = { match: { id: 9100999995, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
+    let prepared = 0;
+    const calls = mockFetch({
+      '/api/coach/9100999995': later,
+      // The first ask is refused for one second; the second runs.
+      '/prepare': () => { prepared += 1; return prepared === 1 ? new Response(JSON.stringify({ code: 'rate_limited', retryAfterSec: 1 }), { status: 429, headers: { 'Retry-After': '1' } }) : { status: 'running', stage: 'locating' }; },
+      '/review?': { status: 'none' },
+      '/api/agent/9100999995': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepared >= 2 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+    });
+    page('/r/9100999995?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Only check my goal' }));
+    await waitFor(() => expect(prepared).toBe(2), { timeout: 5000 });
+    expect(await screen.findByRole('heading', { name: 'Reading the replay to check your goal…' })).toBeTruthy();
+    expect(calls.some((c) => c.url.endsWith('/review') && c.init?.method === 'POST')).toBe(false);
   });
 
   it('no goal, a goal this game does not count for, or a game already parsed: no goal-only button', async () => {

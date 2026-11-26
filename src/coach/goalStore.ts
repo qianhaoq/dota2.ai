@@ -75,15 +75,19 @@ export function setGoal(g: ActiveGoal | null): void {
 }
 
 /**
- * A habit's counts game by game: the game the goal came from (its baseline), then each later game that settled
- * it, in match order. Null for a goal that is not a habit, or before any later game has a count.
+ * A habit's counts game by game: the game the goal came from (its baseline, when that count was exact), then each
+ * later game that settled it exactly, in match order. Null for a goal that is not a habit, or with fewer than two points.
  */
 export function habitCurve(goal: ActiveGoal, goalId: string = goal.id): { matchId: number; count: number; from?: true }[] | null {
   const spec = goalId === goal.id ? goal.goal : goal.rules?.find((r) => `${goal.id}#${r.finding}` === goalId)?.check;
   if (!spec || spec.kind !== 'replay_habit' || !Number.isInteger((spec as { baseline?: number }).baseline)) return null;
   const later = goalChecks(goalId).filter((c) => Number.isInteger(c.count) && (c.result === 'met' || c.result === 'missed')).sort((a, b) => a.matchId - b.matchId);
-  if (!later.length) return null;
-  return [{ matchId: goal.fromMatch, count: (spec as { baseline: number }).baseline, from: true }, ...later.map((c) => ({ matchId: c.matchId, count: c.count as number }))];
+  // The game the goal came from is the first point only when its count was exact: a lower bound there would make
+  // a later, fully counted game look like it got worse.
+  const first = (spec as { baseline_exact?: boolean }).baseline_exact === true ? [{ matchId: goal.fromMatch, count: (spec as { baseline: number }).baseline, from: true as const }] : [];
+  const points = [...first, ...later.map((c) => ({ matchId: c.matchId, count: c.count as number }))];
+  // One point is not a curve.
+  return points.length >= 2 ? points : null;
 }
 
 export function goalChecks(goalId: string): GoalCheck[] {
