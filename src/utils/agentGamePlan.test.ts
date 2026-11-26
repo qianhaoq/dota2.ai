@@ -76,7 +76,9 @@ describe('the game plan of a review', () => {
     expect(r.review.game_plan).toMatchObject({ course: plan.course });
     expect(r.verification).not.toHaveProperty('game_plan_missing');
     // What the repair round was told: the plan, why it would go, and what to do.
-    const asked = JSON.parse(m.seen.at(-1).messages.at(-1).content);
+    // (The last call is the translation, since #393: the repair round's message is found by what it says.)
+    const repairMsg = m.seen.flatMap((x: any) => x.messages ?? []).filter((x: any) => x.role === 'tool' && String(x.content).includes('unsupported_facts')).at(-1);
+    const asked = JSON.parse(repairMsg.content);
     expect(asked.problems).toContainEqual(expect.objectContaining({ in: 'game_plan', text: 'no_evidence_that_holds', why: expect.stringContaining('would be left out of the review') }));
     // Still not repaired: the review ships without it, and says why.
     const still = (await run([submit(review(bad), 's1'), submit(review(bad), 's2')])).r;
