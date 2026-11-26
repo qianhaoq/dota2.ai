@@ -237,36 +237,59 @@ describe('re-parsing older traces when the replay still exists (#365)', () => {
   });
 
   it('shares a single review deadline (maxMs) across trace re-parse and runDeepReview', async () => {
-    const docs = new Map<string, any>();
-    const pipeline = {
-      run: vi.fn(async () => {
-        await new Promise((r) => setTimeout(r, 70));
-        return { ok: true, bytes: 1024 };
-      }),
-    };
-    const complete = vi.fn(({ signal }: any) => new Promise((_, reject) => {
-      if (signal?.aborted) { reject(signal.reason); return; }
-      signal?.addEventListener('abort', () => reject(signal.reason ?? new DOMException('Timed out', 'TimeoutError')), { once: true });
-    }));
-
-    const service: any = createAgentService({
-      traces: { get: async () => structuredClone(legacyTrace) },
-      pipeline,
+    // 1. Re-parse consumes the entire maxMs budget: runDeepReview is never started and the job fails with timeout.
+    let clock1 = 10_000;
+    const docs1 = new Map<string, any>();
+    const completeNever = vi.fn();
+    const exhaustedService: any = createAgentService({
+      traces: { get: async () => legacyTrace },
+      pipeline: { run: vi.fn(async () => { clock1 += 1_000; return { ok: true, bytes: 1024 }; }) },
       reparseOldTraces: true,
-      models: { 'deepseek-flash': { name: 'deepseek-flash', maxMs: 120, complete } },
+      models: { 'deepseek-flash': { name: 'deepseek-flash', maxMs: 1_000, complete: completeNever } },
       defaultModel: 'deepseek-flash',
       getMatchDetail: async () => ({ match_id: ID, start_time: Math.floor((NOW - 2 * DAY) / 1000), duration: 2400 }),
-      docs: { get: async (k: string) => docs.get(k) ?? null, put: async (k: string, v: any) => { docs.set(k, v); } },
+      docs: { get: async (k: string) => docs1.get(k) ?? null, put: async (k: string, v: any) => { docs1.set(k, v); } },
+      now: () => clock1,
     } as any);
 
-    const t0 = Date.now();
-    await service.start(ID, 'beastmaster', 'zh');
+    await exhaustedService.start(ID, 'beastmaster', 'zh');
     await vi.waitFor(async () => {
-      const st = await service.status(ID, 'beastmaster', 'zh');
-      expect(st).toEqual({ status: 'failed', reason: 'timeout' });
-    }, { timeout: 1000 });
-    const elapsed = Date.now() - t0;
-    // Must abort near ~120ms total (70ms parse + ~50ms remaining), well below 70 + 120 = 190ms+.
-    expect(elapsed).toBeLessThan(185);
+      expect(await exhaustedService.status(ID, 'beastmaster', 'zh')).toEqual({ status: 'failed', reason: 'timeout' });
+    });
+    expect(completeNever).not.toHaveBeenCalled();
+
+    // 2. Re-parse consumes 750ms of an 800ms budget: runDeepReview receives only the remaining 50ms (not a fresh 800ms).
+    let clock2 = 20_000;
+    const docs2 = new Map<string, any>();
+    let modelAbortMs = Infinity;
+    const completeRemaining = vi.fn(({ signal }: any) => {
+      const started = Date.now();
+      return new Promise((_, reject) => {
+        const fail = () => {
+          modelAbortMs = Date.now() - started;
+          reject(signal?.reason ?? new DOMException('Timed out', 'TimeoutError'));
+        };
+        if (signal?.aborted) { fail(); return; }
+        signal?.addEventListener('abort', fail, { once: true });
+      });
+    });
+
+    const partialService: any = createAgentService({
+      traces: { get: async () => legacyTrace },
+      pipeline: { run: vi.fn(async () => { clock2 += 750; return { ok: true, bytes: 1024 }; }) },
+      reparseOldTraces: true,
+      models: { 'deepseek-flash': { name: 'deepseek-flash', maxMs: 800, complete: completeRemaining } },
+      defaultModel: 'deepseek-flash',
+      getMatchDetail: async () => ({ match_id: ID, start_time: Math.floor((NOW - 2 * DAY) / 1000), duration: 2400 }),
+      docs: { get: async (k: string) => docs2.get(k) ?? null, put: async (k: string, v: any) => { docs2.set(k, v); } },
+      now: () => clock2,
+    } as any);
+
+    await partialService.start(ID, 'beastmaster', 'zh');
+    await vi.waitFor(async () => {
+      expect(await partialService.status(ID, 'beastmaster', 'zh')).toEqual({ status: 'failed', reason: 'timeout' });
+    }, { timeout: 2000 });
+    expect(completeRemaining).toHaveBeenCalledTimes(1);
+    expect(modelAbortMs).toBeLessThan(450);
   });
 });
