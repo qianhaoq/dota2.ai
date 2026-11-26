@@ -64,9 +64,11 @@ test('from no replay to a review in one click: fetch, read, the coach, the revie
   await expect(live).toHaveText('解析录像', { timeout: 10_000 });
   await expect(live).toHaveText('教练看录像', { timeout: 15_000 });
   await expect(page.locator('.ag-journey .ag-steps li').first()).toHaveText('看整局概况', { timeout: 10_000 });
-  // While the review is written: the player's deaths from the parsed replay, to look at meanwhile.
+  // While the review is written: the player's deaths, fights and key items from the parsed replay, to look at meanwhile.
   await expect(page.locator('.ag-wait h2')).toHaveText('教练看录像的这几分钟，先看你的 11 次阵亡');
   await expect(page.locator('.ag-wait-list > li')).toHaveCount(11);
+  await expect(page.locator('.ag-wait-facts h2')).toHaveText('团战走势与你的关键成装');
+  await expect(page.locator('.ag-wait-facts .ag-strip-fight')).toHaveCount(16);
   await expect(page.locator('.ag-lead h1')).toHaveText('咆哮给错了人', { timeout: 30_000 });
   await expect(page.locator('.ag-whole .ag-verdict')).toContainText('原始咆哮没有留给幻影刺客');
   // One click by the reader: one parse, then the review started on its own.
@@ -343,4 +345,17 @@ test('keyboard: a fight on the strip can be reached and asked about', async ({ p
   await page.keyboard.press('Enter');
   await expect(page.locator('.ag-context')).toContainText('30:26');
   await expect(page.getByRole('complementary', { name: '问教练' }).getByRole('textbox')).toBeFocused();
+});
+
+test('the waiting screen facts: fight strip and key items fit mobile and desktop with no axe violations', async ({ page }) => {
+  await page.route(`**/api/agent/${MATCH}/review*`, (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'running', steps: [{ tool: 'match_overview', args: {} }] }) }),
+  );
+  await page.goto(`/r/${MATCH}?hero=beastmaster&lang=zh`);
+  await expect(page.locator('.ag-wait-facts h2')).toHaveText('团战走势与你的关键成装');
+  await expect(page.locator('.ag-wait-facts .ag-strip-fight')).toHaveCount(16);
+  expect(await page.locator('.ag-wait-items li').count()).toBeGreaterThan(0);
+  await noSideScroll(page);
+  const axe = await new AxeBuilder({ page }).include('.ag-wait-facts').disableRules(['color-contrast']).analyze();
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
 });
