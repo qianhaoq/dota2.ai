@@ -1,0 +1,54 @@
+{
+  "name": "@qianhaoq/dsh-dota2ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dota2.ai for DSH: the evidence-first Dota 2 replay coach as agent tools and a skill",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "Hao Qian",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qianhaoq/dota2.ai.git",
+    "directory": "packages/dsh"
+  },
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "lib",
+    "skills",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24.9",
+    "dsh": "0.2.1-rc.3"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "pack:release": "node scripts/pack.mjs"
+  },
+  "dota2ai:release": {
+    "comment": "pack.mjs writes these into the released package.json. The DSH installation supplies @deepseek-ai/* to its plugins at runtime (profiles set autoInstallPeers: false), so they are peers, pinned to the DSH release this plugin is verified on; the site's npm ci never installs DSH.",
+    "peerDependencies": {
+      "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
+      "@deepseek-ai/schemastery": "^3.18.5"
+    }
+  },
+  "devDependencies": {
+    "@dota2ai/mcp": "*",
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "dota2ai": "*",
+    "esbuild": "^0.25.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

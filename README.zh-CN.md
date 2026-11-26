@@ -4,11 +4,12 @@
 
 **看你的录像做复盘的 Dota 2 教练，说的每句话都拿得出依据。**
 
-[网站](https://dota2.ai/?lang=zh) · [一份真实的复盘](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) · [工作原理](#工作原理) · [接入 Agent](#一行接入你的-agent) · [English](README.md)
+[网站](https://dota2.ai/?lang=zh) · [一份真实的复盘](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) · [工作原理](#工作原理) · [DSH 插件](#在-dshdeepseek-harness里用) · [接入 Agent](#接入其他-agentmcp) · [English](README.md)
 
 [![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial-d6b46a.svg)](LICENSE)
 [![Dota 2 patch 7.42](https://img.shields.io/badge/Dota%202-7.42-c23c2a.svg)](https://www.dota2.com/patches/7.42)
+[![DSH plugin](https://img.shields.io/badge/DSH-plugin-4d6bfe.svg)](#在-dshdeepseek-harness里用)
 
 <br>
 
@@ -119,9 +120,49 @@ flowchart LR
 
 ## 怎么用
 
-**在网页上。** 打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛编号或 OpenDota / Dotabuff / STRATZ 的比赛链接；或者贴 Steam 好友代码，列出你最近的比赛。支持中文和英文。首页还有一个版本顾问：7.42 改了什么，某个英雄改版后表现如何。
+同一个教练，五种用法，都不需要 Key。
 
-### 一行接入你的 Agent
+| 在哪儿 | 怎么做 | 得到什么 |
+|---|---|---|
+| **网页** | 打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛 | 完整页面：复盘、原始记录、记分板、可追问的教练 |
+| **DSH** | `dsh plugin add` 装一个包 | 每个 DSH 会话里都有 `dota2ai_*` 工具和一份 skill |
+| **任意 MCP Agent** | 添加一次 `https://dota2.ai/mcp` | 通过 MCP 使用同样的工具 |
+| **终端** | `node packages/cli/bin/dota2ai.js …` | 规则引擎的报告，文本或 JSON |
+| **离线** | 查询仓库自带的 trace | 在一场录好的比赛上跑 Agent 的录像工具 |
+
+### 在网页上
+
+打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛编号或 OpenDota / Dotabuff / STRATZ 的比赛链接；或者贴 Steam 好友代码，列出你最近的比赛。支持中文、英文和俄文。首页还有一个版本顾问：7.42 改了什么，某个英雄改版后表现如何。
+
+### 在 DSH（DeepSeek Harness）里用
+
+dota2.ai 提供原生的 [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) 插件：装一次，之后每个 DSH 会话都能复盘比赛。需要 Node 24.9 或更新版本，以及 DSH 0.2.1-rc.3。
+
+```sh
+# 从最新的 dsh-v* Release 下载：https://github.com/qianhaoq/dota2.ai/releases
+sha256sum -c SHA256SUMS
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.1.0.tgz
+```
+
+然后在任意 DSH 会话里说：
+
+> 复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。
+
+| 工具 | 做什么 |
+|---|---|
+| `dota2ai_replay_review` | 网站看录像写的那份复盘，内容都对照录像核对过。不会卡住等待：返回 `parsing` 或 `reviewing` 时（第一次两到四分钟）模型会再调一次 |
+| `dota2ai_recent_matches` | 某个玩家最近的公开比赛，用好友代码或主页链接 |
+| `dota2ai_coach_report` | 不带 `hero` 返回双方阵容；带上则返回一章：`summary`、`why`、`lane`、`deaths`、`items`、`fights`、`plan`、`all` |
+| `dota2ai_coach_cases` | 同一问题上的职业比赛：一场避开了，一场重复了 |
+| `dota2ai_coach_ask` | 追问，只依据报告回答 |
+| `dota2ai_goal_check` | 之后的一局有没有做到某条问题的目标：做到、没做到、没机会、无法判断 |
+| `dota2ai_hero_matchup` | 英雄对位：职业比赛数据，以及 STRATZ 的分段位数据 |
+
+插件还会注册一份 `dota2ai` skill，告诉模型怎么读结果：不确定用户玩的哪个英雄就问，不要猜；时间和数字照原样引用；说清录像看不到什么。配置项（`lang`、`apiBase`、`enabled`、`skillEnabled`）在 profile 的 `cordis.patch.yml` 里 `dota2ai` 条目下。
+
+它可以和 [DSH Dota 教练](https://github.com/qianhaoq/qh-dsh-dota-coach)插件（工具名 `dota_*`）同时安装：那个在你本机解析录像、保存笔记和训练；这个带来线上的复盘。更多见 [`packages/dsh/README.md`](packages/dsh/README.md)。
+
+### 接入其他 Agent（MCP）
 
 线上的 MCP 服务不用安装，也不需要 Key：
 
@@ -134,15 +175,11 @@ flowchart LR
 | **Cursor** | [一键添加到 Cursor](https://cursor.com/en/install-mcp?name=dota2ai&config=eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9)，或把 `{ "mcpServers": { "dota2ai": { "url": "https://dota2.ai/mcp" } } }` 写进 `~/.cursor/mcp.json` |
 | **其他 MCP 客户端** | 填入 `https://dota2.ai/mcp`（Streamable HTTP） |
 
-然后说一句话：
-
-> 复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。
-
-不支持 MCP？只要你的 Agent 能访问网址，把这句话发给它：
+然后说同样的一句话。不支持 MCP？只要你的 Agent 能访问网址，把这句话发给它：
 
 > 帮我复盘 Dota 2 比赛 9100904020，我玩的是兽王。按 https://dota2.ai/llms.txt 调用接口，只引用接口返回的数据，样本不足就直说。
 
-`replay_review` 就是网页上那份看录像写的完整复盘：它不会卡住等待，Agent 在它返回 `parsing` 或 `reviewing` 时隔一会儿再调一次（第一次两到四分钟），最后拿到结论、附录像依据的各条问题和可以转发的复盘页链接。其余 8 个工具——`review_match`、`get_evidence`、`recent_matches`、`coach_report`、`coach_cases`、`coach_ask`、`goal_check`、`hero_matchup`——属于即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标（[说明](packages/mcp/README.md)）。想在本地通过 stdio 运行，用 `node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`。另有一个 Agent Skill：[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)。
+`replay_review` 就是网页上那份完整复盘。其余 8 个工具——`review_match`、`get_evidence`、`recent_matches`、`coach_report`、`coach_cases`、`coach_ask`、`goal_check`、`hero_matchup`——属于即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标（[说明](packages/mcp/README.md)）。想在本地通过 stdio 运行，用 `node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`。另有一个 Agent Skill：[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)。
 
 ### 在终端里用
 
@@ -207,6 +244,7 @@ packages/review-engine/src/trace  trace 格式和录像工具（纯函数，不�
 lib/coach/                        CLI 和 MCP 背后的规则引擎
 src/agent/、src/coach/            复盘页面；首页和玩家页面
 packages/cli/、packages/mcp/      CLI 和 MCP 服务
+packages/dsh/                     DSH 插件（基于公开 API 的工具和 skill）
 server.js                         Express 主程序
 ```
 
