@@ -25,12 +25,15 @@ const momentPayload = {
   t: 1826,
   clock: '30:26',
   from: 1814,
-  to: 1832,
+  to: 1854,
   me: 'axe',
   place: null,
   place_name: null,
   heroes: [{ hero: 'axe', side: 'me' }],
-  frames: [{ t: 1826, at: [[0, 0, 1]] }],
+  frames: [
+    { t: 1826, at: [[0, 0, 1]] },
+    { t: 1848, at: [[120, -80, 1]] },
+  ],
   deaths: [],
   box: { x: -1000, y: -1000, size: 2000 },
   away: [],
@@ -89,13 +92,14 @@ describe('WaitFacts (#363)', () => {
     const items = Array.from(document.querySelectorAll('.ag-wait-items li')).map((li) => li.textContent);
     expect(items).toEqual(['14:12闪烁匕首', '22:40黑皇杖']);
 
-    // Clicking a fight bar opens the map replay for that fight's start second, and tracks moment_played.
+    // Clicking a fight bar opens the map replay for the whole fight span [from, to], and tracks moment_played.
     const secondFight = screen.getByRole('button', { name: '重放这波团战 30:26–30:48, 4:1' });
     fireEvent.click(secondFight);
     await flush();
     expect(document.querySelector('.ag-replay')).toBeTruthy();
+    expect(screen.getByRole('img', { name: '30:14 到 30:54 的站位' })).toBeTruthy();
     const calls = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls.some((c) => String(c[0]).includes(`/api/agent/${id}/moment?hero=axe&lang=zh&t=1826`))).toBe(true);
+    expect(calls.some((c) => String(c[0]).includes(`/api/agent/${id}/moment?hero=axe&lang=zh&t=1826&to=1848`))).toBe(true);
     expect(calls.some((c) => String(c[0]).includes('/api/events'))).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: '收起团战回放' }));

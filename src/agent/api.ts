@@ -107,11 +107,16 @@ export interface Moment {
 }
 const momentCache = new Map<string, Promise<Moment>>();
 /** A moment is a pure function of the replay, so it is fetched once a session. */
-export function fetchMoment(matchId: string, hero: string, lang: string, t: number): Promise<Moment> {
-  const key = `${matchId}|${hero}|${lang}|${t}`;
+export function fetchMoment(matchId: string, hero: string, lang: string, t: number, to?: number): Promise<Moment> {
+  const end = to != null && Number.isFinite(to) ? to : undefined;
+  const key = `${matchId}|${hero}|${lang}|${t}|${end ?? ''}`;
   let p = momentCache.get(key);
   if (!p) {
-    p = fetch(`/api/agent/${enc(matchId)}/moment?hero=${enc(hero)}&lang=${lang}&t=${t}`).then((r) => json<Moment>(r));
+    p = fetch(`/api/agent/${enc(matchId)}/moment?hero=${enc(hero)}&lang=${lang}&t=${t}${end != null ? `&to=${end}` : ''}`).then(async (r) => {
+      const out = await json<Moment>(r);
+      if (!out || !Array.isArray(out.frames)) throw new AgentApiError('invalid_moment', r.status);
+      return out;
+    });
     p.catch(() => momentCache.delete(key));
     momentCache.set(key, p);
   }
@@ -138,7 +143,11 @@ export function fetchEvidence(matchId: string, hero: string, lang: string, ref: 
   const key = `${matchId}|${hero}|${lang}|${ref}`;
   let p = evidenceCache.get(key);
   if (!p) {
-    p = fetch(`/api/agent/${enc(matchId)}/evidence?hero=${enc(hero)}&lang=${lang}&ref=${enc(ref)}`).then((r) => json<EvidenceRecord>(r));
+    p = fetch(`/api/agent/${enc(matchId)}/evidence?hero=${enc(hero)}&lang=${lang}&ref=${enc(ref)}`).then(async (r) => {
+      const out = await json<EvidenceRecord>(r);
+      if (!out || typeof out !== 'object' || !('record' in out) || !out.record) throw new AgentApiError('invalid_evidence', r.status);
+      return out;
+    });
     p.catch(() => evidenceCache.delete(key));
     evidenceCache.set(key, p);
   }

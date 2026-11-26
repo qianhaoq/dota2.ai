@@ -122,7 +122,7 @@ export const WaitFacts: React.FC<{ matchId: string; hero: string; lang: Lang }> 
                   {t('closeFight')}
                 </button>
               </p>
-              <MomentReplay matchId={matchId} hero={hero} lang={lang} t={selectedFight.from} />
+              <MomentReplay matchId={matchId} hero={hero} lang={lang} t={selectedFight.from} to={selectedFight.to} />
             </div>
           )}
         </div>
