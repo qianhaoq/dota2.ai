@@ -44,7 +44,9 @@ describe('ward_report', () => {
     const r: any = wardReport(t, { hero: 'disruptor' });
     expect(r).toMatchObject({ ref: 'wards:disruptor', ref_scope: 'summary', read: true, observers_placed: 2, sentries_placed: 1, observers_killed: 1, sentries_killed: 1, my_team_wards_placer_not_known: 1, reference: WARD_REFERENCE });
     expect(r.placed_by_ten_minutes.slice(0, 2)).toEqual([{ from: '0:00', to: '10:00', observers: 1, sentries: 0 }, { from: '10:00', to: '20:00', observers: 1, sentries: 1 }]);
-    expect(r.placements.map((p: any) => [p.clock, p.kind])).toEqual([['1:40', 'observer'], ['11:40', 'observer'], ['11:50', 'sentry']]);
+    expect(r.placements.map((p: any) => [p.ref, p.clock, p.kind])).toEqual([['wards:disruptor:1', '1:40', 'observer'], ['wards:disruptor:2', '11:40', 'observer'], ['wards:disruptor:3', '11:50', 'sentry']]);
+    // One placement opens as its own record (Codex on #399).
+    expect((resolveRef(t, 'wards:disruptor:2', { hero: 'disruptor', lang: 'en' }) as any).record).toMatchObject({ clock: '11:40', kind: 'observer' });
     expect(r.my_team_by_observers_placed).toEqual([{ hero: 'disruptor', observers: 2 }, { hero: 'sniper', observers: 1 }, { hero: 'sven', observers: 0 }]);
     expect(r.killed_at).toEqual([{ clock: '10:50', kind: 'observer' }, { clock: '20:00', kind: 'sentry' }]);
     expect(r.gaps).toEqual([{ topic: 'vision', reason: 'ward_placements_only_not_what_each_side_saw' }]);
