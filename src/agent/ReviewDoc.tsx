@@ -1,5 +1,5 @@
-import { trackEvent } from '../services/analytics';
-import React, { useEffect, useState } from 'react';
+import { trackEvent, trackOnce } from '../services/analytics';
+import React, { useEffect, useRef, useState } from 'react';
 import { fetchEvidence, type DeepReview } from './api';
 import { EvidenceCard } from './EvidenceCard';
 import { PLANS, planByKey } from '../../lib/agent/plans.js';
@@ -142,9 +142,22 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
   const sig = (g: GoalRule['check']) => (g.kind === 'hold_item' ? g.items.join('+') : g.kind === 'deaths_per10_max' ? g.max : g.kind === 'replay_habit' ? `${g.habit}${g.ability ?? ''}${g.max}` : '');
   const id = `${matchId}:${review.hero}:agent:${spec.kind}:${sig(spec)}${more.length ? `:r${more.map((r) => sig(r.check)).join('+')}` : ''}`;
   const mine = active?.id === id;
+  // Whether readers get to the card at all: once a review it is offered (rendered), once it has been on screen.
+  // Nobody had set a goal in the first week (#364): this says whether the card is not reached, or not taken.
+  const card = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    trackOnce(`goal_offered.${id}`, 'goal_offered', { matchId: String(matchId) });
+    const el = card.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const seen = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) { trackOnce(`goal_seen.${id}`, 'goal_seen', { matchId: String(matchId) }); seen.disconnect(); }
+    }, { threshold: 0.6 });
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, [id, matchId]);
   const make = (): ActiveGoal => ({ id, goal: spec, action: spec.label, findingId: `agent:${finding}`, fromMatch: Number(matchId), fromStart: ctx.fromStart, accountId: ctx.accountId, heroId: ctx.heroId, setAt: Date.now(), ...(more.length ? { rules: more } : {}) });
   return (
-    <div className={`ag-goal ${mine ? 'is-set' : ''}`}>
+    <div ref={card} className={`ag-goal ${mine ? 'is-set' : ''}`}>
       <p className="ag-goal-eyebrow">{mine ? `✓ ${T.goalIs[lang]}` : T.goalTitle[lang]} · {T.goalFrom[lang]} {finding}</p>
       <p className="ag-goal-label">{spec.label[lang]}</p>
       {more.length > 0 && (

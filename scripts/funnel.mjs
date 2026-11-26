@@ -27,6 +27,8 @@ const label = {
   returned: 'came back (of those who opened: on a later day than their first match page)',
   shared: 'shared the game or their review',
   arrived: 'came in by a shared link',
+  goalOffered: 'were offered a next-game goal on a review',
+  goalSeen: 'had that goal card on screen',
   goal: 'set a next-game goal',
   checked: 'had that goal checked on a later game',
   goalOnly: 'asked to check a goal without a review',
