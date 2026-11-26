@@ -22,7 +22,8 @@ export type AnalyticsEventName =
   | 'arrived'
   | 'goal_set'
   | 'goal_checked'
-  | 'goal_check_requested';
+  | 'goal_check_requested'
+  | 'review_failed';
 
 export type AnalyticsProps = Record<string, string | number | boolean>;
 
