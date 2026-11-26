@@ -124,6 +124,10 @@ describe('a Roshan read from its kill', () => {
     expect(r).toMatchObject({ roshans_my_team_took: 1, roshans_enemy_took: 0, roshan_kills_in_the_trace: 1, my_team_aegis_expired: 0, buildings_my_team_took_with_aegis: 0 });
     // From Pudge's side: the kill was the enemy's, the Aegis theirs.
     expect(roshanReport(t, { hero: 'pudge' })).toMatchObject({ roshans_my_team_took: 0, roshans_enemy_took: 1, my_team_aegis_expired: 1 });
+    // A Radiant tower falls while Pudge holds the stolen Aegis: a building the Aegis side (Dire) took with it (Codex on #384).
+    const tower = withKills({ heroes, pos, items: { pudge: { item_aegis: { held: [[210, 510]] } } }, fell: [[300, 'goodguys_tower1_top']] }, { kills: [[200, 'axe', 2]], hits: [[198, 'axe', 500]] });
+    expect(roshanReport(tower, { hero: 'pudge' })).toMatchObject({ buildings_my_team_took_with_aegis: 1, buildings_enemy_took_with_aegis: 0 });
+    expect(roshanReport(tower, { hero: 'sven' })).toMatchObject({ buildings_my_team_took_with_aegis: 0, buildings_enemy_took_with_aegis: 1 });
   });
 
   it('a pickup with no kill row (the last hit was not a hero\'s) is still a take; two kills each keep their own pickup', () => {
