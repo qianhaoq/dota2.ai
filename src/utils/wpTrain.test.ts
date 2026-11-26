@@ -117,13 +117,11 @@ describe('wp-train', () => {
     expect(cv.gold_lead_alone.brier).toBeLessThan(cv.always_half.brier);
     // What it says is what happened, in every tenth: within three points.
     for (const c of cv.calibration) expect([c.said, c.rows > 1000, Math.abs(c.mean_said - c.radiant_won) < 0.03]).toEqual([c.said, true, true]);
-    // And in the first minute: within 7 points of how often the leader at 1:00 won in the training games
-    // (2026-11-25 collection: lead 500–700 → 58% of 209 games; 700–1100 → 65% of 139). The first version said 82%
-    // for a 900 lead.
-    for (const [gold, won] of [[600, 0.58], [900, 0.65]]) {
-      const said = winProbability(model, { minute: 1, gold, barracks: 0 })!;
-      expect([gold, Math.abs(said - won) <= 0.07]).toEqual([gold, true]);
-    }
+    // And in every stretch of the game, the first minute included: wherever there are rows enough to speak of,
+    // what the model said is what happened, within five points. (The first version said 65–84% at 1:00 where the
+    // favoured side won 51–68%.)
+    for (const st of cv.calibration_by_stretch) for (const b of st.bands.filter((x: any) => x.rows >= 200)) expect([st.minutes, b.said, Math.abs(b.mean_said - b.favoured_won) <= 0.05]).toEqual([st.minutes, b.said, true]);
+    expect(cv.calibration_by_stretch.map((x: any) => x.minutes)).toEqual(['1', '2–3', '4–5', '6–10', '11–20', '21–']);
     // A lead counts for something at every minute it is read at, and for less the later it is.
     const at = (minute: number) => winProbability(model, { minute, gold: 5000, barracks: 0 })!;
     expect(at(10)).toBeGreaterThan(at(25));

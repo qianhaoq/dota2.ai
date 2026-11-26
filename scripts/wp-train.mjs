@@ -118,6 +118,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     return { rows: list.length, brier: list.length ? round(brier / list.length) : null, log_loss: list.length ? round(ll / list.length) : null, calibration: bins.map((b, i) => ({ said: `${i * 10}–${i * 10 + 10}%`, rows: b.n, mean_said: b.n ? round(b.p / b.n, 3) : null, radiant_won: b.n ? round(b.y / b.n, 3) : null })) };
   };
   const m = outOfFold(scored.model); const g = outOfFold(scored.gold); const gt = outOfFold(scored.timed);
+  /**
+   * Calibration in each stretch of the game, folded onto the favoured side: of the rows where the model gave one
+   * side between 60% and 70% (and so on), how often that side won. A model can be right overall and wrong early.
+   */
+  const favoured = (lo, hi) => {
+    const rowsIn = scored.model.filter((x) => x[2] >= lo && x[2] <= hi);
+    return { minutes: lo === hi ? `${lo}` : `${lo}–${hi === 999 ? '' : hi}`, bands: [0.5, 0.6, 0.7, 0.8, 0.9].map((a) => {
+      const inBand = rowsIn.map(([x, y, , , w]) => [sigmoid(x.reduce((z, v, i) => z + v * w[i], 0)), y]).filter(([p]) => { const c = Math.max(p, 1 - p); return c >= a && c < a + 0.1; });
+      if (!inBand.length) return { said: `${a * 100}–${a * 100 + 10}%`, rows: 0, mean_said: null, favoured_won: null };
+      return { said: `${a * 100}–${a * 100 + 10}%`, rows: inBand.length, mean_said: round(inBand.reduce((t, [p]) => t + Math.max(p, 1 - p), 0) / inBand.length, 3), favoured_won: round(inBand.filter(([p, y]) => (p >= 0.5) === (y === 1)).length / inBand.length, 3) };
+    }) };
+  };
   const stretch = (lo, hi) => { const pick = (l) => l.filter((x) => x[2] >= lo && x[2] < hi); const r = pick(scored.model); return r.length ? { minutes: `${lo}–${hi}`, rows: r.length, brier: outOfFold(r).brier, gold_lead_alone: outOfFold(pick(scored.gold)).brier } : null; };
   const group = (name, lo, hi) => { const r = scored.model.filter((x) => x[3].rank != null && x[3].rank >= lo && x[3].rank < hi); return r.length ? { rank: name, games: new Set(r.map((x) => x[3].id)).size, rows: r.length, brier: outOfFold(r).brier } : null; };
   const w = fit(rows);
@@ -143,6 +155,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       gold_lead_with_the_minute: { brier: gt.brier, log_loss: gt.log_loss },
       always_half: { brier: 0.25, log_loss: round(Math.log(2)) },
       calibration: m.calibration,
+      calibration_by_stretch: [[1, 1], [2, 3], [4, 5], [6, 10], [11, 20], [21, 999]].map(([a, b]) => favoured(a, b)),
       by_stretch: [[1, 10], [10, 20], [20, 30], [30, 40], [40, 200]].map(([a, b]) => stretch(a, b)).filter(Boolean),
       by_rank: [group('Herald–Crusader (rank_tier under 40)', 0, 40), group('Archon–Legend (40–59)', 40, 60), group('Ancient and above (60+)', 60, 100)].filter(Boolean),
     },
