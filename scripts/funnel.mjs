@@ -39,6 +39,7 @@ console.log(`browsers (by anonId; ${out.anonymous} events had none):`);
 for (const [step, text] of Object.entries(label)) {
   console.log(`  ${String(out.browsers[step]).padStart(5)}  ${text}${step === 'opened' ? '' : `   — of those who opened: ${out.ofOpened[step]}${pct(out.ofOpened[step])}`}`);
 }
+if (out.loop.set) console.log(`the loop (north star): ${out.loop.set} browser(s) set a next-game goal — checked on a later game within 7 days: ${out.loop.checked_within_7_days}; not yet, still inside the 7 days: ${out.loop.pending}; not within 7 days: ${out.loop.not_checked}`);
 const said = out.ratings.right + out.ratings.wrong + out.ratings.useless;
 if (said) console.log(`findings rated (events; a change of mind counts again): right ${out.ratings.right}, wrong ${out.ratings.wrong}, not useful ${out.ratings.useless} — ${out.ratings.on_the_first_finding} of ${said} about the first finding. The words themselves: scripts/feedback-report.mjs`);
 const sources = Object.entries(out.bySource).sort((a, b) => b[1].came - a[1].came);

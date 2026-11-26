@@ -69,6 +69,21 @@ describe('the review page funnel from event logs', () => {
     expect(out.ofOpened).toMatchObject({ goal: 2, checked: 1 });
   });
 
+  it('the north star: of the browsers that set a goal, who had it checked on a later game within 7 days', () => {
+    const out = summarizeFunnel([
+      line('goal_set', 'anon_a', {}, '2026-11-01T10:00:00Z'), line('goal_checked', 'anon_a', { result: 'met' }, '2026-11-04T10:00:00Z'),
+      // Checked, but on day 9: not within the week.
+      line('goal_set', 'anon_b', {}, '2026-11-01T10:00:00Z'), line('goal_checked', 'anon_b', { result: 'missed' }, '2026-11-10T10:00:00Z'),
+      line('goal_set', 'anon_c', {}, '2026-11-02T10:00:00Z'),
+      // Set two days before the last event: it may yet be checked — pending, not a failure.
+      line('goal_set', 'anon_d', {}, '2026-11-18T10:00:00Z'), line('match_opened', 'anon_e', {}, '2026-11-20T10:00:00Z'),
+      // A check before any goal was set by that browser does not count for it.
+      line('goal_checked', 'anon_f', { result: 'met' }, '2026-11-01T09:00:00Z'), line('goal_set', 'anon_f', {}, '2026-11-01T10:00:00Z'),
+    ]);
+    expect(out.loop).toEqual({ set: 5, checked_within_7_days: 1, pending: 1, not_checked: 3 });
+    expect(summarizeFunnel([line('match_opened', 'anon_a')]).loop).toEqual({ set: 0, checked_within_7_days: 0, pending: 0, not_checked: 0 });
+  });
+
   it('a goal check without a review is its own step, not a request for a review', () => {
     const out = summarizeFunnel([line('match_opened', 'anon_q'), line('goal_check_requested', 'anon_q'), line('goal_checked', 'anon_q', { result: 'met' })]);
     expect(out.browsers).toMatchObject({ opened: 1, requested: 0, goalOnly: 1, checked: 1 });
