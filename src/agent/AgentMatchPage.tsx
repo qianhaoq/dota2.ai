@@ -15,6 +15,7 @@ import { PLANS, planKey } from '../../lib/agent/plans.js';
 import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelWait, writesSlowly } from '../../lib/agent/models.js';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import { WaitDeaths } from './WaitDeaths';
+import { WaitFacts } from './WaitFacts';
 import { ShareBar } from './ShareBar';
 import { useReadyCallback } from './readyCallback';
 import './agent.css';
@@ -726,8 +727,13 @@ export const AgentMatchPage: React.FC = () => {
             ))}
           </ol>
         </div>
-        {/* The replay is parsed and the review is being written: the reader's own deaths, to watch meanwhile. Outside the status region, so a screen reader is not read the whole list as progress. */}
-        {hasTrace && heroKey && !parsing && <WaitDeaths matchId={matchId} hero={heroKey} lang={lang} />}
+        {/* The replay is parsed and the review is being written: the reader's own deaths, fights and key items, to watch meanwhile. Outside the status region, so a screen reader is not read the whole list as progress. */}
+        {hasTrace && heroKey && !parsing && (
+          <>
+            <WaitDeaths matchId={matchId} hero={heroKey} lang={lang} />
+            <WaitFacts matchId={matchId} hero={heroKey} lang={lang} />
+          </>
+        )}
         {/* The match record needs no replay: line-ups, items and the result are there from the first second of the wait, also while the replay is still being fetched. */}
         {scoreboard}
       </Shell>
