@@ -1239,6 +1239,21 @@ describe('AgentMatchPage', () => {
     expect(sent.find((e) => e.event === 'review_ready').props).toEqual({ matchId: '8000000051', hero: 'beastmaster', lang: 'en', src: 'xhh' });
   }, 10000);
 
+  it('the wait offers to notify the reader when the review is ready, and says the step in the tab title', async () => {
+    class N { static permission = 'default'; static requestPermission = async () => 'granted'; }
+    (window as any).Notification = N;
+    try {
+      mockFetch({
+        '/review?': { status: 'running', steps: [] },
+        '/api/agent/8000000061': { trace: true, model_configured: true, heroes },
+      });
+      window.sessionStorage.setItem('dota2ai.review-intent.8000000061.beastmaster.en', '1');
+      page('/r/8000000061?hero=beastmaster&lang=en');
+      expect(await screen.findByRole('button', { name: 'Notify me when it is ready' })).toBeTruthy();
+      expect(document.title).toMatch(/^\(\d\/4\) Reviewing · Beastmaster — dota2\.ai$/);
+    } finally { delete (window as any).Notification; }
+  });
+
   it('the page counts as opened before anything has loaded, so a reader who leaves while it loads is counted', async () => {
     mockFetch({ '/api/agent/8000000033': () => new Promise(() => {}), '/api/coach/8000000033': () => new Promise(() => {}) });
     page('/r/8000000033?lang=en');
