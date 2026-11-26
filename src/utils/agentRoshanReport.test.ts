@@ -225,6 +225,19 @@ describe('what the review found on #384', () => {
     expect(resolveRef(t, 'roshan:sven:t2', { hero: 'sven', lang: 'en' })).toBeNull();
   });
 
+  it('kill rows without damage rows: the attempt is not known — not an empty one (Codex on #384)', () => {
+    const rows = JSON.parse(readFileSync(new URL('../../packages/review-engine/test/fixtures/roshan-9100904020.json', import.meta.url), 'utf8'));
+    const idx = (npc: string | null) => (npc == null ? -1 : trace.names.indexOf(npc));
+    const noHits = { ...trace, roshan_kills: rows.roshan_kills.map((x: any[]) => [x[0], idx(x[1]), ...x.slice(2)]), tormentor_kills: rows.tormentor_kills };
+    const r: any = roshanReport(noHits, { hero: 'beastmaster' });
+    expect(r).toMatchObject({ read_from: 'roshan_kills_and_aegis_pickups', roshan_kills_in_the_trace: 1, my_team_roshans_i_hit: null, roshans_the_other_side_also_hit: null });
+    expect(r.takes[0]).toMatchObject({ clock: '32:18', killed_by: 'phantom_assassin', attempt_not_known: 'no_roshan_damage_in_trace' });
+    expect(r.takes[0]).not.toHaveProperty('attempt');
+    // The same kill with its damage rows has the 26-second attempt.
+    const withRows = { ...noHits, roshan_damage: rows.roshan_damage.map((x: any[]) => [x[0], idx(x[1]), x[2]]) };
+    expect((roshanReport(withRows, { hero: 'beastmaster' }) as any).takes[0].attempt.seconds).toBe(26);
+  });
+
   it('in Chinese, where the other side stood when it began is named in Chinese', () => {
     const rows = JSON.parse(readFileSync(new URL('../../packages/review-engine/test/fixtures/roshan-9100904020.json', import.meta.url), 'utf8'));
     const idx = (npc: string | null) => (npc == null ? -1 : trace.names.indexOf(npc));
