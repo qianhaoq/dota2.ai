@@ -60,6 +60,8 @@ const T = {
   sec: { en: 's', zh: '秒' },
   lane: { top: { en: 'Top lane', zh: '上路' }, mid: { en: 'Mid lane', zh: '中路' }, bot: { en: 'Bottom lane', zh: '下路' } } as Record<string, Record<Lang, string>>,
   laneAt10: { en: 'at 10:00', zh: '10 分钟时' },
+  laneEarned: { en: 'gold earned before 10:00, from the replay', zh: '10 分钟前挣到的金钱（录像读出）' },
+  laneFromReplay: { en: 'Read from the replay: this game has no per-minute numbers in its match record. Last hits are at least these.', zh: '从录像读出：这局的比赛记录没有逐分钟数据。补刀数是"至少"。' },
   laneResult: { 'won big': { en: 'won big', zh: '大优' }, won: { en: 'won', zh: '优势' }, even: { en: 'even', zh: '均势' }, lost: { en: 'lost', zh: '劣势' }, 'lost badly': { en: 'lost badly', zh: '大劣' } } as Record<string, Record<Lang, string>>,
   laneCols: { en: ['Hero', 'LH 5:00', 'LH 10:00', 'Denies', 'Gold', 'XP'], zh: ['英雄', '5 分补刀', '10 分补刀', '反补', '金钱', '经验'] },
   laneDeaths: { en: 'Deaths before 10:00', zh: '10 分钟前阵亡' },
@@ -481,8 +483,13 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     return (
       <div className="ag-rec">
         {r.lane
-          ? <p className="ag-rec-head">{T.lane[r.lane] ? t(T.lane[r.lane]) : r.lane} · {t(T.laneAt10)} {r.lane_gold_at_10_00.my_team} : {r.lane_gold_at_10_00.enemy}{r.lane_result && T.laneResult[r.lane_result] ? <> · <b>{t(T.laneResult[r.lane_result])}</b></> : null}</p>
+          ? <p className="ag-rec-head">{T.lane[r.lane] ? t(T.lane[r.lane]) : r.lane}{(() => {
+            // The record's lane gold at 10:00, or (read from the replay) the gold earned before it; either may be absent.
+            const g = r.lane_gold_at_10_00 ?? r.lane_gold_earned_before_10_00;
+            return g ? <> · {t(r.lane_gold_at_10_00 ? T.laneAt10 : T.laneEarned)} {g.my_team} : {g.enemy}</> : null;
+          })()}{r.lane_result && T.laneResult[r.lane_result] ? <> · <b>{t(T.laneResult[r.lane_result])}</b></> : null}</p>
           : <p className="ag-rec-note">{t(T.laneNoEconomy)}</p>}
+        {r.lane && r.read_from === 'replay' && <p className="ag-rec-note">{t(T.laneFromReplay)}</p>}
         {r.lane && (
           <div className="ag-lane-scroll">
             <table className="ag-lane">
