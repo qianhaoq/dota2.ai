@@ -6,7 +6,7 @@ import { modelInputs, winProbabilityAt, winProbabilitySwing } from '../src/value
 import { linkHeroNames } from '../src/trace/index.js';
 
 /** A model with round weights, so the arithmetic can be followed by hand. */
-const model = { schema: WIN_PROB_SCHEMA, features: FEATURES, weights: [0, 0.1, 0.5, 0.4] };
+const model = { schema: WIN_PROB_SCHEMA, features: FEATURES, weights: [0, 0.1, 0.5, 0.4, -0.2] };
 const even = { minute: 40, gold: 0, barracks: 0 };
 
 describe('win probability', () => {
@@ -16,8 +16,8 @@ describe('win probability', () => {
     const behind = winProbability(model, { ...even, gold: -5000 });
     expect(ahead).toBeGreaterThan(0.5);
     expect(ahead + behind).toBeCloseTo(1, 12);
-    // By hand, at 40:00: g = 5, t = 4, √t = 2 → 0.1·5 + 0.5·5/2 = 1.75 → 1 / (1 + e^-1.75).
-    expect(ahead).toBeCloseTo(1 / (1 + Math.exp(-1.75)), 12);
+    // By hand, at 40:00: g = 5, t = 4, √t = 2, early = 1 → 0.1·5 + 0.5·5/2 − 0.2·5 = 0.75 → 1 / (1 + e^-0.75).
+    expect(ahead).toBeCloseTo(1 / (1 + Math.exp(-0.75)), 12);
     // Barracks: one more of theirs down than of ours is 0.4 on the same scale.
     expect(winProbability(model, { ...even, barracks: 1 })).toBeCloseTo(1 / (1 + Math.exp(-0.4)), 12);
   });
@@ -33,10 +33,14 @@ describe('win probability', () => {
   });
 
   it('features are named in the order of the weights', () => {
-    expect(FEATURES).toEqual(['bias', 'gold_k', 'gold_k_per_sqrt_t', 'barracks']);
-    expect(featuresOf({ minute: 40, gold: 4000, barracks: -1 })).toEqual([1, 4, 2, -1]);
+    expect(FEATURES).toEqual(['bias', 'gold_k', 'gold_k_per_sqrt_t', 'barracks', 'gold_k_early']);
+    expect(featuresOf({ minute: 40, gold: 4000, barracks: -1 })).toEqual([1, 4, 2, -1, 4]);
+    // Before minute 10 the time does not shrink below minute 10's: the early term carries the first minutes.
+    expect(featuresOf({ minute: 1, gold: 1000, barracks: 0 })).toEqual([1, 1, 1, 0, 0.1]);
+    expect(featuresOf({ minute: 5, gold: 1000, barracks: 0 })).toEqual([1, 1, 1, 0, 0.5]);
+    expect(featuresOf({ minute: 10, gold: 1000, barracks: 0 })).toEqual([1, 1, 1, 0, 1]);
     // Towers are not read: with or without them, the same features.
-    expect(featuresOf({ minute: 40, gold: 4000, barracks: -1, towers: 5 })).toEqual([1, 4, 2, -1]);
+    expect(featuresOf({ minute: 40, gold: 4000, barracks: -1, towers: 5 })).toEqual([1, 4, 2, -1, 4]);
   });
 
   it('a missing number is no probability — never a guess at zero', () => {
@@ -46,7 +50,9 @@ describe('win probability', () => {
   it('a model of another shape is not used', () => {
     expect(winProbability({ ...model, schema: 'something/else@1' }, even)).toBeNull();
     expect(winProbability({ ...model, weights: [0, 1] }, even)).toBeNull();
-    expect(winProbability({ ...model, features: ['bias', 'gold_k', 'barracks', 'gold_k_per_sqrt_t'] }, even)).toBeNull();
+    expect(winProbability({ ...model, features: ['bias', 'gold_k', 'barracks', 'gold_k_per_sqrt_t', 'gold_k_early'] }, even)).toBeNull();
+    // The previous four-feature file: refused, not read by position.
+    expect(winProbability({ ...model, features: ['bias', 'gold_k', 'gold_k_per_sqrt_t', 'barracks'], weights: [0, 0.1, 0.5, 0.4] }, even)).toBeNull();
     // The first fit's shape (six features): a file of it is refused, not read by position.
     expect(winProbability({ ...model, features: ['bias', 'gold_k', 'gold_k_per_t', 'towers', 'barracks', 'towers_t'], weights: [0, 0.1, 0.5, 0.2, 0.4, 0.05] }, even)).toBeNull();
     expect(winProbability(null, even)).toBeNull();

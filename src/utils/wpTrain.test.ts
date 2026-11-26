@@ -79,7 +79,7 @@ describe('wp-train', () => {
   it('the fit finds weights the data were drawn from, and scores better than gold alone when barracks matter', () => {
     // Games drawn from a known model: a seeded generator, so the test is the same every run.
     let seed = 12345; const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
-    const truth = [0.1, -0.1, 0.5, 0.6];
+    const truth = [0.1, 0.2, 0.5, 0.6, -0.3];
     const rows: [number[], number][] = [];
     for (let i = 0; i < 20000; i += 1) {
       const minute = 1 + Math.floor(rnd() * 45);
@@ -91,7 +91,7 @@ describe('wp-train', () => {
     expect(w).toHaveLength(FEATURES.length);
     w.forEach((v: number, k: number) => expect([FEATURES[k], Math.abs(v - truth[k]) < 0.08]).toEqual([FEATURES[k], true]));
     const goldOnly = fit(rows, [0, 1]);
-    expect(goldOnly.slice(2)).toEqual([0, 0]);
+    expect(goldOnly.slice(2)).toEqual([0, 0, 0]);
     const full = score(w, rows); const gold = score(goldOnly, rows); const half = score(new Array(FEATURES.length).fill(0), rows);
     expect(full.brier).toBeLessThan(gold.brier);
     expect(gold.brier).toBeLessThan(half.brier);
@@ -117,6 +117,13 @@ describe('wp-train', () => {
     expect(cv.gold_lead_alone.brier).toBeLessThan(cv.always_half.brier);
     // What it says is what happened, in every tenth: within three points.
     for (const c of cv.calibration) expect([c.said, c.rows > 1000, Math.abs(c.mean_said - c.radiant_won) < 0.03]).toEqual([c.said, true, true]);
+    // And in the first minute: within 7 points of how often the leader at 1:00 won in the training games
+    // (2026-11-25 collection: lead 500–700 → 58% of 209 games; 700–1100 → 65% of 139). The first version said 82%
+    // for a 900 lead.
+    for (const [gold, won] of [[600, 0.58], [900, 0.65]]) {
+      const said = winProbability(model, { minute: 1, gold, barracks: 0 })!;
+      expect([gold, Math.abs(said - won) <= 0.07]).toEqual([gold, true]);
+    }
     // A lead counts for something at every minute it is read at, and for less the later it is.
     const at = (minute: number) => winProbability(model, { minute, gold: 5000, barracks: 0 })!;
     expect(at(10)).toBeGreaterThan(at(25));
