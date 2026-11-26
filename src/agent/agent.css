@@ -412,3 +412,8 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-replay-deaths time { font-variant-numeric: tabular-nums; }
 .ag-replay-place { margin: 2px 0 0; font-size: var(--fs-meta); color: var(--text-2); font-variant-numeric: tabular-nums; }
 .ag-replay-outside, .ag-replay figcaption { margin: 8px 0 0; font-size: var(--fs-meta); color: var(--text-3); line-height: 1.5; }
+
+/* "Notify me when it is ready" on the wait (readyCallback.tsx). */
+.ag-notify-btn { margin: 4px 0 6px; padding: 7px 16px; }
+.ag-notify { color: var(--text-3); font-size: var(--fs-meta); margin: 6px 0; }
+.ag-notify.is-on { color: var(--good); }

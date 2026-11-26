@@ -26,6 +26,7 @@ describe('validateAnalyticsEvent', () => {
       ['goal_seen', { matchId: '9100904020', text: 'x' }, { matchId: '9100904020' }],
       ['review_failed', { matchId: '8604512648', lang: 'en', hero: 'sven', stage: 'parse', reason: 'replay_gone', final: true, message: 'free text' }, { matchId: '8604512648', lang: 'en', hero: 'sven', stage: 'parse', reason: 'replay_gone', final: true }],
       ['goal_check_requested', { matchId: '9100999997', lang: 'en', hero: 'beastmaster', note: 'free text' }, { matchId: '9100999997', lang: 'en', hero: 'beastmaster' }],
+      ['ready_callback', { matchId: '9100904020', kind: 'granted', permission: 'granted' }, { matchId: '9100904020', kind: 'granted' }],
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
       ['moment_played', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', t: 1825, fact: 'free text' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster' }],
       ['finding_rated', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', rating: 'wrong', first: true, title: 'free text', reason: 'fact' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', rating: 'wrong', first: true }],
