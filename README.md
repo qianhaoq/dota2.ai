@@ -142,7 +142,7 @@ No MCP? Any agent that can fetch a URL works with this instead:
 
 > Review my Dota 2 match 9100904020, I played Beastmaster. Call the API described at https://dota2.ai/llms.txt, quote only what it returns, and say when a sample is too small.
 
-The server's 8 tools — `review_match`, `get_evidence`, `recent_matches`, `coach_report`, `coach_cases`, `coach_ask`, `goal_check`, `hero_matchup` — are the instant, rule-based tier: a sectioned report from match data, pro games on the same problem, matchups and next-game goals ([reference](packages/mcp/README.md)). To run it locally over stdio, use `node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`. There is also an agent skill at [`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md).
+`replay_review` is the full review this site writes from the replay, the same one as the web page: it never blocks, so the agent calls it again while it says `parsing` or `reviewing` (two to four minutes the first time) and gets the verdict, the findings with their replay evidence and the page to link. The other 8 tools — `review_match`, `get_evidence`, `recent_matches`, `coach_report`, `coach_cases`, `coach_ask`, `goal_check`, `hero_matchup` — are the instant, rule-based tier: a sectioned report from match data, pro games on the same problem, matchups and next-game goals ([reference](packages/mcp/README.md)). To run it locally over stdio, use `node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`. There is also an agent skill at [`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md).
 
 ### From a terminal
 

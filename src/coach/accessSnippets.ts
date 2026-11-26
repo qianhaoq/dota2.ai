@@ -2,8 +2,8 @@
  * How to use dota2.ai outside the web page — one source for the home page's
  * "four ways" block and the review page's snippet drawer, so commands and
  * tool names never drift apart. Every command here works as written:
- * the remote MCP is live at /mcp with these 8 tools (tested in
- * packages/mcp/test/remoteCoach.test.js); the CLI is not on npm, so it runs
+ * the remote MCP is live at /mcp with these 9 tools (tested in
+ * packages/mcp/test/remoteCoach.test.js and src/utils/agentReplayTool.test.ts); the CLI is not on npm, so it runs
  * from a checkout.
  */
 import type { Bi } from './types';
@@ -12,7 +12,7 @@ export const MCP_URL = 'https://dota2.ai/mcp';
 
 /** The tools `tools/list` returns on the hosted /mcp, in that order. */
 export const MCP_TOOLS = [
-  'review_match', 'get_evidence', 'recent_matches', 'coach_report',
+  'review_match', 'get_evidence', 'replay_review', 'recent_matches', 'coach_report',
   'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup',
 ] as const;
 
@@ -113,6 +113,6 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
 /** A prompt the user can paste into any agent. */
 export function agentPrompt(lang: 'en' | 'zh'): string {
   return lang === 'zh'
-    ? `帮我复盘一场 Dota 2 比赛：比赛 ID <比赛ID>，我玩的是 <英雄>。能用 MCP 就连 ${MCP_URL}（coach_report / coach_ask 等工具）；否则按 https://dota2.ai/llms.txt 调用接口。只引用接口返回的数据，样本不足就直说。`
-    : `Review my Dota 2 match: match ID <match id>, I played <hero>. If you can use MCP, connect to ${MCP_URL} (coach_report, coach_ask and more); otherwise call the API described at https://dota2.ai/llms.txt. Quote only what it returns, and say when a sample is too small.`;
+    ? `帮我复盘一场 Dota 2 比赛：比赛 ID <比赛ID>，我玩的是 <英雄>。能用 MCP 就连 ${MCP_URL}（replay_review 看录像出完整复盘，返回 parsing/reviewing 时隔一会再调；即时版用 coach_report）；否则按 https://dota2.ai/llms.txt 调用接口。只引用接口返回的数据，样本不足就直说。`
+    : `Review my Dota 2 match: match ID <match id>, I played <hero>. If you can use MCP, connect to ${MCP_URL} (replay_review for the full review from the replay — call it again while it says parsing or reviewing; coach_report for the instant one); otherwise call the API described at https://dota2.ai/llms.txt. Quote only what it returns, and say when a sample is too small.`;
 }
