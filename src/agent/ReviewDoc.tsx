@@ -47,6 +47,28 @@ const T = {
   story: { en: 'How the game went', zh: '对局主线', ru: 'Ход игры' },
   fights: { en: 'Fights: bars above the line are fights your team lost fewer heroes in; the line is your team\'s gold lead.', zh: '团战：横线上方是我方少死人的团，下方是多死人的团；折线是我方经济领先。', ru: 'Драки: столбцы выше линии — драки, где ваша команда потеряла меньше героев; кривая — перевес по золоту.' },
   turn: { en: 'the turn', zh: '转折', ru: 'перелом' },
+  presenceTitle: { en: 'Where you were when your team lost ground in fights', zh: '己方掉势团战里，你当时在哪', ru: 'Где вы были в проигранных драках' },
+  presenceNote: {
+    en: 'Share of your team’s fight win-chance drops by your state — where you stood, not whose fault a fight was.',
+    zh: '按己方掉势团战统计你当时的状态占比——只陈述在不在场，不等同于谁的责任。',
+    ru: 'Доля потерь шанса на победу в драках по вашему состоянию — факт позиции, а не оценка вины.',
+  },
+  presenceCoverage: {
+    en: 'Covers the {r} of {total} fights with readable gold-lead minutes ({u} fight(s) lacked gold-lead minutes and are not in these shares).',
+    zh: '仅覆盖可算出胜率变化的 {r}/{total} 波团战（另有 {u} 波团缺少对应分钟经济差，未计入占比）。',
+    ru: 'Учтены {r} из {total} драк с данными по перевесу золота (ещё {u} без данных за минуту не входят в доли).',
+  },
+  presenceUnknown: {
+    en: 'Not known — {u} fight(s) could not be read for win-chance change (missing gold-lead minutes).',
+    zh: '不确定——有 {u} 波团战缺少对应分钟经济差，读不出胜率变化。',
+    ru: 'Неизвестно — для {u} драк нельзя прочитать изменение шанса (нет данных по золоту за минуту).',
+  },
+  presencePart: {
+    in_it: { en: 'In the fight', zh: '在团里', ru: 'В драке' },
+    elsewhere: { en: 'Elsewhere', zh: '在别处', ru: 'В другом месте' },
+    dead: { en: 'Already dead', zh: '已阵亡', ru: 'В таверне' },
+    not_known: { en: 'Not sampled', zh: '缺少采样', ru: 'Нет данных' },
+  } as Record<'in_it' | 'elsewhere' | 'dead' | 'not_known', Record<Lang, string>>,
   findings: { en: 'What decided it', zh: '核心问题', ru: 'Что решило игру' },
   fix: { en: 'Do instead', zh: '改法', ru: 'Как исправить' },
   ruleWhen: { en: 'When', zh: '当', ru: 'Когда' },
@@ -200,6 +222,54 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
   );
 };
 
+interface FallsByMyPart {
+  in_it: number | null;
+  elsewhere: number | null;
+  dead: number | null;
+  not_known: number | null;
+}
+
+const PRESENCE_KEYS = ['in_it', 'elsewhere', 'dead', 'not_known'] as const;
+
+const FightPresenceStrip: React.FC<{ falls: FallsByMyPart; fightsRead: number; fightsNotRead: number; lang: Lang }> = ({ falls, fightsRead, fightsNotRead, lang }) => {
+  const parts = PRESENCE_KEYS
+    .map((key) => ({ key, share: falls[key] }))
+    .filter((p): p is { key: typeof PRESENCE_KEYS[number]; share: number } => typeof p.share === 'number' && p.share > 0);
+  if (parts.length === 0 && fightsNotRead <= 0) return null;
+  const total = fightsRead + fightsNotRead;
+  return (
+    <figure className="ag-presence" aria-label={T.presenceTitle[lang]}>
+      <p className="ag-presence-head">{T.presenceTitle[lang]}</p>
+      {parts.length > 0 ? (
+        <>
+          <div className="ag-presence-bar" role="img" aria-label={parts.map((p) => `${T.presencePart[p.key][lang]} ${Math.round(p.share * 100)}%`).join(', ')}>
+            {parts.map((p) => (
+              <span key={p.key} className={`ag-presence-seg is-${p.key}`} style={{ flexGrow: p.share, flexBasis: `${Math.round(p.share * 100)}%` }} />
+            ))}
+          </div>
+          <ul className="ag-presence-legend">
+            {parts.map((p) => (
+              <li key={p.key} className={`is-${p.key}`}>
+                <i aria-hidden="true" />
+                <span>{T.presencePart[p.key][lang]}</span>
+                <b>{Math.round(p.share * 100)}%</b>
+              </li>
+            ))}
+          </ul>
+          {fightsNotRead > 0 && (
+            <p className="ag-presence-unread">
+              {T.presenceCoverage[lang].replace('{r}', String(fightsRead)).replace('{total}', String(total)).replace('{u}', String(fightsNotRead))}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="ag-presence-unread">{T.presenceUnknown[lang].replace('{u}', String(fightsNotRead))}</p>
+      )}
+      <figcaption>{T.presenceNote[lang]}</figcaption>
+    </figure>
+  );
+};
+
 export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode; /** Sharing the review, shown once the reader has something to share: after the findings. */ share?: React.ReactNode; /** The review is the default model's, whose rewrite takes the usual two to three minutes; false for another model's. */ quick?: boolean; /** Ask under each finding whether it was right: the plan this review was asked with, the id of the model that wrote it and the prompt version it was written under (they name the stored review the word is about). Absent: not asked. */ feedback?: { plan?: string | null; model?: string | null; version: number } | null }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, goalContext = null, board = null, feedback = null, share = null, quick = true }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   // The release, and the hotfix within it when the game was played after one ("7.41f（2026-10-07 热修复后）").
@@ -209,9 +279,13 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
   // The plan last asked about: the reader may want the whole review made for it, not only an answer.
   const [asked, setAsked] = useState<string | null>(null);
   const [overview, setOverview] = useState<{ fights: Fight[]; duration: { t: number } | null; turning_fight?: { ref: string } | { none: true } | null } | null>(null);
+  const [moments, setMoments] = useState<{ read?: boolean; falls_by_my_part?: FallsByMyPart | null; fights_read?: number; fights_not_read?: number } | null>(null);
   useEffect(() => {
     let alive = true;
+    setOverview(null);
+    setMoments(null);
     fetchEvidence(matchId, review.hero, lang, 'overview').then((r) => { if (alive) setOverview(r.record); }).catch(() => {});
+    fetchEvidence(matchId, review.hero, lang, `moments:${review.hero}`).then((r) => { if (alive) setMoments(r.record); }).catch(() => {});
     return () => { alive = false; };
   }, [matchId, review.hero, lang]);
   const [first, ...rest] = review.findings;
@@ -291,7 +365,8 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       <section className="ag-whole">
         <h2>{t(T.whole)}</h2>
         {first && <p className="ag-verdict"><span>{t(T.verdict)}</span>{review.verdict}</p>}
-        {overview && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
+        {overview && Array.isArray(overview.fights) && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
+        {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} fightsRead={moments.fights_read ?? 0} fightsNotRead={moments.fights_not_read ?? 0} lang={lang} />}
         {review.mainline.length > 0 && (
           <details className="ag-fold">
             <summary><h3>{t(T.story)}</h3><span>{t(T.parts).replace('{n}', String(review.mainline.length))}</span></summary>
