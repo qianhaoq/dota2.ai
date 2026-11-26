@@ -15,7 +15,7 @@
  *   is kept, not inferred from `to`), ability levels as
  *   change points, held items and control states (stunned, silenced, …) as
  *   intervals — all from the 4 Hz samples, so times are within 0.25 s;
- * - the hero-relevant combat log: casts, item uses, hero deaths, purchases,
+ * - the hero-relevant combat log: casts, item uses (with the hero an item went to), hero deaths, purchases,
  *   building kills, control / spell-immunity modifiers, and damage to heroes
  *   and buildings summed per second by (attacker, target, inflictor);
  * - each hero's net worth once a game minute, from the replay's match metadata
@@ -246,7 +246,10 @@ export function createTraceBuilder() {
           }
           break;
         case 'DOTA_COMBATLOG_ITEM':
-          if (realHero(e.attacker_hero, e.attacker_illusion)) itemUses.push([t, id(e.attacker), id(e.inflictor), row]);
+          // [t, hero, item, row, target]: the target only when it is a hero (a Force Staff or Glimmer Cape given to an
+          // ally, a Lotus Orb on one, an Orchid on an enemy); null for none or anything else. A trace built before this
+          // has no fifth column: who an item went to is then not known.
+          if (realHero(e.attacker_hero, e.attacker_illusion)) itemUses.push([t, id(e.attacker), id(e.inflictor), row, e.target_hero === true && typeof e.target === 'string' ? id(e.target_illusion === true ? `illusion:${e.target}` : e.target) : null]);
           break;
         case 'DOTA_COMBATLOG_DEATH':
           if (realHero(e.target_hero, e.target_illusion)) deaths.push([t, id(e.target), id(e.attacker), row]);
