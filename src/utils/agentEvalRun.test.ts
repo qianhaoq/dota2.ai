@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_BUDGET, DEFAULT_FLOOR, REVIEW_COST_ESTIMATE, parseRunArgs, planRuns, reviewsAlreadyIn, runAll, runFileName, spendVerdict } from '../../lib/agent/evalRun.js';
 import { DEFAULT_BALANCE_FLOOR } from '../../lib/agent/modelBalance.js';
@@ -178,5 +179,13 @@ describe('scoring a run: every review written of a game counts', () => {
   it('a stored review alone is still the one review of its game', () => {
     const out: any = evaluate([entry('1.axe.zh.p37.review.json', review('旧', 'enemy_play')), entry('1.axe.zh.p38.review.json', review('新', 'your_play'))], new Map());
     expect(out.games.map((g: any) => g.file)).toEqual(['1.axe.zh.p38.review.json']);
+  });
+});
+
+describe('a paid eval run writes the review in one language', () => {
+  it('does not ask for the other languages (#393): they double the time and spend and change no score', () => {
+    const src = readFileSync(new URL('../../scripts/eval-run.mjs', import.meta.url), 'utf8');
+    const call = src.match(/runDeepReview\(\{[^}]*\}\)/)?.[0] ?? '';
+    expect(call).toContain('translate: false');
   });
 });
