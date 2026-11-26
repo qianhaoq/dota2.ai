@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
-import { roshanReport, aegisTakes, ROSHAN_TOOL, AEGIS_SECONDS, ATTEMPT_GAP, PICKUP_WITHIN } from '../../lib/agent/roshanReport.js';
+import { roshanReport, aegisTakes, ROSHAN_TOOL, AEGIS_SECONDS, ATTEMPT_GAP, PICKUP_WITHIN, ROSHAN_PITS, PIT_NEAR, pitAt } from '../../lib/agent/roshanReport.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { deepReviewSystem, reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
@@ -14,6 +14,8 @@ const FIXTURE = new URL('../../packages/review-engine/test/fixtures/trace-910090
 /** A real ranked game (9100904020): Beastmaster on Dire, lost in 42:31. Radiant took one Roshan. */
 const trace = JSON.parse(gunzipSync(readFileSync(FIXTURE)).toString());
 
+/** Where the synthetic games happen: Roshan's Dire-side pit (ROSHAN_PITS). Positions given are relative to it. */
+const PIT = [2702, -2693];
 /** Heroes at fixed spots; `items` per hero { key: { held: [[from, to]] } }; `deaths` [second, victim]; `fell` [second, building]. */
 function synth({ n = 1000, heroes, pos = {}, items = {}, deaths = [], fell = [] }: any) {
   const H = heroes.map(([key, team]: [string, number], i: number) => ({ key, npc: `npc_dota_hero_${key}`, team, player_index: i }));
@@ -22,7 +24,7 @@ function synth({ n = 1000, heroes, pos = {}, items = {}, deaths = [], fell = [] 
   const buildings = fell.map(([s, b]: any) => [s, id(`npc_dota_${b}`), 2, 0]);
   return {
     schema: 'dota2.ai/match-trace@1', match_id: 1, t0: 0, n, heroes: H, names,
-    states: H.map((h: any) => { const p = pos[h.key] ?? [0, 0]; return { x: Array(n).fill(p[0]), y: Array(n).fill(p[1]), hp: Array(n).fill(500), max_hp: Array(n).fill(1000), mana: Array(n).fill(300), level: Array(n).fill(20), alive: Array(n).fill(1), mana_peak: Array(n).fill(300) }; }),
+    states: H.map((h: any) => { const q = pos[h.key] ?? [0, 0]; const p = [q[0] + PIT[0], q[1] + PIT[1]]; return { x: Array(n).fill(p[0]), y: Array(n).fill(p[1]), hp: Array(n).fill(500), max_hp: Array(n).fill(1000), mana: Array(n).fill(300), level: Array(n).fill(20), alive: Array(n).fill(1), mana_peak: Array(n).fill(300) }; }),
     abilities: H.map(() => ({})), items: H.map((h: any) => items[h.key] ?? {}), controls: H.map(() => ({})),
     casts: [], item_uses: [], purchases: [], buildings, modifiers: [], damage: [], net_worth: [], gaps: [],
     deaths: deaths.map(([s, v]: any) => [s, names.indexOf(`npc_dota_hero_${v}`), -1, 0]),
@@ -140,7 +142,8 @@ describe('a Roshan read from its kill', () => {
     const t = withKills({ heroes, pos }, { tormentors: [[1200, 'lina', 2], [1500, 'pudge', 3], [1700, 'zuus', 0]] });
     const r: any = roshanReport(t, { hero: 'sven' });
     expect(r).toMatchObject({ tormentors_my_team_took: 1, tormentors_enemy_took: 2, roshan_kills_in_the_trace: 0 });
-    expect(r.tormentors).toEqual([{ clock: '20:00', taken_by: 'my_team', killed_by: 'lina' }, { clock: '25:00', taken_by: 'enemy', killed_by: 'pudge' }, { clock: '28:20', taken_by: 'enemy', killed_by: 'zuus' }]);
+    // Each with its own ref, so one can be cited and opened (Codex on #384).
+    expect(r.tormentors).toEqual([{ ref: 'roshan:sven:t1', clock: '20:00', taken_by: 'my_team', killed_by: 'lina' }, { ref: 'roshan:sven:t2', clock: '25:00', taken_by: 'enemy', killed_by: 'pudge' }, { ref: 'roshan:sven:t3', clock: '28:20', taken_by: 'enemy', killed_by: 'zuus' }]);
     expect(r.gaps.filter((g: any) => g.topic === 'roshan')).toEqual([{ topic: 'roshan', reason: expect.stringContaining('who could see an attempt is not in the replay data') }]);
     // The older shape: pickups only, and every count that needs kills is null — unknown, not zero.
     const older: any = roshanReport(synth({ heroes, pos, items: { axe: { item_aegis: { held: [[100, 400]] } } } }), { hero: 'sven' });
@@ -163,14 +166,71 @@ describe('a Roshan read from its kill', () => {
       clock: '32:18', taken_by: 'enemy', seen_by: 'kill_and_aegis_pickup', killed_by: 'phantom_assassin', aegis_holder: 'phantom_assassin', aegis_picked_up_at: '32:18', aegis: 'used', me: 'not_there',
       attempt: { started: '31:52', seconds: 26, heroes_hitting: [{ hero: 'phantom_assassin', damage: 8840 }, { hero: 'mirana', damage: 1765 }], other_side_hitting: [], i_hit_it: false },
     });
-    // The player's team when it began: Sven dead, the nearest of the others 4,270 away.
+    // The player's team when it began: Sven dead, the nearest of the others 4,331 from the pit (Phantom Assassin
+    // stood about 180 from its middle as Roshan died; distances are from the pit, not from the killer).
     const others = r.takes[0].attempt.other_side_when_it_began;
     expect(others.find((x: any) => x.hero === 'sven')).toEqual({ hero: 'sven', dead: true });
-    expect(others.filter((x: any) => !x.dead).map((x: any) => [x.hero, x.place, x.distance])).toEqual([['beastmaster', 'dire_base', 9621], ['undying', 'dire_top_lane', 4270], ['skywrath_mage', 'dire_mid', 5666], ['dark_willow', 'dire_mid', 7535]]);
+    expect(others.filter((x: any) => !x.dead).map((x: any) => [x.hero, x.place, x.distance])).toEqual([['beastmaster', 'dire_base', 9783], ['undying', 'dire_top_lane', 4331], ['skywrath_mage', 'dire_mid', 5828], ['dark_willow', 'dire_mid', 7697]]);
     // The same Roshan read from the pickup alone (the committed trace) is the same take, without the attempt.
     const old: any = roshanReport(trace, { hero: 'beastmaster' });
     expect(old.takes[0]).toMatchObject({ clock: '32:18', taken_by: 'enemy', seen_by: 'aegis_pickup', aegis_holder: 'phantom_assassin', aegis: 'used' });
     expect(old.takes[0].buildings_taking_side_took_in_the_next_300s).toEqual(r.takes[0].buildings_taking_side_took_in_the_next_300s);
+  });
+});
+
+describe('what the review found on #384', () => {
+  const withKills = (o: any, { kills = [], hits = [], tormentors = [] }: any) => {
+    const t: any = synth(o);
+    const idx = (key: string) => t.names.indexOf(`npc_dota_hero_${key}`);
+    return { ...t, roshan_kills: kills.map(([sec, who, side]: any) => [sec, idx(who), side, 0, null, null]), roshan_damage: hits.map(([sec, who, dmg]: any) => [sec, idx(who), dmg]), tormentor_kills: tormentors.map(([sec, who, side]: any) => [sec, idx(who), side, 0]) };
+  };
+  const pos = { axe: [0, 0], lina: [1000, 0], sven: [9000, 9000], pudge: [0, 2000], zuus: [5000, 0] };
+
+  it('the pits, measured on the corpus; a position is at one within PIT_NEAR', () => {
+    expect([ROSHAN_PITS, PIT_NEAR]).toEqual([[[-3100, 2254], [2702, -2693]], 1200]);
+    expect(pitAt({ x: -2937, y: 2265 })).toMatchObject({ x: -3100, y: 2254 });
+    expect(pitAt({ x: 2702 + 1199, y: -2693 })).toMatchObject({ x: 2702, y: -2693 });
+    expect(pitAt({ x: 2702 + 1201, y: -2693 })).toBeNull();
+    expect(pitAt(null)).toBeNull();
+  });
+
+  it('a killer standing at neither pit (their illusion landed the hit) says nothing of who was near or how far', () => {
+    // Axe is credited with the kill but stands 6,000 from the pit; Lina and Pudge are at it.
+    const t = withKills({ heroes, pos: { ...pos, axe: [6000, 0] }, deaths: [] }, { kills: [[200, 'axe', 2]], hits: [[190, 'axe', 800], [195, 'lina', 900], [200, 'axe', 700]] });
+    const take: any = (roshanReport(t, { hero: 'axe' }) as any).takes[0];
+    expect(take).toMatchObject({ killed_by: 'axe', where_not_known: true, taking_side_near: null, other_side_near: null, me: null });
+    expect(take).not.toHaveProperty('place');
+    expect(take.attempt.other_side_when_it_began.every((x: any) => !('distance' in x))).toBe(true);
+    // The killer at the pit: placed, and distances read from the pit.
+    const there: any = (roshanReport(withKills({ heroes, pos, deaths: [] }, { kills: [[200, 'axe', 2]], hits: [[195, 'axe', 900]] }), { hero: 'axe' }) as any).takes[0];
+    expect(there).not.toHaveProperty('where_not_known');
+    expect(there.other_side_near).toEqual(['pudge']);
+    expect(there.attempt.other_side_when_it_began.find((x: any) => x.hero === 'zuus').distance).toBe(5000);
+  });
+
+  it('a kill with no Aegis pickup does not count toward buildings taken "with the Aegis"', () => {
+    const t = withKills({ heroes, pos, fell: [[300, 'badguys_tower2_mid']] }, { kills: [[200, 'axe', 2]], hits: [[195, 'axe', 900]] });
+    const r: any = roshanReport(t, { hero: 'sven' });
+    expect(r.takes[0]).toMatchObject({ aegis: 'no_pickup_seen_within_30s', buildings_taking_side_took_count: 1 });
+    expect(r.buildings_my_team_took_with_aegis).toBe(0);
+    // With the pickup, it does.
+    const held: any = roshanReport(withKills({ heroes, pos, fell: [[300, 'badguys_tower2_mid']], items: { axe: { item_aegis: { held: [[205, 505]] } } } }, { kills: [[200, 'axe', 2]], hits: [[195, 'axe', 900]] }), { hero: 'sven' });
+    expect(held.buildings_my_team_took_with_aegis).toBe(1);
+  });
+
+  it('one Tormentor kill resolves by its own ref, and a review citing its time keeps it', () => {
+    const t = withKills({ heroes, pos }, { tormentors: [[1200, 'lina', 2]] });
+    const ev: any = resolveRef(t, 'roshan:sven:t1', { hero: 'sven', lang: 'en' });
+    expect(ev.record).toMatchObject({ ref: 'roshan:sven:t1', clock: '20:00', taken_by: 'my_team', killed_by: 'lina' });
+    expect(resolveRef(t, 'roshan:sven:t2', { hero: 'sven', lang: 'en' })).toBeNull();
+  });
+
+  it('in Chinese, where the other side stood when it began is named in Chinese', () => {
+    const rows = JSON.parse(readFileSync(new URL('../../packages/review-engine/test/fixtures/roshan-9100904020.json', import.meta.url), 'utf8'));
+    const idx = (npc: string | null) => (npc == null ? -1 : trace.names.indexOf(npc));
+    const withRows = { ...trace, roshan_kills: rows.roshan_kills.map((x: any[]) => [x[0], idx(x[1]), ...x.slice(2)]), roshan_damage: rows.roshan_damage.map((x: any[]) => [x[0], idx(x[1]), x[2]]), tormentor_kills: rows.tormentor_kills };
+    const ev: any = resolveRef(withRows, 'roshan:beastmaster:1', { hero: 'beastmaster', lang: 'zh' });
+    for (const place of ['dire_base', 'dire_top_lane', 'dire_mid']) expect([place, typeof ev.names[place] === 'string' && /[\u4e00-\u9fff]/.test(ev.names[place])]).toEqual([place, true]);
   });
 });
 

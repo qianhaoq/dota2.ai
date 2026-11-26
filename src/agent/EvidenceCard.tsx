@@ -135,6 +135,9 @@ const T = {
   // A Roshan the replay kept the kill of: who landed it, who hit it and for how long, and where the other side stood.
   roshanKilledBy: { en: 'Killed by', zh: '击杀' },
   roshanNoPickup: { en: 'no Aegis pickup seen within 30 s', zh: '30 秒内没看到有人捡盾' },
+  tormentorBy: { my_team: { en: 'Your team killed a Tormentor', zh: '我方打掉痛苦魔方' }, enemy: { en: 'The enemy killed a Tormentor', zh: '对方打掉痛苦魔方' } } as Record<string, { en: string; zh: string }>,
+  tormentorKilledBy: { en: 'last hit', zh: '最后一击' },
+  roshanWhereNotKnown: { en: 'Where Roshan was is not known (the last hit came from away from both pits: an illusion\'s), so who was near is not said', zh: '肉山当时的位置不确定（最后一击来自两个肉山坑之外，可能是幻象打的），所以不说谁在附近' },
   roshanAttempt: { en: 'The attempt', zh: '打肉山' },
   roshanFrom: { en: 'from', zh: '从' },
   roshanOthers: { my_team: { en: 'They, when it began', zh: '开打时对方' }, enemy: { en: 'Your team, when it began', zh: '开打时我方' } } as Record<string, Record<Lang, string>>,
@@ -659,6 +662,15 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       </div>
     );
   }
+  // One Tormentor kill (roshan:<hero>:t<n>): when, whose, and who landed it.
+  if (data.kind === 'roshan' && /:t\d+$/.test(String(r.ref ?? ''))) {
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b>{r.taken_by && T.tormentorBy[r.taken_by] && <> · {t(T.tormentorBy[r.taken_by])}</>}</p>
+        {r.killed_by && <p className="ag-rec-line"><span className="ag-chip">{t(T.tormentorKilledBy)} {N(r.killed_by)}</span></p>}
+      </div>
+    );
+  }
   if (data.kind === 'roshan' && (r.aegis_holder || r.killed_by || r.attempt)) {
     const mine = r.taken_by === 'my_team';
     const heroes = (list: string[] | null, cls: string) => (list == null ? <span className="ag-none">–</span> : list.length ? list.map((h) => <span key={h} className={`ag-chip ${cls}`}>{N(h)}</span>) : <span className="ag-none">{t(T.nobody)}</span>);
@@ -684,7 +696,9 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
             </p>
           </>
         )}
-        <p className="ag-rec-line"><span>{t(T.atRoshan)}</span>{heroes(r.taking_side_near, mine ? 'is-ally' : 'is-enemy')}{heroes(r.other_side_near, mine ? 'is-enemy' : 'is-ally')}</p>
+        {r.where_not_known
+          ? <p className="ag-rec-line"><span className="ag-none">{t(T.roshanWhereNotKnown)}</span></p>
+          : <p className="ag-rec-line"><span>{t(T.atRoshan)}</span>{heroes(r.taking_side_near, mine ? 'is-ally' : 'is-enemy')}{heroes(r.other_side_near, mine ? 'is-enemy' : 'is-ally')}</p>}
         <p className="ag-rec-line"><span>{t(T.next300)}</span>
           {[...r.buildings_taking_side_took_in_the_next_300s.map((b: any) => ({ ...b, cls: mine ? 'is-good' : 'is-warn' })), ...r.buildings_other_side_took_in_the_next_300s.map((b: any) => ({ ...b, cls: mine ? 'is-warn' : 'is-good' }))]
             .sort((a: any, b: any) => a.clock.localeCompare(b.clock, undefined, { numeric: true }))
