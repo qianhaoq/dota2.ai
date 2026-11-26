@@ -424,7 +424,7 @@ describe('what a hero killed, gold by reason, Roshan', () => {
   it('the tools still tell the model what they told it before: these fields are read by none of them yet', () => {
     const b = createTraceBuilder();
     b.addEvent(kill(1, 'npc_dota_roshan')); b.addEvent(kill(2, 'npc_dota_neutral_kobold')); b.addEvent(gold(3, 'npc_dota_hero_axe', 13, 40));
-    expect(b.finish().gaps.map((g) => `${g.topic}:${g.reason}`)).toEqual(['vision:no_fog_of_war_in_trace', 'creeps:no_creep_entities_in_trace', 'roshan:no_reliable_roshan_event', 'ability_immunity:only_item_spell_immunity_modifiers_tracked', 'unused_free_abilities:an_ability_never_cast_with_no_mana_cost_cannot_be_told_from_a_passive']);
+    expect(b.finish().gaps.map((g) => `${g.topic}:${g.reason}`)).toEqual(['vision:no_fog_of_war_in_trace', 'creeps:creep_kills_only_not_where_the_waves_stood', 'roshan:no_reliable_roshan_event', 'ability_immunity:only_item_spell_immunity_modifiers_tracked', 'unused_free_abilities:an_ability_never_cast_with_no_mana_cost_cannot_be_told_from_a_passive']);
   });
 });
 

@@ -218,10 +218,12 @@ describe('the agent has the tools and is told how to read them', () => {
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['fight_report', 'game_state']));
     expect(kit.runTool('fight_report', { hero: 'beastmaster' }).fights_total).toBe(16);
-    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(48);
+    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(49);
     const review = deepReviewSystem('zh');
     expect(review).toContain('fight_report for the player first');
-    expect(review).toMatch(/never that they refused, ignored the call or were farming/);
+    // Still never a motive; "farming" only where the tool says so (#359: the replay's creep kills now show it).
+    expect(review).toMatch(/never that they refused or ignored the call\. Say they were farming only when their doing is "farming"/);
+    expect(review).not.toMatch(/ignored the call or were farming/);
     expect(chatSystem('zh')).toContain('fight_report for the player');
   });
 

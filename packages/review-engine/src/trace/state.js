@@ -22,6 +22,27 @@ import { abilityLevel, cooldownLeft, dist, heldAt, heroOfName, manaCost, region,
 
 /** Seconds around t in which damage counts as "now" for `doing`. */
 export const STATE_NEAR = 3;
+/**
+ * "Farming": the hero killed a lane creep or a neutral within this many seconds of t (the trace's creep_kills).
+ * Of the 416 alive heroes not in a fight on the 32-game corpus, the state now calls 235 farming; none_of_these, which
+ * says nothing but the place, fell from 318 to 84 (scripts/calibrate.mjs → not_in_a_fight). Trading damage and hitting
+ * buildings come first: 70% of the 416 had a creep or neutral kill within 10 s of the fight's start.
+ */
+export const FARM_NEAR = 10;
+const FARM_KINDS = new Set(['l', 'n', 'u']);
+const farmIndex = new WeakMap();
+/** Each hero's creep and neutral kill times, by seat; null when the trace does not keep creep kills (unknown, not none). */
+function farmTimes(trace) {
+  if (!Array.isArray(trace.creep_kills)) return null;
+  let ix = farmIndex.get(trace);
+  if (!ix) {
+    const seat = new Map(trace.heroes.map((h, i) => [trace.names.indexOf(h.npc), i]));
+    ix = trace.heroes.map(() => []);
+    for (const r of trace.creep_kills) { const i = seat.get(r[1]); if (i != null && FARM_KINDS.has(r[2])) ix[i].push(r[0]); }
+    farmIndex.set(trace, ix);
+  }
+  return ix;
+}
 /** Seconds before a fight's first death that its hero damage is looked for. */
 export const ENGAGE_LEAD = 15;
 /** A damage exchange belongs to a fight only with both heroes this close to where one of its heroes died. */
@@ -94,7 +115,9 @@ export function heroStateAt(trace, h, t, o = {}) {
   }
   const place = region(s.x, s.y);
   const own = hero.team === 2 ? 'radiant_base' : 'dire_base';
-  const doing = !s.alive ? 'dead' : trading ? 'trading_damage_with_enemy_heroes' : hitting ? 'hitting_enemy_buildings' : place === own ? 'in_own_base' : 'none_of_these';
+  const farm = farmTimes(trace);
+  const farming = farm ? farm[h].some((k) => Math.abs(k - t) <= FARM_NEAR) : false;
+  const doing = !s.alive ? 'dead' : trading ? 'trading_damage_with_enemy_heroes' : hitting ? 'hitting_enemy_buildings' : farming ? 'farming' : place === own ? 'in_own_base' : 'none_of_these';
   const items = trace.items?.[h] ?? {};
   // Boots of Travel upgrade the Town Portal Scroll (Valve's item text): with the scroll held, its cooldown is the
   // teleport's. The boots' own cooldown is read only when no scroll is held.
