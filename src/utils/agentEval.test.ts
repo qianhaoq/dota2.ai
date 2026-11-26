@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { RUBRIC_SCHEMA, compareSummaries, logicOf, reviewTexts, rubricOf, scoreReview, stabilityOf, styleOf, summarize } from '../../lib/agent/evalReview.js';
+import { BETTER, RUBRIC_SCHEMA, compareSummaries, logicOf, reviewTexts, rubricOf, scoreReview, stabilityOf, styleOf, summarize } from '../../lib/agent/evalReview.js';
 import { evaluate, loadRubrics, parseArgs, parseName } from '../../scripts/eval-review.mjs';
 
 const json = (file: string) => JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'));
@@ -213,6 +213,11 @@ describe('review eval: summary and comparison', () => {
     expect(s.rules_that_say_only_once).toBe(0.25);
     expect(s.matchup_both_ways).toBe(0.5);
     expect(s.repaired).toBe(1);
+    // How many reviews have no game plan (#388).
+    expect(summarize([scoreReview({ review: { game_plan: { course: 'x' } } } as any), scoreReview({ review: {} } as any)]).without_game_plan).toBe(0.5);
+    // A bare review (no { review } wrapper) is read the same way (Codex on #391).
+    expect(summarize([scoreReview({ game_plan: { course: 'x' } } as any), scoreReview({ findings: [] } as any)]).without_game_plan).toBe(0.5);
+    expect(BETTER.without_game_plan).toBe(-1);
     expect(s.rubric_draft).toBeNull();
     // lead_ok: its first finding is neither of the two points the rubric accepts as the lesson.
     expect(s.rubric_approved).toEqual({ reviews: 1, hit_rate: 0.33, must_not_violations: 0, turning_fight_covered: 0, lead_ok: 0, main_reason_ok: 1 });

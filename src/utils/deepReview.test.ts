@@ -241,7 +241,7 @@ describe('runDeepReview', () => {
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'Beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
     expect(r.review).toMatchObject({ schema: DEEP_REVIEW_SCHEMA, match_id: 9100904020, hero: 'beastmaster', lang: 'zh', findings: [goodShown], verdict: '咆哮没有留给幻影刺客的 BKB。' });
-    expect(r.verification).toEqual({ repaired: false, first_pass_problems: 0, dropped: 0, problems: [] });
+    expect(r.verification).toEqual({ repaired: false, first_pass_problems: 0, dropped: 0, problems: [], game_plan_missing: 'not_submitted' });
     expect(r.tool_calls.map((c: any) => c.name)).toEqual(['ability_audit', 'immunity_windows', 'death_context']);
     // The model is told who it reviews and what to call the heroes, in the reader's language.
     expect(m.seen[0].system).toContain('简体中文');

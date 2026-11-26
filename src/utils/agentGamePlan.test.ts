@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { deepReviewSystem, planOf, runDeepReview, verifyReview, PLAN_REASONS, SUBMIT_REVIEW, DEEP_REVIEW_PROMPT_VERSION } from '../../lib/agent/deepReview.js';
+import { deepReviewSystem, planOf, planGapOf, runDeepReview, verifyReview, PLAN_REASONS, SUBMIT_REVIEW, DEEP_REVIEW_PROMPT_VERSION } from '../../lib/agent/deepReview.js';
 import { chatSystem, checkedPart, runChat, CHAT_MAX_QUESTION } from '../../lib/agent/chat.js';
 import { MOCK_PLAN_ANSWER, MOCK_REVIEW } from '../../scripts/mock-agent.mjs';
 import { PLAN_INTENTS, planQuestion } from '../agent/ReviewDoc';
@@ -47,10 +47,28 @@ describe('the game plan of a review', () => {
     expect(r.review.findings).toHaveLength(1);
   });
 
-  it('a review without one is a review without one', async () => {
+  it('a review without one is a review without one — and the stored check says why (#388)', async () => {
     const { r } = await run([submit(review(undefined))]);
     expect(r.status).toBe('ok');
     expect(r.review).not.toHaveProperty('game_plan');
+    expect(r.verification.game_plan_missing).toBe('not_submitted');
+    // Submitted, but no evidence item that holds: dropped, and said so.
+    const noRecord = (await run([submit(review({ ...plan, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] })), submit(review({ ...plan, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] }), 's2')])).r;
+    expect(noRecord.review).not.toHaveProperty('game_plan');
+    expect(noRecord.verification.game_plan_missing).toBe('no_evidence_that_holds');
+    // A plan that ships leaves no such field.
+    const kept = (await run([submit(review(plan))])).r;
+    expect(kept.review.game_plan).toBeTruthy();
+    expect(kept.verification).not.toHaveProperty('game_plan_missing');
+  });
+
+  it('planGapOf names why a plan would not ship', () => {
+    const refs = new Map([['tempo:beastmaster', { at: null }]]);
+    expect([null, undefined, 'a plan'].map((p) => planGapOf(p, [], refs))).toEqual(['not_submitted', 'not_submitted', 'not_submitted']);
+    expect(planGapOf({ ...plan, evidence: [] }, [], refs)).toBe('no_evidence_that_holds');
+    expect(planGapOf({ why: 'x', main_reason: 'unclear', evidence: plan.evidence }, [], refs)).toBe('no_course');
+    expect(planGapOf(plan, [{ where: 'plan', index: 1 }, { where: 'plan', index: 2 }], refs)).toBe('no_course');
+    expect(planGapOf(plan, [], refs)).toBeNull();
   });
 
   it('asks for a repair naming the sentence, then leaves out only what still fails', async () => {
