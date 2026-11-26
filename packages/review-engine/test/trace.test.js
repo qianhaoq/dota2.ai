@@ -606,7 +606,7 @@ describe('trace tools on a real game', () => {
   it('match_overview: the line-ups, the result, and the fight that turned the game', () => {
     const o = run('match_overview');
     expect(o).toMatchObject({ match_id: 9100904020, winner: 'radiant', duration: { clock: '42:31' } });
-    expect(o.heroes.find((h) => h.hero === 'beastmaster')).toEqual({ hero: 'beastmaster', team: 'dire', deaths: 11, final_level: 21 });
+    expect(o.heroes.find((h) => h.hero === 'beastmaster')).toEqual({ hero: 'beastmaster', team: 'dire', deaths: 11, deaths_before_10: 4, final_level: 21 });
     expect(o.heroes.filter((h) => h.team === 'radiant').map((h) => h.hero).sort()).toEqual(['axe', 'mirana', 'necrolyte', 'phantom_assassin', 'venomancer']);
     const wipe = o.fights.find((f) => f.clock.startsWith('30:'));
     expect(wipe).toMatchObject({ deaths: { radiant: 3, dire: 5 }, fewer_deaths: 'radiant' });
@@ -895,7 +895,7 @@ describe('trace tools on a real game', () => {
     const o = runTraceTool(trace, 'match_overview', {}, ctx);
     expect(o).toMatchObject({ told_from: { hero: 'beastmaster' }, result: 'my_team_lost', fights_total: 16, fights_tally: { my_team_lost_fewer: 6, enemy_lost_fewer: 9, even: 1 } });
     expect(o).not.toHaveProperty('winner');
-    expect(o.heroes.find((h) => h.hero === 'beastmaster')).toEqual({ hero: 'beastmaster', side: 'me', deaths: 11, final_level: 21 });
+    expect(o.heroes.find((h) => h.hero === 'beastmaster')).toEqual({ hero: 'beastmaster', side: 'me', deaths: 11, deaths_before_10: 4, final_level: 21 });
     expect(o.heroes.filter((h) => h.side === 'enemy')).toHaveLength(5);
     // The wipe: five of mine for three of theirs, and a lead of -745 became -4298.
     expect(o.fights.find((f) => f.clock.startsWith('30:'))).toMatchObject({ my_team_deaths: 5, enemy_deaths: 3, lost_fewer_heroes: 'enemy', my_team_gold_lead_before: -745, my_team_gold_lead_2min_after: -4298 });

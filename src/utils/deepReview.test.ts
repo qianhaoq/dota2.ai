@@ -534,6 +534,29 @@ describe('runDeepReview', () => {
     expect(s).toContain('was not wasted because one of them was spell immune');
   });
 
+  it('the prompt orders findings by what they cost, because the page shows the first one alone', () => {
+    const s = deepReviewSystem('en');
+    // The first finding is the page's one lesson: it is chosen by cost, not by how early it happened.
+    expect(s).toContain('Order the findings by what they cost, the most costly first');
+    expect(s).toContain('the one you would keep if you could keep only one');
+    expect(s).toContain('The finding that accounts for the most of their deaths goes first');
+    expect(s).toContain('what they did in the turning fight goes first when no other finding accounts for more than half of their deaths');
+    // Early deaths lead only when they are the bulk of the deaths, or the game was lost from the lanes and the
+    // player's own lane was part of it. (A first version demoted them in every game of 25 minutes or more: a
+    // Luna who died five times before 10:00 in a game 4,096 behind at 10:00 then led with the lane in 1 review of 3.)
+    expect(s).toContain('Deaths before 10:00 go first only when they are the largest group of the player\'s deaths, or when the game was lost from the lanes and the player\'s own lane was part of it: match_overview\'s lanes.lost_from_the_lanes is true and the player\'s deaths_before_10 is four or more. Otherwise they are the second or third finding, however early they came.');
+    expect(s).not.toContain('the game ended before 25:00');
+    expect(s).toContain('lanes says whether it was lost from the lanes: lost_from_the_lanes is true when my_team was more than 2000 gold behind at 10:00 and in every minute after, to the end — then the game was lost before 10:00, turning_fight names no fight after 10:00');
+    expect(s).not.toContain('no later fight turned it');
+    expect(s).toContain('(null: not known, do not say either way)');
+    // The old rule ("…and earliest") put two lane deaths first in games of 42 and 45 minutes.
+    expect(s).not.toContain('and earliest');
+    // Still the player's own doing, and still no blame for the team's fights.
+    expect(s).toContain('never how the team\'s fights went');
+    expect(s).toContain('do not charge the team\'s lost fights to them');
+    expect(deepReviewSystem('zh')).toContain('Order the findings by what they cost, the most costly first');
+  });
+
   it('the prompt states the rules the verifier enforces', () => {
     const s = deepReviewSystem('en');
     expect(s).toContain('MUST write ALL analysis and advice in English');
