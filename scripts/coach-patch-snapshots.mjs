@@ -25,8 +25,9 @@
  *   (github.com/odota/dotaconstants, tasks/updateconstants.ts), run against that
  *   commit instead of the latest. A copy is written next to it with three
  *   changes, each checked to apply: the game-file commit comes from the
- *   environment, only items / abilities / hero_abilities are built, and the
- *   neutral-items reader accepts the older file layout. The copies are compiled
+ *   environment, only items / abilities / hero_abilities are built, the
+ *   neutral-items reader accepts the older file layout, and a facet naming an
+ *   ability its hero's file lacks is skipped instead of stopping the build. The copies are compiled
  *   from TypeScript to JavaScript with esbuild (the builder is TypeScript that
  *   only a Node of 22.6 or later runs as is; the site supports Node 20). Game files from before
  *   Valve split npc_heroes.txt into #base includes (September 2026) are read
@@ -95,6 +96,9 @@ const swaps = [
   [/"https:\/\/raw\.githubusercontent\.com\/dotabuff\/d2vpkr\/master\/([^"\n]*)"/g, '`https://raw.githubusercontent.com/dotabuff/d2vpkr/${process.env.D2VPKR_REF}/$1`'],
   ['  for (let i = 0; i < sources.length; i++) {\n    const s = sources[i];', "  const only = (process.env.ONLY_KEYS ?? '').split(',').filter(Boolean);\n  for (let i = 0; i < sources.length; i++) {\n    const s = sources[i];\n    if (only.length && !only.includes(s.key)) continue;"],
   ['  // Copy manual json files to build', '  if (only.length) return;\n  // Copy manual json files to build'],
+  // A facet that names an ability missing from its hero's script file (two 7.41 updates of March 2026) stopped the
+  // whole build; it only feeds the facet's description, which no snapshot keeps.
+  ['function getSpecialAttrs(entity: any) {\n', 'function getSpecialAttrs(entity: any) {\n  if (!entity) return null;\n'],
 ];
 let patched = source;
 for (const [from, to] of swaps) { const next = patched.replace(from, to); if (next === patched) throw new Error(`builder ${name} changed: ${String(from).slice(0, 60)} not found`); patched = next; }
@@ -245,5 +249,7 @@ writeFileSync(INDEX, `${JSON.stringify({
   source: 'Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told. hotfixes: the game updates within a release that changed item or ability data, each with its own data and rollout window, read the same way.',
   // Valve's list was read then: a release out since is not in it, and its games are placed in the last one here.
   releases_checked_at: iso(Date.now()),
+  // The newest match the id search looked at (scripts/patch-match-ids.mjs), kept across rebuilds.
+  ...(old.ids_checked_to ? { ids_checked_to: old.ids_checked_to } : {}),
   releases: index,
 }, null, 2)}\n`);

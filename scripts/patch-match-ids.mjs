@@ -80,6 +80,9 @@ async function around(t, start) {
 
 // Newest first: each search starts from the ids the newer one found, a few million back instead of from the anchor.
 let from = await near(ANCHOR);
+// The newest match searched from, with its start: any match id up to it started by then, so before every rollout
+// after that time — what a rollout whose ids are not found yet needs to place the games before it.
+const newest = from;
 // A release's hotfixes have rollouts too: a game's hotfix is then known from its id as well.
 const labels = new Map();
 const rollouts = [...index.releases];
@@ -97,5 +100,7 @@ for (const r of rollouts.sort((a, b) => Date.parse(b.rollout_by) - Date.parse(a.
   from = before.before;
   console.log(`${labels.get(r) ?? r.name}: last match before ${r.rollout_from} ${r.last_match_id_before}, first at or after ${r.rollout_by} ${r.first_match_id_after}`);
 }
+// Kept only when it moves forward: a run from an older match does not undo what a newer one established.
+if (!index.ids_checked_to || index.ids_checked_to.match_id < newest.id) index.ids_checked_to = { match_id: newest.id, started: new Date(newest.start * 1000).toISOString() };
 writeFileSync(FILE, `${JSON.stringify(index, null, 2)}\n`);
 console.log(`${requests} requests`);
