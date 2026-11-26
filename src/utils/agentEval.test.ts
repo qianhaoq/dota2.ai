@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { BETTER, RUBRIC_SCHEMA, compareSummaries, logicOf, reviewTexts, rubricOf, scoreReview, stabilityOf, styleOf, summarize } from '../../lib/agent/evalReview.js';
-import { evaluate, loadRubrics, parseArgs, parseName } from '../../scripts/eval-review.mjs';
+import { evaluate, expandStoredEntries, loadRubrics, parseArgs, parseName } from '../../scripts/eval-review.mjs';
 
 const json = (file: string) => JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'));
 /** A review the site stored (prompt 33, Chinese), as it was served. */
@@ -242,11 +242,18 @@ describe('review eval: summary and comparison', () => {
 });
 
 describe('review eval: the script', () => {
-  it('reads what a stored review\'s file name says', () => {
+  it('reads what a stored review\'s file name says (legacy per-language and trilingual bundles)', () => {
     expect(parseName('9100904020.beastmaster.zh.p33.review.json')).toEqual({ file: '9100904020.beastmaster.zh.p33.review.json', match_id: 9100904020, hero: 'beastmaster', lang: 'zh', version: 33, plan: null, run: null });
     expect(parseName('9103304074.phantom_lancer.zh.p33.plan-late.review.json')?.plan).toBe('late');
+    expect(parseName('9100904020.beastmaster.p46.review.json')).toEqual({ file: '9100904020.beastmaster.p46.review.json', match_id: 9100904020, hero: 'beastmaster', lang: null, version: 46, plan: null, run: null });
+    expect(parseName('9100904020.beastmaster.p46.plan-push.m-glm-5.3.review.json')).toEqual({ file: '9100904020.beastmaster.p46.plan-push.m-glm-5.3.review.json', match_id: 9100904020, hero: 'beastmaster', lang: null, version: 46, plan: 'push', run: null });
     expect(parseName('9100904020.beastmaster.zh.p33.unverified.json')).toBeNull();
     expect(parseName('9100904020.trace.json.gz')).toBeNull();
+    // Trilingual bundle expands into one scorable entry per stored language.
+    const meta = parseName('9100904020.beastmaster.p46.review.json')!;
+    const expanded = expandStoredEntries(meta, { schema: 'dota2.ai/deep-review-bundle@1', reviews: { en: review({ lang: 'en' }), zh: review({ lang: 'zh' }), ru: review({ lang: 'ru' }) } });
+    expect(expanded.map((e: any) => e.lang).sort()).toEqual(['en', 'ru', 'zh']);
+    expect(evaluate(expanded, new Map()).games).toHaveLength(3);
   });
 
   it('arguments', () => {

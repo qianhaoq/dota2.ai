@@ -104,13 +104,30 @@ describe('review trilingual translation', () => {
     expect(ru.next_game).toEqual(['У вражеского кора есть BKB: держите Primal Roar для неё']);
   });
 
-  it('rejects malformed translations, invented clock times, and invented vision claims', () => {
+  it('rejects malformed translations, invented clock times, altered numbers/counts/durations/percentages, and invented vision claims', () => {
     expect(applyTranslation(baseReview, null, 'ru')).toBeNull();
     expect(applyTranslation(baseReview, { ...ruPayload, findings: [] }, 'ru')).toBeNull();
     // Fabricated clock time 19:19 not present in baseReview
     expect(applyTranslation(baseReview, { ...ruPayload, verdict: 'На 19:19 вы проиграли.' }, 'ru')).toBeNull();
     // Vision claim introduced in Russian
     expect(applyTranslation(baseReview, { ...ruPayload, verdict: 'Враг видел вас на линии.' }, 'ru')).toBeNull();
+    // Altered count in claim (7 -> 9)
+    expect(applyTranslation(baseReview, { ...ruPayload, findings: [{ ...ruPayload.findings[0], claim: 'Phantom Assassin нажала BKB 9 раз на 27:27.' }] }, 'ru')).toBeNull();
+    // Altered duration in evidence (3.4 -> 9.4)
+    expect(applyTranslation(baseReview, { ...ruPayload, findings: [{ ...ruPayload.findings[0], evidence: ['27:27 ульт сквозь BKB; оглушение 9.4 с.'] }] }, 'ru')).toBeNull();
+    // Codex P1 repro: altering damage value in evidence (300 -> 999999) is rejected
+    const dmgBase = { ...baseReview, findings: [{ ...baseReview.findings[0], evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '10:00', fact: '10:00: 300 damage.' }] }] };
+    const dmgOk = { ...ruPayload, findings: [{ ...ruPayload.findings[0], evidence: ['10:00: 300 урона.'] }] };
+    const dmgBad = { ...ruPayload, findings: [{ ...ruPayload.findings[0], evidence: ['10:00: 999999 урона.'] }] };
+    expect(applyTranslation(dmgBase, dmgOk, 'ru')).not.toBeNull();
+    expect(applyTranslation(dmgBase, dmgBad, 'ru')).toBeNull();
+    // Altered percentage (71% -> 72% or 71% -> 71)
+    const pctBase = { ...baseReview, verdict: '71% of games.' };
+    expect(applyTranslation(pctBase, { ...ruPayload, verdict: '71% игр.' }, 'ru')).not.toBeNull();
+    expect(applyTranslation(pctBase, { ...ruPayload, verdict: '72% игр.' }, 'ru')).toBeNull();
+    expect(applyTranslation(pctBase, { ...ruPayload, verdict: '71 игр.' }, 'ru')).toBeNull();
+    // When sources are provided, verifyReview also enforces ref/moment checks.
+    expect(applyTranslation(baseReview, ruPayload, 'ru', { sources: [] })).toBeNull();
   });
 
   it('parses fenced and slightly broken JSON via jsonrepair', () => {

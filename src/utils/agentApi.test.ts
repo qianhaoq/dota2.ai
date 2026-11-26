@@ -222,6 +222,19 @@ describe('agent API', () => {
     expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=en`)).body).toMatchObject({ status: 'ready', review: { lang: 'en', verdict: 'Primal Roar was not saved for Phantom Assassin.' } });
     expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=ru`)).body).toMatchObject({ status: 'ready', review: { lang: 'ru', verdict: 'Primal Roar не приберегли для Phantom Assassin.' } });
     expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'ru' })).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'ru' } } });
+    // Concurrent starts for different languages on an already-ready bundle each get their own requested language (Codex P1).
+    const [concEn, concRu] = await Promise.all([
+      post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'en' }),
+      post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'ru' }),
+    ]);
+    expect(concEn).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'en', verdict: 'Primal Roar was not saved for Phantom Assassin.' } } });
+    expect(concRu).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'ru', verdict: 'Primal Roar не приберегли для Phantom Assassin.' } } });
+    // Also exercise service.start() sharing an in-flight claim across different languages directly.
+    const slowDocs = { get: async (k: string) => { await new Promise((r) => setTimeout(r, 15)); return JSON.parse(readFileSync(join(reviewDir, k), 'utf8')); }, put: async () => {} };
+    const sharedSvc: any = createAgentService({ traces: createFileTraceStore(dir), docs: slowDocs, complete: m.complete, model: 'test-model' });
+    const [sEn, sRu] = await Promise.all([sharedSvc.start(MATCH, 'beastmaster', 'en'), sharedSvc.start(MATCH, 'beastmaster', 'ru')]);
+    expect(sEn).toMatchObject({ status: 'ready', review: { lang: 'en' } });
+    expect(sRu).toMatchObject({ status: 'ready', review: { lang: 'ru' } });
     budget = { ok: true };
     expect(m.seen.length).toBe(calls);
   });
