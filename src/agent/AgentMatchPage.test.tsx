@@ -1717,7 +1717,7 @@ describe('AgentMatchPage', () => {
     page('/r/9100999998?hero=beastmaster&lang=en');
     expect(await screen.findAllByText('Your rule, in this game')).toHaveLength(2);
     expect(screen.getAllByText('Can’t tell yet')).toHaveLength(3);
-    expect(screen.getAllByText('Needs this game\'s replay: open its replay review.')).toHaveLength(3);
+    expect(screen.getAllByText('Needs this game\'s replay: check the goal or open its replay review.')).toHaveLength(3);
     cleanup();
     // Parsed: the same counts, from this game's replay.
     const calls = mockFetch({
@@ -1744,6 +1744,54 @@ describe('AgentMatchPage', () => {
     expect(store.checkGoal(goal as any, later as any, 1)).toMatchObject({ result: 'met' });
     expect(store.checkRules(goal as any, later as any, 1, null)[0].check).toMatchObject({ result: 'missed' });
     expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!).map((c: any) => c.result)).toEqual(['met', 'missed', 'met']);
+  });
+
+  it('a goal that waits on this game\'s replay can be checked alone: the replay is parsed, no review is written, the check reads it', async () => {
+    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
+    // Its own game id: the evidence client keeps a record for the session, and another test reads 9100999998's.
+    const goal = { id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 };
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal));
+    const later = { match: { id: 9100999997, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
+    let prepared = 0; let polls = 0;
+    const calls = mockFetch({
+      '/api/coach/9100999997': later,
+      '/prepare': () => { prepared += 1; return { status: 'running', stage: 'locating' }; },
+      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 5, deaths_where: { no_ally_within_2200_at_death: ['3:00'] }, deaths_not_known: { allies_at_death: 0 } } },
+      '/review?': { status: 'none' },
+      // Not parsed; once asked, parsing for two polls; then the trace is there.
+      '/api/agent/9100999997': () => { if (prepared) polls += 1; return !prepared ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } : polls < 2 ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'running', stage: 'extracting' } } : { trace: true, model_configured: true, can_parse: true, heroes }; },
+    });
+    page('/r/9100999997?hero=beastmaster&lang=en');
+    expect(await screen.findByText('Can’t tell yet')).toBeTruthy();
+    // Offered beside the review, and said what it costs and what it does not do.
+    fireEvent.click(screen.getByRole('button', { name: 'Only check my goal' }));
+    expect(await screen.findByRole('heading', { name: 'Reading the replay to check your goal…' })).toBeTruthy();
+    // The trace arrives: the goal is counted on it; nothing was asked of the model.
+    await waitFor(() => expect(screen.getByText('Met')).toBeTruthy(), { timeout: 12000 });
+    expect(prepared).toBe(1);
+    expect(calls.some((c) => c.url.endsWith('/review') && c.init?.method === 'POST')).toBe(false);
+    // The start screen is back, with the review still on offer; the goal button is gone (nothing left to check).
+    expect(await screen.findByRole('button', { name: 'Review my game' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Only check my goal' })).toBeNull();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!)).toEqual([expect.objectContaining({ goalId: 'g', matchId: 9100999997, result: 'met', count: 1 })]));
+    // The habit game by game: 4 in the game the goal came from, 1 in this one (marked).
+    const curve = await screen.findByLabelText('Game by game: 4 → 1');
+    expect(Array.from(curve.querySelectorAll('b')).map((b) => [b.textContent, b.className])).toEqual([['4', ''], ['1', 'is-here']]);
+  }, 15000);
+
+  it('no goal, a goal this game does not count for, or a game already parsed: no goal-only button', async () => {
+    mockFetch({ '/api/coach/9100999998': { match: { id: 9100999998, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [] }, '/api/agent/9100999998': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } });
+    page('/r/9100999998?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('button', { name: 'Review my game' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Only check my goal' })).toBeNull();
+    cleanup();
+    // A scoreboard goal is settled without the replay: nothing to parse for.
+    const items = { kind: 'deaths_per10_max', max: 2, baseline: 3, label: { en: 'At most 2 deaths per 10', zh: 'x' } };
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: 'g2', goal: items, action: items.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 }));
+    mockFetch({ '/api/coach/9100999998': { match: { id: 9100999998, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [] }, '/api/agent/9100999998': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } });
+    page('/r/9100999998?hero=beastmaster&lang=en');
+    expect(await screen.findByRole('button', { name: 'Review my game' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Only check my goal' })).toBeNull();
   });
 
   it('an invalid match id never calls the server', async () => {

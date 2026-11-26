@@ -48,7 +48,7 @@ const T = {
   goalHow: { en: 'Play your next game, then open it here or on your games page: the coach checks it against the scoreboard.', zh: '打完下一局，在这里或「我的比赛」里打开它，教练会按记分板核验。' },
   goalNext: { en: 'Your next game shows up on the dota2.ai home page with this goal already checked — open it after you play.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，这个目标已经核验好。' },
   goalNextReplay: { en: 'Your next game shows up on the dota2.ai home page — open it from there. This goal is checked once that game’s replay has been read, not from the scoreboard.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，从那里点开它。这个目标要读完那一局的录像才能核验，光看记分板判断不了。' },
-  goalHowReplay: { en: 'Play your next game, then open its replay review here: the coach counts the same things in that replay and tells you which rules held.', zh: '打完下一局，在这里打开它的录像复盘：教练会在那盘录像里数同样的事，逐条告诉你规则守住了没有。' },
+  goalHowReplay: { en: 'Play your next game, then open it here: the same things are counted in its replay and you see which rules held — about a minute, with or without a new review.', zh: '打完下一局，在这里打开它：会在那盘录像里数同样的事，逐条告诉你规则守住了没有——大约一分钟，要不要再写一份复盘都可以。' },
   goalRules: { en: 'Counted in your next replay', zh: '下一盘录像里会数的' },
   ruleCheck: { en: 'Next game', zh: '下一盘' },
   goalUndo: { en: 'Remove', zh: '取消' },

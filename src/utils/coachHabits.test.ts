@@ -43,13 +43,22 @@ describe('habitGoal', () => {
 describe('evaluateHabit', () => {
   const goal = habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))!;
   it('met at or under the goal, missed over it, with the deaths named', () => {
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }), 38)).toEqual({ result: 'met', evidence: { en: '1 deaths that began below half health (12 s before) (12:40); goal ≤ 1', zh: '死前 12 秒已不到半血的阵亡 1 次（12:40）；目标 ≤ 1' } });
+    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }), 38)).toEqual({ result: 'met', evidence: { en: '1 deaths that began below half health (12 s before) (12:40); goal ≤ 1', zh: '死前 12 秒已不到半血的阵亡 1 次（12:40）；目标 ≤ 1' } , count: 1 });
     expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 38)).toMatchObject({ result: 'met' });
     expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['3:00', '9:10'] }), 38)).toMatchObject({ result: 'missed', evidence: { zh: '死前 12 秒已不到半血的阵亡 2 次（3:00、9:10）；目标 ≤ 1' } });
   });
+  it('a settled result carries the count it was settled on — what the curve across games is drawn from', () => {
+    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['3:00', '9:10'] }), 38)).toMatchObject({ result: 'missed', count: 2 });
+    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 38)).toMatchObject({ result: 'met', count: 0 });
+    // Unknown and not-counted results have none.
+    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }, { health_at_window_start: 1, allies_at_death: 0 }), 38)).not.toHaveProperty('count');
+    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 8)).not.toHaveProperty('count');
+  });
   it('never a pass on a guess', () => {
     // No replay for that game.
-    expect(evaluateHabit(goal, null, 38)).toMatchObject({ result: 'unknown', evidence: { zh: '需要这局的录像：打开这局的录像复盘后核对。' } });
+    expect(evaluateHabit(goal, null, 38)).toMatchObject({ result: 'unknown', evidence: { zh: '需要这局的录像：检查目标，或打开这局的录像复盘。' } });
+    // Nothing settled, no count: a curve is never drawn through a guess.
+    expect(evaluateHabit(goal, null, 38)).not.toHaveProperty('count');
     // A death whose health was not sampled could be one more: 1 known + 1 undecided is not "at most 1".
     expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }, { health_at_window_start: 1, allies_at_death: 0 }), 38)).toMatchObject({ result: 'unknown' });
     // Undecided deaths that cannot change the answer do not block it.

@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { Shell } from '../coach/CoachApp';
 import { fetchCoachReport } from '../coach/api';
 import { markReviewed } from '../coach/accountInput';
-import { checkGoal, checkRules, needsReplay, replayRefs, useActiveGoal, type GoalCheck, type GoalRule, type ReplayRecords } from '../coach/goalStore';
+import { checkGoal, checkRules, habitCurve, needsReplay, replayRefs, useActiveGoal, type GoalCheck, type GoalRule, type ReplayRecords } from '../coach/goalStore';
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
 import { trackEvent, trackOnce, trackReviewViewed, trafficSource } from '../services/analytics';
@@ -89,6 +89,11 @@ const T = {
   q1: { en: 'Which of my deaths was the most avoidable?', zh: '我哪一次阵亡最不应该？' },
   qFinding: { en: 'what exactly should I have done instead?', zh: '具体应该怎么打？' },
   goalCheck: { en: 'Your goal, in this game', zh: '你的目标，这一局' },
+  checkOnly: { en: 'Only check my goal', zh: '只检查目标' },
+  curve: { en: 'Game by game', zh: '一局一局' },
+  curveFrom: { en: 'the game the goal came from', zh: '定下目标的那局' },
+  checkOnlyWhy: { en: 'Reads the replay and counts what your goal is about — about a minute, no review written.', zh: '只读录像、数一数目标说的那件事——大约一分钟，不写复盘。' },
+  checkingGoal: { en: 'Reading the replay to check your goal…', zh: '正在读录像，检查你的目标…' },
   goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘' },
   ruleChecks: { en: 'Your rule, in this game', zh: '你的规则，这一局' },
   goalResult: { met: { en: 'Met', zh: '达成' }, missed: { en: 'Missed', zh: '未达成' }, no_opportunity: { en: 'Did not come up', zh: '这局没遇到' }, unknown: { en: 'Can’t tell yet', zh: '暂时判断不了' } } as Record<string, Bi>,
@@ -351,6 +356,18 @@ export const AgentMatchPage: React.FC = () => {
   const preparing = useRef<string | null>(null);
   /** The selections waiting on the parse request that is out now. */
   const joined = useRef<Set<string>>(new Set());
+  /**
+   * Check the goal set from an earlier game, without a review: fetch and parse the replay — no model call — and
+   * the check in the header reads its counts as soon as the trace is there. The review is not started: the
+   * reader's go is not given.
+   */
+  const [checkingOnly, setCheckingOnly] = useState<string | null>(null);
+  async function checkOnly() {
+    if (wait || hasTrace) return;
+    trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: 'parse', plan: false });
+    setNotice(null); setCheckingOnly(selection);
+    await sendPrepare();
+  }
   async function go() {
     if (wait) return;
     trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan), ...(writtenBy ? { model: writtenBy } : {}) });
@@ -475,6 +492,9 @@ export const AgentMatchPage: React.FC = () => {
     setRuleChecks(activeGoalNow && board && seat ? checkRules(activeGoalNow, board, seat.slot, replay) : []);
   }, [activeGoalNow, board, seat, replay]);
 
+  // A goal from an earlier game that this game counts for, and that waits on this game's replay: it can be
+  // checked by itself, before (or instead of) a review.
+  const goalWaitsOnReplay = Boolean(activeGoalNow && needsReplay(activeGoalNow) && !hasTrace && (goalCheck?.result === 'unknown' || ruleChecks.some((r) => r.check.result === 'unknown')));
   const ask = (label: string, refs: string[]) => chat.current?.ask(label, refs);
   const suggestions = useMemo(() => {
     if (state?.status !== 'ready') return [];
@@ -485,6 +505,23 @@ export const AgentMatchPage: React.FC = () => {
   if (!valid) return <Shell><div className="ag-state"><h1>{t(T.invalid)}</h1><Link to={`/?lang=${lang}`} className="ag-btn">{t(T.home)}</Link></div></Shell>;
   if (!avail || (report === null && !avail.trace)) return <Shell><div className="ag-state" role="status"><p className="ag-pulse">{t(T.loading)}</p></div></Shell>;
 
+  // A habit's count game by game, from the game the goal came from to this one: whether it is going down.
+  // Read after this game's check is stored (goalCheck / ruleChecks), so this game is in it.
+  const curveLine = (goalId: string) => {
+    const curve = activeGoalNow && (goalCheck || ruleChecks.length) ? habitCurve(activeGoalNow, goalId) : null;
+    if (!curve) return null;
+    return (
+      <span className="ag-curve" aria-label={`${t(T.curve)}: ${curve.map((p) => p.count).join(' → ')}`}>
+        <span>{t(T.curve)}</span>
+        {curve.map((p, i) => (
+          <React.Fragment key={p.matchId}>
+            {i > 0 && <span aria-hidden="true"> → </span>}
+            <b className={p.matchId === Number(matchId) ? 'is-here' : ''} title={p.from ? t(T.curveFrom) : `#${p.matchId}`}>{p.count}</b>
+          </React.Fragment>
+        ))}
+      </span>
+    );
+  };
   const header = (
     <header className="ag-head">
       <p className="cx-eyebrow">{t(T.match)} {matchId}{board?.match?.patch ? ` · ${board.match.patch}` : ''}</p>
@@ -504,6 +541,7 @@ export const AgentMatchPage: React.FC = () => {
           <Link to={`/r/${activeGoalNow.fromMatch}?lang=${lang}`} className="ag-link">{t(T.goalFrom).replace('{id}', String(activeGoalNow.fromMatch))}</Link>
           <span className={`cx-goal-result is-${goalCheck.result}`}>{t(T.goalResult[goalCheck.result])}</span>
           <em>{goalCheck.evidence[lang]}</em>
+          {curveLine(activeGoalNow.id)}
         </p>
       )}
       {ruleChecks.length > 0 && (
@@ -514,6 +552,7 @@ export const AgentMatchPage: React.FC = () => {
               <b>{rule.when}{lang === 'zh' ? '：' : ': '}{rule.do}</b>
               <span className={`cx-goal-result is-${check.result}`}>{t(T.goalResult[check.result])}</span>
               <em>{check.evidence[lang]}</em>
+              {curveLine(`${activeGoalNow!.id}#${rule.finding}`)}
             </li>
           ))}
         </ul>
@@ -589,6 +628,8 @@ export const AgentMatchPage: React.FC = () => {
 
   // Something is running, or the reader said go and the next request is about to leave.
   const working = parsing || state?.status === 'running' || (intent && !notice && !wait && (!hasTrace || state === null || state.status === 'none'));
+  // Parsing for the goal only: say that, not "working on your review".
+  const checkingGoal = checkingOnly === selection && !intent && state?.status !== 'running';
   if (working) {
     const live = journeyStep(avail, state);
     const steps = [T.s1, T.s2, T.s3, T.s4];
@@ -596,7 +637,7 @@ export const AgentMatchPage: React.FC = () => {
       <Shell>
         {header}
         <div className="ag-state" role="status">
-          <h1>{t(T.working)}</h1>
+          <h1>{t(checkingGoal ? T.checkingGoal : T.working)}</h1>
           <p>{t(T.leave)}</p>
           {workTime && <p className="ag-worktime">{workTime}</p>}
           <ol className="ag-journey">
@@ -646,6 +687,12 @@ export const AgentMatchPage: React.FC = () => {
               </fieldset>
             )}
             <button type="button" className="ag-btn is-primary" onClick={go} disabled={Boolean(wait)}>{t(T.go)}</button>
+            {goalWaitsOnReplay && (
+              <p className="ag-checkonly">
+                <button type="button" className="ag-btn" onClick={checkOnly} disabled={Boolean(wait)}>{t(T.checkOnly)}</button>
+                <span>{t(T.checkOnlyWhy)}</span>
+              </p>
+            )}
             {state?.status === 'unknown_hero' && <p className="ag-warn">{t(T.unknownHero)}</p>}
             {(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}
           </>
