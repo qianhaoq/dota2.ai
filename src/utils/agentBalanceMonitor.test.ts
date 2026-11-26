@@ -121,4 +121,51 @@ describe('createBalanceMonitor (#365)', () => {
     expect(await service.start(ID, 'beastmaster', 'zh', { model: 'kimi-k3.1-pro', admit })).toMatchObject({ status: 'running' });
     expect(admit).toHaveBeenCalledTimes(1);
   });
+
+  it('does not clear a runtime 402 cooldown using an older pre-402 balance check, and clears it once a newer check sees credit restored', async () => {
+    let now = 10_000;
+    let credit = { known: true as const, available: true, total: 5, currency: 'CNY' };
+    const monitor = createBalanceMonitor({
+      models: [{ id: 'deepseek-flash', provider: 'deepseek', apiKey: 'sk-ds' }],
+      readBalanceFn: async () => credit,
+      now: () => now,
+    });
+    // Pre-402 check at t = 10_000 sees 5 CNY (low, still healthy).
+    await monitor.check();
+    expect(monitor.healthySince('deepseek-flash', 9_000)).toBe(true);
+
+    // At t = 20_000, a review burns through the remaining credit and fails with HTTP 402.
+    now = 20_000;
+    const dsComplete = vi.fn(async () => {
+      throw Object.assign(new Error('Insufficient Balance'), { status: 402 });
+    });
+    const service: any = createAgentService({
+      traces: { get: async () => trace },
+      models: { 'deepseek-flash': { name: 'deepseek-flash', complete: dsComplete } },
+      defaultModel: 'deepseek-flash',
+      balanceMonitor: monitor,
+      now: () => now,
+    } as any);
+
+    await service.start(ID, 'beastmaster', 'zh');
+    await vi.waitFor(async () => {
+      expect(await service.status(ID, 'beastmaster', 'zh')).toEqual({ status: 'failed', reason: 'model_out_of_credit' });
+    });
+
+    // At t = 25_000 (before the next periodic balance check), the pre-402 check from t = 10_000 MUST NOT clear the 5-min 402 pause!
+    now = 25_000;
+    expect(await service.start(ID, 'sven', 'zh')).toEqual({
+      status: 'unavailable',
+      reason: 'model_out_of_credit',
+      retry_in_sec: 295,
+    });
+    expect(dsComplete).toHaveBeenCalledTimes(1);
+
+    // At t = 30_000, the account is topped up to 100 CNY and a fresh check runs -> 402 cooldown clears immediately.
+    now = 30_000;
+    credit = { known: true, available: true, total: 100, currency: 'CNY' };
+    await monitor.check();
+    dsComplete.mockImplementation(() => new Promise(() => {}));
+    expect(await service.start(ID, 'sven', 'zh')).toMatchObject({ status: 'running' });
+  });
 });
