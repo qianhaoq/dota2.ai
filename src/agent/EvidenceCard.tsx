@@ -128,6 +128,7 @@ const T = {
     dead: { en: 'dead', zh: '阵亡', ru: 'мёртв' }, in_own_base: { en: 'in base', zh: '在基地', ru: 'на базе' },
     trading_damage_with_enemy_heroes: { en: 'fighting heroes', zh: '在和敌方英雄交手', ru: 'дерётся с героями' },
     hitting_enemy_buildings: { en: 'hitting a building', zh: '在打建筑', ru: 'бьёт постройку' },
+    farming: { en: 'farming', zh: '在刷钱', ru: 'фармит' },
     none_of_these: { en: '', zh: '', ru: '' },
   } as Record<string, Tri>,
   why: { cooldown: { en: 'cooldown', zh: '冷却', ru: 'перезарядка' }, mana: { en: 'no mana', zh: '缺蓝', ru: 'нет маны' }, not_learned: { en: 'not learned', zh: '未学', ru: 'не изучен' } } as Record<string, Tri>,
