@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
-import { checkGoal, checkRules, goalChecks, type ActiveGoal } from './goalStore';
-import { HABIT_KEYS } from '../../lib/coach/goals.js';
+import { checkGoal, checkRules, goalChecks, habitCurve, GOAL_CHECKS_STORAGE_KEY, type ActiveGoal } from './goalStore';
+import { HABIT_KEYS, habitRef } from '../../lib/coach/goals.js';
 const HABIT = HABIT_KEYS[0];
 
 const report = buildCoachReport(JSON.parse(readFileSync(path.join(process.cwd(), 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))) as any;
@@ -67,3 +67,53 @@ describe('goal_checked: the next-game loop closing, counted', () => {
     expect((await Promise.all(sent)).filter((e) => e.event === 'goal_checked')).toEqual([]);
   });
 });
+
+describe('habitCurve: a habit\'s count game by game', () => {
+  const habit = (rules = false): ActiveGoal => ({
+    id: 'h', goal: { kind: 'replay_habit', habit: HABIT, max: 1, baseline: 4, baseline_exact: true, label: { en: 'x', zh: 'x' } } as never,
+    action: { en: 'a', zh: 'a' }, findingId: 'f', fromMatch: 100, fromStart: 1, accountId: null, heroId: 29, setAt: 1,
+    ...(rules ? { rules: [{ finding: 2, when: 'w', do: 'd', check: { kind: 'replay_habit', habit: HABIT, max: 2, baseline: 5, baseline_exact: true, label: { en: 'y', zh: 'y' } } as never }] } : {}),
+  });
+  const store = (checks: object[]) => window.localStorage.setItem(GOAL_CHECKS_STORAGE_KEY, JSON.stringify(checks));
+  const c = (goalId: string, matchId: number, result: string, count?: number) => ({ goalId, matchId, result, evidence: { en: '', zh: '' }, ...(count == null ? {} : { count }) });
+
+  it('starts at the game the goal came from, then each later game that settled it, in match order', () => {
+    store([c('h', 300, 'met', 1), c('h', 200, 'missed', 3), c('h', 250, 'unknown'), c('h', 260, 'no_opportunity'), c('other', 210, 'met', 0)]);
+    expect(habitCurve(habit())).toEqual([{ matchId: 100, count: 4, from: true }, { matchId: 200, count: 3 }, { matchId: 300, count: 1 }]);
+  });
+
+  it('a rule has its own curve, from its own baseline', () => {
+    store([c('h#2', 200, 'missed', 4), c('h', 200, 'met', 1)]);
+    expect(habitCurve(habit(true), 'h#2')).toEqual([{ matchId: 100, count: 5, from: true }, { matchId: 200, count: 4 }]);
+    expect(habitCurve(habit(true), 'h#9')).toBeNull();
+  });
+
+  it('a baseline that was only a lower bound is not the first point: the curve starts at the later games, if two', () => {
+    const inexact = { ...habit(), goal: { kind: 'replay_habit', habit: HABIT, max: 1, baseline: 3, label: { en: 'x', zh: 'x' } } as never };
+    store([c('h', 200, 'missed', 4)]);
+    expect(habitCurve(inexact)).toBeNull();
+    store([c('h', 200, 'missed', 4), c('h', 300, 'met', 1)]);
+    expect(habitCurve(inexact)).toEqual([{ matchId: 200, count: 4 }, { matchId: 300, count: 1 }]);
+  });
+
+  it('nothing settled yet, a check stored before counts were kept, or a goal that is not a habit: no curve', () => {
+    store([c('h', 200, 'unknown')]);
+    expect(habitCurve(habit())).toBeNull();
+    store([c('h', 200, 'met')]);
+    expect(habitCurve(habit())).toBeNull();
+    store([c('g', 200, 'met', 1)]);
+    expect(habitCurve(goal('g', 'deaths_per10_max'))).toBeNull();
+    // A habit goal from before baselines were kept: there is no first point to draw from.
+    expect(habitCurve({ ...habit(), goal: { kind: 'replay_habit', habit: HABIT, max: 1, label: { en: 'x', zh: 'x' } } as never })).toBeNull();
+  });
+
+  it('a check judged from a replay stores its count', () => {
+    const g = goal('g-habit', 'replay_habit');
+    const ref = habitRef(g.goal, 'tidehunter') as string;
+    const summary = { deaths_where: { health_below_half_at_window_start: [] }, deaths_not_known: { health_at_window_start: 0, allies_at_death: 0 } };
+    expect(HABIT).toBe('low_health');
+    expect(checkGoal(g, report, 0, { hero: 'tidehunter', records: { [ref]: summary } })).toMatchObject({ result: 'met', count: 0 });
+    expect(goalChecks('g-habit')).toEqual([expect.objectContaining({ result: 'met', count: 0 })]);
+  });
+});
+

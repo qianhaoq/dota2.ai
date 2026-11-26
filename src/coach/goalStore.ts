@@ -43,7 +43,8 @@ export function replayRefs(goal: ActiveGoal, hero: string): string[] {
 }
 
 export type GoalResult = 'met' | 'missed' | 'no_opportunity' | 'unknown';
-export interface GoalCheck { goalId: string; matchId: number; result: GoalResult; evidence: Bi }
+/** `count`: for a habit, how many times it came up in that game (when the replay settled it). */
+export interface GoalCheck { goalId: string; matchId: number; result: GoalResult; evidence: Bi; count?: number }
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -71,6 +72,22 @@ export function activeGoal(): ActiveGoal | null {
 
 export function setGoal(g: ActiveGoal | null): void {
   write(GOAL_STORAGE_KEY, g, CHANGED);
+}
+
+/**
+ * A habit's counts game by game: the game the goal came from (its baseline, when that count was exact), then each
+ * later game that settled it exactly, in match order. Null for a goal that is not a habit, or with fewer than two points.
+ */
+export function habitCurve(goal: ActiveGoal, goalId: string = goal.id): { matchId: number; count: number; from?: true }[] | null {
+  const spec = goalId === goal.id ? goal.goal : goal.rules?.find((r) => `${goal.id}#${r.finding}` === goalId)?.check;
+  if (!spec || spec.kind !== 'replay_habit' || !Number.isInteger((spec as { baseline?: number }).baseline)) return null;
+  const later = goalChecks(goalId).filter((c) => Number.isInteger(c.count) && (c.result === 'met' || c.result === 'missed')).sort((a, b) => a.matchId - b.matchId);
+  // The game the goal came from is the first point only when its count was exact: a lower bound there would make
+  // a later, fully counted game look like it got worse.
+  const first = (spec as { baseline_exact?: boolean }).baseline_exact === true ? [{ matchId: goal.fromMatch, count: (spec as { baseline: number }).baseline, from: true as const }] : [];
+  const points = [...first, ...later.map((c) => ({ matchId: c.matchId, count: c.count as number }))];
+  // One point is not a curve.
+  return points.length >= 2 ? points : null;
 }
 
 export function goalChecks(goalId: string): GoalCheck[] {
@@ -119,8 +136,8 @@ function judge(goalId: string, spec: GoalSpec, report: CoachReport, slot: number
     const kept = goalChecks(goalId).find((c) => c.matchId === matchId && c.result !== 'unknown');
     if (kept) return kept;
   }
-  const r = evaluateGoal(spec, report, slot, summary) as { result: GoalResult; evidence: Bi };
-  const check: GoalCheck = { goalId, matchId, result: r.result, evidence: r.evidence };
+  const r = evaluateGoal(spec, report, slot, summary) as { result: GoalResult; evidence: Bi; count?: number };
+  const check: GoalCheck = { goalId, matchId, result: r.result, evidence: r.evidence, ...(Number.isInteger(r.count) ? { count: r.count } : {}) };
   recordCheck(check, closesLoop);
   return check;
 }

@@ -494,7 +494,7 @@ describe('runDeepReview', () => {
     ]), 's')] }]);
     const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r2.review.findings.map((f: any) => f.rule.check)).toEqual([
-      { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）' } },
+      { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, baseline_exact: true, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）' } },
       expect.objectContaining({ habit: 'died_holding', ability: 'primal_roar', max: 1, baseline: 3 }),
       undefined,
     ]);
@@ -510,7 +510,7 @@ describe('runDeepReview', () => {
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
     expect(r.review.findings.map((f: any) => f.rule)).toEqual([
-      { when: rule.when, do: rule.do, this_game: rule.this_game, check: { kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）' } } },
+      { when: rule.when, do: rule.do, this_game: rule.this_game, check: { kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）' } } },
       { when: rule.when, do: rule.do, this_game: rule.this_game },
       { when: rule.when, do: rule.do, this_game: rule.this_game },
     ]);

@@ -17,8 +17,8 @@ describe('the review page funnel from event logs', () => {
       { type: 'other', event: 'match_opened', anonId: 'anon_x' },
     ];
     const out = summarizeFunnel(entries);
-    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0, goal: 0, checked: 0, played: 0, rated: 0 });
-    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0, goal: 0, checked: 0, played: 0, rated: 0 });
+    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0 });
+    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0 });
     expect(out.anonymous).toBe(1);
     expect(out.events).toMatchObject({ match_opened: 3, chat_asked: 2, review_viewed: 3 });
     expect(out.days).toEqual(['2026-11-24', '2026-11-25']);
@@ -67,6 +67,11 @@ describe('the review page funnel from event logs', () => {
     ]);
     expect(out.browsers).toMatchObject({ goal: 2, checked: 1 });
     expect(out.ofOpened).toMatchObject({ goal: 2, checked: 1 });
+  });
+
+  it('a goal check without a review is its own step, not a request for a review', () => {
+    const out = summarizeFunnel([line('match_opened', 'anon_q'), line('goal_check_requested', 'anon_q'), line('goal_checked', 'anon_q', { result: 'met' })]);
+    expect(out.browsers).toMatchObject({ opened: 1, requested: 0, goalOnly: 1, checked: 1 });
   });
 
   it('counts who replayed a moment and who rated a finding, and what was said', () => {
