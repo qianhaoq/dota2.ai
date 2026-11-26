@@ -77,6 +77,32 @@ describe('key_moments says when it cannot read the chance — never "no key mome
   });
 });
 
+describe('what the review found on #389', () => {
+  it('a player elsewhere whose exact second was not sampled is placed where heroStateAt places them — never at a made-up spot', () => {
+    // Fight 3 (6:08) from Axe's side: Axe was elsewhere. Blank his position at the fight's first second.
+    const ax = trace.heroes.findIndex((x: any) => x.key === 'axe');
+    const r0: any = keyMoments(trace, { hero: 'axe' }, { match });
+    const f3 = [...r0.largest_changes, ...(r0.stretch?.fights ?? [])].find((f: any) => f.ref === 'fight:3');
+    const from = Math.round(trace.deaths.filter((d: any) => d[0] >= 360 && d[0] < 380).sort((a: any, b: any) => a[0] - b[0])[0][0]);
+    const states = trace.states.map((st: any, i: number) => (i === ax ? { ...st, x: st.x.map((v: any, k: number) => (k === from - trace.t0 ? null : v)), y: st.y.map((v: any, k: number) => (k === from - trace.t0 ? null : v)) } : st));
+    const r: any = keyMoments({ ...trace, states }, { hero: 'axe' }, { match });
+    const g = r.largest_changes.find((f: any) => f.ref === 'fight:3');
+    expect([f3.me, f3.my_place, from]).toEqual(['elsewhere', 'radiant_top_lane', 368]);
+    // With the exact second blanked, the neighbouring sample heroStateAt reads gives the same place — not river_mid,
+    // which is where null coordinates land.
+    expect([g.me, g.my_place]).toEqual(['elsewhere', 'radiant_top_lane']);
+  });
+
+  it('a fight in the minute the Ancient fell is read from that minute\'s opening state', () => {
+    // Move the last fight's deaths to 42:01–42:20; the Ancient falls at 42:31; the model reads 42:00.
+    const last = trace.deaths.filter((d: any) => d[0] >= 2510);
+    const moved = trace.deaths.map((d: any) => (d[0] >= 2510 ? [2521 + (d[0] - last[0][0]) * 0.1, d[1], d[2], d[3]] : d));
+    const r: any = keyMoments({ ...trace, deaths: moved }, { hero: 'beastmaster' }, { match });
+    expect(r.game_ended_on).toMatchObject({ my_team_win_chance_before: expect.any(Number) });
+    expect(r.game_ended_on.clock.startsWith('42:')).toBe(true);
+  });
+});
+
 describe('key_moments reaches the model and the reader', () => {
   it('is offered as a tool, its ref resolves, and the prompt says how to read it — and not to quote the chances', () => {
     expect(KNOWLEDGE_TOOLS.map((t: any) => t.name)).toContain('key_moments');
@@ -89,7 +115,7 @@ describe('key_moments reaches the model and the reader', () => {
     expect(s).toContain('6. Call key_moments for the player.');
     expect(s).toContain('write about it as one turn and cite those fights');
     expect(s).toContain('The chances are a ruler for ranking moments: never quote them');
-    expect(s).toContain('(102 of 160 heroes on losing sides in the corpus)');
+    expect(s).toContain('(101 of 160 heroes on losing sides in the corpus)');
     // Not a verdict: a first wording ("in the fight 80% or more: the lost chance is not about where the player was")
     // made two of three Luna reviews — a game lost from the lanes, five lane deaths — say it was the enemy's doing.
     expect(s).toContain('It is not a verdict on the player: being in the fights does not clear them of what they did before 5:00');

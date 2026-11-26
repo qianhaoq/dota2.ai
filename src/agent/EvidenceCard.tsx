@@ -131,6 +131,8 @@ const T = {
   momentsSplit: { en: 'Of the chance lost in fights, the player was', zh: '团战里丢掉的胜率，玩家当时' },
   momentsPart: { in_it: { en: 'in the fight', zh: '在团里' }, dead: { en: 'dead', zh: '阵亡中' }, elsewhere: { en: 'elsewhere', zh: '在别处' }, not_known: { en: 'not known', zh: '不确定' } } as Record<string, Record<Lang, string>>,
   momentsNone: { en: 'no fight lost the team any chance', zh: '没有哪场团战让我方胜率下降' },
+  momentsNotRead: { en: 'fights whose change could not be read (the gold lead does not cover them)', zh: '读不出胜率变化的团战（经济差没有覆盖那几分钟）' },
+  momentsUnknown: { en: 'not known', zh: '不确定' },
   aegisHolder: { en: 'Aegis', zh: '不朽盾' },
   aegisEnd: { used: { en: 'used', zh: '用掉' }, expired: { en: 'expired', zh: '过期' }, game_ended: { en: 'game ended', zh: '比赛结束' }, unknown: { en: 'unknown', zh: '不明' } } as Record<string, Record<Lang, string>>,
   atRoshan: { en: 'At Roshan', zh: '在场' },
@@ -680,8 +682,11 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           </p>
         )}
         <p className="ag-rec-line"><span>{t(T.momentsSplit)}</span>
-          {parts.length ? parts.map((k) => <span key={k} className="ag-chip">{t(T.momentsPart[k])}<em>{Math.round(split[k] * 100)}%</em></span>) : <span className="ag-none">{t(T.momentsNone)}</span>}
+          {parts.length ? parts.map((k) => <span key={k} className="ag-chip">{t(T.momentsPart[k])}<em>{Math.round(split[k] * 100)}%</em></span>)
+            // "No fight lost any" only when every fight was read; with unread fights it is not known.
+            : <span className="ag-none">{r.fights_not_read > 0 ? t(T.momentsUnknown) : t(T.momentsNone)}</span>}
         </p>
+        {r.fights_not_read > 0 && <p className="ag-rec-line"><span className="ag-none">{t(T.momentsNotRead)}</span><span className="ag-chip">{r.fights_not_read}</span></p>}
       </div>
     );
   }
