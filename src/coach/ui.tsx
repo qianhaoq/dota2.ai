@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useI18n } from '../v2/i18n/I18nProvider';
 import type { Bi } from './types';
 
-export type Lang = 'en' | 'zh';
+export type Lang = 'en' | 'zh' | 'ru';
 
 /** An image that collapses to a same-size placeholder if the CDN fails. */
 export function SafeImg({ src, alt, className, title }: { src: string; alt: string; className?: string; title?: string }) {

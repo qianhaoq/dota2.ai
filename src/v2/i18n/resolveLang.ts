@@ -1,10 +1,10 @@
-export type Language = 'en' | 'zh';
+export type Language = 'en' | 'zh' | 'ru';
 
 /**
  * Pure language resolution for the d2ai shell. Priority:
- *   URL ?lang= (en|zh) > localStorage `d2ai.lang` > browser language > 'en'
+ *   URL ?lang= (en|zh|ru) > localStorage `d2ai.lang` > browser language > 'en'
  * Invalid values are ignored at every step. Browser languages starting with
- * "zh" (zh-CN, zh-TW, …) map to zh.
+ * "zh" (zh-CN, zh-TW, …) map to zh, and "ru" (ru, ru-RU, …) map to ru.
  *
  * The browser step is opt-in (`detectBrowser: true`, wired to the build-time
  * VITE_LANG_DETECT_BROWSER=1 flag in I18nProvider); by default a first-time
@@ -17,7 +17,7 @@ export type Language = 'en' | 'zh';
 export const LANG_STORAGE_KEY = 'd2ai.lang';
 
 export function normalizeLang(value: unknown): Language | null {
-  if (value === 'en' || value === 'zh') return value;
+  if (value === 'en' || value === 'zh' || value === 'ru') return value;
   return null;
 }
 
@@ -37,8 +37,13 @@ export function resolveLang({ urlLang, storedLang, browserLanguages, detectBrows
   if (fromUrl) return fromUrl;
   const fromStorage = normalizeLang(storedLang);
   if (fromStorage) return fromStorage;
-  if (detectBrowser && browserLanguages?.some((tag) => typeof tag === 'string' && tag.toLowerCase().startsWith('zh'))) {
-    return 'zh';
+  if (detectBrowser && Array.isArray(browserLanguages)) {
+    for (const tag of browserLanguages) {
+      if (typeof tag !== 'string') continue;
+      const lower = tag.toLowerCase();
+      if (lower.startsWith('zh')) return 'zh';
+      if (lower.startsWith('ru')) return 'ru';
+    }
   }
   return 'en';
 }
@@ -71,10 +76,10 @@ export function browserLanguageTags(): readonly string[] {
   }
 }
 
-/** `<html lang>`: 'en' or 'zh-CN' (never bare 'zh'). */
+/** `<html lang>`: 'en', 'zh-CN' (never bare 'zh'), or 'ru'. */
 export function applyDocumentLang(lang: Language): void {
   try {
-    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang === 'ru' ? 'ru' : 'en';
   } catch {
     /* no document (tests/SSR): skip */
   }

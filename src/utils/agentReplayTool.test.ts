@@ -123,6 +123,9 @@ describe('replay_review over MCP, on the real agent service and router', () => {
   const submit = { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], next_game: ['留咆哮'], blind_spots: ['视野'] };
   let starts = 0;
   const complete = async (o: any) => {
+    if (!o.tools?.length && String(o.system ?? '').includes('Dota 2 coaching translator')) {
+      return { text: JSON.stringify({ en: { verdict: 'Primal Roar was not saved.', mainline: [], findings: [{ title: 'Roar', claim: 'PA used BKB 7 times.', evidence: ['27:27 stunned 3.4s'], fix: 'Hold it.' }], blind_spots: ['Vision'] }, ru: { verdict: 'Primal Roar не приберегли.', mainline: [], findings: [{ title: 'Рёв', claim: 'PA нажала BKB 7 раз.', evidence: ['27:27 оглушение 3.4 с'], fix: 'Берегите.' }], blind_spots: ['Обзор'] } }) };
+    }
     const last = o.messages.at(-1);
     if (last.role === 'user') { starts++; return { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a'), call('immunity_windows', { hero: 'phantom_assassin' }, 'b')] }; }
     return { toolCalls: [call('submit_review', submit, 's')] };

@@ -13,16 +13,16 @@ import { trackEvent } from '../services/analytics';
  * a reader who was away when the review came and came back to it, by either way.
  */
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 type Kind = 'asked' | 'granted' | 'denied' | 'shown' | 'clicked' | 'returned';
 
 const T = {
-  ask: { en: 'Notify me when it is ready', zh: '好了通知我' },
-  on: { en: 'You will get a notification when it is ready — go ahead and switch tabs.', zh: '好了会通知你，可以先去干别的。' },
-  blocked: { en: 'Notifications are blocked in this browser; this tab\'s title will say when it is ready.', zh: '浏览器拦截了通知；好了的时候这个标签页的标题会提示。' },
-  working: { en: 'Reviewing', zh: '正在复盘' },
-  readyTitle: { en: '✓ Review ready', zh: '✓ 复盘好了' },
-  notifyTitle: { en: 'Your {hero} review is ready', zh: '{hero} 的复盘好了' },
+  ask: { en: 'Notify me when it is ready', zh: '好了通知我', ru: 'Уведомить, когда будет готово' },
+  on: { en: 'You will get a notification when it is ready — go ahead and switch tabs.', zh: '好了会通知你，可以先去干别的。', ru: 'Вы получите уведомление, когда разбор будет готов — можно переключить вкладку.' },
+  blocked: { en: 'Notifications are blocked in this browser; this tab\'s title will say when it is ready.', zh: '浏览器拦截了通知；好了的时候这个标签页的标题会提示。', ru: 'Уведомления заблокированы в браузере; статус появится в заголовке вкладки.' },
+  working: { en: 'Reviewing', zh: '正在复盘', ru: 'Разбираем' },
+  readyTitle: { en: '✓ Review ready', zh: '✓ 复盘好了', ru: '✓ Разбор готов' },
+  notifyTitle: { en: 'Your {hero} review is ready', zh: '{hero} 的复盘好了', ru: 'Ваш разбор на {hero} готов' },
 } as const;
 
 const supported = () => typeof window !== 'undefined' && 'Notification' in window && typeof window.Notification?.requestPermission === 'function';

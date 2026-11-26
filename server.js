@@ -79,6 +79,7 @@ import { createAgentService, SLOW_REVIEW_MAX_MS } from './lib/agent/service.js';
 import { warmShowcase } from './lib/agent/showcase.js';
 import { createPatchRouter } from './lib/patch/router.js';
 import { createPatchNews } from './lib/patch/news.js';
+import { createSiteFeedbackRouter } from './lib/siteFeedback.js';
 import { createLiveNotes } from './lib/patch/liveNotes.js';
 import { createValveFetch } from './lib/patch/valveFetch.js';
 import { createTaskAuth, createTaskDispatcher } from './lib/agent/tasks.js';
@@ -1011,6 +1012,19 @@ app.use(createPatchRouter({
   llm: reviewLlmLimit,
   guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
   log: (msg) => console.warn(`[patch] ${msg}`),
+}));
+
+// Homepage feedback / suggestion box (lib/siteFeedback.js): persisted under site-feedback/ in the bucket or AGENT_REVIEW_DIR.
+const siteFeedbackBlobs = (() => {
+  const name = (process.env.AGENT_BUCKET || '').trim();
+  if (name && agentBlobs) { try { return createBucketStore(createGcsBucket(name), 'site-feedback/'); } catch { return null; } }
+  return process.env.AGENT_REVIEW_DIR ? createFileStore(path.join(process.env.AGENT_REVIEW_DIR, 'site-feedback')) : null;
+})();
+app.use(createSiteFeedbackRouter({
+  store: siteFeedbackBlobs ? createJsonStore(siteFeedbackBlobs) : null,
+  resolveClientIp,
+  guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
+  log: (msg) => console.log(`[site-feedback] ${msg}`),
 }));
 
 // Review v1 API, OpenAPI/llms docs and the remote MCP endpoint (/mcp), whose

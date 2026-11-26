@@ -10,52 +10,52 @@ import './patch.css';
  * numbers before answering; the lookups show as they happen.
  */
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 type Bi = Record<Lang, string>;
 
 const T = {
-  title: { en: 'Patch {v} advisor', zh: '{v} 版本顾问' },
-  releases: { en: 'Notes from', zh: '更新日志：' },
-  sub: { en: 'Ask what {v} changed, or how a hero is doing since. Changes are quoted from Valve\'s notes; win and pick rates are public matches before and since the patch.', zh: '问它 {v} 改了什么，或者某个英雄改动后表现如何。改动逐条引自官方更新日志；胜率和出场率来自补丁前后的路人局。' },
-  winUp: { en: 'Win rate up', zh: '胜率上升' }, winDown: { en: 'Win rate down', zh: '胜率下降' },
-  pickUp: { en: 'Picked more', zh: '出场率上升' }, pickDown: { en: 'Picked less', zh: '出场率下降' },
-  hero: { en: 'Hero', zh: '英雄' }, before: { en: 'Before', zh: '补丁前' }, after: { en: 'Since', zh: '补丁后' }, change: { en: 'Change', zh: '变化' },
-  windows: { en: 'Before: {b0} – {b1} ({bd} days). Since: {a0} – {a1} ({ad} days). All brackets, public matches. A few days of a new patch: these will move.', zh: '补丁前：{b0} 至 {b1}（{bd} 天）；补丁后：{a0} 至 {a1}（{ad} 天）。全部分段的路人局。新版本才几天，数字还会变。' },
-  credit: { en: 'Data: STRATZ', zh: '数据：STRATZ' },
-  notes: { en: 'Valve\'s {v} notes', zh: '{v} 官方更新日志' },
-  askHero: { en: 'What did {v} change for {h}, and how did its win rate and pick rate move?', zh: '{h}在 {v} 改了什么？胜率和出场率怎么变了？' },
-  askAbout: { en: 'Ask about {h}', zh: '问问{h}' },
-  chat: { en: 'Ask the advisor', zh: '问顾问' },
-  log: { en: 'Conversation with the advisor', zh: '与顾问的对话' },
-  placeholder: { en: 'e.g. Which carries got stronger at my rank (Legend)?', zh: '例如：传奇分段哪些大哥变强了？' },
-  send: { en: 'Ask', zh: '提问' }, stop: { en: 'Stop', zh: '停止' },
-  you: { en: 'You', zh: '你' }, advisor: { en: 'Advisor', zh: '顾问' },
-  thinking: { en: 'Thinking…', zh: '思考中…' },
-  suggest: { en: 'Try asking', zh: '可以这样问' },
-  own: { en: 'Ask your own question…', zh: '自己提问…' },
-  tooLong: { en: 'Keep the question under 500 characters.', zh: '问题请控制在 500 字以内。' },
-  rate: { en: 'Too many questions — wait a minute and try again.', zh: '提问太频繁了，请稍等一分钟再试。' },
-  busy: { en: 'The advisor is at capacity right now. Try again in a few minutes.', zh: '顾问现在忙不过来，过几分钟再试。' },
-  off: { en: 'The advisor cannot answer right now. The numbers on the left are still current.', zh: '顾问暂时无法回答。左侧的数字仍然是最新的。' },
-  failed: { en: 'No answer came back. Try again.', zh: '没有拿到回答，请重试。' },
-  unverified: { en: 'Not found in the notes or the numbers, treat with care:', zh: '以下内容在更新日志和数据里没有查到，请谨慎看待：' },
-  noData: { en: 'The numbers could not be loaded.', zh: '数据没有加载出来。' },
-  oldNumbers: { en: 'These numbers are from before and after {n}, not yet {m}.', zh: '这些数字是 {n} 前后的，还不是 {m} 的。' },
+  title: { en: 'Patch {v} advisor', zh: '{v} 版本顾问', ru: 'Советник по патчу {v}' },
+  releases: { en: 'Notes from', zh: '更新日志：', ru: 'Патчноуты:' },
+  sub: { en: 'Ask what {v} changed, or how a hero is doing since. Changes are quoted from Valve\'s notes; win and pick rates are public matches before and since the patch.', zh: '问它 {v} 改了什么，或者某个英雄改动后表现如何。改动逐条引自官方更新日志；胜率和出场率来自补丁前后的路人局。', ru: 'Спросите, что изменилось в {v} или как чувствует себя герой. Изменения цитируются из заметок Valve; винрейт и пикрейт — по пабликам до и после патча.' },
+  winUp: { en: 'Win rate up', zh: '胜率上升', ru: 'Рост винрейта' }, winDown: { en: 'Win rate down', zh: '胜率下降', ru: 'Падение винрейта' },
+  pickUp: { en: 'Picked more', zh: '出场率上升', ru: 'Пикают чаще' }, pickDown: { en: 'Picked less', zh: '出场率下降', ru: 'Пикают реже' },
+  hero: { en: 'Hero', zh: '英雄', ru: 'Герой' }, before: { en: 'Before', zh: '补丁前', ru: 'До' }, after: { en: 'Since', zh: '补丁后', ru: 'После' }, change: { en: 'Change', zh: '变化', ru: 'Изм.' },
+  windows: { en: 'Before: {b0} – {b1} ({bd} days). Since: {a0} – {a1} ({ad} days). All brackets, public matches. A few days of a new patch: these will move.', zh: '补丁前：{b0} 至 {b1}（{bd} 天）；补丁后：{a0} 至 {a1}（{ad} 天）。全部分段的路人局。新版本才几天，数字还会变。', ru: 'До: {b0} – {b1} ({bd} дн.). После: {a0} – {a1} ({ad} дн.). Все ранги, паблики. В начале патча цифры ещё будут меняться.' },
+  credit: { en: 'Data: STRATZ', zh: '数据：STRATZ', ru: 'Данные: STRATZ' },
+  notes: { en: 'Valve\'s {v} notes', zh: '{v} 官方更新日志', ru: 'Патчноут {v} от Valve' },
+  askHero: { en: 'What did {v} change for {h}, and how did its win rate and pick rate move?', zh: '{h}在 {v} 改了什么？胜率和出场率怎么变了？', ru: 'Что изменили у {h} в {v} и как изменились его винрейт и пикрейт?' },
+  askAbout: { en: 'Ask about {h}', zh: '问问{h}', ru: 'Спросить про {h}' },
+  chat: { en: 'Ask the advisor', zh: '问顾问', ru: 'Спросить советника' },
+  log: { en: 'Conversation with the advisor', zh: '与顾问的对话', ru: 'Диалог с советником' },
+  placeholder: { en: 'e.g. Which carries got stronger at my rank (Legend)?', zh: '例如：传奇分段哪些大哥变强了？', ru: 'Напр.: Какие керри стали сильнее на ранге Легенда?' },
+  send: { en: 'Ask', zh: '提问', ru: 'Спросить' }, stop: { en: 'Stop', zh: '停止', ru: 'Стоп' },
+  you: { en: 'You', zh: '你', ru: 'Вы' }, advisor: { en: 'Advisor', zh: '顾问', ru: 'Советник' },
+  thinking: { en: 'Thinking…', zh: '思考中…', ru: 'Думаю…' },
+  suggest: { en: 'Try asking', zh: '可以这样问', ru: 'Попробуйте спросить' },
+  own: { en: 'Ask your own question…', zh: '自己提问…', ru: 'Задать свой вопрос…' },
+  tooLong: { en: 'Keep the question under 500 characters.', zh: '问题请控制在 500 字以内。', ru: 'Сократите вопрос до 500 символов.' },
+  rate: { en: 'Too many questions — wait a minute and try again.', zh: '提问太频繁了，请稍等一分钟再试。', ru: 'Слишком много вопросов — подождите минуту и попробуйте снова.' },
+  busy: { en: 'The advisor is at capacity right now. Try again in a few minutes.', zh: '顾问现在忙不过来，过几分钟再试。', ru: 'Советник сейчас перегружен. Попробуйте через пару минут.' },
+  off: { en: 'The advisor cannot answer right now. The numbers on the left are still current.', zh: '顾问暂时无法回答。左侧的数字仍然是最新的。', ru: 'Советник сейчас недоступен. Статистика слева по-прежнему актуальна.' },
+  failed: { en: 'No answer came back. Try again.', zh: '没有拿到回答，请重试。', ru: 'Ответ не пришёл. Попробуйте снова.' },
+  unverified: { en: 'Not found in the notes or the numbers, treat with care:', zh: '以下内容在更新日志和数据里没有查到，请谨慎看待：', ru: 'Не найдено в патчноутах или статистике, проверяйте осторожно:' },
+  noData: { en: 'The numbers could not be loaded.', zh: '数据没有加载出来。', ru: 'Не удалось загрузить данные.' },
+  oldNumbers: { en: 'These numbers are from before and after {n}, not yet {m}.', zh: '这些数字是 {n} 前后的，还不是 {m} 的。', ru: 'Эти цифры собраны вокруг патча {n}, ещё не {m}.' },
 } as const;
 
 const SUGGEST: Bi[] = [
-  { en: 'Who got stronger and who got weaker since the patch?', zh: '这个版本谁变强了，谁变弱了？' },
-  { en: 'What are the biggest general changes, and what do they mean for how I play?', zh: '最大的全局改动有哪些？对我的打法意味着什么？' },
-  { en: 'Which heroes rose in win rate without being changed in the notes?', zh: '哪些英雄没被改动，胜率却涨了？' },
+  { en: 'Who got stronger and who got weaker since the patch?', zh: '这个版本谁变强了，谁变弱了？', ru: 'Кто стал сильнее, а кто слабее после патча?' },
+  { en: 'What are the biggest general changes, and what do they mean for how I play?', zh: '最大的全局改动有哪些？对我的打法意味着什么？', ru: 'Какие главные общие изменения и как они влияют на игру?' },
+  { en: 'Which heroes rose in win rate without being changed in the notes?', zh: '哪些英雄没被改动，胜率却涨了？', ru: 'У каких героев вырос винрейт, хотя их не меняли в патчноуте?' },
 ];
 
 const TOOLS: Record<string, Bi> = {
-  patch_overview: { en: 'Reading the patch at a glance', zh: '看版本总览' },
-  hero_patch: { en: 'Reading a hero\'s notes and numbers', zh: '查英雄的改动和数据' },
-  meta_movers: { en: 'Ranking who moved most', zh: '排胜率和出场率的变化' },
-  item_patch: { en: 'Reading an item\'s notes', zh: '查物品改动' },
-  general_changes: { en: 'Reading the general changes', zh: '查全局改动' },
-  search_notes: { en: 'Searching the patch notes', zh: '搜索更新日志' },
+  patch_overview: { en: 'Reading the patch at a glance', zh: '看版本总览', ru: 'Изучаю обзор патча' },
+  hero_patch: { en: 'Reading a hero\'s notes and numbers', zh: '查英雄的改动和数据', ru: 'Читаю изменения и статистику героя' },
+  meta_movers: { en: 'Ranking who moved most', zh: '排胜率和出场率的变化', ru: 'Сравниваю изменения винрейта и пикрейта' },
+  item_patch: { en: 'Reading an item\'s notes', zh: '查物品改动', ru: 'Читаю изменения предмета' },
+  general_changes: { en: 'Reading the general changes', zh: '查全局改动', ru: 'Читаю общие изменения' },
+  search_notes: { en: 'Searching the patch notes', zh: '搜索更新日志', ru: 'Ищу в патчноутах' },
 };
 export function advisorStepLabel(step: ToolStep, lang: Lang): string {
   const base = TOOLS[step.tool]?.[lang] ?? step.tool;

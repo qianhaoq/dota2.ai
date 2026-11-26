@@ -26,6 +26,15 @@ function model() {
   const complete = async (o: any) => {
     seen.push(JSON.parse(JSON.stringify(o)));
     const last = o.messages.at(-1);
+    if (!o.tools?.length && String(o.system ?? '').includes('Dota 2 coaching translator')) {
+      return {
+        text: JSON.stringify({
+          en: { verdict: 'Primal Roar was not saved for Phantom Assassin.', mainline: [], findings: [{ title: 'Roar', claim: 'Phantom Assassin used BKB 7 times.', evidence: ['27:27 roared into BKB, stunned 3.4s'], fix: 'Save it for her.' }], blind_spots: ['Vision'] },
+          ru: { verdict: 'Primal Roar не приберегли для Phantom Assassin.', mainline: [], findings: [{ title: 'Рёв', claim: 'Phantom Assassin нажала BKB 7 раз.', evidence: ['27:27 ульт в BKB, оглушение 3.4 с'], fix: 'Берегите для неё.' }], blind_spots: ['Обзор'] },
+          zh: { verdict: submit.verdict, mainline: [], findings: [{ title: finding.title, claim: finding.claim, evidence: [finding.evidence[0].fact], fix: finding.fix }], blind_spots: submit.blind_spots },
+        }),
+      };
+    }
     const isChat = !o.tools.some((t: any) => t.name === 'submit_review');
     if (isChat) {
       if (last.role === 'tool') return { text: '36:05 你满血 2915，被 axe 先手。' };
@@ -189,7 +198,7 @@ describe('agent API', () => {
   it('says whether a replay trace exists and for which heroes', async () => {
     const a = await get(`/api/agent/${MATCH}`);
     expect(a.body).toMatchObject({ trace: true, model_configured: true, can_parse: false });
-    expect(a.body.heroes).toContainEqual({ hero: 'beastmaster', team: 'dire', hero_id: 38, en: 'Beastmaster', zh: '兽王' });
+    expect(a.body.heroes).toContainEqual({ hero: 'beastmaster', team: 'dire', hero_id: 38, en: 'Beastmaster', zh: '兽王', ru: 'Beastmaster' });
     expect((await get('/api/agent/999')).body).toEqual({ trace: false, model_configured: true, can_parse: false, heroes: [], parse: { status: 'none' } });
     // Without a pipeline nothing can be parsed, and the answer says so.
     expect(await post('/api/agent/999/prepare', {})).toMatchObject({ status: 503, body: { status: 'unavailable' } });
@@ -205,14 +214,29 @@ describe('agent API', () => {
     for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=zh`)).body; if (now.status === 'ready') break; await new Promise((r) => setTimeout(r, 20)); }
     expect(now).toMatchObject({ status: 'ready', model: 'test-model', tool_calls: 2, verification: { repaired: false, dropped: 0 }, review: { schema: 'dota2.ai/deep-review@1', hero: 'beastmaster', lang: 'zh', verdict: submit.verdict } });
     expect(now.review.findings[0].evidence[0]).toEqual({ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: finding.evidence[0].fact });
-    expect(readdirSync(reviewDir).sort()).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.job\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
+    expect(readdirSync(reviewDir).sort()).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.job\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.review\.json$/)]);
     const calls = m.seen.length;
     budget = { ok: false, reason: 'client', retryAfterSec: 9 };
     expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'zh' })).toMatchObject({ status: 200, body: { status: 'ready' } });
+    // One run generates en/zh/ru together: switching to en or ru returns ready immediately without regenerating.
+    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=en`)).body).toMatchObject({ status: 'ready', review: { lang: 'en', verdict: 'Primal Roar was not saved for Phantom Assassin.' } });
+    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=ru`)).body).toMatchObject({ status: 'ready', review: { lang: 'ru', verdict: 'Primal Roar не приберегли для Phantom Assassin.' } });
+    expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'ru' })).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'ru' } } });
+    // Concurrent starts for different languages on an already-ready bundle each get their own requested language (Codex P1).
+    const [concEn, concRu] = await Promise.all([
+      post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'en' }),
+      post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'ru' }),
+    ]);
+    expect(concEn).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'en', verdict: 'Primal Roar was not saved for Phantom Assassin.' } } });
+    expect(concRu).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'ru', verdict: 'Primal Roar не приберегли для Phantom Assassin.' } } });
+    // Also exercise service.start() sharing an in-flight claim across different languages directly.
+    const slowDocs = { get: async (k: string) => { await new Promise((r) => setTimeout(r, 15)); return JSON.parse(readFileSync(join(reviewDir, k), 'utf8')); }, put: async () => {} };
+    const sharedSvc: any = createAgentService({ traces: createFileTraceStore(dir), docs: slowDocs, complete: m.complete, model: 'test-model' });
+    const [sEn, sRu] = await Promise.all([sharedSvc.start(MATCH, 'beastmaster', 'en'), sharedSvc.start(MATCH, 'beastmaster', 'ru')]);
+    expect(sEn).toMatchObject({ status: 'ready', review: { lang: 'en' } });
+    expect(sRu).toMatchObject({ status: 'ready', review: { lang: 'ru' } });
     budget = { ok: true };
     expect(m.seen.length).toBe(calls);
-    // Another language is another review.
-    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=en`)).body).toEqual({ status: 'none' });
   });
 
   it('review: bad input, missing trace, limits and the guard', async () => {
@@ -305,15 +329,25 @@ describe('agent API', () => {
     expect([a.body.status, b.body.status]).toEqual(['running', 'running']);
     let now: any;
     for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=dark_willow&lang=en`)).body; if (now.status !== 'running') break; await new Promise((r) => setTimeout(r, 20)); }
-    // One investigation: two model calls (look up, submit), not four.
-    expect(m.seen.length - before).toBe(2);
+    // One investigation: two model calls (look up, submit) + one translation call for en/zh/ru, not six.
+    expect(m.seen.length - before).toBe(3);
     // The model budget says no five times; the caller's five review slots are all still there afterwards.
-    const six = [['necrolyte', 'en'], ['venomancer', 'en'], ['skywrath_mage', 'en'], ['phantom_assassin', 'en'], ['mirana', 'zh'], ['undying', 'zh']];
+    const six = [
+      { hero: 'necrolyte', lang: 'en', plan: 'push' },
+      { hero: 'venomancer', lang: 'en' },
+      { hero: 'skywrath_mage', lang: 'en' },
+      { hero: 'phantom_assassin', lang: 'en' },
+      { hero: 'mirana', lang: 'zh', plan: 'push' },
+      { hero: 'undying', lang: 'zh', plan: 'push' },
+    ];
     budget = { ok: false, reason: 'client', retryAfterSec: 5 };
-    for (const [hero, lang] of six.slice(0, 5)) expect((await post(`/api/agent/${MATCH}/review`, { hero, lang }, '10.0.1.9')).status).toBe(429);
-    budget = { ok: true };
+    try {
+      for (const body of six.slice(0, 5)) expect((await post(`/api/agent/${MATCH}/review`, body, '10.0.1.9')).status).toBe(429);
+    } finally {
+      budget = { ok: true };
+    }
     const statuses = [];
-    for (const [hero, lang] of six) statuses.push((await post(`/api/agent/${MATCH}/review`, { hero, lang }, '10.0.1.9')).status);
+    for (const body of six) statuses.push((await post(`/api/agent/${MATCH}/review`, body, '10.0.1.9')).status);
     expect(statuses).toEqual([202, 202, 202, 202, 202, 429]);
   });
 

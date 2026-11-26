@@ -115,27 +115,95 @@ export const MOCK_REVIEW = {
     blind_spots: ['The replay has no fog of war: whether you could see her is unknown.'],
     goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], finding: 2 },
   },
+  ru: {
+    verdict: 'Primal Roar не приберегли для Phantom Assassin: 7 из ваших 11 смертей были от неё, и за её 7 Black King Bar ульт попал по ней лишь 2 раза.',
+    mainline: ['Драка на 30:26 стоила вашей команде 5 героев против 3 у врага: именно там игра перевернулась.'],
+    findings: [
+      {
+        title: 'Ульт уходил не в тех героев',
+        claim: 'Только 4 из 10 Primal Roar пошли в Phantom Assassin, и 3 раза вы погибли с готовым ультом.',
+        evidence: [
+          { refs: ['cast:beastmaster:primal_roar:6'], fact: 'На 27:27 вы дали ульт в её Black King Bar, оглушение длилось 3.4 с, и она погибла на 27:38.' },
+          { refs: ['immune:phantom_assassin:3:beastmaster-primal_roar'], fact: 'Когда она нажала BKB на 30:34, ульт был на перезарядке — в 30:25 он ушёл в Necrophos.' },
+          { refs: ['death:beastmaster:9'], fact: 'На 36:05 вы погибли с 2915 HP в цепочке контроля с готовым Primal Roar.' },
+          { refs: ['timeline:1805-1860'], fact: 'В драке с 30:26 по 30:48 Phantom Assassin нанесла 8524 урона героям.' },
+        ],
+        fix: 'Когда у вражеского керри есть Black King Bar, держите Primal Roar только для неё — применяйте даже поверх BKB.',
+      },
+      {
+        title: 'Нет ни Blink Dagger, ни Black King Bar',
+        claim: 'Два самых популярных предмета про-игроков на Beastmaster: вы не купили ни один из них.',
+        evidence: [{ refs: ['pro_items:beastmaster'], fact: `В ${PRO_BM.games} про-матчах доля Blink Dagger составляет ${proShare('blink')}, а Black King Bar — ${proShare('black_king_bar')}; у вас не было ни одного.` }],
+        fix: 'Сразу после Aghanim\'s Scepter покупайте Blink Dagger или Black King Bar.',
+      },
+    ],
+    game_plan: {
+      window: 'Ваша команда вела с 19:00 по 29:00, на пике 3565 на 25:00; за это время вы снесли 2 постройки, а враги 3. Phantom Assassin собрала Black King Bar на 21:29 внутри этого окна.',
+      course: 'Ваша команда снесла 3 внешние башни с 18:07 по 19:46 и ещё лишь 1 на 25:05; враги снесли 18 построек начиная с 20:02. Из 16 драк вы потеряли меньше героев в 6, и постройка пала лишь после драки на 22:57; враги выиграли 9 драк и забрали постройку после 5 из них.',
+      your_part: 'Вы участвовали в 15 из 16 драк. С 20:00 по 30:00 вы провели 52% времени в живых рядом с двумя и более союзниками и нанесли 248 урона постройкам.',
+      main_reason: 'team_play',
+      why: 'Вы были почти в каждой драке, но 6 выигранных драк принесли только 1 постройку: команда не конвертировала драки в башни, и это не только ваша вина.',
+      evidence: [
+        { refs: ['tempo:beastmaster'], fact: 'Из 16 драк ваша команда потеряла меньше героев в 6; постройка в течение двух минут пала лишь после драки на 22:57.' },
+        { refs: ['window:beastmaster:2'], fact: 'С 19:00 по 29:00 ваша команда вела (пик 3565 на 25:00), но снесла 2 постройки против 3 у врага.' },
+        { refs: ['phase:beastmaster:3'], fact: 'С 20:00 по 30:00 враги снесли 3 башни (20:02, 24:28, 25:59), а ваша команда 1 на 25:05.' },
+      ],
+    },
+    did_well: ['После вашего Primal Roar на 33:27 Axe погиб на 33:31.'],
+    next_game: ['Держите Primal Roar для керри с Black King Bar.', 'Покупайте Blink Dagger или Black King Bar сразу после Aghanim\'s.'],
+    blind_spots: ['В реплее нет тумана войны: неизвестно, видели ли вы её в тот момент.'],
+    goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], finding: 2 },
+  },
 };
 /** The scripted reading against a named plan: every time and number is in window_report or tempo_report. */
 export const MOCK_AGAINST = {
   zh: '你的打法贴合这个思路：16 波团战你到场 15 波，18:45 和 19:46 两座外塔你都打了。但窗口只开了 19:00 到 29:00，这段时间你们拆了 2 座建筑、对面拆了 3 座；幻影刺客 21:29 出了黑皇杖，就在这段领先之内。断在队伍没有把领先换成塔，不在你。',
   en: 'Your play fit the plan: you were at 15 of the 16 fights and hit both outer towers that fell at 18:45 and 19:46. But the window ran only from 19:00 to 29:00, and in it your team took 2 buildings and the enemy 3; Phantom Assassin finished Black King Bar at 21:29, inside that lead. It broke on the team not turning the lead into towers, not on you.',
+  ru: 'Ваша игра соответствовала плану: вы были в 15 из 16 драк и били обе внешние башни, павшие на 18:45 и 19:46. Но окно длилось лишь с 19:00 по 29:00, за него вы снесли 2 постройки, а враги 3; Phantom Assassin собрала Black King Bar на 21:29 внутри этого преимущества. План сломался на реализации командного преимущества в башни, не на вас.',
 };
 export const MOCK_ANSWER = {
   zh: '36:05 那次最不应该：你满血 2915，咆哮就绪，被先手后一个技能都没按出来。\n\n下次看到斧王靠近，先把咆哮交给离你最近的威胁。',
   en: 'The one at 36:05: you were on 2915 health with the roar ready, and never got a spell off after the initiation.\n\nNext time Axe closes in, spend the roar on the nearest threat first.',
+  ru: 'Смерть на 36:05: у вас было 2915 HP и готовый Primal Roar, но после инициации вы не нажали ни одной способности.\n\nВ следующий раз, когда Axe сближается, сразу отдавайте ульт в ближайшую угрозу.',
 };
 /** The answer to "my plan was …": every number is in tempo_report for the player. */
 export const MOCK_PLAN_ANSWER = {
   zh: '打法和思路大体一致：16 波团战你到场 15 波，你们在 18:07 到 19:46 拆了 3 座外塔。\n\n没打成主要不在你：你们少死人的 6 波团里，只有 22:57 那一波之后拆到了建筑。',
   en: 'Your play mostly fit the plan: you were at 15 of the 16 fights, and your team took 3 outer towers from 18:07 to 19:46.\n\nWhere it failed was mostly not you: of the 6 fights your team came out ahead in, a building followed only the one at 22:57.',
+  ru: 'Ваша игра в целом соответствовала плану: вы были в 15 из 16 драк, а команда снесла 3 внешние башни с 18:07 по 19:46.\n\nПровал был в основном не на вас: из 6 выигранных драк постройка пала только после драки на 22:57.',
 };
 
 /** A "model" that asks for the same lookups every time, then submits the canned review / answers the question. */
 async function complete({ system, messages, tools }) {
+  // Handle trilingual translation call cleanly without delay so switching languages in E2E is instant.
+  if (tools.length === 0 && system.includes('Dota 2 coaching translator')) {
+    const req = JSON.parse(messages[0]?.content ?? '{}');
+    const stated = Boolean(req?.review?.game_plan?.against_your_plan);
+    const pack = (l) => {
+      const base = MOCK_REVIEW[l];
+      return {
+        verdict: base.verdict,
+        mainline: base.mainline,
+        findings: base.findings.map((f) => ({ title: f.title, claim: f.claim, evidence: f.evidence.map((e) => e.fact), fix: f.fix })),
+        did_well: base.did_well,
+        blind_spots: base.blind_spots,
+        game_plan: {
+          ...(stated ? { against_your_plan: MOCK_AGAINST[l] } : {}),
+          window: base.game_plan.window,
+          course: base.game_plan.course,
+          your_part: base.game_plan.your_part,
+          why: base.game_plan.why,
+          evidence: base.game_plan.evidence.map((e) => e.fact),
+        },
+      };
+    };
+    const out = {};
+    for (const l of Object.keys(req.target_languages ?? {})) if (MOCK_REVIEW[l]) out[l] = pack(l);
+    return { text: JSON.stringify(out), usage: { input: 100, output: 100 } };
+  }
   // A review takes long enough for the page to show the coach's steps (it polls every 2.5 s); a chat answer is quick.
   await sleep(tools.some((t) => t.name === 'submit_review') ? 2000 : 350);
-  const lang = system.includes('简体中文') ? 'zh' : 'en';
+  const lang = system.includes('简体中文') ? 'zh' : system.includes('на русском языке') ? 'ru' : 'en';
   const last = messages.at(-1);
   if (tools.some((t) => t.name === 'submit_review')) {
     if (last.role === 'user') {
@@ -153,7 +221,7 @@ async function complete({ system, messages, tools }) {
   }
   // A question about the player's plan is answered from the tempo of the game, like the real coach is told to.
   const asked = [...messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-  const plan = /思路|my plan/i.test(asked);
+  const plan = /思路|my plan|мой план/i.test(asked);
   if (last.role === 'tool') return { text: (plan ? MOCK_PLAN_ANSWER : MOCK_ANSWER)[lang] };
   if (plan) return { toolCalls: [call('tempo_report', { hero: 'beastmaster' }, 'p'), call('lineup_timing', {}, 'r')] };
   return { toolCalls: [call('death_context', { hero: 'beastmaster', index: 9 }, 'q')] };

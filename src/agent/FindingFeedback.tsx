@@ -10,22 +10,22 @@ import React, { useState } from 'react';
 import { sendFindingFeedback, type FindingRating, type FindingReason } from './api';
 import { trackEvent } from '../services/analytics';
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 const T: Record<string, Record<Lang, string>> = {
-  ask: { en: 'Was this right?', zh: '这条说得对吗？' },
-  right: { en: 'Right', zh: '说得对' },
-  wrong: { en: 'Wrong', zh: '不对' },
-  useless: { en: 'Not useful', zh: '没用' },
-  whyWrong: { en: 'What is wrong with it?', zh: '哪里不对？' },
-  whyUseless: { en: 'Why not?', zh: '为什么没用？' },
-  fact: { en: 'A fact is wrong', zh: '事实不对' },
-  judgment: { en: 'Facts right, conclusion wrong', zh: '事实对，结论不对' },
-  not_mine: { en: 'It was not mine to change', zh: '这不是我能改的' },
-  knew: { en: 'I knew this already', zh: '我早就知道' },
-  vague: { en: 'Too vague to act on', zh: '太笼统，不知道怎么做' },
-  minor: { en: 'Not what decided the game', zh: '不是这局的关键' },
-  saved: { en: 'Noted. Thank you.', zh: '记下了，谢谢。' },
-  failed: { en: 'That could not be saved. Try again in a moment.', zh: '没能记下，稍后再试。' },
+  ask: { en: 'Was this right?', zh: '这条说得对吗？', ru: 'Это верный вывод?' },
+  right: { en: 'Right', zh: '说得对', ru: 'Верно' },
+  wrong: { en: 'Wrong', zh: '不对', ru: 'Ошибка' },
+  useless: { en: 'Not useful', zh: '没用', ru: 'Бесполезно' },
+  whyWrong: { en: 'What is wrong with it?', zh: '哪里不对？', ru: 'Что именно не так?' },
+  whyUseless: { en: 'Why not?', zh: '为什么没用？', ru: 'Почему?' },
+  fact: { en: 'A fact is wrong', zh: '事实不对', ru: 'Факт неверный' },
+  judgment: { en: 'Facts right, conclusion wrong', zh: '事实对，结论不对', ru: 'Факты верны, вывод нет' },
+  not_mine: { en: 'It was not mine to change', zh: '这不是我能改的', ru: 'Это не зависело от меня' },
+  knew: { en: 'I knew this already', zh: '我早就知道', ru: 'Я это и так знал' },
+  vague: { en: 'Too vague to act on', zh: '太笼统，不知道怎么做', ru: 'Слишком общо' },
+  minor: { en: 'Not what decided the game', zh: '不是这局的关键', ru: 'Не это решило игру' },
+  saved: { en: 'Noted. Thank you.', zh: '记下了，谢谢。', ru: 'Учтено. Спасибо!' },
+  failed: { en: 'That could not be saved. Try again in a moment.', zh: '没能记下，稍后再试。', ru: 'Не удалось сохранить. Попробуйте чуть позже.' },
 };
 const RATINGS: FindingRating[] = ['right', 'wrong', 'useless'];
 const REASONS: Record<Exclude<FindingRating, 'right'>, FindingReason[]> = { wrong: ['fact', 'judgment', 'not_mine'], useless: ['knew', 'vague', 'minor'] };

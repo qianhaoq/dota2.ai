@@ -18,15 +18,15 @@ function fakeService(states: Record<string, string>, { throwOn }: { throwOn?: st
 
 describe('showcase reviews are made before a visitor opens them', () => {
   it('starts only the ones this prompt version has none of', async () => {
-    const svc = fakeService({ '9091400302.en': 'ready', '9091400302.zh': 'running', '9100904020.en': 'none', '9100904020.zh': 'none' });
+    const svc = fakeService({ '9091400302.en': 'ready', '9100904020.en': 'none' });
     const out = await warmShowcase(svc);
-    expect(out).toEqual(['ready', 'running', 'started:running', 'started:running']);
-    expect(svc.started).toEqual([['9100904020', 'beastmaster', 'en'], ['9100904020', 'beastmaster', 'zh']]);
+    expect(out).toEqual(['ready', 'started:running']);
+    expect(svc.started).toEqual([['9100904020', 'beastmaster', 'en']]);
   });
 
   it('leaves a review that just failed, or has no trace, alone', async () => {
-    const svc = fakeService({ '9091400302.en': 'failed', '9091400302.zh': 'no_trace', '9100904020.en': 'ready', '9100904020.zh': 'ready' });
-    expect(await warmShowcase(svc)).toEqual(['failed', 'no_trace', 'ready', 'ready']);
+    const svc = fakeService({ '9091400302.en': 'failed', '9100904020.en': 'no_trace' });
+    expect(await warmShowcase(svc)).toEqual(['failed', 'no_trace']);
     expect(svc.started).toEqual([]);
   });
 
@@ -34,12 +34,12 @@ describe('showcase reviews are made before a visitor opens them', () => {
     const logs: string[] = [];
     const svc = fakeService({}, { throwOn: '9091400302.en' });
     const out = await warmShowcase(svc, { log: (m: string) => logs.push(m) });
-    expect(out).toEqual(['error:TypeError', 'started:running', 'started:running', 'started:running']);
-    expect(svc.started).toHaveLength(3);
+    expect(out).toEqual(['error:TypeError', 'started:running']);
+    expect(svc.started).toHaveLength(1);
     expect(logs).toContain('showcase match=9091400302 hero=tidehunter lang=en -> error:TypeError');
   });
 
-  it('covers the matches the home page and the agent one-liner send people to', () => {
+  it('covers the matches the home page and the agent one-liner send people to (one run warms en/zh/ru)', () => {
     const app = readFileSync(new URL('../coach/CoachApp.tsx', import.meta.url), 'utf8');
     const snippets = readFileSync(new URL('../coach/accessSnippets.ts', import.meta.url), 'utf8');
     const example = app.match(/const EXAMPLE_MATCH = '(\d+)'/)?.[1];
@@ -48,7 +48,7 @@ describe('showcase reviews are made before a visitor opens them', () => {
     expect(example && ids.has(example)).toBe(true);
     expect(oneLiner && ids.has(oneLiner)).toBe(true);
     for (const id of ids) {
-      expect(SHOWCASE_REVIEWS.filter((r: { matchId: string }) => r.matchId === id).map((r: { lang: string }) => r.lang).sort()).toEqual(['en', 'zh']);
+      expect(SHOWCASE_REVIEWS.filter((r: { matchId: string }) => r.matchId === id)).toHaveLength(1);
     }
   });
 });

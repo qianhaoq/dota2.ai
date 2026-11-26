@@ -263,7 +263,9 @@ describe('runDeepReview', () => {
     expect(r.verification).toMatchObject({ repaired: true, dropped: 1 });
     const repair = JSON.parse(m.seen[2].messages.at(-1).content);
     expect(repair).toMatchObject({ error: 'unsupported_facts', problems: expect.arrayContaining([{ in: 'finding 2', text: '19:19', why: 'this time is not in any tool result' }, expect.objectContaining({ in: 'finding 2', text: 'fight:99' })]) });
-    expect(m.seen).toHaveLength(3);
+    // 3 investigation/repair turns + 1 tool-free trilingual translation call.
+    expect(m.seen).toHaveLength(4);
+    expect(m.seen[3].tools).toEqual([]);
   });
 
   it('one evidence item the cited record does not hold is left out; the finding stays on the rest', async () => {
@@ -447,7 +449,7 @@ describe('runDeepReview', () => {
     expect(r3.verification.dropped).toBe(1);
     expect(r3.dropped_findings).toEqual([invented]);
     // The situation and the action are advice: a threshold in them is not a fact about the game.
-    expect(verifyReview(review([{ ...good, rule: { when: '血量低于 50% 而熊战士在 1000 码内', do: '回家补给', this_game: rule.this_game } }]), m.seen.at(-1).messages.filter((x: any) => x.role === 'tool').map((x: any) => JSON.parse(x.content))).problems).toEqual([]);
+    expect(verifyReview(review([{ ...good, rule: { when: '血量低于 50% 而熊战士在 1000 码内', do: '回家补给', this_game: rule.this_game } }]), m.seen[1].messages.filter((x: any) => x.role === 'tool').map((x: any) => JSON.parse(x.content))).problems).toEqual([]);
   });
 
   it('how many heroes each side lost in a fight is backed by the timeline that is cited for it', async () => {
@@ -503,7 +505,7 @@ describe('runDeepReview', () => {
     ]), 's')] }]);
     const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r2.review.findings.map((f: any) => f.rule.check)).toEqual([
-      { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, baseline_exact: true, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）' } },
+      { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, baseline_exact: true, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）', ru: 'Не более 2 применений Primal Roar по врагу, который выжил через 12 с (в этой игре: 4)' } },
       expect.objectContaining({ habit: 'died_holding', ability: 'primal_roar', max: 1, baseline: 3 }),
       undefined,
     ]);
@@ -519,7 +521,7 @@ describe('runDeepReview', () => {
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
     expect(r.review.findings.map((f: any) => f.rule)).toEqual([
-      { when: rule.when, do: rule.do, this_game: rule.this_game, check: { kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）' } } },
+      { when: rule.when, do: rule.do, this_game: rule.this_game, check: { kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）', ru: 'Не более 2 смертей от трёх и более врагов (в этой игре: 5)' } } },
       { when: rule.when, do: rule.do, this_game: rule.this_game },
       { when: rule.when, do: rule.do, this_game: rule.this_game },
     ]);

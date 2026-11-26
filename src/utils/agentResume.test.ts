@@ -25,8 +25,13 @@ const CUT = new Error('cut off');
  * `cutAt`: the turn (1-based, by position in the conversation) at which the run is cut off.
  */
 function model(script: { submit?: any; cutAt?: number } = {}) {
-  const m: any = { turns: [] as number[], opened: [] as number[], usage: { input: 100, output: 10 } };
+  const m: any = { turns: [] as number[], opened: [] as number[], translations: 0, usage: { input: 100, output: 10 } };
   m.complete = async (o: any) => {
+    // Post-verification tool-free trilingual translation call: track separately from investigation turns.
+    if (!o.tools?.length && String(o.system ?? '').includes('Dota 2 coaching translator')) {
+      m.translations += 1;
+      return { text: JSON.stringify({ en: { verdict: 'Roar not held.', mainline: [], findings: [{ title: 'Roar', claim: 'PA used BKB 7 times.', evidence: ['27:27 stunned 3.4s'], fix: 'Hold it.' }], blind_spots: ['Vision'] }, ru: { verdict: 'Рёв не сохранён.', mainline: [], findings: [{ title: 'Рёв', claim: 'PA нажала BKB 7 раз.', evidence: ['27:27 оглушение 3.4 с'], fix: 'Держите.' }], blind_spots: ['Обзор'] } }), usage: { input: 0, output: 0 } };
+    }
     const turn = o.messages.filter((x: any) => x.role === 'assistant').length + 1;
     m.turns.push(turn); m.opened.push(o.messages.length);
     if (turn === script.cutAt) throw CUT;

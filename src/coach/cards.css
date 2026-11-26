@@ -313,3 +313,134 @@
   .hm-patch .cx-patch.hm-patchbar { grid-template-columns: minmax(0, 1fr); }
   .hm-patch .hm-patchbar .cx-patch-actions { grid-column: 1; grid-row: 3; }
 }
+
+/* Homepage feedback & contact section */
+.hm-feedback {
+  margin-top: 40px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: clamp(18px, 3vw, 28px);
+}
+.hm-feedback-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+}
+.hm-feedback h2 {
+  margin: 0 0 8px;
+  font-family: var(--serif);
+  font-size: clamp(19px, 2.2vw, 22px);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.hm-feedback-sub {
+  margin: 0;
+  max-width: 540px;
+  color: var(--text-2);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+}
+.hm-feedback-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.hm-feedback-link, .hm-feedback-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-2);
+  background: var(--panel-2);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.hm-feedback-link:hover, .hm-feedback-toggle:hover,
+.hm-feedback-link:focus-visible, .hm-feedback-toggle:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.hm-feedback-link.is-primary {
+  border-color: rgba(227, 163, 70, 0.55);
+  color: var(--accent);
+  background: rgba(227, 163, 70, 0.08);
+}
+.hm-feedback-toggle.is-on {
+  border-color: rgba(227, 163, 70, 0.6);
+  color: var(--accent);
+}
+.hm-feedback-form {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+}
+.hm-feedback-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hm-feedback-field {
+  display: grid;
+  gap: 6px;
+}
+.hm-feedback-field > span {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+.hm-feedback-field textarea, .hm-feedback-foot input {
+  width: 100%;
+  background: var(--ink);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-body);
+}
+.hm-feedback-field textarea:focus, .hm-feedback-foot input:focus {
+  outline: none;
+  border-color: rgba(227, 163, 70, 0.6);
+}
+.hm-feedback-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.hm-feedback-foot input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.hm-feedback-done {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(143, 191, 136, 0.09);
+  border: 1px solid rgba(143, 191, 136, 0.35);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--good);
+}
+.hm-feedback-done p { margin: 0; }
+.cx-foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.cx-foot-links a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--line-2);
+}
+.cx-foot-links a:hover { color: var(--text); }

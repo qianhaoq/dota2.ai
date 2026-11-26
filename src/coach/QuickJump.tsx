@@ -30,22 +30,22 @@ export function detectSmartInput(raw: string): SmartInput {
 }
 
 const T = {
-  trigger: { en: 'Jump to match or player', zh: '查比赛 / 好友码' },
-  title: { en: 'Open another match or player', zh: '打开另一场比赛或玩家' },
-  close: { en: 'Close', zh: '关闭' },
-  matchTab: { en: 'Match ID / URL', zh: '比赛 ID / 链接' },
-  accountTab: { en: 'Steam friend code', zh: 'Steam 好友代码' },
-  matchPlaceholder: { en: 'Match ID or OpenDota / Dotabuff / STRATZ link', zh: '比赛 ID，或 OpenDota / Dotabuff / STRATZ 链接' },
-  accountPlaceholder: { en: 'Friend code, SteamID64 or profile link', zh: '好友代码、SteamID64 或个人资料链接' },
-  goMatch: { en: 'Open review', zh: '打开复盘' },
-  goAccount: { en: 'Show recent games', zh: '查看最近比赛' },
-  detectedMatch: { en: 'Match #{id}', zh: '识别为比赛 #{id}' },
-  detectedAccount: { en: 'Steam account {id}', zh: '识别为 Steam 账号 {id}' },
-  invalidMatch: { en: 'That does not look like a match ID or profile link.', zh: '这看起来不是比赛 ID 或个人资料链接。' },
-  invalidAccount: { en: 'That is not a friend code. Open your Steam or Dota 2 profile to find the number under your name.', zh: '这不是好友代码。请在 Dota 2 或 Steam 个人资料里查看名字下面的那串数字。' },
-  vanity: { en: 'Custom Steam URLs can’t be looked up. Paste your friend code or a steamcommunity.com/profiles/… link instead.', zh: '自定义的 Steam 链接没法查询。请改贴好友代码，或 steamcommunity.com/profiles/… 形式的链接。' },
-  myGames: { en: 'My recent games', zh: '我的最近比赛' },
-  example: { en: 'Example match #9091400302', zh: '示例比赛 #9091400302' },
+  trigger: { en: 'Jump to match or player', zh: '查比赛 / 好友码', ru: 'Матч / ID игрока' },
+  title: { en: 'Open another match or player', zh: '打开另一场比赛或玩家', ru: 'Открыть другой матч или игрока' },
+  close: { en: 'Close', zh: '关闭', ru: 'Закрыть' },
+  matchTab: { en: 'Match ID / URL', zh: '比赛 ID / 链接', ru: 'ID матча / ссылка' },
+  accountTab: { en: 'Steam friend code', zh: 'Steam 好友代码', ru: 'Код друга Steam' },
+  matchPlaceholder: { en: 'Match ID or OpenDota / Dotabuff / STRATZ link', zh: '比赛 ID，或 OpenDota / Dotabuff / STRATZ 链接', ru: 'ID матча или ссылка OpenDota / Dotabuff / STRATZ' },
+  accountPlaceholder: { en: 'Friend code, SteamID64 or profile link', zh: '好友代码、SteamID64 或个人资料链接', ru: 'Код друга, SteamID64 или ссылка на профиль' },
+  goMatch: { en: 'Open review', zh: '打开复盘', ru: 'Открыть разбор' },
+  goAccount: { en: 'Show recent games', zh: '查看最近比赛', ru: 'Недавние матчи' },
+  detectedMatch: { en: 'Match #{id}', zh: '识别为比赛 #{id}', ru: 'Матч #{id}' },
+  detectedAccount: { en: 'Steam account {id}', zh: '识别为 Steam 账号 {id}', ru: 'Аккаунт Steam {id}' },
+  invalidMatch: { en: 'That does not look like a match ID or profile link.', zh: '这看起来不是比赛 ID 或个人资料链接。', ru: 'Это не похоже на ID матча или ссылку на профиль.' },
+  invalidAccount: { en: 'That is not a friend code. Open your Steam or Dota 2 profile to find the number under your name.', zh: '这不是好友代码。请在 Dota 2 或 Steam 个人资料里查看名字下面的那串数字。', ru: 'Это не код друга. Откройте профиль в Dota 2 или Steam — число под вашим ником и есть код друга.' },
+  vanity: { en: 'Custom Steam URLs can’t be looked up. Paste your friend code or a steamcommunity.com/profiles/… link instead.', zh: '自定义的 Steam 链接没法查询。请改贴好友代码，或 steamcommunity.com/profiles/… 形式的链接。', ru: 'Персональные ссылки Steam не поддерживаются. Вставьте код друга или ссылку вида steamcommunity.com/profiles/…' },
+  myGames: { en: 'My recent games', zh: '我的最近比赛', ru: 'Мои недавние матчи' },
+  example: { en: 'Example match #9091400302', zh: '示例比赛 #9091400302', ru: 'Пример матча #9091400302' },
 } satisfies Record<string, Bi>;
 
 /**

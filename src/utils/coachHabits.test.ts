@@ -24,7 +24,7 @@ describe('habitGoal', () => {
   it('half as often as this game, from the replay\'s own count; code writes the label', () => {
     // Five of the eleven deaths were to three or more enemy heroes.
     // Nothing in this count can be undecided: the baseline is exact.
-    expect(habitGoal('outnumbered', deaths)).toEqual({ kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）' } });
+    expect(habitGoal('outnumbered', deaths)).toEqual({ kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）', ru: 'Не более 2 смертей от трёх и более врагов (в этой игре: 5)' } });
     expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))).toMatchObject({ max: 1, baseline: 3 });
     expect(habitGoal('alone', where({ no_ally_within_2200_at_death: ['1:00', '2:00'] }))).toMatchObject({ max: 1, baseline: 2 });
     // With deaths the replay could not decide, the baseline is only a lower bound, and says so by not claiming to be exact.
@@ -48,7 +48,7 @@ describe('habitGoal', () => {
 describe('evaluateHabit', () => {
   const goal = habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))!;
   it('met at or under the goal, missed over it, with the deaths named', () => {
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }), 38)).toEqual({ result: 'met', evidence: { en: '1 deaths that began below half health (12 s before) (12:40); goal ≤ 1', zh: '死前 12 秒已不到半血的阵亡 1 次（12:40）；目标 ≤ 1' } , count: 1 });
+    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }), 38)).toEqual({ result: 'met', evidence: { en: '1 deaths that began below half health (12 s before) (12:40); goal ≤ 1', zh: '死前 12 秒已不到半血的阵亡 1 次（12:40）；目标 ≤ 1', ru: '1 смертей с менее чем половиной HP (за 12 с до смерти) (12:40); цель ≤ 1' } , count: 1 });
     expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 38)).toMatchObject({ result: 'met' });
     expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['3:00', '9:10'] }), 38)).toMatchObject({ result: 'missed', evidence: { zh: '死前 12 秒已不到半血的阵亡 2 次（3:00、9:10）；目标 ≤ 1' } });
   });
@@ -144,7 +144,7 @@ describe('habits counted over one ability', () => {
     // The habit a rule can be counted by reads this count, and says what it counts.
     expect(HABITS.reached_few.at).toEqual(['casts_where', KEY]);
     const goal: any = habitGoal('reached_few', flare, { hero: 'skywrath_mage', hero_id: 101, ability: 'mystic_flare', name: { en: 'Mystic Flare', zh: '神秘之耀' } })!;
-    expect(goal.label).toEqual({ en: expect.stringContaining('Mystic Flare casts near enemy heroes that damaged at most one and killed none'), zh: expect.stringContaining('在敌方英雄附近放出、至多伤到一人且没有击杀的神秘之耀') });
+    expect(goal.label).toEqual({ en: expect.stringContaining('Mystic Flare casts near enemy heroes that damaged at most one and killed none'), zh: expect.stringContaining('在敌方英雄附近放出、至多伤到一人且没有击杀的神秘之耀'), ru: expect.stringContaining('применений Mystic Flare рядом с врагами, задевших не более одного и без убийств') });
   });
 
   it('a cast whose surroundings were not sampled is neither counted nor ruled out, and the check then cannot say "met"', () => {
@@ -172,7 +172,7 @@ describe('habits counted over one ability', () => {
     expect(evaluateHabit(goal, full, 40)).toMatchObject({ result: 'missed' });
     expect(evaluateHabit({ ...goal, max: 11 }, full, 40)).toMatchObject({ result: 'met' });
     // Nine counted and sixty-two not known: under the goal only if none of the sixty-two counts, which nobody can say.
-    expect(evaluateHabit(goal, blind, 40)).toEqual({ result: 'unknown', evidence: { en: '9 Wild Axes casts near enemy heroes that damaged at most one and killed none, but some casts have no position sample: cannot tell.', zh: '在敌方英雄附近放出、至多伤到一人且没有击杀的野性之斧 9 次，但有施放缺少位置采样，无法判定。' } });
+    expect(evaluateHabit(goal, blind, 40)).toEqual({ result: 'unknown', evidence: { en: '9 Wild Axes casts near enemy heroes that damaged at most one and killed none, but some casts have no position sample: cannot tell.', zh: '在敌方英雄附近放出、至多伤到一人且没有击杀的野性之斧 9 次，但有施放缺少位置采样，无法判定。', ru: '9 применений Wild Axes рядом с врагами, задевших не более одного и без убийств, но у части применений нет данных о позиции: определить нельзя.' } });
     // Over the goal on what is known alone: missed, whatever the rest was.
     expect(evaluateHabit({ ...goal, max: 8 }, blind, 40)).toMatchObject({ result: 'missed' });
     // A summary from before the count of the undecided was kept cannot rule them out.
@@ -186,7 +186,7 @@ describe('habits counted over one ability', () => {
   it('the check carries whose ability it is, and is worded with the ability\'s name', () => {
     expect(habitGoal('target_survived', roar, ROAR)).toEqual({
       kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, baseline_exact: true, ...ROAR,
-      label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）' },
+      label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）', ru: 'Не более 2 применений Primal Roar по врагу, который выжил через 12 с (в этой игре: 4)' },
     });
     // A plain number counts too: three deaths with it ready and not cast.
     expect(habitGoal('died_holding', roar, ROAR)).toMatchObject({ max: 1, baseline: 3, label: { zh: '原始咆哮就绪却没放的阵亡不超过 1 次（这局 3 次）' } });

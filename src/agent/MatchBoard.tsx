@@ -2,36 +2,36 @@ import React from 'react';
 import { SafeImg } from '../coach/ui';
 import type { CoachReport, Player } from '../coach/types';
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 type Bi = Record<Lang, string>;
 
 const T = {
-  scoreboard: { en: 'Scoreboard', zh: '记分板' },
-  radiant: { en: 'Radiant', zh: '天辉' },
-  dire: { en: 'Dire', zh: '夜魇' },
-  won: { en: 'victory', zh: '胜利' },
-  you: { en: 'you', zh: '你' },
-  yourSide: { en: 'your side', zh: '你方' },
-  teamWorth: { en: 'net worth', zh: '总经济' },
-  gold: { en: 'Gold lead by minute', zh: '每分钟经济差' },
-  goldUp: { en: 'Radiant ahead', zh: '天辉领先' },
-  goldMine: { en: 'Your side ahead', zh: '你方领先' },
-  goldTheirs: { en: 'Their side ahead', zh: '对方领先' },
-  theirSide: { en: 'their side', zh: '对方' },
-  goldDown: { en: 'Dire ahead', zh: '夜魇领先' },
-  goldEnd: { en: 'at the end', zh: '结束时' },
-  goldReplay: { en: 'Net worth lead by minute (from the replay)', zh: '每分钟净值差（来自录像）' },
-  goldReplayEarned: { en: 'Gold lead by minute (from the replay)', zh: '每分钟经济差（来自录像）' },
-  goldNone: { en: 'No minute-by-minute gold for this game yet: it comes with the replay review or with OpenDota\'s parse of the match.', zh: '这局还没有每分钟经济：录像复盘或 OpenDota 解析之后才有。' },
-  hero: { en: 'Hero', zh: '英雄' },
-  level: { en: 'Lvl', zh: '等级' },
-  kda: { en: 'K / D / A', zh: '杀 / 死 / 助' },
-  lhdn: { en: 'LH / DN', zh: '正补 / 反补' },
-  worth: { en: 'Net worth', zh: '经济' },
-  gpm: { en: 'GPM', zh: 'GPM' },
-  dmg: { en: 'Hero dmg', zh: '英雄伤害' },
-  items: { en: 'Items', zh: '出装' },
-  done: { en: 'finished', zh: '成型' },
+  scoreboard: { en: 'Scoreboard', zh: '记分板', ru: 'Таблица матча' },
+  radiant: { en: 'Radiant', zh: '天辉', ru: 'Силы Света' },
+  dire: { en: 'Dire', zh: '夜魇', ru: 'Силы Тьмы' },
+  won: { en: 'victory', zh: '胜利', ru: 'победа' },
+  you: { en: 'you', zh: '你', ru: 'вы' },
+  yourSide: { en: 'your side', zh: '你方', ru: 'ваша команда' },
+  teamWorth: { en: 'net worth', zh: '总经济', ru: 'ценность' },
+  gold: { en: 'Gold lead by minute', zh: '每分钟经济差', ru: 'Перевес по золоту по минутам' },
+  goldUp: { en: 'Radiant ahead', zh: '天辉领先', ru: 'Впереди Силы Света' },
+  goldMine: { en: 'Your side ahead', zh: '你方领先', ru: 'Ваша команда впереди' },
+  goldTheirs: { en: 'Their side ahead', zh: '对方领先', ru: 'Соперники впереди' },
+  theirSide: { en: 'their side', zh: '对方', ru: 'соперники' },
+  goldDown: { en: 'Dire ahead', zh: '夜魇领先', ru: 'Впереди Силы Тьмы' },
+  goldEnd: { en: 'at the end', zh: '结束时', ru: 'в конце' },
+  goldReplay: { en: 'Net worth lead by minute (from the replay)', zh: '每分钟净值差（来自录像）', ru: 'Перевес по нетворсу (из реплея)' },
+  goldReplayEarned: { en: 'Gold lead by minute (from the replay)', zh: '每分钟经济差（来自录像）', ru: 'Перевес по золоту (из реплея)' },
+  goldNone: { en: 'No minute-by-minute gold for this game yet: it comes with the replay review or with OpenDota\'s parse of the match.', zh: '这局还没有每分钟经济：录像复盘或 OpenDota 解析之后才有。', ru: 'Поминутного графика золота пока нет — он появится после разбора реплея или парсинга OpenDota.' },
+  hero: { en: 'Hero', zh: '英雄', ru: 'Герой' },
+  level: { en: 'Lvl', zh: '等级', ru: 'Ур.' },
+  kda: { en: 'K / D / A', zh: '杀 / 死 / 助', ru: 'У / С / П' },
+  lhdn: { en: 'LH / DN', zh: '正补 / 反补', ru: 'Д / О' },
+  worth: { en: 'Net worth', zh: '经济', ru: 'Нетворс' },
+  gpm: { en: 'GPM', zh: 'GPM', ru: 'GPM' },
+  dmg: { en: 'Hero dmg', zh: '英雄伤害', ru: 'Урон' },
+  items: { en: 'Items', zh: '出装', ru: 'Предметы' },
+  done: { en: 'finished', zh: '成型', ru: 'собран' },
 } satisfies Record<string, Bi>;
 
 const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -110,11 +110,12 @@ const Items: React.FC<{ p: Player; spikes: Map<string, number>; lang: Lang }> = 
 
 const Row: React.FC<{ p: Player; me: boolean; spikes: Map<string, number>; lang: Lang }> = ({ p, me, spikes, lang }) => {
   const [kk, d, a] = Array.isArray(p.kda) ? p.kda : [null, null, null];
+  const heroName = p.hero ? (p.hero[lang] ?? p.hero.en) : '';
   return (
     <li className={`${p.radiant ? 'is-radiant' : 'is-dire'}${me ? ' is-me' : ''}`}>
       <span className="ag-row-hero">
-        {p.hero?.img ? <SafeImg src={p.hero.img} alt={p.hero[lang]} className="ag-portrait" /> : <span className="ag-portrait ag-portrait--blank" />}
-        <span className="ag-row-name">{p.hero?.[lang]}</span>{me && <em>{T.you[lang]}</em>}
+        {p.hero?.img ? <SafeImg src={p.hero.img} alt={heroName} className="ag-portrait" /> : <span className="ag-portrait ag-portrait--blank" />}
+        <span className="ag-row-name">{heroName}</span>{me && <em>{T.you[lang]}</em>}
         {num(p.level) && <span className="ag-row-lvl" title={T.level[lang]}>{p.level}</span>}
       </span>
       <span className="ag-kda" title={T.kda[lang]}>{kk ?? '–'} / {d ?? '–'} / {a ?? '–'}</span>
@@ -160,7 +161,7 @@ export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; l
           {winner != null && <b className={winner ? 'is-radiant' : 'is-dire'}>{winner ? T.radiant[lang] : T.dire[lang]} {T.won[lang]}</b>}
           {score && <span><span className="is-radiant">{score[0]}</span> : <span className="is-dire">{score[1]}</span></span>}
           {num(m.duration) && <span>{clock(m.duration)}</span>}
-          {m.mode?.[lang] && <span>{m.mode[lang]}</span>}
+          {(m.mode?.[lang] ?? m.mode?.en) && <span>{m.mode?.[lang] ?? m.mode?.en}</span>}
         </p>
       )}
       {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} mine={me ? (me.radiant ? 'radiant' : 'dire') : null} title={fromReplay ? (replayLeadIs === 'gold' ? T.goldReplayEarned : T.goldReplay) : T.gold} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}

@@ -9,7 +9,7 @@ import { AgentMatchPage } from './agent/AgentMatchPage';
 /** Any path that is not a page goes home, keeping the language choice. */
 const ToHome: React.FC = () => {
   const lang = new URLSearchParams(useLocation().search).get('lang');
-  return <Navigate to={lang === 'en' || lang === 'zh' ? `/?lang=${lang}` : '/'} replace />;
+  return <Navigate to={lang === 'en' || lang === 'zh' || lang === 'ru' ? `/?lang=${lang}` : '/'} replace />;
 };
 
 /**

@@ -153,7 +153,7 @@ describe('lane_report', () => {
   it('win_lane is a goal only for a lane the report calls lost, and is the engine\'s own lane check', () => {
     const pick = { kind: 'win_lane', finding: 1 };
     const g = goalFromReview(pick, { trace: lane9091, hero: 'tidehunter', findings: 1, match });
-    expect(g).toEqual({ finding: 1, spec: { kind: 'lane_not_lost', role_kind: 'core', label: { en: 'Your lane is not behind at 10:00', zh: '10 分钟时你这条线不落后' } } });
+    expect(g).toEqual({ finding: 1, spec: { kind: 'lane_not_lost', role_kind: 'core', label: { en: 'Your lane is not behind at 10:00', zh: '10 分钟时你这条线不落后', ru: 'Не отставать на линии к 10:00' } } });
     // Judged by the same code as every laning goal: this very game misses it.
     expect(evaluateGoal(g!.spec, buildCoachReport(match), 0)).toMatchObject({ result: 'missed' });
     // No match data, or the enemy core (whose lane was won): no goal.

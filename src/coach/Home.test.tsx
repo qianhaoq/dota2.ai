@@ -132,3 +132,38 @@ describe('home: four ways to use it', () => {
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('https://dota2.ai/llms.txt')));
   });
 });
+
+describe('home: feedback, GitHub Issues, X, email & message box', () => {
+  it('links to GitHub Issues, X (@kilocean), and author email; opens feedback box on click without adding initial textboxes', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/site-feedback')) {
+        return new Response(JSON.stringify({ status: 'ok', id: 'fb1' }), { status: 201, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ code: 'not_found' }), { status: 404, headers: { 'content-type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { container } = home();
+      // Initial render keeps a single textbox (the hero match/friend-code input).
+      expect(screen.getAllByRole('textbox')).toHaveLength(1);
+      const fb = container.querySelector('.hm-feedback') as HTMLElement;
+      expect(within(fb).getByRole('link', { name: /GitHub Issues/ }).getAttribute('href')).toBe('https://github.com/qianhaoq/dota2.ai/issues');
+      expect(within(fb).getByRole('link', { name: /@kilocean/ }).getAttribute('href')).toBe('https://x.com/kilocean');
+      expect(within(fb).getByRole('link', { name: 'qianhao1229@gmail.com' }).getAttribute('href')).toBe('mailto:qianhao1229@gmail.com');
+
+      fireEvent.click(within(fb).getByRole('button', { name: 'Leave a message' }));
+      fireEvent.change(within(fb).getByLabelText('Your message'), { target: { value: 'Great Russian translation!' } });
+      fireEvent.change(within(fb).getByLabelText('Contact (optional)'), { target: { value: '@tester' } });
+      fireEvent.click(within(fb).getByRole('button', { name: 'Send feedback' }));
+
+      await waitFor(() => expect(within(fb).getByText('Thanks — your message has been received.')).toBeTruthy());
+      expect(fetchMock).toHaveBeenCalledWith('/api/site-feedback', expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ category: 'suggestion', message: 'Great Russian translation!', contact: '@tester', lang: 'en' }),
+      }));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

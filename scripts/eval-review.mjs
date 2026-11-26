@@ -25,7 +25,7 @@ import { join } from 'node:path';
 import { RUBRIC_SCHEMA, compareSummaries, scoreReview, stabilityOf, summarize } from '../lib/agent/evalReview.js';
 
 const USAGE = 'Usage: node scripts/eval-review.mjs <dir of *.review.json> [--rubrics <dir>] [--all-versions] [--json <file>] [--baseline <file>]';
-const NAME = /^(\d+)\.([a-z_]+)\.(en|zh)\.p(\d+)(?:\.plan-([a-z_-]+))?(?:\.r([1-9]\d?))?\.review\.json$/;
+const NAME = /^(\d+)\.([a-z_]+)(?:\.(en|zh|ru))?\.p(\d+)(?:\.plan-([a-z_-]+))?(?:\.m-[a-z0-9._-]+)?(?:\.r([1-9]\d?))?\.review\.json$/;
 
 export function parseArgs(argv) {
   const o = { dir: null, rubrics: 'evals/reviews', allVersions: false, json: null, baseline: null };
@@ -43,7 +43,24 @@ export function parseArgs(argv) {
 /** Which game, hero, language, prompt version and plan a stored review's file name says it is; null for another file. */
 export function parseName(file) {
   const m = NAME.exec(file);
-  return m ? { file, match_id: Number(m[1]), hero: m[2], lang: m[3], version: Number(m[4]), plan: m[5] ?? null, run: m[6] ? Number(m[6]) : null } : null;
+  return m ? { file, match_id: Number(m[1]), hero: m[2], lang: m[3] ?? null, version: Number(m[4]), plan: m[5] ?? null, run: m[6] ? Number(m[6]) : null } : null;
+}
+
+/** Expand a stored single-language review or trilingual bundle into scorable per-language entries. */
+export function expandStoredEntries(meta, stored) {
+  if (!stored || typeof stored !== 'object') return [];
+  if (stored.reviews && typeof stored.reviews === 'object') {
+    const out = [];
+    for (const [lang, rev] of Object.entries(stored.reviews)) {
+      if (rev && Array.isArray(rev.findings)) out.push({ ...meta, lang, stored: { ...stored, review: rev } });
+    }
+    if (out.length) return out;
+  }
+  if ((stored.review ?? stored).findings) {
+    const lang = meta.lang ?? (stored.review ?? stored).lang ?? 'en';
+    return [{ ...meta, lang, stored }];
+  }
+  return [];
 }
 
 async function readJson(file) { try { return JSON.parse(await readFile(file, 'utf8')); } catch { return null; } }
@@ -102,7 +119,7 @@ async function main(argv) {
     const meta = parseName(n);
     if (!meta) continue;
     const stored = await readJson(join(o.dir, n));
-    if (stored && (stored.review ?? stored).findings) entries.push({ ...meta, stored });
+    entries.push(...expandStoredEntries(meta, stored));
   }
   if (!entries.length) { console.error(`No stored reviews (*.review.json) in ${o.dir}`); return 3; }
   const rubrics = await loadRubrics(o.rubrics);
