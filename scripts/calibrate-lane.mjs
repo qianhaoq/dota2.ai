@@ -13,6 +13,7 @@ import { gunzipSync } from 'node:zlib';
 import { linkHeroNames } from '../packages/review-engine/src/trace/index.js';
 import { heroByKey } from '../packages/review-engine/src/staticHeroes.js';
 import { laneFromReplay, laneOf } from '../lib/agent/laneFromReplay.js';
+import { replayEarned } from '../lib/agent/farmReport.js';
 
 const [dir, od] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 if (!dir || !od) { console.error('usage: calibrate-lane.mjs <traces dir> <match records dir> [--json]'); process.exit(2); }
@@ -24,6 +25,7 @@ const lane = { heroes: 0, decided: 0, agree: 0, agree_all_samples: 0 };
 const cs = { lh5: [], lh10: [], dn10: [] };
 const result = { heroes: 0, same: 0, same_direction: 0, opposite: 0 };
 let games = 0;
+const farm = { gaps: [], top: 0, top_same: 0 };
 for (const f of readdirSync(dir).filter((x) => x.endsWith('.trace.json.gz')).sort()) {
   const id = f.split('.')[0]; const mp = join(od, `${id}.json`); if (!existsSync(mp)) continue;
   const m = JSON.parse(readFileSync(mp, 'utf8')); if (!Array.isArray(m.players?.[0]?.gold_t) || !Array.isArray(m.players[0].lh_t)) continue;
@@ -31,6 +33,18 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith('.trace.json.gz')).sor
   if (!Array.isArray(t.creep_kills) || !Array.isArray(t.gold)) continue;
   games += 1;
   const rec = (h) => m.players.find((q) => q.hero_id === heroByKey(h.key)?.id);
+  // farm_report's replay source: each hero's 10-minute gain against the record's, and the team's top gainer.
+  const earned = replayEarned(t);
+  if (earned && t.heroes.every((h) => Array.isArray(rec(h)?.gold_t))) {
+    const lastM = Math.min(...t.heroes.map((h) => Math.min(rec(h).gold_t.length, earned.series.get(h.key).length) - 1));
+    for (let a = 0; a + 10 <= lastM; a += 10) for (const team of [2, 3]) {
+      const hs = t.heroes.filter((h) => h.team === team);
+      const g = (h, rep) => (rep ? earned.series.get(h.key)[a + 10] - earned.series.get(h.key)[a] : rec(h).gold_t[a + 10] - rec(h).gold_t[a]);
+      for (const h of hs) farm.gaps.push(g(h, false) - g(h, true));
+      const best = (rep) => hs.slice().sort((x, y) => g(y, rep) - g(x, rep))[0].key;
+      farm.top += 1; if (best(false) === best(true)) farm.top_same += 1;
+    }
+  }
   t.heroes.forEach((h, i) => {
     const p = rec(h); if (!p || p.lane == null) return;
     lane.heroes += 1; const l = laneOf(t, i);
@@ -53,6 +67,7 @@ const out = {
   last_hits_at_10_00: { heroes: cs.lh10.length, exact: within(cs.lh10, 0), within_2: within(cs.lh10, 2), max: Math.max(...cs.lh10) },
   denies_at_10_00: { heroes: cs.dn10.length, exact: within(cs.dn10, 0), within_2: within(cs.dn10, 2), max: Math.max(...cs.dn10) },
   lane_result: result,
+  farm_stretches: (() => { const s = farm.gaps.slice().sort((a, b) => a - b); const q = (p) => (s.length ? s[Math.floor(p * (s.length - 1))] : null); return { hero_stretches: s.length, record_minus_replay_q10_median_q90: [q(0.1), q(0.5), q(0.9)], team_stretches: farm.top, same_top_gainer: farm.top_same }; })(),
 };
 if (process.argv.includes('--json')) console.log(JSON.stringify(out, null, 2));
 else {
@@ -60,4 +75,5 @@ else {
   console.log(`lane: ${lane.decided} of ${lane.heroes} heroes decided, ${lane.agree} in the record's lane`);
   for (const k of ['last_hits_at_5_00', 'last_hits_at_10_00', 'denies_at_10_00']) console.log(`${k}: exact ${out[k].exact}, within 2 ${out[k].within_2}, largest difference ${out[k].max} (${out[k].heroes} heroes)`);
   console.log(`lane result: ${result.heroes} heroes; the record's exactly ${result.same}, same direction ${result.same_direction}, opposite ${result.opposite}`);
+  const fs = out.farm_stretches; console.log(`farm stretches: ${fs.hero_stretches} hero-stretches, record gain minus replay earned gain (q10 / median / q90) ${fs.record_minus_replay_q10_median_q90.join(' / ')}; the same top gainer in ${fs.same_top_gainer} of ${fs.team_stretches} team-stretches`);
 }
