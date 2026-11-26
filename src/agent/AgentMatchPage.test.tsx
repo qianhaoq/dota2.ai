@@ -117,9 +117,10 @@ describe('AgentMatchPage', () => {
     const failed = (await events()).filter((e: any) => e.event === 'review_failed');
     expect(failed.map((e: any) => e.props)).toEqual([{ matchId: '8000000061', hero: 'beastmaster', lang: 'en', stage: 'parse', reason: 'replay_gone', final: true }]);
     cleanup(); beacons.length = 0; window.sessionStorage.clear();
-    // The same page opened without asking: the page says so, nobody was refused a review.
-    mockFetch({ '/api/coach/8000000061': board, '/api/agent/8000000061': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'failed', reason: 'replay_gone', final: true } } });
-    page('/r/8000000061?hero=beastmaster&lang=en');
+    // Another such game opened without asking (another game: the event is sent once a session per game): the page
+    // says so, nobody was refused a review.
+    mockFetch({ '/api/coach/8000000062': board, '/api/agent/8000000062': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'failed', reason: 'replay_gone', final: true } } });
+    page('/r/8000000062?hero=beastmaster&lang=en');
     expect(await screen.findByRole('heading', { name: 'The replay of this game is no longer available' })).toBeTruthy();
     await new Promise((r) => setTimeout(r, 100));
     expect((await events()).some((e: any) => e.event === 'review_failed')).toBe(false);
