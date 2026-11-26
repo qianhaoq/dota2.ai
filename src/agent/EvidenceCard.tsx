@@ -59,6 +59,13 @@ const T = {
   events: { en: 'What happened', zh: '经过', ru: 'Ход событий' },
   dealt: { en: 'Damage to heroes', zh: '对英雄伤害', ru: 'Урон по героям' },
   firstHeld: { en: 'First held', zh: '首次持有', ru: 'Впервые получен' },
+  refGold: { en: 'gold', zh: '金', ru: 'золота' },
+  refRecipe: { en: 'Recipe:', zh: '合成：', ru: 'Рецепт:' },
+  refVs: { en: 'against', zh: '对阵', ru: 'против' },
+  refWin: { en: 'win rate vs its own', zh: '胜率 / 自身胜率', ru: 'винрейт / свой' },
+  refLane: { en: 'lanes won / lost', zh: '对线胜 / 负', ru: 'линий выиграно / проиграно' },
+  refFew: { en: 'too few games', zh: '样本太少', ru: 'мало игр' },
+  refNoChange: { en: 'The notes list no change for it.', zh: '本版本说明里没有它的改动。', ru: 'В описании патча изменений нет.' },
   watching: { en: 'watching', zh: '观察', ru: 'отслеживается' },
   proShare: { en: 'of pro games', zh: '职业局', ru: 'про-матчей' },
   never: { en: 'never held', zh: '从未持有', ru: 'не покупался' },
@@ -552,6 +559,49 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.my_deaths_before_10_00.length > 0 && <p className="ag-rec-line"><span>{t(T.laneDeaths)}</span>{r.my_deaths_before_10_00.map((d: any) => <span key={d.clock} className="ag-chip">{d.clock}{d.killer ? ` ← ${N(d.killer)}` : ''}</span>)}</p>}
         {pro && <p className="ag-rec-line"><span>{N(pro.my_side_core)} : {N(pro.enemy_core)} · {pro.pro_games} {t(T.lanePro)}</span><span className="ag-chip">{t(T.laneProMean)} <em>{signed(pro.core_gold_difference_at_10_00.mean)}</em></span><span className="ag-chip">{t(T.laneThis)} <em>{signed(pro.core_gold_difference_at_10_00.this_game)}</em></span><span className="ag-chip">{N(pro.my_side_core)} {t(T.laneAhead)} <em>{pc(pro.share_of_pro_games_my_side_core_was_ahead)}</em></span></p>}
         {pub && <p className="ag-rec-line"><span>{N(pub.hero)} : {N(pub.against)} · {pub.lanes} {t(T.lanePub)}</span><span className="ag-chip">{t(T.lanePubWon)} <em>{pc(pub.share_won)}</em></span><span className="ag-chip">{t(T.lanePubLost)} <em>{pc(pub.share_lost)}</em></span></p>}
+      </div>
+    );
+  }
+  // Knowledge records (referenceTools.js): what an item is, a hero's base numbers, a matchup, patch notes.
+  if (data.kind === 'item_info') {
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.name ?? N(r.item)}</b>{r.cost != null && <> · {r.cost} {t(T.refGold)}</>}{r.patch && <> · {r.patch}</>}</p>
+        {Array.isArray(r.components) && r.components.length > 0 && <p className="ag-rec-line">{t(T.refRecipe)} {r.components.join(' + ')}</p>}
+        {(r.abilities ?? []).map((a: any, i: number) => <p key={i} className="ag-rec-line"><span className="ag-chip">{a.type}</span> <b>{a.title}</b> {a.text}</p>)}
+        {Array.isArray(r.bonuses) && r.bonuses.length > 0 && <p className="ag-rec-line">{r.bonuses.slice(0, 12).map((b: any) => <span key={b.key} className="ag-chip">{pretty(b.key)} <em>{b.value}</em></span>)}</p>}
+      </div>
+    );
+  }
+  if (data.kind === 'hero_info') {
+    const b = r.base ?? {};
+    const shown: [string, any][] = [['health', b.health], ['mana', b.mana], ['armor', b.armor], ['magic_resistance', b.magic_resistance], ['attack_range', b.attack_range], ['base_attack_time', b.base_attack_time], ['move_speed', b.move_speed]];
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.name ?? N(r.hero)}</b>{r.primary_attribute && <> · {r.primary_attribute}</>}{r.attack_type && <> · {r.attack_type}</>}{r.data_patch && <> · {r.data_patch}</>}</p>
+        <p className="ag-rec-line">{shown.filter(([, v]) => v != null).map(([k, v]) => <span key={k} className="ag-chip">{pretty(k)} <em>{String(v)}</em></span>)}</p>
+      </div>
+    );
+  }
+  if (data.kind === 'matchup') {
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{N(r.hero)}</b> · {t(T.refVs)} <b>{N(r.against)}</b></p>
+        {(r.by_bracket ?? []).map((row: any, i: number) => (
+          <p key={i} className="ag-rec-line"><span>{row.bracket}</span>
+            {row.win ? <span className="ag-chip">{t(T.refWin)} <em>{row.win.win_rate}% / {row.win.own_win_rate}%</em> ({row.win.games})</span> : <span className="ag-chip">{t(T.refFew)}</span>}
+            {row.lane_when_they_met && <span className="ag-chip">{t(T.refLane)} <em>{row.lane_when_they_met.won}% / {row.lane_when_they_met.lost}%</em> ({row.lane_when_they_met.lanes})</span>}
+          </p>
+        ))}
+        {r.source && <p className="ag-rec-note">{r.source}</p>}
+      </div>
+    );
+  }
+  if (data.kind === 'patch_notes') {
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{N(r.about)}</b> · {r.notes_of}</p>
+        {(r.changes ?? []).length ? (r.changes ?? []).slice(0, 20).map((c: any, i: number) => <p key={i} className="ag-rec-line">{c.ability && <b>{c.ability} </b>}{c.text}</p>) : <p className="ag-rec-note">{t(T.refNoChange)}</p>}
       </div>
     );
   }

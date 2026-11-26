@@ -4,7 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { REFERENCE_TOOLS, heroInfo, heroMatchup, itemInfo, patchChanges } from '../../lib/agent/referenceTools.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
-import { verifyText } from '../../lib/agent/deepReview.js';
+import { verifyReview, verifyText } from '../../lib/agent/deepReview.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const zh = { lang: 'zh', perspective: 'beastmaster' };
@@ -68,6 +68,35 @@ describe('reference tools: knowledge to look up instead of recall (#405)', () =>
     }
     const item = itemInfo(trace, { item: 'glimmer_cape' }, zh);
     expect(verifyText('微光披风 2150 金，能挡 375 点魔法伤害。', [item]).ok).toBe(true);
+  });
+
+  it('an evidence item citing one of these records is checked against the whole record (Codex on #409)', () => {
+    const item = itemInfo(trace, { item: 'glimmer_cape' }, zh);
+    const matchup: any = heroMatchup(trace, { hero: 'beastmaster', against: 'phantom_assassin' }, zh);
+    const notes: any = patchChanges(trace, { hero: 'beastmaster' }, zh);
+    const games = matchup.by_bracket[0].win.games;
+    const review = { verdict: 'v', mainline: [], blind_spots: [], findings: [{ title: 't', claim: '微光披风。', fix: 'x', evidence: [
+      { refs: ['item_info:glimmer_cape'], fact: '微光披风能挡 375 点魔法伤害，2150 金。' },
+      { refs: ['matchup:beastmaster:phantom_assassin'], fact: `先锋–卫士段位 ${games} 局里，兽王对幻影刺客的胜率是 ${matchup.by_bracket[0].win.win_rate}%。` },
+      { refs: ['patch_notes:beastmaster'], fact: '本版本改了召唤远古雷肤兽。' },
+    ] }] };
+    const check = verifyReview(review, [item, matchup, notes]);
+    expect(check.problems.filter((p: any) => p.where === 'evidence' || p.where === 'finding')).toEqual([]);
+    expect(check.unsupported.findings.size).toBe(0);
+    // A number the record does not hold still fails.
+    const wrong = { ...review, findings: [{ ...review.findings[0], evidence: [{ refs: ['item_info:glimmer_cape'], fact: '微光披风能挡 999 点魔法伤害。' }] }] };
+    expect(verifyReview(wrong, [item]).problems.some((p: any) => p.kind === 'number' || p.kind === 'moment')).toBe(true);
+  });
+
+  it('a game whose patch is not established: hero_info and patch_changes say so, never the current patch as the game\'s (Codex on #409)', () => {
+    const old = { ...trace, match_id: 8000000000 };
+    const h: any = heroInfo(old, { hero: 'sven' }, zh);
+    expect(h.gaps).toEqual([{ topic: 'patch', reason: expect.stringContaining('not established (older_than_7.40)') }]);
+    const n: any = patchChanges(old, { hero: 'beastmaster' }, zh);
+    expect(n.game_patch).toBeNull();
+    expect(n.gaps).toEqual([{ topic: 'patch', reason: expect.stringContaining('not established (older_than_7.40)') }]);
+    const i: any = itemInfo(old, { item: 'glimmer_cape' }, zh);
+    expect(i).toMatchObject({ patch_exact: false, gaps: [{ topic: 'patch', reason: 'older_than_7.40' }] });
   });
 
   it('the agent has them, after the replay tools', () => {
