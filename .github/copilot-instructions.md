@@ -49,6 +49,7 @@ Live site: `dota2.ai`. Contact / deploy owner: personal project of `qianhaoq`. O
 - The prompt, the `submit_review` schema and the tool definitions are pinned (`src/utils/agentPromptPin.test.ts`): changing them, or a tool's answer, means raising `DEEP_REVIEW_PROMPT_VERSION`.
 - Read a stored trace through `linkHeroNames`; keep `packages/review-engine` pure.
 - Output language follows the UI `lang`; UI copy is bilingual.
+- The model judges; tools give facts and references (#405). Do not ask for a fixed rule that decides a judgment, for a prompt rule where a tool's answer would do, or for a calibration before a fact or a piece of Dota knowledge may reach the model. Corpus numbers in tool output carry their sample and come from `scripts/calibrate.mjs`.
 
 Full list: `.cursor/rules/dota2-coach-invariants.mdc`.
 

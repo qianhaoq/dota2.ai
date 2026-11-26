@@ -48,7 +48,7 @@ When touching `lib/agent/**`, `packages/review-engine/src/trace/**` or `src/agen
 - Unknown is not false: missing or unestablished data stays `null` or a `gaps` entry, never `0`, `false`, `[]` or "none"; a field an older trace lacks is unknown. Write the tests that blank the source.
 - No tool says who could see whom. Tools state facts ("not in the fight"), not motives.
 - The prompt, the `submit_review` schema and the tool definitions are pinned in `src/utils/agentPromptPin.test.ts`: changing them — or a tool's answer — means raising `DEEP_REVIEW_PROMPT_VERSION` and updating the pin.
-- A feature reaches the model after `scripts/calibrate.mjs` shows what it explains; quoted numbers come from there.
+- The model judges; tools give facts and references (#405). No fixed rule decides a judgment (main reason, whose fault, what is a finding) or forces what a review covers; prefer a lookup tool or a reference in a tool's answer to a prompt rule, and removing prompt rules to adding them. Corpus numbers the model sees are references in tool output, measured by `scripts/calibrate.mjs` with their sample — not a gate before the model may see a feature. The fact checks above stay.
 - Read a stored trace through `linkHeroNames`. Tools speak from the player's side (`me` / `ally` / `enemy`).
 - Output language follows the UI `lang` (`zh` → 简体中文, `en` → English); the UI defaults to English with a Chinese toggle. Keep UI copy bilingual.
 - A bulk model run can draw on the account production uses: check the provider's balance and state the expected spend before starting.

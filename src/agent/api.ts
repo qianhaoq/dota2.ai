@@ -138,7 +138,11 @@ export function fetchEvidence(matchId: string, hero: string, lang: string, ref: 
   const key = `${matchId}|${hero}|${lang}|${ref}`;
   let p = evidenceCache.get(key);
   if (!p) {
-    p = fetch(`/api/agent/${enc(matchId)}/evidence?hero=${enc(hero)}&lang=${lang}&ref=${enc(ref)}`).then((r) => json<EvidenceRecord>(r));
+    p = fetch(`/api/agent/${enc(matchId)}/evidence?hero=${enc(hero)}&lang=${lang}&ref=${enc(ref)}`).then(async (r) => {
+      const out = await json<EvidenceRecord>(r);
+      if (!out || typeof out !== 'object' || !('record' in out) || !out.record) throw new AgentApiError('invalid_evidence', r.status);
+      return out;
+    });
     p.catch(() => evidenceCache.delete(key));
     evidenceCache.set(key, p);
   }
