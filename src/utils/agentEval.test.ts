@@ -181,6 +181,79 @@ describe('review eval: against a rubric', () => {
   it('a rubric with no points gives no rate', () => {
     expect(rubricOf(review(), { status: 'approved' })).toMatchObject({ status: 'approved', weight: 0, hit_rate: null, must_hit: [], must_not: [] });
   });
+
+  it('scores one-sided wins (#361): must_praise checks did_well, and max_findings bounds invented complaints', () => {
+    const stompRubric = {
+      schema: RUBRIC_SCHEMA,
+      match_id: 9102822298,
+      hero: 'queen_of_pain',
+      status: 'approved',
+      must_hit: [],
+      must_praise: [
+        { id: 'won_mid_lane', says: '57 vs 36 last hits by 10:00', weight: 2, any: { clocks: ['10:00'] }, terms: { en: ['57'], zh: ['57'] }, and_terms: { en: ['lane', 'last hit'], zh: ['对线', '补刀'] } },
+        { id: 'one_death_only', says: 'only 1 death all game', weight: 1, terms: { en: ['1 death', 'died once'], zh: ['1 次阵亡', '只死 1 次'] } },
+      ],
+      max_findings: 1,
+      main_reason: ['your_play', 'team_play'],
+    };
+
+    const zhFinding = (title: string) => ({
+      title,
+      claim: '18:20 在对方高地前阵亡。',
+      fix: '退回高地。',
+      evidence: [{ refs: ['death:axe:2'], clock: '18:20', fact: '18:20 阵亡。' }],
+      rule: { when: '兵线未到时', do: '先退后', this_game: '18:20、22:10 两次。' },
+    });
+
+    const goodWin = review({
+      lang: 'zh',
+      verdict: '对线与中期全面碾压。',
+      findings: [zhFinding('唯一一次阵亡')],
+      did_well: ['10:00 对线补刀 57 比 36，完全压制中路。', '整局只死 1 次，节奏紧凑。'],
+      game_plan: { main_reason: 'your_play', course: '碾压获胜。', evidence: [] },
+    });
+    const scoredGood = rubricOf(goodWin, stompRubric);
+    expect(scoredGood).toMatchObject({
+      status: 'approved',
+      hit_rate: null,
+      must_praise: [
+        { id: 'won_mid_lane', hit: true, item: 1 },
+        { id: 'one_death_only', hit: true, item: 2 },
+      ],
+      praise_hit_weight: 3,
+      praise_weight: 3,
+      praise_rate: 1,
+      max_findings: 1,
+      findings_within_max: true,
+      main_reason_ok: true,
+    });
+
+    // Over-inventing three findings and missing one praise point drops both metrics.
+    const nitpickyWin = review({
+      lang: 'zh',
+      verdict: '对线与中期全面碾压。',
+      findings: [zhFinding('唯一一次阵亡'), zhFinding('次要细节二'), zhFinding('次要细节三')],
+      did_well: ['10:00 对线补刀 57 比 36。'],
+      game_plan: { main_reason: 'your_play', course: '获胜。', evidence: [] },
+    });
+    const scoredBad = rubricOf(nitpickyWin, stompRubric);
+    expect(scoredBad).toMatchObject({
+      praise_hit_weight: 2,
+      praise_weight: 3,
+      praise_rate: 0.67,
+      max_findings: 1,
+      findings_within_max: false,
+    });
+
+    const sumGood = summarize([scoreReview(goodWin, stompRubric)]);
+    const sumBad = summarize([scoreReview(nitpickyWin, stompRubric)]);
+    expect(sumGood.rubric_approved).toMatchObject({ praise_rate: 1, findings_within_max: 1 });
+    expect(sumBad.rubric_approved).toMatchObject({ praise_rate: 0.67, findings_within_max: 0 });
+    expect(compareSummaries(sumGood, sumBad).worse).toEqual([
+      { key: 'rubric_approved.praise_rate', before: 1, after: 0.67 },
+      { key: 'rubric_approved.findings_within_max', before: 1, after: 0 },
+    ]);
+  });
 });
 
 describe('review eval: stability', () => {
