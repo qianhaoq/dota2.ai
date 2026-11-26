@@ -215,6 +215,8 @@ describe('review eval: summary and comparison', () => {
     expect(s.repaired).toBe(1);
     // How many reviews have no game plan (#388).
     expect(summarize([scoreReview({ review: { game_plan: { course: 'x' } } } as any), scoreReview({ review: {} } as any)]).without_game_plan).toBe(0.5);
+    // A bare review (no { review } wrapper) is read the same way (Codex on #391).
+    expect(summarize([scoreReview({ game_plan: { course: 'x' } } as any), scoreReview({ findings: [] } as any)]).without_game_plan).toBe(0.5);
     expect(BETTER.without_game_plan).toBe(-1);
     expect(s.rubric_draft).toBeNull();
     // lead_ok: its first finding is neither of the two points the rubric accepts as the lesson.
