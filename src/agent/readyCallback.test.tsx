@@ -43,6 +43,22 @@ describe('bringing the reader back when the review is ready', () => {
     expect(await events()).toEqual(['returned']);
   });
 
+  it('a wait that ends without a review (a failure, or back to the hero pick) gives the title back and waits on nothing', async () => {
+    stubNotification('granted');
+    const r = render(<Harness working ready={false} />);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '好了通知我' })); });
+    expect(document.title).toBe('(3/4) 正在复盘 · 兽王 — dota2.ai');
+    act(() => setHidden(true));
+    r.rerender(<Harness working={false} ready={false} />);
+    expect(document.title).toBe('dota2.ai');
+    // A review shown later for that selection (opened again, already there) is not "the one waited for".
+    r.rerender(<Harness working={false} ready />);
+    expect(shown).toHaveLength(0);
+    expect(document.title).toBe('dota2.ai');
+    act(() => setHidden(false));
+    expect(await events()).toEqual(['asked', 'granted']);
+  });
+
   it('a reader still on the tab when it comes gets the page\'s own title back, and no "returned"', async () => {
     const r = render(<Harness working ready={false} />);
     r.rerender(<Harness working={false} ready />);

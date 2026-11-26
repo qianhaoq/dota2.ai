@@ -51,11 +51,17 @@ export function useReadyCallback({ matchId, selection, working, step, ready, lan
 
   // While the wait is on screen: the step in the title.
   useEffect(() => {
-    if (!working) return;
+    if (!working) {
+      // The wait ended without a review (it failed, or the reader went back to pick another hero): the title is
+      // the page's again, and nothing is waited on. A wait that ended in the review is the next effect's.
+      if (!ready) { restore(); waited.current = null; away.current = null; }
+      return;
+    }
     waited.current = selection;
     setTitle(`(${step + 1}/4) ${T.working[lang]}${heroName ? ` · ${heroName}` : ''} — dota2.ai`);
     if (document.hidden && away.current?.sel !== selection) away.current = { sel: selection, at: Date.now() };
-  }, [working, step, lang, heroName, selection]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [working, ready, step, lang, heroName, selection]);
 
   // Leaving the tab during the wait is noted; looking at it again puts the title back once the review is there.
   useEffect(() => {
