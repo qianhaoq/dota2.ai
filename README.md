@@ -4,11 +4,12 @@
 
 **A Dota 2 coach that watches your replay, and can prove what it says.**
 
-[Website](https://dota2.ai) · [A real review](https://dota2.ai/r/9100904020?hero=beastmaster) · [How it works](#how-it-works) · [For agents](#one-line-for-your-agent) · [简体中文](README.zh-CN.md)
+[Website](https://dota2.ai) · [A real review](https://dota2.ai/r/9100904020?hero=beastmaster) · [How it works](#how-it-works) · [DSH plugin](#in-dsh-deepseek-harness) · [For agents](#in-any-other-agent-mcp) · [简体中文](README.zh-CN.md)
 
 [![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial-d6b46a.svg)](LICENSE)
 [![Dota 2 patch 7.42](https://img.shields.io/badge/Dota%202-7.42-c23c2a.svg)](https://www.dota2.com/patches/7.42)
+[![DSH plugin](https://img.shields.io/badge/DSH-plugin-4d6bfe.svg)](#in-dsh-deepseek-harness)
 
 <br>
 
@@ -119,9 +120,49 @@ A replay does not hold everything, and the review says so instead of guessing.
 
 ## Use it
 
-**On the web.** Open [dota2.ai](https://dota2.ai), paste a match ID or a match link from OpenDota, Dotabuff or STRATZ — or a Steam friend code to list your recent games. English and Chinese. The home page also has a patch advisor: what 7.42 changed, and how a hero has done since.
+The same coach, five ways in. None of them needs a key.
 
-### One line for your agent
+| Where | What you do | You get |
+|---|---|---|
+| **Web** | Open [dota2.ai](https://dota2.ai), paste a match | The full page: review, records, scoreboard, a coach to ask |
+| **DSH** | `dsh plugin add` one archive | `dota2ai_*` tools and a skill in every DSH session |
+| **Any MCP agent** | Add `https://dota2.ai/mcp` once | The same tools over MCP |
+| **Terminal** | `node packages/cli/bin/dota2ai.js …` | The rule-based reports, as text or JSON |
+| **Offline** | Query the bundled trace | The agent's replay tools on a recorded game |
+
+### On the web
+
+Open [dota2.ai](https://dota2.ai), paste a match ID or a match link from OpenDota, Dotabuff or STRATZ — or a Steam friend code to list your recent games. English, Chinese and Russian. The home page also has a patch advisor: what 7.42 changed, and how a hero has done since.
+
+### In DSH (DeepSeek Harness)
+
+dota2.ai ships as a native [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) plugin: install it once and every DSH session can review a game. It needs Node 24.9 or newer and DSH 0.2.1-rc.3.
+
+```sh
+# from the latest dsh-v* release: https://github.com/qianhaoq/dota2.ai/releases
+sha256sum -c SHA256SUMS
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.1.0.tgz
+```
+
+Then ask, in any DSH session:
+
+> Review my Dota 2 match 9100904020 — I played Beastmaster.
+
+| Tool | What it does |
+|---|---|
+| `dota2ai_replay_review` | The replay review this site writes, checked against the replay. It never blocks: while it says `parsing` or `reviewing` (two to four minutes the first time) the model calls again |
+| `dota2ai_recent_matches` | A player's recent public games, from a friend code or a profile link |
+| `dota2ai_coach_report` | The roster without `hero`; with it, one chapter: `summary`, `why`, `lane`, `deaths`, `items`, `fights`, `plan`, `all` |
+| `dota2ai_coach_cases` | Professional games on the same problem, one that avoided it and one that repeated it |
+| `dota2ai_coach_ask` | A follow-up question, answered only from the report |
+| `dota2ai_goal_check` | Whether a later game met a finding's goal: met, missed, no opportunity, unknown |
+| `dota2ai_hero_matchup` | Hero against hero from professional games, and per rank bracket from STRATZ |
+
+The plugin also registers a `dota2ai` skill that tells the model how to read the results: ask which hero the user played rather than guess, quote times and numbers as given, say what the replay cannot show. Settings (`lang`, `apiBase`, `enabled`, `skillEnabled`) live under the `dota2ai` entry of the profile's `cordis.patch.yml`.
+
+It works next to the [DSH Dota coach](https://github.com/qianhaoq/qh-dsh-dota-coach) plugin, whose tools are `dota_*`: that one parses replays on your machine and keeps your notes and training; this one brings the hosted review. More: [`packages/dsh/README.md`](packages/dsh/README.md).
+
+### In any other agent (MCP)
 
 The hosted MCP server needs no install and no key:
 
@@ -134,15 +175,11 @@ The hosted MCP server needs no install and no key:
 | **Cursor** | [Add to Cursor](https://cursor.com/en/install-mcp?name=dota2ai&config=eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9), or put `{ "mcpServers": { "dota2ai": { "url": "https://dota2.ai/mcp" } } }` in `~/.cursor/mcp.json` |
 | **Any other MCP client** | Give it `https://dota2.ai/mcp` (Streamable HTTP) |
 
-Then one sentence:
-
-> Review my Dota 2 match 9100904020 — I played Beastmaster.
-
-No MCP? Any agent that can fetch a URL works with this instead:
+Then the same sentence as above. No MCP? Any agent that can fetch a URL works with this instead:
 
 > Review my Dota 2 match 9100904020, I played Beastmaster. Call the API described at https://dota2.ai/llms.txt, quote only what it returns, and say when a sample is too small.
 
-`replay_review` is the full review this site writes from the replay, the same one as the web page: it never blocks, so the agent calls it again while it says `parsing` or `reviewing` (two to four minutes the first time) and gets the verdict, the findings with their replay evidence and the page to link. The other 8 tools — `review_match`, `get_evidence`, `recent_matches`, `coach_report`, `coach_cases`, `coach_ask`, `goal_check`, `hero_matchup` — are the instant, rule-based tier: a sectioned report from match data, pro games on the same problem, matchups and next-game goals ([reference](packages/mcp/README.md)). To run it locally over stdio, use `node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`. There is also an agent skill at [`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md).
+`replay_review` is the full review, the same as the web page. The other 8 tools — `review_match`, `get_evidence`, `recent_matches`, `coach_report`, `coach_cases`, `coach_ask`, `goal_check`, `hero_matchup` — are the instant, rule-based tier: a sectioned report from match data, pro games on the same problem, matchups and next-game goals ([reference](packages/mcp/README.md)). To run it locally over stdio, use `node /absolute/path/to/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`. There is also an agent skill at [`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md).
 
 ### From a terminal
 
@@ -207,6 +244,7 @@ packages/review-engine/src/trace  the trace format and the replay tools (pure, n
 lib/coach/                        the rule-based engine behind the CLI and MCP
 src/agent/, src/coach/            the review page; the home and player pages
 packages/cli/, packages/mcp/      the CLI and the MCP server
+packages/dsh/                     the DSH plugin (tools and skill over the public API)
 server.js                         the Express host
 ```
 

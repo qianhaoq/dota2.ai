@@ -1,0 +1,6 @@
+- insert:
+    - id: dota2ai
+      name: '@qianhaoq/dsh-dota2ai'
+      config:
+        enabled: true
+        lang: en

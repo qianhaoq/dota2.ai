@@ -6,7 +6,7 @@ dota2.ai is a Dota 2 coach that reviews one player's game from its replay (Engli
 
 - **Match review** (`/r/:matchId`): the replay is parsed into a trace, an agent investigates it with lookup tools, and what it writes is checked against the tool results before it ships. Evidence, a rule per finding, a goal the next game is checked on, and a chat that goes back to the replay.
 - **Home and player pages** (`/`, `/p/…`): find a match by ID or friend code, recent games, the goal in progress, a patch advisor.
-- **For agents**: a CLI (`packages/cli`), an MCP server (`packages/mcp`, also at `/mcp`) and the `/api/v1` review API.
+- **For agents**: a CLI (`packages/cli`), an MCP server (`packages/mcp`, also at `/mcp`), a DSH plugin (`packages/dsh`) and the `/api/v1` review API.
 
 Live site: `dota2.ai`. Contact / deploy owner: personal project of `qianhaoq`. Overview: `README.md`; how a match ID becomes a review: `docs/AGENT_PIPELINE.md`; what the coach understands and how that is measured: `docs/GAME_UNDERSTANDING.md`.
 
