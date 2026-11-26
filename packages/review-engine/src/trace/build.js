@@ -403,7 +403,8 @@ export function createTraceBuilder() {
         source: { state_rows: stateRows, event_rows: eventRows, sample_hz: 1, extractor: meta.extractor ?? null },
         gaps: [
           { topic: 'vision', reason: wardRows ? 'ward_placements_only_not_what_each_side_saw' : 'no_fog_of_war_in_trace' },
-          { topic: 'creeps', reason: 'no_creep_entities_in_trace' },
+          // Creep kills are kept (creep_kills); the creeps themselves — where the waves stood — are not.
+          { topic: 'creeps', reason: 'creep_kills_only_not_where_the_waves_stood' },
           { topic: 'roshan', reason: 'no_reliable_roshan_event' },
           { topic: 'ability_immunity', reason: 'only_item_spell_immunity_modifiers_tracked' },
           { topic: 'unused_free_abilities', reason: 'an_ability_never_cast_with_no_mana_cost_cannot_be_told_from_a_passive' },

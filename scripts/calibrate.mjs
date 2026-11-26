@@ -44,7 +44,7 @@ import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_R
 import { moneyOf } from '../lib/agent/farmReport.js';
 import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
-import { observersNear } from '../packages/review-engine/src/trace/state.js';
+import { heroStateAt, observersNear } from '../packages/review-engine/src/trace/state.js';
 
 const dir = process.argv[2];
 if (!dir) { console.error('usage: calibrate.mjs <dir> [--json]'); process.exit(2); }
@@ -62,6 +62,7 @@ const afterTowers = [];
 const ultEdges = [];
 const itemFights = [];
 const plainFights = [];
+const notInFight = []; let gamesWithCreepKills = 0;
 const momentSides = []; const momentHeroes = [];
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
@@ -72,6 +73,15 @@ for (const f of files) {
     for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }).deaths ?? []) if (d.allies_within_2200.at_death != null) deaths.push({ allies: d.allies_within_2200.at_death, traded: d.traded_within_15s, obs: d.observers_within_1600 ?? null });
   }
   if (Array.isArray(trace.wards)) wardGames += 1;
+  // Alive heroes not in a fight (fightParticipation): what the state says they were doing as it began — farming
+  // only on traces that keep creep kills.
+  if (Array.isArray(trace.creep_kills)) {
+    gamesWithCreepKills += 1;
+    for (const fight of matchFights(trace)) {
+      const part = fightParticipation(trace, fight);
+      trace.heroes.forEach((_, i) => { if (part.took_part.has(i)) return; const s = heroStateAt(trace, i, fight.from); if (s.known && s.alive) notInFight.push(s.doing); });
+    }
+  }
   // Key moments, from each side once (its first hero), and every losing hero's split of the falls.
   for (const tm of [2, 3]) {
     const heroes = trace.heroes.filter((x) => x.team === tm);
@@ -241,6 +251,10 @@ out.after_won_fights = [0, 1, 2, 3, 4].map((n) => {
   return { losers_still_dead_10s_after: n === 4 ? '4 or more' : String(n), fights: list.length, ...Object.fromEntries(DID.map((d) => [d, list.filter((x) => x.did === d).length])) };
 });
 const fightsAfter = roshans.flatMap((x) => x.fights);
+if (gamesWithCreepKills) {
+  const c = {}; for (const d of notInFight) c[d] = (c[d] ?? 0) + 1;
+  out.not_in_a_fight = { games: gamesWithCreepKills, alive_heroes_not_in_a_fight: notInFight.length, doing: c };
+}
 if (momentSides.length) {
   const q = (arr) => { const s = arr.slice().sort((a, b) => a - b); return s.length ? [0.25, 0.5, 0.75].map((p) => s[Math.min(s.length - 1, Math.floor(p * s.length))]) : null; };
   const lost = momentSides.filter((x) => x.lost); const won = momentSides.filter((x) => !x.lost);
