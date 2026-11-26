@@ -1822,6 +1822,29 @@ describe('AgentMatchPage', () => {
     expect(calls.some((c) => c.url.endsWith('/review') && c.init?.method === 'POST')).toBe(false);
   });
 
+  it('after a goal-only parse, a review status that could not be read is read again on "Try again" — it does not ask for a review', async () => {
+    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 }));
+    const later = { match: { id: 9100999994, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
+    let prepared = 0; let statusReads = 0;
+    const calls = mockFetch({
+      '/api/coach/9100999994': later,
+      '/prepare': () => { prepared += 1; return { status: 'ready' }; },
+      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 5, deaths_where: { no_ally_within_2200_at_death: ['3:00'] }, deaths_not_known: { allies_at_death: 0 } } },
+      // The first read of the review status fails; the next answers "none".
+      '/review?': () => { statusReads += 1; return statusReads === 1 ? new Response('bad gateway', { status: 502 }) : { status: 'none' }; },
+      '/api/agent/9100999994': () => (prepared ? { trace: true, model_configured: true, can_parse: true, heroes } : { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } }),
+    });
+    page('/r/9100999994?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Only check my goal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }, { timeout: 8000 }));
+    // The status is read again, and the start screen comes back with the review on offer — none was requested.
+    expect(await screen.findByRole('button', { name: 'Review my game' }, { timeout: 8000 })).toBeTruthy();
+    expect(statusReads).toBeGreaterThanOrEqual(2);
+    expect(prepared).toBe(1);
+    expect(calls.some((c) => c.url.endsWith('/review') && c.init?.method === 'POST')).toBe(false);
+  }, 20000);
+
   it('no goal, a goal this game does not count for, or a game already parsed: no goal-only button', async () => {
     mockFetch({ '/api/coach/9100999998': { match: { id: 9100999998, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [] }, '/api/agent/9100999998': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } });
     page('/r/9100999998?hero=beastmaster&lang=en');

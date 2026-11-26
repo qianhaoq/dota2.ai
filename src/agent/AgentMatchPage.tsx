@@ -568,9 +568,14 @@ export const AgentMatchPage: React.FC = () => {
   );
   const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} replayLead={avail?.trace ? avail.radiant_gold_lead ?? avail.radiant_net_worth_lead ?? null : null} replayLeadIs={avail?.trace && avail.radiant_gold_lead ? 'gold' : 'net_worth'} />;
   // A parse the reader asked for to check the goal only: trying it again is the same request, not a review.
-  const goalOnly = checkingOnly === selection && !intent;
+  // Only while the parse is what failed: once the replay is parsed there is no goal-only request left to repeat.
+  const goalOnly = checkingOnly === selection && !intent && !hasTrace;
+  // A reader who never asked for a review, on a page whose review status could not be read (a failed request, not a
+  // failed review — that one carries a reason): trying again reads the status again; it does not ask for a review.
+  const statusOnly = !intent && hasTrace && state?.status === 'failed' && !('reason' in state && state.reason);
+  const again = () => { if (goalOnly) void checkOnly(); else if (statusOnly) void loadReview(); else void go(); };
   const dead = (title: Bi, body: Bi, retry = false) => (
-    <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={goalOnly ? checkOnly : go} disabled={Boolean(wait)}>{t(T.retry)}</button>}{(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}</div>{scoreboard}</Shell>
+    <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={again} disabled={Boolean(wait)}>{t(T.retry)}</button>}{(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}</div>{scoreboard}</Shell>
   );
 
   if (roster.length === 0) return dead(T.notFound, T.notFoundBody);
