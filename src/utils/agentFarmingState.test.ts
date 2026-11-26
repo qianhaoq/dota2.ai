@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { FARM_NEAR, heroStateAt as stateAtRaw, linkHeroNames } from '../../packages/review-engine/src/trace/index.js';
+import { CREEPS_WITH_KILLS, gapsOf } from '../../lib/agent/fightReport.js';
 
 const heroStateAt = (t: any, h: number, s: number) => stateAtRaw(t, h, s) as any;
 
@@ -45,5 +46,14 @@ describe('farming, in what the replay shows a hero doing', () => {
     const st = trace.states[pa]; const k = Math.round(kill) - trace.t0;
     const dead = { ...trace, states: trace.states.map((x: any, i: number) => (i === pa ? { ...st, alive: st.alive.map((v: any, j: number) => (Math.abs(j - k) <= 1 ? 0 : v)) } : x)) };
     expect(heroStateAt(dead, pa, kill).doing).toBe('dead');
+  });
+});
+
+describe('the creeps gap says what is still not shown (Codex on #398)', () => {
+  it('with creep kills: farming is shown, the waves are not; without: as before', () => {
+    expect(gapsOf(trace).find((g: any) => g.topic === 'creeps')).toEqual({ topic: 'creeps', reason: CREEPS_WITH_KILLS });
+    expect(CREEPS_WITH_KILLS).toContain('Where the waves stood');
+    expect(CREEPS_WITH_KILLS).not.toContain('not shown —');
+    expect(gapsOf(bare).find((g: any) => g.topic === 'creeps')!.reason).toContain('may have been farming');
   });
 });

@@ -34,6 +34,12 @@ describe('gold earned from the replay\'s log', () => {
     const noCount: any = replayEarned({ ...trace, creep_kills: trace.creep_kills.map((x: any) => [x[0], x[1], x[2], null, x[4]]) });
     expect([noCount.lastHits, noCount.series.get('beastmaster')[10]]).toEqual([null, bm[10]]);
     expect(replayEarned(bare)).toBeNull();
+    // Kill rows before 10:00 without the count, a counted one after: at 10:00 not known, not 0 (Codex on #398).
+    const nx = ix('npc_dota_hero_beastmaster');
+    const partly: any = replayEarned({ ...trace, creep_kills: [...trace.creep_kills.filter((x: any) => x[1] !== nx), [100, nx, 'l', null, 700], [1201, nx, 'l', 50, 9000]] });
+    expect(partly.lastHits.get('beastmaster').slice(0, 3)).toEqual([0, 0, null]);
+    expect(partly.lastHits.get('beastmaster')[10]).toBeNull();
+    expect(partly.lastHits.get('beastmaster')[21]).toBe(50);
   });
 
   it('farm_report uses it when there is no record, says so, and prefers a record when there is one', () => {
