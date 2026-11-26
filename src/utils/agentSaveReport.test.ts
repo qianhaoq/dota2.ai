@@ -59,6 +59,17 @@ describe('save_report', () => {
     expect(resolveRef(t, 'saves:disruptor:9', { hero: 'disruptor', lang: 'zh' })).toBeNull();
   });
 
+  it('no damage rows, or no death rows: danger and what followed are not known — not "no" (Codex on #399)', () => {
+    const { damage, deaths, ...rest } = t as any;
+    const r: any = saveReport(rest, { hero: 'disruptor' });
+    expect(r).toMatchObject({ given_to_allies: 3, given_to_allies_in_danger: null, of_those_the_ally_died_within_5s: null });
+    expect(r.given[0]).toMatchObject({ in_danger: null, enemy_damage_taken_before: null, died_within_5s: null });
+    expect(r.gaps).toEqual([{ topic: 'danger', reason: 'no_damage_rows_in_trace' }, { topic: 'died_within_5s', reason: 'no_death_rows_in_trace' }]);
+    // Damage known, deaths not: danger is read, what followed is not.
+    const d: any = saveReport({ ...rest, damage }, { hero: 'disruptor' });
+    expect([d.given_to_allies_in_danger, d.of_those_the_ally_died_within_5s, d.given[0].in_danger, d.given[0].died_within_5s]).toEqual([2, null, true, null]);
+  });
+
   it('uses on oneself do not crowd uses on allies out of the list (Codex on #399)', () => {
     const many = game({ items: [...Array.from({ length: 30 }, (_, k) => [10 + k * 10, 'disruptor', 'item_glimmer_cape', 'disruptor']), [400, 'disruptor', 'item_force_staff', 'sven']], damage: [[399, 'axe', 'sven', 300]] });
     const r: any = saveReport(many, { hero: 'disruptor' });
