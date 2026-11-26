@@ -20,6 +20,7 @@ export type AnalyticsEventName =
   | 'moment_played'
   | 'finding_rated'
   | 'arrived'
+  | 'ready_callback'
   | 'goal_set'
   | 'goal_checked'
   | 'goal_check_requested'

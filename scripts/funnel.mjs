@@ -33,6 +33,8 @@ const label = {
   checked: 'had that goal checked on a later game',
   goalOnly: 'asked to check a goal without a review',
   played: 'replayed a moment on the map',
+  notifyOn: 'allowed a notification for when their review is ready',
+  calledBack: 'left the tab during the wait and came back when it was ready',
   rated: 'said whether a finding was right',
 };
 console.log(`days: ${out.days[0] ?? '-'} … ${out.days.at(-1) ?? '-'}   events: ${Object.entries(out.events).map(([k, v]) => `${k}=${v}`).join(' ')}`);

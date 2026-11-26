@@ -17,8 +17,8 @@ describe('the review page funnel from event logs', () => {
       { type: 'other', event: 'match_opened', anonId: 'anon_x' },
     ];
     const out = summarizeFunnel(entries);
-    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0, goalOffered: 0, goalSeen: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0, failed: 0 });
-    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0, goalOffered: 0, goalSeen: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0, failed: 0 });
+    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0, goalOffered: 0, goalSeen: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0, failed: 0, notifyOn: 0, calledBack: 0 });
+    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0, goalOffered: 0, goalSeen: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0, failed: 0, notifyOn: 0, calledBack: 0 });
     expect(out.anonymous).toBe(1);
     expect(out.events).toMatchObject({ match_opened: 3, chat_asked: 2, review_viewed: 3 });
     expect(out.days).toEqual(['2026-11-24', '2026-11-25']);
@@ -131,6 +131,15 @@ describe('the review page funnel from event logs', () => {
     expect(out.ratings).toEqual({ right: 1, wrong: 2, useless: 1, on_the_first_finding: 2 });
     // Nothing rated: zeros, and the script prints no line for it.
     expect(summarizeFunnel([e('match_opened', 'a')]).ratings).toEqual({ right: 0, wrong: 0, useless: 0, on_the_first_finding: 0 });
+  });
+
+  it('counts readers who allowed a notification, and who came back to a review they had left the tab for', () => {
+    const out = summarizeFunnel([
+      line('match_opened', 'anon_n'), line('ready_callback', 'anon_n', { kind: 'asked' }), line('ready_callback', 'anon_n', { kind: 'granted' }), line('ready_callback', 'anon_n', { kind: 'clicked' }),
+      line('match_opened', 'anon_t'), line('ready_callback', 'anon_t', { kind: 'returned' }),
+      line('match_opened', 'anon_d'), line('ready_callback', 'anon_d', { kind: 'denied' }),
+    ]);
+    expect(out.browsers).toMatchObject({ notifyOn: 1, calledBack: 2 });
   });
 
   it('reads gcloud JSON output (entries with jsonPayload) and one object per line', () => {

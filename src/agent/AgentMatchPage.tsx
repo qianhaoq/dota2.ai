@@ -16,6 +16,7 @@ import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelWait, writesSlowly } fro
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import { WaitDeaths } from './WaitDeaths';
 import { ShareBar } from './ShareBar';
+import { useReadyCallback } from './readyCallback';
 import './agent.css';
 
 /**
@@ -523,6 +524,15 @@ export const AgentMatchPage: React.FC = () => {
     return [...(first ? [lang === 'zh' ? `「${first}」——${T.qFinding.zh}` : `"${first}" — ${T.qFinding.en}`] : []), T.q1[lang]];
   }, [state, lang]);
 
+  // The wait as the tab's title, and "ready" (with a notification, if the reader asked for one) when the reader
+  // is elsewhere: computed here, before the page picks what to show, from what decides that the wait is on screen.
+  const waitShown = valid && Boolean(avail) && parse?.status !== 'failed' && state?.status !== 'failed' && state?.status !== 'unavailable'
+    && (parsing || state?.status === 'running' || (intent && !notice && !wait && (!hasTrace || state === null || state.status === 'none')));
+  const callback = useReadyCallback({
+    matchId, selection, working: waitShown, step: journeyStep(avail, state), ready: state?.status === 'ready',
+    lang, heroName: hero ? hero[lang] : null, verdict: state?.status === 'ready' ? state.review.verdict ?? null : null,
+  });
+
   if (!valid) return <Shell><div className="ag-state"><h1>{t(T.invalid)}</h1><Link to={`/?lang=${lang}`} className="ag-btn">{t(T.home)}</Link></div></Shell>;
   if (!avail || (report === null && !avail.trace)) return <Shell><div className="ag-state" role="status"><p className="ag-pulse">{t(T.loading)}</p></div></Shell>;
 
@@ -668,6 +678,7 @@ export const AgentMatchPage: React.FC = () => {
           <h1>{t(checkingGoal ? T.checkingGoal : T.working)}</h1>
           <p>{t(T.leave)}</p>
           {workTime && <p className="ag-worktime">{workTime}</p>}
+          {callback.button}
           <ol className="ag-journey">
             {steps.map((s, i) => (
               <li key={i} className={i < live ? 'is-done' : i === live ? 'is-live' : ''}>
