@@ -126,6 +126,19 @@ describe('AgentMatchPage', () => {
     expect((await events()).some((e: any) => e.event === 'review_failed')).toBe(false);
   });
 
+  it('a review not available for a while (the model account refused one a moment ago) is counted as shown, with the reason (Codex on #383)', async () => {
+    mockFetch({
+      '/review?': { status: 'none' },
+      '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { __status: 503, status: 'unavailable', reason: 'model_out_of_credit', retry_in_sec: 240 } : null),
+      '/api/agent/8000000063': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/8000000063?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect(await screen.findByText('The coach is not available right now.')).toBeTruthy();
+    await waitFor(async () => expect((await events()).map((e: any) => e.event)).toContain('review_failed'));
+    expect((await events()).filter((e: any) => e.event === 'review_failed').map((e: any) => e.props)).toEqual([{ matchId: '8000000063', hero: 'beastmaster', lang: 'en', stage: 'review', reason: 'model_out_of_credit', final: false }]);
+  });
+
   it('a review that failed is counted with its reason, and once however often the page shows it', async () => {
     window.sessionStorage.setItem('dota2ai.review-intent.9100904020.beastmaster.en', '1');
     mockFetch({ '/review?': { status: 'failed', reason: 'model_out_of_credit' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });

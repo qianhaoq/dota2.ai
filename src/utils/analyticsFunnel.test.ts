@@ -45,6 +45,10 @@ describe('the review page funnel from event logs', () => {
     expect(out.outcome).toEqual({ asked: 4, own: 1, failed: 2, neither: 1 });
     expect(out.failures).toEqual({ parse: { replay_gone: 1, no_replay_url: 1, download_failed: 1 }, review: { model_out_of_credit: 1 } });
     expect(out.browsers.failed).toBe(5);
+    // A reason that is also the name of an object's own property is a reason like any other (Codex on #383).
+    const odd = summarizeFunnel(['constructor', '__proto__', 'tostring', 'constructor'].map((r, i) => fail(`anon_p${i}`, 'parse', r)));
+    expect(odd.failures.parse).toEqual(Object.fromEntries([['constructor', 2], ['__proto__', 1], ['tostring', 1]]));
+    expect(Object.getPrototypeOf(odd.failures.parse)).toBe(Object.prototype);
     // Nothing asked: all zero.
     expect(summarizeFunnel([]).outcome).toEqual({ asked: 0, own: 0, failed: 0, neither: 0 });
   });
