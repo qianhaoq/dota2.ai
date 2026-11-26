@@ -288,6 +288,10 @@ describe('what the review found on #384', () => {
     expect(run({ ...trace, ...realRows() }).buildings_in_the_next_300s).toEqual({ taking_side: 1, other_side: 0 });
     // Beastmaster's side held it, took nothing, and lost the tower.
     expect(run(stolen)).toMatchObject({ buildings_in_the_next_300s: { taking_side: 0, other_side: 1 }, takes_with_no_building_after: 1 });
+    // A steal is a pickup — not "no pickup seen" (Codex on #384).
+    const kills = (t: any) => { const dir = mkdtempSync(join(tmpdir(), 'roshan-')); writeFileSync(join(dir, '9100904020.trace.json.gz'), gzipSync(JSON.stringify(t))); return JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' })).roshan_kills; };
+    expect(kills(stolen)).toMatchObject({ kills: 1, aegis_picked_up_by_the_killing_side_within_30s: 0, aegis_stolen_within_30s: 1, no_pickup_seen_within_30s: 0 });
+    expect(kills({ ...trace, ...realRows() })).toMatchObject({ kills: 1, aegis_picked_up_by_the_killing_side_within_30s: 1, aegis_stolen_within_30s: 0, no_pickup_seen_within_30s: 0 });
   }, 30000);
 
   it('the calibration\'s text report prints when what needs the hits is not known (Codex on #384)', () => {
