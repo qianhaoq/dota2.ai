@@ -29,13 +29,11 @@ describe('current patch on the home page', () => {
     expect(container.querySelectorAll('.cx-patch-item')).toHaveLength(CURRENT_PATCH.newItems.length);
     expect(screen.getByText('双蛇杖')).toBeTruthy();
     expect(screen.getByRole('link', { name: /完整更新日志/ }).getAttribute('href')).toBe('https://www.dota2.com/patches/7.42');
-    // Home v3 order: the search box, the live sample review, the four ways to use it, then the patch as one line.
-    // (The three "principles" cards are gone; their message is in the subtitle.)
-    const order = [...container.querySelectorAll('.cx-hero, .hm-how, .hm-ways, .cx-patch, .cx-principles')].map((e) => e.classList[0]);
-    expect(order).toEqual(['cx-hero', 'hm-how', 'hm-ways', 'cx-patch']);
-    // The patch advisor stands right after the first screen, before the ways to connect.
-    const withAdvisor = [...container.querySelectorAll('.hm-how, .pa, .hm-ways')].map((el) => el.className.split(' ')[0]);
-    expect(withAdvisor).toEqual(['hm-how', 'pa', 'hm-ways']);
+    // Home order: the search box and what happens next, then the patch as one block (Valve's news as
+    // the strip on top of the advisor), then the ways to connect. (The "principles" cards are gone.)
+    const order = [...container.querySelectorAll('.cx-hero, .hm-how, .cx-patch, .pa, .hm-ways, .cx-principles')].map((e) => e.classList[0]);
+    expect(order).toEqual(['cx-hero', 'hm-how', 'cx-patch', 'pa', 'hm-ways']);
+    expect(container.querySelector('.hm-patch > .cx-patch + .pa')).toBeTruthy();
   });
 
   const live = {
