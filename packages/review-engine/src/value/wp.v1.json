@@ -4,15 +4,17 @@
     "bias",
     "gold_k",
     "gold_k_per_sqrt_t",
-    "barracks"
+    "barracks",
+    "gold_k_early"
   ],
   "weights": [
-    0.057423,
-    -0.137559,
-    0.550333,
-    0.21842
+    0.056078,
+    0.193005,
+    0.615879,
+    0.22189,
+    -0.368535
   ],
-  "trained": "2026-11-25",
+  "trained": "2026-11-26",
   "data": {
     "source": "OpenDota: public ranked All Pick matches it has parsed (scripts/wp-collect.mjs)",
     "gold": "gold earned lead (radiant_gold_adv) at each whole minute — the quantity goldLead gives as match_record and replay_gold_log; never the replay net worth graph",
@@ -41,16 +43,16 @@
   "cross_validated": {
     "how": "5 parts by game id; each game scored by a fit that did not see it. The weights above are fitted on all of them.",
     "model": {
-      "brier": 0.1768,
-      "log_loss": 0.5218
+      "brier": 0.1765,
+      "log_loss": 0.5209
     },
     "gold_lead_alone": {
       "brier": 0.1816,
       "log_loss": 0.5361
     },
     "gold_lead_with_the_minute": {
-      "brier": 0.178,
-      "log_loss": 0.525
+      "brier": 0.1779,
+      "log_loss": 0.5249
     },
     "always_half": {
       "brier": 0.25,
@@ -59,76 +61,76 @@
     "calibration": [
       {
         "said": "0–10%",
-        "rows": 6382,
+        "rows": 6508,
         "mean_said": 0.046,
-        "radiant_won": 0.047
+        "radiant_won": 0.048
       },
       {
         "said": "10–20%",
-        "rows": 5588,
+        "rows": 5661,
         "mean_said": 0.15,
-        "radiant_won": 0.17
+        "radiant_won": 0.171
       },
       {
         "said": "20–30%",
-        "rows": 6263,
-        "mean_said": 0.252,
-        "radiant_won": 0.266
+        "rows": 6011,
+        "mean_said": 0.251,
+        "radiant_won": 0.262
       },
       {
         "said": "30–40%",
-        "rows": 7360,
+        "rows": 7003,
         "mean_said": 0.352,
-        "radiant_won": 0.342
+        "radiant_won": 0.338
       },
       {
         "said": "40–50%",
-        "rows": 8576,
-        "mean_said": 0.451,
-        "radiant_won": 0.448
+        "rows": 8896,
+        "mean_said": 0.452,
+        "radiant_won": 0.451
       },
       {
         "said": "50–60%",
-        "rows": 9116,
-        "mean_said": 0.55,
-        "radiant_won": 0.54
+        "rows": 9611,
+        "mean_said": 0.549,
+        "radiant_won": 0.537
       },
       {
         "said": "60–70%",
-        "rows": 8041,
-        "mean_said": 0.649,
-        "radiant_won": 0.649
+        "rows": 7758,
+        "mean_said": 0.648,
+        "radiant_won": 0.654
       },
       {
         "said": "70–80%",
-        "rows": 6637,
-        "mean_said": 0.748,
-        "radiant_won": 0.738
+        "rows": 6323,
+        "mean_said": 0.749,
+        "radiant_won": 0.739
       },
       {
         "said": "80–90%",
-        "rows": 5969,
-        "mean_said": 0.849,
+        "rows": 6051,
+        "mean_said": 0.85,
         "radiant_won": 0.844
       },
       {
         "said": "90–100%",
-        "rows": 6199,
+        "rows": 6309,
         "mean_said": 0.952,
-        "radiant_won": 0.965
+        "radiant_won": 0.963
       }
     ],
     "by_stretch": [
       {
         "minutes": "1–10",
         "rows": 16515,
-        "brier": 0.2305,
+        "brier": 0.229,
         "gold_lead_alone": 0.2368
       },
       {
         "minutes": "10–20",
         "rows": 18336,
-        "brier": 0.1886,
+        "brier": 0.1885,
         "gold_lead_alone": 0.1936
       },
       {
@@ -146,7 +148,7 @@
       {
         "minutes": "40–200",
         "rows": 6412,
-        "brier": 0.1524,
+        "brier": 0.1522,
         "gold_lead_alone": 0.1715
       }
     ],
@@ -155,19 +157,19 @@
         "rank": "Herald–Crusader (rank_tier under 40)",
         "games": 192,
         "rows": 8135,
-        "brier": 0.1895
+        "brier": 0.1891
       },
       {
         "rank": "Archon–Legend (40–59)",
         "games": 455,
         "rows": 18650,
-        "brier": 0.189
+        "brier": 0.1888
       },
       {
         "rank": "Ancient and above (60+)",
         "games": 1188,
         "rows": 43346,
-        "brier": 0.1692
+        "brier": 0.1687
       }
     ]
   },
