@@ -68,6 +68,29 @@ describe('the game plan of a review', () => {
     expect((SUBMIT_REVIEW.input_schema.properties as any).game_plan.required).toEqual(['course', 'your_part', 'main_reason', 'why', 'evidence']);
   });
 
+  it('a plan handed in that would be dropped is asked about once in the repair round, and ships when repaired (#388)', async () => {
+    const bad = { ...plan, evidence: [{ refs: ['tempo:nobody'], fact: '无' }] };
+    const { r, m } = await run([submit(review(bad), 's1'), submit(review(plan), 's2')]);
+    expect(r.verification.repaired).toBe(true);
+    expect(r.verification.first_pass_problems).toBeGreaterThan(0);
+    expect(r.review.game_plan).toMatchObject({ course: plan.course });
+    expect(r.verification).not.toHaveProperty('game_plan_missing');
+    // What the repair round was told: the plan, why it would go, and what to do.
+    const asked = JSON.parse(m.seen.at(-1).messages.at(-1).content);
+    expect(asked.problems).toContainEqual(expect.objectContaining({ in: 'game_plan', text: 'no_evidence_that_holds', why: expect.stringContaining('would be left out of the review') }));
+    // Still not repaired: the review ships without it, and says why.
+    const still = (await run([submit(review(bad), 's1'), submit(review(bad), 's2')])).r;
+    expect(still.review).not.toHaveProperty('game_plan');
+    expect(still.verification.game_plan_missing).toBe('no_evidence_that_holds');
+  });
+
+  it('a plan that holds is not asked about; a review without one is not either (submit_review requires it)', async () => {
+    const ok = (await run([submit(review(plan))])).r;
+    expect(ok.verification.repaired).toBe(false);
+    const none = await run([submit(review(undefined))]);
+    expect(none.r.verification.repaired).toBe(false);
+  });
+
   it('planGapOf names why a plan would not ship', () => {
     const refs = new Map([['tempo:beastmaster', { at: null }]]);
     expect([null, undefined, 'a plan'].map((p) => planGapOf(p, [], refs))).toEqual(['not_submitted', 'not_submitted', 'not_submitted']);
