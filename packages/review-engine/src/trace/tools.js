@@ -219,7 +219,7 @@ export function matchOverview(trace, _args = {}, ctx = {}) {
   // A lost fight that could be the turn has no gold lead around it, and the game did not end on a fight: not known.
   const turnNotKnown = Boolean(view && loser === view.team && turn && !turn.fight && turn.undecided.length);
   // Was a lost game lost from the lanes? From the viewer's side, and only off a lead that is gold earned.
-  const lanes = view && loser === view.team ? lostFromTheLanes(adv ? adv.map((v) => mine(v)) : null, { source: gold?.source }) : null;
+  const lanes = view && loser === view.team ? lostFromTheLanes(adv ? adv.map((v) => mine(v)) : null, { source: gold?.source, end: end ? end[0] : null }) : null;
   return {
     ref: 'overview', ref_scope: 'summary',
     match_id: trace.match_id,

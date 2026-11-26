@@ -546,7 +546,8 @@ describe('runDeepReview', () => {
     // Luna who died five times before 10:00 in a game 4,096 behind at 10:00 then led with the lane in 1 review of 3.)
     expect(s).toContain('Deaths before 10:00 go first only when they are the largest group of the player\'s deaths, or when the game was lost from the lanes and the player\'s own lane was part of it: match_overview\'s lanes.lost_from_the_lanes is true and the player\'s deaths_before_10 is four or more. Otherwise they are the second or third finding, however early they came.');
     expect(s).not.toContain('the game ended before 25:00');
-    expect(s).toContain('lanes says whether it was lost from the lanes: lost_from_the_lanes is true when my_team was 2000 gold or more behind at 10:00 and not ahead in any minute after');
+    expect(s).toContain('lanes says whether it was lost from the lanes: lost_from_the_lanes is true when my_team was more than 2000 gold behind at 10:00 and in every minute after, to the end — then the game was lost before 10:00, turning_fight names no fight after 10:00');
+    expect(s).not.toContain('no later fight turned it');
     expect(s).toContain('(null: not known, do not say either way)');
     // The old rule ("…and earliest") put two lane deaths first in games of 42 and 45 minutes.
     expect(s).not.toContain('and earliest');
