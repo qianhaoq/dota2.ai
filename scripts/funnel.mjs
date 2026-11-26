@@ -38,6 +38,9 @@ const label = {
 console.log(`days: ${out.days[0] ?? '-'} … ${out.days.at(-1) ?? '-'}   events: ${Object.entries(out.events).map(([k, v]) => `${k}=${v}`).join(' ')}`);
 if (out.internal.events) console.log(`left out as ours (a browser opened once with ?internal=1): ${out.internal.events} events from ${out.internal.browsers} browser(s)`);
 console.log(`browsers (by anonId; ${out.anonymous} events had none):`);
+const fmt = (by) => Object.entries(by).map(([r, n]) => `${r} ${n}`).join(', ') || 'none';
+console.log(`asked for a review: ${out.outcome.asked} — got the one they asked for ${out.outcome.own}, shown only a failure ${out.outcome.failed}, neither ${out.outcome.neither}`);
+console.log(`  shown a failed parse: ${fmt(out.failures.parse)}; a failed review: ${fmt(out.failures.review)}`);
 for (const [step, text] of Object.entries(label)) {
   console.log(`  ${String(out.browsers[step]).padStart(5)}  ${text}${step === 'opened' ? '' : `   — of those who opened: ${out.ofOpened[step]}${pct(out.ofOpened[step])}`}`);
 }

@@ -125,7 +125,7 @@ describe('ReviewDoc: one lesson first', () => {
 describe('ReviewDoc: the goal card says whether readers reach it', () => {
   const beacons: Promise<any>[] = [];
   const read = (b: Blob) => new Promise<string>((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.readAsText(b); });
-  let fire: ((entries: { isIntersecting: boolean }[]) => void) | null = null;
+  let fire: ((entries: { isIntersecting: boolean; intersectionRatio: number }[]) => void) | null = null;
   beforeEach(() => {
     beacons.length = 0; window.sessionStorage.clear();
     (navigator as any).sendBeacon = (_u: string, b: Blob) => { beacons.push(read(b).then((t) => JSON.parse(t))); return true; };
@@ -137,14 +137,17 @@ describe('ReviewDoc: the goal card says whether readers reach it', () => {
   it('offered when it is shown, seen once it is on screen — once a review, however often it scrolls by', async () => {
     show(withGoal(), { goalContext: { fromStart: 1, accountId: 7, heroId: 2 } });
     expect(await events()).toEqual([['goal_offered', { matchId: '7' }]]);
-    fire!([{ isIntersecting: false }]);
+    fire!([{ isIntersecting: false, intersectionRatio: 0 }]);
     expect(await events()).toHaveLength(1);
-    fire!([{ isIntersecting: true }]);
+    // Barely in view: intersecting, but not 60% of it — not seen yet.
+    fire!([{ isIntersecting: true, intersectionRatio: 0.1 }]);
+    expect(await events()).toHaveLength(1);
+    fire!([{ isIntersecting: true, intersectionRatio: 0.7 }]);
     expect(await events()).toEqual([['goal_offered', { matchId: '7' }], ['goal_seen', { matchId: '7' }]]);
     cleanup();
     // The same review again in this browser session: not counted twice.
     show(withGoal(), { goalContext: { fromStart: 1, accountId: 7, heroId: 2 } });
-    fire?.([{ isIntersecting: true }]);
+    fire?.([{ isIntersecting: true, intersectionRatio: 1 }]);
     expect(await events()).toHaveLength(2);
   });
 

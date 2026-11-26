@@ -24,12 +24,16 @@ describe('validateAnalyticsEvent', () => {
       ['goal_checked', { result: 'met', evidence: 'died twice' }, { result: 'met' }],
       ['goal_offered', { matchId: '9100904020', hero: 'axe' }, { matchId: '9100904020' }],
       ['goal_seen', { matchId: '9100904020', text: 'x' }, { matchId: '9100904020' }],
+      ['review_failed', { matchId: '8604512648', lang: 'en', hero: 'sven', stage: 'parse', reason: 'replay_gone', final: true, message: 'free text' }, { matchId: '8604512648', lang: 'en', hero: 'sven', stage: 'parse', reason: 'replay_gone', final: true }],
       ['goal_check_requested', { matchId: '9100999997', lang: 'en', hero: 'beastmaster', note: 'free text' }, { matchId: '9100999997', lang: 'en', hero: 'beastmaster' }],
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
       ['moment_played', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', t: 1825, fact: 'free text' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster' }],
       ['finding_rated', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', rating: 'wrong', first: true, title: 'free text', reason: 'fact' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', rating: 'wrong', first: true }],
     ];
     expect(cases.map((c) => c[0]).sort()).toEqual([...ANALYTICS_EVENTS].sort());
+    // review_failed's reason is a word the server made, never text: anything else is dropped.
+    for (const reason of ['Replay Gone', 'replay gone', '', 'a'.repeat(41), '1x', 42]) expect([reason, (validateAnalyticsEvent({ event: 'review_failed', props: { stage: 'parse', reason } }) as any).props]).toEqual([reason, { stage: 'parse' }]);
+    expect((validateAnalyticsEvent({ event: 'review_failed', props: { stage: 'chat', reason: 'x' } }) as any).props).toEqual({ reason: 'x' });
     // A rating is one of the three; anything else is dropped, not counted.
     expect(validateAnalyticsEvent({ event: 'finding_rated', props: { matchId: '9100904020', rating: 'excellent' } })).toMatchObject({ ok: true, props: { matchId: '9100904020' } });
     // How a match page was arrived at: a shared link's ref, and no other value.

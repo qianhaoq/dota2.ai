@@ -688,11 +688,13 @@ export const CoachHome: React.FC = () => {
       <HowItWorks />
       </div>
 
-      <PatchAdvisor lang={lang} version={CURRENT_PATCH.version} notesUrl={CURRENT_PATCH.notesUrl} />
+      {/* The patch, one block: Valve's news as its top strip, the advisor under it. */}
+      <div className="hm-patch">
+        <PatchNews onCta={focusInput} />
+        <PatchAdvisor lang={lang} version={CURRENT_PATCH.version} notesUrl={CURRENT_PATCH.notesUrl} />
+      </div>
 
       <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />
-
-      <PatchNews onCta={focusInput} />
     </Shell>
   );
 };

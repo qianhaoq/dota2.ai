@@ -464,6 +464,20 @@ export const AgentMatchPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, matchId, heroKey]);
 
+  // The reader asked, and the page shows that it cannot be had: why, in the server's word. Once per review asked
+  // for and reason — a replay that is not ready yet, tried again by itself, is one event, not one per try.
+  // A review that is not available for a while (the model account refused one a moment ago) is shown as a failure
+  // too, with the server's reason.
+  const reviewDown = hasTrace && state?.status === 'unavailable' && typeof (state as any).reason === 'string';
+  const failedStage = !intent ? null : parse?.status === 'failed' ? 'parse' : (hasTrace && state?.status === 'failed') || reviewDown ? 'review' : null;
+  const failedReason = failedStage === 'parse' ? (parse as any).reason : failedStage === 'review' ? ((state as any).reason || 'unknown') : null;
+  const failedFinal = failedStage === 'parse' ? Boolean((parse as any).final) : false;
+  useEffect(() => {
+    if (!failedStage || typeof failedReason !== 'string' || !heroKey) return;
+    trackOnce(`${selection}.failed.${failedStage}.${failedReason}`, 'review_failed', { matchId, hero: heroKey, lang, stage: failedStage, reason: failedReason, final: failedFinal });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [failedStage, failedReason, selection]);
+
   // Someone opened this game's page: the top of the funnel, once per match per session, before anything
   // has loaded, so one who leaves while it loads is counted too.
   useEffect(() => {

@@ -17,13 +17,40 @@ describe('the review page funnel from event logs', () => {
       { type: 'other', event: 'match_opened', anonId: 'anon_x' },
     ];
     const out = summarizeFunnel(entries);
-    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0, goalOffered: 0, goalSeen: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0 });
-    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0, goalOffered: 0, goalSeen: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0 });
+    expect(out.browsers).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 3, own: 1, asked: 1, returned: 2, shared: 0, arrived: 0, goalOffered: 0, goalSeen: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0, failed: 0 });
+    expect(out.ofOpened).toEqual({ opened: 2, requested: 1, refused: 1, viewed: 2, own: 1, asked: 1, returned: 1, shared: 0, arrived: 0, goalOffered: 0, goalSeen: 0, goal: 0, checked: 0, goalOnly: 0, played: 0, rated: 0, failed: 0 });
     expect(out.anonymous).toBe(1);
     expect(out.events).toMatchObject({ match_opened: 3, chat_asked: 2, review_viewed: 3 });
     expect(out.days).toEqual(['2026-11-24', '2026-11-25']);
     // A return before the first match page, or with no time on it, does not count as coming back.
     expect(summarizeFunnel([line('return_visit', 'anon_d', {}, '2026-11-23T10:00:00Z'), line('match_opened', 'anon_d'), { type: 'analytics', event: 'return_visit', anonId: 'anon_d', props: {} }]).ofOpened.returned).toBe(0);
+  });
+
+  it('says where the browsers that asked went: got it, shown only a failure (and why), or neither', () => {
+    const fail = (id: string, stage: string, reason: string, final = false) => line('review_failed', id, { stage, reason, final });
+    const out = summarizeFunnel([
+      // Got it after a failed try: counted as own, and its failure is still counted under its reason.
+      line('review_requested', 'anon_a'), fail('anon_a', 'parse', 'no_replay_url'), line('review_ready', 'anon_a'),
+      // Shown that the replay is gone; and an old game asked for twice: one browser.
+      line('review_requested', 'anon_b'), fail('anon_b', 'parse', 'replay_gone', true), fail('anon_b', 'parse', 'replay_gone', true),
+      // The model account was empty.
+      line('review_requested', 'anon_c'), fail('anon_c', 'review', 'model_out_of_credit'),
+      // Asked and left while it was being made.
+      line('review_requested', 'anon_d'),
+      // A failure without a request in the window is counted under its reason, not as an asker.
+      fail('anon_e', 'parse', 'download_failed'),
+      // A stage or reason the funnel does not know is not counted under any reason.
+      line('review_failed', 'anon_f', { stage: 'chat', reason: 'x' }), line('review_failed', 'anon_f', { stage: 'parse' }),
+    ]);
+    expect(out.outcome).toEqual({ asked: 4, own: 1, failed: 2, neither: 1 });
+    expect(out.failures).toEqual({ parse: { replay_gone: 1, no_replay_url: 1, download_failed: 1 }, review: { model_out_of_credit: 1 } });
+    expect(out.browsers.failed).toBe(5);
+    // A reason that is also the name of an object's own property is a reason like any other (Codex on #383).
+    const odd = summarizeFunnel(['constructor', '__proto__', 'tostring', 'constructor'].map((r, i) => fail(`anon_p${i}`, 'parse', r)));
+    expect(odd.failures.parse).toEqual(Object.fromEntries([['constructor', 2], ['__proto__', 1], ['tostring', 1]]));
+    expect(Object.getPrototypeOf(odd.failures.parse)).toBe(Object.prototype);
+    // Nothing asked: all zero.
+    expect(summarizeFunnel([]).outcome).toEqual({ asked: 0, own: 0, failed: 0, neither: 0 });
   });
 
   it('counts who shared, and who came in by a shared link', () => {

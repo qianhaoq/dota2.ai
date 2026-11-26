@@ -150,7 +150,8 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
     const el = card.current;
     if (!el || typeof IntersectionObserver === 'undefined') return undefined;
     const seen = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) { trackOnce(`goal_seen.${id}`, 'goal_seen', { matchId: String(matchId) }); seen.disconnect(); }
+      // The threshold does not filter out an entry sent because the card started to intersect: ask for 60% here too.
+      if (entries.some((e) => e.isIntersecting && e.intersectionRatio >= 0.6)) { trackOnce(`goal_seen.${id}`, 'goal_seen', { matchId: String(matchId) }); seen.disconnect(); }
     }, { threshold: 0.6 });
     seen.observe(el);
     return () => seen.disconnect();
