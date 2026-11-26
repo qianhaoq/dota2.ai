@@ -82,7 +82,10 @@ names it). An update OpenDota's builder cannot read is listed with `data: null`:
 a game played on it is given the update before and told the numbers may differ
 (not exact), never that update's numbers as if known. A game that started while
 a hotfix was rolling out is in a known release but an unknown hotfix, and the
-page says just that. Professional item shares stay per letter release (a hotfix
+page says just that. A new hotfix's match ids come only once STRATZ has its
+games; until then `ids_checked_to` (the newest match the id search looked at,
+with its start) still places every game at or below that id before it, so only
+games newer than that are told they may be on either side. Professional item shares stay per letter release (a hotfix
 is too short for a pro sample).
 
 `lib/data/constants/patches/index.json` lists the releases: when each rolled out
