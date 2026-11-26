@@ -153,7 +153,8 @@ export const PatchAdvisor: React.FC<{ lang: Lang; version: string; notesUrl: str
   return (
     <section className="pa" aria-labelledby="pa-title">
       <header className="pa-head">
-        <h2 id="pa-title">{t(T.title)}</h2>
+        {/* The version in the body face: the display face sets every letter as a capital, and 7.42a is not 7.42A. */}
+        <h2 id="pa-title">{T.title[lang].split(/(\{v\})/).map((part, i) => (part === '{v}' ? <span key={i} className="pa-ver">{version}</span> : part))}</h2>
         <p>{t(T.sub)}</p>
         {releases.length > 1 && (
           <p className="pa-muted pa-releases">
