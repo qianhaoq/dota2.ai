@@ -39,6 +39,16 @@ describe('save_report', () => {
     ]);
   });
 
+  it('a hero the combat log never names is nobody: an untargeted cast (target -1) is not given to them (Codex on #399)', () => {
+    const t0 = game({ casts: [[100, 'disruptor', 'disruptor_glimpse', 'lina']] });
+    // Sven has state samples but no name in the log; Disruptor's cast has no target (-1).
+    const svenGone = { ...t0, names: t0.names.map((n: string) => (n === 'npc_dota_hero_sven' ? 'npc_dota_hero_sven_not_logged' : n)), casts: [[100, t0.names.indexOf('npc_dota_hero_disruptor'), t0.names.indexOf('disruptor_glimpse'), -1, 0]], item_uses: [[110, t0.names.indexOf('npc_dota_hero_disruptor'), t0.names.indexOf('item_force_staff'), 0, -1]] };
+    const r: any = saveReport(svenGone, { hero: 'disruptor' });
+    expect([r.given_to_allies, r.by_ally]).toEqual([0, {}]);
+    // The player unnamed: nothing is read, and the gap says why.
+    expect(saveReport(svenGone, { hero: 'sven' })).toMatchObject({ gaps: [{ topic: 'items_given', reason: 'hero_not_named_in_the_combat_log' }] });
+  });
+
   it('a trace without item targets: abilities still read, items not known — said, never "none given"', () => {
     const old = game({ items: [[100, 'disruptor', 'item_glimmer_cape', 'sven']], itemTargets: false, casts: [[600, 'disruptor', 'disruptor_glimpse', 'sven']] });
     const r: any = saveReport(old, { hero: 'disruptor' });
