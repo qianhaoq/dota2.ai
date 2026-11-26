@@ -71,7 +71,9 @@ async function main(argv) {
     const trace = linkHeroNames(await readJson(traceOf(job.match_id)));
     const match = job.match_record ? await readJson(matchOf(job.match_id)) : null;
     const started = Date.now();
-    const r = await runDeepReview({ complete, trace, match, hero: job.hero, lang: job.lang });
+    // The eval scores the review in the language it was written in: the other languages (#393) are not written —
+    // they double a run's time and spend and change no score.
+    const r = await runDeepReview({ complete, trace, match, hero: job.hero, lang: job.lang, translate: false });
     return { ...r, seconds: Math.round((Date.now() - started) / 1000) };
   };
   // The shape the site stores (review, verification, model, tool_calls), with what the run cost beside it.
