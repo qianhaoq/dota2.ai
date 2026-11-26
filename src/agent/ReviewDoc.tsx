@@ -13,64 +13,82 @@ import { setGoal, useActiveGoal, type ActiveGoal, type GoalRule } from '../coach
  * folded, for whoever wants it.
  */
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 const T = {
-  verdict: { en: 'The game in one sentence', zh: '这局一句话' },
-  lead: { en: 'The one thing to change', zh: '这局最该改的一件事' },
-  lesson: { en: 'Practise this next game', zh: '下局只练这一件' },
-  moments: { en: 'The moments that show it', zh: '这局的几个时刻' },
-  more: { one: { en: 'One more thing', zh: '还有一件事' }, many: { en: 'Two more things', zh: '还有两件事' } },
-  whole: { en: 'The whole game', zh: '整局' },
-  boardFold: { en: 'Line-ups and scoreboard', zh: '阵容与记分板' },
-  parts: { en: '{n} parts', zh: '{n} 段' },
-  patchExact: { en: 'Prices, item effects and cooldowns in this review are those of patch {p}', zh: '本复盘中的价格、装备效果和技能冷却按 {p}' },
-  patchFrom: { match_data: { en: 'from the match record', zh: '依据比赛记录' }, start_time: { en: 'from when the game was played', zh: '依据比赛开始时间' }, match_id: { en: 'from the match id', zh: '依据比赛编号' } } as Record<string, Record<Lang, string>>,
-  patchPlain: { en: '{p}', zh: '{p} 版本' },
-  patchHotfix: { en: '{p} after its hotfix of {d}', zh: '{p} 版本 {d} 热修复后的数值' },
-  patchHotfixUnsure: { en: 'Prices, item effects and cooldowns in this review are those of patch {p}; a hotfix of that patch came out around when this game was played, so some numbers may be from just before or after it.', zh: '本复盘中的价格、装备效果和技能冷却按 {p} 版本；这局前后该版本正好有一次热修复，个别数值可能是热修复前或后的。' },
-  patchUnknown: { en: 'The patch of this game could not be told: prices, item effects and cooldowns are those of the current patch {p} and may differ from what they were then.', zh: '这局的版本无法确定：价格、装备效果和技能冷却按当前 {p} 版本，可能与当时不同。' },
-  story: { en: 'How the game went', zh: '对局主线' },
-  fights: { en: 'Fights: bars above the line are fights your team lost fewer heroes in; the line is your team\'s gold lead.', zh: '团战：横线上方是我方少死人的团，下方是多死人的团；折线是我方经济领先。' },
-  turn: { en: 'the turn', zh: '转折' },
-  findings: { en: 'What decided it', zh: '核心问题' },
-  fix: { en: 'Do instead', zh: '改法' },
-  ruleWhen: { en: 'When', zh: '当' },
-  ruleDo: { en: 'Do', zh: '就' },
-  ruleSeen: { en: 'This game', zh: '本局' },
-  rule: { en: 'Rule for next game', zh: '下一把的规则' },
-  next: { en: 'Check it next game', zh: '下一局怎么验证' },
-  well: { en: 'What you did well', zh: '做得好的' },
-  blind: { en: 'What the replay could not show', zh: '录像看不到的' },
-  askFight: { en: 'the fight at', zh: '这波团战' },
-  goalTitle: { en: 'Make it checkable', zh: '定一个能核验的目标' },
-  goalSet: { en: 'Make this my next-game goal', zh: '设为下一局目标' },
-  goalIs: { en: 'Your next-game goal', zh: '已设为下一局目标' },
-  goalHow: { en: 'Play your next game, then open it here or on your games page: the coach checks it against the scoreboard.', zh: '打完下一局，在这里或「我的比赛」里打开它，教练会按记分板核验。' },
-  goalNext: { en: 'Your next game shows up on the dota2.ai home page with this goal already checked — open it after you play.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，这个目标已经核验好。' },
-  goalNextReplay: { en: 'Your next game shows up on the dota2.ai home page — open it from there. This goal is checked once that game’s replay has been read, not from the scoreboard.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，从那里点开它。这个目标要读完那一局的录像才能核验，光看记分板判断不了。' },
-  goalHowReplay: { en: 'Play your next game, then open it here: the same things are counted in its replay and you see which rules held — about a minute, with or without a new review.', zh: '打完下一局，在这里打开它：会在那盘录像里数同样的事，逐条告诉你规则守住了没有——大约一分钟，要不要再写一份复盘都可以。' },
-  goalRules: { en: 'Counted in your next replay', zh: '下一盘录像里会数的' },
-  ruleCheck: { en: 'Next game', zh: '下一盘' },
-  goalUndo: { en: 'Remove', zh: '取消' },
-  goalFrom: { en: 'From finding', zh: '对应问题' },
-  plan: { en: 'The game plan', zh: '运营思路' },
-  planSub: { en: 'The game as a whole: what the teams did with the map, and where you were.', zh: '整局来看：双方怎么用地图和团战，你当时在哪里。' },
-  planLineUps: { en: 'The line-ups', zh: '阵容' },
-  planStrengths: { en: 'What you were up against', zh: '对位与强势期' },
-  planWindow: { en: 'Your chance', zh: '窗口期' },
-  planYours: { en: 'Against your plan', zh: '对照你的思路' },
-  planCourse: { en: 'How it went', zh: '走势' },
-  planYou: { en: 'Your part', zh: '你的部分' },
-  planReason: {
-    your_play: { en: 'Mostly your own play', zh: '主要在你自己的打法' }, team_play: { en: 'Mostly the team, not you', zh: '主要在队伍，不在你' },
-    enemy_play: { en: 'Mostly what the enemy did', zh: '主要是对面做对了' }, line_ups: { en: 'Mostly the line-ups', zh: '主要在阵容' }, unclear: { en: 'The data does not settle it', zh: '数据定不了' },
+  verdict: { en: 'The game in one sentence', zh: '这局一句话', ru: 'Матч в одном предложении' },
+  lead: { en: 'The one thing to change', zh: '这局最该改的一件事', ru: 'Главное, что стоит изменить' },
+  lesson: { en: 'Practise this next game', zh: '下局只练这一件', ru: 'Отработайте это в следующей игре' },
+  moments: { en: 'The moments that show it', zh: '这局的几个时刻', ru: 'Ключевые моменты из реплея' },
+  more: {
+    one: { en: 'One more thing', zh: '还有一件事', ru: 'Ещё один момент' },
+    many: { en: 'Two more things', zh: '还有两件事', ru: 'Ещё два момента' },
+  },
+  whole: { en: 'The whole game', zh: '整局', ru: 'Весь матч' },
+  boardFold: { en: 'Line-ups and scoreboard', zh: '阵容与记分板', ru: 'Пики и таблица матча' },
+  parts: { en: '{n} parts', zh: '{n} 段', ru: '{n} этапов' },
+  patchExact: { en: 'Prices, item effects and cooldowns in this review are those of patch {p}', zh: '本复盘中的价格、装备效果和技能冷却按 {p}', ru: 'Цены, эффекты предметов и перезарядки в разборе соответствуют патчу {p}' },
+  patchFrom: {
+    match_data: { en: 'from the match record', zh: '依据比赛记录', ru: 'по данным матча' },
+    start_time: { en: 'from when the game was played', zh: '依据比赛开始时间', ru: 'по времени начала матча' },
+    match_id: { en: 'from the match id', zh: '依据比赛编号', ru: 'по ID матча' },
   } as Record<string, Record<Lang, string>>,
-  replan: { en: 'You can also have the whole review rewritten against “{p}”{t}.', zh: '也可以按「{p}」重写整份复盘{t}。' },
+  patchPlain: { en: '{p}', zh: '{p} 版本', ru: '{p}' },
+  patchHotfix: { en: '{p} after its hotfix of {d}', zh: '{p} 版本 {d} 热修复后的数值', ru: '{p} после хотфикса от {d}' },
+  patchHotfixUnsure: {
+    en: 'Prices, item effects and cooldowns in this review are those of patch {p}; a hotfix of that patch came out around when this game was played, so some numbers may be from just before or after it.',
+    zh: '本复盘中的价格、装备效果和技能冷却按 {p} 版本；这局前后该版本正好有一次热修复，个别数值可能是热修复前或后的。',
+    ru: 'Цены, эффекты предметов и перезарядки указаны для патча {p}; примерно в это время вышел хотфикс, поэтому отдельные значения могли слегка отличаться.',
+  },
+  patchUnknown: {
+    en: 'The patch of this game could not be told: prices, item effects and cooldowns are those of the current patch {p} and may differ from what they were then.',
+    zh: '这局的版本无法确定：价格、装备效果和技能冷却按当前 {p} 版本，可能与当时不同。',
+    ru: 'Патч этого матча определить не удалось: цены, эффекты и перезарядки приведены для текущего патча {p} и могут отличаться.',
+  },
+  story: { en: 'How the game went', zh: '对局主线', ru: 'Ход игры' },
+  fights: { en: 'Fights: bars above the line are fights your team lost fewer heroes in; the line is your team\'s gold lead.', zh: '团战：横线上方是我方少死人的团，下方是多死人的团；折线是我方经济领先。', ru: 'Драки: столбцы выше линии — драки, где ваша команда потеряла меньше героев; кривая — перевес по золоту.' },
+  turn: { en: 'the turn', zh: '转折', ru: 'перелом' },
+  findings: { en: 'What decided it', zh: '核心问题', ru: 'Что решило игру' },
+  fix: { en: 'Do instead', zh: '改法', ru: 'Как исправить' },
+  ruleWhen: { en: 'When', zh: '当', ru: 'Когда' },
+  ruleDo: { en: 'Do', zh: '就', ru: 'Делай' },
+  ruleSeen: { en: 'This game', zh: '本局', ru: 'В этой игре' },
+  rule: { en: 'Rule for next game', zh: '下一把的规则', ru: 'Правило на следующую игру' },
+  next: { en: 'Check it next game', zh: '下一局怎么验证', ru: 'Проверка в следующей игре' },
+  well: { en: 'What you did well', zh: '做得好的', ru: 'Что получилось хорошо' },
+  blind: { en: 'What the replay could not show', zh: '录像看不到的', ru: 'Чего нет в реплее' },
+  askFight: { en: 'the fight at', zh: '这波团战', ru: 'драка на' },
+  goalTitle: { en: 'Make it checkable', zh: '定一个能核验的目标', ru: 'Сделайте цель проверяемой' },
+  goalSet: { en: 'Make this my next-game goal', zh: '设为下一局目标', ru: 'Сделать целью на следующую игру' },
+  goalIs: { en: 'Your next-game goal', zh: '已设为下一局目标', ru: 'Ваша цель на следующую игру' },
+  goalHow: { en: 'Play your next game, then open it here or on your games page: the coach checks it against the scoreboard.', zh: '打完下一局，在这里或「我的比赛」里打开它，教练会按记分板核验。', ru: 'Сыграйте следующий матч и откройте его здесь или в списке игр — тренер проверит цель по таблице.' },
+  goalNext: { en: 'Your next game shows up on the dota2.ai home page with this goal already checked — open it after you play.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，这个目标已经核验好。', ru: 'Ваш следующий матч появится на главной dota2.ai уже с проверкой этой цели.' },
+  goalNextReplay: { en: 'Your next game shows up on the dota2.ai home page — open it from there. This goal is checked once that game’s replay has been read, not from the scoreboard.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，从那里点开它。这个目标要读完那一局的录像才能核验，光看记分板判断不了。', ru: 'Ваш следующий матч появится на главной dota2.ai. Эта цель проверяется по реплею, а не по итоговой таблице.' },
+  goalHowReplay: { en: 'Play your next game, then open it here: the same things are counted in its replay and you see which rules held — about a minute, with or without a new review.', zh: '打完下一局，在这里打开它：会在那盘录像里数同样的事，逐条告诉你规则守住了没有——大约一分钟，要不要再写一份复盘都可以。', ru: 'Сыграйте следующий матч и откройте его здесь: мы посчитаем те же показатели по реплею за минуту, даже без нового разбора.' },
+  goalRules: { en: 'Counted in your next replay', zh: '下一盘录像里会数的', ru: 'Проверим в следующем реплее' },
+  ruleCheck: { en: 'Next game', zh: '下一盘', ru: 'След. игра' },
+  goalUndo: { en: 'Remove', zh: '取消', ru: 'Удалить' },
+  goalFrom: { en: 'From finding', zh: '对应问题', ru: 'Из вывода' },
+  plan: { en: 'The game plan', zh: '运营思路', ru: 'План на игру' },
+  planSub: { en: 'The game as a whole: what the teams did with the map, and where you were.', zh: '整局来看：双方怎么用地图和团战，你当时在哪里。', ru: 'Картина матча целиком: как команды использовали карту и где были вы.' },
+  planLineUps: { en: 'The line-ups', zh: '阵容', ru: 'Драфты' },
+  planStrengths: { en: 'What you were up against', zh: '对位与强势期', ru: 'Против чего вы играли' },
+  planWindow: { en: 'Your chance', zh: '窗口期', ru: 'Ваше окно' },
+  planYours: { en: 'Against your plan', zh: '对照你的思路', ru: 'По вашему плану' },
+  planCourse: { en: 'How it went', zh: '走势', ru: 'Ход матча' },
+  planYou: { en: 'Your part', zh: '你的部分', ru: 'Ваш вклад' },
+  planReason: {
+    your_play: { en: 'Mostly your own play', zh: '主要在你自己的打法', ru: 'В основном ваша игра' },
+    team_play: { en: 'Mostly the team, not you', zh: '主要在队伍，不在你', ru: 'В основном команда, не вы' },
+    enemy_play: { en: 'Mostly what the enemy did', zh: '主要是对面做对了', ru: 'В основном действия врага' },
+    line_ups: { en: 'Mostly the line-ups', zh: '主要在阵容', ru: 'В основном драфты' },
+    unclear: { en: 'The data does not settle it', zh: '数据定不了', ru: 'По данным однозначно не сказать' },
+  } as Record<string, Record<Lang, string>>,
+  replan: { en: 'You can also have the whole review rewritten against “{p}”{t}.', zh: '也可以按「{p}」重写整份复盘{t}。', ru: 'Можно также переписать весь разбор под план «{p}»{t}.' },
   // The default model's time. Another model's is said where the rewrite is started (the page), so not here.
-  replanTime: { en: ' (about two to three minutes)', zh: '（约 2–3 分钟）' },
-  replanGo: { en: 'Rewrite it', zh: '重写' },
-  intentBusy: { en: 'The coach is still answering your last question. Pick again when it is done.', zh: '教练还在回答上一个问题，等它答完再选。' },
-  intentAsk: { en: 'What were you going for this game? Tell the coach: it checks your plan against the replay.', zh: '这局你本来想怎么打？告诉教练，它会对照录像回答。' },
+  replanTime: { en: ' (about two to three minutes)', zh: '（约 2–3 分钟）', ru: ' (около 2–3 минут)' },
+  replanGo: { en: 'Rewrite it', zh: '重写', ru: 'Переписать' },
+  intentBusy: { en: 'The coach is still answering your last question. Pick again when it is done.', zh: '教练还在回答上一个问题，等它答完再选。', ru: 'Тренер ещё отвечает на прошлый вопрос. Повторите чуть позже.' },
+  intentAsk: { en: 'What were you going for this game? Tell the coach: it checks your plan against the replay.', zh: '这局你本来想怎么打？告诉教练，它会对照录像回答。', ru: 'Какой план был на эту игру? Скажите тренеру — он сверит его с реплеем.' },
 } as const;
 
 /** What a player may have been going for (lib/agent/plans.js). The label is the button; `said` is how it reads inside the question. */
@@ -79,9 +97,13 @@ export const PLAN_INTENTS: readonly { key: string; label: Record<Lang, string>; 
 export const planQuestion = (key: string, lang: Lang): string | null => {
   const said = PLAN_INTENTS.find((p) => p.key === key)?.said[lang];
   if (!said) return null;
-  return lang === 'zh'
-    ? `我这局的思路是「${said}」。我的打法和这个思路一致吗？面对对面的阵容，这个思路站得住吗？没打成的话，是我没做好、思路不对，还是被对面针对了？`
-    : `My plan this game was to ${said}. Did my play fit it? Was it sound against their line-up? And where it failed, was that my play, the plan, or what the enemy did?`;
+  if (lang === 'zh') {
+    return `我这局的思路是「${said}」。我的打法和这个思路一致吗？面对对面的阵容，这个思路站得住吗？没打成的话，是我没做好、思路不对，还是被对面针对了？`;
+  }
+  if (lang === 'ru') {
+    return `Мой план на эту игру был: ${said}. Соответствовала ли моя игра этому плану? Подходил ли он против их драфта? И где он сломался — из-за моей игры, плана или действий соперника?`;
+  }
+  return `My plan this game was to ${said}. Did my play fit it? Was it sound against their line-up? And where it failed, was that my play, the plan, or what the enemy did?`;
 };
 
 interface Fight { ref: string; from: number; to: number; clock: string; my_team_deaths: number; enemy_deaths: number; my_team_gold_lead_before?: number | null; my_team_gold_lead_2min_after?: number | null }
@@ -146,11 +168,11 @@ const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx:
   return (
     <div className={`ag-goal ${mine ? 'is-set' : ''}`}>
       <p className="ag-goal-eyebrow">{mine ? `✓ ${T.goalIs[lang]}` : T.goalTitle[lang]} · {T.goalFrom[lang]} {finding}</p>
-      <p className="ag-goal-label">{spec.label[lang]}</p>
+      <p className="ag-goal-label">{spec.label[lang] ?? spec.label.en}</p>
       {more.length > 0 && (
         <>
           <p className="ag-goal-eyebrow">{T.goalRules[lang]}</p>
-          <ul className="ag-goal-rules">{more.map((r) => <li key={r.finding}><span className="ag-num">{r.finding}</span>{r.check.label[lang]}</li>)}</ul>
+          <ul className="ag-goal-rules">{more.map((r) => <li key={r.finding}><span className="ag-num">{r.finding}</span>{r.check.label[lang] ?? r.check.label.en}</li>)}</ul>
         </>
       )}
       <p className="ag-goal-how">{spec.kind === 'replay_habit' || more.length ? T.goalHowReplay[lang] : T.goalHow[lang]}</p>
@@ -185,7 +207,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       <div><dt>{t(T.ruleWhen)}</dt><dd>{f.rule.when}</dd></div>
       <div><dt>{t(T.ruleDo)}</dt><dd>{f.rule.do}</dd></div>
       {f.rule.this_game && <div className="ag-rule-seen"><dt>{t(T.ruleSeen)}</dt><dd>{f.rule.this_game}</dd></div>}
-      {f.rule.check && <div className="ag-rule-check"><dt>{t(T.ruleCheck)}</dt><dd>{f.rule.check.label[lang]}</dd></div>}
+      {f.rule.check && <div className="ag-rule-check"><dt>{t(T.ruleCheck)}</dt><dd>{f.rule.check.label[lang] ?? f.rule.check.label.en}</dd></div>}
     </dl>
   );
   // Keyed by the finding it is about: another review of the same game starts unanswered.

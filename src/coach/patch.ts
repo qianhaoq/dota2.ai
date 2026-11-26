@@ -14,22 +14,27 @@ export const CURRENT_PATCH = {
     {
       en: 'Base hero health 120 → 200; health per point of Strength 22 → 20.',
       zh: '英雄基础生命值 120 → 200；每点力量提供的生命值 22 → 20。',
+      ru: 'Базовое здоровье героев: 120 → 200; здоровье за единицу силы: 22 → 20.',
     },
     {
       en: 'Passive gold per minute no longer scales over game time. Every hero gets 50 XP per minute after the horn.',
       zh: '被动每分钟金钱不再随游戏时间提升；号角吹响后所有英雄每分钟获得 50 经验。',
+      ru: 'Пассивное золото в минуту больше не растёт со временем игры. Каждый герой получает 50 опыта в минуту после горна.',
     },
     {
       en: 'Building bounties decreased (e.g. tier 1 tower gold per player 90 → 75); Roshan gold per player 135 → 125.',
       zh: '建筑赏金下调（如一塔每名玩家金钱 90 → 75）；肉山每名玩家金钱 135 → 125。',
+      ru: 'Награды за постройки снижены (например, за башню T1 — 90 → 75 золота каждому); золото за Рошана — 135 → 125.',
     },
     {
       en: 'Tormentor first spawns at 15:00 (was 20:00) and always drops a Greater Horn of Battle. Roshan respawns 1 minute faster after each kill, down to 5 minutes.',
       zh: '痛苦魔方首次刷新从 20:00 提前到 15:00，必定掉落大战斗号角；肉山每次阵亡后基础复活时间减少 1 分钟，最低 5 分钟。',
+      ru: 'Терзатель появляется на 15:00 (было 20:00) и всегда дропает Greater Horn of Battle. Возрождение Рошана ускоряется на 1 мин после каждого убийства (до 5 мин).',
     },
     {
       en: 'Most magic and pure damage spells deal less damage; items add less spell amplification, area and cast range.',
       zh: '大多数魔法和纯粹伤害技能伤害降低；物品对技能增强、作用范围和施法距离的加成减少。',
+      ru: 'Большинство заклинаний с магическим и чистым уроном наносят меньше урона; предметы дают меньше усиления заклинаний, радиуса и дальности.',
     },
   ] as Bi[],
   newItems: [
@@ -44,6 +49,7 @@ export const CURRENT_PATCH = {
   forCoach: {
     en: 'The coach knows the new items. For the first weeks most same-hero benchmarks and pro games are still from 7.41, and gold now comes in slower late — read item-timing comparisons as a rough guide.',
     zh: '教练已认识新装备。新版本前几周，同英雄对比和职业案例大多还来自 7.41，后期经济也变慢了——装备时间类对比请当作粗略参考。',
+    ru: 'Тренер знает новые предметы. В первые недели большинство сравнений и про-игр всё ещё из 7.41, а фарм в лейте стал медленнее — воспринимайте тайминги предметов как ориентир.',
   } as Bi,
 };
 
@@ -82,7 +88,7 @@ const VALVE = /^https:\/\/www\.dota2\.com\/patches\/[\w.]+$/;
 export function readPatchNews(body: unknown): PatchNews | null {
   const b = body as Record<string, any> | null;
   if (!b || !str(b.version) || !DATE.test(b.date) || !VALVE.test(b.url) || !Array.isArray(b.newItems) || !Array.isArray(b.highlights)) return null;
-  const bi = (x: any): Bi | null => (x && str(x.en) ? { en: x.en, zh: str(x.zh) ? x.zh : x.en } : null);
+  const bi = (x: any): Bi | null => (x && str(x.en) ? { en: x.en, zh: str(x.zh) ? x.zh : x.en, ...(str(x.ru) ? { ru: x.ru } : {}) } : null);
   const highlights = b.highlights.map(bi).filter((h: Bi | null): h is Bi => h !== null);
   const u = b.update;
   return {

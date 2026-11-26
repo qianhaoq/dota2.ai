@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import type { Language } from './resolveLang';
 import { en, type DictKey } from './en';
 import { zh } from './zh';
+import { ru } from './ru';
 import {
   applyDocumentLang,
   browserLanguageTags,
@@ -18,7 +19,7 @@ export interface I18nContextValue {
   t: (key: DictKey) => string;
 }
 
-const DICTS = { en, zh } as const;
+const DICTS = { en, zh, ru } as const;
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 

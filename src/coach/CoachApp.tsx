@@ -5,6 +5,7 @@ import { markSeen, parseAccountInput, rememberAccount, rememberedAccount, review
 import type { Bi, Evidence, Finding, RecentMatch, RecentMatches, Review } from './types';
 import { SafeImg, clock, useLang, type Lang } from './ui';
 import { AccessModes, HowItWorks } from './HomeBlocks';
+import { AUTHOR_EMAIL, AUTHOR_X_URL, GITHUB_ISSUES_URL, HomeFeedback } from './HomeFeedback';
 import { accessSnippets } from './accessSnippets';
 import { QuickJump, detectSmartInput } from './QuickJump';
 import { CURRENT_PATCH, SHIPPED_NEWS, itemIcon, readPatchNews, type PatchNews as PatchNewsData } from './patch';
@@ -19,146 +20,160 @@ const EXAMPLE_MATCH = '9091400302';
 export { SafeImg };
 
 const UI = {
-  tagline: { en: 'A Dota 2 coach that watches the replay.', zh: '看录像复盘的 Dota 2 教练。' },
-  heroTitle: { en: 'Paste a match.\nGet a coach’s read.', zh: '贴一场比赛，\n得到一份教练复盘。' },
-  placeholder: { en: 'Match ID or OpenDota / Dotabuff / STRATZ link', zh: '比赛 ID，或 OpenDota / Dotabuff / STRATZ 链接' },
-  review: { en: 'Review', zh: '开始复盘' },
-  invalid: { en: 'That does not look like a match ID.', zh: '这看起来不是一个比赛 ID。' },
-  tryExample: { en: 'Try an example', zh: '试试示例' },
-  detectedMatch: { en: 'Detected match #{id}', zh: '已识别为比赛 #{id}' },
-  detectedAccount: { en: 'Detected Steam account {id} — opens recent games', zh: '已识别为 Steam 账号 {id}，将打开最近比赛' },
-  p1t: { en: 'Evidence first', zh: '证据先行' },
-  p1: { en: 'Every point links to the numbers behind it. No vibes, no invented patch facts.', zh: '每条结论都附带依据。不靠感觉，不编造版本数据。' },
-  p2t: { en: 'Tells you what to do', zh: '直接告诉你怎么做' },
-  p2: { en: 'Each finding ends in one thing to do next game — with pro games on similar heroes that did it, and did not.', zh: '每条发现都落到下一局要做的一件事，并附上相似英雄职业对局的正例和反例。' },
-  p3t: { en: 'Says what it can’t see', zh: '说清楚看不到什么' },
-  p3: { en: 'Unparsed match? You get what the data supports — and a button to parse the rest.', zh: '比赛还没解析？只给数据撑得住的结论，并提供一键解析。' },
-  useAccount: { en: 'No match ID? Use your Steam friend code', zh: '找不到比赛 ID？用 Steam 好友代码' },
-  orAccount: { en: 'Your Steam friend code — we list your recent games:', zh: '输入你的 Steam 好友代码，列出你最近的比赛：' },
-  accountPlaceholder: { en: 'Friend code, SteamID64 or profile link', zh: '好友代码、SteamID64 或个人资料链接' },
-  showRecent: { en: 'Show my games', zh: '列出我的比赛' },
-  accountInvalid: { en: 'That is not a friend code. In Dota 2 or Steam, open your profile: the friend code is the number under your name.', zh: '这不是好友代码。在 Dota 2 或 Steam 里打开你的个人资料，名字下面那串数字就是好友代码。' },
-  accountVanity: { en: 'Custom Steam URLs can’t be looked up. Paste your friend code or a steamcommunity.com/profiles/… link instead.', zh: '自定义的 Steam 链接没法查询。请改贴好友代码，或 steamcommunity.com/profiles/… 形式的链接。' },
-  myGames: { en: 'My recent games', zh: '我的最近比赛' },
-  myGamesShort: { en: 'My games', zh: '我的比赛' },
-  recentTitle: { en: 'Your recent games', zh: '你最近的比赛' },
-  recentSub: { en: 'Pick a game — the review opens on your hero.', zh: '选一场，复盘会直接打开你的英雄。' },
+  tagline: { en: 'A Dota 2 coach that watches the replay.', zh: '看录像复盘的 Dota 2 教练。', ru: 'Тренер по Dota 2, который смотрит ваш реплей.' },
+  heroTitle: { en: 'Paste a match.\nGet a coach’s read.', zh: '贴一场比赛，\n得到一份教练复盘。', ru: 'Вставьте матч.\nПолучите разбор тренера.' },
+  placeholder: { en: 'Match ID or OpenDota / Dotabuff / STRATZ link', zh: '比赛 ID，或 OpenDota / Dotabuff / STRATZ 链接', ru: 'ID матча или ссылка OpenDota / Dotabuff / STRATZ' },
+  review: { en: 'Review', zh: '开始复盘', ru: 'Разобрать' },
+  invalid: { en: 'That does not look like a match ID.', zh: '这看起来不是一个比赛 ID。', ru: 'Это не похоже на ID матча.' },
+  tryExample: { en: 'Try an example', zh: '试试示例', ru: 'Попробовать пример' },
+  detectedMatch: { en: 'Detected match #{id}', zh: '已识别为比赛 #{id}', ru: 'Распознан матч #{id}' },
+  detectedAccount: { en: 'Detected Steam account {id} — opens recent games', zh: '已识别为 Steam 账号 {id}，将打开最近比赛', ru: 'Распознан аккаунт Steam {id} — откроются недавние игры' },
+  p1t: { en: 'Evidence first', zh: '证据先行', ru: 'Сначала факты' },
+  p1: { en: 'Every point links to the numbers behind it. No vibes, no invented patch facts.', zh: '每条结论都附带依据。不靠感觉，不编造版本数据。', ru: 'Каждый вывод подкреплён цифрами из реплея. Без домыслов и выдуманных патчноутов.' },
+  p2t: { en: 'Tells you what to do', zh: '直接告诉你怎么做', ru: 'Конкретное действие' },
+  p2: { en: 'Each finding ends in one thing to do next game — with pro games on similar heroes that did it, and did not.', zh: '每条发现都落到下一局要做的一件事，并附上相似英雄职业对局的正例和反例。', ru: 'Каждый вывод заканчивается правилом на следующую игру с примерами из про-матчей.' },
+  p3t: { en: 'Says what it can’t see', zh: '说清楚看不到什么', ru: 'Честно о пробелах' },
+  p3: { en: 'Unparsed match? You get what the data supports — and a button to parse the rest.', zh: '比赛还没解析？只给数据撑得住的结论，并提供一键解析。', ru: 'Матч не разобран? Покажем только подтверждённые данные и кнопку для разбора.' },
+  useAccount: { en: 'No match ID? Use your Steam friend code', zh: '找不到比赛 ID？用 Steam 好友代码', ru: 'Нет ID матча? Используйте код друга Steam' },
+  orAccount: { en: 'Your Steam friend code — we list your recent games:', zh: '输入你的 Steam 好友代码，列出你最近的比赛：', ru: 'Ваш код друга Steam — покажем список недавних игр:' },
+  accountPlaceholder: { en: 'Friend code, SteamID64 or profile link', zh: '好友代码、SteamID64 或个人资料链接', ru: 'Код друга, SteamID64 или ссылка на профиль' },
+  showRecent: { en: 'Show my games', zh: '列出我的比赛', ru: 'Показать матчи' },
+  accountInvalid: { en: 'That is not a friend code. In Dota 2 or Steam, open your profile: the friend code is the number under your name.', zh: '这不是好友代码。在 Dota 2 或 Steam 里打开你的个人资料，名字下面那串数字就是好友代码。', ru: 'Это не код друга. Откройте профиль в Dota 2 или Steam — число под ником и есть код друга.' },
+  accountVanity: { en: 'Custom Steam URLs can’t be looked up. Paste your friend code or a steamcommunity.com/profiles/… link instead.', zh: '自定义的 Steam 链接没法查询。请改贴好友代码，或 steamcommunity.com/profiles/… 形式的链接。', ru: 'Персональные ссылки Steam не поддерживаются. Вставьте код друга или ссылку вида steamcommunity.com/profiles/…' },
+  myGames: { en: 'My recent games', zh: '我的最近比赛', ru: 'Мои недавние игры' },
+  myGamesShort: { en: 'My games', zh: '我的比赛', ru: 'Мои игры' },
+  recentTitle: { en: 'Your recent games', zh: '你最近的比赛', ru: 'Ваши недавние игры' },
+  recentSub: { en: 'Pick a game — the review opens on your hero.', zh: '选一场，复盘会直接打开你的英雄。', ru: 'Выберите игру — разбор откроется сразу для вашего героя.' },
   recentEmpty: {
     en: 'No public games for this account. If it is yours, turn on “Expose Public Match Data” in Dota 2’s settings, play a game, then come back.',
     zh: '这个账号没有公开的比赛。如果是你的账号，请在 Dota 2 设置里打开「公开比赛数据」（Expose Public Match Data），打完一局再回来。',
+    ru: 'У этого аккаунта нет открытых матчей. Если это ваш аккаунт, включите «Общедоступная история матчей» в настройках Dota 2, сыграйте игру и вернитесь.',
   },
-  recentFilterAll: { en: 'All', zh: '全部' },
-  recentFilterUnreviewed: { en: 'Unreviewed', zh: '未复盘' },
-  recentFilterRanked: { en: 'Ranked', zh: '天梯' },
-  recentLimited: { en: 'OpenDota is unavailable right now, so this list comes from Steam: results, K/D/A and game length are not shown. Open a game to review it.', zh: 'OpenDota 暂时不可用，这份列表来自 Steam：暂不显示胜负、KDA 和比赛时长。点开任意一场即可复盘。' },
-  recentFilterEmpty: { en: 'No recent games match this filter.', zh: '当前筛选条件下没有比赛。' },
-  notMe: { en: 'Not you? Forget this account', zh: '不是你？忘掉这个账号' },
-  latestTitle: { en: 'Your latest game', zh: '你刚打完的那局' },
-  latestCta: { en: 'Review it', zh: '复盘这局' },
-  allRecent: { en: 'All recent games', zh: '全部最近比赛' },
-  reviewedTag: { en: 'Reviewed', zh: '已复盘' },
-  newTag: { en: 'New', zh: '新' },
-  setGoal: { en: 'Make this my next-game goal', zh: '设为下局目标' },
-  goalSet: { en: 'Your next-game goal', zh: '已设为下局目标' },
-  goalClear: { en: 'Clear', zh: '取消' },
-  goalCheckTitle: { en: 'Your goal', zh: '你的目标' },
-  goalPill: { en: 'Goal', zh: '目标' },
-  goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘' },
-  goalHere: { en: 'You set this goal from this game. Play your next one — the coach checks it automatically.', zh: '目标就是从这局定的。打下一局，教练会自动核验。' },
-  goalPending: { en: 'No game checked against it yet — play your next one, then open it here.', zh: '还没有对局核验过这个目标——打完下一局，再在这里打开它。' },
-  goalTally: { en: '{met} of {n} games met', zh: '{n} 局里达成 {met} 局' },
+  recentFilterAll: { en: 'All', zh: '全部', ru: 'Все' },
+  recentFilterUnreviewed: { en: 'Unreviewed', zh: '未复盘', ru: 'Без разбора' },
+  recentFilterRanked: { en: 'Ranked', zh: '天梯', ru: 'Рейтинг' },
+  recentLimited: { en: 'OpenDota is unavailable right now, so this list comes from Steam: results, K/D/A and game length are not shown. Open a game to review it.', zh: 'OpenDota 暂时不可用，这份列表来自 Steam：暂不显示胜负、KDA 和比赛时长。点开任意一场即可复盘。', ru: 'OpenDota сейчас недоступна, список получен из Steam: исход, KDA и длительность не показаны. Откройте любой матч для разбора.' },
+  recentFilterEmpty: { en: 'No recent games match this filter.', zh: '当前筛选条件下没有比赛。', ru: 'Нет матчей, подходящих под фильтр.' },
+  notMe: { en: 'Not you? Forget this account', zh: '不是你？忘掉这个账号', ru: 'Не вы? Забыть аккаунт' },
+  latestTitle: { en: 'Your latest game', zh: '你刚打完的那局', ru: 'Ваша последняя игра' },
+  latestCta: { en: 'Review it', zh: '复盘这局', ru: 'Разобрать' },
+  allRecent: { en: 'All recent games', zh: '全部最近比赛', ru: 'Все недавние игры' },
+  reviewedTag: { en: 'Reviewed', zh: '已复盘', ru: 'Разобрано' },
+  newTag: { en: 'New', zh: '新', ru: 'Новое' },
+  setGoal: { en: 'Make this my next-game goal', zh: '设为下局目标', ru: 'Сделать целью на следующую игру' },
+  goalSet: { en: 'Your next-game goal', zh: '已设为下局目标', ru: 'Ваша цель на следующую игру' },
+  goalClear: { en: 'Clear', zh: '取消', ru: 'Сбросить' },
+  goalCheckTitle: { en: 'Your goal', zh: '你的目标', ru: 'Ваша цель' },
+  goalPill: { en: 'Goal', zh: '目标', ru: 'Цель' },
+  goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘', ru: 'после матча #{id}' },
+  goalHere: { en: 'You set this goal from this game. Play your next one — the coach checks it automatically.', zh: '目标就是从这局定的。打下一局，教练会自动核验。', ru: 'Эта цель задана по данному матчу. Сыграйте следующий — тренер проверит её автоматически.' },
+  goalPending: { en: 'No game checked against it yet — play your next one, then open it here.', zh: '还没有对局核验过这个目标——打完下一局，再在这里打开它。', ru: 'Цель ещё не проверялась — сыграйте следующий матч и откройте его здесь.' },
+  goalTally: { en: '{met} of {n} games met', zh: '{n} 局里达成 {met} 局', ru: 'Выполнено в {met} из {n} игр' },
   goalResult: {
-    met: { en: 'Met', zh: '达成' }, missed: { en: 'Missed', zh: '未达成' },
-    no_opportunity: { en: 'Did not come up', zh: '这局没遇到' }, unknown: { en: 'Can’t tell yet', zh: '暂时判断不了' },
+    met: { en: 'Met', zh: '达成', ru: 'Выполнено' },
+    missed: { en: 'Missed', zh: '未达成', ru: 'Не выполнено' },
+    no_opportunity: { en: 'Did not come up', zh: '这局没遇到', ru: 'Не было случая' },
+    unknown: { en: 'Can’t tell yet', zh: '暂时判断不了', ru: 'Пока неизвестно' },
   } as Record<string, Bi>,
-  win: { en: 'Win', zh: '胜' },
-  loss: { en: 'Loss', zh: '负' },
-  patchEyebrow: { en: 'New patch', zh: '新版本' },
-  patchTitle: { en: 'Patch {v} is live', zh: '{v} 版本已上线' },
-  patchNewItems: { en: 'New items', zh: '新装备' },
-  patchNotes: { en: 'Full patch notes', zh: '完整更新日志' },
-  patchUpdate: { en: 'Update {v}', zh: '{v} 更新' },
-  patchUpdateChanges: { en: '{h} heroes, {i} items changed', zh: '{h} 位英雄、{i} 件物品调整' },
-  patchForCoach: { en: 'For your review', zh: '对复盘的影响' },
-  patchCta: { en: 'Review your first {v} game', zh: '复盘你的第一场 {v}' },
-  patchMore: { en: 'Key changes & impact on reviews', zh: '查看核心改动与对复盘的影响' },
-  loading: { en: 'Reading the match…', zh: '正在读取比赛…' },
-  radiant: { en: 'Radiant', zh: '天辉' },
-  dire: { en: 'Dire', zh: '夜魇' },
-  victory: { en: 'victory', zh: '胜利' },
-  pick: { en: 'Which hero were you?', zh: '你玩的是哪个英雄？' },
-  pickSub: { en: 'Pick one to get a review written for that seat.', zh: '选一个英雄，复盘会针对这个位置来写。' },
-  rosterExpand: { en: 'Full 10-player items', zh: '展开 10 人详情' },
-  rosterCompact: { en: 'Hide the items', zh: '收起 10 人详情' },
-  askQuick: { en: 'Ask coach', zh: '追问教练' },
-  verdictEyebrow: { en: 'Biggest lever', zh: '本局核心结论' },
-  coachRead: { en: 'Coach’s read', zh: '教练结论' },
-  forYou: { en: 'For you', zh: '你的问题' },
-  forTeam: { en: 'For your team', zh: '全队的问题' },
-  wentWell: { en: 'What went right', zh: '做得好的地方' },
-  doNext: { en: 'What to do', zh: '怎么做' },
-  role: { en: 'Seat', zh: '位置' },
-  roleInferred: { en: 'Inferred from farm — lanes unknown until parsed.', zh: '按经济推断——解析前不知道分路。' },
-  roleLanes: { en: 'Inferred from lanes and farm.', zh: '按分路和经济推断。' },
-  roleUser: { en: 'Set by you.', zh: '由你指定。' },
-  fixRole: { en: 'Wrong seat? Set it:', zh: '位置不对？手动指定：' },
-  vsHero: { en: 'vs. other games on this hero', zh: '对比同英雄的其他对局' },
-  items: { en: 'Final items', zh: '终局装备' },
-  matchups: { en: 'Matchups', zh: '对位' },
-  threats: { en: 'What the enemy brought', zh: '对方阵容的威胁' },
-  timeline: { en: 'Key item timings', zh: '关键装备时间' },
-  deaths: { en: 'Deaths', zh: '死亡记录' },
-  caught: { en: 'caught', zh: '被抓' },
-  fight: { en: 'in a fight', zh: '团战中' },
-  notHeroTitle: { en: 'No hero got the kill: tower, creeps or neutrals', zh: '击杀者不是英雄：防御塔、小兵或野怪' },
-  converted: { en: '→ objective lost', zh: '→ 丢了目标' },
-  cantSee: { en: 'Not parsed yet — here is what we can’t see', zh: '比赛尚未解析——以下内容暂时看不到' },
+  win: { en: 'Win', zh: '胜', ru: 'Победа' },
+  loss: { en: 'Loss', zh: '负', ru: 'Поражение' },
+  patchEyebrow: { en: 'New patch', zh: '新版本', ru: 'Новый патч' },
+  patchTitle: { en: 'Patch {v} is live', zh: '{v} 版本已上线', ru: 'Вышел патч {v}' },
+  patchNewItems: { en: 'New items', zh: '新装备', ru: 'Новые предметы' },
+  patchNotes: { en: 'Full patch notes', zh: '完整更新日志', ru: 'Полный патчноут' },
+  patchUpdate: { en: 'Update {v}', zh: '{v} 更新', ru: 'Обновление {v}' },
+  patchUpdateChanges: { en: '{h} heroes, {i} items changed', zh: '{h} 位英雄、{i} 件物品调整', ru: 'изменено героев: {h}, предметов: {i}' },
+  patchForCoach: { en: 'For your review', zh: '对复盘的影响', ru: 'Для ваших разборов' },
+  patchCta: { en: 'Review your first {v} game', zh: '复盘你的第一场 {v}', ru: 'Разобрать первый матч в {v}' },
+  patchMore: { en: 'Key changes & impact on reviews', zh: '查看核心改动与对复盘的影响', ru: 'Ключевые изменения и влияние на разборы' },
+  loading: { en: 'Reading the match…', zh: '正在读取比赛…', ru: 'Загрузка матча…' },
+  radiant: { en: 'Radiant', zh: '天辉', ru: 'Силы Света' },
+  dire: { en: 'Dire', zh: '夜魇', ru: 'Силы Тьмы' },
+  victory: { en: 'victory', zh: '胜利', ru: 'победа' },
+  pick: { en: 'Which hero were you?', zh: '你玩的是哪个英雄？', ru: 'На каком герое вы играли?' },
+  pickSub: { en: 'Pick one to get a review written for that seat.', zh: '选一个英雄，复盘会针对这个位置来写。', ru: 'Выберите героя для персонального разбора.' },
+  rosterExpand: { en: 'Full 10-player items', zh: '展开 10 人详情', ru: 'Предметы всех 10 игроков' },
+  rosterCompact: { en: 'Hide the items', zh: '收起 10 人详情', ru: 'Скрыть предметы' },
+  askQuick: { en: 'Ask coach', zh: '追问教练', ru: 'Спросить тренера' },
+  verdictEyebrow: { en: 'Biggest lever', zh: '本局核心结论', ru: 'Главный вывод' },
+  coachRead: { en: 'Coach’s read', zh: '教练结论', ru: 'Вывод тренера' },
+  forYou: { en: 'For you', zh: '你的问题', ru: 'Для вас' },
+  forTeam: { en: 'For your team', zh: '全队的问题', ru: 'Для команды' },
+  wentWell: { en: 'What went right', zh: '做得好的地方', ru: 'Что получилось хорошо' },
+  doNext: { en: 'What to do', zh: '怎么做', ru: 'Что делать' },
+  role: { en: 'Seat', zh: '位置', ru: 'Позиция' },
+  roleInferred: { en: 'Inferred from farm — lanes unknown until parsed.', zh: '按经济推断——解析前不知道分路。', ru: 'Определено по фарму — линии неизвестны до разбора.' },
+  roleLanes: { en: 'Inferred from lanes and farm.', zh: '按分路和经济推断。', ru: 'Определено по линиям и фарму.' },
+  roleUser: { en: 'Set by you.', zh: '由你指定。', ru: 'Указано вами.' },
+  fixRole: { en: 'Wrong seat? Set it:', zh: '位置不对？手动指定：', ru: 'Неверная позиция? Укажите:' },
+  vsHero: { en: 'vs. other games on this hero', zh: '对比同英雄的其他对局', ru: 'по сравнению с другими играми на герое' },
+  items: { en: 'Final items', zh: '终局装备', ru: 'Итоговые предметы' },
+  matchups: { en: 'Matchups', zh: '对位', ru: 'Матчапы' },
+  threats: { en: 'What the enemy brought', zh: '对方阵容的威胁', ru: 'Угрозы пика врага' },
+  timeline: { en: 'Key item timings', zh: '关键装备时间', ru: 'Тайминги ключевых предметов' },
+  deaths: { en: 'Deaths', zh: '死亡记录', ru: 'Смерти' },
+  caught: { en: 'caught', zh: '被抓', ru: 'пойман' },
+  fight: { en: 'in a fight', zh: '团战中', ru: 'в драке' },
+  notHeroTitle: { en: 'No hero got the kill: tower, creeps or neutrals', zh: '击杀者不是英雄：防御塔、小兵或野怪', ru: 'Убил не герой: башня, крипы или нейтралы' },
+  converted: { en: '→ objective lost', zh: '→ 丢了目标', ru: '→ потерян объект' },
+  cantSee: { en: 'Not parsed yet — here is what we can’t see', zh: '比赛尚未解析——以下内容暂时看不到', ru: 'Матч ещё не разобран — вот чего мы не видим' },
   cantSeeSub: {
     en: 'OpenDota has not parsed the replay. The read above uses end-of-game data only. Parsing usually takes a few minutes while the replay is still available.',
     zh: 'OpenDota 还没有解析这场录像，上面的结论只用了终局数据。录像仍可下载时，解析通常需要几分钟。',
+    ru: 'OpenDota ещё не разобрала реплей. Выводы выше основаны только на итоговой статистике.',
   },
-  partialGaps: { en: 'This parse does not include', zh: '这次解析未包含' },
-  parseBtn: { en: 'Parse this match', zh: '解析这场比赛' },
-  parsePending: { en: 'Parse requested — checking every 20 seconds…', zh: '已提交解析——每 20 秒检查一次…' },
-  parseThrottled: { en: 'Too many parse requests right now. Try again in a minute.', zh: '解析请求太多，请一分钟后再试。' },
-  parseFailed: { en: 'OpenDota could not take the request. The replay may have expired.', zh: 'OpenDota 没有接受请求，录像可能已过期。' },
-  parsedReady: { en: 'Full parse is ready — the review now includes laning, deaths and the gold graph.', zh: '解析完成——复盘已加入对线、死亡与经济曲线。' },
-  parseFailedSelf: { en: 'The parse did not go through. Try again in a minute.', zh: '解析没有成功，请一分钟后再试。' },
-  parseGone: { en: 'Valve no longer has this replay (replays are kept about two weeks), so this match cannot be parsed.', zh: 'Valve 已不再保存这场比赛的录像（录像大约保留两周），无法解析这场比赛。' },
-  parseGaveUp: { en: 'Still not parsed after 10 minutes. Come back later; the link keeps working.', zh: '10 分钟后仍未解析完成。稍后再来，链接一直有效。' },
-  notFound: { en: 'OpenDota does not know this match. Check the ID — private or very new matches may not be visible yet.', zh: 'OpenDota 找不到这场比赛。请检查 ID——私密比赛或刚结束的比赛可能暂时不可见。' },
-  upstream: { en: 'OpenDota did not answer in time. Try again in a moment.', zh: 'OpenDota 暂时没有响应，请稍后重试。' },
-  rateLimited: { en: 'Slow down a little — too many requests from your network.', zh: '请求太频繁了，请稍等。' },
-  insufficient: { en: 'This match’s player data is not available yet. That is usual for a game that ended a few minutes ago: try again shortly.', zh: '这场比赛的玩家数据还没准备好。比赛刚结束的几分钟内常会这样，请稍后重试。' },
-  internalError: { en: 'We could not build this review. The fault is on our side, not in your match ID. Try again in a moment.', zh: '复盘生成失败。这是我们这边的问题，不是你的比赛 ID 有误。请稍后重试。' },
-  network: { en: 'Could not reach dota2.ai. Check your connection and try again.', zh: '连不上 dota2.ai，请检查网络后重试。' },
-  retry: { en: 'Try again', zh: '重试' },
-  refreshFailed: { en: 'Could not update the report — what you see may not reflect your latest change.', zh: '报告没能更新——当前显示的可能不是你最新的选择。' },
-  newMatch: { en: 'Another match', zh: '换一场' },
-  api: { en: 'For agents and scripts', zh: '给 agent 和脚本' },
-  confidence: { high: { en: 'high confidence', zh: '高置信' }, medium: { en: 'medium confidence', zh: '中等置信' }, low: { en: 'low confidence', zh: '低置信' } } as Record<string, Bi>,
-  needsParse: { en: 'needs parse', zh: '需解析' },
-  noFindings: { en: 'Nothing in the data stands out for this seat.', zh: '数据里没有针对这个位置的突出问题。' },
-  share: { en: 'Copy my link', zh: '复制我的链接' },
-  shareTeam: { en: 'Send to my team', zh: '发给队友' },
+  partialGaps: { en: 'This parse does not include', zh: '这次解析未包含', ru: 'В этом разборе отсутствуют' },
+  parseBtn: { en: 'Parse this match', zh: '解析这场比赛', ru: 'Разобрать матч' },
+  parsePending: { en: 'Parse requested — checking every 20 seconds…', zh: '已提交解析——每 20 秒检查一次…', ru: 'Разбор запрошен — проверяем каждые 20 с…' },
+  parseThrottled: { en: 'Too many parse requests right now. Try again in a minute.', zh: '解析请求太多，请一分钟后再试。', ru: 'Слишком много запросов разбора. Попробуйте через минуту.' },
+  parseFailed: { en: 'OpenDota could not take the request. The replay may have expired.', zh: 'OpenDota 没有接受请求，录像可能已过期。', ru: 'OpenDota не приняла запрос. Возможно, реплей уже устарел.' },
+  parsedReady: { en: 'Full parse is ready — the review now includes laning, deaths and the gold graph.', zh: '解析完成——复盘已加入对线、死亡与经济曲线。', ru: 'Полный разбор готов — добавлены линии, смерти и график золота.' },
+  parseFailedSelf: { en: 'The parse did not go through. Try again in a minute.', zh: '解析没有成功，请一分钟后再试。', ru: 'Разбор не удался. Попробуйте через минуту.' },
+  parseGone: { en: 'Valve no longer has this replay (replays are kept about two weeks), so this match cannot be parsed.', zh: 'Valve 已不再保存这场比赛的录像（录像大约保留两周），无法解析这场比赛。', ru: 'У Valve больше нет этого реплея (они хранятся около двух недель), разобрать матч невозможно.' },
+  parseGaveUp: { en: 'Still not parsed after 10 minutes. Come back later; the link keeps working.', zh: '10 分钟后仍未解析完成。稍后再来，链接一直有效。', ru: 'Спустя 10 минут разбор всё ещё не готов. Зайдите позже — ссылка останется рабочей.' },
+  notFound: { en: 'OpenDota does not know this match. Check the ID — private or very new matches may not be visible yet.', zh: 'OpenDota 找不到这场比赛。请检查 ID——私密比赛或刚结束的比赛可能暂时不可见。', ru: 'OpenDota не нашла этот матч. Проверьте ID — приватные или только что завершившиеся матчи могут быть скрыты.' },
+  upstream: { en: 'OpenDota did not answer in time. Try again in a moment.', zh: 'OpenDota 暂时没有响应，请稍后重试。', ru: 'OpenDota не ответила вовремя. Попробуйте чуть позже.' },
+  rateLimited: { en: 'Slow down a little — too many requests from your network.', zh: '请求太频繁了，请稍等。', ru: 'Слишком много запросов с вашей сети — подождите немного.' },
+  insufficient: { en: 'This match’s player data is not available yet. That is usual for a game that ended a few minutes ago: try again shortly.', zh: '这场比赛的玩家数据还没准备好。比赛刚结束的几分钟内常会这样，请稍后重试。', ru: 'Данные игроков ещё не готовы. Для только что завершённых матчей это нормально — попробуйте через пару минут.' },
+  internalError: { en: 'We could not build this review. The fault is on our side, not in your match ID. Try again in a moment.', zh: '复盘生成失败。这是我们这边的问题，不是你的比赛 ID 有误。请稍后重试。', ru: 'Не удалось собрать разбор. Ошибка на нашей стороне — попробуйте чуть позже.' },
+  network: { en: 'Could not reach dota2.ai. Check your connection and try again.', zh: '连不上 dota2.ai，请检查网络后重试。', ru: 'Нет связи с dota2.ai. Проверьте подключение и повторите.' },
+  retry: { en: 'Try again', zh: '重试', ru: 'Повторить' },
+  refreshFailed: { en: 'Could not update the report — what you see may not reflect your latest change.', zh: '报告没能更新——当前显示的可能不是你最新的选择。', ru: 'Не удалось обновить отчёт.' },
+  newMatch: { en: 'Another match', zh: '换一场', ru: 'Другой матч' },
+  api: { en: 'For agents and scripts', zh: '给 agent 和脚本', ru: 'Для агентов и скриптов' },
+  confidence: {
+    high: { en: 'high confidence', zh: '高置信', ru: 'высокая уверенность' },
+    medium: { en: 'medium confidence', zh: '中等置信', ru: 'средняя уверенность' },
+    low: { en: 'low confidence', zh: '低置信', ru: 'низкая уверенность' },
+  } as Record<string, Bi>,
+  needsParse: { en: 'needs parse', zh: '需解析', ru: 'нужен разбор' },
+  noFindings: { en: 'Nothing in the data stands out for this seat.', zh: '数据里没有针对这个位置的突出问题。', ru: 'В данных нет критичных проблем для этой позиции.' },
+  share: { en: 'Copy my link', zh: '复制我的链接', ru: 'Копировать ссылку' },
+  shareTeam: { en: 'Send to my team', zh: '发给队友', ru: 'Отправить команде' },
   shareTeamText: {
     en: 'Our game #{id} reviewed by dota2.ai — pick your hero and see the one thing worth fixing:',
     zh: '我们那局 #{id} 的复盘（dota2.ai）——点开选你玩的英雄，看看你最该改的一件事：',
+    ru: 'Разбор нашей игры #{id} на dota2.ai — выберите своего героя и посмотрите, что стоит исправить:',
   },
-  teamCopied: { en: 'Link copied — paste it to your team', zh: '链接已复制，发到队伍群里吧' },
-  ranked: { en: 'Ranked', zh: '天梯' },
-  footer: { en: 'Not affiliated with Valve. Reviews are read from the game\'s replay; scoreboards from OpenDota.', zh: '粉丝项目，与 Valve 无关。复盘读的是对局录像；记分板来自 OpenDota。' },
-  parsed: { en: 'Parsed', zh: '已解析' },
-  fromSteamGc: { en: 'Scoreboard from Valve’s game coordinator (OpenDota unavailable): no timeline yet', zh: '数据来自 Valve 游戏协调器（OpenDota 暂不可用）：只有终局计分板，暂无时间线' },
-  fromSteamGcParsed: { en: 'Parsed by dota2.ai from Valve’s replay (OpenDota unavailable): no percentile comparison', zh: '由 dota2.ai 解析 Valve 录像（OpenDota 暂不可用）：暂无百分位对比' },
-  fromStratz: { en: 'Data from STRATZ (OpenDota unavailable)', zh: '数据来自 STRATZ（OpenDota 暂不可用）' },
-  copied: { en: 'Copied', zh: '已复制' },
+  teamCopied: { en: 'Link copied — paste it to your team', zh: '链接已复制，发到队伍群里吧', ru: 'Ссылка скопирована — отправьте её команде' },
+  ranked: { en: 'Ranked', zh: '天梯', ru: 'Рейтинг' },
+  footer: { en: 'Not affiliated with Valve. Reviews are read from the game\'s replay; scoreboards from OpenDota.', zh: '粉丝项目，与 Valve 无关。复盘读的是对局录像；记分板来自 OpenDota。', ru: 'Не связано с Valve. Разборы строятся по реплею матча; таблицы — из OpenDota.' },
+  parsed: { en: 'Parsed', zh: '已解析', ru: 'Разобран' },
+  fromSteamGc: { en: 'Scoreboard from Valve’s game coordinator (OpenDota unavailable): no timeline yet', zh: '数据来自 Valve 游戏协调器（OpenDota 暂不可用）：只有终局计分板，暂无时间线', ru: 'Таблица из Valve Game Coordinator (OpenDota недоступна): таймлайна пока нет' },
+  fromSteamGcParsed: { en: 'Parsed by dota2.ai from Valve’s replay (OpenDota unavailable): no percentile comparison', zh: '由 dota2.ai 解析 Valve 录像（OpenDota 暂不可用）：暂无百分位对比', ru: 'Разобрано dota2.ai из реплея Valve (OpenDota недоступна): без процентилей' },
+  fromStratz: { en: 'Data from STRATZ (OpenDota unavailable)', zh: '数据来自 STRATZ（OpenDota 暂不可用）', ru: 'Данные из STRATZ (OpenDota недоступна)' },
+  copied: { en: 'Copied', zh: '已复制', ru: 'Скопировано' },
 } satisfies Record<string, Bi | Record<string, Bi>>;
 
 const AREA: Record<Finding['area'], Bi> = {
-  items: { en: 'Items', zh: '出装' }, farm: { en: 'Farm', zh: '发育' }, deaths: { en: 'Deaths', zh: '死亡' },
-  fights: { en: 'Fights', zh: '团战' }, objectives: { en: 'Objectives', zh: '目标' }, team: { en: 'Team', zh: '全队' },
-  laning: { en: 'Laning', zh: '对线' }, vision: { en: 'Vision', zh: '视野' },
+  items: { en: 'Items', zh: '出装', ru: 'Предметы' },
+  farm: { en: 'Farm', zh: '发育', ru: 'Фарм' },
+  deaths: { en: 'Deaths', zh: '死亡', ru: 'Смерти' },
+  fights: { en: 'Fights', zh: '团战', ru: 'Драки' },
+  objectives: { en: 'Objectives', zh: '目标', ru: 'Объекты' },
+  team: { en: 'Team', zh: '全队', ru: 'Команда' },
+  laning: { en: 'Laning', zh: '对线', ru: 'Линия' },
+  vision: { en: 'Vision', zh: '视野', ru: 'Вижн' },
 };
 
 const tally = (goalId: string) => {
@@ -220,12 +235,18 @@ export const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome
           <div className="cx-lang" role="group" aria-label="Language">
             <button type="button" aria-pressed={lang === 'en'} onClick={() => setLang('en')}>EN</button>
             <button type="button" aria-pressed={lang === 'zh'} onClick={() => setLang('zh')}>中文</button>
+            <button type="button" aria-pressed={lang === 'ru'} onClick={() => setLang('ru')}>RU</button>
           </div>
         </div>
       </header>
       <main className={wide ? 'cx-main cx-main--wide' : 'cx-main'}>{children}</main>
       <footer className="cx-foot">
         <span>{L(UI.footer)}</span>
+        <nav className="cx-foot-links" aria-label="Links">
+          <a href={GITHUB_ISSUES_URL} target="_blank" rel="noopener noreferrer">GitHub Issues</a>
+          <a href={AUTHOR_X_URL} target="_blank" rel="noopener noreferrer">X (@kilocean)</a>
+          <a href={`mailto:${AUTHOR_EMAIL}`}>{AUTHOR_EMAIL}</a>
+        </nav>
       </footer>
     </div>
   );
@@ -253,7 +274,7 @@ const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
         <div className="cx-latest-row">
           {latest.hero.icon ? <SafeImg src={latest.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
           <span className="cx-latest-text">
-            <b>{latest.hero[lang]}</b>{' '}
+            <b>{lang === 'zh' ? latest.hero.zh : latest.hero.en}</b>{' '}
             <span className={latest.won ? 'is-win' : latest.won === false ? 'is-loss' : ''}>{latest.won == null ? '' : L(latest.won ? UI.win : UI.loss)}</span>{' '}
             <span className="cx-recent-kda">{latest.kda ? latest.kda.join('/') : '—'}</span>
             {reviewed && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
@@ -449,7 +470,7 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
                       onClick={() => setHeroFilter((cur) => (cur === hero.id ? null : hero.id))}
                     >
                       {hero.icon && <SafeImg src={hero.icon} alt="" />}
-                      <span>{hero[lang]}</span>
+                      <span>{lang === 'zh' ? hero.zh : hero.en}</span>
                     </button>
                   ))}
                 </div>
@@ -467,7 +488,7 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
                       <Link to={`/r/${m.match_id}?${m.slot != null ? `p=${m.slot}&` : ''}lang=${lang}`} className="cx-recent-row">
                         {m.hero.icon ? <SafeImg src={m.hero.icon} alt="" className="cx-recent-icon" /> : <span className="cx-recent-icon" />}
                         <span className="cx-recent-hero">
-                          {m.hero[lang]}
+                          {lang === 'zh' ? m.hero.zh : m.hero.en}
                           {seen != null && (m.start_time ?? 0) > seen && <span className="cx-tag cx-tag--new">{L(UI.newTag)}</span>}
                           {reviewed.has(String(m.match_id)) && <span className="cx-tag">{L(UI.reviewedTag)}</span>}
                           {gc && <ResultPill r={gc.result} />}
@@ -482,7 +503,7 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
                             m.mode ? L(m.mode) : null,
                             m.ranked ? L(UI.ranked) : null,
                             m.duration != null ? clock(m.duration) : null,
-                            m.start_time ? new Date(m.start_time * 1000).toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US') : null,
+                            m.start_time ? new Date(m.start_time * 1000).toLocaleDateString(lang === 'zh' ? 'zh-CN' : lang === 'ru' ? 'ru-RU' : 'en-US') : null,
                           ].filter(Boolean).join(' · ')}
                         </span>
                       </Link>
@@ -591,15 +612,19 @@ const AgentSnippets: React.FC<{ matchId: string }> = ({ matchId }) => {
 };
 
 const HOME = {
-  title: { en: 'Paste a match.', zh: '贴一场比赛。' },
-  sub: { en: 'A coach that watches your replay. It finds what decided the game, shows the moments that prove it, and tells you what to change next time.', zh: '一位会看你录像的教练。找出这局输赢的关键，把证明它的时刻摆给你看，再告诉你下一把改什么。' },
-  hint: { en: 'Match ID, link, or friend code', zh: '比赛 ID、链接或好友码' },
-  samplesTitle: { en: 'Or open a sample review', zh: '或者，打开一份示例复盘' },
-  samplesSub: { en: 'Match {id} · Dire victory', zh: '比赛 {id} · 夜魇胜利' },
-  open: { en: 'Open the review', zh: '打开复盘' },
-  modeLabel: { en: 'What are you pasting?', zh: '你要输入什么？' },
-  modeMatch: { en: 'Match', zh: '比赛' },
-  modeAccount: { en: 'Friend code', zh: '好友码' },
+  title: { en: 'Paste a match.', zh: '贴一场比赛。', ru: 'Вставьте матч.' },
+  sub: {
+    en: 'A coach that watches your replay. It finds what decided the game, shows the moments that prove it, and tells you what to change next time.',
+    zh: '一位会看你录像的教练。找出这局输赢的关键，把证明它的时刻摆给你看，再告诉你下一把改什么。',
+    ru: 'Тренер, который смотрит ваш реплей. Он находит, что решило исход игры, показывает ключевые моменты и говорит, что изменить в следующем матче.',
+  },
+  hint: { en: 'Match ID, link, or friend code', zh: '比赛 ID、链接或好友码', ru: 'ID матча, ссылка или код друга' },
+  samplesTitle: { en: 'Or open a sample review', zh: '或者，打开一份示例复盘', ru: 'Или откройте пример разбора' },
+  samplesSub: { en: 'Match {id} · Dire victory', zh: '比赛 {id} · 夜魇胜利', ru: 'Матч {id} · Победа Сил Тьмы' },
+  open: { en: 'Open the review', zh: '打开复盘', ru: 'Открыть разбор' },
+  modeLabel: { en: 'What are you pasting?', zh: '你要输入什么？', ru: 'Что вы вставляете?' },
+  modeMatch: { en: 'Match', zh: '比赛', ru: 'Матч' },
+  modeAccount: { en: 'Friend code', zh: '好友码', ru: 'Код друга' },
 };
 
 export const CoachHome: React.FC = () => {
@@ -695,6 +720,7 @@ export const CoachHome: React.FC = () => {
       </div>
 
       <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />
+      <HomeFeedback />
     </Shell>
   );
 };
@@ -727,7 +753,7 @@ export function shareLinks(origin: string, matchId: number, slot: number | null,
   // A corrected role changes the review itself: the personal link must show the same review.
   if (slot != null && pos != null && Number.isInteger(pos) && pos >= 1 && pos <= 5) self.set('pos', String(pos));
   self.set('ref', 'share');
-  if (lang === 'zh') { team.set('lang', 'zh'); self.set('lang', 'zh'); }
+  if (lang === 'zh' || lang === 'ru') { team.set('lang', lang); self.set('lang', lang); }
   return { team: `${origin}/r/${matchId}?${team}`, self: `${origin}/r/${matchId}?${self}` };
 }
 

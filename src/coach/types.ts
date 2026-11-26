@@ -1,8 +1,8 @@
 /** Client mirror of `dota2.ai/coach-report@1` (lib/coach/analyze.js). */
-export interface Bi { en: string; zh: string }
+export interface Bi { en: string; zh: string; ru?: string }
 
-export interface HeroRef { id: number; en: string; zh: string; slug: string; img: string | null; icon: string | null; roles: string[] }
-export interface ItemRef { key: string; en: string; zh: string; cost: number; img: string | null }
+export interface HeroRef { id: number; en: string; zh: string; ru?: string; slug: string; img: string | null; icon: string | null; roles: string[] }
+export interface ItemRef { key: string; en: string; zh: string; ru?: string; cost: number; img: string | null }
 
 export interface Evidence { k: Bi; v?: string; sub?: Bi; items?: string[]; heroes?: number[] }
 

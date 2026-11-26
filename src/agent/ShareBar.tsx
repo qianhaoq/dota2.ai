@@ -10,18 +10,18 @@ import { trackEvent } from '../services/analytics';
  * fails silently.
  */
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 type Target = 'team' | 'self';
 
 const T = {
-  team: { en: 'Send to my team', zh: '发给队友' },
-  teamHint: { en: 'Each teammate picks their own hero and gets their own review.', zh: '每个队友选自己玩的英雄，拿到自己的复盘。' },
-  teamText: { en: 'I had our game #{id} reviewed — pick the hero you played and see what you could change:', zh: '我把咱们这局 #{id} 复盘了，选你玩的英雄，看看你这局能改什么：' },
-  self: { en: 'Copy my link', zh: '复制我的链接' },
-  selfText: { en: 'My review of game #{id}:', zh: '我这局 #{id} 的复盘：' },
-  teamCopied: { en: 'Link copied — paste it to your team', zh: '链接已复制，发到队伍群里吧' },
-  copied: { en: 'Copied', zh: '已复制' },
-  manual: { en: 'Copy this link:', zh: '复制这个链接：' },
+  team: { en: 'Send to my team', zh: '发给队友', ru: 'Отправить команде' },
+  teamHint: { en: 'Each teammate picks their own hero and gets their own review.', zh: '每个队友选自己玩的英雄，拿到自己的复盘。', ru: 'Каждый тиммейт выберет своего героя и получит личный разбор.' },
+  teamText: { en: 'I had our game #{id} reviewed — pick the hero you played and see what you could change:', zh: '我把咱们这局 #{id} 复盘了，选你玩的英雄，看看你这局能改什么：', ru: 'Я разобрал наш матч #{id} — выбери своего героя и посмотри, что можно улучшить:' },
+  self: { en: 'Copy my link', zh: '复制我的链接', ru: 'Копировать ссылку' },
+  selfText: { en: 'My review of game #{id}:', zh: '我这局 #{id} 的复盘：', ru: 'Мой разбор матча #{id}:' },
+  teamCopied: { en: 'Link copied — paste it to your team', zh: '链接已复制，发到队伍群里吧', ru: 'Ссылка скопирована — отправьте её команде' },
+  copied: { en: 'Copied', zh: '已复制', ru: 'Скопировано' },
+  manual: { en: 'Copy this link:', zh: '复制这个链接：', ru: 'Скопируйте эту ссылку:' },
 } as const;
 
 /**
@@ -39,7 +39,7 @@ export function shareLinks(origin: string, matchId: string, hero: string, lang: 
   if (model) self.set('model', model);
   self.set('ref', 'share');
   self.set('lang', lang);
-  if (lang === 'zh') team.set('lang', 'zh');
+  if (lang === 'zh' || lang === 'ru') team.set('lang', lang);
   return { team: `${origin}/r/${matchId}?${team}`, self: `${origin}/r/${matchId}?${self}` };
 }
 

@@ -2,7 +2,7 @@
 import type { GoalSpec } from '../coach/types';
 import { internalHeaders } from '../services/analytics';
 
-export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string }
+export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string; ru?: string }
 /**
  * Where the replay parse stands when there is no trace yet. `final`: trying again will not help (the replay is gone).
  * `retry_in_sec` (a failure that is not final): how long until asking again starts a new parse — sooner, the same
@@ -37,7 +37,7 @@ export interface GamePlan {
 export interface DeepReview {
   /** The plan the player named before the review, if they did (lib/agent/plans.js). */
   plan?: string;
-  schema: string; match_id: number; hero: string; lang: 'en' | 'zh';
+  schema: string; match_id: number; hero: string; lang: 'en' | 'zh' | 'ru';
   verdict: string; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
   game_plan?: GamePlan;
   /** Which patch the review's prices, item effects and cooldowns are from (lib/agent/patchData.js); absent on reviews written before it was kept. */
@@ -49,7 +49,7 @@ export interface ToolStep { tool: string; args: Record<string, unknown>; /** Wha
 export type ReviewState =
   | { status: 'none' | 'no_trace' | 'unknown_hero' }
   | { status: 'running'; steps: ToolStep[] }
-  | { status: 'ready'; review: DeepReview; verification: { repaired: boolean; dropped: number }; model: string | null; tool_calls: number; /** The prompt version the review was written under; absent from a server that does not say. */ prompt_version?: number }
+  | { status: 'ready'; review: DeepReview; /** All pre-generated language variants when stored as a trilingual bundle. */ reviews?: Partial<Record<'en' | 'zh' | 'ru', DeepReview>>; verification: { repaired: boolean; dropped: number }; model: string | null; tool_calls: number; /** The prompt version the review was written under; absent from a server that does not say. */ prompt_version?: number }
   | { status: 'failed'; reason?: string }
   /** `retry_in_sec`: the model account refused a review a moment ago (out of credit, key refused) and none is started until then; it can be tried again. */
   | { status: 'unavailable'; reason?: string; retry_in_sec?: number };

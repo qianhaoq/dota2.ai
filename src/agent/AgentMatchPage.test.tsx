@@ -1907,6 +1907,45 @@ describe('AgentMatchPage', () => {
     expect(await screen.findByRole('heading', { name: 'That is not a match ID.' })).toBeTruthy();
     await waitFor(() => expect(calls).toHaveLength(0));
   });
+
+  it('switching en → zh → ru on a ready trilingual review switches instantly without re-fetching or regenerating', async () => {
+    const zhReview = { ...review, lang: 'zh', verdict: '原始咆哮没有留给幻影刺客。' };
+    const ruReview = { ...review, lang: 'ru', verdict: 'Primal Roar не приберегли для Phantom Assassin.' };
+    const calls = mockFetch({
+      'ref=overview': overview,
+      '/api/coach/9100904020': board,
+      '/review?': { status: 'ready', review, reviews: { en: review, zh: zhReview, ru: ruReview }, verification: { repaired: false, dropped: 0 }, model: 'test-model', tool_calls: 2 },
+      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+    let switchLang!: (l: 'en' | 'zh' | 'ru') => void;
+    const Harness: React.FC = () => {
+      const [l, setL] = React.useState<'en' | 'zh' | 'ru'>('en');
+      ui.lang = l;
+      switchLang = setL;
+      return (
+        <div>
+          <button type="button" onClick={() => setL('zh')}>to-zh</button>
+          <button type="button" onClick={() => setL('ru')}>to-ru</button>
+          <MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=en']}>
+            <Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /><Route path="/" element={<p>home</p>} /></Routes>
+          </MemoryRouter>
+        </div>
+      );
+    };
+    render(<Harness />);
+    expect(switchLang).toBeTypeOf('function');
+    expect(await screen.findByText(review.verdict)).toBeTruthy();
+    expect(calls.filter((c) => c.url.includes('/review?'))).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'to-zh' }));
+    expect(await screen.findByText(zhReview.verdict)).toBeTruthy();
+    expect(calls.filter((c) => c.url.includes('/review?'))).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'to-ru' }));
+    expect(await screen.findByText(ruReview.verdict)).toBeTruthy();
+    expect(calls.filter((c) => c.url.includes('/review?'))).toHaveLength(1);
+    expect(calls.some((c) => c.url.includes('/review') && c.init?.method === 'POST')).toBe(false);
+  });
 });
 
 describe('helpers', () => {

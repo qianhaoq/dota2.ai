@@ -31,75 +31,80 @@ import './agent.css';
  */
 
 const T = {
-  loading: { en: 'Opening the match…', zh: '正在打开对局…' },
-  invalid: { en: 'That is not a match ID.', zh: '这不是一个比赛编号。' },
-  home: { en: 'Back to the start', zh: '回到首页' },
-  match: { en: 'Match', zh: '比赛' },
-  notFound: { en: 'This match could not be opened', zh: '这场比赛打不开' },
-  notFoundBody: { en: 'Neither the match record nor a parsed replay could be found. Check the ID, or try again in a minute.', zh: '既没有找到比赛记录，也没有解析过的录像。请检查编号，或一分钟后再试。' },
-  pick: { en: 'Which hero did you play?', zh: '你玩的是哪个英雄？' },
-  pickSub: { en: 'The review is written for one player: what you could have done differently.', zh: '复盘是写给一个人的：你本可以怎么打。' },
-  fromTeam: { en: 'A teammate sent you this game.', zh: '队友把这局发给了你。' },
-  radiant: { en: 'Radiant', zh: '天辉' },
-  dire: { en: 'Dire', zh: '夜魇' },
-  change: { en: 'Change hero', zh: '换英雄' },
-  goTitle: { en: 'Review this game', zh: '复盘这一局' },
-  goBody: { en: 'The coach watches the replay — every death, every ultimate, the fights that turned the game, your build — and writes what to change.', zh: '教练会把录像看一遍——每次阵亡、每个大招、转折的团战、你的出装——然后写出该改什么。' },
-  goTime: { en: 'About two to three minutes.', zh: '大约两到三分钟。' },
+  loading: { en: 'Opening the match…', zh: '正在打开对局…', ru: 'Открываем матч…' },
+  invalid: { en: 'That is not a match ID.', zh: '这不是一个比赛编号。', ru: 'Это не ID матча.' },
+  home: { en: 'Back to the start', zh: '回到首页', ru: 'На главную' },
+  match: { en: 'Match', zh: '比赛', ru: 'Матч' },
+  notFound: { en: 'This match could not be opened', zh: '这场比赛打不开', ru: 'Не удалось открыть этот матч' },
+  notFoundBody: { en: 'Neither the match record nor a parsed replay could be found. Check the ID, or try again in a minute.', zh: '既没有找到比赛记录，也没有解析过的录像。请检查编号，或一分钟后再试。', ru: 'Не найдена ни запись матча, ни разобранный реплей. Проверьте ID или попробуйте через минуту.' },
+  pick: { en: 'Which hero did you play?', zh: '你玩的是哪个英雄？', ru: 'На каком герое вы играли?' },
+  pickSub: { en: 'The review is written for one player: what you could have done differently.', zh: '复盘是写给一个人的：你本可以怎么打。', ru: 'Разбор пишется для одного игрока: что именно вы могли сделать иначе.' },
+  fromTeam: { en: 'A teammate sent you this game.', zh: '队友把这局发给了你。', ru: 'Тиммейт поделился с вами этим матчем.' },
+  radiant: { en: 'Radiant', zh: '天辉', ru: 'Силы Света' },
+  dire: { en: 'Dire', zh: '夜魇', ru: 'Силы Тьмы' },
+  change: { en: 'Change hero', zh: '换英雄', ru: 'Сменить героя' },
+  goTitle: { en: 'Review this game', zh: '复盘这一局', ru: 'Разобрать этот матч' },
+  goBody: { en: 'The coach watches the replay — every death, every ultimate, the fights that turned the game, your build — and writes what to change.', zh: '教练会把录像看一遍——每次阵亡、每个大招、转折的团战、你的出装——然后写出该改什么。', ru: 'Тренер изучит реплей — каждую смерть, каждый ульт, переломные драки и сборку — и напишет, что улучшить.' },
+  goTime: { en: 'About two to three minutes.', zh: '大约两到三分钟。', ru: 'Около двух–трёх минут.' },
   // A model that writes slowly: how long it took when it was timed (lib/agent/models.js), never a promise.
-  goTimeSlow: { en: 'With {m}, expect {t} (as timed on a real game)', zh: '用 {m} 写，预计{t}（按实测）' },
+  goTimeSlow: { en: 'With {m}, expect {t} (as timed on a real game)', zh: '用 {m} 写，预计{t}（按实测）', ru: 'С моделью {m} ожидайте {t} (по реальному замеру)' },
   // …beside the quick one, when the reader can pick it here.
-  goTimeQuick: { en: '; {d} takes {t}.', zh: '；{d} {t}。' },
+  goTimeQuick: { en: '; {d} takes {t}.', zh: '；{d} {t}。', ru: '; {d} занимает {t}.' },
   // While it is being written: who writes it and how long that takes, so a long wait is one the reader was told of.
-  workTime: { en: '{m} is writing it: expect {t}.', zh: '由 {m} 撰写，预计{t}。' },
-  go: { en: 'Review my game', zh: '开始复盘' },
-  planAsk: { en: 'What were you going for this game? (optional)', zh: '这局你想怎么打？（可选）' },
-  planWhy: { en: 'Say it, and the review reads the game against it: whether your play fit it, whether it suited these line-ups, and where it broke. The replay cannot show what you meant to do.', zh: '选了，复盘就会对照它来读这局：你的打法是否贴合，这个思路面对双方阵容是否站得住，没打成断在哪里。录像本身看不出你想怎么打。' },
-  planNone: { en: 'Don\'t say', zh: '不说' },
-  modelAsk: { en: 'Which model writes it?', zh: '由哪个模型来写？' },
-  modelWhy: { en: 'Each model reads the same replay with the same tools, and its review is checked against the replay the same way. A review by another model is kept beside the first, so you can compare them.', zh: '每个模型读的是同一份录像、用同一套工具，写出的复盘也按同样的方式和录像核对。换一个模型写的复盘会另存一份，可以对比着看。' },
-  modelBy: { en: 'Written by', zh: '撰写模型' },
-  working: { en: 'Working on your review', zh: '正在准备你的复盘' },
-  leave: { en: 'You can keep this page open; the review appears here when it is done.', zh: '页面开着就行，写完会出现在这里。' },
-  s1: { en: 'Fetch the replay', zh: '取录像' },
-  s2: { en: 'Read the replay', zh: '解析录像' },
-  s3: { en: 'The coach goes through it', zh: '教练看录像' },
-  s4: { en: 'Write the review', zh: '写复盘' },
-  failedTitle: { en: 'The review did not come out', zh: '这次复盘没有写出来' },
-  failedBody: { en: 'The coach could not finish a review it could back with the replay. Try again.', zh: '教练没能写出一份有录像依据的复盘。可以再试一次。' },
-  retry: { en: 'Try again', zh: '再试一次' },
-  goneTitle: { en: 'The replay of this game is no longer available', zh: '这局的录像已经没有了' },
-  goneBody: { en: 'Valve keeps replays for about two weeks. Without the replay there is nothing to review honestly, so nothing is shown in its place.', zh: 'Valve 只保留大约两周的录像。没有录像就没有可以诚实复盘的东西，所以这里不放替代内容。' },
-  noUrlTitle: { en: 'The replay is not ready yet', zh: '录像还没准备好' },
-  noUrlBody: { en: 'A game that just ended takes a few minutes before its replay can be fetched. Try again shortly.', zh: '刚打完的比赛要等几分钟才能取到录像。稍后再试。' },
-  noUrlWaiting: { en: 'A game that just ended takes a few minutes before its replay can be fetched. Leave this page open: it will try again by itself in a few minutes. Or come back later.', zh: '刚打完的比赛要等几分钟才能取到录像。这个页面开着就行，过几分钟会自动再试一次；也可以稍后再回来。' },
-  parseFailedTitle: { en: 'The replay could not be read', zh: '录像没有解析出来' },
-  parseFailedBody: { en: 'Fetching or reading the replay failed. It usually works on a second try.', zh: '取录像或解析时出了问题，通常再试一次就好。' },
-  offTitle: { en: 'Replay reviews are not switched on here', zh: '这里还没有开启录像复盘' },
-  offBody: { en: 'This site cannot fetch replays right now, so it cannot review this game.', zh: '这个站点现在取不了录像，所以无法复盘这一局。' },
-  unavailable: { en: 'The coach is not available right now.', zh: '教练暂时不可用。' },
-  rate: { en: 'Too many reviews started from here. Try again in a few minutes.', zh: '从这里发起的复盘太多了，过几分钟再试。' },
-  busy: { en: 'The coach is at capacity. Try again later.', zh: '教练现在忙不过来，稍后再试。' },
-  rateWait: { en: 'Too many reviews started from here. It starts on its own in {t}.', zh: '从这里发起的复盘太多了，{t} 后自动开始。' },
-  busyWait: { en: 'The coach is at capacity. It tries again on its own in {t}.', zh: '教练现在忙不过来，{t} 后自动再试。' },
-  unknownHero: { en: 'That hero is not in this game.', zh: '这局里没有这个英雄。' },
-  scoreboard: { en: 'Scoreboard', zh: '记分板' },
-  checked: { en: 'Times and numbers in this review were checked against the replay records.', zh: '这份复盘里的时间点和数字已经和录像记录核对过。' },
-  dropped: { en: 'removed for lack of evidence', zh: '条因缺少依据被删去' },
-  q1: { en: 'Which of my deaths was the most avoidable?', zh: '我哪一次阵亡最不应该？' },
-  qFinding: { en: 'what exactly should I have done instead?', zh: '具体应该怎么打？' },
-  goalCheck: { en: 'Your goal, in this game', zh: '你的目标，这一局' },
-  checkOnly: { en: 'Only check my goal', zh: '只检查目标' },
-  curve: { en: 'Game by game', zh: '一局一局' },
-  curveFrom: { en: 'the game the goal came from', zh: '定下目标的那局' },
-  checkOnlyWhy: { en: 'Reads the replay and counts what your goal is about — about a minute, no review written.', zh: '只读录像、数一数目标说的那件事——大约一分钟，不写复盘。' },
-  checkingGoal: { en: 'Reading the replay to check your goal…', zh: '正在读录像，检查你的目标…' },
-  goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘' },
-  ruleChecks: { en: 'Your rule, in this game', zh: '你的规则，这一局' },
-  goalResult: { met: { en: 'Met', zh: '达成' }, missed: { en: 'Missed', zh: '未达成' }, no_opportunity: { en: 'Did not come up', zh: '这局没遇到' }, unknown: { en: 'Can’t tell yet', zh: '暂时判断不了' } } as Record<string, Bi>,
+  workTime: { en: '{m} is writing it: expect {t}.', zh: '由 {m} 撰写，预计{t}。', ru: 'Пишет {m}: ожидайте {t}.' },
+  go: { en: 'Review my game', zh: '开始复盘', ru: 'Разобрать игру' },
+  planAsk: { en: 'What were you going for this game? (optional)', zh: '这局你想怎么打？（可选）', ru: 'Какой у вас был план на игру? (необязательно)' },
+  planWhy: { en: 'Say it, and the review reads the game against it: whether your play fit it, whether it suited these line-ups, and where it broke. The replay cannot show what you meant to do.', zh: '选了，复盘就会对照它来读这局：你的打法是否贴合，这个思路面对双方阵容是否站得住，没打成断在哪里。录像本身看不出你想怎么打。', ru: 'Укажите план, и разбор проверит, соответствовала ли ему ваша игра, подходил ли он под драфты и где сломался.' },
+  planNone: { en: 'Don\'t say', zh: '不说', ru: 'Не указывать' },
+  modelAsk: { en: 'Which model writes it?', zh: '由哪个模型来写？', ru: 'Какая модель пишет разбор?' },
+  modelWhy: { en: 'Each model reads the same replay with the same tools, and its review is checked against the replay the same way. A review by another model is kept beside the first, so you can compare them.', zh: '每个模型读的是同一份录像、用同一套工具，写出的复盘也按同样的方式和录像核对。换一个模型写的复盘会另存一份，可以对比着看。', ru: 'Каждая модель читает один и тот же реплей теми же инструментами и проходит ту же проверку фактов. Разборы разных моделей сохраняются рядом для сравнения.' },
+  modelBy: { en: 'Written by', zh: '撰写模型', ru: 'Автор разбора' },
+  working: { en: 'Working on your review', zh: '正在准备你的复盘', ru: 'Готовим ваш разбор' },
+  leave: { en: 'You can keep this page open; the review appears here when it is done.', zh: '页面开着就行，写完会出现在这里。', ru: 'Оставьте страницу открытой — разбор появится здесь сразу после завершения.' },
+  s1: { en: 'Fetch the replay', zh: '取录像', ru: 'Загрузка реплея' },
+  s2: { en: 'Read the replay', zh: '解析录像', ru: 'Разбор реплея' },
+  s3: { en: 'The coach goes through it', zh: '教练看录像', ru: 'Тренер изучает игру' },
+  s4: { en: 'Write the review', zh: '写复盘', ru: 'Подготовка отчёта' },
+  failedTitle: { en: 'The review did not come out', zh: '这次复盘没有写出来', ru: 'Не удалось составить разбор' },
+  failedBody: { en: 'The coach could not finish a review it could back with the replay. Try again.', zh: '教练没能写出一份有录像依据的复盘。可以再试一次。', ru: 'Тренер не смог завершить разбор с полными доказательствами из реплея. Попробуйте снова.' },
+  retry: { en: 'Try again', zh: '再试一次', ru: 'Попробовать снова' },
+  goneTitle: { en: 'The replay of this game is no longer available', zh: '这局的录像已经没有了', ru: 'Реплей этого матча больше недоступен' },
+  goneBody: { en: 'Valve keeps replays for about two weeks. Without the replay there is nothing to review honestly, so nothing is shown in its place.', zh: 'Valve 只保留大约两周的录像。没有录像就没有可以诚实复盘的东西，所以这里不放替代内容。', ru: 'Valve хранит реплеи около двух недель. Без реплея честный разбор невозможен.' },
+  noUrlTitle: { en: 'The replay is not ready yet', zh: '录像还没准备好', ru: 'Реплей ещё не готов' },
+  noUrlBody: { en: 'A game that just ended takes a few minutes before its replay can be fetched. Try again shortly.', zh: '刚打完的比赛要等几分钟才能取到录像。稍后再试。', ru: 'После завершения матча реплей появляется через несколько минут. Попробуйте чуть позже.' },
+  noUrlWaiting: { en: 'A game that just ended takes a few minutes before its replay can be fetched. Leave this page open: it will try again by itself in a few minutes. Or come back later.', zh: '刚打完的比赛要等几分钟才能取到录像。这个页面开着就行，过几分钟会自动再试一次；也可以稍后再回来。', ru: 'После завершения матча реплей появляется через пару минут. Оставьте страницу открытой — мы автоматически попробуем ещё раз.' },
+  parseFailedTitle: { en: 'The replay could not be read', zh: '录像没有解析出来', ru: 'Не удалось прочитать реплей' },
+  parseFailedBody: { en: 'Fetching or reading the replay failed. It usually works on a second try.', zh: '取录像或解析时出了问题，通常再试一次就好。', ru: 'Ошибка загрузки или разбора реплея. Обычно повторная попытка помогает.' },
+  offTitle: { en: 'Replay reviews are not switched on here', zh: '这里还没有开启录像复盘', ru: 'Разбор реплеев здесь не включён' },
+  offBody: { en: 'This site cannot fetch replays right now, so it cannot review this game.', zh: '这个站点现在取不了录像，所以无法复盘这一局。', ru: 'Этот сервер сейчас не может скачивать реплеи.' },
+  unavailable: { en: 'The coach is not available right now.', zh: '教练暂时不可用。', ru: 'Тренер сейчас недоступен.' },
+  rate: { en: 'Too many reviews started from here. Try again in a few minutes.', zh: '从这里发起的复盘太多了，过几分钟再试。', ru: 'Слишком много разборов с вашего адреса. Попробуйте через несколько минут.' },
+  busy: { en: 'The coach is at capacity. Try again later.', zh: '教练现在忙不过来，稍后再试。', ru: 'Тренер сейчас перегружен. Попробуйте позже.' },
+  rateWait: { en: 'Too many reviews started from here. It starts on its own in {t}.', zh: '从这里发起的复盘太多了，{t} 后自动开始。', ru: 'Слишком много запросов. Автозапуск через {t}.' },
+  busyWait: { en: 'The coach is at capacity. It tries again on its own in {t}.', zh: '教练现在忙不过来，{t} 后自动再试。', ru: 'Тренер перегружен. Автоповтор через {t}.' },
+  unknownHero: { en: 'That hero is not in this game.', zh: '这局里没有这个英雄。', ru: 'Этого героя не было в матче.' },
+  scoreboard: { en: 'Scoreboard', zh: '记分板', ru: 'Таблица матча' },
+  checked: { en: 'Times and numbers in this review were checked against the replay records.', zh: '这份复盘里的时间点和数字已经和录像记录核对过。', ru: 'Все тайминги и числа в этом разборе сверены с записями реплея.' },
+  dropped: { en: 'removed for lack of evidence', zh: '条因缺少依据被删去', ru: 'удалено из-за нехватки доказательств' },
+  q1: { en: 'Which of my deaths was the most avoidable?', zh: '我哪一次阵亡最不应该？', ru: 'Какой из моих смертей было проще всего избежать?' },
+  qFinding: { en: 'what exactly should I have done instead?', zh: '具体应该怎么打？', ru: 'что именно мне следовало сделать иначе?' },
+  goalCheck: { en: 'Your goal, in this game', zh: '你的目标，这一局', ru: 'Ваша цель в этом матче' },
+  checkOnly: { en: 'Only check my goal', zh: '只检查目标', ru: 'Только проверить цель' },
+  curve: { en: 'Game by game', zh: '一局一局', ru: 'От игры к игре' },
+  curveFrom: { en: 'the game the goal came from', zh: '定下目标的那局', ru: 'матч, где была задана цель' },
+  checkOnlyWhy: { en: 'Reads the replay and counts what your goal is about — about a minute, no review written.', zh: '只读录像、数一数目标说的那件事——大约一分钟，不写复盘。', ru: 'Прочитает реплей и проверит цель примерно за минуту, без полного разбора.' },
+  checkingGoal: { en: 'Reading the replay to check your goal…', zh: '正在读录像，检查你的目标…', ru: 'Читаем реплей для проверки вашей цели…' },
+  goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘', ru: 'после матча #{id}' },
+  ruleChecks: { en: 'Your rule, in this game', zh: '你的规则，这一局', ru: 'Ваше правило в этой игре' },
+  goalResult: {
+    met: { en: 'Met', zh: '达成', ru: 'Выполнено' },
+    missed: { en: 'Missed', zh: '未达成', ru: 'Не выполнено' },
+    no_opportunity: { en: 'Did not come up', zh: '这局没遇到', ru: 'Не было случая' },
+    unknown: { en: 'Can’t tell yet', zh: '暂时判断不了', ru: 'Пока неизвестно' },
+  } as Record<string, Bi>,
 } as const;
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 /** Longer than this (a day's parse ceiling, say), a refusal is said once and not waited out on the page. */
 const MAX_AUTO_WAIT_SEC = 15 * 60;
 /**
@@ -116,13 +121,15 @@ export function journeyStep(avail: Availability | null, state: ReviewState | nul
   return avail?.trace ? 2 : 0;
 }
 
-type Bi = Record<'en' | 'zh', string>;
-const intentKey = (matchId: string, hero: string, lang: string, plan: string | null = null, model: string | null = null) => `dota2ai.review-intent.${matchId}.${hero}.${lang}${plan ? `.${plan}` : ''}${model ? `.m-${model}` : ''}`;
+type Bi = { en: string; zh: string; ru?: string };
+const intentKey = (matchId: string, hero: string, plan: string | null = null, model: string | null = null) => `dota2ai.review-intent.${matchId}.${hero}${plan ? `.${plan}` : ''}${model ? `.m-${model}` : ''}`;
+const legacyIntentKey = (matchId: string, hero: string, lang: Lang, plan: string | null = null, model: string | null = null) => `dota2ai.review-intent.${matchId}.${hero}.${lang}${plan ? `.${plan}` : ''}${model ? `.m-${model}` : ''}`;
 const session = () => { try { return window.sessionStorage; } catch { return null; } };
+const heroLabel = (hero: AgentHero, lang: Lang) => hero[lang] ?? hero.en;
 
 const Portrait: React.FC<{ hero: AgentHero; report: CoachReport | null; lang: Lang }> = ({ hero, report, lang }) => {
   const img = report?.players.find((p) => p.hero.id === hero.hero_id)?.hero.img;
-  return img ? <SafeImg src={img} alt={hero[lang]} className="ag-portrait" /> : <span className="ag-portrait ag-portrait--blank" aria-hidden="true" />;
+  return img ? <SafeImg src={img} alt={heroLabel(hero, lang)} className="ag-portrait" /> : <span className="ag-portrait ag-portrait--blank" aria-hidden="true" />;
 };
 
 export const AgentMatchPage: React.FC = () => {
@@ -132,7 +139,7 @@ export const AgentMatchPage: React.FC = () => {
   // How this visit arrived: a teammate's "send to my team" link, or someone's own review shared.
   const refParam = search.get('ref');
   const arrivedBy = refParam === 'team' || refParam === 'share' ? refParam : null;
-  const t = (b: Bi) => b[lang];
+  const t = (b: Bi) => b[lang] ?? b.en;
   const valid = parseMatchInput(matchId) === matchId;
   const [avail, setAvail] = useState<Availability | null>(null);
   const [report, setReport] = useState<CoachReport | null | 'failed'>(null);
@@ -263,25 +270,46 @@ export const AgentMatchPage: React.FC = () => {
     setSearch(next, { replace: false });
   };
 
-  // The reader's "go" survives a reload of this tab, so a parse they started still ends in their review.
-  useEffect(() => { setIntentOf(heroKey && session()?.getItem(intentKey(matchId, heroKey, lang, plan, model)) === '1' ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}` : null); setNotice(null); }, [matchId, heroKey, lang, plan, model]);
-  const want = (on: boolean) => { if (!heroKey) return; setIntentOf(on ? `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}` : null); try { if (on) session()?.setItem(intentKey(matchId, heroKey, lang, plan, model), '1'); else session()?.removeItem(intentKey(matchId, heroKey, lang, plan, model)); } catch { /* storage blocked */ } };
+  // The reader's "go" survives a reload of this tab and language toggles, because one review job generates all 3 languages.
+  const baseSelection = `${matchId}|${heroKey}|${plan ?? ''}|${model ?? ''}`;
+  useEffect(() => {
+    const s = session();
+    const has = Boolean(heroKey && (s?.getItem(intentKey(matchId, heroKey, plan, model)) === '1' || s?.getItem(legacyIntentKey(matchId, heroKey, lang, plan, model)) === '1'));
+    setIntentOf(has ? baseSelection : null);
+    setNotice(null);
+  }, [matchId, heroKey, lang, plan, model, baseSelection]);
+  const want = (on: boolean) => {
+    if (!heroKey) return;
+    setIntentOf(on ? baseSelection : null);
+    try {
+      if (on) session()?.setItem(intentKey(matchId, heroKey, plan, model), '1');
+      else {
+        session()?.removeItem(intentKey(matchId, heroKey, plan, model));
+        for (const l of ['en', 'zh', 'ru'] as const) session()?.removeItem(legacyIntentKey(matchId, heroKey, l, plan, model));
+      }
+    } catch { /* storage blocked */ }
+  };
 
   // What the reader is looking at now. An answer that was asked for under another hero or language
   // belongs to that selection and is dropped when it arrives.
   const selection = `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}`;
   const selected = useRef(selection);
   selected.current = selection;
-  const intent = intentOf === selection;
+  const intent = intentOf === baseSelection;
   /** The refusal's wait, when it was for what is on screen now. */
   const wait = waits[selection] ?? null;
   const [reviewTick, setReviewTick] = useState(0);
+  // Keep track of which (match|hero|plan|model) the current state belongs to, so toggling language switches
+  // instantaneously from the pre-generated trilingual bundle when available.
+  const stateBaseRef = useRef<string | null>(null);
+  const stateRef = useRef<ReviewState | null>(null);
+  stateRef.current = state;
   const loadReview = useCallback(async (signal?: AbortSignal) => {
     if (!heroKey) return;
     const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}`;
     try {
       const next = await fetchReview(matchId, heroKey, lang, signal, plan, model);
-      if (selected.current === asked) setState(next);
+      if (selected.current === asked) { stateBaseRef.current = `${matchId}|${heroKey}|${plan ?? ''}|${model ?? ''}`; setState(next); }
     } catch (e) {
       if ((e as Error).name === 'AbortError' || selected.current !== asked) return;
       // A request that failed is not a review that failed: while one is running, keep waiting and ask again.
@@ -291,12 +319,18 @@ export const AgentMatchPage: React.FC = () => {
   }, [matchId, heroKey, lang, plan, model]);
 
   useEffect(() => {
+    if (!heroKey || !hasTrace) { setState(null); stateBaseRef.current = null; return undefined; }
+    // Instant zero-network switch when switching language within the same trilingual review bundle.
+    const cur = stateRef.current;
+    if (stateBaseRef.current === baseSelection && cur?.status === 'ready' && cur.reviews?.[lang]) {
+      setState({ ...cur, review: cur.reviews[lang]! });
+      return undefined;
+    }
     setState(null);
-    if (!heroKey || !hasTrace) return undefined;
     const ac = new AbortController();
     void loadReview(ac.signal);
     return () => ac.abort();
-  }, [heroKey, hasTrace, loadReview]);
+  }, [heroKey, hasTrace, baseSelection, lang, loadReview]);
 
   // While something is being worked on, ask how far it is every couple of seconds.
   const parsing = parse?.status === 'running';
@@ -348,7 +382,7 @@ export const AgentMatchPage: React.FC = () => {
     const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}`;
     if (!heroKey || beginning.current === asked) return;
     beginning.current = asked;
-    try { const next = await startReview(matchId, heroKey, lang, plan, model); if (selected.current === asked) setState(next); } catch (e) { refuse(e, asked); } finally { if (beginning.current === asked) beginning.current = null; }
+    try { const next = await startReview(matchId, heroKey, lang, plan, model); if (selected.current === asked) { stateBaseRef.current = baseSelection; setState(next); } } catch (e) { refuse(e, asked); } finally { if (beginning.current === asked) beginning.current = null; }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, heroKey, lang, plan, model]);
 
@@ -520,7 +554,7 @@ export const AgentMatchPage: React.FC = () => {
   const suggestions = useMemo(() => {
     if (state?.status !== 'ready') return [];
     const first = state.review.findings[0]?.title;
-    return [...(first ? [lang === 'zh' ? `「${first}」——${T.qFinding.zh}` : `"${first}" — ${T.qFinding.en}`] : []), T.q1[lang]];
+    return [...(first ? [lang === 'zh' ? `「${first}」——${T.qFinding.zh}` : lang === 'ru' ? `«${first}» — ${T.qFinding.ru}` : `"${first}" — ${T.qFinding.en}`] : []), T.q1[lang]];
   }, [state, lang]);
 
   if (!valid) return <Shell><div className="ag-state"><h1>{t(T.invalid)}</h1><Link to={`/?lang=${lang}`} className="ag-btn">{t(T.home)}</Link></div></Shell>;
@@ -549,7 +583,7 @@ export const AgentMatchPage: React.FC = () => {
       {hero && (
         <div className="ag-head-hero">
           <Portrait hero={hero} report={board} lang={lang} />
-          <strong>{hero[lang]}</strong>
+          <strong>{heroLabel(hero, lang)}</strong>
           <span className={`ag-team is-${hero.team}`}>{t(T[hero.team])}</span>
           <button type="button" className="ag-link" onClick={() => pickHero(null)}>{t(T.change)}</button>
         </div>
@@ -558,10 +592,10 @@ export const AgentMatchPage: React.FC = () => {
         <p className="ag-goalcheck">
           <span>{t(T.goalCheck)}</span>
           {/* The check's own label: it reads the same on any hero. The goal came from another game, so say which. */}
-          <b>{activeGoalNow.goal.label[lang]}</b>
+          <b>{t(activeGoalNow.goal.label)}</b>
           <Link to={`/r/${activeGoalNow.fromMatch}?lang=${lang}`} className="ag-link">{t(T.goalFrom).replace('{id}', String(activeGoalNow.fromMatch))}</Link>
           <span className={`cx-goal-result is-${goalCheck.result}`}>{t(T.goalResult[goalCheck.result])}</span>
-          <em>{goalCheck.evidence[lang]}</em>
+          <em>{t(goalCheck.evidence)}</em>
           {curveLine(activeGoalNow.id)}
         </p>
       )}
@@ -572,7 +606,7 @@ export const AgentMatchPage: React.FC = () => {
               <span>{t(T.ruleChecks)}</span>
               <b>{rule.when}{lang === 'zh' ? '：' : ': '}{rule.do}</b>
               <span className={`cx-goal-result is-${check.result}`}>{t(T.goalResult[check.result])}</span>
-              <em>{check.evidence[lang]}</em>
+              <em>{t(check.evidence)}</em>
               {curveLine(`${activeGoalNow!.id}#${rule.finding}`)}
             </li>
           ))}
@@ -610,7 +644,7 @@ export const AgentMatchPage: React.FC = () => {
                 {roster.filter((h) => h.team === team).map((h) => (
                   <button key={h.hero} type="button" onClick={() => pickHero(h.hero)}>
                     <Portrait hero={h} report={board} lang={lang} />
-                    <span>{h[lang]}</span>
+                    <span>{heroLabel(h, lang)}</span>
                   </button>
                 ))}
               </div>

@@ -30,7 +30,7 @@ describe('goal: deaths to enemies who already own a gap closer', () => {
   it('is set when those deaths are a large share, and carries its own item list', () => {
     expect(finding(0).goal).toEqual({
       kind: 'deaths_to_gap_closer_max', max: 3, items: GAP_CLOSERS,
-      label: { en: 'At most 3 deaths to enemies who already have a Blink-type item', zh: '被已有跳刀类位移装的敌人击杀不超过 3 次' },
+      label: { en: 'At most 3 deaths to enemies who already have a Blink-type item', zh: '被已有跳刀类位移装的敌人击杀不超过 3 次', ru: 'Не более 3 смертей от врагов с предметом на мобильность (Blink и т.п.)' },
     });
   });
 

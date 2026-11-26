@@ -32,16 +32,21 @@ describe('resolveLang', () => {
     expect(resolveLang({ urlLang: null, storedLang: null, browserLanguages: null, detectBrowser: true })).toBe('en');
   });
 
-  it('maps zh-CN and zh-TW browser languages to zh when detection is enabled', () => {
+  it('maps zh-CN/zh-TW and ru-RU browser languages when detection is enabled', () => {
     expect(resolveLang({ browserLanguages: ['zh-CN', 'en'], detectBrowser: true })).toBe('zh');
     expect(resolveLang({ browserLanguages: ['zh-TW'], detectBrowser: true })).toBe('zh');
     expect(resolveLang({ browserLanguages: ['en-GB', 'zh-Hans'], detectBrowser: true })).toBe('zh');
+    expect(resolveLang({ browserLanguages: ['ru-RU', 'en'], detectBrowser: true })).toBe('ru');
+    expect(resolveLang({ browserLanguages: ['ru'], detectBrowser: true })).toBe('ru');
+    expect(resolveLang({ urlLang: 'ru', storedLang: 'en' })).toBe('ru');
   });
 
-  it('normalizeLang accepts only exact en/zh', () => {
+  it('normalizeLang accepts only exact en/zh/ru', () => {
     expect(normalizeLang('en')).toBe('en');
     expect(normalizeLang('zh')).toBe('zh');
+    expect(normalizeLang('ru')).toBe('ru');
     expect(normalizeLang('zh-CN')).toBeNull();
+    expect(normalizeLang('ru-RU')).toBeNull();
     expect(normalizeLang(undefined)).toBeNull();
     expect(normalizeLang(42)).toBeNull();
   });
@@ -57,6 +62,8 @@ describe('persistence + document lang', () => {
     persistLang('zh');
     expect(window.localStorage.getItem(LANG_STORAGE_KEY)).toBe('zh');
     expect(readStoredLang()).toBe('zh');
+    persistLang('ru');
+    expect(readStoredLang()).toBe('ru');
     persistLang('en');
     expect(readStoredLang()).toBe('en');
   });
@@ -70,9 +77,11 @@ describe('persistence + document lang', () => {
     spy.mockRestore();
   });
 
-  it('sets documentElement.lang to en or zh-CN', () => {
+  it('sets documentElement.lang to en, zh-CN, or ru', () => {
     applyDocumentLang('zh');
     expect(document.documentElement.lang).toBe('zh-CN');
+    applyDocumentLang('ru');
+    expect(document.documentElement.lang).toBe('ru');
     applyDocumentLang('en');
     expect(document.documentElement.lang).toBe('en');
   });

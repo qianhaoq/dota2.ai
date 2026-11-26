@@ -5,21 +5,33 @@ import { accessSnippets, agentAsk, agentPrompt, type AccessMode } from './access
 import type { Bi } from './types';
 
 const T = {
-  howTitle: { en: 'What happens next', zh: '接下来会发生什么' },
+  howTitle: { en: 'What happens next', zh: '接下来会发生什么', ru: 'Что будет дальше' },
   how: [
-    { t: { en: 'You pick your hero', zh: '选你玩的英雄' }, d: { en: 'The review is written for one player.', zh: '复盘是写给一个人的。' } },
-    { t: { en: 'The coach watches the replay', zh: '教练看录像' }, d: { en: 'Every death, every ultimate, the fights that turned the game, your build. Two to three minutes.', zh: '每次阵亡、每个大招、转折的团战、你的出装。两到三分钟。' } },
-    { t: { en: 'You get the review', zh: '拿到复盘' }, d: { en: 'One verdict, at most three things that decided it — each with the replay record behind it — and what to change next game.', zh: '一句结论，最多三个决定胜负的问题，每条都能点开对应的录像记录，再加下一把该改什么。' } },
-    { t: { en: 'Ask anything', zh: '想问就问' }, d: { en: '"How should I have played the fight at 30:26?" The coach goes back to the replay before answering.', zh: '「30:26 那波团我该怎么打？」教练会回到录像里查了再答。' } },
+    {
+      t: { en: 'You pick your hero', zh: '选你玩的英雄', ru: 'Выберите своего героя' },
+      d: { en: 'The review is written for one player.', zh: '复盘是写给一个人的。', ru: 'Разбор пишется лично для одного игрока.' },
+    },
+    {
+      t: { en: 'The coach watches the replay', zh: '教练看录像', ru: 'Тренер смотрит реплей' },
+      d: { en: 'Every death, every ultimate, the fights that turned the game, your build. Two to three minutes.', zh: '每次阵亡、每个大招、转折的团战、你的出装。两到三分钟。', ru: 'Каждую смерть, каждый ульт, переломные драки и вашу сборку. Две–три минуты.' },
+    },
+    {
+      t: { en: 'You get the review', zh: '拿到复盘', ru: 'Получаете разбор' },
+      d: { en: 'One verdict, at most three things that decided it — each with the replay record behind it — and what to change next game.', zh: '一句结论，最多三个决定胜负的问题，每条都能点开对应的录像记录，再加下一把该改什么。', ru: 'Один вердикт, до трёх главных причин исхода — с записями из реплея — и правило на следующую игру.' },
+    },
+    {
+      t: { en: 'Ask anything', zh: '想问就问', ru: 'Задавайте вопросы' },
+      d: { en: '"How should I have played the fight at 30:26?" The coach goes back to the replay before answering.', zh: '「30:26 那波团我该怎么打？」教练会回到录像里查了再答。', ru: '«Как мне стоило сыграть драку на 30:26?» Тренер проверит реплей перед ответом.' },
+    },
   ] as { t: Bi; d: Bi }[],
-  howNote: { en: 'Times and numbers are checked against the replay. What a replay cannot show — vision, voice chat — the coach says it cannot see.', zh: '时间点和数字都和录像核对过。录像里没有的——视野、语音——教练会直说看不到。' },
-  waysTitle: { en: 'Four ways to use it', zh: '四种用法' },
-  copy: { en: 'Copy', zh: '复制' },
-  copied: { en: 'Copied', zh: '已复制' },
-  promptTitle: { en: 'Or send this to your agent', zh: '或者，把这段话发给你的 Agent' },
-  clients: { en: 'Your agent', zh: '你用的 Agent' },
-  oneLine: { en: 'One line connects it:', zh: '一行接入：' },
-  thenSay: { en: 'Then just say:', zh: '然后说一句：' },
+  howNote: { en: 'Times and numbers are checked against the replay. What a replay cannot show — vision, voice chat — the coach says it cannot see.', zh: '时间点和数字都和录像核对过。录像里没有的——视野、语音——教练会直说看不到。', ru: 'Все тайминги и числа сверены с реплеем. То, чего нет в реплее (вижн, голосовой чат), тренер не выдумывает.' },
+  waysTitle: { en: 'Four ways to use it', zh: '四种用法', ru: 'Четыре способа использования' },
+  copy: { en: 'Copy', zh: '复制', ru: 'Копировать' },
+  copied: { en: 'Copied', zh: '已复制', ru: 'Скопировано' },
+  promptTitle: { en: 'Or send this to your agent', zh: '或者，把这段话发给你的 Agent', ru: 'Или отправьте это своему ИИ-агенту' },
+  clients: { en: 'Your agent', zh: '你用的 Agent', ru: 'Ваш агент' },
+  oneLine: { en: 'One line connects it:', zh: '一行接入：', ru: 'Подключение одной строкой:' },
+  thenSay: { en: 'Then just say:', zh: '然后说一句：', ru: 'Затем просто напишите:' },
 };
 
 /**

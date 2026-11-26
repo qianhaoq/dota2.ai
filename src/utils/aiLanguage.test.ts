@@ -9,8 +9,9 @@ import {
 } from '../../lib/aiLanguage.js';
 
 describe('normalizeUiLang', () => {
-  it('keeps zh and maps everything else to en (product default)', () => {
+  it('keeps zh and ru and maps everything else to en (product default)', () => {
     expect(normalizeUiLang('zh')).toBe('zh');
+    expect(normalizeUiLang('ru')).toBe('ru');
     expect(normalizeUiLang('en')).toBe('en');
     expect(normalizeUiLang(undefined)).toBe('en');
     expect(normalizeUiLang('')).toBe('en');
@@ -43,6 +44,7 @@ describe('DeepSeek language locks', () => {
 
   it('deepseekLanguageLock matches UI lang', () => {
     expect(deepseekLanguageLock('zh')).toContain('简体中文');
+    expect(deepseekLanguageLock('ru')).toContain('русском языке');
     expect(deepseekLanguageLock('en')).toContain('English');
   });
 

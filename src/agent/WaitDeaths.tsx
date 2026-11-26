@@ -11,24 +11,24 @@ import { fetchEvidence } from './api';
 import { MomentReplay } from './MomentReplay';
 import { trackEvent } from '../services/analytics';
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 const T: Record<string, Record<Lang, string>> = {
-  title: { en: 'While the coach reads the replay: your {n} deaths', zh: '教练看录像的这几分钟，先看你的 {n} 次阵亡' },
-  one: { en: 'While the coach reads the replay: your one death', zh: '教练看录像的这几分钟，先看你唯一的一次阵亡' },
-  none: { en: 'While the coach reads the replay', zh: '教练正在看录像' },
-  noneBody: { en: 'You did not die once this game.', zh: '这局你一次都没有阵亡。' },
-  how: { en: 'Facts from the replay, no verdict yet. Each one can be played on the map.', zh: '这些是录像里的事实，还不是结论。每一次都能在地图上重放。' },
-  by: { en: 'Last hit by', zh: '最后一击来自' },
-  times: { en: '×{n}', zh: '{n} 次' },
-  play: { en: 'Replay on the map', zh: '在地图上重放' },
-  close: { en: 'Close the replay', zh: '收起回放' },
-  untimed: { en: '{n} more with no time in this summary.', zh: '另有 {n} 次，这份汇总里没有时间。' },
-  in_a_fight: { en: 'in a fight', zh: '团战中' },
-  outside_fights: { en: 'outside a fight', zh: '团战外' },
-  no_ally_within_2200_at_death: { en: 'no ally within 2200', zh: '2200 范围内没有队友' },
-  three_or_more_enemy_heroes_dealing_damage: { en: '3+ enemies hitting you', zh: '三个以上敌人在打你' },
-  traded_within_15s: { en: 'an enemy died within 15 s', zh: '15 秒内有敌人倒下' },
-  not_traded_within_15s: { en: 'no enemy died within 15 s', zh: '15 秒内没有敌人倒下' },
+  title: { en: 'While the coach reads the replay: your {n} deaths', zh: '教练看录像的这几分钟，先看你的 {n} 次阵亡', ru: 'Пока тренер изучает реплей: ваши {n} смертей' },
+  one: { en: 'While the coach reads the replay: your one death', zh: '教练看录像的这几分钟，先看你唯一的一次阵亡', ru: 'Пока тренер изучает реплей: ваша единственная смерть' },
+  none: { en: 'While the coach reads the replay', zh: '教练正在看录像', ru: 'Пока тренер изучает реплей' },
+  noneBody: { en: 'You did not die once this game.', zh: '这局你一次都没有阵亡。', ru: 'Вы ни разу не погибли в этом матче.' },
+  how: { en: 'Facts from the replay, no verdict yet. Each one can be played on the map.', zh: '这些是录像里的事实，还不是结论。每一次都能在地图上重放。', ru: 'Факты из реплея, пока без выводов. Каждый момент можно воспроизвести на карте.' },
+  by: { en: 'Last hit by', zh: '最后一击来自', ru: 'Добил' },
+  times: { en: '×{n}', zh: '{n} 次', ru: '×{n}' },
+  play: { en: 'Replay on the map', zh: '在地图上重放', ru: 'Показать на карте' },
+  close: { en: 'Close the replay', zh: '收起回放', ru: 'Скрыть повтор' },
+  untimed: { en: '{n} more with no time in this summary.', zh: '另有 {n} 次，这份汇总里没有时间。', ru: 'Ещё {n} без отметки времени в сводке.' },
+  in_a_fight: { en: 'in a fight', zh: '团战中', ru: 'в драке' },
+  outside_fights: { en: 'outside a fight', zh: '团战外', ru: 'вне драки' },
+  no_ally_within_2200_at_death: { en: 'no ally within 2200', zh: '2200 范围内没有队友', ru: 'без союзников в 2200' },
+  three_or_more_enemy_heroes_dealing_damage: { en: '3+ enemies hitting you', zh: '三个以上敌人在打你', ru: 'били 3+ врагов' },
+  traded_within_15s: { en: 'an enemy died within 15 s', zh: '15 秒内有敌人倒下', ru: 'враг погиб за 15 с' },
+  not_traded_within_15s: { en: 'no enemy died within 15 s', zh: '15 秒内没有敌人倒下', ru: 'без размена за 15 с' },
 };
 /** The labels shown, in this order: each is a list of death times in the summary's `deaths_where`. */
 const LABELS = ['in_a_fight', 'outside_fights', 'no_ally_within_2200_at_death', 'three_or_more_enemy_heroes_dealing_damage', 'traded_within_15s', 'not_traded_within_15s'] as const;

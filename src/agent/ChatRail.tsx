@@ -7,45 +7,45 @@ import { trackEvent } from '../services/analytics';
  * things up in the replay before answering; the lookups show as they happen.
  */
 
-type Lang = 'en' | 'zh';
+type Lang = 'en' | 'zh' | 'ru';
 export interface ChatHandle { ask: (label: string, refs: string[]) => void; /** Ask this question now, as if typed and sent. False when the coach is still answering the last one. */ send: (question: string) => boolean }
 
 const T = {
-  title: { en: 'Ask the coach', zh: '问教练' },
-  sub: { en: 'The coach looks the moment up in the replay before answering. What the replay cannot show, it says so.', zh: '教练会先去录像里查，再回答；录像看不到的，会直接说明。' },
-  placeholder: { en: 'e.g. How should I have played the fight at 30:26?', zh: '例如：30:26 那波团我该怎么打？' },
-  send: { en: 'Ask', zh: '提问' },
-  stop: { en: 'Stop', zh: '停止' },
-  you: { en: 'You', zh: '你' },
-  coach: { en: 'Coach', zh: '教练' },
-  thinking: { en: 'Thinking…', zh: '思考中…' },
-  about: { en: 'About', zh: '围绕' },
-  clear: { en: 'Clear', zh: '清除' },
-  tooLong: { en: 'Keep the question under 500 characters.', zh: '问题请控制在 500 字以内。' },
-  rate: { en: 'Too many questions — wait a minute and try again.', zh: '提问太频繁了，请稍等一分钟再试。' },
-  busy: { en: 'The coach is at capacity right now. Try again in a few minutes.', zh: '教练现在忙不过来，过几分钟再试。' },
-  failed: { en: 'No answer came back. Try again.', zh: '没有拿到回答，请重试。' },
-  unverified: { en: 'Not found in the replay data, treat with care:', zh: '以下内容在录像数据里没有查到，请谨慎看待：' },
-  suggest: { en: 'Try asking', zh: '可以这样问' },
+  title: { en: 'Ask the coach', zh: '问教练', ru: 'Спросить тренера' },
+  sub: { en: 'The coach looks the moment up in the replay before answering. What the replay cannot show, it says so.', zh: '教练会先去录像里查，再回答；录像看不到的，会直接说明。', ru: 'Тренер проверяет момент по реплею перед ответом. Если данных в реплее нет, он скажет об этом прямо.' },
+  placeholder: { en: 'e.g. How should I have played the fight at 30:26?', zh: '例如：30:26 那波团我该怎么打？', ru: 'Напр.: Как мне стоило сыграть драку на 30:26?' },
+  send: { en: 'Ask', zh: '提问', ru: 'Спросить' },
+  stop: { en: 'Stop', zh: '停止', ru: 'Стоп' },
+  you: { en: 'You', zh: '你', ru: 'Вы' },
+  coach: { en: 'Coach', zh: '教练', ru: 'Тренер' },
+  thinking: { en: 'Thinking…', zh: '思考中…', ru: 'Думаю…' },
+  about: { en: 'About', zh: '围绕', ru: 'О моменте' },
+  clear: { en: 'Clear', zh: '清除', ru: 'Очистить' },
+  tooLong: { en: 'Keep the question under 500 characters.', zh: '问题请控制在 500 字以内。', ru: 'Сократите вопрос до 500 символов.' },
+  rate: { en: 'Too many questions — wait a minute and try again.', zh: '提问太频繁了，请稍等一分钟再试。', ru: 'Слишком много вопросов — подождите минуту и попробуйте снова.' },
+  busy: { en: 'The coach is at capacity right now. Try again in a few minutes.', zh: '教练现在忙不过来，过几分钟再试。', ru: 'Тренер сейчас перегружен. Попробуйте через пару минут.' },
+  failed: { en: 'No answer came back. Try again.', zh: '没有拿到回答，请重试。', ru: 'Ответ не пришёл. Попробуйте снова.' },
+  unverified: { en: 'Not found in the replay data, treat with care:', zh: '以下内容在录像数据里没有查到，请谨慎看待：', ru: 'Не найдено в данных реплея, отнеситесь с осторожностью:' },
+  suggest: { en: 'Try asking', zh: '可以这样问', ru: 'Попробуйте спросить' },
 } as const;
 
 const TOOLS: Record<string, Record<Lang, string>> = {
-  match_overview: { en: 'Reading the whole game', zh: '看整局概况' },
-  death_context: { en: 'Looking at a death', zh: '查阵亡前的情况' },
-  ability_audit: { en: 'Checking every cast', zh: '查技能释放记录' },
-  immunity_windows: { en: 'Checking spell-immunity windows', zh: '查技能免疫窗口' },
-  fight_timeline: { en: 'Replaying a fight', zh: '回放团战' },
-  item_timeline: { en: 'Checking item timings', zh: '查出装时间' },
-  hero_abilities: { en: 'Looking up ability data', zh: '查技能数据' },
-  pro_item_choices: { en: 'Comparing with pro builds', zh: '对照职业出装' },
-  lane_report: { en: 'Reading the lane', zh: '看对线期' },
-  tempo_report: { en: 'Reading who took the map, and when', zh: '看各阶段的推进和节奏' },
-  lineup_timing: { en: 'Checking which heroes win short or long games', zh: '查双方英雄在长局、短局的胜率' },
-  build_check: { en: 'Checking the build against what killed you', zh: '核对出装和致死伤害' },
-  power_spikes: { en: 'Reading when each side became strong', zh: '看双方的强势期' },
-  window_report: { en: 'Reading when each side was ahead, and what it took', zh: '看双方的窗口期' },
-  build_for_plan: { en: 'Checking what your items served', zh: '看出装是否服务于思路' },
-  farm_report: { en: 'Checking what the other side was doing', zh: '看对面同期在做什么' },
+  match_overview: { en: 'Reading the whole game', zh: '看整局概况', ru: 'Изучаю общую картину матча' },
+  death_context: { en: 'Looking at a death', zh: '查阵亡前的情况', ru: 'Разбираю обстоятельства смерти' },
+  ability_audit: { en: 'Checking every cast', zh: '查技能释放记录', ru: 'Проверяю применения способностей' },
+  immunity_windows: { en: 'Checking spell-immunity windows', zh: '查技能免疫窗口', ru: 'Проверяю окна невосприимчивости к магии' },
+  fight_timeline: { en: 'Replaying a fight', zh: '回放团战', ru: 'Восстанавливаю ход драки' },
+  item_timeline: { en: 'Checking item timings', zh: '查出装时间', ru: 'Проверяю тайминги предметов' },
+  hero_abilities: { en: 'Looking up ability data', zh: '查技能数据', ru: 'Проверяю параметры способностей' },
+  pro_item_choices: { en: 'Comparing with pro builds', zh: '对照职业出装', ru: 'Сравниваю со сборками про-игроков' },
+  lane_report: { en: 'Reading the lane', zh: '看对线期', ru: 'Анализирую линию' },
+  tempo_report: { en: 'Reading who took the map, and when', zh: '看各阶段的推进和节奏', ru: 'Изучаю темп и контроль карты' },
+  lineup_timing: { en: 'Checking which heroes win short or long games', zh: '查双方英雄在长局、短局的胜率', ru: 'Проверяю пики силы героев по длительности' },
+  build_check: { en: 'Checking the build against what killed you', zh: '核对出装和致死伤害', ru: 'Сверяю сборку с полученным уроном' },
+  power_spikes: { en: 'Reading when each side became strong', zh: '看双方的强势期', ru: 'Ищу пики силы сторон' },
+  window_report: { en: 'Reading when each side was ahead, and what it took', zh: '看双方的窗口期', ru: 'Смотрю окна преимущества команд' },
+  build_for_plan: { en: 'Checking what your items served', zh: '看出装是否服务于思路', ru: 'Проверяю соответствие предметов плану' },
+  farm_report: { en: 'Checking what the other side was doing', zh: '看对面同期在做什么', ru: 'Проверяю фарм и действия соперников' },
 };
 const clockOf = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}` : String(v); };
 export function stepLabel(step: ToolStep, lang: Lang): string {
