@@ -364,7 +364,8 @@ export const AgentMatchPage: React.FC = () => {
   const [checkingOnly, setCheckingOnly] = useState<string | null>(null);
   async function checkOnly() {
     if (wait || hasTrace) return;
-    trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: 'parse', plan: false });
+    // Its own event: a goal check is not a request for a review, and the funnel must not count it as one.
+    trackEvent('goal_check_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}) });
     setNotice(null); setCheckingOnly(selection);
     await sendPrepare();
   }
@@ -560,8 +561,10 @@ export const AgentMatchPage: React.FC = () => {
     </header>
   );
   const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} replayLead={avail?.trace ? avail.radiant_gold_lead ?? avail.radiant_net_worth_lead ?? null : null} replayLeadIs={avail?.trace && avail.radiant_gold_lead ? 'gold' : 'net_worth'} />;
+  // A parse the reader asked for to check the goal only: trying it again is the same request, not a review.
+  const goalOnly = checkingOnly === selection && !intent;
   const dead = (title: Bi, body: Bi, retry = false) => (
-    <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={go} disabled={Boolean(wait)}>{t(T.retry)}</button>}{(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}</div>{scoreboard}</Shell>
+    <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={goalOnly ? checkOnly : go} disabled={Boolean(wait)}>{t(T.retry)}</button>}{(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}</div>{scoreboard}</Shell>
   );
 
   if (roster.length === 0) return dead(T.notFound, T.notFoundBody);

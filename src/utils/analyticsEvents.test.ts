@@ -22,6 +22,7 @@ describe('validateAnalyticsEvent', () => {
       ['arrived', { src: 'nga', page: 'match', url: '/r/1?src=nga' }, { src: 'nga', page: 'match' }],
       ['goal_set', { matchId: '9100904020', kind: 'hold_item', account: true, rules: 2, label: 'Blink' }, { matchId: '9100904020', kind: 'hold_item', account: true, rules: 2 }],
       ['goal_checked', { result: 'met', evidence: 'died twice' }, { result: 'met' }],
+      ['goal_check_requested', { matchId: '9100999997', lang: 'en', hero: 'beastmaster', note: 'free text' }, { matchId: '9100999997', lang: 'en', hero: 'beastmaster' }],
       ['chat_asked', { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain', question: 'why did I die' }, { matchId: '9100904020', lang: 'zh', hero: 'queen_of_pain' }],
       ['moment_played', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', t: 1825, fact: 'free text' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster' }],
       ['finding_rated', { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', rating: 'wrong', first: true, title: 'free text', reason: 'fact' }, { matchId: '9100904020', lang: 'zh', hero: 'beastmaster', rating: 'wrong', first: true }],

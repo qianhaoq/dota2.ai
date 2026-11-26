@@ -53,6 +53,13 @@ describe('evaluateHabit', () => {
     // Unknown and not-counted results have none.
     expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }, { health_at_window_start: 1, allies_at_death: 0 }), 38)).not.toHaveProperty('count');
     expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 8)).not.toHaveProperty('count');
+    // Settled with deaths left undecided: the result stands, but the count is only a lower bound — left out.
+    const missedWithUnknowns = evaluateHabit(goal, where({ health_below_half_at_window_start: ['1:00', '2:00', '3:00'] }, { health_at_window_start: 5, allies_at_death: 0 }), 38);
+    expect(missedWithUnknowns).toMatchObject({ result: 'missed' });
+    expect(missedWithUnknowns).not.toHaveProperty('count');
+    const metWithUnknowns = evaluateHabit(goal, where({ health_below_half_at_window_start: [] }, { health_at_window_start: 1, allies_at_death: 3 }), 38);
+    expect(metWithUnknowns).toMatchObject({ result: 'met' });
+    expect(metWithUnknowns).not.toHaveProperty('count');
   });
   it('never a pass on a guess', () => {
     // No replay for that game.

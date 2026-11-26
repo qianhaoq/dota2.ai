@@ -29,6 +29,7 @@ const label = {
   arrived: 'came in by a shared link',
   goal: 'set a next-game goal',
   checked: 'had that goal checked on a later game',
+  goalOnly: 'asked to check a goal without a review',
   played: 'replayed a moment on the map',
   rated: 'said whether a finding was right',
 };
