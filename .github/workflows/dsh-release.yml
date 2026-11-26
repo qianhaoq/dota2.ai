@@ -1,0 +1,76 @@
+# Release the DSH plugin (packages/dsh) from a `dsh-v<version>` tag:
+# test, pack one platform-independent archive, install it into a clean DSH
+# profile with DSH's own CLI, then publish the archive and SHA256SUMS as a
+# GitHub Release. Nothing goes to npm. Release notes are read from
+# .github/release-notes/<tag>.md, which must be on the tagged commit.
+#
+# A manual run (workflow_dispatch) does everything except publishing and
+# uploads the archive as a workflow artifact instead.
+
+name: DSH plugin release
+
+on:
+  push:
+    tags: ['dsh-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DSH_VERSION: 0.2.1-rc.3   # the DSH release the plugin is verified on (packages/dsh/package.json engines.dsh)
+  PNPM_VERSION: 11.28.5     # DSH installs plugins with pnpm
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci
+
+      - name: Tag matches the plugin version
+        if: github.event_name == 'push'
+        run: |
+          version=$(node -p "require('./packages/dsh/package.json').version")
+          dsh=$(node -p "require('./packages/dsh/package.json').engines.dsh")
+          test "${GITHUB_REF_NAME}" = "dsh-v${version}" || { echo "tag ${GITHUB_REF_NAME} != dsh-v${version}"; exit 1; }
+          test "${dsh}" = "${DSH_VERSION}" || { echo "engines.dsh ${dsh} != ${DSH_VERSION}"; exit 1; }
+          test -f ".github/release-notes/${GITHUB_REF_NAME}.md" || { echo "missing .github/release-notes/${GITHUB_REF_NAME}.md"; exit 1; }
+
+      - name: Plugin tests
+        run: npx vitest run packages/dsh packages/mcp
+
+      - name: Pack
+        run: node packages/dsh/scripts/pack.mjs --out dist-dsh
+
+      - name: Install into a clean DSH profile
+        run: |
+          npm install --global "pnpm@${PNPM_VERSION}"
+          mkdir -p "$RUNNER_TEMP/dsh" && cd "$RUNNER_TEMP/dsh"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "@deepseek-ai/dsh@${DSH_VERSION}"
+          cd "$GITHUB_WORKSPACE"
+          node packages/dsh/scripts/installed-smoke.mjs dist-dsh/*.tgz --dsh "$RUNNER_TEMP/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js"
+
+      - name: Checksums
+        run: cd dist-dsh && sha256sum -c SHA256SUMS
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist-dsh/*.tgz dist-dsh/SHA256SUMS \
+            --title "DSH plugin ${GITHUB_REF_NAME#dsh-}" \
+            --notes-file ".github/release-notes/${GITHUB_REF_NAME}.md"
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'push'
+        with:
+          name: dsh-plugin
+          path: dist-dsh/
