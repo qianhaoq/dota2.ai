@@ -2,8 +2,10 @@
   "schema": "dota2.ai/review-rubric@1",
   "match_id": 9104023870,
   "hero": "disruptor",
-  "status": "draft",
+  "status": "approved",
   "written": "2026-11-26",
+  "checked": "2026-11-26",
+  "checked_by": "Claude (two sessions): drafted from match_overview, death_context and lane_report on the rebuilt trace; every fact re-read independently by the session that built the support tools. The owner delegated the check.",
   "source": "Tool outputs on the trace rebuilt from the archived replay, with the match record (match_overview, death_context, lane_report). Ward and save counts from the ward_report / save_report branch (#358), quoted for context, not anchored: those refs are not on main yet. Drafted for the support tools; not yet checked against a second reading.",
   "must_hit": [
     {
