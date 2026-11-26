@@ -13,7 +13,8 @@
     "allowJs": true,
     "jsx": "react-jsx",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@dota2ai/review-engine": ["./packages/review-engine/src/index.js"]
     },
     "allowImportingTsExtensions": true,
     "noEmit": true,
