@@ -289,12 +289,35 @@ describe('a hotfix within a release has numbers of its own', () => {
   });
 
   it('a hotfix the builder could not read is not filled with its neighbour\'s numbers as if they were its own', () => {
+    // None is unread now (the builder skips a facet naming a missing ability): one is made so in a copy of the list.
     const r = release('7.41');
-    const n = r.hotfixes.findIndex((h: any) => !h.data);
-    expect(n).toBeGreaterThan(0);
-    const pd = patchForGame(0, { start_time: at(r.hotfixes[n].rollout_by) + 60 });
-    expect(pd).toMatchObject({ name: '7.41', exact: false, hotfix: r.hotfixes[n - 1].rollout_by });
+    const releases = RELEASES.map((x: any) => (x.name === '7.41' ? { ...x, hotfixes: x.hotfixes.map((h: any, i: number) => (i === 1 ? { ...h, data: null, reason: 'game_files_not_read_by_the_builder' } : h)) } : x));
+    const pd = patchData('7.41', { hotfix: r.hotfixes[1].rollout_by, releases });
+    expect(pd).toMatchObject({ name: '7.41', exact: false, hotfix: r.hotfixes[0].rollout_by });
     expect(pd.reason).toContain('data_not_built');
+    // With its data, the same hotfix is exact and its own.
+    expect(patchData('7.41', { hotfix: r.hotfixes[1].rollout_by })).toMatchObject({ exact: true, hotfix: r.hotfixes[1].rollout_by });
+  });
+
+  it('a hotfix whose ids are not found yet: games known to be older than it are still placed exactly', () => {
+    const a = release('7.42a'); const h = a.hotfixes.at(-1);
+    expect(h.first_match_id_after).toBeUndefined();
+    const checked = index.ids_checked_to;
+    expect(Date.parse(checked.started)).toBeLessThan(Date.parse(h.rollout_from));
+    // At or below the newest match the search looked at: started before the hotfix, so on 7.42a as it rolled out.
+    expect(gamePatch(a.first_match_id_after, null)).toEqual({ release: '7.42a', id: 61, how: 'match_id', exact: true });
+    expect(gamePatch(checked.match_id, null)).toMatchObject({ release: '7.42a', exact: true });
+    expect(gamePatch(checked.match_id, null)).not.toHaveProperty('hotfix');
+    // Past it: maybe after the hotfix, not called exact.
+    expect(gamePatch(checked.match_id + 1, null)).toMatchObject({ release: '7.42a', exact: false, reason: `may_be_after_the_${h.rollout_by.slice(0, 16)}_hotfix_whose_match_ids_are_not_indexed` });
+    // Without that record nothing is assumed.
+    expect(gamePatch(a.first_match_id_after, null, { checked: null })).toMatchObject({ exact: false });
+    // The start time, when known, places the game on either side of the hotfix exactly.
+    expect(patchForGame(0, { start_time: at(h.rollout_by) + 60 })).toMatchObject({ name: '7.42a', hotfix: h.rollout_by, exact: true });
+  });
+
+  it('every update the builder ran on was read: no hotfix is left without its data', () => {
+    for (const r of index.releases) for (const h of r.hotfixes ?? []) expect([r.name, h.rollout_by, Boolean(h.data)]).toEqual([r.name, h.rollout_by, true]);
   });
 
   it('by match id too: each hotfix\'s ids fall on either side of it', () => {
