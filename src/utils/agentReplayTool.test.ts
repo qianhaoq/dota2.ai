@@ -12,7 +12,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { MCP_TOOLS } from '../coach/accessSnippets';
 import { createAgentRouter } from '../../lib/agent/router.js';
 import { createAgentService, createFileTraceStore } from '../../lib/agent/service.js';
-import { replayReview, resolveHero, ReplayToolError } from '../../lib/agent/replayTool.js';
+import { replayReview, resolveHero, shapeReview, ReplayToolError } from '../../lib/agent/replayTool.js';
 
 const express = createRequire(import.meta.url)('express');
 const MATCH = '9100904020';
@@ -80,6 +80,19 @@ describe('replay_review: one call at a time, never blocking', () => {
     expect(calls).toEqual([]);
     expect((await replayReview(api, { match_id: MATCH, hero: 'beastmaster', retry: true })).status).toBe('reviewing');
     expect(calls).toEqual(['start beastmaster en']);
+  });
+
+  it('a failure the service no longer reports as "failed" (another instance, a minute on) is still not restarted by a poll', async () => {
+    const { api, calls } = fake({ lastFailure: async () => ({ reason: 'unverified', at: 1 }) });
+    expect(await replayReview(api, { match_id: MATCH, hero: 'beastmaster' })).toMatchObject({ status: 'failed', reason: 'unverified' });
+    expect(calls).toEqual([]);
+    expect((await replayReview(api, { match_id: MATCH, hero: 'beastmaster', retry: true })).status).toBe('reviewing');
+    expect(calls).toEqual(['start beastmaster en']);
+  });
+
+  it('the page link always names the review\'s language', () => {
+    expect(shapeReview(MATCH, 'beastmaster', 'en', { review: {} }).url).toBe(`https://dota2.ai/r/${MATCH}?hero=beastmaster&lang=en`);
+    expect(shapeReview(MATCH, 'beastmaster', 'zh', { review: {} }).url).toBe(`https://dota2.ai/r/${MATCH}?hero=beastmaster&lang=zh`);
   });
 
   it('a gone replay, a bad id and the read limit are said plainly', async () => {
@@ -162,6 +175,35 @@ describe('replay_review over MCP, on the real agent service and router', () => {
     expect(out.findings[0].evidence[0].fact).toContain('27:27');
     // Polling and asking again never started a second review.
     expect(starts).toBe(1);
+  });
+
+  it('a review that failed on one instance is not started again by a poll that reaches another, minutes later', async () => {
+    const reviewDir = mkdtempSync(join(tmpdir(), 'replay-tool-shared-'));
+    const clock = { t: 1_000_000 };
+    let runs = 0;
+    // A model whose review never verifies: the job fails (reason unverified).
+    const bad = async (o: any) => { if (o.messages.at(-1).role === 'user') { runs++; return { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a')] }; } return { toolCalls: [call('submit_review', submit, 's')] }; };
+    const instance = () => {
+      const service: any = createAgentService({ traces: createFileTraceStore(dir), complete: bad, model: 'm', reviewDir, now: () => clock.t });
+      const router: any = createAgentRouter({ service, resolveClientIp: () => '5.5.5.5' });
+      return router.forRequest({ headers: {} });
+    };
+    const a = instance();
+    expect((await replayReview(a, { match_id: MATCH, hero: 'beastmaster' })).status).toBe('reviewing');
+    for (let i = 0; i < 50; i++) { if ((await a.status(MATCH, 'beastmaster', 'en')).status === 'failed') break; await new Promise((r) => setTimeout(r, 20)); }
+    expect(runs).toBe(1);
+    // Another instance, after the minute in which status() still calls the shared marker "failed".
+    clock.t += 61_000;
+    const b = instance();
+    expect((await b.status(MATCH, 'beastmaster', 'en')).status).toBe('none');
+    expect(await replayReview(b, { match_id: MATCH, hero: 'beastmaster' })).toMatchObject({ status: 'failed' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(runs).toBe(1);
+    // Asked for: one new start.
+    expect((await replayReview(b, { match_id: MATCH, hero: 'beastmaster', retry: true })).status).toBe('reviewing');
+    for (let i = 0; i < 50 && runs < 2; i++) await new Promise((r) => setTimeout(r, 20));
+    expect(runs).toBe(2);
+    rmSync(reviewDir, { recursive: true, force: true });
   });
 
   it('starts count on the caller\'s review limit, like the page\'s: the sixth start from one caller is refused', async () => {
