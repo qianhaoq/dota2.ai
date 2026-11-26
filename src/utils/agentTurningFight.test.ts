@@ -120,32 +120,12 @@ describe('the fight a lost game turned on', () => {
   });
 });
 
-describe('a review is asked about the turning fight', () => {
+describe('a review is not made to write about the turning fight (#405: what to cover is the model\'s judgment)', () => {
   const lane = runTraceTool(trace, 'death_context', { hero: 'beastmaster', index: 1 }, { perspective: 'beastmaster' }) as any;
   const fights = runTraceTool(trace, 'fight_timeline', { from: 1820, to: 1850 }, { perspective: 'beastmaster' }) as any;
   const finding = (extra: any = {}) => ({ title: '对线期的阵亡', claim: '你在 0:47 阵亡。', evidence: [{ refs: ['death:beastmaster:1'], fact: '0:47 阵亡。' }], fix: '退到塔后。', ...extra });
   const review = (findings: any[]) => ({ verdict: '对线期送了。', mainline: [], findings, blind_spots: [] });
   const turnNotes = (r: any, sources: any[]) => verifyReview(r, sources).problems.filter((p: any) => p.kind === 'turn');
-
-  it('when no finding looks at it: one note, naming the fight, that removes nothing', () => {
-    const check = verifyReview(review([finding()]), [overview(), lane]);
-    expect(check.problems).toEqual([{ where: 'findings', index: 0, kind: 'turn', text: '30:26–30:48', soft: true }]);
-    expect(check.ok).toBe(false);
-    expect(check.unsupported.findings.size).toBe(0);
-  });
-
-  it('a finding looks at it by citing the fight, by a record inside it, or by a time inside it', () => {
-    const sources = [overview(), lane, fights];
-    expect(turnNotes(review([finding({ evidence: [{ refs: ['fight:11'], fact: '这波你们多死了人。' }] })]), sources)).toEqual([]);
-    expect(turnNotes(review([finding({ evidence: [{ refs: ['fights:beastmaster:11'], fact: '这波你到场了。' }] })]), sources)).toEqual([]);
-    expect(turnNotes(review([finding({ evidence: [{ refs: ['death:beastmaster:1'], clock: '30:30', fact: '阵亡。' }] })]), sources)).toEqual([]);
-    expect(turnNotes(review([finding({ claim: '30:25 你把咆哮给了瘟疫法师。' })]), sources)).toEqual([]);
-    expect(turnNotes(review([finding(), finding({ claim: '30:40 团灭。' })]), sources)).toEqual([]);
-    // Another fight, or a time well outside it, is not it.
-    expect(turnNotes(review([finding({ evidence: [{ refs: ['fight:10'], fact: '上一波。' }] })]), sources)).toHaveLength(1);
-    expect(turnNotes(review([finding({ evidence: [{ refs: ['fights:beastmaster:1'], fact: '第一波。' }] })]), sources)).toHaveLength(1);
-    expect(turnNotes(review([finding({ claim: '29:00 你在打野。' })]), sources)).toHaveLength(1);
-  });
 
   it('nothing is asked when the tools named no turning fight: none found, no gold, or the overview not read', () => {
     expect(turnNotes(review([finding()]), [overview({ radiant_gold_adv: gold([]) }), lane])).toEqual([]);
@@ -153,52 +133,13 @@ describe('a review is asked about the turning fight', () => {
     expect(turnNotes(review([finding()]), [lane])).toEqual([]);
   });
 
-  it('is not asked when fight_report said the player was not in that fight; is asked when it said they were, or was not read', () => {
-    const report = runTraceTool(trace, 'match_overview', {}, { match, perspective: 'beastmaster' }) as any;
-    const mine = { tool: 'fight_report', ref: 'fights:beastmaster', hero: 'beastmaster', fights: report.fights.map((f: any) => ({ fight: f.ref, me: 'took_part' })) };
-    const away = { ...mine, fights: mine.fights.map((f: any) => (f.fight === 'fight:11' ? { ...f, me: 'not_in_it' } : f)) };
-    expect(turnNotes(review([finding()]), [overview(), lane, mine])).toHaveLength(1);
-    expect(turnNotes(review([finding()]), [overview(), lane, away])).toEqual([]);
-    // Another hero's report, or one that does not list the fight, says nothing about the player in it.
-    expect(turnNotes(review([finding()]), [overview(), lane, { ...away, fights: away.fights.filter((f: any) => f.fight !== 'fight:11') }])).toHaveLength(1);
-    expect(turnNotes(review([finding()]), [overview(), lane, { ...away, tool: 'tempo_report' }])).toHaveLength(1);
+  it('a review whose findings leave out a named turning fight passes, with nothing asked and nothing dropped', () => {
+    const named = overview();
+    expect(named.turning_fight).toMatchObject({ ref: expect.stringMatching(/^fight:/) });
+    const check = verifyReview(review([finding()]), [named, lane, fights]);
+    expect(turnNotes(review([finding()]), [named, lane, fights])).toEqual([]);
+    expect(check.problems.filter((p: any) => !p.soft)).toEqual([]);
+    expect(check.unsupported.findings.size).toBe(0);
   });
 
-  it('only the reviewed player\'s own fight_report says whether they were in it', async () => {
-    // The tools' real reports: Beastmaster took part in the 30:26 fight, Mirana (asked about in the same run) did not.
-    const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh', match } as any);
-    const mirana = await kit.runTool('fight_report', { hero: 'mirana' });
-    const beastmaster = await kit.runTool('fight_report', { hero: 'beastmaster' });
-    expect([mirana.hero, mirana.fights.find((x: any) => x.fight === 'fight:11').me]).toEqual(['mirana', 'not_in_it']);
-    expect([beastmaster.hero, beastmaster.fights.find((x: any) => x.fight === 'fight:11').me]).toEqual(['beastmaster', 'took_part']);
-    // Mirana's report, read first or alone, does not answer for the player.
-    expect(turnNotes(review([finding()]), [overview(), lane, mirana, beastmaster])).toHaveLength(1);
-    expect(turnNotes(review([finding()]), [overview(), lane, mirana])).toHaveLength(1);
-    // The player's own, saying they were not in it, does — whatever was read about anyone else.
-    const away = { ...beastmaster, fights: beastmaster.fights.map((x: any) => (x.fight === 'fight:11' ? { ...x, me: 'not_in_it' } : x)) };
-    expect(turnNotes(review([finding()]), [overview(), lane, mirana, away])).toEqual([]);
-    // A report that does not say whose it is answers for nobody.
-    expect(turnNotes(review([finding()]), [overview(), lane, { ...away, hero: undefined }])).toHaveLength(1);
-  });
-
-  it('the repair round is told which fight, once; a review that still does not look at it ships whole', async () => {
-    const call = (name: string, args: any, id: string) => ({ id, name, args });
-    const replies = [
-      { toolCalls: [call('match_overview', {}, 'a'), call('death_context', { hero: 'beastmaster', index: 1 }, 'b')] },
-      { toolCalls: [call('submit_review', review([finding()]), 's1')] },
-      { toolCalls: [call('submit_review', review([finding()]), 's2')] },
-    ];
-    const seen: any[] = []; let i = 0;
-    const complete = async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; };
-    const r: any = await runDeepReview({ complete, trace, hero: 'beastmaster', lang: 'zh', match });
-    const repair = JSON.parse(seen[2].messages.at(-1).content);
-    expect(repair.error).toBe('unsupported_facts');
-    expect(repair.problems).toEqual([{ in: 'findings', text: '30:26–30:48', why: expect.stringContaining('no finding looks at the fight the game turned on') }]);
-    // 3 investigation/repair turns + 1 tool-free trilingual translation call.
-    expect(seen).toHaveLength(4);
-    expect(seen[3].tools).toEqual([]);
-    expect(r.status).toBe('ok');
-    expect(r.review.findings.map((f: any) => f.title)).toEqual(['对线期的阵亡']);
-    expect(r.verification).toMatchObject({ repaired: true, dropped: 0 });
-  });
 });

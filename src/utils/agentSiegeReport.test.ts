@@ -225,15 +225,11 @@ describe('siege_report on a real game', () => {
     expect(SIEGE_TOOL.description).toMatch(/doing when the push began/);
     expect(SIEGE_TOOL.description).toMatch(/use game_state at fell_at/);
     expect(r.rule).toMatch(/as they were when the push began \(clock\), not when the building fell/);
-    expect(deepReviewSystem('en')).toMatch(/where everyone else was when it began/);
-    expect(deepReviewSystem('en')).toMatch(/"me_when_it_fell"/);
     expect(chatSystem('en')).toMatch(/never give them as where a hero was when the building fell/);
   });
 
   it('the review and the chat get the tool and are told how to read it', () => {
     expect(KNOWLEDGE_TOOLS).toContain(SIEGE_TOOL);
-    expect(deepReviewSystem('zh')).toContain('siege_report for the player');
-    expect(deepReviewSystem('zh')).toMatch(/does not say they defended it/);
     expect(chatSystem('zh')).toContain('siege_report for the player');
   });
 });

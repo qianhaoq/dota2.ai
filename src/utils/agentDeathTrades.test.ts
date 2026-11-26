@@ -70,7 +70,6 @@ describe('death_context: was the death traded, and where were the allies who wer
     const rec = resolveRef(trace, `death:beastmaster:${n}`, { hero: 'beastmaster', lang: 'zh' })!;
     expect(rec.record.traded_within_15s).toBe(r.deaths[n - 1].traded_within_15s);
     for (const a of rec.record.allies_elsewhere) if (a.place) expect(rec.names[a.place]).toMatch(/[一-鿿]/);
-    expect(deepReviewSystem('en')).toMatch(/the cost of dying alone is that the death bought nothing/);
     expect(chatSystem('en')).toContain('A death not traded bought nothing');
   });
 

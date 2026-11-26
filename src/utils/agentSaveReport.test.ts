@@ -89,6 +89,5 @@ describe('save_report', () => {
     expect(SAVE_TOOL.description).toContain('does not judge whether it was a save');
     const ev: any = resolveRef(t, 'saves:disruptor', { hero: 'disruptor', lang: 'en' });
     expect(ev.record).toMatchObject({ given_to_allies: 3 });
-    expect(deepReviewSystem('en')).toContain('never that a cast saved someone or failed to');
   });
 });

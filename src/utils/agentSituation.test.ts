@@ -4,7 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { buildCheck, goldOnTop, powerSpikes, SITUATION_TOOLS } from '../../lib/agent/situationTools.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
-import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, approachClaims, collectFacts, deepReviewSystem, planOf, reviewToolkit, verifyReview, wordingProblems } from '../../lib/agent/deepReview.js';
+import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, collectFacts, deepReviewSystem, planOf, reviewToolkit, verifyReview, wordingProblems } from '../../lib/agent/deepReview.js';
 import { HABITS, evaluateHabit, habitGoal } from '../../lib/coach/goals.js';
 import { ANSWERS, GAP_CLOSERS } from '../../lib/coach/knowledge.js';
 import { MIN_FEW_GAMES, proItemsFor } from '../../lib/agent/proItems.js';
@@ -175,7 +175,7 @@ describe('the review agent has both tools, and their records can be cited and sh
     expect(kit.runTool('build_check', { hero: 'beastmaster' })).toMatchObject({ tool: 'build_check', ref: 'build:beastmaster' });
     expect(kit.runTool('power_spikes', { hero: 'beastmaster' })).toMatchObject({ tool: 'power_spikes', ref: 'spikes:beastmaster' });
     const system = deepReviewSystem('zh');
-    for (const word of ['build_check', 'power_spikes', 'Read choices, not minds', 'No vague amounts', 'most_built_by_pros_on_this_hero']) expect(system).toContain(word);
+    for (const word of ['build_check', 'power_spikes', 'Read choices, not minds']) expect(system).toContain(word);
     expect(DEEP_REVIEW_PROMPT_VERSION).toBeGreaterThanOrEqual(18);
   });
 
@@ -208,21 +208,6 @@ describe('the review agent has both tools, and their records can be cited and sh
 });
 
 describe('an amount nobody counted is sent back, not shipped', () => {
-  it('"most" and "多数" about this game\'s events are named; a count, or a statement about professionals, is not', () => {
-    expect(wordingProblems('12 次里有 8 次是被熊战士收掉、而且多数死时身边没有队友')).toEqual([{ kind: 'vague', text: '多数死' }]);
-    expect(wordingProblems('你经常在团战前阵亡').map((p: any) => p.kind)).toEqual(['vague']);
-    expect(wordingProblems('Most of your deaths came in fights.').map((p: any) => p.kind)).toEqual(['vague']);
-    for (const fine of ['12 次阵亡里有 4 次身边没有队友', '4 of the 12 deaths had no ally near', '职业选手通常会出闪烁匕首', 'Pros usually build Blink Dagger', '大多数职业比赛里']) expect(wordingProblems(fine)).toEqual([]);
-  });
-
-  it('it is a note for the repair round: the sentence is asked about, the finding is not dropped for it', () => {
-    const build = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match });
-    const review = { verdict: '你多数死在团战里。', mainline: [], blind_spots: [], findings: [{ title: 't', claim: '你的大件里洞察烟斗 29:08 才出。', fix: 'f', evidence: [{ refs: ['build:beastmaster'], fact: '洞察烟斗 29:08 才拿到。' }], rule: { when: 'w', do: 'd', this_game: 'x' } }] };
-    const check = verifyReview(review, [build]);
-    expect(check.ok).toBe(false);
-    expect(check.problems).toEqual([{ where: 'verdict', index: 0, kind: 'vague', text: expect.stringContaining('多数死'), soft: true }]);
-    expect(check.unsupported.findings.size).toBe(0);
-  });
 });
 
 describe('game_plan.strengths', () => {
@@ -279,23 +264,10 @@ describe('deaths in a fight are told apart from deaths outside one', () => {
     // A replay summary from before these lists existed has no such count: unknown, never a pass.
     const { health_below_half_at_window_start_outside_fights: _gone, ...old } = summary.deaths_where;
     expect(evaluateHabit(goal, { ...summary, deaths_where: old }, 40).result).toBe('unknown');
-    const system = deepReviewSystem('en');
-    for (const word of ['in_a_fight', '_outside_fights', 'missing from the minimap']) expect(system).toContain(word);
+    // The counts a rule can name are the schema's (counted_by), not the prompt's.
+    expect(JSON.stringify(SUBMIT_REVIEW)).toContain('_outside_fights');
   });
 });
 
 describe('a rule cannot start from seeing an enemy come', () => {
-  it('names the phrase in a rule\'s situation; what the player always has on screen is fine', () => {
-    expect(approachClaims('小地图上你周围没有队友，而屏幕上已有敌人朝你这边走')).toEqual(['屏幕上已有敌人朝你这边走']);
-    expect(approachClaims('enemies are walking toward you')).toEqual(['enemies are walking toward you']);
-    for (const fine of ['小地图上有三个敌方英雄不见了', 'three enemy heroes are missing from the minimap', '你的血量低于一半、熊战士就在你攻击距离附近时', '比赛到 20:00，你身上还没有闪烁匕首', '']) expect(approachClaims(fine)).toEqual([]);
-    expect(approachClaims(undefined as any)).toEqual([]);
-  });
-  it('it is asked about in the repair round; the finding and its rule are kept', () => {
-    const build = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match });
-    const review = { verdict: 'v', mainline: [], blind_spots: [], findings: [{ title: 't', claim: '洞察烟斗 29:08 才出。', fix: 'f', evidence: [{ refs: ['build:beastmaster'], fact: '洞察烟斗 29:08 才拿到。' }], rule: { when: '屏幕上已有敌人朝你这边走', do: '往回走', this_game: 'x' } }] };
-    const check = verifyReview(review, [build]);
-    expect(check.problems).toEqual([{ where: 'finding', index: 0, kind: 'approach', text: '屏幕上已有敌人朝你这边走', soft: true }]);
-    expect(check.unsupported.findings.size).toBe(0);
-  });
 });

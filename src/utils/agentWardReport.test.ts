@@ -67,10 +67,10 @@ describe('ward_report', () => {
     expect(ev.record).toMatchObject({ observers_placed: 2, sentries_placed: 1 });
     expect(ev.record).not.toHaveProperty('placements');
     const s = deepReviewSystem('en');
-    expect(s).toContain('say how the player compares, not that they "should" have placed more');
-    expect(s).toContain('Never what a ward could see');
+    expect(s).toContain('never say who could see whom');
     // A paid run wrote "34 个假眼" for 34 sentries, and called the corpus "本段位".
-    expect(s).toContain('In Chinese an observer is 假眼 and a sentry is 真眼.');
-    expect(s).toContain('of every rank (median 7 observers a game) — not the player\'s bracket');
+    expect(s).toContain('an observer ward 假眼, a sentry 真眼');
+    // The corpus is of every rank: the tool says so where the number is.
+    expect((wardReport(t, { hero: 'disruptor' }) as any).rule).toContain('of every rank showed — not the player\'s bracket');
   });
 });

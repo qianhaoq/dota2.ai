@@ -124,8 +124,6 @@ describe('what the tools say with them, and without', () => {
   });
 
   it('the review and the chat are told what a ward near a spot does and does not show', () => {
-    expect(deepReviewSystem('en')).toMatch(/An observer near a spot is a ward near it, not proof it saw the player/);
-    expect(deepReviewSystem('en')).toContain('deaths_where.no_own_observer_within_1600');
     expect(chatSystem('en')).toContain('Asked about wards or vision');
   });
 

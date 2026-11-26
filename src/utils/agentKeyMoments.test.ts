@@ -5,7 +5,6 @@ import { linkHeroNames } from '../../packages/review-engine/src/trace/index.js';
 import { AFTER, FROM_MINUTE, KEY_MOMENTS_TOOL, LISTED, REBOUND, keyMoments } from '../../lib/agent/keyMoments.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
-import { deepReviewSystem } from '../../lib/agent/deepReview.js';
 
 /**
  * key_moments (#356): the fights that moved the team's chance to win the most, the largest falling stretch, and where
@@ -111,16 +110,8 @@ describe('key_moments reaches the model and the reader', () => {
     expect(ev).toMatchObject({ ref: 'moments:beastmaster', kind: 'moments', record: { read: true, falls_by_my_part: { in_it: 1 } } });
     expect(ev.record).not.toHaveProperty('largest_changes');
     expect(resolveRef(trace, 'moments:beastmaster:1', { hero: 'beastmaster', lang: 'zh', match })).toBeNull();
-    const s = deepReviewSystem('zh');
-    expect(s).toContain('6. Call key_moments for the player.');
-    expect(s).toContain('write about it as one turn and cite those fights');
-    expect(s).toContain('The chances are a ruler for ranking moments: never quote them');
-    expect(s).toContain('(101 of 160 heroes on losing sides in the corpus)');
-    // Not a verdict: a first wording ("in the fight 80% or more: the lost chance is not about where the player was")
-    // made two of three Luna reviews — a game lost from the lanes, five lane deaths — say it was the enemy's doing.
-    expect(s).toContain('It is not a verdict on the player: being in the fights does not clear them of what they did before 5:00');
-    expect(s).toContain("When match_overview's lanes.lost_from_the_lanes is true and the player died four or more times before 10:00, the player's lane is part of the main reason");
-    expect(s).not.toContain('the lost chance is not about where the player was');
-    expect(s).toContain('elsewhere for half or more is rare (9 of 160)');
+    // The corpus numbers are a reference in the tool's own answer (#405), with what they do not show.
+    expect((keyMoments(trace, { hero: 'beastmaster' }, { match }) as any).reference).toContain('of 160 heroes on losing sides');
+    expect((keyMoments(trace, { hero: 'beastmaster' }, { match }) as any).reference).toContain('Where the player stood is not a verdict on them');
   });
 });

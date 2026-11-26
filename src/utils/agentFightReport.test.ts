@@ -218,11 +218,10 @@ describe('the agent has the tools and is told how to read them', () => {
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['fight_report', 'game_state']));
     expect(kit.runTool('fight_report', { hero: 'beastmaster' }).fights_total).toBe(16);
-    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(52);
+    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(53);
     const review = deepReviewSystem('zh');
-    expect(review).toContain('fight_report for the player first');
     // Still never a motive; "farming" only where the tool says so (#359: the replay's creep kills now show it).
-    expect(review).toMatch(/never that they refused or ignored the call\. Say they were farming only when their doing is "farming"/);
+    expect(review).toContain('never what anyone thought, intended, refused or ignored');
     expect(review).not.toMatch(/ignored the call or were farming/);
     expect(chatSystem('zh')).toContain('fight_report for the player');
   });
@@ -247,7 +246,6 @@ describe('the agent has the tools and is told how to read them', () => {
     expect(ue.moments).toBeGreaterThan(0);
     expect(ue.fight_within_90s).toBeLessThanOrEqual(ue.moments);
     expect(ue.edge_side_lost_fewer + ue.edge_side_lost_more + ue.even).toBe(ue.fight_within_90s);
-    expect(deepReviewSystem('zh')).toMatch(/Do not explain a fight by ultimates ready alone/);
     // Each edge's fight began after it, at its first damage exchange — not merely its first death (review of #310).
     const edges = ultimateEdges(trace);
     expect(edges.length).toBe(ue.moments);
