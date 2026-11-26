@@ -40,6 +40,7 @@ import { fightReport, ultimateEdges } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
 import { keyMoments } from '../lib/agent/keyMoments.js';
+import { wardPlacers } from '../lib/agent/wardReport.js';
 import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_RESPAWN, STILL_DEAD_AFTER } from '../lib/agent/decisionPoints.js';
 import { moneyOf } from '../lib/agent/farmReport.js';
 import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
@@ -64,6 +65,7 @@ const itemFights = [];
 const plainFights = [];
 const notInFight = []; let gamesWithCreepKills = 0;
 const momentSides = []; const momentHeroes = [];
+const wardTeams = []; let wardsPlaced = 0; let wardsPlacerUnknown = 0;
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
   const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(dir, f)))));
@@ -81,6 +83,12 @@ for (const f of files) {
       const part = fightParticipation(trace, fight);
       trace.heroes.forEach((_, i) => { if (part.took_part.has(i)) return; const s = heroStateAt(trace, i, fight.from); if (s.known && s.alive) notInFight.push(s.doing); });
     }
+  }
+  // ward_report: who placed each ward (an item use of the side within 0.2 s), and per team the two heroes who placed most observers.
+  const placers = wardPlacers(trace);
+  if (placers) {
+    trace.wards.forEach((w, j) => { if (w[0] == null) return; wardsPlaced += 1; if (placers[j] === null) wardsPlacerUnknown += 1; });
+    for (const tm of [2, 3]) { const c = trace.heroes.map((h, i) => i).filter((i) => trace.heroes[i].team === tm).map((i) => trace.wards.filter((w, j) => placers[j] === i && w[3] === 'o').length).sort((a, b) => b - a); wardTeams.push(c[0], c[1]); }
   }
   // Key moments, from each side once (its first hero), and every losing hero's split of the falls.
   for (const tm of [2, 3]) {
@@ -254,6 +262,10 @@ const fightsAfter = roshans.flatMap((x) => x.fights);
 if (gamesWithCreepKills) {
   const c = {}; for (const d of notInFight) c[d] = (c[d] ?? 0) + 1;
   out.not_in_a_fight = { games: gamesWithCreepKills, alive_heroes_not_in_a_fight: notInFight.length, doing: c };
+}
+if (wardsPlaced) {
+  const s = wardTeams.slice().sort((a, b) => a - b); const q = (p) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
+  out.wards_placed = { wards: wardsPlaced, placer_not_known: wardsPlacerUnknown, two_most_warding_heroes_of_a_team_observers: [q(0.25), q(0.5), q(0.75)] };
 }
 if (momentSides.length) {
   const q = (arr) => { const s = arr.slice().sort((a, b) => a - b); return s.length ? [0.25, 0.5, 0.75].map((p) => s[Math.min(s.length - 1, Math.floor(p * s.length))]) : null; };
