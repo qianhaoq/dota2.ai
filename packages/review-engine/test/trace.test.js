@@ -96,6 +96,32 @@ describe('item uses keep the hero they went to (#358)', () => {
   });
 });
 
+describe('Smoke of Deceit and runes on heroes (#405)', () => {
+  const ev = (type, t, extra) => ({ type, t, attacker: 'npc_dota_hero_axe', attacker_hero: true, attacker_illusion: false, target: 'npc_dota_hero_axe', target_hero: true, target_illusion: false, ...extra });
+  it('each hero smoked: from, who used it, until; a rune: from, kind, until; summons and illusions are not heroes', () => {
+    const b = createTraceBuilder();
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 100, { inflictor: 'modifier_smoke_of_deceit' }), 1);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 100.2, { inflictor: 'modifier_smoke_of_deceit', target: 'npc_dota_hero_lina' }), 2);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 100.3, { inflictor: 'modifier_smoke_of_deceit', target: 'npc_dota_beastmaster_boar', target_hero: false }), 3);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 100.4, { inflictor: 'modifier_smoke_of_deceit', target: 'npc_dota_hero_lina', target_illusion: true }), 4);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_REMOVE', 110, { inflictor: 'modifier_smoke_of_deceit', target: 'npc_dota_hero_lina' }), 5);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 200, { inflictor: 'modifier_rune_doubledamage' }), 6);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_REMOVE', 245, { inflictor: 'modifier_rune_doubledamage' }), 7);
+    b.addEvent(ev('DOTA_COMBATLOG_MODIFIER_ADD', 300, { inflictor: 'modifier_rune_invis' }), 8);
+    const tr = b.finish();
+    const n = (i) => tr.names[i];
+    // Axe's smoke never removed in the log: still on at the end (null), not a made-up end.
+    expect(tr.smokes.map((r) => [r[0], n(r[1]), n(r[2]), r[3]])).toEqual([[100, 'npc_dota_hero_axe', 'npc_dota_hero_axe', null], [100.2, 'npc_dota_hero_lina', 'npc_dota_hero_axe', 110]]);
+    expect(tr.runes.map((r) => [r[0], n(r[1]), r[2], r[3]])).toEqual([[200, 'npc_dota_hero_axe', 'doubledamage', 245], [300, 'npc_dota_hero_axe', 'invis', null]]);
+    // Neither is a control effect.
+    expect(tr.modifiers).toEqual([]);
+  });
+  it('a trace built from no such rows has empty lists (the builder reads them: none, not unknown)', () => {
+    const tr = createTraceBuilder().finish();
+    expect([tr.smokes, tr.runes]).toEqual([[], []]);
+  });
+});
+
 describe('review findings on #232', () => {
   const state = (t, extra = {}) => ({ entity_kind: 'real_hero', t, hero: 'axe', team: 2, player_index: 0, x: 0, y: 0, hp: 500, max_hp: 600, mana: 100, level: 6, life_state: 0, abilities: [], items: [], controls: {}, ...extra });
   const lina = (t) => ({ ...state(t), hero: 'lina', team: 3, player_index: 5 });
