@@ -167,4 +167,38 @@ describe('a moment on the map', () => {
     // No list of casts either: not known.
     expect((momentFrames({ ...t, casts: undefined }, { hero: 'beastmaster', t: 1825 }) as any).casts).toBeNull();
   });
+
+  it('replaying a fight span (to) covers the full fight through to + 6s and focuses on the fight even when the player was farming or dead across the map', () => {
+    // Turning fight in 9100904020 runs from 1826.5 to 1857.2: passing `to` keeps frames through ceil(to) + 6.
+    const full: any = momentFrames(trace, { hero: 'beastmaster', t: 1826.5, to: 1857.2 });
+    expect(full.from).toBe(1815);
+    expect(full.to).toBe(1864);
+    expect(full.frames.at(-1).t).toBe(1864);
+    expect(full.deaths.length).toBeGreaterThan(2);
+
+    // Put Beastmaster in Dire fountain (dead) for the whole window, with a fountain cast: the camera and casts
+    // still follow the combatants in river_mid rather than the absent player.
+    const absent = load();
+    const me = absent.heroes.findIndex((h: any) => h.key === 'beastmaster');
+    absent.deaths = absent.deaths.filter((d: any) => absent.names[d[1]] !== 'npc_dota_hero_beastmaster');
+    for (let s = 1810; s <= 1870; s += 1) {
+      absent.states[me].x[s - absent.t0] = 6800;
+      absent.states[me].y[s - absent.t0] = 6200;
+      absent.states[me].alive[s - absent.t0] = 0;
+    }
+    const offFight: any = momentFrames(absent, { hero: 'beastmaster', t: 1826.5, to: 1857.2 });
+    const inside = (p: number[]) => p[0] >= offFight.box.x && p[0] <= offFight.box.x + offFight.box.size && p[1] >= offFight.box.y && p[1] <= offFight.box.y + offFight.box.size;
+    // Combatants in river_mid are inside the box; Beastmaster in Dire base is outside and marked away.
+    const atStart = offFight.frames.find((f: any) => f.t === 1826).at;
+    expect(inside(atStart[index(offFight, 'necrolyte')])).toBe(true);
+    expect(inside(atStart[index(offFight, 'sven')])).toBe(true);
+    expect(inside(atStart[index(offFight, 'beastmaster')])).toBe(false);
+    expect(offFight.away).toContain('beastmaster');
+    expect(offFight.place).toBe('river_mid');
+    expect(offFight.casts.some((c: any) => c.hero === 'sven' && c.ability === 'sven_gods_strength')).toBe(true);
+    expect(offFight.casts.some((c: any) => c.hero === 'beastmaster')).toBe(false);
+
+    // Invalid spans (to < t) are refused cleanly.
+    expect(momentFrames(trace, { hero: 'beastmaster', t: 1848, to: 1826 })).toEqual({ error: 'no_such_time' });
+  });
 });

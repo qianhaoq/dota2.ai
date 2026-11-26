@@ -47,7 +47,7 @@ const clockOf = (t: number) => `${t < 0 ? '-' : ''}${Math.floor(Math.abs(t) / 60
 export const heroIcon = (slug: string) => `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/icons/${slug}.png`;
 const calm = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export const MomentReplay: React.FC<{ matchId: string; hero: string; lang: Lang; t: number }> = ({ matchId, hero, lang, t }) => {
+export const MomentReplay: React.FC<{ matchId: string; hero: string; lang: Lang; t: number; to?: number }> = ({ matchId, hero, lang, t, to }) => {
   const [data, setData] = useState<Moment | null>(null);
   const [failed, setFailed] = useState(false);
   const [i, setI] = useState(0);
@@ -58,7 +58,7 @@ export const MomentReplay: React.FC<{ matchId: string; hero: string; lang: Lang;
   useEffect(() => {
     let alive = true;
     setData(null); setFailed(false); setPlaying(false);
-    fetchMoment(matchId, hero, lang, t).then((m) => {
+    fetchMoment(matchId, hero, lang, t, to).then((m) => {
       if (!alive) return;
       setData(m);
       // Asked for, so it plays from the start — unless the reader has asked for less motion: then it opens on the moment itself.
@@ -66,7 +66,7 @@ export const MomentReplay: React.FC<{ matchId: string; hero: string; lang: Lang;
       if (calm()) setI(at); else { setI(0); setPlaying(m.frames.length > 1); }
     }).catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
-  }, [matchId, hero, lang, t]);
+  }, [matchId, hero, lang, t, to]);
 
   useEffect(() => {
     if (!playing || !data) return undefined;

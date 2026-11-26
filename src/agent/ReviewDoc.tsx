@@ -128,18 +128,20 @@ export const planQuestion = (key: string, lang: Lang): string | null => {
   return `My plan this game was to ${said}. Did my play fit it? Was it sound against their line-up? And where it failed, was that my play, the plan, or what the enemy did?`;
 };
 
-interface Fight { ref: string; from: number; to: number; clock: string; my_team_deaths: number; enemy_deaths: number; my_team_gold_lead_before?: number | null; my_team_gold_lead_2min_after?: number | null }
+export interface Fight { ref: string; from: number; to: number; clock: string; my_team_deaths: number; enemy_deaths: number; my_team_gold_lead_before?: number | null; my_team_gold_lead_2min_after?: number | null }
 
 /**
  * `turn`: the ref of the fight the game turned on, as match_overview names it for a game the player's team lost
  * (the fight the review was pointed at) — the strip marks that one and does not work it out again.
  */
-const FightStrip: React.FC<{ fights: Fight[]; duration: number; turn: string | null; lang: Lang; onAsk: (label: string, refs: string[]) => void }> = ({ fights, duration, turn, lang, onAsk }) => {
+export const FightStrip: React.FC<{ fights: Fight[]; duration: number; turn: string | null; lang: Lang; onAsk: (label: string, refs: string[]) => void; onSelectFight?: (fight: Fight) => void; fightActionLabel?: string }> = ({ fights, duration, turn, lang, onAsk, onSelectFight, fightActionLabel }) => {
   const W = 720; const H = 120; const mid = H / 2; const pad = 8;
   const x = (t: number) => pad + (Math.max(0, t) / Math.max(1, duration)) * (W - pad * 2);
   const gold = fights.filter((f) => f.my_team_gold_lead_before != null);
   const maxGold = Math.max(2000, ...gold.map((f) => Math.abs(f.my_team_gold_lead_before!)));
   const y = (v: number) => mid - (v / maxGold) * (mid - pad);
+  const labelPrefix = fightActionLabel ?? T.askFight[lang];
+  const activate = (f: Fight) => { if (onSelectFight) onSelectFight(f); else onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref]); };
   return (
     <figure className="ag-strip">
       <svg viewBox={`0 0 ${W} ${H}`} role="group" aria-label={T.fights[lang]}>
@@ -150,8 +152,8 @@ const FightStrip: React.FC<{ fights: Fight[]; duration: number; turn: string | n
           const h = Math.max(4, Math.abs(diff) * 9);
           return (
             <g key={f.ref} className={`ag-strip-fight ${diff > 0 ? 'is-won' : diff < 0 ? 'is-lost' : 'is-even'} ${turn === f.ref ? 'is-turn' : ''}`}
-              role="button" tabIndex={0} aria-label={`${T.askFight[lang]} ${f.clock}, ${f.my_team_deaths}:${f.enemy_deaths}`} onClick={() => onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref])}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref]); } }}>
+              role="button" tabIndex={0} aria-label={`${labelPrefix} ${f.clock}, ${f.my_team_deaths}:${f.enemy_deaths}`} onClick={() => activate(f)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(f); } }}>
               <rect x={x(f.from) - 5} y={diff >= 0 ? mid - h : mid} width="10" height={h} rx="2"><title>{`${f.clock} · ${f.my_team_deaths}:${f.enemy_deaths}`}</title></rect>
               {turn === f.ref && <text x={x(f.from)} y={H - 4} textAnchor="middle">▲ {f.clock.split('–')[0]} {T.turn[lang]}</text>}
             </g>
