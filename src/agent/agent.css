@@ -237,6 +237,15 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-wait-tags:empty { display: none; }
 .ag-wait .ag-replay { margin-top: 12px; }
 .ag-wait-note { color: var(--text-3); font-size: var(--fs-meta); }
+.ag-wait-facts { max-width: 620px; margin: -24px 0 56px; padding-top: 24px; border-top: 1px solid var(--line); }
+.ag-wait-facts h2 { font-family: var(--serif); font-weight: 500; font-size: 20px; margin: 0 0 14px; text-wrap: balance; }
+.ag-wait-fights { margin: 0 0 22px; }
+.ag-wait-fights .ag-strip { margin-bottom: 8px; }
+.ag-wait-fight-replay { margin-top: 12px; }
+.ag-wait-fight-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; font-size: var(--fs-meta); }
+.ag-wait-sub { margin: 0 0 10px; color: var(--text-3); font-size: var(--fs-meta); letter-spacing: 0.06em; text-transform: uppercase; }
+.ag-wait-items { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.ag-wait-items li { display: inline-flex; align-items: baseline; gap: 6px; font-size: var(--fs-meta); }
 .ag-journey > li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 14px; padding-bottom: 22px; position: relative; color: var(--text-3); }
 .ag-journey > li:not(:last-child)::before { content: ''; position: absolute; left: 6px; top: 16px; bottom: 0; width: 1px; background: var(--line-2); }
 .ag-journey > li.is-done:not(:last-child)::before { background: var(--good); }
