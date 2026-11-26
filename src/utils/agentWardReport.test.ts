@@ -67,5 +67,8 @@ describe('ward_report', () => {
     const s = deepReviewSystem('en');
     expect(s).toContain('say how the player compares, not that they "should" have placed more');
     expect(s).toContain('Never what a ward could see');
+    // A paid run wrote "34 个假眼" for 34 sentries, and called the corpus "本段位".
+    expect(s).toContain('In Chinese an observer is 假眼 and a sentry is 真眼.');
+    expect(s).toContain('of every rank (median 7 observers a game) — not the player\'s bracket');
   });
 });
