@@ -90,6 +90,8 @@ test('the review: one lesson first, the other finding folded, then the whole gam
   await expect(page.locator('.ag-whole .ag-verdict')).toContainText('原始咆哮没有留给幻影刺客：11 次阵亡里 7 次死在她手上，而她 7 次开黑皇杖时你的大招只吼中过 2 次。');
   await expect(page.locator('.ag-strip-fight')).toHaveCount(16);
   await expect(page.locator('.ag-strip-fight.is-turn text')).toHaveText('▲ 30:26 转折');
+  await expect(page.locator('.ag-presence')).toContainText('在团里');
+  await expect(page.locator('.ag-presence')).toContainText('100%');
   // Each evidence line carries the game time of the record it cites.
   await expect(page.locator('.ag-moments .ag-ev-clock')).toHaveText(['27:27', '30:34', '36:05', '30:05']);
   // The story of the game is there for whoever opens it.

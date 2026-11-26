@@ -28,8 +28,7 @@ after your diff.
 2. **Evidence is recomputed.** What the reader opens under a finding is built from the trace by
    `resolveRef` (`lib/agent/evidence.js`), never copied from the model's text.
 3. **No tool says who could see whom.** A sentence about vision is dropped (`sightClaims`) unless a
-   tool record backs it. A rule's "when" is built from what is certain to be on the player's screen,
-   never from an enemy "seen coming" (`approachClaims`).
+   tool record backs it.
 4. **Facts, not minds.** A tool says a hero was not in a fight, or where they stood; it never says
    they refused, ignored a call or were farming unless the replay shows it. Keep judgments out of
    tool output: "not in the fight" is a fact, "should have come" is the model's.
@@ -54,8 +53,21 @@ after your diff.
    `DEEP_REVIEW_PROMPT_VERSION`. Changing any of them: raise the version and update the pin.
 2. A tool whose **answer** changes (a new field, a changed count) needs the version raised too, by
    hand: stored reviews are kept per version and would otherwise stand as current.
-3. A number quoted to the model comes from `scripts/calibrate.mjs` on the parsed games, with its
-   sample; a feature is calibrated against outcomes before the model hears of it.
+3. A corpus number the model sees comes from `scripts/calibrate.mjs` (or the data it reads), with
+   its sample, as a reference in a tool's answer: what it shows and what it does not. It is not a
+   gate: a fact or a piece of Dota knowledge may reach the model without a calibration first.
+
+## C2. The model judges — the direction since 2026-11-26 (#405)
+
+1. The review is AI native. The model decides what matters, the main reason and what to say; the
+   tools give facts and references and it may call as many as it needs to check a claim.
+2. MUST NOT decide a judgment by a fixed rule (main reason, whose fault, what counts as a finding)
+   or force what a review must cover (a fight it must write about, a field it must fill to pass).
+3. Prefer a lookup tool, or a reference in a tool's answer, to a sentence in the prompt; prefer
+   removing a prompt rule to adding one. A review comment asking for a new prompt rule or a
+   calibration before a tool may ship is not a blocker under this direction.
+4. Unchanged: sections A (what a review may state), B (unknown is not false) and C.1–C.2 (pinning).
+   Those are facts and correctness, not judgment.
 
 ## D. Traces and replays
 

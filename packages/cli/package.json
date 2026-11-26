@@ -10,7 +10,9 @@
     "./client": "./src/client.js",
     "./coach": "./src/coachApi.js",
     "./agent": "./src/agent.js",
-    "./render": "./src/coach.js"
+    "./render": "./src/coach.js",
+    "./handlers": "./src/handlers.js",
+    "./tools": "./src/toolDocs.js"
   },
   "files": [
     "bin",

@@ -134,7 +134,7 @@ async function main(argv) {
   const scored = out.games.filter((g) => g.rubric);
   if (scored.length) {
     console.log('\nAgainst rubrics:');
-    for (const g of scored) console.log(`  ${g.file}  [${g.rubric.status}]  hit ${g.rubric.hit_weight}/${g.rubric.weight}  ${g.rubric.must_hit.map((p) => `${p.hit ? '✓' : '✗'} ${p.id}${p.finding ? `(#${p.finding})` : ''}`).join('  ')}  lead ${g.rubric.lead_ok == null ? '–' : g.rubric.lead_ok ? `✓ ${g.rubric.lead}` : '✗'}  turning fight ${fmt(g.rubric.turning_fight_covered)}  main reason ${fmt(g.rubric.main_reason_ok)}${g.rubric.must_not.length ? `  MUST-NOT: ${g.rubric.must_not.map((x) => x.id).join(', ')}` : ''}`);
+    for (const g of scored) console.log(`  ${g.file}  [${g.rubric.status}]  hit ${g.rubric.hit_weight}/${g.rubric.weight}  ${g.rubric.must_hit.map((p) => `${p.hit ? '✓' : '✗'} ${p.id}${p.finding ? `(#${p.finding})` : ''}`).join('  ')}${g.rubric.must_praise ? `  praise ${g.rubric.praise_hit_weight}/${g.rubric.praise_weight}  ${g.rubric.must_praise.map((p) => `${p.hit ? '✓' : '✗'} ${p.id}${p.item ? `(#${p.item})` : ''}`).join('  ')}` : ''}${g.rubric.findings_within_max != null ? `  max_findings≤${g.rubric.max_findings}:${g.rubric.findings_within_max ? '✓' : '✗'}` : ''}  lead ${g.rubric.lead_ok == null ? '–' : g.rubric.lead_ok ? `✓ ${g.rubric.lead}` : '✗'}  turning fight ${fmt(g.rubric.turning_fight_covered)}  main reason ${fmt(g.rubric.main_reason_ok)}${g.rubric.must_not.length ? `  MUST-NOT: ${g.rubric.must_not.map((x) => x.id).join(', ')}` : ''}`);
   }
   if (out.by_version) {
     console.log('\nBy prompt version (reviews, dense top sentences, English words per Chinese review, thin rules):');
