@@ -22,8 +22,11 @@
  */
 
 export const WIN_PROB_SCHEMA = 'dota2.ai/win-probability@1';
-/** The features, in the order of the model's weights. `t` is the minute over 10; gold in thousands. */
-export const FEATURES = ['bias', 'gold_k', 'gold_k_per_sqrt_t', 'barracks'];
+/**
+ * The features, in the order of the model's weights. Gold in thousands; `t` is the minute over 10, never below 1
+ * (minute 10); `early` is min(minute, 10) / 10.
+ */
+export const FEATURES = ['bias', 'gold_k', 'gold_k_per_sqrt_t', 'barracks', 'gold_k_early'];
 
 /** Past this the model was fitted on almost nothing: the minute is held here. */
 const MINUTE_CAP = 60;
@@ -35,10 +38,14 @@ const MINUTE_CAP = 60;
  */
 export function featuresOf(s) {
   if (!s || ![s.minute, s.gold, s.barracks].every(Number.isFinite)) return null;
-  const t = Math.min(MINUTE_CAP, Math.max(1, s.minute)) / 10;
+  const minute = Math.min(MINUTE_CAP, Math.max(0, s.minute));
   const g = s.gold / 1000;
-  // The same lead is worth less the later it is: divided by the root of the time fitted better than by the time itself.
-  return [1, g, g / Math.sqrt(t), s.barracks];
+  // The same lead is worth less the later it is: divided by the root of the time fitted better than by the time
+  // itself. Not below minute 10: a first version let the time go down to minute 1, multiplied a 1:00 lead of a few
+  // hundred gold by up to 3.2, and said 65–84% where the favoured side won 51–68%. Before minute 10 the `early`
+  // term carries how much less a lead means while it is still small and young.
+  const t = Math.max(10, minute) / 10;
+  return [1, g, g / Math.sqrt(t), s.barracks, g * (Math.min(minute, 10) / 10)];
 }
 
 const sigmoid = (z) => 1 / (1 + Math.exp(-z));
