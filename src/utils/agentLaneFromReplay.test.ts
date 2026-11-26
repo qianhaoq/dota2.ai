@@ -49,6 +49,42 @@ describe('the lane read from the replay, on a game whose record can check it', (
   });
 });
 
+describe('what the review found on #392: unknown stays unknown', () => {
+  const blank = (t: any, key: string, from: number, to: number) => {
+    const i = t.heroes.findIndex((h: any) => h.key === key); const st = t.states[i];
+    const cut = (arr: any[]) => arr.map((v: any, k: number) => (k + t.t0 >= from && k + t.t0 < to ? null : v));
+    return { ...t, states: t.states.map((s: any, j: number) => (j === i ? { ...st, x: cut(st.x), y: cut(st.y), alive: cut(st.alive) } : s)) };
+  };
+  const bm = trace.heroes.findIndex((h: any) => h.key === 'beastmaster');
+
+  it('another hero with no lane-stage positions: their lane is not known, and the lane\'s result is withheld — not computed without them', () => {
+    const t = blank(trace, 'venomancer', 0, 700);
+    expect(laneOf(t, t.heroes.findIndex((h: any) => h.key === 'venomancer'))).toBeUndefined();
+    const r: any = laneFromReplay(t, bm);
+    expect(r).toMatchObject({ lane: 'bot', lane_result: null, lane_gold_earned_before_10_00: null, heroes_whose_lane_is_not_known: ['venomancer'] });
+    expect(r.gaps).toContainEqual({ topic: 'lane_result', reason: 'a_hero_s_lane_stage_positions_not_in_trace' });
+    // Part of the window missing (more than a tenth): the same.
+    const half: any = laneFromReplay(blank(trace, 'venomancer', 300, 600), bm);
+    expect([half.lane_result, half.heroes_whose_lane_is_not_known]).toEqual([null, ['venomancer']]);
+    // A few seconds missing: still read.
+    expect((laneFromReplay(blank(trace, 'venomancer', 300, 320), bm) as any).lane_result).toBe('lost');
+  });
+
+  it('the player\'s own positions missing: no lane at all, said so', () => {
+    expect(laneReport(blank(trace, 'beastmaster', 0, 700), { hero: 'beastmaster' }, {})).toMatchObject({ lane: null, gaps: [{ topic: 'lane_economy' }, { topic: 'lane_from_replay', reason: 'positions_not_known' }] });
+  });
+
+  it('kill rows without the running count: last hits not known — never 0', () => {
+    const t = { ...trace, creep_kills: trace.creep_kills.map((r: any) => [r[0], r[1], r[2], null, r[4]]) };
+    const r: any = laneFromReplay(t, bm);
+    expect(r.last_hits_at_10_00).toEqual({ beastmaster: null, undying: null, phantom_assassin: null, venomancer: null });
+    expect(r.gaps).toContainEqual({ topic: 'last_hits', reason: 'running_count_not_in_trace' });
+    expect((laneReport(t, { hero: 'beastmaster' }, {}) as any).gaps).toContainEqual({ topic: 'last_hits', reason: 'running_count_not_in_trace' });
+    // Denies are counted from the rows' kind, which is still there.
+    expect(r.denies_at_10_00.phantom_assassin).toBe((laneFromReplay(trace, bm) as any).denies_at_10_00.phantom_assassin);
+  });
+});
+
 describe('lane_report uses it only when the record cannot speak', () => {
   it('no record: read from the replay, with the rule, the note, and what it could not read', () => {
     const r: any = laneReport(trace, { hero: 'beastmaster' }, {});
