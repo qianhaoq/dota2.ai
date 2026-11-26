@@ -21,6 +21,9 @@
  *   began (its first damage exchange) within 90 s, and how it went for that side.
  * - After won fights, by the losers' richest hero (games with net worth): with three or more losers still dead, how
  *   often the winners took a building when the richest was among them 30 s or more from respawning, or alive.
+ * - Key moments (key_moments, gold-earned lead only): for each side, the largest falling stretch of its win chance —
+ *   how far and how long, and for a lost game whether match_overview's turning fight is inside it — and, for every
+ *   hero of a losing side, how the chance the team lost across fights splits by where that hero was.
  * - Roshans (roshan_report): each Aegis pickup, whether it was used or expired, and the buildings each side took
  *   in the 300 s after.
  *
@@ -36,6 +39,7 @@ import { gunzipSync } from 'node:zlib';
 import { fightReport, ultimateEdges } from '../lib/agent/fightReport.js';
 import { siegeReport } from '../lib/agent/siegeReport.js';
 import { roshanReport } from '../lib/agent/roshanReport.js';
+import { keyMoments } from '../lib/agent/keyMoments.js';
 import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_RESPAWN, STILL_DEAD_AFTER } from '../lib/agent/decisionPoints.js';
 import { moneyOf } from '../lib/agent/farmReport.js';
 import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
@@ -58,6 +62,7 @@ const afterTowers = [];
 const ultEdges = [];
 const itemFights = [];
 const plainFights = [];
+const momentSides = []; const momentHeroes = [];
 for (const f of files) {
   // As the site reads a stored trace: hero names linked to the combat log's.
   const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(dir, f)))));
@@ -67,6 +72,18 @@ for (const f of files) {
     for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }).deaths ?? []) if (d.allies_within_2200.at_death != null) deaths.push({ allies: d.allies_within_2200.at_death, traded: d.traded_within_15s, obs: d.observers_within_1600 ?? null });
   }
   if (Array.isArray(trace.wards)) wardGames += 1;
+  // Key moments, from each side once (its first hero), and every losing hero's split of the falls.
+  for (const tm of [2, 3]) {
+    const heroes = trace.heroes.filter((x) => x.team === tm);
+    const km = keyMoments(trace, { hero: heroes[0].key });
+    if (!km.read) continue;
+    const ov = runTraceTool(trace, 'match_overview', {}, { perspective: heroes[0].key });
+    const turn = ov.turning_fight?.ref ?? null;
+    const st = km.stretch;
+    momentSides.push({ lost: km.result === 'my_team_lost', lanes: ov.lanes?.lost_from_the_lanes ?? null, fall: st ? st.my_team_win_chance_from - st.my_team_win_chance_to : 0, minutes: st ? Number(st.to.split(':')[0]) - Number(st.from.split(':')[0]) : 0, turn, turnInside: turn && st ? st.fights.some((x) => x.ref === turn) : null, notRead: km.fights_not_read });
+    if (km.result !== 'my_team_lost') continue;
+    for (const x of heroes) { const k = keyMoments(trace, { hero: x.key }); if (k.read && k.falls_by_my_part.in_it != null) momentHeroes.push(k.falls_by_my_part); }
+  }
   // Every 5 s from 10:00 to 20 s before the end: each living hero, and whether they died in the next 20 s.
   const died = trace.heroes.map((_, i) => trace.deaths.filter((d) => heroOfName(trace, d[1]) === i).map((d) => d[0]));
   for (let sec = 600; sec < trace.t0 + trace.n - 20; sec += 5) {
@@ -224,6 +241,29 @@ out.after_won_fights = [0, 1, 2, 3, 4].map((n) => {
   return { losers_still_dead_10s_after: n === 4 ? '4 or more' : String(n), fights: list.length, ...Object.fromEntries(DID.map((d) => [d, list.filter((x) => x.did === d).length])) };
 });
 const fightsAfter = roshans.flatMap((x) => x.fights);
+if (momentSides.length) {
+  const q = (arr) => { const s = arr.slice().sort((a, b) => a - b); return s.length ? [0.25, 0.5, 0.75].map((p) => s[Math.min(s.length - 1, Math.floor(p * s.length))]) : null; };
+  const lost = momentSides.filter((x) => x.lost); const won = momentSides.filter((x) => !x.lost);
+  const named = lost.filter((x) => x.turn);
+  const count = (pred) => momentHeroes.filter(pred).length;
+  out.key_moments = {
+    sides_read: momentSides.length,
+    losing_sides: lost.length,
+    losing_stretch_fall_quartiles: q(lost.map((x) => x.fall)),
+    losing_stretch_minutes_quartiles: q(lost.map((x) => x.minutes)),
+    losing_sides_with_a_stretch_of_20_or_more: lost.filter((x) => x.fall >= 20).length,
+    losing_sides_lost_from_the_lanes: lost.filter((x) => x.lanes === true).length,
+    lanes_lost_stretch_fall_quartiles: q(lost.filter((x) => x.lanes === true).map((x) => x.fall)),
+    turning_fight_named: named.length,
+    turning_fight_inside_the_stretch: named.filter((x) => x.turnInside).length,
+    winning_stretch_fall_quartiles: q(won.map((x) => x.fall)),
+    fights_not_read: momentSides.reduce((n, x) => n + x.notRead, 0),
+    losing_heroes: momentHeroes.length,
+    losing_heroes_in_it_for_80_percent_or_more: count((x) => x.in_it >= 0.8),
+    losing_heroes_elsewhere_for_half_or_more: count((x) => x.elsewhere >= 0.5),
+    losing_heroes_dead_for_half_or_more: count((x) => x.dead >= 0.5),
+  };
+}
 if (gamesWithKillRows) {
   // What needs the hits is read over the kills whose hits were kept.
   const hit = roshanKills.filter((x) => x.seconds != null);
