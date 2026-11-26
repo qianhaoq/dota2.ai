@@ -87,6 +87,23 @@ export function createMcpServer(options = {}) {
   };
   server.registerTool('review_match', { description: 'Review a Dota 2 match using OpenDota evidence', inputSchema: fields }, invoke('review_match'));
   server.registerTool('get_evidence', { description: 'Get the facts and citations supporting one insight', inputSchema: { ...fields, hero: z.union([z.string(), z.number()]), insight_id: z.string().min(1) } }, invoke('get_evidence'));
+  // The deep replay review (dota2.ai's own), only where the server has it in process: attachMcp's
+  // replayForRequest gives one per caller, under that caller's limits. It never blocks for minutes: it starts
+  // what is missing and the agent polls (lib/agent/replayTool.js).
+  if (options.replay) {
+    server.registerTool('replay_review', {
+      description: "dota2.ai's main review: the coach watches this game's replay (every death, ultimate, fight and item) and writes what one player could have changed, each point backed by replay evidence (times, numbers) that was checked, plus what they did well, what to do next game, and what the replay cannot show. Needs the hero the user played (pick_hero lists the game's heroes). A first review takes 2–4 minutes: while status is parsing or reviewing, call again with the same arguments after poll_after_sec. Starts are limited per caller (about five reviews per ten minutes). Replays exist for about two weeks after a game. lang: en | zh.",
+      inputSchema: { match_id: z.union([z.string(), z.number()]), hero: z.union([z.string(), z.number()]).optional().describe('The hero the user played: key (queen_of_pain), English or Chinese name, or hero id'), lang: z.enum(['en', 'zh']).optional(), retry: z.boolean().optional().describe('Start again after status failed (a new start, counted on the limit)') },
+    }, async (args) => {
+      try {
+        const result = await options.replay.review(args);
+        return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+      } catch (error) {
+        const known = ['INVALID_INPUT', 'RATE_LIMITED'].includes(error?.code);
+        return { isError: true, content: [{ type: 'text', text: known ? error.message : 'Replay review request failed (temporary; retry later)' }] };
+      }
+    });
+  }
   // Coach tools: on for local (stdio) servers, which call dota2.ai over HTTP as
   // the user. A remote HTTP endpoint turns them on only with an in-process coach
   // per request (attachMcp's coachForRequest), rate-limited as that caller —
@@ -138,7 +155,7 @@ export function createMcpServer(options = {}) {
   return server;
 }
 /** Attach stateless Streamable HTTP; each request owns its server and cleanup. */
-export function attachMcp(app, { path = '/mcp', reviewForRequest, coachForRequest, ...options } = {}) {
+export function attachMcp(app, { path = '/mcp', reviewForRequest, coachForRequest, replayForRequest, ...options } = {}) {
   app.post(path, async (req, res, next) => {
     const server = createMcpServer({
       coachTools: false,
@@ -146,6 +163,7 @@ export function attachMcp(app, { path = '/mcp', reviewForRequest, coachForReques
       ...(reviewForRequest ? { review: reviewForRequest(req, res) } : {}),
       // All 8 tools only with an in-process coach for this caller (lib/coach/service.js).
       ...(coachForRequest ? { coachTools: true, coach: coachForRequest(req, res) } : {}),
+      ...(replayForRequest ? { replay: replayForRequest(req, res) } : {}),
     });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.once('close', () => { void server.close().catch(() => {}); });

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.qianhaoq/dota2-ai",
+  "title": "dota2.ai — Dota 2 post-match coach",
+  "description": "Dota 2 post-match coach: reviews a game from its replay, every point backed by checked evidence.",
+  "repository": {
+    "url": "https://github.com/qianhaoq/dota2.ai",
+    "source": "github"
+  },
+  "websiteUrl": "https://dota2.ai",
+  "icons": [
+    {
+      "src": "https://dota2.ai/favicon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": [
+        "any"
+      ]
+    }
+  ],
+  "version": "0.1.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://dota2.ai/mcp"
+    }
+  ]
+}

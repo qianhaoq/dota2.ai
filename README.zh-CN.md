@@ -142,7 +142,7 @@ flowchart LR
 
 > 帮我复盘 Dota 2 比赛 9100904020，我玩的是兽王。按 https://dota2.ai/llms.txt 调用接口，只引用接口返回的数据，样本不足就直说。
 
-服务的 8 个工具——`review_match`、`get_evidence`、`recent_matches`、`coach_report`、`coach_cases`、`coach_ask`、`goal_check`、`hero_matchup`——属于即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标（[说明](packages/mcp/README.md)）。想在本地通过 stdio 运行，用 `node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`。另有一个 Agent Skill：[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)。
+`replay_review` 就是网页上那份看录像写的完整复盘：它不会卡住等待，Agent 在它返回 `parsing` 或 `reviewing` 时隔一会儿再调一次（第一次两到四分钟），最后拿到结论、附录像依据的各条问题和可以转发的复盘页链接。其余 8 个工具——`review_match`、`get_evidence`、`recent_matches`、`coach_report`、`coach_cases`、`coach_ask`、`goal_check`、`hero_matchup`——属于即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标（[说明](packages/mcp/README.md)）。想在本地通过 stdio 运行，用 `node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`。另有一个 Agent Skill：[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)。
 
 ### 在终端里用
 

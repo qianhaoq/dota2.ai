@@ -52,7 +52,14 @@ describe('fact collection', () => {
   it('passes what the tools said and names what they did not', () => {
     const sources = [{ deaths_total: 11, killed_by: { phantom_assassin: 7 }, gold: 4298, deaths: [{ ref: 'death:x:6', t: 1647.4, hp: 2915, deaths_within_12s: [{ t: 1658.2, dt: 10.8 }] }, { ref: 'death:x:4', t: 1321, hp: 1476 }] }];
     const fine = { title: 't', claim: '27:25 时 2915 血，领先 4.3k', evidence: [{ refs: ['death:x:6'], fact: '27:27 之后 11 秒（27:38）阵亡，剩 2915 血' }], fix: '站到 700 码外，留 25 秒' };
-    expect(verifyReview(review([fine], { verdict: '11 次阵亡里 7 次死于幻影刺客', mainline: [] }), sources)).toMatchObject({ ok: true, problems: [] });
+    const passed = verifyReview(review([fine], { verdict: '11 次阵亡里 7 次死于幻影刺客', mainline: [] }), sources);
+    // Every fact in it is the tools': nothing is unsupported, and nothing would be dropped.
+    expect(passed.problems.filter((p: any) => !p.soft)).toEqual([]);
+    expect(passed.unsupported.findings.size).toBe(0);
+    // The one thing said about it is how the claim reads — three numbers in one sentence — which removes nothing.
+    expect(passed.problems).toEqual([{ where: 'finding', index: 0, kind: 'dense', text: '27:25 时 2915 血，领先 4.3k (3)', soft: true }]);
+    // With the claim cut to two, there is nothing to say at all.
+    expect(verifyReview(review([{ ...fine, claim: '27:25 时 2915 血' }], { verdict: '11 次阵亡里 7 次死于幻影刺客', mainline: [] }), sources)).toMatchObject({ ok: true, problems: [] });
     const bad = {
       title: 't', claim: '经济只有 9,876，1.3 秒就倒了',
       evidence: [
@@ -77,6 +84,8 @@ describe('fact collection', () => {
       { where: 'finding', index: 0, kind: 'moment', text: '27:38 (not in death:x:4)' },
       { where: 'finding', index: 0, kind: 'moment', text: '2915 (not in death:x:4)' },
       { where: 'finding', index: 0, kind: 'moment', text: '25 (not in death:x:6)' },
+      // And, apart from what is unsupported: the evidence item written in English ("no ref at all") in a Chinese review.
+      { where: 'finding', index: 0, kind: 'english', text: 'ref, all', soft: true },
     ]);
   });
 });
@@ -232,13 +241,13 @@ describe('runDeepReview', () => {
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'Beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
     expect(r.review).toMatchObject({ schema: DEEP_REVIEW_SCHEMA, match_id: 9100904020, hero: 'beastmaster', lang: 'zh', findings: [goodShown], verdict: '咆哮没有留给幻影刺客的 BKB。' });
-    expect(r.verification).toEqual({ repaired: false, first_pass_problems: 0, dropped: 0, problems: [] });
+    expect(r.verification).toEqual({ repaired: false, first_pass_problems: 0, dropped: 0, problems: [], game_plan_missing: 'not_submitted' });
     expect(r.tool_calls.map((c: any) => c.name)).toEqual(['ability_audit', 'immunity_windows', 'death_context']);
     // The model is told who it reviews and what to call the heroes, in the reader's language.
     expect(m.seen[0].system).toContain('简体中文');
     expect(m.seen[0].messages[0].content).toContain('"player_hero":"beastmaster"');
     expect(m.seen[0].messages[0].content).toContain('"necrolyte":"瘟疫法师"');
-    expect(m.seen[0].tools.map((t: any) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline', 'tempo_report', 'hero_abilities', 'pro_item_choices', 'lane_report', 'lineup_timing', 'window_report', 'build_for_plan', 'farm_report', 'build_check', 'power_spikes', 'fight_report', 'game_state', 'siege_report', 'roshan_report', 'decision_points', 'submit_review']);
+    expect(m.seen[0].tools.map((t: any) => t.name)).toEqual(['match_overview', 'death_context', 'ability_audit', 'immunity_windows', 'fight_timeline', 'item_timeline', 'tempo_report', 'hero_abilities', 'pro_item_choices', 'lane_report', 'lineup_timing', 'window_report', 'build_for_plan', 'farm_report', 'build_check', 'power_spikes', 'fight_report', 'game_state', 'siege_report', 'roshan_report', 'key_moments', 'decision_points', 'submit_review']);
     // The tool results the model read are the real ones, told from the player's side.
     expect(JSON.parse(m.seen[1].messages.find((x: any) => x.tool_call_id === 'a').content).casts_total).toBe(10);
   });

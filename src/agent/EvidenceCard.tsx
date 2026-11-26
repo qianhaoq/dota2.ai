@@ -163,11 +163,29 @@ const T = {
   richest: { my_team: { en: 'Their richest', zh: '对方经济最高', ru: 'Их топ-нетворс' }, enemy: { en: 'Your richest', zh: '我方经济最高', ru: 'Ваш топ-нетворс' } } as Record<string, Tri>,
   richestAlive: { en: 'alive', zh: '已复活', ru: 'жив' },
   roshanBy: { my_team: { en: 'Your team took Roshan', zh: '我方打掉肉山', ru: 'Ваша команда забрала Рошана' }, enemy: { en: 'They took Roshan', zh: '对方打掉肉山', ru: 'Враги забрали Рошана' } } as Record<string, Tri>,
+  momentsStretch: { en: 'Where the chance fell most', zh: '胜率跌得最多的一段', ru: 'Отрезок наибольшей потери шансов' },
+  momentsSplit: { en: 'Of the chance lost in fights, the player was', zh: '团战里丢掉的胜率，玩家当时', ru: 'Из потерянных в драках шансов игрок был' },
+  momentsPart: { in_it: { en: 'in the fight', zh: '在团里', ru: 'в драке' }, dead: { en: 'dead', zh: '阵亡中', ru: 'мёртв' }, elsewhere: { en: 'elsewhere', zh: '在别处', ru: 'в другом месте' }, not_known: { en: 'not known', zh: '不确定', ru: 'неизвестно' } } as Record<string, Tri>,
+  momentsNone: { en: 'no fight lost the team any chance', zh: '没有哪场团战让我方胜率下降', ru: 'ни одна драка не снизила шансы команды' },
+  momentsNotRead: { en: 'fights whose change could not be read (the gold lead does not cover them)', zh: '读不出胜率变化的团战（经济差没有覆盖那几分钟）', ru: 'драки без оценки шансов (не покрыты графиком золота)' },
+  momentsUnknown: { en: 'not known', zh: '不确定', ru: 'неизвестно' },
   aegisHolder: { en: 'Aegis', zh: '不朽盾', ru: 'Aegis' },
   aegisEnd: { used: { en: 'used', zh: '用掉', ru: 'использован' }, expired: { en: 'expired', zh: '过期', ru: 'истёк' }, game_ended: { en: 'game ended', zh: '比赛结束', ru: 'матч окончен' }, unknown: { en: 'unknown', zh: '不明', ru: 'неизвестно' } } as Record<string, Tri>,
   atRoshan: { en: 'At Roshan', zh: '在场', ru: 'У Рошана' },
   roshanMe: { holder: { en: 'you held the Aegis', zh: '盾在你身上', ru: 'Aegis был у вас' }, there: { en: 'you were there', zh: '你在场', ru: 'вы были там' }, not_there: { en: 'you were not there', zh: '你不在场', ru: 'вас там не было' } } as Record<string, Tri>,
   next300: { en: 'Buildings taken in the next 300 s', zh: '之后 300 秒拆掉的建筑', ru: 'Постройки за следующие 300 с' },
+  roshanKilledBy: { en: 'Killed by', zh: '击杀', ru: 'Добил' },
+  roshanNoPickup: { en: 'no Aegis pickup seen within 30 s', zh: '30 秒内没看到有人捡盾', ru: 'подбор Aegis не замечен в течение 30 с' },
+  aegisStolen: { en: 'stolen', zh: '被抢', ru: 'украден' },
+  tormentorBy: { my_team: { en: 'Your team killed a Tormentor', zh: '我方打掉痛苦魔方', ru: 'Ваша команда убила Tormentor' }, enemy: { en: 'The enemy killed a Tormentor', zh: '对方打掉痛苦魔方', ru: 'Враги убили Tormentor' } } as Record<string, Tri>,
+  tormentorKilledBy: { en: 'last hit', zh: '最后一击', ru: 'добил' },
+  roshanWhereNotKnown: { en: 'Where Roshan was is not known (the last hit came from away from both pits: an illusion\'s), so who was near is not said', zh: '肉山当时的位置不确定（最后一击来自两个肉山坑之外，可能是幻象打的），所以不说谁在附近', ru: 'Позиция Рошана неизвестна (добивание издали — возможно, иллюзией), поэтому кто был рядом не указывается' },
+  roshanAttempt: { en: 'The attempt', zh: '打肉山', ru: 'Попытка' },
+  roshanFrom: { en: 'from', zh: '从', ru: 'с' },
+  roshanOthers: { my_team: { en: 'They, when it began', zh: '开打时对方', ru: 'Враги в начале' }, enemy: { en: 'Your team, when it began', zh: '开打时我方', ru: 'Ваша команда в начале' } } as Record<string, Tri>,
+  roshanOtherHit: { en: 'also hit it', zh: '也打到了肉山', ru: 'тоже бил Рошана' },
+  dead: { en: 'dead', zh: '阵亡中', ru: 'мёртв' },
+  noPosition: { en: 'no position in the replay', zh: '录像里没有位置', ru: 'нет позиции в реплее' },
   fightsAfter: { en: 'Fights in the next 300 s', zh: '之后 300 秒的团战', ru: 'Драки за следующие 300 с' },
   pushedBy: { my_team: { en: 'Your team pushed', zh: '我方推', ru: 'Ваша команда пушила' }, enemy: { en: 'They pushed', zh: '对方推', ru: 'Враги пушили' } } as Record<string, Tri>,
   tookIt: { en: 'fell', zh: '被拆', ru: 'пала' }, stood: { en: 'stood', zh: '没拆掉', ru: 'устояла' },
@@ -337,6 +355,11 @@ const TOTALS: Record<string, Tri> = {
   buildings_enemy_took_with_aegis: { en: 'Buildings the enemy took with the Aegis', zh: '对方持盾期间拆掉建筑' },
   my_team_roshans_with_no_building_after: { en: 'Your Roshans with no building after', zh: '我方打完肉山没拆到建筑' },
   roshans_i_was_at: { en: 'Roshans you were at', zh: '你在场的肉山' },
+  roshan_kills_in_the_trace: { en: 'Roshan kills in the replay', zh: '录像里的肉山击杀' },
+  my_team_roshans_i_hit: { en: 'Your team\'s Roshans you hit', zh: '我方肉山里你出手的' },
+  roshans_the_other_side_also_hit: { en: 'Roshans the other side also hit', zh: '双方都打到的肉山' },
+  tormentors_my_team_took: { en: 'Tormentors your team took', zh: '我方痛苦魔方' },
+  tormentors_enemy_took: { en: 'Tormentors the enemy took', zh: '对方痛苦魔方' },
   // siege_report's totals (sieges:<hero>).
   my_team_pushes: { en: 'Your team\'s pushes', zh: '我方推塔' },
   my_team_pushes_that_took_it: { en: 'Your pushes that took the building', zh: '我方推掉的' },
@@ -689,17 +712,64 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       </div>
     );
   }
-  if (data.kind === 'roshan' && r.aegis_holder) {
+  // key_moments: the falling stretch with its fights, and where the player was when the chance was lost. The chance
+  // itself is a ruler for ranking, not a number the reader is shown.
+  if (data.kind === 'moments' && r.read === true) {
+    const split = r.falls_by_my_part ?? {};
+    const parts = ['in_it', 'dead', 'elsewhere', 'not_known'].filter((k) => typeof split[k] === 'number' && split[k] > 0);
+    return (
+      <div className="ag-rec">
+        {r.stretch && (
+          <p className="ag-rec-line"><span>{t(T.momentsStretch)} · {r.stretch.from}–{r.stretch.to}</span>
+            {(r.stretch.fights ?? []).map((f: any) => <span key={f.ref} className="ag-chip">{f.clock}{f.me && T.momentsPart[f.me] && <em>{t(T.momentsPart[f.me])}</em>}</span>)}
+          </p>
+        )}
+        <p className="ag-rec-line"><span>{t(T.momentsSplit)}</span>
+          {parts.length ? parts.map((k) => <span key={k} className="ag-chip">{t(T.momentsPart[k])}<em>{Math.round(split[k] * 100)}%</em></span>)
+            // "No fight lost any" only when every fight was read; with unread fights it is not known.
+            : <span className="ag-none">{r.fights_not_read > 0 ? t(T.momentsUnknown) : t(T.momentsNone)}</span>}
+        </p>
+        {r.fights_not_read > 0 && <p className="ag-rec-line"><span className="ag-none">{t(T.momentsNotRead)}</span><span className="ag-chip">{r.fights_not_read}</span></p>}
+      </div>
+    );
+  }
+  // One Tormentor kill (roshan:<hero>:t<n>): when, whose, and who landed it.
+  if (data.kind === 'roshan' && /:t\d+$/.test(String(r.ref ?? ''))) {
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b>{r.taken_by && T.tormentorBy[r.taken_by] && <> · {t(T.tormentorBy[r.taken_by])}</>}</p>
+        {r.killed_by && <p className="ag-rec-line"><span className="ag-chip">{t(T.tormentorKilledBy)} {N(r.killed_by)}</span></p>}
+      </div>
+    );
+  }
+  if (data.kind === 'roshan' && (r.aegis_holder || r.killed_by || r.attempt)) {
     const mine = r.taken_by === 'my_team';
     const heroes = (list: string[] | null, cls: string) => (list == null ? <span className="ag-none">–</span> : list.length ? list.map((h) => <span key={h} className={`ag-chip ${cls}`}>{N(h)}</span>) : <span className="ag-none">{t(T.nobody)}</span>);
     return (
       <div className="ag-rec">
         <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.roshanBy[r.taken_by])}{r.place && <> · {N(r.place)}</>}</p>
         <p className="ag-rec-line">
-          <span className="ag-chip">{t(T.aegisHolder)} {N(r.aegis_holder)} · {t(T.aegisEnd[r.aegis] ?? T.aegisEnd.unknown)}{(r.aegis_used_at ?? r.aegis_expired_at) && <em>{r.aegis_used_at ?? r.aegis_expired_at}</em>}</span>
+          {r.killed_by && <span className="ag-chip">{t(T.roshanKilledBy)} {N(r.killed_by)}</span>}
+          {r.aegis_holder
+            ? <span className="ag-chip">{t(T.aegisHolder)} {N(r.aegis_holder)}{r.aegis_stolen && <> · {t(T.aegisStolen)}</>} · {t(T.aegisEnd[r.aegis] ?? T.aegisEnd.unknown)}{(r.aegis_used_at ?? r.aegis_expired_at) && <em>{r.aegis_used_at ?? r.aegis_expired_at}</em>}</span>
+            : <span className="ag-chip">{t(T.aegisHolder)} · {t(T.roshanNoPickup)}</span>}
           {r.me && T.roshanMe[r.me] && <span className="ag-chip is-me">{t(T.roshanMe[r.me])}</span>}
         </p>
-        <p className="ag-rec-line"><span>{t(T.atRoshan)}</span>{heroes(r.taking_side_near, mine ? 'is-ally' : 'is-enemy')}{heroes(r.other_side_near, mine ? 'is-enemy' : 'is-ally')}</p>
+        {r.attempt && (
+          <>
+            <p className="ag-rec-line"><span>{t(T.roshanAttempt)} · {t(T.roshanFrom)} {r.attempt.started} · {r.attempt.seconds}{t(T.sec)}</span>
+              {r.attempt.heroes_hitting.map((x: any) => <span key={x.hero} className={`ag-chip ${mine ? 'is-ally' : 'is-enemy'}`}>{N(x.hero)}<em>{x.damage}</em></span>)}
+              {r.attempt.other_side_hitting.map((x: any) => <span key={x.hero} className={`ag-chip ${mine ? 'is-enemy' : 'is-ally'}`}>{N(x.hero)}<em>{t(T.roshanOtherHit)} · {x.damage}</em></span>)}
+            </p>
+            {/* Where the other side stood when the attempt began: a place and a distance, never what they could see. */}
+            <p className="ag-rec-line"><span>{t(T.roshanOthers[r.taken_by])}</span>
+              {r.attempt.other_side_when_it_began.map((x: any) => <span key={x.hero} className={`ag-chip ${mine ? 'is-enemy' : 'is-ally'}`}>{N(x.hero)}<em>{x.dead ? t(T.dead) : x.place == null ? t(T.noPosition) : <>{N(x.place)}{x.distance != null && <> · {x.distance} {t(T.away)}</>}</>}</em></span>)}
+            </p>
+          </>
+        )}
+        {r.where_not_known
+          ? <p className="ag-rec-line"><span className="ag-none">{t(T.roshanWhereNotKnown)}</span></p>
+          : <p className="ag-rec-line"><span>{t(T.atRoshan)}</span>{heroes(r.taking_side_near, mine ? 'is-ally' : 'is-enemy')}{heroes(r.other_side_near, mine ? 'is-enemy' : 'is-ally')}</p>}
         <p className="ag-rec-line"><span>{t(T.next300)}</span>
           {[...r.buildings_taking_side_took_in_the_next_300s.map((b: any) => ({ ...b, cls: mine ? 'is-good' : 'is-warn' })), ...r.buildings_other_side_took_in_the_next_300s.map((b: any) => ({ ...b, cls: mine ? 'is-warn' : 'is-good' }))]
             .sort((a: any, b: any) => a.clock.localeCompare(b.clock, undefined, { numeric: true }))

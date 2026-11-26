@@ -67,10 +67,10 @@ describe('home: four ways to use it', () => {
     const { container } = home();
     const ways = container.querySelector('.hm-ways') as HTMLElement;
     expect(within(ways).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Web', 'Agent (MCP)', 'CLI', 'HTTP']);
-    // MCP is the default tab: the hosted endpoint and all 8 tool names.
+    // MCP is the default tab: the hosted endpoint and all 9 tool names (replay_review joined the 8 rule-based ones).
     expect(ways.querySelector('pre')?.textContent).toBe(`claude mcp add --transport http dota2ai ${MCP_URL}`);
     for (const tool of MCP_TOOLS) expect(ways.textContent).toContain(tool);
-    expect(MCP_TOOLS).toHaveLength(8);
+    expect(MCP_TOOLS).toHaveLength(9);
     fireEvent.click(within(ways).getByRole('tab', { name: 'CLI' }));
     expect(ways.querySelector('pre')?.textContent).toContain('node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section why');
     expect(ways.textContent).toContain('Not published on npm yet');

@@ -73,6 +73,7 @@ import { validateAnalyticsEvent, createAnalyticsRateLimiter } from './lib/analyt
 import { createSlidingWindowLimiter } from './lib/rateLimiter.js';
 import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
+import { replayReview } from './lib/agent/replayTool.js';
 import { createAgentRouter } from './lib/agent/router.js';
 import { createAgentService, SLOW_REVIEW_MAX_MS } from './lib/agent/service.js';
 import { warmShowcase } from './lib/agent/showcase.js';
@@ -978,7 +979,7 @@ process.once('SIGTERM', () => {
   httpServer.close(exit);
   httpServer.closeIdleConnections?.();
 });
-app.use(createAgentRouter({
+const agentRouter = createAgentRouter({
   service: agentService,
   runAuth: agentTasks?.auth ?? null,
   resolveClientIp,
@@ -987,7 +988,8 @@ app.use(createAgentRouter({
   modelHourlyMax: Number(process.env.AGENT_MODEL_HOURLY_MAX) > 0 ? Number(process.env.AGENT_MODEL_HOURLY_MAX) : undefined,
   guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
   log: (msg) => console.warn(`[agent] ${msg}`),
-}));
+});
+app.use(agentRouter);
 
 // The patch advisor: what the current patch changed and how heroes are doing since (lib/patch). Its chat
 // calls the same model under the same budget as the review's.
@@ -1032,6 +1034,8 @@ app.use(createV1Router({
   replayIngest,
   phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined,
   coachForRequest: coachService.forRequest,
+  // MCP replay_review: the agent's deep review, under the same per-caller limits as the page (lib/agent/replayTool.js).
+  replayForRequest: (req) => { const api = agentRouter.forRequest(req); return { review: (args) => replayReview(api, args) }; },
 }));
 
 // Explicit OpenDota parse submission — the ONLY path that calls submitParseRequest

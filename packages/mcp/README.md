@@ -48,7 +48,19 @@ Coach tools (local stdio server; same public API and shapes as the `dota2ai` CLI
   `rank` to get that bracket in `lines`. Credit STRATZ
   (`rank_source.attribution`) when you quote these numbers.
 
-The hosted endpoint `https://dota2.ai/mcp` serves **all 8 tools** with no install
+The hosted endpoint `https://dota2.ai/mcp` also serves **`replay_review`** — the
+deep review the site writes from the replay (only where the server has the agent
+in process, so not over stdio):
+
+- `replay_review({match_id, hero?, lang?, retry?})`: never blocks. `status`:
+  `parsing` / `reviewing` (call again after `poll_after_sec`; 2–4 minutes in all),
+  `pick_hero` (ask the user; `heroes` lists the game's), `ready` (verdict,
+  mainline, findings with replay evidence, did_well, next_game, blind_spots,
+  `url` of the page), `failed` (started again only with `retry: true`),
+  `replay_unavailable` (Valve keeps replays about two weeks). Starts share the web
+  page's per-caller review limit; a refusal is `isError` with the wait.
+
+With it, the hosted endpoint serves **all 9 tools** with no install
 (`claude mcp add --transport http dota2ai https://dota2.ai/mcp`). Its coach tools
 run in process on the server (`lib/coach/service.js`) and share the web coach's
 per-caller rate limit (IPv6 grouped by /64); a rate-limited call returns `isError`
