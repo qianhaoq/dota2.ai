@@ -111,17 +111,19 @@ describe('a Roshan read from its kill', () => {
     expect(a.other_side_when_it_began).toEqual([{ hero: 'pudge', place: null }, { hero: 'zuus', dead: true }]);
   });
 
-  it('a kill with no pickup by the killing side within 30 s is a take whose Aegis was not seen picked up', () => {
-    // Radiant kills at 200; Dire's Pudge picks the Aegis up at 210 (a steal), and Radiant's Lina only at 300.
+  it('a kill with no pickup within 30 s is a take whose Aegis was not seen picked up; one the other side picked up is a steal of that kill', () => {
+    expect(PICKUP_WITHIN).toBe(30);
+    // Radiant kills at 200 and nobody picks the Aegis up within 30 s.
+    const none: any = roshanReport(withKills({ heroes, pos }, { kills: [[200, 'axe', 2]], hits: [[198, 'axe', 500]] }), { hero: 'sven' });
+    expect(none.takes.map((x: any) => [x.clock, x.taken_by, x.seen_by, x.aegis, x.aegis_holder ?? null])).toEqual([['3:20', 'my_team', 'kill', 'no_pickup_seen_within_30s', null]]);
+    // Radiant kills at 200; Dire's Pudge picks the Aegis up at 210. One Roshan — Radiant's kill — with a stolen Aegis.
+    // (This test used to expect two takes, one per side, from one kill: that was the bug Codex found on #384.)
     const t = withKills({ heroes, pos, items: { pudge: { item_aegis: { held: [[210, 510]] } } } }, { kills: [[200, 'axe', 2]], hits: [[198, 'axe', 500]] });
     const r: any = roshanReport(t, { hero: 'sven' });
-    expect(PICKUP_WITHIN).toBe(30);
-    expect(r.takes.map((x: any) => [x.clock, x.taken_by, x.seen_by, x.aegis, x.aegis_holder ?? null])).toEqual([
-      ['3:20', 'my_team', 'kill', 'no_pickup_seen_within_30s', null],
-      // The other side's pickup is its own take: an Aegis in their hands, with no kill of theirs behind it.
-      ['3:30', 'enemy', 'aegis_pickup', 'expired', 'pudge'],
-    ]);
-    expect(r).toMatchObject({ roshans_my_team_took: 1, roshans_enemy_took: 1, roshan_kills_in_the_trace: 1 });
+    expect(r.takes.map((x: any) => [x.clock, x.taken_by, x.seen_by, x.aegis, x.aegis_holder ?? null, x.aegis_stolen ?? false])).toEqual([['3:20', 'my_team', 'kill_and_aegis_pickup', 'expired', 'pudge', true]]);
+    expect(r).toMatchObject({ roshans_my_team_took: 1, roshans_enemy_took: 0, roshan_kills_in_the_trace: 1, my_team_aegis_expired: 0, buildings_my_team_took_with_aegis: 0 });
+    // From Pudge's side: the kill was the enemy's, the Aegis theirs.
+    expect(roshanReport(t, { hero: 'pudge' })).toMatchObject({ roshans_my_team_took: 0, roshans_enemy_took: 1, my_team_aegis_expired: 1 });
   });
 
   it('a pickup with no kill row (the last hit was not a hero\'s) is still a take; two kills each keep their own pickup', () => {
@@ -237,6 +239,47 @@ describe('what the review found on #384', () => {
     const withRows = { ...noHits, roshan_damage: rows.roshan_damage.map((x: any[]) => [x[0], idx(x[1]), x[2]]) };
     expect((roshanReport(withRows, { hero: 'beastmaster' }) as any).takes[0].attempt.seconds).toBe(26);
   });
+
+  const realRows = () => {
+    const rows = JSON.parse(readFileSync(new URL('../../packages/review-engine/test/fixtures/roshan-9100904020.json', import.meta.url), 'utf8'));
+    const idx = (npc: string | null) => (npc == null ? -1 : trace.names.indexOf(npc));
+    return { roshan_kills: rows.roshan_kills.map((x: any[]) => [x[0], idx(x[1]), ...x.slice(2)]), roshan_damage: rows.roshan_damage.map((x: any[]) => [x[0], idx(x[1]), x[2]]), tormentor_kills: rows.tormentor_kills };
+  };
+
+  it('a stolen Aegis stays with its kill: one Roshan, the killers\' — the Aegis counts for the side that held it (Codex on #384)', () => {
+    const pa = trace.heroes.findIndex((x: any) => x.key === 'phantom_assassin'); const bm = trace.heroes.findIndex((x: any) => x.key === 'beastmaster');
+    const items = trace.items.map((it: any) => ({ ...it }));
+    items[bm] = { ...items[bm], item_aegis: items[pa].item_aegis }; delete items[pa].item_aegis;
+    const stolen = { ...trace, items, ...realRows() };
+    const r: any = roshanReport(stolen, { hero: 'beastmaster' });
+    expect(r.takes).toHaveLength(1);
+    expect(r).toMatchObject({ roshans_enemy_took: 1, roshans_my_team_took: 0, buildings_enemy_took_with_aegis: 0 });
+    expect(r.takes[0]).toMatchObject({ taken_by: 'enemy', killed_by: 'phantom_assassin', aegis_holder: 'beastmaster', aegis_stolen: true, me: 'holder' });
+    // Not stolen: no such field, and the Aegis is theirs.
+    const own: any = roshanReport({ ...trace, ...realRows() }, { hero: 'beastmaster' });
+    expect(own.takes[0]).not.toHaveProperty('aegis_stolen');
+    expect(own).toMatchObject({ buildings_enemy_took_with_aegis: 1 });
+  });
+
+  it('a take with no attempt (seen only by its pickup) leaves who-hit-it counts unknown, not zero (Codex on #384)', () => {
+    const rows = realRows();
+    // The kill row missing (a summon's last hit), the hits kept: Phantom Assassin dealt 8,840 to it.
+    const r: any = roshanReport({ ...trace, ...rows, roshan_kills: [] }, { hero: 'phantom_assassin' });
+    expect(r.takes[0]).toMatchObject({ seen_by: 'aegis_pickup', aegis_holder: 'phantom_assassin' });
+    expect(r).toMatchObject({ my_team_roshans_i_hit: null, roshans_the_other_side_also_hit: null });
+    // With the kill row, they are counted.
+    expect(roshanReport({ ...trace, ...rows }, { hero: 'phantom_assassin' })).toMatchObject({ my_team_roshans_i_hit: 1, roshans_the_other_side_also_hit: 0 });
+  });
+
+  it('the calibration\'s text report prints when what needs the hits is not known (Codex on #384)', () => {
+    const rows = realRows();
+    const dir = mkdtempSync(join(tmpdir(), 'roshan-'));
+    writeFileSync(join(dir, '9100904020.trace.json.gz'), gzipSync(JSON.stringify({ ...trace, roshan_kills: rows.roshan_kills, tormentor_kills: rows.tormentor_kills })));
+    const text = execFileSync('node', ['scripts/calibrate.mjs', dir], { encoding: 'utf8' });
+    expect(text).toContain('1 Roshan kills in 1 games with kill rows');
+    expect(text).toContain('heroes hitting 1/2/3/4/5: not known; the other side also hit not known; attempt seconds (quartiles) – / – / –');
+    expect(text).toContain('Roshans (Aegis pickups)');
+  }, 30000);
 
   it('in Chinese, where the other side stood when it began is named in Chinese', () => {
     const rows = JSON.parse(readFileSync(new URL('../../packages/review-engine/test/fixtures/roshan-9100904020.json', import.meta.url), 'utf8'));

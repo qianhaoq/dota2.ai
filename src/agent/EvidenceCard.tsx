@@ -135,6 +135,7 @@ const T = {
   // A Roshan the replay kept the kill of: who landed it, who hit it and for how long, and where the other side stood.
   roshanKilledBy: { en: 'Killed by', zh: '击杀' },
   roshanNoPickup: { en: 'no Aegis pickup seen within 30 s', zh: '30 秒内没看到有人捡盾' },
+  aegisStolen: { en: 'stolen', zh: '被抢' },
   tormentorBy: { my_team: { en: 'Your team killed a Tormentor', zh: '我方打掉痛苦魔方' }, enemy: { en: 'The enemy killed a Tormentor', zh: '对方打掉痛苦魔方' } } as Record<string, { en: string; zh: string }>,
   tormentorKilledBy: { en: 'last hit', zh: '最后一击' },
   roshanWhereNotKnown: { en: 'Where Roshan was is not known (the last hit came from away from both pits: an illusion\'s), so who was near is not said', zh: '肉山当时的位置不确定（最后一击来自两个肉山坑之外，可能是幻象打的），所以不说谁在附近' },
@@ -680,7 +681,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         <p className="ag-rec-line">
           {r.killed_by && <span className="ag-chip">{t(T.roshanKilledBy)} {N(r.killed_by)}</span>}
           {r.aegis_holder
-            ? <span className="ag-chip">{t(T.aegisHolder)} {N(r.aegis_holder)} · {t(T.aegisEnd[r.aegis] ?? T.aegisEnd.unknown)}{(r.aegis_used_at ?? r.aegis_expired_at) && <em>{r.aegis_used_at ?? r.aegis_expired_at}</em>}</span>
+            ? <span className="ag-chip">{t(T.aegisHolder)} {N(r.aegis_holder)}{r.aegis_stolen && <> · {t(T.aegisStolen)}</>} · {t(T.aegisEnd[r.aegis] ?? T.aegisEnd.unknown)}{(r.aegis_used_at ?? r.aegis_expired_at) && <em>{r.aegis_used_at ?? r.aegis_expired_at}</em>}</span>
             : <span className="ag-chip">{t(T.aegisHolder)} · {t(T.roshanNoPickup)}</span>}
           {r.me && T.roshanMe[r.me] && <span className="ag-chip is-me">{t(T.roshanMe[r.me])}</span>}
         </p>
