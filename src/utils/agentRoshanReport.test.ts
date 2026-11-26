@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync, mkdtempSync, copyFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, copyFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { gunzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { roshanReport, aegisTakes, ROSHAN_TOOL, AEGIS_SECONDS, ATTEMPT_GAP, PICKUP_WITHIN, ROSHAN_PITS, PIT_NEAR, pitAt } from '../../lib/agent/roshanReport.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
@@ -292,4 +292,14 @@ describe('roshan_report on a real game', () => {
     const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
     expect(out.roshans).toMatchObject({ takes: 1, aegis: { used: 1, expired: 0, game_ended: 0 }, buildings_in_the_next_300s: { taking_side: 1, other_side: 0 }, takes_with_no_building_after: 0 });
   });
+
+  it('the calibration counts a kill whose hits were not kept as a kill, with what needs the hits unknown (Codex on #384)', () => {
+    const rows = JSON.parse(readFileSync(new URL('../../packages/review-engine/test/fixtures/roshan-9100904020.json', import.meta.url), 'utf8'));
+    const idx = (npc: string | null) => (npc == null ? -1 : trace.names.indexOf(npc));
+    const kills = rows.roshan_kills.map((x: any[]) => [x[0], idx(x[1]), ...x.slice(2)]);
+    const write = (t: any) => { const dir = mkdtempSync(join(tmpdir(), 'roshan-')); writeFileSync(join(dir, '9100904020.trace.json.gz'), gzipSync(JSON.stringify(t))); return JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' })).roshan_kills; };
+    expect(write({ ...trace, roshan_kills: kills, tormentor_kills: rows.tormentor_kills })).toMatchObject({ games_with_kill_rows: 1, kills: 1, aegis_picked_up_by_the_killing_side_within_30s: 1, aegis_pickups_with_no_kill_row: 0, kills_with_the_hits_kept: 0, heroes_of_the_killing_side_hitting: null, kills_the_other_side_also_hit: null, attempt_seconds_quartiles: [null, null, null] });
+    // With the hits: the same kill, and its attempt counted.
+    expect(write({ ...trace, roshan_kills: kills, roshan_damage: rows.roshan_damage.map((x: any[]) => [x[0], idx(x[1]), x[2]]), tormentor_kills: rows.tormentor_kills })).toMatchObject({ kills: 1, aegis_pickups_with_no_kill_row: 0, kills_with_the_hits_kept: 1, heroes_of_the_killing_side_hitting: { 1: 0, 2: 1, 3: 0, 4: 0, 5: 0 }, kills_the_other_side_also_hit: 0, attempt_seconds_quartiles: [26, 26, 26] });
+  }, 30000);
 });

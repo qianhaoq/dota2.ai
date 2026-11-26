@@ -111,7 +111,9 @@ for (const f of files) {
   if (ro.read_from === 'roshan_kills_and_aegis_pickups') gamesWithKillRows += 1;
   for (const x of ro.takes ?? []) {
     // The kill, when the trace kept it: who hit Roshan, for how long, whether the Aegis followed.
-    if (x.attempt) roshanKills.push({ picked_up: x.seen_by === 'kill_and_aegis_pickup', hitters: x.attempt.heroes_hitting.length, others: x.attempt.other_side_hitting.length, seconds: x.attempt.seconds });
+    // Kill or pickup by what the take was read from — not by whether its hits were kept: a kill whose damage rows
+    // the trace lacks is still a kill, and its attempt is unknown (null), not left out of the kills.
+    if (x.seen_by === 'kill' || x.seen_by === 'kill_and_aegis_pickup') roshanKills.push({ picked_up: x.seen_by === 'kill_and_aegis_pickup', hitters: x.attempt ? x.attempt.heroes_hitting.length : null, others: x.attempt ? x.attempt.other_side_hitting.length : null, seconds: x.attempt ? x.attempt.seconds : null });
     else if (ro.read_from === 'roshan_kills_and_aegis_pickups') pickupsWithNoKill += 1;
     // The table below is over Aegis pickups, as it always was: a kill nobody picked the Aegis up after has none of this.
     if (!x.aegis_holder) continue;
@@ -221,7 +223,9 @@ out.after_won_fights = [0, 1, 2, 3, 4].map((n) => {
 });
 const fightsAfter = roshans.flatMap((x) => x.fights);
 if (gamesWithKillRows) {
-  const secs = roshanKills.map((x) => x.seconds).sort((a, b) => a - b);
+  // What needs the hits is read over the kills whose hits were kept.
+  const hit = roshanKills.filter((x) => x.seconds != null);
+  const secs = hit.map((x) => x.seconds).sort((a, b) => a - b);
   const quart = (p) => (secs.length ? secs[Math.min(secs.length - 1, Math.floor(p * secs.length))] : null);
   out.roshan_kills = {
     games_with_kill_rows: gamesWithKillRows,
@@ -229,8 +233,9 @@ if (gamesWithKillRows) {
     aegis_picked_up_by_the_killing_side_within_30s: roshanKills.filter((x) => x.picked_up).length,
     no_pickup_seen_within_30s: roshanKills.filter((x) => !x.picked_up).length,
     aegis_pickups_with_no_kill_row: pickupsWithNoKill,
-    heroes_of_the_killing_side_hitting: Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, roshanKills.filter((x) => x.hitters === n).length])),
-    kills_the_other_side_also_hit: roshanKills.filter((x) => x.others > 0).length,
+    kills_with_the_hits_kept: hit.length,
+    heroes_of_the_killing_side_hitting: hit.length ? Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, hit.filter((x) => x.hitters === n).length])) : null,
+    kills_the_other_side_also_hit: hit.length ? hit.filter((x) => x.others > 0).length : null,
     attempt_seconds_quartiles: [quart(0.25), quart(0.5), quart(0.75)],
   };
 }
