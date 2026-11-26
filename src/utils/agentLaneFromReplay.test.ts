@@ -85,6 +85,25 @@ describe('what the review found on #392: unknown stays unknown', () => {
   });
 });
 
+describe('the second review of #392', () => {
+  const bm = trace.heroes.findIndex((h: any) => h.key === 'beastmaster');
+
+  it('earned gold is the positive sums: a death\'s loss is not taken off', () => {
+    const r: any = laneFromReplay(trace, bm);
+    expect(r.lane_gold_earned_before_10_00).toEqual({ my_team: 5735, enemy: 6301 });
+    expect(r.lane_result).toBe('lost');
+  });
+
+  it('a lane creep kill without its sides makes that hero\'s denies not known — never 0', () => {
+    const pa = ix('npc_dota_hero_phantom_assassin');
+    const t = { ...trace, creep_kills: trace.creep_kills.map((r: any) => (r[1] === pa && (r[2] === 'l' || r[2] === 'd') ? [r[0], r[1], 'u', r[3], r[4]] : r)) };
+    const r: any = laneFromReplay(t, bm);
+    expect(r.denies_at_10_00.phantom_assassin).toBeNull();
+    expect(r.denies_at_10_00.beastmaster).toBe((laneFromReplay(trace, bm) as any).denies_at_10_00.beastmaster);
+    expect(r.gaps).toContainEqual({ topic: 'denies', reason: 'lane_creep_kills_without_their_sides' });
+  });
+});
+
 describe('lane_report uses it only when the record cannot speak', () => {
   it('no record: read from the replay, with the rule, the note, and what it could not read', () => {
     const r: any = laneReport(trace, { hero: 'beastmaster' }, {});
