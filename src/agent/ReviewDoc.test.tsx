@@ -183,10 +183,57 @@ describe('ReviewDoc: fight presence strip (#363)', () => {
     expect(fig.textContent).toContain('在别处28%');
     expect(fig.textContent).toContain('缺少采样10%');
     expect(fig.textContent).not.toContain('已阵亡');
+    expect(fig.textContent).not.toContain('仅覆盖可算出胜率变化');
     expect(fig.textContent).toContain('不等同于谁的责任');
   });
 
-  it('shows nothing when moments could not be read (net_worth_only) or no fight lost win chance', async () => {
+  it('states coverage when some fights lacked gold-lead minutes, and renders unknown instead of hiding when all fights were unread', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes('/703/') && u.includes('ref=moments%3Aaxe')) {
+        return new Response(JSON.stringify({
+          status: 'ok',
+          ref: 'moments:axe',
+          kind: 'moments',
+          names: {},
+          record: {
+            read: true,
+            falls_by_my_part: { in_it: 0.7, elsewhere: 0.3, dead: 0, not_known: null },
+            fights_read: 10,
+            fights_not_read: 4,
+          },
+        }), { status: 200 });
+      }
+      if (u.includes('/704/') && u.includes('ref=moments%3Aaxe')) {
+        return new Response(JSON.stringify({
+          status: 'ok',
+          ref: 'moments:axe',
+          kind: 'moments',
+          names: {},
+          record: {
+            read: true,
+            falls_by_my_part: { in_it: null, elsewhere: null, dead: null, not_known: null },
+            fights_read: 0,
+            fights_not_read: 14,
+          },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ code: 'not_found' }), { status: 404 });
+    }));
+
+    render(<ReviewDoc matchId="703" review={review({ lang: 'zh' })} lang="zh" onAsk={() => {}} />);
+    const partial = await screen.findByRole('figure', { name: '己方掉势团战里，你当时在哪' });
+    expect(partial.textContent).toContain('在团里70%');
+    expect(partial.textContent).toContain('仅覆盖可算出胜率变化的 10/14 波团战（另有 4 波团缺少对应分钟经济差，未计入占比）');
+    cleanup();
+
+    render(<ReviewDoc matchId="704" review={review({ lang: 'zh' })} lang="zh" onAsk={() => {}} />);
+    const allUnread = await screen.findByRole('figure', { name: '己方掉势团战里，你当时在哪' });
+    expect(allUnread.querySelector('.ag-presence-bar')).toBeNull();
+    expect(allUnread.textContent).toContain('不确定——有 14 波团战缺少对应分钟经济差，读不出胜率变化。');
+  });
+
+  it('shows nothing when moments could not be read (net_worth_only) or no fight lost win chance with full coverage', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (String(url).includes('ref=moments%3Aaxe')) {
         return new Response(JSON.stringify({

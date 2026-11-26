@@ -95,6 +95,7 @@ details.ag-finding { padding-top: 12px; padding-bottom: 12px; }
 .ag-presence-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .ag-presence-legend li i { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
 .ag-presence-legend li b { color: var(--text); font-weight: 600; }
+.ag-presence-unread { margin: 8px 0 0; color: var(--fix); font-size: var(--fs-meta); line-height: 1.5; }
 .ag-presence figcaption { margin-top: 8px; color: var(--text-3); font-size: var(--fs-meta); line-height: 1.5; }
 
 .ag-finding { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; margin-bottom: 16px; }

@@ -53,6 +53,16 @@ const T = {
     zh: '按己方掉势团战统计你当时的状态占比——只陈述在不在场，不等同于谁的责任。',
     ru: 'Доля потерь шанса на победу в драках по вашему состоянию — факт позиции, а не оценка вины.',
   },
+  presenceCoverage: {
+    en: 'Covers the {r} of {total} fights with readable gold-lead minutes ({u} fight(s) lacked gold-lead minutes and are not in these shares).',
+    zh: '仅覆盖可算出胜率变化的 {r}/{total} 波团战（另有 {u} 波团缺少对应分钟经济差，未计入占比）。',
+    ru: 'Учтены {r} из {total} драк с данными по перевесу золота (ещё {u} без данных за минуту не входят в доли).',
+  },
+  presenceUnknown: {
+    en: 'Not known — {u} fight(s) could not be read for win-chance change (missing gold-lead minutes).',
+    zh: '不确定——有 {u} 波团战缺少对应分钟经济差，读不出胜率变化。',
+    ru: 'Неизвестно — для {u} драк нельзя прочитать изменение шанса (нет данных по золоту за минуту).',
+  },
   presencePart: {
     in_it: { en: 'In the fight', zh: '在团里', ru: 'В драке' },
     elsewhere: { en: 'Elsewhere', zh: '在别处', ru: 'В другом месте' },
@@ -221,28 +231,40 @@ interface FallsByMyPart {
 
 const PRESENCE_KEYS = ['in_it', 'elsewhere', 'dead', 'not_known'] as const;
 
-const FightPresenceStrip: React.FC<{ falls: FallsByMyPart; lang: Lang }> = ({ falls, lang }) => {
+const FightPresenceStrip: React.FC<{ falls: FallsByMyPart; fightsRead: number; fightsNotRead: number; lang: Lang }> = ({ falls, fightsRead, fightsNotRead, lang }) => {
   const parts = PRESENCE_KEYS
     .map((key) => ({ key, share: falls[key] }))
     .filter((p): p is { key: typeof PRESENCE_KEYS[number]; share: number } => typeof p.share === 'number' && p.share > 0);
-  if (parts.length === 0) return null;
+  if (parts.length === 0 && fightsNotRead <= 0) return null;
+  const total = fightsRead + fightsNotRead;
   return (
     <figure className="ag-presence" aria-label={T.presenceTitle[lang]}>
       <p className="ag-presence-head">{T.presenceTitle[lang]}</p>
-      <div className="ag-presence-bar" role="img" aria-label={parts.map((p) => `${T.presencePart[p.key][lang]} ${Math.round(p.share * 100)}%`).join(', ')}>
-        {parts.map((p) => (
-          <span key={p.key} className={`ag-presence-seg is-${p.key}`} style={{ flexGrow: p.share, flexBasis: `${Math.round(p.share * 100)}%` }} />
-        ))}
-      </div>
-      <ul className="ag-presence-legend">
-        {parts.map((p) => (
-          <li key={p.key} className={`is-${p.key}`}>
-            <i aria-hidden="true" />
-            <span>{T.presencePart[p.key][lang]}</span>
-            <b>{Math.round(p.share * 100)}%</b>
-          </li>
-        ))}
-      </ul>
+      {parts.length > 0 ? (
+        <>
+          <div className="ag-presence-bar" role="img" aria-label={parts.map((p) => `${T.presencePart[p.key][lang]} ${Math.round(p.share * 100)}%`).join(', ')}>
+            {parts.map((p) => (
+              <span key={p.key} className={`ag-presence-seg is-${p.key}`} style={{ flexGrow: p.share, flexBasis: `${Math.round(p.share * 100)}%` }} />
+            ))}
+          </div>
+          <ul className="ag-presence-legend">
+            {parts.map((p) => (
+              <li key={p.key} className={`is-${p.key}`}>
+                <i aria-hidden="true" />
+                <span>{T.presencePart[p.key][lang]}</span>
+                <b>{Math.round(p.share * 100)}%</b>
+              </li>
+            ))}
+          </ul>
+          {fightsNotRead > 0 && (
+            <p className="ag-presence-unread">
+              {T.presenceCoverage[lang].replace('{r}', String(fightsRead)).replace('{total}', String(total)).replace('{u}', String(fightsNotRead))}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="ag-presence-unread">{T.presenceUnknown[lang].replace('{u}', String(fightsNotRead))}</p>
+      )}
       <figcaption>{T.presenceNote[lang]}</figcaption>
     </figure>
   );
@@ -257,7 +279,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
   // The plan last asked about: the reader may want the whole review made for it, not only an answer.
   const [asked, setAsked] = useState<string | null>(null);
   const [overview, setOverview] = useState<{ fights: Fight[]; duration: { t: number } | null; turning_fight?: { ref: string } | { none: true } | null } | null>(null);
-  const [moments, setMoments] = useState<{ read?: boolean; falls_by_my_part?: FallsByMyPart | null } | null>(null);
+  const [moments, setMoments] = useState<{ read?: boolean; falls_by_my_part?: FallsByMyPart | null; fights_read?: number; fights_not_read?: number } | null>(null);
   useEffect(() => {
     let alive = true;
     setOverview(null);
@@ -343,8 +365,8 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       <section className="ag-whole">
         <h2>{t(T.whole)}</h2>
         {first && <p className="ag-verdict"><span>{t(T.verdict)}</span>{review.verdict}</p>}
-        {overview && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
-        {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} lang={lang} />}
+        {overview && Array.isArray(overview.fights) && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
+        {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} fightsRead={moments.fights_read ?? 0} fightsNotRead={moments.fights_not_read ?? 0} lang={lang} />}
         {review.mainline.length > 0 && (
           <details className="ag-fold">
             <summary><h3>{t(T.story)}</h3><span>{t(T.parts).replace('{n}', String(review.mainline.length))}</span></summary>
