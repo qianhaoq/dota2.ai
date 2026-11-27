@@ -15,7 +15,7 @@ import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { MatchBoard } from './MatchBoard';
 import { planKey } from '../../lib/agent/plans.js';
 import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelWait, writesSlowly } from '../../lib/agent/models.js';
-import { ReviewDoc, type GoalContext } from './ReviewDoc';
+import { ReviewDoc } from './ReviewDoc';
 import { WaitDeaths } from './WaitDeaths';
 import { WaitFacts } from './WaitFacts';
 import { ShareBar } from './ShareBar';
@@ -570,9 +570,8 @@ export const AgentMatchPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
-  // The player's seat on the scoreboard: what a goal needs, and what a later game is judged by.
+  // The player's seat on the scoreboard: used when checking a legacy saved goal against a later game.
   const seat = board && hero ? board.players.find((p) => p.hero.id === hero.hero_id) ?? null : null;
-  const goalContext: GoalContext | null = board && seat && board.match.start_time ? { fromStart: board.match.start_time, accountId: seat.account_id ?? null, heroId: seat.hero.id } : null;
   // A goal set from an earlier game is checked against this one (same judge as the games page).
   const activeGoalNow = useActiveGoal();
   const [goalCheck, setGoalCheck] = useState<GoalCheck | null>(null);
@@ -736,7 +735,7 @@ export const AgentMatchPage: React.FC = () => {
         {header}
         <div className="ag-layout">
           <div>
-            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} goalContext={goalContext} board={scoreboard} share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />} quick={!slow} feedback={Number.isInteger(state.prompt_version) ? { plan, model: writtenBy, version: state.prompt_version as number } : null} />
+            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} board={scoreboard} share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />} quick={!slow} feedback={Number.isInteger(state.prompt_version) ? { plan, model: writtenBy, version: state.prompt_version as number } : null} />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
             {/* Which model wrote it, and the choice of another: after the review, not between the reader and its first line. */}
             {offered.length > 1 && (

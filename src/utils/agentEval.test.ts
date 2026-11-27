@@ -529,5 +529,25 @@ describe('committed eval rubrics inventory (#361)', () => {
     expect(rubricOf(cleanStomp, sb)).toMatchObject({ hit_rate: null, praise_rate: 1, findings_within_max: true, must_not: [], main_reason_ok: true });
     const nitpickStomp = { ...cleanStomp, findings: [finding(), finding(), finding()] };
     expect(rubricOf(nitpickStomp, sb).findings_within_max).toBe(false);
+
+    // Highlights (with evidence refs/clocks) satisfy must_praise, and new coach fields are included in reviewTexts/styleOf.
+    const coachStomp = review({
+      lang: 'zh',
+      verdict: '下路对线大优且全场只死 1 次，轻松赢下比赛。',
+      opening_note: '这局你打得非常主动，节奏一直握在手里。',
+      highlights: [
+        { title: '10:00 下路对线大优且 0 死', detail: '下路压制到位，前期零阵亡。', evidence: [{ refs: ['lane:spirit_breaker'], clock: '10:00', fact: '10:00 零阵亡。' }] },
+        { title: '整局仅阵亡 1 次且幽冥一击从未留着阵亡', detail: '团战技能果断，只死 1 次。' },
+      ],
+      chapters: [
+        { topic: 'laning', title: '对线期稳健', assessment: 'praise', analysis: '前 10 分钟对线压制明显。', evidence: [{ refs: ['lane:spirit_breaker'], clock: '10:00', fact: '10:00 优势。' }] },
+      ],
+      findings: [],
+      did_well: [],
+      encouragement: '继续保持这种开团果断度，状态非常出色。',
+      game_plan: { main_reason: 'your_play' },
+    });
+    expect(rubricOf(coachStomp, sb)).toMatchObject({ praise_rate: 1, findings_within_max: true, must_not: [], main_reason_ok: true });
+    expect(reviewTexts(coachStomp).map((t) => t.where)).toEqual(expect.arrayContaining(['opening_note', 'highlight', 'highlight_evidence', 'chapter', 'chapter_evidence', 'encouragement']));
   });
 });

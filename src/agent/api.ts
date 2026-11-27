@@ -24,8 +24,21 @@ export interface Availability {
 }
 
 export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
+/** One evidence-backed positive from the game that the player can celebrate and replay. */
+export interface ReviewHighlight { title: string; detail: string; evidence?: EvidenceItem[] }
+export type ChapterTopic = 'draft_and_lanes' | 'laning' | 'skill_build' | 'items' | 'teamfights' | 'macro' | 'other';
+export type ChapterAssessment = 'praise' | 'solid' | 'mixed' | 'key_gap';
+/** One adaptive coaching chapter examining a game-relevant dimension. */
+export interface ReviewChapter {
+  topic: ChapterTopic;
+  title: string;
+  assessment: ChapterAssessment;
+  analysis: string;
+  takeaway?: string;
+  evidence: EvidenceItem[];
+}
 /** The one rule a finding sends into the next game: a situation the player can see, one action, and how often it came up this game. */
-export interface FindingRule { when: string; do: string; this_game?: string; /** What the next game's replay is counted on for this rule (lib/coach/goals.js habitGoal). */ check?: GoalSpec }
+export interface FindingRule { when: string; do: string; this_game?: string; /** Legacy stored reviews may carry a habit spec; new reviews do not emit mechanical quotas. */ check?: GoalSpec }
 export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string; rule?: FindingRule; /** The link of the story it comes from (1-based), when it named one that held. */ story_link?: number }
 /** One link of the story of the game (lib/agent/review/verify.js storyOf, #437 P4): a stretch, what changed, why, whose it mostly was. */
 export interface StoryLink { phase: string; what_changed: string; because: string; whose: 'me' | 'team' | 'enemy' | 'draft' | 'unclear'; evidence: EvidenceItem[] }
@@ -44,11 +57,26 @@ export interface DeepReview {
   /** The plan the player named before the review, if they did (lib/agent/plans.js). */
   plan?: string;
   schema: string; match_id: number; hero: string; lang: 'en' | 'zh' | 'ru';
-  verdict: string; /** The story as a chain of causes; absent on reviews written before it (they have only mainline). */ story?: StoryLink[]; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
+  verdict: string;
+  /** Sincere, grounded coach opening contextualizing the match fairly. */
+  opening_note?: string;
+  /** Concrete, evidence-backed positives from this match. */
+  highlights?: ReviewHighlight[];
+  /** Adaptive full-dimension coaching chapters tailored to this match. */
+  chapters?: ReviewChapter[];
+  /** The story as a chain of causes; absent on reviews written before it (they have only mainline). */
+  story?: StoryLink[];
+  mainline: string[];
+  findings: ReviewFinding[];
+  did_well: string[];
+  next_game: string[];
+  /** Sincere, specific closing encouragement from the coach. */
+  encouragement?: string;
+  blind_spots: string[];
   game_plan?: GamePlan;
   /** Which patch the review's prices, item effects and cooldowns are from (lib/agent/patchData.js); absent on reviews written before it was kept. */
   data_patch?: { name: string; hotfix?: string; exact: boolean; known_from?: 'match_data' | 'start_time' | 'match_id'; reason?: string };
-  /** One thing the next game can be checked on (lib/agent/goal.js), tied to finding `finding` (1-based). */
+  /** Legacy stored reviews may carry a scoreboard goal; new reviews do not emit mechanical KPIs. */
   goal?: GoalSpec & { finding: number };
 }
 export interface ToolStep { tool: string; args: Record<string, unknown>; /** What the lookup is about, named for the reader (the patch advisor sends it). */ about?: string }

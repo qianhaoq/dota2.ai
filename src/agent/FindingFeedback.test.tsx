@@ -188,4 +188,22 @@ describe('ReviewDoc: each finding is asked about, in its own place', () => {
     doc(review([]), { version: 37 });
     expect(screen.queryByRole('group', { name: 'Was this right?', hidden: true })).toBeNull();
   });
+
+  it('works inside the coach-first layout: lead finding expanded and secondary findings folded under .ag-improvements', async () => {
+    const coach: DeepReview = {
+      ...review([finding(1), finding(2)]),
+      opening_note: 'Coach opening note.',
+      highlights: [{ title: 'Great play', detail: 'Nice move.' }],
+      encouragement: 'Keep going.',
+    };
+    doc(coach, { plan: null, model: 'deepseek-flash', version: 75 });
+    const groups = screen.getAllByRole('group', { name: 'Was this right?', hidden: true });
+    expect(groups).toHaveLength(2);
+    expect(groups[0].closest('section')!.className).toBe('ag-improvements');
+    expect(groups[0].closest('article')!.className).toContain('ag-finding is-lead');
+    expect(groups[1].closest('details')!.querySelector('summary')!.textContent).toBe('2Finding 2');
+    fireEvent.click(within(groups[0]).getByRole('button', { name: 'Right' }));
+    await settle();
+    expect(sent().at(-1)!.body).toMatchObject({ finding: 0, title: 'Finding 1', rating: 'right', version: 75 });
+  });
 });

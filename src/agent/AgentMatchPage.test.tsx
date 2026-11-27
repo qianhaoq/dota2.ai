@@ -1868,41 +1868,21 @@ describe('AgentMatchPage', () => {
     expect(sent).toEqual({ hero: 'beastmaster', lang: 'en', question: 'Was that right?\n(about cast:beastmaster:primal_roar:6)', history: [] });
   });
 
-  it('the review\'s goal can be set as the next-game goal, and removed', async () => {
+  it('never renders a GoalCard or mechanical KPI quota on a review, even for legacy stored reviews carrying goal or rule.check', async () => {
     const goal = { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38, label: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: '用兽王时：出一件闪烁匕首或黑皇杖' }, finding: 1 };
+    const check = { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 deaths that began below half health', zh: 'x' } };
     mockFetch({
       '/api/coach/9100904020': { ...board, match: { id: 9100904020, patch: '7.42', start_time: 1795344198, duration: 2551 } },
       'ref=overview': overview,
-      '/review?': { status: 'ready', review: { ...review, goal }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/review?': { status: 'ready', review: { ...review, findings: [{ ...review.findings[0], rule: { when: 'Enemy carry holds BKB', do: 'hold Primal Roar', check } }], goal }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
       '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
-    expect(await screen.findByText('On Beastmaster: finish with Blink Dagger or Black King Bar')).toBeTruthy();
-    fireEvent.click(await screen.findByRole('button', { name: 'Make this my next-game goal' }));
-    expect(await screen.findByText(/✓ Your next-game goal · From finding 1/)).toBeTruthy();
-    // The account is known (77): the reader is told where the check will be waiting.
-    expect(screen.getByText(/Your next game shows up on the dota2.ai home page with this goal already checked/)).toBeTruthy();
-    expect((await events()).filter((e) => e.event === 'goal_set').map((e) => e.props)).toEqual([{ matchId: '9100904020', kind: 'hold_item', account: true, rules: 0 }]);
-    const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
-    expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:hold_item:blink+black_king_bar', goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], hero_id: 38 }, action: goal.label, fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38 });
-    expect(stored.goal).not.toHaveProperty('finding');
-    // The game the goal came from is not judged against it.
-    expect(screen.queryByText('Your goal, in this game')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(window.localStorage.getItem('dota2ai.coach.goal')).toBeNull());
-    // The same game reviewed in another language proposed a different goal: that card is not "already set".
-    fireEvent.click(await screen.findByRole('button', { name: 'Make this my next-game goal' }));
-    cleanup();
-    mockFetch({
-      '/api/coach/9100904020': { ...board, match: { id: 9100904020, patch: '7.42', start_time: 1795344198, duration: 2551 } },
-      'ref=overview': overview,
-      '/review?': { status: 'ready', review: { ...review, goal: { kind: 'deaths_per10_max', max: 1.7, label: { en: 'At most 1.7 deaths per 10 minutes', zh: 'x' }, finding: 1 } }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
-      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
-    });
-    page('/r/9100904020?hero=beastmaster&lang=en');
-    expect(await screen.findByText('At most 1.7 deaths per 10 minutes')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Make this my next-game goal' })).toBeTruthy();
-    expect(screen.queryByText(/✓ Your next-game goal/)).toBeNull();
+    expect(await screen.findByText('Enemy carry holds BKB')).toBeTruthy();
+    expect(document.querySelector('.ag-goal')).toBeNull();
+    expect(document.querySelector('.ag-rule-check')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Make this my next-game goal' })).toBeNull();
+    expect(screen.queryByText(/At most 1 deaths/)).toBeNull();
   });
 
   it('a later game is judged against the goal, at the top of its page', async () => {
@@ -1928,32 +1908,27 @@ describe('AgentMatchPage', () => {
     expect(screen.getByRole('link', { name: 'set after game #9091400302' }).getAttribute('href')).toBe('/r/9091400302?lang=en');
   });
 
-  it('a review whose rules name a count offers them as the next-game check, with what the next replay is counted on', async () => {
-    const check = { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 deaths that began below half health (12 s before) (this game: 3)', zh: 'x' } };
-    const alone = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 2, baseline: 4, label: { en: 'At most 2 deaths outside fights to three or more enemy heroes (this game: 4)', zh: 'x' } };
-    const withRules = { ...review, findings: [
-      { ...review.findings[0], rule: { when: 'Below half health with an enemy in front of you', do: 'walk back to the tower', this_game: '3 of 12 deaths', check } },
-      { ...review.findings[0], title: 'Alone', rule: { when: 'No teammate on the minimap near you', do: 'stay on your side of the river', check: alone } },
-    ] };
+  it('renders first-principles coach review fields (opening_note, highlights, chapters, encouragement) end-to-end on the match page', async () => {
+    const coachRev = {
+      ...review,
+      opening_note: 'You stayed active all game and gave your team a real mid-game lead.',
+      highlights: [{ title: 'Clutch 27:27 Roar', detail: 'Stunned Phantom Assassin through BKB.', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 stunned PA.' }] }],
+      chapters: [{ topic: 'teamfights', title: 'High fight attendance', assessment: 'mixed', analysis: 'Joined almost every fight.', takeaway: 'Hold Roar for BKB.', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 cast.' }] }],
+      encouragement: 'Your active presence is already a real strength.',
+    };
     mockFetch({
       '/api/coach/9100904020': { ...board, match: { id: 9100904020, patch: '7.42', start_time: 1795344198, duration: 2551 } },
       'ref=overview': overview,
-      '/review?': { status: 'ready', review: withRules, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/review?': { status: 'ready', review: coachRev, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
       '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
-    // Under the rule itself, and (no scoreboard goal here) as the goal with the other rule beside it.
-    expect(await screen.findAllByText(check.label.en)).toHaveLength(2);
-    expect(screen.getAllByText(alone.label.en)).toHaveLength(2);
-    expect(screen.getByText('Counted in your next replay')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Make this my next-game goal' }));
-    await waitFor(() => expect(window.localStorage.getItem('dota2ai.coach.goal')).not.toBeNull());
-    const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
-    expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:replay_habit:low_health1:routnumbered_outside_fights2', goal: check, findingId: 'agent:1', accountId: 77 });
-    expect(stored.rules).toEqual([{ finding: 2, when: 'No teammate on the minimap near you', do: 'stay on your side of the river', check: alone }]);
-    // These are counted in the replay: the home page is where the next game is found, not where it is already checked.
-    expect(screen.getByText(/open it from there\. This goal is checked once that game’s replay has been read/)).toBeTruthy();
-    expect(screen.queryByText(/with this goal already checked/)).toBeNull();
+    expect(await screen.findByText(coachRev.opening_note)).toBeTruthy();
+    expect(screen.getByText('Clutch 27:27 Roar')).toBeTruthy();
+    expect(screen.getByText('High fight attendance')).toBeTruthy();
+    expect(screen.getByText(coachRev.encouragement)).toBeTruthy();
+    expect(document.querySelector('.ag-goal')).toBeNull();
+    expect(document.querySelector('.ag-rule-check')).toBeNull();
   });
 
   it('a later game is counted on the rules from its own replay; without the replay nothing is called met', async () => {

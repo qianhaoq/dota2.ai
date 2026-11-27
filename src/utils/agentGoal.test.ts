@@ -41,24 +41,18 @@ describe('evaluateGoal: hold_item', () => {
   });
 });
 
-describe('the review carries its goal', () => {
+describe('the review does not emit mechanical next-game goals', () => {
   const call = (name: string, args: any, id: string) => ({ id, name, args });
   const finding = (title: string) => ({ title, claim: 'c', evidence: [{ refs: ['pro_items:beastmaster'], fact: 'x' }], fix: 'f' });
   const model = (submit: any) => { let i = 0; const replies = [{ toolCalls: [call('pro_item_choices', { hero: 'beastmaster' }, 'p')] }, { toolCalls: [call('submit_review', submit, 's')] }]; return async () => replies[Math.min(i++, 1)]; };
   const base = { verdict: 'v', mainline: [], next_game: ['n'], blind_spots: [] };
 
-  it('a valid pick becomes review.goal, tied to its finding', async () => {
+  it('omits review.goal even when a model supplies a legacy goal payload', async () => {
     const r: any = await runDeepReview({ complete: model({ ...base, findings: [finding('a'), finding('build')], goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], finding: 2 } }), trace, hero: 'beastmaster', lang: 'zh' });
-    expect(r.review.goal).toEqual({ kind: 'hold_item', items: ['blink', 'black_king_bar'], accept: ['blink', 'black_king_bar', 'overwhelming_blink', 'swift_blink', 'arcane_blink'], hero_id: 38, label: { en: 'On Beastmaster: finish with Blink Dagger or Black King Bar', zh: '用兽王时：出一件闪烁匕首或黑皇杖', ru: 'На Beastmaster: собрать Blink Dagger или Black King Bar' }, finding: 2 });
-  });
-  it('a goal follows its finding: dropped with it, renumbered when an earlier one is dropped', async () => {
-    const invented = { title: 'x', claim: '19:19 崩了', evidence: [{ refs: ['pro_items:beastmaster'], fact: 'x' }], fix: 'f' };
-    const moved: any = await runDeepReview({ complete: model({ ...base, findings: [invented, finding('build')], goal: { kind: 'fewer_deaths', finding: 2 } }), trace, hero: 'beastmaster' });
-    expect(moved.review.findings.map((f: any) => f.title)).toEqual(['build']);
-    expect(moved.review.goal).toMatchObject({ kind: 'deaths_per10_max', finding: 1 });
-    const gone: any = await runDeepReview({ complete: model({ ...base, findings: [invented, finding('build')], goal: { kind: 'fewer_deaths', finding: 1 } }), trace, hero: 'beastmaster' });
-    expect(gone.review).not.toHaveProperty('goal');
-    const none: any = await runDeepReview({ complete: model({ ...base, findings: [finding('a')], goal: { kind: 'hold_item', items: ['divine_rapier'], finding: 1 } }), trace, hero: 'beastmaster' });
-    expect(none.review).not.toHaveProperty('goal');
+    expect(r.status).toBe('ok');
+    expect(r.review).not.toHaveProperty('goal');
+    const r2: any = await runDeepReview({ complete: model({ ...base, findings: [finding('a'), finding('build')], goal: { kind: 'fewer_deaths', finding: 2 } }), trace, hero: 'beastmaster' });
+    expect(r2.status).toBe('ok');
+    expect(r2.review).not.toHaveProperty('goal');
   });
 });

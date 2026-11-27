@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { collectFacts, deepReviewSystem, headingOf, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, wordingProblems, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { chaptersOf, didWellOf, highlightsOf } from '../../lib/agent/review/verify.js';
+import { applyTranslation, extractTranslatable } from '../../lib/agent/review/translate.js';
+import { logicOf, reviewTexts, rubricOf } from '../../lib/agent/evalReview.js';
+import { shapeReview } from '../../lib/agent/replayTool.js';
+import { checkedPart } from '../../lib/agent/chat.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
@@ -429,7 +434,7 @@ describe('runDeepReview', () => {
     const rule = { when: '对面核心的黑皇杖还没开', do: '咆哮留着，等她开完再吼', this_game: '7 次黑皇杖里只有 27:27 那次吼中了她' };
     // Optional on findings so one-off fight/moment decisions need not fabricate a habit rule.
     expect(SUBMIT_REVIEW.input_schema.properties.findings.items.required).not.toContain('rule');
-    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.required).toEqual(['when', 'do', 'this_game']);
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.required).toEqual(['when', 'do']);
     // The model no longer writes a second list beside its findings.
     expect('next_game' in SUBMIT_REVIEW.input_schema.properties).toBe(false);
     const m = scripted([investigate, { toolCalls: [call('submit_review', review([{ ...good, rule }, { ...good, title: '第二条', rule: { when: '  ', do: '买闪烁匕首' } }, { ...good, title: '第三条' }]), 's')] }]);
@@ -494,46 +499,206 @@ describe('runDeepReview', () => {
     expect(headingOf({ claim: 'At 4:21 you had 1.7 deaths per ten minutes. More.' })).toBe('At 4:21 you had 1.7 deaths per ten minutes');
   });
 
-  it('a rule that names a count gets its next-game check from the replay, not from the model', async () => {
+  it('emits zero mechanical KPIs: counted_by, counted_ability, rule.check, and goal are removed from schema and output', async () => {
+    const ruleProps = SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties as Record<string, unknown>;
+    expect(ruleProps).not.toHaveProperty('counted_by');
+    expect(ruleProps).not.toHaveProperty('counted_ability');
+    expect(SUBMIT_REVIEW.input_schema.properties).not.toHaveProperty('goal');
     const rule = { when: '三个敌人同时出现在你面前', do: '先退到队友身后', this_game: '11 次阵亡里有 5 次' };
-    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties.counted_by.enum).toEqual(['low_health', 'low_health_outside_fights', 'outnumbered_outside_fights', 'outnumbered', 'nothing_pressed', 'cast_into_immunity', 'target_survived', 'reached_few', 'died_holding']);
+    // Even if a model supplies legacy KPI fields, none are attached to the shipped review.
     const m = scripted([investigate, { toolCalls: [call('death_context', { hero: 'beastmaster' }, 'dc')] }, { toolCalls: [call('submit_review', review([
-      // The model's own numbers for a check are not taken: only which count it is.
-      { ...good, rule: { ...rule, counted_by: 'outnumbered', check: { max: 99 } } },
-      // The same count twice is one check, on the first rule that named it.
-      { ...good, title: '第二条', rule: { ...rule, counted_by: 'outnumbered' } },
-      // A count no longer kept (alone, owner 2026-11-27), sent anyway: the rule stands, without a check.
-      { ...good, title: '第三条', rule: { ...rule, counted_by: 'alone' } },
-    ]), 's')] }]);
-    // A count over one of the hero's own abilities: the ability comes with it, by any spelling ability_audit takes.
-    const m2 = scripted([investigate, { toolCalls: [call('submit_review', review([
-      { ...good, rule: { ...rule, counted_by: 'target_survived', counted_ability: 'beastmaster_primal_roar' } },
-      // The same count of another ability is its own check; the same one again is not.
-      { ...good, title: '第二条', rule: { ...rule, counted_by: 'died_holding', counted_ability: 'primal_roar' } },
-      { ...good, title: '第三条', rule: { ...rule, counted_by: 'target_survived', counted_ability: 'primal_roar' } },
-    ]), 's')] }]);
-    const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
-    expect(r2.review.findings.map((f: any) => f.rule.check)).toEqual([
-      { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, baseline_exact: true, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 Primal Roar casts on an enemy hero still alive 12 s later (this game: 4)', zh: '原始咆哮放出 12 秒后目标仍存活的施放不超过 2 次（这局 4 次）', ru: 'Не более 2 применений Primal Roar по врагу, который выжил через 12 с (в этой игре: 4)' } },
-      expect.objectContaining({ habit: 'died_holding', ability: 'primal_roar', max: 1, baseline: 3 }),
-      undefined,
-    ]);
-    expect(r2.review.findings[0].rule).not.toHaveProperty('counted_ability');
-    // No ability named, an ability the hero does not have, or another hero's: no check.
-    const m3 = scripted([investigate, { toolCalls: [call('submit_review', review([
-      { ...good, rule: { ...rule, counted_by: 'target_survived' } },
-      { ...good, title: '第二条', rule: { ...rule, counted_by: 'target_survived', counted_ability: 'phantom_assassin_stifling_dagger' } },
-      { ...good, title: '第三条', rule: { ...rule, counted_by: 'target_survived', counted_ability: 'nonsense' } },
-    ]), 's')] }]);
-    const r3: any = await runDeepReview({ complete: m3.complete, trace, hero: 'beastmaster', lang: 'zh' });
-    expect(r3.review.findings.map((f: any) => f.rule.check)).toEqual([undefined, undefined, undefined]);
+      { ...good, rule: { ...rule, counted_by: 'outnumbered', counted_ability: 'beastmaster_primal_roar', check: { max: 99 } } },
+    ], { goal: { kind: 'hold_item', items: ['blink'], finding: 1 } }), 's')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
-    expect(r.review.findings.map((f: any) => f.rule)).toEqual([
-      { when: rule.when, do: rule.do, this_game: rule.this_game, check: { kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）', ru: 'Не более 2 смертей от трёх и более врагов (в этой игре: 5)' } } },
-      { when: rule.when, do: rule.do, this_game: rule.this_game },
-      { when: rule.when, do: rule.do, this_game: rule.this_game },
+    expect(r.review).not.toHaveProperty('goal');
+    expect(r.review.findings[0].rule).toEqual(rule);
+    expect(r.review.findings[0].rule).not.toHaveProperty('check');
+    expect(r.review.findings[0].rule).not.toHaveProperty('counted_by');
+    expect(r.review.findings[0].rule).not.toHaveProperty('counted_ability');
+  });
+
+  it('verifies opening_note, highlights, chapters, and encouragement strictly and ships spotless 0-finding wins', async () => {
+    const cleanReview = {
+      verdict: '这局 27:27 隔着黑皇杖的咆哮打出了关键价值。',
+      opening_note: '面对幻影刺客的强势期，你在 27:27 的处理非常果断，先肯定你的执行力。',
+      highlights: [
+        {
+          title: '27:27 果断隔着黑皇杖控住幻影刺客',
+          detail: '27:27 吼进她的黑皇杖，定住 3.4 秒并帮队伍在 27:38 击杀她。',
+          evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 咆哮吼中开着 BKB 的幻影刺客，她 11 秒后（27:38）阵亡。' }],
+        },
+      ],
+      chapters: [
+        {
+          topic: 'teamfights',
+          title: '团战表现：关键大招果断',
+          assessment: 'praise',
+          analysis: '27:27 你在幻影刺客开启黑皇杖时直接交出咆哮，成功将其定住 3.4 秒并在 27:38 击杀。',
+          evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 咆哮定住 3.4 秒，27:38 阵亡。' }],
+        },
+        {
+          topic: 'other',
+          title: '细节复盘：36:05 阵亡前的连控',
+          assessment: 'mixed',
+          analysis: '36:05 你在 2915 血时遭到连控阵亡，咆哮就绪但没能按出。',
+          takeaway: '对面先手就绪时站位稍靠后半个身位，确保能按出大招。',
+          evidence: [{ refs: ['death:beastmaster:9'], fact: '36:05 满血 2915 阵亡，咆哮就绪没放。' }],
+        },
+      ],
+      findings: [],
+      encouragement: '27:27 那波大招已经展现出你的果断，继续保持这种正面执行力。',
+      blind_spots: ['录像里没有视野数据。'],
+    };
+    const m = scripted([investigate, { toolCalls: [call('submit_review', cleanReview, 's')] }]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    // Spotless 0-finding win ships as status: 'ok' when verified highlights + chapters hold, and derives did_well from highlights.
+    expect(r.status).toBe('ok');
+    expect(r.verification).toMatchObject({ repaired: false, first_pass_problems: 0, dropped: 0 });
+    expect(r.review.opening_note).toBe(cleanReview.opening_note);
+    expect(r.review.highlights).toHaveLength(1);
+    expect(r.review.highlights[0].evidence[0].clock).toBe('27:27');
+    expect(r.review.did_well).toEqual(['27:27 果断隔着黑皇杖控住幻影刺客：27:27 吼进她的黑皇杖，定住 3.4 秒并帮队伍在 27:38 击杀她。']);
+    expect(r.review.chapters).toHaveLength(2);
+    expect(r.review.chapters[0].evidence[0].clock).toBe('27:27');
+    expect(r.review.chapters[1].takeaway).toBe(cleanReview.chapters[1].takeaway);
+    expect(r.review.encouragement).toBe(cleanReview.encouragement);
+
+    // Unsupported facts, vision claims, missing refs, and English leaks in new fields are caught strictly and dropped if unrepaired.
+    const badCoach = {
+      ...cleanReview,
+      opening_note: '19:19 你经济只有 9,876，对面看到了你。',
+      highlights: [
+        // Bad optional evidence item alone drops that item; highlight prose still ships.
+        { ...cleanReview.highlights[0], evidence: [...cleanReview.highlights[0].evidence, { refs: ['fight:99'], fact: '假证据' }] },
+        // Bad highlight detail drops the highlight itself.
+        { title: '假亮点', detail: '你在 19:19 打了 9,876 伤害。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27' }] },
+      ],
+      chapters: [
+        // Bad takeaway number fails the chapter strictly.
+        { ...cleanReview.chapters[0], takeaway: '记得 19:19 买 9,876 金币的装备。' },
+        // Chapter with no valid evidence cannot ship.
+        { ...cleanReview.chapters[1], evidence: [{ refs: ['fight:99'], fact: '无依据' }] },
+        // Valid chapter with unknown topic/assessment normalizes cleanly and keeps only good evidence.
+        { topic: 'unknown_dim', title: '有效章节', assessment: 'weird', analysis: '36:05 满血 2915 阵亡。', evidence: [{ refs: ['death:beastmaster:9'], fact: '36:05 满血 2915。' }, { refs: ['fight:99'], fact: '假证据' }] },
+      ],
+      encouragement: '19:19 这波你在视野里表现不错。',
+      findings: [good],
+    };
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', badCoach, 's1')] }, { toolCalls: [call('submit_review', badCoach, 's2')] }]);
+    const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    const repairProblems = JSON.parse(m2.seen[2].messages.at(-1).content).problems;
+    expect(repairProblems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ in: 'opening_note', text: '19:19' }),
+      expect.objectContaining({ in: 'opening_note', text: '看到了你' }),
+      expect.objectContaining({ in: 'highlight 1, evidence 2', text: 'fight:99' }),
+      expect.objectContaining({ in: 'highlight 2', text: '19:19' }),
+      expect.objectContaining({ in: 'chapter 1', text: '19:19' }),
+      expect.objectContaining({ in: 'chapter 2, evidence 1', text: 'fight:99' }),
+      expect.objectContaining({ in: 'encouragement', text: '19:19' }),
+    ]));
+    expect(r2.review).not.toHaveProperty('opening_note');
+    expect(r2.review).not.toHaveProperty('encouragement');
+    expect(r2.review.highlights).toHaveLength(1);
+    expect(r2.review.highlights[0].evidence).toHaveLength(1);
+    expect(r2.review.chapters).toEqual([{ topic: 'other', title: '有效章节', assessment: 'mixed', analysis: '36:05 满血 2915 阵亡。', evidence: [{ refs: ['death:beastmaster:9'], clock: '36:05', fact: '36:05 满血 2915。' }] }]);
+
+    // nameHeroes also cleans hero/place keys and inline handles inside new coach fields without touching refs.
+    const named: any = nameHeroes({
+      verdict: 'v',
+      opening_note: 'phantom_assassin 在 dire_top_lane 很强（lane:beastmaster）。',
+      highlights: [{ title: 'sven 配合', detail: 'phantom_assassin 阵亡 (cast:beastmaster:primal_roar:6)', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: 'phantom_assassin 被控' }] }],
+      chapters: [{ topic: 'items', title: '针对 phantom_assassin', analysis: 'sven 在 dire_top_lane', takeaway: '防 phantom_assassin', evidence: [{ refs: ['death:beastmaster:9'], fact: 'sven 旁' }] }],
+      encouragement: '面对 phantom_assassin 保持节奏。',
+    }, { phantom_assassin: '幻影刺客', sven: '斯温' }, placeNames('zh'));
+    expect(named.opening_note).toBe('幻影刺客 在夜魇上路很强。');
+    expect(named.highlights[0]).toEqual({ title: '斯温 配合', detail: '幻影刺客 阵亡', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '幻影刺客 被控' }] });
+    expect(named.chapters[0]).toEqual({ topic: 'items', title: '针对 幻影刺客', analysis: '斯温 在夜魇上路', takeaway: '防 幻影刺客', evidence: [{ refs: ['death:beastmaster:9'], fact: '斯温 旁' }] });
+    expect(named.encouragement).toBe('面对 幻影刺客 保持节奏。');
+  });
+
+  it('guards malformed non-array / non-object / non-string review fields without throwing across verify, run, translate, eval, chat and MCP', async () => {
+    // Non-array collections & non-string scalar fields in English and Chinese must not throw TypeError.
+    const malformedEn: any = {
+      verdict: 'A close game.',
+      findings: [],
+      highlights: {},
+      chapters: 'bad',
+      opening_note: 123,
+      encouragement: null,
+      mainline: {},
+      did_well: 'nope',
+      blind_spots: 42,
+      story: {},
+      game_plan: 'invalid',
+    };
+    const resEn = verifyReview(malformedEn, []);
+    expect(resEn.ok).toBe(true);
+    expect(resEn.problems).toEqual([]);
+
+    const malformedZh: any = {
+      ...malformedEn,
+      verdict: '这是一局焦灼的对局。',
+      findings: 'not-an-array',
+    };
+    const resZh = verifyReview(malformedZh, []);
+    expect(resZh.ok).toBe(true);
+    expect(resZh.problems).toEqual([]);
+
+    // Non-object / null / wrong-typed elements inside highlights, chapters, and findings must not throw.
+    const badItemsReview: any = {
+      verdict: 'A close game.',
+      findings: [],
+      highlights: [null, 42, { text: 123, title: 123, detail: null, evidence: 'bad' }, { title: 'Clean start', detail: 'Held lane well.', evidence: [null, 99, { refs: 'bad', fact: 123 }] }],
+      chapters: [null, 'x', { topic: 'laning', title: 123, analysis: {}, evidence: null }, { topic: 'macro', title: 'Map play', analysis: 'Good rotation.', evidence: [null] }],
+      opening_note: {},
+      encouragement: ['not-a-string'],
+    };
+    const resItems = verifyReview(badItemsReview, []);
+    expect(resItems.ok).toBe(false);
+    expect(highlightsOf(badItemsReview.highlights, resItems.problems, resItems.refs)).toEqual([{ title: 'Clean start', detail: 'Held lane well.' }]);
+    expect(chaptersOf(badItemsReview.chapters, resItems.problems, resItems.refs)).toEqual([]);
+    expect(didWellOf(malformedEn.highlights, malformedEn.did_well)).toEqual([]);
+
+    // Downstream helpers also tolerate malformed shapes safely.
+    expect(() => nameHeroes(malformedEn, { phantom_assassin: '幻影刺客' })).not.toThrow();
+    expect(() => nameHeroes(badItemsReview, { phantom_assassin: '幻影刺客' })).not.toThrow();
+    expect(() => extractTranslatable(malformedEn)).not.toThrow();
+    expect(() => extractTranslatable(badItemsReview)).not.toThrow();
+    expect(applyTranslation(malformedEn, { verdict: '焦灼对局。', mainline: [], did_well: [], blind_spots: [], findings: [] }, 'zh')).not.toBeNull();
+    expect(() => reviewTexts(malformedEn)).not.toThrow();
+    expect(() => logicOf(malformedEn)).not.toThrow();
+    expect(() => rubricOf(malformedEn, { must_hit: [], must_praise: [] })).not.toThrow();
+    expect(() => shapeReview('9100904020', 'beastmaster', 'en', { review: malformedEn })).not.toThrow();
+    expect(() => shapeReview('9100904020', 'beastmaster', 'en', { review: badItemsReview })).not.toThrow();
+    expect(() => checkedPart(malformedEn)).not.toThrow();
+    expect(() => checkedPart(badItemsReview)).not.toThrow();
+
+    // runDeepReview retains a usable finding when highlights/chapters arrive as malformed non-arrays.
+    const m = scripted([
+      investigate,
+      {
+        toolCalls: [call('submit_review', {
+          verdict: '咆哮没有留给幻影刺客的 BKB。',
+          opening_note: 123,
+          highlights: {},
+          chapters: 'bad',
+          encouragement: null,
+          mainline: {},
+          did_well: 'bad',
+          blind_spots: 99,
+          findings: [good],
+        }, 's1')],
+      },
     ]);
+    const ran: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(ran.status).toBe('ok');
+    expect(ran.review.findings).toHaveLength(1);
+    expect(ran.review).not.toHaveProperty('highlights');
+    expect(ran.review).not.toHaveProperty('chapters');
+    expect(ran.review).not.toHaveProperty('opening_note');
+    expect(ran.review).not.toHaveProperty('encouragement');
+    expect(ran.review.blind_spots).toEqual([]);
   });
 
   it('next game is the findings\' rules in their order, in the reader\'s punctuation', () => {
@@ -553,17 +718,23 @@ describe('runDeepReview', () => {
     expect(s).toContain('was not wasted because one was spell immune');
   });
 
-  it('the prompt lets the model order findings by what mattered most (#405), keeps the first finding player-controlled, and stays compact', () => {
+  it('the prompt teaches first-principles coaching (#405): bilateral threat checks, adaptive chapters, highlights, encouragement, zero mechanical KPIs, and stays compact', () => {
     const s = deepReviewSystem('en');
-    // The first finding is the page's one lesson: player-controlled, ordered by what mattered most to this player.
+    // Findings are player-controlled and ordered by impact, paired with highlights, adaptive chapters, and encouragement.
     expect(s).toContain('ordered by what mattered most to this player');
-    expect(s).toContain("the first finding is shown alone as the game's one lesson and must be something the player controlled");
+    expect(s).toContain('only high-leverage, player-controlled improvements');
     expect(s).toContain("never charge the team's lost fights to a player who was not the cause");
+    expect(s).toContain('enemy_context_at_window_start');
+    expect(s).toContain('never hand out mechanical next-game numeric quotas');
+    expect(s).toContain('opening_note');
+    expect(s).toContain('highlights');
+    expect(s).toContain('chapters');
+    expect(s).toContain('encouragement');
     // Pre-#405 fixed finding-ordering rules are removed so the model exercises judgment.
     expect(s).not.toContain('the game ended before 25:00');
     expect(s).not.toContain('and earliest');
     expect(s).not.toContain('deaths_before_10 is four or more');
-    // Slimmed prompt stays compact (~8 KB vs ~33 KB previously).
+    // Slimmed prompt stays compact (< 10 KB).
     expect(Buffer.byteLength(s, 'utf8')).toBeLessThan(10_000);
     expect(deepReviewSystem('zh')).toContain('ordered by what mattered most to this player');
   });
