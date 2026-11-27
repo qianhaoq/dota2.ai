@@ -813,15 +813,14 @@ describe('trace tools on a real game', () => {
   it('death_context counts what the deaths have in common and where the damage came from', () => {
     const all = run('death_context', { hero: 'beastmaster' });
     expect(all.deaths_where).toEqual({
-      health_below_half_at_window_start: [],
       // By game time: that is how a death is named to a player.
+      // Noisy low-HP habit buckets are omitted from default LLM output unless include_legacy_habit_counts: true.
       three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06', '25:30', '30:42', '36:05'],
       // Nine of the eleven deaths were in a fight (three or more hero deaths close together, an ally near before).
       // 2:51 falls inside such a group by time, but no ally was within 2200: picked off alone, not in the fight.
       in_a_fight: ['6:13', '8:27', '11:03', '22:06', '25:30', '30:42', '36:05', '39:21', '41:57'],
       outside_fights: ['0:47', '2:51'],
       // Every death to three or more enemies was in a fight: outside them the count is none.
-      health_below_half_at_window_start_outside_fights: [],
       three_or_more_enemy_heroes_dealing_damage_outside_fights: [],
       nothing_cast_and_no_item_used: [],
       // What the hero was doing and which way they were heading. This trace keeps no creep kills: whether a death
@@ -843,7 +842,12 @@ describe('trace tools on a real game', () => {
     expect(all.deaths.map((d) => d.in_a_fight)).toEqual([false, false, true, true, true, true, true, true, true, true, true]);
     expect([...all.deaths_where.in_a_fight, ...all.deaths_where.outside_fights]).toHaveLength(all.deaths_total);
     // Every death here had its health and position sampled: nothing a count could be missing (ultimateOf was not passed, so absorbed_enemy_ultimate is unknown for all 11).
-    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, in_a_fight: 0, health_below_half_at_window_start_outside_fights: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0, before_a_nearby_fight_within_30s: 0, non_hero_without_enemy_hero_damage: 0, absorbed_enemy_ultimate: 11 });
+    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, in_a_fight: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0, before_a_nearby_fight_within_30s: 0, non_hero_without_enemy_hero_damage: 0, absorbed_enemy_ultimate: 11 });
+    // Legacy habit counts remain available when explicitly opted in (for saved browser goals).
+    const legacy = run('death_context', { hero: 'beastmaster', include_legacy_habit_counts: true });
+    expect(legacy.deaths_where.health_below_half_at_window_start).toEqual([]);
+    expect(legacy.deaths_where.health_below_half_at_window_start_outside_fights).toEqual([]);
+    expect(legacy.deaths_not_known.health_below_half_at_window_start_outside_fights).toBe(0);
     // Phantom Assassin's attacks are the largest single source: 44% of everything taken in the eleven windows.
     expect(all.damage_in_death_windows_total).toBe(23757);
     expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);
@@ -867,12 +871,12 @@ describe('trace tools on a real game', () => {
     expect(all.deaths.every((d) => !('damage_sources' in d))).toBe(true);
     // The counts are over the window asked for, so another window is another summary, with its own ref.
     expect(all.ref).toBe('deaths:beastmaster');
-    const short = run('death_context', { hero: 'beastmaster', window: 4 });
+    const short = run('death_context', { hero: 'beastmaster', window: 4, include_legacy_habit_counts: true });
     expect(short).toMatchObject({ ref: 'deaths:beastmaster:w4', damage_in_death_windows_total: 18106 });
     expect(short.deaths_where.health_below_half_at_window_start).toHaveLength(4);
     // A fractional window is a whole number of seconds, so its refs resolve; 495 of 1000 health is below half though it rounds to 0.5.
     expect(run('death_context', { hero: 'beastmaster', window: 4.4 })).toMatchObject({ ref: 'deaths:beastmaster:w4', window: 4 });
-    const m13 = run('death_context', { hero: 'mirana', window: 13 });
+    const m13 = run('death_context', { hero: 'mirana', window: 13, include_legacy_habit_counts: true });
     expect(m13.deaths[1]).toMatchObject({ clock: '13:21', health_share_at_window_start: 0.5, below_half_health_at_window_start: true });
     expect(m13.deaths_where.health_below_half_at_window_start).toContain('13:21');
     // The same for one death asked for: the counts are over all of them.

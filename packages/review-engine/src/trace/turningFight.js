@@ -32,7 +32,7 @@ export const TURN_DROP = 1500;
 /** A fight the game ended this soon after has no lead "two minutes on": the Ancient fell instead. */
 export const ENDED_WITHIN = 120;
 /** The rule, as match_overview states it beside the fight. */
-export const TURN_RULE = `of the fights my_team lost more heroes in, entered at a gold lead of ${STILL_IN_IT} or better: the one the game ended within two minutes of; else the one after which the lead fell the most by two minutes after it, if by more than ${TURN_DROP}`;
+export const TURN_RULE = `gold-curve indicator (not a cause verdict): of the fights my_team lost more heroes in, entered at a gold lead of ${STILL_IN_IT} or better: the one the game ended within two minutes of; else the one after which the lead fell the most by two minutes after it, if by more than ${TURN_DROP}`;
 
 /**
  * @template {{ to?: number, my_team_deaths?: number, enemy_deaths?: number, my_team_gold_lead_before?: number | null, my_team_gold_lead_2min_after?: number | null }} F

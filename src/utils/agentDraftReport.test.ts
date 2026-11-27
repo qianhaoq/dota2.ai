@@ -39,7 +39,11 @@ describe('draft_report', () => {
     }
     expect(r.lanes[0].pairings.some((p: any) => p.lane_when_they_met || p.game)).toBe(true);
     expect(r.lanes[1].pairings[0]).toMatchObject({ hero: 'skywrath_mage', against: 'necrolyte', bracket: 'Legend–Ancient' });
-    expect(r.gaps).toEqual([]);
+    // This legacy trace has no gold/creep_kills and the minimal mock match has hero_id: null, so positions and lane_at_10_00 are truthfully reported as gaps.
+    expect(r.gaps).toEqual([
+      { topic: 'positions', reason: 'inferred_position_not_settled_for_all_heroes', heroes: expect.arrayContaining(['beastmaster', 'phantom_assassin']) },
+      { topic: 'lane_at_10_00', reason: 'no_lane_economy_in_match_record_or_trace' },
+    ]);
   });
 
   it('the bracket not known: each bracket\'s reading, none picked, and a gap', () => {
@@ -133,5 +137,176 @@ describe('draft_report', () => {
     expect([top.my_team, top.enemy]).toEqual([[], []]);
     expect(top.shared_part_time_by.map((x: any) => x.hero).sort()).toEqual(['dark_willow', 'mirana']);
     expect(top.pairings.map((p: any) => [p.hero, p.against, p.part_time])).toEqual([['dark_willow', 'mirana', true]]);
+  });
+
+  it('populates lineups (1–5 positions, attribute, attack_type, roles, traits) and lanes[].at_10_00 from parsed match_record', () => {
+    const heroIds: Record<string, number> = {
+      axe: 2, phantom_assassin: 44, necrolyte: 36, venomancer: 40, mirana: 9,
+      sven: 18, beastmaster: 38, undying: 85, skywrath_mage: 101, dark_willow: 119,
+    };
+    const roleCfg: Record<string, { lane_role: number; lh: number; gold: number }> = {
+      // Radiant (team 2): PA safe(1), Necro mid(2), Axe off(3), Mirana off-sup(3), Veno safe-sup(1)
+      phantom_assassin: { lane_role: 1, lh: 60, gold: 4200 },
+      venomancer: { lane_role: 1, lh: 12, gold: 2100 },
+      necrolyte: { lane_role: 2, lh: 55, gold: 4100 },
+      axe: { lane_role: 3, lh: 50, gold: 3800 },
+      mirana: { lane_role: 3, lh: 15, gold: 2200 },
+      // Dire (team 3): Sven safe(1), Sky mid(2), BM off(3), Undying off-sup(3), DW safe-sup(1)
+      sven: { lane_role: 1, lh: 62, gold: 4300 },
+      dark_willow: { lane_role: 1, lh: 10, gold: 1900 },
+      skywrath_mage: { lane_role: 2, lh: 45, gold: 3500 },
+      beastmaster: { lane_role: 3, lh: 48, gold: 3600 },
+      undying: { lane_role: 3, lh: 11, gold: 2000 },
+    };
+    const players = trace.heroes.map((h: any, idx: number) => {
+      const cfg = roleCfg[h.key];
+      const mkArr = (v: number) => Array.from({ length: 12 }, (_, m) => (m === 10 ? v : 0));
+      return {
+        player_slot: h.team === 2 ? idx : 128 + (idx - 5),
+        hero_id: heroIds[h.key],
+        lane_role: cfg.lane_role,
+        rank_tier: 55,
+        gold_t: mkArr(cfg.gold),
+        lh_t: mkArr(cfg.lh),
+        xp_t: mkArr(3000),
+        dn_t: mkArr(5),
+        last_hits: cfg.lh * 3,
+        gold_per_min: 500,
+        kills: 2, deaths: 2, assists: 2,
+      };
+    });
+    const parsedMatch = { match_id: 9100904020, duration: 2551, radiant_win: true, players };
+    const d: any = draftReport(trace, { hero: 'beastmaster' }, { match: parsedMatch });
+
+    expect(d.gaps).toEqual([]);
+    const bm = d.lineups.my_team.find((x: any) => x.hero === 'beastmaster');
+    expect(bm).toEqual({
+      hero: 'beastmaster',
+      inferred_position: 3,
+      primary_attribute: 'universal',
+      attack_type: 'melee',
+      roles: expect.arrayContaining(['Initiator', 'Disabler']),
+      traits: expect.arrayContaining(['disable', 'piercing']),
+    });
+    const pa = d.lineups.enemy.find((x: any) => x.hero === 'phantom_assassin');
+    expect(pa).toMatchObject({
+      hero: 'phantom_assassin',
+      inferred_position: 1,
+      primary_attribute: 'agility',
+      attack_type: 'melee',
+      traits: expect.arrayContaining(['physical', 'evasion']),
+    });
+
+    const bot = d.lanes.find((l: any) => l.lane === 'bot');
+    expect(bot.at_10_00).toEqual({
+      my_team_deaths_before_10_00: 9, // beastmaster (4) + undying (5)
+      enemy_deaths_before_10_00: expect.any(Number),
+      my_team_gold: 5600,
+      enemy_gold: 6300,
+      gold_diff: -700,
+      my_team_last_hits: 59,
+      enemy_last_hits: 72,
+      source: 'match_record',
+    });
+    const mid = d.lanes.find((l: any) => l.lane === 'mid');
+    expect(mid.at_10_00).toMatchObject({
+      my_team_gold: 3500, enemy_gold: 4100, gold_diff: -600,
+      my_team_last_hits: 45, enemy_last_hits: 55, source: 'match_record',
+    });
+  });
+
+  it('falls back to replay gold & creep_kills for lanes[].at_10_00 and keeps partial/blank sources null', () => {
+    const nameIx = (k: string) => trace.names.indexOf(trace.heroes.find((h: any) => h.key === k).npc);
+    const replayTrace: any = {
+      ...trace,
+      gold: [
+        [5, nameIx('beastmaster'), 13, 1500],
+        [6, nameIx('beastmaster'), 6, 999],   // selling -> excluded
+        [7, nameIx('beastmaster'), 1, -200],  // death loss -> excluded
+        [5, nameIx('undying'), 12, 800],
+        [5, nameIx('phantom_assassin'), 13, 2100],
+        [5, nameIx('venomancer'), 12, 900],
+        [5, nameIx('skywrath_mage'), 13, 1900],
+        [5, nameIx('necrolyte'), 13, 2200],
+        [5, nameIx('sven'), 13, 2500],
+        [5, nameIx('dark_willow'), 12, 700],
+        [5, nameIx('axe'), 13, 1800],
+        [5, nameIx('mirana'), 12, 600],
+      ],
+      creep_kills: [
+        [300, nameIx('beastmaster'), 'l', 35, 2000],
+        [300, nameIx('undying'), 'l', 5, 1000],
+        [300, nameIx('phantom_assassin'), 'l', 50, 2600],
+        [300, nameIx('venomancer'), 'l', 8, 1200],
+        [300, nameIx('skywrath_mage'), 'l', 40, 2100],
+        [300, nameIx('necrolyte'), 'l', 48, 2500],
+        [300, nameIx('sven'), 'l', 55, 2800],
+        [300, nameIx('dark_willow'), 'l', 6, 900],
+        [300, nameIx('axe'), 'l', 42, 2200],
+        [300, nameIx('mirana'), 'l', 9, 1000],
+      ],
+    };
+    const d: any = draftReport(replayTrace, { hero: 'beastmaster' }, { match });
+    const bot = d.lanes.find((l: any) => l.lane === 'bot');
+    expect(bot.at_10_00).toMatchObject({
+      my_team_gold: 2300, enemy_gold: 3000, gold_diff: -700,
+      my_team_last_hits: 40, enemy_last_hits: 58, source: 'replay',
+      passive_income_omitted: true, last_hits_are_lower_bounds: true,
+    });
+    expect(d.lineups.my_team.every((x: any) => Number.isInteger(x.inferred_position))).toBe(true);
+    // Replay combat-log gold omits passive income & replay creep_kills last hits are lower bounds: both gaps stated.
+    expect(d.gaps).toEqual([
+      { topic: 'lane_gold_at_10_00', reason: 'replay_gold_log_omits_passive_income' },
+      { topic: 'lane_last_hits_at_10_00', reason: 'replay_last_hits_are_lower_bounds_summon_kills_appear_on_next_hero_kill' },
+    ]);
+
+    // Unequal-headcount lane (1v2) under replay gold: passive income does NOT cancel, so gold_diff MUST be null + gap.
+    const undyIdx = replayTrace.heroes.findIndex((h: any) => h.key === 'undying');
+    const svenIdx = replayTrace.heroes.findIndex((h: any) => h.key === 'sven');
+    const unequalReplay: any = {
+      ...replayTrace,
+      states: replayTrace.states.map((st: any, idx: number) => (idx === undyIdx
+        // Place Undying in top lane (same coordinates as Sven) during 1:00–10:00 so bot becomes 1v2 and top becomes 3v2.
+        ? { ...st, x: [...replayTrace.states[svenIdx].x], y: [...replayTrace.states[svenIdx].y] }
+        : st)),
+    };
+    const uRes: any = draftReport(unequalReplay, { hero: 'beastmaster' }, { match });
+    const uBot = uRes.lanes.find((l: any) => l.lane === 'bot');
+    const uMid = uRes.lanes.find((l: any) => l.lane === 'mid');
+    expect(uBot.my_team).toEqual(['beastmaster']);
+    expect(uBot.enemy).toEqual(['phantom_assassin', 'venomancer']);
+    expect(uBot.at_10_00).toMatchObject({
+      my_team_gold: 1500, enemy_gold: 3000, gold_diff: null,
+      my_team_last_hits: 35, enemy_last_hits: 58, source: 'replay',
+      passive_income_omitted: true, last_hits_are_lower_bounds: true,
+    });
+    // Mid stays 1v1 (equal headcount), so its gold_diff remains comparable.
+    expect(uMid.at_10_00).toMatchObject({
+      my_team_gold: 1900, enemy_gold: 2200, gold_diff: -300, source: 'replay',
+      passive_income_omitted: true, last_hits_are_lower_bounds: true,
+    });
+    expect(uRes.gaps).toContainEqual({ topic: 'lane_gold_at_10_00', reason: 'replay_gold_log_omits_passive_income' });
+    expect(uRes.gaps).toContainEqual({ topic: 'lane_gold_diff_at_10_00', reason: 'unequal_lane_headcount_with_replay_gold_log' });
+    expect(uRes.gaps).toContainEqual({ topic: 'lane_last_hits_at_10_00', reason: 'replay_last_hits_are_lower_bounds_summon_kills_appear_on_next_hero_kill' });
+
+    // Partial match_record (one hero missing gold_t) without replay fallback -> never treats missing hero as 0 -> null + gap.
+    const partialMatch = {
+      players: [
+        { hero_id: 38, gold_t: Array(12).fill(3000), lh_t: Array(12).fill(40), rank_tier: 55 },
+        // undying missing!
+      ],
+    };
+    const pRes: any = draftReport(trace, { hero: 'beastmaster' }, { match: partialMatch });
+    expect(pRes.lanes.find((l: any) => l.lane === 'bot').at_10_00).toMatchObject({
+      my_team_gold: null, enemy_gold: null, gold_diff: null, my_team_last_hits: null, enemy_last_hits: null, source: null,
+    });
+    expect(pRes.gaps).toContainEqual({ topic: 'lane_at_10_00', reason: 'no_lane_economy_in_match_record_or_trace' });
+
+    // Blank trace.deaths -> lane death counts stay null, never 0.
+    const noDeaths: any = { ...replayTrace, deaths: undefined };
+    const ndRes: any = draftReport(noDeaths, { hero: 'beastmaster' }, { match });
+    expect(ndRes.lanes[0].at_10_00.my_team_deaths_before_10_00).toBeNull();
+    expect(ndRes.lanes[0].at_10_00.enemy_deaths_before_10_00).toBeNull();
+    expect(ndRes.gaps).toContainEqual({ topic: 'lane_deaths_before_10_00', reason: 'no_deaths_in_trace' });
   });
 });

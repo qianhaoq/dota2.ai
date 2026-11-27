@@ -153,7 +153,7 @@ node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --
 flowchart LR
     R["Valve 录像"] --> T["精简轨迹 Trace<br/>约 250 KB"]
     T --> A["AI 复盘教练"]
-    A <--> L["32 个查询工具"]
+    A <--> L["33 个查询工具"]
     A --> V{"代码校验器"}
     V -- "站不住：修一轮" --> A
     V -- "有依据" --> D["复盘报告"]
@@ -164,13 +164,13 @@ flowchart LR
 3. **代码严格核对。** 每一个时间、数字和引用的记录都必须是工具返回过的；站不住脚的给一轮修改机会，仍不通过就直接删除。"谁看得见谁"这类视野臆测一律拒收——录像里没有战争迷雾。
 
 <details>
-<summary><b>展开查看全部 32 个查询工具</b></summary>
+<summary><b>展开查看全部 33 个查询工具</b></summary>
 
 | 类别 | 工具 |
 |---|---|
 | 整局脉络 | `match_overview`、`key_moments`、`decision_points`、`tempo_report`、`window_report`、`siege_report`、`roshan_report` |
 | 团战与时刻 | `fight_report`、`fight_timeline`、`game_state`、`death_context`、`save_report`、`ward_report` |
-| 技能与出装 | `ability_audit`、`immunity_windows`、`item_timeline`、`power_spikes`、`build_check`、`build_for_plan` |
+| 技能与出装 | `ability_audit`、`skill_build`、`immunity_windows`、`item_timeline`、`power_spikes`、`build_check`、`build_for_plan` |
 | 对线与发育 | `draft_report`、`lane_report`、`farm_report`、`lineup_timing` |
 | 录像原始记录 | `combat_log`、`hero_track` |
 | 版本与参考数据 | `hero_abilities`、`pro_item_choices`、`item_info`、`hero_info`、`hero_matchup`、`patch_changes` |

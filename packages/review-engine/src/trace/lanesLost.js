@@ -33,7 +33,7 @@ export const BEHIND_AFTER_LANES = STILL_IN_IT;
 /** A hero who died this often before the lanes ended had a lane that went badly: 8.4% of the corpus's heroes. */
 export const MANY_EARLY_DEATHS = 4;
 /** The rule, as match_overview states it beside the answer. */
-export const LANES_RULE = `my_team more than ${-BEHIND_AFTER_LANES} gold behind at 10:00 and in every minute after, to the end of the game`;
+export const LANES_RULE = `gold-curve indicator (not a draft or cause verdict — scaling lineups can trail by >${-BEHIND_AFTER_LANES} at 10:00 without losing the game in lane): my_team more than ${-BEHIND_AFTER_LANES} gold behind at 10:00 and in every minute after, to the end of the game`;
 /** Gold-lead sources this is read from: gold earned. */
 const EARNED = new Set(['match_record', 'replay_gold_log']);
 

@@ -140,7 +140,15 @@ export function nearby(trace, h, t, radius) {
     if (!s || !s.alive) return;
     const d = dist(me, s);
     if (d > radius) return;
-    (o.team === trace.heroes[h].team ? allies : enemies).push({ hero: o.key, dist: d, hp: s.hp, max_hp: s.max_hp });
+    (o.team === trace.heroes[h].team ? allies : enemies).push({
+      hero: o.key,
+      dist: d,
+      hp: s.hp,
+      max_hp: s.max_hp,
+      hp_pct: s.hp != null && s.max_hp > 0 ? Math.round((s.hp / s.max_hp) * 100) : null,
+      mana: s.mana != null ? Math.round(s.mana) : null,
+      level: s.level ?? null,
+    });
   });
   allies.sort((a, b) => a.dist - b.dist); enemies.sort((a, b) => a.dist - b.dist);
   return { me, allies, enemies };

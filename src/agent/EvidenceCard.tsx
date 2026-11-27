@@ -308,6 +308,40 @@ const T = {
   winLast: { en: 'Finished in its last 3 minutes', zh: '结束前 3 分钟内完成', ru: 'Завершено в последние 3 минуты' },
   winEnded: { en: 'Ended', zh: '结束', ru: 'Конец' }, winGameEnd: { en: 'with the game', zh: '比赛结束', ru: 'с окончанием матча' },
   winNone: { en: 'No per-minute gold for this game: no windows.', zh: '这局没有逐分钟经济数据，划不出窗口期。', ru: 'Нет поминутного золота — окна не выделены.' },
+  enemyCtxStart: { en: 'Enemies within 2200 at window start', zh: '窗口开始时 2200 码内敌人', ru: 'Враги в 2200 в начале окна' },
+  enemyReady: { en: 'ready', zh: '就绪', ru: 'готово' },
+  enemyCd: { en: 'CD', zh: '冷却', ru: 'КД' },
+  enemyNoMana: { en: 'no mana', zh: '缺蓝', ru: 'нет маны' },
+  enemyItems: { en: 'items', zh: '装备', ru: 'предметы' },
+  arrivedAfter: { en: 'Attackers arrived after window start', zh: '窗口开始后才赶到的攻击者', ru: 'Атакующие прибыли позже' },
+  deadAtStart: { en: 'dead at window start', zh: '窗口开始时已阵亡', ru: 'мёртв в начале окна' },
+  enemyBuffs: { en: 'Enemy smoke / rune in window', zh: '窗口内敌方开雾 / 神符', ru: 'Дым / руны врагов в окне' },
+  smoke: { en: 'Smoke', zh: '诡计之雾', ru: 'Smoke' },
+  meInFight: { en: 'Your contribution', zh: '你的参战数据', ru: 'Ваш вклад в драку' },
+  fightDied: { en: 'died', zh: '阵亡', ru: 'погиб' },
+  dmgDealt: { en: 'dealt', zh: '造成伤害', ru: 'нанесено' },
+  dmgTaken: { en: 'taken', zh: '承受伤害', ru: 'получено' },
+  enemyDeathsDamaged: { en: 'enemy deaths damaged', zh: '参与伤害击杀', ru: 'урон по погибшим врагам' },
+  ultCast: { en: 'ultimate cast', zh: '放了大招', ru: 'ульт применён' },
+  keyItemsUsed: { en: 'items used', zh: '使用了装备', ru: 'предметы' },
+  skillBuild: { en: 'Skill build', zh: '加点路线', ru: 'Прокачка способностей' },
+  sbAtLv6: { en: 'At level 6', zh: '6 级加点', ru: 'На 6 уровне' },
+  sbAtLv10: { en: 'At level 10', zh: '10 级加点', ru: 'На 10 уровне' },
+  sbMaxed: { en: 'Maxed order', zh: '点满顺序', ru: 'Порядок прокачки до макс.' },
+  sbUlts: { en: 'Ultimate levels', zh: '大招升级', ru: 'Уровни ульта' },
+  sbTalents: { en: 'Talents', zh: '天赋', ru: 'Таланты' },
+  sbTimeline: { en: 'Upgrade timeline', zh: '加点时间线', ru: 'Хронология прокачки' },
+  sbInitial: { en: 'initial', zh: '初始', ru: 'начальная' },
+  sbNoData: { en: 'No ability level data in this replay.', zh: '该录像缺少技能等级数据。', ru: 'В этом реплее нет данных об уровнях способностей.' },
+  draftGold: { en: 'Gold', zh: '经济', ru: 'Золото' },
+  draftCs: { en: 'LH', zh: '正补', ru: 'Добивания' },
+  draftDeaths10: { en: 'Deaths <10:00', zh: '10分钟前阵亡', ru: 'Смерти <10:00' },
+  draftSrc: {
+    match_record: { en: 'match record', zh: '比赛记录', ru: 'запись матча' },
+    replay: { en: 'replay log', zh: '录像日志', ru: 'лог реплея' },
+  } as Record<string, Tri>,
+  draftNoPassive: { en: 'passive gold omitted', zh: '不含被动经济', ru: 'без пассивного золота' },
+  draftLhLowerBound: { en: 'LH lower bound', zh: '正补为下界', ru: 'добивания ≥' },
   building: {
     tower: { en: 'tier-{n} tower', zh: '{n} 塔', ru: 'башня T{n}' },
     melee_rax: { en: 'melee barracks', zh: '近战兵营', ru: 'казарма ближнего боя' },
@@ -477,7 +511,19 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   const t = (b: Tri) => pickLang(b, lang);
   const N = (key: string | null | undefined) => (key ? data.names[key] ?? data.names[key.replace(/^item_/, '')] ?? pretty(key) : '—');
   const r = data.record;
-  const chips = (list: { hero: string; dist?: number }[]) => (list.length ? list.map((h) => <span key={h.hero} className="ag-chip">{N(h.hero)}{h.dist != null && <em>{h.dist}</em>}</span>) : <span className="ag-none">{t(T.nobody)}</span>);
+  const chips = (list: { hero: string; dist?: number; hp_pct?: number | null; mana?: number | null; level?: number | null }[]) => (
+    list.length
+      ? list.map((h) => {
+        const meta = [
+          h.dist != null ? String(h.dist) : null,
+          h.hp_pct != null ? `${h.hp_pct}%` : null,
+          h.mana != null ? `${h.mana} MP` : null,
+          h.level != null ? `Lv${h.level}` : null,
+        ].filter(Boolean).join(' · ');
+        return <span key={h.hero} className="ag-chip">{N(h.hero)}{meta && <em>{meta}</em>}</span>;
+      })
+      : <span className="ag-none">{t(T.nobody)}</span>
+  );
 
   // A hero not in a fight, or at a moment: what the replay shows them doing, and where (a dead hero has no place).
   const doingOf = (h: any) => [h.place ? N(h.place) : null, h.doing && T.doing[h.doing] ? t(T.doing[h.doing]) : null].filter(Boolean).join(' · ');
@@ -498,6 +544,55 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
             ))}
           </tbody>
         </table>
+        {Array.isArray(r.enemy_context_at_window_start) && r.enemy_context_at_window_start.length > 0 && (
+          <div className="ag-rec-block">
+            <p className="ag-rec-sub">{t(T.enemyCtxStart)}</p>
+            {r.enemy_context_at_window_start.map((e: any) => (
+              <p key={e.hero} className="ag-rec-line">
+                <span className="ag-chip is-enemy">
+                  {N(e.hero)}
+                  <em>{[e.dist != null ? String(e.dist) : null, e.hp_pct != null ? `${e.hp_pct}%` : null, e.mana != null ? `${e.mana} MP` : null, e.level != null ? `Lv${e.level}` : null].filter(Boolean).join(' · ')}</em>
+                </span>
+                {Array.isArray(e.ready_abilities) && e.ready_abilities.length > 0 && (
+                  <span className="ag-chip">{t(T.enemyReady)} · {e.ready_abilities.map((a: string) => N(a)).join(', ')}</span>
+                )}
+                {Array.isArray(e.on_cooldown_abilities) && e.on_cooldown_abilities.length > 0 && (
+                  <span className="ag-chip">{t(T.enemyCd)} · {e.on_cooldown_abilities.map((a: any) => `${N(a.ability)} ${a.cooldown_left}${t(T.sec)}`).join(', ')}</span>
+                )}
+                {Array.isArray(e.no_mana_abilities) && e.no_mana_abilities.length > 0 && (
+                  <span className="ag-chip">{t(T.enemyNoMana)} · {e.no_mana_abilities.map((a: string) => N(a)).join(', ')}</span>
+                )}
+                {Array.isArray(e.key_items) && e.key_items.length > 0 && (
+                  <span className="ag-chip">{t(T.enemyItems)} · {e.key_items.map((it: any) => `${N(it.item)}${it.ready === false && it.cooldown_left != null ? ` (${it.cooldown_left}${t(T.sec)})` : ''}`).join(', ')}</span>
+                )}
+              </p>
+            ))}
+          </div>
+        )}
+        {Array.isArray(r.attackers_arrived_after_window_start) && r.attackers_arrived_after_window_start.length > 0 && (
+          <p className="ag-rec-line">
+            <span>{t(T.arrivedAfter)}</span>
+            {r.attackers_arrived_after_window_start.map((a: any) => (
+              <span key={a.hero} className="ag-chip is-enemy">
+                {N(a.hero)}
+                {a.alive_at_window_start === false
+                  ? <em>{t(T.deadAtStart)}</em>
+                  : <em>{[a.place_at_window_start ? N(a.place_at_window_start) : null, a.dist_at_window_start != null ? `${a.dist_at_window_start} ${t(T.away)}` : null].filter(Boolean).join(' · ')}</em>}
+              </span>
+            ))}
+          </p>
+        )}
+        {r.enemy_active_buffs_in_window && ((Array.isArray(r.enemy_active_buffs_in_window.smokes) && r.enemy_active_buffs_in_window.smokes.length > 0) || (Array.isArray(r.enemy_active_buffs_in_window.runes) && r.enemy_active_buffs_in_window.runes.length > 0)) && (
+          <p className="ag-rec-line">
+            <span>{t(T.enemyBuffs)}</span>
+            {(r.enemy_active_buffs_in_window.smokes ?? []).map((s: any, i: number) => (
+              <span key={`sm-${i}`} className="ag-chip is-enemy">{N(s.hero)} · {t(T.smoke)}<em>{s.from}{s.until ? `–${s.until}` : ''}</em></span>
+            ))}
+            {(r.enemy_active_buffs_in_window.runes ?? []).map((rn: any, i: number) => (
+              <span key={`rn-${i}`} className="ag-chip is-enemy">{N(rn.hero)} · {pretty(rn.rune)}<em>{rn.from}{rn.until ? `–${rn.until}` : ''}</em></span>
+            ))}
+          </p>
+        )}
         {r.ready_not_cast.length > 0 && <p className="ag-rec-line"><span>{t(T.readyUnused)}</span>{r.ready_not_cast.map((a: string) => <span key={a} className="ag-chip is-warn">{N(a)}</span>)}</p>}
         {Array.isArray(r.auto_triggered) && r.auto_triggered.length > 0 && (
           <p className="ag-rec-line"><span>{t(T.autoTriggered)}</span>{r.auto_triggered.map((a: any, i: number) => <span key={i} className="ag-chip is-good">{N(a.ability)}{a.clock && <em>{a.clock}</em>}</span>)}</p>
@@ -643,6 +738,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   }
   if (data.kind === 'draft') {
     const pc = (v: number | null | undefined) => (v == null ? '–' : `${v}%`);
+    const signed = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}`;
     const reading = (x: any) => (x?.reading && T.spikeMatchup[x.reading] ? t(T.spikeMatchup[x.reading]) : null);
     // One bracket's numbers for a pairing: the player's bracket, or (not known) each bracket on its own line.
     const row = (b: any) => (
@@ -660,6 +756,34 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
               <b>{T.lane[l.lane] ? t(T.lane[l.lane]) : l.lane}</b> · {(l.my_team ?? []).map((h: string) => N(h)).join(' / ') || '—'}{l.solo?.my_team === true ? ` (${t(T.draftSolo)})` : ''} : {(l.enemy ?? []).map((h: string) => N(h)).join(' / ') || '—'}{l.solo?.enemy === true ? ` (${t(T.draftSolo)})` : ''}
               {(l.shared_part_time_by ?? []).map((x: any) => <span key={x.hero} className="ag-chip">{N(x.hero)} · {t(T.draftPartTime)} {Math.round(x.share_of_lane_stage_here * 100)}%</span>)}
             </p>
+            {l.at_10_00 && (l.at_10_00.my_team_gold != null || l.at_10_00.my_team_last_hits != null || l.at_10_00.my_team_deaths_before_10_00 != null) && (
+              <p className="ag-rec-line">
+                <span>10:00</span>
+                {l.at_10_00.my_team_gold != null && l.at_10_00.enemy_gold != null && (
+                  <span className="ag-chip">
+                    {t(T.draftGold)} <em>{l.at_10_00.my_team_gold} : {l.at_10_00.enemy_gold}</em>
+                    {l.at_10_00.gold_diff != null && ` (${signed(l.at_10_00.gold_diff)})`}
+                  </span>
+                )}
+                {l.at_10_00.my_team_last_hits != null && l.at_10_00.enemy_last_hits != null && (
+                  <span className="ag-chip">
+                    {t(T.draftCs)} <em>{l.at_10_00.last_hits_are_lower_bounds ? `≥${l.at_10_00.my_team_last_hits} : ≥${l.at_10_00.enemy_last_hits}` : `${l.at_10_00.my_team_last_hits} : ${l.at_10_00.enemy_last_hits}`}</em>
+                  </span>
+                )}
+                {l.at_10_00.my_team_deaths_before_10_00 != null && l.at_10_00.enemy_deaths_before_10_00 != null && (
+                  <span className="ag-chip">{t(T.draftDeaths10)} <em>{l.at_10_00.my_team_deaths_before_10_00} : {l.at_10_00.enemy_deaths_before_10_00}</em></span>
+                )}
+                {l.at_10_00.source && T.draftSrc[l.at_10_00.source] && (
+                  <span className="ag-chip">{t(T.draftSrc[l.at_10_00.source])}</span>
+                )}
+                {l.at_10_00.passive_income_omitted === true && (
+                  <span className="ag-chip">{t(T.draftNoPassive)}</span>
+                )}
+                {l.at_10_00.last_hits_are_lower_bounds === true && (
+                  <span className="ag-chip">{t(T.draftLhLowerBound)}</span>
+                )}
+              </p>
+            )}
             {(l.pairings ?? []).map((p: any, i: number) => (
               <p key={i} className="ag-rec-line">
                 <span>{N(p.hero)} : {N(p.against)}{p.part_time ? ` · ${t(T.draftPartTime)}` : ''}</span>
@@ -922,6 +1046,19 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       <div className="ag-rec">
         <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.fight)} · {t(T.engaged)} {r.engaged_at}</p>
         {r.my_team_gold_lead != null && <p className="ag-rec-line"><span>{t(T.gold)}</span><span className="ag-chip">{r.my_team_gold_lead}</span></p>}
+        {r.me_in_fight && (
+          <p className="ag-rec-line">
+            <span>{t(T.meInFight)}</span>
+            {r.me_in_fight.died && <span className="ag-chip is-warn">{t(T.fightDied)}</span>}
+            {r.me_in_fight.hero_damage_dealt != null && <span className="ag-chip is-me">{t(T.dmgDealt)} <em>{r.me_in_fight.hero_damage_dealt}</em></span>}
+            {r.me_in_fight.hero_damage_taken != null && <span className="ag-chip">{t(T.dmgTaken)} <em>{r.me_in_fight.hero_damage_taken}</em></span>}
+            {r.me_in_fight.enemy_deaths_i_damaged != null && <span className="ag-chip">{t(T.enemyDeathsDamaged)} <em>{r.me_in_fight.enemy_deaths_i_damaged}</em></span>}
+            {typeof r.me_in_fight.ult_cast === 'boolean' && <span className={`ag-chip ${r.me_in_fight.ult_cast ? 'is-good' : 'is-warn'}`}>{t(T.ultCast)} · {t(r.me_in_fight.ult_cast ? T.yes : T.no)}</span>}
+            {Array.isArray(r.me_in_fight.key_items_used) && r.me_in_fight.key_items_used.length > 0 && (
+              <span className="ag-chip">{t(T.keyItemsUsed)} · {r.me_in_fight.key_items_used.map((it: string) => N(it)).join(', ')}</span>
+            )}
+          </p>
+        )}
         {side(r.my_team, 'is-ally', t(T.mine))}
         {side(r.enemy, 'is-enemy', t(T.theirs))}
       </div>
@@ -1238,7 +1375,68 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       </div>
     );
   }
+  if (data.kind === 'skill_build') {
+    const distRow = (label: string, snap: any) => snap && snap.abilities && (
+      <p className="ag-rec-line">
+        <span>{label} ({snap.clock})</span>
+        {Object.entries(snap.abilities as Record<string, number>).map(([ab, lv]) => (
+          <span key={ab} className="ag-chip">{N(ab)} <em>Lv{lv}</em></span>
+        ))}
+      </p>
+    );
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{N(r.hero)}</b> · {t(T.skillBuild)}{r.data_patch && <> · {r.data_patch}</>}</p>
+        {r.upgrade_timeline == null ? (
+          <p className="ag-rec-note">{t(T.sbNoData)}</p>
+        ) : (
+          <>
+            {distRow(t(T.sbAtLv6), r.at_level_6)}
+            {distRow(t(T.sbAtLv10), r.at_level_10)}
+            {Array.isArray(r.maxed_order) && r.maxed_order.length > 0 && (
+              <p className="ag-rec-line">
+                <span>{t(T.sbMaxed)}</span>
+                {r.maxed_order.map((m: any) => (
+                  <span key={m.ability} className="ag-chip">{N(m.ability)}<em>{m.clock}{m.hero_level != null ? ` · Lv${m.hero_level}` : ''}</em></span>
+                ))}
+              </p>
+            )}
+            {Array.isArray(r.ultimate_levels) && r.ultimate_levels.length > 0 && (
+              <p className="ag-rec-line">
+                <span>{t(T.sbUlts)}</span>
+                {r.ultimate_levels.map((u: any, i: number) => (
+                  <span key={`${u.ability}-${u.level}-${i}`} className="ag-chip is-good">{N(u.ability)} Lv{u.level}<em>{u.clock}{u.hero_level != null ? ` · Lv${u.hero_level}` : ''}</em></span>
+                ))}
+              </p>
+            )}
+            {Array.isArray(r.talents) && r.talents.length > 0 && (
+              <p className="ag-rec-line">
+                <span>{t(T.sbTalents)}</span>
+                {r.talents.map((tl: any, i: number) => (
+                  <span key={i} className="ag-chip">{tl.name ?? N(tl.ability)}</span>
+                ))}
+              </p>
+            )}
+            {r.upgrade_timeline.length > 0 && (
+              <>
+                <p className="ag-rec-sub">{t(T.sbTimeline)}</p>
+                <p className="ag-rec-line">
+                  {r.upgrade_timeline.map((u: any, i: number) => (
+                    <span key={`${u.ability}-${u.ability_level}-${i}`} className={`ag-chip ${u.ultimate ? 'is-good' : ''}`}>
+                      {u.clock} · {N(u.ability)} Lv{u.ability_level}
+                      {u.initial ? <em>{t(T.sbInitial)}</em> : u.hero_level != null ? <em>Lv{u.hero_level}</em> : null}
+                    </span>
+                  ))}
+                </p>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
   // A tool's totals (audit:…, deaths:…, immunity:…): the counts themselves.
+  const HIDDEN_DEATH_BUCKETS = new Set(['health_below_half_at_window_start', 'health_below_half_at_window_start_outside_fights']);
   const flat: [string, string][] = [];
   const late: [string, unknown][] = [];
   for (const [k, v] of Object.entries(r)) {
@@ -1261,6 +1459,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   for (const [k, v] of late) {
     if (!v || typeof v !== 'object') continue;
     for (const [k2, v2] of Object.entries(v as Record<string, unknown>)) {
+      if (k === 'deaths_where' && HIDDEN_DEATH_BUCKETS.has(k2)) continue;
       if (k === 'deaths_where' && TRADES.includes(k2) && Array.isArray(v2)) { trades.push([tl(k2), String(v2.length)]); continue; }
       if ((k === 'deaths_where' || k === 'casts_where') && Array.isArray(v2)) { if (v2.length) flat.push([tl(k2), String(v2.length)]); }
       else if (k === 'damage_share_in_death_windows' && typeof v2 === 'number') { const cut = k2.indexOf(': '); flat.push([`${tl(k)} · ${cut > 0 ? `${N(k2.slice(0, cut))} ${tl(k2.slice(cut + 2))}` : N(k2)}`, `${Math.round(v2 * 100)}%`]); }
