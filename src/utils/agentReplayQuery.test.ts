@@ -4,7 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { linkHeroNames } from '../../packages/review-engine/src/trace/index.js';
 import { LOG_KINDS, LOG_ROWS, LOG_WINDOW, TRACK_WINDOW, combatLog, heroTrack, logRow } from '../../lib/agent/replayQuery.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
-import { verifyText } from '../../lib/agent/deepReview.js';
+import { verifyReview, verifyText } from '../../lib/agent/deepReview.js';
 
 // The fixture is an older trace: no creep kills, gold or Roshan rows, and item uses without their target.
 const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString()));
@@ -71,11 +71,28 @@ describe('hero_track: one hero over a window', () => {
     expect(heroTrack(trace, { hero: 'beastmaster', from: 0, to: TRACK_WINDOW + 1 })).toMatchObject({ error: 'window_too_long' });
   });
 
+  it('a sentence quoting one second of the track is backed when it cites the track (Codex on #413)', () => {
+    const r: any = heroTrack(trace, { hero: 'beastmaster', from: '30:20', to: '30:30' });
+    const at = r.seconds.find((x: any) => x.clock === '30:25');
+    const review = { verdict: 'v', mainline: [], blind_spots: [], findings: [{ title: 't', claim: '蓝量。', fix: 'x', evidence: [{ refs: [r.ref], fact: `30:25 时你有 ${at.mana} 点蓝。` }] }] };
+    const check = verifyReview(review, [r]);
+    expect(check.problems.filter((p: any) => p.where === 'evidence' || p.where === 'finding')).toEqual([]);
+    expect(check.unsupported.findings.size).toBe(0);
+  });
+
+  it('without creep kills in the trace, farming is not seen: a gap says so (Codex on #413)', () => {
+    const r: any = heroTrack(trace, { hero: 'beastmaster', from: '30:20', to: '30:21' });
+    expect(r.gaps).toEqual([{ topic: 'farming', reason: expect.stringContaining('none_of_these does not rule it out') }]);
+    const withKills: any = heroTrack({ ...trace, creep_kills: [[1820, trace.names.indexOf('npc_dota_hero_beastmaster'), 'l', 100, 9000]] }, { hero: 'beastmaster', from: '30:20', to: '30:21' });
+    expect(withKills.gaps).toEqual([]);
+    expect(withKills.seconds[0].doing).toBe('farming');
+  });
+
   it('a second with no sample is not known, and the gap says so', () => {
     const blank = { ...trace, states: trace.states.map((s: any, i: number) => (i === trace.heroes.findIndex((h: any) => h.key === 'beastmaster') ? { ...s, x: s.x.map(() => null), y: s.y.map(() => null) } : s)) };
     const r: any = heroTrack(blank, { hero: 'beastmaster', from: 100, to: 102 });
     expect(r.seconds.every((s: any) => s.known === false)).toBe(true);
-    expect(r.gaps).toEqual([{ topic: 'samples', reason: 'some seconds have no sample' }]);
+    expect(r.gaps).toEqual([{ topic: 'samples', reason: 'some seconds have no sample' }, { topic: 'farming', reason: expect.stringContaining('no_creep_kills_in_trace') }]);
   });
 });
 

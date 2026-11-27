@@ -131,6 +131,12 @@ const T = {
   tp: { true: { en: 'TP ready', zh: 'TP 可用', ru: 'TP готов' }, false: { en: 'TP on cooldown', zh: 'TP 冷却中', ru: 'TP на перезарядке' } } as Record<string, Tri>,
   respawn: { en: 'respawns in', zh: '复活还要', ru: 'возрождение через' },
   away: { en: 'away', zh: '码外', ru: 'дальше' },
+  logKind: {
+    cast: { en: 'cast', zh: '施法', ru: 'применение' }, item_use: { en: 'item used', zh: '使用物品', ru: 'предмет' }, death: { en: 'death', zh: '阵亡', ru: 'смерть' },
+    purchase: { en: 'purchase', zh: '购买', ru: 'покупка' }, damage: { en: 'damage', zh: '伤害', ru: 'урон' }, effect: { en: 'effect', zh: '状态', ru: 'эффект' },
+    building: { en: 'building destroyed', zh: '建筑被摧毁', ru: 'постройка' }, creep_kill: { en: 'creep kill', zh: '击杀小兵', ru: 'добивание' }, gold: { en: 'gold', zh: '金钱', ru: 'золото' },
+    smoke: { en: 'Smoke of Deceit', zh: '诡计之雾', ru: 'Smoke of Deceit' }, rune: { en: 'rune', zh: '神符', ru: 'руна' }, roshan_kill: { en: 'Roshan', zh: '肉山', ru: 'Рошан' }, tormentor_kill: { en: 'Tormentor', zh: '痛苦魔方', ru: 'Терзатель' },
+  } as Record<string, Tri>,
   doing: {
     dead: { en: 'dead', zh: '阵亡', ru: 'мёртв' }, in_own_base: { en: 'in base', zh: '在基地', ru: 'на базе' },
     trading_damage_with_enemy_heroes: { en: 'fighting heroes', zh: '在和敌方英雄交手', ru: 'дерётся с героями' },
@@ -563,6 +569,35 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     );
   }
   // Knowledge records (referenceTools.js): what an item is, a hero's base numbers, a matchup, patch notes.
+  // One row of the replay's log, and one hero over a window (replayQuery.js).
+  if (data.kind === 'log') {
+    const who = [r.by ?? r.from ?? r.hero ?? r.on ?? r.last_hit, r.ability ?? r.item ?? r.source ?? r.effect ?? r.what ?? r.reason ?? r.rune ?? r.building, r.target ?? r.to_hero ?? r.to ?? r.killer ?? r.used_by];
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head">{r.clock && <b>{r.clock}</b>}{r.minute != null && <b>{r.minute}:00</b>} · {T.logKind[r.kind] ? t(T.logKind[r.kind]) : r.kind}</p>
+        <p className="ag-rec-line">{who.filter(Boolean).map((x: string, i: number) => <span key={i} className="ag-chip">{N(x)}</span>)}{r.amount != null && <span className="ag-chip"><em>{r.amount}</em></span>}{r.gold != null && <span className="ag-chip"><em>{r.gold}</em></span>}{r.until && <span className="ag-chip">→ {r.until}</span>}</p>
+      </div>
+    );
+  }
+  if (data.kind === 'track') {
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{N(r.hero)}</b> · {r.from}–{r.to}</p>
+        <table className="ag-lane"><tbody>
+          {(r.seconds ?? []).map((s: any) => (
+            <tr key={s.clock}><td>{s.clock}</td>
+              {s.known === false ? <td colSpan={4}>–</td> : <>
+                <td>{s.alive ? (s.place ? N(s.place) : '') : t(T.doing.dead)}</td>
+                <td>{s.doing && T.doing[s.doing] ? t(T.doing[s.doing]) : ''}</td>
+                <td>{s.hp_pct != null ? `${s.hp_pct}%` : '–'}</td>
+                <td>{s.mana ?? '–'}</td>
+              </>}
+            </tr>
+          ))}
+        </tbody></table>
+      </div>
+    );
+  }
   if (data.kind === 'item_info') {
     return (
       <div className="ag-rec">
