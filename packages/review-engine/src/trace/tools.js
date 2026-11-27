@@ -95,6 +95,13 @@ function needHero(trace, hero) {
  * a passive in the replay: a stated gap, not a guess.
  */
 const DEATH_TRIGGERED_ABILITIES = new Set(['skeleton_king_reincarnation', 'undying_ceaseless_dirge']);
+/**
+ * Zero-mana active abilities that can also trigger automatically without emitting a combat-log
+ * `DOTA_COMBATLOG_ABILITY` event. Borrowed Time triggers automatically below 400 HP while off
+ * cooldown — starting a cooldown interval in `entry.cd` with no row in `trace.casts` (139 of 183
+ * activations across 19 real replays).
+ */
+const AUTO_TRIGGERED_ACTIVE_ABILITIES = new Set(['abaddon_borrowed_time']);
 const NON_CAST_LOGGED_ABILITIES = new Set([
   'ancient_apparition_chilling_touch',
   'bounty_hunter_jinada',
@@ -137,9 +144,60 @@ function castable(trace, h, npc) {
   const set = new Set();
   for (const c of trace.casts) if (c[1] === npc) set.add(trace.names[c[2]]);
   for (const [k, e] of Object.entries(trace.abilities[h])) {
-    if (e.mana > 0 && !DEATH_TRIGGERED_ABILITIES.has(k) && !isNonCastLogged(trace, npc, k)) set.add(k);
+    if ((e.mana > 0 || AUTO_TRIGGERED_ACTIVE_ABILITIES.has(k)) && !DEATH_TRIGGERED_ABILITIES.has(k) && !isNonCastLogged(trace, npc, k)) set.add(k);
   }
   return set;
+}
+
+/**
+ * Cooldown-detected activations for an auto-triggerable active ability (`abaddon_borrowed_time`).
+ * Returns `{ auto, allStarts }` or `null` when `entry.cd` is missing from the trace (unknown, not empty).
+ * Distinguishes continuous mid-cooldown reduction splits from `build.js` (where `curr[0] === prev[1]` with
+ * no zero-cooldown sample and no Refresher use) from true resets/re-triggers (e.g. level-up + Refresher),
+ * and pairs manual combat-log casts 1-to-1 within ±2 s so manual casts are never double-counted as auto-triggers.
+ */
+const REFRESHER_ITEMS = new Set(['item_refresher', 'item_refresher_shard']);
+function refresherTimes(trace, npc) {
+  const out = [];
+  for (const u of trace?.item_uses ?? []) {
+    if (u[1] === npc && REFRESHER_ITEMS.has(trace.names?.[u[2]])) out.push(u[0]);
+  }
+  return out;
+}
+function cooldownActivations(entry, manualRows, refreshers = []) {
+  if (!Array.isArray(entry?.cd)) return null;
+  const sorted = [...entry.cd].sort((a, b) => a[0] - b[0]);
+  const starts = [];
+  let prev = null;
+  for (let i = 0; i < sorted.length; i += 1) {
+    const curr = sorted[i];
+    const [from, to, init] = curr;
+    if (abilityLevel(entry, from + 0.5) <= 0) continue;
+    const prevRem = prev != null && typeof prev[2] === 'number' ? Math.max(0, prev[2] - (from - prev[0])) : 0;
+    const refreshed = refreshers.some((rt) => rt >= from - 2 && rt <= from + 0.5);
+    // `build.js` closes and re-opens a shortened cooldown at the exact same timestamp (`from === prev[1]`).
+    // Any positive gap (`from > prev[1]`) reflects an observed zero-cooldown sample (e.g. a reset), and a
+    // Refresher Orb/Shard use in [from - 2, from + 0.5] likewise marks a reset rather than a cooldown cut.
+    const isCut = prev != null && from === prev[1] && !refreshed
+      && typeof prev[2] === 'number' && typeof init === 'number'
+      && prevRem > 2 && init < prevRem - 0.5;
+    prev = curr;
+    if (isCut) continue;
+    starts.push({ t: from, clock: clock(from), cooldown: typeof init === 'number' ? init : Math.round((to - from) * 10) / 10 });
+  }
+  const usedManual = new Set();
+  const auto = [];
+  for (const st of starts) {
+    let bestIdx = -1; let bestDt = Infinity;
+    for (let j = 0; j < manualRows.length; j += 1) {
+      if (usedManual.has(j)) continue;
+      const d = Math.abs(manualRows[j][0] - st.t);
+      if (d <= 2 && d < bestDt) { bestDt = d; bestIdx = j; }
+    }
+    if (bestIdx >= 0) usedManual.add(bestIdx);
+    else auto.push(st);
+  }
+  return { auto, allStarts: starts };
 }
 
 /** Hero deaths grouped into fights: [{ from, to, deaths: [[t, victimName, killerName, row]] }]. */
@@ -605,6 +663,18 @@ function nearbyObjectiveFor(trace, h, t, atPos, allSieges, traceEnd) {
   return unknown || traceEnd == null || t + 20 > traceEnd ? null : false;
 }
 
+/** Whether hero `j` can be placed (or ruled out as dead) at `t`: unsampled alive or position leaves proximity unknown. */
+function heroNearKnown(trace, j, t) {
+  const st = stateAt(trace, j, t);
+  if (st) {
+    const rawAlive = trace.states?.[j]?.alive?.[st.t - trace.t0];
+    if (rawAlive === 0) return true;
+    return rawAlive === 1 && st.x != null && st.y != null;
+  }
+  const k0 = Math.round(t) - trace.t0;
+  return k0 >= 0 && k0 < trace.n && trace.states?.[j]?.alive?.[k0] === 0;
+}
+
 export function deathContext(trace, args = {}, ctx = {}) {
   const view = viewer(trace, ctx);
   const { h, npc, err } = needHero(trace, args.hero);
@@ -619,6 +689,19 @@ export function deathContext(trace, args = {}, ctx = {}) {
   // Every death is worked out, also when one is asked for: the order below is over all of them.
   const pick = all.map((d, i) => [d, i + 1]);
   const can = castable(trace, h, npc);
+  // Precompute cooldown-detected activations for auto-triggerable active abilities (e.g. Abaddon's Borrowed Time)
+  // so auto-triggers inside a death window are recognized and never misreported under `ready_not_cast`.
+  const autoByAbility = new Map();
+  let autoCooldownMissing = false;
+  const myRefreshers = refresherTimes(trace, npc);
+  for (const [k, e] of Object.entries(trace.abilities?.[h] ?? {})) {
+    if (!AUTO_TRIGGERED_ACTIVE_ABILITIES.has(k)) continue;
+    const aid = nameId(trace, k);
+    const manual = aid >= 0 ? trace.casts.filter((c) => c[1] === npc && c[2] === aid).sort((a, b) => a[0] - b[0]) : [];
+    const info = cooldownActivations(e, manual, myRefreshers);
+    if (!info && (e?.levels ?? []).some(([, lv]) => lv > 0)) autoCooldownMissing = true;
+    autoByAbility.set(k, info);
+  }
   // The fights of the game as match_overview groups them (three or more hero deaths, none more than 15 s after
   // the one before). That grouping is by time alone, over the whole map: a death counts as "in a fight" only if
   // it is one of them and an ally was within 2200 at some second before it — a hero picked off alone while a
@@ -627,17 +710,6 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const fought = new Set(allFights.flatMap((f) => f.deaths));
   const fightInfos = allFights.map((f, fi) => ({ ref: `fight:${fi + 1}`, f, part: fightParticipation(trace, f) }));
   const allSieges = Array.isArray(trace.damage) ? sieges(trace) : [];
-  // Whether hero `j` can be placed (or ruled out as dead) at `t`: a hero with unsampled alive or position may have been standing within 2200.
-  const heroNearKnown = (j, t) => {
-    const st = stateAt(trace, j, t);
-    if (st) {
-      const rawAlive = trace.states?.[j]?.alive?.[st.t - trace.t0];
-      if (rawAlive === 0) return true;
-      return rawAlive === 1 && st.x != null && st.y != null;
-    }
-    const k0 = Math.round(t) - trace.t0;
-    return k0 >= 0 && k0 < trace.n && trace.states?.[j]?.alive?.[k0] === 0;
-  };
   // Where the hero respawns: each snapshot says how far from it the hero stood, so the window shows whether they
   // were heading home or away from it. Null when the trace never sampled a respawn.
   const fountain = ownFountain(trace, h, npc);
@@ -658,7 +730,12 @@ export function deathContext(trace, args = {}, ctx = {}) {
     let mostAllies = atDeath.me && snapshots.every((x) => x.me) ? Math.max(atDeath.allies.length, ...snapshots.map((x) => x.allies.length)) : null;
     for (let sec = Math.floor(from); mostAllies != null && sec < t; sec += 1) { const at = nearby(trace, h, sec, 2200); mostAllies = at.me ? Math.max(mostAllies, at.allies.length) : null; }
     const abilities = Object.entries(trace.abilities[h]).filter(([k, e]) => can.has(k) && abilityLevel(e, from) > 0)
-      .map(([k, e]) => ({ ability: k, level: abilityLevel(e, from), cooldown_left: cooldownLeft(e, from), mana_cost: manaCost(e, from, t) }));
+      .map(([k, e]) => ({
+        ability: k,
+        level: abilityLevel(e, from),
+        cooldown_left: AUTO_TRIGGERED_ACTIVE_ABILITIES.has(k) && !Array.isArray(e?.cd) ? null : cooldownLeft(e, from),
+        mana_cost: manaCost(e, from, t),
+      }));
     // Ready is not castable: with less mana all window long than it costs, it was never an option.
     const mana = mostMana(trace, h, from, t);
     const noMana = (a) => a.mana_cost != null && mana != null && mana < a.mana_cost;
@@ -695,6 +772,18 @@ export function deathContext(trace, args = {}, ctx = {}) {
     for (const kind of DISABLED) for (const [a, b] of trace.controls?.[h]?.[kind] ?? []) if (b > from && a <= t) { const at = Math.max(a, from); if (disabledAt == null || at < disabledAt) disabledAt = at; }
     for (const m of trace.modifiers) if (m[1] === npc && m[4] === 1 && m[6] !== 'i' && inWindow(m[0]) && (disabledAt == null || m[0] < disabledAt)) disabledAt = m[0];
     const castNames = new Set(myCasts.map((c) => trace.names[c[2]]));
+    const autoTriggered = [];
+    const triggeredNames = new Set();
+    for (const [k, info] of autoByAbility) {
+      if (!info) continue;
+      for (const st of info.allStarts) {
+        if (st.t >= from && st.t <= t + 0.5) triggeredNames.add(k);
+      }
+      for (const tr of info.auto) {
+        if (tr.t >= from && tr.t <= t + 0.5) autoTriggered.push({ dt: dt(tr.t), clock: tr.clock, ability: k });
+      }
+    }
+    autoTriggered.sort((a, b) => a.dt - b.dt);
     const kKind = killerKind(trace, d[2], h, npc);
     const killerOwnSideCreep = kKind === 'lane_creep' && myCreepSide.test(trace.names?.[d[2]] ?? '');
     const involvesDominatableCreep = kKind === 'neutral' || kKind === 'lane_creep' || neutralOrCreepDamage;
@@ -710,7 +799,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
       : (unknownDamageSource || possiblePlayerControlledCreep) ? null : true;
     const traceEnd = typeof trace.t0 === 'number' && typeof trace.n === 'number' ? trace.t0 + trace.n - 1 : null;
     const alliesKnownAtDeath = Boolean(atDeath.me && atDeath.me.x != null && atDeath.me.y != null)
-      && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, t));
+      && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(trace, j, t));
     const alliesSurvived10s = !alliesKnownAtDeath ? null : (() => {
       const winStart = Math.min(t, Math.floor(t));
       const survivors = atDeath.allies.map((a) => a.hero).filter((ak) => {
@@ -745,8 +834,9 @@ export function deathContext(trace, args = {}, ctx = {}) {
       snapshots,
       at_window_start: { abilities, items },
       most_mana_in_window: mana,
-      ready_not_cast: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && !noMana(a)).map((a) => a.ability),
-      off_cooldown_without_the_mana: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && noMana(a)).map((a) => a.ability),
+      ready_not_cast: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && !triggeredNames.has(a.ability) && !noMana(a)).map((a) => a.ability),
+      off_cooldown_without_the_mana: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && !triggeredNames.has(a.ability) && noMana(a)).map((a) => a.ability),
+      ...(autoTriggered.length ? { auto_triggered: autoTriggered } : {}),
       health_share_at_window_start: share(snapshots[0]?.me),
       // How much closer to their own fountain the hero was at the last snapshot than at the window's start: positive
       // heading home, negative heading away from it. Null when either distance is unknown. Over 1089 deaths outside
@@ -799,8 +889,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const myRes = resurrections(trace).filter((r) => r.heroIndex === h).map((r, i) => {
     const atRes = nearby(trace, h, r.t, 2200);
     const meKnown = Boolean(atRes.me && atRes.me.x != null && atRes.me.y != null);
-    const alliesKnown = meKnown && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, r.t));
-    const enemiesKnown = meKnown && trace.heroes.every((o, j) => o.team === trace.heroes[h].team || heroNearKnown(j, r.t));
+    const alliesKnown = meKnown && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(trace, j, r.t));
+    const enemiesKnown = meKnown && trace.heroes.every((o, j) => o.team === trace.heroes[h].team || heroNearKnown(trace, j, r.t));
     const nextIdx = all.findIndex((d) => d[0] > r.t);
     const nextReal = nextIdx >= 0 ? all[nextIdx] : null;
     const diedSoon = !nextReal ? false
@@ -825,7 +915,10 @@ export function deathContext(trace, args = {}, ctx = {}) {
     ...deathPatterns(trace, out, { allSources: args.all_damage_sources === true }), ...leftUnused(out, heroKey),
     deaths: args.index == null ? out : [out[args.index - 1]],
     ...(myRes.length ? { resurrections: myRes } : {}),
-    gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']),
+    gaps: [
+      ...gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']),
+      ...(autoCooldownMissing ? [{ topic: 'ability_casts', reason: 'auto_triggered_cooldowns_missing_in_trace' }] : []),
+    ],
   };
 }
 
@@ -1034,11 +1127,12 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   const abilityId = nameId(trace, key);
   const immune = immunityIntervals(trace);
   const learned = entry.levels.find(([, lv]) => lv > 0)?.[0] ?? null;
-  const rows = trace.casts.filter((c) => c[1] === npc && c[2] === abilityId).sort((a, b) => a[0] - b[0]);
+  const rows = abilityId >= 0 ? trace.casts.filter((c) => c[1] === npc && c[2] === abilityId).sort((a, b) => a[0] - b[0]) : [];
   const byTarget = {};
   const short = key.startsWith(`${trace.heroes[h].key}_`) ? key.slice(trace.heroes[h].key.length + 1) : key;
   // Whether this ability shows in the damage log at all: only then does "damaged nobody" mean something.
-  const damaging = trace.damage.some((r) => r[1] === npc && r[3] === abilityId);
+  // Guard `abilityId >= 0`: `-1` in trace.damage represents basic attacks, not an unlogged ability.
+  const damaging = abilityId >= 0 && trace.damage.some((r) => r[1] === npc && r[3] === abilityId);
   const real = realDeaths(trace);
   // What the casts have in common, by game time (like deaths_where): a habit is a count over the game.
   const intoImmunity = []; const targetLived = []; const cameToLittle = []; let nearNotKnown = 0;
@@ -1127,6 +1221,87 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
       casts: null,
       note: 'This ability is an attack modifier or passive whose uses are not recorded as ability casts in the replay combat log; casts_total and deaths_with_it_ready_and_not_cast are unknown (null), not zero. Use damage_to_enemy_heroes_total to see whether it dealt damage to enemy heroes.',
       gaps: [...gapsFor(trace, ['ability_immunity', 'vision']), { topic: 'ability_casts', reason: 'attack_modifier_or_passive_casts_not_logged_in_combat_log' }],
+    };
+  }
+  const autoActive = AUTO_TRIGGERED_ACTIVE_ABILITIES.has(key);
+  if (autoActive) {
+    const autoInfo = cooldownActivations(entry, rows, refresherTimes(trace, npc));
+    if (!autoInfo) {
+      return {
+        ref: `audit:${trace.heroes[h].key}:${short}`, ref_scope: 'summary',
+        hero: trace.heroes[h].key, ability: key,
+        learned_at: learned == null ? null : { t: learned, clock: clock(learned) },
+        casts_total: null,
+        manual_casts_total: casts.length,
+        auto_triggered_total: null,
+        by_target: byTarget,
+        casts_on_spell_immune_target: casts.filter((c) => c.target_spell_immune).length,
+        of_those_target_was_stunned: casts.filter((c) => c.target_spell_immune && c.target_stunned_seconds > 0).length,
+        casts_where: {
+          target_spell_immune_and_not_stunned: intoImmunity,
+          enemy_hero_target_alive_12s_later: targetLived,
+          ...(damaging ? { no_hero_target_near_enemies_at_most_one_damaged_and_none_died: cameToLittle } : {}),
+        },
+        ...(damaging ? { casts_not_known: { enemy_heroes_near: nearNotKnown } } : {}),
+        seconds_alive_since_learned: alive,
+        seconds_alive_and_ready: null,
+        deaths_with_it_ready_and_not_cast_total: null,
+        deaths_with_it_ready_and_not_cast: null,
+        casts: casts.map((c) => ({ ...c, trigger: 'manual' })),
+        note: 'This ability can trigger automatically without emitting a combat-log cast event, and cooldown samples are missing in this trace; auto-triggered activations, total activations, ready time, and unused deaths are unknown (null).',
+        gaps: [...gapsFor(trace, ['ability_immunity', 'vision']), { topic: 'ability_casts', reason: 'auto_triggered_cooldowns_missing_in_trace' }],
+      };
+    }
+    const autoRows = autoInfo.auto.map((tr) => {
+      const { me, allies, enemies } = nearby(trace, h, tr.t, 1300);
+      const meKnown = Boolean(me && me.x != null && me.y != null);
+      const alliesKnown = meKnown && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(trace, j, tr.t));
+      const enemiesKnown = meKnown && trace.heroes.every((o, j) => o.team === trace.heroes[h].team || heroNearKnown(trace, j, tr.t));
+      return {
+        ref: '', t: tr.t, clock: tr.clock, row: null, trigger: 'auto',
+        target: null, target_hp: null, target_spell_immune: null, target_stunned_seconds: null,
+        me: meKnown ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
+        allies_within_1300: alliesKnown ? allies.map((a) => a.hero) : null,
+        enemies_within_1300: enemiesKnown ? enemies.map((e) => e.hero) : null,
+        deaths_within_12s: real.filter((d) => d[0] >= tr.t && d[0] - tr.t <= 12).map((d) => deathRow(trace, d, tr.t, view)),
+      };
+    });
+    const autoProximityMissing = autoRows.some((r) => r.allies_within_1300 == null || r.enemies_within_1300 == null);
+    const combined = [
+      ...casts.map((c) => ({ ...c, trigger: 'manual' })),
+      ...autoRows,
+    ].sort((a, b) => a.t - b.t || (a.row ?? Infinity) - (b.row ?? Infinity))
+      .map((c, idx) => ({ ...c, ref: `cast:${trace.heroes[h].key}:${short}:${idx + 1}` }));
+    const unusedAuto = myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0
+      && cooldownLeft(entry, d[0] - 0.5) === 0
+      && !combined.some((c) => c.t >= d[0] - 12 && c.t <= d[0] + 0.5)
+      && !autoInfo.allStarts.some((st) => st.t >= d[0] - 12 && st.t <= d[0] + 0.5)).filter(afford);
+    return {
+      ref: `audit:${trace.heroes[h].key}:${short}`, ref_scope: 'summary',
+      hero: trace.heroes[h].key, ability: key,
+      learned_at: learned == null ? null : { t: learned, clock: clock(learned) },
+      casts_total: combined.length,
+      manual_casts_total: casts.length,
+      auto_triggered_total: autoRows.length,
+      by_target: byTarget,
+      casts_on_spell_immune_target: casts.filter((c) => c.target_spell_immune).length,
+      of_those_target_was_stunned: casts.filter((c) => c.target_spell_immune && c.target_stunned_seconds > 0).length,
+      casts_where: {
+        target_spell_immune_and_not_stunned: intoImmunity,
+        enemy_hero_target_alive_12s_later: targetLived,
+        ...(damaging ? { no_hero_target_near_enemies_at_most_one_damaged_and_none_died: cameToLittle } : {}),
+      },
+      ...(damaging ? { casts_not_known: { enemy_heroes_near: nearNotKnown } } : {}),
+      seconds_alive_since_learned: alive, seconds_alive_and_ready: idle,
+      deaths_with_it_ready_and_not_cast_total: unusedAuto.length,
+      deaths_with_it_ready_and_not_cast: unusedAuto
+        .map((d) => ({ ref: `death:${trace.heroes[h].key}:${myDeaths.indexOf(d) + 1}`, t: d[0], clock: clock(d[0]), killer: nameOf(trace, d[2]), row: d[3] })),
+      casts: combined,
+      note: 'Includes both manual casts (trigger: "manual", from combat log) and automatic activations (trigger: "auto", detected from ability cooldown starts, which emit no combat-log cast event).',
+      gaps: [
+        ...gapsFor(trace, ['ability_immunity', 'vision']),
+        ...(autoProximityMissing ? [{ topic: 'hero_positions', reason: 'position_samples_missing_around_auto_trigger' }] : []),
+      ],
     };
   }
   const unused = passiveOnDeath ? [] : myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12)).filter(afford);
@@ -1224,6 +1399,25 @@ export function fightTimeline(trace, args = {}, ctx = {}) {
   for (const m of trace.modifiers) if (m[6] === 'i' && m[4] === 1 && inWindow(m[0])) rows.push({ p: 0, t: m[0], kind: 'spell_immune', hero: nameOf(trace, m[1]), ...sideOf(view, trace, heroOfName(trace, m[1])), modifier: trace.names[m[2]].replace(/^modifier_/, ''), ...(m[7] == null ? {} : { row: m[7] }) });
   for (const u of trace.item_uses) if (inWindow(u[0]) && !NOISE_ITEMS.test(trace.names[u[2]])) rows.push({ p: 1, t: u[0], kind: 'item', hero: nameOf(trace, u[1]), item: trace.names[u[2]].replace(/^item_/, ''), row: u[3] });
   for (const c of trace.casts) if (inWindow(c[0])) rows.push({ p: heroOfName(trace, c[3]) >= 0 ? 1 : 2, t: c[0], kind: 'cast', hero: nameOf(trace, c[1]), ability: trace.names[c[2]], ...(c[3] >= 0 ? { target: nameOf(trace, c[3]) } : {}), row: c[4] });
+  let timelineAutoCooldownMissing = false;
+  for (let i = 0; i < trace.heroes.length; i += 1) {
+    const heroAbs = trace.abilities?.[i] ?? {};
+    const hNpc = nameId(trace, trace.heroes[i].npc);
+    const hRefreshers = refresherTimes(trace, hNpc);
+    for (const [k, e] of Object.entries(heroAbs)) {
+      if (!AUTO_TRIGGERED_ACTIVE_ABILITIES.has(k)) continue;
+      const aid = nameId(trace, k);
+      const manual = aid >= 0 ? trace.casts.filter((c) => c[1] === hNpc && c[2] === aid).sort((a, b) => a[0] - b[0]) : [];
+      const info = cooldownActivations(e, manual, hRefreshers);
+      if (!info) {
+        if (abilityLevel(e, to) > 0) timelineAutoCooldownMissing = true;
+        continue;
+      }
+      for (const tr of info.auto) {
+        if (inWindow(tr.t)) rows.push({ p: 0, t: tr.t, kind: 'auto_trigger', hero: trace.heroes[i].key, ...sideOf(view, trace, i), ability: k });
+      }
+    }
+  }
   let kept = rows; let truncated = false;
   for (const drop of [2, 1]) {
     if (kept.length <= MAX_TIMELINE_ROWS) break;
@@ -1256,7 +1450,10 @@ export function fightTimeline(trace, args = {}, ctx = {}) {
     ...(truncated ? { truncated: 'casts_without_a_hero_target_dropped_first' } : {}),
     damage_to_heroes_by_unit: top(dealt),
     damage_taken_by_hero: top(taken),
-    gaps: gapsFor(trace, ['vision', 'ability_immunity']),
+    gaps: [
+      ...gapsFor(trace, ['vision', 'ability_immunity']),
+      ...(timelineAutoCooldownMissing ? [{ topic: 'ability_casts', reason: 'auto_triggered_cooldowns_missing_in_trace' }] : []),
+    ],
   };
 }
 
@@ -1488,13 +1685,13 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'death_context',
-    description: "What led to a hero's real deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed (`disable_seconds_in_window`), enemy ultimates absorbed (`enemy_ultimates_absorbed`), allies near who survived the next 10 s (`allies_near_who_survived_10s`), what they cast, nearby fights within [-30 s before engagement, +15 s after] (`nearby_fight`), nearby building/Roshan activity (`nearby_objective`), killer kind and whether it was a neutral/tower/Roshan/Tormentor/creep death with zero enemy hero damage (`non_hero_death_without_enemy_hero_damage`), and who else died around it. Without `index`, every real death. In-place revivals (Wraith King's Reincarnation, Aegis of the Immortal) are not counted as deaths; when the hero had any, they are listed apart under `resurrections` (`resurrection:<hero>:<n>`, with `died_for_real_within_20s` when the hero died again right after reviving), and for Wraith King each real death gives `reincarnation_at_death` (`not_learned`, `on_cooldown`, `insufficient_mana`). An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready; attack modifiers whose uses are not logged as ability casts are excluded from `ready_not_cast`. `deaths_where` lists, by game time, the deaths that have something in common (began below half health, no ally near, three or more enemies, before a nearby fight within 30 s, non-hero without enemy hero damage, absorbed enemy ultimate) and `damage_share_in_death_windows` says where the damage came from — use them for what to change, and for which item answers the damage. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
+    description: "What led to a hero's real deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed (`disable_seconds_in_window`), enemy ultimates absorbed (`enemy_ultimates_absorbed`), allies near who survived the next 10 s (`allies_near_who_survived_10s`), what they cast, nearby fights within [-30 s before engagement, +15 s after] (`nearby_fight`), nearby building/Roshan activity (`nearby_objective`), killer kind and whether it was a neutral/tower/Roshan/Tormentor/creep death with zero enemy hero damage (`non_hero_death_without_enemy_hero_damage`), and who else died around it. Without `index`, every real death. In-place revivals (Wraith King's Reincarnation, Aegis of the Immortal) are not counted as deaths; when the hero had any, they are listed apart under `resurrections` (`resurrection:<hero>:<n>`, with `died_for_real_within_20s` when the hero died again right after reviving), and for Wraith King each real death gives `reincarnation_at_death` (`not_learned`, `on_cooldown`, `insufficient_mana`). Auto-triggerable active abilities that fired automatically without a combat-log cast (e.g. Abaddon's Borrowed Time below 400 HP, detected from cooldown starts) are listed under `auto_triggered` and excluded from `ready_not_cast`. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready; attack modifiers whose uses are not logged as ability casts are excluded from `ready_not_cast`. `deaths_where` lists, by game time, the deaths that have something in common (began below half health, no ally near, three or more enemies, before a nearby fight within 30 s, non-hero without enemy hero damage, absorbed enemy ultimate) and `damage_share_in_death_windows` says where the damage came from — use them for what to change, and for which item answers the damage. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
     input_schema: { type: 'object', properties: { hero: HERO, index: { type: 'integer', minimum: 1, description: 'Which death, counting from 1. Omit for all.' }, window: { type: 'number', minimum: 4, maximum: 30, description: 'Seconds before the death to look at (default 12).' } }, required: ['hero'], additionalProperties: false },
     run: deathContext,
   },
   {
     name: 'ability_audit',
-    description: "Every cast of one ability by one hero: the target and its health, whether the target was spell immune at that moment, who was near, which enemy heroes it damaged in the 15 seconds after, or until its next cast (`enemy_heroes_damaged_within_15s`, for an ability that deals damage), and which heroes died in the next 12 seconds. Also how long the ability sat ready while the hero was alive, and the hero's real deaths with it ready and not cast (for passive death-triggered abilities such as `skeleton_king_reincarnation` or `undying_ceaseless_dirge`, `triggered_on_death` lists when it triggered instead; for attack modifiers or passives whose uses are not logged as ability casts, `casts_logged: false` with `casts_total: null` and `damage_to_enemy_heroes_total` instead of 0 casts).",
+    description: "Every cast of one ability by one hero: the target and its health, whether the target was spell immune at that moment, who was near, which enemy heroes it damaged in the 15 seconds after, or until its next cast (`enemy_heroes_damaged_within_15s`, for an ability that deals damage), and which heroes died in the next 12 seconds. Also how long the ability sat ready while the hero was alive, and the hero's real deaths with it ready and not cast (for passive death-triggered abilities such as `skeleton_king_reincarnation` or `undying_ceaseless_dirge`, `triggered_on_death` lists when it triggered instead; for auto-triggerable active abilities such as `abaddon_borrowed_time`, `casts` includes both `trigger: \"manual\"` casts and `trigger: \"auto\"` cooldown-detected activations with `manual_casts_total` and `auto_triggered_total`; for attack modifiers or passives whose uses are not logged as ability casts, `casts_logged: false` with `casts_total: null` and `damage_to_enemy_heroes_total` instead of 0 casts).",
     input_schema: { type: 'object', properties: { hero: HERO, ability: { type: 'string', description: 'Ability key, with or without the hero prefix, e.g. "primal_roar".' } }, required: ['hero', 'ability'], additionalProperties: false },
     run: abilityAudit,
   },
@@ -1506,7 +1703,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'fight_timeline',
-    description: 'A stretch of the game second by second (at most 180 s): where all ten heroes stood at the start and at the first death, then every cast, key item use, spell-immunity activation, death, in-place revival (`reincarnation`, `aegis`) and building kill in order, how many heroes each side lost in it (`hero_deaths_in_window`, real deaths only), and who dealt and took the damage.',
+    description: 'A stretch of the game second by second (at most 180 s): where all ten heroes stood at the start and at the first death, then every cast, auto-triggered ultimate (`auto_trigger`, e.g. Abaddon Borrowed Time), key item use, spell-immunity activation, death, in-place revival (`reincarnation`, `aegis`) and building kill in order, how many heroes each side lost in it (`hero_deaths_in_window`, real deaths only), and who dealt and took the damage.',
     input_schema: { type: 'object', properties: { from: TIME, to: TIME }, required: ['from', 'to'], additionalProperties: false },
     run: fightTimeline,
   },

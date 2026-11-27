@@ -27,6 +27,8 @@ const T = {
   enemies: { en: 'Enemies within 2200', zh: '2200 码内敌人', ru: 'Враги в 2200' },
   nobody: { en: 'none', zh: '无', ru: 'нет' },
   readyUnused: { en: 'Ready, not used', zh: '就绪未用', ru: 'Готово, не нажато' },
+  autoTriggered: { en: 'Auto-triggered', zh: '自动触发', ru: 'Автосрабатывание' },
+  manualCast: { en: 'Manual cast', zh: '主动施放', ru: 'Ручное применение' },
   disables: { en: 'Disables that landed', zh: '吃到的控制', ru: 'Полученный контроль' },
   damage: { en: 'Damage taken', zh: '承受伤害', ru: 'Полученный урон' },
   attack: { en: 'attacks', zh: '普攻', ru: 'атаки' },
@@ -335,6 +337,8 @@ export function buildingLabel(key: string, lang: Lang): string {
 const TOTALS: Record<string, Tri> = {
   learned_at: { en: 'Learned at', zh: '学会于' },
   casts_total: { en: 'Casts', zh: '施放次数' },
+  manual_casts_total: { en: 'Manual casts', zh: '主动施放次数' },
+  auto_triggered_total: { en: 'Auto-triggered', zh: '自动触发次数' },
   by_target: { en: 'On', zh: '目标' },
   casts_on_spell_immune_target: { en: 'Cast on a spell-immune target', zh: '施放在技能免疫目标上' },
   of_those_target_was_stunned: { en: 'of those, the target was stunned', zh: '其中目标仍被眩晕' },
@@ -505,6 +509,9 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           </tbody>
         </table>
         {r.ready_not_cast.length > 0 && <p className="ag-rec-line"><span>{t(T.readyUnused)}</span>{r.ready_not_cast.map((a: string) => <span key={a} className="ag-chip is-warn">{N(a)}</span>)}</p>}
+        {Array.isArray(r.auto_triggered) && r.auto_triggered.length > 0 && (
+          <p className="ag-rec-line"><span>{t(T.autoTriggered)}</span>{r.auto_triggered.map((a: any, i: number) => <span key={i} className="ag-chip is-good">{N(a.ability)}{a.clock && <em>{a.clock}</em>}</span>)}</p>
+        )}
         {r.controls_on_me.length > 0 && <p className="ag-rec-line"><span>{t(T.disables)}</span>{r.controls_on_me.map((c: any, i: number) => <span key={i} className="ag-chip">{N(c.modifier)} · {N(c.from)}{c.duration ? ` · ${c.duration}${t(T.sec)}` : ''}</span>)}</p>}
         {r.observers_within_1600 && <p className="ag-rec-line"><span>{t(T.observers)}</span><span className="ag-chip is-ally">{t(T.mine)} {r.observers_within_1600.my_team}</span><span className="ag-chip is-enemy">{t(T.theirs)} {r.observers_within_1600.enemy}</span></p>}
         {/* Known on its own: a trace with buybacks and no wards, or a death whose position was not sampled, still shows it. */}
@@ -558,12 +565,34 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   if (data.kind === 'cast') {
     return (
       <div className="ag-rec">
-        <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.target)} {N(r.target)}{r.target_hp && <em> {r.target_hp.hp}/{r.target_hp.max_hp}</em>}</p>
+        <p className="ag-rec-head">
+          <b>{r.clock}</b>
+          {r.target != null
+            ? <> · {t(T.target)} {N(r.target)}{r.target_hp && <em> {r.target_hp.hp}/{r.target_hp.max_hp}</em>}</>
+            : r.trigger ? <> · {t(r.trigger === 'auto' ? T.autoTriggered : T.manualCast)}</> : <> · {t(T.target)} {N(r.target)}</>}
+        </p>
         <p className="ag-rec-line">
           {r.target_spell_immune != null && <span className={`ag-chip ${r.target_spell_immune ? 'is-warn' : ''}`}>{t(r.target_spell_immune ? T.immune : T.notImmune)}</span>}
           {r.target_stunned_seconds != null && <span className={`ag-chip ${r.target_stunned_seconds > 0 ? 'is-good' : 'is-warn'}`}>{r.target_stunned_seconds > 0 ? `${t(T.stunned)} ${r.target_stunned_seconds}${t(T.sec)}` : t(T.noStun)}</span>}
         </p>
-        <p className="ag-rec-line"><span>{t(T.near)}</span>{[...r.allies_within_1300.map((h: string) => ({ hero: h, c: 'is-ally' })), ...r.enemies_within_1300.map((h: string) => ({ hero: h, c: 'is-enemy' }))].map((h) => <span key={h.hero} className={`ag-chip ${h.c}`}>{N(h.hero)}</span>)}</p>
+        <p className="ag-rec-line">
+          <span>{t(T.near)}</span>
+          {r.allies_within_1300 == null && r.enemies_within_1300 == null
+            ? <span className="ag-none">{t(T.states.unknown)}</span>
+            : (() => {
+                const nearChips = [
+                  ...(Array.isArray(r.allies_within_1300)
+                    ? r.allies_within_1300.map((h: string) => ({ key: `a:${h}`, label: N(h), c: 'is-ally' }))
+                    : [{ key: 'a:unknown', label: `${t(T.mine)} · ${t(T.states.unknown)}`, c: '' }]),
+                  ...(Array.isArray(r.enemies_within_1300)
+                    ? r.enemies_within_1300.map((h: string) => ({ key: `e:${h}`, label: N(h), c: 'is-enemy' }))
+                    : [{ key: 'e:unknown', label: `${t(T.theirs)} · ${t(T.states.unknown)}`, c: '' }]),
+                ];
+                return nearChips.length
+                  ? nearChips.map((h) => <span key={h.key} className={`ag-chip ${h.c}`}>{h.label}</span>)
+                  : <span className="ag-none">{t(T.nobody)}</span>;
+              })()}
+        </p>
         <p className="ag-rec-line"><span>{t(T.after)}</span>{r.deaths_within_12s.length ? r.deaths_within_12s.map((d: any, i: number) => <span key={i} className={`ag-chip ${SIDE_CLASS[d.side] ?? ''}`}>{N(d.hero)} <em>+{d.dt}{t(T.sec)}</em></span>) : <span className="ag-none">{t(T.nobody)}</span>}</p>
       </div>
     );
@@ -597,7 +626,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   if (data.kind === 'timeline') {
     const pos = r.positions_at_first_death?.heroes ?? r.positions_at_start;
     // Deaths, revivals, immunity and buildings always show; casts on a hero and key items fill what room is left, in order.
-    const key = (e: any) => e.kind === 'death' || e.kind === 'reincarnation' || e.kind === 'aegis' || e.kind === 'spell_immune' || e.kind === 'building';
+    const key = (e: any) => e.kind === 'death' || e.kind === 'reincarnation' || e.kind === 'aegis' || e.kind === 'auto_trigger' || e.kind === 'spell_immune' || e.kind === 'building';
     const room = Math.max(0, 48 - r.events.filter(key).length);
     let extra = 0;
     const rows = r.events.filter((e: any) => key(e) || ((e.kind !== 'cast' || e.target) && (extra += 1) <= room));
@@ -613,6 +642,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
                 <time>{e.clock}</time>
                 {e.kind === 'death' && <span><b className="ag-x" aria-hidden="true">✕</b> {N(e.hero)} ← {N(e.killer)}</span>}
                 {(e.kind === 'reincarnation' || e.kind === 'aegis') && <span><b aria-hidden="true">↺</b> {N(e.hero)} · {t(T.resurrectionBy[e.kind])}</span>}
+                {e.kind === 'auto_trigger' && <span>{N(e.hero)} · {N(e.ability)} · {t(T.autoTriggered)}</span>}
                 {e.kind === 'spell_immune' && <span>{N(e.hero)} · {t(T.window)}</span>}
                 {e.kind === 'item' && <span>{N(e.hero)} · {N(e.item)}</span>}
                 {e.kind === 'cast' && <span>{N(e.hero)} · {N(e.ability)} → {N(e.target)}</span>}
