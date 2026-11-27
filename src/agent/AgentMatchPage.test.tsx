@@ -1659,6 +1659,17 @@ describe('AgentMatchPage', () => {
     await waitFor(async () => expect((await events()).find((e) => e.event === 'review_refused')?.props).toEqual({ matchId: '9100904020', reason: 'daily_cap', waits: false }));
   });
 
+  it('while this site writes a review: the page says the same review runs in DSH without the wait', async () => {
+    mockFetch({ '/review?': { status: 'running', steps: [] }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    await waitFor(() => expect(document.querySelector('.om-callout.is-waiting')).not.toBeNull());
+    const note = document.querySelector('.om-callout.is-waiting') as HTMLElement;
+    expect(note.textContent).toContain('skip the wait');
+    expect(within(note).getByRole('link', { name: /Set up DSH/ }).getAttribute('href')).toBe('/#ways-dsh');
+    // And the page's banner points to the steps on the home page.
+    expect(document.querySelector('.om-banner a')?.getAttribute('href')).toBe('/#ways-dsh');
+  });
+
   it('a busy refusal also offers the reader\'s own model', async () => {
     mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 503, code: 'busy', retryAfterSec: 3600 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=en');
