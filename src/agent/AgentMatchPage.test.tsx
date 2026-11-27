@@ -3,7 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { AgentMatchPage, journeyStep, REPLAY_NOT_READY } from './AgentMatchPage';
+import { AgentMatchPage, DOWNLOAD_RETRY, journeyStep, REPLAY_NOT_READY } from './AgentMatchPage';
 import { stepLabel } from './ChatRail';
 import { buildingLabel } from './EvidenceCard';
 
@@ -147,6 +147,53 @@ describe('AgentMatchPage', () => {
     await waitFor(async () => expect((await events()).map((e: any) => e.event)).toContain('review_failed'));
     await new Promise((r) => setTimeout(r, 50));
     expect((await events()).filter((e: any) => e.event === 'review_failed').map((e: any) => e.props)).toEqual([{ matchId: '9100904020', hero: 'beastmaster', lang: 'en', stage: 'review', reason: 'model_out_of_credit', final: false }]);
+  });
+
+  describe('a download that failed (a CDN edge or a worker not answering, 2026-11-27)', () => {
+    const was = { ...DOWNLOAD_RETRY };
+    beforeEach(() => { DOWNLOAD_RETRY.minWaitMs = 40; });
+    afterEach(() => { Object.assign(DOWNLOAD_RETRY, was); });
+    const failed = { status: 'failed', reason: 'download_failed', final: false, retry_in_sec: 0 };
+    const availWith = (parse: object) => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse });
+
+    it('the reader said go: it says the download is slow and tries again by itself — no error, no second click', async () => {
+      let prepared = 0;
+      const calls = mockFetch({
+        '/api/coach/9100904020': board,
+        '/prepare': () => { prepared += 1; return prepared === 1 ? failed : { status: 'running', stage: 'downloading' }; },
+        '/api/agent/9100904020': () => availWith(prepared === 0 ? { status: 'none' } : prepared === 1 ? failed : { status: 'running', stage: 'downloading' }),
+      });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+      expect(await screen.findByRole('heading', { name: 'The replay is slow to download' })).toBeTruthy();
+      expect(screen.getByText(/Trying another route by itself/)).toBeTruthy();
+      expect(screen.queryByRole('heading', { name: 'The replay could not be read' })).toBeNull();
+      await waitFor(() => expect(prepared).toBe(2));
+      expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+      expect(calls.filter((c) => c.url.includes('/prepare'))).toHaveLength(2);
+    });
+
+    it('a few tries by itself, then the plain message and a button; a final failure, or a reader who never said go, is not retried', async () => {
+      DOWNLOAD_RETRY.triesByItself = 2;
+      let prepared = 0;
+      mockFetch({ '/api/coach/9100904020': board, '/prepare': () => { prepared += 1; return failed; }, '/api/agent/9100904020': () => availWith(prepared === 0 ? { status: 'none' } : failed) });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+      await waitFor(() => expect(prepared).toBe(3), { timeout: 6000 });
+      expect(await screen.findByRole('heading', { name: 'The replay could not be read' })).toBeTruthy();
+      await new Promise((r) => setTimeout(r, 300));
+      expect(prepared).toBe(3);
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    }, 12000);
+
+    it('nobody said go: the plain message, nothing tried', async () => {
+      let prepared = 0;
+      mockFetch({ '/api/coach/9100904020': board, '/prepare': () => { prepared += 1; return failed; }, '/api/agent/9100904020': () => availWith(failed) });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      expect(await screen.findByRole('heading', { name: 'The replay could not be read' })).toBeTruthy();
+      await new Promise((r) => setTimeout(r, 300));
+      expect(prepared).toBe(0);
+    });
   });
 
   describe('a replay that is not ready yet (the game just ended)', () => {
