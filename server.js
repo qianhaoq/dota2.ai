@@ -76,6 +76,7 @@ import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { replayReview } from './lib/agent/replayTool.js';
 import { createAgentRouter } from './lib/agent/router.js';
+import { createSharedDailyCap } from './lib/agent/sharedDailyCap.js';
 import { createSlots } from './lib/agent/slots.js';
 import { createAgentService, SLOW_REVIEW_MAX_MS } from './lib/agent/service.js';
 import { createBalanceMonitor } from './lib/agent/modelBalance.js';
@@ -844,9 +845,18 @@ const coachRecent = createRecentService({
     return { rows: value, source };
   },
 });
+// Shared agent bucket (GCS, objects under agent/): used for traces, reviews, parse claims, and shared UTC-daily caps.
+const agentBlobs = (() => {
+  const name = (process.env.AGENT_BUCKET || '').trim();
+  if (!name) return null;
+  try { return createBucketStore(createGcsBucket(name), 'agent/'); } catch (err) { console.warn(`WARNING: AGENT_BUCKET ignored (${err?.message ?? err})`); return null; }
+})();
+const agentDailyCap = (name, limit) => (agentBlobs
+  ? createSharedDailyCap({ blobs: agentBlobs, name, limit, log: (msg) => console.warn(`[agent] ${msg}`) })
+  : createSlots({ limit, windowMs: 86_400_000 }));
 // A day's short answers on this site's model (the coach's follow-ups, the review chat, the patch advisor), one
-// count for all three. Like every limit here, per instance.
-const answersDaily = createSlots({ limit: envPositiveInt('AGENT_CHAT_DAILY_MAX', 2000, 100000), windowMs: 86_400_000 });
+// count shared across instances via GCS when AGENT_BUCKET is set (fail-closed on store errors; #453).
+const answersDaily = agentDailyCap('chat', envPositiveInt('AGENT_CHAT_DAILY_MAX', 2000, 100000));
 const answersLlmLimit = withDailyCap(reviewLlmLimit, answersDaily);
 // Follow-ups share the review LLM budget and use DeepSeek.
 const coachAskDeps = {
@@ -899,11 +909,6 @@ app.use(createCoachRouter({
 // "no parsed replay" and nothing can be started.
 // Model: DeepSeek only (DEEPSEEK_API_KEY → deepseek-flash).
 const agentOffer = agentModels(process.env);
-const agentBlobs = (() => {
-  const name = (process.env.AGENT_BUCKET || '').trim();
-  if (!name) return null;
-  try { return createBucketStore(createGcsBucket(name), 'agent/'); } catch (err) { console.warn(`WARNING: AGENT_BUCKET ignored (${err?.message ?? err})`); return null; }
-})();
 // Readers' words on a review's findings (lib/agent/feedback.js): objects under agent/feedback/ in the same
 // bucket, or files in AGENT_REVIEW_DIR/feedback. With neither, the page's buttons are answered "not kept here".
 const agentFeedbackBlobs = (() => {
@@ -986,15 +991,19 @@ process.once('SIGTERM', () => {
   httpServer.close(exit);
   httpServer.closeIdleConnections?.();
 });
+const parseDailyMax = Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : 300;
+const reviewDailyMax = envPositiveInt('AGENT_REVIEW_DAILY_MAX', 0, 100000);
 const agentRouter = createAgentRouter({
   service: agentService,
   runAuth: agentTasks?.auth ?? null,
   resolveClientIp,
   llm: reviewLlmLimit,
-  parseDailyMax: Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : undefined,
+  parseDailyMax,
+  parseDaily: agentDailyCap('parse', parseDailyMax),
   // What this site pays its model for in a day and an hour (web and MCP replay_review alike); past it the
   // refusal points at the DSH plugin and agents, which run on the reader's own model.
-  reviewDailyMax: envPositiveInt('AGENT_REVIEW_DAILY_MAX', 0, 100000) || undefined,
+  reviewDailyMax: reviewDailyMax || undefined,
+  reviewDaily: reviewDailyMax > 0 ? agentDailyCap('review', reviewDailyMax) : null,
   reviewHourlyMax: envPositiveInt('AGENT_REVIEW_HOURLY_MAX', 60, 10000),
   chatDaily: answersDaily,
   modelHourlyMax: Number(process.env.AGENT_MODEL_HOURLY_MAX) > 0 ? Number(process.env.AGENT_MODEL_HOURLY_MAX) : undefined,
