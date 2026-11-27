@@ -79,7 +79,7 @@ node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section wh
 node packages/cli/bin/dota2ai.js matchup tidehunter ursa --rank legend
 ```
 
-Every command takes `--lang en|zh|ru` and `--json`. Reference: [`packages/cli`](packages/cli/README.md).
+Every command takes `--lang en|zh` and `--json`. Reference: [`packages/cli`](packages/cli/README.md).
 
 ## What a review holds
 

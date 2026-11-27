@@ -115,9 +115,9 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
         `${CLI} matchup tidehunter ursa --rank legend`,
       ],
       note: {
-        en: 'Not published on npm yet: run it from a checkout. Every command takes --json and --lang en|zh|ru.',
-        zh: '还没有发布到 npm：clone 仓库后运行。所有命令都支持 --json 和 --lang en|zh|ru。',
-        ru: 'Пока не опубликован в npm: запускайте из клона репозитория. Команды поддерживают --json и --lang en|zh|ru.',
+        en: 'Not published on npm yet: run it from a checkout. Every command takes --json and --lang en|zh.',
+        zh: '还没有发布到 npm：clone 仓库后运行。所有命令都支持 --json 和 --lang en|zh。',
+        ru: 'Пока не опубликован в npm: запускайте из клона репозитория. Команды поддерживают --json и --lang en|zh.',
       },
     },
     {

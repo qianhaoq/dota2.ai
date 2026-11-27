@@ -79,7 +79,7 @@ node packages/cli/bin/dota2ai.js coach 9091400302 --hero 潮汐猎人 --section 
 node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --lang zh
 ```
 
-所有命令都支持 `--lang en|zh|ru` 和 `--json`。说明见 [`packages/cli`](packages/cli/README.md)。
+所有命令都支持 `--lang en|zh` 和 `--json`。说明见 [`packages/cli`](packages/cli/README.md)。
 
 ## 复盘里有什么
 
