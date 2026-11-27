@@ -22,6 +22,7 @@ import { laneFromReplay } from '../lib/agent/laneFromReplay.js';
 const [dir, flag] = process.argv.slice(2);
 if (!dir) { console.error('usage: calibrate-lane-process.mjs <traces dir> [--json]'); process.exit(2); }
 const rows = []; let games = 0;
+const rotTrips = []; let rotHeroes = 0;
 for (const f of readdirSync(dir).filter((x) => x.endsWith('.trace.json.gz')).sort()) {
   const t = linkHeroNames(JSON.parse(gunzipSync(readFileSync(`${dir}/${f}`))));
   if (!Array.isArray(t.gold)) continue;
@@ -29,7 +30,24 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith('.trace.json.gz')).sor
   const seen = new Set();
   for (let h = 0; h < t.heroes.length; h += 1) {
     const p = laneProcess(t, h);
-    if (p.unknown || !p.gold_gap_by_source || !p.enemy_visits) continue;
+    if (p.unknown) continue;
+    if (p.my_rotations_before_10_00) {
+      rotHeroes += 1;
+      for (const tr of p.my_rotations_before_10_00.trips) {
+        rotTrips.push({
+          seconds: tr.seconds,
+          enemyKillKnown: Array.isArray(tr.enemy_deaths_i_damaged),
+          enemyKill: Array.isArray(tr.enemy_deaths_i_damaged) && tr.enemy_deaths_i_damaged.length > 0,
+          partnerDied: Array.isArray(tr.lane_partner_deaths_while_away) && tr.lane_partner_deaths_while_away.length > 0,
+          partnerKnown: Array.isArray(tr.lane_partner_deaths_while_away),
+          runeKnown: Array.isArray(tr.runes_picked),
+          rune: Array.isArray(tr.runes_picked) && tr.runes_picked.length > 0,
+          wardKnown: tr.wards_placed != null,
+          ward: Boolean(tr.wards_placed && (tr.wards_placed.observers > 0 || tr.wards_placed.sentries > 0)),
+        });
+      }
+    }
+    if (!p.gold_gap_by_source || !p.enemy_visits) continue;
     const k = `${p.lane}|${t.heroes[h].team}`; if (seen.has(k)) continue; seen.add(k);
     const r = laneFromReplay(t, h);
     // A lane whose result is not known is neither lost nor not lost: it is left out of every count.
@@ -66,6 +84,18 @@ out.without_them = {
   lost_lanes_where_kills_and_dying_were_the_larger_part: share(evenLost.filter((r) => r.killsDying < r.creeps).length, evenLost.length),
   lane_lost_when_enemy_visits_cost_net_one_or_more: share(even.filter((r) => r.net >= 1 && r.lost).length, even.filter((r) => r.net >= 1).length),
   lane_lost_otherwise: share(even.filter((r) => r.net < 1 && r.lost).length, even.filter((r) => r.net < 1).length),
+};
+const enemyKnownTrips = rotTrips.filter((x) => x.enemyKillKnown);
+const partnerKnownTrips = rotTrips.filter((x) => x.partnerKnown);
+const runeKnownTrips = rotTrips.filter((x) => x.runeKnown);
+const wardKnownTrips = rotTrips.filter((x) => x.wardKnown);
+out.early_rotations = {
+  heroes_with_single_lane: rotHeroes,
+  trips: rotTrips.length,
+  trips_with_enemy_death_damaged: share(enemyKnownTrips.filter((x) => x.enemyKill).length, enemyKnownTrips.length),
+  trips_where_lane_partner_died: share(partnerKnownTrips.filter((x) => x.partnerDied).length, partnerKnownTrips.length),
+  trips_with_rune_picked: share(runeKnownTrips.filter((x) => x.rune).length, runeKnownTrips.length),
+  trips_with_ward_placed: share(wardKnownTrips.filter((x) => x.ward).length, wardKnownTrips.length),
 };
 if (flag === '--json') console.log(JSON.stringify(out, null, 2));
 else for (const [k, v] of Object.entries(out)) console.log(k.padEnd(56), typeof v === 'object' ? JSON.stringify(v) : v);
