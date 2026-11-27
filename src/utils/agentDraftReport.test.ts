@@ -71,6 +71,9 @@ describe('draft_report', () => {
     expect(d.lane_not_known).toEqual(['necrolyte']);
     expect(d.lanes.find((l: any) => l.lane === 'mid').enemy).toEqual([]);
     expect(d.gaps).toContainEqual({ topic: 'lanes', reason: 'a_hero_s_lane_stage_positions_not_in_trace', heroes: ['necrolyte'] });
+    // With an enemy whose lane is not known, no lane can be called solo for the enemy unless two are known in it.
+    expect(d.lanes.find((l: any) => l.lane === 'mid').solo.enemy).toBeNull();
+    expect(d.lanes.find((l: any) => l.lane === 'bot').solo.enemy).toBe(false);
   });
 
   it('is a review tool, and its ref opens the same record under a line', () => {
@@ -100,5 +103,35 @@ describe('draft_report', () => {
     expect(top.solo.my_team).toBe(false);
     expect(d.gaps).toContainEqual({ topic: 'part_time_sharing', reason: 'missing_positions_could_tip_it', heroes: ['dark_willow'] });
   });
-});
 
+  it('the review of #449: a hero of the player\'s side with no positions makes that side\'s solo not known', () => {
+    const i = seat('dark_willow'); const st = trace.states[i];
+    const cut = (arr: any[]) => arr.map((v: any, k: number) => (k + trace.t0 < 700 ? null : v));
+    const t = { ...trace, states: trace.states.map((s: any, j: number) => (j === i ? { ...st, x: cut(st.x), y: cut(st.y), alive: cut(st.alive) } : s)) };
+    const d: any = draftReport(t, { hero: 'beastmaster' }, { match });
+    const top = d.lanes.find((l: any) => l.lane === 'top');
+    expect([top.my_team, top.solo.my_team]).toEqual([['sven'], null]);
+  });
+
+  it('the review of #449: a lane only part-time sharers were in is still listed, with their pairings', () => {
+    // Dark Willow (my side) and Mirana (enemy) each split their lane stage between top and bottom, out of mid.
+    const split = (key: string) => {
+      const i = seat(key); const st = trace.states[i];
+      const x = st.x.slice(); const y = st.y.slice(); const alive = st.alive.slice();
+      for (let k = 60; k < 600; k += 1) { alive[k] = 1; if (k % 2) { x[k] = 5000; y[k] = -5500; } else { x[k] = -5500; y[k] = 5000; } }
+      return [i, { ...st, x, y, alive }] as const;
+    };
+    const [a, sa] = split('dark_willow'); const [b, sb] = split('mirana');
+    // Move Sven and Axe (the top lane's own heroes) to mid, so top holds only the two sharers.
+    const toMid = (key: string) => { const i = seat(key); const st = trace.states[i]; const x = st.x.slice(); const y = st.y.slice(); const alive = st.alive.slice(); for (let k = 60; k < 600; k += 1) { alive[k] = 1; x[k] = 0; y[k] = 0; } return [i, { ...st, x, y, alive }] as const; };
+    const [c, sc] = toMid('sven'); const [e, se] = toMid('axe');
+    const by = new Map<number, any>([[a, sa], [b, sb], [c, sc], [e, se]]);
+    const t = { ...trace, states: trace.states.map((s: any, j: number) => by.get(j) ?? s) };
+    const d: any = draftReport(t, { hero: 'beastmaster' }, { match });
+    const top = d.lanes.find((l: any) => l.lane === 'top');
+    expect(top).toBeTruthy();
+    expect([top.my_team, top.enemy]).toEqual([[], []]);
+    expect(top.shared_part_time_by.map((x: any) => x.hero).sort()).toEqual(['dark_willow', 'mirana']);
+    expect(top.pairings.map((p: any) => [p.hero, p.against, p.part_time])).toEqual([['dark_willow', 'mirana', true]]);
+  });
+});
