@@ -41,20 +41,22 @@
   "lead_any": [
     "lane_deaths_to_naga"
   ],
-  "must_not": [
-    {
-      "id": "too_few_wards",
-      "says": "Dark Willow placed 8 observers and 13 sentries — the most observers on the team (Witch Doctor 4, Pangolier 1, Riki 1, Abaddon 0). A review must not say there were too few wards.",
-      "pattern": "(?:假眼|真眼|眼位|插眼|视野)[^。]{0,10}(?:太少|不够|很少|偏少|少了|几乎没有)|(?:too few|not enough|barely any|very few)[^.]{0,12}(?:wards|observers|vision)"
-    },
-    {
-      "id": "a_cast_would_have_saved",
-      "says": "As for Disruptor: help to an ally under fire did not change their five-second death rate in the corpus. A review must not say a cast saved, or should have saved, an ally.",
-      "pattern": "(?:本可以|本该|应该|能)[^。]{0,8}救(?:下|住|活)|(?:should have|could have) saved"
-    }
-  ],
+  "must_not": [],
   "main_reason": [
     "team_play",
     "enemy_play"
-  ]
+  ],
+  "not_scored": {
+    "why": "Owner, 2026-11-27: no hand-made wording matchers. A pattern for these claims misfired both ways on #397 (it flagged '无法判断视野是否不够' and missed '你的恶念瞥视救下了斯温'); a reader checks them when reading the eval's reviews.",
+    "claims": [
+      {
+        "id": "too_few_wards",
+        "says": "Dark Willow placed 8 observers and 13 sentries — the most observers on the team (Witch Doctor 4, Pangolier 1, Riki 1, Abaddon 0). A review must not say there were too few wards."
+      },
+      {
+        "id": "a_cast_would_have_saved",
+        "says": "As for Disruptor: help to an ally under fire did not change their five-second death rate in the corpus. A review must not say a cast saved, or should have saved, an ally."
+      }
+    ]
+  }
 }
