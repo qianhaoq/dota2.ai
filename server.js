@@ -927,7 +927,10 @@ const agentPipeline = (() => {
   const worker = (process.env.TRACE_WORKER_URL || '').trim();
   if (worker && agentTraceBlobs) {
     const audience = (process.env.TRACE_WORKER_AUDIENCE || '').trim();
-    return createRemotePipeline({ url: worker, getMatchDetail: agentReplaySource, auth: audience ? createIdTokenProvider({ audience }) : undefined });
+    // TRACE_WORKER_FALLBACK_URL: the same worker in another region, asked when the first could not download a replay.
+    const spare = (process.env.TRACE_WORKER_FALLBACK_URL || '').trim();
+    const fallback = spare ? { url: spare, auth: createIdTokenProvider({ audience: (process.env.TRACE_WORKER_FALLBACK_AUDIENCE || spare).trim() }) } : null;
+    return createRemotePipeline({ url: worker, getMatchDetail: agentReplaySource, auth: audience ? createIdTokenProvider({ audience }) : undefined, fallback, log: (msg) => console.warn(`[agent] ${msg}`) });
   }
   const bin = process.env.DOTA_EXTRACT_BIN || '';
   return bin && agentTraceBlobs ? createTracePipeline({ getMatchDetail: agentReplaySource, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;

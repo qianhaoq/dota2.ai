@@ -83,6 +83,33 @@ describe('trace pipeline', () => {
     for (const bad of [0, -1, 'abc', 1.5]) expect(await harness().run(bad)).toEqual({ ok: false, reason: 'no_match' });
   });
 
+  it('remote with a fallback worker: asked once when the first could not download or did not answer; not for a replay that is gone (2026-11-27)', async () => {
+    const getMatchDetail = async () => ({ match_id: ID, replay_url: URL_OK });
+    const answer = (body: any) => new Response(JSON.stringify(body), { status: 200 });
+    const calls: string[] = []; const lines: string[] = [];
+    const worker = (byHost: Record<string, () => any>) => (async (url: string, init: any) => { calls.push(`${new URL(url).host} ${init.headers.Authorization ?? ''}`); return byHost[new URL(url).host](); }) as any;
+    const make = (byHost: Record<string, () => any>) => createRemotePipeline({ url: 'https://tw.example', getMatchDetail, auth: async () => 'Bearer tw', fallback: { url: 'https://hk.example', auth: async () => 'Bearer hk' }, fetchImpl: worker(byHost), log: (l: string) => lines.push(l) });
+    // The first could not download: the second, with its own token, does.
+    expect(await make({ 'tw.example': () => answer({ ok: false, reason: 'download_failed' }), 'hk.example': () => answer({ ok: true, bytes: 9 }) }).run(ID)).toEqual({ ok: true, bytes: 9 });
+    expect(calls).toEqual(['tw.example Bearer tw', 'hk.example Bearer hk']);
+    expect(lines).toEqual([`trace fallback match=${ID} after=download_failed`, `trace fallback match=${ID} -> ok`]);
+    // The first did not answer at all.
+    calls.length = 0;
+    expect(await make({ 'tw.example': () => { throw new Error('down'); }, 'hk.example': () => answer({ ok: true, bytes: 9 }) }).run(ID)).toEqual({ ok: true, bytes: 9 });
+    // Gone, too large, another match's, or the first worker's whole time used: not asked again.
+    for (const reason of ['replay_gone', 'too_large', 'wrong_match', 'extract_failed', 'timeout']) {
+      calls.length = 0;
+      expect(await make({ 'tw.example': () => answer({ ok: false, reason }), 'hk.example': () => answer({ ok: true }) }).run(ID)).toEqual({ ok: false, reason });
+      expect(calls).toEqual(['tw.example Bearer tw']);
+    }
+    // Both fail: the second's answer is the one given.
+    expect(await make({ 'tw.example': () => answer({ ok: false, reason: 'download_failed' }), 'hk.example': () => answer({ ok: false, reason: 'download_failed' }) }).run(ID)).toEqual({ ok: false, reason: 'download_failed' });
+    // No fallback configured: one worker, as before.
+    calls.length = 0;
+    expect(await createRemotePipeline({ url: 'https://tw.example', getMatchDetail, fetchImpl: worker({ 'tw.example': () => answer({ ok: false, reason: 'download_failed' }) }) }).run(ID)).toEqual({ ok: false, reason: 'download_failed' });
+    expect(calls).toHaveLength(1);
+  });
+
   it('remote: finds the replay address here, posts it to the worker with the auth header, relays the answer', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: true, bytes: 246397 }), { status: 200 }));
     const stages: string[] = [];
