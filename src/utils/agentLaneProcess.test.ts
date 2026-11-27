@@ -185,3 +185,33 @@ describe('a gold log without dying rows (15 of 209 parsed games)', () => {
     expect(r.gaps).toContainEqual({ topic: 'lost_on_dying', reason: 'no_dying_rows_in_the_replay_s_gold_log' });
   });
 });
+
+describe('the review of #440: a death elsewhere is not the visit\'s, and the counts can be quoted', () => {
+  it('a lane hero who went to another lane and died there during a visit: not one of the visit\'s deaths', () => {
+    // Undying (bottom) stands in the top lane from 8:09 through his 8:14 death, during Necrolyte's visit (7:55–8:06 +10 s).
+    const i = seat('undying'); const st = trace.states[i];
+    const x = st.x.slice(); const y = st.y.slice();
+    for (let k = 489; k <= 494; k += 1) { x[k] = -5500; y[k] = 5000; }
+    const t = { ...trace, states: trace.states.map((s: any, j: number) => (j === i ? { ...st, x, y } : s)) };
+    const r: any = laneProcess(t, bm);
+    const nec = r.visits.find((v: any) => v.hero === 'necrolyte');
+    expect(nec.died.map((d: any) => d.hero)).toEqual(['necrolyte']);
+    expect(r.enemy_visits.my_team_deaths_in_them).toBe(1);
+  });
+
+  it('lane_report states the visit counts where the check reads a tool\'s own counts: a sentence quoting them passes', async () => {
+    const { verifyText } = await import('../../lib/agent/review/verify.js');
+    const l: any = laneReport(trace, { hero: 'beastmaster' }, {});
+    expect(l.lane_visit_counts).toEqual({ enemy_visits: 2, my_team_deaths_in_enemy_visits: 2, enemy_deaths_in_enemy_visits: 1, my_team_visits: 2, my_team_deaths_in_my_team_visits: 1, enemy_deaths_in_my_team_visits: 1 });
+    // Eight enemy visits: spread Necrolyte's exchanges with the lane out so each is its own visit.
+    const nx = trace.names.indexOf(trace.heroes[seat('necrolyte')].npc); const bmx = trace.names.indexOf(trace.heroes[bm].npc);
+    const extra = [120, 170, 220, 270, 320, 370].map((s) => [s, nx, bmx, nx, 10]);
+    const st = trace.states[seat('necrolyte')]; const b = trace.states[bm];
+    const x = st.x.slice(); const y = st.y.slice();
+    for (const [s] of extra) { x[s] = b.x[s] ?? 5000; y[s] = b.y[s] ?? -5500; }
+    const t = { ...trace, damage: [...trace.damage, ...extra], states: trace.states.map((s: any, j: number) => (j === seat('necrolyte') ? { ...st, x, y } : s)) };
+    const r: any = laneReport(t, { hero: 'beastmaster' }, {});
+    expect(r.lane_visit_counts.enemy_visits).toBe(8);
+    expect(verifyText('Enemies came into your lane 8 times.', [{ tool: 'lane_report', ...r }]).ok).toBe(true);
+  });
+});
