@@ -1,0 +1,76 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9106692089,
+  "hero": "crystal_maiden",
+  "status": "approved",
+  "written": "2026-11-27",
+  "checked": "2026-11-27",
+  "checked_by": "Antigravity, reading every stated fact directly from reviewToolkit outputs on the live GCS trace (match_overview, death_context, ability_audit, build_check, lane_report, ward_report, key_moments).",
+  "source": "Live GCS trace with parsed OpenDota match record. A 49:12 Radiant pos-4 support win where Crystal Maiden died 16 times (most on Radiant), including 5 deaths before 10:00 and 5 deaths with Freezing Field ready and not cast.",
+  "must_hit": [
+    {
+      "id": "five_lane_deaths_before_ten",
+      "says": "Five of the sixteen deaths came before 10:00 (1:54, 3:05, 4:19, 6:14, 7:08), losing the top lane (5,540 vs 6,305 at 10:00) and finishing with the most deaths on the winning team (16).",
+      "weight": 2,
+      "any": {
+        "refs": [
+          "lane:crystal_maiden",
+          "death:crystal_maiden:1",
+          "death:crystal_maiden:2",
+          "death:crystal_maiden:3",
+          "death:crystal_maiden:4",
+          "death:crystal_maiden:5"
+        ],
+        "clocks": ["1:54", "3:05", "4:19", "6:14", "7:08"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["对线", "上路", "10:00", "十分钟", "10 分钟", "10分钟", "5 次", "五次"],
+        "en": ["lane", "top", "10:00", "ten minutes", "five", "5 deaths"]
+      }
+    },
+    {
+      "id": "died_holding_freezing_field",
+      "says": "Died five times with Freezing Field ready and not cast (14:28, 28:07, 34:30, 43:55, 46:08 — 10 casts all game, 5 deaths holding it).",
+      "weight": 2,
+      "any": {
+        "refs": [
+          "audit:crystal_maiden:freezing_field",
+          "death:crystal_maiden:7",
+          "death:crystal_maiden:10",
+          "death:crystal_maiden:12",
+          "death:crystal_maiden:14",
+          "death:crystal_maiden:15"
+        ],
+        "clocks": ["14:28", "28:07", "34:30", "43:55", "46:08"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["极寒领域", "大招"],
+        "en": ["Freezing Field", "ultimate"]
+      },
+      "and_terms": {
+        "zh": ["没放", "没交", "没按", "留着", "捏着", "就绪", "未施放"],
+        "en": ["ready", "not cast", "held"]
+      }
+    }
+  ],
+  "lead_any": ["five_lane_deaths_before_ten", "died_holding_freezing_field"],
+  "must_not": [
+    {
+      "id": "calls_the_win_a_loss",
+      "says": "Crystal Maiden's team (Radiant) won in 49:12: a review of a win must not say the game was lost.",
+      "pattern": "(?:这局|本局|这盘)[^。，；团波]{0,12}(?:输了|输掉|失利|落败|败局)(?![^。，；]{0,6}(?:团|波|架|仗))|这场[^。，；团波战]{0,12}(?:输了|输掉|失利|落败|败局)(?![^。，；]{0,6}(?:团|波|架|仗))|输掉(?:了)?(?:这局|本局|这场比赛|比赛)|(?:[Yy]ou|[Yy]our team) lost (?:this|the) (?:game|match)|(?:[Tt]his|[Tt]he) (?:game|match) was lost|\\b(?:[Ii]n|of) (?:this|the|a) (?:loss|defeat)\\b"
+    }
+  ],
+  "main_reason": ["your_play", "team_play"],
+  "not_scored": {
+    "why": "Owner, 2026-11-27: avoid brittle regex matchers for subjective claims; checked by human reading.",
+    "claims": [
+      {
+        "id": "too_few_wards",
+        "says": "Crystal Maiden placed 8 observers and 8 sentries (second on Radiant behind Earthshaker's 13, 22 team observers total). A review must not say there were too few wards."
+      }
+    ]
+  }
+}

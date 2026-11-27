@@ -1,0 +1,72 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9004052517,
+  "hero": "disruptor",
+  "status": "approved",
+  "written": "2026-11-27",
+  "checked": "2026-11-27",
+  "checked_by": "Antigravity, reading every stated fact directly from reviewToolkit outputs on the live GCS trace (match_overview, death_context, ability_audit, build_check, lane_report, ward_report, key_moments).",
+  "source": "Live GCS trace with match record (unparsed OpenDota; lane read from replay). A 33:35 Dire support loss from the lanes (-3358 at 10:00, never closer than -3775 after) where Disruptor had only 3 deaths (fewest on Dire) and only Force Staff (24:43).",
+  "must_hit": [
+    {
+      "id": "early_fight_death_holding_spells",
+      "says": "At 8:24 (death:disruptor:1, opening fight:1 8:24–8:49 where Dire lost 3-0 and fell from -1099 to -3358), Disruptor died to Legion Commander with Glimpse and Kinetic Field ready and nothing cast.",
+      "weight": 2,
+      "any": {
+        "refs": ["death:disruptor:1", "deaths:disruptor", "lane:disruptor", "fight:1", "fights:disruptor:1"],
+        "clocks": ["8:24", "8:49"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["恶念瞥视", "动能力场", "没放", "没交", "未施放", "军团", "对线", "8:24"],
+        "en": ["Glimpse", "Kinetic Field", "nothing cast", "ready", "Legion", "lane", "8:24"]
+      }
+    },
+    {
+      "id": "static_storm_held_at_31_18",
+      "says": "At 31:18 (death:disruptor:3, outside fights under 3 enemies, full health at window start), Disruptor died to Legion Commander with Static Storm ready and not cast (6 casts all game, 1 death holding it).",
+      "weight": 1,
+      "any": {
+        "refs": ["death:disruptor:3", "audit:disruptor:static_storm", "deaths:disruptor"],
+        "clocks": ["31:18"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["静态风暴", "大招"],
+        "en": ["Static Storm", "ultimate"]
+      },
+      "and_terms": {
+        "zh": ["没放", "没交", "没按", "留着", "捏着", "就绪", "未施放"],
+        "en": ["ready", "not cast", "held"]
+      }
+    }
+  ],
+  "lead_any": ["early_fight_death_holding_spells"],
+  "turning_fight": { "fight": 1, "from": 504, "to": 530 },
+  "must_not": [],
+  "main_reason": ["team_play", "enemy_play"],
+  "story_cause": {
+    "id": "lost_from_the_lanes",
+    "says": "Dire was 3,358 gold behind at 10:00 and never closer than -3,775 after (match_overview.lanes.lost_from_the_lanes true), with key_moments stretch 5:00–14:00 (win chance 50% to 8%) centered on fight:1 at 8:24–8:49.",
+    "from": 0,
+    "to": 600,
+    "terms": {
+      "zh": ["对线", "线上", "10:00", "10 分钟", "十分钟", "10分钟", "前十", "8:24"],
+      "en": ["lane", "10:00", "ten minutes", "first ten", "8:24"]
+    },
+    "checked": "2026-11-27, against reviewToolkit match_overview and key_moments on the live GCS trace"
+  },
+  "not_scored": {
+    "why": "Owner, 2026-11-27: avoid brittle regex matchers for subjective claims; checked by human reading.",
+    "claims": [
+      {
+        "id": "too_few_wards",
+        "says": "Disruptor placed 7 observers and 12 sentries — the most on Dire (QoP 3, Skywrath 2, Riki 0, WK 0). A review must not say there were too few wards."
+      },
+      {
+        "id": "unaffordable_core_items",
+        "says": "In a 33:35 stomp loss as pos 5, Disruptor only had gold for Force Staff (24:43). A review must not demand expensive core items without accounting for support economy."
+      }
+    ]
+  }
+}
