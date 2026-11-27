@@ -17,8 +17,11 @@ const notes = (r: any) => verifyReview(r, sources).problems.filter((p: any) => p
 describe('a finding that says the player stayed, about a death the record shows them leaving (#417)', () => {
   it('the wording it looks for', () => {
     expect(staysClaims('队友倒下后仍在原地与熊战士换血')).toHaveLength(1);
-    expect(staysClaims('对线期半血还在一线换血')).toHaveLength(1);
-    expect(staysClaims('You stayed in the lane and kept trading')).toEqual(['stayed in', 'kept trading']);
+    // Trading is not holding position: one can trade while heading home (Codex P1 on #427).
+    expect(staysClaims('对线期半血还在一线换血')).toEqual([]);
+    expect(staysClaims('11:03 你往家退的过程中仍在换血。')).toEqual([]);
+    expect(staysClaims('你没有撤，留在原地')).toEqual(['没有撤', '留在原地']);
+    expect(staysClaims('You stayed in the lane and kept trading')).toEqual(['stayed in the lane']);
     expect(staysClaims('你往自家方向退，被追上')).toEqual([]);
     // A denial agrees with a retreat (Codex P1 on #427).
     expect(staysClaims('你没有继续换血，而是往家退时被追上。')).toEqual([]);
@@ -35,23 +38,27 @@ describe('a finding that says the player stayed, about a death the record shows 
     const r = review(finding('前期两次阵亡', '2:51 你继续换血；11:03 你往家退时被追上。', ['death:beastmaster:2', 'death:beastmaster:5']));
     expect(notes(r)).toEqual([]);
     // The same, the other way round: the trading clause names 11:03.
-    expect(notes(review(finding('前期两次阵亡', '2:51 你往前走被抓；11:03 你继续换血。', ['death:beastmaster:2', 'death:beastmaster:5']))).map((n: any) => n.text)).toEqual(['11:03: 1568 closer to the fountain']);
+    expect(notes(review(finding('前期两次阵亡', '2:51 你往前走被抓；11:03 你留在原地换血。', ['death:beastmaster:2', 'death:beastmaster:5']))).map((n: any) => n.text)).toEqual(['11:03: 1568 closer to the fountain']);
+  });
+
+  it('trading while heading home is not sent back (Codex P1 on #427)', () => {
+    expect(notes(review(finding('边撤边换血', '11:03 你往家退的过程中仍在换血。', ['death:beastmaster:5'])))).toEqual([]);
   });
 
   it('English "stay" only when it says where: "stay alive" is not holding position (Codex P1 on #427)', () => {
     expect(staysClaims('You tried to stay alive while retreating toward home, but were caught.')).toEqual([]);
     expect(notes(review(finding('Caught on the way home', 'You tried to stay alive while retreating toward home, but were caught.', ['death:beastmaster:5'])))).toEqual([]);
-    expect(staysClaims('You stayed in the lane')).toEqual(['stayed in']);
+    expect(staysClaims('You stayed in the lane')).toEqual(['stayed in the lane']);
   });
 
   it('a time is matched to the player\'s own death, not to another hero who died then (Codex P1 on #427)', () => {
     // 7:15: Venomancer died 724 farther from home, Necrolyte 1631 closer. A Venomancer review sees both answers.
     const both = [{ player_hero: 'venomancer' }, runTraceTool(trace, 'death_context', { hero: 'venomancer' }), runTraceTool(trace, 'death_context', { hero: 'necrolyte' })];
-    const r = review(finding('继续换血', '7:15 你继续换血。', ['death:venomancer:4']));
+    const r = review(finding('继续换血', '7:15 你留在原地换血。', ['death:venomancer:4']));
     expect(verifyReview(r, both).problems.filter((p: any) => p.kind === 'heading')).toEqual([]);
     // Necrolyte's own review, the same sentence: his death was heading home.
     const his = [{ player_hero: 'necrolyte' }, both[1], both[2]];
-    expect(verifyReview(review(finding('继续换血', '7:15 你继续换血。', ['deaths:necrolyte'])), his).problems.filter((p: any) => p.kind === 'heading').map((p: any) => p.text)).toEqual(['7:15: 1631 closer to the fountain']);
+    expect(verifyReview(review(finding('继续换血', '7:15 你留在原地换血。', ['deaths:necrolyte'])), his).problems.filter((p: any) => p.kind === 'heading').map((p: any) => p.text)).toEqual(['7:15: 1631 closer to the fountain']);
   });
 
   it('asks once, about the cited death heading home, and removes nothing', () => {
