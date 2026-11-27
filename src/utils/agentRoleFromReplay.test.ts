@@ -188,4 +188,42 @@ describe('roleFromReplay (P1-2)', () => {
     const bcScoreNw: any = buildCheck(nwOnly, { hero: 'disruptor' }, { lang: 'en', match: unparsedMatch });
     expect(bcScoreNw.my_economy).toEqual({ source: 'match_record', gold_per_min: 320, net_worth: 6000, gold_at_20_00: null, net_worth_at_20_00: 5000 });
   });
+
+  it('rejects incomparable creep_kills rows lacking running counts and rejects sparse net_worth graphs (Codex P1 on #465)', () => {
+    // 1. One hero's creep_kills rows lack r[3] running last-hit count while teammates have it -> never mix logged count vs running LH.
+    const mixed: any = synthGame({
+      radiantCoords: [BOT, MID, TOP, TOP, BOT],
+      direCoords: [TOP, MID, BOT, BOT, TOP],
+      omitFarm: true,
+    });
+    mixed.creep_kills = [
+      [550, 0, 'l', 60, 3000],
+      [550, 1, 'l', 55, 3000],
+      [550, 2, 'l', null, 3000], // Axe missing running LH count
+      [550, 3, 'l', 8, 1200],
+      [550, 4, 'l', 5, 1000],
+    ];
+    // Without another farm signal -> stays unknown rather than dropping Axe below Lion.
+    expect(roleFromReplay(mixed, 'axe')).toMatchObject({ pos: null, kind: null, gaps: ['no_farm_signal_in_trace'] });
+    // With trace.gold available -> falls through cleanly to uniform gold signal.
+    mixed.gold = [
+      [5, 0, 13, 2800], [5, 1, 13, 2500], [5, 2, 13, 2200], [5, 3, 13, 600], [5, 4, 13, 400],
+    ];
+    expect(roleFromReplay(mixed, 'axe')).toMatchObject({ pos: 3, kind: 'core', source: 'replay' });
+
+    // 2. Sparse net_worth metadata graph (40-min game with only 15 points) fails netWorthGraph cadence check -> unknown (not misread as minute 10).
+    const sparse: any = synthGame({
+      radiantCoords: [BOT, MID, TOP, TOP, BOT],
+      direCoords: [TOP, MID, BOT, BOT, TOP],
+      omitFarm: true,
+    });
+    sparse.n = 2400; // 40 min -> game = 41 points expected, 15 points rejected by netWorthGraph
+    sparse.net_worth = sparse.heroes.map((_: any, i: number) => Array.from({ length: 15 }, (_, m) => (i === 4 ? m * 100 : m * 500)));
+    expect(roleFromReplay(sparse, 'phantom_assassin')).toMatchObject({ pos: null, kind: null, gaps: ['no_farm_signal_in_trace'] });
+
+    // Proper per-minute cadence net_worth with minute 10 present succeeds.
+    const dense = { ...sparse, net_worth: sparse.heroes.map((_: any, i: number) => Array.from({ length: 41 }, (_, m) => (i === 4 || i === 3 || i === 8 || i === 9 ? m * 150 : m * 450))) };
+    expect(roleFromReplay(dense, 'phantom_assassin')).toMatchObject({ pos: 1, kind: 'core', source: 'replay' });
+    expect(roleFromReplay(dense, 'disruptor')).toMatchObject({ pos: 5, kind: 'support', source: 'replay' });
+  });
 });
