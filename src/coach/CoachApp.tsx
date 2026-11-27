@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CoachApiError, fetchCoachReport, fetchPatchNews, fetchRecentMatches } from './api';
-import { markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
+import { PROFILE_CHANGED_EVENT, markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, Finding, RecentMatch, RecentMatches } from './types';
 import { SafeImg, clock, useLang, type Lang } from './ui';
 import { AccessModes, HowItWorks } from './HomeBlocks';
@@ -11,6 +11,7 @@ import { QuickJump, detectSmartInput } from './QuickJump';
 import { CURRENT_PATCH, SHIPPED_NEWS, itemIcon, readPatchNews, type PatchNews as PatchNewsData } from './patch';
 import { PatchAdvisor } from '../patch/PatchAdvisor';
 import { activeGoal, checkGoal, goalChecks, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
+import { useDota2AiRuntime } from '../runtime/dota2aiRuntime';
 import './coach.css';
 import './cards.css';
 import './review.css';
@@ -229,6 +230,20 @@ const GoalNavBadge: React.FC = () => {
   );
 };
 
+function useRememberedAccount(): string | null {
+  const [acc, setAcc] = useState<string | null>(() => rememberedAccount());
+  useEffect(() => {
+    const sync = () => setAcc(rememberedAccount());
+    window.addEventListener(PROFILE_CHANGED_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(PROFILE_CHANGED_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+  return acc;
+}
+
 export const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome?: boolean; hideMyGames?: boolean }> = ({
   children,
   wide,
@@ -236,7 +251,7 @@ export const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome
   hideMyGames = false,
 }) => {
   const { lang, setLang, L } = useLang();
-  const known = rememberedAccount();
+  const known = useRememberedAccount();
   return (
     <div className="cx">
       <header className="cx-top">
@@ -693,6 +708,8 @@ const HOME = {
 
 export const CoachHome: React.FC = () => {
   const { lang, L } = useLang();
+  const runtime = useDota2AiRuntime();
+  const inDsh = runtime.surface === 'dsh';
   const navigate = useNavigate();
   const [value, setValue] = useState('');
   const [error, setError] = useState<'invalid' | 'vanity' | 'account' | null>(null);
@@ -704,7 +721,7 @@ export const CoachHome: React.FC = () => {
     const r = parseAccountInput(value);
     return r.ok ? { kind: 'account' as const, id: r.accountId } : { kind: 'none' as const };
   }, [value, mode]);
-  const known = rememberedAccount();
+  const known = useRememberedAccount();
   // Whose latest game to show: the remembered friend code, or else the player a next-game goal was set
   // for (a goal set from a review knows its account even when the games page was never opened).
   const goalNow = useActiveGoal();
@@ -809,7 +826,7 @@ export const CoachHome: React.FC = () => {
                 </Link>
               </div>
               {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : error === 'account' ? UI.accountInvalid : UI.invalid)}</p>}
-              <p className="hm-also"><a href="#ways">{L(HOME.alsoIn)} →</a></p>
+              {!inDsh && <p className="hm-also"><a href="#ways">{L(HOME.alsoIn)} →</a></p>}
             </div>
           </section>
 
@@ -824,8 +841,8 @@ export const CoachHome: React.FC = () => {
         <PatchAdvisor lang={lang} version={CURRENT_PATCH.version} notesUrl={CURRENT_PATCH.notesUrl} />
       </div>
 
-      <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />
-      <HomeFeedback />
+      {!inDsh && <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />}
+      {!inDsh && <HomeFeedback />}
     </Shell>
   );
 };
