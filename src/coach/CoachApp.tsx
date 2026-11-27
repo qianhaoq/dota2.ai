@@ -12,7 +12,7 @@ import { CURRENT_PATCH, SHIPPED_NEWS, itemIcon, readPatchNews, type PatchNews as
 import { PatchAdvisor } from '../patch/PatchAdvisor';
 import { activeGoal, checkGoal, goalChecks, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
 import { useDota2AiRuntime } from '../runtime/dota2aiRuntime';
-import { OwnModelCallout } from './OwnModel';
+import { OwnModelBanner, OwnModelCallout } from './OwnModel';
 import './coach.css';
 import './cards.css';
 import './review.css';
@@ -255,6 +255,7 @@ export const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome
   const known = useRememberedAccount();
   return (
     <div className="cx">
+      <OwnModelBanner isHome={isHome} />
       <header className="cx-top">
         <Link to={`/?lang=${lang}`} className="cx-brand" aria-label="dota2.ai home">
           <svg className="cx-mark-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
