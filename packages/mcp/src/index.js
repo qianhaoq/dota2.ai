@@ -109,9 +109,74 @@ export function createMcpServer(options = {}) {
   }
   return server;
 }
+const MCP_CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, GET, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Accept, MCP-Protocol-Version, Mcp-Session-Id, Last-Event-ID, X-Dota2ai-Internal',
+  'Access-Control-Expose-Headers': 'Mcp-Session-Id, Retry-After',
+};
+
+/** Whether an HTTP Accept header permits `application/json` (RFC 9110 specificity & q-values). */
+function acceptsJson(accept) {
+  if (typeof accept !== 'string' || !accept.trim()) return true;
+  let exact = null;
+  let appWild = null;
+  let anyWild = null;
+  for (const raw of accept.split(',')) {
+    const [typePart, ...params] = raw.split(';');
+    const type = typePart.trim().toLowerCase();
+    if (!type) continue;
+    let q = 1;
+    for (const p of params) {
+      const m = /^\s*q\s*=\s*([0-9.]+)\s*$/i.exec(p);
+      if (m) {
+        const v = Number(m[1]);
+        if (Number.isFinite(v)) q = v;
+      }
+    }
+    if (type === 'application/json') exact = exact == null ? q : Math.max(exact, q);
+    else if (type === 'application/*') appWild = appWild == null ? q : Math.max(appWild, q);
+    else if (type === '*/*') anyWild = anyWild == null ? q : Math.max(anyWild, q);
+  }
+  const effective = exact ?? appWild ?? anyWild;
+  return effective != null && effective > 0;
+}
+
+// Stateless `enableJsonResponse: true` always responds with `application/json` (never SSE),
+// yet `@modelcontextprotocol/sdk` rejects POSTs whose `Accept` header omits `text/event-stream`
+// with 406. Normalize JSON-compatible headers (e.g. `application/json`, `*/*`, or omitted)
+// while still letting truly non-JSON `Accept` headers (like `text/plain`) fail with 406.
+function normalizeStatelessAccept(req) {
+  const raw = typeof req.headers?.accept === 'string' ? req.headers.accept : '';
+  const lower = raw.toLowerCase();
+  if (lower.includes('application/json') && lower.includes('text/event-stream')) return;
+  if (!acceptsJson(raw)) return;
+  const normalized = 'application/json, text/event-stream';
+  req.headers.accept = normalized;
+  if (Array.isArray(req.rawHeaders)) {
+    const next = [];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      if (String(req.rawHeaders[i]).toLowerCase() !== 'accept') next.push(req.rawHeaders[i], req.rawHeaders[i + 1]);
+    }
+    next.push('accept', normalized);
+    req.rawHeaders = next;
+  }
+}
+
 /** Attach stateless Streamable HTTP; each request owns its server and cleanup. */
 export function attachMcp(app, { path = '/mcp', reviewForRequest, coachForRequest, replayForRequest, ...options } = {}) {
+  app.use(path, (req, res, next) => {
+    res.set(MCP_CORS_HEADERS);
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    // Subpaths under /mcp (such as /mcp/.well-known/oauth-protected-resource or /mcp/.well-known/openid-configuration)
+    // must 404 as JSON instead of falling through to the SPA index.html fallback.
+    if (req.path !== '/' && req.path !== '') {
+      return res.status(404).set('Cache-Control', 'no-store').json({ error: 'Not found' });
+    }
+    return next();
+  });
   app.post(path, async (req, res, next) => {
+    normalizeStatelessAccept(req);
     const server = createMcpServer({
       coachTools: false,
       ...options,
