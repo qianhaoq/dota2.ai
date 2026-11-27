@@ -289,6 +289,18 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
       killer: 'juggernaut',
       seconds_after_revive: null,
     });
+
+    // Natural Aegis expiration followed by death at 400.05, a buyback at 401.2, and a second death at 405.2:
+    // both deaths are real deaths and the Aegis outcome stays `expired` (Codex P1 on #431).
+    const bbAfterExpiry = {
+      ...lateBaseTrace,
+      items: [{}, { item_aegis: { held: [[100, 400]], cd: [] } }, {}, {}],
+      deaths: [[400.05, 1, 2, 83], [405.2, 1, 3, 84]],
+      buybacks: [[401.2, 1]],
+    };
+    expect(realDeaths(bbAfterExpiry).map((d: any) => d[0])).toEqual([400.05, 405.2]);
+    expect(resurrections(bbAfterExpiry)).toEqual([]);
+    expect((roshanReport(bbAfterExpiry, { hero: 'crystal_maiden' }) as any).takes[0]).toMatchObject({ aegis: 'expired' });
   });
 
   it('catches non-buyback in-place revival talents outside bases, ignores instant base respawns, and keeps blanked samples unknown (null, never 0 or [])', () => {

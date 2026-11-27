@@ -111,15 +111,20 @@ export function classifyDeath(trace, d) {
   if (reincCd.some(([from, to, init]) => from >= t - 0.5 && from <= t + 1 && (init ?? (to - from)) >= 50)) {
     return { real: false, by: 'reincarnation', revived_at: rev };
   }
-  const boughtBack = Array.isArray(trace?.buybacks) && rev != null && trace.buybacks.some(([bt, i]) => i === h && bt >= t && bt <= rev + 1);
-  const diedAgainAfterAegis = (trace.deaths ?? []).some((o) => o !== d && o[1] === d[1] && o[0] >= t + 4 && o[0] <= t + 7.5);
+  const nextDeathT = (trace.deaths ?? []).filter((o) => o !== d && o[1] === d[1] && o[0] > t).reduce((m, o) => Math.min(m, o[0]), Infinity);
+  const hasBuybacks = Array.isArray(trace?.buybacks);
+  const boughtBack = hasBuybacks && trace.buybacks.some(([bt, i]) => i === h && bt >= t && bt < nextDeathT && bt <= (rev != null ? Math.max(rev + 1, t + 8) : t + 8));
+  const diedAgainAfterAegis = hasBuybacks && !boughtBack && nextDeathT >= t + 4 && nextDeathT <= t + 7.5;
+  const ownBase = trace.heroes?.[h]?.team === 2 ? 'radiant_base' : 'dire_base';
   const aegisHeld = trace.items?.[h]?.item_aegis?.held ?? [];
-  const aegisUsed = !stayedDeadSingleLife(trace, d, h, t, 8) && aegisHeld.some(([from, to]) => {
+  const aegisUsed = !boughtBack && !stayedDeadSingleLife(trace, d, h, t, 8) && aegisHeld.some(([from, to]) => {
     if (Math.abs(t - to) > 2) return false;
-    // Near the 300 s expiry mark, require `t <= to + 0.1` plus either a sampled in-place revival (bases included, as
-    // late Aegis fights often happen on high ground) or a second death 4–7.5 s later proving an between-sample revival.
+    // Near the 300 s expiry mark, require `t <= to + 0.1` plus either a sampled in-place revival (in own base only
+    // when buybacks are recorded and absent) or a second death 4–7.5 s later with recorded buybacks ruling out buyback.
     if (to - from >= AEGIS_DURATION - 5) {
-      return t <= to + 0.1 && ((!boughtBack && rev != null && rev - t >= 3 && revivedInPlace(trace, h, t, rev, { allowBase: true })) || diedAgainAfterAegis);
+      const sampledAegisRevive = rev != null && rev - t >= 3 && revivedInPlace(trace, h, t, rev, { allowBase: true })
+        && (hasBuybacks || region(trace.states[h].x[rev - trace.t0], trace.states[h].y[rev - trace.t0]) !== ownBase);
+      return t <= to + 0.1 && (sampledAegisRevive || diedAgainAfterAegis);
     }
     return true;
   });
@@ -127,8 +132,7 @@ export function classifyDeath(trace, d) {
     return { real: false, by: 'aegis', revived_at: rev };
   }
   // Fallback for talent-based reincarnation: requires recorded buybacks so legacy traces without `buybacks` never misclassify a buyback.
-  const noBuyback = Array.isArray(trace?.buybacks) && !boughtBack;
-  if (noBuyback && revivedInPlace(trace, h, t, rev, { allowBase: false })) {
+  if (hasBuybacks && !boughtBack && revivedInPlace(trace, h, t, rev, { allowBase: false })) {
     return { real: false, by: 'reincarnation', revived_at: rev };
   }
   return { real: true };
