@@ -29,6 +29,16 @@
     }
   ],
   "lead_any": ["roar_spent_before_carry_immunity", "no_blink_no_bkb"],
+  "lead_also": [
+    {
+      "id": "died_with_roar_ready",
+      "says": "Beastmaster died three times with Primal Roar ready and not cast (ability_audit: deaths with it ready and not cast), 36:05 among them at full health under four enemies.",
+      "why": "The same lesson as the roar spent before her Black King Bar — what the one disable that works on Phantom Assassin was used for — told from the deaths: the player's own ultimate, backed by ability_audit.",
+      "any": { "refs": ["audit:beastmaster:primal_roar"] },
+      "terms": { "zh": ["原始咆哮", "咆哮", "大招"], "en": ["Primal Roar", "ultimate"] },
+      "and_terms": { "zh": ["没放", "没交", "没按", "留着", "留在手", "捏着", "亮着", "就绪"], "en": ["ready", "not cast", "held"] }
+    }
+  ],
   "lead_why": "Either is a lesson for a 42-minute loss in which Phantom Assassin took 7 of the 11 deaths: the ultimate spent before her Black King Bar, or no Black King Bar and no Blink all game. Two deaths in the first three minutes are not.",
   "must_not": [
     {
