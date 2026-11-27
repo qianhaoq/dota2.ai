@@ -1,6 +1,10 @@
 {
   "source": "Releases: Valve patch notes. Rollout: the first game update at or after the release date in dotabuff/d2vpkr, which is polled every 20 minutes, so the rollout lies between rollout_from and rollout_by. Match ids on either side (scripts/patch-match-ids.mjs): from STRATZ start times. A game started before rollout_from is in the earlier release, one started at or after rollout_by in this one; in between is not told. hotfixes: the game updates within a release that changed item or ability data, each with its own data and rollout window, read the same way.",
-  "releases_checked_at": "2026-11-26T05:39:05.710Z",
+  "releases_checked_at": "2026-11-27T08:06:46.839Z",
+  "ids_checked_to": {
+    "match_id": 9106823652,
+    "started": "2026-11-26T20:42:17.000Z"
+  },
   "releases": [
     {
       "name": "7.40",
@@ -226,15 +230,13 @@
           "update": "Client 6997 (18641bd5ea6b)",
           "rollout_by": "2026-11-26T02:20:21.000Z",
           "rollout_from": "2026-11-26T02:00:21.000Z",
-          "data": "7.42a.2026-11-26T0220.json"
+          "data": "7.42a.2026-11-26T0220.json",
+          "last_match_id_before": 9105760897,
+          "first_match_id_after": 9105770960
         }
       ],
       "last_match_id_before": 9104432246,
       "first_match_id_after": 9104444250
     }
-  ],
-  "ids_checked_to": {
-    "match_id": 9105476011,
-    "started": "2026-11-25T19:19:20.000Z"
-  }
+  ]
 }
