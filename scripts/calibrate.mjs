@@ -43,6 +43,7 @@ import { keyMoments } from '../lib/agent/keyMoments.js';
 import { wardPlacers } from '../lib/agent/wardReport.js';
 import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_RESPAWN, STILL_DEAD_AFTER } from '../lib/agent/decisionPoints.js';
 import { moneyOf } from '../lib/agent/farmReport.js';
+import { ultimateOf, ultimatesOf } from '../lib/agent/ultimates.js';
 import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
 import { heroStateAt, observersNear } from '../packages/review-engine/src/trace/state.js';
@@ -73,7 +74,21 @@ for (const f of files) {
   // From Radiant's first hero: my_team = Radiant. Every fight is read once.
   const first = trace.heroes.find((h) => h.team === 2);
   for (const hero of trace.heroes) {
-    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }).deaths ?? []) if (d.allies_within_2200.at_death != null) deaths.push({ allies: d.allies_within_2200.at_death, traded: d.traded_within_15s, obs: d.observers_within_1600 ?? null, fight: d.in_a_fight, home: d.moved_toward_own_fountain ?? null, doing: d.snapshots?.[0]?.me?.doing ?? null });
+    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }, { ultimateOf, ultimatesOf }).deaths ?? []) {
+      if (d.allies_within_2200.at_death != null) {
+        deaths.push({
+          allies: d.allies_within_2200.at_death,
+          traded: d.traded_within_15s,
+          obs: d.observers_within_1600 ?? null,
+          fight: d.in_a_fight,
+          home: d.moved_toward_own_fountain ?? null,
+          doing: d.snapshots?.[0]?.me?.doing ?? null,
+          preFight: Boolean(d.nearby_fight && d.nearby_fight.relation === 'before_fight'),
+          nonHeroNoEnemy: d.non_hero_death_without_enemy_hero_damage === true,
+          absorbedUlt: Array.isArray(d.enemy_ultimates_absorbed) && d.enemy_ultimates_absorbed.length > 0,
+        });
+      }
+    }
   }
   if (Array.isArray(trace.wards)) wardGames += 1;
   // Alive heroes not in a fight (fightParticipation): what the state says they were doing as it began — farming
@@ -234,6 +249,12 @@ out.deaths = {
     ...Object.fromEntries([['home_1500_or_more', (d) => d.home != null && d.home >= HEADING], ['away_1500_or_more', (d) => d.home != null && d.home <= -HEADING], ['neither', (d) => d.home != null && Math.abs(d.home) < HEADING], ['unknown', (d) => d.home == null]].map(([k, g]) => [k, traded(deaths.filter((d) => f(d) && g(d)))])),
   })),
   outside_fights_by_doing_at_window_start: [...new Set(deaths.map((d) => d.doing))].map((doing) => ({ doing, ...traded(deaths.filter((d) => d.fight === false && d.doing === doing)) })).filter((x) => x.deaths > 0).sort((a, b) => b.deaths - a.deaths),
+  context_highlights: {
+    before_a_nearby_fight_within_30s: traded(deaths.filter((d) => d.preFight)),
+    non_hero_without_enemy_hero_damage: traded(deaths.filter((d) => d.nonHeroNoEnemy)),
+    absorbed_enemy_ultimate: traded(deaths.filter((d) => d.absorbedUlt)),
+    absorbed_enemy_ultimate_outside_fights: traded(deaths.filter((d) => d.fight === false && d.absorbedUlt)),
+  },
   died_within_20s_by_allies_near: [true, false].flatMap((half) => [0, 1, 2].map((n) => ({ side: half ? 'enemy half' : 'own half or river', allies: alliesLabel(n), ...risk(moments.filter((m) => m.enemyHalf === half && (n >= 2 ? m.allies >= 2 : m.allies === n))) }))),
 };
 // Only deaths and moments from traces with a ward list: an older trace has no wards, not zero wards.
