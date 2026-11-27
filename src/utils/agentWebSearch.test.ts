@@ -26,6 +26,23 @@ describe('web_search: DeepSeek Search as reading for the model', () => {
     expect(isWebSearchResult(r)).toBe(true);
   });
 
+  it('each page is set against this game\'s patch, and the answer names the tools that hold that patch', async () => {
+    const f = ok([{ ...page, date: '2026-01-01T00:00:00Z' }, { ...page, url: 'https://example.org/new', date: '2026-11-20T00:00:00Z' }, { ...page, url: 'https://example.org/undated', date: null }]);
+    const r: any = await createWebSearch({ apiKey: 'k', fetchImpl: f as any })({ query: 'Ursa' }, { patch: { name: '7.42', released: '2026-11-18T20:00:48.000Z' } });
+    expect(r.this_game_patch).toEqual({ name: '7.42', released: '2026-11-18T20:00:48.000Z' });
+    expect(r.results.map((x: any) => x.before_this_game_patch)).toEqual([true, false, null]);
+    expect(r.check_with).toEqual(['hero_abilities', 'item_info', 'hero_info', 'patch_changes']);
+    expect(r.note).toContain('the patch data stands');
+    expect(WEB_SEARCH_TOOL.description).toContain('this patch\'s data stands');
+    // No patch known: nothing is said about any page's age.
+    const none: any = await createWebSearch({ apiKey: 'k', fetchImpl: ok() as any })({ query: 'Ursa' });
+    expect(none.this_game_patch).toBeNull();
+    expect(none.results[0].before_this_game_patch).toBeNull();
+    // Through the toolkit: the game's own patch and its release.
+    const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'en', webSearch: createWebSearch({ apiKey: 'k', fetchImpl: ok() as any }) });
+    expect((await kit.runTool('web_search', { query: 'Ursa' })).this_game_patch).toEqual({ name: kit.patch.name, released: expect.any(String) });
+  });
+
   it('a page without a date says null, not a date; no results is an empty list, said as such', async () => {
     const r: any = await createWebSearch({ apiKey: 'k', fetchImpl: ok([{ ...page, date: null }]) as any })({ query: 'Ursa' });
     expect(r.results[0].date).toBeNull();
