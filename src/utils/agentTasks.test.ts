@@ -13,7 +13,7 @@ const ID = 9100904020;
 const call = (name: string, args: any, id: string) => ({ id, name, args });
 const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。' };
 const submit = { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], next_game: ['留咆哮'], blind_spots: ['视野'] };
-/** A model that looks two things up (one turn), submits a review (second), then translates into en/ru (third). `calls` counts its turns. */
+/** A model that looks two things up (one turn) and submits a review (second); it would also translate, but a review is written in one language and asks for none. `calls` counts its turns. */
 function model() {
   const m = { calls: 0, complete: async (o: any) => {
     m.calls += 1;
@@ -51,14 +51,14 @@ describe('a started review is queued and done inside the request that delivers i
     // The delivery: answered only when the review is there.
     expect(await b.run(w.queue[0])).toEqual({ status: 'ready' });
     expect(front.calls).toBe(0);
-    expect(back.calls).toBe(3);
+    expect(back.calls).toBe(2);
     expect(await a.status(ID, 'beastmaster', 'zh')).toMatchObject({ status: 'ready', review: { hero: 'beastmaster', lang: 'zh', verdict: submit.verdict } });
-    // One task generated en, zh, and ru together.
-    expect(await a.status(ID, 'beastmaster', 'en')).toMatchObject({ status: 'ready', review: { hero: 'beastmaster', lang: 'en', verdict: 'Primal Roar was not held.' } });
-    expect(await a.status(ID, 'beastmaster', 'ru')).toMatchObject({ status: 'ready', review: { hero: 'beastmaster', lang: 'ru', verdict: 'Primal Roar не был сохранён.' } });
+    // The task wrote the language it was asked in, and only that: English or Russian is a review of its own, started on request.
+    expect(await a.status(ID, 'beastmaster', 'en')).toEqual({ status: 'none' });
+    expect(await a.status(ID, 'beastmaster', 'ru')).toEqual({ status: 'none' });
     // Delivered twice (the queue promises at least once): the second finds the review and calls no model.
     expect(await a.run(w.queue[0])).toEqual({ status: 'ready' });
-    expect(front.calls + back.calls).toBe(3);
+    expect(front.calls + back.calls).toBe(2);
   });
 
   it('when the task cannot be queued the review runs where it was started, as before', async () => {
@@ -86,7 +86,7 @@ describe('a started review is queued and done inside the request that delivers i
     // The other runner has been silent for three beats: it is gone (a crash), and the delivery does the review.
     clock.t += 46_000;
     expect(await b.run(task)).toEqual({ status: 'ready' });
-    expect(m.calls).toBe(3);
+    expect(m.calls).toBe(2);
   });
 
   it('two deliveries of one review arriving together on one instance are one review', async () => {
@@ -97,10 +97,10 @@ describe('a started review is queued and done inside the request that delivers i
     // The same seat under another spelling is the same job.
     const out = await Promise.all([a.run(task), a.run({ ...task, hero: 'Beastmaster' }), a.run(task)]);
     expect(out.map((o: any) => o.status).sort()).toEqual(['busy', 'busy', 'ready']);
-    expect(m.calls).toBe(3);
+    expect(m.calls).toBe(2);
     // The claim is given back: a later delivery is answered from what is stored.
     expect(await a.run(task)).toEqual({ status: 'ready' });
-    expect(m.calls).toBe(3);
+    expect(m.calls).toBe(2);
     // A parse likewise: one run of the pipeline.
     const store = new Map<string, any>();
     const ran = vi.fn(async (id: any) => { await new Promise((r) => setTimeout(r, 10)); store.set(String(id), JSON.parse(fixture.toString())); return { ok: true }; });

@@ -131,13 +131,13 @@ describe('a review by another model is its own review', () => {
     const ready = await until(() => svc.status(ID, 'beastmaster', 'zh', null, 'glm-5.3'), (s) => s.status === 'ready');
     expect(ready).toMatchObject({ status: 'ready', model: 'glm-5.3', review: { verdict: submit.verdict } });
     expect([d.asked, g.asked > 0]).toEqual([0, true]);
-    expect(reviews(w)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.m-glm-5\.3\.review\.json$/)]);
+    expect(reviews(w)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.m-glm-5\.3\.review\.json$/)]);
     expect(await svc.status(ID, 'beastmaster', 'zh')).toEqual({ status: 'none' });
     // The default, by no name or by its own, keeps the key every review had before there was a choice.
     await svc.start(ID, 'beastmaster', 'zh', { model: 'deepseek-flash' });
     expect(await until(() => svc.status(ID, 'beastmaster', 'zh'), (s) => s.status === 'ready')).toMatchObject({ status: 'ready', model: 'deepseek-flash' });
     expect(await svc.status(ID, 'beastmaster', 'zh', null, 'deepseek-flash')).toMatchObject({ status: 'ready', model: 'deepseek-flash' });
-    expect(reviews(w)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.m-glm-5\.3\.review\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.review\.json$/)]);
+    expect(reviews(w)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.m-glm-5\.3\.review\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
     expect(d.asked).toBeGreaterThan(0);
     // With a plan too: the plan first, then the model.
     await svc.start(ID, 'beastmaster', 'zh', { plan: 'push', model: 'glm-5.3' });
@@ -237,7 +237,7 @@ describe('a review by another model is its own review', () => {
     expect(await svc.start(ID, 'beastmaster', 'zh', { model: 'glm-5.3' })).toEqual({ status: 'unavailable', reason: 'model_not_offered' });
     await svc.start(ID, 'beastmaster', 'zh');
     expect(await until(() => svc.status(ID, 'beastmaster', 'zh'), (s) => s.status === 'ready')).toMatchObject({ model: 'm' });
-    expect(reviews(w)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.review\.json$/)]);
+    expect(reviews(w)).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
   });
 });
 
