@@ -1,0 +1,67 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9106163189,
+  "hero": "enchantress",
+  "status": "approved",
+  "written": "2026-11-27",
+  "checked": "2026-11-27",
+  "checked_by": "Antigravity, reading every stated fact directly from reviewToolkit outputs on the live GCS trace (match_overview, death_context, ability_audit, build_check, lane_report, ward_report, key_moments).",
+  "source": "Live GCS trace with match record (unparsed OpenDota; lane read from replay). A 46:12 Radiant support win where enchantress_impetus dealt 6,024 damage across 46 damage rows with 0 DOTA_COMBATLOG_ABILITY rows (auto-cast attack modifier).",
+  "must_hit": [
+    {
+      "id": "untraded_deaths_and_late_save_item",
+      "says": "Three of the five deaths were not traded within 15 s (14:25 outside fights, 19:59, and 42:27 alone with no ally within 2200), while Force Staff arrived only at 40:08 (Hurricane Pike 41:12) after Aghanim's Scepter (25:36) and Pipe (36:45) against 76% enemy ability/item damage.",
+      "weight": 2,
+      "any": {
+        "refs": [
+          "deaths:enchantress",
+          "death:enchantress:2",
+          "death:enchantress:3",
+          "death:enchantress:5",
+          "build:enchantress"
+        ],
+        "clocks": ["14:25", "19:59", "40:08", "42:27"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["推推", "原力法杖", "飓风长戟", "没换", "未换", "白死", "落单", "没有队友", "团战外"],
+        "en": ["Force Staff", "Hurricane Pike", "not traded", "alone", "no ally", "outside"]
+      }
+    }
+  ],
+  "must_praise": [
+    {
+      "id": "won_bot_lane_and_low_deaths",
+      "says": "Won bot lane big (+852 earned gap, 1 death before 10:00) and finished a 46:12 win with only 5 deaths (second fewest on Radiant) while placing 10 observers and 24 sentries (most on the team).",
+      "weight": 1,
+      "where": "review",
+      "terms": {
+        "zh": ["对线", "下路", "假眼", "守卫", "5 次阵亡", "5次阵亡", "只死"],
+        "en": ["lane", "bot", "observer", "ward", "5 deaths", "five deaths"]
+      }
+    }
+  ],
+  "lead_any": ["untraded_deaths_and_late_save_item"],
+  "must_not": [
+    {
+      "id": "impetus_claimed_never_cast",
+      "says": "enchantress_impetus is an auto-cast attack modifier that produces 0 DOTA_COMBATLOG_ABILITY rows in replays; it dealt 6,024 damage across 46 rows here. A review must never claim Impetus had 0 casts or was never used.",
+      "pattern": "(?:推进|Impetus)[^。，；\n]{0,24}(?:0\\s*次施放|零次施放|从未施放|没有施放|没放过|没交过|未曾施放|全程没放|全程未放)|(?:never cast|0 casts?|not cast once|unused all game)[^.,;\n]{0,24}(?:Impetus|推进)|(?:Impetus)[^.,;\n]{0,24}(?:never cast|0 casts?|not cast once|unused all game)"
+    },
+    {
+      "id": "calls_the_win_a_loss",
+      "says": "Enchantress's team (Radiant) won in 46:12: a review of a win must not say the game was lost.",
+      "pattern": "(?:这局|本局|这盘)[^。，；团波]{0,12}(?:输了|输掉|失利|落败|败局)(?![^。，；]{0,6}(?:团|波|架|仗))|这场[^。，；团波战]{0,12}(?:输了|输掉|失利|落败|败局)(?![^。，；]{0,6}(?:团|波|架|仗))|输掉(?:了)?(?:这局|本局|这场比赛|比赛)|(?:[Yy]ou|[Yy]our team) lost (?:this|the) (?:game|match)|(?:[Tt]his|[Tt]he) (?:game|match) was lost|\\b(?:[Ii]n|of) (?:this|the|a) (?:loss|defeat)\\b"
+    }
+  ],
+  "main_reason": ["your_play", "team_play"],
+  "not_scored": {
+    "why": "Owner, 2026-11-27: avoid brittle regex matchers for subjective claims; checked by human reading.",
+    "claims": [
+      {
+        "id": "too_few_wards",
+        "says": "Enchantress placed 10 observers and 24 sentries (most on Radiant: Spirit Breaker 7, cores 0) and dewarded 3 observers / 9 sentries. A review must not say she placed too few wards."
+      }
+    ]
+  }
+}
