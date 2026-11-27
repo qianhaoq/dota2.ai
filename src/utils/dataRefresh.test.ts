@@ -32,9 +32,9 @@ describe('data refresh: what counts as a change', () => {
 describe('data refresh: the steps', () => {
   it('runs every data script once, Valve\'s notes before the numbers that read them, STRATZ marked', () => {
     const s = steps('7.42');
-    expect(s.map((x: any) => x.cmd[0])).toEqual(['scripts/refresh-data.mjs', 'scripts/patch-match-ids.mjs', 'scripts/coach-matchups.mjs', 'scripts/coach-item-vs.mjs', 'scripts/coach-patch-notes.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
+    expect(s.map((x: any) => x.cmd[0])).toEqual(['scripts/refresh-data.mjs', 'scripts/patch-match-ids.mjs', 'scripts/coach-matchups.mjs', 'scripts/coach-item-vs.mjs', 'scripts/coach-patch-notes.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs', 'scripts/coach-bracket-items.mjs']);
     expect(s.find((x: any) => x.cmd[0] === 'scripts/coach-patch-notes.mjs').cmd).toEqual(['scripts/coach-patch-notes.mjs', '7.42']);
-    expect(s.filter((x: any) => x.stratz).map((x: any) => x.cmd[0])).toEqual(['scripts/patch-match-ids.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs']);
+    expect(s.filter((x: any) => x.stratz).map((x: any) => x.cmd[0])).toEqual(['scripts/patch-match-ids.mjs', 'scripts/coach-matchups-rank.mjs', 'scripts/coach-hero-timing.mjs', 'scripts/coach-patch-meta.mjs', 'scripts/coach-bracket-items.mjs']);
     expect(s.find((x: any) => x.cmd[0] === 'scripts/refresh-data.mjs').cmd).toContain('--all');
     // Every script it names exists.
     for (const x of s) expect(() => readFileSync(x.cmd[0])).not.toThrow();
