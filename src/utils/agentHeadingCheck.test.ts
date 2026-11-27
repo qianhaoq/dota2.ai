@@ -41,6 +41,16 @@ describe('a finding that says the player stayed, about a death the record shows 
     expect(notes(review(finding('前期两次阵亡', '2:51 你往前走被抓；11:03 你留在原地换血。', ['death:beastmaster:2', 'death:beastmaster:5']))).map((n: any) => n.text)).toEqual(['11:03: 1568 closer to the fountain']);
   });
 
+  it('a zero-padded time is the same moment (Codex P2 on #427)', () => {
+    expect(notes(review(finding('留在原地', '00:47 你留在原地换血。', ['death:beastmaster:1']))).map((n: any) => n.text)).toEqual(['0:47: 2859 closer to the fountain']);
+  });
+
+  it('a title has no time of its own: it is about the one death the finding cites (Codex P2 on #427)', () => {
+    expect(notes(review(finding('仍在原地换血', '11:03 你被追上后阵亡。', ['death:beastmaster:5']))).map((n: any) => n.text)).toEqual(['11:03: 1568 closer to the fountain']);
+    // Two cited deaths and a timed claim: which one the title means is not known, so it is not asked about.
+    expect(notes(review(finding('仍在原地换血', '2:51 和 11:03 你都被追上。', ['death:beastmaster:2', 'death:beastmaster:5'])))).toEqual([]);
+  });
+
   it('trading while heading home is not sent back (Codex P1 on #427)', () => {
     expect(notes(review(finding('边撤边换血', '11:03 你往家退的过程中仍在换血。', ['death:beastmaster:5'])))).toEqual([]);
   });
