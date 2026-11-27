@@ -50,6 +50,107 @@ export const ENGAGE_RADIUS = 3000;
 const TP_ITEMS = ['item_tpscroll', 'item_travel_boots', 'item_travel_boots_2'];
 const BUILDING = /_(tower\d|fort|melee_rax|range_rax)/;
 const teamOfBuilding = (name) => (/goodguys/.test(name) ? 2 : /badguys/.test(name) ? 3 : null);
+const AEGIS_DURATION = 300;
+const IN_PLACE_REVIVE_DIST = 400;
+
+/**
+ * Game second at which hero h came back to life right after falling at t (within 10 s), or null when no
+ * contiguous dead-to-alive transition was sampled (including when alive samples around it are missing).
+ */
+function revivedAt(trace, h, t) {
+  const alive = trace?.states?.[h]?.alive;
+  if (!Array.isArray(alive)) return null;
+  let i = Math.max(0, Math.ceil(t) - trace.t0 + 1);
+  while (i < trace.n && alive[i] === 0) i += 1;
+  if (!(i < trace.n && i > 0 && alive[i] === 1 && alive[i - 1] === 0)) return null;
+  const sec = i + trace.t0;
+  return sec - t <= 10 ? sec : null;
+}
+
+/**
+ * Whether a combat-log death row `d = [t, victimName, killerName, row]` is a real death or an in-place
+ * resurrection (Wraith King's Reincarnation, Aegis of the Immortal, or a reincarnation talent).
+ * Unknown samples stay unknown: the fallback never guesses a revival across unsampled seconds or inside a base.
+ */
+export function classifyDeath(trace, d) {
+  const h = heroOfName(trace, d[1]);
+  if (h < 0) return { real: true };
+  const t = d[0];
+  const reincCd = trace.abilities?.[h]?.skeleton_king_reincarnation?.cd ?? [];
+  if (reincCd.some(([from, to, init]) => from >= t - 0.5 && from <= t + 1 && (init ?? (to - from)) >= 50)) {
+    return { real: false, by: 'reincarnation', revived_at: revivedAt(trace, h, t) };
+  }
+  const aegisHeld = trace.items?.[h]?.item_aegis?.held ?? [];
+  if (aegisHeld.some(([from, to]) => Math.abs(t - to) <= 2 && !(to - from >= AEGIS_DURATION - 5 && t > to + 0.5))) {
+    return { real: false, by: 'aegis', revived_at: revivedAt(trace, h, t) };
+  }
+  const rev = revivedAt(trace, h, t);
+  if (rev != null && rev - t >= 2 && rev - t <= 7) {
+    const boughtBack = Array.isArray(trace?.buybacks) && trace.buybacks.some(([bt, i]) => i === h && bt >= t && bt <= rev + 1);
+    const s = trace.states[h];
+    const bi = rev - trace.t0;
+    const back = s?.x?.[bi] != null && s?.y?.[bi] != null ? { x: s.x[bi], y: s.y[bi] } : null;
+    const fell = stateAt(trace, h, t - 1);
+    const backRegion = back ? region(back.x, back.y) : null;
+    if (!boughtBack && back && fell?.alive && backRegion !== 'radiant_base' && backRegion !== 'dire_base' && dist(fell, back) < IN_PLACE_REVIVE_DIST) {
+      return { real: false, by: 'reincarnation', revived_at: rev };
+    }
+  }
+  return { real: true };
+}
+
+const deathSplitCache = new WeakMap();
+function splitDeaths(trace) {
+  if (!trace || typeof trace !== 'object') return { real: [], res: [] };
+  let out = deathSplitCache.get(trace);
+  if (out) return out;
+  const real = [];
+  const res = [];
+  for (const d of trace.deaths ?? []) {
+    const c = classifyDeath(trace, d);
+    if (c.real) real.push(d);
+    else res.push({ t: d[0], victim: d[1], killer: d[2], row: d[3], heroIndex: heroOfName(trace, d[1]), by: c.by, revived_at: c.revived_at });
+  }
+  res.sort((a, b) => a.t - b.t || (a.row ?? 0) - (b.row ?? 0));
+  out = { real, res };
+  deathSplitCache.set(trace, out);
+  return out;
+}
+
+/** Hero death rows excluding in-place resurrections (Reincarnation, Aegis). `trace.deaths` itself is untouched. */
+export const realDeaths = (trace) => splitDeaths(trace).real;
+/** In-place resurrections (Reincarnation, Aegis) extracted from `trace.deaths`, in chronological order. */
+export const resurrections = (trace) => splitDeaths(trace).res;
+
+/**
+ * Why Wraith King's Reincarnation did not trigger on a real death at second `t`:
+ * `not_learned`, `on_cooldown` (excluding the ~4.5 s innate Wraith-Form lock), `insufficient_mana`
+ * (checked at the lethal blow before Wraith Form began, not over the whole 12 s window), or `unknown`.
+ * Null when the trace has no ability samples for the hero.
+ */
+export function reincarnationAtDeath(trace, h, t) {
+  const abilities = trace?.abilities?.[h];
+  if (!abilities || Object.keys(abilities).length === 0) return null;
+  const entry = abilities.skeleton_king_reincarnation;
+  if (!entry || abilityLevel(entry, t) <= 0) return { state: 'not_learned' };
+  const realCd = (entry.cd ?? []).find(([a, b, init]) => a <= t - 0.5 && t - 0.5 < b && (init ?? (b - a)) >= 15);
+  if (realCd) {
+    const left = typeof realCd[2] === 'number' ? realCd[2] - (t - realCd[0]) : realCd[1] - t;
+    return { state: 'on_cooldown', cooldown_left: Math.max(0.1, Math.round(left * 10) / 10) };
+  }
+  const wraithLock = (entry.cd ?? []).find(([a, b, init]) => a >= t - 8 && a <= t + 0.5 && (init ?? (b - a)) < 15);
+  const lethalT = wraithLock ? wraithLock[0] : t;
+  const cost = manaCost(entry, lethalT - 1, lethalT);
+  const manaArr = trace.states?.[h]?.mana;
+  const sampleMana = (sec) => { const i = sec - trace.t0; return Array.isArray(manaArr) && i >= 0 && i < trace.n ? manaArr[i] : null; };
+  const m0 = sampleMana(Math.floor(lethalT));
+  const m1 = sampleMana(Math.ceil(lethalT));
+  const mana = m0 != null && m1 != null ? Math.min(m0, m1) : (m0 ?? m1);
+  if (cost != null && cost > 0 && mana != null && mana < cost) {
+    return { state: 'insufficient_mana', mana: Math.round(mana), mana_cost: cost };
+  }
+  return { state: 'unknown' };
+}
 
 const cache = new WeakMap();
 /** Per second: the hero pairs that traded damage, and the heroes that hit an enemy building. Built once per trace. */
@@ -199,8 +300,8 @@ export function boughtBackAfter(trace, h, t) {
   const alive = trace.states[h].alive;
   let back = null;
   for (let i = Math.max(0, Math.ceil(t) - trace.t0 + 1); i < trace.n; i += 1) if (alive[i] === 1) { back = i + trace.t0; break; }
-  // Never past the hero's next death: a buyback after it belongs to that death (review of #305).
-  const next = (trace.deaths ?? []).filter((d) => heroOfName(trace, d[1]) === h && d[0] > t).reduce((m, d) => Math.min(m, d[0]), Infinity);
+  // Never past the hero's next real death: a buyback after it belongs to that death (review of #305).
+  const next = realDeaths(trace).filter((d) => heroOfName(trace, d[1]) === h && d[0] > t).reduce((m, d) => Math.min(m, d[0]), Infinity);
   const b = trace.buybacks.find(([bt, i]) => i === h && bt >= t && bt < next && (back == null || bt <= back + 1));
   return b ? b[0] : false;
 }

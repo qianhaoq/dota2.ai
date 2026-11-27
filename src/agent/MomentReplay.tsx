@@ -22,6 +22,8 @@ const T = {
   ally: { en: 'Allies', zh: '队友', ru: 'Союзники' },
   enemy: { en: 'Enemies', zh: '对手', ru: 'Враги' },
   died: { en: '{h} died', zh: '{h} 阵亡', ru: '{h} погиб' },
+  reincarnation: { en: '{h} reincarnated', zh: '{h} 绝冥再生', ru: '{h}: перерождение' },
+  aegis: { en: '{h} Aegis', zh: '{h} 不朽盾重生', ru: '{h}: Aegis' },
   cast: { en: '{h}: {a}', zh: '{h}：{a}', ru: '{h}: {a}' },
   castOn: { en: '{h}: {a} on {t}', zh: '{h}：{a} → {t}', ru: '{h}: {a} по {t}' },
   ult: { en: 'ultimate', zh: '大招', ru: 'ульт' },
@@ -117,7 +119,7 @@ export const MomentReplay: React.FC<{ matchId: string; hero: string; lang: Lang;
   const casts = data.casts ?? [];
   const events = [
     ...casts.map((c) => ({ t: c.t, kind: 'cast' as const, hero: c.hero, text: say(c.target ? T.castOn : T.cast).replace('{h}', N(c.hero)).replace('{a}', N(c.ability)).replace('{t}', c.target ? N(c.target) : ''), ultimate: c.ultimate === true })),
-    ...data.deaths.map((d) => ({ t: d.t, kind: 'death' as const, hero: d.hero, text: say(T.died).replace('{h}', N(d.hero)), ultimate: false })),
+    ...data.deaths.map((d) => ({ t: d.t, kind: 'death' as const, hero: d.hero, text: say(d.resurrected_by ? T[d.resurrected_by] : T.died).replace('{h}', N(d.hero)), ultimate: false })),
   ].sort((a, b) => a.t - b.t);
   // Who is casting in the second shown: their mark pulses once.
   const casting = new Set(casts.filter((c) => Math.floor(c.t) === frame.t).map((c) => c.hero));
