@@ -57,10 +57,23 @@ jobs:
           cache: npm
       - run: npm ci
 
+      - name: Check whether release builder is selected
+        id: plan
+        env:
+          DATA_REFRESH_ONLY: ${{ inputs.only }}
+        run: |
+          node -e '
+            const { steps } = require("./.github/scripts/data-refresh.cjs");
+            const f = (process.env.DATA_REFRESH_ONLY || "").trim();
+            const sel = f ? steps("0").filter((s) => s.cmd.join(" ").includes(f)) : steps("0");
+            if (f && !sel.length) { console.error(`no refresh step matches DATA_REFRESH_ONLY=${f}`); process.exit(2); }
+            console.log("builder=" + sel.some((s) => s.cmd[0] === "scripts/refresh-data.mjs"));
+          ' >> "$GITHUB_OUTPUT"
+
       # The release snapshots (scripts/coach-patch-snapshots.mjs, run by refresh-data.mjs --all) are built with
       # OpenDota's own builder at a pinned commit; its history is needed for the builder of the older game files.
       - name: OpenDota's builder for the release snapshots
-        if: ${{ !inputs.only || contains(inputs.only, 'refresh-data') }}
+        if: steps.plan.outputs.builder == 'true'
         run: |
           git clone --quiet https://github.com/odota/dotaconstants "$RUNNER_TEMP/dotaconstants"
           git -C "$RUNNER_TEMP/dotaconstants" checkout --quiet 0b0b4a6867a8

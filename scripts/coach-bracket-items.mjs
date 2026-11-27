@@ -372,6 +372,33 @@ export function buildItemBatchQuery(spec, heroIds, { timeWindow = null, itemIds 
   return `query ($w: Long) { heroStats {\n  ${aliases}\n} }`;
 }
 
+/**
+ * Filter raw rows for per-hero disk cache: keeps in-window big-item rows, plus
+ * (when `cumulative` is true) the latest pre-window sample (`time < minTime`)
+ * per item so pre-10:00 baselines are preserved even when minute 9 is absent.
+ */
+export function filterRowsForCache(rows, { cumulative = false, firstInstance = 0, itemKeyById, timeWindow }) {
+  const matching = (rows ?? []).filter((r) => (
+    (firstInstance == null || r.instance == null || r.instance === firstInstance)
+    && itemKeyById.has(Number(r.itemId))
+  ));
+  if (!cumulative) {
+    return matching.filter((r) => r.time == null || (r.time >= timeWindow.minTime && r.time <= timeWindow.maxTime));
+  }
+  const latestPreWindow = new Map();
+  const kept = [];
+  for (const r of matching) {
+    if (r.time == null) continue;
+    if (r.time >= timeWindow.minTime && r.time <= timeWindow.maxTime) {
+      kept.push(r);
+    } else if (r.time < timeWindow.minTime) {
+      const prev = latestPreWindow.get(r.itemId);
+      if (!prev || r.time > prev.time) latestPreWindow.set(r.itemId, r);
+    }
+  }
+  return [...latestPreWindow.values(), ...kept];
+}
+
 /** Exact integer median minute from a `Map<minute, purchases>` histogram, or null when unbinned. */
 export function medianMinuteFromBins(bins, totalPurchases) {
   if (!bins || !bins.size || !totalPurchases) return null;
@@ -457,6 +484,10 @@ export function aggregateBracketItems({
             }
             for (const [itemKey, map] of byItemMin) {
               const pts = [...map.entries()].sort((a, b) => a[0] - b[0]);
+              if (!pts.some(([m]) => m >= 10 && m <= 24)) continue;
+              if (pts[0][0] >= 10) {
+                throw new Error(`week ${iso(w)} ${bKey} hero ${h} pos ${pKey} ${itemKey}: cumulative series has no pre-10:00 baseline`);
+              }
               const cur = posItems[pKey].get(itemKey) ?? { buys: 0, wins: 0, bins: new Map() };
               for (let idx = 0; idx < pts.length; idx += 1) {
                 const [m, [mc, wc]] = pts[idx];
@@ -684,13 +715,7 @@ async function main() {
             const rows = runtimeSpec.item.heroArg === 'heroId'
               ? (d[`i_${bKey}_${pKey}_${h}`] ?? [])
               : (d[`i_${bKey}_${pKey}`] ?? []).filter((r) => r.heroId === h);
-            // Keep big items in the mid-game window (plus minute 9 baseline when cumulative) so cache stays compact.
-            const minKeep = cumulative ? (timeWindow.unit === 'seconds' ? 540 : 9) : timeWindow.minTime;
-            one[`${bKey}_${pKey}`] = rows.filter((r) => (
-              (firstInstance == null || r.instance == null || r.instance === firstInstance)
-              && itemKeyById.has(Number(r.itemId))
-              && (r.time == null || (r.time >= minKeep && r.time <= timeWindow.maxTime))
-            ));
+            one[`${bKey}_${pKey}`] = filterRowsForCache(rows, { cumulative, firstInstance, itemKeyById, timeWindow });
           }
         }
         writeFileSync(cacheFile(h, w), JSON.stringify(one));
