@@ -93,7 +93,7 @@ jobs:
             echo "::notice::NPM_TOKEN secret is not set; attempting npm Trusted Publishing (OIDC)..."
           fi
           version=$(node -p "require('./packages/dsh/package.json').version")
-          npm publish dist-dsh/*.tgz --access public --provenance
+          npm publish ./dist-dsh/*.tgz --access public --provenance
           # Guard against npm 11 first-publish 0.0.0-stage placeholder before downstream market probes run.
           for attempt in 1 2 3 4 5 6; do
             latest=$(curl -fsSL "https://registry.npmjs.org/@qianhaoq%2fdsh-dota2ai" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s)['dist-tags']?.latest??'')}catch{console.log('')}})" || true)
@@ -102,7 +102,7 @@ jobs:
               break
             fi
             if [ "${attempt}" = "2" ] && echo "${latest}" | grep -q "stage"; then
-              npm publish dist-dsh/*.tgz --access public --provenance || true
+              npm publish ./dist-dsh/*.tgz --access public --provenance || true
             fi
             sleep 5
           done
