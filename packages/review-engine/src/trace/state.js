@@ -54,15 +54,15 @@ const AEGIS_DURATION = 300;
 const IN_PLACE_REVIVE_DIST = 400;
 
 /**
- * Game second at which hero h came back to life right after falling at t (within 10 s), or null when no
- * contiguous dead-to-alive transition was sampled (including when alive samples around it are missing).
+ * Game second at which hero h came back to life right after falling at t (within 10 s and before `nextDeathT`),
+ * or null when no contiguous dead-to-alive transition was sampled before the hero's next death.
  */
-function revivedAt(trace, h, t) {
+function revivedAt(trace, h, t, nextDeathT = Infinity) {
   const alive = trace?.states?.[h]?.alive;
   if (!Array.isArray(alive)) return null;
   let i = Math.max(0, Math.ceil(t) - trace.t0 + 1);
-  while (i < trace.n && alive[i] === 0) i += 1;
-  if (!(i < trace.n && i > 0 && alive[i] === 1 && alive[i - 1] === 0)) return null;
+  while (i < trace.n && i + trace.t0 < nextDeathT && alive[i] === 0) i += 1;
+  if (!(i < trace.n && i > 0 && i + trace.t0 < nextDeathT && alive[i] === 1 && alive[i - 1] === 0)) return null;
   const sec = i + trace.t0;
   return sec - t <= 10 ? sec : null;
 }
@@ -106,12 +106,12 @@ export function classifyDeath(trace, d) {
   const h = heroOfName(trace, d[1]);
   if (h < 0) return { real: true };
   const t = d[0];
-  const rev = revivedAt(trace, h, t);
+  const nextDeathT = (trace.deaths ?? []).filter((o) => o !== d && o[1] === d[1] && o[0] > t).reduce((m, o) => Math.min(m, o[0]), Infinity);
+  const rev = revivedAt(trace, h, t, nextDeathT);
   const reincCd = trace.abilities?.[h]?.skeleton_king_reincarnation?.cd ?? [];
   if (reincCd.some(([from, to, init]) => from >= t - 0.5 && from <= t + 1 && (init ?? (to - from)) >= 50)) {
     return { real: false, by: 'reincarnation', revived_at: rev };
   }
-  const nextDeathT = (trace.deaths ?? []).filter((o) => o !== d && o[1] === d[1] && o[0] > t).reduce((m, o) => Math.min(m, o[0]), Infinity);
   const hasBuybacks = Array.isArray(trace?.buybacks);
   const boughtBack = hasBuybacks && trace.buybacks.some(([bt, i]) => i === h && bt >= t && bt < nextDeathT && bt <= (rev != null ? Math.max(rev + 1, t + 8) : t + 8));
   const diedAgainAfterAegis = hasBuybacks && !boughtBack && nextDeathT >= t + 4 && nextDeathT <= t + 7.5;

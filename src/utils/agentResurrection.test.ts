@@ -290,6 +290,29 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
       seconds_after_revive: null,
     });
 
+    // Between-sample Aegis revival + re-kill at 105.3 followed by a buyback at 106 (alive at 107):
+    // `revivedAt` stops at 105.3 so 107 is never attributed to the 100.2 Aegis revival as -1.7 s (Codex P1 on #431).
+    const rekillThenBuyback = {
+      ...betweenSamples,
+      states: [
+        betweenSamples.states[0],
+        { ...betweenSamples.states[1], alive: betweenSamples.states[1].alive.map((v: number, s: number) => (s >= 101 && s <= 106 ? 0 : v)) },
+        betweenSamples.states[2],
+        betweenSamples.states[3],
+      ],
+      items: [{}, { item_aegis: { held: [[20, 100.3]], cd: [] } }, {}, {}],
+      deaths: [[100.2, 1, 2, 81], [105.3, 1, 3, 82]],
+      buybacks: [[106, 1]],
+    };
+    const rtbDc: any = runTraceTool(rekillThenBuyback, 'death_context', { hero: 'crystal_maiden' });
+    expect(rtbDc.deaths_total).toBe(1);
+    expect(rtbDc.deaths[0]).toMatchObject({ clock: '1:45', bought_back: '1:46' });
+    expect(rtbDc.resurrections[0]).toMatchObject({
+      clock: '1:40',
+      revived_at: null,
+      died_for_real_within_20s: { ref: 'death:crystal_maiden:1', clock: '1:45', seconds_after_revive: null },
+    });
+
     // Natural Aegis expiration followed by death at 400.05, a buyback at 401.2, and a second death at 405.2:
     // both deaths are real deaths and the Aegis outcome stays `expired` (Codex P1 on #431).
     const bbAfterExpiry = {
