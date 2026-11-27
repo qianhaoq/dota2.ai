@@ -211,7 +211,7 @@ the worker.
 | What | Limit | Where |
 |---|---|---|
 | Parses | 5 per caller per 10 min; `AGENT_PARSE_DAILY_MAX` (default 300) a day | `lib/agent/router.js` |
-| Deep reviews (web and MCP `replay_review` together) | 5 per caller per 10 min; `AGENT_REVIEW_HOURLY_MAX` (default 60) an hour; `AGENT_REVIEW_DAILY_MAX` (default 500) a day; the shared LLM budget. Past the day: `503 { code: 'daily_cap', alternatives }`, which the page and the MCP tool turn into a pointer at the DSH plugin (the reader's own model) | same |
+| Deep reviews (web and MCP `replay_review` together) | 5 per caller per 10 min; `AGENT_REVIEW_HOURLY_MAX` (default 60) an hour; `AGENT_REVIEW_DAILY_MAX` a day when set (unset by default: no daily ceiling); the shared LLM budget. Past the day: `503 { code: 'daily_cap', alternatives }`, which the page and the MCP tool turn into a pointer at the DSH plugin (the reader's own model) | same |
 | Deep reviews by a model other than DeepSeek | also `AGENT_MODEL_HOURLY_MAX` (default 20) an hour per model; 25 min to finish instead of 15. Both by what the model is, also when it is the server's default | same, `lib/agent/service.js`, `models.js` `writesSlowly` |
 | Chat | 12 turns a minute per caller; 6 tool calls a turn; the shared LLM budget; `AGENT_CHAT_DAILY_MAX` (default 2000) a day, one count with the coach's follow-ups and the patch advisor (past it those answer without the model or say busy) | same, `lib/agent/chat.js`, `lib/llmRateLimit.js` `withDailyCap` |
 | All of the above | in memory, per instance: with N instances the real ceiling is N × the number | |
