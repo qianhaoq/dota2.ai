@@ -797,6 +797,7 @@ export const AgentMatchPage: React.FC = () => {
         {/* The replay is parsed and the review is being written: the reader's own deaths, fights and key items, to watch meanwhile. Outside the status region, so a screen reader is not read the whole list as progress. */}
         {hasTrace && heroKey && !parsing && (
           <>
+            <OwnModelCallout where="waiting" />
             <WaitDeaths matchId={matchId} hero={heroKey} lang={lang} />
             <WaitFacts matchId={matchId} hero={heroKey} lang={lang} />
           </>

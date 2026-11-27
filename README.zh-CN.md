@@ -19,7 +19,7 @@
 
 <br>
 
-贴一个比赛编号，选你玩的英雄。大约四分钟后（读录像一分钟、写复盘三分钟；录像服务器响应慢时会换另一个地区的线路重试，或单步输出触及上限时原地重试一次，再多等几分钟）拿到一份只写给你的复盘：**一句结论，最多三个决定胜负的问题，以及每个问题下一把怎么做。**里面的时间和数字都来自你的录像。
+贴一个比赛编号，选你玩的英雄。大约四分钟后（读录像一分钟、写复盘三分钟；录像服务器响应慢时，首区解析上限为七分钟，在十四分钟总解析时限内会自动切换另一地区线路重试，或单步输出触及上限时原地重试一次，会再多等几分钟）拿到一份只写给你的复盘：**一句结论，最多三个决定胜负的问题，以及每个问题下一把怎么做。**里面的时间和数字都来自你的录像。
 
 ## 怎么用
 
@@ -154,7 +154,7 @@ npm run start:dev        # Vite 在 :5173，Express 在 :8080
 |---|---|
 | `DEEPSEEK_API_KEY` | 复盘 Agent 和追问 |
 | `DOTA_EXTRACT_BIN`、`AGENT_TRACE_DIR`、`AGENT_REVIEW_DIR` | 在本机解析录像 |
-| `AGENT_BUCKET`、`TRACE_WORKER_URL` | 在独立的解析服务上解析，结果存进存储桶 |
+| `AGENT_BUCKET`、`TRACE_WORKER_URL`、`TRACE_WORKER_FALLBACK_URL`、`TRACE_WORKER_PREFER_FALLBACK_CN` | 在独立的解析服务上解析（支持跨区回退与国服 CDN 优先路由），结果存进存储桶 |
 | `OPENDOTA_API_KEY`、`STRATZ_API_TOKEN` | 更高的请求额度、比赛数据的备用来源 |
 
 录像提取器来自配套仓库。生产环境见 [`docs/AGENT_PIPELINE.md`](docs/AGENT_PIPELINE.md)。

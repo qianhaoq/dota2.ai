@@ -277,15 +277,15 @@ try {
 
   const names = ['replay_review', 'recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup'].map((n) => `dota2ai_${n}`);
   for (const n of names) assert.ok(ctx.tools.get(n), `${n} registered`);
-  // DSH 0.2.2 dispatches tool calls as batches through a loaded executor (dsh-tool-executor-native, which a
-  // real profile composes); 0.2.1 executes one call directly. Same result either way.
-  const Native = await fromHost('@deepseek-ai/dsh-tool-executor-native').catch(() => null);
-  if (Native) { const nativeFiber = ctx.plugin(Native.default ?? Native, {}); await nativeFiber.inertia; }
   const call = async (name, a) => {
-    const signal = new AbortController().signal;
-    if (!Native) return ctx.tools.execute({ callId: `smoke-${name}`, name, arguments: a, signal });
-    const out = await ctx.tools.execute({ calls: [{ type: 'tool-call', id: `smoke-${name}`, name, arguments: JSON.stringify(a) }], signal });
-    return out.results[0].result;
+    const def = ctx.tools.get(name);
+    assert.ok(def, `${name} resolved from ToolsService`);
+    try {
+      const value = await def.execute(a, { callId: `smoke-${name}`, signal: new AbortController().signal });
+      return { isError: false, value };
+    } catch (error) {
+      return { isError: true, error };
+    }
   };
 
   const skill = await ctx.skills.get('dota2ai');

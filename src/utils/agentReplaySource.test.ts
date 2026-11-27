@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createReplaySource } from '../../lib/agent/replaySource.js';
+import { classifyGcFailure, createReplaySource } from '../../lib/agent/replaySource.js';
 import { replayUrl } from '../../lib/matchReview/replayIngest/discovery.js';
 import { createTracePipeline } from '../../lib/agent/tracePipeline.js';
 
@@ -41,5 +41,23 @@ describe('replay source', () => {
     } as any);
     expect(await pipeline.run(ID)).toEqual({ ok: false, reason: 'replay_gone' });
     expect(seen).toEqual([`https://replay153.valve.net/570/${ID}_77.dem.bz2`]);
+  });
+
+  it('logs structured GC outcomes without leaking upstream text', async () => {
+    const logs: string[] = [];
+    const record = { match_id: ID, players: [] };
+    await createReplaySource({ getMatchDetail: async () => record, log: (m) => logs.push(m) })(ID);
+    await createReplaySource({ getMatchDetail: async () => record, gc: { fetchMatch: async () => ({ match_id: ID }) }, log: (m) => logs.push(m) })(ID);
+    await createReplaySource({ getMatchDetail: async () => record, gc: { fetchMatch: async () => { throw Object.assign(new Error('secret'), { code: 'gc_budget' }); } }, log: (m) => logs.push(m) })(ID);
+    await createReplaySource({ getMatchDetail: async () => record, gc: { fetchMatch: async () => ({ cluster: 153, replay_salt: 77 }) }, log: (m) => logs.push(m) })(ID);
+    expect(logs).toEqual([
+      `replay_source match=${ID} outcome=gc_not_configured`,
+      `replay_source match=${ID} outcome=gc_no_replay`,
+      `replay_source match=${ID} outcome=gc_rate_limited detail=gc_budget`,
+      `replay_source match=${ID} outcome=gc_ok`,
+    ]);
+    expect(classifyGcFailure({ status: 429 })).toBe('gc_rate_limited');
+    expect(classifyGcFailure({ status: 404 })).toBe('gc_not_found');
+    expect(classifyGcFailure({ status: 503 })).toBe('gc_unavailable');
   });
 });

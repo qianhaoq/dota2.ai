@@ -175,6 +175,16 @@ describe('home: the same coach on your own model', () => {
     expect(within(note).getByRole('link', { name: /your own agent/ }).getAttribute('href')).toBe('#ways');
   });
 
+  it('every page opens with the recommendation to run it in DSH; on home it links to the steps here', () => {
+    const { container } = home();
+    const banner = container.querySelector('.om-banner') as HTMLElement;
+    expect(banner.textContent).toContain('Recommended');
+    expect(banner.textContent).toContain('DeepSeek Harness');
+    expect(within(banner).getByRole('link', { name: /Set up in 3 steps/ }).getAttribute('href')).toBe('#ways-dsh');
+    // First thing on the page, above the header.
+    expect(container.querySelector('.cx')?.firstElementChild).toBe(banner);
+  });
+
   it('#ways-dsh opens the DSH tab from another one', async () => {
     const { container } = home();
     const ways = container.querySelector('.hm-ways') as HTMLElement;
@@ -190,6 +200,7 @@ describe('home: the same coach on your own model', () => {
     try {
       const { container } = home();
       expect(container.querySelector('.om-callout')).toBeNull();
+      expect(container.querySelector('.om-banner')).toBeNull();
     } finally { restore(); }
   });
 });
