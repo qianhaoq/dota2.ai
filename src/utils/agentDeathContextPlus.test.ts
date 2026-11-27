@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runTraceTool } from '../../packages/review-engine/src/trace/index.js';
-import { ultimateOf } from '../../lib/agent/ultimates.js';
+import { ultimateOf, ultimatesOf } from '../../lib/agent/ultimates.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { evaluateHabit, habitGoal } from '../../lib/coach/goals.js';
 
@@ -311,5 +311,46 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     expect(dc.deaths[0].non_hero_death_without_enemy_hero_damage).toBeNull();
     expect(dc.deaths_not_known.non_hero_without_enemy_hero_damage).toBe(1);
     expect(dc.deaths_where.non_hero_without_enemy_hero_damage).toEqual([]);
+  });
+
+  it('checks actual fight event positions (not averaged centroid), simultaneous ally deaths, multi-ultimate heroes, and objective lookahead coverage (Codex P1s on #464)', () => {
+    // 1. Death at (0,0) at t=100, followed by 4 fight deaths split between (6000,6000) and (-6000,-6000) at 125..132 -> centroid (0,0) must NOT match nearby_fight.
+    const split = makeTrace({
+      pos: { enchantress: [0, 0], sven: [6000, 6000], lion: [6100, 6000], tidehunter: [-6000, -6000], lina: [-6100, -6000] },
+      deaths: [[100, 0, 2, 1], [125, 1, 2, 2], [127, 2, 1, 3], [129, 3, 1, 4], [132, 4, 1, 5]],
+    });
+    expect((runTraceTool(split, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf }) as any).deaths[0].nearby_fight).toBe(false);
+
+    // 2. Simultaneous ally death at exact timestamp 100.1 (dead from second 101) is excluded from allies_near_who_survived_10s.
+    const simul = makeTrace({
+      pos: { enchantress: [100, 100], sven: [300, 100], lion: [200, 100], tidehunter: [250, 100], lina: [350, 100] },
+      dead: { enchantress: [[101, 130]], sven: [[101, 130]] },
+      deaths: [[100.1, 0, 2, 1], [100.1, 1, 2, 2]],
+    });
+    expect((runTraceTool(simul, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf }) as any).deaths[0].allies_near_who_survived_10s).toEqual([]);
+
+    // 3. Multi-ultimate enemy hero (Dark Willow: bedlam + terrorize) detects Terrorize via ultimatesOf.
+    const dw = makeTrace({
+      heroes: [
+        { key: 'enchantress', npc: 'npc_dota_hero_enchantress', team: 2, player_index: 0 },
+        { key: 'dark_willow', npc: 'npc_dota_hero_dark_willow', team: 3, player_index: 5 },
+      ],
+      extraNames: ['dark_willow_terrorize', 'modifier_dark_willow_debuff_fear'],
+      casts: [[95, 1, 2, 0, 10]],
+      modifiers: [[95, 0, 3, 1, 1, 4, 't']],
+      deaths: [[100, 0, 1, 1]],
+    });
+    const dwDc: any = runTraceTool(dw, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf });
+    expect(dwDc.deaths[0].enemy_ultimates_absorbed).toEqual([{ hero: 'dark_willow', ability: 'dark_willow_terrorize' }]);
+    expect(dwDc.deaths_where.absorbed_enemy_ultimate).toEqual(['1:40']);
+
+    // 4. Short trace (n: 105, death at 100, empty Roshan logs) cannot rule out nearby_objective in [105..120] -> null, not false.
+    const shortObj = makeTrace({
+      n: 105,
+      roshan_kills: [],
+      roshan_damage: [],
+      deaths: [[100, 0, 2, 1]],
+    });
+    expect((runTraceTool(shortObj, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf }) as any).deaths[0].nearby_objective).toBeNull();
   });
 });

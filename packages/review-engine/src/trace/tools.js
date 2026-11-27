@@ -338,33 +338,40 @@ function mergedDisableSeconds(controlsForHero, from, to) {
   return Math.round(total * 10) / 10;
 }
 
-function enemyUltimatesAbsorbed(trace, h, npc, from, t, ultimateOf) {
-  if (typeof ultimateOf !== 'function' || !Array.isArray(trace.casts) || !Array.isArray(trace.damage) || !Array.isArray(trace.modifiers)) return null;
+function enemyUltimatesAbsorbed(trace, h, npc, from, t, ultimatesOf, ultimateOf) {
+  const listFor = typeof ultimatesOf === 'function'
+    ? (k) => { const res = ultimatesOf(k); return Array.isArray(res) ? res.filter(Boolean) : res ? [res] : []; }
+    : typeof ultimateOf === 'function'
+      ? (k) => { const res = ultimateOf(k); return Array.isArray(res) ? res.filter(Boolean) : res ? [res] : []; }
+      : null;
+  if (!listFor || !Array.isArray(trace.casts) || !Array.isArray(trace.damage) || !Array.isArray(trace.modifiers)) return null;
   const myTeam = trace.heroes[h].team;
   const out = [];
   for (let eh = 0; eh < trace.heroes.length; eh += 1) {
     if (trace.heroes[eh].team === myTeam) continue;
     const key = trace.heroes[eh].key;
-    const ult = ultimateOf(key);
-    if (!ult) continue;
+    const ults = listFor(key);
+    if (!ults.length) continue;
     const enpc = nameId(trace, trace.heroes[eh].npc);
-    const ultId = nameId(trace, ult);
     const slugPrefix = `${key}_`;
     const internalPrefix = `${heroByKey(key)?.internalSlug ?? key}_`;
-    const shortUlt = ult.startsWith(slugPrefix) ? ult.slice(slugPrefix.length) : ult.startsWith(internalPrefix) ? ult.slice(internalPrefix.length) : ult;
-    const hitByCast = ultId >= 0 && trace.casts.some((c) => c[1] === enpc && c[2] === ultId && c[3] === npc && c[0] >= from && c[0] <= t + 0.05);
-    const hitByDmg = !hitByCast && ultId >= 0 && trace.damage.some((r) => r[1] === enpc && r[2] === npc && r[3] === ultId && r[0] >= Math.floor(from) && r[0] <= t);
-    const hitByMod = !hitByCast && !hitByDmg && trace.modifiers.some((m) => {
-      if (m[1] !== npc || m[3] !== enpc || m[4] !== 1 || m[0] < from || m[0] > t + 0.05) return false;
-      const mn = trace.names?.[m[2]];
-      return typeof mn === 'string' && (mn.includes(ult) || (shortUlt.length >= 5 && mn.includes(shortUlt)));
-    });
-    if (hitByCast || hitByDmg || hitByMod) out.push({ hero: key, ability: ult });
+    for (const ult of ults) {
+      const ultId = nameId(trace, ult);
+      const shortUlt = ult.startsWith(slugPrefix) ? ult.slice(slugPrefix.length) : ult.startsWith(internalPrefix) ? ult.slice(internalPrefix.length) : ult;
+      const hitByCast = ultId >= 0 && trace.casts.some((c) => c[1] === enpc && c[2] === ultId && c[3] === npc && c[0] >= from && c[0] <= t + 0.05);
+      const hitByDmg = !hitByCast && ultId >= 0 && trace.damage.some((r) => r[1] === enpc && r[2] === npc && r[3] === ultId && r[0] >= Math.floor(from) && r[0] <= t);
+      const hitByMod = !hitByCast && !hitByDmg && trace.modifiers.some((m) => {
+        if (m[1] !== npc || m[3] !== enpc || m[4] !== 1 || m[0] < from || m[0] > t + 0.05) return false;
+        const mn = trace.names?.[m[2]];
+        return typeof mn === 'string' && (mn.includes(ult) || (shortUlt.length >= 5 && mn.includes(shortUlt)));
+      });
+      if (hitByCast || hitByDmg || hitByMod) out.push({ hero: key, ability: ult });
+    }
   }
   return out;
 }
 
-function nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight) {
+function nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight, traceEnd) {
   const myTeam = trace.heroes[h].team;
   const format = (fi, relation, distance) => {
     let myLost = 0; let enemyLost = 0;
@@ -383,41 +390,50 @@ function nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight) {
       enemy_deaths: enemyLost,
     };
   };
-  const own = fightInfos.find((fi) => fi.f.deaths.includes(d));
-  if (own) {
-    // fights() groups deaths by time alone: verify spatial proximity to another death of the fight so an isolated
-    // cross-map death in the same 15 s window is never mislabeled as `in_fight` (Codex P1 on #464).
-    if (!atPos) return null;
-    const otherDeaths = own.f.deaths.filter((o) => o !== d);
-    const otherSpots = otherDeaths.map((o) => {
+  // Measure proximity against actual death positions of a fight (never its averaged centroid, which can land in
+  // empty map center when two distant skirmishes happen in the same 15 s window; Codex P1 on #464).
+  const closestDeathDist = (fi, exclude) => {
+    const spots = fi.f.deaths.filter((o) => o !== exclude).map((o) => {
       const v = heroOfName(trace, o[1]);
       return v >= 0 ? stateAt(trace, v, o[0] - 1) : null;
     });
-    const knownSpots = otherSpots.filter(Boolean);
-    const closestOther = knownSpots.length ? Math.min(...knownSpots.map((p) => dist(atPos, p))) : null;
-    if (closestOther != null && closestOther <= 3000) {
-      const fightDist = own.part.at ? dist(atPos, own.part.at) : closestOther;
-      return format(own, inAFight === true ? 'in_fight' : 'during_fight', Math.min(fightDist, closestOther));
+    const known = spots.filter(Boolean);
+    return {
+      min: known.length ? Math.min(...known.map((p) => dist(atPos, p))) : null,
+      anyMissing: spots.some((p) => !p),
+    };
+  };
+  const own = fightInfos.find((fi) => fi.f.deaths.includes(d));
+  if (own) {
+    if (!atPos) return null;
+    const { min, anyMissing } = closestDeathDist(own, d);
+    if (min != null && min <= 3000) {
+      return format(own, inAFight === true ? 'in_fight' : 'during_fight', min);
     }
-    if (otherSpots.some((p) => !p)) return null;
+    if (anyMissing) return null;
     // Far (>3000) from every other death in this temporal group: not near this fight.
   }
   const candidates = fightInfos.filter((fi) => fi !== own && t >= fi.part.engaged_at - 30 && t <= fi.f.to + 15);
-  if (!candidates.length) return false;
+  if (!candidates.length) return traceEnd == null || t + 30 > traceEnd ? null : false;
   if (!atPos) return null;
-  const near = candidates
-    .filter((fi) => fi.part.at && dist(atPos, fi.part.at) <= 3000)
-    .sort((a, b) => Math.abs(a.part.engaged_at - t) - Math.abs(b.part.engaged_at - t));
-  if (near.length) {
-    const best = near[0];
-    const rel = t < best.part.engaged_at ? 'before_fight' : t <= best.f.to ? 'during_fight' : 'after_fight';
-    return format(best, rel, dist(atPos, best.part.at));
+  let anyMissing = false;
+  const near = [];
+  for (const fi of candidates) {
+    const { min, anyMissing: miss } = closestDeathDist(fi, null);
+    if (min != null && min <= 3000) near.push({ fi, min });
+    else if (miss) anyMissing = true;
   }
-  if (candidates.some((fi) => !fi.part.at)) return null;
+  near.sort((a, b) => Math.abs(a.fi.part.engaged_at - t) - Math.abs(b.fi.part.engaged_at - t));
+  if (near.length) {
+    const { fi: best, min } = near[0];
+    const rel = t < best.part.engaged_at ? 'before_fight' : t <= best.f.to ? 'during_fight' : 'after_fight';
+    return format(best, rel, min);
+  }
+  if (anyMissing || traceEnd == null || t + 30 > traceEnd) return null;
   return false;
 }
 
-function nearbyObjectiveFor(trace, h, t, atPos, allSieges) {
+function nearbyObjectiveFor(trace, h, t, atPos, allSieges, traceEnd) {
   let unknown = false;
   const myTeam = trace.heroes[h].team;
   // Roshan activity within [-10, +20] s and 2500 units. Older traces without Roshan logs cannot rule out Roshan
@@ -483,7 +499,8 @@ function nearbyObjectiveFor(trace, h, t, atPos, allSieges) {
       };
     }
   }
-  return unknown ? null : false;
+  // If fewer than 20 s of trace remain after the death, absence of an observed objective cannot establish false (Codex P1 on #464).
+  return unknown || traceEnd == null || t + 20 > traceEnd ? null : false;
 }
 
 export function deathContext(trace, args = {}, ctx = {}) {
@@ -580,10 +597,12 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const alliesKnownAtDeath = Boolean(atDeath.me && atDeath.me.x != null && atDeath.me.y != null)
       && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, t));
     const alliesSurvived10s = !alliesKnownAtDeath ? null : (() => {
+      const winStart = Math.min(t, Math.floor(t));
       const survivors = atDeath.allies.map((a) => a.hero).filter((ak) => {
         const ai = trace.heroes.findIndex((x) => x.key === ak);
         const anpc = ai >= 0 ? nameId(trace, trace.heroes[ai].npc) : -1;
-        return !real.some((o) => o[1] === anpc && o[0] > t && o[0] <= t + 10);
+        // Include simultaneous deaths at t (or same whole-second sample) so an ally killed at the exact same moment is not listed as surviving (Codex P1 on #464).
+        return !real.some((o) => o[1] === anpc && o[0] >= winStart && o[0] <= t + 10);
       });
       // When fewer than 10 s of trace remain after the death, the absence of a death row cannot establish
       // 10 s survival for nearby allies still alive at trace end (Codex P1 on #464).
@@ -599,10 +618,10 @@ export function deathContext(trace, args = {}, ctx = {}) {
       if (k < 0 || k >= trace.n || stH.alive[k] == null || (stH.alive[k] === 1 && (stH.x?.[k] == null || stH.y?.[k] == null || stH.hp?.[k] == null))) windowSampled = false;
     }
     const disableSec = windowSampled ? mergedDisableSeconds(trace.controls[h], from, t) : null;
-    const enemyUlts = enemyUltimatesAbsorbed(trace, h, npc, from, t, ctx?.ultimateOf);
+    const enemyUlts = enemyUltimatesAbsorbed(trace, h, npc, from, t, ctx?.ultimatesOf, ctx?.ultimateOf);
     const inAFight = !fought.has(d) ? false : mostAllies == null ? null : mostAllies >= 1;
-    const nearFight = nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight);
-    const nearObj = nearbyObjectiveFor(trace, h, t, atPos, allSieges);
+    const nearFight = nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight, traceEnd);
+    const nearObj = nearbyObjectiveFor(trace, h, t, atPos, allSieges, traceEnd);
     return {
       // The window is part of what the record says (its damage, its snapshots): a non-default one is in the ref.
       ref: `death:${trace.heroes[h].key}:${n}${window === 12 ? '' : `:w${window}`}`, n, t, clock: clock(t), killer: nameOf(trace, d[2]), killer_kind: kKind, row: d[3],

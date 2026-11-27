@@ -43,7 +43,7 @@ import { keyMoments } from '../lib/agent/keyMoments.js';
 import { wardPlacers } from '../lib/agent/wardReport.js';
 import { afterWonFights, afterTowersFell, fightsAfterBigItems, richestOf, LONG_RESPAWN, STILL_DEAD_AFTER } from '../lib/agent/decisionPoints.js';
 import { moneyOf } from '../lib/agent/farmReport.js';
-import { ultimateOf } from '../lib/agent/ultimates.js';
+import { ultimateOf, ultimatesOf } from '../lib/agent/ultimates.js';
 import { fightParticipation, goldAdvantage, linkHeroNames, matchFights, runTraceTool } from '../packages/review-engine/src/trace/index.js';
 import { dist, heroOfName, region, stateAt } from '../packages/review-engine/src/trace/query.js';
 import { heroStateAt, observersNear } from '../packages/review-engine/src/trace/state.js';
@@ -74,7 +74,7 @@ for (const f of files) {
   // From Radiant's first hero: my_team = Radiant. Every fight is read once.
   const first = trace.heroes.find((h) => h.team === 2);
   for (const hero of trace.heroes) {
-    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }, { ultimateOf }).deaths ?? []) {
+    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }, { ultimateOf, ultimatesOf }).deaths ?? []) {
       if (d.allies_within_2200.at_death != null) {
         deaths.push({
           allies: d.allies_within_2200.at_death,
