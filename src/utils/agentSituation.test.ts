@@ -8,7 +8,8 @@ import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, approachClaims, collectFacts
 import { HABITS, evaluateHabit, habitGoal } from '../../lib/coach/goals.js';
 import { ANSWERS, GAP_CLOSERS } from '../../lib/coach/knowledge.js';
 import { MIN_FEW_GAMES, proItemsFor } from '../../lib/agent/proItems.js';
-import { patchData } from '../../lib/agent/patchData.js';
+import { patchData, patchForGame } from '../../lib/agent/patchData.js';
+import { itemLifts } from '../../lib/coach/matchups.js';
 import { deathContext, itemTimeline } from '../../packages/review-engine/src/trace/index.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
@@ -36,6 +37,30 @@ describe('build_check: the build against what killed the player', () => {
     // An enemy who neither killed the player nor damaged them in a death is not listed; one with no curated trait has no "known_for".
     for (const e of r.damage_in_my_deaths.by_enemy) expect(e.kills_of_me + e.share_from_their_attacks + e.share_from_their_abilities_and_items).toBeGreaterThan(0);
     expect(r.damage_in_my_deaths.by_enemy.find((e: any) => e.enemy === 'venomancer')).not.toHaveProperty('known_for');
+  });
+
+  it('answers_to_top_killers: each top killer\'s abilities in Valve\'s words and what pros build against that hero, whatever the item', () => {
+    const d: any = deathContext(trace, { hero: 'beastmaster', all_damage_sources: true });
+    const [pa, necro] = r.answers_to_top_killers;
+    expect(r.answers_to_top_killers).toHaveLength(2);
+    expect(pa).toMatchObject({ killer: 'phantom_assassin', kills_of_me: d.killed_by.phantom_assassin, known_for: ['physical', 'evasion'] });
+    expect(necro).toMatchObject({ killer: 'necrolyte', kills_of_me: d.killed_by.necrolyte });
+    // The abilities are the game release's flags and Valve's own description.
+    const pd = patchForGame(trace.match_id, match);
+    const listed = pd.heroAbilities(44)!;
+    expect(pa.their_abilities.map((a: any) => a.ability)).toEqual(listed.map((a) => a.id));
+    const abilities = JSON.parse(readFileSync(new URL('../../lib/data/constants/abilities.json', import.meta.url), 'utf8'));
+    for (const a of pa.their_abilities) if (abilities[a.ability]?.desc) expect(a.valve_text).toBe(String(abilities[a.ability].desc).replace(/\s+/g, ' ').slice(0, 320));
+    // Pro items against the killer are itemLifts' own, not cut down to this role's damage-type list: Helm of the
+    // Dominator is on no answer list and still shows, with its share, its usual share and the sample.
+    const lifts = itemLifts(38, 36);
+    expect(necro.pro_items_against_this_killer.map((i: any) => i.item)).toEqual(lifts.map((x) => x.key));
+    expect(Object.values(ANSWERS).some((byRole: any) => [...byRole.core, ...byRole.support].includes('helm_of_the_dominator'))).toBe(false);
+    expect(necro.pro_items_against_this_killer.find((i: any) => i.item === 'helm_of_the_dominator')).toMatchObject({ share_of_pro_games_against_this_hero: lifts[1].rate, share_usually: lifts[1].base, pro_games: lifts[1].n, cost: items.helm_of_the_dominator.cost, player_first_held: null });
+    // No item stood out against Phantom Assassin: that is unknown (null, and said under gaps), not "nothing works".
+    expect(pa.pro_items_against_this_killer).toBeNull();
+    expect(r.gaps).toContainEqual(expect.objectContaining({ topic: 'pro_items_against_phantom_assassin' }));
+    expect(r.note).toContain('answers_to_top_killers');
   });
 
   it('each big item says what it is for from the data, and an item the data does not classify says nothing', () => {
@@ -78,13 +103,12 @@ describe('build_check: the build against what killed the player', () => {
     expect(r.role_source).toBe('replay_lanes_and_scoreboard');
     expect(r.played_as).toBe('frontline_initiator');
     expect(r.my_economy).toMatchObject({ source: 'match_record', gold_per_min: expect.any(Number) });
-    const attack = r.items_that_answer_attack_damage.map((x: any) => x.item);
-    expect(attack).toEqual(ANSWERS.physical.core);
-    const halberd = r.items_that_answer_attack_damage.find((x: any) => x.item === 'heavens_halberd');
-    expect(halberd).toMatchObject({ name: '天堂之戟', cost: items.heavens_halberd.cost, estimated_minutes_of_my_farm: expect.any(Number), player_first_held: null, does: [{ kind: 'active', title: 'Disarm', valve_text: 'Prevents a target from attacking for 3 seconds.' }] });
-    // The drawback is in Valve's own text, for the model to read: Ghost Scepter and magic damage.
-    expect(r.items_that_answer_attack_damage.find((x: any) => x.item === 'ghost').does[0].valve_text).toContain('more vulnerable to magic damage');
-    expect(r.items_that_answer_spell_damage.find((x: any) => x.item === 'pipe').player_first_held).toBe('29:08');
+    // No curated "items that answer attack/spell damage" list, cut to a role: it hid the item pros actually build
+    // against the killer (owner, 2026-11-27). The answers are per killer, in answers_to_top_killers.
+    expect(r).not.toHaveProperty('items_that_answer_attack_damage');
+    expect(r).not.toHaveProperty('items_that_answer_spell_damage');
+    const helm = r.answers_to_top_killers[1].pro_items_against_this_killer.find((x: any) => x.item === 'helm_of_the_dominator');
+    expect(helm).toMatchObject({ cost: items.helm_of_the_dominator.cost, estimated_minutes_of_my_farm: Math.round((items.helm_of_the_dominator.cost / r.my_economy.gold_per_min) * 10) / 10, player_first_held: null });
     // Without the match data (and on this legacy trace with no creep_kills/gold/net_worth), the role is not known:
     // both roles' answers are offered, and the gap says why.
     const bare: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en' });
@@ -92,7 +116,9 @@ describe('build_check: the build against what killed the player', () => {
     expect(bare.my_economy).toBeNull();
     expect(bare.gaps[0]).toEqual({ topic: 'role', reason: 'no_match_data_for_this_game' });
     expect(bare.gaps.some((g: any) => g.topic === 'economy')).toBe(true);
-    expect(bare.items_that_answer_attack_damage.map((x: any) => x.item)).toEqual([...new Set([...ANSWERS.physical.core, ...ANSWERS.physical.support])]);
+    // The killers' answers do not depend on the role: the same items without the match data, with no farm estimate.
+    expect(bare.answers_to_top_killers.map((k: any) => k.killer)).toEqual(r.answers_to_top_killers.map((k: any) => k.killer));
+    expect(bare.answers_to_top_killers[1].pro_items_against_this_killer.every((x: any) => x.estimated_minutes_of_my_farm === undefined)).toBe(true);
     expect(bare.my_big_items_in_order[1].name).toBe('Pipe of Insight');
   });
 

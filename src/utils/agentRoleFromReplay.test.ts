@@ -94,15 +94,12 @@ describe('roleFromReplay (P1-2)', () => {
       ['crystal_maiden', 5, 'support'],
       ['undying', 4, 'support'],
     ]);
-    // build_check on poor pos-5 Disruptor gets role='support', pos=5, economy GPM, and estimated_minutes_of_my_farm on answer items.
+    // build_check on poor pos-5 Disruptor gets role='support', pos=5 and economy GPM (estimated_minutes_of_my_farm on the
+    // items pros build against a killer is checked in agentSituation.test.ts: this synthetic game has no deaths).
     const bc: any = buildCheck(tr, { hero: 'disruptor' }, { lang: 'en' });
     expect(bc).toMatchObject({ my_role: 'support', my_position: 5, role_source: 'replay', played_as: 'support' });
     expect(bc.my_economy).toMatchObject({ source: 'replay_gold_log', gold_per_min: expect.any(Number) });
-    const glimmer = bc.items_that_answer_spell_damage.find((i: any) => i.item === 'glimmer_cape');
-    const pipe = bc.items_that_answer_spell_damage.find((i: any) => i.item === 'pipe');
-    expect(glimmer.estimated_minutes_of_my_farm).toBeLessThan(pipe.estimated_minutes_of_my_farm);
-    // Cheap support save items precede expensive aura items like Pipe in magic.support.
-    expect(bc.items_that_answer_spell_damage.indexOf(glimmer)).toBeLessThan(bc.items_that_answer_spell_damage.indexOf(pipe));
+    expect(bc.answers_to_top_killers).toEqual([]);
   });
 
   it('uses observer wards as tie-breaker when two lane partners have identical early farm', () => {
@@ -169,8 +166,6 @@ describe('roleFromReplay (P1-2)', () => {
     const bcNw: any = buildCheck(nwOnly, { hero: 'disruptor' }, { lang: 'en' });
     expect(bcNw.my_economy).toEqual({ source: 'replay_net_worth', gold_per_min: null, net_worth: 5250, net_worth_at_20_00: 5000 });
     expect(bcNw.gaps).toContainEqual({ topic: 'economy_gpm', reason: 'net_worth_only_not_income_rate' });
-    // No estimated_minutes_of_my_farm when GPM is unknown.
-    expect(bcNw.items_that_answer_spell_damage.every((i: any) => i.estimated_minutes_of_my_farm === undefined)).toBe(true);
 
     // Unparsed scoreboard (GPM, no gold_t) + trace.gold -> gold_at_20_00 carries replay_gold_log provenance and passive-gold gap.
     const withGold = synthGame({

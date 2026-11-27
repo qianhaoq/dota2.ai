@@ -151,5 +151,6 @@ describe('what the tools say with them, and without', () => {
     const one = calibrate({ ...old, wards: [[null, null, 3, 'o', at.x, at.y]] });
     expect(one.deaths_traded.find((x: any) => x.case === 'enemy observer within 1600').deaths).toBeGreaterThan(0);
     expect(one.died_within_20s.some((x: any) => x.case === 'enemy observer within 1600' && x.moments > 0)).toBe(true);
-  });
+  // Runs scripts/calibrate.mjs twice in child processes: 2.5–6 s on CI depending on what runs beside it (#471).
+  }, 30000);
 });
