@@ -582,7 +582,15 @@ export function deathContext(trace, args = {}, ctx = {}) {
       if (survivors.length > 0 && (traceEnd == null || t + 10 > traceEnd)) return null;
       return survivors;
     })();
-    const disableSec = Array.isArray(trace.controls) ? mergedDisableSeconds(trace.controls[h], from, t) : null;
+    const stH = trace.states?.[h];
+    // Controls intervals are derived from sampled state rows; blank/missing samples in the death window leave
+    // total disable duration unknown (null) rather than 0 (Codex P1 on #464).
+    let windowSampled = Boolean(Array.isArray(trace.controls) && trace.controls[h] && stH?.alive);
+    for (let sec = Math.floor(from); windowSampled && sec <= Math.floor(t); sec += 1) {
+      const k = sec - trace.t0;
+      if (k < 0 || k >= trace.n || stH.alive[k] == null || (stH.alive[k] === 1 && (stH.x?.[k] == null || stH.y?.[k] == null || stH.hp?.[k] == null))) windowSampled = false;
+    }
+    const disableSec = windowSampled ? mergedDisableSeconds(trace.controls[h], from, t) : null;
     const enemyUlts = enemyUltimatesAbsorbed(trace, h, npc, from, t, ctx?.ultimateOf);
     const inAFight = !fought.has(d) ? false : mostAllies == null ? null : mostAllies >= 1;
     const nearFight = nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight);

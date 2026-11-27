@@ -279,4 +279,21 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     });
     expect((runTraceTool(allyDied, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].allies_near_who_survived_10s).toEqual([]);
   });
+
+  it('keeps disable_seconds_in_window null when hero state samples are blanked in the death window (Codex P1 on #464)', () => {
+    const tr = makeTrace({
+      deaths: [[100, 0, 2, 1]],
+    });
+    // Intact samples with no controls -> 0 is established.
+    expect((runTraceTool(tr, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].disable_seconds_in_window).toBe(0);
+    // Blank samples in [85, 105] -> snapshots are null and disable_seconds_in_window must be null, never 0.
+    for (let s = 85; s <= 105; s += 1) {
+      tr.states[0].x[s] = null;
+      tr.states[0].y[s] = null;
+      tr.states[0].hp[s] = null;
+      tr.states[0].alive[s] = null;
+    }
+    const blanked: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' }, { ultimateOf });
+    expect(blanked.deaths[0].disable_seconds_in_window).toBeNull();
+  });
 });
