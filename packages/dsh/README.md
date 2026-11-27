@@ -19,7 +19,7 @@ Download `qianhaoq-dsh-dota2ai-<version>.tgz` and `SHA256SUMS` from the latest `
 
 ```sh
 sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.0.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.1.tgz
 dsh web
 ```
 
@@ -27,6 +27,7 @@ One archive serves Linux, macOS and Windows: there is no native code. Parsed rep
 
 If the sidebar entry or tools do not show up, check the profile's `package.json`: the package must be in
 `dependencies` *and* in `dsh.profile.bundles`. `dsh --profile web --dump-config` should list a `dota2ai` entry.
+In GUI profiles (`dsh web` and Desktop), DSH's `typert-loader` automatically loads `./typert` and `Dota2AiRemote` attaches to `ctx.typert`; in headless CLI profiles without `typert`, the seven `dota2ai_*` tools and the `dota2ai` skill still activate cleanly.
 
 ## Tools
 
@@ -76,7 +77,7 @@ node packages/dsh/scripts/installed-smoke.mjs packages/dsh/dist/*.tgz \
 
 ```sh
 sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.0.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.1.tgz
 dsh web
 ```
 

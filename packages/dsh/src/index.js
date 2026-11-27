@@ -5,7 +5,6 @@ import { TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol';
 import { toolOptions } from './tools.js';
 import { headersFor, skillRegistration } from './skill.js';
 import { createDshService } from './service.js';
-import { TYPERT } from './typert.js';
 
 const REMOTE_METHOD_DESCRIPTOR = '@deepseek-ai/dsh-typert-protocol/remote-methods';
 
@@ -90,10 +89,9 @@ export function apply(ctx, config = {}) {
   });
 
   // Mount Typert Remote when running in a GUI/Gateway profile (`dsh web` or Desktop).
+  // Manifest registration (`./typert`) is owned by DSH's `typert-loader` in GUI profiles;
+  // in headless CLI profiles without `typert`, this block stays dormant while tools/skill activate.
   ctx.inject(['typert'], (scope) => {
-    if (!scope.typert.getPackage?.(TYPERT.package, 'host')) {
-      scope.typert.register(TYPERT);
-    }
     scope.plugin(Dota2AiRemote, dshService);
   });
 
