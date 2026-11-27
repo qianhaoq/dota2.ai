@@ -184,9 +184,10 @@ describe('data refresh: an upstream that fails for a while (#419)', () => {
     expect(w.calls).toEqual(['A']);
     expect(r.steps[1]).toMatchObject({ outcome: 'skipped' });
 
-    const wOnly = world({ A: [], B: [{ status: 0, writes: ['lib/b.json'] }] });
+    const wOnly = world({ A: [], B: [{ status: 1, writes: ['lib/b.json'] }, { status: 0, writes: ['lib/b.json'] }] });
     const rOnly = refresh(null, { STRATZ_API_TOKEN: 't', DATA_REFRESH_ONLY: 'b' }, { ...wOnly.deps, list });
-    expect(wOnly.calls).toEqual(['B']);
+    expect(wOnly.calls).toEqual(['B', 'B']);
+    expect(wOnly.slept).toEqual([15]);
     expect(rOnly.steps).toHaveLength(1);
     expect(() => refresh(null, { DATA_REFRESH_ONLY: 'nonexistent' }, { ...wOnly.deps, list })).toThrow(/DATA_REFRESH_ONLY/);
   });
