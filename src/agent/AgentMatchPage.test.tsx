@@ -977,7 +977,7 @@ describe('AgentMatchPage', () => {
   });
 
   it('a word on a finding names the review on screen: its prompt version and its writer\'s own id, never "the default"', async () => {
-    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash' };
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash', model_meta: { 'kimi-k3.1-pro': { label: 'Kimi K3.1 Pro', minutes: [13, 13] } } };
     const ready = (extra: object) => ({ status: 'ready', review: { ...review, lang: 'zh' }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 1, ...extra });
     const calls = mockFetch({ '/feedback': { status: 'ok' }, 'ref=overview': overview, '/review?': ready({ prompt_version: 37 }), '/api/agent/9100904020': offer });
     ui.lang = 'zh';
@@ -1009,7 +1009,16 @@ describe('AgentMatchPage', () => {
 
   it('the reader picks who writes the review: the model goes in the link, the start, every poll, the chat and the shared link', async () => {
     let started: any = null;
-    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro', 'glm-5.3'], default_model: 'deepseek-flash' };
+    const offer = {
+      trace: true, model_configured: true, heroes,
+      models: ['deepseek-flash', 'kimi-k3.1-pro', 'glm-5.3'],
+      default_model: 'deepseek-flash',
+      model_meta: {
+        'deepseek-flash': { label: 'DeepSeek 4.1 Flash', minutes: [2, 3] },
+        'kimi-k3.1-pro': { label: 'Kimi K3.1 Pro', minutes: [13, 13] },
+        'glm-5.3': { label: 'GLM-5.3', minutes: [24, 24] },
+      },
+    };
     const calls = mockFetch({
       '/chat': () => sse([{ text: '答。' }, { done: true }]),
       'ref=overview': overview,
@@ -1073,7 +1082,7 @@ describe('AgentMatchPage', () => {
 
   it('the wait told is the writing model\'s, also when a slow model is the server\'s default (review of #327)', async () => {
     // A server set up with Kimi alone: nothing to pick, no model in the requests, and Kimi's wait — not two to three minutes.
-    const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro'], default_model: 'kimi-k3.1-pro' } });
+    const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes, models: ['kimi-k3.1-pro'], default_model: 'kimi-k3.1-pro', model_meta: { 'kimi-k3.1-pro': { label: 'Kimi K3.1 Pro', minutes: [13, 13] } } } });
     page('/r/9100904020?hero=beastmaster&lang=en');
     expect(await screen.findByRole('heading', { name: 'Review this game' })).toBeTruthy();
     expect(screen.getByText(/and writes what to change\. With Kimi K3\.1 Pro, expect about 13 minutes \(as timed on a real game\)\.$/)).toBeTruthy();
@@ -1082,7 +1091,16 @@ describe('AgentMatchPage', () => {
   });
 
   it('while a review is being written the page says who writes it and how long to expect; a model that was not timed gets no time', async () => {
-    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'glm-5.3-flash', 'glm-5.4'], default_model: 'deepseek-flash' };
+    const offer = {
+      trace: true, model_configured: true, heroes,
+      models: ['deepseek-flash', 'glm-5.3-flash', 'glm-5.4'],
+      default_model: 'deepseek-flash',
+      model_meta: {
+        'deepseek-flash': { label: 'DeepSeek 4.1 Flash', minutes: [2, 3] },
+        'glm-5.3-flash': { label: 'GLM-5.3 Flash', minutes: [11, 13] },
+        'glm-5.4': { label: 'GLM-5.4', minutes: null },
+      },
+    };
     mockFetch({ 'ref=overview': overview, '/review?': { status: 'running', steps: [{ tool: 'match_overview', args: {} }] }, '/api/agent/9100904020': offer });
     const first = page('/r/9100904020?hero=beastmaster&lang=en&model=glm-5.3-flash');
     expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
@@ -1466,7 +1484,7 @@ describe('AgentMatchPage', () => {
 
   it('a wait belongs to the review that was refused: picking another model meanwhile frees the button, and only that review starts', async () => {
     const bodies: any[] = [];
-    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash' };
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash', model_meta: { 'kimi-k3.1-pro': { label: 'Kimi K3.1 Pro', minutes: [13, 13] } } };
     mockFetch({
       '/review?': { status: 'none' },
       '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return bodies.length === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 2 } : { __status: 202, status: 'running', steps: [] }; },
@@ -1493,7 +1511,7 @@ describe('AgentMatchPage', () => {
     mockFetch({
       '/api/coach/9100904020': board,
       '/prepare': () => { if (++prepares > 20) throw new Error('prepare loop'); return prepares === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 1 } : { __status: 202, status: 'running', stage: 'locating' }; },
-      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash', parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash', model_meta: { 'kimi-k3.1-pro': { label: 'Kimi K3.1 Pro', minutes: [13, 13] } }, parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
     fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
@@ -1555,7 +1573,7 @@ describe('AgentMatchPage', () => {
 
   it('each review keeps its own wait: a second refusal for another model does not cut the first one short', async () => {
     const bodies: any[] = [];
-    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash' };
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash', model_meta: { 'kimi-k3.1-pro': { label: 'Kimi K3.1 Pro', minutes: [13, 13] } } };
     mockFetch({
       '/review?': { status: 'none' },
       '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return { __status: 429, code: 'rate_limited', retryAfterSec: bodies.length === 1 ? 30 : 20 }; },

@@ -154,15 +154,19 @@ describe('GET /r/:matchId', () => {
     expect(html).not.toContain('SecretName');
   });
 
-  it('a link to the review another model wrote (?model=) previews that review, and keeps the model in its address', async () => {
+  it('a link with ?model= accepts deepseek-flash and drops removed or unknown models', async () => {
     const asked: unknown[][] = [];
-    const base = await start({ review: async (...a: unknown[]) => { asked.push(a); return { verdict: 'Written by the other model.' }; } });
+    const base = await start({ review: async (...a: unknown[]) => { asked.push(a); return { verdict: 'Written by DeepSeek.' }; } });
     const p = buildCoachReport(withNames()).players[4];
-    const html = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}&model=glm-5.3-flash&ref=share`)).text();
-    expect(asked).toEqual([[9091400302, p.hero.slug, 'en', null, 'glm-5.3-flash']]);
-    expect(tag(html, 'og:description')?.startsWith('Written by the other model.')).toBe(true);
-    expect(tag(html, 'og:url')).toBe(`https://dota2.ai/r/9091400302?hero=${p.hero.slug}&amp;model=glm-5.3-flash`);
-    // Anything that is not a model of the list is no model: the default's review is looked up, and the address drops it.
+    const html = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}&model=deepseek-flash&ref=share`)).text();
+    expect(asked).toEqual([[9091400302, p.hero.slug, 'en', null, 'deepseek-flash']]);
+    expect(tag(html, 'og:description')?.startsWith('Written by DeepSeek.')).toBe(true);
+    expect(tag(html, 'og:url')).toBe(`https://dota2.ai/r/9091400302?hero=${p.hero.slug}&amp;model=deepseek-flash`);
+    // Anything that is not a model of the list (including removed models like glm-5.3-flash) is dropped.
+    asked.length = 0;
+    const removed = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}&model=glm-5.3-flash&ref=share`)).text();
+    expect(asked).toEqual([[9091400302, p.hero.slug, 'en', null, null]]);
+    expect(tag(removed, 'og:url')).toBe(`https://dota2.ai/r/9091400302?hero=${p.hero.slug}`);
     asked.length = 0;
     const odd = await (await fetch(`${base}/r/9091400302?hero=${p.hero.slug}&model=%3Cscript%3E&model=x`)).text();
     expect(asked).toEqual([[9091400302, p.hero.slug, 'en', null, null]]);

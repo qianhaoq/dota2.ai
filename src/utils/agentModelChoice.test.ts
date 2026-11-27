@@ -41,76 +41,47 @@ const until = async (f: () => Promise<any>, ok: (v: any) => boolean) => { let v:
 const reviews = (w: ReturnType<typeof world>) => [...w.blobs.keys()].filter((k) => k.endsWith('.review.json')).sort();
 
 describe('the models a reader can choose', () => {
-  it('are named by an id and a label, the default first', () => {
-    expect(AGENT_MODEL_IDS).toEqual(['deepseek-flash', 'kimi-k3.1-pro', 'glm-5.3-flash', 'glm-5.3', 'glm-5.4']);
+  it('only DeepSeek 4.1 Flash is in the built-in catalog', () => {
+    expect(AGENT_MODEL_IDS).toEqual(['deepseek-flash']);
     expect(DEFAULT_AGENT_MODEL).toBe('deepseek-flash');
     for (const m of AGENT_MODELS) expect(Object.keys(m).sort()).toEqual(['id', 'label', 'minutes']);
-    // What was not timed is not given a time.
-    expect([modelMinutes('deepseek-flash'), modelMinutes('kimi-k3.1-pro'), modelMinutes('glm-5.3-flash'), modelMinutes('glm-5.4'), modelMinutes('nope')]).toEqual([[2, 3], [13, 13], [11, 13], null, null]);
-    // The wait a reader is told: the measured span, one number when both runs agree, nothing when not timed.
-    expect(AGENT_MODEL_IDS.map((id) => modelWait(id, 'zh'))).toEqual(['约 2–3 分钟', '约 13 分钟', '约 11–13 分钟', '约 24 分钟', null]);
-    expect(AGENT_MODEL_IDS.map((id) => modelWait(id, 'en'))).toEqual(['about 2–3 minutes', 'about 13 minutes', 'about 11–13 minutes', 'about 24 minutes', null]);
+    expect([modelMinutes('deepseek-flash'), modelMinutes('kimi-k3.1-pro'), modelMinutes('glm-5.3-flash'), modelMinutes('nope')]).toEqual([[2, 3], null, null, null]);
+    expect(AGENT_MODEL_IDS.map((id) => modelWait(id, 'zh'))).toEqual(['约 2–3 分钟']);
+    expect(AGENT_MODEL_IDS.map((id) => modelWait(id, 'en'))).toEqual(['about 2–3 minutes']);
     expect(modelWait('nope', 'en')).toBeNull();
     for (const m of AGENT_MODELS) if (m.minutes) expect(m.minutes[0] <= m.minutes[1] && m.minutes[0] > 0).toBe(true);
-    // Which models need the longer time limit is a fact about the model, not about which one a server makes its
-    // default (review of #327); one that was not timed is not assumed to be quick.
-    expect(AGENT_MODEL_IDS.map((id) => [id, writesSlowly(id)])).toEqual([['deepseek-flash', false], ['kimi-k3.1-pro', true], ['glm-5.3-flash', true], ['glm-5.3', true], ['glm-5.4', true]]);
+    expect(AGENT_MODEL_IDS.map((id) => [id, writesSlowly(id)])).toEqual([['deepseek-flash', false]]);
     expect(writesSlowly('nope')).toBe(true);
-    expect([modelId('glm-5.3'), modelId('GLM-5.3'), modelId('gpt'), modelId(''), modelId(null), modelId(['glm-5.3']), modelId('__proto__')]).toEqual(['glm-5.3', null, null, null, null, null, null]);
-    expect([modelLabel('kimi-k3.1-pro'), modelLabel('nope')]).toEqual(['Kimi K3.1 Pro', 'nope']);
+    expect([modelId('deepseek-flash'), modelId('glm-5.3'), modelId('kimi-k3.1-pro'), modelId('gpt'), modelId(''), modelId(null), modelId(['deepseek-flash']), modelId('__proto__')]).toEqual(['deepseek-flash', null, null, null, null, null, null, null]);
+    expect([modelLabel('deepseek-flash'), modelLabel('nope')]).toEqual(['DeepSeek 4.1 Flash', 'nope']);
   });
 });
 
 describe('which models a server offers', () => {
   const all = { DEEPSEEK_API_KEY: 'sk-d', KIMI_API_KEY: 'sk-kimi-k', GLM_API_KEY: 'g.h' };
-  it('each model whose key is set, the default first; GLM-5.3 and GLM-5.4 only when asked for', () => {
+  it('only offers DeepSeek when DEEPSEEK_API_KEY is set, ignoring GLM/Kimi keys and AGENT_MODELS', () => {
     const offer = agentModels(all);
-    expect(offer.models.map((m) => m.id)).toEqual(['deepseek-flash', 'kimi-k3.1-pro', 'glm-5.3-flash']);
+    expect(offer.models.map((m) => m.id)).toEqual(['deepseek-flash']);
     expect(offer.default).toBe('deepseek-flash');
     expect(offer.skipped).toEqual([]);
-    // A missing key takes its models out, and says which variable (never a value).
-    const some = agentModels({ GLM_API_KEY: 'g.h' });
-    expect(some.models.map((m) => m.id)).toEqual(['glm-5.3-flash']);
-    expect(some.default).toBe('glm-5.3-flash');
-    expect(some.skipped).toEqual([{ id: 'deepseek-flash', error: 'missing_key', needs: 'DEEPSEEK_API_KEY' }, { id: 'kimi-k3.1-pro', error: 'missing_key', needs: 'KIMI_API_KEY' }]);
-    expect(agentModels({})).toEqual({ default: null, models: [], skipped: expect.any(Array) });
-    const picked = agentModels({ ...all, AGENT_MODELS: 'glm-5.4, deepseek-flash,gpt-9' });
-    expect(picked.models.map((m) => m.id)).toEqual(['deepseek-flash', 'glm-5.4']);
-    expect(picked.skipped).toEqual([{ id: 'gpt-9', error: 'unknown_model' }]);
+    // Without DEEPSEEK_API_KEY, nothing is offered even if GLM/Kimi keys are present.
+    const noDs = agentModels({ GLM_API_KEY: 'g.h', KIMI_API_KEY: 'sk-kimi-k' });
+    expect(noDs.models).toEqual([]);
+    expect(noDs.default).toBeNull();
+    expect(noDs.skipped).toEqual([{ id: 'deepseek-flash', error: 'missing_key', needs: 'DEEPSEEK_API_KEY' }]);
+    expect(agentModels({})).toEqual({ default: null, models: [], skipped: [{ id: 'deepseek-flash', error: 'missing_key', needs: 'DEEPSEEK_API_KEY' }] });
+    const withEnv = agentModels({ ...all, AGENT_MODELS: 'glm-5.4, kimi-k3.1-pro, deepseek-flash' });
+    expect(withEnv.models.map((m) => m.id)).toEqual(['deepseek-flash']);
   });
 
-  it('each id is one upstream model at one address', () => {
+  it('only deepseek-flash is resolved; non-DeepSeek ids and providers are rejected', () => {
     expect(agentModel('deepseek-flash', all)).toMatchObject({ ok: true, id: 'deepseek-flash', baseURL: 'https://api.deepseek.com', model: 'deepseek-flash', apiKey: 'sk-d' });
-    expect(agentModel('glm-5.3', { ...all, GLM_MODEL: 'glm-4.5' })).toMatchObject({ baseURL: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-5.3', apiKey: 'g.h' });
-    expect(agentModel('gpt-9', all)).toEqual({ ok: false, error: 'unknown_provider' });
-    expect(agentModel('constructor', all)).toEqual({ ok: false, error: 'unknown_provider' });
-  });
-
-  it('a Kimi key goes to the address of its kind, and to no address that is not Kimi\'s', () => {
-    // A Kimi Code membership key, and what K3.1 Pro is called there.
-    expect(agentModel('kimi-k3.1-pro', { KIMI_API_KEY: 'sk-kimi-abc' })).toMatchObject({ baseURL: 'https://api.kimi.com/coding/v1', model: 'k3.1-pro', extraBody: {} });
-    // A platform key.
-    expect(agentModel('kimi-k3.1-pro', { KIMI_API_KEY: 'sk-abc' })).toMatchObject({ baseURL: 'https://api.moonshot.cn/v1', model: 'kimi-k3.1-pro' });
-    expect(agentModel('kimi-k3.1-pro', { KIMI_API_KEY: 'sk-abc', KIMI_BASE_URL: 'https://api.moonshot.ai/v1/' })).toMatchObject({ baseURL: 'https://api.moonshot.ai/v1', model: 'kimi-k3.1-pro' });
-    expect(agentModel('kimi-k3.1-pro', { KIMI_API_KEY: 'sk-kimi-abc', KIMI_BASE_URL: 'https://api.kimi.ai/coding/v1' })).toMatchObject({ baseURL: 'https://api.kimi.ai/coding/v1', model: 'k3.1-pro' });
-    for (const url of ['https://api.kimi.com.evil.example/coding/v1', 'http://api.moonshot.cn/v1', 'https://example.com/v1', 'constructor']) {
-      expect(agentModel('kimi-k3.1-pro', { KIMI_API_KEY: 'sk-kimi-abc', KIMI_BASE_URL: url })).toEqual({ ok: false, error: 'invalid_base_url', needs: 'KIMI_BASE_URL' });
-    }
-    // The id is K3.1 Pro whatever a script's override says; the script's own entry follows the override.
-    expect(agentModel('kimi-k3.1-pro', { KIMI_API_KEY: 'sk-kimi-abc', KIMI_MODEL: 'k3' })).toMatchObject({ model: 'k3.1-pro' });
-    expect(deepReviewProvider('kimi', { KIMI_API_KEY: 'sk-kimi-abc', KIMI_MODEL: 'k3' })).toMatchObject({ model: 'k3' });
-    expect(deepReviewProvider('kimi', {})).toEqual({ ok: false, error: 'missing_key', needs: 'KIMI_API_KEY' });
-  });
-
-  it('models that always think are never told to stop: "disabled" asks for their lowest effort', () => {
-    expect(agentModel('glm-5.3-flash', all)).toMatchObject({ extraBody: { thinking: { type: 'enabled' } } });
-    expect(agentModel('glm-5.3-flash', { ...all, DEEP_REVIEW_THINKING: 'disabled' })).toMatchObject({ thinking: 'disabled', extraBody: { thinking: { type: 'enabled' }, reasoning_effort: 'low' } });
-    expect((agentModel('glm-5.3', { ...all, GLM_REASONING_EFFORT: 'high' }) as any).extraBody).toEqual({ thinking: { type: 'enabled' }, reasoning_effort: 'high' });
-    expect((agentModel('glm-5.3', { ...all, GLM_REASONING_EFFORT: 'none' }) as any).extraBody).toEqual({ thinking: { type: 'enabled' } });
-    // Kimi takes no `thinking` field at all.
-    expect((agentModel('kimi-k3.1-pro', { ...all, DEEP_REVIEW_THINKING: 'disabled' }) as any).extraBody).toEqual({ reasoning_effort: 'low' });
-    expect((agentModel('kimi-k3.1-pro', { ...all, KIMI_REASONING_EFFORT: 'max' }) as any).extraBody).toEqual({ reasoning_effort: 'max' });
     expect((agentModel('deepseek-flash', { ...all, DEEP_REVIEW_THINKING: 'disabled' }) as any).extraBody).toEqual({ thinking: { type: 'disabled' } });
+    for (const id of ['kimi-k3.1-pro', 'glm-5.3-flash', 'glm-5.3', 'glm-5.4', 'gpt-9', 'constructor']) {
+      expect(agentModel(id, all)).toEqual({ ok: false, error: 'unknown_provider' });
+    }
+    expect(deepReviewProvider('glm', all)).toEqual({ ok: false, error: 'unknown_provider' });
+    expect(deepReviewProvider('kimi', all)).toEqual({ ok: false, error: 'unknown_provider' });
   });
 });
 
@@ -350,8 +321,8 @@ describe('a shared link and the counts name the model', () => {
   });
 
   it('an event keeps a model id of the list and drops anything else', () => {
-    expect(sanitizeAnalyticsProps({ matchId: '1', lang: 'zh', step: 'review', plan: false, model: 'glm-5.3' }, 'review_requested')).toMatchObject({ model: 'glm-5.3' });
+    expect(sanitizeAnalyticsProps({ matchId: '1', lang: 'zh', step: 'review', plan: false, model: 'deepseek-flash' }, 'review_requested')).toMatchObject({ model: 'deepseek-flash' });
     expect(sanitizeAnalyticsProps({ matchId: '1', lang: 'zh', step: 'review', plan: false, model: 'my secret text' }, 'review_requested')).not.toHaveProperty('model');
-    expect(sanitizeAnalyticsProps({ matchId: '1', lang: 'zh', hero: 'axe', model: 'kimi-k3.1-pro' }, 'review_ready')).toMatchObject({ model: 'kimi-k3.1-pro' });
+    expect(sanitizeAnalyticsProps({ matchId: '1', lang: 'zh', hero: 'axe', model: 'glm-5.3' }, 'review_ready')).not.toHaveProperty('model');
   });
 });

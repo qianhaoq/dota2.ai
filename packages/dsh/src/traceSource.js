@@ -1,20 +1,58 @@
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { createTracePipeline } from '../../../lib/agent/tracePipeline.js';
 
+/** Max compressed trace download size (10 MB; typical trace is ~250 KB). */
+export const MAX_TRACE_GZIP_BYTES = 10 * 1024 * 1024;
+/** Max decompressed trace JSON size (32 MB) to guard against gzip bombs. */
+export const MAX_TRACE_JSON_BYTES = 32 * 1024 * 1024;
+
 /**
  * Validate raw bytes (gzipped or proxy-decompressed JSON) as a
  * `dota2.ai/match-trace@1` for `matchId`, returning canonical gzipped bytes.
  */
-export function normalizeTraceGzip(bytes, matchId) {
+export function normalizeTraceGzip(bytes, matchId, { maxGzipBytes = MAX_TRACE_GZIP_BYTES, maxJsonBytes = MAX_TRACE_JSON_BYTES } = {}) {
   const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
   if (buf.length < 2) throw new Error('empty_trace');
   const isGzip = buf[0] === 0x1f && buf[1] === 0x8b;
-  const jsonText = isGzip ? gunzipSync(buf).toString('utf8') : buf.toString('utf8');
+  if (isGzip && buf.length > maxGzipBytes) throw new Error('trace_too_large');
+  if (!isGzip && buf.length > maxJsonBytes) throw new Error('trace_too_large');
+  const rawJson = isGzip ? gunzipSync(buf, { maxOutputLength: maxJsonBytes }) : buf;
+  const jsonText = rawJson.toString('utf8');
   const parsed = JSON.parse(jsonText);
   if (parsed?.schema !== 'dota2.ai/match-trace@1' || String(parsed.match_id) !== String(matchId)) {
     throw new Error('invalid_trace');
   }
   return isGzip ? buf : gzipSync(Buffer.from(jsonText, 'utf8'));
+}
+
+/** Read an HTTP response body into a Buffer with a hard byte cap. */
+async function readBoundedBuffer(res, maxBytes) {
+  const lenHeader = Number(res.headers?.get?.('content-length'));
+  if (Number.isFinite(lenHeader) && lenHeader > maxBytes) throw new Error('trace_too_large');
+  if (res.body && typeof res.body.getReader === 'function') {
+    const reader = res.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = Buffer.from(value);
+        total += chunk.length;
+        if (total > maxBytes) {
+          await reader.cancel().catch(() => {});
+          throw new Error('trace_too_large');
+        }
+        chunks.push(chunk);
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+    return Buffer.concat(chunks, total);
+  }
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > maxBytes) throw new Error('trace_too_large');
+  return buf;
 }
 
 const sleep = (ms, signal) => new Promise((resolve, reject) => {
@@ -63,13 +101,13 @@ export function createDshTracePipeline({
     onStage('storing');
     const res = await fetchImpl(`${base}/api/agent/${encodeURIComponent(id)}/trace`, { signal });
     if (!res.ok) return { ok: false, reason: res.status === 404 ? 'extract_failed' : 'download_failed' };
-    const arr = await res.arrayBuffer();
     try {
-      const gz = normalizeTraceGzip(Buffer.from(arr), id);
+      const raw = await readBoundedBuffer(res, MAX_TRACE_JSON_BYTES);
+      const gz = normalizeTraceGzip(raw, id);
       await traceStore.put(id, gz);
       return { ok: true, bytes: gz.length };
-    } catch {
-      return { ok: false, reason: 'extract_failed' };
+    } catch (error) {
+      return { ok: false, reason: error?.message === 'trace_too_large' || error?.code === 'ERR_BUFFER_TOO_LARGE' ? 'too_large' : 'extract_failed' };
     }
   }
 
