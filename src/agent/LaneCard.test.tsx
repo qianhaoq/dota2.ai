@@ -31,3 +31,33 @@ describe('the lane card for a lane read from the replay', () => {
     expect(document.querySelector('.ag-rec')!.textContent).toContain('Last hits are at least these');
   });
 });
+
+describe('how the lane went, under a lane line (#440 review)', () => {
+  const went = {
+    lane_read_from_replay: 'bot', heroes_in_lane_read_from_replay: { beastmaster: 'me', undying: 'ally', phantom_assassin: 'enemy' },
+    gold_gap_by_source: { my_team_minus_enemy: { lane_creeps: -907, neutrals: 169, hero_kills_and_assists: 537, lost_on_dying: null, earned: -566 } },
+    visits: [{ hero: 'necrolyte', side: 'enemy', their_lane: 'mid', from: '7:55', to: '8:06', died: [{ clock: '8:06', hero: 'necrolyte', who: 'enemy' }] }],
+    part_time_in_this_lane: [{ hero: 'dark_willow', side: 'my_team', share_of_lane_stage_here: 0.44 }],
+  };
+
+  it('shows the gap by source, who came into the lane and who died, the part-time sharers and the roster it was read over', async () => {
+    serve({ ...replay, how_the_lane_went: went });
+    await open('8200000003');
+    const text = document.querySelector('.ag-rec')!.textContent!;
+    expect(text).toContain('Gap before 10:00 (your side − enemy)');
+    expect(text).toContain('last hits −907');
+    expect(text).toContain('kills & assists +537');
+    // Not known is left out, never shown as 0.
+    expect(text).not.toContain('lost on dying');
+    expect(text).toContain('7:55–8:06');
+    expect(text).toContain('Shared the lane part-time');
+    expect(text).toContain('44%');
+    expect(text).toContain('Read over');
+  });
+
+  it('an older record without it renders as before', async () => {
+    serve({ ...replay, how_the_lane_went: null });
+    await open('8200000004');
+    expect(document.querySelector('.ag-rec')!.textContent).not.toContain('Gap before 10:00');
+  });
+});

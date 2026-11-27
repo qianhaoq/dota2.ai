@@ -106,7 +106,7 @@ describe('the review of #440: a visit not placed is not known, and the roster is
     // Necrolyte's visit is 7:55–8:06; his lane is still read (a few seconds missing).
     const r: any = laneProcess(blank(trace, 'necrolyte', 475, 487), bm);
     expect(r.enemy_visits).toBeNull();
-    expect(r.gaps).toContainEqual({ topic: 'visits', reason: 'an_exchange_with_the_lane_without_the_visitor_s_position', sides: ['enemy'], heroes: ['necrolyte'] });
+    expect(r.gaps).toContainEqual({ topic: 'visits', reason: 'an_exchange_with_the_lane_without_the_visitor_s_position_or_lane', sides: ['enemy'], heroes: ['necrolyte'] });
     // The other side is unaffected.
     expect(r.my_team_visits).toEqual({ visits: 2, heroes: ['dark_willow'], my_team_deaths_in_them: 1, enemy_deaths_in_them: 1 });
   });
@@ -129,5 +129,29 @@ describe('a support splitting two lanes is not a visitor (#440 follow-up)', () =
     expect(r.part_time_in_this_lane[0].share_of_lane_stage_here).toBeGreaterThanOrEqual(0.3);
     expect(r.visits.map((v: any) => v.hero)).not.toContain('dark_willow');
     expect(r.my_team_visits.visits).toBe(0);
+  });
+});
+
+describe('the review of #440: whether a hero shared the lane can be unsettled by missing positions', () => {
+  it('missing seconds that could tip a hero between sharer and visitor: that side\'s visits are not known, and gaps names the hero', () => {
+    // Dark Willow in no single lane: 150 of 540 lane-stage seconds bottom (Beastmaster's lane), 50 unplaced, 50 mid, the
+    // rest top — 28% bottom with the unplaced ones out, 37% with them in: either side of PART_TIME_SHARE.
+    const i = seat('dark_willow'); const st = trace.states[i]; const b = trace.states[bm];
+    const x = st.x.slice(); const y = st.y.slice(); const alive = st.alive.slice();
+    const real = (k: number) => (k >= 490 && k < 520) || k >= 580; // her exchanges with the bottom lane stay where they were
+    let bot = 0; for (let k = 60; k < 600; k += 1) if (real(k)) { alive[k] = 1; x[k] = b.x[k] ?? 5000; y[k] = b.y[k] ?? -5500; bot += 1; }
+    let missing = 0; let mid = 0;
+    for (let k = 60; k < 600; k += 1) {
+      if (real(k)) continue;
+      alive[k] = 1;
+      if (bot < 150) { x[k] = 5000; y[k] = -5500; bot += 1; } else if (missing < 50) { x[k] = null; y[k] = null; missing += 1; } else if (mid < 50) { x[k] = 0; y[k] = 0; mid += 1; } else { x[k] = -5500; y[k] = 5000; }
+    }
+    const t = { ...trace, states: trace.states.map((s: any, j: number) => (j === i ? { ...st, x, y, alive } : s)) };
+    const r: any = laneProcess(t, bm);
+    expect(r.part_time_in_this_lane).toEqual([]);
+    expect(r.my_team_visits).toBeNull();
+    expect(r.gaps).toContainEqual({ topic: 'visits', reason: 'an_exchange_with_the_lane_without_the_visitor_s_position_or_lane', sides: ['my_team'], heroes: ['dark_willow'] });
+    // The enemy side is unaffected.
+    expect(r.enemy_visits).toEqual({ visits: 2, heroes: ['necrolyte', 'mirana'], my_team_deaths_in_them: 2, enemy_deaths_in_them: 1 });
   });
 });
