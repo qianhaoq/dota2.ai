@@ -152,10 +152,19 @@ function castable(trace, h, npc) {
 /**
  * Cooldown-detected activations for an auto-triggerable active ability (`abaddon_borrowed_time`).
  * Returns `{ auto, allStarts }` or `null` when `entry.cd` is missing from the trace (unknown, not empty).
- * Skips mid-cooldown reduction splits created by `build.js` (e.g. Abaddon's The Quickening facet / Chakra Magic)
+ * Distinguishes continuous mid-cooldown reduction splits from `build.js` (where `curr[0] === prev[1]` with
+ * no zero-cooldown sample and no Refresher use) from true resets/re-triggers (e.g. level-up + Refresher),
  * and pairs manual combat-log casts 1-to-1 within ±2 s so manual casts are never double-counted as auto-triggers.
  */
-function cooldownActivations(entry, manualRows) {
+const REFRESHER_ITEMS = new Set(['item_refresher', 'item_refresher_shard']);
+function refresherTimes(trace, npc) {
+  const out = [];
+  for (const u of trace?.item_uses ?? []) {
+    if (u[1] === npc && REFRESHER_ITEMS.has(trace.names?.[u[2]])) out.push(u[0]);
+  }
+  return out;
+}
+function cooldownActivations(entry, manualRows, refreshers = []) {
   if (!Array.isArray(entry?.cd)) return null;
   const sorted = [...entry.cd].sort((a, b) => a[0] - b[0]);
   const starts = [];
@@ -164,8 +173,14 @@ function cooldownActivations(entry, manualRows) {
     const curr = sorted[i];
     const [from, to, init] = curr;
     if (abilityLevel(entry, from + 0.5) <= 0) continue;
-    const isCut = prev != null && typeof prev[2] === 'number' && typeof init === 'number'
-      && from - prev[1] <= 0.5 && Math.max(0, prev[2] - (from - prev[0])) > 2 && init < Math.max(0, prev[2] - (from - prev[0])) - 0.5;
+    const prevRem = prev != null && typeof prev[2] === 'number' ? Math.max(0, prev[2] - (from - prev[0])) : 0;
+    const refreshed = refreshers.some((rt) => rt >= from - 2 && rt <= from + 0.5);
+    // `build.js` closes and re-opens a shortened cooldown at the exact same timestamp (`from === prev[1]`).
+    // Any positive gap (`from > prev[1]`) reflects an observed zero-cooldown sample (e.g. a reset), and a
+    // Refresher Orb/Shard use in [from - 2, from + 0.5] likewise marks a reset rather than a cooldown cut.
+    const isCut = prev != null && from === prev[1] && !refreshed
+      && typeof prev[2] === 'number' && typeof init === 'number'
+      && prevRem > 2 && init < prevRem - 0.5;
     prev = curr;
     if (isCut) continue;
     starts.push({ t: from, clock: clock(from), cooldown: typeof init === 'number' ? init : Math.round((to - from) * 10) / 10 });
@@ -677,11 +692,15 @@ export function deathContext(trace, args = {}, ctx = {}) {
   // Precompute cooldown-detected activations for auto-triggerable active abilities (e.g. Abaddon's Borrowed Time)
   // so auto-triggers inside a death window are recognized and never misreported under `ready_not_cast`.
   const autoByAbility = new Map();
+  let autoCooldownMissing = false;
+  const myRefreshers = refresherTimes(trace, npc);
   for (const [k, e] of Object.entries(trace.abilities?.[h] ?? {})) {
     if (!AUTO_TRIGGERED_ACTIVE_ABILITIES.has(k)) continue;
     const aid = nameId(trace, k);
     const manual = aid >= 0 ? trace.casts.filter((c) => c[1] === npc && c[2] === aid).sort((a, b) => a[0] - b[0]) : [];
-    autoByAbility.set(k, cooldownActivations(e, manual));
+    const info = cooldownActivations(e, manual, myRefreshers);
+    if (!info && (e?.levels ?? []).some(([, lv]) => lv > 0)) autoCooldownMissing = true;
+    autoByAbility.set(k, info);
   }
   // The fights of the game as match_overview groups them (three or more hero deaths, none more than 15 s after
   // the one before). That grouping is by time alone, over the whole map: a death counts as "in a fight" only if
@@ -896,7 +915,10 @@ export function deathContext(trace, args = {}, ctx = {}) {
     ...deathPatterns(trace, out, { allSources: args.all_damage_sources === true }), ...leftUnused(out, heroKey),
     deaths: args.index == null ? out : [out[args.index - 1]],
     ...(myRes.length ? { resurrections: myRes } : {}),
-    gaps: gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']),
+    gaps: [
+      ...gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']),
+      ...(autoCooldownMissing ? [{ topic: 'ability_casts', reason: 'auto_triggered_cooldowns_missing_in_trace' }] : []),
+    ],
   };
 }
 
@@ -1203,7 +1225,7 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
   }
   const autoActive = AUTO_TRIGGERED_ACTIVE_ABILITIES.has(key);
   if (autoActive) {
-    const autoInfo = cooldownActivations(entry, rows);
+    const autoInfo = cooldownActivations(entry, rows, refresherTimes(trace, npc));
     if (!autoInfo) {
       return {
         ref: `audit:${trace.heroes[h].key}:${short}`, ref_scope: 'summary',
@@ -1377,15 +1399,21 @@ export function fightTimeline(trace, args = {}, ctx = {}) {
   for (const m of trace.modifiers) if (m[6] === 'i' && m[4] === 1 && inWindow(m[0])) rows.push({ p: 0, t: m[0], kind: 'spell_immune', hero: nameOf(trace, m[1]), ...sideOf(view, trace, heroOfName(trace, m[1])), modifier: trace.names[m[2]].replace(/^modifier_/, ''), ...(m[7] == null ? {} : { row: m[7] }) });
   for (const u of trace.item_uses) if (inWindow(u[0]) && !NOISE_ITEMS.test(trace.names[u[2]])) rows.push({ p: 1, t: u[0], kind: 'item', hero: nameOf(trace, u[1]), item: trace.names[u[2]].replace(/^item_/, ''), row: u[3] });
   for (const c of trace.casts) if (inWindow(c[0])) rows.push({ p: heroOfName(trace, c[3]) >= 0 ? 1 : 2, t: c[0], kind: 'cast', hero: nameOf(trace, c[1]), ability: trace.names[c[2]], ...(c[3] >= 0 ? { target: nameOf(trace, c[3]) } : {}), row: c[4] });
+  let timelineAutoCooldownMissing = false;
   for (let i = 0; i < trace.heroes.length; i += 1) {
     const heroAbs = trace.abilities?.[i] ?? {};
     const hNpc = nameId(trace, trace.heroes[i].npc);
+    const hRefreshers = refresherTimes(trace, hNpc);
     for (const [k, e] of Object.entries(heroAbs)) {
       if (!AUTO_TRIGGERED_ACTIVE_ABILITIES.has(k)) continue;
       const aid = nameId(trace, k);
       const manual = aid >= 0 ? trace.casts.filter((c) => c[1] === hNpc && c[2] === aid).sort((a, b) => a[0] - b[0]) : [];
-      const info = cooldownActivations(e, manual);
-      for (const tr of info?.auto ?? []) {
+      const info = cooldownActivations(e, manual, hRefreshers);
+      if (!info) {
+        if (abilityLevel(e, to) > 0) timelineAutoCooldownMissing = true;
+        continue;
+      }
+      for (const tr of info.auto) {
         if (inWindow(tr.t)) rows.push({ p: 0, t: tr.t, kind: 'auto_trigger', hero: trace.heroes[i].key, ...sideOf(view, trace, i), ability: k });
       }
     }
@@ -1422,7 +1450,10 @@ export function fightTimeline(trace, args = {}, ctx = {}) {
     ...(truncated ? { truncated: 'casts_without_a_hero_target_dropped_first' } : {}),
     damage_to_heroes_by_unit: top(dealt),
     damage_taken_by_hero: top(taken),
-    gaps: gapsFor(trace, ['vision', 'ability_immunity']),
+    gaps: [
+      ...gapsFor(trace, ['vision', 'ability_immunity']),
+      ...(timelineAutoCooldownMissing ? [{ topic: 'ability_casts', reason: 'auto_triggered_cooldowns_missing_in_trace' }] : []),
+    ],
   };
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runTraceTool } from '../../packages/review-engine/src/trace/index.js';
+import { createTraceBuilder, runTraceTool } from '../../packages/review-engine/src/trace/index.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
 import { ultimateOf as coachUltimateOf } from '../../lib/coach/chapters.js';
 import { ultimateOf, ultimatesOf } from '../../lib/agent/ultimates.js';
@@ -234,6 +234,57 @@ describe('Abaddon Borrowed Time auto-trigger & 0-mana recognition', () => {
     const bt = dc.deaths[0].at_window_start.abilities.find((a: any) => a.ability === 'abaddon_borrowed_time');
     expect(bt.cooldown_left).toBeNull();
     expect(dc.deaths[0].ready_not_cast).not.toContain('abaddon_borrowed_time');
+    expect(dc.gaps.some((g: any) => g.topic === 'ability_casts' && g.reason === 'auto_triggered_cooldowns_missing_in_trace')).toBe(true);
+
+    // fight_timeline also propagates the missing-cooldown gap when Borrowed Time is learned in the window.
+    const tl: any = runTraceTool(tr, 'fight_timeline', { from: 680, to: 720 }, { perspective: 'abaddon' });
+    expect(tl.gaps.some((g: any) => g.topic === 'ability_casts' && g.reason === 'auto_triggered_cooldowns_missing_in_trace')).toBe(true);
+    // Before Borrowed Time was learned, no missing-cooldown gap is emitted.
+    const tlEarly: any = runTraceTool(tr, 'fight_timeline', { from: 100, to: 200 }, { perspective: 'abaddon' });
+    expect(tlEarly.gaps.some((g: any) => g.reason === 'auto_triggered_cooldowns_missing_in_trace')).toBe(false);
+  });
+
+  it('distinguishes level-up + Refresher activations (with or without a zero-cooldown sample) from continuous cooldown cuts via createTraceBuilder', () => {
+    const b = createTraceBuilder();
+    const sample = (t: number, level: number, cooldown: number) => b.addState({
+      entity_kind: 'real_hero',
+      hero: 'abaddon',
+      team: 2,
+      player_index: 0,
+      t,
+      x: 100,
+      y: 100,
+      hp: 800,
+      max_hp: 1200,
+      mana: 400,
+      level: 12,
+      life_state: 0,
+      abilities: [{ name: 'abaddon_borrowed_time', level, cooldown, mana_cost: 0 }],
+      items: [],
+      controls: {},
+    });
+    // 1) Level-1 auto-trigger at 600, upgraded to level 2 at 602, Refresher zero-cd at 606, level-2 auto-trigger at 606.25.
+    sample(599, 1, 0);
+    sample(600, 1, 85);
+    sample(602, 2, 83);
+    sample(606, 2, 0);
+    sample(606.25, 2, 75);
+    sample(681.3, 2, 0);
+    // 2) Same-tick Refresher reset + immediate level-2 auto-trigger (no cd=0 sample between 700 and 706, item_refresher logged at 705.8).
+    sample(700, 1, 85);
+    sample(702, 2, 83);
+    b.addEvent({ type: 'DOTA_COMBATLOG_ITEM', t: 705.8, attacker: 'npc_dota_hero_abaddon', attacker_hero: true, inflictor: 'item_refresher' }, 50);
+    sample(706, 2, 75);
+    sample(781, 2, 0);
+    const built = b.finish();
+
+    const audit: any = runTraceTool(built, 'ability_audit', { hero: 'abaddon', ability: 'borrowed_time' });
+    expect(audit).toMatchObject({ casts_total: 4, manual_casts_total: 0, auto_triggered_total: 4 });
+    expect(audit.casts.map((c: any) => c.t)).toEqual([600, 606.3, 700, 706]);
+
+    const tl: any = runTraceTool(built, 'fight_timeline', { from: 595, to: 620 }, { perspective: 'abaddon' });
+    const autoTimes = tl.events.filter((e: any) => e.kind === 'auto_trigger' && e.ability === 'abaddon_borrowed_time').map((e: any) => e.t);
+    expect(autoTimes).toEqual([600, 606.3]);
   });
 
   it('preserves unknown proximity (null + gap) when Abaddon or another hero has missing position samples around an auto-trigger', () => {
