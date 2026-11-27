@@ -1,0 +1,70 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9106486185,
+  "hero": "storm_spirit",
+  "status": "approved",
+  "written": "2026-11-27",
+  "checked": "2026-11-27",
+  "checked_by": "Antigravity, reading every stated fact directly from reviewToolkit outputs on the live GCS trace (match_overview, death_context, ability_audit, build_check, lane_report, key_moments).",
+  "source": "Live GCS trace with match record (unparsed OpenDota; lane read from replay). A 36:11 Radiant mid loss: 7 deaths before 10:00 (-5126 mid gap, -4818 from kills/assists), recovered to +9397 lead (91% win chance at 24:00), then collapsed across fights 9 and 10 (24:30–26:37).",
+  "must_hit": [
+    {
+      "id": "seven_lane_deaths_before_ten",
+      "says": "Seven of the twelve deaths came before 10:00 (1:10, 1:54, 4:11, 5:23, 7:34, 8:36, 9:37 — four to Doom, two to Ancient Apparition), creating a -5,126 mid gold gap (-4,818 from kills/assists vs only -40 from lane creeps).",
+      "weight": 2,
+      "any": {
+        "refs": [
+          "lane:storm_spirit",
+          "death:storm_spirit:1",
+          "death:storm_spirit:2",
+          "death:storm_spirit:3",
+          "death:storm_spirit:4",
+          "death:storm_spirit:5",
+          "death:storm_spirit:6",
+          "death:storm_spirit:7"
+        ],
+        "clocks": ["1:10", "1:54", "4:11", "5:23", "7:34", "8:36", "9:37"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["对线", "中路", "10:00", "十分钟", "10 分钟", "10分钟", "7 次", "七次"],
+        "en": ["lane", "mid", "10:00", "ten minutes", "seven", "7 deaths"]
+      }
+    },
+    {
+      "id": "midgame_collapse_and_late_bkb",
+      "says": "After recovering to a +9,397 gold lead (91% win chance at 24:00), Radiant collapsed in 24:00–28:00 across fight:9 (24:30) and turning fight:10 (26:05–26:37, 4 deaths vs 2, Storm died at 26:05 to Doom), with Black King Bar only finished at 26:46 after six earlier big items.",
+      "weight": 2,
+      "any": {
+        "refs": ["fight:9", "fight:10", "fights:storm_spirit:9", "fights:storm_spirit:10", "death:storm_spirit:10", "build:storm_spirit", "key_moments:storm_spirit"],
+        "clocks": ["24:30", "26:05", "26:37", "26:46"],
+        "within": 15
+      },
+      "terms": {
+        "zh": ["黑皇杖", "BKB", "转折", "翻盘", "团战", "26:05", "26:46", "24:30"],
+        "en": ["Black King Bar", "BKB", "turning", "fight", "26:05", "26:46", "24:30"]
+      }
+    }
+  ],
+  "lead_any": ["seven_lane_deaths_before_ten", "midgame_collapse_and_late_bkb"],
+  "turning_fight": { "fight": 10, "from": 1565, "to": 1598 },
+  "must_not": [
+    {
+      "id": "overload_claimed_never_cast",
+      "says": "storm_spirit_overload is a passive with 0 cast rows in replays: a review must never claim Overload had 0 casts or was left uncast.",
+      "pattern": "(?:超负荷|Overload)[^。，；\n]{0,24}(?:0\\s*次施放|零次施放|从未施放|没有施放|没放过|没交过|就绪却没放)|(?:Overload)[^.,;\n]{0,24}(?:never cast|0 casts?|ready and not cast)"
+    }
+  ],
+  "main_reason": ["your_play", "team_play"],
+  "story_cause": {
+    "id": "turned_24_to_28",
+    "says": "Radiant recovered from the lane to lead +9,397 (91% win chance at 24:00), then collapsed in 24:00–28:00 (91% to 2%) over fights 9 (24:30) and 10 (26:05–26:37, turning fight, lead +199 to -16,541).",
+    "from": 1440,
+    "to": 1680,
+    "terms": {
+      "zh": ["团", "翻", "转折", "崩", "输", "24:", "26:"],
+      "en": ["fight", "turn", "collapse", "swing", "24:", "26:"]
+    },
+    "checked": "2026-11-27, against reviewToolkit match_overview and key_moments on the live GCS trace"
+  }
+}

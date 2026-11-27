@@ -1,0 +1,55 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9081160964,
+  "hero": "centaur",
+  "status": "approved",
+  "written": "2026-11-27",
+  "checked": "2026-11-27",
+  "checked_by": "Antigravity, reading every stated fact directly from reviewToolkit outputs on the live GCS trace (match_overview, death_context, ability_audit, build_check, lane_report, key_moments).",
+  "source": "Live GCS trace with match record (unparsed OpenDota; lane read from replay). A 46:14 Radiant offlane win where Centaur had 0 lane deaths before 10:00, yet all 8 deaths had 3+ enemy heroes dealing damage (4 outside fights, none traded) and 6 of 8 were to Juggernaut.",
+  "must_hit": [
+    {
+      "id": "outnumbered_deaths_outside_fights",
+      "says": "Four of the eight deaths were outside fights with three or more enemy heroes dealing damage and none traded within 15 s (10:49 alone, 15:21 and 19:03 while farming within 1600 of an enemy observer ward, and 34:52 with nothing cast).",
+      "weight": 2,
+      "any": {
+        "refs": [
+          "deaths:centaur",
+          "death:centaur:1",
+          "death:centaur:3",
+          "death:centaur:4",
+          "death:centaur:6"
+        ],
+        "clocks": ["10:49", "15:21", "19:03", "34:52"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["团战外", "刷钱", "打钱", "收线", "落单", "没换", "未换", "多打少", "三名", "3 名", "3名", "三个", "3 个", "3个"],
+        "en": ["outside", "farming", "alone", "not traded", "outnumbered", "three", "3 or more"]
+      }
+    },
+    {
+      "id": "juggernaut_kills_and_late_bkb",
+      "says": "Juggernaut took 6 of the 8 deaths (49% of death-window damage: 37% abilities/items + 12% attacks; 61% enemy spell damage overall), while Black King Bar arrived only at 44:09 after Helm of the Dominator (9:14), Blink (19:16), Heart (27:22), and Lotus Orb (33:37).",
+      "weight": 1,
+      "any": {
+        "refs": ["build:centaur", "spikes:centaur", "deaths:centaur"],
+        "clocks": ["44:09"],
+        "within": 15
+      },
+      "terms": {
+        "zh": ["主宰", "剑圣", "黑皇杖", "BKB"],
+        "en": ["Juggernaut", "Black King Bar", "BKB"]
+      }
+    }
+  ],
+  "lead_any": ["outnumbered_deaths_outside_fights", "juggernaut_kills_and_late_bkb"],
+  "must_not": [
+    {
+      "id": "calls_the_win_a_loss",
+      "says": "Centaur's team (Radiant) won in 46:14: a review of a win must not say the game was lost.",
+      "pattern": "(?:这局|本局|这盘)[^。，；团波]{0,12}(?:输了|输掉|失利|落败|败局)(?![^。，；]{0,6}(?:团|波|架|仗))|这场[^。，；团波战]{0,12}(?:输了|输掉|失利|落败|败局)(?![^。，；]{0,6}(?:团|波|架|仗))|输掉(?:了)?(?:这局|本局|这场比赛|比赛)|(?:[Yy]ou|[Yy]our team) lost (?:this|the) (?:game|match)|(?:[Tt]his|[Tt]he) (?:game|match) was lost|\\b(?:[Ii]n|of) (?:this|the|a) (?:loss|defeat)\\b"
+    }
+  ],
+  "main_reason": ["your_play", "team_play"]
+}

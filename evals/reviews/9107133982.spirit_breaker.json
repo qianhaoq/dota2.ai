@@ -1,0 +1,42 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9107133982,
+  "hero": "spirit_breaker",
+  "status": "approved",
+  "written": "2026-11-27",
+  "checked": "2026-11-27",
+  "checked_by": "Antigravity, reading every stated fact directly from reviewToolkit outputs on the live GCS trace (match_overview, death_context, ability_audit, build_check, lane_report, ward_report, key_moments).",
+  "source": "Live GCS trace with parsed OpenDota match record. A one-sided 25:27 Dire support stomp win (#361): won bot lane big (6,496 vs 3,218 at 10:00), 0 deaths before 10:00, only 1 death all game (12:19, in a fight and traded within 15 s), 5 Nether Strike casts with 0 deaths holding it.",
+  "must_hit": [],
+  "must_praise": [
+    {
+      "id": "won_bot_lane_big",
+      "says": "Won bot lane big (6,496 vs 3,218 gold at 10:00, +2,397 earned gap) with 0 deaths before 10:00.",
+      "weight": 2,
+      "where": "review",
+      "terms": {
+        "zh": ["对线", "下路", "10:00", "10 分钟", "十分钟", "0 死", "零阵亡", "没有阵亡"],
+        "en": ["lane", "bot", "10:00", "ten minutes", "zero deaths", "0 deaths", "no deaths"]
+      }
+    },
+    {
+      "id": "clean_single_death_game",
+      "says": "Died only once all game (at 12:19, in a fight and traded within 15 s), with Nether Strike never held on death.",
+      "weight": 1,
+      "where": "review",
+      "terms": {
+        "zh": ["1 次阵亡", "1次阵亡", "只死", "仅阵亡 1", "仅死 1", "一次阵亡", "幽冥一击"],
+        "en": ["1 death", "one death", "died once", "only once", "Nether Strike"]
+      }
+    }
+  ],
+  "max_findings": 2,
+  "must_not": [
+    {
+      "id": "calls_the_win_a_loss",
+      "says": "Spirit Breaker's team (Dire) won in 25:27: a review of a win must not say the game was lost.",
+      "pattern": "(?:这局|本局|这盘)[^。，；团波]{0,12}(?:输了|输掉|失利|落败|败局)(?![^。，；]{0,6}(?:团|波|架|仗))|这场[^。，；团波战]{0,12}(?:输了|输掉|失利|落败|败局)(?![^。，；]{0,6}(?:团|波|架|仗))|输掉(?:了)?(?:这局|本局|这场比赛|比赛)|(?:[Yy]ou|[Yy]our team) lost (?:this|the) (?:game|match)|(?:[Tt]his|[Tt]he) (?:game|match) was lost|\\b(?:[Ii]n|of) (?:this|the|a) (?:loss|defeat)\\b"
+    }
+  ],
+  "main_reason": ["your_play", "team_play"]
+}
