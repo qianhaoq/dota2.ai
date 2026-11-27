@@ -169,7 +169,7 @@ packages/dsh/                     DSH 插件
 server.js                         Express 主程序
 ```
 
-提交 PR 前：`npx tsc --noEmit && node --check server.js && npm run build && npm test`。见 [`CONTRIBUTING.md`](CONTRIBUTING.md) 和 [`AGENTS.md`](AGENTS.md)。
+提交 PR 前：`npx tsc --noEmit && node --check server.js && npm run build && npm test`。校准纯录像 1–5 号位推断准确率：`node scripts/calibrate-role.mjs <traces 目录> <match records 目录> [--json]`（依次传入 `*.trace.json.gz` 目录与对应的 OpenDota `<matchId>.json` 目录；加 `--json` 输出 JSON 格式）。见 [`CONTRIBUTING.md`](CONTRIBUTING.md) 和 [`AGENTS.md`](AGENTS.md)。
 
 ## 许可
 
