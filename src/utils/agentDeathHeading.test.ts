@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { runTraceTool } from '../../packages/review-engine/src/trace/index.js';
+import { region } from '../../packages/review-engine/src/trace/query.js';
 import { ownFountain } from '../../packages/review-engine/src/trace/tools.js';
 import { linkHeroNames } from '../../packages/review-engine/src/trace/build.js';
 
@@ -87,6 +88,27 @@ describe('death_context: what the hero was doing and which way they were heading
     const once: any = synth({ deaths: [100], path: () => [2000, 0] });
     for (let i = 115; i <= 125; i += 1) { once.states[0].alive[i] = null; once.states[0].x[i] = null; once.states[0].y[i] = null; }
     expect(ownFountain(once, 0, 0)).toBeNull();
+  });
+
+  it('an Aegis brings a hero back where they fell: that is no fountain (Codex P1 on #415)', () => {
+    const t: any = linkHeroNames(JSON.parse(gunzipSync(readFileSync(FIXTURE)).toString()));
+    const h = t.heroes.findIndex((x: any) => x.key === 'phantom_assassin');
+    const npc = t.names.indexOf(t.heroes[h].npc);
+    // Phantom Assassin's own fountain from her respawns as the replay has them.
+    const fountain = ownFountain(t, h, npc);
+    expect(region(fountain!.x, fountain!.y)).toBe(t.heroes[h].team === 2 ? 'radiant_base' : 'dire_base');
+    // Blank the alive sample of every respawn before the Aegis at 2203: the first one left is the Aegis, in place.
+    const blanked: any = linkHeroNames(JSON.parse(gunzipSync(readFileSync(FIXTURE)).toString()));
+    const b = blanked.states[h];
+    for (const d of blanked.deaths.filter((x: any) => x[1] === npc && x[0] < 2200)) {
+      let i = Math.ceil(d[0]) - blanked.t0 + 1;
+      while (i < blanked.n && b.alive[i] === 0) i += 1;
+      if (i < blanked.n) b.alive[i] = null;
+    }
+    const after = ownFountain(blanked, h, npc);
+    // Either a later respawn in her base, or nothing established — never the spot the Aegis brought her back at.
+    if (after) expect(region(after.x, after.y)).toBe(t.heroes[h].team === 2 ? 'radiant_base' : 'dire_base');
+    expect(after?.x).not.toBe(2298);
   });
 
   it('a window that reaches back into the previous life has no heading (Codex P1 on #415)', () => {

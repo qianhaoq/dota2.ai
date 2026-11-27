@@ -320,7 +320,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
       health_share_at_window_start: share(snapshots[0]?.me),
       // How much closer to their own fountain the hero was at the last snapshot than at the window's start: positive
       // heading home, negative heading away from it. Null when either distance is unknown. Over 1089 deaths outside
-      // fights in 32 games (scripts/calibrate.mjs), the 100 heading home by 1500 or more were traded 13% of the time,
+      // fights in 32 games (scripts/calibrate.mjs), the 101 heading home by 1500 or more were traded 13% of the time,
       // the fewest of any; 240 began farming (17%). An escape that came too late buys nothing.
       // Both ends alive and in this life: a window that reaches back past the hero's previous death (a respawn or
       // buyback less than a window ago) has no heading (Codex P1 on #415).
@@ -364,6 +364,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
 const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 : null);
 
 const fountainCache = new WeakMap();
+/** A hero back within this distance of where they fell came back in place (the Aegis), not in the fountain. */
+const IN_PLACE = 1500;
 /**
  * Where hero h's fountain is, from the trace itself: the first position sampled alive after one of the hero's
  * deaths (a hero respawns in their fountain). The trace has no building or fountain positions; null when no
@@ -374,6 +376,7 @@ export function ownFountain(trace, h, npc = nameId(trace, trace.heroes[h].npc)) 
   if (!byHero) fountainCache.set(trace, (byHero = new Map()));
   if (byHero.has(h)) return byHero.get(h);
   const s = trace.states[h];
+  const own = trace.heroes[h].team === 2 ? 'radiant_base' : 'dire_base';
   let at = null;
   for (const d of trace.deaths.filter((x) => x[1] === npc).sort((a, b) => a[0] - b[0])) {
     let i = Math.max(0, Math.ceil(d[0]) - trace.t0 + 1);
@@ -381,7 +384,13 @@ export function ownFountain(trace, h, npc = nameId(trace, trace.heroes[h].npc)) 
     // (neither dead nor alive known) leaves this death out — the first alive sample after a gap may already be
     // in a lane (Codex P1 on #415) — and the next death is tried.
     while (i < trace.n && s.alive[i] === 0) i += 1;
-    if (i < trace.n && i > 0 && s.alive[i] === 1 && s.alive[i - 1] === 0 && s.x[i] != null && s.y[i] != null) { at = { x: s.x[i], y: s.y[i] }; break; }
+    if (!(i < trace.n && i > 0 && s.alive[i] === 1 && s.alive[i - 1] === 0 && s.x[i] != null && s.y[i] != null)) continue;
+    const back = { x: s.x[i], y: s.y[i] };
+    // In the hero's own base, and not where they fell: the Aegis brings a hero back where they died (Codex P1 on
+    // #415), and that is no fountain. Unknown death position: not established, the next death is tried.
+    const fell = stateAt(trace, h, d[0] - 1);
+    if (region(back.x, back.y) !== own || !fell || dist(fell, back) < IN_PLACE) continue;
+    at = back; break;
   }
   byHero.set(h, at);
   return at;
