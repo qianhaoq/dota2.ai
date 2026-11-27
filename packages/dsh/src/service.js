@@ -30,6 +30,8 @@ export function resolveDataHome(config = {}, env = process.env) {
   return join(base, 'dota2ai');
 }
 
+const PATCH_IDS = { '7.39': 58, '7.40': 59, '7.41': 60, '7.42': 61 };
+
 /** Synthesize minimal OpenDota-shaped match metadata from a `CoachReport` when OpenDota itself is unreachable. */
 export function synthesizeMatchFromCoachReport(report) {
   if (!report?.match || !Array.isArray(report.players)) return null;
@@ -38,24 +40,42 @@ export function synthesizeMatchFromCoachReport(report) {
     : Array.isArray(report.match.gold_adv)
       ? report.match.gold_adv
       : null;
+  let radiantIdx = 0;
+  let direIdx = 0;
   return {
     match_id: report.match.id,
     start_time: report.match.start_time ?? null,
     duration: report.match.duration ?? null,
     radiant_win: report.match.radiant_win,
+    radiant_score: report.match.score?.[0] ?? 0,
+    dire_score: report.match.score?.[1] ?? 0,
+    ...(PATCH_IDS[report.match.patch] ? { patch: PATCH_IDS[report.match.patch] } : {}),
+    ...(report.match.turbo ? { game_mode: 23 } : {}),
+    ...(report.match.ranked ? { lobby_type: 7 } : {}),
     ...(goldAdv ? { radiant_gold_adv: goldAdv } : {}),
-    players: report.players.map((p, idx) => ({
-      player_slot: p.radiant ? idx : 128 + (idx - 5),
-      account_id: p.account_id ?? null,
-      hero_id: p.hero?.id ?? 0,
-      kills: p.kda?.[0] ?? 0,
-      deaths: p.kda?.[1] ?? 0,
-      assists: p.kda?.[2] ?? 0,
-      net_worth: p.net_worth ?? 0,
-      gold_per_min: p.gpm ?? 0,
-      xp_per_min: p.xpm ?? 0,
-      last_hits: p.last_hits ?? 0,
-    })),
+    players: report.players.map((p) => {
+      const isRadiant = Boolean(p.radiant);
+      return {
+        player_slot: isRadiant ? (radiantIdx += 1) - 1 : 128 + (direIdx += 1) - 1,
+        isRadiant,
+        account_id: p.account_id ?? null,
+        rank_tier: p.rank_tier ?? null,
+        hero_id: p.hero?.id ?? 0,
+        kills: p.kda?.[0] ?? 0,
+        deaths: p.kda?.[1] ?? 0,
+        assists: p.kda?.[2] ?? 0,
+        net_worth: p.net_worth ?? 0,
+        gold_per_min: p.gpm ?? 0,
+        xp_per_min: p.xpm ?? 0,
+        last_hits: p.last_hits ?? 0,
+        denies: p.denies ?? 0,
+        hero_damage: p.hero_damage ?? 0,
+        tower_damage: p.tower_damage ?? 0,
+        ...(p.level != null ? { level: p.level } : {}),
+        ...(p.obs_placed != null ? { obs_placed: p.obs_placed } : {}),
+        ...(p.benchmarks ? { benchmarks: p.benchmarks } : {}),
+      };
+    }),
   };
 }
 

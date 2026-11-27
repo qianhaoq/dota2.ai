@@ -665,10 +665,14 @@ describe('DSH local service end-to-end (service.js)', () => {
       expect(habitChecked.result).toBe('met');
       expect(habitChecked.count).toBe(0);
 
-      // Synthesized match fallback preserves `report.timeline.radiant_gold_adv` from CoachReport.
+      // Synthesized match fallback preserves `report.timeline.radiant_gold_adv`, `isRadiant` team partitions, and core/support roles.
       const synth = synthesizeMatchFromCoachReport(report);
       expect(Array.isArray(synth.radiant_gold_adv)).toBe(true);
       expect(synth.radiant_gold_adv).toEqual(report.timeline.radiant_gold_adv);
+      const rebuilt = buildCoachReport(synth);
+      expect(rebuilt.players.map((p) => p.radiant)).toEqual(report.players.map((p) => p.radiant));
+      expect(rebuilt.reviews.map((r) => r.role.kind)).toEqual(report.reviews.map((r) => r.role.kind));
+      expect(rebuilt.reviews.map((r) => r.bracket?.key ?? null)).toEqual(report.reviews.map((r) => r.bracket?.key ?? null));
 
       svc.shutdown();
     } finally {
