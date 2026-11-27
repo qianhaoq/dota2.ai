@@ -98,6 +98,7 @@ const T = {
   laneVisitDied: { en: 'died', zh: '阵亡', ru: 'погибли' },
   lanePartTime: { en: 'Shared the lane part-time', zh: '兼顾本路', ru: 'Делили линию частично' },
   laneRoster: { en: 'Read over', zh: '统计范围', ru: 'По героям' },
+  laneUneven: { en: 'Heroes in the lane, your side : enemy (part-time sharers not counted in the gap)', zh: '本路固定人数，我方 : 对方（兼顾的人不在差距里）', ru: 'Героев на линии, ваши : враг (частично делившие не в разнице)' },
   laneNoEconomy: { en: 'No per-minute gold or last hits for this game.', zh: '这局没有逐分钟的金钱和补刀数据。', ru: 'Нет поминутных данных по золоту и добиваниям.' },
   lanePro: { en: 'pro games, core vs core at 10:00', zh: '场职业局，双方核心 10 分钟经济差', ru: 'про-игр, кор против кора на 10:00' },
   laneProMean: { en: 'usually', zh: '通常', ru: 'обычно' }, laneThis: { en: 'this game', zh: '这局', ru: 'в этой игре' }, laneAhead: { en: 'ahead in', zh: '领先的比例', ru: 'впереди в' },
@@ -613,6 +614,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           return (
             <>
               {w.heroes_in_lane_read_from_replay && <p className="ag-rec-note">{t(T.laneRoster)} · {Object.keys(w.heroes_in_lane_read_from_replay).map((h) => N(h)).join(' / ')}</p>}
+              {w.roster_note && <p className="ag-rec-note">{t(T.laneUneven)} · {w.roster_note.heroes_in_lane.my_team} : {w.roster_note.heroes_in_lane.enemy}</p>}
               {d && <p className="ag-rec-line"><span>{t(T.laneGap)}</span>{['lane_creeps', 'hero_kills_and_assists', 'lost_on_dying', 'neutrals'].filter((k) => d[k] != null).map((k) => <span key={k} className="ag-chip">{t(T.laneSrc[k])} <em>{signed(d[k])}</em></span>)}</p>}
               {Array.isArray(w.visits) && w.visits.length > 0 && <p className="ag-rec-line"><span>{t(T.laneVisits)}</span>{w.visits.map((v: any, i: number) => <span key={i} className={`ag-chip ${SIDE_CLASS[v.side === 'my_team' ? 'ally' : 'enemy'] ?? ''}`}>{v.from}–{v.to} {N(v.hero)}{v.died.length ? ` · ${t(T.laneVisitDied)} ${v.died.map((x: any) => N(x.hero)).join(', ')}` : ''}</span>)}</p>}
               {Array.isArray(w.part_time_in_this_lane) && w.part_time_in_this_lane.length > 0 && <p className="ag-rec-line"><span>{t(T.lanePartTime)}</span>{w.part_time_in_this_lane.map((x: any) => <span key={x.hero} className="ag-chip">{N(x.hero)} <em>{pc(x.share_of_lane_stage_here)}</em></span>)}</p>}

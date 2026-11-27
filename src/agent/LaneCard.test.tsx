@@ -38,6 +38,7 @@ describe('how the lane went, under a lane line (#440 review)', () => {
     gold_gap_by_source: { my_team_minus_enemy: { lane_creeps: -907, neutrals: 169, hero_kills_and_assists: 537, lost_on_dying: null, earned: -566 } },
     visits: [{ hero: 'necrolyte', side: 'enemy', their_lane: 'mid', from: '7:55', to: '8:06', died: [{ clock: '8:06', hero: 'necrolyte', who: 'enemy' }] }],
     part_time_in_this_lane: [{ hero: 'dark_willow', side: 'my_team', share_of_lane_stage_here: 0.44 }],
+    roster_note: { heroes_in_lane: { my_team: 1, enemy: 2 }, part_time: { my_team: ['dark_willow'], enemy: [] }, note: 'n' },
   };
 
   it('shows the gap by source, who came into the lane and who died, the part-time sharers and the roster it was read over', async () => {
@@ -53,6 +54,7 @@ describe('how the lane went, under a lane line (#440 review)', () => {
     expect(text).toContain('Shared the lane part-time');
     expect(text).toContain('44%');
     expect(text).toContain('Read over');
+    expect(text).toContain('Heroes in the lane, your side : enemy (part-time sharers not counted in the gap) · 1 : 2');
   });
 
   it('an older record without it renders as before', async () => {

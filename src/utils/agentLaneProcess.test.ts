@@ -28,11 +28,11 @@ describe('how the lane went, read from the replay', () => {
   it('the gap split by source: behind on lane creeps, ahead on kills — the starting purse in neither', () => {
     expect(r.lane).toBe('bot');
     const d = r.gold_gap_by_source.my_team_minus_enemy;
-    expect(d).toEqual({ lane_creeps: -907, neutrals: 169, hero_kills_and_assists: 537, bounty_runes: 0, other: -365, lost_on_dying: 60, earned: -566 });
+    expect(d).toEqual({ lane_creeps: -907, neutrals: 169, hero_kills_and_assists: 537, buildings: 0, roshan_and_tormentor: 0, bounty_runes: 0, other: -365, lost_on_dying: 60, earned: -566 });
     // The parts add up to what each side earned; dying is a loss, not earning.
     for (const side of ['my_team', 'enemy']) {
       const s = r.gold_gap_by_source[side];
-      expect(s.lane_creeps + s.neutrals + s.hero_kills_and_assists + s.bounty_runes + s.other).toBe(s.earned);
+      expect(s.lane_creeps + s.neutrals + s.hero_kills_and_assists + s.buildings + s.roshan_and_tormentor + s.bounty_runes + s.other).toBe(s.earned);
       expect(s.lost_on_dying).toBeLessThanOrEqual(0);
     }
     // Running every two minutes, ending on the 10:00 gap.
@@ -153,5 +153,35 @@ describe('the review of #440: whether a hero shared the lane can be unsettled by
     expect(r.gaps).toContainEqual({ topic: 'visits', reason: 'an_exchange_with_the_lane_without_the_visitor_s_position_or_lane', sides: ['my_team'], heroes: ['dark_willow'] });
     // The enemy side is unaffected.
     expect(r.enemy_visits).toEqual({ visits: 2, heroes: ['necrolyte', 'mirana'], my_team_deaths_in_them: 2, enemy_deaths_in_them: 1 });
+  });
+});
+
+describe('a lane shared part-time: the sides may be uneven, and that is said (#440, side note)', () => {
+  it('roster_note gives each side\'s heroes in the lane and the sharers; the sharer\'s own gold is listed apart, not in the sums', () => {
+    // Dark Willow (top) where Beastmaster stood every third second: no single lane, sharing the bottom one.
+    const i = seat('dark_willow'); const st = trace.states[i]; const b = trace.states[bm];
+    const mix = (arr: any[], from: any[]) => arr.map((v: any, k: number) => (k + trace.t0 >= 60 && k + trace.t0 < 600 && k % 3 === 0 && b.x[k] != null && b.y[k] != null ? from[k] : v));
+    const t = { ...trace, states: trace.states.map((s: any, j: number) => (j === i ? { ...st, x: mix(st.x, b.x), y: mix(st.y, b.y) } : s)) };
+    const r: any = laneProcess(t, bm);
+    expect(r.roster_note).toMatchObject({ heroes_in_lane: { my_team: 2, enemy: 2 }, part_time: { my_team: ['dark_willow'], enemy: [] } });
+    expect(r.roster_note.note).toMatch(/compare only the heroes in this lane/);
+    const dw = r.part_time_in_this_lane[0];
+    expect(dw.gold_before_10_00_anywhere.earned).toBeGreaterThan(0);
+    // The sums are unchanged by her: the same as with her in her own lane.
+    expect(r.gold_gap_by_source.my_team_minus_enemy.earned).toBe((laneProcess(trace, bm) as any).gold_gap_by_source.my_team_minus_enemy.earned);
+  });
+
+  it('no sharer: no roster_note', () => {
+    expect((laneProcess(trace, bm) as any).roster_note).toBeUndefined();
+  });
+});
+
+describe('a gold log without dying rows (15 of 209 parsed games)', () => {
+  it('what dying cost is null — never 0 — and gaps says why', () => {
+    const t = { ...trace, gold: trace.gold.filter((g: any) => g[2] !== 1) };
+    const r: any = laneProcess(t, bm);
+    expect(r.gold_gap_by_source.my_team.lost_on_dying).toBeNull();
+    expect(r.gold_gap_by_source.my_team_minus_enemy.lost_on_dying).toBeNull();
+    expect(r.gaps).toContainEqual({ topic: 'lost_on_dying', reason: 'no_dying_rows_in_the_replay_s_gold_log' });
   });
 });
