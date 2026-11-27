@@ -1,6 +1,6 @@
 /**
  * How to use dota2.ai outside the web page — one source for the home page's
- * "four ways" block and the review page's snippet drawer, so commands and
+ * "ways to use it" block and the review page's snippet drawer, so commands and
  * tool names never drift apart. Every command here works as written:
  * the remote MCP is live at /mcp with these 9 tools (tested in
  * packages/mcp/test/remoteCoach.test.js and src/utils/agentReplayTool.test.ts); the CLI is not on npm, so it runs
@@ -16,7 +16,12 @@ export const MCP_TOOLS = [
   'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup',
 ] as const;
 
-export type AccessMode = 'web' | 'mcp' | 'cli' | 'http';
+export type AccessMode = 'web' | 'dsh' | 'mcp' | 'cli' | 'http';
+
+/** The DSH plugin release the home page points to (packages/dsh, released from a dsh-v* tag). */
+export const DSH_PLUGIN_VERSION = '0.1.0';
+export const DSH_RELEASE_URL = `https://github.com/qianhaoq/dota2.ai/releases/tag/dsh-v${DSH_PLUGIN_VERSION}`;
+export const DSH_INSTALL = `dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`;
 
 /**
  * One line that connects each agent tool to the hosted MCP server. A command
@@ -80,14 +85,25 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
       note: { en: 'Paste a match ID, a match link or your friend code in the box above.', zh: '在上面的输入框里粘贴比赛 ID、对局链接或好友码。', ru: 'Вставьте ID матча, ссылку на матч или код друга в поле выше.' },
     },
     {
+      mode: 'dsh',
+      label: { en: 'DSH plugin', zh: 'DSH 插件', ru: 'Плагин DSH' },
+      lines: [DSH_INSTALL],
+      note: {
+        en: 'A native plugin for DSH (DeepSeek Harness): download the archive from the release, then every DSH session has the replay review and the coach tools. Node 24.9+, DSH 0.2.1-rc.3, no key.',
+        zh: 'DSH（DeepSeek Harness）原生插件：从 Release 下载安装包，之后每个 DSH 会话都能直接复盘、追问。需要 Node 24.9+ 和 DSH 0.2.1-rc.3，不需要 Key。',
+        ru: 'Нативный плагин для DSH (DeepSeek Harness): скачайте архив из релиза — и в каждой сессии DSH будут разбор по реплею и инструменты тренера. Node 24.9+, DSH 0.2.1-rc.3, без ключа.',
+      },
+      links: [{ href: DSH_RELEASE_URL, label: `dsh-v${DSH_PLUGIN_VERSION}` }],
+    },
+    {
       mode: 'mcp',
       label: { en: 'Agent (MCP)', zh: 'Agent（MCP）', ru: 'Агент (MCP)' },
       lines: [AGENT_CLIENTS[0].line],
       clients: AGENT_CLIENTS,
       note: {
-        en: `Hosted, no install. Any client that supports remote MCP can use ${MCP_URL}. ${MCP_TOOLS.length} tools: ${MCP_TOOLS.join(', ')}.`,
-        zh: `线上直连，无需安装；支持远程 MCP 的客户端填 ${MCP_URL} 即可。共 ${MCP_TOOLS.length} 个工具：${MCP_TOOLS.join('、')}。`,
-        ru: `Работает в облаке без установки. Любой клиент с удалённым MCP может использовать ${MCP_URL}. Доступно ${MCP_TOOLS.length} инструментов: ${MCP_TOOLS.join(', ')}.`,
+        en: `Hosted, no install, no key. replay_review is the full review; the other tools answer at once from match data.`,
+        zh: `线上直连，不用安装，不要 Key。replay_review 是完整的录像复盘，其余工具按比赛数据即时回答。`,
+        ru: `Работает онлайн, без установки и ключа. replay_review — полный разбор по реплею, остальные инструменты отвечают сразу по данным матча.`,
       },
     },
     {
@@ -99,9 +115,9 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
         `${CLI} matchup tidehunter ursa --rank legend`,
       ],
       note: {
-        en: 'Not published on npm yet: run it from a checkout. Every command takes --json and --lang en|zh|ru.',
-        zh: '还没有发布到 npm：clone 仓库后运行。所有命令都支持 --json 和 --lang en|zh|ru。',
-        ru: 'Пока не опубликован в npm: запускайте из клона репозитория. Команды поддерживают --json и --lang en|zh|ru.',
+        en: 'Not published on npm yet: run it from a checkout. Every command takes --json and --lang en|zh.',
+        zh: '还没有发布到 npm：clone 仓库后运行。所有命令都支持 --json 和 --lang en|zh。',
+        ru: 'Пока не опубликован в npm: запускайте из клона репозитория. Команды поддерживают --json и --lang en|zh.',
       },
     },
     {

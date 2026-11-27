@@ -7,7 +7,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { buildSurface } from '../../lib/coach/cards.js';
-import { AGENT_CLIENTS, CURSOR_INSTALL, MCP_TOOLS, MCP_URL } from './accessSnippets';
+import { AGENT_CLIENTS, CURSOR_INSTALL, DSH_INSTALL, DSH_PLUGIN_VERSION, MCP_TOOLS, MCP_URL } from './accessSnippets';
+import dshPackage from '../../packages/dsh/package.json';
 
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en', setLang: () => {} }) }));
 const report = buildCoachReport(JSON.parse(readFileSync(path.join(process.cwd(), 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))) as any;
@@ -53,7 +54,7 @@ describe('home: what happens next', () => {
     const { container } = home();
     const how = container.querySelector('.hm-how') as HTMLElement;
     expect(within(how).getByRole('heading', { name: 'What happens next' })).toBeTruthy();
-    expect([...how.querySelectorAll('.hm-how-steps strong')].map((x) => x.textContent)).toEqual(['You pick your hero', 'The coach watches the replay', 'You get the review', 'Ask anything']);
+    expect([...how.querySelectorAll('.hm-how-steps strong')].map((x) => x.textContent)).toEqual(['Pick your hero', 'The coach reads the replay', 'You get the review', 'Ask about any moment']);
     expect(how.textContent).toContain('the coach says it cannot see');
     // The old sample fetched the rule engine's cards; the home page no longer calls it.
     expect(cards).not.toHaveBeenCalled();
@@ -61,16 +62,27 @@ describe('home: what happens next', () => {
   });
 });
 
-describe('home: four ways to use it', () => {
-  it('Web / Agent (MCP) / CLI / HTTP, each with a command that works as written', async () => {
+describe('home: where to use it', () => {
+  it('Web / DSH plugin / Agent (MCP) / CLI / HTTP, each with a command that works as written', async () => {
     cards.mockImplementation(async (_id: string, seat: number) => buildSurface(report, seat));
     const { container } = home();
     const ways = container.querySelector('.hm-ways') as HTMLElement;
-    expect(within(ways).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Web', 'Agent (MCP)', 'CLI', 'HTTP']);
-    // MCP is the default tab: the hosted endpoint and all 9 tool names (replay_review joined the 8 rule-based ones).
+    expect(within(ways).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Web', 'DSH plugin', 'Agent (MCP)', 'CLI', 'HTTP']);
+    // MCP is the default tab: the hosted endpoint, and which tool is the full review.
     expect(ways.querySelector('pre')?.textContent).toBe(`claude mcp add --transport http dota2ai ${MCP_URL}`);
-    for (const tool of MCP_TOOLS) expect(ways.textContent).toContain(tool);
+    expect(ways.textContent).toContain('replay_review is the full review');
     expect(MCP_TOOLS).toHaveLength(9);
+    // DSH: the install line of the released archive, and the release it comes from.
+    fireEvent.click(within(ways).getByRole('tab', { name: 'DSH plugin' }));
+    expect(ways.querySelector('pre')?.textContent).toBe(DSH_INSTALL);
+    // The page names the plugin release that is packed from packages/dsh: a version raise there is one here too.
+    expect(DSH_PLUGIN_VERSION).toBe(dshPackage.version);
+    expect(DSH_INSTALL).toBe(`dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`);
+    expect(within(ways).getByRole('link', { name: `dsh-v${DSH_PLUGIN_VERSION}` }).getAttribute('href')).toBe(`https://github.com/qianhaoq/dota2.ai/releases/tag/dsh-v${DSH_PLUGIN_VERSION}`);
+    expect(ways.textContent).toContain('DeepSeek Harness');
+    // The first screen says where else it works, and links here.
+    expect(container.querySelector('.hm-also a')?.getAttribute('href')).toBe('#ways');
+    expect(ways.id).toBe('ways');
     fireEvent.click(within(ways).getByRole('tab', { name: 'CLI' }));
     expect(ways.querySelector('pre')?.textContent).toContain('node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section why');
     expect(ways.textContent).toContain('Not published on npm yet');
