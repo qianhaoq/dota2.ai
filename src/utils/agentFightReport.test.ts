@@ -279,6 +279,15 @@ describe('fight_report me_in_fight factual player contribution', () => {
     const svenF9 = sven.fights.find((f: any) => f.fight === 'fight:9');
     expect(svenF9.me).toBe('not_in_it');
     expect(svenF9.me_in_fight).toBeNull();
+
+    // Off-fight skirmish damage during [engaged_at, to] is excluded: in fight:6, Undying dealt 70 damage to
+    // Phantom Assassin at 789s away from the fight while PA did not participate, so encounter damage is 256 (not 326).
+    const undy: any = fightReport(trace, { hero: 'undying' });
+    const undyF6 = undy.fights.find((f: any) => f.fight === 'fight:6');
+    expect(undyF6.me).toBe('took_part');
+    expect(undyF6.enemy.took_part).not.toContain('phantom_assassin');
+    expect(undyF6.me_in_fight.hero_damage_dealt).toBe(256);
+    expect(undyF6.me_in_fight.hero_damage_taken).toBe(12);
   });
 
   it('tracks key_items_used deduplicated in order, auto-triggered ultimates, passive ultimates, and null on blank sources', () => {
@@ -343,6 +352,25 @@ describe('fight_report me_in_fight factual player contribution', () => {
       hero_damage_dealt: null,
       hero_damage_taken: null,
       enemy_deaths_i_damaged: null,
+    });
+
+    // Off-fight enemy hero far outside ENGAGE_RADIUS exchanging damage with Axe during the fight window is excluded from both dealt and taken.
+    const offFight: any = synth({
+      heroes,
+      pos: { axe: [0, 0], lina: [100, 0], sven: [9000, 9000], pudge: [100, 100], zuus: [150, 100], lion: [8000, 8000] },
+      damage: [
+        [95, 'axe', 'pudge'], [96, 'pudge', 'axe'], [97, 'axe', 'zuus'], [98, 'zuus', 'lina'],
+        [96, 'axe', 'lion'], [97, 'lion', 'axe'], // separate skirmish / global ping with far non-participant lion
+      ],
+      deaths: [[100, 'pudge'], [104, 'zuus'], [108, 'lina']],
+      dead: { pudge: [100, 140], zuus: [104, 150], lina: [108, 160] },
+    });
+    const fOff = (fightReport(offFight, { hero: 'axe' }) as any).fights[0];
+    expect(fOff.enemy.took_part).not.toContain('lion');
+    expect(fOff.me_in_fight).toMatchObject({
+      hero_damage_dealt: 200,
+      hero_damage_taken: 100,
+      enemy_deaths_i_damaged: 2,
     });
   });
 });

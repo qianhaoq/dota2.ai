@@ -250,10 +250,37 @@ describe('draft_report', () => {
     const bot = d.lanes.find((l: any) => l.lane === 'bot');
     expect(bot.at_10_00).toMatchObject({
       my_team_gold: 2300, enemy_gold: 3000, gold_diff: -700,
-      my_team_last_hits: 40, enemy_last_hits: 58, source: 'replay',
+      my_team_last_hits: 40, enemy_last_hits: 58, source: 'replay', passive_income_omitted: true,
     });
     expect(d.lineups.my_team.every((x: any) => Number.isInteger(x.inferred_position))).toBe(true);
-    expect(d.gaps).toEqual([]);
+    // Replay combat-log gold omits passive income: equal-headcount lanes keep gold_diff, with an explicit gap.
+    expect(d.gaps).toEqual([{ topic: 'lane_gold_at_10_00', reason: 'replay_gold_log_omits_passive_income' }]);
+
+    // Unequal-headcount lane (1v2) under replay gold: passive income does NOT cancel, so gold_diff MUST be null + gap.
+    const undyIdx = replayTrace.heroes.findIndex((h: any) => h.key === 'undying');
+    const svenIdx = replayTrace.heroes.findIndex((h: any) => h.key === 'sven');
+    const unequalReplay: any = {
+      ...replayTrace,
+      states: replayTrace.states.map((st: any, idx: number) => (idx === undyIdx
+        // Place Undying in top lane (same coordinates as Sven) during 1:00–10:00 so bot becomes 1v2 and top becomes 3v2.
+        ? { ...st, x: [...replayTrace.states[svenIdx].x], y: [...replayTrace.states[svenIdx].y] }
+        : st)),
+    };
+    const uRes: any = draftReport(unequalReplay, { hero: 'beastmaster' }, { match });
+    const uBot = uRes.lanes.find((l: any) => l.lane === 'bot');
+    const uMid = uRes.lanes.find((l: any) => l.lane === 'mid');
+    expect(uBot.my_team).toEqual(['beastmaster']);
+    expect(uBot.enemy).toEqual(['phantom_assassin', 'venomancer']);
+    expect(uBot.at_10_00).toMatchObject({
+      my_team_gold: 1500, enemy_gold: 3000, gold_diff: null,
+      my_team_last_hits: 35, enemy_last_hits: 58, source: 'replay', passive_income_omitted: true,
+    });
+    // Mid stays 1v1 (equal headcount), so its gold_diff remains comparable.
+    expect(uMid.at_10_00).toMatchObject({
+      my_team_gold: 1900, enemy_gold: 2200, gold_diff: -300, source: 'replay', passive_income_omitted: true,
+    });
+    expect(uRes.gaps).toContainEqual({ topic: 'lane_gold_at_10_00', reason: 'replay_gold_log_omits_passive_income' });
+    expect(uRes.gaps).toContainEqual({ topic: 'lane_gold_diff_at_10_00', reason: 'unequal_lane_headcount_with_replay_gold_log' });
 
     // Partial match_record (one hero missing gold_t) without replay fallback -> never treats missing hero as 0 -> null + gap.
     const partialMatch = {

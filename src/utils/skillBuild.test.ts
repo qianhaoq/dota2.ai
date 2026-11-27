@@ -25,13 +25,15 @@ describe('skill_build on real replay 9100904020', () => {
     expect(abilities).not.toContain('ability_lamp_use');
     expect(abilities).not.toContain('twin_gate_portal_warp');
 
-    // Innate ability is marked initial: true; real level-1 point (Summon Razorback) is not.
+    // Innate ability is marked initial: true & innate: true; real level-1 point (Summon Razorback) is not.
     expect(r.upgrade_timeline.find((u: any) => u.ability === 'beastmaster_inner_beast')).toMatchObject({
       clock: '0:00',
       ability_level: 1,
       initial: true,
+      innate: true,
     });
     expect(r.upgrade_timeline.find((u: any) => u.ability === 'beastmaster_summon_razorback' && u.ability_level === 1)).not.toHaveProperty('initial');
+    expect(r.upgrade_timeline.find((u: any) => u.ability === 'beastmaster_summon_razorback' && u.ability_level === 1)).not.toHaveProperty('innate');
 
     // Exact 6-point distribution at level 6 (2-3-0-1) and 10-point distribution at level 10 (4-4-1-1).
     expect(r.at_level_6).toEqual({
@@ -160,5 +162,95 @@ describe('skill_build unknown-is-not-false blank-source checks', () => {
     const r3: any = skillBuild(cap7, { hero: 'beastmaster' });
     expect(r3.at_level_6).not.toBeNull();
     expect(r3.at_level_10).toBeNull();
+  });
+
+  it('keeps an unupgraded level-1 starting skill (e.g. Lion Earth Spike) in at_level_6 and at_level_10, while excluding metadata-established innates', () => {
+    const n = 1200;
+    const level = Array.from({ length: n }, (_, s) => (s < 300 ? 1 : s < 400 ? 6 : s < 800 ? 9 : 10));
+    const lionTrace: any = {
+      match_id: 9100904020, // exact 7.42 patch metadata
+      t0: 0,
+      n,
+      heroes: [{ key: 'lion', npc: 'npc_dota_hero_lion', team: 2 }],
+      states: [{ level }],
+      abilities: [{
+        // Normal starting skill left at level 1 for the entire game: MUST stay in at_level_6 and at_level_10.
+        lion_impale: { levels: [[0, 1]] },
+        // Innate ability excluded from Valve's learnable list: excluded from point distributions and marked innate: true.
+        lion_to_hell_and_back: { levels: [[0, 1]] },
+        lion_voodoo: { levels: [[100, 1], [200, 2], [450, 3], [650, 4]] },
+        lion_mana_drain: { levels: [[150, 1], [250, 2], [550, 3], [750, 4]] },
+        lion_finger_of_death: { levels: [[301, 1]] },
+      }],
+    };
+    const r: any = skillBuild(lionTrace, { hero: 'lion' });
+    const impaleEntry = r.upgrade_timeline.find((u: any) => u.ability === 'lion_impale');
+    expect(impaleEntry).toBeDefined();
+    expect(impaleEntry).not.toHaveProperty('initial');
+    expect(impaleEntry).not.toHaveProperty('innate');
+    expect(r.upgrade_timeline.find((u: any) => u.ability === 'lion_to_hell_and_back')).toMatchObject({
+      ability_level: 1,
+      initial: true,
+      innate: true,
+    });
+    expect(r.at_level_6.abilities).toEqual({
+      lion_impale: 1,
+      lion_voodoo: 2,
+      lion_mana_drain: 2,
+      lion_finger_of_death: 1,
+    });
+    expect(r.at_level_10.abilities).toEqual({
+      lion_impale: 1,
+      lion_voodoo: 4,
+      lion_mana_drain: 4,
+      lion_finger_of_death: 1,
+    });
+    expect(r.gaps.some((g: any) => g.topic === 'innate_abilities')).toBe(false);
+
+    // When patch metadata is not exact (unknown patch), never silently drop an unclassified ability — keep it and record a gap.
+    const unknownPatch: any = { ...lionTrace, match_id: 1 };
+    const rUncertain: any = skillBuild(unknownPatch, { hero: 'lion' });
+    expect(rUncertain.at_level_6.abilities).toMatchObject({ lion_impale: 1, lion_to_hell_and_back: 1 });
+    expect(rUncertain.at_level_10.abilities).toMatchObject({ lion_impale: 1, lion_to_hell_and_back: 1 });
+    expect(rUncertain.gaps).toContainEqual({ topic: 'innate_abilities', reason: 'innate_metadata_unavailable_for_patch' });
+  });
+
+  it('uses actual ability level caps for maxed_order (Invoker orbs cap at 7, never falsely maxed at 4)', () => {
+    const n = 1500;
+    const level = Array.from({ length: n }, (_, s) => Math.min(20, 1 + Math.floor(s / 60)));
+    const invokerTrace: any = {
+      match_id: 9100904020,
+      t0: 0,
+      n,
+      heroes: [{ key: 'invoker', npc: 'npc_dota_hero_invoker', team: 2 }],
+      states: [{ level }],
+      abilities: [{
+        // Quas hits level 4 FIRST (at 300s), but Wex hits its actual cap of 7 FIRST (at 840s) before Quas hits 7 (at 1020s).
+        // Exort stops at level 4 and is never maxed.
+        invoker_quas: { levels: [[0, 1], [100, 2], [200, 3], [300, 4], [700, 5], [900, 6], [1020, 7]] },
+        invoker_wex: { levels: [[60, 1], [180, 2], [360, 3], [480, 4], [600, 5], [720, 6], [840, 7]] },
+        invoker_exort: { levels: [[120, 1], [420, 2], [540, 3], [660, 4]] },
+      }],
+    };
+    const r: any = skillBuild(invokerTrace, { hero: 'invoker' });
+    expect(r.maxed_order).toEqual([
+      { ability: 'invoker_wex', name: 'Wex', level: 7, clock: '14:00', hero_level: 15 },
+      { ability: 'invoker_quas', name: 'Quas', level: 7, clock: '17:00', hero_level: 18 },
+    ]);
+
+    // A non-Invoker ability whose trace upgrades past 4 without an explicit max_level in metadata must NOT be falsely recorded as maxed at 4.
+    const over4Trace: any = {
+      match_id: 9100904020,
+      t0: 0,
+      n,
+      heroes: [{ key: 'lion', npc: 'npc_dota_hero_lion', team: 2 }],
+      states: [{ level }],
+      abilities: [{
+        lion_impale: { levels: [[0, 1], [100, 2], [200, 3], [300, 4], [400, 5]] },
+      }],
+    };
+    const rOver: any = skillBuild(over4Trace, { hero: 'lion' });
+    expect(rOver.maxed_order).toEqual([]);
+    expect(rOver.gaps).toContainEqual({ topic: 'maxed_order', reason: 'ability_max_level_unknown' });
   });
 });

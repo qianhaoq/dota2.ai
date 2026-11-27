@@ -702,7 +702,7 @@ function heroNearKnown(trace, j, t) {
  * Returns null when the player's own position is unknown at `from` or any enemy hero's position is unknown at `from`.
  */
 function enemyContextAtWindowStart(trace, h, from, snap0) {
-  if (snap0?.me == null) return null;
+  if (snap0?.me == null || !heroNearKnown(trace, h, from)) return null;
   const myTeam = trace.heroes[h].team;
   const allEnemiesKnown = trace.heroes.every((o, j) => o.team === myTeam || heroNearKnown(trace, j, from));
   if (!allEnemiesKnown) return null;
@@ -771,28 +771,28 @@ function enemyContextAtWindowStart(trace, h, from, snap0) {
  * Returns null if damage log is missing, `me`'s position at `from` is unknown, or any attacker's state at `from` is unknown.
  */
 function attackersArrivedAfterWindowStart(trace, h, from, snap0, attackers, hasDamageLog) {
-  if (!hasDamageLog || snap0?.me == null) return null;
+  if (!hasDamageLog || snap0?.me == null || !heroNearKnown(trace, h, from)) return null;
   const meStart = stateAt(trace, h, from);
   if (!meStart) return null;
   const nearKeys = new Set((snap0.enemies ?? []).map((e) => e.hero));
   const arrived = [];
   for (const ai of [...attackers].sort((a, b) => a - b)) {
+    // Check raw alive/position validity via heroNearKnown: stateAt maps null alive to false,
+    // which must stay unknown (null) rather than being reported as dead at window start.
+    if (!heroNearKnown(trace, ai, from)) return null;
     const heroKey = trace.heroes[ai].key;
     if (nearKeys.has(heroKey)) continue;
     const st = stateAt(trace, ai, from);
-    if (!st) {
-      const k0 = Math.round(from) - trace.t0;
-      if (k0 >= 0 && k0 < trace.n && trace.states?.[ai]?.alive?.[k0] === 0) {
-        arrived.push({ hero: heroKey, alive_at_window_start: false });
-        continue;
-      }
-      return null;
-    }
-    if (!st.alive) {
+    const rawAlive = st
+      ? trace.states?.[ai]?.alive?.[st.t - trace.t0]
+      : trace.states?.[ai]?.alive?.[Math.round(from) - trace.t0];
+    if (rawAlive === 0) {
       arrived.push({ hero: heroKey, alive_at_window_start: false });
-    } else {
+    } else if (rawAlive === 1 && st && st.x != null && st.y != null) {
       const d = dist(meStart, st);
       if (d > 2200) arrived.push({ hero: heroKey, dist_at_window_start: d, place_at_window_start: region(st.x, st.y) });
+    } else {
+      return null;
     }
   }
   return arrived;

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { TRACE_TOOLS, runTraceTool } from '../../packages/review-engine/src/trace/index.js';
+import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
+import { TRACE_TOOLS, linkHeroNames, runTraceTool } from '../../packages/review-engine/src/trace/index.js';
 import { nearby } from '../../packages/review-engine/src/trace/query.js';
 import { ultimateOf, ultimatesOf } from '../../lib/agent/ultimates.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
@@ -584,6 +586,33 @@ describe('death_context PR 2 bilateral enemy kill-threat context & judgment-free
     const rNoDmg: any = runTraceTool(noDmg, 'death_context', { hero: 'enchantress' });
     expect(rNoDmg.deaths[0].attackers_arrived_after_window_start).toBeNull();
     expect(rNoDmg.deaths[0].enemy_active_buffs_in_window).toBeNull();
+
+    // 6. Blank attacker alive samples (with x/y still present!) at window start on real fixture 9100904020 ->
+    // stateAt coerces null alive to false, so attackers_arrived_after_window_start MUST return null rather than
+    // reporting `{ hero: 'phantom_assassin', alive_at_window_start: false }`.
+    const realTrace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString()));
+    const paIdx = realTrace.heroes.findIndex((h: any) => h.key === 'phantom_assassin');
+    const bmIdx = realTrace.heroes.findIndex((h: any) => h.key === 'beastmaster');
+    const blankPaAlive = {
+      ...realTrace,
+      states: realTrace.states.map((st: any, idx: number) => (idx === paIdx
+        ? { ...st, alive: st.alive.map((v: any, k: number) => (k >= 30 && k <= 40 ? null : v)) }
+        : st)),
+    };
+    const rPaBlank: any = runTraceTool(blankPaAlive, 'death_context', { hero: 'beastmaster', index: 1 });
+    expect(rPaBlank.deaths[0].enemy_context_at_window_start).toBeNull();
+    expect(rPaBlank.deaths[0].attackers_arrived_after_window_start).toBeNull();
+
+    // Also blanking player's own alive sample at window start (with x/y intact) keeps both null.
+    const blankBmAlive = {
+      ...realTrace,
+      states: realTrace.states.map((st: any, idx: number) => (idx === bmIdx
+        ? { ...st, alive: st.alive.map((v: any, k: number) => (k >= 30 && k <= 40 ? null : v)) }
+        : st)),
+    };
+    const rBmBlank: any = runTraceTool(blankBmAlive, 'death_context', { hero: 'beastmaster', index: 1 });
+    expect(rBmBlank.deaths[0].enemy_context_at_window_start).toBeNull();
+    expect(rBmBlank.deaths[0].attackers_arrived_after_window_start).toBeNull();
   });
 
   it('de-biases death_context, ability_audit, match_overview descriptions and chatSystem rules', () => {

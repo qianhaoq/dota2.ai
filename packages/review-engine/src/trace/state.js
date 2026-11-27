@@ -310,7 +310,7 @@ export function fightParticipation(trace, fight) {
     }
   }
   const at = spots.length ? { x: Math.round(spots.reduce((n, p) => n + p.x, 0) / spots.length), y: Math.round(spots.reduce((n, p) => n + p.y, 0) / spots.length) } : null;
-  return { took_part: took, engaged_at: engagedAt ?? Math.floor(fight.from), at, victims };
+  return { took_part: took, engaged_at: engagedAt ?? Math.floor(fight.from), at, victims, spots };
 }
 
 /** Observer wards this close count as "near" a spot (an observer's day vision is 1600: near is a distance, not a claim of sight). */
