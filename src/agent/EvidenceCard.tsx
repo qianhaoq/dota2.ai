@@ -569,6 +569,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         <p className="ag-rec-head"><b>{r.name ?? N(r.item)}</b>{r.cost != null && <> · {r.cost} {t(T.refGold)}</>}{r.patch && <> · {r.patch}</>}</p>
         {Array.isArray(r.components) && r.components.length > 0 && <p className="ag-rec-line">{t(T.refRecipe)} {r.components.join(' + ')}</p>}
         {(r.abilities ?? []).map((a: any, i: number) => <p key={i} className="ag-rec-line"><span className="ag-chip">{a.type}</span> <b>{a.title}</b> {a.text}</p>)}
+        {(r.hint ?? []).map((h: string, i: number) => <p key={`h${i}`} className="ag-rec-line">{h}</p>)}
         {Array.isArray(r.bonuses) && r.bonuses.length > 0 && <p className="ag-rec-line">{r.bonuses.slice(0, 12).map((b: any) => <span key={b.key} className="ag-chip">{pretty(b.key)} <em>{b.value}</em></span>)}</p>}
       </div>
     );

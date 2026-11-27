@@ -99,6 +99,23 @@ describe('reference tools: knowledge to look up instead of recall (#405)', () =>
     expect(i).toMatchObject({ patch_exact: false, gaps: [{ topic: 'patch', reason: 'older_than_7.40' }] });
   });
 
+  it('patch_changes: a name nobody knows is an error, never "no changes"; a known item with none is an empty list (Codex on #409)', () => {
+    expect(patchChanges(trace, { item: 'Blink Dager' }, zh)).toMatchObject({ error: 'unknown_item' });
+    expect(patchChanges(trace, { item: 'blink' }, zh)).toMatchObject({ ref: 'patch_notes:blink', changes: expect.any(Array), gaps: [] });
+  });
+
+  it('patch_changes: a game on a later letter release than the notes is told the notes may miss its changes (Codex on #409)', () => {
+    const match = { start_time: Date.UTC(2026, 10, 25, 12) / 1000 };
+    const r: any = patchChanges(trace, { item: 'Greater Horn of Battle' }, { ...zh, match });
+    expect(r.game_patch).toBe('7.42a');
+    expect(r.gaps).toEqual([{ topic: 'patch', reason: expect.stringContaining('these are the notes of 7.42; the game was on 7.42a') }]);
+  });
+
+  it('item_info carries Valve\'s hint where the numbers alone mislead (Codex on #409)', () => {
+    expect(itemInfo(trace, { item: 'witless_shako' }, zh)).toMatchObject({ hint: ["Increases the wearer's max health, while reducing their max mana."] });
+    expect(itemInfo(trace, { item: 'glimmer_cape' }, zh)).not.toHaveProperty('hint');
+  });
+
   it('the agent has them, after the replay tools', () => {
     expect(KNOWLEDGE_TOOLS.slice(-4).map((t: any) => t.name)).toEqual(REFERENCE_TOOLS.map((t) => t.name));
     expect(REFERENCE_TOOLS.map((t) => t.name)).toEqual(['item_info', 'hero_info', 'hero_matchup', 'patch_changes']);
