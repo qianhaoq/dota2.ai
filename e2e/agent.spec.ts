@@ -162,9 +162,8 @@ test('the reader names a plan before the review, and the review reads the game a
   const note = page.locator('.ag-intent-note', { hasText: `也可以按「${label}」重写整份复盘` });
   await note.getByRole('button', { name: '重写' }).click();
   await expect(page).toHaveURL(new RegExp(`plan=${key}`));
-  // A review for a plan is its own review: its start is offered, with the plan already picked.
-  const group = page.getByRole('radiogroup', { name: '这局你想怎么打？（可选）' });
-  await expect(group.getByRole('radio', { name: label })).toHaveAttribute('aria-checked', 'true');
+  // A review for a plan is its own review: its start is offered directly, with no upfront plan quiz.
+  await expect(page.getByRole('radiogroup', { name: '这局你想怎么打？（可选）' })).toHaveCount(0);
   const posted = page.waitForRequest((r) => r.url().endsWith(`/api/agent/${MATCH}/review`) && r.method() === 'POST');
   await page.getByRole('button', { name: '开始复盘' }).click();
   expect((await posted).postDataJSON()).toEqual({ hero: 'beastmaster', lang: 'zh', plan: key });
@@ -356,6 +355,7 @@ test('the waiting screen facts: fight strip and key items fit mobile and desktop
   await page.goto(`/r/${MATCH}?hero=beastmaster&lang=zh`);
   await expect(page.locator('.ag-wait-facts h2')).toHaveText('团战走势与你的关键成装');
   await expect(page.locator('.ag-wait-facts .ag-strip-fight')).toHaveCount(16);
+  await expect(page.locator('.ag-wait-items li').first()).toBeVisible();
   expect(await page.locator('.ag-wait-items li').count()).toBeGreaterThan(0);
   await noSideScroll(page);
   const axe = await new AxeBuilder({ page }).include('.ag-wait-facts').disableRules(['color-contrast']).analyze();
