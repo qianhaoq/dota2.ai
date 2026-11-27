@@ -126,6 +126,9 @@
 .hm-map[data-state='match'] .hm-ford, .hm-map[data-state='account'] .hm-ford { box-shadow: 0 0 0 1px var(--accent), 0 18px 40px rgba(0, 0, 0, 0.45); }
 .hm-status { min-height: 26px; margin: 10px 0 0; font-size: var(--fs-meta); color: var(--text-3); }
 .hm-example { background: none; border: 0; padding: 0; color: var(--text-2); text-decoration: underline; cursor: pointer; font: inherit; }
+.hm-also { margin: 6px 0 0; font-size: var(--fs-meta); }
+.hm-also a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line, currentColor); }
+.hm-also a:hover { color: var(--text-1, inherit); }
 .hm-latest { margin-top: 16px; }
 
 .hm-samples { margin-top: 28px; }

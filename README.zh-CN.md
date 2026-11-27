@@ -2,14 +2,14 @@
 
 # dota2.ai
 
-**看你的录像做复盘的 Dota 2 教练，说的每句话都拿得出依据。**
+**看你的录像复盘，告诉你下一把该改什么的 Dota 2 教练。**
 
-[网站](https://dota2.ai/?lang=zh) · [一份真实的复盘](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) · [工作原理](#工作原理) · [DSH 插件](#在-dshdeepseek-harness里用) · [接入 Agent](#接入其他-agentmcp) · [English](README.md)
+[网站](https://dota2.ai/?lang=zh) · [一份真实的复盘](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) · [怎么用](#怎么用) · [DSH 插件](#dsh-插件) · [工作原理](#工作原理) · [English](README.md)
 
 [![CI](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml/badge.svg)](https://github.com/qianhaoq/dota2.ai/actions/workflows/ci.yml)
 [![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial-d6b46a.svg)](LICENSE)
 [![Dota 2 patch 7.42](https://img.shields.io/badge/Dota%202-7.42-c23c2a.svg)](https://www.dota2.com/patches/7.42)
-[![DSH plugin](https://img.shields.io/badge/DSH-plugin-4d6bfe.svg)](#在-dshdeepseek-harness里用)
+[![DSH plugin](https://img.shields.io/badge/DSH-plugin-4d6bfe.svg)](#dsh-插件)
 
 <br>
 
@@ -19,124 +19,23 @@
 
 <br>
 
-贴一个比赛编号，选你玩的英雄。两三分钟后，你会拿到一份只写给你一个人的复盘：**一句结论，最多三件决定了这局的事，以及每一件下一把该怎么改。**
-
-里面没有录像撑不住的观点。Agent 先用一组查询工具把这局过一遍——每一次阵亡、你关键技能的每一次释放、每一波团战、双方的出装——然后由普通代码把每一个时间点、每一个数字、每一条引用的记录，拿去和工具实际返回的内容核对。对不上的退回重写一次，还是拿不出依据就删掉。
-
-## 你会拿到什么
-
-<img align="right" width="44%" src="docs/assets/review-finding.zh.png" alt="一条问题：结论、带时间点和出处的证据、下一把的规则，以及改法">
-
-右边是[比赛 9100904020](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) 三条问题里的第 2 条，原样截图。
-
-**针对你的打法下结论。** 不是"出装再想想"，而是：*11 次死亡里幻影刺客杀了 7 次，她的普攻占死亡前伤害的 44%；你第一件针对普攻的强袭胸甲 38:58 才到，那时你已经死了 9 次。*
-
-**每条证据都带着出处。** 点"看原始记录"，就能打开这一行读自哪里：某次阵亡前的十二秒、某个技能的每一次释放、某波团战的逐秒经过、你的出装对照到底是什么杀了你。
-
-**一条记得住的规则。** *当*你自己屏幕上能看到某个情况，*就*做一件事。短到打的时候想得起来。
-
-**下一把还会再查。** 同一份复盘的第 3 条数出了*原始咆哮就绪却没按的阵亡有 3 次*。把它设成目标，教练会在你下一盘录像里数同一件事。
-
-**可以跟它争。** 任何一行都能追问。它会先回到录像里查，再回答；回答同样要过核对。
-
-<br clear="right">
-
-在这几条问题之外，每份复盘还有：
-
-- **记分板**——双方阵容的等级、击杀/死亡/助攻、正补、经济、伤害和出装，以及每分钟的经济差（比赛没被 OpenDota 解析时，直接取自录像）；
-- **对局主线**——时间线上的每一波团战，以及转折的那一波；
-- **运营思路**——双方各自什么时候占优，赢下的团战有没有换成建筑；
-- **你的思路（可选）**——复盘前说一句你这局想推进、抓人、带线还是拖后期，复盘就会对照它来读这局；
-- **做得好的**，同样要有依据；
-- **录像看不到的**，列出来，而不是去猜。
-
-复盘里的价格、装备效果和技能冷却，按这局比赛当时的版本（7.41b、7.41c、7.42……），不是今天的。
-
-## 工作原理
-
-```mermaid
-flowchart LR
-    R["录像<br/>.dem 文件"] --> T["Trace<br/>约 250 KB"]
-    T --> A["Agent<br/>自己去查"]
-    A <--> L["16 个查询工具"]
-    A --> V{"校验器<br/>是代码，不是模型"}
-    V -- "没有依据：<br/>退回重写一次" --> A
-    V -- "有依据" --> D["复盘"]
-```
-
-**1. 录像变成 trace。** 解析服务下载录像，把发生过的事——位置、施法、伤害、阵亡、购买、建筑、每个英雄的净值——提取成一个很小的文件，工具能在毫秒内查询它。
-
-**2. Agent 自己调查。** 给模型的是一套方法，不是结论；它了解这局比赛的唯一途径是工具。
-
-<details>
-<summary><b>16 个工具</b></summary>
-
-来自录像：
-
-| 工具 | 回答什么 |
-|---|---|
-| `match_overview` | 双方阵容、每一波团战和谁少死人、每座建筑什么时候倒 |
-| `death_context` | 每次阵亡前的几秒：谁在附近、血量、什么亮着没用、伤害来自谁 |
-| `ability_audit` | 一个技能的每一次释放：打了谁、对方是否技能免疫、这一下换来了什么 |
-| `immunity_windows` | 每一段黑皇杖时间，以及这段时间里你的关键技能在干什么 |
-| `fight_timeline` | 逐秒还原一段比赛，含十个英雄的站位 |
-| `item_timeline` | 一个英雄每件装备第一次到手的时间 |
-| `tempo_report` | 每十分钟一段：建筑、团战、团战之后有没有拿到建筑、你当时在哪 |
-
-围绕录像：
-
-| 工具 | 回答什么 |
-|---|---|
-| `window_report` | 双方各自什么时候领先，领先时拿到了什么、做出了什么 |
-| `farm_report` | 你们占优的时候，对面在干什么 |
-| `power_spikes` | 每个英雄什么时候到等级、出大件，前后各杀了你几次 |
-| `build_check` | 你的出装顺序，对照到底是什么杀了你 |
-| `build_for_plan` | 你的装备有没有服务于你想打的思路 |
-| `lane_report` | 前十分钟：正补、经济、阵亡，以及这个对位通常谁占优 |
-| `hero_abilities` | 这局所在版本的 Valve 数据：技能做什么、是否无视技能免疫 |
-| `pro_item_choices` | 职业选手在这个英雄上出什么，面对这些对手又出什么 |
-| `lineup_timing` | 这十个英雄里，哪些短局胜率更高，哪些长局更高 |
-
-</details>
-
-**3. 代码核对结果。** 校验器里没有模型：
-
-- 每个时间点都必须是某个工具返回过的时间；
-- 每个不小于 100 的数字、每个小数、百分比和次数，都必须出现在工具结果里；
-- 每条证据必须能在*它自己引用的那条记录里*找到，所以一个真实的数字不能被安到别的时刻上；
-- 任何"谁看得见谁"的说法一律不接受——录像里没有战争迷雾。
-
-对不上的地方，模型有一次重写的机会。之后，没有依据的句子删掉，没有依据的证据删掉，删到站不住脚的整条问题也删掉。页面上会写明删了几条。
-
-## 它看不到什么
-
-录像里并不是什么都有。复盘会直接说看不到，而不是去猜。
-
-- **没有视野。** 战争迷雾和眼位不在数据里。教练只说距离和位置，不说你能看到什么。
-- **没有兵线。** 知道你在线上站在哪，不知道兵线当时什么情况。
-- **只记录物品带来的技能免疫**，肉山的时间也不可靠。
-- **录像会过期。** Valve 只保留大约两周。没有录像就没有可以诚实复盘的东西，所以不会拿别的内容顶替。
-- **它是语言模型。** 校验器核对的是事实，不是判断。一条问题可以句句属实，却未必是这局最要紧的事。
+贴一个比赛编号，选你玩的英雄。几分钟后拿到一份只写给你的复盘：**一句结论，最多三个决定胜负的问题，以及每个问题下一把怎么做。**里面的时间和数字都来自你的录像。
 
 ## 怎么用
 
-同一个教练，五种用法，都不需要 Key。
-
-| 在哪儿 | 怎么做 | 得到什么 |
+| 在哪儿 | 怎么做 | 要 Key 吗 |
 |---|---|---|
-| **网页** | 打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛 | 完整页面：复盘、原始记录、记分板、可追问的教练 |
-| **DSH** | `dsh plugin add` 装一个包 | 每个 DSH 会话里都有 `dota2ai_*` 工具和一份 skill |
-| **任意 MCP Agent** | 添加一次 `https://dota2.ai/mcp` | 通过 MCP 使用同样的工具 |
-| **终端** | `node packages/cli/bin/dota2ai.js …` | 规则引擎的报告，文本或 JSON |
-| **离线** | 查询仓库自带的 trace | 在一场录好的比赛上跑 Agent 的录像工具 |
+| **网页** | 打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛编号、比赛链接或 Steam 好友代码 | 不要 |
+| **DSH** | 装一次[插件](#dsh-插件)，之后每个 DSH 会话都能复盘 | 不要 |
+| **任意 MCP Agent** | 添加 `https://dota2.ai/mcp`（[见下](#mcp)） | 不要 |
+| **终端** | 在仓库里运行 `node packages/cli/bin/dota2ai.js`（[见下](#终端)） | 不要 |
+| **HTTP** | `GET /api/v1/review/<比赛编号>`——[`openapi.json`](https://dota2.ai/openapi.json)、[`llms.txt`](https://dota2.ai/llms.txt) | 不要 |
 
-### 在网页上
+网站支持中文、英文和俄文。
 
-打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛编号或 OpenDota / Dotabuff / STRATZ 的比赛链接；或者贴 Steam 好友代码，列出你最近的比赛。支持中文、英文和俄文。首页还有一个版本顾问：7.42 改了什么，某个英雄改版后表现如何。
+### DSH 插件
 
-### 在 DSH（DeepSeek Harness）里用
-
-dota2.ai 提供原生的 [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) 插件：装一次，之后每个 DSH 会话都能复盘比赛。需要 Node 24.9 或更新版本，以及 DSH 0.2.1-rc.3。
+[DSH](https://www.npmjs.com/package/@deepseek-ai/dsh)（DeepSeek Harness）的原生插件。需要 Node 24.9+、DSH 0.2.1-rc.3 和 pnpm。
 
 ```sh
 # 从最新的 dsh-v* Release 下载：https://github.com/qianhaoq/dota2.ai/releases
@@ -144,72 +43,94 @@ sha256sum -c SHA256SUMS
 dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.1.0.tgz
 ```
 
-然后在任意 DSH 会话里说：
-
-> 复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。
+然后在任意 DSH 会话里说：*「复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。」*
 
 | 工具 | 做什么 |
 |---|---|
-| `dota2ai_replay_review` | 网站看录像写的那份复盘，内容都对照录像核对过。不会卡住等待：返回 `parsing` 或 `reviewing` 时（第一次两到四分钟）模型会再调一次 |
-| `dota2ai_recent_matches` | 某个玩家最近的公开比赛，用好友代码或主页链接 |
-| `dota2ai_coach_report` | 不带 `hero` 返回双方阵容；带上则返回一章：`summary`、`why`、`lane`、`deaths`、`items`、`fights`、`plan`、`all` |
-| `dota2ai_coach_cases` | 同一问题上的职业比赛：一场避开了，一场重复了 |
-| `dota2ai_coach_ask` | 追问，只依据报告回答 |
-| `dota2ai_goal_check` | 之后的一局有没有做到某条问题的目标：做到、没做到、没机会、无法判断 |
-| `dota2ai_hero_matchup` | 英雄对位：职业比赛数据，以及 STRATZ 的分段位数据 |
+| `dota2ai_replay_review` | 看录像写的完整复盘。返回 `parsing` 或 `reviewing` 时，模型会再调一次 |
+| `dota2ai_recent_matches` | 某个玩家最近的公开比赛 |
+| `dota2ai_coach_report` | 不带 `hero` 返回双方阵容；带上返回一章：`summary`、`why`、`lane`、`deaths`、`items`、`fights`、`plan`、`all` |
+| `dota2ai_coach_cases` | 同一问题上的职业比赛 |
+| `dota2ai_coach_ask` | 追问 |
+| `dota2ai_goal_check` | 之后的一局有没有做到目标 |
+| `dota2ai_hero_matchup` | 英雄对位：职业比赛和分段位数据 |
 
-插件还会注册一份 `dota2ai` skill，告诉模型怎么读结果：不确定用户玩的哪个英雄就问，不要猜；时间和数字照原样引用；说清录像看不到什么。配置项（`lang`、`apiBase`、`enabled`、`skillEnabled`）在 profile 的 `cordis.patch.yml` 里 `dota2ai` 条目下。
+插件还会注册一份 `dota2ai` skill，教模型怎么用这些工具。可以和 [DSH Dota 教练](https://github.com/qianhaoq/qh-dsh-dota-coach)插件（`dota_*` 工具，在本机解析录像、保存笔记）同时安装。配置和细节见 [`packages/dsh`](packages/dsh/README.md)。
 
-它可以和 [DSH Dota 教练](https://github.com/qianhaoq/qh-dsh-dota-coach)插件（工具名 `dota_*`）同时安装：那个在你本机解析录像、保存笔记和训练；这个带来线上的复盘。更多见 [`packages/dsh/README.md`](packages/dsh/README.md)。
-
-### 接入其他 Agent（MCP）
-
-线上的 MCP 服务不用安装，也不需要 Key：
+### MCP
 
 | Agent | 运行一次 |
 |---|---|
-| **Claude Code** | `claude mcp add --transport http dota2ai https://dota2.ai/mcp` |
-| **Codex** | `codex mcp add dota2ai --url https://dota2.ai/mcp` |
-| **Gemini CLI** | `gemini mcp add --transport http dota2ai https://dota2.ai/mcp` |
-| **VS Code**（Copilot） | `code --add-mcp '{"name":"dota2ai","type":"http","url":"https://dota2.ai/mcp"}'` |
-| **Cursor** | [一键添加到 Cursor](https://cursor.com/en/install-mcp?name=dota2ai&config=eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9)，或把 `{ "mcpServers": { "dota2ai": { "url": "https://dota2.ai/mcp" } } }` 写进 `~/.cursor/mcp.json` |
-| **其他 MCP 客户端** | 填入 `https://dota2.ai/mcp`（Streamable HTTP） |
+| Claude Code | `claude mcp add --transport http dota2ai https://dota2.ai/mcp` |
+| Codex | `codex mcp add dota2ai --url https://dota2.ai/mcp` |
+| Gemini CLI | `gemini mcp add --transport http dota2ai https://dota2.ai/mcp` |
+| VS Code | `code --add-mcp '{"name":"dota2ai","type":"http","url":"https://dota2.ai/mcp"}'` |
+| Cursor | [一键添加到 Cursor](https://cursor.com/en/install-mcp?name=dota2ai&config=eyJ1cmwiOiJodHRwczovL2RvdGEyLmFpL21jcCJ9) |
+| 其他 | `https://dota2.ai/mcp`（Streamable HTTP） |
 
-然后说同样的一句话。不支持 MCP？只要你的 Agent 能访问网址，把这句话发给它：
+`replay_review` 是完整复盘；其余工具（`coach_report`、`recent_matches`、`hero_matchup` 等）按比赛数据即时回答。说明见 [`packages/mcp`](packages/mcp/README.md)。不支持 MCP？只要 Agent 能访问网址，发给它：*「帮我复盘 Dota 2 比赛 9100904020，我玩的是兽王，用 https://dota2.ai/llms.txt 里的接口。」*
 
-> 帮我复盘 Dota 2 比赛 9100904020，我玩的是兽王。按 https://dota2.ai/llms.txt 调用接口，只引用接口返回的数据，样本不足就直说。
-
-`replay_review` 就是网页上那份完整复盘。其余 8 个工具——`review_match`、`get_evidence`、`recent_matches`、`coach_report`、`coach_cases`、`coach_ask`、`goal_check`、`hero_matchup`——属于即时的规则引擎一档：基于比赛数据的分章节报告、同一问题上的职业比赛、英雄对位，以及下一局目标（[说明](packages/mcp/README.md)）。想在本地通过 stdio 运行，用 `node /你的绝对路径/dota2.ai/packages/mcp/bin/dota2ai-mcp.js`。另有一个 Agent Skill：[`packages/cli/skills/dota2ai-coach`](packages/cli/skills/dota2ai-coach/SKILL.md)。
-
-### 在终端里用
+### 终端
 
 ```bash
 git clone https://github.com/qianhaoq/dota2.ai.git && cd dota2.ai && npm ci
-
 node packages/cli/bin/dota2ai.js recent <好友代码或主页链接>
 node packages/cli/bin/dota2ai.js coach 9091400302 --hero 潮汐猎人 --section why --lang zh
 node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --lang zh
 ```
 
-所有命令都支持 `--lang en|zh` 和 `--json`，都不需要 Key。完整说明见 [`packages/cli/README.md`](packages/cli/README.md)。
+所有命令都支持 `--lang en|zh|ru` 和 `--json`。说明见 [`packages/cli`](packages/cli/README.md)。
 
-### 自己查一盘录像
+## 复盘里有什么
 
-仓库里带着上面那场比赛的 trace，所以 Agent 用的录像工具可以离线运行：
+<img align="right" width="44%" src="docs/assets/review-finding.zh.png" alt="一条问题：结论、带时间点和出处的证据、下一把的规则，以及改法">
 
-```bash
-T=packages/review-engine/test/fixtures/trace-9100904020.json.gz
+[比赛 9100904020](https://dota2.ai/r/9100904020?lang=zh&hero=beastmaster) 三条问题里的第 2 条：
 
-node packages/cli/bin/dota2ai.js trace                      # 列出全部工具
-node packages/cli/bin/dota2ai.js trace ability_audit --trace $T --hero beastmaster --ability primal_roar
-node packages/cli/bin/dota2ai.js trace death_context --trace $T --hero beastmaster --index 9
+- **针对你打法的结论**——*11 次死亡里幻影刺客杀了 7 次，她的普攻占死亡前伤害的 44%；你第一件针对普攻的强袭胸甲 38:58 才到。*
+- **证据**——每一行都能点开出处：某次阵亡前的几秒、某个技能的每一次释放、某波团战的逐秒经过。
+- **下一把的规则**——*当*你屏幕上出现某个情况，*就*做一件事。
+- **可以追踪的目标**——教练会在你下一盘录像里检查。
+
+<br clear="right">
+
+问题之外还有：记分板和经济曲线、团战时间线和转折的那一波、双方各自的机会窗口、你做得好的地方，以及录像看不到的东西。任何时刻都能追问，教练会先查录像再回答。物品价格、效果和冷却按这局所在的版本。
+
+## 工作原理
+
+```mermaid
+flowchart LR
+    R["录像"] --> T["Trace<br/>约 250 KB"]
+    T --> A["Agent"]
+    A <--> L["28 个查询工具"]
+    A --> V{"校验器<br/>（代码）"}
+    V -- "站不住：修一轮" --> A
+    V -- "有依据" --> D["复盘"]
 ```
 
-有模型的 Key，就能从这个文件跑出整份复盘：
+1. **录像 → trace。** 解析服务下载录像，把发生了什么——位置、施法、伤害、阵亡、物品、建筑、经济——存成一个小文件，工具毫秒级查询。
+2. **Agent 调查。** 模型只能通过工具了解这局，自己判断什么最要紧。
+3. **代码核对。** 每个时间、数字和引用的记录都必须是工具返回过的；不合格的给一次修改机会，仍不合格就删掉。"谁看得见谁"这类说法一律不收：录像里没有战争迷雾。
 
-```bash
-DEEPSEEK_API_KEY=... node scripts/deep-review.mjs $T --hero beastmaster --lang zh --steps
-```
+<details>
+<summary><b>工具一览</b></summary>
+
+| 类别 | 工具 |
+|---|---|
+| 整局 | `match_overview`、`key_moments`、`decision_points`、`tempo_report`、`window_report`、`siege_report`、`roshan_report` |
+| 团战与时刻 | `fight_report`、`fight_timeline`、`game_state`、`death_context`、`save_report`、`ward_report` |
+| 技能与物品 | `ability_audit`、`immunity_windows`、`item_timeline`、`power_spikes`、`build_check`、`build_for_plan` |
+| 对线与发育 | `lane_report`、`farm_report`、`lineup_timing` |
+| 参考数据 | `hero_abilities`、`pro_item_choices`、`item_info`、`hero_info`、`hero_matchup`、`patch_changes` |
+
+</details>
+
+### 看不到什么
+
+- **视野。** 知道眼插在哪，不知道各方看到了什么：教练只说距离，不说谁看见了谁。
+- **兵线。** 知道补刀，不知道兵线站在哪。
+- **过期的录像。** Valve 大约保留两周；没有录像就没有录像复盘。
+- **判断。** 校验器核对的是事实。一条问题可以属实，却未必是这局最要紧的事——欢迎反馈：[#164](https://github.com/qianhaoq/dota2.ai/issues/164)。
 
 ## 本地运行
 
@@ -217,47 +138,39 @@ DEEPSEEK_API_KEY=... node scripts/deep-review.mjs $T --hero beastmaster --lang z
 
 ```bash
 npm ci
-npm run build && npm run preview:mock    # http://localhost:4180/r/9100904020
+npm run build && npm run preview:mock    # http://localhost:4180/r/9100904020 —— 录好的比赛、脚本模型、不要 Key
 ```
 
-这会在一场录好的比赛上运行真实的页面、路由、工具和校验器，模型是预先写好的脚本。不需要 Key，也不联网。
-
-要跑完整的服务：
+完整服务：
 
 ```bash
-cp .env.example .env     # 然后把变量导出到环境里；server.js 不会自己读 .env
+cp .env.example .env     # 把变量导出到环境里；server.js 不会自己读 .env
 npm run start:dev        # Vite 在 :5173，Express 在 :8080
 ```
 
 | 变量 | 开启什么 |
 |---|---|
-| `DEEPSEEK_API_KEY` | 复盘 Agent 和追问（`DEEPSEEK_MODEL`，默认 `deepseek-flash`） |
+| `DEEPSEEK_API_KEY` | 复盘 Agent 和追问 |
 | `DOTA_EXTRACT_BIN`、`AGENT_TRACE_DIR`、`AGENT_REVIEW_DIR` | 在本机解析录像 |
 | `AGENT_BUCKET`、`TRACE_WORKER_URL` | 在独立的解析服务上解析，结果存进存储桶 |
-| `OPENDOTA_API_KEY`、`STRATZ_API_TOKEN` | 更高的请求额度，以及比赛数据的备用来源 |
+| `OPENDOTA_API_KEY`、`STRATZ_API_TOKEN` | 更高的请求额度、比赛数据的备用来源 |
 
-录像提取器由另一个配套仓库构建，不包含在这里。生产环境——解析服务、让复盘不被上线打断的任务队列、各项限额和成本——见 [`docs/AGENT_PIPELINE.md`](docs/AGENT_PIPELINE.md)。
+录像提取器来自配套仓库。生产环境见 [`docs/AGENT_PIPELINE.md`](docs/AGENT_PIPELINE.md)。
 
 ```text
 lib/agent/                        复盘 Agent：循环、工具、校验器、任务、追问
-packages/review-engine/src/trace  trace 格式和录像工具（纯函数，不联网）
+packages/review-engine/src/trace  trace 和录像工具（纯函数）
 lib/coach/                        CLI 和 MCP 背后的规则引擎
 src/agent/、src/coach/            复盘页面；首页和玩家页面
 packages/cli/、packages/mcp/      CLI 和 MCP 服务
-packages/dsh/                     DSH 插件（基于公开 API 的工具和 skill）
+packages/dsh/                     DSH 插件
 server.js                         Express 主程序
 ```
 
-提 PR 之前，先跑一遍 CI 用的同一套检查：
-
-```bash
-npx tsc --noEmit && node --check server.js && npm run build && npm test
-```
-
-另见 [`CONTRIBUTING.md`](CONTRIBUTING.md) 和 [`AGENTS.md`](AGENTS.md)。最有用的贡献是一局复盘说错了的比赛：[#164](https://github.com/qianhaoq/dota2.ai/issues/164)。
+提交 PR 前：`npx tsc --noEmit && node --check server.js && npm run build && npm test`。见 [`CONTRIBUTING.md`](CONTRIBUTING.md) 和 [`AGENTS.md`](AGENTS.md)。
 
 ## 许可
 
-[PolyForm Noncommercial 1.0.0](LICENSE)。个人复盘、学习、研究，以及你自己的非商业工具和 Agent 都可以免费使用；转给他人时须附上许可证和其中 `Required Notice` 那一行。付费托管、订阅、广告、API 转售，或用于付费教学、代练、竞猜、商业数据分析产品，需要商业授权——请通过 GitHub 联系仓库所有者。
+[PolyForm Noncommercial 1.0.0](LICENSE)：个人复盘、学习、研究以及你自己的非商业工具和 Agent 都可以免费使用（转发副本时请保留许可证和其中的 `Required Notice` 一行）。付费托管、订阅、广告、转售 API，或用在付费陪练、代练、博彩、数据分析产品里，需要商业授权——请通过 GitHub 联系作者。
 
-<sub>玩家粉丝项目，与 Valve Corporation 无关，未获其认可。Dota、Dota 2 与 Steam 为 Valve Corporation 的商标。比赛数据来自公开的 OpenDota 与 STRATZ 接口以及 Valve 的录像；分段统计数据来自 [STRATZ](https://stratz.com)。</sub>
+<sub>粉丝项目，与 Valve Corporation 无关，也未获其认可。Dota、Dota 2 和 Steam 是 Valve Corporation 的商标。比赛数据来自 OpenDota、STRATZ 的公开接口和 Valve 的录像；分段位统计来自 [STRATZ](https://stratz.com)。</sub>
