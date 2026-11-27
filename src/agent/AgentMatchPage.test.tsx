@@ -597,6 +597,26 @@ describe('AgentMatchPage', () => {
     expect(chip('换到了（15 秒内对面也死了英雄） 3')).toBeTruthy();
     expect(chip('身边没人且没换到 1')).toBeTruthy();
     expect(screen.queryByText(/traded/)).toBeNull();
+    cleanup();
+
+    // Wraith King resurrection record and insufficient-mana real death render in Chinese (#423).
+    const resRec = { status: 'ok', ref: 'resurrection:skeleton_king:1', kind: 'resurrection', names: { skeleton_king: '冥魂大帝', juggernaut: '主宰', crystal_maiden: '水晶室女', lion: '莱恩', river_mid: '河道中路' }, record: {
+      ref: 'resurrection:skeleton_king:1', hero: 'skeleton_king', n: 1, t: 1015.3, clock: '16:55', by: 'reincarnation', killer: 'juggernaut', revived_at: '16:59',
+      at: { x: 200, y: -100, region: 'river_mid' }, allies_within_2200: ['crystal_maiden'], enemies_within_2200: ['lion', 'juggernaut'],
+      died_for_real_within_20s: { ref: 'death:skeleton_king:3', clock: '17:12', killer: 'lion', seconds_after_revive: 13.8 },
+    } };
+    const wkDeath = { status: 'ok', ref: 'death:skeleton_king:2', kind: 'death', names: { skeleton_king: '冥魂大帝', lion: '莱恩' }, record: {
+      ref: 'death:skeleton_king:2', n: 2, t: 615, clock: '10:15', killer: 'lion',
+      snapshots: [{ dt: -1, me: { hp: 57, max_hp: 1600 }, allies: [], enemies: [{ hero: 'lion', dist: 300 }] }],
+      ready_not_cast: [], controls_on_me: [], damage_taken: [{ from: 'lion', by: 'attack', value: 400 }],
+      reincarnation_at_death: { state: 'insufficient_mana', mana: 179, mana_cost: 220 },
+    } };
+    mockFetch({ 'ref=overview': overview, 'ref=resurrection': resRec, 'ref=death': wkDeath, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['resurrection:skeleton_king:1', 'death:skeleton_king:2'], fact: '16:55 绝冥再生，10:15 缺蓝阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    expect(await screen.findByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '起身于 16:59')).toBeTruthy();
+    expect(chip('随后真死于 17:12+13.8秒')).toBeTruthy();
+    expect(chip('缺蓝 (179/220)')).toBeTruthy();
   });
 
   it('a won fight is shown with who was still dead and for how long, and what the winners did with it', async () => {

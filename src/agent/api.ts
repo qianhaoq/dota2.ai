@@ -90,7 +90,7 @@ export interface Moment {
   heroes: { hero: string; side: 'me' | 'ally' | 'enemy' }[];
   /** One per second; `at[i]` is hero i's [x, y, alive], or null for a second the replay has no sample of them. */
   frames: { t: number; at: ([number, number, 0 | 1] | null)[] }[];
-  deaths: { t: number; hero: string; killer: string | null }[];
+  deaths: { t: number; hero: string; killer: string | null; resurrected_by?: 'reincarnation' | 'aegis' }[];
   /** The square of the map to show, in world units from its lower-left corner. */
   box: { x: number; y: number; size: number };
   /** Never near the player in the window, and the replay shows it for every second; `not_known`: not seen near, with a second the replay cannot speak for. */

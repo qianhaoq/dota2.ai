@@ -147,6 +147,18 @@ const T = {
   why: { cooldown: { en: 'cooldown', zh: '冷却', ru: 'перезарядка' }, mana: { en: 'no mana', zh: '缺蓝', ru: 'нет маны' }, not_learned: { en: 'not learned', zh: '未学', ru: 'не изучен' } } as Record<string, Tri>,
   observers: { en: 'Observer wards within 1600', zh: '1600 码内的假眼', ru: 'Observer-варды в радиусе 1600' },
   boughtBack: { en: 'bought back', zh: '买活', ru: 'байбэк' },
+  resurrectionBy: {
+    reincarnation: { en: 'Reincarnated', zh: '绝冥再生', ru: 'Перерождение' },
+    aegis: { en: 'Aegis revival', zh: '不朽盾重生', ru: 'Возрождение с Aegis' },
+  } as Record<string, Tri>,
+  reincAtDeath: { en: 'Reincarnation', zh: '绝冥再生', ru: 'Перерождение' },
+  reincStates: {
+    not_learned: { en: 'not learned', zh: '未学', ru: 'не изучено' },
+    on_cooldown: { en: 'on cooldown', zh: '冷却中', ru: 'на перезарядке' },
+    insufficient_mana: { en: 'no mana', zh: '缺蓝', ru: 'не хватило маны' },
+  } as Record<string, Tri>,
+  revivedAt: { en: 'revived at', zh: '起身于', ru: 'встал в' },
+  diedAfterRevive: { en: 'died for real', zh: '随后真死于', ru: 'затем погиб в' },
   traded: { true: { en: 'traded: an enemy hero died within 15 s', zh: '换到了：15 秒内对面也死了英雄', ru: 'размен: враг погиб в течение 15 с' }, false: { en: 'not traded: no enemy hero died within 15 s', zh: '没换到：15 秒内对面没死英雄', ru: 'без размена: враги не погибли за 15 с' } } as Record<string, Tri>,
   alliesElsewhere: { en: 'Allies not near', zh: '不在附近的队友', ru: 'Союзники вдалеке' },
   wonBy: { my_team: { en: 'Your team won the fight', zh: '我方赢团', ru: 'Ваша команда выиграла драку' }, enemy: { en: 'They won the fight', zh: '对方赢团', ru: 'Враги выиграли драку' } } as Record<string, Tri>,
@@ -295,8 +307,10 @@ const TOTALS: Record<string, Tri> = {
   seconds_alive_since_learned: { en: 'Seconds alive since learned', zh: '学会后存活秒数' },
   seconds_alive_and_ready: { en: 'Seconds alive with it ready', zh: '存活且技能就绪秒数' },
   deaths_with_it_ready_and_not_cast_total: { en: 'Deaths with it ready and not cast', zh: '技能就绪未放就阵亡' },
+  triggered_on_death_total: { en: 'Triggered on death', zh: '阵亡触发次数' },
   window: { en: 'Seconds before each death', zh: '每次阵亡前秒数' },
   deaths_total: { en: 'Deaths', zh: '阵亡次数' },
+  resurrections_total: { en: 'In-place revivals', zh: '原地重生次数' },
   killed_by: { en: 'Killed by', zh: '击杀者' },
   windows_total: { en: 'Spell-immunity windows', zh: '技能免疫次数' },
   watched_state_when_window_opened: { en: 'When it opened, the watched ability was', zh: '开启时所观察技能' },
@@ -456,10 +470,27 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {r.observers_within_1600 && <p className="ag-rec-line"><span>{t(T.observers)}</span><span className="ag-chip is-ally">{t(T.mine)} {r.observers_within_1600.my_team}</span><span className="ag-chip is-enemy">{t(T.theirs)} {r.observers_within_1600.enemy}</span></p>}
         {/* Known on its own: a trace with buybacks and no wards, or a death whose position was not sampled, still shows it. */}
         {typeof r.bought_back === 'string' && <p className="ag-rec-line"><span className="ag-chip">{t(T.boughtBack)} {r.bought_back}</span></p>}
+        {r.reincarnation_at_death && T.reincStates[r.reincarnation_at_death.state] && (
+          <p className="ag-rec-line"><span>{t(T.reincAtDeath)}</span><span className="ag-chip is-warn">{t(T.reincStates[r.reincarnation_at_death.state])}{r.reincarnation_at_death.cooldown_left != null && ` · ${r.reincarnation_at_death.cooldown_left}${t(T.sec)}`}{r.reincarnation_at_death.mana != null && r.reincarnation_at_death.mana_cost != null && ` (${r.reincarnation_at_death.mana}/${r.reincarnation_at_death.mana_cost})`}</span></p>
+        )}
         {typeof r.traded_within_15s === 'boolean' && <p className="ag-rec-line"><span className={`ag-chip ${r.traded_within_15s ? 'is-good' : 'is-warn'}`}>{t(T.traded[String(r.traded_within_15s)])}</span></p>}
         {r.allies_elsewhere?.length > 0 && <p className="ag-rec-line"><span>{t(T.alliesElsewhere)}</span>{r.allies_elsewhere.map((h: any) => <span key={h.hero} className="ag-chip">{N(h.hero)}{doingOf(h) && ` · ${doingOf(h)}`}{h.distance != null && <em>{h.distance} {t(T.away)}</em>}{h.respawn_in != null && <em>{t(T.respawn)} {h.respawn_in}{t(T.sec)}</em>}{h.tp_ready != null && <em>{t(T.tp[String(h.tp_ready)])}</em>}</span>)}</p>}
         <p className="ag-rec-sub">{t(T.damage)}</p>
         <ul className="ag-bars">{r.damage_taken.slice(0, 5).map((d: any, i: number) => <Bar key={i} label={`${N(d.from)} · ${d.by === 'attack' ? t(T.attack) : N(d.by)}`} value={d.value} max={max} />)}</ul>
+      </div>
+    );
+  }
+  if (data.kind === 'resurrection') {
+    const heroes = (list: string[] | null, cls: string) => (list == null ? <span className="ag-none">–</span> : list.length ? list.map((h) => <span key={h} className={`ag-chip ${cls}`}>{N(h)}</span>) : <span className="ag-none">{t(T.nobody)}</span>);
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.clock}</b> · {r.hero && <>{N(r.hero)} · </>}{t(T.resurrectionBy[r.by] ?? T.resurrectionBy.reincarnation)}{r.killer && <> · {t(T.killer)} {N(r.killer)}</>}{r.at?.region && <> · {N(r.at.region)}</>}</p>
+        <p className="ag-rec-line">
+          {r.revived_at && <span className="ag-chip is-good">{t(T.revivedAt)} {r.revived_at}</span>}
+          {r.died_for_real_within_20s && <span className="ag-chip is-warn">{t(T.diedAfterRevive)} {r.died_for_real_within_20s.clock}{r.died_for_real_within_20s.seconds_after_revive != null && <em>+{r.died_for_real_within_20s.seconds_after_revive}{t(T.sec)}</em>}</span>}
+        </p>
+        <p className="ag-rec-line"><span>{t(T.allies)}</span>{heroes(r.allies_within_2200, 'is-ally')}</p>
+        <p className="ag-rec-line"><span>{t(T.enemies)}</span>{heroes(r.enemies_within_2200, 'is-enemy')}</p>
       </div>
     );
   }
@@ -498,13 +529,14 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         <p className="ag-rec-line"><span>{t(T.lost)}</span><span className="ag-chip is-ally">{t(T.mine)} {r.my_team_deaths}</span><span className="ag-chip is-enemy">{t(T.theirs)} {r.enemy_deaths}</span></p>
         {r.my_team_gold_lead_before != null && <p className="ag-rec-line"><span>{t(T.gold)}</span><span className="ag-chip">{r.my_team_gold_lead_before}</span><span className="ag-chip">{t(T.goldAfter)} {r.my_team_gold_lead_2min_after ?? '—'}</span></p>}
         <p className="ag-rec-line">{r.victims.map((v: any, i: number) => <span key={i} className={`ag-chip ${SIDE_CLASS[v.side] ?? ''}`}>{N(v.hero)}</span>)}</p>
+        {r.resurrections?.length > 0 && <p className="ag-rec-line">{r.resurrections.map((x: any, i: number) => <span key={i} className={`ag-chip ${SIDE_CLASS[x.side] ?? ''}`}>{N(x.hero)} · {t(T.resurrectionBy[x.by] ?? T.resurrectionBy.reincarnation)}<em>{x.clock}</em></span>)}</p>}
       </div>
     );
   }
   if (data.kind === 'timeline') {
     const pos = r.positions_at_first_death?.heroes ?? r.positions_at_start;
-    // Deaths, immunity and buildings always show; casts on a hero and key items fill what room is left, in order.
-    const key = (e: any) => e.kind === 'death' || e.kind === 'spell_immune' || e.kind === 'building';
+    // Deaths, revivals, immunity and buildings always show; casts on a hero and key items fill what room is left, in order.
+    const key = (e: any) => e.kind === 'death' || e.kind === 'reincarnation' || e.kind === 'aegis' || e.kind === 'spell_immune' || e.kind === 'building';
     const room = Math.max(0, 48 - r.events.filter(key).length);
     let extra = 0;
     const rows = r.events.filter((e: any) => key(e) || ((e.kind !== 'cast' || e.target) && (extra += 1) <= room));
@@ -519,6 +551,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
               <li key={i} className={`is-${e.kind} ${SIDE_CLASS[e.side] ?? ''}`}>
                 <time>{e.clock}</time>
                 {e.kind === 'death' && <span><b className="ag-x" aria-hidden="true">✕</b> {N(e.hero)} ← {N(e.killer)}</span>}
+                {(e.kind === 'reincarnation' || e.kind === 'aegis') && <span><b aria-hidden="true">↺</b> {N(e.hero)} · {t(T.resurrectionBy[e.kind])}</span>}
                 {e.kind === 'spell_immune' && <span>{N(e.hero)} · {t(T.window)}</span>}
                 {e.kind === 'item' && <span>{N(e.hero)} · {N(e.item)}</span>}
                 {e.kind === 'cast' && <span>{N(e.hero)} · {N(e.ability)} → {N(e.target)}</span>}
@@ -577,7 +610,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     return (
       <div className="ag-rec">
         <p className="ag-rec-head">{r.clock && <b>{r.clock}</b>}{r.minute != null && <b>{r.minute}:00</b>} · {T.logKind[r.kind] ? t(T.logKind[r.kind]) : r.kind}</p>
-        <p className="ag-rec-line">{who.filter((x): x is string => typeof x === 'string' && x !== '').map((x: string, i: number) => <span key={i} className="ag-chip">{N(x)}</span>)}{r.amount != null && <span className="ag-chip"><em>{r.amount}</em></span>}{r.gold != null && <span className="ag-chip"><em>{r.gold}</em></span>}{r.until && <span className="ag-chip">→ {r.until}</span>}</p>
+        <p className="ag-rec-line">{who.filter((x): x is string => typeof x === 'string' && x !== '').map((x: string, i: number) => <span key={i} className="ag-chip">{N(x)}</span>)}{r.resurrected_by && T.resurrectionBy[r.resurrected_by] && <span className="ag-chip is-good">{t(T.resurrectionBy[r.resurrected_by])}</span>}{r.amount != null && <span className="ag-chip"><em>{r.amount}</em></span>}{r.gold != null && <span className="ag-chip"><em>{r.gold}</em></span>}{r.until && <span className="ag-chip">→ {r.until}</span>}</p>
       </div>
     );
   }
@@ -1101,7 +1134,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
 }
 
 /** Records that are a moment of the game (not a count over it, a build, or a ten-minute stretch): those can be replayed on the map. */
-const MOMENT_REF = /^(death|cast|immune|fight|fights|state|timeline):/;
+const MOMENT_REF = /^(death|resurrection|cast|immune|fight|fights|state|timeline):/;
 /** The game second an evidence line's clock names, when its record is a moment; else null. */
 export function momentOf(item: EvidenceItem): number | null {
   const m = /^(-)?(\d{1,3}):([0-5]\d)$/.exec(item.clock ?? '');
