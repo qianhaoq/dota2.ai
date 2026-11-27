@@ -35,6 +35,7 @@ import { openAiCompatible } from '../lib/agent/loop.js';
 import { DEEP_REVIEW_PROMPT_VERSION, runDeepReview } from '../lib/agent/deepReview.js';
 import { REVIEW_COST_ESTIMATE, parseRunArgs, planRuns, reviewsAlreadyIn, runAll } from '../lib/agent/evalRun.js';
 import { readBalance } from '../lib/agent/modelBalance.js';
+import { webSearchFromEnv } from '../lib/agent/webSearch.js';
 import { linkHeroNames } from '../packages/review-engine/src/trace/build.js';
 import { loadRubrics } from './eval-review.mjs';
 
@@ -73,7 +74,8 @@ async function main(argv) {
     const started = Date.now();
     // The eval scores the review in the language it was written in: the other languages (#393) are not written —
     // they double a run's time and spend and change no score.
-    const r = await runDeepReview({ complete, trace, match, hero: job.hero, lang: job.lang, translate: false });
+    // The search bills the same account as the model: the run's balance check covers both.
+    const r = await runDeepReview({ complete, trace, match, hero: job.hero, lang: job.lang, translate: false, webSearch: webSearchFromEnv(env) });
     return { ...r, seconds: Math.round((Date.now() - started) / 1000) };
   };
   // The shape the site stores (review, verification, model, tool_calls), with what the run cost beside it.

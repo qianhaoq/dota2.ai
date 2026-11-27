@@ -31,6 +31,9 @@ describe('web_search: DeepSeek Search as reading for the model', () => {
     const r: any = await createWebSearch({ apiKey: 'k', fetchImpl: f as any })({ query: 'Ursa' }, { patch: { name: '7.42', released: '2026-11-18T20:00:48.000Z' } });
     expect(r.this_game_patch).toEqual({ name: '7.42', released: '2026-11-18T20:00:48.000Z' });
     expect(r.results.map((x: any) => x.before_this_game_patch)).toEqual([true, false, null]);
+    // The release day itself: before the release is older, after it is not (the time decides, not the date).
+    const day: any = await createWebSearch({ apiKey: 'k', fetchImpl: ok([{ ...page, date: '2026-11-18T22:00:00Z' }, { ...page, url: 'https://example.org/morning', date: '2026-11-18T08:00:00Z' }]) as any })({ query: 'Ursa' }, { patch: { name: '7.42', released: '2026-11-18T20:00:48.000Z' } });
+    expect(day.results.map((x: any) => [x.date, x.before_this_game_patch])).toEqual([['2026-11-18', false], ['2026-11-18', true]]);
     expect(r.check_with).toEqual(['hero_abilities', 'item_info', 'hero_info', 'patch_changes']);
     expect(r.note).toContain('the patch data stands');
     expect(WEB_SEARCH_TOOL.description).toContain('this patch\'s data stands');
