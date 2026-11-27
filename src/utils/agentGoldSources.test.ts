@@ -57,4 +57,13 @@ describe('unknown stays unknown', () => {
     expect(l.gold_gap_by_source.my_team_minus_enemy.lost_on_dying).toBeNull();
     expect(l.gaps).toContainEqual({ topic: 'lost_on_dying', reason: 'no_dying_rows_in_the_replay_s_gold_log' });
   });
+
+  it('a gold log that ends early: stretches past its end have gold_by_source null — not zeros and a made-up top earner (#443 review)', () => {
+    const t = { ...trace, gold: trace.gold.filter((g: any) => g[0] < 10) };
+    const r: any = farmReport(t, { hero: 'beastmaster' }, {});
+    expect(r.stretches[0].gold_by_source.my_team.earned).toBeGreaterThan(0);
+    for (const s of r.stretches.slice(1)) expect(s.gold_by_source).toBeNull();
+    for (const w of r.windows.filter((x: any) => x.to > 600)) expect(w.gold_by_source).toBeNull();
+    expect(r.gaps.find((g: any) => g.topic === 'gold_by_source')?.reason).toMatch(/^gold_log_ends_at_10:00/);
+  });
 });
