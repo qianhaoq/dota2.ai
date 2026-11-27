@@ -50,10 +50,13 @@ describe('a hero\'s win rate by game length', () => {
     const [short, mid, long] = DATA.heroes.la[idOf('medusa')];
     expect(medusa.games).toBe(short[0] + mid[0] + long[0]);
     expect(medusa.by_length.under_35_min).toEqual({ games: short[0], win_rate: Math.round((short[1] / short[0]) * 1000) / 1000 });
-    expect(medusa.by_length.over_45_min.win_rate).toBeGreaterThan(medusa.by_length.under_35_min.win_rate);
-    expect(medusa).toMatchObject({ wins_more_in: 'longer_games' });
+    // Which way a hero leans is this week's STRATZ data (#419: a refresh moved Huskar): read here as the file's own
+    // rows say, and the rule itself on rows made for it below.
+    expect(medusa).toMatchObject({ wins_more_in: timingFromRows(DATA.heroes.la[idOf('medusa')])!.wins_more_in });
     expect(medusa.short_to_long).toBeCloseTo(medusa.by_length.over_45_min.win_rate - medusa.by_length.under_35_min.win_rate, 2);
-    expect(heroTiming(idOf('huskar'), 'la')).toMatchObject({ wins_more_in: 'shorter_games' });
+    expect(timingFromRows([[2000, 1200], [2000, 1000], [2000, 800]])).toMatchObject({ wins_more_in: 'shorter_games' });
+    expect(timingFromRows([[2000, 800], [2000, 1000], [2000, 1200]])).toMatchObject({ wins_more_in: 'longer_games' });
+    expect(timingFromRows([[2000, 1000], [2000, 1000], [2000, 1010]])).toMatchObject({ wins_more_in: 'neither' });
     // No bracket: the four together.
     const all: any = heroTiming(idOf('medusa'));
     expect(all.games).toBe(['hg', 'ca', 'la', 'di'].reduce((a, b) => a + DATA.heroes[b][idOf('medusa')].reduce((x: number, [g]: number[]) => x + g, 0), 0));

@@ -4,7 +4,7 @@ import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { steps, sitePatch, onlyDateChanged, body, bumpReviewVersion } = createRequire(import.meta.url)('../../.github/scripts/data-refresh.cjs');
+const { steps, sitePatch, onlyDateChanged, body, bumpReviewVersion, refresh, RETRY_WAITS } = createRequire(import.meta.url)('../../.github/scripts/data-refresh.cjs');
 
 describe('data refresh: what counts as a change', () => {
   it('a file whose only change is its fetch date is no change; any data change is', () => {
@@ -131,5 +131,47 @@ describe('data refresh: new data raises the review version', () => {
     const text = body({ version: '7.42', steps: [], changed: ['lib/coach/data/item-vs.json'], review_version: { from: 35, to: 36 } }, 'ok');
     expect(text).toContain('Review version raised from 35 to 36');
     expect(body({ version: '7.42', steps: [], changed: [] }, 'ok')).not.toContain('Review version');
+  });
+});
+
+describe('data refresh: an upstream that fails for a while (#419)', () => {
+  /** A working tree held in memory: the files that differ from HEAD. */
+  function world(plan: Record<string, Array<{ status: number; writes?: string[] }>>) {
+    const tree = new Set<string>(); const restored: string[][] = []; const slept: number[] = []; const calls: string[] = [];
+    const run = (s: any) => { calls.push(s.name); const next = plan[s.name].shift()!; for (const f of next.writes ?? []) tree.add(f); return { status: next.status, stderr: next.status ? 'HTTP 502 from upstream' : '' }; };
+    const deps = { version: '7.42', run, sleep: (sec: number) => slept.push(sec), dirty: () => new Set(tree), restore: (files: string[]) => { restored.push(files); for (const f of files) tree.delete(f); } };
+    return { tree, restored, slept, calls, deps };
+  }
+  const list = [{ name: 'A', source: 'OpenDota', cmd: ['a'] }, { name: 'B', source: 'STRATZ', cmd: ['b'], stratz: true }];
+
+  it('tries a failed step again after 2 and 10 minutes, and a later success is a success', () => {
+    const w = world({ A: [{ status: 1, writes: ['lib/a.json'] }, { status: 0, writes: ['lib/a.json'] }], B: [{ status: 0, writes: ['lib/b.json'] }] });
+    const r = refresh(null, { STRATZ_API_TOKEN: 't' }, { ...w.deps, list });
+    expect(RETRY_WAITS).toEqual([120, 600]);
+    expect(w.calls).toEqual(['A', 'A', 'B']);
+    expect(w.slept).toEqual([120]);
+    expect(r.steps.map((s: any) => [s.name, s.outcome, s.tries])).toEqual([['A', 'ok', 2], ['B', 'ok', 1]]);
+    // What the failed try half wrote was put back before the next one.
+    expect(w.restored).toEqual([['lib/a.json']]);
+    expect([...w.tree].sort()).toEqual(['lib/a.json', 'lib/b.json']);
+  });
+
+  it('a step that keeps failing leaves its files as they were, and another step\'s new files stay', () => {
+    const w = world({ A: [{ status: 0, writes: ['lib/a.json'] }], B: [{ status: 1, writes: ['lib/b.json'] }, { status: 1 }, { status: 1, writes: ['lib/b2.json'] }] });
+    const r = refresh(null, { STRATZ_API_TOKEN: 't' }, { ...w.deps, list });
+    expect(w.calls).toEqual(['A', 'B', 'B', 'B']);
+    expect(w.slept).toEqual([120, 600]);
+    expect(r.steps[1]).toMatchObject({ outcome: 'failed', tries: 3, detail: 'HTTP 502 from upstream' });
+    expect([...w.tree]).toEqual(['lib/a.json']);
+    const text = body({ ...r, changed: ['lib/a.json'] }, 'ok');
+    expect(text).toContain('1 step(s) still failed after 3 tries (STRATZ)');
+    expect(text).toContain('their files were put back as they were');
+  });
+
+  it('a step skipped for want of a token is not tried', () => {
+    const w = world({ A: [{ status: 0 }], B: [] });
+    const r = refresh(null, {}, { ...w.deps, list });
+    expect(w.calls).toEqual(['A']);
+    expect(r.steps[1]).toMatchObject({ outcome: 'skipped' });
   });
 });
