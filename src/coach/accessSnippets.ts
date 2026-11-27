@@ -19,7 +19,7 @@ export const MCP_TOOLS = [
 export type AccessMode = 'web' | 'dsh' | 'mcp' | 'cli' | 'http';
 
 /** The DSH plugin release the home page points to (packages/dsh, released from a dsh-v* tag). */
-export const DSH_PLUGIN_VERSION = '0.2.0';
+export const DSH_PLUGIN_VERSION = '0.2.1';
 export const DSH_RELEASE_URL = `https://github.com/qianhaoq/dota2.ai/releases/tag/dsh-v${DSH_PLUGIN_VERSION}`;
 export const DSH_INSTALL = `dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`;
 

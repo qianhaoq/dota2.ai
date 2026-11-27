@@ -40,7 +40,7 @@ A native plugin for [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepS
 ```sh
 # from the latest dsh-v* release: https://github.com/qianhaoq/dota2.ai/releases
 sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.0.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.1.tgz
 ```
 
 Open **dota2.ai** from the left sidebar in `dsh web` for the full match review page (scoreboard, minimap moment replay, checked evidence cards, coach chat, and model switcher across your configured DSH models), or ask in any DSH session: *"Review my Dota 2 match 9100904020 — I played Beastmaster."*
