@@ -152,6 +152,10 @@ describe('home: where to use it', () => {
     fireEvent.click(copyCmd);
     // The default tab's steps, all of them.
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(DSH_SETUP.join('\n')));
+    // Copied as four shell lines: real line breaks, no literal backslash-n.
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied.split('\n')).toEqual(DSH_SETUP);
+    expect(copied).not.toContain('\\n');
     expect(await within(ways).findByText('Copied')).toBeTruthy();
     fireEvent.click(copyPrompt);
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('https://dota2.ai/llms.txt')));

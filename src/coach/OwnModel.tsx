@@ -13,9 +13,9 @@ import type { Bi } from './types';
 const T = {
   homeLead: { en: 'Run it on your own DeepSeek key', zh: '用你自己的 DeepSeek Key 跑', ru: 'Запускайте на своём ключе DeepSeek' },
   homeBody: {
-    en: 'The DeepSeek Harness (DSH) plugin runs the same coach locally: no queue, no daily limit, your replays stay on your machine.',
-    zh: 'DeepSeek Harness（DSH）插件在本地跑同一个教练：不排队、不限次，录像和复盘都留在你自己电脑上。',
-    ru: 'Плагин для DeepSeek Harness (DSH) запускает того же тренера локально: без очереди и дневного лимита, реплеи остаются у вас.',
+    en: 'The DeepSeek Harness (DSH) plugin runs the same coach on your own model: no queue, no daily limit, and your reviews and chats are kept on your machine.',
+    zh: 'DeepSeek Harness（DSH）插件用你自己的模型跑同一个教练：不排队、不限次，复盘和追问都保存在你自己电脑上。',
+    ru: 'Плагин для DeepSeek Harness (DSH) запускает того же тренера на вашей модели: без очереди и дневного лимита, разборы и вопросы хранятся у вас.',
   },
   homeCta: { en: 'Set up DSH in 3 steps', zh: '三步装好 DSH', ru: 'Установка DSH в 3 шага' },
   agent: { en: 'or connect your own agent (Claude Code, Codex…)', zh: '或接入你自己的 Agent（Claude Code、Codex…）', ru: 'или подключите своего агента (Claude Code, Codex…)' },
