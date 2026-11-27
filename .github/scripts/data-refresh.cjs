@@ -29,6 +29,7 @@ function steps(version) {
     { name: 'Public matchups and lanes by bracket', cmd: ['scripts/coach-matchups-rank.mjs'], source: 'STRATZ', stratz: true },
     { name: 'Win rate by game length', cmd: ['scripts/coach-hero-timing.mjs'], source: 'STRATZ', stratz: true },
     { name: `Win and pick rates before and since ${version}`, cmd: ['scripts/coach-patch-meta.mjs'], source: 'STRATZ', stratz: true },
+    { name: 'Public mid-game items by bracket and position', cmd: ['scripts/coach-bracket-items.mjs'], source: 'STRATZ', stratz: true },
   ];
 }
 
