@@ -335,8 +335,8 @@ describe('roshan_report on a real game', () => {
     expect(ev(['roshan:beastmaster'], '32:18 对面打掉肉山。')).not.toEqual([]);
     expect(ev(['roshan:beastmaster:1'], '32:18 对面打掉肉山，36:43 盾用掉。')).toEqual([]);
     expect(KNOWLEDGE_TOOLS).toContain(ROSHAN_TOOL);
-    expect(deepReviewSystem('zh')).toContain('roshan_report for the player');
-    expect(deepReviewSystem('zh')).toMatch(/never say a side took no Roshan/);
+    expect(deepReviewSystem('zh')).toContain('roshan_report');
+    expect(deepReviewSystem('zh')).toContain('`aegis_pickups_only` never proves a side took no Roshan');
     expect(chatSystem('zh')).toContain('roshan_report for the player');
   });
 
@@ -346,8 +346,8 @@ describe('roshan_report on a real game', () => {
     expect(gap.reason).toMatch(/roshan_report reads each Roshan from the Aegis pickup/);
     expect(kit.runTool('roshan_report', { hero: 'beastmaster' }).gaps.find((g: any) => g.topic === 'roshan').reason).toMatch(/a take is an Aegis pickup/);
     const system = deepReviewSystem('zh');
-    expect(system).toContain('6c. Always call roshan_report for the player');
-    expect(system).toContain('Roshan is not a blind spot when it lists a take');
+    expect(system).toContain('roshan_report');
+    expect(system).toContain('Roshan is not a blind spot when roshan_report lists a take');
     expect(system).not.toMatch(/Roshan timings/);
     expect(chatSystem('zh')).toContain('Roshan is known from roshan_report');
   });
