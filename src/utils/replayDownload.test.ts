@@ -264,11 +264,15 @@ it.each(['gcs_request_failed','store_contention','workload_identity_unavailable'
   expect(consumed).toBeLessThan(1048576);
 
   // Heartbeat aborts the worker with a wrapper whose cause is the storage error.
-  const store=new FileJobStore(join(home,'jobs'),{leaseMs:300});
-  vi.spyOn(store,'heartbeat').mockRejectedValue(new Error('heartbeat failed',{cause:new Error(message)}));
+  // A lease long enough that the heartbeat's failure (every leaseMs/3) lands well before the lease runs out: with
+  // 300 ms a loaded machine let the lease expire first, and the job ended 'failed' on stale_lease (#429).
+  const store=new FileJobStore(join(home,'jobs'),{leaseMs:1200});
+  // The heartbeat fails once the download has begun (#429): rejecting at once raced the first 10 ms chunk, and the
+  // worker was sometimes stopped before it read anything, so "it read some, and not much" could not be checked.
   let workerBytes=0;
+  vi.spyOn(store,'heartbeat').mockImplementation(async()=>{while(workerBytes===0)await new Promise(resolve=>setTimeout(resolve,5));throw new Error('heartbeat failed',{cause:new Error(message)});});
   const ingest=createReplayIngest({jobStore:store,env:{REPLAY_HOME:home,REPLAY_INGEST_ENABLED:'1',DOTA_EXTRACT_BIN:'/fake'},fetchImpl:async()=>new Response(new ReadableStream({
-   async pull(stream){await new Promise(resolve=>setTimeout(resolve,10));workerBytes+=65536;stream.enqueue(new Uint8Array(65536));}
+   async pull(stream){await new Promise(resolve=>setTimeout(resolve,25));workerBytes+=65536;stream.enqueue(new Uint8Array(65536));}
   }))});
   if(!('drain' in ingest))throw Error('async required');
   const job=await ingest.submit({match_id:43,cluster:184,replay_salt:1},'ip');await ingest.drain();
