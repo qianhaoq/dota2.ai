@@ -35,12 +35,14 @@ describe('death_context: was the death traded, and where were the allies who wer
     const r: any = runTraceTool(trace, 'death_context', { hero: 'beastmaster' });
     expect(r.deaths_where.traded_within_15s).toEqual(['2:51', '6:13', '8:27', '22:06', '25:30', '30:42', '39:21']);
     expect(r.deaths_where.not_traded_within_15s).toEqual(['0:47', '11:03', '36:05', '41:57']);
-    expect(r.deaths_where.no_ally_within_2200_at_death_and_not_traded).toEqual([]);
+    // Who was near is not told, as a count or per death (owner, 2026-11-27: meaningless).
+    expect(r.deaths_where).not.toHaveProperty('no_ally_within_2200_at_death_and_not_traded');
     const d = r.deaths.find((x: any) => x.clock === '22:06');
-    expect(d).toMatchObject({ traded_within_15s: true, allies_within_2200: { at_death: 3 } });
-    expect(d.allies_elsewhere).toEqual([{ hero: 'skywrath_mage', doing: 'dead', respawn_in: 42 }]);
-    // Every ally is either within 2200 at the death or listed elsewhere, never both.
-    for (const x of r.deaths) if (x.allies_within_2200.at_death != null) expect(x.allies_within_2200.at_death + x.allies_elsewhere.length).toBe(4);
+    expect(d).toMatchObject({ traded_within_15s: true });
+    for (const x of r.deaths) {
+      for (const k of ['allies_within_2200', 'allies_elsewhere', 'allies_near_who_survived_10s']) expect(x).not.toHaveProperty(k);
+      for (const s of x.snapshots) expect(s).not.toHaveProperty('allies');
+    }
   });
 
   it('traded means an enemy hero died within 15 s of it, before or after; an ally\'s death is not a trade', () => {
@@ -52,37 +54,23 @@ describe('death_context: was the death traded, and where were the allies who wer
     expect(at([[100, 'axe'], [101, 'lina']])).toBe(false);
   });
 
-  it('an ally far off is listed with place and distance, a dead one with the respawn; one within 2200 is not listed', () => {
-    const t: any = synth({
-      heroes: [['axe', 2], ['lina', 2], ['sven', 2], ['lion', 2], ['pudge', 3]],
-      pos: { axe: [0, 0], lina: [1500, 0], sven: [6000, -6000], lion: [0, 0] },
-      deaths: [[100, 'axe']], dead: { axe: [100, 150], lion: [90, 130] },
-    });
-    const d = (runTraceTool(t, 'death_context', { hero: 'axe' }) as any).deaths[0];
-    expect(d.allies_within_2200.at_death).toBe(1);
-    expect(d.allies_elsewhere).toEqual([{ hero: 'sven', place: expect.any(String), distance: 8485 }, { hero: 'lion', doing: 'dead', respawn_in: 30 }]);
-  });
-
-  it('the record resolves with its places named, and the review and the chat are told what a trade means', () => {
+  it('the record resolves, and the review and the chat are told what a trade means', () => {
     const r: any = runTraceTool(trace, 'death_context', { hero: 'beastmaster' });
-    const n = r.deaths.findIndex((x: any) => x.allies_elsewhere.some((a: any) => a.place)) + 1;
-    expect(n).toBeGreaterThan(0);
-    const rec = resolveRef(trace, `death:beastmaster:${n}`, { hero: 'beastmaster', lang: 'zh' })!;
-    expect(rec.record.traded_within_15s).toBe(r.deaths[n - 1].traded_within_15s);
-    for (const a of rec.record.allies_elsewhere) if (a.place) expect(rec.names[a.place]).toMatch(/[一-鿿]/);
+    const rec = resolveRef(trace, 'death:beastmaster:4', { hero: 'beastmaster', lang: 'zh' })!;
+    expect(rec.record.traded_within_15s).toBe(r.deaths[3].traded_within_15s);
+    expect(rec.record).not.toHaveProperty('allies_elsewhere');
     expect(deepReviewSystem('en')).toContain('traded_within_15s');
-    expect(deepReviewSystem('en')).toContain('allies_within_2200');
+    expect(deepReviewSystem('en')).not.toContain('allies_within_2200');
     expect(chatSystem('en')).toContain('A death not traded bought nothing');
   });
 
-  it('the calibration script measures trades and the risk of standing alone', () => {
+  it('the calibration script measures trades, not by how many allies were near', () => {
     const dir = mkdtempSync(join(tmpdir(), 'deaths-'));
     copyFileSync(FIXTURE, join(dir, '9100904020.trace.json.gz'));
     const out = JSON.parse(execFileSync('node', ['scripts/calibrate.mjs', dir, '--json'], { encoding: 'utf8' }));
-    const all = out.deaths.traded_by_allies_within_2200_at_death;
-    expect(all.map((x: any) => x.allies)).toEqual(['0', '1', '2 or more']);
     const known = (runTraceTool(trace, 'death_context', { hero: 'beastmaster' }) as any);
-    expect(all.reduce((n: number, x: any) => n + x.deaths, 0)).toBeGreaterThanOrEqual(known.deaths_total);
-    expect(out.deaths.died_within_20s_by_allies_near).toHaveLength(6);
+    expect(out.deaths.traded_all.deaths).toBeGreaterThanOrEqual(known.deaths_total);
+    expect(out.deaths).not.toHaveProperty('traded_by_allies_within_2200_at_death');
+    expect(out.deaths.died_within_20s_by_side.map((x: any) => x.side)).toEqual(['enemy half', 'own half or river']);
   });
 });

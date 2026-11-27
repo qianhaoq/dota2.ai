@@ -5,9 +5,9 @@
  *   pre-fight measure of fight_report won it.
  * - Pushes (siege_report): how often a push took its building, by how many more heroes hit it than its
  *   owners had near, and by how many of the owners were dead when it began.
- * - Deaths (death_context): how often a death was traded (an enemy hero died within 15 s), by how many allies
- *   were within 2200 at it; and, every 5 s from 10:00, how often a living hero died in the next 20 s, by
- *   allies near and side of the map — whether standing alone is itself the danger.
+ * - Deaths (death_context): how often a death was traded (an enemy hero died within 15 s), by heading and by what
+ *   the hero was doing; and, every 5 s from 10:00, how often a living hero died in the next 20 s, by side of the
+ *   map. Not by how many allies were near (owner, 2026-11-27: meaningless; the tools no longer say it).
  * - Wards (traces with a ward list): the same two questions split by observer wards within 1600 — a death's trade
  *   rate by whether the dead hero's side or the enemy had one near it, and the 20 s death rate of a living hero by
  *   enemy observers near them. Placements only, not what each side saw.
@@ -75,9 +75,8 @@ for (const f of files) {
   const first = trace.heroes.find((h) => h.team === 2);
   for (const hero of trace.heroes) {
     for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }, { ultimateOf, ultimatesOf }).deaths ?? []) {
-      if (d.allies_within_2200.at_death != null) {
+      {
         deaths.push({
-          allies: d.allies_within_2200.at_death,
           traded: d.traded_within_15s,
           obs: d.observers_within_1600 ?? null,
           fight: d.in_a_fight,
@@ -139,10 +138,9 @@ for (const f of files) {
     const at = trace.heroes.map((_, i) => stateAt(trace, i, sec));
     trace.heroes.forEach((h, i) => {
       const s = at[i]; if (!s?.alive) return;
-      const allies = trace.heroes.filter((o, j) => j !== i && o.team === h.team && at[j]?.alive && dist(at[j], s) <= 2200).length;
       const side = region(s.x, s.y); const enemyHalf = h.team === 2 ? side.startsWith('dire') : side.startsWith('radiant');
       const o = observersNear(trace, s, sec);
-      moments.push({ allies, enemyHalf, died: died[i].some((d) => d > sec && d <= sec + 20), obs: o && { mine: o[h.team], enemy: o[h.team === 2 ? 3 : 2] } });
+      moments.push({ enemyHalf, died: died[i].some((d) => d > sec && d <= sec + 20), obs: o && { mine: o[h.team], enemy: o[h.team === 2 ? 3 : 2] } });
     });
   }
   // The losers' richest at the fight's start (the replay's net worth here: no match data), null when unknown.
@@ -239,9 +237,8 @@ const traded = (list) => ({ deaths: list.length, traded: list.filter((d) => d.tr
 const risk = (list) => ({ moments: list.length, died_within_20s: list.filter((m) => m.died).length, rate: list.length ? Math.round((list.filter((m) => m.died).length / list.length) * 1000) / 10 : null });
 /** Heading home or away over a death's window: this much closer to or farther from the own fountain. */
 const HEADING = 1500;
-const alliesLabel = (n) => (n >= 2 ? '2 or more' : String(n));
 out.deaths = {
-  traded_by_allies_within_2200_at_death: [0, 1, 2].map((n) => ({ allies: alliesLabel(n), ...traded(deaths.filter((d) => (n >= 2 ? d.allies >= 2 : d.allies === n))) })),
+  traded_all: traded(deaths),
   // What the player was doing and where they were heading in the 12 s before a death (death_context's snapshots):
   // the reading behind a death as a decision — a farm caught, a retreat too late, a walk forward.
   by_heading_over_the_window: [['in a fight', (d) => d.fight === true], ['outside fights', (d) => d.fight === false]].map(([label, f]) => ({
@@ -255,7 +252,7 @@ out.deaths = {
     absorbed_enemy_ultimate: traded(deaths.filter((d) => d.absorbedUlt)),
     absorbed_enemy_ultimate_outside_fights: traded(deaths.filter((d) => d.fight === false && d.absorbedUlt)),
   },
-  died_within_20s_by_allies_near: [true, false].flatMap((half) => [0, 1, 2].map((n) => ({ side: half ? 'enemy half' : 'own half or river', allies: alliesLabel(n), ...risk(moments.filter((m) => m.enemyHalf === half && (n >= 2 ? m.allies >= 2 : m.allies === n))) }))),
+  died_within_20s_by_side: [true, false].map((half) => ({ side: half ? 'enemy half' : 'own half or river', ...risk(moments.filter((m) => m.enemyHalf === half)) })),
 };
 // Only deaths and moments from traces with a ward list: an older trace has no wards, not zero wards.
 const wd = deaths.filter((d) => d.obs); const wm = moments.filter((m) => m.obs);
@@ -266,13 +263,10 @@ out.wards = {
     { case: 'own observer within 1600', ...traded(wd.filter((d) => d.obs.my_team > 0)) },
     { case: 'no own observer within 1600', ...traded(wd.filter((d) => d.obs.my_team === 0)) },
     { case: 'enemy observer within 1600', ...traded(wd.filter((d) => d.obs.enemy > 0)) },
-    { case: 'enemy observer near, no own one, no ally within 2200', ...traded(wd.filter((d) => d.obs.enemy > 0 && !d.obs.my_team && d.allies === 0)) },
   ],
   died_within_20s: [true, false].flatMap((half) => [
     { side: half ? 'enemy half' : 'own half or river', case: 'enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.obs.enemy > 0)) },
     { side: half ? 'enemy half' : 'own half or river', case: 'no enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.obs.enemy === 0)) },
-    { side: half ? 'enemy half' : 'own half or river', case: 'alone, enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.allies === 0 && m.obs.enemy > 0)) },
-    { side: half ? 'enemy half' : 'own half or river', case: 'alone, no enemy observer within 1600', ...risk(wm.filter((m) => m.enemyHalf === half && m.allies === 0 && m.obs.enemy === 0)) },
   ]),
 };
 const DID = ['took_a_building', 'took_roshan', 'pushed_and_took_nothing', 'neither'];
@@ -374,7 +368,7 @@ else {
   for (const x of out.pushes.by_heroes_hitting_minus_owners_near) line(`  hitting minus near: ${x.value}`, x);
   for (const x of out.pushes.by_owners_dead_when_it_began) line(`  owners dead when it began: ${x.value}`, x);
   console.log(`\n${deaths.length} deaths; share traded (an enemy hero died within 15 s)\n`);
-  for (const x of out.deaths.traded_by_allies_within_2200_at_death) console.log(`${`  allies within 2200 at death: ${x.allies}`.padEnd(46)} ${String(x.traded).padStart(4)}/${String(x.deaths).padEnd(5)} ${x.rate}%`);
+  { const x = out.deaths.traded_all; console.log(`${'  all deaths'.padEnd(46)} ${String(x.traded).padStart(4)}/${String(x.deaths).padEnd(5)} ${x.rate}%`); }
   console.log(`\n  heading over the 12 s window (moved_toward_own_fountain, ±${HEADING}): deaths, share traded`);
   for (const x of out.deaths.by_heading_over_the_window) console.log(`    ${x.deaths.padEnd(16)} ${['home_1500_or_more', 'away_1500_or_more', 'neither', 'unknown'].map((k) => `${k} ${x[k].deaths} (${x[k].rate ?? '-'}%)`).join(' · ')}`);
   console.log('  outside fights, doing at the window start: deaths, share traded');
@@ -404,5 +398,5 @@ else {
   console.log(`\n  living heroes every 5 s from 10:00 in those games; share dead within 20 s\n`);
   for (const x of w.died_within_20s) console.log(`${`  ${x.side}, ${x.case}`.padEnd(56)} ${String(x.died_within_20s).padStart(5)}/${String(x.moments).padEnd(6)} ${x.rate}%`);
   console.log(`\nliving heroes every 5 s from 10:00; share dead within 20 s\n`);
-  for (const x of out.deaths.died_within_20s_by_allies_near) console.log(`${`  ${x.side}, allies near: ${x.allies}`.padEnd(46)} ${String(x.died_within_20s).padStart(5)}/${String(x.moments).padEnd(6)} ${x.rate}%`);
+  for (const x of out.deaths.died_within_20s_by_side) console.log(`${`  ${x.side}`.padEnd(46)} ${String(x.died_within_20s).padStart(5)}/${String(x.moments).padEnd(6)} ${x.rate}%`);
 }

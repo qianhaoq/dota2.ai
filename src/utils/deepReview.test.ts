@@ -195,9 +195,9 @@ describe('review findings on #233', () => {
   });
 
   it('a deaths summary backs the game times it lists its deaths by, and no others', () => {
-    const src = { tool: 'death_context', ref: 'deaths:beastmaster', ref_scope: 'summary', deaths_total: 11, deaths_where: { no_ally_within_2200_at_death: ['2:51'], three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06', '25:30', '30:42', '36:05'] }, deaths: [{ ref: 'death:beastmaster:1', t: 47, clock: '0:47' }] };
+    const src = { tool: 'death_context', ref: 'deaths:beastmaster', ref_scope: 'summary', deaths_total: 11, deaths_where: { outside_fights: ['2:51'], three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06', '25:30', '30:42', '36:05'] }, deaths: [{ ref: 'death:beastmaster:1', t: 47, clock: '0:47' }] };
     const f = (fact: string) => verifyReview({ verdict: 'v', findings: [{ title: 't', claim: 'c', evidence: [{ refs: ['deaths:beastmaster'], fact }] }] }, [src]).problems;
-    expect(f('11 次阵亡里有 5 次是被三个以上敌人打死的：8:27、22:06、25:30、30:42、36:05；2:51 那次身边没有队友。')).toEqual([]);
+    expect(f('11 次阵亡里有 5 次是被三个以上敌人打死的：8:27、22:06、25:30、30:42、36:05；2:51 那次在团战之外。')).toEqual([]);
     // A death's own time is in its record, not in the summary: 0:47 is not one the summary lists.
     expect(f('0:47 那次也是。')).toEqual([{ where: 'finding', index: 0, kind: 'moment', text: '0:47 (not in deaths:beastmaster)' }]);
   });
@@ -496,13 +496,13 @@ describe('runDeepReview', () => {
 
   it('a rule that names a count gets its next-game check from the replay, not from the model', async () => {
     const rule = { when: '三个敌人同时出现在你面前', do: '先退到队友身后', this_game: '11 次阵亡里有 5 次' };
-    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties.counted_by.enum).toEqual(['low_health', 'alone', 'alone_not_traded', 'low_health_outside_fights', 'outnumbered_outside_fights', 'outnumbered', 'nothing_pressed', 'cast_into_immunity', 'target_survived', 'reached_few', 'died_holding']);
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.properties.counted_by.enum).toEqual(['low_health', 'low_health_outside_fights', 'outnumbered_outside_fights', 'outnumbered', 'nothing_pressed', 'cast_into_immunity', 'target_survived', 'reached_few', 'died_holding']);
     const m = scripted([investigate, { toolCalls: [call('death_context', { hero: 'beastmaster' }, 'dc')] }, { toolCalls: [call('submit_review', review([
       // The model's own numbers for a check are not taken: only which count it is.
       { ...good, rule: { ...rule, counted_by: 'outnumbered', check: { max: 99 } } },
       // The same count twice is one check, on the first rule that named it.
       { ...good, title: '第二条', rule: { ...rule, counted_by: 'outnumbered' } },
-      // Once in this game (2:51) is not a habit: the rule stands, without a check.
+      // A count no longer kept (alone, owner 2026-11-27), sent anyway: the rule stands, without a check.
       { ...good, title: '第三条', rule: { ...rule, counted_by: 'alone' } },
     ]), 's')] }]);
     // A count over one of the hero's own abilities: the ability comes with it, by any spelling ability_audit takes.

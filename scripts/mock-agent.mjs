@@ -62,7 +62,7 @@ export const MOCK_REVIEW = {
     game_plan: {
       window: '你们在 19:00 到 29:00 领先，25:00 时最多领先 3565；这段时间你们拆了 2 座建筑、对面拆了 3 座。幻影刺客在 21:29 出了黑皇杖，就在这段领先之内。',
       course: '你们在 18:07 到 19:46 先拆了 3 座外塔，之后只在 25:05 再拆 1 座；对面从 20:02 起拆了 18 座。16 波团战里你们少死人的有 6 波，其中只有 22:57 那一波之后两分钟内拆到了建筑；对面少死人的 9 波里有 5 波之后拆到了。',
-      your_part: '16 波团战你到场 15 波。20:00 到 30:00 你 52% 的存活时间身边有两名以上队友，对建筑的伤害是 248。',
+      your_part: '16 波团战你到场 15 波。20:00 到 30:00 你 34% 的存活时间在对方半场，对建筑的伤害是 248。',
       main_reason: 'team_play',
       why: '你几乎每波团都在，但 6 波少死人的团只换来 1 次建筑：这主要是队伍没有把团战变成推进，不是你一个人的问题。',
       evidence: [
@@ -101,7 +101,7 @@ export const MOCK_REVIEW = {
     game_plan: {
       window: 'Your team was ahead from 19:00 to 29:00, by 3565 at most at 25:00; in that time it took 2 buildings and the enemy 3. Phantom Assassin finished Black King Bar at 21:29, inside that lead.',
       course: 'Your team took 3 outer towers from 18:07 to 19:46 and only 1 more, at 25:05; the enemy took 18 buildings from 20:02 on. Of the 16 fights your team lost fewer heroes in 6, and a building followed only the one at 22:57; the enemy lost fewer in 9 fights and took a building after 5 of them.',
-      your_part: 'You were at 15 of the 16 fights. From 20:00 to 30:00 you spent 52% of your time alive with two or more allies near, and dealt 248 damage to buildings.',
+      your_part: 'You were at 15 of the 16 fights. From 20:00 to 30:00 you spent 34% of your time alive on the opposing side of the map, and dealt 248 damage to buildings.',
       main_reason: 'team_play',
       why: 'You were at nearly every fight, yet the 6 fights your team came out ahead in brought 1 building: the team did not turn fights into towers, and that is not on you alone.',
       evidence: [
@@ -140,7 +140,7 @@ export const MOCK_REVIEW = {
     game_plan: {
       window: 'Ваша команда вела с 19:00 по 29:00, на пике 3565 на 25:00; за это время вы снесли 2 постройки, а враги 3. Phantom Assassin собрала Black King Bar на 21:29 внутри этого окна.',
       course: 'Ваша команда снесла 3 внешние башни с 18:07 по 19:46 и ещё лишь 1 на 25:05; враги снесли 18 построек начиная с 20:02. Из 16 драк вы потеряли меньше героев в 6, и постройка пала лишь после драки на 22:57; враги выиграли 9 драк и забрали постройку после 5 из них.',
-      your_part: 'Вы участвовали в 15 из 16 драк. С 20:00 по 30:00 вы провели 52% времени в живых рядом с двумя и более союзниками и нанесли 248 урона постройкам.',
+      your_part: 'Вы участвовали в 15 из 16 драк. С 20:00 по 30:00 вы провели 34% времени в живых на стороне соперника и нанесли 248 урона постройкам.',
       main_reason: 'team_play',
       why: 'Вы были почти в каждой драке, но 6 выигранных драк принесли только 1 постройку: команда не конвертировала драки в башни, и это не только ваша вина.',
       evidence: [

@@ -23,7 +23,6 @@ const T = {
   killer: { en: 'Killed by', zh: '击杀者', ru: 'Убийца' },
   before: { en: 'before death', zh: '阵亡前', ru: 'до смерти' },
   me: { en: 'You', zh: '你', ru: 'Вы' },
-  allies: { en: 'Allies within 2200', zh: '2200 码内队友', ru: 'Союзники в 2200' },
   enemies: { en: 'Enemies within 2200', zh: '2200 码内敌人', ru: 'Враги в 2200' },
   nobody: { en: 'none', zh: '无', ru: 'нет' },
   readyUnused: { en: 'Ready, not used', zh: '就绪未用', ru: 'Готово, не нажато' },
@@ -195,8 +194,6 @@ const T = {
   nonHeroDeath: { en: 'Non-hero death, no enemy hero damage in window', zh: '非英雄击杀且窗口内无敌方英雄伤害', ru: 'Смерть не от героя без урона от врагов' },
   enemyUltsAbsorbed: { en: 'Enemy ultimates absorbed', zh: '吃到的敌方大招', ru: 'Принятые ульты врага' },
   disableTotal: { en: 'Total disabled', zh: '累计受控', ru: 'Всего в контроле' },
-  alliesSurvived: { en: 'Nearby allies alive 10 s later', zh: '身边 10 秒后仍存活队友', ru: 'Союзники рядом, выжившие 10 с' },
-  alliesElsewhere: { en: 'Allies not near', zh: '不在附近的队友', ru: 'Союзники вдалеке' },
   wonBy: { my_team: { en: 'Your team won the fight', zh: '我方赢团', ru: 'Ваша команда выиграла драку' }, enemy: { en: 'They won the fight', zh: '对方赢团', ru: 'Враги выиграли драку' } } as Record<string, Tri>,
   stillDead: { en: 'Still dead 10 s after', zh: '10 秒后仍未复活', ru: 'Всё ещё мертвы через 10 с' },
   winnersDid: {
@@ -269,9 +266,6 @@ const T = {
     on_own_side_of_the_map: { en: 'On own side of the map', zh: '在己方半场', ru: 'На своей половине карты' },
     around_the_river: { en: 'Around the river', zh: '在河道一带', ru: 'У реки' },
     on_the_opponents_side: { en: 'On the other side', zh: '在对方半场', ru: 'На стороне врага' },
-    with_no_ally_within_2200: { en: 'No ally within 2200', zh: '2200 码内没有队友', ru: 'Без союзников в 2200' },
-    with_one_ally_within_2200: { en: 'One ally near', zh: '身边一名队友', ru: 'Один союзник рядом' },
-    with_two_or_more_allies_within_2200: { en: 'Two or more allies near', zh: '身边两名以上队友', ru: 'Два и более союзника рядом' },
     with_three_or_more_opponents_within_2200: { en: 'Three or more enemies near', zh: '身边三名以上敌人', ru: 'Три и более врага рядом' },
   } as Record<string, Tri>,
   tempoAlive: { en: 'of the time alive', zh: '占存活时间', ru: 'времени в живых' },
@@ -359,8 +353,6 @@ const TOTALS: Record<string, Tri> = {
   damage_share_in_death_windows: { en: 'Share of it', zh: '其中' },
   attacks: { en: 'attacks', zh: '普通攻击' }, 'abilities and items': { en: 'abilities and items', zh: '技能和物品' },
   health_below_half_at_window_start: { en: 'Deaths that began below half health', zh: '起步不到半血的阵亡' },
-  no_ally_within_2200_throughout: { en: 'Deaths with no ally within 2200 throughout', zh: '全程 2200 码内没有队友的阵亡' },
-  no_ally_within_2200_at_death: { en: 'Deaths with no ally within 2200 at the end', zh: '阵亡时 2200 码内没有队友' },
   three_or_more_enemy_heroes_dealing_damage: { en: 'Deaths to three or more enemy heroes', zh: '被三个以上敌方英雄打死' },
   in_a_fight: { en: 'Deaths in a fight', zh: '团战中的阵亡' },
   outside_fights: { en: 'Deaths outside fights', zh: '团战之外的阵亡' },
@@ -373,7 +365,6 @@ const TOTALS: Record<string, Tri> = {
   // death_context's trade lists (deaths:<hero>).
   traded_within_15s: { en: 'Deaths traded (an enemy hero died within 15 s)', zh: '换到了（15 秒内对面也死了英雄）' },
   not_traded_within_15s: { en: 'Deaths not traded', zh: '没换到' },
-  no_ally_within_2200_at_death_and_not_traded: { en: 'No ally within 2200 and not traded', zh: '身边没人且没换到' },
   no_own_observer_within_1600: { en: 'Deaths with no own observer within 1600', zh: '身边 1600 码内没有己方假眼的阵亡' },
   enemy_observer_within_1600: { en: 'Deaths with an enemy observer within 1600', zh: '1600 码内有敌方假眼的阵亡' },
   bought_back: { en: 'Deaths bought back', zh: '买活的阵亡' },
@@ -496,13 +487,12 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       <div className="ag-rec">
         <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.killer)} {N(r.killer)}</p>
         <table className="ag-snap">
-          <thead><tr><th /><th>{t(T.me)}</th><th>{t(T.allies)}</th><th>{t(T.enemies)}</th></tr></thead>
+          <thead><tr><th /><th>{t(T.me)}</th><th>{t(T.enemies)}</th></tr></thead>
           <tbody>
             {r.snapshots.map((s: any) => (
               <tr key={s.dt}>
                 <th>{-s.dt}{t(T.sec)} {t(T.before)}</th>
                 <td>{s.me ? `${s.me.hp}/${s.me.max_hp}` : '—'}</td>
-                <td>{chips(s.allies)}</td>
                 <td>{chips(s.enemies)}</td>
               </tr>
             ))}
@@ -539,10 +529,6 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         {typeof r.disable_seconds_in_window === 'number' && r.disable_seconds_in_window > 0 && (
           <p className="ag-rec-line"><span>{t(T.disableTotal)}</span><span className="ag-chip">{r.disable_seconds_in_window}{t(T.sec)}</span></p>
         )}
-        {Array.isArray(r.allies_near_who_survived_10s) && r.allies_near_who_survived_10s.length > 0 && (
-          <p className="ag-rec-line"><span>{t(T.alliesSurvived)}</span>{r.allies_near_who_survived_10s.map((h: string) => <span key={h} className="ag-chip is-ally">{N(h)}</span>)}</p>
-        )}
-        {r.allies_elsewhere?.length > 0 && <p className="ag-rec-line"><span>{t(T.alliesElsewhere)}</span>{r.allies_elsewhere.map((h: any) => <span key={h.hero} className="ag-chip">{N(h.hero)}{doingOf(h) && ` · ${doingOf(h)}`}{h.distance != null && <em>{h.distance} {t(T.away)}</em>}{h.respawn_in != null && <em>{t(T.respawn)} {h.respawn_in}{t(T.sec)}</em>}{h.tp_ready != null && <em>{t(T.tp[String(h.tp_ready)])}</em>}</span>)}</p>}
         <p className="ag-rec-sub">{t(T.damage)}</p>
         <ul className="ag-bars">{r.damage_taken.slice(0, 5).map((d: any, i: number) => <Bar key={i} label={`${N(d.from)} · ${d.by === 'attack' ? t(T.attack) : N(d.by)}`} value={d.value} max={max} />)}</ul>
       </div>
@@ -557,7 +543,6 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           {r.revived_at && <span className="ag-chip is-good">{t(T.revivedAt)} {r.revived_at}</span>}
           {r.died_for_real_within_20s && <span className="ag-chip is-warn">{t(T.diedAfterRevive)} {r.died_for_real_within_20s.clock}{r.died_for_real_within_20s.seconds_after_revive != null && <em>+{r.died_for_real_within_20s.seconds_after_revive}{t(T.sec)}</em>}</span>}
         </p>
-        <p className="ag-rec-line"><span>{t(T.allies)}</span>{heroes(r.allies_within_2200, 'is-ally')}</p>
         <p className="ag-rec-line"><span>{t(T.enemies)}</span>{heroes(r.enemies_within_2200, 'is-enemy')}</p>
       </div>
     );
@@ -1271,7 +1256,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   const tl = (key: string) => (TOTALS[key] ? t(TOTALS[key]) : pretty(key));
   // The trade counts have a line of their own: the counters below are cut at 18, and these are what a review cites for
   // its lone deaths (review of #303).
-  const TRADES = ['traded_within_15s', 'not_traded_within_15s', 'no_ally_within_2200_at_death_and_not_traded'];
+  const TRADES = ['traded_within_15s', 'not_traded_within_15s'];
   const trades: [string, string][] = [];
   for (const [k, v] of late) {
     if (!v || typeof v !== 'object') continue;
