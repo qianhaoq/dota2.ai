@@ -43,6 +43,16 @@ describe('web_search: DeepSeek Search as reading for the model', () => {
     expect((await kit.runTool('web_search', { query: 'Ursa' })).this_game_patch).toEqual({ name: kit.patch.name, released: expect.any(String) });
   });
 
+  it('a game whose patch is not established: this_game_patch is unknown, and no page is called older or newer', async () => {
+    // An id from before the oldest release the site keeps: patchForGame falls back to a release, not exactly.
+    const old = { ...trace, match_id: 1000 };
+    const kit: any = reviewToolkit({ trace: old, hero: 'beastmaster', lang: 'en', webSearch: createWebSearch({ apiKey: 'k', fetchImpl: ok([{ ...page, date: '2020-01-01T00:00:00Z' }]) as any }) });
+    expect(kit.patch.exact).toBe(false);
+    const r: any = await kit.runTool('web_search', { query: 'Ursa' });
+    expect(r.this_game_patch).toEqual({ name: null, released: null, unknown_because: kit.patch.reason });
+    expect(r.results[0].before_this_game_patch).toBeNull();
+  });
+
   it('a page without a date says null, not a date; no results is an empty list, said as such', async () => {
     const r: any = await createWebSearch({ apiKey: 'k', fetchImpl: ok([{ ...page, date: null }]) as any })({ query: 'Ursa' });
     expect(r.results[0].date).toBeNull();
@@ -104,5 +114,32 @@ describe('web_search inside a review run', () => {
     expect(f).toHaveBeenCalledTimes(1);
     expect(r.verification.first_pass_problems).toBeGreaterThan(0);
     expect(JSON.stringify(r.review ?? {})).not.toContain('77777');
+  });
+});
+
+describe('web_search in a review continued from a checkpoint', () => {
+  it('the searches made before the cut count against the limit: a resumed review cannot search four more times', async () => {
+    const { runDeepReview } = await import('../../lib/agent/deepReview.js');
+    const CUT = new Error('cut off');
+    const submit = { verdict: 'v', mainline: ['m'], findings: [], next_game: ['n'], blind_spots: ['b'] };
+    // Acts on where the conversation is: turns 1-5 search, turn 6 hands the review in.
+    let seen: any[] = [];
+    const model = (cutAt?: number) => async (o: any) => {
+      const turn = o.messages.filter((x: any) => x.role === 'assistant').length + 1;
+      seen = o.messages;
+      if (turn === cutAt) throw CUT;
+      const toolCalls = turn <= 5 ? [{ id: `w${turn}`, name: 'web_search', args: { query: `Ursa ${'abcde'[turn - 1]}` } }] : [{ id: 's', name: 'submit_review', args: submit }];
+      return { toolCalls, usage: { input: 1, output: 1 } };
+    };
+    const f = ok();
+    const points: any[] = [];
+    await expect(runDeepReview({ complete: model(5), trace, hero: 'beastmaster', lang: 'zh', webSearch: createWebSearch({ apiKey: 'k', fetchImpl: f as any }), onCheckpoint: (c: any) => points.push(JSON.parse(JSON.stringify(c))) })).rejects.toBe(CUT);
+    expect(f).toHaveBeenCalledTimes(4);
+    expect(points.at(-1).run.calls.filter((c: any) => c.name === 'web_search')).toHaveLength(4);
+    // A fresh search for the resumed run (as a restarted job gets): it still knows four were made.
+    const g = ok();
+    await runDeepReview({ complete: model(), trace, hero: 'beastmaster', lang: 'zh', webSearch: createWebSearch({ apiKey: 'k', fetchImpl: g as any }), checkpoint: points.at(-1) });
+    expect(g).not.toHaveBeenCalled();
+    expect(String(seen.find((m: any) => m.role === 'tool' && m.tool_call_id === 'w5')?.content)).toContain('web_search_limit_reached');
   });
 });
