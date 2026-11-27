@@ -891,8 +891,7 @@
   font-size: 17px;
 }
 
-.ag-rule-seen dd,
-.ag-rule-check dd {
+.ag-rule-seen dd {
   font-weight: 400;
   color: var(--text-2);
   font-size: var(--fs-body) !important;
@@ -1807,71 +1806,279 @@ details.ag-finding[open] {
   margin: 0 0 14px;
 }
 
-/* 7. Checkable Next-Game Goal Card (.ag-goal) */
-.ag-goal {
-  margin-top: 14px;
-  padding: 20px 22px;
-  background: linear-gradient(180deg, var(--panel-2), var(--panel));
-  border: 1px dashed rgba(229, 174, 78, 0.42);
+/* 7. First-Principles Coach Layout (.ag-opening, .ag-highlights, .ag-chapters, .ag-encouragement) */
+.ag-lead-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.ag-lead-reason {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--line-2);
+  background: var(--panel);
+  color: var(--text-2);
+}
+
+.ag-lead-reason.is-team_play,
+.ag-lead-reason.is-enemy_play,
+.ag-lead-reason.is-line_ups {
+  color: var(--good);
+  border-color: rgba(82, 201, 114, 0.35);
+  background: rgba(82, 201, 114, 0.08);
+}
+
+.ag-lead-reason.is-your_play {
+  color: var(--accent);
+  border-color: rgba(229, 174, 78, 0.38);
+  background: var(--accent-soft);
+}
+
+.ag-opening {
+  margin: 16px 0 0;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background:
+    radial-gradient(460px 160px at 0% 0%, rgba(229, 174, 78, 0.09), transparent 72%),
+    var(--panel);
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--accent);
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text);
+  max-width: 56em;
+  text-wrap: pretty;
+}
+
+/* Highlights: warm emerald/gold cards */
+.ag-highlight-list {
+  display: grid;
+  gap: 14px;
+}
+
+.ag-highlight {
+  padding: 18px 20px;
   border-radius: var(--radius-lg);
+  background:
+    radial-gradient(440px 170px at 0% 0%, rgba(82, 201, 114, 0.11), transparent 72%),
+    linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid rgba(82, 201, 114, 0.32);
+  border-left: 3px solid var(--good);
   box-shadow: var(--shadow-card);
 }
 
-.ag-goal.is-set {
-  border-style: solid;
-  border-color: rgba(82, 201, 114, 0.48);
-  background:
-    radial-gradient(400px 150px at 0% 0%, rgba(82, 201, 114, 0.1), transparent 70%),
-    var(--panel);
-}
-
-.ag-goal-eyebrow {
-  margin: 0 0 6px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--accent);
-}
-
-.ag-goal.is-set .ag-goal-eyebrow {
-  color: var(--good);
-}
-
-.ag-goal-label {
+.ag-highlight h3 {
   margin: 0 0 8px;
-  font-size: 17px;
-  font-weight: 600;
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 500;
   color: var(--text);
 }
 
-.ag-goal-rules {
-  list-style: none;
-  margin: 0 0 12px;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-.ag-goal-rules li {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.ag-goal-how {
-  margin: 0 0 14px;
+.ag-highlight-detail {
+  margin: 0;
   color: var(--text-2);
-  font-size: var(--fs-meta);
-  line-height: 1.6;
+  line-height: 1.7;
+  font-size: 15px;
 }
 
-.ag-goal-next {
-  margin: 12px 0 0;
-  padding-top: 10px;
+.ag-highlight .ag-evidence {
+  margin: 14px 0 0;
+  border-top: 1px solid rgba(82, 201, 114, 0.2);
+}
+
+.ag-highlight .ag-ev:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* Adaptive Full-Dimension Chapters */
+.ag-chapter-list {
+  display: grid;
+  gap: 14px;
+}
+
+.ag-chapter {
+  padding: 18px 22px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-2);
+  box-shadow: var(--shadow-card);
+}
+
+.ag-chapter.is-praise {
+  border-left-color: var(--good);
+}
+
+.ag-chapter.is-solid {
+  border-left-color: #68b5e8;
+}
+
+.ag-chapter.is-mixed {
+  border-left-color: var(--accent);
+}
+
+.ag-chapter.is-key_gap {
+  border-left-color: var(--dire);
+}
+
+.ag-chapter-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.ag-chapter-topic {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+}
+
+.ag-chapter-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
+}
+
+.ag-chapter-badge.is-praise {
+  color: var(--good);
+  background: rgba(82, 201, 114, 0.1);
+  border-color: rgba(82, 201, 114, 0.35);
+}
+
+.ag-chapter-badge.is-solid {
+  color: #8cc9f2;
+  background: rgba(104, 181, 232, 0.1);
+  border-color: rgba(104, 181, 232, 0.35);
+}
+
+.ag-chapter-badge.is-mixed {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: rgba(229, 174, 78, 0.35);
+}
+
+.ag-chapter-badge.is-key_gap {
+  color: #f28a7b;
+  background: rgba(232, 100, 82, 0.1);
+  border-color: rgba(232, 100, 82, 0.35);
+}
+
+.ag-chapter h3 {
+  margin: 0 0 10px;
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.ag-chapter-analysis {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.72;
+  font-size: 15px;
+}
+
+.ag-chapter-takeaway {
+  margin: 14px 0 0;
+  padding: 12px 15px;
+  border-radius: 10px;
+  background: rgba(229, 174, 78, 0.08);
+  border: 1px solid rgba(229, 174, 78, 0.28);
+  border-left: 3px solid var(--accent);
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 14px;
+}
+
+.ag-chapter-takeaway span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.ag-chapter-records {
+  margin-top: 12px;
   border-top: 1px solid var(--line);
+  padding-top: 4px;
+}
+
+.ag-chapter-records > summary {
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.ag-chapter-records .ag-evidence {
+  margin: 8px 0 0;
+}
+
+.ag-chapter-records .ag-ev:last-child {
+  border-bottom: 0;
+  padding-bottom: 4px;
+}
+
+/* Key Improvements lead finding card */
+.ag-finding.is-lead {
+  border-color: rgba(229, 174, 78, 0.34);
+  border-left: 3px solid var(--accent);
+}
+
+.ag-improvements .ag-finding .ag-evidence {
+  margin-bottom: 14px;
+}
+
+/* Coach's Closing Encouragement */
+.ag-encouragement {
+  padding: 20px 22px;
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(480px 180px at 0% 0%, rgba(229, 174, 78, 0.14), transparent 72%),
+    radial-gradient(360px 160px at 100% 100%, rgba(82, 201, 114, 0.08), transparent 70%),
+    var(--panel);
+  border: 1px solid rgba(229, 174, 78, 0.38);
+  box-shadow: var(--shadow-card);
+}
+
+.ag-encouragement h2 {
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.ag-encouragement p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text);
+  text-wrap: pretty;
 }
 
 /* 8. Did Well, Blind Spots & Share Bar */
@@ -2887,7 +3094,10 @@ details.ag-finding[open] {
   .ag-moments .ag-evidence {
     padding: 4px 14px;
   }
-  .ag-finding {
+  .ag-finding,
+  .ag-highlight,
+  .ag-chapter,
+  .ag-encouragement {
     padding: 16px;
   }
 }

@@ -48,13 +48,20 @@ resolved, so ask for the friend code.
   `poll_after_sec`, then call again with the **same arguments**.
 - `pick_hero`: ask the user which hero they played (`heroes` lists the game's);
   never guess.
-- `ready`: `verdict`, `mainline`, `findings` (each with `evidence` clocks and
-  numbers, `fix`, sometimes a `rule`), `did_well`, `next_game`, `blind_spots`
-  and `panel_route`. Quote times and numbers as given, say what the review
-  cannot see (`blind_spots`), and point the user to the `dota2.ai` panel in the
-  DSH sidebar (the tool card opens it at `panel_route`). The review was written
-  by the user's own model and is kept on this machine: there is no public link
-  to it.
+- `ready`: `verdict`, `opening_note`, `highlights` (evidence-backed positives),
+  `chapters` (adaptive full-dimension breakdown across draft/lanes, laning,
+  skill build, items, teamfights, macro — each with `assessment`, `analysis`,
+  `evidence`, and optional `takeaway`), `findings` (high-leverage player-controlled
+  improvements, each with `evidence` clocks and numbers, `fix`, optional `rule`),
+  `encouragement`, `mainline`, `did_well`, `blind_spots` and `panel_route`.
+  Present the review in a warm, respectful, professional coach tone: lead with
+  `verdict` + `opening_note`, celebrate `highlights` concretely, walk through
+  the key `chapters` and constructive `findings`, and close with
+  `encouragement` — never invent mechanical next-game numeric KPI quotas. Quote
+  times and numbers as given, say what the review cannot see (`blind_spots`),
+  and point the user to the `dota2.ai` panel in the DSH sidebar (the tool card
+  opens it at `panel_route`). The review was written by the user's own model
+  and is kept on this machine: there is no public link to it.
 - `failed`: offer to try again; only then call with `retry: true`.
 - `replay_unavailable` / `unavailable`: if `reason` is `model_not_configured`,
   ask the user to configure/select a model in DSH. If the replay expired (Valve
@@ -83,9 +90,11 @@ resolved, so ask for the friend code.
 ## Workflows
 
 **"Review my last game"**: `dota2ai_recent_matches` → newest `match_id` and its
-hero → `dota2ai_replay_review` (poll until `ready`) → the verdict, the findings
-on the player with one piece of evidence each, and the one thing to do next
-game → open it in the DSH `dota2.ai` panel.
+hero → `dota2ai_replay_review` (poll until `ready`) → present `verdict` and
+`opening_note`, celebrate the player's `highlights`, summarize the adaptive
+`chapters` and constructive `findings` with their replay evidence, close with
+`encouragement` (no mechanical next-game KPI quotas) → open it in the DSH
+`dota2.ai` panel.
 
 **"Why did I lose?"**: the replay review, or `dota2ai_coach_report` with
 `section: why` → for each cause on the player: what happened (evidence) → what

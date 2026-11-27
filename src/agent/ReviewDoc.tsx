@@ -1,20 +1,44 @@
-import { trackEvent, trackOnce } from '../services/analytics';
-import React, { useEffect, useRef, useState } from 'react';
-import { fetchEvidence, type DeepReview } from './api';
+import React, { useEffect, useState } from 'react';
+import { fetchEvidence, type ChapterAssessment, type ChapterTopic, type DeepReview } from './api';
 import { EvidenceCard } from './EvidenceCard';
 import { PLANS, planByKey } from '../../lib/agent/plans.js';
 import { FindingFeedback } from './FindingFeedback';
-import { setGoal, useActiveGoal, type ActiveGoal, type GoalRule } from '../coach/goalStore';
 
 /**
- * The review as a document. One lesson first: the first finding is the headline, its rule is what to practise
- * next game, and its evidence the moments that show it. The other findings fold under it; the game as a whole
- * (the verdict sentence, the fights with the turn marked, the story, the game plan, the scoreboard) comes after,
- * folded, for whoever wants it.
+ * The review as a coaching document.
+ *
+ * Modern reviews (with `opening_note`, `highlights`, `chapters`, or `encouragement`) lead with a balanced
+ * coach overview, celebrate evidence-backed highlights, break down the game across adaptive full-dimension
+ * chapters, present high-leverage player-controlled improvements, close with sincere encouragement, and keep
+ * the whole-game view (fights, story, game plan, scoreboard) and blind spots right below.
+ *
+ * Legacy stored reviews (without the new coach fields) keep a clean backwards-compatible layout — with zero
+ * mechanical KPI quotas or goal cards in either layout.
  */
 
 type Lang = 'en' | 'zh' | 'ru';
 const T = {
+  coachEyebrow: { en: "Coach's review", zh: '教练总评', ru: 'Разбор тренера' },
+  highlightsTitle: { en: 'What you did well', zh: '本局亮点与肯定', ru: 'Сильные стороны в этом матче' },
+  chaptersTitle: { en: 'Match breakdown', zh: '全维度复盘', ru: 'Разбор по аспектам' },
+  chapterTakeaway: { en: "Coach's tip", zh: '实战建议', ru: 'Совет тренера' },
+  improvementsTitle: { en: 'Key improvements', zh: '最值得打磨的关键点', ru: 'Ключевые точки роста' },
+  encouragementTitle: { en: "Coach's note", zh: '教练寄语', ru: 'Слово тренера' },
+  chapterTopic: {
+    draft_and_lanes: { en: 'Draft & lanes', zh: '阵容与分路', ru: 'Драфт и линии' },
+    laning: { en: 'Laning', zh: '对线期', ru: 'Лайнинг' },
+    skill_build: { en: 'Skill build', zh: '技能加点', ru: 'Раскачка' },
+    items: { en: 'Item build', zh: '出装思路', ru: 'Сборка предметов' },
+    teamfights: { en: 'Teamfights', zh: '团战表现', ru: 'Тимфайты' },
+    macro: { en: 'Macro & tempo', zh: '运营思路', ru: 'Макро и темп' },
+    other: { en: 'Key details', zh: '关键细节', ru: 'Ключевые детали' },
+  } as Record<ChapterTopic, Record<Lang, string>>,
+  chapterAssessment: {
+    praise: { en: 'Standout', zh: '本局亮点', ru: 'Сильная сторона' },
+    solid: { en: 'Solid', zh: '执行稳健', ru: 'Надёжно' },
+    mixed: { en: 'Mixed', zh: '有得有失', ru: 'Смешанно' },
+    key_gap: { en: 'Key focus', zh: '重点打磨', ru: 'Точка роста' },
+  } as Record<ChapterAssessment, Record<Lang, string>>,
   verdict: { en: 'The game in one sentence', zh: '这局一句话', ru: 'Матч в одном предложении' },
   lead: { en: 'The one thing to change', zh: '这局最该改的一件事', ru: 'Главное, что стоит изменить' },
   lesson: { en: 'Practise this next game', zh: '下局只练这一件', ru: 'Отработайте это в следующей игре' },
@@ -81,22 +105,10 @@ const T = {
   ruleWhen: { en: 'When', zh: '当', ru: 'Когда' },
   ruleDo: { en: 'Do', zh: '就', ru: 'Делай' },
   ruleSeen: { en: 'This game', zh: '本局', ru: 'В этой игре' },
-  rule: { en: 'Rule for next game', zh: '下一把的规则', ru: 'Правило на следующую игру' },
-  next: { en: 'Check it next game', zh: '下一局怎么验证', ru: 'Проверка в следующей игре' },
+  rule: { en: 'Rule for next game', zh: '下一把的思路', ru: 'Ориентир на следующую игру' },
   well: { en: 'What you did well', zh: '做得好的', ru: 'Что получилось хорошо' },
   blind: { en: 'What the replay could not show', zh: '录像看不到的', ru: 'Чего нет в реплее' },
   askFight: { en: 'the fight at', zh: '这波团战', ru: 'драка на' },
-  goalTitle: { en: 'Make it checkable', zh: '定一个能核验的目标', ru: 'Сделайте цель проверяемой' },
-  goalSet: { en: 'Make this my next-game goal', zh: '设为下一局目标', ru: 'Сделать целью на следующую игру' },
-  goalIs: { en: 'Your next-game goal', zh: '已设为下一局目标', ru: 'Ваша цель на следующую игру' },
-  goalHow: { en: 'Play your next game, then open it here or on your games page: the coach checks it against the scoreboard.', zh: '打完下一局，在这里或「我的比赛」里打开它，教练会按记分板核验。', ru: 'Сыграйте следующий матч и откройте его здесь или в списке игр — тренер проверит цель по таблице.' },
-  goalNext: { en: 'Your next game shows up on the dota2.ai home page with this goal already checked — open it after you play.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，这个目标已经核验好。', ru: 'Ваш следующий матч появится на главной dota2.ai уже с проверкой этой цели.' },
-  goalNextReplay: { en: 'Your next game shows up on the dota2.ai home page — open it from there. This goal is checked once that game’s replay has been read, not from the scoreboard.', zh: '打完下一局打开 dota2.ai 首页，那一局会出现在最上面，从那里点开它。这个目标要读完那一局的录像才能核验，光看记分板判断不了。', ru: 'Ваш следующий матч появится на главной dota2.ai. Эта цель проверяется по реплею, а не по итоговой таблице.' },
-  goalHowReplay: { en: 'Play your next game, then open it here: the same things are counted in its replay and you see which rules held — about a minute, with or without a new review.', zh: '打完下一局，在这里打开它：会在那盘录像里数同样的事，逐条告诉你规则守住了没有——大约一分钟，要不要再写一份复盘都可以。', ru: 'Сыграйте следующий матч и откройте его здесь: мы посчитаем те же показатели по реплею за минуту, даже без нового разбора.' },
-  goalRules: { en: 'Counted in your next replay', zh: '下一盘录像里会数的', ru: 'Проверим в следующем реплее' },
-  ruleCheck: { en: 'Next game', zh: '下一盘', ru: 'След. игра' },
-  goalUndo: { en: 'Remove', zh: '取消', ru: 'Удалить' },
-  goalFrom: { en: 'From finding', zh: '对应问题', ru: 'Из вывода' },
   plan: { en: 'The game plan', zh: '运营思路', ru: 'План на игру' },
   planSub: { en: 'The game as a whole: what the teams did with the map, and where you were.', zh: '整局来看：双方怎么用地图和团战，你当时在哪里。', ru: 'Картина матча целиком: как команды использовали карту и где были вы.' },
   planLineUps: { en: 'The line-ups', zh: '阵容', ru: 'Драфты' },
@@ -172,65 +184,6 @@ export const FightStrip: React.FC<{ fights: Fight[]; duration: number; turn: str
   );
 };
 
-/** What a goal needs to know about the game it came from (from the scoreboard). */
-export interface GoalContext { fromStart: number; accountId: number | null; heroId: number }
-
-/** The rules of a review that the next game's replay can be counted on. */
-export const checkedRules = (review: DeepReview): GoalRule[] =>
-  review.findings.flatMap((f, i) => (f.rule?.check ? [{ finding: i + 1, when: f.rule.when, do: f.rule.do, check: f.rule.check }] : []));
-
-/**
- * What the next game is checked on: the review's scoreboard goal if it has
- * one, and every rule that names a count the next replay can be counted on.
- * Set it, and later games are judged against it (goalStore).
- */
-const GoalCard: React.FC<{ matchId: string; review: DeepReview; lang: Lang; ctx: GoalContext }> = ({ matchId, review, lang, ctx }) => {
-  const active = useActiveGoal();
-  const rules = checkedRules(review);
-  // Without a scoreboard goal the first counted rule is the goal; the rest are checked beside it.
-  const { finding, ...spec } = review.goal ?? { ...rules[0].check, finding: rules[0].finding };
-  const more = review.goal ? rules : rules.slice(1);
-  // The goal itself is part of its identity: the same game reviewed in another language can propose a
-  // different one, and that card must not claim to be the goal already set.
-  const sig = (g: GoalRule['check']) => (g.kind === 'hold_item' ? g.items.join('+') : g.kind === 'deaths_per10_max' ? g.max : g.kind === 'replay_habit' ? `${g.habit}${g.ability ?? ''}${g.max}` : '');
-  const id = `${matchId}:${review.hero}:agent:${spec.kind}:${sig(spec)}${more.length ? `:r${more.map((r) => sig(r.check)).join('+')}` : ''}`;
-  const mine = active?.id === id;
-  // Whether readers get to the card at all: once a review it is offered (rendered), once it has been on screen.
-  // Nobody had set a goal in the first week (#364): this says whether the card is not reached, or not taken.
-  const card = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    trackOnce(`goal_offered.${id}`, 'goal_offered', { matchId: String(matchId) });
-    const el = card.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
-    const seen = new IntersectionObserver((entries) => {
-      // The threshold does not filter out an entry sent because the card started to intersect: ask for 60% here too.
-      if (entries.some((e) => e.isIntersecting && e.intersectionRatio >= 0.6)) { trackOnce(`goal_seen.${id}`, 'goal_seen', { matchId: String(matchId) }); seen.disconnect(); }
-    }, { threshold: 0.6 });
-    seen.observe(el);
-    return () => seen.disconnect();
-  }, [id, matchId]);
-  const make = (): ActiveGoal => ({ id, goal: spec, action: spec.label, findingId: `agent:${finding}`, fromMatch: Number(matchId), fromStart: ctx.fromStart, accountId: ctx.accountId, heroId: ctx.heroId, setAt: Date.now(), ...(more.length ? { rules: more } : {}) });
-  return (
-    <div ref={card} className={`ag-goal ${mine ? 'is-set' : ''}`}>
-      <p className="ag-goal-eyebrow">{mine ? `✓ ${T.goalIs[lang]}` : T.goalTitle[lang]} · {T.goalFrom[lang]} {finding}</p>
-      <p className="ag-goal-label">{spec.label[lang] ?? spec.label.en}</p>
-      {more.length > 0 && (
-        <>
-          <p className="ag-goal-eyebrow">{T.goalRules[lang]}</p>
-          <ul className="ag-goal-rules">{more.map((r) => <li key={r.finding}><span className="ag-num">{r.finding}</span>{r.check.label[lang] ?? r.check.label.en}</li>)}</ul>
-        </>
-      )}
-      <p className="ag-goal-how">{spec.kind === 'replay_habit' || more.length ? T.goalHowReplay[lang] : T.goalHow[lang]}</p>
-      {mine
-        ? <button type="button" className="ag-link" onClick={() => setGoal(null)}>{T.goalUndo[lang]}</button>
-        : <button type="button" className="ag-btn is-primary" onClick={() => { setGoal(make()); trackEvent('goal_set', { matchId: String(matchId), kind: spec.kind, account: ctx.accountId != null, rules: more.length }); }}>{T.goalSet[lang]}</button>}
-      {/* Where the check will be waiting: the home page finds the next game by this account (CoachHome). */}
-      {/* A goal that needs the replay cannot be settled there from the scoreboard: do not promise it checked. */}
-      {mine && ctx.accountId != null && <p className="ag-goal-how ag-goal-next">{(spec.kind === 'replay_habit' || more.length ? T.goalNextReplay : T.goalNext)[lang]}</p>}
-    </div>
-  );
-};
-
 interface FallsByMyPart {
   in_it: number | null;
   elsewhere: number | null;
@@ -279,7 +232,7 @@ const FightPresenceStrip: React.FC<{ falls: FallsByMyPart; fightsRead: number; f
   );
 };
 
-export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; goalContext?: GoalContext | null; /** The match record (line-ups, items, gold), shown under the verdict. */ board?: React.ReactNode; /** Sharing the review, shown once the reader has something to share: after the findings. */ share?: React.ReactNode; /** The review is the default model's, whose rewrite takes the usual two to three minutes; false for another model's. */ quick?: boolean; /** Ask under each finding whether it was right: the plan this review was asked with, the id of the model that wrote it and the prompt version it was written under (they name the stored review the word is about). Absent: not asked. */ feedback?: { plan?: string | null; model?: string | null; version: number } | null }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, goalContext = null, board = null, feedback = null, share = null, quick = true }) => {
+export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; /** The match record (line-ups, items, gold), shown under the whole-game section. */ board?: React.ReactNode; /** Sharing the review. */ share?: React.ReactNode; /** The review is the default model's, whose rewrite takes the usual two to three minutes; false for another model's. */ quick?: boolean; /** Ask under each finding whether it was right: the plan this review was asked with, the id of the model that wrote it and the prompt version it was written under (they name the stored review the word is about). Absent: not asked. */ feedback?: { plan?: string | null; model?: string | null; version: number } | null }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, board = null, feedback = null, share = null, quick = true }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   // The release, and the hotfix within it when the game was played after one ("7.41f（2026-10-07 热修复后）").
   const patchName = (dp: { name: string; hotfix?: string }) => t(dp.hotfix ? T.patchHotfix : T.patchPlain).replace('{p}', dp.name).replace('{d}', (dp.hotfix ?? '').slice(0, 10));
@@ -297,6 +250,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
     fetchEvidence(matchId, review.hero, lang, `moments:${review.hero}`).then((r) => { if (alive) setMoments(r.record); }).catch(() => {});
     return () => { alive = false; };
   }, [matchId, review.hero, lang]);
+
   const [first, ...rest] = review.findings;
   type Finding = DeepReview['findings'][number];
   const ruleOf = (f: Finding) => f.rule && (
@@ -304,18 +258,199 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       <div><dt>{t(T.ruleWhen)}</dt><dd>{f.rule.when}</dd></div>
       <div><dt>{t(T.ruleDo)}</dt><dd>{f.rule.do}</dd></div>
       {f.rule.this_game && <div className="ag-rule-seen"><dt>{t(T.ruleSeen)}</dt><dd>{f.rule.this_game}</dd></div>}
-      {f.rule.check && <div className="ag-rule-check"><dt>{t(T.ruleCheck)}</dt><dd>{f.rule.check.label[lang] ?? f.rule.check.label.en}</dd></div>}
     </dl>
   );
   // Keyed by the finding it is about: another review of the same game starts unanswered.
   const feedbackOf = (f: Finding, i: number) => feedback && <FindingFeedback key={`${i}:${f.title}`} matchId={matchId} hero={review.hero} lang={lang} plan={feedback.plan} model={feedback.model} version={feedback.version} index={i} title={f.title} />;
-  const evidenceOf = (f: Finding) => <ul className="ag-evidence">{f.evidence.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>;
+  const evidenceList = (items: DeepReview['findings'][number]['evidence']) => (
+    <ul className="ag-evidence">{items.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>
+  );
   const patch = review.data_patch && (review.data_patch.exact
     ? <p className="ag-patch">{t(T.patchExact).replace('{p}', patchName(review.data_patch))}{review.data_patch.known_from && T.patchFrom[review.data_patch.known_from] ? (lang === 'zh' ? `（${t(T.patchFrom[review.data_patch.known_from])}）` : ` (${t(T.patchFrom[review.data_patch.known_from])})`) : ''}</p>
     // The release is known and only the hotfix within it is not: say that, not that the patch is unknown.
     : /hotfix/.test(review.data_patch.reason ?? '')
       ? <p className="ag-patch is-unknown" role="note">{t(T.patchHotfixUnsure).replace('{p}', review.data_patch.name)}</p>
       : <p className="ag-patch is-unknown" role="note">{t(T.patchUnknown).replace('{p}', review.data_patch.name)}</p>);
+
+  const hasHighlights = Array.isArray(review.highlights) && review.highlights.length > 0;
+  const hasChapters = Array.isArray(review.chapters) && review.chapters.length > 0;
+  const isCoachLayout = Boolean(review.opening_note || hasHighlights || hasChapters || review.encouragement);
+
+  const wholeGame = (showVerdict: boolean) => (
+    <section className="ag-whole">
+      <h2>{t(T.whole)}</h2>
+      {showVerdict && <p className="ag-verdict"><span>{t(T.verdict)}</span>{review.verdict}</p>}
+      {overview && Array.isArray(overview.fights) && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
+      {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} fightsRead={moments.fights_read ?? 0} fightsNotRead={moments.fights_not_read ?? 0} lang={lang} />}
+      {review.story && review.story.length > 0 ? (
+        <div className="ag-story">
+          <h3>{t(T.story)}</h3>
+          <ol>
+            {review.story.map((l, i) => (
+              <li key={i} className={`is-${l.whose}`}>
+                <p className="ag-story-head"><b>{l.phase}</b>{T.whose[l.whose] && <span className={`ag-story-whose is-${l.whose}`}>{t(T.whose[l.whose])}</span>}</p>
+                <p className="ag-story-what">{l.what_changed}</p>
+                <p className="ag-story-why"><span>{t(T.storyBecause)}</span>{l.because}</p>
+                {l.evidence.length > 0 && (
+                  <details className="ag-story-records">
+                    <summary>{t(T.storyRecords)} · {l.evidence.length}</summary>
+                    {evidenceList(l.evidence)}
+                  </details>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : review.mainline.length > 0 && (
+        <details className="ag-fold">
+          <summary><h3>{t(T.story)}</h3><span>{t(T.parts).replace('{n}', String(review.mainline.length))}</span></summary>
+          <ol className="ag-mainline">{review.mainline.map((line, i) => <li key={i}>{line}</li>)}</ol>
+        </details>
+      )}
+      {(review.game_plan || onPlan) && (
+        <details className="ag-fold ag-plan">
+          <summary><h3>{t(T.plan)}</h3>{review.game_plan?.main_reason && review.game_plan.why && T.planReason[review.game_plan.main_reason] && <span>{t(T.planReason[review.game_plan.main_reason])}</span>}</summary>
+          {review.game_plan && (
+            <>
+              <p className="ag-plan-sub">{t(T.planSub)}</p>
+              {(review.game_plan.against_your_plan || review.game_plan.window || review.game_plan.strengths || review.game_plan.course || review.game_plan.your_part || review.game_plan.line_ups) && (
+                <dl className="ag-plan-parts">
+                  {review.game_plan.against_your_plan && <div className="ag-plan-yours"><dt>{t(T.planYours)}{planByKey(review.plan ?? '') ? <span>{planByKey(review.plan ?? '')!.label[lang]}</span> : null}</dt><dd>{review.game_plan.against_your_plan}</dd></div>}
+                  {review.game_plan.window && <div><dt>{t(T.planWindow)}</dt><dd>{review.game_plan.window}</dd></div>}
+                  {review.game_plan.strengths && <div><dt>{t(T.planStrengths)}</dt><dd>{review.game_plan.strengths}</dd></div>}
+                  {review.game_plan.course && <div><dt>{t(T.planCourse)}</dt><dd>{review.game_plan.course}</dd></div>}
+                  {review.game_plan.your_part && <div><dt>{t(T.planYou)}</dt><dd>{review.game_plan.your_part}</dd></div>}
+                  {review.game_plan.line_ups && <div><dt>{t(T.planLineUps)}</dt><dd>{review.game_plan.line_ups}</dd></div>}
+                </dl>
+              )}
+              {review.game_plan.main_reason && review.game_plan.why && T.planReason[review.game_plan.main_reason] && (
+                <p className="ag-plan-why"><span className={`ag-plan-tag is-${review.game_plan.main_reason}`}>{t(T.planReason[review.game_plan.main_reason])}</span>{review.game_plan.why}</p>
+              )}
+              {Array.isArray(review.game_plan.evidence) && review.game_plan.evidence.length > 0 && evidenceList(review.game_plan.evidence)}
+            </>
+          )}
+          {onPlan && (
+            <div className="ag-intent">
+              <p>{t(T.intentAsk)}</p>
+              <div className="ag-intent-row">{PLAN_INTENTS.map((p) => <button key={p.key} type="button" className="ag-btn" onClick={() => { const sent = onPlan(planQuestion(p.key, lang)!); setPlanHeld(!sent); if (sent) setAsked(p.key); }}>{p.label[lang]}</button>)}</div>
+              {planHeld && <p className="ag-intent-note" role="status">{t(T.intentBusy)}</p>}
+              {asked && onReplan && asked !== review.plan && planByKey(asked) && (
+                <p className="ag-intent-note">{t(T.replan).replace('{p}', planByKey(asked)!.label[lang]).replace('{t}', quick ? t(T.replanTime) : '')} <button type="button" className="ag-link" onClick={() => onReplan(asked)}>{t(T.replanGo)}</button></p>
+              )}
+            </div>
+          )}
+        </details>
+      )}
+      {board && (
+        <details className="ag-fold">
+          <summary><h3>{t(T.boardFold)}</h3></summary>
+          {board}
+        </details>
+      )}
+    </section>
+  );
+
+  if (isCoachLayout) {
+    return (
+      <article className="ag-doc is-coach">
+        <section className="ag-lead">
+          <div className="ag-lead-meta">
+            <p className="cx-eyebrow">{t(T.coachEyebrow)}</p>
+            {review.game_plan?.main_reason && review.game_plan.why && T.planReason[review.game_plan.main_reason] && (
+              <span className={`ag-lead-reason is-${review.game_plan.main_reason}`}>{t(T.planReason[review.game_plan.main_reason])}</span>
+            )}
+          </div>
+          <h1>{review.verdict}</h1>
+          {review.opening_note && <p className="ag-opening">{review.opening_note}</p>}
+          {patch}
+        </section>
+
+        {(hasHighlights || review.did_well.length > 0) && (
+          <section className="ag-highlights">
+            <h2>{t(T.highlightsTitle)}</h2>
+            {hasHighlights ? (
+              <div className="ag-highlight-list">
+                {review.highlights!.map((h, i) => (
+                  <article key={i} className="ag-highlight">
+                    <h3>{h.title}</h3>
+                    <p className="ag-highlight-detail">{h.detail}</p>
+                    {Array.isArray(h.evidence) && h.evidence.length > 0 && evidenceList(h.evidence)}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <ul className="ag-plain">{review.did_well.map((line, i) => <li key={i}>{line}</li>)}</ul>
+            )}
+          </section>
+        )}
+
+        {hasChapters && (
+          <section className="ag-chapters">
+            <h2>{t(T.chaptersTitle)}</h2>
+            <div className="ag-chapter-list">
+              {review.chapters!.map((c, i) => (
+                <article key={i} className={`ag-chapter is-${c.assessment}`}>
+                  <div className="ag-chapter-meta">
+                    <span className="ag-chapter-topic">{t(T.chapterTopic[c.topic] ?? T.chapterTopic.other)}</span>
+                    <span className={`ag-chapter-badge is-${c.assessment}`}>{t(T.chapterAssessment[c.assessment] ?? T.chapterAssessment.mixed)}</span>
+                  </div>
+                  <h3>{c.title}</h3>
+                  <p className="ag-chapter-analysis">{c.analysis}</p>
+                  {c.takeaway && <p className="ag-chapter-takeaway"><span>{t(T.chapterTakeaway)}</span>{c.takeaway}</p>}
+                  {Array.isArray(c.evidence) && c.evidence.length > 0 && (
+                    <details className="ag-chapter-records">
+                      <summary>{t(T.storyRecords)} · {c.evidence.length}</summary>
+                      {evidenceList(c.evidence)}
+                    </details>
+                  )}
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {review.findings.length > 0 && (
+          <section className="ag-improvements">
+            <h2>{t(T.improvementsTitle)}</h2>
+            {first && (
+              <article className="ag-finding is-lead">
+                <h3><span className="ag-num">1</span>{first.title}</h3>
+                <p className="ag-claim">{first.claim}</p>
+                {first.evidence.length > 0 && evidenceList(first.evidence)}
+                {ruleOf(first)}
+                {first.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{first.fix}</p>}
+                {feedbackOf(first, 0)}
+              </article>
+            )}
+            {rest.map((f, i) => (
+              <details key={i} className="ag-finding">
+                <summary><h3><span className="ag-num">{i + 2}</span>{f.title}</h3></summary>
+                <p className="ag-claim">{f.claim}</p>
+                {f.evidence.length > 0 && evidenceList(f.evidence)}
+                {ruleOf(f)}
+                {f.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{f.fix}</p>}
+                {feedbackOf(f, i + 1)}
+              </details>
+            ))}
+          </section>
+        )}
+
+        {review.encouragement && (
+          <section className="ag-encouragement">
+            <h2>{t(T.encouragementTitle)}</h2>
+            <p>{review.encouragement}</p>
+          </section>
+        )}
+
+        {share}
+
+        {wholeGame(false)}
+
+        {review.blind_spots.length > 0 && <section className="ag-blind"><h2>{t(T.blind)}</h2><ul className="ag-plain">{review.blind_spots.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
+      </article>
+    );
+  }
+
   return (
     <article className="ag-doc">
       <section className="ag-lead">
@@ -338,7 +473,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       {first && first.evidence.length > 0 && (
         <section className="ag-moments">
           <h2>{t(T.moments)}</h2>
-          {evidenceOf(first)}
+          {evidenceList(first.evidence)}
           {/* The first finding ends here: its claim, what to practise, the moments. Asked once the reader has seen all three. */}
           {feedbackOf(first, 0)}
         </section>
@@ -351,7 +486,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
             <details key={i} className="ag-finding">
               <summary><h3><span className="ag-num">{i + 2}</span>{f.title}</h3></summary>
               <p className="ag-claim">{f.claim}</p>
-              {evidenceOf(f)}
+              {evidenceList(f.evidence)}
               {ruleOf(f)}
               {f.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{f.fix}</p>}
               {feedbackOf(f, i + 1)}
@@ -360,90 +495,11 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         </section>
       )}
 
-      {(review.goal || checkedRules(review).length > 0) && goalContext && (
-        <section className="ag-next">
-          <h2>{t(T.next)}</h2>
-          <GoalCard matchId={matchId} review={review} lang={lang} ctx={goalContext} />
-        </section>
-      )}
-
       {review.did_well.length > 0 && <section><h2>{t(T.well)}</h2><ul className="ag-plain">{review.did_well.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
 
       {share}
 
-      <section className="ag-whole">
-        <h2>{t(T.whole)}</h2>
-        {first && <p className="ag-verdict"><span>{t(T.verdict)}</span>{review.verdict}</p>}
-        {overview && Array.isArray(overview.fights) && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
-        {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} fightsRead={moments.fights_read ?? 0} fightsNotRead={moments.fights_not_read ?? 0} lang={lang} />}
-        {review.story && review.story.length > 0 ? (
-          <div className="ag-story">
-            <h3>{t(T.story)}</h3>
-            <ol>
-              {review.story.map((l, i) => (
-                <li key={i} className={`is-${l.whose}`}>
-                  <p className="ag-story-head"><b>{l.phase}</b>{T.whose[l.whose] && <span className={`ag-story-whose is-${l.whose}`}>{t(T.whose[l.whose])}</span>}</p>
-                  <p className="ag-story-what">{l.what_changed}</p>
-                  <p className="ag-story-why"><span>{t(T.storyBecause)}</span>{l.because}</p>
-                  {l.evidence.length > 0 && (
-                    <details className="ag-story-records">
-                      <summary>{t(T.storyRecords)} · {l.evidence.length}</summary>
-                      <ul className="ag-evidence">{l.evidence.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>
-                    </details>
-                  )}
-                </li>
-              ))}
-            </ol>
-          </div>
-        ) : review.mainline.length > 0 && (
-          <details className="ag-fold">
-            <summary><h3>{t(T.story)}</h3><span>{t(T.parts).replace('{n}', String(review.mainline.length))}</span></summary>
-            <ol className="ag-mainline">{review.mainline.map((line, i) => <li key={i}>{line}</li>)}</ol>
-          </details>
-        )}
-        {(review.game_plan || onPlan) && (
-          <details className="ag-fold ag-plan">
-            <summary><h3>{t(T.plan)}</h3>{review.game_plan?.main_reason && review.game_plan.why && T.planReason[review.game_plan.main_reason] && <span>{t(T.planReason[review.game_plan.main_reason])}</span>}</summary>
-            {review.game_plan && (
-              <>
-                <p className="ag-plan-sub">{t(T.planSub)}</p>
-                {(review.game_plan.against_your_plan || review.game_plan.window || review.game_plan.strengths || review.game_plan.course || review.game_plan.your_part || review.game_plan.line_ups) && (
-                  <dl className="ag-plan-parts">
-                    {review.game_plan.against_your_plan && <div className="ag-plan-yours"><dt>{t(T.planYours)}{planByKey(review.plan ?? '') ? <span>{planByKey(review.plan ?? '')!.label[lang]}</span> : null}</dt><dd>{review.game_plan.against_your_plan}</dd></div>}
-                    {review.game_plan.window && <div><dt>{t(T.planWindow)}</dt><dd>{review.game_plan.window}</dd></div>}
-                    {review.game_plan.strengths && <div><dt>{t(T.planStrengths)}</dt><dd>{review.game_plan.strengths}</dd></div>}
-                    {review.game_plan.course && <div><dt>{t(T.planCourse)}</dt><dd>{review.game_plan.course}</dd></div>}
-                    {review.game_plan.your_part && <div><dt>{t(T.planYou)}</dt><dd>{review.game_plan.your_part}</dd></div>}
-                    {review.game_plan.line_ups && <div><dt>{t(T.planLineUps)}</dt><dd>{review.game_plan.line_ups}</dd></div>}
-                  </dl>
-                )}
-                {review.game_plan.main_reason && review.game_plan.why && T.planReason[review.game_plan.main_reason] && (
-                  <p className="ag-plan-why"><span className={`ag-plan-tag is-${review.game_plan.main_reason}`}>{t(T.planReason[review.game_plan.main_reason])}</span>{review.game_plan.why}</p>
-                )}
-                {Array.isArray(review.game_plan.evidence) && review.game_plan.evidence.length > 0 && (
-                  <ul className="ag-evidence">{review.game_plan.evidence.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>
-                )}
-              </>
-            )}
-            {onPlan && (
-              <div className="ag-intent">
-                <p>{t(T.intentAsk)}</p>
-                <div className="ag-intent-row">{PLAN_INTENTS.map((p) => <button key={p.key} type="button" className="ag-btn" onClick={() => { const sent = onPlan(planQuestion(p.key, lang)!); setPlanHeld(!sent); if (sent) setAsked(p.key); }}>{p.label[lang]}</button>)}</div>
-                {planHeld && <p className="ag-intent-note" role="status">{t(T.intentBusy)}</p>}
-                {asked && onReplan && asked !== review.plan && planByKey(asked) && (
-                  <p className="ag-intent-note">{t(T.replan).replace('{p}', planByKey(asked)!.label[lang]).replace('{t}', quick ? t(T.replanTime) : '')} <button type="button" className="ag-link" onClick={() => onReplan(asked)}>{t(T.replanGo)}</button></p>
-                )}
-              </div>
-            )}
-          </details>
-        )}
-        {board && (
-          <details className="ag-fold">
-            <summary><h3>{t(T.boardFold)}</h3></summary>
-            {board}
-          </details>
-        )}
-      </section>
+      {wholeGame(Boolean(first))}
 
       {review.blind_spots.length > 0 && <section className="ag-blind"><h2>{t(T.blind)}</h2><ul className="ag-plain">{review.blind_spots.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
     </article>

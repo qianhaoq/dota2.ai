@@ -69,33 +69,48 @@ test('from no replay to a review in one click: fetch, read, the coach, the revie
   await expect(page.locator('.ag-wait-list > li')).toHaveCount(11);
   await expect(page.locator('.ag-wait-facts h2')).toHaveText('团战走势与你的关键成装');
   await expect(page.locator('.ag-wait-facts .ag-strip-fight')).toHaveCount(16);
-  await expect(page.locator('.ag-lead h1')).toHaveText('咆哮给错了人', { timeout: 30_000 });
-  await expect(page.locator('.ag-whole .ag-verdict')).toContainText('原始咆哮没有留给幻影刺客');
+  await expect(page.locator('.ag-lead h1')).toContainText('你几乎打满了整场团战', { timeout: 30_000 });
+  await expect(page.locator('.ag-opening')).toContainText('16 波团战你场场都在');
   // One click by the reader: one parse, then the review started on its own.
   expect(posts).toEqual([`/api/agent/${id}/prepare`, `/api/agent/${id}/review`]);
   await noSideScroll(page);
 });
 
-test('the review: one lesson first, the other finding folded, then the whole game with the turn marked', async ({ page }) => {
+test('the review: coach header, highlights, adaptive chapters, improvements, encouragement, and whole game with the turn marked', async ({ page }) => {
   await review(page);
-  // The headline is the first finding; what to practise is its fix; its evidence are the moments.
-  await expect(page.locator('.ag-lead h1')).toHaveText('咆哮给错了人');
-  await expect(page.locator('.ag-lesson')).toContainText('对面核心带黑皇杖时，咆哮只留给她；她开了也照吼。');
-  // The second finding is folded: its heading shows, its body opens on a click.
+  // Balanced coach overview + fair-attribution pill + warm opening note.
+  await expect(page.locator('.ag-lead .cx-eyebrow')).toHaveText('教练总评');
+  await expect(page.locator('.ag-lead-reason')).toHaveText('主要在队伍，不在你');
+  await expect(page.locator('.ag-lead h1')).toContainText('你几乎打满了整场团战');
+  await expect(page.locator('.ag-opening')).toContainText('16 波团战你场场都在');
+  // Prominent evidence-backed highlights right below the header.
+  await expect(page.locator('.ag-highlights h2')).toHaveText('本局亮点与肯定');
+  await expect(page.locator('.ag-highlight')).toHaveCount(2);
+  await expect(page.locator('.ag-highlight').first()).toContainText('27:27 果断隔着黑皇杖吼住幻影刺客');
+  // Adaptive full-dimension chapters.
+  await expect(page.locator('.ag-chapters h2')).toHaveText('全维度复盘');
+  await expect(page.locator('.ag-chapter')).toHaveCount(6);
+  await expect(page.locator('.ag-chapter-topic')).toHaveText(['阵容与分路', '对线期', '技能加点', '出装思路', '团战表现', '运营思路']);
+  // Key improvements: lead finding expanded, second finding folded.
+  const lead = page.locator('.ag-improvements .ag-finding.is-lead');
+  await expect(lead.locator('h3')).toHaveText('1咆哮给错了人');
+  await expect(lead).toContainText('对面核心带黑皇杖时，咆哮只留给她；她开了也照吼。');
+  await expect(lead.locator('.ag-ev-clock')).toHaveText(['27:27', '30:34', '36:05', '30:05']);
   const second = page.locator('details.ag-finding');
   await expect(second.locator('summary h3')).toHaveText(['2没有跳刀也没有黑皇杖']);
   await expect(second.locator('.ag-claim')).toBeHidden();
   await second.locator('summary').click();
   await expect(second.locator('.ag-claim')).toBeVisible();
   await expect(second).toContainText('神杖之后先补闪烁匕首或黑皇杖。');
-  // The sentence about the whole game stands with the whole game.
-  await expect(page.locator('.ag-whole .ag-verdict')).toContainText('原始咆哮没有留给幻影刺客：11 次阵亡里 7 次死在她手上，而她 7 次开黑皇杖时你的大招只吼中过 2 次。');
+  // Closing encouragement card.
+  await expect(page.locator('.ag-encouragement h2')).toHaveText('教练寄语');
+  await expect(page.locator('.ag-encouragement p')).toContainText('三号位基本功');
+  // Whole-game strip & folded mainline (verdict is already H1, not duplicated).
+  await expect(page.locator('.ag-whole .ag-verdict')).toHaveCount(0);
   await expect(page.locator('.ag-strip-fight')).toHaveCount(16);
   await expect(page.locator('.ag-strip-fight.is-turn text')).toHaveText('▲ 30:26 转折');
   await expect(page.locator('.ag-presence')).toContainText('在团里');
   await expect(page.locator('.ag-presence')).toContainText('100%');
-  // Each evidence line carries the game time of the record it cites.
-  await expect(page.locator('.ag-moments .ag-ev-clock')).toHaveText(['27:27', '30:34', '36:05', '30:05']);
   // The story of the game is there for whoever opens it.
   const story = page.locator('.ag-whole details.ag-fold').first();
   await expect(story.locator('.ag-mainline li').first()).toBeHidden();
@@ -186,7 +201,7 @@ test('the reader names a plan before the review, and the review reads the game a
 
 test('evidence: the replay record behind a sentence, on demand', async ({ page }) => {
   await review(page);
-  const first = page.locator('.ag-moments .ag-ev');
+  const first = page.locator('.ag-improvements .ag-finding.is-lead .ag-ev');
   // A cast: the target, that she was spell immune, and that the stun landed anyway.
   await first.nth(0).getByRole('button', { name: '看原始记录' }).click();
   const cast = first.nth(0).locator('.ag-rec');
@@ -213,8 +228,8 @@ test('evidence: the replay record behind a sentence, on demand', async ({ page }
 
 test('a moment replayed on the map: the heroes around the cited second, played and scrubbed', async ({ page }) => {
   await review(page);
-  // 27:27, the Roar into her Black King Bar.
-  const first = page.locator('.ag-moments .ag-ev').first();
+  // 27:27, the Roar into her Black King Bar (replayable directly from the highlight or improvement evidence).
+  const first = page.locator('.ag-improvements .ag-finding.is-lead .ag-ev').first();
   await first.getByRole('button', { name: '重放这一刻' }).click();
   const replay = first.locator('.ag-replay');
   await expect(replay.getByRole('img', { name: '27:15 到 27:33 的站位' })).toBeVisible();
@@ -242,8 +257,8 @@ test('a moment replayed on the map: the heroes around the cited second, played a
 
 test('each finding is asked about: the word is kept, a reason follows, and the page remembers it', async ({ page }) => {
   await review(page);
-  // Under the first finding's moments, once the reader has seen its claim, what to practise and the moments.
-  const lead = page.locator('.ag-moments .ag-fb');
+  // Under the first finding inside Key Improvements.
+  const lead = page.locator('.ag-improvements .ag-finding.is-lead .ag-fb');
   await expect(lead.getByRole('group', { name: '这条说得对吗？' }).getByRole('button')).toHaveText(['说得对', '不对', '没用']);
   const kept = page.waitForResponse((r) => r.url().includes('/feedback') && r.request().method() === 'POST');
   await lead.getByRole('button', { name: '不对', exact: true }).click();
@@ -257,7 +272,7 @@ test('each finding is asked about: the word is kept, a reason follows, and the p
   await why.getByRole('button', { name: '事实不对', exact: true }).click();
   await expect(why.getByRole('button', { name: '事实不对', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await noSideScroll(page);
-  const axe = await new AxeBuilder({ page }).include('.ag-moments .ag-fb').analyze();
+  const axe = await new AxeBuilder({ page }).include('.ag-improvements .ag-finding.is-lead .ag-fb').analyze();
   expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
   // The other findings are asked about inside their folds, each on its own.
   const second = page.locator('details.ag-finding').first();
@@ -268,7 +283,7 @@ test('each finding is asked about: the word is kept, a reason follows, and the p
   page.on('request', (r) => { if (r.url().includes('/feedback')) again += 1; });
   await page.reload();
   await expect(page.locator('.ag-doc')).toBeVisible({ timeout: 30_000 });
-  const back = page.locator('.ag-moments .ag-fb');
+  const back = page.locator('.ag-improvements .ag-finding.is-lead .ag-fb');
   await expect(back.getByRole('button', { name: '不对', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(back.getByRole('button', { name: '事实不对', exact: true })).toHaveAttribute('aria-pressed', 'true');
   expect(again).toBe(0);
@@ -282,7 +297,7 @@ test('ask the coach: the lookups show, then the answer; "ask about this" carries
   await expect(chat.locator('.ag-answer')).toContainText('36:05 那次最不应该');
   await expect(chat.locator('.ag-warn')).toHaveCount(0);
   // From an evidence line: the chat shows what the question is about, and sends the record's ref.
-  await page.locator('.ag-moments .ag-ev').first().getByRole('button', { name: '就这一刻追问' }).click();
+  await page.locator('.ag-improvements .ag-finding.is-lead .ag-ev').first().getByRole('button', { name: '就这一刻追问' }).click();
   await expect(chat.locator('.ag-context')).toContainText('27:27');
   const sent = page.waitForRequest((r) => r.url().endsWith('/chat') && r.method() === 'POST');
   await chat.getByRole('textbox').fill('这一吼对吗？');
@@ -291,20 +306,11 @@ test('ask the coach: the lookups show, then the answer; "ask about this" carries
   await expect(chat.locator('.ag-turn')).toHaveCount(2);
 });
 
-test('the review\'s goal becomes the next-game goal', async ({ page }) => {
+test('zero mechanical KPIs: no GoalCard or next-game habit quota is shown in the review', async ({ page }) => {
   await review(page);
-  const card = page.locator('.ag-goal');
-  await expect(card.locator('.ag-goal-label')).toHaveText('用兽王时：出一件闪烁匕首或黑皇杖');
-  await card.getByRole('button', { name: '设为下一局目标' }).click();
-  await expect(card).toContainText('✓ 已设为下一局目标 · 对应问题 2');
-  const stored = await page.evaluate(() => JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!));
-  expect(stored).toMatchObject({ id: `${MATCH}:beastmaster:agent:hold_item:blink+black_king_bar`, goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], accept: expect.arrayContaining(['blink', 'overwhelming_blink', 'black_king_bar']), hero_id: 38 }, fromMatch: Number(MATCH), heroId: 38 });
-  // It survives a reload, and the same game is not judged against its own goal.
-  await page.reload();
-  await expect(page.locator('.ag-goal')).toContainText('✓ 已设为下一局目标');
-  await expect(page.locator('.ag-goalcheck')).toHaveCount(0);
-  await page.locator('.ag-goal').getByRole('button', { name: '取消' }).click();
-  await expect(page.locator('.ag-goal').getByRole('button', { name: '设为下一局目标' })).toBeVisible();
+  await expect(page.locator('.ag-goal')).toHaveCount(0);
+  await expect(page.locator('.ag-rule-check')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '设为下一局目标' })).toHaveCount(0);
 });
 
 test('a replay that is gone: said plainly, scoreboard only, nothing to start', async ({ page }) => {
@@ -322,17 +328,19 @@ test('a replay that is gone: said plainly, scoreboard only, nothing to start', a
 
 test('English: the same review in the reader\'s language', async ({ page }) => {
   await review(page, 'en');
-  await expect(page.locator('.ag-lead h1')).toHaveText('The roar went to the wrong heroes');
-  await expect(page.locator('.ag-whole .ag-verdict')).toContainText('Primal Roar was never kept for Phantom Assassin');
-  await page.locator('.ag-moments .ag-ev').first().getByRole('button', { name: 'Show the record' }).click();
-  await expect(page.locator('.ag-moments .ag-rec').first()).toContainText('Target Phantom Assassin');
+  await expect(page.locator('.ag-lead h1')).toContainText('sharpening your Primal Roar discipline');
+  await expect(page.locator('.ag-highlights h2')).toHaveText('What you did well');
+  await expect(page.locator('.ag-chapters h2')).toHaveText('Match breakdown');
+  await expect(page.locator('.ag-encouragement h2')).toHaveText("Coach's note");
+  await page.locator('.ag-improvements .ag-finding.is-lead .ag-ev').first().getByRole('button', { name: 'Show the record' }).click();
+  await expect(page.locator('.ag-improvements .ag-finding.is-lead .ag-rec').first()).toContainText('Target Phantom Assassin');
   await expect(page.getByText('spell immune', { exact: true })).toBeVisible();
 });
 
 test('no serious accessibility violations: the review with a record open, and the hero pick', async ({ page }) => {
   await review(page);
-  await page.locator('.ag-moments .ag-ev').first().getByRole('button', { name: '看原始记录' }).click();
-  await expect(page.locator('.ag-moments .ag-rec')).toBeVisible();
+  await page.locator('.ag-improvements .ag-finding.is-lead .ag-ev').first().getByRole('button', { name: '看原始记录' }).click();
+  await expect(page.locator('.ag-improvements .ag-finding.is-lead .ag-rec')).toBeVisible();
   const scan = async () => (await new AxeBuilder({ page }).include('.cx').withTags(['wcag2a', 'wcag2aa']).disableRules(['color-contrast']).analyze())
     .violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${v.id}: ${v.nodes.length}`);
   expect(await scan()).toEqual([]);

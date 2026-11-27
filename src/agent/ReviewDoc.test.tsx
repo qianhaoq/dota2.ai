@@ -122,39 +122,104 @@ describe('ReviewDoc: one lesson first', () => {
   });
 });
 
-describe('ReviewDoc: the goal card says whether readers reach it', () => {
-  const beacons: Promise<any>[] = [];
-  const read = (b: Blob) => new Promise<string>((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.readAsText(b); });
-  let fire: ((entries: { isIntersecting: boolean; intersectionRatio: number }[]) => void) | null = null;
-  beforeEach(() => {
-    beacons.length = 0; window.sessionStorage.clear();
-    (navigator as any).sendBeacon = (_u: string, b: Blob) => { beacons.push(read(b).then((t) => JSON.parse(t))); return true; };
-    vi.stubGlobal('IntersectionObserver', class { constructor(cb: any) { fire = cb; } observe() {} disconnect() { fire = null; } });
+describe('ReviewDoc: zero mechanical KPIs & first-principles coach layout', () => {
+  const coachReview = (extra: Partial<DeepReview> = {}): DeepReview => ({
+    ...review(),
+    verdict: 'Strong teamfight presence across the match, with Primal Roar target selection deciding the late game.',
+    opening_note: 'You stayed composed in a difficult draft and attended nearly every fight. Most of the mid-game stall was team-wide tower conversion, not your play alone.',
+    highlights: [
+      {
+        title: 'Decisive BKB-piercing Roar at 27:27',
+        detail: 'You immediately stopped Phantom Assassin through spell immunity for 3.4 s.',
+        evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 stunned PA for 3.4 s.' }],
+      },
+    ],
+    chapters: [
+      {
+        topic: 'skill_build',
+        title: 'Clean skill progression',
+        assessment: 'praise',
+        analysis: 'Maxed core laning spells by level 10 and upgraded Roar on schedule.',
+        evidence: [{ refs: ['skill_build:beastmaster'], clock: '7:28', fact: 'Learned Roar at 7:28.' }],
+      },
+      {
+        topic: 'items',
+        title: 'Missing initiation item after Aghanim\'s',
+        assessment: 'key_gap',
+        analysis: 'Without Blink Dagger or Black King Bar, reaching the enemy carry first was difficult.',
+        takeaway: 'Prioritize Blink Dagger or Black King Bar right after Aghanim\'s.',
+        evidence: [{ refs: ['pro_items:beastmaster'], fact: 'Pro games frequently add Blink or BKB.' }],
+      },
+    ],
+    encouragement: 'Your fight attendance and 27:27 execution already show strong offlane instincts.',
+    game_plan: { main_reason: 'team_play', why: 'Team did not convert won fights into towers.', evidence: [] },
+    ...extra,
   });
-  const withGoal = (): DeepReview => review({ goal: { kind: 'deaths_per10_max', max: 1.7, label: { en: 'At most 1.7 deaths per 10 minutes', zh: 'x' }, finding: 1 } } as Partial<DeepReview>);
-  const events = async () => (await Promise.all(beacons)).map((e) => [e.event, e.props]);
 
-  it('offered when it is shown, seen once it is on screen — once a review, however often it scrolls by', async () => {
-    show(withGoal(), { goalContext: { fromStart: 1, accountId: 7, heroId: 2 } });
-    expect(await events()).toEqual([['goal_offered', { matchId: '7' }]]);
-    fire!([{ isIntersecting: false, intersectionRatio: 0 }]);
-    expect(await events()).toHaveLength(1);
-    // Barely in view: intersecting, but not 60% of it — not seen yet.
-    fire!([{ isIntersecting: true, intersectionRatio: 0.1 }]);
-    expect(await events()).toHaveLength(1);
-    fire!([{ isIntersecting: true, intersectionRatio: 0.7 }]);
-    expect(await events()).toEqual([['goal_offered', { matchId: '7' }], ['goal_seen', { matchId: '7' }]]);
+  it('renders opening note, highlights with evidence, adaptive chapters, improvements, and encouragement without duplicating verdict', () => {
+    show(coachReview(), { board: <div role="region" aria-label="Scoreboard">board</div>, share: <div data-testid="share">share</div> });
+    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe("Coach's review");
+    expect(document.querySelector('.ag-lead-reason')!.textContent).toBe('Mostly the team, not you');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Strong teamfight presence across the match, with Primal Roar target selection deciding the late game.');
+    expect(document.querySelector('.ag-opening')!.textContent).toContain('difficult draft');
+    // Highlights sit right below the coach header with evidence cards.
+    const highlights = screen.getByRole('heading', { level: 2, name: 'What you did well' }).closest('section')!;
+    expect(highlights.textContent).toContain('Decisive BKB-piercing Roar at 27:27');
+    expect(highlights.querySelector('.ag-ev-clock')!.textContent).toBe('27:27');
+    // Chapters show topic tags, assessment badges, optional takeaway, and folded records.
+    const chapters = screen.getByRole('heading', { level: 2, name: 'Match breakdown' }).closest('section')!;
+    const cards = chapters.querySelectorAll('.ag-chapter');
+    expect(cards).toHaveLength(2);
+    expect(cards[0].querySelector('.ag-chapter-topic')!.textContent).toBe('Skill build');
+    expect(cards[0].querySelector('.ag-chapter-badge')!.textContent).toBe('Standout');
+    expect(cards[0].querySelector('.ag-chapter-takeaway')).toBeNull();
+    expect(cards[1].querySelector('.ag-chapter-topic')!.textContent).toBe('Item build');
+    expect(cards[1].querySelector('.ag-chapter-badge')!.textContent).toBe('Key focus');
+    expect(cards[1].querySelector('.ag-chapter-takeaway')!.textContent).toContain('Prioritize Blink Dagger');
+    expect(cards[1].querySelector('.ag-chapter-records summary')!.textContent).toBe('Records · 1');
+    // Key improvements show lead finding open and rest folded.
+    const improvements = screen.getByRole('heading', { level: 2, name: 'Key improvements' }).closest('section')!;
+    expect(improvements.querySelector('.ag-finding.is-lead h3')!.textContent).toBe('1Finding 1');
+    expect(improvements.querySelectorAll('details.ag-finding')).toHaveLength(2);
+    // Closing encouragement card.
+    expect(document.querySelector('.ag-encouragement p')!.textContent).toContain('strong offlane instincts');
+    // Verdict is already H1, so not duplicated inside Whole Game.
+    expect(document.querySelector('.ag-whole .ag-verdict')).toBeNull();
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      'What you did well', 'Match breakdown', 'Key improvements', "Coach's note", 'The whole game', 'What the replay could not show',
+    ]);
+  });
+
+  it('spotless win with zero findings omits the improvements section cleanly and renders Chinese & Russian labels', () => {
+    render(<ReviewDoc matchId="7" review={coachReview({ lang: 'zh', findings: [] })} lang="zh" onAsk={() => {}} />);
+    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe('教练总评');
+    expect(document.querySelector('.ag-improvements')).toBeNull();
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      '本局亮点与肯定', '全维度复盘', '教练寄语', '整局', '录像看不到的',
+    ]);
+    expect(document.querySelector('.ag-chapter-topic')!.textContent).toBe('技能加点');
+    expect(document.querySelector('.ag-chapter-badge')!.textContent).toBe('本局亮点');
     cleanup();
-    // The same review again in this browser session: not counted twice.
-    show(withGoal(), { goalContext: { fromStart: 1, accountId: 7, heroId: 2 } });
-    fire?.([{ isIntersecting: true, intersectionRatio: 1 }]);
-    expect(await events()).toHaveLength(2);
+    render(<ReviewDoc matchId="7" review={coachReview({ lang: 'ru', findings: [] })} lang="ru" onAsk={() => {}} />);
+    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe('Разбор тренера');
+    expect(document.querySelector('.ag-chapter-topic')!.textContent).toBe('Раскачка');
   });
 
-  it('no card, nothing said: a review without a goal, or a page without a seat to set it for', async () => {
-    show(review(), { goalContext: { fromStart: 1, accountId: 7, heroId: 2 } });
-    show(withGoal(), { goalContext: null });
-    expect(await events()).toEqual([]);
+  it('never renders GoalCard or ag-rule-check even when a legacy stored review carries goal and rule.check', () => {
+    const legacyWithKpis = review({
+      findings: [finding(1, { rule: { when: 'When 1', do: 'Do 1', this_game: 'Seen 1 times.', check: { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 low HP death', zh: '下一盘不超过 1 次' } } as any } })],
+      goal: { kind: 'deaths_per10_max', max: 1.7, label: { en: 'At most 1.7 deaths per 10 minutes', zh: '每 10 分钟阵亡不超过 1.7 次' }, finding: 1 } as any,
+    });
+    show(legacyWithKpis);
+    expect(document.querySelector('.ag-goal')).toBeNull();
+    expect(document.querySelector('.ag-next')).toBeNull();
+    expect(document.querySelector('.ag-rule-check')).toBeNull();
+    expect(screen.queryByText(/Make this my next-game goal/)).toBeNull();
+    expect(screen.queryByText(/At most 1 low HP death/)).toBeNull();
+    expect(screen.queryByText(/At most 1\.7 deaths/)).toBeNull();
+    // Normal rule coaching cue still renders cleanly without the KPI quota line.
+    expect(screen.getByText('When 1')).toBeTruthy();
+    expect(screen.getByText('Do 1')).toBeTruthy();
   });
 });
 

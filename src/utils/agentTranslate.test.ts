@@ -174,4 +174,57 @@ describe('review trilingual translation', () => {
     });
     expect(failed.reviews).toEqual({});
   });
+
+  it('extracts, translates, and strictly fact-checks opening_note, highlights, chapters, and encouragement', () => {
+    const coachReview = {
+      ...baseReview,
+      opening_note: 'You joined 15 fights and kept a lead until 29:00.',
+      highlights: [
+        {
+          title: 'Roar through BKB at 27:27',
+          detail: 'You stunned Phantom Assassin for 3.4 s at 27:27.',
+          evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 roared into BKB; stunned 3.4 s.' }],
+        },
+      ],
+      chapters: [
+        {
+          topic: 'teamfights',
+          title: 'Teamfights: strong attendance',
+          assessment: 'mixed',
+          analysis: 'You joined 15 fights, and 27:27 stopped her for 3.4 s.',
+          takeaway: 'Keep Roar ready for her BKB.',
+          evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 roared into BKB; stunned 3.4 s.' }],
+        },
+      ],
+      encouragement: 'Your 27:27 play shows strong instincts.',
+    };
+    const extracted: any = extractTranslatable(coachReview);
+    expect(extracted.opening_note).toBe(coachReview.opening_note);
+    expect(extracted.highlights).toEqual([{ title: 'Roar through BKB at 27:27', detail: 'You stunned Phantom Assassin for 3.4 s at 27:27.', evidence: ['27:27 roared into BKB; stunned 3.4 s.'] }]);
+    expect(extracted.chapters).toEqual([{ title: 'Teamfights: strong attendance', analysis: 'You joined 15 fights, and 27:27 stopped her for 3.4 s.', takeaway: 'Keep Roar ready for her BKB.', evidence: ['27:27 roared into BKB; stunned 3.4 s.'] }]);
+    expect(extracted.encouragement).toBe(coachReview.encouragement);
+    // did_well is derived from highlights rather than sent twice.
+    expect(extracted).not.toHaveProperty('did_well');
+
+    const zhCoach = {
+      ...zhPayload,
+      opening_note: '你参加了 15 波团战，并在 29:00 前保持领先。',
+      highlights: [{ title: '27:27 隔着黑皇杖吼住她', detail: '27:27 你将幻影刺客定住 3.4 秒。', evidence: ['27:27 吼进黑皇杖，定住 3.4 秒。'] }],
+      chapters: [{ title: '团战表现：到场率出色', analysis: '你参加了 15 波团战，27:27 将她定住 3.4 秒。', takeaway: '把咆哮留给她的黑皇杖。', evidence: ['27:27 吼进黑皇杖，定住 3.4 秒。'] }],
+      encouragement: '你在 27:27 的操作展现了很强的判断力。',
+    };
+    const translated: any = applyTranslation(coachReview, zhCoach, 'zh');
+    expect(translated).not.toBeNull();
+    expect(translated.opening_note).toBe(zhCoach.opening_note);
+    expect(translated.highlights[0]).toMatchObject({ title: zhCoach.highlights[0].title, detail: zhCoach.highlights[0].detail, evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: zhCoach.highlights[0].evidence[0] }] });
+    expect(translated.did_well).toEqual(['27:27 隔着黑皇杖吼住她：27:27 你将幻影刺客定住 3.4 秒。']);
+    expect(translated.chapters[0]).toMatchObject({ topic: 'teamfights', assessment: 'mixed', title: zhCoach.chapters[0].title, takeaway: zhCoach.chapters[0].takeaway, evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: zhCoach.chapters[0].evidence[0] }] });
+    expect(translated.encouragement).toBe(zhCoach.encouragement);
+
+    // Altered number in opening_note, highlight, chapter, or encouragement is rejected.
+    expect(applyTranslation(coachReview, { ...zhCoach, opening_note: '你参加了 99 波团战，29:00 前领先。' }, 'zh')).toBeNull();
+    expect(applyTranslation(coachReview, { ...zhCoach, highlights: [{ ...zhCoach.highlights[0], detail: '27:27 你将幻影刺客定住 9.9 秒。' }] }, 'zh')).toBeNull();
+    expect(applyTranslation(coachReview, { ...zhCoach, chapters: [{ ...zhCoach.chapters[0], analysis: '你参加了 18 波团战，27:27 定住 3.4 秒。' }] }, 'zh')).toBeNull();
+    expect(applyTranslation(coachReview, { ...zhCoach, encouragement: '27:27 对面看到了你。' }, 'zh')).toBeNull();
+  });
 });

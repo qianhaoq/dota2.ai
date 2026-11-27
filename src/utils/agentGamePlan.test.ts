@@ -63,7 +63,7 @@ describe('the game plan of a review', () => {
   });
 
   it('the model is told it must hand in a game plan (#388), slimmed to main_reason + why beside story', () => {
-    expect(SUBMIT_REVIEW.input_schema.required).toEqual(['verdict', 'story', 'findings', 'blind_spots', 'game_plan']);
+    expect(SUBMIT_REVIEW.input_schema.required).toEqual(['verdict', 'opening_note', 'highlights', 'chapters', 'story', 'findings', 'blind_spots', 'game_plan', 'encouragement']);
     expect((SUBMIT_REVIEW.input_schema.properties as any).game_plan.required).toEqual(['main_reason', 'why']);
   });
 
@@ -228,9 +228,21 @@ describe('the prompts know the game plan', () => {
     expect(s).toContain('then tempo_report');
     expect(s).toContain('not that it closed the window');
     expect(s).toContain('Never tell the player what they "intended"');
-    const part: any = checkedPart({ verdict: 'v', findings: [], game_plan: { course: 'c', your_part: 'y', line_ups: 'l', main_reason: 'team_play', why: 'w', evidence: [{ refs: ['tempo:x'], clock: '20:00', fact: 'f' }] } });
+    const part: any = checkedPart({
+      verdict: 'v',
+      opening_note: 'Solid effort in a tough draft.',
+      highlights: [{ title: 'Roar at 27:27', detail: 'Stunned PA through BKB.', evidence: [{ refs: ['cast:x:1'], clock: '27:27', fact: '3.4 s stun.' }] }],
+      chapters: [{ topic: 'teamfights', title: 'Fights', assessment: 'mixed', analysis: 'High attendance.', takeaway: 'Hold Roar.', evidence: [{ refs: ['fights:x:12'], clock: '33:23', fact: '841 damage.' }] }],
+      encouragement: 'Keep that composure.',
+      findings: [],
+      game_plan: { course: 'c', your_part: 'y', line_ups: 'l', main_reason: 'team_play', why: 'w', evidence: [{ refs: ['tempo:x'], clock: '20:00', fact: 'f' }] },
+    });
     // The reason it names is a judgment: not part of what backs a later answer.
     expect(part.game_plan).toEqual({ line_ups: 'l', course: 'c', your_part: 'y', why: 'w', evidence: [{ clock: '20:00', fact: 'f' }] });
+    expect(part.opening_note).toBe('Solid effort in a tough draft.');
+    expect(part.highlights).toEqual([{ title: 'Roar at 27:27', detail: 'Stunned PA through BKB.', evidence: [{ clock: '27:27', fact: '3.4 s stun.' }] }]);
+    expect(part.chapters).toEqual([{ topic: 'teamfights', title: 'Fights', analysis: 'High attendance.', takeaway: 'Hold Roar.', evidence: [{ clock: '33:23', fact: '841 damage.' }] }]);
+    expect(part.encouragement).toBe('Keep that composure.');
     expect(checkedPart({ verdict: 'v', findings: [] })).not.toHaveProperty('game_plan');
   });
 
