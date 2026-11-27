@@ -41,6 +41,15 @@ describe('combat_log: the replay\'s own rows, to check a fact (#405)', () => {
     expect(r.rows.map((x: any) => [x.kind, x.kind === 'item_use' ? x.to_hero : x.kind === 'creep_kill' ? x.what : x.reason])).toEqual([['gold', 'lane_creep'], ['item_use', 'sven'], ['item_use', null], ['creep_kill', 'deny']]);
   });
 
+  it('a gold row gives its minute as seconds, so evidence giving that minute as clock times is backed (Codex on #413)', () => {
+    const t2 = { ...trace, gold: [[1, trace.names.indexOf('npc_dota_hero_sven'), 13, 120]] };
+    const r: any = combatLog(t2, { from: 60, to: 119, kinds: ['gold'] });
+    expect(r.rows[0]).toMatchObject({ ref: 'log:gold:0', minute: 1, from: 60, to: 119, gold: 120 });
+    const review = { verdict: 'v', mainline: [], blind_spots: [], findings: [{ title: 't', claim: '兵线。', fix: 'x', evidence: [{ refs: ['log:gold:0'], fact: '1:00–1:59 这一分钟你从兵线获得 120 金。' }] }] };
+    const check = verifyReview(review, [r]);
+    expect(check.problems.filter((p: any) => p.where === 'evidence' || p.where === 'finding')).toEqual([]);
+  });
+
   it('limits: a window, a row cap with the count left out, bad input', () => {
     expect(combatLog(trace, { from: 0, to: LOG_WINDOW + 1 })).toMatchObject({ error: 'window_too_long' });
     expect(combatLog(trace, { from: 10, to: 5 })).toMatchObject({ error: 'bad_window' });

@@ -575,7 +575,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     return (
       <div className="ag-rec">
         <p className="ag-rec-head">{r.clock && <b>{r.clock}</b>}{r.minute != null && <b>{r.minute}:00</b>} · {T.logKind[r.kind] ? t(T.logKind[r.kind]) : r.kind}</p>
-        <p className="ag-rec-line">{who.filter(Boolean).map((x: string, i: number) => <span key={i} className="ag-chip">{N(x)}</span>)}{r.amount != null && <span className="ag-chip"><em>{r.amount}</em></span>}{r.gold != null && <span className="ag-chip"><em>{r.gold}</em></span>}{r.until && <span className="ag-chip">→ {r.until}</span>}</p>
+        <p className="ag-rec-line">{who.filter((x): x is string => typeof x === 'string' && x !== '').map((x: string, i: number) => <span key={i} className="ag-chip">{N(x)}</span>)}{r.amount != null && <span className="ag-chip"><em>{r.amount}</em></span>}{r.gold != null && <span className="ag-chip"><em>{r.gold}</em></span>}{r.until && <span className="ag-chip">→ {r.until}</span>}</p>
       </div>
     );
   }
