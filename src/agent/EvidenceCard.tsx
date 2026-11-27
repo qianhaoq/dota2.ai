@@ -103,6 +103,8 @@ const T = {
   } as Record<string, { en: string; zh: string; ru: string }>,
   laneVisits: { en: 'Came into the lane', zh: '别路来本路交手', ru: 'Пришли на линию' },
   laneVisitDied: { en: 'died', zh: '阵亡', ru: 'погибли' },
+  laneRotations: { en: 'Left lane before 10:00 (20 s+)', zh: '10 分钟前离路游走（20 秒以上）', ru: 'Уходы с линии до 10:00 (20 с+)' },
+  lanePartnerDied: { en: 'lane partner died', zh: '本路队友阵亡', ru: 'партнёр по линии погиб' },
   lanePartTime: { en: 'Shared the lane part-time', zh: '兼顾本路', ru: 'Делили линию частично' },
   laneRoster: { en: 'Read over', zh: '统计范围', ru: 'По героям' },
   laneUneven: { en: 'Heroes in the lane, your side : enemy (part-time sharers not counted in the gap)', zh: '本路固定人数，我方 : 对方（兼顾的人不在差距里）', ru: 'Героев на линии, ваши : враг (частично делившие не в разнице)' },
@@ -655,6 +657,18 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
               {d && <p className="ag-rec-line"><span>{t(T.laneGap)}</span>{['lane_creeps', 'hero_kills_and_assists', 'lost_on_dying', 'neutrals'].filter((k) => d[k] != null).map((k) => <span key={k} className="ag-chip">{t(T.laneSrc[k])} <em>{signed(d[k])}</em></span>)}</p>}
               {Array.isArray(w.visits) && w.visits.length > 0 && <p className="ag-rec-line"><span>{t(T.laneVisits)}</span>{w.visits.map((v: any, i: number) => <span key={i} className={`ag-chip ${SIDE_CLASS[v.side === 'my_team' ? 'ally' : 'enemy'] ?? ''}`}>{v.from}–{v.to} {N(v.hero)}{v.died.length ? ` · ${t(T.laneVisitDied)} ${v.died.map((x: any) => N(x.hero)).join(', ')}` : ''}</span>)}</p>}
               {Array.isArray(w.part_time_in_this_lane) && w.part_time_in_this_lane.length > 0 && <p className="ag-rec-line"><span>{t(T.lanePartTime)}</span>{w.part_time_in_this_lane.map((x: any) => <span key={x.hero} className="ag-chip">{N(x.hero)} <em>{pc(x.share_of_lane_stage_here)}</em></span>)}</p>}
+              {Array.isArray(w.my_rotations_before_10_00?.trips) && w.my_rotations_before_10_00.trips.length > 0 && (
+                <p className="ag-rec-line">
+                  <span>{t(T.laneRotations)}</span>
+                  {w.my_rotations_before_10_00.trips.map((tr: any, i: number) => (
+                    <span key={i} className="ag-chip">
+                      {tr.from}–{tr.to} ({tr.seconds}{t(T.sec)}) · {tr.destination_region ? N(tr.destination_region) : (tr.destination_lane ? t(T.lane[tr.destination_lane] ?? { en: tr.destination_lane, zh: tr.destination_lane }) : '—')}
+                      {Array.isArray(tr.enemy_deaths_i_damaged) && tr.enemy_deaths_i_damaged.length > 0 ? ` · ${t(T.laneVisitDied)} ${tr.enemy_deaths_i_damaged.map((x: any) => N(x.hero)).join(', ')}` : ''}
+                      {Array.isArray(tr.lane_partner_deaths_while_away) && tr.lane_partner_deaths_while_away.length > 0 ? ` · ${t(T.lanePartnerDied)} ${tr.lane_partner_deaths_while_away.map((x: any) => N(x.hero)).join(', ')}` : ''}
+                    </span>
+                  ))}
+                </p>
+              )}
             </>
           );
         })()}

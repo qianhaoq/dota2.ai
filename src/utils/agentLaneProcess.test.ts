@@ -215,3 +215,145 @@ describe('the review of #440: a death elsewhere is not the visit\'s, and the cou
     expect(verifyText('Enemies came into your lane 8 times.', [{ tool: 'lane_report', ...r }]).ok).toBe(true);
   });
 });
+
+describe('early rotation trips away from the main lane (my_rotations_before_10_00, #358)', () => {
+  it('reads Dark Willow\'s early rotations on 9100904020 and localizes destination_region in evidence', async () => {
+    const { resolveRef } = await import('../../lib/agent/evidence.js');
+    const dw = seat('dark_willow');
+    const r: any = laneProcess(trace, dw);
+    expect(r.lane).toBe('top');
+    expect(r.my_rotations_before_10_00).toMatchObject({
+      trips_total: expect.any(Number),
+      seconds_away_in_trips: expect.any(Number),
+    });
+    expect(r.my_rotations_before_10_00.trips_total).toBeGreaterThanOrEqual(1);
+    const botTrip = r.my_rotations_before_10_00.trips.find((tr: any) => tr.destination_lane === 'bot');
+    expect(botTrip).toBeTruthy();
+    expect(botTrip.seconds).toBeGreaterThanOrEqual(20);
+    // Evidence ref lane:dark_willow carries destination_region display names.
+    const ev = resolveRef(trace, 'lane:dark_willow', { hero: 'dark_willow', lang: 'zh' });
+    if (botTrip.destination_region) expect(ev?.names?.[botTrip.destination_region]).toBeTruthy();
+  });
+
+  it('tracks power runes, wards, enemy deaths damaged during the trip (excluding post-return damage), my_death, and lane partner deaths', () => {
+    // Move Undying (Dire bot support, partner = Beastmaster) to mid (0, 0) from 300..335 (36 s), then back to bot (4500, -4500) at 336+.
+    const u = seat('undying');
+    const uNpc = ix(trace.heroes[u].npc);
+    const bmNpc = ix(trace.heroes[bm].npc);
+    const paNpc = ix(trace.heroes[seat('phantom_assassin')].npc);
+    const necNpc = ix(trace.heroes[seat('necrolyte')].npc);
+    const st = trace.states[u];
+    const x = st.x.slice(); const y = st.y.slice(); const alive = st.alive.slice();
+    for (let s = 60; s < 600; s += 1) {
+      const k = s - trace.t0;
+      alive[k] = 1;
+      if (s >= 300 && s <= 335) { x[k] = 0; y[k] = 0; }
+      else { x[k] = 4500; y[k] = -4500; }
+    }
+    const obsIx = trace.names.length;
+    const t: any = {
+      ...trace,
+      names: [...trace.names, 'item_ward_observer'],
+      states: trace.states.map((s: any, j: number) => (j === u ? { ...st, x, y, alive } : s)),
+      runes: [[310.4, uNpc, 'haste', 332.4]],
+      wards: [[315.0, 675.0, 3, 'o', 0, 0]],
+      item_uses: [...trace.item_uses, [315.0, uNpc, obsIx, 99999]],
+      // Undying damages Necrolyte during the final sampled second (335.5) -> dies at 336.5 (counts); damages PA AFTER returning to bot (338) -> dies at 342 (must NOT count!).
+      damage: [
+        ...trace.damage.filter((d: any) => d[0] < 290 || d[0] > 360),
+        [335.5, uNpc, necNpc, -1, 150],
+        [338, uNpc, paNpc, -1, 200],
+      ],
+      deaths: [
+        ...trace.deaths.filter((d: any) => d[0] < 290 || d[0] > 360),
+        [336.5, necNpc, uNpc, 1],
+        [342, paNpc, uNpc, 2],
+        [335.5, bmNpc, paNpc, 3], // lane partner Beastmaster dies during the final sampled second of the trip!
+      ],
+    };
+    const r: any = laneProcess(t, u);
+    expect(r.my_rotations_before_10_00.trips).toHaveLength(1);
+    const trip = r.my_rotations_before_10_00.trips[0];
+    expect(trip).toMatchObject({
+      from: '5:00',
+      to: '5:35',
+      seconds: 36,
+      destination_lane: 'mid',
+      power_runes_activated: ['haste'],
+      wards_placed: { observers: 1, sentries: 0 },
+      enemy_deaths_i_damaged: [{ hero: 'necrolyte', clock: '5:36' }],
+      my_death: false,
+      lane_partner_deaths_while_away: [{ hero: 'beastmaster', clock: '5:35' }],
+    });
+    expect(r.my_rotations_before_10_00.trips_with_enemy_death_i_damaged).toBe(1);
+    expect(r.my_rotations_before_10_00.trips_where_lane_partner_died).toBe(1);
+
+    // Dying after returning to bot (at 337 while alive in bot at 336) is NOT my_death on the trip; dying at 336 (ending the trip) IS.
+    const diedAfterReturn = { ...t, deaths: [...t.deaths, [337, uNpc, paNpc, 4]] };
+    expect((laneProcess(diedAfterReturn, u) as any).my_rotations_before_10_00.trips[0].my_death).toBe(false);
+    const aliveDead = alive.slice();
+    aliveDead[336 - trace.t0] = 0;
+    const diedEndingTrip = {
+      ...t,
+      states: trace.states.map((s: any, j: number) => (j === u ? { ...st, x, y, alive: aliveDead } : s)),
+      deaths: [...t.deaths, [336, uNpc, necNpc, 5]],
+    };
+    expect((laneProcess(diedEndingTrip, u) as any).my_rotations_before_10_00.trips[0].my_death).toBe('5:36');
+  });
+
+  it('keeps unknown rotation fields as null with gaps when source logs, positions, or ward placers are missing', () => {
+    const u = seat('undying');
+    const uNpc = ix(trace.heroes[u].npc);
+    const st = trace.states[u];
+    const x = st.x.slice(); const y = st.y.slice(); const alive = st.alive.slice();
+    for (let s = 60; s < 600; s += 1) {
+      const k = s - trace.t0;
+      alive[k] = 1;
+      if (s >= 300 && s <= 330) { x[k] = 0; y[k] = 0; }
+      else { x[k] = 4500; y[k] = -4500; }
+    }
+    const baseTripTrace: any = {
+      ...trace,
+      states: trace.states.map((s: any, j: number) => (j === u ? { ...st, x, y, alive } : s)),
+    };
+
+    // 1. Missing runes & wards & damage & deaths -> null + explicit gaps (never 0 / [] / false).
+    const { runes: _r, wards: _w, damage: _d, deaths: _k, ...stripped } = baseTripTrace;
+    const rStripped: any = laneProcess(stripped, u);
+    const tr0 = rStripped.my_rotations_before_10_00.trips[0];
+    expect(tr0.power_runes_activated).toBeNull();
+    expect(tr0.wards_placed).toBeNull();
+    expect(tr0.enemy_deaths_i_damaged).toBeNull();
+    expect(tr0.my_death).toBeNull();
+    expect(tr0.lane_partner_deaths_while_away).toBeNull();
+    expect(rStripped.my_rotations_before_10_00.trips_with_enemy_death_i_damaged).toBeNull();
+    expect(rStripped.my_rotations_before_10_00.trips_where_lane_partner_died).toBeNull();
+    expect(rStripped.gaps).toContainEqual({ topic: 'rotation_deaths', reason: 'no_deaths_in_trace' });
+    expect(rStripped.gaps).toContainEqual({ topic: 'rotation_runes', reason: 'no_runes_in_trace' });
+    expect(rStripped.gaps).toContainEqual({ topic: 'rotation_wards', reason: 'no_ward_placements_in_trace' });
+
+    // 2. Ambiguous ward placer (two Dire teammates use ward item within 0.2 s) -> wards_placed: null + gap.
+    const obsIx = trace.names.length;
+    const bmNpc = ix(trace.heroes[bm].npc);
+    const ambig: any = {
+      ...baseTripTrace,
+      names: [...trace.names, 'item_ward_observer'],
+      wards: [[315.0, 675.0, 3, 'o', 0, 0]],
+      item_uses: [...trace.item_uses, [315.0, uNpc, obsIx, 1], [315.1, bmNpc, obsIx, 2]],
+    };
+    const rAmbig: any = laneProcess(ambig, u);
+    expect(rAmbig.my_rotations_before_10_00.trips[0].wards_placed).toBeNull();
+    expect(rAmbig.gaps).toContainEqual({ topic: 'rotation_wards', reason: 'ward_placer_not_known_during_trip' });
+
+    // 3. Any missing player position sample in 1:00–10:00 -> my_rotations_before_10_00: null + gap.
+    const xMiss = x.slice();
+    xMiss[315 - trace.t0] = null;
+    const missPos: any = {
+      ...baseTripTrace,
+      states: trace.states.map((s: any, j: number) => (j === u ? { ...st, x: xMiss, y, alive } : s)),
+    };
+    const rMiss: any = laneProcess(missPos, u);
+    expect(rMiss.my_rotations_before_10_00).toBeNull();
+    expect(rMiss.gaps).toContainEqual({ topic: 'my_rotations_before_10_00', reason: 'player_positions_missing_in_lane_stage' });
+  });
+});

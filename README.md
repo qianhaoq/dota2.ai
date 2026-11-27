@@ -168,7 +168,7 @@ packages/dsh/                     the DSH plugin
 server.js                         the Express host
 ```
 
-Before a pull request: `npx tsc --noEmit && node --check server.js && npm run build && npm test`. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md).
+Before a pull request: `npx tsc --noEmit && node --check server.js && npm run build && npm test`. To calibrate replay-only 1–5 role inference against parsed OpenDota match records: `node scripts/calibrate-role.mjs <traces dir> <match records dir> [--json]` (pass a directory of `*.trace.json.gz` files and a directory of `<matchId>.json` OpenDota records; `--json` prints machine-readable JSON). See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md).
 
 ## License
 
