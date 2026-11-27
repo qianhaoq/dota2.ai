@@ -46,11 +46,12 @@ COPY --chown=node:node server.js ./
 COPY --chown=node:node lib ./lib
 COPY --chown=node:node routes ./routes
 COPY --chown=node:node packages ./packages
-RUN mkdir -p ./data && chown -R node:node /app
+RUN mkdir -p ./data
 # Only the reviewed public snapshot belongs in the runtime image.
-COPY --from=builder --chown=node:node /app/data/site-knowledge.v1.json ./data/site-knowledge.v1.json
+COPY --from=builder /app/data/site-knowledge.v1.json ./data/site-knowledge.v1.json
 # Only this reviewed compact replay-facts artifact belongs in the runtime image.
-COPY --from=builder --chown=node:node /app/data/replay-facts/9080127650.json ./data/replay-facts/9080127650.json
+COPY --from=builder /app/data/replay-facts/9080127650.json ./data/replay-facts/9080127650.json
+RUN chown -R node:node /app
 
 # Set environment variables
 ENV NODE_ENV=production
