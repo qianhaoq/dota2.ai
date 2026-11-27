@@ -474,3 +474,57 @@ describe('the game\'s main cause in the story (#437 P5)', () => {
     expect(s.rubric_approved).toMatchObject({ cause_named: 0.5, story_ok: 0.5 });
   });
 });
+
+describe('committed eval rubrics inventory (#361)', () => {
+  it('all 14 approved rubrics in evals/reviews/ are structurally valid with compilable must_not patterns and valid lead_any ids', async () => {
+    const all = await loadRubrics('evals/reviews');
+    expect(all.size).toBeGreaterThanOrEqual(14);
+    const approved = [...all.values()].filter((r: any) => r.status === 'approved');
+    expect(approved.length).toBeGreaterThanOrEqual(14);
+    for (const r of approved as any[]) {
+      expect(r.schema).toBe(RUBRIC_SCHEMA);
+      expect(Number.isInteger(r.match_id)).toBe(true);
+      expect(typeof r.hero).toBe('string');
+      expect(Array.isArray(r.must_hit)).toBe(true);
+      const hitIds = new Set(r.must_hit.map((p: any) => p.id));
+      expect(hitIds.size).toBe(r.must_hit.length);
+      for (const id of r.lead_any ?? []) expect(hitIds.has(id)).toBe(true);
+      for (const p of r.must_not ?? []) {
+        if (typeof p.pattern === 'string') expect(() => new RegExp(p.pattern, 'i')).not.toThrow();
+      }
+      if (r.story_cause) {
+        expect(Number.isFinite(r.story_cause.from)).toBe(true);
+        expect(Number.isFinite(r.story_cause.to)).toBe(true);
+        expect(r.story_cause.to).toBeGreaterThanOrEqual(r.story_cause.from);
+      }
+      if (r.turning_fight) {
+        expect(Number.isInteger(r.turning_fight.fight)).toBe(true);
+        expect(r.turning_fight.to).toBeGreaterThanOrEqual(r.turning_fight.from);
+      }
+    }
+    // Includes at least one stomp win with must_praise + max_findings.
+    expect(approved.some((r: any) => Array.isArray(r.must_praise) && r.must_praise.length > 0 && Number.isInteger(r.max_findings))).toBe(true);
+  });
+
+  it('Enchantress (9106163189) must_not flags bogus 0-cast Impetus claims without misfiring on honest damage notes, and Spirit Breaker (9107133982) enforces must_praise + max_findings', () => {
+    const ench = json('../../evals/reviews/9106163189.enchantress.json');
+    const badZh = review({ lang: 'zh', findings: [finding({ claim: '推进全场 0 次施放，等于没用过。' })] });
+    const badEn = review({ lang: 'en', findings: [finding({ claim: 'Impetus was never cast in this game.' })] });
+    const goodZh = review({ lang: 'zh', verdict: '这局下路大优且全场仅 5 次阵亡，插下 10 颗假眼。', findings: [finding({ claim: '推进造成 6024 点伤害但 40:08 才出原力法杖，14:25 与 42:27 未换到人头。', evidence: [{ refs: ['death:enchantress:5', 'build:enchantress'], clock: '42:27', fact: '42:27 落单阵亡。' }] })] });
+    expect(rubricOf(badZh, ench).must_not.map((x: any) => x.id)).toContain('impetus_claimed_never_cast');
+    expect(rubricOf(badEn, ench).must_not.map((x: any) => x.id)).toContain('impetus_claimed_never_cast');
+    expect(rubricOf(goodZh, ench)).toMatchObject({ hit_rate: 1, praise_rate: 1, must_not: [] });
+
+    const sb = json('../../evals/reviews/9107133982.spirit_breaker.json');
+    const cleanStomp = review({
+      lang: 'zh',
+      verdict: '下路对线大优且全场只死 1 次，轻松赢下比赛。',
+      did_well: ['10:00 下路对线大优且 0 死。', '整局仅阵亡 1 次且幽冥一击从未留着阵亡。'],
+      findings: [finding({ title: '唯一一次阵亡', claim: '12:19 团战阵亡但换到人头。' })],
+      game_plan: { main_reason: 'your_play' },
+    });
+    expect(rubricOf(cleanStomp, sb)).toMatchObject({ hit_rate: null, praise_rate: 1, findings_within_max: true, must_not: [], main_reason_ok: true });
+    const nitpickStomp = { ...cleanStomp, findings: [finding(), finding(), finding()] };
+    expect(rubricOf(nitpickStomp, sb).findings_within_max).toBe(false);
+  });
+});

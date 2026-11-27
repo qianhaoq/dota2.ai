@@ -618,7 +618,7 @@ node scripts/eval-review.mjs runs/after --baseline before.json
 
 `--dry-run` 只打印清单和余额。设了 `EVAL_DEEPSEEK_API_KEY` 就用它（评测单独的账户），否则用 `DEEPSEEK_API_KEY` 并明说这是线上的账户。
 
-还没做的：评分表从 4 局扩到 12–15 局（先要工具能读辅助的事）；用模型判断语义是否命中（现在只按记录、时间和词核对，会漏掉换了说法的命中）。
+2026-11-27 评分表已从 6 局扩充到 **14 局 `approved`**（#361）：覆盖 1–5 号位（3 核、2 中单、3 劣单、6 辅助）、胜负局与单边碾压胜局（`9107133982.spirit_breaker` 使用 `must_praise` + `max_findings`）、OpenDota 已解析与仅录像局，以及线上真实反馈痛点局（`9106163189.enchantress` 法球误报 `must_not`、`9004052517.disruptor` 低经济辅助、`9081160964.centaur` 劣单被抓、`9106486185.storm_spirit` 中路崩线后中期翻盘）。还没做的：用模型判断语义是否命中（现在只按记录、时间和词核对，会漏掉换了说法的命中）。
 
 #### 读者怎么说：每条发现下的三个按钮
 
