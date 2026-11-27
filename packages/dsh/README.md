@@ -11,7 +11,7 @@ A native [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepSeek Harness
 
 ## Install
 
-Needs Node 24.9 or newer, DSH **0.2.1-rc.3** (the release this plugin is verified on) and pnpm,
+Needs Node 24.9 or newer, DSH **≥ 0.2.1-rc.3** (`0.2.x`) and pnpm,
 which DSH uses to install plugins.
 
 Download `qianhaoq-dsh-dota2ai-<version>.tgz` and `SHA256SUMS` from the latest `dsh-v*`
@@ -19,7 +19,7 @@ Download `qianhaoq-dsh-dota2ai-<version>.tgz` and `SHA256SUMS` from the latest `
 
 ```sh
 sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.1.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.2.tgz
 dsh web
 ```
 
@@ -73,11 +73,11 @@ node packages/dsh/scripts/installed-smoke.mjs packages/dsh/dist/*.tgz \
 - **由你的 DSH 宿主模型驱动（`ctx.llm`）**：录像深度调查复盘（`runDeepReview` + `verifyReview` 事实核查）、录像查证追问（`runChat` + `verifyText`）与版本顾问均在本机调用你在 DSH 配置的模型——默认跟随 DSH 当前模型，同时保留页面内模型切换器，支持同一局用不同模型对比复盘。
 - **会话工具与卡片联动**：7 个 `dota2ai_*` 工具与独立页面共享本地 `$DSH_HOME/dota2ai` 缓存，聊天内的工具卡片可一键跳转到对应复盘页。
 
-**安装**（需要 Node ≥ 24.9、DSH **0.2.1-rc.3** 和 pnpm）：
+**安装**（需要 Node ≥ 24.9、DSH **≥ 0.2.1-rc.3** 和 pnpm）：
 
 ```sh
 sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.1.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.2.tgz
 dsh web
 ```
 

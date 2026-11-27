@@ -1,11 +1,11 @@
 # Release the DSH plugin (packages/dsh) from a `dsh-v<version>` tag:
-# test, pack one platform-independent archive, install it into a clean DSH
-# profile with DSH's own CLI, then publish the archive and SHA256SUMS as a
-# GitHub Release. Nothing goes to npm. Release notes are read from
-# .github/release-notes/<tag>.md, which must be on the tagged commit.
+# test, pack one platform-independent archive, install and smoke-test it in a
+# clean DSH web profile with DSH's own CLI, publish `@qianhaoq/dsh-dota2ai` to
+# npm (with provenance + npmmirror sync), and publish the archive and SHA256SUMS
+# as a GitHub Release. Release notes are read from .github/release-notes/<tag>.md.
 #
-# A manual run (workflow_dispatch) does everything except publishing and
-# uploads the archive as a workflow artifact instead.
+# A manual run (workflow_dispatch) builds, smoke-tests, and uploads the archive
+# as a workflow artifact without publishing.
 
 name: DSH plugin release
 
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 env:
-  DSH_VERSION: 0.2.1-rc.3   # the DSH release the plugin is verified on (packages/dsh/package.json engines.dsh)
+  DSH_VERSION: 0.2.2-rc.5   # current npm `latest` DSH release verified by the smoke gate
   PNPM_VERSION: 11.28.5     # DSH installs plugins with pnpm
 
 jobs:
@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,13 +34,11 @@ jobs:
           node-version: '24'
       - run: npm ci
 
-      - name: Tag matches the plugin version
+      - name: Tag and compatibility range check
         if: github.event_name == 'push'
         run: |
           version=$(node -p "require('./packages/dsh/package.json').version")
-          dsh=$(node -p "require('./packages/dsh/package.json').engines.dsh")
           test "${GITHUB_REF_NAME}" = "dsh-v${version}" || { echo "tag ${GITHUB_REF_NAME} != dsh-v${version}"; exit 1; }
-          test "${dsh}" = "${DSH_VERSION}" || { echo "engines.dsh ${dsh} != ${DSH_VERSION}"; exit 1; }
           test -f ".github/release-notes/${GITHUB_REF_NAME}.md" || { echo "missing .github/release-notes/${GITHUB_REF_NAME}.md"; exit 1; }
 
       - name: Plugin tests
@@ -48,26 +47,66 @@ jobs:
       - name: Pack
         run: node packages/dsh/scripts/pack.mjs --out dist-dsh
 
-      - name: Install into a clean DSH profile
+      - name: Install into a clean DSH profile & verify real web RPCs
         run: |
           npm install --global "pnpm@${PNPM_VERSION}"
           mkdir -p "$RUNNER_TEMP/dsh" && cd "$RUNNER_TEMP/dsh"
           npm init -y > /dev/null
           npm install --no-audit --no-fund "@deepseek-ai/dsh@${DSH_VERSION}"
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { evaluatePluginCompatibility } from "@deepseek-ai/dsh-app-boot";
+            const pkg = JSON.parse(readFileSync(process.env.GITHUB_WORKSPACE + "/packages/dsh/package.json", "utf8"));
+            for (const v of ["0.2.1-rc.3", process.env.DSH_VERSION]) {
+              const issue = evaluatePluginCompatibility(pkg, {}, v);
+              if (issue) { console.error("Compatibility check failed for", v, issue); process.exit(1); }
+            }
+          '
           cd "$GITHUB_WORKSPACE"
           node packages/dsh/scripts/installed-smoke.mjs dist-dsh/*.tgz --dsh "$RUNNER_TEMP/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js"
 
       - name: Checksums
         run: cd dist-dsh && sha256sum -c SHA256SUMS
 
-      - name: Publish the release
+      - name: Publish GitHub Release
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" dist-dsh/*.tgz dist-dsh/SHA256SUMS \
-            --title "DSH plugin ${GITHUB_REF_NAME#dsh-}" \
-            --notes-file ".github/release-notes/${GITHUB_REF_NAME}.md"
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist-dsh/*.tgz dist-dsh/SHA256SUMS --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist-dsh/*.tgz dist-dsh/SHA256SUMS \
+              --title "DSH plugin ${GITHUB_REF_NAME#dsh-}" \
+              --notes-file ".github/release-notes/${GITHUB_REF_NAME}.md"
+          fi
+
+      - name: Publish to npm
+        if: github.event_name == 'push'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN}" ]; then
+            printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$RUNNER_TEMP/npmrc"
+            export NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/npmrc"
+          else
+            echo "::notice::NPM_TOKEN secret is not set; attempting npm Trusted Publishing (OIDC)..."
+          fi
+          version=$(node -p "require('./packages/dsh/package.json').version")
+          npm publish dist-dsh/*.tgz --access public --provenance
+          # Guard against npm 11 first-publish 0.0.0-stage placeholder before downstream market probes run.
+          for attempt in 1 2 3 4 5 6; do
+            latest=$(curl -fsSL "https://registry.npmjs.org/@qianhaoq%2fdsh-dota2ai" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s)['dist-tags']?.latest??'')}catch{console.log('')}})" || true)
+            if [ "${latest}" = "${version}" ]; then
+              echo "Verified registry dist-tags.latest=${latest}"
+              break
+            fi
+            if [ "${attempt}" = "2" ] && echo "${latest}" | grep -q "stage"; then
+              npm publish dist-dsh/*.tgz --access public --provenance || true
+            fi
+            sleep 5
+          done
+          curl -fsSL -X PUT "https://registry.npmmirror.com/@qianhaoq/dsh-dota2ai/sync" > /dev/null || true
 
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'push'

@@ -1,8 +1,21 @@
 {
   "name": "@qianhaoq/dsh-dota2ai",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "dota2.ai for DSH: standalone replay review page, DSH host-model agent, coach tools and skill",
+  "icon": "./icon.svg",
+  "homepage": "https://dota2.ai",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dota2",
+    "replay",
+    "coach",
+    "esports"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "Hao Qian",
   "repository": {
@@ -31,18 +44,18 @@
   ],
   "engines": {
     "node": ">=24.9",
-    "dsh": "0.2.1-rc.3"
+    "dsh": ">=0.2.1-rc.3 <0.3.0-0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "pack:release": "node scripts/pack.mjs"
   },
   "dota2ai:release": {
-    "comment": "pack.mjs writes these into the released package.json. The DSH installation supplies @deepseek-ai/* to its plugins at runtime (profiles set autoInstallPeers: false), so they are peers, pinned to the DSH release this plugin is verified on; the site's npm ci never installs DSH.",
+    "comment": "pack.mjs writes these into the released package.json. The DSH installation supplies @deepseek-ai/* to its plugins at runtime (profiles set autoInstallPeers: false), so they are peers with explicit prerelease branches across 0.2.x; the site's npm ci never installs DSH.",
     "peerDependencies": {
-      "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
-      "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
-      "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.3",
+      "@deepseek-ai/dsh-llm": ">=0.2.1-rc.3 <0.2.2 || >=0.2.2-0 <0.2.3 || >=0.2.3-0 <0.3.0-0",
+      "@deepseek-ai/dsh-tools": ">=0.2.1-rc.3 <0.2.2 || >=0.2.2-0 <0.2.3 || >=0.2.3-0 <0.3.0-0",
+      "@deepseek-ai/dsh-typert-protocol": ">=0.2.1-rc.3 <0.2.2 || >=0.2.2-0 <0.2.3 || >=0.2.3-0 <0.3.0-0",
       "@deepseek-ai/schemastery": "^3.18.5"
     }
   },
@@ -54,6 +67,7 @@
     "zod": "^4.6.7"
   },
   "dsh": {
+    "manifestVersion": 1,
     "bundle": {
       "patch": "./cordis.patch.yml"
     },

@@ -21,6 +21,7 @@ import { createFileStore, createTraceStore } from '../../../lib/agent/stores.js'
 import { createAgentService } from '../../../lib/agent/service.js';
 import { gzipSync } from 'node:zlib';
 import { buildPlugin } from '../scripts/build.mjs';
+import { releaseManifest } from '../scripts/pack.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('../../../src/fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
 const report = buildCoachReport(fixture);
@@ -755,6 +756,23 @@ describe('bundle', () => {
       for (const req of clientReqs) {
         expect(allowedClientReqs.has(req), `unexpected client require: ${req}`).toBe(true);
       }
+
+      // Release manifest strips `private` / `devDependencies` / `scripts` for public npm & market indexing.
+      const rawPkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+      const pubPkg = releaseManifest(rawPkg);
+      expect(pubPkg.private).toBeUndefined();
+      expect(pubPkg.devDependencies).toBeUndefined();
+      expect(pubPkg.scripts).toBeUndefined();
+      expect(pubPkg.publishConfig).toEqual({ access: 'public' });
+      expect(pubPkg.icon).toBe('./icon.svg');
+      expect(pubPkg.dsh?.manifestVersion).toBe(1);
+      expect(pubPkg.dsh?.bundle).toEqual({ patch: './cordis.patch.yml' });
+      expect(pubPkg.engines?.dsh).toBe('>=0.2.1-rc.3 <0.3.0-0');
+      expect(pubPkg.repository).toEqual({
+        type: 'git',
+        url: 'git+https://github.com/qianhaoq/dota2.ai.git',
+        directory: 'packages/dsh',
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
