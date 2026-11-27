@@ -802,8 +802,7 @@ describe('AgentMatchPage', () => {
       damage_in_my_deaths: { share_from_enemy_attacks: 0.44, share_from_enemy_abilities_and_items: 0.48, by_enemy: [{ enemy: 'phantom_assassin', kills_of_me: 7, share_from_their_attacks: 0.44, share_from_their_abilities_and_items: 0.16 }] },
       my_big_items_in_order: [{ ref: 'item:beastmaster:ultimate_scepter', item: 'ultimate_scepter', name: '阿哈利姆神杖', first_held: '16:48', cost: 4200, built_for: [] }, { ref: 'item:beastmaster:pipe', item: 'pipe', name: '洞察烟斗', first_held: '29:08', cost: 3725, built_for: ['answer_to_spell_damage', 'magic_resistance'] }],
       gold_in_big_items_by_purpose: {},
-      items_that_answer_attack_damage: [{ item: 'ghost', name: '幽魂权杖', player_first_held: null }, { item: 'assault', name: '强袭胸甲', player_first_held: '38:58' }],
-      items_that_answer_spell_damage: [],
+      answers_to_top_killers: [{ killer: 'phantom_assassin', kills_of_me: 7, their_abilities: [], pro_items_against_this_killer: [{ item: 'ghost', name: '幽魂权杖', share_of_pro_games_against_this_hero: 0.31, share_usually: 0.12, pro_games: 60, player_first_held: null }, { item: 'assault', name: '强袭胸甲', share_of_pro_games_against_this_hero: 0.2, share_usually: 0.1, pro_games: 60, player_first_held: '38:58' }] }, { killer: 'axe', kills_of_me: 1, their_abilities: [], pro_items_against_this_killer: null }],
       most_built_by_pros_on_this_hero: { pro_games: 1116, window: 'finished between 10:00 and 24:59', items: [{ item: 'blink', name: '闪烁匕首', share_of_pro_games_with_it_by_24_59: 0.71, player_first_held: null, built_for: ['initiation_or_gap_closer'] }] },
       gap_closers: { mine: null, enemies: [{ enemy: 'axe', item: 'blink', name: '闪烁匕首', first_held: '20:18' }] },
     } };
@@ -815,7 +814,9 @@ describe('AgentMatchPage', () => {
     // An item the data does not classify says so; it is not given a purpose.
     expect(screen.getByRole('row', { name: '16:48 阿哈利姆神杖 4200 未分类' })).toBeTruthy();
     expect(screen.getByText('阵亡前受到的伤害').parentElement!.textContent).toBe('阵亡前受到的伤害普攻 44%技能与物品 48%');
-    expect(screen.getByText('应对普攻伤害的装备').parentElement!.textContent).toBe('应对普攻伤害的装备幽魂权杖 从未持有强袭胸甲 38:58');
+    // What pros on this hero build more against each top killer, with the usual share; a killer with no such item shows nothing.
+    expect(screen.getByText('职业选手用这个英雄对上时多出 幻影刺客').parentElement!.textContent).toBe('职业选手用这个英雄对上时多出 幻影刺客幽魂权杖 31% (平时 12%) 从未持有强袭胸甲 20% (平时 10%) 38:58');
+    expect(screen.queryByText('职业选手用这个英雄对上时多出 斧王')).toBeNull();
     expect(screen.getByText('第一件位移装').parentElement!.textContent).toBe('第一件位移装斧王 · 闪烁匕首 20:18');
     expect(stepLabel({ tool: 'build_check', args: { hero: 'beastmaster' } }, 'zh')).toBe('核对出装和致死伤害');
   });
@@ -841,7 +842,7 @@ describe('AgentMatchPage', () => {
         ref: 'build:beastmaster', hero: 'beastmaster', data_patch: '7.42', deaths_total: 11, killed_by: {},
         damage_in_my_deaths: { share_from_enemy_attacks: 0.48, share_from_enemy_abilities_and_items: 0.49, by_enemy: [] },
         my_big_items_in_order: [], gold_in_big_items_by_purpose: {},
-        items_that_answer_attack_damage: [], items_that_answer_spell_damage: [],
+        answers_to_top_killers: [],
         most_built_in_this_bracket: {
           bracket: 'la', bracket_name: '传奇–万古', role: 'support', role_name: '辅助（4–5 号位）',
           public_games: 200, patch: '7.42', window: 'finished between 10:00 and 24:59', source: 'STRATZ',

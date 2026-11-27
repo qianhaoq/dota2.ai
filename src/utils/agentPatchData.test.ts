@@ -140,10 +140,10 @@ describe('the review tools tell a 7.41 game its own numbers', () => {
   it('build_check: prices and what an item does are 7.41f\'s, and an item 7.41 did not have is not offered', () => {
     const r: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match: as741 });
     expect(r.data_patch).toBe('7.41f');
-    const halberd = r.items_that_answer_attack_damage.find((x: any) => x.item === 'heavens_halberd');
-    expect(halberd).toMatchObject({ cost: 3300, gives: { armor: 9, evasion_percent: 25 } });
-    expect(r.items_that_answer_attack_damage.some((x: any) => x.item === 'skypiercer')).toBe(false);
-    expect([...r.items_that_answer_attack_damage, ...r.items_that_answer_spell_damage].some((x: any) => x.item === 'caduceus')).toBe(false);
+    // The items pros build against the killers: 7.41f's prices, and none that 7.41f did not have.
+    const vs741 = r.answers_to_top_killers.flatMap((k: any) => k.pro_items_against_this_killer ?? []);
+    expect(vs741.length).toBeGreaterThan(0);
+    for (const i of vs741) { expect(patchData('7.41f').has(i.item)).toBe(true); expect(i.cost).toBe(patchData('7.41f').items[i.item].cost); }
     for (const i of r.most_built_by_pros_on_this_hero.items) expect(patchData('7.41f').has(i.item)).toBe(true);
     // What pros built is from 7.41f games, when they built Helm of the Overlord first — not 7.42's Aghanim's Scepter.
     expect(r.most_built_by_pros_on_this_hero).toMatchObject({ played_on_releases: ['7.41f'] });
@@ -154,7 +154,7 @@ describe('the review tools tell a 7.41 game its own numbers', () => {
     expect(r.gaps.map((g: any) => g.topic)).not.toContain('item_and_ability_data_of_this_game_patch');
     const now: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match: scoreboard });
     expect(now.data_patch).toBe('7.42');
-    expect(now.items_that_answer_attack_damage.find((x: any) => x.item === 'heavens_halberd')).toMatchObject({ cost: items742.heavens_halberd.cost });
+    for (const i of now.answers_to_top_killers.flatMap((k: any) => k.pro_items_against_this_killer ?? [])) expect(i.cost).toBe(patchData(now.data_patch).items[i.item].cost);
     expect(now.most_built_by_pros_on_this_hero.played_on_releases).toEqual(['7.42']);
     const unknown: any = buildCheck(unplaced, { hero: 'beastmaster' }, { lang: 'zh' });
     expect(unknown.gaps).toContainEqual({ topic: 'item_and_ability_data_of_this_game_patch', reason: 'patch_of_this_game_unknown; 7.42a data used' });
@@ -179,7 +179,7 @@ describe('the review tools tell a 7.41 game its own numbers', () => {
     if (old.built_more_against_these_enemies.length) expect(old.gaps.map((g: any) => g.topic)).toContain('pro_counter_items');
     const card: any = resolveRef(trace, 'build:beastmaster', { hero: 'beastmaster', lang: 'zh', match: as741 });
     expect(card.record.data_patch).toBe('7.41f');
-    expect(card.record.items_that_answer_attack_damage.find((x: any) => x.item === 'heavens_halberd').cost).toBe(3300);
+    expect(card.record.answers_to_top_killers).toEqual((buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match: as741 }) as any).answers_to_top_killers);
     expect(deepReviewSystem('zh')).toContain('data_patch');
   });
 });
