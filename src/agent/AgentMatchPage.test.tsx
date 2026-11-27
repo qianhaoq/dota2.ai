@@ -135,6 +135,8 @@ describe('AgentMatchPage', () => {
     page('/r/8000000063?hero=beastmaster&lang=en');
     fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
     expect(await screen.findByText('The coach is not available right now.')).toBeTruthy();
+    // This site's model cannot write it now: the reader's own can.
+    expect(document.querySelector('.om-callout')?.textContent).toContain('DeepSeek Harness');
     await waitFor(async () => expect((await events()).map((e: any) => e.event)).toContain('review_failed'));
     expect((await events()).filter((e: any) => e.event === 'review_failed').map((e: any) => e.props)).toEqual([{ matchId: '8000000063', hero: 'beastmaster', lang: 'en', stage: 'review', reason: 'model_out_of_credit', final: false }]);
   });
@@ -1641,6 +1643,28 @@ describe('AgentMatchPage', () => {
     fireEvent.click(button);
     expect((await screen.findByRole('alert')).textContent).toBe('The coach is at capacity. Try again later.');
     expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('the day\'s reviews used up: said so, never counted down, and the same review on the reader\'s own model is offered', async () => {
+    mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 503, code: 'daily_cap', retryAfterSec: 40, alternatives: [] }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    expect((await screen.findByRole('alert')).textContent).toBe("Today's reviews on dota2.ai's own model are used up; they come back tomorrow.");
+    const note = document.querySelector('.om-callout') as HTMLElement;
+    expect(note.textContent).toContain("Today's free reviews on dota2.ai are used up.");
+    expect(note.textContent).toContain('Review my Dota 2 match 9100904020');
+    expect(within(note).getByRole('link', { name: /Set up DSH/ }).getAttribute('href')).toBe('/#ways-dsh');
+    // A short retryAfter is not counted down for a full day: the button stays usable.
+    expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
+    await waitFor(async () => expect((await events()).find((e) => e.event === 'review_refused')?.props).toEqual({ matchId: '9100904020', reason: 'daily_cap', waits: false }));
+  });
+
+  it('a busy refusal also offers the reader\'s own model', async () => {
+    mockFetch({ '/review?': { status: 'none' }, '/review': { __status: 503, code: 'busy', retryAfterSec: 3600 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await screen.findByRole('alert');
+    expect(document.querySelector('.om-callout')?.textContent).toContain("Don't want to wait?");
   });
 
   it('under the verdict: which patch the numbers are from and how that is known, or a warning when it is not known', async () => {

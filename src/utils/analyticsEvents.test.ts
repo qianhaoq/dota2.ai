@@ -19,6 +19,7 @@ describe('validateAnalyticsEvent', () => {
       ['review_ready', { matchId: '9100904020', lang: 'en', hero: 'beastmaster', own: true }, { matchId: '9100904020', lang: 'en', hero: 'beastmaster' }],
       ['review_requested', { matchId: '9100904020', lang: 'en', hero: 'beastmaster', step: 'parse', plan: true, ip: '1.2.3.4' }, { matchId: '9100904020', lang: 'en', hero: 'beastmaster', step: 'parse', plan: true }],
       ['review_refused', { matchId: '9100904020', reason: 'rate', waits: true }, { matchId: '9100904020', reason: 'rate', waits: true }],
+      ['own_model_cta', { where: 'refused', to: 'dsh', daily: true, matchId: '9100904020' }, { where: 'refused', to: 'dsh', daily: true }],
       ['arrived', { src: 'nga', page: 'match', url: '/r/1?src=nga' }, { src: 'nga', page: 'match' }],
       ['goal_set', { matchId: '9100904020', kind: 'hold_item', account: true, rules: 2, label: 'Blink' }, { matchId: '9100904020', kind: 'hold_item', account: true, rules: 2 }],
       ['goal_checked', { result: 'met', evidence: 'died twice' }, { result: 'met' }],

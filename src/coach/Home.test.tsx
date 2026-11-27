@@ -7,8 +7,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { buildSurface } from '../../lib/coach/cards.js';
-import { AGENT_CLIENTS, CURSOR_INSTALL, DSH_INSTALL, DSH_PLUGIN_VERSION, MCP_TOOLS, MCP_URL } from './accessSnippets';
+import { AGENT_CLIENTS, CURSOR_INSTALL, DSH_HOST_VERSION, DSH_INSTALL, DSH_PLUGIN_VERSION, DSH_SETUP, DSH_TGZ_URL, MCP_TOOLS, MCP_URL } from './accessSnippets';
 import dshPackage from '../../packages/dsh/package.json';
+import { configureDota2AiRuntime } from '../runtime/dota2aiRuntime';
 
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en', setLang: () => {} }) }));
 const report = buildCoachReport(JSON.parse(readFileSync(path.join(process.cwd(), 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))) as any;
@@ -63,26 +64,36 @@ describe('home: what happens next', () => {
 });
 
 describe('home: where to use it', () => {
-  it('Web / DSH plugin / Agent (MCP) / CLI / HTTP, each with a command that works as written', async () => {
+  it('DSH plugin / Web / Agent (MCP) / CLI / HTTP, each with a command that works as written', async () => {
     cards.mockImplementation(async (_id: string, seat: number) => buildSurface(report, seat));
     const { container } = home();
     const ways = container.querySelector('.hm-ways') as HTMLElement;
-    expect(within(ways).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Web', 'DSH plugin', 'Agent (MCP)', 'CLI', 'HTTP']);
-    // MCP is the default tab: the hosted endpoint, and which tool is the full review.
-    expect(ways.querySelector('pre')?.textContent).toBe(`claude mcp add --transport http dota2ai ${MCP_URL}`);
-    expect(ways.textContent).toContain('replay_review is the full review');
-    expect(MCP_TOOLS).toHaveLength(9);
-    // DSH: the install line of the released archive, and the release it comes from.
-    fireEvent.click(within(ways).getByRole('tab', { name: 'DSH plugin' }));
-    expect(ways.querySelector('pre')?.textContent).toBe(DSH_INSTALL);
-    // The page names the plugin release that is packed from packages/dsh: a version raise there is one here too.
+    expect(within(ways).getAllByRole('tab').map((t) => t.textContent)).toEqual(['DSH plugin', 'Web', 'Agent (MCP)', 'CLI', 'HTTP']);
+    // DSH is the default tab (it runs on the reader's own model): from nothing to the plugin's page, and the release.
+    expect(within(ways).getByRole('tab', { name: 'DSH plugin' }).getAttribute('aria-selected')).toBe('true');
+    expect(ways.querySelector('pre')?.textContent).toBe(DSH_SETUP.join('\n'));
+    // The page names the plugin release that is packed from packages/dsh, and the DSH it is verified on:
+    // a version raise there is one here too.
     expect(DSH_PLUGIN_VERSION).toBe(dshPackage.version);
-    expect(DSH_INSTALL).toBe(`dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`);
+    expect(DSH_HOST_VERSION).toBe(dshPackage.engines.dsh);
+    expect(DSH_SETUP).toEqual([
+      `npm install -g pnpm @deepseek-ai/dsh@${dshPackage.engines.dsh}`,
+      `curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v${DSH_PLUGIN_VERSION}/qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`,
+      `dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`,
+      'dsh web',
+    ]);
+    expect(DSH_TGZ_URL.endsWith(DSH_INSTALL.split('./')[1])).toBe(true);
     expect(within(ways).getByRole('link', { name: `dsh-v${DSH_PLUGIN_VERSION}` }).getAttribute('href')).toBe(`https://github.com/qianhaoq/dota2.ai/releases/tag/dsh-v${DSH_PLUGIN_VERSION}`);
     expect(ways.textContent).toContain('DeepSeek Harness');
-    // The first screen says where else it works, and links here.
-    expect(container.querySelector('.hm-also a')?.getAttribute('href')).toBe('#ways');
+    expect(ways.textContent).toContain('your own DeepSeek key');
+    // MCP: the hosted endpoint, which tool is the full review, and that it is written within this site's daily limit.
+    fireEvent.click(within(ways).getByRole('tab', { name: 'Agent (MCP)' }));
+    expect(ways.querySelector('pre')?.textContent).toBe(`claude mcp add --transport http dota2ai ${MCP_URL}`);
+    expect(ways.textContent).toContain('replay_review is the full review');
+    expect(ways.textContent).toContain('daily limit');
+    expect(MCP_TOOLS).toHaveLength(9);
     expect(ways.id).toBe('ways');
+    expect(ways.querySelector('#ways-dsh')).not.toBeNull();
     fireEvent.click(within(ways).getByRole('tab', { name: 'CLI' }));
     expect(ways.querySelector('pre')?.textContent).toContain('node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section why');
     expect(ways.textContent).toContain('Not published on npm yet');
@@ -97,6 +108,7 @@ describe('home: where to use it', () => {
     Object.assign(navigator, { clipboard: { writeText } });
     const { container } = home();
     const ways = container.querySelector('.hm-ways') as HTMLElement;
+    fireEvent.click(within(ways).getByRole('tab', { name: 'Agent (MCP)' }));
     const picker = within(ways).getByRole('group', { name: 'Your agent' });
     expect(within(picker).getAllByRole('button').map((b) => b.textContent)).toEqual(['Claude Code', 'Codex', 'Gemini CLI', 'VS Code', 'Cursor', 'Any other']);
     expect(within(picker).getByRole('button', { name: 'Claude Code' }).getAttribute('aria-pressed')).toBe('true');
@@ -138,10 +150,40 @@ describe('home: where to use it', () => {
     const ways = container.querySelector('.hm-ways') as HTMLElement;
     const [copyCmd, copyPrompt] = within(ways).getAllByRole('button', { name: /^Copy/ });
     fireEvent.click(copyCmd);
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`claude mcp add --transport http dota2ai ${MCP_URL}`));
+    // The default tab's steps, all of them.
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(DSH_SETUP.join('\n')));
     expect(await within(ways).findByText('Copied')).toBeTruthy();
     fireEvent.click(copyPrompt);
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('https://dota2.ai/llms.txt')));
+  });
+});
+
+describe('home: the same coach on your own model', () => {
+  it('the first screen points at DSH on your own key, and at your own agent', () => {
+    const { container } = home();
+    const note = container.querySelector('.hm-core .om-callout') as HTMLElement;
+    expect(note.textContent).toContain('Run it on your own DeepSeek key');
+    expect(note.textContent).toContain('no daily limit');
+    expect(within(note).getByRole('link', { name: /Set up DSH in 3 steps/ }).getAttribute('href')).toBe('#ways-dsh');
+    expect(within(note).getByRole('link', { name: /your own agent/ }).getAttribute('href')).toBe('#ways');
+  });
+
+  it('#ways-dsh opens the DSH tab from another one', async () => {
+    const { container } = home();
+    const ways = container.querySelector('.hm-ways') as HTMLElement;
+    fireEvent.click(within(ways).getByRole('tab', { name: 'CLI' }));
+    window.location.hash = '#ways-dsh';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await waitFor(() => expect(within(ways).getByRole('tab', { name: 'DSH plugin' }).getAttribute('aria-selected')).toBe('true'));
+    window.location.hash = '';
+  });
+
+  it('inside DSH there is nothing to point at', () => {
+    const restore = configureDota2AiRuntime({ surface: 'dsh' });
+    try {
+      const { container } = home();
+      expect(container.querySelector('.om-callout')).toBeNull();
+    } finally { restore(); }
   });
 });
 

@@ -12,6 +12,7 @@ import { CURRENT_PATCH, SHIPPED_NEWS, itemIcon, readPatchNews, type PatchNews as
 import { PatchAdvisor } from '../patch/PatchAdvisor';
 import { activeGoal, checkGoal, goalChecks, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
 import { useDota2AiRuntime } from '../runtime/dota2aiRuntime';
+import { OwnModelCallout } from './OwnModel';
 import './coach.css';
 import './cards.css';
 import './review.css';
@@ -703,7 +704,6 @@ const HOME = {
   modeLabel: { en: 'What are you pasting?', zh: '你要输入什么？', ru: 'Что вы вставляете?' },
   modeMatch: { en: 'Match', zh: '比赛', ru: 'Матч' },
   modeAccount: { en: 'Friend code', zh: '好友码', ru: 'Код друга' },
-  alsoIn: { en: 'Also in DSH, Claude Code, Codex and other agents', zh: '也能在 DSH、Claude Code、Codex 等 Agent 里用', ru: 'Также в DSH, Claude Code, Codex и других агентах' },
 };
 
 export const CoachHome: React.FC = () => {
@@ -826,7 +826,7 @@ export const CoachHome: React.FC = () => {
                 </Link>
               </div>
               {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : error === 'account' ? UI.accountInvalid : UI.invalid)}</p>}
-              {!inDsh && <p className="hm-also"><a href="#ways">{L(HOME.alsoIn)} →</a></p>}
+              <OwnModelCallout where="home" />
             </div>
           </section>
 
