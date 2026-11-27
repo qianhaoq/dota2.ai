@@ -288,6 +288,12 @@ describe('fight_report me_in_fight factual player contribution', () => {
     expect(undyF6.enemy.took_part).not.toContain('phantom_assassin');
     expect(undyF6.me_in_fight.hero_damage_dealt).toBe(256);
     expect(undyF6.me_in_fight.hero_damage_taken).toBe(12);
+
+    // Initiating item use shortly before first damage exchange: in fight:7 Axe blinks at 1316.3 before first damage at 1317.
+    const axe: any = fightReport(trace, { hero: 'axe' });
+    const axeF7 = axe.fights.find((f: any) => f.fight === 'fight:7');
+    expect(axeF7.me).toBe('took_part');
+    expect(axeF7.me_in_fight.key_items_used).toContain('blink');
   });
 
   it('tracks key_items_used deduplicated in order, auto-triggered ultimates, passive ultimates, and null on blank sources', () => {

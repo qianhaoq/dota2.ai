@@ -554,7 +554,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
                   <span className="ag-chip">{t(T.enemyNoMana)} · {e.no_mana_abilities.map((a: string) => N(a)).join(', ')}</span>
                 )}
                 {Array.isArray(e.key_items) && e.key_items.length > 0 && (
-                  <span className="ag-chip">{t(T.enemyItems)} · {e.key_items.map((it: any) => `${N(it.item)}${it.ready ? '' : ` (${it.cooldown_left}${t(T.sec)})`}`).join(', ')}</span>
+                  <span className="ag-chip">{t(T.enemyItems)} · {e.key_items.map((it: any) => `${N(it.item)}${it.ready === false && it.cooldown_left != null ? ` (${it.cooldown_left}${t(T.sec)})` : ''}`).join(', ')}</span>
                 )}
               </p>
             ))}

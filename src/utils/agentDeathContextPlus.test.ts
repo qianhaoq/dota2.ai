@@ -613,6 +613,36 @@ describe('death_context PR 2 bilateral enemy kill-threat context & judgment-free
     const rBmBlank: any = runTraceTool(blankBmAlive, 'death_context', { hero: 'beastmaster', index: 1 });
     expect(rBmBlank.deaths[0].enemy_context_at_window_start).toBeNull();
     expect(rBmBlank.deaths[0].attackers_arrived_after_window_start).toBeNull();
+
+    // 7. Missing cooldown array on an enemy's learned castable ability (Venomancer Plague Ward at Beastmaster death 2
+    // in fixture 9100904020) MUST NOT report it in ready_abilities — fail closed with null readiness fields.
+    const venoIdx = realTrace.heroes.findIndex((h: any) => h.key === 'venomancer');
+    const noVenoCd = {
+      ...realTrace,
+      abilities: realTrace.abilities.map((ab: any, idx: number) => (idx === venoIdx
+        ? { ...ab, venomancer_plague_ward: { ...ab.venomancer_plague_ward, cd: undefined } }
+        : ab)),
+    };
+    const rNoVenoCd: any = runTraceTool(noVenoCd, 'death_context', { hero: 'beastmaster', index: 2 });
+    const venoCtx = rNoVenoCd.deaths[0].enemy_context_at_window_start.find((e: any) => e.hero === 'venomancer');
+    expect(venoCtx).toMatchObject({
+      hero: 'venomancer',
+      ready_abilities: null,
+      no_mana_abilities: null,
+      on_cooldown_abilities: null,
+    });
+    // Sibling enemy with complete cooldown data (PA) still resolves normally.
+    const paCtx = rNoVenoCd.deaths[0].enemy_context_at_window_start.find((e: any) => e.hero === 'phantom_assassin');
+    expect(Array.isArray(paCtx.ready_abilities)).toBe(true);
+
+    // Held key item with missing cd array -> ready: null (never falsely ready: true).
+    const noItemCd: any = makeTrace({
+      pos: { enchantress: [0, 0], lion: [500, 0], tidehunter: [5000, 5000], lina: [5000, 5000], sven: [0, 0] },
+      items: [{}, {}, { item_blink: { held: [[0, 200]] } }, {}, {}],
+      deaths: [[100, 0, 2, 1]],
+    });
+    const rNoItemCd: any = runTraceTool(noItemCd, 'death_context', { hero: 'enchantress' });
+    expect(rNoItemCd.deaths[0].enemy_context_at_window_start[0].key_items).toEqual([{ item: 'blink', ready: null }]);
   });
 
   it('de-biases death_context, ability_audit, match_overview descriptions and chatSystem rules', () => {

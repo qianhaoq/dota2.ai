@@ -253,4 +253,42 @@ describe('skill_build unknown-is-not-false blank-source checks', () => {
     expect(rOver.maxed_order).toEqual([]);
     expect(rOver.gaps).toContainEqual({ topic: 'maxed_order', reason: 'ability_max_level_unknown' });
   });
+
+  it('preserves uncertainty when an individual hero ability is missing level samples (blanking Primal Roar levels on 9100904020)', () => {
+    const bmIdx = trace.heroes.findIndex((h: any) => h.key === 'beastmaster');
+    const missingUltLevels = {
+      ...trace,
+      abilities: trace.abilities.map((ab: any, i: number) => (i === bmIdx
+        ? { ...ab, beastmaster_primal_roar: { ...ab.beastmaster_primal_roar, levels: undefined } }
+        : ab)),
+    };
+    const r: any = skillBuild(missingUltLevels, { hero: 'beastmaster' });
+    expect(r.at_level_6).toBeNull();
+    expect(r.at_level_10).toBeNull();
+    expect(r.maxed_order).toBeNull();
+    expect(r.ultimate_levels).toBeNull();
+    expect(r.gaps).toContainEqual({
+      topic: 'skill_build',
+      reason: 'incomplete_ability_level_samples',
+      abilities: ['beastmaster_primal_roar'],
+    });
+
+    // Blanking a non-ultimate ability's levels still nulls distributions/maxed_order, while keeping ultimate_levels intact.
+    const missingAxesLevels = {
+      ...trace,
+      abilities: trace.abilities.map((ab: any, i: number) => (i === bmIdx
+        ? { ...ab, beastmaster_wild_axes: { ...ab.beastmaster_wild_axes, levels: null } }
+        : ab)),
+    };
+    const rAxes: any = skillBuild(missingAxesLevels, { hero: 'beastmaster' });
+    expect(rAxes.at_level_6).toBeNull();
+    expect(rAxes.at_level_10).toBeNull();
+    expect(rAxes.maxed_order).toBeNull();
+    expect(rAxes.ultimate_levels).toHaveLength(3);
+    expect(rAxes.gaps).toContainEqual({
+      topic: 'skill_build',
+      reason: 'incomplete_ability_level_samples',
+      abilities: ['beastmaster_wild_axes'],
+    });
+  });
 });

@@ -719,10 +719,13 @@ function enemyContextAtWindowStart(trace, h, from, snap0) {
       readyAbilities = [];
       noManaAbilities = [];
       onCooldownAbilities = [];
+      let abilityDataIncomplete = false;
       for (const [k, e] of Object.entries(abMap)) {
         if (!canEnemy.has(k) || GENERIC_MAP_ABILITIES.has(k) || k.startsWith('plus_') || k.startsWith('seasonal_')) continue;
+        // Missing level or cooldown arrays leave readiness unknown — never treat missing cd as 0 (ready).
+        if (!Array.isArray(e?.levels)) { abilityDataIncomplete = true; break; }
         if (abilityLevel(e, from) <= 0) continue;
-        if (AUTO_TRIGGERED_ACTIVE_ABILITIES.has(k) && !Array.isArray(e?.cd)) continue;
+        if (!Array.isArray(e?.cd)) { abilityDataIncomplete = true; break; }
         const cdLeft = cooldownLeft(e, from);
         if (cdLeft > 0) {
           onCooldownAbilities.push({ ability: k, cooldown_left: cdLeft });
@@ -739,17 +742,31 @@ function enemyContextAtWindowStart(trace, h, from, snap0) {
           }
         }
       }
+      if (abilityDataIncomplete) {
+        readyAbilities = null;
+        noManaAbilities = null;
+        onCooldownAbilities = null;
+        unknownManaAbilities.length = 0;
+      }
     }
     const inv = ei >= 0 ? trace.items?.[ei] : null;
     let keyItems = null;
     if (inv && typeof inv === 'object') {
       keyItems = [];
+      let itemHeldIncomplete = false;
       for (const [k, e] of Object.entries(inv)) {
         const short = k.replace(/^item_/, '');
-        if (!KEY_COMBAT_ITEMS.has(short) || !heldAt(e, from)) continue;
+        if (!KEY_COMBAT_ITEMS.has(short)) continue;
+        if (!Array.isArray(e?.held)) { itemHeldIncomplete = true; break; }
+        if (!heldAt(e, from)) continue;
+        if (!Array.isArray(e?.cd)) {
+          keyItems.push({ item: short, ready: null });
+          continue;
+        }
         const cdLeft = cooldownLeft(e, from);
         keyItems.push({ item: short, ready: cdLeft === 0, ...(cdLeft > 0 ? { cooldown_left: cdLeft } : {}) });
       }
+      if (itemHeldIncomplete) keyItems = null;
     }
     return {
       hero: en.hero,
