@@ -11,6 +11,7 @@ import { QuickJump, detectSmartInput } from './QuickJump';
 import { CURRENT_PATCH, SHIPPED_NEWS, itemIcon, readPatchNews, type PatchNews as PatchNewsData } from './patch';
 import { PatchAdvisor } from '../patch/PatchAdvisor';
 import { activeGoal, checkGoal, goalChecks, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
+import { useDota2AiRuntime } from '../runtime/dota2aiRuntime';
 import './coach.css';
 import './cards.css';
 import './review.css';
@@ -693,6 +694,8 @@ const HOME = {
 
 export const CoachHome: React.FC = () => {
   const { lang, L } = useLang();
+  const runtime = useDota2AiRuntime();
+  const inDsh = runtime.surface === 'dsh';
   const navigate = useNavigate();
   const [value, setValue] = useState('');
   const [error, setError] = useState<'invalid' | 'vanity' | 'account' | null>(null);
@@ -809,7 +812,7 @@ export const CoachHome: React.FC = () => {
                 </Link>
               </div>
               {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : error === 'account' ? UI.accountInvalid : UI.invalid)}</p>}
-              <p className="hm-also"><a href="#ways">{L(HOME.alsoIn)} →</a></p>
+              {!inDsh && <p className="hm-also"><a href="#ways">{L(HOME.alsoIn)} →</a></p>}
             </div>
           </section>
 
@@ -824,8 +827,8 @@ export const CoachHome: React.FC = () => {
         <PatchAdvisor lang={lang} version={CURRENT_PATCH.version} notesUrl={CURRENT_PATCH.notesUrl} />
       </div>
 
-      <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />
-      <HomeFeedback />
+      {!inDsh && <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />}
+      {!inDsh && <HomeFeedback />}
     </Shell>
   );
 };

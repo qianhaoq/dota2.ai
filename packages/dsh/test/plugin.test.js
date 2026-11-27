@@ -1,20 +1,30 @@
-import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { describe, expect, it, vi } from 'vitest';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '@dota2ai/mcp';
 import { createCoachHandlers } from 'dota2ai/handlers';
 import { TOOL_DOCS } from 'dota2ai/tools';
 import { buildCoachReport } from '../../../lib/coach/analyze.js';
+import { runAgent } from '../../../lib/agent/loop.js';
 import { PARAMETERS, TOOL_NAMES, toolOptions } from '../src/tools.js';
 import { createReplayClient } from '../src/replay.js';
 import { SKILL, headersFor, skillBody, skillRegistration } from '../src/skill.js';
+import { createDshComplete, createDshModelRegistry, decodeModelKey, encodeModelKey } from '../src/llm.js';
+import { createDshTracePipeline, normalizeTraceGzip } from '../src/traceSource.js';
+import { createDshService, resolveDataHome } from '../src/service.js';
+import { createFileStore, createTraceStore } from '../../../lib/agent/stores.js';
 import { buildPlugin } from '../scripts/build.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('../../../src/fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
 const report = buildCoachReport(fixture);
+const traceFixturePath = new URL('../../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url);
+const traceGzBytes = readFileSync(traceFixturePath);
+const scoreboard9100904020 = JSON.parse(readFileSync(new URL('../../../src/fixtures/agent/match9100904020.scoreboard.json', import.meta.url), 'utf8'));
+
 /** The coach API shape (packages/cli/src/coachApi.js) over a fixture. */
 const fixtureCoach = {
   report: async (id) => {
@@ -34,6 +44,52 @@ async function mcpClient(options) {
   const client = new Client({ name: 't', version: '0' });
   await client.connect(b);
   return client;
+}
+
+/** Stream helper that turns scripted DSH blocks into `@deepseek-ai/dsh-llm` stream chunks. */
+function scriptedDshLlm(turnHandler, { providers = [{ id: 'deepseek', name: 'DeepSeek' }], modelsByProvider = { deepseek: [{ id: 'deepseek-chat', name: 'DeepSeek V3' }, { id: 'deepseek-reasoner', name: 'DeepSeek R1' }] }, modelInfo = null } = {}) {
+  const calls = [];
+  return {
+    calls,
+    listProviders: () => providers,
+    listModels: async (providerId) => modelsByProvider[providerId] ?? [],
+    resolveModelInfo: async (provider, model) => (typeof modelInfo === 'function' ? modelInfo(provider, model) : modelInfo),
+    prepareCall: async (config) => ({
+      config,
+      async *stream(opts) {
+        calls.push(opts);
+        const turn = await turnHandler(opts, calls.length - 1);
+        let idx = 0;
+        if (turn.reasoning) {
+          yield { type: 'reasoning-delta', index: idx, text: turn.reasoning };
+          idx += 1;
+        }
+        if (turn.text) {
+          yield { type: 'text-delta', index: idx, text: turn.text };
+          idx += 1;
+        }
+        for (const tc of turn.toolCalls ?? []) {
+          yield {
+            type: 'block-end',
+            index: idx,
+            block: {
+              type: 'tool-call',
+              id: tc.id ?? `call_${idx}`,
+              name: tc.name,
+              arguments: typeof tc.args === 'string' ? tc.args : JSON.stringify(tc.args ?? {}),
+            },
+          };
+          idx += 1;
+        }
+        if (turn.usage) yield { type: 'usage', usage: turn.usage };
+        yield {
+          type: 'finish',
+          reason: turn.finish ?? { kind: (turn.toolCalls?.length ? 'tool-use' : 'stop') },
+          ...(turn.replayState !== undefined ? { replayState: turn.replayState } : {}),
+        };
+      },
+    }),
+  };
 }
 
 describe('DSH tool definitions', () => {
@@ -126,6 +182,321 @@ describe('replay_review through the hosted MCP tool', () => {
   });
 });
 
+describe('DSH host LLM bridge (llm.js)', () => {
+  const STORE_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/;
+
+  it('encodes and decodes arbitrary provider/model pairs into valid store keys', () => {
+    const cases = [
+      ['deepseek', 'deepseek-reasoner'],
+      ['openrouter', 'anthropic/claude-sonnet-4.5:beta'],
+      ['my_provider.v2', 'qwen3_235b-a22b'],
+    ];
+    for (const [provider, model] of cases) {
+      const key = encodeModelKey(provider, model);
+      expect(key.startsWith('dsh.')).toBe(true);
+      expect(STORE_KEY_RE.test(key)).toBe(true);
+      expect(decodeModelKey(key)).toEqual({ provider, model });
+    }
+    expect(decodeModelKey('deepseek-flash')).toBeNull();
+    expect(decodeModelKey('dsh.onlyone')).toBeNull();
+  });
+
+  it('bridges multi-round tool calls, reasoning blocks, replayState, and errors through ctx.llm', async () => {
+    const llm = scriptedDshLlm((_opts, turnIdx) => {
+      if (turnIdx === 0) {
+        return {
+          reasoning: 'Let me inspect roar first',
+          toolCalls: [{ id: 'tc_1', name: 'lookup', args: { q: 7 } }],
+          replayState: { signature: 'sig-round-1' },
+          usage: { inputTokens: 100, cacheReadTokens: 25, outputTokens: 12 },
+        };
+      }
+      return {
+        text: 'Answer is 14.',
+        usage: { inputTokens: 140, outputTokens: 8 },
+      };
+    }, {
+      modelInfo: () => ({ defaultMaxTokens: 8192, reasoning: { efforts: [{ id: 'low' }, { id: 'medium' }] } }),
+    });
+
+    const complete = createDshComplete({
+      ctx: { llm },
+      route: { provider: 'anthropic', model: 'claude-sonnet-4-5', reasoningEffort: 'unsupported-max' },
+    });
+
+    const out = await runAgent({
+      complete,
+      system: 'Coach system',
+      messages: [{ role: 'user', content: 'Check 7' }],
+      tools: [{ name: 'lookup', description: 'Lookup', input_schema: { type: 'object', properties: { q: { type: 'number' } } } }],
+      runTool: async (_name, args) => ({ doubled: args.q * 2 }),
+    });
+
+    expect(out).toMatchObject({ status: 'answered', text: 'Answer is 14.', usage: { input: 265, output: 20 } });
+    // Unsupported reasoningEffort was stripped and maxTokens was capped to defaultMaxTokens (8192).
+    expect(llm.calls[0].reasoningEffort).toBeUndefined();
+    expect(llm.calls[0].maxTokens).toBe(8192);
+    // Round 2 replayed both the reasoning block and the opaque replayState on the assistant tool-call message.
+    const round2Assistant = llm.calls[1].messages.find((m) => m.role === 'assistant');
+    expect(round2Assistant.content[0]).toEqual({ type: 'reasoning', text: 'Let me inspect roar first' });
+    expect(round2Assistant.content[1]).toMatchObject({ type: 'tool-call', id: 'tc_1', name: 'lookup' });
+    expect(round2Assistant.source.replayState).toEqual({ signature: 'sig-round-1' });
+
+    // Error mapping: AUTH -> 401, RATE_LIMIT -> 429, aborted -> AbortError, missing llm -> 503.
+    const authLlm = scriptedDshLlm(() => ({ finish: { kind: 'error', failure: { code: 'AUTH', message: 'Invalid key' } } }));
+    await expect(createDshComplete({ ctx: { llm: authLlm }, route: { provider: 'x', model: 'y' } })({ system: 's', messages: [] }))
+      .rejects.toMatchObject({ status: 401 });
+    const rlLlm = scriptedDshLlm(() => ({ finish: { kind: 'error', failure: { code: 'RATE_LIMIT', message: 'Slow down' } } }));
+    await expect(createDshComplete({ ctx: { llm: rlLlm }, route: { provider: 'x', model: 'y' } })({ system: 's', messages: [] }))
+      .rejects.toMatchObject({ status: 429 });
+    const abortLlm = scriptedDshLlm(() => ({ finish: { kind: 'aborted', failure: { message: 'Cancelled' } } }));
+    await expect(createDshComplete({ ctx: { llm: abortLlm }, route: { provider: 'x', model: 'y' } })({ system: 's', messages: [] }))
+      .rejects.toMatchObject({ name: 'AbortError' });
+    await expect(createDshComplete({ ctx: {}, route: { provider: 'x', model: 'y' } })({ system: 's', messages: [] }))
+      .rejects.toMatchObject({ status: 503 });
+  });
+
+  it('tracks agentDefaultModel.currentSelection() live and exposes discovered models with untimed modelMeta', async () => {
+    let selected = { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' };
+    const llm = scriptedDshLlm(() => ({ text: 'ok' }), {
+      providers: [{ id: 'deepseek', name: 'DeepSeek' }, { id: 'openai', name: 'OpenAI' }],
+      modelsByProvider: {
+        deepseek: [{ id: 'deepseek-chat', name: 'DeepSeek V3' }, { id: 'deepseek-reasoner', name: 'DeepSeek R1' }],
+        openai: [{ id: 'gpt-5', name: 'GPT-5' }],
+      },
+    });
+    const reg = createDshModelRegistry({
+      ctx: {
+        llm,
+        agentDefaultModel: { currentSelection: () => selected },
+      },
+    });
+    await reg.refresh();
+    const cat1 = reg.catalog();
+    expect(cat1.defaultModel).toBe(encodeModelKey('deepseek', 'deepseek-reasoner'));
+    expect(Object.keys(cat1.models)).toEqual([
+      encodeModelKey('deepseek', 'deepseek-reasoner'),
+      encodeModelKey('deepseek', 'deepseek-chat'),
+      encodeModelKey('openai', 'gpt-5'),
+    ]);
+    expect(cat1.modelMeta[cat1.defaultModel]).toEqual({ label: 'DeepSeek R1 (DeepSeek)', minutes: null });
+
+    // Switching the model in DSH immediately updates defaultModel without restarting.
+    selected = { provider: 'openai', model: 'gpt-5' };
+    expect(reg.catalog().defaultModel).toBe(encodeModelKey('openai', 'gpt-5'));
+  });
+});
+
+describe('DSH hybrid trace source (traceSource.js)', () => {
+  it('validates both gzipped and proxy-decompressed JSON traces, rejecting wrong match IDs', () => {
+    const fromGz = normalizeTraceGzip(traceGzBytes, '9100904020');
+    expect(fromGz[0]).toBe(0x1f);
+    const plainJson = gunzipSync(traceGzBytes);
+    const recompressed = normalizeTraceGzip(plainJson, '9100904020');
+    expect(JSON.parse(gunzipSync(recompressed).toString('utf8')).match_id).toBe(9100904020);
+    expect(() => normalizeTraceGzip(traceGzBytes, '9999999')).toThrow('invalid_trace');
+    expect(() => normalizeTraceGzip(Buffer.from('{}'), '9100904020')).toThrow('invalid_trace');
+  });
+
+  it('triggers cloud /prepare, polls availability stages, and caches the ~250KB trace locally', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-trace-src-'));
+    try {
+      const traceStore = createTraceStore(createFileStore(dir));
+      const stages = [];
+      let polls = 0;
+      const fetchImpl = vi.fn(async (url, init) => {
+        const u = String(url);
+        if (u.endsWith('/api/agent/9100904020/prepare') && init?.method === 'POST') {
+          return new Response(JSON.stringify({ status: 'running', stage: 'downloading' }), { status: 202 });
+        }
+        if (u.endsWith('/api/agent/9100904020/trace')) {
+          return new Response(traceGzBytes, { status: 200, headers: { 'Content-Type': 'application/gzip' } });
+        }
+        if (u.endsWith('/api/agent/9100904020')) {
+          polls += 1;
+          if (polls === 1) return new Response(JSON.stringify({ trace: false, can_parse: true, parse: { status: 'none' } }), { status: 200 });
+          if (polls === 2) return new Response(JSON.stringify({ trace: false, can_parse: true, parse: { status: 'running', stage: 'extracting' } }), { status: 200 });
+          return new Response(JSON.stringify({ trace: true, can_parse: true, parse: { status: 'none' } }), { status: 200 });
+        }
+        return new Response('not found', { status: 404 });
+      });
+
+      const pipeline = createDshTracePipeline({
+        apiBase: 'https://dota2.ai',
+        fetchImpl,
+        traceStore,
+        pollIntervalMs: 10,
+      });
+      const res = await pipeline.run('9100904020', { onStage: (s) => stages.push(s) });
+      expect(res.ok).toBe(true);
+      expect(stages).toEqual(['locating', 'downloading', 'extracting', 'storing']);
+      expect((await traceStore.get('9100904020')).heroes).toHaveLength(10);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('DSH local service end-to-end (service.js)', () => {
+  const finding = {
+    title: '咆哮',
+    claim: '幻影刺客开了 7 次黑皇杖。',
+    evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }],
+    fix: '留给她。',
+  };
+  const submit = {
+    verdict: '咆哮没有留给幻影刺客。',
+    mainline: [],
+    findings: [finding],
+    next_game: ['留咆哮'],
+    blind_spots: ['视野'],
+  };
+
+  it('runs deep replay review, verification, evidence, moment, chat, patch advisor, and profile sync locally on DSH models', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-service-e2e-'));
+    try {
+      copyFileSync(traceFixturePath, join(dir, 'traces_seed.gz'));
+      const llm = scriptedDshLlm((opts) => {
+        const toolNames = (opts.tools ?? []).map((t) => t.name);
+        const last = opts.messages.at(-1);
+        // Deep review
+        if (toolNames.includes('submit_review')) {
+          if (last.role === 'user') {
+            return {
+              toolCalls: [
+                { id: 'c1', name: 'ability_audit', args: { hero: 'beastmaster', ability: 'primal_roar' } },
+                { id: 'c2', name: 'immunity_windows', args: { hero: 'phantom_assassin' } },
+              ],
+            };
+          }
+          return { toolCalls: [{ id: 'c3', name: 'submit_review', args: submit }] };
+        }
+        // Replay follow-up chat
+        if (toolNames.includes('death_context')) {
+          if (last.role === 'tool') return { text: '36:05 你满血 2915，被 斧王 先手。' };
+          return { toolCalls: [{ id: 'd1', name: 'death_context', args: { hero: 'beastmaster', index: 9 } }] };
+        }
+        // Patch advisor
+        if (toolNames.includes('hero_patch')) {
+          if (last.role === 'tool') return { text: '兽王本版本在 7.42 有改动。' };
+          return { toolCalls: [{ id: 'p1', name: 'hero_patch', args: { hero: 'beastmaster' } }] };
+        }
+        // Coach report follow-up
+        return { text: '对线期少死一次即可。' };
+      });
+
+      const fetchImpl = vi.fn(async (url) => {
+        const u = String(url);
+        if (u.includes('/matches/9100904020')) {
+          return new Response(JSON.stringify(scoreboard9100904020), { status: 200 });
+        }
+        if (u.endsWith('/api/coach/9091400302')) {
+          return new Response(JSON.stringify(report), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'not_found' }), { status: 404 });
+      });
+
+      const svc = createDshService({
+        ctx: {
+          llm,
+          agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat' }) },
+        },
+        config: { homeDir: dir, apiBase: 'https://dota2.ai' },
+        fetchImpl,
+      });
+      // Seed the trace into `$homeDir/traces`
+      await createTraceStore(createFileStore(join(dir, 'traces'))).put('9100904020', traceGzBytes);
+
+      // 1. Availability exposes DSH's configured models and model_meta
+      const availRes = await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020' });
+      expect(availRes.status).toBe(200);
+      expect(availRes.body).toMatchObject({
+        trace: true,
+        model_configured: true,
+        default_model: 'dsh.deepseek.deepseek-chat',
+        models: ['dsh.deepseek.deepseek-chat', 'dsh.deepseek.deepseek-reasoner'],
+        model_meta: {
+          'dsh.deepseek.deepseek-chat': { label: 'DeepSeek V3 (DeepSeek)', minutes: null },
+          'dsh.deepseek.deepseek-reasoner': { label: 'DeepSeek R1 (DeepSeek)', minutes: null },
+        },
+      });
+
+      // 2. Local `replay.review` (chat tool) runs on DSH's host model and passes `verifyReview`
+      const pick = await svc.replay.review({ match_id: 9100904020 });
+      expect(pick.status).toBe('pick_hero');
+      const started = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
+      expect(['reviewing', 'ready']).toContain(started.status);
+      let readyTool;
+      await vi.waitFor(async () => {
+        readyTool = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
+        expect(readyTool.status).toBe('ready');
+      }, { timeout: 5000 });
+      expect(readyTool.verdict).toBe(submit.verdict);
+      expect(readyTool.findings[0].evidence[0]).toEqual({ clock: '27:27', fact: finding.evidence[0].fact });
+
+      // Stored under model-qualified key `.m-dsh.deepseek.deepseek-chat.review.json`
+      const reviewFiles = readdirSync(join(dir, 'reviews')).filter((f) => f.endsWith('.review.json'));
+      expect(reviewFiles).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.m-dsh\.deepseek\.deepseek-chat\.review\.json$/)]);
+
+      // 3. Evidence & minimap moment work locally off the cached trace
+      const ev = await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/evidence?hero=beastmaster&lang=zh&ref=cast%3Abeastmaster%3Aprimal_roar%3A6' });
+      expect(ev.status).toBe(200);
+      expect(ev.body.record).toMatchObject({ clock: '27:27', target: 'phantom_assassin' });
+      const mom = await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/moment?hero=beastmaster&lang=zh&t=1825' });
+      expect(mom.status).toBe(200);
+      expect(mom.body.frames).toHaveLength(19);
+
+      // 4. Streaming replay chat (`/api/agent/9100904020/chat`) yields live tool step + verified answer
+      const chatFrames = [];
+      for await (const f of svc.handleStream({
+        url: '/api/agent/9100904020/chat',
+        body: JSON.stringify({ hero: 'beastmaster', lang: 'zh', question: '36 分钟那次我怎么死的？' }),
+      })) {
+        chatFrames.push(f);
+      }
+      expect(chatFrames).toEqual([
+        { step: { tool: 'death_context', args: { hero: 'beastmaster', index: 9 } } },
+        { text: '36:05 你满血 2915，被 斧王 先手。' },
+        { done: true },
+      ]);
+
+      // 5. Patch overview & streaming patch advisor work locally
+      const patchRes = await svc.handleRequest({ method: 'GET', url: '/api/patch?lang=zh' });
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.advisor).toBe(true);
+      const patchFrames = [];
+      for await (const f of svc.handleStream({
+        url: '/api/patch/chat',
+        body: JSON.stringify({ lang: 'zh', question: '兽王改了什么？' }),
+      })) {
+        patchFrames.push(f);
+      }
+      expect(patchFrames[0]).toMatchObject({ step: { tool: 'hero_patch', args: { hero: 'beastmaster' } } });
+      expect(patchFrames.at(-1)).toEqual({ done: true });
+
+      // 6. Profile sync & `goal_check` reading saved goal
+      const saved = await svc.saveProfile({
+        accountId: '86745912',
+        reviewed: ['9100904020'],
+        goal: { id: 'g1', goal: { kind: 'deaths_per10_max', max: 3 } },
+      });
+      expect(saved.accountId).toBe('86745912');
+      expect(await svc.getProfile()).toMatchObject({ accountId: '86745912', reviewed: ['9100904020'] });
+      const goalChecked = await svc.coach.goal_check({ match_id: 9091400302, hero: report.players[0].hero.slug, goal: {} });
+      expect(['met', 'missed', 'no_opportunity', 'unknown']).toContain(goalChecked.result);
+
+      svc.shutdown();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves data home from config.homeDir or $DSH_HOME/dota2ai', () => {
+    expect(resolveDataHome({ homeDir: '/custom/dir' }, { DSH_HOME: '/ignored' })).toBe('/custom/dir');
+    expect(resolveDataHome({}, { DSH_HOME: '/tmp/dsh-test' })).toBe('/tmp/dsh-test/dota2ai');
+  });
+});
+
 describe('skill', () => {
   it('registers SKILL.md without its frontmatter, and it names every tool the plugin offers', () => {
     const reg = skillRegistration();
@@ -144,14 +515,42 @@ describe('skill', () => {
 });
 
 describe('bundle', () => {
-  it('carries the workspace code and leaves only the DSH packages to the host', async () => {
+  it('builds host, Typert descriptors, and browser client bundles with only host-supplied externals', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dsh-dota2ai-build-'));
     try {
       const out = await buildPlugin({ outfile: join(dir, 'index.js') });
       const code = readFileSync(out, 'utf8');
       const bare = [...code.matchAll(/^import [^;]*? from "([^".][^"]*)";$/gm)].map((m) => m[1]).filter((s) => !s.startsWith('node:'));
-      expect([...new Set(bare)].sort()).toEqual(['@deepseek-ai/dsh-tools', '@deepseek-ai/schemastery']);
+      expect([...new Set(bare)].sort()).toEqual([
+        '@deepseek-ai/dsh-llm',
+        '@deepseek-ai/dsh-tools',
+        '@deepseek-ai/dsh-typert-protocol',
+        '@deepseek-ai/schemastery',
+      ]);
       expect(code).not.toMatch(/from "dota2ai\//);
+      expect(code).not.toMatch(/createRequire\(import\.meta\.url\)\(['"][^'"]+\.json['"]\)/);
+
+      // Typert reflection artifacts exist and bundle zod + RemoteInfo internally with zero runtime externals.
+      for (const name of ['typert.host.js', 'typert.remote-client.js']) {
+        const p = join(dir, name);
+        expect(existsSync(p), name).toBe(true);
+        const tCode = readFileSync(p, 'utf8');
+        const tBare = [...tCode.matchAll(/^import [^;]*? from "([^".][^"]*)";$/gm)].map((m) => m[1]);
+        expect([...new Set(tBare)]).toEqual([]);
+      }
+
+      // Browser client bundle wraps @qianhaoq/dsh-dota2ai for DSH's __ModuleLoader__.
+      const clientPath = join(dir, 'client.js');
+      expect(existsSync(clientPath)).toBe(true);
+      const clientCode = readFileSync(clientPath, 'utf8');
+      expect(clientCode.startsWith('window.__ModuleLoader__.load({ id: "@qianhaoq/dsh-dota2ai", factory: (require) => {')).toBe(true);
+      expect(clientCode.trimEnd().endsWith('return module.exports; } });')).toBe(true);
+      const clientReqs = [...new Set([...clientCode.matchAll(/\brequire\("([^"]+)"\)/g)].map((m) => m[1]))].sort();
+      const allowedClientReqs = new Set(['@deepseek-ai/dsh-client-store', 'react', 'react-dom', 'react/jsx-runtime']);
+      expect(clientReqs.length).toBeGreaterThanOrEqual(3);
+      for (const req of clientReqs) {
+        expect(allowedClientReqs.has(req), `unexpected client require: ${req}`).toBe(true);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

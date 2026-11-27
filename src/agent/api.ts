@@ -1,5 +1,6 @@
 /** Client for the review agent (lib/agent/router.js). */
 import type { GoalSpec } from '../coach/types';
+import { runtimeFetch } from '../runtime/dota2aiRuntime';
 import { internalHeaders } from '../services/analytics';
 
 export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: number | null; en: string; zh: string; ru?: string }
@@ -9,10 +10,13 @@ export interface AgentHero { hero: string; team: 'radiant' | 'dire'; hero_id: nu
  * failure is answered. 0: now.
  */
 export type ParseState = { status: 'none' } | { status: 'running'; stage: string | null } | { status: 'failed'; reason: string; final: boolean; retry_in_sec?: number } | { status: 'ready' } | { status: 'unavailable' };
+export interface ModelMeta { label: string; minutes?: [number, number] | null }
 export interface Availability {
   trace: boolean; model_configured: boolean; can_parse: boolean; heroes: AgentHero[]; parse?: ParseState;
-  /** The models a review can be asked from here (ids of lib/agent/models.js), the default first; absent where there is no choice. */
+  /** The models a review can be asked from here (ids of lib/agent/models.js, or host-supplied ids), the default first; absent where there is no choice. */
   models?: string[]; default_model?: string | null;
+  /** Display labels and optional measured wait spans for host-supplied models (such as DSH's configured models). */
+  model_meta?: Record<string, ModelMeta>;
   /** Radiant's net worth lead per game minute, from the replay itself (absent when the trace has no net worth graph). */
   radiant_net_worth_lead?: number[];
   /** Radiant's lead in gold earned per game minute, summed from the replay's combat log (a trace that kept its gold rows); then the net worth lead is absent. */
@@ -68,21 +72,21 @@ async function json<T>(res: Response): Promise<T> {
 const enc = encodeURIComponent;
 
 export const fetchAvailability = (matchId: string, signal?: AbortSignal) =>
-  fetch(`/api/agent/${enc(matchId)}`, { signal }).then((r) => json<Availability>(r));
+  runtimeFetch(`/api/agent/${enc(matchId)}`, { signal }).then((r) => json<Availability>(r));
 
 /** Start parsing the replay into a trace (or learn that it is already running / impossible). */
 export const prepareMatch = (matchId: string) =>
-  fetch(`/api/agent/${enc(matchId)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: '{}' }).then((r) => json<ParseState>(r));
+  runtimeFetch(`/api/agent/${enc(matchId)}/prepare`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: '{}' }).then((r) => json<ParseState>(r));
 
 /**
  * `plan`: the plan the reader named, if any — a review made for it is its own review.
  * `model`: the model the reader chose, when it is not the default — a review written by it is its own review too.
  */
 export const fetchReview = (matchId: string, hero: string, lang: string, signal?: AbortSignal, plan?: string | null, model?: string | null) =>
-  fetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}${plan ? `&plan=${enc(plan)}` : ''}${model ? `&model=${enc(model)}` : ''}`, { signal }).then((r) => json<ReviewState>(r));
+  runtimeFetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}${plan ? `&plan=${enc(plan)}` : ''}${model ? `&model=${enc(model)}` : ''}`, { signal }).then((r) => json<ReviewState>(r));
 
 export const startReview = (matchId: string, hero: string, lang: string, plan?: string | null, model?: string | null) =>
-  fetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}), ...(model ? { model } : {}) }) }).then((r) => json<ReviewState>(r));
+  runtimeFetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}), ...(model ? { model } : {}) }) }).then((r) => json<ReviewState>(r));
 
 /** Where the ten heroes were around a game time (lib/agent/moment.js): what the page replays. */
 export interface Moment {
@@ -112,7 +116,7 @@ export function fetchMoment(matchId: string, hero: string, lang: string, t: numb
   const key = `${matchId}|${hero}|${lang}|${t}|${end ?? ''}`;
   let p = momentCache.get(key);
   if (!p) {
-    p = fetch(`/api/agent/${enc(matchId)}/moment?hero=${enc(hero)}&lang=${lang}&t=${t}${end != null ? `&to=${end}` : ''}`).then(async (r) => {
+    p = runtimeFetch(`/api/agent/${enc(matchId)}/moment?hero=${enc(hero)}&lang=${lang}&t=${t}${end != null ? `&to=${end}` : ''}`).then(async (r) => {
       const out = await json<Moment>(r);
       if (!out || !Array.isArray(out.frames)) throw new AgentApiError('invalid_moment', r.status);
       return out;
@@ -132,18 +136,22 @@ export type FindingReason = 'fact' | 'judgment' | 'not_mine' | 'knew' | 'vague' 
  */
 export async function sendFindingFeedback(matchId: string, body: { hero: string; lang: string; version: number; finding: number; title: string; rating: FindingRating; reason: FindingReason | null; id: string; plan?: string; model?: string }): Promise<boolean> {
   try {
-    const res = await fetch(`/api/agent/${enc(matchId)}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify(body) });
+    const res = await runtimeFetch(`/api/agent/${enc(matchId)}/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify(body) });
     return res.ok;
   } catch { return false; }
 }
 
 const evidenceCache = new Map<string, Promise<EvidenceRecord>>();
+export function clearAgentCaches(): void {
+  momentCache.clear();
+  evidenceCache.clear();
+}
 /** The tool record behind a ref. Records are pure functions of the replay, so they are cached for the session. */
 export function fetchEvidence(matchId: string, hero: string, lang: string, ref: string): Promise<EvidenceRecord> {
   const key = `${matchId}|${hero}|${lang}|${ref}`;
   let p = evidenceCache.get(key);
   if (!p) {
-    p = fetch(`/api/agent/${enc(matchId)}/evidence?hero=${enc(hero)}&lang=${lang}&ref=${enc(ref)}`).then(async (r) => {
+    p = runtimeFetch(`/api/agent/${enc(matchId)}/evidence?hero=${enc(hero)}&lang=${lang}&ref=${enc(ref)}`).then(async (r) => {
       const out = await json<EvidenceRecord>(r);
       if (!out || typeof out !== 'object' || !('record' in out) || !out.record) throw new AgentApiError('invalid_evidence', r.status);
       return out;
@@ -183,6 +191,6 @@ export async function readChatStream(res: Response, ev: ChatEvents): Promise<voi
 
 /** One chat turn about a match. */
 export async function askAgent(matchId: string, body: { hero: string; lang: string; question: string; history: ChatTurn[]; plan?: string; model?: string }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
-  const res = await fetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify(body), signal });
+  const res = await runtimeFetch(`/api/agent/${enc(matchId)}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify(body), signal });
   return readChatStream(res, ev);
 }

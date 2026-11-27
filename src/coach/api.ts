@@ -1,4 +1,5 @@
 import type { CaseStudies, CoachReport, RecentMatches } from './types';
+import { runtimeFetch } from '../runtime/dota2aiRuntime';
 
 export class CoachApiError extends Error {
   constructor(public code: string, message: string, public status: number, public retryAfterSec?: number) {
@@ -15,7 +16,7 @@ export async function fetchCoachReport(
     qs.set('slot', String(opts.slot));
     qs.set('pos', String(opts.pos));
   }
-  const res = await fetch(`/api/coach/${encodeURIComponent(matchId)}${qs.size ? `?${qs}` : ''}`, { signal: opts.signal });
+  const res = await runtimeFetch(`/api/coach/${encodeURIComponent(matchId)}${qs.size ? `?${qs}` : ''}`, { signal: opts.signal });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status, body.retryAfterSec);
@@ -30,7 +31,7 @@ export async function fetchCoachCases(
 ): Promise<CaseStudies> {
   const qs = new URLSearchParams({ slot: String(opts.slot) });
   if (opts.pos != null) qs.set('pos', String(opts.pos));
-  const res = await fetch(`/api/coach/${encodeURIComponent(matchId)}/cases?${qs}`, { signal: opts.signal });
+  const res = await runtimeFetch(`/api/coach/${encodeURIComponent(matchId)}/cases?${qs}`, { signal: opts.signal });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status, body.retryAfterSec);
   return body as CaseStudies;
@@ -41,7 +42,7 @@ export interface ParseStatus { status: string; jobId?: number | null; retryAfter
 
 /** The budgeted parse-request endpoint (OpenDota, or our own parser when OpenDota is unavailable). */
 export async function requestParse(matchId: string, lang: 'en' | 'zh'): Promise<ParseStatus> {
-  const res = await fetch(`/api/review/${encodeURIComponent(matchId)}/parse-request`, {
+  const res = await runtimeFetch(`/api/review/${encodeURIComponent(matchId)}/parse-request`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ lang }),
@@ -64,7 +65,7 @@ export async function askCoach(
   events: AskEvents,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`/api/coach/${encodeURIComponent(matchId)}/ask`, {
+  const res = await runtimeFetch(`/api/coach/${encodeURIComponent(matchId)}/ask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify(input),
@@ -99,7 +100,7 @@ export async function askCoach(
 
 /** A player's recent games (Steam friend code -> match picker). */
 export async function fetchRecentMatches(accountId: string, signal?: AbortSignal): Promise<RecentMatches> {
-  const res = await fetch(`/api/coach/players/${encodeURIComponent(accountId)}/recent`, { signal });
+  const res = await runtimeFetch(`/api/coach/players/${encodeURIComponent(accountId)}/recent`, { signal });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status, body.retryAfterSec);
   return body as RecentMatches;
@@ -108,7 +109,7 @@ export async function fetchRecentMatches(accountId: string, signal?: AbortSignal
 /** Hero vs hero brief (pro + public games at a bracket), ready-made lines in both languages. */
 export async function fetchMatchup(hero: number, vs: number, rank?: string | null, signal?: AbortSignal): Promise<{ lines: { en: string[]; zh: string[] } }> {
   const q = `hero=${hero}&vs=${vs}${rank ? `&rank=${encodeURIComponent(rank)}` : ''}`;
-  const res = await fetch(`/api/coach/matchup?${q}`, { signal });
+  const res = await runtimeFetch(`/api/coach/matchup?${q}`, { signal });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new CoachApiError(body.code ?? 'upstream', body.error ?? `HTTP ${res.status}`, res.status);
   return body;
@@ -130,7 +131,7 @@ export function fetchCoachCards(matchId: string, seat: number): Promise<CardSurf
   const hit = cardsCache.get(key);
   if (hit) return hit;
   const p = (async () => {
-    const res = await fetch(`/api/coach/${encodeURIComponent(matchId)}/cards?seat=${seat}`);
+    const res = await runtimeFetch(`/api/coach/${encodeURIComponent(matchId)}/cards?seat=${seat}`);
     const body = await res.json().catch(() => null);
     if (!res.ok) throw new CoachApiError(body?.code ?? 'upstream', body?.error ?? `HTTP ${res.status}`, res.status, body?.retryAfterSec);
     const { validateSurface } = await import('../../lib/coach/cards.js');
@@ -152,7 +153,7 @@ export function clearCardsCache() { cardsCache.clear(); }
  */
 export async function fetchPatchNews(signal?: AbortSignal, fresh = false): Promise<{ body: unknown; picking: boolean } | null> {
   try {
-    const res = await fetch('/api/patch/news', fresh ? { signal, cache: 'no-store' } : { signal });
+    const res = await runtimeFetch('/api/patch/news', fresh ? { signal, cache: 'no-store' } : { signal });
     if (!res.ok) return null;
     const body = await res.json();
     return { body, picking: Boolean(body?.picking) };

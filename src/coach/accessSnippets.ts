@@ -19,7 +19,7 @@ export const MCP_TOOLS = [
 export type AccessMode = 'web' | 'dsh' | 'mcp' | 'cli' | 'http';
 
 /** The DSH plugin release the home page points to (packages/dsh, released from a dsh-v* tag). */
-export const DSH_PLUGIN_VERSION = '0.1.0';
+export const DSH_PLUGIN_VERSION = '0.2.0';
 export const DSH_RELEASE_URL = `https://github.com/qianhaoq/dota2.ai/releases/tag/dsh-v${DSH_PLUGIN_VERSION}`;
 export const DSH_INSTALL = `dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`;
 
@@ -89,9 +89,9 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
       label: { en: 'DSH plugin', zh: 'DSH 插件', ru: 'Плагин DSH' },
       lines: [DSH_INSTALL],
       note: {
-        en: 'A native plugin for DSH (DeepSeek Harness): download the archive from the release, then every DSH session has the replay review and the coach tools. Node 24.9+, DSH 0.2.1-rc.3, no key.',
-        zh: 'DSH（DeepSeek Harness）原生插件：从 Release 下载安装包，之后每个 DSH 会话都能直接复盘、追问。需要 Node 24.9+ 和 DSH 0.2.1-rc.3，不需要 Key。',
-        ru: 'Нативный плагин для DSH (DeepSeek Harness): скачайте архив из релиза — и в каждой сессии DSH будут разбор по реплею и инструменты тренера. Node 24.9+, DSH 0.2.1-rc.3, без ключа.',
+        en: 'A native plugin for DSH (DeepSeek Harness): adds a standalone dota2.ai page in the DSH sidebar and coach tools in every session, powered by your own DSH model. Node 24.9+, DSH 0.2.1-rc.3.',
+        zh: 'DSH（DeepSeek Harness）原生插件：在 DSH 左侧栏增加完整的 dota2.ai 独立复盘页面，并在每个会话提供教练工具，直接使用你在 DSH 配置的宿主模型。需要 Node 24.9+ 和 DSH 0.2.1-rc.3。',
+        ru: 'Нативный плагин для DSH (DeepSeek Harness): добавляет отдельную страницу dota2.ai в боковую панель DSH и инструменты тренера в каждую сессию, используя модель вашего DSH. Node 24.9+, DSH 0.2.1-rc.3.',
       },
       links: [{ href: DSH_RELEASE_URL, label: `dsh-v${DSH_PLUGIN_VERSION}` }],
     },
