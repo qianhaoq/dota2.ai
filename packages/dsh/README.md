@@ -22,6 +22,20 @@ Install the dota2.ai Dota 2 replay coach plugin @qianhaoq/dsh-dota2ai into my ac
 
 3. Reload if prompted, then click **dota2.ai** in the left sidebar.
 
+### Update
+
+- **Desktop App**: paste into a chat in DeepSeek Harness and press Enter:
+
+```text
+Update my @qianhaoq/dsh-dota2ai plugin to the latest version and reload if needed.
+```
+
+- **CLI (`dsh web`)**:
+
+```sh
+dsh plugin --profile web update @qianhaoq/dsh-dota2ai
+```
+
 ### CLI / Linux (`dsh web`)
 
 Needs Node 24.9 or newer and DSH **0.2.x (≥ 0.2.1-rc.3)**: verified on 0.2.1-rc.3 and 0.2.2-rc.5, which is
@@ -118,6 +132,20 @@ DEEPSEEK_API_KEY=… node packages/dsh/scripts/live-review.mjs packages/dsh/dist
 ```
 
 3. 按提示刷新或重启后，点左侧栏 **dota2.ai** 即可使用。
+
+**更新插件**：
+
+- **桌面客户端**：直接把下面这句话粘贴到聊天框发送：
+
+```text
+帮我把 @qianhaoq/dsh-dota2ai 插件更新到最新版本，如需刷新或重启请提示我。
+```
+
+- **命令行（`dsh web`）**：
+
+```sh
+dsh plugin --profile web update @qianhaoq/dsh-dota2ai
+```
 
 **命令行安装（Linux / `dsh web`）**（需要 Node ≥ 24.9，DSH **0.2.x (≥ 0.2.1-rc.3)**，npm 上的 `latest` 是 0.2.2-rc.5；DSH 用 pnpm 装插件）：
 
