@@ -1,6 +1,7 @@
 import React from 'react';
 import { trackEvent } from '../services/analytics';
 import { useDota2AiRuntime } from '../runtime/dota2aiRuntime';
+import { DSH_DOWNLOAD_URL } from './accessSnippets';
 import { useLang } from './ui';
 import type { Bi } from './types';
 
@@ -11,34 +12,35 @@ import type { Bi } from './types';
  * Inside DSH there is nothing to point at: the reader is there already.
  */
 const T = {
-  homeLead: { en: 'Run it on your own DeepSeek key', zh: '用你自己的 DeepSeek Key 跑', ru: 'Запускайте на своём ключе DeepSeek' },
+  homeLead: { en: 'Run it in DeepSeek Harness on your own DeepSeek key', zh: '推荐：在 DeepSeek Harness 桌面端用自己的 Key 跑', ru: 'Запускайте в DeepSeek Harness на своём ключе DeepSeek' },
   homeBody: {
-    en: 'The DeepSeek Harness (DSH) plugin runs the same coach on your own model: no queue, no daily limit, and your reviews and chats are kept on your machine.',
-    zh: 'DeepSeek Harness（DSH）插件用你自己的模型跑同一个教练：不排队、不限次，复盘和追问都保存在你自己电脑上。',
-    ru: 'Плагин для DeepSeek Harness (DSH) запускает того же тренера на вашей модели: без очереди и дневного лимита, разборы и вопросы хранятся у вас.',
+    en: 'Download the DeepSeek Harness desktop app and send one install message — no terminal needed, no queue, no daily limit, and your reviews stay on your machine.',
+    zh: '下载 DeepSeek Harness 桌面客户端，发一句话就能自动装好插件——不用敲命令行、不排队、不限次，复盘和追问都保存在你自己电脑上。',
+    ru: 'Скачайте десктопное приложение DeepSeek Harness и отправьте одну фразу для установки — без терминала, очереди и дневного лимита, разборы хранятся у вас.',
   },
-  homeCta: { en: 'Set up DSH in 3 steps', zh: '三步装好 DSH', ru: 'Установка DSH в 3 шага' },
+  homeCta: { en: 'Set up DSH in 3 steps', zh: '3 步傻瓜安装教程', ru: 'Установка DSH в 3 шага' },
+  downloadCta: { en: 'Download DeepSeek Harness', zh: '下载桌面客户端', ru: 'Скачать DeepSeek Harness' },
   agent: { en: 'or connect your own agent (Claude Code, Codex…)', zh: '或接入你自己的 Agent（Claude Code、Codex…）', ru: 'или подключите своего агента (Claude Code, Codex…)' },
   refusedLead: { en: "Don't want to wait?", zh: '不想等？', ru: 'Не хотите ждать?' },
   dailyLead: { en: "Today's free reviews on dota2.ai are used up.", zh: '今天 dota2.ai 的免费复盘名额用完了。', ru: 'Бесплатные разборы на dota2.ai на сегодня закончились.' },
   refusedBody: {
-    en: 'Review this game now in DeepSeek Harness (DSH) on your own DeepSeek key — the same coach, no queue, no daily limit.',
-    zh: '用 DeepSeek Harness（DSH）配上你自己的 DeepSeek Key，现在就能复盘这一局：同一个教练，不排队、不限次。',
-    ru: 'Разберите эту игру прямо сейчас в DeepSeek Harness (DSH) на своём ключе DeepSeek — тот же тренер, без очереди и лимита.',
+    en: 'Review this game now in the DeepSeek Harness desktop app on your own DeepSeek key — no terminal needed, no queue, no daily limit.',
+    zh: '下载 DeepSeek Harness 桌面端并用你自己的 DeepSeek Key，现在就能复盘这一局：不用敲命令行、不排队、不限次。',
+    ru: 'Разберите эту игру прямо сейчас в десктопном DeepSeek Harness на своём ключе DeepSeek — без терминала, очереди и лимита.',
   },
-  refusedCta: { en: 'Set up DSH', zh: '安装 DSH', ru: 'Установить DSH' },
+  refusedCta: { en: 'Set up DSH', zh: '3 步安装 DSH', ru: 'Установить DSH' },
   thenAsk: { en: 'Then ask it:', zh: '装好后问它：', ru: 'Затем спросите:' },
   bannerTag: { en: 'Recommended', zh: '推荐', ru: 'Рекомендуем' },
   bannerText: {
-    en: 'Run dota2.ai in DeepSeek Harness on your own DeepSeek key: no queue, no daily limit.',
-    zh: '在 DeepSeek Harness 里用你自己的 DeepSeek Key 跑 dota2.ai：不排队、不限次。',
-    ru: 'Запускайте dota2.ai в DeepSeek Harness на своём ключе DeepSeek: без очереди и лимита.',
+    en: 'Use dota2.ai in the DeepSeek Harness desktop app on your own DeepSeek key: no terminal, no queue, no daily limit.',
+    zh: '在 DeepSeek Harness 桌面客户端里用你自己的 DeepSeek Key 跑 dota2.ai：免命令行、不排队、不限次。',
+    ru: 'Используйте dota2.ai в десктопном DeepSeek Harness на своём ключе DeepSeek: без терминала, очереди и лимита.',
   },
-  bannerCta: { en: 'Set up in 3 steps', zh: '三步装好', ru: 'Установка в 3 шага' },
+  bannerCta: { en: 'Set up in 3 steps', zh: '3 步装好', ru: 'Установка в 3 шага' },
   waitingBody: {
-    en: 'Next time, skip the wait: the same review runs in DeepSeek Harness (DSH) on your own DeepSeek key, with no queue and no daily limit.',
-    zh: '下次不想排队？同样的复盘可以在 DeepSeek Harness（DSH）里用你自己的 DeepSeek Key 跑，不排队、不限次。',
-    ru: 'В следующий раз без ожидания: тот же разбор работает в DeepSeek Harness (DSH) на вашем ключе DeepSeek, без очереди и лимита.',
+    en: 'Next time, skip the wait: run the same review in the DeepSeek Harness desktop app on your own DeepSeek key, with no queue and no daily limit.',
+    zh: '下次不想排队？下载 DeepSeek Harness 桌面端，用你自己的 DeepSeek Key 跑同样的复盘，不排队、不限次。',
+    ru: 'В следующий раз без ожидания: тот же разбор работает в десктопном DeepSeek Harness на вашем ключе DeepSeek, без очереди и лимита.',
   },
 };
 
@@ -85,6 +87,7 @@ export const OwnModelCallout: React.FC<{ where: 'home' | 'refused' | 'chat' | 'w
         <p className="om-body">{L(T.homeBody)}</p>
         <p className="om-links">
           <a href="#ways-dsh" className="om-cta" onClick={() => click('dsh')}>{L(T.homeCta)} →</a>
+          <a href={DSH_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer" className="om-dl" onClick={() => click('dsh')}>{L(T.downloadCta)} ↗</a>
           <a href="#ways" className="om-alt" onClick={() => click('agent')}>{L(T.agent)}</a>
         </p>
       </div>
@@ -105,6 +108,7 @@ export const OwnModelCallout: React.FC<{ where: 'home' | 'refused' | 'chat' | 'w
       {matchId && <p className="om-ask"><span>{L(T.thenAsk)}</span> <q>{L(ASK).replace('{id}', matchId)}</q></p>}
       <p className="om-links">
         <a href={DSH_ANCHOR} className="om-cta" onClick={() => click('dsh')}>{L(T.refusedCta)} →</a>
+        <a href={DSH_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer" className="om-dl" onClick={() => click('dsh')}>{L(T.downloadCta)} ↗</a>
         <a href="/#ways" className="om-alt" onClick={() => click('agent')}>{L(T.agent)}</a>
       </p>
     </div>
