@@ -71,7 +71,7 @@ export const points = (v: number | null | undefined) => (v == null ? '–' : `${
 export const times = (v: number | null | undefined) => (v == null ? '–' : `×${v.toFixed(2)}`);
 
 const Movers: React.FC<{ title: string; rows: MoverRow[]; by: 'win' | 'pick'; lang: Lang; version: string; onAsk: (q: string) => void; tone: 'up' | 'down' }> = ({ title, rows, by, lang, version, onAsk, tone }) => (
-  <div className="pa-movers">
+  <div className={`pa-movers is-${tone}`}>
     <table>
       <caption>{title}</caption>
       <thead><tr><th scope="col">{T.hero[lang]}</th><th scope="col">{T.before[lang]}</th><th scope="col">{T.after[lang]}</th><th scope="col">{T.change[lang]}</th></tr></thead>

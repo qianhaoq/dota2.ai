@@ -33,6 +33,7 @@ const T = {
   trigger: { en: 'Jump to match or player', zh: '查比赛 / 好友码', ru: 'Матч / ID игрока' },
   title: { en: 'Open another match or player', zh: '打开另一场比赛或玩家', ru: 'Открыть другой матч или игрока' },
   close: { en: 'Close', zh: '关闭', ru: 'Закрыть' },
+  clear: { en: 'Clear input', zh: '清空输入', ru: 'Очистить поле' },
   matchTab: { en: 'Match ID / URL', zh: '比赛 ID / 链接', ru: 'ID матча / ссылка' },
   accountTab: { en: 'Steam friend code', zh: 'Steam 好友代码', ru: 'Код друга Steam' },
   matchPlaceholder: { en: 'Match ID or OpenDota / Dotabuff / STRATZ link', zh: '比赛 ID，或 OpenDota / Dotabuff / STRATZ 链接', ru: 'ID матча или ссылка OpenDota / Dotabuff / STRATZ' },
@@ -45,6 +46,7 @@ const T = {
   invalidAccount: { en: 'That is not a friend code. Open your Steam or Dota 2 profile to find the number under your name.', zh: '这不是好友代码。请在 Dota 2 或 Steam 个人资料里查看名字下面的那串数字。', ru: 'Это не код друга. Откройте профиль в Dota 2 или Steam — число под вашим ником и есть код друга.' },
   vanity: { en: 'Custom Steam URLs can’t be looked up. Paste your friend code or a steamcommunity.com/profiles/… link instead.', zh: '自定义的 Steam 链接没法查询。请改贴好友代码，或 steamcommunity.com/profiles/… 形式的链接。', ru: 'Персональные ссылки Steam не поддерживаются. Вставьте код друга или ссылку вида steamcommunity.com/profiles/…' },
   myGames: { en: 'My recent games', zh: '我的最近比赛', ru: 'Мои недавние матчи' },
+  sampleReplay: { en: 'Sample replay #9100904020', zh: '录像复盘示例 #9100904020', ru: 'Пример реплея #9100904020' },
   example: { en: 'Example match #9091400302', zh: '示例比赛 #9091400302', ru: 'Пример матча #9091400302' },
 } satisfies Record<string, Bi>;
 
@@ -114,7 +116,10 @@ export const QuickJump: React.FC = () => {
   return (
     <>
       <button ref={triggerRef} type="button" className="cx-qj-trigger" aria-label={L(T.trigger)} onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}>
-        <span className="cx-qj-icon" aria-hidden="true">⌕</span>
+        <svg className="cx-qj-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
         <span className="cx-qj-label">{L(T.trigger)}</span>
         <kbd className="cx-kbd" aria-hidden="true">⌘K</kbd>
       </button>
@@ -123,21 +128,40 @@ export const QuickJump: React.FC = () => {
           <div className="cx-modal" role="dialog" aria-modal="true" aria-labelledby="cx-qj-title">
             <div className="cx-modal-head">
               <h2 id="cx-qj-title">{L(T.title)}</h2>
-              <button type="button" className="cx-modal-close" onClick={() => setOpen(false)} aria-label={L(T.close)}>✕</button>
+              <div className="cx-modal-head-right">
+                <kbd className="cx-kbd" aria-hidden="true">ESC</kbd>
+                <button type="button" className="cx-modal-close" onClick={() => setOpen(false)} aria-label={L(T.close)}>✕</button>
+              </div>
             </div>
             <div className="cx-qj-modes" role="tablist">
               <button type="button" role="tab" aria-selected={mode === 'match'} onClick={() => { setMode('match'); setError(null); }}>{L(T.matchTab)}</button>
               <button type="button" role="tab" aria-selected={mode === 'account'} onClick={() => { setMode('account'); setError(null); }}>{L(T.accountTab)}</button>
             </div>
             <form className="cx-qj-form" onSubmit={submit}>
-              <input
-                ref={inputRef}
-                value={value}
-                inputMode="text"
-                placeholder={L(mode === 'match' ? T.matchPlaceholder : T.accountPlaceholder)}
-                aria-label={L(mode === 'match' ? T.matchPlaceholder : T.accountPlaceholder)}
-                onChange={(e) => { setValue(e.target.value); setError(null); }}
-              />
+              <div className="cx-qj-field">
+                <svg className="cx-qj-field-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" />
+                </svg>
+                <input
+                  ref={inputRef}
+                  value={value}
+                  inputMode="text"
+                  placeholder={L(mode === 'match' ? T.matchPlaceholder : T.accountPlaceholder)}
+                  aria-label={L(mode === 'match' ? T.matchPlaceholder : T.accountPlaceholder)}
+                  onChange={(e) => { setValue(e.target.value); setError(null); }}
+                />
+                {value.length > 0 && (
+                  <button
+                    type="button"
+                    className="cx-input-clear"
+                    aria-label={L(T.clear)}
+                    onClick={() => { setValue(''); setError(null); inputRef.current?.focus(); }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
               <button type="submit" className="cx-primary">
                 {mode === 'account' || detected?.kind === 'account' ? L(T.goAccount) : L(T.goMatch)}
               </button>
@@ -155,6 +179,9 @@ export const QuickJump: React.FC = () => {
                   {L(T.myGames)} →
                 </button>
               )}
+              <button type="button" className="cx-linkbtn" onClick={() => { setOpen(false); navigate(`/r/9100904020?hero=beastmaster&lang=${lang}`); }}>
+                {L(T.sampleReplay)} →
+              </button>
               <button type="button" className="cx-linkbtn" onClick={() => { setOpen(false); navigate(`/r/9091400302?lang=${lang}&p=0`); }}>
                 {L(T.example)} →
               </button>

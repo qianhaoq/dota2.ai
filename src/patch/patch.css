@@ -1,50 +1,447 @@
-/* The patch advisor on the home page. Tokens (--panel, --line, --text, --accent, …) come from coach.css. */
-.pa { margin-top: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-.pa-head { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
-.pa-head h2 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: clamp(20px, 2.6vw, 24px); }
-.pa-head p { margin: 6px 0 0; color: var(--text-2); line-height: 1.6; max-width: 72ch; }
-.pa-body { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
-.pa-data { padding: 16px 20px 18px; border-right: 1px solid var(--line); min-width: 0; }
-.pa-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; }
-.pa-movers { min-width: 0; }
-.pa-movers table { width: 100%; border-collapse: collapse; font-size: var(--fs-meta); font-variant-numeric: tabular-nums; }
-.pa-movers caption { text-align: left; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; padding-bottom: 6px; }
-.pa-movers th, .pa-movers td { padding: 5px 0 5px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
-.pa-movers thead th { color: var(--text-3); font-weight: 400; }
-.pa-movers th:first-child { text-align: left; padding-left: 0; font-weight: 500; }
-.pa-hero { background: none; border: 0; padding: 0; color: var(--text); font: inherit; cursor: pointer; text-align: left; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
-.pa-hero:hover, .pa-hero:focus-visible { color: var(--accent); text-decoration-color: var(--accent); }
-.pa-delta.is-up { color: var(--good); }
-.pa-delta.is-down { color: var(--dire); }
-.pa-muted { color: var(--text-3); font-size: var(--fs-meta); line-height: 1.6; margin: 14px 0 0; }
-.pa-muted a { color: var(--text-2); }
-.pa-chat { display: flex; flex-direction: column; min-width: 0; max-height: 560px; }
-.pa-log:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.pa-log { flex: 1; min-height: 160px; overflow-y: auto; padding: 16px 20px; display: grid; gap: 18px; align-content: start; }
-.pa-suggest p { margin: 0 0 8px; color: var(--text-3); font-size: var(--fs-meta); }
-.pa-suggest button { display: block; width: 100%; text-align: left; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; color: var(--text); font-size: var(--fs-meta); line-height: 1.5; cursor: pointer; margin-bottom: 8px; }
-.pa-suggest button:hover, .pa-suggest button:focus-visible { border-color: var(--accent); }
-.pa-suggest button.pa-own { background: none; border-style: dashed; color: var(--text-2); }
-.pa-q, .pa-a { margin: 0; line-height: 1.6; }
-.pa-q > span, .pa-a > span { display: block; font-size: var(--fs-meta); color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2px; }
-.pa-a { margin-top: 10px; }
-.pa-answer p { margin: 0 0 10px; color: var(--text); white-space: pre-wrap; }
-.pa-steps { list-style: none; margin: 8px 0 12px; padding: 0; display: grid; gap: 4px; font-size: var(--fs-meta); color: var(--text-3); }
-.pa-steps li::before { content: '✓ '; color: var(--good); }
-.pa-steps li.is-live { color: var(--text); animation: pa-pulse 1.4s ease-in-out infinite; }
-.pa-steps li.is-live::before { content: '› '; color: var(--accent); }
-@keyframes pa-pulse { 50% { opacity: 0.45; } }
-.pa-warn { color: var(--fix); font-size: var(--fs-meta); margin: 10px 0 0; }
-.pa-form { border-top: 1px solid var(--line); padding: 12px 16px 14px; display: grid; gap: 8px; }
-.pa-form textarea { width: 100%; box-sizing: border-box; resize: none; background: var(--ink); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px 12px; color: var(--text); font: inherit; font-size: var(--fs-body); line-height: 1.5; }
-.pa-form textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-.pa-btn { justify-self: end; background: var(--panel); border: 1px solid var(--line-2); color: var(--text); border-radius: 999px; padding: 7px 18px; font-size: var(--fs-body); cursor: pointer; }
-.pa-btn.is-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.pa-btn:disabled { opacity: 0.45; cursor: default; }
-@media (max-width: 900px) {
-  .pa-body { grid-template-columns: 1fr; }
-  .pa-data { border-right: 0; border-bottom: 1px solid var(--line); }
-  .pa-chat { max-height: none; }
+/* ==========================================================================
+   dota2.ai — Patch Advisor & AI Studio (.pa)
+   ========================================================================== */
+
+.pa {
+  margin-top: 28px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
 }
-@media (max-width: 520px) { .pa-grid { grid-template-columns: 1fr; } .pa-head, .pa-data, .pa-log { padding-left: 14px; padding-right: 14px; } }
-@media (prefers-reduced-motion: reduce) { .pa-steps li.is-live { animation: none; } }
+
+.pa-head {
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pa-head h2 {
+  margin: 0;
+  font-family: var(--serif);
+  font-weight: 500;
+  font-size: clamp(21px, 2.4vw, 25px);
+  letter-spacing: -0.01em;
+}
+
+.pa-ver {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0;
+}
+
+.pa-head p {
+  margin: 6px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.65;
+  max-width: 74ch;
+}
+
+.pa-releases a {
+  color: var(--accent);
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.pa-releases a:hover {
+  text-decoration: underline;
+}
+
+.pa-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.95fr);
+}
+
+/* Left Column: 4 Meta Mover Cards */
+.pa-data {
+  padding: 18px 22px 20px;
+  border-right: 1px solid var(--line);
+  min-width: 0;
+}
+
+.pa-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.pa-movers {
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+.pa-movers::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--line-2);
+}
+
+.pa-movers.is-up::before {
+  background: linear-gradient(90deg, var(--good), transparent 85%);
+}
+
+.pa-movers.is-down::before {
+  background: linear-gradient(90deg, var(--dire), transparent 85%);
+}
+
+.pa-movers table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pa-movers caption {
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-bottom: 8px;
+}
+
+.pa-movers.is-up caption {
+  color: var(--good);
+}
+
+.pa-movers.is-down caption {
+  color: var(--dire);
+}
+
+.pa-movers th,
+.pa-movers td {
+  padding: 6px 0 6px 8px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+.pa-movers tbody tr:last-child th,
+.pa-movers tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.pa-movers tbody tr:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.pa-movers thead th {
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pa-movers td {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.pa-movers th:first-child {
+  text-align: left;
+  padding-left: 0;
+  font-weight: 500;
+}
+
+.pa-hero {
+  background: none;
+  border: 0;
+  padding: 1px 0;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: rgba(226, 234, 245, 0.2);
+  text-underline-offset: 3px;
+}
+
+.pa-hero:hover,
+.pa-hero:focus-visible {
+  color: var(--accent);
+  text-decoration-color: var(--accent);
+}
+
+.pa-delta {
+  font-weight: 600;
+}
+
+.pa-delta.is-up {
+  color: var(--good);
+}
+
+.pa-delta.is-down {
+  color: var(--dire);
+}
+
+.pa-muted {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 14px 0 0;
+}
+
+.pa-muted a {
+  color: var(--text-2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.pa-muted a:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.pa-old-numbers {
+  color: var(--fix);
+  font-weight: 600;
+}
+
+/* Right Column: Patch AI Studio Chat */
+.pa-chat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: 580px;
+  background: rgba(5, 7, 10, 0.38);
+}
+
+.pa-log {
+  flex: 1;
+  min-height: 180px;
+  overflow-y: auto;
+  padding: 18px 20px;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.pa-log:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.pa-suggest p {
+  margin: 0 0 10px;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pa-suggest button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text);
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.pa-suggest button:hover,
+.pa-suggest button:focus-visible {
+  border-color: rgba(229, 174, 78, 0.55);
+  background: var(--panel-3);
+}
+
+.pa-suggest button.pa-own {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--line-2);
+  color: var(--text-2);
+}
+
+.pa-suggest button.pa-own:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pa-turn {
+  display: grid;
+  gap: 10px;
+}
+
+.pa-q {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px 12px 4px 12px;
+  background: rgba(229, 174, 78, 0.09);
+  border: 1px solid rgba(229, 174, 78, 0.25);
+  line-height: 1.55;
+  font-size: 14px;
+}
+
+.pa-q > span,
+.pa-a > span {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.pa-q > span {
+  color: var(--accent);
+}
+
+.pa-a {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 4px 12px 12px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  line-height: 1.65;
+  font-size: 14px;
+}
+
+.pa-answer p {
+  margin: 0 0 10px;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+.pa-answer p:last-child {
+  margin-bottom: 0;
+}
+
+.pa-steps {
+  list-style: none;
+  margin: 4px 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.pa-steps li::before {
+  content: '✓ ';
+  color: var(--good);
+  font-weight: 600;
+}
+
+.pa-steps li.is-live {
+  color: var(--text);
+  animation: pa-pulse 1.4s ease-in-out infinite;
+}
+
+.pa-steps li.is-live::before {
+  content: '› ';
+  color: var(--accent);
+}
+
+@keyframes pa-pulse {
+  50% { opacity: 0.45; }
+}
+
+.pa-warn {
+  color: var(--fix);
+  font-size: var(--fs-meta);
+  margin: 8px 0 0;
+}
+
+.pa-form {
+  border-top: 1px solid var(--line);
+  padding: 12px 16px 14px;
+  display: grid;
+  gap: 8px;
+  background: rgba(7, 9, 13, 0.55);
+}
+
+.pa-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  background: var(--inset);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.pa-form textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(229, 174, 78, 0.14);
+}
+
+.pa-btn {
+  justify-self: end;
+  background: var(--panel-2);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 18px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pa-btn.is-primary {
+  background: linear-gradient(180deg, var(--accent-bright), var(--accent));
+  border-color: transparent;
+  color: var(--accent-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.pa-btn.is-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.pa-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+@media (max-width: 960px) {
+  .pa-body {
+    grid-template-columns: 1fr;
+  }
+  .pa-data {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .pa-chat {
+    max-height: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .pa-grid {
+    grid-template-columns: 1fr;
+  }
+  .pa-head,
+  .pa-data,
+  .pa-log {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
