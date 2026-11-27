@@ -17,7 +17,7 @@ Code: `lib/agent/` (pipeline, stores, service, router, agent, verifier),
 | Piece | Where | Needs |
 |---|---|---|
 | Site (`server.js`) | the existing Cloud Run service | `DEEPSEEK_API_KEY` (and `KIMI_API_KEY`, `GLM_API_KEY` for the other models), `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
-| Replay worker (`Dockerfile.trace-worker`) | a second, private Cloud Run service | the pinned extractor in the image, `AGENT_BUCKET` |
+| Replay worker (`Dockerfile.trace-worker`) | two private Cloud Run services: `dota2-ai-trace-worker` (asia-east1) and the fallback `dota2-ai-trace-worker-hk` (asia-east2), one image; rebuilt and deployed to both on a merge that touches the image (`cloudbuild.trace-worker.yaml`) | the pinned extractor in the image, `AGENT_BUCKET`; the site's `TRACE_WORKER_FALLBACK_URL` / `_AUDIENCE` name the fallback |
 | Storage | one GCS bucket, objects under `agent/` | traces (`<id>.trace.json.gz`, ~250 KB), reviews, job markers; under `agent/feedback/`, what readers said of a finding (right / wrong / not useful — `lib/agent/feedback.js`, read with `scripts/feedback-report.mjs`) |
 
 The site never runs the extractor: its output is hundreds of megabytes of
@@ -132,6 +132,12 @@ tests, docs and CI files (`ignoredFiles` on the Cloud Build trigger), so a
 merge that cannot change the running site does not roll a new revision.
 
 ## Deploying
+
+On this deployment a merge to `main` that touches the worker's files does all of
+this (trigger `dota2-ai-trace-worker` → `cloudbuild.trace-worker.yaml`): the
+pinned extractor is fetched from the build bucket by its SHA-256 and checked,
+the image is built and pushed, and both workers are updated. The steps below
+are for a new deployment.
 
 The extractor is built from the companion repository and its checksum is
 pinned there (`docs/REPLAY_EXTRACTOR_PIN.md`). Copy the verified binary into
