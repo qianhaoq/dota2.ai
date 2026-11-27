@@ -648,6 +648,18 @@ function nearbyObjectiveFor(trace, h, t, atPos, allSieges, traceEnd) {
   return unknown || traceEnd == null || t + 20 > traceEnd ? null : false;
 }
 
+/** Whether hero `j` can be placed (or ruled out as dead) at `t`: unsampled alive or position leaves proximity unknown. */
+function heroNearKnown(trace, j, t) {
+  const st = stateAt(trace, j, t);
+  if (st) {
+    const rawAlive = trace.states?.[j]?.alive?.[st.t - trace.t0];
+    if (rawAlive === 0) return true;
+    return rawAlive === 1 && st.x != null && st.y != null;
+  }
+  const k0 = Math.round(t) - trace.t0;
+  return k0 >= 0 && k0 < trace.n && trace.states?.[j]?.alive?.[k0] === 0;
+}
+
 export function deathContext(trace, args = {}, ctx = {}) {
   const view = viewer(trace, ctx);
   const { h, npc, err } = needHero(trace, args.hero);
@@ -679,17 +691,6 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const fought = new Set(allFights.flatMap((f) => f.deaths));
   const fightInfos = allFights.map((f, fi) => ({ ref: `fight:${fi + 1}`, f, part: fightParticipation(trace, f) }));
   const allSieges = Array.isArray(trace.damage) ? sieges(trace) : [];
-  // Whether hero `j` can be placed (or ruled out as dead) at `t`: a hero with unsampled alive or position may have been standing within 2200.
-  const heroNearKnown = (j, t) => {
-    const st = stateAt(trace, j, t);
-    if (st) {
-      const rawAlive = trace.states?.[j]?.alive?.[st.t - trace.t0];
-      if (rawAlive === 0) return true;
-      return rawAlive === 1 && st.x != null && st.y != null;
-    }
-    const k0 = Math.round(t) - trace.t0;
-    return k0 >= 0 && k0 < trace.n && trace.states?.[j]?.alive?.[k0] === 0;
-  };
   // Where the hero respawns: each snapshot says how far from it the hero stood, so the window shows whether they
   // were heading home or away from it. Null when the trace never sampled a respawn.
   const fountain = ownFountain(trace, h, npc);
@@ -779,7 +780,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
       : (unknownDamageSource || possiblePlayerControlledCreep) ? null : true;
     const traceEnd = typeof trace.t0 === 'number' && typeof trace.n === 'number' ? trace.t0 + trace.n - 1 : null;
     const alliesKnownAtDeath = Boolean(atDeath.me && atDeath.me.x != null && atDeath.me.y != null)
-      && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, t));
+      && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(trace, j, t));
     const alliesSurvived10s = !alliesKnownAtDeath ? null : (() => {
       const winStart = Math.min(t, Math.floor(t));
       const survivors = atDeath.allies.map((a) => a.hero).filter((ak) => {
@@ -869,8 +870,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const myRes = resurrections(trace).filter((r) => r.heroIndex === h).map((r, i) => {
     const atRes = nearby(trace, h, r.t, 2200);
     const meKnown = Boolean(atRes.me && atRes.me.x != null && atRes.me.y != null);
-    const alliesKnown = meKnown && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, r.t));
-    const enemiesKnown = meKnown && trace.heroes.every((o, j) => o.team === trace.heroes[h].team || heroNearKnown(j, r.t));
+    const alliesKnown = meKnown && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(trace, j, r.t));
+    const enemiesKnown = meKnown && trace.heroes.every((o, j) => o.team === trace.heroes[h].team || heroNearKnown(trace, j, r.t));
     const nextIdx = all.findIndex((d) => d[0] > r.t);
     const nextReal = nextIdx >= 0 ? all[nextIdx] : null;
     const diedSoon = !nextReal ? false
@@ -1231,15 +1232,19 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
     }
     const autoRows = autoInfo.auto.map((tr) => {
       const { me, allies, enemies } = nearby(trace, h, tr.t, 1300);
+      const meKnown = Boolean(me && me.x != null && me.y != null);
+      const alliesKnown = meKnown && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(trace, j, tr.t));
+      const enemiesKnown = meKnown && trace.heroes.every((o, j) => o.team === trace.heroes[h].team || heroNearKnown(trace, j, tr.t));
       return {
         ref: '', t: tr.t, clock: tr.clock, row: null, trigger: 'auto',
         target: null, target_hp: null, target_spell_immune: null, target_stunned_seconds: null,
-        me: me ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
-        allies_within_1300: allies.map((a) => a.hero),
-        enemies_within_1300: enemies.map((e) => e.hero),
+        me: meKnown ? { hp: me.hp, max_hp: me.max_hp, ...where(me) } : null,
+        allies_within_1300: alliesKnown ? allies.map((a) => a.hero) : null,
+        enemies_within_1300: enemiesKnown ? enemies.map((e) => e.hero) : null,
         deaths_within_12s: real.filter((d) => d[0] >= tr.t && d[0] - tr.t <= 12).map((d) => deathRow(trace, d, tr.t, view)),
       };
     });
+    const autoProximityMissing = autoRows.some((r) => r.allies_within_1300 == null || r.enemies_within_1300 == null);
     const combined = [
       ...casts.map((c) => ({ ...c, trigger: 'manual' })),
       ...autoRows,
@@ -1271,7 +1276,10 @@ export function abilityAudit(trace, args = {}, ctx = {}) {
         .map((d) => ({ ref: `death:${trace.heroes[h].key}:${myDeaths.indexOf(d) + 1}`, t: d[0], clock: clock(d[0]), killer: nameOf(trace, d[2]), row: d[3] })),
       casts: combined,
       note: 'Includes both manual casts (trigger: "manual", from combat log) and automatic activations (trigger: "auto", detected from ability cooldown starts, which emit no combat-log cast event).',
-      gaps: gapsFor(trace, ['ability_immunity', 'vision']),
+      gaps: [
+        ...gapsFor(trace, ['ability_immunity', 'vision']),
+        ...(autoProximityMissing ? [{ topic: 'hero_positions', reason: 'position_samples_missing_around_auto_trigger' }] : []),
+      ],
     };
   }
   const unused = passiveOnDeath ? [] : myDeaths.filter((d) => abilityLevel(entry, d[0]) > 0 && cooldownLeft(entry, d[0] - 0.5) === 0 && !rows.some((c) => d[0] - c[0] >= 0 && d[0] - c[0] <= 12)).filter(afford);

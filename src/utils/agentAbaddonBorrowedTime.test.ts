@@ -236,6 +236,67 @@ describe('Abaddon Borrowed Time auto-trigger & 0-mana recognition', () => {
     expect(dc.deaths[0].ready_not_cast).not.toContain('abaddon_borrowed_time');
   });
 
+  it('preserves unknown proximity (null + gap) when Abaddon or another hero has missing position samples around an auto-trigger', () => {
+    const tr = makeAbaddonTrace({
+      abilities: [
+        {
+          abaddon_borrowed_time: {
+            levels: [[500, 1]],
+            cd: [
+              [600.2, 685.2, 85],
+              [900.2, 985.2, 85],
+              [1200.2, 1285.2, 85],
+            ],
+          },
+        },
+        {},
+        {},
+      ],
+      // Add an ally (index 3) so both sides are exercised independently.
+    });
+    tr.heroes.push({ key: 'sven', npc: 'npc_dota_hero_sven', team: 2, player_index: 1 });
+    tr.names.push('npc_dota_hero_sven');
+    tr.states.push({
+      x: Array(tr.n).fill(150),
+      y: Array(tr.n).fill(100),
+      hp: Array(tr.n).fill(900),
+      max_hp: Array(tr.n).fill(1200),
+      mana: Array(tr.n).fill(400),
+      mana_peak: Array(tr.n).fill(400),
+      level: Array(tr.n).fill(12),
+      alive: Array(tr.n).fill(1),
+    });
+    tr.abilities.push({});
+    tr.items.push({});
+    tr.controls.push({});
+
+    // Activation 1 (600.2): blank Abaddon's position around 600 -> me: null, allies & enemies both null.
+    for (let s = 595; s <= 605; s += 1) {
+      tr.states[0].x[s] = null;
+      tr.states[0].y[s] = null;
+    }
+    // Activation 2 (900.2): blank enemy Lion (index 1) around 900 while alive -> enemies null, allies still known (['sven']).
+    for (let s = 895; s <= 905; s += 1) {
+      tr.states[1].x[s] = null;
+      tr.states[1].y[s] = null;
+    }
+    // Activation 3 (1200.2): Lion is confirmed dead with blanked position, PA is far away -> enemies known ([]), allies known (['sven']).
+    for (let s = 1195; s <= 1205; s += 1) {
+      tr.states[1].alive[s] = 0;
+      tr.states[1].x[s] = null;
+      tr.states[1].y[s] = null;
+      tr.states[2].x[s] = 5000;
+    }
+
+    const audit: any = runTraceTool(tr, 'ability_audit', { hero: 'abaddon', ability: 'borrowed_time' });
+    expect(audit.casts_total).toBe(3);
+    expect(audit.casts[0]).toMatchObject({ me: null, allies_within_1300: null, enemies_within_1300: null });
+    expect(audit.casts[1]).toMatchObject({ allies_within_1300: ['sven'], enemies_within_1300: null });
+    expect(audit.casts[1].me).not.toBeNull();
+    expect(audit.casts[2]).toMatchObject({ allies_within_1300: ['sven'], enemies_within_1300: [] });
+    expect(audit.gaps.some((g: any) => g.topic === 'hero_positions' && g.reason === 'position_samples_missing_around_auto_trigger')).toBe(true);
+  });
+
   it('does not misread basic-attack damage (-1) as ability damage when abaddon_borrowed_time is absent from trace.names', () => {
     const tr = makeAbaddonTrace({
       abilities: [
