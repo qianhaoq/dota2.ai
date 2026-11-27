@@ -1,0 +1,79 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9107133982,
+  "hero": "phantom_assassin",
+  "status": "approved",
+  "written": "2026-11-27",
+  "checked": "2026-11-27",
+  "checked_by": "Antigravity, reading every stated fact directly from reviewToolkit outputs on the live GCS trace (match_overview, death_context, build_check, lane_report, pro_item_choices, key_moments).",
+  "source": "Live GCS trace with parsed OpenDota match record. A 25:27 Radiant carry loss from the lanes (-3,812 at 10:00, never closer than -4,121 after): 11 deaths total (most on team), 9 outside fights, 10 not traded, 4 while farming, 87% enemy spell damage, Battle Fury only (no BKB).",
+  "must_hit": [
+    {
+      "id": "lost_lane_and_early_deaths",
+      "says": "Lost bot lane badly (3,218 vs 6,496 at 10:00; three deaths before 10:00 at 5:04, 7:08 and 9:44, none traded).",
+      "weight": 2,
+      "any": {
+        "refs": ["lane:phantom_assassin", "death:phantom_assassin:1", "death:phantom_assassin:2", "death:phantom_assassin:3"],
+        "clocks": ["5:04", "7:08", "9:44"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["对线", "下路", "10:00", "十分钟", "10 分钟", "10分钟", "沙王"],
+        "en": ["lane", "bot", "10:00", "ten minutes", "Sand King"]
+      }
+    },
+    {
+      "id": "repeated_untraded_deaths_farming_outside_fights",
+      "says": "Nine of the eleven deaths were outside fights and ten of eleven were not traded within 15 s; four began while farming (15:05, 16:48, 21:25, 23:03) and four had no ally within 2200 (5:04, 11:29, 21:25, 24:02).",
+      "weight": 2,
+      "any": {
+        "refs": [
+          "deaths:phantom_assassin",
+          "death:phantom_assassin:4",
+          "death:phantom_assassin:6",
+          "death:phantom_assassin:7",
+          "death:phantom_assassin:8",
+          "death:phantom_assassin:9"
+        ],
+        "clocks": ["11:29", "15:05", "16:48", "21:25", "23:03"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["团战外", "刷钱", "打钱", "没换", "未换", "白死", "落单", "没有队友"],
+        "en": ["outside", "farming", "not traded", "alone", "no ally"]
+      }
+    },
+    {
+      "id": "spell_damage_and_no_bkb",
+      "says": "87% of death-window damage came from enemy abilities and items (Sand King 49%, 4 kills; Death Prophet 4 kills), while only Battle Fury (12:24) was finished and no Black King Bar was built.",
+      "weight": 1,
+      "any": {
+        "refs": ["build:phantom_assassin", "pro_items:phantom_assassin", "deaths:phantom_assassin"]
+      },
+      "terms": {
+        "zh": ["黑皇杖", "BKB", "技能伤害", "法术"],
+        "en": ["Black King Bar", "BKB", "abilities", "spell"]
+      }
+    }
+  ],
+  "lead_any": ["lost_lane_and_early_deaths", "repeated_untraded_deaths_farming_outside_fights"],
+  "must_not": [
+    {
+      "id": "coup_de_grace_claimed_never_cast",
+      "says": "phantom_assassin_coup_de_grace is a passive ultimate: a review must never claim it had 0 casts or was left ready and uncast.",
+      "pattern": "(?:恩赐解脱|Coup de Grace)[^。，；\n]{0,24}(?:0\\s*次施放|零次施放|从未施放|没有施放|没放过|就绪却没放)|(?:Coup de Grace)[^.,;\n]{0,24}(?:never cast|0 casts?|ready and not cast)"
+    }
+  ],
+  "main_reason": ["your_play", "team_play"],
+  "story_cause": {
+    "id": "lost_from_the_lanes",
+    "says": "Radiant was 3,812 gold behind at 10:00 and never closer than -4,121 after (match_overview.lanes.lost_from_the_lanes true; no turning fight).",
+    "from": 0,
+    "to": 600,
+    "terms": {
+      "zh": ["对线", "线上", "10:00", "10 分钟", "十分钟", "10分钟", "前十"],
+      "en": ["lane", "10:00", "ten minutes", "first ten"]
+    },
+    "checked": "2026-11-27, against reviewToolkit match_overview and key_moments on the live GCS trace"
+  }
+}

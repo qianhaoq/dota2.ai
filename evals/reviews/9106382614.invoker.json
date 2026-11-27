@@ -1,0 +1,67 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9106382614,
+  "hero": "invoker",
+  "status": "approved",
+  "written": "2026-11-27",
+  "checked": "2026-11-27",
+  "checked_by": "Antigravity, reading every stated fact directly from reviewToolkit outputs on the live GCS trace (match_overview, death_context, build_check, lane_report, pro_item_choices, key_moments).",
+  "source": "Live GCS trace with parsed OpenDota match record. A 40:43 Radiant mid loss: Radiant led +2,516 at 10:00 and peaked +8,070, slipped across 18:00–24:00, and lost on game-ending fight:17 (39:19–39:40, 5 deaths vs 1 while up +906). Invoker lost mid badly to Puck, took 82% spell damage (Juggernaut 56%), and built no BKB.",
+  "must_hit": [
+    {
+      "id": "no_bkb_against_spell_damage",
+      "says": "No Black King Bar all game (67% of pro Invokers have it by 24:59) after Kaya (14:20), Meteor Hammer (15:17), Starforge (20:36), Boots of Travel (24:26), Scythe of Vyse (30:58) and Soul Booster (37:47), while 82% of death-window damage came from enemy abilities/items (Juggernaut 56%, 3 kills; Puck 4 kills).",
+      "weight": 2,
+      "any": {
+        "refs": ["build:invoker", "pro_items:invoker", "deaths:invoker", "spikes:invoker"]
+      },
+      "terms": {
+        "zh": ["黑皇杖", "BKB", "保命", "自保", "防御"],
+        "en": ["Black King Bar", "BKB", "defensive", "survival", "spell immunity"]
+      }
+    },
+    {
+      "id": "mid_lane_loss_to_puck",
+      "says": "Lost mid lane badly to Puck (2,926 vs 4,052 gold, 42 vs 51 last hits at 10:00; died to Puck at -0:36 and 6:14 while farming at 22% health).",
+      "weight": 1,
+      "any": {
+        "refs": ["lane:invoker", "death:invoker:1", "death:invoker:2"],
+        "clocks": ["-0:36", "6:14"],
+        "within": 10
+      },
+      "terms": {
+        "zh": ["中路", "对线", "帕克"],
+        "en": ["mid", "lane", "Puck"]
+      }
+    },
+    {
+      "id": "late_turning_fight_or_midgame_absence",
+      "says": "Either Invoker's untraded death at 39:19 while farming (opening the 5-1 game-ending turning fight:17 at 39:19–39:40 while Radiant still led +906) or his absence from the 21:08 / 22:53 fights where Radiant's win chance fell from 86% to 58%.",
+      "weight": 1,
+      "any": {
+        "refs": ["fight:17", "fights:invoker:17", "death:invoker:8", "fight:9", "fights:invoker:9", "fight:10", "fights:invoker:10", "key_moments:invoker"],
+        "clocks": ["21:08", "22:53", "39:19", "39:40"],
+        "within": 15
+      },
+      "terms": {
+        "zh": ["团战", "缺席", "不在场", "阵亡", "39:19", "21:08", "一波"],
+        "en": ["fight", "elsewhere", "absent", "39:19", "21:08", "ended"]
+      }
+    }
+  ],
+  "lead_any": ["no_bkb_against_spell_damage", "late_turning_fight_or_midgame_absence"],
+  "turning_fight": { "fight": 17, "from": 2359, "to": 2381 },
+  "must_not": [],
+  "main_reason": ["team_play", "enemy_play", "your_play"],
+  "story_cause": {
+    "id": "midgame_slip_and_final_fight",
+    "says": "Radiant led up to +8,070 (86% win chance at 18:00), lost their advantage in 18:00–24:00 (to 58%), and lost the game on turning fight:17 at 39:19–39:40 (5 deaths vs 1 while ahead +906).",
+    "from": 1080,
+    "to": 2400,
+    "terms": {
+      "zh": ["团", "转折", "翻", "崩", "一波", "21:", "39:"],
+      "en": ["fight", "turn", "swing", "ended", "21:", "39:"]
+    },
+    "checked": "2026-11-27, against reviewToolkit match_overview and key_moments on the live GCS trace"
+  }
+}
