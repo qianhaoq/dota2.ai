@@ -79,6 +79,26 @@ describe('death_context: what the hero was doing and which way they were heading
     expect(d.moved_toward_own_fountain).toBeNull();
   });
 
+  it('a gap in the samples around a respawn is not a respawn: the fountain comes from one the samples show, or is null (Codex P1 on #415)', () => {
+    const t: any = synth({ deaths: [100, 200], path: () => [2000, 0] });
+    // Around the first respawn (101–120 dead, back at 121) nothing is known for 115–125: the first alive sample after it is in the lane.
+    for (let i = 115; i <= 125; i += 1) { t.states[0].alive[i] = null; t.states[0].x[i] = null; t.states[0].y[i] = null; }
+    expect(ownFountain(t, 0, 0)).toEqual({ x: FOUNTAIN[0], y: FOUNTAIN[1] }); // from the second respawn
+    const once: any = synth({ deaths: [100], path: () => [2000, 0] });
+    for (let i = 115; i <= 125; i += 1) { once.states[0].alive[i] = null; once.states[0].x[i] = null; once.states[0].y[i] = null; }
+    expect(ownFountain(once, 0, 0)).toBeNull();
+  });
+
+  it('a window that reaches back into the previous life has no heading (Codex P1 on #415)', () => {
+    // Dead 101–120, back at 121 in the fountain, standing there, dead again at 125: the window's start is the body.
+    const t: any = synth({ deaths: [100, 125, 220], deadFor: 20, path: () => [FOUNTAIN[0], FOUNTAIN[1]] });
+    const r = runTraceTool(t, 'death_context', { hero: 'tidehunter' });
+    const d = r.deaths[1];
+    expect(d.snapshots[0].me.to_own_fountain).toBeNull();
+    expect(d.moved_toward_own_fountain).toBeNull();
+    expect(r.deaths_where.heading_home_1500_or_more).not.toContain(d.clock);
+  });
+
   it('on the real game every death has the facts, measured from where Beastmaster respawns', () => {
     const r: any = runTraceTool(real, 'death_context', { hero: 'beastmaster' });
     expect(r.deaths).toHaveLength(11);

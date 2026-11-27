@@ -273,7 +273,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
       // What the replay shows the hero doing then (state.js): farming, trading damage with enemy heroes, hitting an
       // enemy building, in their own base — or none of these, when only the place is known.
       const doing = me ? heroStateAt(trace, h, t - back).doing ?? null : null;
-      return { dt: -back, me: me ? { hp: me.hp, max_hp: me.max_hp, mana: me.mana, ...where(me), doing, to_own_fountain: fountain ? dist(me, fountain) : null } : null, allies, enemies };
+      // A dead hero's position is the body or the fountain: no distance is measured from it.
+      return { dt: -back, me: me ? { hp: me.hp, max_hp: me.max_hp, mana: me.mana, ...where(me), doing, to_own_fountain: fountain && me.alive ? dist(me, fountain) : null } : null, allies, enemies };
     });
     const atDeath = nearby(trace, h, t, 2200);
     // Every second of the window and the death itself, not only the snapshots: an ally who came and went between two of them was there.
@@ -319,9 +320,11 @@ export function deathContext(trace, args = {}, ctx = {}) {
       health_share_at_window_start: share(snapshots[0]?.me),
       // How much closer to their own fountain the hero was at the last snapshot than at the window's start: positive
       // heading home, negative heading away from it. Null when either distance is unknown. Over 1089 deaths outside
-      // fights in 32 games (scripts/calibrate.mjs), the 105 heading home by 1500 or more were traded 14% of the time,
+      // fights in 32 games (scripts/calibrate.mjs), the 100 heading home by 1500 or more were traded 13% of the time,
       // the fewest of any; 240 began farming (17%). An escape that came too late buys nothing.
-      moved_toward_own_fountain: snapshots[0]?.me?.to_own_fountain != null && snapshots.at(-1)?.me?.to_own_fountain != null ? snapshots[0].me.to_own_fountain - snapshots.at(-1).me.to_own_fountain : null,
+      // Both ends alive and in this life: a window that reaches back past the hero's previous death (a respawn or
+      // buyback less than a window ago) has no heading (Codex P1 on #415).
+      moved_toward_own_fountain: snapshots[0]?.me?.to_own_fountain != null && snapshots.at(-1)?.me?.to_own_fountain != null && !all.some((o) => o !== d && o[0] < t && o[0] >= from) ? snapshots[0].me.to_own_fountain - snapshots.at(-1).me.to_own_fountain : null,
       // From the health itself, not the rounded share: 495 of 1000 is below half.
       below_half_health_at_window_start: snapshots[0]?.me?.max_hp ? snapshots[0].me.hp * 2 < snapshots[0].me.max_hp : null,
       // Null where the hero's position was not sampled: whether an ally was near is then unknown.
@@ -374,9 +377,11 @@ export function ownFountain(trace, h, npc = nameId(trace, trace.heroes[h].npc)) 
   let at = null;
   for (const d of trace.deaths.filter((x) => x[1] === npc).sort((a, b) => a[0] - b[0])) {
     let i = Math.max(0, Math.ceil(d[0]) - trace.t0 + 1);
-    while (i < trace.n && s.alive[i] !== 1) i += 1;
-    // The first second alive again, and its position sampled: anything later may already be on the way out.
-    if (i < trace.n && s.x[i] != null) { at = { x: s.x[i], y: s.y[i] }; break; }
+    // Only a respawn the samples show: dead one second, alive the next, with a position. A gap in the samples
+    // (neither dead nor alive known) leaves this death out — the first alive sample after a gap may already be
+    // in a lane (Codex P1 on #415) — and the next death is tried.
+    while (i < trace.n && s.alive[i] === 0) i += 1;
+    if (i < trace.n && i > 0 && s.alive[i] === 1 && s.alive[i - 1] === 0 && s.x[i] != null && s.y[i] != null) { at = { x: s.x[i], y: s.y[i] }; break; }
   }
   byHero.set(h, at);
   return at;
