@@ -14,13 +14,6 @@
       "weight": 2,
       "any": { "refs": ["lane:luna", "death:luna:1", "death:luna:2", "death:luna:3", "death:luna:4", "death:luna:5"], "clocks": ["1:51", "2:54", "4:34", "5:53", "6:38"], "within": 5 },
       "terms": { "zh": ["对线", "线上", "10:00", "十分钟", "10 分钟", "10分钟"], "en": ["lane", "10:00", "ten minutes", "first ten"] }
-    },
-    {
-      "id": "died_alone_after_the_lane",
-      "says": "After the lane it went on: at 15:35, 25:24, 28:52 and 30:06 Luna died with no ally within 2200 (six of the twelve deaths in all), and after ten of the twelve no enemy died within 15 s.",
-      "weight": 1,
-      "any": { "refs": ["death:luna:6", "death:luna:10", "death:luna:11", "death:luna:12"], "clocks": ["15:35", "25:24", "28:52", "30:06"], "within": 5 },
-      "terms": { "zh": ["队友", "一个人", "独自", "落单", "单独"], "en": ["ally", "allies", "alone", "teammate"] }
     }
   ],
   "lead_any": ["five_deaths_before_ten"],

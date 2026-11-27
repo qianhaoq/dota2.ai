@@ -716,7 +716,9 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const hasDamageLog = Array.isArray(trace.damage);
   const out = pick.map(([d, n]) => {
     const t = d[0]; const from = t - window;
-    const snapshots = [...new Set([window, 8, 4, 1].filter((x) => x <= window))].map((back) => {
+    // Allies near are read here only to tell a fight from a pick-off (in_a_fight); they are not told (owner, 2026-11-27:
+    // who was near says nothing about the decision).
+    const snaps = [...new Set([window, 8, 4, 1].filter((x) => x <= window))].map((back) => {
       const { me, allies, enemies } = nearby(trace, h, t - back, 2200);
       // What the replay shows the hero doing then (state.js): farming, trading damage with enemy heroes, hitting an
       // enemy building, in their own base — or none of these, when only the place is known.
@@ -724,10 +726,11 @@ export function deathContext(trace, args = {}, ctx = {}) {
       // A dead hero's position is the body or the fountain: no distance is measured from it.
       return { dt: -back, me: me ? { hp: me.hp, max_hp: me.max_hp, mana: me.mana, ...where(me), doing, to_own_fountain: fountain && me.alive ? dist(me, fountain) : null } : null, allies, enemies };
     });
+    const snapshots = snaps.map(({ allies: _allies, ...rest }) => rest);
     const atDeath = nearby(trace, h, t, 2200);
     const atPos = stateAt(trace, h, t - 1);
     // Every second of the window and the death itself, not only the snapshots: an ally who came and went between two of them was there.
-    let mostAllies = atDeath.me && snapshots.every((x) => x.me) ? Math.max(atDeath.allies.length, ...snapshots.map((x) => x.allies.length)) : null;
+    let mostAllies = atDeath.me && snaps.every((x) => x.me) ? Math.max(atDeath.allies.length, ...snaps.map((x) => x.allies.length)) : null;
     for (let sec = Math.floor(from); mostAllies != null && sec < t; sec += 1) { const at = nearby(trace, h, sec, 2200); mostAllies = at.me ? Math.max(mostAllies, at.allies.length) : null; }
     const abilities = Object.entries(trace.abilities[h]).filter(([k, e]) => can.has(k) && abilityLevel(e, from) > 0)
       .map(([k, e]) => ({
@@ -798,21 +801,6 @@ export function deathContext(trace, args = {}, ctx = {}) {
       : (!NON_HERO_SUICIDE_KINDS.has(kKind) || attackers.size > 0 || otherUnitDamage) ? false
       : (unknownDamageSource || possiblePlayerControlledCreep) ? null : true;
     const traceEnd = typeof trace.t0 === 'number' && typeof trace.n === 'number' ? trace.t0 + trace.n - 1 : null;
-    const alliesKnownAtDeath = Boolean(atDeath.me && atDeath.me.x != null && atDeath.me.y != null)
-      && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(trace, j, t));
-    const alliesSurvived10s = !alliesKnownAtDeath ? null : (() => {
-      const winStart = Math.min(t, Math.floor(t));
-      const survivors = atDeath.allies.map((a) => a.hero).filter((ak) => {
-        const ai = trace.heroes.findIndex((x) => x.key === ak);
-        const anpc = ai >= 0 ? nameId(trace, trace.heroes[ai].npc) : -1;
-        // Include simultaneous deaths at t (or same whole-second sample) so an ally killed at the exact same moment is not listed as surviving (Codex P1 on #464).
-        return !real.some((o) => o[1] === anpc && o[0] >= winStart && o[0] <= t + 10);
-      });
-      // When fewer than 10 s of trace remain after the death, the absence of a death row cannot establish
-      // 10 s survival for nearby allies still alive at trace end (Codex P1 on #464).
-      if (survivors.length > 0 && (traceEnd == null || t + 10 > traceEnd)) return null;
-      return survivors;
-    })();
     const stH = trace.states?.[h];
     // Controls intervals are derived from sampled state rows; blank/missing samples in the death window leave
     // total disable duration unknown (null) rather than 0 (Codex P1 on #464).
@@ -855,10 +843,6 @@ export function deathContext(trace, args = {}, ctx = {}) {
       nearby_objective: nearObj,
       // Killed by neutral/tower/Roshan/Tormentor/lane creep with zero enemy hero or summon damage in the window.
       non_hero_death_without_enemy_hero_damage: nonHeroNoEnemy,
-      // Null where the hero's own position was not sampled: no ally listed is then unknown, not alone.
-      // "At death" is the moment itself, not the last snapshot a second before: an ally can arrive in that second.
-      allies_within_2200: { at_window_start: snapshots[0].me ? snapshots[0].allies.length : null, at_death: atDeath.me ? atDeath.allies.length : null, most_in_any_second: mostAllies },
-      allies_near_who_survived_10s: alliesSurvived10s,
       first_hero_damage_dt: firstHero == null ? null : Math.round(firstHero - t),
       // Counted over every damage row of the window, not over the ten largest listed below.
       enemy_heroes_dealing_damage: attackers.size,
@@ -875,8 +859,6 @@ export function deathContext(trace, args = {}, ctx = {}) {
       other_deaths: real.filter((o) => o !== d && Math.abs(o[0] - t) <= 20).map((o) => deathRow(trace, o, t, view)),
       // Whether the team got a hero back for it: an enemy hero died for real within TRADE_SECONDS of this death, before or after.
       traded_within_15s: real.some((o) => { const v = heroOfName(trace, o[1]); return v >= 0 && trace.heroes[v].team !== trace.heroes[h].team && Math.abs(o[0] - t) <= TRADE_SECONDS; }),
-      // The allies who were not within 2200 at the death: what the replay shows them doing, where, how far.
-      allies_elsewhere: alliesElsewhere(trace, h, t, atDeath),
       // Observer wards standing within 1600 of where the hero died, each side's. Null: the trace has no ward list.
       observers_within_1600: wardsAt(trace, h, atDeath, t),
       // The clock of a buyback after this death, false when none, null when the trace does not record buybacks.
@@ -889,7 +871,6 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const myRes = resurrections(trace).filter((r) => r.heroIndex === h).map((r, i) => {
     const atRes = nearby(trace, h, r.t, 2200);
     const meKnown = Boolean(atRes.me && atRes.me.x != null && atRes.me.y != null);
-    const alliesKnown = meKnown && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(trace, j, r.t));
     const enemiesKnown = meKnown && trace.heroes.every((o, j) => o.team === trace.heroes[h].team || heroNearKnown(trace, j, r.t));
     const nextIdx = all.findIndex((d) => d[0] > r.t);
     const nextReal = nextIdx >= 0 ? all[nextIdx] : null;
@@ -901,7 +882,6 @@ export function deathContext(trace, args = {}, ctx = {}) {
       ref: `resurrection:${heroKey}:${i + 1}`, hero: heroKey, n: i + 1, t: r.t, clock: clock(r.t), by: r.by, killer: nameOf(trace, r.killer), row: r.row,
       revived_at: r.revived_at == null ? null : clock(r.revived_at),
       at: meKnown ? where(atRes.me) : null,
-      allies_within_2200: alliesKnown ? atRes.allies.map((a) => a.hero) : null,
       enemies_within_2200: enemiesKnown ? atRes.enemies.map((e) => e.hero) : null,
       died_for_real_within_20s: diedSoon,
     };
@@ -967,22 +947,6 @@ function wardsAt(trace, h, atDeath, t) {
 
 /** A death is traded when an enemy hero dies this close to it in time. */
 export const TRADE_SECONDS = 15;
-/**
- * The hero's allies not within 2200 at second t, as the replay shows them: dead and respawning in, or where,
- * doing what (only what the replay shows: in base, trading damage, at a building), how far, TP ready. Empty
- * when the hero's own position was not sampled (who was near is then unknown, and so who was not).
- */
-function alliesElsewhere(trace, h, t, atDeath) {
-  if (!atDeath?.me) return [];
-  const near = new Set(atDeath.allies.map((a) => a.hero));
-  const from = { x: atDeath.me.x, y: atDeath.me.y };
-  return trace.heroes.map((o, i) => i).filter((i) => i !== h && trace.heroes[i].team === trace.heroes[h].team && !near.has(trace.heroes[i].key)).map((i) => {
-    const s = heroStateAt(trace, i, t, { from });
-    if (!s.known) return { hero: s.hero, known: false };
-    if (!s.alive) return { hero: s.hero, doing: 'dead', respawn_in: s.respawn_in };
-    return { hero: s.hero, ...(s.doing !== 'none_of_these' ? { doing: s.doing } : {}), place: s.place, distance: s.distance, ...(s.tp_ready != null ? { tp_ready: s.tp_ready } : {}) };
-  });
-}
 
 /**
  * What the hero's deaths have in common, counted: each entry lists the deaths
@@ -1007,9 +971,8 @@ function deathPatterns(trace, deaths, { allSources = false } = {}) {
   return {
     deaths_where: {
       health_below_half_at_window_start: of((d) => d.below_half_health_at_window_start === true),
-      // In every second of the window and at the death itself.
-      no_ally_within_2200_throughout: of((d) => d.allies_within_2200.most_in_any_second === 0),
-      no_ally_within_2200_at_death: of((d) => d.allies_within_2200.at_death === 0),
+      // No count of deaths with no ally within 2200 (owner, 2026-11-27: meaningless): an offlaner alone in a lane, a
+      // core farming a free lane, a support rotating are all "alone"; each death still says who was near.
       three_or_more_enemy_heroes_dealing_damage: of((d) => d.enemy_heroes_dealing_damage >= 3),
       // In a fight (one of three or more hero deaths close together in time, with an ally within 2200 before it)
       // or not. Dying low or to several enemies in a fight is what fights are; outside one it is where the hero
@@ -1028,7 +991,6 @@ function deathPatterns(trace, deaths, { allSources = false } = {}) {
       // Whether the team got an enemy hero back within 15 s. A death not traded bought nothing.
       traded_within_15s: of((d) => d.traded_within_15s),
       not_traded_within_15s: of((d) => !d.traded_within_15s),
-      no_ally_within_2200_at_death_and_not_traded: of((d) => d.allies_within_2200.at_death === 0 && !d.traded_within_15s),
       // Only where the trace has wards (a death with no ward list is in neither).
       no_own_observer_within_1600: of((d) => d.observers_within_1600?.my_team === 0),
       enemy_observer_within_1600: of((d) => d.observers_within_1600?.enemy > 0),
@@ -1040,7 +1002,6 @@ function deathPatterns(trace, deaths, { allSources = false } = {}) {
     // Deaths a list above could not be decided for (health or position not sampled): a count over the game is only as sure as these are few.
     deaths_not_known: {
       health_at_window_start: deaths.filter((d) => d.below_half_health_at_window_start == null).length,
-      allies_at_death: deaths.filter((d) => d.allies_within_2200.at_death == null).length,
       // Whether a death was in a fight is unknown where the hero's position was not sampled.
       in_a_fight: deaths.filter((d) => d.in_a_fight == null).length,
       // For each outside-fights list, the deaths it can neither include nor rule out: neither in a fight for sure
@@ -1565,9 +1526,9 @@ export function tempoReport(trace, args = {}, ctx = {}) {
     // What happened before the horn belongs to the first stretch; the Ancient's fall to the last.
     const inPhase = (t) => (t >= from || from === 0) && (t < to || (to === end && t <= end + 1));
     let alive = 0; let dead = 0; const sides = { own: 0, river: 0, enemy: 0 }; const places = new Map();
-    // Who was near is known for a second only when every hero of that side has a position then: one without a
-    // sample may have been standing next to the hero. Counted apart, so a missing sample is not "nobody near".
-    const company = [0, 0, 0]; let companyKnown = 0; let crowded = 0; let crowdKnown = 0;
+    // Opponents near are known for a second only when every opponent has a position then: one without a sample may
+    // have been standing next to the hero. Counted apart, so a missing sample is not "nobody near".
+    let crowded = 0; let crowdKnown = 0;
     // Seconds of the stretch with no sample of the hero (none within two seconds either): where they were then,
     // and whether they were alive, is not known.
     let unsampled = 0;
@@ -1587,7 +1548,6 @@ export function tempoReport(trace, args = {}, ctx = {}) {
         if (!at) { unseen[o.team] = true; return; }
         if (at.alive && dist(me, at) <= NEAR) near[o.team] += 1;
       });
-      if (!unseen[team]) { companyKnown += 1; company[Math.min(2, near[team])] += 1; }
       if (!unseen[other]) { crowdKnown += 1; if (near[other] >= 3) crowded += 1; }
     }
     // A share of the living time needs the whole of it: with seconds where it cannot be told — the hero's own
@@ -1615,7 +1575,6 @@ export function tempoReport(trace, args = {}, ctx = {}) {
       hero_alive_seconds: alive, hero_dead_seconds: dead, hero_seconds_not_sampled: unsampled,
       hero_share_of_alive_time: {
         on_own_side_of_the_map: whole(sides.own), around_the_river: whole(sides.river), on_the_opponents_side: whole(sides.enemy),
-        with_no_ally_within_2200: whole(company[0], companyKnown), with_one_ally_within_2200: whole(company[1], companyKnown), with_two_or_more_allies_within_2200: whole(company[2], companyKnown),
         with_three_or_more_opponents_within_2200: whole(crowded, crowdKnown),
       },
       // Null (not an empty list) when the stretch was not sampled throughout: the place they spent most time in may be one never seen.
@@ -1685,7 +1644,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'death_context',
-    description: "What led to a hero's real deaths: for the seconds before each one, where they were, which allies and enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed (`disable_seconds_in_window`), enemy ultimates absorbed (`enemy_ultimates_absorbed`), allies near who survived the next 10 s (`allies_near_who_survived_10s`), what they cast, nearby fights within [-30 s before engagement, +15 s after] (`nearby_fight`), nearby building/Roshan activity (`nearby_objective`), killer kind and whether it was a neutral/tower/Roshan/Tormentor/creep death with zero enemy hero damage (`non_hero_death_without_enemy_hero_damage`), and who else died around it. Without `index`, every real death. In-place revivals (Wraith King's Reincarnation, Aegis of the Immortal) are not counted as deaths; when the hero had any, they are listed apart under `resurrections` (`resurrection:<hero>:<n>`, with `died_for_real_within_20s` when the hero died again right after reviving), and for Wraith King each real death gives `reincarnation_at_death` (`not_learned`, `on_cooldown`, `insufficient_mana`). Auto-triggerable active abilities that fired automatically without a combat-log cast (e.g. Abaddon's Borrowed Time below 400 HP, detected from cooldown starts) are listed under `auto_triggered` and excluded from `ready_not_cast`. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready; attack modifiers whose uses are not logged as ability casts are excluded from `ready_not_cast`. `deaths_where` lists, by game time, the deaths that have something in common (began below half health, no ally near, three or more enemies, before a nearby fight within 30 s, non-hero without enemy hero damage, absorbed enemy ultimate) and `damage_share_in_death_windows` says where the damage came from — use them for what to change, and for which item answers the damage. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
+    description: "What led to a hero's real deaths: for the seconds before each one, where they were, which enemies were within 2200 units, health and mana, which of their abilities and items were ready, who dealt the damage, the disables that landed (`disable_seconds_in_window`), enemy ultimates absorbed (`enemy_ultimates_absorbed`), what they cast, nearby fights within [-30 s before engagement, +15 s after] (`nearby_fight`), nearby building/Roshan activity (`nearby_objective`), killer kind and whether it was a neutral/tower/Roshan/Tormentor/creep death with zero enemy hero damage (`non_hero_death_without_enemy_hero_damage`), and who else died around it. Without `index`, every real death. In-place revivals (Wraith King's Reincarnation, Aegis of the Immortal) are not counted as deaths; when the hero had any, they are listed apart under `resurrections` (`resurrection:<hero>:<n>`, with `died_for_real_within_20s` when the hero died again right after reviving), and for Wraith King each real death gives `reincarnation_at_death` (`not_learned`, `on_cooldown`, `insufficient_mana`). Auto-triggerable active abilities that fired automatically without a combat-log cast (e.g. Abaddon's Borrowed Time below 400 HP, detected from cooldown starts) are listed under `auto_triggered` and excluded from `ready_not_cast`. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready; attack modifiers whose uses are not logged as ability casts are excluded from `ready_not_cast`. `deaths_where` lists, by game time, the deaths that have something in common (began below half health, no ally near, three or more enemies, before a nearby fight within 30 s, non-hero without enemy hero damage, absorbed enemy ultimate) and `damage_share_in_death_windows` says where the damage came from — use them for what to change, and for which item answers the damage. `most_left_unused` lists all the hero's deaths in a fixed order of how much they still had (rule in `most_left_unused_rule`): the first is the answer to \"which death was the most avoidable\".",
     input_schema: { type: 'object', properties: { hero: HERO, index: { type: 'integer', minimum: 1, description: 'Which death, counting from 1. Omit for all.' }, window: { type: 'number', minimum: 4, maximum: 30, description: 'Seconds before the death to look at (default 12).' } }, required: ['hero'], additionalProperties: false },
     run: deathContext,
   },

@@ -131,7 +131,9 @@ test('the game plan: how the game went as a whole, its records, and a plan of th
   const stretch = plan.locator('.ag-ev').nth(2).locator('.ag-rec');
   await expect(stretch.getByText('25:05 · 对方 上路 2 塔')).toBeVisible();
   await expect(stretch.getByText('天辉上路 32%')).toBeVisible();
-  await expect(stretch.getByText('身边两名以上队友 52%')).toBeVisible();
+  await expect(stretch.getByText('在对方半场 34%')).toBeVisible();
+  // Who was near is not shown (owner, 2026-11-27).
+  await expect(stretch.getByText(/身边.*队友/)).toHaveCount(0);
   // The window: when the team was ahead, what each side took, what the enemy finished just before it ended.
   await plan.locator('.ag-ev').nth(1).getByRole('button', { name: '看原始记录' }).click();
   const win = plan.locator('.ag-ev').nth(1).locator('.ag-rec');

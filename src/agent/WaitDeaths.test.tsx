@@ -10,6 +10,7 @@ const summary = (over: any = {}) => ({
   ref: 'deaths:axe', deaths_total: 4, killed_by: { lina: 1, phantom_assassin: 3 },
   deaths_where: {
     in_a_fight: ['22:06', '8:27'], outside_fights: ['0:47', '2:51'],
+    // An older record still lists deaths with no ally near: the page no longer shows it (owner, 2026-11-27).
     no_ally_within_2200_at_death: ['2:51'], three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06'],
     traded_within_15s: ['2:51', '8:27'], not_traded_within_15s: ['0:47'],
     // Lists the page does not show.
@@ -52,7 +53,7 @@ describe('WaitDeaths', () => {
     const rows = Array.from(document.querySelectorAll('.ag-wait-list > li')).map((li) => [li.querySelector('.ag-wait-clock')!.textContent, Array.from(li.querySelectorAll('.ag-wait-tags .ag-chip')).map((c) => c.textContent)]);
     expect(rows).toEqual([
       ['0:47', ['outside a fight', 'no enemy died within 15 s']],
-      ['2:51', ['outside a fight', 'no ally within 2200', 'an enemy died within 15 s']],
+      ['2:51', ['outside a fight', 'an enemy died within 15 s']],
       ['8:27', ['in a fight', '3+ enemies hitting you', 'an enemy died within 15 s']],
       // In neither trade list: the summary could not tell, and the page says neither.
       ['22:06', ['in a fight', '3+ enemies hitting you']],
@@ -129,7 +130,7 @@ describe('WaitDeaths', () => {
     await show('zh');
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('教练看录像的这几分钟，先看你的 4 次阵亡');
     expect(Array.from(document.querySelectorAll('.ag-wait-by .ag-chip')).map((e) => e.textContent)).toEqual(['Phantom Assassin 3 次', 'Lina 1 次']);
-    expect(Array.from(document.querySelectorAll('.ag-wait-list > li')[1].querySelectorAll('.ag-wait-tags .ag-chip')).map((c) => c.textContent)).toEqual(['团战外', '2200 范围内没有队友', '15 秒内有敌人倒下']);
+    expect(Array.from(document.querySelectorAll('.ag-wait-list > li')[1].querySelectorAll('.ag-wait-tags .ag-chip')).map((c) => c.textContent)).toEqual(['团战外', '15 秒内有敌人倒下']);
     expect(screen.getByRole('button', { name: '在地图上重放 · 0:47' })).toBeTruthy();
   });
 });

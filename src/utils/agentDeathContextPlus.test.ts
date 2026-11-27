@@ -239,7 +239,8 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
       { hero: 'lion', ability: 'lion_finger_of_death' },
       { hero: 'tidehunter', ability: 'tidehunter_ravage' },
     ]);
-    expect(d.allies_near_who_survived_10s).toEqual(['sven']);
+    // Who was near, and who of them lived, is not told (owner, 2026-11-27).
+    expect(d).not.toHaveProperty('allies_near_who_survived_10s');
     expect(d.nearby_objective).toMatchObject({ kind: 'building', building: 'badguys_tower1_mid', side: 'enemy' });
     expect(dc.deaths_where.absorbed_enemy_ultimate).toEqual(['1:40']);
 
@@ -281,21 +282,13 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     expect((runTraceTool(modern, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].nearby_objective).toBe(false);
   });
 
-  it('keeps allies_near_who_survived_10s null when fewer than 10 s of trace remain after the death (Codex P1 on #464)', () => {
+  it('does not tell which nearby allies survived, even with too little trace left after the death to say (owner, 2026-11-27)', () => {
     const short = makeTrace({
       n: 105,
       pos: { enchantress: [100, 100], sven: [500, 100], lion: [200, 100], tidehunter: [250, 100], lina: [300, 100] },
       deaths: [[100, 0, 2, 1]],
     });
-    expect((runTraceTool(short, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].allies_near_who_survived_10s).toBeNull();
-
-    // If the only nearby ally already died before trace end, [] is positively established.
-    const allyDied = makeTrace({
-      n: 105,
-      pos: { enchantress: [100, 100], sven: [500, 100], lion: [200, 100], tidehunter: [250, 100], lina: [300, 100] },
-      deaths: [[100, 0, 2, 1], [103, 1, 2, 2]],
-    });
-    expect((runTraceTool(allyDied, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].allies_near_who_survived_10s).toEqual([]);
+    expect((runTraceTool(short, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0]).not.toHaveProperty('allies_near_who_survived_10s');
   });
 
   it('keeps disable_seconds_in_window null when hero state samples are blanked in the death window (Codex P1 on #464)', () => {
@@ -339,13 +332,13 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     });
     expect((runTraceTool(split, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf }) as any).deaths[0].nearby_fight).toBe(false);
 
-    // 2. Simultaneous ally death at exact timestamp 100.1 (dead from second 101) is excluded from allies_near_who_survived_10s.
+    // 2. Simultaneous ally death at exact timestamp 100.1 (dead from second 101): no list of surviving allies is told.
     const simul = makeTrace({
       pos: { enchantress: [100, 100], sven: [300, 100], lion: [200, 100], tidehunter: [250, 100], lina: [350, 100] },
       dead: { enchantress: [[101, 130]], sven: [[101, 130]] },
       deaths: [[100.1, 0, 2, 1], [100.1, 1, 2, 2]],
     });
-    expect((runTraceTool(simul, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf }) as any).deaths[0].allies_near_who_survived_10s).toEqual([]);
+    expect((runTraceTool(simul, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf }) as any).deaths[0]).not.toHaveProperty('allies_near_who_survived_10s');
 
     // 3. Multi-ultimate enemy hero (Dark Willow: bedlam + terrorize) detects ground-cast Terrorize (target = -1) via modifier alias.
     const dw = makeTrace({
