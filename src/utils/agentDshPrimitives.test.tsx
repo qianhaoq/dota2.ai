@@ -145,6 +145,44 @@ describe('dynamic resolveModels and model_meta in createAgentService', () => {
 
     activeDefault = 'dsh.openai.gpt-5';
     expect((await service.availability(MATCH)).default_model).toBe('dsh.openai.gpt-5');
+
+    // Pinning failure backoff: if default model A fails with 402 after the host switches default to B,
+    // A's backoff is recorded against A, never against healthy B.
+    let releaseA!: () => void;
+    const waitA = new Promise<void>((r) => { releaseA = r; });
+    let currentDef = 'dsh.deepseek.deepseek-chat';
+    const pinnedSvc: any = createAgentService({
+      traces,
+      resolveModels: () => ({
+        defaultModel: currentDef,
+        models: {
+          'dsh.deepseek.deepseek-chat': {
+            name: 'deepseek/deepseek-chat',
+            complete: async () => {
+              await waitA;
+              throw Object.assign(new Error('Insufficient Balance'), { status: 402 });
+            },
+          },
+          'dsh.openai.gpt-5': {
+            name: 'openai/gpt-5',
+            complete: async () => ({ text: 'ok' }),
+          },
+        },
+      }),
+    });
+    expect((await pinnedSvc.start(MATCH, 'beastmaster', 'zh')).status).toBe('running');
+    currentDef = 'dsh.openai.gpt-5';
+    releaseA();
+    await waitFor(async () => {
+      expect((await pinnedSvc.status(MATCH, 'beastmaster', 'zh', null, 'dsh.deepseek.deepseek-chat')).status).toBe('failed');
+    });
+    // Starting on the new default B succeeds; explicitly requesting A hits model_out_of_credit backoff.
+    expect((await pinnedSvc.start(MATCH, 'beastmaster', 'zh')).status).toBe('running');
+    expect(await pinnedSvc.start(MATCH, 'axe', 'zh', { model: 'dsh.deepseek.deepseek-chat' })).toMatchObject({
+      status: 'unavailable',
+      reason: 'model_out_of_credit',
+    });
+    await pinnedSvc.shutdown();
   });
 });
 
@@ -342,6 +380,32 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
     } finally {
       disposeSync();
       disposeRuntime();
+      window.localStorage.clear();
+    }
+
+    // Conversely, hydrating an empty saved profile clears stale localStorage fields instead of resurrecting them.
+    window.localStorage.setItem('dota2ai.coach.account', '99999999');
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: 'stale', goal: { kind: 'deaths_per10_max', max: 1 } }));
+    const clearedSaves: any[] = [];
+    const disposeCleared = await mountProfileSync({
+      request: async () => ({ ok: true, value: { status: 404, body: {} } }),
+      stream: async function* () {},
+      getProfile: async () => ({
+        ok: true,
+        value: { accountId: null, reviewed: [], seenUntil: null, goal: null, goalChecks: [] },
+      }),
+      saveProfile: async (patch) => {
+        clearedSaves.push(patch);
+        return { ok: true, value: { accountId: patch.accountId ?? null, reviewed: [], seenUntil: null, goal: null, goalChecks: [] } };
+      },
+    });
+    try {
+      expect(window.localStorage.getItem('dota2ai.coach.account')).toBeNull();
+      expect(window.localStorage.getItem('dota2ai.coach.goal')).toBeNull();
+      window.dispatchEvent(new Event('dota2ai:profile'));
+      expect(clearedSaves).toEqual([{ accountId: null, reviewed: [], seenUntil: null, goal: null, goalChecks: [] }]);
+    } finally {
+      disposeCleared();
       window.localStorage.clear();
     }
   });

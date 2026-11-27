@@ -116,27 +116,27 @@ export async function mountProfileSync(remote: Dota2AiClientRemote): Promise<() 
   try {
     const res = await remote.getProfile();
     if (res.ok && typeof window !== 'undefined' && window.localStorage) {
+      const s = window.localStorage;
       const p = res.value;
-      if (p.accountId) {
-        window.localStorage.setItem(ACCOUNT_STORAGE_KEY, p.accountId);
-        hydratedProfile = true;
-      }
-      if (Array.isArray(p.reviewed) && p.reviewed.length > 0) {
-        window.localStorage.setItem(REVIEWED_STORAGE_KEY, JSON.stringify(p.reviewed));
-        hydratedProfile = true;
-      }
-      if (typeof p.seenUntil === 'number' && p.seenUntil > 0) {
-        window.localStorage.setItem(SEEN_STORAGE_KEY, String(p.seenUntil));
-        hydratedProfile = true;
-      }
-      if (p.goal) {
-        window.localStorage.setItem(GOAL_STORAGE_KEY, JSON.stringify(p.goal));
-        hydratedGoal = true;
-      }
-      if (Array.isArray(p.goalChecks) && p.goalChecks.length > 0) {
-        window.localStorage.setItem(GOAL_CHECKS_STORAGE_KEY, JSON.stringify(p.goalChecks));
-        hydratedChecks = true;
-      }
+      const syncKey = (key: string, nextVal: string | null): boolean => {
+        const prevVal = s.getItem(key);
+        if (prevVal === nextVal) return false;
+        if (nextVal === null) s.removeItem(key);
+        else s.setItem(key, nextVal);
+        return true;
+      };
+
+      const nextAccount = p.accountId && String(p.accountId).trim() ? String(p.accountId).trim() : null;
+      const nextReviewed = Array.isArray(p.reviewed) && p.reviewed.length > 0 ? JSON.stringify(p.reviewed) : null;
+      const nextSeen = typeof p.seenUntil === 'number' && p.seenUntil > 0 ? String(p.seenUntil) : null;
+      const nextGoal = p.goal ? JSON.stringify(p.goal) : null;
+      const nextChecks = Array.isArray(p.goalChecks) && p.goalChecks.length > 0 ? JSON.stringify(p.goalChecks) : null;
+
+      if (syncKey(ACCOUNT_STORAGE_KEY, nextAccount)) hydratedProfile = true;
+      if (syncKey(REVIEWED_STORAGE_KEY, nextReviewed)) hydratedProfile = true;
+      if (syncKey(SEEN_STORAGE_KEY, nextSeen)) hydratedProfile = true;
+      if (syncKey(GOAL_STORAGE_KEY, nextGoal)) hydratedGoal = true;
+      if (syncKey(GOAL_CHECKS_STORAGE_KEY, nextChecks)) hydratedChecks = true;
     }
   } catch {
     // Non-fatal: page still works with in-browser storage.

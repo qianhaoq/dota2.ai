@@ -10,7 +10,7 @@ import { normalizeUiLang } from '../../../lib/aiLanguage.js';
 import { buildCoachReport } from '../../../lib/coach/analyze.js';
 import { askMessages, fallbackAnswer, FALLBACK_NOTICE, parseAskBody } from '../../../lib/coach/ask.js';
 import { buildSurface } from '../../../lib/coach/cards.js';
-import { evaluateGoal } from '../../../lib/coach/goals.js';
+import { evaluateGoal, habitRef } from '../../../lib/coach/goals.js';
 import { matchupBrief, matchupLines } from '../../../lib/coach/matchupBrief.js';
 import { aboutOf, runAdvisor, parseAdvisorBody } from '../../../lib/patch/advisor.js';
 import { runPatchTool } from '../../../lib/patch/tools.js';
@@ -31,14 +31,19 @@ export function resolveDataHome(config = {}, env = process.env) {
 }
 
 /** Synthesize minimal OpenDota-shaped match metadata from a `CoachReport` when OpenDota itself is unreachable. */
-function synthesizeMatchFromCoachReport(report) {
+export function synthesizeMatchFromCoachReport(report) {
   if (!report?.match || !Array.isArray(report.players)) return null;
+  const goldAdv = Array.isArray(report.timeline?.radiant_gold_adv)
+    ? report.timeline.radiant_gold_adv
+    : Array.isArray(report.match.gold_adv)
+      ? report.match.gold_adv
+      : null;
   return {
     match_id: report.match.id,
     start_time: report.match.start_time ?? null,
     duration: report.match.duration ?? null,
     radiant_win: report.match.radiant_win,
-    ...(Array.isArray(report.match.gold_adv) ? { radiant_gold_adv: report.match.gold_adv } : {}),
+    ...(goldAdv ? { radiant_gold_adv: goldAdv } : {}),
     players: report.players.map((p, idx) => ({
       player_slot: p.radiant ? idx : 128 + (idx - 5),
       account_id: p.account_id ?? null,
@@ -221,7 +226,20 @@ export function createDshService({
       }
       const report = await fetchCoachReportRemote(args?.match_id);
       const seat = findSeat(report, args?.hero);
-      return { match_id: report.match.id, seat, ...evaluateGoal(goal, report, seat) };
+      let replaySummary = null;
+      if (goal.kind === 'replay_habit') {
+        const avail = await agent.availability(String(args?.match_id ?? ''));
+        if (avail.trace) {
+          const heroCandidate = report.players?.[seat]?.hero?.id ?? report.players?.[seat]?.hero?.slug ?? args?.hero;
+          const resolvedHero = resolveHero(avail.heroes, heroCandidate);
+          const ref = resolvedHero ? habitRef(goal, resolvedHero.hero) : null;
+          if (ref) {
+            const ev = await agent.evidence(String(args.match_id), resolvedHero.hero, 'en', ref);
+            if (ev.status === 'ok') replaySummary = ev.record;
+          }
+        }
+      }
+      return { match_id: report.match.id, seat, ...evaluateGoal(goal, report, seat, replaySummary) };
     },
   };
 

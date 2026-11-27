@@ -15,8 +15,10 @@ import { createReplayClient } from '../src/replay.js';
 import { SKILL, headersFor, skillBody, skillRegistration } from '../src/skill.js';
 import { MAX_MODEL_KEY_LENGTH, createDshComplete, createDshModelRegistry, decodeModelKey, encodeModelKey } from '../src/llm.js';
 import { createDshTracePipeline, normalizeTraceGzip } from '../src/traceSource.js';
-import { createDshService, resolveDataHome } from '../src/service.js';
+import { createDshService, resolveDataHome, synthesizeMatchFromCoachReport } from '../src/service.js';
 import { createFileStore, createTraceStore } from '../../../lib/agent/stores.js';
+import { createAgentService } from '../../../lib/agent/service.js';
+import { gzipSync } from 'node:zlib';
 import { buildPlugin } from '../scripts/build.mjs';
 
 const fixture = JSON.parse(readFileSync(new URL('../../../src/fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
@@ -373,6 +375,58 @@ describe('DSH hybrid trace source (traceSource.js)', () => {
       expect(reparsePolls).toBe(3);
       expect(traceDownloads).toBe(1);
       expect(reparseStages).toEqual(['locating', 'downloading', 'extracting', 'storing']);
+
+      // Against a real `createAgentService` whose outdated trace fails reparsing after `/prepare` returned `running`,
+      // `availability()` exposes `parse` so `createDshTracePipeline` falls back to the existing server trace without timing out.
+      const serverTracesDir = mkdtempSync(join(tmpdir(), 'dsh-server-outdated-'));
+      const clientTracesDir = mkdtempSync(join(tmpdir(), 'dsh-client-fallback-'));
+      try {
+        const outdatedObj = { ...JSON.parse(gunzipSync(traceGzBytes).toString('utf8')), builder_version: 0 };
+        const outdatedGz = gzipSync(Buffer.from(JSON.stringify(outdatedObj), 'utf8'));
+        const serverTraces = createTraceStore(createFileStore(serverTracesDir));
+        await serverTraces.put('9100904020', outdatedGz);
+        const serverAgent = createAgentService({
+          traces: serverTraces,
+          reparseOldTraces: true,
+          getMatchDetail: async () => ({ ...scoreboard9100904020, start_time: Math.floor(Date.now() / 1000) - 3600 }),
+          pipeline: {
+            run: async (_id, { onStage }) => {
+              onStage?.('downloading');
+              await new Promise((r) => setTimeout(r, 25));
+              return { ok: false, reason: 'download_failed' };
+            },
+          },
+        });
+        const realServerFetch = async (url, init) => {
+          const u = String(url);
+          if (u.endsWith('/api/agent/9100904020/prepare') && init?.method === 'POST') {
+            const p = await serverAgent.prepare('9100904020');
+            return new Response(JSON.stringify(p), { status: p.status === 'running' ? 202 : 200 });
+          }
+          if (u.endsWith('/api/agent/9100904020/trace')) {
+            const raw = await serverAgent.traceRaw('9100904020');
+            return new Response(raw, { status: 200, headers: { 'Content-Type': 'application/gzip' } });
+          }
+          if (u.endsWith('/api/agent/9100904020')) {
+            return new Response(JSON.stringify(await serverAgent.availability('9100904020')), { status: 200 });
+          }
+          return new Response('not found', { status: 404 });
+        };
+        const clientTraces = createTraceStore(createFileStore(clientTracesDir));
+        const fallbackOut = await createDshTracePipeline({
+          apiBase: 'https://dota2.ai',
+          fetchImpl: realServerFetch,
+          traceStore: clientTraces,
+          pollIntervalMs: 10,
+          timeoutMs: 1000,
+        }).run('9100904020');
+        expect(fallbackOut.ok).toBe(true);
+        expect((await clientTraces.get('9100904020')).heroes).toHaveLength(10);
+        await serverAgent.shutdown();
+      } finally {
+        rmSync(serverTracesDir, { recursive: true, force: true });
+        rmSync(clientTracesDir, { recursive: true, force: true });
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -434,6 +488,9 @@ describe('DSH local service end-to-end (service.js)', () => {
         }
         if (u.endsWith('/api/coach/9091400302')) {
           return new Response(JSON.stringify(report), { status: 200 });
+        }
+        if (u.endsWith('/api/coach/9100904020')) {
+          return new Response(JSON.stringify(buildCoachReport(scoreboard9100904020)), { status: 200 });
         }
         return new Response(JSON.stringify({ error: 'not_found' }), { status: 404 });
       });
@@ -549,6 +606,16 @@ describe('DSH local service end-to-end (service.js)', () => {
         }),
       });
       expect(fbRes.status).toBe(200);
+      // Replay chat with that bounded long-model ID also succeeds (never truncated into invalid_model).
+      const longModelKey = encodeModelKey(longProvider, longModel);
+      const longChatFrames = [];
+      for await (const f of longSvc.handleStream({
+        url: '/api/agent/9100904020/chat',
+        body: JSON.stringify({ hero: 'beastmaster', lang: 'zh', model: longModelKey, question: '36 分钟那次我怎么死的？' }),
+      })) {
+        longChatFrames.push(f);
+      }
+      expect(longChatFrames.some((f) => f.error === 'invalid_model')).toBe(false);
       longSvc.shutdown();
       // A fresh service instance with an uncallable LLM still serves the persisted review from disk.
       const reloadedSvc = createDshService({
@@ -586,6 +653,22 @@ describe('DSH local service end-to-end (service.js)', () => {
       expect(await svc.getProfile()).toMatchObject({ accountId: '86745912', reviewed: ['9100904020'] });
       const goalChecked = await svc.coach.goal_check({ match_id: 9091400302, hero: report.players[0].hero.slug, goal: {} });
       expect(['met', 'missed', 'no_opportunity', 'unknown']).toContain(goalChecked.result);
+
+      // Saved `replay_habit` goals resolve their replay summary (`deaths:beastmaster`) from the cached trace.
+      await svc.saveProfile({
+        goal: {
+          id: 'habit-1',
+          goal: { kind: 'replay_habit', habit: 'nothing_pressed', max: 2, baseline: 4 },
+        },
+      });
+      const habitChecked = await svc.coach.goal_check({ match_id: 9100904020, hero: 'beastmaster', goal: {} });
+      expect(habitChecked.result).toBe('met');
+      expect(habitChecked.count).toBe(0);
+
+      // Synthesized match fallback preserves `report.timeline.radiant_gold_adv` from CoachReport.
+      const synth = synthesizeMatchFromCoachReport(report);
+      expect(Array.isArray(synth.radiant_gold_adv)).toBe(true);
+      expect(synth.radiant_gold_adv).toEqual(report.timeline.radiant_gold_adv);
 
       svc.shutdown();
     } finally {
