@@ -34,7 +34,7 @@ async function noSideScroll(page: Page) {
 test('home: one input, and the four steps of what happens next', async ({ page }) => {
   await page.goto('/?lang=zh');
   await expect(page.getByRole('heading', { name: '接下来会发生什么' })).toBeVisible();
-  await expect(page.locator('.hm-how-steps strong')).toHaveText(['选你玩的英雄', '教练看录像', '拿到复盘', '想问就问']);
+  await expect(page.locator('.hm-how-steps strong')).toHaveText(['选你玩的英雄', '教练看录像', '拿到复盘', '对任何时刻追问']);
   await page.getByRole('textbox').first().fill(MATCH);
   await page.getByRole('button', { name: '开始复盘' }).click();
   await expect(page).toHaveURL(new RegExp(`/r/${MATCH}`));

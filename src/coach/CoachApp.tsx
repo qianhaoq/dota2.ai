@@ -31,12 +31,6 @@ const UI = {
   liveSample: { en: 'Sample review', zh: '查看真实复盘样本', ru: 'Пример разбора' },
   detectedMatch: { en: 'Detected match #{id}', zh: '已识别为比赛 #{id}', ru: 'Распознан матч #{id}' },
   detectedAccount: { en: 'Detected Steam account {id} — opens recent games', zh: '已识别为 Steam 账号 {id}，将打开最近比赛', ru: 'Распознан аккаунт Steam {id} — откроются недавние игры' },
-  p1t: { en: 'Evidence first', zh: '证据先行', ru: 'Сначала факты' },
-  p1: { en: 'Every point links to the numbers behind it. No vibes, no invented patch facts.', zh: '每条结论都附带依据。不靠感觉，不编造版本数据。', ru: 'Каждый вывод подкреплён цифрами из реплея. Без домыслов и выдуманных патчноутов.' },
-  p2t: { en: 'Tells you what to do', zh: '直接告诉你怎么做', ru: 'Конкретное действие' },
-  p2: { en: 'Each finding ends in one thing to do next game — with pro games on similar heroes that did it, and did not.', zh: '每条发现都落到下一局要做的一件事，并附上相似英雄职业对局的正例和反例。', ru: 'Каждый вывод заканчивается правилом на следующую игру с примерами из про-матчей.' },
-  p3t: { en: 'Says what it can’t see', zh: '说清楚看不到什么', ru: 'Честно о пробелах' },
-  p3: { en: 'Unparsed match? You get what the data supports — and a button to parse the rest.', zh: '比赛还没解析？只给数据撑得住的结论，并提供一键解析。', ru: 'Матч не разобран? Покажем только подтверждённые данные и кнопку для разбора.' },
   useAccount: { en: 'No match ID? Use your Steam friend code', zh: '找不到比赛 ID？用 Steam 好友代码', ru: 'Нет ID матча? Используйте код друга Steam' },
   orAccount: { en: 'Your Steam friend code — we list your recent games:', zh: '输入你的 Steam 好友代码，列出你最近的比赛：', ru: 'Ваш код друга Steam — покажем список недавних игр:' },
   accountPlaceholder: { en: 'Friend code, SteamID64 or profile link', zh: '好友代码、SteamID64 或个人资料链接', ru: 'Код друга, SteamID64 или ссылка на профиль' },
@@ -686,14 +680,15 @@ export const AgentSnippets: React.FC<{ matchId: string }> = ({ matchId }) => {
 const HOME = {
   title: { en: 'Paste a match.', zh: '贴一场比赛。', ru: 'Вставьте матч.' },
   sub: {
-    en: 'A coach that watches your replay. It finds what decided the game, shows the moments that prove it, and tells you what to change next time.',
-    zh: '一位会看你录像的教练。找出这局输赢的关键，把证明它的时刻摆给你看，再告诉你下一把改什么。',
-    ru: 'Тренер, который смотрит ваш реплей. Он находит, что решило исход игры, показывает ключевые моменты и говорит, что изменить в следующем матче.',
+    en: 'A coach that watches your replay: what decided the game, and what to change next time.',
+    zh: '一位看你录像的教练：这局输赢的关键，和下一把该改什么。',
+    ru: 'Тренер, который смотрит ваш реплей: что решило игру и что изменить в следующий раз.',
   },
   hint: { en: 'Match ID, link, or friend code', zh: '比赛 ID、链接或好友码', ru: 'ID матча, ссылка или код друга' },
   modeLabel: { en: 'What are you pasting?', zh: '你要输入什么？', ru: 'Что вы вставляете?' },
   modeMatch: { en: 'Match', zh: '比赛', ru: 'Матч' },
   modeAccount: { en: 'Friend code', zh: '好友码', ru: 'Код друга' },
+  alsoIn: { en: 'Also in DSH, Claude Code, Codex and other agents', zh: '也能在 DSH、Claude Code、Codex 等 Agent 里用', ru: 'Также в DSH, Claude Code, Codex и других агентах' },
 };
 
 export const CoachHome: React.FC = () => {
@@ -814,6 +809,7 @@ export const CoachHome: React.FC = () => {
                 </Link>
               </div>
               {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : error === 'account' ? UI.accountInvalid : UI.invalid)}</p>}
+              <p className="hm-also"><a href="#ways">{L(HOME.alsoIn)} →</a></p>
             </div>
           </section>
 

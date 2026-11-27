@@ -78,7 +78,7 @@ The smoke installs the archive into a clean profile with DSH's own CLI (Node 24,
 checks that DSH composes the profile and loads the plugin's `Config`, then loads the plugin and
 checks its tools, skill, argument checks and reload. `--live` also calls dota2.ai.
 
-A release: raise `version`, add `.github/release-notes/dsh-v<version>.md`, merge, then push the tag
+A release: raise `version` (and `DSH_PLUGIN_VERSION` in `src/coach/accessSnippets.ts`, which the home page shows — a test holds them equal), add `.github/release-notes/dsh-v<version>.md`, merge, then push the tag
 `dsh-v<version>`. `.github/workflows/dsh-release.yml` tests, packs, runs the smoke and publishes the
 archive with `SHA256SUMS`. A DSH upgrade changes `engines.dsh`, the peer pins written by
 `pack.mjs`, and `DSH_VERSION` in the workflow together.
