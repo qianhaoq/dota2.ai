@@ -72,12 +72,15 @@ describe('home: where to use it', () => {
     // DSH is the default tab (it runs on the reader's own model): from nothing to the plugin's page, and the release.
     expect(within(ways).getByRole('tab', { name: 'DSH plugin' }).getAttribute('aria-selected')).toBe('true');
     expect(ways.querySelector('pre')?.textContent).toBe(DSH_SETUP.join('\n'));
-    // The page names the plugin release that is packed from packages/dsh, and the DSH it is verified on:
-    // a version raise there is one here too.
+    // The page names the plugin release that is packed from packages/dsh, and a concrete verified DSH
+    // release (aligned with dsh-release.yml DSH_VERSION) inside packages/dsh/package.json engines.dsh:
+    const releaseWorkflow = readFileSync(path.join(process.cwd(), '.github/workflows/dsh-release.yml'), 'utf8');
     expect(DSH_PLUGIN_VERSION).toBe(dshPackage.version);
-    expect(DSH_HOST_VERSION).toBe(dshPackage.engines.dsh);
+    expect(DSH_HOST_VERSION).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
+    expect(releaseWorkflow).toContain(`DSH_VERSION: ${DSH_HOST_VERSION}`);
+    expect(dshPackage.engines.dsh).toBe('>=0.2.1-rc.3 <0.3.0-0');
     expect(DSH_SETUP).toEqual([
-      `npm install -g pnpm @deepseek-ai/dsh@${dshPackage.engines.dsh}`,
+      `npm install -g pnpm @deepseek-ai/dsh@${DSH_HOST_VERSION}`,
       `curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v${DSH_PLUGIN_VERSION}/qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`,
       `dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`,
       'dsh web',

@@ -20,24 +20,26 @@ export function releaseManifest(source) {
   return { ...rest, peerDependencies: release.peerDependencies };
 }
 
-const stage = mkdtempSync(join(tmpdir(), 'dsh-dota2ai-'));
-try {
-  const source = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
-  await buildPlugin({ outdir: join(stage, 'lib') });
-  // Per-release & hotfix Valve snapshots read lazily by `patchData.js` via `new URL('../data/constants/patches/…', import.meta.url)`.
-  cpSync(join(repo, 'lib/data/constants/patches'), join(stage, 'data/constants/patches'), { recursive: true });
-  for (const entry of ['skills', 'icon.svg', 'cordis.patch.yml', 'README.md']) {
-    cpSync(join(pkgDir, entry), join(stage, entry), { recursive: true });
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const stage = mkdtempSync(join(tmpdir(), 'dsh-dota2ai-'));
+  try {
+    const source = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
+    await buildPlugin({ outdir: join(stage, 'lib') });
+    // Per-release & hotfix Valve snapshots read lazily by `patchData.js` via `new URL('../data/constants/patches/…', import.meta.url)`.
+    cpSync(join(repo, 'lib/data/constants/patches'), join(stage, 'data/constants/patches'), { recursive: true });
+    for (const entry of ['skills', 'icon.svg', 'cordis.patch.yml', 'README.md']) {
+      cpSync(join(pkgDir, entry), join(stage, entry), { recursive: true });
+    }
+    cpSync(join(repo, 'LICENSE'), join(stage, 'LICENSE'));
+    writeFileSync(join(stage, 'package.json'), `${JSON.stringify(releaseManifest(source), null, 2)}\n`);
+    mkdirSync(out, { recursive: true });
+    const file = execFileSync('npm', ['pack', '--silent', '--pack-destination', out], { cwd: stage, encoding: 'utf8' }).trim().split('\n').pop();
+    const tgz = join(out, basename(file));
+    const sum = createHash('sha256').update(readFileSync(tgz)).digest('hex');
+    writeFileSync(join(out, 'SHA256SUMS'), `${sum}  ${basename(tgz)}\n`);
+    console.log(tgz);
+    console.log(`sha256 ${sum}`);
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
   }
-  cpSync(join(repo, 'LICENSE'), join(stage, 'LICENSE'));
-  writeFileSync(join(stage, 'package.json'), `${JSON.stringify(releaseManifest(source), null, 2)}\n`);
-  mkdirSync(out, { recursive: true });
-  const file = execFileSync('npm', ['pack', '--silent', '--pack-destination', out], { cwd: stage, encoding: 'utf8' }).trim().split('\n').pop();
-  const tgz = join(out, basename(file));
-  const sum = createHash('sha256').update(readFileSync(tgz)).digest('hex');
-  writeFileSync(join(out, 'SHA256SUMS'), `${sum}  ${basename(tgz)}\n`);
-  console.log(tgz);
-  console.log(`sha256 ${sum}`);
-} finally {
-  rmSync(stage, { recursive: true, force: true });
 }
