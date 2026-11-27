@@ -37,5 +37,6 @@
     {"id": "condition_as_the_finding", "says": "Owner, 2026-11-27: findings titled by a shared condition (\"孤身留在原地，死了也没换回东西\", \"血量见底还留在线上继续换血\") say nothing the player can act on. A finding names the decision: what he was doing and what to do instead.", "pattern": "孤身留在原地|死了也没换回东西|血量见底还留在线上|[Ss]tay(?:ed|ing)? alone[^.]{0,30}(?:bought|traded) nothing"},
     {"id": "retreat_called_a_trade", "says": "At 32:34 he was heading home (3477 closer to his fountain over the window, Blink used 7.6 s before) and Ursa caught him: a review must not say he stayed in the lane trading.", "pattern": "32:34[^。]{0,60}(?:还在|继续|留在)[^。]{0,20}(?:换血|对拼)|32:34[^.]{0,80}(?:still|kept|stayed)[^.]{0,30}trad"}
   ],
-  "main_reason": ["enemy_play", "team_play"]
+  "main_reason": ["enemy_play", "team_play"],
+  "story_cause": {"id": "lost_from_the_lanes", "says": "The game was lost from the lanes: my_team was 2602 behind at 10:00 and never closer than 2194 after (match_overview.lanes.lost_from_the_lanes true; no turning fight: { none: true }).", "from": 0, "to": 600, "terms": {"zh": ["对线", "线上", "10:00", "10 分钟", "十分钟", "10分钟", "前十"], "en": ["lane", "10:00", "ten minutes", "first ten"]}, "checked": "2026-11-27, against match_overview and key_moments on the archived trace; whose: the rubric's accepted main_reason"}
 }

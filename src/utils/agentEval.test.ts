@@ -102,6 +102,9 @@ describe('review eval: against a rubric', () => {
       // It leads with neither of the two points the rubric accepts as the game's lesson.
       lead: null, lead_ok: false,
       main_reason_ok: true,
+      // The rubric names the turn 25:00–33:00 as the game's cause (#437 P5): this p33 review's mainline names a lost
+      // fight in that window; it has no story, so it cannot place the cause in one.
+      cause_named: true, story_ok: false,
     });
   });
 
@@ -311,7 +314,7 @@ describe('review eval: summary and comparison', () => {
     expect(BETTER.without_game_plan).toBe(-1);
     expect(s.rubric_draft).toBeNull();
     // lead_ok: its first finding is neither of the two points the rubric accepts as the lesson.
-    expect(s.rubric_approved).toEqual({ reviews: 1, hit_rate: 0.33, must_not_violations: 0, turning_fight_covered: 0, lead_ok: 0, main_reason_ok: 1 });
+    expect(s.rubric_approved).toEqual({ reviews: 1, hit_rate: 0.33, must_not_violations: 0, turning_fight_covered: 0, lead_ok: 0, main_reason_ok: 1, cause_named: 1, story_ok: 0 });
     // A rubric nobody has checked is counted apart.
     expect(summarize([scoreReview(stored, { ...rubric, status: 'draft' })]).rubric_draft?.reviews).toBe(1);
   });
@@ -441,5 +444,33 @@ describe('review eval: stability leaves out what cannot be compared', () => {
     expect(stabilityOf([cites(['death:axe:1']), cites(['death:axe:1']), cites([])]).first_finding_overlap).toBe(1);
     // Two that cite different things still disagree.
     expect(stabilityOf([cites(['death:axe:1']), cites(['death:axe:2']), cites([])]).first_finding_overlap).toBe(0);
+  });
+});
+
+describe('the game\'s main cause in the story (#437 P5)', () => {
+  const rubric = { status: 'approved', must_hit: [], main_reason: ['your_play', 'team_play'], story_cause: { id: 'lane', says: 's', from: 0, to: 600, terms: { zh: ['对线'], en: ['lane'] } } };
+  const stored = (review: any) => ({ review: { lang: 'en', findings: [], did_well: [], mainline: [], ...review } });
+  const link = (extra: any) => ({ phase: '0:00–10:00, the lane', what_changed: 'Down 5126.', because: 'Seven deaths.', whose: 'me', evidence: [], ...extra });
+
+  it('a link in the window that names the cause, owned as the rubric accepts: both', () => {
+    expect(rubricOf(stored({ story: [link({})] }), rubric)).toMatchObject({ cause_named: true, story_ok: true });
+  });
+  it('the right link with an owner the rubric does not accept: named, not ok', () => {
+    expect(rubricOf(stored({ story: [link({ whose: 'enemy' })] }), rubric)).toMatchObject({ cause_named: true, story_ok: false });
+  });
+  it('a link outside the window, or one that does not name it: neither', () => {
+    expect(rubricOf(stored({ story: [link({ phase: '24:00–27:47, the lane' , what_changed: 'Lost.', because: 'Fights.' })] }), rubric)).toMatchObject({ cause_named: false, story_ok: false });
+    expect(rubricOf(stored({ story: [link({ phase: '0:00–10:00, early', what_changed: 'Down.', because: 'Deaths.' })] }), rubric)).toMatchObject({ cause_named: false, story_ok: false });
+  });
+  it('a review without a story is read on its mainline for cause_named, and is never story_ok', () => {
+    expect(rubricOf(stored({ mainline: ['0:00–10:00: the lane went badly.'] }), rubric)).toMatchObject({ cause_named: true, story_ok: false });
+  });
+  it('no story_cause in the rubric: neither is scored', () => {
+    const { story_cause: _c, ...plain } = rubric;
+    expect(rubricOf(stored({ story: [link({})] }), plain)).toMatchObject({ cause_named: null, story_ok: null });
+  });
+  it('summarize counts them over the reviews whose rubric names a cause', () => {
+    const s = summarize([scoreReview(stored({ story: [link({})] }), rubric), scoreReview(stored({ mainline: ['24:00: lost.'] }), rubric)]);
+    expect(s.rubric_approved).toMatchObject({ cause_named: 0.5, story_ok: 0.5 });
   });
 });
