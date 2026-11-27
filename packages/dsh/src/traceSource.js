@@ -97,6 +97,8 @@ export function createDshTracePipeline({
           return { ok: false, reason: avail.parse.reason || 'replay_gone' };
         }
 
+        const hadLocalTrace = Boolean(await traceStore.get(id));
+
         if (avail.parse?.status !== 'running') {
           const prepRes = await fetchImpl(`${base}/api/agent/${encodeURIComponent(id)}/prepare`, {
             method: 'POST',
@@ -109,9 +111,24 @@ export function createDshTracePipeline({
             return { ok: false, reason: prep.status === 'unavailable' ? 'unavailable' : 'worker_failed' };
           }
           if (prep.status === 'ready') {
-            return await downloadAndStore(id, onStage, bounded);
+            if (!avail.trace_outdated) {
+              return await downloadAndStore(id, onStage, bounded);
+            }
+            // Server finished or declined reparsing an outdated trace: check whether it was actually upgraded.
+            const checkRes = await fetchImpl(`${base}/api/agent/${encodeURIComponent(id)}`, { signal: bounded });
+            const check = checkRes.ok ? await checkRes.json().catch(() => null) : null;
+            if (check?.trace && !check.trace_outdated) {
+              return await downloadAndStore(id, onStage, bounded);
+            }
+            if (!hadLocalTrace && (check?.trace ?? avail.trace)) {
+              return await downloadAndStore(id, onStage, bounded);
+            }
+            return { ok: false, reason: check?.parse?.reason || 'replay_gone' };
           }
           if (prep.status === 'failed') {
+            if (!hadLocalTrace && avail.trace) {
+              return await downloadAndStore(id, onStage, bounded);
+            }
             return { ok: false, reason: prep.reason || 'extract_failed' };
           }
           if (prep.stage) onStage(prep.stage);
@@ -125,16 +142,20 @@ export function createDshTracePipeline({
           if (!pollRes.ok) continue;
           const state = await pollRes.json().catch(() => null);
           if (!state) continue;
-          if (state.trace) {
+          if (state.trace && !state.trace_outdated) {
             return await downloadAndStore(id, onStage, bounded);
           }
-          if (state.parse?.status === 'running' && state.parse.stage) {
-            onStage(state.parse.stage);
-          } else if (state.parse?.status === 'failed') {
-            return { ok: false, reason: state.parse.reason || 'extract_failed' };
-          } else if (state.parse?.status === 'none' && avail.trace) {
-            // Reparse failed transiently while an older trace still exists on the server: keep the older trace.
-            return await downloadAndStore(id, onStage, bounded);
+          if (state.parse?.status === 'running') {
+            if (state.parse.stage) onStage(state.parse.stage);
+            continue;
+          }
+          if (state.parse?.status === 'failed' || state.parse?.status === 'none') {
+            // Reparse ended without producing a current trace: if we have no local trace yet, keep the server's older one;
+            // otherwise report failure so `createAgentService` records the reparse backoff instead of thinking it upgraded.
+            if (!hadLocalTrace && state.trace) {
+              return await downloadAndStore(id, onStage, bounded);
+            }
+            return { ok: false, reason: state.parse?.reason || 'extract_failed' };
           }
         }
       } catch (error) {

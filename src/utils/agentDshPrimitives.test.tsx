@@ -16,7 +16,7 @@ import { I18nProvider } from '../v2/i18n/I18nProvider';
 import { ShareBar, shareLinks } from '../agent/ShareBar';
 import { configureDota2AiRuntime, shareOrigin } from '../runtime/dota2aiRuntime';
 import { initAnalytics, trackEvent } from '../services/analytics';
-import { createDshApiFetch } from '../../packages/dsh/src/client/transport';
+import { createDshApiFetch, mountProfileSync, type DshUserProfile } from '../../packages/dsh/src/client/transport';
 import { ToolCard } from '../../packages/dsh/src/client/ToolCard';
 import { en as dshEn, zh as dshZh } from '../../packages/dsh/src/client/locales';
 
@@ -261,5 +261,88 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
     expect(getByText('咆哮留给幻刺。')).toBeTruthy();
     fireEvent.click(getByRole('button', { name: /在 dota2\.ai 页面打开/ }));
     await waitFor(() => expect(opened).toEqual(['/r/9100904020?lang=zh&hero=beastmaster']));
+  });
+
+  it('notifies already-mounted CoachHome consumers when async profile hydration resolves, without echoing saveProfile', async () => {
+    window.localStorage.clear();
+    const requestedUrls: string[] = [];
+    const saveCalls: any[] = [];
+    let resolveProfile!: (res: { ok: true; value: DshUserProfile }) => void;
+    const deferredProfile = new Promise<{ ok: true; value: DshUserProfile }>((r) => { resolveProfile = r; });
+
+    const disposeRuntime = configureDota2AiRuntime({
+      surface: 'dsh',
+      apiFetch: async (url) => {
+        requestedUrls.push(url);
+        if (url.includes('/api/coach/players/86745912/recent')) {
+          return new Response(JSON.stringify({ account_id: 86745912, empty_hint: null, matches: [] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return new Response('{"code":"not_found"}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+      },
+    });
+
+    let disposeSync = () => {};
+    try {
+      const syncPromise = mountProfileSync({
+        request: async () => ({ ok: true, value: { status: 404, body: {} } }),
+        stream: async function* () {},
+        getProfile: () => deferredProfile,
+        saveProfile: async (patch) => {
+          saveCalls.push(patch);
+          return { ok: true, value: { accountId: patch.accountId ?? null, reviewed: [], seenUntil: null, goal: null, goalChecks: [] } };
+        },
+      });
+
+      const { CoachHome } = await import('../coach/CoachApp');
+      const { container } = render(
+        <MemoryRouter>
+          <I18nProvider>
+            <CoachHome />
+          </I18nProvider>
+        </MemoryRouter>,
+      );
+
+      // Mounted before getProfile() resolves: no account or goal rendered yet.
+      expect(requestedUrls.some((u) => u.includes('86745912'))).toBe(false);
+      expect(container.querySelector('.cx-goal-nav')).toBeNull();
+
+      resolveProfile({
+        ok: true,
+        value: {
+          accountId: '86745912',
+          reviewed: ['9100904020'],
+          seenUntil: 1700000000,
+          goal: {
+            id: 'g1',
+            goal: { kind: 'deaths_per10_max', max: 2, label: { en: 'At most 2 deaths / 10m', zh: '每10分钟不超2死' } },
+            action: { en: 'Play safer', zh: '少死' },
+            findingId: 'agent:0',
+            fromMatch: 9100904020,
+            fromStart: 1700000000,
+            accountId: 86745912,
+            heroId: 38,
+            setAt: 1700000001,
+          },
+          goalChecks: [],
+        },
+      });
+      disposeSync = await syncPromise;
+
+      await waitFor(() => {
+        expect(requestedUrls.some((u) => u.includes('/api/coach/players/86745912/recent'))).toBe(true);
+        expect(container.querySelector('a[href^="/p/86745912"]')).not.toBeNull();
+        expect(container.textContent).toContain('My games');
+        expect(container.textContent).toContain('Goal');
+      });
+      // Hydration itself must not echo a redundant saveProfile write back to the host.
+      expect(saveCalls).toEqual([]);
+    } finally {
+      disposeSync();
+      disposeRuntime();
+      window.localStorage.clear();
+    }
   });
 });

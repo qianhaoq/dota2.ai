@@ -5,7 +5,7 @@ import { createFileStore, createJsonStore, createTraceStore } from '../../../lib
 import { parseChatBody } from '../../../lib/agent/chat.js';
 import { parseFeedback } from '../../../lib/agent/feedback.js';
 import { planKey } from '../../../lib/agent/plans.js';
-import { replayReview } from '../../../lib/agent/replayTool.js';
+import { replayReview, resolveHero } from '../../../lib/agent/replayTool.js';
 import { normalizeUiLang } from '../../../lib/aiLanguage.js';
 import { buildCoachReport } from '../../../lib/coach/analyze.js';
 import { askMessages, fallbackAnswer, FALLBACK_NOTICE, parseAskBody } from '../../../lib/coach/ask.js';
@@ -139,6 +139,7 @@ export function createDshService({
     docs: reviewDocs,
     feedback: feedbackDocs,
     pipeline,
+    reparseOldTraces: true,
     getMatchDetail,
     resolveModels: () => models.catalog(),
     log,
@@ -197,10 +198,11 @@ export function createDshService({
       if (!question || question.length > 500) throw Object.assign(new Error('Invalid question'), { code: 'INVALID_INPUT' });
       // Prefer deep replay-backed chat (`runChat` + 20+ trace tools + `verifyText`) when this match's trace is cached!
       const avail = await agent.availability(String(args?.match_id ?? ''));
-      if (avail.trace && models.isConfigured()) {
-        const out = await agent.chat({ matchId: String(args.match_id), hero: String(args.hero ?? ''), lang, question, history: [], signal });
+      const resolvedHero = avail.trace ? resolveHero(avail.heroes, args?.hero) : null;
+      if (avail.trace && resolvedHero && models.isConfigured()) {
+        const out = await agent.chat({ matchId: String(args.match_id), hero: resolvedHero.hero, lang, question, history: [], signal });
         if (out.status === 'ok') {
-          return { match_id: Number(args.match_id), hero: String(args.hero), lang, answer: out.text, source: 'replay', unverified: out.unverified };
+          return { match_id: Number(args.match_id), hero: resolvedHero.hero, lang, answer: out.text, source: 'replay', unverified: out.unverified };
         }
       }
       const report = await fetchCoachReportRemote(args?.match_id, '', signal);

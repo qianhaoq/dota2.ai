@@ -13,7 +13,7 @@ import { runAgent } from '../../../lib/agent/loop.js';
 import { PARAMETERS, TOOL_NAMES, toolOptions } from '../src/tools.js';
 import { createReplayClient } from '../src/replay.js';
 import { SKILL, headersFor, skillBody, skillRegistration } from '../src/skill.js';
-import { createDshComplete, createDshModelRegistry, decodeModelKey, encodeModelKey } from '../src/llm.js';
+import { MAX_MODEL_KEY_LENGTH, createDshComplete, createDshModelRegistry, decodeModelKey, encodeModelKey } from '../src/llm.js';
 import { createDshTracePipeline, normalizeTraceGzip } from '../src/traceSource.js';
 import { createDshService, resolveDataHome } from '../src/service.js';
 import { createFileStore, createTraceStore } from '../../../lib/agent/stores.js';
@@ -185,7 +185,7 @@ describe('replay_review through the hosted MCP tool', () => {
 describe('DSH host LLM bridge (llm.js)', () => {
   const STORE_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/;
 
-  it('encodes and decodes arbitrary provider/model pairs into valid store keys', () => {
+  it('encodes and decodes arbitrary provider/model pairs into bounded store keys', () => {
     const cases = [
       ['deepseek', 'deepseek-reasoner'],
       ['openrouter', 'anthropic/claude-sonnet-4.5:beta'],
@@ -194,9 +194,18 @@ describe('DSH host LLM bridge (llm.js)', () => {
     for (const [provider, model] of cases) {
       const key = encodeModelKey(provider, model);
       expect(key.startsWith('dsh.')).toBe(true);
+      expect(key.length).toBeLessThanOrEqual(MAX_MODEL_KEY_LENGTH);
       expect(STORE_KEY_RE.test(key)).toBe(true);
       expect(decodeModelKey(key)).toEqual({ provider, model });
     }
+    // Very long escaped IDs stay bounded (<= 64 chars) and collision-resistant so complete review/feedback keys never exceed 181 chars.
+    const longA = encodeModelKey('openrouter-enterprise-gateway', 'anthropic/claude-3.7-sonnet-thinking:beta-custom-endpoint-deployment-v1');
+    const longB = encodeModelKey('openrouter-enterprise-gateway', 'anthropic/claude-3.7-sonnet-thinking:beta-custom-endpoint-deployment-v2');
+    expect(longA.length).toBeLessThanOrEqual(MAX_MODEL_KEY_LENGTH);
+    expect(longB.length).toBeLessThanOrEqual(MAX_MODEL_KEY_LENGTH);
+    expect(longA).not.toBe(longB);
+    expect(STORE_KEY_RE.test(`9100904020.keeper_of_the_light.zh.p999.plan-teamfight.m-${longA}.f9.abcdefghij1234567890abcd`)).toBe(true);
+    expect(decodeModelKey(longA)).toBeNull();
     expect(decodeModelKey('deepseek-flash')).toBeNull();
     expect(decodeModelKey('dsh.onlyone')).toBeNull();
   });
@@ -331,6 +340,39 @@ describe('DSH hybrid trace source (traceSource.js)', () => {
       expect(res.ok).toBe(true);
       expect(stages).toEqual(['locating', 'downloading', 'extracting', 'storing']);
       expect((await traceStore.get('9100904020')).heroes).toHaveLength(10);
+
+      // When the server already has an outdated trace (`trace: true, trace_outdated: true`), wait for the replacement
+      // (`trace_outdated: false`) instead of downloading the stale trace on the first poll.
+      let reparsePolls = 0;
+      let traceDownloads = 0;
+      const reparseFetch = vi.fn(async (url, init) => {
+        const u = String(url);
+        if (u.endsWith('/api/agent/9100904020/prepare') && init?.method === 'POST') {
+          return new Response(JSON.stringify({ status: 'running', stage: 'downloading' }), { status: 202 });
+        }
+        if (u.endsWith('/api/agent/9100904020/trace')) {
+          traceDownloads += 1;
+          return new Response(traceGzBytes, { status: 200, headers: { 'Content-Type': 'application/gzip' } });
+        }
+        if (u.endsWith('/api/agent/9100904020')) {
+          reparsePolls += 1;
+          if (reparsePolls === 1) return new Response(JSON.stringify({ trace: true, trace_outdated: true, can_parse: true, parse: { status: 'none' } }), { status: 200 });
+          if (reparsePolls === 2) return new Response(JSON.stringify({ trace: true, trace_outdated: true, can_parse: true, parse: { status: 'running', stage: 'extracting' } }), { status: 200 });
+          return new Response(JSON.stringify({ trace: true, trace_outdated: false, can_parse: true, parse: { status: 'none' } }), { status: 200 });
+        }
+        return new Response('not found', { status: 404 });
+      });
+      const reparseStages = [];
+      const reparseOut = await createDshTracePipeline({
+        apiBase: 'https://dota2.ai',
+        fetchImpl: reparseFetch,
+        traceStore,
+        pollIntervalMs: 10,
+      }).run('9100904020', { onStage: (s) => reparseStages.push(s) });
+      expect(reparseOut.ok).toBe(true);
+      expect(reparsePolls).toBe(3);
+      expect(traceDownloads).toBe(1);
+      expect(reparseStages).toEqual(['locating', 'downloading', 'extracting', 'storing']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -459,6 +501,66 @@ describe('DSH local service end-to-end (service.js)', () => {
         { text: '36:05 你满血 2915，被 斧王 先手。' },
         { done: true },
       ]);
+
+      // 4b. `coach.coach_ask` resolves numeric hero IDs (`38`) and Chinese names (`兽王`) to replay-backed chat
+      for (const alias of [38, '38', '兽王']) {
+        const askOut = await svc.coach.coach_ask({ match_id: 9100904020, hero: alias, lang: 'zh', question: '36 分钟那次我怎么死的？' });
+        expect(askOut).toMatchObject({
+          match_id: 9100904020,
+          hero: 'beastmaster',
+          source: 'replay',
+          answer: '36:05 你满血 2915，被 斧王 先手。',
+        });
+      }
+
+      // 4c. Long provider/model names persist reviews and feedback cleanly across restarts
+      const longProvider = 'openrouter-enterprise-gateway';
+      const longModel = 'anthropic/claude-3.7-sonnet-thinking:beta-custom-deployment-route-2026-11';
+      const longSvc = createDshService({
+        ctx: {
+          llm: scriptedDshLlm(
+            (opts) => (opts.messages.at(-1).role === 'user'
+              ? { toolCalls: [{ id: 'l1', name: 'ability_audit', args: { hero: 'beastmaster', ability: 'primal_roar' } }, { id: 'l2', name: 'immunity_windows', args: { hero: 'phantom_assassin' } }] }
+              : { toolCalls: [{ id: 'l3', name: 'submit_review', args: submit }] }),
+            { providers: [{ id: longProvider, name: 'OpenRouter' }], modelsByProvider: { [longProvider]: [{ id: longModel, name: 'Claude Sonnet Long' }] } },
+          ),
+          agentDefaultModel: { currentSelection: () => ({ provider: longProvider, model: longModel }) },
+        },
+        config: { homeDir: dir, apiBase: 'https://dota2.ai' },
+        fetchImpl,
+      });
+      await longSvc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
+      let readyLong;
+      await vi.waitFor(async () => {
+        readyLong = await longSvc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/review?hero=beastmaster&lang=zh' });
+        expect(readyLong.body.status).toBe('ready');
+      }, { timeout: 5000 });
+      const fbRes = await longSvc.handleRequest({
+        method: 'POST',
+        url: '/api/agent/9100904020/feedback',
+        body: JSON.stringify({
+          hero: 'beastmaster',
+          lang: 'zh',
+          version: readyLong.body.prompt_version,
+          finding: 0,
+          title: finding.title,
+          rating: 'right',
+          id: 'abcdefghij123456',
+        }),
+      });
+      expect(fbRes.status).toBe(200);
+      longSvc.shutdown();
+      // A fresh service instance with an uncallable LLM still serves the persisted review from disk.
+      const reloadedSvc = createDshService({
+        ctx: {
+          llm: scriptedDshLlm(() => { throw new Error('should not call LLM'); }, { providers: [{ id: longProvider, name: 'OpenRouter' }], modelsByProvider: { [longProvider]: [{ id: longModel, name: 'Claude Sonnet Long' }] } }),
+          agentDefaultModel: { currentSelection: () => ({ provider: longProvider, model: longModel }) },
+        },
+        config: { homeDir: dir, apiBase: 'https://dota2.ai' },
+        fetchImpl,
+      });
+      expect((await reloadedSvc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/review?hero=beastmaster&lang=zh' })).body.status).toBe('ready');
+      reloadedSvc.shutdown();
 
       // 5. Patch overview & streaming patch advisor work locally
       const patchRes = await svc.handleRequest({ method: 'GET', url: '/api/patch?lang=zh' });

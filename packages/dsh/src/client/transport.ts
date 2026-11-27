@@ -110,22 +110,32 @@ export function createDshApiFetch(remote: Dota2AiClientRemote): (input: string, 
  * survive `dsh web` random port changes and sync with `dota2ai_goal_check`.
  */
 export async function mountProfileSync(remote: Dota2AiClientRemote): Promise<() => void> {
+  let hydratedProfile = false;
+  let hydratedGoal = false;
+  let hydratedChecks = false;
   try {
     const res = await remote.getProfile();
     if (res.ok && typeof window !== 'undefined' && window.localStorage) {
       const p = res.value;
-      if (p.accountId) window.localStorage.setItem(ACCOUNT_STORAGE_KEY, p.accountId);
+      if (p.accountId) {
+        window.localStorage.setItem(ACCOUNT_STORAGE_KEY, p.accountId);
+        hydratedProfile = true;
+      }
       if (Array.isArray(p.reviewed) && p.reviewed.length > 0) {
         window.localStorage.setItem(REVIEWED_STORAGE_KEY, JSON.stringify(p.reviewed));
+        hydratedProfile = true;
       }
       if (typeof p.seenUntil === 'number' && p.seenUntil > 0) {
         window.localStorage.setItem(SEEN_STORAGE_KEY, String(p.seenUntil));
+        hydratedProfile = true;
       }
       if (p.goal) {
         window.localStorage.setItem(GOAL_STORAGE_KEY, JSON.stringify(p.goal));
+        hydratedGoal = true;
       }
       if (Array.isArray(p.goalChecks) && p.goalChecks.length > 0) {
         window.localStorage.setItem(GOAL_CHECKS_STORAGE_KEY, JSON.stringify(p.goalChecks));
+        hydratedChecks = true;
       }
     }
   } catch {
@@ -133,6 +143,14 @@ export async function mountProfileSync(remote: Dota2AiClientRemote): Promise<() 
   }
 
   if (typeof window === 'undefined') return () => {};
+
+  // Notify any already-mounted UI components (`CoachHome`, `Shell`, `useActiveGoal`) BEFORE
+  // attaching outbound listeners so hydration updates live state without echoing `saveProfile`.
+  if (typeof window.dispatchEvent === 'function') {
+    if (hydratedProfile) window.dispatchEvent(new Event(PROFILE_CHANGED_EVENT));
+    if (hydratedGoal) window.dispatchEvent(new Event('dota2ai:goal'));
+    if (hydratedChecks) window.dispatchEvent(new Event('dota2ai:goal-checks'));
+  }
 
   const pushSnapshot = () => {
     try {

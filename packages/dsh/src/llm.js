@@ -6,19 +6,38 @@
  * DSH installation; `index.js` passes the `@deepseek-ai/dsh-llm` helpers in.
  */
 
+import { createHash } from 'node:crypto';
+
 const esc = (s) => String(s ?? '').replace(/[^A-Za-z0-9-]/g, (ch) => `_${ch.codePointAt(0).toString(16)}_`);
 const unesc = (s) => String(s ?? '').replace(/_([0-9a-f]+)_/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
+const cleanSlug = (s, max) => String(s ?? '')
+  .replace(/[^A-Za-z0-9_-]/g, '-')
+  .replace(/-+/g, '-')
+  .replace(/^[-_]+|[-_]+$/g, '')
+  .slice(0, max) || 'm';
 
 /**
- * Encode `{ provider, model }` into a reversible ID starting with `dsh.` that
- * satisfies `lib/agent/stores.js` (`KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/`).
+ * Maximum length of a `dsh.*` model identifier so the complete persistence key
+ * (`<13d-match>.<24c-hero>.<lang>.p<ver>.plan-<plan>.m-<modelId>.f9.<24c-id>`)
+ * always stays comfortably below `lib/agent/stores.js`'s 181-character `KEY` limit.
+ */
+export const MAX_MODEL_KEY_LENGTH = 64;
+
+/**
+ * Encode `{ provider, model }` into a bounded, collision-resistant ID starting
+ * with `dsh.` (`<= 64` chars) so every review, checkpoint, and feedback document
+ * persists cleanly in `createFileStore`.
  */
 export function encodeModelKey(provider, model) {
-  const raw = `dsh.${esc(provider)}.${esc(model)}`;
-  return raw.length <= 180 ? raw : raw.slice(0, 180);
+  const p = String(provider ?? '');
+  const m = String(model ?? '');
+  const raw = `dsh.${esc(p)}.${esc(m)}`;
+  if (raw.length <= MAX_MODEL_KEY_LENGTH) return raw;
+  const digest = createHash('sha256').update(`${p}\0${m}`).digest('hex').slice(0, 12);
+  return `dsh.${cleanSlug(p, 16)}.${cleanSlug(m, 28)}.${digest}`;
 }
 
-/** Decode a `dsh.<provider>.<model>` ID back to `{ provider, model }`, or null. */
+/** Decode a lossless 3-segment `dsh.<provider>.<model>` ID back to `{ provider, model }`, or null when hashed/invalid. */
 export function decodeModelKey(key) {
   if (typeof key !== 'string' || !key.startsWith('dsh.')) return null;
   const parts = key.split('.');
