@@ -35,12 +35,13 @@ The site is in English, Chinese and Russian.
 
 ### DSH plugin
 
-A native plugin for [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepSeek Harness). Needs Node 24.9+, DSH ≥ 0.2.1-rc.3 and pnpm.
+**Recommended.** A native plugin for [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepSeek Harness) that runs the same coach on your own DeepSeek key: no queue and no daily limit, and your reviews stay on your machine. Needs Node 24.9+, DSH ≥ 0.2.1-rc.3 (`0.2.x`) and pnpm.
 
 ```sh
-# from the latest dsh-v* release: https://github.com/qianhaoq/dota2.ai/releases
-sha256sum -c SHA256SUMS
+npm install -g pnpm @deepseek-ai/dsh@0.2.2-rc.5
+curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v0.2.2/qianhaoq-dsh-dota2ai-0.2.2.tgz
 dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.2.tgz
+DEEPSEEK_API_KEY=sk-... dsh web      # or enter the key in DSH's API-key dialog
 ```
 
 Open **dota2.ai** from the left sidebar in `dsh web` for the full match review page (scoreboard, minimap moment replay, checked evidence cards, coach chat, and model switcher across your configured DSH models), or ask in any DSH session: *"Review my Dota 2 match 9100904020 — I played Beastmaster."*
