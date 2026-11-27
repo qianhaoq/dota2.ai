@@ -253,3 +253,37 @@ describe('ReviewDoc: fight presence strip (#363)', () => {
   });
 });
 
+
+describe('ReviewDoc: the story as a chain of causes (#437 P4)', () => {
+  const story: DeepReview['story'] = [
+    { phase: '0:00–10:00, the lane', what_changed: 'Down 5126 in the lane.', because: 'Seven deaths to roams, not last hits.', whose: 'me', evidence: [{ refs: ['lane:axe'], clock: '10:00', fact: 'Kills and assists −4818.' }] },
+    { phase: '24:00–27:47, the turn', what_changed: '+199 became −16541.', because: 'Two fights lost with five against four.', whose: 'team', evidence: [] },
+  ];
+
+  it('each link shows its stretch, what changed, why and whose it was, with its records folded under it', () => {
+    show(review({ story }));
+    const links = document.querySelectorAll('.ag-story > ol > li');
+    expect(links).toHaveLength(2);
+    expect(links[0].querySelector('.ag-story-head')!.textContent).toBe('0:00–10:00, the laneYou');
+    expect(links[0].querySelector('.ag-story-what')!.textContent).toBe('Down 5126 in the lane.');
+    expect(links[0].querySelector('.ag-story-why')!.textContent).toBe('BecauseSeven deaths to roams, not last hits.');
+    expect(links[0].querySelector('.ag-story-records summary')!.textContent).toBe('Records · 1');
+    expect(links[1].querySelector('.ag-story-whose')!.textContent).toBe('Team');
+    // A link with no records left shows none.
+    expect(links[1].querySelector('.ag-story-records')).toBeNull();
+    // The one-line phases are not shown twice.
+    expect(document.querySelector('.ag-mainline')).toBeNull();
+  });
+
+  it('in Chinese the labels are Chinese', () => {
+    render(<ReviewDoc matchId="7" review={review({ story, lang: 'zh' })} lang="zh" onAsk={() => {}} />);
+    expect(document.querySelector('.ag-story-whose')!.textContent).toBe('你');
+    expect(document.querySelector('.ag-story-why span')!.textContent).toBe('原因');
+  });
+
+  it('a review written before it keeps its one-line phases', () => {
+    show(review());
+    expect(document.querySelector('.ag-story')).toBeNull();
+    expect(document.querySelectorAll('.ag-mainline li')).toHaveLength(2);
+  });
+});

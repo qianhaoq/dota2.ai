@@ -63,7 +63,7 @@ describe('the game plan of a review', () => {
   });
 
   it('the model is told it must hand in a game plan (#388: 3 of about 100 eval reviews had none, all not_submitted-shaped)', () => {
-    expect(SUBMIT_REVIEW.input_schema.required).toEqual(['verdict', 'mainline', 'findings', 'blind_spots', 'game_plan']);
+    expect(SUBMIT_REVIEW.input_schema.required).toEqual(['verdict', 'story', 'findings', 'blind_spots', 'game_plan']);
     // Its own fields stay required as before.
     expect((SUBMIT_REVIEW.input_schema.properties as any).game_plan.required).toEqual(['course', 'your_part', 'main_reason', 'why', 'evidence']);
   });
