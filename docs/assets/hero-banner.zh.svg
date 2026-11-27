@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" width="1200" height="320" fill="none">
+  <defs>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1200" y2="320" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0a0e16" />
+      <stop offset="55%" stop-color="#07090d" />
+      <stop offset="100%" stop-color="#0d121c" />
+    </linearGradient>
+    <radialGradient id="glowGold" cx="0.22" cy="0.15" r="0.65">
+      <stop offset="0%" stop-color="#e5b55c" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#e5b55c" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowRadiant" cx="0.06" cy="0.92" r="0.45">
+      <stop offset="0%" stop-color="#3fb97a" stop-opacity="0.13" />
+      <stop offset="100%" stop-color="#3fb97a" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowDire" cx="0.94" cy="0.12" r="0.48">
+      <stop offset="0%" stop-color="#e0584c" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#e0584c" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="aegis" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f7cf7f" />
+      <stop offset="100%" stop-color="#c98b2b" />
+    </linearGradient>
+    <linearGradient id="cardBg" x1="720" y1="42" x2="1144" y2="278" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#111723" stop-opacity="0.94" />
+      <stop offset="100%" stop-color="#090d14" stop-opacity="0.96" />
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff" stroke-opacity="0.025" stroke-width="1" />
+    </pattern>
+  </defs>
+
+  <!-- Frame & Ambient Field -->
+  <rect x="1" y="1" width="1198" height="318" rx="22" fill="url(#canvas)" />
+  <rect x="1" y="1" width="1198" height="318" rx="22" fill="url(#grid)" />
+  <rect x="1" y="1" width="1198" height="318" rx="22" fill="url(#glowGold)" />
+  <rect x="1" y="1" width="1198" height="318" rx="22" fill="url(#glowRadiant)" />
+  <rect x="1" y="1" width="1198" height="318" rx="22" fill="url(#glowDire)" />
+
+  <!-- Subtle Tactical Minimap Geometry -->
+  <g opacity="0.32">
+    <path d="M 650 318 C 760 220, 910 140, 1080 2" stroke="#68b5e8" stroke-opacity="0.22" stroke-width="24" stroke-linecap="round" />
+    <path d="M 680 318 L 1050 2" stroke="#e5b55c" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="4 6" />
+    <circle cx="848" cy="172" r="22" stroke="#e5b55c" stroke-opacity="0.28" stroke-width="1.2" />
+  </g>
+
+  <!-- Outer Hairline Border -->
+  <rect x="1" y="1" width="1198" height="318" rx="22" stroke="#e5b55c" stroke-opacity="0.26" stroke-width="1.5" />
+
+  <!-- Left Editorial Column -->
+  <g transform="translate(56, 52)">
+    <!-- Faceted Emblem + Brand -->
+    <g>
+      <rect x="0" y="0" width="42" height="42" rx="11" fill="#101622" stroke="#e5b55c" stroke-opacity="0.45" stroke-width="1.4" />
+      <path d="M9 32L9 17L24 32Z" fill="#3fb97a" fill-opacity="0.26" />
+      <path d="M33 10L33 25L18 10Z" fill="#e0584c" fill-opacity="0.26" />
+      <path d="M21 8L33 21L21 34L9 21Z" stroke="url(#aegis)" stroke-width="1.8" fill="#e5b55c" fill-opacity="0.12" />
+      <path d="M21 14L27 21L21 28L15 21Z" fill="url(#aegis)" />
+
+      <text x="56" y="28" fill="#f3f6fb" font-family="Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="22" font-weight="700" letter-spacing="-0.02em">
+        dota2<tspan fill="#e5b55c">.ai</tspan>
+      </text>
+
+      <!-- Eyebrow Pill -->
+      <rect x="172" y="8" width="276" height="26" rx="13" fill="#e5b55c" fill-opacity="0.1" stroke="#e5b55c" stroke-opacity="0.32" />
+      <circle cx="188" cy="21" r="3.5" fill="#e5b55c" />
+      <text x="200" y="25" fill="#e5b55c" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="11.5" font-weight="600" letter-spacing="0.06em">
+        录像强校验赛后教练 · 7.42 版本
+      </text>
+    </g>
+
+    <!-- Display Headline -->
+    <text x="0" y="108" fill="#f5f8fc" font-family="'PingFang SC', 'Noto Serif SC', 'Songti SC', 'Microsoft YaHei', sans-serif" font-size="40" font-weight="600" letter-spacing="-0.01em">
+      逐秒拆解你的 <tspan fill="#e5b55c" font-family="Georgia, serif" font-style="italic">.dem</tspan> 录像，
+    </text>
+    <text x="0" y="160" fill="#f5f8fc" font-family="'PingFang SC', 'Noto Serif SC', 'Songti SC', 'Microsoft YaHei', sans-serif" font-size="40" font-weight="600" letter-spacing="-0.01em">
+      说的每一句话都拿得出记录。
+    </text>
+
+    <!-- Crisp Subtitle -->
+    <text x="0" y="202" fill="#94a3b8" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="15" font-weight="400">
+      28 个专用录像查询工具 · 纯代码零幻觉强校验 · 网页 / DSH / MCP / CLI 免密钥直连
+    </text>
+  </g>
+
+  <!-- Right Tactical Proof Card -->
+  <g transform="translate(716, 40)">
+    <rect x="0" y="0" width="428" height="240" rx="16" fill="url(#cardBg)" stroke="#232d3f" stroke-width="1.2" />
+    <line x1="0" y1="44" x2="428" y2="44" stroke="#1c2534" stroke-width="1" />
+
+    <!-- Card Header -->
+    <circle cx="22" cy="22" r="4" fill="#3fb97a" />
+    <text x="34" y="26" fill="#cbd5e1" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, monospace" font-size="11" font-weight="600" letter-spacing="0.04em">
+      比赛 #9100904020 · 兽王
+    </text>
+    <text x="332" y="26" fill="#3fb97a" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="11.5" font-weight="600">
+      已对照录像核验
+    </text>
+
+    <!-- Row 1: Cited Moment -->
+    <g transform="translate(20, 62)">
+      <rect x="0" y="0" width="54" height="24" rx="6" fill="#e5b55c" fill-opacity="0.14" stroke="#e5b55c" stroke-opacity="0.38" />
+      <text x="27" y="16" text-anchor="middle" fill="#f2c46d" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, monospace" font-size="11.5" font-weight="600">27:27</text>
+      <text x="66" y="16" fill="#eef2f8" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13" font-weight="500">
+        原始咆哮无视黑皇杖 · 眩晕幻影刺客 3.4 秒
+      </text>
+      <text x="66" y="34" fill="#64748b" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, monospace" font-size="11">
+        ref → cast:beastmaster:primal_roar:6
+      </text>
+    </g>
+
+    <!-- Row 2: Trigger Rule -->
+    <g transform="translate(20, 118)">
+      <rect x="0" y="0" width="388" height="58" rx="10" fill="#e5b55c" fill-opacity="0.06" stroke="#e5b55c" stroke-opacity="0.3" />
+      <rect x="0" y="0" width="3" height="58" rx="1.5" fill="#e5b55c" />
+      <text x="14" y="22" fill="#e5b55c" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="11" font-weight="700" letter-spacing="0.06em">当 → 就</text>
+      <text x="72" y="22" fill="#e2e8f0" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5" font-weight="600">团战里幻影刺客露头或开启黑皇杖</text>
+      <text x="14" y="43" fill="#94a3b8" font-family="Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="12.5">原始咆哮只留给她的黑皇杖窗口，绝不先交前排。</text>
+    </g>
+
+    <!-- Row 3: Verifier Footer -->
+    <g transform="translate(20, 198)">
+      <rect x="0" y="0" width="186" height="24" rx="6" fill="#131b29" stroke="#222e42" />
+      <text x="10" y="16" fill="#94a3b8" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, monospace" font-size="10.5">
+        verifyReview: <tspan fill="#3fb97a" font-weight="600">0 剔除</tspan>
+      </text>
+      <rect x="196" y="0" width="192" height="24" rx="6" fill="#131b29" stroke="#222e42" />
+      <text x="206" y="16" fill="#94a3b8" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, monospace" font-size="10.5">
+        2D 地图 + 原始记录: <tspan fill="#f2c46d" font-weight="600">可查</tspan>
+      </text>
+    </g>
+  </g>
+</svg>

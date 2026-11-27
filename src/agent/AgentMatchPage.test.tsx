@@ -820,16 +820,11 @@ describe('AgentMatchPage', () => {
     });
     ui.lang = 'zh';
     const Where = () => { const l = useLocation(); return <p data-testid="where">{l.search}</p>; };
-    render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=zh']}><Where /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
-    const group = await screen.findByRole('radiogroup', { name: '这局你想怎么打？（可选）' });
-    const radios = within(group).getAllByRole('radio');
-    expect(radios.map((r) => r.textContent)).toEqual(['不说', '线优转推进', '抓人带节奏', '带线牵制', '发育拖后期']);
-    // Saying nothing is the default.
-    expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false', 'false', 'false']);
-    fireEvent.click(within(group).getByRole('radio', { name: '线优转推进' }));
-    expect(screen.getByTestId('where').textContent).toContain('plan=push');
-    expect(within(group).getByRole('radio', { name: '线优转推进' }).getAttribute('aria-checked')).toBe('true');
-    // The review for that plan is asked about, not the plan-free one.
+    render(<MemoryRouter initialEntries={['/r/9100904020?hero=beastmaster&lang=zh&plan=push']}><Where /><Routes><Route path="/r/:matchId" element={<AgentMatchPage />} /></Routes></MemoryRouter>);
+    // No upfront plan quiz sits between the reader and starting the review.
+    expect(await screen.findByRole('button', { name: '开始复盘' })).toBeTruthy();
+    expect(screen.queryByRole('radiogroup', { name: '这局你想怎么打？（可选）' })).toBeNull();
+    // When a plan is in the link, the review for that plan is asked about, not the plan-free one.
     await waitFor(() => expect(calls.some((c) => c.url.includes('/review?') && c.url.includes('plan=push'))).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: '开始复盘' }));
     await waitFor(() => expect(started).toEqual({ hero: 'beastmaster', lang: 'zh', plan: 'push' }));
@@ -845,7 +840,7 @@ describe('AgentMatchPage', () => {
     expect(JSON.parse(String(calls.find((c) => c.url.endsWith('/chat'))!.init!.body))).toMatchObject({ question: '怎么推？', plan: 'push' });
   });
 
-  it('from a review made without a plan, the reader can have it made again for one: the start opens with that plan picked', async () => {
+  it('from a review made without a plan, the reader can have it made again for one: the start opens for that plan without an upfront quiz', async () => {
     mockFetch({
       '/chat': () => sse([{ text: '答。' }, { done: true }]),
       'ref=overview': overview,
@@ -862,9 +857,8 @@ describe('AgentMatchPage', () => {
     const note = await within(section as HTMLElement).findByText(/也可以按「抓人带节奏」重写整份复盘/);
     fireEvent.click(within(note as HTMLElement).getByRole('button', { name: '重写' }));
     expect(screen.getByTestId('where').textContent).toContain('plan=gank');
-    const group = await screen.findByRole('radiogroup', { name: '这局你想怎么打？（可选）' });
-    expect(within(group).getByRole('radio', { name: '抓人带节奏' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('button', { name: '开始复盘' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: '开始复盘' })).toBeTruthy();
+    expect(screen.queryByRole('radiogroup', { name: '这局你想怎么打？（可选）' })).toBeNull();
   });
 
   it('a word on a finding names the review on screen: its prompt version and its writer\'s own id, never "the default"', async () => {
@@ -1025,21 +1019,21 @@ describe('AgentMatchPage', () => {
     expect(copied[0]).not.toContain('model=');
   });
 
-  it('going back to "don\'t say" takes the plan out of the link and the requests', async () => {
+  it('the start screen goes straight to the button without asking for a plan, and an unknown plan in a link is ignored', async () => {
     const calls = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { status: 'running', steps: [] } : null), '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
-    page('/r/9100904020?hero=beastmaster&lang=en&plan=late');
-    const group = await screen.findByRole('radiogroup', { name: 'What were you going for this game? (optional)' });
-    expect(within(group).getByRole('radio', { name: 'Farm for late' }).getAttribute('aria-checked')).toBe('true');
-    fireEvent.click(within(group).getByRole('radio', { name: 'Don\'t say' }));
-    // Another plan is another review: the page asks about it again before the start is offered.
-    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    const startBtn = await screen.findByRole('button', { name: 'Review my game' });
+    expect(screen.queryByRole('radiogroup', { name: 'What were you going for this game? (optional)' })).toBeNull();
+    fireEvent.click(startBtn);
     await waitFor(() => expect(calls.some((c) => c.init?.method === 'POST')).toBe(true));
     expect(JSON.parse(String(calls.find((c) => c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
     // A plan in a link that is none of the four is no plan.
     cleanup();
-    mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
+    const calls2 = mockFetch({ 'ref=overview': overview, '/review?': { status: 'none' }, '/review': (_u: string, init?: RequestInit) => (init?.method === 'POST' ? { status: 'running', steps: [] } : null), '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=en&plan=cheese');
-    expect(within(await screen.findByRole('radiogroup')).getByRole('radio', { name: 'Don\'t say' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+    await waitFor(() => expect(calls2.some((c) => c.init?.method === 'POST')).toBe(true));
+    expect(JSON.parse(String(calls2.find((c) => c.init?.method === 'POST')!.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en' });
   });
 
   it('a building the team took shows who on the other side was alive and near; a window shows who got richer', async () => {
@@ -1355,27 +1349,28 @@ describe('AgentMatchPage', () => {
     await screen.findByText('正在准备你的复盘');
   }, 8000);
 
-  it('a wait belongs to the review that was refused: picking another plan meanwhile frees the button, and only that review starts', async () => {
+  it('a wait belongs to the review that was refused: picking another model meanwhile frees the button, and only that review starts', async () => {
     const bodies: any[] = [];
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash' };
     mockFetch({
       '/review?': { status: 'none' },
       '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return bodies.length === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 2 } : { __status: 202, status: 'running', steps: [] }; },
-      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+      '/api/agent/9100904020': offer,
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
     fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
-    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
-    // The plan's own review was never refused: nothing counts down for it.
+    fireEvent.click(screen.getByRole('radio', { name: /Kimi K3\.1 Pro/ }));
+    // The other model's review was never refused: nothing counts down for it.
     const free = await screen.findByRole('button', { name: 'Review my game' }) as HTMLButtonElement;
     expect(free.disabled).toBe(false);
     expect(screen.queryByRole('alert')).toBeNull();
-    // The refused review's wait runs out while the reader is on another plan: nothing is sent for either.
+    // The refused review's wait runs out while the reader is on another model: nothing is sent for either.
     await new Promise((r) => { setTimeout(r, 3200); });
     expect(bodies).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Review my game' }));
     await waitFor(() => expect(bodies).toHaveLength(2));
-    expect(bodies[1]).toEqual({ hero: 'beastmaster', lang: 'en', plan: 'gank' });
+    expect(bodies[1]).toEqual({ hero: 'beastmaster', lang: 'en', model: 'kimi-k3.1-pro' });
   }, 10000);
 
   it('a refused parse is picked up again when the reader comes back to it after its wait ran out elsewhere', async () => {
@@ -1383,17 +1378,17 @@ describe('AgentMatchPage', () => {
     mockFetch({
       '/api/coach/9100904020': board,
       '/prepare': () => { if (++prepares > 20) throw new Error('prepare loop'); return prepares === 1 ? { __status: 429, code: 'rate_limited', retryAfterSec: 1 } : { __status: 202, status: 'running', stage: 'locating' }; },
-      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
+      '/api/agent/9100904020': () => ({ trace: false, model_configured: true, can_parse: true, heroes: [], models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash', parse: prepares > 1 ? { status: 'running', stage: 'locating' } : { status: 'none' } }),
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
     fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/starts on its own/);
-    // Away on another plan while the wait runs out: nothing is sent for the one left behind.
-    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    // Away on another selection while the wait runs out: nothing is sent for the one left behind.
+    fireEvent.click(screen.getByRole('radio', { name: /Kimi K3\.1 Pro/ }));
     await new Promise((r) => { setTimeout(r, 2200); });
     expect(prepares).toBe(1);
     // Back to it: the reader's go still stands, and the parse is asked for again.
-    fireEvent.click(await screen.findByRole('radio', { name: 'Don\'t say' }));
+    fireEvent.click(await screen.findByRole('radio', { name: /DeepSeek 4\.1 Flash/ }));
     await waitFor(() => expect(prepares).toBe(2), { timeout: 3000 });
   }, 10000);
 
@@ -1443,21 +1438,22 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(prepares).toBe(2), { timeout: 4000 });
   }, 10000);
 
-  it('each review keeps its own wait: a second refusal for another plan does not cut the first one short', async () => {
+  it('each review keeps its own wait: a second refusal for another model does not cut the first one short', async () => {
     const bodies: any[] = [];
+    const offer = { trace: true, model_configured: true, heroes, models: ['deepseek-flash', 'kimi-k3.1-pro'], default_model: 'deepseek-flash' };
     mockFetch({
       '/review?': { status: 'none' },
       '/review': (_u: string, init?: RequestInit) => { bodies.push(JSON.parse(String(init?.body))); return { __status: 429, code: 'rate_limited', retryAfterSec: bodies.length === 1 ? 30 : 20 }; },
-      '/api/agent/9100904020': { trace: true, model_configured: true, heroes },
+      '/api/agent/9100904020': offer,
     });
     page('/r/9100904020?hero=beastmaster&lang=en');
     fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(29|30)\.$/);
-    fireEvent.click(screen.getByRole('radio', { name: 'Ganks and pressure' }));
+    fireEvent.click(screen.getByRole('radio', { name: /Kimi K3\.1 Pro/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(19|20)\.$/);
     // Back to the first: still its own countdown, and nothing is sent before it ends.
-    fireEvent.click(screen.getByRole('radio', { name: 'Don\'t say' }));
+    fireEvent.click(screen.getByRole('radio', { name: /DeepSeek 4\.1 Flash/ }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/in 0:(2[89]|30)\.$/);
     await new Promise((r) => { setTimeout(r, 1200); });
     expect(bodies).toHaveLength(2);

@@ -11,7 +11,7 @@ import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
 import { ChatRail, stepLabel, type ChatHandle } from './ChatRail';
 import { MatchBoard } from './MatchBoard';
-import { PLANS, planKey } from '../../lib/agent/plans.js';
+import { planKey } from '../../lib/agent/plans.js';
 import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelWait, writesSlowly } from '../../lib/agent/models.js';
 import { ReviewDoc, type GoalContext } from './ReviewDoc';
 import { WaitDeaths } from './WaitDeaths';
@@ -55,9 +55,6 @@ const T = {
   // While it is being written: who writes it and how long that takes, so a long wait is one the reader was told of.
   workTime: { en: '{m} is writing it: expect {t}.', zh: '由 {m} 撰写，预计{t}。', ru: 'Пишет {m}: ожидайте {t}.' },
   go: { en: 'Review my game', zh: '开始复盘', ru: 'Разобрать игру' },
-  planAsk: { en: 'What were you going for this game? (optional)', zh: '这局你想怎么打？（可选）', ru: 'Какой у вас был план на игру? (необязательно)' },
-  planWhy: { en: 'Say it, and the review reads the game against it: whether your play fit it, whether it suited these line-ups, and where it broke. The replay cannot show what you meant to do.', zh: '选了，复盘就会对照它来读这局：你的打法是否贴合，这个思路面对双方阵容是否站得住，没打成断在哪里。录像本身看不出你想怎么打。', ru: 'Укажите план, и разбор проверит, соответствовала ли ему ваша игра, подходил ли он под драфты и где сломался.' },
-  planNone: { en: 'Don\'t say', zh: '不说', ru: 'Не указывать' },
   modelAsk: { en: 'Which model writes it?', zh: '由哪个模型来写？', ru: 'Какая модель пишет разбор?' },
   modelWhy: { en: 'Each model reads the same replay with the same tools, and its review is checked against the replay the same way. A review by another model is kept beside the first, so you can compare them.', zh: '每个模型读的是同一份录像、用同一套工具，写出的复盘也按同样的方式和录像核对。换一个模型写的复盘会另存一份，可以对比着看。', ru: 'Каждая модель читает один и тот же реплей теми же инструментами и проходит ту же проверку фактов. Разборы разных моделей сохраняются рядом для сравнения.' },
   modelBy: { en: 'Written by', zh: '撰写模型', ru: 'Автор разбора' },
@@ -763,17 +760,6 @@ export const AgentMatchPage: React.FC = () => {
           <>
             <h1>{t(T.goTitle)}</h1>
             <p>{t(T.goBody)}{lang === 'zh' ? '' : ' '}{goTime ?? ''}</p>
-            <fieldset className="ag-planpick">
-              <legend>{t(T.planAsk)}</legend>
-              <p>{t(T.planWhy)}</p>
-              <div className="ag-planpick-row" role="radiogroup" aria-label={t(T.planAsk)}>
-                {[null, ...PLANS.map((p) => p.key)].map((k) => (
-                  <button key={k ?? 'none'} type="button" role="radio" aria-checked={plan === k} className={`ag-chip-btn ${plan === k ? 'is-on' : ''}`} onClick={() => pickPlan(k)}>
-                    {k ? PLANS.find((p) => p.key === k)!.label[lang] : t(T.planNone)}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
             {offered.length > 1 && (
               <fieldset className="ag-planpick">
                 <legend>{t(T.modelAsk)}</legend>
