@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { DEEP_REVIEW_PROMPT_VERSION, deepReviewSystem, englishWords, runDeepReview, sentenceFacts, verifyReview, NUMBERS_PER_SENTENCE } from '../../lib/agent/deepReview.js';
-import { DENSE_ASKED } from '../../lib/agent/review/verify.js';
 import { styleOf } from '../../lib/agent/evalReview.js';
 import { runTraceTool } from '../../packages/review-engine/src/trace/index.js';
 
@@ -73,36 +72,13 @@ describe('the check asks once about how a review reads', () => {
     expect(whole.map((p: any) => [p.index, p.kind, p.text])).toEqual([[0, 'language', 'Good farm overall'], [1, 'english', 'good']]);
   });
 
-  it('names a sentence of the verdict or of a claim with more than two times and numbers, with how many', () => {
-    const r = review({ verdict: '你 11 次死亡里 7 次死在她手上，44% 的伤害是她的普攻，16% 是技能。', findings: [finding({ claim: '你在 0:47 阵亡。之后 2:51、6:13、8:27 又各死一次。' })] });
-    expect(notes(r, 'dense').map((p: any) => [p.where, p.index, p.text])).toEqual([
-      ['verdict', 0, '你 11 次死亡里 7 次死在她手上，44% 的伤害是她的普攻，16% 是技能。 (4)'],
-      ['finding', 0, '之后 2:51、6:13、8:27 又各死一次。 (3)'],
-    ]);
-    expect(notes(r, 'dense').every((p: any) => p.soft === true)).toBe(true);
-    // Two is what a reader keeps: not asked about.
-    expect(notes(review({ verdict: '你 11 次死亡里 7 次死在她手上。' }), 'dense')).toEqual([]);
-    // What a rule says happened this game is a list of counts and times by design, and so are evidence facts.
-    expect(notes(review({ findings: [finding({ rule: { when: '血量不到一半', do: '退到塔后', this_game: '4 次：0:47、2:51、6:13、8:27。' }, evidence: [{ refs: ['death:beastmaster:1'], fact: '0:47 血量 531/740，幻影刺客在 356 距离。' }] })] }), 'dense')).toEqual([]);
-  });
-
-  it('asks about the densest few only: the repair round is the last one', () => {
-    const claim = (n: number) => `这一句有${Array.from({ length: n }, (_, i) => ` ${i + 11} 次`).join('、')}。`;
-    const r = review({ verdict: claim(3), findings: [finding({ claim: claim(9) }), finding({ claim: `${claim(4)}${claim(7)}` }), finding({ claim: `${claim(5)}${claim(6)}` })] });
-    const asked = notes(r, 'dense');
-    expect(DENSE_ASKED).toBe(4);
-    expect(asked).toHaveLength(DENSE_ASKED);
-    expect(asked.map((p: any) => Number(p.text.match(/\((\d+)\)$/)![1]))).toEqual([9, 7, 6, 5]);
-    expect(asked.map((p: any) => [p.where, p.index])).toEqual([['finding', 0], ['finding', 1], ['finding', 2], ['finding', 2]]);
-  });
-
-  it('counts what the eval counts: one definition for the score and for the note', () => {
+  it('the eval still counts dense sentences; the check names English words and no longer asks about density (#405)', () => {
     const r = { lang: 'zh', ...review({ verdict: '这条线是 lost，你 11 次死亡里 7 次死在她手上，44% 是普攻。' }) };
     const s = styleOf({ review: r });
     expect(s.english).toMatchObject({ words: 1, examples: ['lost'] });
     expect(s.top.dense).toBe(1);
     expect(notes(r, 'english')).toHaveLength(1);
-    expect(notes(r, 'dense')).toHaveLength(1);
+    expect(notes(r, 'dense')).toEqual([]);
   });
 });
 
@@ -129,11 +105,4 @@ describe('the repair round and the prompt', () => {
     expect(out.verification).toMatchObject({ repaired: true, dropped: 0 });
   });
 
-  it('the prompt asks for it in the first place', () => {
-    const s = deepReviewSystem('zh');
-    expect(s).toContain('keep a sentence there to at most two times or numbers');
-    expect(s).toContain('Roshan as 肉山, the Aegis as 不朽盾');
-    expect(deepReviewSystem('en')).toContain('keep a sentence there to at most two times or numbers');
-    expect(Number.isInteger(DEEP_REVIEW_PROMPT_VERSION)).toBe(true);
-  });
 });

@@ -56,8 +56,8 @@ describe('fact collection', () => {
     // Every fact in it is the tools': nothing is unsupported, and nothing would be dropped.
     expect(passed.problems.filter((p: any) => !p.soft)).toEqual([]);
     expect(passed.unsupported.findings.size).toBe(0);
-    // The one thing said about it is how the claim reads — three numbers in one sentence — which removes nothing.
-    expect(passed.problems).toEqual([{ where: 'finding', index: 0, kind: 'dense', text: '27:25 时 2915 血，领先 4.3k (3)', soft: true }]);
+    // How many numbers a sentence carries is the model's to judge (#405): nothing is asked about it.
+    expect(passed.problems).toEqual([]);
     // With the claim cut to two, there is nothing to say at all.
     expect(verifyReview(review([{ ...fine, claim: '27:25 时 2915 血' }], { verdict: '11 次阵亡里 7 次死于幻影刺客', mainline: [] }), sources)).toMatchObject({ ok: true, problems: [] });
     const bad = {
@@ -547,7 +547,6 @@ describe('runDeepReview', () => {
     expect(s).toContain('deaths_where');
     expect(s).toContain('damage_share_in_death_windows');
     expect(s).toContain('off_cooldown_without_the_mana could not be cast');
-    expect(s).toContain('"It was ready and not pressed" is not a finding on its own');
     expect(s).toContain('do not charge the team\'s lost fights to them');
     expect(s).toContain('was not wasted because one of them was spell immune');
   });
