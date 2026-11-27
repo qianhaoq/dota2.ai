@@ -262,4 +262,21 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     });
     expect((runTraceTool(modern, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].nearby_objective).toBe(false);
   });
+
+  it('keeps allies_near_who_survived_10s null when fewer than 10 s of trace remain after the death (Codex P1 on #464)', () => {
+    const short = makeTrace({
+      n: 105,
+      pos: { enchantress: [100, 100], sven: [500, 100], lion: [200, 100], tidehunter: [250, 100], lina: [300, 100] },
+      deaths: [[100, 0, 2, 1]],
+    });
+    expect((runTraceTool(short, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].allies_near_who_survived_10s).toBeNull();
+
+    // If the only nearby ally already died before trace end, [] is positively established.
+    const allyDied = makeTrace({
+      n: 105,
+      pos: { enchantress: [100, 100], sven: [500, 100], lion: [200, 100], tidehunter: [250, 100], lina: [300, 100] },
+      deaths: [[100, 0, 2, 1], [103, 1, 2, 2]],
+    });
+    expect((runTraceTool(allyDied, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].allies_near_who_survived_10s).toEqual([]);
+  });
 });

@@ -568,14 +568,20 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const castNames = new Set(myCasts.map((c) => trace.names[c[2]]));
     const kKind = killerKind(trace, d[2], h, npc);
     const nonHeroNoEnemy = !hasDamageLog || kKind == null ? null : NON_HERO_SUICIDE_KINDS.has(kKind) && attackers.size === 0 && !otherUnitDamage;
+    const traceEnd = typeof trace.t0 === 'number' && typeof trace.n === 'number' ? trace.t0 + trace.n - 1 : null;
     const alliesKnownAtDeath = Boolean(atDeath.me && atDeath.me.x != null && atDeath.me.y != null)
       && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, t));
-    const alliesSurvived10s = !alliesKnownAtDeath ? null
-      : atDeath.allies.map((a) => a.hero).filter((ak) => {
+    const alliesSurvived10s = !alliesKnownAtDeath ? null : (() => {
+      const survivors = atDeath.allies.map((a) => a.hero).filter((ak) => {
         const ai = trace.heroes.findIndex((x) => x.key === ak);
         const anpc = ai >= 0 ? nameId(trace, trace.heroes[ai].npc) : -1;
         return !real.some((o) => o[1] === anpc && o[0] > t && o[0] <= t + 10);
       });
+      // When fewer than 10 s of trace remain after the death, the absence of a death row cannot establish
+      // 10 s survival for nearby allies still alive at trace end (Codex P1 on #464).
+      if (survivors.length > 0 && (traceEnd == null || t + 10 > traceEnd)) return null;
+      return survivors;
+    })();
     const disableSec = Array.isArray(trace.controls) ? mergedDisableSeconds(trace.controls[h], from, t) : null;
     const enemyUlts = enemyUltimatesAbsorbed(trace, h, npc, from, t, ctx?.ultimateOf);
     const inAFight = !fought.has(d) ? false : mostAllies == null ? null : mostAllies >= 1;
