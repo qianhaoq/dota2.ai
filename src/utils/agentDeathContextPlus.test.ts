@@ -60,23 +60,21 @@ function makeTrace(overrides: any = {}) {
 }
 
 describe('death_context & ability_audit P1-1 enhancements', () => {
-  it('attack modifiers (Enchantress Impetus, etc.) are never flagged as 0 casts or ready_not_cast', () => {
-    const extraNames = ['enchantress_impetus', 'enchantress_enchant', 'some_future_orb'];
+  it('attack modifiers (Enchantress Impetus, etc.) are never flagged as 0 casts or ready_not_cast, while active auto-triggering ultimates (Shadow Fiend Requiem) stay tracked', () => {
+    const extraNames = ['enchantress_impetus', 'enchantress_enchant'];
     const tr = makeTrace({
       extraNames,
       abilities: [
         {
           enchantress_impetus: { levels: [[10, 1]], cd: [[20, 26, 6]], mana: 55, costs: [[10, 55]] },
           enchantress_enchant: { levels: [[10, 1]], cd: [], mana: 70, costs: [[10, 70]] },
-          some_future_orb: { levels: [[10, 1]], cd: [], mana: 30, costs: [[10, 30]] },
         },
         {}, {}, {}, {},
       ],
-      // Impetus and some_future_orb deal damage with 0 cast rows; enchant has 0 cast rows and 0 damage rows (genuinely unpressed active).
+      // Impetus deals damage with 0 cast rows (known attack modifier); enchant has 0 cast rows (genuinely unpressed active).
       damage: [
         [50, 0, 2, 5, 180], // enchantress -> lion via enchantress_impetus
         [55, 0, 2, 5, 220],
-        [60, 0, 2, 7, 140], // enchantress -> lion via some_future_orb
         [98, 2, 0, -1, 900],
       ],
       deaths: [[100, 0, 2, 1]],
@@ -84,7 +82,6 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     const dc: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' }, { ultimateOf });
     expect(dc.deaths[0].ready_not_cast).toEqual(['enchantress_enchant']);
     expect(dc.deaths[0].ready_not_cast).not.toContain('enchantress_impetus');
-    expect(dc.deaths[0].ready_not_cast).not.toContain('some_future_orb');
 
     const imp: any = runTraceTool(tr, 'ability_audit', { hero: 'enchantress', ability: 'impetus' });
     expect(imp).toMatchObject({
@@ -102,6 +99,27 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     expect(evaluateHabit({ kind: 'replay_habit', habit: 'died_holding', max: 1, name: { en: 'Impetus', zh: '推进' } }, imp, 30).result).toBe('unknown');
     // Evidence ref for a cast on an unlogged ability safely returns null instead of throwing.
     expect(resolveRef(tr, 'cast:enchantress:impetus:1', { hero: 'enchantress', lang: 'zh' })).toBeNull();
+
+    // Shadow Fiend Requiem triggers damage on death without a manual cast row: must NOT be misclassified as casts_logged: false (Codex P2 on #464).
+    const sf = makeTrace({
+      heroes: [
+        { key: 'nevermore', npc: 'npc_dota_hero_nevermore', team: 2, player_index: 0 },
+        { key: 'lion', npc: 'npc_dota_hero_lion', team: 3, player_index: 5 },
+      ],
+      extraNames: ['nevermore_requiem'],
+      abilities: [
+        { nevermore_requiem: { levels: [[10, 1]], cd: [], mana: 150, costs: [[10, 150]] } },
+        {},
+      ],
+      damage: [[100, 0, 1, 2, 350], [99, 1, 0, -1, 900]],
+      deaths: [[100, 0, 1, 1]],
+    });
+    const sfDc: any = runTraceTool(sf, 'death_context', { hero: 'nevermore' }, { ultimateOf, ultimatesOf });
+    expect(sfDc.deaths[0].ready_not_cast).toContain('nevermore_requiem');
+    const sfAudit: any = runTraceTool(sf, 'ability_audit', { hero: 'nevermore', ability: 'requiem' });
+    expect(sfAudit.casts_logged).toBeUndefined();
+    expect(sfAudit.casts_total).toBe(0);
+    expect(sfAudit.deaths_with_it_ready_and_not_cast_total).toBe(1);
   });
 
   it('Undying Ceaseless Dirge reports triggered_on_death in ability_audit without hiding real deaths', () => {
@@ -329,20 +347,55 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     });
     expect((runTraceTool(simul, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf }) as any).deaths[0].allies_near_who_survived_10s).toEqual([]);
 
-    // 3. Multi-ultimate enemy hero (Dark Willow: bedlam + terrorize) detects Terrorize via ultimatesOf.
+    // 3. Multi-ultimate enemy hero (Dark Willow: bedlam + terrorize) detects ground-cast Terrorize (target = -1) via modifier alias.
     const dw = makeTrace({
       heroes: [
         { key: 'enchantress', npc: 'npc_dota_hero_enchantress', team: 2, player_index: 0 },
         { key: 'dark_willow', npc: 'npc_dota_hero_dark_willow', team: 3, player_index: 5 },
       ],
       extraNames: ['dark_willow_terrorize', 'modifier_dark_willow_debuff_fear'],
-      casts: [[95, 1, 2, 0, 10]],
+      casts: [[95, 1, 2, -1, 10]],
       modifiers: [[95, 0, 3, 1, 1, 4, 't']],
       deaths: [[100, 0, 1, 1]],
     });
     const dwDc: any = runTraceTool(dw, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf });
     expect(dwDc.deaths[0].enemy_ultimates_absorbed).toEqual([{ hero: 'dark_willow', ability: 'dark_willow_terrorize' }]);
     expect(dwDc.deaths_where.absorbed_enemy_ultimate).toEqual(['1:40']);
+
+    // 3b. Unclassified enemy debuff modifier when enemy has an unmatched ultimate -> unknown (null), never [].
+    const unclassMod = makeTrace({
+      heroes: [
+        { key: 'enchantress', npc: 'npc_dota_hero_enchantress', team: 2, player_index: 0 },
+        { key: 'dark_willow', npc: 'npc_dota_hero_dark_willow', team: 3, player_index: 5 },
+      ],
+      extraNames: ['modifier_some_unmapped_effect'],
+      modifiers: [[95, 0, 2, 1, 1, 2, 't']],
+      deaths: [[100, 0, 1, 1]],
+    });
+    const unclassDc: any = runTraceTool(unclassMod, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf });
+    expect(unclassDc.deaths[0].enemy_ultimates_absorbed).toBeNull();
+    expect(unclassDc.deaths_not_known.absorbed_enemy_ultimate).toBe(1);
+
+    // 3c. Enemy with Helm of the Dominator or neutral-control hero (Chen) prevents neutral kill from being called environmental -> null (Codex P1 on #464).
+    const domNeutral = makeTrace({
+      extraNames: ['npc_dota_neutral_centaur_khan', 'item_helm_of_the_dominator'],
+      items: [{}, {}, { item_helm_of_the_dominator: { held: [[40, 200]], cd: [] } }, {}, {}],
+      damage: [[95, 5, 0, -1, 250]],
+      deaths: [[100, 0, 5, 1]],
+    });
+    expect((runTraceTool(domNeutral, 'death_context', { hero: 'enchantress' }, { ultimateOf, ultimatesOf }) as any).deaths[0].non_hero_death_without_enemy_hero_damage).toBeNull();
+    const chenNeutral = makeTrace({
+      heroes: [
+        { key: 'sven', npc: 'npc_dota_hero_sven', team: 2, player_index: 0 },
+        { key: 'chen', npc: 'npc_dota_hero_chen', team: 3, player_index: 5 },
+      ],
+      extraNames: ['npc_dota_neutral_centaur_khan', 'npc_dota_roshan'],
+      damage: [[95, 2, 0, -1, 250], [195, 3, 0, -1, 500]],
+      deaths: [[100, 0, 2, 1], [200, 0, 3, 2]],
+    });
+    const chenDc: any = runTraceTool(chenNeutral, 'death_context', { hero: 'sven' }, { ultimateOf, ultimatesOf });
+    expect(chenDc.deaths[0].non_hero_death_without_enemy_hero_damage).toBeNull(); // neutral kill with enemy Chen -> unknown
+    expect(chenDc.deaths[1].non_hero_death_without_enemy_hero_damage).toBe(true); // Roshan cannot be dominated -> still true
 
     // 4. Short trace (n: 105, death at 100, empty Roshan logs) cannot rule out nearby_objective in [105..120] -> null, not false.
     const shortObj = makeTrace({

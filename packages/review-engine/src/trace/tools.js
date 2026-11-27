@@ -27,6 +27,20 @@ const TEAM = { 2: 'radiant', 3: 'dire' };
 const OBJECTIVE = /_(tower\d|melee_rax|range_rax|fort)(_(top|mid|bot))?$/;
 /** Killer categories that indicate a non-hero/environment kill (never a player-controlled summon). */
 const NON_HERO_SUICIDE_KINDS = new Set(['neutral', 'roshan', 'tormentor', 'tower_or_fountain', 'lane_creep']);
+/** Enemy heroes that can take control of neutral or lane creeps (HotD/HotO checked separately via items/purchases). */
+const CREEP_CONTROL_HEROES = new Set(['chen', 'enchantress', 'life_stealer', 'rubick', 'morphling']);
+const CREEP_CONTROL_ITEMS = new Set(['item_helm_of_the_dominator', 'item_helm_of_the_overlord']);
+/** Known ultimate modifier names that do not share a substring with their ability key. */
+const ULT_MODIFIER_ALIASES = {
+  dark_willow_terrorize: ['modifier_dark_willow_debuff_fear'],
+  beastmaster_primal_roar: ['modifier_beastmaster_prima_roar_push'],
+  puck_dream_coil: ['modifier_puck_coil_break_stun', 'modifier_puck_coiled'],
+  phoenix_supernova: ['modifier_phoenix_sun_debuff', 'modifier_phoenix_supernova'],
+  ringmaster_wheel: ['modifier_ringmaster_wheel_mesmerize'],
+  kunkka_ghostship: ['modifier_kunkka_ghost_ship'],
+};
+/** Item-applied debuff modifiers that cannot be an enemy hero's ultimate. */
+const KNOWN_ITEM_MODIFIER = /^modifier_(?:item_|eul_|sheepstick_|orchid_|bloodthorn_|rod_of_atos_|gungnir_|abyssal_|shivas_|skadi_|desolator_|nullifier_|diffusal_|sange_|blight_stone_|orb_of_|urn_|spirit_vessel_|medallion_|solar_crest_|heavens?_halberd_|cyclone$|witch_blade|parasma|disperser|gleipnir|harpoon|mage_slayer|silver_edge|echo_sabre|eye_of_skadi|wind_waker|bashed$)/;
 /** Hero deaths closer together than this belong to one fight. */
 const FIGHT_GAP = 15;
 const FIGHT_MIN_DEATHS = 3;
@@ -73,10 +87,10 @@ function needHero(trace, hero) {
  * modifiers / passive procs whose uses are never logged as combat-log
  * `DOTA_COMBATLOG_ABILITY` events (`enchantress_impetus`,
  * `silencer_glaives_of_wisdom`, `drow_ranger_frost_arrows`, …) are excluded:
- * claiming "0 casts" or "ready, not cast" on them is false. In addition, any
- * ability with zero cast rows that nonetheless appears as a damage inflictor
- * in `trace.damage` is proven not to log casts in this replay and is excluded
- * automatically. A cooldown alone proves nothing: passives have them too
+ * claiming "0 casts" or "ready, not cast" on them is false. Active abilities
+ * that can also trigger automatically on death (e.g. Shadow Fiend's Requiem)
+ * are NOT excluded merely because they have damage without manual casts
+ * (Codex P2 on #464). A cooldown alone proves nothing: passives have them too
  * (Counter Helix). A never-cast ability that costs nothing cannot be told from
  * a passive in the replay: a stated gap, not a guess.
  */
@@ -94,26 +108,30 @@ const NON_CAST_LOGGED_ABILITIES = new Set([
   'jakiro_liquid_ice',
   'kez_kazurai_katana',
   'kunkka_tidebringer',
+  'lycan_summon_wolves_hamstring',
+  'mirana_celestial_quiver',
+  'morphling_syntropy',
   'obsidian_destroyer_arcane_orb',
+  'omniknight_hammer_of_purity',
   'silencer_glaives_of_wisdom',
   'slark_saltwater_shiv',
+  'spawnlord_master_freeze',
   'spectre_dispersion',
   'storm_spirit_overload',
   'tusk_walrus_punch',
+  'undying_bite',
   'viper_poison_attack',
   'weaver_geminate_attack',
   'weaver_time_lapse_ally',
+  'zuus_lightning_hands',
 ]);
 function hasCastRow(trace, npc, abilityId) {
   return abilityId >= 0 && (trace.casts ?? []).some((c) => c[1] === npc && c[2] === abilityId);
 }
-function hasDamageRow(trace, npc, abilityId) {
-  return abilityId >= 0 && (trace.damage ?? []).some((r) => r[1] === npc && r[3] === abilityId);
-}
 function isNonCastLogged(trace, npc, abilityKey) {
   const aid = nameId(trace, abilityKey);
   if (hasCastRow(trace, npc, aid)) return false;
-  return NON_CAST_LOGGED_ABILITIES.has(abilityKey) || hasDamageRow(trace, npc, aid);
+  return NON_CAST_LOGGED_ABILITIES.has(abilityKey);
 }
 function castable(trace, h, npc) {
   const set = new Set();
@@ -338,6 +356,42 @@ function mergedDisableSeconds(controlsForHero, from, to) {
   return Math.round(total * 10) / 10;
 }
 
+function enemyCouldControlCreep(trace, myTeam, t) {
+  if (!Array.isArray(trace.items)) return true;
+  for (let eh = 0; eh < trace.heroes.length; eh += 1) {
+    if (trace.heroes[eh].team === myTeam) continue;
+    const key = trace.heroes[eh].key;
+    if (CREEP_CONTROL_HEROES.has(key)) return true;
+    const inv = trace.items[eh];
+    if (!inv || typeof inv !== 'object') return true;
+    // Lone Druid's Spirit Bear can carry Dominator; require purchases array to rule it out when enemy has Lone Druid.
+    if (key === 'lone_druid' && !Array.isArray(trace.purchases)) return true;
+    for (const itemKey of CREEP_CONTROL_ITEMS) {
+      const entry = inv[itemKey];
+      if (entry && ((Array.isArray(entry.held) && entry.held.some((span) => span[0] <= t)) || (typeof entry.first === 'number' && entry.first <= t))) return true;
+    }
+    const enpc = nameId(trace, trace.heroes[eh].npc);
+    if (enpc >= 0 && Array.isArray(trace.purchases)) {
+      for (const p of trace.purchases) {
+        if (p[0] <= t && p[1] === enpc && CREEP_CONTROL_ITEMS.has(trace.names?.[p[2]])) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function matchesAbilityModifier(mn, ability, slugPrefix, internalPrefix) {
+  if (typeof mn !== 'string') return false;
+  const shortAb = ability.startsWith(slugPrefix) ? ability.slice(slugPrefix.length) : ability.startsWith(internalPrefix) ? ability.slice(internalPrefix.length) : ability;
+  if (mn.includes(ability) || (shortAb.length >= 5 && mn.includes(shortAb))) return true;
+  const normMn = mn.replace(/_/g, '');
+  const normAb = ability.replace(/_/g, '');
+  const normShort = shortAb.replace(/_/g, '');
+  if (normMn.includes(normAb) || (normShort.length >= 5 && normMn.includes(normShort))) return true;
+  const aliases = ULT_MODIFIER_ALIASES[ability];
+  return Array.isArray(aliases) && aliases.some((a) => mn.includes(a));
+}
+
 function enemyUltimatesAbsorbed(trace, h, npc, from, t, ultimatesOf, ultimateOf) {
   const listFor = typeof ultimatesOf === 'function'
     ? (k) => { const res = ultimatesOf(k); return Array.isArray(res) ? res.filter(Boolean) : res ? [res] : []; }
@@ -346,7 +400,11 @@ function enemyUltimatesAbsorbed(trace, h, npc, from, t, ultimatesOf, ultimateOf)
       : null;
   if (!listFor || !Array.isArray(trace.casts) || !Array.isArray(trace.damage) || !Array.isArray(trace.modifiers)) return null;
   const myTeam = trace.heroes[h].team;
+  const debuffsOnMe = trace.modifiers.filter((m) => m[1] === npc && m[4] === 1 && m[6] !== 'i' && m[0] >= from && m[0] <= t + 0.05);
   const out = [];
+  let unknown = false;
+  const accountedMods = new Set();
+  const enemyInfos = [];
   for (let eh = 0; eh < trace.heroes.length; eh += 1) {
     if (trace.heroes[eh].team === myTeam) continue;
     const key = trace.heroes[eh].key;
@@ -355,20 +413,64 @@ function enemyUltimatesAbsorbed(trace, h, npc, from, t, ultimatesOf, ultimateOf)
     const enpc = nameId(trace, trace.heroes[eh].npc);
     const slugPrefix = `${key}_`;
     const internalPrefix = `${heroByKey(key)?.internalSlug ?? key}_`;
+    const matchedUlts = new Set();
+    let anyUnmatchedUltActive = false;
+    const abMap = trace.abilities?.[eh];
+    const abilityStateMissing = !abMap || Object.keys(abMap).length === 0;
     for (const ult of ults) {
       const ultId = nameId(trace, ult);
-      const shortUlt = ult.startsWith(slugPrefix) ? ult.slice(slugPrefix.length) : ult.startsWith(internalPrefix) ? ult.slice(internalPrefix.length) : ult;
       const hitByCast = ultId >= 0 && trace.casts.some((c) => c[1] === enpc && c[2] === ultId && c[3] === npc && c[0] >= from && c[0] <= t + 0.05);
       const hitByDmg = !hitByCast && ultId >= 0 && trace.damage.some((r) => r[1] === enpc && r[2] === npc && r[3] === ultId && r[0] >= Math.floor(from) && r[0] <= t);
-      const hitByMod = !hitByCast && !hitByDmg && trace.modifiers.some((m) => {
-        if (m[1] !== npc || m[3] !== enpc || m[4] !== 1 || m[0] < from || m[0] > t + 0.05) return false;
-        const mn = trace.names?.[m[2]];
-        return typeof mn === 'string' && (mn.includes(ult) || (shortUlt.length >= 5 && mn.includes(shortUlt)));
+      const matchingMods = debuffsOnMe.filter((m) => {
+        const casterHero = heroOfName(trace, m[3]);
+        if (casterHero >= 0 && m[3] !== enpc) return false;
+        return matchesAbilityModifier(trace.names?.[m[2]], ult, slugPrefix, internalPrefix);
       });
-      if (hitByCast || hitByDmg || hitByMod) out.push({ hero: key, ability: ult });
+      for (const m of matchingMods) accountedMods.add(m);
+      if (hitByCast || hitByDmg || matchingMods.length > 0) {
+        out.push({ hero: key, ability: ult });
+        matchedUlts.add(ult);
+      } else {
+        const castRecently = ultId >= 0 && trace.casts.some((c) => c[1] === enpc && c[2] === ultId && c[0] >= from - 15 && c[0] <= t + 0.05);
+        const cdRecently = Boolean(abMap?.[ult]?.cd?.some(([a]) => a >= from - 15 && a <= t + 0.05));
+        if (castRecently || cdRecently || abilityStateMissing) anyUnmatchedUltActive = true;
+      }
+    }
+    const nonUlts = new Set(Object.keys(abMap ?? {}).filter((a) => !ults.includes(a)));
+    for (const c of trace.casts) {
+      if (c[1] === enpc) {
+        const cn = trace.names?.[c[2]];
+        if (typeof cn === 'string' && !ults.includes(cn)) nonUlts.add(cn);
+      }
+    }
+    enemyInfos.push({ eh, key, enpc, ults, matchedUlts, anyUnmatchedUltActive, nonUlts: [...nonUlts], slugPrefix, internalPrefix });
+  }
+  // Preserve uncertainty when an enemy's unmatched ultimate was cast/went on cooldown (or ability state is absent)
+  // and a debuff modifier on the player cannot be exhaustively classified as a non-ultimate or item (Codex P1 on #464).
+  for (const info of enemyInfos) {
+    if (!info.anyUnmatchedUltActive) continue;
+    for (const m of debuffsOnMe) {
+      if (accountedMods.has(m) || m[3] !== info.enpc) continue;
+      const mn = trace.names?.[m[2]];
+      if (typeof mn !== 'string') { unknown = true; continue; }
+      if (KNOWN_ITEM_MODIFIER.test(mn)) continue;
+      if (info.nonUlts.some((ab) => matchesAbilityModifier(mn, ab, info.slugPrefix, info.internalPrefix))) continue;
+      unknown = true;
     }
   }
-  return out;
+  // Also preserve uncertainty if an enemy cast/triggered an unmatched ultimate and an unclassified non-hero/unknown-caster debuff landed.
+  if (!unknown && enemyInfos.some((info) => info.anyUnmatchedUltActive)) {
+    for (const m of debuffsOnMe) {
+      if (accountedMods.has(m) || heroOfName(trace, m[3]) >= 0) continue;
+      const casterName = trace.names?.[m[3]];
+      if (typeof casterName === 'string' && /^npc_dota_neutral_/.test(casterName)) continue;
+      const mn = trace.names?.[m[2]];
+      if (typeof mn === 'string' && KNOWN_ITEM_MODIFIER.test(mn)) continue;
+      const knownNonUlt = typeof mn === 'string' && enemyInfos.some((info) => info.nonUlts.some((ab) => matchesAbilityModifier(mn, ab, info.slugPrefix, info.internalPrefix)));
+      if (!knownNonUlt) { unknown = true; break; }
+    }
+  }
+  return unknown ? null : out;
 }
 
 function nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight, traceEnd) {
@@ -562,7 +664,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const noMana = (a) => a.mana_cost != null && mana != null && mana < a.mana_cost;
     const items = Object.entries(trace.items[h]).filter(([, e]) => heldAt(e, from))
       .map(([k, e]) => ({ item: k.replace(/^item_/, ''), ...(e.cd.length ? { cooldown_left: cooldownLeft(e, from) } : {}) }));
-    const dmg = new Map(); const sources = new Map(); let firstHero = null; const attackers = new Set(); let otherUnitDamage = false; let unknownDamageSource = false;
+    const dmg = new Map(); const sources = new Map(); let firstHero = null; const attackers = new Set(); let otherUnitDamage = false; let unknownDamageSource = false; let neutralOrCreepDamage = false; let ownSideCreepDamage = false;
+    const myCreepSide = trace.heroes[h].team === 2 ? /goodguys/ : /badguys/;
     for (const [sec, a, target, infl, value] of trace.damage ?? []) {
       if (target !== npc || sec < Math.floor(from) || sec > t) continue;
       const key = `${a}|${infl}`;
@@ -576,6 +679,11 @@ export function deathContext(trace, args = {}, ctx = {}) {
         const ak = killerKind(trace, a, h, npc);
         if (ak === 'other_unit') otherUnitDamage = true;
         else if (ak == null) unknownDamageSource = true;
+        else if (ak === 'neutral') neutralOrCreepDamage = true;
+        else if (ak === 'lane_creep') {
+          neutralOrCreepDamage = true;
+          if (myCreepSide.test(trace.names?.[a] ?? '')) ownSideCreepDamage = true;
+        }
       }
     }
     const inWindow = (x) => x >= from && x <= t + 0.05;
@@ -588,11 +696,18 @@ export function deathContext(trace, args = {}, ctx = {}) {
     for (const m of trace.modifiers) if (m[1] === npc && m[4] === 1 && m[6] !== 'i' && inWindow(m[0]) && (disabledAt == null || m[0] < disabledAt)) disabledAt = m[0];
     const castNames = new Set(myCasts.map((c) => trace.names[c[2]]));
     const kKind = killerKind(trace, d[2], h, npc);
+    const killerOwnSideCreep = kKind === 'lane_creep' && myCreepSide.test(trace.names?.[d[2]] ?? '');
+    const involvesDominatableCreep = kKind === 'neutral' || kKind === 'lane_creep' || neutralOrCreepDamage;
+    // Trace damage/death rows store unit name without unit ownership: when an enemy hero or item could dominate
+    // creeps (Chen, Enchantress, Lifestealer, Rubick, Morphling, Helm of the Dominator/Overlord) or inventory data
+    // is missing, neutral/lane-creep involvement cannot establish an environmental death -> null (Codex P1 on #464).
+    const possiblePlayerControlledCreep = ownSideCreepDamage || killerOwnSideCreep
+      || (involvesDominatableCreep && enemyCouldControlCreep(trace, trace.heroes[h].team, t));
     // An unknown damage attacker (-1 / dota_unknown) could be an enemy hero or summon: keep null when it prevents
     // establishing that no enemy hero/summon damaged the player (Codex P1 on #464).
     const nonHeroNoEnemy = !hasDamageLog || kKind == null ? null
       : (!NON_HERO_SUICIDE_KINDS.has(kKind) || attackers.size > 0 || otherUnitDamage) ? false
-      : unknownDamageSource ? null : true;
+      : (unknownDamageSource || possiblePlayerControlledCreep) ? null : true;
     const traceEnd = typeof trace.t0 === 'number' && typeof trace.n === 'number' ? trace.t0 + trace.n - 1 : null;
     const alliesKnownAtDeath = Boolean(atDeath.me && atDeath.me.x != null && atDeath.me.y != null)
       && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, t));

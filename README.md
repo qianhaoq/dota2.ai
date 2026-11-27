@@ -35,12 +35,13 @@ The site is in English, Chinese and Russian.
 
 ### DSH plugin
 
-A native plugin for [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepSeek Harness). Needs Node 24.9+, DSH ≥ 0.2.1-rc.3 and pnpm.
+**Recommended.** A native plugin for [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepSeek Harness) that runs the same coach on your own DeepSeek key: no queue and no daily limit, and your reviews stay on your machine. Needs Node 24.9+ and DSH 0.2.x (≥ 0.2.1-rc.3).
 
 ```sh
-# from the latest dsh-v* release: https://github.com/qianhaoq/dota2.ai/releases
-sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.2.tgz
+npm install -g pnpm @deepseek-ai/dsh@0.2.2-rc.5
+curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v0.2.3/qianhaoq-dsh-dota2ai-0.2.3.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.3.tgz
+DEEPSEEK_API_KEY=sk-... dsh web      # or enter the key in DSH's API-key dialog
 ```
 
 Open **dota2.ai** from the left sidebar in `dsh web` for the full match review page (scoreboard, minimap moment replay, checked evidence cards, coach chat, and model switcher across your configured DSH models), or ask in any DSH session: *"Review my Dota 2 match 9100904020 — I played Beastmaster."*
@@ -168,7 +169,7 @@ packages/dsh/                     the DSH plugin
 server.js                         the Express host
 ```
 
-Before a pull request: `npx tsc --noEmit && node --check server.js && npm run build && npm test`. See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md).
+Before a pull request: `npx tsc --noEmit && node --check server.js && npm run build && npm test`. To calibrate replay-only 1–5 role inference against parsed OpenDota match records: `node scripts/calibrate-role.mjs <traces dir> <match records dir> [--json]` (pass a directory of `*.trace.json.gz` files and a directory of `<matchId>.json` OpenDota records; `--json` prints machine-readable JSON). See [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md).
 
 ## License
 
