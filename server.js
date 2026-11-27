@@ -994,7 +994,7 @@ const agentRouter = createAgentRouter({
   parseDailyMax: Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : undefined,
   // What this site pays its model for in a day and an hour (web and MCP replay_review alike); past it the
   // refusal points at the DSH plugin and agents, which run on the reader's own model.
-  reviewDailyMax: envPositiveInt('AGENT_REVIEW_DAILY_MAX', 250, 100000),
+  reviewDailyMax: envPositiveInt('AGENT_REVIEW_DAILY_MAX', 500, 100000),
   reviewHourlyMax: envPositiveInt('AGENT_REVIEW_HOURLY_MAX', 60, 10000),
   chatDaily: answersDaily,
   modelHourlyMax: Number(process.env.AGENT_MODEL_HOURLY_MAX) > 0 ? Number(process.env.AGENT_MODEL_HOURLY_MAX) : undefined,
