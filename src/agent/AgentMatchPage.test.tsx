@@ -817,6 +817,54 @@ describe('AgentMatchPage', () => {
     expect(stepLabel({ tool: 'build_check', args: { hero: 'beastmaster' } }, 'zh')).toBe('核对出装和致死伤害');
   });
 
+  it('the build and pro_items records show public bracket × role items with win rates and STRATZ credit alongside pro items', async () => {
+    const proItems = {
+      status: 'ok', ref: 'pro_items:beastmaster', kind: 'pro_items', names: { beastmaster: '兽王', necrolyte: '瘟疫法师' },
+      record: {
+        ref: 'pro_items:beastmaster', hero: 'beastmaster', data_patch: '7.42',
+        public_items_in_this_bracket: {
+          bracket: 'la', bracket_name: '传奇–万古', role: 'support', role_name: '辅助（4–5 号位）',
+          public_games: 200, hero_win_rate: 0.55, patch: '7.42', window: 'finished between 10:00 and 24:59', source: 'STRATZ',
+          items: [{ item: 'aghanims_shard', name: '阿哈利姆魔晶', player_first_held: null, purchases: 116, share_of_public_games: 0.58, win_rate: 0.58, median_minute: 18 }],
+        },
+        mid_game_items: { pro_games: 42, window: 'finished between 10:00 and 24:59', items: [{ item: 'blink', name: '闪烁匕首', player_first_held: null, share_of_pro_games: 0.71 }] },
+        built_more_against_these_enemies: [],
+        note: 'mid_game_items and built_more_against_these_enemies are professional games, not this player\'s rank.',
+      },
+    };
+    const buildWithBracket = {
+      status: 'ok', ref: 'build:beastmaster', kind: 'build', names: { beastmaster: '兽王' },
+      record: {
+        ref: 'build:beastmaster', hero: 'beastmaster', data_patch: '7.42', deaths_total: 11, killed_by: {},
+        damage_in_my_deaths: { share_from_enemy_attacks: 0.48, share_from_enemy_abilities_and_items: 0.49, by_enemy: [] },
+        my_big_items_in_order: [], gold_in_big_items_by_purpose: {},
+        items_that_answer_attack_damage: [], items_that_answer_spell_damage: [],
+        most_built_in_this_bracket: {
+          bracket: 'la', bracket_name: '传奇–万古', role: 'support', role_name: '辅助（4–5 号位）',
+          public_games: 200, patch: '7.42', window: 'finished between 10:00 and 24:59', source: 'STRATZ',
+          items: [{ item: 'aghanims_shard', name: '阿哈利姆魔晶', share_of_public_games_with_it_by_24_59: 0.58, win_rate: 0.58, player_first_held: null, built_for: [] }],
+        },
+        most_built_by_pros_on_this_hero: null,
+        gap_closers: { mine: null, enemies: [] },
+      },
+    };
+    ui.lang = 'zh';
+    mockFetch({
+      'ref=overview': overview,
+      'ref=pro_items%3Abeastmaster': proItems,
+      'ref=build%3Abeastmaster': buildWithBracket,
+      '/review?': { status: 'ready', review: { ...review, match_id: 9100904021, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['pro_items:beastmaster', 'build:beastmaster'], fact: '辅助位路人局常出魔晶。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 },
+      '/api/agent/9100904021': { trace: true, model_configured: true, heroes },
+    });
+    page('/r/9100904021?hero=beastmaster&lang=zh');
+    fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
+    await waitFor(() => {
+      expect(screen.getAllByText(/传奇–万古 · 辅助（4–5 号位） · 200 场路人局/).length).toBe(2);
+    });
+    expect(screen.getAllByText(/\(STRATZ\)/).length).toBe(2);
+    expect(screen.getAllByText(/阿哈利姆魔晶 · 胜率 58% · 从未持有/).length).toBe(2);
+  });
+
   it('the strengths record: levels of both sides, the matchup with its numbers, an enemy\'s kills before and after each item', async () => {
     const spikes = { status: 'ok', ref: 'spikes:beastmaster', kind: 'spikes', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客', axe: '斧王' }, record: {
       ref: 'spikes:beastmaster', hero: 'beastmaster', kills_of_me: { phantom_assassin: 7 }, kills_of_me_before_their_item: {}, kills_of_me_from_their_item_on: {},

@@ -1,0 +1,22 @@
+{
+  "source": "STRATZ (https://stratz.com) heroStats.itemFullPurchase and heroStats.stats, public matches by rank bracket and position; not filtered by game mode",
+  "attribution": { "en": "Data: STRATZ", "url": "https://stratz.com" },
+  "window": "finished between 10:00 and 24:59",
+  "patch": null,
+  "weeks": null,
+  "fetched": null,
+  "brackets": {
+    "hg": "HERALD_GUARDIAN",
+    "ca": "CRUSADER_ARCHON",
+    "la": "LEGEND_ANCIENT",
+    "di": "DIVINE_IMMORTAL"
+  },
+  "positions": {
+    "1": "POSITION_1",
+    "2": "POSITION_2",
+    "3": "POSITION_3",
+    "4": "POSITION_4",
+    "5": "POSITION_5"
+  },
+  "heroes": {}
+}
