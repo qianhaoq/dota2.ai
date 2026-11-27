@@ -116,3 +116,18 @@ describe('the review of #440: a visit not placed is not known, and the roster is
     expect(l.how_the_lane_went).toMatchObject({ lane_read_from_replay: 'bot', heroes_in_lane_read_from_replay: { beastmaster: 'me', undying: 'ally', phantom_assassin: 'enemy', venomancer: 'enemy' } });
   });
 });
+
+describe('a support splitting two lanes is not a visitor (#440 follow-up)', () => {
+  it('a hero in no single lane who spent 30% or more of the lane stage here is listed as part-time, not as a visit', () => {
+    // Put Dark Willow (top) where Beastmaster stood every third second: no single lane, a large share in the bottom one.
+    const i = seat('dark_willow'); const st = trace.states[i];
+    const bmSt = trace.states[bm];
+    const half = (arr: any[], from: any[]) => arr.map((v: any, k: number) => (k + trace.t0 >= 60 && k + trace.t0 < 600 && (k % 3 === 0) && bmSt.x[k] != null && bmSt.y[k] != null ? from[k] : v));
+    const t = { ...trace, states: trace.states.map((s: any, j: number) => (j === i ? { ...st, x: half(st.x, bmSt.x), y: half(st.y, bmSt.y) } : s)) };
+    const r: any = laneProcess(t, bm);
+    expect(r.part_time_in_this_lane.map((x: any) => [x.hero, x.side])).toEqual([['dark_willow', 'my_team']]);
+    expect(r.part_time_in_this_lane[0].share_of_lane_stage_here).toBeGreaterThanOrEqual(0.3);
+    expect(r.visits.map((v: any) => v.hero)).not.toContain('dark_willow');
+    expect(r.my_team_visits.visits).toBe(0);
+  });
+});
