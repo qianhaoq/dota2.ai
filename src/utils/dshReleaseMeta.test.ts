@@ -4,12 +4,15 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  DSH_BUNDLED_PATH_PATTERNS,
   bumpPatch,
   checkReleaseFreshness,
   compareSemver,
   fetchNpmVersions,
   formatGithubOutput,
   generateReleaseNotes,
+  hasBundledChanges,
+  matchesBundledPath,
   parseSemver,
   resolveNextVersion,
   resolveReleasePlan,
@@ -249,13 +252,17 @@ describe('fetchNpmVersions & formatGithubOutput', () => {
     expect(warn).toHaveBeenCalledOnce();
   });
 
-  it('formats GitHub output lines cleanly including staleness metadata', () => {
+  it('formats GitHub output lines cleanly including staleness, target_sha, and bundled_changes metadata', () => {
     expect(formatGithubOutput({
       version: '0.2.4',
       tag: 'dsh-v0.2.4',
       alreadyPublished: false,
       prevTag: 'dsh-v0.2.3',
-    })).toBe('version=0.2.4\ntag=dsh-v0.2.4\nalready_published=false\nprev_tag=dsh-v0.2.3\nstale=false\nstale_reason=\n');
+      targetSha: 'abc1234',
+      bundledChanges: true,
+    })).toBe(
+      'version=0.2.4\ntag=dsh-v0.2.4\nalready_published=false\nprev_tag=dsh-v0.2.3\nstale=false\nstale_reason=\ntarget_sha=abc1234\nbundled_changes=true\n',
+    );
 
     expect(formatGithubOutput({
       version: '0.2.6',
@@ -264,7 +271,96 @@ describe('fetchNpmVersions & formatGithubOutput', () => {
       prevTag: 'dsh-v0.2.5',
       stale: true,
       staleReason: 'older_than_latest_tag',
-    })).toBe('version=0.2.6\ntag=dsh-v0.2.6\nalready_published=false\nprev_tag=dsh-v0.2.5\nstale=true\nstale_reason=older_than_latest_tag\n');
+      targetSha: 'def5678',
+      bundledChanges: null,
+    })).toBe(
+      'version=0.2.6\ntag=dsh-v0.2.6\nalready_published=false\nprev_tag=dsh-v0.2.5\nstale=true\nstale_reason=older_than_latest_tag\ntarget_sha=def5678\nbundled_changes=\n',
+    );
+  });
+});
+
+describe('hasBundledChanges & workflow_run bundled-path gating', () => {
+  it('matches bundled directories, exact bundled files, and workflow files while ignoring unrelated files', () => {
+    expect(hasBundledChanges(['docs/AGENT_PIPELINE.md', 'README.md', 'scripts/calibrate.mjs'])).toBe(false);
+    expect(hasBundledChanges([])).toBe(false);
+    expect(hasBundledChanges(['docs/AGENT_PIPELINE.md', 'lib/agent/deepReview.js'])).toBe(true);
+    expect(hasBundledChanges(['lib/matchReview/replayIngest/discovery.js'])).toBe(true);
+    expect(hasBundledChanges(['packages/review-engine/data/static-heroes.json'])).toBe(true);
+    expect(hasBundledChanges(['lib/aiLanguage.js'])).toBe(true);
+    expect(hasBundledChanges(['LICENSE'])).toBe(true);
+    expect(hasBundledChanges(['.github/workflows/dsh-release.yml'])).toBe(true);
+    expect(hasBundledChanges(['.github/scripts/dsh-release-meta.mjs'])).toBe(true);
+    expect(hasBundledChanges(['.github/workflows/ci.yml'])).toBe(false);
+    expect(matchesBundledPath('lib/matchReviewOther/foo.js', 'lib/matchReview/**')).toBe(false);
+  });
+
+  it('skips workflow_run release when only docs changed since prevTag', () => {
+    expect(resolveReleasePlan({
+      pkgVersion: '0.2.3',
+      tagVersions: ['dsh-v0.2.3'],
+      npmVersions: ['0.2.3'],
+      headSha: 'docs999',
+      prevTagSha: 'rel111',
+      headIsAncestorOfPrevTag: false,
+      prevTagIsAncestorOfHead: true,
+      requireBundledChanges: true,
+      changedFilesSincePrevTag: ['README.md', 'docs/GAME_UNDERSTANDING.md'],
+    })).toEqual({
+      version: '0.2.4',
+      tag: 'dsh-v0.2.4',
+      alreadyPublished: false,
+      prevTag: 'dsh-v0.2.3',
+      stale: true,
+      staleReason: 'no_bundled_changes_since_last_tag',
+      resumeTag: null,
+      bundledChanges: false,
+    });
+  });
+
+  it('proceeds on workflow_run when bundled code changed since prevTag', () => {
+    expect(resolveReleasePlan({
+      pkgVersion: '0.2.3',
+      tagVersions: ['dsh-v0.2.3'],
+      npmVersions: ['0.2.3'],
+      headSha: 'feat999',
+      prevTagSha: 'rel111',
+      headIsAncestorOfPrevTag: false,
+      prevTagIsAncestorOfHead: true,
+      requireBundledChanges: true,
+      changedFilesSincePrevTag: ['README.md', 'lib/agent/webSearch.js'],
+    })).toEqual({
+      version: '0.2.4',
+      tag: 'dsh-v0.2.4',
+      alreadyPublished: false,
+      prevTag: 'dsh-v0.2.3',
+      stale: false,
+      staleReason: null,
+      resumeTag: null,
+      bundledChanges: true,
+    });
+  });
+
+  it('still resumes incomplete npm publish on workflow_run when resumeTag is set even with empty diff', () => {
+    expect(resolveReleasePlan({
+      pkgVersion: '0.2.3',
+      tagVersions: ['dsh-v0.2.3', 'dsh-v0.2.4'],
+      npmVersions: ['0.2.3'],
+      headSha: 'rel222',
+      prevTagSha: 'rel222',
+      headIsAncestorOfPrevTag: true,
+      prevTagIsAncestorOfHead: true,
+      requireBundledChanges: true,
+      changedFilesSincePrevTag: [],
+    })).toEqual({
+      version: '0.2.4',
+      tag: 'dsh-v0.2.4',
+      alreadyPublished: false,
+      prevTag: 'dsh-v0.2.3',
+      stale: false,
+      staleReason: null,
+      resumeTag: 'dsh-v0.2.4',
+      bundledChanges: null,
+    });
   });
 });
 
@@ -317,6 +413,7 @@ describe('checkReleaseFreshness & resolveReleasePlan', () => {
       stale: false,
       staleReason: null,
       resumeTag: 'dsh-v0.2.4',
+      bundledChanges: null,
     });
   });
 
@@ -337,6 +434,7 @@ describe('checkReleaseFreshness & resolveReleasePlan', () => {
       stale: true,
       staleReason: 'older_than_latest_npm',
       resumeTag: null,
+      bundledChanges: null,
     });
   });
 
@@ -366,6 +464,7 @@ describe('checkReleaseFreshness & resolveReleasePlan', () => {
       stale: true,
       staleReason: 'older_than_latest_tag',
       resumeTag: null,
+      bundledChanges: null,
     });
   });
 
@@ -424,6 +523,12 @@ function matchesWorkflowPath(filePath: string, pattern: string): boolean {
 }
 
 describe('.github/workflows/dsh-release.yml path coverage', () => {
+  it('keeps DSH_BUNDLED_PATH_PATTERNS in lockstep with dsh-release.yml on.push.paths', () => {
+    const workflow = readFileSync(join(repoRoot, '.github/workflows/dsh-release.yml'), 'utf8');
+    const pathGlobs = parseWorkflowPushPaths(workflow);
+    expect(pathGlobs).toEqual([...DSH_BUNDLED_PATH_PATTERNS]);
+  });
+
   it('covers every repo file bundled or packed into @qianhaoq/dsh-dota2ai', async () => {
     const workflow = readFileSync(join(repoRoot, '.github/workflows/dsh-release.yml'), 'utf8');
     const pathGlobs = parseWorkflowPushPaths(workflow);

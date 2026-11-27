@@ -2,7 +2,7 @@
 // Release metadata & notes generator for `@qianhaoq/dsh-dota2ai` (zero external dependencies).
 //
 // Usage:
-//   node .github/scripts/dsh-release-meta.mjs version [--tag <ref>] [--pkg packages/dsh/package.json] [--allow-registry-fallback] [--out-github-output <file>]
+//   node .github/scripts/dsh-release-meta.mjs version [--tag <ref>] [--pkg packages/dsh/package.json] [--allow-registry-fallback] [--require-bundled-changes] [--out-github-output <file>]
 //   node .github/scripts/dsh-release-meta.mjs notes --version <v> [--prev-tag <t>] [--out <file>]
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -13,6 +13,58 @@ const TAG_PREFIX = 'dsh-v';
 const DEFAULT_PACKAGE_NAME = '@qianhaoq/dsh-dota2ai';
 const MAX_COMMITS = 30;
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+
+/**
+ * Single source of truth for repo paths whose changes affect the packed `@qianhaoq/dsh-dota2ai`
+ * plugin or its release pipeline. Kept in lockstep with `.github/workflows/dsh-release.yml`
+ * `on.push.paths` and verified against esbuild bundle inputs in `src/utils/dshReleaseMeta.test.ts`.
+ */
+export const DSH_BUNDLED_PATH_PATTERNS = Object.freeze([
+  'packages/dsh/**',
+  'packages/review-engine/src/**',
+  'packages/review-engine/data/**',
+  'packages/cli/src/**',
+  'lib/agent/**',
+  'lib/coach/**',
+  'lib/patch/**',
+  'lib/data/**',
+  'lib/matchReview/**',
+  'lib/aiLanguage.js',
+  'lib/analyticsEvents.js',
+  'lib/rateLimiter.js',
+  'src/**',
+  'LICENSE',
+  '.github/workflows/dsh-release.yml',
+  '.github/scripts/dsh-release-meta.mjs',
+]);
+
+/**
+ * Return true if `filePath` matches a workflow path pattern (`dir/**` or exact path).
+ * @param {string} filePath
+ * @param {string} pattern
+ */
+export function matchesBundledPath(filePath, pattern) {
+  if (typeof filePath !== 'string' || typeof pattern !== 'string') return false;
+  const normalized = filePath.replace(/\\/g, '/').replace(/^\.\//, '');
+  if (!normalized) return false;
+  if (pattern.endsWith('/**')) {
+    return normalized.startsWith(pattern.slice(0, -2));
+  }
+  if (pattern.includes('*')) {
+    throw new Error(`Unsupported wildcard pattern in DSH_BUNDLED_PATH_PATTERNS: ${pattern}`);
+  }
+  return normalized === pattern;
+}
+
+/**
+ * Return true if any path in `changedFiles` matches one of `patterns`.
+ * @param {string[]} changedFiles
+ * @param {readonly string[]} [patterns]
+ */
+export function hasBundledChanges(changedFiles, patterns = DSH_BUNDLED_PATH_PATTERNS) {
+  if (!Array.isArray(changedFiles) || changedFiles.length === 0) return false;
+  return changedFiles.some((file) => patterns.some((pattern) => matchesBundledPath(file, pattern)));
+}
 
 /**
  * Parse a SemVer 2.0.0 version string (without build metadata).
@@ -208,7 +260,8 @@ export function checkReleaseFreshness({
 }
 
 /**
- * Pure end-to-end release plan combining version selection with git freshness/resume checks.
+ * Pure end-to-end release plan combining version selection with git freshness/resume checks
+ * and optional bundled-path change gating (used on `workflow_run` after Auto Merge).
  * When `HEAD` is already tagged with `prevTag` but that version is not yet on npm (and no
  * strictly newer version is already on npm), resumes `prevTag` at the same version instead of
  * bumping to a new version or skipping permanently.
@@ -222,6 +275,9 @@ export function checkReleaseFreshness({
  *   headIsAncestorOfPrevTag?: boolean | null,
  *   prevTagIsAncestorOfHead?: boolean | null,
  *   registryFallback?: boolean,
+ *   requireBundledChanges?: boolean,
+ *   changedFilesSincePrevTag?: string[] | null,
+ *   bundledPatterns?: readonly string[],
  * }} opts
  */
 export function resolveReleasePlan({
@@ -234,6 +290,9 @@ export function resolveReleasePlan({
   headIsAncestorOfPrevTag = null,
   prevTagIsAncestorOfHead = null,
   registryFallback = false,
+  requireBundledChanges = false,
+  changedFilesSincePrevTag = null,
+  bundledPatterns = DSH_BUNDLED_PATH_PATTERNS,
 }) {
   const meta = resolveNextVersion({ pkgVersion, tagVersions, npmVersions, forcedTag });
   const isForcedTag = Boolean(typeof forcedTag === 'string' && forcedTag.trim());
@@ -243,6 +302,7 @@ export function resolveReleasePlan({
       stale: false,
       staleReason: null,
       resumeTag: null,
+      bundledChanges: null,
     };
   }
 
@@ -290,6 +350,38 @@ export function resolveReleasePlan({
       stale: false,
       staleReason: null,
       resumeTag: freshness.resumeTag,
+      bundledChanges: null,
+    };
+  }
+
+  if (!freshness.stale && requireBundledChanges) {
+    if (!meta.prevTag) {
+      return {
+        ...meta,
+        stale: false,
+        staleReason: null,
+        resumeTag: null,
+        bundledChanges: true,
+      };
+    }
+    const bundledChanges = Array.isArray(changedFilesSincePrevTag)
+      ? hasBundledChanges(changedFilesSincePrevTag, bundledPatterns)
+      : false;
+    if (!bundledChanges) {
+      return {
+        ...meta,
+        stale: true,
+        staleReason: 'no_bundled_changes_since_last_tag',
+        resumeTag: null,
+        bundledChanges: false,
+      };
+    }
+    return {
+      ...meta,
+      stale: false,
+      staleReason: null,
+      resumeTag: null,
+      bundledChanges: true,
     };
   }
 
@@ -298,6 +390,7 @@ export function resolveReleasePlan({
     stale: freshness.stale,
     staleReason: freshness.reason,
     resumeTag: null,
+    bundledChanges: null,
   };
 }
 
@@ -427,6 +520,8 @@ export async function fetchNpmVersions({
  *   prevTag?: string | null,
  *   stale?: boolean,
  *   staleReason?: string | null,
+ *   targetSha?: string | null,
+ *   bundledChanges?: boolean | null,
  * }} meta
  */
 export function formatGithubOutput(meta) {
@@ -437,6 +532,8 @@ export function formatGithubOutput(meta) {
     ['prev_tag', String(meta.prevTag ?? '')],
     ['stale', String(Boolean(meta.stale))],
     ['stale_reason', String(meta.staleReason ?? '')],
+    ['target_sha', String(meta.targetSha ?? '')],
+    ['bundled_changes', meta.bundledChanges === null || meta.bundledChanges === undefined ? '' : String(Boolean(meta.bundledChanges))],
   ];
   for (const [k, v] of entries) {
     if (/[\r\n]/.test(v)) {
@@ -462,16 +559,19 @@ function gitIsAncestor(ancestorRef, descendantRef, cwd = process.cwd()) {
   throw new Error(`git merge-base --is-ancestor ${ancestorRef} ${descendantRef} failed (${res.status}): ${(res.stderr || '').trim()}`);
 }
 
-function readGitAncestry(prevTag, cwd = process.cwd()) {
+function readHeadSha(cwd = process.cwd()) {
+  return execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+}
+
+function readGitAncestry(prevTag, headSha, cwd = process.cwd()) {
   if (!prevTag) {
     return {
-      headSha: null,
+      headSha,
       prevTagSha: null,
       headIsAncestorOfPrevTag: null,
       prevTagIsAncestorOfHead: null,
     };
   }
-  const headSha = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
   const prevTagSha = execFileSync('git', ['rev-parse', '--verify', `${prevTag}^{commit}`], { cwd, encoding: 'utf8' }).trim();
   const headIsAncestorOfPrevTag = gitIsAncestor(headSha, prevTagSha, cwd);
   const prevTagIsAncestorOfHead = gitIsAncestor(prevTagSha, headSha, cwd);
@@ -481,6 +581,12 @@ function readGitAncestry(prevTag, cwd = process.cwd()) {
     headIsAncestorOfPrevTag,
     prevTagIsAncestorOfHead,
   };
+}
+
+function readChangedFilesSinceTag(prevTag, cwd = process.cwd()) {
+  if (!prevTag) return [];
+  const out = execFileSync('git', ['diff', '-z', '--name-only', `${prevTag}^{commit}..HEAD`], { cwd, encoding: 'utf8' });
+  return out.split('\0').filter(Boolean);
 }
 
 function readGitCommits(prevTag, cwd = process.cwd()) {
@@ -537,12 +643,13 @@ async function runCli(argv) {
     const flags = parseFlags(
       rest,
       new Set(['tag', 'pkg', 'out-github-output']),
-      new Set(['allow-registry-fallback']),
+      new Set(['allow-registry-fallback', 'require-bundled-changes']),
     );
     const pkgPath = resolve(flags.pkg ?? 'packages/dsh/package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
     const packageName = typeof pkg.name === 'string' && pkg.name ? pkg.name : DEFAULT_PACKAGE_NAME;
     const tagVersions = listLocalDshTags();
+    const headSha = readHeadSha();
     const npmInfo = await fetchNpmVersions({
       packageName,
       allowFallback: Boolean(flags['allow-registry-fallback']),
@@ -554,17 +661,24 @@ async function runCli(argv) {
       forcedTag: flags.tag ?? null,
     });
     const isForcedTag = Boolean(typeof flags.tag === 'string' && flags.tag.trim());
-    const ancestry = isForcedTag ? {} : readGitAncestry(previewMeta.prevTag);
+    const ancestry = isForcedTag ? { headSha } : readGitAncestry(previewMeta.prevTag, headSha);
+    const requireBundledChanges = Boolean(flags['require-bundled-changes']);
+    const changedFilesSincePrevTag = (requireBundledChanges && !isForcedTag && previewMeta.prevTag)
+      ? readChangedFilesSinceTag(previewMeta.prevTag)
+      : null;
     const plan = resolveReleasePlan({
       pkgVersion: pkg.version,
       tagVersions,
       npmVersions: npmInfo.versions,
       forcedTag: flags.tag ?? null,
       registryFallback: npmInfo.registryFallback,
+      requireBundledChanges,
+      changedFilesSincePrevTag,
       ...ancestry,
     });
     const result = {
       ...plan,
+      targetSha: headSha,
       npmLatest: npmInfo.latest,
       registryFallback: npmInfo.registryFallback,
     };
