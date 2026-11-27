@@ -45,6 +45,13 @@ const T = {
     ru: 'Патч этого матча определить не удалось: цены, эффекты и перезарядки приведены для текущего патча {p} и могут отличаться.',
   },
   story: { en: 'How the game went', zh: '对局主线', ru: 'Ход игры' },
+  // The story as a chain of causes (#437 P4): whose each link mostly was, and its records.
+  whose: {
+    me: { en: 'You', zh: '你', ru: 'Вы' }, team: { en: 'Team', zh: '队伍', ru: 'Команда' }, enemy: { en: 'Enemy', zh: '对手', ru: 'Враг' },
+    draft: { en: 'Draft', zh: '阵容', ru: 'Драфт' }, unclear: { en: 'Unclear', zh: '不确定', ru: 'Неясно' },
+  } as Record<string, { en: string; zh: string; ru: string }>,
+  storyRecords: { en: 'Records', zh: '依据', ru: 'Записи' },
+  storyBecause: { en: 'Because', zh: '原因', ru: 'Потому что' },
   fights: { en: 'Fights: bars above the line are fights your team lost fewer heroes in; the line is your team\'s gold lead.', zh: '团战：横线上方是我方少死人的团，下方是多死人的团；折线是我方经济领先。', ru: 'Драки: столбцы выше линии — драки, где ваша команда потеряла меньше героев; кривая — перевес по золоту.' },
   turn: { en: 'the turn', zh: '转折', ru: 'перелом' },
   presenceTitle: { en: 'Where you were when your team lost ground in fights', zh: '己方掉势团战里，你当时在哪', ru: 'Где вы были в проигранных драках' },
@@ -369,7 +376,26 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         {first && <p className="ag-verdict"><span>{t(T.verdict)}</span>{review.verdict}</p>}
         {overview && Array.isArray(overview.fights) && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
         {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} fightsRead={moments.fights_read ?? 0} fightsNotRead={moments.fights_not_read ?? 0} lang={lang} />}
-        {review.mainline.length > 0 && (
+        {review.story && review.story.length > 0 ? (
+          <div className="ag-story">
+            <h3>{t(T.story)}</h3>
+            <ol>
+              {review.story.map((l, i) => (
+                <li key={i} className={`is-${l.whose}`}>
+                  <p className="ag-story-head"><b>{l.phase}</b>{T.whose[l.whose] && <span className={`ag-story-whose is-${l.whose}`}>{t(T.whose[l.whose])}</span>}</p>
+                  <p className="ag-story-what">{l.what_changed}</p>
+                  <p className="ag-story-why"><span>{t(T.storyBecause)}</span>{l.because}</p>
+                  {l.evidence.length > 0 && (
+                    <details className="ag-story-records">
+                      <summary>{t(T.storyRecords)} · {l.evidence.length}</summary>
+                      <ul className="ag-evidence">{l.evidence.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>
+                    </details>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : review.mainline.length > 0 && (
           <details className="ag-fold">
             <summary><h3>{t(T.story)}</h3><span>{t(T.parts).replace('{n}', String(review.mainline.length))}</span></summary>
             <ol className="ag-mainline">{review.mainline.map((line, i) => <li key={i}>{line}</li>)}</ol>

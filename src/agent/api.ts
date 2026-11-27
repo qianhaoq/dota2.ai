@@ -26,7 +26,9 @@ export interface Availability {
 export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
 /** The one rule a finding sends into the next game: a situation the player can see, one action, and how often it came up this game. */
 export interface FindingRule { when: string; do: string; this_game?: string; /** What the next game's replay is counted on for this rule (lib/coach/goals.js habitGoal). */ check?: GoalSpec }
-export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string; rule?: FindingRule }
+export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string; rule?: FindingRule; /** The link of the story it comes from (1-based), when it named one that held. */ story_link?: number }
+/** One link of the story of the game (lib/agent/review/verify.js storyOf, #437 P4): a stretch, what changed, why, whose it mostly was. */
+export interface StoryLink { phase: string; what_changed: string; because: string; whose: 'me' | 'team' | 'enemy' | 'draft' | 'unclear'; evidence: EvidenceItem[] }
 /** How the game was played as a whole (lib/agent/deepReview.js planOf): only what the check let through. */
 export interface GamePlan {
   /** When each side had its chance (window_report). */
@@ -42,7 +44,7 @@ export interface DeepReview {
   /** The plan the player named before the review, if they did (lib/agent/plans.js). */
   plan?: string;
   schema: string; match_id: number; hero: string; lang: 'en' | 'zh' | 'ru';
-  verdict: string; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
+  verdict: string; /** The story as a chain of causes; absent on reviews written before it (they have only mainline). */ story?: StoryLink[]; mainline: string[]; findings: ReviewFinding[]; did_well: string[]; next_game: string[]; blind_spots: string[];
   game_plan?: GamePlan;
   /** Which patch the review's prices, item effects and cooldowns are from (lib/agent/patchData.js); absent on reviews written before it was kept. */
   data_patch?: { name: string; hotfix?: string; exact: boolean; known_from?: 'match_data' | 'start_time' | 'match_id'; reason?: string };

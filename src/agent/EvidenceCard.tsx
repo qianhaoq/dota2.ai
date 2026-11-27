@@ -77,6 +77,13 @@ const T = {
   sec: { en: 's', zh: '秒', ru: 'с' },
   lane: { top: { en: 'Top lane', zh: '上路', ru: 'Верхняя линия' }, mid: { en: 'Mid lane', zh: '中路', ru: 'Мид' }, bot: { en: 'Bottom lane', zh: '下路', ru: 'Нижняя линия' } } as Record<string, Tri>,
   laneAt10: { en: 'at 10:00', zh: '10 分钟时', ru: 'к 10:00' },
+  // draft_report (#437 P3): who went to which lane and how each pairing usually goes in public games.
+  draftSolo: { en: 'solo', zh: '单人', ru: 'соло' },
+  draftPartTime: { en: 'part-time', zh: '兼顾', ru: 'частично' },
+  draftLanes: { en: 'lanes when they met', zh: '碰面时对线', ru: 'линий при встрече' },
+  draftWon: { en: 'won', zh: '赢', ru: 'побед' }, draftLost: { en: 'lost', zh: '输', ru: 'поражений' },
+  draftWin: { en: 'win rate', zh: '胜率', ru: 'винрейт' }, draftOwn: { en: 'own', zh: '自身', ru: 'свой' },
+  draftPublic: { en: 'Public games', zh: '路人局', ru: 'Публичные игры' },
   laneEarned: { en: 'gold earned before 10:00, from the replay', zh: '10 分钟前挣到的金钱（录像读出）', ru: 'золото до 10:00 (из реплея)' },
   laneFromReplay: { en: 'Read from the replay: this game has no per-minute numbers in its match record. Last hits are at least these.', zh: '从录像读出：这局的比赛记录没有逐分钟数据。补刀数是"至少"。', ru: 'Прочитано из реплея: в записи матча нет поминутных данных. Добивания указаны как минимум.' },
   laneResult: {
@@ -575,6 +582,36 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           <p className="ag-rec-sub">{t(T.dealt)}</p>
           <ul className="ag-bars">{r.damage_to_heroes_by_unit.slice(0, 4).map((d: any) => <Bar key={d.unit} label={N(d.unit)} value={d.value} max={max} />)}</ul>
         </div>
+      </div>
+    );
+  }
+  if (data.kind === 'draft') {
+    const pc = (v: number | null | undefined) => (v == null ? '–' : `${v}%`);
+    const reading = (x: any) => (x?.reading && T.spikeMatchup[x.reading] ? t(T.spikeMatchup[x.reading]) : null);
+    // One bracket's numbers for a pairing: the player's bracket, or (not known) each bracket on its own line.
+    const row = (b: any) => (
+      <>
+        {b.lane_when_they_met && <span className="ag-chip">{b.lane_when_they_met.lanes} {t(T.draftLanes)} · {t(T.draftWon)} <em>{pc(b.lane_when_they_met.won)}</em> {t(T.draftLost)} <em>{pc(b.lane_when_they_met.lost)}</em>{reading(b.lane_when_they_met) ? ` · ${reading(b.lane_when_they_met)}` : ''}</span>}
+        {b.game && <span className="ag-chip">{t(T.draftWin)} <em>{pc(b.game.win_rate)}</em> · {t(T.draftOwn)} {pc(b.game.own_win_rate)}{reading(b.game) ? ` · ${reading(b.game)}` : ''}</span>}
+      </>
+    );
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-note">{t(T.draftPublic)}{(() => { const b = (r.lanes ?? []).flatMap((l: any) => l.pairings ?? []).find((p: any) => p.bracket)?.bracket; return b ? ` · ${b}` : ''; })()}</p>
+        {(r.lanes ?? []).map((l: any) => (
+          <div key={l.lane}>
+            <p className="ag-rec-head">
+              <b>{T.lane[l.lane] ? t(T.lane[l.lane]) : l.lane}</b> · {(l.my_team ?? []).map((h: string) => N(h)).join(' / ') || '—'}{l.solo?.my_team === true ? ` (${t(T.draftSolo)})` : ''} : {(l.enemy ?? []).map((h: string) => N(h)).join(' / ') || '—'}{l.solo?.enemy === true ? ` (${t(T.draftSolo)})` : ''}
+              {(l.shared_part_time_by ?? []).map((x: any) => <span key={x.hero} className="ag-chip">{N(x.hero)} · {t(T.draftPartTime)} {Math.round(x.share_of_lane_stage_here * 100)}%</span>)}
+            </p>
+            {(l.pairings ?? []).map((p: any, i: number) => (
+              <p key={i} className="ag-rec-line">
+                <span>{N(p.hero)} : {N(p.against)}{p.part_time ? ` · ${t(T.draftPartTime)}` : ''}</span>
+                {p.by_bracket ? p.by_bracket.filter((b: any) => b.lane_when_they_met || b.game).map((b: any) => <React.Fragment key={b.bracket}><span className="ag-chip">{b.bracket}</span>{row(b)}</React.Fragment>) : row(p)}
+              </p>
+            ))}
+          </div>
+        ))}
       </div>
     );
   }
