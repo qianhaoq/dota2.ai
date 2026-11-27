@@ -10,7 +10,7 @@
   "must_hit": [
     {
       "id": "outnumbered_deaths_outside_fights",
-      "says": "Four of the eight deaths were outside fights with three or more enemy heroes dealing damage and none traded within 15 s (10:49 alone, 15:21 and 19:03 while farming within 1600 of an enemy observer ward, and 34:52 with nothing cast).",
+      "says": "Four of the eight deaths were outside fights with three or more enemy heroes dealing damage and none traded within 15 s (10:49, 15:21 and 19:03 while farming within 1600 of an enemy observer ward, and 34:52 with nothing cast).",
       "weight": 2,
       "any": {
         "refs": [
@@ -24,8 +24,8 @@
         "within": 10
       },
       "terms": {
-        "zh": ["团战外", "刷钱", "打钱", "收线", "落单", "没换", "未换", "多打少", "三名", "3 名", "3名", "三个", "3 个", "3个"],
-        "en": ["outside", "farming", "alone", "not traded", "outnumbered", "three", "3 or more"]
+        "zh": ["团战外", "刷钱", "打钱", "收线", "没换", "未换", "多打少", "三名", "3 名", "3名", "三个", "3 个", "3个"],
+        "en": ["outside", "farming", "not traded", "outnumbered", "three", "3 or more"]
       }
     },
     {

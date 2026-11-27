@@ -115,12 +115,14 @@ describe('what the tools say with them, and without', () => {
     expect(gaps.find((g: any) => g.topic === 'vision')?.reason).toMatch(/ward placements are in the trace, not what each side saw/);
   });
 
-  it('a measure in a summary\'s field name backs the number: "no ally within 2200" citing deaths:<hero> (a real review had it refused)', () => {
+  it('a measure in a summary\'s field name backs the number: "within 15 s" citing deaths:<hero> (a real review had one refused)', () => {
     const record = runTraceTool(old, 'death_context', { hero: 'beastmaster' });
     const ev = (fact: string) => verifyReview({ verdict: 'v', mainline: [], findings: [], game_plan: { course: 'c', evidence: [{ refs: ['deaths:beastmaster'], fact }] } }, [record]).problems.filter((p: any) => p.where === 'plan_evidence');
-    expect(ev('11 次阵亡里只有 2:51 那次身边 2200 码内没有队友。')).toEqual([]);
-    // A radius no field states is still refused.
-    expect(ev('11 次阵亡里只有 2:51 那次身边 2500 码内没有队友。')).not.toEqual([]);
+    expect(ev('11 次阵亡里 0:47 那次 15 秒内没有换到人。')).toEqual([]);
+    // A span no field states is still refused.
+    expect(ev('11 次阵亡里 0:47 那次 17 秒内没有换到人。')).not.toEqual([]);
+    // Who was near is no longer a field (owner, 2026-11-27): "no ally within 2200" is backed by nothing.
+    expect(ev('11 次阵亡里只有 2:51 那次身边 2200 码内没有队友。')).not.toEqual([]);
   });
 
   it('the review and the chat are told what a ward near a spot does and does not show', () => {
@@ -147,7 +149,7 @@ describe('what the tools say with them, and without', () => {
     expect(empty.deaths_traded.find((x: any) => x.case === 'enemy observer within 1600').deaths).toBe(0);
     // A Dire observer standing all game at the first Radiant hero's first death: that death counts under the enemy's.
     const dc: any = runTraceTool(old, 'death_context', { hero: old.heroes.find((h: any) => h.team === 2).key });
-    const at = dc.deaths.find((d: any) => d.allies_within_2200.at_death != null).at;
+    const at = dc.deaths.find((d: any) => d.at != null).at;
     const one = calibrate({ ...old, wards: [[null, null, 3, 'o', at.x, at.y]] });
     expect(one.deaths_traded.find((x: any) => x.case === 'enemy observer within 1600').deaths).toBeGreaterThan(0);
     expect(one.died_within_20s.some((x: any) => x.case === 'enemy observer within 1600' && x.moments > 0)).toBe(true);

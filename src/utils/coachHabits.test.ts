@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { HABITS, HABIT_KEYS, evaluateGoal, evaluateHabit, habitGoal, habitRef } from '../../lib/coach/goals.js';
+import { HABITS, HABIT_KEYS, RETIRED_HABITS, evaluateGoal, evaluateHabit, habitGoal, habitRef } from '../../lib/coach/goals.js';
 import { abilityAudit, deathContext } from '../../packages/review-engine/src/trace/index.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
@@ -26,26 +26,35 @@ describe('habitGoal', () => {
     // Nothing in this count can be undecided: the baseline is exact.
     expect(habitGoal('outnumbered', deaths)).toEqual({ kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）', ru: 'Не более 2 смертей от трёх и более врагов (в этой игре: 5)' } });
     expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))).toMatchObject({ max: 1, baseline: 3 });
-    expect(habitGoal('alone', where({ no_ally_within_2200_at_death: ['1:00', '2:00'] }))).toMatchObject({ max: 1, baseline: 2 });
+    expect(habitGoal('outnumbered_outside_fights', where({ three_or_more_enemy_heroes_dealing_damage_outside_fights: ['1:00', '2:00'] }))).toMatchObject({ max: 1, baseline: 2 });
     // With deaths the replay could not decide, the baseline is only a lower bound, and says so by not claiming to be exact.
     expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, { health_at_window_start: 2, allies_at_death: 0 }))).not.toHaveProperty('baseline_exact');
     expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, { health_at_window_start: 0, allies_at_death: 0 }))).toMatchObject({ baseline_exact: true });
     expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, null))).not.toHaveProperty('baseline_exact');
-    // Lone deaths that bought nothing are their own count: four alone, two of them traded, is a baseline of two (review of #303).
-    expect(habitGoal('alone_not_traded', where({ no_ally_within_2200_at_death: ['1:00', '2:00', '3:00', '4:00'], no_ally_within_2200_at_death_and_not_traded: ['1:00', '3:00'] }))).toMatchObject({ habit: 'alone_not_traded', max: 1, baseline: 2 });
+    // Deaths with no ally near are no habit any more (owner, 2026-11-27: meaningless): no goal, whatever the summary holds.
+    for (const k of RETIRED_HABITS) {
+      expect(HABIT_KEYS).not.toContain(k);
+      expect(habitGoal(k, where({ no_ally_within_2200_at_death: ['1:00', '2:00', '3:00', '4:00'], no_ally_within_2200_at_death_and_not_traded: ['1:00', '3:00'] }))).toBeNull();
+    }
   });
   it('once is not a habit, and an unknown count or habit is no check', () => {
-    // One death alone (2:51), none below half health.
-    expect(habitGoal('alone', deaths)).toBeNull();
+    // None below half health.
     expect(habitGoal('low_health', deaths)).toBeNull();
     expect(habitGoal('farming', deaths)).toBeNull();
     expect(habitGoal(undefined as any, deaths)).toBeNull();
-    expect(habitGoal('alone', null)).toBeNull();
-    expect(habitGoal('alone', { deaths_where: {} })).toBeNull();
+    expect(habitGoal('low_health', null)).toBeNull();
+    expect(habitGoal('low_health', { deaths_where: {} })).toBeNull();
   });
 });
 
 describe('evaluateHabit', () => {
+  it('a goal a player saved on a retired habit says it is no longer counted, not "unknown goal"', () => {
+    const old = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'x', zh: 'x' } };
+    const r: any = evaluateHabit(old, where({ health_below_half_at_window_start: [] }), 40);
+    expect(r.result).toBe('unknown');
+    expect(r.evidence.zh).toContain('这个目标已不再统计');
+    expect(r.evidence.en).toContain('no longer counted');
+  });
   const goal = habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))!;
   it('met at or under the goal, missed over it, with the deaths named', () => {
     expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }), 38)).toEqual({ result: 'met', evidence: { en: '1 deaths that began below half health (12 s before) (12:40); goal ≤ 1', zh: '死前 12 秒已不到半血的阵亡 1 次（12:40）；目标 ≤ 1', ru: '1 смертей с менее чем половиной HP (за 12 с до смерти) (12:40); цель ≤ 1' } , count: 1 });
@@ -106,7 +115,7 @@ describe('the deaths summary of a hero who never died', () => {
     const deathless = { ...trace, deaths: trace.deaths.filter((d: any) => !mine.has(d[3])) };
     const none: any = resolveRef(deathless, 'deaths:beastmaster', { hero: 'beastmaster' });
     expect(none).not.toBeNull();
-    expect(none.record).toMatchObject({ ref: 'deaths:beastmaster', deaths_total: 0, deaths_where: { health_below_half_at_window_start: [], no_ally_within_2200_at_death: [] }, deaths_not_known: { health_at_window_start: 0, allies_at_death: 0 } });
+    expect(none.record).toMatchObject({ ref: 'deaths:beastmaster', deaths_total: 0, deaths_where: { health_below_half_at_window_start: [] }, deaths_not_known: { health_at_window_start: 0 } });
     const goal = habitGoal('outnumbered', deaths)!;
     expect(evaluateHabit(goal, none.record, 40)).toMatchObject({ result: 'met' });
   });
@@ -195,7 +204,7 @@ describe('habits counted over one ability', () => {
     expect(habitGoal('target_survived', roar)).toBeNull();
     expect(habitGoal('target_survived', roar, { ...ROAR, name: { en: 'Primal Roar' } } as any)).toBeNull();
     // A deaths habit is not read from an audit.
-    expect(habitGoal('alone', roar, ROAR)).toBeNull();
+    expect(habitGoal('low_health', roar, ROAR)).toBeNull();
   });
   it('is counted on that hero\'s audit, and on nothing when another hero was played', () => {
     const g = habitGoal('target_survived', roar, ROAR)!;

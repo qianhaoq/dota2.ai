@@ -25,13 +25,12 @@ const T: Record<string, Record<Lang, string>> = {
   untimed: { en: '{n} more with no time in this summary.', zh: '另有 {n} 次，这份汇总里没有时间。', ru: 'Ещё {n} без отметки времени в сводке.' },
   in_a_fight: { en: 'in a fight', zh: '团战中', ru: 'в драке' },
   outside_fights: { en: 'outside a fight', zh: '团战外', ru: 'вне драки' },
-  no_ally_within_2200_at_death: { en: 'no ally within 2200', zh: '2200 范围内没有队友', ru: 'без союзников в 2200' },
   three_or_more_enemy_heroes_dealing_damage: { en: '3+ enemies hitting you', zh: '三个以上敌人在打你', ru: 'били 3+ врагов' },
   traded_within_15s: { en: 'an enemy died within 15 s', zh: '15 秒内有敌人倒下', ru: 'враг погиб за 15 с' },
   not_traded_within_15s: { en: 'no enemy died within 15 s', zh: '15 秒内没有敌人倒下', ru: 'без размена за 15 с' },
 };
 /** The labels shown, in this order: each is a list of death times in the summary's `deaths_where`. */
-const LABELS = ['in_a_fight', 'outside_fights', 'no_ally_within_2200_at_death', 'three_or_more_enemy_heroes_dealing_damage', 'traded_within_15s', 'not_traded_within_15s'] as const;
+const LABELS = ['in_a_fight', 'outside_fights', 'three_or_more_enemy_heroes_dealing_damage', 'traded_within_15s', 'not_traded_within_15s'] as const;
 const seconds = (clock: string): number | null => { const m = /^(-)?(\d{1,3}):([0-5]\d)$/.exec(clock); return m ? (m[1] ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : null; };
 
 interface Summary { deaths_total: number; killed_by: Record<string, number>; deaths_where: Record<string, string[]> }

@@ -10,7 +10,7 @@
   "must_hit": [
     {
       "id": "deaths_outside_fights_not_traded",
-      "says": "Five of the seven deaths were outside any fight and no enemy died within 15 s of them (10:16, 15:52, 37:42, 55:20, 55:51); at 10:16 and 55:51 no ally was within 2200.",
+      "says": "Five of the seven deaths were outside any fight and no enemy died within 15 s of them (10:16, 15:52, 37:42, 55:20, 55:51).",
       "weight": 2,
       "any": {
         "refs": [
@@ -33,16 +33,11 @@
       "terms": {
         "zh": [
           "团战外",
-          "落单",
-          "一个人",
-          "没有队友",
           "没换",
           "白死"
         ],
         "en": [
           "outside",
-          "alone",
-          "no ally",
           "not traded",
           "nothing in return"
         ]

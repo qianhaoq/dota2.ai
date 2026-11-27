@@ -10,7 +10,7 @@
   "must_hit": [
     {
       "id": "untraded_deaths_and_late_save_item",
-      "says": "Three of the five deaths were not traded within 15 s (14:25 outside fights, 19:59, and 42:27 alone with no ally within 2200), while Force Staff arrived only at 40:08 (Hurricane Pike 41:12) after Aghanim's Scepter (25:36) and Pipe (36:45) against 76% enemy ability/item damage.",
+      "says": "Three of the five deaths were not traded within 15 s (14:25 outside fights, 19:59, and 42:27), while Force Staff arrived only at 40:08 (Hurricane Pike 41:12) after Aghanim's Scepter (25:36) and Pipe (36:45) against 76% enemy ability/item damage.",
       "weight": 2,
       "any": {
         "refs": [
@@ -24,8 +24,8 @@
         "within": 10
       },
       "terms": {
-        "zh": ["推推", "原力法杖", "飓风长戟", "没换", "未换", "白死", "落单", "没有队友", "团战外"],
-        "en": ["Force Staff", "Hurricane Pike", "not traded", "alone", "no ally", "outside"]
+        "zh": ["推推", "原力法杖", "飓风长戟", "没换", "未换", "白死", "团战外"],
+        "en": ["Force Staff", "Hurricane Pike", "not traded", "outside"]
       }
     }
   ],

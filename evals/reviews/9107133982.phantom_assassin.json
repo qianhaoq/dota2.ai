@@ -24,7 +24,7 @@
     },
     {
       "id": "repeated_untraded_deaths_farming_outside_fights",
-      "says": "Nine of the eleven deaths were outside fights and ten of eleven were not traded within 15 s; four began while farming (15:05, 16:48, 21:25, 23:03) and four had no ally within 2200 (5:04, 11:29, 21:25, 24:02).",
+      "says": "Nine of the eleven deaths were outside fights and ten of eleven were not traded within 15 s; four began while farming (15:05, 16:48, 21:25, 23:03).",
       "weight": 2,
       "any": {
         "refs": [
@@ -39,8 +39,8 @@
         "within": 10
       },
       "terms": {
-        "zh": ["团战外", "刷钱", "打钱", "没换", "未换", "白死", "落单", "没有队友"],
-        "en": ["outside", "farming", "not traded", "alone", "no ally"]
+        "zh": ["团战外", "刷钱", "打钱", "没换", "未换", "白死"],
+        "en": ["outside", "farming", "not traded"]
       }
     },
     {

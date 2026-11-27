@@ -145,12 +145,13 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
     expect(dc.deaths[2].reincarnation_at_death).toEqual({ state: 'on_cooldown', cooldown_left: 162.6 });
 
     // First reincarnation was followed 13.8 s after reviving by real death #3; second reincarnation survived.
+    // Who was near is not told (owner, 2026-11-27).
+    for (const r of dc.resurrections) expect(r).not.toHaveProperty('allies_within_2200');
     expect(dc.resurrections[0]).toMatchObject({
       ref: 'resurrection:skeleton_king:1',
       clock: '16:55',
       by: 'reincarnation',
       revived_at: '16:59',
-      allies_within_2200: ['crystal_maiden'],
       enemies_within_2200: ['lion', 'juggernaut'],
       died_for_real_within_20s: { ref: 'death:skeleton_king:3', clock: '17:12', killer: 'lion', seconds_after_revive: 13.8 },
     });
@@ -348,7 +349,7 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
     expect(classifyDeath(baseRespawnTrace, baseRespawnTrace.deaths[0])).toEqual({ real: true });
 
     // Blanking OTHER heroes' position and alive samples on the real fixture while keeping PA's own samples intact:
-    // allies_within_2200 and enemies_within_2200 must be null (unknown), never [] ("nobody") (Codex P1 on #431).
+    // enemies_within_2200 must be null (unknown), never [] ("nobody") (Codex P1 on #431). Allies near are not told.
     const paIdx = real.heroes.findIndex((h: any) => h.key === 'phantom_assassin');
     const othersBlank = {
       ...real,
@@ -363,17 +364,16 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
     expect(paBlindOthers.resurrections[0]).toMatchObject({
       clock: '36:43',
       at: expect.objectContaining({ region: 'dire_top_lane' }),
-      allies_within_2200: null,
       enemies_within_2200: null,
     });
-    // Blanking only one ally's alive array (positions kept) leaves allies_within_2200 null while enemies_within_2200 stands.
+    // Blanking only one ally's alive array (positions kept): enemies_within_2200 stands.
     const axeIdx = real.heroes.findIndex((h: any) => h.key === 'axe');
     const oneAllyAliveBlank = {
       ...real,
       states: real.states.map((s: any, i: number) => (i === axeIdx ? { ...s, alive: s.alive.map(() => null) } : s)),
     };
     const paOneAllyBlind: any = runTraceTool(oneAllyAliveBlank, 'death_context', { hero: 'phantom_assassin' });
-    expect(paOneAllyBlind.resurrections[0].allies_within_2200).toBeNull();
+    expect(paOneAllyBlind.resurrections[0]).not.toHaveProperty('allies_within_2200');
     expect(Array.isArray(paOneAllyBlind.resurrections[0].enemies_within_2200)).toBe(true);
 
     // Blanked samples (Unknown is not false): position, alive and mana wiped to null around Wraith King's deaths and revivals.
@@ -393,7 +393,6 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
       clock: '16:55',
       revived_at: null,
       at: null,
-      allies_within_2200: null,
       enemies_within_2200: null,
       // 17:12 is 17.5 s after 16:55: since revived_at >= 16:55, it is <= 20 s after revive, with seconds_after_revive null.
       died_for_real_within_20s: { ref: 'death:skeleton_king:3', clock: '17:12', killer: 'lion', seconds_after_revive: null },

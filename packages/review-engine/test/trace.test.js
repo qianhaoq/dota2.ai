@@ -699,9 +699,10 @@ describe('trace tools on a real game', () => {
     expect(d.controls_on_me.map((c) => c.modifier)).toEqual(expect.arrayContaining(['modifier_axe_berserkers_call', 'modifier_bashed', 'modifier_necrolyte_reapers_scythe']));
     expect(d.damage_taken[0]).toMatchObject({ from: 'phantom_assassin', by: 'attack' });
     expect(d.at_window_start.items.map((i) => i.item)).toEqual(expect.arrayContaining(['pipe', 'ultimate_scepter']));
-    // First blood: alone against two before the creeps met.
+    // First blood: against two before the creeps met. Allies near are not told (owner, 2026-11-27).
     const first = all.deaths[0];
-    expect(first.snapshots[0]).toMatchObject({ allies: [], enemies: [expect.objectContaining({ hero: 'phantom_assassin' }), expect.objectContaining({ hero: 'venomancer' })] });
+    expect(first.snapshots[0]).toMatchObject({ enemies: [expect.objectContaining({ hero: 'phantom_assassin' }), expect.objectContaining({ hero: 'venomancer' })] });
+    expect(first.snapshots[0]).not.toHaveProperty('allies');
   });
 
   it('fight_timeline: the 30:11 mid fight in order', () => {
@@ -814,8 +815,6 @@ describe('trace tools on a real game', () => {
     expect(all.deaths_where).toEqual({
       health_below_half_at_window_start: [],
       // By game time: that is how a death is named to a player.
-      no_ally_within_2200_throughout: ['2:51'],
-      no_ally_within_2200_at_death: ['2:51'],
       three_or_more_enemy_heroes_dealing_damage: ['8:27', '22:06', '25:30', '30:42', '36:05'],
       // Nine of the eleven deaths were in a fight (three or more hero deaths close together, an ally near before).
       // 2:51 falls inside such a group by time, but no ally was within 2200: picked off alone, not in the fight.
@@ -833,7 +832,6 @@ describe('trace tools on a real game', () => {
       // An enemy hero died within 15 s of seven of them; the four others bought nothing. 2:51, the one alone, was traded.
       traded_within_15s: ['2:51', '6:13', '8:27', '22:06', '25:30', '30:42', '39:21'],
       not_traded_within_15s: ['0:47', '11:03', '36:05', '41:57'],
-      no_ally_within_2200_at_death_and_not_traded: [],
       // This trace was built before wards and buybacks were read: unknown, so no death is in these lists.
       no_own_observer_within_1600: [],
       enemy_observer_within_1600: [],
@@ -845,27 +843,26 @@ describe('trace tools on a real game', () => {
     expect(all.deaths.map((d) => d.in_a_fight)).toEqual([false, false, true, true, true, true, true, true, true, true, true]);
     expect([...all.deaths_where.in_a_fight, ...all.deaths_where.outside_fights]).toHaveLength(all.deaths_total);
     // Every death here had its health and position sampled: nothing a count could be missing (ultimateOf was not passed, so absorbed_enemy_ultimate is unknown for all 11).
-    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, allies_at_death: 0, in_a_fight: 0, health_below_half_at_window_start_outside_fights: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0, before_a_nearby_fight_within_30s: 0, non_hero_without_enemy_hero_damage: 0, absorbed_enemy_ultimate: 11 });
+    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, in_a_fight: 0, health_below_half_at_window_start_outside_fights: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0, before_a_nearby_fight_within_30s: 0, non_hero_without_enemy_hero_damage: 0, absorbed_enemy_ultimate: 11 });
     // Phantom Assassin's attacks are the largest single source: 44% of everything taken in the eleven windows.
     expect(all.damage_in_death_windows_total).toBe(23757);
     expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);
     expect(Object.keys(all.damage_in_death_windows)).toHaveLength(6);
-    expect(all.deaths[1]).toMatchObject({ health_share_at_window_start: 0.75, allies_within_2200: { at_window_start: 0, at_death: 0, most_in_any_second: 0 } });
+    expect(all.deaths[1]).toMatchObject({ health_share_at_window_start: 0.75 });
+    expect(all.deaths[1]).not.toHaveProperty('allies_within_2200');
     // Every second is looked at, not only the snapshots: with a 26 s window Undying is within 2200 at −25 s of the 2:51 death.
     const long = run('death_context', { hero: 'beastmaster', window: 26 });
-    expect(long.deaths[1].snapshots.every((x) => x.allies.length === 0)).toBe(true);
-    expect(long.deaths[1].allies_within_2200).toMatchObject({ at_death: 0, most_in_any_second: 1 });
-    expect(long.deaths_where.no_ally_within_2200_throughout).not.toContain('2:51');
-    // The second the window starts in is looked at too: Venomancer stands 586 away at the start of Phantom Assassin's first death (16 s window).
+    // Every second still tells a fight from a pick-off: the 2:51 death, with Undying within 2200 at −25 s of it, is
+    // outside a fight with the default window.
+    expect(all.deaths[1].in_a_fight).toBe(false);
+    // Who was near is not told, as a count or per death (owner, 2026-11-27: meaningless).
     const pa = run('death_context', { hero: 'phantom_assassin', window: 16 });
-    expect(pa.deaths[0].snapshots[0].allies.length).toBeGreaterThan(0);
-    expect(pa.deaths[0].allies_within_2200.most_in_any_second).toBeGreaterThan(0);
-    expect(pa.deaths_where.no_ally_within_2200_throughout).not.toContain(pa.deaths[0].clock);
-    // Allies who arrive in the last second were there at the death: Mirana's fourth (35:43) was not alone, though every snapshot before it was.
+    expect(pa.deaths[0].snapshots[0]).not.toHaveProperty('allies');
+    expect(pa.deaths[0]).not.toHaveProperty('allies_within_2200');
+    expect(pa.deaths_where).not.toHaveProperty('no_ally_within_2200_throughout');
     const mirana = run('death_context', { hero: 'mirana' });
-    expect(mirana.deaths[3]).toMatchObject({ clock: '35:43', allies_within_2200: { at_window_start: 0, at_death: 2, most_in_any_second: 2 } });
-    expect(mirana.deaths_where.no_ally_within_2200_at_death).not.toContain('35:43');
-    expect(mirana.deaths_where.no_ally_within_2200_throughout).not.toContain('35:43');
+    expect(mirana.deaths[3]).not.toHaveProperty('allies_within_2200');
+    expect(mirana.deaths_where).not.toHaveProperty('no_ally_within_2200_at_death');
     // The working list behind the totals is not part of a record.
     expect(all.deaths.every((d) => !('damage_sources' in d))).toBe(true);
     // The counts are over the window asked for, so another window is another summary, with its own ref.
@@ -1010,9 +1007,8 @@ describe('trace tools on a real game', () => {
     const s = p3.hero_share_of_alive_time;
     // Dire's side of the map is his own: the first ten minutes in his own bottom lane, the end in his base.
     expect(r.phases.map((p) => p.hero_share_of_alive_time.on_own_side_of_the_map)).toEqual([0.75, 0.51, 0.44, 0.76, 1]);
-    expect(s).toEqual({ on_own_side_of_the_map: 0.44, around_the_river: 0.22, on_the_opponents_side: 0.34, with_no_ally_within_2200: 0.32, with_one_ally_within_2200: 0.17, with_two_or_more_allies_within_2200: 0.52, with_three_or_more_opponents_within_2200: 0.19 });
+    expect(s).toEqual({ on_own_side_of_the_map: 0.44, around_the_river: 0.22, on_the_opponents_side: 0.34, with_three_or_more_opponents_within_2200: 0.19 });
     expect(s.on_own_side_of_the_map + s.around_the_river + s.on_the_opponents_side).toBeCloseTo(1, 1);
-    expect(s.with_no_ally_within_2200 + s.with_one_ally_within_2200 + s.with_two_or_more_allies_within_2200).toBeCloseTo(1, 1);
     expect(p3.hero_most_time_in[0]).toEqual({ place: 'radiant_top_lane', share_of_alive_time: 0.32 });
     // The last stretch is cut at the Ancient's fall, which belongs to it.
     expect(r.phases.at(-1)).toMatchObject({ clock: '40:00–42:31', to: 2551, buildings_opponents_took: 12 });
@@ -1055,7 +1051,7 @@ describe('trace tools on a real game', () => {
     const blank = { ...trace, states: trace.states.map((s, i) => (i === h ? { ...s, x: s.x.map(() => null), y: s.y.map(() => null) } : s)) };
     const r = runTraceTool(blank, 'tempo_report', { hero: 'beastmaster' });
     expect(r.phases[1]).toMatchObject({ hero_alive_seconds: 0, hero_dead_seconds: 0, hero_seconds_not_sampled: 600, hero_most_time_in: null });
-    expect(Object.values(r.phases[1].hero_share_of_alive_time)).toEqual([null, null, null, null, null, null, null]);
+    expect(Object.values(r.phases[1].hero_share_of_alive_time)).toEqual([null, null, null, null]);
     // He died in some of them (that is in the combat log); for the rest nothing can be said.
     expect(r.fights_where.hero_was_not_there).toEqual([]);
     expect(r.fights_where.hero_was_there.length + r.fights_where.hero_presence_not_known.length).toBe(16);
@@ -1067,19 +1063,19 @@ describe('trace tools on a real game', () => {
     // A sample stands for the two seconds either side of it, as everywhere in the trace tools: five seconds around
     // 25:00, and two at each end of the stretch from the samples just outside it.
     expect(thin).toMatchObject({ hero_alive_seconds: 9, hero_seconds_not_sampled: 591, hero_most_time_in: null });
-    expect(Object.values(thin.hero_share_of_alive_time)).toEqual([null, null, null, null, null, null, null]);
+    expect(Object.values(thin.hero_share_of_alive_time)).toEqual([null, null, null, null]);
     // The stretches around it were sampled throughout and keep their shares.
     expect(runTraceTool(sliver, 'tempo_report', { hero: 'beastmaster' }).phases[1]).toMatchObject({ hero_seconds_not_sampled: 0, hero_share_of_alive_time: { on_own_side_of_the_map: 0.51 } });
     // The other heroes' positions gone, his own kept: where he was is known, who was near him is not — not "alone".
     const others = { ...trace, states: trace.states.map((s, i) => (i === h ? s : { ...s, x: s.x.map(() => null), y: s.y.map(() => null) })) };
     const lone = runTraceTool(others, 'tempo_report', { hero: 'beastmaster' }).phases[2];
     expect(lone.hero_alive_seconds).toBe(504);
-    expect(lone.hero_share_of_alive_time).toMatchObject({ on_own_side_of_the_map: 0.44, with_no_ally_within_2200: null, with_one_ally_within_2200: null, with_two_or_more_allies_within_2200: null, with_three_or_more_opponents_within_2200: null });
-    // One ally unsampled: nothing about allies; the opponents were all sampled, so that share stands.
+    expect(lone.hero_share_of_alive_time).toEqual({ on_own_side_of_the_map: 0.44, around_the_river: expect.any(Number), on_the_opponents_side: expect.any(Number), with_three_or_more_opponents_within_2200: null });
+    // One ally unsampled: the opponents were all sampled, so that share stands.
     const sven = trace.heroes.findIndex((x) => x.key === 'sven');
     const oneGone = { ...trace, states: trace.states.map((s, i) => (i === sven ? { ...s, x: s.x.map(() => null), y: s.y.map(() => null) } : s)) };
     const partial = runTraceTool(oneGone, 'tempo_report', { hero: 'beastmaster' }).phases[2].hero_share_of_alive_time;
-    expect(partial).toMatchObject({ with_no_ally_within_2200: null, with_two_or_more_allies_within_2200: null, with_three_or_more_opponents_within_2200: 0.19 });
+    expect(partial).toMatchObject({ with_three_or_more_opponents_within_2200: 0.19 });
     // Sampled far from the first death of a fight and not at all at the later ones: he may have been at those. Unknown, not absent.
     expect(runTraceTool(trace, 'tempo_report', { hero: 'beastmaster' }).fights_where.hero_was_not_there).toEqual(['37:46']);
     const i0 = 2270 - trace.t0; const i1 = 2280 - trace.t0;

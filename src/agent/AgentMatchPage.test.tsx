@@ -558,7 +558,7 @@ describe('AgentMatchPage', () => {
     expect(screen.queryByText(/fights total|lost fewer|took part/)).toBeNull();
   });
 
-  it('a death says whether it was traded, and where the allies who were not near were', async () => {
+  it('a death says whether it was traded; who was near is not shown, even from an older record', async () => {
     const death = { status: 'ok', ref: 'death:beastmaster:9', kind: 'death', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客', sven: '斯温', skywrath_mage: '天怒法师', radiant_top_lane: '天辉上路' }, record: {
       ref: 'death:beastmaster:9', n: 9, t: 2165, clock: '36:05', killer: 'phantom_assassin',
       snapshots: [{ dt: -1, me: { hp: 300, max_hp: 2915 }, allies: [], enemies: [{ hero: 'phantom_assassin', dist: 150 }] }],
@@ -582,8 +582,9 @@ describe('AgentMatchPage', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
     expect(await screen.findByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '买活 36:20')).toBeTruthy();
     expect(screen.queryByText('1600 码内的假眼')).toBeNull();
-    expect(chip('斯温 · 天辉上路9100 码外TP 可用')).toBeTruthy();
-    expect(chip('天怒法师 · 阵亡复活还要 25秒')).toBeTruthy();
+    // An older record still carries allies_elsewhere: the card no longer shows it (owner, 2026-11-27).
+    expect(screen.queryByText(/9100 码外/)).toBeNull();
+    expect(screen.queryByText('不在附近的队友')).toBeNull();
     cleanup();
 
     // The totals: the trade lists are counted and labelled in the reader's language.
@@ -591,14 +592,13 @@ describe('AgentMatchPage', () => {
       ref: 'deaths:beastmaster', ref_scope: 'summary', hero: 'beastmaster', deaths_total: 11,
       // Twenty other counters ahead of them: the trade counts still show, on a line of their own (review of #303).
       killed_by: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`hero_${i}`, 1])),
-      deaths_where: { traded_within_15s: ['2:51', '6:13', '8:27'], not_traded_within_15s: ['0:47', '11:03'], no_ally_within_2200_at_death_and_not_traded: ['0:47'] },
+      deaths_where: { traded_within_15s: ['2:51', '6:13', '8:27'], not_traded_within_15s: ['0:47', '11:03'] },
     } };
     mockFetch({ 'ref=overview': overview, '/evidence?': totals, '/review?': { status: 'ready', review: { ...review, lang: 'zh', findings: [{ ...review.findings[0], evidence: [{ refs: ['deaths:beastmaster'], fact: '11 次阵亡。' }] }] }, verification: { repaired: false, dropped: 0 }, model: 'm', tool_calls: 9 }, '/api/agent/9100904020': { trace: true, model_configured: true, heroes } });
     page('/r/9100904020?hero=beastmaster&lang=zh');
     fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
     expect(await screen.findByText((_, el) => /^ag-chip/.test(el?.className ?? '') && el!.textContent === '没换到 2')).toBeTruthy();
     expect(chip('换到了（15 秒内对面也死了英雄） 3')).toBeTruthy();
-    expect(chip('身边没人且没换到 1')).toBeTruthy();
     expect(screen.queryByText(/traded/)).toBeNull();
     cleanup();
 
@@ -1236,7 +1236,7 @@ describe('AgentMatchPage', () => {
   });
 
   it('the deaths\' totals say what they have in common and where the damage came from', async () => {
-    const totals = { ref: 'deaths:beastmaster', kind: 'deaths', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客' }, record: { ref: 'deaths:beastmaster', ref_scope: 'summary', hero: 'beastmaster', deaths_total: 11, killed_by: { phantom_assassin: 7 }, deaths_where: { health_below_half_at_window_start: [], no_ally_within_2200_at_death: ['2:51'] }, damage_in_death_windows_total: 23757, damage_in_death_windows: { 'phantom_assassin: attacks': 10453 }, damage_share_in_death_windows: { 'phantom_assassin: attacks': 0.44 } } };
+    const totals = { ref: 'deaths:beastmaster', kind: 'deaths', names: { beastmaster: '兽王', phantom_assassin: '幻影刺客' }, record: { ref: 'deaths:beastmaster', ref_scope: 'summary', hero: 'beastmaster', deaths_total: 11, killed_by: { phantom_assassin: 7 }, deaths_where: { health_below_half_at_window_start: [], outside_fights: ['0:47', '2:51'] }, damage_in_death_windows_total: 23757, damage_in_death_windows: { 'phantom_assassin: attacks': 10453 }, damage_share_in_death_windows: { 'phantom_assassin: attacks': 0.44 } } };
     mockFetch({
       'ref=overview': overview,
       '/evidence?': totals,
@@ -1248,7 +1248,7 @@ describe('AgentMatchPage', () => {
     page('/r/8000000021?hero=beastmaster&lang=zh');
     fireEvent.click((await screen.findAllByRole('button', { name: '看原始记录' }))[0]);
     const chip = (text: string) => screen.getByText((_, el) => el?.className === 'ag-chip' && el.textContent === text);
-    expect(await screen.findByText((_, el) => el?.className === 'ag-chip' && el.textContent === '阵亡时 2200 码内没有队友 1')).toBeTruthy();
+    expect(await screen.findByText((_, el) => el?.className === 'ag-chip' && el.textContent === '团战之外的阵亡 2')).toBeTruthy();
     expect(chip('其中 · 幻影刺客 普通攻击 44%')).toBeTruthy();
     expect(chip('各次阵亡前承受的伤害 23757')).toBeTruthy();
     // A list no death is in is not a chip; the amounts behind the shares are not repeated.
@@ -1930,7 +1930,7 @@ describe('AgentMatchPage', () => {
 
   it('a review whose rules name a count offers them as the next-game check, with what the next replay is counted on', async () => {
     const check = { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 deaths that began below half health (12 s before) (this game: 3)', zh: 'x' } };
-    const alone = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 deaths with no ally within 2200 (this game: 4)', zh: 'x' } };
+    const alone = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 2, baseline: 4, label: { en: 'At most 2 deaths outside fights to three or more enemy heroes (this game: 4)', zh: 'x' } };
     const withRules = { ...review, findings: [
       { ...review.findings[0], rule: { when: 'Below half health with an enemy in front of you', do: 'walk back to the tower', this_game: '3 of 12 deaths', check } },
       { ...review.findings[0], title: 'Alone', rule: { when: 'No teammate on the minimap near you', do: 'stay on your side of the river', check: alone } },
@@ -1949,7 +1949,7 @@ describe('AgentMatchPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Make this my next-game goal' }));
     await waitFor(() => expect(window.localStorage.getItem('dota2ai.coach.goal')).not.toBeNull());
     const stored = JSON.parse(window.localStorage.getItem('dota2ai.coach.goal')!);
-    expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:replay_habit:low_health1:ralone2', goal: check, findingId: 'agent:1', accountId: 77 });
+    expect(stored).toMatchObject({ id: '9100904020:beastmaster:agent:replay_habit:low_health1:routnumbered_outside_fights2', goal: check, findingId: 'agent:1', accountId: 77 });
     expect(stored.rules).toEqual([{ finding: 2, when: 'No teammate on the minimap near you', do: 'stay on your side of the river', check: alone }]);
     // These are counted in the replay: the home page is where the next game is found, not where it is already checked.
     expect(screen.getByText(/open it from there\. This goal is checked once that game’s replay has been read/)).toBeTruthy();
@@ -1958,7 +1958,7 @@ describe('AgentMatchPage', () => {
 
   it('a later game is counted on the rules from its own replay; without the replay nothing is called met', async () => {
     const check = { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 low', zh: 'x' } };
-    const alone = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
+    const alone = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
     const roar = { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 roars', zh: 'x' } };
     const goal = { id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1, rules: [{ finding: 2, when: 'No teammate near you', do: 'stay on your side of the river', check: alone }, { finding: 3, when: 'The carry has not used Black King Bar', do: 'keep the roar', check: roar }] };
     window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal));
@@ -1973,7 +1973,7 @@ describe('AgentMatchPage', () => {
     // Parsed: the same counts, from this game's replay.
     const calls = mockFetch({
       '/api/coach/9100999998': later,
-      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 6, deaths_where: { health_below_half_at_window_start: ['12:40'], no_ally_within_2200_at_death: ['3:00', '9:10', '21:05'] }, deaths_not_known: { health_at_window_start: 0, allies_at_death: 0 } } },
+      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 6, deaths_where: { health_below_half_at_window_start: ['12:40'], three_or_more_enemy_heroes_dealing_damage_outside_fights: ['3:00', '9:10', '21:05'] }, deaths_not_known: { health_at_window_start: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 } } },
       // The rule about the roar is counted on this game's audit of it.
       'ref=audit%3Abeastmaster%3Aprimal_roar': { status: 'ok', ref: 'audit:beastmaster:primal_roar', kind: 'audit', names: {}, record: { learned_at: { t: 400, clock: '6:40' }, casts_total: 7, casts_where: { enemy_hero_target_alive_12s_later: ['9:00'] } } },
       '/review?': { status: 'none' },
@@ -1983,7 +1983,7 @@ describe('AgentMatchPage', () => {
     await waitFor(() => expect(screen.getAllByText('Met')).toHaveLength(2));
     expect(screen.getByText('Missed')).toBeTruthy();
     expect(screen.getByText('No teammate near you: stay on your side of the river')).toBeTruthy();
-    expect(screen.getByText('3 deaths with no ally within 2200 (3:00, 9:10, 21:05); goal ≤ 2')).toBeTruthy();
+    expect(screen.getByText('3 deaths outside fights to three or more enemy heroes (3:00, 9:10, 21:05); goal ≤ 2')).toBeTruthy();
     expect(calls.some((c) => c.url.includes('ref=deaths%3Abeastmaster'))).toBe(true);
     await waitFor(() => expect(JSON.parse(window.localStorage.getItem('dota2ai.coach.goalChecks')!)).toEqual([
       expect.objectContaining({ goalId: 'g', matchId: 9100999998, result: 'met' }),
@@ -1998,7 +1998,7 @@ describe('AgentMatchPage', () => {
   });
 
   it('a goal that waits on this game\'s replay can be checked alone: the replay is parsed, no review is written, the check reads it', async () => {
-    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, baseline_exact: true, label: { en: 'At most 2 alone', zh: 'x' } };
+    const check = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 2, baseline: 4, baseline_exact: true, label: { en: 'At most 2 alone', zh: 'x' } };
     // Its own game id: the evidence client keeps a record for the session, and another test reads 9100999998's.
     const goal = { id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 };
     window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal));
@@ -2007,7 +2007,7 @@ describe('AgentMatchPage', () => {
     const calls = mockFetch({
       '/api/coach/9100999997': later,
       '/prepare': () => { prepared += 1; return { status: 'running', stage: 'locating' }; },
-      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 5, deaths_where: { no_ally_within_2200_at_death: ['3:00'] }, deaths_not_known: { allies_at_death: 0 } } },
+      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 5, deaths_where: { three_or_more_enemy_heroes_dealing_damage_outside_fights: ['3:00'] }, deaths_not_known: { three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 } } },
       '/review?': { status: 'none' },
       // Not parsed; once asked, parsing for two polls; then the trace is there.
       '/api/agent/9100999997': () => { if (prepared) polls += 1; return !prepared ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } } : polls < 2 ? { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'running', stage: 'extracting' } } : { trace: true, model_configured: true, can_parse: true, heroes }; },
@@ -2031,7 +2031,7 @@ describe('AgentMatchPage', () => {
   }, 15000);
 
   it('a goal-only check is its own event, and trying it again after a failed parse stays goal-only — never a review', async () => {
-    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
+    const check = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
     window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 }));
     const later = { match: { id: 9100999996, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
     let prepared = 0;
@@ -2055,7 +2055,7 @@ describe('AgentMatchPage', () => {
   });
 
   it('a goal-only check refused with a short wait goes again by itself when the wait ends — as a goal check', async () => {
-    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
+    const check = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
     window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 }));
     const later = { match: { id: 9100999995, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
     let prepared = 0;
@@ -2074,14 +2074,14 @@ describe('AgentMatchPage', () => {
   });
 
   it('after a goal-only parse, a review status that could not be read is read again on "Try again" — it does not ask for a review', async () => {
-    const check = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
+    const check = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
     window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({ id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1 }));
     const later = { match: { id: 9100999994, patch: '7.42', start_time: 1795400000, duration: 2400 }, players: board.players, reviews: [{ role: { kind: 'core' } }, { role: { kind: 'core' } }] };
     let prepared = 0; let statusReads = 0;
     const calls = mockFetch({
       '/api/coach/9100999994': later,
       '/prepare': () => { prepared += 1; return { status: 'ready' }; },
-      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 5, deaths_where: { no_ally_within_2200_at_death: ['3:00'] }, deaths_not_known: { allies_at_death: 0 } } },
+      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 5, deaths_where: { three_or_more_enemy_heroes_dealing_damage_outside_fights: ['3:00'] }, deaths_not_known: { three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 } } },
       // The first read of the review status fails; the next answers "none".
       '/review?': () => { statusReads += 1; return statusReads === 1 ? new Response('bad gateway', { status: 502 }) : { status: 'none' }; },
       '/api/agent/9100999994': () => (prepared ? { trace: true, model_configured: true, can_parse: true, heroes } : { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } }),
