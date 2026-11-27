@@ -277,7 +277,16 @@ try {
 
   const names = ['replay_review', 'recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup'].map((n) => `dota2ai_${n}`);
   for (const n of names) assert.ok(ctx.tools.get(n), `${n} registered`);
-  const call = (name, a) => ctx.tools.execute({ callId: `smoke-${name}`, name, arguments: a, signal: new AbortController().signal });
+  const call = async (name, a) => {
+    const def = ctx.tools.get(name);
+    assert.ok(def, `${name} resolved from ToolsService`);
+    try {
+      const value = await def.execute(a, { callId: `smoke-${name}`, signal: new AbortController().signal });
+      return { isError: false, value };
+    } catch (error) {
+      return { isError: true, error };
+    }
+  };
 
   const skill = await ctx.skills.get('dota2ai');
   assert.match(skill?.content ?? '', /dota2ai_replay_review/, 'the dota2ai skill is registered');
