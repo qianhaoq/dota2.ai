@@ -28,7 +28,8 @@ describe('farm_report', () => {
     // Inside the team's window (19:00–29:00): ten minutes of each hero's line.
     const w = r.windows.find((x: any) => x.ahead === 'my_team');
     expect(w).toMatchObject({ ref: 'farm:beastmaster:w2', window: 'window:beastmaster:2', clock: '19:00–29:00', gained: { phantom_assassin: 7000 }, gained_most: { enemy: 'phantom_assassin', my_team: 'sven' } });
-    expect(r.gaps.map((g: any) => g.topic)).toEqual(['where_buildings_stand']);
+    // The fixture has no gold log: where the gold came from is a gap, and experience by source always is (#437 P2).
+    expect(r.gaps.map((g: any) => g.topic)).toEqual(['gold_by_source', 'experience_by_source', 'where_buildings_stand']);
   });
 
   it('falls back to the replay\'s net worth, says so, and has no last hits then', () => {
@@ -46,7 +47,7 @@ describe('farm_report', () => {
   it('with no money by minute it says so, and still tells who was near the buildings the team took', () => {
     const r: any = farmReport(trace, { hero: 'beastmaster' }, { match });
     expect(r.money).toBeNull();
-    expect(r.gaps).toEqual([{ topic: 'money_by_minute', reason: 'no_per_minute_gold_in_the_match_data_and_no_net_worth_in_the_replay' }]);
+    expect(r.gaps).toEqual([{ topic: 'money_by_minute', reason: 'no_per_minute_gold_in_the_match_data_and_no_net_worth_in_the_replay' }, { topic: 'gold_by_source', reason: 'no_gold_rows_in_trace' }]);
     expect(r).not.toHaveProperty('stretches');
     expect(r.buildings_your_team_took.map((b: any) => [b.ref, b.clock, b.enemy_heroes_alive, b.enemy_heroes_near_your_team])).toEqual([
       ['farm:beastmaster:b1', '18:07', 4, ['axe', 'necrolyte', 'mirana']],
