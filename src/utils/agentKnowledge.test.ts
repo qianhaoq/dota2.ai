@@ -135,8 +135,8 @@ describe('lane_report', () => {
     const claimed = (claim: string) => verifyReview({ verdict: 'v', mainline: [], findings: [{ title: '对线', claim, fix: 'x', evidence: [{ refs: ['lane:tidehunter'], fact: '上路对线。' }] }] }, [record]).problems.filter((p: any) => p.where === 'finding');
     const backed = claimed('10 分钟时你 41 个补刀，熊战士 37 个补刀；10 分钟前你阵亡 3 次。');
     expect(backed.filter((p: any) => !p.soft)).toEqual([]);
-    // Every number in it is the record's. What is said of it is only how it reads: three numbers before the semicolon.
-    expect(backed).toEqual([{ where: 'finding', index: 0, kind: 'dense', text: '10 分钟时你 41 个补刀，熊战士 37 个补刀； (3)', soft: true }]);
+    // Every number in it is the record's; how many a sentence carries is not asked about (#405).
+    expect(backed).toEqual([]);
     expect(claimed('10 分钟时你只有 28 个补刀。')).not.toEqual([]);
     // The two checkpoints are game times the record states, in evidence and in a claim alike.
     // (Both sentences are noted for how they read — English in a Chinese review, four numbers in one sentence — and
@@ -146,7 +146,7 @@ describe('lane_report', () => {
     expect(atCheckpoints).toEqual([{ where: 'finding', index: 0, kind: 'english', text: 'you, had, last, hits', soft: true }]);
     const claimedAtCheckpoints = claimed('5:00 时你 15 个补刀，10:00 时 41 个。');
     expect(claimedAtCheckpoints.filter((p: any) => !p.soft)).toEqual([]);
-    expect(claimedAtCheckpoints).toEqual([{ where: 'finding', index: 0, kind: 'dense', text: '5:00 时你 15 个补刀，10:00 时 41 个。 (4)', soft: true }]);
+    expect(claimedAtCheckpoints).toEqual([]);
     expect(problems('At 7:30 you had 15 last hits.')).not.toEqual([]);
   });
 
