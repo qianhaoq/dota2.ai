@@ -448,6 +448,8 @@ describe('death_context PR 2 bilateral enemy kill-threat context & judgment-free
       ],
       deaths: [[100, 0, 2, 1]],
     });
+    // Move Tidehunter from [5000, 5000] at window start into range [500, 0] at t=95..100 so Tidehunter genuinely arrives.
+    for (let s = 95; s <= 100; s += 1) { tr.states[3].x[s] = 500; tr.states[3].y[s] = 0; }
     // Smoke overlapping window for tidehunter (enemy attacker), rune overlapping for lion, non-overlapping rune for tidehunter.
     tr.smokes = [[82, 3, 2, 93], [40, 3, 2, 50]];
     tr.runes = [[90, 2, 'haste', 110], [20, 2, 'arcane', 40]];
@@ -643,6 +645,34 @@ describe('death_context PR 2 bilateral enemy kill-threat context & judgment-free
     });
     const rNoItemCd: any = runTraceTool(noItemCd, 'death_context', { hero: 'enchantress' });
     expect(rNoItemCd.deaths[0].enemy_context_at_window_start[0].key_items).toEqual([{ item: 'blink', ready: null }]);
+
+    // 8. Dead lingering-DoT attacker (Venomancer at Beastmaster's 30:42 death #8 in fixture 9100904020 stayed
+    // dead for the entire 30:30–30:42 window) MUST NOT be listed in attackers_arrived_after_window_start.
+    const rBmDeath8: any = runTraceTool(realTrace, 'death_context', { hero: 'beastmaster', index: 8 });
+    expect(rBmDeath8.deaths[0].clock).toBe('30:42');
+    expect(rBmDeath8.deaths[0].attackers_arrived_after_window_start.map((a: any) => a.hero)).not.toContain('venomancer');
+    // Death #9 (36:05) attackers who genuinely approached from >2200 into <=2200 ARE still listed.
+    const rBmDeath9: any = runTraceTool(realTrace, 'death_context', { hero: 'beastmaster', index: 9 });
+    expect(rBmDeath9.deaths[0].attackers_arrived_after_window_start.map((a: any) => a.hero)).toEqual(['axe', 'phantom_assassin', 'necrolyte']);
+
+    // Blanking a mid-window alive sample for the dead-at-start attacker makes arrival unknown -> null.
+    const blankMidVeno = {
+      ...realTrace,
+      states: realTrace.states.map((st: any, idx: number) => (idx === venoIdx
+        ? { ...st, alive: st.alive.map((v: any, k: number) => (k + realTrace.t0 === 1836 ? null : v)) }
+        : st)),
+    };
+    const rBlankMid: any = runTraceTool(blankMidVeno, 'death_context', { hero: 'beastmaster', index: 8 });
+    expect(rBlankMid.deaths[0].attackers_arrived_after_window_start).toBeNull();
+
+    // Remote enemy attacker staying >2200 away for the entire window (e.g. global spell) is NOT listed as arrived.
+    const remoteDmg: any = makeTrace({
+      pos: { enchantress: [0, 0], lion: [500, 0], tidehunter: [5000, 5000], lina: [5000, 5000], sven: [0, 0] },
+      damage: [[95, 2, 0, -1, 500], [96, 3, 0, -1, 300]], // tidehunter never moves from [5000, 5000]
+      deaths: [[100, 0, 2, 1]],
+    });
+    const rRemote: any = runTraceTool(remoteDmg, 'death_context', { hero: 'enchantress' });
+    expect(rRemote.deaths[0].attackers_arrived_after_window_start).toEqual([]);
   });
 
   it('de-biases death_context, ability_audit, match_overview descriptions and chatSystem rules', () => {

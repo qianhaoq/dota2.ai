@@ -784,10 +784,37 @@ function enemyContextAtWindowStart(trace, h, from, snap0) {
 }
 
 /**
- * Enemy attackers who dealt hero damage during `[from, t]` but were NOT alive within 2200 of `me` at `from`.
- * Returns null if damage log is missing, `me`'s position at `from` is unknown, or any attacker's state at `from` is unknown.
+ * Whether enemy attacker `ai` (absent or dead at `from`) has an observed living arrival within 2200 of `me`
+ * during `(from, t]`. Returns `'arrived'`, `'never_arrived'` (e.g. lingering DoT while dead, or remote global
+ * spell without approaching), or `null` when missing samples prevent ruling out arrival.
  */
-function attackersArrivedAfterWindowStart(trace, h, from, snap0, attackers, hasDamageLog) {
+function attackerArrivedInWindow(trace, h, ai, from, t) {
+  const startSec = Math.floor(from) + 1;
+  const endSec = Math.floor(t);
+  let sawUnknown = false;
+  for (let sec = startSec; sec <= endSec; sec += 1) {
+    const k = sec - trace.t0;
+    if (k < 0 || k >= trace.n) { sawUnknown = true; continue; }
+    const myAlive = trace.states?.[h]?.alive?.[k];
+    const attAlive = trace.states?.[ai]?.alive?.[k];
+    if (myAlive == null || attAlive == null) { sawUnknown = true; continue; }
+    if (myAlive === 0 || attAlive === 0) continue;
+    const mx = trace.states[h].x?.[k]; const my = trace.states[h].y?.[k];
+    const ax = trace.states[ai].x?.[k]; const ay = trace.states[ai].y?.[k];
+    if (mx == null || my == null || ax == null || ay == null) { sawUnknown = true; continue; }
+    if (dist({ x: mx, y: my }, { x: ax, y: ay }) <= 2200) return 'arrived';
+  }
+  return sawUnknown ? null : 'never_arrived';
+}
+
+/**
+ * Enemy attackers who dealt hero damage during `[from, t]`, were NOT alive within 2200 of `me` at `from`,
+ * and actually arrived within 2200 of `me` while alive during `(from, t]`.
+ * Excludes dead lingering-DoT sources and remote global spells that never approached.
+ * Returns null if damage log is missing, `me`'s position at `from` is unknown, any attacker's state at `from`
+ * is unknown, or missing mid-window samples prevent ruling out arrival.
+ */
+function attackersArrivedAfterWindowStart(trace, h, from, t, snap0, attackers, hasDamageLog) {
   if (!hasDamageLog || snap0?.me == null || !heroNearKnown(trace, h, from)) return null;
   const meStart = stateAt(trace, h, from);
   if (!meStart) return null;
@@ -803,14 +830,19 @@ function attackersArrivedAfterWindowStart(trace, h, from, snap0, attackers, hasD
     const rawAlive = st
       ? trace.states?.[ai]?.alive?.[st.t - trace.t0]
       : trace.states?.[ai]?.alive?.[Math.round(from) - trace.t0];
+    let entry = null;
     if (rawAlive === 0) {
-      arrived.push({ hero: heroKey, alive_at_window_start: false });
+      entry = { hero: heroKey, alive_at_window_start: false };
     } else if (rawAlive === 1 && st && st.x != null && st.y != null) {
       const d = dist(meStart, st);
-      if (d > 2200) arrived.push({ hero: heroKey, dist_at_window_start: d, place_at_window_start: region(st.x, st.y) });
+      if (d > 2200) entry = { hero: heroKey, dist_at_window_start: d, place_at_window_start: region(st.x, st.y) };
     } else {
       return null;
     }
+    if (!entry) continue;
+    const status = attackerArrivedInWindow(trace, h, ai, from, t);
+    if (status === null) return null;
+    if (status === 'arrived') arrived.push(entry);
   }
   return arrived;
 }
@@ -978,7 +1010,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const nearFight = nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight, traceEnd);
     const nearObj = nearbyObjectiveFor(trace, h, t, atPos, allSieges, traceEnd);
     const enemyCtx = enemyContextAtWindowStart(trace, h, from, snapshots[0]);
-    const attackersArrived = attackersArrivedAfterWindowStart(trace, h, from, snapshots[0], attackers, hasDamageLog);
+    const attackersArrived = attackersArrivedAfterWindowStart(trace, h, from, t, snapshots[0], attackers, hasDamageLog);
     const enemyBuffs = enemyActiveBuffsInWindow(trace, from, t, attackers, hasDamageLog);
     return {
       // The window is part of what the record says (its damage, its snapshots): a non-default one is in the ref.

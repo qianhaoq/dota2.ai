@@ -250,11 +250,15 @@ describe('draft_report', () => {
     const bot = d.lanes.find((l: any) => l.lane === 'bot');
     expect(bot.at_10_00).toMatchObject({
       my_team_gold: 2300, enemy_gold: 3000, gold_diff: -700,
-      my_team_last_hits: 40, enemy_last_hits: 58, source: 'replay', passive_income_omitted: true,
+      my_team_last_hits: 40, enemy_last_hits: 58, source: 'replay',
+      passive_income_omitted: true, last_hits_are_lower_bounds: true,
     });
     expect(d.lineups.my_team.every((x: any) => Number.isInteger(x.inferred_position))).toBe(true);
-    // Replay combat-log gold omits passive income: equal-headcount lanes keep gold_diff, with an explicit gap.
-    expect(d.gaps).toEqual([{ topic: 'lane_gold_at_10_00', reason: 'replay_gold_log_omits_passive_income' }]);
+    // Replay combat-log gold omits passive income & replay creep_kills last hits are lower bounds: both gaps stated.
+    expect(d.gaps).toEqual([
+      { topic: 'lane_gold_at_10_00', reason: 'replay_gold_log_omits_passive_income' },
+      { topic: 'lane_last_hits_at_10_00', reason: 'replay_last_hits_are_lower_bounds_summon_kills_appear_on_next_hero_kill' },
+    ]);
 
     // Unequal-headcount lane (1v2) under replay gold: passive income does NOT cancel, so gold_diff MUST be null + gap.
     const undyIdx = replayTrace.heroes.findIndex((h: any) => h.key === 'undying');
@@ -273,14 +277,17 @@ describe('draft_report', () => {
     expect(uBot.enemy).toEqual(['phantom_assassin', 'venomancer']);
     expect(uBot.at_10_00).toMatchObject({
       my_team_gold: 1500, enemy_gold: 3000, gold_diff: null,
-      my_team_last_hits: 35, enemy_last_hits: 58, source: 'replay', passive_income_omitted: true,
+      my_team_last_hits: 35, enemy_last_hits: 58, source: 'replay',
+      passive_income_omitted: true, last_hits_are_lower_bounds: true,
     });
     // Mid stays 1v1 (equal headcount), so its gold_diff remains comparable.
     expect(uMid.at_10_00).toMatchObject({
-      my_team_gold: 1900, enemy_gold: 2200, gold_diff: -300, source: 'replay', passive_income_omitted: true,
+      my_team_gold: 1900, enemy_gold: 2200, gold_diff: -300, source: 'replay',
+      passive_income_omitted: true, last_hits_are_lower_bounds: true,
     });
     expect(uRes.gaps).toContainEqual({ topic: 'lane_gold_at_10_00', reason: 'replay_gold_log_omits_passive_income' });
     expect(uRes.gaps).toContainEqual({ topic: 'lane_gold_diff_at_10_00', reason: 'unequal_lane_headcount_with_replay_gold_log' });
+    expect(uRes.gaps).toContainEqual({ topic: 'lane_last_hits_at_10_00', reason: 'replay_last_hits_are_lower_bounds_summon_kills_appear_on_next_hero_kill' });
 
     // Partial match_record (one hero missing gold_t) without replay fallback -> never treats missing hero as 0 -> null + gap.
     const partialMatch = {

@@ -341,6 +341,7 @@ const T = {
     replay: { en: 'replay log', zh: '录像日志', ru: 'лог реплея' },
   } as Record<string, Tri>,
   draftNoPassive: { en: 'passive gold omitted', zh: '不含被动经济', ru: 'без пассивного золота' },
+  draftLhLowerBound: { en: 'LH lower bound', zh: '正补为下界', ru: 'добивания ≥' },
   building: {
     tower: { en: 'tier-{n} tower', zh: '{n} 塔', ru: 'башня T{n}' },
     melee_rax: { en: 'melee barracks', zh: '近战兵营', ru: 'казарма ближнего боя' },
@@ -765,7 +766,9 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
                   </span>
                 )}
                 {l.at_10_00.my_team_last_hits != null && l.at_10_00.enemy_last_hits != null && (
-                  <span className="ag-chip">{t(T.draftCs)} <em>{l.at_10_00.my_team_last_hits} : {l.at_10_00.enemy_last_hits}</em></span>
+                  <span className="ag-chip">
+                    {t(T.draftCs)} <em>{l.at_10_00.last_hits_are_lower_bounds ? `≥${l.at_10_00.my_team_last_hits} : ≥${l.at_10_00.enemy_last_hits}` : `${l.at_10_00.my_team_last_hits} : ${l.at_10_00.enemy_last_hits}`}</em>
+                  </span>
                 )}
                 {l.at_10_00.my_team_deaths_before_10_00 != null && l.at_10_00.enemy_deaths_before_10_00 != null && (
                   <span className="ag-chip">{t(T.draftDeaths10)} <em>{l.at_10_00.my_team_deaths_before_10_00} : {l.at_10_00.enemy_deaths_before_10_00}</em></span>
@@ -775,6 +778,9 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
                 )}
                 {l.at_10_00.passive_income_omitted === true && (
                   <span className="ag-chip">{t(T.draftNoPassive)}</span>
+                )}
+                {l.at_10_00.last_hits_are_lower_bounds === true && (
+                  <span className="ag-chip">{t(T.draftLhLowerBound)}</span>
                 )}
               </p>
             )}

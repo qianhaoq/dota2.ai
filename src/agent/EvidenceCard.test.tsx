@@ -267,6 +267,7 @@ describe('EvidenceCard auto-triggered cast & unknown proximity rendering', () =>
               enemy_last_hits: 55,
               source: 'replay',
               passive_income_omitted: true,
+              last_hits_are_lower_bounds: true,
             },
             pairings: [],
           },
@@ -292,7 +293,9 @@ describe('EvidenceCard auto-triggered cast & unknown proximity rendering', () =>
     expect(screen.getByText(/4 : 2/)).toBeTruthy();
     expect(screen.getByText('match record')).toBeTruthy();
     expect(screen.getByText(/1900 : 3100/)).toBeTruthy();
+    expect(screen.getByText(/≥40 : ≥55/)).toBeTruthy();
     expect(screen.getByText('replay log')).toBeTruthy();
     expect(screen.getByText('passive gold omitted')).toBeTruthy();
+    expect(screen.getByText('LH lower bound')).toBeTruthy();
   });
 });
