@@ -12,6 +12,12 @@ export default defineConfig({
       // Resolve workspace packages from this checkout instead.
       '@dota2ai/review-engine': path.resolve(rootDir, 'packages/review-engine/src/index.js'),
       '@dota2ai/mcp': path.resolve(rootDir, 'packages/mcp/src/index.js'),
+      'dota2ai/client': path.resolve(rootDir, 'packages/cli/src/client.js'),
+      'dota2ai/coach': path.resolve(rootDir, 'packages/cli/src/coachApi.js'),
+      'dota2ai/agent': path.resolve(rootDir, 'packages/cli/src/agent.js'),
+      'dota2ai/render': path.resolve(rootDir, 'packages/cli/src/coach.js'),
+      'dota2ai/handlers': path.resolve(rootDir, 'packages/cli/src/handlers.js'),
+      'dota2ai/tools': path.resolve(rootDir, 'packages/cli/src/toolDocs.js'),
     },
   },
   test: {

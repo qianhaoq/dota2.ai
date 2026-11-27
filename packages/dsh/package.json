@@ -1,8 +1,8 @@
 {
   "name": "@qianhaoq/dsh-dota2ai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "dota2.ai for DSH: the evidence-first Dota 2 replay coach as agent tools and a skill",
+  "description": "dota2.ai for DSH: standalone replay review page, DSH host-model agent, coach tools and skill",
   "license": "PolyForm-Noncommercial-1.0.0",
   "author": "Hao Qian",
   "repository": {
@@ -14,11 +14,15 @@
   "main": "./lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./typert": "./lib/typert.host.js",
+    "./remote": "./lib/typert.remote-client.js",
     "./package.json": "./package.json",
     "./icon": "./icon.svg"
   },
   "files": [
     "lib",
+    "data",
     "skills",
     "icon.svg",
     "cordis.patch.yml",
@@ -36,7 +40,9 @@
   "dota2ai:release": {
     "comment": "pack.mjs writes these into the released package.json. The DSH installation supplies @deepseek-ai/* to its plugins at runtime (profiles set autoInstallPeers: false), so they are peers, pinned to the DSH release this plugin is verified on; the site's npm ci never installs DSH.",
     "peerDependencies": {
+      "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
       "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
+      "@deepseek-ai/dsh-typert-protocol": "0.2.1-rc.3",
       "@deepseek-ai/schemastery": "^3.18.5"
     }
   },
@@ -44,11 +50,27 @@
     "@dota2ai/mcp": "*",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "dota2ai": "*",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "zod": "^4.6.7"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-tool",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-api-session-controller"
+      ]
     }
   }
 }

@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { shareOrigin, useDota2AiRuntime } from '../runtime/dota2aiRuntime';
 import { trackEvent } from '../services/analytics';
 
 /**
@@ -22,6 +23,12 @@ const T = {
   teamCopied: { en: 'Link copied — paste it to your team', zh: '链接已复制，发到队伍群里吧', ru: 'Ссылка скопирована — отправьте её команде' },
   copied: { en: 'Copied', zh: '已复制', ru: 'Скопировано' },
   manual: { en: 'Copy this link:', zh: '复制这个链接：', ru: 'Скопируйте эту ссылку:' },
+  discuss: { en: 'Discuss in DSH chat', zh: '发送到 DSH 会话', ru: 'Обсудить в чате DSH' },
+  discussPrompt: {
+    en: 'Let us discuss my Dota 2 match #{id} ({hero}) review.',
+    zh: '围绕我这局 Dota 2 比赛 #{id}（{hero}）的复盘继续聊聊。',
+    ru: 'Давай обсудим разбор моего матча Dota 2 #{id} ({hero}).',
+  },
 } as const;
 
 /**
@@ -36,7 +43,8 @@ export function shareLinks(origin: string, matchId: string, hero: string, lang: 
   const team = new URLSearchParams({ ref: 'team' });
   const self = new URLSearchParams({ hero });
   if (plan) self.set('plan', plan);
-  if (model) self.set('model', model);
+  // Host-local DSH model ids (`dsh.*`) are not offered on the public website: strip them from external share links.
+  if (model && !model.startsWith('dsh.')) self.set('model', model);
   self.set('ref', 'share');
   self.set('lang', lang);
   if (lang === 'zh' || lang === 'ru') team.set('lang', lang);
@@ -50,10 +58,13 @@ async function copyText(text: string): Promise<boolean> {
 const touch = () => typeof navigator.share === 'function' && Boolean(window.matchMedia?.('(pointer: coarse)').matches);
 
 export const ShareBar: React.FC<{ matchId: string; hero: string; lang: Lang; plan?: string | null; model?: string | null }> = ({ matchId, hero, lang, plan = null, model = null }) => {
+  const runtime = useDota2AiRuntime();
   const [copied, setCopied] = useState<Target | null>(null);
   const [manual, setManual] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const links = shareLinks(window.location.origin, matchId, hero, lang, plan, model);
+  // Host-local DSH model ids (`dsh.*`) are not offered on the public website: strip them from external share links.
+  const externalModel = model && model.startsWith('dsh.') ? null : model;
+  const links = shareLinks(shareOrigin(), matchId, hero, lang, plan, externalModel);
   const text = (target: Target) => (target === 'team' ? T.teamText : T.selfText)[lang].replace('{id}', matchId);
 
   const share = async (target: Target) => {
@@ -85,6 +96,22 @@ export const ShareBar: React.FC<{ matchId: string; hero: string; lang: Lang; pla
       <div className="ag-share-row">
         <button type="button" className="ag-btn is-primary" onClick={() => { void share('team'); }}>{copied === 'team' ? T.teamCopied[lang] : T.team[lang]}</button>
         <button type="button" className="ag-btn" onClick={() => { void share('self'); }}>{copied === 'self' ? T.copied[lang] : T.self[lang]}</button>
+        {runtime.onDiscussInHost && (
+          <button
+            type="button"
+            className="ag-btn"
+            onClick={() => {
+              void runtime.onDiscussInHost?.({
+                matchId,
+                hero,
+                lang,
+                text: T.discussPrompt[lang].replace('{id}', matchId).replace('{hero}', hero),
+              });
+            }}
+          >
+            {T.discuss[lang]}
+          </button>
+        )}
       </div>
       <p className="ag-share-hint">{T.teamHint[lang]}</p>
       {manual && (

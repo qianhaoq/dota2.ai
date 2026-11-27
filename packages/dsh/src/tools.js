@@ -1,17 +1,9 @@
 import { TOOL_DOCS, COACH_TOOLS } from 'dota2ai/tools';
 import { SECTIONS } from 'dota2ai/render';
 import { coachErrorText } from 'dota2ai/handlers';
+import { PREFIX, TOOL_NAMES } from './toolNames.js';
 
-/**
- * The dota2.ai tools as DSH `defineTool` options — pure data plus `execute`, so
- * they are testable without a DSH host. Names carry a `dota2ai_` prefix: the
- * DSH Dota coach plugin (`dota_*`) can be installed next to this one.
- *
- * Words come from dota2ai/tools (the same text the MCP server gives), schemas
- * are the dsh-tools parameter DSL.
- */
-export const PREFIX = 'dota2ai_';
-export const TOOL_NAMES = ['replay_review', ...COACH_TOOLS].map((n) => PREFIX + n);
+export { PREFIX, TOOL_NAMES };
 
 const idOrName = (description) => ({ oneOf: [{ type: 'string' }, { type: 'integer' }], ...(description ? { description } : {}) });
 const LANG = { type: 'string', enum: ['en', 'zh'], description: 'Answer language; follow the user (en | zh)' };
@@ -76,9 +68,9 @@ export function toolOptions({ coach, replay, lang = 'en' }) {
     parameters: PARAMETERS[name],
     output: OUTPUT,
     timeoutMs: name === 'coach_ask' ? 200_000 : 60_000,
-    async execute(args) {
+    async execute(args, exec) {
       try {
-        return await coach[name](withLang(args));
+        return await coach[name](withLang(args), exec?.signal);
       } catch (error) {
         throw new ToolFailure(coachErrorText(error));
       }

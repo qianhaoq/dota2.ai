@@ -227,9 +227,28 @@ export const AgentMatchPage: React.FC = () => {
   // The model the reader chose (?model=), when this server offers it and it is not the default: a review written
   // by it is its own review. Anything else (none named, the default by name, one not offered here) is the default.
   const offered = avail?.models ?? [];
+  const modelMeta = avail?.model_meta;
   const defaultModel = avail?.default_model ?? offered[0] ?? null;
-  const named = modelId(search.get('model'));
+  const rawModel = search.get('model');
+  const named = rawModel && offered.includes(rawModel) ? rawModel : modelId(rawModel);
   const model = named && named !== defaultModel && offered.includes(named) ? named : null;
+  const labelForModel = (id: string) => modelMeta?.[id]?.label ?? modelLabel(id);
+  const waitForModel = (id: string) => {
+    if (modelMeta && Object.prototype.hasOwnProperty.call(modelMeta, id)) {
+      const m = modelMeta[id]?.minutes;
+      if (!m) return null;
+      const n = m[0] === m[1] ? String(m[0]) : `${m[0]}–${m[1]}`;
+      return lang === 'zh' ? `约 ${n} 分钟` : lang === 'ru' ? `около ${n} мин.` : `about ${n} minutes`;
+    }
+    return modelWait(id, lang);
+  };
+  const slowForModel = (id: string) => {
+    if (modelMeta && Object.prototype.hasOwnProperty.call(modelMeta, id)) {
+      const m = modelMeta[id]?.minutes;
+      return m == null || m[1] > 5;
+    }
+    return writesSlowly(id);
+  };
   const pickModel = (id: string) => {
     const next = new URLSearchParams(search);
     if (id !== defaultModel) next.set('model', id); else next.delete('model');
@@ -239,9 +258,9 @@ export const AgentMatchPage: React.FC = () => {
     <div className="ag-planpick-row" role="radiogroup" aria-label={label}>
       {offered.map((id) => (
         <button key={id} type="button" role="radio" aria-checked={(model ?? defaultModel) === id} className={`ag-chip-btn ${(model ?? defaultModel) === id ? 'is-on' : ''}`} onClick={() => pickModel(id)}>
-          {modelLabel(id)}
+          {labelForModel(id)}
           {/* The wait is part of the choice: said on the button, before the reader picks. Nothing for a model that was not timed. */}
-          {modelWait(id, lang) && <span className="ag-chip-time"> · {modelWait(id, lang)}</span>}
+          {waitForModel(id) && <span className="ag-chip-time"> · {waitForModel(id)}</span>}
         </button>
       ))}
     </div>
@@ -255,15 +274,15 @@ export const AgentMatchPage: React.FC = () => {
   // Kimi's review once the default is another model, and DeepSeek's must still open DeepSeek's. (Null only
   // where the server lists no models: then there is one writer and nothing to tell apart.)
   const writtenBy = writer;
-  const slow = writer != null && writesSlowly(writer);
-  const timed = writer != null ? modelWait(writer, lang) : null;
-  const quickWait = modelWait(DEFAULT_AGENT_MODEL, lang);
+  const slow = writer != null && slowForModel(writer);
+  const timed = writer != null ? waitForModel(writer) : null;
+  const quickWait = waitForModel(DEFAULT_AGENT_MODEL);
   const goTime = !slow ? t(T.goTime)
-    : timed != null ? t(T.goTimeSlow).replace('{m}', modelLabel(writer)).replace('{t}', timed) + (offered.includes(DEFAULT_AGENT_MODEL) && quickWait ? t(T.goTimeQuick).replace('{d}', modelLabel(DEFAULT_AGENT_MODEL)).replace('{t}', quickWait) : lang === 'zh' ? '。' : '.')
+    : timed != null ? t(T.goTimeSlow).replace('{m}', labelForModel(writer)).replace('{t}', timed) + (offered.includes(DEFAULT_AGENT_MODEL) && quickWait ? t(T.goTimeQuick).replace('{d}', labelForModel(DEFAULT_AGENT_MODEL)).replace('{t}', quickWait) : lang === 'zh' ? '。' : '.')
       : null;
   // Said again while the review is being written, where the server names its models (else there is one writer,
   // whose two to three minutes the reader was told before the click).
-  const workTime = writer != null && timed != null ? t(T.workTime).replace('{m}', modelLabel(writer)).replace('{t}', timed) : null;
+  const workTime = writer != null && timed != null ? t(T.workTime).replace('{m}', labelForModel(writer)).replace('{t}', timed) : null;
   const hasTrace = avail?.trace === true;
   const parse = avail && !avail.trace ? avail.parse ?? { status: 'none' as const } : null;
 
