@@ -96,14 +96,33 @@ describe('trace pipeline', () => {
     // The first did not answer at all.
     calls.length = 0;
     expect(await make({ 'tw.example': () => { throw new Error('down'); }, 'hk.example': () => answer({ ok: true, bytes: 9 }) }).run(ID)).toEqual({ ok: true, bytes: 9 });
-    // Gone, too large, another match's, or the first worker's whole time used: not asked again.
-    for (const reason of ['replay_gone', 'too_large', 'wrong_match', 'extract_failed', 'timeout']) {
+    // Gone, too large, another match's, or a replay that could not be read: not asked again.
+    for (const reason of ['replay_gone', 'too_large', 'wrong_match', 'extract_failed']) {
       calls.length = 0;
       expect(await make({ 'tw.example': () => answer({ ok: false, reason }), 'hk.example': () => answer({ ok: true }) }).run(ID)).toEqual({ ok: false, reason });
       expect(calls).toEqual(['tw.example Bearer tw']);
     }
+    // The first worker's download stage ran out (timeout): the second is asked (Codex on #426).
+    calls.length = 0;
+    expect(await make({ 'tw.example': () => answer({ ok: false, reason: 'timeout' }), 'hk.example': () => answer({ ok: true, bytes: 9 }) }).run(ID)).toEqual({ ok: true, bytes: 9 });
+    expect(calls).toHaveLength(2);
     // Both fail: the second's answer is the one given.
     expect(await make({ 'tw.example': () => answer({ ok: false, reason: 'download_failed' }), 'hk.example': () => answer({ ok: false, reason: 'download_failed' }) }).run(ID)).toEqual({ ok: false, reason: 'download_failed' });
+    // One deadline for both: a first worker that used most of it leaves too little, and the second is not asked;
+    // otherwise the second is given only what is left (Codex on #426).
+    {
+      let t = 0; const seen: number[] = [];
+      const timed = (spend: number) => createRemotePipeline({ url: 'https://tw.example', getMatchDetail, fallback: { url: 'https://hk.example' }, timeoutMs: 840_000, now: () => t,
+        fetchImpl: (async (url: string, init: any) => { seen.push(new URL(url).host === 'tw.example' ? 0 : 1); if (new URL(url).host === 'tw.example') { t += spend; return answer({ ok: false, reason: 'timeout' }); } return answer({ ok: true }); }) as any,
+        log: (l: string) => lines.push(l) });
+      lines.length = 0; seen.length = 0; t = 0;
+      expect(await timed(700_000).run(ID)).toEqual({ ok: false, reason: 'timeout' });
+      expect(seen).toEqual([0]);
+      expect(lines).toEqual([`trace fallback match=${ID} skipped: 140 s left`]);
+      seen.length = 0; t = 0;
+      expect(await timed(180_000).run(ID)).toEqual({ ok: true, bytes: null });
+      expect(seen).toEqual([0, 1]);
+    }
     // No fallback configured: one worker, as before.
     calls.length = 0;
     expect(await createRemotePipeline({ url: 'https://tw.example', getMatchDetail, fetchImpl: worker({ 'tw.example': () => answer({ ok: false, reason: 'download_failed' }) }) }).run(ID)).toEqual({ ok: false, reason: 'download_failed' });
