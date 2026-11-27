@@ -1,6 +1,6 @@
-// Release archive: stage the bundled plugin with a release package.json (DSH
-// packages as peers the host supplies, no workspace dependencies), `npm pack` it into dist/ and
-// write SHA256SUMS. One archive serves every platform: there is no native code.
+// Release archive: stage the bundled host + client plugin, release-specific patch snapshots
+// (`data/constants/patches/`), skill and manifest (`@deepseek-ai/*` as peers the DSH host supplies),
+// `npm pack` it into dist/ and write SHA256SUMS. One archive serves Linux, macOS and Windows: no native code.
 //   node packages/dsh/scripts/pack.mjs [--out <dir>]
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -23,8 +23,12 @@ export function releaseManifest(source) {
 const stage = mkdtempSync(join(tmpdir(), 'dsh-dota2ai-'));
 try {
   const source = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
-  await buildPlugin({ outfile: join(stage, 'lib/index.js') });
-  for (const entry of ['skills', 'icon.svg', 'cordis.patch.yml', 'README.md']) cpSync(join(pkgDir, entry), join(stage, entry), { recursive: true });
+  await buildPlugin({ outdir: join(stage, 'lib') });
+  // Per-release & hotfix Valve snapshots read lazily by `patchData.js` via `new URL('../data/constants/patches/…', import.meta.url)`.
+  cpSync(join(repo, 'lib/data/constants/patches'), join(stage, 'data/constants/patches'), { recursive: true });
+  for (const entry of ['skills', 'icon.svg', 'cordis.patch.yml', 'README.md']) {
+    cpSync(join(pkgDir, entry), join(stage, entry), { recursive: true });
+  }
   cpSync(join(repo, 'LICENSE'), join(stage, 'LICENSE'));
   writeFileSync(join(stage, 'package.json'), `${JSON.stringify(releaseManifest(source), null, 2)}\n`);
   mkdirSync(out, { recursive: true });

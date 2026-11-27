@@ -48,6 +48,13 @@ export function parseAccountInput(input: unknown): AccountParse {
 
 /** The player's own friend code, remembered in this browser only. */
 export const ACCOUNT_STORAGE_KEY = 'dota2ai.coach.account';
+export const PROFILE_CHANGED_EVENT = 'dota2ai:profile';
+
+function notifyProfileChanged(): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new Event(PROFILE_CHANGED_EVENT));
+  }
+}
 
 export function rememberedAccount(): string | null {
   try {
@@ -65,6 +72,7 @@ export function rememberAccount(id: string | null): void {
     if (prev !== id) window.localStorage.removeItem(SEEN_STORAGE_KEY);
     if (id) window.localStorage.setItem(ACCOUNT_STORAGE_KEY, id);
     else window.localStorage.removeItem(ACCOUNT_STORAGE_KEY);
+    notifyProfileChanged();
   } catch {
     // Private mode / blocked storage: the page still works without it.
   }
@@ -91,6 +99,7 @@ export function markReviewed(matchId: string | number): void {
     const list = [...reviewedMatches()].filter((x) => x !== id);
     list.push(id);
     window.localStorage.setItem(REVIEWED_STORAGE_KEY, JSON.stringify(list.slice(-MAX_REVIEWED)));
+    notifyProfileChanged();
   } catch {
     // Storage blocked: nothing to remember.
   }
@@ -109,7 +118,10 @@ export function seenUntil(): number | null {
 export function markSeen(startTime: number | null | undefined): void {
   if (!startTime) return;
   try {
-    if (startTime > (seenUntil() ?? 0)) window.localStorage.setItem(SEEN_STORAGE_KEY, String(startTime));
+    if (startTime > (seenUntil() ?? 0)) {
+      window.localStorage.setItem(SEEN_STORAGE_KEY, String(startTime));
+      notifyProfileChanged();
+    }
   } catch {
     // ignore
   }

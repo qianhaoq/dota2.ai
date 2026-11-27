@@ -22,6 +22,7 @@ import {
   INTERNAL_HEADER,
 } from '../utils/analyticsClient';
 import { TRAFFIC_SOURCES } from '../../lib/analyticsEvents.js';
+import { getDota2AiRuntime } from '../runtime/dota2aiRuntime';
 
 const EVENTS_URL = '/api/events';
 
@@ -70,6 +71,7 @@ function captureSource(): void {
 
 /** 应用启动时调用一次：初始化 anonId，并按需发 return_visit。 */
 export function initAnalytics(): void {
+  if (getDota2AiRuntime().surface === 'dsh') return;
   if (initialized || typeof window === 'undefined') return;
   initialized = true;
   // First, and whether or not any event follows: `?internal=1` is on the URL the browser was opened with, and the
@@ -110,6 +112,7 @@ export function internalHeaders(): Record<string, string> {
 
 /** 上报一条白名单事件；所有异常都被吞掉。 */
 export function trackEvent(event: AnalyticsEventName, props?: AnalyticsProps): void {
+  if (getDota2AiRuntime().surface === 'dsh') return;
   try {
     const body = JSON.stringify(buildEventPayload(event, props, resolveIdentity(), isInternalBrowser()));
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
