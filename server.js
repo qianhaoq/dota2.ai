@@ -76,6 +76,7 @@ import { heroInfo } from './lib/coach/analyze.js';
 import { createCoachRouter } from './lib/coach/router.js';
 import { replayReview } from './lib/agent/replayTool.js';
 import { createAgentRouter } from './lib/agent/router.js';
+import { createSlots } from './lib/agent/slots.js';
 import { createAgentService, SLOW_REVIEW_MAX_MS } from './lib/agent/service.js';
 import { createBalanceMonitor } from './lib/agent/modelBalance.js';
 import { warmShowcase } from './lib/agent/showcase.js';
@@ -94,7 +95,7 @@ import { openAiCompatible } from './lib/agent/loop.js';
 import { createCoachService } from './lib/coach/service.js';
 import { createCaseService } from './lib/coach/caseSource.js';
 import { createRecentService } from './lib/coach/recent.js';
-import { createLlmRateLimit } from './lib/llmRateLimit.js';
+import { createLlmRateLimit, withDailyCap } from './lib/llmRateLimit.js';
 import { rateLimitKey } from './lib/rateLimitKey.js';
 import { createOpenDotaClient, OPENDOTA_BASE } from './lib/upstream/opendota.js';
 import { createSharedCooldown } from './lib/upstream/sharedCooldown.js';
@@ -843,9 +844,13 @@ const coachRecent = createRecentService({
     return { rows: value, source };
   },
 });
+// A day's short answers on this site's model (the coach's follow-ups, the review chat, the patch advisor), one
+// count for all three. Like every limit here, per instance.
+const answersDaily = createSlots({ limit: envPositiveInt('AGENT_CHAT_DAILY_MAX', 2000, 100000), windowMs: 86_400_000 });
+const answersLlmLimit = withDailyCap(reviewLlmLimit, answersDaily);
 // Follow-ups share the review LLM budget and use DeepSeek.
 const coachAskDeps = {
-  llm: reviewLlmLimit,
+  llm: answersLlmLimit,
   providers: (messages) => [
     ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ model: DEEPSEEK_MODEL, messages, stream: true, ...deepseekExtraBody }, { signal }) }] : []),
   ],
@@ -987,6 +992,11 @@ const agentRouter = createAgentRouter({
   resolveClientIp,
   llm: reviewLlmLimit,
   parseDailyMax: Number(process.env.AGENT_PARSE_DAILY_MAX) > 0 ? Number(process.env.AGENT_PARSE_DAILY_MAX) : undefined,
+  // What this site pays its model for in a day and an hour (web and MCP replay_review alike); past it the
+  // refusal points at the DSH plugin and agents, which run on the reader's own model.
+  reviewDailyMax: envPositiveInt('AGENT_REVIEW_DAILY_MAX', 250, 100000),
+  reviewHourlyMax: envPositiveInt('AGENT_REVIEW_HOURLY_MAX', 60, 10000),
+  chatDaily: answersDaily,
   modelHourlyMax: Number(process.env.AGENT_MODEL_HOURLY_MAX) > 0 ? Number(process.env.AGENT_MODEL_HOURLY_MAX) : undefined,
   guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
   log: (msg) => console.warn(`[agent] ${msg}`),
@@ -1011,7 +1021,7 @@ app.use(createPatchRouter({
     log: (msg) => console.warn(`[patch] ${msg}`),
   }),
   resolveClientIp,
-  llm: reviewLlmLimit,
+  llm: answersLlmLimit,
   guard: (req) => { const g = validateReviewPostRequest(req); return g.ok ? g : { ok: false, status: g.status, error: g.errorEn }; },
   log: (msg) => console.warn(`[patch] ${msg}`),
 }));
