@@ -224,4 +224,75 @@ describe('EvidenceCard auto-triggered cast & unknown proximity rendering', () =>
     expect(screen.getByText(/ultimate cast · yes/)).toBeTruthy();
     expect(screen.getByText(/items used · Pipe of Insight/)).toBeTruthy();
   });
+
+  it('renders lane 10:00 outcomes (gold, gold diff, LH, deaths, source, passive-income note) on draft evidence cards', async () => {
+    const spy = vi.spyOn(api, 'fetchEvidence');
+    spy.mockResolvedValueOnce({
+      status: 'ok',
+      ref: 'draft:beastmaster',
+      kind: 'draft',
+      names: { beastmaster: 'Beastmaster', undying: 'Undying', phantom_assassin: 'Phantom Assassin', venomancer: 'Venomancer', skywrath_mage: 'Skywrath Mage', necrolyte: 'Necrophos' },
+      record: {
+        ref: 'draft:beastmaster',
+        lanes: [
+          {
+            lane: 'bot',
+            my_team: ['beastmaster', 'undying'],
+            enemy: ['phantom_assassin', 'venomancer'],
+            solo: { my_team: false, enemy: false },
+            at_10_00: {
+              my_team_deaths_before_10_00: 4,
+              enemy_deaths_before_10_00: 2,
+              my_team_gold: 5600,
+              enemy_gold: 6300,
+              gold_diff: -700,
+              my_team_last_hits: 59,
+              enemy_last_hits: 72,
+              source: 'match_record',
+            },
+            pairings: [],
+          },
+          {
+            lane: 'mid',
+            my_team: ['skywrath_mage'],
+            enemy: ['necrolyte', 'venomancer'],
+            solo: { my_team: true, enemy: false },
+            at_10_00: {
+              my_team_deaths_before_10_00: 1,
+              enemy_deaths_before_10_00: 0,
+              my_team_gold: 1900,
+              enemy_gold: 3100,
+              gold_diff: null,
+              my_team_last_hits: 40,
+              enemy_last_hits: 55,
+              source: 'replay',
+              passive_income_omitted: true,
+            },
+            pairings: [],
+          },
+        ],
+      },
+    });
+
+    render(
+      <ul>
+        <EvidenceCard
+          matchId="9100904020"
+          hero="beastmaster"
+          lang="en"
+          item={{ clock: '10:00', fact: 'Bot lane trailed by 700 gold at 10:00', refs: ['draft:beastmaster'] }}
+          onAsk={() => {}}
+        />
+      </ul>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Show the record' }));
+    await waitFor(() => expect(screen.getByText(/5600 : 6300/)).toBeTruthy());
+    expect(screen.getByText(/−700/)).toBeTruthy();
+    expect(screen.getByText(/59 : 72/)).toBeTruthy();
+    expect(screen.getByText(/4 : 2/)).toBeTruthy();
+    expect(screen.getByText('match record')).toBeTruthy();
+    expect(screen.getByText(/1900 : 3100/)).toBeTruthy();
+    expect(screen.getByText('replay log')).toBeTruthy();
+    expect(screen.getByText('passive gold omitted')).toBeTruthy();
+  });
 });

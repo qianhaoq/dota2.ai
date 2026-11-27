@@ -333,6 +333,14 @@ const T = {
   sbTimeline: { en: 'Upgrade timeline', zh: '加点时间线', ru: 'Хронология прокачки' },
   sbInitial: { en: 'initial', zh: '初始', ru: 'начальная' },
   sbNoData: { en: 'No ability level data in this replay.', zh: '该录像缺少技能等级数据。', ru: 'В этом реплее нет данных об уровнях способностей.' },
+  draftGold: { en: 'Gold', zh: '经济', ru: 'Золото' },
+  draftCs: { en: 'LH', zh: '正补', ru: 'Добивания' },
+  draftDeaths10: { en: 'Deaths <10:00', zh: '10分钟前阵亡', ru: 'Смерти <10:00' },
+  draftSrc: {
+    match_record: { en: 'match record', zh: '比赛记录', ru: 'запись матча' },
+    replay: { en: 'replay log', zh: '录像日志', ru: 'лог реплея' },
+  } as Record<string, Tri>,
+  draftNoPassive: { en: 'passive gold omitted', zh: '不含被动经济', ru: 'без пассивного золота' },
   building: {
     tower: { en: 'tier-{n} tower', zh: '{n} 塔', ru: 'башня T{n}' },
     melee_rax: { en: 'melee barracks', zh: '近战兵营', ru: 'казарма ближнего боя' },
@@ -729,6 +737,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   }
   if (data.kind === 'draft') {
     const pc = (v: number | null | undefined) => (v == null ? '–' : `${v}%`);
+    const signed = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}`;
     const reading = (x: any) => (x?.reading && T.spikeMatchup[x.reading] ? t(T.spikeMatchup[x.reading]) : null);
     // One bracket's numbers for a pairing: the player's bracket, or (not known) each bracket on its own line.
     const row = (b: any) => (
@@ -746,6 +755,29 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
               <b>{T.lane[l.lane] ? t(T.lane[l.lane]) : l.lane}</b> · {(l.my_team ?? []).map((h: string) => N(h)).join(' / ') || '—'}{l.solo?.my_team === true ? ` (${t(T.draftSolo)})` : ''} : {(l.enemy ?? []).map((h: string) => N(h)).join(' / ') || '—'}{l.solo?.enemy === true ? ` (${t(T.draftSolo)})` : ''}
               {(l.shared_part_time_by ?? []).map((x: any) => <span key={x.hero} className="ag-chip">{N(x.hero)} · {t(T.draftPartTime)} {Math.round(x.share_of_lane_stage_here * 100)}%</span>)}
             </p>
+            {l.at_10_00 && (l.at_10_00.my_team_gold != null || l.at_10_00.my_team_last_hits != null || l.at_10_00.my_team_deaths_before_10_00 != null) && (
+              <p className="ag-rec-line">
+                <span>10:00</span>
+                {l.at_10_00.my_team_gold != null && l.at_10_00.enemy_gold != null && (
+                  <span className="ag-chip">
+                    {t(T.draftGold)} <em>{l.at_10_00.my_team_gold} : {l.at_10_00.enemy_gold}</em>
+                    {l.at_10_00.gold_diff != null && ` (${signed(l.at_10_00.gold_diff)})`}
+                  </span>
+                )}
+                {l.at_10_00.my_team_last_hits != null && l.at_10_00.enemy_last_hits != null && (
+                  <span className="ag-chip">{t(T.draftCs)} <em>{l.at_10_00.my_team_last_hits} : {l.at_10_00.enemy_last_hits}</em></span>
+                )}
+                {l.at_10_00.my_team_deaths_before_10_00 != null && l.at_10_00.enemy_deaths_before_10_00 != null && (
+                  <span className="ag-chip">{t(T.draftDeaths10)} <em>{l.at_10_00.my_team_deaths_before_10_00} : {l.at_10_00.enemy_deaths_before_10_00}</em></span>
+                )}
+                {l.at_10_00.source && T.draftSrc[l.at_10_00.source] && (
+                  <span className="ag-chip">{t(T.draftSrc[l.at_10_00.source])}</span>
+                )}
+                {l.at_10_00.passive_income_omitted === true && (
+                  <span className="ag-chip">{t(T.draftNoPassive)}</span>
+                )}
+              </p>
+            )}
             {(l.pairings ?? []).map((p: any, i: number) => (
               <p key={i} className="ag-rec-line">
                 <span>{N(p.hero)} : {N(p.against)}{p.part_time ? ` · ${t(T.draftPartTime)}` : ''}</span>

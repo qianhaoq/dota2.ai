@@ -294,6 +294,28 @@ describe('fight_report me_in_fight factual player contribution', () => {
     const axeF7 = axe.fights.find((f: any) => f.fight === 'fight:7');
     expect(axeF7.me).toBe('took_part');
     expect(axeF7.me_in_fight.key_items_used).toContain('blink');
+
+    // Blanking Beastmaster's positions during fight:9 (1490–1560) makes encounter proximity unknown ->
+    // hero_damage_dealt, hero_damage_taken, and enemy_deaths_i_damaged MUST stay null (never 0).
+    const bmIdx = trace.heroes.findIndex((h: any) => h.key === 'beastmaster');
+    const blankPosTrace = {
+      ...trace,
+      states: trace.states.map((st: any, i: number) => (i === bmIdx
+        ? {
+          ...st,
+          x: st.x.map((v: any, k: number) => (k + trace.t0 >= 1490 && k + trace.t0 <= 1560 ? null : v)),
+          y: st.y.map((v: any, k: number) => (k + trace.t0 >= 1490 && k + trace.t0 <= 1560 ? null : v)),
+        }
+        : st)),
+    };
+    const bmBlankF9 = (fightReport(blankPosTrace, { hero: 'beastmaster' }) as any).fights.find((f: any) => f.fight === 'fight:9');
+    expect(bmBlankF9.me).toBe('took_part');
+    expect(bmBlankF9.me_in_fight).toMatchObject({
+      died: true,
+      hero_damage_dealt: null,
+      hero_damage_taken: null,
+      enemy_deaths_i_damaged: null,
+    });
   });
 
   it('tracks key_items_used deduplicated in order, auto-triggered ultimates, passive ultimates, and null on blank sources', () => {
@@ -331,6 +353,9 @@ describe('fight_report me_in_fight factual player contribution', () => {
     expect((fightReport(ab, { hero: 'abaddon' }) as any).fights[0].me_in_fight.ult_cast).toBe(true);
     const abBlankCd: any = { ...ab, abilities: [{ abaddon_borrowed_time: { levels: [[10, 1]] } }, {}, {}, {}] };
     expect((fightReport(abBlankCd, { hero: 'abaddon' }) as any).fights[0].me_in_fight.ult_cast).toBeNull();
+    // Deleting only `levels` while keeping a cooldown interval inside the fight MUST stay null (never false).
+    const abBlankLevels: any = { ...ab, abilities: [{ abaddon_borrowed_time: { cd: [[98, 158, 60]] } }, {}, {}, {}] };
+    expect((fightReport(abBlankLevels, { hero: 'abaddon' }) as any).fights[0].me_in_fight.ult_cast).toBeNull();
 
     // Passive / death-triggered ultimates -> ult_cast: null.
     const pa: any = synth({
