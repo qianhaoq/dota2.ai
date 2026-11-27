@@ -153,7 +153,7 @@ Around the findings, every review includes the 10-player scoreboard and gold lea
 flowchart LR
     R["Valve Replay"] --> T["Compact Trace<br/>~250 KB"]
     T --> A["AI Coach Agent"]
-    A <--> L["31 lookup tools"]
+    A <--> L["32 lookup tools"]
     A --> V{"Code Verifier"}
     V -- "unsupported: 1 repair round" --> A
     V -- "verified" --> D["Review"]
@@ -164,7 +164,7 @@ flowchart LR
 3. **Code Verifies Every Claim.** Every timestamp, number, and cited record must match a tool output from that run. Unsupported claims get one repair round and are dropped if still unbacked. Vision claims ("they had no vision" / "didn't see") are rejected automatically — replays contain no fog of war.
 
 <details>
-<summary><b>Browse all 31 lookup tools</b></summary>
+<summary><b>Browse all 32 lookup tools</b></summary>
 
 | Group | Tools |
 |---|---|
@@ -174,6 +174,7 @@ flowchart LR
 | Lane & farm | `draft_report`, `lane_report`, `farm_report`, `lineup_timing` |
 | Raw replay rows | `combat_log`, `hero_track` |
 | Patch & reference data | `hero_abilities`, `pro_item_choices`, `item_info`, `hero_info`, `hero_matchup`, `patch_changes` |
+| Web (reading only, never cited) | `web_search` |
 
 </details>
 

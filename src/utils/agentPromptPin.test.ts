@@ -4,6 +4,7 @@ import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, TRANSLATE_SYSTEM, deepReview
 import { TRUNCATION_RETRY_INSTRUCTION } from '../../lib/agent/loop.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { TRACE_TOOLS } from '../../packages/review-engine/src/trace/index.js';
+import { WEB_SEARCH_TOOL } from '../../lib/agent/webSearch.js';
 
 /**
  * What the model is told: the system prompt in all languages, the translation prompt, the review it must hand in,
@@ -14,10 +15,10 @@ import { TRACE_TOOLS } from '../../packages/review-engine/src/trace/index.js';
  * Changing any of it: raise DEEP_REVIEW_PROMPT_VERSION and put the new version and hash here. Two branches
  * that both do so meet on this one line when they merge, instead of both shipping as the same version.
  */
-const PIN = { version: 69, hash: 'c75587e01c63499859a429b31e7d9be637c2e2efb722f10935302ee8332bd0a7' };
+const PIN = { version: 71, hash: 'caf4dc030cbcd80177c0bdd731de255d08695877af165902d54794ad94adffc6' };
 
 function promptHash() {
-  const tools = [...TRACE_TOOLS, ...KNOWLEDGE_TOOLS].map(({ name, description, input_schema }) => ({ name, description, input_schema }));
+  const tools = [...TRACE_TOOLS, ...KNOWLEDGE_TOOLS, WEB_SEARCH_TOOL].map(({ name, description, input_schema }) => ({ name, description, input_schema }));
   return createHash('sha256').update(JSON.stringify({ en: deepReviewSystem('en'), zh: deepReviewSystem('zh'), ru: deepReviewSystem('ru'), translate: TRANSLATE_SYSTEM, submit: SUBMIT_REVIEW, truncationRetry: TRUNCATION_RETRY_INSTRUCTION, tools })).digest('hex');
 }
 
