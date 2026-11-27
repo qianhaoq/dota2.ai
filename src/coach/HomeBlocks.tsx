@@ -8,24 +8,24 @@ const T = {
   howTitle: { en: 'What happens next', zh: '接下来会发生什么', ru: 'Что будет дальше' },
   how: [
     {
-      t: { en: 'You pick your hero', zh: '选你玩的英雄', ru: 'Выберите своего героя' },
-      d: { en: 'The review is written for one player.', zh: '复盘是写给一个人的。', ru: 'Разбор пишется лично для одного игрока.' },
+      t: { en: 'Pick your hero', zh: '选你玩的英雄', ru: 'Выберите своего героя' },
+      d: { en: 'The review is written for that one player.', zh: '复盘只写给这一个人。', ru: 'Разбор пишется для одного игрока.' },
     },
     {
-      t: { en: 'The coach watches the replay', zh: '教练看录像', ru: 'Тренер смотрит реплей' },
-      d: { en: 'Every death, every ultimate, the fights that turned the game, your build. Two to three minutes.', zh: '每次阵亡、每个大招、转折的团战、你的出装。两到三分钟。', ru: 'Каждую смерть, каждый ульт, переломные драки и вашу сборку. Две–три минуты.' },
+      t: { en: 'The coach reads the replay', zh: '教练看录像', ru: 'Тренер смотрит реплей' },
+      d: { en: 'Deaths, ultimates, the fights that turned the game, your items. Three to four minutes.', zh: '阵亡、大招、转折的团战、你的出装。三到四分钟。', ru: 'Смерти, ульты, переломные драки, ваши предметы. Три–четыре минуты.' },
     },
     {
       t: { en: 'You get the review', zh: '拿到复盘', ru: 'Получаете разбор' },
-      d: { en: 'One verdict, at most three things that decided it — each with the replay record behind it — and what to change next game.', zh: '一句结论，最多三个决定胜负的问题，每条都能点开对应的录像记录，再加下一把该改什么。', ru: 'Один вердикт, до трёх главных причин исхода — с записями из реплея — и правило на следующую игру.' },
+      d: { en: 'One verdict, up to three things that decided the game, and what to do differently next time.', zh: '一句结论，最多三个决定胜负的问题，以及下一把该怎么做。', ru: 'Один вердикт, до трёх главных причин исхода и что сделать иначе в следующей игре.' },
     },
     {
-      t: { en: 'Ask anything', zh: '想问就问', ru: 'Задавайте вопросы' },
-      d: { en: '"How should I have played the fight at 30:26?" The coach goes back to the replay before answering.', zh: '「30:26 那波团我该怎么打？」教练会回到录像里查了再答。', ru: '«Как мне стоило сыграть драку на 30:26?» Тренер проверит реплей перед ответом.' },
+      t: { en: 'Ask about any moment', zh: '对任何时刻追问', ru: 'Спросите о любом моменте' },
+      d: { en: '"How should I have played the fight at 30:26?"', zh: '「30:26 那波团我该怎么打？」', ru: '«Как мне стоило сыграть драку на 30:26?»' },
     },
   ] as { t: Bi; d: Bi }[],
-  howNote: { en: 'Times and numbers are checked against the replay. What a replay cannot show — vision, voice chat — the coach says it cannot see.', zh: '时间点和数字都和录像核对过。录像里没有的——视野、语音——教练会直说看不到。', ru: 'Все тайминги и числа сверены с реплеем. То, чего нет в реплее (вижн, голосовой чат), тренер не выдумывает.' },
-  waysTitle: { en: 'Four ways to use it', zh: '四种用法', ru: 'Четыре способа использования' },
+  howNote: { en: 'What a replay does not hold — vision, voice chat — the coach says it cannot see.', zh: '录像里没有的（视野、语音），教练会直说看不到。', ru: 'Чего нет в реплее (вижн, голосовой чат), тренер так и скажет.' },
+  waysTitle: { en: 'Where to use it', zh: '在哪里用', ru: 'Где пользоваться' },
   copy: { en: 'Copy', zh: '复制', ru: 'Копировать' },
   copied: { en: 'Copied', zh: '已复制', ru: 'Скопировано' },
   promptTitle: { en: 'Or send this to your agent', zh: '或者，把这段话发给你的 Agent', ru: 'Или отправьте это своему ИИ-агенту' },
@@ -74,7 +74,7 @@ const CopyButton: React.FC<{ text: string; label: string }> = ({ text, label }) 
 };
 
 
-/** Web / Agent (MCP) / CLI / HTTP, each with commands that work as written, plus a prompt for any agent. */
+/** Web / DSH plugin / Agent (MCP) / CLI / HTTP, each with commands that work as written, plus a prompt for any agent. */
 export const AccessModes: React.FC<{ matchId: string; onWeb: () => void }> = ({ matchId, onWeb }) => {
   const { lang, L } = useLang();
   const modes = accessSnippets(matchId);
@@ -85,7 +85,7 @@ export const AccessModes: React.FC<{ matchId: string; onWeb: () => void }> = ({ 
   const lines = client ? [client.line] : cur.lines;
   const prompt = agentPrompt(lang);
   return (
-    <section className="hm-ways" aria-labelledby="hm-ways-title">
+    <section className="hm-ways" id="ways" aria-labelledby="hm-ways-title">
       <h2 id="hm-ways-title">{L(T.waysTitle)}</h2>
       <div className="hm-ways-tabs" role="tablist" aria-label={L(T.waysTitle)}>
         {modes.map((m) => (
