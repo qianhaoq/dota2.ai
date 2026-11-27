@@ -28,7 +28,10 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith('.trace.json.gz')).sor
     const b = Math.min(a + 10, end); const label = a >= 30 ? '30:00+' : `${a}:00–${a + 10}:00`;
     const d = goldDifference(goldBySource(t, ix(true), a === 0 ? -Infinity : a, b), goldBySource(t, ix(false), a === 0 ? -Infinity : a, b));
     const s = stretches.get(label) ?? { stretches: 0, ...Object.fromEntries(KEYS.map((k) => [k, 0])) };
-    s.stretches += 1; for (const k of KEYS) s[k] += d[k] ?? 0;
+    s.stretches += 1;
+    // What dying cost is summed only over games whose log has dying rows; a loss not known is not 0.
+    for (const k of KEYS) if (k !== 'lost_on_dying') s[k] += d[k];
+    if (d.lost_on_dying != null) { s.lost_on_dying += d.lost_on_dying; s.stretches_with_dying_known = (s.stretches_with_dying_known ?? 0) + 1; }
     stretches.set(label, s);
   }
 }
