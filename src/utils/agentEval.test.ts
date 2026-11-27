@@ -72,10 +72,13 @@ describe('review eval: logic', () => {
     expect(twice.rules[0].support).toBe(1);
   });
 
-  it('a finding with half a rule or none has no rule to rest on', () => {
+  it('half a rule is scored as thin; an intentionally omitted optional rule is not scored as thin', () => {
     const l = logicOf(review({ findings: [finding({ rule: { when: 'a' } }), finding({ rule: undefined })] }));
-    expect(l.rules).toEqual([{ has_rule: false, support: 0, thin: true, says_only_once: false }, { has_rule: false, support: 0, thin: true, says_only_once: false }]);
-    expect(l.thin_rules).toBe(2);
+    expect(l.rules).toEqual([{ has_rule: false, support: 0, thin: true, says_only_once: false }, { has_rule: false, support: 0, thin: false, says_only_once: false }]);
+    expect(l.thin_rules).toBe(1);
+    // In summarize(), intentionally omitted rules are excluded from the thin_rules denominator, while half-rules and full rules count.
+    const s = summarize([scoreReview(review({ findings: [finding(), finding({ rule: { when: 'a' } }), finding({ rule: undefined })] }))]);
+    expect(s.thin_rules).toBe(0.5);
   });
 
   it('one matchup statement alone is not "both ways"', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { openAiCompatible, runAgent, toolContent } from '../../lib/agent/loop.js';
+import { AGENT_DEFAULTS, openAiCompatible, runAgent, toolContent } from '../../lib/agent/loop.js';
 
 const tools = [{ name: 'lookup', description: 'd', input_schema: { type: 'object' } }, { name: 'submit', description: 'd', input_schema: { type: 'object' } }];
 /** A model that replays a script: one reply per call. */
@@ -68,6 +68,10 @@ describe('runAgent', () => {
     expect(toolContent({ a: 1 }, 100)).toBe('{"a":1}');
     const cut = toolContent('x'.repeat(50), 10);
     expect(cut.startsWith('xxxxxxxxxx…[truncated: 40 more characters')).toBe(true);
+  });
+
+  it('defaults allow deeper multi-tool investigations (28 steps / 60 tool calls)', () => {
+    expect(AGENT_DEFAULTS).toEqual({ maxSteps: 28, maxToolCalls: 60, maxToolChars: 40_000 });
   });
 });
 

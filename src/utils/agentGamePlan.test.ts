@@ -62,10 +62,38 @@ describe('the game plan of a review', () => {
     expect(kept.verification).not.toHaveProperty('game_plan_missing');
   });
 
-  it('the model is told it must hand in a game plan (#388: 3 of about 100 eval reviews had none, all not_submitted-shaped)', () => {
+  it('the model is told it must hand in a game plan (#388), slimmed to main_reason + why beside story', () => {
     expect(SUBMIT_REVIEW.input_schema.required).toEqual(['verdict', 'story', 'findings', 'blind_spots', 'game_plan']);
-    // Its own fields stay required as before.
-    expect((SUBMIT_REVIEW.input_schema.properties as any).game_plan.required).toEqual(['course', 'your_part', 'main_reason', 'why', 'evidence']);
+    expect((SUBMIT_REVIEW.input_schema.properties as any).game_plan.required).toEqual(['main_reason', 'why']);
+  });
+
+  it('with a verified story, a slim game_plan (main_reason + why, no duplicate course/evidence) ships cleanly while invalid evidence or bad why is still caught', async () => {
+    const story = [{ phase: '中期节奏', what_changed: '16 波团战里你们少死人的有 6 波，只有 22:57 那一波之后拆到了建筑。', because: '你们在 18:07 到 19:46 拆了 3 座外塔后未能继续扩大战果。', whose: 'my_team', evidence: [{ refs: ['tempo:beastmaster'], fact: '16 波团战里你们少死人的 6 波，之后拆到建筑的只有 22:57 这 1 波。' }] }];
+    const slim = { main_reason: 'team_play', why: '你几乎每波团都在，6 波少死人的团只换来 1 次建筑：不是你一个人的问题。' };
+    const { r } = await run([submit(review(slim, { story }))]);
+    expect(r.status).toBe('ok');
+    expect(r.verification).toMatchObject({ repaired: false, first_pass_problems: 0 });
+    expect(r.review.game_plan).toEqual({ main_reason: 'team_play', why: slim.why, evidence: [] });
+    expect(r.verification).not.toHaveProperty('game_plan_missing');
+    // Unit-level checks for planOf / planGapOf with hasStory: true.
+    const refs = new Map([['tempo:beastmaster', { at: null }]]);
+    expect(planOf(slim, [], refs, { hasStory: true })).toEqual({ main_reason: 'team_play', why: slim.why, evidence: [] });
+    expect(planGapOf(slim, [], refs, { hasStory: true })).toBeNull();
+    // If evidence IS provided with hasStory: true, every submitted item is still verified: all-bad or malformed evidence is rejected.
+    expect(planOf({ ...slim, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] }, [{ where: 'plan_evidence', index: 0 }], refs, { hasStory: true })).toBeNull();
+    expect(planGapOf({ ...slim, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] }, [{ where: 'plan_evidence', index: 0 }], refs, { hasStory: true })).toBe('no_evidence_that_holds');
+    expect(planOf({ ...slim, evidence: 'tempo:beastmaster' }, [], refs, { hasStory: true })).toBeNull();
+    expect(planGapOf({ ...slim, evidence: 'tempo:beastmaster' }, [], refs, { hasStory: true })).toBe('no_evidence_that_holds');
+    // If main_reason + why fail and no other plan text holds, planGapOf reports no_reason (PLAN_TEXTS index 3 = 'why').
+    expect(planGapOf({ main_reason: 'bad_luck', why: 'x' }, [], refs, { hasStory: true })).toBe('no_reason');
+    expect(planGapOf(slim, [{ where: 'plan', index: 3 }], refs, { hasStory: true })).toBe('no_reason');
+    // End-to-end repair round asks about no_reason when slim game_plan's why fails verification, and ships once repaired.
+    const badSlim = { main_reason: 'team_play', why: '你们赢了 99 波团战。' };
+    const repaired = await run([submit(review(badSlim, { story }), 's1'), submit(review(slim, { story }), 's2')]);
+    expect(repaired.r.verification).toMatchObject({ repaired: true, problems: [] });
+    expect(repaired.r.review.game_plan).toEqual({ main_reason: 'team_play', why: slim.why, evidence: [] });
+    const asked = JSON.parse(repaired.m.seen[2].messages.at(-1).content);
+    expect(asked.problems).toContainEqual(expect.objectContaining({ in: 'game_plan', text: 'no_reason' }));
   });
 
   it('a plan handed in that would be dropped is asked about once in the repair round, and ships when repaired (#388)', async () => {
@@ -178,14 +206,15 @@ describe('the game plan of a review', () => {
 describe('the prompts know the game plan', () => {
   it('the review prompt asks for it from the two tools, and says what it must not claim', () => {
     const s = deepReviewSystem('en');
-    expect(s).toContain('tempo_report for the player');
+    expect(s).toContain('tempo_report');
     expect(s).toContain('lineup_timing');
-    expect(s).toContain('never state what the player or the team "intended"');
-    expect(s).toContain('never "farming"');
+    expect(s).toContain('never motives ("intended"');
+    expect(s).toContain('Say a hero was "farming" only when a tool reports `doing: "farming"`');
     const p = SUBMIT_REVIEW.input_schema.properties.game_plan;
-    expect(p.required).toEqual(['course', 'your_part', 'main_reason', 'why', 'evidence']);
+    expect(p.required).toEqual(['main_reason', 'why']);
     expect(p.properties.main_reason.enum).toEqual(PLAN_REASONS);
     expect(p.properties.evidence.maxItems).toBe(4);
+    expect('minItems' in p.properties.evidence).toBe(false);
     // The model is told the plan is required (#388); a model that still leaves it out still hands in a review —
     // the arguments are not schema-checked ("a review without one is a review without one" above).
     expect(SUBMIT_REVIEW.input_schema.required).toContain('game_plan');

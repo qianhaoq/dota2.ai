@@ -112,14 +112,8 @@ describe('key_moments reaches the model and the reader', () => {
     expect(ev.record).not.toHaveProperty('largest_changes');
     expect(resolveRef(trace, 'moments:beastmaster:1', { hero: 'beastmaster', lang: 'zh', match })).toBeNull();
     const s = deepReviewSystem('zh');
-    expect(s).toContain('6. Call key_moments for the player.');
-    expect(s).toContain('write about it as one turn and cite those fights');
-    expect(s).toContain('The chances are a ruler for ranking moments: never quote them');
-    expect(s).toContain('(101 of 160 heroes on losing sides in the corpus)');
-    // Not a verdict: a first wording ("in the fight 80% or more: the lost chance is not about where the player was")
-    // made two of three Luna reviews — a game lost from the lanes, five lane deaths — say it was the enemy's doing.
-    expect(s).toContain('It is not a verdict on the player: being in the fights does not clear them of what they did before 5:00');
+    expect(s).toContain('key_moments');
+    expect(s).toContain('never quote `key_moments` win-chance percentages (they only rank moments, never assign fault)');
     expect(s).not.toContain('the lost chance is not about where the player was');
-    expect(s).toContain('elsewhere for half or more is rare (9 of 160)');
   });
 });

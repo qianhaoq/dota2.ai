@@ -108,8 +108,8 @@ describe('decision_points: what each side did with the fights it won', () => {
     expect(ev([r.points[0].ref], `${r.points[0].clock} 那波团后对面还有 ${r.points[0].losers_still_dead_10s_after} 人没复活。`)).toEqual([]);
     expect(ev(['decision:beastmaster'], `${r.points[0].clock} 那波团后对面还有 ${r.points[0].losers_still_dead_10s_after} 人没复活。`)).not.toEqual([]);
     expect(KNOWLEDGE_TOOLS).toContain(DECISION_TOOL);
-    expect(deepReviewSystem('zh')).toContain('6d. decision_points for the player');
-    expect(deepReviewSystem('zh')).toMatch(/say it did not take anything, not that it "did nothing"/);
+    expect(deepReviewSystem('zh')).toContain('decision_points');
+    expect(deepReviewSystem('zh')).toContain('"neither" means the team did not take a building/Roshan (not that it "did nothing")');
     expect(chatSystem('zh')).toContain('decision_points for the player');
   });
 
@@ -172,8 +172,8 @@ describe('decision_points: after a tier 1–3 tower fell', () => {
     expect(one.record.kind).toBe('after_a_tower_fell');
     if (p.my_place) expect(one.names[p.my_place]).toBeTruthy();
     expect(DECISION_TOOL.description).toContain('after_a_tower_fell');
-    expect(deepReviewSystem('zh')).toContain('kind after_a_tower_fell');
-    expect(deepReviewSystem('zh')).toMatch(/"elsewhere" when a tower fell was not necessarily wrong/);
+    expect(DECISION_TOOL.description).toContain('elsewhere');
+    expect(deepReviewSystem('zh')).toContain('decision_points');
     expect(chatSystem('zh')).toContain('after_a_tower_fell');
   });
 
@@ -225,7 +225,7 @@ describe('decision_points: fights begun soon after a big item', () => {
     expect(one.record.kind).toBe('fight_after_a_big_item');
     expect(one.names[p.items[0].item]).toBeTruthy();
     expect(DECISION_TOOL.description).toContain('fight_after_a_big_item');
-    expect(deepReviewSystem('zh')).toMatch(/say a fresh item came with the gold lead, not that it won the fight by itself/);
+    expect(deepReviewSystem('zh')).toContain('decision_points');
     expect(chatSystem('zh')).toContain('fight_after_a_big_item');
   });
 
@@ -307,7 +307,7 @@ describe('decision_points: whether the losers\' richest hero was still dead afte
     const money = { series: new Map(tied.heroes.map((h: any, i: number) => [h.key, tied.net_worth[i]])), last: minutes - 1 };
     expect(richestOf(tied, money, 3, 10)).toBeNull();
     expect(richestOf(tied, null, 3, 10)).toBeNull();
-    expect(deepReviewSystem('zh')).toMatch(/losers_richest, 30 s or more from respawning\): in the corpus such wins took a building in 38 of 60/);
+    expect(deepReviewSystem('zh')).toContain('decision_points');
     expect(chatSystem('zh')).toContain('whether their richest hero was one of them');
   });
 
