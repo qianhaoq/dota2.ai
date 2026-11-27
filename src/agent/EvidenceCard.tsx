@@ -68,6 +68,8 @@ const T = {
   refNoChange: { en: 'The notes list no change for it.', zh: '本版本说明里没有它的改动。', ru: 'В описании патча изменений нет.' },
   watching: { en: 'watching', zh: '观察', ru: 'отслеживается' },
   proShare: { en: 'of pro games', zh: '职业局', ru: 'про-матчей' },
+  pubItemGames: { en: 'public games', zh: '场路人局', ru: 'паблик-игр' },
+  pubItemWin: { en: 'win', zh: '胜率', ru: 'побед' },
   never: { en: 'never held', zh: '从未持有', ru: 'не покупался' },
   pierces: { en: 'goes through spell immunity', zh: '无视技能免疫', ru: 'пробивает невосприимчивость к магии' },
   noPierce: { en: 'blocked by spell immunity', zh: '被技能免疫挡住', ru: 'блокируется невосприимчивостью к магии' },
@@ -1049,6 +1051,12 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         )}
         {r.items_that_answer_attack_damage.length > 0 && <p className="ag-rec-line"><span>{t(T.buildAnswers)}</span>{answers(r.items_that_answer_attack_damage)}</p>}
         {r.items_that_answer_spell_damage.length > 0 && <p className="ag-rec-line"><span>{t(T.buildSpellAnswers)}</span>{answers(r.items_that_answer_spell_damage)}</p>}
+        {r.most_built_in_this_bracket && (
+          <>
+            <p className="ag-rec-sub">{r.most_built_in_this_bracket.bracket_name} · {r.most_built_in_this_bracket.role_name} · {r.most_built_in_this_bracket.public_games} {t(T.pubItemGames)} (STRATZ)</p>
+            <ul className="ag-bars">{r.most_built_in_this_bracket.items.map((i: any) => <Bar key={i.item} label={`${i.name} · ${t(T.pubItemWin)} ${Math.round(i.win_rate * 100)}% · ${i.player_first_held ?? t(T.never)}`} value={Math.round(i.share_of_public_games_with_it_by_24_59 * 100)} max={100} />)}</ul>
+          </>
+        )}
         {r.most_built_by_pros_on_this_hero && <><p className="ag-rec-sub">{t(T.buildPros)} · {r.most_built_by_pros_on_this_hero.pro_games}</p><ul className="ag-bars">{r.most_built_by_pros_on_this_hero.items.map((i: any) => <Bar key={i.item} label={`${i.name} · ${i.player_first_held ?? t(T.never)}`} value={Math.round(i.share_of_pro_games_with_it_by_24_59 * 100)} max={100} />)}</ul></>}
         {(r.gap_closers.mine || r.gap_closers.enemies.length > 0) && <p className="ag-rec-line"><span>{t(T.buildGaps)}</span>{r.gap_closers.mine && <span className="ag-chip is-me">{t(T.buildYou)} · {r.gap_closers.mine.name} <em>{r.gap_closers.mine.first_held}</em></span>}{r.gap_closers.enemies.map((g: any) => <span key={g.enemy} className="ag-chip is-enemy">{N(g.enemy)} · {g.name} <em>{g.first_held}</em></span>)}</p>}
       </div>
@@ -1081,8 +1089,14 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   if (data.kind === 'pro_items') {
     return (
       <div className="ag-rec">
+        {r.public_items_in_this_bracket && (
+          <>
+            <p className="ag-rec-sub">{r.public_items_in_this_bracket.bracket_name} · {r.public_items_in_this_bracket.role_name} · {r.public_items_in_this_bracket.public_games} {t(T.pubItemGames)} · {r.public_items_in_this_bracket.window} (STRATZ)</p>
+            <ul className="ag-bars">{r.public_items_in_this_bracket.items.map((i: any) => <Bar key={i.item} label={`${i.name} · ${t(T.pubItemWin)} ${Math.round(i.win_rate * 100)}% · ${i.player_first_held ?? t(T.never)}`} value={Math.round(i.share_of_public_games * 100)} max={100} />)}</ul>
+          </>
+        )}
         {r.mid_game_items && <p className="ag-rec-sub">{r.mid_game_items.pro_games} {t(T.proShare)} · {r.mid_game_items.window}</p>}
-        <ul className="ag-bars">{(r.mid_game_items?.items ?? []).map((i: any) => <Bar key={i.item} label={`${i.name} · ${i.player_first_held ?? t(T.never)}`} value={Math.round(i.share_of_pro_games * 100)} max={100} />)}</ul>
+        {r.mid_game_items && <ul className="ag-bars">{(r.mid_game_items.items ?? []).map((i: any) => <Bar key={i.item} label={`${i.name} · ${i.player_first_held ?? t(T.never)}`} value={Math.round(i.share_of_pro_games * 100)} max={100} />)}</ul>}
         {r.built_more_against_these_enemies.length > 0 && <p className="ag-rec-line">{r.built_more_against_these_enemies.map((x: any, i: number) => <span key={i} className="ag-chip">{N(x.enemy)}: {x.name} {Math.round(x.share_of_pro_games_against_this_enemy * 100)}% <em>({Math.round(x.share_usually * 100)}%)</em> · {x.player_first_held ?? t(T.never)}</span>)}</p>}
         <p className="ag-rec-note">{r.note}</p>
       </div>
