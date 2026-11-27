@@ -2,6 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { configureDota2AiRuntime } from '../runtime/dota2aiRuntime';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AgentMatchPage, DOWNLOAD_RETRY, journeyStep, REPLAY_NOT_READY } from './AgentMatchPage';
 import { stepLabel } from './ChatRail';
@@ -1657,6 +1658,17 @@ describe('AgentMatchPage', () => {
     // A short retryAfter is not counted down for a full day: the button stays usable.
     expect((screen.getByRole('button', { name: 'Review my game' }) as HTMLButtonElement).disabled).toBe(false);
     await waitFor(async () => expect((await events()).find((e) => e.event === 'review_refused')?.props).toEqual({ matchId: '9100904020', reason: 'daily_cap', waits: false }));
+  });
+
+  it('in DSH with no model set up: says what to do there, not that the coach is down, and points nowhere else', async () => {
+    const restore = configureDota2AiRuntime({ surface: 'dsh' });
+    try {
+      mockFetch({ '/review?': { status: 'none' }, '/api/agent/9100904020': { trace: true, model_configured: false, heroes } });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      expect(await screen.findByRole('heading', { name: 'No model in DSH yet' })).toBeTruthy();
+      expect(document.body.textContent).toContain('DEEPSEEK_API_KEY');
+      expect(document.querySelector('.om-callout')).toBeNull();
+    } finally { restore(); }
   });
 
   it('while this site writes a review: the page says the same review runs in DSH without the wait', async () => {

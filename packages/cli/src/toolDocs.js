@@ -11,6 +11,9 @@ export const TOOL_DOCS = {
       hero: 'The hero the user played: key (queen_of_pain), English or Chinese name, or hero id',
       retry: 'Start again after status failed (a new start, counted on the limit)',
     },
+    // In the DSH plugin the review runs on the user's own DSH model and is kept on their machine: no site limit,
+    // and the public page would not show it.
+    dsh: "dota2.ai's main review: the coach watches this game's replay (every death, ultimate, fight and item) and writes what one player could have changed, each point backed by replay evidence (times, numbers) that was checked, plus what they did well, what to do next game, and what the replay cannot show. It runs on the user's own DSH model and is kept on this machine: point the user to the dota2.ai panel in the DSH sidebar (panel_route) to read it with every piece of evidence. Needs the hero the user played (pick_hero lists the game's heroes). A first review takes 2–4 minutes: while status is parsing or reviewing, call again with the same arguments after poll_after_sec. Replays exist for about two weeks after a game. lang: en | zh.",
   },
   recent_matches: {
     description: "A player's recent public Dota 2 games (match_id, hero, seat, K/D/A, won). account: Steam friend code or a Steam/OpenDota/Dotabuff/STRATZ profile link.",
@@ -26,6 +29,7 @@ export const TOOL_DOCS = {
   },
   coach_ask: {
     description: 'A follow-up question about this player\'s review, answered only from the report. fallback=true means no AI was available and the answer is the matching part of the report.',
+    dsh: 'A follow-up question about this player\'s game, answered by the user\'s DSH model: from the replay (checked against it) when that game\'s replay was reviewed here, otherwise only from the report. fallback=true means no model was available and the answer is the matching part of the report.',
     params: {},
   },
   goal_check: {

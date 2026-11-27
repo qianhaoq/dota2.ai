@@ -56,7 +56,8 @@ export class ToolFailure extends Error {}
 
 /**
  * @param {{ coach: Record<string, Function>, replay: { review: Function }, lang?: 'en' | 'zh' }} deps
- *   coach: dota2ai/handlers createCoachHandlers(); replay: ./replay.js createReplayClient().
+ *   coach: dota2ai/handlers createCoachHandlers() with the local overrides in ./service.js; replay: ./service.js
+ *   createDshService().replay (the review on the user's own DSH model).
  *   lang: the plugin's default answer language when a call names none.
  * @returns {Array<object>} options for dsh-tools `defineTool`
  */
@@ -64,7 +65,7 @@ export function toolOptions({ coach, replay, lang = 'en' }) {
   const withLang = (args) => (args?.lang ? args : { ...args, lang });
   const coachTool = (name) => ({
     name: PREFIX + name,
-    description: TOOL_DOCS[name].description,
+    description: TOOL_DOCS[name].dsh ?? TOOL_DOCS[name].description,
     parameters: PARAMETERS[name],
     output: OUTPUT,
     timeoutMs: name === 'coach_ask' ? 200_000 : 60_000,
@@ -79,7 +80,7 @@ export function toolOptions({ coach, replay, lang = 'en' }) {
   return [
     {
       name: PREFIX + 'replay_review',
-      description: TOOL_DOCS.replay_review.description,
+      description: TOOL_DOCS.replay_review.dsh,
       parameters: PARAMETERS.replay_review,
       output: OUTPUT,
       timeoutMs: 90_000,
@@ -87,8 +88,8 @@ export function toolOptions({ coach, replay, lang = 'en' }) {
         try {
           return await replay.review(withLang(args), { signal: exec?.signal });
         } catch (error) {
-          // REMOTE_TOOL: the hosted tool's own fixed wording (rate limit, bad input).
-          const known = ['INVALID_INPUT', 'RATE_LIMITED', 'REMOTE_TOOL'].includes(error?.code);
+          // lib/agent/replayTool.js's own fixed wording (bad input, a limit); anything else is hidden.
+          const known = ['INVALID_INPUT', 'RATE_LIMITED'].includes(error?.code);
           throw new ToolFailure(known ? error.message : 'Replay review request failed (temporary; retry later)');
         }
       },

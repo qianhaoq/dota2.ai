@@ -11,7 +11,6 @@ import { TOOL_DOCS } from 'dota2ai/tools';
 import { buildCoachReport } from '../../../lib/coach/analyze.js';
 import { runAgent } from '../../../lib/agent/loop.js';
 import { PARAMETERS, TOOL_NAMES, toolOptions } from '../src/tools.js';
-import { createReplayClient } from '../src/replay.js';
 import { SKILL, headersFor, skillBody, skillRegistration } from '../src/skill.js';
 import { MAX_MODEL_KEY_LENGTH, createDshComplete, createDshModelRegistry, decodeModelKey, encodeModelKey } from '../src/llm.js';
 import { createDshTracePipeline, normalizeTraceGzip } from '../src/traceSource.js';
@@ -102,7 +101,8 @@ describe('DSH tool definitions', () => {
     expect(tools.map((t) => t.name)).toEqual(TOOL_NAMES);
     expect(TOOL_NAMES).toEqual(['dota2ai_replay_review', 'dota2ai_recent_matches', 'dota2ai_coach_report', 'dota2ai_coach_cases', 'dota2ai_coach_ask', 'dota2ai_goal_check', 'dota2ai_hero_matchup']);
     for (const t of tools) {
-      expect(t.description).toBe(TOOL_DOCS[t.name.replace('dota2ai_', '')].description);
+      const doc = TOOL_DOCS[t.name.replace('dota2ai_', '')];
+      expect(t.description).toBe(doc.dsh ?? doc.description);
       expect(t.timeoutMs).toBeGreaterThan(0);
       expect(t.output.render({}, { a: 1 })).toEqual([{ type: 'text', text: '{"a":1}' }]);
     }
@@ -156,8 +156,20 @@ describe('DSH tool definitions', () => {
   });
 });
 
-describe('replay_review through the hosted MCP tool', () => {
-  it('relays every status the server gives, call after call, with the arguments as given', async () => {
+describe('the words of the DSH tools', () => {
+  it('say where the review runs and where to read it, not the hosted limits', () => {
+    const tools = byName(toolOptions({ coach: {}, replay: unusedReplay }));
+    expect(tools.dota2ai_replay_review.description).toContain("user's own DSH model");
+    expect(tools.dota2ai_replay_review.description).toContain('panel_route');
+    expect(tools.dota2ai_replay_review.description).not.toMatch(/limited per caller/);
+    expect(TOOL_DOCS.replay_review.description).toMatch(/limited per caller/);
+    expect(tools.dota2ai_coach_ask.description).toContain('from the replay');
+    expect(tools.dota2ai_coach_ask.description).not.toContain('answered only from the report');
+  });
+});
+
+describe('replay_review tool', () => {
+  it('relays every status the review gives, call after call, with the arguments as given', async () => {
     const calls = [];
     const states = [
       { status: 'parsing', match_id: '42', poll_after_sec: 20 },
@@ -165,7 +177,7 @@ describe('replay_review through the hosted MCP tool', () => {
       { status: 'reviewing', match_id: '42', hero: 'ursa', lang: 'zh', steps: 3, poll_after_sec: 20 },
       { status: 'ready', match_id: '42', hero: 'ursa', lang: 'zh', verdict: 'v', findings: [], blind_spots: [], url: 'https://dota2.ai/r/42?hero=ursa&lang=zh' },
     ];
-    const replay = createReplayClient({ connect: () => mcpClient({ replay: { review: async (args) => { calls.push(args); return states[calls.length - 1]; } } }) });
+    const replay = { review: async (args) => { calls.push(args); return states[calls.length - 1]; } };
     const tool = byName(toolOptions({ coach: {}, replay, lang: 'zh' })).dota2ai_replay_review;
     const seen = [];
     for (let i = 0; i < states.length; i++) seen.push(await tool.execute({ match_id: 42, hero: 'ursa' }, { signal: new AbortController().signal }));
@@ -174,13 +186,13 @@ describe('replay_review through the hosted MCP tool', () => {
     expect(calls[0]).toEqual({ match_id: 42, hero: 'ursa', lang: 'zh' });
   });
 
-  it("passes the server's own refusal through, and hides a transport failure", async () => {
-    const limited = Object.assign(new Error('Too many reviews started by this caller; try again in 60 s.'), { code: 'RATE_LIMITED' });
-    const refusing = createReplayClient({ connect: () => mcpClient({ replay: { review: async () => { throw limited; } } }) });
+  it("passes the review's own refusal through, and hides any other failure", async () => {
+    const limited = Object.assign(new Error('match_id must be a Dota 2 match ID (digits).'), { code: 'INVALID_INPUT' });
+    const refusing = { review: async () => { throw limited; } };
     const tool = byName(toolOptions({ coach: {}, replay: refusing })).dota2ai_replay_review;
-    await expect(tool.execute({ match_id: 42, hero: 'ursa' })).rejects.toThrow('Too many reviews started by this caller; try again in 60 s.');
+    await expect(tool.execute({ match_id: 42, hero: 'ursa' })).rejects.toThrow('match_id must be a Dota 2 match ID (digits).');
 
-    const down = createReplayClient({ connect: async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:443'); } });
+    const down = { review: async () => { throw new Error('connect ECONNREFUSED 127.0.0.1:443'); } };
     const tool2 = byName(toolOptions({ coach: {}, replay: down })).dota2ai_replay_review;
     await expect(tool2.execute({ match_id: 42 })).rejects.toThrow(/^Replay review request failed \(temporary; retry later\)$/);
   });
@@ -594,6 +606,12 @@ describe('DSH local service end-to-end (service.js)', () => {
         readyLong = await longSvc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/review?hero=beastmaster&lang=zh' });
         expect(readyLong.body.status).toBe('ready');
       }, { timeout: 5000 });
+      // The tool's answer for a finished review: where to read it in DSH, never the public page (which has not got it).
+      const toolReady = await longSvc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
+      expect(toolReady).toMatchObject({ status: 'ready', match_id: '9100904020', hero: 'beastmaster', lang: 'zh', panel_route: '/r/9100904020?hero=beastmaster&lang=zh' });
+      expect(toolReady).not.toHaveProperty('url');
+      expect(JSON.stringify(toolReady)).not.toContain('https://dota2.ai/r/');
+      expect(toolReady.note).toContain('kept on this machine');
       const fbRes = await longSvc.handleRequest({
         method: 'POST',
         url: '/api/agent/9100904020/feedback',

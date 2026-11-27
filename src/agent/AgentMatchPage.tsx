@@ -7,6 +7,7 @@ import { checkGoal, checkRules, habitCurve, needsReplay, replayRefs, useActiveGo
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
 import { OwnModelCallout } from '../coach/OwnModel';
+import { useDota2AiRuntime } from '../runtime/dota2aiRuntime';
 import { trackEvent, trackOnce, trackReviewViewed, trafficSource } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
@@ -81,6 +82,12 @@ const T = {
   offBody: { en: 'This site cannot fetch replays right now, so it cannot review this game.', zh: '这个站点现在取不了录像，所以无法复盘这一局。', ru: 'Этот сервер сейчас не может скачивать реплеи.' },
   unavailableTitle: { en: 'Cannot generate a review right now', zh: '暂时无法生成', ru: 'Сейчас не удаётся создать разбор' },
   unavailable: { en: 'The coach is not available right now.', zh: '教练暂时不可用。', ru: 'Тренер сейчас недоступен.' },
+  dshNoModelTitle: { en: 'No model in DSH yet', zh: 'DSH 里还没有可用的模型', ru: 'В DSH пока нет модели' },
+  dshNoModel: {
+    en: 'In DSH the review runs on your own model. Add your DeepSeek key (DSH\'s API-key dialog, or start dsh web with DEEPSEEK_API_KEY set), pick a model, then reload this page.',
+    zh: '在 DSH 里，复盘用的是你自己的模型。先填好 DeepSeek Key（DSH 的 API Key 窗口，或者启动 dsh web 时设置 DEEPSEEK_API_KEY），选一个模型，再刷新这个页面。',
+    ru: 'В DSH разбор пишет ваша модель. Добавьте ключ DeepSeek (окно API-ключа в DSH или переменная DEEPSEEK_API_KEY при запуске dsh web), выберите модель и обновите страницу.',
+  },
   rate: { en: 'Too many reviews started from here. Try again in a few minutes.', zh: '从这里发起的复盘太多了，过几分钟再试。', ru: 'Слишком много разборов с вашего адреса. Попробуйте через несколько минут.' },
   busy: { en: 'The coach is at capacity. Try again later.', zh: '教练现在忙不过来，稍后再试。', ru: 'Тренер сейчас перегружен. Попробуйте позже.' },
   daily: { en: "Today's reviews on dota2.ai's own model are used up; they come back tomorrow.", zh: '今天 dota2.ai 自带模型的复盘名额用完了，明天恢复。', ru: 'Разборы на модели dota2.ai на сегодня закончились; завтра снова будут.' },
@@ -153,6 +160,7 @@ export const AgentMatchPage: React.FC = () => {
   // The selection (match|hero|lang|plan) the reader said "go" for. Kept as that key, not a flag, so the render in
   // which the selection changes cannot carry one selection's go over to the next.
   const [intentOf, setIntentOf] = useState<string | null>(null);
+  const inDsh = useDota2AiRuntime().surface === 'dsh';
   const [notice, setNotice] = useState<string | null>(null);
   // This site's model said no for now (a full day, at capacity, the caller's limit): the page also says where the
   // same review runs on the reader's own model. 'daily': the day's reviews are used up.
@@ -754,6 +762,8 @@ export const AgentMatchPage: React.FC = () => {
   if (!hasTrace && !avail.can_parse) return dead(T.offTitle, T.offBody);
   if (state?.status === 'failed') return dead(T.failedTitle, T.failedBody, true);
   // Not available for a while (the model account refused a review a moment ago, or is under its balance floor) is not a dead end: it can be tried again.
+  // In DSH the model is the reader's own: none set up yet is a step for them to take, said as such.
+  if (inDsh && hasTrace && !avail.model_configured) return dead(T.dshNoModelTitle, T.dshNoModel);
   // This site's model cannot write it now (out of credit, refused, not set up): the reader's own model can.
   if (state?.status === 'unavailable' || (hasTrace && !avail.model_configured)) return dead(T.unavailableTitle, T.unavailable, state?.status === 'unavailable' && state.retry_in_sec != null, true);
 

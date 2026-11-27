@@ -35,12 +35,13 @@
 
 ### DSH 插件
 
-[DSH](https://www.npmjs.com/package/@deepseek-ai/dsh)（DeepSeek Harness）的原生插件。需要 Node 24.9+、DSH ≥ 0.2.1-rc.3 和 pnpm。
+**推荐。**[DSH](https://www.npmjs.com/package/@deepseek-ai/dsh)（DeepSeek Harness）的原生插件，用你自己的 DeepSeek Key 跑同一个教练：不排队、不限次，复盘留在你自己电脑上。需要 Node 24.9+，DSH 0.2.x (≥ 0.2.1-rc.3)。
 
 ```sh
-# 从最新的 dsh-v* Release 下载：https://github.com/qianhaoq/dota2.ai/releases
-sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.2.tgz
+npm install -g pnpm @deepseek-ai/dsh@0.2.2-rc.5
+curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v0.2.3/qianhaoq-dsh-dota2ai-0.2.3.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.3.tgz
+DEEPSEEK_API_KEY=sk-... dsh web      # 或者在 DSH 的 API Key 窗口里填写
 ```
 
 启动 `dsh web` 后点击左侧栏 **dota2.ai** 即可使用完整复盘页面（记分板、小地图走位回放、录像证据卡、教练追问，以及切换你在 DSH 中配置的任意模型对比复盘）；也可以在任意会话里直接说：*「复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。」*
