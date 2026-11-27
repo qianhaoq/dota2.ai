@@ -1101,3 +1101,8 @@
     margin-top: 4px;
   }
 }
+
+/* "Also in DSH, Claude Code, Codex…" under the input: points to the ways block (#ways). */
+.hm-also { margin: 8px 0 0; font-size: var(--fs-meta, 0.85rem); }
+.hm-also a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line, currentColor); }
+.hm-also a:hover { color: var(--text-1, #e6ebf2); }
