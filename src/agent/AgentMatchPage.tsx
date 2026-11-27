@@ -6,6 +6,7 @@ import { markReviewed } from '../coach/accountInput';
 import { checkGoal, checkRules, habitCurve, needsReplay, replayRefs, useActiveGoal, type GoalCheck, type GoalRule, type ReplayRecords } from '../coach/goalStore';
 import type { CoachReport } from '../coach/types';
 import { SafeImg, useLang } from '../coach/ui';
+import { OwnModelCallout } from '../coach/OwnModel';
 import { trackEvent, trackOnce, trackReviewViewed, trafficSource } from '../services/analytics';
 import { parseMatchInput } from '../v2/parseMatchInput';
 import { AgentApiError, fetchAvailability, fetchEvidence, fetchReview, prepareMatch, startReview, type AgentHero, type Availability, type ParseState, type ReviewState } from './api';
@@ -82,6 +83,7 @@ const T = {
   unavailable: { en: 'The coach is not available right now.', zh: '教练暂时不可用。', ru: 'Тренер сейчас недоступен.' },
   rate: { en: 'Too many reviews started from here. Try again in a few minutes.', zh: '从这里发起的复盘太多了，过几分钟再试。', ru: 'Слишком много разборов с вашего адреса. Попробуйте через несколько минут.' },
   busy: { en: 'The coach is at capacity. Try again later.', zh: '教练现在忙不过来，稍后再试。', ru: 'Тренер сейчас перегружен. Попробуйте позже.' },
+  daily: { en: "Today's reviews on dota2.ai's own model are used up; they come back tomorrow.", zh: '今天 dota2.ai 自带模型的复盘名额用完了，明天恢复。', ru: 'Разборы на модели dota2.ai на сегодня закончились; завтра снова будут.' },
   rateWait: { en: 'Too many reviews started from here. It starts on its own in {t}.', zh: '从这里发起的复盘太多了，{t} 后自动开始。', ru: 'Слишком много запросов. Автозапуск через {t}.' },
   busyWait: { en: 'The coach is at capacity. It tries again on its own in {t}.', zh: '教练现在忙不过来，{t} 后自动再试。', ru: 'Тренер перегружен. Автоповтор через {t}.' },
   unknownHero: { en: 'That hero is not in this game.', zh: '这局里没有这个英雄。', ru: 'Этого героя не было в матче.' },
@@ -152,6 +154,10 @@ export const AgentMatchPage: React.FC = () => {
   // which the selection changes cannot carry one selection's go over to the next.
   const [intentOf, setIntentOf] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // This site's model said no for now (a full day, at capacity, the caller's limit): the page also says where the
+  // same review runs on the reader's own model. 'daily': the day's reviews are used up.
+  // Kept per selection: another hero or language is another request.
+  const [ownModelFor, setOwnModel] = useState<null | { sel: string; kind: 'refused' | 'daily' }>(null);
   // Refused for now with a time to come back (429/503 + retryAfterSec): the page counts down and goes again
   // by itself, rather than leave a button that only earns the reader more refusals.
   // `for`: the selection (match, hero, language, plan) it was given for; another selection does not wait on it.
@@ -381,10 +387,12 @@ export const AgentMatchPage: React.FC = () => {
     const asked = Array.isArray(askedFor) ? askedFor : [askedFor];
     const status = e instanceof AgentApiError ? e.status : 0;
     const after = e instanceof AgentApiError ? e.retryAfterSec ?? 0 : 0;
+    const daily = e instanceof AgentApiError && e.code === 'daily_cap';
     const here = asked.includes(selected.current);
-    const waits = (status === 429 || status === 503) && after > 0 && after <= MAX_AUTO_WAIT_SEC;
+    const waits = !daily && (status === 429 || status === 503) && after > 0 && after <= MAX_AUTO_WAIT_SEC;
     // `waits`: the page counts this one down and goes again by itself.
-    trackEvent('review_refused', { matchId, reason: status === 429 ? 'rate' : status === 503 ? 'busy' : 'unavailable', waits });
+    trackEvent('review_refused', { matchId, reason: daily ? 'daily_cap' : status === 429 ? 'rate' : status === 503 ? 'busy' : 'unavailable', waits });
+    if (here && (status === 429 || status === 503)) setOwnModel({ sel: selected.current, kind: daily ? 'daily' : 'refused' });
     if (waits) {
       // The reader still wants it: keep the intent, and go again when the server said it may.
       if (here) setNotice(null);
@@ -394,7 +402,7 @@ export const AgentMatchPage: React.FC = () => {
     }
     // Refused for good for a selection the reader has left: nothing on this one changes.
     if (!here) return;
-    setNotice(t(status === 429 ? T.rate : status === 503 ? T.busy : T.unavailable));
+    setNotice(t(daily ? T.daily : status === 429 ? T.rate : status === 503 ? T.busy : T.unavailable));
     want(false);
   };
   // One start per click: the request is marked in flight before it leaves, so the effect that carries on
@@ -433,7 +441,7 @@ export const AgentMatchPage: React.FC = () => {
   async function go() {
     if (wait) return;
     trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan), ...(writtenBy ? { model: writtenBy } : {}) });
-    setNotice(null); want(true); resumed.current = true;
+    setNotice(null); setOwnModel(null); want(true); resumed.current = true;
     if (hasTrace) { await begin(); return; }
     await sendPrepare();
   }
@@ -664,8 +672,10 @@ export const AgentMatchPage: React.FC = () => {
   // failed review — that one carries a reason): trying again reads the status again; it does not ask for a review.
   const statusOnly = !intent && hasTrace && state?.status === 'failed' && !('reason' in state && state.reason);
   const again = () => { if (goalOnly) void checkOnly(); else if (statusOnly) void loadReview(); else void go(); };
-  const dead = (title: Bi, body: Bi, retry = false) => (
-    <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={again} disabled={Boolean(wait)}>{t(T.retry)}</button>}{(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}</div>{scoreboard}</Shell>
+  const ownModel = ownModelFor?.sel === selection ? ownModelFor.kind : null;
+  const ownModelNote = ownModel && <OwnModelCallout where="refused" daily={ownModel === 'daily'} matchId={matchId} />;
+  const dead = (title: Bi, body: Bi, retry = false, own = false) => (
+    <Shell>{header}<div className="ag-state"><h1>{t(title)}</h1><p>{t(body)}</p>{retry && <button type="button" className="ag-btn is-primary" onClick={again} disabled={Boolean(wait)}>{t(T.retry)}</button>}{(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}{own ? <OwnModelCallout where="refused" matchId={matchId} /> : ownModelNote}</div>{scoreboard}</Shell>
   );
 
   if (roster.length === 0) return dead(T.notFound, T.notFoundBody);
@@ -744,7 +754,8 @@ export const AgentMatchPage: React.FC = () => {
   if (!hasTrace && !avail.can_parse) return dead(T.offTitle, T.offBody);
   if (state?.status === 'failed') return dead(T.failedTitle, T.failedBody, true);
   // Not available for a while (the model account refused a review a moment ago, or is under its balance floor) is not a dead end: it can be tried again.
-  if (state?.status === 'unavailable' || (hasTrace && !avail.model_configured)) return dead(T.unavailableTitle, T.unavailable, state?.status === 'unavailable' && state.retry_in_sec != null);
+  // This site's model cannot write it now (out of credit, refused, not set up): the reader's own model can.
+  if (state?.status === 'unavailable' || (hasTrace && !avail.model_configured)) return dead(T.unavailableTitle, T.unavailable, state?.status === 'unavailable' && state.retry_in_sec != null, true);
 
   // Something is running, or the reader said go and the next request is about to leave.
   const working = parsing || state?.status === 'running' || (intent && !notice && !wait && (!hasTrace || state === null || state.status === 'none'));
@@ -810,6 +821,7 @@ export const AgentMatchPage: React.FC = () => {
             )}
             {state?.status === 'unknown_hero' && <p className="ag-warn">{t(T.unknownHero)}</p>}
             {(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}
+            {ownModelNote}
           </>
         )}
       </div>

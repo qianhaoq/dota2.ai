@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { AgentApiError, askAgent, type ChatTurn, type ToolStep } from './api';
 import { trackEvent } from '../services/analytics';
+import { OwnModelCallout } from '../coach/OwnModel';
 
 /**
  * The coach, beside the review. Each question goes to the agent, which looks
@@ -56,7 +57,7 @@ export function stepLabel(step: ToolStep, lang: Lang): string {
   return base;
 }
 
-interface Turn { q: string; a: string; steps: ToolStep[]; pending: boolean; error?: string; unverified?: string[] }
+interface Turn { q: string; a: string; steps: ToolStep[]; pending: boolean; error?: string; unverified?: string[]; refused?: 'refused' | 'daily' }
 
 export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; lang: Lang; suggestions: string[]; plan?: string | null; /** The model that wrote the review on screen, when not the default: it answers the questions too. */ model?: string | null }>(({ matchId, hero, lang, suggestions, plan = null, model = null }, ref) => {
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -117,7 +118,9 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
     } catch (e) {
       const aborted = (e as Error).name === 'AbortError';
       const code = e instanceof AgentApiError ? (e.status === 429 ? T.rate : e.status === 503 ? T.busy : T.failed) : T.failed;
-      patch((x) => ({ ...x, pending: false, error: aborted ? undefined : t(code) }));
+      // Refused by this site's limits: the same coach answers on the reader's own model (the DSH plugin).
+      const refused = !aborted && e instanceof AgentApiError && (e.status === 429 || e.status === 503) ? (e.code === 'daily_cap' ? 'daily' as const : 'refused' as const) : undefined;
+      patch((x) => ({ ...x, pending: false, error: aborted ? undefined : t(code), refused }));
       if (aborted) setTurns((prev) => prev.filter((x, i) => i !== prev.length - 1 || x.a));
     }
   }
@@ -148,6 +151,7 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
               {turn.a && <div className="ag-answer">{turn.a.split(/\n{2,}/).map((para, j) => <p key={j}>{para.replace(/^#+\s*/, '').replace(/\*\*/g, '')}</p>)}</div>}
               {turn.unverified && turn.unverified.length > 0 && <p className="ag-warn">{t(T.unverified)} {turn.unverified.join(', ')}</p>}
               {turn.error && <p className="ag-warn" role="alert">{turn.error}</p>}
+              {turn.refused && <OwnModelCallout where="chat" daily={turn.refused === 'daily'} matchId={matchId} />}
             </div>
           </div>
         ))}

@@ -1102,7 +1102,34 @@
   }
 }
 
-/* "Also in DSH, Claude Code, Codex…" under the input: points to the ways block (#ways). */
-.hm-also { margin: 8px 0 0; font-size: var(--fs-meta, 0.85rem); }
-.hm-also a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line, currentColor); }
-.hm-also a:hover { color: var(--text-1, #e6ebf2); }
+/* The same coach on the reader's own model (src/coach/OwnModel.tsx): under the home input, and wherever this
+   site's model says no (match page, chat). Points at the DSH tab of the ways block (#ways-dsh). */
+.om-callout {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line-2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--accent-soft);
+  font-size: var(--fs-meta, 0.85rem);
+  color: var(--text-2);
+  text-align: left;
+  max-width: 100%;
+}
+.om-callout p { margin: 0; }
+.om-callout .om-lead { color: var(--text); font-size: var(--fs-body, 0.95rem); }
+.om-callout .om-lead strong { font-weight: 600; }
+.om-callout .om-body { margin-top: 4px; }
+.om-callout .om-tag {
+  display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px;
+  background: var(--accent); color: var(--accent-ink); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; vertical-align: 1px;
+}
+.om-callout .om-ask { margin-top: 6px; }
+.om-callout .om-ask q { color: var(--text); font-family: var(--mono, monospace); font-size: 0.82rem; overflow-wrap: anywhere; }
+.om-callout .om-links { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
+.om-callout .om-cta { color: var(--accent-bright, var(--accent)); font-weight: 600; text-decoration: none; }
+.om-callout .om-cta:hover { text-decoration: underline; }
+.om-callout .om-alt { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line-2); }
+.om-callout .om-alt:hover { color: var(--text); }
+.ag-chat .om-callout { margin-top: 8px; padding: 10px 12px; }
+.hm-anchor { display: block; position: relative; top: -72px; visibility: hidden; height: 0; }
