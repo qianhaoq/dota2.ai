@@ -30,6 +30,17 @@ describe('re-parsing older traces when the replay still exists (#365)', () => {
     expect(traceIsOutdated(null)).toBe(false);
   });
 
+  it('a trace built before smokes and runes were kept is outdated too (#405)', () => {
+    expect(TRACE_BUILD_VERSION).toBe(3);
+    expect(traceIsOutdated({ ...modernTrace, build: 2 })).toBe(true);
+    // No build number: read from the fields (item uses with their target column, as the builder writes them since #358).
+    const { build, ...rest } = modernTrace as any;
+    const unnumbered = { ...rest, item_uses: [[100, 0, 1, 7, null]] };
+    expect(traceIsOutdated({ ...unnumbered, smokes: [], runes: [] })).toBe(false);
+    expect(traceIsOutdated({ ...unnumbered, runes: [] })).toBe(true);
+    expect(traceIsOutdated({ ...unnumbered, smokes: [] })).toBe(true);
+  });
+
   it('re-parses an outdated trace before writing a new review when the replay is kept, upgrading what the review sees', async () => {
     let currentTrace: any = structuredClone(legacyTrace);
     const docs = new Map<string, any>();

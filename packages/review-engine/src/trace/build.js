@@ -37,6 +37,7 @@
  *   read off 9100904020 and 9102822299, where each code was matched against the deaths in the same instant.
  *   A code not listed here is kept as it is (23 on 9102822299: 160 gold, 49 times). The income every hero
  *   gets over time has no rows, so these do not add up to net worth. Only when the extract has gold rows;
+ * - Smoke of Deceit and runes on heroes (`smokes`, `runes`): when each began and ended, and who used the smoke;
  * - Roshan: every kill a hero landed (`roshan_kills`) and the damage heroes dealt to Roshan per second
  *   (`roshan_damage`); and every Tormentor a hero killed (`tormentor_kills`). A kill whose last hit was not a
  *   hero's has no row in the log and is not seen. Its gold cannot stand in for it: reason 15 is paid for
@@ -140,6 +141,8 @@ export function createTraceBuilder() {
   /** @type {Map<string, number>} */
   const damage = new Map();
   const creepKills = []; const roshanDeaths = []; const tormentorDeaths = [];
+  /** Smoke of Deceit and runes on heroes: [from, hero, by (smoke) or rune kind, to or null while it lasted to the end]. */
+  const smokes = []; const runes = [];
   /** @type {Map<string, number>} `minute|receiver|reason` → gold */
   const gold = new Map();
   /** @type {Map<string, number>} `second|attacker` → damage to Roshan */
@@ -285,6 +288,16 @@ export function createTraceBuilder() {
         case 'DOTA_COMBATLOG_MODIFIER_REMOVE': {
           if (!realHero(e.target_hero, e.target_illusion) || typeof e.inflictor !== 'string') break;
           const add = e.type.endsWith('ADD');
+          // Smoke of Deceit and runes: when each hero had one, and (for smoke) who used it. The end is the log's
+          // removal — expired or broken, the log does not say which.
+          const smoke = e.inflictor === 'modifier_smoke_of_deceit';
+          const rune = !smoke && e.inflictor.startsWith('modifier_rune_') ? e.inflictor.slice('modifier_rune_'.length) : null;
+          if (smoke || rune) {
+            const list = smoke ? smokes : runes; const what = smoke ? id(e.attacker) : rune; const who = id(e.target);
+            if (add) list.push([t, who, what, null]);
+            else { for (let i = list.length - 1; i >= 0; i -= 1) if (list[i][1] === who && list[i][2] === what && list[i][3] == null) { list[i][3] = t; break; } }
+            break;
+          }
           const immune = IMMUNITY.test(e.inflictor);
           const stun = Number(e.stun_duration) > 0 ? r1(Number(e.stun_duration)) : 0;
           const control = add && (stun > 0 || e.silence === true || e.root === true);
@@ -390,6 +403,10 @@ export function createTraceBuilder() {
         ...(goldRows ? { gold: [...gold].map(([k, v]) => [...k.split('|').map(Number), Math.round(v)]) } : {}),
         // [t, killer, the side that took it (0: the row does not say), event row, visible to Radiant, visible to
         // Dire (the log's flags on the kill row: 1, 0 or null)]. Only kills a hero landed: see the header.
+        // [from, hero, the hero who used the smoke, to]; [from, hero, rune kind (doubledamage, haste, invis, regen,
+        // arcane, shield, …), to]. `to` null: still on when the log ended. Bounty and wisdom runes put nothing on a
+        // hero: bounty is in `gold` (reason 17), wisdom is not seen.
+        smokes, runes,
         roshan_kills: roshanDeaths,
         // [t, killer, the side that took it (0: the row does not say), event row].
         tormentor_kills: tormentorDeaths,
