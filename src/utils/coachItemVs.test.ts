@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
+import { evaluateGoal } from '../../lib/coach/goals.js';
 import { ANSWERS } from '../../lib/coach/knowledge.js';
 import { answersByPro, itemLifts, proItemsLine } from '../../lib/coach/matchups.js';
 
@@ -60,6 +61,22 @@ describe('itemLifts / answersByPro', () => {
     // No pro data for the pair: the curated order stands.
     expect(answersByPro(AXE, [{ id: 99999 }], answers).ordered).toEqual(answers);
   });
+
+  it('a pro answer on the other role\'s list comes first; an item on no answer list never does (owner, 2026-11-27)', () => {
+    // Eul's is on the physical support list only: a core Tidehunter's list leaves it out, and pros build it against Ursa.
+    const core = ANSWERS.physical.core; const pool = [...new Set([...ANSWERS.physical.core, ...ANSWERS.physical.support])];
+    expect(core).not.toContain('cyclone');
+    expect(pool).toContain('cyclone');
+    expect(answersByPro(TIDE, [{ id: URSA }], core).ordered[0]).not.toBe('cyclone');
+    const withPool = answersByPro(TIDE, [{ id: URSA }], core, pool);
+    expect(withPool.ordered[0]).toBe('cyclone');
+    expect(withPool.ordered.slice(1)).toEqual(core);
+    // Helm of the Dominator is built more by pro Beastmasters against Necrophos, but it answers nothing on any list.
+    expect(itemLifts(38, 36).map((x) => x.key)).toContain('helm_of_the_dominator');
+    const all = Object.values(ANSWERS).flatMap((r: any) => [...r.core, ...r.support]);
+    expect(all).not.toContain('helm_of_the_dominator');
+    expect(answersByPro(38, [{ id: 36 }], ANSWERS.magic.core, [...ANSWERS.magic.core, ...ANSWERS.magic.support]).ordered).not.toContain('helm_of_the_dominator');
+  });
 });
 
 describe('report: the counter items pros actually build', () => {
@@ -70,6 +87,61 @@ describe('report: the counter items pros actually build', () => {
     const c = r.reviews[0].chapters.story.why.find((x: any) => x.id === 'fights.carrier');
     expect(c.fix.zh).toContain('职业潮汐猎人对上熊战士时明显更常出Eul的神圣法杖（37%，平时 8%）');
     expect(c.evidence.map((e: any) => e.zh)).toContain(proItemsLine(NAMES.heroes[TIDE], NAMES.heroes[URSA], itemLifts(TIDE, URSA))!.zh);
+  });
+
+  it('without an answer of his own, core Tidehunter is told Eul\'s first against Ursa, not a core-list armor item', () => {
+    const m = structuredClone(parsed);
+    const p = m.players.find((x: any) => x.hero_id === TIDE);
+    const ghost = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/data/constants/items.json'), 'utf8')).ghost.id;
+    for (const k of ['item_0', 'item_1', 'item_2', 'item_3', 'item_4', 'item_5', 'backpack_0', 'backpack_1', 'backpack_2']) if (p[k] === ghost) p[k] = 0;
+    p.purchase_log = (p.purchase_log ?? []).filter((x: any) => x.key !== 'ghost');
+    const c = (buildCoachReport(m) as any).reviews[0].chapters.story.why.find((x: any) => x.id === 'fights.carrier');
+    expect(c.fix.zh).toContain('在下一波大团前做出 Eul的神圣法杖、');
+    expect(c.fix.zh).not.toContain('希瓦');
+  });
+
+  const ITEMS = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/data/constants/items.json'), 'utf8'));
+  const SLOTS = ['item_0', 'item_1', 'item_2', 'item_3', 'item_4', 'item_5', 'backpack_0', 'backpack_1', 'backpack_2'];
+  const carrierOf = (m: any, i = 0) => (buildCoachReport(m) as any).reviews[i].chapters.story.why.find((x: any) => x.id === 'fights.carrier');
+
+  it('an owned promoted answer counts as owned: Tidehunter with Eul\'s is told to use it, not to build it (#475 review)', () => {
+    const m = structuredClone(parsed);
+    const p = m.players.find((x: any) => x.hero_id === TIDE);
+    for (const k of SLOTS) if (p[k] === ITEMS.ghost.id) p[k] = ITEMS.cyclone.id;
+    p.purchase_log = (p.purchase_log ?? []).filter((x: any) => x.key !== 'ghost');
+    p.purchase_log.push({ time: 1000, key: 'cyclone' });
+    const c = carrierOf(m);
+    expect(c.fix.en).not.toContain('before the next big fight');
+    expect(c.fix.en).toContain("You had Eul's Scepter of Divinity from 16:40");
+  });
+
+  it("the other role's list keeps this archetype's exclusions: a right-click Silencer is not told Solar Crest or Ghost (#475 review)", () => {
+    const m = structuredClone(parsed);
+    const p = m.players.find((x: any) => x.hero_id === TIDE);
+    p.hero_id = 75;
+    m.players.find((x: any) => x.hero_id === URSA).hero_id = 114;
+    for (const k of SLOTS) if (p[k] === ITEMS.ghost.id) p[k] = 0;
+    p.purchase_log = (p.purchase_log ?? []).filter((x: any) => x.key !== 'ghost');
+    const fix = carrierOf(m).fix.en;
+    const told = fix.slice(0, fix.indexOf('before the next big fight'));
+    expect(told).toContain('as a core build one of');
+    expect(told).not.toContain('Solar Crest');
+    expect(told).not.toContain('Ghost Scepter');
+  });
+
+  it('the goal of a missing answer includes the promoted item, so buying it meets the goal (#475 review)', () => {
+    const m = structuredClone(parsed);
+    const mars = m.players.find((x: any) => x.hero_id === 14);
+    mars.hero_id = 129;
+    m.players.find((x: any) => x.hero_id === 101).hero_id = 13;
+    for (const k of SLOTS) mars[k] = 0;
+    const slot = m.players.indexOf(mars);
+    const f = (buildCoachReport(m) as any).reviews[slot].findings.find((x: any) => x.id === 'items.answer_missing');
+    expect(f.action.en).toContain("make Eul's Scepter of Divinity your next big item");
+    expect(f.goal.items[0]).toBe('cyclone');
+    const next = structuredClone(m);
+    next.players[slot].item_0 = ITEMS.cyclone.id;
+    expect(evaluateGoal(f.goal, buildCoachReport(next), slot).result).toBe('met');
   });
 
   it('drops the suggestion when you already bought the item', () => {
