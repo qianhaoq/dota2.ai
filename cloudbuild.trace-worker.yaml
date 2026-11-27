@@ -1,0 +1,38 @@
+# Builds the trace worker (Dockerfile.trace-worker) on a push to main that touches what the image contains, and
+# deploys the one image to both workers: dota2-ai-trace-worker (asia-east1) and the fallback dota2-ai-trace-worker-hk
+# (asia-east2). Trigger: "dota2-ai-trace-worker" (its included files are the image's COPY sources and this file).
+#
+# The extractor is not in git: the pinned binary is kept in the build bucket under its SHA-256, fetched here and
+# checked against _EXTRACTOR_SHA256 before it goes into the image. To pin another build, upload it to
+# gs://aegis-assistant-488913_cloudbuild/vendor/dota-extract/<sha256> and change _EXTRACTOR_SHA256.
+substitutions:
+  _EXTRACTOR_SHA256: e7de32e0c115618d0f17dc7074c55f1a66037eabec9ddef6f9db623d5ce4c18c
+  _IMAGE: asia-east1-docker.pkg.dev/aegis-assistant-488913/cloud-run-source-deploy/dota2.ai/dota2-ai-trace-worker
+steps:
+- id: extractor
+  name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+  entrypoint: bash
+  args:
+  - -c
+  - |
+    set -euo pipefail
+    mkdir -p vendor
+    gcloud storage cp gs://aegis-assistant-488913_cloudbuild/vendor/dota-extract/${_EXTRACTOR_SHA256} vendor/dota-extract
+    echo "${_EXTRACTOR_SHA256}  vendor/dota-extract" | sha256sum -c -
+    chmod +x vendor/dota-extract
+- id: build
+  name: gcr.io/cloud-builders/docker
+  args: ['build', '--no-cache', '-f', 'Dockerfile.trace-worker', '-t', '${_IMAGE}:$COMMIT_SHA', '.']
+- id: push
+  name: gcr.io/cloud-builders/docker
+  args: ['push', '${_IMAGE}:$COMMIT_SHA']
+- id: deploy-asia-east1
+  name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+  args: ['gcloud', 'run', 'services', 'update', 'dota2-ai-trace-worker', '--region=asia-east1', '--image=${_IMAGE}:$COMMIT_SHA', '--labels=commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID', '--quiet']
+- id: deploy-asia-east2
+  name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+  waitFor: ['push']
+  args: ['gcloud', 'run', 'services', 'update', 'dota2-ai-trace-worker-hk', '--region=asia-east2', '--image=${_IMAGE}:$COMMIT_SHA', '--labels=commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID', '--quiet']
+images: ['${_IMAGE}:$COMMIT_SHA']
+options:
+  logging: CLOUD_LOGGING_ONLY
