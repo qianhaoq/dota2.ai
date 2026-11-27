@@ -47,6 +47,7 @@ const TOOLS: Record<string, Record<Lang, string>> = {
   window_report: { en: 'Reading when each side was ahead, and what it took', zh: '看双方的窗口期', ru: 'Смотрю окна преимущества команд' },
   build_for_plan: { en: 'Checking what your items served', zh: '看出装是否服务于思路', ru: 'Проверяю соответствие предметов плану' },
   farm_report: { en: 'Checking what the other side was doing', zh: '看对面同期在做什么', ru: 'Проверяю фарм и действия соперников' },
+  web_search: { en: 'Searching the web', zh: '搜索网页资料', ru: 'Ищу в интернете' },
 };
 const clockOf = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}` : String(v); };
 export function stepLabel(step: ToolStep, lang: Lang): string {
@@ -54,6 +55,7 @@ export function stepLabel(step: ToolStep, lang: Lang): string {
   const a = step.args ?? {};
   if (step.tool === 'fight_timeline' && a.from != null && a.to != null) return `${base} ${clockOf(a.from)}–${clockOf(a.to)}`;
   if (step.tool === 'death_context' && a.index != null) return `${base} #${a.index}`;
+  if (step.tool === 'web_search' && typeof a.query === 'string' && a.query.trim()) return `${base}: ${a.query.trim().slice(0, 60)}`;
   return base;
 }
 
