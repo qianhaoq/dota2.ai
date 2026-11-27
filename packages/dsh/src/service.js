@@ -263,11 +263,26 @@ export function createDshService({
     },
   };
 
+  /**
+   * A finished review here was written by the user's own model and is kept on this machine: the public
+   * dota2.ai page does not have it (and asking for it there would spend the site's model). Say where it is read
+   * instead — the dota2.ai panel's route for it — and never hand out the public link.
+   */
+  const localReview = (out) => {
+    if (out?.status !== 'ready') return out;
+    const { url: _public, ...rest } = out;
+    return {
+      ...rest,
+      panel_route: `/r/${out.match_id}?hero=${encodeURIComponent(out.hero)}&lang=${out.lang}`,
+      note: "Times and numbers were checked against the replay. Quote them as given and say what the review cannot see (blind_spots). It was written on the user's own DSH model and is kept on this machine: point them to the dota2.ai panel in the DSH sidebar (the tool card's button opens it at panel_route), which has every piece of evidence and a coach to ask. The public dota2.ai link would not show this review.",
+    };
+  };
+
   // Local `replay_review` tool handler backed by our local `AgentService` + DSH host model!
   const replay = {
     async review(args) {
       await models.refresh();
-      return replayReview({
+      return localReview(await replayReview({
         read: () => ({ ok: true }),
         validMatch: (id) => MATCH_ID.test(String(id)),
         availability: (id) => agent.availability(String(id)),
@@ -281,7 +296,7 @@ export function createDshService({
           const out = await agent.start(String(id), hero, normalizeUiLang(lang));
           return { status: out.status === 'running' ? 202 : out.status === 'unavailable' ? 503 : 200, body: out };
         },
-      }, args);
+      }, args));
     },
   };
 
