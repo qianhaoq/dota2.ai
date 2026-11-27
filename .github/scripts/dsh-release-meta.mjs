@@ -583,9 +583,20 @@ function readGitAncestry(prevTag, headSha, cwd = process.cwd()) {
   };
 }
 
-function readChangedFilesSinceTag(prevTag, cwd = process.cwd()) {
+/**
+ * List every file changed between `prevTag` and `HEAD`, with `--no-renames` so files moved
+ * out of a bundled directory still report their source path as deleted.
+ * @param {string | null} prevTag
+ * @param {string} [cwd]
+ * @returns {string[]}
+ */
+export function readChangedFilesSinceTag(prevTag, cwd = process.cwd()) {
   if (!prevTag) return [];
-  const out = execFileSync('git', ['diff', '-z', '--name-only', `${prevTag}^{commit}..HEAD`], { cwd, encoding: 'utf8' });
+  const out = execFileSync(
+    'git',
+    ['diff', '--no-renames', '-z', '--name-only', `${prevTag}^{commit}..HEAD`],
+    { cwd, encoding: 'utf8' },
+  );
   return out.split('\0').filter(Boolean);
 }
 

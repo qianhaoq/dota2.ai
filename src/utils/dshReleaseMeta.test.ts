@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { build } from 'esbuild';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -14,6 +16,7 @@ import {
   hasBundledChanges,
   matchesBundledPath,
   parseSemver,
+  readChangedFilesSinceTag,
   resolveNextVersion,
   resolveReleasePlan,
 } from '../../.github/scripts/dsh-release-meta.mjs';
@@ -361,6 +364,32 @@ describe('hasBundledChanges & workflow_run bundled-path gating', () => {
       resumeTag: 'dsh-v0.2.4',
       bundledChanges: null,
     });
+  });
+
+  it('reports both source and destination paths via --no-renames when a bundled file is moved out of a watched dir', () => {
+    const tmpRepo = mkdtempSync(join(tmpdir(), 'dsh-meta-rename-'));
+    try {
+      const git = (...args: string[]) => execFileSync('git', args, { cwd: tmpRepo, encoding: 'utf8' });
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      mkdirSync(join(tmpRepo, 'lib/data/constants/patches'), { recursive: true });
+      writeFileSync(join(tmpRepo, 'lib/data/constants/patches/old.json'), '{"patch":"7.40","data":[1,2,3]}\n');
+      git('add', '.');
+      git('commit', '-q', '-m', 'add patch snapshot');
+      git('tag', '-a', 'dsh-v0.2.3', '-m', 'release 0.2.3');
+
+      mkdirSync(join(tmpRepo, 'docs/archive'), { recursive: true });
+      git('mv', 'lib/data/constants/patches/old.json', 'docs/archive/old.json');
+      git('commit', '-q', '-m', 'archive old patch snapshot');
+
+      const changed = readChangedFilesSinceTag('dsh-v0.2.3', tmpRepo);
+      expect(changed).toContain('lib/data/constants/patches/old.json');
+      expect(changed).toContain('docs/archive/old.json');
+      expect(hasBundledChanges(changed)).toBe(true);
+    } finally {
+      rmSync(tmpRepo, { recursive: true, force: true });
+    }
   });
 });
 
