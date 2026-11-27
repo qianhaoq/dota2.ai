@@ -94,3 +94,25 @@ describe('unknown stays unknown', () => {
     expect(laneReport(t, { hero: 'beastmaster' }, {})).toMatchObject({ how_the_lane_went: null, how_the_lane_went_not_known: 'positions_not_known' });
   });
 });
+
+describe('the review of #440: a visit not placed is not known, and the roster is stated', () => {
+  const blank = (t: any, key: string, from: number, to: number) => {
+    const i = t.heroes.findIndex((h: any) => h.key === key); const st = t.states[i];
+    const cut = (arr: any[]) => arr.map((v: any, k: number) => (k + t.t0 >= from && k + t.t0 < to ? null : v));
+    return { ...t, states: t.states.map((s: any, j: number) => (j === i ? { ...st, x: cut(st.x), y: cut(st.y), alive: cut(st.alive) } : s)) };
+  };
+
+  it('a visitor with no position during their exchange: that side\'s counts are null and gaps names them — not one visit fewer', () => {
+    // Necrolyte's visit is 7:55–8:06; his lane is still read (a few seconds missing).
+    const r: any = laneProcess(blank(trace, 'necrolyte', 475, 487), bm);
+    expect(r.enemy_visits).toBeNull();
+    expect(r.gaps).toContainEqual({ topic: 'visits', reason: 'an_exchange_with_the_lane_without_the_visitor_s_position', sides: ['enemy'], heroes: ['necrolyte'] });
+    // The other side is unaffected.
+    expect(r.my_team_visits).toEqual({ visits: 2, heroes: ['dark_willow'], my_team_deaths_in_them: 1, enemy_deaths_in_them: 1 });
+  });
+
+  it('lane_report keeps the lane and the heroes how_the_lane_went was read over', () => {
+    const l: any = laneReport(trace, { hero: 'beastmaster' }, {});
+    expect(l.how_the_lane_went).toMatchObject({ lane_read_from_replay: 'bot', heroes_in_lane_read_from_replay: { beastmaster: 'me', undying: 'ally', phantom_assassin: 'enemy', venomancer: 'enemy' } });
+  });
+});
