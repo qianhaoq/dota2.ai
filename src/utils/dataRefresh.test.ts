@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { createRequire as requireOf } from 'node:module';
+const require = requireOf(import.meta.url);
 import { createRequire } from 'node:module';
 import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const { steps, sitePatch, onlyDateChanged, body, bumpReviewVersion, refresh, RETRY_WAITS } = createRequire(import.meta.url)('../../.github/scripts/data-refresh.cjs');
+const { steps, sitePatch, onlyDateChanged, body, bumpReviewVersion, refresh, RETRY_WAITS, spawnStep } = createRequire(import.meta.url)('../../.github/scripts/data-refresh.cjs');
 
 describe('data refresh: what counts as a change', () => {
   it('a file whose only change is its fetch date is no change; any data change is', () => {
@@ -174,4 +176,23 @@ describe('data refresh: an upstream that fails for a while (#419)', () => {
     expect(w.calls).toEqual(['A']);
     expect(r.steps[1]).toMatchObject({ outcome: 'skipped' });
   });
+});
+
+describe('data refresh: a step that runs out of time is stopped with what it started (Codex P1 on #422)', () => {
+  it.runIf(process.platform === 'linux')('a script the step started does not write after the step was stopped', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'refresh-timeout-'));
+    try {
+      const out = join(dir, 'late.json');
+      // The step starts a writer that writes 2 s later, and itself never ends.
+      const child = join(dir, 'child.cjs');
+      const parent = join(dir, 'parent.cjs');
+      require('node:fs').writeFileSync(child, `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(out)}, '{}'), 2000);`);
+      require('node:fs').writeFileSync(parent, `require('node:child_process').spawn(process.execPath, [${JSON.stringify(child)}], { stdio: 'ignore' }); setInterval(() => {}, 1000);`);
+      const r = spawnStep({ cmd: [parent] }, process.env, 1);
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain('timed out after 1 s');
+      await new Promise((res) => setTimeout(res, 3000));
+      expect(require('node:fs').existsSync(out)).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 20_000);
 });

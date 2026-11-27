@@ -70,7 +70,23 @@ function undo(files) {
   }
 }
 const sleepSync = (seconds) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
-const spawnStep = (s, env) => spawnSync(process.execPath, s.cmd, { encoding: 'utf8', timeout: 25 * 60_000, env });
+/** A step may run this long; then it and every process it started are stopped. */
+const STEP_SECONDS = 25 * 60;
+/**
+ * Run one step under GNU timeout: on expiry it signals the step's whole process group, then kills it 30 s later,
+ * so a script a step started (refresh-data.mjs → coach-patch-snapshots.mjs) cannot go on writing after the files
+ * were put back, or race the next try (Codex P1 on #422). Where there is no `timeout` (not the Linux runner), the
+ * step runs as before with Node's own timeout.
+ */
+function spawnStep(s, env, seconds = STEP_SECONDS) {
+  const timeoutBin = process.platform === 'linux' ? '/usr/bin/timeout' : null;
+  if (timeoutBin && require('node:fs').existsSync(timeoutBin)) {
+    const r = spawnSync(timeoutBin, ['--kill-after=30s', `${seconds}s`, process.execPath, ...s.cmd], { encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024 });
+    // 124: timed out (and the group was signalled); 137: it had to be killed.
+    return r.status === 124 || r.status === 137 ? { ...r, stderr: `${r.stderr ?? ''}\ntimed out after ${seconds} s (the step and the processes it started were stopped)` } : r;
+  }
+  return spawnSync(process.execPath, s.cmd, { encoding: 'utf8', timeout: seconds * 1000, env, maxBuffer: 64 * 1024 * 1024 });
+}
 
 /**
  * Run every step. A step that fails is tried again after each of `waits`; what a failed try wrote is put back
@@ -203,7 +219,7 @@ function body(report, tests) {
   return lines.join('\n');
 }
 
-module.exports = { steps, sitePatch, onlyDateChanged, refresh, settle, body, bumpReviewVersion, RETRY_WAITS };
+module.exports = { steps, sitePatch, onlyDateChanged, refresh, settle, body, bumpReviewVersion, RETRY_WAITS, spawnStep };
 
 if (require.main === module) {
   const [cmd, report, tests] = process.argv.slice(2);
