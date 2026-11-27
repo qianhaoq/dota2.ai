@@ -13,8 +13,8 @@ import { combatLog } from '../../lib/agent/replayQuery.js';
 /** A row of the replay's log and a hero's track under a line: the reader sees what was cited (Codex on #413). */
 // Read by path: under jsdom import.meta.url is not a file URL. Vitest runs from the repo root.
 const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(join(process.cwd(), 'packages/review-engine/test/fixtures/trace-9100904020.json.gz'))).toString()));
-const open = async (ref: string) => {
-  const served = resolveRef(trace, ref, { hero: 'beastmaster', lang: 'en' }) as any;
+const open = async (ref: string, t: any = trace) => {
+  const served = resolveRef(t, ref, { hero: 'beastmaster', lang: 'en' }) as any;
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'ok', ...served }), { status: 200, headers: { 'content-type': 'application/json' } })));
   render(<ul><EvidenceCard matchId="9100904020" hero="beastmaster" lang="en" item={{ refs: [ref], fact: 'f' }} onAsk={() => {}} /></ul>);
   fireEvent.click(screen.getByRole('button', { name: 'Show the record' }));
@@ -30,6 +30,12 @@ describe('evidence cards for the replay\'s own rows', () => {
     expect(text).toContain(row.clock);
     expect(text).toContain('cast');
     expect(text.toLowerCase()).toContain('beastmaster');
+  });
+  it('a gold row names whose gold it was (Codex on #413)', async () => {
+    const t2 = { ...trace, gold: [[1, trace.names.indexOf('npc_dota_hero_sven'), 13, 120]] };
+    const text = await open('log:gold:0', t2);
+    expect(text.toLowerCase()).toContain('sven');
+    expect(text).toContain('120');
   });
   it('a track: one line a second with where, health and mana', async () => {
     const text = await open('track:beastmaster:1820:1823');
