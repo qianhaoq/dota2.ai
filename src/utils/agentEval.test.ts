@@ -105,6 +105,24 @@ describe('review eval: against a rubric', () => {
     });
   });
 
+  it('lead_also: another first finding the rubric accepts there, which is not counted in the hit rate', () => {
+    const base = stored.review;
+    const other = { title: '咆哮捏在手里就死了', claim: '三次阵亡时原始咆哮都还亮着没放。', evidence: [{ refs: ['audit:beastmaster:primal_roar'], fact: '三次阵亡时它就绪却没放。' }], fix: 'x', rule: { when: 'w', do: 'd', this_game: 't' } };
+    const led = { review: { ...base, findings: [other, ...base.findings.slice(1)] } };
+    const onlyLeadAny = { ...rubric, lead_also: undefined };
+    expect(rubricOf(led, onlyLeadAny)).toMatchObject({ lead: null, lead_ok: false });
+    const also = { ...rubric, lead_also: [{ id: 'died_with_roar_ready', says: 's', why: 'w', any: { refs: ['audit:beastmaster:primal_roar'] }, terms: { zh: ['咆哮'] }, and_terms: { zh: ['没放'] } }] };
+    expect(rubricOf(led, also)).toMatchObject({ lead: 'died_with_roar_ready', lead_ok: true });
+    // Not a must_hit: the hit rate is the same with or without it.
+    expect(rubricOf(led, also).hit_rate).toBe(rubricOf(led, onlyLeadAny).hit_rate);
+    expect(rubricOf(led, also).must_hit.map((p: any) => p.id)).not.toContain('died_with_roar_ready');
+    // Its anchor is needed: the same words citing another record do not make it.
+    const unanchored = { review: { ...base, findings: [{ ...other, evidence: [{ refs: ['build:beastmaster'], fact: 'f' }] }, ...base.findings.slice(1)] } };
+    expect(rubricOf(unanchored, also).lead_ok).toBe(false);
+    // A rubric with only lead_also is still judged.
+    expect(rubricOf(led, { ...also, lead_any: undefined }).lead_ok).toBe(true);
+  });
+
   it('the first finding is the page\'s one lesson: lead_ok says whether it makes a point the rubric accepts there', () => {
     const base = stored.review;
     expect(rubric.lead_any).toEqual(['roar_spent_before_carry_immunity', 'no_blink_no_bkb']);
@@ -117,15 +135,15 @@ describe('review eval: against a rubric', () => {
     // A rubric that accepts only the Roar point there.
     expect(rubricOf(swapped, { ...rubric, lead_any: ['roar_spent_before_carry_immunity'] })).toMatchObject({ lead: null, lead_ok: false });
     // A rubric that does not say, or names something that is no point of its own: not judged, never "wrong".
-    expect(rubricOf(swapped, { ...rubric, lead_any: undefined })).toMatchObject({ lead: null, lead_ok: null });
-    expect(rubricOf(swapped, { ...rubric, lead_any: [] }).lead_ok).toBeNull();
-    expect(rubricOf(swapped, { ...rubric, lead_any: ['no_such_point'] }).lead_ok).toBeNull();
+    expect(rubricOf(swapped, { ...rubric, lead_any: undefined, lead_also: undefined })).toMatchObject({ lead: null, lead_ok: null });
+    expect(rubricOf(swapped, { ...rubric, lead_any: [], lead_also: undefined }).lead_ok).toBeNull();
+    expect(rubricOf(swapped, { ...rubric, lead_any: ['no_such_point'], lead_also: undefined }).lead_ok).toBeNull();
     // A review with no finding leads with none of them.
     expect(rubricOf({ review: { ...base, findings: [] } }, rubric)).toMatchObject({ lead: null, lead_ok: false });
     // Over several reviews: the share that lead well, among those whose rubric says; a later run is judged on it.
-    const scores = [scoreReview(stored, rubric), scoreReview(swapped, rubric), scoreReview(swapped, { ...rubric, lead_any: undefined })];
+    const scores = [scoreReview(stored, rubric), scoreReview(swapped, rubric), scoreReview(swapped, { ...rubric, lead_any: undefined, lead_also: undefined })];
     expect(summarize(scores).rubric_approved).toMatchObject({ reviews: 3, lead_ok: 0.5 });
-    expect(summarize([scoreReview(stored, { ...rubric, lead_any: undefined })]).rubric_approved!.lead_ok).toBeNull();
+    expect(summarize([scoreReview(stored, { ...rubric, lead_any: undefined, lead_also: undefined })]).rubric_approved!.lead_ok).toBeNull();
     expect(compareSummaries({ rubric_approved: { lead_ok: 0.5 } }, { rubric_approved: { lead_ok: 0.17 } }).worse).toEqual([{ key: 'rubric_approved.lead_ok', before: 0.5, after: 0.17 }]);
   });
 
