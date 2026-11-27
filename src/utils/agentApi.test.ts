@@ -218,25 +218,26 @@ describe('agent API', () => {
     const calls = m.seen.length;
     budget = { ok: false, reason: 'client', retryAfterSec: 9 };
     expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'zh' })).toMatchObject({ status: 200, body: { status: 'ready' } });
-    // One run generates en/zh/ru together: switching to en or ru returns ready immediately without regenerating.
-    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=en`)).body).toMatchObject({ status: 'ready', review: { lang: 'en', verdict: 'Primal Roar was not saved for Phantom Assassin.' } });
-    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=ru`)).body).toMatchObject({ status: 'ready', review: { lang: 'ru', verdict: 'Primal Roar не приберегли для Phantom Assassin.' } });
-    expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'ru' })).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'ru' } } });
-    // Concurrent starts for different languages on an already-ready bundle each get their own requested language (Codex P1).
-    const [concEn, concRu] = await Promise.all([
-      post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'en' }),
-      post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'ru' }),
-    ]);
-    expect(concEn).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'en', verdict: 'Primal Roar was not saved for Phantom Assassin.' } } });
-    expect(concRu).toMatchObject({ status: 200, body: { status: 'ready', review: { lang: 'ru', verdict: 'Primal Roar не приберегли для Phantom Assassin.' } } });
-    // Also exercise service.start() sharing an in-flight claim across different languages directly.
-    const slowDocs = { get: async (k: string) => { await new Promise((r) => setTimeout(r, 15)); return JSON.parse(readFileSync(join(reviewDir, k), 'utf8')); }, put: async () => {} };
-    const sharedSvc: any = createAgentService({ traces: createFileTraceStore(dir), docs: slowDocs, complete: m.complete, model: 'test-model' });
-    const [sEn, sRu] = await Promise.all([sharedSvc.start(MATCH, 'beastmaster', 'en'), sharedSvc.start(MATCH, 'beastmaster', 'ru')]);
-    expect(sEn).toMatchObject({ status: 'ready', review: { lang: 'en' } });
-    expect(sRu).toMatchObject({ status: 'ready', review: { lang: 'ru' } });
+    // A review is written in the language it was asked in: English and Russian are not there, and asking spent nothing.
+    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=en`)).body).toEqual({ status: 'none' });
+    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=ru`)).body).toEqual({ status: 'none' });
+    // Starting one in another language is a new review, so it is charged like one (here the model budget says no).
+    expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'en' })).toMatchObject({ status: 429 });
     budget = { ok: true };
     expect(m.seen.length).toBe(calls);
+    // Concurrent starts in two languages on a bundle that has neither each come back in their own language (Codex P1 on #393).
+    const [concEn, concRu] = await Promise.all([
+      post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'en' }, '10.0.2.1'),
+      post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'ru' }, '10.0.2.2'),
+    ]);
+    expect([concEn.status, concRu.status].every((st) => st === 200 || st === 202)).toBe(true);
+    for (const l of ['en', 'ru']) {
+      let r: any;
+      for (let i = 0; i < 100; i += 1) { r = (await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: l }, '10.0.2.3')).body; if (r.status === 'ready') break; await new Promise((res) => setTimeout(res, 20)); }
+      expect(r).toMatchObject({ status: 'ready', review: { lang: l } });
+    }
+    // The zh review is still the one first written.
+    expect((await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=zh`)).body).toMatchObject({ status: 'ready', review: { lang: 'zh', verdict: submit.verdict } });
   });
 
   it('review: bad input, missing trace, limits and the guard', async () => {
@@ -329,8 +330,8 @@ describe('agent API', () => {
     expect([a.body.status, b.body.status]).toEqual(['running', 'running']);
     let now: any;
     for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=dark_willow&lang=en`)).body; if (now.status !== 'running') break; await new Promise((r) => setTimeout(r, 20)); }
-    // One investigation: two model calls (look up, submit) + one translation call for en/zh/ru, not six.
-    expect(m.seen.length - before).toBe(3);
+    // One investigation: two model calls (look up, submit), not four, and no translation.
+    expect(m.seen.length - before).toBe(2);
     // The model budget says no five times; the caller's five review slots are all still there afterwards.
     const six = [
       { hero: 'necrolyte', lang: 'en', plan: 'push' },

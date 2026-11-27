@@ -263,9 +263,16 @@ describe('runDeepReview', () => {
     expect(r.verification).toMatchObject({ repaired: true, dropped: 1 });
     const repair = JSON.parse(m.seen[2].messages.at(-1).content);
     expect(repair).toMatchObject({ error: 'unsupported_facts', problems: expect.arrayContaining([{ in: 'finding 2', text: '19:19', why: 'this time is not in any tool result' }, expect.objectContaining({ in: 'finding 2', text: 'fight:99' })]) });
-    // 3 investigation/repair turns + 1 tool-free trilingual translation call.
-    expect(m.seen).toHaveLength(4);
-    expect(m.seen[3].tools).toEqual([]);
+    // 3 investigation/repair turns, and no translation call: a review is written in the one language asked.
+    expect(m.seen).toHaveLength(3);
+    expect(Object.keys(r.reviews)).toEqual(['zh']);
+  });
+
+  it('translates into the other site languages only when asked (translate: true)', async () => {
+    const m = scripted([investigate, { toolCalls: [call('submit_review', review([good]), 's1')] }, { text: '{}' }, { text: '{}' }]);
+    await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh', translate: true });
+    expect(m.seen.length).toBeGreaterThan(2);
+    expect(m.seen[2].tools).toEqual([]);
   });
 
   it('one evidence item the cited record does not hold is left out; the finding stays on the rest', async () => {

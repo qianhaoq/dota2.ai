@@ -121,9 +121,8 @@ describe('the repair round and the prompt', () => {
     const repair = JSON.parse(seen[2].messages.at(-1).content);
     expect(repair.problems).toEqual([{ in: 'verdict', text: 'lost', why: expect.stringContaining('these English words stand in a Chinese review') }]);
     expect(repair.problems[0].why).toContain('Roshan is 肉山');
-    // 3 investigation/repair turns + 1 tool-free trilingual translation call.
-    expect(seen).toHaveLength(4);
-    expect(seen[3].tools).toEqual([]);
+    // 3 investigation/repair turns, and no translation call: a review is written in one language.
+    expect(seen).toHaveLength(3);
     expect(out.status).toBe('ok');
     expect(out.review.verdict).toBe('这条线是 lost。');
     expect(out.review.findings).toHaveLength(1);
