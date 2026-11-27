@@ -18,7 +18,7 @@ describe('a finding that says the player stayed, about a death the record shows 
   it('the wording it looks for', () => {
     expect(staysClaims('队友倒下后仍在原地与熊战士换血')).toHaveLength(1);
     expect(staysClaims('对线期半血还在一线换血')).toHaveLength(1);
-    expect(staysClaims('You stayed in the lane and kept trading')).toEqual(['stayed', 'kept trading']);
+    expect(staysClaims('You stayed in the lane and kept trading')).toEqual(['stayed in', 'kept trading']);
     expect(staysClaims('你往自家方向退，被追上')).toEqual([]);
     // A denial agrees with a retreat (Codex P1 on #427).
     expect(staysClaims('你没有继续换血，而是往家退时被追上。')).toEqual([]);
@@ -28,6 +28,20 @@ describe('a finding that says the player stayed, about a death the record shows 
   it('a denial of staying is not sent back, in either language (Codex P1 on #427)', () => {
     expect(notes(review(finding('撤退时被追上', '你没有继续换血，而是往家退时被追上。', ['death:beastmaster:5'])))).toEqual([]);
     expect(notes(review(finding('Caught on the way home', 'You did not stay to fight; you retreated and were caught.', ['death:beastmaster:5'])))).toEqual([]);
+  });
+
+  it('each "stayed" is about the death its own clause names (Codex P1 on #427)', () => {
+    // 2:51 went 655 away from home and 11:03 came 1568 closer: only the trading clause is about 2:51.
+    const r = review(finding('前期两次阵亡', '2:51 你继续换血；11:03 你往家退时被追上。', ['death:beastmaster:2', 'death:beastmaster:5']));
+    expect(notes(r)).toEqual([]);
+    // The same, the other way round: the trading clause names 11:03.
+    expect(notes(review(finding('前期两次阵亡', '2:51 你往前走被抓；11:03 你继续换血。', ['death:beastmaster:2', 'death:beastmaster:5']))).map((n: any) => n.text)).toEqual(['11:03: 1568 closer to the fountain']);
+  });
+
+  it('English "stay" only when it says where: "stay alive" is not holding position (Codex P1 on #427)', () => {
+    expect(staysClaims('You tried to stay alive while retreating toward home, but were caught.')).toEqual([]);
+    expect(notes(review(finding('Caught on the way home', 'You tried to stay alive while retreating toward home, but were caught.', ['death:beastmaster:5'])))).toEqual([]);
+    expect(staysClaims('You stayed in the lane')).toEqual(['stayed in']);
   });
 
   it('a time is matched to the player\'s own death, not to another hero who died then (Codex P1 on #427)', () => {
