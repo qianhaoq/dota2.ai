@@ -8,18 +8,20 @@
   "chars": 4977.88,
   "top_dense_sentences": 0.33,
   "top_numbers_per_sentence": 2.06,
-  "chinese_reviews_with_english_words": 0.67,
-  "english_words_per_chinese_review": 4.95,
+  "chinese_reviews_with_english_words": 0.62,
+  "english_words_per_chinese_review": 4.36,
   "findings": 2.86,
   "thin_rules": 0.13,
   "rules_that_say_only_once": 0.01,
   "matchup_both_ways": 0.02,
   "repaired": 0.95,
+  "without_game_plan": 0.62,
   "rubric_approved": {
-   "reviews": 9,
-   "hit_rate": 0.85,
+   "reviews": 11,
+   "hit_rate": 0.88,
    "must_not_violations": 0,
    "turning_fight_covered": 0.33,
+   "lead_ok": 0.64,
    "main_reason_ok": 1
   },
   "rubric_draft": null,
@@ -41,11 +43,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 1,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -58,17 +62,19 @@
    "top_dense_sentences": 0.29,
    "top_numbers_per_sentence": 1.55,
    "chinese_reviews_with_english_words": 0.5,
-   "english_words_per_chinese_review": 11.5,
+   "english_words_per_chinese_review": 10,
    "findings": 3,
    "thin_rules": 1,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 2,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 0.5,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -81,17 +87,19 @@
    "top_dense_sentences": 0.21,
    "top_numbers_per_sentence": 1.37,
    "chinese_reviews_with_english_words": 0.5,
-   "english_words_per_chinese_review": 19,
+   "english_words_per_chinese_review": 17.5,
    "findings": 2.67,
    "thin_rules": 1,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.89,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 1,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -103,18 +111,20 @@
    "chars": 1484,
    "top_dense_sentences": 0.3,
    "top_numbers_per_sentence": 3.2,
-   "chinese_reviews_with_english_words": 1,
-   "english_words_per_chinese_review": 3,
+   "chinese_reviews_with_english_words": 0,
+   "english_words_per_chinese_review": 0,
    "findings": 1,
    "thin_rules": 0,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 1,
     "hit_rate": 0.25,
     "must_not_violations": 0,
     "turning_fight_covered": null,
+    "lead_ok": 1,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -126,18 +136,20 @@
    "chars": 2493,
    "top_dense_sentences": 0.34,
    "top_numbers_per_sentence": 1.9,
-   "chinese_reviews_with_english_words": 1,
-   "english_words_per_chinese_review": 4,
+   "chinese_reviews_with_english_words": 0,
+   "english_words_per_chinese_review": 0,
    "findings": 3,
    "thin_rules": 0,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
+    "lead_ok": 0,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -149,18 +161,20 @@
    "chars": 2835,
    "top_dense_sentences": 0.36,
    "top_numbers_per_sentence": 1.9,
-   "chinese_reviews_with_english_words": 1,
-   "english_words_per_chinese_review": 4,
+   "chinese_reviews_with_english_words": 0,
+   "english_words_per_chinese_review": 0,
    "findings": 3,
    "thin_rules": 0.33,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
+    "lead_ok": 1,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -173,17 +187,19 @@
    "top_dense_sentences": 0.4,
    "top_numbers_per_sentence": 1.9,
    "chinese_reviews_with_english_words": 0.5,
-   "english_words_per_chinese_review": 1.5,
+   "english_words_per_chinese_review": 0.5,
    "findings": 2.5,
    "thin_rules": 0.2,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 2,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 0,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -195,18 +211,20 @@
    "chars": 2769,
    "top_dense_sentences": 0.32,
    "top_numbers_per_sentence": 2,
-   "chinese_reviews_with_english_words": 1,
-   "english_words_per_chinese_review": 6,
+   "chinese_reviews_with_english_words": 0.5,
+   "english_words_per_chinese_review": 4,
    "findings": 3,
    "thin_rules": 0.17,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 2,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 0,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -219,17 +237,19 @@
    "top_dense_sentences": 0.38,
    "top_numbers_per_sentence": 2.43,
    "chinese_reviews_with_english_words": 1,
-   "english_words_per_chinese_review": 9.67,
+   "english_words_per_chinese_review": 8.67,
    "findings": 2.33,
    "thin_rules": 0.14,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 1,
    "rubric_approved": {
     "reviews": 2,
     "hit_rate": 0.5,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 0,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -241,18 +261,20 @@
    "chars": 4504.28,
    "top_dense_sentences": 0.3,
    "top_numbers_per_sentence": 1.86,
-   "chinese_reviews_with_english_words": 0.7,
-   "english_words_per_chinese_review": 4.61,
+   "chinese_reviews_with_english_words": 0.61,
+   "english_words_per_chinese_review": 4.35,
    "findings": 2.92,
    "thin_rules": 0.11,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 0.92,
+   "without_game_plan": 1,
    "rubric_approved": {
-    "reviews": 5,
-    "hit_rate": 0.93,
+    "reviews": 6,
+    "hit_rate": 0.95,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 0.67,
     "main_reason_ok": null
    },
    "rubric_draft": null
@@ -265,17 +287,19 @@
    "top_dense_sentences": 0.33,
    "top_numbers_per_sentence": 2.23,
    "chinese_reviews_with_english_words": 0.5,
-   "english_words_per_chinese_review": 2,
+   "english_words_per_chinese_review": 1.33,
    "findings": 3,
    "thin_rules": 0.11,
    "rules_that_say_only_once": 0.04,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 6,
     "hit_rate": 0.78,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
+    "lead_ok": 0.33,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -288,17 +312,19 @@
    "top_dense_sentences": 0.51,
    "top_numbers_per_sentence": 3.32,
    "chinese_reviews_with_english_words": 0.6,
-   "english_words_per_chinese_review": 3.8,
+   "english_words_per_chinese_review": 2,
    "findings": 2.8,
    "thin_rules": 0.07,
    "rules_that_say_only_once": 0.07,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
+    "lead_ok": 1,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -317,11 +343,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 1,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
+    "lead_ok": 1,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -333,18 +361,20 @@
    "chars": 6305.36,
    "top_dense_sentences": 0.39,
    "top_numbers_per_sentence": 2.52,
-   "chinese_reviews_with_english_words": 0.86,
-   "english_words_per_chinese_review": 4.29,
+   "chinese_reviews_with_english_words": 0.71,
+   "english_words_per_chinese_review": 2.57,
    "findings": 2.64,
    "thin_rules": 0.17,
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 5,
     "hit_rate": 0.6,
     "must_not_violations": 0,
     "turning_fight_covered": 0.33,
+    "lead_ok": 0.6,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -363,11 +393,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 4,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 0.5,
+    "lead_ok": 0.5,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -386,11 +418,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 4,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 0.5,
+    "lead_ok": 0.25,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -409,11 +443,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0.33,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.55,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 0.33,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -432,11 +468,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.78,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
+    "lead_ok": 0.33,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -455,11 +493,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0.33,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.55,
     "must_not_violations": 0,
     "turning_fight_covered": 0.5,
+    "lead_ok": 0.33,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -478,11 +518,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 4,
     "hit_rate": 0.67,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
+    "lead_ok": 0.25,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -501,11 +543,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 0.67,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.69,
     "must_not_violations": 0,
     "turning_fight_covered": 1,
+    "lead_ok": 0.67,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -524,11 +568,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 0.5,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 2,
     "hit_rate": 1,
     "must_not_violations": 0,
     "turning_fight_covered": null,
+    "lead_ok": 0.5,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -547,11 +593,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 2,
     "hit_rate": 0.88,
     "must_not_violations": 0,
     "turning_fight_covered": null,
+    "lead_ok": 1,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -570,11 +618,13 @@
    "rules_that_say_only_once": 0,
    "matchup_both_ways": 0,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
     "reviews": 3,
     "hit_rate": 0.55,
     "must_not_violations": 0,
     "turning_fight_covered": 0,
+    "lead_ok": 0,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -587,17 +637,19 @@
    "top_dense_sentences": 0.42,
    "top_numbers_per_sentence": 2.56,
    "chinese_reviews_with_english_words": 0.67,
-   "english_words_per_chinese_review": 9.17,
+   "english_words_per_chinese_review": 9,
    "findings": 3,
    "thin_rules": 0.08,
    "rules_that_say_only_once": 0.08,
    "matchup_both_ways": 0.13,
    "repaired": 1,
+   "without_game_plan": 0,
    "rubric_approved": {
-    "reviews": 4,
-    "hit_rate": 0.83,
+    "reviews": 5,
+    "hit_rate": 0.87,
     "must_not_violations": 0,
     "turning_fight_covered": 0.5,
+    "lead_ok": 0.4,
     "main_reason_ok": 1
    },
    "rubric_draft": null
@@ -841,6 +893,8 @@
     "hit_rate": 1,
     "must_not": [],
     "turning_fight_covered": null,
+    "lead": "killed_by_ursa_attacks",
+    "lead_ok": true,
     "main_reason_ok": true
    }
   },
@@ -880,6 +934,8 @@
     "hit_rate": 1,
     "must_not": [],
     "turning_fight_covered": null,
+    "lead": null,
+    "lead_ok": false,
     "main_reason_ok": true
    }
   },
@@ -914,6 +970,8 @@
     "hit_rate": 1,
     "must_not": [],
     "turning_fight_covered": null,
+    "lead": "deaths_with_three_or_more_enemies",
+    "lead_ok": true,
     "main_reason_ok": true
    }
   },
@@ -948,6 +1006,8 @@
     "hit_rate": 1,
     "must_not": [],
     "turning_fight_covered": null,
+    "lead": "deaths_with_three_or_more_enemies",
+    "lead_ok": true,
     "main_reason_ok": true
    }
   },
@@ -1072,7 +1132,7 @@
    "plan": null,
    "verdict_chars": 139,
    "top_dense": "15/30",
-   "english_words": 10,
+   "english_words": 1,
    "thin_rules": 0,
    "matchup_both_ways": false,
    "rubric": null
@@ -1136,6 +1196,8 @@
     "hit_rate": 1,
     "must_not": [],
     "turning_fight_covered": null,
+    "lead": "five_deaths_before_ten",
+    "lead_ok": true,
     "main_reason_ok": null
    }
   },
@@ -1170,6 +1232,8 @@
     "hit_rate": 1,
     "must_not": [],
     "turning_fight_covered": null,
+    "lead": "five_deaths_before_ten",
+    "lead_ok": true,
     "main_reason_ok": null
    }
   },
@@ -1238,7 +1302,7 @@
    "plan": null,
    "verdict_chars": 84,
    "top_dense": "13/33",
-   "english_words": 1,
+   "english_words": 0,
    "thin_rules": 0,
    "matchup_both_ways": false,
    "rubric": null
@@ -1274,6 +1338,8 @@
     "hit_rate": 1,
     "must_not": [],
     "turning_fight_covered": true,
+    "lead": null,
+    "lead_ok": false,
     "main_reason_ok": true
    }
   },
@@ -1308,6 +1374,8 @@
     "hit_rate": 0.33,
     "must_not": [],
     "turning_fight_covered": false,
+    "lead": null,
+    "lead_ok": false,
     "main_reason_ok": true
    }
   },
@@ -1342,6 +1410,8 @@
     "hit_rate": 0.33,
     "must_not": [],
     "turning_fight_covered": false,
+    "lead": null,
+    "lead_ok": false,
     "main_reason_ok": true
    }
   },
@@ -1427,7 +1497,24 @@
    "english_words": 0,
    "thin_rules": 1,
    "matchup_both_ways": false,
-   "rubric": null
+   "rubric": {
+    "status": "approved",
+    "must_hit": [
+     {
+      "id": "lane_deaths_to_naga",
+      "hit": true,
+      "finding": 1
+     }
+    ],
+    "hit_weight": 2,
+    "weight": 2,
+    "hit_rate": 1,
+    "must_not": [],
+    "turning_fight_covered": null,
+    "lead": "lane_deaths_to_naga",
+    "lead_ok": true,
+    "main_reason_ok": null
+   }
   },
   {
    "file": "9101164859.phantom_lancer.zh.p15.review.json",
@@ -1564,7 +1651,7 @@
    "plan": null,
    "verdict_chars": 142,
    "top_dense": "13/33",
-   "english_words": 2,
+   "english_words": 0,
    "thin_rules": 1,
    "matchup_both_ways": false,
    "rubric": null
@@ -1592,7 +1679,7 @@
    "plan": null,
    "verdict_chars": 131,
    "top_dense": "10/21",
-   "english_words": 13,
+   "english_words": 3,
    "thin_rules": 1,
    "matchup_both_ways": false,
    "rubric": null
@@ -1623,7 +1710,29 @@
    "english_words": 0,
    "thin_rules": 0,
    "matchup_both_ways": false,
-   "rubric": null
+   "rubric": {
+    "status": "approved",
+    "must_hit": [
+     {
+      "id": "deaths_outside_fights_not_traded",
+      "hit": true,
+      "finding": 1
+     },
+     {
+      "id": "died_with_static_storm_ready",
+      "hit": true,
+      "finding": 1
+     }
+    ],
+    "hit_weight": 3,
+    "weight": 3,
+    "hit_rate": 1,
+    "must_not": [],
+    "turning_fight_covered": null,
+    "lead": "deaths_outside_fights_not_traded",
+    "lead_ok": true,
+    "main_reason_ok": true
+   }
   },
   {
    "file": "9104082306.clinkz.zh.p33.review.json",
@@ -1634,7 +1743,7 @@
    "plan": null,
    "verdict_chars": 137,
    "top_dense": "13/32",
-   "english_words": 12,
+   "english_words": 11,
    "thin_rules": 0,
    "matchup_both_ways": false,
    "rubric": null
