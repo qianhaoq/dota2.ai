@@ -175,6 +175,38 @@ describe('what the check removed is kept beside the review', () => {
   });
 });
 
+describe('a review is one language: two languages started together are two reviews', () => {
+  it('zh is running when en is asked for; when zh is done, en is reviewed too and comes back ready (Codex P1 on #410)', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => { release = r; });
+    const langs: string[] = [];
+    const complete = async (o: any) => {
+      if (o.messages.at(-1).role === 'user') {
+        langs.push(String(o.system).includes('简体中文') ? 'zh' : 'en');
+        return { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a'), call('immunity_windows', { hero: 'phantom_assassin' }, 'b')] };
+      }
+      // The first review is held at its submit until the second has been asked for.
+      if (langs.length === 1) await gate;
+      return { toolCalls: [call('submit_review', submit, 's')] };
+    };
+    const reviewDir = join(dir, 'two-langs');
+    const service: any = createAgentService({ traces: createFileTraceStore(dir), complete, model: 'm', reviewDir });
+    expect(await service.start(MATCH, 'beastmaster', 'zh')).toMatchObject({ status: 'running' });
+    await vi.waitFor(() => expect(langs).toEqual(['zh']));
+    // While zh is running, en is not: it is its own review, started on request.
+    expect(await service.status(MATCH, 'beastmaster', 'en')).toEqual({ status: 'none' });
+    expect(await service.start(MATCH, 'beastmaster', 'en')).toMatchObject({ status: 'running' });
+    release();
+    await vi.waitFor(async () => expect((await service.status(MATCH, 'beastmaster', 'zh')).status).toBe('ready'), { timeout: 5000 });
+    await vi.waitFor(async () => expect((await service.status(MATCH, 'beastmaster', 'en')).status).toBe('ready'), { timeout: 5000 });
+    expect(langs.sort()).toEqual(['en', 'zh']);
+    expect((await service.status(MATCH, 'beastmaster', 'en')).review.lang).toBe('en');
+    expect((await service.status(MATCH, 'beastmaster', 'zh')).review.lang).toBe('zh');
+    // Each in its own file: finishing together, neither wrote over the other.
+    expect(readdirSync(reviewDir).filter((f) => f.endsWith('.review.json')).map((f) => f.split('.')[2]).sort()).toEqual(['en', 'zh']);
+  });
+});
+
 describe('agent API', () => {
   let server: any; let base = '';
   const m = model();
@@ -214,7 +246,8 @@ describe('agent API', () => {
     for (let i = 0; i < 50; i += 1) { now = (await get(`/api/agent/${MATCH}/review?hero=beastmaster&lang=zh`)).body; if (now.status === 'ready') break; await new Promise((r) => setTimeout(r, 20)); }
     expect(now).toMatchObject({ status: 'ready', model: 'test-model', tool_calls: 2, verification: { repaired: false, dropped: 0 }, review: { schema: 'dota2.ai/deep-review@1', hero: 'beastmaster', lang: 'zh', verdict: submit.verdict } });
     expect(now.review.findings[0].evidence[0]).toEqual({ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: finding.evidence[0].fact });
-    expect(readdirSync(reviewDir).sort()).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.job\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.review\.json$/)]);
+    // The job, its marker and the stored review are the language's.
+    expect(readdirSync(reviewDir).sort()).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.job\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)]);
     const calls = m.seen.length;
     budget = { ok: false, reason: 'client', retryAfterSec: 9 };
     expect(await post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: 'zh' })).toMatchObject({ status: 200, body: { status: 'ready' } });
