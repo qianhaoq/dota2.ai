@@ -393,7 +393,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const nextReal = nextIdx >= 0 ? all[nextIdx] : null;
     const diedSoon = !nextReal ? false
       : r.revived_at != null ? (nextReal[0] - r.revived_at <= 20 ? { ref: `death:${heroKey}:${nextIdx + 1}`, clock: clock(nextReal[0]), killer: nameOf(trace, nextReal[2]), seconds_after_revive: Math.round((nextReal[0] - r.revived_at) * 10) / 10 } : false)
-        : nextReal[0] - r.t <= 27 ? null : false;
+        : nextReal[0] - r.t <= 20 ? { ref: `death:${heroKey}:${nextIdx + 1}`, clock: clock(nextReal[0]), killer: nameOf(trace, nextReal[2]), seconds_after_revive: null }
+          : nextReal[0] - r.t <= 27 ? null : false;
     return {
       ref: `resurrection:${heroKey}:${i + 1}`, hero: heroKey, n: i + 1, t: r.t, clock: clock(r.t), by: r.by, killer: nameOf(trace, r.killer), row: r.row,
       revived_at: r.revived_at == null ? null : clock(r.revived_at),

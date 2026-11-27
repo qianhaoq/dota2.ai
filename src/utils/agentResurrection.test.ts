@@ -247,6 +247,48 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
     expect(classifyDeath(expired, [401.5, 0, 2, 77])).toEqual({ real: true });
     const expiredWithDeath = { ...expired, deaths: [[400.3, 0, 2, 76]] };
     expect((roshanReport(expiredWithDeath, { hero: 'skeleton_king' }) as any).takes[0]).toMatchObject({ aegis: 'expired' });
+
+    // Late Aegis (297 s) consumed INSIDE a base with a sampled 5 s revival is preserved as an Aegis revival (Codex P1 on #431).
+    const lateBase: any = buildWraithKingTrace();
+    const baseStates = {
+      ...lateBase.states[1],
+      x: lateBase.states[1].x.map(() => -7000),
+      y: lateBase.states[1].y.map(() => -6500),
+      alive: lateBase.states[1].alive.map((v: number, s: number) => (s >= 398 && s <= 401 ? 0 : v)),
+    };
+    const lateBaseTrace = {
+      ...lateBase,
+      states: [lateBase.states[0], baseStates, lateBase.states[2], lateBase.states[3]],
+      items: [{}, { item_aegis: { held: [[100, 397]], cd: [] } }, {}, {}],
+      deaths: [[397, 1, 2, 80]],
+    };
+    expect(classifyDeath(lateBaseTrace, lateBaseTrace.deaths[0])).toEqual({ real: false, by: 'aegis', revived_at: 402 });
+    expect((roshanReport(lateBaseTrace, { hero: 'crystal_maiden' }) as any).takes[0]).toMatchObject({ aegis: 'used', aegis_used_at: '6:37' });
+
+    // Aegis revival followed by an immediate re-kill between 1 Hz samples (alive stays 0 from 101 through 135):
+    // first row (100.2) is Aegis consumption, second row (105.3) is the one real death (Codex P1 on #431).
+    const betweenSamples: any = buildWraithKingTrace();
+    const cmDeadThrough = {
+      ...betweenSamples.states[1],
+      alive: betweenSamples.states[1].alive.map((v: number, s: number) => (s >= 101 && s <= 135 ? 0 : v)),
+    };
+    const rekillTrace = {
+      ...betweenSamples,
+      states: [betweenSamples.states[0], cmDeadThrough, betweenSamples.states[2], betweenSamples.states[3]],
+      items: [{}, { item_aegis: { held: [[20, 100.3]], cd: [] } }, {}, {}],
+      deaths: [[100.2, 1, 2, 81], [105.3, 1, 3, 82]],
+    };
+    expect(realDeaths(rekillTrace).map((d: any) => d[0])).toEqual([105.3]);
+    expect(resurrections(rekillTrace)).toMatchObject([{ t: 100.2, by: 'aegis', revived_at: null }]);
+    expect((roshanReport(rekillTrace, { hero: 'crystal_maiden' }) as any).takes[0]).toMatchObject({ aegis: 'used' });
+    const rekillDc: any = runTraceTool(rekillTrace, 'death_context', { hero: 'crystal_maiden' });
+    expect(rekillDc.deaths_total).toBe(1);
+    expect(rekillDc.resurrections[0].died_for_real_within_20s).toEqual({
+      ref: 'death:crystal_maiden:1',
+      clock: '1:45',
+      killer: 'juggernaut',
+      seconds_after_revive: null,
+    });
   });
 
   it('catches non-buyback in-place revival talents outside bases, ignores instant base respawns, and keeps blanked samples unknown (null, never 0 or [])', () => {
@@ -256,6 +298,10 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
     for (let s = 801; s <= 803; s += 1) cmStates.alive[s] = 0;
     const talentTrace = { ...base, states: [base.states[0], cmStates, base.states[2], base.states[3]], deaths: [[800.2, 1, 2, 50]] };
     expect(classifyDeath(talentTrace, talentTrace.deaths[0])).toEqual({ real: false, by: 'reincarnation', revived_at: 804 });
+
+    // Without recorded `buybacks` (legacy trace), the fallback never guesses a resurrection (Codex P1 on #431).
+    const { buybacks: _noBuybacks, ...legacyTrace } = talentTrace;
+    expect(classifyDeath(legacyTrace, legacyTrace.deaths[0])).toEqual({ real: true });
 
     // Same fast respawn INSIDE Radiant base (e.g., Undying Ceaseless Dirge or buyback inside base): real death, never guessed as reincarnation.
     const inBase = {
@@ -314,8 +360,12 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
       at: null,
       allies_within_2200: null,
       enemies_within_2200: null,
-      died_for_real_within_20s: null, // 17:12 is 17.5 s after 16:55: without revived_at, whether <= 20 s after revive cannot be settled
+      // 17:12 is 17.5 s after 16:55: since revived_at >= 16:55, it is <= 20 s after revive, with seconds_after_revive null.
+      died_for_real_within_20s: { ref: 'death:skeleton_king:3', clock: '17:12', killer: 'lion', seconds_after_revive: null },
     });
+    // A real death 22.7 s after 16:55 (in (20, 27]) cannot be settled without revived_at -> null.
+    const ambiguous = { ...blanked, deaths: blanked.deaths.map((d: any) => (d[0] === 1032.8 ? [1038.0, d[1], d[2], d[3]] : d)) };
+    expect((runTraceTool(ambiguous, 'death_context', { hero: 'skeleton_king' }) as any).resurrections[0].died_for_real_within_20s).toBeNull();
     expect(dc.resurrections[1].died_for_real_within_20s).toBe(false); // no real death after 27:48 at all
     // Mana at 10:15 was blanked -> unknown, never guessed as ready or insufficient_mana.
     expect(dc.deaths[1].reincarnation_at_death).toEqual({ state: 'unknown' });
