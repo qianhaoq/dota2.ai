@@ -18,20 +18,34 @@ export const MCP_TOOLS = [
 
 export type AccessMode = 'web' | 'dsh' | 'mcp' | 'cli' | 'http';
 
+/** Official DeepSeek Harness desktop app download page. */
+export const DSH_DOWNLOAD_URL = 'https://www.deepseek.com/harness/';
+/** Public npm package name for the DSH plugin (published with provenance + npmmirror sync by dsh-release.yml). */
+export const DSH_PACKAGE_NAME = '@qianhaoq/dsh-dota2ai';
 /** The DSH plugin release the home page points to (packages/dsh, released from a dsh-v* tag). */
 export const DSH_PLUGIN_VERSION = '0.2.3';
 export const DSH_RELEASE_URL = `https://github.com/qianhaoq/dota2.ai/releases/tag/dsh-v${DSH_PLUGIN_VERSION}`;
-export const DSH_INSTALL = `dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`;
+export const DSH_INSTALL = `dsh plugin --profile web add ${DSH_PACKAGE_NAME}`;
 /** Concrete DSH release verified by dsh-release.yml (must satisfy packages/dsh/package.json engines.dsh). */
 export const DSH_HOST_VERSION = '0.2.2-rc.5';
 export const DSH_TGZ_URL = `https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v${DSH_PLUGIN_VERSION}/qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`;
-/** From nothing to the dota2.ai page in DSH: the host and pnpm (DSH installs plugins with it), the plugin, the web UI. */
+/** From nothing to the dota2.ai page in DSH via CLI: the host and pnpm (DSH installs plugins with it), the plugin, the web UI. */
 export const DSH_SETUP = [
   `npm install -g pnpm @deepseek-ai/dsh@${DSH_HOST_VERSION}`,
-  `curl -LO ${DSH_TGZ_URL}`,
   DSH_INSTALL,
   'dsh web',
 ];
+
+/** One-sentence install command to paste directly into the DeepSeek Harness desktop client chat. */
+export function dshDesktopPrompt(lang: 'en' | 'zh' | 'ru'): string {
+  if (lang === 'zh') {
+    return `帮我安装 dota2.ai 的 Dota 2 复盘插件 ${DSH_PACKAGE_NAME} 到当前桌面端 profile，装好后告诉我怎么在左侧栏打开 dota2.ai。`;
+  }
+  if (lang === 'ru') {
+    return `Установи плагин dota2.ai для разбора реплеев Dota 2 ${DSH_PACKAGE_NAME} в текущий профиль десктопного приложения, затем подскажи, как открыть dota2.ai в левой боковой панели.`;
+  }
+  return `Install the dota2.ai Dota 2 replay coach plugin ${DSH_PACKAGE_NAME} into my active desktop profile, then tell me how to open dota2.ai in the left sidebar.`;
+}
 
 /**
  * One line that connects each agent tool to the hosted MCP server. A command
@@ -90,14 +104,17 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
   return [
     {
       mode: 'dsh',
-      label: { en: 'DSH plugin', zh: 'DSH 插件', ru: 'Плагин DSH' },
+      label: { en: 'DeepSeek Harness', zh: 'DeepSeek Harness（推荐）', ru: 'DeepSeek Harness' },
       lines: DSH_SETUP,
       note: {
-        en: 'Recommended. A native plugin for DSH (DeepSeek Harness): the full dota2.ai page in the DSH sidebar and coach tools in every session, run on your own DeepSeek key — no queue, no daily limit, and reviews are kept on your machine (the replay itself is parsed on dota2.ai unless you set a local extractor). Needs Node 24.9+. After dsh web starts, add your DeepSeek key in DSH, then open dota2.ai in the sidebar.',
-        zh: '推荐。DSH（DeepSeek Harness）原生插件：DSH 左侧栏里就是完整的 dota2.ai 复盘页面，每个会话也能用教练工具；用你自己的 DeepSeek Key 跑，不排队、不限次，复盘保存在你自己电脑上（录像默认由 dota2.ai 解析，配置本地解析器后可完全在本地）。需要 Node 24.9+。运行 dsh web 后在 DSH 里填好 DeepSeek Key，再从左侧栏打开 dota2.ai。',
-        ru: 'Рекомендуем. Нативный плагин для DSH (DeepSeek Harness): полная страница dota2.ai в боковой панели DSH и инструменты тренера в каждой сессии, на вашем ключе DeepSeek — без очереди и дневного лимита, разборы хранятся у вас (сам реплей разбирается на dota2.ai, если не указан локальный парсер). Нужен Node 24.9+. После запуска dsh web добавьте ключ DeepSeek в DSH и откройте dota2.ai в боковой панели.',
+        en: 'Recommended. Download the DeepSeek Harness desktop app at deepseek.com/harness/ and paste the one-sentence install message, or use the CLI commands above (Node 24.9+). Runs the full dota2.ai page and coach tools on your own DeepSeek key — no queue, no daily limit, reviews kept on your machine.',
+        zh: '推荐。前往 deepseek.com/harness/ 下载 DeepSeek Harness 桌面客户端，发一句话即可自动装好插件；也可用上方命令行安装（需 Node 24.9+）。用你自己的 DeepSeek Key 跑完整复盘页与教练工具：不排队、不限次，复盘保存在本地电脑。',
+        ru: 'Рекомендуем. Скачайте десктопное приложение DeepSeek Harness на deepseek.com/harness/ и отправьте одну фразу для установки, либо используйте команды CLI выше (Node 24.9+). Полная страница dota2.ai и инструменты тренера работают на вашем ключе DeepSeek — без очереди и лимита, разборы хранятся локально.',
       },
-      links: [{ href: DSH_RELEASE_URL, label: `dsh-v${DSH_PLUGIN_VERSION}` }],
+      links: [
+        { href: DSH_DOWNLOAD_URL, label: 'deepseek.com/harness' },
+        { href: DSH_RELEASE_URL, label: `dsh-v${DSH_PLUGIN_VERSION}` },
+      ],
     },
     {
       mode: 'web',

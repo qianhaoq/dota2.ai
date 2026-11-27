@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { buildSurface } from '../../lib/coach/cards.js';
-import { AGENT_CLIENTS, CURSOR_INSTALL, DSH_HOST_VERSION, DSH_INSTALL, DSH_PLUGIN_VERSION, DSH_SETUP, DSH_TGZ_URL, MCP_TOOLS, MCP_URL } from './accessSnippets';
+import { AGENT_CLIENTS, CURSOR_INSTALL, DSH_DOWNLOAD_URL, DSH_HOST_VERSION, DSH_INSTALL, DSH_PACKAGE_NAME, DSH_PLUGIN_VERSION, DSH_SETUP, DSH_TGZ_URL, MCP_TOOLS, MCP_URL, dshDesktopPrompt } from './accessSnippets';
 import dshPackage from '../../packages/dsh/package.json';
 import { configureDota2AiRuntime } from '../runtime/dota2aiRuntime';
 
@@ -64,28 +64,33 @@ describe('home: what happens next', () => {
 });
 
 describe('home: where to use it', () => {
-  it('DSH plugin / Web / Agent (MCP) / CLI / HTTP, each with a command that works as written', async () => {
+  it('DeepSeek Harness / Web / Agent (MCP) / CLI / HTTP, with idiot-proof 3-step desktop guide and working commands', async () => {
     cards.mockImplementation(async (_id: string, seat: number) => buildSurface(report, seat));
     const { container } = home();
     const ways = container.querySelector('.hm-ways') as HTMLElement;
-    expect(within(ways).getAllByRole('tab').map((t) => t.textContent)).toEqual(['DSH plugin', 'Web', 'Agent (MCP)', 'CLI', 'HTTP']);
-    // DSH is the default tab (it runs on the reader's own model): from nothing to the plugin's page, and the release.
-    expect(within(ways).getByRole('tab', { name: 'DSH plugin' }).getAttribute('aria-selected')).toBe('true');
-    expect(ways.querySelector('pre')?.textContent).toBe(DSH_SETUP.join('\n'));
+    expect(within(ways).getAllByRole('tab').map((t) => t.textContent)).toEqual(['DeepSeek Harness', 'Web', 'Agent (MCP)', 'CLI', 'HTTP']);
+    // DeepSeek Harness is the default tab: 3-step desktop app guide first, CLI setup tucked in a collapsible block.
+    expect(within(ways).getByRole('tab', { name: 'DeepSeek Harness' }).getAttribute('aria-selected')).toBe('true');
+    expect(DSH_DOWNLOAD_URL).toBe('https://www.deepseek.com/harness/');
+    expect(within(ways).getByRole('link', { name: /Download DeepSeek Harness/ }).getAttribute('href')).toBe(DSH_DOWNLOAD_URL);
+    expect(ways.querySelector('.hm-dsh-steps pre')?.textContent).toBe(dshDesktopPrompt('en'));
+    for (const lang of ['en', 'zh', 'ru'] as const) expect(dshDesktopPrompt(lang)).toContain(DSH_PACKAGE_NAME);
+    expect(ways.querySelector('.hm-dsh-cli pre')?.textContent).toBe(DSH_SETUP.join('\n'));
     // The page names the plugin release that is packed from packages/dsh, and a concrete verified DSH
     // release (aligned with dsh-release.yml DSH_VERSION) inside packages/dsh/package.json engines.dsh:
     const releaseWorkflow = readFileSync(path.join(process.cwd(), '.github/workflows/dsh-release.yml'), 'utf8');
+    expect(DSH_PACKAGE_NAME).toBe(dshPackage.name);
     expect(DSH_PLUGIN_VERSION).toBe(dshPackage.version);
     expect(DSH_HOST_VERSION).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
     expect(releaseWorkflow).toContain(`DSH_VERSION: ${DSH_HOST_VERSION}`);
     expect(dshPackage.engines.dsh).toBe('>=0.2.1-rc.3 <0.3.0-0');
     expect(DSH_SETUP).toEqual([
       `npm install -g pnpm @deepseek-ai/dsh@${DSH_HOST_VERSION}`,
-      `curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v${DSH_PLUGIN_VERSION}/qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`,
-      `dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`,
+      `dsh plugin --profile web add ${DSH_PACKAGE_NAME}`,
       'dsh web',
     ]);
-    expect(DSH_TGZ_URL.endsWith(DSH_INSTALL.split('./')[1])).toBe(true);
+    expect(DSH_INSTALL).toBe(`dsh plugin --profile web add ${DSH_PACKAGE_NAME}`);
+    expect(DSH_TGZ_URL).toContain(`qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`);
     expect(within(ways).getByRole('link', { name: `dsh-v${DSH_PLUGIN_VERSION}` }).getAttribute('href')).toBe(`https://github.com/qianhaoq/dota2.ai/releases/tag/dsh-v${DSH_PLUGIN_VERSION}`);
     expect(ways.textContent).toContain('DeepSeek Harness');
     expect(ways.textContent).toContain('your own DeepSeek key');
@@ -145,33 +150,35 @@ describe('home: where to use it', () => {
     expect(ways.textContent).not.toContain('Then just say');
   });
 
-  it('Copy puts exactly the shown command on the clipboard, and the agent prompt is copyable too', async () => {
+  it('Copy puts the desktop install message, CLI commands, and generic agent prompt on the clipboard', async () => {
     cards.mockImplementation(async (_id: string, seat: number) => buildSurface(report, seat));
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     const { container } = home();
     const ways = container.querySelector('.hm-ways') as HTMLElement;
-    const [copyCmd, copyPrompt] = within(ways).getAllByRole('button', { name: /^Copy/ });
-    fireEvent.click(copyCmd);
-    // The default tab's steps, all of them.
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(DSH_SETUP.join('\n')));
-    // Copied as four shell lines: real line breaks, no literal backslash-n.
-    const copied = writeText.mock.calls[0][0] as string;
-    expect(copied.split('\n')).toEqual(DSH_SETUP);
-    expect(copied).not.toContain('\\n');
+    const [copyDesktop, copyCli, copyPrompt] = within(ways).getAllByRole('button', { name: /^Copy/ });
+    fireEvent.click(copyDesktop);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(dshDesktopPrompt('en')));
     expect(await within(ways).findByText('Copied')).toBeTruthy();
+    fireEvent.click(copyCli);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(DSH_SETUP.join('\n')));
+    // Copied as shell lines: real line breaks, no literal backslash-n.
+    const copiedCli = writeText.mock.calls[1][0] as string;
+    expect(copiedCli.split('\n')).toEqual(DSH_SETUP);
+    expect(copiedCli).not.toContain('\\n');
     fireEvent.click(copyPrompt);
     await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('https://dota2.ai/llms.txt')));
   });
 });
 
 describe('home: the same coach on your own model', () => {
-  it('the first screen points at DSH on your own key, and at your own agent', () => {
+  it('the first screen points at DSH desktop download, 3-step setup, and your own agent', () => {
     const { container } = home();
     const note = container.querySelector('.hm-core .om-callout') as HTMLElement;
-    expect(note.textContent).toContain('Run it on your own DeepSeek key');
+    expect(note.textContent).toContain('Run it in DeepSeek Harness on your own DeepSeek key');
     expect(note.textContent).toContain('no daily limit');
     expect(within(note).getByRole('link', { name: /Set up DSH in 3 steps/ }).getAttribute('href')).toBe('#ways-dsh');
+    expect(within(note).getByRole('link', { name: /Download DeepSeek Harness/ }).getAttribute('href')).toBe(DSH_DOWNLOAD_URL);
     expect(within(note).getByRole('link', { name: /your own agent/ }).getAttribute('href')).toBe('#ways');
   });
 
@@ -191,7 +198,7 @@ describe('home: the same coach on your own model', () => {
     fireEvent.click(within(ways).getByRole('tab', { name: 'CLI' }));
     window.location.hash = '#ways-dsh';
     window.dispatchEvent(new HashChangeEvent('hashchange'));
-    await waitFor(() => expect(within(ways).getByRole('tab', { name: 'DSH plugin' }).getAttribute('aria-selected')).toBe('true'));
+    await waitFor(() => expect(within(ways).getByRole('tab', { name: 'DeepSeek Harness' }).getAttribute('aria-selected')).toBe('true'));
     window.location.hash = '';
   });
 

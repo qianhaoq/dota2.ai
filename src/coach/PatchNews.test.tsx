@@ -29,10 +29,10 @@ describe('current patch on the home page', () => {
     expect(container.querySelectorAll('.cx-patch-item')).toHaveLength(CURRENT_PATCH.newItems.length);
     expect(screen.getByText('双蛇杖')).toBeTruthy();
     expect(screen.getByRole('link', { name: /完整更新日志/ }).getAttribute('href')).toBe('https://www.dota2.com/patches/7.42');
-    // Home order: the search box and what happens next, then the patch as one block (Valve's news as
-    // the strip on top of the advisor), then the ways to connect. (The "principles" cards are gone.)
+    // Home order: the search box and what happens next, then the 3-step DeepSeek Harness / ways block,
+    // then the patch as one block (Valve's news as the strip on top of the advisor).
     const order = [...container.querySelectorAll('.cx-hero, .hm-how, .cx-patch, .pa, .hm-ways, .cx-principles')].map((e) => e.classList[0]);
-    expect(order).toEqual(['cx-hero', 'hm-how', 'cx-patch', 'pa', 'hm-ways']);
+    expect(order).toEqual(['cx-hero', 'hm-how', 'hm-ways', 'cx-patch', 'pa']);
     expect(container.querySelector('.hm-patch > .cx-patch + .pa')).toBeTruthy();
   });
 

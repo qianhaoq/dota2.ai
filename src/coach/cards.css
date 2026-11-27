@@ -1129,6 +1129,8 @@
 .om-callout .om-links { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
 .om-callout .om-cta { color: var(--accent-bright, var(--accent)); font-weight: 600; text-decoration: none; }
 .om-callout .om-cta:hover { text-decoration: underline; }
+.om-callout .om-dl { color: var(--text); font-weight: 500; text-decoration: none; border-bottom: 1px dashed var(--accent); }
+.om-callout .om-dl:hover { color: var(--accent-bright, var(--accent)); }
 .om-callout .om-alt { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line-2); }
 .om-callout .om-alt:hover { color: var(--text); }
 .ag-chat .om-callout { margin-top: 8px; padding: 10px 12px; }
@@ -1147,3 +1149,46 @@
 .om-banner .om-cta:hover { text-decoration: underline; }
 .om-callout.is-waiting { margin: 16px 0; }
 .hm-anchor { display: block; position: relative; top: -72px; visibility: hidden; height: 0; }
+
+/* Idiot-proof 3-step DeepSeek Harness desktop install guide inside #ways-dsh */
+.hm-dsh-guide { display: grid; gap: 12px; }
+.hm-dsh-badge {
+  margin: 0; display: inline-flex; width: fit-content; align-items: center; padding: 3px 10px;
+  border-radius: 999px; background: var(--accent-soft); border: 1px solid rgba(229, 174, 78, 0.42);
+  color: var(--accent); font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+}
+.hm-dsh-pitch { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.6; }
+.hm-dsh-steps {
+  list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 14px;
+}
+.hm-dsh-steps > li {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; align-items: start;
+  padding: 14px 16px; border-radius: 12px; background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+}
+.hm-dsh-num {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent); color: var(--accent-ink); font-family: var(--mono);
+  font-size: 13px; font-weight: 700; flex: none;
+}
+.hm-dsh-step-body { min-width: 0; display: grid; gap: 8px; }
+.hm-dsh-step-body strong { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.35; }
+.hm-dsh-step-body > p { margin: 0; font-size: 14px; color: var(--text-2); line-height: 1.55; }
+.hm-dsh-btn {
+  display: inline-flex; width: fit-content; align-items: center; gap: 6px; padding: 8px 16px;
+  border-radius: 9px; background: linear-gradient(180deg, var(--accent-bright), var(--accent));
+  color: var(--accent-ink); font-size: 14px; font-weight: 600; text-decoration: none;
+  box-shadow: 0 4px 14px rgba(229, 174, 78, 0.22);
+}
+.hm-dsh-btn:hover { filter: brightness(1.07); transform: translateY(-1px); }
+.hm-dsh-cli {
+  margin-top: 4px; padding: 10px 14px; border-radius: 10px;
+  border: 1px dashed var(--line-2); background: rgba(255, 255, 255, 0.015);
+}
+.hm-dsh-cli summary {
+  cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-2); list-style: none;
+}
+.hm-dsh-cli summary::-webkit-details-marker { display: none; }
+.hm-dsh-cli summary::before { content: '▸ '; color: var(--accent); }
+.hm-dsh-cli[open] summary::before { content: '▾ '; }
+.hm-dsh-cli[open] summary { margin-bottom: 10px; color: var(--text); }

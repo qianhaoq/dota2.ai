@@ -11,13 +11,25 @@ A native [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepSeek Harness
 
 ## Install
 
+### Desktop App (Recommended — no terminal needed)
+
+1. Download and install the **DeepSeek Harness** desktop app (macOS / Windows) from **[https://www.deepseek.com/harness/](https://www.deepseek.com/harness/)**, open it, and enter your DeepSeek API Key.
+2. Paste this one sentence into a chat in DeepSeek Harness and press Enter:
+
+```text
+Install the dota2.ai Dota 2 replay coach plugin @qianhaoq/dsh-dota2ai into my active desktop profile, then tell me how to open dota2.ai in the left sidebar.
+```
+
+3. Reload if prompted, then click **dota2.ai** in the left sidebar.
+
+### CLI / Linux (`dsh web`)
+
 Needs Node 24.9 or newer and DSH **0.2.x (≥ 0.2.1-rc.3)**: verified on 0.2.1-rc.3 and 0.2.2-rc.5, which is
 npm's `latest`. DSH installs plugins with pnpm, so pnpm must be on your PATH.
 
 ```sh
 npm install -g pnpm @deepseek-ai/dsh@0.2.2-rc.5
-curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v0.2.3/qianhaoq-dsh-dota2ai-0.2.3.tgz
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.3.tgz
+dsh plugin --profile web add @qianhaoq/dsh-dota2ai
 DEEPSEEK_API_KEY=sk-... dsh web      # or start plain `dsh web` and enter the key in DSH's own API-key dialog
 ```
 
@@ -96,12 +108,22 @@ DEEPSEEK_API_KEY=… node packages/dsh/scripts/live-review.mjs packages/dsh/dist
 - **由你的 DSH 宿主模型驱动（`ctx.llm`）**：录像深度调查复盘（`runDeepReview` + `verifyReview` 事实核查）、录像查证追问（`runChat` + `verifyText`）与版本顾问均在本机调用你在 DSH 配置的模型——默认跟随 DSH 当前模型，同时保留页面内模型切换器，支持同一局用不同模型对比复盘。
 - **会话工具与卡片联动**：7 个 `dota2ai_*` 工具与独立页面共享本地 `$DSH_HOME/dota2ai` 缓存，聊天内的工具卡片可一键跳转到对应复盘页。
 
-**安装**（需要 Node ≥ 24.9，DSH **0.2.x (≥ 0.2.1-rc.3)**，npm 上的 `latest` 是 0.2.2-rc.5；DSH 用 pnpm 装插件）：
+**桌面客户端傻瓜式安装（推荐，免命令行）**：
+
+1. 前往 **[https://www.deepseek.com/harness/](https://www.deepseek.com/harness/)** 下载并安装 DeepSeek Harness 桌面客户端（macOS / Windows），打开后填入你的 DeepSeek API Key。
+2. 直接把下面这句话粘贴到桌面客户端的聊天框发送：
+
+```text
+帮我安装 dota2.ai 的 Dota 2 复盘插件 @qianhaoq/dsh-dota2ai 到当前桌面端 profile，装好后告诉我怎么在左侧栏打开 dota2.ai。
+```
+
+3. 按提示刷新或重启后，点左侧栏 **dota2.ai** 即可使用。
+
+**命令行安装（Linux / `dsh web`）**（需要 Node ≥ 24.9，DSH **0.2.x (≥ 0.2.1-rc.3)**，npm 上的 `latest` 是 0.2.2-rc.5；DSH 用 pnpm 装插件）：
 
 ```sh
 npm install -g pnpm @deepseek-ai/dsh@0.2.2-rc.5
-curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v0.2.3/qianhaoq-dsh-dota2ai-0.2.3.tgz
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.3.tgz
+dsh plugin --profile web add @qianhaoq/dsh-dota2ai
 DEEPSEEK_API_KEY=sk-... dsh web      # 或者直接 dsh web，在 DSH 弹出的 API Key 窗口里填
 ```
 
