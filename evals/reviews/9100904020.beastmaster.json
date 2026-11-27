@@ -48,5 +48,6 @@
     }
   ],
   "turning_fight": { "fight": 11, "from": 1826, "to": 1848 },
-  "main_reason": ["team_play", "enemy_play"]
+  "main_reason": ["team_play", "enemy_play"],
+  "story_cause": {"id": "turned_25_to_33", "says": "The game turned from 25:00 to 33:00: key_moments' largest fall of the team's chance (67% to 28%), over fights 9, 10 and 11; match_overview's turning fight is fight 11 at 30:26–30:48 (5 deaths against 3).", "from": 1500, "to": 1980, "terms": {"zh": ["团", "翻", "转折", "输", "胜率", "崩"], "en": ["fight", "turn", "lost", "win chance", "collapsed"]}, "checked": "2026-11-27, against match_overview and key_moments on the archived trace; whose: the rubric's accepted main_reason"}
 }

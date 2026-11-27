@@ -25,5 +25,6 @@
   ],
   "lead_any": ["five_deaths_before_ten"],
   "must_not": [],
-  "main_reason": ["your_play", "team_play"]
+  "main_reason": ["your_play", "team_play"],
+  "story_cause": {"id": "five_deaths_in_the_lane", "says": "The game went from the lane: five of Luna's twelve deaths came before 10:00 (the rubric's five_deaths_before_ten). The trace has no gold rows, so match_overview gives no lane verdict; the window is the lane stage.", "from": 0, "to": 600, "terms": {"zh": ["对线", "线上", "10:00", "10 分钟", "十分钟", "10分钟", "前十"], "en": ["lane", "10:00", "ten minutes", "first ten"]}, "checked": "2026-11-27, against match_overview and key_moments on the archived trace; whose: the rubric's accepted main_reason"}
 }

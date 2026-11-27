@@ -58,5 +58,6 @@
         "says": "As for Disruptor: help to an ally under fire did not change their five-second death rate in the corpus. A review must not say a cast saved, or should have saved, an ally."
       }
     ]
-  }
+  },
+  "story_cause": {"id": "lost_from_the_lanes", "says": "The game was lost from the lanes: my_team was 2374 behind at 10:00 and never closer than 2787 after (match_overview.lanes.lost_from_the_lanes true; no turning fight: { none: true }).", "from": 0, "to": 600, "terms": {"zh": ["对线", "线上", "10:00", "10 分钟", "十分钟", "10分钟", "前十"], "en": ["lane", "10:00", "ten minutes", "first ten"]}, "checked": "2026-11-27, against match_overview and key_moments on the archived trace; whose: the rubric's accepted main_reason"}
 }
