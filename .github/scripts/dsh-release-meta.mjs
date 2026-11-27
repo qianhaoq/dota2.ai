@@ -4,7 +4,7 @@
 // Usage:
 //   node .github/scripts/dsh-release-meta.mjs version [--tag <ref>] [--pkg packages/dsh/package.json] [--allow-registry-fallback] [--out-github-output <file>]
 //   node .github/scripts/dsh-release-meta.mjs notes --version <v> [--prev-tag <t>] [--out <file>]
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -166,6 +166,42 @@ export function resolveNextVersion({ pkgVersion, tagVersions = [], npmVersions =
 }
 
 /**
+ * Determine whether `HEAD` is stale relative to the latest existing `dsh-v*` tag.
+ * Prevents workflow reruns of older commits, already-released commits, or diverged
+ * checkouts from allocating a newer version and overwriting newer releases.
+ * @param {{
+ *   headSha?: string | null,
+ *   prevTag?: string | null,
+ *   prevTagSha?: string | null,
+ *   headIsAncestorOfPrevTag?: boolean | null,
+ *   prevTagIsAncestorOfHead?: boolean | null,
+ * }} [opts]
+ * @returns {{ stale: boolean, reason: string | null }}
+ */
+export function checkReleaseFreshness({
+  headSha = null,
+  prevTag = null,
+  prevTagSha = null,
+  headIsAncestorOfPrevTag = null,
+  prevTagIsAncestorOfHead = null,
+} = {}) {
+  const cleanPrevTag = typeof prevTag === 'string' && prevTag.trim() ? prevTag.trim() : null;
+  if (!cleanPrevTag) {
+    return { stale: false, reason: null };
+  }
+  if (headSha && prevTagSha && headSha === prevTagSha) {
+    return { stale: true, reason: 'already_released_at_head' };
+  }
+  if (headIsAncestorOfPrevTag === true) {
+    return { stale: true, reason: 'older_than_latest_tag' };
+  }
+  if (prevTagIsAncestorOfHead === false) {
+    return { stale: true, reason: 'not_descendant_of_latest_tag' };
+  }
+  return { stale: false, reason: null };
+}
+
+/**
  * Generate concise bilingual (English + 简体中文) GitHub Release notes, or return `existingNotes`
  * unchanged when hand-written release notes already exist for the version.
  * @param {{
@@ -284,7 +320,14 @@ export async function fetchNpmVersions({
 }
 
 /**
- * @param {{ version?: string, tag?: string, alreadyPublished?: boolean, prevTag?: string | null }} meta
+ * @param {{
+ *   version?: string,
+ *   tag?: string,
+ *   alreadyPublished?: boolean,
+ *   prevTag?: string | null,
+ *   stale?: boolean,
+ *   staleReason?: string | null,
+ * }} meta
  */
 export function formatGithubOutput(meta) {
   const entries = [
@@ -292,6 +335,8 @@ export function formatGithubOutput(meta) {
     ['tag', String(meta.tag ?? '')],
     ['already_published', String(Boolean(meta.alreadyPublished))],
     ['prev_tag', String(meta.prevTag ?? '')],
+    ['stale', String(Boolean(meta.stale))],
+    ['stale_reason', String(meta.staleReason ?? '')],
   ];
   for (const [k, v] of entries) {
     if (/[\r\n]/.test(v)) {
@@ -304,6 +349,34 @@ export function formatGithubOutput(meta) {
 function listLocalDshTags(cwd = process.cwd()) {
   const out = execFileSync('git', ['tag', '-l', `${TAG_PREFIX}*`], { cwd, encoding: 'utf8' });
   return out.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function gitIsAncestor(ancestorRef, descendantRef, cwd = process.cwd()) {
+  const res = spawnSync('git', ['merge-base', '--is-ancestor', ancestorRef, descendantRef], {
+    cwd,
+    encoding: 'utf8',
+  });
+  if (res.error) throw res.error;
+  if (res.status === 0) return true;
+  if (res.status === 1) return false;
+  throw new Error(`git merge-base --is-ancestor ${ancestorRef} ${descendantRef} failed (${res.status}): ${(res.stderr || '').trim()}`);
+}
+
+function resolveGitFreshness(prevTag, cwd = process.cwd()) {
+  if (!prevTag) {
+    return { stale: false, reason: null };
+  }
+  const headSha = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+  const prevTagSha = execFileSync('git', ['rev-parse', '--verify', `${prevTag}^{commit}`], { cwd, encoding: 'utf8' }).trim();
+  const headIsAncestorOfPrevTag = gitIsAncestor(headSha, prevTagSha, cwd);
+  const prevTagIsAncestorOfHead = gitIsAncestor(prevTagSha, headSha, cwd);
+  return checkReleaseFreshness({
+    headSha,
+    prevTag,
+    prevTagSha,
+    headIsAncestorOfPrevTag,
+    prevTagIsAncestorOfHead,
+  });
 }
 
 function readGitCommits(prevTag, cwd = process.cwd()) {
@@ -376,13 +449,17 @@ async function runCli(argv) {
       npmVersions: npmInfo.versions,
       forcedTag: flags.tag ?? null,
     });
+    const isForcedTag = Boolean(typeof flags.tag === 'string' && flags.tag.trim());
+    const freshness = isForcedTag ? { stale: false, reason: null } : resolveGitFreshness(meta.prevTag);
     const result = {
       ...meta,
+      stale: freshness.stale,
+      staleReason: freshness.reason,
       npmLatest: npmInfo.latest,
       registryFallback: npmInfo.registryFallback,
     };
     if (flags['out-github-output']) {
-      appendFileSync(resolve(flags['out-github-output']), formatGithubOutput(meta), 'utf8');
+      appendFileSync(resolve(flags['out-github-output']), formatGithubOutput(result), 'utf8');
     }
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;

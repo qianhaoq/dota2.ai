@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   bumpPatch,
+  checkReleaseFreshness,
   compareSemver,
   fetchNpmVersions,
   formatGithubOutput,
@@ -11,6 +15,7 @@ import {
 } from '../../.github/scripts/dsh-release-meta.mjs';
 import { releaseManifest } from '../../packages/dsh/scripts/pack.mjs';
 
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const dshPkg = JSON.parse(readFileSync(new URL('../../packages/dsh/package.json', import.meta.url), 'utf8'));
 
 describe('dsh-release-meta semver helpers', () => {
@@ -243,14 +248,221 @@ describe('fetchNpmVersions & formatGithubOutput', () => {
     expect(warn).toHaveBeenCalledOnce();
   });
 
-  it('formats GitHub output lines cleanly', () => {
+  it('formats GitHub output lines cleanly including staleness metadata', () => {
     expect(formatGithubOutput({
       version: '0.2.4',
       tag: 'dsh-v0.2.4',
       alreadyPublished: false,
       prevTag: 'dsh-v0.2.3',
-    })).toBe('version=0.2.4\ntag=dsh-v0.2.4\nalready_published=false\nprev_tag=dsh-v0.2.3\n');
+    })).toBe('version=0.2.4\ntag=dsh-v0.2.4\nalready_published=false\nprev_tag=dsh-v0.2.3\nstale=false\nstale_reason=\n');
+
+    expect(formatGithubOutput({
+      version: '0.2.6',
+      tag: 'dsh-v0.2.6',
+      alreadyPublished: false,
+      prevTag: 'dsh-v0.2.5',
+      stale: true,
+      staleReason: 'older_than_latest_tag',
+    })).toBe('version=0.2.6\ntag=dsh-v0.2.6\nalready_published=false\nprev_tag=dsh-v0.2.5\nstale=true\nstale_reason=older_than_latest_tag\n');
   });
+});
+
+describe('checkReleaseFreshness', () => {
+  it('allows release when no previous dsh-v* tag exists', () => {
+    expect(checkReleaseFreshness({
+      headSha: 'aaa111',
+      prevTag: null,
+      prevTagSha: null,
+      headIsAncestorOfPrevTag: null,
+      prevTagIsAncestorOfHead: null,
+    })).toEqual({ stale: false, reason: null });
+  });
+
+  it('marks HEAD stale when HEAD is the exact commit already released at prevTag', () => {
+    expect(checkReleaseFreshness({
+      headSha: 'abc123',
+      prevTag: 'dsh-v0.2.5',
+      prevTagSha: 'abc123',
+      headIsAncestorOfPrevTag: true,
+      prevTagIsAncestorOfHead: true,
+    })).toEqual({ stale: true, reason: 'already_released_at_head' });
+  });
+
+  it('marks HEAD stale when an older workflow run is retried after a newer release tag exists', () => {
+    expect(checkReleaseFreshness({
+      headSha: 'old111',
+      prevTag: 'dsh-v0.2.5',
+      prevTagSha: 'new222',
+      headIsAncestorOfPrevTag: true,
+      prevTagIsAncestorOfHead: false,
+    })).toEqual({ stale: true, reason: 'older_than_latest_tag' });
+  });
+
+  it('marks HEAD stale when HEAD is on a diverged branch that does not descend from prevTag', () => {
+    expect(checkReleaseFreshness({
+      headSha: 'side333',
+      prevTag: 'dsh-v0.2.5',
+      prevTagSha: 'main222',
+      headIsAncestorOfPrevTag: false,
+      prevTagIsAncestorOfHead: false,
+    })).toEqual({ stale: true, reason: 'not_descendant_of_latest_tag' });
+  });
+
+  it('allows release when HEAD is a fresh descendant of prevTag', () => {
+    expect(checkReleaseFreshness({
+      headSha: 'new333',
+      prevTag: 'dsh-v0.2.5',
+      prevTagSha: 'prev222',
+      headIsAncestorOfPrevTag: false,
+      prevTagIsAncestorOfHead: true,
+    })).toEqual({ stale: false, reason: null });
+  });
+});
+
+function parseWorkflowPushPaths(workflowYaml: string): string[] {
+  const lines = workflowYaml.split(/\r?\n/);
+  const paths: string[] = [];
+  let inPaths = false;
+  let pathsIndent = -1;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const indent = line.length - line.trimStart().length;
+    if (!inPaths) {
+      if (trimmed === 'paths:') {
+        inPaths = true;
+        pathsIndent = indent;
+      }
+      continue;
+    }
+    if (indent <= pathsIndent) break;
+    const match = /^-\s+['"]?([^'"]+)['"]?$/.exec(trimmed);
+    if (match) paths.push(match[1]);
+  }
+  return paths;
+}
+
+function matchesWorkflowPath(filePath: string, pattern: string): boolean {
+  if (pattern.endsWith('/**')) {
+    const prefix = pattern.slice(0, -2);
+    return filePath.startsWith(prefix);
+  }
+  return filePath === pattern;
+}
+
+describe('.github/workflows/dsh-release.yml path coverage', () => {
+  it('covers every repo file bundled or packed into @qianhaoq/dsh-dota2ai', async () => {
+    const workflow = readFileSync(join(repoRoot, '.github/workflows/dsh-release.yml'), 'utf8');
+    const pathGlobs = parseWorkflowPushPaths(workflow);
+    expect(pathGlobs.length).toBeGreaterThan(0);
+
+    const dshRoot = join(repoRoot, 'packages/dsh');
+    const goals = join(repoRoot, 'lib/coach/goals.js');
+    const vendoredGoals = {
+      name: 'vendored-goals',
+      setup(b: import('esbuild').PluginBuild) {
+        b.onResolve({ filter: /^\.\/vendor\/goals\.js$/ }, () => ({ path: goals }));
+      },
+    };
+    const inlineLibJsonRequires = {
+      name: 'inline-lib-json-requires',
+      setup(b: import('esbuild').PluginBuild) {
+        const libDir = `${join(repoRoot, 'lib')}/`;
+        b.onLoad({ filter: /\.js$/ }, (args) => {
+          if (!args.path.startsWith(libDir)) return undefined;
+          let contents = readFileSync(args.path, 'utf8');
+          if (!contents.includes('.json')) return undefined;
+          const imports: string[] = [];
+          let idx = 0;
+          const replaceReq = (_m: string, relPath: string) => {
+            const abs = resolve(dirname(args.path), relPath);
+            const ident = `__dshJson_${idx += 1}`;
+            imports.push(`import ${ident} from ${JSON.stringify(abs)};`);
+            return ident;
+          };
+          contents = contents.replace(/createRequire\(import\.meta\.url\)\(\s*['"]([^'"]+\.json)['"]\s*\)/g, replaceReq);
+          if (/const\s+require\s*=\s*createRequire\(import\.meta\.url\)/.test(contents)) {
+            contents = contents.replace(/\brequire\(\s*['"]([^'"]+\.json)['"]\s*\)/g, replaceReq);
+          }
+          if (!imports.length) return undefined;
+          return { contents: `${imports.join('\n')}\n${contents}`, loader: 'js' as const, resolveDir: dirname(args.path) };
+        });
+      },
+    };
+    const workspaceAliases = {
+      '@dota2ai/review-engine': join(repoRoot, 'packages/review-engine/src/index.js'),
+      'dota2ai/client': join(repoRoot, 'packages/cli/src/client.js'),
+      'dota2ai/coach': join(repoRoot, 'packages/cli/src/coachApi.js'),
+      'dota2ai/agent': join(repoRoot, 'packages/cli/src/agent.js'),
+      'dota2ai/render': join(repoRoot, 'packages/cli/src/coach.js'),
+      'dota2ai/handlers': join(repoRoot, 'packages/cli/src/handlers.js'),
+      'dota2ai/tools': join(repoRoot, 'packages/cli/src/toolDocs.js'),
+    };
+
+    const [hostRes, typertRes, clientRes] = await Promise.all([
+      build({
+        entryPoints: [join(dshRoot, 'src/index.js')],
+        bundle: true,
+        write: false,
+        metafile: true,
+        platform: 'node',
+        format: 'esm',
+        target: 'node24',
+        external: ['@deepseek-ai/*'],
+        alias: workspaceAliases,
+        plugins: [vendoredGoals, inlineLibJsonRequires],
+      }),
+      build({
+        entryPoints: [join(dshRoot, 'src/typert.js')],
+        bundle: true,
+        write: false,
+        metafile: true,
+        platform: 'neutral',
+        format: 'esm',
+        target: 'es2022',
+        external: ['@deepseek-ai/*'],
+      }),
+      build({
+        entryPoints: [join(dshRoot, 'src/client/index.tsx')],
+        bundle: true,
+        write: false,
+        metafile: true,
+        platform: 'browser',
+        format: 'cjs',
+        target: 'es2022',
+        jsx: 'automatic',
+        external: ['react', 'react-dom', 'react/jsx-runtime', '@deepseek-ai/dsh-client-store'],
+        alias: workspaceAliases,
+        loader: { '.css': 'text' },
+        define: {
+          'import.meta.env.DEV': 'false',
+          'import.meta.env.VITE_ALLOW_FF_OVERRIDE': '"0"',
+          'import.meta.env.VITE_LANG_DETECT_BROWSER': '"0"',
+          'import.meta.env': '{}',
+        },
+        logOverride: { 'ignored-bare-import': 'silent' },
+      }),
+    ]);
+
+    const bundledRepoFiles = new Set<string>([
+      'lib/data/constants/patches/index.json',
+      'LICENSE',
+      'packages/dsh/package.json',
+      'packages/dsh/cordis.patch.yml',
+      'packages/dsh/icon.svg',
+      'packages/dsh/README.md',
+    ]);
+    for (const res of [hostRes, typertRes, clientRes]) {
+      for (const input of Object.keys(res.metafile?.inputs ?? {})) {
+        if (input.startsWith('node_modules/') || input.startsWith('<')) continue;
+        bundledRepoFiles.add(input);
+      }
+    }
+
+    expect(bundledRepoFiles.has('lib/matchReview/replayIngest/discovery.js')).toBe(true);
+    const uncovered = [...bundledRepoFiles].filter((f) => !pathGlobs.some((p) => matchesWorkflowPath(f, p))).sort();
+    expect(uncovered, `Files bundled into @qianhaoq/dsh-dota2ai missing from dsh-release.yml on.push.paths`).toEqual([]);
+  }, 30_000);
 });
 
 describe('packages/dsh/scripts/pack.mjs releaseManifest', () => {

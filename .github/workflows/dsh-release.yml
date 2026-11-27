@@ -16,13 +16,18 @@ on:
     paths:
       - 'packages/dsh/**'
       - 'packages/review-engine/src/**'
+      - 'packages/review-engine/data/**'
       - 'packages/cli/src/**'
       - 'lib/agent/**'
       - 'lib/coach/**'
       - 'lib/patch/**'
       - 'lib/data/**'
+      - 'lib/matchReview/**'
       - 'lib/aiLanguage.js'
+      - 'lib/analyticsEvents.js'
+      - 'lib/rateLimiter.js'
       - 'src/**'
+      - 'LICENSE'
       - '.github/workflows/dsh-release.yml'
       - '.github/scripts/dsh-release-meta.mjs'
     tags: ['dsh-v*']
@@ -58,7 +63,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: npm ci
 
       - name: Resolve release version & notes
         id: meta
@@ -67,40 +71,71 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           DISPATCH_PUBLISH: ${{ inputs.publish }}
         run: |
-          should_publish="false"
-          if [ "${EVENT_NAME}" = "push" ]; then
-            should_publish="true"
-          elif [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ "${DISPATCH_PUBLISH}" = "true" ]; then
-            should_publish="true"
+          # Refresh remote tags & main ref so workflow reruns always see newer releases before allocating a version.
+          git fetch --tags --force origin
+          if [ "${EVENT_NAME}" = "push" ] && [ "${REF_TYPE}" = "branch" ]; then
+            git fetch origin "${GITHUB_REF_NAME}" || true
           fi
-          echo "should_publish=${should_publish}" >> "$GITHUB_OUTPUT"
+
+          would_publish="false"
+          if [ "${EVENT_NAME}" = "push" ]; then
+            would_publish="true"
+          elif [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ "${DISPATCH_PUBLISH}" = "true" ]; then
+            would_publish="true"
+          fi
 
           meta_args=(version --pkg packages/dsh/package.json --out-github-output "$GITHUB_OUTPUT")
           if [ "${EVENT_NAME}" = "push" ] && [ "${REF_TYPE}" = "tag" ]; then
             test -s ".github/release-notes/${GITHUB_REF_NAME}.md" || { echo "missing or empty .github/release-notes/${GITHUB_REF_NAME}.md"; exit 1; }
             meta_args+=(--tag "${GITHUB_REF_NAME}")
-          elif [ "${should_publish}" != "true" ]; then
+          elif [ "${would_publish}" != "true" ]; then
             meta_args+=(--allow-registry-fallback)
           fi
 
           meta_json=$(node .github/scripts/dsh-release-meta.mjs "${meta_args[@]}")
           echo "Resolved release metadata: ${meta_json}"
 
+          stale=$(node -e "console.log(String(Boolean(JSON.parse(process.argv[1]).stale)))" "${meta_json}")
+          stale_reason=$(node -e "console.log(JSON.parse(process.argv[1]).staleReason ?? '')" "${meta_json}")
           version=$(node -e "console.log(JSON.parse(process.argv[1]).version)" "${meta_json}")
           prev_tag=$(node -e "console.log(JSON.parse(process.argv[1]).prevTag ?? '')" "${meta_json}")
-          notes_args=(notes --version "${version}" --out "$RUNNER_TEMP/dsh-release-notes.md")
-          if [ -n "${prev_tag}" ]; then
-            notes_args+=(--prev-tag "${prev_tag}")
+
+          should_publish="${would_publish}"
+          skip_build="false"
+          if [ "${stale}" = "true" ]; then
+            should_publish="false"
+            if [ "${would_publish}" = "true" ]; then
+              skip_build="true"
+              echo "::notice::Skipping DSH plugin publish (${stale_reason}) for commit ${GITHUB_SHA} (latest tag: ${prev_tag})."
+            else
+              echo "::notice::HEAD is stale relative to ${prev_tag} (${stale_reason}); continuing dry-run build & smoke test."
+            fi
           fi
-          node .github/scripts/dsh-release-meta.mjs "${notes_args[@]}"
+          echo "should_publish=${should_publish}" >> "$GITHUB_OUTPUT"
+          echo "skip_build=${skip_build}" >> "$GITHUB_OUTPUT"
+
+          if [ "${skip_build}" != "true" ]; then
+            notes_args=(notes --version "${version}" --out "$RUNNER_TEMP/dsh-release-notes.md")
+            if [ -n "${prev_tag}" ]; then
+              notes_args+=(--prev-tag "${prev_tag}")
+            fi
+            node .github/scripts/dsh-release-meta.mjs "${notes_args[@]}"
+          fi
+
+      - name: Install dependencies
+        if: steps.meta.outputs.skip_build != 'true'
+        run: npm ci
 
       - name: Plugin tests
+        if: steps.meta.outputs.skip_build != 'true'
         run: npx vitest run packages/dsh packages/mcp
 
       - name: Pack
+        if: steps.meta.outputs.skip_build != 'true'
         run: node packages/dsh/scripts/pack.mjs --out dist-dsh --version "${{ steps.meta.outputs.version }}"
 
       - name: Install into a clean DSH profile & verify real web RPCs
+        if: steps.meta.outputs.skip_build != 'true'
         run: |
           npm install --global "pnpm@${PNPM_VERSION}"
           mkdir -p "$RUNNER_TEMP/dsh" && cd "$RUNNER_TEMP/dsh"
@@ -119,6 +154,7 @@ jobs:
           node packages/dsh/scripts/installed-smoke.mjs dist-dsh/*.tgz --dsh "$RUNNER_TEMP/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js"
 
       - name: Checksums
+        if: steps.meta.outputs.skip_build != 'true'
         run: cd dist-dsh && sha256sum -c SHA256SUMS
 
       - name: Publish GitHub Release
@@ -169,7 +205,7 @@ jobs:
           curl -fsSL -X PUT "https://registry.npmmirror.com/@qianhaoq/dsh-dota2ai/sync" > /dev/null || true
 
       - uses: actions/upload-artifact@v4
-        if: steps.meta.outputs.should_publish != 'true'
+        if: github.event_name == 'workflow_dispatch' && steps.meta.outputs.should_publish != 'true' && steps.meta.outputs.skip_build != 'true'
         with:
           name: dsh-plugin
           path: dist-dsh/
