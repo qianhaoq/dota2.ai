@@ -28,6 +28,35 @@ const T = {
   },
   refusedCta: { en: 'Set up DSH', zh: '安装 DSH', ru: 'Установить DSH' },
   thenAsk: { en: 'Then ask it:', zh: '装好后问它：', ru: 'Затем спросите:' },
+  bannerTag: { en: 'Recommended', zh: '推荐', ru: 'Рекомендуем' },
+  bannerText: {
+    en: 'Run dota2.ai in DeepSeek Harness on your own DeepSeek key: no queue, no daily limit.',
+    zh: '在 DeepSeek Harness 里用你自己的 DeepSeek Key 跑 dota2.ai：不排队、不限次。',
+    ru: 'Запускайте dota2.ai в DeepSeek Harness на своём ключе DeepSeek: без очереди и лимита.',
+  },
+  bannerCta: { en: 'Set up in 3 steps', zh: '三步装好', ru: 'Установка в 3 шага' },
+  waitingBody: {
+    en: 'Next time, skip the wait: the same review runs in DeepSeek Harness (DSH) on your own DeepSeek key, with no queue and no daily limit.',
+    zh: '下次不想排队？同样的复盘可以在 DeepSeek Harness（DSH）里用你自己的 DeepSeek Key 跑，不排队、不限次。',
+    ru: 'В следующий раз без ожидания: тот же разбор работает в DeepSeek Harness (DSH) на вашем ключе DeepSeek, без очереди и лимита.',
+  },
+};
+
+/**
+ * One line above every page of the site (not inside DSH): the recommended way to use it. `isHome`: the ways block
+ * is on this page, so the link stays here.
+ */
+export const OwnModelBanner: React.FC<{ isHome?: boolean }> = ({ isHome = false }) => {
+  const { L } = useLang();
+  const runtime = useDota2AiRuntime();
+  if (runtime.surface === 'dsh') return null;
+  return (
+    <div className="om-banner" role="note">
+      <span className="om-tag">{L(T.bannerTag)}</span>
+      <span className="om-banner-text">{L(T.bannerText)}</span>
+      <a href={isHome ? '#ways-dsh' : DSH_ANCHOR} className="om-cta" onClick={() => trackEvent('own_model_cta', { where: 'banner', to: 'dsh' })}>{L(T.bannerCta)} →</a>
+    </div>
+  );
 };
 
 const ASK: Bi = {
@@ -39,11 +68,12 @@ const ASK: Bi = {
 export const DSH_ANCHOR = '/#ways-dsh';
 
 /**
- * `where`: 'home' — the hero's line under the search box; 'refused' — this site's model said no for now
+ * `where`: 'home' — the hero's line under the search box; 'waiting' — under a review this site is writing;
+ * 'refused' — this site's model said no for now
  * (`daily`: because the day's reviews are used up); 'chat' — a follow-up was refused. `matchId`: the game the
  * reader wanted, said in the prompt to give DSH.
  */
-export const OwnModelCallout: React.FC<{ where: 'home' | 'refused' | 'chat'; daily?: boolean; matchId?: string }> = ({ where, daily = false, matchId }) => {
+export const OwnModelCallout: React.FC<{ where: 'home' | 'refused' | 'chat' | 'waiting'; daily?: boolean; matchId?: string }> = ({ where, daily = false, matchId }) => {
   const { L } = useLang();
   const runtime = useDota2AiRuntime();
   if (runtime.surface === 'dsh') return null;
@@ -57,6 +87,14 @@ export const OwnModelCallout: React.FC<{ where: 'home' | 'refused' | 'chat'; dai
           <a href="#ways-dsh" className="om-cta" onClick={() => click('dsh')}>{L(T.homeCta)} →</a>
           <a href="#ways" className="om-alt" onClick={() => click('agent')}>{L(T.agent)}</a>
         </p>
+      </div>
+    );
+  }
+  if (where === 'waiting') {
+    return (
+      <div className="om-callout is-waiting" role="note">
+        <p className="om-body">{L(T.waitingBody)}</p>
+        <p className="om-links"><a href={DSH_ANCHOR} className="om-cta" onClick={() => click('dsh')}>{L(T.refusedCta)} →</a></p>
       </div>
     );
   }
