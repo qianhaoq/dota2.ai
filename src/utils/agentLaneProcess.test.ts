@@ -258,17 +258,17 @@ describe('early rotation trips away from the main lane (my_rotations_before_10_0
       runes: [[310.4, uNpc, 'haste', 332.4]],
       wards: [[315.0, 675.0, 3, 'o', 0, 0]],
       item_uses: [...trace.item_uses, [315.0, uNpc, obsIx, 99999]],
-      // Undying damages Necrolyte during trip (320) -> dies at 328 (counts); damages PA AFTER returning to bot (338) -> dies at 342 (must NOT count!).
+      // Undying damages Necrolyte during the final sampled second (335.5) -> dies at 336.5 (counts); damages PA AFTER returning to bot (338) -> dies at 342 (must NOT count!).
       damage: [
         ...trace.damage.filter((d: any) => d[0] < 290 || d[0] > 360),
-        [320, uNpc, necNpc, -1, 150],
+        [335.5, uNpc, necNpc, -1, 150],
         [338, uNpc, paNpc, -1, 200],
       ],
       deaths: [
         ...trace.deaths.filter((d: any) => d[0] < 290 || d[0] > 360),
-        [328, necNpc, uNpc, 1],
+        [336.5, necNpc, uNpc, 1],
         [342, paNpc, uNpc, 2],
-        [325, bmNpc, paNpc, 3], // lane partner Beastmaster dies while Undying is away!
+        [335.5, bmNpc, paNpc, 3], // lane partner Beastmaster dies during the final sampled second of the trip!
       ],
     };
     const r: any = laneProcess(t, u);
@@ -279,11 +279,11 @@ describe('early rotation trips away from the main lane (my_rotations_before_10_0
       to: '5:35',
       seconds: 36,
       destination_lane: 'mid',
-      runes_picked: ['haste'],
+      power_runes_activated: ['haste'],
       wards_placed: { observers: 1, sentries: 0 },
-      enemy_deaths_i_damaged: [{ hero: 'necrolyte', clock: '5:28' }],
+      enemy_deaths_i_damaged: [{ hero: 'necrolyte', clock: '5:36' }],
       my_death: false,
-      lane_partner_deaths_while_away: [{ hero: 'beastmaster', clock: '5:25' }],
+      lane_partner_deaths_while_away: [{ hero: 'beastmaster', clock: '5:35' }],
     });
     expect(r.my_rotations_before_10_00.trips_with_enemy_death_i_damaged).toBe(1);
     expect(r.my_rotations_before_10_00.trips_where_lane_partner_died).toBe(1);
@@ -321,7 +321,7 @@ describe('early rotation trips away from the main lane (my_rotations_before_10_0
     const { runes: _r, wards: _w, damage: _d, deaths: _k, ...stripped } = baseTripTrace;
     const rStripped: any = laneProcess(stripped, u);
     const tr0 = rStripped.my_rotations_before_10_00.trips[0];
-    expect(tr0.runes_picked).toBeNull();
+    expect(tr0.power_runes_activated).toBeNull();
     expect(tr0.wards_placed).toBeNull();
     expect(tr0.enemy_deaths_i_damaged).toBeNull();
     expect(tr0.my_death).toBeNull();

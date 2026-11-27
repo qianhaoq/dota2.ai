@@ -40,8 +40,8 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith('.trace.json.gz')).sor
           enemyKill: Array.isArray(tr.enemy_deaths_i_damaged) && tr.enemy_deaths_i_damaged.length > 0,
           partnerDied: Array.isArray(tr.lane_partner_deaths_while_away) && tr.lane_partner_deaths_while_away.length > 0,
           partnerKnown: Array.isArray(tr.lane_partner_deaths_while_away),
-          runeKnown: Array.isArray(tr.runes_picked),
-          rune: Array.isArray(tr.runes_picked) && tr.runes_picked.length > 0,
+          runeKnown: Array.isArray(tr.power_runes_activated),
+          rune: Array.isArray(tr.power_runes_activated) && tr.power_runes_activated.length > 0,
           wardKnown: tr.wards_placed != null,
           ward: Boolean(tr.wards_placed && (tr.wards_placed.observers > 0 || tr.wards_placed.sentries > 0)),
         });
@@ -94,7 +94,7 @@ out.early_rotations = {
   trips: rotTrips.length,
   trips_with_enemy_death_damaged: share(enemyKnownTrips.filter((x) => x.enemyKill).length, enemyKnownTrips.length),
   trips_where_lane_partner_died: share(partnerKnownTrips.filter((x) => x.partnerDied).length, partnerKnownTrips.length),
-  trips_with_rune_picked: share(runeKnownTrips.filter((x) => x.rune).length, runeKnownTrips.length),
+  trips_with_power_rune_activated: share(runeKnownTrips.filter((x) => x.rune).length, runeKnownTrips.length),
   trips_with_ward_placed: share(wardKnownTrips.filter((x) => x.ward).length, wardKnownTrips.length),
 };
 if (flag === '--json') console.log(JSON.stringify(out, null, 2));
