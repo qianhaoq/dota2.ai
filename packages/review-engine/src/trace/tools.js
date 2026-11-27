@@ -364,7 +364,7 @@ function enemyUltimatesAbsorbed(trace, h, npc, from, t, ultimateOf) {
   return out;
 }
 
-function nearbyFightFor(trace, h, d, t, atPos, fightInfos) {
+function nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight) {
   const myTeam = trace.heroes[h].team;
   const format = (fi, relation, distance) => {
     let myLost = 0; let enemyLost = 0;
@@ -384,8 +384,25 @@ function nearbyFightFor(trace, h, d, t, atPos, fightInfos) {
     };
   };
   const own = fightInfos.find((fi) => fi.f.deaths.includes(d));
-  if (own) return format(own, 'in_fight', atPos && own.part.at ? dist(atPos, own.part.at) : null);
-  const candidates = fightInfos.filter((fi) => t >= fi.part.engaged_at - 30 && t <= fi.f.to + 15);
+  if (own) {
+    // fights() groups deaths by time alone: verify spatial proximity to another death of the fight so an isolated
+    // cross-map death in the same 15 s window is never mislabeled as `in_fight` (Codex P1 on #464).
+    if (!atPos) return null;
+    const otherDeaths = own.f.deaths.filter((o) => o !== d);
+    const otherSpots = otherDeaths.map((o) => {
+      const v = heroOfName(trace, o[1]);
+      return v >= 0 ? stateAt(trace, v, o[0] - 1) : null;
+    });
+    const knownSpots = otherSpots.filter(Boolean);
+    const closestOther = knownSpots.length ? Math.min(...knownSpots.map((p) => dist(atPos, p))) : null;
+    if (closestOther != null && closestOther <= 3000) {
+      const fightDist = own.part.at ? dist(atPos, own.part.at) : closestOther;
+      return format(own, inAFight === true ? 'in_fight' : 'during_fight', Math.min(fightDist, closestOther));
+    }
+    if (otherSpots.some((p) => !p)) return null;
+    // Far (>3000) from every other death in this temporal group: not near this fight.
+  }
+  const candidates = fightInfos.filter((fi) => fi !== own && t >= fi.part.engaged_at - 30 && t <= fi.f.to + 15);
   if (!candidates.length) return false;
   if (!atPos) return null;
   const near = candidates
@@ -403,9 +420,13 @@ function nearbyFightFor(trace, h, d, t, atPos, fightInfos) {
 function nearbyObjectiveFor(trace, h, t, atPos, allSieges) {
   let unknown = false;
   const myTeam = trace.heroes[h].team;
-  // Roshan activity within [-10, +20] s and 2500 units.
-  const roshKills = Array.isArray(trace.roshan_kills) ? trace.roshan_kills.filter((r) => r[0] >= t - 10 && r[0] <= t + 20) : [];
-  const roshDmg = Array.isArray(trace.roshan_damage) ? trace.roshan_damage.filter((r) => r[0] >= Math.floor(t - 10) && r[0] <= Math.ceil(t + 20)) : [];
+  // Roshan activity within [-10, +20] s and 2500 units. Older traces without Roshan logs cannot rule out Roshan
+  // (Codex P1 on #464): mark unknown so absence of a building match returns null rather than false.
+  const hasRoshanKills = Array.isArray(trace.roshan_kills);
+  const hasRoshanDamage = Array.isArray(trace.roshan_damage);
+  if (!hasRoshanKills && !hasRoshanDamage) unknown = true;
+  const roshKills = hasRoshanKills ? trace.roshan_kills.filter((r) => r[0] >= t - 10 && r[0] <= t + 20) : [];
+  const roshDmg = hasRoshanDamage ? trace.roshan_damage.filter((r) => r[0] >= Math.floor(t - 10) && r[0] <= Math.ceil(t + 20)) : [];
   if (roshKills.length || roshDmg.length) {
     if (!atPos) unknown = true;
     else {
@@ -557,7 +578,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
       });
     const disableSec = Array.isArray(trace.controls) ? mergedDisableSeconds(trace.controls[h], from, t) : null;
     const enemyUlts = enemyUltimatesAbsorbed(trace, h, npc, from, t, ctx?.ultimateOf);
-    const nearFight = nearbyFightFor(trace, h, d, t, atPos, fightInfos);
+    const inAFight = !fought.has(d) ? false : mostAllies == null ? null : mostAllies >= 1;
+    const nearFight = nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight);
     const nearObj = nearbyObjectiveFor(trace, h, t, atPos, allSieges);
     return {
       // The window is part of what the record says (its damage, its snapshots): a non-default one is in the ref.
@@ -580,7 +602,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
       // From the health itself, not the rounded share: 495 of 1000 is below half.
       below_half_health_at_window_start: snapshots[0]?.me?.max_hp ? snapshots[0].me.hp * 2 < snapshots[0].me.max_hp : null,
       // Null where the hero's position was not sampled: whether an ally was near is then unknown.
-      in_a_fight: !fought.has(d) ? false : mostAllies == null ? null : mostAllies >= 1,
+      in_a_fight: inAFight,
       // Fight within [-30 s before engaged_at, +15 s after end] and 3000 units: distinguishes pre-fight picks from isolated farm deaths.
       nearby_fight: nearFight,
       // Objective building or Roshan activity within [-10 s, +20 s] and 2500 units.

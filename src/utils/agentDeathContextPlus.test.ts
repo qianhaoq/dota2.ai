@@ -236,4 +236,30 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     expect(ev?.names.lion_finger_of_death).toBe('死亡之指');
     expect(ev?.names.tidehunter_ravage).toBe('毁灭');
   });
+
+  it('does not label an isolated cross-map death in the same 15 s window as in_fight, and keeps nearby_objective null when Roshan logs are absent (Codex P1 on #464)', () => {
+    const tr = makeTrace({
+      // Enchantress dies alone at (-6000, -6000) while 2 other deaths happen at (4000, 4000) within 5 s.
+      pos: { enchantress: [-6000, -6000], sven: [4000, 4000], lion: [4100, 4000], tidehunter: [4050, 4050], lina: [4150, 3950] },
+      deaths: [
+        [100, 0, 2, 1],
+        [103, 1, 3, 2],
+        [105, 3, 1, 3],
+      ],
+    });
+    const dc: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' }, { ultimateOf });
+    expect(dc.deaths[0].in_a_fight).toBe(false);
+    expect(dc.deaths[0].nearby_fight).toBe(false);
+    // Older trace without roshan_kills / roshan_damage cannot rule out Roshan -> nearby_objective must be null, not false.
+    expect(dc.deaths[0].nearby_objective).toBeNull();
+
+    // Modern trace with empty Roshan logs (and no nearby building activity) can establish false.
+    const modern = makeTrace({
+      pos: { enchantress: [-6000, -6000], sven: [4000, 4000], lion: [4100, 4000], tidehunter: [4050, 4050], lina: [4150, 3950] },
+      roshan_kills: [],
+      roshan_damage: [],
+      deaths: [[100, 0, 2, 1]],
+    });
+    expect((runTraceTool(modern, 'death_context', { hero: 'enchantress' }, { ultimateOf }) as any).deaths[0].nearby_objective).toBe(false);
+  });
 });
