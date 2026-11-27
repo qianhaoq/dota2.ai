@@ -15,6 +15,7 @@ export type AnalyticsEventName =
   | 'match_opened'
   | 'review_requested'
   | 'review_refused'
+  | 'own_model_cta'
   | 'chat_asked'
   | 'review_ready'
   | 'moment_played'

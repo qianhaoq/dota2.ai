@@ -22,6 +22,16 @@ export type AccessMode = 'web' | 'dsh' | 'mcp' | 'cli' | 'http';
 export const DSH_PLUGIN_VERSION = '0.2.1';
 export const DSH_RELEASE_URL = `https://github.com/qianhaoq/dota2.ai/releases/tag/dsh-v${DSH_PLUGIN_VERSION}`;
 export const DSH_INSTALL = `dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`;
+/** The DSH release the plugin is verified on (packages/dsh/package.json engines.dsh). */
+export const DSH_HOST_VERSION = '0.2.1-rc.3';
+export const DSH_TGZ_URL = `https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v${DSH_PLUGIN_VERSION}/qianhaoq-dsh-dota2ai-${DSH_PLUGIN_VERSION}.tgz`;
+/** From nothing to the dota2.ai page in DSH: the host and pnpm (DSH installs plugins with it), the plugin, the web UI. */
+export const DSH_SETUP = [
+  `npm install -g pnpm @deepseek-ai/dsh@${DSH_HOST_VERSION}`,
+  `curl -LO ${DSH_TGZ_URL}`,
+  DSH_INSTALL,
+  'dsh web',
+];
 
 /**
  * One line that connects each agent tool to the hosted MCP server. A command
@@ -79,21 +89,21 @@ const CLI = 'node packages/cli/bin/dota2ai.js';
 export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnippet[] {
   return [
     {
+      mode: 'dsh',
+      label: { en: 'DSH plugin', zh: 'DSH 插件', ru: 'Плагин DSH' },
+      lines: DSH_SETUP,
+      note: {
+        en: 'Recommended. A native plugin for DSH (DeepSeek Harness): the full dota2.ai page in the DSH sidebar and coach tools in every session, run on your own DeepSeek key — no queue, no daily limit, and reviews are kept on your machine (the replay itself is parsed on dota2.ai unless you set a local extractor). Needs Node 24.9+. After dsh web starts, add your DeepSeek key in DSH, then open dota2.ai in the sidebar.',
+        zh: '推荐。DSH（DeepSeek Harness）原生插件：DSH 左侧栏里就是完整的 dota2.ai 复盘页面，每个会话也能用教练工具；用你自己的 DeepSeek Key 跑，不排队、不限次，复盘保存在你自己电脑上（录像默认由 dota2.ai 解析，配置本地解析器后可完全在本地）。需要 Node 24.9+。运行 dsh web 后在 DSH 里填好 DeepSeek Key，再从左侧栏打开 dota2.ai。',
+        ru: 'Рекомендуем. Нативный плагин для DSH (DeepSeek Harness): полная страница dota2.ai в боковой панели DSH и инструменты тренера в каждой сессии, на вашем ключе DeepSeek — без очереди и дневного лимита, разборы хранятся у вас (сам реплей разбирается на dota2.ai, если не указан локальный парсер). Нужен Node 24.9+. После запуска dsh web добавьте ключ DeepSeek в DSH и откройте dota2.ai в боковой панели.',
+      },
+      links: [{ href: DSH_RELEASE_URL, label: `dsh-v${DSH_PLUGIN_VERSION}` }],
+    },
+    {
       mode: 'web',
       label: { en: 'Web', zh: '网页', ru: 'Веб' },
       lines: [],
       note: { en: 'Paste a match ID, a match link or your friend code in the box above.', zh: '在上面的输入框里粘贴比赛 ID、对局链接或好友码。', ru: 'Вставьте ID матча, ссылку на матч или код друга в поле выше.' },
-    },
-    {
-      mode: 'dsh',
-      label: { en: 'DSH plugin', zh: 'DSH 插件', ru: 'Плагин DSH' },
-      lines: [DSH_INSTALL],
-      note: {
-        en: 'A native plugin for DSH (DeepSeek Harness): adds a standalone dota2.ai page in the DSH sidebar and coach tools in every session, powered by your own DSH model. Node 24.9+, DSH 0.2.1-rc.3.',
-        zh: 'DSH（DeepSeek Harness）原生插件：在 DSH 左侧栏增加完整的 dota2.ai 独立复盘页面，并在每个会话提供教练工具，直接使用你在 DSH 配置的宿主模型。需要 Node 24.9+ 和 DSH 0.2.1-rc.3。',
-        ru: 'Нативный плагин для DSH (DeepSeek Harness): добавляет отдельную страницу dota2.ai в боковую панель DSH и инструменты тренера в каждую сессию, используя модель вашего DSH. Node 24.9+, DSH 0.2.1-rc.3.',
-      },
-      links: [{ href: DSH_RELEASE_URL, label: `dsh-v${DSH_PLUGIN_VERSION}` }],
     },
     {
       mode: 'mcp',
@@ -101,9 +111,9 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
       lines: [AGENT_CLIENTS[0].line],
       clients: AGENT_CLIENTS,
       note: {
-        en: `Hosted, no install, no key. replay_review is the full review; the other tools answer at once from match data.`,
-        zh: `线上直连，不用安装，不要 Key。replay_review 是完整的录像复盘，其余工具按比赛数据即时回答。`,
-        ru: `Работает онлайн, без установки и ключа. replay_review — полный разбор по реплею, остальные инструменты отвечают сразу по данным матча.`,
+        en: `Hosted, no install, no key. replay_review is the full review, written on dota2.ai's model within a daily limit; the other tools answer at once from match data.`,
+        zh: `线上直连，不用安装，不要 Key。replay_review 是完整的录像复盘，用 dota2.ai 自带的模型写、每天有名额上限；其余工具按比赛数据即时回答。`,
+        ru: `Работает онлайн, без установки и ключа. replay_review — полный разбор по реплею на модели dota2.ai, с дневным лимитом; остальные инструменты отвечают сразу по данным матча.`,
       },
     },
     {

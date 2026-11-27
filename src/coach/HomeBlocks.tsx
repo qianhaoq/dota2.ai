@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { SafeImg, useLang } from './ui';
 import { accessSnippets, agentAsk, agentPrompt, type AccessMode } from './accessSnippets';
@@ -78,7 +78,14 @@ const CopyButton: React.FC<{ text: string; label: string }> = ({ text, label }) 
 export const AccessModes: React.FC<{ matchId: string; onWeb: () => void }> = ({ matchId, onWeb }) => {
   const { lang, L } = useLang();
   const modes = accessSnippets(matchId);
-  const [mode, setMode] = useState<AccessMode>('mcp');
+  // DSH first: it runs on the reader's own model. `#ways-dsh` (the home and match pages' pointers) opens it too.
+  const [mode, setMode] = useState<AccessMode>('dsh');
+  useEffect(() => {
+    const onHash = () => { if (window.location.hash === '#ways-dsh') setMode('dsh'); };
+    onHash();
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   const cur = modes.find((m) => m.mode === mode)!;
   const [clientId, setClientId] = useState(cur.clients?.[0]?.id ?? '');
   const client = cur.clients?.find((c) => c.id === clientId) ?? cur.clients?.[0] ?? null;
@@ -86,6 +93,7 @@ export const AccessModes: React.FC<{ matchId: string; onWeb: () => void }> = ({ 
   const prompt = agentPrompt(lang);
   return (
     <section className="hm-ways" id="ways" aria-labelledby="hm-ways-title">
+      <span id="ways-dsh" className="hm-anchor" aria-hidden="true" />
       <h2 id="hm-ways-title">{L(T.waysTitle)}</h2>
       <div className="hm-ways-tabs" role="tablist" aria-label={L(T.waysTitle)}>
         {modes.map((m) => (
