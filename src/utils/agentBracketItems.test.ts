@@ -306,6 +306,25 @@ describe('scripts/coach-bracket-items.mjs: introspection, week window & invarian
     bracketType: { enumValues: Object.values(BRACKETS).map((name) => ({ name })) },
   });
 
+  it('the denominator is every game: stats asked by time, read at minute 0 (#439)', () => {
+    // STRATZ's stats without groupByTime answers with the games still going at its last step (35 min): Anti-Mage,
+    // position 1, Herald–Guardian, week of 2026-11-19: 13017, against 15587 at minute 0 — so a 97% item read 116%.
+    const intro = mockIntrospection(false);
+    // The mock's stats field, given groupByTime and a time column as STRATZ has them.
+    const field = (function find(v: any): any { if (Array.isArray(v)) { for (const x of v) { const r = find(x); if (r) return r; } return null; } if (v && typeof v === 'object') { if (v.name === 'stats' && Array.isArray(v.args)) return v; for (const x of Object.values(v)) { const r = find(x); if (r) return r; } } return null; })(intro);
+    field.args.push({ name: 'groupByTime', type: { kind: 'SCALAR', name: 'Boolean' } });
+    field.type.ofType.fields.push({ name: 'time' });
+    const spec = parseIntrospection(intro);
+    expect(spec.denom).toMatchObject({ field: 'stats', groupByTime: true });
+    const q = buildDenominatorQuery(spec, 1764201600, 1763596800).query;
+    expect(q).toContain('groupByTime: true');
+    expect(q).toMatch(/\{[^}]*\btime\b[^}]*matchCount/);
+    const w = 1795046400;
+    const series = [0, 10, 20, 35].map((t, i) => ({ heroId: 1, week: Math.floor(w / 604800), time: t, matchCount: [15587, 15587, 15579, 13017][i], winCount: [7800, 7800, 7795, 6500][i] }));
+    const d: any = extractWeekDenominators({ s_hg_1: series }, spec, w, new Set([1]));
+    expect(d.hg[1]['1']).toEqual([15587, 7800]);
+  });
+
   it('parses introspection, builds queries, selects single-patch completed weeks and detects time units', () => {
     const spec = parseIntrospection(mockIntrospection(true));
     expect(spec.item).toMatchObject({ heroArg: 'heroId', bracketArg: 'bracketBasicIds', hasMinTime: true, hasMaxTime: true, hasMatchLimit: true });

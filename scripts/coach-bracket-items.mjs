@@ -139,6 +139,10 @@ export function parseIntrospection(data) {
         field: 'stats',
         bracketArg: sArgs.has('bracketBasicIds') ? 'bracketBasicIds' : 'bracketIds',
         groupByPosition: sArgs.has('groupByPosition') && sRet.has('position'),
+        // Without groupByTime, stats answers with the games still going at its last time step (35 min), not all of
+        // them: Anti-Mage, position 1, Herald–Guardian, week of 2026-11-19 gave 13017, while groupByTime gives 15587
+        // at minute 0 falling to 13017 at minute 35 (#439). Asked by time, the denominator is minute 0: every game.
+        groupByTime: sArgs.has('groupByTime') && sRet.has('time'),
         hasMatchLimit: sArgs.has('matchLimit'),
         returnFields: sRet,
       };
@@ -213,16 +217,17 @@ function bracketArgClause(bracketArg, bKey) {
 /** Build the per-week denominator GraphQL query (`stats` or `winWeek`). */
 export function buildDenominatorQuery(spec, nowSec, oldestWeekSec) {
   const d = spec.denom;
-  const sel = ['heroId', ...(d.returnFields.has('week') ? ['week'] : []), ...(d.returnFields.has('time') ? ['time'] : []), ...(d.groupByPosition ? ['position'] : []), 'matchCount', 'winCount'].join(' ');
+  const sel = ['heroId', ...(d.returnFields.has('week') ? ['week'] : []), ...(d.returnFields.has('time') || d.groupByTime ? ['time'] : []), ...(d.groupByPosition ? ['position'] : []), 'matchCount', 'winCount'].join(' ');
+  const byTime = d.groupByTime ? ', groupByTime: true' : '';
   if (d.field === 'stats') {
     if (d.groupByPosition) {
       const aliases = Object.keys(BRACKETS).map((k) => (
-        `s_${k}: stats(week: $w, ${bracketArgClause(d.bracketArg, k)}, positionIds: [${Object.values(POSITIONS).join(', ')}], groupByPosition: true${d.hasMatchLimit ? ', matchLimit: 0' : ''}) { ${sel} }`
+        `s_${k}: stats(week: $w, ${bracketArgClause(d.bracketArg, k)}, positionIds: [${Object.values(POSITIONS).join(', ')}], groupByPosition: true${byTime}${d.hasMatchLimit ? ', matchLimit: 0' : ''}) { ${sel} }`
       )).join(' ');
       return { query: `query ($w: Long) { heroStats { ${aliases} } }`, usesWeekVar: true };
     }
     const aliases = Object.keys(BRACKETS).flatMap((k) => Object.entries(POSITIONS).map(([p, pEnum]) => (
-      `s_${k}_${p}: stats(week: $w, ${bracketArgClause(d.bracketArg, k)}, positionIds: [${pEnum}]${d.hasMatchLimit ? ', matchLimit: 0' : ''}) { ${sel} }`
+      `s_${k}_${p}: stats(week: $w, ${bracketArgClause(d.bracketArg, k)}, positionIds: [${pEnum}]${byTime}${d.hasMatchLimit ? ', matchLimit: 0' : ''}) { ${sel} }`
     ))).join(' ');
     return { query: `query ($w: Long) { heroStats { ${aliases} } }`, usesWeekVar: true };
   }
@@ -241,7 +246,7 @@ export function extractWeekDenominators(heroStats, spec, w, knownHeroes) {
   const out = Object.fromEntries(Object.keys(BRACKETS).map((k) => [k, {}]));
 
   const ingest = (bKey, pKey, rows) => {
-    // Only filter time === 0 if the endpoint returned a multi-point time series despite groupByTime not being set.
+    // A time series (groupByTime) counts every game at minute 0; later steps hold only the games still going.
     const hasTimeSeries = new Set((rows ?? []).map((r) => r?.time).filter(Number.isFinite)).size > 1;
     const byHero = new Map();
     for (const r of rows ?? []) {
@@ -454,6 +459,8 @@ export function aggregateBracketItems({
   const gamesPerBracket = Object.fromEntries(Object.keys(BRACKETS).map((k) => [k, 0]));
   let bigCellsChecked = 0;
   let bigCellsOverflowed = 0;
+  /** A few overflowing cells, so the error says which (hero, bracket, positions, item, buys against games). */
+  const overflowSamples = [];
 
   for (const bKey of Object.keys(BRACKETS)) {
     let totalHeroGames = 0;
@@ -551,7 +558,7 @@ export function aggregateBracketItems({
         const list = [];
         for (const [itemKey, st] of merged) {
           if (st.buys < BRACKET_ITEMS_MIN_BUYS) continue;
-          if (st.buys > Math.ceil(games * 1.01)) cellOverflow = true;
+          if (st.buys > Math.ceil(games * 1.01)) { cellOverflow = true; if (overflowSamples.length < 8) overflowSamples.push(`${bKey} hero ${hKey} pos ${positions.join('+')} ${itemKey}: ${st.buys} buys, ${games} games`); }
           const buys = Math.min(st.buys, games);
           const itemWins = Math.min(st.wins, buys);
           list.push([itemKey, buys, itemWins, medianMinuteFromBins(st.bins, st.buys)]);
@@ -579,7 +586,7 @@ export function aggregateBracketItems({
   }
 
   if (bigCellsChecked && bigCellsOverflowed > Math.max(2, bigCellsChecked * 0.002)) {
-    throw new Error(`item purchases exceeded hero games in ${bigCellsOverflowed}/${bigCellsChecked} cells`);
+    throw new Error(`item purchases exceeded hero games in ${bigCellsOverflowed}/${bigCellsChecked} cells, e.g. ${overflowSamples.join('; ')}`);
   }
 
   return { heroes: outHeroes, games: gamesPerBracket };
