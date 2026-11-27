@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { collectFacts, deepReviewSystem, headingOf, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, wordingProblems, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { chaptersOf, didWellOf, highlightsOf } from '../../lib/agent/review/verify.js';
+import { applyTranslation, extractTranslatable } from '../../lib/agent/review/translate.js';
+import { logicOf, reviewTexts, rubricOf } from '../../lib/agent/evalReview.js';
+import { shapeReview } from '../../lib/agent/replayTool.js';
+import { checkedPart } from '../../lib/agent/chat.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const scripted = (replies: any[]) => { const seen: any[] = []; let i = 0; return { seen, complete: async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; } }; };
@@ -610,6 +615,90 @@ describe('runDeepReview', () => {
     expect(named.highlights[0]).toEqual({ title: '斯温 配合', detail: '幻影刺客 阵亡', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '幻影刺客 被控' }] });
     expect(named.chapters[0]).toEqual({ topic: 'items', title: '针对 幻影刺客', analysis: '斯温 在夜魇上路', takeaway: '防 幻影刺客', evidence: [{ refs: ['death:beastmaster:9'], fact: '斯温 旁' }] });
     expect(named.encouragement).toBe('面对 幻影刺客 保持节奏。');
+  });
+
+  it('guards malformed non-array / non-object / non-string review fields without throwing across verify, run, translate, eval, chat and MCP', async () => {
+    // Non-array collections & non-string scalar fields in English and Chinese must not throw TypeError.
+    const malformedEn: any = {
+      verdict: 'A close game.',
+      findings: [],
+      highlights: {},
+      chapters: 'bad',
+      opening_note: 123,
+      encouragement: null,
+      mainline: {},
+      did_well: 'nope',
+      blind_spots: 42,
+      story: {},
+      game_plan: 'invalid',
+    };
+    const resEn = verifyReview(malformedEn, []);
+    expect(resEn.ok).toBe(true);
+    expect(resEn.problems).toEqual([]);
+
+    const malformedZh: any = {
+      ...malformedEn,
+      verdict: '这是一局焦灼的对局。',
+      findings: 'not-an-array',
+    };
+    const resZh = verifyReview(malformedZh, []);
+    expect(resZh.ok).toBe(true);
+    expect(resZh.problems).toEqual([]);
+
+    // Non-object / null / wrong-typed elements inside highlights, chapters, and findings must not throw.
+    const badItemsReview: any = {
+      verdict: 'A close game.',
+      findings: [],
+      highlights: [null, 42, { text: 123, title: 123, detail: null, evidence: 'bad' }, { title: 'Clean start', detail: 'Held lane well.', evidence: [null, 99, { refs: 'bad', fact: 123 }] }],
+      chapters: [null, 'x', { topic: 'laning', title: 123, analysis: {}, evidence: null }, { topic: 'macro', title: 'Map play', analysis: 'Good rotation.', evidence: [null] }],
+      opening_note: {},
+      encouragement: ['not-a-string'],
+    };
+    const resItems = verifyReview(badItemsReview, []);
+    expect(resItems.ok).toBe(false);
+    expect(highlightsOf(badItemsReview.highlights, resItems.problems, resItems.refs)).toEqual([{ title: 'Clean start', detail: 'Held lane well.' }]);
+    expect(chaptersOf(badItemsReview.chapters, resItems.problems, resItems.refs)).toEqual([]);
+    expect(didWellOf(malformedEn.highlights, malformedEn.did_well)).toEqual([]);
+
+    // Downstream helpers also tolerate malformed shapes safely.
+    expect(() => nameHeroes(malformedEn, { phantom_assassin: '幻影刺客' })).not.toThrow();
+    expect(() => nameHeroes(badItemsReview, { phantom_assassin: '幻影刺客' })).not.toThrow();
+    expect(() => extractTranslatable(malformedEn)).not.toThrow();
+    expect(() => extractTranslatable(badItemsReview)).not.toThrow();
+    expect(applyTranslation(malformedEn, { verdict: '焦灼对局。', mainline: [], did_well: [], blind_spots: [], findings: [] }, 'zh')).not.toBeNull();
+    expect(() => reviewTexts(malformedEn)).not.toThrow();
+    expect(() => logicOf(malformedEn)).not.toThrow();
+    expect(() => rubricOf(malformedEn, { must_hit: [], must_praise: [] })).not.toThrow();
+    expect(() => shapeReview('9100904020', 'beastmaster', 'en', { review: malformedEn })).not.toThrow();
+    expect(() => shapeReview('9100904020', 'beastmaster', 'en', { review: badItemsReview })).not.toThrow();
+    expect(() => checkedPart(malformedEn)).not.toThrow();
+    expect(() => checkedPart(badItemsReview)).not.toThrow();
+
+    // runDeepReview retains a usable finding when highlights/chapters arrive as malformed non-arrays.
+    const m = scripted([
+      investigate,
+      {
+        toolCalls: [call('submit_review', {
+          verdict: '咆哮没有留给幻影刺客的 BKB。',
+          opening_note: 123,
+          highlights: {},
+          chapters: 'bad',
+          encouragement: null,
+          mainline: {},
+          did_well: 'bad',
+          blind_spots: 99,
+          findings: [good],
+        }, 's1')],
+      },
+    ]);
+    const ran: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(ran.status).toBe('ok');
+    expect(ran.review.findings).toHaveLength(1);
+    expect(ran.review).not.toHaveProperty('highlights');
+    expect(ran.review).not.toHaveProperty('chapters');
+    expect(ran.review).not.toHaveProperty('opening_note');
+    expect(ran.review).not.toHaveProperty('encouragement');
+    expect(ran.review.blind_spots).toEqual([]);
   });
 
   it('next game is the findings\' rules in their order, in the reader\'s punctuation', () => {

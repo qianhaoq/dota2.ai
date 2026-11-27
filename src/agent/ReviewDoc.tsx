@@ -251,7 +251,8 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
     return () => { alive = false; };
   }, [matchId, review.hero, lang]);
 
-  const [first, ...rest] = review.findings;
+  const findings = Array.isArray(review.findings) ? review.findings.filter((f) => f && typeof f === 'object') : [];
+  const [first, ...rest] = findings;
   type Finding = DeepReview['findings'][number];
   const ruleOf = (f: Finding) => f.rule && (
     <dl className="ag-rule" aria-label={t(T.rule)}>
@@ -262,9 +263,10 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
   );
   // Keyed by the finding it is about: another review of the same game starts unanswered.
   const feedbackOf = (f: Finding, i: number) => feedback && <FindingFeedback key={`${i}:${f.title}`} matchId={matchId} hero={review.hero} lang={lang} plan={feedback.plan} model={feedback.model} version={feedback.version} index={i} title={f.title} />;
-  const evidenceList = (items: DeepReview['findings'][number]['evidence']) => (
-    <ul className="ag-evidence">{items.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul>
-  );
+  const evidenceList = (items: DeepReview['findings'][number]['evidence']) => {
+    const safe = Array.isArray(items) ? items.filter((e) => e && typeof e === 'object') : [];
+    return safe.length > 0 ? <ul className="ag-evidence">{safe.map((e, j) => <EvidenceCard key={j} matchId={matchId} hero={review.hero} lang={lang} item={e} onAsk={onAsk} />)}</ul> : null;
+  };
   const patch = review.data_patch && (review.data_patch.exact
     ? <p className="ag-patch">{t(T.patchExact).replace('{p}', patchName(review.data_patch))}{review.data_patch.known_from && T.patchFrom[review.data_patch.known_from] ? (lang === 'zh' ? `（${t(T.patchFrom[review.data_patch.known_from])}）` : ` (${t(T.patchFrom[review.data_patch.known_from])})`) : ''}</p>
     // The release is known and only the hotfix within it is not: say that, not that the patch is unknown.
@@ -272,9 +274,17 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       ? <p className="ag-patch is-unknown" role="note">{t(T.patchHotfixUnsure).replace('{p}', review.data_patch.name)}</p>
       : <p className="ag-patch is-unknown" role="note">{t(T.patchUnknown).replace('{p}', review.data_patch.name)}</p>);
 
-  const hasHighlights = Array.isArray(review.highlights) && review.highlights.length > 0;
-  const hasChapters = Array.isArray(review.chapters) && review.chapters.length > 0;
-  const isCoachLayout = Boolean(review.opening_note || hasHighlights || hasChapters || review.encouragement);
+  const highlights = Array.isArray(review.highlights) ? review.highlights.filter((h) => h && typeof h === 'object') : [];
+  const chapters = Array.isArray(review.chapters) ? review.chapters.filter((c) => c && typeof c === 'object') : [];
+  const didWell = Array.isArray(review.did_well) ? review.did_well.filter((line): line is string => typeof line === 'string') : [];
+  const mainline = Array.isArray(review.mainline) ? review.mainline.filter((line): line is string => typeof line === 'string') : [];
+  const blindSpots = Array.isArray(review.blind_spots) ? review.blind_spots.filter((line): line is string => typeof line === 'string') : [];
+  const story = Array.isArray(review.story) ? review.story.filter((l) => l && typeof l === 'object') : [];
+  const openingNote = typeof review.opening_note === 'string' && review.opening_note.trim() ? review.opening_note : null;
+  const encouragement = typeof review.encouragement === 'string' && review.encouragement.trim() ? review.encouragement : null;
+  const hasHighlights = highlights.length > 0;
+  const hasChapters = chapters.length > 0;
+  const isCoachLayout = Boolean(openingNote || hasHighlights || hasChapters || encouragement);
 
   const wholeGame = (showVerdict: boolean) => (
     <section className="ag-whole">
@@ -282,29 +292,32 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       {showVerdict && <p className="ag-verdict"><span>{t(T.verdict)}</span>{review.verdict}</p>}
       {overview && Array.isArray(overview.fights) && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
       {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} fightsRead={moments.fights_read ?? 0} fightsNotRead={moments.fights_not_read ?? 0} lang={lang} />}
-      {review.story && review.story.length > 0 ? (
+      {story.length > 0 ? (
         <div className="ag-story">
           <h3>{t(T.story)}</h3>
           <ol>
-            {review.story.map((l, i) => (
+            {story.map((l, i) => {
+              const ev = Array.isArray(l.evidence) ? l.evidence : [];
+              return (
               <li key={i} className={`is-${l.whose}`}>
                 <p className="ag-story-head"><b>{l.phase}</b>{T.whose[l.whose] && <span className={`ag-story-whose is-${l.whose}`}>{t(T.whose[l.whose])}</span>}</p>
                 <p className="ag-story-what">{l.what_changed}</p>
                 <p className="ag-story-why"><span>{t(T.storyBecause)}</span>{l.because}</p>
-                {l.evidence.length > 0 && (
+                {ev.length > 0 && (
                   <details className="ag-story-records">
-                    <summary>{t(T.storyRecords)} · {l.evidence.length}</summary>
-                    {evidenceList(l.evidence)}
+                    <summary>{t(T.storyRecords)} · {ev.length}</summary>
+                    {evidenceList(ev)}
                   </details>
                 )}
               </li>
-            ))}
+              );
+            })}
           </ol>
         </div>
-      ) : review.mainline.length > 0 && (
+      ) : mainline.length > 0 && (
         <details className="ag-fold">
-          <summary><h3>{t(T.story)}</h3><span>{t(T.parts).replace('{n}', String(review.mainline.length))}</span></summary>
-          <ol className="ag-mainline">{review.mainline.map((line, i) => <li key={i}>{line}</li>)}</ol>
+          <summary><h3>{t(T.story)}</h3><span>{t(T.parts).replace('{n}', String(mainline.length))}</span></summary>
+          <ol className="ag-mainline">{mainline.map((line, i) => <li key={i}>{line}</li>)}</ol>
         </details>
       )}
       {(review.game_plan || onPlan) && (
@@ -361,16 +374,16 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
             )}
           </div>
           <h1>{review.verdict}</h1>
-          {review.opening_note && <p className="ag-opening">{review.opening_note}</p>}
+          {openingNote && <p className="ag-opening">{openingNote}</p>}
           {patch}
         </section>
 
-        {(hasHighlights || review.did_well.length > 0) && (
+        {(hasHighlights || didWell.length > 0) && (
           <section className="ag-highlights">
             <h2>{t(T.highlightsTitle)}</h2>
             {hasHighlights ? (
               <div className="ag-highlight-list">
-                {review.highlights!.map((h, i) => (
+                {highlights.map((h, i) => (
                   <article key={i} className="ag-highlight">
                     <h3>{h.title}</h3>
                     <p className="ag-highlight-detail">{h.detail}</p>
@@ -379,7 +392,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
                 ))}
               </div>
             ) : (
-              <ul className="ag-plain">{review.did_well.map((line, i) => <li key={i}>{line}</li>)}</ul>
+              <ul className="ag-plain">{didWell.map((line, i) => <li key={i}>{line}</li>)}</ul>
             )}
           </section>
         )}
@@ -388,7 +401,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
           <section className="ag-chapters">
             <h2>{t(T.chaptersTitle)}</h2>
             <div className="ag-chapter-list">
-              {review.chapters!.map((c, i) => (
+              {chapters.map((c, i) => (
                 <article key={i} className={`ag-chapter is-${c.assessment}`}>
                   <div className="ag-chapter-meta">
                     <span className="ag-chapter-topic">{t(T.chapterTopic[c.topic] ?? T.chapterTopic.other)}</span>
@@ -396,7 +409,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
                   </div>
                   <h3>{c.title}</h3>
                   <p className="ag-chapter-analysis">{c.analysis}</p>
-                  {c.takeaway && <p className="ag-chapter-takeaway"><span>{t(T.chapterTakeaway)}</span>{c.takeaway}</p>}
+                  {typeof c.takeaway === 'string' && c.takeaway.trim() && <p className="ag-chapter-takeaway"><span>{t(T.chapterTakeaway)}</span>{c.takeaway}</p>}
                   {Array.isArray(c.evidence) && c.evidence.length > 0 && (
                     <details className="ag-chapter-records">
                       <summary>{t(T.storyRecords)} · {c.evidence.length}</summary>
@@ -409,14 +422,14 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
           </section>
         )}
 
-        {review.findings.length > 0 && (
+        {findings.length > 0 && (
           <section className="ag-improvements">
             <h2>{t(T.improvementsTitle)}</h2>
             {first && (
               <article className="ag-finding is-lead">
                 <h3><span className="ag-num">1</span>{first.title}</h3>
                 <p className="ag-claim">{first.claim}</p>
-                {first.evidence.length > 0 && evidenceList(first.evidence)}
+                {Array.isArray(first.evidence) && first.evidence.length > 0 && evidenceList(first.evidence)}
                 {ruleOf(first)}
                 {first.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{first.fix}</p>}
                 {feedbackOf(first, 0)}
@@ -426,7 +439,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
               <details key={i} className="ag-finding">
                 <summary><h3><span className="ag-num">{i + 2}</span>{f.title}</h3></summary>
                 <p className="ag-claim">{f.claim}</p>
-                {f.evidence.length > 0 && evidenceList(f.evidence)}
+                {Array.isArray(f.evidence) && f.evidence.length > 0 && evidenceList(f.evidence)}
                 {ruleOf(f)}
                 {f.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{f.fix}</p>}
                 {feedbackOf(f, i + 1)}
@@ -435,10 +448,10 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
           </section>
         )}
 
-        {review.encouragement && (
+        {encouragement && (
           <section className="ag-encouragement">
             <h2>{t(T.encouragementTitle)}</h2>
-            <p>{review.encouragement}</p>
+            <p>{encouragement}</p>
           </section>
         )}
 
@@ -446,7 +459,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
 
         {wholeGame(false)}
 
-        {review.blind_spots.length > 0 && <section className="ag-blind"><h2>{t(T.blind)}</h2><ul className="ag-plain">{review.blind_spots.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
+        {blindSpots.length > 0 && <section className="ag-blind"><h2>{t(T.blind)}</h2><ul className="ag-plain">{blindSpots.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
       </article>
     );
   }
@@ -458,7 +471,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         <h1>{first ? first.title : review.verdict}</h1>
         {first && <p className="ag-lead-claim">{first.claim}</p>}
         {patch}
-        {first && !(first.rule || first.fix) && first.evidence.length === 0 && feedbackOf(first, 0)}
+        {first && !(first.rule || first.fix) && (!Array.isArray(first.evidence) || first.evidence.length === 0) && feedbackOf(first, 0)}
       </section>
 
       {first && (first.rule || first.fix) && (
@@ -466,11 +479,11 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
           <h2>{t(T.lesson)}</h2>
           {ruleOf(first)}
           {first.fix && <p className="ag-fix"><span>{t(T.fix)}</span>{first.fix}</p>}
-          {first.evidence.length === 0 && feedbackOf(first, 0)}
+          {(!Array.isArray(first.evidence) || first.evidence.length === 0) && feedbackOf(first, 0)}
         </section>
       )}
 
-      {first && first.evidence.length > 0 && (
+      {first && Array.isArray(first.evidence) && first.evidence.length > 0 && (
         <section className="ag-moments">
           <h2>{t(T.moments)}</h2>
           {evidenceList(first.evidence)}
@@ -495,13 +508,13 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         </section>
       )}
 
-      {review.did_well.length > 0 && <section><h2>{t(T.well)}</h2><ul className="ag-plain">{review.did_well.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
+      {didWell.length > 0 && <section><h2>{t(T.well)}</h2><ul className="ag-plain">{didWell.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
 
       {share}
 
       {wholeGame(Boolean(first))}
 
-      {review.blind_spots.length > 0 && <section className="ag-blind"><h2>{t(T.blind)}</h2><ul className="ag-plain">{review.blind_spots.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
+      {blindSpots.length > 0 && <section className="ag-blind"><h2>{t(T.blind)}</h2><ul className="ag-plain">{blindSpots.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
     </article>
   );
 };

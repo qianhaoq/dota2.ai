@@ -351,4 +351,19 @@ describe('ReviewDoc: the story as a chain of causes (#437 P4)', () => {
     expect(document.querySelector('.ag-story')).toBeNull();
     expect(document.querySelectorAll('.ag-mainline li')).toHaveLength(2);
   });
+
+  it('tolerates malformed non-array or null-element collections without throwing', () => {
+    const malformed = review({
+      opening_note: 123 as any,
+      encouragement: null as any,
+      highlights: {} as any,
+      chapters: 'bad' as any,
+      findings: [null as any, { title: 'Valid', claim: 'Valid claim', evidence: 'bad' as any, fix: 'Do x' }],
+      did_well: {} as any,
+      mainline: 'bad' as any,
+      blind_spots: 42 as any,
+    });
+    expect(() => show(malformed)).not.toThrow();
+    expect(screen.getByText('Valid')).toBeTruthy();
+  });
 });
