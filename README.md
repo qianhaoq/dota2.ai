@@ -19,7 +19,7 @@
 
 <br>
 
-Paste a match ID and pick the hero you played. About four minutes later (one to read the replay, three for the review; a few minutes more when the replay server is slow to answer and the download is tried again from a second region, or when a long review step hits its output cap and retries once in place) you get a review written for you: **one verdict, up to three things that decided the game, and what to do about each next time.** Every time and number in it comes from your replay.
+Paste a match ID and pick the hero you played. About four minutes later (one to read the replay, three for the review; when a replay server is slow to answer, the first region is capped at seven minutes so a second region can retry within the shared fourteen-minute parse deadline, or a long review step hits its output cap and retries once in place) you get a review written for you: **one verdict, up to three things that decided the game, and what to do about each next time.** Every time and number in it comes from your replay.
 
 ## Use it
 
@@ -153,7 +153,7 @@ npm run start:dev        # Vite on :5173, Express on :8080
 |---|---|
 | `DEEPSEEK_API_KEY` | The review agent and the chat |
 | `DOTA_EXTRACT_BIN`, `AGENT_TRACE_DIR`, `AGENT_REVIEW_DIR` | Parsing replays on this machine |
-| `AGENT_BUCKET`, `TRACE_WORKER_URL` | Parsing on a separate worker, storage in a bucket |
+| `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_FALLBACK_URL`, `TRACE_WORKER_PREFER_FALLBACK_CN` | Parsing on a separate worker (with optional regional fallback and Perfect World CN host routing), storage in a bucket |
 | `OPENDOTA_API_KEY`, `STRATZ_API_TOKEN` | Higher rate limits, a second match source |
 
 The replay extractor comes from a companion repository. Production is described in [`docs/AGENT_PIPELINE.md`](docs/AGENT_PIPELINE.md).
