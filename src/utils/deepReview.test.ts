@@ -425,19 +425,21 @@ describe('runDeepReview', () => {
     expect(out.findings[0]).toMatchObject({ title: '不朽尸王', fix: '斯温', evidence: [{ refs: ['death:sven:1'], fact: '斯温 阵亡' }] });
   });
 
-  it('a finding carries a rule for the next game; what it says happened this game is checked', async () => {
+  it('a finding may carry an optional rule for the next game; what it says happened this game is checked', async () => {
     const rule = { when: '对面核心的黑皇杖还没开', do: '咆哮留着，等她开完再吼', this_game: '7 次黑皇杖里只有 27:27 那次吼中了她' };
-    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.required).toContain('rule');
+    // Optional on findings so one-off fight/moment decisions need not fabricate a habit rule.
+    expect(SUBMIT_REVIEW.input_schema.properties.findings.items.required).not.toContain('rule');
     expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.rule.required).toEqual(['when', 'do', 'this_game']);
     // The model no longer writes a second list beside its findings.
     expect('next_game' in SUBMIT_REVIEW.input_schema.properties).toBe(false);
-    const m = scripted([investigate, { toolCalls: [call('submit_review', review([{ ...good, rule }, { ...good, title: '第二条', rule: { when: '  ', do: '买闪烁匕首' } }]), 's')] }]);
+    const m = scripted([investigate, { toolCalls: [call('submit_review', review([{ ...good, rule }, { ...good, title: '第二条', rule: { when: '  ', do: '买闪烁匕首' } }, { ...good, title: '第三条' }]), 's')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
     expect(r.review.findings[0].rule).toEqual(rule);
-    // Half a rule is not shown as one; that finding's fix stands in for it.
+    // Half a rule or an intentionally omitted rule is not shown as a rule; that finding's fix stands in for it in next_game.
     expect(r.review.findings[1].rule).toBeUndefined();
-    expect(r.review.next_game).toEqual(['对面核心的黑皇杖还没开：咆哮留着，等她开完再吼', '对面核心有 BKB 时，咆哮只留给他。']);
+    expect(r.review.findings[2].rule).toBeUndefined();
+    expect(r.review.next_game).toEqual(['对面核心的黑皇杖还没开：咆哮留着，等她开完再吼', '对面核心有 BKB 时，咆哮只留给他。', '对面核心有 BKB 时，咆哮只留给他。']);
     // A time the tools never gave, stated as what happened this game, fails like one in the claim — on the rule's own account.
     const bad = verifyReview(review([{ ...good, rule: { ...rule, this_game: '19:19 那次也是' } }]), [JSON.parse(m.seen[1].messages.find((x: any) => x.tool_call_id === 'a').content)]);
     expect(bad.problems).toContainEqual({ where: 'rule', index: 0, kind: 'time', text: '19:19' });
@@ -546,43 +548,35 @@ describe('runDeepReview', () => {
     const s = deepReviewSystem('en');
     expect(s).toContain('deaths_where');
     expect(s).toContain('damage_share_in_death_windows');
-    expect(s).toContain('off_cooldown_without_the_mana could not be cast');
-    expect(s).toContain('do not charge the team\'s lost fights to them');
-    expect(s).toContain('was not wasted because one of them was spell immune');
+    expect(s).toContain('an ability under off_cooldown_without_the_mana could not be cast');
+    expect(s).toContain("never charge the team's lost fights to a player who was not the cause");
+    expect(s).toContain('was not wasted because one was spell immune');
   });
 
-  it('the prompt orders findings by what they cost, because the page shows the first one alone', () => {
+  it('the prompt lets the model order findings by what mattered most (#405), keeps the first finding player-controlled, and stays compact', () => {
     const s = deepReviewSystem('en');
-    // The first finding is the page's one lesson: it is chosen by cost, not by how early it happened.
-    expect(s).toContain('Order the findings by what they cost, the most costly first');
-    expect(s).toContain('the one you would keep if you could keep only one');
-    expect(s).toContain('The finding that accounts for the most of their deaths goes first');
-    expect(s).toContain('what they did in the turning fight goes first when no other finding accounts for more than half of their deaths');
-    // Early deaths lead only when they are the bulk of the deaths, or the game was lost from the lanes and the
-    // player's own lane was part of it. (A first version demoted them in every game of 25 minutes or more: a
-    // Luna who died five times before 10:00 in a game 4,096 behind at 10:00 then led with the lane in 1 review of 3.)
-    expect(s).toContain('Deaths before 10:00 go first only when they are the largest group of the player\'s deaths, or when the game was lost from the lanes and the player\'s own lane was part of it: match_overview\'s lanes.lost_from_the_lanes is true and the player\'s deaths_before_10 is four or more. Otherwise they are the second or third finding, however early they came.');
+    // The first finding is the page's one lesson: player-controlled, ordered by what mattered most to this player.
+    expect(s).toContain('ordered by what mattered most to this player');
+    expect(s).toContain("the first finding is shown alone as the game's one lesson and must be something the player controlled");
+    expect(s).toContain("never charge the team's lost fights to a player who was not the cause");
+    // Pre-#405 fixed finding-ordering rules are removed so the model exercises judgment.
     expect(s).not.toContain('the game ended before 25:00');
-    expect(s).toContain('lanes says whether it was lost from the lanes: lost_from_the_lanes is true when my_team was more than 2000 gold behind at 10:00 and in every minute after, to the end — then the game was lost before 10:00, turning_fight names no fight after 10:00');
-    expect(s).not.toContain('no later fight turned it');
-    expect(s).toContain('(null: not known, do not say either way)');
-    // The old rule ("…and earliest") put two lane deaths first in games of 42 and 45 minutes.
     expect(s).not.toContain('and earliest');
-    // Still the player's own doing, and still no blame for the team's fights.
-    expect(s).toContain('never how the team\'s fights went');
-    expect(s).toContain('do not charge the team\'s lost fights to them');
-    expect(deepReviewSystem('zh')).toContain('Order the findings by what they cost, the most costly first');
+    expect(s).not.toContain('deaths_before_10 is four or more');
+    // Slimmed prompt stays compact (~8 KB vs ~33 KB previously).
+    expect(Buffer.byteLength(s, 'utf8')).toBeLessThan(10_000);
+    expect(deepReviewSystem('zh')).toContain('ordered by what mattered most to this player');
   });
 
   it('the prompt states the rules the verifier enforces', () => {
     const s = deepReviewSystem('en');
     expect(s).toContain('MUST write ALL analysis and advice in English');
-    expect(s).toContain('must be one a tool returned in this conversation');
+    expect(s).toContain('must come verbatim from a tool result in this conversation');
     expect(s).toContain('my_team_gold_lead is negative when the player\'s team is behind');
-    expect(s).toContain('never assume it did not');
+    expect(s).toContain('never assume spell immunity stops an ability the tools show pierced it');
     expect(s).toContain('Never join a fact from one record to a different moment');
     expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.evidence.items.required).toEqual(['refs', 'fact']);
-    expect(s).toContain('submit_review exactly once');
+    expect(s).toContain('submit_review` exactly once');
     expect(SUBMIT_REVIEW.input_schema.properties.findings.maxItems).toBe(3);
   });
 });
