@@ -15,6 +15,7 @@ import {
   aggregateBracketItems,
   buildDenominatorQuery,
   buildItemBatchQuery,
+  calibrateWarmup,
   detectTimeUnit,
   extractWeekDenominators,
   medianMinuteFromBins,
@@ -315,6 +316,23 @@ describe('scripts/coach-bracket-items.mjs: introspection, week window & invarian
 
     const batchQ = buildItemBatchQuery(spec, [1, 38], { timeWindow: { minTime: 10, maxTime: 24 } });
     expect(batchQ).toContain('i_la_3_38: itemFullPurchase(heroId: 38, week: $w, bracketBasicIds: [LEGEND_ANCIENT], positionIds: [POSITION_3], minTime: 10, maxTime: 24, matchLimit: 0)');
+    // Ungrouped C# `week: 0` on itemFullPurchase is never selected (nor misread as a wrong week echo).
+    expect(batchQ).not.toMatch(/\{\s*itemId[^}]*\bweek\b/);
+
+    // calibrateWarmup handles 1-based `instance: 1` and cumulative per-minute series.
+    const itemMap = new Map([[145, 'bfury']]);
+    const oneBased = calibrateWarmup([
+      { itemId: 145, time: 14, instance: 1, matchCount: 30, winCount: 18 },
+      { itemId: 145, time: 18, instance: 1, matchCount: 25, winCount: 14 },
+      { itemId: 145, time: 22, instance: 2, matchCount: 2, winCount: 1 },
+    ], 100, itemMap);
+    expect(oneBased).toMatchObject({ firstInstance: 1, cumulative: false });
+    const cumCal = calibrateWarmup(
+      [10, 12, 14, 16, 18, 20].map((t, i) => ({ itemId: 145, time: t, instance: 0, matchCount: 20 + i * 10, winCount: 10 + i * 5 })),
+      80,
+      itemMap,
+    );
+    expect(cumCal).toMatchObject({ firstInstance: 0, cumulative: true });
 
     // Week split across 7.41 -> 7.42 is skipped; completed weeks inside 7.42 are kept.
     const w0 = Math.floor(Date.parse('2026-11-19T00:00:00Z') / 1000 / WEEK) * WEEK;
@@ -356,9 +374,9 @@ describe('scripts/coach-bracket-items.mjs: introspection, week window & invarian
       for (const bKey of Object.keys(BRACKETS)) {
         for (const pKey of Object.keys(POSITIONS)) {
           cell[`${bKey}_${pKey}`] = h === 1 ? [
-            { itemId: 1, time: 14, instance: 0, matchCount: 30, winCount: 18 },
-            { itemId: 1, time: 18, instance: 0, matchCount: 30, winCount: 15 },
-            { itemId: 1, time: 20, instance: 1, matchCount: 10, winCount: 6 }, // second copy: ignored
+            { itemId: 1, time: 14, week: 0, instance: 0, matchCount: 30, winCount: 18 }, // week: 0 C# default tolerated
+            { itemId: 1, time: 18, week: 0, instance: 0, matchCount: 30, winCount: 15 },
+            { itemId: 1, time: 20, week: 0, instance: 1, matchCount: 10, winCount: 6 }, // second copy: ignored
           ] : [];
         }
       }

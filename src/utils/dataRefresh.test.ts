@@ -168,13 +168,27 @@ describe('data refresh: an upstream that fails for a while (#419)', () => {
     const text = body({ ...r, changed: ['lib/a.json'] }, 'ok');
     expect(text).toContain('1 step(s) still failed after 3 tries (STRATZ)');
     expect(text).toContain('their files were put back as they were');
+
+    // When a Node script fails with a stack trace, the Error: line itself is kept in detail, not only the stack tail.
+    const stackWorld = {
+      ...w.deps,
+      run: () => ({ status: 1, stderr: 'file:///repo/scripts/x.mjs:10\nError: week 0 mismatch\n    at main (file:///repo/scripts/x.mjs:10:9)\n    at async file:///repo/scripts/x.mjs:20:3\nNode.js v20.20.2\n' }),
+    };
+    const rStack = refresh(null, {}, { ...stackWorld, list: [{ name: 'A', source: 'OpenDota', cmd: ['a'] }] });
+    expect(rStack.steps[0].detail).toContain('Error: week 0 mismatch');
   });
 
-  it('a step skipped for want of a token is not tried', () => {
+  it('a step skipped for want of a token is not tried, and DATA_REFRESH_ONLY runs only matching steps', () => {
     const w = world({ A: [{ status: 0 }], B: [] });
     const r = refresh(null, {}, { ...w.deps, list });
     expect(w.calls).toEqual(['A']);
     expect(r.steps[1]).toMatchObject({ outcome: 'skipped' });
+
+    const wOnly = world({ A: [], B: [{ status: 0, writes: ['lib/b.json'] }] });
+    const rOnly = refresh(null, { STRATZ_API_TOKEN: 't', DATA_REFRESH_ONLY: 'b' }, { ...wOnly.deps, list });
+    expect(wOnly.calls).toEqual(['B']);
+    expect(rOnly.steps).toHaveLength(1);
+    expect(() => refresh(null, { DATA_REFRESH_ONLY: 'nonexistent' }, { ...wOnly.deps, list })).toThrow(/DATA_REFRESH_ONLY/);
   });
 });
 

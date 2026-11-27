@@ -28,6 +28,11 @@ on:
   schedule:
     - cron: '0 6 * * 4'
   workflow_dispatch:
+    inputs:
+      only:
+        description: 'Optional script substring to run alone (e.g. coach-bracket-items)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -55,6 +60,7 @@ jobs:
       # The release snapshots (scripts/coach-patch-snapshots.mjs, run by refresh-data.mjs --all) are built with
       # OpenDota's own builder at a pinned commit; its history is needed for the builder of the older game files.
       - name: OpenDota's builder for the release snapshots
+        if: ${{ !inputs.only || contains(inputs.only, 'refresh-data') }}
         run: |
           git clone --quiet https://github.com/odota/dotaconstants "$RUNNER_TEMP/dotaconstants"
           git -C "$RUNNER_TEMP/dotaconstants" checkout --quiet 0b0b4a6867a8
@@ -65,6 +71,7 @@ jobs:
           STRATZ_API_TOKEN: ${{ secrets.STRATZ_API_TOKEN }}
           OPENDOTA_API_KEY: ${{ secrets.OPENDOTA_API_KEY }}
           DOTACONSTANTS_DIR: ${{ runner.temp }}/dotaconstants
+          DATA_REFRESH_ONLY: ${{ inputs.only }}
           # GitHub's API for the game updates (dotabuff/d2vpkr): the run's own token lifts the anonymous limit.
           GITHUB_TOKEN: ${{ github.token }}
         run: node .github/scripts/data-refresh.cjs refresh "$RUNNER_TEMP/report.json"

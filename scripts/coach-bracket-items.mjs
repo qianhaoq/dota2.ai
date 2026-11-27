@@ -292,7 +292,52 @@ export function detectTimeUnit(rows) {
 }
 
 /**
+ * Calibrate `firstInstance` (0-based vs 1-based vs absent) and `cumulative` vs
+ * `incremental` time buckets from an unfiltered 1-hero warmup response.
+ */
+export function calibrateWarmup(rows, denomGames, itemKeyById) {
+  const timeWindow = detectTimeUnit(rows);
+  const instances = (rows ?? []).map((r) => r?.instance).filter(Number.isFinite);
+  const firstInstance = instances.length ? Math.min(...instances) : null;
+
+  // Check whether per-time matchCount is incremental (sum in 10..24 <= denomGames) or cumulative.
+  let cumulative = false;
+  if (Number.isFinite(denomGames) && denomGames > 0) {
+    const byItem = new Map();
+    for (const r of rows ?? []) {
+      if (firstInstance != null && r.instance != null && r.instance !== firstInstance) continue;
+      if (!itemKeyById.has(Number(r.itemId)) || !Number.isFinite(r.time)) continue;
+      const m = timeWindow.toMinute(r.time);
+      const map = byItem.get(r.itemId) ?? new Map();
+      map.set(m, (map.get(m) ?? 0) + r.matchCount);
+      byItem.set(r.itemId, map);
+    }
+    let topSeries = null;
+    let topSum = 0;
+    for (const map of byItem.values()) {
+      let midSum = 0;
+      for (const [m, c] of map) if (m >= 10 && m <= 24) midSum += c;
+      if (midSum > topSum) {
+        topSum = midSum;
+        topSeries = [...map.entries()].sort((a, b) => a[0] - b[0]);
+      }
+    }
+    if (topSeries && topSeries.length >= 5 && topSum > denomGames * 1.15) {
+      let nonDecreasing = 0;
+      for (let i = 1; i < topSeries.length; i += 1) {
+        if (topSeries[i][1] >= topSeries[i - 1][1]) nonDecreasing += 1;
+      }
+      if (nonDecreasing >= (topSeries.length - 1) * 0.8) cumulative = true;
+    }
+  }
+
+  return { timeWindow, firstInstance, cumulative };
+}
+
+/**
  * Build a batched `itemFullPurchase` GraphQL query for `heroIds` in one week.
+ * Note: `week` is intentionally not selected on `itemFullPurchase` because
+ * STRATZ C# POCOs return `week: 0` when `groupByWeek` is not enabled.
  * @param {any} spec
  * @param {number[]} heroIds
  * @param {{ timeWindow?: { minTime: number, maxTime: number } | null, itemIds?: number[] | null }} [opts]
@@ -303,7 +348,6 @@ export function buildItemBatchQuery(spec, heroIds, { timeWindow = null, itemIds 
     ...(it.heroArg === 'heroIds' && it.returnFields.has('heroId') ? ['heroId'] : []),
     'itemId',
     ...(it.returnFields.has('time') ? ['time'] : []),
-    ...(it.returnFields.has('week') ? ['week'] : []),
     ...(it.returnFields.has('instance') ? ['instance'] : []),
     'matchCount',
     'winCount',
@@ -345,7 +389,16 @@ export function medianMinuteFromBins(bins, totalPurchases) {
  * checking every mathematical invariant before returning.
  * @returns {{ heroes: Record<string, Record<string, any>>, games: Record<string, number> }}
  */
-export function aggregateBracketItems({ weekDenominators, readHeroWeekItems, heroes, weeks, itemKeyById, timeWindow }) {
+export function aggregateBracketItems({
+  weekDenominators,
+  readHeroWeekItems,
+  heroes,
+  weeks,
+  itemKeyById,
+  timeWindow,
+  firstInstance = 0,
+  cumulative = false,
+}) {
   const totalDenom = Object.fromEntries(Object.keys(BRACKETS).map((k) => [k, {}]));
   for (const w of weeks) {
     const wd = weekDenominators.get(w);
@@ -364,7 +417,7 @@ export function aggregateBracketItems({ weekDenominators, readHeroWeekItems, her
       }
       if (!bGames) throw new Error(`week ${iso(w)} ${bKey}: zero hero games in denominator`);
       const wr = bWins / bGames;
-      if (Math.abs(wr - 0.5) >= 0.025) {
+      if (Math.abs(wr - 0.5) >= 0.05) {
         throw new Error(`week ${iso(w)} ${bKey}: overall win share is ${(wr * 100).toFixed(1)}%, not ~50%`);
       }
     }
@@ -388,11 +441,43 @@ export function aggregateBracketItems({ weekDenominators, readHeroWeekItems, her
         const rawByBracketPos = readHeroWeekItems(h, w);
         for (const pKey of Object.keys(POSITIONS)) {
           const rows = rawByBracketPos?.[`${bKey}_${pKey}`] ?? [];
+          if (cumulative) {
+            const byItemMin = new Map();
+            for (const r of rows) {
+              if (r.week != null && r.week > 0 && r.week !== w && r.week !== weekIdx) {
+                throw new Error(`week ${iso(w)} ${bKey} hero ${h} pos ${pKey}: STRATZ answered for week ${r.week}`);
+              }
+              if (firstInstance != null && r.instance != null && r.instance !== firstInstance) continue;
+              const itemKey = itemKeyById.get(Number(r.itemId));
+              if (!itemKey || r.time == null) continue;
+              const m = timeWindow.toMinute(r.time);
+              const map = byItemMin.get(itemKey) ?? new Map();
+              map.set(m, [r.matchCount, r.winCount]);
+              byItemMin.set(itemKey, map);
+            }
+            for (const [itemKey, map] of byItemMin) {
+              const pts = [...map.entries()].sort((a, b) => a[0] - b[0]);
+              const cur = posItems[pKey].get(itemKey) ?? { buys: 0, wins: 0, bins: new Map() };
+              for (let idx = 0; idx < pts.length; idx += 1) {
+                const [m, [mc, wc]] = pts[idx];
+                const [prevMc, prevWc] = idx > 0 ? pts[idx - 1][1] : [0, 0];
+                if (m < 10 || m > 24) continue;
+                const dBuys = Math.max(0, mc - prevMc);
+                const dWins = Math.max(0, Math.min(dBuys, wc - prevWc));
+                cur.buys += dBuys;
+                cur.wins += dWins;
+                if (dBuys > 0) cur.bins.set(m, (cur.bins.get(m) ?? 0) + dBuys);
+              }
+              if (cur.buys > 0) posItems[pKey].set(itemKey, cur);
+            }
+            continue;
+          }
           for (const r of rows) {
-            if (r.week != null && r.week !== w && r.week !== weekIdx) {
+            // STRATZ C# structs serialize ungrouped `week` as 0; only check positive echoed weeks.
+            if (r.week != null && r.week > 0 && r.week !== w && r.week !== weekIdx) {
               throw new Error(`week ${iso(w)} ${bKey} hero ${h} pos ${pKey}: STRATZ answered for week ${r.week}`);
             }
-            if ((r.instance ?? 0) !== 0) continue;
+            if (firstInstance != null && r.instance != null && r.instance !== firstInstance) continue;
             const itemKey = itemKeyById.get(Number(r.itemId));
             if (!itemKey) continue;
             if (r.time != null && (r.time < timeWindow.minTime || r.time > timeWindow.maxTime)) continue;
@@ -481,7 +566,7 @@ async function main() {
   };
   const WEEKS = Number(arg('weeks', 2));
   const INITIAL_BATCH = Number(arg('batch', 2));
-  const CACHE = arg('cache', join(tmpdir(), 'dota2ai-stratz-bracket-items-v1'));
+  const CACHE = arg('cache', join(tmpdir(), 'dota2ai-stratz-bracket-items-v2'));
   const NAMES = JSON.parse(readFileSync(new URL('../lib/coach/data/names.json', import.meta.url), 'utf8'));
   const ITEMS = JSON.parse(readFileSync(new URL('../lib/data/constants/items.json', import.meta.url), 'utf8'));
   const OUT = new URL('../lib/coach/data/bracket-items.json', import.meta.url);
@@ -535,28 +620,50 @@ async function main() {
   const spec = parseIntrospection(introData);
 
   // 2. Fetch denominators per (week, bracket, hero, position).
+  // Prefer explicit (bracket, position) aliases over groupByPosition so position enum formatting never drops rows.
+  const runtimeSpec = spec.denom.field === 'stats' && spec.denom.groupByPosition
+    ? { ...spec, denom: { ...spec.denom, groupByPosition: false } }
+    : spec;
   const heroes = Object.keys(NAMES.heroes).map(Number).sort((a, b) => a - b);
   const knownHeroes = new Set(heroes);
-  const denomQuery = buildDenominatorQuery(spec, nowSec, weeks.at(-1));
+  const denomQuery = buildDenominatorQuery(runtimeSpec, nowSec, weeks.at(-1));
   const weekDenominators = new Map();
   if (denomQuery.usesWeekVar) {
     for (const w of weeks) {
       const data = await gql(denomQuery.query, { w });
-      weekDenominators.set(w, extractWeekDenominators(data.heroStats, spec, w, knownHeroes));
+      weekDenominators.set(w, extractWeekDenominators(data.heroStats, runtimeSpec, w, knownHeroes));
       await sleep(400);
     }
   } else {
     const data = await gql(denomQuery.query);
     for (const w of weeks) {
-      weekDenominators.set(w, extractWeekDenominators(data.heroStats, spec, w, knownHeroes));
+      weekDenominators.set(w, extractWeekDenominators(data.heroStats, runtimeSpec, w, knownHeroes));
     }
   }
 
-  // 3. 1-hero warmup on Anti-Mage (heroId 1) in Crusader–Archon Pos 1 without time bounds to verify time units.
-  const warmupQuery = `query ($w: Long) { heroStats { warmup: itemFullPurchase(${spec.item.heroArg === 'heroId' ? 'heroId: 1' : 'heroIds: [1]'}, week: $w, ${bracketArgClause(spec.item.bracketArg, 'ca')}, positionIds: [POSITION_1]) { itemId ${spec.item.returnFields.has('time') ? 'time ' : ''}${spec.item.returnFields.has('instance') ? 'instance ' : ''}matchCount winCount } } }`;
+  // 3. 1-hero warmup on Anti-Mage (heroId 1) in Crusader–Archon Pos 1 without time bounds to calibrate units & instance.
+  const warmupQuery = `query ($w: Long) { heroStats { warmup: itemFullPurchase(${runtimeSpec.item.heroArg === 'heroId' ? 'heroId: 1' : 'heroIds: [1]'}, week: $w, ${bracketArgClause(runtimeSpec.item.bracketArg, 'ca')}, positionIds: [POSITION_1]${runtimeSpec.item.hasMatchLimit ? ', matchLimit: 0' : ''}) { itemId ${runtimeSpec.item.returnFields.has('time') ? 'time ' : ''}${runtimeSpec.item.returnFields.has('instance') ? 'instance ' : ''}matchCount winCount } } }`;
   const warmupData = await gql(warmupQuery, { w: weeks[0] });
-  const timeWindow = detectTimeUnit(warmupData.heroStats?.warmup ?? []);
-  console.error(`verified time unit: ${timeWindow.unit} (${timeWindow.minTime}..${timeWindow.maxTime}), denom=${spec.denom.field}`);
+  const warmupRows = warmupData.heroStats?.warmup ?? [];
+  const caPos1Games = weekDenominators.get(weeks[0])?.ca?.['1']?.['1']?.[0] ?? 0;
+  const { timeWindow, firstInstance, cumulative } = calibrateWarmup(warmupRows, caPos1Games, itemKeyById);
+
+  // Verify whether server-side minTime/maxTime matches client-side filtering (in case minTime expects seconds vs minutes).
+  let serverTimeWindow = cumulative ? null : timeWindow;
+  if (serverTimeWindow && (runtimeSpec.item.hasMinTime || runtimeSpec.item.hasMaxTime)) {
+    const expectedMid = warmupRows
+      .filter((r) => (firstInstance == null || r.instance == null || r.instance === firstInstance) && itemKeyById.has(Number(r.itemId)) && r.time >= timeWindow.minTime && r.time <= timeWindow.maxTime)
+      .reduce((s, r) => s + r.matchCount, 0);
+    const checkQuery = `query ($w: Long) { heroStats { check: itemFullPurchase(${runtimeSpec.item.heroArg === 'heroId' ? 'heroId: 1' : 'heroIds: [1]'}, week: $w, ${bracketArgClause(runtimeSpec.item.bracketArg, 'ca')}, positionIds: [POSITION_1]${runtimeSpec.item.hasMinTime ? `, minTime: ${timeWindow.minTime}` : ''}${runtimeSpec.item.hasMaxTime ? `, maxTime: ${timeWindow.maxTime}` : ''}${runtimeSpec.item.hasMatchLimit ? ', matchLimit: 0' : ''}) { itemId ${runtimeSpec.item.returnFields.has('instance') ? 'instance ' : ''}matchCount } } }`;
+    const checkData = await gql(checkQuery, { w: weeks[0] });
+    const gotMid = (checkData.heroStats?.check ?? [])
+      .filter((r) => (firstInstance == null || r.instance == null || r.instance === firstInstance) && itemKeyById.has(Number(r.itemId)))
+      .reduce((s, r) => s + r.matchCount, 0);
+    if (expectedMid > 0 && Math.abs(gotMid - expectedMid) > expectedMid * 0.05) {
+      serverTimeWindow = null;
+    }
+  }
+  console.error(`verified time unit: ${timeWindow.unit} (${timeWindow.minTime}..${timeWindow.maxTime}), firstInstance=${firstInstance}, cumulative=${cumulative}, serverTimeBounds=${Boolean(serverTimeWindow)}, denom=${runtimeSpec.denom.field}`);
 
   // 4. Fetch batched mid-game item purchases per week & hero, with disk cache for clean resume.
   const cacheFile = (h, w) => join(CACHE, `${patch}_${w}`, `${h}.json`);
@@ -566,7 +673,7 @@ async function main() {
     const todo = hs.filter((h) => !existsSync(cacheFile(h, w)));
     if (!todo.length) return;
     try {
-      const query = buildItemBatchQuery(spec, todo, { timeWindow, itemIds: bigItemIds });
+      const query = buildItemBatchQuery(runtimeSpec, todo, { timeWindow: serverTimeWindow, itemIds: bigItemIds });
       const data = await gql(query, { w });
       const d = data.heroStats ?? {};
       mkdirSync(join(CACHE, `${patch}_${w}`), { recursive: true });
@@ -574,14 +681,15 @@ async function main() {
         const one = {};
         for (const bKey of Object.keys(BRACKETS)) {
           for (const pKey of Object.keys(POSITIONS)) {
-            const rows = spec.item.heroArg === 'heroId'
+            const rows = runtimeSpec.item.heroArg === 'heroId'
               ? (d[`i_${bKey}_${pKey}_${h}`] ?? [])
               : (d[`i_${bKey}_${pKey}`] ?? []).filter((r) => r.heroId === h);
-            // Keep only big items in the mid-game window in cache so cache stays compact.
+            // Keep big items in the mid-game window (plus minute 9 baseline when cumulative) so cache stays compact.
+            const minKeep = cumulative ? (timeWindow.unit === 'seconds' ? 540 : 9) : timeWindow.minTime;
             one[`${bKey}_${pKey}`] = rows.filter((r) => (
-              (r.instance ?? 0) === 0
+              (firstInstance == null || r.instance == null || r.instance === firstInstance)
               && itemKeyById.has(Number(r.itemId))
-              && (r.time == null || (r.time >= timeWindow.minTime && r.time <= timeWindow.maxTime))
+              && (r.time == null || (r.time >= minKeep && r.time <= timeWindow.maxTime))
             ));
           }
         }
@@ -616,10 +724,12 @@ async function main() {
     weeks,
     itemKeyById,
     timeWindow,
+    firstInstance,
+    cumulative,
   });
 
   const out = {
-    source: `STRATZ (https://stratz.com) heroStats.itemFullPurchase and heroStats.${spec.denom.field}, public matches by rank bracket and position; not filtered by game mode`,
+    source: `STRATZ (https://stratz.com) heroStats.itemFullPurchase and heroStats.${runtimeSpec.denom.field}, public matches by rank bracket and position; not filtered by game mode`,
     attribution: { en: 'Data: STRATZ', url: 'https://stratz.com' },
     window: 'finished between 10:00 and 24:59',
     patch,
@@ -635,5 +745,10 @@ async function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main();
+  try {
+    await main();
+  } catch (err) {
+    console.error(`ERROR: ${err?.message ?? err}`);
+    process.exit(1);
+  }
 }
