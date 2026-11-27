@@ -24,6 +24,7 @@
 
 - [ ] 改了复盘提示词版本或工具输出时：已贴 `node scripts/eval-review.mjs <dir> --baseline data/eval-baseline.v1.json` 的对比 | Changed the review prompt version or a tool's output: eval-review comparison pasted
 - [ ] 改了 `packages/review-engine/src/trace/build.js`、`lib/agent/traceBuild.js`、`lib/agent/tracePipeline.js` 或 `scripts/trace-worker.mjs` 时：合并后须手动重建并部署 `trace-worker`（合并到 `main` 不会自动部署它，见 `docs/AGENT_PIPELINE.md`） | Touched trace builder / worker files: rebuild & deploy `trace-worker` after merge
+- [ ] 增删或改名了复盘 Agent 的工具（`lib/agent/review/toolkit.js` 里的工具）、CLI 的命令或参数、或复盘的等待时间时：同步改 `README.md` 和 `README.zh-CN.md`（`src/utils/readmeFacts.test.ts` 会核对工具表和 `--lang`） | Added, removed or renamed a review tool, a CLI command or option, or changed the wait: update both READMEs
 - [ ] CI 通过 | CI passes
 - [ ] 本地测试 | Local testing
 - [ ] dota2.ai 线上验证 | Verified on dota2.ai
