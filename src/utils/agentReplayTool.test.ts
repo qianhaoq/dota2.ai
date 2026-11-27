@@ -206,6 +206,9 @@ describe('replay_review over MCP, on the real agent service and router', () => {
     expect((await replayReview(b, { match_id: MATCH, hero: 'beastmaster', retry: true })).status).toBe('reviewing');
     for (let i = 0; i < 50 && runs < 2; i++) await new Promise((r) => setTimeout(r, 20));
     expect(runs).toBe(2);
+    // The second job is still writing its marker: removing the directory under it fails (ENOTEMPTY) on a fast runner.
+    for (let i = 0; i < 100; i++) { if ((await b.status(MATCH, 'beastmaster', 'en')).status === 'failed') break; await new Promise((r) => setTimeout(r, 20)); }
+    await new Promise((r) => setTimeout(r, 50));
     rmSync(reviewDir, { recursive: true, force: true });
   });
 
