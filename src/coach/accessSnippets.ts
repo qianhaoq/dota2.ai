@@ -93,9 +93,9 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
       label: { en: 'DSH plugin', zh: 'DSH 插件', ru: 'Плагин DSH' },
       lines: DSH_SETUP,
       note: {
-        en: 'Recommended. A native plugin for DSH (DeepSeek Harness): the full dota2.ai page in the DSH sidebar and coach tools in every session, run on your own DeepSeek key — no queue, no daily limit, replays and reviews stay on your machine. Needs Node 24.9+. After `dsh web`, add your DeepSeek key in DSH, then open dota2.ai in the sidebar.',
-        zh: '推荐。DSH（DeepSeek Harness）原生插件：DSH 左侧栏里就是完整的 dota2.ai 复盘页面，每个会话也能用教练工具；用你自己的 DeepSeek Key 跑，不排队、不限次，录像和复盘都留在你自己电脑上。需要 Node 24.9+。运行 `dsh web` 后在 DSH 里填好 DeepSeek Key，再从左侧栏打开 dota2.ai。',
-        ru: 'Рекомендуем. Нативный плагин для DSH (DeepSeek Harness): полная страница dota2.ai в боковой панели DSH и инструменты тренера в каждой сессии, на вашем ключе DeepSeek — без очереди и дневного лимита, реплеи и разборы остаются у вас. Нужен Node 24.9+. После `dsh web` добавьте ключ DeepSeek в DSH и откройте dota2.ai в боковой панели.',
+        en: 'Recommended. A native plugin for DSH (DeepSeek Harness): the full dota2.ai page in the DSH sidebar and coach tools in every session, run on your own DeepSeek key — no queue, no daily limit, replays and reviews stay on your machine. Needs Node 24.9+. After dsh web starts, add your DeepSeek key in DSH, then open dota2.ai in the sidebar.',
+        zh: '推荐。DSH（DeepSeek Harness）原生插件：DSH 左侧栏里就是完整的 dota2.ai 复盘页面，每个会话也能用教练工具；用你自己的 DeepSeek Key 跑，不排队、不限次，录像和复盘都留在你自己电脑上。需要 Node 24.9+。运行 dsh web 后在 DSH 里填好 DeepSeek Key，再从左侧栏打开 dota2.ai。',
+        ru: 'Рекомендуем. Нативный плагин для DSH (DeepSeek Harness): полная страница dota2.ai в боковой панели DSH и инструменты тренера в каждой сессии, на вашем ключе DeepSeek — без очереди и дневного лимита, реплеи и разборы остаются у вас. Нужен Node 24.9+. После запуска dsh web добавьте ключ DeepSeek в DSH и откройте dota2.ai в боковой панели.',
       },
       links: [{ href: DSH_RELEASE_URL, label: `dsh-v${DSH_PLUGIN_VERSION}` }],
     },
