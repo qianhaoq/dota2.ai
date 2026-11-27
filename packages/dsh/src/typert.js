@@ -302,6 +302,7 @@ export const TYPERT = {
         description: 'dota2.ai standalone review workbench and local agent service.',
         tags: [],
         jsDoc: '/** dota2.ai standalone review workbench and local agent service. */',
+        types: [],
         members: [],
       },
     ],
