@@ -14,7 +14,7 @@ import { TRACE_TOOLS } from '../../packages/review-engine/src/trace/index.js';
  * Changing any of it: raise DEEP_REVIEW_PROMPT_VERSION and put the new version and hash here. Two branches
  * that both do so meet on this one line when they merge, instead of both shipping as the same version.
  */
-const PIN = { version: 70, hash: 'ed5d1af2f66468bcb4dbed8415f6f902260aa46f9725f52266e9983522a10412' };
+const PIN = { version: 71, hash: '0ada06be9c9e0f7d665f920a0ca3f3370939e4c5d7f5ac2a900876cb995dd011' };
 
 function promptHash() {
   const tools = [...TRACE_TOOLS, ...KNOWLEDGE_TOOLS].map(({ name, description, input_schema }) => ({ name, description, input_schema }));

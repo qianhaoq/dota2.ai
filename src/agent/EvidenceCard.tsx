@@ -120,8 +120,8 @@ const T = {
   buildKills: { en: 'kills', zh: '次击杀', ru: 'убийств' },
   buildItems: { en: 'Your big items, in order', zh: '你的大件，按时间', ru: 'Ваши крупные предметы по порядку' },
   buildCols: { en: ['Time', 'Item', 'Gold', 'What it is for'], zh: ['时间', '物品', '金币', '用途'], ru: ['Время', 'Предмет', 'Золото', 'Назначение'] },
-  buildAnswers: { en: 'Items that answer attack damage', zh: '应对普攻伤害的装备', ru: 'Предметы против физ. урона' },
-  buildSpellAnswers: { en: 'Items that answer spell damage', zh: '应对技能伤害的装备', ru: 'Предметы против маг. урона' },
+  buildVsKiller: { en: 'Pros on this hero build more against', zh: '职业选手用这个英雄对上时多出', ru: 'Профи на этом герое чаще собирают против' },
+  buildUsually: { en: 'usually', zh: '平时', ru: 'обычно' },
   buildPros: { en: 'Most built by pros on this hero (by 24:59)', zh: '职业选手这个英雄最常出（24:59 前）', ru: 'Самые частые предметы про-игроков (до 24:59)' },
   buildGaps: { en: 'First gap closer', zh: '第一件位移装', ru: 'Первый предмет на сближение' },
   buildYou: { en: 'you', zh: '你', ru: 'вы' },
@@ -1177,7 +1177,6 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     const pc = (v: number) => `${Math.round(v * 100)}%`;
     const why = (list: string[]) => (list.length ? list : ['not_classified']).map((p) => (T.purpose[p] ? t(T.purpose[p]) : pretty(p))).join(' · ');
     const d = r.damage_in_my_deaths;
-    const answers = (list: any[]) => list.slice(0, 10).map((x: any) => <span key={x.item} className={`ag-chip ${x.player_first_held ? 'is-good' : ''}`}>{x.name} <em>{x.player_first_held ?? t(T.never)}</em></span>);
     return (
       <div className="ag-rec">
         {r.data_patch && <p className="ag-rec-sub">{t(T.dataPatch)} {r.data_patch}</p>}
@@ -1192,8 +1191,9 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
             </table>
           </div>
         )}
-        {r.items_that_answer_attack_damage.length > 0 && <p className="ag-rec-line"><span>{t(T.buildAnswers)}</span>{answers(r.items_that_answer_attack_damage)}</p>}
-        {r.items_that_answer_spell_damage.length > 0 && <p className="ag-rec-line"><span>{t(T.buildSpellAnswers)}</span>{answers(r.items_that_answer_spell_damage)}</p>}
+        {(r.answers_to_top_killers ?? []).filter((k: any) => k.pro_items_against_this_killer?.length).map((k: any) => (
+          <p key={k.killer} className="ag-rec-line"><span>{t(T.buildVsKiller)} {N(k.killer)}</span>{k.pro_items_against_this_killer.slice(0, 6).map((x: any) => <span key={x.item} className={`ag-chip ${x.player_first_held ? 'is-good' : ''}`}>{x.name} {pc(x.share_of_pro_games_against_this_hero)} ({t(T.buildUsually)} {pc(x.share_usually)}) <em>{x.player_first_held ?? t(T.never)}</em></span>)}</p>
+        ))}
         {r.most_built_in_this_bracket && (
           <>
             <p className="ag-rec-sub">{r.most_built_in_this_bracket.bracket_name} · {r.most_built_in_this_bracket.role_name} · {r.most_built_in_this_bracket.public_games} {t(T.pubItemGames)} (STRATZ)</p>

@@ -5,7 +5,7 @@
   "status": "approved",
   "written": "2026-11-25",
   "checked": "2026-11-27",
-  "checked_by": "Claude, re-reading every stated fact from the tools (build_check, power_spikes, death_context, lane_report, fight_report); the owner delegated the check; must_not and lane_deaths_as_decisions added from the owner's feedback on the p50 review (2026-11-27), facts from death_context with moved_toward_own_fountain",
+  "checked_by": "Claude, re-reading every stated fact from the tools (build_check, power_spikes, death_context, lane_report, fight_report); the owner delegated the check; must_not and lane_deaths_as_decisions added from the owner's feedback on the p50 review (2026-11-27), facts from death_context with moved_toward_own_fountain; answer_that_stops_ursa_attacking and armor_stack_as_the_answer_to_ursa added from the owner's feedback on the p69 review (2026-11-27), facts from build_check answers_to_top_killers and Valve's ability data",
   "source": "Tool outputs on the stored trace with the match record (build_check, power_spikes, death_context, lane_report, window_report, decision_points).",
   "must_hit": [
     {
@@ -29,13 +29,43 @@
       "weight": 1,
       "any": { "refs": ["death:tidehunter:1", "death:tidehunter:2", "lane:tidehunter"], "clocks": ["4:21", "6:07"], "within": 5 },
       "terms": { "zh": ["补刀", "收线", "兵线", "往前", "远离"], "en": ["last-hit", "last hit", "farming", "the wave", "walked", "away from"] }
+    },
+    {
+      "id": "answer_that_stops_ursa_attacking",
+      "says": "Owner, 2026-11-27: against Ursa the item answer is one that stops him attacking or takes the player out of his reach (Eul's Scepter, Heaven's Halberd's disarm, Ghost Scepter, Force Staff), not stacking armor. Valve's data: Fury Swipes adds damage on consecutive attacks on the same target and is lost after 8 s without one; Enrage cannot be dispelled. Pros on Tidehunter against Ursa built Eul's in 36.7% of 98 games (8.3% usually; build_check answers_to_top_killers).",
+      "weight": 1,
+      "any": {
+        "refs": [
+          "build:tidehunter",
+          "pro_items:tidehunter"
+        ]
+      },
+      "terms": {
+        "zh": [
+          "Eul",
+          "吹风",
+          "天堂之戟",
+          "缴械",
+          "幽魂权杖",
+          "推推棒",
+          "原力法杖"
+        ],
+        "en": [
+          "Eul",
+          "Halberd",
+          "disarm",
+          "Ghost Scepter",
+          "Force Staff"
+        ]
+      }
     }
   ],
   "lead_any": ["blink_after_magic_resistance", "killed_by_ursa_attacks"],
   "lead_why": "The two are one lesson from two sides: 5700 gold on magic resistance and a Blink at 29:31, while Ursa's attacks took 8 of the 12 deaths. Two lane deaths below half health are a point to make, not the first one in a 45-minute game.",
   "must_not": [
     {"id": "condition_as_the_finding", "says": "Owner, 2026-11-27: findings titled by a shared condition (\"孤身留在原地，死了也没换回东西\", \"血量见底还留在线上继续换血\") say nothing the player can act on. A finding names the decision: what he was doing and what to do instead.", "pattern": "孤身留在原地|死了也没换回东西|血量见底还留在线上|[Ss]tay(?:ed|ing)? alone[^.]{0,30}(?:bought|traded) nothing"},
-    {"id": "retreat_called_a_trade", "says": "At 32:34 he was heading home (3477 closer to his fountain over the window, Blink used 7.6 s before) and Ursa caught him: a review must not say he stayed in the lane trading.", "pattern": "32:34[^。]{0,60}(?:还在|继续|留在)[^。]{0,20}(?:换血|对拼)|32:34[^.]{0,80}(?:still|kept|stayed)[^.]{0,30}trad"}
+    {"id": "retreat_called_a_trade", "says": "At 32:34 he was heading home (3477 closer to his fountain over the window, Blink used 7.6 s before) and Ursa caught him: a review must not say he stayed in the lane trading.", "pattern": "32:34[^。]{0,60}(?:还在|继续|留在)[^。]{0,20}(?:换血|对拼)|32:34[^.]{0,80}(?:still|kept|stayed)[^.]{0,30}trad"},
+    {"id": "armor_stack_as_the_answer_to_ursa", "says": "Owner, 2026-11-27, on a review that said \"把这笔钱花在希瓦的守护上…替掉 21:24 的圣化护服\": Shiva's Guard (armor) is not the answer to Ursa; advice must not tell him to buy it.", "pattern": "(?:转|出|买|换|花在|做)[^。；]{0,40}希瓦|希瓦[^。；]{0,20}(?:替掉|换掉)|(?:[Bb]uy|[Gg]et|[Ss]witch|[Ss]pend)[^.]{0,60}Shiva"}
   ],
   "main_reason": ["enemy_play", "team_play"],
   "story_cause": {"id": "lost_from_the_lanes", "says": "The game was lost from the lanes: my_team was 2602 behind at 10:00 and never closer than 2194 after (match_overview.lanes.lost_from_the_lanes true; no turning fight: { none: true }).", "from": 0, "to": 600, "terms": {"zh": ["对线", "线上", "10:00", "10 分钟", "十分钟", "10分钟", "前十"], "en": ["lane", "10:00", "ten minutes", "first ten"]}, "checked": "2026-11-27, against match_overview and key_moments on the archived trace; whose: the rubric's accepted main_reason"}
