@@ -16,6 +16,7 @@ import { SKILL, headersFor, skillBody, skillRegistration } from '../src/skill.js
 import { MAX_MODEL_KEY_LENGTH, createDshComplete, createDshModelRegistry, decodeModelKey, encodeModelKey } from '../src/llm.js';
 import { createDshTracePipeline, normalizeTraceGzip } from '../src/traceSource.js';
 import { createDshService, resolveDataHome, synthesizeMatchFromCoachReport } from '../src/service.js';
+import { TYPERT, TYPERT_REMOTE } from '../src/typert.js';
 import { createFileStore, createTraceStore } from '../../../lib/agent/stores.js';
 import { createAgentService } from '../../../lib/agent/service.js';
 import { gzipSync } from 'node:zlib';
@@ -718,8 +719,14 @@ describe('bundle', () => {
       ]);
       expect(code).not.toMatch(/from "dota2ai\//);
       expect(code).not.toMatch(/createRequire\(import\.meta\.url\)\(['"][^'"]+\.json['"]\)/);
+      // Host entry delegates manifest registration to `@deepseek-ai/dsh-typert-loader` via `./typert` (never manual `typert.register`).
+      expect(code).not.toMatch(/\.typert\.register\s*\(/);
 
-      // Typert reflection artifacts exist and bundle zod + RemoteInfo internally with zero runtime externals.
+      // Typert reflection artifacts exist, bundle zod + RemoteInfo internally with zero runtime externals,
+      // and carry every required array (`schemas`, `services[].types`, `services[].members`, `services[].tags`, `events`, `objects`).
+      expect(TYPERT.model.services[0].types).toEqual([]);
+      expect(TYPERT.model.services[0].members).toEqual([]);
+      expect(TYPERT.invocations.map((d) => d.id)).toEqual(TYPERT_REMOTE.descriptors.map((d) => d.id));
       for (const name of ['typert.host.js', 'typert.remote-client.js']) {
         const p = join(dir, name);
         expect(existsSync(p), name).toBe(true);
@@ -727,6 +734,14 @@ describe('bundle', () => {
         const tBare = [...tCode.matchAll(/^import [^;]*? from "([^".][^"]*)";$/gm)].map((m) => m[1]);
         expect([...new Set(tBare)]).toEqual([]);
       }
+      const builtHostTypert = await import(new URL(`file://${join(dir, 'typert.host.js')}`).href);
+      expect(builtHostTypert.TYPERT.model.services[0].types).toEqual([]);
+      expect(builtHostTypert.TYPERT.invocations.map((d) => d.id)).toEqual([
+        '@qianhaoq/dsh-dota2ai#dota2ai/request',
+        '@qianhaoq/dsh-dota2ai#dota2ai/stream',
+        '@qianhaoq/dsh-dota2ai#dota2ai/getProfile',
+        '@qianhaoq/dsh-dota2ai#dota2ai/saveProfile',
+      ]);
 
       // Browser client bundle wraps @qianhaoq/dsh-dota2ai for DSH's __ModuleLoader__.
       const clientPath = join(dir, 'client.js');

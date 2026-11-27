@@ -40,7 +40,7 @@
 ```sh
 # 从最新的 dsh-v* Release 下载：https://github.com/qianhaoq/dota2.ai/releases
 sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.0.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.1.tgz
 ```
 
 启动 `dsh web` 后点击左侧栏 **dota2.ai** 即可使用完整复盘页面（记分板、小地图走位回放、录像证据卡、教练追问，以及切换你在 DSH 中配置的任意模型对比复盘）；也可以在任意会话里直接说：*「复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。」*
