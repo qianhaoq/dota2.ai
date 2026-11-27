@@ -38,7 +38,10 @@ describe('snapshot and verdict rules', () => {
     expect(new Date(from).getUTCDay()).toBe(4);
     // The same STRATZ weeks as the hero-timing snapshot when both were made in the same window: the same games.
     const timing = JSON.parse(readFileSync(new URL('../../lib/coach/data/hero-timing.json', import.meta.url), 'utf8'));
-    if (timing.weeks.from === RANK_SOURCE.weeks.from && timing.weeks.to === RANK_SOURCE.weeks.to) for (const b of BRACKETS) expect(Math.abs(timing.games[b] - RANK_SOURCE.games[b])).toBeLessThanOrEqual(1);
+    // The two snapshots are separate STRATZ requests minutes apart, and STRATZ goes on adding games of the window it
+    // had not processed: on 2026-11-27 la was 870094 against 870091 and di 275976 against 275974 (#438). The same
+    // games means the same counts to within 1 in 10,000, not to the game.
+    if (timing.weeks.from === RANK_SOURCE.weeks.from && timing.weeks.to === RANK_SOURCE.weeks.to) for (const b of BRACKETS) expect(Math.abs(timing.games[b] - RANK_SOURCE.games[b])).toBeLessThanOrEqual(Math.max(1, Math.round(RANK_SOURCE.games[b] / 10_000)));
     expect((to - from) / 86400000 + 1).toBe(7 * RANK_SOURCE.weeks.count);
     for (const b of BRACKETS) {
       expect(RANK_SOURCE.games[b]).toBeGreaterThan(1000);
