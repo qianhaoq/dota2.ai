@@ -8,7 +8,8 @@ import { verifyReview, staysClaims } from '../../lib/agent/review/verify.js';
 const trace = linkHeroNames(JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString()));
 /** Beastmaster's deaths: 0:47 came 2859 closer to his fountain, 11:03 1568; 2:51 went 655 away from it. */
 const deaths = runTraceTool(trace, 'death_context', { hero: 'beastmaster' });
-const sources = [deaths];
+/** As a review run has them: the opening context (whose game it is) and the tools' answers. */
+const sources = [{ player_hero: 'beastmaster' }, deaths];
 const finding = (title: string, claim: string, refs: string[]) => ({ title, claim, evidence: refs.map((r) => ({ refs: [r], fact: '阵亡。' })), fix: '换一种打法。' });
 const review = (...findings: any[]) => ({ verdict: '结论。', mainline: [], findings, did_well: [], next_game: [], blind_spots: [] });
 const notes = (r: any) => verifyReview(r, sources).problems.filter((p: any) => p.kind === 'heading');
@@ -17,8 +18,26 @@ describe('a finding that says the player stayed, about a death the record shows 
   it('the wording it looks for', () => {
     expect(staysClaims('队友倒下后仍在原地与熊战士换血')).toHaveLength(1);
     expect(staysClaims('对线期半血还在一线换血')).toHaveLength(1);
-    expect(staysClaims('You stayed in the lane and kept trading')).toHaveLength(1);
+    expect(staysClaims('You stayed in the lane and kept trading')).toEqual(['stayed', 'kept trading']);
     expect(staysClaims('你往自家方向退，被追上')).toEqual([]);
+    // A denial agrees with a retreat (Codex P1 on #427).
+    expect(staysClaims('你没有继续换血，而是往家退时被追上。')).toEqual([]);
+    expect(staysClaims('You did not stay to fight; you retreated and were caught.')).toEqual([]);
+  });
+
+  it('a denial of staying is not sent back, in either language (Codex P1 on #427)', () => {
+    expect(notes(review(finding('撤退时被追上', '你没有继续换血，而是往家退时被追上。', ['death:beastmaster:5'])))).toEqual([]);
+    expect(notes(review(finding('Caught on the way home', 'You did not stay to fight; you retreated and were caught.', ['death:beastmaster:5'])))).toEqual([]);
+  });
+
+  it('a time is matched to the player\'s own death, not to another hero who died then (Codex P1 on #427)', () => {
+    // 7:15: Venomancer died 724 farther from home, Necrolyte 1631 closer. A Venomancer review sees both answers.
+    const both = [{ player_hero: 'venomancer' }, runTraceTool(trace, 'death_context', { hero: 'venomancer' }), runTraceTool(trace, 'death_context', { hero: 'necrolyte' })];
+    const r = review(finding('继续换血', '7:15 你继续换血。', ['death:venomancer:4']));
+    expect(verifyReview(r, both).problems.filter((p: any) => p.kind === 'heading')).toEqual([]);
+    // Necrolyte's own review, the same sentence: his death was heading home.
+    const his = [{ player_hero: 'necrolyte' }, both[1], both[2]];
+    expect(verifyReview(review(finding('继续换血', '7:15 你继续换血。', ['deaths:necrolyte'])), his).problems.filter((p: any) => p.kind === 'heading').map((p: any) => p.text)).toEqual(['7:15: 1631 closer to the fountain']);
   });
 
   it('asks once, about the cited death heading home, and removes nothing', () => {
