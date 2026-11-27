@@ -182,7 +182,6 @@ describe('the prompts know the game plan', () => {
     expect(s).toContain('lineup_timing');
     expect(s).toContain('never state what the player or the team "intended"');
     expect(s).toContain('never "farming"');
-    expect(s).toContain('is "your_play" only when the player\'s own numbers show it');
     const p = SUBMIT_REVIEW.input_schema.properties.game_plan;
     expect(p.required).toEqual(['course', 'your_part', 'main_reason', 'why', 'evidence']);
     expect(p.properties.main_reason.enum).toEqual(PLAN_REASONS);

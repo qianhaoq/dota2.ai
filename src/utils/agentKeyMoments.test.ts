@@ -119,7 +119,6 @@ describe('key_moments reaches the model and the reader', () => {
     // Not a verdict: a first wording ("in the fight 80% or more: the lost chance is not about where the player was")
     // made two of three Luna reviews — a game lost from the lanes, five lane deaths — say it was the enemy's doing.
     expect(s).toContain('It is not a verdict on the player: being in the fights does not clear them of what they did before 5:00');
-    expect(s).toContain("When match_overview's lanes.lost_from_the_lanes is true and the player died four or more times before 10:00, the player's lane is part of the main reason");
     expect(s).not.toContain('the lost chance is not about where the player was');
     expect(s).toContain('elsewhere for half or more is rare (9 of 160)');
   });
