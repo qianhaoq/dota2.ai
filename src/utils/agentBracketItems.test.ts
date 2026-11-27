@@ -320,9 +320,10 @@ describe('scripts/coach-bracket-items.mjs: introspection, week window & invarian
     // Ungrouped C# `week: 0` on itemFullPurchase is never selected (nor misread as a wrong week echo).
     expect(batchQ).not.toMatch(/\{\s*itemId[^}]*\bweek\b/);
 
-    // calibrateWarmup handles 1-based `instance: 1` and cumulative per-minute series.
+    // calibrateWarmup handles 1-based `instance: 1` (even with a stray `instance: 0` row) and cumulative per-minute series.
     const itemMap = new Map([[145, 'bfury']]);
     const oneBased = calibrateWarmup([
+      { itemId: 145, time: 0, instance: 0, matchCount: 1, winCount: 0 },
       { itemId: 145, time: 14, instance: 1, matchCount: 30, winCount: 18 },
       { itemId: 145, time: 18, instance: 1, matchCount: 25, winCount: 14 },
       { itemId: 145, time: 22, instance: 2, matchCount: 2, winCount: 1 },
@@ -410,10 +411,14 @@ describe('scripts/coach-bracket-items.mjs: introspection, week window & invarian
     const aggCum = aggregateBracketItems({ weekDenominators: wd, readHeroWeekItems: readCum, heroes: [1, 2], weeks: [w], itemKeyById, timeWindow, firstInstance: 0, cumulative: true });
     expect(aggCum.heroes.la['1']['1']).toEqual({ games: 100, wins: 52, items: [['blink', 40, 23, 24]] });
 
+    // An item never bought before 10:00 (e.g. Aghanim's Shard at 15:00) is accepted when preWindowComplete is true,
+    // and rejected when preWindowComplete is false (server-truncated window without pre-10:00 baseline).
     const noBaseline = (h: number) => Object.fromEntries(
-      Object.keys(BRACKETS).flatMap((bKey) => Object.keys(POSITIONS).map((pKey) => [`${bKey}_${pKey}`, h === 1 ? [{ itemId: 1, time: 10, instance: 0, matchCount: 40, winCount: 20 }] : []])),
+      Object.keys(BRACKETS).flatMap((bKey) => Object.keys(POSITIONS).map((pKey) => [`${bKey}_${pKey}`, h === 1 ? [{ itemId: 1, time: 15, instance: 0, matchCount: 40, winCount: 22 }] : []])),
     );
-    expect(() => aggregateBracketItems({ weekDenominators: wd, readHeroWeekItems: noBaseline, heroes: [1, 2], weeks: [w], itemKeyById, timeWindow, firstInstance: 0, cumulative: true })).toThrow(/no pre-10:00 baseline/);
+    const shardOk = aggregateBracketItems({ weekDenominators: wd, readHeroWeekItems: noBaseline, heroes: [1, 2], weeks: [w], itemKeyById, timeWindow, firstInstance: 0, cumulative: true, preWindowComplete: true });
+    expect(shardOk.heroes.la['1']['1']).toEqual({ games: 100, wins: 52, items: [['blink', 40, 22, 15]] });
+    expect(() => aggregateBracketItems({ weekDenominators: wd, readHeroWeekItems: noBaseline, heroes: [1, 2], weeks: [w], itemKeyById, timeWindow, firstInstance: 0, cumulative: true, preWindowComplete: false })).toThrow(/no pre-window baseline/);
 
     // resolveRef resolves both pro_items and build with bracket items intact and strips internal gaps.
     const rankedMatch = { ...match, players: match.players.map((p: any) => ({ ...p, rank_tier: 55 })) };

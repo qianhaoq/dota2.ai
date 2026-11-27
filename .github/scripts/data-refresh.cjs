@@ -96,8 +96,8 @@ function spawnStep(s, env, seconds = STEP_SECONDS) {
  */
 function refresh(reportPath, env = process.env, deps = {}) {
   const version = deps.version ?? sitePatch();
-  const { list = steps(version), run = spawnStep, sleep = sleepSync, waits = RETRY_WAITS, dirty = dirtyFiles, restore = undo } = deps;
   const filter = env.DATA_REFRESH_ONLY ? String(env.DATA_REFRESH_ONLY).trim() : '';
+  const { list = steps(version), run = spawnStep, sleep = sleepSync, waits = filter ? [15] : RETRY_WAITS, dirty = dirtyFiles, restore = undo } = deps;
   const active = filter ? list.filter((s) => s.cmd.join(' ').includes(filter)) : list;
   if (filter && !active.length) throw new Error(`no refresh step matches DATA_REFRESH_ONLY=${filter}`);
   const out = { version, steps: [] };
@@ -230,6 +230,6 @@ module.exports = { steps, sitePatch, onlyDateChanged, refresh, settle, body, bum
 
 if (require.main === module) {
   const [cmd, report, tests] = process.argv.slice(2);
-  if (cmd === 'refresh') { const r = refresh(report); for (const s of r.steps) console.log(`${s.outcome}\t${s.name}`); } else if (cmd === 'settle') { const r = settle(report); console.log(`changed=${r.changed.length}`); } else if (cmd === 'body') process.stdout.write(body(JSON.parse(readFileSync(report, 'utf8')), tests));
+  if (cmd === 'refresh') { const r = refresh(report); for (const s of r.steps) console.log(`${s.outcome}\t${s.name}${s.detail ? `\t${s.detail}` : ''}`); } else if (cmd === 'settle') { const r = settle(report); console.log(`changed=${r.changed.length}`); } else if (cmd === 'body') process.stdout.write(body(JSON.parse(readFileSync(report, 'utf8')), tests));
   else { console.error('usage: data-refresh.cjs refresh|settle|body <report.json> [ok|failed]'); process.exit(2); }
 }
