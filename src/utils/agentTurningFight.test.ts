@@ -194,9 +194,8 @@ describe('a review is asked about the turning fight', () => {
     const repair = JSON.parse(seen[2].messages.at(-1).content);
     expect(repair.error).toBe('unsupported_facts');
     expect(repair.problems).toEqual([{ in: 'findings', text: '30:26–30:48', why: expect.stringContaining('no finding looks at the fight the game turned on') }]);
-    // 3 investigation/repair turns + 1 tool-free trilingual translation call.
-    expect(seen).toHaveLength(4);
-    expect(seen[3].tools).toEqual([]);
+    // 3 investigation/repair turns, and no translation call: a review is written in one language.
+    expect(seen).toHaveLength(3);
     expect(r.status).toBe('ok');
     expect(r.review.findings.map((f: any) => f.title)).toEqual(['对线期的阵亡']);
     expect(r.verification).toMatchObject({ repaired: true, dropped: 0 });

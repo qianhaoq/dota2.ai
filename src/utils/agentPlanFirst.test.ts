@@ -101,13 +101,13 @@ describe('a review for a plan is its own review', () => {
     expect(back.openings[0]).toContain('their plan this game was to win the lanes');
     const ready = await front.status(ID, 'beastmaster', 'zh', 'push');
     expect(ready).toMatchObject({ status: 'ready', review: { plan: 'push', game_plan: { against_your_plan: against } } });
-    expect([...w.blobs.keys()].filter((k) => k.endsWith('.review.json'))).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.plan-push\.review\.json$/)]);
+    expect([...w.blobs.keys()].filter((k) => k.endsWith('.review.json'))).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.plan-push\.review\.json$/)]);
     // Another plan, or none, is another review; a task for a plan that is none of the four is refused.
     expect(await front.status(ID, 'beastmaster', 'zh', 'late')).toEqual({ status: 'none' });
     expect(await worker.run({ ...queue[0], plan: 'cheese' })).toEqual({ status: 'invalid' });
     // A plan-free task keeps the plan-free bundle key, distinct from plan-push.
     expect(await worker.run({ kind: 'review', matchId: String(ID), hero: 'beastmaster', lang: 'zh' })).toEqual({ status: 'ready' });
-    expect([...w.blobs.keys()].filter((k) => k.endsWith('.review.json')).sort()).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.plan-push\.review\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.p\d+\.review\.json$/)].sort());
+    expect([...w.blobs.keys()].filter((k) => k.endsWith('.review.json')).sort()).toEqual([expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.plan-push\.review\.json$/), expect.stringMatching(/^9100904020\.beastmaster\.zh\.p\d+\.review\.json$/)].sort());
   });
 
   it('the chat reads the review made for the reader\'s plan, and is told the plan', async () => {
