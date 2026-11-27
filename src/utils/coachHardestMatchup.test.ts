@@ -1,8 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { heroVsRank } from '../../lib/coach/matchupsRank.js';
 import { itemLifts } from '../../lib/coach/matchups.js';
+
+// The Naga Siren vs Timbersaw case (#204) is about pure damage, not about this week's STRATZ numbers: the pair is
+// held clearly unfavoured here, so a data refresh that moves another hero a point lower cannot change the case (#419).
+vi.mock('../../lib/coach/matchupsRank.js', async (importOriginal) => {
+  const actual: any = await importOriginal();
+  return {
+    ...actual,
+    heroVsRank: (hero: number, vs: number, bracket: string) => (hero === 89 && vs === 98 && bracket === 'di'
+      ? { bracket: 'di', n: 215, wr: 0.35, base: 0.495, diff: -0.145, verdict: 'unfavoured' }
+      : actual.heroVsRank(hero, vs, bracket)),
+  };
+});
 
 const load = (f: string) => JSON.parse(readFileSync(new URL(`../fixtures/coach/${f}`, import.meta.url), 'utf8'));
 const FIXTURES = ['match9079014980.turbo.unparsed.json', 'match9091400302.unparsed.json', 'match9091400302.parsed.json', 'match9094562824.parsed.json'];
