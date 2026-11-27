@@ -102,7 +102,7 @@ node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --
 flowchart LR
     R["录像"] --> T["Trace<br/>约 250 KB"]
     T --> A["Agent"]
-    A <--> L["30 个查询工具"]
+    A <--> L["31 个查询工具"]
     A --> V{"校验器<br/>（代码）"}
     V -- "站不住：修一轮" --> A
     V -- "有依据" --> D["复盘"]
@@ -120,7 +120,7 @@ flowchart LR
 | 整局 | `match_overview`、`key_moments`、`decision_points`、`tempo_report`、`window_report`、`siege_report`、`roshan_report` |
 | 团战与时刻 | `fight_report`、`fight_timeline`、`game_state`、`death_context`、`save_report`、`ward_report` |
 | 技能与物品 | `ability_audit`、`immunity_windows`、`item_timeline`、`power_spikes`、`build_check`、`build_for_plan` |
-| 对线与发育 | `lane_report`、`farm_report`、`lineup_timing` |
+| 对线与发育 | `draft_report`、`lane_report`、`farm_report`、`lineup_timing` |
 | 录像原始记录 | `combat_log`、`hero_track` |
 | 参考数据 | `hero_abilities`、`pro_item_choices`、`item_info`、`hero_info`、`hero_matchup`、`patch_changes` |
 

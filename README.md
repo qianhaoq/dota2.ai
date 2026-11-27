@@ -102,7 +102,7 @@ Around the findings: the scoreboard and gold lead, the fights on a timeline and 
 flowchart LR
     R["Replay"] --> T["Trace<br/>~250 KB"]
     T --> A["Agent"]
-    A <--> L["30 lookup tools"]
+    A <--> L["31 lookup tools"]
     A --> V{"Verifier<br/>(code)"}
     V -- "unsupported: one repair" --> A
     V -- "backed" --> D["Review"]
@@ -120,7 +120,7 @@ flowchart LR
 | The game | `match_overview`, `key_moments`, `decision_points`, `tempo_report`, `window_report`, `siege_report`, `roshan_report` |
 | Fights and moments | `fight_report`, `fight_timeline`, `game_state`, `death_context`, `save_report`, `ward_report` |
 | Abilities and items | `ability_audit`, `immunity_windows`, `item_timeline`, `power_spikes`, `build_check`, `build_for_plan` |
-| Lane and farm | `lane_report`, `farm_report`, `lineup_timing` |
+| Lane and farm | `draft_report`, `lane_report`, `farm_report`, `lineup_timing` |
 | Raw replay rows | `combat_log`, `hero_track` |
 | Reference data | `hero_abilities`, `pro_item_choices`, `item_info`, `hero_info`, `hero_matchup`, `patch_changes` |
 
