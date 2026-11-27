@@ -1,0 +1,62 @@
+{
+  "schema": "dota2.ai/review-rubric@1",
+  "match_id": 9101152780,
+  "hero": "dark_willow",
+  "status": "approved",
+  "written": "2026-11-26",
+  "checked": "2026-11-26",
+  "checked_by": "Claude (two sessions): drafted from match_overview, death_context and lane_report on the rebuilt trace; every fact re-read independently by the session that built the support tools. The owner delegated the check.",
+  "source": "Tool outputs on the trace rebuilt from the archived replay, with the match record (match_overview, death_context, lane_report). Ward and save counts from the ward_report / save_report branch (#358), quoted for context, not anchored. Drafted for the support tools; not yet checked against a second reading.",
+  "must_hit": [
+    {
+      "id": "lane_deaths_to_naga",
+      "says": "Both deaths before 10:00 were in the top lane to Naga Siren (2:38, which began at 39% health, and 8:55), and no enemy died within 15 s of either.",
+      "weight": 2,
+      "any": {
+        "refs": [
+          "lane:dark_willow",
+          "death:dark_willow:1",
+          "death:dark_willow:2",
+          "deaths:dark_willow"
+        ],
+        "clocks": [
+          "2:38",
+          "8:55"
+        ],
+        "within": 5
+      },
+      "terms": {
+        "zh": [
+          "对线",
+          "线上",
+          "娜迦"
+        ],
+        "en": [
+          "lane",
+          "Naga"
+        ]
+      }
+    }
+  ],
+  "lead_any": [
+    "lane_deaths_to_naga"
+  ],
+  "must_not": [],
+  "main_reason": [
+    "team_play",
+    "enemy_play"
+  ],
+  "not_scored": {
+    "why": "Owner, 2026-11-27: no hand-made wording matchers. A pattern for these claims misfired both ways on #397 (it flagged '无法判断视野是否不够' and missed '你的恶念瞥视救下了斯温'); a reader checks them when reading the eval's reviews.",
+    "claims": [
+      {
+        "id": "too_few_wards",
+        "says": "Dark Willow placed 8 observers and 13 sentries — the most observers on the team (Witch Doctor 4, Pangolier 1, Riki 1, Abaddon 0). A review must not say there were too few wards."
+      },
+      {
+        "id": "a_cast_would_have_saved",
+        "says": "As for Disruptor: help to an ally under fire did not change their five-second death rate in the corpus. A review must not say a cast saved, or should have saved, an ally."
+      }
+    ]
+  }
+}
