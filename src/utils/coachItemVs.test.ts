@@ -60,6 +60,22 @@ describe('itemLifts / answersByPro', () => {
     // No pro data for the pair: the curated order stands.
     expect(answersByPro(AXE, [{ id: 99999 }], answers).ordered).toEqual(answers);
   });
+
+  it('a pro answer on the other role\'s list comes first; an item on no answer list never does (owner, 2026-11-27)', () => {
+    // Eul's is on the physical support list only: a core Tidehunter's list leaves it out, and pros build it against Ursa.
+    const core = ANSWERS.physical.core; const pool = [...new Set([...ANSWERS.physical.core, ...ANSWERS.physical.support])];
+    expect(core).not.toContain('cyclone');
+    expect(pool).toContain('cyclone');
+    expect(answersByPro(TIDE, [{ id: URSA }], core).ordered[0]).not.toBe('cyclone');
+    const withPool = answersByPro(TIDE, [{ id: URSA }], core, pool);
+    expect(withPool.ordered[0]).toBe('cyclone');
+    expect(withPool.ordered.slice(1)).toEqual(core);
+    // Helm of the Dominator is built more by pro Beastmasters against Necrophos, but it answers nothing on any list.
+    expect(itemLifts(38, 36).map((x) => x.key)).toContain('helm_of_the_dominator');
+    const all = Object.values(ANSWERS).flatMap((r: any) => [...r.core, ...r.support]);
+    expect(all).not.toContain('helm_of_the_dominator');
+    expect(answersByPro(38, [{ id: 36 }], ANSWERS.magic.core, [...ANSWERS.magic.core, ...ANSWERS.magic.support]).ordered).not.toContain('helm_of_the_dominator');
+  });
 });
 
 describe('report: the counter items pros actually build', () => {
@@ -70,6 +86,17 @@ describe('report: the counter items pros actually build', () => {
     const c = r.reviews[0].chapters.story.why.find((x: any) => x.id === 'fights.carrier');
     expect(c.fix.zh).toContain('职业潮汐猎人对上熊战士时明显更常出Eul的神圣法杖（37%，平时 8%）');
     expect(c.evidence.map((e: any) => e.zh)).toContain(proItemsLine(NAMES.heroes[TIDE], NAMES.heroes[URSA], itemLifts(TIDE, URSA))!.zh);
+  });
+
+  it('without an answer of his own, core Tidehunter is told Eul\'s first against Ursa, not a core-list armor item', () => {
+    const m = structuredClone(parsed);
+    const p = m.players.find((x: any) => x.hero_id === TIDE);
+    const ghost = JSON.parse(readFileSync(path.join(process.cwd(), 'lib/data/constants/items.json'), 'utf8')).ghost.id;
+    for (const k of ['item_0', 'item_1', 'item_2', 'item_3', 'item_4', 'item_5', 'backpack_0', 'backpack_1', 'backpack_2']) if (p[k] === ghost) p[k] = 0;
+    p.purchase_log = (p.purchase_log ?? []).filter((x: any) => x.key !== 'ghost');
+    const c = (buildCoachReport(m) as any).reviews[0].chapters.story.why.find((x: any) => x.id === 'fights.carrier');
+    expect(c.fix.zh).toContain('在下一波大团前做出 Eul的神圣法杖、');
+    expect(c.fix.zh).not.toContain('希瓦');
   });
 
   it('drops the suggestion when you already bought the item', () => {
