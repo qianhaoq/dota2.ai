@@ -836,13 +836,14 @@ export const CoachHome: React.FC = () => {
         <HowItWorks />
       </div>
 
+      {!inDsh && <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />}
+
       {/* The patch, one block: Valve's news as its top strip, the advisor under it. */}
       <div className="hm-patch">
         <PatchNews onCta={focusInput} />
         <PatchAdvisor lang={lang} version={CURRENT_PATCH.version} notesUrl={CURRENT_PATCH.notesUrl} />
       </div>
 
-      {!inDsh && <AccessModes matchId={EXAMPLE_MATCH} onWeb={focusInput} />}
       {!inDsh && <HomeFeedback />}
     </Shell>
   );
