@@ -130,9 +130,9 @@ const legacyIntentKey = (matchId: string, hero: string, lang: Lang, plan: string
 const session = () => { try { return window.sessionStorage; } catch { return null; } };
 const heroLabel = (hero: AgentHero, lang: Lang) => hero[lang] ?? hero.en;
 
-const Portrait: React.FC<{ hero: AgentHero; report: CoachReport | null; lang: Lang }> = ({ hero, report, lang }) => {
+const Portrait: React.FC<{ hero: AgentHero; report: CoachReport | null }> = ({ hero, report }) => {
   const img = report?.players.find((p) => p.hero.id === hero.hero_id)?.hero.img;
-  return img ? <SafeImg src={img} alt={heroLabel(hero, lang)} className="ag-portrait" /> : <span className="ag-portrait ag-portrait--blank" aria-hidden="true" />;
+  return img ? <SafeImg src={img} alt="" className="ag-portrait" /> : <span className="ag-portrait ag-portrait--blank" aria-hidden="true" />;
 };
 
 export const AgentMatchPage: React.FC = () => {
@@ -594,10 +594,10 @@ export const AgentMatchPage: React.FC = () => {
       <p className="cx-eyebrow">{t(T.match)} {matchId}{board?.match?.patch ? ` · ${board.match.patch}` : ''}</p>
       {hero && (
         <div className="ag-head-hero">
-          <Portrait hero={hero} report={board} lang={lang} />
+          <Portrait hero={hero} report={board} />
           <strong>{heroLabel(hero, lang)}</strong>
           <span className={`ag-team is-${hero.team}`}>{t(T[hero.team])}</span>
-          <button type="button" className="ag-link" onClick={() => pickHero(null)}>{t(T.change)}</button>
+          <button type="button" className="ag-link ag-change-btn" onClick={() => pickHero(null)}>{t(T.change)}</button>
         </div>
       )}
       {goalCheck && activeGoalNow && (
@@ -649,19 +649,34 @@ export const AgentMatchPage: React.FC = () => {
           {arrivedBy === 'team' && <p className="ag-pick-from">{t(T.fromTeam)}</p>}
           <p className="ag-pick-sub">{t(T.pickSub)}</p>
           {search.has('hero') && <p className="ag-warn" role="alert">{t(T.unknownHero)}</p>}
-          {(['radiant', 'dire'] as const).map((team) => (
-            <div key={team} className="ag-pick-team">
-              <p className={`ag-team is-${team}`}>{t(T[team])}</p>
-              <div className="ag-pick-row">
-                {roster.filter((h) => h.team === team).map((h) => (
-                  <button key={h.hero} type="button" onClick={() => pickHero(h.hero)}>
-                    <Portrait hero={h} report={board} lang={lang} />
-                    <span>{heroLabel(h, lang)}</span>
-                  </button>
-                ))}
+          {(['radiant', 'dire'] as const).map((team) => {
+            const won = typeof board?.match?.radiant_win === 'boolean'
+              ? (team === 'radiant' ? board.match.radiant_win : !board.match.radiant_win)
+              : null;
+            return (
+              <div key={team} className={`ag-pick-team is-${team}`}>
+                <p className={`ag-team is-${team}`}>
+                  <span>{t(T[team])}</span>
+                  {won === true && <span className="ag-pick-win">★</span>}
+                </p>
+                <div className="ag-pick-row">
+                  {roster.filter((h) => h.team === team).map((h) => {
+                    const pl = board?.players.find((p) => p.hero.id === h.hero_id);
+                    const kda = Array.isArray(pl?.kda) ? `${pl.kda[0]} / ${pl.kda[1]} / ${pl.kda[2]}` : null;
+                    return (
+                      <button key={h.hero} type="button" onClick={() => pickHero(h.hero)}>
+                        <Portrait hero={h} report={board} />
+                        <span className="ag-pick-meta">
+                          <span className="ag-pick-name">{heroLabel(h, lang)}</span>
+                          {kda && <small className="ag-pick-kda">{kda}</small>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
       </Shell>
     );
