@@ -489,8 +489,8 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           {r.revived_at && <span className="ag-chip is-good">{t(T.revivedAt)} {r.revived_at}</span>}
           {r.died_for_real_within_20s && <span className="ag-chip is-warn">{t(T.diedAfterRevive)} {r.died_for_real_within_20s.clock}{r.died_for_real_within_20s.seconds_after_revive != null && <em>+{r.died_for_real_within_20s.seconds_after_revive}{t(T.sec)}</em>}</span>}
         </p>
-        {r.allies_within_2200 !== null && <p className="ag-rec-line"><span>{t(T.allies)}</span>{heroes(r.allies_within_2200, 'is-ally')}</p>}
-        {r.enemies_within_2200 !== null && <p className="ag-rec-line"><span>{t(T.enemies)}</span>{heroes(r.enemies_within_2200, 'is-enemy')}</p>}
+        <p className="ag-rec-line"><span>{t(T.allies)}</span>{heroes(r.allies_within_2200, 'is-ally')}</p>
+        <p className="ag-rec-line"><span>{t(T.enemies)}</span>{heroes(r.enemies_within_2200, 'is-enemy')}</p>
       </div>
     );
   }

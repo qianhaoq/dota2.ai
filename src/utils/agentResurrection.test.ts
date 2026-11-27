@@ -240,10 +240,13 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
     const rosh: any = roshanReport(real, { hero: 'beastmaster' });
     expect(rosh.takes[0]).toMatchObject({ aegis_holder: 'phantom_assassin', aegis: 'used', aegis_used_at: '36:43' });
 
-    // An Aegis that expired after 300 s followed by a hero death 1.5 s later is a real death, not an Aegis revival.
+    // An Aegis that expired naturally after 300 s followed immediately (even 0.3 s later) by a hero death is a real death, not an Aegis revival (Codex P1 on #431).
     const expired: any = buildWraithKingTrace();
     expired.items[0] = { item_aegis: { held: [[100, 400]], cd: [] } };
+    expect(classifyDeath(expired, [400.3, 0, 2, 76])).toEqual({ real: true });
     expect(classifyDeath(expired, [401.5, 0, 2, 77])).toEqual({ real: true });
+    const expiredWithDeath = { ...expired, deaths: [[400.3, 0, 2, 76]] };
+    expect((roshanReport(expiredWithDeath, { hero: 'skeleton_king' }) as any).takes[0]).toMatchObject({ aegis: 'expired' });
   });
 
   it('catches non-buyback in-place revival talents outside bases, ignores instant base respawns, and keeps blanked samples unknown (null, never 0 or [])', () => {
@@ -262,6 +265,35 @@ describe('in-place resurrections (Wraith King Reincarnation & Aegis of the Immor
     };
     const baseRespawnTrace = { ...base, states: [base.states[0], inBase, base.states[2], base.states[3]], deaths: [[800.2, 1, 2, 50]] };
     expect(classifyDeath(baseRespawnTrace, baseRespawnTrace.deaths[0])).toEqual({ real: true });
+
+    // Blanking OTHER heroes' position and alive samples on the real fixture while keeping PA's own samples intact:
+    // allies_within_2200 and enemies_within_2200 must be null (unknown), never [] ("nobody") (Codex P1 on #431).
+    const paIdx = real.heroes.findIndex((h: any) => h.key === 'phantom_assassin');
+    const othersBlank = {
+      ...real,
+      states: real.states.map((s: any, i: number) => (i === paIdx ? s : {
+        ...s,
+        x: s.x.map(() => null),
+        y: s.y.map(() => null),
+        alive: s.alive.map(() => null),
+      })),
+    };
+    const paBlindOthers: any = runTraceTool(othersBlank, 'death_context', { hero: 'phantom_assassin' });
+    expect(paBlindOthers.resurrections[0]).toMatchObject({
+      clock: '36:43',
+      at: expect.objectContaining({ region: 'dire_top_lane' }),
+      allies_within_2200: null,
+      enemies_within_2200: null,
+    });
+    // Blanking only one ally's alive array (positions kept) leaves allies_within_2200 null while enemies_within_2200 stands.
+    const axeIdx = real.heroes.findIndex((h: any) => h.key === 'axe');
+    const oneAllyAliveBlank = {
+      ...real,
+      states: real.states.map((s: any, i: number) => (i === axeIdx ? { ...s, alive: s.alive.map(() => null) } : s)),
+    };
+    const paOneAllyBlind: any = runTraceTool(oneAllyAliveBlank, 'death_context', { hero: 'phantom_assassin' });
+    expect(paOneAllyBlind.resurrections[0].allies_within_2200).toBeNull();
+    expect(Array.isArray(paOneAllyBlind.resurrections[0].enemies_within_2200)).toBe(true);
 
     // Blanked samples (Unknown is not false): position, alive and mana wiped to null around Wraith King's deaths and revivals.
     const raw = buildWraithKingTrace();

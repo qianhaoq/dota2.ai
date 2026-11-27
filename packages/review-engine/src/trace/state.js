@@ -68,6 +68,30 @@ function revivedAt(trace, h, t) {
 }
 
 /**
+ * True when `alive` samples show hero `h` stayed continuously dead (`0`) for `seconds` after `t`,
+ * ruling out an ~3–5 s in-place Reincarnation or Aegis revival. Missing (`null`) samples return false.
+ */
+function stayedDeadPast(trace, h, t, seconds = 8) {
+  const alive = trace?.states?.[h]?.alive;
+  if (!Array.isArray(alive)) return false;
+  const i0 = Math.max(0, Math.ceil(t) - trace.t0 + 1);
+  const i1 = Math.floor(t) + seconds - trace.t0;
+  if (i1 >= trace.n || i1 < i0) return false;
+  for (let i = i0; i <= i1; i += 1) if (alive[i] !== 0) return false;
+  return true;
+}
+
+function revivedInPlaceOutsideBase(trace, h, t, rev) {
+  if (rev == null || rev - t < 2 || rev - t > 7) return false;
+  const s = trace.states?.[h];
+  const bi = rev - trace.t0;
+  const back = s?.x?.[bi] != null && s?.y?.[bi] != null ? { x: s.x[bi], y: s.y[bi] } : null;
+  const fell = stateAt(trace, h, t - 1);
+  const backRegion = back ? region(back.x, back.y) : null;
+  return Boolean(back && fell?.alive && backRegion !== 'radiant_base' && backRegion !== 'dire_base' && dist(fell, back) < IN_PLACE_REVIVE_DIST);
+}
+
+/**
  * Whether a combat-log death row `d = [t, victimName, killerName, row]` is a real death or an in-place
  * resurrection (Wraith King's Reincarnation, Aegis of the Immortal, or a reincarnation talent).
  * Unknown samples stay unknown: the fallback never guesses a revival across unsampled seconds or inside a base.
@@ -76,25 +100,25 @@ export function classifyDeath(trace, d) {
   const h = heroOfName(trace, d[1]);
   if (h < 0) return { real: true };
   const t = d[0];
+  const rev = revivedAt(trace, h, t);
   const reincCd = trace.abilities?.[h]?.skeleton_king_reincarnation?.cd ?? [];
   if (reincCd.some(([from, to, init]) => from >= t - 0.5 && from <= t + 1 && (init ?? (to - from)) >= 50)) {
-    return { real: false, by: 'reincarnation', revived_at: revivedAt(trace, h, t) };
+    return { real: false, by: 'reincarnation', revived_at: rev };
   }
   const aegisHeld = trace.items?.[h]?.item_aegis?.held ?? [];
-  if (aegisHeld.some(([from, to]) => Math.abs(t - to) <= 2 && !(to - from >= AEGIS_DURATION - 5 && t > to + 0.5))) {
-    return { real: false, by: 'aegis', revived_at: revivedAt(trace, h, t) };
+  const aegisUsed = !stayedDeadPast(trace, h, t, 8) && aegisHeld.some(([from, to]) => {
+    if (Math.abs(t - to) > 2) return false;
+    // Near the 300 s expiry mark, temporal proximity alone cannot prove Aegis consumption: an Aegis that expired at
+    // `to` followed by a death at `to + 0.3` is a real death unless a ~5 s in-place revival was actually sampled.
+    if (to - from >= AEGIS_DURATION - 5) return t <= to + 0.1 && revivedInPlaceOutsideBase(trace, h, t, rev);
+    return true;
+  });
+  if (aegisUsed) {
+    return { real: false, by: 'aegis', revived_at: rev };
   }
-  const rev = revivedAt(trace, h, t);
-  if (rev != null && rev - t >= 2 && rev - t <= 7) {
-    const boughtBack = Array.isArray(trace?.buybacks) && trace.buybacks.some(([bt, i]) => i === h && bt >= t && bt <= rev + 1);
-    const s = trace.states[h];
-    const bi = rev - trace.t0;
-    const back = s?.x?.[bi] != null && s?.y?.[bi] != null ? { x: s.x[bi], y: s.y[bi] } : null;
-    const fell = stateAt(trace, h, t - 1);
-    const backRegion = back ? region(back.x, back.y) : null;
-    if (!boughtBack && back && fell?.alive && backRegion !== 'radiant_base' && backRegion !== 'dire_base' && dist(fell, back) < IN_PLACE_REVIVE_DIST) {
-      return { real: false, by: 'reincarnation', revived_at: rev };
-    }
+  const boughtBack = Array.isArray(trace?.buybacks) && rev != null && trace.buybacks.some(([bt, i]) => i === h && bt >= t && bt <= rev + 1);
+  if (!boughtBack && revivedInPlaceOutsideBase(trace, h, t, rev)) {
+    return { real: false, by: 'reincarnation', revived_at: rev };
   }
   return { real: true };
 }

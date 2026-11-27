@@ -373,8 +373,22 @@ export function deathContext(trace, args = {}, ctx = {}) {
     };
   });
   const heroKey = trace.heroes[h].key;
+  // Whether hero `j` can be placed (or ruled out as dead) at `t`: a hero with unsampled alive or position may have been standing within 2200.
+  const heroNearKnown = (j, t) => {
+    const st = stateAt(trace, j, t);
+    if (st) {
+      const rawAlive = trace.states?.[j]?.alive?.[st.t - trace.t0];
+      if (rawAlive === 0) return true;
+      return rawAlive === 1 && st.x != null && st.y != null;
+    }
+    const k0 = Math.round(t) - trace.t0;
+    return k0 >= 0 && k0 < trace.n && trace.states?.[j]?.alive?.[k0] === 0;
+  };
   const myRes = resurrections(trace).filter((r) => r.heroIndex === h).map((r, i) => {
     const atRes = nearby(trace, h, r.t, 2200);
+    const meKnown = Boolean(atRes.me && atRes.me.x != null && atRes.me.y != null);
+    const alliesKnown = meKnown && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, r.t));
+    const enemiesKnown = meKnown && trace.heroes.every((o, j) => o.team === trace.heroes[h].team || heroNearKnown(j, r.t));
     const nextIdx = all.findIndex((d) => d[0] > r.t);
     const nextReal = nextIdx >= 0 ? all[nextIdx] : null;
     const diedSoon = !nextReal ? false
@@ -383,9 +397,9 @@ export function deathContext(trace, args = {}, ctx = {}) {
     return {
       ref: `resurrection:${heroKey}:${i + 1}`, hero: heroKey, n: i + 1, t: r.t, clock: clock(r.t), by: r.by, killer: nameOf(trace, r.killer), row: r.row,
       revived_at: r.revived_at == null ? null : clock(r.revived_at),
-      at: atRes.me ? where(atRes.me) : null,
-      allies_within_2200: atRes.me ? atRes.allies.map((a) => a.hero) : null,
-      enemies_within_2200: atRes.me ? atRes.enemies.map((e) => e.hero) : null,
+      at: meKnown ? where(atRes.me) : null,
+      allies_within_2200: alliesKnown ? atRes.allies.map((a) => a.hero) : null,
+      enemies_within_2200: enemiesKnown ? atRes.enemies.map((e) => e.hero) : null,
       died_for_real_within_20s: diedSoon,
     };
   });
