@@ -1,5 +1,6 @@
 # Release the DSH plugin (packages/dsh) automatically on merges to `main` touching
-# plugin-bundled paths, or manually from a `dsh-v<version>` tag:
+# plugin-bundled paths (both direct pushes via `push` and GITHUB_TOKEN squash-merges
+# via `workflow_run` on `Auto Merge`), or manually from a `dsh-v<version>` tag:
 # resolve version & bilingual release notes, test, pack one platform-independent
 # archive, install and smoke-test it in a clean DSH web profile with DSH's own CLI,
 # publish the archive and SHA256SUMS as a GitHub Release, and publish
@@ -31,6 +32,11 @@ on:
       - '.github/workflows/dsh-release.yml'
       - '.github/scripts/dsh-release-meta.mjs'
     tags: ['dsh-v*']
+  # Auto Merge squash-merges PRs with GITHUB_TOKEN, which suppresses `on: push` workflows.
+  # Triggering on Auto Merge completion and checking out `main` covers those merges too.
+  workflow_run:
+    workflows: ["Auto Merge"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       publish:
@@ -52,6 +58,7 @@ env:
 
 jobs:
   release:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -59,6 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'workflow_run' && 'main' || '' }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -78,7 +86,7 @@ jobs:
           fi
 
           would_publish="false"
-          if [ "${EVENT_NAME}" = "push" ]; then
+          if [ "${EVENT_NAME}" = "push" ] || [ "${EVENT_NAME}" = "workflow_run" ]; then
             would_publish="true"
           elif [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ "${DISPATCH_PUBLISH}" = "true" ]; then
             would_publish="true"
@@ -88,6 +96,8 @@ jobs:
           if [ "${EVENT_NAME}" = "push" ] && [ "${REF_TYPE}" = "tag" ]; then
             test -s ".github/release-notes/${GITHUB_REF_NAME}.md" || { echo "missing or empty .github/release-notes/${GITHUB_REF_NAME}.md"; exit 1; }
             meta_args+=(--tag "${GITHUB_REF_NAME}")
+          elif [ "${EVENT_NAME}" = "workflow_run" ]; then
+            meta_args+=(--require-bundled-changes)
           elif [ "${would_publish}" != "true" ]; then
             meta_args+=(--allow-registry-fallback)
           fi
@@ -100,6 +110,7 @@ jobs:
           resume_tag=$(node -e "console.log(JSON.parse(process.argv[1]).resumeTag ?? '')" "${meta_json}")
           version=$(node -e "console.log(JSON.parse(process.argv[1]).version)" "${meta_json}")
           prev_tag=$(node -e "console.log(JSON.parse(process.argv[1]).prevTag ?? '')" "${meta_json}")
+          target_sha=$(node -e "console.log(JSON.parse(process.argv[1]).targetSha ?? '')" "${meta_json}")
 
           should_publish="${would_publish}"
           skip_build="false"
@@ -107,12 +118,12 @@ jobs:
             should_publish="false"
             if [ "${would_publish}" = "true" ]; then
               skip_build="true"
-              echo "::notice::Skipping DSH plugin publish (${stale_reason}) for commit ${GITHUB_SHA} (latest tag: ${prev_tag})."
+              echo "::notice::Skipping DSH plugin publish (${stale_reason}) for commit ${target_sha} (latest tag: ${prev_tag})."
             else
               echo "::notice::HEAD is stale relative to ${prev_tag} (${stale_reason}); continuing dry-run build & smoke test."
             fi
           elif [ -n "${resume_tag}" ]; then
-            echo "::notice::Resuming incomplete npm publish for ${resume_tag} at commit ${GITHUB_SHA}."
+            echo "::notice::Resuming incomplete npm publish for ${resume_tag} at commit ${target_sha}."
           fi
           echo "should_publish=${should_publish}" >> "$GITHUB_OUTPUT"
           echo "skip_build=${skip_build}" >> "$GITHUB_OUTPUT"
@@ -165,12 +176,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
+          TARGET_SHA: ${{ steps.meta.outputs.target_sha }}
         run: |
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" dist-dsh/*.tgz dist-dsh/SHA256SUMS --clobber
           else
             gh release create "${TAG}" dist-dsh/*.tgz dist-dsh/SHA256SUMS \
-              --target "${GITHUB_SHA}" \
+              --target "${TARGET_SHA}" \
               --title "DSH plugin ${TAG#dsh-}" \
               --notes-file "$RUNNER_TEMP/dsh-release-notes.md"
           fi
