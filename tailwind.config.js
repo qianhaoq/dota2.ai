@@ -15,10 +15,11 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        display: ['Cinzel', 'serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'PingFang SC', 'Noto Sans SC', 'sans-serif'],
+        display: ['Newsreader', 'Iowan Old Style', 'Georgia', 'Noto Serif SC', 'serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
         // V3 (docs/design/tactical-coach-v3/docs/tokens.json): titles may be serif, body stays sans.
-        v3display: ['Georgia', 'Noto Serif CJK SC', 'Songti SC', 'serif'],
+        v3display: ['Newsreader', 'Georgia', 'Noto Serif CJK SC', 'Songti SC', 'serif'],
       },
       colors: {
         // V3 tactical palette (tokens.json) alongside k3; k3 classes used by CoachView stay untouched.
