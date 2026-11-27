@@ -36,9 +36,17 @@ describe('missing build files 404 instead of serving index.html', () => {
     expect(r.headers.get('content-type')).toMatch(/javascript/);
   });
 
-  it('404s a missing chunk under /assets/ and /home-scene/, uncached, never as HTML', async () => {
+  it('404s a missing chunk under /assets/, /home-scene/, and /.well-known/, uncached, never as HTML', async () => {
     const base = await setup();
-    for (const p of ['/assets/index-OLDHASH.js', '/assets/index-OLDHASH.css', '/home-scene/gone.jpg']) {
+    for (const p of [
+      '/assets/index-OLDHASH.js',
+      '/assets/index-OLDHASH.css',
+      '/home-scene/gone.jpg',
+      '/.well-known/oauth-protected-resource',
+      '/.well-known/oauth-protected-resource/mcp',
+      '/.well-known/oauth-authorization-server',
+      '/.well-known/openid-configuration/mcp',
+    ]) {
       const r = await fetch(`${base}${p}`);
       expect(r.status, p).toBe(404);
       expect(r.headers.get('content-type'), p).toMatch(/^text\/plain/);

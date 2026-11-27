@@ -84,3 +84,44 @@ it('remote /mcp initializes, lists tools and uses injected fetchMatch', async ()
     expect((await fetch(url)).status).toBe(405);
   } finally { await client.close(); await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }); }
 });
+it('remote /mcp handles CORS, JSON-only Accept headers, and 404s /mcp/.well-known/* subpaths', async () => {
+  const app = express(); app.use(express.json());
+  app.use(createV1Router({ fetchMatch: async () => raw }));
+  // Mirror server.js SPA catch-all to prove /mcp/* subpaths never return index.html.
+  app.get('*', (_req, res) => res.type('text/html').send('<!DOCTYPE html><p>spa</p>'));
+  const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const initBody = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'compat', version: '1' } } });
+  try {
+    // Browser / Inspector preflight and CORS headers.
+    const pre = await fetch(`${base}/mcp`, { method: 'OPTIONS', headers: { Origin: 'https://inspector.example' } });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('access-control-allow-origin')).toBe('*');
+    expect(pre.headers.get('access-control-allow-methods')).toContain('POST');
+
+    // Clients sending Accept: application/json, */*, or omitting Accept work in stateless JSON mode.
+    for (const accept of ['application/json', '*/*', 'application/*', null]) {
+      const headers = { 'Content-Type': 'application/json', ...(accept ? { Accept: accept } : {}) };
+      const r = await fetch(`${base}/mcp`, { method: 'POST', headers, body: initBody });
+      expect(r.status, String(accept)).toBe(200);
+      expect(r.headers.get('access-control-allow-origin'), String(accept)).toBe('*');
+      const data = await r.json();
+      expect(data.result.serverInfo.name).toBe('dota2ai');
+    }
+
+    // Explicitly non-JSON Accept headers are still rejected with 406.
+    for (const bad of ['text/plain', 'text/html', 'application/json;q=0, */*;q=1']) {
+      const r = await fetch(`${base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: bad }, body: initBody });
+      expect(r.status, bad).toBe(406);
+    }
+
+    // OAuth/OpenID discovery probes under /mcp/.well-known/* must return 404 JSON, never 200 HTML.
+    for (const p of ['/mcp/.well-known/oauth-protected-resource', '/mcp/.well-known/openid-configuration', '/mcp/sse']) {
+      const r = await fetch(`${base}${p}`);
+      expect(r.status, p).toBe(404);
+      expect(r.headers.get('content-type'), p).toMatch(/application\/json/);
+      expect(r.headers.get('cache-control'), p).toBe('no-store');
+      expect(await r.text(), p).not.toContain('<!DOCTYPE');
+    }
+  } finally { await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }); }
+});
