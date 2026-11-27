@@ -2,7 +2,7 @@
 /**
  * Ask the coach chat questions the replay settles, and grade each answer against the tools (lib/agent/probes.js).
  *
- *   node scripts/probe-chat.mjs <dir with *.trace.json.gz> [--lang en|zh] [--provider deepseek|glm]
+ *   node scripts/probe-chat.mjs <dir with *.trace.json.gz> [--lang en|zh] [--provider deepseek]
  *                               [--games N] [--kinds a,b] [--concurrency N] [--out <file.json>] [--dry]
  *                               [--regrade <earlier --out file>] [--only <probe id,…>]
  *                               [--min-balance <amount>] [--no-balance-check]
@@ -33,7 +33,7 @@ import { runProbes } from '../lib/agent/probeRun.js';
 import { readBalance, balanceVerdict, DEFAULT_BALANCE_FLOOR } from '../lib/agent/modelBalance.js';
 import { linkHeroNames } from '../packages/review-engine/src/trace/build.js';
 
-const USAGE = 'Usage: node scripts/probe-chat.mjs <dir> [--lang en|zh] [--provider deepseek|glm] [--games N] [--kinds a,b] [--concurrency N] [--out <file.json>] [--dry] [--regrade <file.json>] [--only <id,…>] [--min-balance <amount>] [--no-balance-check]';
+const USAGE = 'Usage: node scripts/probe-chat.mjs <dir> [--lang en|zh] [--provider deepseek] [--games N] [--kinds a,b] [--concurrency N] [--out <file.json>] [--dry] [--regrade <file.json>] [--only <id,…>] [--min-balance <amount>] [--no-balance-check]';
 
 function parseArgs(argv) {
   const o = { lang: 'en', provider: 'deepseek', games: Infinity, kinds: PROBE_KINDS, concurrency: 3, out: null, dry: false, regrade: null, only: null, 'min-balance': DEFAULT_BALANCE_FLOOR, balanceCheck: true }; const rest = [];

@@ -58,14 +58,10 @@ describe('deepReviewProvider', () => {
     expect(deepReviewProvider('deepseek', { DEEPSEEK_API_KEY: 'k', DEEPSEEK_THINKING: 'disabled' })).toMatchObject({ thinking: 'enabled' });
     expect(deepReviewProvider('deepseek', { DEEPSEEK_API_KEY: 'k', DEEP_REVIEW_THINKING: 'disabled' })).toMatchObject({ thinking: 'disabled', extraBody: { thinking: { type: 'disabled' } } });
   });
-  it('GLM 5.3 Flash on Zhipu\'s endpoint', () => {
-    expect(deepReviewProvider('glm', { GLM_API_KEY: 'g' })).toMatchObject({ ok: true, provider: 'glm', baseURL: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-5.3-flash', thinking: 'enabled' });
-    expect(deepReviewProvider('glm', { GLM_API_KEY: 'g', GLM_MODEL: 'glm-5.3' })).toMatchObject({ model: 'glm-5.3' });
-    expect(deepReviewProvider('glm', { GLM_API_KEY: 'g', GLM_MODEL: 'not a model name' })).toMatchObject({ model: 'glm-5.3-flash' });
-  });
-  it('says which key is missing, and rejects unknown providers', () => {
+  it('rejects removed providers (glm, kimi) and unknown providers, and says when DEEPSEEK_API_KEY is missing', () => {
     expect(deepReviewProvider('deepseek', {})).toEqual({ ok: false, error: 'missing_key', needs: 'DEEPSEEK_API_KEY' });
-    expect(deepReviewProvider('glm', {})).toEqual({ ok: false, error: 'missing_key', needs: 'GLM_API_KEY' });
+    expect(deepReviewProvider('glm', { GLM_API_KEY: 'g' })).toEqual({ ok: false, error: 'unknown_provider' });
+    expect(deepReviewProvider('kimi', { KIMI_API_KEY: 'k' })).toEqual({ ok: false, error: 'unknown_provider' });
     expect(deepReviewProvider('other', {})).toEqual({ ok: false, error: 'unknown_provider' });
   });
 });

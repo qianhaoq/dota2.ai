@@ -3,7 +3,7 @@
  * Run the deep-review agent on a match trace and print the verified review.
  *
  *   node scripts/deep-review.mjs <trace.json.gz> --hero <hero> [--lang en|zh]
- *                                [--provider deepseek|glm] [--match <match.json>]
+ *                                [--provider deepseek] [--match <match.json>]
  *                                [--out <file.json>] [--steps]
  *
  * <trace.json.gz> comes from scripts/build-trace.mjs. --match adds the
@@ -12,9 +12,9 @@
  * call to stderr as it happens.
  *
  * Model (--provider, default deepseek): DeepSeek through DEEPSEEK_API_KEY
- * (DEEPSEEK_MODEL, default deepseek-flash) or GLM through GLM_API_KEY
- * (GLM_MODEL, default glm-5.3-flash). Thinking is on; DEEP_REVIEW_THINKING=disabled
- * turns it off. Keys are read from the environment only.
+ * (DEEPSEEK_MODEL, default deepseek-flash). Thinking is on;
+ * DEEP_REVIEW_THINKING=disabled turns it off. Keys are read from the
+ * environment only.
  * Exit status: 0 review written · 2 usage · 3 no API key or unreadable input ·
  * 4 the model produced no verifiable review.
  */
@@ -26,7 +26,7 @@ import { openAiCompatible } from '../lib/agent/loop.js';
 import { runDeepReview } from '../lib/agent/deepReview.js';
 import { linkHeroNames } from '../packages/review-engine/src/trace/build.js';
 
-const USAGE = 'Usage: node scripts/deep-review.mjs <trace.json.gz> --hero <hero> [--lang en|zh] [--provider deepseek|glm] [--match <match.json>] [--out <file.json>] [--steps]';
+const USAGE = 'Usage: node scripts/deep-review.mjs <trace.json.gz> --hero <hero> [--lang en|zh] [--provider deepseek] [--match <match.json>] [--out <file.json>] [--steps]';
 
 export function parseArgs(argv) {
   const o = { hero: null, lang: 'en', provider: 'deepseek', match: null, out: null, steps: false }; const rest = [];

@@ -5,6 +5,7 @@ import { createReplayIngest } from './lib/matchReview/replayIngest/index.js';
 import { createReplayIngestHandler } from './lib/matchReview/replayIngest/endpoint.js';
 import { createV1Router } from './routes/v1/index.js';
 import { securityHeaders } from './routes/v1/support.js';
+import { internalErrorHandler } from './lib/asyncHandler.js';
 
 import { createPhrasingCompletion } from './lib/matchReview/phrasingCompletion.js';
 import express from 'express';
@@ -109,6 +110,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 
@@ -157,8 +159,6 @@ const openai = apiKey ? new OpenAI({
 const deepseekConfig = resolveDeepSeekConfig(process.env);
 const DEEPSEEK_MODEL = deepseekConfig.model;
 // Merged into every DeepSeek chat.completions.create body (thinking toggle);
-// NEVER merged into the Gemini request (see cardProviders). Retired legacy
-// names (deepseek-chat / deepseek-reasoner) are mapped to the default model.
 const deepseekExtraBody = deepseekConfig.extraBody;
 // Never log the raw model value: a key/secret pasted into DEEPSEEK_MODEL must
 // not reach the logs — loggableModelName whitelists/masks it.
@@ -170,15 +170,6 @@ if (deepseekConfig.credentialMappedFrom) {
   // Value withheld on purpose: it looks like an API key/credential.
   console.warn('WARNING: DEEPSEEK_MODEL looks like an API key/credential; ignoring it and using the default model instead.');
 }
-
-// Gemini (OpenAI-compatible endpoint) is the card-review fallback when
-// DeepSeek fails or times out. Same prompt and validation/repair pipeline.
-const geminiApiKey = process.env.GEMINI_API_KEY;
-const gemini = geminiApiKey ? new OpenAI({
-  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-  apiKey: geminiApiKey,
-}) : null;
-const GEMINI_REVIEW_MODEL = process.env.GEMINI_REVIEW_MODEL || 'gemini-3.5-flash-lite';
 
 // ============ External API URLs ============
 const OPENDOTA_API = OPENDOTA_BASE;
@@ -852,12 +843,11 @@ const coachRecent = createRecentService({
     return { rows: value, source };
   },
 });
-// Follow-ups share the review LLM budget and the DeepSeek → Gemini chain.
+// Follow-ups share the review LLM budget and use DeepSeek.
 const coachAskDeps = {
   llm: reviewLlmLimit,
   providers: (messages) => [
     ...(openai ? [{ name: 'deepseek', create: (signal) => openai.chat.completions.create({ model: DEEPSEEK_MODEL, messages, stream: true, ...deepseekExtraBody }, { signal }) }] : []),
-    ...(gemini ? [{ name: 'gemini', create: (signal) => gemini.chat.completions.create({ model: GEMINI_REVIEW_MODEL, messages, stream: true }, { signal, maxRetries: 0 }) }] : []),
   ],
   stream: streamFollowUpCompletion,
   attemptMs: REVIEW_FOLLOW_UP_ATTEMPT_TIMEOUT_MS,
@@ -902,9 +892,7 @@ app.use(createCoachRouter({
 // scripts/trace-worker.mjs) or, on a machine that has the extractor,
 // DOTA_EXTRACT_BIN in process. With none of these every match answers
 // "no parsed replay" and nothing can be started.
-// Models: each one of lib/agent/models.js whose key is set (DEEPSEEK_API_KEY, KIMI_API_KEY, GLM_API_KEY) is
-// offered; AGENT_MODELS (comma separated ids) narrows or widens that. A reader picks one by its id only:
-// addresses, upstream model names and keys never leave this process.
+// Model: DeepSeek only (DEEPSEEK_API_KEY → deepseek-flash).
 const agentOffer = agentModels(process.env);
 const agentBlobs = (() => {
   const name = (process.env.AGENT_BUCKET || '').trim();
@@ -1129,6 +1117,10 @@ app.use(staticNotFound());
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
+
+// Catch-all Express error handler: ensures forwarded async route errors return
+// a generic JSON 500 instead of Express's default HTML error page.
+app.use(internalErrorHandler());
 
 // The example reviews a first visitor is sent to are asked for before this instance takes requests, if this
 // prompt version has none yet (lib/agent/showcase.js). Before, not after: Cloud Run gives an instance CPU
