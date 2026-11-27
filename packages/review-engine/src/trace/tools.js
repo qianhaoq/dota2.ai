@@ -545,7 +545,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const noMana = (a) => a.mana_cost != null && mana != null && mana < a.mana_cost;
     const items = Object.entries(trace.items[h]).filter(([, e]) => heldAt(e, from))
       .map(([k, e]) => ({ item: k.replace(/^item_/, ''), ...(e.cd.length ? { cooldown_left: cooldownLeft(e, from) } : {}) }));
-    const dmg = new Map(); const sources = new Map(); let firstHero = null; const attackers = new Set(); let otherUnitDamage = false;
+    const dmg = new Map(); const sources = new Map(); let firstHero = null; const attackers = new Set(); let otherUnitDamage = false; let unknownDamageSource = false;
     for (const [sec, a, target, infl, value] of trace.damage ?? []) {
       if (target !== npc || sec < Math.floor(from) || sec > t) continue;
       const key = `${a}|${infl}`;
@@ -555,7 +555,11 @@ export function deathContext(trace, args = {}, ctx = {}) {
       const ah = heroOfName(trace, a);
       if (ah >= 0 && (firstHero == null || sec < firstHero)) firstHero = sec;
       if (ah >= 0 && trace.heroes[ah].team !== trace.heroes[h].team) attackers.add(ah);
-      else if (ah < 0 && killerKind(trace, a, h, npc) === 'other_unit') otherUnitDamage = true;
+      else if (ah < 0) {
+        const ak = killerKind(trace, a, h, npc);
+        if (ak === 'other_unit') otherUnitDamage = true;
+        else if (ak == null) unknownDamageSource = true;
+      }
     }
     const inWindow = (x) => x >= from && x <= t + 0.05;
     const dt = (x) => Math.round((x - t) * 10) / 10;
@@ -567,7 +571,11 @@ export function deathContext(trace, args = {}, ctx = {}) {
     for (const m of trace.modifiers) if (m[1] === npc && m[4] === 1 && m[6] !== 'i' && inWindow(m[0]) && (disabledAt == null || m[0] < disabledAt)) disabledAt = m[0];
     const castNames = new Set(myCasts.map((c) => trace.names[c[2]]));
     const kKind = killerKind(trace, d[2], h, npc);
-    const nonHeroNoEnemy = !hasDamageLog || kKind == null ? null : NON_HERO_SUICIDE_KINDS.has(kKind) && attackers.size === 0 && !otherUnitDamage;
+    // An unknown damage attacker (-1 / dota_unknown) could be an enemy hero or summon: keep null when it prevents
+    // establishing that no enemy hero/summon damaged the player (Codex P1 on #464).
+    const nonHeroNoEnemy = !hasDamageLog || kKind == null ? null
+      : (!NON_HERO_SUICIDE_KINDS.has(kKind) || attackers.size > 0 || otherUnitDamage) ? false
+      : unknownDamageSource ? null : true;
     const traceEnd = typeof trace.t0 === 'number' && typeof trace.n === 'number' ? trace.t0 + trace.n - 1 : null;
     const alliesKnownAtDeath = Boolean(atDeath.me && atDeath.me.x != null && atDeath.me.y != null)
       && trace.heroes.every((o, j) => j === h || o.team !== trace.heroes[h].team || heroNearKnown(j, t));

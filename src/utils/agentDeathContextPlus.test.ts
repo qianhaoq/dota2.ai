@@ -296,4 +296,20 @@ describe('death_context & ability_audit P1-1 enhancements', () => {
     const blanked: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' }, { ultimateOf });
     expect(blanked.deaths[0].disable_seconds_in_window).toBeNull();
   });
+
+  it('keeps non_hero_death_without_enemy_hero_damage null when a window damage row has an unknown attacker (-1) (Codex P1 on #464)', () => {
+    const tr = makeTrace({
+      extraNames: ['npc_dota_badguys_tower1_bot'],
+      damage: [
+        [95, -1, 0, -1, 800], // unknown attacker (-1 / dota_unknown)
+        [99, 5, 0, -1, 100],  // tower killing blow
+      ],
+      deaths: [[100, 0, 5, 1]],
+    });
+    const dc: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' }, { ultimateOf });
+    expect(dc.deaths[0].killer_kind).toBe('tower_or_fountain');
+    expect(dc.deaths[0].non_hero_death_without_enemy_hero_damage).toBeNull();
+    expect(dc.deaths_not_known.non_hero_without_enemy_hero_damage).toBe(1);
+    expect(dc.deaths_where.non_hero_without_enemy_hero_damage).toEqual([]);
+  });
 });
