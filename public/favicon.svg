@@ -1,10 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#A93226;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#000000;stop-opacity:1" />
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#131923" />
+      <stop offset="100%" stop-color="#07090d" />
+    </linearGradient>
+    <linearGradient id="gold" x1="16" y1="12" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f5ca74" />
+      <stop offset="100%" stop-color="#c98b2b" />
     </linearGradient>
   </defs>
-  <rect width="100" height="100" rx="20" fill="url(#grad)"/>
-  <text x="50" y="68" font-family="serif" font-size="50" font-weight="bold" fill="white" text-anchor="middle">D</text>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)" stroke="#e5ae4e" stroke-opacity="0.35" stroke-width="2" />
+  <path d="M14 48L14 26L36 48Z" fill="#52c972" fill-opacity="0.22" />
+  <path d="M50 16L50 38L28 16Z" fill="#e86452" fill-opacity="0.22" />
+  <path d="M32 13L49 32L32 51L15 32Z" stroke="url(#gold)" stroke-width="2.5" fill="#e5ae4e" fill-opacity="0.1" />
+  <path d="M32 21L41 32L32 43L23 32Z" fill="url(#gold)" />
 </svg>
