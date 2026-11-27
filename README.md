@@ -26,7 +26,7 @@ Paste a match ID and pick the hero you played. About four minutes later (one to 
 | Where | How | Key needed |
 |---|---|---|
 | **Web** | Open [dota2.ai](https://dota2.ai) and paste a match ID, a match link, or your Steam friend code | No |
-| **DSH** | Install the [plugin](#dsh-plugin) once; every DSH session can review a game | No |
+| **DSH** | Install the [plugin](#dsh-plugin) once for a standalone review page + session tools powered by your DSH model | Uses DSH's |
 | **Any MCP agent** | Add `https://dota2.ai/mcp` ([below](#mcp)) | No |
 | **Terminal** | `node packages/cli/bin/dota2ai.js` from a checkout ([below](#terminal)) | No |
 | **HTTP** | `GET /api/v1/review/<match>` — [`openapi.json`](https://dota2.ai/openapi.json), [`llms.txt`](https://dota2.ai/llms.txt) | No |
@@ -40,10 +40,10 @@ A native plugin for [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepS
 ```sh
 # from the latest dsh-v* release: https://github.com/qianhaoq/dota2.ai/releases
 sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.1.0.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.0.tgz
 ```
 
-Then, in any DSH session: *"Review my Dota 2 match 9100904020 — I played Beastmaster."*
+Open **dota2.ai** from the left sidebar in `dsh web` for the full match review page (scoreboard, minimap moment replay, checked evidence cards, coach chat, and model switcher across your configured DSH models), or ask in any DSH session: *"Review my Dota 2 match 9100904020 — I played Beastmaster."*
 
 | Tool | What it does |
 |---|---|
@@ -55,7 +55,7 @@ Then, in any DSH session: *"Review my Dota 2 match 9100904020 — I played Beast
 | `dota2ai_goal_check` | Whether a later game met a goal |
 | `dota2ai_hero_matchup` | Hero against hero, from pro games and by rank bracket |
 
-It also registers a `dota2ai` skill that tells the model how to use them. It installs next to the [DSH Dota coach](https://github.com/qianhaoq/qh-dsh-dota-coach) plugin (`dota_*` tools), which parses replays on your machine and keeps your notes. Settings and details: [`packages/dsh`](packages/dsh/README.md).
+It also registers a `dota2ai` skill and clickable tool cards that jump straight to the review page. Reviews, cached ~250 KB replay traces and your next-game goal stay under `$DSH_HOME/dota2ai`. Settings and details: [`packages/dsh`](packages/dsh/README.md).
 
 ### MCP
 

@@ -6,11 +6,20 @@ description: Review a player's own public Dota 2 games with dota2.ai inside DSH 
 # dota2.ai coach (DSH plugin)
 
 dota2.ai reviews one player's public Dota 2 game and backs every point with
-numbers from that game. You relay and organise what the tools return; you do
-not add Dota knowledge of your own. No keys are needed: the tools call the
-public dota2.ai API as the user.
+numbers from that game. Inside DSH:
 
-Answer in the user's language and pass it as `lang` (`en` or `zh`).
+- `dota2ai_replay_review` and `dota2ai_coach_ask` run locally using **DSH's own
+  configured model** (no separate `dota2.ai` API key needed), checking every
+  claim against the parsed replay trace cached under `$DSH_HOME/dota2ai`.
+- Public match scoreboards and ~250 KB parsed replay traces are fetched from
+  `dota2.ai` (or parsed offline when `extractorBin` is configured).
+- Users can also open the **dota2.ai** panel in DSH's left sidebar (or click
+  **Open in dota2.ai panel** on any tool card in chat) for the full interactive
+  page: minimap moment replay, checked evidence drawers, model switcher, and
+  follow-up coach Q&A.
+
+You relay and organise what the tools return; you do not add Dota knowledge of
+your own. Answer in the user's language and pass it as `lang` (`en` or `zh`).
 
 ## Tools
 
@@ -34,21 +43,21 @@ resolved, so ask for the friend code.
 
 `dota2ai_replay_review` never blocks for minutes. Read `status`:
 
-- `parsing` / `reviewing`: the replay is being fetched and read, or the coach
-  is going through it. Tell the user it takes 2–4 minutes, wait
+- `parsing` / `reviewing`: the replay trace is being prepared or your DSH model
+  is investigating it locally. Tell the user it takes 2–4 minutes, wait
   `poll_after_sec`, then call again with the **same arguments**.
 - `pick_hero`: ask the user which hero they played (`heroes` lists the game's);
   never guess.
 - `ready`: `verdict`, `mainline`, `findings` (each with `evidence` clocks and
   numbers, `fix`, sometimes a `rule`), `did_well`, `next_game`, `blind_spots`
   and `url`. Quote times and numbers as given, say what the review cannot see
-  (`blind_spots`), and give the `url`: it has every piece of evidence and a
-  coach to ask.
-- `failed`: offer to try again; only then call with `retry: true` (a new start,
-  counted on the caller's limit of about five reviews per ten minutes).
-- `replay_unavailable` / `unavailable`: Valve keeps replays about two weeks.
-  Fall back to `dota2ai_coach_report`, and say the review is from match data,
-  not the replay.
+  (`blind_spots`), and point out the DSH `dota2.ai` panel (or public `url` for
+  sharing).
+- `failed`: offer to try again; only then call with `retry: true`.
+- `replay_unavailable` / `unavailable`: if `reason` is `model_not_configured`,
+  ask the user to configure/select a model in DSH. If the replay expired (Valve
+  keeps replays about two weeks), fall back to `dota2ai_coach_report` and say
+  the review is from match data, not the replay.
 
 ## Reading the coach report
 
@@ -60,8 +69,10 @@ resolved, so ask for the friend code.
 - `match.parsed: false` or non-empty `data_gaps`: only a basic review exists.
   List the gaps. Missing evidence is not evidence of a mistake.
 - `dota2ai_coach_cases`: what went with winning, not proof of cause.
-- `dota2ai_coach_ask` answers only from the report; `fallback: true` means no
-  AI was available and the answer is the matching part of the report.
+- `dota2ai_coach_ask` answers from the cached replay trace when present (checked
+  against replay records) or from the match report using DSH's model;
+  `fallback: true` means no model was available and the answer is the matching
+  part of the report.
 - `dota2ai_hero_matchup`: lead with verdicts *with their game counts* (`null`
   = too few games: say so). `by_rank` is public games from STRATZ: credit
   STRATZ (`rank_source.attribution`) when you quote it. Items are "pros build
@@ -72,7 +83,7 @@ resolved, so ask for the friend code.
 **"Review my last game"**: `dota2ai_recent_matches` → newest `match_id` and its
 hero → `dota2ai_replay_review` (poll until `ready`) → the verdict, the findings
 on the player with one piece of evidence each, and the one thing to do next
-game → the `url`.
+game → open in the DSH `dota2.ai` panel or share `url`.
 
 **"Why did I lose?"**: the replay review, or `dota2ai_coach_report` with
 `section: why` → for each cause on the player: what happened (evidence) → what
@@ -89,5 +100,5 @@ the goal owner's own games.
 - Present a comparison or an association as a certain cause.
 - Review a private match or guess whose account or hero a game is.
 
-Links: `https://dota2.ai/r/<matchId>` (the replay review's `url` already has
-the hero and language).
+Public share links: `https://dota2.ai/r/<matchId>` (the replay review's `url`
+already has the hero and language).

@@ -26,7 +26,7 @@
 | 在哪儿 | 怎么做 | 要 Key 吗 |
 |---|---|---|
 | **网页** | 打开 [dota2.ai](https://dota2.ai/?lang=zh)，贴比赛编号、比赛链接或 Steam 好友代码 | 不要 |
-| **DSH** | 装一次[插件](#dsh-插件)，之后每个 DSH 会话都能复盘 | 不要 |
+| **DSH** | 装一次[插件](#dsh-插件)，拥有完整独立复盘页与会话工具，直接使用 DSH 宿主模型 | 用 DSH 的 |
 | **任意 MCP Agent** | 添加 `https://dota2.ai/mcp`（[见下](#mcp)） | 不要 |
 | **终端** | 在仓库里运行 `node packages/cli/bin/dota2ai.js`（[见下](#终端)） | 不要 |
 | **HTTP** | `GET /api/v1/review/<比赛编号>`——[`openapi.json`](https://dota2.ai/openapi.json)、[`llms.txt`](https://dota2.ai/llms.txt) | 不要 |
@@ -40,10 +40,10 @@
 ```sh
 # 从最新的 dsh-v* Release 下载：https://github.com/qianhaoq/dota2.ai/releases
 sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.1.0.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.0.tgz
 ```
 
-然后在任意 DSH 会话里说：*「复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。」*
+启动 `dsh web` 后点击左侧栏 **dota2.ai** 即可使用完整复盘页面（记分板、小地图走位回放、录像证据卡、教练追问，以及切换你在 DSH 中配置的任意模型对比复盘）；也可以在任意会话里直接说：*「复盘我的 Dota 2 比赛 9100904020，我玩的是兽王。」*
 
 | 工具 | 做什么 |
 |---|---|
@@ -55,7 +55,7 @@ dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.1.0.tgz
 | `dota2ai_goal_check` | 之后的一局有没有做到目标 |
 | `dota2ai_hero_matchup` | 英雄对位：职业比赛和分段位数据 |
 
-插件还会注册一份 `dota2ai` skill，教模型怎么用这些工具。可以和 [DSH Dota 教练](https://github.com/qianhaoq/qh-dsh-dota-coach)插件（`dota_*` 工具，在本机解析录像、保存笔记）同时安装。配置和细节见 [`packages/dsh`](packages/dsh/README.md)。
+插件还会注册一份 `dota2ai` skill 与会话内工具跳转卡片；生成的复盘、约 250 KB 的录像轨迹缓存与下一局训练目标保存在 `$DSH_HOME/dota2ai`。配置和细节见 [`packages/dsh`](packages/dsh/README.md)。
 
 ### MCP
 

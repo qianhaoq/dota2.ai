@@ -1,5 +1,6 @@
 /** Client for the patch advisor (lib/patch/router.js). */
 import { readChatStream, type ChatEvents, type ChatTurn } from '../agent/api';
+import { runtimeFetch } from '../runtime/dota2aiRuntime';
 
 /** One hero in a list of movers: public win rate and pick rate before and since the patch (shares, not percent). */
 export interface MoverRow {
@@ -22,13 +23,13 @@ export interface PatchOverview {
 }
 
 export const fetchPatchOverview = async (lang: string, signal?: AbortSignal): Promise<PatchOverview> => {
-  const res = await fetch(`/api/patch?lang=${lang}`, { signal });
+  const res = await runtimeFetch(`/api/patch?lang=${lang}`, { signal });
   if (!res.ok) throw new Error(`patch overview ${res.status}`);
   return res.json();
 };
 
 /** One question to the advisor over SSE. */
 export async function askAdvisor(body: { lang: string; question: string; history: ChatTurn[] }, ev: ChatEvents, signal?: AbortSignal): Promise<void> {
-  const res = await fetch('/api/patch/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+  const res = await runtimeFetch('/api/patch/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
   return readChatStream(res, ev);
 }
