@@ -39,7 +39,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180   # a failed source is tried again after 2 and 10 minutes (data-refresh.cjs)
     env:
       BRANCH: chore/data-refresh
     steps:
