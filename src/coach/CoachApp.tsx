@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CoachApiError, fetchCoachReport, fetchPatchNews, fetchRecentMatches } from './api';
 import { markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
-import type { Bi, Evidence, Finding, RecentMatch, RecentMatches, Review } from './types';
+import type { Bi, Finding, RecentMatch, RecentMatches } from './types';
 import { SafeImg, clock, useLang, type Lang } from './ui';
 import { AccessModes, HowItWorks } from './HomeBlocks';
 import { AUTHOR_EMAIL, AUTHOR_X_URL, GITHUB_ISSUES_URL, HomeFeedback } from './HomeFeedback';
@@ -16,6 +16,7 @@ import './cards.css';
 import './review.css';
 
 const EXAMPLE_MATCH = '9091400302';
+const SAMPLE_REPLAY_MATCH = '9100904020';
 
 export { SafeImg };
 
@@ -24,8 +25,10 @@ const UI = {
   heroTitle: { en: 'Paste a match.\nGet a coach’s read.', zh: '贴一场比赛，\n得到一份教练复盘。', ru: 'Вставьте матч.\nПолучите разбор тренера.' },
   placeholder: { en: 'Match ID or OpenDota / Dotabuff / STRATZ link', zh: '比赛 ID，或 OpenDota / Dotabuff / STRATZ 链接', ru: 'ID матча или ссылка OpenDota / Dotabuff / STRATZ' },
   review: { en: 'Review', zh: '开始复盘', ru: 'Разобрать' },
+  clearInput: { en: 'Clear input', zh: '清空输入', ru: 'Очистить поле' },
   invalid: { en: 'That does not look like a match ID.', zh: '这看起来不是一个比赛 ID。', ru: 'Это не похоже на ID матча.' },
   tryExample: { en: 'Try an example', zh: '试试示例', ru: 'Попробовать пример' },
+  liveSample: { en: 'Sample review', zh: '查看真实复盘样本', ru: 'Пример разбора' },
   detectedMatch: { en: 'Detected match #{id}', zh: '已识别为比赛 #{id}', ru: 'Распознан матч #{id}' },
   detectedAccount: { en: 'Detected Steam account {id} — opens recent games', zh: '已识别为 Steam 账号 {id}，将打开最近比赛', ru: 'Распознан аккаунт Steam {id} — откроются недавние игры' },
   p1t: { en: 'Evidence first', zh: '证据先行', ru: 'Сначала факты' },
@@ -44,6 +47,9 @@ const UI = {
   myGamesShort: { en: 'My games', zh: '我的比赛', ru: 'Мои игры' },
   recentTitle: { en: 'Your recent games', zh: '你最近的比赛', ru: 'Ваши недавние игры' },
   recentSub: { en: 'Pick a game — the review opens on your hero.', zh: '选一场，复盘会直接打开你的英雄。', ru: 'Выберите игру — разбор откроется сразу для вашего героя.' },
+  statGames: { en: 'Matches', zh: '最近场次', ru: 'Матчи' },
+  statRecord: { en: 'Win rate', zh: '近期胜率', ru: 'Винрейт' },
+  statKda: { en: 'Avg KDA', zh: '场均 KDA', ru: 'Средний KDA' },
   recentEmpty: {
     en: 'No public games for this account. If it is yours, turn on “Expose Public Match Data” in Dota 2’s settings, play a game, then come back.',
     zh: '这个账号没有公开的比赛。如果是你的账号，请在 Dota 2 设置里打开「公开比赛数据」（Expose Public Match Data），打完一局再回来。',
@@ -165,7 +171,7 @@ const UI = {
   copied: { en: 'Copied', zh: '已复制', ru: 'Скопировано' },
 } satisfies Record<string, Bi | Record<string, Bi>>;
 
-const AREA: Record<Finding['area'], Bi> = {
+export const AREA: Record<Finding['area'], Bi> = {
   items: { en: 'Items', zh: '出装', ru: 'Предметы' },
   farm: { en: 'Farm', zh: '发育', ru: 'Фарм' },
   deaths: { en: 'Deaths', zh: '死亡', ru: 'Смерти' },
@@ -183,15 +189,33 @@ const tally = (goalId: string) => {
 
 /* ---------------------------------------------------------------- shell */
 
-/** Compact active-goal indicator in the top bar; details open on click. */
+/** Compact active-goal indicator in the top bar; details open on click and dismiss on outside click or Escape. */
 const GoalNavBadge: React.FC = () => {
   const { lang, L } = useLang();
   const goal = useActiveGoal();
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointer = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
   if (!goal) return null;
   const tl = tally(goal.id);
   return (
-    <div className="cx-goal-nav">
+    <div ref={wrapRef} className="cx-goal-nav">
       <button type="button" className="cx-goal-pill" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
         <span className="cx-goal-dot" aria-hidden="true" />
         <span>{L(UI.goalPill)}{tl.n > 0 ? ` ${tl.met}/${tl.n}` : ''}</span>
@@ -223,7 +247,11 @@ export const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome
     <div className="cx">
       <header className="cx-top">
         <Link to={`/?lang=${lang}`} className="cx-brand" aria-label="dota2.ai home">
-          <span className="cx-mark" aria-hidden="true">◆</span> dota2<span className="cx-dot">.ai</span>
+          <svg className="cx-mark-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2.5L21.5 12L12 21.5L2.5 12Z" stroke="currentColor" strokeWidth="1.75" fill="currentColor" fillOpacity="0.14" />
+            <path d="M12 7L17 12L12 17L7 12Z" fill="currentColor" />
+          </svg>
+          <span className="cx-brand-word">dota2<span className="cx-dot">.ai</span></span>
           <span className="cx-brand-sub">coach</span>
         </Link>
         <div className="cx-top-right">
@@ -241,7 +269,7 @@ export const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome
       </header>
       <main className={wide ? 'cx-main cx-main--wide' : 'cx-main'}>{children}</main>
       <footer className="cx-foot">
-        <span>{L(UI.footer)}</span>
+        <span className="cx-foot-note">{L(UI.footer)}</span>
         <nav className="cx-foot-links" aria-label="Links">
           <a href={GITHUB_ISSUES_URL} target="_blank" rel="noopener noreferrer">GitHub Issues</a>
           <a href={AUTHOR_X_URL} target="_blank" rel="noopener noreferrer">X (@kilocean)</a>
@@ -384,6 +412,24 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
     return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 6);
   }, [data]);
 
+  // Aggregate telemetry strictly over known fields (never treating null as 0 or false).
+  const stats = useMemo(() => {
+    if (!data || data.matches.length === 0) return null;
+    const decided = data.matches.filter((m) => typeof m.won === 'boolean');
+    const wins = decided.filter((m) => m.won === true).length;
+    const losses = decided.length - wins;
+    const winPct = decided.length > 0 ? Math.round((wins / decided.length) * 100) : null;
+    const withKda = data.matches.filter((m): m is RecentMatch & { kda: [number, number, number] } => Array.isArray(m.kda) && m.kda.length === 3);
+    let kdaRatio: string | null = null;
+    if (withKda.length > 0) {
+      const sumK = withKda.reduce((s, m) => s + m.kda[0], 0);
+      const sumD = withKda.reduce((s, m) => s + m.kda[1], 0);
+      const sumA = withKda.reduce((s, m) => s + m.kda[2], 0);
+      kdaRatio = ((sumK + sumA) / Math.max(1, sumD)).toFixed(2);
+    }
+    return { total: data.matches.length, decided: decided.length, wins, losses, winPct, kdaRatio };
+  }, [data]);
+
   if (!valid) return <Shell hideMyGames><ErrorBlock text={L(UI.accountInvalid)} /></Shell>;
   if (error) {
     const text = error.status === 429 ? L(UI.rateLimited) : error.code === 'network' ? L(UI.network) : L(UI.upstream);
@@ -405,13 +451,38 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
       <section className="cx-recent">
         <div className="cx-recent-head">
           <div>
-            <p className="cx-eyebrow">{L(UI.recentTitle)} · #{accountId}</p>
+            <p className="cx-eyebrow">{L(UI.recentTitle)} · <span className="cx-mono">#{accountId}</span></p>
             <h1 className="cx-h2">{L(UI.recentSub)}</h1>
           </div>
           <button type="button" className="cx-ghost" onClick={() => { rememberAccount(null); navigate(`/?lang=${lang}`); }}>
             {L(UI.notMe)}
           </button>
         </div>
+
+        {stats && (stats.winPct != null || stats.kdaRatio != null) && (
+          <div className="pl-stats" aria-label={L(UI.recentTitle)}>
+            <div className="pl-stat">
+              <span className="pl-stat-k">{L(UI.statGames)}</span>
+              <b className="pl-stat-v">{stats.total}</b>
+            </div>
+            {stats.winPct != null && (
+              <div className="pl-stat">
+                <span className="pl-stat-k">{L(UI.statRecord)}</span>
+                <div className="pl-stat-row">
+                  <b className="pl-stat-v">{stats.winPct}%</b>
+                  <small className="pl-stat-sub">{stats.wins}W – {stats.losses}L</small>
+                </div>
+                <div className="pl-wr-bar" aria-hidden="true"><span style={{ width: `${stats.winPct}%` }} /></div>
+              </div>
+            )}
+            {stats.kdaRatio != null && (
+              <div className="pl-stat">
+                <span className="pl-stat-k">{L(UI.statKda)}</span>
+                <b className="pl-stat-v">{stats.kdaRatio}</b>
+              </div>
+            )}
+          </div>
+        )}
 
         {goal && isGoalOwner && (
           <div className="cx-goal cx-recent-goal">
@@ -461,12 +532,13 @@ const PlayerPage: React.FC<{ accountId: string }> = ({ accountId }) => {
               </div>
               {topHeroes.length > 1 && (
                 <div className="cx-hero-filters" role="group" aria-label="Hero filter">
-                  {topHeroes.map(({ hero }) => (
+                  {topHeroes.map(({ hero, count }) => (
                     <button
                       key={hero.id}
                       type="button"
                       className={`cx-hero-chip ${heroFilter === hero.id ? 'is-on' : ''}`}
                       aria-pressed={heroFilter === hero.id}
+                      data-count={count > 1 ? `×${count}` : undefined}
                       onClick={() => setHeroFilter((cur) => (cur === hero.id ? null : hero.id))}
                     >
                       {hero.icon && <SafeImg src={hero.icon} alt="" />}
@@ -590,7 +662,7 @@ const PatchNews: React.FC<{ onCta: () => void }> = ({ onCta }) => {
 };
 
 /** The review page's snippets: same commands and tool names as the home page (accessSnippets.ts). */
-const AgentSnippets: React.FC<{ matchId: string }> = ({ matchId }) => {
+export const AgentSnippets: React.FC<{ matchId: string }> = ({ matchId }) => {
   const { L } = useLang();
   const snippets = accessSnippets(matchId).filter((m) => m.lines.length);
   const [tab, setTab] = useState(snippets[0].mode);
@@ -619,9 +691,6 @@ const HOME = {
     ru: 'Тренер, который смотрит ваш реплей. Он находит, что решило исход игры, показывает ключевые моменты и говорит, что изменить в следующем матче.',
   },
   hint: { en: 'Match ID, link, or friend code', zh: '比赛 ID、链接或好友码', ru: 'ID матча, ссылка или код друга' },
-  samplesTitle: { en: 'Or open a sample review', zh: '或者，打开一份示例复盘', ru: 'Или откройте пример разбора' },
-  samplesSub: { en: 'Match {id} · Dire victory', zh: '比赛 {id} · 夜魇胜利', ru: 'Матч {id} · Победа Сил Тьмы' },
-  open: { en: 'Open the review', zh: '打开复盘', ru: 'Открыть разбор' },
   modeLabel: { en: 'What are you pasting?', zh: '你要输入什么？', ru: 'Что вы вставляете?' },
   modeMatch: { en: 'Match', zh: '比赛', ru: 'Матч' },
   modeAccount: { en: 'Friend code', zh: '好友码', ru: 'Код друга' },
@@ -666,51 +735,91 @@ export const CoachHome: React.FC = () => {
   return (
     <Shell isHome wide>
       <div className="hm-first">
-      <div className="hm-left">
-      <section className="cx-hero hm-map" data-state={state}>
-        <svg className="hm-minimap" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-          <polygon className="hm-radiant" points="0,100 0,52 48,100" />
-          <polygon className="hm-dire" points="100,0 52,0 100,48" />
-          <path className="hm-lane" d="M6,94 L6,8 L92,8" />
-          <path className="hm-lane" d="M8,94 L94,94 L94,8" />
-          <path className="hm-lane" d="M10,90 L90,10" />
-          <path className="hm-river" d="M0,30 C 28,40 40,62 70,100" />
-        </svg>
-        <div className="hm-core">
-          <p className="cx-eyebrow">{L(UI.tagline)}</p>
-          <h1 className="cx-h1 hm-title">{L(HOME.title)}</h1>
-          <p className="hm-sub">{L(HOME.sub)}</p>
-          <div className="hm-mode" role="radiogroup" aria-label={L(HOME.modeLabel)}>
-            {(['match', 'account'] as const).map((m) => (
-              <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? 'is-on' : ''}
-                onClick={() => { setMode(m); setError(null); inputRef.current?.focus(); }}>
-                {L(m === 'match' ? HOME.modeMatch : HOME.modeAccount)}
-              </button>
-            ))}
-          </div>
-          <form className="cx-search hm-ford" onSubmit={(e) => { e.preventDefault(); go(value); }}>
-            <input
-              ref={inputRef} aria-label={L(mode === 'match' ? UI.placeholder : UI.accountPlaceholder)}
-              placeholder={L(mode === 'match' ? UI.placeholder : UI.accountPlaceholder)} value={value} inputMode="text" autoFocus
-              onChange={(e) => { setValue(e.target.value); setError(null); }}
-            />
-            <button type="submit">{detected.kind === 'account' ? L(UI.showRecent) : L(UI.review)}</button>
-          </form>
-          <p className="hm-status" aria-live="polite">
-            {mode === 'match' && detected.kind === 'match' && value.trim() !== detected.id
-              ? <span className="cx-detect-pill is-match">{L(UI.detectedMatch).replace('{id}', detected.id)}</span>
-              : detected.kind === 'account'
-                ? <span className="cx-detect-pill is-account">{L(UI.detectedAccount).replace('{id}', detected.id)}</span>
-                : mode === 'account' ? <span className="hm-hint">{L(UI.accountPlaceholder)}</span>
-                : <span className="hm-hint">{L(HOME.hint)} · {L(UI.tryExample)}: <button type="button" className="hm-example" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button></span>}
-          </p>
-          {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : error === 'account' ? UI.accountInvalid : UI.invalid)}</p>}
-        </div>
-      </section>
+        <div className="hm-left">
+          <section className="cx-hero hm-map" data-state={state}>
+            <svg className="hm-minimap" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+              <polygon className="hm-radiant" points="0,100 0,46 54,100" />
+              <polygon className="hm-dire" points="100,0 46,0 100,54" />
+              <path className="hm-grid" d="M25,0 V100 M50,0 V100 M75,0 V100 M0,25 H100 M0,50 H100 M0,75 H100" />
+              <path className="hm-lane" d="M7,93 L7,9 L91,9" />
+              <path className="hm-lane" d="M9,93 L93,93 L93,9" />
+              <path className="hm-lane" d="M10,90 L90,10" />
+              <path className="hm-river" d="M0,26 C 28,38 44,60 76,100" />
+              <circle className="hm-node is-radiant" cx="13" cy="87" r="1.4" />
+              <circle className="hm-node is-dire" cx="87" cy="13" r="1.4" />
+              <circle className="hm-pit" cx="38" cy="44" r="2.2" />
+            </svg>
+            <div className="hm-core">
+              <p className="cx-eyebrow hm-badge"><span className="hm-badge-dot" aria-hidden="true" />{L(UI.tagline)}</p>
+              <h1 className="cx-h1 hm-title">{L(HOME.title)}</h1>
+              <p className="hm-sub">{L(HOME.sub)}</p>
+              <div className="hm-mode" role="radiogroup" aria-label={L(HOME.modeLabel)}>
+                {(['match', 'account'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="radio"
+                    aria-checked={mode === m}
+                    className={mode === m ? 'is-on' : ''}
+                    onClick={() => { setMode(m); setError(null); inputRef.current?.focus(); }}
+                  >
+                    {L(m === 'match' ? HOME.modeMatch : HOME.modeAccount)}
+                  </button>
+                ))}
+              </div>
+              <form className="cx-search hm-ford" onSubmit={(e) => { e.preventDefault(); go(value); }}>
+                <span className="hm-ford-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m20 20-3.5-3.5" />
+                  </svg>
+                </span>
+                <input
+                  ref={inputRef}
+                  aria-label={L(mode === 'match' ? UI.placeholder : UI.accountPlaceholder)}
+                  placeholder={L(mode === 'match' ? UI.placeholder : UI.accountPlaceholder)}
+                  value={value}
+                  inputMode="text"
+                  autoFocus
+                  onChange={(e) => { setValue(e.target.value); setError(null); }}
+                />
+                {value.length > 0 && (
+                  <button
+                    type="button"
+                    className="cx-input-clear"
+                    aria-label={L(UI.clearInput)}
+                    onClick={() => { setValue(''); setError(null); inputRef.current?.focus(); }}
+                  >
+                    ✕
+                  </button>
+                )}
+                <button type="submit" className="hm-submit">{detected.kind === 'account' ? L(UI.showRecent) : L(UI.review)}</button>
+              </form>
+              <div className="hm-status-row">
+                <p className="hm-status" aria-live="polite">
+                  {mode === 'match' && detected.kind === 'match' && value.trim() !== detected.id
+                    ? <span className="cx-detect-pill is-match">{L(UI.detectedMatch).replace('{id}', detected.id)}</span>
+                    : detected.kind === 'account'
+                      ? <span className="cx-detect-pill is-account">{L(UI.detectedAccount).replace('{id}', detected.id)}</span>
+                      : mode === 'account' ? <span className="hm-hint">{L(UI.accountPlaceholder)}</span>
+                      : (
+                        <span className="hm-hint">
+                          {L(HOME.hint)} · {L(UI.tryExample)}:{' '}
+                          <button type="button" className="hm-example" onClick={() => go(EXAMPLE_MATCH)}>{EXAMPLE_MATCH}</button>
+                        </span>
+                      )}
+                </p>
+                <Link to={`/r/${SAMPLE_REPLAY_MATCH}?hero=beastmaster&lang=${lang}`} className="hm-sample-link">
+                  {L(UI.liveSample)} →
+                </Link>
+              </div>
+              {error && <p className="cx-err" role="alert">{L(error === 'vanity' ? UI.accountVanity : error === 'account' ? UI.accountInvalid : UI.invalid)}</p>}
+            </div>
+          </section>
 
-      {latestFor && <div className="hm-latest"><LatestGame accountId={latestFor} /></div>}
-      </div>
-      <HowItWorks />
+          {latestFor && <div className="hm-latest"><LatestGame accountId={latestFor} /></div>}
+        </div>
+        <HowItWorks />
       </div>
 
       {/* The patch, one block: Valve's news as its top strip, the advisor under it. */}
@@ -761,4 +870,3 @@ const ResultPill: React.FC<{ r: string }> = ({ r }) => {
   const { L } = useLang();
   return <span className={`cx-goal-result is-${r}`}>{L(UI.goalResult[r])}</span>;
 };
-
