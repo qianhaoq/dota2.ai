@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { createTraceBuilder, linkHeroNames, TRACE_SCHEMA, TRACE_TOOLS, runTraceTool, traceSeconds, traceRegion, goldAdvantage, goldLead, netWorthGraph } from '../src/trace/index.js';
+import { createTraceBuilder, linkHeroNames, TRACE_SCHEMA, TRACE_TOOLS, runTraceTool, traceSeconds, traceRegion, goldAdvantage, goldLead, netWorthGraph, realDeaths, resurrections } from '../src/trace/index.js';
 
 /**
  * A real ranked game (9100904020, Beastmaster on Dire, lost in 42:31), built
@@ -974,11 +974,14 @@ describe('trace tools on a real game', () => {
     // The filler buildings around the base are not objectives.
     expect(trace.buildings.filter((b) => /fillers/.test(trace.names[b[1]]))).not.toHaveLength(0);
     expect(JSON.stringify(r)).not.toMatch(/fillers/);
-    // Every hero death of the game is in exactly one stretch.
+    // Every real hero death of the game is in exactly one stretch; Phantom Assassin's Aegis revival at 36:43 is in resurrections, not hero deaths.
     const sum = (m) => Object.values(m).reduce((a, b) => a + b, 0);
-    expect(sum(r.team_hero_deaths_by_phase) + sum(r.opponents_hero_deaths_by_phase)).toBe(trace.deaths.length);
-    // The same fights as match_overview, by when they began: six with fewer lost, nine with more, one even.
     const o = runTraceTool(trace, 'match_overview', {}, { perspective: 'beastmaster' });
+    expect(sum(r.team_hero_deaths_by_phase) + sum(r.opponents_hero_deaths_by_phase)).toBe(realDeaths(trace).length);
+    expect(realDeaths(trace).length).toBe(o.heroes.reduce((n, h) => n + h.deaths, 0));
+    expect(realDeaths(trace).length + resurrections(trace).length).toBe(trace.deaths.length);
+    expect(resurrections(trace)).toMatchObject([{ by: 'aegis', t: 2203.2 }]);
+    // The same fights as match_overview, by when they began: six with fewer lost, nine with more, one even.
     expect(r.fights_where.team_lost_fewer_heroes).toHaveLength(o.fights_tally.my_team_lost_fewer);
     expect(r.fights_where.opponents_lost_fewer_heroes).toHaveLength(o.fights_tally.enemy_lost_fewer);
     // One of the six became a building within two minutes; five of the enemy's nine did.
