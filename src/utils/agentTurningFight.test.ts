@@ -37,7 +37,7 @@ describe('the fight a lost game turned on', () => {
     expect(turningFight([f('won', 5000, -4700, 0, 3), f('lost', 300, -1900, 2, 1)])?.ref).toBe('lost');
     // Deaths not stated: not known to be a lost fight.
     expect(turningFight([{ ref: 'x', my_team_gold_lead_before: 0, my_team_gold_lead_2min_after: -9000 } as any])).toBeNull();
-    expect(TURN_RULE).toBe('of the fights my_team lost more heroes in, entered at a gold lead of -2000 or better: the one the game ended within two minutes of; else the one after which the lead fell the most by two minutes after it, if by more than 1500');
+    expect(TURN_RULE).toBe('gold-curve indicator (not a cause verdict): of the fights my_team lost more heroes in, entered at a gold lead of -2000 or better: the one the game ended within two minutes of; else the one after which the lead fell the most by two minutes after it, if by more than 1500');
   });
 
   it('a lost fight the game ended within two minutes of is the turn, whatever fell before it', () => {

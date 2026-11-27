@@ -5,7 +5,7 @@ import { HABITS, HABIT_KEYS, RETIRED_HABITS, evaluateGoal, evaluateHabit, habitG
 import { abilityAudit, deathContext } from '../../packages/review-engine/src/trace/index.js';
 
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
-const deaths: any = deathContext(trace, { hero: 'beastmaster' });
+const deaths: any = deathContext(trace, { hero: 'beastmaster', include_legacy_habit_counts: true });
 const roar: any = abilityAudit(trace, { hero: 'beastmaster', ability: 'primal_roar' });
 const ROAR = { hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' } };
 const where = (lists: Record<string, string[]>, notKnown: Record<string, number> | null = { health_at_window_start: 0, allies_at_death: 0 }) => ({ deaths_where: lists, ...(notKnown ? { deaths_not_known: notKnown } : {}) });

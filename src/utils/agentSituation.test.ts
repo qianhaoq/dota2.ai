@@ -264,11 +264,11 @@ describe('deaths in a fight are told apart from deaths outside one', () => {
     // The fixture with the hero's positions removed around its five deaths to three or more enemies (all in fights).
     const t = JSON.parse(JSON.stringify(trace));
     const h = t.heroes.findIndex((x: any) => x.key === 'beastmaster');
-    const full: any = deathContext(trace, { hero: 'beastmaster' });
+    const full: any = deathContext(trace, { hero: 'beastmaster', include_legacy_habit_counts: true });
     for (const d of full.deaths.filter((x: any) => full.deaths_where.three_or_more_enemy_heroes_dealing_damage.includes(x.clock))) {
       for (let s = Math.floor(d.t) - 13; s <= Math.ceil(d.t) + 1; s += 1) { const i = s - t.t0; if (i >= 0 && i < t.n) t.states[h].x[i] = null; }
     }
-    const blind: any = deathContext(t, { hero: 'beastmaster' });
+    const blind: any = deathContext(t, { hero: 'beastmaster', include_legacy_habit_counts: true });
     expect(blind.deaths_where.three_or_more_enemy_heroes_dealing_damage).toHaveLength(5);
     expect(blind.deaths_where.three_or_more_enemy_heroes_dealing_damage_outside_fights).toEqual([]);
     expect(blind.deaths_not_known).toMatchObject({ in_a_fight: 5, three_or_more_enemy_heroes_dealing_damage_outside_fights: 5 });
@@ -276,13 +276,18 @@ describe('deaths in a fight are told apart from deaths outside one', () => {
     const goal = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 1, baseline: 3, label: { en: 'x', zh: 'x' } };
     expect(evaluateHabit(goal, blind, 40).result).toBe('unknown');
     expect(evaluateHabit(goal, full, 40).result).toBe('met');
-    // Low health outside fights: a death of unknown fight status with health below half, or unknown, is undecided too.
+    // Low health outside fights: a death of unknown fight status with health below half, or unknown, is undecided too (legacy opt-in).
     expect(blind.deaths_not_known.health_below_half_at_window_start_outside_fights).toBeGreaterThanOrEqual(blind.deaths_not_known.in_a_fight - blind.deaths.filter((d: any) => d.in_a_fight == null && d.below_half_health_at_window_start === false).length);
     expect(evaluateHabit({ ...goal, habit: 'low_health_outside_fights', max: 0 }, { ...blind, deaths_not_known: { ...blind.deaths_not_known, health_below_half_at_window_start_outside_fights: 1 } }, 40).result).toBe('unknown');
+    // Default LLM death_context omits the noisy low-HP habit buckets.
+    const defaultSummary: any = deathContext(trace, { hero: 'beastmaster' });
+    expect('health_below_half_at_window_start' in defaultSummary.deaths_where).toBe(false);
+    expect('health_below_half_at_window_start_outside_fights' in defaultSummary.deaths_where).toBe(false);
+    expect('health_below_half_at_window_start_outside_fights' in defaultSummary.deaths_not_known).toBe(false);
   });
 
   it('the outside-fights counts are habits the next game is checked on, and the fight deaths are not in them', () => {
-    const summary: any = deathContext(trace, { hero: 'beastmaster' });
+    const summary: any = deathContext(trace, { hero: 'beastmaster', include_legacy_habit_counts: true });
     expect(HABITS.low_health_outside_fights.at).toEqual(['deaths_where', 'health_below_half_at_window_start_outside_fights']);
     expect(HABITS.outnumbered_outside_fights.at).toEqual(['deaths_where', 'three_or_more_enemy_heroes_dealing_damage_outside_fights']);
     // Five deaths to three or more enemies, all of them in fights: over every death that is a habit to check, outside fights it is not one.

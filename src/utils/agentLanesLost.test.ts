@@ -27,7 +27,7 @@ describe('lostFromTheLanes', () => {
 
   it('is more than 2000 behind at 10:00 and in every minute after, to the end — the turning-fight rule\'s own line', () => {
     expect([LANES_END, BEHIND_AFTER_LANES, MANY_EARLY_DEATHS, STILL_IN_IT]).toEqual([600, -2000, 4, -2000]);
-    expect(LANES_RULE).toBe('my_team more than 2000 gold behind at 10:00 and in every minute after, to the end of the game');
+    expect(LANES_RULE).toBe('gold-curve indicator (not a draft or cause verdict — scaling lineups can trail by >2000 at 10:00 without losing the game in lane): my_team more than 2000 gold behind at 10:00 and in every minute after, to the end of the game');
     // The Luna game of the corpus: 4,096 behind at 10:00, never closer than 4,309 after.
     const luna = lead(-4096, [-4309, -5437, -9000]);
     expect(lostFromTheLanes(luna, ended(luna))).toEqual({ lost_from_the_lanes: true, my_team_gold_lead_at_10: -4096, my_team_best_gold_lead_after: -4309 });

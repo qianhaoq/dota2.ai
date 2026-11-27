@@ -218,7 +218,7 @@ describe('the agent has the tools and is told how to read them', () => {
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['fight_report', 'game_state']));
     expect(kit.runTool('fight_report', { hero: 'beastmaster' }).fights_total).toBe(16);
-    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(73);
+    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(74);
     const review = deepReviewSystem('zh');
     expect(review).toContain('fight_report');
     // Still never a motive; "farming" only where the tool says so (#359: the replay's creep kills now show it).
@@ -257,5 +257,92 @@ describe('the agent has the tools and is told how to read them', () => {
       expect(e.engaged_at).toBeGreaterThan(e.t);
       expect(e.engaged_at).toBeLessThanOrEqual(e.t + 90);
     }
+  });
+});
+
+describe('fight_report me_in_fight factual player contribution', () => {
+  it('reports exact player damage dealt/taken, enemy deaths damaged, ult cast, and key items used on real game 9100904020', () => {
+    const r: any = fightReport(trace, { hero: 'beastmaster' });
+    const f9 = r.fights.find((f: any) => f.fight === 'fight:9');
+    expect(f9.me).toBe('took_part');
+    expect(f9.me_in_fight).toEqual({
+      died: true,
+      hero_damage_dealt: 946,
+      hero_damage_taken: 2808,
+      enemy_deaths_i_damaged: 1,
+      ult_cast: true,
+      key_items_used: [],
+    });
+
+    // When a hero did not take part in a fight (Sven in fight:9), me_in_fight is null.
+    const sven: any = fightReport(trace, { hero: 'sven' });
+    const svenF9 = sven.fights.find((f: any) => f.fight === 'fight:9');
+    expect(svenF9.me).toBe('not_in_it');
+    expect(svenF9.me_in_fight).toBeNull();
+  });
+
+  it('tracks key_items_used deduplicated in order, auto-triggered ultimates, passive ultimates, and null on blank sources', () => {
+    const heroes = [['axe', 2], ['lina', 2], ['sven', 2], ['pudge', 3], ['zuus', 3], ['lion', 3]];
+    const t: any = synth({
+      heroes,
+      pos: { axe: [0, 0], lina: [100, 0], sven: [9000, 9000], pudge: [100, 100], zuus: [150, 100], lion: [200, 100] },
+      damage: [[95, 'axe', 'pudge'], [96, 'pudge', 'axe'], [97, 'axe', 'zuus'], [98, 'zuus', 'lina']],
+      deaths: [[100, 'pudge'], [104, 'zuus'], [108, 'lina']],
+      dead: { pudge: [100, 140], zuus: [104, 150], lina: [108, 160] },
+    });
+    t.names.push('axe_culling_blade', 'item_blink', 'item_blade_mail', 'item_tango');
+    t.casts = [[99.8, 0, 6, 3, 1]];
+    t.item_uses = [[95.2, 0, 8, 2], [95.0, 0, 7, 3], [96.0, 0, 7, 4], [97.0, 0, 9, 5]]; // blink (95.0), blade_mail (95.2), blink again, tango (excluded)
+    const f = (fightReport(t, { hero: 'axe' }) as any).fights[0];
+    expect(f.me_in_fight).toEqual({
+      died: false,
+      hero_damage_dealt: 200,
+      hero_damage_taken: 100,
+      enemy_deaths_i_damaged: 2,
+      ult_cast: true,
+      key_items_used: ['blink', 'blade_mail'],
+    });
+    // Sven not in fight -> null.
+    expect((fightReport(t, { hero: 'sven' }) as any).fights[0].me_in_fight).toBeNull();
+
+    // Auto-triggered ultimate (Abaddon Borrowed Time): cooldown start counts as ult_cast: true; missing cd -> null.
+    const ab: any = synth({
+      heroes: [['abaddon', 2], ['lina', 2], ['pudge', 3], ['zuus', 3]],
+      pos: { abaddon: [0, 0], lina: [100, 0], pudge: [100, 100], zuus: [150, 100] },
+      abilities: { abaddon: { abaddon_borrowed_time: { levels: [[10, 1]], cd: [[98, 158, 60]] } } },
+      damage: [[95, 'abaddon', 'pudge'], [96, 'pudge', 'abaddon']],
+      deaths: [[100, 'pudge'], [104, 'zuus'], [108, 'lina']],
+    });
+    expect((fightReport(ab, { hero: 'abaddon' }) as any).fights[0].me_in_fight.ult_cast).toBe(true);
+    const abBlankCd: any = { ...ab, abilities: [{ abaddon_borrowed_time: { levels: [[10, 1]] } }, {}, {}, {}] };
+    expect((fightReport(abBlankCd, { hero: 'abaddon' }) as any).fights[0].me_in_fight.ult_cast).toBeNull();
+
+    // Passive / death-triggered ultimates -> ult_cast: null.
+    const pa: any = synth({
+      heroes: [['phantom_assassin', 2], ['lina', 2], ['pudge', 3], ['zuus', 3]],
+      pos: { phantom_assassin: [0, 0], lina: [100, 0], pudge: [100, 100], zuus: [150, 100] },
+      damage: [[95, 'phantom_assassin', 'pudge']],
+      deaths: [[100, 'pudge'], [104, 'zuus'], [108, 'lina']],
+    });
+    expect((fightReport(pa, { hero: 'phantom_assassin' }) as any).fights[0].me_in_fight.ult_cast).toBeNull();
+
+    // Blank casts / item_uses / damage -> null, never false / [] / 0.
+    const blankCastsItems = { ...t, casts: undefined, item_uses: undefined };
+    expect((fightReport(blankCastsItems, { hero: 'axe' }) as any).fights[0].me_in_fight).toMatchObject({
+      ult_cast: null,
+      key_items_used: null,
+    });
+    const blankDmg: any = synth({
+      heroes,
+      pos: { axe: [0, 0], lina: [100, 0], sven: [9000, 9000], pudge: [100, 100], zuus: [150, 100], lion: [200, 100] },
+      deaths: [[100, 'axe'], [104, 'pudge'], [108, 'lina']],
+    });
+    blankDmg.damage = undefined;
+    expect((fightReport(blankDmg, { hero: 'axe' }) as any).fights[0].me_in_fight).toMatchObject({
+      died: true,
+      hero_damage_dealt: null,
+      hero_damage_taken: null,
+      enemy_deaths_i_damaged: null,
+    });
   });
 });
