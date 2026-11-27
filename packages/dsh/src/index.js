@@ -71,13 +71,14 @@ export function apply(ctx, config = {}) {
   const headers = headersFor(process.env);
   const fetchImpl = (url, init = {}) => globalThis.fetch(url, { ...init, headers: { ...headers, ...(init.headers ?? {}) } });
 
+  const logger = typeof ctx.logger === 'function' ? ctx.logger('dota2ai') : ctx.logger;
   const dshService = createDshService({
     ctx,
     config: { ...config, apiBase },
     env: process.env,
     fetchImpl,
     llmPrimitives: { BlockAssembler, createUserMessage, createAssistantMessage, createToolResultMessage },
-    log: (msg) => ctx.logger?.info?.(msg),
+    log: (msg) => logger?.info?.(msg),
   });
 
   ctx.effect(() => () => dshService.shutdown());

@@ -80,7 +80,7 @@ const fallbackPrimitives = {
   },
 };
 
-const DEFAULT_MAX_TOKENS = 16_384;
+export const DEFAULT_MAX_TOKENS = 32_768;
 
 /**
  * Build a `complete({ system, messages, tools, signal })` function backed by
@@ -235,6 +235,7 @@ export function createDshComplete({ ctx, route, primitives = fallbackPrimitives,
       text,
       ...(reasoning ? { reasoning } : {}),
       ...(assembler.replayState !== undefined ? { providerState: assembler.replayState } : {}),
+      ...(finish?.kind === 'max-tokens' ? { truncated: true } : {}),
       toolCalls,
       usage: { input: inputTokens, output: outputTokens },
     };
