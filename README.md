@@ -19,7 +19,7 @@
 
 <br>
 
-Paste a match ID and pick the hero you played. About four minutes later (one to read the replay, three for the review; a few minutes more when the replay server is slow to answer and the download is tried again from a second region) you get a review written for you: **one verdict, up to three things that decided the game, and what to do about each next time.** Every time and number in it comes from your replay.
+Paste a match ID and pick the hero you played. About four minutes later (one to read the replay, three for the review; a few minutes more when the replay server is slow to answer and the download is tried again from a second region, or when a long review step hits its output cap and retries once in place) you get a review written for you: **one verdict, up to three things that decided the game, and what to do about each next time.** Every time and number in it comes from your replay.
 
 ## Use it
 
