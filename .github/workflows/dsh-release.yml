@@ -97,6 +97,7 @@ jobs:
 
           stale=$(node -e "console.log(String(Boolean(JSON.parse(process.argv[1]).stale)))" "${meta_json}")
           stale_reason=$(node -e "console.log(JSON.parse(process.argv[1]).staleReason ?? '')" "${meta_json}")
+          resume_tag=$(node -e "console.log(JSON.parse(process.argv[1]).resumeTag ?? '')" "${meta_json}")
           version=$(node -e "console.log(JSON.parse(process.argv[1]).version)" "${meta_json}")
           prev_tag=$(node -e "console.log(JSON.parse(process.argv[1]).prevTag ?? '')" "${meta_json}")
 
@@ -110,6 +111,8 @@ jobs:
             else
               echo "::notice::HEAD is stale relative to ${prev_tag} (${stale_reason}); continuing dry-run build & smoke test."
             fi
+          elif [ -n "${resume_tag}" ]; then
+            echo "::notice::Resuming incomplete npm publish for ${resume_tag} at commit ${GITHUB_SHA}."
           fi
           echo "should_publish=${should_publish}" >> "$GITHUB_OUTPUT"
           echo "skip_build=${skip_build}" >> "$GITHUB_OUTPUT"

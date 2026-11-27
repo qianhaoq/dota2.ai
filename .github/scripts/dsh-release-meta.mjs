@@ -166,39 +166,139 @@ export function resolveNextVersion({ pkgVersion, tagVersions = [], npmVersions =
 }
 
 /**
- * Determine whether `HEAD` is stale relative to the latest existing `dsh-v*` tag.
- * Prevents workflow reruns of older commits, already-released commits, or diverged
+ * Determine whether `HEAD` is stale relative to the latest existing `dsh-v*` tag, or whether
+ * an incomplete release tagged at `HEAD` (not yet published to npm) should be resumed.
+ * Prevents workflow reruns of older commits, already-published commits, or diverged
  * checkouts from allocating a newer version and overwriting newer releases.
  * @param {{
  *   headSha?: string | null,
  *   prevTag?: string | null,
  *   prevTagSha?: string | null,
+ *   prevTagPublishedOnNpm?: boolean | null,
  *   headIsAncestorOfPrevTag?: boolean | null,
  *   prevTagIsAncestorOfHead?: boolean | null,
  * }} [opts]
- * @returns {{ stale: boolean, reason: string | null }}
+ * @returns {{ stale: boolean, reason: string | null, resumeTag: string | null }}
  */
 export function checkReleaseFreshness({
   headSha = null,
   prevTag = null,
   prevTagSha = null,
+  prevTagPublishedOnNpm = null,
   headIsAncestorOfPrevTag = null,
   prevTagIsAncestorOfHead = null,
 } = {}) {
   const cleanPrevTag = typeof prevTag === 'string' && prevTag.trim() ? prevTag.trim() : null;
   if (!cleanPrevTag) {
-    return { stale: false, reason: null };
+    return { stale: false, reason: null, resumeTag: null };
   }
   if (headSha && prevTagSha && headSha === prevTagSha) {
-    return { stale: true, reason: 'already_released_at_head' };
+    if (prevTagPublishedOnNpm === false) {
+      return { stale: false, reason: null, resumeTag: cleanPrevTag };
+    }
+    return { stale: true, reason: 'already_released_at_head', resumeTag: null };
   }
   if (headIsAncestorOfPrevTag === true) {
-    return { stale: true, reason: 'older_than_latest_tag' };
+    return { stale: true, reason: 'older_than_latest_tag', resumeTag: null };
   }
   if (prevTagIsAncestorOfHead === false) {
-    return { stale: true, reason: 'not_descendant_of_latest_tag' };
+    return { stale: true, reason: 'not_descendant_of_latest_tag', resumeTag: null };
   }
-  return { stale: false, reason: null };
+  return { stale: false, reason: null, resumeTag: null };
+}
+
+/**
+ * Pure end-to-end release plan combining version selection with git freshness/resume checks.
+ * When `HEAD` is already tagged with `prevTag` but that version is not yet on npm (and no
+ * strictly newer version is already on npm), resumes `prevTag` at the same version instead of
+ * bumping to a new version or skipping permanently.
+ * @param {{
+ *   pkgVersion: string,
+ *   tagVersions?: string[],
+ *   npmVersions?: string[],
+ *   forcedTag?: string | null,
+ *   headSha?: string | null,
+ *   prevTagSha?: string | null,
+ *   headIsAncestorOfPrevTag?: boolean | null,
+ *   prevTagIsAncestorOfHead?: boolean | null,
+ *   registryFallback?: boolean,
+ * }} opts
+ */
+export function resolveReleasePlan({
+  pkgVersion,
+  tagVersions = [],
+  npmVersions = [],
+  forcedTag = null,
+  headSha = null,
+  prevTagSha = null,
+  headIsAncestorOfPrevTag = null,
+  prevTagIsAncestorOfHead = null,
+  registryFallback = false,
+}) {
+  const meta = resolveNextVersion({ pkgVersion, tagVersions, npmVersions, forcedTag });
+  const isForcedTag = Boolean(typeof forcedTag === 'string' && forcedTag.trim());
+  if (isForcedTag) {
+    return {
+      ...meta,
+      stale: false,
+      staleReason: null,
+      resumeTag: null,
+    };
+  }
+
+  const validNpm = [...new Set((Array.isArray(npmVersions) ? npmVersions : []).filter((v) => parseSemver(v) !== null))];
+  const npmSet = new Set(validNpm);
+  const prevTagVer = meta.prevTag ? stripTagPrefix(meta.prevTag) : null;
+  const prevTagPublishedOnNpm = (!prevTagVer || registryFallback) ? null : npmSet.has(prevTagVer);
+  const newerOnNpm = Boolean(
+    prevTagVer
+    && !registryFallback
+    && validNpm.some((v) => compareSemver(v, prevTagVer) > 0),
+  );
+
+  let freshness = checkReleaseFreshness({
+    headSha,
+    prevTag: meta.prevTag,
+    prevTagSha,
+    prevTagPublishedOnNpm,
+    headIsAncestorOfPrevTag,
+    prevTagIsAncestorOfHead,
+  });
+
+  if (freshness.resumeTag && newerOnNpm) {
+    freshness = { stale: true, reason: 'older_than_latest_npm', resumeTag: null };
+  }
+
+  if (freshness.resumeTag) {
+    const resumedVersion = stripTagPrefix(freshness.resumeTag);
+    const tagMap = new Map();
+    for (const raw of Array.isArray(tagVersions) ? tagVersions : []) {
+      const ver = stripTagPrefix(raw);
+      if (parseSemver(ver)) {
+        tagMap.set(ver, `${TAG_PREFIX}${ver}`);
+      }
+    }
+    const olderTags = [...tagMap.keys()]
+      .filter((ver) => compareSemver(ver, resumedVersion) < 0)
+      .sort(compareSemver);
+    const priorTag = olderTags.length > 0 ? tagMap.get(olderTags[olderTags.length - 1]) : null;
+    return {
+      version: resumedVersion,
+      tag: freshness.resumeTag,
+      alreadyPublished: npmSet.has(resumedVersion),
+      prevTag: priorTag,
+      stale: false,
+      staleReason: null,
+      resumeTag: freshness.resumeTag,
+    };
+  }
+
+  return {
+    ...meta,
+    stale: freshness.stale,
+    staleReason: freshness.reason,
+    resumeTag: null,
+  };
 }
 
 /**
@@ -362,21 +462,25 @@ function gitIsAncestor(ancestorRef, descendantRef, cwd = process.cwd()) {
   throw new Error(`git merge-base --is-ancestor ${ancestorRef} ${descendantRef} failed (${res.status}): ${(res.stderr || '').trim()}`);
 }
 
-function resolveGitFreshness(prevTag, cwd = process.cwd()) {
+function readGitAncestry(prevTag, cwd = process.cwd()) {
   if (!prevTag) {
-    return { stale: false, reason: null };
+    return {
+      headSha: null,
+      prevTagSha: null,
+      headIsAncestorOfPrevTag: null,
+      prevTagIsAncestorOfHead: null,
+    };
   }
   const headSha = execFileSync('git', ['rev-parse', '--verify', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
   const prevTagSha = execFileSync('git', ['rev-parse', '--verify', `${prevTag}^{commit}`], { cwd, encoding: 'utf8' }).trim();
   const headIsAncestorOfPrevTag = gitIsAncestor(headSha, prevTagSha, cwd);
   const prevTagIsAncestorOfHead = gitIsAncestor(prevTagSha, headSha, cwd);
-  return checkReleaseFreshness({
+  return {
     headSha,
-    prevTag,
     prevTagSha,
     headIsAncestorOfPrevTag,
     prevTagIsAncestorOfHead,
-  });
+  };
 }
 
 function readGitCommits(prevTag, cwd = process.cwd()) {
@@ -443,18 +547,24 @@ async function runCli(argv) {
       packageName,
       allowFallback: Boolean(flags['allow-registry-fallback']),
     });
-    const meta = resolveNextVersion({
+    const previewMeta = resolveNextVersion({
       pkgVersion: pkg.version,
       tagVersions,
       npmVersions: npmInfo.versions,
       forcedTag: flags.tag ?? null,
     });
     const isForcedTag = Boolean(typeof flags.tag === 'string' && flags.tag.trim());
-    const freshness = isForcedTag ? { stale: false, reason: null } : resolveGitFreshness(meta.prevTag);
+    const ancestry = isForcedTag ? {} : readGitAncestry(previewMeta.prevTag);
+    const plan = resolveReleasePlan({
+      pkgVersion: pkg.version,
+      tagVersions,
+      npmVersions: npmInfo.versions,
+      forcedTag: flags.tag ?? null,
+      registryFallback: npmInfo.registryFallback,
+      ...ancestry,
+    });
     const result = {
-      ...meta,
-      stale: freshness.stale,
-      staleReason: freshness.reason,
+      ...plan,
       npmLatest: npmInfo.latest,
       registryFallback: npmInfo.registryFallback,
     };

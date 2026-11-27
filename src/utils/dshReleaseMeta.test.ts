@@ -12,6 +12,7 @@ import {
   generateReleaseNotes,
   parseSemver,
   resolveNextVersion,
+  resolveReleasePlan,
 } from '../../.github/scripts/dsh-release-meta.mjs';
 import { releaseManifest } from '../../packages/dsh/scripts/pack.mjs';
 
@@ -267,35 +268,105 @@ describe('fetchNpmVersions & formatGithubOutput', () => {
   });
 });
 
-describe('checkReleaseFreshness', () => {
+describe('checkReleaseFreshness & resolveReleasePlan', () => {
   it('allows release when no previous dsh-v* tag exists', () => {
     expect(checkReleaseFreshness({
       headSha: 'aaa111',
       prevTag: null,
       prevTagSha: null,
+      prevTagPublishedOnNpm: null,
       headIsAncestorOfPrevTag: null,
       prevTagIsAncestorOfHead: null,
-    })).toEqual({ stale: false, reason: null });
+    })).toEqual({ stale: false, reason: null, resumeTag: null });
   });
 
-  it('marks HEAD stale when HEAD is the exact commit already released at prevTag', () => {
+  it('marks HEAD stale when HEAD is the exact commit already released at prevTag and on npm', () => {
     expect(checkReleaseFreshness({
       headSha: 'abc123',
       prevTag: 'dsh-v0.2.5',
       prevTagSha: 'abc123',
+      prevTagPublishedOnNpm: true,
       headIsAncestorOfPrevTag: true,
       prevTagIsAncestorOfHead: true,
-    })).toEqual({ stale: true, reason: 'already_released_at_head' });
+    })).toEqual({ stale: true, reason: 'already_released_at_head', resumeTag: null });
   });
 
-  it('marks HEAD stale when an older workflow run is retried after a newer release tag exists', () => {
+  it('resumes prevTag when HEAD is tagged with prevTag but that version is not yet on npm', () => {
+    expect(checkReleaseFreshness({
+      headSha: 'abc123',
+      prevTag: 'dsh-v0.2.4',
+      prevTagSha: 'abc123',
+      prevTagPublishedOnNpm: false,
+      headIsAncestorOfPrevTag: true,
+      prevTagIsAncestorOfHead: true,
+    })).toEqual({ stale: false, reason: null, resumeTag: 'dsh-v0.2.4' });
+
+    expect(resolveReleasePlan({
+      pkgVersion: '0.2.3',
+      tagVersions: ['dsh-v0.2.2', 'dsh-v0.2.3', 'dsh-v0.2.4'],
+      npmVersions: ['0.2.2', '0.2.3'],
+      headSha: 'abc123',
+      prevTagSha: 'abc123',
+      headIsAncestorOfPrevTag: true,
+      prevTagIsAncestorOfHead: true,
+    })).toEqual({
+      version: '0.2.4',
+      tag: 'dsh-v0.2.4',
+      alreadyPublished: false,
+      prevTag: 'dsh-v0.2.3',
+      stale: false,
+      staleReason: null,
+      resumeTag: 'dsh-v0.2.4',
+    });
+  });
+
+  it('refuses to resume prevTag at HEAD if a strictly newer version is already published on npm', () => {
+    expect(resolveReleasePlan({
+      pkgVersion: '0.2.3',
+      tagVersions: ['dsh-v0.2.3', 'dsh-v0.2.4'],
+      npmVersions: ['0.2.3', '0.2.5'],
+      headSha: 'abc123',
+      prevTagSha: 'abc123',
+      headIsAncestorOfPrevTag: true,
+      prevTagIsAncestorOfHead: true,
+    })).toEqual({
+      version: '0.2.6',
+      tag: 'dsh-v0.2.6',
+      alreadyPublished: false,
+      prevTag: 'dsh-v0.2.4',
+      stale: true,
+      staleReason: 'older_than_latest_npm',
+      resumeTag: null,
+    });
+  });
+
+  it('marks HEAD stale when an older workflow run is retried after a newer release tag exists (even if unpublished on npm)', () => {
     expect(checkReleaseFreshness({
       headSha: 'old111',
       prevTag: 'dsh-v0.2.5',
       prevTagSha: 'new222',
+      prevTagPublishedOnNpm: false,
       headIsAncestorOfPrevTag: true,
       prevTagIsAncestorOfHead: false,
-    })).toEqual({ stale: true, reason: 'older_than_latest_tag' });
+    })).toEqual({ stale: true, reason: 'older_than_latest_tag', resumeTag: null });
+
+    expect(resolveReleasePlan({
+      pkgVersion: '0.2.3',
+      tagVersions: ['dsh-v0.2.3', 'dsh-v0.2.5'],
+      npmVersions: ['0.2.3'],
+      headSha: 'old111',
+      prevTagSha: 'new222',
+      headIsAncestorOfPrevTag: true,
+      prevTagIsAncestorOfHead: false,
+    })).toEqual({
+      version: '0.2.6',
+      tag: 'dsh-v0.2.6',
+      alreadyPublished: false,
+      prevTag: 'dsh-v0.2.5',
+      stale: true,
+      staleReason: 'older_than_latest_tag',
+      resumeTag: null,
+    });
   });
 
   it('marks HEAD stale when HEAD is on a diverged branch that does not descend from prevTag', () => {
@@ -303,9 +374,10 @@ describe('checkReleaseFreshness', () => {
       headSha: 'side333',
       prevTag: 'dsh-v0.2.5',
       prevTagSha: 'main222',
+      prevTagPublishedOnNpm: true,
       headIsAncestorOfPrevTag: false,
       prevTagIsAncestorOfHead: false,
-    })).toEqual({ stale: true, reason: 'not_descendant_of_latest_tag' });
+    })).toEqual({ stale: true, reason: 'not_descendant_of_latest_tag', resumeTag: null });
   });
 
   it('allows release when HEAD is a fresh descendant of prevTag', () => {
@@ -313,9 +385,10 @@ describe('checkReleaseFreshness', () => {
       headSha: 'new333',
       prevTag: 'dsh-v0.2.5',
       prevTagSha: 'prev222',
+      prevTagPublishedOnNpm: true,
       headIsAncestorOfPrevTag: false,
       prevTagIsAncestorOfHead: true,
-    })).toEqual({ stale: false, reason: null });
+    })).toEqual({ stale: false, reason: null, resumeTag: null });
   });
 });
 
