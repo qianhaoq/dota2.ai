@@ -65,11 +65,18 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
   const [note, setNote] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
   const t = (b: Record<Lang, string>) => b[lang];
   const busy = turns.some((x) => x.pending);
   // Leaving the conversation (another page, hero or language) cancels the answer being worked on: the
   // server stops its lookups and model calls when the connection closes.
   useEffect(() => () => abort.current?.abort(), []);
+
+  // Keep the latest message / lookup step in view inside the chat log container without scrolling the page.
+  useEffect(() => {
+    const el = logRef.current;
+    if (el && turns.length > 0) el.scrollTop = el.scrollHeight;
+  }, [turns]);
 
   // The latest `send` for the handle below: it closes over the turns so far.
   const sendRef = useRef<(text: string) => void>(() => {});
@@ -124,7 +131,7 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
         <h2>{t(T.title)}</h2>
         <p>{t(T.sub)}</p>
       </header>
-      <div className="ag-chat-log" aria-live="polite">
+      <div ref={logRef} className="ag-chat-log" aria-live="polite">
         {turns.length === 0 && suggestions.length > 0 && (
           <div className="ag-suggest">
             <p>{t(T.suggest)}</p>
