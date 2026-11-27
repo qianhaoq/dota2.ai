@@ -402,12 +402,15 @@ describe('review eval: review findings on #325', () => {
     expect(rubricOf(cites('cast:beastmaster:primal_roar_2:7'), { must_hit: [every] }).must_hit[0].hit).toBe(false);
   });
 
-  it('the Tidehunter rubric\'s lane point is not met by a death late in the game', () => {
+  it('the Tidehunter rubric\'s lane point is not met by a death late in the game, nor by low health alone', () => {
     const tide = json('../../evals/reviews/9091400302.tidehunter.json');
     const late = review({ lang: 'en', findings: [finding({ claim: 'You died on low health.', evidence: [{ refs: ['death:tidehunter:10'], clock: '40:00', fact: '40:00: below half health.' }], rule: { when: 'a', do: 'b', this_game: 'At 40:00.' } })] });
-    expect(rubricOf(late, tide).must_hit.find((p: { id: string }) => p.id === 'lane_deaths_on_low_health')?.hit).toBe(false);
-    const early = review({ lang: 'en', findings: [finding({ claim: 'You died on low health in lane.', evidence: [{ refs: ['death:tidehunter:1'], clock: '4:21', fact: '4:21: below half health.' }] })] });
-    expect(rubricOf(early, tide).must_hit.find((p: { id: string }) => p.id === 'lane_deaths_on_low_health')?.hit).toBe(true);
+    expect(rubricOf(late, tide).must_hit.find((p: { id: string }) => p.id === 'lane_deaths_as_decisions')?.hit).toBe(false);
+    // Since 2026-11-27 the point is what he was doing (the owner: low health alone says nothing).
+    const lowOnly = review({ lang: 'en', findings: [finding({ claim: 'You died on low health in lane.', evidence: [{ refs: ['death:tidehunter:1'], clock: '4:21', fact: '4:21: below half health.' }] })] });
+    expect(rubricOf(lowOnly, tide).must_hit.find((p: { id: string }) => p.id === 'lane_deaths_as_decisions')?.hit).toBe(false);
+    const early = review({ lang: 'en', findings: [finding({ claim: 'You stayed to last-hit on half health and died in lane.', evidence: [{ refs: ['death:tidehunter:1'], clock: '4:21', fact: '4:21: last-hitting at 47% health.' }] })] });
+    expect(rubricOf(early, tide).must_hit.find((p: { id: string }) => p.id === 'lane_deaths_as_decisions')?.hit).toBe(true);
   });
 });
 

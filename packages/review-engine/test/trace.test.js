@@ -825,6 +825,11 @@ describe('trace tools on a real game', () => {
       health_below_half_at_window_start_outside_fights: [],
       three_or_more_enemy_heroes_dealing_damage_outside_fights: [],
       nothing_cast_and_no_item_used: [],
+      // What the hero was doing and which way they were heading. This trace keeps no creep kills: whether a death
+      // began farming is unknown, so none is listed. 0:47 and 11:03 came 1500 or more closer to the fountain.
+      farming_at_window_start: [],
+      heading_home_1500_or_more: ['0:47', '11:03'],
+      heading_away_1500_or_more: [],
       // An enemy hero died within 15 s of seven of them; the four others bought nothing. 2:51, the one alone, was traded.
       traded_within_15s: ['2:51', '6:13', '8:27', '22:06', '25:30', '30:42', '39:21'],
       not_traded_within_15s: ['0:47', '11:03', '36:05', '41:57'],

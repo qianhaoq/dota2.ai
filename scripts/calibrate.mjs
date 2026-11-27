@@ -73,7 +73,7 @@ for (const f of files) {
   // From Radiant's first hero: my_team = Radiant. Every fight is read once.
   const first = trace.heroes.find((h) => h.team === 2);
   for (const hero of trace.heroes) {
-    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }).deaths ?? []) if (d.allies_within_2200.at_death != null) deaths.push({ allies: d.allies_within_2200.at_death, traded: d.traded_within_15s, obs: d.observers_within_1600 ?? null });
+    for (const d of runTraceTool(trace, 'death_context', { hero: hero.key }).deaths ?? []) if (d.allies_within_2200.at_death != null) deaths.push({ allies: d.allies_within_2200.at_death, traded: d.traded_within_15s, obs: d.observers_within_1600 ?? null, fight: d.in_a_fight, home: d.moved_toward_own_fountain ?? null, doing: d.snapshots?.[0]?.me?.doing ?? null });
   }
   if (Array.isArray(trace.wards)) wardGames += 1;
   // Alive heroes not in a fight (fightParticipation): what the state says they were doing as it began — farming
@@ -222,9 +222,18 @@ out.pushes = {
 };
 const traded = (list) => ({ deaths: list.length, traded: list.filter((d) => d.traded).length, rate: list.length ? Math.round((list.filter((d) => d.traded).length / list.length) * 100) : null });
 const risk = (list) => ({ moments: list.length, died_within_20s: list.filter((m) => m.died).length, rate: list.length ? Math.round((list.filter((m) => m.died).length / list.length) * 1000) / 10 : null });
+/** Heading home or away over a death's window: this much closer to or farther from the own fountain. */
+const HEADING = 1500;
 const alliesLabel = (n) => (n >= 2 ? '2 or more' : String(n));
 out.deaths = {
   traded_by_allies_within_2200_at_death: [0, 1, 2].map((n) => ({ allies: alliesLabel(n), ...traded(deaths.filter((d) => (n >= 2 ? d.allies >= 2 : d.allies === n))) })),
+  // What the player was doing and where they were heading in the 12 s before a death (death_context's snapshots):
+  // the reading behind a death as a decision — a farm caught, a retreat too late, a walk forward.
+  by_heading_over_the_window: [['in a fight', (d) => d.fight === true], ['outside fights', (d) => d.fight === false]].map(([label, f]) => ({
+    deaths: label,
+    ...Object.fromEntries([['home_1500_or_more', (d) => d.home != null && d.home >= HEADING], ['away_1500_or_more', (d) => d.home != null && d.home <= -HEADING], ['neither', (d) => d.home != null && Math.abs(d.home) < HEADING], ['unknown', (d) => d.home == null]].map(([k, g]) => [k, traded(deaths.filter((d) => f(d) && g(d)))])),
+  })),
+  outside_fights_by_doing_at_window_start: [...new Set(deaths.map((d) => d.doing))].map((doing) => ({ doing, ...traded(deaths.filter((d) => d.fight === false && d.doing === doing)) })).filter((x) => x.deaths > 0).sort((a, b) => b.deaths - a.deaths),
   died_within_20s_by_allies_near: [true, false].flatMap((half) => [0, 1, 2].map((n) => ({ side: half ? 'enemy half' : 'own half or river', allies: alliesLabel(n), ...risk(moments.filter((m) => m.enemyHalf === half && (n >= 2 ? m.allies >= 2 : m.allies === n))) }))),
 };
 // Only deaths and moments from traces with a ward list: an older trace has no wards, not zero wards.
@@ -345,6 +354,10 @@ else {
   for (const x of out.pushes.by_owners_dead_when_it_began) line(`  owners dead when it began: ${x.value}`, x);
   console.log(`\n${deaths.length} deaths; share traded (an enemy hero died within 15 s)\n`);
   for (const x of out.deaths.traded_by_allies_within_2200_at_death) console.log(`${`  allies within 2200 at death: ${x.allies}`.padEnd(46)} ${String(x.traded).padStart(4)}/${String(x.deaths).padEnd(5)} ${x.rate}%`);
+  console.log(`\n  heading over the 12 s window (moved_toward_own_fountain, ±${HEADING}): deaths, share traded`);
+  for (const x of out.deaths.by_heading_over_the_window) console.log(`    ${x.deaths.padEnd(16)} ${['home_1500_or_more', 'away_1500_or_more', 'neither', 'unknown'].map((k) => `${k} ${x[k].deaths} (${x[k].rate ?? '-'}%)`).join(' · ')}`);
+  console.log('  outside fights, doing at the window start: deaths, share traded');
+  for (const x of out.deaths.outside_fights_by_doing_at_window_start) console.log(`    ${String(x.doing).padEnd(36)} ${String(x.deaths).padStart(4)} (${x.rate}%)`);
   console.log(`\n${afterWins.length} won fights; what the winners did (a building from the fight's start to 120 s after it, Roshan, a push for nothing, or neither)\n`);
   const fb = out.fights_after_big_items;
   console.log(`\nfights with a winner begun within 120 s after big items of one side only; share that side lost fewer\n`);

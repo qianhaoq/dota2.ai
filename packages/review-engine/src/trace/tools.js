@@ -263,11 +263,18 @@ export function deathContext(trace, args = {}, ctx = {}) {
   // it is one of them and an ally was within 2200 at some second before it — a hero picked off alone while a
   // fight went on elsewhere was not in it.
   const fought = new Set(fights(trace).flatMap((f) => f.deaths));
+  // Where the hero respawns: each snapshot says how far from it the hero stood, so the window shows whether they
+  // were heading home or away from it. Null when the trace never sampled a respawn.
+  const fountain = ownFountain(trace, h, npc);
   const out = pick.map(([d, n]) => {
     const t = d[0]; const from = t - window;
     const snapshots = [...new Set([window, 8, 4, 1].filter((x) => x <= window))].map((back) => {
       const { me, allies, enemies } = nearby(trace, h, t - back, 2200);
-      return { dt: -back, me: me ? { hp: me.hp, max_hp: me.max_hp, mana: me.mana, ...where(me) } : null, allies, enemies };
+      // What the replay shows the hero doing then (state.js): farming, trading damage with enemy heroes, hitting an
+      // enemy building, in their own base — or none of these, when only the place is known.
+      const doing = me ? heroStateAt(trace, h, t - back).doing ?? null : null;
+      // A dead hero's position is the body or the fountain: no distance is measured from it.
+      return { dt: -back, me: me ? { hp: me.hp, max_hp: me.max_hp, mana: me.mana, ...where(me), doing, to_own_fountain: fountain && me.alive ? dist(me, fountain) : null } : null, allies, enemies };
     });
     const atDeath = nearby(trace, h, t, 2200);
     // Every second of the window and the death itself, not only the snapshots: an ally who came and went between two of them was there.
@@ -311,6 +318,13 @@ export function deathContext(trace, args = {}, ctx = {}) {
       ready_not_cast: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && !noMana(a)).map((a) => a.ability),
       off_cooldown_without_the_mana: abilities.filter((a) => a.cooldown_left === 0 && !castNames.has(a.ability) && noMana(a)).map((a) => a.ability),
       health_share_at_window_start: share(snapshots[0]?.me),
+      // How much closer to their own fountain the hero was at the last snapshot than at the window's start: positive
+      // heading home, negative heading away from it. Null when either distance is unknown. Over 1089 deaths outside
+      // fights in 32 games (scripts/calibrate.mjs), the 101 heading home by 1500 or more were traded 13% of the time,
+      // the fewest of any; 240 began farming (17%). An escape that came too late buys nothing.
+      // Both ends alive and in this life: a window that reaches back past the hero's previous death (a respawn or
+      // buyback less than a window ago) has no heading (Codex P1 on #415).
+      moved_toward_own_fountain: snapshots[0]?.me?.to_own_fountain != null && snapshots.at(-1)?.me?.to_own_fountain != null && !all.some((o) => o !== d && o[0] < t && o[0] >= from) ? snapshots[0].me.to_own_fountain - snapshots.at(-1).me.to_own_fountain : null,
       // From the health itself, not the rounded share: 495 of 1000 is below half.
       below_half_health_at_window_start: snapshots[0]?.me?.max_hp ? snapshots[0].me.hp * 2 < snapshots[0].me.max_hp : null,
       // Null where the hero's position was not sampled: whether an ally was near is then unknown.
@@ -348,6 +362,39 @@ export function deathContext(trace, args = {}, ctx = {}) {
 }
 
 const share = (me) => (me?.max_hp ? Math.round((me.hp / me.max_hp) * 100) / 100 : null);
+
+const fountainCache = new WeakMap();
+/** A hero back within this distance of where they fell came back in place (the Aegis), not in the fountain. */
+const IN_PLACE = 1500;
+/**
+ * Where hero h's fountain is, from the trace itself: the first position sampled alive after one of the hero's
+ * deaths (a hero respawns in their fountain). The trace has no building or fountain positions; null when no
+ * respawn was sampled (unknown, not anywhere).
+ */
+export function ownFountain(trace, h, npc = nameId(trace, trace.heroes[h].npc)) {
+  let byHero = fountainCache.get(trace);
+  if (!byHero) fountainCache.set(trace, (byHero = new Map()));
+  if (byHero.has(h)) return byHero.get(h);
+  const s = trace.states[h];
+  const own = trace.heroes[h].team === 2 ? 'radiant_base' : 'dire_base';
+  let at = null;
+  for (const d of trace.deaths.filter((x) => x[1] === npc).sort((a, b) => a[0] - b[0])) {
+    let i = Math.max(0, Math.ceil(d[0]) - trace.t0 + 1);
+    // Only a respawn the samples show: dead one second, alive the next, with a position. A gap in the samples
+    // (neither dead nor alive known) leaves this death out — the first alive sample after a gap may already be
+    // in a lane (Codex P1 on #415) — and the next death is tried.
+    while (i < trace.n && s.alive[i] === 0) i += 1;
+    if (!(i < trace.n && i > 0 && s.alive[i] === 1 && s.alive[i - 1] === 0 && s.x[i] != null && s.y[i] != null)) continue;
+    const back = { x: s.x[i], y: s.y[i] };
+    // In the hero's own base, and not where they fell: the Aegis brings a hero back where they died (Codex P1 on
+    // #415), and that is no fountain. Unknown death position: not established, the next death is tried.
+    const fell = stateAt(trace, h, d[0] - 1);
+    if (region(back.x, back.y) !== own || !fell || dist(fell, back) < IN_PLACE) continue;
+    at = back; break;
+  }
+  byHero.set(h, at);
+  return at;
+}
 
 /** Each side's observers within 1600 of the hero at a death, told as my_team / enemy; null when unknown. */
 function wardsAt(trace, h, atDeath, t) {
@@ -411,6 +458,12 @@ function deathPatterns(trace, deaths, { allSources = false } = {}) {
       health_below_half_at_window_start_outside_fights: of((d) => d.below_half_health_at_window_start === true && d.in_a_fight === false),
       three_or_more_enemy_heroes_dealing_damage_outside_fights: of((d) => d.enemy_heroes_dealing_damage >= 3 && d.in_a_fight === false),
       nothing_cast_and_no_item_used: of((d) => d.my_casts.length === 0 && d.my_item_uses.length === 0),
+      // What the hero was doing when the window began, and where they were heading over it (each death's
+      // snapshots): the decisions deaths share, beside the conditions above. Unknown doing or heading leaves a
+      // death out of these lists, never in one.
+      farming_at_window_start: of((d) => d.snapshots[0]?.me?.doing === 'farming'),
+      heading_home_1500_or_more: of((d) => d.moved_toward_own_fountain != null && d.moved_toward_own_fountain >= 1500),
+      heading_away_1500_or_more: of((d) => d.moved_toward_own_fountain != null && d.moved_toward_own_fountain <= -1500),
       // Whether the team got an enemy hero back within 15 s. A death not traded bought nothing.
       traded_within_15s: of((d) => d.traded_within_15s),
       not_traded_within_15s: of((d) => !d.traded_within_15s),
