@@ -127,6 +127,45 @@ describe('trace pipeline', () => {
     calls.length = 0;
     expect(await createRemotePipeline({ url: 'https://tw.example', getMatchDetail, fetchImpl: worker({ 'tw.example': () => answer({ ok: false, reason: 'download_failed' }) }) }).run(ID)).toEqual({ ok: false, reason: 'download_failed' });
     expect(calls).toHaveLength(1);
+    // Primary hangs past primaryTimeoutMs: aborts early and still leaves budget for the fallback worker.
+    {
+      const seen: string[] = [];
+      const hanging = createRemotePipeline({
+        url: 'https://tw.example', getMatchDetail, fallback: { url: 'https://hk.example' },
+        timeoutMs: 250_000, primaryTimeoutMs: 25,
+        fetchImpl: (async (url: string, init: any) => {
+          const host = new URL(url).host; seen.push(host);
+          if (host === 'tw.example') {
+            return await new Promise((_res, rej) => { init.signal.addEventListener('abort', () => rej(new Error('aborted'))); });
+          }
+          return answer({ ok: true, bytes: 123 });
+        }) as any,
+      });
+      expect(await hanging.run(ID)).toEqual({ ok: true, bytes: 123 });
+      expect(seen).toEqual(['tw.example', 'hk.example']);
+    }
+    // preferFallbackForCn: Perfect World CN host tries fallback first and falls back to primary on failure;
+    // Valve hosts still start at primary.
+    {
+      const cnCalls: string[] = [];
+      const cnPipe = (replay: string, byHost: Record<string, () => any>) => createRemotePipeline({
+        url: 'https://tw.example',
+        getMatchDetail: async () => ({ match_id: ID, replay_url: replay }),
+        auth: async () => 'Bearer tw',
+        fallback: { url: 'https://hk.example', auth: async () => 'Bearer hk' },
+        preferFallbackForCn: true,
+        fetchImpl: (async (url: string, init: any) => { cnCalls.push(`${new URL(url).host} ${init.headers.Authorization}`); return byHost[new URL(url).host](); }) as any,
+      });
+      expect(await cnPipe(URL_OK, { 'hk.example': () => answer({ ok: true, bytes: 5 }), 'tw.example': () => answer({ ok: true, bytes: 6 }) }).run(ID)).toEqual({ ok: true, bytes: 5 });
+      expect(cnCalls).toEqual(['hk.example Bearer hk']);
+      cnCalls.length = 0;
+      expect(await cnPipe(URL_OK, { 'hk.example': () => answer({ ok: false, reason: 'download_failed' }), 'tw.example': () => answer({ ok: true, bytes: 6 }) }).run(ID)).toEqual({ ok: true, bytes: 6 });
+      expect(cnCalls).toEqual(['hk.example Bearer hk', 'tw.example Bearer tw']);
+      cnCalls.length = 0;
+      const valveUrl = `https://replay153.valve.net/570/${ID}_1851930271.dem.bz2`;
+      expect(await cnPipe(valveUrl, { 'tw.example': () => answer({ ok: true, bytes: 7 }), 'hk.example': () => answer({ ok: true, bytes: 8 }) }).run(ID)).toEqual({ ok: true, bytes: 7 });
+      expect(cnCalls).toEqual(['tw.example Bearer tw']);
+    }
   });
 
   it('remote: finds the replay address here, posts it to the worker with the auth header, relays the answer', async () => {
