@@ -50,9 +50,11 @@ resolved, so ask for the friend code.
   never guess.
 - `ready`: `verdict`, `mainline`, `findings` (each with `evidence` clocks and
   numbers, `fix`, sometimes a `rule`), `did_well`, `next_game`, `blind_spots`
-  and `url`. Quote times and numbers as given, say what the review cannot see
-  (`blind_spots`), and point out the DSH `dota2.ai` panel (or public `url` for
-  sharing).
+  and `panel_route`. Quote times and numbers as given, say what the review
+  cannot see (`blind_spots`), and point the user to the `dota2.ai` panel in the
+  DSH sidebar (the tool card opens it at `panel_route`). The review was written
+  by the user's own model and is kept on this machine: there is no public link
+  to it.
 - `failed`: offer to try again; only then call with `retry: true`.
 - `replay_unavailable` / `unavailable`: if `reason` is `model_not_configured`,
   ask the user to configure/select a model in DSH. If the replay expired (Valve
@@ -83,7 +85,7 @@ resolved, so ask for the friend code.
 **"Review my last game"**: `dota2ai_recent_matches` → newest `match_id` and its
 hero → `dota2ai_replay_review` (poll until `ready`) → the verdict, the findings
 on the player with one piece of evidence each, and the one thing to do next
-game → open in the DSH `dota2.ai` panel or share `url`.
+game → open it in the DSH `dota2.ai` panel.
 
 **"Why did I lose?"**: the replay review, or `dota2ai_coach_report` with
 `section: why` → for each cause on the player: what happened (evidence) → what
@@ -100,5 +102,6 @@ the goal owner's own games.
 - Present a comparison or an association as a certain cause.
 - Review a private match or guess whose account or hero a game is.
 
-Public share links: `https://dota2.ai/r/<matchId>` (the replay review's `url`
-already has the hero and language).
+Reviews made here stay on this machine. `https://dota2.ai/r/<matchId>` is the
+public site's own review of a game, a different one: do not hand it out as this
+review.

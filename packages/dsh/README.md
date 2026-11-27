@@ -11,23 +11,43 @@ A native [DSH](https://www.npmjs.com/package/@deepseek-ai/dsh) (DeepSeek Harness
 
 ## Install
 
-Needs Node 24.9 or newer, DSH **≥ 0.2.1-rc.3** (`0.2.x`) and pnpm,
-which DSH uses to install plugins.
-
-Download `qianhaoq-dsh-dota2ai-<version>.tgz` and `SHA256SUMS` from the latest `dsh-v*`
-[release](https://github.com/qianhaoq/dota2.ai/releases), then:
+Needs Node 24.9 or newer and DSH **0.2.x (≥ 0.2.1-rc.3)**: verified on 0.2.1-rc.3 and 0.2.2-rc.5, which is
+npm's `latest`. DSH installs plugins with pnpm, so pnpm must be on your PATH.
 
 ```sh
-sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.2.tgz
-dsh web
+npm install -g pnpm @deepseek-ai/dsh@0.2.2-rc.5
+curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v0.2.3/qianhaoq-dsh-dota2ai-0.2.3.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.3.tgz
+DEEPSEEK_API_KEY=sk-... dsh web      # or start plain `dsh web` and enter the key in DSH's own API-key dialog
 ```
 
-One archive serves Linux, macOS and Windows: there is no native code. Parsed replay traces (~250 KB gzipped) are fetched from `dota2.ai` (or built locally when `extractorBin` is set) and cached under `$DSH_HOME/dota2ai/traces/`.
+Then open **dota2.ai** in the DSH sidebar, paste a match ID and pick your hero. The review runs on your own
+DeepSeek key, so it has no queue and no daily limit. A deep review is a few hundred thousand input tokens.
+To check the download, fetch `SHA256SUMS` from the same
+[release](https://github.com/qianhaoq/dota2.ai/releases) and run `sha256sum -c SHA256SUMS`.
 
-If the sidebar entry or tools do not show up, check the profile's `package.json`: the package must be in
-`dependencies` *and* in `dsh.profile.bundles`. `dsh --profile web --dump-config` should list a `dota2ai` entry.
-In GUI profiles (`dsh web` and Desktop), DSH's `typert-loader` automatically loads `./typert` and `Dota2AiRemote` attaches to `ctx.typert`; in headless CLI profiles without `typert`, the seven `dota2ai_*` tools and the `dota2ai` skill still activate cleanly.
+One archive serves Linux, macOS and Windows: there is no native code. Parsed replay traces (~250 KB gzipped) are fetched from `dota2.ai` (or built locally when `extractorBin` is set) and cached under `$DSH_HOME/dota2ai/traces/`. Reviews, chats and your goal stay on your machine under `$DSH_HOME/dota2ai`. The public `dota2.ai/r/<match>` page does not show them.
+
+### Web site, DSH or an agent?
+
+| | dota2.ai web | DSH plugin | Agent over MCP |
+|---|---|---|---|
+| Model that writes the review | dota2.ai's | **yours** (any model in your DSH) | dota2.ai's (`replay_review`) |
+| Limits | per caller, and a daily limit for the whole site | none of ours | same as web |
+| Where the review is kept | dota2.ai | your machine | dota2.ai |
+
+### Troubleshooting
+
+- **`installation rejected … incompatible with dsh`**: your DSH is outside the range above. Install a
+  DSH from the range (`npm install -g @deepseek-ai/dsh@0.2.2-rc.5`) or a newer plugin release.
+- **`pnpm` not found / plugin command failed**: `npm install -g pnpm`, then run `dsh plugin … add` again.
+- **The panel says no model / the tool answers `model_not_configured`**: DSH has no model with a key yet. Start
+  `dsh web` with `DEEPSEEK_API_KEY` set, or enter the key in DSH's API-key dialog, and pick a model.
+- **No dota2.ai entry in the sidebar, or no tools**: the profile's `package.json` must list the package in
+  `dependencies` *and* in `dsh.profile.bundles`, and `dsh --profile web --dump-config` should list a `dota2ai`
+  entry. In GUI profiles (`dsh web` and Desktop), DSH's `typert-loader` loads `./typert` and `Dota2AiRemote`
+  attaches to `ctx.typert`. In headless CLI profiles without `typert`, the seven `dota2ai_*` tools and the `dota2ai`
+  skill still activate.
 
 ## Tools
 
@@ -61,6 +81,9 @@ npx vitest run packages/dsh                          # host LLM bridge, trace pi
 node packages/dsh/scripts/pack.mjs                   # dist/qianhaoq-dsh-dota2ai-<version>.tgz + SHA256SUMS
 node packages/dsh/scripts/installed-smoke.mjs packages/dsh/dist/*.tgz \
   --dsh <dir>/node_modules/@deepseek-ai/dsh/lib/bin.js [--browser]
+# a real review on a real model through a real `dsh web` (spends the key's account; see the script's header)
+DEEPSEEK_API_KEY=… node packages/dsh/scripts/live-review.mjs packages/dsh/dist/*.tgz \
+  --dsh <dir>/node_modules/@deepseek-ai/dsh/lib/bin.js [--lang zh] [--browser <screenshot dir>]
 ```
 
 ---
@@ -73,12 +96,22 @@ node packages/dsh/scripts/installed-smoke.mjs packages/dsh/dist/*.tgz \
 - **由你的 DSH 宿主模型驱动（`ctx.llm`）**：录像深度调查复盘（`runDeepReview` + `verifyReview` 事实核查）、录像查证追问（`runChat` + `verifyText`）与版本顾问均在本机调用你在 DSH 配置的模型——默认跟随 DSH 当前模型，同时保留页面内模型切换器，支持同一局用不同模型对比复盘。
 - **会话工具与卡片联动**：7 个 `dota2ai_*` 工具与独立页面共享本地 `$DSH_HOME/dota2ai` 缓存，聊天内的工具卡片可一键跳转到对应复盘页。
 
-**安装**（需要 Node ≥ 24.9、DSH **≥ 0.2.1-rc.3** 和 pnpm）：
+**安装**（需要 Node ≥ 24.9，DSH **0.2.x (≥ 0.2.1-rc.3)**，npm 上的 `latest` 是 0.2.2-rc.5；DSH 用 pnpm 装插件）：
 
 ```sh
-sha256sum -c SHA256SUMS
-dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.2.tgz
-dsh web
+npm install -g pnpm @deepseek-ai/dsh@0.2.2-rc.5
+curl -LO https://github.com/qianhaoq/dota2.ai/releases/download/dsh-v0.2.3/qianhaoq-dsh-dota2ai-0.2.3.tgz
+dsh plugin --profile web add ./qianhaoq-dsh-dota2ai-0.2.3.tgz
+DEEPSEEK_API_KEY=sk-... dsh web      # 或者直接 dsh web，在 DSH 弹出的 API Key 窗口里填
 ```
+
+然后在 DSH 左侧栏打开 **dota2.ai**，贴比赛 ID、选英雄即可。复盘用的是你自己的 DeepSeek Key：不排队、不限次（一次深度复盘大约几十万输入 token）。复盘、追问和训练目标都保存在你自己电脑的 `$DSH_HOME/dota2ai` 下，公开的 `dota2.ai/r/<比赛>` 页面看不到它们。
+
+**常见问题**
+
+- **`installation rejected … incompatible with dsh`**：你的 DSH 版本不在上面的范围内。装范围内的版本（`npm install -g @deepseek-ai/dsh@0.2.2-rc.5`），或者换更新的插件版本。
+- **找不到 `pnpm` / plugin command failed**：先 `npm install -g pnpm`，再重新执行 `dsh plugin … add`。
+- **页面提示没有模型 / 工具返回 `model_not_configured`**：DSH 里还没有可用的模型。启动 `dsh web` 时带上 `DEEPSEEK_API_KEY`，或者在 DSH 的 API Key 窗口里填写，然后选一个模型。
+- **左侧栏没有 dota2.ai、会话里没有工具**：profile 的 `package.json` 需要同时在 `dependencies` 和 `dsh.profile.bundles` 里列出本插件，`dsh --profile web --dump-config` 里应能看到 `dota2ai`。
 
 同一个包适用于 Linux、macOS 和 Windows（无原生编译二进制）。配置项（`cordis.patch.yml` 下 `dota2ai`）：`enabled`、`lang`、`apiBase`、`skillEnabled`、`homeDir`、`extractorBin`。

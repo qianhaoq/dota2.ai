@@ -1,6 +1,6 @@
 {
   "name": "@qianhaoq/dsh-dota2ai",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "dota2.ai for DSH: standalone replay review page, DSH host-model agent, coach tools and skill",
   "icon": "./icon.svg",
