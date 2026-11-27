@@ -838,11 +838,14 @@ describe('trace tools on a real game', () => {
       no_own_observer_within_1600: [],
       enemy_observer_within_1600: [],
       bought_back: [],
+      before_a_nearby_fight_within_30s: [],
+      non_hero_without_enemy_hero_damage: [],
+      absorbed_enemy_ultimate: [],
     });
     expect(all.deaths.map((d) => d.in_a_fight)).toEqual([false, false, true, true, true, true, true, true, true, true, true]);
     expect([...all.deaths_where.in_a_fight, ...all.deaths_where.outside_fights]).toHaveLength(all.deaths_total);
-    // Every death here had its health and position sampled: nothing a count could be missing.
-    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, allies_at_death: 0, in_a_fight: 0, health_below_half_at_window_start_outside_fights: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 });
+    // Every death here had its health and position sampled: nothing a count could be missing (ultimateOf was not passed, so absorbed_enemy_ultimate is unknown for all 11).
+    expect(all.deaths_not_known).toEqual({ health_at_window_start: 0, allies_at_death: 0, in_a_fight: 0, health_below_half_at_window_start_outside_fights: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0, before_a_nearby_fight_within_30s: 0, non_hero_without_enemy_hero_damage: 0, absorbed_enemy_ultimate: 11 });
     // Phantom Assassin's attacks are the largest single source: 44% of everything taken in the eleven windows.
     expect(all.damage_in_death_windows_total).toBe(23757);
     expect(Object.entries(all.damage_share_in_death_windows)[0]).toEqual(['phantom_assassin: attacks', 0.44]);

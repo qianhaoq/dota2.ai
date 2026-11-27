@@ -136,6 +136,12 @@
 
   所以复盘该说的不是"一个人危险"，而是"一个人死，大多数时候什么也没换到"。提示词按这个改了：用这局"身边没人且没换到"的次数来说，不说"单独站位本身危险"。
 
+  **死亡上下文补充（2026-11-27，60 局线上录像校准，`scripts/calibrate.mjs`）**：
+  - `nearby_fight`：记录不在团战死亡列表里、但发生在附近团战开打前 30 秒至结束后 15 秒内且距离 3000 码以内的阵亡（`relation: before_fight | during_fight | after_fight`）。60 局共 127 次团战开打前 30 秒内的阵亡（`before_a_nearby_fight_within_30s`），仅 17%（22/127）在 15 秒内换到人头；这把"团前被抓/先手开团"与"孤身刷野白死"区分开。
+  - `non_hero_death_without_enemy_hero_damage` 与 `killer_kind`：区分击杀者类型（敌方英雄、野怪、肉山、痛苦魔方、防御塔/泉水、小兵、召唤物 `other_unit`）；60 局共 9 次非英雄/非召唤物击杀且窗口内无敌方英雄伤害（如辅助拉野/卡塔自杀），不再被当成白送。
+  - `enemy_ultimates_absorbed`、`disable_seconds_in_window`、`allies_near_who_survived_10s`、`nearby_objective`：记录窗口内吃到的敌方大招、合并后的总受控时长、阵亡时 2200 码内且随后 10 秒存活的队友，以及附近（2500 码、−10/+20 秒内）的推塔/肉山目标。60 局中吃到敌方大招的阵亡共 2553 次（换到率 55%，1410/2553；团战外 988 次，换到率 21%，205/988）。
+  - 自动施法/攻击特效与阵亡触发被动修复：60 局实测确认 13 个带蓝耗的法球/被动技能（如 `enchantress_impetus`、`silencer_glaives_of_wisdom`、`drow_ranger_frost_arrows`、`ancient_apparition_chilling_touch`、`doom_bringer_infernal_blade`、`jakiro_liquid_fire`/`ice`、`obsidian_destroyer_arcane_orb` 等）在战斗日志里 `DOTA_COMBATLOG_ABILITY` 恒为 0 次、但存在大量 `trace.damage` 记录。现从 `castable()` 排除，并在 `ability_audit` 返回 `casts_logged: false`、`casts_total: null`、`deaths_with_it_ready_and_not_cast_total: null` 及 `damage_to_enemy_heroes_total` 与 `gaps` 说明（未知不写 0）；`undying_ceaseless_dirge` 在 `ability_audit` 报告 `triggered_on_death` 而不影响计分板真实阵亡数。
+
 每个解释都附语料基准率，让模型知道这个因素平常有多重要，不至于把一次巧合讲成规律。
 
 #### 一个会误导的计数：“至多只伤到一名敌方英雄的施放”

@@ -180,6 +180,18 @@ const T = {
   revivedAt: { en: 'revived at', zh: '起身于', ru: 'встал в' },
   diedAfterRevive: { en: 'died for real', zh: '随后真死于', ru: 'затем погиб в' },
   traded: { true: { en: 'traded: an enemy hero died within 15 s', zh: '换到了：15 秒内对面也死了英雄', ru: 'размен: враг погиб в течение 15 с' }, false: { en: 'not traded: no enemy hero died within 15 s', zh: '没换到：15 秒内对面没死英雄', ru: 'без размена: враги не погибли за 15 с' } } as Record<string, Tri>,
+  nearbyFight: { en: 'Nearby fight', zh: '附近团战', ru: 'Рядом драка' },
+  fightRel: {
+    before_fight: { en: 'before engagement', zh: '开打前', ru: 'до начала' },
+    in_fight: { en: 'in this fight', zh: '在这场团战中', ru: 'в этой драке' },
+    during_fight: { en: 'during fight', zh: '团战期间', ru: 'во время драки' },
+    after_fight: { en: 'after fight', zh: '团战后', ru: 'после драки' },
+  } as Record<string, Tri>,
+  nearbyObj: { en: 'Nearby objective', zh: '附近目标', ru: 'Объект рядом' },
+  nonHeroDeath: { en: 'Non-hero death, no enemy hero damage in window', zh: '非英雄击杀且窗口内无敌方英雄伤害', ru: 'Смерть не от героя без урона от врагов' },
+  enemyUltsAbsorbed: { en: 'Enemy ultimates absorbed', zh: '吃到的敌方大招', ru: 'Принятые ульты врага' },
+  disableTotal: { en: 'Total disabled', zh: '累计受控', ru: 'Всего в контроле' },
+  alliesSurvived: { en: 'Nearby allies alive 10 s later', zh: '身边 10 秒后仍存活队友', ru: 'Союзники рядом, выжившие 10 с' },
   alliesElsewhere: { en: 'Allies not near', zh: '不在附近的队友', ru: 'Союзники вдалеке' },
   wonBy: { my_team: { en: 'Your team won the fight', zh: '我方赢团', ru: 'Ваша команда выиграла драку' }, enemy: { en: 'They won the fight', zh: '对方赢团', ru: 'Враги выиграли драку' } } as Record<string, Tri>,
   stillDead: { en: 'Still dead 10 s after', zh: '10 秒后仍未复活', ru: 'Всё ещё мертвы через 10 с' },
@@ -359,6 +371,11 @@ const TOTALS: Record<string, Tri> = {
   no_own_observer_within_1600: { en: 'Deaths with no own observer within 1600', zh: '身边 1600 码内没有己方假眼的阵亡' },
   enemy_observer_within_1600: { en: 'Deaths with an enemy observer within 1600', zh: '1600 码内有敌方假眼的阵亡' },
   bought_back: { en: 'Deaths bought back', zh: '买活的阵亡' },
+  before_a_nearby_fight_within_30s: { en: 'Deaths within 30 s before a nearby fight', zh: '附近团战开打前 30 秒内阵亡' },
+  non_hero_without_enemy_hero_damage: { en: 'Non-hero deaths with no enemy hero damage', zh: '无敌方英雄伤害的非英雄击杀' },
+  absorbed_enemy_ultimate: { en: 'Deaths that absorbed an enemy ultimate', zh: '吃到敌方大招的阵亡' },
+  damage_to_enemy_heroes_total: { en: 'Damage to enemy heroes', zh: '对敌方英雄总伤害' },
+  damage_to_enemy_heroes_seconds: { en: 'Seconds dealing damage to enemy heroes', zh: '对敌方英雄造成伤害秒数' },
   // fight_report's totals (fights:<hero>).
   fights_total: { en: 'Fights', zh: '团战' },
   fights_my_team_lost_fewer: { en: 'Your team lost fewer heroes', zh: '我方少死人' },
@@ -494,6 +511,28 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
           <p className="ag-rec-line"><span>{t(T.reincAtDeath)}</span><span className="ag-chip is-warn">{t(T.reincStates[r.reincarnation_at_death.state])}{r.reincarnation_at_death.cooldown_left != null && ` · ${r.reincarnation_at_death.cooldown_left}${t(T.sec)}`}{r.reincarnation_at_death.mana != null && r.reincarnation_at_death.mana_cost != null && ` (${r.reincarnation_at_death.mana}/${r.reincarnation_at_death.mana_cost})`}</span></p>
         )}
         {typeof r.traded_within_15s === 'boolean' && <p className="ag-rec-line"><span className={`ag-chip ${r.traded_within_15s ? 'is-good' : 'is-warn'}`}>{t(T.traded[String(r.traded_within_15s)])}</span></p>}
+        {r.non_hero_death_without_enemy_hero_damage === true && <p className="ag-rec-line"><span className="ag-chip">{t(T.nonHeroDeath)}</span></p>}
+        {r.nearby_fight && typeof r.nearby_fight === 'object' && (
+          <p className="ag-rec-line">
+            <span>{t(T.nearbyFight)}</span>
+            <span className="ag-chip">{r.nearby_fight.clock} · {T.fightRel[r.nearby_fight.relation] ? t(T.fightRel[r.nearby_fight.relation]) : r.nearby_fight.relation}{r.nearby_fight.relation === 'before_fight' && r.nearby_fight.seconds_to_engaged != null ? ` · ${r.nearby_fight.seconds_to_engaged}${t(T.sec)}` : ''}{r.nearby_fight.distance != null && <em>{r.nearby_fight.distance}</em>}</span>
+          </p>
+        )}
+        {r.nearby_objective && typeof r.nearby_objective === 'object' && (
+          <p className="ag-rec-line">
+            <span>{t(T.nearbyObj)}</span>
+            <span className="ag-chip">{r.nearby_objective.kind === 'roshan' ? 'Roshan' : buildingLabel(r.nearby_objective.building, lang)}{r.nearby_objective.fell_at ? ` · ${r.nearby_objective.fell_at}` : r.nearby_objective.killed_at ? ` · ${r.nearby_objective.killed_at}` : ''}</span>
+          </p>
+        )}
+        {Array.isArray(r.enemy_ultimates_absorbed) && r.enemy_ultimates_absorbed.length > 0 && (
+          <p className="ag-rec-line"><span>{t(T.enemyUltsAbsorbed)}</span>{r.enemy_ultimates_absorbed.map((u: any, i: number) => <span key={i} className="ag-chip is-enemy">{N(u.hero)} · {N(u.ability)}</span>)}</p>
+        )}
+        {typeof r.disable_seconds_in_window === 'number' && r.disable_seconds_in_window > 0 && (
+          <p className="ag-rec-line"><span>{t(T.disableTotal)}</span><span className="ag-chip">{r.disable_seconds_in_window}{t(T.sec)}</span></p>
+        )}
+        {Array.isArray(r.allies_near_who_survived_10s) && r.allies_near_who_survived_10s.length > 0 && (
+          <p className="ag-rec-line"><span>{t(T.alliesSurvived)}</span>{r.allies_near_who_survived_10s.map((h: string) => <span key={h} className="ag-chip is-ally">{N(h)}</span>)}</p>
+        )}
         {r.allies_elsewhere?.length > 0 && <p className="ag-rec-line"><span>{t(T.alliesElsewhere)}</span>{r.allies_elsewhere.map((h: any) => <span key={h.hero} className="ag-chip">{N(h.hero)}{doingOf(h) && ` · ${doingOf(h)}`}{h.distance != null && <em>{h.distance} {t(T.away)}</em>}{h.respawn_in != null && <em>{t(T.respawn)} {h.respawn_in}{t(T.sec)}</em>}{h.tp_ready != null && <em>{t(T.tp[String(h.tp_ready)])}</em>}</span>)}</p>}
         <p className="ag-rec-sub">{t(T.damage)}</p>
         <ul className="ag-bars">{r.damage_taken.slice(0, 5).map((d: any, i: number) => <Bar key={i} label={`${N(d.from)} · ${d.by === 'attack' ? t(T.attack) : N(d.by)}`} value={d.value} max={max} />)}</ul>
