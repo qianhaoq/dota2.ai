@@ -71,18 +71,27 @@ describe('build_check: the build against what killed the player', () => {
   });
 
   it('the answers are the curated lists for this role, with what each does and whether the player held it', () => {
-    expect(r.my_role).toBe('support');
+    // 9100904020's match JSON is unparsed (no OpenDota lane_role), so the old GPM-rank fallback misclassified
+    // Beastmaster (Dire bot offlane core, Aghs/Pipe/AC) as a support. With replay lane inference, he is pos 3 core.
+    expect(r.my_role).toBe('core');
+    expect(r.my_position).toBe(3);
+    expect(r.role_source).toBe('replay_lanes_and_scoreboard');
+    expect(r.played_as).toBe('frontline_initiator');
+    expect(r.my_economy).toMatchObject({ source: 'match_record', gold_per_min: expect.any(Number) });
     const attack = r.items_that_answer_attack_damage.map((x: any) => x.item);
-    expect(attack).toEqual(ANSWERS.physical.support);
+    expect(attack).toEqual(ANSWERS.physical.core);
     const halberd = r.items_that_answer_attack_damage.find((x: any) => x.item === 'heavens_halberd');
-    expect(halberd).toMatchObject({ name: '天堂之戟', cost: items.heavens_halberd.cost, player_first_held: null, does: [{ kind: 'active', title: 'Disarm', valve_text: 'Prevents a target from attacking for 3 seconds.' }] });
+    expect(halberd).toMatchObject({ name: '天堂之戟', cost: items.heavens_halberd.cost, estimated_minutes_of_my_farm: expect.any(Number), player_first_held: null, does: [{ kind: 'active', title: 'Disarm', valve_text: 'Prevents a target from attacking for 3 seconds.' }] });
     // The drawback is in Valve's own text, for the model to read: Ghost Scepter and magic damage.
     expect(r.items_that_answer_attack_damage.find((x: any) => x.item === 'ghost').does[0].valve_text).toContain('more vulnerable to magic damage');
     expect(r.items_that_answer_spell_damage.find((x: any) => x.item === 'pipe').player_first_held).toBe('29:08');
-    // Without the match data the role is not known: both roles' answers are offered, and the gap says why.
+    // Without the match data (and on this legacy trace with no creep_kills/gold/net_worth), the role is not known:
+    // both roles' answers are offered, and the gap says why.
     const bare: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en' });
     expect(bare).not.toHaveProperty('my_role');
+    expect(bare.my_economy).toBeNull();
     expect(bare.gaps[0]).toEqual({ topic: 'role', reason: 'no_match_data_for_this_game' });
+    expect(bare.gaps.some((g: any) => g.topic === 'economy')).toBe(true);
     expect(bare.items_that_answer_attack_damage.map((x: any) => x.item)).toEqual([...new Set([...ANSWERS.physical.core, ...ANSWERS.physical.support])]);
     expect(bare.my_big_items_in_order[1].name).toBe('Pipe of Insight');
   });
