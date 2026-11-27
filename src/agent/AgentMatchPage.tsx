@@ -73,6 +73,8 @@ const T = {
   noUrlBody: { en: 'A game that just ended takes a few minutes before its replay can be fetched. Try again shortly.', zh: '刚打完的比赛要等几分钟才能取到录像。稍后再试。', ru: 'После завершения матча реплей появляется через несколько минут. Попробуйте чуть позже.' },
   noUrlWaiting: { en: 'A game that just ended takes a few minutes before its replay can be fetched. Leave this page open: it will try again by itself in a few minutes. Or come back later.', zh: '刚打完的比赛要等几分钟才能取到录像。这个页面开着就行，过几分钟会自动再试一次；也可以稍后再回来。', ru: 'После завершения матча реплей появляется через пару минут. Оставьте страницу открытой — мы автоматически попробуем ещё раз.' },
   parseFailedTitle: { en: 'The replay could not be read', zh: '录像没有解析出来', ru: 'Не удалось прочитать реплей' },
+  slowTitle: { en: 'The replay is slow to download', zh: '录像下载较慢', ru: 'Реплей скачивается медленно' },
+  slowBody: { en: 'Fetching it from the replay server did not work this time. Trying another route by itself — leave this page open; you will be told when the review is ready.', zh: '这次从录像服务器取录像没有成功，正在自动换一条线路重试。页面开着就行，复盘好了会提醒你。', ru: 'С сервера реплеев скачать не удалось. Пробуем другой путь автоматически — оставьте страницу открытой, мы сообщим, когда разбор будет готов.' },
   parseFailedBody: { en: 'Fetching or reading the replay failed. It usually works on a second try.', zh: '取录像或解析时出了问题，通常再试一次就好。', ru: 'Ошибка загрузки или разбора реплея. Обычно повторная попытка помогает.' },
   offTitle: { en: 'Replay reviews are not switched on here', zh: '这里还没有开启录像复盘', ru: 'Разбор реплеев здесь не включён' },
   offBody: { en: 'This site cannot fetch replays right now, so it cannot review this game.', zh: '这个站点现在取不了录像，所以无法复盘这一局。', ru: 'Этот сервер сейчас не может скачивать реплеи.' },
@@ -113,6 +115,8 @@ const MAX_AUTO_WAIT_SEC = 15 * 60;
  * minutes after a failed one. An object so a test can shorten the wait.
  */
 export const REPLAY_NOT_READY = { askEveryMs: 30_000, triesByItself: 3 };
+/** A download that failed (a CDN edge, a worker that did not answer): tried again by itself a few times, the server's wait apart. */
+export const DOWNLOAD_RETRY = { minWaitMs: 5_000, triesByItself: 3, reasons: new Set(['download_failed', 'worker_failed', 'timeout']) };
 const clockOf = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 /** The four steps of the wait, and which one is live. */
 export function journeyStep(avail: Availability | null, state: ReviewState | null): number {
@@ -460,6 +464,16 @@ export const AgentMatchPage: React.FC = () => {
   // a second click. A few times only — a game whose replay never comes is not asked about for ever.
   const autoTries = useRef<Record<string, number>>({});
   const awaitingReplay = intent && !wait && !hasTrace && parse?.status === 'failed' && parse.reason === 'no_replay_url' && !parse.final && (autoTries.current[selection] ?? 0) < REPLAY_NOT_READY.triesByItself;
+  // A download that failed — one CDN edge or one worker not answering, 2026-11-27 — usually works on another try: the
+  // reader said go, so it is tried again by itself, a few times, as soon as the server allows (retry_in_sec).
+  const retryingDownload = intent && !wait && !hasTrace && parse?.status === 'failed' && DOWNLOAD_RETRY.reasons.has(parse.reason) && !parse.final && (autoTries.current[selection] ?? 0) < DOWNLOAD_RETRY.triesByItself;
+  useEffect(() => {
+    if (!retryingDownload) return undefined;
+    const ms = Math.max(DOWNLOAD_RETRY.minWaitMs, ((parse as any)?.retry_in_sec ?? 0) * 1000);
+    const timer = setTimeout(() => { autoTries.current[selection] = (autoTries.current[selection] ?? 0) + 1; void sendPrepare(); }, ms);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryingDownload, parse, selection]);
   // A try that failed at once was never seen running, so nothing re-armed the restart: waiting for a replay does.
   useEffect(() => { if (awaitingReplay) resumed.current = false; }, [awaitingReplay]);
   useEffect(() => {
@@ -705,6 +719,7 @@ export const AgentMatchPage: React.FC = () => {
   if (parse?.status === 'failed') {
     if (parse.reason === 'replay_gone') return dead(T.goneTitle, T.goneBody);
     if (parse.reason === 'no_replay_url') return dead(T.noUrlTitle, awaitingReplay ? T.noUrlWaiting : T.noUrlBody, true);
+    if (retryingDownload) return dead(T.slowTitle, T.slowBody, true);
     return dead(T.parseFailedTitle, T.parseFailedBody, !parse.final);
   }
   if (!hasTrace && !avail.can_parse) return dead(T.offTitle, T.offBody);
