@@ -573,7 +573,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   if (data.kind === 'log') {
     // `from`/`to` name heroes on a damage row; on a gold row they are the minute's seconds, and the hero is `hero`.
     const s = (x: any) => (typeof x === 'string' ? x : null);
-    const who = [r.by ?? s(r.from) ?? r.hero ?? r.on ?? r.last_hit, r.ability ?? r.item ?? r.source ?? r.effect ?? r.what ?? r.reason ?? r.rune ?? r.building, r.target ?? r.to_hero ?? s(r.to) ?? r.killer ?? r.used_by];
+    const who = [r.by ?? s(r.from) ?? r.hero ?? r.on ?? r.last_hit, r.ability ?? r.item ?? r.source ?? r.effect ?? r.what ?? r.reason ?? r.rune ?? r.building, r.target ?? r.to_hero ?? s(r.to) ?? r.killer ?? r.used_by ?? (r.by ? r.on : null)];
     return (
       <div className="ag-rec">
         <p className="ag-rec-head">{r.clock && <b>{r.clock}</b>}{r.minute != null && <b>{r.minute}:00</b>} · {T.logKind[r.kind] ? t(T.logKind[r.kind]) : r.kind}</p>

@@ -97,6 +97,15 @@ describe('hero_track: one hero over a window', () => {
     expect(withKills.seconds[0].doing).toBe('farming');
   });
 
+  it('one second without its own sample is not known — never a neighbour\'s sample under its clock (Codex on #413)', () => {
+    const h = trace.heroes.findIndex((x: any) => x.key === 'beastmaster');
+    const k = 1825 - trace.t0;
+    const blank = { ...trace, states: trace.states.map((s: any, i: number) => (i === h ? { ...s, x: s.x.map((v: any, j: number) => (j === k ? null : v)), y: s.y.map((v: any, j: number) => (j === k ? null : v)) } : s)) };
+    const r: any = heroTrack(blank, { hero: 'beastmaster', from: '30:24', to: '30:26' });
+    expect(r.seconds.map((x: any) => [x.clock, x.known !== false])).toEqual([['30:24', true], ['30:25', false], ['30:26', true]]);
+    expect(r.gaps).toContainEqual({ topic: 'samples', reason: 'some seconds have no sample' });
+  });
+
   it('a second with no sample is not known, and the gap says so', () => {
     const blank = { ...trace, states: trace.states.map((s: any, i: number) => (i === trace.heroes.findIndex((h: any) => h.key === 'beastmaster') ? { ...s, x: s.x.map(() => null), y: s.y.map(() => null) } : s)) };
     const r: any = heroTrack(blank, { hero: 'beastmaster', from: 100, to: 102 });

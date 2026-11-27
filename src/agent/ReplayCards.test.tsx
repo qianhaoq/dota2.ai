@@ -37,6 +37,13 @@ describe('evidence cards for the replay\'s own rows', () => {
     expect(text.toLowerCase()).toContain('sven');
     expect(text).toContain('120');
   });
+  it('an effect names who put it and on whom (Codex on #413)', async () => {
+    const ix = (k: string) => trace.names.indexOf(`npc_dota_hero_${k}`);
+    const t2 = { ...trace, modifiers: [[100, ix('venomancer'), trace.names.indexOf('npc_dota_hero_dark_willow'), ix('dark_willow'), 1, 0, 't', 0]] };
+    const text = (await open('log:effect:0', t2)).toLowerCase();
+    expect(text).toContain('dark willow');
+    expect(text).toContain('venomancer');
+  });
   it('a track: one line a second with where, health and mana', async () => {
     const text = await open('track:beastmaster:1820:1823');
     for (const c of ['30:20', '30:21', '30:22', '30:23']) expect(text).toContain(c);
