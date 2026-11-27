@@ -106,6 +106,20 @@ describe('the day\'s ceiling on reviews this site pays for', () => {
     } finally { await s.close(); }
   });
 
+  it('none is set by default: past what a day used to allow, only the hour and the caller bound reviews', async () => {
+    const { service, started } = fakeService();
+    const router = createAgentRouter({ service, resolveClientIp: ipOf, llm: { acquire: () => ({ ok: true }) }, reviewHourlyMax: 1000 });
+    const s = await serve(router);
+    try {
+      const langs = ['en', 'zh', 'ru'];
+      for (let i = 0; i < 300; i++) {
+        const r = await s.post(`/api/agent/${MATCH}/review`, { hero: 'beastmaster', lang: langs[i % 3] }, `10.6.${Math.floor(i / 250)}.${i % 250}`);
+        expect(r.status, `start ${i}`).toBe(202);
+      }
+      expect(started).toHaveLength(300);
+    } finally { await s.close(); }
+  });
+
   it('the review hour is tunable', async () => {
     const { service } = fakeService();
     const router = createAgentRouter({ service, resolveClientIp: ipOf, llm: { acquire: () => ({ ok: true }) }, reviewHourlyMax: 1 });
