@@ -8,7 +8,9 @@
  *   node .github/scripts/data-refresh.cjs body    <report.json> <tests: ok|failed>   the PR body, on stdout
  *
  * One source failing never stops the others: each script's outcome is
- * recorded and reported. The STRATZ scripts are skipped, and said so, when no
+ * recorded and reported. A failed script is tried again after 2 and 10
+ * minutes (upstreams come back, #419); what a failed try wrote is put back, so
+ * a source that keeps failing keeps its last good data. The STRATZ scripts are skipped, and said so, when no
  * STRATZ_API_TOKEN is set.
  */
 const { spawnSync, execFileSync } = require('node:child_process');
@@ -54,19 +56,67 @@ function onlyDateChanged(before, after) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function refresh(reportPath, env = process.env) {
-  const version = sitePatch();
+/** Seconds to wait before each new try of a step that failed: upstreams fail for a while and come back (#419). */
+const RETRY_WAITS = [120, 600];
+
+/** Files that differ from HEAD (changed, added or deleted), as `git status --porcelain` lists them. */
+function dirtyFiles() {
+  return new Set(execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' }).split('\n').filter(Boolean).map((l) => l.slice(3).replace(/^"|"$/g, '')));
+}
+/** Put back what a failed try wrote: a file it changed returns to HEAD, a file it added goes. */
+function undo(files) {
+  for (const f of files) {
+    try { execFileSync('git', ['checkout', 'HEAD', '--', f], { stdio: 'ignore' }); } catch { try { require('node:fs').rmSync(f, { force: true }); } catch { /* gone already */ } }
+  }
+}
+const sleepSync = (seconds) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, seconds * 1000);
+/** A step may run this long; then it and every process it started are stopped. */
+const STEP_SECONDS = 25 * 60;
+/**
+ * Run one step under GNU timeout: on expiry it signals the step's whole process group, then kills it 30 s later,
+ * so a script a step started (refresh-data.mjs → coach-patch-snapshots.mjs) cannot go on writing after the files
+ * were put back, or race the next try (Codex P1 on #422). Where there is no `timeout` (not the Linux runner), the
+ * step runs as before with Node's own timeout.
+ */
+function spawnStep(s, env, seconds = STEP_SECONDS) {
+  const timeoutBin = process.platform === 'linux' ? '/usr/bin/timeout' : null;
+  if (timeoutBin && require('node:fs').existsSync(timeoutBin)) {
+    const r = spawnSync(timeoutBin, ['--kill-after=30s', `${seconds}s`, process.execPath, ...s.cmd], { encoding: 'utf8', env, maxBuffer: 64 * 1024 * 1024 });
+    // 124: timed out (and the group was signalled); 137: it had to be killed.
+    return r.status === 124 || r.status === 137 ? { ...r, stderr: `${r.stderr ?? ''}\ntimed out after ${seconds} s (the step and the processes it started were stopped)` } : r;
+  }
+  return spawnSync(process.execPath, s.cmd, { encoding: 'utf8', timeout: seconds * 1000, env, maxBuffer: 64 * 1024 * 1024 });
+}
+
+/**
+ * Run every step. A step that fails is tried again after each of `waits`; what a failed try wrote is put back
+ * first, so a step that never succeeds leaves its files as they were (the last good data), never half written.
+ * `deps` are for the tests: the steps, how a step runs, how to wait, and the working tree.
+ */
+function refresh(reportPath, env = process.env, deps = {}) {
+  const version = deps.version ?? sitePatch();
+  const { list = steps(version), run = spawnStep, sleep = sleepSync, waits = RETRY_WAITS, dirty = dirtyFiles, restore = undo } = deps;
   const out = { version, steps: [] };
-  for (const s of steps(version)) {
+  for (const s of list) {
     if (s.stratz && !env.STRATZ_API_TOKEN) { out.steps.push({ name: s.name, source: s.source, outcome: 'skipped', detail: 'no STRATZ_API_TOKEN secret' }); continue; }
     const began = Date.now();
-    const r = spawnSync(process.execPath, s.cmd, { encoding: 'utf8', timeout: 25 * 60_000, env });
+    let r; let tries = 0;
+    for (;;) {
+      const before = dirty();
+      r = run(s, env);
+      tries += 1;
+      if (r.status === 0) break;
+      // Only what this try wrote: files an earlier step changed stay.
+      restore([...dirty()].filter((f) => !before.has(f)));
+      if (tries > waits.length) break;
+      sleep(waits[tries - 1]);
+    }
     const tail = `${r.stderr ?? ''}`.trim().split('\n').filter(Boolean).slice(-2).join(' / ').slice(0, 300);
-    out.steps.push({ name: s.name, source: s.source, outcome: r.status === 0 ? 'ok' : 'failed', seconds: Math.round((Date.now() - began) / 1000), detail: r.error ? String(r.error.message) : tail });
+    out.steps.push({ name: s.name, source: s.source, outcome: r.status === 0 ? 'ok' : 'failed', tries, seconds: Math.round((Date.now() - began) / 1000), detail: r.error ? String(r.error.message) : tail });
   }
   // A new game patch is not taken up here: the site's patch page (highlights, new items) is written by hand.
   try { out.game_patch = JSON.parse(readFileSync('lib/data/constants/meta.json', 'utf8')).patch ?? null; } catch { out.game_patch = null; }
-  writeFileSync(reportPath, JSON.stringify(out, null, 2));
+  if (reportPath) writeFileSync(reportPath, JSON.stringify(out, null, 2));
   return out;
 }
 
@@ -140,6 +190,10 @@ function body(report, tests) {
   if (report.game_patch && report.game_patch !== report.version) {
     lines.push(`> **A new game patch: ${report.game_patch}.** The site still presents ${report.version} (\`src/coach/patch.ts\`), and the patch notes and their win rates follow it. Write ${report.game_patch}'s highlights and new items there; the next refresh then fetches its notes and numbers.`, '');
   }
+  const failed = report.steps.filter((s) => s.outcome === 'failed');
+  if (failed.length) lines.push(`> ${failed.length} step(s) still failed after ${Math.max(...failed.map((s) => s.tries ?? 1))} tries (${failed.map((s) => s.source).join(', ')}): their files were put back as they were, so those numbers stay at their last good refresh and the next run tries again. The rest is new.`, '');
+  const retried = report.steps.filter((s) => s.outcome === 'ok' && (s.tries ?? 1) > 1);
+  if (retried.length) lines.push(`> Succeeded on a later try: ${retried.map((s) => `${s.name} (${s.tries})`).join(', ')}.`, '');
   if (report.steps.some((s) => s.outcome === 'skipped')) lines.push('> Some steps were skipped: add the `STRATZ_API_TOKEN` repository secret to run them.', '');
   lines.push(
     '## 风险评估 | Risk Assessment',
@@ -165,7 +219,7 @@ function body(report, tests) {
   return lines.join('\n');
 }
 
-module.exports = { steps, sitePatch, onlyDateChanged, refresh, settle, body, bumpReviewVersion };
+module.exports = { steps, sitePatch, onlyDateChanged, refresh, settle, body, bumpReviewVersion, RETRY_WAITS, spawnStep };
 
 if (require.main === module) {
   const [cmd, report, tests] = process.argv.slice(2);
