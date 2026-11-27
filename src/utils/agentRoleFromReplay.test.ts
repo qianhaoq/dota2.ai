@@ -136,4 +136,56 @@ describe('roleFromReplay (P1-2)', () => {
     });
     expect(roleFromReplay(noFarm, 'phantom_assassin')).toMatchObject({ pos: null, kind: null, gaps: ['no_farm_signal_in_trace'] });
   });
+
+  it('uses a common scoreboard metric when some players lack last_hits and stays unknown when no shared metric exists (Codex P1 on #465)', () => {
+    const legacy = synthGame({
+      radiantCoords: [BOT, MID, TOP, TOP, BOT],
+      direCoords: [TOP, MID, BOT, BOT, TOP],
+      omitFarm: true,
+    });
+    // Dire heroes: sven(18), storm_spirit(17), beastmaster(38), undying(85), crystal_maiden(5).
+    const players = [
+      { hero_id: 18, last_hits: 300, gold_per_min: 620 },
+      { hero_id: 17, last_hits: 250, gold_per_min: 560 },
+      { hero_id: 38, gold_per_min: 480 }, // Beastmaster missing last_hits, has GPM -> all 5 share GPM!
+      { hero_id: 85, last_hits: 60, gold_per_min: 310 },
+      { hero_id: 5, last_hits: 40, gold_per_min: 280 },
+    ];
+    // Previously substituting 0 for missing last_hits dropped Beastmaster (480) below Undying (600+310=910) to pos 4.
+    expect(roleFromReplay(legacy, 'beastmaster', { players })).toMatchObject({ pos: 3, kind: 'core', source: 'replay_lanes_and_scoreboard' });
+
+    // If neither last_hits nor gold_per_min is present for all 5 teammates, role stays unknown (null).
+    const splitMissing = players.map((p) => (p.hero_id === 85 ? { hero_id: 85, last_hits: 60 } : p));
+    expect(roleFromReplay(legacy, 'beastmaster', { players: splitMissing })).toMatchObject({ pos: null, kind: null, gaps: ['no_farm_signal_in_trace'] });
+  });
+
+  it('keeps GPM unknown on net-worth-only traces and preserves 20-minute gold provenance & gaps (Codex P1 on #465)', () => {
+    const nwOnly: any = synthGame({
+      radiantCoords: [BOT, MID, TOP, TOP, BOT],
+      direCoords: [TOP, MID, BOT, BOT, TOP],
+      omitFarm: true,
+    });
+    nwOnly.net_worth = nwOnly.heroes.map((_: any, i: number) => Array.from({ length: 22 }, (_, m) => (i === 4 ? m * 250 : m * 500)));
+    const bcNw: any = buildCheck(nwOnly, { hero: 'disruptor' }, { lang: 'en' });
+    expect(bcNw.my_economy).toEqual({ source: 'replay_net_worth', gold_per_min: null, net_worth: 5250, net_worth_at_20_00: 5000 });
+    expect(bcNw.gaps).toContainEqual({ topic: 'economy_gpm', reason: 'net_worth_only_not_income_rate' });
+    // No estimated_minutes_of_my_farm when GPM is unknown.
+    expect(bcNw.items_that_answer_spell_damage.every((i: any) => i.estimated_minutes_of_my_farm === undefined)).toBe(true);
+
+    // Unparsed scoreboard (GPM, no gold_t) + trace.gold -> gold_at_20_00 carries replay_gold_log provenance and passive-gold gap.
+    const withGold = synthGame({
+      radiantCoords: [BOT, MID, TOP, TOP, BOT],
+      direCoords: [TOP, MID, BOT, BOT, TOP],
+      lh: { phantom_assassin: 65, lina: 60, axe: 52, lion: 8, disruptor: 4 },
+      gold: { phantom_assassin: 10000, lina: 9000, axe: 8000, lion: 4500, disruptor: 3500 },
+    });
+    const unparsedMatch = { duration: 1300, players: [{ hero_id: 87, gold_per_min: 320, net_worth: 6000 }] };
+    const bcUnparsed: any = buildCheck(withGold, { hero: 'disruptor' }, { lang: 'en', match: unparsedMatch });
+    expect(bcUnparsed.my_economy).toMatchObject({ source: 'match_record', gold_per_min: 320, gold_at_20_00: 3500, gold_at_20_00_source: 'replay_gold_log' });
+    expect(bcUnparsed.gaps).toContainEqual({ topic: 'economy', reason: 'passive_gold_not_in_replay_gold_log' });
+
+    // Unparsed scoreboard (GPM, no gold_t) + net_worth only (no trace.gold) -> gold_at_20_00 stays null, net_worth_at_20_00 labeled separately.
+    const bcScoreNw: any = buildCheck(nwOnly, { hero: 'disruptor' }, { lang: 'en', match: unparsedMatch });
+    expect(bcScoreNw.my_economy).toEqual({ source: 'match_record', gold_per_min: 320, net_worth: 6000, gold_at_20_00: null, net_worth_at_20_00: 5000 });
+  });
 });

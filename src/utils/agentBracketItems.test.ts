@@ -204,33 +204,36 @@ describe('pro_item_choices, build_check, goalFromReview & prompt de-rigidificati
       initiation_or_gap_closer: [],
     });
 
-    // Scoreboard match has no lane_role, so inferRoles assigns Beastmaster as 'support' (pos: null) -> pooled support (200 games).
+    // 9100904020's match JSON is unparsed (no lane_role), so replay lane + scoreboard inference identifies
+    // Beastmaster (Dire bot offlane core, Aghs/Pipe/AC) as exact position_3 (600 games) in both tools.
     expect(build.most_built_in_this_bracket).toMatchObject({
       bracket: 'la',
       bracket_name: '传奇–万古',
-      role: 'support',
-      role_name: '辅助（4–5 号位）',
-      public_games: 200,
+      role: 'position_3',
+      role_name: '3 号位（劣势路）',
+      position: 3,
+      public_games: 600,
       source: 'STRATZ',
     });
-    expect(build.most_built_in_this_bracket.items.map((x: any) => x.item)).toEqual(['aghanims_shard', 'pipe', 'glimmer_cape']);
-    expect(build.most_built_in_this_bracket.items[1]).toMatchObject({ item: 'pipe', player_first_held: '29:08', player_had_it_by_24_59: false });
+    expect(build.most_built_in_this_bracket.items.map((x: any) => x.item)).toEqual(['helm_of_the_overlord', 'blink', 'black_king_bar']);
+    expect(build.most_built_in_this_bracket.items[0]).toMatchObject({ item: 'helm_of_the_overlord', player_first_held: null });
 
     expect(pro.public_items_in_this_bracket).toMatchObject({
       bracket: 'la',
       bracket_name: '传奇–万古',
-      role: 'support',
-      public_games: 200,
-      hero_win_rate: 0.55,
+      role: 'position_3',
+      position: 3,
+      public_games: 600,
+      hero_win_rate: 0.54,
       source: 'STRATZ',
     });
     expect(pro.public_items_in_this_bracket.items[0]).toMatchObject({
-      item: 'aghanims_shard',
-      name: '阿哈利姆魔晶',
+      item: 'helm_of_the_overlord',
+      name: '统御头盔',
       player_first_held: null,
-      share_of_public_games: 0.58,
-      win_rate: 0.58,
-      median_minute: 18,
+      share_of_public_games: 0.65,
+      win_rate: 0.56,
+      median_minute: 17,
     });
     expect(pro.public_items_in_this_bracket.items[0]).not.toHaveProperty('purchases');
 
@@ -240,21 +243,26 @@ describe('pro_item_choices, build_check, goalFromReview & prompt de-rigidificati
       mainline: [],
       blind_spots: [],
       findings: [{
-        title: '辅助位补微光披风自保',
-        claim: '传奇–万古分段辅助兽王 200 场路人局里 38% 在 24:59 前做出微光披风，胜率 57%。',
+        title: '三号位早补闪烁匕首开团',
+        claim: '传奇–万古分段三号位兽王 600 场路人局里 52% 在 24:59 前做出闪烁匕首，胜率 56%。',
         fix: 'f',
         evidence: [{
           refs: ['pro_items:beastmaster'],
-          fact: '传奇–万古路人局 200 场辅助兽王里微光披风登场率 38%（中位 19 分钟），胜率 57%。',
+          fact: '传奇–万古路人局 600 场三号位兽王里闪烁匕首登场率 52%（中位 15 分钟），胜率 56%。',
         }],
         rule: { when: 'w', do: 'd', this_game: 'x' },
       }],
     };
     expect(verifyReview(review, [pro, build]).problems).toEqual([]);
 
-    // goalFromReview allows an unheld bracket item (glimmer_cape / aghanims_shard) even when pro core builds omit it.
-    const g = goalFromReview({ kind: 'hold_item', items: ['glimmer_cape'], finding: 1 }, { trace, hero: 'beastmaster', findings: 1, match: rankedMatch, bracketData: snap });
-    expect(g).toMatchObject({ finding: 1, spec: { kind: 'hold_item', items: ['glimmer_cape'] } });
+    // goalFromReview allows an unheld bracket item (caduceus) even when pro core builds omit it.
+    const g = goalFromReview({ kind: 'hold_item', items: ['caduceus'], finding: 1 }, { trace, hero: 'beastmaster', findings: 1, match: rankedMatch, bracketData: snap });
+    expect(g).toMatchObject({ finding: 1, spec: { kind: 'hold_item', items: ['caduceus'] } });
+
+    // When replay positions are blanked, both tools fall back to scoreboard GPM rank -> pooled support (200 games).
+    const noPosTrace = { ...trace, states: trace.states.map((s: any) => ({ ...s, x: s.x.map(() => null), y: s.y.map(() => null), alive: s.alive.map(() => null) })) };
+    expect((buildCheck(noPosTrace, { hero: 'beastmaster' }, { lang: 'zh', match: rankedMatch, bracketData: snap }) as any).most_built_in_this_bracket).toMatchObject({ bracket: 'la', role: 'support', public_games: 200 });
+    expect((proItemChoices(noPosTrace, { hero: 'beastmaster' }, { lang: 'zh', match: rankedMatch, bracketData: snap }) as any).public_items_in_this_bracket).toMatchObject({ bracket: 'la', role: 'support', public_games: 200 });
   });
 });
 
@@ -424,8 +432,8 @@ describe('scripts/coach-bracket-items.mjs: introspection, week window & invarian
     const rankedMatch = { ...match, players: match.players.map((p: any) => ({ ...p, rank_tier: 55 })) };
     const proRec: any = resolveRef(trace, 'pro_items:beastmaster', { hero: 'beastmaster', lang: 'zh', match: rankedMatch, bracketData: makeSnapshot() });
     const buildRec: any = resolveRef(trace, 'build:beastmaster', { hero: 'beastmaster', lang: 'zh', match: rankedMatch, bracketData: makeSnapshot() });
-    expect(proRec.record.public_items_in_this_bracket).toMatchObject({ bracket: 'la', role: 'support', public_games: 200, source: 'STRATZ' });
-    expect(buildRec.record.most_built_in_this_bracket).toMatchObject({ bracket: 'la', role: 'support', public_games: 200, source: 'STRATZ' });
+    expect(proRec.record.public_items_in_this_bracket).toMatchObject({ bracket: 'la', role: 'position_3', public_games: 600, source: 'STRATZ' });
+    expect(buildRec.record.most_built_in_this_bracket).toMatchObject({ bracket: 'la', role: 'position_3', public_games: 600, source: 'STRATZ' });
     expect(proRec.record).not.toHaveProperty('gaps');
     expect(buildRec.record).not.toHaveProperty('gaps');
   });
