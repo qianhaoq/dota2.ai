@@ -104,7 +104,10 @@ describe('API v1 contract', () => {
     const { get } = await setup();
     for (const path of [base, '/openapi.json', '/llms.txt', '/api/v1/config', '/missing']) {
       const response = await get(path);
-      expect(response.headers.get('content-security-policy-report-only')).toContain("frame-ancestors 'none'; base-uri 'none'");
+      const csp = response.headers.get('content-security-policy');
+      if (path === '/missing') expect(csp).toBe("default-src 'none'");
+      else expect(csp).toContain("frame-ancestors 'none'; base-uri 'none'");
+      expect(response.headers.get('x-frame-options')).toBe('DENY');
       expect(response.headers.get('strict-transport-security')).toContain('max-age=');
       expect(response.headers.get('x-content-type-options')).toBe('nosniff');
       expect(response.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');

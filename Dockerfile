@@ -39,24 +39,27 @@ COPY packages/mcp/package.json ./packages/mcp/
 RUN npm ci --omit=dev
 
 # Copy built frontend from builder stage
-COPY --from=builder /app/dist ./dist
+COPY --from=builder --chown=node:node /app/dist ./dist
 
 # Copy server runtime (match review modules + entry)
-COPY server.js ./
-COPY lib ./lib
-COPY routes ./routes
-COPY packages ./packages
+COPY --chown=node:node server.js ./
+COPY --chown=node:node lib ./lib
+COPY --chown=node:node routes ./routes
+COPY --chown=node:node packages ./packages
 RUN mkdir -p ./data
 # Only the reviewed public snapshot belongs in the runtime image.
 COPY --from=builder /app/data/site-knowledge.v1.json ./data/site-knowledge.v1.json
 # Only this reviewed compact replay-facts artifact belongs in the runtime image.
 COPY --from=builder /app/data/replay-facts/9080127650.json ./data/replay-facts/9080127650.json
+RUN chown -R node:node /app
 
 # Set environment variables
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=8080
 ENV REPLAY_HOME=/app/data/replay-facts
+
+USER node
 
 # Expose port
 EXPOSE 8080

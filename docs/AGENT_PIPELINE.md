@@ -16,7 +16,7 @@ Code: `lib/agent/` (pipeline, stores, service, router, agent, verifier),
 
 | Piece | Where | Needs |
 |---|---|---|
-| Site (`server.js`) | the existing Cloud Run service | `DEEPSEEK_API_KEY` (and `KIMI_API_KEY`, `GLM_API_KEY` for the other models), `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
+| Site (`server.js`) | the existing Cloud Run service | `DEEPSEEK_API_KEY`, `AGENT_BUCKET`, `TRACE_WORKER_URL`, `TRACE_WORKER_AUDIENCE` |
 | Replay worker (`Dockerfile.trace-worker`) | two private Cloud Run services: `dota2-ai-trace-worker` (asia-east1) and the fallback `dota2-ai-trace-worker-hk` (asia-east2), one image; rebuilt and deployed to both on a merge that touches the image (`cloudbuild.trace-worker.yaml`) | the pinned extractor in the image, `AGENT_BUCKET`; the site's `TRACE_WORKER_FALLBACK_URL` / `_AUDIENCE` name the fallback |
 | Storage | one GCS bucket, objects under `agent/` | traces (`<id>.trace.json.gz`, ~250 KB), reviews, job markers; under `agent/feedback/`, what readers said of a finding (right / wrong / not useful — `lib/agent/feedback.js`, read with `scripts/feedback-report.mjs`) |
 
@@ -223,63 +223,14 @@ made once per match / per (match, hero, language) and kept.
 
 ## Which model writes the review
 
-The reader picks one on the review page; the default is DeepSeek 4.1 Flash.
-`lib/agent/models.js` lists what a page may show (an id, a name, how long the
-model took when timed); `lib/agent/providers.js` maps each id to its address,
-upstream model name and key, and only the server and the scripts import it.
-
-| id | Key | Offered by default |
-|---|---|---|
-| `deepseek-flash` | `DEEPSEEK_API_KEY` | yes (the default) |
-| `kimi-k3.1-pro` | `KIMI_API_KEY` | yes |
-| `glm-5.3-flash` | `GLM_API_KEY` | yes |
-| `glm-5.3` | `GLM_API_KEY` | no: `AGENT_MODELS` |
-| `glm-5.4` | `GLM_API_KEY` | no: the API answered 1220 (no access) on 2026-11-25 |
-
-A model is offered when its key is set (and `AGENT_MODELS`, a comma separated
-list of ids, does not leave it out). The page sends the id only. An id that is
-not offered is a 400; a review is never written by a model the reader did not
-ask for, and a failed review is not retried with another. Each model's review
-of a game is kept on its own (`….m-<id>.review.json`), so the same game can be
-read by two models; the key without a model is DeepSeek's, as every review was
-stored before there was a choice, and stays DeepSeek's on a server whose
-default is another model. A queued review names its model. The chat is
-answered by the model whose review is on screen.
+The site uses DeepSeek 4.1 Flash (`deepseek-flash`) via `DEEPSEEK_API_KEY`
+(`lib/agent/models.js`, `lib/agent/providers.js`). Multi-model switching
+(Kimi / GLM) is disabled; only DeepSeek is offered.
 
 Keys: in the server's environment only, on Cloud Run from Secret Manager
 (`--update-secrets`, never `--set-env-vars`), never in a `VITE_*` variable.
 Every secret the process holds is redacted from its logs by value
-(`lib/llmErrors.js` `registerSecretValues`), whatever its shape. A Kimi key is
-sent to one of Kimi's four addresses and nowhere else (`KIMI_BASE_URL`): a
-Kimi Code membership key (`sk-kimi-…`) to `api.kimi.com/coding/v1`, a Moonshot
-platform key to `api.moonshot.cn/v1`.
-
-Timed on 2026-11-25 on one game (9091400302, Tidehunter, Chinese, a 45-minute
-game), thinking at each provider's default. "Script" is one run of
-`scripts/deep-review.mjs` from a developer machine; "production" is a review
-started from the site (DeepSeek: its runs of that game over the day):
-
-| Model | Where | Time | Input / output tokens | Rounds, lookups | Findings | Dropped by the check |
-|---|---|---|---|---|---|---|
-| DeepSeek 4.1 Flash | production | 2.1–2.5 min | 244–538k / 22–27k | 5–10, 16 | 3 | 0 |
-| Kimi K3.1 Pro | script | 13.4 min | 502k / 25k | 8, 26 | 3 | 0 |
-| Kimi K3.1 Pro | production | 13.0 min | 541k / 25k | 9, 25 | 3 | 0 |
-| GLM-5.3 Flash | script | 11.2 min | 359k / 35k | 7, 16 | 3 | 0 (one plan evidence line left out) |
-| GLM-5.3 Flash | production | 13.2 min | 562k / 39k | 9, 16 | 3 | 0 (one plan evidence line left out) |
-| GLM-5.3 | script | 23.6 min | 1,000k / 59k | 13, 21 | 3 | 0 |
-
-These times are what the page tells a reader to expect (`models.js`
-`minutes`, shown on each model's button, before the start and while the review
-is being written): change them there when a model is timed again.
-
-All of them named the same two things to change (staying in lane at low
-health; magic resistance bought before Blink against a hero who kills with
-attacks). The third finding differed: deaths away from the team that bought
-nothing (DeepSeek, GLM), or fighting on outnumbered after Ravage (Kimi). In
-the production runs GLM-5.3 Flash listed no blind spots and gave no main
-reason, where the other two did. One game is not a ranking of their judgment;
-it does show that the other models take five to ten times as long, which is
-why the page states the wait and GLM-5.3 is not offered by default.
+(`lib/llmErrors.js` `registerSecretValues`), whatever its shape.
 
 ## Where the replay address comes from
 
