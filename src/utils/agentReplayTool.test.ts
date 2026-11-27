@@ -95,6 +95,40 @@ describe('replay_review: one call at a time, never blocking', () => {
     expect(shapeReview(MATCH, 'beastmaster', 'zh', { review: {} }).url).toBe(`https://dota2.ai/r/${MATCH}?hero=beastmaster&lang=zh`);
   });
 
+  it('a non-final parse failure (e.g. Steam GC 429 / no_replay_url) is reported as failed instead of looping as parsing', async () => {
+    const failedPoll = fake({
+      availability: async () => ({ trace: false, can_parse: true, heroes: [], parse: { status: 'failed', final: false, reason: 'no_replay_url', retry_in_sec: 45 } }),
+    });
+    expect(await replayReview(failedPoll.api, { match_id: MATCH, hero: 'beastmaster' })).toMatchObject({
+      status: 'failed',
+      stage: 'parse',
+      reason: 'no_replay_url',
+      retry_in_sec: 45,
+      message: expect.stringContaining('retry: true'),
+    });
+    expect(failedPoll.calls).toEqual([]);
+
+    // Passing retry: true during backoff still gets the honest failed response with retry_in_sec.
+    const duringBackoff = fake({
+      availability: async () => ({ trace: false, can_parse: true, heroes: [], parse: { status: 'failed', final: false, reason: 'no_replay_url', retry_in_sec: 30 } }),
+      prepare: async () => { duringBackoff.calls.push('prepare'); return { status: 200, body: { status: 'failed', final: false, reason: 'no_replay_url', retry_in_sec: 30 } }; },
+    });
+    expect(await replayReview(duringBackoff.api, { match_id: MATCH, hero: 'beastmaster', retry: true })).toMatchObject({
+      status: 'failed',
+      stage: 'parse',
+      reason: 'no_replay_url',
+      retry_in_sec: 30,
+    });
+    expect(duringBackoff.calls).toEqual(['prepare']);
+
+    // Passing retry: true after backoff starts a new parse cleanly.
+    const afterBackoff = fake({
+      availability: async () => ({ trace: false, can_parse: true, heroes: [], parse: { status: 'failed', final: false, reason: 'no_replay_url', retry_in_sec: 0 } }),
+    });
+    expect(await replayReview(afterBackoff.api, { match_id: MATCH, hero: 'beastmaster', retry: true })).toMatchObject({ status: 'parsing' });
+    expect(afterBackoff.calls).toEqual(['prepare']);
+  });
+
   it('a gone replay, a bad id and the read limit are said plainly', async () => {
     const gone = fake({ availability: async () => ({ trace: false, can_parse: true, heroes: [], parse: { status: 'failed', final: true, reason: 'replay_gone' } }) });
     expect(await replayReview(gone.api, { match_id: MATCH, hero: 'beastmaster' })).toMatchObject({ status: 'replay_unavailable', reason: 'replay_gone' });
