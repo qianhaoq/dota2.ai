@@ -97,6 +97,27 @@ describe('runAgent in-place truncation retry', () => {
     expect(res.steps).toBe(2);
     expect(res.text).toBe('still cut off');
   });
+
+  it('applies bounded truncation recovery when output cap cuts off tool-call JSON (argsError)', async () => {
+    const events: any[] = [];
+    const res = await runAgent({
+      complete: async () => ({
+        text: '',
+        truncated: true,
+        toolCalls: [{ id: 'c1', name: 'submit_review', args: {}, argsError: true }],
+        usage: { input: 100, output: 16384 },
+      }),
+      system: 'sys',
+      messages: [{ role: 'user', content: 'review' }],
+      tools: [{ name: 'submit_review', description: 'submit', input_schema: { type: 'object' } }],
+      runTool: () => ({}),
+      isFinal: (c) => c.name === 'submit_review',
+      onEvent: (e) => events.push(e),
+    });
+    expect(res.status).toBe('truncated');
+    expect(res.steps).toBe(2);
+    expect(events).toEqual([{ type: 'truncated_retry', step: 1, attempt: 1 }]);
+  });
 });
 
 describe('runDeepReview and createAgentService failure diagnostics & checkpoint archiving', () => {
