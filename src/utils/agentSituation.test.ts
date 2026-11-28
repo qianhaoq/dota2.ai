@@ -70,8 +70,12 @@ describe('build_check: the build against what killed the player', () => {
     expect(by.pipe).toMatchObject({ name: '洞察烟斗', cost: items.pipe.cost, built_for: ['answer_to_spell_damage', 'magic_resistance'] });
     expect(by.pipe.does[0]).toMatchObject({ title: 'Barrier', valve_text: items.pipe.abilities[0].description.replace(/\s+/g, ' ') });
     expect(by.assault.built_for).toEqual(['answer_to_attack_damage', 'armor']);
-    // Aghanim's Scepter is in no list: no purpose is made up for it, and it is not called an offensive item.
+    // Aghanim's Scepter is in no list: no purpose is made up for it, and it is not called an offensive item,
+    // while carrying Valve's hero-specific Scepter effect for this patch (Summon Ancient Thunderhide).
     expect(by.ultimate_scepter.built_for).toEqual([]);
+    expect(by.ultimate_scepter.for_this_hero).toEqual([
+      expect.objectContaining({ kind: 'granted_ability', granted_by: 'scepter', ability: 'beastmaster_summon_thunderhide', name: '召唤远古雷肤兽' }),
+    ]);
     expect(r.gold_in_big_items_by_purpose.not_classified).toEqual({ gold: items.ultimate_scepter.cost, items: ['阿哈利姆神杖'], first_at: '16:48' });
     expect(r.gold_in_big_items_by_purpose.answer_to_spell_damage).toEqual({ gold: items.pipe.cost, items: ['洞察烟斗'], first_at: '29:08' });
     expect(r.note).toContain('not "offensive"');

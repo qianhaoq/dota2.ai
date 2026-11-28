@@ -75,6 +75,11 @@ const T = {
   pierces: { en: 'goes through spell immunity', zh: '无视技能免疫', ru: 'пробивает невосприимчивость к магии' },
   noPierce: { en: 'blocked by spell immunity', zh: '被技能免疫挡住', ru: 'блокируется невосприимчивостью к магии' },
   ultimate: { en: 'ultimate', zh: '大招', ru: 'ульт' },
+  scepterGranted: { en: "Aghanim's Scepter", zh: '阿哈利姆神杖', ru: "Aghanim's Scepter" },
+  shardGranted: { en: "Aghanim's Shard", zh: '阿哈利姆魔晶', ru: "Aghanim's Shard" },
+  scepterEffect: { en: "Aghanim's Scepter", zh: '神杖效果', ru: "Aghanim's Scepter" },
+  shardEffect: { en: "Aghanim's Shard", zh: '魔晶效果', ru: "Aghanim's Shard" },
+  grantedAbility: { en: 'new ability', zh: '授予技能', ru: 'новая способность' },
   sec: { en: 's', zh: '秒', ru: 'с' },
   lane: { top: { en: 'Top lane', zh: '上路', ru: 'Верхняя линия' }, mid: { en: 'Mid lane', zh: '中路', ru: 'Мид' }, bot: { en: 'Bottom lane', zh: '下路', ru: 'Нижняя линия' } } as Record<string, Tri>,
   laneAt10: { en: 'at 10:00', zh: '10 分钟时', ru: 'к 10:00' },
@@ -934,10 +939,18 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   if (data.kind === 'hero_info') {
     const b = r.base ?? {};
     const shown: [string, any][] = [['health', b.health], ['mana', b.mana], ['armor', b.armor], ['magic_resistance', b.magic_resistance], ['attack_range', b.attack_range], ['base_attack_time', b.base_attack_time], ['move_speed', b.move_speed]];
+    const aghsLines = (list: any[] | null | undefined, label: Tri, prefix: string) => (Array.isArray(list) ? list : []).map((u: any, i: number) => (
+      <p key={`${prefix}-${u.ability}-${i}`} className="ag-rec-line">
+        <span className="ag-chip">{t(label)}{u.kind === 'granted_ability' ? ` · ${t(T.grantedAbility)}` : ''}</span>
+        <b>{u.name ?? N(u.ability)}</b>{u.description ? ` ${u.description}` : ''}
+      </p>
+    ));
     return (
       <div className="ag-rec">
         <p className="ag-rec-head"><b>{r.name ?? N(r.hero)}</b>{r.primary_attribute && <> · {r.primary_attribute}</>}{r.attack_type && <> · {r.attack_type}</>}{r.data_patch && <> · {r.data_patch}</>}</p>
         <p className="ag-rec-line">{shown.filter(([, v]) => v != null).map(([k, v]) => <span key={k} className="ag-chip">{pretty(k)} <em>{String(v)}</em></span>)}</p>
+        {aghsLines(r.aghanims_scepter, T.scepterEffect, 'sc')}
+        {aghsLines(r.aghanims_shard, T.shardEffect, 'sh')}
       </div>
     );
   }
@@ -1401,10 +1414,18 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     );
   }
   if (data.kind === 'abilities') {
+    const aghsLines = (list: any[] | null | undefined, label: Tri, prefix: string) => (Array.isArray(list) ? list : []).map((u: any, i: number) => (
+      <p key={`${prefix}-${u.ability}-${i}`} className="ag-rec-line">
+        <span className="ag-chip">{t(label)}{u.kind === 'granted_ability' ? ` · ${t(T.grantedAbility)}` : ''}</span>
+        <b>{u.name ?? N(u.ability)}</b>{u.description ? ` ${u.description}` : ''}
+      </p>
+    ));
     return (
       <div className="ag-rec">
         <p className="ag-rec-sub">{r.source} · {r.patch}</p>
-        <p className="ag-rec-line">{r.abilities.map((a: any) => <span key={a.ability} className="ag-chip">{a.name}{a.ultimate ? ` · ${t(T.ultimate)}` : ''}{typeof a.goes_through_spell_immunity === 'boolean' ? ` · ${t(a.goes_through_spell_immunity ? T.pierces : T.noPierce)}` : ''}</span>)}</p>
+        <p className="ag-rec-line">{r.abilities.map((a: any) => <span key={a.ability} className="ag-chip">{a.name}{a.ultimate ? ` · ${t(T.ultimate)}` : ''}{a.granted_by === 'scepter' ? ` · ${t(T.scepterGranted)}` : a.granted_by === 'shard' ? ` · ${t(T.shardGranted)}` : ''}{typeof a.goes_through_spell_immunity === 'boolean' ? ` · ${t(a.goes_through_spell_immunity ? T.pierces : T.noPierce)}` : ''}</span>)}</p>
+        {aghsLines(r.aghanims_scepter, T.scepterEffect, 'sc')}
+        {aghsLines(r.aghanims_shard, T.shardEffect, 'sh')}
       </div>
     );
   }
@@ -1458,7 +1479,7 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
                   {r.upgrade_timeline.map((u: any, i: number) => (
                     <span key={`${u.ability}-${u.ability_level}-${i}`} className={`ag-chip ${u.ultimate ? 'is-good' : ''}`}>
                       {u.clock} · {N(u.ability)} Lv{u.ability_level}
-                      {u.initial ? <em>{t(T.sbInitial)}</em> : u.hero_level != null ? <em>Lv{u.hero_level}</em> : null}
+                      {u.initial ? <em>{t(T.sbInitial)}</em> : u.granted_by === 'scepter' ? <em>{t(T.scepterGranted)}</em> : u.granted_by === 'shard' ? <em>{t(T.shardGranted)}</em> : u.hero_level != null ? <em>Lv{u.hero_level}</em> : null}
                     </span>
                   ))}
                 </p>

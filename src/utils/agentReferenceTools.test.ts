@@ -34,6 +34,31 @@ describe('reference tools: knowledge to look up instead of recall (#405)', () =>
     expect(heroInfo(trace, { hero: 'nobody' }, zh)).toMatchObject({ error: 'unknown_hero' });
   });
 
+  it('hero_info: exposes official Aghanim\'s Scepter and Shard effects (granted abilities + upgrades) and keeps missing data null with gaps', () => {
+    const enchZh: any = heroInfo(trace, { hero: 'enchantress' }, zh);
+    expect(enchZh.gaps).toEqual([]);
+    expect(enchZh.aghanims_scepter).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'granted_ability', granted_by: 'scepter', ability: 'enchantress_little_friends', name: '密友', description: expect.stringContaining('缠绕') }),
+      expect.objectContaining({ kind: 'upgrade', ability: 'enchantress_enchant', name: '魅惑' }),
+    ]));
+    expect(enchZh.aghanims_shard).toEqual([
+      expect.objectContaining({ kind: 'granted_ability', granted_by: 'shard', ability: 'enchantress_bunny_hop', name: '跃动' }),
+    ]);
+
+    const svenEn: any = heroInfo(trace, { hero: 'sven' }, { lang: 'en' });
+    expect(svenEn.aghanims_scepter).toEqual([expect.objectContaining({ kind: 'upgrade', ability: 'sven_storm_bolt', name: 'Storm Hammer', description: expect.stringContaining('780') })]);
+    expect(svenEn.aghanims_shard).toEqual([expect.objectContaining({ kind: 'upgrade', ability: 'sven_warcry', name: 'Warcry', description: expect.stringContaining('350') })]);
+
+    // Blanked source data: never [] or fabricated text — null + gaps.
+    const blanked: any = heroInfo(trace, { hero: 'enchantress' }, { ...zh, abilitiesData: { heroes: {}, innate_upgrades: {} } });
+    expect(blanked.aghanims_scepter).toBeNull();
+    expect(blanked.aghanims_shard).toBeNull();
+    expect(blanked.gaps).toEqual([
+      { topic: 'aghanims_scepter', reason: 'not_in_valve_ability_data' },
+      { topic: 'aghanims_shard', reason: 'not_in_valve_ability_data' },
+    ]);
+  });
+
   it('hero_matchup: every bracket when the player\'s is not known, with games and the hero\'s own rate beside it', () => {
     const r: any = heroMatchup(trace, { hero: 'beastmaster', against: 'phantom_assassin' }, zh);
     expect(r).toMatchObject({ ref: 'matchup:beastmaster:phantom_assassin', bracket_basis: 'not known: every bracket' });
