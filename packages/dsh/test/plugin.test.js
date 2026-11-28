@@ -1227,6 +1227,77 @@ describe('DSH local service end-to-end (service.js)', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('settles immediate parse failures deterministically even when .parse.json writes lag and share the same millisecond', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-dota2ai-grace-race-'));
+    try {
+      const { createFileStore, createJsonStore } = await import('../../../lib/agent/stores.js');
+      const backing = createJsonStore(createFileStore(join(dir, 'reviews')));
+      const slowReviewDocs = {
+        get: (k) => backing.get(k),
+        getWithMeta: (k) => backing.getWithMeta(k),
+        putIfMatch: (k, v, gen) => backing.putIfMatch(k, v, gen),
+        deleteIfMatch: (k, gen) => backing.deleteIfMatch(k, gen),
+        delete: (k) => backing.delete(k),
+        put: async (k, v) => {
+          if (k.endsWith('.parse.json')) await new Promise((r) => setTimeout(r, 25));
+          return backing.put(k, v);
+        },
+      };
+
+      const fetchImpl = async (url, init = {}) => {
+        const s = String(url);
+        const method = String(init.method ?? 'GET').toUpperCase();
+        if (s.includes('/api/agent/7777771')) {
+          if (method === 'POST') return new Response(JSON.stringify({ status: 'failed', reason: 'replay_gone', final: true }), { status: 200, headers: { 'content-type': 'application/json' } });
+          return new Response(JSON.stringify({ trace: false, can_parse: true, parse: { status: 'failed', reason: 'replay_gone', final: true } }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        if (s.includes('/api/agent/6666661')) {
+          if (method === 'POST') return new Response(JSON.stringify({ status: 'failed', reason: 'no_replay_url', final: false, retry_in_sec: 45 }), { status: 200, headers: { 'content-type': 'application/json' } });
+          return new Response(JSON.stringify({ trace: false, can_parse: true, parse: { status: 'failed', reason: 'no_replay_url', final: false, retry_in_sec: 45 } }), { status: 200, headers: { 'content-type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ error: 'unexpected' }), { status: 500, headers: { 'content-type': 'application/json' } });
+      };
+
+      const pinnedNow = 1_700_000_000_000;
+      const svc = createDshService({
+        ctx: { llm: { listProviders: () => [{ id: 'p', name: 'P', enabled: true }], listModels: async () => [{ id: 'm', name: 'M', providerId: 'p', enabled: true }] } },
+        config: { homeDir: dir, apiBase: 'https://dota2.ai' },
+        fetchImpl,
+        reviewDocs: slowReviewDocs,
+        prepareGraceMs: 400,
+        now: () => pinnedNow,
+      });
+
+      const goneOut = await svc.replay.review({ match_id: 7777771, hero: '小鹿' });
+      expect(goneOut).toMatchObject({
+        status: 'replay_unavailable',
+        surface: 'native_dsh',
+        stage: 'parse',
+        reason: 'replay_gone',
+        retryable: false,
+      });
+
+      const notReadyOut = await svc.replay.review({ match_id: 6666661, hero: '骷髅王' });
+      expect(notReadyOut).toMatchObject({
+        status: 'failed',
+        surface: 'native_dsh',
+        stage: 'parse',
+        reason: 'no_replay_url',
+        retryable: true,
+      });
+      expect(notReadyOut.retry_in_sec).toBeGreaterThan(0);
+
+      await vi.waitFor(async () => {
+        expect(await backing.get('7777771.parse.json')).toMatchObject({ state: 'failed', reason: 'replay_gone' });
+        expect(await backing.get('6666661.parse.json')).toMatchObject({ state: 'failed', reason: 'no_replay_url' });
+      }, { timeout: 2000 });
+
+      svc.shutdown();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('skill', () => {
