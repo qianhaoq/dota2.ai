@@ -653,11 +653,32 @@ describe('runDeepReview', () => {
       },
     ]);
     const ran: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
-    expect(ran.status).toBe('ok');
+    // Malformed non-array chapters leave 0 verified chapters -> refused cleanly as unverified (never saved/announced as ok).
+    expect(ran.status).toBe('unverified');
     expect(ran.review.findings).toHaveLength(1);
     expect(ran.review.highlights).toEqual([]);
     expect(ran.review.chapters).toEqual([]);
     expect(ran.review.blind_spots).toEqual([]);
+
+    // Non-array optional fields (highlights / blind_spots) alongside valid chapters still succeed without throwing.
+    const mOk = scripted([
+      investigate,
+      {
+        toolCalls: [call('submit_review', {
+          verdict: '咆哮没有留给幻影刺客的 BKB。',
+          highlights: {},
+          chapters: defaultChapters,
+          blind_spots: 99,
+          findings: [good],
+        }, 's1')],
+      },
+    ]);
+    const ranOk: any = await runDeepReview({ complete: mOk.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(ranOk.status).toBe('ok');
+    expect(ranOk.review.findings).toHaveLength(1);
+    expect(ranOk.review.highlights).toEqual([]);
+    expect(ranOk.review.chapters).toHaveLength(2);
+    expect(ranOk.review.blind_spots).toEqual([]);
   });
 
   it('the prompt clarifies Dota 2 replay data facts, removes template dogma, and stays compact (< 10 KB)', () => {
@@ -912,16 +933,32 @@ describe('runDeepReview', () => {
     expect(r.review.findings).toHaveLength(1);
     expect(r.review.chapters).toHaveLength(2);
 
-    // Even if the model stubbornly repeats 7 findings in the repair round, shipped findings are hard-capped to MAX_FINDINGS (3).
-    const mStubborn = scripted([
+    // If the model stubbornly submits 0 chapters even after the repair round, the run is marked unverified (never
+    // announced as ok with an uncacheable 0-chapter payload), while shipped findings stay hard-capped to MAX_FINDINGS (3).
+    const mStubbornNoChapters = scripted([
       investigate,
       { toolCalls: [call('submit_review', brokenFirst, 's1')] },
       { toolCalls: [call('submit_review', brokenFirst, 's2')] },
     ]);
-    const rStubborn: any = await runDeepReview({ complete: mStubborn.complete, trace, hero: 'beastmaster', lang: 'zh' });
-    expect(rStubborn.status).toBe('ok');
-    expect(rStubborn.review.findings).toHaveLength(3);
-    expect(rStubborn.verification.dropped).toBe(4);
+    const rStubbornNoChapters: any = await runDeepReview({ complete: mStubbornNoChapters.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(rStubbornNoChapters.status).toBe('unverified');
+    expect(rStubbornNoChapters.review.chapters).toEqual([]);
+    expect(rStubbornNoChapters.review.findings).toHaveLength(3);
+    expect(rStubbornNoChapters.verification.dropped).toBe(4);
+
+    // If the model supplies valid chapters in the repair round but still exceeds MAX_FINDINGS (7 > 3),
+    // the review succeeds with findings hard-capped to MAX_FINDINGS (3).
+    const sevenWithChapters = fullReview(sevenFindings);
+    const mStubbornExcess = scripted([
+      investigate,
+      { toolCalls: [call('submit_review', sevenWithChapters, 's1')] },
+      { toolCalls: [call('submit_review', sevenWithChapters, 's2')] },
+    ]);
+    const rStubbornExcess: any = await runDeepReview({ complete: mStubbornExcess.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(rStubbornExcess.status).toBe('ok');
+    expect(rStubbornExcess.review.chapters).toHaveLength(2);
+    expect(rStubbornExcess.review.findings).toHaveLength(3);
+    expect(rStubbornExcess.verification.dropped).toBe(4);
 
     // Chapters whose evidence fails verification drop surviving count below MIN_CHAPTERS and also trigger structure repair.
     const unbackedChapters = review([good], {

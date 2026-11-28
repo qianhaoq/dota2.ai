@@ -356,6 +356,33 @@ describe('review cache: the current prompt version only (owner, 2026-11-28; was 
     expect(ready).toMatchObject({ status: 'ready', review: { verdict: '自动修复后的规范复盘。' } });
     expect(ready.review.chapters.length).toBeGreaterThanOrEqual(2);
     expect(ready.review.findings.length).toBeLessThanOrEqual(3);
+
+    // 4) A fresh service instance (simulating restart or another Cloud Run instance) accepts the saved review identically.
+    const freshSvc: any = createAgentService({ traces: { get: async () => JSON.parse(traceJson) }, docs, complete: m.complete, model: 'deepseek-flash' });
+    const reloaded = await freshSvc.status(MATCH, 'beastmaster', 'zh');
+    expect(reloaded).toMatchObject({ status: 'ready', review: { verdict: '自动修复后的规范复盘。' } });
+
+    // 5) If a model refuses to supply chapters even after repair, the run fails as unverified and is NOT stored as ready.
+    const dirBad = mkdtempSync(join(root, 'stubborn-no-chapters-'));
+    const docsBad = createJsonStore(createFileStore(join(dirBad, 'reviews')));
+    let badCalls = 0;
+    const stubbornModel = async () => {
+      badCalls += 1;
+      if (badCalls === 1) return { toolCalls: [{ id: 'd', name: 'death_context', args: { hero: 'beastmaster', index: 9 } }] };
+      return {
+        toolCalls: [{
+          id: `s${badCalls}`,
+          name: 'submit_review',
+          args: { verdict: '36:05 阵亡时咆哮未放出。', findings: [finding], chapters: [], blind_spots: [] },
+        }],
+      };
+    };
+    const svcBad: any = createAgentService({ traces: { get: async () => JSON.parse(traceJson) }, docs: docsBad, complete: stubbornModel, model: 'deepseek-flash' });
+    expect((await svcBad.start(MATCH, 'beastmaster', 'zh')).status).toBe('running');
+    await vi.waitFor(async () => expect((await svcBad.status(MATCH, 'beastmaster', 'zh')).status).toBe('failed'), { timeout: 5000 });
+    expect(await svcBad.status(MATCH, 'beastmaster', 'zh')).toMatchObject({ status: 'failed', reason: 'unverified' });
+    const freshBad: any = createAgentService({ traces: { get: async () => JSON.parse(traceJson) }, docs: docsBad, complete: stubbornModel, model: 'deepseek-flash' });
+    expect((await freshBad.status(MATCH, 'beastmaster', 'zh')).status).not.toBe('ready');
   });
 
 });
