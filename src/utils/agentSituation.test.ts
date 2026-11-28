@@ -4,7 +4,7 @@ import { gunzipSync } from 'node:zlib';
 import { buildCheck, goldOnTop, powerSpikes, SITUATION_TOOLS } from '../../lib/agent/situationTools.js';
 import { KNOWLEDGE_TOOLS } from '../../lib/agent/knowledgeTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
-import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, approachClaims, collectFacts, deepReviewSystem, planOf, reviewToolkit, verifyReview, wordingProblems } from '../../lib/agent/deepReview.js';
+import { DEEP_REVIEW_PROMPT_VERSION, SUBMIT_REVIEW, collectFacts, deepReviewSystem, planOf, reviewToolkit, verifyReview, wordingProblems } from '../../lib/agent/deepReview.js';
 import { HABITS, evaluateHabit, habitGoal } from '../../lib/coach/goals.js';
 import { ANSWERS, GAP_CLOSERS } from '../../lib/coach/knowledge.js';
 import { MIN_FEW_GAMES, proItemsFor } from '../../lib/agent/proItems.js';
@@ -246,20 +246,18 @@ describe('the review agent has both tools, and their records can be cited and sh
   });
 });
 
-describe('game_plan.strengths', () => {
-  it('is omitted from the slimmed schema while legacy stored reviews remain verified and shippable', () => {
+describe('game_plan slim schema', () => {
+  it('omits legacy narrative slots and verifies main_reason, why, against_your_plan, and evidence strictly', () => {
     expect(Object.keys(SUBMIT_REVIEW.input_schema.properties.game_plan.properties).sort()).toEqual(['against_your_plan', 'evidence', 'main_reason', 'why']);
     const spikes = powerSpikes(trace, { hero: 'beastmaster' }, { lang: 'zh', match });
-    const plan = { strengths: '幻影刺客 15:47 做出狂战斧，之后杀了你 5 次。', course: '幻影刺客杀了你 7 次。', your_part: '你 18:39 到 12 级。', main_reason: 'enemy_play', why: '幻影刺客 6:14 到 6 级。', evidence: [{ refs: ['spikes:beastmaster'], fact: '幻影刺客 15:47 做出狂战斧，之后杀了你 5 次。' }] };
-    const ok = verifyReview({ verdict: 'v', mainline: [], findings: [], blind_spots: [], game_plan: plan }, [spikes]);
+    const plan = { main_reason: 'enemy_play', why: '幻影刺客 15:47 做出狂战斧，之后杀了你 5 次。', evidence: [{ refs: ['spikes:beastmaster'], fact: '幻影刺客 15:47 做出狂战斧，之后杀了你 5 次。' }] };
+    const ok = verifyReview({ verdict: 'v', findings: [], blind_spots: [], game_plan: plan }, [spikes]);
     expect(ok.problems).toEqual([]);
-    expect(planOf(plan, ok.problems, ok.refs)).toMatchObject({ strengths: plan.strengths, course: plan.course, main_reason: 'enemy_play' });
-    const bad = { ...plan, strengths: '幻影刺客 13:13 做出狂战斧。' };
-    const check = verifyReview({ verdict: 'v', mainline: [], findings: [], blind_spots: [], game_plan: bad }, [spikes]);
-    expect(check.problems).toEqual([expect.objectContaining({ where: 'plan', index: 4, kind: 'time' })]);
-    const kept: any = planOf(bad, check.problems, check.refs);
-    expect(kept).not.toHaveProperty('strengths');
-    expect(kept).toMatchObject({ course: plan.course, your_part: plan.your_part, why: plan.why });
+    expect(planOf(plan, ok.problems, ok.refs)).toEqual({ main_reason: 'enemy_play', why: plan.why, evidence: [{ refs: ['spikes:beastmaster'], fact: plan.evidence[0].fact }] });
+    const bad = { ...plan, why: '幻影刺客 13:13 做出狂战斧。' };
+    const check = verifyReview({ verdict: 'v', findings: [], blind_spots: [], game_plan: bad }, [spikes]);
+    expect(check.problems).toEqual(expect.arrayContaining([expect.objectContaining({ where: 'plan', index: 0, kind: 'time' })]));
+    expect(planOf(bad, check.problems, check.refs)).toBeNull();
   });
 });
 
@@ -309,21 +307,5 @@ describe('deaths in a fight are told apart from deaths outside one', () => {
     expect(evaluateHabit(goal, { ...summary, deaths_where: old }, 40).result).toBe('unknown');
     const system = deepReviewSystem('en');
     for (const word of ['in_a_fight', '_outside_fights', 'missing from the minimap']) expect(system).toContain(word);
-  });
-});
-
-describe('a rule cannot start from seeing an enemy come', () => {
-  it('names the phrase in a rule\'s situation; what the player always has on screen is fine', () => {
-    expect(approachClaims('小地图上你周围没有队友，而屏幕上已有敌人朝你这边走')).toEqual(['屏幕上已有敌人朝你这边走']);
-    expect(approachClaims('enemies are walking toward you')).toEqual(['enemies are walking toward you']);
-    for (const fine of ['小地图上有三个敌方英雄不见了', 'three enemy heroes are missing from the minimap', '你的血量低于一半、熊战士就在你攻击距离附近时', '比赛到 20:00，你身上还没有闪烁匕首', '']) expect(approachClaims(fine)).toEqual([]);
-    expect(approachClaims(undefined as any)).toEqual([]);
-  });
-  it('it is asked about in the repair round; the finding and its rule are kept', () => {
-    const build = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match });
-    const review = { verdict: 'v', mainline: [], blind_spots: [], findings: [{ title: 't', claim: '洞察烟斗 29:08 才出。', fix: 'f', evidence: [{ refs: ['build:beastmaster'], fact: '洞察烟斗 29:08 才拿到。' }], rule: { when: '屏幕上已有敌人朝你这边走', do: '往回走', this_game: 'x' } }] };
-    const check = verifyReview(review, [build]);
-    expect(check.problems).toEqual([{ where: 'finding', index: 0, kind: 'approach', text: '屏幕上已有敌人朝你这边走', soft: true }]);
-    expect(check.unsupported.findings.size).toBe(0);
   });
 });

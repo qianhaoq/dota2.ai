@@ -662,13 +662,9 @@ describe('DSH local service end-to-end (service.js)', () => {
   };
   const submit = {
     verdict: '咆哮没有留给幻影刺客。',
-    opening_note: '这局 27:27 你顶着黑皇杖交出了很果断的一波大招，先肯定你的执行力。',
     highlights: [{ title: '27:27 隔着黑皇杖控住核心', detail: '27:27 吼进黑皇杖，定住 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] }],
-    chapters: [{ topic: 'teamfights', title: '团战表现：关键大招决定上限', assessment: 'mixed', analysis: '幻影刺客开了 7 次黑皇杖，27:27 那波大招控制 3.4 秒很果断。', takeaway: '把大招留给黑皇杖核心。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] }],
-    mainline: [],
     findings: [finding],
-    encouragement: '27:27 的果断操作已经很出色，继续把控大招目标就能更稳。',
-    next_game: ['留咆哮'],
+    chapters: [{ topic: 'midgame', title: '中期团战：关键大招决定上限', analysis: '幻影刺客开了 7 次黑皇杖，27:27 那波大招控制 3.4 秒很果断。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] }],
     blind_spots: ['视野'],
   };
 
@@ -759,10 +755,10 @@ describe('DSH local service end-to-end (service.js)', () => {
         expect(readyTool.status).toBe('ready');
       }, { timeout: 5000 });
       expect(readyTool.verdict).toBe(submit.verdict);
-      expect(readyTool.opening_note).toBe(submit.opening_note);
+      expect(readyTool).not.toHaveProperty('opening_note');
+      expect(readyTool).not.toHaveProperty('encouragement');
       expect(readyTool.highlights[0]).toMatchObject({ title: submit.highlights[0].title, evidence: [{ clock: '27:27', fact: finding.evidence[0].fact }] });
-      expect(readyTool.chapters[0]).toMatchObject({ topic: 'teamfights', assessment: 'mixed', takeaway: '把大招留给黑皇杖核心。' });
-      expect(readyTool.encouragement).toBe(submit.encouragement);
+      expect(readyTool.chapters[0]).toMatchObject({ topic: 'midgame', title: submit.chapters[0].title });
       expect(readyTool).not.toHaveProperty('goal');
       expect(readyTool.findings[0].evidence[0]).toEqual({ clock: '27:27', fact: finding.evidence[0].fact });
       expect(readyTool).toMatchObject({
@@ -1312,9 +1308,11 @@ describe('skill', () => {
     for (const name of TOOL_NAMES.filter((n) => n !== 'dota2ai_goal_check')) {
       expect(reg.content, name).toContain(name);
     }
-    for (const field of ['opening_note', 'highlights', 'chapters', 'encouragement']) {
+    for (const field of ['verdict', 'highlights', 'findings', 'chapters']) {
       expect(reg.content, field).toContain(field);
     }
+    expect(reg.content).not.toContain('opening_note');
+    expect(reg.content).not.toContain('encouragement');
     expect(rawSkillMd).not.toContain('dota2ai_goal_check');
     expect(rawSkillMd).not.toContain('Did I do what I practised?');
     expect(rawSkillMd).not.toContain('a next-game goal');

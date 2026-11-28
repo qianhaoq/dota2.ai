@@ -44,23 +44,22 @@ describe('the check asks once about how a review reads', () => {
   it('names the English words left in a Chinese review, wherever they stand, and removes nothing for them', () => {
     const r = review({
       verdict: '这条线是 lost。',
-      mainline: ['打完 Roshan 之后没有推进。'],
+      chapters: [{ topic: 'vision_and_macro', title: '肉山节奏', analysis: '打完 Roshan 之后没有推进。', evidence: [{ refs: ['death:beastmaster:1'], fact: '对线期阵亡。' }] }],
       blind_spots: ['Roshan 的视野看不到。'],
-      findings: [finding({ claim: '这组对位算 favoured。', evidence: [{ refs: ['death:beastmaster:1'], fact: '效果是 Prevents target from attacking。' }], rule: { when: '血量不到一半', do: '退到塔后', this_game: '这局是 typical 的。' } })],
+      findings: [finding({ claim: '这组对位算 favoured，这局是 typical 的。', evidence: [{ refs: ['death:beastmaster:1'], fact: '效果是 Prevents target from attacking。' }] })],
     });
     expect(notes(r, 'english').map((p: any) => [p.where, p.index, p.text])).toEqual([
-      ['verdict', 0, 'lost'], ['mainline', 0, 'Roshan'], ['blind_spots', 0, 'Roshan'], ['finding', 0, 'favoured, typical, Prevents, target, from, attacking'],
+      ['verdict', 0, 'lost'], ['chapter', 0, 'Roshan'], ['blind_spots', 0, 'Roshan'], ['finding', 0, 'favoured, typical, Prevents, target, from, attacking'],
     ]);
     const check = verifyReview(r, [lane]);
     expect(check.problems.filter((p: any) => p.kind === 'english').every((p: any) => p.soft === true)).toBe(true);
     expect(check.unsupported.findings.size).toBe(0);
     expect(check.ok).toBe(false);
     // A review written in English is not a Chinese review with English in it.
-    expect(notes({ verdict: 'The lane was lost.', mainline: [], findings: [finding({ title: 'Lane deaths', claim: 'You died in the lane.', fix: 'Back off.', evidence: [{ refs: ['death:beastmaster:1'], fact: 'Died in the lane.' }] })], blind_spots: [] }, 'english')).toEqual([]);
+    expect(notes({ verdict: 'The lane was lost.', findings: [finding({ title: 'Lane deaths', claim: 'You died in the lane.', fix: 'Back off.', evidence: [{ refs: ['death:beastmaster:1'], fact: 'Died in the lane.' }] })], blind_spots: [] }, 'english')).toEqual([]);
     // Abbreviations are not asked about.
     expect(notes(review({ verdict: '没有 BKB，TP 也没带。' }), 'english')).toEqual([]);
-    // Nor what is not prose yet: the keys of this game's heroes and places (the site writes their names in after
-    // the check), a tool's own keys and record handles (wording already names those).
+    // Nor what is not prose yet: hero/place keys, tool keys, and record handles.
     const named = { hero_names: { sven: '斯温', phantom_assassin: '幻影刺客' }, place_names: { river_mid: '河道中路' } };
     const withNames = (r: any) => verifyReview(r, [lane, named]).problems.filter((p: any) => p.kind === 'english');
     expect(withNames(review({ verdict: 'sven 在 river_mid 被 phantom_assassin 杀了。' }))).toEqual([]);
@@ -68,8 +67,17 @@ describe('the check asks once about how a review reads', () => {
     // A hero of another game, or a key written as a word of a sentence, is still English in a Chinese review.
     expect(withNames(review({ verdict: 'lion 的打法是 lost。' })).map((p: any) => p.text)).toEqual(['lion, lost']);
     // A whole line in English, where the language check already names it, is named once — by that check.
-    const whole = verifyReview(review({ did_well: ['Good farm overall', '补刀是 good 的'] }), [lane]).problems.filter((p: any) => p.where === 'did_well');
-    expect(whole.map((p: any) => [p.index, p.kind, p.text])).toEqual([[0, 'language', 'Good farm overall'], [1, 'english', 'good']]);
+    const whole = verifyReview(review({
+      highlights: [
+        { title: 'Good farm', detail: 'Good farm overall' },
+        { title: '补刀稳', detail: '补刀是 good 的' },
+      ],
+    }), [lane]).problems.filter((p: any) => p.where === 'highlight');
+    expect(whole.map((p: any) => [p.index, p.kind, p.text])).toEqual([
+      [0, 'language', 'Good farm'],
+      [0, 'language', 'Good farm overall'],
+      [1, 'english', 'good'],
+    ]);
   });
 
   it('the eval still counts dense sentences; the check names English words and no longer asks about density (#405)', () => {

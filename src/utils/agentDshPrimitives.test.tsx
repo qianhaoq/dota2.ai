@@ -303,7 +303,7 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
     await waitFor(() => expect(opened).toEqual(['/r/9100904020?lang=zh&hero=beastmaster']));
   });
 
-  it('renders Coach-First highlights and localized chapter pills on ready replay review ToolCards (en & zh) and tolerates malformed payloads', () => {
+  it('renders highlights and numbered localized chapter pills in canonical order on ready replay review ToolCards (en & zh) and tolerates malformed payloads', () => {
     const coachPayload = {
       status: 'ready',
       match_id: '9100904020',
@@ -315,13 +315,13 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
         { title: '100% mid-game fight attendance', detail: 'Showed up to all 16 fights.' },
       ],
       chapters: [
-        { topic: 'draft_and_lanes', title: 'Draft', assessment: 'solid', analysis: 'Good matchup.' },
-        { topic: 'laning', title: 'Lane', assessment: 'praise', analysis: 'Won lane.' },
-        { topic: 'skill_build', title: 'Skills', assessment: 'solid', analysis: 'Standard build.' },
-        { topic: 'items', title: 'Items', assessment: 'mixed', analysis: 'Needed Blink earlier.' },
-        { topic: 'teamfights', title: 'Fights', assessment: 'key_gap', analysis: 'Hold Roar for BKB.' },
-        { topic: 'macro', title: 'Macro', assessment: 'mixed', analysis: 'Convert fight wins to towers.' },
-        { topic: 'other', title: 'Notes', assessment: 'solid', analysis: 'Good roshan timing.' },
+        { topic: 'skills_and_items', title: 'Skills & items', analysis: 'Needed Blink earlier.' },
+        { topic: 'draft', title: 'Draft', analysis: 'Good matchup.' },
+        { topic: 'game_plan', title: 'Plan', analysis: 'Push on midgame spike.' },
+        { topic: 'laning', title: 'Lane', analysis: 'Won lane.' },
+        { topic: 'midgame', title: 'Midgame', analysis: 'Hold Roar in skirmishes.' },
+        { topic: 'vision_and_macro', title: 'Wards', analysis: 'Ward placement & towers.' },
+        { topic: 'other', title: 'Notes', analysis: 'Good roshan timing.' },
       ],
     };
 
@@ -341,22 +341,20 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
     expect(enCard.getByText('Clutch 27:27 BKB-piercing Roar')).toBeTruthy();
     const enPills = [...enCard.container.querySelectorAll('.dota2ai-tool-chapter')];
     expect(enPills.map((el) => el.textContent)).toEqual([
-      'Draft & lanes', 'Laning', 'Skill build', 'Item build', 'Teamfights', 'Macro & tempo', 'Key details',
+      '01Draft & matchups',
+      '02Recommended game plan',
+      '03Lanes & laning',
+      '04Midgame fights & farm',
+      '05Wards & macro',
+      '06Skills & items',
+      '07Key details',
     ]);
-    expect(enPills.map((el) => el.className)).toEqual([
-      'dota2ai-tool-chapter is-solid',
-      'dota2ai-tool-chapter is-praise',
-      'dota2ai-tool-chapter is-solid',
-      'dota2ai-tool-chapter is-mixed',
-      'dota2ai-tool-chapter is-key_gap',
-      'dota2ai-tool-chapter is-mixed',
-      'dota2ai-tool-chapter is-solid',
-    ]);
-    expect(enPills[4].getAttribute('title')).toBe('Fights · Key focus');
+    expect(enPills.every((el) => el.className === 'dota2ai-tool-chapter')).toBe(true);
+    expect(enPills[3].getAttribute('title')).toBe('Midgame');
     expect(enCard.container.querySelector('details.dota2ai-tool-details')).not.toBeNull();
     enCard.unmount();
 
-    // Chinese locale renders localized count + topic labels and singular highlight badge.
+    // Chinese locale renders localized count + all topic labels in canonical order.
     const zhCard = render(
       <ToolCard
         toolName="dota2ai_replay_review"
@@ -370,8 +368,10 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
               verdict: '团战参与度拉满，关键在把大招留给黑皇杖核心。',
               highlights: [{ title: '27:27 隔着黑皇杖控住核心', detail: '定住 3.4 秒。' }],
               chapters: [
-                { topic: 'laning', title: '对线期稳健', assessment: 'praise', analysis: '压制明显。' },
-                { topic: 'teamfights', title: '团战决策', assessment: 'key_gap', analysis: '留大招。' },
+                { topic: 'vision_and_macro', title: '视野与运营', analysis: '推塔协同。' },
+                { topic: 'game_plan', title: '推荐运营思路', analysis: '抓窗口推塔。' },
+                { topic: 'laning', title: '对线期稳健', analysis: '压制明显。' },
+                { topic: 'midgame', title: '中期打架打钱', analysis: '留大招。' },
               ],
             }),
           }],
@@ -380,14 +380,14 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
         openPath={() => {}}
       />,
     );
-    expect(zhCard.getByText('1 处高光')).toBeTruthy();
+    expect(zhCard.getByText('1 处亮点')).toBeTruthy();
     expect(zhCard.getByText('27:27 隔着黑皇杖控住核心')).toBeTruthy();
     expect([...zhCard.container.querySelectorAll('.dota2ai-tool-chapter')].map((el) => el.textContent)).toEqual([
-      '对线期', '团战表现',
+      '01本局推荐运营思路', '02实际分路与对线', '03中期打架与打钱', '04视野布置与运营',
     ]);
     zhCard.unmount();
 
-    // Malformed highlights/chapters (non-arrays, null/primitive items, empty objects, unknown topic/assessment) never throw.
+    // Malformed highlights/chapters (non-arrays, null/primitive items, empty objects, unknown topic) never throw.
     const badNonArray = render(
       <ToolCard
         toolName="dota2ai_replay_review"
@@ -414,7 +414,7 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
               status: 'ready',
               verdict: 'Partial valid payload',
               highlights: [null, 42, {}, { title: '   ', detail: 'Fallback detail preview' }],
-              chapters: [null, 'bad', {}, { topic: 'unknown_dim', title: 'Custom note', assessment: 'weird' }],
+              chapters: [null, 'bad', {}, { topic: 'unknown_dim', title: 'Custom note' }],
             }),
           }],
         }}
@@ -426,11 +426,11 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
     expect(mixedBadEntries.getByText('Fallback detail preview')).toBeTruthy();
     const normalized = mixedBadEntries.container.querySelectorAll('.dota2ai-tool-chapter');
     expect(normalized).toHaveLength(1);
-    expect(normalized[0].textContent).toBe('Key details');
-    expect(normalized[0].className).toBe('dota2ai-tool-chapter is-mixed');
+    expect(normalized[0].textContent).toBe('01Key details');
+    expect(normalized[0].className).toBe('dota2ai-tool-chapter');
     mixedBadEntries.unmount();
 
-    // Non-ready review or non-replay tool never renders the Coach-First preview.
+    // Non-ready review never renders the preview.
     const reviewingCard = render(
       <ToolCard
         toolName="dota2ai_replay_review"

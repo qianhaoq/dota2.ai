@@ -177,27 +177,26 @@ describe('replay_review: one call at a time, never blocking', () => {
     expect(calls).toEqual(['start beastmaster en']);
   });
 
-  it('the page link always names the review\'s language and shapes new coach fields without legacy KPIs', () => {
+  it('the page link always names the review\'s language and shapes clean non-templated fields without legacy KPIs', () => {
     expect(shapeReview(MATCH, 'beastmaster', 'en', { review: {} }).url).toBe(`https://dota2.ai/r/${MATCH}?hero=beastmaster&lang=en`);
     expect(shapeReview(MATCH, 'beastmaster', 'zh', { review: {} }).url).toBe(`https://dota2.ai/r/${MATCH}?hero=beastmaster&lang=zh`);
     const shaped: any = shapeReview(MATCH, 'beastmaster', 'zh', {
       review: {
         verdict: '总评',
-        opening_note: '开场肯定',
         highlights: [{ title: '27:27 关键吼', detail: '定住 3.4 秒', evidence: [{ refs: ['cast:x:1'], clock: '27:27', fact: '定住 3.4 秒' }] }],
-        chapters: [{ topic: 'teamfights', title: '团战', assessment: 'mixed', analysis: '到场率高', takeaway: '留大招', evidence: [{ refs: ['fights:x:12'], clock: '33:23', fact: '零死' }] }],
-        findings: [{ title: 'f', claim: 'c', fix: 'x', evidence: [], rule: { when: 'w', do: 'd', check: { max: 1 } } }],
-        encouragement: '继续保持',
-        goal: { kind: 'hold_item', items: ['blink'], finding: 1 },
+        findings: [{ title: 'f', claim: 'c', fix: 'x', evidence: [] }],
+        chapters: [{ topic: 'midgame', title: '中期打架', analysis: '到场率高', evidence: [{ refs: ['fights:x:12'], clock: '33:23', fact: '零死' }] }],
+        game_plan: { main_reason: 'team_play', why: '队伍未转化推塔', evidence: [{ refs: ['tempo:x'], clock: '20:00', fact: '6 波赢团 1 座塔' }] },
+        blind_spots: ['录像无视野'],
       },
     });
-    expect(shaped.opening_note).toBe('开场肯定');
-    expect(shaped.highlights).toEqual([{ title: '27:27 关键吼', detail: '定住 3.4 秒', evidence: [{ clock: '27:27', fact: '定住 3.4 秒' }] }]);
-    expect(shaped.chapters).toEqual([{ topic: 'teamfights', title: '团战', assessment: 'mixed', analysis: '到场率高', takeaway: '留大招', evidence: [{ clock: '33:23', fact: '零死' }] }]);
-    expect(shaped.encouragement).toBe('继续保持');
+    expect(shaped).not.toHaveProperty('opening_note');
+    expect(shaped).not.toHaveProperty('encouragement');
     expect(shaped).not.toHaveProperty('goal');
-    expect(shaped.findings[0].rule).toEqual({ when: 'w', do: 'd' });
-    expect(shaped.note).toContain('zero mechanical next-game KPI quotas');
+    expect(shaped.highlights).toEqual([{ title: '27:27 关键吼', detail: '定住 3.4 秒', evidence: [{ clock: '27:27', fact: '定住 3.4 秒' }] }]);
+    expect(shaped.chapters).toEqual([{ topic: 'midgame', title: '中期打架', analysis: '到场率高', evidence: [{ clock: '33:23', fact: '零死' }] }]);
+    expect(shaped.game_plan).toEqual({ main_reason: 'team_play', why: '队伍未转化推塔', evidence: [{ clock: '20:00', fact: '6 波赢团 1 座塔' }] });
+    expect(shaped.note).toContain('mechanical next-game numeric quotas');
   });
 
   it('a non-final parse failure (e.g. Steam GC 429 / no_replay_url) is reported as failed instead of looping as parsing', async () => {

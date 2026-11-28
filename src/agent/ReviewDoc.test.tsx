@@ -5,221 +5,264 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { ReviewDoc } from './ReviewDoc';
 import type { DeepReview } from './api';
 
-/** The review as a document: one lesson first, the rest folded under it, the whole game after. */
+/**
+ * The review as a clear, non-templated coaching document:
+ * verdict + attribution + patch → up-front highlights ("What went well") & findings ("What didn't")
+ * → chronologically ordered walkthrough chapters → share → whole game → blind spots → token usage.
+ */
 
 const finding = (n: number, extra: Partial<DeepReview['findings'][number]> = {}) => ({
-  title: `Finding ${n}`, claim: `Claim ${n}.`, fix: `Fix ${n}.`,
+  title: `Finding ${n}`,
+  claim: `Claim ${n}.`,
+  fix: `Fix ${n}.`,
   evidence: [{ refs: [`death:axe:${n}`], clock: `${n}0:00`, fact: `Fact ${n}.` }],
-  rule: { when: `When ${n}`, do: `Do ${n}`, this_game: `Seen ${n} times.` },
   ...extra,
 });
+
 const review = (extra: Partial<DeepReview> = {}): DeepReview => ({
-  schema: 'dota2.ai/deep-review@1', match_id: 7, hero: 'axe', lang: 'en',
-  verdict: 'The whole game in one sentence.', mainline: ['0:00–10:00: the lane.', '10:00–20:00: the map.'],
-  findings: [finding(1), finding(2), finding(3)], did_well: ['Last hits.'], next_game: ['When 1: Do 1'], blind_spots: ['Creep positions.'],
+  schema: 'dota2.ai/deep-review@1',
+  match_id: 7,
+  hero: 'axe',
+  lang: 'en',
+  verdict: 'Strong teamfight presence across the match, with Primal Roar target selection deciding the late game.',
+  highlights: [
+    {
+      title: 'Decisive BKB-piercing Roar at 27:27',
+      detail: 'You immediately stopped Phantom Assassin through spell immunity for 3.4 s.',
+      evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 stunned PA for 3.4 s.' }],
+    },
+  ],
+  findings: [finding(1), finding(2), finding(3)],
+  chapters: [
+    {
+      topic: 'draft',
+      title: 'Your ultimate is the sole BKB-piercing disable',
+      analysis: 'Against PA and Necrophos, Primal Roar defines teamfight control.',
+      evidence: [{ refs: ['draft:beastmaster'], fact: '10-hero lineup breakdown.' }],
+    },
+    {
+      topic: 'skills_and_items',
+      title: 'Clean skill build, missing Blink or BKB after Aghanim\'s',
+      analysis: 'Maxed core laning spells by level 10, but skipped Blink Dagger and Black King Bar.',
+      evidence: [{ refs: ['pro_items:beastmaster'], fact: 'Pro games frequently add Blink or BKB.' }],
+    },
+  ],
+  blind_spots: ['Creep positions.'],
+  game_plan: { main_reason: 'team_play', why: 'Team did not convert won fights into towers.', evidence: [] },
   ...extra,
-} as DeepReview);
-const show = (r: DeepReview, props: Partial<React.ComponentProps<typeof ReviewDoc>> = {}) => render(<ReviewDoc matchId="7" review={r} lang="en" onAsk={() => {}} {...props} />);
-
-beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'not_found' }), { status: 404 }))); });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-
-describe('ReviewDoc: one lesson first', () => {
-  it('the first finding is the headline, with its claim, its rule and its moments', () => {
-    show(review());
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Finding 1');
-    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe('The one thing to change');
-    expect(document.querySelector('.ag-lead-claim')!.textContent).toBe('Claim 1.');
-    const lesson = within(screen.getByRole('heading', { level: 2, name: 'Practise this next game' }).closest('section')!);
-    expect(lesson.getByText('When 1')).toBeTruthy();
-    expect(lesson.getByText('Do 1')).toBeTruthy();
-    expect(lesson.getByText('Seen 1 times.')).toBeTruthy();
-    expect(lesson.getByText('Fix 1.')).toBeTruthy();
-    const moments = within(screen.getByRole('heading', { level: 2, name: 'The moments that show it' }).closest('section')!);
-    expect(moments.getByText('Fact 1.')).toBeTruthy();
-    // Only the first finding's: the others keep theirs.
-    expect(moments.queryByText('Fact 2.')).toBeNull();
-  });
-
-  it('the other findings fold under it, numbered from 2, each whole', () => {
-    show(review());
-    const more = screen.getByRole('heading', { level: 2, name: 'Two more things' }).closest('section')!;
-    const folds = Array.from(more.querySelectorAll('details.ag-finding')) as HTMLDetailsElement[];
-    expect(folds.map((d) => d.querySelector('summary')!.textContent)).toEqual(['2Finding 2', '3Finding 3']);
-    expect(folds.every((d) => !d.open)).toBe(true);
-    const second = within(folds[0]);
-    expect(second.getByText('Claim 2.')).toBeTruthy();
-    expect(second.getByText('Fact 2.')).toBeTruthy();
-    expect(second.getByText('When 2')).toBeTruthy();
-    expect(second.getByText('Fix 2.')).toBeTruthy();
-    // The first finding is not repeated among them.
-    expect(more.textContent).not.toContain('Finding 1');
-  });
-
-  it('says "one more thing" for two findings, and nothing more for one', () => {
-    show(review({ findings: [finding(1), finding(2)] }));
-    expect(screen.getByRole('heading', { level: 2, name: 'One more thing' })).toBeTruthy();
-    cleanup();
-    show(review({ findings: [finding(1)] }));
-    expect(screen.queryByRole('heading', { level: 2, name: /more thing/ })).toBeNull();
-    expect(document.querySelectorAll('details.ag-finding')).toHaveLength(0);
-  });
-
-  it('a first finding without a rule still gives its fix as what to practise; without either there is no lesson block', () => {
-    show(review({ findings: [finding(1, { rule: undefined })] }));
-    const lesson = screen.getByRole('heading', { level: 2, name: 'Practise this next game' }).closest('section')!;
-    expect(lesson.textContent).toContain('Fix 1.');
-    expect(lesson.querySelector('.ag-rule')).toBeNull();
-    cleanup();
-    show(review({ findings: [finding(1, { rule: undefined, fix: '' })] }));
-    expect(screen.queryByRole('heading', { level: 2, name: 'Practise this next game' })).toBeNull();
-  });
-
-  it('the sentence about the whole game stands with the whole game, after the findings; the story folds', () => {
-    show(review(), { board: <div role="region" aria-label="Scoreboard">board</div>, share: <div data-testid="share">share</div> });
-    const whole = screen.getByRole('heading', { level: 2, name: 'The whole game' }).closest('section')!;
-    expect(whole.querySelector('.ag-verdict')!.textContent).toBe('The game in one sentenceThe whole game in one sentence.');
-    const folds = Array.from(whole.querySelectorAll('details.ag-fold')) as HTMLDetailsElement[];
-    expect(folds.map((d) => d.querySelector('summary h3')!.textContent)).toEqual(['How the game went', 'Line-ups and scoreboard']);
-    expect(folds[0].querySelector('summary')!.textContent).toBe('How the game went2 parts');
-    expect(folds.every((d) => !d.open)).toBe(true);
-    expect(within(folds[1]).getByRole('region', { name: 'Scoreboard' })).toBeTruthy();
-    // Order down the page: the lesson, the other findings, what went well, sharing, the whole game, what could not be seen.
-    const order = ['Practise this next game', 'The moments that show it', 'Two more things', 'What you did well', 'The whole game', 'What the replay could not show'];
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(order);
-    const share = screen.getByTestId('share');
-    expect(screen.getByRole('heading', { level: 2, name: 'What you did well' }).compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(share.compareDocumentPosition(whole) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
-  it('the list that repeated the rules is gone: each rule is read with its finding', () => {
-    show(review());
-    expect(document.querySelector('.ag-next')).toBeNull();
-    expect(screen.queryByText('When 1: Do 1')).toBeNull();
-  });
-
-  it('a review left with no finding leads with the sentence about the game, said once', () => {
-    show(review({ findings: [] }));
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('The whole game in one sentence.');
-    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe('The game in one sentence');
-    expect(document.querySelector('.ag-verdict')).toBeNull();
-    expect(screen.queryByRole('heading', { level: 2, name: 'Practise this next game' })).toBeNull();
-  });
-
-  it('the patch the numbers are from stays with the headline, and a patch that could not be told is still a note', () => {
-    show(review({ data_patch: { name: '7.42', exact: true, known_from: 'start_time' } } as Partial<DeepReview>));
-    expect(document.querySelector('.ag-lead .ag-patch')!.textContent).toContain('7.42');
-    cleanup();
-    show(review({ data_patch: { name: '7.42', exact: false, reason: 'not_known' } } as Partial<DeepReview>));
-    expect(within(document.querySelector('.ag-lead') as HTMLElement).getByRole('note').textContent).toContain('could not be told');
-  });
-
-  it('Chinese: the same structure in the reader\'s language', () => {
-    render(<ReviewDoc matchId="7" review={review({ lang: 'zh' })} lang="zh" onAsk={() => {}} />);
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual(['下局只练这一件', '这局的几个时刻', '还有两件事', '做得好的', '整局', '录像看不到的']);
-    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe('这局最该改的一件事');
-    expect(document.querySelector('details.ag-fold summary')!.textContent).toBe('对局主线2 段');
-  });
 });
 
-describe('ReviewDoc: zero mechanical KPIs & first-principles coach layout', () => {
-  const coachReview = (extra: Partial<DeepReview> = {}): DeepReview => ({
-    ...review(),
-    verdict: 'Strong teamfight presence across the match, with Primal Roar target selection deciding the late game.',
-    opening_note: 'You stayed composed in a difficult draft and attended nearly every fight. Most of the mid-game stall was team-wide tower conversion, not your play alone.',
-    highlights: [
+const show = (r: DeepReview, props: Partial<React.ComponentProps<typeof ReviewDoc>> = {}) =>
+  render(<ReviewDoc matchId="7" review={r} lang="en" onAsk={() => {}} {...props} />);
+
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ code: 'not_found' }), { status: 404 })));
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+describe('ReviewDoc: clean, non-templated logical review layout', () => {
+  it('renders verdict, up-front pros & cons above chronologically ordered chapters with jump nav, and zero template boxes', () => {
+    // Deliberately pass chapters out of order to verify canonical chronological display ordering.
+    const outOfOrderChapters: DeepReview['chapters'] = [
       {
-        title: 'Decisive BKB-piercing Roar at 27:27',
-        detail: 'You immediately stopped Phantom Assassin through spell immunity for 3.4 s.',
-        evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 stunned PA for 3.4 s.' }],
-      },
-    ],
-    chapters: [
-      {
-        topic: 'skill_build',
-        title: 'Clean skill progression',
-        assessment: 'praise',
-        analysis: 'Maxed core laning spells by level 10 and upgraded Roar on schedule.',
-        evidence: [{ refs: ['skill_build:beastmaster'], clock: '7:28', fact: 'Learned Roar at 7:28.' }],
-      },
-      {
-        topic: 'items',
-        title: 'Missing initiation item after Aghanim\'s',
-        assessment: 'key_gap',
-        analysis: 'Without Blink Dagger or Black King Bar, reaching the enemy carry first was difficult.',
-        takeaway: 'Prioritize Blink Dagger or Black King Bar right after Aghanim\'s.',
+        topic: 'skills_and_items',
+        title: 'Clean skills, missing initiation item after Aghanim\'s',
+        analysis: 'Maxed core spells on time, but lacked Blink Dagger or Black King Bar.',
         evidence: [{ refs: ['pro_items:beastmaster'], fact: 'Pro games frequently add Blink or BKB.' }],
       },
-    ],
-    encouragement: 'Your fight attendance and 27:27 execution already show strong offlane instincts.',
-    game_plan: { main_reason: 'team_play', why: 'Team did not convert won fights into towers.', evidence: [] },
-    ...extra,
-  });
+      {
+        topic: 'vision_and_macro',
+        title: 'Wards & post-fight tower conversion',
+        analysis: 'Won fights rarely turned into towers; ward placements were not recorded in this replay.',
+        evidence: [{ refs: ['tempo:beastmaster'], fact: 'Only 1 of 6 won fights yielded a building.' }],
+      },
+      {
+        topic: 'draft',
+        title: 'Your ultimate is the sole BKB-piercing disable',
+        analysis: 'Against PA and Necrophos, Primal Roar defines teamfight control.',
+        evidence: [{ refs: ['draft:beastmaster'], fact: '10-hero lineup breakdown.' }],
+      },
+      {
+        topic: 'game_plan',
+        title: 'Push towers on midgame window and hold Roar for PA',
+        analysis: 'Leverage the 19:00–29:00 power window and reserve Roar strictly for PA BKB.',
+        evidence: [{ refs: ['window:beastmaster:2'], fact: 'Ahead from 19:00 to 29:00.' }],
+      },
+      {
+        topic: 'midgame',
+        title: 'Midgame fights and tempo',
+        analysis: 'Full attendance across fights, with the 30:26 fight deciding the match.',
+        evidence: [{ refs: ['fights:beastmaster:12'], clock: '33:23', fact: '841 damage in 33:23 fight.' }],
+      },
+      {
+        topic: 'laning',
+        title: 'Bot lane execution under roams',
+        analysis: 'Absorbed 2 early roams while keeping lane pressure.',
+        evidence: [{ refs: ['lane:beastmaster'], fact: '445 s in bot lane.' }],
+      },
+    ];
 
-  it('renders opening note, highlights with evidence, adaptive chapters, improvements, and encouragement without duplicating verdict', () => {
-    show(coachReview(), { board: <div role="region" aria-label="Scoreboard">board</div>, share: <div data-testid="share">share</div> });
-    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe("Coach's review");
+    show(review({ chapters: outOfOrderChapters }), {
+      board: <div role="region" aria-label="Scoreboard">board</div>,
+      share: <div data-testid="share">share</div>,
+    });
+
+    // Direct verdict + attribution pill; zero forced template fluff.
     expect(document.querySelector('.ag-lead-reason')!.textContent).toBe('Mostly the team, not you');
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Strong teamfight presence across the match, with Primal Roar target selection deciding the late game.');
-    expect(document.querySelector('.ag-opening')!.textContent).toContain('difficult draft');
-    // Highlights sit right below the coach header with evidence cards.
-    const highlights = screen.getByRole('heading', { level: 2, name: 'What you did well' }).closest('section')!;
+    expect(document.querySelector('.ag-opening')).toBeNull();
+    expect(document.querySelector('.ag-encouragement')).toBeNull();
+    expect(document.querySelector('.ag-story')).toBeNull();
+    expect(document.querySelector('.ag-rule')).toBeNull();
+    expect(document.querySelector('.ag-chapter-badge')).toBeNull();
+    expect(document.querySelector('.ag-chapter-takeaway')).toBeNull();
+
+    // Up-front Pros & Cons summary sits right below the verdict and ABOVE chapters.
+    const summary = document.querySelector('.ag-summary')!;
+    expect(summary.classList.contains('has-both')).toBe(true);
+    const highlights = screen.getByRole('heading', { level: 2, name: 'What went well' }).closest('section')!;
+    const improvements = screen.getByRole('heading', { level: 2, name: "What didn't" }).closest('section')!;
+    const chapters = screen.getByRole('heading', { level: 2, name: 'Match walkthrough' }).closest('section')!;
+    expect(highlights.compareDocumentPosition(improvements) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(improvements.compareDocumentPosition(chapters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
     expect(highlights.textContent).toContain('Decisive BKB-piercing Roar at 27:27');
     expect(highlights.querySelector('.ag-ev-clock')!.textContent).toBe('27:27');
-    // Chapters show topic tags, assessment badges, optional takeaway, and folded records.
-    const chapters = screen.getByRole('heading', { level: 2, name: 'Match breakdown' }).closest('section')!;
-    const cards = chapters.querySelectorAll('.ag-chapter');
-    expect(cards).toHaveLength(2);
-    expect(cards[0].querySelector('.ag-chapter-topic')!.textContent).toBe('Skill build');
-    expect(cards[0].querySelector('.ag-chapter-badge')!.textContent).toBe('Standout');
-    expect(cards[0].querySelector('.ag-chapter-takeaway')).toBeNull();
-    expect(cards[1].querySelector('.ag-chapter-topic')!.textContent).toBe('Item build');
-    expect(cards[1].querySelector('.ag-chapter-badge')!.textContent).toBe('Key focus');
-    expect(cards[1].querySelector('.ag-chapter-takeaway')!.textContent).toContain('Prioritize Blink Dagger');
-    expect(cards[1].querySelector('.ag-chapter-records summary')!.textContent).toBe('Records · 1');
-    // Key improvements show lead finding open and rest folded.
-    const improvements = screen.getByRole('heading', { level: 2, name: 'Key improvements' }).closest('section')!;
+
+    // Findings: lead finding open, secondary findings folded numbered from 2.
     expect(improvements.querySelector('.ag-finding.is-lead h3')!.textContent).toBe('1Finding 1');
-    expect(improvements.querySelectorAll('details.ag-finding')).toHaveLength(2);
-    // Closing encouragement card.
-    expect(document.querySelector('.ag-encouragement p')!.textContent).toContain('strong offlane instincts');
-    // Verdict is already H1, so not duplicated inside Whole Game.
-    expect(document.querySelector('.ag-whole .ag-verdict')).toBeNull();
+    expect(improvements.querySelector('.ag-finding.is-lead .ag-fix')!.textContent).toContain('Fix 1.');
+    const folds = Array.from(improvements.querySelectorAll('details.ag-finding')) as HTMLDetailsElement[];
+    expect(folds).toHaveLength(2);
+    expect(folds.map((d) => d.querySelector('summary')!.textContent)).toEqual(['2Finding 2', '3Finding 3']);
+    expect(folds.every((d) => !d.open)).toBe(true);
+
+    // Compact numbered chapter nav strip jumps directly to each chronologically ordered chapter.
+    const navLinks = Array.from(chapters.querySelectorAll('.ag-chapter-nav a'));
+    expect(navLinks.map((a) => [a.getAttribute('href'), a.textContent])).toEqual([
+      ['#chapter-0', '01Draft & matchups'],
+      ['#chapter-1', '02Recommended game plan'],
+      ['#chapter-2', '03Lanes & laning'],
+      ['#chapter-3', '04Midgame fights & farm'],
+      ['#chapter-4', '05Wards & macro'],
+      ['#chapter-5', '06Skills & items'],
+    ]);
+
+    const cards = chapters.querySelectorAll('.ag-chapter');
+    expect(cards).toHaveLength(6);
+    expect(Array.from(cards).map((c) => c.id)).toEqual(['chapter-0', 'chapter-1', 'chapter-2', 'chapter-3', 'chapter-4', 'chapter-5']);
+    expect(Array.from(cards).map((c) => c.querySelector('.ag-chapter-step')!.textContent)).toEqual(['01', '02', '03', '04', '05', '06']);
+    expect(Array.from(cards).map((c) => c.querySelector('.ag-chapter-topic')!.textContent)).toEqual([
+      'Draft & matchups',
+      'Recommended game plan',
+      'Lanes & laning',
+      'Midgame fights & farm',
+      'Wards & macro',
+      'Skills & items',
+    ]);
+    expect(cards[5].querySelector('.ag-chapter-records summary')!.textContent).toBe('Records · 1');
+
+    // Share sits between chapters and whole game; scoreboard is folded inside whole game.
+    const share = screen.getByTestId('share');
+    const whole = screen.getByRole('heading', { level: 2, name: 'The whole game' }).closest('section')!;
+    expect(chapters.compareDocumentPosition(share) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(share.compareDocumentPosition(whole) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(whole).getByRole('region', { name: 'Scoreboard' })).toBeTruthy();
+
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'What you did well', 'Match breakdown', 'Key improvements', "Coach's note", 'The whole game', 'What the replay could not show',
+      'What went well',
+      "What didn't",
+      'Match walkthrough',
+      'The whole game',
+      'What the replay could not show',
     ]);
   });
 
-  it('spotless win with zero findings omits the improvements section cleanly and renders Chinese & Russian labels', () => {
-    render(<ReviewDoc matchId="7" review={coachReview({ lang: 'zh', findings: [] })} lang="zh" onAsk={() => {}} />);
-    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe('教练总评');
+  it('handles 0 findings or 0 highlights cleanly and renders localized labels in zh & ru', () => {
+    const allChapters: DeepReview['chapters'] = [
+      { topic: 'draft', title: 'Draft', analysis: 'Good draft.', evidence: [{ refs: ['draft:bm'], fact: 'f' }] },
+      { topic: 'game_plan', title: 'Plan', analysis: 'Clear plan.', evidence: [{ refs: ['window:bm:1'], fact: 'f' }] },
+      { topic: 'laning', title: 'Lane', analysis: 'Won lane.', evidence: [{ refs: ['lane:bm'], fact: 'f' }] },
+      { topic: 'midgame', title: 'Mid', analysis: 'Good midgame.', evidence: [{ refs: ['fights:bm:1'], fact: 'f' }] },
+      { topic: 'vision_and_macro', title: 'Macro', analysis: 'Good wards.', evidence: [{ refs: ['tempo:bm'], fact: 'f' }] },
+      { topic: 'skills_and_items', title: 'Skills & Items', analysis: 'Clean build.', evidence: [{ refs: ['skill_build:bm'], fact: 'f' }] },
+      { topic: 'other', title: 'Details', analysis: 'Extra note.', evidence: [{ refs: ['overview'], fact: 'f' }] },
+    ];
+
+    // 0 findings: omits improvements cleanly without has-both 2-column class.
+    render(<ReviewDoc matchId="7" review={review({ lang: 'zh', findings: [], chapters: allChapters })} lang="zh" onAsk={() => {}} />);
     expect(document.querySelector('.ag-improvements')).toBeNull();
+    expect(document.querySelector('.ag-summary')!.classList.contains('has-both')).toBe(false);
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      '本局亮点与肯定', '全维度复盘', '教练寄语', '整局', '录像看不到的',
+      '做得好的', '逐层复盘', '整局数据', '录像看不到的',
     ]);
-    expect(document.querySelector('.ag-chapter-topic')!.textContent).toBe('技能加点');
-    expect(document.querySelector('.ag-chapter-badge')!.textContent).toBe('本局亮点');
+    expect(Array.from(document.querySelectorAll('.ag-chapter-topic')).map((el) => el.textContent)).toEqual([
+      '阵容选择与克制', '本局推荐运营思路', '实际分路与对线', '中期打架与打钱', '视野布置与运营', '技能与出装', '其他细节',
+    ]);
     cleanup();
-    render(<ReviewDoc matchId="7" review={coachReview({ lang: 'ru', findings: [] })} lang="ru" onAsk={() => {}} />);
-    expect(document.querySelector('.ag-lead .cx-eyebrow')!.textContent).toBe('Разбор тренера');
-    expect(document.querySelector('.ag-chapter-topic')!.textContent).toBe('Раскачка');
+
+    // Both pros and cons in Chinese.
+    render(<ReviewDoc matchId="7" review={review({ lang: 'zh', chapters: allChapters })} lang="zh" onAsk={() => {}} />);
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      '做得好的', '做得不好的', '逐层复盘', '整局数据', '录像看不到的',
+    ]);
+    cleanup();
+
+    // 0 highlights: omits highlights cleanly, renders findings full-width.
+    render(<ReviewDoc matchId="7" review={review({ lang: 'zh', highlights: [], chapters: allChapters })} lang="zh" onAsk={() => {}} />);
+    expect(document.querySelector('.ag-highlights')).toBeNull();
+    expect(document.querySelector('.ag-summary')!.classList.contains('has-both')).toBe(false);
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      '做得不好的', '逐层复盘', '整局数据', '录像看不到的',
+    ]);
+    cleanup();
+
+    // Russian labels.
+    render(<ReviewDoc matchId="7" review={review({ lang: 'ru', findings: [], chapters: allChapters })} lang="ru" onAsk={() => {}} />);
+    expect(Array.from(document.querySelectorAll('.ag-chapter-topic')).map((el) => el.textContent)).toEqual([
+      'Драфт и матчапы', 'Рекомендуемый план', 'Линии и лайнинг', 'Мидгейм: драки и фарм', 'Варды и макро', 'Навыки и предметы', 'Ключевые детали',
+    ]);
   });
 
-  it('never renders GoalCard or ag-rule-check even when a legacy stored review carries goal and rule.check', () => {
-    const legacyWithKpis = review({
-      findings: [finding(1, { rule: { when: 'When 1', do: 'Do 1', this_game: 'Seen 1 times.', check: { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 low HP death', zh: '下一盘不超过 1 次' } } as any } })],
-      goal: { kind: 'deaths_per10_max', max: 1.7, label: { en: 'At most 1.7 deaths per 10 minutes', zh: '每 10 分钟阵亡不超过 1.7 次' }, finding: 1 } as any,
-    });
-    show(legacyWithKpis);
+  it('keeps the patch note with the headline and preserves tie order for repeated chapter topics', () => {
+    show(review({ data_patch: { name: '7.42', exact: true, known_from: 'start_time' } }));
+    expect(document.querySelector('.ag-lead .ag-patch')!.textContent).toContain('7.42');
+    cleanup();
+
+    show(review({
+      data_patch: { name: '7.42', exact: false, reason: 'not_known' },
+      chapters: [
+        { topic: 'midgame', title: 'Fight 1', analysis: 'F1.', evidence: [{ refs: ['fights:x:1'], fact: 'f' }] },
+        { topic: 'midgame', title: 'Fight 2', analysis: 'F2.', evidence: [{ refs: ['fights:x:2'], fact: 'f' }] },
+        { topic: 'draft', title: 'Draft', analysis: 'D.', evidence: [{ refs: ['draft:x'], fact: 'f' }] },
+      ],
+    }));
+    expect(within(document.querySelector('.ag-lead') as HTMLElement).getByRole('note').textContent).toContain('could not be told');
+    expect(Array.from(document.querySelectorAll('.ag-chapter h3')).map((el) => el.textContent)).toEqual([
+      'Draft', 'Fight 1', 'Fight 2',
+    ]);
+  });
+
+  it('never renders mechanical KPI cards or goal controls', () => {
+    show(review());
     expect(document.querySelector('.ag-goal')).toBeNull();
     expect(document.querySelector('.ag-next')).toBeNull();
     expect(document.querySelector('.ag-rule-check')).toBeNull();
     expect(screen.queryByText(/Make this my next-game goal/)).toBeNull();
-    expect(screen.queryByText(/At most 1 low HP death/)).toBeNull();
-    expect(screen.queryByText(/At most 1\.7 deaths/)).toBeNull();
-    // Normal rule coaching cue still renders cleanly without the KPI quota line.
-    expect(screen.getByText('When 1')).toBeTruthy();
-    expect(screen.getByText('Do 1')).toBeTruthy();
+  });
+
+  it('tolerates malformed non-array or null-element collections without throwing', () => {
+    const malformed = review({
+      highlights: {} as any,
+      chapters: 'bad' as any,
+      findings: [null as any, { title: 'Valid', claim: 'Valid claim', evidence: 'bad' as any, fix: 'Do x' }],
+      blind_spots: 42 as any,
+    });
+    expect(() => show(malformed)).not.toThrow();
+    expect(screen.getByText('Valid')).toBeTruthy();
   });
 });
 
@@ -298,7 +341,7 @@ describe('ReviewDoc: fight presence strip (#363)', () => {
     expect(allUnread.textContent).toContain('不确定——有 14 波团战缺少对应分钟经济差，读不出胜率变化。');
   });
 
-  it('shows nothing when moments could not be read (net_worth_only) or no fight lost win chance with full coverage', async () => {
+  it('shows nothing when moments could not be read (net_worth_only)', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (String(url).includes('ref=moments%3Aaxe')) {
         return new Response(JSON.stringify({
@@ -315,56 +358,6 @@ describe('ReviewDoc: fight presence strip (#363)', () => {
     render(<ReviewDoc matchId="702" review={review()} lang="en" onAsk={() => {}} />);
     await new Promise((r) => setTimeout(r, 20));
     expect(document.querySelector('.ag-presence')).toBeNull();
-  });
-});
-
-
-describe('ReviewDoc: the story as a chain of causes (#437 P4)', () => {
-  const story: DeepReview['story'] = [
-    { phase: '0:00–10:00, the lane', what_changed: 'Down 5126 in the lane.', because: 'Seven deaths to roams, not last hits.', whose: 'me', evidence: [{ refs: ['lane:axe'], clock: '10:00', fact: 'Kills and assists −4818.' }] },
-    { phase: '24:00–27:47, the turn', what_changed: '+199 became −16541.', because: 'Two fights lost with five against four.', whose: 'team', evidence: [] },
-  ];
-
-  it('each link shows its stretch, what changed, why and whose it was, with its records folded under it', () => {
-    show(review({ story }));
-    const links = document.querySelectorAll('.ag-story > ol > li');
-    expect(links).toHaveLength(2);
-    expect(links[0].querySelector('.ag-story-head')!.textContent).toBe('0:00–10:00, the laneYou');
-    expect(links[0].querySelector('.ag-story-what')!.textContent).toBe('Down 5126 in the lane.');
-    expect(links[0].querySelector('.ag-story-why')!.textContent).toBe('BecauseSeven deaths to roams, not last hits.');
-    expect(links[0].querySelector('.ag-story-records summary')!.textContent).toBe('Records · 1');
-    expect(links[1].querySelector('.ag-story-whose')!.textContent).toBe('Team');
-    // A link with no records left shows none.
-    expect(links[1].querySelector('.ag-story-records')).toBeNull();
-    // The one-line phases are not shown twice.
-    expect(document.querySelector('.ag-mainline')).toBeNull();
-  });
-
-  it('in Chinese the labels are Chinese', () => {
-    render(<ReviewDoc matchId="7" review={review({ story, lang: 'zh' })} lang="zh" onAsk={() => {}} />);
-    expect(document.querySelector('.ag-story-whose')!.textContent).toBe('你');
-    expect(document.querySelector('.ag-story-why span')!.textContent).toBe('原因');
-  });
-
-  it('a review written before it keeps its one-line phases', () => {
-    show(review());
-    expect(document.querySelector('.ag-story')).toBeNull();
-    expect(document.querySelectorAll('.ag-mainline li')).toHaveLength(2);
-  });
-
-  it('tolerates malformed non-array or null-element collections without throwing', () => {
-    const malformed = review({
-      opening_note: 123 as any,
-      encouragement: null as any,
-      highlights: {} as any,
-      chapters: 'bad' as any,
-      findings: [null as any, { title: 'Valid', claim: 'Valid claim', evidence: 'bad' as any, fix: 'Do x' }],
-      did_well: {} as any,
-      mainline: 'bad' as any,
-      blind_spots: 42 as any,
-    });
-    expect(() => show(malformed)).not.toThrow();
-    expect(screen.getByText('Valid')).toBeTruthy();
   });
 });
 
@@ -452,7 +445,7 @@ describe('ReviewDoc: transparent token usage footer (#488)', () => {
     expect(unavailable.textContent).not.toMatch(PRICE_RE);
   });
 
-  it('omits the usage footer cleanly on legacy reviews without runMeta', () => {
+  it('omits the usage footer cleanly without runMeta', () => {
     show(review());
     expect(document.querySelector('footer.ag-usage')).toBeNull();
   });

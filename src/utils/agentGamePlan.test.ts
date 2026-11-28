@@ -18,41 +18,37 @@ const investigate = { toolCalls: [
 ] };
 const finding = { title: '咆哮没有留给幻影刺客的 BKB', claim: '10 次咆哮里只有 4 次给了幻影刺客。', evidence: [{ refs: ['audit:beastmaster:primal_roar'], fact: '10 次咆哮里 4 次的目标是幻影刺客。' }], fix: '咆哮留给她。' };
 const plan = {
-  line_ups: '路人局里 sven 在短局赢得更多；这局打了 42:31。',
-  course: '你们在 18:07 到 19:46 拆了 3 座外塔；16 波团战里你们少死人的有 6 波，只有 22:57 那一波之后拆到了建筑。',
-  your_part: '16 波团战你到场 15 波，20:00 到 30:00 你 34% 的存活时间在对方半场。',
   main_reason: 'team_play',
-  why: '你几乎每波团都在，6 波少死人的团只换来 1 次建筑：不是你一个人的问题。',
+  why: '你和 sven 几乎每波团都在，6 波少死人的团只换来 1 次建筑：不是你一个人的问题。',
   evidence: [
     { refs: ['tempo:beastmaster'], fact: '16 波团战里你们少死人的 6 波，之后拆到建筑的只有 22:57 这 1 波。' },
     { refs: ['phase:beastmaster:3'], fact: '20:00 到 30:00 对面拆了 3 座塔（20:02、24:28、25:59），你们在 25:05 拆了 1 座。' },
   ],
 };
-const review = (game_plan: any, extra: any = {}) => ({ verdict: '咆哮没有留给幻影刺客的 BKB。', mainline: [], findings: [finding], blind_spots: ['视野'], ...(game_plan === undefined ? {} : { game_plan }), ...extra });
+const review = (game_plan: any, extra: any = {}) => ({ verdict: '咆哮没有留给幻影刺客的 BKB。', highlights: [], findings: [finding], chapters: [], blind_spots: ['视野'], ...(game_plan === undefined ? {} : { game_plan }), ...extra });
 const run = (replies: any[]) => { const m = scripted([investigate, ...replies]); return runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' }).then((r: any) => ({ r, m })); };
 const submit = (r: any, id = 's') => ({ toolCalls: [call('submit_review', r, id)] });
 
 describe('the game plan of a review', () => {
-  it('ships as written when every sentence and record holds, with heroes named and a clock per evidence item', async () => {
+  it('ships as written when rationale and optional records hold, with heroes named and a clock per evidence item', async () => {
     const { r } = await run([submit(review(plan))]);
     expect(r.status).toBe('ok');
     expect(r.verification).toMatchObject({ repaired: false, first_pass_problems: 0 });
     expect(r.review.prompt_version).toBe(DEEP_REVIEW_PROMPT_VERSION);
     expect(r.review.game_plan).toEqual({
-      line_ups: '路人局里 斯温 在短局赢得更多；这局打了 42:31。', course: plan.course, your_part: plan.your_part, main_reason: 'team_play', why: plan.why,
-      // The summary has no moment of its own; a stretch is shown by when it began.
+      main_reason: 'team_play',
+      why: '你和 斯温 几乎每波团都在，6 波少死人的团只换来 1 次建筑：不是你一个人的问题。',
       evidence: [{ refs: ['tempo:beastmaster'], fact: plan.evidence[0].fact }, { refs: ['phase:beastmaster:3'], clock: '20:00', fact: plan.evidence[1].fact }],
     });
-    // The findings are untouched by it.
     expect(r.review.findings).toHaveLength(1);
   });
 
-  it('a review without one is a review without one — and the stored check says why (#388)', async () => {
+  it('a review without a game plan records why (#388)', async () => {
     const { r } = await run([submit(review(undefined))]);
     expect(r.status).toBe('ok');
     expect(r.review).not.toHaveProperty('game_plan');
     expect(r.verification.game_plan_missing).toBe('not_submitted');
-    // Submitted, but no evidence item that holds: dropped, and said so.
+    // Submitted with evidence, but no evidence item holds: dropped, and said so.
     const noRecord = (await run([submit(review({ ...plan, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] })), submit(review({ ...plan, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] }), 's2')])).r;
     expect(noRecord.review).not.toHaveProperty('game_plan');
     expect(noRecord.verification.game_plan_missing).toBe('no_evidence_that_holds');
@@ -62,34 +58,34 @@ describe('the game plan of a review', () => {
     expect(kept.verification).not.toHaveProperty('game_plan_missing');
   });
 
-  it('the model is told it must hand in a game plan (#388), slimmed to main_reason + why beside story', () => {
-    expect(SUBMIT_REVIEW.input_schema.required).toEqual(['verdict', 'opening_note', 'highlights', 'chapters', 'story', 'findings', 'blind_spots', 'game_plan', 'encouragement']);
+  it('submit_review requires clean non-templated fields and slim game_plan (main_reason + why)', () => {
+    expect(SUBMIT_REVIEW.input_schema.required).toEqual(['verdict', 'highlights', 'findings', 'chapters', 'game_plan', 'blind_spots']);
     expect((SUBMIT_REVIEW.input_schema.properties as any).game_plan.required).toEqual(['main_reason', 'why']);
   });
 
-  it('with a verified story, a slim game_plan (main_reason + why, no duplicate course/evidence) ships cleanly while invalid evidence or bad why is still caught', async () => {
-    const story = [{ phase: '中期节奏', what_changed: '16 波团战里你们少死人的有 6 波，只有 22:57 那一波之后拆到了建筑。', because: '你们在 18:07 到 19:46 拆了 3 座外塔后未能继续扩大战果。', whose: 'my_team', evidence: [{ refs: ['tempo:beastmaster'], fact: '16 波团战里你们少死人的 6 波，之后拆到建筑的只有 22:57 这 1 波。' }] }];
+  it('a slim game_plan (main_reason + why, no duplicate evidence) ships cleanly while invalid evidence or bad why is caught', async () => {
     const slim = { main_reason: 'team_play', why: '你几乎每波团都在，6 波少死人的团只换来 1 次建筑：不是你一个人的问题。' };
-    const { r } = await run([submit(review(slim, { story }))]);
+    const { r } = await run([submit(review(slim))]);
     expect(r.status).toBe('ok');
     expect(r.verification).toMatchObject({ repaired: false, first_pass_problems: 0 });
     expect(r.review.game_plan).toEqual({ main_reason: 'team_play', why: slim.why, evidence: [] });
     expect(r.verification).not.toHaveProperty('game_plan_missing');
-    // Unit-level checks for planOf / planGapOf with hasStory: true.
+
     const refs = new Map([['tempo:beastmaster', { at: null }]]);
-    expect(planOf(slim, [], refs, { hasStory: true })).toEqual({ main_reason: 'team_play', why: slim.why, evidence: [] });
-    expect(planGapOf(slim, [], refs, { hasStory: true })).toBeNull();
-    // If evidence IS provided with hasStory: true, every submitted item is still verified: all-bad or malformed evidence is rejected.
-    expect(planOf({ ...slim, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] }, [{ where: 'plan_evidence', index: 0 }], refs, { hasStory: true })).toBeNull();
-    expect(planGapOf({ ...slim, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] }, [{ where: 'plan_evidence', index: 0 }], refs, { hasStory: true })).toBe('no_evidence_that_holds');
-    expect(planOf({ ...slim, evidence: 'tempo:beastmaster' }, [], refs, { hasStory: true })).toBeNull();
-    expect(planGapOf({ ...slim, evidence: 'tempo:beastmaster' }, [], refs, { hasStory: true })).toBe('no_evidence_that_holds');
-    // If main_reason + why fail and no other plan text holds, planGapOf reports no_reason (PLAN_TEXTS index 3 = 'why').
-    expect(planGapOf({ main_reason: 'bad_luck', why: 'x' }, [], refs, { hasStory: true })).toBe('no_reason');
-    expect(planGapOf(slim, [{ where: 'plan', index: 3 }], refs, { hasStory: true })).toBe('no_reason');
-    // End-to-end repair round asks about no_reason when slim game_plan's why fails verification, and ships once repaired.
+    expect(planOf(slim, [], refs)).toEqual({ main_reason: 'team_play', why: slim.why, evidence: [] });
+    expect(planGapOf(slim, [], refs)).toBeNull();
+    // If evidence IS provided, every submitted item is verified: all-bad or malformed evidence is rejected.
+    expect(planOf({ ...slim, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] }, [{ where: 'plan_evidence', index: 0 }], refs)).toBeNull();
+    expect(planGapOf({ ...slim, evidence: [{ refs: ['tempo:nobody'], fact: 'x' }] }, [{ where: 'plan_evidence', index: 0 }], refs)).toBe('no_evidence_that_holds');
+    expect(planOf({ ...slim, evidence: 'tempo:beastmaster' }, [], refs)).toBeNull();
+    expect(planGapOf({ ...slim, evidence: 'tempo:beastmaster' }, [], refs)).toBe('no_evidence_that_holds');
+    // If main_reason + why fail and no stated against_your_plan holds, planGapOf reports no_reason (PLAN_TEXTS index 0 = 'why').
+    expect(planGapOf({ main_reason: 'bad_luck', why: 'x' }, [], refs)).toBe('no_reason');
+    expect(planGapOf(slim, [{ where: 'plan', index: 0 }], refs)).toBe('no_reason');
+
+    // End-to-end repair round asks about no_reason when game_plan.why fails verification, and ships once repaired.
     const badSlim = { main_reason: 'team_play', why: '你们赢了 99 波团战。' };
-    const repaired = await run([submit(review(badSlim, { story }), 's1'), submit(review(slim, { story }), 's2')]);
+    const repaired = await run([submit(review(badSlim), 's1'), submit(review(slim), 's2')]);
     expect(repaired.r.verification).toMatchObject({ repaired: true, problems: [] });
     expect(repaired.r.review.game_plan).toEqual({ main_reason: 'team_play', why: slim.why, evidence: [] });
     const asked = JSON.parse(repaired.m.seen[2].messages.at(-1).content);
@@ -101,10 +97,8 @@ describe('the game plan of a review', () => {
     const { r, m } = await run([submit(review(bad), 's1'), submit(review(plan), 's2')]);
     expect(r.verification.repaired).toBe(true);
     expect(r.verification.first_pass_problems).toBeGreaterThan(0);
-    expect(r.review.game_plan).toMatchObject({ course: plan.course });
+    expect(r.review.game_plan).toMatchObject({ main_reason: 'team_play' });
     expect(r.verification).not.toHaveProperty('game_plan_missing');
-    // What the repair round was told: the plan, why it would go, and what to do.
-    // (The last call is the translation, since #393: the repair round's message is found by what it says.)
     const repairMsg = m.seen.flatMap((x: any) => x.messages ?? []).filter((x: any) => x.role === 'tool' && String(x.content).includes('unsupported_facts')).at(-1);
     const asked = JSON.parse(repairMsg.content);
     expect(asked.problems).toContainEqual(expect.objectContaining({ in: 'game_plan', text: 'no_evidence_that_holds', why: expect.stringContaining('would be left out of the review') }));
@@ -114,89 +108,76 @@ describe('the game plan of a review', () => {
     expect(still.verification.game_plan_missing).toBe('no_evidence_that_holds');
   });
 
-  it('a plan that holds is not asked about; a review without one is not either (submit_review requires it)', async () => {
+  it('a plan that holds is not asked about; a review without one is not either', async () => {
     const ok = (await run([submit(review(plan))])).r;
     expect(ok.verification.repaired).toBe(false);
     const none = await run([submit(review(undefined))]);
     expect(none.r.verification.repaired).toBe(false);
   });
 
-  it('planGapOf names why a plan would not ship', () => {
-    const refs = new Map([['tempo:beastmaster', { at: null }]]);
-    expect([null, undefined, 'a plan'].map((p) => planGapOf(p, [], refs))).toEqual(['not_submitted', 'not_submitted', 'not_submitted']);
-    expect(planGapOf({ ...plan, evidence: [] }, [], refs)).toBe('no_evidence_that_holds');
-    expect(planGapOf({ why: 'x', main_reason: 'unclear', evidence: plan.evidence }, [], refs)).toBe('no_course');
-    expect(planGapOf(plan, [{ where: 'plan', index: 1 }, { where: 'plan', index: 2 }], refs)).toBe('no_course');
-    expect(planGapOf(plan, [], refs)).toBeNull();
-  });
-
-  it('asks for a repair naming the sentence, then leaves out only what still fails', async () => {
-    const wrong = { ...plan, course: '你们在 12:34 拆了 3 座外塔，赢了 8 波团。', evidence: [plan.evidence[0], { refs: ['phase:beastmaster:3'], fact: '20:00 到 30:00 对面拆了 12 座建筑。' }, { refs: ['phase:beastmaster:42'], fact: '后期丢了高地。' }] };
+  it('asks for a repair naming the field, then leaves out only what still fails', async () => {
+    const wrong = {
+      ...plan,
+      evidence: [
+        plan.evidence[0],
+        { refs: ['phase:beastmaster:3'], fact: '20:00 到 30:00 对面拆了 12 座建筑。' },
+        { refs: ['phase:beastmaster:42'], fact: '后期丢了高地。' },
+      ],
+    };
     const { r, m } = await run([submit(review(wrong), 's1'), submit(review(wrong), 's2')]);
     expect(r.status).toBe('ok');
     expect(r.verification.repaired).toBe(true);
     const asked = JSON.parse(m.seen[2].messages.at(-1).content);
     expect(asked.problems.map((p: any) => [p.in, p.text])).toEqual([
-      ['game_plan.course', '12:34'], ['game_plan.course', '8'],
-      ['game_plan.evidence 2', '12 (not in phase:beastmaster:3)'], ['game_plan.evidence 3', 'phase:beastmaster:42'],
+      ['game_plan.evidence 2', '12 (not in phase:beastmaster:3)'],
+      ['game_plan.evidence 3', 'phase:beastmaster:42'],
     ]);
-    // The sentence that stated them is gone, and the two evidence items; the rest of the plan stands.
-    expect(r.review.game_plan).toEqual({ line_ups: '路人局里 斯温 在短局赢得更多；这局打了 42:31。', your_part: plan.your_part, main_reason: 'team_play', why: plan.why, evidence: [{ refs: ['tempo:beastmaster'], fact: plan.evidence[0].fact }] });
-    // A finding is never dropped for what the plan got wrong.
+    expect(r.review.game_plan).toEqual({
+      main_reason: 'team_play',
+      why: '你和 斯温 几乎每波团都在，6 波少死人的团只换来 1 次建筑：不是你一个人的问题。',
+      evidence: [{ refs: ['tempo:beastmaster'], fact: plan.evidence[0].fact }],
+    });
     expect(r.review.findings).toHaveLength(1);
     expect(r.verification.dropped).toBe(0);
   });
 
-  it('a repaired plan is accepted', async () => {
-    const { r } = await run([submit(review({ ...plan, course: '你们赢了 8 波团。' }), 's1'), submit(review(plan), 's2')]);
-    expect(r.verification).toMatchObject({ repaired: true, problems: [] });
-    expect(r.review.game_plan.course).toBe(plan.course);
-  });
-
   it('the reason is a judgment: it ships only with the sentence that argues it, and only as a known one', async () => {
-    const noWhy = (await run([submit(review({ ...plan, why: '因为你们 9:99 就该推了，赢了 8 波团。' }), 's1'), submit(review({ ...plan, why: '你们赢了 8 波团却没推。' }), 's2')])).r;
-    expect(noWhy.review.game_plan).not.toHaveProperty('why');
-    expect(noWhy.review.game_plan).not.toHaveProperty('main_reason');
-    expect(noWhy.review.game_plan.course).toBe(plan.course);
-    const odd = (await run([submit(review({ ...plan, main_reason: 'bad_luck' }))])).r;
-    expect(odd.review.game_plan).not.toHaveProperty('main_reason');
-    expect(odd.review.game_plan).not.toHaveProperty('why');
+    const noWhy = (await run([submit(review({ ...plan, why: '你们赢了 8 波团却没推。' }), 's1'), submit(review({ ...plan, why: '你们赢了 8 波团却没推。' }), 's2')])).r;
+    expect(noWhy.review).not.toHaveProperty('game_plan');
+    const odd = (await run([submit(review({ ...plan, main_reason: 'bad_luck' }), 's1'), submit(review({ ...plan, main_reason: 'bad_luck' }), 's2')])).r;
+    expect(odd.review).not.toHaveProperty('game_plan');
     expect(PLAN_REASONS).toEqual(['your_play', 'team_play', 'enemy_play', 'line_ups', 'unclear']);
   });
 
-  it('with nothing left about what happened, or no record that holds, there is no plan', () => {
-    const none = { problems: [], refs: new Map([['tempo:beastmaster', { at: null }]]) };
-    expect(planOf({ why: 'x', main_reason: 'unclear', evidence: plan.evidence }, none.problems, none.refs)).toBeNull();
-    expect(planOf({ ...plan, evidence: [] }, none.problems, none.refs)).toBeNull();
-    expect(planOf({ ...plan, evidence: 'tempo:beastmaster' }, none.problems, none.refs)).toBeNull();
-    expect(planOf({ ...plan, evidence: [{ refs: 'tempo:beastmaster', fact: 'x' }, { refs: ['tempo:beastmaster'] }, null] }, none.problems, none.refs)).toBeNull();
+  it('planOf enforces ref limits, stated against_your_plan, and malformed input guards', () => {
+    const refs = new Map([['tempo:beastmaster', { at: null }]]);
     for (const bad of [null, undefined, 'a plan', 7]) expect(planOf(bad, [], new Map())).toBeNull();
-    // Both sentences about what happened failed the check: nothing to show, whatever else holds.
-    expect(planOf(plan, [{ where: 'plan', index: 1 }, { where: 'plan', index: 2 }], none.refs)).toBeNull();
+    expect(planGapOf(null, [], refs)).toBe('not_submitted');
+    expect(planOf({ ...plan, evidence: [{ refs: 'tempo:beastmaster', fact: 'x' }, { refs: ['tempo:beastmaster'] }, null] }, [], refs)).toBeNull();
     // Problems elsewhere in the review do not touch the plan.
-    expect(planOf(plan, [{ where: 'finding', index: 1 }, { where: 'mainline', index: 2 }], none.refs)).toMatchObject({ course: plan.course, your_part: plan.your_part });
-    // At most four evidence items are shown, each with at most three refs.
-    const many = planOf({ ...plan, evidence: Array.from({ length: 6 }, () => ({ refs: ['tempo:beastmaster', 'a:1', 'b:2', 'c:3'], fact: 'x' })) }, [], none.refs)!;
+    expect(planOf(plan, [{ where: 'finding', index: 1 }], refs)).toMatchObject({ main_reason: 'team_play', why: plan.why });
+    // At most four evidence items, each with at most three refs.
+    const many = planOf({ ...plan, evidence: Array.from({ length: 6 }, () => ({ refs: ['tempo:beastmaster', 'a:1', 'b:2', 'c:3'], fact: 'x' })) }, [], refs)!;
     expect(many.evidence).toHaveLength(4);
     expect(many.evidence[0].refs).toHaveLength(3);
-    // Refs are the strings the check read: anything else is not passed on, and an item left with none is not shown.
-    const mixed = planOf({ ...plan, evidence: [{ refs: [7, 'tempo:beastmaster', null], fact: 'x' }, { refs: [7, {}], fact: 'y' }] }, [], none.refs)!;
+    // Refs are the strings the check read; an item left with none is dropped.
+    const mixed = planOf({ ...plan, evidence: [{ refs: [7, 'tempo:beastmaster', null], fact: 'x' }, { refs: [7, {}], fact: 'y' }] }, [], refs)!;
     expect(mixed.evidence).toEqual([{ refs: ['tempo:beastmaster'], fact: 'x' }]);
+    // against_your_plan ships only when stated is true.
+    expect(planOf({ ...plan, against_your_plan: 'fit well' }, [], refs, { stated: false })).not.toHaveProperty('against_your_plan');
+    expect(planOf({ ...plan, against_your_plan: 'fit well' }, [], refs, { stated: true })).toMatchObject({ against_your_plan: 'fit well' });
   });
 
   it('is checked like the rest of the review: vision, and English in a Chinese review', () => {
     const kitSources = (r: any) => verifyReview(r, []).problems.filter((p: any) => p.where.startsWith('plan'));
-    expect(kitSources(review({ ...plan, course: '你们推塔时对面看不到你。', your_part: 'You were away from the fights.', why: 'x', line_ups: 'x', evidence: [] })).map((p: any) => [p.where, p.index, p.kind])).toEqual([['plan', 1, 'sight'], ['plan', 2, 'language']]);
-    // A plan that is not an object, or sentences that are not strings, are simply not there.
+    expect(kitSources(review({ main_reason: 'team_play', why: '你们推塔时对面看不到你。', against_your_plan: 'You were away from the fights.', evidence: [] })).map((p: any) => [p.where, p.index, p.kind])).toEqual([['plan', 0, 'sight'], ['plan', 1, 'language']]);
     expect(kitSources(review('just text'))).toEqual([]);
-    expect(kitSources(review({ course: 5, your_part: null, evidence: 'none' }))).toEqual([]);
+    expect(kitSources(review({ why: 5, evidence: 'none' }))).toEqual([]);
   });
 
-  it('the scripted review of the fixture server passes the same check, in both languages', async () => {
-    for (const lang of ['zh', 'en'] as const) {
-      // The script's plan rests on the window report too, which reads the match's per-minute gold.
+  it('the scripted review of the fixture server passes the same check, in all three languages', async () => {
+    for (const lang of ['zh', 'en', 'ru'] as const) {
       const m = scripted([{ toolCalls: [...investigate.toolCalls, call('window_report', { hero: 'beastmaster' }, 'w')] }, submit((MOCK_REVIEW as any)[lang])]);
-      // The script's findings cite records this short investigation did not fetch; only the plan is under test here.
       const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang, match: SCOREBOARD });
       expect(r.verification.problems.filter((p: any) => p.where.startsWith('plan'))).toEqual([]);
     }
@@ -215,34 +196,27 @@ describe('the prompts know the game plan', () => {
     expect(p.properties.main_reason.enum).toEqual(PLAN_REASONS);
     expect(p.properties.evidence.maxItems).toBe(4);
     expect('minItems' in p.properties.evidence).toBe(false);
-    // The model is told the plan is required (#388); a model that still leaves it out still hands in a review —
-    // the arguments are not schema-checked ("a review without one is a review without one" above).
     expect(SUBMIT_REVIEW.input_schema.required).toContain('game_plan');
   });
 
-  it('the chat is told how to answer a stated plan, and may lean on the plan the review checked', () => {
+  it('the chat is told how to answer a stated plan, and may lean on the checked parts of the review', () => {
     const s = chatSystem('en');
     expect(s).toContain('take that as their plan');
-    // The game's windows first, then who took what in each stretch.
     expect(s).toContain('window_report for the player first');
     expect(s).toContain('then tempo_report');
     expect(s).toContain('not that it closed the window');
     expect(s).toContain('Never tell the player what they "intended"');
     const part: any = checkedPart({
       verdict: 'v',
-      opening_note: 'Solid effort in a tough draft.',
       highlights: [{ title: 'Roar at 27:27', detail: 'Stunned PA through BKB.', evidence: [{ refs: ['cast:x:1'], clock: '27:27', fact: '3.4 s stun.' }] }],
-      chapters: [{ topic: 'teamfights', title: 'Fights', assessment: 'mixed', analysis: 'High attendance.', takeaway: 'Hold Roar.', evidence: [{ refs: ['fights:x:12'], clock: '33:23', fact: '841 damage.' }] }],
-      encouragement: 'Keep that composure.',
+      chapters: [{ topic: 'midgame', title: 'Fights', analysis: 'High attendance.', evidence: [{ refs: ['fights:x:12'], clock: '33:23', fact: '841 damage.' }] }],
       findings: [],
-      game_plan: { course: 'c', your_part: 'y', line_ups: 'l', main_reason: 'team_play', why: 'w', evidence: [{ refs: ['tempo:x'], clock: '20:00', fact: 'f' }] },
+      game_plan: { main_reason: 'team_play', why: 'w', against_your_plan: 'a', evidence: [{ refs: ['tempo:x'], clock: '20:00', fact: 'f' }] },
     });
-    // The reason it names is a judgment: not part of what backs a later answer.
-    expect(part.game_plan).toEqual({ line_ups: 'l', course: 'c', your_part: 'y', why: 'w', evidence: [{ clock: '20:00', fact: 'f' }] });
-    expect(part.opening_note).toBe('Solid effort in a tough draft.');
+    // main_reason is a judgment: not part of what backs a later answer.
+    expect(part.game_plan).toEqual({ against_your_plan: 'a', why: 'w', evidence: [{ clock: '20:00', fact: 'f' }] });
     expect(part.highlights).toEqual([{ title: 'Roar at 27:27', detail: 'Stunned PA through BKB.', evidence: [{ clock: '27:27', fact: '3.4 s stun.' }] }]);
-    expect(part.chapters).toEqual([{ topic: 'teamfights', title: 'Fights', analysis: 'High attendance.', takeaway: 'Hold Roar.', evidence: [{ clock: '33:23', fact: '841 damage.' }] }]);
-    expect(part.encouragement).toBe('Keep that composure.');
+    expect(part.chapters).toEqual([{ topic: 'midgame', title: 'Fights', analysis: 'High attendance.', evidence: [{ clock: '33:23', fact: '841 damage.' }] }]);
     expect(checkedPart({ verdict: 'v', findings: [] })).not.toHaveProperty('game_plan');
   });
 
@@ -258,7 +232,6 @@ describe('the prompts know the game plan', () => {
     const out: any = await runChat({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh', question: planQuestion('push', 'zh')! });
     expect(out).toMatchObject({ status: 'ok', unverified: [] });
     expect(out.tool_calls.map((c: any) => c.name)).toEqual(['tempo_report', 'lineup_timing']);
-    // The same answer with a count the replay does not hold is returned marked, not hidden.
     const bad = scripted([{ toolCalls: [call('tempo_report', { hero: 'beastmaster' }, 'p')] }, { text: '你到场了 14 波团战。' }, { text: '你到场了 14 波团战。' }]);
     const marked: any = await runChat({ complete: bad.complete, trace, hero: 'beastmaster', lang: 'zh', question: planQuestion('push', 'zh')! });
     expect(marked.unverified).toEqual([{ kind: 'count', text: '14' }]);

@@ -111,10 +111,15 @@ describe('runChat', () => {
     expect((await say('At 19:19 you lost 99999 gold.')).unverified).toEqual([{ kind: 'time', text: '19:19' }, { kind: 'number', text: '99999' }]);
     expect((await say('Farm 88888 by 18:18, see 17:17.')).unverified!.map((u: any) => u.text)).toEqual(['18:18', '17:17', '88888']);
     expect((await say('At 27:27 and 30:25.')).unverified).toEqual([]);
-    // What a rule says happened this game was checked with the finding; its situation and action are advice.
-    const ruled = { verdict: 'v', findings: [{ title: 't', claim: 'c', evidence: [], fix: 'f', rule: { when: 'Below 16:16 on the clock', do: 'hold 77777 gold', this_game: '7 deaths, the first at 15:15' } }] };
-    const say2 = (text: string) => runChat({ complete: async () => ({ text }), trace, hero: 'beastmaster', question: 'q', review: ruled });
-    expect((await say2('7 deaths, the first at 15:15.')).unverified).toEqual([]);
+    // Checked highlights and chapter analyses back later chat answers; unverified advice (`fix`) does not.
+    const structured = {
+      verdict: 'v',
+      highlights: [{ title: 't', detail: '7 deaths, the first at 15:15' }],
+      chapters: [{ topic: 'midgame', title: 'c', analysis: 'At 24:24 you took Roshan.', evidence: [] }],
+      findings: [{ title: 't', claim: 'c', evidence: [], fix: 'Below 16:16 on the clock hold 77777 gold' }],
+    };
+    const say2 = (text: string) => runChat({ complete: async () => ({ text }), trace, hero: 'beastmaster', question: 'q', review: structured });
+    expect((await say2('7 deaths, the first at 15:15, and 24:24.')).unverified).toEqual([]);
     expect((await say2('At 16:16 hold 77777 gold.')).unverified).toEqual([{ kind: 'time', text: '16:16' }, { kind: 'number', text: '77777' }]);
   });
 
