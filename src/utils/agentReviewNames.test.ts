@@ -312,6 +312,9 @@ describe('observed effects: where an ability\'s effect sat, and what an item mad
     // Removed on both sides: this side's count is known, its games are not (the data counts games over every side).
     const both: any = { ...o, removals: { 'item:cyclone': { modifier_ursa_overpower: { removed: 3, games: 2, on: { self: 2, ally_hero: 0, enemy_hero: 1 } } } } };
     expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], both)).toEqual({ removed: 1, games: null });
+    // Two of its modifiers removed: whether their games overlap is not in the counts — games null (#510 review).
+    const two: any = { sources: { 'ability:crystal_maiden_crystal_nova': { modifiers: { modifier_crystal_maiden_crystal_nova: {}, modifier_crystal_maiden_crystal_nova_barrier: {} } } }, removals: { 'item:black_king_bar': { modifier_crystal_maiden_crystal_nova: { removed: 6, games: 4, on: { self: 6, ally_hero: 0, enemy_hero: 0 } }, modifier_crystal_maiden_crystal_nova_barrier: { removed: 1, games: 1, on: { self: 1, ally_hero: 0, enemy_hero: 0 } } } } };
+    expect(observedRemoval('black_king_bar', 'crystal_maiden_crystal_nova', ['self', 'ally_hero'], two)).toEqual({ removed: 7, games: null });
     expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], obs)).toBeNull();
   });
 
