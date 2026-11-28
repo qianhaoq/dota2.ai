@@ -664,7 +664,10 @@ describe('DSH local service end-to-end (service.js)', () => {
     verdict: '咆哮没有留给幻影刺客。',
     highlights: [{ title: '27:27 隔着黑皇杖控住核心', detail: '27:27 吼进黑皇杖，定住 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] }],
     findings: [finding],
-    chapters: [{ topic: 'midgame', title: '中期团战：关键大招决定上限', analysis: '幻影刺客开了 7 次黑皇杖，27:27 那波大招控制 3.4 秒很果断。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] }],
+    chapters: [
+      { topic: 'midgame', title: '中期团战：关键大招决定上限', analysis: '幻影刺客开了 7 次黑皇杖，27:27 那波大招控制 3.4 秒很果断。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+      { topic: 'skills_and_items', title: '大招留人思路', analysis: '面对幻影刺客的 7 次黑皇杖，咆哮必须优先留给她。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+    ],
     blind_spots: ['视野'],
   };
 

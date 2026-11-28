@@ -31,7 +31,12 @@ const invented = { title: '打钱', claim: '你 19:19 的经济只有 9,876。',
 /** What the reader gets: each evidence item with the game time of the first record it cites. */
 const shown = (f: any, clocks: string[]) => ({ ...f, evidence: f.evidence.map((e: any, i: number) => ({ refs: e.refs, clock: clocks[i], fact: e.fact })) });
 const goodShown = shown(good, ['27:27', '30:34', '36:05']);
+const defaultChapters = [
+  { topic: 'midgame', title: '中期团战', analysis: '27:27 咆哮吼中幻影刺客，定住后击杀。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 咆哮吼中开着 BKB 的幻影刺客，她 11 秒后（27:38）阵亡' }] },
+  { topic: 'skills_and_items', title: '大招目标选择', analysis: '幻影刺客开了 7 次 BKB，咆哮留给她收益最高。', evidence: [{ refs: ['immune:phantom_assassin:3:beastmaster-primal_roar'], fact: '30:34 她开 BKB 时咆哮还在冷却，9 秒前 30:25 给了瘟疫法师' }] },
+];
 const review = (findings: any[], extra: any = {}) => ({ verdict: '咆哮没有留给幻影刺客的 BKB。', highlights: [], findings, chapters: [], blind_spots: ['视野'], ...extra });
+const fullReview = (findings: any[], extra: any = {}) => review(findings, { chapters: defaultChapters, ...extra });
 
 describe('fact collection', () => {
   it('reads times, numbers, the tools\' own counts, and what was said about each moment', () => {
@@ -236,7 +241,7 @@ describe('review findings on #233', () => {
   });
 
   it('the review can still be handed in after the last lookup is spent', async () => {
-    const m = scripted([investigate, { toolCalls: [call('submit_review', review([good]), 's')] }]);
+    const m = scripted([investigate, { toolCalls: [call('submit_review', fullReview([good]), 's')] }]);
     // Three lookups allowed, three used: the next turn offers only submit_review, and it is accepted.
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh', maxToolCalls: 3 });
     expect(r.status).toBe('ok');
@@ -246,7 +251,7 @@ describe('review findings on #233', () => {
 
 describe('runDeepReview', () => {
   it('investigates with the trace tools and returns the verified review', async () => {
-    const m = scripted([investigate, { toolCalls: [call('submit_review', review([good]), 's')] }]);
+    const m = scripted([investigate, { toolCalls: [call('submit_review', fullReview([good]), 's')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'Beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
     expect(r.review).toMatchObject({ schema: DEEP_REVIEW_SCHEMA, match_id: 9100904020, hero: 'beastmaster', lang: 'zh', findings: [goodShown], verdict: '咆哮没有留给幻影刺客的 BKB。' });
@@ -264,8 +269,8 @@ describe('runDeepReview', () => {
   it('asks once for a repair, then drops what is still unsupported', async () => {
     const m = scripted([
       investigate,
-      { toolCalls: [call('submit_review', review([good, invented]), 's1')] },
-      { toolCalls: [call('submit_review', review([good, invented], { verdict: '19:19 崩了', highlights: [{ title: '吼中', detail: '27:27 吼中' }, { title: '假亮点', detail: '19:19 崩' }] }), 's2')] },
+      { toolCalls: [call('submit_review', fullReview([good, invented]), 's1')] },
+      { toolCalls: [call('submit_review', fullReview([good, invented], { verdict: '19:19 崩了', highlights: [{ title: '吼中', detail: '27:27 吼中' }, { title: '假亮点', detail: '19:19 崩' }] }), 's2')] },
     ]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
@@ -282,7 +287,7 @@ describe('runDeepReview', () => {
   });
 
   it('translates into the other site languages only when asked (translate: true)', async () => {
-    const m = scripted([investigate, { toolCalls: [call('submit_review', review([good]), 's1')] }, { text: '{}' }, { text: '{}' }]);
+    const m = scripted([investigate, { toolCalls: [call('submit_review', fullReview([good]), 's1')] }, { text: '{}' }, { text: '{}' }]);
     await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh', translate: true });
     expect(m.seen.length).toBeGreaterThan(2);
     expect(m.seen[2].tools).toEqual([]);
@@ -292,34 +297,34 @@ describe('runDeepReview', () => {
     // Seen in production: a finding about the ultimate lost whole because one of six items cited the summary for a stun length.
     const stray = { refs: ['audit:beastmaster:primal_roar'], fact: '咆哮定住了 98.7 秒。' };
     const mixed = { ...good, evidence: [...good.evidence, stray] };
-    const m = scripted([investigate, { toolCalls: [call('submit_review', review([mixed]), 's1')] }, { toolCalls: [call('submit_review', review([mixed]), 's2')] }]);
+    const m = scripted([investigate, { toolCalls: [call('submit_review', fullReview([mixed]), 's1')] }, { toolCalls: [call('submit_review', fullReview([mixed]), 's2')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r.status).toBe('ok');
     expect(r.review.findings).toEqual([goodShown]);
     expect(r.verification).toMatchObject({ repaired: true, dropped: 0, problems: [{ where: 'finding', index: 0, kind: 'moment', text: '98.7 (not in audit:beastmaster:primal_roar)' }] });
     // Nothing left to stand on: the finding goes, as before.
     const hollow = { ...good, evidence: [stray] };
-    const m2 = scripted([investigate, { toolCalls: [call('submit_review', review([good, hollow]), 's1')] }, { toolCalls: [call('submit_review', review([good, hollow]), 's2')] }]);
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', fullReview([good, hollow]), 's1')] }, { toolCalls: [call('submit_review', fullReview([good, hollow]), 's2')] }]);
     const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r2.review.findings).toEqual([goodShown]);
     expect(r2.verification).toMatchObject({ dropped: 1 });
     // A finding that is no finding (null, or evidence that is no list) is dropped like any other; the job does not fail.
     const broken = [good, null, { ...good, evidence: { refs: ['death:beastmaster:9'], fact: '36:05' } }];
-    const m4 = scripted([investigate, { toolCalls: [call('submit_review', review(broken), 's1')] }, { toolCalls: [call('submit_review', review(broken), 's2')] }]);
+    const m4 = scripted([investigate, { toolCalls: [call('submit_review', fullReview(broken), 's1')] }, { toolCalls: [call('submit_review', fullReview(broken), 's2')] }]);
     const r4: any = await runDeepReview({ complete: m4.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r4.status).toBe('ok');
     expect(r4.review.findings).toEqual([goodShown]);
     expect(r4.verification).toMatchObject({ dropped: 2 });
     // Its own claim unsupported: good evidence does not save it.
     const wrong = { ...good, claim: '你 19:19 的经济只有 9,876。' };
-    const m3 = scripted([investigate, { toolCalls: [call('submit_review', review([good, wrong]), 's1')] }, { toolCalls: [call('submit_review', review([good, wrong]), 's2')] }]);
+    const m3 = scripted([investigate, { toolCalls: [call('submit_review', fullReview([good, wrong]), 's1')] }, { toolCalls: [call('submit_review', fullReview([good, wrong]), 's2')] }]);
     const r3: any = await runDeepReview({ complete: m3.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r3.review.findings).toEqual([goodShown]);
     expect(r3.verification).toMatchObject({ dropped: 1 });
   });
 
   it('a line in English inside a Chinese review is sent back, and dropped if it stays', async () => {
-    const submitted = review([good], {
+    const submitted = fullReview([good], {
       highlights: [
         { title: 'Good farm', detail: 'Good farm overall' },
         { title: '关键大招', detail: '27:27 吼中' },
@@ -394,8 +399,11 @@ describe('runDeepReview', () => {
       ...good,
       claim: '幻影剌客开了 7 次 BKB，只有 27:27 那次你的咆哮吼中了她（killed_by 里她最多）；吼中的两次（27:27、30:25），其中 36:05 那次没放。',
     };
-    const sent = review([worded], {
-      chapters: [{ topic: 'midgame', title: '中期团战', analysis: '30:25 的咆哮给了瘟疫法师，见 cast:beastmaster:primal_roar:6 那次。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼住她' }] }],
+    const sent = fullReview([worded], {
+      chapters: [
+        { topic: 'midgame', title: '中期团战', analysis: '30:25 的咆哮给了瘟疫法师，见 cast:beastmaster:primal_roar:6 那次。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼住她' }] },
+        defaultChapters[1],
+      ],
     });
     const m = scripted([investigate, { toolCalls: [call('submit_review', sent, 's1')] }, { toolCalls: [call('submit_review', sent, 's2')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
@@ -409,11 +417,11 @@ describe('runDeepReview', () => {
     expect(r.status).toBe('ok');
     expect(r.verification).toMatchObject({ repaired: true, dropped: 0 });
     expect(r.verification.problems.every((p: any) => p.soft)).toBe(true);
-    expect(r.review.chapters).toHaveLength(1);
+    expect(r.review.chapters).toHaveLength(2);
     expect(r.review.findings[0].claim).toBe(worded.claim);
     expect(r.review.findings[0].evidence).toHaveLength(3);
     // A repair that words it properly comes back clean.
-    const m2 = scripted([investigate, { toolCalls: [call('submit_review', sent, 's1')] }, { toolCalls: [call('submit_review', review([good]), 's2')] }]);
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', sent, 's1')] }, { toolCalls: [call('submit_review', fullReview([good]), 's2')] }]);
     const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r2.verification).toMatchObject({ repaired: true, dropped: 0, problems: [] });
     // A chat answer is not held to wording.
@@ -422,7 +430,7 @@ describe('runDeepReview', () => {
 
   it('a repair that looks the fact up is accepted', async () => {
     const lane = { title: '一血', claim: '0:47 被击杀时身边没有队友。', evidence: [{ refs: ['death:beastmaster:1'], fact: '0:47 一血' }], fix: '等兵线。' };
-    const m = scripted([investigate, { toolCalls: [call('submit_review', review([good, lane]), 's1')] }, { toolCalls: [call('death_context', { hero: 'beastmaster', index: 1 }, 'd')] }, { toolCalls: [call('submit_review', review([good, lane]), 's2')] }]);
+    const m = scripted([investigate, { toolCalls: [call('submit_review', fullReview([good, lane]), 's1')] }, { toolCalls: [call('death_context', { hero: 'beastmaster', index: 1 }, 'd')] }, { toolCalls: [call('submit_review', fullReview([good, lane]), 's2')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster' });
     expect(r.review.findings).toEqual([goodShown, shown(lane, ['0:47'])]);
     expect(r.verification).toMatchObject({ repaired: true, dropped: 0, problems: [] });
@@ -467,7 +475,7 @@ describe('runDeepReview', () => {
     expect(Object.keys(props.findings.items.properties).sort()).toEqual(['claim', 'evidence', 'fix', 'title']);
     expect(Object.keys(props.chapters.items.properties).sort()).toEqual(['analysis', 'evidence', 'title', 'topic']);
     // A finding that is dropped is kept as it was written, for whoever has to find out why.
-    const m3 = scripted([investigate, { toolCalls: [call('submit_review', review([good, invented]), 's')] }, { toolCalls: [call('submit_review', review([good, invented]), 's2')] }]);
+    const m3 = scripted([investigate, { toolCalls: [call('submit_review', fullReview([good, invented]), 's')] }, { toolCalls: [call('submit_review', fullReview([good, invented]), 's2')] }]);
     const r3: any = await runDeepReview({ complete: m3.complete, trace, hero: 'beastmaster', lang: 'zh' });
     expect(r3.verification.dropped).toBe(1);
     expect(r3.dropped_findings).toEqual([invented]);
@@ -490,13 +498,13 @@ describe('runDeepReview', () => {
     const { title, ...untitled } = good as any;
     expect(verifyReview(review([untitled]), []).problems).toContainEqual({ where: 'title', index: 0, kind: 'missing', text: 'title' });
     // Asked once; the repair supplies it.
-    const m = scripted([investigate, { toolCalls: [call('submit_review', review([untitled]), 's1')] }, { toolCalls: [call('submit_review', review([good]), 's2')] }]);
+    const m = scripted([investigate, { toolCalls: [call('submit_review', fullReview([untitled]), 's1')] }, { toolCalls: [call('submit_review', fullReview([good]), 's2')] }]);
     const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster' });
     expect(JSON.parse(m.seen[2].messages.at(-1).content).problems).toEqual([{ in: 'finding 1, title', text: 'title', why: 'this finding has no title: give it a heading of a few words' }]);
     expect(r.review.findings[0].title).toBe(title);
     expect(r.verification).toMatchObject({ repaired: true, dropped: 0, problems: [] });
     // Still none after the repair: the finding stays, headed by the opening sentence of its own claim.
-    const m2 = scripted([investigate, { toolCalls: [call('submit_review', review([untitled]), 's1')] }, { toolCalls: [call('submit_review', review([{ ...untitled, title: '  ' }]), 's2')] }]);
+    const m2 = scripted([investigate, { toolCalls: [call('submit_review', fullReview([untitled]), 's1')] }, { toolCalls: [call('submit_review', fullReview([{ ...untitled, title: '  ' }]), 's2')] }]);
     const r2: any = await runDeepReview({ complete: m2.complete, trace, hero: 'beastmaster' });
     expect(r2.status).toBe('ok');
     expect(r2.verification.dropped).toBe(0);
@@ -882,5 +890,55 @@ describe('runDeepReview', () => {
     expect(SUBMIT_REVIEW.input_schema.properties.findings.items.properties.evidence.items.required).toEqual(['refs', 'fact']);
     expect(s).toContain('submit_review` exactly once');
     expect(SUBMIT_REVIEW.input_schema.properties.findings.maxItems).toBe(3);
+  });
+
+  it('enforces structure guard (chapters >= 2, findings <= 3): repairs 7-finding/0-chapter submissions and hard-caps stubborn excess findings', async () => {
+    // Reproduces live production P1 (9107883117 Omniknight v84): model dumped 7 findings and 0 chapters.
+    const sevenFindings = Array.from({ length: 7 }, (_, i) => ({ ...good, title: `咆哮问题 ${i + 1}` }));
+    const brokenFirst = review(sevenFindings, { chapters: [] });
+    const repairedSecond = fullReview([good]);
+    const m = scripted([
+      investigate,
+      { toolCalls: [call('submit_review', brokenFirst, 's1')] },
+      { toolCalls: [call('submit_review', repairedSecond, 's2')] },
+    ]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(r.status).toBe('ok');
+    expect(r.verification).toMatchObject({ repaired: true, dropped: 0, problems: [] });
+    expect(JSON.parse(m.seen[2].messages.at(-1).content).problems).toEqual(expect.arrayContaining([
+      { in: 'findings', text: 'too_many_findings (7 > 3)', why: expect.stringContaining('at most 3') },
+      { in: 'chapters', text: 'too_few_chapters (0 < 2)', why: expect.stringContaining('2–7 chronological chapters') },
+    ]));
+    expect(r.review.findings).toHaveLength(1);
+    expect(r.review.chapters).toHaveLength(2);
+
+    // Even if the model stubbornly repeats 7 findings in the repair round, shipped findings are hard-capped to MAX_FINDINGS (3).
+    const mStubborn = scripted([
+      investigate,
+      { toolCalls: [call('submit_review', brokenFirst, 's1')] },
+      { toolCalls: [call('submit_review', brokenFirst, 's2')] },
+    ]);
+    const rStubborn: any = await runDeepReview({ complete: mStubborn.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(rStubborn.status).toBe('ok');
+    expect(rStubborn.review.findings).toHaveLength(3);
+    expect(rStubborn.verification.dropped).toBe(4);
+
+    // Chapters whose evidence fails verification drop surviving count below MIN_CHAPTERS and also trigger structure repair.
+    const unbackedChapters = review([good], {
+      chapters: [
+        defaultChapters[0],
+        { topic: 'laning', title: '虚构对线', analysis: '对线期表现稳定。', evidence: [{ refs: ['lane:missing_ref'], fact: '虚构数据' }] },
+      ],
+    });
+    const mBadChap = scripted([
+      investigate,
+      { toolCalls: [call('submit_review', unbackedChapters, 's1')] },
+      { toolCalls: [call('submit_review', repairedSecond, 's2')] },
+    ]);
+    const rBadChap: any = await runDeepReview({ complete: mBadChap.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    expect(rBadChap.verification).toMatchObject({ repaired: true, dropped: 0, problems: [] });
+    expect(JSON.parse(mBadChap.seen[2].messages.at(-1).content).problems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ in: 'chapters', text: 'chapters_dropped_below_min (1 < 2)' }),
+    ]));
   });
 });

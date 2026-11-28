@@ -204,19 +204,40 @@ jobs:
           else
             echo "::notice::NPM_TOKEN secret is not set; attempting npm Trusted Publishing (OIDC)..."
           fi
-          npm publish ./dist-dsh/*.tgz --access public --provenance
-          # Guard against npm 11 first-publish 0.0.0-stage placeholder before downstream market probes run.
-          for attempt in 1 2 3 4 5 6; do
-            latest=$(curl -fsSL "https://registry.npmjs.org/@qianhaoq%2fdsh-dota2ai" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s)['dist-tags']?.latest??'')}catch{console.log('')}})" || true)
-            if [ "${latest}" = "${VERSION}" ]; then
-              echo "Verified registry dist-tags.latest=${latest}"
+          publish_log="$RUNNER_TEMP/npm-publish.log"
+          set +e
+          npm publish ./dist-dsh/*.tgz --access public --provenance >"${publish_log}" 2>&1
+          publish_rc=$?
+          set -e
+          cat "${publish_log}"
+
+          if [ "${publish_rc}" -ne 0 ]; then
+            if grep -Eq "E409|409 Conflict" "${publish_log}" && grep -Fq "${VERSION}" "${publish_log}" && grep -Eqi "previously staged version|previously published versions" "${publish_log}"; then
+              echo "::notice::@qianhaoq/dsh-dota2ai@${VERSION} was already staged/published on npm (409 Conflict); waiting for registry propagation..."
+            else
+              exit "${publish_rc}"
+            fi
+          fi
+
+          # Wait for npm staging / CDN propagation so concurrent queued runs do not misread stale metadata
+          # and guard against npm 11 first-publish 0.0.0-stage placeholder before downstream market probes run.
+          verified="false"
+          for attempt in $(seq 1 24); do
+            ver_ok=$(curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "https://registry.npmjs.org/@qianhaoq%2fdsh-dota2ai/${VERSION}" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).version??'')}catch{console.log('')}})" 2>/dev/null || true)
+            latest=$(curl -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "https://registry.npmjs.org/@qianhaoq%2fdsh-dota2ai" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s)['dist-tags']?.latest??'')}catch{console.log('')}})" 2>/dev/null || true)
+            if [ "${latest}" = "${VERSION}" ] && [ "${ver_ok}" = "${VERSION}" ]; then
+              echo "Verified registry version=${ver_ok} dist-tags.latest=${latest}"
+              verified="true"
               break
             fi
-            if [ "${attempt}" = "2" ] && echo "${latest}" | grep -q "stage"; then
+            if [ "${publish_rc}" -eq 0 ] && [ "${attempt}" = "2" ] && echo "${latest}" | grep -q "stage"; then
               npm publish ./dist-dsh/*.tgz --access public --provenance || true
             fi
             sleep 5
           done
+          if [ "${verified}" != "true" ] && [ "${publish_rc}" -ne 0 ]; then
+            echo "::notice::@qianhaoq/dsh-dota2ai@${VERSION} returned 409 staged conflict; registry CDN propagation still in progress."
+          fi
           curl -fsSL -X PUT "https://registry.npmmirror.com/@qianhaoq/dsh-dota2ai/sync" > /dev/null || true
 
       - uses: actions/upload-artifact@v4
