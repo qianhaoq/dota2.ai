@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { attackOf, buildCheck, contactBeforeDeaths, observedPlacement, observedRemoval, observedTargetState } from '../../lib/agent/situationTools.js';
+import { attackOf, buildCheck, contactBeforeDeaths, effectsRemovedBy, observedPlacement, observedRemoval, observedTargetState } from '../../lib/agent/situationTools.js';
 import { deathContext } from '../../packages/review-engine/src/trace/index.js';
 import { reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
 import { withHeroNames } from '../../lib/agent/review/toolkit.js';
@@ -131,8 +131,16 @@ describe('build_check: how each item meets the enemy who killed the player', () 
     // Which of her effects it removes: only a dispel seen in archived replays — the item's effect taking her ability's
     // modifier off a hero it landed on, on that side (#510 review); never joined from a dispel flag and a placement.
     const keyOf = (name: string) => pa.their_abilities.find((x: any) => x.name === name)?.ability;
-    for (const r of a.cyclone.their_effects_it_removes) expect(observedRemoval('cyclone', keyOf(r.name), ['enemy_hero'])).toEqual({ removed: r.removed, games: r.games });
-    for (const r of a.black_king_bar.their_effects_it_removes) expect(observedRemoval('black_king_bar', keyOf(r.name), ['self', 'ally_hero'])).toEqual({ removed: r.removed, games: r.games });
+    // Both facts, every time: Valve marks it removable by that dispel, and the item was seen removing it on that side.
+    const flag = (name: string) => pa.their_abilities.find((x: any) => x.name === name)?.dispelled_by;
+    for (const r of a.cyclone.their_effects_it_removes) {
+      expect(flag(r.name)).toBe('basic');
+      expect(observedRemoval('cyclone', keyOf(r.name), ['enemy_hero'])).toEqual({ removed: r.removed, games: r.games });
+    }
+    for (const r of a.black_king_bar.their_effects_it_removes) {
+      expect(flag(r.name)).toBe('basic');
+      expect(observedRemoval('black_king_bar', keyOf(r.name), ['self', 'ally_hero'])).toEqual({ removed: r.removed, games: r.games });
+    }
     // Where each of her abilities' modifiers was seen land is its own fact, beside dispelled_by.
     for (const x of pa.their_abilities) {
       const p = observedPlacement(x.ability);
@@ -338,5 +346,41 @@ describe('observed effects: where an ability\'s effect sat, and what an item mad
       expect(r.their_casts_in_the_15s_before.length).toBeLessThanOrEqual(logged);
       for (const c of r.their_casts_in_the_15s_before) expect(['self', 'none', 'me', 'other', ...trace.heroes.map((h: any) => h.key)]).toContain(c.target);
     }
+  });
+});
+
+// #510 review: a removal seen as Black King Bar landed is no dispel when Valve marks the ability undispellable
+// (Berserker's Call): it is never listed, however often the two coincided.
+describe('their_effects_it_removes needs Valve\'s dispel flag as well as a removal seen', () => {
+  const kit = [
+    { id: 'axe_berserkers_call', en: "Berserker's Call", dispel: 'no' },
+    { id: 'ursa_overpower', en: 'Overpower', dispel: 'basic' },
+    { id: 'sven_gods_strength', en: "God's Strength", dispel: 'strong' },
+  ];
+  const obs: any = {
+    sources: {
+      'ability:axe_berserkers_call': { modifiers: { modifier_axe_berserkers_call: { enemy_hero: 9 } } },
+      'ability:ursa_overpower': { modifiers: { modifier_ursa_overpower: { self: 9 } } },
+      'ability:sven_gods_strength': { modifiers: { modifier_sven_gods_strength: { self: 4 } } },
+    },
+    removals: {
+      'item:black_king_bar': { modifier_axe_berserkers_call: { removed: 3, games: 2, on: { self: 3, ally_hero: 0, enemy_hero: 0 } } },
+      'item:cyclone': { modifier_ursa_overpower: { removed: 2, games: 1, on: { self: 0, ally_hero: 0, enemy_hero: 2 } } },
+      'item:nullifier': { modifier_sven_gods_strength: { removed: 2, games: 1, on: { self: 0, ally_hero: 0, enemy_hero: 2 } } },
+    },
+  };
+  it('an undispellable ability seen "removed" as the item landed is not listed', () => {
+    expect(effectsRemovedBy('black_king_bar', 'self_or_allies', 'basic', kit, 'en', obs)).toEqual([]);
+  });
+  it('a dispellable one seen removed on that side is; a basic dispel does not take a strong-only effect', () => {
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', kit, 'en', obs)).toEqual([{ name: 'Overpower', removed: 2, games: 1 }]);
+    expect(effectsRemovedBy('nullifier', 'an_enemy_target', 'basic', kit, 'en', obs)).toEqual([]);
+    expect(effectsRemovedBy('nullifier', 'an_enemy_target', 'strong', kit, 'en', obs)).toEqual([{ name: "God's Strength", removed: 2, games: 1 }]);
+  });
+  it('no landing side, no dispel, no kit or no observations: nothing', () => {
+    expect(effectsRemovedBy('cyclone', null, 'basic', kit, 'en', obs)).toEqual([]);
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', null, kit, 'en', obs)).toEqual([]);
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', null, 'en', obs)).toEqual([]);
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', kit, 'en', null)).toEqual([]);
   });
 });

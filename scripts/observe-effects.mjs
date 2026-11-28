@@ -8,8 +8,10 @@
  * - the engine's state of a hero while a modifier was on it: the share of its state samples with each control flag
  *   (`controls`) and each `unit_state` bit named in STATE_BITS (stunned, disarmed, invulnerable…) — samples where the
  *   hero was debuff immune are counted apart (`samples_while_debuff_immune`), as what the immunity did;
- * - what an item's effect took off the hero it landed on (`removals`): the other modifiers removed from that hero at
- *   the same instant — a dispel observed, modifier by modifier, with on whom the item's effect was put.
+ * - what was removed from a hero as an item's effect landed on it (`removals`): the other modifiers removed from that
+ *   hero at that instant or within DISPEL_SECONDS after, with on whom the item's effect was put. A removal at that
+ *   moment can still be an expiry or another effect's doing: a reader takes it as a dispel only together with Valve's
+ *   own word that the ability can be dispelled that way (lib/agent/situationTools.js removedBy).
  *
  *   node scripts/observe-effects.mjs <extract dir> [<extract dir>…] --out lib/coach/data/observed-effects.json [--add]
  *
@@ -143,7 +145,8 @@ for (const dir0 of dirs) {
   for (const [a, source] of linked) {
     if (!source.startsWith('item:') || !a.target) continue;
     for (const [t, mod] of removes.get(a.target) ?? []) {
-      if (Math.abs(t - a.t) > DISPEL_SECONDS || mod === a.modifier || mod.includes(source.split(':')[1])) continue;
+      // At the instant it landed or just after, never before (#510 review: a removal that came first is not its doing).
+      if (t < a.t || t - a.t > DISPEL_SECONDS || mod === a.modifier || mod.includes(source.split(':')[1])) continue;
       db.removals ??= {};
       const r = ((db.removals[source] ??= {})[mod] ??= { removed: 0, games: 0, on: { self: 0, ally_hero: 0, enemy_hero: 0 } });
       r.removed += 1;
