@@ -309,6 +309,9 @@ describe('observed effects: where an ability\'s effect sat, and what an item mad
     expect(observedRemoval('cyclone', 'ursa_overpower', ['self', 'ally_hero'], o)).toBeNull();
     expect(observedRemoval('black_king_bar', 'ursa_earthshock', ['self', 'ally_hero'], o)).toEqual({ removed: 5, games: 3 });
     expect(observedRemoval('cyclone', 'ursa_enrage', ['enemy_hero'], o)).toBeNull();
+    // Removed on both sides: this side's count is known, its games are not (the data counts games over every side).
+    const both: any = { ...o, removals: { 'item:cyclone': { modifier_ursa_overpower: { removed: 3, games: 2, on: { self: 2, ally_hero: 0, enemy_hero: 1 } } } } };
+    expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], both)).toEqual({ removed: 1, games: null });
     expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], obs)).toBeNull();
   });
 
