@@ -218,7 +218,7 @@ describe('the agent has the tools and is told how to read them', () => {
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['fight_report', 'game_state']));
     expect(kit.runTool('fight_report', { hero: 'beastmaster' }).fights_total).toBe(16);
-    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(81);
+    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(82);
     const review = deepReviewSystem('zh');
     expect(review).toContain('fight_report');
     // Still never a motive; "farming" only where the tool says so (#359: the replay's creep kills now show it).

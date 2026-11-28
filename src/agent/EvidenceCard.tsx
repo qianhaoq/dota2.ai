@@ -216,6 +216,23 @@ const T = {
   nonHeroDeath: { en: 'Non-hero death, no enemy hero damage in window', zh: '非英雄击杀且窗口内无敌方英雄伤害', ru: 'Смерть не от героя без урона от врагов' },
   enemyUltsAbsorbed: { en: 'Enemy ultimates absorbed', zh: '吃到的敌方大招', ru: 'Принятые ульты врага' },
   disableTotal: { en: 'Total disabled', zh: '累计受控', ru: 'Всего в контроле' },
+  controlChain: { en: 'Control chain', zh: '控制链', ru: 'Цепочка контроля' },
+  spellBlockToDeath: { en: 'Spell-blocked to death', zh: '阵亡前连续禁施法', ru: 'Непрерывный запрет заклинаний до смерти' },
+  unblockedAfterDmg: { en: 'Unblocked cast window after first damage', zh: '首次受敌伤害后未禁施法时长', ru: 'Окно без запрета заклинаний после первого урона' },
+  blockedAtFirstDmg: { en: 'already spell-blocked at first damage', zh: '首次受敌伤害时已被控', ru: 'уже в контроле при первом уроне' },
+  nonSpellBlockNote: { en: 'movement/items only', zh: '不封技能', ru: 'не блокирует заклинания' },
+  controlKind: {
+    stunned: { en: 'stunned', zh: '眩晕', ru: 'оглушение' },
+    hexed: { en: 'hexed', zh: '妖术', ru: 'хекс' },
+    silenced: { en: 'silenced', zh: '沉默', ru: 'безмолвие' },
+    taunted: { en: 'taunted', zh: '嘲讽', ru: 'провокация' },
+    feared: { en: 'feared', zh: '恐惧', ru: 'страх' },
+    slept: { en: 'slept', zh: '睡眠', ru: 'сон' },
+    nightmared: { en: 'nightmared', zh: '噩梦', ru: 'кошмар' },
+    command_restricted: { en: 'command restricted', zh: '无法操作', ru: 'потеря управления' },
+    rooted: { en: 'rooted', zh: '缠绕', ru: 'оцепенение' },
+    muted: { en: 'muted', zh: '禁用物品', ru: 'запрет предметов' },
+  } as Record<string, Tri>,
   wonBy: { my_team: { en: 'Your team won the fight', zh: '我方赢团', ru: 'Ваша команда выиграла драку' }, enemy: { en: 'They won the fight', zh: '对方赢团', ru: 'Враги выиграли драку' } } as Record<string, Tri>,
   stillDead: { en: 'Still dead 10 s after', zh: '10 秒后仍未复活', ru: 'Всё ещё мертвы через 10 с' },
   winnersDid: {
@@ -549,6 +566,8 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
   const doingOf = (h: any) => [h.place ? N(h.place) : null, h.doing && T.doing[h.doing] ? t(T.doing[h.doing]) : null].filter(Boolean).join(' · ');
   if (data.kind === 'death') {
     const max = Math.max(...r.damage_taken.map((d: any) => d.value), 1);
+    const ctrlLabel = (k: string) => (T.controlKind[k] ? t(T.controlKind[k]) : pretty(k));
+    const fmtDt = (v: number) => (v === 0 ? `0${t(T.sec)}` : `${v < 0 ? '−' : '+'}${Math.abs(v)}${t(T.sec)}`);
     return (
       <div className="ag-rec">
         <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.killer)} {N(r.killer)}</p>
@@ -643,6 +662,33 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
         )}
         {typeof r.disable_seconds_in_window === 'number' && r.disable_seconds_in_window > 0 && (
           <p className="ag-rec-line"><span>{t(T.disableTotal)}</span><span className="ag-chip">{r.disable_seconds_in_window}{t(T.sec)}</span></p>
+        )}
+        {Array.isArray(r.control_intervals) && r.control_intervals.length > 0 && (
+          <p className="ag-rec-line">
+            <span>{t(T.controlChain)}</span>
+            {r.control_intervals.map((iv: any, i: number) => (
+              <span key={`${iv.kind}-${iv.from_dt}-${i}`} className={`ag-chip ${iv.blocks_spells ? 'is-warn' : ''}`}>
+                {ctrlLabel(iv.kind)}
+                {iv.blocks_spells === false && ` (${t(T.nonSpellBlockNote)})`}
+                <em>{fmtDt(iv.from_dt)}→{fmtDt(iv.to_dt)} · {iv.seconds}{t(T.sec)}</em>
+              </span>
+            ))}
+          </p>
+        )}
+        {((typeof r.continuous_spell_block_to_death_seconds === 'number' && r.continuous_spell_block_to_death_seconds > 0) || typeof r.unblocked_seconds_from_first_damage === 'number') && (
+          <p className="ag-rec-line">
+            {typeof r.continuous_spell_block_to_death_seconds === 'number' && r.continuous_spell_block_to_death_seconds > 0 && (
+              <span className="ag-chip is-warn">
+                {t(T.spellBlockToDeath)} <em>{r.continuous_spell_block_to_death_seconds}{t(T.sec)}</em>
+              </span>
+            )}
+            {typeof r.unblocked_seconds_from_first_damage === 'number' && (
+              <span className={`ag-chip ${r.unblocked_seconds_from_first_damage === 0 ? 'is-warn' : ''}`}>
+                {t(T.unblockedAfterDmg)} <em>{r.unblocked_seconds_from_first_damage}{t(T.sec)}</em>
+                {r.spell_blocked_at_first_damage === true && ` · ${t(T.blockedAtFirstDmg)}`}
+              </span>
+            )}
+          </p>
         )}
         <p className="ag-rec-sub">{t(T.damage)}</p>
         <ul className="ag-bars">{r.damage_taken.slice(0, 5).map((d: any, i: number) => <Bar key={i} label={`${N(d.from)} · ${d.by === 'attack' ? t(T.attack) : N(d.by)}`} value={d.value} max={max} />)}</ul>
