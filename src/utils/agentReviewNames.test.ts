@@ -193,6 +193,22 @@ describe('build_check: how the killer killed the player, death by death', () => 
     expect(r).toMatchObject({ began: `${Math.floor((death - 2) / 60)}:${String((death - 2) % 60).padStart(2, '0')}`, their_attack_damage: 300, their_ability_damage: 40 });
   });
 
+  it('a run longer than the look-back is followed back to its real start, not cut at 20 s (#504 review)', () => {
+    const t: any = structuredClone(trace);
+    const me = t.names.indexOf(t.heroes[seat].npc);
+    const pa = t.names.indexOf(t.heroes.find((h: any) => h.key === 'phantom_assassin').npc);
+    const first = (contactBeforeDeaths(t, seat, 'phantom_assassin') as any[])[0];
+    const death = Number(first.clock.split(':')[0]) * 60 + Number(first.clock.split(':')[1]);
+    t.damage = t.damage.filter((r: any) => !(r[1] === pa && r[2] === me));
+    for (let s = death - 30; s <= death; s += 1) t.damage.push([s, pa, me, -1, 50]);
+    const [r] = contactBeforeDeaths(t, seat, 'phantom_assassin') as any[];
+    expect(r.their_attack_damage).toBe(31 * 50);
+    expect(r.contact_seconds).toBeGreaterThanOrEqual(30);
+    // Her damage only long before the death (an earlier fight) is no run that ended in it.
+    t.damage = t.damage.filter((r: any) => !(r[1] === pa && r[2] === me)).concat([[death - 40, pa, me, -1, 500]]);
+    expect((contactBeforeDeaths(t, seat, 'phantom_assassin') as any[])[0]).toEqual({ death: first.death, clock: first.clock, contact_seconds: null });
+  });
+
   it('no damage log: unknown (null), never "no contact"; a death they made with no damage of theirs in it: contact_seconds null', () => {
     const t: any = structuredClone(trace);
     delete t.damage;
@@ -222,15 +238,30 @@ describe('build_check: how the killer killed the player, death by death', () => 
 });
 
 describe('build_check: the player\'s own hero, for how an item sits with it', () => {
+  it('deaths short of mana are counted only over deaths whose mana the trace shows', async () => {
+    const mod: any = await import('../../lib/agent/situationTools.js');
+    const deaths = { deaths: [
+      { clock: '4:21', most_mana_in_window: 51, off_cooldown_without_the_mana: ['tidehunter_gush'] },
+      { clock: '6:07', most_mana_in_window: 300, off_cooldown_without_the_mana: [] },
+      { clock: '8:12', most_mana_in_window: null, off_cooldown_without_the_mana: [] },
+    ] };
+    expect(mod.myHeroFacts(29, deaths)).toMatchObject({ primary_attribute: 'strength', deaths_with_a_spell_off_cooldown_but_short_of_mana: 1, of_deaths_with_mana_known: 2, at: ['4:21'] });
+    expect(mod.myHeroFacts(29, { deaths: [{ clock: '8:12', most_mana_in_window: null, off_cooldown_without_the_mana: [] }] }).deaths_with_a_spell_off_cooldown_but_short_of_mana).toBeNull();
+    expect(mod.myHeroFacts(29, { error: 'x' }).deaths_with_a_spell_off_cooldown_but_short_of_mana).toBeNull();
+  });
+
   it('primary attribute, attack, and deaths with a spell off cooldown but short of mana, from death_context', () => {
     const b: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en', match });
     const heroes = JSON.parse(readFileSync(new URL('../../lib/data/constants/heroes.json', import.meta.url), 'utf8'));
     expect(b.my_hero.primary_attribute).toBe({ str: 'strength', agi: 'agility', int: 'intelligence', all: 'universal' }[heroes['38'].primary_attr as string]);
     expect(b.my_hero.attack).toEqual(attackOf(38));
+    // This trace has no mana samples (most_mana_in_window null in every death): whether a death was short of mana is
+    // unknown — null, never 0 (#504 review).
     const d: any = deathContext(trace, { hero: 'beastmaster' });
-    const short = d.deaths.filter((x: any) => x.off_cooldown_without_the_mana?.length);
-    expect(b.my_hero.deaths_with_a_spell_off_cooldown_but_short_of_mana).toBe(short.length);
-    if (short.length) expect(b.my_hero.at).toEqual(short.map((x: any) => x.clock)); else expect(b.my_hero).not.toHaveProperty('at');
+    expect(d.deaths.every((x: any) => x.most_mana_in_window == null)).toBe(true);
+    expect(b.my_hero.deaths_with_a_spell_off_cooldown_but_short_of_mana).toBeNull();
+    expect(b.my_hero).not.toHaveProperty('of_deaths_with_mana_known');
+    expect(b.my_hero).not.toHaveProperty('at');
     // An item's mana regen and intelligence are among what it gives (Valve's stats).
     const cyclone = b.answers_to_top_killers[0].items_acting_on_their_damage.items.find((i: any) => i.item === 'cyclone');
     expect(cyclone.gives).toMatchObject({ mana_regen: expect.any(Number), intelligence: expect.any(Number) });
