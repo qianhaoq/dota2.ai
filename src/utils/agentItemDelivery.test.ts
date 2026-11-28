@@ -320,6 +320,79 @@ describe('item purchase vs inventory delivery timing (#483)', () => {
       delivery_delay_seconds: 50,
     });
 
+    // Unmatched earlier composite (Yasha missing recipe_yasha) MUST still reserve its available components
+    // so a later Aghanim's Scepter cannot steal Yasha's blade_of_alacrity, and a downstream Manta upgrade stays null (PR #496 P1).
+    const unmatchedYasha = buildSyntheticTrace({
+      purchases: [
+        { item: 'blade_of_alacrity', t: 400 },
+        { item: 'boots_of_elves', t: 450 },
+        { item: 'yasha', t: 510 }, // recipe_yasha intentionally missing
+        { item: 'point_booster', t: 700 },
+        { item: 'ogre_axe', t: 800 },
+        { item: 'staff_of_wizardry', t: 900 },
+        { item: 'ultimate_scepter', t: 960 },
+        { item: 'diadem', t: 1100 },
+        { item: 'recipe_manta', t: 1150 },
+        { item: 'manta', t: 1200 },
+      ],
+      heldItems: [
+        { item: 'yasha', from: 510, to: 1199 },
+        { item: 'ultimate_scepter', from: 960 },
+        { item: 'manta', from: 1200 },
+      ],
+    });
+    const uyRes: any = itemTimeline(unmatchedYasha, { hero: 'beastmaster' }, { patchItems: ITEMS });
+    expect(uyRes.items.find((i: any) => i.item === 'yasha')).toMatchObject({ first_purchased: null, delivery_delay_seconds: null });
+    expect(uyRes.items.find((i: any) => i.item === 'ultimate_scepter')).toMatchObject({ first_purchased: null, delivery_delay_seconds: null });
+    expect(uyRes.items.find((i: any) => i.item === 'manta')).toMatchObject({ first_purchased: null, delivery_delay_seconds: null });
+
+    // Second blade bought AFTER unmatched Yasha (850 > 510): Yasha consumed the 400s blade, so the 850s blade
+    // unambiguously belongs to Aghs (other parts by 800 -> purchased at 850, held at 960, delay 110s).
+    // Conversely, if a second blade was bought BEFORE unmatched Yasha (480 < 510), uncertainty [400, 480] propagates
+    // to the surviving blade so Aghs (other parts by 470) stays null!
+    const secondBladeAfter = buildSyntheticTrace({
+      purchases: [
+        { item: 'blade_of_alacrity', t: 400 },
+        { item: 'boots_of_elves', t: 450 },
+        { item: 'yasha', t: 510 },
+        { item: 'point_booster', t: 600 },
+        { item: 'ogre_axe', t: 700 },
+        { item: 'staff_of_wizardry', t: 800 },
+        { item: 'blade_of_alacrity', t: 850 },
+        { item: 'ultimate_scepter', t: 960 },
+      ],
+      heldItems: [
+        { item: 'yasha', from: 510, to: 1500 },
+        { item: 'ultimate_scepter', from: 960 },
+      ],
+    });
+    const sbaRes: any = itemTimeline(secondBladeAfter, { hero: 'beastmaster' }, { patchItems: ITEMS });
+    expect(sbaRes.items.find((i: any) => i.item === 'yasha')).toMatchObject({ first_purchased: null, delivery_delay_seconds: null });
+    expect(sbaRes.items.find((i: any) => i.item === 'ultimate_scepter')).toMatchObject({
+      first_purchased: { t: 850, clock: '14:10', source: 'components' },
+      delivery_delay_seconds: 110,
+    });
+
+    const secondBladeBefore = buildSyntheticTrace({
+      purchases: [
+        { item: 'blade_of_alacrity', t: 400 },
+        { item: 'boots_of_elves', t: 450 },
+        { item: 'point_booster', t: 455 },
+        { item: 'ogre_axe', t: 460 },
+        { item: 'staff_of_wizardry', t: 470 },
+        { item: 'blade_of_alacrity', t: 480 },
+        { item: 'yasha', t: 510 },
+        { item: 'ultimate_scepter', t: 600 },
+      ],
+      heldItems: [
+        { item: 'yasha', from: 510, to: 1500 },
+        { item: 'ultimate_scepter', from: 600 },
+      ],
+    });
+    const sbbRes: any = itemTimeline(secondBladeBefore, { hero: 'beastmaster' }, { patchItems: ITEMS });
+    expect(sbbRes.items.find((i: any) => i.item === 'yasha')).toMatchObject({ first_purchased: null, delivery_delay_seconds: null });
+    expect(sbbRes.items.find((i: any) => i.item === 'ultimate_scepter')).toMatchObject({ first_purchased: null, delivery_delay_seconds: null });
+
     // Created upgrade without component list (dagon_2) -> null rather than guessing
     const dagon2 = buildSyntheticTrace({
       purchases: [{ item: 'dagon_2', t: 900 }],

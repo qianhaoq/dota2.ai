@@ -1698,12 +1698,12 @@ function buildPurchaseMatcher(trace, h, patchItems) {
   }
   rawPurchases.sort((a, b) => a.t - b.t || (a.row ?? 0) - (b.row ?? 0) || a.ord - b.ord);
 
-  /** @type {{ item: string, createdT: number, minT: number, maxT: number, source: 'direct' | 'components', syntheticT0: boolean, consumedAt: number | null }[]} */
+  /** @type {{ item: string, createdT: number, minT: number | null, maxT: number | null, unknown: boolean, source: 'direct' | 'components', syntheticT0: boolean, consumedAt: number | null }[]} */
   const pool = [];
   for (const p of rawPurchases) {
     const spec = itemRecipeSpec(p.item, patchItems);
     if (!spec?.composite) {
-      pool.push({ item: p.item, createdT: p.t, minT: p.t, maxT: p.t, source: 'direct', syntheticT0: false, consumedAt: null });
+      pool.push({ item: p.item, createdT: p.t, minT: p.t, maxT: p.t, unknown: false, source: 'direct', syntheticT0: false, consumedAt: null });
     }
   }
   const heldEntries = Object.entries(trace.items?.[h] ?? {})
@@ -1717,7 +1717,7 @@ function buildPurchaseMatcher(trace, h, patchItems) {
     const spec = itemRecipeSpec(he.item, patchItems);
     if (spec?.composite) continue;
     if (!pool.some((x) => x.item === he.item && x.createdT <= trace.t0 + 1)) {
-      pool.push({ item: he.item, createdT: trace.t0, minT: trace.t0, maxT: trace.t0, source: 'direct', syntheticT0: true, consumedAt: null });
+      pool.push({ item: he.item, createdT: trace.t0, minT: trace.t0, maxT: trace.t0, unknown: false, source: 'direct', syntheticT0: true, consumedAt: null });
     }
   }
   pool.sort((a, b) => a.createdT - b.createdT);
@@ -1773,52 +1773,74 @@ function buildPurchaseMatcher(trace, h, patchItems) {
     return groups;
   };
 
+  const sortAvail = (a, b) => (a.unknown === b.unknown ? (a.unknown ? 0 : (a.minT ?? 0) - (b.minT ?? 0)) : a.unknown ? -1 : 1) || a.createdT - b.createdT;
+
   for (const ev of compositeEvents) {
+    const consumedAt = ev.combineT ?? ev.limitT - 2;
     const spec = itemRecipeSpec(ev.item, patchItems);
-    if (!spec?.parts?.length) continue;
+    if (!spec?.parts?.length) {
+      pool.push({ item: ev.item, createdT: consumedAt, minT: null, maxT: null, unknown: true, source: 'components', syntheticT0: false, consumedAt: null });
+      pool.sort((a, b) => a.createdT - b.createdT);
+      continue;
+    }
     const groups = expandParts(ev.item, spec.parts, ev.limitT);
-    if (!groups) continue;
+    if (!groups) {
+      pool.push({ item: ev.item, createdT: consumedAt, minT: null, maxT: null, unknown: true, source: 'components', syntheticT0: false, consumedAt: null });
+      pool.sort((a, b) => a.createdT - b.createdT);
+      continue;
+    }
     const matched = [];
     let ok = true;
     for (const g of groups.values()) {
       const avail = pool
         .filter((x) => x.consumedAt == null && g.alts.includes(x.item) && x.createdT <= ev.limitT)
-        .sort((a, b) => a.minT - b.minT || a.createdT - b.createdT);
-      if (avail.length < g.count) { ok = false; break; }
-      matched.push({
-        g,
-        avail,
-        groupMinT: avail[0].minT,
-        earliestMax: avail[g.count - 1].minT,
-        latestMax: Math.max(...avail.map((x) => x.maxT)),
-      });
+        .sort(sortAvail);
+      if (avail.length < g.count) ok = false;
+      const groupUnknown = avail.some((x) => x.unknown);
+      const groupMinT = !groupUnknown && avail.length ? avail[0].minT : null;
+      const earliestMax = !groupUnknown && avail.length >= g.count ? avail[g.count - 1].minT : null;
+      const latestMax = !groupUnknown && avail.length ? Math.max(...avail.map((x) => x.maxT ?? 0)) : null;
+      matched.push({ g, avail, groupUnknown, groupMinT, earliestMax, latestMax });
     }
-    if (!ok) continue;
-    const minT = Math.max(...matched.map((m) => m.earliestMax));
-    const maxT = Math.max(...matched.map((m) => m.latestMax));
-    const consumedAt = ev.combineT ?? ev.limitT - 2;
     const taken = [];
+    // Even when a composite is missing one required purchase row (`!ok`), still reserve/consume the copies of its
+    // other components present in the pool (and propagate uncertainty to leftover copies), and push an unknown-time
+    // token for the composite so subsequent items cannot steal those components or invent a time for downstream upgrades.
     for (const m of matched) {
-      for (let i = 0; i < m.g.count; i += 1) { m.avail[i].consumedAt = consumedAt; taken.push(m.avail[i]); }
+      const take = Math.min(m.g.count, m.avail.length);
+      for (let i = 0; i < take; i += 1) { m.avail[i].consumedAt = consumedAt; taken.push(m.avail[i]); }
       // When multiple copies could satisfy this component, the unconsumed copies left in the pool inherit the full
-      // [groupMinT, latestMax] uncertainty interval so subsequent items cannot pretend a single arbitrary copy remained.
-      if (m.avail.length > m.g.count) {
-        for (let i = m.g.count; i < m.avail.length; i += 1) {
-          m.avail[i].minT = Math.min(m.avail[i].minT, m.groupMinT);
-          m.avail[i].maxT = Math.max(m.avail[i].maxT, m.latestMax);
+      // uncertainty (unknown or [groupMinT, latestMax]) so subsequent items cannot pretend a single arbitrary copy remained.
+      if (m.avail.length > take) {
+        for (let i = take; i < m.avail.length; i += 1) {
+          if (m.groupUnknown) {
+            m.avail[i].unknown = true;
+            m.avail[i].minT = null;
+            m.avail[i].maxT = null;
+          } else if (m.groupMinT != null && m.latestMax != null && !m.avail[i].unknown) {
+            m.avail[i].minT = Math.min(m.avail[i].minT ?? m.groupMinT, m.groupMinT);
+            m.avail[i].maxT = Math.max(m.avail[i].maxT ?? m.latestMax, m.latestMax);
+          }
         }
       }
     }
-    const anyReal = taken.some((x) => !x.syntheticT0);
-    pool.push({ item: ev.item, createdT: consumedAt, minT, maxT, source: 'components', syntheticT0: !anyReal, consumedAt: null });
+    const evUnknown = !ok || matched.some((m) => m.groupUnknown);
+    if (evUnknown) {
+      pool.push({ item: ev.item, createdT: consumedAt, minT: null, maxT: null, unknown: true, source: 'components', syntheticT0: false, consumedAt: null });
+    } else {
+      const minT = Math.max(...matched.map((m) => m.earliestMax ?? -Infinity));
+      const maxT = Math.max(...matched.map((m) => m.latestMax ?? -Infinity));
+      const anyReal = taken.some((x) => !x.syntheticT0);
+      pool.push({ item: ev.item, createdT: consumedAt, minT, maxT, unknown: false, source: 'components', syntheticT0: !anyReal, consumedAt: null });
+    }
     pool.sort((a, b) => a.createdT - b.createdT);
   }
 
   return (itemKey, firstHeld) => {
     const cands = pool.filter((x) => !x.syntheticT0 && x.item === itemKey && x.createdT <= firstHeld + 2 && (x.consumedAt == null || x.consumedAt >= firstHeld - 2));
-    if (!cands.length) return null;
-    const earliest = Math.min(...cands.map((x) => x.minT));
-    const latest = Math.max(...cands.map((x) => x.maxT));
+    if (!cands.length || cands.some((x) => x.unknown)) return null;
+    const earliest = Math.min(...cands.map((x) => x.minT ?? 0));
+    const latest = Math.max(...cands.map((x) => x.maxT ?? 0));
     if (latest - earliest > 2) return null;
     return { t: earliest, clock: clock(earliest), source: cands[0].source };
   };
