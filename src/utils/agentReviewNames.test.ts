@@ -265,21 +265,29 @@ describe('build_check: the player\'s own hero, for how an item sits with it', ()
 });
 
 // #504 follow-up: a dispel cast on Ursa removes Overpower (his own buff), never Earthshock's slow (on the player).
+// #507 review: placement is read from Valve's text, one side only; damage type does not tell it (Flame Guard).
 describe('where an enemy ability\'s effect sits, for what a dispel can remove', () => {
-  it('no target and no damage: a buff on the caster; a damaging ability: on whom it hits; otherwise not placed', () => {
+  it('a text that tells only of the hero or their side: on them; only of enemies: on the player', () => {
     expect(effectSits('ursa_overpower')).toBe('on_them');
     expect(effectSits('sven_warcry')).toBe('on_them');
     expect(effectSits('ursa_earthshock')).toBe('on_the_player');
     expect(effectSits('phantom_assassin_stifling_dagger')).toBe('on_the_player');
-    // A targeted spell without damage may land on an enemy or an ally; a passive is cast by nobody: not placed.
+    expect(effectSits('ember_spirit_searing_chains')).toBe('on_the_player');
+    // Flame Guard deals damage and sits on Ember Spirit: its text tells only of him ("surrounds himself", "around Ember
+    // Spirit"), so a dispel cast on him removes it and one on the player does not — the damage type would have said
+    // the reverse (#507 review). Searing Chains carries the same datafeed flags and lands on enemies.
+    expect(effectSits('ember_spirit_flame_guard')).toBe('on_them');
+  });
+
+  it('a text that tells of both sides or of neither, a passive, an unknown ability: not placed (null)', () => {
+    expect(effectSits('axe_berserkers_call')).toBeNull();
+    expect(effectSits('phantom_assassin_phantom_strike')).toBeNull();
+    expect(effectSits('juggernaut_blade_fury')).toBeNull();
+    expect(effectSits('necrolyte_ghost_shroud')).toBeNull();
     expect(effectSits('skywrath_mage_ancient_seal')).toBeNull();
     expect(effectSits('ursa_fury_swipes')).toBeNull();
     expect(effectSits('no_such_ability')).toBeNull();
     expect(effectSits('ursa_overpower', {})).toBeNull();
-  });
-
-  it('the placement comes from the constants\' behavior and damage type alone', () => {
-    const fake: any = { a: { behavior: 'No Target' }, b: { behavior: ['No Target', 'Instant Cast'], dmg_type: 'Magical' }, c: { behavior: ['AOE', 'No Target'] }, d: {} };
-    expect([effectSits('a', fake), effectSits('b', fake), effectSits('c', fake), effectSits('d', fake)]).toEqual(['on_them', 'on_the_player', null, null]);
+    expect(effectSits('x', { x: { behavior: 'No Target' } })).toBeNull();
   });
 });
