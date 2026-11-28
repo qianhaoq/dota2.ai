@@ -109,19 +109,17 @@ describe('window_report as evidence', () => {
   });
 
   it('a sentence may state a window\'s times and numbers, and an item only by the record it came from', () => {
-    const plan = (fact: string, refs: string[]) => ({ verdict: 'v', mainline: [], findings: [], game_plan: { window: '你们在 19:00 到 29:00 领先，25:00 时最多领先 3565。', course: 'c', your_part: 'y', main_reason: 'team_play', why: 'w', evidence: [{ refs, fact }] } });
+    const plan = (fact: string, refs: string[]) => ({ verdict: 'v', findings: [], game_plan: { main_reason: 'team_play', why: '你们在 19:00 到 29:00 领先，25:00 时最多领先 3565。', evidence: [{ refs, fact }] } });
     const problems = (fact: string, refs: string[]) => verifyReview(plan(fact, refs), [kit.context, record]).problems.filter((p: any) => p.where.startsWith('plan'));
     expect(problems('19:00 到 29:00 你们领先，最多领先 3565（25:00），期间你们拆了 2 座建筑、对面拆了 3 座。', ['window:beastmaster:2'])).toEqual([]);
     expect(problems('幻影刺客在 21:29 出了黑皇杖。', ['item:phantom_assassin:black_king_bar'])).toEqual([]);
     // The peak of another window is not in this one.
     expect(problems('19:00 到 29:00 最多领先 27728。', ['window:beastmaster:2'])).toEqual([expect.objectContaining({ kind: 'moment' })]);
     const shown = planOf(plan('19:00 到 29:00 你们领先。', ['window:beastmaster:2']).game_plan, [], verifyReview(plan('x', ['window:beastmaster:2']), [kit.context, record]).refs)!;
-    expect(shown.window).toBe('你们在 19:00 到 29:00 领先，25:00 时最多领先 3565。');
+    expect(shown.why).toBe('你们在 19:00 到 29:00 领先，25:00 时最多领先 3565。');
     expect(shown.evidence[0]).toMatchObject({ refs: ['window:beastmaster:2'], clock: '19:00' });
-    // A plan with only its window sentence left still shows.
-    expect(planOf({ window: 'w', evidence: [{ refs: ['window:beastmaster:2'], fact: 'f' }] }, [], new Map())).toMatchObject({ window: 'w' });
-    // A window sentence that fails the check is left out by itself.
-    expect(planOf({ window: 'w', course: 'c', evidence: [{ refs: ['window:beastmaster:2'], fact: 'f' }] }, [{ where: 'plan', index: 5 } as any], new Map())).not.toHaveProperty('window');
+    // A plan whose rationale fails verification is dropped cleanly.
+    expect(planOf({ main_reason: 'team_play', why: 'w', evidence: [{ refs: ['window:beastmaster:2'], fact: 'f' }] }, [{ where: 'plan', index: 0 } as any], new Map())).toBeNull();
   });
 
   it('fights in a window are match_overview\'s, under the same refs', () => {
@@ -167,7 +165,7 @@ describe('review of #280: what the window report must agree on', () => {
     expect(record.measured_at).toEqual(['5:00', '10:00', '15:00', '20:00', '25:00', '30:00', '35:00', '40:00']);
     // Only the summary is a source: no other tool states 10:00 in this check.
     const sources = [record];
-    const review = (fact: string, line: string) => ({ verdict: 'v', mainline: [], findings: [], game_plan: { window: line, course: 'c', evidence: [{ refs: ['window:beastmaster'], fact }] } });
+    const review = (fact: string, line: string) => ({ verdict: 'v', findings: [], game_plan: { main_reason: 'team_play', why: line, evidence: [{ refs: ['window:beastmaster'], fact }] } });
     const problems = verifyReview(review('10:00 时你们落后 482。', '10:00 时你们还落后 482，20:00 已经领先 2245。'), sources).problems.filter((p: any) => p.where.startsWith('plan'));
     expect(problems).toEqual([]);
     // A mark the report does not read at is not backed.

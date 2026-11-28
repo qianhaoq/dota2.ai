@@ -196,36 +196,12 @@
   white-space: nowrap;
 }
 
-.dota2ai-tool-chapter-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: 0 0 auto;
-}
-
-.dota2ai-tool-chapter.is-praise {
-  color: #7ae094;
-  background: rgba(82, 201, 114, 0.11);
-  border-color: rgba(82, 201, 114, 0.34);
-}
-
-.dota2ai-tool-chapter.is-solid {
-  color: #8cc9f2;
-  background: rgba(104, 181, 232, 0.11);
-  border-color: rgba(104, 181, 232, 0.34);
-}
-
-.dota2ai-tool-chapter.is-mixed {
+.dota2ai-tool-chapter-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
   color: #f2c068;
-  background: rgba(229, 174, 78, 0.11);
-  border-color: rgba(229, 174, 78, 0.34);
-}
-
-.dota2ai-tool-chapter.is-key_gap {
-  color: #f59487;
-  background: rgba(232, 100, 82, 0.11);
-  border-color: rgba(232, 100, 82, 0.34);
+  flex: 0 0 auto;
 }
 
 .dota2ai-tool-usage {

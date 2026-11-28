@@ -1,7 +1,7 @@
 import React from 'react';
 import { normalizeMatchId } from '../../../../packages/review-engine/src/parseMatchId.js';
 import { formatUsageSummary, parseReviewRunMeta } from '../../../../src/agent/usageFormat';
-import type { ReviewRunMeta } from '../../../../src/agent/api';
+import type { ChapterTopic, ReviewRunMeta } from '../../../../src/agent/api';
 import { en, zh, type LocaleKey } from './locales';
 
 export function NavIcon({ size = 18 }: { size?: number }) {
@@ -24,9 +24,6 @@ export interface ToolCardProps {
   openPath: (path: string) => void;
 }
 
-type ChapterTopic = 'draft_and_lanes' | 'laning' | 'skill_build' | 'items' | 'teamfights' | 'macro' | 'other';
-type ChapterAssessment = 'praise' | 'solid' | 'mixed' | 'key_gap';
-
 interface PreviewHighlight {
   title: string;
   detail: string;
@@ -35,24 +32,26 @@ interface PreviewHighlight {
 interface PreviewChapter {
   topic: ChapterTopic;
   title: string;
-  assessment: ChapterAssessment;
 }
 
-const TOPIC_KEYS: Record<ChapterTopic, LocaleKey> = {
-  draft_and_lanes: 'topicDraftAndLanes',
-  laning: 'topicLaning',
-  skill_build: 'topicSkillBuild',
-  items: 'topicItems',
-  teamfights: 'topicTeamfights',
-  macro: 'topicMacro',
-  other: 'topicOther',
+const CHAPTER_ORDER: Record<ChapterTopic, number> = {
+  draft: 0,
+  game_plan: 1,
+  laning: 2,
+  midgame: 3,
+  vision_and_macro: 4,
+  skills_and_items: 5,
+  other: 6,
 };
 
-const ASSESSMENT_KEYS: Record<ChapterAssessment, LocaleKey> = {
-  praise: 'assessmentPraise',
-  solid: 'assessmentSolid',
-  mixed: 'assessmentMixed',
-  key_gap: 'assessmentKeyGap',
+const TOPIC_KEYS: Record<ChapterTopic, LocaleKey> = {
+  draft: 'topicDraft',
+  game_plan: 'topicGamePlan',
+  laning: 'topicLaning',
+  midgame: 'topicMidgame',
+  vision_and_macro: 'topicVisionAndMacro',
+  skills_and_items: 'topicSkillsAndItems',
+  other: 'topicOther',
 };
 
 const TOOL_TITLES: Record<string, { en: string; zh: string }> = {
@@ -126,7 +125,6 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
         if (!matchId && parsedId) {
           matchId = parsedId;
         }
-        // Always prefer canonical replay/coach hero key returned by the tool over raw user input (e.g. Chinese alias or id).
         if (typeof parsed.hero === 'string' && parsed.hero.trim()) {
           hero = normHero(parsed.hero);
         }
@@ -178,13 +176,16 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
                 const topic: ChapterTopic = Object.prototype.hasOwnProperty.call(TOPIC_KEYS, rawTopic)
                   ? (rawTopic as ChapterTopic)
                   : 'other';
-                const rawAssessment = typeof c.assessment === 'string' ? c.assessment.trim() : '';
-                const assessment: ChapterAssessment = Object.prototype.hasOwnProperty.call(ASSESSMENT_KEYS, rawAssessment)
-                  ? (rawAssessment as ChapterAssessment)
-                  : 'mixed';
-                return { topic, title, assessment };
+                return { topic, title };
               })
-              .filter((c): c is PreviewChapter => c !== null);
+              .filter((c): c is PreviewChapter => c !== null)
+              .map((chapter, originalIndex) => ({ chapter, originalIndex }))
+              .sort((a, b) => {
+                const oa = CHAPTER_ORDER[a.chapter.topic] ?? CHAPTER_ORDER.other;
+                const ob = CHAPTER_ORDER[b.chapter.topic] ?? CHAPTER_ORDER.other;
+                return oa !== ob ? oa - ob : a.originalIndex - b.originalIndex;
+              })
+              .map(({ chapter }) => chapter);
           }
           runMeta = parseReviewRunMeta(parsed);
         }
@@ -243,16 +244,15 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
             <div className="dota2ai-tool-chapters" role="list" aria-label={tr('chaptersLabel')}>
               {chapters.map((ch, idx) => {
                 const topicLabel = tr(TOPIC_KEYS[ch.topic]);
-                const assessmentLabel = tr(ASSESSMENT_KEYS[ch.assessment]);
-                const tip = ch.title ? `${ch.title} · ${assessmentLabel}` : `${topicLabel} · ${assessmentLabel}`;
+                const num = String(idx + 1).padStart(2, '0');
                 return (
                   <span
                     key={`${ch.topic}-${idx}`}
                     role="listitem"
-                    className={`dota2ai-tool-chapter is-${ch.assessment}`}
-                    title={tip}
+                    className="dota2ai-tool-chapter"
+                    title={ch.title || topicLabel}
                   >
-                    <span className="dota2ai-tool-chapter-dot" aria-hidden="true" />
+                    <span className="dota2ai-tool-chapter-num" aria-hidden="true">{num}</span>
                     {topicLabel}
                   </span>
                 );

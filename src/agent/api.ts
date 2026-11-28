@@ -1,5 +1,4 @@
 /** Client for the review agent (lib/agent/router.js). */
-import type { GoalSpec } from '../coach/types';
 import { runtimeFetch } from '../runtime/dota2aiRuntime';
 import { internalHeaders } from '../services/analytics';
 
@@ -24,33 +23,31 @@ export interface Availability {
 }
 
 export interface EvidenceItem { refs: string[]; clock?: string; fact: string }
-/** One evidence-backed positive from the game that the player can celebrate and replay. */
+/** One evidence-backed positive from the game. */
 export interface ReviewHighlight { title: string; detail: string; evidence?: EvidenceItem[] }
-export type ChapterTopic = 'draft_and_lanes' | 'laning' | 'skill_build' | 'items' | 'teamfights' | 'macro' | 'other';
-export type ChapterAssessment = 'praise' | 'solid' | 'mixed' | 'key_gap';
-/** One adaptive coaching chapter examining a game-relevant dimension. */
+export type ChapterTopic =
+  | 'draft'
+  | 'game_plan'
+  | 'laning'
+  | 'midgame'
+  | 'vision_and_macro'
+  | 'skills_and_items'
+  | 'other';
+/** One chronological coaching walkthrough chapter. */
 export interface ReviewChapter {
   topic: ChapterTopic;
   title: string;
-  assessment: ChapterAssessment;
   analysis: string;
-  takeaway?: string;
   evidence: EvidenceItem[];
 }
-/** The one rule a finding sends into the next game: a situation the player can see, one action, and how often it came up this game. */
-export interface FindingRule { when: string; do: string; this_game?: string; /** Legacy stored reviews may carry a habit spec; new reviews do not emit mechanical quotas. */ check?: GoalSpec }
-export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string; rule?: FindingRule; /** The link of the story it comes from (1-based), when it named one that held. */ story_link?: number }
-/** One link of the story of the game (lib/agent/review/verify.js storyOf, #437 P4): a stretch, what changed, why, whose it mostly was. */
-export interface StoryLink { phase: string; what_changed: string; because: string; whose: 'me' | 'team' | 'enemy' | 'draft' | 'unclear'; evidence: EvidenceItem[] }
-/** How the game was played as a whole (lib/agent/deepReview.js planOf): only what the check let through. */
+export interface ReviewFinding { title: string; claim: string; evidence: EvidenceItem[]; fix: string }
+/** Concise whole-game attribution (lib/agent/review/verify.js planOf): only what the check let through. */
 export interface GamePlan {
-  /** When each side had its chance (window_report). */
-  window?: string;
   /** The game read against the plan the player named (only when they named one). */
   against_your_plan?: string;
-  line_ups?: string; course?: string; your_part?: string; strengths?: string;
   /** What the course is mostly down to; present only together with the sentence that argues it. */
-  main_reason?: 'your_play' | 'team_play' | 'enemy_play' | 'line_ups' | 'unclear'; why?: string;
+  main_reason?: 'your_play' | 'team_play' | 'enemy_play' | 'line_ups' | 'unclear';
+  why?: string;
   evidence: EvidenceItem[];
 }
 export interface DeepReview {
@@ -58,26 +55,16 @@ export interface DeepReview {
   plan?: string;
   schema: string; match_id: number; hero: string; lang: 'en' | 'zh' | 'ru';
   verdict: string;
-  /** Sincere, grounded coach opening contextualizing the match fairly. */
-  opening_note?: string;
-  /** Concrete, evidence-backed positives from this match. */
-  highlights?: ReviewHighlight[];
-  /** Adaptive full-dimension coaching chapters tailored to this match. */
-  chapters?: ReviewChapter[];
-  /** The story as a chain of causes; absent on reviews written before it (they have only mainline). */
-  story?: StoryLink[];
-  mainline: string[];
+  /** Up front — concrete, replay-backed positives from this match. */
+  highlights: ReviewHighlight[];
+  /** Up front — highest-leverage, player-controlled improvements. */
   findings: ReviewFinding[];
-  did_well: string[];
-  next_game: string[];
-  /** Sincere, specific closing encouragement from the coach. */
-  encouragement?: string;
+  /** Chronological Dota 2 coaching walkthrough chapters. */
+  chapters: ReviewChapter[];
   blind_spots: string[];
   game_plan?: GamePlan;
-  /** Which patch the review's prices, item effects and cooldowns are from (lib/agent/patchData.js); absent on reviews written before it was kept. */
+  /** Which patch the review's prices, item effects and cooldowns are from (lib/agent/patchData.js). */
   data_patch?: { name: string; hotfix?: string; exact: boolean; known_from?: 'match_data' | 'start_time' | 'match_id'; reason?: string };
-  /** Legacy stored reviews may carry a scoreboard goal; new reviews do not emit mechanical KPIs. */
-  goal?: GoalSpec & { finding: number };
 }
 export interface ToolStep { tool: string; args: Record<string, unknown>; /** What the lookup is about, named for the reader (the patch advisor sends it). */ about?: string }
 export interface TokenUsageBreakdown {

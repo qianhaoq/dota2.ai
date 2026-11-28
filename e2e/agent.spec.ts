@@ -69,28 +69,26 @@ test('from no replay to a review in one click: fetch, read, the coach, the revie
   await expect(page.locator('.ag-wait-list > li')).toHaveCount(11);
   await expect(page.locator('.ag-wait-facts h2')).toHaveText('团战走势与你的关键成装');
   await expect(page.locator('.ag-wait-facts .ag-strip-fight')).toHaveCount(16);
-  await expect(page.locator('.ag-lead h1')).toContainText('你几乎打满了整场团战', { timeout: 30_000 });
-  await expect(page.locator('.ag-opening')).toContainText('16 波团战你场场都在');
+  await expect(page.locator('.ag-lead h1')).toContainText('你打满了整场团战', { timeout: 30_000 });
+  await expect(page.locator('.ag-highlights h2')).toHaveText('做得好的');
   // One click by the reader: one parse, then the review started on its own.
   expect(posts).toEqual([`/api/agent/${id}/prepare`, `/api/agent/${id}/review`]);
   await noSideScroll(page);
 });
 
-test('the review: coach header, highlights, adaptive chapters, improvements, encouragement, and whole game with the turn marked', async ({ page }) => {
+test('the review: verdict, up-front pros & cons, chronological walkthrough chapters, and whole game with the turn marked', async ({ page }) => {
   await review(page);
-  // Balanced coach overview + fair-attribution pill + warm opening note.
-  await expect(page.locator('.ag-lead .cx-eyebrow')).toHaveText('教练总评');
+  // Direct verdict + fair-attribution pill, zero template fluff.
   await expect(page.locator('.ag-lead-reason')).toHaveText('主要在队伍，不在你');
-  await expect(page.locator('.ag-lead h1')).toContainText('你几乎打满了整场团战');
-  await expect(page.locator('.ag-opening')).toContainText('16 波团战你场场都在');
-  // Prominent evidence-backed highlights right below the header.
-  await expect(page.locator('.ag-highlights h2')).toHaveText('本局亮点与肯定');
+  await expect(page.locator('.ag-lead h1')).toContainText('你打满了整场团战');
+  await expect(page.locator('.ag-opening')).toHaveCount(0);
+  await expect(page.locator('.ag-encouragement')).toHaveCount(0);
+  await expect(page.locator('.ag-chapter-badge')).toHaveCount(0);
+  // Up-front Pros & Cons summary right below the header (highlights + improvements, before chapters).
+  await expect(page.locator('.ag-highlights h2')).toHaveText('做得好的');
   await expect(page.locator('.ag-highlight')).toHaveCount(2);
   await expect(page.locator('.ag-highlight').first()).toContainText('27:27 果断隔着黑皇杖吼住幻影刺客');
-  // Adaptive full-dimension chapters.
-  await expect(page.locator('.ag-chapters h2')).toHaveText('全维度复盘');
-  await expect(page.locator('.ag-chapter')).toHaveCount(6);
-  await expect(page.locator('.ag-chapter-topic')).toHaveText(['阵容与分路', '对线期', '技能加点', '出装思路', '团战表现', '运营思路']);
+  await expect(page.locator('.ag-improvements h2')).toHaveText('做得不好的');
   // Key improvements: lead finding expanded, second finding folded.
   const lead = page.locator('.ag-improvements .ag-finding.is-lead');
   await expect(lead.locator('h3')).toHaveText('1咆哮给错了人');
@@ -102,36 +100,49 @@ test('the review: coach header, highlights, adaptive chapters, improvements, enc
   await second.locator('summary').click();
   await expect(second.locator('.ag-claim')).toBeVisible();
   await expect(second).toContainText('神杖之后先补闪烁匕首或黑皇杖。');
-  // Closing encouragement card.
-  await expect(page.locator('.ag-encouragement h2')).toHaveText('教练寄语');
-  await expect(page.locator('.ag-encouragement p')).toContainText('三号位基本功');
-  // Whole-game strip & folded mainline (verdict is already H1, not duplicated).
+  // Chronologically ordered walkthrough chapters with compact numbered nav strip, positioned below up-front pros & cons.
+  const orderOk = await page.evaluate(() => {
+    const h = document.querySelector('.ag-highlights');
+    const i = document.querySelector('.ag-improvements');
+    const c = document.querySelector('.ag-chapters');
+    return Boolean(h && i && c
+      && (h.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING)
+      && (i.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  expect(orderOk).toBe(true);
+  await expect(page.locator('.ag-chapters h2')).toHaveText('逐层复盘');
+  await expect(page.locator('.ag-chapter-nav a')).toHaveCount(6);
+  await expect(page.locator('.ag-chapter-nav a').first()).toHaveAttribute('href', '#chapter-0');
+  await expect(page.locator('.ag-chapter')).toHaveCount(6);
+  await expect(page.locator('.ag-chapter-topic')).toHaveText([
+    '阵容选择与克制',
+    '本局推荐运营思路',
+    '实际分路与对线',
+    '中期打架与打钱',
+    '视野布置与运营',
+    '技能与出装',
+  ]);
+  // Whole-game strip & presence (no duplicated verdict or legacy story/mainline).
   await expect(page.locator('.ag-whole .ag-verdict')).toHaveCount(0);
+  await expect(page.locator('.ag-mainline')).toHaveCount(0);
   await expect(page.locator('.ag-strip-fight')).toHaveCount(16);
   await expect(page.locator('.ag-strip-fight.is-turn text')).toHaveText('▲ 30:26 转折');
   await expect(page.locator('.ag-presence')).toContainText('在团里');
   await expect(page.locator('.ag-presence')).toContainText('100%');
-  // The story of the game is there for whoever opens it.
-  const story = page.locator('.ag-whole details.ag-fold').first();
-  await expect(story.locator('.ag-mainline li').first()).toBeHidden();
-  await story.locator('summary').click();
-  await expect(story.locator('.ag-mainline li').first()).toBeVisible();
   await expect(page.getByText('这份复盘里的时间点和数字已经和录像记录核对过。')).toBeVisible();
   await noSideScroll(page);
 });
 
-test('the game plan: how the game went as a whole, its records, and a plan of the reader\'s own checked by the coach', async ({ page }) => {
+test('the game plan: whole-game attribution, its records, and a plan of the reader\'s own checked by the coach', async ({ page }) => {
   await review(page);
   const plan = page.locator('.ag-plan');
-  await expect(plan.getByRole('heading', { name: '运营思路' })).toBeVisible();
+  await expect(plan.getByRole('heading', { name: '整局归因与思路核对' })).toBeVisible();
   // Folded, it already says what the game is put down to; it opens on a click.
   await expect(plan.locator('summary')).toContainText('主要在队伍，不在你');
-  await expect(plan.locator('.ag-plan-parts')).toBeHidden();
+  await expect(plan.locator('.ag-plan-why')).toBeHidden();
   await plan.locator('summary').click();
-  await expect(plan.locator('.ag-plan-parts dt')).toHaveText(['窗口期', '走势', '你的部分']);
-  await expect(plan.locator('.ag-plan-parts dd').first()).toContainText('幻影刺客在 21:29 出了黑皇杖，就在这段领先之内');
-  await expect(plan.locator('.ag-plan-parts dd').nth(1)).toContainText('16 波团战里你们少死人的有 6 波，其中只有 22:57 那一波之后两分钟内拆到了建筑');
   await expect(plan.locator('.ag-plan-tag')).toHaveText('主要在队伍，不在你');
+  await expect(plan.locator('.ag-plan-why')).toContainText('6 波少死人的团只换来 1 次建筑');
   // It passed the same check as the findings: all three evidence lines are there, each record with the time it began.
   await expect(plan.locator('.ag-ev')).toHaveCount(3);
   await expect(plan.locator('.ag-ev-clock')).toHaveText(['19:00', '20:00']);
@@ -360,10 +371,12 @@ test('a replay that is gone: said plainly, scoreboard only, nothing to start', a
 
 test('English: the same review in the reader\'s language', async ({ page }) => {
   await review(page, 'en');
-  await expect(page.locator('.ag-lead h1')).toContainText('sharpening your Primal Roar discipline');
-  await expect(page.locator('.ag-highlights h2')).toHaveText('What you did well');
-  await expect(page.locator('.ag-chapters h2')).toHaveText('Match breakdown');
-  await expect(page.locator('.ag-encouragement h2')).toHaveText("Coach's note");
+  await expect(page.locator('.ag-lead h1')).toContainText('sharpening your Primal Roar target choice');
+  await expect(page.locator('.ag-highlights h2')).toHaveText('What went well');
+  await expect(page.locator('.ag-improvements h2')).toHaveText("What didn't");
+  await expect(page.locator('.ag-chapters h2')).toHaveText('Match walkthrough');
+  await expect(page.locator('.ag-chapter-nav a')).toHaveCount(6);
+  await expect(page.locator('.ag-encouragement')).toHaveCount(0);
   await page.locator('.ag-improvements .ag-finding.is-lead .ag-ev').first().getByRole('button', { name: 'Show the record' }).click();
   await expect(page.locator('.ag-improvements .ag-finding.is-lead .ag-rec').first()).toContainText('Target Phantom Assassin');
   await expect(page.getByText('spell immune', { exact: true })).toBeVisible();

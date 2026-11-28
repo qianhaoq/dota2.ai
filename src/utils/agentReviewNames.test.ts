@@ -72,15 +72,6 @@ describe('a review that never names the hero who killed the player most', () => 
   });
 });
 
-describe('a story link telling of a time outside its stretch', () => {
-  it('is asked about once; a cause from earlier (because) is not', () => {
-    const story = [{ phase: '41:19–45:22，收尾', what_changed: '35:00 你们是少死人的一边，却一座建筑都没换到。', because: '31:00 的肉山之后对面一直压着。', whose: 'team', evidence: [] }];
-    const check = verifyReview({ story }, [{ times: ['41:19', '45:22', '35:00', '31:00'] }]);
-    const phase = check.problems.filter((p) => p.kind === 'phase');
-    expect(phase).toEqual([{ where: 'story', index: 0, kind: 'phase', text: '35:00 (outside 41:19–45:22)', soft: true }]);
-  });
-});
-
 describe('build_check: the shop\'s items that act on the damage that killed the player', () => {
   const r: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match });
   const pd = patchForGame(trace.match_id, match);

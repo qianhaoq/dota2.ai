@@ -530,34 +530,29 @@ describe('committed eval rubrics inventory (#361)', () => {
     const nitpickStomp = { ...cleanStomp, findings: [finding(), finding(), finding()] };
     expect(rubricOf(nitpickStomp, sb).findings_within_max).toBe(false);
 
-    // Highlights (with evidence refs/clocks) satisfy must_praise, and new coach fields are included in reviewTexts/styleOf.
+    // Highlights (with evidence refs/clocks) satisfy must_praise, and new review fields are included in reviewTexts/styleOf.
     const coachStomp = review({
       lang: 'zh',
       verdict: '下路对线大优且全场只死 1 次，轻松赢下比赛。',
-      opening_note: '这局你打得非常主动，节奏一直握在手里。',
       highlights: [
         { title: '10:00 下路对线大优且 0 死', detail: '下路压制到位，前期零阵亡。', evidence: [{ refs: ['lane:spirit_breaker'], clock: '10:00', fact: '10:00 零阵亡。' }] },
         { title: '整局仅阵亡 1 次且幽冥一击从未留着阵亡', detail: '团战技能果断，只死 1 次。' },
       ],
       chapters: [
-        { topic: 'laning', title: '对线期稳健', assessment: 'praise', analysis: '前 10 分钟对线压制明显。', evidence: [{ refs: ['lane:spirit_breaker'], clock: '10:00', fact: '10:00 优势。' }] },
+        { topic: 'laning', title: '对线期稳健', analysis: '前 10 分钟对线压制明显。', evidence: [{ refs: ['lane:spirit_breaker'], clock: '10:00', fact: '10:00 优势。' }] },
       ],
       findings: [],
       did_well: [],
-      encouragement: '继续保持这种开团果断度，状态非常出色。',
       game_plan: { main_reason: 'your_play' },
     });
     expect(rubricOf(coachStomp, sb)).toMatchObject({ praise_rate: 1, findings_within_max: true, must_not: [], main_reason_ok: true });
-    expect(reviewTexts(coachStomp).map((t) => t.where)).toEqual(expect.arrayContaining(['opening_note', 'highlight', 'highlight_evidence', 'chapter', 'chapter_evidence', 'encouragement']));
+    expect(reviewTexts(coachStomp).map((t) => t.where)).toEqual(expect.arrayContaining(['highlight', 'highlight_evidence', 'chapter', 'chapter_evidence']));
   });
 });
 
-describe('review eval: coach-first metrics', () => {
-  it('scores opening_note, encouragement, highlights evidence coverage, chapter topics, and mechanical KPI leaks', () => {
-    // Legacy review without coach fields scores cleanly with null evidence rate and zero leaks.
+describe('review eval: coaching quality metrics', () => {
+  it('scores highlights evidence coverage, chapter topics, and mechanical KPI leaks', () => {
     expect(coachOf(stored)).toEqual({
-      has_opening_note: false,
-      has_encouragement: false,
       highlights_count: 0,
       highlights_with_evidence: 0,
       highlights_with_evidence_rate: null,
@@ -566,39 +561,35 @@ describe('review eval: coach-first metrics', () => {
       mechanical_kpi_leaks: [],
     });
 
-    // Full Coach-First review with mixed highlight evidence and deduplicated chapter topics.
     const coachReview = {
       review: review({
         lang: 'zh',
-        opening_note: '这局前期对线很稳，整体执行力在线。',
         highlights: [
           { title: '27:27 关键咆哮', detail: '隔着黑皇杖定住幻影刺客 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 吼住 3.4 秒。' }] },
           { title: '推塔积极', detail: '建筑伤害全队最高。', evidence: [{ refs: [], fact: '无效证据' }] },
           { title: '残缺亮点' },
         ],
         chapters: [
-          { topic: 'laning', title: '对线期', assessment: 'solid', analysis: '补刀持平。', evidence: [{ refs: ['lane:beastmaster'], fact: '37 刀。' }] },
-          { topic: 'teamfights', title: '中期团战', assessment: 'mixed', analysis: '到场率高。', evidence: [{ refs: ['fights:beastmaster:6'], fact: '753 伤害。' }] },
-          { topic: 'teamfights', title: '后期团战', assessment: 'key_gap', analysis: '大招留手。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27。' }] },
-          { topic: 'macro', title: '无效章节' },
+          { topic: 'game_plan', title: '推荐思路', analysis: '围绕强势期推塔。', evidence: [{ refs: ['window:beastmaster:2'], fact: '19:00 领先。' }] },
+          { topic: 'laning', title: '对线期', analysis: '补刀持平。', evidence: [{ refs: ['lane:beastmaster'], fact: '37 刀。' }] },
+          { topic: 'midgame', title: '中期打架与打钱', analysis: '到场率高。', evidence: [{ refs: ['fights:beastmaster:6'], fact: '753 伤害。' }] },
+          { topic: 'vision_and_macro', title: '视野布置与运营', analysis: '推进转化不足。', evidence: [{ refs: ['tempo:beastmaster'], fact: '16 波团战。' }] },
+          { topic: 'midgame', title: '中期重复章节', analysis: '节奏紧凑。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27。' }] },
+          { topic: 'other', title: '无效章节' },
         ],
-        encouragement: '27:27 那波大招展现出你的果断，继续保持。',
       }),
       verification: { repaired: false, dropped: 0, first_pass_problems: 2 },
     };
     expect(coachOf(coachReview)).toEqual({
-      has_opening_note: true,
-      has_encouragement: true,
       highlights_count: 2,
       highlights_with_evidence: 1,
       highlights_with_evidence_rate: 0.5,
-      chapters_count: 3,
-      chapter_topics: ['laning', 'teamfights'],
+      chapters_count: 5,
+      chapter_topics: ['game_plan', 'laning', 'midgame', 'vision_and_macro'],
       mechanical_kpi_leaks: [],
     });
     expect(scoreReview(coachReview).coach).toEqual(coachOf(coachReview));
 
-    // Mechanical KPI quota leaks in Chinese and English are flagged, deduplicated, and capped at 8.
     const leaky = review({
       lang: 'zh',
       verdict: '下一盘团战外阵亡不超过 2 次，避免死前 12 秒已不到半血。',
@@ -618,10 +609,7 @@ describe('review eval: coach-first metrics', () => {
       '团战之外不到半血阵亡不超过',
     ]);
 
-    // Malformed / non-array / non-object coach fields never throw.
-    expect(coachOf({ review: { opening_note: 123, encouragement: {}, highlights: 'bad', chapters: [null, 42] } })).toEqual({
-      has_opening_note: false,
-      has_encouragement: false,
+    expect(coachOf({ review: { highlights: 'bad', chapters: [null, 42] } })).toEqual({
       highlights_count: 0,
       highlights_with_evidence: 0,
       highlights_with_evidence_rate: null,
@@ -637,16 +625,14 @@ describe('review eval: coach-first metrics', () => {
         lang: 'zh',
         verdict: '这局前期节奏很稳，关键团战执行到位。',
         findings: [],
-        opening_note: '开场肯定。',
         highlights: [
           { title: '亮点一', detail: '细节一。', evidence: [{ refs: ['cast:x:1'], fact: 'f1' }] },
           { title: '亮点二', detail: '细节二。', evidence: [{ refs: ['cast:x:2'], fact: 'f2' }] },
         ],
         chapters: [
-          { topic: 'laning', title: '对线', assessment: 'solid', analysis: '节奏稳健。', evidence: [{ refs: ['lane:x'], fact: '补刀领先。' }] },
-          { topic: 'items', title: '出装', assessment: 'mixed', analysis: '出装及时。', evidence: [{ refs: ['build:x'], fact: '关键装备到位。' }] },
+          { topic: 'laning', title: '对线', analysis: '节奏稳健。', evidence: [{ refs: ['lane:x'], fact: '补刀领先。' }] },
+          { topic: 'skills_and_items', title: '技能与出装', analysis: '出装及时。', evidence: [{ refs: ['build:x'], fact: '关键装备到位。' }] },
         ],
-        encouragement: '继续加油。',
       }),
       verification: { repaired: false, dropped: 0, first_pass_problems: 0 },
     });
@@ -656,7 +642,7 @@ describe('review eval: coach-first metrics', () => {
         verdict: '下一盘阵亡不超过 2 次。',
         findings: [],
         highlights: [{ title: '亮点', detail: '没有证据。' }],
-        chapters: [{ topic: 'macro', title: '运营', assessment: 'mixed', analysis: '推塔偏慢。', evidence: [{ refs: ['tempo:x'], fact: '推进偏慢。' }] }],
+        chapters: [{ topic: 'vision_and_macro', title: '运营', analysis: '推塔偏慢。', evidence: [{ refs: ['tempo:x'], fact: '推进偏慢。' }] }],
       }),
       verification: { repaired: true, dropped: 1, first_pass_problems: 10 },
     });
@@ -664,8 +650,6 @@ describe('review eval: coach-first metrics', () => {
 
     const sum = summarize([goodCoach, weakCoach, legacyNoFirstPass]);
     expect(sum).toMatchObject({
-      opening_note_rate: 0.33,
-      encouragement_rate: 0.33,
       highlights_mean: 1,
       highlights_with_evidence_rate: 0.67,
       chapters_mean: 1,
@@ -674,8 +658,6 @@ describe('review eval: coach-first metrics', () => {
     });
 
     expect(BETTER).toMatchObject({
-      opening_note_rate: 1,
-      encouragement_rate: 1,
       highlights_with_evidence_rate: 1,
       first_pass_problems_mean: -1,
       mechanical_kpi_leaks: -1,
@@ -684,8 +666,6 @@ describe('review eval: coach-first metrics', () => {
     const cmp = compareSummaries(summarize([weakCoach]), summarize([goodCoach]));
     expect(cmp.worse).toEqual([]);
     expect(cmp.better.map((x: { key: string }) => x.key)).toEqual(expect.arrayContaining([
-      'opening_note_rate',
-      'encouragement_rate',
       'highlights_with_evidence_rate',
       'first_pass_problems_mean',
       'mechanical_kpi_leaks',

@@ -2347,7 +2347,7 @@ details.ag-finding[open] {
   margin: 0 0 14px;
 }
 
-/* 7. First-Principles Coach Layout (.ag-opening, .ag-highlights, .ag-chapters, .ag-encouragement) */
+/* 7. Clean Logical Review Layout (.ag-summary, .ag-highlights, .ag-improvements, .ag-chapters) */
 .ag-lead-meta {
   display: flex;
   flex-wrap: wrap;
@@ -2382,23 +2382,68 @@ details.ag-finding[open] {
   background: var(--accent-soft);
 }
 
-.ag-opening {
-  margin: 16px 0 0;
-  padding: 16px 18px;
-  border-radius: 12px;
-  background:
-    radial-gradient(460px 160px at 0% 0%, rgba(229, 174, 78, 0.09), transparent 72%),
-    var(--panel);
-  border: 1px solid var(--line-2);
-  border-left: 3px solid var(--accent);
-  font-size: 16px;
-  line-height: 1.75;
-  color: var(--text);
-  max-width: 56em;
-  text-wrap: pretty;
+/* Up-front Pros & Cons summary (.ag-summary): side-by-side on desktop, stacked on mobile */
+.ag-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  margin: 0 0 38px;
+  align-items: start;
 }
 
-/* Highlights: warm emerald/gold cards */
+@media (min-width: 1120px) {
+  .ag-summary.has-both {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+
+.ag-summary > section {
+  margin: 0;
+  min-width: 0;
+}
+
+.ag-summary h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ag-summary.has-both .ag-ev-actions,
+.ag-summary.has-both .ag-ev-records {
+  margin-left: 0;
+}
+
+.ag-summary.has-both .ag-rec--split {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ag-highlights h2 {
+  color: var(--good);
+}
+
+.ag-improvements h2 {
+  color: #f28a7b;
+}
+
+.ag-sec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.ag-sec-dot.is-good {
+  background: var(--good);
+  box-shadow: 0 0 0 3px rgba(82, 201, 114, 0.16);
+}
+
+.ag-sec-dot.is-warn {
+  background: var(--dire);
+  box-shadow: 0 0 0 3px rgba(232, 100, 82, 0.16);
+}
+
+/* Highlights: clean emerald-accented cards */
 .ag-highlight-list {
   display: grid;
   gap: 14px;
@@ -2408,9 +2453,9 @@ details.ag-finding[open] {
   padding: 18px 20px;
   border-radius: var(--radius-lg);
   background:
-    radial-gradient(440px 170px at 0% 0%, rgba(82, 201, 114, 0.11), transparent 72%),
+    radial-gradient(440px 170px at 0% 0%, rgba(82, 201, 114, 0.1), transparent 72%),
     linear-gradient(180deg, var(--panel-2), var(--panel));
-  border: 1px solid rgba(82, 201, 114, 0.32);
+  border: 1px solid rgba(82, 201, 114, 0.3);
   border-left: 3px solid var(--good);
   box-shadow: var(--shadow-card);
 }
@@ -2418,16 +2463,17 @@ details.ag-finding[open] {
 .ag-highlight h3 {
   margin: 0 0 8px;
   font-family: var(--serif);
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 500;
   color: var(--text);
+  line-height: 1.35;
 }
 
 .ag-highlight-detail {
   margin: 0;
   color: var(--text-2);
-  line-height: 1.7;
-  font-size: 15px;
+  line-height: 1.68;
+  font-size: 14.5px;
 }
 
 .ag-highlight .ag-evidence {
@@ -2440,7 +2486,56 @@ details.ag-finding[open] {
   padding-bottom: 0;
 }
 
-/* Adaptive Full-Dimension Chapters */
+/* Chronological Walkthrough Chapters */
+.ag-chapter-nav {
+  margin: 0 0 16px;
+}
+
+.ag-chapter-nav ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ag-chapter-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  max-width: 100%;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.ag-chapter-nav-link:hover,
+.ag-chapter-nav-link:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(229, 174, 78, 0.1);
+}
+
+.ag-chapter-nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ag-chapter-num {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
 .ag-chapter-list {
   display: grid;
   gap: 14px;
@@ -2451,24 +2546,21 @@ details.ag-finding[open] {
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
   border: 1px solid var(--line);
-  border-left: 3px solid var(--line-2);
+  border-left: 3px solid rgba(229, 174, 78, 0.45);
   box-shadow: var(--shadow-card);
+  scroll-margin-top: 20px;
 }
 
-.ag-chapter.is-praise {
-  border-left-color: var(--good);
-}
-
-.ag-chapter.is-solid {
-  border-left-color: #68b5e8;
-}
-
-.ag-chapter.is-mixed {
-  border-left-color: var(--accent);
-}
-
-.ag-chapter.is-key_gap {
-  border-left-color: var(--dire);
+.ag-chapter-step {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(229, 174, 78, 0.28);
 }
 
 .ag-chapter-meta {
@@ -2492,42 +2584,6 @@ details.ag-finding[open] {
   color: var(--text-2);
 }
 
-.ag-chapter-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  border: 1px solid var(--line-2);
-  color: var(--text-2);
-}
-
-.ag-chapter-badge.is-praise {
-  color: var(--good);
-  background: rgba(82, 201, 114, 0.1);
-  border-color: rgba(82, 201, 114, 0.35);
-}
-
-.ag-chapter-badge.is-solid {
-  color: #8cc9f2;
-  background: rgba(104, 181, 232, 0.1);
-  border-color: rgba(104, 181, 232, 0.35);
-}
-
-.ag-chapter-badge.is-mixed {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: rgba(229, 174, 78, 0.35);
-}
-
-.ag-chapter-badge.is-key_gap {
-  color: #f28a7b;
-  background: rgba(232, 100, 82, 0.1);
-  border-color: rgba(232, 100, 82, 0.35);
-}
-
 .ag-chapter h3 {
   margin: 0 0 10px;
   font-family: var(--serif);
@@ -2542,28 +2598,6 @@ details.ag-finding[open] {
   color: var(--text);
   line-height: 1.72;
   font-size: 15px;
-}
-
-.ag-chapter-takeaway {
-  margin: 14px 0 0;
-  padding: 12px 15px;
-  border-radius: 10px;
-  background: rgba(229, 174, 78, 0.08);
-  border: 1px solid rgba(229, 174, 78, 0.28);
-  border-left: 3px solid var(--accent);
-  color: var(--text);
-  line-height: 1.65;
-  font-size: 14px;
-}
-
-.ag-chapter-takeaway span {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 4px;
 }
 
 .ag-chapter-records {
@@ -2587,39 +2621,17 @@ details.ag-finding[open] {
   padding-bottom: 4px;
 }
 
-/* Key Improvements lead finding card */
+/* Key Improvements lead finding card (contrasts with green highlights in .ag-summary) */
 .ag-finding.is-lead {
-  border-color: rgba(229, 174, 78, 0.34);
-  border-left: 3px solid var(--accent);
+  background:
+    radial-gradient(440px 170px at 0% 0%, rgba(232, 100, 82, 0.09), transparent 72%),
+    linear-gradient(180deg, var(--panel-2), var(--panel));
+  border-color: rgba(232, 100, 82, 0.34);
+  border-left: 3px solid var(--dire);
 }
 
 .ag-improvements .ag-finding .ag-evidence {
   margin-bottom: 14px;
-}
-
-/* Coach's Closing Encouragement */
-.ag-encouragement {
-  padding: 20px 22px;
-  border-radius: var(--radius-lg);
-  background:
-    radial-gradient(480px 180px at 0% 0%, rgba(229, 174, 78, 0.14), transparent 72%),
-    radial-gradient(360px 160px at 100% 100%, rgba(82, 201, 114, 0.08), transparent 70%),
-    var(--panel);
-  border: 1px solid rgba(229, 174, 78, 0.38);
-  box-shadow: var(--shadow-card);
-}
-
-.ag-encouragement h2 {
-  color: var(--accent);
-  margin-bottom: 10px;
-}
-
-.ag-encouragement p {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.75;
-  color: var(--text);
-  text-wrap: pretty;
 }
 
 /* 8. Did Well, Blind Spots & Share Bar */

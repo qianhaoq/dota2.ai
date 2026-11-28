@@ -155,55 +155,35 @@ describe('FindingFeedback', () => {
 
 describe('ReviewDoc: each finding is asked about, in its own place', () => {
   const finding = (n: number, extra: Partial<DeepReview['findings'][number]> = {}) => ({ title: `Finding ${n}`, claim: `Claim ${n}.`, fix: `Fix ${n}.`, evidence: [{ refs: [`death:axe:${n}`], clock: `${n}0:00`, fact: `Fact ${n}.` }], ...extra });
-  const review = (findings = [finding(1), finding(2), finding(3)]): DeepReview => ({ schema: 'dota2.ai/deep-review@1', match_id: 7, hero: 'axe', lang: 'en', verdict: 'V.', mainline: [], findings, did_well: [], next_game: [], blind_spots: [] } as DeepReview);
+  const review = (findings = [finding(1), finding(2), finding(3)]): DeepReview => ({ schema: 'dota2.ai/deep-review@1', match_id: 7, hero: 'axe', lang: 'en', verdict: 'V.', highlights: [{ title: 'Great play', detail: 'Nice move.' }], findings, chapters: [], blind_spots: [] });
   const doc = (r: DeepReview, feedback: React.ComponentProps<typeof ReviewDoc>['feedback']) => render(<ReviewDoc matchId="7" review={r} lang="en" onAsk={() => {}} feedback={feedback} />);
 
-  it('one question per finding: the first after its moments, the others inside their folds; each sends its own place', async () => {
-    doc(review(), { plan: null, model: 'deepseek-flash', version: 37 });
+  it('one question per finding: lead finding expanded and secondary findings folded under .ag-improvements; each sends its own place', async () => {
+    doc(review(), { plan: null, model: 'deepseek-flash', version: 82 });
     const groups = screen.getAllByRole('group', { name: 'Was this right?', hidden: true });
     expect(groups).toHaveLength(3);
-    expect(groups[0].closest('section')!.className).toBe('ag-moments');
+    expect(groups[0].closest('section')!.className).toBe('ag-improvements');
+    expect(groups[0].closest('article')!.className).toContain('ag-finding is-lead');
     expect(groups.slice(1).map((g) => g.closest('details')!.querySelector('summary')!.textContent)).toEqual(['2Finding 2', '3Finding 3']);
     fireEvent.click(within(groups[2]).getByRole('button', { name: 'Not useful', hidden: true }));
     await settle();
-    expect(sent().map((s) => [s.body.finding, s.body.title, s.body.rating, s.body.version, s.body.model])).toEqual([[2, 'Finding 3', 'useless', 37, 'deepseek-flash']]);
+    expect(sent().map((s) => [s.body.finding, s.body.title, s.body.rating, s.body.version, s.body.model])).toEqual([[2, 'Finding 3', 'useless', 82, 'deepseek-flash']]);
     fireEvent.click(within(groups[0]).getByRole('button', { name: 'Right' }));
     await settle();
     expect(sent().at(-1)!.body).toMatchObject({ finding: 0, title: 'Finding 1', rating: 'right' });
     expect(events().filter((e) => e.event === 'finding_rated').map((e) => e.props.first)).toEqual([false, true]);
   });
 
-  it('a first finding with no moments is asked about under what to practise; with neither, under its claim', () => {
-    doc(review([finding(1, { evidence: [] })]), { version: 37 });
-    expect(screen.getByRole('group', { name: 'Was this right?' }).closest('section')!.className).toBe('ag-lesson');
-    cleanup();
-    doc(review([finding(1, { evidence: [], fix: '' })]), { version: 37 });
-    expect(screen.getByRole('group', { name: 'Was this right?' }).closest('section')!.className).toBe('ag-lead');
+  it('a lead finding without evidence or fix still gets its feedback control inside .ag-finding.is-lead', () => {
+    doc(review([finding(1, { evidence: [], fix: '' })]), { version: 82 });
+    expect(screen.getByRole('group', { name: 'Was this right?' }).closest('article')!.className).toContain('ag-finding is-lead');
   });
 
   it('not asked where the page did not say which review this is, nor of a review with no finding', () => {
     doc(review(), null);
     expect(screen.queryByRole('group', { name: 'Was this right?', hidden: true })).toBeNull();
     cleanup();
-    doc(review([]), { version: 37 });
+    doc(review([]), { version: 82 });
     expect(screen.queryByRole('group', { name: 'Was this right?', hidden: true })).toBeNull();
-  });
-
-  it('works inside the coach-first layout: lead finding expanded and secondary findings folded under .ag-improvements', async () => {
-    const coach: DeepReview = {
-      ...review([finding(1), finding(2)]),
-      opening_note: 'Coach opening note.',
-      highlights: [{ title: 'Great play', detail: 'Nice move.' }],
-      encouragement: 'Keep going.',
-    };
-    doc(coach, { plan: null, model: 'deepseek-flash', version: 75 });
-    const groups = screen.getAllByRole('group', { name: 'Was this right?', hidden: true });
-    expect(groups).toHaveLength(2);
-    expect(groups[0].closest('section')!.className).toBe('ag-improvements');
-    expect(groups[0].closest('article')!.className).toContain('ag-finding is-lead');
-    expect(groups[1].closest('details')!.querySelector('summary')!.textContent).toBe('2Finding 2');
-    fireEvent.click(within(groups[0]).getByRole('button', { name: 'Right' }));
-    await settle();
-    expect(sent().at(-1)!.body).toMatchObject({ finding: 0, title: 'Finding 1', rating: 'right', version: 75 });
   });
 });

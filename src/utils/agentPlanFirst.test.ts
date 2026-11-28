@@ -17,8 +17,8 @@ const ID = 9100904020;
 const call = (name: string, args: any, id: string) => ({ id, name, args });
 const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。' };
 const against = '你说要线优转推进：19:00 到 29:00 你们领先，25:00 时最多领先 3565，但这段时间你们只拆了 2 座建筑、对面拆了 3 座。';
-const gamePlan = { against_your_plan: against, window: '你们在 19:00 到 29:00 领先。', course: 'c', your_part: 'y', main_reason: 'team_play', why: 'w', evidence: [{ refs: ['window:beastmaster:2'], fact: '19:00 到 29:00 你们领先，最多领先 3565（25:00）。' }] };
-const submit = { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], game_plan: gamePlan, next_game: ['留咆哮'], blind_spots: ['视野'] };
+const gamePlan = { against_your_plan: against, main_reason: 'team_play', why: '你们在 19:00 到 29:00 领先。', evidence: [{ refs: ['window:beastmaster:2'], fact: '19:00 到 29:00 你们领先，最多领先 3565（25:00）。' }] };
+const submit = { verdict: '咆哮没有留给幻影刺客。', highlights: [], findings: [finding], chapters: [], game_plan: gamePlan, blind_spots: ['视野'] };
 /** A model that looks things up (one turn), then submits a review. It records every opening message it is sent. */
 function model() {
   const m = { openings: [] as string[], complete: async (o: any) => {
@@ -66,7 +66,7 @@ describe('a review read against the plan the player named', () => {
     expect(m.openings[0]).not.toContain('their plan');
     expect(r.review).not.toHaveProperty('plan');
     expect(r.review.game_plan).not.toHaveProperty('against_your_plan');
-    expect(r.review.game_plan.window).toBe(gamePlan.window);
+    expect(r.review.game_plan.why).toBe(gamePlan.why);
     // An unknown plan is no plan.
     const odd: any = await runDeepReview({ complete: model().complete, trace: trace(), hero: 'beastmaster', lang: 'zh', plan: 'cheese', match: SCOREBOARD });
     expect(odd.review).not.toHaveProperty('plan');
@@ -75,9 +75,9 @@ describe('a review read against the plan the player named', () => {
 
   it('a reading that states something the tools never said is left out by itself', () => {
     const refs = new Map([['window:beastmaster:2', { at: 1140 }]]);
-    const plan = { against_your_plan: 'a', course: 'c', evidence: [{ refs: ['window:beastmaster:2'], fact: 'f' }] };
-    expect(planOf(plan, [], refs, { stated: true })).toMatchObject({ against_your_plan: 'a', course: 'c' });
-    expect(planOf(plan, [{ where: 'plan', index: 6 } as any], refs, { stated: true })).not.toHaveProperty('against_your_plan');
+    const plan = { against_your_plan: 'a', main_reason: 'team_play', why: 'w', evidence: [{ refs: ['window:beastmaster:2'], fact: 'f' }] };
+    expect(planOf(plan, [], refs, { stated: true })).toMatchObject({ against_your_plan: 'a', main_reason: 'team_play', why: 'w' });
+    expect(planOf(plan, [{ where: 'plan', index: 1 } as any], refs, { stated: true })).not.toHaveProperty('against_your_plan');
     expect(planOf(plan, [], refs)).not.toHaveProperty('against_your_plan');
     // With only the reading left, the plan still shows — when a plan was named.
     expect(planOf({ against_your_plan: 'a', evidence: plan.evidence }, [], refs, { stated: true })).toMatchObject({ against_your_plan: 'a' });
