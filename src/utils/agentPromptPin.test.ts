@@ -15,7 +15,7 @@ import { WEB_SEARCH_TOOL } from '../../lib/agent/webSearch.js';
  * Changing any of it: raise DEEP_REVIEW_PROMPT_VERSION and put the new version and hash here. Two branches
  * that both do so meet on this one line when they merge, instead of both shipping as the same version.
  */
-const PIN = { version: 82, hash: 'dabbbf8a75fd7eb2f5b05e60ec0c186f3f0aed3e841dc95f976f321d35af4a09' };
+const PIN = { version: 83, hash: 'd35f479bbb28f23de8f2ec8c4627441e85b937282f978888707dc722f89d121c' };
 
 function promptHash() {
   const tools = [...TRACE_TOOLS, ...KNOWLEDGE_TOOLS, WEB_SEARCH_TOOL].map(({ name, description, input_schema }) => ({ name, description, input_schema }));
