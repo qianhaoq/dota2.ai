@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { attackOf, buildCheck } from '../../lib/agent/situationTools.js';
+import { attackOf, buildCheck, contactBeforeDeaths } from '../../lib/agent/situationTools.js';
+import { deathContext } from '../../packages/review-engine/src/trace/index.js';
 import { reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
 import { withHeroNames } from '../../lib/agent/review/toolkit.js';
 import { unnamedHeroes } from '../../lib/agent/review/verify.js';
@@ -156,5 +157,82 @@ describe('build_check: how each item meets the enemy who killed the player', () 
     expect(attackOf(null)).toBeNull();
     expect(attackOf(44, { 44: { attack_range: 150 } })).toBeNull();
     expect(attackOf(44, { 44: { attack_type: 'Melee' } })).toEqual({ type: 'melee' });
+  });
+});
+
+// Owner, 2026-11-28: Ursa's damage is attacks that stack; what answers it is what breaks the chain (Halberd, Eul's,
+// Ghost Scepter), not armor. The tools give how each kill went, so the model can set it against how long an item lasts.
+describe('build_check: how the killer killed the player, death by death', () => {
+  const seat = trace.heroes.findIndex((h: any) => h.key === 'beastmaster');
+
+  it('the last unbroken run of the killer\'s damage before each death they made, from the damage log', () => {
+    const runs: any = contactBeforeDeaths(trace, seat, 'phantom_assassin');
+    const d: any = deathContext(trace, { hero: 'beastmaster' });
+    const theirs = d.deaths.filter((x: any) => x.killer === 'phantom_assassin');
+    // One per death she made, numbered and timed as death_context numbers and times them.
+    expect(runs.map((r: any) => [r.death, r.clock])).toEqual(theirs.map((x: any) => [x.n, x.clock]));
+    for (const r of runs.filter((x: any) => x.contact_seconds != null)) {
+      expect(r.contact_seconds).toBeGreaterThanOrEqual(1);
+      expect(r.contact_seconds).toBeLessThanOrEqual(21);
+      expect(r.their_attack_damage + r.their_ability_damage).toBeGreaterThan(0);
+    }
+    // build_check carries it for the top killer.
+    const b: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en', match });
+    expect(b.answers_to_top_killers[0].how_they_killed_me).toEqual(runs);
+  });
+
+  it('a run is summed from the log: attacks (no inflictor) apart from abilities, and it stops at a gap over 2 s', () => {
+    const t: any = structuredClone(trace);
+    const me = t.names.indexOf(t.heroes[seat].npc);
+    const pa = t.names.indexOf(t.heroes.find((h: any) => h.key === 'phantom_assassin').npc);
+    const first = (contactBeforeDeaths(t, seat, 'phantom_assassin') as any[])[0];
+    const death = Number(first.clock.split(':')[0]) * 60 + Number(first.clock.split(':')[1]);
+    t.damage = t.damage.filter((r: any) => !(r[1] === pa && r[2] === me));
+    t.damage.push([death - 10, pa, me, -1, 500], [death - 2, pa, me, -1, 300], [death - 1, pa, me, 7, 40]);
+    const [r] = contactBeforeDeaths(t, seat, 'phantom_assassin') as any[];
+    expect(r).toMatchObject({ began: `${Math.floor((death - 2) / 60)}:${String((death - 2) % 60).padStart(2, '0')}`, their_attack_damage: 300, their_ability_damage: 40 });
+  });
+
+  it('no damage log: unknown (null), never "no contact"; a death they made with no damage of theirs in it: contact_seconds null', () => {
+    const t: any = structuredClone(trace);
+    delete t.damage;
+    expect(contactBeforeDeaths(t, seat, 'phantom_assassin')).toBeNull();
+    const u: any = structuredClone(trace);
+    const pa = u.names.indexOf(u.heroes.find((h: any) => h.key === 'phantom_assassin').npc);
+    u.damage = u.damage.filter((r: any) => r[1] !== pa);
+    const runs: any = contactBeforeDeaths(u, seat, 'phantom_assassin');
+    expect(runs.length).toBeGreaterThan(0);
+    for (const r of runs) expect(r).toEqual({ death: r.death, clock: r.clock, contact_seconds: null });
+  });
+
+  it('an item whose effect has a duration says how long, in Valve\'s numbers', () => {
+    const b: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en', match });
+    const by = Object.fromEntries(b.answers_to_top_killers[0].items_acting_on_their_damage.items.map((i: any) => [i.item, i]));
+    const pd = patchForGame(trace.match_id, match);
+    const v = (k: string, a: string) => Number(pd.items[k].attrib.find((x: any) => x.key === a).value);
+    expect(by.heavens_halberd.lasts_seconds).toBe(v('heavens_halberd', 'disarm_melee'));
+    expect(by.cyclone.lasts_seconds).toBe(v('cyclone', 'cyclone_duration'));
+    expect(by.ghost.lasts_seconds).toBe(v('ghost', 'duration'));
+    expect(by.blade_mail).not.toHaveProperty('lasts_seconds');
+    // Set against her kills of the player: of those with a known length, how many were over within that time.
+    const runs = (contactBeforeDeaths(trace, seat, 'phantom_assassin') as any[]).map((r) => r.contact_seconds).filter((x) => x != null);
+    expect(by.heavens_halberd).toMatchObject({ of_their_kills_timed: runs.length, their_kills_that_took_no_longer: runs.filter((x) => x <= by.heavens_halberd.lasts_seconds).length });
+    expect(by.blade_mail).not.toHaveProperty('their_kills_that_took_no_longer');
+  });
+});
+
+describe('build_check: the player\'s own hero, for how an item sits with it', () => {
+  it('primary attribute, attack, and deaths with a spell off cooldown but short of mana, from death_context', () => {
+    const b: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en', match });
+    const heroes = JSON.parse(readFileSync(new URL('../../lib/data/constants/heroes.json', import.meta.url), 'utf8'));
+    expect(b.my_hero.primary_attribute).toBe({ str: 'strength', agi: 'agility', int: 'intelligence', all: 'universal' }[heroes['38'].primary_attr as string]);
+    expect(b.my_hero.attack).toEqual(attackOf(38));
+    const d: any = deathContext(trace, { hero: 'beastmaster' });
+    const short = d.deaths.filter((x: any) => x.off_cooldown_without_the_mana?.length);
+    expect(b.my_hero.deaths_with_a_spell_off_cooldown_but_short_of_mana).toBe(short.length);
+    if (short.length) expect(b.my_hero.at).toEqual(short.map((x: any) => x.clock)); else expect(b.my_hero).not.toHaveProperty('at');
+    // An item's mana regen and intelligence are among what it gives (Valve's stats).
+    const cyclone = b.answers_to_top_killers[0].items_acting_on_their_damage.items.find((i: any) => i.item === 'cyclone');
+    expect(cyclone.gives).toMatchObject({ mana_regen: expect.any(Number), intelligence: expect.any(Number) });
   });
 });
