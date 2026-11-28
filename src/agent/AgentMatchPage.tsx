@@ -165,6 +165,8 @@ const MAX_AUTO_WAIT_SEC = 15 * 60;
 export const REPLAY_NOT_READY = { askEveryMs: 30_000, triesByItself: 3 };
 /** A download that failed (a CDN edge, a worker that did not answer): tried again by itself a few times, the server's wait apart. */
 export const DOWNLOAD_RETRY = { minWaitMs: 5_000, triesByItself: 3, reasons: new Set(['download_failed', 'worker_failed', 'timeout']) };
+/** If a parse wait is ever stranded on `parse: none` after prepare finished, poll briefly before handing control back to the reader. */
+export const PARSE_STALL_RECOVERY = { pollMs: 2_500, maxPolls: 3 };
 const clockOf = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 /** The four steps of the wait, and which one is live. */
 export function journeyStep(avail: Availability | null, state: ReviewState | null): number {
@@ -220,20 +222,26 @@ export const AgentMatchPage: React.FC = () => {
   const expectTrace = expectFor === matchId;
   const chat = useRef<ChatHandle>(null);
 
-  // The match on screen now. An availability answer for a match the reader has left is dropped.
+  // The match on screen now. An availability answer for a match the reader has left is dropped, and a stale
+  // GET that began before POST /prepare answered cannot overwrite the fresher running/failed parse state.
   const onMatch = useRef(matchId);
   onMatch.current = matchId;
+  const availSeq = useRef(0);
   const loadAvail = useCallback(async (signal?: AbortSignal) => {
+    const seq = ++availSeq.current;
     try {
       const next = await fetchAvailability(matchId, signal);
-      if (onMatch.current !== matchId) return;
+      if (onMatch.current !== matchId || availSeq.current !== seq) return;
+      // Only a server-confirmed running parse re-arms the one-time resume if it later dies with its instance;
+      // an optimistic `running` from POST /prepare must not re-arm resume if the very next GET says `none`.
+      if (!next.trace && next.parse?.status === 'running') resumed.current = false;
       setAvail(next);
     } catch (e) {
       if ((e as Error).name === 'AbortError' || onMatch.current !== matchId) return;
       // A request that failed tells us nothing: keep what we know. With nothing known yet the page stays on
       // "opening" and asks again (below), rather than conclude that reviews are switched off.
     }
-    setAvailTick((n) => n + 1);
+    if (onMatch.current === matchId) setAvailTick((n) => n + 1);
   }, [matchId]);
 
   useEffect(() => {
@@ -424,7 +432,13 @@ export const AgentMatchPage: React.FC = () => {
 
   /** What prepare answered is the parse state now: a refresh that fails right after must not lose it. */
   const applyParse = (p: ParseState) => {
+    availSeq.current += 1;
     if (p.status === 'running' || p.status === 'failed') setAvail((prev) => (prev && !prev.trace ? { ...prev, parse: p } : prev));
+    // Parsing is unavailable on the server: leave the wait screen instead of staying on "Fetch the replay".
+    if (p.status === 'unavailable') {
+      setAvail((prev) => (prev && !prev.trace ? { ...prev, can_parse: false } : prev));
+      want(false);
+    }
     // Someone else's parse finished in between: the trace is there but this page has not seen it yet.
     if (p.status === 'ready') setExpectFor(matchId);
     setAvailTick((n) => n + 1);
@@ -488,6 +502,7 @@ export const AgentMatchPage: React.FC = () => {
 
   /** The one click: fetch and parse the replay if needed, then the review follows on its own. */
   const preparing = useRef<string | null>(null);
+  const [preparingFor, setPreparingFor] = useState<string | null>(null);
   /** The selections waiting on the parse request that is out now. */
   const joined = useRef<Set<string>>(new Set());
   /**
@@ -522,8 +537,9 @@ export const AgentMatchPage: React.FC = () => {
   async function sendPrepare() {
     if (preparing.current === matchId) { joined.current.add(selection); return; }
     preparing.current = matchId;
+    setPreparingFor(matchId);
     joined.current = new Set([selection]);
-    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e, [...joined.current]); } finally { if (preparing.current === matchId) preparing.current = null; }
+    try { const p = await prepareMatch(matchId); if (onMatch.current !== matchId) return; applyParse(p); void loadAvail(); } catch (e) { if (onMatch.current === matchId) refuse(e, [...joined.current]); } finally { if (preparing.current === matchId) preparing.current = null; setPreparingFor((cur) => (cur === matchId ? null : cur)); }
   }
   const goRef = useRef(go);
   goRef.current = go;
@@ -552,9 +568,6 @@ export const AgentMatchPage: React.FC = () => {
     else if (was.sel === selection && was.wait && !wait && checkingOnlyRef.current === selection) void checkOnlyRef.current();
   }, [wait, intent, selection]);
   const waitNotice = wait ? t(wait.kind === 'rate' ? T.rateWait : T.busyWait).replace('{t}', clockOf(Math.max(0, Math.ceil((wait.until - Date.now()) / 1000)))) : null;
-
-  // A parse seen running may yet die with its instance: seeing it run re-arms the one-time restart below.
-  useEffect(() => { if (parsing) resumed.current = false; }, [parsing]);
 
   // The replay of a game that just ended has no address for a few minutes, and the try fails. The reader said go:
   // keep asking, slowly, so that when the server lets it be tried again the restart below picks it up without
@@ -591,6 +604,23 @@ export const AgentMatchPage: React.FC = () => {
     void sendPrepare();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, avail, matchId, loadAvail, wait]);
+
+  // Safety net against staying indefinitely on "Fetch the replay": if prepare finished and the server still
+  // reports `parse: none` after our one automatic resume, poll a few times then hand control back to the reader.
+  const [nonePolls, setNonePolls] = useState(0);
+  const preparingHere = preparingFor === matchId;
+  const strandedNone = Boolean(intent && !wait && !notice && avail && !hasTrace && avail.can_parse && !parsing && !expectTrace && !preparingHere && parse?.status === 'none' && resumed.current);
+  useEffect(() => {
+    if (!strandedNone) { setNonePolls(0); return undefined; }
+    if (nonePolls >= PARSE_STALL_RECOVERY.maxPolls) {
+      setNotice(t(T.parseFailedBody));
+      want(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => { setNonePolls((n) => n + 1); void loadAvail(); }, PARSE_STALL_RECOVERY.pollMs);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strandedNone, nonePolls, loadAvail]);
 
   // The replay just became available and the reader asked for a review: carry on without a second click.
   useEffect(() => {

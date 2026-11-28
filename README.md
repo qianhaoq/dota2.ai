@@ -98,7 +98,7 @@ DEEPSEEK_API_KEY=sk-... dsh web      # or run plain `dsh web` and enter your key
 | **[MCP Agent](#mcp-claude-code-codex-cursor-vs-code)** | Coding / AI assistants | 1 command or 1-click link | None | Same hosted daily cap |
 | **[CLI & HTTP API](#cli--http-api)** | Scripts & automation | Local checkout / `curl` | None | Per-caller rate limit |
 
-> **How long does a replay review take?** Typically **about 4 minutes** (~1 minute to parse the replay, ~3 minutes to investigate and write the review). Complex games that use the expanded investigation budget (up to 28 steps / 60 tool calls), slow replay servers (primary region capped at 7 minutes so a second region can retry within the shared 14-minute parse deadline), or a long step hitting its output cap and retrying once in place can take a few minutes longer. The site supports **English, Chinese, and Russian**.
+> **How long does a replay review take?** Typically **about 4 minutes** (~1 minute to parse the replay, ~3 minutes to investigate and write the review). Complex games that use the expanded investigation budget (up to 28 steps / 60 tool calls), slow replay servers (primary region capped at 7 minutes so a second region can retry within the shared 14-minute parse deadline; repeated fetch failures back off up to 5 minutes between retries), or a long step hitting its output cap and retrying once in place can take a few minutes longer. The site supports **English, Chinese, and Russian**.
 
 ### MCP (Claude Code, Codex, Cursor, VS Code)
 

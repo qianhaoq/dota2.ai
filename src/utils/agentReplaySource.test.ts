@@ -19,6 +19,9 @@ describe('replay source', () => {
     expect(replayUrl(got)).toBe(`https://replay153.valve.net/570/${ID}_77.dem.bz2`);
     // Only what the address needs is passed on.
     expect(got).toEqual({ match_id: ID, cluster: 153, replay_salt: 77 });
+    // When the match record carries start_time/duration, they are preserved alongside GC cluster/salt so replayPastKeeping still works.
+    const withAge = createReplaySource({ getMatchDetail: async () => ({ match_id: ID, start_time: 1_700_000_000, duration: 2400 }), gc });
+    expect(await withAge(ID)).toEqual({ match_id: ID, cluster: 153, replay_salt: 77, start_time: 1_700_000_000, duration: 2400 });
     const down = createReplaySource({ getMatchDetail: async () => { throw new Error('opendota 520'); }, gc });
     expect(replayUrl(await down(ID))).toBe(`https://replay153.valve.net/570/${ID}_77.dem.bz2`);
   });

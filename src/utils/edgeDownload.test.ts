@@ -85,6 +85,17 @@ describe('downloading a replay edge by edge (2026-11-27: some Perfect World edge
     expect(badEdges.has('1.1.1.1')).toBe(false);
   });
 
+  it('single-edge 404/410 is replay_gone; multi-edge early-exits at two 404s; 1x 404 + 1x 503 stays download_failed (#487)', async () => {
+    await expect(downloadReplay(URL, dest(), { ...fast, race: 1, edges: edges(['1.1.1.1']), request: fakeRequest({ '1.1.1.1': { kind: 'status', code: 404 } }, []) })).rejects.toMatchObject({ code: 'replay_gone', why: 'all_edges_gone' });
+    await expect(downloadReplay(URL, dest(), { ...fast, race: 1, edges: edges(['1.1.1.1']), request: fakeRequest({ '1.1.1.1': { kind: 'status', code: 410 } }, []) })).rejects.toMatchObject({ code: 'replay_gone', why: 'all_edges_gone' });
+    // Multiple edges: 2x 404 aborts early without probing remaining edges.
+    const seen: any[] = [];
+    await expect(downloadReplay(URL, dest(), { ...fast, race: 1, edges: edges(['1.1.1.1', '2.2.2.2', '3.3.3.3']), request: fakeRequest({ '1.1.1.1': { kind: 'status', code: 404 }, '2.2.2.2': { kind: 'status', code: 404 }, '3.3.3.3': { kind: 'ok' } }, seen) })).rejects.toMatchObject({ code: 'replay_gone', why: 'edges_gone' });
+    expect(seen.map((s) => s.ip)).toEqual(['1.1.1.1', '2.2.2.2']);
+    // 1x 404 + 1x 503 among two edges is NOT all-gone: stays download_failed so a transient error beside one stale edge never falsely kills a live replay.
+    await expect(downloadReplay(URL, dest(), { ...fast, race: 1, edges: edges(['1.1.1.1', '2.2.2.2']), request: fakeRequest({ '1.1.1.1': { kind: 'status', code: 404 }, '2.2.2.2': { kind: 'status', code: 503 } }, []) })).rejects.toMatchObject({ code: 'download_failed', why: 'every_edge_failed' });
+  });
+
   it('every edge failing is download_failed; a file over the cap is too_large; a non-replay URL is refused', async () => {
     await expect(downloadReplay(URL, dest(), { ...fast, edges: edges(['1.1.1.1', '2.2.2.2']), request: fakeRequest({ '1.1.1.1': { kind: 'hang' }, '2.2.2.2': { kind: 'status', code: 503 } }, []) })).rejects.toMatchObject({ code: 'download_failed' });
     await expect(downloadReplay(URL, dest(), { ...fast, maxBytes: 3000, edges: edges(['1.1.1.1']), request: fakeRequest({ '1.1.1.1': { kind: 'ok' } }, []) })).rejects.toMatchObject({ code: 'too_large' });

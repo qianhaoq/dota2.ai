@@ -193,6 +193,111 @@ describe('trace pipeline', () => {
     expect(replayUrlIsFor(`https://replay413.valve.net/570/${ID}_1851930271.dem.bz2`, ID)).toBe(true);
     for (const bad of [`http://replay413.dota2.com.cn/570/1234_1851930271.dem.bz2`, `http://example.com/570/${ID}_1.dem.bz2`, `http://replay413.dota2.com.cn/570/${ID}_1.dem.bz2/../x`, '', null, 42]) expect(replayUrlIsFor(bad as any, ID)).toBe(false);
   });
+
+  it('logs structured per-stage timing JSON (hostname only, no URL salt/secrets) on both success and failure (#487)', async () => {
+    let t = 1000;
+    const stageLines: string[] = [];
+    const h = harness({
+      worker: 'primary',
+      now: () => t,
+      stageLog: (l: string) => stageLines.push(l),
+      getMatchDetail: async () => { t += 120; return { match_id: ID, replay_url: URL_OK }; },
+      fetchReplayImpl: async () => { t += 1500; return { ok: true, status: 200, body: body(Buffer.alloc(4096, 7)) }; },
+      runExtractorImpl: async () => { t += 2400; return { ok: true, match_id: ID, trace_version: 4, clock: { zero: 'horn' } }; },
+      buildImpl: async () => { t += 300; return JSON.parse(fixture.toString()); },
+      store: { put: async () => { t += 80; } },
+    });
+    expect(await h.run()).toMatchObject({ ok: true, ms: 4400 });
+    expect(stageLines).toHaveLength(1);
+    const okRow = JSON.parse(stageLines[0]);
+    expect(okRow).toEqual({
+      event: 'trace_pipeline',
+      match: ID,
+      ok: true,
+      host: 'replay413.dota2.com.cn',
+      worker: 'primary',
+      locating_ms: 120,
+      downloading_ms: 1500,
+      extracting_ms: 2400,
+      building_ms: 300,
+      storing_ms: 80,
+      total_ms: 4400,
+      demo_bytes: 4096,
+      trace_bytes: expect.any(Number),
+      reason: null,
+    });
+    // Never logs full URL path or salt.
+    expect(stageLines[0]).not.toContain('1851930271');
+
+    // On failure: unreached stages stay null (never 0).
+    stageLines.length = 0;
+    t = 5000;
+    const failedLocal = harness({
+      worker: 'fallback',
+      now: () => t,
+      stageLog: (l: string) => stageLines.push(l),
+      getMatchDetail: async () => { t += 90; return { match_id: ID, replay_url: URL_OK }; },
+      fetchReplayImpl: async () => { t += 600; return { ok: false, status: 503, body: body(Buffer.from('x')) }; },
+    });
+    expect(await failedLocal.run()).toEqual({ ok: false, reason: 'download_failed' });
+    expect(JSON.parse(stageLines[0])).toEqual({
+      event: 'trace_pipeline',
+      match: ID,
+      ok: false,
+      host: 'replay413.dota2.com.cn',
+      worker: 'fallback',
+      locating_ms: 90,
+      downloading_ms: 600,
+      extracting_ms: null,
+      building_ms: null,
+      storing_ms: null,
+      total_ms: 690,
+      demo_bytes: null,
+      trace_bytes: null,
+      reason: 'download_failed',
+      detail: 'http_503',
+    });
+
+    // Remote pipeline merges worker-reported stage metrics with locating_ms, host and worker choice.
+    const remoteLines: string[] = [];
+    let rt = 10_000;
+    const remote = createRemotePipeline({
+      url: 'https://tw.example',
+      fallback: { url: 'https://hk.example' },
+      preferFallbackForCn: true,
+      now: () => rt,
+      stageLog: (l: string) => remoteLines.push(l),
+      getMatchDetail: async () => { rt += 250; return { match_id: ID, replay_url: URL_OK }; },
+      fetchImpl: (async (u: string) => {
+        rt += 3100;
+        expect(new URL(u).host).toBe('hk.example');
+        return new Response(JSON.stringify({
+          ok: true,
+          bytes: 222_000,
+          metrics: { downloading_ms: 1400, extracting_ms: 1500, building_ms: 120, storing_ms: 80, demo_bytes: 48_000_000 },
+        }), { status: 200 });
+      }) as any,
+    });
+    expect(await remote.run(ID)).toEqual({ ok: true, bytes: 222_000 });
+    expect(JSON.parse(remoteLines[0])).toEqual({
+      event: 'trace_pipeline',
+      match: ID,
+      ok: true,
+      host: 'replay413.dota2.com.cn',
+      worker: 'fallback',
+      locating_ms: 250,
+      downloading_ms: 1400,
+      extracting_ms: 1500,
+      building_ms: 120,
+      storing_ms: 80,
+      worker_ms: 3100,
+      total_ms: 3350,
+      demo_bytes: 48_000_000,
+      trace_bytes: 222_000,
+      reason: null,
+    });
+    expect(remoteLines[0]).not.toContain('1851930271');
+  });
 });
 
 describe('stores', () => {
