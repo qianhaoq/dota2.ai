@@ -7,6 +7,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { parseDshUsage } from '../../../lib/agent/usage.js';
 
 const esc = (s) => String(s ?? '').replace(/[^A-Za-z0-9-]/g, (ch) => `_${ch.codePointAt(0).toString(16)}_`);
 const unesc = (s) => String(s ?? '').replace(/_([0-9a-f]+)_/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
@@ -227,9 +228,7 @@ export function createDshComplete({ ctx, route, primitives = fallbackPrimitives,
       }
     }
 
-    const u = assembler.usage;
-    const inputTokens = (u?.inputTokens ?? 0) + (u?.cacheReadTokens ?? 0) + (u?.cacheWriteTokens ?? 0);
-    const outputTokens = u?.outputTokens ?? 0;
+    const usage = parseDshUsage(assembler.usage);
 
     return {
       text,
@@ -237,7 +236,7 @@ export function createDshComplete({ ctx, route, primitives = fallbackPrimitives,
       ...(assembler.replayState !== undefined ? { providerState: assembler.replayState } : {}),
       ...(finish?.kind === 'max-tokens' ? { truncated: true } : {}),
       toolCalls,
-      usage: { input: inputTokens, output: outputTokens },
+      usage,
     };
   };
 }

@@ -102,7 +102,28 @@ describe('runDeepReview: continued from a checkpoint', () => {
     expect(resumed.tool_calls).toEqual(whole.tool_calls);
     expect(resumed.verification).toEqual(whole.verification);
     expect(resumed.steps).toBe(3);
-    expect(resumed.usage).toEqual({ input: 300, output: 30 });
+    expect(resumed.usage).toEqual({
+      input: 300,
+      output: 30,
+      input_uncached: null,
+      cache_read: null,
+      cache_write: null,
+      source: 'provider_usage',
+      stages: {
+        first: {
+          input: 300,
+          output: 30,
+          input_uncached: null,
+          cache_read: null,
+          cache_write: null,
+          source: 'provider_usage',
+          steps: 3,
+          tool_calls: 2,
+          truncation_retries: 0,
+        },
+      },
+    });
+    expect(resumed.usage).toEqual(whole.usage);
   });
 
   it('cut off during the repair round: the first pass is not asked for again', async () => {

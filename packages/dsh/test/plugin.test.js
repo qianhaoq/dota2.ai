@@ -258,6 +258,15 @@ describe('DSH host LLM bridge (llm.js)', () => {
     });
 
     expect(out).toMatchObject({ status: 'answered', text: 'Answer is 14.', usage: { input: 265, output: 20 } });
+    // Turn 2 omitted cacheReadTokens -> accumulated cache breakdown stays null instead of coercing unknown to 0.
+    expect(out.usage).toEqual({
+      input: 265,
+      output: 20,
+      input_uncached: null,
+      cache_read: null,
+      cache_write: null,
+      source: 'provider_usage',
+    });
     // Unsupported reasoningEffort was stripped and maxTokens was capped to defaultMaxTokens (8192).
     expect(llm.calls[0].reasoningEffort).toBeUndefined();
     expect(llm.calls[0].maxTokens).toBe(8192);
@@ -309,6 +318,65 @@ describe('DSH host LLM bridge (llm.js)', () => {
     // Switching the model in DSH immediately updates defaultModel without restarting.
     selected = { provider: 'openai', model: 'gpt-5' };
     expect(reg.catalog().defaultModel).toBe(encodeModelKey('openai', 'gpt-5'));
+  });
+
+  it('preserves exact DSH cacheReadTokens/cacheWriteTokens breakdown and keeps absent cache fields null', async () => {
+    // 1. Full Anthropic-style cache split (inputTokens + cacheReadTokens + cacheWriteTokens)
+    const fullLlm = scriptedDshLlm(() => ({
+      text: 'ok',
+      usage: { inputTokens: 1500, cacheReadTokens: 8200, cacheWriteTokens: 1300, outputTokens: 450 },
+    }));
+    const fullReply = await createDshComplete({ ctx: { llm: fullLlm }, route: { provider: 'anthropic', model: 'claude-sonnet-4-5' } })({ system: 's', messages: [] });
+    expect(fullReply.usage).toEqual({
+      input: 11_000,
+      output: 450,
+      input_uncached: 1500,
+      cache_read: 8200,
+      cache_write: 1300,
+      source: 'provider_usage',
+    });
+
+    // 2. DeepSeek-style cache split (inputTokens + cacheReadTokens, no cacheWriteTokens -> cache_write stays null)
+    const dsLlm = scriptedDshLlm(() => ({
+      text: 'ok',
+      usage: { inputTokens: 3200, cacheReadTokens: 9100, outputTokens: 600 },
+    }));
+    const dsReply = await createDshComplete({ ctx: { llm: dsLlm }, route: { provider: 'deepseek', model: 'deepseek-chat' } })({ system: 's', messages: [] });
+    expect(dsReply.usage).toEqual({
+      input: 12_300,
+      output: 600,
+      input_uncached: 3200,
+      cache_read: 9100,
+      cache_write: null,
+      source: 'provider_usage',
+    });
+
+    // 3. Provider reporting only inputTokens/outputTokens (no cache telemetry -> all cache breakdown fields null)
+    const plainLlm = scriptedDshLlm(() => ({
+      text: 'ok',
+      usage: { inputTokens: 4000, outputTokens: 500 },
+    }));
+    const plainReply = await createDshComplete({ ctx: { llm: plainLlm }, route: { provider: 'custom', model: 'm' } })({ system: 's', messages: [] });
+    expect(plainReply.usage).toEqual({
+      input: 4000,
+      output: 500,
+      input_uncached: null,
+      cache_read: null,
+      cache_write: null,
+      source: 'provider_usage',
+    });
+
+    // 4. Provider omitting usage chunk entirely -> source: null, breakdown fields null
+    const emptyLlm = scriptedDshLlm(() => ({ text: 'ok' }));
+    const emptyReply = await createDshComplete({ ctx: { llm: emptyLlm }, route: { provider: 'custom', model: 'm' } })({ system: 's', messages: [] });
+    expect(emptyReply.usage).toEqual({
+      input: 0,
+      output: 0,
+      input_uncached: null,
+      cache_read: null,
+      cache_write: null,
+      source: null,
+    });
   });
 });
 
@@ -481,9 +549,13 @@ describe('DSH local service end-to-end (service.js)', () => {
                 { id: 'c1', name: 'ability_audit', args: { hero: 'beastmaster', ability: 'primal_roar' } },
                 { id: 'c2', name: 'immunity_windows', args: { hero: 'phantom_assassin' } },
               ],
+              usage: { inputTokens: 3000, cacheReadTokens: 0, outputTokens: 250 },
             };
           }
-          return { toolCalls: [{ id: 'c3', name: 'submit_review', args: submit }] };
+          return {
+            toolCalls: [{ id: 'c3', name: 'submit_review', args: submit }],
+            usage: { inputTokens: 1400, cacheReadTokens: 6600, outputTokens: 1100 },
+          };
         }
         // Replay follow-up chat
         if (toolNames.includes('death_context')) {
@@ -555,6 +627,22 @@ describe('DSH local service end-to-end (service.js)', () => {
       expect(readyTool.encouragement).toBe(submit.encouragement);
       expect(readyTool).not.toHaveProperty('goal');
       expect(readyTool.findings[0].evidence[0]).toEqual({ clock: '27:27', fact: finding.evidence[0].fact });
+      expect(readyTool).toMatchObject({
+        model: 'deepseek/deepseek-chat',
+        steps: 2,
+        tool_calls: 2,
+        repair_rounds: 0,
+        truncation_retries: 0,
+        usage_source: 'provider_usage',
+        usage: {
+          input: 11_000,
+          output: 1350,
+          input_uncached: 4400,
+          cache_read: 6600,
+          cache_write: null,
+          source: 'provider_usage',
+        },
+      });
 
       // Stored under model-qualified key `.m-dsh.deepseek.deepseek-chat.review.json`
       const reviewFiles = readdirSync(join(dir, 'reviews')).filter((f) => f.endsWith('.review.json'));

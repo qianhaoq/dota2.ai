@@ -215,6 +215,31 @@
   border-color: rgba(232, 100, 82, 0.34);
 }
 
+.dota2ai-tool-usage {
+  margin: 6px 0 2px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(226, 234, 245, 0.09);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dota2ai-tool-usage-stats {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  color: #c7d2e2;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.dota2ai-tool-usage-source {
+  font-size: 11px;
+  color: #8794a7;
+  line-height: 1.4;
+}
+
 .dota2ai-tool-details {
   margin-top: 6px;
 }

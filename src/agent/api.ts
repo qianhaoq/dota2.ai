@@ -80,10 +80,58 @@ export interface DeepReview {
   goal?: GoalSpec & { finding: number };
 }
 export interface ToolStep { tool: string; args: Record<string, unknown>; /** What the lookup is about, named for the reader (the patch advisor sends it). */ about?: string }
+export interface TokenUsageBreakdown {
+  input: number;
+  output: number;
+  /** Uncached input tokens; null when the provider did not report a cache split. */
+  input_uncached: number | null;
+  /** Cached input tokens read; null when the provider did not report cache hits. */
+  cache_read: number | null;
+  /** Cache creation/write input tokens; null when the provider did not report cache writes. */
+  cache_write: number | null;
+  /** 'provider_usage' when every contributing call reported provider telemetry; null when absent/incomplete. */
+  source?: 'provider_usage' | null;
+}
+export interface StageUsageBreakdown extends TokenUsageBreakdown {
+  steps: number;
+  tool_calls: number;
+  truncation_retries?: number;
+}
+export interface ReviewUsage extends TokenUsageBreakdown {
+  stages?: {
+    first?: StageUsageBreakdown;
+    repair?: StageUsageBreakdown;
+    translate?: StageUsageBreakdown;
+  };
+}
+export interface ReviewRunMeta {
+  model?: string | null;
+  steps?: number;
+  tool_calls?: number;
+  repair_rounds?: number;
+  truncation_retries?: number;
+  usage?: ReviewUsage | null;
+  usage_source?: 'provider_usage' | null;
+}
 export type ReviewState =
   | { status: 'none' | 'no_trace' | 'unknown_hero' }
   | { status: 'running'; steps: ToolStep[] }
-  | { status: 'ready'; review: DeepReview; /** All pre-generated language variants when stored as a trilingual bundle. */ reviews?: Partial<Record<'en' | 'zh' | 'ru', DeepReview>>; verification: { repaired: boolean; dropped: number }; model: string | null; tool_calls: number; /** The prompt version the review was written under; absent from a server that does not say. */ prompt_version?: number }
+  | {
+    status: 'ready';
+    review: DeepReview;
+    /** All pre-generated language variants when stored as a trilingual bundle. */
+    reviews?: Partial<Record<'en' | 'zh' | 'ru', DeepReview>>;
+    verification: { repaired: boolean; dropped: number };
+    model: string | null;
+    tool_calls: number;
+    steps?: number;
+    repair_rounds?: number;
+    truncation_retries?: number;
+    usage?: ReviewUsage;
+    usage_source?: 'provider_usage' | null;
+    /** The prompt version the review was written under; absent from a server that does not say. */
+    prompt_version?: number;
+  }
   | { status: 'failed'; reason?: string }
   /** `retry_in_sec`: the model account refused a review a moment ago (out of credit, key refused) and none is started until then; it can be tried again. */
   | { status: 'unavailable'; reason?: string; retry_in_sec?: number };

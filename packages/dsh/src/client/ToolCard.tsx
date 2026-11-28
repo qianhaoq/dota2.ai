@@ -1,4 +1,6 @@
 import React from 'react';
+import { formatUsageSummary, parseReviewRunMeta } from '../../../../src/agent/usageFormat';
+import type { ReviewRunMeta } from '../../../../src/agent/api';
 import { en, zh, type LocaleKey } from './locales';
 
 export function NavIcon({ size = 18 }: { size?: number }) {
@@ -109,6 +111,7 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
   let statusBadge: string | null = null;
   let highlights: PreviewHighlight[] = [];
   let chapters: PreviewChapter[] = [];
+  let runMeta: ReviewRunMeta | null = null;
 
   if (rawText) {
     try {
@@ -159,6 +162,7 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
               })
               .filter((c): c is PreviewChapter => c !== null);
           }
+          runMeta = parseReviewRunMeta(parsed);
         }
       }
     } catch {
@@ -179,6 +183,7 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
     ? tr('highlightCountOne')
     : tr('highlightCountMany').replace('{n}', String(highlights.length));
   const hasCoachPreview = highlights.length > 0 || chapters.length > 0;
+  const formattedUsage = formatUsageSummary(runMeta, isZh ? 'zh' : 'en');
 
   return (
     <div className="dota2ai-tool-card">
@@ -229,6 +234,12 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
               })}
             </div>
           )}
+        </div>
+      )}
+      {formattedUsage && (
+        <div className="dota2ai-tool-usage" aria-label={tr('usageLabel')}>
+          <span className="dota2ai-tool-usage-stats">{formattedUsage.summary}</span>
+          <span className="dota2ai-tool-usage-source">{formattedUsage.sourceLabel}</span>
         </div>
       )}
       {(rawText || head?.argsRaw) && (

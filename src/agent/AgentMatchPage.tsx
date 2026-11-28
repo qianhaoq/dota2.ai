@@ -735,7 +735,27 @@ export const AgentMatchPage: React.FC = () => {
         {header}
         <div className="ag-layout">
           <div>
-            <ReviewDoc matchId={matchId} review={state.review} lang={lang} onAsk={ask} onPlan={(q) => chat.current?.send(q) ?? false} onReplan={(k) => pickPlan(k)} board={scoreboard} share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />} quick={!slow} feedback={Number.isInteger(state.prompt_version) ? { plan, model: writtenBy, version: state.prompt_version as number } : null} />
+            <ReviewDoc
+              matchId={matchId}
+              review={state.review}
+              lang={lang}
+              onAsk={ask}
+              onPlan={(q) => chat.current?.send(q) ?? false}
+              onReplan={(k) => pickPlan(k)}
+              board={scoreboard}
+              share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />}
+              quick={!slow}
+              runMeta={state.usage || Number.isInteger(state.steps) ? {
+                model: state.model,
+                steps: state.steps,
+                tool_calls: state.tool_calls,
+                repair_rounds: state.repair_rounds,
+                truncation_retries: state.truncation_retries,
+                usage: state.usage ?? null,
+                usage_source: state.usage_source ?? state.usage?.source ?? null,
+              } : null}
+              feedback={Number.isInteger(state.prompt_version) ? { plan, model: writtenBy, version: state.prompt_version as number } : null}
+            />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
             {/* Which model wrote it, and the choice of another: after the review, not between the reader and its first line. */}
             {offered.length > 1 && (

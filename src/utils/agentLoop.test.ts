@@ -73,6 +73,131 @@ describe('runAgent', () => {
   it('defaults allow deeper multi-tool investigations (28 steps / 60 tool calls)', () => {
     expect(AGENT_DEFAULTS).toEqual({ maxSteps: 28, maxToolCalls: 60, maxToolChars: 40_000 });
   });
+
+  it('accumulates cache breakdown across steps and keeps fields null whenever any step omits them', async () => {
+    const m = scripted([
+      {
+        toolCalls: [call('lookup', { q: 1 }, 'a')],
+        usage: { input: 1000, output: 100, input_uncached: 400, cache_read: 600, cache_write: null, source: 'provider_usage' },
+      },
+      {
+        text: 'done',
+        usage: { input: 1500, output: 200, input_uncached: 300, cache_read: 1200, cache_write: null, source: 'provider_usage' },
+      },
+    ]);
+    const r = await runAgent({ complete: m.complete, system: 's', messages: [{ role: 'user', content: 'hi' }], tools, runTool: async () => ({ v: 1 }) });
+    expect(r.usage).toEqual({
+      input: 2500,
+      output: 300,
+      input_uncached: 700,
+      cache_read: 1800,
+      cache_write: null,
+      source: 'provider_usage',
+    });
+
+    // If any step lacks cache breakdown, the accumulated breakdown becomes null instead of treating missing as 0.
+    const mixed = scripted([
+      {
+        toolCalls: [call('lookup', { q: 1 }, 'a')],
+        usage: { input: 1000, output: 100, input_uncached: 400, cache_read: 600, cache_write: null, source: 'provider_usage' },
+      },
+      {
+        text: 'done',
+        usage: { input: 1500, output: 200, input_uncached: null, cache_read: null, cache_write: null, source: 'provider_usage' },
+      },
+    ]);
+    const rMixed = await runAgent({ complete: mixed.complete, system: 's', messages: [{ role: 'user', content: 'hi' }], tools, runTool: async () => ({ v: 1 }) });
+    expect(rMixed.usage).toEqual({
+      input: 2500,
+      output: 300,
+      input_uncached: null,
+      cache_read: null,
+      cache_write: null,
+      source: 'provider_usage',
+    });
+
+    // If any step omits usage altogether, source becomes null (never claims full provider telemetry).
+    const noUsage = scripted([{ toolCalls: [call('lookup', { q: 1 }, 'a')], usage: { input: 100, output: 10 } }, { text: 'done' }]);
+    const rNoUsage = await runAgent({ complete: noUsage.complete, system: 's', messages: [{ role: 'user', content: 'hi' }], tools, runTool: async () => ({ v: 1 }) });
+    expect(rNoUsage.usage).toEqual({
+      input: 100,
+      output: 10,
+      input_uncached: null,
+      cache_read: null,
+      cache_write: null,
+      source: null,
+    });
+  });
+
+  it('deduplicates repeated identical large tool calls in messages while preserving transcript and tool budget', async () => {
+    const bigPayload = { ref: 'deaths:axe', summary: 'x'.repeat(500), events: [{ t: 100, detail: 'y'.repeat(500) }] };
+    const m = scripted([
+      { toolCalls: [call('lookup', { hero: 'axe', limit: 5 }, 'c1')] },
+      // Identical canonical arguments with keys in reversed order:
+      { toolCalls: [call('lookup', { limit: 5, hero: 'axe' }, 'c2')] },
+      { text: 'finished' },
+    ]);
+    const runTool = vi.fn(async () => bigPayload);
+    const events: any[] = [];
+    const r = await runAgent({
+      complete: m.complete,
+      system: 's',
+      messages: [{ role: 'user', content: 'check' }],
+      tools,
+      runTool,
+      onEvent: (e: any) => events.push(e),
+    });
+    expect(r.status).toBe('answered');
+    expect(runTool).toHaveBeenCalledTimes(1);
+    expect(r.duplicate_tool_calls).toBe(1);
+    // Transcript keeps the full result intact for downstream verification.
+    expect(r.transcript).toEqual([{ name: 'lookup', args: { hero: 'axe', limit: 5 }, result: bigPayload }]);
+    const toolMsgs = r.messages.filter((msg: any) => msg.role === 'tool') as any[];
+    expect(toolMsgs).toHaveLength(2);
+    expect(toolMsgs[0].content).toBe(JSON.stringify(bigPayload));
+    const dup = JSON.parse(toolMsgs[1].content);
+    expect(dup).toMatchObject({ duplicate_of: 'c1', tool: 'lookup' });
+    expect(toolMsgs[1].content.length).toBeLessThan(toolMsgs[0].content.length / 4);
+    expect(events.some((e) => e.type === 'tool_end' && e.duplicate === true)).toBe(true);
+
+    // Pre-seeded messages (e.g. a repair round) also deduplicate against earlier results in context.
+    const repairModel = scripted([
+      { toolCalls: [call('lookup', { hero: 'axe', limit: 5 }, 'r1')] },
+      { text: 'repaired' },
+    ]);
+    const repairRunTool = vi.fn(async () => bigPayload);
+    const rRepair = await runAgent({
+      complete: repairModel.complete,
+      system: 's',
+      messages: r.messages.slice(0, 3), // user + assistant(c1) + tool(bigPayload)
+      tools,
+      runTool: repairRunTool,
+    });
+    expect(repairRunTool).not.toHaveBeenCalled();
+    expect(rRepair.duplicate_tool_calls).toBe(1);
+    expect(JSON.parse((rRepair.messages.at(-2) as any).content)).toMatchObject({ duplicate_of: 'c1', tool: 'lookup' });
+
+    // Failed tool results ({ error: ... }) are never cached/deduplicated so transient errors can be retried.
+    let errCalls = 0;
+    const retryErr = scripted([
+      { toolCalls: [call('lookup', { hero: 'axe' }, 'e1')] },
+      { toolCalls: [call('lookup', { hero: 'axe' }, 'e2')] },
+      { text: 'ok' },
+    ]);
+    const rErr = await runAgent({
+      complete: retryErr.complete,
+      system: 's',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools,
+      runTool: async () => {
+        errCalls += 1;
+        return errCalls === 1 ? { error: 'transient_failure', detail: 'z'.repeat(400) } : bigPayload;
+      },
+    });
+    expect(errCalls).toBe(2);
+    expect(rErr.duplicate_tool_calls).toBe(0);
+    expect(rErr.transcript).toHaveLength(2);
+  });
 });
 
 describe('openAiCompatible', () => {
@@ -87,8 +212,40 @@ describe('openAiCompatible', () => {
       tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })),
       thinking: { type: 'disabled' },
     }, { signal });
-    expect(out).toEqual({ text: '', toolCalls: [{ id: 't1', name: 'lookup', args: { q: 2 } }, { id: 't2', name: 'lookup', args: {}, argsError: true }, { id: 't3', name: 'lookup', args: {}, argsError: true }], usage: { input: 7, output: 3 } });
+    expect(out).toEqual({
+      text: '',
+      toolCalls: [{ id: 't1', name: 'lookup', args: { q: 2 } }, { id: 't2', name: 'lookup', args: {}, argsError: true }, { id: 't3', name: 'lookup', args: {}, argsError: true }],
+      usage: { input: 7, output: 3, input_uncached: null, cache_read: null, cache_write: null, source: 'provider_usage' },
+    });
   });
+
+  it('extracts DeepSeek, OpenAI, and Anthropic-compatible cache token breakdowns without fabricating zeros', async () => {
+    const runWith = async (usage: any) => openAiCompatible({
+      client: { chat: { completions: { create: async () => ({ choices: [{ message: { content: 'ok' } }], usage }) } } },
+      model: 'm',
+    })({ system: 's', messages: [], tools: [] });
+
+    // DeepSeek: prompt_cache_hit_tokens + prompt_cache_miss_tokens (cache_write stays null)
+    expect((await runWith({ prompt_tokens: 10_000, completion_tokens: 1200, prompt_cache_hit_tokens: 7200, prompt_cache_miss_tokens: 2800 })).usage).toEqual({
+      input: 10_000, output: 1200, input_uncached: 2800, cache_read: 7200, cache_write: null, source: 'provider_usage',
+    });
+
+    // OpenAI: prompt_tokens_details.cached_tokens (input_uncached derived cleanly, cache_write stays null)
+    expect((await runWith({ prompt_tokens: 8000, completion_tokens: 900, prompt_tokens_details: { cached_tokens: 5000 } })).usage).toEqual({
+      input: 8000, output: 900, input_uncached: 3000, cache_read: 5000, cache_write: null, source: 'provider_usage',
+    });
+
+    // Anthropic-compatible proxy: cached_tokens + cache_creation_input_tokens
+    expect((await runWith({ prompt_tokens: 9000, completion_tokens: 600, prompt_tokens_details: { cached_tokens: 4000 }, cache_creation_input_tokens: 1500 })).usage).toEqual({
+      input: 9000, output: 600, input_uncached: 3500, cache_read: 4000, cache_write: 1500, source: 'provider_usage',
+    });
+
+    // Cache write reported without cache_read -> cache_read & input_uncached remain null (unknown is not 0)
+    expect((await runWith({ prompt_tokens: 5000, completion_tokens: 400, cache_creation_input_tokens: 1000 })).usage).toEqual({
+      input: 5000, output: 400, input_uncached: null, cache_read: null, cache_write: 1000, source: 'provider_usage',
+    });
+  });
+
   it('a thinking model\'s reasoning travels back with its tool calls', async () => {
     const replies = [
       { choices: [{ message: { content: '', reasoning_content: 'look it up first', tool_calls: [{ id: 't1', function: { name: 'lookup', arguments: '{}' } }] } }] },
@@ -110,6 +267,10 @@ describe('openAiCompatible', () => {
     const create = vi.fn(async () => ({}));
     const out = await openAiCompatible({ client: { chat: { completions: { create } } }, model: 'm' })({ system: 's', messages: [], tools: [] });
     expect((create.mock.calls[0] as any[])[0]).not.toHaveProperty('tools');
-    expect(out).toEqual({ text: '', toolCalls: [], usage: { input: 0, output: 0 } });
+    expect(out).toEqual({
+      text: '',
+      toolCalls: [],
+      usage: { input: 0, output: 0, input_uncached: null, cache_read: null, cache_write: null, source: null },
+    });
   });
 });

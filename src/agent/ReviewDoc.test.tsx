@@ -367,3 +367,93 @@ describe('ReviewDoc: the story as a chain of causes (#437 P4)', () => {
     expect(screen.getByText('Valid')).toBeTruthy();
   });
 });
+
+describe('ReviewDoc: transparent token usage footer (#488)', () => {
+  const PRICE_RE = /[$¥￥]|CNY|USD|元|角/;
+
+  it('shows exact input/cache breakdown, output, steps, tools, repair rounds, stages, model, and source in en & zh with zero fabricated prices', () => {
+    const runMeta = {
+      model: 'deepseek/deepseek-chat',
+      steps: 8,
+      tool_calls: 18,
+      repair_rounds: 1,
+      truncation_retries: 0,
+      usage_source: 'provider_usage' as const,
+      usage: {
+        input: 12_400,
+        output: 2100,
+        input_uncached: 3300,
+        cache_read: 9100,
+        cache_write: null,
+        source: 'provider_usage' as const,
+        stages: {
+          first: { input: 9000, output: 1500, input_uncached: 2800, cache_read: 6200, cache_write: null, source: 'provider_usage' as const, steps: 6, tool_calls: 16 },
+          repair: { input: 3400, output: 600, input_uncached: 500, cache_read: 2900, cache_write: null, source: 'provider_usage' as const, steps: 2, tool_calls: 2 },
+        },
+      },
+    };
+
+    show(review(), { runMeta });
+    const footer = document.querySelector('footer.ag-usage')!;
+    expect(footer).not.toBeNull();
+    expect(footer.textContent).toContain('12.4k in (9.1k cached, 3.3k uncached) · 2.1k out · 8 steps · 18 tools · 1 repair · deepseek/deepseek-chat');
+    expect(footer.textContent).toContain('Source: provider usage (tokens only, no price estimate)');
+    expect(footer.textContent).toContain('First pass');
+    expect(footer.textContent).toContain('Fact repair');
+    expect(footer.textContent).not.toMatch(PRICE_RE);
+    cleanup();
+
+    render(<ReviewDoc matchId="7" review={review({ lang: 'zh' })} lang="zh" onAsk={() => {}} runMeta={runMeta} />);
+    const zhFooter = document.querySelector('footer.ag-usage')!;
+    expect(zhFooter.textContent).toContain('输入 12.4k（缓存命中 9.1k，未命中 3.3k） · 输出 2.1k · 8 轮 · 18 次工具 · 1 次修订 · deepseek/deepseek-chat');
+    expect(zhFooter.textContent).toContain('来源：模型接口统计（仅展示真实 token，不估算费用）');
+    expect(zhFooter.textContent).toContain('首次生成');
+    expect(zhFooter.textContent).toContain('事实修订');
+    expect(zhFooter.textContent).not.toMatch(PRICE_RE);
+  });
+
+  it('never fabricates 0 cached when cache fields are null, and states unavailable when provider omitted usage', () => {
+    show(review(), {
+      runMeta: {
+        model: 'openai/gpt-5',
+        steps: 5,
+        tool_calls: 10,
+        repair_rounds: 0,
+        usage_source: 'provider_usage',
+        usage: { input: 8500, output: 1100, input_uncached: null, cache_read: null, cache_write: null, source: 'provider_usage' },
+      },
+    });
+    const noCache = document.querySelector('footer.ag-usage')!;
+    expect(noCache.textContent).toContain('8.5k in · 1.1k out · 5 steps · 10 tools · openai/gpt-5');
+    expect(noCache.textContent).not.toContain('cached');
+    expect(noCache.textContent).not.toContain('uncached');
+    expect(noCache.textContent).not.toMatch(PRICE_RE);
+    cleanup();
+
+    render(
+      <ReviewDoc
+        matchId="7"
+        review={review({ lang: 'zh' })}
+        lang="zh"
+        onAsk={() => {}}
+        runMeta={{
+          model: 'custom/model',
+          steps: 4,
+          tool_calls: 6,
+          usage_source: null,
+          usage: { input: 0, output: 0, input_uncached: null, cache_read: null, cache_write: null, source: null },
+        }}
+      />,
+    );
+    const unavailable = document.querySelector('footer.ag-usage')!;
+    expect(unavailable.textContent).toContain('未返回 token 用量 · 4 轮 · 6 次工具 · custom/model');
+    expect(unavailable.textContent).toContain('来源：模型接口未返回用量');
+    expect(unavailable.textContent).not.toContain('输入 0');
+    expect(unavailable.textContent).not.toMatch(PRICE_RE);
+  });
+
+  it('omits the usage footer cleanly on legacy reviews without runMeta', () => {
+    show(review());
+    expect(document.querySelector('footer.ag-usage')).toBeNull();
+  });
+});

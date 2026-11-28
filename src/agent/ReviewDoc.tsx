@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { fetchEvidence, type ChapterAssessment, type ChapterTopic, type DeepReview } from './api';
+import { fetchEvidence, type ChapterAssessment, type ChapterTopic, type DeepReview, type ReviewRunMeta } from './api';
 import { EvidenceCard } from './EvidenceCard';
 import { PLANS, planByKey } from '../../lib/agent/plans.js';
 import { FindingFeedback } from './FindingFeedback';
+import { formatUsageSummary } from './usageFormat';
 
 /**
  * The review as a coaching document.
@@ -130,6 +131,8 @@ const T = {
   replanGo: { en: 'Rewrite it', zh: '重写', ru: 'Переписать' },
   intentBusy: { en: 'The coach is still answering your last question. Pick again when it is done.', zh: '教练还在回答上一个问题，等它答完再选。', ru: 'Тренер ещё отвечает на прошлый вопрос. Повторите чуть позже.' },
   intentAsk: { en: 'What were you going for this game? Tell the coach: it checks your plan against the replay.', zh: '这局你本来想怎么打？告诉教练，它会对照录像回答。', ru: 'Какой план был на эту игру? Скажите тренеру — он сверит его с реплеем.' },
+  usageLabel: { en: 'Review token usage', zh: '本次复盘用量', ru: 'Расход токенов на разбор' },
+  usageStages: { en: 'Stage breakdown', zh: '分阶段明细', ru: 'По этапам' },
 } as const;
 
 /** What a player may have been going for (lib/agent/plans.js). The label is the button; `said` is how it reads inside the question. */
@@ -232,7 +235,7 @@ const FightPresenceStrip: React.FC<{ falls: FallsByMyPart; fightsRead: number; f
   );
 };
 
-export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; /** The match record (line-ups, items, gold), shown under the whole-game section. */ board?: React.ReactNode; /** Sharing the review. */ share?: React.ReactNode; /** The review is the default model's, whose rewrite takes the usual two to three minutes; false for another model's. */ quick?: boolean; /** Ask under each finding whether it was right: the plan this review was asked with, the id of the model that wrote it and the prompt version it was written under (they name the stored review the word is about). Absent: not asked. */ feedback?: { plan?: string | null; model?: string | null; version: number } | null }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, board = null, feedback = null, share = null, quick = true }) => {
+export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: Lang; onAsk: (label: string, refs: string[]) => void; /** Send a plan question to the coach; false when it could not be sent (the coach is still answering). */ onPlan?: (question: string) => boolean; /** Have the whole review made again for this plan (the page opens its start, with the plan picked). */ onReplan?: (plan: string) => void; /** The match record (line-ups, items, gold), shown under the whole-game section. */ board?: React.ReactNode; /** Sharing the review. */ share?: React.ReactNode; /** The review is the default model's, whose rewrite takes the usual two to three minutes; false for another model's. */ quick?: boolean; /** Actual token usage, steps, tool calls, repair rounds, and model from this run (no fabricated pricing). */ runMeta?: ReviewRunMeta | null; /** Ask under each finding whether it was right: the plan this review was asked with, the id of the model that wrote it and the prompt version it was written under (they name the stored review the word is about). Absent: not asked. */ feedback?: { plan?: string | null; model?: string | null; version: number } | null }> = ({ matchId, review, lang, onAsk, onPlan, onReplan, board = null, feedback = null, share = null, quick = true, runMeta = null }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   // The release, and the hotfix within it when the game was played after one ("7.41f（2026-10-07 热修复后）").
   const patchName = (dp: { name: string; hotfix?: string }) => t(dp.hotfix ? T.patchHotfix : T.patchPlain).replace('{p}', dp.name).replace('{d}', (dp.hotfix ?? '').slice(0, 10));
@@ -285,6 +288,29 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
   const hasHighlights = highlights.length > 0;
   const hasChapters = chapters.length > 0;
   const isCoachLayout = Boolean(openingNote || hasHighlights || hasChapters || encouragement);
+  const formattedUsage = formatUsageSummary(runMeta, lang);
+  const usageFooter = formattedUsage && (
+    <footer className="ag-usage" aria-label={t(T.usageLabel)}>
+      <p className="ag-usage-line">
+        <span className="ag-usage-label">{t(T.usageLabel)}</span>
+        <span className="ag-usage-stats">{formattedUsage.summary}</span>
+      </p>
+      <p className="ag-usage-source">{formattedUsage.sourceLabel}</p>
+      {formattedUsage.stages.length > 1 && (
+        <details className="ag-usage-stages">
+          <summary>{t(T.usageStages)}</summary>
+          <ul>
+            {formattedUsage.stages.map((st) => (
+              <li key={st.key}>
+                <b>{st.label}</b>
+                <span>{st.text}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </footer>
+  );
 
   const wholeGame = (showVerdict: boolean) => (
     <section className="ag-whole">
@@ -460,6 +486,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
         {wholeGame(false)}
 
         {blindSpots.length > 0 && <section className="ag-blind"><h2>{t(T.blind)}</h2><ul className="ag-plain">{blindSpots.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
+        {usageFooter}
       </article>
     );
   }
@@ -515,6 +542,7 @@ export const ReviewDoc: React.FC<{ matchId: string; review: DeepReview; lang: La
       {wholeGame(Boolean(first))}
 
       {blindSpots.length > 0 && <section className="ag-blind"><h2>{t(T.blind)}</h2><ul className="ag-plain">{blindSpots.map((line, i) => <li key={i}>{line}</li>)}</ul></section>}
+      {usageFooter}
     </article>
   );
 };
