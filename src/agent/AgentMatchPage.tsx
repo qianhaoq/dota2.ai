@@ -16,6 +16,7 @@ import { MatchBoard } from './MatchBoard';
 import { planKey } from '../../lib/agent/plans.js';
 import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelWait, writesSlowly } from '../../lib/agent/models.js';
 import { ReviewDoc } from './ReviewDoc';
+import { HeroTrackMap } from './HeroTrackMap';
 import { WaitDeaths } from './WaitDeaths';
 import { WaitFacts } from './WaitFacts';
 import { ShareBar } from './ShareBar';
@@ -875,6 +876,7 @@ export const AgentMatchPage: React.FC = () => {
               } : null}
               feedback={Number.isInteger(state.prompt_version) && !state.stale_version ? { plan, model: writtenBy, version: state.prompt_version as number } : null}
             />
+            {hasTrace && <HeroTrackMap matchId={matchId} hero={hero.hero} lang={lang} heroes={roster} collapsible />}
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
             {/* Which model wrote it, and the choice of another: after the review, not between the reader and its first line. */}
             {offered.length > 1 && (
@@ -939,6 +941,7 @@ export const AgentMatchPage: React.FC = () => {
             <OwnModelCallout where="waiting" />
             <WaitDeaths matchId={matchId} hero={heroKey} lang={lang} />
             <WaitFacts matchId={matchId} hero={heroKey} lang={lang} />
+            <HeroTrackMap matchId={matchId} hero={heroKey} lang={lang} heroes={roster} collapsible />
           </>
         )}
         {/* The match record needs no replay: line-ups, items and the result are there from the first second of the wait, also while the replay is still being fetched. */}
@@ -976,6 +979,7 @@ export const AgentMatchPage: React.FC = () => {
           </>
         )}
       </div>
+      {hasTrace && heroKey && state && <HeroTrackMap matchId={matchId} hero={heroKey} lang={lang} heroes={roster} collapsible />}
       {scoreboard}
     </Shell>
   );

@@ -213,6 +213,94 @@ export function fetchMoment(matchId: string, hero: string, lang: string, t: numb
   return p;
 }
 
+/** One contiguous polyline of real 1 Hz alive positions (lib/agent/track.js). */
+export interface TrackSegment {
+  from: number;
+  to: number;
+  points: [number, number, number][];
+}
+export interface TrackBreak {
+  from_t: number;
+  to_t: number;
+  from_x: number;
+  from_y: number;
+  to_x: number;
+  to_y: number;
+  reason: 'teleport' | 'dead' | 'missing';
+}
+export interface TrackHeatCell {
+  gx: number;
+  gy: number;
+  seconds: number;
+}
+export interface TrackDeath {
+  t: number;
+  clock: string;
+  x: number | null;
+  y: number | null;
+  killer: string | null;
+  place: string | null;
+  place_name: string | null;
+}
+/** One hero's real movement path and 2D activity heatmap over a game-time window (zero model calls). */
+export interface HeroTrack {
+  status: 'ok';
+  hero: string;
+  hero_name: string;
+  side: 'me' | 'ally' | 'enemy';
+  from: number;
+  to: number;
+  trace_start: number;
+  duration: number;
+  heroes: { hero: string; hero_name: string; side: 'me' | 'ally' | 'enemy' }[];
+  segments: TrackSegment[];
+  breaks: TrackBreak[];
+  heat: {
+    grid_size: number;
+    bounds: { min_x: number; max_x: number; min_y: number; max_y: number; size: number };
+    max_seconds: number;
+    cells: TrackHeatCell[];
+  };
+  deaths: TrackDeath[];
+  stats: {
+    total_seconds: number;
+    alive_sampled_seconds: number;
+    dead_seconds: number;
+    missing_seconds: number;
+  };
+  names: Record<string, string>;
+  icons: Record<string, string>;
+  gaps?: { topic: string; reason: string; missing_seconds?: number }[];
+}
+const trackCache = new Map<string, Promise<HeroTrack>>();
+/** Movement track and heatmap are pure functions of the replay, so each query is cached for the session. */
+export function fetchTrack(
+  matchId: string,
+  hero: string,
+  lang: string,
+  opts: { from?: number | null; to?: number | null; viewer?: string | null } = {},
+): Promise<HeroTrack> {
+  const from = opts.from != null && Number.isFinite(opts.from) ? Math.floor(opts.from) : null;
+  const to = opts.to != null && Number.isFinite(opts.to) ? Math.floor(opts.to) : null;
+  const viewer = opts.viewer ? opts.viewer : null;
+  const key = `${matchId}|${hero}|${viewer ?? ''}|${lang}|${from ?? ''}|${to ?? ''}`;
+  let p = trackCache.get(key);
+  if (!p) {
+    const qs = new URLSearchParams({ hero, lang });
+    if (viewer) qs.set('viewer', viewer);
+    if (from != null) qs.set('from', String(from));
+    if (to != null) qs.set('to', String(to));
+    p = runtimeFetch(`/api/agent/${enc(matchId)}/track?${qs.toString()}`).then(async (r) => {
+      const out = await json<HeroTrack>(r);
+      if (!out || !Array.isArray(out.segments) || !out.heat || !out.stats) throw new AgentApiError('invalid_track', r.status);
+      return out;
+    });
+    p.catch(() => trackCache.delete(key));
+    trackCache.set(key, p);
+  }
+  return p;
+}
+
 export type FindingRating = 'right' | 'wrong' | 'useless';
 /** Why a finding was wrong (fact, judgment, not_mine) or not useful (knew, vague, minor): lib/agent/feedback.js. */
 export type FindingReason = 'fact' | 'judgment' | 'not_mine' | 'knew' | 'vague' | 'minor';
@@ -230,6 +318,7 @@ export async function sendFindingFeedback(matchId: string, body: { hero: string;
 const evidenceCache = new Map<string, Promise<EvidenceRecord>>();
 export function clearAgentCaches(): void {
   momentCache.clear();
+  trackCache.clear();
   evidenceCache.clear();
 }
 /** The tool record behind a ref. Records are pure functions of the replay, so they are cached for the session. */

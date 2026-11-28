@@ -793,6 +793,13 @@ describe('DSH local service end-to-end (service.js)', () => {
       const mom = await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/moment?hero=beastmaster&lang=zh&t=1825' });
       expect(mom.status).toBe(200);
       expect(mom.body.frames).toHaveLength(19);
+      const trk = await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/track?hero=beastmaster&from=0&to=600&lang=zh' });
+      expect(trk.status).toBe(200);
+      expect(trk.body).toMatchObject({ status: 'ok', hero: 'beastmaster', hero_name: '兽王', side: 'me', from: 0, to: 600, duration: 2696 });
+      expect(trk.body.segments.length).toBeGreaterThan(0);
+      expect(trk.body.heat.cells.length).toBeGreaterThan(0);
+      expect((await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/track?hero=beastmaster&from=600&to=100' })).status).toBe(400);
+      expect((await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/track?hero=pudge' })).status).toBe(404);
 
       // 4. Streaming replay chat (`/api/agent/9100904020/chat`) yields live tool step + verified answer
       const chatFrames = [];
