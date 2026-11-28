@@ -258,7 +258,11 @@ describe('replay_review over MCP, on the real agent service and router', () => {
 
   const call = (name: string, args: any, id: string) => ({ id, name, args });
   const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。' };
-  const submit = { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], next_game: ['留咆哮'], blind_spots: ['视野'] };
+  const chapters = [
+    { topic: 'midgame', title: '黑皇杖窗口', analysis: '幻影刺客开了 7 次黑皇杖，27:27 吼进黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+    { topic: 'skills_and_items', title: '大招留给核心', analysis: '对面幻影刺客 7 次黑皇杖需要针对性大招。', evidence: [{ refs: ['immunity:phantom_assassin'], fact: '幻影刺客开了 7 次黑皇杖。' }] },
+  ];
+  const submit = { verdict: '咆哮没有留给幻影刺客。', findings: [finding], chapters, blind_spots: ['视野'] };
   let starts = 0;
   const complete = async (o: any) => {
     if (!o.tools?.length && String(o.system ?? '').includes('Dota 2 coaching translator')) {

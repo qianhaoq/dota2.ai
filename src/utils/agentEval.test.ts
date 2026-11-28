@@ -468,6 +468,28 @@ describe('the game\'s main cause in the story (#437 P5)', () => {
   it('a review without a story is read on its mainline for cause_named, and is never story_ok', () => {
     expect(rubricOf(stored({ mainline: ['0:00–10:00: the lane went badly.'] }), rubric)).toMatchObject({ cause_named: true, story_ok: false });
   });
+  it('a v84 chapter-only review without story gets story_ok when a chapter names the cause in window AND game_plan.main_reason matches accepted whose', () => {
+    const chapter = (title: string, analysis: string) => ({ topic: 'laning', title, analysis, evidence: [{ refs: ['lane:x'], clock: '5:00', fact: '5:00 lost lane.' }] });
+    // Matching chapter in window + accepted main_reason (your_play → me, team_play → team)
+    expect(rubricOf(stored({
+      chapters: [chapter('Laning breakdown', '0:00–10:00 the lane went badly.')],
+      game_plan: { main_reason: 'your_play', why: 'Died repeatedly in lane.' },
+    }), rubric)).toMatchObject({ cause_named: true, story_ok: true });
+    expect(rubricOf(stored({
+      chapters: [chapter('Laning breakdown', '0:00–10:00 the lane went badly.')],
+      game_plan: { main_reason: 'team_play', why: 'Team abandoned lane.' },
+    }), rubric)).toMatchObject({ cause_named: true, story_ok: true });
+    // Matching chapter in window, but main_reason outside accepted whose (enemy_play → enemy)
+    expect(rubricOf(stored({
+      chapters: [chapter('Laning breakdown', '0:00–10:00 the lane went badly.')],
+      game_plan: { main_reason: 'enemy_play', why: 'Enemy rotated well.' },
+    }), rubric)).toMatchObject({ cause_named: true, story_ok: false });
+    // Chapter outside cause window: neither
+    expect(rubricOf(stored({
+      chapters: [{ topic: 'midgame', title: 'Late lane', analysis: '24:00 the lane push failed.', evidence: [{ refs: ['tempo:x'], clock: '24:00', fact: '24:00 fight.' }] }],
+      game_plan: { main_reason: 'your_play', why: 'Late mistake.' },
+    }), rubric)).toMatchObject({ cause_named: false, story_ok: false });
+  });
   it('no story_cause in the rubric: neither is scored', () => {
     const { story_cause: _c, ...plain } = rubric;
     expect(rubricOf(stored({ story: [link({})] }), plain)).toMatchObject({ cause_named: null, story_ok: null });

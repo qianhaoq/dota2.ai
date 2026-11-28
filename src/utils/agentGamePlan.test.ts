@@ -25,7 +25,11 @@ const plan = {
     { refs: ['phase:beastmaster:3'], fact: '20:00 到 30:00 对面拆了 3 座塔（20:02、24:28、25:59），你们在 25:05 拆了 1 座。' },
   ],
 };
-const review = (game_plan: any, extra: any = {}) => ({ verdict: '咆哮没有留给幻影刺客的 BKB。', highlights: [], findings: [finding], chapters: [], blind_spots: ['视野'], ...(game_plan === undefined ? {} : { game_plan }), ...extra });
+const defaultChapters = [
+  { topic: 'midgame', title: '中期团战节奏', analysis: '10 次咆哮里只有 4 次给了幻影刺客。', evidence: [{ refs: ['audit:beastmaster:primal_roar'], fact: '10 次咆哮里 4 次的目标是幻影刺客。' }] },
+  { topic: 'vision_and_macro', title: '赢团转推节奏', analysis: '16 波团战里少死人的 6 波只拆到 1 次建筑。', evidence: [{ refs: ['tempo:beastmaster'], fact: '16 波团战里你们少死人的 6 波，之后拆到建筑的只有 22:57 这 1 波。' }] },
+];
+const review = (game_plan: any, extra: any = {}) => ({ verdict: '咆哮没有留给幻影刺客的 BKB。', highlights: [], findings: [finding], chapters: defaultChapters, blind_spots: ['视野'], ...(game_plan === undefined ? {} : { game_plan }), ...extra });
 const run = (replies: any[]) => { const m = scripted([investigate, ...replies]); return runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' }).then((r: any) => ({ r, m })); };
 const submit = (r: any, id = 's') => ({ toolCalls: [call('submit_review', r, id)] });
 
