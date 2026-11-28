@@ -17,6 +17,17 @@
   flex: 1 1 auto;
 }
 
+.dota2ai-dsh-host .ag-subnav {
+  top: 52px;
+}
+
+@media (min-width: 1121px) {
+  .dota2ai-dsh-host .ag-chat {
+    top: 108px;
+    max-height: calc(var(--app-height, 100dvh) - 126px);
+  }
+}
+
 .dota2ai-dsh-error {
   margin: auto;
   max-width: 440px;

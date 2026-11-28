@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MAP_BOUNDS } from '../../lib/agent/mapBounds.js';
 import { clearAgentCaches, type HeroTrack, type Moment } from './api';
-import { HeroTrackMap } from './HeroTrackMap';
+import { HeroTrackMap, type HeroTrackMapHandle } from './HeroTrackMap';
 
 let seq = 0;
 const freshMatch = () => String(9200000000 + (seq += 1));
@@ -278,5 +278,32 @@ describe('HeroTrackMap', () => {
     const svenDeath = await screen.findByRole('button', { name: 'Death at 15:02 — replay on map' });
     fireEvent.click(svenDeath);
     expect(onPlayMoment).toHaveBeenLastCalledWith(902, 'sven');
+  });
+
+  it('supports 5v5 quick-avatar switching and imperative focusWindow(preset, mode) opening', async () => {
+    const id = freshMatch();
+    const urls = stubFetch((u) => {
+      const parsed = new URL(u, 'http://localhost');
+      const h = parsed.searchParams.get('hero') ?? 'beastmaster';
+      const from = parsed.searchParams.has('from') ? Number(parsed.searchParams.get('from')) : 0;
+      const to = parsed.searchParams.has('to') ? Number(parsed.searchParams.get('to')) : 2400;
+      return makeTrack({ hero: h, hero_name: h === 'sven' ? 'Sven' : 'Beastmaster', side: h === 'sven' ? 'ally' : 'me', from, to });
+    });
+
+    const ref = React.createRef<HeroTrackMapHandle>();
+    render(<HeroTrackMap ref={ref} matchId={id} hero="beastmaster" lang="en" collapsible />);
+    expect(urls).toHaveLength(0);
+
+    // Imperatively focus 0-10m heatmap window (used by walkthrough chapter map actions).
+    React.act(() => {
+      ref.current?.focusWindow('0-10', 'heat');
+    });
+    expect(await screen.findByRole('group', { name: 'Beastmaster Heatmap from 0:00 to 10:00' })).toBeTruthy();
+    expect(urls.some((u) => u.includes('from=0') && u.includes('to=600'))).toBe(true);
+
+    // Quick-switch avatar bar switches directly to Sven without using the dropdown.
+    const avatarGroup = screen.getByRole('group', { name: 'Quick switch hero' });
+    fireEvent.click(avatarGroup.querySelector('button[title="Sven (Ally)"]')!);
+    expect(await screen.findByRole('group', { name: 'Sven Heatmap from 0:00 to 10:00' })).toBeTruthy();
   });
 });

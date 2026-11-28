@@ -449,4 +449,28 @@ describe('ReviewDoc: transparent token usage footer (#488)', () => {
     show(review());
     expect(document.querySelector('footer.ag-usage')).toBeNull();
   });
+
+  it('triggers chapter-to-map jumps and chapter-to-coach follow-ups cleanly', () => {
+    const onAsk = vi.fn();
+    const onJumpMap = vi.fn();
+    show(review({
+      chapters: [
+        { topic: 'laning', title: 'Lane control', analysis: 'Held wave well.', evidence: [{ refs: ['lane:axe'], clock: '4:10', fact: '4:10 wave' }] },
+        { topic: 'vision_and_macro', title: 'Map macro', analysis: 'Good rotation.', evidence: [{ refs: ['tempo:axe'], fact: 'Tempo ok.' }] },
+      ],
+    }), { onAsk, onJumpMap });
+
+    const laneCard = document.getElementById('chapter-0')!;
+    const mapBtn = within(laneCard).getByRole('button', { name: '0–10m map' });
+    mapBtn.click();
+    expect(onJumpMap).toHaveBeenCalledWith('0-10', 'path');
+
+    const askBtn = within(laneCard).getByRole('button', { name: 'Ask coach' });
+    askBtn.click();
+    expect(onAsk).toHaveBeenCalledWith('Lanes & laning: Lane control', ['lane:axe']);
+
+    const macroCard = document.getElementById('chapter-1')!;
+    within(macroCard).getByRole('button', { name: 'Activity heatmap' }).click();
+    expect(onJumpMap).toHaveBeenLastCalledWith('full', 'heat');
+  });
 });

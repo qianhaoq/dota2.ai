@@ -1,8 +1,9 @@
-import React, { useEffect, useId, useMemo, useState } from 'react';
+import React, { forwardRef, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { MAP_BOUNDS } from '../../lib/agent/mapBounds.js';
 import { trackEvent } from '../services/analytics';
 import { fetchTrack, type AgentHero, type HeroTrack, type TrackDeath } from './api';
 import { MomentReplay, heroIcon } from './MomentReplay';
+import { MapRouteIcon } from './DotaIcons';
 
 /**
  * Interactive Hero Movement Path & Activity Heatmap over a parsed replay trace (zero model calls).
@@ -27,6 +28,7 @@ const T = {
   title: { en: 'Movement path & activity heatmap', zh: '移动路径与活动热区', ru: 'Маршрут и тепловая карта активности' },
   subtitle: { en: 'Replay positions by time window · instant', zh: '按时间段查看录像站位 · 即开即看', ru: 'Позиции из реплея по отрезкам · мгновенно' },
   heroLabel: { en: 'Hero', zh: '选择英雄', ru: 'Герой' },
+  heroQuickSwitch: { en: 'Quick switch hero', zh: '快捷切换英雄', ru: 'Быстрый выбор героя' },
   modeGroup: { en: 'Map view mode', zh: '视图模式', ru: 'Режим карты' },
   modePath: { en: 'Path', zh: '移动路径', ru: 'Маршрут' },
   modeHeat: { en: 'Heatmap', zh: '活动热区', ru: 'Тепловая карта' },
@@ -128,6 +130,14 @@ function heatColor(ratio: number): { fill: string; opacity: number } {
   };
 }
 
+export type TrackMode = Mode;
+export type TrackPresetId = PresetId;
+
+export interface HeroTrackMapHandle {
+  /** Open the tactical map, switch to a time preset (and optional path/heat mode), and scroll into view. */
+  focusWindow: (preset: PresetId, nextMode?: Mode) => void;
+}
+
 export interface HeroTrackMapProps {
   matchId: string;
   /** Default hero (the reviewed player's hero). */
@@ -141,6 +151,8 @@ export interface HeroTrackMapProps {
   collapsible?: boolean;
   /** Initial open state when `collapsible` is true (default false — loads on demand). */
   defaultOpen?: boolean;
+  /** Optional anchor id for sticky navigation jumps. */
+  anchorId?: string;
 }
 
 interface PathChunk {
@@ -160,7 +172,7 @@ interface PathArrow {
   color: string;
 }
 
-export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
+export const HeroTrackMap = forwardRef<HeroTrackMapHandle, HeroTrackMapProps>(({
   matchId,
   hero,
   lang,
@@ -168,9 +180,11 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
   onPlayMoment,
   collapsible = false,
   defaultOpen = false,
-}) => {
+  anchorId,
+}, ref) => {
   const t = (b: Record<Lang, string>) => b[lang];
   const uid = useId();
+  const rootRef = useRef<HTMLElement | null>(null);
   const [open, setOpen] = useState(!collapsible || defaultOpen);
   const [activeHero, setActiveHero] = useState(hero);
   const [mode, setMode] = useState<Mode>('path');
@@ -364,6 +378,28 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
     setWin({ preset: p.id, from: p.from, to: p.to });
   };
 
+  useImperativeHandle(ref, () => ({
+    focusWindow: (preset, nextMode) => {
+      setOpen(true);
+      setRangeError(false);
+      setSelectedMoment(null);
+      if (nextMode) setMode(nextMode);
+      const spec: Record<PresetId, { from: number | null; to: number | null }> = {
+        full: { from: null, to: null },
+        '0-10': { from: 0, to: 600 },
+        '10-20': { from: 600, to: 1200 },
+        '20-30': { from: 1200, to: 1800 },
+        '30+': { from: 1800, to: Math.max(2400, duration) },
+        custom: { from: null, to: null },
+      };
+      const chosen = spec[preset] ?? spec.full;
+      setWin({ preset, from: chosen.from, to: chosen.to });
+      requestAnimationFrame(() => {
+        rootRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      });
+    },
+  }), [duration]);
+
   const handleCustomSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const a = Number(startMinInput);
@@ -459,6 +495,35 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
         </div>
       </div>
 
+      {heroOptions.length > 1 && (
+        <div className="ag-track-avatars" role="group" aria-label={t(T.heroQuickSwitch)}>
+          {heroOptions.map((opt) => {
+            const slug = data?.icons?.[opt.key];
+            const active = opt.key === activeHero;
+            return (
+              <button
+                key={`av-${opt.key}`}
+                type="button"
+                className={`ag-track-av is-${opt.side}${active ? ' is-on' : ''}`}
+                aria-pressed={active}
+                title={`${opt.label} (${sideTag(opt.side)})`}
+                onClick={() => {
+                  if (opt.key === activeHero) return;
+                  setActiveHero(opt.key);
+                  setData(null);
+                  setSelectedMoment(null);
+                }}
+              >
+                {slug
+                  ? <img src={heroIcon(slug)} alt="" className="ag-track-av-icon" loading="lazy" />
+                  : <span className="ag-track-av-dot" aria-hidden="true" />}
+                <span className="ag-track-av-name">{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div className="ag-track-timebar">
         <div className="ag-track-presets" role="group" aria-label={t(T.windowGroup)}>
           {presets.map((p) => (
@@ -521,22 +586,56 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
               >
                 <defs>
                   <clipPath id={clipEndId}><circle r="9" /></clipPath>
+                  <linearGradient id={`${uid}-river`} x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#5eb8e8" stopOpacity="0.1" />
+                    <stop offset="50%" stopColor="#5eb8e8" stopOpacity="0.28" />
+                    <stop offset="100%" stopColor="#5eb8e8" stopOpacity="0.1" />
+                  </linearGradient>
                 </defs>
-                {/* Base Dota 2 tactical minimap geometry (same bounds & orientation as MomentReplay / MiniMap) */}
+                {/* Authentic Dota 2 tactical minimap geometry (exact MAP_BOUNDS -8600..+8600 projection, zero vision/fog claims) */}
                 <rect x="0" y="0" width={S} height={S} rx="10" className="ag-replay-bg" />
+                {/* Subtle quadrant grid & terrain elevation terraces */}
                 <path className="ag-replay-grid" d={[1, 2, 3].map((n) => `M0 ${(S / 4) * n}H${S}M${(S / 4) * n} 0V${S}`).join('')} />
-                {/* Subtle lane guides: top, mid, bot */}
+                <path className="ag-track-terrain" d={`M 14 ${S - 118} Q 96 ${S - 110} 118 ${S - 14} M ${S - 14} 118 Q ${S - 96} 110 ${S - 118} 14`} />
+                {/* Top, Mid, Bot lane corridors */}
                 <path
                   className="ag-track-lanes"
                   d={`M 34 ${S - 34} L 34 34 L ${S - 34} 34 M 34 ${S - 34} L ${S - 34} 34 M 34 ${S - 34} L ${S - 34} ${S - 34} L ${S - 34} 34`}
                 />
-                {/* River along x + y = 0 */}
-                <line className="ag-track-river" x1="0" y1="0" x2={S} y2={S}><title>{t(T.river)}</title></line>
-                {/* Radiant (bottom-left) & Dire (top-right) bases */}
-                <rect x="6" y={S - 50} width="44" height="44" rx="6" className="ag-map-base is-radiant"><title>{t(T.radiant)}</title></rect>
-                <rect x={S - 50} y="6" width="44" height="44" rx="6" className="ag-map-base is-dire"><title>{t(T.dire)}</title></rect>
-                <text x="12" y={S - 12} className="ag-track-corner is-radiant">{t(T.radiant)}</text>
-                <text x={S - 12} y="20" textAnchor="end" className="ag-track-corner is-dire">{t(T.dire)}</text>
+                {/* Curved diagonal River along x + y = 0 */}
+                <path className="ag-track-river-bank" d={`M 6 6 Q ${S * 0.44} ${S * 0.56} ${S - 6} ${S - 6}`} />
+                <line className="ag-track-river" stroke={`url(#${uid}-river)`} x1="4" y1="4" x2={S - 4} y2={S - 4}><title>{t(T.river)}</title></line>
+                {/* Dual Roshan Pits (7.33+ NW & SE corners) & Twin Gate markers */}
+                <g className="ag-track-landmark" aria-hidden="true">
+                  <circle cx="58" cy="54" r="7.5" className="ag-track-pit" />
+                  <circle cx={S - 58} cy={S - 54} r="7.5" className="ag-track-pit" />
+                  <circle cx="24" cy="24" r="4" className="ag-track-gate" />
+                  <circle cx={S - 24} cy={S - 24} r="4" className="ag-track-gate" />
+                </g>
+                {/* Subtle lane tower reference dots (Radiant bottom-left, Dire top-right) */}
+                <g className="ag-track-towers is-radiant" aria-hidden="true">
+                  <circle cx="34" cy={S - 110} r="2.2" />
+                  <circle cx="34" cy={S - 185} r="2.2" />
+                  <circle cx="104" cy={S - 104} r="2.2" />
+                  <circle cx="144" cy={S - 144} r="2.2" />
+                  <circle cx="118" cy={S - 34} r="2.2" />
+                  <circle cx="235" cy={S - 34} r="2.2" />
+                </g>
+                <g className="ag-track-towers is-dire" aria-hidden="true">
+                  <circle cx={S - 118} cy="34" r="2.2" />
+                  <circle cx={S - 235} cy="34" r="2.2" />
+                  <circle cx={S - 104} cy="104" r="2.2" />
+                  <circle cx={S - 144} cy="144" r="2.2" />
+                  <circle cx={S - 34} cy="110" r="2.2" />
+                  <circle cx={S - 34} cy="185" r="2.2" />
+                </g>
+                {/* Radiant (bottom-left) & Dire (top-right) bases + Ancient diamond crests */}
+                <rect x="6" y={S - 54} width="48" height="48" rx="8" className="ag-map-base is-radiant"><title>{t(T.radiant)}</title></rect>
+                <polygon points={`24,${S - 40} 32,${S - 32} 24,${S - 24} 16,${S - 32}`} className="ag-track-ancient is-radiant" aria-hidden="true" />
+                <rect x={S - 54} y="6" width="48" height="48" rx="8" className="ag-map-base is-dire"><title>{t(T.dire)}</title></rect>
+                <polygon points={`${S - 24},24 ${S - 16},32 ${S - 24},40 ${S - 32},32`} className="ag-track-ancient is-dire" aria-hidden="true" />
+                <text x="12" y={S - 11} className="ag-track-corner is-radiant">{t(T.radiant)}</text>
+                <text x={S - 12} y="19" textAnchor="end" className="ag-track-corner is-dire">{t(T.dire)}</text>
 
                 {/* HEATMAP LAYER */}
                 {mode === 'heat' && data.heat.cells.map((cell) => {
@@ -774,7 +873,7 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
 
   if (collapsible) {
     return (
-      <details className="ag-track-fold" open={open}>
+      <details id={anchorId} ref={rootRef as React.RefObject<HTMLDetailsElement>} className="ag-track-fold" open={open}>
         <summary
           className="ag-track-summary"
           onClick={(e) => {
@@ -783,6 +882,7 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
           }}
         >
           <span className="ag-track-summary-copy">
+            <span className="ag-track-summary-icon" aria-hidden="true"><MapRouteIcon size={16} /></span>
             <span className="ag-track-summary-title">{t(T.title)}</span>
             <span className="ag-track-summary-sub">{t(T.subtitle)}</span>
           </span>
@@ -793,12 +893,14 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
   }
 
   return (
-    <section className="ag-track" aria-label={t(T.title)}>
+    <section id={anchorId} ref={rootRef} className="ag-track" aria-label={t(T.title)}>
       <header className="ag-track-head">
+        <span className="ag-track-summary-icon" aria-hidden="true"><MapRouteIcon size={16} /></span>
         <strong className="ag-track-summary-title">{t(T.title)}</strong>
         <span className="ag-track-summary-sub">{t(T.subtitle)}</span>
       </header>
       {content}
     </section>
   );
-};
+});
+HeroTrackMap.displayName = 'HeroTrackMap';

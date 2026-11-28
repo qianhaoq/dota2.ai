@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { fetchEvidence, type ChapterTopic, type DeepReview, type ReviewRunMeta } from './api';
 import { EvidenceCard } from './EvidenceCard';
 import { PLANS, planByKey } from '../../lib/agent/plans.js';
 import { FindingFeedback } from './FindingFeedback';
 import { formatUsageSummary } from './usageFormat';
+import { ChapterTopicIcon, CoachChatIcon, MapRouteIcon, VerifiedShieldIcon } from './DotaIcons';
+import type { TrackMode, TrackPresetId } from './HeroTrackMap';
 
 /**
  * The review as a clear, non-templated coaching document:
@@ -104,6 +106,14 @@ const T = {
   intentAsk: { en: 'What were you going for this game? Tell the coach: it checks your plan against the replay.', zh: '这局你本来想怎么打？告诉教练，它会对照录像回答。', ru: 'Какой план был на эту игру? Скажите тренеру — он сверит его с реплеем.' },
   usageLabel: { en: 'Review token usage', zh: '本次复盘用量', ru: 'Расход токенов на разбор' },
   usageStages: { en: 'Stage breakdown', zh: '分阶段明细', ru: 'По этапам' },
+  verifiedChip: { en: 'Replay verified', zh: '录像已核验', ru: 'Проверено по реплею' },
+  statPros: { en: '{n} highlights', zh: '{n} 亮点', ru: 'Плюсы: {n}' },
+  statCons: { en: '{n} fixes', zh: '{n} 待改进', ru: 'Ошибки: {n}' },
+  statPhases: { en: '{n} phases', zh: '{n} 阶段复盘', ru: 'Этапы: {n}' },
+  askChapter: { en: 'Ask coach', zh: '围绕此阶段追问', ru: 'Спросить тренера' },
+  mapLaning: { en: '0–10m map', zh: '看 0–10 分轨迹', ru: 'Карта 0–10 м' },
+  mapMidgame: { en: '10–20m map', zh: '看中期轨迹', ru: 'Карта мидгейма' },
+  mapMacro: { en: 'Activity heatmap', zh: '看全图热区', ru: 'Тепловая карта' },
 } as const;
 
 /** What a player may have been going for (lib/agent/plans.js). */
@@ -124,26 +134,39 @@ export const planQuestion = (key: string, lang: Lang): string | null => {
 export interface Fight { ref: string; from: number; to: number; clock: string; my_team_deaths: number; enemy_deaths: number; my_team_gold_lead_before?: number | null; my_team_gold_lead_2min_after?: number | null }
 
 export const FightStrip: React.FC<{ fights: Fight[]; duration: number; turn: string | null; lang: Lang; onAsk: (label: string, refs: string[]) => void; onSelectFight?: (fight: Fight) => void; fightActionLabel?: string }> = ({ fights, duration, turn, lang, onAsk, onSelectFight, fightActionLabel }) => {
-  const W = 720; const H = 120; const mid = H / 2; const pad = 8;
+  const uid = useId();
+  const W = 720; const H = 132; const mid = H / 2; const pad = 10;
   const x = (t: number) => pad + (Math.max(0, t) / Math.max(1, duration)) * (W - pad * 2);
   const gold = fights.filter((f) => f.my_team_gold_lead_before != null);
   const maxGold = Math.max(2000, ...gold.map((f) => Math.abs(f.my_team_gold_lead_before!)));
-  const y = (v: number) => mid - (v / maxGold) * (mid - pad);
+  const y = (v: number) => mid - (v / maxGold) * (mid - pad - 4);
   const labelPrefix = fightActionLabel ?? T.askFight[lang];
   const activate = (f: Fight) => { if (onSelectFight) onSelectFight(f); else onAsk(`${T.askFight[lang]} ${f.clock}`, [f.ref]); };
+  const goldPoints = gold.map((f) => `${x(f.from).toFixed(1)},${y(f.my_team_gold_lead_before!).toFixed(1)}`).join(' ');
+  const goldArea = gold.length > 1
+    ? `${x(gold[0].from).toFixed(1)},${mid} ${goldPoints} ${x(gold[gold.length - 1].from).toFixed(1)},${mid}`
+    : '';
   return (
     <figure className="ag-strip">
       <svg viewBox={`0 0 ${W} ${H}`} role="group" aria-label={T.fights[lang]}>
+        <defs>
+          <linearGradient id={`${uid}-gline`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#dfae56" stopOpacity="0.22" />
+            <stop offset="50%" stopColor="#dfae56" stopOpacity="0.02" />
+            <stop offset="100%" stopColor="#e85a4f" stopOpacity="0.18" />
+          </linearGradient>
+        </defs>
         <line x1={pad} y1={mid} x2={W - pad} y2={mid} className="ag-strip-axis" />
-        {gold.length > 1 && <polyline className="ag-strip-gold" points={gold.map((f) => `${x(f.from)},${y(f.my_team_gold_lead_before!)}`).join(' ')} />}
+        {goldArea && <polygon points={goldArea} fill={`url(#${uid}-gline)`} />}
+        {gold.length > 1 && <polyline className="ag-strip-gold" points={goldPoints} />}
         {fights.map((f) => {
           const diff = f.enemy_deaths - f.my_team_deaths;
-          const h = Math.max(4, Math.abs(diff) * 9);
+          const h = Math.max(6, Math.min(mid - 14, Math.abs(diff) * 9.5));
           return (
             <g key={f.ref} className={`ag-strip-fight ${diff > 0 ? 'is-won' : diff < 0 ? 'is-lost' : 'is-even'} ${turn === f.ref ? 'is-turn' : ''}`}
               role="button" tabIndex={0} aria-label={`${labelPrefix} ${f.clock}, ${f.my_team_deaths}:${f.enemy_deaths}`} onClick={() => activate(f)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(f); } }}>
-              <rect x={x(f.from) - 5} y={diff >= 0 ? mid - h : mid} width="10" height={h} rx="2"><title>{`${f.clock} · ${f.my_team_deaths}:${f.enemy_deaths}`}</title></rect>
+              <rect x={x(f.from) - 5.5} y={diff >= 0 ? mid - h : mid} width="11" height={h} rx="2.5"><title>{`${f.clock} · ${f.my_team_deaths}:${f.enemy_deaths}`}</title></rect>
               {turn === f.ref && <text x={x(f.from)} y={H - 4} textAnchor="middle">▲ {f.clock.split('–')[0]} {T.turn[lang]}</text>}
             </g>
           );
@@ -209,12 +232,14 @@ export const ReviewDoc: React.FC<{
   onAsk: (label: string, refs: string[]) => void;
   onPlan?: (question: string) => boolean;
   onReplan?: (plan: string) => void;
+  onJumpMap?: (preset: TrackPresetId, mode?: TrackMode) => void;
+  trackMap?: React.ReactNode;
   board?: React.ReactNode;
   share?: React.ReactNode;
   quick?: boolean;
   runMeta?: ReviewRunMeta | null;
   feedback?: { plan?: string | null; model?: string | null; version: number } | null;
-}> = ({ matchId, review, lang, onAsk, onPlan, onReplan, board = null, feedback = null, share = null, quick = true, runMeta = null }) => {
+}> = ({ matchId, review, lang, onAsk, onPlan, onReplan, onJumpMap, trackMap = null, board = null, feedback = null, share = null, quick = true, runMeta = null }) => {
   const t = (b: Record<Lang, string>) => b[lang];
   const patchName = (dp: { name: string; hotfix?: string }) => t(dp.hotfix ? T.patchHotfix : T.patchPlain).replace('{p}', dp.name).replace('{d}', (dp.hotfix ?? '').slice(0, 10));
   const [planHeld, setPlanHeld] = useState(false);
@@ -285,16 +310,37 @@ export const ReviewDoc: React.FC<{
     ? <span className={`ag-lead-reason is-${review.game_plan.main_reason}`}>{t(T.planReason[review.game_plan.main_reason])}</span>
     : null;
 
+  const chapterMapAction = (topic: ChapterTopic): { preset: TrackPresetId; mode?: TrackMode; label: string } | null => {
+    if (!onJumpMap) return null;
+    if (topic === 'laning') return { preset: '0-10', mode: 'path', label: t(T.mapLaning) };
+    if (topic === 'midgame') return { preset: '10-20', mode: 'path', label: t(T.mapMidgame) };
+    if (topic === 'vision_and_macro') return { preset: 'full', mode: 'heat', label: t(T.mapMacro) };
+    return null;
+  };
+
   return (
     <article className="ag-doc">
-      <section className="ag-lead">
-        {reasonBadge && <div className="ag-lead-meta">{reasonBadge}</div>}
+      <section id="review-lead" className="ag-lead">
+        <div className="ag-lead-meta">
+          {reasonBadge}
+          <span className="ag-lead-verified">
+            <VerifiedShieldIcon size={13} />
+            {t(T.verifiedChip)}
+          </span>
+          {(hasPros || hasCons || hasChapters) && (
+            <span className="ag-lead-counts" aria-hidden="true">
+              {hasPros && <span className="ag-lead-count is-good">{t(T.statPros).replace('{n}', String(highlights.length))}</span>}
+              {hasCons && <span className="ag-lead-count is-warn">{t(T.statCons).replace('{n}', String(findings.length))}</span>}
+              {hasChapters && <span className="ag-lead-count is-phase">{t(T.statPhases).replace('{n}', String(orderedChapters.length))}</span>}
+            </span>
+          )}
+        </div>
         <h1>{review.verdict}</h1>
         {patch}
       </section>
 
       {(hasPros || hasCons) && (
-        <div className={`ag-summary ${hasPros && hasCons ? 'has-both' : ''}`}>
+        <div id="review-summary" className={`ag-summary ${hasPros && hasCons ? 'has-both' : ''}`}>
           {hasPros && (
             <section className="ag-highlights">
               <h2><span className="ag-sec-dot is-good" aria-hidden="true" />{t(T.highlightsTitle)}</h2>
@@ -337,7 +383,7 @@ export const ReviewDoc: React.FC<{
       )}
 
       {hasChapters && (
-        <section className="ag-chapters">
+        <section id="review-chapters" className="ag-chapters">
           <h2>{t(T.chaptersTitle)}</h2>
           <nav className="ag-chapter-nav" aria-label={t(T.chapterNavLabel)}>
             <ol>
@@ -348,6 +394,7 @@ export const ReviewDoc: React.FC<{
                   <li key={i}>
                     <a href={`#chapter-${i}`} className="ag-chapter-nav-link">
                       <span className="ag-chapter-num">{num}</span>
+                      <ChapterTopicIcon topic={c.topic} size={13} className="ag-chapter-nav-icon" />
                       <span>{topicLabel}</span>
                     </a>
                   </li>
@@ -358,20 +405,62 @@ export const ReviewDoc: React.FC<{
           <div className="ag-chapter-list">
             {orderedChapters.map(({ chapter: c }, i) => {
               const num = String(i + 1).padStart(2, '0');
+              const topicLabel = t(T.chapterTopic[c.topic] ?? T.chapterTopic.other);
+              const chapterRefs = Array.isArray(c.evidence)
+                ? [...new Set(c.evidence.flatMap((e) => (Array.isArray(e?.refs) ? e.refs : [])))].slice(0, 4)
+                : [];
+              const previewClocks = Array.isArray(c.evidence)
+                ? [...new Set(c.evidence.map((e) => e?.clock).filter((ck): ck is string => Boolean(ck)))].slice(0, 4)
+                : [];
+              const mapAct = chapterMapAction(c.topic);
               return (
-                <article id={`chapter-${i}`} key={i} className="ag-chapter">
-                  <div className="ag-chapter-meta">
+                <article id={`chapter-${i}`} key={i} className={`ag-chapter is-topic-${c.topic}`}>
+                  <div className="ag-chapter-node" aria-hidden="true">
                     <span className="ag-chapter-step">{num}</span>
-                    <span className="ag-chapter-topic">{t(T.chapterTopic[c.topic] ?? T.chapterTopic.other)}</span>
                   </div>
-                  <h3>{c.title}</h3>
-                  <p className="ag-chapter-analysis">{c.analysis}</p>
-                  {Array.isArray(c.evidence) && c.evidence.length > 0 && (
-                    <details className="ag-chapter-records">
-                      <summary>{t(T.records)} · {c.evidence.length}</summary>
-                      {evidenceList(c.evidence)}
-                    </details>
-                  )}
+                  <div className="ag-chapter-body">
+                    <div className="ag-chapter-meta">
+                      <span className="ag-chapter-topic-icon" aria-hidden="true">
+                        <ChapterTopicIcon topic={c.topic} size={14} />
+                      </span>
+                      <span className="ag-chapter-topic">{topicLabel}</span>
+                      {previewClocks.length > 0 && (
+                        <span className="ag-chapter-clocks" aria-hidden="true">
+                          {previewClocks.map((ck) => <time key={ck}>{ck}</time>)}
+                        </span>
+                      )}
+                      <div className="ag-chapter-actions">
+                        {mapAct && (
+                          <button
+                            type="button"
+                            className="ag-chapter-act"
+                            onClick={() => onJumpMap?.(mapAct.preset, mapAct.mode)}
+                          >
+                            <MapRouteIcon size={12} />
+                            <span>{mapAct.label}</span>
+                          </button>
+                        )}
+                        {chapterRefs.length > 0 && (
+                          <button
+                            type="button"
+                            className="ag-chapter-act"
+                            onClick={() => onAsk(`${topicLabel}: ${c.title}`, chapterRefs)}
+                          >
+                            <CoachChatIcon size={12} />
+                            <span>{t(T.askChapter)}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <h3>{c.title}</h3>
+                    <p className="ag-chapter-analysis">{c.analysis}</p>
+                    {Array.isArray(c.evidence) && c.evidence.length > 0 && (
+                      <details className="ag-chapter-records">
+                        <summary>{t(T.records)} · {c.evidence.length}</summary>
+                        {evidenceList(c.evidence)}
+                      </details>
+                    )}
+                  </div>
                 </article>
               );
             })}
@@ -381,10 +470,13 @@ export const ReviewDoc: React.FC<{
 
       {share}
 
-      <section className="ag-whole">
+      <section id="review-whole" className="ag-whole">
         <h2>{t(T.whole)}</h2>
-        {overview && Array.isArray(overview.fights) && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
-        {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} fightsRead={moments.fights_read ?? 0} fightsNotRead={moments.fights_not_read ?? 0} lang={lang} />}
+        <div className="ag-workbench-pulse">
+          {overview && Array.isArray(overview.fights) && overview.fights.length > 0 && overview.duration && <FightStrip fights={overview.fights} duration={overview.duration.t} turn={overview.turning_fight && 'ref' in overview.turning_fight ? overview.turning_fight.ref : null} lang={lang} onAsk={onAsk} />}
+          {moments?.read && moments.falls_by_my_part && <FightPresenceStrip falls={moments.falls_by_my_part} fightsRead={moments.fights_read ?? 0} fightsNotRead={moments.fights_not_read ?? 0} lang={lang} />}
+        </div>
+        {trackMap}
         {(review.game_plan || onPlan) && (
           <details className="ag-fold ag-plan" open={Boolean(review.game_plan?.against_your_plan)}>
             <summary><h3>{t(T.plan)}</h3>{review.game_plan?.main_reason && review.game_plan.why && T.planReason[review.game_plan.main_reason] && <span>{t(T.planReason[review.game_plan.main_reason])}</span>}</summary>

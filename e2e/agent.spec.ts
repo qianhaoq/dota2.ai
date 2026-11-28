@@ -416,3 +416,37 @@ test('the waiting screen facts: fight strip and key items fit mobile and desktop
   const axe = await new AxeBuilder({ page }).include('.ag-wait-facts').disableRules(['color-contrast']).analyze();
   expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
 });
+
+test('war-room layout: hero telemetry banner, sticky sub-nav, desktop wide mode, and chapter-to-map linkage', async ({ page }) => {
+  await review(page);
+  const banner = page.locator('.ag-head.ag-banner');
+  await expect(banner).toBeVisible();
+  await expect(banner.locator('.ag-hud-inv .ag-inv-slot')).toHaveCount(6);
+  await expect(banner.locator('.ag-banner-roster .ag-roster-chip')).toHaveCount(10);
+
+  const subnav = page.locator('.ag-subnav');
+  await expect(subnav).toBeVisible();
+  await expect(subnav.locator('.ag-subnav-link')).toHaveCount(5);
+
+  // Clicking a laning chapter's tactical map button opens HeroTrackMap directly on 0-10m.
+  const laningCard = page.locator('.ag-chapter.is-topic-laning');
+  await laningCard.getByRole('button', { name: '看 0–10 分轨迹' }).click();
+  await expect(page.locator('.ag-track-fold')).toHaveAttribute('open', '');
+  await expect(page.locator('.ag-track-avatars .ag-track-av')).toHaveCount(10);
+
+  // On desktop, wide-mode toggle collapses and restores the coach panel cleanly.
+  if (!test.info().project.name.startsWith('mobile')) {
+    const layout = page.locator('.ag-layout');
+    await expect(layout).toHaveAttribute('data-chat-open', 'true');
+    await subnav.getByRole('button', { name: '收起教练栏' }).click();
+    await expect(layout).toHaveAttribute('data-chat-open', 'false');
+    await expect(page.getByRole('complementary', { name: '问教练' })).toBeHidden();
+    await subnav.getByRole('button', { name: '展开问教练' }).click();
+    await expect(layout).toHaveAttribute('data-chat-open', 'true');
+    await expect(page.getByRole('complementary', { name: '问教练' })).toBeVisible();
+  }
+
+  await noSideScroll(page);
+  const axe = await new AxeBuilder({ page }).include('.cx').withTags(['wcag2a', 'wcag2aa']).disableRules(['color-contrast']).analyze();
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
+});
