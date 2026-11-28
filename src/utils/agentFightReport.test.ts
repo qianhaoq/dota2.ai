@@ -218,7 +218,7 @@ describe('the agent has the tools and is told how to read them', () => {
     const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' });
     expect(kit.tools.map((t: any) => t.name)).toEqual(expect.arrayContaining(['fight_report', 'game_state']));
     expect(kit.runTool('fight_report', { hero: 'beastmaster' }).fights_total).toBe(16);
-    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(75);
+    expect(DEEP_REVIEW_PROMPT_VERSION).toBe(76);
     const review = deepReviewSystem('zh');
     expect(review).toContain('fight_report');
     // Still never a motive; "farming" only where the tool says so (#359: the replay's creep kills now show it).
@@ -365,6 +365,35 @@ describe('fight_report me_in_fight factual player contribution', () => {
       deaths: [[100, 'pudge'], [104, 'zuus'], [108, 'lina']],
     });
     expect((fightReport(pa, { hero: 'phantom_assassin' }) as any).fights[0].me_in_fight.ult_cast).toBeNull();
+
+    // Cooldownless active ultimates (Storm Spirit Ball Lightning, Void Spirit Astral Step):
+    // logged cast in action window -> true; no cast -> null (never false); pre-engagement cast with missing position -> null.
+    for (const [heroKey, ultKey] of [['storm_spirit', 'storm_spirit_ball_lightning'], ['void_spirit', 'void_spirit_astral_step']] as const) {
+      const baseNoCd: any = synth({
+        heroes: [[heroKey, 2], ['lina', 2], ['pudge', 3], ['zuus', 3]],
+        pos: { [heroKey]: [0, 0], lina: [100, 0], pudge: [100, 100], zuus: [150, 100] },
+        // Fight engages at 95 (lina vs pudge); heroKey trades damage at 99 so pre-engagement window [92..95) can have blank positions independently.
+        damage: [[95, 'lina', 'pudge'], [99, heroKey, 'pudge'], [99, 'pudge', heroKey]],
+        deaths: [[100, 'pudge'], [104, 'zuus'], [108, 'lina']],
+      });
+      const ultNameIx = baseNoCd.names.length;
+      baseNoCd.names.push(ultKey);
+      // No logged cast -> null (cooldownless/passive never reported as false).
+      expect((fightReport(baseNoCd, { hero: heroKey }) as any).fights[0].me_in_fight.ult_cast).toBeNull();
+      // Logged cast inside [engaged_at, to] -> true.
+      const withCast = { ...baseNoCd, casts: [[99.2, 0, ultNameIx, 2, 1]] };
+      expect((fightReport(withCast, { hero: heroKey }) as any).fights[0].me_in_fight.ult_cast).toBe(true);
+      // Pre-engagement cast (92.5 = engaged_at - 2.5) with known nearby position -> true; with missing position across stateAt ±2s -> null.
+      const preCast = { ...baseNoCd, casts: [[92.5, 0, ultNameIx, 2, 1]] };
+      expect((fightReport(preCast, { hero: heroKey }) as any).fights[0].me_in_fight.ult_cast).toBe(true);
+      const preCastMissingPos = {
+        ...preCast,
+        states: preCast.states.map((st: any, idx: number) => (idx === 0
+          ? { ...st, x: st.x.map((v: any, k: number) => (k >= 89 && k <= 96 ? null : v)), y: st.y.map((v: any, k: number) => (k >= 89 && k <= 96 ? null : v)) }
+          : st)),
+      };
+      expect((fightReport(preCastMissingPos, { hero: heroKey }) as any).fights[0].me_in_fight.ult_cast).toBeNull();
+    }
 
     // Blank casts / item_uses / damage -> null, never false / [] / 0.
     const blankCastsItems = { ...t, casts: undefined, item_uses: undefined };

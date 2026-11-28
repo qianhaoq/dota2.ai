@@ -68,7 +68,8 @@ describe('skill_build on real replay 9100904020', () => {
     expect(r.gaps).toContainEqual({ topic: 'talents', reason: 'not_in_trace_or_match_data' });
   });
 
-  it('handles multi-ultimate heroes (Dark Willow) and Chinese localization cleanly', () => {
+  it('handles linked dual-ultimate heroes (Dark Willow) without double counting, and localizes Chinese cleanly', async () => {
+    const { namesIn } = await import('../../lib/agent/evidence.js');
     const dw: any = skillBuild(trace, { hero: 'dark_willow' }, { lang: 'zh' });
     expect(dw.ultimate_levels.map((u: any) => [u.ability, u.level, u.hero_level])).toEqual([
       ['dark_willow_bedlam', 1, 6],
@@ -78,9 +79,67 @@ describe('skill_build on real replay 9100904020', () => {
       ['dark_willow_bedlam', 3, 18],
       ['dark_willow_terrorize', 3, 18],
     ]);
-    expect(dw.ultimate_levels[0].name).toBe('作祟');
+    expect(dw.ultimate_levels[0]).toMatchObject({ name: '作祟', linked_with: ['dark_willow_terrorize'] });
+    expect(dw.ultimate_levels[1]).toMatchObject({ name: '恐吓', linked_with: ['dark_willow_bedlam'] });
+    expect(dw.linked_ultimates).toEqual([['dark_willow_bedlam', 'dark_willow_terrorize']]);
 
-    // Registered in KNOWLEDGE_TOOLS, reviewToolkit, and resolvable via evidence.js with localized names.
+    // Shared dual ultimate is counted ONCE in at_level_6 (sum = 6, not 7) and at_level_10 (sum = 9, 10th point was talent).
+    expect(dw.at_level_6).toEqual({
+      clock: '8:36',
+      abilities: {
+        dark_willow_bramble_maze: 1,
+        dark_willow_shadow_realm: 3,
+        dark_willow_cursed_crown: 1,
+        'dark_willow_bedlam+dark_willow_terrorize': 1,
+      },
+    });
+    expect(Object.values(dw.at_level_6.abilities as Record<string, number>).reduce((a, b) => a + b, 0)).toBe(6);
+    expect(dw.at_level_10).toEqual({
+      clock: '19:07',
+      abilities: {
+        dark_willow_bramble_maze: 3,
+        dark_willow_shadow_realm: 4,
+        dark_willow_cursed_crown: 1,
+        'dark_willow_bedlam+dark_willow_terrorize': 1,
+      },
+    });
+    expect(Object.values(dw.at_level_10.abilities as Record<string, number>).reduce((a, b) => a + b, 0)).toBe(9);
+    // Single-ultimate hero carries no linked_ultimates or linked_with.
+    const bm: any = skillBuild(trace, { hero: 'beastmaster' }, { lang: 'en' });
+    expect(bm.linked_ultimates).toBeUndefined();
+    expect(bm.ultimate_levels[0]).not.toHaveProperty('linked_with');
+
+    // Linked ultimates upgrading within 1 s group cleanly; separate upgrade timings stay unlinked.
+    const level = Array.from({ length: 800 }, (_, s) => (s < 300 ? 5 : 6));
+    const nearLinked: any = skillBuild({
+      match_id: 9100904020, t0: 0, n: 800,
+      heroes: [{ key: 'dark_willow', npc: 'npc_dota_hero_dark_willow', team: 3 }],
+      states: [{ level }],
+      abilities: [{
+        dark_willow_bramble_maze: { levels: [[0, 1]] },
+        dark_willow_shadow_realm: { levels: [[60, 1], [120, 2], [240, 3]] },
+        dark_willow_cursed_crown: { levels: [[180, 1]] },
+        dark_willow_bedlam: { levels: [[300.0, 1]] },
+        dark_willow_terrorize: { levels: [[300.8, 1]] },
+      }],
+    }, { hero: 'dark_willow' });
+    expect(nearLinked.at_level_6.abilities['dark_willow_bedlam+dark_willow_terrorize']).toBe(1);
+    expect(Object.values(nearLinked.at_level_6.abilities as Record<string, number>).reduce((a, b) => a + b, 0)).toBe(6);
+
+    const separateUlts: any = skillBuild({
+      match_id: 9100904020, t0: 0, n: 800,
+      heroes: [{ key: 'dark_willow', npc: 'npc_dota_hero_dark_willow', team: 3 }],
+      states: [{ level }],
+      abilities: [{
+        dark_willow_bramble_maze: { levels: [[0, 1]] },
+        dark_willow_bedlam: { levels: [[300.0, 1]] },
+        dark_willow_terrorize: { levels: [[350.0, 1]] },
+      }],
+    }, { hero: 'dark_willow' });
+    expect(separateUlts.linked_ultimates).toBeUndefined();
+    expect(separateUlts.at_level_6.abilities).toEqual({ dark_willow_bramble_maze: 1, dark_willow_bedlam: 1 });
+
+    // Registered in KNOWLEDGE_TOOLS, reviewToolkit, and resolvable via evidence.js with localized names for combined keys.
     expect(KNOWLEDGE_TOOLS).toContain(SKILL_BUILD_TOOL);
     const kit = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' })!;
     expect(kit.tools.map((t: any) => t.name)).toContain('skill_build');
@@ -89,6 +148,13 @@ describe('skill_build on real replay 9100904020', () => {
     expect(ev.kind).toBe('skill_build');
     expect(ev.names.beastmaster_wild_axes).toBe('野性之斧');
     expect(ev.names.beastmaster_primal_roar).toBe('原始咆哮');
+    const dwEv = resolveRef(trace, 'skill_build:dark_willow', { hero: 'dark_willow', lang: 'zh' })!;
+    expect(dwEv.names.dark_willow_bedlam).toBe('作祟');
+    expect(dwEv.names.dark_willow_terrorize).toBe('恐吓');
+    expect(namesIn({ abilities: { 'dark_willow_bedlam+dark_willow_terrorize': 1 } }, 'en')).toEqual({
+      dark_willow_bedlam: 'Bedlam',
+      dark_willow_terrorize: 'Terrorize',
+    });
   });
 
   it('parses string special_bonus_* talents when present, and stays null for numeric OpenDota IDs (never guesses)', () => {

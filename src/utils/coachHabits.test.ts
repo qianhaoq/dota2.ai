@@ -8,7 +8,10 @@ const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-
 const deaths: any = deathContext(trace, { hero: 'beastmaster', include_legacy_habit_counts: true });
 const roar: any = abilityAudit(trace, { hero: 'beastmaster', ability: 'primal_roar' });
 const ROAR = { hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' } };
-const where = (lists: Record<string, string[]>, notKnown: Record<string, number> | null = { health_at_window_start: 0, allies_at_death: 0 }) => ({ deaths_where: lists, ...(notKnown ? { deaths_not_known: notKnown } : {}) });
+const where = (
+  lists: Record<string, string[]>,
+  notKnown: Record<string, number> | null = { three_or_more_enemy_heroes_dealing_damage_outside_fights: 0, allies_at_death: 0 },
+) => ({ deaths_where: lists, ...(notKnown ? { deaths_not_known: notKnown } : {}) });
 
 describe('habitGoal', () => {
   it('every habit names a list death_context really keeps', () => {
@@ -25,53 +28,84 @@ describe('habitGoal', () => {
     // Five of the eleven deaths were to three or more enemy heroes.
     // Nothing in this count can be undecided: the baseline is exact.
     expect(habitGoal('outnumbered', deaths)).toEqual({ kind: 'replay_habit', habit: 'outnumbered', max: 2, baseline: 5, baseline_exact: true, label: { en: 'At most 2 deaths to three or more enemy heroes (this game: 5)', zh: '被三个以上敌方英雄围杀的阵亡不超过 2 次（这局 5 次）', ru: 'Не более 2 смертей от трёх и более врагов (в этой игре: 5)' } });
-    expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))).toMatchObject({ max: 1, baseline: 3 });
+    expect(habitGoal('outnumbered_outside_fights', where({ three_or_more_enemy_heroes_dealing_damage_outside_fights: ['4:21', '6:07', '24:10'] }))).toMatchObject({ max: 1, baseline: 3 });
     expect(habitGoal('outnumbered_outside_fights', where({ three_or_more_enemy_heroes_dealing_damage_outside_fights: ['1:00', '2:00'] }))).toMatchObject({ max: 1, baseline: 2 });
     // With deaths the replay could not decide, the baseline is only a lower bound, and says so by not claiming to be exact.
-    expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, { health_at_window_start: 2, allies_at_death: 0 }))).not.toHaveProperty('baseline_exact');
-    expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, { health_at_window_start: 0, allies_at_death: 0 }))).toMatchObject({ baseline_exact: true });
-    expect(habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07'] }, null))).not.toHaveProperty('baseline_exact');
-    // Deaths with no ally near are no habit any more (owner, 2026-11-27: meaningless): no goal, whatever the summary holds.
+    expect(habitGoal('outnumbered_outside_fights', where({ three_or_more_enemy_heroes_dealing_damage_outside_fights: ['4:21', '6:07'] }, { three_or_more_enemy_heroes_dealing_damage_outside_fights: 2 }))).not.toHaveProperty('baseline_exact');
+    expect(habitGoal('outnumbered_outside_fights', where({ three_or_more_enemy_heroes_dealing_damage_outside_fights: ['4:21', '6:07'] }, { three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 }))).toMatchObject({ baseline_exact: true });
+    expect(habitGoal('outnumbered_outside_fights', where({ three_or_more_enemy_heroes_dealing_damage_outside_fights: ['4:21', '6:07'] }, null))).not.toHaveProperty('baseline_exact');
+    // Retired habits (alone / alone_not_traded / low_health / low_health_outside_fights): no goal and no habitRef, whatever the summary holds.
+    expect(RETIRED_HABITS).toEqual(['alone', 'alone_not_traded', 'low_health', 'low_health_outside_fights']);
     for (const k of RETIRED_HABITS) {
       expect(HABIT_KEYS).not.toContain(k);
-      expect(habitGoal(k, where({ no_ally_within_2200_at_death: ['1:00', '2:00', '3:00', '4:00'], no_ally_within_2200_at_death_and_not_traded: ['1:00', '3:00'] }))).toBeNull();
+      expect(habitGoal(k, where({
+        no_ally_within_2200_at_death: ['1:00', '2:00', '3:00', '4:00'],
+        no_ally_within_2200_at_death_and_not_traded: ['1:00', '3:00'],
+        health_below_half_at_window_start: ['4:21', '6:07', '24:10'],
+        health_below_half_at_window_start_outside_fights: ['4:21', '6:07'],
+      }))).toBeNull();
+      expect(habitRef({ kind: 'replay_habit', habit: k, max: 1, baseline: 3 }, 'beastmaster')).toBeNull();
     }
   });
   it('once is not a habit, and an unknown count or habit is no check', () => {
-    // None below half health.
-    expect(habitGoal('low_health', deaths)).toBeNull();
+    // None outside fights to 3+ enemies in this game.
+    expect(habitGoal('outnumbered_outside_fights', deaths)).toBeNull();
     expect(habitGoal('farming', deaths)).toBeNull();
     expect(habitGoal(undefined as any, deaths)).toBeNull();
-    expect(habitGoal('low_health', null)).toBeNull();
-    expect(habitGoal('low_health', { deaths_where: {} })).toBeNull();
+    expect(habitGoal('outnumbered_outside_fights', null)).toBeNull();
+    expect(habitGoal('outnumbered_outside_fights', { deaths_where: {} })).toBeNull();
   });
 });
 
 describe('evaluateHabit', () => {
-  it('a goal a player saved on a retired habit says it is no longer counted, not "unknown goal"', () => {
-    const old = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'x', zh: 'x' } };
-    const r: any = evaluateHabit(old, where({ health_below_half_at_window_start: [] }), 40);
-    expect(r.result).toBe('unknown');
-    expect(r.evidence.zh).toContain('这个目标已不再统计');
-    expect(r.evidence.en).toContain('no longer counted');
+  it('a goal a player saved on a retired habit says it is no longer counted, with a distinct message for low_health vs alone', () => {
+    const oldAlone = { kind: 'replay_habit', habit: 'alone', max: 2, baseline: 4, label: { en: 'x', zh: 'x' } };
+    const rAlone: any = evaluateHabit(oldAlone, where({ three_or_more_enemy_heroes_dealing_damage_outside_fights: [] }), 40);
+    expect(rAlone.result).toBe('unknown');
+    expect(rAlone.evidence.zh).toContain('这个目标已不再统计');
+    expect(rAlone.evidence.en).toContain('no longer counted');
+    expect(rAlone.evidence.en).toContain('no ally nearby');
+
+    for (const h of ['low_health', 'low_health_outside_fights'] as const) {
+      const oldLow = { kind: 'replay_habit', habit: h, max: 1, baseline: 3, label: { en: 'x', zh: 'x' } };
+      const rLow: any = evaluateHabit(oldLow, where({ health_below_half_at_window_start: [], health_below_half_at_window_start_outside_fights: [] }), 40);
+      expect(rLow.result).toBe('unknown');
+      expect(rLow.evidence.en).toContain('no longer counted');
+      expect(rLow.evidence.en).toContain('kill threat');
+      expect(rLow.evidence.zh).toContain('这个目标已不再统计');
+      expect(rLow.evidence.zh).toContain('击杀威胁');
+      expect(rLow.evidence.ru).toContain('больше не считается');
+      expect(rLow.evidence.en).not.toBe(rAlone.evidence.en);
+      expect(rLow.evidence.zh).not.toBe(rAlone.evidence.zh);
+      expect(rLow.evidence.ru).not.toBe(rAlone.evidence.ru);
+    }
   });
-  const goal = habitGoal('low_health', where({ health_below_half_at_window_start: ['4:21', '6:07', '24:10'] }))!;
+  const KEY = 'three_or_more_enemy_heroes_dealing_damage_outside_fights';
+  const goal = habitGoal('outnumbered_outside_fights', where({ [KEY]: ['4:21', '6:07', '24:10'] }))!;
   it('met at or under the goal, missed over it, with the deaths named', () => {
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }), 38)).toEqual({ result: 'met', evidence: { en: '1 deaths that began below half health (12 s before) (12:40); goal ≤ 1', zh: '死前 12 秒已不到半血的阵亡 1 次（12:40）；目标 ≤ 1', ru: '1 смертей с менее чем половиной HP (за 12 с до смерти) (12:40); цель ≤ 1' } , count: 1 });
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 38)).toMatchObject({ result: 'met' });
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['3:00', '9:10'] }), 38)).toMatchObject({ result: 'missed', evidence: { zh: '死前 12 秒已不到半血的阵亡 2 次（3:00、9:10）；目标 ≤ 1' } });
+    expect(evaluateHabit(goal, where({ [KEY]: ['12:40'] }), 38)).toEqual({
+      result: 'met',
+      evidence: {
+        en: '1 deaths outside fights to three or more enemy heroes (12:40); goal ≤ 1',
+        zh: '团战之外被三个以上敌方英雄围杀的阵亡 1 次（12:40）；目标 ≤ 1',
+        ru: '1 смертей вне драк от трёх и более врагов (12:40); цель ≤ 1',
+      },
+      count: 1,
+    });
+    expect(evaluateHabit(goal, where({ [KEY]: [] }), 38)).toMatchObject({ result: 'met' });
+    expect(evaluateHabit(goal, where({ [KEY]: ['3:00', '9:10'] }), 38)).toMatchObject({ result: 'missed', evidence: { zh: '团战之外被三个以上敌方英雄围杀的阵亡 2 次（3:00、9:10）；目标 ≤ 1' } });
   });
   it('a settled result carries the count it was settled on — what the curve across games is drawn from', () => {
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['3:00', '9:10'] }), 38)).toMatchObject({ result: 'missed', count: 2 });
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 38)).toMatchObject({ result: 'met', count: 0 });
+    expect(evaluateHabit(goal, where({ [KEY]: ['3:00', '9:10'] }), 38)).toMatchObject({ result: 'missed', count: 2 });
+    expect(evaluateHabit(goal, where({ [KEY]: [] }), 38)).toMatchObject({ result: 'met', count: 0 });
     // Unknown and not-counted results have none.
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }, { health_at_window_start: 1, allies_at_death: 0 }), 38)).not.toHaveProperty('count');
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 8)).not.toHaveProperty('count');
+    expect(evaluateHabit(goal, where({ [KEY]: ['12:40'] }, { [KEY]: 1 }), 38)).not.toHaveProperty('count');
+    expect(evaluateHabit(goal, where({ [KEY]: [] }), 8)).not.toHaveProperty('count');
     // Settled with deaths left undecided: the result stands, but the count is only a lower bound — left out.
-    const missedWithUnknowns = evaluateHabit(goal, where({ health_below_half_at_window_start: ['1:00', '2:00', '3:00'] }, { health_at_window_start: 5, allies_at_death: 0 }), 38);
+    const missedWithUnknowns = evaluateHabit(goal, where({ [KEY]: ['1:00', '2:00', '3:00'] }, { [KEY]: 5 }), 38);
     expect(missedWithUnknowns).toMatchObject({ result: 'missed' });
     expect(missedWithUnknowns).not.toHaveProperty('count');
-    const metWithUnknowns = evaluateHabit(goal, where({ health_below_half_at_window_start: [] }, { health_at_window_start: 1, allies_at_death: 3 }), 38);
+    const metWithUnknowns = evaluateHabit(goal, where({ [KEY]: [] }, { [KEY]: 1 }), 38);
     expect(metWithUnknowns).toMatchObject({ result: 'met' });
     expect(metWithUnknowns).not.toHaveProperty('count');
   });
@@ -80,16 +114,16 @@ describe('evaluateHabit', () => {
     expect(evaluateHabit(goal, null, 38)).toMatchObject({ result: 'unknown', evidence: { zh: '需要这局的录像：检查目标，或打开这局的录像复盘。' } });
     // Nothing settled, no count: a curve is never drawn through a guess.
     expect(evaluateHabit(goal, null, 38)).not.toHaveProperty('count');
-    // A death whose health was not sampled could be one more: 1 known + 1 undecided is not "at most 1".
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['12:40'] }, { health_at_window_start: 1, allies_at_death: 0 }), 38)).toMatchObject({ result: 'unknown' });
+    // A death whose position was not sampled could be one more: 1 known + 1 undecided is not "at most 1".
+    expect(evaluateHabit(goal, where({ [KEY]: ['12:40'] }, { [KEY]: 1 }), 38)).toMatchObject({ result: 'unknown' });
     // Undecided deaths that cannot change the answer do not block it.
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }, { health_at_window_start: 1, allies_at_death: 3 }), 38)).toMatchObject({ result: 'met' });
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: ['1:00', '2:00'] }, { health_at_window_start: 4, allies_at_death: 0 }), 38)).toMatchObject({ result: 'missed' });
+    expect(evaluateHabit(goal, where({ [KEY]: [] }, { [KEY]: 1 }), 38)).toMatchObject({ result: 'met' });
+    expect(evaluateHabit(goal, where({ [KEY]: ['1:00', '2:00'] }, { [KEY]: 4 }), 38)).toMatchObject({ result: 'missed' });
     // A summary from before the undecided count existed cannot rule them out.
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }, null), 38)).toMatchObject({ result: 'unknown' });
+    expect(evaluateHabit(goal, where({ [KEY]: [] }, null), 38)).toMatchObject({ result: 'unknown' });
     // The list itself missing is not zero.
     expect(evaluateHabit(goal, where({}), 38)).toMatchObject({ result: 'unknown' });
-    expect(evaluateHabit(goal, where({ health_below_half_at_window_start: [] }), 8)).toMatchObject({ result: 'no_opportunity' });
+    expect(evaluateHabit(goal, where({ [KEY]: [] }), 8)).toMatchObject({ result: 'no_opportunity' });
     expect(evaluateHabit({ ...goal, habit: 'nope' }, where({}), 38)).toMatchObject({ result: 'unknown' });
   });
   it('a habit with nothing undecidable needs no undecided count', () => {
@@ -99,8 +133,8 @@ describe('evaluateHabit', () => {
   it('evaluateGoal judges it from the replay summary it is handed, and says so when there is none', () => {
     const report = { match: { duration: 2400 }, players: [{ hero: { id: 29 }, kda: [1, 4, 9] }], reviews: [{ role: { kind: 'core' } }] };
     expect(evaluateGoal(goal, report, 0)).toMatchObject({ result: 'unknown' });
-    expect(evaluateGoal(goal, report, 0, where({ health_below_half_at_window_start: ['3:00', '9:10'] }))).toMatchObject({ result: 'missed' });
-    expect(evaluateGoal(goal, report, 0, where({ health_below_half_at_window_start: [] }))).toMatchObject({ result: 'met' });
+    expect(evaluateGoal(goal, report, 0, where({ [KEY]: ['3:00', '9:10'] }))).toMatchObject({ result: 'missed' });
+    expect(evaluateGoal(goal, report, 0, where({ [KEY]: [] }))).toMatchObject({ result: 'met' });
   });
 });
 
@@ -204,7 +238,7 @@ describe('habits counted over one ability', () => {
     expect(habitGoal('target_survived', roar)).toBeNull();
     expect(habitGoal('target_survived', roar, { ...ROAR, name: { en: 'Primal Roar' } } as any)).toBeNull();
     // A deaths habit is not read from an audit.
-    expect(habitGoal('low_health', roar, ROAR)).toBeNull();
+    expect(habitGoal('outnumbered', roar, ROAR)).toBeNull();
   });
   it('is counted on that hero\'s audit, and on nothing when another hero was played', () => {
     const g = habitGoal('target_survived', roar, ROAR)!;

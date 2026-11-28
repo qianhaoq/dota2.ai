@@ -357,3 +357,135 @@ describe('early rotation trips away from the main lane (my_rotations_before_10_0
     expect(rMiss.gaps).toContainEqual({ topic: 'my_rotations_before_10_00', reason: 'player_positions_missing_in_lane_stage' });
   });
 });
+
+describe('roaming perception before 10:00 (no single lane, #358 item 3)', () => {
+  const buildRoamingTrace = () => {
+    // Turn Undying (Dire) into a roaming Pos 4 splitting all three lanes (no single lane >= 60%):
+    // 60..239 (180s) bot, 240..249 (10s) mid (short pass-through < 20s -> excluded from trips),
+    // 250..269 (20s) base, 270..419 (150s) mid, 420..439 (20s) dead, 440..599 (160s) top.
+    // Total = 180 + 10 + 20 + 150 + 20 + 160 = 540s.
+    const u = seat('undying');
+    const uNpc = ix(trace.heroes[u].npc);
+    const bmNpc = ix(trace.heroes[bm].npc);
+    const necNpc = ix(trace.heroes[seat('necrolyte')].npc);
+    const axeNpc = ix(trace.heroes[seat('axe')].npc);
+    const st = trace.states[u];
+    const x = st.x.slice(); const y = st.y.slice(); const alive = st.alive.slice();
+    for (let s = 60; s < 600; s += 1) {
+      const k = s - trace.t0;
+      if (s < 240) { alive[k] = 1; x[k] = 4500; y[k] = -4500; } // bot
+      else if (s < 250) { alive[k] = 1; x[k] = 0; y[k] = 0; } // mid (10s < 20s)
+      else if (s < 270) { alive[k] = 1; x[k] = 5500; y[k] = 5500; } // Dire base
+      else if (s < 420) { alive[k] = 1; x[k] = 0; y[k] = 0; } // mid (150s)
+      else if (s < 440) { alive[k] = 0; x[k] = 5500; y[k] = 5500; } // dead
+      else { alive[k] = 1; x[k] = -4500; y[k] = 4500; } // top (160s)
+    }
+    // Place Necrolyte in mid at 349 (dies at 350 during mid trip) and Beastmaster in top at 499 (dies at 500 during top trip).
+    const necIdx = seat('necrolyte');
+    const necSt = trace.states[necIdx];
+    const necX = necSt.x.slice(); const necY = necSt.y.slice(); const necAlive = necSt.alive.slice();
+    necAlive[349 - trace.t0] = 1; necX[349 - trace.t0] = 0; necY[349 - trace.t0] = 0;
+
+    const bmSt = trace.states[bm];
+    const bmX = bmSt.x.slice(); const bmY = bmSt.y.slice(); const bmAlive = bmSt.alive.slice();
+    bmAlive[499 - trace.t0] = 1; bmX[499 - trace.t0] = -4500; bmY[499 - trace.t0] = 4500;
+
+    const t: any = {
+      ...trace,
+      states: trace.states.map((s: any, j: number) => (
+        j === u ? { ...st, x, y, alive }
+          : j === necIdx ? { ...necSt, x: necX, y: necY, alive: necAlive }
+            : j === bm ? { ...bmSt, x: bmX, y: bmY, alive: bmAlive }
+              : s
+      )),
+      // Damage only during mid trip (345) and top trip (480); none during bot trip.
+      damage: [
+        [345, uNpc, necNpc, -1, 120],
+        [480, axeNpc, uNpc, -1, 90],
+      ],
+      // Deaths: Necrolyte dies in mid at 350, Undying dies at 420 ending the mid trip, Beastmaster dies in top at 500.
+      deaths: [
+        [350, necNpc, uNpc, 1],
+        [420, uNpc, necNpc, 2],
+        [500, bmNpc, axeNpc, 3],
+      ],
+    };
+    return { t, u, necIdx, bm };
+  };
+
+  it('reports my_lane_seconds_by_third and roaming_trips_before_10_00 and wires cleanly into lane_report without faking a lane', () => {
+    const { t, u } = buildRoamingTrace();
+    const r: any = laneProcess(t, u);
+    expect(r.roaming_before_10_00).toBe(true);
+    expect(r.my_lane_seconds_by_third).toEqual({ top: 160, mid: 160, bot: 180, base: 20, dead: 20, not_known: 0 });
+    expect(r.roaming_trips_before_10_00).toEqual([
+      { lane: 'bot', from: '1:00', to: '3:59', duration_s: 180, traded_damage_with_enemy_hero: false, enemy_deaths_in_lane: 0, ally_deaths_in_lane: 0, my_death: false },
+      { lane: 'mid', from: '4:30', to: '6:59', duration_s: 150, traded_damage_with_enemy_hero: true, enemy_deaths_in_lane: 1, ally_deaths_in_lane: 0, my_death: '7:00' },
+      { lane: 'top', from: '7:20', to: '9:59', duration_s: 160, traded_damage_with_enemy_hero: true, enemy_deaths_in_lane: 0, ally_deaths_in_lane: 1, my_death: false },
+    ]);
+    expect(r.gaps).toEqual([{ topic: 'single_lane', reason: 'no_single_lane_roamer' }]);
+
+    // Wired cleanly in lane_report: lane stays null (never fakes a 10:00 gold diff), how_the_lane_went carries roaming data.
+    const lr: any = laneReport(t, { hero: 'undying' }, {});
+    expect(lr.lane).toBeNull();
+    expect(lr.lane_visit_counts).toBeUndefined();
+    expect(lr.how_the_lane_went_not_known).toBeUndefined();
+    expect(lr.how_the_lane_went).toMatchObject({
+      roaming_before_10_00: true,
+      my_lane_seconds_by_third: { top: 160, mid: 160, bot: 180, base: 20, dead: 20, not_known: 0 },
+      roaming_trips_before_10_00: r.roaming_trips_before_10_00,
+    });
+    expect(lr.gaps).toContainEqual({ topic: 'lane_from_replay', reason: 'no_single_lane' });
+  });
+
+  it('never merges trips across missing position samples, and preserves unknown-is-not-false on blank damage/deaths/positions', () => {
+    const { t, u, necIdx } = buildRoamingTrace();
+
+    // 1. Blank 5 position samples in the middle of the top trip (500..504): MUST split [440..499] (60s) and [505..599] (95s), NEVER merge!
+    const uSt = t.states[u];
+    const xGap = uSt.x.slice(); const yGap = uSt.y.slice();
+    for (let s = 500; s <= 504; s += 1) { xGap[s - t.t0] = null; yGap[s - t.t0] = null; }
+    const withGap = { ...t, states: t.states.map((s: any, j: number) => (j === u ? { ...uSt, x: xGap, y: yGap } : s)) };
+    const rGap: any = laneProcess(withGap, u);
+    expect(rGap.my_lane_seconds_by_third.not_known).toBe(5);
+    expect(rGap.my_lane_seconds_by_third.top).toBe(155);
+    expect(rGap.roaming_trips_before_10_00.filter((tr: any) => tr.lane === 'top')).toEqual([
+      expect.objectContaining({ lane: 'top', from: '7:20', to: '8:19', duration_s: 60 }),
+      expect.objectContaining({ lane: 'top', from: '8:25', to: '9:59', duration_s: 95 }),
+    ]);
+    expect(rGap.gaps).toContainEqual({ topic: 'hero_positions', reason: 'position_samples_missing_before_10_00', missing_seconds: 5 });
+
+    // 2. Blank trace.damage and trace.deaths -> null fields + explicit gaps (never false / 0).
+    const { damage: _dmg, deaths: _dth, ...stripped } = t;
+    const rStrip: any = laneProcess(stripped, u);
+    for (const tr of rStrip.roaming_trips_before_10_00) {
+      expect(tr.traded_damage_with_enemy_hero).toBeNull();
+      expect(tr.enemy_deaths_in_lane).toBeNull();
+      expect(tr.ally_deaths_in_lane).toBeNull();
+      expect(tr.my_death).toBeNull();
+    }
+    expect(rStrip.gaps).toContainEqual({ topic: 'roaming_damage', reason: 'no_damage_rows_in_trace' });
+    expect(rStrip.gaps).toContainEqual({ topic: 'roaming_deaths', reason: 'no_deaths_in_trace' });
+
+    // 3. Blank Necrolyte's pre-death position (at 349s) -> mid trip enemy_deaths_in_lane becomes null + gap, while ally_deaths_in_lane stays 0.
+    const necSt = t.states[necIdx];
+    const necXMiss = necSt.x.slice();
+    necXMiss[349 - t.t0] = null;
+    const blindDeath = { ...t, states: t.states.map((s: any, j: number) => (j === necIdx ? { ...necSt, x: necXMiss } : s)) };
+    const rBlindDeath: any = laneProcess(blindDeath, u);
+    const midTrip = rBlindDeath.roaming_trips_before_10_00.find((tr: any) => tr.lane === 'mid');
+    expect(midTrip.enemy_deaths_in_lane).toBeNull();
+    expect(midTrip.ally_deaths_in_lane).toBe(0);
+    expect(rBlindDeath.gaps).toContainEqual({ topic: 'roaming_deaths', reason: 'death_position_missing_during_roaming_trip' });
+
+    // 4. Never left base (top+mid+bot === 0): returns { unknown: 'no_single_lane' }, or 'positions_not_known' when any samples are missing.
+    const baseOnlyX = uSt.x.slice(); const baseOnlyY = uSt.y.slice(); const baseOnlyAlive = uSt.alive.slice();
+    for (let s = 60; s < 600; s += 1) { const k = s - t.t0; baseOnlyAlive[k] = 1; baseOnlyX[k] = 5500; baseOnlyY[k] = 5500; }
+    const baseOnly = { ...t, states: t.states.map((s: any, j: number) => (j === u ? { ...uSt, x: baseOnlyX, y: baseOnlyY, alive: baseOnlyAlive } : s)) };
+    expect(laneProcess(baseOnly, u)).toEqual({ unknown: 'no_single_lane' });
+    const baseWithMissingX = baseOnlyX.slice();
+    baseWithMissingX[100 - t.t0] = null;
+    const baseWithMissing = { ...t, states: t.states.map((s: any, j: number) => (j === u ? { ...uSt, x: baseWithMissingX, y: baseOnlyY, alive: baseOnlyAlive } : s)) };
+    expect(laneProcess(baseWithMissing, u)).toEqual({ unknown: 'positions_not_known' });
+  });
+});

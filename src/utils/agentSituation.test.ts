@@ -276,9 +276,11 @@ describe('deaths in a fight are told apart from deaths outside one', () => {
     const goal = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 1, baseline: 3, label: { en: 'x', zh: 'x' } };
     expect(evaluateHabit(goal, blind, 40).result).toBe('unknown');
     expect(evaluateHabit(goal, full, 40).result).toBe('met');
-    // Low health outside fights: a death of unknown fight status with health below half, or unknown, is undecided too (legacy opt-in).
+    // Legacy low_health_outside_fights is retired: evaluateHabit returns unknown with the retired low-HP message.
     expect(blind.deaths_not_known.health_below_half_at_window_start_outside_fights).toBeGreaterThanOrEqual(blind.deaths_not_known.in_a_fight - blind.deaths.filter((d: any) => d.in_a_fight == null && d.below_half_health_at_window_start === false).length);
-    expect(evaluateHabit({ ...goal, habit: 'low_health_outside_fights', max: 0 }, { ...blind, deaths_not_known: { ...blind.deaths_not_known, health_below_half_at_window_start_outside_fights: 1 } }, 40).result).toBe('unknown');
+    const retiredRes: any = evaluateHabit({ ...goal, habit: 'low_health_outside_fights', max: 0 }, { ...blind, deaths_not_known: { ...blind.deaths_not_known, health_below_half_at_window_start_outside_fights: 1 } }, 40);
+    expect(retiredRes.result).toBe('unknown');
+    expect(retiredRes.evidence.en).toContain('no longer counted');
     // Default LLM death_context omits the noisy low-HP habit buckets.
     const defaultSummary: any = deathContext(trace, { hero: 'beastmaster' });
     expect('health_below_half_at_window_start' in defaultSummary.deaths_where).toBe(false);
@@ -287,19 +289,19 @@ describe('deaths in a fight are told apart from deaths outside one', () => {
   });
 
   it('the outside-fights counts are habits the next game is checked on, and the fight deaths are not in them', () => {
-    const summary: any = deathContext(trace, { hero: 'beastmaster', include_legacy_habit_counts: true });
-    expect(HABITS.low_health_outside_fights.at).toEqual(['deaths_where', 'health_below_half_at_window_start_outside_fights']);
+    const summary: any = deathContext(trace, { hero: 'beastmaster' });
+    expect('low_health_outside_fights' in HABITS).toBe(false);
     expect(HABITS.outnumbered_outside_fights.at).toEqual(['deaths_where', 'three_or_more_enemy_heroes_dealing_damage_outside_fights']);
     // Five deaths to three or more enemies, all of them in fights: over every death that is a habit to check, outside fights it is not one.
     expect(habitGoal('outnumbered', summary)).toMatchObject({ kind: 'replay_habit', habit: 'outnumbered', baseline: 5 });
     expect(habitGoal('outnumbered_outside_fights', summary)).toBeNull();
     // The next game, judged on the same list: three such deaths outside fights miss a goal of one.
-    const goal = { kind: 'replay_habit', habit: 'low_health_outside_fights', max: 1, baseline: 3, label: { en: 'x', zh: 'x' } };
-    const next = { ...summary, deaths_where: { ...summary.deaths_where, health_below_half_at_window_start_outside_fights: ['4:21', '6:07', '9:00'] }, deaths_not_known: { ...summary.deaths_not_known, health_below_half_at_window_start_outside_fights: 0 } };
+    const goal = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 1, baseline: 3, label: { en: 'x', zh: 'x' } };
+    const next = { ...summary, deaths_where: { ...summary.deaths_where, three_or_more_enemy_heroes_dealing_damage_outside_fights: ['4:21', '6:07', '9:00'] }, deaths_not_known: { ...summary.deaths_not_known, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 } };
     expect(evaluateHabit(goal, next, 40).result).toBe('missed');
-    expect(evaluateHabit(goal, { ...next, deaths_where: { ...next.deaths_where, health_below_half_at_window_start_outside_fights: ['4:21'] } }, 40).result).toBe('met');
+    expect(evaluateHabit(goal, { ...next, deaths_where: { ...next.deaths_where, three_or_more_enemy_heroes_dealing_damage_outside_fights: ['4:21'] } }, 40).result).toBe('met');
     // A replay summary from before these lists existed has no such count: unknown, never a pass.
-    const { health_below_half_at_window_start_outside_fights: _gone, ...old } = summary.deaths_where;
+    const { three_or_more_enemy_heroes_dealing_damage_outside_fights: _gone, ...old } = summary.deaths_where;
     expect(evaluateHabit(goal, { ...summary, deaths_where: old }, 40).result).toBe('unknown');
     const system = deepReviewSystem('en');
     for (const word of ['in_a_fight', '_outside_fights', 'missing from the minimap']) expect(system).toContain(word);
