@@ -423,3 +423,17 @@ describe('rubric 9091400302.tidehunter: armor_or_block_as_the_answer_to_ursa', (
     ]) expect(t).not.toMatch(re);
   });
 });
+
+// The owner's case, observed (#508): in 3 recent replays an enemy cast Eul's Scepter on Ursa 5 times, and each time
+// modifier_ursa_overpower came off him at that instant. build_check now says so, with its sample.
+describe('Eul\'s Scepter on Ursa, observed', () => {
+  it('Eul\'s cast on an enemy removes Overpower, seen in archived replays; the corpus says how often', () => {
+    const pd = patchForGame(9091400302, null);
+    const got = effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', pd.heroAbilities(70), 'en') as any[];
+    const overpower = got.find((r) => r.name === 'Overpower');
+    expect(overpower).toBeTruthy();
+    expect(overpower.removed).toBeGreaterThanOrEqual(5);
+    // Never Earthshock's slow (on the player) from a dispel cast on Ursa.
+    expect(got.some((r) => r.name === 'Earthshock')).toBe(false);
+  });
+});
