@@ -75,7 +75,12 @@ export function createMcpServer(options = {}) {
   // never by calling the site over HTTP, which would put every agent behind
   // one IP and one bucket.
   if (options.coachTools !== false) {
-    const coach = createCoachHandlers(options);
+    const surface = options.surface ?? (options.coach ? 'remote_mcp' : 'stdio_mcp');
+    const coach = createCoachHandlers({
+      ...options,
+      surface,
+      ...(typeof options.coach?.replayAvailability === 'function' ? { replayAvailability: options.coach.replayAvailability } : {}),
+    });
     const call = (name) => async (args) => {
       try {
         const result = await coach[name](args);
@@ -185,6 +190,7 @@ export function attachMcp(app, { path = '/mcp', reviewForRequest, coachForReques
     normalizeStatelessAccept(req);
     const server = createMcpServer({
       coachTools: false,
+      surface: 'remote_mcp',
       ...options,
       ...(reviewForRequest ? { review: reviewForRequest(req, res) } : {}),
       // All 8 tools only with an in-process coach for this caller (lib/coach/service.js).

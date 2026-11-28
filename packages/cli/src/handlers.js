@@ -12,29 +12,97 @@ import { loadGoals } from './agent.js';
  */
 export function createCoachHandlers(options = {}) {
   const api = options.coach ?? createCoachApi(options);
+  const surface = options.surface ?? null;
+  const toolPrefix = typeof options.toolPrefix === 'string' ? options.toolPrefix : '';
+  const replayTool = `${toolPrefix}replay_review`;
+  const reportTool = `${toolPrefix}coach_report`;
+  const replayAvailability = typeof options.replayAvailability === 'function'
+    ? options.replayAvailability
+    : (typeof api.replayAvailability === 'function' ? api.replayAvailability : null);
+
   const seatOf = async (args) => {
-    if (args?.hero == null || args.hero === '') throw invalid('hero is required: call coach_report without it to see the roster, then ask the user');
+    if (args?.hero == null || args.hero === '') throw invalid(`hero is required: call ${reportTool} without it to see the roster, then ask the user`);
     const report = await api.report(args.match_id);
     return { report, seat: findSeat(report, args.hero) };
   };
+
+  async function noParsedMatchCases(report, seat) {
+    let avail = null;
+    if (replayAvailability) {
+      try { avail = await replayAvailability(String(report.match.id)); } catch { avail = null; }
+    }
+    const hasTrace = typeof avail?.trace === 'boolean' ? avail.trace : null;
+    const canReplayReview = hasTrace === true
+      ? true
+      : typeof avail?.can_parse === 'boolean'
+        ? avail.can_parse
+        : null;
+    const message = hasTrace === true
+      ? `Pro case studies need an OpenDota-parsed match (OpenDota currently has basic scoreboard data only), but this match's Valve replay trace is already available. Call ${replayTool} for a full replay review, or ${reportTool} for the basic scoreboard summary.`
+      : `Pro case studies need an OpenDota-parsed match (OpenDota currently has basic scoreboard data only). Call ${replayTool} to parse the Valve replay directly for a full replay review, or ${reportTool} for the basic scoreboard summary.`;
+    return {
+      status: 'no_parsed_match',
+      reason: 'needs_parse',
+      ...(surface ? { surface } : {}),
+      match_id: String(report.match.id),
+      seat,
+      hero: report.players?.[seat]?.hero?.slug ?? null,
+      match_parsed: false,
+      basic_report_available: true,
+      replay_trace_available: hasTrace,
+      replay_review_available: canReplayReview,
+      next_tool: replayTool,
+      message,
+    };
+  }
+
   return {
     recent_matches: (args) => api.recent(args.account),
     async coach_report(args) {
       const report = await api.report(args.match_id);
+      const parsed = Boolean(report.match?.parsed);
+      const reportScope = parsed ? 'parsed_scoreboard' : 'basic_scoreboard_only';
       if (args.hero == null || args.hero === '') {
         return {
           schema: report.schema, match: report.match, data_gaps: report.data_gaps,
+          report_scope: reportScope,
+          ...(surface ? { surface } : {}),
           roster: report.players.map((p) => ({ seat: p.slot, hero: p.hero, radiant: p.radiant, kda: p.kda })),
-          note: 'Pick the user\'s hero (ask them; never guess), then call again with hero.',
+          note: parsed
+            ? 'Pick the user\'s hero (ask them; never guess), then call again with hero.'
+            : `Pick the user's hero (ask them; never guess), then call again with hero. OpenDota currently has basic scoreboard data only for this match; use ${replayTool} for full Valve replay analysis.`,
         };
       }
       const seat = findSeat(report, args.hero);
       const section = args.section ?? 'summary';
-      return section === 'all' ? seatJson(report, seat) : { section, value: sectionJson(report, seat, section), url: `https://dota2.ai/r/${report.match.id}?p=${seat}` };
+      if (section === 'all') return seatJson(report, seat);
+      return {
+        section,
+        value: sectionJson(report, seat, section),
+        report_scope: reportScope,
+        ...(surface ? { surface } : {}),
+        ...(!parsed ? {
+          parsed: false,
+          data_gaps: report.data_gaps,
+          next_tool: replayTool,
+          note: `OpenDota has not parsed this match yet (basic scoreboard only; lane/deaths/items/fights timelines are missing here). Call ${replayTool} to analyze the full Valve replay directly.`,
+        } : {}),
+        url: `https://dota2.ai/r/${report.match.id}?p=${seat}`,
+      };
     },
     async coach_cases(args) {
-      const { seat } = await seatOf(args);
-      return api.cases(args.match_id, seat, args.lang);
+      const { report, seat } = await seatOf(args);
+      if (report.match?.parsed === false) {
+        return noParsedMatchCases(report, seat);
+      }
+      try {
+        return await api.cases(args.match_id, seat, args.lang);
+      } catch (error) {
+        if (error?.reason === 'needs_parse') {
+          return noParsedMatchCases(report, seat);
+        }
+        throw error;
+      }
     },
     async coach_ask(args) {
       const { seat } = await seatOf(args);

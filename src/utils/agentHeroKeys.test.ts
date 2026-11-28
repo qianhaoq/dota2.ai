@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { HEROES_BY_KEY, STATIC_HEROES, heroByKey } from '../../packages/review-engine/src/staticHeroes.js';
+import { HEROES_BY_KEY, HERO_INPUT_ALIASES, STATIC_HEROES, heroByInput, heroByKey } from '../../packages/review-engine/src/staticHeroes.js';
 import { heroAbilities, laneReport, lineupTiming, proItemChoices } from '../../lib/agent/knowledgeTools.js';
 import { buildCheck, powerSpikes } from '../../lib/agent/situationTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
@@ -41,6 +41,38 @@ describe('a hero is found by the key a replay uses for it', () => {
     for (const none of ['nobody', '', null, undefined, 42]) expect(heroByKey(none as any)).toBeNull();
     expect(HEROES_BY_KEY.has('queen_of_pain')).toBe(true);
     expect(HEROES_BY_KEY.get('nobody')).toBeUndefined();
+  });
+
+  it('heroByInput resolves CN/EN aliases and divergent static-heroes/names.json translations with zero collisions (#485)', () => {
+    const seen = new Map<string, number>();
+    const norm = (s: string) => s.trim().toLowerCase().replace(/^npc_dota_hero_/, '').replace(/[\s_'’\-·.]+/g, '');
+    for (const [idStr, aliases] of Object.entries(HERO_INPUT_ALIASES as Record<string, string[]>)) {
+      const id = Number(idStr);
+      for (const alias of aliases) {
+        const key = norm(alias);
+        expect(seen.has(key) ? `${key} collided between ${seen.get(key)} and ${id}` : null).toBeNull();
+        seen.set(key, id);
+        expect(heroByInput(alias)?.id, alias).toBe(id);
+      }
+    }
+    // Divergent static-heroes.json vs lib/coach/data/names.json official names all map to the right hero.
+    for (const [input, expectedId] of [
+      ['剃刀', 15], ['雷泽', 15],
+      ['先知', 53], ['自然先知', 53], ['natures_prophet', 53], ["Nature's Prophet", 53],
+      ['Outworld Devourer', 76], ['Outworld Destroyer', 76],
+      ['德鲁伊', 80], ['独行德鲁伊', 80],
+      ['马戏团团长', 131], ['百戏大王', 131],
+      ['穆尔塔', 138], ['琼英碧灵', 138],
+      ['凯斯', 145], ['凯', 145],
+      ['拉戈', 155], ['朗戈', 155],
+      ['小鹿', 58], ['魅惑魔女', 58], ['骷髅王', 42], ['沙王', 16], ['蓝猫', 17], ['PA', 44], ['QOP', 39],
+    ] as const) {
+      expect(heroByInput(input)?.id, String(input)).toBe(expectedId);
+    }
+    // Garbage or ambiguous words never false-match.
+    for (const bad of ['queen', '我是axe', 'nobody', '', null, undefined, 9999]) {
+      expect(heroByInput(bad as any), String(bad)).toBeNull();
+    }
   });
 
   it('the review names her, and every knowledge tool answers for her under the replay\'s key', () => {

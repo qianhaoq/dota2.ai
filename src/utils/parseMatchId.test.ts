@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseMatchId } from '../../packages/review-engine/src/parseMatchId.js';
+import { normalizeMatchId, parseMatchId } from '../../packages/review-engine/src/parseMatchId.js';
 
 describe('parseMatchId — raw ids', () => {
   it('parses a plain numeric id (string or number)', () => {
@@ -64,5 +64,21 @@ describe('parseMatchId — pasted match URLs', () => {
     expect(parseMatchId('https://evil.test/?u=stratz.com/matches/8985182860')).toBeNull();
     expect(parseMatchId('https://api.opendota.com/matches/8985182860')).toBe(8985182860);
     expect(parseMatchId('https://zh.dotabuff.com/matches/8985182860/builds')).toBe(8985182860);
+  });
+
+  it('parses dota2.ai review/match URLs and normalizes string IDs strictly (#485)', () => {
+    expect(parseMatchId('https://dota2.ai/r/8985182860?hero=beastmaster&lang=zh')).toBe(8985182860);
+    expect(parseMatchId('https://www.dota2.ai/match/8985182860')).toBe(8985182860);
+    expect(parseMatchId('https://evildota2.ai/r/8985182860')).toBeNull();
+    expect(parseMatchId('https://dota2.ai.evil.test/r/8985182860')).toBeNull();
+    expect(parseMatchId('https://dota2.ai/p/8985182860')).toBeNull();
+
+    expect(normalizeMatchId('  8985182860  ')).toBe('8985182860');
+    expect(normalizeMatchId('#8985182860')).toBe('8985182860');
+    expect(normalizeMatchId('https://dota2.ai/r/8985182860?hero=ursa')).toBe('8985182860');
+    expect(normalizeMatchId('https://www.opendota.com/matches/8985182860')).toBe('8985182860');
+    expect(normalizeMatchId('javascript://dota2.ai/r/8985182860')).toBeNull();
+    expect(normalizeMatchId('../1')).toBeNull();
+    expect(normalizeMatchId('0')).toBeNull();
   });
 });

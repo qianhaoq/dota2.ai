@@ -2,7 +2,7 @@ import express from 'express';
 import { readFileSync } from 'node:fs';
 import { parseSiteKnowledge } from '../../packages/review-engine/src/siteKnowledge.js';
 import { attachMcp } from '@dota2ai/mcp';
-import { buildReview, ENGINE_VERSION, STATIC_HEROES, isMatchParsed, UNPARSED_MATCH_CACHE_TTL_MS, phraseInsight, refusal } from '../../packages/review-engine/src/index.js';
+import { buildReview, ENGINE_VERSION, heroByInput, isMatchParsed, normalizeMatchId, UNPARSED_MATCH_CACHE_TTL_MS, phraseInsight, refusal } from '../../packages/review-engine/src/index.js';
 import { createCache, createLimiter, createIpKey, DAY, errorBody, classify, startSse } from './support.js';
 import { openapi, llms } from './openapi.js';
 
@@ -23,14 +23,15 @@ function uiV2FromEnv(env = process.env) {
 function input(req, ask = false) {
   const source = ask ? req.body : req.query;
   if (!source || typeof source !== 'object') throw invalid();
-  const id = req.params.matchId;
-  if (!/^[1-9]\d*$/.test(id) || Number(id) > 2 ** 40) throw invalid();
+  const id = normalizeMatchId(req.params.matchId);
+  if (!id) throw invalid();
   const lang = source.lang ?? 'en';
   if (!['en', 'zh'].includes(lang)) throw invalid();
   let heroId;
   if (source.hero != null && source.hero !== '') {
-    const hero = Object.values(STATIC_HEROES).find(h => String(h.id) === String(source.hero) || h.internalSlug === source.hero);
-    if (!hero || !['string', 'number'].includes(typeof source.hero)) throw invalid();
+    if (!['string', 'number'].includes(typeof source.hero)) throw invalid();
+    const hero = heroByInput(source.hero);
+    if (!hero) throw invalid();
     heroId = hero.id;
   }
   return { matchId: Number(id), heroId, lang, key: `review:${Number(id)}:${heroId ?? 'none'}:${ENGINE_VERSION}` };

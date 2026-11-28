@@ -40,11 +40,13 @@ resolved, so ask for the friend code.
 
 ## The replay review
 
-`dota2ai_replay_review` never blocks for minutes. Read `status`:
+`dota2ai_replay_review` never blocks for minutes and reports `surface: 'native_dsh'` plus `stage` / `reason` / `retry_in_sec` when relevant. Read `status`:
 
-- `parsing` / `reviewing`: the replay trace is being prepared or your DSH model
-  is investigating it locally. Tell the user it takes 2–4 minutes, wait
-  `poll_after_sec`, then call again with the **same arguments**.
+- `parsing` / `reviewing`: the replay trace is being prepared (`stage`:
+  `locating` · `downloading` · `extracting` · `building` · `storing`) or your
+  DSH model is investigating it locally (`stage: 'review'`). Tell the user it
+  takes 2–4 minutes, wait `poll_after_sec`, then call again with the **same
+  arguments**.
 - `pick_hero`: ask the user which hero they played (`heroes` lists the game's);
   never guess.
 - `ready`: `verdict`, `opening_note`, `highlights` (evidence-backed positives),
@@ -66,11 +68,18 @@ resolved, so ask for the friend code.
   returns the cached review immediately — including compatible reviews from an
   earlier coach version (`stale_version: true`); only pass `refresh: true` when
   the user explicitly asks to regenerate under the latest coach version.
-- `failed`: offer to try again; only then call with `retry: true`.
+- `failed`: check `stage` (`parse` vs `review`), `reason`, and `retry_in_sec`.
+  Tell the user the exact stage and reason (e.g., `no_replay_url` means Valve
+  has not published the replay yet; `rate_limited` / `busy` means wait
+  `retry_in_sec`; `model_out_of_credit` / `model_refused_the_key` means check
+  their DSH model key/balance), and only call again with `retry: true` after
+  waiting or when they ask to retry.
 - `replay_unavailable` / `unavailable`: if `reason` is `model_not_configured`,
-  ask the user to configure/select a model in DSH. If the replay expired (Valve
-  keeps replays about two weeks), fall back to `dota2ai_coach_report` and say
-  the review is from match data, not the replay.
+  `model_out_of_credit`, or `model_refused_the_key`, ask the user to
+  configure/check their model in DSH. If `status` is `replay_unavailable`
+  (`replay_gone` — Valve keeps replays about two weeks), fall back to
+  `dota2ai_coach_report` and say the review is from scoreboard match data, not
+  the replay.
 
 ## Reading the coach report
 
@@ -79,9 +88,15 @@ resolved, so ask for the friend code.
   advice.
 - Keep each piece of evidence's scope ("whole game" vs "before 10:00", "Valve
   data, 7.42", "OpenDota pro matches, <date>").
-- `match.parsed: false` or non-empty `data_gaps`: only a basic review exists.
-  List the gaps. Missing evidence is not evidence of a mistake.
-- `dota2ai_coach_cases`: what went with winning, not proof of cause.
+- `match.parsed: false`, `report_scope: 'basic_scoreboard_only'`, or non-empty
+  `data_gaps`: OpenDota only has a basic scoreboard report. List the gaps, note
+  missing evidence is not evidence of a mistake, and use `dota2ai_replay_review`
+  for full analysis directly from the Valve replay.
+- `dota2ai_coach_cases`: what went with winning, not proof of cause. When
+  OpenDota has not parsed the match yet, it returns `status: 'no_parsed_match'`
+  (not a broken match!) with `replay_trace_available` and `next_tool:
+  'dota2ai_replay_review'` — explain that pro case studies need an OpenDota
+  parse and offer `dota2ai_replay_review` for the full Valve replay review.
 - `dota2ai_coach_ask` answers from the cached replay trace when present (checked
   against replay records) or from the match report using DSH's model;
   `fallback: true` means no model was available and the answer is the matching
