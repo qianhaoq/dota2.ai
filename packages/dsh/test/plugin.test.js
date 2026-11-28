@@ -802,7 +802,9 @@ describe('DSH local service end-to-end (service.js)', () => {
     expect(resolveDataHome({}, { DSH_HOME: '/tmp/dsh-test' })).toBe('/tmp/dsh-test/dota2ai');
   });
 
-  it('reuses older-version local reviews across prompt bumps with cache_scope=dsh_local and regenerates only on explicit refresh (#486)', async () => {
+  // Owner, 2026-11-28: a new prompt version voids every earlier review's conclusions, on this machine as on the site;
+  // only the replay's facts (the local trace) carry over. This replaces the cross-version reuse of #486.
+  it('an older-version local review is never served: the review is written again from the local trace (cache_scope=dsh_local)', async () => {
     const { DEEP_REVIEW_PROMPT_VERSION, DEEP_REVIEW_SCHEMA } = await import('../../../lib/agent/deepReview.js');
     const dir = mkdtempSync(join(tmpdir(), 'dsh-cache-reuse-'));
     try {
@@ -839,7 +841,7 @@ describe('DSH local service end-to-end (service.js)', () => {
         }
         return { toolCalls: [{ id: 'c3', name: 'submit_review', args: { ...submit, verdict: '本机最新版结论。' } }] };
       });
-      const fetchImpl = vi.fn(async () => new Response('should not fetch trace or match on cache hit', { status: 500 }));
+      const fetchImpl = vi.fn(async () => new Response('should not fetch trace or match: the trace is local', { status: 500 }));
       const svc = createDshService({
         ctx: {
           llm,
@@ -849,47 +851,26 @@ describe('DSH local service end-to-end (service.js)', () => {
         fetchImpl,
       });
 
-      // 1. Default replay.review hits local older-version cache with ZERO LLM calls and ZERO network calls.
-      const toolCached = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
-      expect(toolCached).toMatchObject({
-        status: 'ready',
-        cached: true,
-        stale_version: true,
-        prompt_version: oldV,
-        latest_prompt_version: DEEP_REVIEW_PROMPT_VERSION,
-        cache_scope: 'dsh_local',
-        panel_route: '/r/9100904020?hero=beastmaster&lang=zh',
-        verdict: '本机旧版缓存结论。',
-      });
-      expect(toolCached).not.toHaveProperty('url');
-      expect(toolCached.note).toContain('kept on this machine');
-      expect(toolCached.note).toContain('separate from the public dota2.ai web cache');
-      expect(toolCached.note).toContain('refresh: true');
-      expect(llm.calls).toHaveLength(0);
-      expect(fetchImpl).not.toHaveBeenCalled();
-
-      // 2. HTTP GET & POST (without refresh) also reuse the local cache without calling LLM; other lang/model stay isolated.
-      const getCached = await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/review?hero=beastmaster&lang=zh' });
-      expect(getCached.body).toMatchObject({ status: 'ready', prompt_version: oldV, stale_version: true, latest_prompt_version: DEEP_REVIEW_PROMPT_VERSION });
-      const postCached = await svc.handleRequest({ method: 'POST', url: '/api/agent/9100904020/review', body: JSON.stringify({ hero: 'beastmaster', lang: 'zh' }) });
-      expect(postCached.status).toBe(200);
-      expect(postCached.body).toMatchObject({ status: 'ready', prompt_version: oldV, stale_version: true });
-      expect((await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/review?hero=beastmaster&lang=en' })).body).toEqual({ status: 'none' });
-      expect((await svc.handleRequest({ method: 'GET', url: `/api/agent/9100904020/review?hero=beastmaster&lang=zh&model=${encodeModelKey('deepseek', 'deepseek-reasoner')}` })).body).toEqual({ status: 'none' });
+      // 1. The earlier version's review is not a review: none, over HTTP and to the tool, and no model call for it.
+      expect((await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/review?hero=beastmaster&lang=zh' })).body).toEqual({ status: 'none' });
       expect(llm.calls).toHaveLength(0);
 
-      // 3. Explicit refresh: true regenerates locally under DEEP_REVIEW_PROMPT_VERSION.
-      const started = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh', refresh: true });
+      // 2. replay.review writes it again under DEEP_REVIEW_PROMPT_VERSION from the trace already on this machine.
+      const started = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
       expect(['reviewing', 'ready']).toContain(started.status);
       let fresh;
       await vi.waitFor(async () => {
         fresh = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
         expect(fresh.status).toBe('ready');
-        expect(fresh.stale_version).toBeUndefined();
       }, { timeout: 5000 });
       expect(fresh.verdict).toBe('本机最新版结论。');
+      expect(fresh.stale_version).toBeUndefined();
+      expect(fresh.cached).toBeUndefined();
       expect(fresh.cache_scope).toBe('dsh_local');
+      expect(JSON.stringify(fresh)).not.toContain('本机旧版缓存结论');
       expect(llm.calls.length).toBeGreaterThan(0);
+      // The replay's facts were local: the match record may be looked up for the scoreboard, a replay or a trace never.
+      expect(fetchImpl.mock.calls.map((c) => String(c[0])).filter((u) => /trace|replay|\.dem|prepare/i.test(u))).toEqual([]);
 
       svc.shutdown();
     } finally {
