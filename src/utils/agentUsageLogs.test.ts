@@ -11,7 +11,11 @@ const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-
 const ID = 9100904020;
 const call = (name: string, args: any, id: string) => ({ id, name, args });
 const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。' };
-const submit = { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], next_game: ['留咆哮'], blind_spots: ['视野'] };
+const chapters = [
+  { topic: 'midgame', title: '黑皇杖窗口', analysis: '幻影刺客开了 7 次黑皇杖，27:27 吼进黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+  { topic: 'skills_and_items', title: '大招留给核心', analysis: '面对 7 次黑皇杖需要留好大招。', evidence: [{ refs: ['immunity:phantom_assassin'], fact: '幻影刺客开了 7 次黑皇杖。' }] },
+];
+const submit = { verdict: '咆哮没有留给幻影刺客。', findings: [finding], chapters, blind_spots: ['视野'] };
 const complete = async (o: any) => {
   const last = o.messages.at(-1);
   if (!o.tools.some((t: any) => t.name === 'submit_review')) return last.role === 'tool' ? { text: '36:05 你满血 2915。' } : { toolCalls: [call('death_context', { hero: 'beastmaster', index: 9 }, 'd')] };
