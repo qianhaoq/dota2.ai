@@ -182,7 +182,8 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [knownDuration, setKnownDuration] = useState<number | null>(null);
-  const [selectedMoment, setSelectedMoment] = useState<{ t: number; clock: string } | null>(null);
+  const [knownHeroes, setKnownHeroes] = useState<HeroTrack['heroes'] | null>(null);
+  const [selectedMoment, setSelectedMoment] = useState<{ hero: string; t: number; clock: string } | null>(null);
 
   // Sync when the reviewed match/hero changes.
   useEffect(() => {
@@ -190,20 +191,30 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
     setSelectedMoment(null);
     setWin({ preset: 'full', from: null, to: null });
     setKnownDuration(null);
+    setKnownHeroes(null);
     setData(null);
     setFailed(false);
   }, [matchId, hero]);
 
-  // Fetch track data whenever open & selection changes.
+  // Reset cached localized hero labels when UI language changes so the selector updates cleanly.
+  useEffect(() => {
+    setKnownHeroes(null);
+  }, [lang]);
+
+  // Fetch track data whenever open & selection changes. Clear previous payload immediately so stale
+  // maps/death markers are never interactive while loading or if the new request fails.
   useEffect(() => {
     if (!open) return undefined;
     let alive = true;
+    setData(null);
+    setSelectedMoment(null);
     setLoading(true);
     setFailed(false);
     fetchTrack(matchId, activeHero, lang, { from: win.from, to: win.to, viewer: hero })
       .then((res) => {
         if (!alive) return;
         setData(res);
+        setKnownHeroes(res.heroes);
         setLoading(false);
         setKnownDuration(res.duration);
         setStartMinInput(String(Math.max(0, Math.floor(res.from / 60))));
@@ -232,8 +243,9 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
   }, [duration, lang]);
 
   const heroOptions = useMemo(() => {
-    if (data?.heroes?.length) {
-      return data.heroes.map((h) => ({
+    const source = data?.heroes?.length ? data.heroes : knownHeroes;
+    if (source?.length) {
+      return source.map((h) => ({
         key: h.hero,
         label: h.hero_name,
         side: h.side,
@@ -248,7 +260,7 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
       }));
     }
     return [{ key: activeHero, label: activeHero, side: 'me' as const }];
-  }, [data, rosterHeroes, hero, activeHero, lang]);
+  }, [data, knownHeroes, rosterHeroes, hero, activeHero, lang]);
 
   const bounds = data?.heat?.bounds ?? MAP_BOUNDS;
   const px = (x: number) => ((x - bounds.min_x) / bounds.size) * S;
@@ -333,15 +345,17 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
     return { chunks, singles, arrows, firstPt, lastPt };
   }, [data]);
 
-  const jumpToMoment = (sec: number) => {
+  const jumpToMoment = (sec: number, targetHero?: string) => {
+    const momentHero = targetHero ?? data?.hero;
+    if (!momentHero) return;
     const rounded = Math.round(sec);
-    if (selectedMoment && selectedMoment.t === rounded) {
+    if (selectedMoment && selectedMoment.t === rounded && selectedMoment.hero === momentHero) {
       setSelectedMoment(null);
       return;
     }
-    trackEvent('moment_played', { matchId, lang, hero: activeHero });
-    onPlayMoment?.(rounded, activeHero);
-    setSelectedMoment({ t: rounded, clock: clockOf(rounded) });
+    trackEvent('moment_played', { matchId, lang, hero: momentHero });
+    onPlayMoment?.(rounded, momentHero);
+    setSelectedMoment({ hero: momentHero, t: rounded, clock: clockOf(rounded) });
   };
 
   const handlePreset = (p: { id: PresetId; from: number | null; to: number | null }) => {
@@ -372,11 +386,11 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
 
   const sideTag = (side: 'me' | 'ally' | 'enemy') => t(side === 'me' ? T.you : side === 'ally' ? T.ally : T.enemy);
 
-  const renderDeathMarker = (d: TrackDeath, i: number) => {
+  const renderDeathMarker = (d: TrackDeath, i: number, payloadHero: string) => {
     if (d.x == null || d.y == null) return null;
-    const isActive = selectedMoment?.t === Math.round(d.t);
+    const isActive = selectedMoment?.t === Math.round(d.t) && selectedMoment?.hero === payloadHero;
     const label = t(T.deathAria).replace('{clock}', d.clock);
-    const activate = () => jumpToMoment(d.t);
+    const activate = () => jumpToMoment(d.t, payloadHero);
     return (
       <g
         key={`d-${d.t}-${i}`}
@@ -410,8 +424,12 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
             aria-label={t(T.heroLabel)}
             value={activeHero}
             onChange={(e) => {
-              setActiveHero(e.target.value);
-              setSelectedMoment(null);
+              const nextHero = e.target.value;
+              setActiveHero(nextHero);
+              if (nextHero !== activeHero) {
+                setData(null);
+                setSelectedMoment(null);
+              }
             }}
           >
             {heroOptions.map((opt) => (
@@ -576,7 +594,7 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
                         className="ag-track-line"
                         points={chunk.points}
                         stroke={chunk.color}
-                        onClick={() => jumpToMoment(chunk.midT)}
+                        onClick={() => jumpToMoment(chunk.midT, data.hero)}
                       >
                         <title>
                           {t(T.segmentTip)
@@ -596,7 +614,7 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
                         cy={pt.y.toFixed(1)}
                         r="3"
                         fill={pt.color}
-                        onClick={() => jumpToMoment(pt.t)}
+                        onClick={() => jumpToMoment(pt.t, data.hero)}
                       >
                         <title>{clockOf(pt.t)}</title>
                       </circle>
@@ -641,7 +659,7 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
                 )}
 
                 {/* DEATH MARKERS (clickable to jump to MomentReplay in BOTH Path and Heatmap modes) */}
-                {data.deaths.map((d, i) => renderDeathMarker(d, i))}
+                {data.deaths.map((d, i) => renderDeathMarker(d, i, data.hero))}
               </svg>
 
               {/* Mode-specific legend */}
@@ -715,14 +733,14 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
                 ) : (
                   <ul className="ag-track-death-list">
                     {data.deaths.map((d, i) => {
-                      const active = selectedMoment?.t === Math.round(d.t);
+                      const active = selectedMoment?.t === Math.round(d.t) && selectedMoment?.hero === data.hero;
                       return (
                         <li key={`dl-${d.t}-${i}`}>
                           <button
                             type="button"
                             className={`ag-track-death-btn${active ? ' is-on' : ''}`}
                             aria-pressed={active}
-                            onClick={() => jumpToMoment(d.t)}
+                            onClick={() => jumpToMoment(d.t, data.hero)}
                           >
                             <time>{d.clock}</time>
                             {d.place_name && <span className="ag-track-death-place">{d.place_name}</span>}
@@ -746,7 +764,7 @@ export const HeroTrackMap: React.FC<HeroTrackMapProps> = ({
                   {t(T.closeReplay)}
                 </button>
               </div>
-              <MomentReplay matchId={matchId} hero={activeHero} lang={lang} t={selectedMoment.t} />
+              <MomentReplay matchId={matchId} hero={selectedMoment.hero} lang={lang} t={selectedMoment.t} />
             </div>
           )}
         </>

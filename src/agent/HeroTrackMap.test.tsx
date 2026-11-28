@@ -215,4 +215,68 @@ describe('HeroTrackMap', () => {
     await screen.findByRole('group', { name: '兽王 0:00 到 40:00 的移动路径' });
     expect(urls.filter((u) => u.includes('/track'))).toHaveLength(1);
   });
+
+  it('clears stale track data and death buttons while switching heroes and keeps them cleared on request failure', async () => {
+    const id = freshMatch();
+    const onPlayMoment = vi.fn();
+    let rejectPending!: (err: Error) => void;
+    let resolveSven!: (res: Response) => void;
+
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/moment')) {
+        return Promise.resolve(new Response(JSON.stringify(makeMoment(507)), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      if (url.includes('hero=beastmaster')) {
+        return Promise.resolve(new Response(JSON.stringify(makeTrack()), { status: 200, headers: { 'content-type': 'application/json' } }));
+      }
+      if (url.includes('hero=phantom_assassin')) {
+        return new Promise<Response>((_resolve, reject) => { rejectPending = reject; });
+      }
+      if (url.includes('hero=sven')) {
+        return new Promise<Response>((resolve) => { resolveSven = resolve; });
+      }
+      return Promise.resolve(new Response(JSON.stringify({ code: 'not_found' }), { status: 404, headers: { 'content-type': 'application/json' } }));
+    }));
+
+    render(<HeroTrackMap matchId={id} hero="beastmaster" lang="en" onPlayMoment={onPlayMoment} />);
+
+    // Open Beastmaster's death replay first.
+    const bmDeath = await screen.findByRole('button', { name: 'Death at 8:27 — replay on map' });
+    fireEvent.click(bmDeath);
+    expect(onPlayMoment).toHaveBeenCalledWith(507, 'beastmaster');
+    expect(await screen.findByText('Moment replay · 8:27')).toBeTruthy();
+
+    // Switch hero to Phantom Assassin while its request is still pending:
+    // Beastmaster's map, death buttons, and open MomentReplay must clear immediately.
+    fireEvent.change(screen.getByLabelText('Hero'), { target: { value: 'phantom_assassin' } });
+    expect(screen.getByRole('status').textContent).toContain('Loading movement data');
+    expect(screen.queryByRole('button', { name: 'Death at 8:27 — replay on map' })).toBeNull();
+    expect(document.querySelector('.ag-track-death')).toBeNull();
+    expect(document.querySelector('.ag-track-death-btn')).toBeNull();
+    expect(document.querySelector('.ag-replay')).toBeNull();
+
+    // Fail the Phantom Assassin request: stale Beastmaster track must stay cleared and error must show.
+    rejectPending(new Error('network error'));
+    expect((await screen.findByRole('alert')).textContent).toContain('Could not load movement data');
+    expect(document.querySelector('.ag-track-death')).toBeNull();
+    expect(document.querySelector('.ag-track-death-btn')).toBeNull();
+    expect(onPlayMoment).toHaveBeenCalledTimes(1);
+
+    // All heroes remain selectable in the dropdown even after a failed fetch, and switching to Sven loads cleanly.
+    const select = screen.getByLabelText('Hero') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['beastmaster', 'sven', 'phantom_assassin']);
+    fireEvent.change(select, { target: { value: 'sven' } });
+    expect(screen.getByRole('status').textContent).toContain('Loading movement data');
+    resolveSven(new Response(JSON.stringify(makeTrack({
+      hero: 'sven',
+      hero_name: 'Sven',
+      side: 'ally',
+      deaths: [{ t: 902.1, clock: '15:02', x: 100, y: 100, killer: 'phantom_assassin', place: 'river_mid', place_name: 'river mid' }],
+    })), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    const svenDeath = await screen.findByRole('button', { name: 'Death at 15:02 — replay on map' });
+    fireEvent.click(svenDeath);
+    expect(onPlayMoment).toHaveBeenLastCalledWith(902, 'sven');
+  });
 });
