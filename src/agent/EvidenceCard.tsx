@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { MAP_WORLD_HALF as WORLD } from '../../lib/agent/mapBounds.js';
 import { fetchEvidence, type EvidenceItem, type EvidenceRecord } from './api';
 import { MomentReplay } from './MomentReplay';
 import { trackEvent } from '../services/analytics';
@@ -511,8 +512,7 @@ const TOTALS: Record<string, Tri> = {
 const pretty = (key: string) => key.replace(/^modifier_/, '').replace(/^item_/, '').replace(/_/g, ' ');
 const SIDE_CLASS: Record<string, string> = { me: 'is-me', ally: 'is-ally', enemy: 'is-enemy' };
 
-/** World units → a 0..1 square with Radiant bottom-left. */
-const WORLD = 8600;
+/** World units → a 0..1 square with Radiant bottom-left (shared bounds with MomentReplay & HeroTrackMap). */
 const mapX = (x: number) => (x + WORLD) / (2 * WORLD);
 const mapY = (y: number) => 1 - (y + WORLD) / (2 * WORLD);
 
