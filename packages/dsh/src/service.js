@@ -509,6 +509,26 @@ export function createDshService({
         const out = await agent.moment(id, hero, normalizeUiLang(u.searchParams.get('lang')), t, to);
         return out.status === 'ok' ? { status: 200, body: out } : { status: 404, body: { code: out.status, error: 'No such moment' } };
       }
+      if (m === 'GET' && (match = path.match(/^\/api\/agent\/([^/]+)\/track$/))) {
+        const id = decodeURIComponent(match[1]);
+        const hero = heroOf(u.searchParams.get('hero'));
+        const viewerParam = u.searchParams.get('viewer');
+        const hasViewer = viewerParam != null && viewerParam !== '';
+        const viewer = hasViewer ? heroOf(viewerParam) : null;
+        const numParam = (v) => (typeof v === 'string' && /^-?\d{1,6}(\.\d{1,3})?$/.test(v) ? Number(v) : NaN);
+        const fromParam = u.searchParams.get('from');
+        const toParam = u.searchParams.get('to');
+        const hasFrom = fromParam != null && fromParam !== '';
+        const hasTo = toParam != null && toParam !== '';
+        const from = hasFrom ? numParam(fromParam) : null;
+        const to = hasTo ? numParam(toParam) : null;
+        if (!MATCH_ID.test(id) || !hero || (hasViewer && !viewer) || (hasFrom && !Number.isFinite(from)) || (hasTo && !Number.isFinite(to)) || (from != null && to != null && from > to)) {
+          return { status: 400, body: { code: 'invalid_input', error: 'Invalid track parameters' } };
+        }
+        const out = await agent.track(id, hero, normalizeUiLang(u.searchParams.get('lang')), { from, to, viewer });
+        if (out.status === 'invalid_window') return { status: 400, body: { code: out.status, error: 'Invalid time window' } };
+        return out.status === 'ok' ? { status: 200, body: out } : { status: 404, body: { code: out.status, error: 'No such track' } };
+      }
       if (m === 'POST' && (match = path.match(/^\/api\/agent\/([^/]+)\/feedback$/))) {
         const id = decodeURIComponent(match[1]);
         const b = parseBody();
