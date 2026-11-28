@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { attackOf, buildCheck, contactBeforeDeaths } from '../../lib/agent/situationTools.js';
+import { attackOf, buildCheck, contactBeforeDeaths, effectsRemovedBy, observedPlacement, observedRemoval, observedTargetState } from '../../lib/agent/situationTools.js';
 import { deathContext } from '../../packages/review-engine/src/trace/index.js';
 import { reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
 import { withHeroNames } from '../../lib/agent/review/toolkit.js';
@@ -128,9 +128,25 @@ describe('build_check: how each item meets the enemy who killed the player', () 
     const a = by(pa);
     // Eul's: cast on an enemy (Valve: "can only be cast on enemy units or yourself"), a basic dispel.
     expect(a.cyclone).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'an_enemy_target' });
-    // Which of her effects it would remove is not given: it turns on where each effect sits, which the data does not
-    // say (#507 review). Her abilities' dispelled_by and Valve's words are given instead.
-    expect(a.cyclone).not.toHaveProperty('their_effects_it_removes');
+    // Which of her effects it removes: only a dispel seen in archived replays — the item's effect taking her ability's
+    // modifier off a hero it landed on, on that side (#510 review); never joined from a dispel flag and a placement.
+    const keyOf = (name: string) => pa.their_abilities.find((x: any) => x.name === name)?.ability;
+    // Both facts, every time: Valve marks it removable by that dispel, and the item was seen removing it on that side.
+    const flag = (name: string) => pa.their_abilities.find((x: any) => x.name === name)?.dispelled_by;
+    for (const r of a.cyclone.their_effects_it_removes ?? []) {
+      expect(flag(r.name)).toBe('basic');
+      expect(observedRemoval('cyclone', keyOf(r.name), ['enemy_hero'])).toEqual({ removed: r.removed, games: r.games });
+    }
+    for (const r of a.black_king_bar.their_effects_it_removes ?? []) {
+      expect(flag(r.name)).toBe('basic');
+      expect(observedRemoval('black_king_bar', keyOf(r.name), ['self', 'ally_hero'])).toEqual({ removed: r.removed, games: r.games });
+    }
+    // Where each of her abilities' modifiers was seen land is its own fact, beside dispelled_by.
+    for (const x of pa.their_abilities) {
+      const p = observedPlacement(x.ability);
+      if (p) expect(x).toMatchObject({ observed_on: p.sits === 'on_them' ? 'them' : 'enemy_heroes', observed_times: p.seen });
+      else expect(x).not.toHaveProperty('observed_on');
+    }
     expect(a.cyclone).not.toHaveProperty('their_abilities_marked_removable_by_it');
     expect(pa.their_abilities.find((x: any) => x.ability === 'phantom_assassin_phantom_strike')).toHaveProperty('valve_text');
     expect(a.nullifier.dispel_lands_on).toBe('an_enemy_target');
@@ -260,5 +276,150 @@ describe('build_check: the player\'s own hero, for how an item sits with it', ()
     // An item's mana regen and intelligence are among what it gives (Valve's stats).
     const cyclone = b.answers_to_top_killers[0].items_acting_on_their_damage.items.find((i: any) => i.item === 'cyclone');
     expect(cyclone.gives).toMatchObject({ mana_regen: expect.any(Number), intelligence: expect.any(Number) });
+  });
+});
+
+// #508: what abilities and items did, observed in archived replays (scripts/observe-effects.mjs), never inferred.
+describe('observed effects: where an ability\'s effect sat, and what an item made its target', () => {
+  const obs: any = {
+    sources: {
+      'ability:ursa_overpower': { modifiers: { modifier_ursa_overpower: { self: 115, ally_hero: 0, enemy_hero: 0, other: 0, games: 3 } } },
+      'ability:ursa_earthshock': { modifiers: { modifier_ursa_earthshock: { self: 0, ally_hero: 0, enemy_hero: 66, other: 40, games: 3 }, modifier_ursa_earthshock_move: { self: 65, ally_hero: 0, enemy_hero: 0, other: 0, games: 3 } } },
+      'ability:necrolyte_ghost_shroud': { modifiers: { modifier_necrolyte_ghost_shroud_active: { self: 8, ally_hero: 0, enemy_hero: 0, other: 0, games: 1 }, modifier_necrolyte_ghost_shroud_aura_effect: { self: 0, ally_hero: 0, enemy_hero: 13, other: 17, games: 1 } } },
+      'item:cyclone': { modifiers: { modifier_eul_cyclone: { self: 3, ally_hero: 0, enemy_hero: 2, other: 0, games: 2, target_state: { samples: 40, stunned: 40, invulnerable: 40, silenced: 3 } } } },
+      'item:blade_mail': { modifiers: { modifier_item_blade_mail_reflect: { self: 4, ally_hero: 0, enemy_hero: 0, other: 0, games: 1, target_state: { samples: 3, stunned: 3 } } } },
+    },
+  };
+
+  it('an ability is placed only by where its effect was seen: its own modifier first, one side only', () => {
+    expect(observedPlacement('ursa_overpower', obs)).toEqual({ sits: 'on_them', seen: 115, games: 3 });
+    // The slow, modifier_ursa_earthshock, landed on enemy heroes; the leap's _move on Ursa is not the one named after it.
+    expect(observedPlacement('ursa_earthshock', obs)).toEqual({ sits: 'on_the_player', seen: 66, games: 3 });
+    // On Necrophos and, as an aura, on his enemies: not placed.
+    expect(observedPlacement('necrolyte_ghost_shroud', obs)).toBeNull();
+    // Never observed, or no observations at all: not placed (unknown, never "on the player").
+    expect(observedPlacement('ember_spirit_flame_guard', obs)).toBeNull();
+    expect(observedPlacement('ursa_overpower', null)).toBeNull();
+  });
+
+  it('a removal is a dispel seen: the item\'s effect taking that ability\'s modifier off a hero, on the asked side', () => {
+    const o: any = { ...obs, removals: { 'item:cyclone': { modifier_ursa_overpower: { removed: 3, games: 2, on: { self: 0, ally_hero: 0, enemy_hero: 3 } } }, 'item:black_king_bar': { modifier_ursa_earthshock: { removed: 5, games: 3, on: { self: 5, ally_hero: 0, enemy_hero: 0 } } } } };
+    expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], o)).toEqual({ removed: 3, games: 2 });
+    // Seen only on the other side, never seen, or no removals at all: null.
+    expect(observedRemoval('cyclone', 'ursa_overpower', ['self', 'ally_hero'], o)).toBeNull();
+    expect(observedRemoval('black_king_bar', 'ursa_earthshock', ['self', 'ally_hero'], o)).toEqual({ removed: 5, games: 3 });
+    expect(observedRemoval('cyclone', 'ursa_enrage', ['enemy_hero'], o)).toBeNull();
+    // Removed on both sides: this side's count is known, its games are not (the data counts games over every side).
+    const both: any = { ...o, removals: { 'item:cyclone': { modifier_ursa_overpower: { removed: 3, games: 2, on: { self: 2, ally_hero: 0, enemy_hero: 1 } } } } };
+    expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], both)).toEqual({ removed: 1, games: null });
+    // Two of its modifiers removed: whether their games overlap is not in the counts — games null (#510 review).
+    const two: any = { sources: { 'ability:crystal_maiden_crystal_nova': { modifiers: { modifier_crystal_maiden_crystal_nova: {}, modifier_crystal_maiden_crystal_nova_barrier: {} } } }, removals: { 'item:black_king_bar': { modifier_crystal_maiden_crystal_nova: { removed: 6, games: 4, on: { self: 6, ally_hero: 0, enemy_hero: 0 } }, modifier_crystal_maiden_crystal_nova_barrier: { removed: 1, games: 1, on: { self: 1, ally_hero: 0, enemy_hero: 0 } } } } };
+    expect(observedRemoval('black_king_bar', 'crystal_maiden_crystal_nova', ['self', 'ally_hero'], two)).toEqual({ removed: 7, games: null });
+    expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], obs)).toBeNull();
+  });
+
+  it('an item\'s target state is the states nearly all its samples had, with the sample; too few samples say nothing', () => {
+    expect(observedTargetState('cyclone', obs)).toEqual({ states: ['invulnerable', 'stunned'], samples: 40, games: 2, on_enemy_heroes: 2 });
+    expect(observedTargetState('blade_mail', obs)).toBeNull();
+    // Enough samples but no state nearly all of them had: nothing is said.
+    expect(observedTargetState('x', { sources: { 'item:x': { modifiers: { modifier_x: { enemy_hero: 3, games: 1, target_state: { samples: 20, stunned: 5 } } } } } })).toBeNull();
+    expect(observedTargetState('heavens_halberd', obs)).toBeNull();
+    expect(observedTargetState('cyclone', null)).toBeNull();
+  });
+
+  it('death_context: the attackers\' casts on anything but the player — their own buffs — in the window', () => {
+    const d: any = deathContext(trace, { hero: 'beastmaster' });
+    for (const x of d.deaths) {
+      expect(Array.isArray(x.attackers_casts_not_on_me)).toBe(true);
+      for (const c of x.attackers_casts_not_on_me ?? []) {
+        expect(c.dt).toBeLessThanOrEqual(0.05);
+        expect(c.dt).toBeGreaterThanOrEqual(-12.05);
+        expect(c.target).not.toBe('beastmaster');
+      }
+    }
+    // No damage log: who attacked cannot be told, so their casts are unknown (null), never "none" (#510 review).
+    const blank: any = structuredClone(trace);
+    delete blank.damage;
+    for (const x of (deathContext(blank, { hero: 'beastmaster' }) as any).deaths) expect(x.attackers_casts_not_on_me).toBeNull();
+    // Nothing here is also in enemy_casts_on_me (those are the ones aimed at the player).
+    const rows = new Set(d.deaths.flatMap((x: any) => x.enemy_casts_on_me.map((c: any) => c.row)));
+    expect(d.deaths.flatMap((x: any) => (x.attackers_casts_not_on_me ?? []).map((c: any) => c.row)).some((r: any) => rows.has(r))).toBe(false);
+  });
+
+  it('how_they_killed_me: what the killer cast in the 15 s before each kill, their own buffs included', () => {
+    const seat = trace.heroes.findIndex((h: any) => h.key === 'beastmaster');
+    const runs = contactBeforeDeaths(trace, seat, 'phantom_assassin') as any[];
+    const pa = trace.names.indexOf(trace.heroes.find((h: any) => h.key === 'phantom_assassin').npc);
+    for (const r of runs) {
+      const t = Number(r.clock.split(':')[0]) * 60 + Number(r.clock.split(':')[1]);
+      const logged = trace.casts.filter((c: any) => c[1] === pa && c[0] >= t - 15.5 && c[0] <= t + 1).length;
+      expect(r.their_casts_in_the_15s_before.length).toBeLessThanOrEqual(logged);
+      for (const c of r.their_casts_in_the_15s_before) expect(['self', 'none', 'me', 'other', ...trace.heroes.map((h: any) => h.key)]).toContain(c.target);
+    }
+  });
+});
+
+// #510 review: a removal seen as Black King Bar landed is no dispel when Valve marks the ability undispellable
+// (Berserker's Call): it is never listed, however often the two coincided.
+describe('their_effects_it_removes needs Valve\'s dispel flag as well as a removal seen', () => {
+  const kit = [
+    { id: 'axe_berserkers_call', en: "Berserker's Call", dispel: 'no' },
+    { id: 'ursa_overpower', en: 'Overpower', dispel: 'basic' },
+    { id: 'sven_gods_strength', en: "God's Strength", dispel: 'strong' },
+  ];
+  const obs: any = {
+    sources: {
+      'ability:axe_berserkers_call': { modifiers: { modifier_axe_berserkers_call: { enemy_hero: 9 } } },
+      'ability:ursa_overpower': { modifiers: { modifier_ursa_overpower: { self: 9 } } },
+      'ability:sven_gods_strength': { modifiers: { modifier_sven_gods_strength: { self: 4 } } },
+    },
+    removals: {
+      'item:black_king_bar': { modifier_axe_berserkers_call: { removed: 3, games: 2, on: { self: 3, ally_hero: 0, enemy_hero: 0 } } },
+      'item:cyclone': { modifier_ursa_overpower: { removed: 2, games: 1, on: { self: 0, ally_hero: 0, enemy_hero: 2 } } },
+      'item:nullifier': { modifier_sven_gods_strength: { removed: 2, games: 1, on: { self: 0, ally_hero: 0, enemy_hero: 2 } } },
+    },
+  };
+  it('an undispellable ability seen "removed" as the item landed is not listed', () => {
+    expect(effectsRemovedBy('black_king_bar', 'self_or_allies', 'basic', kit, 'en', obs)).not.toContainEqual(expect.objectContaining({ name: "Berserker's Call" }));
+  });
+  it('a dispellable one seen removed on that side is; a basic dispel does not take a strong-only effect', () => {
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', kit, 'en', obs)).toEqual([{ name: 'Overpower', removed: 2, games: 1 }]);
+    expect(effectsRemovedBy('nullifier', 'an_enemy_target', 'basic', kit, 'en', obs)).toEqual([]);
+    expect(effectsRemovedBy('nullifier', 'an_enemy_target', 'strong', kit, 'en', obs)).toEqual([{ name: "God's Strength", removed: 2, games: 1 }]);
+  });
+  it('unknown stays null, never []: no landing side, no dispel, no kit, no observations, an item never seen removing anything', () => {
+    expect(effectsRemovedBy('cyclone', null, 'basic', kit, 'en', obs)).toBeNull();
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', null, kit, 'en', obs)).toBeNull();
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', null, 'en', obs)).toBeNull();
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', kit, 'en', null)).toBeNull();
+    expect(effectsRemovedBy('lotus_orb', 'self_or_allies', 'basic', kit, 'en', obs)).toBeNull();
+    // Seen removing things, none of them these abilities: [] (the item was looked at, and none is there).
+    expect(effectsRemovedBy('black_king_bar', 'self_or_allies', 'basic', kit, 'en', obs)).toEqual([]);
+  });
+});
+
+// Owner, 2026-11-28: armor or block advice against Ursa is a miss even beside Halberd; a sentence rejecting it is not
+// (#510 review). Checked on the p81/p82/p85 texts and on rejections.
+describe('rubric 9091400302.tidehunter: armor_or_block_as_the_answer_to_ursa', () => {
+  const rubric = JSON.parse(readFileSync(new URL('../../evals/reviews/9091400302.tidehunter.json', import.meta.url), 'utf8'));
+  const re = new RegExp(rubric.must_not.find((x: any) => x.id === 'armor_or_block_as_the_answer_to_ursa').pattern, 'i');
+  it('flags advice to buy, prioritise or stack armor / damage block', () => {
+    for (const t of [
+      '这局真正的答案是物理：刃甲、天堂之戟、希瓦的守护或更早的幽魂权杖，堆护甲、致盲、缴械',
+      '跳刀之后的第一件大件优先考虑天堂之戟、赤红甲或刃甲这种直接挡普攻的装备',
+      '就先补刃甲、赤红甲、希瓦的守护这类物理防守',
+      'Get Blade Mail or Crimson Guard before Blink.',
+    ]) expect(t).toMatch(re);
+  });
+  it('does not flag a rejection, a description, or advice without armor', () => {
+    for (const t of [
+      '熊战士是普攻累积性伤害，堆护甲没用，应使用天堂之戟阻止他攻击。',
+      '不要买赤红甲，改用天堂之戟限制熊战士。',
+      '先出天堂之戟，而不是买赤红甲。',
+      '真正能直接停住普攻的幽魂权杖直到 41:46 才拿到，刃甲、天堂之戟、炎阳纹章、赤红甲一件都没有。',
+      '真正针对普攻的装备到 36:56 才出现，而熊战士拿到狂战斧后又杀了你 6 次。',
+      '先把「掐掉普攻」的东西排前面：天堂之戟 3300 金钱、缴械 3.5 秒；幽魂权杖 1500 金钱、4 秒物理免疫',
+      "Don't buy Blade Mail; get Heaven's Halberd.",
+    ]) expect(t).not.toMatch(re);
   });
 });
