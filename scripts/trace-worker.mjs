@@ -57,6 +57,7 @@ const server = createServer(async (req, res) => {
     const result = await pipeline.run(id);
     send(res, 200, metrics ? {
       ...result,
+      ...(typeof metrics.detail === 'string' && metrics.detail ? { detail: metrics.detail } : {}),
       metrics: {
         downloading_ms: metrics.downloading_ms,
         extracting_ms: metrics.extracting_ms,

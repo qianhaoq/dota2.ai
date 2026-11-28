@@ -134,6 +134,62 @@ describe('a game with no replay address', () => {
     }).run(ID);
     expect(hosts2).toEqual(['tw.example', 'hk.example']);
     expect(afterWorkerErr).toEqual({ ok: false, reason: 'replay_gone' });
+
+    // Worker-to-remote write_error on an expired archived replay: primary falls back to second worker, and if both
+    // hit local disk write_error, stays retryable download_failed instead of permanently marking replay_gone (Codex P1).
+    const runWorkerSim = async (replayUrlInput: string, downloadImpl: any) => {
+      let metrics: any = null;
+      const wp = createTracePipeline({
+        getMatchDetail: async () => ({ match_id: ID, replay_url: replayUrlInput }),
+        extractorBin: '/nonexistent',
+        store: { put: async () => {} },
+        downloadImpl,
+        onMetrics: (m: any) => { metrics = m; },
+      } as any);
+      const out = await wp.run(ID);
+      return new Response(JSON.stringify({
+        ...out,
+        ...(typeof metrics?.detail === 'string' && metrics.detail ? { detail: metrics.detail } : {}),
+        ...(metrics ? { metrics: { downloading_ms: metrics.downloading_ms, extracting_ms: metrics.extracting_ms, building_ms: metrics.building_ms, storing_ms: metrics.storing_ms, demo_bytes: metrics.demo_bytes } } : {}),
+      }), { status: 200 });
+    };
+    const writeErrHosts: string[] = [];
+    const writeErrLogs: string[] = [];
+    const writeErrBoth = await createRemotePipeline({
+      url: 'https://tw.example',
+      fallback: { url: 'https://hk.example' },
+      getMatchDetail: async () => oldMatch,
+      now: () => NOW,
+      stageLog: (l: string) => writeErrLogs.push(l),
+      fetchImpl: (async (u: string, init: any) => {
+        writeErrHosts.push(new URL(u).host);
+        const { replay_url } = JSON.parse(String(init.body));
+        return runWorkerSim(replay_url, async () => { throw Object.assign(new Error('download_failed'), { code: 'download_failed', why: 'write_error' }); });
+      }) as any,
+    }).run(ID);
+    expect(writeErrHosts).toEqual(['tw.example', 'hk.example']);
+    expect(writeErrBoth).toEqual({ ok: false, reason: 'download_failed' });
+    expect(JSON.parse(writeErrLogs[0])).toMatchObject({ worker: 'fallback', fallback_tried: true, reason: 'download_failed', detail: 'write_error' });
+
+    // Primary write_error on an expired archive replay falls back to a healthy second worker and succeeds.
+    const writeErrRecoveredHosts: string[] = [];
+    const writeErrRecovered = await createRemotePipeline({
+      url: 'https://tw.example',
+      fallback: { url: 'https://hk.example' },
+      getMatchDetail: async () => oldMatch,
+      now: () => NOW,
+      fetchImpl: (async (u: string, init: any) => {
+        const host = new URL(u).host;
+        writeErrRecoveredHosts.push(host);
+        if (host === 'tw.example') {
+          const { replay_url } = JSON.parse(String(init.body));
+          return runWorkerSim(replay_url, async () => { throw Object.assign(new Error('download_failed'), { code: 'download_failed', why: 'write_error' }); });
+        }
+        return new Response(JSON.stringify({ ok: true, bytes: 88_888 }), { status: 200 });
+      }) as any,
+    }).run(ID);
+    expect(writeErrRecoveredHosts).toEqual(['tw.example', 'hk.example']);
+    expect(writeErrRecovered).toEqual({ ok: true, bytes: 88_888 });
   });
 });
 
