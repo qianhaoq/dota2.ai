@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { configureDota2AiRuntime } from '../runtime/dota2aiRuntime';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import { AgentMatchPage, DOWNLOAD_RETRY, journeyStep, REPLAY_NOT_READY } from './AgentMatchPage';
+import { AgentMatchPage, DOWNLOAD_RETRY, journeyStep, PARSE_STALL_RECOVERY, REPLAY_NOT_READY } from './AgentMatchPage';
 import { stepLabel } from './ChatRail';
 import { buildingLabel } from './EvidenceCard';
 
@@ -2250,6 +2250,74 @@ describe('AgentMatchPage', () => {
       expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('不会自动发布到公共网页');
     } finally {
       dispose();
+    }
+  });
+
+  it('never hangs on "Fetch the replay" when prepare answers unavailable or when the server stays on parse: none (#487)', async () => {
+    const was = { ...PARSE_STALL_RECOVERY };
+    PARSE_STALL_RECOVERY.pollMs = 30;
+    PARSE_STALL_RECOVERY.maxPolls = 2;
+    try {
+      // Case 1: POST /prepare returns 503 { status: 'unavailable' } — leaves the wait screen cleanly.
+      mockFetch({
+        '/api/coach/9100904020': board,
+        '/prepare': { __status: 503, status: 'unavailable' },
+        '/api/agent/9100904020': { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } },
+      });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+      expect(await screen.findByRole('heading', { name: 'Replay reviews are not switched on here' })).toBeTruthy();
+      expect(screen.queryByRole('heading', { name: 'Working on your review' })).toBeNull();
+      cleanup(); window.sessionStorage.clear();
+
+      // Case 2: POST /prepare finishes running, but subsequent polls report parse: none (e.g. lost marker):
+      // after bounded recovery polls, hands control back to the reader with a clear message and button.
+      let availCalls = 0;
+      mockFetch({
+        '/api/coach/9100904020': board,
+        '/prepare': { status: 'running', stage: 'locating' },
+        '/api/agent/9100904020': () => { availCalls += 1; return { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'none' } }; },
+      });
+      page('/r/9100904020?hero=beastmaster&lang=en');
+      fireEvent.click(await screen.findByRole('button', { name: 'Review my game' }));
+      expect(await screen.findByRole('heading', { name: 'Review this game' }, { timeout: 5000 })).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toContain('Fetching or reading the replay failed');
+      expect(screen.getByRole('button', { name: 'Review my game' })).toBeTruthy();
+      expect(availCalls).toBeGreaterThanOrEqual(3);
+      cleanup(); window.sessionStorage.clear();
+
+      // Case 3: A stale GET /api/agent/:id that started before POST /prepare answered cannot overwrite running back to failed/none.
+      const wasNotReady = { ...REPLAY_NOT_READY };
+      REPLAY_NOT_READY.askEveryMs = 15;
+      try {
+        window.sessionStorage.setItem('dota2ai.review-intent.9100904020.beastmaster', '1');
+        let releaseStale!: () => void;
+        let getCount = 0;
+        mockFetch({
+          '/api/coach/9100904020': board,
+          '/prepare': { status: 'running', stage: 'downloading' },
+          '/api/agent/9100904020': () => {
+            getCount += 1;
+            if (getCount === 1) return { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'failed', reason: 'no_replay_url', final: false } };
+            if (getCount === 2) return new Promise((r) => { releaseStale = () => r({ trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'failed', reason: 'no_replay_url', final: false } }); });
+            return { trace: false, model_configured: true, can_parse: true, heroes: [], parse: { status: 'running', stage: 'extracting' } };
+          },
+        });
+        page('/r/9100904020?hero=beastmaster&lang=en');
+        expect(await screen.findByRole('heading', { name: 'The replay is not ready yet' })).toBeTruthy();
+        await waitFor(() => expect(getCount).toBe(2));
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+        await waitFor(() => expect(getCount).toBeGreaterThanOrEqual(3));
+        // Now the stale GET #2 resolves late with the old failed state: it must be dropped.
+        releaseStale();
+        await new Promise((r) => setTimeout(r, 80));
+        expect(screen.getByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+      } finally {
+        Object.assign(REPLAY_NOT_READY, wasNotReady);
+      }
+    } finally {
+      Object.assign(PARSE_STALL_RECOVERY, was);
     }
   });
 });

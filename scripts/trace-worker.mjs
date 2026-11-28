@@ -25,6 +25,7 @@ import { createTracePipeline, replayUrlIsFor } from '../lib/agent/tracePipeline.
 const bin = process.env.DOTA_EXTRACT_BIN;
 const bucket = (process.env.AGENT_BUCKET || '').trim();
 const dir = (process.env.AGENT_TRACE_DIR || '').trim();
+const workerRole = (process.env.TRACE_WORKER_ROLE || '').trim() || (/-hk$/i.test(process.env.K_SERVICE || '') ? 'fallback' : 'primary');
 if (!bin) throw new Error('DOTA_EXTRACT_BIN is required');
 if (!bucket && !dir) throw new Error('AGENT_BUCKET or AGENT_TRACE_DIR is required');
 const traces = createTraceStore(bucket ? createBucketStore(createGcsBucket(bucket), 'agent/') : createFileStore(dir));
@@ -44,8 +45,27 @@ const server = createServer(async (req, res) => {
   if (busy) { send(res, 429, { ok: false, reason: 'busy' }); return; }
   busy = true;
   try {
-    const pipeline = createTracePipeline({ getMatchDetail: async () => ({ match_id: id, replay_url: body.replay_url }), extractorBin: bin, store: traces, log: (m) => console.log(m) });
-    send(res, 200, await pipeline.run(id));
+    let metrics = null;
+    const pipeline = createTracePipeline({
+      getMatchDetail: async () => ({ match_id: id, replay_url: body.replay_url }),
+      extractorBin: bin,
+      store: traces,
+      worker: workerRole,
+      log: (m) => console.log(m),
+      onMetrics: (m) => { metrics = m; },
+    });
+    const result = await pipeline.run(id);
+    send(res, 200, metrics ? {
+      ...result,
+      ...(typeof metrics.detail === 'string' && metrics.detail ? { detail: metrics.detail } : {}),
+      metrics: {
+        downloading_ms: metrics.downloading_ms,
+        extracting_ms: metrics.extracting_ms,
+        building_ms: metrics.building_ms,
+        storing_ms: metrics.storing_ms,
+        demo_bytes: metrics.demo_bytes,
+      },
+    } : result);
   } catch {
     send(res, 500, { ok: false, reason: 'error' });
   } finally { busy = false; }
