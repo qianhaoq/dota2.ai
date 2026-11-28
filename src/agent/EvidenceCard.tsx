@@ -60,6 +60,15 @@ const T = {
   events: { en: 'What happened', zh: '经过', ru: 'Ход событий' },
   dealt: { en: 'Damage to heroes', zh: '对英雄伤害', ru: 'Урон по героям' },
   firstHeld: { en: 'First held', zh: '首次持有', ru: 'Впервые получен' },
+  purchased: { en: 'Purchased', zh: '购齐于', ru: 'Куплен' },
+  deliveryDelay: { en: 'Delivery delay', zh: '到货延迟', ru: 'Задержка доставки' },
+  courierDiedDuringDelivery: { en: 'Team courier killed during delivery', zh: '送达期间己方信使阵亡', ru: 'Курьер команды убит при доставке' },
+  enemyCourierDiedDuringDelivery: { en: 'Enemy courier killed during delivery', zh: '送达期间敌方信使阵亡', ru: 'Курьер врага убит при доставке' },
+  teamCourierDeaths: { en: 'Your team\'s courier deaths', zh: '我方信使阵亡', ru: 'Смерти курьеров команды' },
+  purchaseSource: {
+    direct: { en: 'direct buy', zh: '直接购买', ru: 'прямая покупка' },
+    components: { en: 'all components bought', zh: '散件买齐', ru: 'все компоненты куплены' },
+  } as Record<string, Tri>,
   refGold: { en: 'gold', zh: '金', ru: 'золота' },
   refRecipe: { en: 'Recipe:', zh: '合成：', ru: 'Рецепт:' },
   refVs: { en: 'against', zh: '对阵', ru: 'против' },
@@ -806,7 +815,44 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
       </div>
     );
   }
-  if (data.kind === 'item') return <div className="ag-rec"><p className="ag-rec-head"><b>{r.first_held.clock}</b> · {N(r.item)} · {t(T.firstHeld)}</p></div>;
+  if (data.kind === 'item') {
+    const isEnemyCourier = Array.isArray(r.enemy_team_courier_deaths_during_delivery);
+    const courierDeaths = Array.isArray(r.my_team_courier_deaths_during_delivery)
+      ? r.my_team_courier_deaths_during_delivery
+      : Array.isArray(r.enemy_team_courier_deaths_during_delivery)
+        ? r.enemy_team_courier_deaths_during_delivery
+        : [];
+    return (
+      <div className="ag-rec">
+        <p className="ag-rec-head"><b>{r.first_held.clock}</b> · {N(r.item)} · {t(T.firstHeld)}</p>
+        {(r.first_purchased || (typeof r.delivery_delay_seconds === 'number' && r.delivery_delay_seconds > 0)) && (
+          <p className="ag-rec-line">
+            {r.first_purchased && (
+              <span className="ag-chip">
+                {t(T.purchased)} <em>{r.first_purchased.clock}</em>
+                {r.first_purchased.source && T.purchaseSource[r.first_purchased.source] && ` · ${t(T.purchaseSource[r.first_purchased.source])}`}
+              </span>
+            )}
+            {typeof r.delivery_delay_seconds === 'number' && r.delivery_delay_seconds > 0 && (
+              <span className={`ag-chip ${courierDeaths.length > 0 ? 'is-warn' : ''}`}>
+                {t(T.deliveryDelay)} <em>+{r.delivery_delay_seconds}{t(T.sec)}</em>
+              </span>
+            )}
+          </p>
+        )}
+        {courierDeaths.length > 0 && (
+          <p className="ag-rec-line">
+            <span>{t(isEnemyCourier ? T.enemyCourierDiedDuringDelivery : T.courierDiedDuringDelivery)}</span>
+            {courierDeaths.map((d: any, i: number) => (
+              <span key={`${d.clock}-${i}`} className="ag-chip is-warn">
+                {d.clock}{d.killed_by ? ` ← ${N(d.killed_by)}` : ''}
+              </span>
+            ))}
+          </p>
+        )}
+      </div>
+    );
+  }
   if (data.kind === 'lane') {
     const pc = (v: number) => `${Math.round(v * 100)}%`;
     const signed = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v)}`;
@@ -1355,9 +1401,36 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
             <table className="ag-lane">
               <caption className="ag-rec-sub">{t(T.buildItems)}</caption>
               <thead><tr>{T.buildCols[lang].map((c) => <th key={c} scope="col">{c}</th>)}</tr></thead>
-              <tbody>{r.my_big_items_in_order.map((i: any) => <tr key={i.item}><td>{i.first_held}</td><th scope="row">{i.name}</th><td>{i.cost ?? '–'}</td><td>{why(i.built_for)}</td></tr>)}</tbody>
+              <tbody>{r.my_big_items_in_order.map((i: any) => (
+                <tr key={i.item}>
+                  <td>
+                    {i.first_held}
+                    {typeof i.first_purchased === 'string' && typeof i.delivery_delay_seconds === 'number' && i.delivery_delay_seconds > 0 && (
+                      <div className="ag-rec-note">
+                        {t(T.purchased)} {i.first_purchased} (+{i.delivery_delay_seconds}{t(T.sec)})
+                        {Array.isArray(i.my_team_courier_deaths_during_delivery) && i.my_team_courier_deaths_during_delivery.length > 0 && (
+                          <> · {t(T.courierDiedDuringDelivery)}: {i.my_team_courier_deaths_during_delivery.map((d: any) => `${d.clock}${d.killed_by ? ` ← ${N(d.killed_by)}` : ''}`).join(', ')}</>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <th scope="row">{i.name}</th>
+                  <td>{i.cost ?? '–'}</td>
+                  <td>{why(i.built_for)}</td>
+                </tr>
+              ))}</tbody>
             </table>
           </div>
+        )}
+        {Array.isArray(r.my_team_courier_deaths) && r.my_team_courier_deaths.length > 0 && (
+          <p className="ag-rec-line">
+            <span>{t(T.teamCourierDeaths)}</span>
+            {r.my_team_courier_deaths.map((d: any, idx: number) => (
+              <span key={`${d.clock}-${idx}`} className="ag-chip is-warn">
+                {d.clock}{d.killed_by ? ` ← ${N(d.killed_by)}` : ''}
+              </span>
+            ))}
+          </p>
         )}
         {(r.answers_to_top_killers ?? []).filter((k: any) => k.pro_items_against_this_killer?.length).map((k: any) => (
           <p key={k.killer} className="ag-rec-line"><span>{t(T.buildVsKiller)} {N(k.killer)}</span>{k.pro_items_against_this_killer.slice(0, 6).map((x: any) => <span key={x.item} className={`ag-chip ${x.player_first_held ? 'is-good' : ''}`}>{x.name} {pc(x.share_of_pro_games_against_this_hero)} ({t(T.buildUsually)} {pc(x.share_usually)}) <em>{x.player_first_held ?? t(T.never)}</em></span>)}</p>
