@@ -97,6 +97,44 @@ const T = {
   scoreboard: { en: 'Scoreboard', zh: '记分板', ru: 'Таблица матча' },
   checked: { en: 'Times and numbers in this review were checked against the replay records.', zh: '这份复盘里的时间点和数字已经和录像记录核对过。', ru: 'Все тайминги и числа в этом разборе сверены с записями реплея.' },
   dropped: { en: 'removed for lack of evidence', zh: '条因缺少依据被删去', ru: 'удалено из-за нехватки доказательств' },
+  cacheStaleBadge: { en: 'Cached · v{v}', zh: '已命中旧版缓存 · v{v}', ru: 'Кэш · v{v}' },
+  cacheStaleText: {
+    en: 'Showing the saved review from coach v{v} (latest is v{latest}). Reopening this hero reuses cache without re-running the model.',
+    zh: '当前展示已缓存的教练 v{v} 复盘（最新为 v{latest}）。再次打开同一英雄会直接命中缓存，不会重复跑模型。',
+    ru: 'Показан сохранённый разбор тренера v{v} (актуальная версия — v{latest}). Повторное открытие использует кэш без повторного запуска модели.',
+  },
+  cacheStaleTextPlain: {
+    en: 'Showing a saved review from an earlier coach version (v{v}). Reopening this hero reuses cache without re-running the model.',
+    zh: '当前展示已缓存的较早版本复盘（v{v}）。再次打开同一英雄会直接命中缓存，不会重复跑模型。',
+    ru: 'Показан сохранённый разбор более ранней версии тренера (v{v}). Повторное открытие использует кэш.',
+  },
+  cacheRegen: { en: 'Regenerate (v{latest})', zh: '用最新版重跑（v{latest}）', ru: 'Обновить до v{latest}' },
+  cacheRegenPlain: { en: 'Regenerate review', zh: '重新生成复盘', ru: 'Пересоздать разбор' },
+  cacheRegenFailed: {
+    en: 'Updating to the latest coach version did not finish; still showing the saved review. You can try again.',
+    zh: '按最新版重新生成未完成，已继续保留这份缓存复盘，可以稍后再试。',
+    ru: 'Не удалось обновить разбор до новой версии; показываем сохранённый вариант. Можно попробовать снова.',
+  },
+  cacheWeb: {
+    en: 'Web cloud cache: saved on dota2.ai per hero, language, plan, and model — reopening the same selection loads directly from cache without re-running. Changing language, plan, or model creates its own review. DSH desktop reviews stay local and private on your machine and are separate from this web cache (only parsed replay traces can be reused).',
+    zh: '网页云端缓存：按英雄、语言、思路与模型保存在 dota2.ai；再次打开同一选择会直接命中缓存，不重复解析或重跑模型。切换语言、思路或模型会分别保存；DSH 桌面端的复盘仅保存在你本机，与网页缓存互相独立（仅解析后的录像数据可复用）。',
+    ru: 'Облачный кэш сайта: хранится на dota2.ai по герою, языку, плану и модели — повторное открытие сразу берётся из кэша без перезапуска. Смена языка, плана или модели создаёт отдельный разбор. Разборы в приложении DSH хранятся локально и отдельно от веб-кэша (переиспользуются только разобранные реплеи).',
+  },
+  cacheDsh: {
+    en: 'Local private DSH cache ($DSH_HOME/dota2ai): saved on this machine per hero, language, plan, and model — reopening loads instantly without re-running. Local reviews stay private and are never auto-published to dota2.ai (separate from web cache; only parsed replay traces may be reused from dota2.ai).',
+    zh: 'DSH 本地私有缓存（$DSH_HOME/dota2ai）：按英雄、语言、思路与模型保存在本机；再次打开直接命中缓存，不重复跑模型。本地复盘保持私有，不会自动发布到公共网页 dota2.ai（与网页缓存互相独立，仅解析后的录像数据可从 dota2.ai 复用）。',
+    ru: 'Локальный приватный кэш DSH ($DSH_HOME/dota2ai): хранится на этом устройстве по герою, языку, плану и модели — повторное открытие мгновенно берёт кэш. Локальные разборы приватны и не публикуются на dota2.ai автоматически (отдельно от веб-кэша; переиспользуются только разобранные реплеи).',
+  },
+  cacheStartWeb: {
+    en: 'Reviews are cached on dota2.ai per hero, language, plan, and model so reopening loads instantly. Separate from local private DSH reviews.',
+    zh: '网页端按英雄、语言、思路与模型云端缓存，再次打开直接命中；与 DSH 本机私有缓存互相独立（仅解析后的录像数据可复用）。',
+    ru: 'Разборы кэшируются на dota2.ai по герою, языку, плану и модели — повторное открытие мгновенно. Отдельно от локального кэша DSH.',
+  },
+  cacheStartDsh: {
+    en: 'Reviews are cached locally in $DSH_HOME/dota2ai per hero, language, plan, and model — private and separate from dota2.ai web cache (parsed replay traces can still be reused).',
+    zh: 'DSH 复盘按英雄、语言、思路与模型保存在本机 $DSH_HOME/dota2ai，保持私有并与网页端云端缓存互相独立（解析后的录像数据可复用）。',
+    ru: 'Разборы сохраняются локально в $DSH_HOME/dota2ai по герою, языку, плану и модели — приватно и отдельно от облачного кэша dota2.ai (разобранные реплеи могут переиспользоваться).',
+  },
   q1: { en: 'Which of my deaths was the most avoidable?', zh: '我哪一次阵亡最不应该？', ru: 'Какой из моих смертей было проще всего избежать?' },
   qFinding: { en: 'what exactly should I have done instead?', zh: '具体应该怎么打？', ru: 'что именно мне следовало сделать иначе?' },
   goalCheck: { en: 'Your goal, in this game', zh: '你的目标，这一局', ru: 'Ваша цель в этом матче' },
@@ -357,9 +395,9 @@ export const AgentMatchPage: React.FC = () => {
 
   useEffect(() => {
     if (!heroKey || !hasTrace) { setState(null); stateBaseRef.current = null; return undefined; }
-    // Instant zero-network switch when switching language within the same trilingual review bundle.
+    // Instant zero-network switch when switching language within the same current-version trilingual review bundle.
     const cur = stateRef.current;
-    if (stateBaseRef.current === baseSelection && cur?.status === 'ready' && cur.reviews?.[lang]) {
+    if (stateBaseRef.current === baseSelection && cur?.status === 'ready' && !cur.stale_version && cur.reviews?.[lang]) {
       setState({ ...cur, review: cur.reviews[lang]! });
       return undefined;
     }
@@ -417,11 +455,33 @@ export const AgentMatchPage: React.FC = () => {
   // after a parse cannot send a second one while the first has not answered.
   // The lock belongs to a selection: a start still out for another hero does not block this one's.
   const beginning = useRef<string | null>(null);
-  const begin = useCallback(async () => {
+  const [refreshingFor, setRefreshingFor] = useState<string | null>(null);
+  const refreshing = refreshingFor === selection;
+  const begin = useCallback(async (refresh = false) => {
     const asked = `${matchId}|${heroKey}|${lang}|${plan ?? ''}|${model ?? ''}`;
     if (!heroKey || beginning.current === asked) return;
     beginning.current = asked;
-    try { const next = await startReview(matchId, heroKey, lang, plan, model); if (selected.current === asked) { stateBaseRef.current = baseSelection; setState(next); } } catch (e) { refuse(e, asked); } finally { if (beginning.current === asked) beginning.current = null; }
+    if (refresh) setRefreshingFor(asked);
+    try {
+      const next = await startReview(matchId, heroKey, lang, plan, model, refresh);
+      if (selected.current === asked) {
+        if (refresh && stateRef.current?.status === 'ready' && (next.status === 'unavailable' || next.status === 'failed')) {
+          setNotice(t(next.status === 'unavailable' ? T.unavailable : T.cacheRegenFailed));
+          if (next.status === 'unavailable') setOwnModel({ sel: asked, kind: 'refused' });
+          const reason = next.status === 'unavailable' ? (typeof next.reason === 'string' ? next.reason : null) : (next.reason || 'unknown');
+          if (reason) trackOnce(`${asked}.failed.review.${reason}`, 'review_failed', { matchId, hero: heroKey, lang, stage: 'review', reason, final: false });
+          want(false);
+        } else {
+          stateBaseRef.current = baseSelection;
+          setState(next);
+        }
+      }
+    } catch (e) {
+      refuse(e, asked);
+    } finally {
+      if (beginning.current === asked) beginning.current = null;
+      if (refresh) setRefreshingFor((cur) => (cur === asked ? null : cur));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, heroKey, lang, plan, model]);
 
@@ -448,9 +508,10 @@ export const AgentMatchPage: React.FC = () => {
   checkingOnlyRef.current = checkingOnly;
   async function go() {
     if (wait) return;
+    const isStaleRefresh = stateRef.current?.status === 'ready' && stateRef.current.stale_version === true;
     trackEvent('review_requested', { matchId, lang, ...(heroKey ? { hero: heroKey } : {}), step: hasTrace ? 'review' : 'parse', plan: Boolean(plan), ...(writtenBy ? { model: writtenBy } : {}) });
     setNotice(null); setOwnModel(null); want(true); resumed.current = true;
-    if (hasTrace) { await begin(); return; }
+    if (hasTrace) { await begin(isStaleRefresh); return; }
     await sendPrepare();
   }
   /**
@@ -730,11 +791,39 @@ export const AgentMatchPage: React.FC = () => {
   }
 
   if (state?.status === 'ready') {
+    const staleVersion = state.stale_version === true && Number.isInteger(state.prompt_version);
+    const latestVersion = Number.isInteger(state.latest_prompt_version) ? state.latest_prompt_version : null;
+    const staleText = staleVersion
+      ? (latestVersion != null
+        ? t(T.cacheStaleText).replace('{v}', String(state.prompt_version)).replace('{latest}', String(latestVersion))
+        : t(T.cacheStaleTextPlain).replace('{v}', String(state.prompt_version)))
+      : null;
+    const regenLabel = latestVersion != null
+      ? t(T.cacheRegen).replace('{latest}', String(latestVersion))
+      : t(T.cacheRegenPlain);
+    const refreshFailedMsg = state.refresh_failed ? t(T.cacheRegenFailed) : null;
     return (
       <Shell wide>
         {header}
         <div className="ag-layout">
           <div>
+            {staleVersion && staleText && (
+              <aside className="ag-cache-banner" role="note">
+                <div className="ag-cache-banner-row">
+                  <div className="ag-cache-banner-copy">
+                    <span className="ag-cache-badge">{t(T.cacheStaleBadge).replace('{v}', String(state.prompt_version))}</span>
+                    <p className="ag-cache-text">{staleText}</p>
+                  </div>
+                  {avail.model_configured && (
+                    <button type="button" className="ag-btn ag-cache-regen" onClick={go} disabled={Boolean(wait) || refreshing}>
+                      {regenLabel}
+                    </button>
+                  )}
+                </div>
+                {(notice ?? waitNotice ?? refreshFailedMsg) && <p className="ag-warn" role="alert">{notice ?? waitNotice ?? refreshFailedMsg}</p>}
+                {ownModelNote}
+              </aside>
+            )}
             <ReviewDoc
               matchId={matchId}
               review={state.review}
@@ -754,7 +843,7 @@ export const AgentMatchPage: React.FC = () => {
                 usage: state.usage ?? null,
                 usage_source: state.usage_source ?? state.usage?.source ?? null,
               } : null}
-              feedback={Number.isInteger(state.prompt_version) ? { plan, model: writtenBy, version: state.prompt_version as number } : null}
+              feedback={Number.isInteger(state.prompt_version) && !state.stale_version ? { plan, model: writtenBy, version: state.prompt_version as number } : null}
             />
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
             {/* Which model wrote it, and the choice of another: after the review, not between the reader and its first line. */}
@@ -764,6 +853,7 @@ export const AgentMatchPage: React.FC = () => {
                 {modelPick(t(T.modelBy))}
               </div>
             )}
+            <p className="ag-cache-boundary">{t(inDsh ? T.cacheDsh : T.cacheWeb)}</p>
           </div>
           <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} plan={plan} model={model} />
         </div>
@@ -852,6 +942,7 @@ export const AgentMatchPage: React.FC = () => {
             {state?.status === 'unknown_hero' && <p className="ag-warn">{t(T.unknownHero)}</p>}
             {(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}
             {ownModelNote}
+            <p className="ag-cache-boundary is-start">{t(inDsh ? T.cacheStartDsh : T.cacheStartWeb)}</p>
           </>
         )}
       </div>

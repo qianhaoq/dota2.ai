@@ -60,7 +60,12 @@ resolved, so ask for the friend code.
   times and numbers as given, say what the review cannot see (`blind_spots`),
   and point the user to the `dota2.ai` panel in the DSH sidebar (the tool card
   opens it at `panel_route`). The review was written by the user's own model
-  and is kept on this machine: there is no public link to it.
+  and is kept on this machine (local private cache under `$DSH_HOME/dota2ai`,
+  separate from the public web cache; only parsed replay traces are reused):
+  there is no public link to it. Reopening the same `(match, hero, lang, model)`
+  returns the cached review immediately — including compatible reviews from an
+  earlier coach version (`stale_version: true`); only pass `refresh: true` when
+  the user explicitly asks to regenerate under the latest coach version.
 - `failed`: offer to try again; only then call with `retry: true`.
 - `replay_unavailable` / `unavailable`: if `reason` is `model_not_configured`,
   ask the user to configure/select a model in DSH. If the replay expired (Valve

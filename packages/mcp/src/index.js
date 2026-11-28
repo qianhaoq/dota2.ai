@@ -52,7 +52,13 @@ export function createMcpServer(options = {}) {
   if (options.replay) {
     server.registerTool('replay_review', {
       description: TOOL_DOCS.replay_review.description,
-      inputSchema: { match_id: z.union([z.string(), z.number()]), hero: z.union([z.string(), z.number()]).optional().describe(TOOL_DOCS.replay_review.params.hero), lang: z.enum(['en', 'zh']).optional(), retry: z.boolean().optional().describe(TOOL_DOCS.replay_review.params.retry) },
+      inputSchema: {
+        match_id: z.union([z.string(), z.number()]),
+        hero: z.union([z.string(), z.number()]).optional().describe(TOOL_DOCS.replay_review.params.hero),
+        lang: z.enum(['en', 'zh']).optional(),
+        retry: z.boolean().optional().describe(TOOL_DOCS.replay_review.params.retry),
+        refresh: z.boolean().optional().describe(TOOL_DOCS.replay_review.params.refresh),
+      },
     }, async (args) => {
       try {
         const result = await options.replay.review(args);

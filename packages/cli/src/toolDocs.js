@@ -10,6 +10,7 @@ export const TOOL_DOCS = {
     params: {
       hero: 'The hero the user played: key (queen_of_pain), English or Chinese name, or hero id',
       retry: 'Start again after status failed (a new start, counted on the limit)',
+      refresh: 'Regenerate under the latest coach version when a cached review is from an older version (a new start)',
     },
     // In the DSH plugin the review runs on the user's own DSH model and is kept on their machine: no site limit,
     // and the public page would not show it.

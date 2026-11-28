@@ -117,21 +117,29 @@ export type ReviewState =
   | { status: 'none' | 'no_trace' | 'unknown_hero' }
   | { status: 'running'; steps: ToolStep[] }
   | {
-    status: 'ready';
-    review: DeepReview;
-    /** All pre-generated language variants when stored as a trilingual bundle. */
-    reviews?: Partial<Record<'en' | 'zh' | 'ru', DeepReview>>;
-    verification: { repaired: boolean; dropped: number };
-    model: string | null;
-    tool_calls: number;
-    steps?: number;
-    repair_rounds?: number;
-    truncation_retries?: number;
-    usage?: ReviewUsage;
-    usage_source?: 'provider_usage' | null;
-    /** The prompt version the review was written under; absent from a server that does not say. */
-    prompt_version?: number;
-  }
+      status: 'ready';
+      review: DeepReview;
+      /** All pre-generated language variants when stored as a trilingual bundle. */
+      reviews?: Partial<Record<'en' | 'zh' | 'ru', DeepReview>>;
+      verification: { repaired: boolean; dropped: number };
+      model: string | null;
+      tool_calls: number;
+      steps?: number;
+      repair_rounds?: number;
+      truncation_retries?: number;
+      usage?: ReviewUsage;
+      usage_source?: 'provider_usage' | null;
+      /** The prompt version the review was written under; absent from a server that does not say. */
+      prompt_version?: number;
+      /** The server's current prompt version when a compatible earlier cached review is shown. */
+      latest_prompt_version?: number;
+      /** True when a compatible cached review from an earlier prompt version is shown instead of regenerating. */
+      stale_version?: boolean;
+      /** True when served directly from cache across prompt versions. */
+      cached?: boolean;
+      /** Set when a recent refresh attempt failed while the older compatible review stays accessible. */
+      refresh_failed?: { reason: string | null };
+    }
   | { status: 'failed'; reason?: string }
   /** `retry_in_sec`: the model account refused a review a moment ago (out of credit, key refused) and none is started until then; it can be tried again. */
   | { status: 'unavailable'; reason?: string; retry_in_sec?: number };
@@ -163,8 +171,8 @@ export const prepareMatch = (matchId: string) =>
 export const fetchReview = (matchId: string, hero: string, lang: string, signal?: AbortSignal, plan?: string | null, model?: string | null) =>
   runtimeFetch(`/api/agent/${enc(matchId)}/review?hero=${enc(hero)}&lang=${lang}${plan ? `&plan=${enc(plan)}` : ''}${model ? `&model=${enc(model)}` : ''}`, { signal }).then((r) => json<ReviewState>(r));
 
-export const startReview = (matchId: string, hero: string, lang: string, plan?: string | null, model?: string | null) =>
-  runtimeFetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}), ...(model ? { model } : {}) }) }).then((r) => json<ReviewState>(r));
+export const startReview = (matchId: string, hero: string, lang: string, plan?: string | null, model?: string | null, refresh = false) =>
+  runtimeFetch(`/api/agent/${enc(matchId)}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...internalHeaders() }, body: JSON.stringify({ hero, lang, ...(plan ? { plan } : {}), ...(model ? { model } : {}), ...(refresh ? { refresh: true } : {}) }) }).then((r) => json<ReviewState>(r));
 
 /** Where the ten heroes were around a game time (lib/agent/moment.js): what the page replays. */
 export interface Moment {

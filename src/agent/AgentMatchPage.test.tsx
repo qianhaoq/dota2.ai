@@ -2131,6 +2131,127 @@ describe('AgentMatchPage', () => {
     expect(calls.filter((c) => c.url.includes('/review?'))).toHaveLength(1);
     expect(calls.some((c) => c.url.includes('/review') && c.init?.method === 'POST')).toBe(false);
   });
+
+  it('stale-version cached review shows version notice, hides finding feedback, regenerates on click, and keeps cached view if refused (#486)', async () => {
+    let refreshed = false;
+    let refuseOnce = true;
+    const calls = mockFetch({
+      'ref=overview': overview,
+      '/api/coach/9100904020': board,
+      '/review?': () => (refreshed
+        ? { status: 'ready', review: { ...review, verdict: 'Fresh v77 verdict.' }, verification: { repaired: false, dropped: 0 }, model: 'deepseek-flash', tool_calls: 2, prompt_version: 77 }
+        : { status: 'ready', review, verification: { repaired: false, dropped: 0 }, model: 'deepseek-flash', tool_calls: 2, prompt_version: 75, latest_prompt_version: 77, stale_version: true, cached: true }),
+      '/review': (_u: string, init?: RequestInit) => {
+        if (init?.method !== 'POST') return null;
+        if (refuseOnce) {
+          refuseOnce = false;
+          return { __status: 503, code: 'daily_cap', retryAfterSec: 3600 };
+        }
+        refreshed = true;
+        return { status: 'running', steps: [] };
+      },
+      '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+
+    page('/r/9100904020?hero=beastmaster&lang=en');
+    // Shows cached older version badge, notice, and regenerate button; does not render finding feedback (which would 404 stale).
+    expect(await screen.findByText('Cached · v75')).toBeTruthy();
+    expect(screen.getByText(/coach v75 \(latest is v77\)/)).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Was this right?' })).toBeNull();
+    // Web cloud cache boundary note is shown.
+    expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('Web cloud cache');
+    expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('DSH desktop reviews stay local and private');
+
+    // First click hits daily cap: stays on cached review and shows refusal notice inside banner.
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate (v77)' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    expect(screen.getByText(review.verdict)).toBeTruthy();
+    const firstPost = calls.find((c) => c.url.endsWith('/review') && c.init?.method === 'POST')!;
+    expect(JSON.parse(String(firstPost.init!.body))).toEqual({ hero: 'beastmaster', lang: 'en', refresh: true });
+
+    // Second click succeeds: transitions to working, then renders fresh v77 without stale banner.
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate (v77)' }));
+    expect(await screen.findByRole('heading', { name: 'Working on your review' })).toBeTruthy();
+    expect(await screen.findByText('Fresh v77 verdict.', {}, { timeout: 5000 })).toBeTruthy();
+    expect(screen.queryByText('Cached · v75')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Was this right?' })).toBeTruthy();
+  });
+
+  it('keeps the cached review visible and shows an inline error when Regenerate returns unavailable or failed (#486)', async () => {
+    let posts = 0;
+    mockFetch({
+      'ref=overview': overview,
+      '/api/coach/8000000486': board,
+      '/review?': { status: 'ready', review: { ...review, match_id: 8000000486 }, verification: { repaired: false, dropped: 0 }, model: 'deepseek-flash', tool_calls: 2, prompt_version: 75, latest_prompt_version: 78, stale_version: true, cached: true },
+      '/review': (_u: string, init?: RequestInit) => {
+        if (init?.method !== 'POST') return null;
+        posts += 1;
+        if (posts === 1) return { __status: 503, status: 'unavailable', reason: 'model_out_of_credit', retry_in_sec: 240 };
+        return { status: 'failed', reason: 'timeout' };
+      },
+      '/api/agent/8000000486': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+
+    page('/r/8000000486?hero=beastmaster&lang=en');
+    expect(await screen.findByText('Cached · v75')).toBeTruthy();
+    expect(screen.getByText(review.verdict)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate (v78)' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('The coach is not available right now.');
+    // Saved review remains readable instead of being replaced by the unavailable screen.
+    expect(screen.getByText(review.verdict)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Cannot generate a review right now' })).toBeNull();
+    expect(document.querySelector('.om-callout')?.textContent).toContain('DeepSeek Harness');
+    expect(posts).toBe(1);
+    expect(window.sessionStorage.getItem('dota2ai.review-intent.8000000486.beastmaster')).toBeNull();
+    // Reader can retry again once the request settles; an immediate failed response also preserves the cached view.
+    const regen = screen.getByRole('button', { name: 'Regenerate (v78)' }) as HTMLButtonElement;
+    expect(regen.disabled).toBe(false);
+    fireEvent.click(regen);
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Updating to the latest coach version did not finish'));
+    expect(screen.getByText(review.verdict)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'The review did not come out' })).toBeNull();
+    expect(posts).toBe(2);
+    await waitFor(async () => expect((await events()).filter((e: any) => e.event === 'review_failed')).toHaveLength(2));
+    expect((await events()).filter((e: any) => e.event === 'review_failed').map((e: any) => e.props)).toEqual([
+      { matchId: '8000000486', hero: 'beastmaster', lang: 'en', stage: 'review', reason: 'model_out_of_credit', final: false },
+      { matchId: '8000000486', hero: 'beastmaster', lang: 'en', stage: 'review', reason: 'timeout', final: false },
+    ]);
+  });
+
+  it('shows bilingual DSH local private cache vs Web cloud cache boundary notes on start and ready views (#486)', async () => {
+    const dispose = configureDota2AiRuntime({ surface: 'dsh' });
+    try {
+      ui.lang = 'zh';
+      mockFetch({
+        'ref=overview': overview,
+        '/api/coach/9100904020': board,
+        '/review?': { status: 'none' },
+        '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+      });
+      page('/r/9100904020?hero=beastmaster&lang=zh');
+      expect(await screen.findByRole('button', { name: '开始复盘' })).toBeTruthy();
+      expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('$DSH_HOME/dota2ai');
+      expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('网页端云端缓存互相独立');
+      cleanup();
+
+      mockFetch({
+        'ref=overview': overview,
+        '/api/coach/9100904020': board,
+        '/review?': { status: 'ready', review: { ...review, lang: 'zh' }, verification: { repaired: false, dropped: 0 }, model: 'dsh', tool_calls: 2, prompt_version: 75, latest_prompt_version: 78, stale_version: true, cached: true, refresh_failed: { reason: 'timeout' } },
+        '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
+      });
+      page('/r/9100904020?hero=beastmaster&lang=zh');
+      expect(await screen.findByText('已命中旧版缓存 · v75')).toBeTruthy();
+      expect(screen.getByRole('button', { name: '用最新版重跑（v78）' })).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toContain('按最新版重新生成未完成');
+      expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('DSH 本地私有缓存');
+      expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('不会自动发布到公共网页');
+    } finally {
+      dispose();
+    }
+  });
 });
 
 describe('helpers', () => {

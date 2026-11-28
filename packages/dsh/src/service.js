@@ -280,10 +280,16 @@ export function createDshService({
   const localReview = (out) => {
     if (out?.status !== 'ready') return out;
     const { url: _public, ...rest } = out;
+    const staleHint = out.stale_version && out.refresh_failed && typeof out.refresh_failed === 'object'
+      ? ` Updating this cached${Number.isInteger(out.prompt_version) ? ` v${out.prompt_version}` : ''} review${Number.isInteger(out.latest_prompt_version) ? ` to v${out.latest_prompt_version}` : ''} failed${out.refresh_failed.reason ? ` (${out.refresh_failed.reason})` : ''}; returning the saved review instead. Call dota2ai_replay_review with refresh: true and retry: true only if the user explicitly wants to retry regenerating it (this counts as a new start).`
+      : out.stale_version && Number.isInteger(out.prompt_version)
+        ? ` This cached review was written under coach v${out.prompt_version}${Number.isInteger(out.latest_prompt_version) ? ` (latest is v${out.latest_prompt_version})` : ''}; call dota2ai_replay_review with refresh: true only if the user explicitly wants to regenerate it.`
+        : '';
     return {
       ...rest,
+      cache_scope: 'dsh_local',
       panel_route: `/r/${out.match_id}?hero=${encodeURIComponent(out.hero)}&lang=${out.lang}`,
-      note: "Times and numbers were checked against the replay. Quote them as given and say what the review cannot see (blind_spots). It was written on the user's own DSH model and is kept on this machine: point them to the dota2.ai panel in the DSH sidebar (the tool card's button opens it at panel_route), which has every piece of evidence and a coach to ask. The public dota2.ai link would not show this review.",
+      note: `Times and numbers were checked against the replay. Quote them as given and say what the review cannot see (blind_spots). It was written on the user's own DSH model and is kept on this machine (local private DSH cache, separate from the public dota2.ai web cache; replay traces can be reused, while local reviews are never auto-published): point them to the dota2.ai panel in the DSH sidebar (the tool card's button opens it at panel_route), which has every piece of evidence and a coach to ask. The public dota2.ai link would not show this review.${staleHint}`,
     };
   };
 
@@ -301,8 +307,8 @@ export function createDshService({
           const out = await agent.prepare(String(id));
           return { status: out.status === 'running' ? 202 : out.status === 'unavailable' ? 503 : 200, body: out };
         },
-        start: async (id, hero, lang) => {
-          const out = await agent.start(String(id), hero, normalizeUiLang(lang));
+        start: async (id, hero, lang, opts) => {
+          const out = await agent.start(String(id), hero, normalizeUiLang(lang), opts?.refresh ? { refresh: true } : undefined);
           return { status: out.status === 'running' ? 202 : out.status === 'unavailable' ? 503 : 200, body: out };
         },
       }, args));
@@ -364,7 +370,8 @@ export function createDshService({
           if (plan === false) return { status: 400, body: { code: 'invalid_plan', error: 'Unknown plan' } };
           const model = b.model == null || b.model === '' ? null : agent.modelOf(b.model);
           if (model === false) return { status: 400, body: { code: 'invalid_model', error: 'Unknown model' } };
-          const out = await agent.start(id, hero, normalizeUiLang(b.lang), { plan, model });
+          const refresh = b.refresh === true || b.force === true;
+          const out = await agent.start(id, hero, normalizeUiLang(b.lang), { plan, model, ...(refresh ? { refresh: true } : {}) });
           return { status: out.status === 'running' ? 202 : out.status === 'unavailable' ? 503 : 200, body: out };
         }
       }

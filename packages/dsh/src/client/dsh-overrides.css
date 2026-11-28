@@ -89,6 +89,19 @@
   border: 1px solid rgba(229, 174, 78, 0.32);
 }
 
+.dota2ai-tool-badge.is-cached {
+  background: rgba(104, 181, 232, 0.12);
+  color: #8cc9f2;
+  border-color: rgba(104, 181, 232, 0.34);
+}
+
+.dota2ai-tool-cache-note {
+  margin: 6px 0 2px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #8794a7;
+}
+
 .dota2ai-tool-open {
   padding: 4px 10px;
   border-radius: 7px;

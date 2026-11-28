@@ -2611,6 +2611,72 @@ details.ag-finding[open] {
   margin: 14px 0 0;
 }
 
+/* Cached Version Banner & Cache Boundary Note */
+.ag-cache-banner {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid rgba(229, 174, 78, 0.32);
+  box-shadow: var(--shadow-card);
+}
+
+.ag-cache-banner-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.ag-cache-banner-copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  flex: 1 1 280px;
+}
+
+.ag-cache-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(229, 174, 78, 0.36);
+  white-space: nowrap;
+}
+
+.ag-cache-text {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+}
+
+.ag-cache-regen {
+  flex: 0 0 auto;
+  padding: 6px 13px;
+  font-size: var(--fs-meta);
+}
+
+.ag-cache-boundary {
+  margin: 12px 0 0;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ag-cache-boundary.is-start {
+  margin: 16px auto 0;
+  max-width: 560px;
+}
+
 /* --------------------------------------------------------------------------
    10. Esports Post-Match Scoreboard (.ag-board)
    -------------------------------------------------------------------------- */

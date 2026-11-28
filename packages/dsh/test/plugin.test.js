@@ -801,6 +801,101 @@ describe('DSH local service end-to-end (service.js)', () => {
     expect(resolveDataHome({ homeDir: '/custom/dir' }, { DSH_HOME: '/ignored' })).toBe('/custom/dir');
     expect(resolveDataHome({}, { DSH_HOME: '/tmp/dsh-test' })).toBe('/tmp/dsh-test/dota2ai');
   });
+
+  it('reuses older-version local reviews across prompt bumps with cache_scope=dsh_local and regenerates only on explicit refresh (#486)', async () => {
+    const { DEEP_REVIEW_PROMPT_VERSION, DEEP_REVIEW_SCHEMA } = await import('../../../lib/agent/deepReview.js');
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-cache-reuse-'));
+    try {
+      await createTraceStore(createFileStore(join(dir, 'traces'))).put('9100904020', traceGzBytes);
+      const oldV = DEEP_REVIEW_PROMPT_VERSION - 2;
+      const modelKey = encodeModelKey('deepseek', 'deepseek-chat');
+      const reviewDocs = (await import('../../../lib/agent/stores.js')).createJsonStore(createFileStore(join(dir, 'reviews')));
+      await reviewDocs.put(`9100904020.beastmaster.zh.p${oldV}.m-${modelKey}.review.json`, {
+        schema: 'dota2.ai/deep-review-bundle@1',
+        model: 'deepseek/deepseek-chat',
+        tool_calls: 2,
+        verification: { repaired: false, dropped: 0 },
+        review: {
+          schema: DEEP_REVIEW_SCHEMA,
+          match_id: 9100904020,
+          hero: 'beastmaster',
+          lang: 'zh',
+          verdict: '本机旧版缓存结论。',
+          mainline: [],
+          findings: [finding],
+          blind_spots: ['视野'],
+        },
+      });
+
+      const llm = scriptedDshLlm((opts) => {
+        const last = opts.messages.at(-1);
+        if (last.role === 'user') {
+          return {
+            toolCalls: [
+              { id: 'c1', name: 'ability_audit', args: { hero: 'beastmaster', ability: 'primal_roar' } },
+              { id: 'c2', name: 'immunity_windows', args: { hero: 'phantom_assassin' } },
+            ],
+          };
+        }
+        return { toolCalls: [{ id: 'c3', name: 'submit_review', args: { ...submit, verdict: '本机最新版结论。' } }] };
+      });
+      const fetchImpl = vi.fn(async () => new Response('should not fetch trace or match on cache hit', { status: 500 }));
+      const svc = createDshService({
+        ctx: {
+          llm,
+          agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat' }) },
+        },
+        config: { homeDir: dir, apiBase: 'https://dota2.ai' },
+        fetchImpl,
+      });
+
+      // 1. Default replay.review hits local older-version cache with ZERO LLM calls and ZERO network calls.
+      const toolCached = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
+      expect(toolCached).toMatchObject({
+        status: 'ready',
+        cached: true,
+        stale_version: true,
+        prompt_version: oldV,
+        latest_prompt_version: DEEP_REVIEW_PROMPT_VERSION,
+        cache_scope: 'dsh_local',
+        panel_route: '/r/9100904020?hero=beastmaster&lang=zh',
+        verdict: '本机旧版缓存结论。',
+      });
+      expect(toolCached).not.toHaveProperty('url');
+      expect(toolCached.note).toContain('kept on this machine');
+      expect(toolCached.note).toContain('separate from the public dota2.ai web cache');
+      expect(toolCached.note).toContain('refresh: true');
+      expect(llm.calls).toHaveLength(0);
+      expect(fetchImpl).not.toHaveBeenCalled();
+
+      // 2. HTTP GET & POST (without refresh) also reuse the local cache without calling LLM; other lang/model stay isolated.
+      const getCached = await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/review?hero=beastmaster&lang=zh' });
+      expect(getCached.body).toMatchObject({ status: 'ready', prompt_version: oldV, stale_version: true, latest_prompt_version: DEEP_REVIEW_PROMPT_VERSION });
+      const postCached = await svc.handleRequest({ method: 'POST', url: '/api/agent/9100904020/review', body: JSON.stringify({ hero: 'beastmaster', lang: 'zh' }) });
+      expect(postCached.status).toBe(200);
+      expect(postCached.body).toMatchObject({ status: 'ready', prompt_version: oldV, stale_version: true });
+      expect((await svc.handleRequest({ method: 'GET', url: '/api/agent/9100904020/review?hero=beastmaster&lang=en' })).body).toEqual({ status: 'none' });
+      expect((await svc.handleRequest({ method: 'GET', url: `/api/agent/9100904020/review?hero=beastmaster&lang=zh&model=${encodeModelKey('deepseek', 'deepseek-reasoner')}` })).body).toEqual({ status: 'none' });
+      expect(llm.calls).toHaveLength(0);
+
+      // 3. Explicit refresh: true regenerates locally under DEEP_REVIEW_PROMPT_VERSION.
+      const started = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh', refresh: true });
+      expect(['reviewing', 'ready']).toContain(started.status);
+      let fresh;
+      await vi.waitFor(async () => {
+        fresh = await svc.replay.review({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' });
+        expect(fresh.status).toBe('ready');
+        expect(fresh.stale_version).toBeUndefined();
+      }, { timeout: 5000 });
+      expect(fresh.verdict).toBe('本机最新版结论。');
+      expect(fresh.cache_scope).toBe('dsh_local');
+      expect(llm.calls.length).toBeGreaterThan(0);
+
+      svc.shutdown();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('skill', () => {
