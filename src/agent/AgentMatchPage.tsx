@@ -110,6 +110,11 @@ const T = {
   },
   cacheRegen: { en: 'Regenerate (v{latest})', zh: '用最新版重跑（v{latest}）', ru: 'Обновить до v{latest}' },
   cacheRegenPlain: { en: 'Regenerate review', zh: '重新生成复盘', ru: 'Пересоздать разбор' },
+  cacheRegenFailed: {
+    en: 'Updating to the latest coach version did not finish; still showing the saved review. You can try again.',
+    zh: '按最新版重新生成未完成，已继续保留这份缓存复盘，可以稍后再试。',
+    ru: 'Не удалось обновить разбор до новой версии; показываем сохранённый вариант. Можно попробовать снова.',
+  },
   cacheWeb: {
     en: 'Web cloud cache: saved on dota2.ai per hero, language, plan, and model — reopening the same selection loads directly from cache without re-running. Changing language, plan, or model creates its own review. DSH desktop reviews stay local and private on your machine and are separate from this web cache (only parsed replay traces can be reused).',
     zh: '网页云端缓存：按英雄、语言、思路与模型保存在 dota2.ai；再次打开同一选择会直接命中缓存，不重复解析或重跑模型。切换语言、思路或模型会分别保存；DSH 桌面端的复盘仅保存在你本机，与网页缓存互相独立（仅解析后的录像数据可复用）。',
@@ -777,6 +782,7 @@ export const AgentMatchPage: React.FC = () => {
     const regenLabel = latestVersion != null
       ? t(T.cacheRegen).replace('{latest}', String(latestVersion))
       : t(T.cacheRegenPlain);
+    const refreshFailedMsg = state.refresh_failed ? t(T.cacheRegenFailed) : null;
     return (
       <Shell wide>
         {header}
@@ -795,7 +801,7 @@ export const AgentMatchPage: React.FC = () => {
                     </button>
                   )}
                 </div>
-                {(notice ?? waitNotice) && <p className="ag-warn" role="alert">{notice ?? waitNotice}</p>}
+                {(notice ?? waitNotice ?? refreshFailedMsg) && <p className="ag-warn" role="alert">{notice ?? waitNotice ?? refreshFailedMsg}</p>}
                 {ownModelNote}
               </aside>
             )}

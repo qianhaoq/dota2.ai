@@ -137,6 +137,8 @@ export type ReviewState =
       stale_version?: boolean;
       /** True when served directly from cache across prompt versions. */
       cached?: boolean;
+      /** Set when a recent refresh attempt failed while the older compatible review stays accessible. */
+      refresh_failed?: { reason: string | null };
     }
   | { status: 'failed'; reason?: string }
   /** `retry_in_sec`: the model account refused a review a moment ago (out of credit, key refused) and none is started until then; it can be tried again. */

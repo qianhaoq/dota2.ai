@@ -468,10 +468,13 @@ describe('review cache reuse & cross-version fallback (#486)', () => {
     expect(refreshedOut).toMatchObject({ status: 'reviewing', hero: 'beastmaster', lang: 'zh' });
     expect(calls).toEqual(['start:beastmaster:zh:refresh']);
 
-    // warmShowcase upgrades stale showcase reviews via start(..., { refresh: true }).
+    // warmShowcase upgrades stale showcase reviews via start(..., { refresh: true }),
+    // and skips stale ones whose last refresh failed so a failing refresh is not hammered on every boot.
     const warmed: any[] = [];
     const showcaseOut = await warmShowcase({
-      status: async (id: string) => (id === '9091400302' ? { status: 'ready', stale_version: true } : { status: 'ready' }),
+      status: async (id: string) => (id === '9091400302'
+        ? { status: 'ready', stale_version: true }
+        : { status: 'ready', stale_version: true, refresh_failed: { reason: 'timeout' } }),
       start: async (id: string, hero: string, lang: string, opts?: any) => {
         warmed.push({ id, hero, lang, opts });
         return { status: 'running' };
@@ -479,5 +482,167 @@ describe('review cache reuse & cross-version fallback (#486)', () => {
     });
     expect(showcaseOut).toEqual(['started:running', 'ready']);
     expect(warmed).toEqual([{ id: '9091400302', hero: 'tidehunter', lang: 'en', opts: { refresh: true } }]);
+  });
+
+  it('failed explicit refresh keeps the older compatible review accessible on reopen and ordinary start (Codex P2 #498)', async () => {
+    const dir = mkdtempSync(join(root, 'failed-refresh-'));
+    const docs = createJsonStore(createFileStore(dir));
+    const oldV = P - 2;
+    await docs.put(`${MATCH}.beastmaster.zh.p${oldV}.review.json`, storedDoc('旧版保底复盘。'));
+
+    let shouldFail = true;
+    const healthy = mockModel('重试后的最新版。');
+    let attempts = 0;
+    const complete = async (o: any) => {
+      if (shouldFail) {
+        attempts += 1;
+        throw new DOMException('timed out', 'TimeoutError');
+      }
+      return healthy.complete(o);
+    };
+    const traces = { get: async () => JSON.parse(traceJson) };
+    const clock = { t: 1_000_000 };
+    const svcA: any = createAgentService({ traces, docs, complete, model: 'deepseek-flash', now: () => clock.t });
+    const svcB: any = createAgentService({ traces, docs, complete, model: 'deepseek-flash', now: () => clock.t });
+    const admit = vi.fn(() => null);
+
+    // Trigger explicit refresh that fails with timeout.
+    expect(await svcA.start(MATCH, 'beastmaster', 'zh', { admit, refresh: true })).toMatchObject({ status: 'running' });
+    await vi.waitFor(async () => {
+      const s = await svcA.status(MATCH, 'beastmaster', 'zh');
+      expect(s.refresh_failed).toEqual({ reason: 'timeout' });
+    }, { timeout: 5000 });
+    expect(attempts).toBe(1);
+    expect(admit).toHaveBeenCalledTimes(1);
+
+    // Reopening on the same instance (and another instance within 60s) still serves the cached review, not status='failed'.
+    const afterSame = await svcA.status(MATCH, 'beastmaster', 'zh');
+    expect(afterSame).toMatchObject({
+      status: 'ready',
+      prompt_version: oldV,
+      latest_prompt_version: P,
+      stale_version: true,
+      cached: true,
+      refresh_failed: { reason: 'timeout' },
+      review: { verdict: '旧版保底复盘。' },
+    });
+    const afterPeer = await svcB.status(MATCH, 'beastmaster', 'zh');
+    expect(afterPeer).toMatchObject({
+      status: 'ready',
+      prompt_version: oldV,
+      stale_version: true,
+      refresh_failed: { reason: 'timeout' },
+      review: { verdict: '旧版保底复盘。' },
+    });
+
+    // An ordinary start() without refresh reuses the saved cache and spends zero admissions / model calls.
+    const ordinary = await svcA.start(MATCH, 'beastmaster', 'zh', { admit });
+    expect(ordinary).toMatchObject({
+      status: 'ready',
+      prompt_version: oldV,
+      stale_version: true,
+      refresh_failed: { reason: 'timeout' },
+      review: { verdict: '旧版保底复盘。' },
+    });
+    expect(admit).toHaveBeenCalledTimes(1);
+    expect(attempts).toBe(1);
+
+    // Once the model recovers, an explicit refresh: true succeeds and clears stale_version & refresh_failed.
+    shouldFail = false;
+    expect(await svcA.start(MATCH, 'beastmaster', 'zh', { admit, refresh: true })).toMatchObject({ status: 'running' });
+    expect(admit).toHaveBeenCalledTimes(2);
+    await vi.waitFor(async () => {
+      const fresh = await svcA.status(MATCH, 'beastmaster', 'zh');
+      expect(fresh).toMatchObject({ status: 'ready', prompt_version: P, review: { verdict: '重试后的最新版。' } });
+      expect(fresh.stale_version).toBeUndefined();
+      expect(fresh.refresh_failed).toBeUndefined();
+    }, { timeout: 5000 });
+  });
+
+  it('shares the single-flight start claim between concurrent ordinary and refresh requests (Codex P2 #498)', async () => {
+    const delayedTrace = () => ({
+      get: async () => {
+        await new Promise((r) => setTimeout(r, 25));
+        return JSON.parse(traceJson);
+      },
+    });
+
+    // 1. No cache exists + dispatch queue: simultaneous ordinary & refresh (both orderings) produce 1 admission and 1 queued task.
+    for (const order of [['ordinary', 'refresh'], ['refresh', 'ordinary']] as const) {
+      const dir = mkdtempSync(join(root, `claim-q-${order[0]}-`));
+      const docs = createJsonStore(createFileStore(dir));
+      const queue: any[] = [];
+      const admit = vi.fn(() => null);
+      const svc: any = createAgentService({
+        traces: delayedTrace(),
+        docs,
+        complete: mockModel().complete,
+        dispatch: async (task: any) => { queue.push(task); },
+      });
+      const reqs = order.map((kind) => svc.start(MATCH, 'beastmaster', 'zh', { admit, ...(kind === 'refresh' ? { refresh: true } : {}) }));
+      const results = await Promise.all(reqs);
+      expect(results.map((r: any) => r.status)).toEqual(['running', 'running']);
+      expect(admit).toHaveBeenCalledTimes(1);
+      expect(queue).toHaveLength(1);
+    }
+
+    // 2. No cache exists + in-process execution: simultaneous ordinary & refresh call the model once (2 turns total).
+    {
+      const dir = mkdtempSync(join(root, 'claim-exec-'));
+      const docs = createJsonStore(createFileStore(dir));
+      const m = mockModel('单次生成。');
+      const admit = vi.fn(() => null);
+      const svc: any = createAgentService({ traces: delayedTrace(), docs, complete: m.complete });
+      const [a, b] = await Promise.all([
+        svc.start(MATCH, 'beastmaster', 'zh', { admit }),
+        svc.start(MATCH, 'beastmaster', 'zh', { admit, refresh: true }),
+      ]);
+      expect([a.status, b.status]).toEqual(['running', 'running']);
+      await vi.waitFor(async () => expect((await svc.status(MATCH, 'beastmaster', 'zh')).status).toBe('ready'), { timeout: 5000 });
+      expect(admit).toHaveBeenCalledTimes(1);
+      expect(m.calls).toBe(2);
+    }
+
+    // 3. Stale cache exists: simultaneous ordinary (first) + refresh (second) gives ordinary the cached review and still starts refresh once.
+    {
+      const dir = mkdtempSync(join(root, 'claim-stale-ord-first-'));
+      const docs = createJsonStore(createFileStore(dir));
+      await docs.put(`${MATCH}.beastmaster.zh.p${P - 2}.review.json`, storedDoc('旧版缓存。'));
+      const queue: any[] = [];
+      const admit = vi.fn(() => null);
+      const svc: any = createAgentService({
+        traces: delayedTrace(),
+        docs,
+        complete: mockModel().complete,
+        dispatch: async (task: any) => { queue.push(task); },
+      });
+      const [ord, ref] = await Promise.all([
+        svc.start(MATCH, 'beastmaster', 'zh', { admit }),
+        svc.start(MATCH, 'beastmaster', 'zh', { admit, refresh: true }),
+      ]);
+      expect(ord).toMatchObject({ status: 'ready', prompt_version: P - 2, stale_version: true });
+      expect(ref).toMatchObject({ status: 'running' });
+      expect(admit).toHaveBeenCalledTimes(1);
+      expect(queue).toHaveLength(1);
+    }
+
+    // 4. Stale cache exists: simultaneous refused refresh (first) + ordinary (second) still hands ordinary the cached review.
+    {
+      const dir = mkdtempSync(join(root, 'claim-stale-ref-refused-'));
+      const docs = createJsonStore(createFileStore(dir));
+      await docs.put(`${MATCH}.beastmaster.zh.p${P - 2}.review.json`, storedDoc('旧版保底。'));
+      const refusal = { status: 429, body: { code: 'rate_limited', retryAfterSec: 30 } };
+      const svc: any = createAgentService({
+        traces: delayedTrace(),
+        docs,
+        complete: mockModel().complete,
+      });
+      const [ref, ord] = await Promise.all([
+        svc.start(MATCH, 'beastmaster', 'zh', { admit: () => refusal, refresh: true }),
+        svc.start(MATCH, 'beastmaster', 'zh', { admit: () => null }),
+      ]);
+      expect(ref).toEqual({ status: 'refused', refusal });
+      expect(ord).toMatchObject({ status: 'ready', prompt_version: P - 2, stale_version: true, review: { verdict: '旧版保底。' } });
+    }
   });
 });

@@ -2196,12 +2196,13 @@ describe('AgentMatchPage', () => {
       mockFetch({
         'ref=overview': overview,
         '/api/coach/9100904020': board,
-        '/review?': { status: 'ready', review: { ...review, lang: 'zh' }, verification: { repaired: false, dropped: 0 }, model: 'dsh', tool_calls: 2, prompt_version: 75, latest_prompt_version: 77, stale_version: true, cached: true },
+        '/review?': { status: 'ready', review: { ...review, lang: 'zh' }, verification: { repaired: false, dropped: 0 }, model: 'dsh', tool_calls: 2, prompt_version: 75, latest_prompt_version: 78, stale_version: true, cached: true, refresh_failed: { reason: 'timeout' } },
         '/api/agent/9100904020': { trace: true, model_configured: true, can_parse: true, heroes },
       });
       page('/r/9100904020?hero=beastmaster&lang=zh');
       expect(await screen.findByText('已命中旧版缓存 · v75')).toBeTruthy();
-      expect(screen.getByRole('button', { name: '用最新版重跑（v77）' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: '用最新版重跑（v78）' })).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toContain('按最新版重新生成未完成');
       expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('DSH 本地私有缓存');
       expect(document.querySelector('.ag-cache-boundary')?.textContent).toContain('不会自动发布到公共网页');
     } finally {
