@@ -331,15 +331,19 @@ describe('observed effects: where an ability\'s effect sat, and what an item mad
     const d: any = deathContext(trace, { hero: 'beastmaster' });
     for (const x of d.deaths) {
       expect(Array.isArray(x.attackers_casts_not_on_me)).toBe(true);
-      for (const c of x.attackers_casts_not_on_me) {
+      for (const c of x.attackers_casts_not_on_me ?? []) {
         expect(c.dt).toBeLessThanOrEqual(0.05);
         expect(c.dt).toBeGreaterThanOrEqual(-12.05);
         expect(c.target).not.toBe('beastmaster');
       }
     }
+    // No damage log: who attacked cannot be told, so their casts are unknown (null), never "none" (#510 review).
+    const blank: any = structuredClone(trace);
+    delete blank.damage;
+    for (const x of (deathContext(blank, { hero: 'beastmaster' }) as any).deaths) expect(x.attackers_casts_not_on_me).toBeNull();
     // Nothing here is also in enemy_casts_on_me (those are the ones aimed at the player).
     const rows = new Set(d.deaths.flatMap((x: any) => x.enemy_casts_on_me.map((c: any) => c.row)));
-    expect(d.deaths.flatMap((x: any) => x.attackers_casts_not_on_me.map((c: any) => c.row)).some((r: any) => rows.has(r))).toBe(false);
+    expect(d.deaths.flatMap((x: any) => (x.attackers_casts_not_on_me ?? []).map((c: any) => c.row)).some((r: any) => rows.has(r))).toBe(false);
   });
 
   it('how_they_killed_me: what the killer cast in the 15 s before each kill, their own buffs included', () => {

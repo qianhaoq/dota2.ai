@@ -1285,7 +1285,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
       // What the enemies who damaged the player cast in the window on anything but the player: their own buffs
       // (Overpower, Enrage: `target: "self"` or `"none"`) and spells on others. enemy_casts_on_me holds only those aimed
       // at the player, so a killer's self-buff was never seen (#508).
-      attackers_casts_not_on_me: trace.casts.filter((c) => c[3] !== npc && inWindow(c[0]) && attackers.has(heroOfName(trace, c[1])))
+      // Null without a damage log: who the attackers were cannot be told, so neither can their casts (#510 review).
+      attackers_casts_not_on_me: !hasDamageLog ? null : trace.casts.filter((c) => c[3] !== npc && inWindow(c[0]) && attackers.has(heroOfName(trace, c[1])))
         .map((c) => ({ dt: dt(c[0]), by: nameOf(trace, c[1]), ability: trace.names[c[2]], target: c[3] === c[1] ? 'self' : c[3] < 0 ? 'none' : nameOf(trace, c[3]), row: c[4] })),
       other_deaths: real.filter((o) => o !== d && Math.abs(o[0] - t) <= 20).map((o) => deathRow(trace, o, t, view)),
       // Whether the team got a hero back for it: an enemy hero died for real within TRADE_SECONDS of this death, before or after.
