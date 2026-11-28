@@ -147,7 +147,14 @@ describe('review trilingual translation', () => {
     });
     expect(calls).toBe(1);
     expect(Object.keys(out.reviews).sort()).toEqual(['ru', 'zh']);
-    expect(out.usage).toEqual({ input: 500, output: 400 });
+    expect(out.usage).toEqual({
+      input: 500,
+      output: 400,
+      input_uncached: null,
+      cache_read: null,
+      cache_write: null,
+      source: 'provider_usage',
+    });
 
     // Partial first response -> retries once for only the missing language.
     const asked: string[][] = [];
@@ -164,7 +171,14 @@ describe('review trilingual translation', () => {
     });
     expect(asked).toEqual([['zh', 'ru'], ['ru']]);
     expect(Object.keys(partial.reviews).sort()).toEqual(['ru', 'zh']);
-    expect(partial.usage).toEqual({ input: 350, output: 270 });
+    expect(partial.usage).toEqual({
+      input: 350,
+      output: 270,
+      input_uncached: null,
+      cache_read: null,
+      cache_write: null,
+      source: 'provider_usage',
+    });
 
     // Provider error -> never throws, returns empty reviews.
     const failed = await translateReview({

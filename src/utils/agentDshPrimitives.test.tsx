@@ -443,6 +443,139 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
       />,
     );
     expect(reviewingCard.container.querySelector('.dota2ai-tool-preview')).toBeNull();
+    reviewingCard.unmount();
+  });
+
+  it('renders transparent token usage (en & zh) on ready replay review ToolCards without fabricating prices or zeros', () => {
+    const PRICE_RE = /[$¥￥]|CNY|USD|元|角/;
+    const withCache = {
+      status: 'ready',
+      match_id: '9100904020',
+      hero: 'beastmaster',
+      lang: 'en',
+      verdict: 'Strong tempo offlane.',
+      model: 'deepseek/deepseek-chat',
+      steps: 8,
+      tool_calls: 18,
+      repair_rounds: 1,
+      usage_source: 'provider_usage',
+      usage: {
+        input: 12_400,
+        output: 2100,
+        input_uncached: 3300,
+        cache_read: 9100,
+        cache_write: null,
+        source: 'provider_usage',
+      },
+    };
+
+    const enCard = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster', lang: 'en' }) },
+          content: [{ type: 'text', text: JSON.stringify(withCache) }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    const enUsage = enCard.container.querySelector('.dota2ai-tool-usage')!;
+    expect(enUsage).not.toBeNull();
+    expect(enUsage.textContent).toContain('12.4k in (9.1k cached, 3.3k uncached) · 2.1k out · 8 steps · 18 tools · 1 repair · deepseek/deepseek-chat');
+    expect(enUsage.textContent).toContain('Source: provider usage (tokens only, no price estimate)');
+    expect(enUsage.textContent).not.toMatch(PRICE_RE);
+    enCard.unmount();
+
+    const zhCard = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' }) },
+          content: [{ type: 'text', text: JSON.stringify({ ...withCache, lang: 'zh' }) }],
+        }}
+        t={(k) => dshZh[k]}
+        openPath={() => {}}
+      />,
+    );
+    const zhUsage = zhCard.container.querySelector('.dota2ai-tool-usage')!;
+    expect(zhUsage.textContent).toContain('输入 12.4k（缓存命中 9.1k，未命中 3.3k） · 输出 2.1k · 8 轮 · 18 次工具 · 1 次修订 · deepseek/deepseek-chat');
+    expect(zhUsage.textContent).toContain('来源：模型接口统计（仅展示真实 token，不估算费用）');
+    expect(zhUsage.textContent).not.toMatch(PRICE_RE);
+    zhCard.unmount();
+
+    // Null cache fields stay omitted (never coerced to 0 cached) and missing provider usage shows unavailable honestly.
+    const noCacheCard = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster' }) },
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              status: 'ready',
+              verdict: 'Done.',
+              model: 'openai/gpt-5',
+              steps: 4,
+              tool_calls: 7,
+              usage_source: 'provider_usage',
+              usage: { input: 6000, output: 900, input_uncached: null, cache_read: null, cache_write: null, source: 'provider_usage' },
+            }),
+          }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    const noCacheUsage = noCacheCard.container.querySelector('.dota2ai-tool-usage')!;
+    expect(noCacheUsage.textContent).toContain('6k in · 900 out · 4 steps · 7 tools · openai/gpt-5');
+    expect(noCacheUsage.textContent).not.toContain('cached');
+    expect(noCacheUsage.textContent).not.toMatch(PRICE_RE);
+    noCacheCard.unmount();
+
+    const noTelemetryCard = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster' }) },
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              status: 'ready',
+              verdict: 'Done.',
+              model: 'custom/local',
+              steps: 3,
+              tool_calls: 5,
+              usage_source: null,
+              usage: { input: 0, output: 0, input_uncached: null, cache_read: null, cache_write: null, source: null },
+            }),
+          }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    const noTelemetryUsage = noTelemetryCard.container.querySelector('.dota2ai-tool-usage')!;
+    expect(noTelemetryUsage.textContent).toContain('Token usage unavailable · 3 steps · 5 tools · custom/local');
+    expect(noTelemetryUsage.textContent).toContain('Source: not reported by provider');
+    expect(noTelemetryUsage.textContent).not.toContain('0 in');
+    expect(noTelemetryUsage.textContent).not.toMatch(PRICE_RE);
+    noTelemetryCard.unmount();
+
+    // Malformed usage payload never throws.
+    const badUsageCard = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster' }) },
+          content: [{ type: 'text', text: JSON.stringify({ status: 'ready', verdict: 'Safe.', usage: 'not-an-object', steps: 'bad' }) }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    expect(badUsageCard.container.querySelector('.dota2ai-tool-usage')).toBeNull();
+    badUsageCard.unmount();
   });
 
   it('notifies already-mounted CoachHome consumers when async profile hydration resolves, without echoing saveProfile', async () => {

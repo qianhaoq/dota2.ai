@@ -202,7 +202,7 @@ export function createDshService({
       const reply = await complete({ system, messages: rest, tools: [], signal });
       const text = String(reply?.text ?? '').trim();
       if (!text) return { text: fallbackAnswer({ report, slot, lang, question }), fallback: true, notice: FALLBACK_NOTICE[lang] };
-      return { text, fallback: false };
+      return { text, fallback: false, ...(reply?.usage ? { usage: reply.usage } : {}) };
     } catch {
       return { text: fallbackAnswer({ report, slot, lang, question }), fallback: true, notice: FALLBACK_NOTICE[lang] };
     }
@@ -227,13 +227,22 @@ export function createDshService({
       if (avail.trace && resolvedHero && models.isConfigured()) {
         const out = await agent.chat({ matchId: String(args.match_id), hero: resolvedHero.hero, lang, question, history: [], signal });
         if (out.status === 'ok') {
-          return { match_id: Number(args.match_id), hero: resolvedHero.hero, lang, answer: out.text, source: 'replay', unverified: out.unverified };
+          return {
+            match_id: Number(args.match_id),
+            hero: resolvedHero.hero,
+            lang,
+            answer: out.text,
+            source: 'replay',
+            unverified: out.unverified,
+            ...(out.usage ? { usage: out.usage } : {}),
+            ...('usage_source' in out ? { usage_source: out.usage_source } : {}),
+          };
         }
       }
       const report = await fetchCoachReportRemote(args?.match_id, '', signal);
       const seat = findSeat(report, args?.hero);
       const res = await askReportWithHostModel({ report, slot: seat, lang, question, signal });
-      return { match_id: report.match.id, seat, lang, answer: res.text, ...(res.fallback ? { fallback: true } : {}) };
+      return { match_id: report.match.id, seat, lang, answer: res.text, ...(res.usage ? { usage: res.usage } : {}), ...(res.fallback ? { fallback: true } : {}) };
     },
     goal_check: async (args) => {
       let goal = args?.goal;
