@@ -34,6 +34,12 @@ describe('skill_build on real replay 9100904020', () => {
     });
     expect(r.upgrade_timeline.find((u: any) => u.ability === 'beastmaster_summon_razorback' && u.ability_level === 1)).not.toHaveProperty('initial');
     expect(r.upgrade_timeline.find((u: any) => u.ability === 'beastmaster_summon_razorback' && u.ability_level === 1)).not.toHaveProperty('innate');
+    // Scepter-granted ability learned when Beastmaster finishes Aghanim's Scepter at 16:48 carries granted_by: 'scepter'.
+    expect(r.upgrade_timeline.find((u: any) => u.ability === 'beastmaster_summon_thunderhide')).toMatchObject({
+      clock: '16:48',
+      ability_level: 1,
+      granted_by: 'scepter',
+    });
 
     // Exact 6-point distribution at level 6 (2-3-0-1) and 10-point distribution at level 10 (4-4-1-1).
     expect(r.at_level_6).toEqual({
@@ -366,5 +372,87 @@ describe('skill_build unknown-is-not-false blank-source checks', () => {
       reason: 'incomplete_ability_level_samples',
       abilities: ['beastmaster_wild_axes'],
     });
+  });
+
+  it('tracks Enchantress Scepter (Little Friends) and Shard (Sproink, Hidden behavior) in upgrade_timeline without distorting skill-point distributions', () => {
+    const n = 1600;
+    const level = Array.from({ length: n }, (_, s) => (s < 300 ? 1 : s < 400 ? 6 : s < 800 ? 9 : s < 1000 ? 10 : 15));
+    const enchTrace: any = {
+      match_id: 9106070129, // 7.42a exact
+      t0: 0,
+      n,
+      heroes: [{ key: 'enchantress', npc: 'npc_dota_hero_enchantress', team: 2 }],
+      states: [{ level }],
+      abilities: [{
+        enchantress_impetus: { levels: [[0, 1], [120, 2], [240, 3], [480, 4]] },
+        enchantress_enchant: { levels: [[60, 1], [600, 2], [720, 3], [900, 4]] },
+        enchantress_natures_attendants: { levels: [[180, 1], [540, 2]] },
+        enchantress_untouchable: { levels: [[301, 1]] },
+        enchantress_rabblerouser: { levels: [[0, 1]] },
+        // Shard at 4:10 (250s, before level 6) and Scepter at 22:00 (1320s) — neither consumes skill points.
+        enchantress_bunny_hop: { levels: [[250, 1]] },
+        enchantress_little_friends: { levels: [[1320, 1]] },
+      }],
+    };
+    const r: any = skillBuild(enchTrace, { hero: 'enchantress' }, { lang: 'zh' });
+    expect(r.upgrade_timeline.find((u: any) => u.ability === 'enchantress_little_friends')).toMatchObject({
+      clock: '22:00',
+      name: '密友',
+      ability_level: 1,
+      granted_by: 'scepter',
+    });
+    expect(r.upgrade_timeline.find((u: any) => u.ability === 'enchantress_bunny_hop')).toMatchObject({
+      clock: '4:10',
+      name: '跃动',
+      ability_level: 1,
+      granted_by: 'shard',
+    });
+    expect(r.upgrade_timeline.find((u: any) => u.ability === 'enchantress_rabblerouser')).toMatchObject({
+      initial: true,
+      innate: true,
+    });
+    // Neither innate nor Shard/Scepter granted skills appear in at_level_6, at_level_10, or maxed_order.
+    expect(r.at_level_6.abilities).toEqual({
+      enchantress_impetus: 3,
+      enchantress_enchant: 1,
+      enchantress_natures_attendants: 1,
+      enchantress_untouchable: 1,
+    });
+    expect(r.maxed_order.map((m: any) => m.ability)).toEqual(['enchantress_impetus', 'enchantress_enchant']);
+    expect(r.gaps.some((g: any) => g.topic === 'granted_abilities' || g.topic === 'innate_abilities')).toBe(false);
+
+    // When patch metadata is not exact (e.g. match_id: 0 -> pd.exact === false), never silently treat a Scepter/Shard-granted
+    // skill like Sproink as a confirmed learnable basic skill: preserve an explicit uncertainty gap and omit unconfirmed granted_by.
+    const inexactNoInnate: any = {
+      ...enchTrace,
+      match_id: 0,
+      abilities: [{
+        enchantress_impetus: { levels: [[0, 1], [120, 2], [240, 3], [480, 4]] },
+        enchantress_enchant: { levels: [[60, 1], [600, 2], [720, 3], [900, 4]] },
+        enchantress_natures_attendants: { levels: [[180, 1], [540, 2]] },
+        enchantress_untouchable: { levels: [[301, 1]] },
+        enchantress_bunny_hop: { levels: [[250, 1]] },
+      }],
+    };
+    const rInexact: any = skillBuild(inexactNoInnate, { hero: 'enchantress' }, { lang: 'en' });
+    expect(rInexact.at_level_6.abilities).toMatchObject({
+      enchantress_impetus: 3,
+      enchantress_enchant: 1,
+      enchantress_natures_attendants: 1,
+      enchantress_untouchable: 1,
+      enchantress_bunny_hop: 1,
+    });
+    expect(rInexact.upgrade_timeline.find((u: any) => u.ability === 'enchantress_bunny_hop')).not.toHaveProperty('granted_by');
+    expect(rInexact.gaps).toContainEqual({ topic: 'granted_abilities', reason: 'granted_ability_metadata_unavailable_for_patch' });
+    expect(rInexact.gaps.some((g: any) => g.topic === 'maxed_order')).toBe(false);
+
+    // On an exact older major patch whose snapshot lacks granted_by (e.g. 7.41f), keep Sproink and Little Friends visible
+    // with an explicit granted_abilities uncertainty gap instead of silently dropping Sproink or treating them as confirmed basic skills.
+    const olderMajor: any = { ...inexactNoInnate, match_id: 9076000000 };
+    const rOlder: any = skillBuild(olderMajor, { hero: 'enchantress' }, { lang: 'en' });
+    expect(rOlder.data_patch).toBe('7.41f');
+    expect(rOlder.upgrade_timeline.some((u: any) => u.ability === 'enchantress_bunny_hop')).toBe(true);
+    expect(rOlder.upgrade_timeline.find((u: any) => u.ability === 'enchantress_bunny_hop')).not.toHaveProperty('granted_by');
+    expect(rOlder.gaps).toContainEqual({ topic: 'granted_abilities', reason: 'granted_ability_metadata_unavailable_for_patch' });
   });
 });

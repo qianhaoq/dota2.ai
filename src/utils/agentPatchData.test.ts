@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { CURRENT_PATCH, CURRENT_RELEASE, PATCH_NAMES, RELEASES, gamePatch, isBigItemIn, patchData, patchForGame } from '../../lib/agent/patchData.js';
+import { CURRENT_PATCH, CURRENT_RELEASE, PATCH_NAMES, RELEASES, fromSnapshot, gamePatch, isBigItemIn, patchData, patchForGame } from '../../lib/agent/patchData.js';
 import { buildCheck, goldOnTop, powerSpikes } from '../../lib/agent/situationTools.js';
 import { heroAbilities, proItemChoices } from '../../lib/agent/knowledgeTools.js';
 import { resolveRef } from '../../lib/agent/evidence.js';
@@ -113,8 +113,47 @@ describe('the data of the patch a game was played on', () => {
     expect(siphon(old).pierces).toBe(false);
     expect(siphon(now).pierces).toBe(true);
     expect(old.ultimate(38)).toEqual({ key: 'beastmaster_primal_roar', en: 'Primal Roar', zh: '原始咆哮', cd: [90, 75, 60] });
-    // A shard or scepter ability the current table leaves out is left out of the old list too.
+    // Innates stay out while Shard/Scepter granted abilities present in the historical snapshot are preserved.
     expect(old.heroAbilities(29)!.map((a: any) => a.id)).toEqual(now.heroAbilities(29)!.map((a: any) => a.id));
+    expect(now.heroAbilities(29)!.find((a: any) => a.id === 'tidehunter_dead_in_the_water')).toMatchObject({ granted_by: 'shard' });
+    expect(old.heroAbilities(29)!.some((a: any) => a.id === 'tidehunter_leviathans_catch')).toBe(false);
+    // Enchantress in 7.41f and 7.40 preserves Little Friends and Sproink with snapshot flags/cd,
+    // without back-porting 7.42 granted_by or tooltip text (e.g. Meepo's Dig moved from Shard in 7.41f to Scepter in 7.42).
+    for (const rel of ['7.40', '7.41f']) {
+      const hist = patchData(rel);
+      const lf = hist.heroAbilities(58)!.find((a: any) => a.id === 'enchantress_little_friends');
+      const sp = hist.heroAbilities(58)!.find((a: any) => a.id === 'enchantress_bunny_hop');
+      expect(lf, rel).toMatchObject({ id: 'enchantress_little_friends', en: 'Little Friends', zh: '密友', pierces: false, dispel: 'no', cd: [20] });
+      expect(lf, rel).not.toHaveProperty('desc');
+      expect(lf, rel).not.toHaveProperty('granted_by');
+      expect(sp, rel).toMatchObject({ id: 'enchantress_bunny_hop', en: 'Sproink', zh: '跃动', pierces: false, cd: [10] });
+      expect(hist.aghsUpgrades(58, 'zh'), rel).toBeNull();
+    }
+    // Meepo's Dig was Shard in 7.41f and moved to Scepter in 7.42: 7.42 labels granted_by: 'scepter', 7.41f does not back-port it.
+    expect(now.heroAbilities(82)!.find((a: any) => a.id === 'meepo_petrify')).toMatchObject({ granted_by: 'scepter' });
+    expect(old.heroAbilities(82)!.find((a: any) => a.id === 'meepo_petrify')).not.toHaveProperty('granted_by');
+    // Historical hero_abilities tool preserves granted abilities and reports a gap instead of back-porting 7.42 Scepter/Shard metadata.
+    const oldEnch: any = heroAbilities(trace, { hero: 'enchantress' }, { lang: 'zh', match: as741 });
+    expect(oldEnch.patch).toBe('7.41f');
+    expect(oldEnch.abilities.find((a: any) => a.ability === 'enchantress_little_friends')).toMatchObject({ name: '密友', goes_through_spell_immunity: false, dispelled_by: 'no' });
+    expect(oldEnch.aghanims_scepter).toBeNull();
+    expect(oldEnch.aghanims_shard).toBeNull();
+    expect(oldEnch.gaps).toContainEqual({ topic: 'scepter_shard_upgrades_for_this_patch', reason: 'scepter_shard_metadata_not_in_historical_snapshot_for_7.41f' });
+    // Explicit granted_by on a historical snapshot ability (even one removed later) is preserved; missing hero stays null.
+    const synthSnap = fromSnapshot({
+      major: '7.41',
+      items: {},
+      heroes: {
+        npc_dota_hero_beastmaster: [
+          { id: 'beastmaster_drums_of_slom', en: 'Drums of Slom', dmg: 'M', pierces: false, dispel: 'no', granted_by: 'scepter' },
+        ],
+      },
+    });
+    expect(synthSnap.heroAbilities(38)).toEqual([
+      { id: 'beastmaster_drums_of_slom', en: 'Drums of Slom', zh: 'Drums of Slom', granted_by: 'scepter', dmg: 'M', pierces: false, dispel: 'no' },
+    ]);
+    expect(synthSnap.heroAbilities(58)).toBeNull();
+    expect(synthSnap.aghsUpgrades(38, 'en')).toBeNull();
     expect(old.heroAbilities(99999)).toBeNull();
   });
 
@@ -149,7 +188,8 @@ describe('the review tools tell a 7.41 game its own numbers', () => {
     expect(r.most_built_by_pros_on_this_hero).toMatchObject({ played_on_releases: ['7.41f'] });
     expect(r.most_built_by_pros_on_this_hero.pro_games).toBeGreaterThanOrEqual(30);
     expect(r.most_built_by_pros_on_this_hero.items[0].item).toBe('helm_of_the_overlord');
-    // The patch is the game's: no fallback gap.
+    // The patch is the game's: no fallback gap, and 7.42 Scepter text is never back-ported onto a 7.41f Scepter purchase.
+    expect(r.my_big_items_in_order.find((i: any) => i.item === 'ultimate_scepter')).not.toHaveProperty('for_this_hero');
     expect(r.gaps.map((g: any) => g.topic)).not.toContain('pro_mid_game_items');
     expect(r.gaps.map((g: any) => g.topic)).not.toContain('item_and_ability_data_of_this_game_patch');
     const now: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'zh', match: scoreboard });
