@@ -462,7 +462,26 @@ export const AgentMatchPage: React.FC = () => {
     if (!heroKey || beginning.current === asked) return;
     beginning.current = asked;
     if (refresh) setRefreshingFor(asked);
-    try { const next = await startReview(matchId, heroKey, lang, plan, model, refresh); if (selected.current === asked) { stateBaseRef.current = baseSelection; setState(next); } } catch (e) { refuse(e, asked); } finally { if (beginning.current === asked) beginning.current = null; if (refresh) setRefreshingFor((cur) => (cur === asked ? null : cur)); }
+    try {
+      const next = await startReview(matchId, heroKey, lang, plan, model, refresh);
+      if (selected.current === asked) {
+        if (refresh && stateRef.current?.status === 'ready' && (next.status === 'unavailable' || next.status === 'failed')) {
+          setNotice(t(next.status === 'unavailable' ? T.unavailable : T.cacheRegenFailed));
+          if (next.status === 'unavailable') setOwnModel({ sel: asked, kind: 'refused' });
+          const reason = next.status === 'unavailable' ? (typeof next.reason === 'string' ? next.reason : null) : (next.reason || 'unknown');
+          if (reason) trackOnce(`${asked}.failed.review.${reason}`, 'review_failed', { matchId, hero: heroKey, lang, stage: 'review', reason, final: false });
+          want(false);
+        } else {
+          stateBaseRef.current = baseSelection;
+          setState(next);
+        }
+      }
+    } catch (e) {
+      refuse(e, asked);
+    } finally {
+      if (beginning.current === asked) beginning.current = null;
+      if (refresh) setRefreshingFor((cur) => (cur === asked ? null : cur));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, heroKey, lang, plan, model]);
 

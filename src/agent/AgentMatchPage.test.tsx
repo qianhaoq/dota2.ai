@@ -2177,6 +2177,49 @@ describe('AgentMatchPage', () => {
     expect(screen.getByRole('group', { name: 'Was this right?' })).toBeTruthy();
   });
 
+  it('keeps the cached review visible and shows an inline error when Regenerate returns unavailable or failed (#486)', async () => {
+    let posts = 0;
+    mockFetch({
+      'ref=overview': overview,
+      '/api/coach/8000000486': board,
+      '/review?': { status: 'ready', review: { ...review, match_id: 8000000486 }, verification: { repaired: false, dropped: 0 }, model: 'deepseek-flash', tool_calls: 2, prompt_version: 75, latest_prompt_version: 78, stale_version: true, cached: true },
+      '/review': (_u: string, init?: RequestInit) => {
+        if (init?.method !== 'POST') return null;
+        posts += 1;
+        if (posts === 1) return { __status: 503, status: 'unavailable', reason: 'model_out_of_credit', retry_in_sec: 240 };
+        return { status: 'failed', reason: 'timeout' };
+      },
+      '/api/agent/8000000486': { trace: true, model_configured: true, can_parse: true, heroes },
+    });
+
+    page('/r/8000000486?hero=beastmaster&lang=en');
+    expect(await screen.findByText('Cached · v75')).toBeTruthy();
+    expect(screen.getByText(review.verdict)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate (v78)' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('The coach is not available right now.');
+    // Saved review remains readable instead of being replaced by the unavailable screen.
+    expect(screen.getByText(review.verdict)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Cannot generate a review right now' })).toBeNull();
+    expect(document.querySelector('.om-callout')?.textContent).toContain('DeepSeek Harness');
+    expect(posts).toBe(1);
+    expect(window.sessionStorage.getItem('dota2ai.review-intent.8000000486.beastmaster')).toBeNull();
+    // Reader can retry again once the request settles; an immediate failed response also preserves the cached view.
+    const regen = screen.getByRole('button', { name: 'Regenerate (v78)' }) as HTMLButtonElement;
+    expect(regen.disabled).toBe(false);
+    fireEvent.click(regen);
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Updating to the latest coach version did not finish'));
+    expect(screen.getByText(review.verdict)).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'The review did not come out' })).toBeNull();
+    expect(posts).toBe(2);
+    await waitFor(async () => expect((await events()).filter((e: any) => e.event === 'review_failed')).toHaveLength(2));
+    expect((await events()).filter((e: any) => e.event === 'review_failed').map((e: any) => e.props)).toEqual([
+      { matchId: '8000000486', hero: 'beastmaster', lang: 'en', stage: 'review', reason: 'model_out_of_credit', final: false },
+      { matchId: '8000000486', hero: 'beastmaster', lang: 'en', stage: 'review', reason: 'timeout', final: false },
+    ]);
+  });
+
   it('shows bilingual DSH local private cache vs Web cloud cache boundary notes on start and ready views (#486)', async () => {
     const dispose = configureDota2AiRuntime({ surface: 'dsh' });
     try {
