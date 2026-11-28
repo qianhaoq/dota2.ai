@@ -31,11 +31,15 @@ const finding = {
   evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }],
   fix: '留给她。',
 };
+const chapters = [
+  { topic: 'midgame', title: '中期团战与大招时机', analysis: '27:27 吼进黑皇杖定住 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+  { topic: 'skills_and_items', title: '大招留人思路', analysis: '幻影刺客开了 7 次黑皇杖，咆哮必须留给她。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+];
 const submit = {
   verdict: '咆哮没有留给幻影刺客。',
-  mainline: [],
+  highlights: [],
   findings: [finding],
-  next_game: ['留咆哮'],
+  chapters,
   blind_spots: ['视野'],
 };
 
@@ -318,6 +322,67 @@ describe('review cache: the current prompt version only (owner, 2026-11-28; was 
     });
     expect(showcaseOut).toEqual(['started:running', 'ready']);
     expect(warmed).toEqual([{ id: '9091400302', hero: 'tidehunter', lang: 'en', opts: { refresh: true } }]);
+  });
+
+  it('auto-invalidates malformed v84 cached reviews with 0 chapters (e.g. 9107883117 with 7 findings, 0 chapters) while keeping healthy v84 caches', async () => {
+    const dir = mkdtempSync(join(root, 'malformed-v84-'));
+    const docs = createJsonStore(createFileStore(join(dir, 'reviews')));
+    const key = `${MATCH}.beastmaster.p${P}.review.json`;
+    // 1) Malformed v84 review: 7 findings and 0 chapters.
+    await docs.put(key, storedDoc('7 条问题无章节的畸形缓存。', {
+      prompt_version: P,
+      findings: Array.from({ length: 7 }, (_, i) => ({ ...finding, title: `问题 ${i + 1}` })),
+      chapters: [],
+    }));
+
+    const m = mockModel('自动修复后的规范复盘。');
+    const svc: any = createAgentService({ traces: { get: async () => JSON.parse(traceJson) }, docs, complete: m.complete, model: 'deepseek-flash' });
+    expect(await svc.status(MATCH, 'beastmaster', 'zh')).toEqual({ status: 'none' });
+    expect(m.calls).toBe(0);
+
+    // 2) Also invalidates a v84 cached review with <= 3 findings but 0 chapters.
+    await docs.put(key, storedDoc('缺章节的 v84 缓存。', {
+      prompt_version: P,
+      findings: [finding],
+      chapters: [],
+    }));
+    expect(await svc.status(MATCH, 'beastmaster', 'zh')).toEqual({ status: 'none' });
+
+    // 3) Starting now writes a valid v84 review with chapters, which is then served from cache with 0 extra model calls.
+    expect((await svc.start(MATCH, 'beastmaster', 'zh')).status).toBe('running');
+    await vi.waitFor(async () => expect((await svc.status(MATCH, 'beastmaster', 'zh')).status).toBe('ready'), { timeout: 5000 });
+    expect(m.calls).toBe(2);
+    const ready = await svc.status(MATCH, 'beastmaster', 'zh');
+    expect(ready).toMatchObject({ status: 'ready', review: { verdict: '自动修复后的规范复盘。' } });
+    expect(ready.review.chapters.length).toBeGreaterThanOrEqual(2);
+    expect(ready.review.findings.length).toBeLessThanOrEqual(3);
+
+    // 4) A fresh service instance (simulating restart or another Cloud Run instance) accepts the saved review identically.
+    const freshSvc: any = createAgentService({ traces: { get: async () => JSON.parse(traceJson) }, docs, complete: m.complete, model: 'deepseek-flash' });
+    const reloaded = await freshSvc.status(MATCH, 'beastmaster', 'zh');
+    expect(reloaded).toMatchObject({ status: 'ready', review: { verdict: '自动修复后的规范复盘。' } });
+
+    // 5) If a model refuses to supply chapters even after repair, the run fails as unverified and is NOT stored as ready.
+    const dirBad = mkdtempSync(join(root, 'stubborn-no-chapters-'));
+    const docsBad = createJsonStore(createFileStore(join(dirBad, 'reviews')));
+    let badCalls = 0;
+    const stubbornModel = async () => {
+      badCalls += 1;
+      if (badCalls === 1) return { toolCalls: [{ id: 'd', name: 'death_context', args: { hero: 'beastmaster', index: 9 } }] };
+      return {
+        toolCalls: [{
+          id: `s${badCalls}`,
+          name: 'submit_review',
+          args: { verdict: '36:05 阵亡时咆哮未放出。', findings: [finding], chapters: [], blind_spots: [] },
+        }],
+      };
+    };
+    const svcBad: any = createAgentService({ traces: { get: async () => JSON.parse(traceJson) }, docs: docsBad, complete: stubbornModel, model: 'deepseek-flash' });
+    expect((await svcBad.start(MATCH, 'beastmaster', 'zh')).status).toBe('running');
+    await vi.waitFor(async () => expect((await svcBad.status(MATCH, 'beastmaster', 'zh')).status).toBe('failed'), { timeout: 5000 });
+    expect(await svcBad.status(MATCH, 'beastmaster', 'zh')).toMatchObject({ status: 'failed', reason: 'unverified' });
+    const freshBad: any = createAgentService({ traces: { get: async () => JSON.parse(traceJson) }, docs: docsBad, complete: stubbornModel, model: 'deepseek-flash' });
+    expect((await freshBad.status(MATCH, 'beastmaster', 'zh')).status).not.toBe('ready');
   });
 
 });

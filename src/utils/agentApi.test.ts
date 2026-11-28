@@ -19,7 +19,11 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const call = (name: string, args: any, id: string) => ({ id, name, args });
 const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。' };
-const submit = { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], next_game: ['留咆哮'], blind_spots: ['视野'] };
+const chapters = [
+  { topic: 'midgame', title: '中期团战与大招时机', analysis: '27:27 吼进黑皇杖定住 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+  { topic: 'skills_and_items', title: '大招留人思路', analysis: '幻影刺客开了 7 次黑皇杖，咆哮必须留给她。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+];
+const submit = { verdict: '咆哮没有留给幻影刺客。', highlights: [], findings: [finding], chapters, blind_spots: ['视野'] };
 /** A model that looks things up, then submits a review; for chat questions it looks up one death and answers. */
 function model() {
   const seen: any[] = [];
@@ -165,7 +169,7 @@ describe('what the check removed is kept beside the review', () => {
     expect(kept.status).toBe('ok');
     // A review the check rejected whole leaves the same record: that is when it is needed most.
     const none = join(dir, 'none');
-    const all: any = createAgentService({ traces: createFileTraceStore(dir), complete: async (o: any) => (o.messages.at(-1).role === 'user' ? { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a')] } : { toolCalls: [call('submit_review', { ...submit, findings: [madeUp] }, 's')] }), model: 'm', reviewDir: none });
+    const all: any = createAgentService({ traces: createFileTraceStore(dir), complete: async (o: any) => (o.messages.at(-1).role === 'user' ? { toolCalls: [call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a')] } : { toolCalls: [call('submit_review', { ...submit, findings: [madeUp], chapters: [] }, 's')] }), model: 'm', reviewDir: none });
     await all.start(MATCH, 'beastmaster', 'en');
     await vi.waitFor(async () => expect((await all.status(MATCH, 'beastmaster', 'en')).status).toBe('failed'), { timeout: 5000 });
     const lost = JSON.parse(readFileSync(join(none, readdirSync(none).find((f) => f.endsWith('.unverified.json'))!), 'utf8'));
