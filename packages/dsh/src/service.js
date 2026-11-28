@@ -96,6 +96,7 @@ export function createDshService({
   openDotaCooldownMs = 5 * 60_000,
   apiTimeoutMs = 20_000,
   prepareGraceMs = 1_500,
+  reviewDocs: customReviewDocs = null,
   now = () => Date.now(),
   log = () => {},
 }) {
@@ -104,7 +105,7 @@ export function createDshService({
 
   const traceBlobs = createFileStore(join(home, 'traces'));
   const traces = createTraceStore(traceBlobs);
-  const reviewDocs = createJsonStore(createFileStore(join(home, 'reviews')));
+  const reviewDocs = customReviewDocs ?? createJsonStore(createFileStore(join(home, 'reviews')));
   const feedbackDocs = createJsonStore(createFileStore(join(home, 'feedback')));
   const matchDocs = createJsonStore(createFileStore(join(home, 'matches')));
   const rootDocs = createJsonStore(createFileStore(home));
@@ -221,6 +222,7 @@ export function createDshService({
     reparseOldTraces: true,
     getMatchDetail,
     resolveModels: () => models.catalog(),
+    now,
     log,
   });
 
@@ -401,20 +403,26 @@ export function createDshService({
           // Brief grace window when a remote trace is already ready on dota2.ai (~300ms download)
           // or fails immediately (e.g. replay_gone / rate_limited / no_replay_url), avoiding a bogus 20s poll wait.
           if (out.status === 'running' && prepareGraceMs > 0) {
+            const deadline = Date.now() + prepareGraceMs;
             const pending = inFlightParse.get(matchId);
             if (pending) {
               let timer;
-              const settled = await Promise.race([
+              await Promise.race([
                 pending.then(() => true, () => true),
-                new Promise((r) => { timer = setTimeout(() => r(false), prepareGraceMs); timer.unref?.(); }),
+                new Promise((r) => { timer = setTimeout(() => r(false), Math.max(0, deadline - Date.now())); timer.unref?.(); }),
               ]);
               clearTimeout(timer);
-              if (settled) await new Promise((r) => setTimeout(r, 0));
-            } else {
-              // Parse may have already settled before `agent.prepare` resolved: yield once so `executeParse` finishes updating state.
-              await new Promise((r) => setTimeout(r, 0));
             }
-            const after = await agent.availability(matchId);
+            // Wait (bounded by `deadline`) for `executeParse` to finish updating state and flushing
+            // `<id>.parse.json` after `pipeline.run()` resolves (disk writes can lag on busy runners).
+            let after = await agent.availability(matchId);
+            while (!after.trace && after.parse?.status === 'running' && Date.now() < deadline) {
+              await new Promise((r) => {
+                const t = setTimeout(r, Math.min(10, Math.max(1, deadline - Date.now())));
+                t.unref?.();
+              });
+              after = await agent.availability(matchId);
+            }
             if (after.trace) return { status: 200, body: { status: 'ready' } };
             if (after.parse?.status === 'failed') return { status: 200, body: after.parse };
             if (after.parse?.status === 'running') return { status: 202, body: after.parse };
