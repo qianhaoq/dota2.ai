@@ -133,11 +133,11 @@ describe('build_check: how each item meets the enemy who killed the player', () 
     const keyOf = (name: string) => pa.their_abilities.find((x: any) => x.name === name)?.ability;
     // Both facts, every time: Valve marks it removable by that dispel, and the item was seen removing it on that side.
     const flag = (name: string) => pa.their_abilities.find((x: any) => x.name === name)?.dispelled_by;
-    for (const r of a.cyclone.their_effects_it_removes) {
+    for (const r of a.cyclone.their_effects_it_removes ?? []) {
       expect(flag(r.name)).toBe('basic');
       expect(observedRemoval('cyclone', keyOf(r.name), ['enemy_hero'])).toEqual({ removed: r.removed, games: r.games });
     }
-    for (const r of a.black_king_bar.their_effects_it_removes) {
+    for (const r of a.black_king_bar.their_effects_it_removes ?? []) {
       expect(flag(r.name)).toBe('basic');
       expect(observedRemoval('black_king_bar', keyOf(r.name), ['self', 'ally_hero'])).toEqual({ removed: r.removed, games: r.games });
     }
@@ -370,17 +370,46 @@ describe('their_effects_it_removes needs Valve\'s dispel flag as well as a remov
     },
   };
   it('an undispellable ability seen "removed" as the item landed is not listed', () => {
-    expect(effectsRemovedBy('black_king_bar', 'self_or_allies', 'basic', kit, 'en', obs)).toEqual([]);
+    expect(effectsRemovedBy('black_king_bar', 'self_or_allies', 'basic', kit, 'en', obs)).not.toContainEqual(expect.objectContaining({ name: "Berserker's Call" }));
   });
   it('a dispellable one seen removed on that side is; a basic dispel does not take a strong-only effect', () => {
     expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', kit, 'en', obs)).toEqual([{ name: 'Overpower', removed: 2, games: 1 }]);
     expect(effectsRemovedBy('nullifier', 'an_enemy_target', 'basic', kit, 'en', obs)).toEqual([]);
     expect(effectsRemovedBy('nullifier', 'an_enemy_target', 'strong', kit, 'en', obs)).toEqual([{ name: "God's Strength", removed: 2, games: 1 }]);
   });
-  it('no landing side, no dispel, no kit or no observations: nothing', () => {
-    expect(effectsRemovedBy('cyclone', null, 'basic', kit, 'en', obs)).toEqual([]);
-    expect(effectsRemovedBy('cyclone', 'an_enemy_target', null, kit, 'en', obs)).toEqual([]);
-    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', null, 'en', obs)).toEqual([]);
-    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', kit, 'en', null)).toEqual([]);
+  it('unknown stays null, never []: no landing side, no dispel, no kit, no observations, an item never seen removing anything', () => {
+    expect(effectsRemovedBy('cyclone', null, 'basic', kit, 'en', obs)).toBeNull();
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', null, kit, 'en', obs)).toBeNull();
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', null, 'en', obs)).toBeNull();
+    expect(effectsRemovedBy('cyclone', 'an_enemy_target', 'basic', kit, 'en', null)).toBeNull();
+    expect(effectsRemovedBy('lotus_orb', 'self_or_allies', 'basic', kit, 'en', obs)).toBeNull();
+    // Seen removing things, none of them these abilities: [] (the item was looked at, and none is there).
+    expect(effectsRemovedBy('black_king_bar', 'self_or_allies', 'basic', kit, 'en', obs)).toEqual([]);
+  });
+});
+
+// Owner, 2026-11-28: armor or block advice against Ursa is a miss even beside Halberd; a sentence rejecting it is not
+// (#510 review). Checked on the p81/p82/p85 texts and on rejections.
+describe('rubric 9091400302.tidehunter: armor_or_block_as_the_answer_to_ursa', () => {
+  const rubric = JSON.parse(readFileSync(new URL('../../evals/reviews/9091400302.tidehunter.json', import.meta.url), 'utf8'));
+  const re = new RegExp(rubric.must_not.find((x: any) => x.id === 'armor_or_block_as_the_answer_to_ursa').pattern, 'i');
+  it('flags advice to buy, prioritise or stack armor / damage block', () => {
+    for (const t of [
+      '这局真正的答案是物理：刃甲、天堂之戟、希瓦的守护或更早的幽魂权杖，堆护甲、致盲、缴械',
+      '跳刀之后的第一件大件优先考虑天堂之戟、赤红甲或刃甲这种直接挡普攻的装备',
+      '就先补刃甲、赤红甲、希瓦的守护这类物理防守',
+      'Get Blade Mail or Crimson Guard before Blink.',
+    ]) expect(t).toMatch(re);
+  });
+  it('does not flag a rejection, a description, or advice without armor', () => {
+    for (const t of [
+      '熊战士是普攻累积性伤害，堆护甲没用，应使用天堂之戟阻止他攻击。',
+      '不要买赤红甲，改用天堂之戟限制熊战士。',
+      '先出天堂之戟，而不是买赤红甲。',
+      '真正能直接停住普攻的幽魂权杖直到 41:46 才拿到，刃甲、天堂之戟、炎阳纹章、赤红甲一件都没有。',
+      '真正针对普攻的装备到 36:56 才出现，而熊战士拿到狂战斧后又杀了你 6 次。',
+      '先把「掐掉普攻」的东西排前面：天堂之戟 3300 金钱、缴械 3.5 秒；幽魂权杖 1500 金钱、4 秒物理免疫',
+      "Don't buy Blade Mail; get Heaven's Halberd.",
+    ]) expect(t).not.toMatch(re);
   });
 });
