@@ -306,11 +306,43 @@ test('ask the coach: the lookups show, then the answer; "ask about this" carries
   await expect(chat.locator('.ag-turn')).toHaveCount(2);
 });
 
-test('zero mechanical KPIs: no GoalCard or next-game habit quota is shown in the review', async ({ page }) => {
+test('zero mechanical KPIs: no GoalCard or next-game habit quota is shown, and legacy saved goal badge is clear-only', async ({ page }) => {
   await review(page);
   await expect(page.locator('.ag-goal')).toHaveCount(0);
   await expect(page.locator('.ag-rule-check')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '设为下一局目标' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /设为下[一]?局目标|Make this my next-game goal/ })).toHaveCount(0);
+
+  // Home page has zero goal creation buttons and no GoalNavBadge when localStorage has no legacy goal.
+  await page.goto('/?lang=zh');
+  await expect(page.locator('.cx-goal-nav')).toHaveCount(0);
+  await expect(page.locator('.cx-latest-goal-card')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /设为下[一]?局目标|Make this my next-game goal/ })).toHaveCount(0);
+
+  // Returning browser with a legacy saved goal sees only the clear-only top-bar GoalNavBadge and can dismiss it cleanly.
+  await page.evaluate(() => {
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify({
+      id: 'legacy-1',
+      goal: { kind: 'deaths_per10_max', max: 2, label: { en: 'At most 2 deaths / 10m', zh: '每 10 分钟死亡不超过 2 次' } },
+      action: { en: 'Play safer', zh: '少死' },
+      findingId: 'agent:1',
+      fromMatch: 9100904020,
+      fromStart: 1795344198,
+      accountId: null,
+      heroId: 38,
+      setAt: 1795344199,
+    }));
+  });
+  await page.reload();
+  const pill = page.locator('.cx-goal-pill');
+  await expect(pill).toBeVisible();
+  await pill.click();
+  const dialog = page.getByRole('dialog', { name: '你的目标' });
+  await expect(dialog).toContainText('每 10 分钟死亡不超过 2 次');
+  const axe = await new AxeBuilder({ page }).include('.cx-goal-nav').disableRules(['color-contrast']).analyze();
+  expect(axe.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
+  await dialog.getByRole('button', { name: '取消' }).click();
+  await expect(page.locator('.cx-goal-nav')).toHaveCount(0);
+  expect(await page.evaluate(() => window.localStorage.getItem('dota2ai.coach.goal'))).toBeNull();
 });
 
 test('a replay that is gone: said plainly, scoreboard only, nothing to start', async ({ page }) => {

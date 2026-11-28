@@ -716,13 +716,26 @@ describe('DSH local service end-to-end (service.js)', () => {
 });
 
 describe('skill', () => {
-  it('registers SKILL.md without its frontmatter, and it names every tool the plugin offers', () => {
+  it('registers SKILL.md without its frontmatter, covers active tools & full-dimension coaching, and omits mechanical goal guidance', () => {
+    const rawSkillMd = readFileSync(new URL('../skills/dota2ai/SKILL.md', import.meta.url), 'utf8');
     const reg = skillRegistration();
     expect(reg.name).toBe(SKILL.name);
     expect(reg.source).toBe('runtime');
     expect(reg.content.startsWith('# dota2.ai coach')).toBe(true);
-    for (const name of TOOL_NAMES) expect(reg.content, name).toContain(name);
-    for (const field of ['opening_note', 'highlights', 'chapters', 'encouragement']) expect(reg.content, field).toContain(field);
+    // `dota2ai_goal_check` stays registered in `TOOL_NAMES` for RPC/legacy compatibility,
+    // but SKILL.md intentionally stops pitching mechanical next-game goal checks.
+    for (const name of TOOL_NAMES.filter((n) => n !== 'dota2ai_goal_check')) {
+      expect(reg.content, name).toContain(name);
+    }
+    for (const field of ['opening_note', 'highlights', 'chapters', 'encouragement']) {
+      expect(reg.content, field).toContain(field);
+    }
+    expect(rawSkillMd).not.toContain('dota2ai_goal_check');
+    expect(rawSkillMd).not.toContain('Did I do what I practised?');
+    expect(rawSkillMd).not.toContain('a next-game goal');
+    expect(reg.content).not.toContain('dota2ai_goal_check');
+    expect(reg.content).not.toContain('Did I do what I practised?');
+    expect(SKILL.description).not.toContain('next-game goal');
     expect(skillBody('---\nname: x\n---\n\n# Body\n')).toBe('# Body\n');
     expect(skillBody('# No frontmatter\n')).toBe('# No frontmatter\n');
   });

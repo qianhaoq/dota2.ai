@@ -285,7 +285,7 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
     expect(text).toContain('data: {"done":true}');
 
     const opened: string[] = [];
-    const { getByRole, getByText } = render(
+    const { container, getByRole, getByText } = render(
       <ToolCard
         toolName="dota2ai_replay_review"
         block={{
@@ -297,8 +297,152 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
       />,
     );
     expect(getByText('咆哮留给幻刺。')).toBeTruthy();
+    // Legacy review (verdict only) renders cleanly without empty Coach-First preview blocks.
+    expect(container.querySelector('.dota2ai-tool-preview')).toBeNull();
     fireEvent.click(getByRole('button', { name: /在 dota2\.ai 页面打开/ }));
     await waitFor(() => expect(opened).toEqual(['/r/9100904020?lang=zh&hero=beastmaster']));
+  });
+
+  it('renders Coach-First highlights and localized chapter pills on ready replay review ToolCards (en & zh) and tolerates malformed payloads', () => {
+    const coachPayload = {
+      status: 'ready',
+      match_id: '9100904020',
+      hero: 'beastmaster',
+      lang: 'en',
+      verdict: 'Strong tempo offlane with high fight presence.',
+      highlights: [
+        { title: 'Clutch 27:27 BKB-piercing Roar', detail: 'Locked down Phantom Assassin through BKB.' },
+        { title: '100% mid-game fight attendance', detail: 'Showed up to all 16 fights.' },
+      ],
+      chapters: [
+        { topic: 'draft_and_lanes', title: 'Draft', assessment: 'solid', analysis: 'Good matchup.' },
+        { topic: 'laning', title: 'Lane', assessment: 'praise', analysis: 'Won lane.' },
+        { topic: 'skill_build', title: 'Skills', assessment: 'solid', analysis: 'Standard build.' },
+        { topic: 'items', title: 'Items', assessment: 'mixed', analysis: 'Needed Blink earlier.' },
+        { topic: 'teamfights', title: 'Fights', assessment: 'key_gap', analysis: 'Hold Roar for BKB.' },
+        { topic: 'macro', title: 'Macro', assessment: 'mixed', analysis: 'Convert fight wins to towers.' },
+        { topic: 'other', title: 'Notes', assessment: 'solid', analysis: 'Good roshan timing.' },
+      ],
+    };
+
+    const enCard = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster', lang: 'en' }) },
+          content: [{ type: 'text', text: JSON.stringify(coachPayload) }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    expect(enCard.getByText(coachPayload.verdict)).toBeTruthy();
+    expect(enCard.getByText('2 highlights')).toBeTruthy();
+    expect(enCard.getByText('Clutch 27:27 BKB-piercing Roar')).toBeTruthy();
+    const enPills = [...enCard.container.querySelectorAll('.dota2ai-tool-chapter')];
+    expect(enPills.map((el) => el.textContent)).toEqual([
+      'Draft & lanes', 'Laning', 'Skill build', 'Item build', 'Teamfights', 'Macro & tempo', 'Key details',
+    ]);
+    expect(enPills.map((el) => el.className)).toEqual([
+      'dota2ai-tool-chapter is-solid',
+      'dota2ai-tool-chapter is-praise',
+      'dota2ai-tool-chapter is-solid',
+      'dota2ai-tool-chapter is-mixed',
+      'dota2ai-tool-chapter is-key_gap',
+      'dota2ai-tool-chapter is-mixed',
+      'dota2ai-tool-chapter is-solid',
+    ]);
+    expect(enPills[4].getAttribute('title')).toBe('Fights · Key focus');
+    expect(enCard.container.querySelector('details.dota2ai-tool-details')).not.toBeNull();
+    enCard.unmount();
+
+    // Chinese locale renders localized count + topic labels and singular highlight badge.
+    const zhCard = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' }) },
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              ...coachPayload,
+              lang: 'zh',
+              verdict: '团战参与度拉满，关键在把大招留给黑皇杖核心。',
+              highlights: [{ title: '27:27 隔着黑皇杖控住核心', detail: '定住 3.4 秒。' }],
+              chapters: [
+                { topic: 'laning', title: '对线期稳健', assessment: 'praise', analysis: '压制明显。' },
+                { topic: 'teamfights', title: '团战决策', assessment: 'key_gap', analysis: '留大招。' },
+              ],
+            }),
+          }],
+        }}
+        t={(k) => dshZh[k]}
+        openPath={() => {}}
+      />,
+    );
+    expect(zhCard.getByText('1 处高光')).toBeTruthy();
+    expect(zhCard.getByText('27:27 隔着黑皇杖控住核心')).toBeTruthy();
+    expect([...zhCard.container.querySelectorAll('.dota2ai-tool-chapter')].map((el) => el.textContent)).toEqual([
+      '对线期', '团战表现',
+    ]);
+    zhCard.unmount();
+
+    // Malformed highlights/chapters (non-arrays, null/primitive items, empty objects, unknown topic/assessment) never throw.
+    const badNonArray = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster' }) },
+          content: [{ type: 'text', text: JSON.stringify({ status: 'ready', verdict: 'Safe render', highlights: 'oops', chapters: { bad: true } }) }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    expect(badNonArray.getByText('Safe render')).toBeTruthy();
+    expect(badNonArray.container.querySelector('.dota2ai-tool-preview')).toBeNull();
+    badNonArray.unmount();
+
+    const mixedBadEntries = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster' }) },
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              status: 'ready',
+              verdict: 'Partial valid payload',
+              highlights: [null, 42, {}, { title: '   ', detail: 'Fallback detail preview' }],
+              chapters: [null, 'bad', {}, { topic: 'unknown_dim', title: 'Custom note', assessment: 'weird' }],
+            }),
+          }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    expect(mixedBadEntries.getByText('1 highlight')).toBeTruthy();
+    expect(mixedBadEntries.getByText('Fallback detail preview')).toBeTruthy();
+    const normalized = mixedBadEntries.container.querySelectorAll('.dota2ai-tool-chapter');
+    expect(normalized).toHaveLength(1);
+    expect(normalized[0].textContent).toBe('Key details');
+    expect(normalized[0].className).toBe('dota2ai-tool-chapter is-mixed');
+    mixedBadEntries.unmount();
+
+    // Non-ready review or non-replay tool never renders the Coach-First preview.
+    const reviewingCard = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster' }) },
+          content: [{ type: 'text', text: JSON.stringify({ status: 'reviewing', highlights: coachPayload.highlights, chapters: coachPayload.chapters }) }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    expect(reviewingCard.container.querySelector('.dota2ai-tool-preview')).toBeNull();
   });
 
   it('notifies already-mounted CoachHome consumers when async profile hydration resolves, without echoing saveProfile', async () => {

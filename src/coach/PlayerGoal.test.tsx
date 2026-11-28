@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ACCOUNT_STORAGE_KEY } from './accountInput';
 import { GOAL_CHECKS_STORAGE_KEY, setGoal, type ActiveGoal } from './goalStore';
@@ -61,6 +61,17 @@ describe('player page: the training goal belongs to its owner (review v2.1 item 
     cleanup();
     window.localStorage.setItem(ACCOUNT_STORAGE_KEY, String(OWNER));
     expect((await at(OWNER)).querySelector('.cx-recent-goal')).toBeTruthy();
+  });
+
+  it('offers zero goal creation buttons and lets returning users clear a legacy saved goal cleanly', async () => {
+    setGoal(goal(OWNER));
+    const c = await at(OWNER);
+    expect(screen.queryByRole('button', { name: /Make this my next-game goal|设为下局目标/ })).toBeNull();
+    expect(c.querySelector('.cx-goal-nav')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(window.localStorage.getItem('dota2ai.coach.goal')).toBeNull();
+    expect(c.querySelector('.cx-recent-goal')).toBeNull();
+    expect(c.querySelector('.cx-goal-nav')).toBeNull();
   });
 });
 

@@ -354,12 +354,6 @@
   box-shadow: var(--shadow-card);
 }
 
-.cx-latest.has-goal {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 16px;
-}
-
 .cx-latest-card {
   min-width: 0;
 }
@@ -420,22 +414,6 @@
 
 .cx-account-known:hover {
   text-decoration: underline;
-}
-
-.cx-latest-goal-card {
-  min-width: 0;
-  padding-left: 16px;
-  border-left: 1px solid var(--line);
-}
-
-.cx-latest-goal {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 10px;
-  margin: 8px 0 0;
-  font-size: var(--fs-body);
-  color: var(--text);
 }
 
 /* --------------------------------------------------------------------------
@@ -1081,15 +1059,6 @@
   }
   .hm-submit {
     padding: 9px 16px;
-  }
-  .cx-latest.has-goal {
-    grid-template-columns: 1fr;
-  }
-  .cx-latest-goal-card {
-    padding-left: 0;
-    padding-top: 14px;
-    border-left: 0;
-    border-top: 1px solid var(--line);
   }
   .hm-patch .cx-patch.hm-patchbar {
     grid-template-columns: minmax(0, 1fr);
