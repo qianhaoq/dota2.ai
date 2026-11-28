@@ -34,8 +34,8 @@
  *   by the builder as of e7705ee975eb, the last one written for them.
  *
  * Kept per item: name, cost, recipe, numeric stats, active/passive text, hints and notes. Per
- * hero: the ability list and, per ability, its name, damage type, whether it
- * goes through spell immunity, how it is dispelled and its cooldowns.
+ * hero: the ability list (including Aghanim's Scepter and Shard granted abilities) and, per ability,
+ * its name, damage type, whether it goes through spell immunity, how it is dispelled and its cooldowns.
  * The newest release is written too, from the latest game update: no release's
  * data is the site's live tables, which a refresh may not have brought to it.
  * Match ids on either side of each rollout are added by scripts/patch-match-ids.mjs.
@@ -152,7 +152,8 @@ function pruneItems(all) {
   return out;
 }
 // The abilities the site's hero table lists outside the numbered slots (Ringmaster's wheel: Funhouse Mirror,
-// Strongman Tonic …) are not in OpenDota's hero_abilities: they are added wherever the release's data has them.
+// Strongman Tonic …, plus any Scepter/Shard granted abilities absent from numbered slots) are added wherever
+// the release's data has them.
 const SITE_ABILITIES = JSON.parse(readFileSync(new URL('../lib/coach/data/abilities.json', import.meta.url))).heroes;
 const { STATIC_HEROES } = await import('../packages/review-engine/src/staticHeroes.js');
 const SITE_BY_NPC = Object.fromEntries(Object.values(STATIC_HEROES).map((h) => [h.internalName, (SITE_ABILITIES[String(h.id)] ?? []).map((a) => a.id)]));

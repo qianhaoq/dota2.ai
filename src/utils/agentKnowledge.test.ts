@@ -5,7 +5,7 @@ import { heroAbilities, KNOWLEDGE_TOOLS, laneReport, proItemChoices } from '../.
 import { proItemsFor } from '../../lib/agent/proItems.js';
 import { patchData } from '../../lib/agent/patchData.js';
 import { goalFromReview } from '../../lib/agent/goal.js';
-import { resolveRef } from '../../lib/agent/evidence.js';
+import { KNOWN_ZH_NAMES, abilityName, namesIn, resolveRef } from '../../lib/agent/evidence.js';
 import { verifyReview } from '../../lib/agent/deepReview.js';
 import { evaluateGoal } from '../../lib/coach/goals.js';
 import { buildCoachReport } from '../../lib/coach/analyze.js';
@@ -23,6 +23,86 @@ describe('knowledge tools', () => {
     expect(r.abilities.find((a: any) => a.ability === 'beastmaster_summon_raptor')).not.toHaveProperty('goes_through_spell_immunity');
     expect((heroAbilities(trace, { hero: 'beastmaster' }, {}) as any).abilities.at(-1).name).toBe('Primal Roar');
     expect(heroAbilities(trace, { hero: 'nobody' })).toEqual({ error: 'unknown_hero' });
+  });
+
+  it('hero_abilities: includes Aghanim\'s Scepter/Shard granted abilities and upgrades (Enchantress Little Friends / Sproink, Sven upgrades, Kez innate Scepter)', () => {
+    // Match 9106070129 (7.42a): Enchantress Scepter grants Little Friends (密友) and upgrades Enchant; Shard grants Sproink (跃动).
+    const trace742a = { ...trace, match_id: 9106070129 };
+    const enZh: any = heroAbilities(trace742a, { hero: 'enchantress' }, { lang: 'zh' });
+    expect(enZh.patch).toBe('7.42a');
+    expect(enZh.gaps).toBeUndefined();
+    const littleFriendsZh = enZh.abilities.find((a: any) => a.ability === 'enchantress_little_friends');
+    expect(littleFriendsZh).toMatchObject({
+      ability: 'enchantress_little_friends',
+      name: '密友',
+      granted_by: 'scepter',
+      goes_through_spell_immunity: false,
+      dispelled_by: 'no',
+      cooldown: [20],
+    });
+    expect(littleFriendsZh.description).toContain('缠绕');
+    expect(littleFriendsZh.description).not.toMatch(/%[a-z_]+%|<[^>]+>/i);
+    const sproinkZh = enZh.abilities.find((a: any) => a.ability === 'enchantress_bunny_hop');
+    expect(sproinkZh).toMatchObject({
+      ability: 'enchantress_bunny_hop',
+      name: '跃动',
+      granted_by: 'shard',
+      goes_through_spell_immunity: false,
+      cooldown: [10],
+    });
+    expect(sproinkZh.description).toContain('推进');
+    expect(enZh.abilities.find((a: any) => a.ability === 'enchantress_enchant')?.scepter_upgrade).toContain('非英雄单位');
+    expect(enZh.aghanims_scepter).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'granted_ability', granted_by: 'scepter', ability: 'enchantress_little_friends', name: '密友' }),
+      expect.objectContaining({ kind: 'upgrade', ability: 'enchantress_enchant', name: '魅惑' }),
+    ]));
+    expect(enZh.aghanims_shard).toEqual([
+      expect.objectContaining({ kind: 'granted_ability', granted_by: 'shard', ability: 'enchantress_bunny_hop', name: '跃动' }),
+    ]);
+
+    const enEn: any = heroAbilities(trace742a, { hero: 'enchantress' }, { lang: 'en' });
+    expect(enEn.abilities.find((a: any) => a.ability === 'enchantress_little_friends')).toMatchObject({
+      name: 'Little Friends',
+      granted_by: 'scepter',
+      description: expect.stringContaining('roots an enemy unit'),
+    });
+
+    // Evidence helpers localize granted abilities cleanly in Chinese (no English fallback or raw engine keys).
+    expect(abilityName('enchantress_little_friends')).toEqual({ en: 'Little Friends', zh: '密友' });
+    expect(namesIn({ ability: 'enchantress_little_friends' }, 'zh')).toEqual({ enchantress_little_friends: '密友' });
+    expect(KNOWN_ZH_NAMES.has('密友')).toBe(true);
+
+    // Upgrade-only hero (Sven): Scepter upgrades Storm Hammer (cast range 780) and Shard upgrades Warcry (350 barrier).
+    const sven: any = heroAbilities(trace742a, { hero: 'sven' }, { lang: 'en' });
+    expect(sven.abilities.find((a: any) => a.ability === 'sven_storm_bolt')?.scepter_upgrade).toContain('780');
+    expect(sven.abilities.find((a: any) => a.ability === 'sven_warcry')?.shard_upgrade).toContain('350');
+    expect(sven.aghanims_scepter).toEqual([expect.objectContaining({ kind: 'upgrade', ability: 'sven_storm_bolt', name: 'Storm Hammer' })]);
+    expect(sven.aghanims_shard).toEqual([expect.objectContaining({ kind: 'upgrade', ability: 'sven_warcry', name: 'Warcry' })]);
+
+    // Innate-upgraded hero (Kez): Scepter upgrades innate Switch Discipline without leaking innates into abilities[].
+    const kez: any = heroAbilities(trace742a, { hero: 'kez' }, { lang: 'zh' });
+    expect(kez.abilities.some((a: any) => a.ability === 'kez_switch_weapons')).toBe(false);
+    expect(kez.aghanims_scepter).toEqual([expect.objectContaining({ kind: 'upgrade', ability: 'kez_switch_weapons', name: '流派变换', innate: true })]);
+
+    // Unknown is not false: when Valve's datafeed omits a hero's Scepter (Oracle) or blanked source has none, return null + gaps.
+    const oracle: any = heroAbilities(trace742a, { hero: 'oracle' }, { lang: 'en' });
+    expect(oracle.aghanims_scepter).toBeNull();
+    expect(oracle.aghanims_shard).toEqual([expect.objectContaining({ kind: 'granted_ability', granted_by: 'shard', ability: 'oracle_rain_of_destiny' })]);
+    expect(oracle.gaps).toContainEqual({ topic: 'aghanims_scepter', reason: 'not_in_valve_ability_data' });
+
+    const blankPd = {
+      name: '7.42a', exact: true, how: 'match_id', hotfix: null, reason: null,
+      heroAbilities: () => [{ id: 'enchantress_impetus', en: 'Impetus', zh: '推进', dmg: 'U', pierces: false }],
+      ultimate: () => null,
+      aghsUpgrades: () => ({ scepter: null, shard: null }),
+    };
+    const blankRes: any = heroAbilities(trace742a, { hero: 'enchantress' }, { lang: 'zh', patchData: blankPd });
+    expect(blankRes.aghanims_scepter).toBeNull();
+    expect(blankRes.aghanims_shard).toBeNull();
+    expect(blankRes.gaps).toEqual([
+      { topic: 'aghanims_scepter', reason: 'not_in_valve_ability_data' },
+      { topic: 'aghanims_shard', reason: 'not_in_valve_ability_data' },
+    ]);
   });
 
   it('pro_item_choices: what pros build, next to when the player held it', () => {
