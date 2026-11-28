@@ -110,8 +110,8 @@ describe('habitCurve: a habit\'s count game by game', () => {
   it('a check judged from a replay stores its count', () => {
     const g = goal('g-habit', 'replay_habit');
     const ref = habitRef(g.goal, 'tidehunter') as string;
-    const summary = { deaths_where: { health_below_half_at_window_start: [] }, deaths_not_known: { health_at_window_start: 0, allies_at_death: 0 } };
-    expect(HABIT).toBe('low_health');
+    const summary = { deaths_where: { three_or_more_enemy_heroes_dealing_damage_outside_fights: [] }, deaths_not_known: { three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 } };
+    expect(HABIT).toBe('outnumbered_outside_fights');
     expect(checkGoal(g, report, 0, { hero: 'tidehunter', records: { [ref]: summary } })).toMatchObject({ result: 'met', count: 0 });
     expect(goalChecks('g-habit')).toEqual([expect.objectContaining({ result: 'met', count: 0 })]);
   });

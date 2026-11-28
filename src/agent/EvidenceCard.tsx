@@ -105,6 +105,14 @@ const T = {
   laneVisits: { en: 'Came into the lane', zh: '别路来本路交手', ru: 'Пришли на линию' },
   laneVisitDied: { en: 'died', zh: '阵亡', ru: 'погибли' },
   laneRotations: { en: 'Left lane before 10:00 (20 s+)', zh: '10 分钟前离路游走（20 秒以上）', ru: 'Уходы с линии до 10:00 (20 с+)' },
+  laneRoaming: { en: 'Roaming before 10:00 (no single lane)', zh: '10 分钟前游走（无单一固定分路）', ru: 'Роуминг до 10:00 (без одной линии)' },
+  laneTimeByThird: { en: 'Time before 10:00 by lane', zh: '10 分钟前各路停留时间', ru: 'Время по линиям до 10:00' },
+  laneBase: { en: 'base', zh: '基地', ru: 'база' },
+  laneNotKnown: { en: 'not known', zh: '缺失采样', ru: 'нет данных' },
+  laneRoamTrips: { en: 'Roaming trips before 10:00 (20 s+)', zh: '10 分钟前各路游走时段（20 秒以上）', ru: 'Выходы на линии до 10:00 (20 с+)' },
+  laneRoamTraded: { en: 'traded damage', zh: '交手换血', ru: 'размен уроном' },
+  laneRoamEnemyDied: { en: 'enemy died', zh: '敌方阵亡', ru: 'смертей врагов' },
+  laneRoamAllyDied: { en: 'ally died', zh: '队友阵亡', ru: 'смертей союзников' },
   lanePartnerDied: { en: 'lane partner died', zh: '本路队友阵亡', ru: 'партнёр по линии погиб' },
   lanePartTime: { en: 'Shared the lane part-time', zh: '兼顾本路', ru: 'Делили линию частично' },
   laneRoster: { en: 'Read over', zh: '统计范围', ru: 'По героям' },
@@ -386,11 +394,9 @@ const TOTALS: Record<string, Tri> = {
   damage_in_death_windows_total: { en: 'Damage taken before the deaths', zh: '各次阵亡前承受的伤害' },
   damage_share_in_death_windows: { en: 'Share of it', zh: '其中' },
   attacks: { en: 'attacks', zh: '普通攻击' }, 'abilities and items': { en: 'abilities and items', zh: '技能和物品' },
-  health_below_half_at_window_start: { en: 'Deaths that began below half health', zh: '起步不到半血的阵亡' },
   three_or_more_enemy_heroes_dealing_damage: { en: 'Deaths to three or more enemy heroes', zh: '被三个以上敌方英雄打死' },
   in_a_fight: { en: 'Deaths in a fight', zh: '团战中的阵亡' },
   outside_fights: { en: 'Deaths outside fights', zh: '团战之外的阵亡' },
-  health_below_half_at_window_start_outside_fights: { en: 'Outside fights, began below half health', zh: '团战之外、起步不到半血' },
   three_or_more_enemy_heroes_dealing_damage_outside_fights: { en: 'Outside fights, to three or more enemy heroes', zh: '团战之外、被三个以上敌方英雄打死' },
   target_spell_immune_and_not_stunned: { en: 'Casts on a spell-immune target, no stun', zh: '放给魔免目标且没晕住' },
   enemy_hero_target_alive_12s_later: { en: 'Casts whose target was alive 12 s later', zh: '放出 12 秒后目标仍存活' },
@@ -808,7 +814,9 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
             const g = r.lane_gold_at_10_00 ?? r.lane_gold_earned_before_10_00;
             return g ? <> · {t(r.lane_gold_at_10_00 ? T.laneAt10 : T.laneEarned)} {g.my_team} : {g.enemy}</> : null;
           })()}{r.lane_result && T.laneResult[r.lane_result] ? <> · <b>{t(T.laneResult[r.lane_result])}</b></> : null}</p>
-          : <p className="ag-rec-note">{t(T.laneNoEconomy)}</p>}
+          : r.how_the_lane_went?.roaming_before_10_00
+            ? <p className="ag-rec-head">{t(T.laneRoaming)}</p>
+            : <p className="ag-rec-note">{t(T.laneNoEconomy)}</p>}
         {r.lane && r.read_from === 'replay' && <p className="ag-rec-note">{t(T.laneFromReplay)}</p>}
         {r.lane && (
           <div className="ag-lane-scroll">
@@ -843,6 +851,31 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
                       {tr.from}–{tr.to} ({tr.seconds}{t(T.sec)}) · {tr.destination_region ? N(tr.destination_region) : (tr.destination_lane ? t(T.lane[tr.destination_lane] ?? { en: tr.destination_lane, zh: tr.destination_lane }) : '—')}
                       {Array.isArray(tr.enemy_deaths_i_damaged) && tr.enemy_deaths_i_damaged.length > 0 ? ` · ${t(T.laneVisitDied)} ${tr.enemy_deaths_i_damaged.map((x: any) => N(x.hero)).join(', ')}` : ''}
                       {Array.isArray(tr.lane_partner_deaths_while_away) && tr.lane_partner_deaths_while_away.length > 0 ? ` · ${t(T.lanePartnerDied)} ${tr.lane_partner_deaths_while_away.map((x: any) => N(x.hero)).join(', ')}` : ''}
+                    </span>
+                  ))}
+                </p>
+              )}
+              {w.roaming_before_10_00 && w.my_lane_seconds_by_third && (
+                <p className="ag-rec-line">
+                  <span>{t(T.laneTimeByThird)}</span>
+                  {(['top', 'mid', 'bot'] as const).map((k) => typeof w.my_lane_seconds_by_third[k] === 'number' && (
+                    <span key={k} className="ag-chip">{t(T.lane[k])} <em>{w.my_lane_seconds_by_third[k]}{t(T.sec)}</em></span>
+                  ))}
+                  {w.my_lane_seconds_by_third.base > 0 && <span className="ag-chip">{t(T.laneBase)} <em>{w.my_lane_seconds_by_third.base}{t(T.sec)}</em></span>}
+                  {w.my_lane_seconds_by_third.dead > 0 && <span className="ag-chip">{t(T.dead)} <em>{w.my_lane_seconds_by_third.dead}{t(T.sec)}</em></span>}
+                  {w.my_lane_seconds_by_third.not_known > 0 && <span className="ag-chip is-warn">{t(T.laneNotKnown)} <em>{w.my_lane_seconds_by_third.not_known}{t(T.sec)}</em></span>}
+                </p>
+              )}
+              {w.roaming_before_10_00 && Array.isArray(w.roaming_trips_before_10_00) && w.roaming_trips_before_10_00.length > 0 && (
+                <p className="ag-rec-line">
+                  <span>{t(T.laneRoamTrips)}</span>
+                  {w.roaming_trips_before_10_00.map((tr: any, i: number) => (
+                    <span key={i} className="ag-chip">
+                      {tr.from}–{tr.to} ({tr.duration_s}{t(T.sec)}) · {T.lane[tr.lane] ? t(T.lane[tr.lane]) : tr.lane}
+                      {tr.traded_damage_with_enemy_hero === true ? ` · ${t(T.laneRoamTraded)}` : ''}
+                      {typeof tr.enemy_deaths_in_lane === 'number' && tr.enemy_deaths_in_lane > 0 ? ` · ${t(T.laneRoamEnemyDied)} ${tr.enemy_deaths_in_lane}` : ''}
+                      {typeof tr.ally_deaths_in_lane === 'number' && tr.ally_deaths_in_lane > 0 ? ` · ${t(T.laneRoamAllyDied)} ${tr.ally_deaths_in_lane}` : ''}
+                      {typeof tr.my_death === 'string' ? ` · ${t(T.fightDied)} ${tr.my_death}` : ''}
                     </span>
                   ))}
                 </p>
@@ -1376,11 +1409,12 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     );
   }
   if (data.kind === 'skill_build') {
+    const sbName = (ab: string) => (ab.includes('+') ? ab.split('+').map((k) => N(k)).join(' / ') : N(ab));
     const distRow = (label: string, snap: any) => snap && snap.abilities && (
       <p className="ag-rec-line">
         <span>{label} ({snap.clock})</span>
         {Object.entries(snap.abilities as Record<string, number>).map(([ab, lv]) => (
-          <span key={ab} className="ag-chip">{N(ab)} <em>Lv{lv}</em></span>
+          <span key={ab} className="ag-chip">{sbName(ab)} <em>Lv{lv}</em></span>
         ))}
       </p>
     );

@@ -298,4 +298,93 @@ describe('EvidenceCard auto-triggered cast & unknown proximity rendering', () =>
     expect(screen.getByText('passive gold omitted')).toBeTruthy();
     expect(screen.getByText('LH lower bound')).toBeTruthy();
   });
+
+  it('renders linked dual-ultimate skill_build and roaming lane_report cleanly in both en and zh with zero raw keys', async () => {
+    const spy = vi.spyOn(api, 'fetchEvidence');
+    const dwRecord = {
+      ref: 'skill_build:dark_willow',
+      hero: 'dark_willow',
+      data_patch: '7.42',
+      at_level_6: {
+        clock: '8:36',
+        abilities: {
+          dark_willow_bramble_maze: 1,
+          dark_willow_shadow_realm: 3,
+          dark_willow_cursed_crown: 1,
+          'dark_willow_bedlam+dark_willow_terrorize': 1,
+        },
+      },
+      at_level_10: null,
+      maxed_order: [],
+      ultimate_levels: [
+        { ability: 'dark_willow_bedlam', name: 'Bedlam', level: 1, clock: '8:37', hero_level: 6, linked_with: ['dark_willow_terrorize'] },
+        { ability: 'dark_willow_terrorize', name: 'Terrorize', level: 1, clock: '8:37', hero_level: 6, linked_with: ['dark_willow_bedlam'] },
+      ],
+      talents: null,
+      upgrade_timeline: [],
+    };
+    const roamRecord = {
+      ref: 'lane:undying',
+      hero: 'undying',
+      lane: null,
+      my_deaths_before_10_00_total: 1,
+      my_deaths_before_10_00: [{ clock: '7:00', killer: 'necrolyte' }],
+      how_the_lane_went: {
+        roaming_before_10_00: true,
+        my_lane_seconds_by_third: { top: 160, mid: 160, bot: 180, base: 20, dead: 20, not_known: 0 },
+        roaming_trips_before_10_00: [
+          { lane: 'mid', from: '4:30', to: '6:59', duration_s: 150, traded_damage_with_enemy_hero: true, enemy_deaths_in_lane: 1, ally_deaths_in_lane: 0, my_death: '7:00' },
+        ],
+      },
+    };
+
+    // English rendering.
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'skill_build:dark_willow', kind: 'skill_build',
+      names: { dark_willow: 'Dark Willow', dark_willow_bramble_maze: 'Bramble Maze', dark_willow_shadow_realm: 'Shadow Realm', dark_willow_cursed_crown: 'Cursed Crown', dark_willow_bedlam: 'Bedlam', dark_willow_terrorize: 'Terrorize' },
+      record: dwRecord,
+    });
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'lane:undying', kind: 'lane',
+      names: { undying: 'Undying', necrolyte: 'Necrophos' },
+      record: roamRecord,
+    });
+    render(
+      <ul>
+        <EvidenceCard matchId="9100904020" hero="dark_willow" lang="en" item={{ fact: 'Skill build and roaming', refs: ['skill_build:dark_willow', 'lane:undying'] }} onAsk={() => {}} />
+      </ul>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Show the record' }));
+    await waitFor(() => expect(screen.getByText(/Bedlam \/ Terrorize/)).toBeTruthy());
+    expect(screen.queryByText(/dark_willow_bedlam/)).toBeNull();
+    expect(screen.getByText('Roaming before 10:00 (no single lane)')).toBeTruthy();
+    expect(screen.getByText('Time before 10:00 by lane')).toBeTruthy();
+    expect(screen.getByText('Roaming trips before 10:00 (20 s+)')).toBeTruthy();
+    expect(screen.getByText(/4:30–6:59 \(150s\) · Mid lane · traded damage · enemy died 1 · died 7:00/)).toBeTruthy();
+
+    // Chinese rendering.
+    cleanup();
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'skill_build:dark_willow', kind: 'skill_build',
+      names: { dark_willow: '邪影芳灵', dark_willow_bramble_maze: '荆棘迷宫', dark_willow_shadow_realm: '暗影之境', dark_willow_cursed_crown: '诅咒王冠', dark_willow_bedlam: '作祟', dark_willow_terrorize: '恐吓' },
+      record: dwRecord,
+    });
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'lane:undying', kind: 'lane',
+      names: { undying: '不朽尸王', necrolyte: '瘟疫法师' },
+      record: roamRecord,
+    });
+    render(
+      <ul>
+        <EvidenceCard matchId="9100904020" hero="dark_willow" lang="zh" item={{ fact: '加点与游走', refs: ['skill_build:dark_willow', 'lane:undying'] }} onAsk={() => {}} />
+      </ul>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '看原始记录' }));
+    await waitFor(() => expect(screen.getByText(/作祟 \/ 恐吓/)).toBeTruthy());
+    expect(screen.queryByText(/dark_willow_/)).toBeNull();
+    expect(screen.getByText('10 分钟前游走（无单一固定分路）')).toBeTruthy();
+    expect(screen.getByText('10 分钟前各路停留时间')).toBeTruthy();
+    expect(screen.getByText('10 分钟前各路游走时段（20 秒以上）')).toBeTruthy();
+    expect(screen.getByText(/4:30–6:59 \(150秒\) · 中路 · 交手换血 · 敌方阵亡 1 · 阵亡 7:00/)).toBeTruthy();
+  });
 });

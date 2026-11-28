@@ -1932,7 +1932,7 @@ describe('AgentMatchPage', () => {
   });
 
   it('a later game is counted on the rules from its own replay; without the replay nothing is called met', async () => {
-    const check = { kind: 'replay_habit', habit: 'low_health', max: 1, baseline: 3, label: { en: 'At most 1 low', zh: 'x' } };
+    const check = { kind: 'replay_habit', habit: 'nothing_pressed', max: 1, baseline: 3, label: { en: 'At most 1 nothing pressed', zh: 'x' } };
     const alone = { kind: 'replay_habit', habit: 'outnumbered_outside_fights', max: 2, baseline: 4, label: { en: 'At most 2 alone', zh: 'x' } };
     const roar = { kind: 'replay_habit', habit: 'target_survived', max: 2, baseline: 4, hero: 'beastmaster', hero_id: 38, ability: 'primal_roar', name: { en: 'Primal Roar', zh: '原始咆哮' }, label: { en: 'At most 2 roars', zh: 'x' } };
     const goal = { id: 'g', goal: check, action: check.label, findingId: 'agent:1', fromMatch: 9100904020, fromStart: 1795344198, accountId: 77, heroId: 38, setAt: 1, rules: [{ finding: 2, when: 'No teammate near you', do: 'stay on your side of the river', check: alone }, { finding: 3, when: 'The carry has not used Black King Bar', do: 'keep the roar', check: roar }] };
@@ -1948,7 +1948,7 @@ describe('AgentMatchPage', () => {
     // Parsed: the same counts, from this game's replay.
     const calls = mockFetch({
       '/api/coach/9100999998': later,
-      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 6, deaths_where: { health_below_half_at_window_start: ['12:40'], three_or_more_enemy_heroes_dealing_damage_outside_fights: ['3:00', '9:10', '21:05'] }, deaths_not_known: { health_at_window_start: 0, three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 } } },
+      'ref=deaths': { status: 'ok', ref: 'deaths:beastmaster', kind: 'deaths', names: {}, record: { deaths_total: 6, deaths_where: { nothing_cast_and_no_item_used: ['12:40'], three_or_more_enemy_heroes_dealing_damage_outside_fights: ['3:00', '9:10', '21:05'] }, deaths_not_known: { three_or_more_enemy_heroes_dealing_damage_outside_fights: 0 } } },
       // The rule about the roar is counted on this game's audit of it.
       'ref=audit%3Abeastmaster%3Aprimal_roar': { status: 'ok', ref: 'audit:beastmaster:primal_roar', kind: 'audit', names: {}, record: { learned_at: { t: 400, clock: '6:40' }, casts_total: 7, casts_where: { enemy_hero_target_alive_12s_later: ['9:00'] } } },
       '/review?': { status: 'none' },
