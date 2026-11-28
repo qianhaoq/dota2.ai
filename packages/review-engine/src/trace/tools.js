@@ -1622,17 +1622,284 @@ export function fightTimeline(trace, args = {}, ctx = {}) {
 
 /** Items that are bought to be used up, or are parts of nothing worth a line. */
 const CONSUMABLE = /^item_(tango|clarity|flask|faerie_fire|branches|ward_|enchanted_mango|famango|great_famango|tpscroll|smoke_of_deceit|dust|blood_grenade|tome_of_knowledge|infused_raindrop|bottle|madstone|recipe_)/;
+/** Power Treads accepts any of the three +6 attribute items in place of Belt of Strength. */
+const POWER_TREADS_STAT_ALTS = ['belt_of_strength', 'boots_of_elves', 'robe'];
 
-/** When a hero first held each item (in a usable slot), in order. Works for any hero of the match. */
-export function itemTimeline(trace, args = {}) {
+/**
+ * Factual hero-killed courier deaths for `heroTeam` from `trace.creep_kills`.
+ * Row format: `[t, attackerNpcIdx, killKind, lastHits, networth]`, where `'c'` is an enemy-courier kill by a hero
+ * (or hero illusion). When the attacker is on the opposing team, a courier belonging to `heroTeam` died at `t`.
+ * Returns `null` when `trace.creep_kills` is absent (legacy trace: unknown, never 0 or empty).
+ */
+function teamCourierDeaths(trace, heroTeam) {
+  if (!Array.isArray(trace.creep_kills)) return null;
+  const out = [];
+  for (const row of trace.creep_kills) {
+    if (!Array.isArray(row) || row[2] !== 'c' || !Number.isFinite(row[0])) continue;
+    const ah = heroOfName(trace, row[1]);
+    if (ah < 0 || trace.heroes[ah].team === heroTeam) continue;
+    out.push({ t: row[0], clock: clock(row[0]), killed_by: trace.heroes[ah].key });
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+
+/** Component & recipe specification of `key` in a patch item table (`patchItems`). */
+function itemRecipeSpec(key, patchItems) {
+  const def = patchItems?.[key];
+  if (!def || typeof def !== 'object') return null;
+  const comps = Array.isArray(def.components)
+    ? def.components.filter((c) => typeof c === 'string' && c.length > 0)
+    : [];
+  const recipeKey = `recipe_${key}`;
+  const hasRecipe = Number(patchItems?.[recipeKey]?.cost) > 0;
+  if (!comps.length && !hasRecipe) {
+    // Created/upgraded item without a component list (e.g. dagon_2..5): do not guess purchase time from combine rows.
+    return def.created === true ? { composite: true, parts: null } : { composite: false, parts: [] };
+  }
+  return { composite: true, parts: [...comps, ...(hasRecipe ? [recipeKey] : [])] };
+}
+
+function recipeDepth(key, patchItems, seen = new Set()) {
+  if (seen.has(key)) return 0;
+  const spec = itemRecipeSpec(key, patchItems);
+  if (!spec?.composite || !spec.parts?.length) return 0;
+  seen.add(key);
+  let d = 1;
+  for (const p of spec.parts) d = Math.max(d, 1 + recipeDepth(p, patchItems, seen));
+  seen.delete(key);
+  return d;
+}
+
+/**
+ * Resolve each held item's `first_purchased` moment (`{ t, clock, source: 'direct' | 'components' }` or `null`)
+ * for hero `h` from `trace.purchases` and optional patch item recipes (`patchItems`).
+ *
+ * In Dota 2 combat logs, `DOTA_COMBATLOG_PURCHASE` for a composite item fires when its parts *combine* (often on
+ * courier delivery), while each component and recipe logs when the gold was actually spent. Tracking leaf purchases
+ * and composite builds chronologically through a single inventory pool recovers the true completion purchase time
+ * for both direct items (`blink`) and composite items with or without recipes (`black_king_bar`, `ultimate_scepter`),
+ * while returning `null` whenever a component is missing or multiplicity is ambiguous.
+ */
+function buildPurchaseMatcher(trace, h, patchItems) {
+  // Without patch item recipes, direct shop purchases cannot be told apart from composite combine-log rows,
+  // so purchase timing stays unknown (`null`) rather than mislabeling combine timestamps as payment times.
+  if (!Array.isArray(trace.purchases) || !patchItems) return () => null;
+  const npc = nameId(trace, trace.heroes[h].npc);
+  const rawPurchases = [];
+  if (npc >= 0) {
+    for (let i = 0; i < trace.purchases.length; i += 1) {
+      const p = trace.purchases[i];
+      if (!Array.isArray(p) || p[1] !== npc || !Number.isFinite(p[0])) continue;
+      const raw = trace.names[p[2]];
+      if (typeof raw !== 'string' || !raw.startsWith('item_')) continue;
+      rawPurchases.push({ t: p[0], item: raw.slice(5), row: p[3] ?? i, ord: i });
+    }
+  }
+  rawPurchases.sort((a, b) => a.t - b.t || (a.row ?? 0) - (b.row ?? 0) || a.ord - b.ord);
+
+  /** @type {{ item: string, createdT: number, minT: number | null, maxT: number | null, unknown: boolean, source: 'direct' | 'components', syntheticT0: boolean, consumedAt: number | null }[]} */
+  const pool = [];
+  for (const p of rawPurchases) {
+    const spec = itemRecipeSpec(p.item, patchItems);
+    if (!spec?.composite) {
+      pool.push({ item: p.item, createdT: p.t, minT: p.t, maxT: p.t, unknown: false, source: 'direct', syntheticT0: false, consumedAt: null });
+    }
+  }
+  const heldEntries = Object.entries(trace.items?.[h] ?? {})
+    .filter(([, e]) => e?.held?.length)
+    .map(([rawK, e]) => ({ item: rawK.replace(/^item_/, ''), firstHeld: e.held[0][0] }));
+  // Starting non-composite items already held at `trace.t0` whose strategy-time buy was before the combat log began:
+  // allow them to satisfy a component slot of a later composite (e.g. starting Quelling Blade -> Battle Fury),
+  // without inventing a standalone purchase timestamp for them.
+  for (const he of heldEntries) {
+    if (he.firstHeld > trace.t0 + 0.5) continue;
+    const spec = itemRecipeSpec(he.item, patchItems);
+    if (spec?.composite) continue;
+    if (!pool.some((x) => x.item === he.item && x.createdT <= trace.t0 + 1)) {
+      pool.push({ item: he.item, createdT: trace.t0, minT: trace.t0, maxT: trace.t0, unknown: false, source: 'direct', syntheticT0: true, consumedAt: null });
+    }
+  }
+  pool.sort((a, b) => a.createdT - b.createdT);
+
+  const compositeEvents = [];
+  const loggedCompositeAt = new Map();
+  for (const p of rawPurchases) {
+    const spec = itemRecipeSpec(p.item, patchItems);
+    if (spec?.composite) {
+      compositeEvents.push({ item: p.item, combineT: p.t, limitT: p.t + 2, ord: p.ord });
+      if (!loggedCompositeAt.has(p.item)) loggedCompositeAt.set(p.item, p.t);
+    }
+  }
+  for (const he of heldEntries) {
+    const spec = itemRecipeSpec(he.item, patchItems);
+    if (!spec?.composite) continue;
+    const firstLog = loggedCompositeAt.get(he.item);
+    if (firstLog == null || firstLog > he.firstHeld + 2) {
+      compositeEvents.push({ item: he.item, combineT: null, limitT: he.firstHeld + 2, ord: Infinity });
+    }
+  }
+  compositeEvents.sort((a, b) => (a.combineT ?? a.limitT - 2) - (b.combineT ?? b.limitT - 2)
+    || recipeDepth(a.item, patchItems) - recipeDepth(b.item, patchItems)
+    || a.ord - b.ord);
+
+  const expandParts = (itemKey, parts, limitT, depth = 0) => {
+    if (depth > 6) return null;
+    const groups = new Map();
+    const addReq = (alts) => {
+      const gk = alts.join('|');
+      const cur = groups.get(gk) ?? { alts, count: 0 };
+      cur.count += 1;
+      groups.set(gk, cur);
+    };
+    for (const part of parts) {
+      if (itemKey === 'power_treads' && part === 'belt_of_strength') { addReq(POWER_TREADS_STAT_ALTS); continue; }
+      const directAvail = pool.filter((x) => x.consumedAt == null && x.item === part && x.createdT <= limitT).length;
+      const alreadyNeeded = groups.get(part)?.count ?? 0;
+      if (directAvail > alreadyNeeded) { addReq([part]); continue; }
+      const subSpec = itemRecipeSpec(part, patchItems);
+      if (subSpec?.composite && subSpec.parts?.length) {
+        const sub = expandParts(part, subSpec.parts, limitT, depth + 1);
+        if (!sub) return null;
+        for (const [gk, g] of sub) {
+          const cur = groups.get(gk) ?? { alts: g.alts, count: 0 };
+          cur.count += g.count;
+          groups.set(gk, cur);
+        }
+      } else {
+        addReq([part]);
+      }
+    }
+    return groups;
+  };
+
+  const sortAvail = (a, b) => (a.unknown === b.unknown ? (a.unknown ? 0 : (a.minT ?? 0) - (b.minT ?? 0)) : a.unknown ? -1 : 1) || a.createdT - b.createdT;
+
+  for (const ev of compositeEvents) {
+    const consumedAt = ev.combineT ?? ev.limitT - 2;
+    const spec = itemRecipeSpec(ev.item, patchItems);
+    if (!spec?.parts?.length) {
+      pool.push({ item: ev.item, createdT: consumedAt, minT: null, maxT: null, unknown: true, source: 'components', syntheticT0: false, consumedAt: null });
+      pool.sort((a, b) => a.createdT - b.createdT);
+      continue;
+    }
+    const groups = expandParts(ev.item, spec.parts, ev.limitT);
+    if (!groups) {
+      pool.push({ item: ev.item, createdT: consumedAt, minT: null, maxT: null, unknown: true, source: 'components', syntheticT0: false, consumedAt: null });
+      pool.sort((a, b) => a.createdT - b.createdT);
+      continue;
+    }
+    const matched = [];
+    let ok = true;
+    for (const g of groups.values()) {
+      const avail = pool
+        .filter((x) => x.consumedAt == null && g.alts.includes(x.item) && x.createdT <= ev.limitT)
+        .sort(sortAvail);
+      if (avail.length < g.count) ok = false;
+      const groupUnknown = avail.some((x) => x.unknown);
+      const groupMinT = !groupUnknown && avail.length ? avail[0].minT : null;
+      const earliestMax = !groupUnknown && avail.length >= g.count ? avail[g.count - 1].minT : null;
+      const latestMax = !groupUnknown && avail.length ? Math.max(...avail.map((x) => x.maxT ?? 0)) : null;
+      matched.push({ g, avail, groupUnknown, groupMinT, earliestMax, latestMax });
+    }
+    const taken = [];
+    // Even when a composite is missing one required purchase row (`!ok`), still reserve/consume the copies of its
+    // other components present in the pool (and propagate uncertainty to leftover copies), and push an unknown-time
+    // token for the composite so subsequent items cannot steal those components or invent a time for downstream upgrades.
+    for (const m of matched) {
+      const take = Math.min(m.g.count, m.avail.length);
+      for (let i = 0; i < take; i += 1) { m.avail[i].consumedAt = consumedAt; taken.push(m.avail[i]); }
+      // When multiple copies could satisfy this component, the unconsumed copies left in the pool inherit the full
+      // uncertainty (unknown or [groupMinT, latestMax]) so subsequent items cannot pretend a single arbitrary copy remained.
+      if (m.avail.length > take) {
+        for (let i = take; i < m.avail.length; i += 1) {
+          if (m.groupUnknown) {
+            m.avail[i].unknown = true;
+            m.avail[i].minT = null;
+            m.avail[i].maxT = null;
+          } else if (m.groupMinT != null && m.latestMax != null && !m.avail[i].unknown) {
+            m.avail[i].minT = Math.min(m.avail[i].minT ?? m.groupMinT, m.groupMinT);
+            m.avail[i].maxT = Math.max(m.avail[i].maxT ?? m.latestMax, m.latestMax);
+          }
+        }
+      }
+    }
+    const evUnknown = !ok || matched.some((m) => m.groupUnknown);
+    if (evUnknown) {
+      pool.push({ item: ev.item, createdT: consumedAt, minT: null, maxT: null, unknown: true, source: 'components', syntheticT0: false, consumedAt: null });
+    } else {
+      const minT = Math.max(...matched.map((m) => m.earliestMax ?? -Infinity));
+      const maxT = Math.max(...matched.map((m) => m.latestMax ?? -Infinity));
+      const anyReal = taken.some((x) => !x.syntheticT0);
+      pool.push({ item: ev.item, createdT: consumedAt, minT, maxT, unknown: false, source: 'components', syntheticT0: !anyReal, consumedAt: null });
+    }
+    pool.sort((a, b) => a.createdT - b.createdT);
+  }
+
+  return (itemKey, firstHeld) => {
+    const cands = pool.filter((x) => !x.syntheticT0 && x.item === itemKey && x.createdT <= firstHeld + 2 && (x.consumedAt == null || x.consumedAt >= firstHeld - 2));
+    if (!cands.length || cands.some((x) => x.unknown)) return null;
+    const earliest = Math.min(...cands.map((x) => x.minT ?? 0));
+    const latest = Math.max(...cands.map((x) => x.maxT ?? 0));
+    if (latest - earliest > 2) return null;
+    return { t: earliest, clock: clock(earliest), source: cands[0].source };
+  };
+}
+
+/** When a hero purchased and first held each item (in a usable slot), in order. Works for any hero of the match. */
+export function itemTimeline(trace, args = {}, ctx = {}) {
   const { h, err } = needHero(trace, args.hero);
   if (err) return err;
+  const view = viewer(trace, ctx);
+  const heroKey = trace.heroes[h].key;
+  const heroTeam = trace.heroes[h].team;
+  const isEnemyView = Boolean(view && heroTeam !== view.team);
+  const courierListKey = isEnemyView ? 'enemy_team_courier_deaths' : 'my_team_courier_deaths';
+  const courierDeliveryKey = isEnemyView ? 'enemy_team_courier_deaths_during_delivery' : 'my_team_courier_deaths_during_delivery';
   const end = trace.t0 + trace.n - 1;
-  const items = Object.entries(trace.items[h]).filter(([k, e]) => !CONSUMABLE.test(k) && e.held.length).map(([k, e]) => {
+  const hasPurchases = Array.isArray(trace.purchases);
+  const patchItems = ctx?.patchItems && typeof ctx.patchItems === 'object' ? ctx.patchItems : null;
+  const matchPurchase = buildPurchaseMatcher(trace, h, patchItems);
+  const courierDeaths = teamCourierDeaths(trace, heroTeam);
+
+  const items = Object.entries(trace.items?.[h] ?? {}).filter(([k, e]) => !CONSUMABLE.test(k) && e.held.length).map(([k, e]) => {
+    const itemKey = k.replace(/^item_/, '');
     const first = e.held[0][0]; const last = e.held.at(-1)[1];
-    return { ref: `item:${trace.heroes[h].key}:${k.replace(/^item_/, '')}`, item: k.replace(/^item_/, ''), first_held: { t: first, clock: clock(first) }, held_at_end: last >= end - 2, ...(last >= end - 2 ? {} : { last_held: { t: last, clock: clock(last) } }) };
+    const purchased = matchPurchase(itemKey, first);
+    // An item already held when state sampling started (`trace.t0`) and bought before `trace.t0` cannot have its
+    // delivery delay measured because hero inventory was not sampled prior to `trace.t0`.
+    const preHornStart = purchased != null && first <= trace.t0 + 0.5 && purchased.t < trace.t0;
+    const delaySec = purchased == null || preHornStart ? null : Math.max(0, Math.round(first - purchased.t));
+    const courierDuring = purchased != null && delaySec != null && delaySec > 0
+      ? (courierDeaths == null ? null : courierDeaths.filter((d) => d.t >= purchased.t && d.t <= first))
+      : undefined;
+    return {
+      ref: `item:${heroKey}:${itemKey}`,
+      item: itemKey,
+      first_purchased: purchased,
+      first_held: { t: first, clock: clock(first) },
+      delivery_delay_seconds: delaySec,
+      ...(delaySec != null && delaySec > 0 ? { [courierDeliveryKey]: courierDuring } : {}),
+      held_at_end: last >= end - 2,
+      ...(last >= end - 2 ? {} : { last_held: { t: last, clock: clock(last) } }),
+    };
   }).sort((a, b) => a.first_held.t - b.first_held.t);
-  return { hero: trace.heroes[h].key, items, note: 'first_held is when the item first sat in an inventory, TP or neutral slot; components appear until they are built into something else' };
+
+  return {
+    hero: heroKey,
+    ...sideOf(view, trace, h),
+    [courierListKey]: courierDeaths,
+    items,
+    note: 'first_purchased is when the hero paid for the item (direct shop purchase, or the last required component/recipe purchase for a composite item; null when absent or ambiguous in the purchase log). first_held is when the item first sat in an inventory, TP or neutral slot (not stash, backpack, or on a courier); components appear until they are built into something else. delivery_delay_seconds is first_held minus first_purchased (0 when held immediately, null when purchase or pre-horn delivery time is unknown). Courier deaths are hero-killed couriers of this hero\'s team from the combat log; a death during [first_purchased, first_held] is a factual lead, not proof of which courier died or what it carried.',
+    gaps: [
+      ...(!hasPurchases ? [{ topic: 'item_purchases', reason: 'no_purchases_in_trace' }] : []),
+      ...(hasPurchases && !patchItems ? [{ topic: 'item_purchases', reason: 'patch_item_recipes_not_provided: purchase_timing_requires_item_recipes' }] : []),
+      ...(courierDeaths == null
+        ? [{ topic: 'courier_deaths', reason: 'no_creep_kills_in_trace' }]
+        : [{ topic: 'courier_ownership_and_cargo', reason: 'trace_does_not_record_courier_owner_carried_items_or_non_hero_courier_kills' }]),
+      { topic: 'stash_and_backpack_state', reason: 'trace_does_not_separate_courier_transit_from_stash_backpack_or_lock_combining_time' },
+    ],
+  };
 }
 
 /** Buildings that share their name with another: each side's two towers beside its Ancient. */
@@ -1870,7 +2137,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'item_timeline',
-    description: "When a hero first held each item, in order, and whether they still had it at the end. Works for any hero of the match: use it for the player's build and for when an enemy finished a key item.",
+    description: "When a hero purchased (`first_purchased`, direct shop buy or last required component/recipe) and first held (`first_held`, in a usable slot — not stash, backpack, or on a courier) each item, in order, with `delivery_delay_seconds`, whether they still had it at the end, team courier deaths (`my_team_courier_deaths` / `enemy_team_courier_deaths`), and any team courier deaths during `[first_purchased, first_held]` (`*_courier_deaths_during_delivery`). Works for any hero of the match: use it for the player's build (distinguishing paid-but-undelivered items from slow farming) and for when an enemy finished a key item.",
     input_schema: { type: 'object', properties: { hero: HERO }, required: ['hero'], additionalProperties: false },
     run: itemTimeline,
   },
