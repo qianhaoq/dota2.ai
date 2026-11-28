@@ -128,7 +128,11 @@ describe('build_check: how each item meets the enemy who killed the player', () 
     const a = by(pa);
     // Eul's: cast on an enemy (Valve: "can only be cast on enemy units or yourself"), a basic dispel.
     expect(a.cyclone).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'an_enemy_target' });
-    expect(a.cyclone.their_abilities_marked_removable_by_it).toEqual(pa.their_abilities.filter((x: any) => x.dispelled_by === 'basic').map((x: any) => x.name));
+    // Which of her effects it would remove is not given: it turns on where each effect sits, which the data does not
+    // say (#507 review). Her abilities' dispelled_by and Valve's words are given instead.
+    expect(a.cyclone).not.toHaveProperty('their_effects_it_removes');
+    expect(a.cyclone).not.toHaveProperty('their_abilities_marked_removable_by_it');
+    expect(pa.their_abilities.find((x: any) => x.ability === 'phantom_assassin_phantom_strike')).toHaveProperty('valve_text');
     expect(a.nullifier.dispel_lands_on).toBe('an_enemy_target');
     // Black King Bar's dispel is on the player, never on the enemy.
     expect(a.black_king_bar).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'self_or_allies' });
