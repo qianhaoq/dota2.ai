@@ -468,6 +468,22 @@ describe('review cache reuse & cross-version fallback (#486)', () => {
     expect(refreshedOut).toMatchObject({ status: 'reviewing', hero: 'beastmaster', lang: 'zh' });
     expect(calls).toEqual(['start:beastmaster:zh:refresh']);
 
+    // When start() returns 503 unavailable during refresh, replayReview keeps the cached review and exposes refresh_failed.
+    const unavailApi = {
+      ...api,
+      start: async () => ({ status: 503, body: { status: 'unavailable', reason: 'model_out_of_credit', retry_in_sec: 240 } }),
+    };
+    const unavailOut: any = await replayReview(unavailApi, { match_id: MATCH, hero: 'beastmaster', lang: 'zh', refresh: true });
+    expect(unavailOut).toMatchObject({
+      status: 'ready',
+      cached: true,
+      stale_version: true,
+      prompt_version: P - 2,
+      refresh_failed: { reason: 'model_out_of_credit' },
+      verdict: 'MCP 旧版缓存。',
+    });
+    expect(unavailOut.note).toContain('retry: true');
+
     // warmShowcase upgrades stale showcase reviews via start(..., { refresh: true }),
     // and skips stale ones whose last refresh failed so a failing refresh is not hammered on every boot.
     const warmed: any[] = [];
@@ -482,6 +498,86 @@ describe('review cache reuse & cross-version fallback (#486)', () => {
     });
     expect(showcaseOut).toEqual(['started:running', 'ready']);
     expect(warmed).toEqual([{ id: '9091400302', hero: 'tidehunter', lang: 'en', opts: { refresh: true } }]);
+  });
+
+  it('replayReview requires explicit retry: true before restarting a failed cached-review refresh (Codex P1 #498)', async () => {
+    const dir = mkdtempSync(join(root, 'replay-tool-refresh-fail-'));
+    const docs = createJsonStore(createFileStore(dir));
+    const oldV = P - 2;
+    await docs.put(`${MATCH}.beastmaster.zh.p${oldV}.review.json`, storedDoc('旧版保底复盘。'));
+
+    let shouldFail = true;
+    let attempts = 0;
+    const healthy = mockModel('显式重试后的最新版。');
+    const complete = async (o: any) => {
+      if (shouldFail) {
+        attempts += 1;
+        throw new DOMException('timed out', 'TimeoutError');
+      }
+      return healthy.complete(o);
+    };
+    const traces = { get: async () => JSON.parse(traceJson) };
+    const clock = { t: 1_000_000 };
+    const makeApi = () => {
+      const svc: any = createAgentService({ traces, docs, complete, model: 'deepseek-flash', now: () => clock.t });
+      const router: any = createAgentRouter({ service: svc, resolveClientIp: () => '4.4.4.4' });
+      return { svc, api: router.forRequest({ headers: {} }) };
+    };
+    const a = makeApi();
+
+    // 1. Initial refresh: true starts one generation.
+    const started: any = await replayReview(a.api, { match_id: MATCH, hero: 'beastmaster', lang: 'zh', refresh: true });
+    expect(started).toMatchObject({ status: 'reviewing', hero: 'beastmaster', lang: 'zh' });
+    await vi.waitFor(async () => {
+      const st = await a.svc.status(MATCH, 'beastmaster', 'zh');
+      expect(st.refresh_failed).toEqual({ reason: 'timeout' });
+    }, { timeout: 5000 });
+    expect(attempts).toBe(1);
+
+    // 2. Polling with the SAME arguments (refresh: true, no retry) MUST NOT start another generation.
+    const polledSame: any = await replayReview(a.api, { match_id: MATCH, hero: 'beastmaster', lang: 'zh', refresh: true });
+    expect(polledSame).toMatchObject({
+      status: 'ready',
+      cached: true,
+      stale_version: true,
+      prompt_version: oldV,
+      latest_prompt_version: P,
+      refresh_failed: { reason: 'timeout' },
+      verdict: '旧版保底复盘。',
+    });
+    expect(polledSame.note).toContain('retry: true');
+    await new Promise((r) => setTimeout(r, 40));
+    expect(attempts).toBe(1);
+
+    // 3. Even >60s later on another instance (where status() omits refresh_failed), lastFailure() still blocks silent restarts.
+    clock.t += 61_000;
+    const b = makeApi();
+    expect((await b.svc.status(MATCH, 'beastmaster', 'zh')).refresh_failed).toBeUndefined();
+    const polledPeer: any = await replayReview(b.api, { match_id: MATCH, hero: 'beastmaster', lang: 'zh', refresh: true });
+    expect(polledPeer).toMatchObject({
+      status: 'ready',
+      cached: true,
+      stale_version: true,
+      prompt_version: oldV,
+      refresh_failed: { reason: 'timeout' },
+      verdict: '旧版保底复盘。',
+    });
+    await new Promise((r) => setTimeout(r, 40));
+    expect(attempts).toBe(1);
+
+    // 4. Explicit refresh: true + retry: true starts one retry and instructs polling without retry: true.
+    shouldFail = false;
+    const retried: any = await replayReview(b.api, { match_id: MATCH, hero: 'beastmaster', lang: 'zh', refresh: true, retry: true });
+    expect(retried).toMatchObject({ status: 'reviewing', hero: 'beastmaster', lang: 'zh' });
+    expect(retried.message).toContain('without retry: true');
+    await vi.waitFor(async () => {
+      const done: any = await replayReview(b.api, { match_id: MATCH, hero: 'beastmaster', lang: 'zh', refresh: true });
+      expect(done).toMatchObject({ status: 'ready', verdict: '显式重试后的最新版。' });
+      expect(done.stale_version).toBeUndefined();
+      expect(done.refresh_failed).toBeUndefined();
+    }, { timeout: 5000 });
+    expect(attempts).toBe(1);
+    expect(healthy.calls).toBe(2);
   });
 
   it('failed explicit refresh keeps the older compatible review accessible on reopen and ordinary start (Codex P2 #498)', async () => {

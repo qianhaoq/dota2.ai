@@ -280,9 +280,11 @@ export function createDshService({
   const localReview = (out) => {
     if (out?.status !== 'ready') return out;
     const { url: _public, ...rest } = out;
-    const staleHint = out.stale_version && Number.isInteger(out.prompt_version)
-      ? ` This cached review was written under coach v${out.prompt_version}${Number.isInteger(out.latest_prompt_version) ? ` (latest is v${out.latest_prompt_version})` : ''}; call dota2ai_replay_review with refresh: true only if the user explicitly wants to regenerate it.`
-      : '';
+    const staleHint = out.stale_version && out.refresh_failed && typeof out.refresh_failed === 'object'
+      ? ` Updating this cached${Number.isInteger(out.prompt_version) ? ` v${out.prompt_version}` : ''} review${Number.isInteger(out.latest_prompt_version) ? ` to v${out.latest_prompt_version}` : ''} failed${out.refresh_failed.reason ? ` (${out.refresh_failed.reason})` : ''}; returning the saved review instead. Call dota2ai_replay_review with refresh: true and retry: true only if the user explicitly wants to retry regenerating it (this counts as a new start).`
+      : out.stale_version && Number.isInteger(out.prompt_version)
+        ? ` This cached review was written under coach v${out.prompt_version}${Number.isInteger(out.latest_prompt_version) ? ` (latest is v${out.latest_prompt_version})` : ''}; call dota2ai_replay_review with refresh: true only if the user explicitly wants to regenerate it.`
+        : '';
     return {
       ...rest,
       cache_scope: 'dsh_local',
