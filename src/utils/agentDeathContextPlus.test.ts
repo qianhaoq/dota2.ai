@@ -694,3 +694,254 @@ describe('death_context PR 2 bilateral enemy kill-threat context & judgment-free
     expect(chat).toContain('skill_build');
   });
 });
+
+describe('death_context control-chain intervals and cast-opportunity windows (#482)', () => {
+  it('detects stun-locked / silence-chained to death from first enemy damage (0 s cast window)', () => {
+    const tr = makeTrace({
+      controls: [
+        {
+          stunned: [[95.5, 97.5]],
+          silenced: [[97.0, 100.0]],
+        },
+        {}, {}, {}, {},
+      ],
+      damage: [[96, 2, 0, -1, 450], [98, 3, 0, -1, 550]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    const dc: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' });
+    const d = dc.deaths[0];
+    expect(d.control_intervals).toEqual([
+      { kind: 'stunned', blocks_spells: true, from_dt: -4.5, to_dt: -2.5, seconds: 2 },
+      { kind: 'silenced', blocks_spells: true, from_dt: -3, to_dt: 0, seconds: 3 },
+    ]);
+    expect(d.spell_blocked_intervals).toEqual([
+      { from_dt: -4.5, to_dt: 0, seconds: 4.5, kinds: ['stunned', 'silenced'] },
+    ]);
+    expect(d.continuous_spell_block_to_death_seconds).toBe(4.5);
+    expect(d.unblocked_seconds_from_first_damage).toEqual({ min: 0, max: 0 });
+    expect(d.spell_blocked_at_first_damage).toBe(true);
+    expect(dc.gaps.some((g: any) => g.topic === 'cast_opportunity')).toBe(true);
+    expect(dc.note).toContain('4 Hz');
+  });
+
+  it('preserves uncertainty within the 1 s first-damage bucket instead of inventing a cast opportunity (Codex P1 on #502)', () => {
+    // Hit at 95.8 (floored to 95) with continuous stun [95.5, 100]: player could have been stunned the entire
+    // post-damage period (min: 0, max: 0.5) and spell_blocked_at_first_damage MUST stay null (not false).
+    const sameBucket = makeTrace({
+      controls: [{ stunned: [[95.5, 100.0]] }, {}, {}, {}, {}],
+      damage: [[95, 2, 0, -1, 900]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    const d1: any = runTraceTool(sameBucket, 'death_context', { hero: 'enchantress' }).deaths[0];
+    expect(d1.continuous_spell_block_to_death_seconds).toBe(4.5);
+    expect(d1.unblocked_seconds_from_first_damage).toEqual({ min: 0, max: 0.5 });
+    expect(d1.spell_blocked_at_first_damage).toBeNull();
+
+    // Stun sampled at 96.1 (0.1 s after the 1 s damage bucket [95, 96], within 4 Hz 0.25 s tolerance):
+    // spell_blocked_at_first_damage still stays null rather than asserting false.
+    const boundaryTick = makeTrace({
+      controls: [{ stunned: [[96.1, 100.0]] }, {}, {}, {}, {}],
+      damage: [[95, 2, 0, -1, 900]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    const d2: any = runTraceTool(boundaryTick, 'death_context', { hero: 'enchantress' }).deaths[0];
+    expect(d2.unblocked_seconds_from_first_damage).toEqual({ min: 0.1, max: 1.1 });
+    expect(d2.spell_blocked_at_first_damage).toBeNull();
+  });
+
+  it('computes exact unblocked gap between separate stuns and handles 0.25 s death-boundary tolerance', () => {
+    const tr = makeTrace({
+      controls: [
+        {
+          hexed: [[93.5, 95.5]],
+          feared: [[97.5, 99.8]], // ends 0.2 s before death (within 0.25 s 4 Hz sample tolerance)
+        },
+        {}, {}, {}, {},
+      ],
+      damage: [[92, 2, 0, -1, 200], [98, 3, 0, -1, 700]],
+      deaths: [[100, 0, 3, 1]],
+    });
+    const dc: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' });
+    const d = dc.deaths[0];
+    expect(d.spell_blocked_intervals).toEqual([
+      { from_dt: -6.5, to_dt: -4.5, seconds: 2, kinds: ['hexed'] },
+      { from_dt: -2.5, to_dt: -0.2, seconds: 2.3, kinds: ['feared'] },
+    ]);
+    expect(d.continuous_spell_block_to_death_seconds).toBe(2.3);
+    // Across the 1 s damage bucket [92, 93]: from 93 -> 7.0 - 4.3 = 2.7 s min; from 92 -> 8.0 - 4.3 = 3.7 s max.
+    expect(d.unblocked_seconds_from_first_damage).toEqual({ min: 2.7, max: 3.7 });
+    // Hex starts at 93.5 (> 93.25), so guaranteed unblocked at first damage.
+    expect(d.spell_blocked_at_first_damage).toBe(false);
+
+    // Free for 0.6 s before death (> 0.25 s tolerance) -> continuous_spell_block_to_death_seconds is 0.
+    const freeTail = makeTrace({
+      controls: [{ stunned: [[96.0, 99.4]] }, {}, {}, {}, {}],
+      damage: [[96, 2, 0, -1, 900]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    const dFree: any = runTraceTool(freeTail, 'death_context', { hero: 'enchantress' }).deaths[0];
+    expect(dFree.continuous_spell_block_to_death_seconds).toBe(0);
+    expect(dFree.unblocked_seconds_from_first_damage).toEqual({ min: 0.6, max: 0.6 });
+    expect(dFree.spell_blocked_at_first_damage).toBe(true);
+  });
+
+  it('does not treat rooted, muted, out_of_game, or debuff_immune as spell-blocking controls', () => {
+    const tr = makeTrace({
+      controls: [
+        {
+          rooted: [[95.0, 100.0]],
+          muted: [[96.0, 100.0]],
+          out_of_game: [[90.0, 92.0]],
+          debuff_immune: [[94.0, 100.0]],
+        },
+        {}, {}, {}, {},
+      ],
+      damage: [[95, 2, 0, -1, 900]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    const d: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' }).deaths[0];
+    expect(d.control_intervals).toEqual([
+      { kind: 'rooted', blocks_spells: false, from_dt: -5, to_dt: 0, seconds: 5 },
+      { kind: 'muted', blocks_spells: false, from_dt: -4, to_dt: 0, seconds: 4 },
+    ]);
+    expect(d.spell_blocked_intervals).toEqual([]);
+    expect(d.continuous_spell_block_to_death_seconds).toBe(0);
+    expect(d.unblocked_seconds_from_first_damage).toEqual({ min: 4, max: 5 });
+    expect(d.spell_blocked_at_first_damage).toBe(false);
+    // Backwards-compatible disable_seconds_in_window still counts rooted.
+    expect(d.disable_seconds_in_window).toBe(5);
+  });
+
+  it('keeps all control-chain and cast-opportunity fields null + gaps when controls or state samples are missing (unknown is not false)', () => {
+    // 1. Missing trace.controls entirely.
+    const noCtrl: any = makeTrace({
+      damage: [[95, 2, 0, -1, 900]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    noCtrl.controls = undefined;
+    const rNoCtrl: any = runTraceTool(noCtrl, 'death_context', { hero: 'enchantress' });
+    expect(rNoCtrl.deaths[0]).toMatchObject({
+      disable_seconds_in_window: null,
+      control_intervals: null,
+      spell_blocked_intervals: null,
+      continuous_spell_block_to_death_seconds: null,
+      unblocked_seconds_from_first_damage: null,
+      spell_blocked_at_first_damage: null,
+    });
+    expect(rNoCtrl.gaps).toContainEqual({ topic: 'control_intervals', reason: 'controls_missing_in_trace' });
+
+    // 2. Missing single state sample inside [from, t] while trace.controls exists.
+    const blankSample: any = makeTrace({
+      controls: [{ stunned: [[96, 100]] }, {}, {}, {}, {}],
+      damage: [[95, 2, 0, -1, 900]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    blankSample.states[0].hp[94] = null;
+    const rBlank: any = runTraceTool(blankSample, 'death_context', { hero: 'enchantress' });
+    expect(rBlank.deaths[0]).toMatchObject({
+      disable_seconds_in_window: null,
+      control_intervals: null,
+      spell_blocked_intervals: null,
+      continuous_spell_block_to_death_seconds: null,
+      unblocked_seconds_from_first_damage: null,
+      spell_blocked_at_first_damage: null,
+    });
+    expect(rBlank.gaps).toContainEqual({ topic: 'control_intervals', reason: 'hero_state_samples_incomplete_in_death_window' });
+
+    // 3. No enemy hero damage (pure neutral death) -> damage-based cast-window fields stay null while control_intervals stay exact.
+    const neutralDeath: any = makeTrace({
+      extraNames: ['npc_dota_neutral_centaur_khan'],
+      controls: [{ stunned: [[98, 100]] }, {}, {}, {}, {}],
+      damage: [[97, 5, 0, -1, 900]],
+      deaths: [[100, 0, 5, 1]],
+    });
+    const rNeutral: any = runTraceTool(neutralDeath, 'death_context', { hero: 'enchantress' });
+    expect(rNeutral.deaths[0]).toMatchObject({
+      control_intervals: [{ kind: 'stunned', blocks_spells: true, from_dt: -2, to_dt: 0, seconds: 2 }],
+      spell_blocked_intervals: [{ from_dt: -2, to_dt: 0, seconds: 2, kinds: ['stunned'] }],
+      continuous_spell_block_to_death_seconds: 2,
+      unblocked_seconds_from_first_damage: null,
+      spell_blocked_at_first_damage: null,
+    });
+
+    // 4. Prior death/revival (in-place reincarnation AND buyback) inside the death window: dead seconds are never counted as unblocked cast time.
+    const afterReinc: any = makeTrace({
+      dead: { enchantress: [[91, 96]] }, // dead during [91, 96), revives in place at 96 (reincarnation -> t=100 is real death #1)
+      controls: [{ stunned: [[96, 100]] }, {}, {}, {}, {}],
+      damage: [
+        [90, 2, 0, -1, 500], // previous life damage before death at 91
+        [96, 2, 0, -1, 900], // current life damage immediately on revival
+      ],
+      deaths: [[91, 0, 2, 1], [100, 0, 2, 2]],
+    });
+    const rReinc: any = runTraceTool(afterReinc, 'death_context', { hero: 'enchantress', index: 1 });
+    expect(rReinc.deaths[0]).toMatchObject({
+      clock: '1:40',
+      continuous_spell_block_to_death_seconds: 4,
+      unblocked_seconds_from_first_damage: { min: 0, max: 0 },
+      spell_blocked_at_first_damage: true,
+    });
+
+    const afterBuyback: any = makeTrace({
+      dead: { enchantress: [[91, 96]] },
+      buybacks: [[95, 0]], // real death #1 at 91, bought back at 95, real death #2 at 100
+      controls: [{ stunned: [[96, 100]] }, {}, {}, {}, {}],
+      damage: [[90, 2, 0, -1, 500], [96, 2, 0, -1, 900]],
+      deaths: [[91, 0, 2, 1], [100, 0, 2, 2]],
+    });
+    const rBuyback: any = runTraceTool(afterBuyback, 'death_context', { hero: 'enchantress', index: 2 });
+    expect(rBuyback.deaths[0]).toMatchObject({
+      clock: '1:40',
+      continuous_spell_block_to_death_seconds: 4,
+      unblocked_seconds_from_first_damage: { min: 0, max: 0 },
+      spell_blocked_at_first_damage: true,
+    });
+
+    // 5. Codex P1 on #502: revival between 1 Hz samples (dead sample at 95, buyback at 95.5, post-revival enemy
+    // damage at 95.8 in bucket 95, then stun [97, 100] to death at 100) MUST NOT discard bucket 95 and claim
+    // `{ min: 0, max: 0 }` + `spell_blocked_at_first_damage: true` — leave first-damage metrics null + gap.
+    const buybackMidSec: any = makeTrace({
+      dead: { enchantress: [[91, 96]] }, // dead at 91..95 (lastDeadSec=95), alive at 96..99
+      buybacks: [[95.5, 0]],
+      controls: [{ stunned: [[97, 100]] }, {}, {}, {}, {}],
+      damage: [
+        [90, 2, 0, -1, 500], // previous life damage
+        [95, 2, 0, -1, 300], // hit at 95.8 after buyback at 95.5 (same bucket as lastDeadSec=95)
+        [97, 2, 0, -1, 600], // follow-up hit starting stun [97, 100]
+      ],
+      deaths: [[91, 0, 2, 1], [100, 0, 2, 2]],
+    });
+    const rMidSec: any = runTraceTool(buybackMidSec, 'death_context', { hero: 'enchantress', index: 2 });
+    expect(rMidSec.deaths[0]).toMatchObject({
+      clock: '1:40',
+      continuous_spell_block_to_death_seconds: 3,
+      unblocked_seconds_from_first_damage: null,
+      spell_blocked_at_first_damage: null,
+    });
+    expect(rMidSec.deaths[0]).not.toHaveProperty('_respawn_damage_ambiguous');
+    expect(rMidSec.gaps).toContainEqual({
+      topic: 'first_damage_after_revival',
+      reason: 'revival_between_1hz_samples_makes_first_current_life_damage_bucket_ambiguous',
+    });
+
+    // Also when a control overlaps `lastDeadSec` itself (cannot tell how much fell in the current life),
+    // continuous_spell_block_to_death_seconds stays null rather than clipping arbitrarily at `lastDeadSec + 1`.
+    const crossDeadStun: any = makeTrace({
+      dead: { enchantress: [[91, 96]] },
+      buybacks: [[95.5, 0]],
+      controls: [{ stunned: [[95.1, 100]] }, {}, {}, {}, {}],
+      damage: [[97, 2, 0, -1, 900]],
+      deaths: [[91, 0, 2, 1], [100, 0, 2, 2]],
+    });
+    const rCrossDead: any = runTraceTool(crossDeadStun, 'death_context', { hero: 'enchantress', index: 2 });
+    expect(rCrossDead.deaths[0].continuous_spell_block_to_death_seconds).toBeNull();
+
+    // Tool description documents the new control-chain fields.
+    const dcDesc = TRACE_TOOLS.find((t: any) => t.name === 'death_context')!.description;
+    expect(dcDesc).toContain('control_intervals');
+    expect(dcDesc).toContain('spell_blocked_intervals');
+    expect(dcDesc).toContain('continuous_spell_block_to_death_seconds');
+    expect(dcDesc).toContain('unblocked_seconds_from_first_damage');
+    expect(dcDesc).toContain('spell_blocked_at_first_damage');
+  });
+});

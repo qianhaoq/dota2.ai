@@ -416,6 +416,54 @@ function killerKind(trace, killerId, victimHeroIdx, victimNpc) {
   return 'other_unit';
 }
 
+/**
+ * Sampled unit-state flags (`trace.controls[h]`) that prevent casting abilities.
+ * Excludes `rooted` (blocks movement/blinks/TP, not most spells), `muted` (blocks items only),
+ * `out_of_game` (includes fountain spawn invulnerability and self-banishes), and `debuff_immune` (buff).
+ */
+const SPELL_BLOCKING_CONTROLS = ['stunned', 'hexed', 'silenced', 'taunted', 'feared', 'slept', 'nightmared', 'command_restricted'];
+const SPELL_BLOCKING_SET = new Set(SPELL_BLOCKING_CONTROLS);
+/** Non-spell-blocking control flags kept in `control_intervals` with `blocks_spells: false`. */
+const OTHER_TRACKED_CONTROLS = ['rooted', 'muted'];
+const TRACKED_CONTROLS = [...SPELL_BLOCKING_CONTROLS, ...OTHER_TRACKED_CONTROLS];
+/** 4 Hz state sampling tolerance (`trace.controls` intervals are tracked from 0.25 s hero state samples). */
+const CONTROL_SAMPLE_TOLERANCE = 0.25;
+
+const round1 = (x) => {
+  const v = Math.round(x * 10) / 10;
+  return Object.is(v, -0) ? 0 : v;
+};
+
+function mergeSpans(spans) {
+  if (!spans.length) return [];
+  const sorted = [...spans].sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+  const out = [[sorted[0][0], sorted[0][1]]];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const [a, b] = sorted[i];
+    const last = out[out.length - 1];
+    if (a <= last[1] + 1e-6) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+
+function mergeTaggedSpans(spans) {
+  if (!spans.length) return [];
+  const sorted = [...spans].sort((x, y) => x.from - y.from || x.to - y.to);
+  const out = [{ from: sorted[0].from, to: sorted[0].to, kinds: new Set([sorted[0].kind]) }];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const cur = sorted[i];
+    const last = out[out.length - 1];
+    if (cur.from <= last.to + 1e-6) {
+      last.to = Math.max(last.to, cur.to);
+      last.kinds.add(cur.kind);
+    } else {
+      out.push({ from: cur.from, to: cur.to, kinds: new Set([cur.kind]) });
+    }
+  }
+  return out.map((x) => ({ from: x.from, to: x.to, kinds: [...x.kinds] }));
+}
+
 function mergedDisableSeconds(controlsForHero, from, to) {
   if (!controlsForHero || typeof controlsForHero !== 'object') return null;
   const spans = [];
@@ -424,15 +472,135 @@ function mergedDisableSeconds(controlsForHero, from, to) {
       if (b > from && a < to) spans.push([Math.max(a, from), Math.min(b, to)]);
     }
   }
-  if (!spans.length) return 0;
-  spans.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
-  let total = 0; let [curA, curB] = spans[0];
-  for (const [a, b] of spans.slice(1)) {
-    if (a <= curB) curB = Math.max(curB, b);
-    else { total += curB - curA; curA = a; curB = b; }
+  const merged = mergeSpans(spans);
+  if (!merged.length) return 0;
+  const total = merged.reduce((sum, [a, b]) => sum + (b - a), 0);
+  return round1(total);
+}
+
+/**
+ * Control-chain intervals and spell-cast opportunity facts inside `[from, t]`, derived purely from
+ * 4 Hz `trace.controls[h]` intervals and whole-second (`Math.floor`) enemy hero damage buckets.
+ * Call only when `windowSampled` is true; otherwise all returned fields must remain `null`.
+ */
+function controlChainInWindow(controlsForHero, from, t, firstEnemyHero, lifeStart, lastPriorDeathT, lastDeadSec = null) {
+  if (!controlsForHero || typeof controlsForHero !== 'object' || Array.isArray(controlsForHero)) {
+    return {
+      control_intervals: null,
+      spell_blocked_intervals: null,
+      continuous_spell_block_to_death_seconds: null,
+      unblocked_seconds_from_first_damage: null,
+      spell_blocked_at_first_damage: null,
+    };
   }
-  total += curB - curA;
-  return Math.round(total * 10) / 10;
+  const rawPerKind = [];
+  const rawBlockedAll = [];
+  for (const kind of TRACKED_CONTROLS) {
+    const list = controlsForHero[kind];
+    if (!Array.isArray(list)) continue;
+    const blocksSpells = SPELL_BLOCKING_SET.has(kind);
+    const clipped = [];
+    for (const span of list) {
+      if (!Array.isArray(span) || span.length < 2) continue;
+      const [a, b] = span;
+      if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
+      if (blocksSpells) rawBlockedAll.push([a, b]);
+      if (b <= from || a >= t) continue;
+      const cFrom = Math.max(a, from);
+      const cTo = Math.min(b, t);
+      if (cTo > cFrom) clipped.push([cFrom, cTo]);
+    }
+    for (const [a, b] of mergeSpans(clipped)) {
+      rawPerKind.push({ kind, blocks_spells: blocksSpells, from: a, to: b });
+    }
+  }
+  rawPerKind.sort((x, y) => x.from - y.from || x.to - y.to || TRACKED_CONTROLS.indexOf(x.kind) - TRACKED_CONTROLS.indexOf(y.kind));
+
+  const control_intervals = rawPerKind.map((x) => ({
+    kind: x.kind,
+    blocks_spells: x.blocks_spells,
+    from_dt: round1(x.from - t),
+    to_dt: round1(x.to - t),
+    seconds: round1(x.to - x.from),
+  }));
+
+  const mergedBlocked = mergeTaggedSpans(rawPerKind.filter((x) => x.blocks_spells));
+  const spell_blocked_intervals = mergedBlocked.map((x) => ({
+    from_dt: round1(x.from - t),
+    to_dt: round1(x.to - t),
+    seconds: round1(x.to - x.from),
+    kinds: x.kinds,
+  }));
+
+  const lastBlocked = mergedBlocked.at(-1) ?? null;
+  let continuous_spell_block_to_death_seconds = 0;
+  if (lastBlocked && t - lastBlocked.to <= CONTROL_SAMPLE_TOLERANCE) {
+    if (lifeStart == null) {
+      continuous_spell_block_to_death_seconds = lastPriorDeathT != null && lastBlocked.from <= lastPriorDeathT
+        ? null
+        : round1(lastBlocked.to - lastBlocked.from);
+    } else if (lastDeadSec != null) {
+      // A control starting strictly after the last dead sample (plus 4 Hz tolerance) and any prior death
+      // belongs unambiguously to the current life; one overlapping the dead sample has unknown start in this life.
+      const crossesDeadSample = lastBlocked.from <= lastDeadSec + CONTROL_SAMPLE_TOLERANCE
+        || (lastPriorDeathT != null && lastBlocked.from <= lastPriorDeathT);
+      continuous_spell_block_to_death_seconds = crossesDeadSample
+        ? null
+        : round1(lastBlocked.to - lastBlocked.from);
+    } else {
+      continuous_spell_block_to_death_seconds = round1(lastBlocked.to - lastBlocked.from);
+    }
+  }
+
+  let unblocked_seconds_from_first_damage = null;
+  let spell_blocked_at_first_damage = null;
+  if (firstEnemyHero != null && lifeStart != null) {
+    // Damage timestamps are floored to whole seconds (`Math.floor(e.t)`), so a hit logged at `firstEnemyHero`
+    // could have landed anywhere in `[dmgBucketMin, dmgBucketMax]`. Preserve that uncertainty with exact
+    // `[min, max]` bounds for unblocked time and `null` whenever spell-blocked status is ambiguous in the bucket.
+    const dmgBucketMin = lifeStart > from ? Math.max(firstEnemyHero, lifeStart) : firstEnemyHero;
+    const dmgBucketMax = Math.min(firstEnemyHero + 1, t);
+    const winMinStart = Math.max(dmgBucketMin, from);
+    const winMaxStart = Math.max(dmgBucketMax, winMinStart);
+    if (winMinStart <= t) {
+      const unblockedFrom = (start) => {
+        let blocked = 0;
+        for (const iv of mergedBlocked) {
+          const ovFrom = Math.max(iv.from, start);
+          const ovTo = Math.min(iv.to, t);
+          if (ovTo > ovFrom) blocked += ovTo - ovFrom;
+        }
+        return round1(Math.max(0, (t - start) - blocked));
+      };
+      unblocked_seconds_from_first_damage = {
+        min: unblockedFrom(winMaxStart),
+        max: unblockedFrom(winMinStart),
+      };
+
+      const rawMergedBlocked = mergeSpans(rawBlockedAll);
+      // Account for both the 1 s damage bucket and 4 Hz (0.25 s) control sampling boundary:
+      // - `true` only when one continuous spell-block span covers the whole bucket (plus end-sample tolerance if < t).
+      // - `false` only when no spell-block span overlaps the bucket (plus start-sample tolerance).
+      // - `null` otherwise (ambiguous whether the hit landed before or after the control transition).
+      const checkEnd = Math.min(t, dmgBucketMax + CONTROL_SAMPLE_TOLERANCE);
+      const checkStart = dmgBucketMin === t ? Math.max(from, t - CONTROL_SAMPLE_TOLERANCE) : dmgBucketMin;
+      const alwaysBlocked = rawMergedBlocked.some(([a, b]) => a <= dmgBucketMin && b >= checkEnd);
+      const anyOverlap = rawMergedBlocked.some(([a, b]) => (
+        checkStart === checkEnd
+          ? (a <= checkEnd && b >= checkStart)
+          : (b > checkStart && a <= checkEnd)
+      ));
+      spell_blocked_at_first_damage = alwaysBlocked ? true : !anyOverlap ? false : null;
+    }
+  }
+
+  return {
+    control_intervals,
+    spell_blocked_intervals,
+    continuous_spell_block_to_death_seconds,
+    unblocked_seconds_from_first_damage,
+    spell_blocked_at_first_damage,
+  };
 }
 
 function enemyCouldControlCreep(trace, myTeam, t) {
@@ -939,7 +1107,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const noMana = (a) => a.mana_cost != null && mana != null && mana < a.mana_cost;
     const items = Object.entries(trace.items[h]).filter(([, e]) => heldAt(e, from))
       .map(([k, e]) => ({ item: k.replace(/^item_/, ''), ...(e.cd.length ? { cooldown_left: cooldownLeft(e, from) } : {}) }));
-    const dmg = new Map(); const sources = new Map(); let firstHero = null; const attackers = new Set(); let otherUnitDamage = false; let unknownDamageSource = false; let neutralOrCreepDamage = false; let ownSideCreepDamage = false;
+    const dmg = new Map(); const sources = new Map(); let firstHero = null; const enemyDamageSecs = []; const attackers = new Set(); let otherUnitDamage = false; let unknownDamageSource = false; let neutralOrCreepDamage = false; let ownSideCreepDamage = false;
     const myCreepSide = trace.heroes[h].team === 2 ? /goodguys/ : /badguys/;
     for (const [sec, a, target, infl, value] of trace.damage ?? []) {
       if (target !== npc || sec < Math.floor(from) || sec > t) continue;
@@ -949,7 +1117,10 @@ export function deathContext(trace, args = {}, ctx = {}) {
       sources.set(src, (sources.get(src) ?? 0) + value);
       const ah = heroOfName(trace, a);
       if (ah >= 0 && (firstHero == null || sec < firstHero)) firstHero = sec;
-      if (ah >= 0 && trace.heroes[ah].team !== trace.heroes[h].team) attackers.add(ah);
+      if (ah >= 0 && trace.heroes[ah].team !== trace.heroes[h].team) {
+        attackers.add(ah);
+        enemyDamageSecs.push(sec);
+      }
       else if (ah < 0) {
         const ak = killerKind(trace, a, h, npc);
         if (ak === 'other_unit') otherUnitDamage = true;
@@ -998,13 +1169,62 @@ export function deathContext(trace, args = {}, ctx = {}) {
     const traceEnd = typeof trace.t0 === 'number' && typeof trace.n === 'number' ? trace.t0 + trace.n - 1 : null;
     const stH = trace.states?.[h];
     // Controls intervals are derived from sampled state rows; blank/missing samples in the death window leave
-    // total disable duration unknown (null) rather than 0 (Codex P1 on #464).
-    let windowSampled = Boolean(Array.isArray(trace.controls) && trace.controls[h] && stH?.alive);
+    // total disable duration and control-chain windows unknown (null) rather than 0 (Codex P1 on #464).
+    const heroControls = Array.isArray(trace.controls) && trace.controls[h] && typeof trace.controls[h] === 'object' && !Array.isArray(trace.controls[h])
+      ? trace.controls[h]
+      : null;
+    let windowSampled = Boolean(heroControls && stH?.alive);
+    let lastDeadSec = null;
     for (let sec = Math.floor(from); windowSampled && sec <= Math.floor(t); sec += 1) {
       const k = sec - trace.t0;
-      if (k < 0 || k >= trace.n || stH.alive[k] == null || (stH.alive[k] === 1 && (stH.x?.[k] == null || stH.y?.[k] == null || stH.hp?.[k] == null))) windowSampled = false;
+      if (k < 0 || k >= trace.n || stH.alive[k] == null || (stH.alive[k] === 1 && (stH.x?.[k] == null || stH.y?.[k] == null || stH.hp?.[k] == null))) {
+        windowSampled = false;
+      } else if (sec < Math.floor(t) && stH.alive[k] === 0) {
+        lastDeadSec = sec;
+      }
     }
-    const disableSec = windowSampled ? mergedDisableSeconds(trace.controls[h], from, t) : null;
+    const disableSec = windowSampled ? mergedDisableSeconds(heroControls, from, t) : null;
+    let lifeStart = from;
+    let lastPriorDeathT = null;
+    if (windowSampled) {
+      if (lastDeadSec != null) lifeStart = Math.max(from, lastDeadSec + 1);
+      for (const o of myRawDeaths) {
+        if (o === d || o[0] >= t) continue;
+        const rev = classifyDeath(trace, o).revived_at;
+        if (rev != null && rev >= from && rev <= t) {
+          if (lastPriorDeathT == null || o[0] > lastPriorDeathT) lastPriorDeathT = o[0];
+          if (lifeStart != null && rev > lifeStart) lifeStart = rev;
+        } else if (o[0] >= from) {
+          if (lastPriorDeathT == null || o[0] > lastPriorDeathT) lastPriorDeathT = o[0];
+          if (lastDeadSec == null || lastDeadSec < Math.floor(o[0])) lifeStart = null;
+        }
+      }
+      if (lifeStart != null && lastPriorDeathT != null && lifeStart <= lastPriorDeathT) lifeStart = null;
+    }
+    // When the hero was dead during the window (`lastDeadSec != null`), 1 Hz `alive` samples only bound revival
+    // to `(lastDeadSec - 0.125, lastDeadSec + 1.125)`. Any enemy hero damage in bucket `lastDeadSec` or
+    // `lastDeadSec - 1` could be post-revival current-life damage (or pre-death damage), making the first
+    // current-life damage bucket ambiguous -> keep first-damage metrics null (Codex P1 on #502).
+    const respawnDamageAmbiguous = windowSampled && hasDamageLog && enemyDamageSecs.length > 0 && (
+      lifeStart == null
+      || (lastDeadSec != null && enemyDamageSecs.some((sec) => sec === lastDeadSec || sec === lastDeadSec - 1))
+    );
+    let firstEnemyHero = null;
+    if (hasDamageLog && lifeStart != null && !respawnDamageAmbiguous) {
+      const minSec = Math.floor(lifeStart);
+      for (const sec of enemyDamageSecs) {
+        if (sec >= minSec && (firstEnemyHero == null || sec < firstEnemyHero)) firstEnemyHero = sec;
+      }
+    }
+    const controlChain = windowSampled
+      ? controlChainInWindow(heroControls, from, t, firstEnemyHero, lifeStart, lastPriorDeathT, lastDeadSec)
+      : {
+          control_intervals: null,
+          spell_blocked_intervals: null,
+          continuous_spell_block_to_death_seconds: null,
+          unblocked_seconds_from_first_damage: null,
+          spell_blocked_at_first_damage: null,
+        };
     const enemyUlts = enemyUltimatesAbsorbed(trace, h, npc, from, t, ctx?.ultimatesOf, ctx?.ultimateOf);
     const inAFight = !fought.has(d) ? false : mostAllies == null ? null : mostAllies >= 1;
     const nearFight = nearbyFightFor(trace, h, d, t, atPos, fightInfos, inAFight, traceEnd);
@@ -1049,6 +1269,11 @@ export function deathContext(trace, args = {}, ctx = {}) {
       enemy_heroes_dealing_damage: attackers.size,
       seconds_before_first_disable: disabledAt == null ? null : Math.max(0, Math.round((disabledAt - from) * 10) / 10),
       disable_seconds_in_window: disableSec,
+      control_intervals: controlChain.control_intervals,
+      spell_blocked_intervals: controlChain.spell_blocked_intervals,
+      continuous_spell_block_to_death_seconds: controlChain.continuous_spell_block_to_death_seconds,
+      unblocked_seconds_from_first_damage: controlChain.unblocked_seconds_from_first_damage,
+      spell_blocked_at_first_damage: controlChain.spell_blocked_at_first_damage,
       enemy_ultimates_absorbed: enemyUlts,
       damage_taken: [...dmg].map(([k, v]) => { const [a, i] = k.split('|').map(Number); return { from: nameOf(trace, a), by: i >= 0 ? trace.names[i].replace(/^item_/, '') : 'attack', value: v }; }).sort((x, y) => y.value - x.value).slice(0, 10),
       controls_on_me: trace.modifiers.filter((m) => m[1] === npc && m[4] === 1 && m[6] !== 'i' && inWindow(m[0]))
@@ -1066,6 +1291,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
       bought_back: (() => { const b = boughtBackAfter(trace, h, t); return b == null || b === false ? b : clock(b); })(),
       ...(hasReincarnation ? { reincarnation_at_death: reincarnationAtDeath(trace, h, t) } : {}),
       damage_sources: sources,
+      _respawn_damage_ambiguous: respawnDamageAmbiguous,
     };
   });
   const heroKey = trace.heroes[h].key;
@@ -1089,16 +1315,29 @@ export function deathContext(trace, args = {}, ctx = {}) {
   });
   const killers = {};
   for (const d of all) { const k = nameOf(trace, d[2]) ?? 'unknown'; killers[k] = (killers[k] ?? 0) + 1; }
+  const hasControls = Array.isArray(trace.controls) && Boolean(trace.controls[h]) && typeof trace.controls[h] === 'object' && !Array.isArray(trace.controls[h]);
+  const shownDeaths = args.index == null ? out : [out[args.index - 1]];
+  const incompleteControlWindow = hasControls && shownDeaths.some((x) => x.spell_blocked_intervals === null);
+  const anyRespawnDamageAmbiguous = shownDeaths.some((x) => x._respawn_damage_ambiguous);
+  for (const x of out) delete x._respawn_damage_ambiguous;
   // The counts below are over this window: a non-default one is in the summary's ref, as in each death's.
   return {
     ref: `deaths:${heroKey}${window === 12 ? '' : `:w${window}`}`, ref_scope: 'summary', hero: heroKey, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers,
     ...(myRes.length ? { resurrections_total: myRes.length, resurrections_at: myRes.map((r) => r.clock) } : {}),
     ...deathPatterns(trace, out, { allSources: args.all_damage_sources === true, includeLegacyHabitCounts }), ...leftUnused(out, heroKey),
-    deaths: args.index == null ? out : [out[args.index - 1]],
+    deaths: shownDeaths,
     ...(myRes.length ? { resurrections: myRes } : {}),
+    note: 'Control intervals (`control_intervals`, `spell_blocked_intervals`) come from 4 Hz (0.25 s) hero state samples; damage timestamps are bucketed to whole seconds (`Math.floor`). Accordingly, `unblocked_seconds_from_first_damage` gives `{ min, max }` bounds across the 1 s first-damage bucket (`min === max` when exact), and `spell_blocked_at_first_damage` is `null` whenever a control transition falls inside that bucket or sampling tolerance. Spell-blocking metrics count `stunned`, `hexed`, `silenced`, `taunted`, `feared`, `slept`, `nightmared`, and `command_restricted`, and exclude `rooted` (movement/blinks/TP) and `muted` (items only), which remain visible in `control_intervals` with `blocks_spells: false`. Unblocked seconds do not establish that a specific ability was castable or worthwhile: check cast point, channeling, target range, spell immunity, and mana.',
     gaps: [
       ...gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']),
       ...(autoCooldownMissing ? [{ topic: 'ability_casts', reason: 'auto_triggered_cooldowns_missing_in_trace' }] : []),
+      ...(!hasControls
+        ? [{ topic: 'control_intervals', reason: 'controls_missing_in_trace' }]
+        : incompleteControlWindow
+          ? [{ topic: 'control_intervals', reason: 'hero_state_samples_incomplete_in_death_window' }]
+          : []),
+      ...(anyRespawnDamageAmbiguous ? [{ topic: 'first_damage_after_revival', reason: 'revival_between_1hz_samples_makes_first_current_life_damage_bucket_ambiguous' }] : []),
+      { topic: 'cast_opportunity', reason: 'controls_sampled_at_4hz_0.25s_damage_bucketed_to_1s_and_cast_point_channeling_target_range_not_checked' },
     ],
   };
 }
@@ -2113,7 +2352,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'death_context',
-    description: "What led to a hero's real deaths, from both sides: for the seconds before each one, where the player was, which enemies were within 2200 units (with distance, `hp_pct`, `mana`, and `level`), player health/mana and ready abilities/items, bilateral enemy kill threat at window start (`enemy_context_at_window_start`: nearby enemies' ready, no-mana, and on-cooldown abilities plus held key combat items), attackers who arrived from outside 2200 or respawned after window start (`attackers_arrived_after_window_start`), active enemy smokes or runes overlapping the window (`enemy_active_buffs_in_window`), who dealt the damage, the disables that landed (`disable_seconds_in_window`), enemy ultimates absorbed (`enemy_ultimates_absorbed`), what the player cast, nearby fights within [-30 s before engagement, +15 s after] (`nearby_fight`), nearby building/Roshan activity (`nearby_objective`), killer kind and whether it was a neutral/tower/Roshan/Tormentor/creep death with zero enemy hero damage (`non_hero_death_without_enemy_hero_damage`), and who else died around it. Without `index`, every real death. In-place revivals (Wraith King's Reincarnation, Aegis of the Immortal) are not counted as deaths; when the hero had any, they are listed apart under `resurrections` (`resurrection:<hero>:<n>`, with `died_for_real_within_20s` when the hero died again right after reviving), and for Wraith King each real death gives `reincarnation_at_death` (`not_learned`, `on_cooldown`, `insufficient_mana`). Auto-triggerable active abilities that fired automatically without a combat-log cast (e.g. Abaddon's Borrowed Time below 400 HP, detected from cooldown starts) are listed under `auto_triggered` and excluded from `ready_not_cast`. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready; attack modifiers whose uses are not logged as ability casts are excluded from `ready_not_cast`. `deaths_where` lists, by game time, the deaths that share factual traits (three or more enemies, in/outside fights, traded/not traded, before a nearby fight within 30 s, non-hero without enemy hero damage, absorbed enemy ultimate) and `damage_share_in_death_windows` says where the damage came from. `most_left_unused` sorts the hero's deaths by unused ready own abilities at window start (rule in `most_left_unused_rule`) — a factual sort, not a verdict on avoidability.",
+    description: "What led to a hero's real deaths, from both sides: for the seconds before each one, where the player was, which enemies were within 2200 units (with distance, `hp_pct`, `mana`, and `level`), player health/mana and ready abilities/items, bilateral enemy kill threat at window start (`enemy_context_at_window_start`: nearby enemies' ready, no-mana, and on-cooldown abilities plus held key combat items), attackers who arrived from outside 2200 or respawned after window start (`attackers_arrived_after_window_start`), active enemy smokes or runes overlapping the window (`enemy_active_buffs_in_window`), who dealt the damage, the disables that landed (`disable_seconds_in_window`), chronological control intervals (`control_intervals`, distinguishing spell-blocking controls `blocks_spells: true` from `rooted`/`muted` with `blocks_spells: false`), merged spell-lock intervals (`spell_blocked_intervals`), continuous spell-lock right up to death (`continuous_spell_block_to_death_seconds`), unblocked cast-window bounds after first enemy hero damage (`unblocked_seconds_from_first_damage: { min, max }` over the 1 s damage bucket), whether guaranteed spell-blocked at first enemy hero damage (`spell_blocked_at_first_damage`, `null` when ambiguous within the 1 s damage bucket), enemy ultimates absorbed (`enemy_ultimates_absorbed`), what the player cast, nearby fights within [-30 s before engagement, +15 s after] (`nearby_fight`), nearby building/Roshan activity (`nearby_objective`), killer kind and whether it was a neutral/tower/Roshan/Tormentor/creep death with zero enemy hero damage (`non_hero_death_without_enemy_hero_damage`), and who else died around it. Without `index`, every real death. In-place revivals (Wraith King's Reincarnation, Aegis of the Immortal) are not counted as deaths; when the hero had any, they are listed apart under `resurrections` (`resurrection:<hero>:<n>`, with `died_for_real_within_20s` when the hero died again right after reviving), and for Wraith King each real death gives `reincarnation_at_death` (`not_learned`, `on_cooldown`, `insufficient_mana`). Auto-triggerable active abilities that fired automatically without a combat-log cast (e.g. Abaddon's Borrowed Time below 400 HP, detected from cooldown starts) are listed under `auto_triggered` and excluded from `ready_not_cast`. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready; attack modifiers whose uses are not logged as ability casts are excluded from `ready_not_cast`. `deaths_where` lists, by game time, the deaths that share factual traits (three or more enemies, in/outside fights, traded/not traded, before a nearby fight within 30 s, non-hero without enemy hero damage, absorbed enemy ultimate) and `damage_share_in_death_windows` says where the damage came from. `most_left_unused` sorts the hero's deaths by unused ready own abilities at window start (rule in `most_left_unused_rule`) — a factual sort, not a verdict on avoidability; read `ready_not_cast` together with `control_intervals`, `spell_blocked_intervals`, `continuous_spell_block_to_death_seconds`, `unblocked_seconds_from_first_damage`, `spell_blocked_at_first_damage`, and `off_cooldown_without_the_mana` (plus cast point/channeling/target range) when judging cast opportunity.",
     input_schema: { type: 'object', properties: { hero: HERO, index: { type: 'integer', minimum: 1, description: 'Which death, counting from 1. Omit for all.' }, window: { type: 'number', minimum: 4, maximum: 30, description: 'Seconds before the death to look at (default 12).' } }, required: ['hero'], additionalProperties: false },
     run: deathContext,
   },
