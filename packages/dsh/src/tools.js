@@ -16,6 +16,7 @@ export const PARAMETERS = {
     hero: idOrName(TOOL_DOCS.replay_review.params.hero),
     lang: LANG,
     retry: { type: 'boolean', description: TOOL_DOCS.replay_review.params.retry },
+    refresh: { type: 'boolean', description: TOOL_DOCS.replay_review.params.refresh },
   },
   recent_matches: {
     account: { type: 'string', required: true, description: 'Steam friend code or a Steam/OpenDota/Dotabuff/STRATZ profile link' },

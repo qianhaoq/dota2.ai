@@ -109,6 +109,9 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
   const rawText = content.map((c: any) => (c?.type === 'text' && typeof c.text === 'string' ? c.text : '')).join('\n');
   let verdict: string | null = null;
   let statusBadge: string | null = null;
+  let cachedBadge: string | null = null;
+  let cachedTitle: string | null = null;
+  let isLocalCache = false;
   let highlights: PreviewHighlight[] = [];
   let chapters: PreviewChapter[] = [];
   let runMeta: ReviewRunMeta | null = null;
@@ -132,6 +135,13 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
         else if (parsed.status === 'pick_hero') statusBadge = tr('statusPick');
 
         if (toolName === 'dota2ai_replay_review' && parsed.status === 'ready') {
+          if (parsed.cache_scope === 'dsh_local') isLocalCache = true;
+          if (parsed.stale_version === true && Number.isInteger(parsed.prompt_version)) {
+            cachedBadge = tr('statusCachedVersion').replace('{v}', String(parsed.prompt_version));
+            cachedTitle = Number.isInteger(parsed.latest_prompt_version)
+              ? tr('statusCachedTitle').replace('{v}', String(parsed.prompt_version)).replace('{latest}', String(parsed.latest_prompt_version))
+              : cachedBadge;
+          }
           if (Array.isArray(parsed.highlights)) {
             const rawHighlights: unknown[] = parsed.highlights;
             highlights = rawHighlights
@@ -193,6 +203,7 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
           <strong>{title}</strong>
           {matchId && <span className="dota2ai-tool-id">#{matchId}</span>}
           {statusBadge && <span className="dota2ai-tool-badge">{statusBadge}</span>}
+          {cachedBadge && <span className="dota2ai-tool-badge is-cached" title={cachedTitle ?? undefined}>{cachedBadge}</span>}
         </span>
         <button type="button" className="dota2ai-tool-open" onClick={() => openPath(targetPath)}>
           {matchId || account ? tr('open') : tr('openHome')} →
@@ -242,6 +253,7 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
           <span className="dota2ai-tool-usage-source">{formattedUsage.sourceLabel}</span>
         </div>
       )}
+      {isLocalCache && <p className="dota2ai-tool-cache-note">{tr('localCacheNote')}</p>}
       {(rawText || head?.argsRaw) && (
         <details className="dota2ai-tool-details">
           <summary>{tr('details')}</summary>

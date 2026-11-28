@@ -578,6 +578,64 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
     badUsageCard.unmount();
   });
 
+  it('renders bilingual cached-version badge, DSH local cache boundary note, and usage telemetry together on ready ToolCards (#486)', () => {
+    const cachedEn = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster', lang: 'en' }) },
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              status: 'ready',
+              verdict: 'Cached review verdict.',
+              cache_scope: 'dsh_local',
+              stale_version: true,
+              prompt_version: 75,
+              latest_prompt_version: 78,
+              model: 'deepseek/deepseek-chat',
+              steps: 6,
+              tool_calls: 12,
+              usage_source: 'provider_usage',
+              usage: { input: 9000, output: 1500, input_uncached: 2000, cache_read: 7000, cache_write: null, source: 'provider_usage' },
+            }),
+          }],
+        }}
+        t={(k) => dshEn[k]}
+        openPath={() => {}}
+      />,
+    );
+    expect(cachedEn.getByText('Cached v75')).toBeTruthy();
+    expect(cachedEn.container.querySelector('.dota2ai-tool-usage')?.textContent).toContain('9k in (7k cached, 2k uncached) · 1.5k out · 6 steps · 12 tools');
+    expect(cachedEn.container.querySelector('.dota2ai-tool-cache-note')?.textContent).toContain('$DSH_HOME/dota2ai');
+    expect(cachedEn.container.querySelector('.dota2ai-tool-cache-note')?.textContent).toContain('separate from dota2.ai web cache');
+    cachedEn.unmount();
+
+    const cachedZh = render(
+      <ToolCard
+        toolName="dota2ai_replay_review"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 9100904020, hero: 'beastmaster', lang: 'zh' }) },
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              status: 'ready',
+              verdict: '缓存复盘结论。',
+              cache_scope: 'dsh_local',
+              stale_version: true,
+              prompt_version: 75,
+              latest_prompt_version: 78,
+            }),
+          }],
+        }}
+        t={(k) => dshZh[k]}
+        openPath={() => {}}
+      />,
+    );
+    expect(cachedZh.getByText('缓存 v75')).toBeTruthy();
+    expect(cachedZh.container.querySelector('.dota2ai-tool-cache-note')?.textContent).toContain('本机 DSH 私有缓存');
+  });
+
   it('notifies already-mounted CoachHome consumers when async profile hydration resolves, without echoing saveProfile', async () => {
     window.localStorage.clear();
     const requestedUrls: string[] = [];
