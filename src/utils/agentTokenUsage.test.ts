@@ -17,11 +17,15 @@ const finding = {
   evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }],
   fix: '留给她。',
 };
+const chapters = [
+  { topic: 'midgame', title: '中期团战与大招时机', analysis: '27:27 吼进黑皇杖定住 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+  { topic: 'skills_and_items', title: '大招留人思路', analysis: '幻影刺客开了 7 次黑皇杖，咆哮必须留给她。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+];
 const goodSubmit = {
   verdict: '咆哮没有留给幻影刺客。',
-  mainline: [],
+  highlights: [],
   findings: [finding],
-  next_game: ['留咆哮'],
+  chapters,
   blind_spots: ['视野'],
 };
 const badSubmit = {
@@ -62,8 +66,26 @@ describe('token usage accounting across review stages, persistence, and deduplic
       if (!o.tools?.length && String(o.system ?? '').includes('Dota 2 coaching translator')) {
         return {
           text: JSON.stringify({
-            en: { verdict: 'Roar was not held for PA.', mainline: [], findings: [{ title: 'Roar', claim: 'PA used BKB 7 times.', evidence: ['27:27 stunned 3.4s'], fix: 'Hold it.' }], blind_spots: ['Vision'] },
-            ru: { verdict: 'Рёв не сохранили для PA.', mainline: [], findings: [{ title: 'Рёв', claim: 'PA нажала BKB 7 раз.', evidence: ['27:27 оглушение 3.4 с'], fix: 'Берегите.' }], blind_spots: ['Обзор'] },
+            en: {
+              verdict: 'Roar was not held for PA.',
+              highlights: [],
+              findings: [{ title: 'Roar', claim: 'PA used BKB 7 times.', evidence: ['27:27 stunned 3.4s'], fix: 'Hold it.' }],
+              chapters: [
+                { title: 'Midgame fights and ult timing', analysis: 'At 27:27 roared through BKB for 3.4s.', evidence: ['27:27 stunned 3.4s'] },
+                { title: 'Ultimate target priority', analysis: 'PA used BKB 7 times, so save Roar for her.', evidence: ['27:27 stunned 3.4s'] },
+              ],
+              blind_spots: ['Vision'],
+            },
+            ru: {
+              verdict: 'Рёв не сохранили для PA.',
+              highlights: [],
+              findings: [{ title: 'Рёв', claim: 'PA нажала BKB 7 раз.', evidence: ['27:27 оглушение 3.4 с'], fix: 'Берегите.' }],
+              chapters: [
+                { title: 'Драки мидгейма и ульт', analysis: 'На 27:27 ульт в BKB на 3.4 с.', evidence: ['27:27 оглушение 3.4 с'] },
+                { title: 'Приоритет целей ульта', analysis: 'PA нажала BKB 7 раз — берегите ульт для неё.', evidence: ['27:27 оглушение 3.4 с'] },
+              ],
+              blind_spots: ['Обзор'],
+            },
           }),
           usage: { input: 2000, output: 700, input_uncached: 2000, cache_read: 0, cache_write: null, source: 'provider_usage' },
         };

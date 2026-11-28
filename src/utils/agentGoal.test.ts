@@ -45,7 +45,14 @@ describe('the review does not emit mechanical next-game goals', () => {
   const call = (name: string, args: any, id: string) => ({ id, name, args });
   const finding = (title: string) => ({ title, claim: 'c', evidence: [{ refs: ['pro_items:beastmaster'], fact: 'x' }], fix: 'f' });
   const model = (submit: any) => { let i = 0; const replies = [{ toolCalls: [call('pro_item_choices', { hero: 'beastmaster' }, 'p')] }, { toolCalls: [call('submit_review', submit, 's')] }]; return async () => replies[Math.min(i++, 1)]; };
-  const base = { verdict: 'v', mainline: [], next_game: ['n'], blind_spots: [] };
+  const base = {
+    verdict: '出装思路。',
+    chapters: [
+      { topic: 'skills_and_items', title: '出装', analysis: '对照职业出装。', evidence: [{ refs: ['pro_items:beastmaster'], fact: '参考职业出装。' }] },
+      { topic: 'midgame', title: '节奏', analysis: '核心装优先。', evidence: [{ refs: ['pro_items:beastmaster'], fact: '参考出装顺序。' }] },
+    ],
+    blind_spots: [],
+  };
 
   it('omits review.goal even when a model supplies a legacy goal payload', async () => {
     const r: any = await runDeepReview({ complete: model({ ...base, findings: [finding('a'), finding('build')], goal: { kind: 'hold_item', items: ['blink', 'black_king_bar'], finding: 2 } }), trace, hero: 'beastmaster', lang: 'zh' });

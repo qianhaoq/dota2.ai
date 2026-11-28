@@ -10,7 +10,11 @@ import { runTraceTool } from '../../packages/review-engine/src/trace/index.js';
 const trace = JSON.parse(gunzipSync(readFileSync(new URL('../../packages/review-engine/test/fixtures/trace-9100904020.json.gz', import.meta.url))).toString());
 const lane = runTraceTool(trace, 'death_context', { hero: 'beastmaster', index: 1 }, { perspective: 'beastmaster' }) as any;
 const finding = (extra: any = {}) => ({ title: '对线期的阵亡', claim: '你在对线期阵亡。', evidence: [{ refs: ['death:beastmaster:1'], fact: '对线期阵亡。' }], fix: '退到塔后。', ...extra });
-const review = (extra: any = {}) => ({ verdict: '对线期送了。', mainline: [], findings: [finding()], blind_spots: [], ...extra });
+const defaultChapters = [
+  { topic: 'laning', title: '对线站位', analysis: '对线期阵亡。', evidence: [{ refs: ['death:beastmaster:1'], fact: '对线期阵亡。' }] },
+  { topic: 'midgame', title: '后续调整', analysis: '对线期阵亡后需要更谨慎。', evidence: [{ refs: ['death:beastmaster:1'], fact: '对线期阵亡。' }] },
+];
+const review = (extra: any = {}) => ({ verdict: '对线期送了。', highlights: [], findings: [finding()], chapters: defaultChapters, blind_spots: [], ...extra });
 const notes = (r: any, kind: string) => verifyReview(r, [lane]).problems.filter((p: any) => p.kind === kind);
 
 describe('englishWords', () => {

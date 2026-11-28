@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import { createRemotePipeline, createTracePipeline, replayUrlIsFor } from '../../lib/agent/tracePipeline.js';
+import { createRemotePipeline, createTracePipeline, REPLAY_UPLOAD_GRACE_MS, REPLAY_UPLOAD_RETRY_SEC, replayStillUploading, replayUrlIsFor } from '../../lib/agent/tracePipeline.js';
 import { createBucketStore, createFileStore, createJsonStore, createTraceStore } from '../../lib/agent/stores.js';
 import { createAgentService } from '../../lib/agent/service.js';
 import { buildTraceFromExtract } from '../../lib/agent/traceBuild.js';
@@ -682,5 +682,98 @@ describe('parse jobs in the service', () => {
     await svc.prepare(ID); await settle();
     await vi.waitFor(async () => expect((await svc.availability(ID)).parse).toMatchObject({ status: 'failed', reason: 'error' }));
     expect(await h.service(null).prepare(123)).toEqual({ status: 'unavailable' });
+  });
+
+  it('P0 fresh-match upload grace: 404/410 right after match end returns retryable no_replay_url, never final replay_gone, and legacy poisoned markers self-heal', async () => {
+    const startSec = 1_795_800_000;
+    const durationSec = 2400; // 40-minute match
+    const endMs = (startSec + durationSec) * 1000;
+    const freshMatch = { match_id: ID, start_time: startSec, duration: durationSec, replay_url: URL_OK };
+
+    // Unit bounds of replayStillUploading.
+    expect(replayStillUploading(freshMatch, endMs + 5 * 60_000)).toBe(true);
+    expect(replayStillUploading(freshMatch, endMs + REPLAY_UPLOAD_GRACE_MS - 1)).toBe(true);
+    expect(replayStillUploading(freshMatch, endMs + REPLAY_UPLOAD_GRACE_MS)).toBe(false);
+    expect(replayStillUploading({ start_time: startSec, duration: null }, startSec * 1000 + 2 * 3600_000)).toBe(true);
+    expect(replayStillUploading({ start_time: startSec, duration: null }, startSec * 1000 + 4 * 3600_000)).toBe(false);
+    expect(replayStillUploading({ duration: durationSec }, endMs + 1000)).toBe(false);
+    expect(replayStillUploading(freshMatch, startSec * 1000 - 1000)).toBe(false);
+
+    // Local pipeline: HTTP 404 5 minutes after match end -> retryable no_replay_url (90 s), detail uploading_404.
+    const localLogs: string[] = [];
+    const hFresh = harness({
+      now: () => endMs + 5 * 60_000,
+      stageLog: (l: string) => localLogs.push(l),
+      getMatchDetail: async () => freshMatch,
+      fetchReplayImpl: async () => ({ ok: false, status: 404, body: body(Buffer.from('not yet')) }),
+    });
+    expect(await hFresh.run()).toEqual({ ok: false, reason: 'no_replay_url', retry_in_sec: REPLAY_UPLOAD_RETRY_SEC });
+    expect(JSON.parse(localLogs[0])).toMatchObject({ ok: false, reason: 'no_replay_url', detail: 'uploading_404' });
+
+    // Local pipeline (edge downloadImpl path): replay_gone during upload grace -> retryable no_replay_url.
+    const hEdge = harness({
+      now: () => endMs + 6 * 60_000,
+      getMatchDetail: async () => freshMatch,
+      fetchReplayImpl: null,
+      downloadImpl: async () => { throw Object.assign(new Error('replay_gone'), { code: 'replay_gone' }); },
+    });
+    expect(await hEdge.run()).toEqual({ ok: false, reason: 'no_replay_url', retry_in_sec: REPLAY_UPLOAD_RETRY_SEC });
+
+    // Local pipeline: 404 after upload grace expires -> final replay_gone.
+    const hOld = harness({
+      now: () => endMs + REPLAY_UPLOAD_GRACE_MS + 60_000,
+      getMatchDetail: async () => freshMatch,
+      fetchReplayImpl: async () => ({ ok: false, status: 404, body: body(Buffer.from('gone')) }),
+    });
+    expect(await hOld.run()).toEqual({ ok: false, reason: 'replay_gone' });
+
+    // Remote pipeline (production Cloud Run web -> trace-worker): worker returns replay_gone for fresh match -> downgraded to retryable no_replay_url.
+    const remoteLogs: string[] = [];
+    const remoteFresh = createRemotePipeline({
+      url: 'https://tw.example',
+      now: () => endMs + 5 * 60_000,
+      stageLog: (l: string) => remoteLogs.push(l),
+      getMatchDetail: async () => freshMatch,
+      fetchImpl: (async () => new Response(JSON.stringify({ ok: false, reason: 'replay_gone' }), { status: 200 })) as any,
+    });
+    expect(await remoteFresh.run(ID)).toEqual({ ok: false, reason: 'no_replay_url', retry_in_sec: REPLAY_UPLOAD_RETRY_SEC });
+    expect(JSON.parse(remoteLogs[0])).toMatchObject({ ok: false, reason: 'no_replay_url', detail: 'uploading_404' });
+
+    // Service self-healing: reproduces 9108787440 (legacy parse.json written as replay_gone 5m after match end, without verified_gone).
+    const blobs = new Map<string, any>();
+    const docs = { get: async (k: string) => blobs.get(k) ?? null, put: async (k: string, v: any) => { blobs.set(k, v); } };
+    const traces = { get: async () => null };
+    const clock = { t: endMs + 6 * 60_000 }; // 6m after end, 1m after poisoned marker
+    blobs.set(`${ID}.parse.json`, { state: 'failed', reason: 'replay_gone', at: endMs + 5 * 60_000 });
+    const svc: any = createAgentService({
+      traces,
+      docs,
+      complete: null,
+      now: () => clock.t,
+      getMatchDetail: async () => freshMatch,
+      pipeline: { run: async () => ({ ok: true }) },
+    });
+    // Still inside 90 s backoff window -> downgraded to retryable no_replay_url (30 s left), NOT final replay_gone.
+    expect(await svc.availability(ID)).toMatchObject({
+      trace: false,
+      parse: { status: 'failed', reason: 'no_replay_url', final: false, retry_in_sec: 30 },
+    });
+    // Past upload grace (like 9108787440 now) -> automatically unlocked to status: 'none' so prepare can start immediately!
+    clock.t = endMs + REPLAY_UPLOAD_GRACE_MS + 10 * 60_000;
+    expect(await svc.availability(ID)).toMatchObject({ trace: false, parse: { status: 'none' } });
+    expect(await svc.prepare(ID)).toMatchObject({ status: 'running' });
+
+    // Verified replay_gone (written after upload grace) stays final and never retries.
+    const blobs2 = new Map<string, any>();
+    blobs2.set(`${ID}.parse.json`, { state: 'failed', reason: 'replay_gone', verified_gone: true, at: endMs + 5 * 60_000 });
+    const svc2: any = createAgentService({
+      traces,
+      docs: { get: async (k: string) => blobs2.get(k) ?? null, put: async (k: string, v: any) => { blobs2.set(k, v); } },
+      complete: null,
+      now: () => endMs + REPLAY_UPLOAD_GRACE_MS + 10 * 60_000,
+      getMatchDetail: async () => freshMatch,
+      pipeline: { run: async () => ({ ok: true }) },
+    });
+    expect(await svc2.availability(ID)).toMatchObject({ trace: false, parse: { status: 'failed', reason: 'replay_gone', final: true } });
   });
 });

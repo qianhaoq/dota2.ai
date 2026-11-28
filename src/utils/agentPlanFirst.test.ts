@@ -18,7 +18,11 @@ const call = (name: string, args: any, id: string) => ({ id, name, args });
 const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。' };
 const against = '你说要线优转推进：19:00 到 29:00 你们领先，25:00 时最多领先 3565，但这段时间你们只拆了 2 座建筑、对面拆了 3 座。';
 const gamePlan = { against_your_plan: against, main_reason: 'team_play', why: '你们在 19:00 到 29:00 领先。', evidence: [{ refs: ['window:beastmaster:2'], fact: '19:00 到 29:00 你们领先，最多领先 3565（25:00）。' }] };
-const submit = { verdict: '咆哮没有留给幻影刺客。', highlights: [], findings: [finding], chapters: [], game_plan: gamePlan, blind_spots: ['视野'] };
+const chapters = [
+  { topic: 'midgame', title: '中期团战与大招时机', analysis: '27:27 吼进黑皇杖定住 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+  { topic: 'vision_and_macro', title: '领先窗口推进节奏', analysis: '19:00 到 29:00 领先窗口需要更快换塔。', evidence: [{ refs: ['window:beastmaster:2'], fact: '19:00 到 29:00 你们领先，最多领先 3565（25:00）。' }] },
+];
+const submit = { verdict: '咆哮没有留给幻影刺客。', highlights: [], findings: [finding], chapters, game_plan: gamePlan, blind_spots: ['视野'] };
 /** A model that looks things up (one turn), then submits a review. It records every opening message it is sent. */
 function model() {
   const m = { openings: [] as string[], complete: async (o: any) => {

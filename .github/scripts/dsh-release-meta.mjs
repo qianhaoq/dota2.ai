@@ -483,10 +483,15 @@ export async function fetchNpmVersions({
   const encoded = packageName.startsWith('@')
     ? `@${packageName.slice(1).replace('/', '%2f')}`
     : encodeURIComponent(packageName);
-  const url = `${registryUrl.replace(/\/+$/, '')}/${encoded}`;
+  const baseUrl = registryUrl.replace(/\/+$/, '');
+  const url = `${baseUrl}/${encoded}`;
   try {
     const res = await fetchImpl(url, {
-      headers: { accept: 'application/json' },
+      headers: {
+        accept: 'application/json',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+      },
       signal: AbortSignal.timeout(15_000),
     });
     if (res.status === 404) {
@@ -509,6 +514,45 @@ export async function fetchNpmVersions({
     }
     warn(`[dsh-release-meta] Warning: npm registry query failed (${detail}); falling back to git tags only.`);
     return { versions: [], latest: null, registryFallback: true };
+  }
+}
+
+/**
+ * Probe the per-version npm registry endpoint (`/<pkg>/<version>`), which often propagates faster than
+ * the full packument right after `npm publish` returns "Your package is being processed".
+ * Returns `true` only when the registry explicitly serves that exact version with HTTP 200.
+ * @param {{
+ *   packageName?: string,
+ *   version: string,
+ *   registryUrl?: string,
+ *   fetchImpl?: (url: string, init?: RequestInit) => Promise<{ status: number, ok: boolean, json?: () => Promise<any> }>,
+ * }} opts
+ */
+export async function probeNpmVersionPublished({
+  packageName = DEFAULT_PACKAGE_NAME,
+  version,
+  registryUrl = 'https://registry.npmjs.org',
+  fetchImpl = globalThis.fetch,
+}) {
+  if (!parseSemver(version)) return false;
+  const encoded = packageName.startsWith('@')
+    ? `@${packageName.slice(1).replace('/', '%2f')}`
+    : encodeURIComponent(packageName);
+  const url = `${registryUrl.replace(/\/+$/, '')}/${encoded}/${encodeURIComponent(version)}`;
+  try {
+    const res = await fetchImpl(url, {
+      headers: {
+        accept: 'application/json',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return false;
+    const data = typeof res.json === 'function' ? await res.json() : null;
+    return data == null || data.version === version;
+  } catch {
+    return false;
   }
 }
 
@@ -677,7 +721,7 @@ async function runCli(argv) {
     const changedFilesSincePrevTag = (requireBundledChanges && !isForcedTag && previewMeta.prevTag)
       ? readChangedFilesSinceTag(previewMeta.prevTag)
       : null;
-    const plan = resolveReleasePlan({
+    let plan = resolveReleasePlan({
       pkgVersion: pkg.version,
       tagVersions,
       npmVersions: npmInfo.versions,
@@ -687,6 +731,25 @@ async function runCli(argv) {
       changedFilesSincePrevTag,
       ...ancestry,
     });
+    if (plan.resumeTag && !npmInfo.registryFallback) {
+      const confirmedOnNpm = await probeNpmVersionPublished({
+        packageName,
+        version: plan.version,
+      });
+      if (confirmedOnNpm) {
+        npmInfo.versions = [...new Set([...npmInfo.versions, plan.version])];
+        plan = resolveReleasePlan({
+          pkgVersion: pkg.version,
+          tagVersions,
+          npmVersions: npmInfo.versions,
+          forcedTag: flags.tag ?? null,
+          registryFallback: npmInfo.registryFallback,
+          requireBundledChanges,
+          changedFilesSincePrevTag,
+          ...ancestry,
+        });
+      }
+    }
     const result = {
       ...plan,
       targetSha: headSha,

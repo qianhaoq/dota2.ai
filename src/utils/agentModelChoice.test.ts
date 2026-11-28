@@ -20,7 +20,11 @@ const SCOREBOARD = JSON.parse(readFileSync(new URL('../fixtures/agent/match91009
 const ID = 9100904020;
 const call = (name: string, args: any, id: string) => ({ id, name, args });
 const finding = { title: '咆哮', claim: '幻影刺客开了 7 次黑皇杖。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }], fix: '留给她。' };
-const submit = { verdict: '咆哮没有留给幻影刺客。', mainline: [], findings: [finding], next_game: ['留咆哮'], blind_spots: ['视野'] };
+const chapters = [
+  { topic: 'midgame', title: '中期团战与大招时机', analysis: '27:27 吼进黑皇杖定住 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+  { topic: 'skills_and_items', title: '大招留人思路', analysis: '幻影刺客开了 7 次黑皇杖，咆哮必须留给她。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒' }] },
+];
+const submit = { verdict: '咆哮没有留给幻影刺客。', highlights: [], findings: [finding], chapters, blind_spots: ['视野'] };
 /** A model that looks things up (one turn), then submits a review; it counts the times it was asked. */
 function engine(name: string) {
   const e = { name, asked: 0, complete: async (o: any) => {

@@ -16,6 +16,7 @@ import {
   hasBundledChanges,
   matchesBundledPath,
   parseSemver,
+  probeNpmVersionPublished,
   readChangedFilesSinceTag,
   resolveNextVersion,
   resolveReleasePlan,
@@ -253,6 +254,36 @@ describe('fetchNpmVersions & formatGithubOutput', () => {
     const fallback = await fetchNpmVersions({ fetchImpl, allowFallback: true, warn });
     expect(fallback).toEqual({ versions: [], latest: null, registryFallback: true });
     expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it('sends no-cache headers on fetchNpmVersions and probes per-version npm endpoint accurately', async () => {
+    const seenHeaders: any[] = [];
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      seenHeaders.push({ url, headers: init?.headers });
+      if (url.endsWith('/0.2.22')) {
+        return { ok: true, status: 200, json: async () => ({ version: '0.2.22' }) };
+      }
+      if (url.endsWith('/0.2.23')) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      if (url.endsWith('/0.2.24')) {
+        return { ok: true, status: 200, json: async () => ({ version: '0.2.21' }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ 'dist-tags': { latest: '0.2.21' }, versions: { '0.2.21': {} } }) };
+    });
+
+    await fetchNpmVersions({ packageName: '@qianhaoq/dsh-dota2ai', fetchImpl: fetchImpl as any });
+    expect(seenHeaders[0].headers).toMatchObject({ 'cache-control': 'no-cache', pragma: 'no-cache' });
+
+    expect(await probeNpmVersionPublished({ packageName: '@qianhaoq/dsh-dota2ai', version: '0.2.22', fetchImpl: fetchImpl as any })).toBe(true);
+    expect(await probeNpmVersionPublished({ packageName: '@qianhaoq/dsh-dota2ai', version: '0.2.23', fetchImpl: fetchImpl as any })).toBe(false);
+    expect(await probeNpmVersionPublished({ packageName: '@qianhaoq/dsh-dota2ai', version: '0.2.24', fetchImpl: fetchImpl as any })).toBe(false);
+    expect(await probeNpmVersionPublished({ packageName: '@qianhaoq/dsh-dota2ai', version: 'invalid', fetchImpl: fetchImpl as any })).toBe(false);
+    expect(await probeNpmVersionPublished({
+      packageName: '@qianhaoq/dsh-dota2ai',
+      version: '0.2.22',
+      fetchImpl: (async () => { throw new Error('network'); }) as any,
+    })).toBe(false);
   });
 
   it('formats GitHub output lines cleanly including staleness, target_sha, and bundled_changes metadata', () => {
