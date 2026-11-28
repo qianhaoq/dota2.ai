@@ -387,4 +387,113 @@ describe('EvidenceCard auto-triggered cast & unknown proximity rendering', () =>
     expect(screen.getByText('10 分钟前各路游走时段（20 秒以上）')).toBeTruthy();
     expect(screen.getByText(/4:30–6:59 \(150秒\) · 中路 · 交手换血 · 敌方阵亡 1 · 阵亡 7:00/)).toBeTruthy();
   });
+
+  it('renders item and build purchase vs delivery timing and courier deaths in en/zh/ru without raw engine keys (#483)', async () => {
+    const spy = vi.spyOn(api, 'fetchEvidence');
+    const itemRecord = {
+      ref: 'item:beastmaster:ultimate_scepter',
+      item: 'ultimate_scepter',
+      first_purchased: { t: 900, clock: '15:00', source: 'components' },
+      first_held: { t: 1080, clock: '18:00' },
+      delivery_delay_seconds: 180,
+      my_team_courier_deaths_during_delivery: [{ t: 920, clock: '15:20', killed_by: 'phantom_assassin' }],
+    };
+    const buildRecord = {
+      ref: 'build:beastmaster',
+      hero: 'beastmaster',
+      data_patch: '7.42',
+      damage_in_my_deaths: { share_from_enemy_attacks: 0.5, share_from_enemy_abilities_and_items: 0.5, by_enemy: [] },
+      my_big_items_in_order: [
+        {
+          item: 'ultimate_scepter',
+          name: 'Aghanim\'s Scepter',
+          first_held: '18:00',
+          first_purchased: '15:00',
+          delivery_delay_seconds: 180,
+          my_team_courier_deaths_during_delivery: [{ clock: '15:20', killed_by: 'phantom_assassin' }],
+          cost: 4200,
+          built_for: [],
+        },
+      ],
+      my_team_courier_deaths: [{ t: 920, clock: '15:20', killed_by: 'phantom_assassin' }],
+      answers_to_top_killers: [],
+      most_built_in_this_bracket: null,
+      most_built_by_pros_on_this_hero: null,
+      gap_closers: { mine: null, enemies: [] },
+    };
+
+    // English
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'item:beastmaster:ultimate_scepter', kind: 'item',
+      names: { ultimate_scepter: 'Aghanim\'s Scepter', phantom_assassin: 'Phantom Assassin' },
+      record: itemRecord,
+    });
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'build:beastmaster', kind: 'build',
+      names: { ultimate_scepter: 'Aghanim\'s Scepter', phantom_assassin: 'Phantom Assassin' },
+      record: buildRecord,
+    });
+    render(
+      <ul>
+        <EvidenceCard matchId="9100904020" hero="beastmaster" lang="en" item={{ fact: 'Aghs bought early, delivered late', refs: ['item:beastmaster:ultimate_scepter', 'build:beastmaster'] }} onAsk={() => {}} />
+      </ul>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Show the record' }));
+    await waitFor(() => expect(screen.getByText(/all components bought/)).toBeTruthy());
+    expect(screen.getAllByText(/\+180s/).length).toBe(2);
+    expect(screen.getByText('Team courier killed during delivery')).toBeTruthy();
+    expect(screen.getByText('Your team\'s courier deaths')).toBeTruthy();
+    expect(screen.getAllByText(/15:20 ← Phantom Assassin/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/Purchased 15:00 \(\+180s\)/)).toBeTruthy();
+    expect(screen.queryByText(/phantom_assassin/)).toBeNull();
+    expect(screen.queryByText(/ultimate_scepter/)).toBeNull();
+
+    // Chinese
+    cleanup();
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'item:beastmaster:ultimate_scepter', kind: 'item',
+      names: { ultimate_scepter: '阿哈利姆神杖', phantom_assassin: '幻影刺客' },
+      record: itemRecord,
+    });
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'build:beastmaster', kind: 'build',
+      names: { ultimate_scepter: '阿哈利姆神杖', phantom_assassin: '幻影刺客' },
+      record: { ...buildRecord, my_big_items_in_order: [{ ...buildRecord.my_big_items_in_order[0], name: '阿哈利姆神杖' }] },
+    });
+    render(
+      <ul>
+        <EvidenceCard matchId="9100904020" hero="beastmaster" lang="zh" item={{ fact: '神杖提前买齐但延迟送达', refs: ['item:beastmaster:ultimate_scepter', 'build:beastmaster'] }} onAsk={() => {}} />
+      </ul>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '看原始记录' }));
+    await waitFor(() => expect(screen.getByText(/散件买齐/)).toBeTruthy());
+    expect(screen.getAllByText(/\+180秒/).length).toBe(2);
+    expect(screen.getByText('送达期间己方信使阵亡')).toBeTruthy();
+    expect(screen.getByText('我方信使阵亡')).toBeTruthy();
+    expect(screen.getAllByText(/15:20 ← 幻影刺客/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/购齐于 15:00 \(\+180秒\)/)).toBeTruthy();
+    expect(screen.queryByText(/phantom_assassin/)).toBeNull();
+
+    // Russian + legacy item without first_purchased
+    cleanup();
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'item:beastmaster:ultimate_scepter', kind: 'item',
+      names: { ultimate_scepter: 'Aghanim\'s Scepter', phantom_assassin: 'Phantom Assassin' },
+      record: itemRecord,
+    });
+    spy.mockResolvedValueOnce({
+      status: 'ok', ref: 'item:beastmaster:blink', kind: 'item',
+      names: { blink: 'Blink Dagger' },
+      record: { ref: 'item:beastmaster:blink', item: 'blink', first_purchased: null, first_held: { t: 720, clock: '12:00' }, delivery_delay_seconds: null },
+    });
+    render(
+      <ul>
+        <EvidenceCard matchId="9100904020" hero="beastmaster" lang="ru" item={{ fact: 'Покупка и доставка', refs: ['item:beastmaster:ultimate_scepter', 'item:beastmaster:blink'] }} onAsk={() => {}} />
+      </ul>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Показать запись' }));
+    await waitFor(() => expect(screen.getByText(/все компоненты куплены/)).toBeTruthy());
+    expect(screen.getByText('Курьер команды убит при доставке')).toBeTruthy();
+    expect(screen.getByText(/Blink Dagger/)).toBeTruthy();
+  });
 });
