@@ -483,7 +483,7 @@ function mergedDisableSeconds(controlsForHero, from, to) {
  * 4 Hz `trace.controls[h]` intervals and whole-second (`Math.floor`) enemy hero damage buckets.
  * Call only when `windowSampled` is true; otherwise all returned fields must remain `null`.
  */
-function controlChainInWindow(controlsForHero, from, t, firstEnemyHero, lifeStart, lastPriorDeathT) {
+function controlChainInWindow(controlsForHero, from, t, firstEnemyHero, lifeStart, lastPriorDeathT, lastDeadSec = null) {
   if (!controlsForHero || typeof controlsForHero !== 'object' || Array.isArray(controlsForHero)) {
     return {
       control_intervals: null,
@@ -536,12 +536,19 @@ function controlChainInWindow(controlsForHero, from, t, firstEnemyHero, lifeStar
   let continuous_spell_block_to_death_seconds = 0;
   if (lastBlocked && t - lastBlocked.to <= CONTROL_SAMPLE_TOLERANCE) {
     if (lifeStart == null) {
-      continuous_spell_block_to_death_seconds = lastPriorDeathT != null && lastBlocked.from < lastPriorDeathT
+      continuous_spell_block_to_death_seconds = lastPriorDeathT != null && lastBlocked.from <= lastPriorDeathT
+        ? null
+        : round1(lastBlocked.to - lastBlocked.from);
+    } else if (lastDeadSec != null) {
+      // A control starting strictly after the last dead sample (plus 4 Hz tolerance) and any prior death
+      // belongs unambiguously to the current life; one overlapping the dead sample has unknown start in this life.
+      const crossesDeadSample = lastBlocked.from <= lastDeadSec + CONTROL_SAMPLE_TOLERANCE
+        || (lastPriorDeathT != null && lastBlocked.from <= lastPriorDeathT);
+      continuous_spell_block_to_death_seconds = crossesDeadSample
         ? null
         : round1(lastBlocked.to - lastBlocked.from);
     } else {
-      const effFrom = Math.max(lastBlocked.from, lifeStart);
-      continuous_spell_block_to_death_seconds = effFrom < lastBlocked.to ? round1(lastBlocked.to - effFrom) : 0;
+      continuous_spell_block_to_death_seconds = round1(lastBlocked.to - lastBlocked.from);
     }
   }
 
@@ -1194,15 +1201,23 @@ export function deathContext(trace, args = {}, ctx = {}) {
       }
       if (lifeStart != null && lastPriorDeathT != null && lifeStart <= lastPriorDeathT) lifeStart = null;
     }
+    // When the hero was dead during the window (`lastDeadSec != null`), 1 Hz `alive` samples only bound revival
+    // to `(lastDeadSec - 0.125, lastDeadSec + 1.125)`. Any enemy hero damage in bucket `lastDeadSec` or
+    // `lastDeadSec - 1` could be post-revival current-life damage (or pre-death damage), making the first
+    // current-life damage bucket ambiguous -> keep first-damage metrics null (Codex P1 on #502).
+    const respawnDamageAmbiguous = windowSampled && hasDamageLog && enemyDamageSecs.length > 0 && (
+      lifeStart == null
+      || (lastDeadSec != null && enemyDamageSecs.some((sec) => sec === lastDeadSec || sec === lastDeadSec - 1))
+    );
     let firstEnemyHero = null;
-    if (hasDamageLog && lifeStart != null) {
+    if (hasDamageLog && lifeStart != null && !respawnDamageAmbiguous) {
       const minSec = Math.floor(lifeStart);
       for (const sec of enemyDamageSecs) {
         if (sec >= minSec && (firstEnemyHero == null || sec < firstEnemyHero)) firstEnemyHero = sec;
       }
     }
     const controlChain = windowSampled
-      ? controlChainInWindow(heroControls, from, t, firstEnemyHero, lifeStart, lastPriorDeathT)
+      ? controlChainInWindow(heroControls, from, t, firstEnemyHero, lifeStart, lastPriorDeathT, lastDeadSec)
       : {
           control_intervals: null,
           spell_blocked_intervals: null,
@@ -1276,6 +1291,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
       bought_back: (() => { const b = boughtBackAfter(trace, h, t); return b == null || b === false ? b : clock(b); })(),
       ...(hasReincarnation ? { reincarnation_at_death: reincarnationAtDeath(trace, h, t) } : {}),
       damage_sources: sources,
+      _respawn_damage_ambiguous: respawnDamageAmbiguous,
     };
   });
   const heroKey = trace.heroes[h].key;
@@ -1302,6 +1318,8 @@ export function deathContext(trace, args = {}, ctx = {}) {
   const hasControls = Array.isArray(trace.controls) && Boolean(trace.controls[h]) && typeof trace.controls[h] === 'object' && !Array.isArray(trace.controls[h]);
   const shownDeaths = args.index == null ? out : [out[args.index - 1]];
   const incompleteControlWindow = hasControls && shownDeaths.some((x) => x.spell_blocked_intervals === null);
+  const anyRespawnDamageAmbiguous = shownDeaths.some((x) => x._respawn_damage_ambiguous);
+  for (const x of out) delete x._respawn_damage_ambiguous;
   // The counts below are over this window: a non-default one is in the summary's ref, as in each death's.
   return {
     ref: `deaths:${heroKey}${window === 12 ? '' : `:w${window}`}`, ref_scope: 'summary', hero: heroKey, team: TEAM[trace.heroes[h].team], window, deaths_total: all.length, killed_by: killers,
@@ -1318,6 +1336,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
         : incompleteControlWindow
           ? [{ topic: 'control_intervals', reason: 'hero_state_samples_incomplete_in_death_window' }]
           : []),
+      ...(anyRespawnDamageAmbiguous ? [{ topic: 'first_damage_after_revival', reason: 'revival_between_1hz_samples_makes_first_current_life_damage_bucket_ambiguous' }] : []),
       { topic: 'cast_opportunity', reason: 'controls_sampled_at_4hz_0.25s_damage_bucketed_to_1s_and_cast_point_channeling_target_range_not_checked' },
     ],
   };

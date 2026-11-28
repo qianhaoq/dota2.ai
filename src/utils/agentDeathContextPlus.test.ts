@@ -897,6 +897,45 @@ describe('death_context control-chain intervals and cast-opportunity windows (#4
       spell_blocked_at_first_damage: true,
     });
 
+    // 5. Codex P1 on #502: revival between 1 Hz samples (dead sample at 95, buyback at 95.5, post-revival enemy
+    // damage at 95.8 in bucket 95, then stun [97, 100] to death at 100) MUST NOT discard bucket 95 and claim
+    // `{ min: 0, max: 0 }` + `spell_blocked_at_first_damage: true` — leave first-damage metrics null + gap.
+    const buybackMidSec: any = makeTrace({
+      dead: { enchantress: [[91, 96]] }, // dead at 91..95 (lastDeadSec=95), alive at 96..99
+      buybacks: [[95.5, 0]],
+      controls: [{ stunned: [[97, 100]] }, {}, {}, {}, {}],
+      damage: [
+        [90, 2, 0, -1, 500], // previous life damage
+        [95, 2, 0, -1, 300], // hit at 95.8 after buyback at 95.5 (same bucket as lastDeadSec=95)
+        [97, 2, 0, -1, 600], // follow-up hit starting stun [97, 100]
+      ],
+      deaths: [[91, 0, 2, 1], [100, 0, 2, 2]],
+    });
+    const rMidSec: any = runTraceTool(buybackMidSec, 'death_context', { hero: 'enchantress', index: 2 });
+    expect(rMidSec.deaths[0]).toMatchObject({
+      clock: '1:40',
+      continuous_spell_block_to_death_seconds: 3,
+      unblocked_seconds_from_first_damage: null,
+      spell_blocked_at_first_damage: null,
+    });
+    expect(rMidSec.deaths[0]).not.toHaveProperty('_respawn_damage_ambiguous');
+    expect(rMidSec.gaps).toContainEqual({
+      topic: 'first_damage_after_revival',
+      reason: 'revival_between_1hz_samples_makes_first_current_life_damage_bucket_ambiguous',
+    });
+
+    // Also when a control overlaps `lastDeadSec` itself (cannot tell how much fell in the current life),
+    // continuous_spell_block_to_death_seconds stays null rather than clipping arbitrarily at `lastDeadSec + 1`.
+    const crossDeadStun: any = makeTrace({
+      dead: { enchantress: [[91, 96]] },
+      buybacks: [[95.5, 0]],
+      controls: [{ stunned: [[95.1, 100]] }, {}, {}, {}, {}],
+      damage: [[97, 2, 0, -1, 900]],
+      deaths: [[91, 0, 2, 1], [100, 0, 2, 2]],
+    });
+    const rCrossDead: any = runTraceTool(crossDeadStun, 'death_context', { hero: 'enchantress', index: 2 });
+    expect(rCrossDead.deaths[0].continuous_spell_block_to_death_seconds).toBeNull();
+
     // Tool description documents the new control-chain fields.
     const dcDesc = TRACE_TOOLS.find((t: any) => t.name === 'death_context')!.description;
     expect(dcDesc).toContain('control_intervals');
