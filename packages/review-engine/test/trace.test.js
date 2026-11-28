@@ -704,7 +704,7 @@ describe('trace tools on a real game', () => {
     expect(first.snapshots[0]).toMatchObject({ enemies: [expect.objectContaining({ hero: 'phantom_assassin' }), expect.objectContaining({ hero: 'venomancer' })] });
     expect(first.snapshots[0]).not.toHaveProperty('allies');
 
-    // Control-chain and cast-opportunity windows (#482): Beastmaster death #9 had 8.6 s unblocked before
+    // Control-chain and cast-opportunity windows (#482): Beastmaster death #9 had 8.1–8.6 s unblocked before
     // the 3.4 s Axe Call -> Bash -> Scythe spell-block chain to death.
     expect(d.control_intervals).toEqual([
       { kind: 'taunted', blocks_spells: true, from_dt: -3.4, to_dt: -0.4, seconds: 3 },
@@ -714,7 +714,7 @@ describe('trace tools on a real game', () => {
       { from_dt: -3.4, to_dt: 0, seconds: 3.4, kinds: ['taunted', 'stunned'] },
     ]);
     expect(d.continuous_spell_block_to_death_seconds).toBe(3.4);
-    expect(d.unblocked_seconds_from_first_damage).toBe(8.6);
+    expect(d.unblocked_seconds_from_first_damage).toEqual({ min: 8.1, max: 8.6 });
     expect(d.spell_blocked_at_first_damage).toBe(false);
 
     // Dark Willow death #4 (28:15): taunted into stunned continuously from first enemy damage until death (0 s cast window).
@@ -722,12 +722,13 @@ describe('trace tools on a real game', () => {
     expect(dw4).toMatchObject({
       clock: '28:15',
       continuous_spell_block_to_death_seconds: 3.2,
-      unblocked_seconds_from_first_damage: 0,
+      unblocked_seconds_from_first_damage: { min: 0, max: 0 },
       spell_blocked_at_first_damage: true,
       spell_blocked_intervals: [{ from_dt: -3.2, to_dt: 0, seconds: 3.2, kinds: ['taunted', 'stunned'] }],
     });
 
-    // Sven death #3 (17:32): rooted first (blocks_spells: false), then stunned to death (2.9 s); 1.1 s unblocked after first enemy damage.
+    // Sven death #3 (17:32): rooted first (blocks_spells: false), then stunned to death (2.9 s);
+    // stun begins 0.1 s after the 1 s first-damage bucket, so spell_blocked_at_first_damage stays null (ambiguous).
     const sven3 = run('death_context', { hero: 'sven', index: 3 }).deaths[0];
     expect(sven3.control_intervals).toEqual([
       { kind: 'rooted', blocks_spells: false, from_dt: -4.8, to_dt: -2.9, seconds: 1.9 },
@@ -736,15 +737,15 @@ describe('trace tools on a real game', () => {
     expect(sven3).toMatchObject({
       spell_blocked_intervals: [{ from_dt: -2.9, to_dt: 0, seconds: 2.9, kinds: ['stunned'] }],
       continuous_spell_block_to_death_seconds: 2.9,
-      unblocked_seconds_from_first_damage: 1.1,
-      spell_blocked_at_first_damage: false,
+      unblocked_seconds_from_first_damage: { min: 0.1, max: 1.1 },
+      spell_blocked_at_first_damage: null,
     });
 
     // Sven death #4 (27:48): self-damage (Sabatons) & ally Soul Rip before enemy hero damage do not shift enemy-damage cast window.
     const sven4 = run('death_context', { hero: 'sven', index: 4 }).deaths[0];
     expect(sven4).toMatchObject({
       continuous_spell_block_to_death_seconds: 0.9,
-      unblocked_seconds_from_first_damage: 7.5,
+      unblocked_seconds_from_first_damage: { min: 6.5, max: 7.5 },
       spell_blocked_at_first_damage: false,
     });
 
@@ -754,7 +755,7 @@ describe('trace tools on a real game', () => {
       control_intervals: [{ kind: 'rooted', blocks_spells: false, from_dt: -1.8, to_dt: 0, seconds: 1.8 }],
       spell_blocked_intervals: [],
       continuous_spell_block_to_death_seconds: 0,
-      unblocked_seconds_from_first_damage: 5,
+      unblocked_seconds_from_first_damage: { min: 4, max: 5 },
       spell_blocked_at_first_damage: false,
     });
 
@@ -766,8 +767,8 @@ describe('trace tools on a real game', () => {
     ]);
     expect(sky8).toMatchObject({
       continuous_spell_block_to_death_seconds: 3.1,
-      unblocked_seconds_from_first_damage: 2.2,
-      spell_blocked_at_first_damage: false,
+      unblocked_seconds_from_first_damage: { min: 1.2, max: 2.2 },
+      spell_blocked_at_first_damage: null,
     });
   });
 

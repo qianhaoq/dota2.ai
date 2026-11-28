@@ -513,29 +513,38 @@ describe('EvidenceCard auto-triggered cast & unknown proximity rendering', () =>
       ],
       spell_blocked_intervals: [{ from_dt: -3.2, to_dt: 0, seconds: 3.2, kinds: ['taunted', 'command_restricted'] }],
       continuous_spell_block_to_death_seconds: 3.2,
-      unblocked_seconds_from_first_damage: 0,
+      unblocked_seconds_from_first_damage: { min: 0, max: 0 },
       spell_blocked_at_first_damage: true,
       damage_taken: [{ from: 'axe', by: 'attack', value: 800 }],
+    };
+    const rangeDeathRecord = {
+      ...deathRecord,
+      clock: '36:05',
+      unblocked_seconds_from_first_damage: { min: 0, max: 0.5 },
+      spell_blocked_at_first_damage: null,
     };
     const namesEn = { axe: 'Axe', sandking_epicenter: 'Epicenter' };
     const namesZh = { axe: '斧王', sandking_epicenter: '地震' };
 
-    // English
+    // English (both exact { min: 0, max: 0 } and bounded range { min: 0, max: 0.5 })
     spy.mockResolvedValueOnce({ status: 'ok', ref: 'death:sand_king:4', kind: 'death', names: namesEn, record: deathRecord });
+    spy.mockResolvedValueOnce({ status: 'ok', ref: 'death:sand_king:6', kind: 'death', names: namesEn, record: rangeDeathRecord });
     render(
       <ul>
-        <EvidenceCard matchId="9100904020" hero="sand_king" lang="en" item={{ clock: '28:15', fact: 'Locked to death', refs: ['death:sand_king:4'] }} onAsk={() => {}} />
+        <EvidenceCard matchId="9100904020" hero="sand_king" lang="en" item={{ clock: '28:15', fact: 'Locked to death', refs: ['death:sand_king:4', 'death:sand_king:6'] }} onAsk={() => {}} />
       </ul>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Show the record' }));
-    await waitFor(() => expect(screen.getByText('Control chain')).toBeTruthy());
-    expect(screen.getByText(/rooted \(movement\/items only\)/)).toBeTruthy();
-    expect(screen.getByText(/taunted/)).toBeTruthy();
-    expect(screen.getByText(/command restricted/)).toBeTruthy();
-    expect(screen.getByText(/Spell-blocked to death/)).toBeTruthy();
-    expect(screen.getByText('3.2s')).toBeTruthy();
-    expect(screen.getByText(/Unblocked cast window after first damage/)).toBeTruthy();
-    expect(screen.getByText(/already spell-blocked at first damage/)).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText('Control chain')).toHaveLength(2));
+    expect(screen.getAllByText(/rooted \(movement\/items only\)/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/taunted/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/command restricted/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Spell-blocked to death/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('3.2s').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('0s')).toBeTruthy();
+    expect(screen.getByText('0–0.5s')).toBeTruthy();
+    expect(screen.getAllByText(/Unblocked cast window after first damage/).length).toBe(2);
+    expect(screen.getAllByText(/already spell-blocked at first damage/)).toHaveLength(1);
     expect(screen.queryByText(/command_restricted/)).toBeNull();
     expect(screen.queryByText(/blocks_spells/)).toBeNull();
 

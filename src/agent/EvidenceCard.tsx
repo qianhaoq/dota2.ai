@@ -568,6 +568,17 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
     const max = Math.max(...r.damage_taken.map((d: any) => d.value), 1);
     const ctrlLabel = (k: string) => (T.controlKind[k] ? t(T.controlKind[k]) : pretty(k));
     const fmtDt = (v: number) => (v === 0 ? `0${t(T.sec)}` : `${v < 0 ? '−' : '+'}${Math.abs(v)}${t(T.sec)}`);
+    const unblocked = r.unblocked_seconds_from_first_damage;
+    const hasUnblocked = typeof unblocked === 'number'
+      || (unblocked != null && typeof unblocked === 'object' && typeof unblocked.min === 'number' && typeof unblocked.max === 'number');
+    const unblockedText = typeof unblocked === 'number'
+      ? `${unblocked}${t(T.sec)}`
+      : hasUnblocked
+        ? (unblocked.min === unblocked.max ? `${unblocked.min}${t(T.sec)}` : `${unblocked.min}–${unblocked.max}${t(T.sec)}`)
+        : '';
+    const unblockedZeroPossible = typeof unblocked === 'number'
+      ? unblocked === 0
+      : hasUnblocked && unblocked.min === 0;
     return (
       <div className="ag-rec">
         <p className="ag-rec-head"><b>{r.clock}</b> · {t(T.killer)} {N(r.killer)}</p>
@@ -675,16 +686,16 @@ function Record({ data, lang }: { data: EvidenceRecord; lang: Lang }) {
             ))}
           </p>
         )}
-        {((typeof r.continuous_spell_block_to_death_seconds === 'number' && r.continuous_spell_block_to_death_seconds > 0) || typeof r.unblocked_seconds_from_first_damage === 'number') && (
+        {((typeof r.continuous_spell_block_to_death_seconds === 'number' && r.continuous_spell_block_to_death_seconds > 0) || hasUnblocked) && (
           <p className="ag-rec-line">
             {typeof r.continuous_spell_block_to_death_seconds === 'number' && r.continuous_spell_block_to_death_seconds > 0 && (
               <span className="ag-chip is-warn">
                 {t(T.spellBlockToDeath)} <em>{r.continuous_spell_block_to_death_seconds}{t(T.sec)}</em>
               </span>
             )}
-            {typeof r.unblocked_seconds_from_first_damage === 'number' && (
-              <span className={`ag-chip ${r.unblocked_seconds_from_first_damage === 0 ? 'is-warn' : ''}`}>
-                {t(T.unblockedAfterDmg)} <em>{r.unblocked_seconds_from_first_damage}{t(T.sec)}</em>
+            {hasUnblocked && (
+              <span className={`ag-chip ${unblockedZeroPossible ? 'is-warn' : ''}`}>
+                {t(T.unblockedAfterDmg)} <em>{unblockedText}</em>
                 {r.spell_blocked_at_first_damage === true && ` · ${t(T.blockedAtFirstDmg)}`}
               </span>
             )}

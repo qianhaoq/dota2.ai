@@ -718,17 +718,42 @@ describe('death_context control-chain intervals and cast-opportunity windows (#4
       { from_dt: -4.5, to_dt: 0, seconds: 4.5, kinds: ['stunned', 'silenced'] },
     ]);
     expect(d.continuous_spell_block_to_death_seconds).toBe(4.5);
-    expect(d.unblocked_seconds_from_first_damage).toBe(0);
+    expect(d.unblocked_seconds_from_first_damage).toEqual({ min: 0, max: 0 });
     expect(d.spell_blocked_at_first_damage).toBe(true);
     expect(dc.gaps.some((g: any) => g.topic === 'cast_opportunity')).toBe(true);
     expect(dc.note).toContain('4 Hz');
+  });
+
+  it('preserves uncertainty within the 1 s first-damage bucket instead of inventing a cast opportunity (Codex P1 on #502)', () => {
+    // Hit at 95.8 (floored to 95) with continuous stun [95.5, 100]: player could have been stunned the entire
+    // post-damage period (min: 0, max: 0.5) and spell_blocked_at_first_damage MUST stay null (not false).
+    const sameBucket = makeTrace({
+      controls: [{ stunned: [[95.5, 100.0]] }, {}, {}, {}, {}],
+      damage: [[95, 2, 0, -1, 900]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    const d1: any = runTraceTool(sameBucket, 'death_context', { hero: 'enchantress' }).deaths[0];
+    expect(d1.continuous_spell_block_to_death_seconds).toBe(4.5);
+    expect(d1.unblocked_seconds_from_first_damage).toEqual({ min: 0, max: 0.5 });
+    expect(d1.spell_blocked_at_first_damage).toBeNull();
+
+    // Stun sampled at 96.1 (0.1 s after the 1 s damage bucket [95, 96], within 4 Hz 0.25 s tolerance):
+    // spell_blocked_at_first_damage still stays null rather than asserting false.
+    const boundaryTick = makeTrace({
+      controls: [{ stunned: [[96.1, 100.0]] }, {}, {}, {}, {}],
+      damage: [[95, 2, 0, -1, 900]],
+      deaths: [[100, 0, 2, 1]],
+    });
+    const d2: any = runTraceTool(boundaryTick, 'death_context', { hero: 'enchantress' }).deaths[0];
+    expect(d2.unblocked_seconds_from_first_damage).toEqual({ min: 0.1, max: 1.1 });
+    expect(d2.spell_blocked_at_first_damage).toBeNull();
   });
 
   it('computes exact unblocked gap between separate stuns and handles 0.25 s death-boundary tolerance', () => {
     const tr = makeTrace({
       controls: [
         {
-          hexed: [[93.0, 95.0]],
+          hexed: [[93.5, 95.5]],
           feared: [[97.5, 99.8]], // ends 0.2 s before death (within 0.25 s 4 Hz sample tolerance)
         },
         {}, {}, {}, {},
@@ -739,12 +764,13 @@ describe('death_context control-chain intervals and cast-opportunity windows (#4
     const dc: any = runTraceTool(tr, 'death_context', { hero: 'enchantress' });
     const d = dc.deaths[0];
     expect(d.spell_blocked_intervals).toEqual([
-      { from_dt: -7, to_dt: -5, seconds: 2, kinds: ['hexed'] },
+      { from_dt: -6.5, to_dt: -4.5, seconds: 2, kinds: ['hexed'] },
       { from_dt: -2.5, to_dt: -0.2, seconds: 2.3, kinds: ['feared'] },
     ]);
     expect(d.continuous_spell_block_to_death_seconds).toBe(2.3);
-    // [92, 100] = 8.0 s minus (2.0 + 2.3) = 3.7 s unblocked (1.0 s before hex + 2.5 s gap + 0.2 s tail).
-    expect(d.unblocked_seconds_from_first_damage).toBe(3.7);
+    // Across the 1 s damage bucket [92, 93]: from 93 -> 7.0 - 4.3 = 2.7 s min; from 92 -> 8.0 - 4.3 = 3.7 s max.
+    expect(d.unblocked_seconds_from_first_damage).toEqual({ min: 2.7, max: 3.7 });
+    // Hex starts at 93.5 (> 93.25), so guaranteed unblocked at first damage.
     expect(d.spell_blocked_at_first_damage).toBe(false);
 
     // Free for 0.6 s before death (> 0.25 s tolerance) -> continuous_spell_block_to_death_seconds is 0.
@@ -755,7 +781,7 @@ describe('death_context control-chain intervals and cast-opportunity windows (#4
     });
     const dFree: any = runTraceTool(freeTail, 'death_context', { hero: 'enchantress' }).deaths[0];
     expect(dFree.continuous_spell_block_to_death_seconds).toBe(0);
-    expect(dFree.unblocked_seconds_from_first_damage).toBe(0.6);
+    expect(dFree.unblocked_seconds_from_first_damage).toEqual({ min: 0.6, max: 0.6 });
     expect(dFree.spell_blocked_at_first_damage).toBe(true);
   });
 
@@ -780,7 +806,7 @@ describe('death_context control-chain intervals and cast-opportunity windows (#4
     ]);
     expect(d.spell_blocked_intervals).toEqual([]);
     expect(d.continuous_spell_block_to_death_seconds).toBe(0);
-    expect(d.unblocked_seconds_from_first_damage).toBe(5);
+    expect(d.unblocked_seconds_from_first_damage).toEqual({ min: 4, max: 5 });
     expect(d.spell_blocked_at_first_damage).toBe(false);
     // Backwards-compatible disable_seconds_in_window still counts rooted.
     expect(d.disable_seconds_in_window).toBe(5);
@@ -852,7 +878,7 @@ describe('death_context control-chain intervals and cast-opportunity windows (#4
     expect(rReinc.deaths[0]).toMatchObject({
       clock: '1:40',
       continuous_spell_block_to_death_seconds: 4,
-      unblocked_seconds_from_first_damage: 0,
+      unblocked_seconds_from_first_damage: { min: 0, max: 0 },
       spell_blocked_at_first_damage: true,
     });
 
@@ -867,7 +893,7 @@ describe('death_context control-chain intervals and cast-opportunity windows (#4
     expect(rBuyback.deaths[0]).toMatchObject({
       clock: '1:40',
       continuous_spell_block_to_death_seconds: 4,
-      unblocked_seconds_from_first_damage: 0,
+      unblocked_seconds_from_first_damage: { min: 0, max: 0 },
       spell_blocked_at_first_damage: true,
     });
 

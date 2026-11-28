@@ -480,7 +480,7 @@ function mergedDisableSeconds(controlsForHero, from, to) {
 
 /**
  * Control-chain intervals and spell-cast opportunity facts inside `[from, t]`, derived purely from
- * 4 Hz `trace.controls[h]` intervals and enemy hero damage timestamps.
+ * 4 Hz `trace.controls[h]` intervals and whole-second (`Math.floor`) enemy hero damage buckets.
  * Call only when `windowSampled` is true; otherwise all returned fields must remain `null`.
  */
 function controlChainInWindow(controlsForHero, from, t, firstEnemyHero, lifeStart, lastPriorDeathT) {
@@ -494,19 +494,22 @@ function controlChainInWindow(controlsForHero, from, t, firstEnemyHero, lifeStar
     };
   }
   const rawPerKind = [];
+  const rawBlockedAll = [];
   for (const kind of TRACKED_CONTROLS) {
     const list = controlsForHero[kind];
     if (!Array.isArray(list)) continue;
+    const blocksSpells = SPELL_BLOCKING_SET.has(kind);
     const clipped = [];
     for (const span of list) {
       if (!Array.isArray(span) || span.length < 2) continue;
       const [a, b] = span;
-      if (!Number.isFinite(a) || !Number.isFinite(b) || b <= from || a >= t) continue;
+      if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
+      if (blocksSpells) rawBlockedAll.push([a, b]);
+      if (b <= from || a >= t) continue;
       const cFrom = Math.max(a, from);
       const cTo = Math.min(b, t);
       if (cTo > cFrom) clipped.push([cFrom, cTo]);
     }
-    const blocksSpells = SPELL_BLOCKING_SET.has(kind);
     for (const [a, b] of mergeSpans(clipped)) {
       rawPerKind.push({ kind, blocks_spells: blocksSpells, from: a, to: b });
     }
@@ -545,31 +548,42 @@ function controlChainInWindow(controlsForHero, from, t, firstEnemyHero, lifeStar
   let unblocked_seconds_from_first_damage = null;
   let spell_blocked_at_first_damage = null;
   if (firstEnemyHero != null && lifeStart != null) {
-    const dmgStart = Math.max(firstEnemyHero, lifeStart);
-    if (dmgStart <= t) {
-      let blockedFromDmg = 0;
-      for (const iv of mergedBlocked) {
-        const ovFrom = Math.max(iv.from, dmgStart);
-        const ovTo = Math.min(iv.to, t);
-        if (ovTo > ovFrom) blockedFromDmg += ovTo - ovFrom;
-      }
-      unblocked_seconds_from_first_damage = round1(Math.max(0, (t - dmgStart) - blockedFromDmg));
-
-      let blockedAtStart = false;
-      const startUpper = Math.min(t, dmgStart + CONTROL_SAMPLE_TOLERANCE);
-      for (const kind of SPELL_BLOCKING_CONTROLS) {
-        const list = controlsForHero[kind];
-        if (!Array.isArray(list)) continue;
-        for (const span of list) {
-          if (!Array.isArray(span) || span.length < 2) continue;
-          const [a, b] = span;
-          if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) continue;
-          const coversStart = b > dmgStart || (dmgStart === t && b >= t - CONTROL_SAMPLE_TOLERANCE);
-          if (a <= startUpper && coversStart) { blockedAtStart = true; break; }
+    // Damage timestamps are floored to whole seconds (`Math.floor(e.t)`), so a hit logged at `firstEnemyHero`
+    // could have landed anywhere in `[dmgBucketMin, dmgBucketMax]`. Preserve that uncertainty with exact
+    // `[min, max]` bounds for unblocked time and `null` whenever spell-blocked status is ambiguous in the bucket.
+    const dmgBucketMin = lifeStart > from ? Math.max(firstEnemyHero, lifeStart) : firstEnemyHero;
+    const dmgBucketMax = Math.min(firstEnemyHero + 1, t);
+    const winMinStart = Math.max(dmgBucketMin, from);
+    const winMaxStart = Math.max(dmgBucketMax, winMinStart);
+    if (winMinStart <= t) {
+      const unblockedFrom = (start) => {
+        let blocked = 0;
+        for (const iv of mergedBlocked) {
+          const ovFrom = Math.max(iv.from, start);
+          const ovTo = Math.min(iv.to, t);
+          if (ovTo > ovFrom) blocked += ovTo - ovFrom;
         }
-        if (blockedAtStart) break;
-      }
-      spell_blocked_at_first_damage = blockedAtStart;
+        return round1(Math.max(0, (t - start) - blocked));
+      };
+      unblocked_seconds_from_first_damage = {
+        min: unblockedFrom(winMaxStart),
+        max: unblockedFrom(winMinStart),
+      };
+
+      const rawMergedBlocked = mergeSpans(rawBlockedAll);
+      // Account for both the 1 s damage bucket and 4 Hz (0.25 s) control sampling boundary:
+      // - `true` only when one continuous spell-block span covers the whole bucket (plus end-sample tolerance if < t).
+      // - `false` only when no spell-block span overlaps the bucket (plus start-sample tolerance).
+      // - `null` otherwise (ambiguous whether the hit landed before or after the control transition).
+      const checkEnd = Math.min(t, dmgBucketMax + CONTROL_SAMPLE_TOLERANCE);
+      const checkStart = dmgBucketMin === t ? Math.max(from, t - CONTROL_SAMPLE_TOLERANCE) : dmgBucketMin;
+      const alwaysBlocked = rawMergedBlocked.some(([a, b]) => a <= dmgBucketMin && b >= checkEnd);
+      const anyOverlap = rawMergedBlocked.some(([a, b]) => (
+        checkStart === checkEnd
+          ? (a <= checkEnd && b >= checkStart)
+          : (b > checkStart && a <= checkEnd)
+      ));
+      spell_blocked_at_first_damage = alwaysBlocked ? true : !anyOverlap ? false : null;
     }
   }
 
@@ -1295,7 +1309,7 @@ export function deathContext(trace, args = {}, ctx = {}) {
     ...deathPatterns(trace, out, { allSources: args.all_damage_sources === true, includeLegacyHabitCounts }), ...leftUnused(out, heroKey),
     deaths: shownDeaths,
     ...(myRes.length ? { resurrections: myRes } : {}),
-    note: 'Control intervals (`control_intervals`, `spell_blocked_intervals`) come from 4 Hz (0.25 s) hero state samples; damage timestamps are bucketed to whole seconds. `spell_blocked_intervals`, `continuous_spell_block_to_death_seconds`, `unblocked_seconds_from_first_damage`, and `spell_blocked_at_first_damage` count spell-blocking controls (`stunned`, `hexed`, `silenced`, `taunted`, `feared`, `slept`, `nightmared`, `command_restricted`) and exclude `rooted` (movement/blinks/TP) and `muted` (items only), which remain visible in `control_intervals` with `blocks_spells: false`. Unblocked seconds do not establish that a specific ability was castable or worthwhile: check cast point, channeling, target range, spell immunity, and mana.',
+    note: 'Control intervals (`control_intervals`, `spell_blocked_intervals`) come from 4 Hz (0.25 s) hero state samples; damage timestamps are bucketed to whole seconds (`Math.floor`). Accordingly, `unblocked_seconds_from_first_damage` gives `{ min, max }` bounds across the 1 s first-damage bucket (`min === max` when exact), and `spell_blocked_at_first_damage` is `null` whenever a control transition falls inside that bucket or sampling tolerance. Spell-blocking metrics count `stunned`, `hexed`, `silenced`, `taunted`, `feared`, `slept`, `nightmared`, and `command_restricted`, and exclude `rooted` (movement/blinks/TP) and `muted` (items only), which remain visible in `control_intervals` with `blocks_spells: false`. Unblocked seconds do not establish that a specific ability was castable or worthwhile: check cast point, channeling, target range, spell immunity, and mana.',
     gaps: [
       ...gapsFor(trace, ['vision', 'creeps', 'unused_free_abilities']),
       ...(autoCooldownMissing ? [{ topic: 'ability_casts', reason: 'auto_triggered_cooldowns_missing_in_trace' }] : []),
@@ -2319,7 +2333,7 @@ export const TRACE_TOOLS = [
   },
   {
     name: 'death_context',
-    description: "What led to a hero's real deaths, from both sides: for the seconds before each one, where the player was, which enemies were within 2200 units (with distance, `hp_pct`, `mana`, and `level`), player health/mana and ready abilities/items, bilateral enemy kill threat at window start (`enemy_context_at_window_start`: nearby enemies' ready, no-mana, and on-cooldown abilities plus held key combat items), attackers who arrived from outside 2200 or respawned after window start (`attackers_arrived_after_window_start`), active enemy smokes or runes overlapping the window (`enemy_active_buffs_in_window`), who dealt the damage, the disables that landed (`disable_seconds_in_window`), chronological control intervals (`control_intervals`, distinguishing spell-blocking controls `blocks_spells: true` from `rooted`/`muted` with `blocks_spells: false`), merged spell-lock intervals (`spell_blocked_intervals`), continuous spell-lock right up to death (`continuous_spell_block_to_death_seconds`), unblocked cast-window seconds after first enemy hero damage (`unblocked_seconds_from_first_damage`), whether already spell-blocked at first enemy hero damage (`spell_blocked_at_first_damage`), enemy ultimates absorbed (`enemy_ultimates_absorbed`), what the player cast, nearby fights within [-30 s before engagement, +15 s after] (`nearby_fight`), nearby building/Roshan activity (`nearby_objective`), killer kind and whether it was a neutral/tower/Roshan/Tormentor/creep death with zero enemy hero damage (`non_hero_death_without_enemy_hero_damage`), and who else died around it. Without `index`, every real death. In-place revivals (Wraith King's Reincarnation, Aegis of the Immortal) are not counted as deaths; when the hero had any, they are listed apart under `resurrections` (`resurrection:<hero>:<n>`, with `died_for_real_within_20s` when the hero died again right after reviving), and for Wraith King each real death gives `reincarnation_at_death` (`not_learned`, `on_cooldown`, `insufficient_mana`). Auto-triggerable active abilities that fired automatically without a combat-log cast (e.g. Abaddon's Borrowed Time below 400 HP, detected from cooldown starts) are listed under `auto_triggered` and excluded from `ready_not_cast`. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready; attack modifiers whose uses are not logged as ability casts are excluded from `ready_not_cast`. `deaths_where` lists, by game time, the deaths that share factual traits (three or more enemies, in/outside fights, traded/not traded, before a nearby fight within 30 s, non-hero without enemy hero damage, absorbed enemy ultimate) and `damage_share_in_death_windows` says where the damage came from. `most_left_unused` sorts the hero's deaths by unused ready own abilities at window start (rule in `most_left_unused_rule`) — a factual sort, not a verdict on avoidability; read `ready_not_cast` together with `control_intervals`, `spell_blocked_intervals`, `continuous_spell_block_to_death_seconds`, `unblocked_seconds_from_first_damage`, `spell_blocked_at_first_damage`, and `off_cooldown_without_the_mana` (plus cast point/channeling/target range) when judging cast opportunity.",
+    description: "What led to a hero's real deaths, from both sides: for the seconds before each one, where the player was, which enemies were within 2200 units (with distance, `hp_pct`, `mana`, and `level`), player health/mana and ready abilities/items, bilateral enemy kill threat at window start (`enemy_context_at_window_start`: nearby enemies' ready, no-mana, and on-cooldown abilities plus held key combat items), attackers who arrived from outside 2200 or respawned after window start (`attackers_arrived_after_window_start`), active enemy smokes or runes overlapping the window (`enemy_active_buffs_in_window`), who dealt the damage, the disables that landed (`disable_seconds_in_window`), chronological control intervals (`control_intervals`, distinguishing spell-blocking controls `blocks_spells: true` from `rooted`/`muted` with `blocks_spells: false`), merged spell-lock intervals (`spell_blocked_intervals`), continuous spell-lock right up to death (`continuous_spell_block_to_death_seconds`), unblocked cast-window bounds after first enemy hero damage (`unblocked_seconds_from_first_damage: { min, max }` over the 1 s damage bucket), whether guaranteed spell-blocked at first enemy hero damage (`spell_blocked_at_first_damage`, `null` when ambiguous within the 1 s damage bucket), enemy ultimates absorbed (`enemy_ultimates_absorbed`), what the player cast, nearby fights within [-30 s before engagement, +15 s after] (`nearby_fight`), nearby building/Roshan activity (`nearby_objective`), killer kind and whether it was a neutral/tower/Roshan/Tormentor/creep death with zero enemy hero damage (`non_hero_death_without_enemy_hero_damage`), and who else died around it. Without `index`, every real death. In-place revivals (Wraith King's Reincarnation, Aegis of the Immortal) are not counted as deaths; when the hero had any, they are listed apart under `resurrections` (`resurrection:<hero>:<n>`, with `died_for_real_within_20s` when the hero died again right after reviving), and for Wraith King each real death gives `reincarnation_at_death` (`not_learned`, `on_cooldown`, `insufficient_mana`). Auto-triggerable active abilities that fired automatically without a combat-log cast (e.g. Abaddon's Borrowed Time below 400 HP, detected from cooldown starts) are listed under `auto_triggered` and excluded from `ready_not_cast`. An ability off cooldown that the hero never had the mana for in the window is listed apart (`off_cooldown_without_the_mana`), not as ready; attack modifiers whose uses are not logged as ability casts are excluded from `ready_not_cast`. `deaths_where` lists, by game time, the deaths that share factual traits (three or more enemies, in/outside fights, traded/not traded, before a nearby fight within 30 s, non-hero without enemy hero damage, absorbed enemy ultimate) and `damage_share_in_death_windows` says where the damage came from. `most_left_unused` sorts the hero's deaths by unused ready own abilities at window start (rule in `most_left_unused_rule`) — a factual sort, not a verdict on avoidability; read `ready_not_cast` together with `control_intervals`, `spell_blocked_intervals`, `continuous_spell_block_to_death_seconds`, `unblocked_seconds_from_first_damage`, `spell_blocked_at_first_damage`, and `off_cooldown_without_the_mana` (plus cast point/channeling/target range) when judging cast opportunity.",
     input_schema: { type: 'object', properties: { hero: HERO, index: { type: 'integer', minimum: 1, description: 'Which death, counting from 1. Omit for all.' }, window: { type: 'number', minimum: 4, maximum: 30, description: 'Seconds before the death to look at (default 12).' } }, required: ['hero'], additionalProperties: false },
     run: deathContext,
   },
