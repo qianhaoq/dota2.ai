@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { attackOf, buildCheck, contactBeforeDeaths } from '../../lib/agent/situationTools.js';
+import { attackOf, buildCheck, contactBeforeDeaths, observedPlacement, observedTargetState } from '../../lib/agent/situationTools.js';
 import { deathContext } from '../../packages/review-engine/src/trace/index.js';
 import { reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
 import { withHeroNames } from '../../lib/agent/review/toolkit.js';
@@ -128,9 +128,15 @@ describe('build_check: how each item meets the enemy who killed the player', () 
     const a = by(pa);
     // Eul's: cast on an enemy (Valve: "can only be cast on enemy units or yourself"), a basic dispel.
     expect(a.cyclone).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'an_enemy_target' });
-    // Which of her effects it would remove is not given: it turns on where each effect sits, which the data does not
-    // say (#507 review). Her abilities' dispelled_by and Valve's words are given instead.
-    expect(a.cyclone).not.toHaveProperty('their_effects_it_removes');
+    // Which of her effects it removes: only those observed in archived replays sitting where the dispel lands (#508),
+    // never placed from text or flags (#507 review). Cast on her: her own buffs; on the player: what she put on enemies.
+    const basic = new Map(pa.their_abilities.filter((x: any) => x.dispelled_by === 'basic').map((x: any) => [x.ability, x]));
+    const keyOf = (name: string) => pa.their_abilities.find((x: any) => x.name === name)?.ability;
+    for (const r of a.cyclone.their_effects_it_removes) {
+      expect(basic.has(keyOf(r.name))).toBe(true);
+      expect(observedPlacement(keyOf(r.name))).toMatchObject({ sits: 'on_them', seen: r.seen, games: r.games });
+    }
+    for (const r of a.black_king_bar.their_effects_it_removes) expect(observedPlacement(keyOf(r.name))?.sits).toBe('on_the_player');
     expect(a.cyclone).not.toHaveProperty('their_abilities_marked_removable_by_it');
     expect(pa.their_abilities.find((x: any) => x.ability === 'phantom_assassin_phantom_strike')).toHaveProperty('valve_text');
     expect(a.nullifier.dispel_lands_on).toBe('an_enemy_target');
@@ -260,5 +266,65 @@ describe('build_check: the player\'s own hero, for how an item sits with it', ()
     // An item's mana regen and intelligence are among what it gives (Valve's stats).
     const cyclone = b.answers_to_top_killers[0].items_acting_on_their_damage.items.find((i: any) => i.item === 'cyclone');
     expect(cyclone.gives).toMatchObject({ mana_regen: expect.any(Number), intelligence: expect.any(Number) });
+  });
+});
+
+// #508: what abilities and items did, observed in archived replays (scripts/observe-effects.mjs), never inferred.
+describe('observed effects: where an ability\'s effect sat, and what an item made its target', () => {
+  const obs: any = {
+    sources: {
+      'ability:ursa_overpower': { modifiers: { modifier_ursa_overpower: { self: 115, ally_hero: 0, enemy_hero: 0, other: 0, games: 3 } } },
+      'ability:ursa_earthshock': { modifiers: { modifier_ursa_earthshock: { self: 0, ally_hero: 0, enemy_hero: 66, other: 40, games: 3 }, modifier_ursa_earthshock_move: { self: 65, ally_hero: 0, enemy_hero: 0, other: 0, games: 3 } } },
+      'ability:necrolyte_ghost_shroud': { modifiers: { modifier_necrolyte_ghost_shroud_active: { self: 8, ally_hero: 0, enemy_hero: 0, other: 0, games: 1 }, modifier_necrolyte_ghost_shroud_aura_effect: { self: 0, ally_hero: 0, enemy_hero: 13, other: 17, games: 1 } } },
+      'item:cyclone': { modifiers: { modifier_eul_cyclone: { self: 3, ally_hero: 0, enemy_hero: 2, other: 0, games: 2, target_state: { samples: 40, stunned: 40, invulnerable: 40, silenced: 3 } } } },
+      'item:blade_mail': { modifiers: { modifier_item_blade_mail_reflect: { self: 4, ally_hero: 0, enemy_hero: 0, other: 0, games: 1, target_state: { samples: 3, stunned: 3 } } } },
+    },
+  };
+
+  it('an ability is placed only by where its effect was seen: its own modifier first, one side only', () => {
+    expect(observedPlacement('ursa_overpower', obs)).toEqual({ sits: 'on_them', seen: 115, games: 3 });
+    // The slow, modifier_ursa_earthshock, landed on enemy heroes; the leap's _move on Ursa is not the one named after it.
+    expect(observedPlacement('ursa_earthshock', obs)).toEqual({ sits: 'on_the_player', seen: 66, games: 3 });
+    // On Necrophos and, as an aura, on his enemies: not placed.
+    expect(observedPlacement('necrolyte_ghost_shroud', obs)).toBeNull();
+    // Never observed, or no observations at all: not placed (unknown, never "on the player").
+    expect(observedPlacement('ember_spirit_flame_guard', obs)).toBeNull();
+    expect(observedPlacement('ursa_overpower', null)).toBeNull();
+  });
+
+  it('an item\'s target state is the states nearly all its samples had, with the sample; too few samples say nothing', () => {
+    expect(observedTargetState('cyclone', obs)).toEqual({ states: ['invulnerable', 'stunned'], samples: 40, games: 2, on_enemy_heroes: 2 });
+    expect(observedTargetState('blade_mail', obs)).toBeNull();
+    // Enough samples but no state nearly all of them had: nothing is said.
+    expect(observedTargetState('x', { sources: { 'item:x': { modifiers: { modifier_x: { enemy_hero: 3, games: 1, target_state: { samples: 20, stunned: 5 } } } } } })).toBeNull();
+    expect(observedTargetState('heavens_halberd', obs)).toBeNull();
+    expect(observedTargetState('cyclone', null)).toBeNull();
+  });
+
+  it('death_context: the attackers\' casts on anything but the player — their own buffs — in the window', () => {
+    const d: any = deathContext(trace, { hero: 'beastmaster' });
+    for (const x of d.deaths) {
+      expect(Array.isArray(x.attackers_casts_not_on_me)).toBe(true);
+      for (const c of x.attackers_casts_not_on_me) {
+        expect(c.dt).toBeLessThanOrEqual(0.05);
+        expect(c.dt).toBeGreaterThanOrEqual(-12.05);
+        expect(c.target).not.toBe('beastmaster');
+      }
+    }
+    // Nothing here is also in enemy_casts_on_me (those are the ones aimed at the player).
+    const rows = new Set(d.deaths.flatMap((x: any) => x.enemy_casts_on_me.map((c: any) => c.row)));
+    expect(d.deaths.flatMap((x: any) => x.attackers_casts_not_on_me.map((c: any) => c.row)).some((r: any) => rows.has(r))).toBe(false);
+  });
+
+  it('how_they_killed_me: what the killer cast in the 15 s before each kill, their own buffs included', () => {
+    const seat = trace.heroes.findIndex((h: any) => h.key === 'beastmaster');
+    const runs = contactBeforeDeaths(trace, seat, 'phantom_assassin') as any[];
+    const pa = trace.names.indexOf(trace.heroes.find((h: any) => h.key === 'phantom_assassin').npc);
+    for (const r of runs) {
+      const t = Number(r.clock.split(':')[0]) * 60 + Number(r.clock.split(':')[1]);
+      const logged = trace.casts.filter((c: any) => c[1] === pa && c[0] >= t - 15.5 && c[0] <= t + 1).length;
+      expect(r.their_casts_in_the_15s_before.length).toBeLessThanOrEqual(logged);
+      for (const c of r.their_casts_in_the_15s_before) expect(['self', 'none', 'me', 'other', ...trace.heroes.map((h: any) => h.key)]).toContain(c.target);
+    }
   });
 });
