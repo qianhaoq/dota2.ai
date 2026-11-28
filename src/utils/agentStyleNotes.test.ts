@@ -95,7 +95,11 @@ describe('the repair round and the prompt', () => {
     const complete = async (o: any) => { seen.push(JSON.parse(JSON.stringify(o))); return replies[Math.min(i++, replies.length - 1)]; };
     const out: any = await runDeepReview({ complete, trace, hero: 'beastmaster', lang: 'zh' });
     const repair = JSON.parse(seen[2].messages.at(-1).content);
-    expect(repair.problems).toEqual([{ in: 'verdict', text: 'lost', why: expect.stringContaining('these English words stand in a Chinese review') }]);
+    // The hero who killed Beastmaster most is nowhere in this review: asked about in the same round (#495), as a note.
+    expect(repair.problems).toEqual([
+      { in: 'verdict', text: 'lost', why: expect.stringContaining('these English words stand in a Chinese review') },
+      { in: 'whole_review', text: '幻影刺客 (phantom_assassin)', why: expect.stringContaining('never calls it by this name') },
+    ]);
     expect(repair.problems[0].why).toContain('Roshan is 肉山');
     // 3 investigation/repair turns, and no translation call: a review is written in one language.
     expect(seen).toHaveLength(3);

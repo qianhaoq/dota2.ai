@@ -47,6 +47,10 @@ function tradeWindow(a) {
 }
 const ultimates = {};
 const heroes = {};
+// Abilities a hero only gets from Aghanim's Shard or Scepter (Tidehunter's Dead in the Water), and innate ones: by key, their names and
+// what grants them. Kept apart from `heroes` (each hero's own castable abilities, which the tools read as the kit), so
+// a tool can name such a cast instead of leaving the model to call it "that single-target skill" (#495).
+const granted = {};
 for (const id of Object.keys(NAMES.heroes)) {
   const [en, zh] = [await feed(id, 'english'), await feed(id, 'schinese')];
   heroes[id] = en.abilities
@@ -65,6 +69,11 @@ for (const id of Object.keys(NAMES.heroes)) {
         ...(a.type !== 1 && DMG[a.damage] && tradeWindow(a) ? { trade_cd: a.cooldowns } : {}),
       };
     });
+  for (const a of en.abilities) {
+    if (!a.name_loc || a.name.startsWith('generic') || !(a.ability_is_granted_by_shard || a.ability_is_granted_by_scepter || a.ability_is_innate)) continue;
+    const z = zh.abilities.find((x) => x.name === a.name);
+    granted[a.name] = { en: a.name_loc, zh: z?.name_loc || a.name_loc, by: a.ability_is_granted_by_shard ? 'shard' : a.ability_is_granted_by_scepter ? 'scepter' : 'innate', hero: Number(id) };
+  }
   const ult = en.abilities.find((a) => a.type === 1);
   if (!ult) continue;
   const zhUlt = zh.abilities.find((a) => a.name === ult.name);
@@ -94,6 +103,7 @@ const merged = {
   ultimates: { ...(previous.ultimates ?? {}), ...ultimates },
   dmg_types: { ...(previous.dmg_types ?? {}), ...dmg_types },
   heroes: { ...(previous.heroes ?? {}), ...heroes },
+  granted: { ...(previous.granted ?? {}), ...granted },
 };
 writeFileSync(OUT, `${JSON.stringify({ source: 'Valve datafeed herodata + OpenDota constants', patch: NAMES.patch, ...merged }, null, 0)}\n`);
-console.log(`wrote ${Object.keys(merged.ultimates).length} ultimates, ${Object.keys(merged.dmg_types).length} damage types (${Object.keys(dmg_types).length} current), ${Object.keys(merged.heroes).length} heroes' abilities`);
+console.log(`wrote ${Object.keys(merged.ultimates).length} ultimates, ${Object.keys(merged.dmg_types).length} damage types (${Object.keys(dmg_types).length} current), ${Object.keys(merged.heroes).length} heroes' abilities, ${Object.keys(merged.granted).length} shard, scepter and innate abilities`);
