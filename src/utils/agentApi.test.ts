@@ -357,6 +357,47 @@ describe('agent API', () => {
     expect((await get('/api/agent/999/moment?hero=axe&t=10')).status).toBe(404);
   });
 
+  it('track: movement segments, heatmap cells, real deaths, and stats over a time window; invalid bounds or unknown hero refused', async () => {
+    const at = (q: string) => get(`/api/agent/${MATCH}/track?${q}`);
+    const full = await at('hero=beastmaster&lang=zh');
+    expect(full.status).toBe(200);
+    expect(full.body).toMatchObject({
+      status: 'ok',
+      hero: 'beastmaster',
+      hero_name: '兽王',
+      side: 'me',
+      from: 0,
+      to: 2696,
+      duration: 2696,
+    });
+    expect(full.body.segments.length).toBeGreaterThan(5);
+    expect(full.body.heat.grid_size).toBe(24);
+    expect(full.body.heat.cells.length).toBeGreaterThan(10);
+    expect(full.body.deaths).toHaveLength(11);
+    expect(full.body.stats.alive_sampled_seconds + full.body.stats.dead_seconds + full.body.stats.missing_seconds).toBe(full.body.stats.total_seconds);
+
+    // Windowed query with viewer perspective and English names.
+    const win = await at('hero=phantom_assassin&viewer=beastmaster&from=0&to=600&lang=en');
+    expect(win.status).toBe(200);
+    expect(win.body).toMatchObject({
+      status: 'ok',
+      hero: 'phantom_assassin',
+      hero_name: 'Phantom Assassin',
+      side: 'enemy',
+      from: 0,
+      to: 600,
+    });
+    expect(win.body.stats.total_seconds).toBe(601);
+
+    // Invalid inputs return 400; missing trace / unknown hero / out-of-range time return 404.
+    for (const bad of ['', 'from=0&to=600', 'hero=beastmaster&from=600&to=100', 'hero=beastmaster&from=abc', 'hero=beastmaster&to=1e3', 'hero=beastmaster&viewer=x;y']) {
+      expect((await at(bad)).status, bad).toBe(400);
+    }
+    expect((await at('hero=pudge')).status).toBe(404);
+    expect((await at('hero=beastmaster&from=99999&to=100000')).status).toBe(404);
+    expect((await get('/api/agent/999/track?hero=axe')).status).toBe(404);
+  });
+
   it('two starts arriving together are one job; a refused model budget uses up no review slot', async () => {
     const before = m.seen.length;
     const [a, b] = await Promise.all([post(`/api/agent/${MATCH}/review`, { hero: 'dark_willow', lang: 'en' }, '10.0.1.1'), post(`/api/agent/${MATCH}/review`, { hero: 'dark_willow', lang: 'en' }, '10.0.1.2')]);
