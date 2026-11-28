@@ -14,11 +14,12 @@ import { configureDota2AiRuntime } from '../runtime/dota2aiRuntime';
 vi.mock('../v2/i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en', setLang: () => {} }) }));
 const report = buildCoachReport(JSON.parse(readFileSync(path.join(process.cwd(), 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))) as any;
 const cards = vi.fn();
+const coachReport = vi.fn();
 const recent = vi.fn(async (_id: string) => ({ account_id: 0, empty_hint: null, matches: [] as unknown[] }));
-vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), fetchCoachCards: (...a: unknown[]) => cards(...a), fetchRecentMatches: (id: string) => recent(id) }));
+vi.mock('./api', async (orig) => ({ ...(await orig<typeof import('./api')>()), fetchCoachCards: (...a: unknown[]) => cards(...a), fetchCoachReport: (...a: unknown[]) => coachReport(...a), fetchRecentMatches: (id: string) => recent(id) }));
 const { CoachHome } = await import('./CoachApp');
 
-afterEach(() => { cleanup(); cards.mockReset(); recent.mockClear(); window.localStorage.clear(); });
+afterEach(() => { cleanup(); cards.mockReset(); coachReport.mockReset(); recent.mockClear(); window.localStorage.clear(); });
 const home = () => render(<MemoryRouter><CoachHome /></MemoryRouter>);
 
 describe('home: coming back after the next game', () => {
@@ -47,6 +48,48 @@ describe('home: coming back after the next game', () => {
       cleanup();
     }
     expect(recent).not.toHaveBeenCalled();
+  });
+
+  it('zero mechanical KPIs on home: no LatestGoal prompt or creation UI, while GoalNavBadge stays clear-only for legacy saved goals', async () => {
+    const noGoal = home();
+    expect(noGoal.container.querySelector('.cx-goal-nav')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Make this my next-game goal|设为下局目标/ })).toBeNull();
+    noGoal.unmount();
+
+    window.localStorage.setItem('dota2ai.coach.account', '86745912');
+    window.localStorage.setItem('dota2ai.coach.goal', JSON.stringify(goal(86745912)));
+    recent.mockResolvedValueOnce({
+      account_id: 86745912,
+      empty_hint: null,
+      matches: [{
+        match_id: 9099999999,
+        start_time: 1795000000,
+        duration: 2400,
+        hero: { id: 38, en: 'Beastmaster', zh: '兽王', icon: null },
+        slot: 1,
+        radiant: true,
+        won: true,
+        kda: [8, 3, 14],
+        mode: { en: 'All Pick', zh: '全英雄选择' },
+        ranked: true,
+      }],
+    });
+    const { container } = home();
+    await waitFor(() => expect(screen.getByText('Beastmaster')).toBeTruthy());
+    // Home latest-game card no longer renders a mechanical goal check card or fetches coach report.
+    expect(container.querySelector('.cx-latest-goal-card')).toBeNull();
+    expect(coachReport).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Make this my next-game goal|设为下局目标/ })).toBeNull();
+
+    // Clear-only legacy top-bar badge lets returning users inspect and dismiss their saved goal cleanly.
+    const pill = container.querySelector('.cx-goal-pill') as HTMLButtonElement;
+    expect(pill).not.toBeNull();
+    fireEvent.click(pill);
+    const dialog = screen.getByRole('dialog', { name: 'Your goal' });
+    expect(dialog.textContent).toContain('At most 2 deaths per 10 minutes');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Clear' }));
+    expect(window.localStorage.getItem('dota2ai.coach.goal')).toBeNull();
+    expect(container.querySelector('.cx-goal-nav')).toBeNull();
   });
 });
 

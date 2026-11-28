@@ -1,6 +1,6 @@
 ---
 name: dota2ai
-description: Review a player's own public Dota 2 games with dota2.ai inside DSH — the replay review with checked evidence, why the game went that way (lane, deaths, items, fights), pro games on the same problem, follow-up questions, a next-game goal, and hero-vs-hero matchups. Use when someone asks to review a Dota 2 match, why they lost, what to practise, or how their last game went.
+description: Review a player's own public Dota 2 games with dota2.ai inside DSH — the replay review with checked evidence, why the game went that way (lane, deaths, items, fights), pro games on the same problem, follow-up questions, and hero-vs-hero matchups. Use when someone asks to review a Dota 2 match, why they lost, what to practise, or how their last game went.
 ---
 
 # dota2.ai coach (DSH plugin)
@@ -31,7 +31,6 @@ your own. Answer in the user's language and pass it as `lang` (`en` or `zh`).
 | Why it went this way, one chapter | `dota2ai_coach_report({match_id, hero, section})`: `summary` · `why` · `lane` · `deaths` · `items` · `fights` · `plan` · `all` |
 | Pro games on the same problem | `dota2ai_coach_cases({match_id, hero})` |
 | A follow-up question | `dota2ai_coach_ask({match_id, hero, question})` |
-| Did a later game meet a goal | `dota2ai_goal_check({match_id, hero, goal})` |
 | Hero vs hero, no match needed | `dota2ai_hero_matchup({hero, vs, rank?})` |
 
 `hero`: key (`queen_of_pain`), English or Chinese name, or hero id. `account`:
@@ -99,11 +98,6 @@ hero → `dota2ai_replay_review` (poll until `ready`) → present `verdict` and
 **"Why did I lose?"**: the replay review, or `dota2ai_coach_report` with
 `section: why` → for each cause on the player: what happened (evidence) → what
 to do (fix). Then offer `dota2ai_coach_cases`.
-
-**"Did I do what I practised?"**: keep the finding's `goal` object from
-`dota2ai_coach_report` (`section: all`), then `dota2ai_goal_check` on the later
-game → `met`, `missed`, `no_opportunity` or `unknown` with its evidence. Only
-the goal owner's own games.
 
 ## Never
 

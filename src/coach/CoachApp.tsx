@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { CoachApiError, fetchCoachReport, fetchPatchNews, fetchRecentMatches } from './api';
+import { CoachApiError, fetchPatchNews, fetchRecentMatches } from './api';
 import { PROFILE_CHANGED_EVENT, markSeen, parseAccountInput, rememberAccount, rememberedAccount, reviewedMatches, seenUntil } from './accountInput';
 import type { Bi, Finding, RecentMatch, RecentMatches } from './types';
 import { SafeImg, clock, useLang, type Lang } from './ui';
@@ -10,7 +10,7 @@ import { accessSnippets } from './accessSnippets';
 import { QuickJump, detectSmartInput } from './QuickJump';
 import { CURRENT_PATCH, SHIPPED_NEWS, itemIcon, readPatchNews, type PatchNews as PatchNewsData } from './patch';
 import { PatchAdvisor } from '../patch/PatchAdvisor';
-import { activeGoal, checkGoal, goalChecks, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
+import { goalChecks, setGoal, useActiveGoal, type GoalCheck } from './goalStore';
 import { useDota2AiRuntime } from '../runtime/dota2aiRuntime';
 import { OwnModelBanner, OwnModelCallout } from './OwnModel';
 import './coach.css';
@@ -62,13 +62,10 @@ const UI = {
   allRecent: { en: 'All recent games', zh: '全部最近比赛', ru: 'Все недавние игры' },
   reviewedTag: { en: 'Reviewed', zh: '已复盘', ru: 'Разобрано' },
   newTag: { en: 'New', zh: '新', ru: 'Новое' },
-  setGoal: { en: 'Make this my next-game goal', zh: '设为下局目标', ru: 'Сделать целью на следующую игру' },
-  goalSet: { en: 'Your next-game goal', zh: '已设为下局目标', ru: 'Ваша цель на следующую игру' },
   goalClear: { en: 'Clear', zh: '取消', ru: 'Сбросить' },
   goalCheckTitle: { en: 'Your goal', zh: '你的目标', ru: 'Ваша цель' },
   goalPill: { en: 'Goal', zh: '目标', ru: 'Цель' },
   goalFrom: { en: 'set after game #{id}', zh: '来自 #{id} 那局的复盘', ru: 'после матча #{id}' },
-  goalHere: { en: 'You set this goal from this game. Play your next one — the coach checks it automatically.', zh: '目标就是从这局定的。打下一局，教练会自动核验。', ru: 'Эта цель задана по данному матчу. Сыграйте следующий — тренер проверит её автоматически.' },
   goalPending: { en: 'No game checked against it yet — play your next one, then open it here.', zh: '还没有对局核验过这个目标——打完下一局，再在这里打开它。', ru: 'Цель ещё не проверялась — сыграйте следующий матч и откройте его здесь.' },
   goalTally: { en: '{met} of {n} games met', zh: '{n} 局里达成 {met} 局', ru: 'Выполнено в {met} из {n} игр' },
   goalResult: {
@@ -185,7 +182,7 @@ const tally = (goalId: string) => {
 
 /* ---------------------------------------------------------------- shell */
 
-/** Compact active-goal indicator in the top bar; details open on click and dismiss on outside click or Escape. */
+/** Clear-only legacy indicator in the top bar: only shown if a returning user already has a saved goal in localStorage. */
 const GoalNavBadge: React.FC = () => {
   const { lang, L } = useLang();
   const goal = useActiveGoal();
@@ -210,6 +207,7 @@ const GoalNavBadge: React.FC = () => {
 
   if (!goal) return null;
   const tl = tally(goal.id);
+  const label = goal.goal?.label ? L(goal.goal.label) : '';
   return (
     <div ref={wrapRef} className="cx-goal-nav">
       <button type="button" className="cx-goal-pill" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
@@ -219,7 +217,7 @@ const GoalNavBadge: React.FC = () => {
       {open && (
         <div className="cx-popover cx-goal-pop" role="dialog" aria-label={L(UI.goalCheckTitle)}>
           <p className="cx-eyebrow">{L(UI.goalCheckTitle)} · {L(UI.goalFrom).replace('{id}', String(goal.fromMatch))}</p>
-          <p className="cx-goal-pop-label"><b>{L(goal.goal.label)}</b></p>
+          {label && <p className="cx-goal-pop-label"><b>{label}</b></p>}
           {tl.n > 0 && <p className="cx-muted">{L(UI.goalTally).replace('{n}', String(tl.n)).replace('{met}', String(tl.met))}</p>}
           <div className="cx-goal-pop-actions">
             <Link to={`/r/${goal.fromMatch}?lang=${lang}`} onClick={() => setOpen(false)}>#{goal.fromMatch} →</Link>
@@ -297,7 +295,6 @@ export const Shell: React.FC<{ children: React.ReactNode; wide?: boolean; isHome
 const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
   const { lang, L } = useLang();
   const [latest, setLatest] = useState<RecentMatch | null>(null);
-  const goal = useActiveGoal();
   useEffect(() => {
     const ac = new AbortController();
     fetchRecentMatches(accountId, ac.signal).then((r) => setLatest(r.matches[0] ?? null)).catch(() => {});
@@ -307,7 +304,7 @@ const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
   if (!latest) return <p className="cx-example">{all}</p>;
   const reviewed = reviewedMatches().has(String(latest.match_id));
   return (
-    <div className={`cx-latest ${goal ? 'has-goal' : ''}`}>
+    <div className="cx-latest">
       <div className="cx-latest-card">
         <p className="cx-eyebrow">{L(UI.latestTitle)}</p>
         <div className="cx-latest-row">
@@ -322,38 +319,6 @@ const LatestGame: React.FC<{ accountId: string }> = ({ accountId }) => {
         </div>
         <p className="cx-example">{all}</p>
       </div>
-      {goal && <LatestGoal goal={goal} latest={latest} />}
-    </div>
-  );
-};
-
-/** Home: judge the newest game against the goal (one report fetch, only when it counts). */
-const LatestGoal: React.FC<{ goal: NonNullable<ReturnType<typeof activeGoal>>; latest: RecentMatch }> = ({ goal, latest }) => {
-  const { L } = useLang();
-  const [check, setCheck] = useState<GoalCheck | null>(null);
-  const counts = latest.match_id !== goal.fromMatch && (latest.start_time ?? 0) > goal.fromStart;
-  useEffect(() => {
-    if (!counts) return;
-    const ac = new AbortController();
-    fetchCoachReport(String(latest.match_id), { signal: ac.signal })
-      .then((r) => {
-        // Steam GC history has no seat: find this account in the game, or judge nothing.
-        const acct = Number(goal.accountId ?? rememberedAccount());
-        const seat = latest.slot ?? r.players.find((p) => p.account_id != null && p.account_id === acct)?.slot;
-        if (seat != null) setCheck(checkGoal(goal, r, seat));
-      })
-      .catch(() => {});
-    return () => ac.abort();
-  }, [counts, goal, latest.match_id, latest.slot]);
-  const tl = tally(goal.id);
-  return (
-    <div className="cx-latest-goal-card">
-      <p className="cx-eyebrow">{L(UI.goalCheckTitle)}{tl.n > 0 ? ` · ${L(UI.goalTally).replace('{n}', String(tl.n)).replace('{met}', String(tl.met))}` : ''}</p>
-      <p className="cx-latest-goal">
-        <span>{L(goal.goal.label)}</span>
-        {check ? <ResultPill r={check.result} /> : !counts ? <span className="cx-muted"> · {L(UI.goalHere)}</span> : null}
-      </p>
-      {check && <p className="cx-muted">{L(check.evidence)}</p>}
     </div>
   );
 };

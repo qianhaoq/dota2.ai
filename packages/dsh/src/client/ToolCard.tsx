@@ -1,5 +1,5 @@
 import React from 'react';
-import type { LocaleKey } from './locales';
+import { en, zh, type LocaleKey } from './locales';
 
 export function NavIcon({ size = 18 }: { size?: number }) {
   return (
@@ -21,6 +21,37 @@ export interface ToolCardProps {
   openPath: (path: string) => void;
 }
 
+type ChapterTopic = 'draft_and_lanes' | 'laning' | 'skill_build' | 'items' | 'teamfights' | 'macro' | 'other';
+type ChapterAssessment = 'praise' | 'solid' | 'mixed' | 'key_gap';
+
+interface PreviewHighlight {
+  title: string;
+  detail: string;
+}
+
+interface PreviewChapter {
+  topic: ChapterTopic;
+  title: string;
+  assessment: ChapterAssessment;
+}
+
+const TOPIC_KEYS: Record<ChapterTopic, LocaleKey> = {
+  draft_and_lanes: 'topicDraftAndLanes',
+  laning: 'topicLaning',
+  skill_build: 'topicSkillBuild',
+  items: 'topicItems',
+  teamfights: 'topicTeamfights',
+  macro: 'topicMacro',
+  other: 'topicOther',
+};
+
+const ASSESSMENT_KEYS: Record<ChapterAssessment, LocaleKey> = {
+  praise: 'assessmentPraise',
+  solid: 'assessmentSolid',
+  mixed: 'assessmentMixed',
+  key_gap: 'assessmentKeyGap',
+};
+
 const TOOL_TITLES: Record<string, { en: string; zh: string }> = {
   dota2ai_replay_review: { en: 'dota2.ai · Replay Review', zh: 'dota2.ai · 录像深度复盘' },
   dota2ai_recent_matches: { en: 'dota2.ai · Recent Games', zh: 'dota2.ai · 最近比赛' },
@@ -31,8 +62,15 @@ const TOOL_TITLES: Record<string, { en: string; zh: string }> = {
   dota2ai_hero_matchup: { en: 'dota2.ai · Hero Matchup', zh: 'dota2.ai · 英雄对位' },
 };
 
+const normHero = (raw: string) => raw.trim().toLowerCase().replace(/^npc_dota_hero_/, '').replace(/[\s-]+/g, '_');
+
 export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath }) => {
-  const isZh = t('open').includes('打开');
+  const openLabel = typeof t === 'function' ? t('open') : '';
+  const isZh = typeof openLabel === 'string' && openLabel.includes('打开');
+  const tr = (key: LocaleKey): string => {
+    const value = typeof t === 'function' ? t(key) : '';
+    return typeof value === 'string' && value ? value : (isZh ? zh[key] : en[key]);
+  };
   const head = block?.call ?? block;
   let matchId: string | null = null;
   let hero: string | null = null;
@@ -48,7 +86,7 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
         matchId = String(rawArgs.match_id);
       }
       if (typeof rawArgs.hero === 'string' && rawArgs.hero.trim()) {
-        hero = rawArgs.hero.trim().toLowerCase().replace(/^npc_dota_hero_/, '').replace(/[\s-]+/g, '_');
+        hero = normHero(rawArgs.hero);
       }
       if (typeof rawArgs.account === 'string' && /^\d{1,10}$/.test(rawArgs.account.trim())) {
         account = rawArgs.account.trim();
@@ -66,19 +104,62 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
     : Array.isArray(block?.result?.content)
       ? block.result.content
       : [];
-  const rawText = content.map((c: any) => (c?.type === 'text' ? c.text : '')).join('\n');
+  const rawText = content.map((c: any) => (c?.type === 'text' && typeof c.text === 'string' ? c.text : '')).join('\n');
   let verdict: string | null = null;
   let statusBadge: string | null = null;
+  let highlights: PreviewHighlight[] = [];
+  let chapters: PreviewChapter[] = [];
 
   if (rawText) {
     try {
       const parsed = JSON.parse(rawText);
-      if (parsed && typeof parsed === 'object') {
-        if (typeof parsed.hero === 'string' && !hero) hero = parsed.hero;
-        if (typeof parsed.verdict === 'string' && parsed.verdict) verdict = parsed.verdict;
-        if (parsed.status === 'ready') statusBadge = t('statusReady');
-        else if (parsed.status === 'parsing' || parsed.status === 'reviewing') statusBadge = t('statusWorking');
-        else if (parsed.status === 'pick_hero') statusBadge = t('statusPick');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        if (!matchId && parsed.match_id != null && /^[1-9]\d{0,12}$/.test(String(parsed.match_id))) {
+          matchId = String(parsed.match_id);
+        }
+        if (typeof parsed.hero === 'string' && parsed.hero.trim() && !hero) {
+          hero = normHero(parsed.hero);
+        }
+        if (parsed.lang === 'zh' || parsed.lang === 'en') {
+          lang = parsed.lang;
+        }
+        if (typeof parsed.verdict === 'string' && parsed.verdict.trim()) verdict = parsed.verdict.trim();
+        if (parsed.status === 'ready') statusBadge = tr('statusReady');
+        else if (parsed.status === 'parsing' || parsed.status === 'reviewing') statusBadge = tr('statusWorking');
+        else if (parsed.status === 'pick_hero') statusBadge = tr('statusPick');
+
+        if (toolName === 'dota2ai_replay_review' && parsed.status === 'ready') {
+          if (Array.isArray(parsed.highlights)) {
+            const rawHighlights: unknown[] = parsed.highlights;
+            highlights = rawHighlights
+              .filter((h): h is Record<string, unknown> => Boolean(h) && typeof h === 'object' && !Array.isArray(h))
+              .map((h): PreviewHighlight => ({
+                title: typeof h.title === 'string' ? h.title.trim() : '',
+                detail: typeof h.detail === 'string' ? h.detail.trim() : '',
+              }))
+              .filter((h) => Boolean(h.title || h.detail));
+          }
+          if (Array.isArray(parsed.chapters)) {
+            const rawChapters: unknown[] = parsed.chapters;
+            chapters = rawChapters
+              .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === 'object' && !Array.isArray(c))
+              .map((c): PreviewChapter | null => {
+                const rawTopic = typeof c.topic === 'string' ? c.topic.trim() : '';
+                const title = typeof c.title === 'string' ? c.title.trim() : '';
+                const analysis = typeof c.analysis === 'string' ? c.analysis.trim() : '';
+                if (!rawTopic && !title && !analysis) return null;
+                const topic: ChapterTopic = Object.prototype.hasOwnProperty.call(TOPIC_KEYS, rawTopic)
+                  ? (rawTopic as ChapterTopic)
+                  : 'other';
+                const rawAssessment = typeof c.assessment === 'string' ? c.assessment.trim() : '';
+                const assessment: ChapterAssessment = Object.prototype.hasOwnProperty.call(ASSESSMENT_KEYS, rawAssessment)
+                  ? (rawAssessment as ChapterAssessment)
+                  : 'mixed';
+                return { topic, title, assessment };
+              })
+              .filter((c): c is PreviewChapter => c !== null);
+          }
+        }
       }
     } catch {
       // Plain text error or non-JSON content.
@@ -93,6 +174,11 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
 
   const titlePair = TOOL_TITLES[toolName];
   const title = titlePair ? (isZh ? titlePair.zh : titlePair.en) : toolName;
+  const topHighlight = highlights.find((h) => h.title)?.title ?? highlights[0]?.detail ?? '';
+  const highlightsBadge = highlights.length === 1
+    ? tr('highlightCountOne')
+    : tr('highlightCountMany').replace('{n}', String(highlights.length));
+  const hasCoachPreview = highlights.length > 0 || chapters.length > 0;
 
   return (
     <div className="dota2ai-tool-card">
@@ -104,13 +190,50 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
           {statusBadge && <span className="dota2ai-tool-badge">{statusBadge}</span>}
         </span>
         <button type="button" className="dota2ai-tool-open" onClick={() => openPath(targetPath)}>
-          {matchId || account ? t('open') : t('openHome')} →
+          {matchId || account ? tr('open') : tr('openHome')} →
         </button>
       </div>
       {verdict && <p className="dota2ai-tool-verdict">{verdict}</p>}
+      {hasCoachPreview && (
+        <div className="dota2ai-tool-preview">
+          {highlights.length > 0 && (
+            <div className="dota2ai-tool-highlights">
+              <span className="dota2ai-tool-highlight-badge">
+                <span className="dota2ai-tool-highlight-dot" aria-hidden="true" />
+                {highlightsBadge}
+              </span>
+              {topHighlight && (
+                <span className="dota2ai-tool-highlight-top" title={topHighlight}>
+                  {topHighlight}
+                </span>
+              )}
+            </div>
+          )}
+          {chapters.length > 0 && (
+            <div className="dota2ai-tool-chapters" role="list" aria-label={tr('chaptersLabel')}>
+              {chapters.map((ch, idx) => {
+                const topicLabel = tr(TOPIC_KEYS[ch.topic]);
+                const assessmentLabel = tr(ASSESSMENT_KEYS[ch.assessment]);
+                const tip = ch.title ? `${ch.title} · ${assessmentLabel}` : `${topicLabel} · ${assessmentLabel}`;
+                return (
+                  <span
+                    key={`${ch.topic}-${idx}`}
+                    role="listitem"
+                    className={`dota2ai-tool-chapter is-${ch.assessment}`}
+                    title={tip}
+                  >
+                    <span className="dota2ai-tool-chapter-dot" aria-hidden="true" />
+                    {topicLabel}
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
       {(rawText || head?.argsRaw) && (
         <details className="dota2ai-tool-details">
-          <summary>{t('details')}</summary>
+          <summary>{tr('details')}</summary>
           <pre>{rawText || String(head?.argsRaw ?? '')}</pre>
         </details>
       )}

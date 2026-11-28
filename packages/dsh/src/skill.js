@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 /** The skill the plugin registers on a host with a skill registry (`ctx.skills`). */
 export const SKILL = {
   name: 'dota2ai',
-  description: 'Review a player\'s own Dota 2 game with dota2.ai: the replay review with checked evidence, why the game went that way, pro games on the same problem, follow-ups, and a next-game goal.',
+  description: 'Review a player\'s own Dota 2 game with dota2.ai: the replay review with checked evidence, why the game went that way, pro games on the same problem, follow-ups, and hero-vs-hero matchups.',
   whenToUse: 'Someone asks to review a Dota 2 match, why they lost, what to practise, how their last game went, or how one hero plays against another.',
   source: 'runtime',
 };
