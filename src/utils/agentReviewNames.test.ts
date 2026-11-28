@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { attackOf, buildCheck, contactBeforeDeaths } from '../../lib/agent/situationTools.js';
+import { attackOf, buildCheck, contactBeforeDeaths, effectSits } from '../../lib/agent/situationTools.js';
 import { deathContext } from '../../packages/review-engine/src/trace/index.js';
 import { reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
 import { withHeroNames } from '../../lib/agent/review/toolkit.js';
@@ -128,7 +128,12 @@ describe('build_check: how each item meets the enemy who killed the player', () 
     const a = by(pa);
     // Eul's: cast on an enemy (Valve: "can only be cast on enemy units or yourself"), a basic dispel.
     expect(a.cyclone).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'an_enemy_target' });
-    expect(a.cyclone.their_abilities_marked_removable_by_it).toEqual(pa.their_abilities.filter((x: any) => x.dispelled_by === 'basic').map((x: any) => x.name));
+    // Only effects that sit where the dispel lands: on her, a buff she gives herself; on the player, what her damage
+    // put there. Eul's on PA removes neither Stifling Dagger's slow (on the player) nor anything not placed.
+    const placed = (where: string) => pa.their_abilities.filter((x: any) => x.dispelled_by === 'basic' && effectSits(x.ability) === where).map((x: any) => x.name);
+    expect(a.cyclone.their_effects_it_removes).toEqual(placed('on_them'));
+    expect(a.cyclone.their_effects_it_removes).not.toContain('Stifling Dagger');
+    expect(a.black_king_bar.their_effects_it_removes).toContain('Stifling Dagger');
     expect(a.nullifier.dispel_lands_on).toBe('an_enemy_target');
     // Black King Bar's dispel is on the player, never on the enemy.
     expect(a.black_king_bar).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'self_or_allies' });
@@ -256,5 +261,25 @@ describe('build_check: the player\'s own hero, for how an item sits with it', ()
     // An item's mana regen and intelligence are among what it gives (Valve's stats).
     const cyclone = b.answers_to_top_killers[0].items_acting_on_their_damage.items.find((i: any) => i.item === 'cyclone');
     expect(cyclone.gives).toMatchObject({ mana_regen: expect.any(Number), intelligence: expect.any(Number) });
+  });
+});
+
+// #504 follow-up: a dispel cast on Ursa removes Overpower (his own buff), never Earthshock's slow (on the player).
+describe('where an enemy ability\'s effect sits, for what a dispel can remove', () => {
+  it('no target and no damage: a buff on the caster; a damaging ability: on whom it hits; otherwise not placed', () => {
+    expect(effectSits('ursa_overpower')).toBe('on_them');
+    expect(effectSits('sven_warcry')).toBe('on_them');
+    expect(effectSits('ursa_earthshock')).toBe('on_the_player');
+    expect(effectSits('phantom_assassin_stifling_dagger')).toBe('on_the_player');
+    // A targeted spell without damage may land on an enemy or an ally; a passive is cast by nobody: not placed.
+    expect(effectSits('skywrath_mage_ancient_seal')).toBeNull();
+    expect(effectSits('ursa_fury_swipes')).toBeNull();
+    expect(effectSits('no_such_ability')).toBeNull();
+    expect(effectSits('ursa_overpower', {})).toBeNull();
+  });
+
+  it('the placement comes from the constants\' behavior and damage type alone', () => {
+    const fake: any = { a: { behavior: 'No Target' }, b: { behavior: ['No Target', 'Instant Cast'], dmg_type: 'Magical' }, c: { behavior: ['AOE', 'No Target'] }, d: {} };
+    expect([effectSits('a', fake), effectSits('b', fake), effectSits('c', fake), effectSits('d', fake)]).toEqual(['on_them', 'on_the_player', null, null]);
   });
 });
