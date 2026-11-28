@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { BETTER, RUBRIC_SCHEMA, compareSummaries, logicOf, reviewTexts, rubricOf, scoreReview, stabilityOf, styleOf, summarize } from '../../lib/agent/evalReview.js';
+import { BETTER, RUBRIC_SCHEMA, coachOf, compareSummaries, logicOf, reviewTexts, rubricOf, scoreReview, stabilityOf, styleOf, summarize } from '../../lib/agent/evalReview.js';
 import { evaluate, expandStoredEntries, loadRubrics, parseArgs, parseName } from '../../scripts/eval-review.mjs';
 
 const json = (file: string) => JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'));
@@ -549,5 +549,146 @@ describe('committed eval rubrics inventory (#361)', () => {
     });
     expect(rubricOf(coachStomp, sb)).toMatchObject({ praise_rate: 1, findings_within_max: true, must_not: [], main_reason_ok: true });
     expect(reviewTexts(coachStomp).map((t) => t.where)).toEqual(expect.arrayContaining(['opening_note', 'highlight', 'highlight_evidence', 'chapter', 'chapter_evidence', 'encouragement']));
+  });
+});
+
+describe('review eval: coach-first metrics', () => {
+  it('scores opening_note, encouragement, highlights evidence coverage, chapter topics, and mechanical KPI leaks', () => {
+    // Legacy review without coach fields scores cleanly with null evidence rate and zero leaks.
+    expect(coachOf(stored)).toEqual({
+      has_opening_note: false,
+      has_encouragement: false,
+      highlights_count: 0,
+      highlights_with_evidence: 0,
+      highlights_with_evidence_rate: null,
+      chapters_count: 0,
+      chapter_topics: [],
+      mechanical_kpi_leaks: [],
+    });
+
+    // Full Coach-First review with mixed highlight evidence and deduplicated chapter topics.
+    const coachReview = {
+      review: review({
+        lang: 'zh',
+        opening_note: '这局前期对线很稳，整体执行力在线。',
+        highlights: [
+          { title: '27:27 关键咆哮', detail: '隔着黑皇杖定住幻影刺客 3.4 秒。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 吼住 3.4 秒。' }] },
+          { title: '推塔积极', detail: '建筑伤害全队最高。', evidence: [{ refs: [], fact: '无效证据' }] },
+          { title: '残缺亮点' },
+        ],
+        chapters: [
+          { topic: 'laning', title: '对线期', assessment: 'solid', analysis: '补刀持平。', evidence: [{ refs: ['lane:beastmaster'], fact: '37 刀。' }] },
+          { topic: 'teamfights', title: '中期团战', assessment: 'mixed', analysis: '到场率高。', evidence: [{ refs: ['fights:beastmaster:6'], fact: '753 伤害。' }] },
+          { topic: 'teamfights', title: '后期团战', assessment: 'key_gap', analysis: '大招留手。', evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27。' }] },
+          { topic: 'macro', title: '无效章节' },
+        ],
+        encouragement: '27:27 那波大招展现出你的果断，继续保持。',
+      }),
+      verification: { repaired: false, dropped: 0, first_pass_problems: 2 },
+    };
+    expect(coachOf(coachReview)).toEqual({
+      has_opening_note: true,
+      has_encouragement: true,
+      highlights_count: 2,
+      highlights_with_evidence: 1,
+      highlights_with_evidence_rate: 0.5,
+      chapters_count: 3,
+      chapter_topics: ['laning', 'teamfights'],
+      mechanical_kpi_leaks: [],
+    });
+    expect(scoreReview(coachReview).coach).toEqual(coachOf(coachReview));
+
+    // Mechanical KPI quota leaks in Chinese and English are flagged, deduplicated, and capped at 8.
+    const leaky = review({
+      lang: 'zh',
+      verdict: '下一盘团战外阵亡不超过 2 次，避免死前 12 秒已不到半血。',
+      mainline: ['团战之外不到半血阵亡不超过 1 次。'],
+      findings: [finding({
+        claim: 'Target at most 2 deaths and avoid deaths outside fights that began below half health.',
+        fix: 'Keep at most 1 cast wasted and avoid deaths that began below half health.',
+      })],
+    });
+    expect(coachOf(leaky).mechanical_kpi_leaks).toEqual([
+      '下一盘团战外阵亡不超过 2 次',
+      '死前 12 秒已不到半血',
+      'at most 2 deaths',
+      'deaths outside fights that began below half health',
+      'at most 1 cast',
+      'deaths that began below half health',
+      '团战之外不到半血阵亡不超过',
+    ]);
+
+    // Malformed / non-array / non-object coach fields never throw.
+    expect(coachOf({ review: { opening_note: 123, encouragement: {}, highlights: 'bad', chapters: [null, 42] } })).toEqual({
+      has_opening_note: false,
+      has_encouragement: false,
+      highlights_count: 0,
+      highlights_with_evidence: 0,
+      highlights_with_evidence_rate: null,
+      chapters_count: 0,
+      chapter_topics: [],
+      mechanical_kpi_leaks: [],
+    });
+  });
+
+  it('aggregates coach metrics and first_pass_problems_mean in summarize() and judges them in BETTER / compareSummaries', () => {
+    const goodCoach = scoreReview({
+      review: review({
+        lang: 'zh',
+        verdict: '这局前期节奏很稳，关键团战执行到位。',
+        findings: [],
+        opening_note: '开场肯定。',
+        highlights: [
+          { title: '亮点一', detail: '细节一。', evidence: [{ refs: ['cast:x:1'], fact: 'f1' }] },
+          { title: '亮点二', detail: '细节二。', evidence: [{ refs: ['cast:x:2'], fact: 'f2' }] },
+        ],
+        chapters: [
+          { topic: 'laning', title: '对线', assessment: 'solid', analysis: '节奏稳健。', evidence: [{ refs: ['lane:x'], fact: '补刀领先。' }] },
+          { topic: 'items', title: '出装', assessment: 'mixed', analysis: '出装及时。', evidence: [{ refs: ['build:x'], fact: '关键装备到位。' }] },
+        ],
+        encouragement: '继续加油。',
+      }),
+      verification: { repaired: false, dropped: 0, first_pass_problems: 0 },
+    });
+    const weakCoach = scoreReview({
+      review: review({
+        lang: 'zh',
+        verdict: '下一盘阵亡不超过 2 次。',
+        findings: [],
+        highlights: [{ title: '亮点', detail: '没有证据。' }],
+        chapters: [{ topic: 'macro', title: '运营', assessment: 'mixed', analysis: '推塔偏慢。', evidence: [{ refs: ['tempo:x'], fact: '推进偏慢。' }] }],
+      }),
+      verification: { repaired: true, dropped: 1, first_pass_problems: 10 },
+    });
+    const legacyNoFirstPass = scoreReview(stored);
+
+    const sum = summarize([goodCoach, weakCoach, legacyNoFirstPass]);
+    expect(sum).toMatchObject({
+      opening_note_rate: 0.33,
+      encouragement_rate: 0.33,
+      highlights_mean: 1,
+      highlights_with_evidence_rate: 0.67,
+      chapters_mean: 1,
+      first_pass_problems_mean: 5,
+      mechanical_kpi_leaks: 1,
+    });
+
+    expect(BETTER).toMatchObject({
+      opening_note_rate: 1,
+      encouragement_rate: 1,
+      highlights_with_evidence_rate: 1,
+      first_pass_problems_mean: -1,
+      mechanical_kpi_leaks: -1,
+    });
+
+    const cmp = compareSummaries(summarize([weakCoach]), summarize([goodCoach]));
+    expect(cmp.worse).toEqual([]);
+    expect(cmp.better.map((x: { key: string }) => x.key)).toEqual(expect.arrayContaining([
+      'opening_note_rate',
+      'encouragement_rate',
+      'highlights_with_evidence_rate',
+      'first_pass_problems_mean',
+      'mechanical_kpi_leaks',
+    ]));
   });
 });

@@ -243,8 +243,8 @@ describe('the review agent has both tools, and their records can be cited and sh
 });
 
 describe('game_plan.strengths', () => {
-  it('is part of the schema, checked like the plan\'s other sentences, and left out alone when it states what no tool said', () => {
-    expect(Object.keys(SUBMIT_REVIEW.input_schema.properties.game_plan.properties)).toContain('strengths');
+  it('is omitted from the slimmed schema while legacy stored reviews remain verified and shippable', () => {
+    expect(Object.keys(SUBMIT_REVIEW.input_schema.properties.game_plan.properties).sort()).toEqual(['against_your_plan', 'evidence', 'main_reason', 'why']);
     const spikes = powerSpikes(trace, { hero: 'beastmaster' }, { lang: 'zh', match });
     const plan = { strengths: '幻影刺客 15:47 做出狂战斧，之后杀了你 5 次。', course: '幻影刺客杀了你 7 次。', your_part: '你 18:39 到 12 级。', main_reason: 'enemy_play', why: '幻影刺客 6:14 到 6 级。', evidence: [{ refs: ['spikes:beastmaster'], fact: '幻影刺客 15:47 做出狂战斧，之后杀了你 5 次。' }] };
     const ok = verifyReview({ verdict: 'v', mainline: [], findings: [], blind_spots: [], game_plan: plan }, [spikes]);
