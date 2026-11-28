@@ -5,14 +5,14 @@ import { readFileSync } from 'node:fs';
 import express from 'express';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { createV1Router } from '../../../routes/v1/index.js';
+import { attachMcp } from '../src/index.js';
 import { createCoachRouter } from '../../../lib/coach/router.js';
 import { createCoachService } from '../../../lib/coach/service.js';
 import { createSlidingWindowLimiter } from '../../../lib/rateLimiter.js';
 
 const coachMatch = JSON.parse(readFileSync(new URL('../../../src/fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
 const unparsedMatch = JSON.parse(readFileSync(new URL('../../../src/fixtures/coach/match9091400302.unparsed.json', import.meta.url), 'utf8'));
-const ALL = ['review_match', 'get_evidence', 'recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup'];
+const ALL = ['recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup'];
 
 const servers = [];
 const clients = [];
@@ -42,7 +42,7 @@ async function start({ limit = 100, recentCalls = [], matchData = coachMatch, re
   const app = express();
   app.use(express.json());
   app.use(createCoachRouter({ getMatchDetail, resolveClientIp, mapError, limiter: service.limiter }));
-  app.use(createV1Router({ fetchMatch: async () => { throw new Error('unused'); }, coachForRequest: service.forRequest }));
+  attachMcp(app, { coachForRequest: service.forRequest });
   const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
   servers.push(server);
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -214,7 +214,7 @@ describe('coach tool errors tell the agent what to do', () => {
     });
     const app = express();
     app.use(express.json());
-    app.use(createV1Router({ fetchMatch: async () => { throw new Error('unused'); }, coachForRequest: service.forRequest }));
+    attachMcp(app, { coachForRequest: service.forRequest });
     const server = await new Promise((r) => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
     servers.push(server);
     const client = await connect(`http://127.0.0.1:${server.address().port}`);

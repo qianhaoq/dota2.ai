@@ -9,7 +9,6 @@ import { createMatchDetailCache } from '../../lib/matchReview/matchDetailCache.j
 import { createParseRequestBudget, createParseRequestTracker, isMatchParsed } from '../../lib/matchReview/matchParse.js';
 import { buildCoachReport, dataGaps, heroInfo } from '../../lib/coach/analyze.js';
 import { buildSurface, validateSurface } from '../../lib/coach/cards.js';
-import { buildReview, validateReview } from '../../packages/review-engine/src/index.js';
 
 /**
  * A real game: `blob` is what odota/parser returned for the Valve replay,
@@ -199,12 +198,6 @@ describe('the coach engine on a self-parsed match', () => {
     for (const p of report.players) { expect(p.benchmarks).toBeNull(); expect(p.rank_tier).toBeNull(); }
     for (const r of report.reviews) expect(r.bracket).toBeNull();
     expect(JSON.stringify(report.reviews)).not.toMatch(/more than \d+% of|多于 \d+% 的/);
-  });
-
-  it('the v1 review engine accepts it as a parsed match', () => {
-    const review = buildReview(m, { heroId: m.players[0].hero_id, lang: 'en', fetchedAt: '2026-11-22T00:02:00.000Z' } as any) as any; // as routes/v1 calls it
-    expect(validateReview(review)).toEqual({ ok: true, errors: [] });
-    expect(review.match).toMatchObject({ id: ID, parsed: true, parse_version: 22 });
   });
 });
 

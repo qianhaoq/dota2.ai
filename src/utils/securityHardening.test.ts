@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { asyncHandler, internalErrorHandler } from '../../lib/asyncHandler.js';
 import { createAgentRouter } from '../../lib/agent/router.js';
 import { createTraceStore, MAX_TRACE_JSON_BYTES } from '../../lib/agent/stores.js';
-import { securityHeaders } from '../../routes/v1/support.js';
+import { securityHeaders } from '../../lib/securityHeaders.js';
 import { createDshTracePipeline, MAX_TRACE_GZIP_BYTES, normalizeTraceGzip } from '../../packages/dsh/src/traceSource.js';
 
 const express = createRequire(import.meta.url)('express');

@@ -4,7 +4,6 @@ import { buildValveReplayUrl, createSteamGcClient as create, mapGcHistory, mapGc
 import { buildCoachReport } from '../../lib/coach/analyze.js';
 import { buildSurface, validateSurface } from '../../lib/coach/cards.js';
 import { shapeRecent } from '../../lib/coach/recent.js';
-import { buildReview, validateReview } from '../../packages/review-engine/src/index.js';
 
 const createSteamGcClient = (o: any): any => create(o);
 const load = (f: string) => JSON.parse(readFileSync(new URL(`../fixtures/coach/${f}`, import.meta.url), 'utf8'));
@@ -127,12 +126,6 @@ describe('mapGcMatch: Valve GC scoreboard → OpenDota shape', () => {
       expect(validateSurface(surface)).toEqual(surface); // nothing dropped by the card validator
     }
     expect(JSON.stringify(r)).not.toMatch(/NaN|undefined/);
-  });
-
-  it('the v1 review engine validates it and reports the missing timeline as a data gap', () => {
-    const review = buildReview(m, { heroId: m.players[0].hero_id, lang: 'en', fetchedAt: m.gc_fetched_at }) as any; // as routes/v1 calls it
-    expect(validateReview(review)).toEqual({ ok: true, errors: [] });
-    expect(JSON.stringify(review.data_gaps ?? review)).toMatch(/pars|replay|timeline/i);
     // No benchmark percentiles were invented: GC has none.
     for (const p of m.players) expect(p.benchmarks).toBeUndefined();
   });

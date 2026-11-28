@@ -12,7 +12,7 @@ export const MCP_URL = 'https://dota2.ai/mcp';
 
 /** The tools `tools/list` returns on the hosted /mcp, in that order. */
 export const MCP_TOOLS = [
-  'review_match', 'get_evidence', 'replay_review', 'recent_matches', 'coach_report',
+  'replay_review', 'recent_matches', 'coach_report',
   'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup',
 ] as const;
 
@@ -152,10 +152,10 @@ export function accessSnippets(matchId: string, hero = 'tidehunter'): AccessSnip
       label: { en: 'HTTP', zh: 'HTTP', ru: 'HTTP' },
       lines: [
         `curl https://dota2.ai/api/coach/${matchId}`,
-        `curl 'https://dota2.ai/api/v1/review/${matchId}?hero=${hero}'`,
+        `curl 'https://dota2.ai/api/agent/${matchId}'`,
       ],
       note: { en: 'JSON, no key. Rate-limited per caller.', zh: '返回 JSON，无需密钥；按调用方限流。', ru: 'JSON без API-ключа. Действуют лимиты запросов.' },
-      links: [{ href: '/openapi.json', label: 'openapi.json' }, { href: '/llms.txt', label: 'llms.txt' }],
+      links: [{ href: '/llms.txt', label: 'llms.txt' }],
     },
   ];
 }

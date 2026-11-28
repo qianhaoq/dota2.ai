@@ -122,7 +122,7 @@ node packages/cli/bin/dota2ai.js coach 9091400302 --hero 潮汐猎人 --section 
 node packages/cli/bin/dota2ai.js matchup 潮汐猎人 熊战士 --rank legend --lang zh
 ```
 
-所有 CLI 命令均支持 `--lang en|zh` 和 `--json`（详见 [`packages/cli`](packages/cli/README.md)）。HTTP 接口：`GET /api/v1/review/<比赛编号>`，文档见 [`openapi.json`](https://dota2.ai/openapi.json) 与 [`llms.txt`](https://dota2.ai/llms.txt)。
+所有 CLI 命令均支持 `--lang en|zh` 和 `--json`（详见 [`packages/cli`](packages/cli/README.md)）。HTTP 接口：`GET /api/agent/<比赛编号>`，文档见 [`llms.txt`](https://dota2.ai/llms.txt)。
 
 ---
 

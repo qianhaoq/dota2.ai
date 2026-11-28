@@ -19,7 +19,8 @@
  */
 
 import express from 'express';
-import { createV1Router } from '../routes/v1/index.js';
+import { attachMcp } from '@dota2ai/mcp';
+import { LLMS_TXT } from '../lib/llmsTxt.js';
 import { createCoachRouter } from '../lib/coach/router.js';
 import { createCoachService } from '../lib/coach/service.js';
 import { buildCaseStudies } from '../lib/coach/cases.js';
@@ -43,11 +44,6 @@ const MATCH_ID = '9035042364';
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '64kb' }));
-
-const rawMatches = new Map([
-  [9035042364, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/match9035042364.parsed.json'), 'utf8'))],
-  [8985182860, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/match8985182860.json'), 'utf8'))],
-]);
 
 const coachMatches = new Map([
   [9091400302, JSON.parse(readFileSync(path.join(ROOT, 'src/fixtures/coach/match9091400302.parsed.json'), 'utf8'))],
@@ -83,20 +79,10 @@ app.use(createCoachRouter({
   cases: coachCaseService,
 }));
 
-app.use(createV1Router({
-  fetchMatch: async (id) => {
-    const match = rawMatches.get(Number(id));
-    if (!match) throw Object.assign(new Error('Match not found'), { code: 'MATCH_NOT_FOUND' });
-    return structuredClone(match);
-  },
-  phrasingCompletion: undefined,
-  // Remote MCP coach tools in process over the coach fixtures, like production.
+attachMcp(app, {
   coachForRequest: coachService.forRequest,
-  // Optional synthetic snapshot for local learning-flow acceptance, never a production upload.
-  knowledgeSnapshot: process.env.SITE_KNOWLEDGE_PREVIEW_FILE
-    ? JSON.parse(readFileSync(process.env.SITE_KNOWLEDGE_PREVIEW_FILE, 'utf8'))
-    : undefined,
-}));
+});
+app.get('/llms.txt', (_req, res) => res.type('text/plain').send(LLMS_TXT));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, mock: true });

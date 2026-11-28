@@ -47,10 +47,10 @@ const call = async (client, name, args) => {
 };
 
 describe('coach MCP tools (stdio)', () => {
-  it('lists the coach tools next to the v1 review tools', async () => {
+  it('lists the coach tools', async () => {
     const client = await connect({ coach });
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(names).toEqual(['coach_ask', 'coach_cases', 'coach_report', 'get_evidence', 'goal_check', 'hero_matchup', 'recent_matches', 'review_match']);
+    expect(names).toEqual(['coach_ask', 'coach_cases', 'coach_report', 'goal_check', 'hero_matchup', 'recent_matches']);
   });
 
   it('coach_report: roster without a hero, the causes with one', async () => {
@@ -83,16 +83,16 @@ describe('coach MCP tools (stdio)', () => {
   });
 });
 
-it('the shared HTTP /mcp keeps to the review tools (one IP must not carry every agent\'s coach calls)', async () => {
+it('the shared HTTP /mcp only exposes tools wired per caller (one IP must not carry every agent\'s coach calls)', async () => {
   const app = express();
   app.use(express.json());
-  attachMcp(app, { reviewForRequest: () => async () => ({}) });
+  attachMcp(app, { replayForRequest: () => ({ review: async () => ({}) }) });
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   try {
     const client = new Client({ name: 't', version: '0' });
     await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.address().port}/mcp`)));
-    expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual(['get_evidence', 'review_match']);
+    expect((await client.listTools()).tools.map((t) => t.name).sort()).toEqual(['replay_review']);
     await client.close();
   } finally {
     server.close();

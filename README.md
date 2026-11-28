@@ -122,7 +122,7 @@ node packages/cli/bin/dota2ai.js coach 9091400302 --hero tidehunter --section wh
 node packages/cli/bin/dota2ai.js matchup tidehunter ursa --rank legend
 ```
 
-Every CLI command supports `--lang en|zh` and `--json` ([`packages/cli`](packages/cli/README.md)). HTTP endpoints: `GET /api/v1/review/<match>` — see [`openapi.json`](https://dota2.ai/openapi.json) and [`llms.txt`](https://dota2.ai/llms.txt).
+Every CLI command supports `--lang en|zh` and `--json` ([`packages/cli`](packages/cli/README.md)). HTTP endpoints: `GET /api/agent/<match>` — see [`llms.txt`](https://dota2.ai/llms.txt).
 
 ---
 
