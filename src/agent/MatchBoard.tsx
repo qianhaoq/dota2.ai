@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { SafeImg } from '../coach/ui';
 import type { CoachReport, Player } from '../coach/types';
+import { CrossedSwordsIcon, FactionCrest } from './DotaIcons';
 
 type Lang = 'en' | 'zh' | 'ru';
 type Bi = Record<Lang, string>;
@@ -49,13 +50,14 @@ const k = (n: number) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1)}k` : St
  * (the same as the scoreboard under it), not "good / bad". With no player it reads Radiant above, Dire below.
  */
 const GoldCurve: React.FC<{ adv: number[]; lang: Lang; title?: Bi; mine?: 'radiant' | 'dire' | null }> = ({ adv: radiantAdv, lang, title = T.gold, mine = null }) => {
+  const uid = useId();
   // The side drawn above the line, and its lead.
   const up: 'radiant' | 'dire' = mine ?? 'radiant';
   const down: 'radiant' | 'dire' = up === 'radiant' ? 'dire' : 'radiant';
   const adv = up === 'radiant' ? radiantAdv : radiantAdv.map((v) => -v);
   const who = (side: 'radiant' | 'dire') => (mine ? `${(side === mine ? T.yourSide : T.theirSide)[lang]}${lang === 'zh' ? '（' : ' ('}${T[side][lang]}${lang === 'zh' ? '）' : ')'}` : T[side][lang]);
   const ahead = (side: 'radiant' | 'dire') => (mine ? (side === mine ? T.goldMine : T.goldTheirs)[lang] : (side === 'radiant' ? T.goldUp : T.goldDown)[lang]);
-  const W = 640; const H = 132; const pad = 6;
+  const W = 640; const H = 136; const pad = 6;
   const max = Math.max(2000, ...adv.map((v) => Math.abs(v)));
   const x = (i: number) => pad + (i / Math.max(1, adv.length - 1)) * (W - 2 * pad);
   const y = (v: number) => H / 2 - (v / max) * (H / 2 - pad);
@@ -64,6 +66,8 @@ const GoldCurve: React.FC<{ adv: number[]; lang: Lang; title?: Bi; mine?: 'radia
   const end = adv[adv.length - 1];
   const leader = end >= 0 ? up : down;
   const ticks = adv.map((_, i) => i).filter((i) => i > 0 && i % 10 === 0);
+  const upColor = up === 'radiant' ? '#4cd478' : '#e85a4f';
+  const downColor = down === 'radiant' ? '#4cd478' : '#e85a4f';
   return (
     <figure className="ag-gold">
       <figcaption>
@@ -75,10 +79,18 @@ const GoldCurve: React.FC<{ adv: number[]; lang: Lang; title?: Bi; mine?: 'radia
         <defs>
           <clipPath id="ag-gold-up"><rect x="0" y="0" width={W} height={H / 2} /></clipPath>
           <clipPath id="ag-gold-down"><rect x="0" y={H / 2} width={W} height={H / 2} /></clipPath>
+          <linearGradient id={`${uid}-grad-up`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={upColor} stopOpacity="0.4" />
+            <stop offset="100%" stopColor={upColor} stopOpacity="0.04" />
+          </linearGradient>
+          <linearGradient id={`${uid}-grad-down`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={downColor} stopOpacity="0.04" />
+            <stop offset="100%" stopColor={downColor} stopOpacity="0.4" />
+          </linearGradient>
         </defs>
         {ticks.map((i) => <line key={i} className="ag-gold-tick" x1={x(i)} x2={x(i)} y1={0} y2={H} />)}
-        <polygon className={`ag-gold-area is-${up}`} points={area} clipPath="url(#ag-gold-up)" />
-        <polygon className={`ag-gold-area is-${down}`} points={area} clipPath="url(#ag-gold-down)" />
+        <polygon className={`ag-gold-area is-${up}`} fill={`url(#${uid}-grad-up)`} points={area} clipPath="url(#ag-gold-up)" />
+        <polygon className={`ag-gold-area is-${down}`} fill={`url(#${uid}-grad-down)`} points={area} clipPath="url(#ag-gold-down)" />
         <line className="ag-gold-zero" x1={0} x2={W} y1={H / 2} y2={H / 2} />
         <polyline className="ag-gold-line" points={line} />
       </svg>
@@ -158,10 +170,10 @@ export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; l
       <h2>{T.scoreboard[lang]}</h2>
       {(winner != null || score || num(m.duration)) && (
         <p className="ag-board-head">
-          {winner != null && <b className={winner ? 'is-radiant' : 'is-dire'}>{winner ? T.radiant[lang] : T.dire[lang]} {T.won[lang]}</b>}
-          {score && <span><span className="is-radiant">{score[0]}</span> : <span className="is-dire">{score[1]}</span></span>}
-          {num(m.duration) && <span>{clock(m.duration)}</span>}
-          {(m.mode?.[lang] ?? m.mode?.en) && <span>{m.mode?.[lang] ?? m.mode?.en}</span>}
+          {winner != null && <b className={winner ? 'is-radiant' : 'is-dire'}><FactionCrest side={winner ? 'radiant' : 'dire'} size={15} /> {winner ? T.radiant[lang] : T.dire[lang]} {T.won[lang]}</b>}
+          {score && <span className="ag-board-score"><span className="is-radiant">{score[0]}</span> <CrossedSwordsIcon size={12} /> <span className="is-dire">{score[1]}</span></span>}
+          {num(m.duration) && <span className="ag-board-pill">{clock(m.duration)}</span>}
+          {(m.mode?.[lang] ?? m.mode?.en) && <span className="ag-board-pill">{m.mode?.[lang] ?? m.mode?.en}</span>}
         </p>
       )}
       {adv.length > 2 ? <GoldCurve adv={adv} lang={lang} mine={me ? (me.radiant ? 'radiant' : 'dire') : null} title={fromReplay ? (replayLeadIs === 'gold' ? T.goldReplayEarned : T.goldReplay) : T.gold} /> : showHead && <p className="ag-gold-none">{T.goldNone[lang]}</p>}
@@ -172,7 +184,7 @@ export const MatchBoard: React.FC<{ report: CoachReport; hero?: string | null; l
         return (
           <div key={String(radiant)} className={`ag-side ${radiant ? 'is-radiant' : 'is-dire'}`}>
             <h3>
-              <span>{radiant ? T.radiant[lang] : T.dire[lang]}{me && me.radiant === radiant ? ` · ${T.yourSide[lang]}` : ''}</span>
+              <span className="ag-side-title"><FactionCrest side={radiant ? 'radiant' : 'dire'} size={13} />{radiant ? T.radiant[lang] : T.dire[lang]}{me && me.radiant === radiant ? ` · ${T.yourSide[lang]}` : ''}</span>
               {worth > 0 && <span className="ag-side-worth">{T.teamWorth[lang]} {thousands(worth)}</span>}
             </h3>
             {showHead && (

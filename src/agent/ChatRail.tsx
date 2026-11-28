@@ -2,6 +2,8 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
 import { AgentApiError, askAgent, type ChatTurn, type ToolStep } from './api';
 import { trackEvent } from '../services/analytics';
 import { OwnModelCallout } from '../coach/OwnModel';
+import { SafeImg } from '../coach/ui';
+import { PanelToggleIcon } from './DotaIcons';
 
 /**
  * The coach, beside the review. Each question goes to the agent, which looks
@@ -28,6 +30,7 @@ const T = {
   failed: { en: 'No answer came back. Try again.', zh: '没有拿到回答，请重试。', ru: 'Ответ не пришёл. Попробуйте снова.' },
   unverified: { en: 'Not found in the replay data, treat with care:', zh: '以下内容在录像数据里没有查到，请谨慎看待：', ru: 'Не найдено в данных реплея, отнеситесь с осторожностью:' },
   suggest: { en: 'Try asking', zh: '可以这样问', ru: 'Попробуйте спросить' },
+  collapse: { en: 'Collapse coach panel', zh: '收起教练栏', ru: 'Свернуть панель тренера' },
 } as const;
 
 const TOOLS: Record<string, Record<Lang, string>> = {
@@ -61,7 +64,18 @@ export function stepLabel(step: ToolStep, lang: Lang): string {
 
 interface Turn { q: string; a: string; steps: ToolStep[]; pending: boolean; error?: string; unverified?: string[]; refused?: 'refused' | 'daily' }
 
-export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; lang: Lang; suggestions: string[]; plan?: string | null; /** The model that wrote the review on screen, when not the default: it answers the questions too. */ model?: string | null }>(({ matchId, hero, lang, suggestions, plan = null, model = null }, ref) => {
+export const ChatRail = forwardRef<ChatHandle, {
+  matchId: string;
+  hero: string;
+  lang: Lang;
+  suggestions: string[];
+  plan?: string | null;
+  /** The model that wrote the review on screen, when not the default: it answers the questions too. */
+  model?: string | null;
+  heroName?: string | null;
+  heroImg?: string | null;
+  onCollapse?: () => void;
+}>(({ matchId, hero, lang, suggestions, plan = null, model = null, heroName = null, heroImg = null, onCollapse }, ref) => {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState('');
   const [context, setContext] = useState<{ label: string; refs: string[] } | null>(null);
@@ -131,9 +145,24 @@ export const ChatRail = forwardRef<ChatHandle, { matchId: string; hero: string; 
   useEffect(() => { sendRef.current = (text) => { void send(text, false); }; busyRef.current = busy; });
 
   return (
-    <aside className="ag-chat" aria-label={t(T.title)}>
+    <aside id="coach-rail" className="ag-chat" aria-label={t(T.title)}>
       <header>
-        <h2>{t(T.title)}</h2>
+        <div className="ag-chat-head-row">
+          <h2>{t(T.title)}</h2>
+          <div className="ag-chat-head-tools">
+            {heroName && (
+              <span className="ag-chat-hero-pill">
+                {heroImg && <SafeImg src={heroImg} alt="" className="ag-chat-hero-img" />}
+                <span>{heroName}</span>
+              </span>
+            )}
+            {onCollapse && (
+              <button type="button" className="ag-chat-collapse" aria-label={t(T.collapse)} title={t(T.collapse)} onClick={onCollapse}>
+                <PanelToggleIcon open={true} size={14} />
+              </button>
+            )}
+          </div>
+        </div>
         <p>{t(T.sub)}</p>
       </header>
       <div ref={logRef} className="ag-chat-log" aria-live="polite">

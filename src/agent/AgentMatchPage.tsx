@@ -16,7 +16,9 @@ import { MatchBoard } from './MatchBoard';
 import { planKey } from '../../lib/agent/plans.js';
 import { DEFAULT_AGENT_MODEL, modelId, modelLabel, modelWait, writesSlowly } from '../../lib/agent/models.js';
 import { ReviewDoc } from './ReviewDoc';
-import { HeroTrackMap } from './HeroTrackMap';
+import { HeroTrackMap, type HeroTrackMapHandle } from './HeroTrackMap';
+import { MatchHeroBanner } from './MatchHeroBanner';
+import { CoachChatIcon, FactionCrest, PanelToggleIcon } from './DotaIcons';
 import { WaitDeaths } from './WaitDeaths';
 import { WaitFacts } from './WaitFacts';
 import { ShareBar } from './ShareBar';
@@ -138,6 +140,15 @@ const T = {
   },
   q1: { en: 'Which of my deaths was the most avoidable?', zh: '我哪一次阵亡最不应该？', ru: 'Какой из моих смертей было проще всего избежать?' },
   qFinding: { en: 'what exactly should I have done instead?', zh: '具体应该怎么打？', ru: 'что именно мне следовало сделать иначе?' },
+  navLabel: { en: 'Analysis sections', zh: '复盘分区导航', ru: 'Разделы разбора' },
+  navVerdict: { en: 'Verdict', zh: '核心结论', ru: 'Итог' },
+  navSummary: { en: 'Pros & Cons', zh: '优缺点', ru: 'Плюсы и минусы' },
+  navChapters: { en: 'Walkthrough', zh: '逐层复盘', ru: 'По этапам' },
+  navMap: { en: 'Tactical Map', zh: '战术地图', ru: 'Карта' },
+  navWhole: { en: 'Whole Game', zh: '整局数据', ru: 'Весь матч' },
+  coachHide: { en: 'Wide mode', zh: '收起教练栏', ru: 'Свернуть чат' },
+  coachShow: { en: 'Ask coach', zh: '展开问教练', ru: 'Спросить тренера' },
+  coachJump: { en: 'Ask coach', zh: '问教练', ru: 'Тренер' },
   goalCheck: { en: 'Your goal, in this game', zh: '你的目标，这一局', ru: 'Ваша цель в этом матче' },
   checkOnly: { en: 'Only check my goal', zh: '只检查目标', ru: 'Только проверить цель' },
   curve: { en: 'Game by game', zh: '一局一局', ru: 'От игры к игре' },
@@ -221,6 +232,23 @@ export const AgentMatchPage: React.FC = () => {
   const [expectFor, setExpectFor] = useState<string | null>(null);
   const expectTrace = expectFor === matchId;
   const chat = useRef<ChatHandle>(null);
+  const trackMapRef = useRef<HeroTrackMapHandle>(null);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [isNarrow, setIsNarrow] = useState(() => (
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 1120px)').matches
+      : false
+  ));
+  const [activeNav, setActiveNav] = useState<string>('review-lead');
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia('(max-width: 1120px)');
+    const sync = () => setIsNarrow(mq.matches);
+    sync();
+    mq.addEventListener?.('change', sync);
+    return () => mq.removeEventListener?.('change', sync);
+  }, []);
 
   // The match on screen now. An availability answer for a match the reader has left is dropped, and a stale
   // GET that began before POST /prepare answered cannot overwrite the fresher running/failed parse state.
@@ -690,12 +718,41 @@ export const AgentMatchPage: React.FC = () => {
   // A goal from an earlier game that this game counts for, and that waits on this game's replay: it can be
   // checked by itself, before (or instead of) a review.
   const goalWaitsOnReplay = Boolean(activeGoalNow && needsReplay(activeGoalNow) && !hasTrace && (goalCheck?.result === 'unknown' || ruleChecks.some((r) => r.check.result === 'unknown')));
-  const ask = (label: string, refs: string[]) => chat.current?.ask(label, refs);
+  const ask = (label: string, refs: string[]) => {
+    setChatOpen(true);
+    // Focus immediately if already mounted/visible, or on next frame when expanding from wide mode.
+    if (chatOpen) chat.current?.ask(label, refs);
+    else requestAnimationFrame(() => chat.current?.ask(label, refs));
+  };
+  const sendPlanQuestion = (q: string) => {
+    setChatOpen(true);
+    return chat.current?.send(q) ?? false;
+  };
   const suggestions = useMemo(() => {
     if (state?.status !== 'ready') return [];
     const first = state.review.findings[0]?.title;
     return [...(first ? [lang === 'zh' ? `「${first}」——${T.qFinding.zh}` : lang === 'ru' ? `«${first}» — ${T.qFinding.ru}` : `"${first}" — ${T.qFinding.en}`] : []), T.q1[lang]];
   }, [state, lang]);
+
+  // Track which major section of the review is currently in view for the sticky tactical navigation strip.
+  const reviewReady = state?.status === 'ready';
+  useEffect(() => {
+    if (!reviewReady || typeof IntersectionObserver === 'undefined') return undefined;
+    const ids = ['review-lead', 'review-summary', 'review-chapters', 'tactical-map', 'review-whole'];
+    const els = ids.map((id) => document.getElementById(id)).filter((el): el is HTMLElement => Boolean(el));
+    if (!els.length) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        if (visible[0]?.target?.id) setActiveNav(visible[0].target.id);
+      },
+      { rootMargin: '-110px 0px -55% 0px', threshold: 0 },
+    );
+    for (const el of els) observer.observe(el);
+    return () => observer.disconnect();
+  }, [reviewReady, matchId, heroKey, lang]);
 
   // The wait as the tab's title, and "ready" (with a notification, if the reader asked for one) when the reader
   // is elsewhere: computed here, before the page picks what to show, from what decides that the wait is on screen.
@@ -726,17 +783,8 @@ export const AgentMatchPage: React.FC = () => {
       </span>
     );
   };
-  const header = (
-    <header className="ag-head">
-      <p className="cx-eyebrow">{t(T.match)} {matchId}{board?.match?.patch ? ` · ${board.match.patch}` : ''}</p>
-      {hero && (
-        <div className="ag-head-hero">
-          <Portrait hero={hero} report={board} />
-          <strong>{heroLabel(hero, lang)}</strong>
-          <span className={`ag-team is-${hero.team}`}>{t(T[hero.team])}</span>
-          <button type="button" className="ag-link ag-change-btn" onClick={() => pickHero(null)}>{t(T.change)}</button>
-        </div>
-      )}
+  const headerExtra = (
+    <>
       {goalCheck && activeGoalNow && (
         <p className="ag-goalcheck">
           <span>{t(T.goalCheck)}</span>
@@ -761,7 +809,18 @@ export const AgentMatchPage: React.FC = () => {
           ))}
         </ul>
       )}
-    </header>
+    </>
+  );
+  const header = (
+    <MatchHeroBanner
+      matchId={matchId}
+      lang={lang}
+      hero={hero}
+      roster={roster}
+      board={board}
+      onPickHero={pickHero}
+      extra={headerExtra}
+    />
   );
   const scoreboard = board && <MatchBoard report={board} hero={heroKey} lang={lang} replayLead={avail?.trace ? avail.radiant_gold_lead ?? avail.radiant_net_worth_lead ?? null : null} replayLeadIs={avail?.trace && avail.radiant_gold_lead ? 'gold' : 'net_worth'} />;
   // A parse the reader asked for to check the goal only: trying it again is the same request, not a review.
@@ -795,6 +854,7 @@ export const AgentMatchPage: React.FC = () => {
             return (
               <div key={team} className={`ag-pick-team is-${team}`}>
                 <p className={`ag-team is-${team}`}>
+                  <FactionCrest side={team} size={13} />
                   <span>{t(T[team])}</span>
                   {won === true && <span className="ag-pick-win">★</span>}
                 </p>
@@ -802,12 +862,26 @@ export const AgentMatchPage: React.FC = () => {
                   {roster.filter((h) => h.team === team).map((h) => {
                     const pl = board?.players.find((p) => p.hero.id === h.hero_id);
                     const kda = Array.isArray(pl?.kda) ? `${pl.kda[0]} / ${pl.kda[1]} / ${pl.kda[2]}` : null;
+                    const nw = typeof pl?.net_worth === 'number' && Number.isFinite(pl.net_worth)
+                      ? (pl.net_worth >= 1000 ? `${(pl.net_worth / 1000).toFixed(1)}k` : String(Math.round(pl.net_worth)))
+                      : null;
+                    const miniItems = Array.isArray(pl?.items) ? pl.items.filter((it) => Boolean(it?.img)).slice(0, 6) : [];
                     return (
                       <button key={h.hero} type="button" onClick={() => pickHero(h.hero)}>
                         <Portrait hero={h} report={board} />
                         <span className="ag-pick-meta">
                           <span className="ag-pick-name">{heroLabel(h, lang)}</span>
-                          {kda && <small className="ag-pick-kda">{kda}</small>}
+                          {(kda || nw) && (
+                            <small className="ag-pick-kda">
+                              {kda && <span>{kda}</span>}
+                              {nw && <span className="ag-pick-nw">{nw}</span>}
+                            </small>
+                          )}
+                          {miniItems.length > 0 && (
+                            <span className="ag-pick-items" aria-hidden="true">
+                              {miniItems.map((it, idx) => <SafeImg key={`${it.key}-${idx}`} src={it.img!} alt="" className="ag-pick-item" />)}
+                            </span>
+                          )}
                         </span>
                       </button>
                     );
@@ -833,11 +907,54 @@ export const AgentMatchPage: React.FC = () => {
       ? t(T.cacheRegen).replace('{latest}', String(latestVersion))
       : t(T.cacheRegenPlain);
     const refreshFailedMsg = state.refresh_failed ? t(T.cacheRegenFailed) : null;
+    const heroPortraitUrl = board?.players.find((p) => p.hero.id === hero.hero_id)?.hero.img ?? null;
+    const hasSummary = (state.review.highlights?.length ?? 0) > 0 || (state.review.findings?.length ?? 0) > 0;
+    const hasChapters = (state.review.chapters?.length ?? 0) > 0;
+    const navItems = [
+      { id: 'review-lead', label: t(T.navVerdict) },
+      ...(hasSummary ? [{ id: 'review-summary', label: t(T.navSummary) }] : []),
+      ...(hasChapters ? [{ id: 'review-chapters', label: t(T.navChapters) }] : []),
+      ...(hasTrace ? [{ id: 'tactical-map', label: t(T.navMap) }] : []),
+      { id: 'review-whole', label: t(T.navWhole) },
+    ];
     return (
       <Shell wide>
         {header}
-        <div className="ag-layout">
-          <div>
+        <div className="ag-layout" data-chat-open={chatOpen ? 'true' : 'false'}>
+          <nav className="ag-subnav" aria-label={t(T.navLabel)}>
+            <div className="ag-subnav-links">
+              {navItems.map((item) => (
+                <a
+                  key={item.id}
+                  href={`#${item.id}`}
+                  className={`ag-subnav-link${activeNav === item.id ? ' is-active' : ''}`}
+                  onClick={() => setActiveNav(item.id)}
+                >
+                  {item.label}
+                </a>
+              ))}
+            </div>
+            <div className="ag-subnav-tools">
+              <button
+                type="button"
+                className="ag-subnav-coach"
+                aria-expanded={isNarrow ? undefined : chatOpen}
+                onClick={() => {
+                  if (isNarrow) {
+                    setChatOpen(true);
+                    requestAnimationFrame(() => document.getElementById('coach-rail')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+                  } else {
+                    setChatOpen((v) => !v);
+                  }
+                }}
+              >
+                {isNarrow ? <CoachChatIcon size={13} /> : chatOpen ? <PanelToggleIcon open={true} size={13} /> : <CoachChatIcon size={13} />}
+                <span>{t(isNarrow ? T.coachJump : chatOpen ? T.coachHide : T.coachShow)}</span>
+              </button>
+            </div>
+          </nav>
+
+          <div className="ag-stage-main">
             {staleVersion && staleText && (
               <aside className="ag-cache-banner" role="note">
                 <div className="ag-cache-banner-row">
@@ -860,8 +977,10 @@ export const AgentMatchPage: React.FC = () => {
               review={state.review}
               lang={lang}
               onAsk={ask}
-              onPlan={(q) => chat.current?.send(q) ?? false}
+              onPlan={sendPlanQuestion}
               onReplan={(k) => pickPlan(k)}
+              onJumpMap={hasTrace ? (preset, mode) => trackMapRef.current?.focusWindow(preset, mode) : undefined}
+              trackMap={hasTrace ? <HeroTrackMap ref={trackMapRef} anchorId="tactical-map" matchId={matchId} hero={hero.hero} lang={lang} heroes={roster} collapsible /> : null}
               board={scoreboard}
               share={<ShareBar matchId={matchId} hero={hero.hero} lang={lang} plan={plan} model={writtenBy} />}
               quick={!slow}
@@ -876,7 +995,6 @@ export const AgentMatchPage: React.FC = () => {
               } : null}
               feedback={Number.isInteger(state.prompt_version) && !state.stale_version ? { plan, model: writtenBy, version: state.prompt_version as number } : null}
             />
-            {hasTrace && <HeroTrackMap matchId={matchId} hero={hero.hero} lang={lang} heroes={roster} collapsible />}
             <p className="ag-checked">{t(T.checked)}{state.verification.dropped > 0 ? ` ${state.verification.dropped} ${t(T.dropped)}.` : ''}</p>
             {/* Which model wrote it, and the choice of another: after the review, not between the reader and its first line. */}
             {offered.length > 1 && (
@@ -887,7 +1005,18 @@ export const AgentMatchPage: React.FC = () => {
             )}
             <p className="ag-cache-boundary">{t(inDsh ? T.cacheDsh : T.cacheWeb)}</p>
           </div>
-          <ChatRail ref={chat} matchId={matchId} hero={hero.hero} lang={lang} suggestions={suggestions} plan={plan} model={model} />
+          <ChatRail
+            ref={chat}
+            matchId={matchId}
+            hero={hero.hero}
+            lang={lang}
+            suggestions={suggestions}
+            plan={plan}
+            model={model}
+            heroName={heroLabel(hero, lang)}
+            heroImg={heroPortraitUrl}
+            onCollapse={() => setChatOpen(false)}
+          />
         </div>
       </Shell>
     );
