@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { collectFacts, deepReviewSystem, headingOf, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, verifyReview, verifyText, sightClaims, wordingProblems, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
+import { collectFacts, deepReviewSystem, headingOf, nameHeroes, nextGame, placeNames, runDeepReview, statedFacts, SUBMIT_REVIEW, suggestChildRefs, verifyReview, verifyText, sightClaims, wordingProblems, DEEP_REVIEW_SCHEMA } from '../../lib/agent/deepReview.js';
 import { chaptersOf, didWellOf, highlightsOf } from '../../lib/agent/review/verify.js';
 import { applyTranslation, extractTranslatable } from '../../lib/agent/review/translate.js';
 import { logicOf, reviewTexts, rubricOf } from '../../lib/agent/evalReview.js';
@@ -737,6 +737,129 @@ describe('runDeepReview', () => {
     // Slimmed prompt stays compact (< 10 KB).
     expect(Buffer.byteLength(s, 'utf8')).toBeLessThan(10_000);
     expect(deepReviewSystem('zh')).toContain('ordered by what mattered most to this player');
+  });
+
+  it('slims redundant submit_review schema fields (no did_well, minimal game_plan) while keeping legacy verification intact', () => {
+    const props = SUBMIT_REVIEW.input_schema.properties as Record<string, any>;
+    expect(props).not.toHaveProperty('did_well');
+    expect(Object.keys(props.game_plan.properties).sort()).toEqual(['against_your_plan', 'evidence', 'main_reason', 'why']);
+    expect(props.game_plan.required).toEqual(['main_reason', 'why']);
+    // Summary vs child ref rules are explicitly taught in the prompt.
+    const s = deepReviewSystem('en');
+    expect(s).toContain('cast:<hero>:<ability>:<n>');
+    expect(s).toContain('fights:<hero>:<n>');
+    expect(s).toContain('phase:<hero>:<n>');
+  });
+
+  it('suggests exact child refs for summary-ref moment failures without relaxing verifyReview', async () => {
+    const { reviewToolkit } = await import('../../lib/agent/review/toolkit.js');
+    const kit: any = reviewToolkit({ trace, hero: 'beastmaster', lang: 'zh' });
+    const audit = kit.runTool('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' });
+    const fights = kit.runTool('fight_report', { hero: 'beastmaster' });
+    const tempo = kit.runTool('tempo_report', { hero: 'beastmaster' });
+    const deaths = kit.runTool('death_context', { hero: 'beastmaster', index: 9 });
+    const allSources = [kit.context, audit, fights, tempo, deaths];
+
+    // 1. verifyReview stays 100% strict: summary refs STILL reject child-event clocks and numbers.
+    const strictCheck = verifyReview({
+      verdict: '原始咆哮两次按住法术免疫幻影刺客。',
+      highlights: [{
+        title: '关键咆哮按住魔免幻影刺客',
+        detail: '27:27 吼住开着黑皇杖的幻影刺客 3.4 秒。',
+        evidence: [{ refs: ['audit:beastmaster:primal_roar'], fact: '27:27 吼进黑皇杖，定住 3.4 秒。' }],
+      }],
+      findings: [],
+    }, allSources);
+    expect(strictCheck.ok).toBe(false);
+    expect(strictCheck.problems).toEqual([
+      { where: 'highlight_evidence', index: 0, item: 0, kind: 'moment', text: '27:27 (not in audit:beastmaster:primal_roar)' },
+      { where: 'highlight_evidence', index: 0, item: 0, kind: 'moment', text: '3.4 (not in audit:beastmaster:primal_roar)' },
+    ]);
+
+    // 2. suggestChildRefs points strictly to matching child refs within THAT summary's own tool result.
+    expect(suggestChildRefs(strictCheck.problems[0], allSources, strictCheck.refs)).toEqual(['cast:beastmaster:primal_roar:6']);
+    expect(suggestChildRefs(strictCheck.problems[1], allSources, strictCheck.refs)).toContain('cast:beastmaster:primal_roar:6');
+    // fights:<hero> -> fights:<hero>:6 (12:58, 753 damage)
+    expect(suggestChildRefs({ kind: 'moment', text: '12:58 (not in fights:beastmaster)' }, allSources, strictCheck.refs)).toEqual(['fights:beastmaster:6']);
+    expect(suggestChildRefs({ kind: 'moment', text: '753 (not in fights:beastmaster)' }, allSources, strictCheck.refs)).toEqual(['fights:beastmaster:6']);
+    // tempo:<hero> -> phase:<hero>:5 (40:13, 12 buildings)
+    expect(suggestChildRefs({ kind: 'moment', text: '40:13 (not in tempo:beastmaster)' }, allSources, strictCheck.refs)).toEqual(['phase:beastmaster:5']);
+    expect(suggestChildRefs({ kind: 'moment', text: '12 (not in tempo:beastmaster)' }, allSources, strictCheck.refs)).toContain('phase:beastmaster:5');
+    // deaths:<hero> -> death:<hero>:9 (36:05, 2915 HP); does not leak nested nearby_fight grandchild
+    expect(suggestChildRefs({ kind: 'moment', text: '36:05 (not in deaths:beastmaster)' }, allSources, strictCheck.refs)).toEqual(['death:beastmaster:9']);
+    expect(suggestChildRefs({ kind: 'moment', text: '2915 (not in deaths:beastmaster)' }, allSources, strictCheck.refs)).toEqual(['death:beastmaster:9']);
+    // ability_audit also holds deaths_with_it_ready_and_not_cast (death:beastmaster:9 at 36:05), so it suggests that exact child.
+    expect(suggestChildRefs({ kind: 'moment', text: '36:05 (not in audit:beastmaster:primal_roar)' }, allSources, strictCheck.refs)).toEqual(['death:beastmaster:9']);
+    // Never leaks an unrelated tool's child ref (12:58 is in fight_report, NOT in ability_audit; 40:13 is in tempo_report, NOT in fights).
+    expect(suggestChildRefs({ kind: 'moment', text: '12:58 (not in audit:beastmaster:primal_roar)' }, allSources, strictCheck.refs)).toEqual([]);
+    expect(suggestChildRefs({ kind: 'moment', text: '40:13 (not in fights:beastmaster)' }, allSources, strictCheck.refs)).toEqual([]);
+    // Non-summary ref or non-matching value returns [].
+    expect(suggestChildRefs({ kind: 'moment', text: '27:27 (not in death:beastmaster:9)' }, allSources, strictCheck.refs)).toEqual([]);
+    expect(suggestChildRefs({ kind: 'moment', text: '98.7 (not in audit:beastmaster:primal_roar)' }, allSources, strictCheck.refs)).toEqual([]);
+
+    // 3. End-to-end runDeepReview repair payload sends suggested_refs for summary-ref failures and omits it when no child matches.
+    const firstSubmit = {
+      verdict: '原始咆哮两次按住法术免疫幻影刺客。',
+      opening_note: '你在 27:27 的先手非常果断。',
+      highlights: [{
+        title: '27:27 吼住开着黑皇杖的幻影刺客',
+        detail: '27:27 吼住开着黑皇杖的幻影刺客 3.4 秒。',
+        evidence: [
+          { refs: ['audit:beastmaster:primal_roar'], fact: '27:27 吼进黑皇杖，定住 3.4 秒。' },
+          { refs: ['audit:beastmaster:primal_roar'], fact: '假数字 98.7 秒。' },
+        ],
+      }],
+      chapters: [{
+        topic: 'teamfights', title: '团战执行', assessment: 'solid',
+        analysis: '12:58 这波团你打出 753 点伤害。',
+        evidence: [{ refs: ['fights:beastmaster'], fact: '12:58 团战打出 753 点伤害。' }],
+      }, {
+        topic: 'macro', title: '推进与高地', assessment: 'mixed',
+        analysis: '40:13 高地告破。',
+        evidence: [{ refs: ['tempo:beastmaster'], fact: '40:13 丢掉中路高地塔。' }],
+      }],
+      findings: [],
+      encouragement: '保持这种大招果断度。',
+      blind_spots: ['录像里没有视野数据。'],
+    };
+    const repairedSubmit = {
+      ...firstSubmit,
+      highlights: [{
+        ...firstSubmit.highlights[0],
+        evidence: [{ refs: ['cast:beastmaster:primal_roar:6'], fact: '27:27 吼进黑皇杖，定住 3.4 秒。' }],
+      }],
+      chapters: [
+        { ...firstSubmit.chapters[0], evidence: [{ refs: ['fights:beastmaster:6'], fact: '12:58 团战打出 753 点伤害。' }] },
+        { ...firstSubmit.chapters[1], evidence: [{ refs: ['phase:beastmaster:5'], fact: '40:13 丢掉中路高地塔。' }] },
+      ],
+    };
+    const m = scripted([
+      { toolCalls: [
+        call('ability_audit', { hero: 'beastmaster', ability: 'primal_roar' }, 'a'),
+        call('fight_report', { hero: 'beastmaster' }, 'f'),
+        call('tempo_report', { hero: 'beastmaster' }, 't'),
+      ] },
+      { toolCalls: [call('submit_review', firstSubmit, 's1')] },
+      { toolCalls: [call('submit_review', repairedSubmit, 's2')] },
+    ]);
+    const r: any = await runDeepReview({ complete: m.complete, trace, hero: 'beastmaster', lang: 'zh' });
+    const repairPayload = JSON.parse(m.seen[2].messages.at(-1).content);
+    const byText = (prefix: string) => repairPayload.problems.find((p: any) => p.text.startsWith(prefix));
+    expect(byText('27:27 (not in audit:beastmaster:primal_roar)')).toMatchObject({
+      in: 'highlight 1, evidence 1',
+      why: expect.stringContaining('suggested_refs'),
+      suggested_refs: ['cast:beastmaster:primal_roar:6'],
+    });
+    expect(byText('3.4 (not in audit:beastmaster:primal_roar)').suggested_refs).toContain('cast:beastmaster:primal_roar:6');
+    expect(byText('12:58 (not in fights:beastmaster)').suggested_refs).toEqual(['fights:beastmaster:6']);
+    expect(byText('753 (not in fights:beastmaster)').suggested_refs).toEqual(['fights:beastmaster:6']);
+    expect(byText('40:13 (not in tempo:beastmaster)').suggested_refs).toEqual(['phase:beastmaster:5']);
+    // No child holds 98.7 -> suggested_refs is omitted completely.
+    expect(byText('98.7 (not in audit:beastmaster:primal_roar)')).not.toHaveProperty('suggested_refs');
+    // After repair using suggested_refs, the highlight keeps its clickable evidence with clock 27:27.
+    expect(r.status).toBe('ok');
+    expect(r.verification).toMatchObject({ repaired: true, problems: [] });
+    expect(r.review.highlights[0].evidence).toEqual([{ refs: ['cast:beastmaster:primal_roar:6'], clock: '27:27', fact: '27:27 吼进黑皇杖，定住 3.4 秒。' }]);
   });
 
   it('the prompt states the rules the verifier enforces', () => {

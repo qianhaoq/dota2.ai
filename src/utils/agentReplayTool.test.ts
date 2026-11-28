@@ -110,6 +110,7 @@ describe('replay_review: one call at a time, never blocking', () => {
     expect(shaped.encouragement).toBe('继续保持');
     expect(shaped).not.toHaveProperty('goal');
     expect(shaped.findings[0].rule).toEqual({ when: 'w', do: 'd' });
+    expect(shaped.note).toContain('zero mechanical next-game KPI quotas');
   });
 
   it('a non-final parse failure (e.g. Steam GC 429 / no_replay_url) is reported as failed instead of looping as parsing', async () => {
