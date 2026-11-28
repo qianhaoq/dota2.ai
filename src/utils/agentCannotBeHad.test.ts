@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { APIConnectionError, APIConnectionTimeoutError, APIError, APIUserAbortError } from 'openai';
 import { createRemotePipeline, createTracePipeline, replayPastKeeping, LONGEST_GAME_HOURS, REPLAY_KEPT_DAYS } from '../../lib/agent/tracePipeline.js';
-import { createAgentService, reviewFailure, MODEL_DOWN_MS, PARSE_BACKOFF_DEFAULT_MS, PARSE_BACKOFF_MS } from '../../lib/agent/service.js';
+import { createAgentService, reviewFailure, MODEL_DOWN_MS, PARSE_BACKOFF_DEFAULT_MS, PARSE_BACKOFF_MS, PARSE_BACKOFF_MULTIPLIER, parseBackoffMs } from '../../lib/agent/service.js';
 
 /**
  * A review that cannot be had: the reader is told so once, and the log says why.
@@ -66,6 +66,131 @@ describe('a game with no replay address', () => {
     expect(await remote(started(1))).toMatchObject({ ok: false, reason: 'no_replay_url' });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it('an expired match that still has a replay_url upgrades a failed download to replay_gone without hitting the fallback worker (#487)', async () => {
+    const expiredUrl = `http://replay132.valve.net/570/${ID}_123456789.dem.bz2`;
+    const oldMatch = { ...started(300), replay_url: expiredUrl };
+    const recentMatch = { ...started(2), replay_url: expiredUrl };
+
+    // Local pipeline: expired match failing download (edge download_failed or HTTP 503 or tiny body) → replay_gone.
+    const localFail = (match: any, over: any) => createTracePipeline({
+      getMatchDetail: async () => match,
+      extractorBin: '/nonexistent',
+      store: { put: async () => {} },
+      now: () => NOW,
+      ...over,
+    }).run(ID);
+    expect(await localFail(oldMatch, { downloadImpl: async () => { throw Object.assign(new Error('download_failed'), { code: 'download_failed', why: 'every_edge_failed' }); } })).toEqual({ ok: false, reason: 'replay_gone' });
+    expect(await localFail(oldMatch, { fetchReplayImpl: async () => ({ ok: false, status: 503, body: null }) })).toEqual({ ok: false, reason: 'replay_gone' });
+    // Local disk write_error is NOT replay_gone.
+    expect(await localFail(oldMatch, { downloadImpl: async () => { throw Object.assign(new Error('download_failed'), { code: 'download_failed', why: 'write_error' }); } })).toEqual({ ok: false, reason: 'download_failed' });
+    // Recent match failing download stays retryable download_failed.
+    expect(await localFail(recentMatch, { downloadImpl: async () => { throw Object.assign(new Error('download_failed'), { code: 'download_failed', why: 'every_edge_failed' }); } })).toEqual({ ok: false, reason: 'download_failed' });
+
+    // Remote pipeline: expired match failing on primary worker with download_failed or timeout returns replay_gone immediately and NEVER calls fallback worker.
+    for (const workerReason of ['download_failed', 'timeout']) {
+      const hosts: string[] = [];
+      const stageLines: string[] = [];
+      const res = await createRemotePipeline({
+        url: 'https://tw.example',
+        fallback: { url: 'https://hk.example' },
+        getMatchDetail: async () => oldMatch,
+        now: () => NOW,
+        stageLog: (l: string) => stageLines.push(l),
+        fetchImpl: (async (u: string) => {
+          hosts.push(new URL(u).host);
+          return new Response(JSON.stringify({ ok: false, reason: workerReason }), { status: 200 });
+        }) as any,
+      }).run(ID);
+      expect(res).toEqual({ ok: false, reason: 'replay_gone' });
+      expect(hosts).toEqual(['tw.example']);
+      expect(JSON.parse(stageLines[0])).toMatchObject({ event: 'trace_pipeline', match: ID, host: 'replay132.valve.net', worker: 'primary', reason: 'replay_gone', detail: 'past_keeping' });
+    }
+
+    // Rare pro/TI archive replay that DOES download still succeeds even when past keeping!
+    const archive = await createRemotePipeline({
+      url: 'https://tw.example',
+      fallback: { url: 'https://hk.example' },
+      getMatchDetail: async () => oldMatch,
+      now: () => NOW,
+      fetchImpl: (async () => new Response(JSON.stringify({ ok: true, bytes: 99_999 }), { status: 200 })) as any,
+    }).run(ID);
+    expect(archive).toEqual({ ok: true, bytes: 99_999 });
+
+    // Worker 500 (worker_failed) on an expired match still tries fallback; if fallback says download_failed, upgrades to replay_gone.
+    const hosts2: string[] = [];
+    const afterWorkerErr = await createRemotePipeline({
+      url: 'https://tw.example',
+      fallback: { url: 'https://hk.example' },
+      getMatchDetail: async () => oldMatch,
+      now: () => NOW,
+      fetchImpl: (async (u: string) => {
+        const host = new URL(u).host;
+        hosts2.push(host);
+        return host === 'tw.example'
+          ? new Response('boom', { status: 500 })
+          : new Response(JSON.stringify({ ok: false, reason: 'download_failed' }), { status: 200 });
+      }) as any,
+    }).run(ID);
+    expect(hosts2).toEqual(['tw.example', 'hk.example']);
+    expect(afterWorkerErr).toEqual({ ok: false, reason: 'replay_gone' });
+
+    // Worker-to-remote write_error on an expired archived replay: primary falls back to second worker, and if both
+    // hit local disk write_error, stays retryable download_failed instead of permanently marking replay_gone (Codex P1).
+    const runWorkerSim = async (replayUrlInput: string, downloadImpl: any) => {
+      let metrics: any = null;
+      const wp = createTracePipeline({
+        getMatchDetail: async () => ({ match_id: ID, replay_url: replayUrlInput }),
+        extractorBin: '/nonexistent',
+        store: { put: async () => {} },
+        downloadImpl,
+        onMetrics: (m: any) => { metrics = m; },
+      } as any);
+      const out = await wp.run(ID);
+      return new Response(JSON.stringify({
+        ...out,
+        ...(typeof metrics?.detail === 'string' && metrics.detail ? { detail: metrics.detail } : {}),
+        ...(metrics ? { metrics: { downloading_ms: metrics.downloading_ms, extracting_ms: metrics.extracting_ms, building_ms: metrics.building_ms, storing_ms: metrics.storing_ms, demo_bytes: metrics.demo_bytes } } : {}),
+      }), { status: 200 });
+    };
+    const writeErrHosts: string[] = [];
+    const writeErrLogs: string[] = [];
+    const writeErrBoth = await createRemotePipeline({
+      url: 'https://tw.example',
+      fallback: { url: 'https://hk.example' },
+      getMatchDetail: async () => oldMatch,
+      now: () => NOW,
+      stageLog: (l: string) => writeErrLogs.push(l),
+      fetchImpl: (async (u: string, init: any) => {
+        writeErrHosts.push(new URL(u).host);
+        const { replay_url } = JSON.parse(String(init.body));
+        return runWorkerSim(replay_url, async () => { throw Object.assign(new Error('download_failed'), { code: 'download_failed', why: 'write_error' }); });
+      }) as any,
+    }).run(ID);
+    expect(writeErrHosts).toEqual(['tw.example', 'hk.example']);
+    expect(writeErrBoth).toEqual({ ok: false, reason: 'download_failed' });
+    expect(JSON.parse(writeErrLogs[0])).toMatchObject({ worker: 'fallback', fallback_tried: true, reason: 'download_failed', detail: 'write_error' });
+
+    // Primary write_error on an expired archive replay falls back to a healthy second worker and succeeds.
+    const writeErrRecoveredHosts: string[] = [];
+    const writeErrRecovered = await createRemotePipeline({
+      url: 'https://tw.example',
+      fallback: { url: 'https://hk.example' },
+      getMatchDetail: async () => oldMatch,
+      now: () => NOW,
+      fetchImpl: (async (u: string, init: any) => {
+        const host = new URL(u).host;
+        writeErrRecoveredHosts.push(host);
+        if (host === 'tw.example') {
+          const { replay_url } = JSON.parse(String(init.body));
+          return runWorkerSim(replay_url, async () => { throw Object.assign(new Error('download_failed'), { code: 'download_failed', why: 'write_error' }); });
+        }
+        return new Response(JSON.stringify({ ok: true, bytes: 88_888 }), { status: 200 });
+      }) as any,
+    }).run(ID);
+    expect(writeErrRecoveredHosts).toEqual(['tw.example', 'hk.example']);
+    expect(writeErrRecovered).toEqual({ ok: true, bytes: 88_888 });
+  });
 });
 
 describe('asking again after a parse failed', () => {
@@ -114,6 +239,82 @@ describe('asking again after a parse failed', () => {
     h.clock.t += 3_600_000;
     expect(await h.service.prepare(ID)).toEqual({ status: 'failed', reason: 'replay_gone', final: true });
     expect(h.pipeline.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('consecutive parse failures escalate backoff (10s → 30s → 90s → 270s → 300s) and survive Cloud Tasks dispatch; stale deliveries never re-run (#487)', async () => {
+    expect(PARSE_BACKOFF_MULTIPLIER).toBe(3);
+    expect([1, 2, 3, 4, 5].map((n) => parseBackoffMs('download_failed', n))).toEqual([10_000, 30_000, 90_000, 270_000, 300_000]);
+    expect([1, 2, 3].map((n) => parseBackoffMs('no_replay_url', n))).toEqual([60_000, 180_000, 300_000]);
+
+    // Simulate two Cloud Run instances sharing GCS docs and a Cloud Tasks queue.
+    const clock = { t: NOW };
+    const docsMap = new Map<string, any>();
+    const docs = { get: async (k: string) => docsMap.get(k) ?? null, put: async (k: string, v: any) => { docsMap.set(k, v); } };
+    const queue: any[] = [];
+    const pipelineRun = vi.fn(async () => ({ ok: false, reason: 'download_failed' }));
+    const makeInst = () => createAgentService({
+      traces: { get: async () => null },
+      complete: null,
+      pipeline: { run: pipelineRun },
+      docs,
+      dispatch: async (task: any) => { queue.push(task); },
+      now: () => clock.t,
+    } as any);
+    const front = makeInst();
+    const worker = makeInst();
+
+    // Attempt 1 fails → 10s backoff.
+    expect(await front.prepare(ID)).toEqual({ status: 'running', stage: 'locating' });
+    expect(await worker.run(queue.shift())).toEqual({ status: 'failed', reason: 'download_failed' });
+    expect((await front.availability(ID)).parse).toEqual({ status: 'failed', reason: 'download_failed', final: false, retry_in_sec: 10 });
+
+    // A duplicate Cloud Task delivery arriving while inside backoff is ignored (200-equivalent), not re-run.
+    clock.t += 4_000;
+    expect(await worker.run({ kind: 'parse', matchId: String(ID) })).toEqual({ status: 'failed', reason: 'download_failed' });
+    expect(pipelineRun).toHaveBeenCalledTimes(1);
+
+    // After 10s, Attempt 2 runs and fails → escalates to 30s backoff!
+    clock.t += 7_000;
+    expect(await front.prepare(ID)).toEqual({ status: 'running', stage: 'locating' });
+    expect(await worker.run(queue.shift())).toEqual({ status: 'failed', reason: 'download_failed' });
+    expect(pipelineRun).toHaveBeenCalledTimes(2);
+    expect((await front.availability(ID)).parse).toEqual({ status: 'failed', reason: 'download_failed', final: false, retry_in_sec: 30 });
+
+    // 15s later (previously enough to trigger a 3rd loop!), prepare is STILL blocked for 15s more.
+    clock.t += 15_000;
+    const admit = vi.fn(() => null);
+    expect(await front.prepare(ID, { admit })).toEqual({ status: 'failed', reason: 'download_failed', final: false, retry_in_sec: 15 });
+    expect(admit).not.toHaveBeenCalled();
+    expect(queue).toHaveLength(0);
+
+    // After 30s total, Attempt 3 runs and fails → escalates to 90s backoff!
+    clock.t += 16_000;
+    expect(await front.prepare(ID)).toEqual({ status: 'running', stage: 'locating' });
+    expect(await worker.run(queue.shift())).toEqual({ status: 'failed', reason: 'download_failed' });
+    expect(pipelineRun).toHaveBeenCalledTimes(3);
+    expect((await front.availability(ID)).parse).toEqual({ status: 'failed', reason: 'download_failed', final: false, retry_in_sec: 90 });
+
+    // After PARSE_RETRY_MS (5 minutes), failure history resets back to 10s.
+    clock.t += 301_000;
+    expect((await front.availability(ID)).parse).toEqual({ status: 'none' });
+    expect(await front.prepare(ID)).toEqual({ status: 'running', stage: 'locating' });
+    expect(await worker.run(queue.shift())).toEqual({ status: 'failed', reason: 'download_failed' });
+    expect((await front.availability(ID)).parse).toEqual({ status: 'failed', reason: 'download_failed', final: false, retry_in_sec: 10 });
+
+    // Duplicate delivery for a final replay_gone parse NEVER re-runs, even hours later.
+    const goneRun = vi.fn(async () => ({ ok: false, reason: 'replay_gone' }));
+    const goneDocs = new Map<string, any>();
+    const goneSvc: any = createAgentService({
+      traces: { get: async () => null },
+      complete: null,
+      pipeline: { run: goneRun },
+      docs: { get: async (k: string) => goneDocs.get(k) ?? null, put: async (k: string, v: any) => { goneDocs.set(k, v); } },
+      now: () => clock.t,
+    } as any);
+    expect(await goneSvc.run({ kind: 'parse', matchId: String(ID) })).toEqual({ status: 'failed', reason: 'replay_gone' });
+    clock.t += 3_600_000;
+    expect(await goneSvc.run({ kind: 'parse', matchId: String(ID) })).toEqual({ status: 'failed', reason: 'replay_gone' });
+    expect(goneRun).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -930,10 +930,10 @@ const agentPipeline = (() => {
     const spare = (process.env.TRACE_WORKER_FALLBACK_URL || '').trim();
     const fallback = spare ? { url: spare, auth: createIdTokenProvider({ audience: (process.env.TRACE_WORKER_FALLBACK_AUDIENCE || spare).trim() }) } : null;
     const preferFallbackForCn = process.env.TRACE_WORKER_PREFER_FALLBACK_CN === '1';
-    return createRemotePipeline({ url: worker, getMatchDetail: agentReplaySource, auth: audience ? createIdTokenProvider({ audience }) : undefined, fallback, preferFallbackForCn, log: (msg) => console.warn(`[agent] ${msg}`) });
+    return createRemotePipeline({ url: worker, getMatchDetail: agentReplaySource, auth: audience ? createIdTokenProvider({ audience }) : undefined, fallback, preferFallbackForCn, log: (msg) => console.warn(`[agent] ${msg}`), stageLog: (line) => console.log(line) });
   }
   const bin = process.env.DOTA_EXTRACT_BIN || '';
-  return bin && agentTraceBlobs ? createTracePipeline({ getMatchDetail: agentReplaySource, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`) }) : null;
+  return bin && agentTraceBlobs ? createTracePipeline({ getMatchDetail: agentReplaySource, extractorBin: bin, store: agentTraces, log: (msg) => console.warn(`[agent] ${msg}`), stageLog: (line) => console.log(line) }) : null;
 })();
 // AGENT_TASKS_QUEUE (projects/<p>/locations/<l>/queues/<q>) + AGENT_RUN_URL (this service's own https
 // origin) + AGENT_RUN_SA (the service account the queue calls back as): a started parse or review is queued
