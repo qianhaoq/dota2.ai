@@ -7,7 +7,9 @@
  *   in that time;
  * - the engine's state of a hero while a modifier was on it: the share of its state samples with each control flag
  *   (`controls`) and each `unit_state` bit named in STATE_BITS (stunned, disarmed, invulnerable…) — samples where the
- *   hero was debuff immune are counted apart (`samples_while_debuff_immune`), as what the immunity did.
+ *   hero was debuff immune are counted apart (`samples_while_debuff_immune`), as what the immunity did;
+ * - what an item's effect took off the hero it landed on (`removals`): the other modifiers removed from that hero at
+ *   the same instant — a dispel observed, modifier by modifier, with on whom the item's effect was put.
  *
  *   node scripts/observe-effects.mjs <extract dir> [<extract dir>…] --out lib/coach/data/observed-effects.json [--add]
  *
@@ -26,6 +28,8 @@ const add = args.includes('--add');
 const dirs = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--out');
 if (!out || !dirs.length) { console.error('usage: observe-effects.mjs <extract dir>... --out <file> [--add]'); process.exit(2); }
 
+/** A modifier removed from a hero this close to an item's effect landing on it was taken off by that effect. */
+const DISPEL_SECONDS = 0.05;
 /** A modifier added this soon after a cast by the same caster may be that cast's. */
 const LINK_SECONDS = 0.6;
 /** State samples this close to a modifier's start or end are not counted (the sample may predate it). */
@@ -72,7 +76,7 @@ for (const dir0 of dirs) {
   for (const list of states.values()) list.sort((a, b) => a[0] - b[0]);
 
   const casts = new Map(); // caster → [t, source]
-  const adds = []; const open = new Map(); const intervals = [];
+  const adds = []; const open = new Map(); const intervals = []; const removes = new Map(); // target → [t, modifier]
   for await (const e of lines(path.join(dir, 'events.jsonl'))) {
     const caster = e.attacker_hero === true && e.attacker_illusion !== true ? heroKey(e.attacker) : null;
     if ((e.type === 'DOTA_COMBATLOG_ABILITY' || e.type === 'DOTA_COMBATLOG_ITEM') && caster && typeof e.inflictor === 'string') {
@@ -89,6 +93,7 @@ for (const dir0 of dirs) {
       const target = e.target_hero === true && e.target_illusion !== true ? heroKey(e.target) : null;
       const a = target ? open.get(`${e.inflictor}|${target}`) : null;
       if (a) { intervals.push([a, e.t]); open.delete(`${e.inflictor}|${target}`); }
+      if (target) { if (!removes.has(target)) removes.set(target, []); removes.get(target).push([e.t, e.inflictor]); }
     }
   }
 
@@ -129,6 +134,22 @@ for (const dir0 of dirs) {
       if (on.has('debuff_immune') || on.has('magic_immune')) { ts.samples_while_debuff_immune = (ts.samples_while_debuff_immune ?? 0) + 1; continue; }
       ts.samples += 1;
       for (const k of on) ts[k] = (ts[k] ?? 0) + 1;
+    }
+  }
+  // What an item's effect took off the hero it landed on: every other modifier on that hero removed at that instant
+  // (within DISPEL_SECONDS). That is the dispel seen, per removed modifier — not inferred from an ability's flag (#510
+  // review: Heavenly Jump's leap on Zeus is not the effect its dispel flag is about).
+  const removedHere = new Set();
+  for (const [a, source] of linked) {
+    if (!source.startsWith('item:') || !a.target) continue;
+    for (const [t, mod] of removes.get(a.target) ?? []) {
+      if (Math.abs(t - a.t) > DISPEL_SECONDS || mod === a.modifier || mod.includes(source.split(':')[1])) continue;
+      db.removals ??= {};
+      const r = ((db.removals[source] ??= {})[mod] ??= { removed: 0, games: 0, on: { self: 0, ally_hero: 0, enemy_hero: 0 } });
+      r.removed += 1;
+      if (a.side in r.on) r.on[a.side] += 1;
+      const k = `${source}|${mod}`;
+      if (!removedHere.has(k)) { removedHere.add(k); r.games += 1; }
     }
   }
   db.games.push(matchId);

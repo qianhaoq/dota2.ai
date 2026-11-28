@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { attackOf, buildCheck, contactBeforeDeaths, observedPlacement, observedTargetState } from '../../lib/agent/situationTools.js';
+import { attackOf, buildCheck, contactBeforeDeaths, observedPlacement, observedRemoval, observedTargetState } from '../../lib/agent/situationTools.js';
 import { deathContext } from '../../packages/review-engine/src/trace/index.js';
 import { reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
 import { withHeroNames } from '../../lib/agent/review/toolkit.js';
@@ -128,15 +128,17 @@ describe('build_check: how each item meets the enemy who killed the player', () 
     const a = by(pa);
     // Eul's: cast on an enemy (Valve: "can only be cast on enemy units or yourself"), a basic dispel.
     expect(a.cyclone).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'an_enemy_target' });
-    // Which of her effects it removes: only those observed in archived replays sitting where the dispel lands (#508),
-    // never placed from text or flags (#507 review). Cast on her: her own buffs; on the player: what she put on enemies.
-    const basic = new Map(pa.their_abilities.filter((x: any) => x.dispelled_by === 'basic').map((x: any) => [x.ability, x]));
+    // Which of her effects it removes: only a dispel seen in archived replays — the item's effect taking her ability's
+    // modifier off a hero it landed on, on that side (#510 review); never joined from a dispel flag and a placement.
     const keyOf = (name: string) => pa.their_abilities.find((x: any) => x.name === name)?.ability;
-    for (const r of a.cyclone.their_effects_it_removes) {
-      expect(basic.has(keyOf(r.name))).toBe(true);
-      expect(observedPlacement(keyOf(r.name))).toMatchObject({ sits: 'on_them', seen: r.seen, games: r.games });
+    for (const r of a.cyclone.their_effects_it_removes) expect(observedRemoval('cyclone', keyOf(r.name), ['enemy_hero'])).toEqual({ removed: r.removed, games: r.games });
+    for (const r of a.black_king_bar.their_effects_it_removes) expect(observedRemoval('black_king_bar', keyOf(r.name), ['self', 'ally_hero'])).toEqual({ removed: r.removed, games: r.games });
+    // Where each of her abilities' modifiers was seen land is its own fact, beside dispelled_by.
+    for (const x of pa.their_abilities) {
+      const p = observedPlacement(x.ability);
+      if (p) expect(x).toMatchObject({ observed_on: p.sits === 'on_them' ? 'them' : 'enemy_heroes', observed_times: p.seen });
+      else expect(x).not.toHaveProperty('observed_on');
     }
-    for (const r of a.black_king_bar.their_effects_it_removes) expect(observedPlacement(keyOf(r.name))?.sits).toBe('on_the_player');
     expect(a.cyclone).not.toHaveProperty('their_abilities_marked_removable_by_it');
     expect(pa.their_abilities.find((x: any) => x.ability === 'phantom_assassin_phantom_strike')).toHaveProperty('valve_text');
     expect(a.nullifier.dispel_lands_on).toBe('an_enemy_target');
@@ -290,6 +292,16 @@ describe('observed effects: where an ability\'s effect sat, and what an item mad
     // Never observed, or no observations at all: not placed (unknown, never "on the player").
     expect(observedPlacement('ember_spirit_flame_guard', obs)).toBeNull();
     expect(observedPlacement('ursa_overpower', null)).toBeNull();
+  });
+
+  it('a removal is a dispel seen: the item\'s effect taking that ability\'s modifier off a hero, on the asked side', () => {
+    const o: any = { ...obs, removals: { 'item:cyclone': { modifier_ursa_overpower: { removed: 3, games: 2, on: { self: 0, ally_hero: 0, enemy_hero: 3 } } }, 'item:black_king_bar': { modifier_ursa_earthshock: { removed: 5, games: 3, on: { self: 5, ally_hero: 0, enemy_hero: 0 } } } } };
+    expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], o)).toEqual({ removed: 3, games: 2 });
+    // Seen only on the other side, never seen, or no removals at all: null.
+    expect(observedRemoval('cyclone', 'ursa_overpower', ['self', 'ally_hero'], o)).toBeNull();
+    expect(observedRemoval('black_king_bar', 'ursa_earthshock', ['self', 'ally_hero'], o)).toEqual({ removed: 5, games: 3 });
+    expect(observedRemoval('cyclone', 'ursa_enrage', ['enemy_hero'], o)).toBeNull();
+    expect(observedRemoval('cyclone', 'ursa_overpower', ['enemy_hero'], obs)).toBeNull();
   });
 
   it('an item\'s target state is the states nearly all its samples had, with the sample; too few samples say nothing', () => {
