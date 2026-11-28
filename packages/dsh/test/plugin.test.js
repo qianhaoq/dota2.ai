@@ -513,6 +513,144 @@ describe('DSH hybrid trace source (traceSource.js)', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('falls back to downloading an existing outdated server trace when /prepare returns 429/503/500 or parse is final-failed, while preserving exact errors when no trace exists (#485)', async () => {
+    const outdatedAvail = { trace: true, trace_outdated: true, can_parse: true, parse: { status: 'none' } };
+    for (const [label, availBody, prepResp] of [
+      ['prepare 429', outdatedAvail, () => new Response(JSON.stringify({ code: 'rate_limited', retryAfterSec: 120 }), { status: 429, headers: { 'Retry-After': '120' } })],
+      ['prepare 503 busy', outdatedAvail, () => new Response(JSON.stringify({ code: 'busy', retryAfterSec: 3600 }), { status: 503, headers: { 'Retry-After': '3600' } })],
+      ['prepare 500', outdatedAvail, () => new Response('internal error', { status: 500 })],
+      ['avail final replay_gone', { trace: true, trace_outdated: true, can_parse: true, parse: { status: 'failed', final: true, reason: 'replay_gone' } }, null],
+      ['avail backoff no_replay_url', { trace: true, trace_outdated: true, can_parse: true, parse: { status: 'failed', final: false, reason: 'no_replay_url', retry_in_sec: 45 } }, null],
+      ['avail can_parse false', { trace: true, trace_outdated: true, can_parse: false, parse: { status: 'none' } }, null],
+    ]) {
+      const dir = mkdtempSync(join(tmpdir(), 'dsh-trace-fallback-485-'));
+      try {
+        const traceStore = createTraceStore(createFileStore(dir));
+        let traceDownloads = 0;
+        const fetchImpl = vi.fn(async (url, init) => {
+          const u = String(url);
+          if (u.endsWith('/api/agent/9100904020/trace')) {
+            traceDownloads += 1;
+            return new Response(traceGzBytes, { status: 200, headers: { 'Content-Type': 'application/gzip' } });
+          }
+          if (u.endsWith('/api/agent/9100904020/prepare') && init?.method === 'POST') {
+            return prepResp ? prepResp() : new Response('unexpected prepare', { status: 500 });
+          }
+          if (u.endsWith('/api/agent/9100904020')) {
+            return new Response(JSON.stringify(availBody), { status: 200 });
+          }
+          return new Response('not found', { status: 404 });
+        });
+        const out = await createDshTracePipeline({ apiBase: 'https://dota2.ai', fetchImpl, traceStore, pollIntervalMs: 5 }).run('9100904020');
+        expect(out.ok, label).toBe(true);
+        expect(traceDownloads, label).toBe(1);
+        expect((await traceStore.get('9100904020')).heroes, label).toHaveLength(10);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+
+    // When a local trace ALREADY exists (`hadLocalTrace === true`), a refused/rate-limited reparse must report the failure
+    // cleanly with exact reason & retry_in_sec instead of falsely claiming it upgraded by re-downloading the old trace.
+    const existingDir = mkdtempSync(join(tmpdir(), 'dsh-trace-had-local-'));
+    try {
+      const traceStore = createTraceStore(createFileStore(existingDir));
+      await traceStore.put('9100904020', traceGzBytes);
+      let downloads = 0;
+      const out429 = await createDshTracePipeline({
+        apiBase: 'https://dota2.ai',
+        traceStore,
+        pollIntervalMs: 5,
+        fetchImpl: async (url, init) => {
+          if (String(url).endsWith('/trace')) { downloads += 1; return new Response(traceGzBytes, { status: 200 }); }
+          if (init?.method === 'POST') return new Response(JSON.stringify({ code: 'rate_limited', retryAfterSec: 95 }), { status: 429, headers: { 'Retry-After': '95' } });
+          return new Response(JSON.stringify(outdatedAvail), { status: 200 });
+        },
+      }).run('9100904020');
+      expect(out429).toEqual({ ok: false, reason: 'rate_limited', retry_in_sec: 95 });
+      expect(downloads).toBe(0);
+    } finally {
+      rmSync(existingDir, { recursive: true, force: true });
+    }
+
+    // When the server has NO trace, exact rate_limited / busy / no_replay_url / replay_gone reasons and retry_in_sec are preserved.
+    const emptyDir = mkdtempSync(join(tmpdir(), 'dsh-trace-errors-485-'));
+    try {
+      const traceStore = createTraceStore(createFileStore(emptyDir));
+      const noTraceAvail = { trace: false, can_parse: true, parse: { status: 'none' } };
+      const runWith = (fetchImpl, extra = {}) => createDshTracePipeline({
+        apiBase: 'https://dota2.ai',
+        fetchImpl,
+        traceStore,
+        pollIntervalMs: 5,
+        ...extra,
+      }).run('9100904020');
+
+      const rlPrep = await runWith(async (url, init) => (
+        init?.method === 'POST'
+          ? new Response(JSON.stringify({ code: 'rate_limited', retryAfterSec: 120 }), { status: 429, headers: { 'Retry-After': '120' } })
+          : new Response(JSON.stringify(noTraceAvail), { status: 200 })
+      ));
+      expect(rlPrep).toEqual({ ok: false, reason: 'rate_limited', retry_in_sec: 120 });
+
+      const busyPrep = await runWith(async (url, init) => (
+        init?.method === 'POST'
+          ? new Response(JSON.stringify({ code: 'busy', retryAfterSec: 600 }), { status: 503, headers: { 'Retry-After': '600' } })
+          : new Response(JSON.stringify(noTraceAvail), { status: 200 })
+      ));
+      expect(busyPrep).toEqual({ ok: false, reason: 'busy', retry_in_sec: 600 });
+
+      const noUrlPrep = await runWith(async (url, init) => (
+        init?.method === 'POST'
+          ? new Response(JSON.stringify({ status: 'failed', final: false, reason: 'no_replay_url', retry_in_sec: 42 }), { status: 200 })
+          : new Response(JSON.stringify(noTraceAvail), { status: 200 })
+      ));
+      expect(noUrlPrep).toEqual({ ok: false, reason: 'no_replay_url', retry_in_sec: 42 });
+
+      const goneAvail = await runWith(async () => new Response(JSON.stringify({
+        trace: false, can_parse: true, parse: { status: 'failed', final: true, reason: 'replay_gone' },
+      }), { status: 200 }));
+      expect(goneAvail).toEqual({ ok: false, reason: 'replay_gone' });
+
+      // Transient network errors and HTTP 502s during polling recover cleanly instead of aborting or spinning forever.
+      let pollCount = 0;
+      const recovered = await runWith(async (url, init) => {
+        const u = String(url);
+        if (init?.method === 'POST') return new Response(JSON.stringify({ status: 'running', stage: 'downloading' }), { status: 202 });
+        if (u.endsWith('/trace')) return new Response(traceGzBytes, { status: 200 });
+        pollCount += 1;
+        if (pollCount === 1) return new Response(JSON.stringify(noTraceAvail), { status: 200 });
+        if (pollCount === 2) throw new TypeError('fetch failed');
+        if (pollCount === 3) return new Response('bad gateway', { status: 502 });
+        return new Response(JSON.stringify({ trace: true, can_parse: true, parse: { status: 'none' } }), { status: 200 });
+      }, { maxConsecutivePollErrors: 3 });
+      expect(recovered.ok).toBe(true);
+
+      // Persistent poll errors exit cleanly after maxConsecutivePollErrors with the real reason & retry_in_sec.
+      const dir2 = mkdtempSync(join(tmpdir(), 'dsh-trace-poll-fail-'));
+      try {
+        let persistentPolls = 0;
+        const persistentFail = await createDshTracePipeline({
+          apiBase: 'https://dota2.ai',
+          traceStore: createTraceStore(createFileStore(dir2)),
+          pollIntervalMs: 5,
+          maxConsecutivePollErrors: 2,
+          fetchImpl: async (url, init) => {
+            if (init?.method === 'POST') return new Response(JSON.stringify({ status: 'running', stage: 'downloading' }), { status: 202 });
+            persistentPolls += 1;
+            if (persistentPolls === 1) return new Response(JSON.stringify(noTraceAvail), { status: 200 });
+            return new Response(JSON.stringify({ code: 'rate_limited', retryAfterSec: 33 }), { status: 429, headers: { 'Retry-After': '33' } });
+          },
+        }).run('9100904020');
+        expect(persistentFail).toEqual({ ok: false, reason: 'rate_limited', retry_in_sec: 33 });
+      } finally {
+        rmSync(dir2, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('DSH local service end-to-end (service.js)', () => {
@@ -890,6 +1028,211 @@ describe('DSH local service end-to-end (service.js)', () => {
       expect(fresh.verdict).toBe('本机最新版结论。');
       expect(fresh.cache_scope).toBe('dsh_local');
       expect(llm.calls.length).toBeGreaterThan(0);
+
+      svc.shutdown();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back cleanly when OpenDota stalls/fails, guides unparsed coach_cases to dota2ai_replay_review, and keeps hero/URL/surface parity (#485)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-parity-485-'));
+    const unparsedMatch = JSON.parse(readFileSync(new URL('../../../src/fixtures/coach/match9091400302.unparsed.json', import.meta.url), 'utf8'));
+    const unparsedReport = buildCoachReport(unparsedMatch);
+    try {
+      let openDotaCalls = 0;
+      let coachReportCalls = 0;
+      let remoteAvail = { trace: true, can_parse: true, parse: { status: 'none' } };
+      const llm = scriptedDshLlm((opts) => {
+        const last = opts.messages.at(-1);
+        if (last.role === 'user') {
+          return {
+            toolCalls: [
+              { id: 'c1', name: 'ability_audit', args: { hero: 'beastmaster', ability: 'primal_roar' } },
+              { id: 'c2', name: 'immunity_windows', args: { hero: 'phantom_assassin' } },
+            ],
+          };
+        }
+        return { toolCalls: [{ id: 'c3', name: 'submit_review', args: submit }] };
+      });
+      const fetchImpl = vi.fn(async (url, init) => {
+        const u = String(url);
+        if (u.includes('api.opendota.com/api/matches/')) {
+          openDotaCalls += 1;
+          // Simulate CN firewall blackhole / timeout on OpenDota.
+          return await new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal.reason ?? new DOMException('Timed out', 'TimeoutError')), { once: true });
+          });
+        }
+        if (u.endsWith('/api/coach/9091400302')) {
+          coachReportCalls += 1;
+          return new Response(JSON.stringify(unparsedReport), { status: 200 });
+        }
+        if (u.endsWith('/api/coach/9100904020')) {
+          coachReportCalls += 1;
+          return new Response(JSON.stringify(buildCoachReport(scoreboard9100904020)), { status: 200 });
+        }
+        if (u.endsWith('/api/agent/9091400302')) {
+          if (remoteAvail === null) return new Response('unavailable', { status: 503 });
+          return new Response(JSON.stringify(remoteAvail), { status: 200 });
+        }
+        if (u.endsWith('/api/agent/9100904020')) {
+          return new Response(JSON.stringify({ trace: true, can_parse: true, parse: { status: 'none' } }), { status: 200 });
+        }
+        if (u.endsWith('/api/agent/9100904020/trace')) {
+          return new Response(traceGzBytes, { status: 200, headers: { 'Content-Type': 'application/gzip' } });
+        }
+        if (u.endsWith('/api/agent/7777777')) {
+          return new Response(JSON.stringify({ trace: false, can_parse: true, parse: { status: 'failed', final: true, reason: 'replay_gone' } }), { status: 200 });
+        }
+        if (u.endsWith('/api/agent/8888888')) {
+          return new Response(JSON.stringify({ trace: false, can_parse: true, parse: { status: 'running', stage: 'extracting' } }), { status: 200 });
+        }
+        if (u.endsWith('/api/agent/6666666')) {
+          return new Response(JSON.stringify({ trace: false, can_parse: true, parse: { status: 'failed', final: false, reason: 'no_replay_url', retry_in_sec: 48 } }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: 'not_found' }), { status: 404 });
+      });
+
+      const svc = createDshService({
+        ctx: {
+          llm,
+          agentDefaultModel: { currentSelection: () => ({ provider: 'deepseek', model: 'deepseek-chat' }) },
+        },
+        config: { homeDir: dir, apiBase: 'https://dota2.ai' },
+        fetchImpl,
+        openDotaTimeoutMs: 40,
+        openDotaCooldownMs: 60_000,
+        prepareGraceMs: 120,
+      });
+
+      // 1. Unparsed match `dota2ai_coach_cases` returns structured `no_parsed_match` guidance pointing to `dota2ai_replay_review`
+      //    and detects that `dota2.ai` already has the replay trace (`replay_trace_available: true`). Also accepts URL + CN alias (`潮汐`)!
+      const casesWithTrace = await svc.coach.coach_cases({
+        match_id: 'https://dota2.ai/r/9091400302?lang=zh',
+        hero: '潮汐',
+        lang: 'zh',
+      });
+      expect(casesWithTrace).toMatchObject({
+        status: 'no_parsed_match',
+        reason: 'needs_parse',
+        surface: 'native_dsh',
+        match_id: '9091400302',
+        hero: 'tidehunter',
+        match_parsed: false,
+        basic_report_available: true,
+        replay_trace_available: true,
+        replay_review_available: true,
+        next_tool: 'dota2ai_replay_review',
+      });
+      expect(casesWithTrace.message).toContain('dota2ai_replay_review');
+
+      // When dota2.ai does not have the trace yet, replay_trace_available is false while replay_review_available stays true.
+      remoteAvail = { trace: false, can_parse: true, parse: { status: 'none' } };
+      const casesNoTrace = await svc.coach.coach_cases({ match_id: '  9091400302  ', hero: '幽鬼' });
+      expect(casesNoTrace).toMatchObject({
+        status: 'no_parsed_match',
+        surface: 'native_dsh',
+        replay_trace_available: false,
+        replay_review_available: true,
+        next_tool: 'dota2ai_replay_review',
+      });
+
+      // When the availability probe cannot be reached, replay_trace_available stays null (unknown is never coerced to false).
+      remoteAvail = null;
+      const casesUnknownTrace = await svc.coach.coach_cases({ match_id: '9091400302', hero: '潮汐' });
+      expect(casesUnknownTrace).toMatchObject({
+        status: 'no_parsed_match',
+        surface: 'native_dsh',
+        replay_trace_available: null,
+        replay_review_available: true,
+        next_tool: 'dota2ai_replay_review',
+      });
+
+      // `dota2ai_coach_report` on an unparsed match surfaces `report_scope: 'basic_scoreboard_only'` and `data_gaps`.
+      const basicWhy = await svc.coach.coach_report({ match_id: '#9091400302', hero: '拍拍熊', section: 'why' });
+      expect(basicWhy).toMatchObject({
+        section: 'why',
+        surface: 'native_dsh',
+        report_scope: 'basic_scoreboard_only',
+        parsed: false,
+        next_tool: 'dota2ai_replay_review',
+      });
+      expect(basicWhy.data_gaps.length).toBeGreaterThan(0);
+
+      // 2. Cold `dota2ai_replay_review` downloads the server's ready trace inside the grace window and immediately starts reviewing
+      //    (accepting full dota2.ai URL + CN alias `PA` / `兽王`), while OpenDota timeout cools down after 1 attempt instead of stalling repeatedly!
+      const firstCall = await svc.replay.review({
+        match_id: 'https://dota2.ai/r/9100904020?hero=beastmaster&lang=zh',
+        hero: '兽王',
+        lang: 'zh',
+      });
+      expect(['reviewing', 'ready']).toContain(firstCall.status);
+      expect(firstCall.surface).toBe('native_dsh');
+      await vi.waitFor(async () => {
+        const done = await svc.replay.review({ match_id: 9100904020, hero: '兽王', lang: 'zh' });
+        expect(done.status).toBe('ready');
+        expect(done.surface).toBe('native_dsh');
+        expect(done.cache_scope).toBe('dsh_local');
+      }, { timeout: 5000 });
+      // OpenDota timed out at most once and entered cooldown; subsequent calls went straight to apiBase.
+      expect(openDotaCalls).toBeLessThanOrEqual(1);
+      expect(coachReportCalls).toBeGreaterThan(0);
+
+      // 3. Distinct failure/progress diagnostics on `dota2ai_replay_review`:
+      //    - replay_gone settles immediately as `replay_unavailable`
+      const goneOut = await svc.replay.review({ match_id: 7777777, hero: '小鹿' });
+      expect(goneOut).toMatchObject({
+        status: 'replay_unavailable',
+        surface: 'native_dsh',
+        stage: 'parse',
+        reason: 'replay_gone',
+        retryable: false,
+      });
+      expect(goneOut.message).toContain('dota2ai_coach_report');
+
+      //    - non-final no_replay_url settles immediately as `failed` with exact `retry_in_sec`
+      const notReadyOut = await svc.replay.review({ match_id: 6666666, hero: '骷髅王' });
+      expect(notReadyOut).toMatchObject({
+        status: 'failed',
+        surface: 'native_dsh',
+        stage: 'parse',
+        reason: 'no_replay_url',
+        retryable: true,
+      });
+      expect(notReadyOut.retry_in_sec).toBeGreaterThan(0);
+      expect(notReadyOut.message).toContain('dota2ai_replay_review');
+
+      //    - genuinely running remote parse reports `parsing` with real remote `stage: 'extracting'`
+      const runningOut = await svc.replay.review({ match_id: 8888888, hero: '蓝猫' });
+      expect(runningOut).toMatchObject({
+        status: 'parsing',
+        surface: 'native_dsh',
+        stage: 'extracting',
+        poll_after_sec: 20,
+      });
+
+      //    - hero_matchup resolves Chinese aliases (`小鹿` vs `蓝猫`, `骷髅王` vs `沙王`)
+      const mu = await svc.coach.hero_matchup({ hero: '小鹿', vs: '蓝猫' });
+      expect(mu.hero.id).toBe(58);
+      expect(mu.vs.id).toBe(17);
+
+      //    - missing DSH model reports `unavailable` with DSH-specific wording (never blaming "this server")
+      const noModelSvc = createDshService({
+        ctx: { llm: { listProviders: () => [], listModels: async () => [] } },
+        config: { homeDir: dir, apiBase: 'https://dota2.ai' },
+        fetchImpl,
+      });
+      const noModel = await noModelSvc.replay.review({ match_id: 9100904020, hero: 'PA', lang: 'zh' });
+      expect(noModel).toMatchObject({
+        status: 'unavailable',
+        surface: 'native_dsh',
+        stage: 'review',
+        reason: 'model_not_configured',
+      });
+      expect(noModel.message).toContain('DSH');
+      expect(noModel.message).not.toContain('this server');
+      noModelSvc.shutdown();
 
       svc.shutdown();
     } finally {

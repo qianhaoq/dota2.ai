@@ -11,6 +11,8 @@
  * account missing, or no data yet), UPSTREAM (exit 4).
  */
 
+import { heroByInput, normalizeMatchId } from '@dota2ai/review-engine';
+
 const STEAM64_BASE = 76561197960265728n;
 const MAX_ACCOUNT = 2n ** 32n - 1n;
 const PROFILE_HOSTS = ['steamcommunity.com', 'opendota.com', 'dotabuff.com', 'stratz.com'];
@@ -55,17 +57,26 @@ export function parseAccount(input) {
 }
 
 export function parseMatchId(raw) {
-  const s = String(raw ?? '');
-  if (!/^[1-9]\d{0,12}$/.test(s)) throw apiError('INVALID_INPUT', `Not a match id: ${s || '(empty)'}`);
+  const s = normalizeMatchId(raw);
+  if (!s) throw apiError('INVALID_INPUT', `Not a match id: ${String(raw ?? '').trim() || '(empty)'}`);
   return s;
 }
 
-/** Seat index (0-9) of a hero in a report: slug, English or Chinese name, or hero id. */
+/**
+ * Seat index (0-9) of a hero in a report: slug, replay key, English or Chinese name
+ * (both static-heroes and Valve schinese), curated CN/EN nickname (e.g. 小鹿, 骷髅王, 蓝猫, PA, QOP), or hero id.
+ */
 export function findSeat(report, hero) {
   if (hero == null || hero === '') return null;
-  const q = String(hero).toLowerCase().replace(/[\s_-]/g, '');
-  const p = report.players.find((x) => String(x.hero.id) === q || x.hero.slug.replace(/_/g, '') === q
-    || x.hero.en.toLowerCase().replace(/[\s_-]/g, '') === q || x.hero.zh === hero);
+  const raw = String(hero).trim();
+  if (!raw) return null;
+  const resolved = heroByInput(hero);
+  const q = raw.toLowerCase().replace(/^npc_dota_hero_/, '').replace(/[\s_'’-]+/g, '');
+  const p = report.players.find((x) => (resolved != null && x.hero.id === resolved.id)
+    || String(x.hero.id) === q
+    || x.hero.slug.replace(/_/g, '') === q
+    || x.hero.en.toLowerCase().replace(/[\s_'’-]+/g, '') === q
+    || x.hero.zh === raw);
   if (!p) throw apiError('INVALID_INPUT', `Hero not in this match: ${hero}`);
   return p.slot;
 }

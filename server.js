@@ -876,6 +876,7 @@ const coachService = createCoachService({
   cases: coachCases,
   recent: coachRecent,
   ask: coachAskDeps,
+  replayAvailability: (matchId) => agentService.availability(matchId),
   log: (msg) => console.warn(`[coach] ${msg}`),
 });
 

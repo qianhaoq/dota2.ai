@@ -1,4 +1,5 @@
 import React from 'react';
+import { normalizeMatchId } from '../../../../packages/review-engine/src/parseMatchId.js';
 import { formatUsageSummary, parseReviewRunMeta } from '../../../../src/agent/usageFormat';
 import type { ReviewRunMeta } from '../../../../src/agent/api';
 import { en, zh, type LocaleKey } from './locales';
@@ -84,8 +85,9 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
       ? JSON.parse(head.argsRaw)
       : (head?.arguments && typeof head.arguments === 'object' ? head.arguments : null);
     if (rawArgs && typeof rawArgs === 'object') {
-      if (rawArgs.match_id != null && /^[1-9]\d{0,12}$/.test(String(rawArgs.match_id))) {
-        matchId = String(rawArgs.match_id);
+      const normalizedId = normalizeMatchId(rawArgs.match_id);
+      if (normalizedId) {
+        matchId = normalizedId;
       }
       if (typeof rawArgs.hero === 'string' && rawArgs.hero.trim()) {
         hero = normHero(rawArgs.hero);
@@ -120,19 +122,31 @@ export const ToolCard: React.FC<ToolCardProps> = ({ toolName, block, t, openPath
     try {
       const parsed = JSON.parse(rawText);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        if (!matchId && parsed.match_id != null && /^[1-9]\d{0,12}$/.test(String(parsed.match_id))) {
-          matchId = String(parsed.match_id);
+        const parsedId = normalizeMatchId(parsed.match_id);
+        if (!matchId && parsedId) {
+          matchId = parsedId;
         }
-        if (typeof parsed.hero === 'string' && parsed.hero.trim() && !hero) {
+        // Always prefer canonical replay/coach hero key returned by the tool over raw user input (e.g. Chinese alias or id).
+        if (typeof parsed.hero === 'string' && parsed.hero.trim()) {
           hero = normHero(parsed.hero);
         }
         if (parsed.lang === 'zh' || parsed.lang === 'en') {
           lang = parsed.lang;
         }
         if (typeof parsed.verdict === 'string' && parsed.verdict.trim()) verdict = parsed.verdict.trim();
+        else if (
+          ['failed', 'replay_unavailable', 'unavailable', 'no_parsed_match'].includes(parsed.status)
+          && typeof parsed.message === 'string'
+          && parsed.message.trim()
+        ) {
+          verdict = parsed.message.trim();
+        }
         if (parsed.status === 'ready') statusBadge = tr('statusReady');
         else if (parsed.status === 'parsing' || parsed.status === 'reviewing') statusBadge = tr('statusWorking');
         else if (parsed.status === 'pick_hero') statusBadge = tr('statusPick');
+        else if (parsed.status === 'failed') statusBadge = tr('statusFailed');
+        else if (parsed.status === 'replay_unavailable' || parsed.status === 'unavailable') statusBadge = tr('statusUnavailable');
+        else if (parsed.status === 'no_parsed_match') statusBadge = tr('statusNoParsed');
 
         if (toolName === 'dota2ai_replay_review' && parsed.status === 'ready') {
           if (parsed.cache_scope === 'dsh_local') isLocalCache = true;

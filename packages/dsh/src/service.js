@@ -16,6 +16,7 @@ import { aboutOf, runAdvisor, parseAdvisorBody } from '../../../lib/patch/adviso
 import { runPatchTool } from '../../../lib/patch/tools.js';
 import { createCoachHandlers } from 'dota2ai/handlers';
 import { findSeat } from 'dota2ai/coach';
+import { normalizeMatchId } from '../../../packages/review-engine/src/parseMatchId.js';
 import { createDshModelRegistry } from './llm.js';
 import { createDshTracePipeline } from './traceSource.js';
 
@@ -91,6 +92,11 @@ export function createDshService({
   fetchImpl = globalThis.fetch,
   llmPrimitives,
   openDotaBase = 'https://api.opendota.com/api',
+  openDotaTimeoutMs = 4_000,
+  openDotaCooldownMs = 5 * 60_000,
+  apiTimeoutMs = 20_000,
+  prepareGraceMs = 1_500,
+  now = () => Date.now(),
   log = () => {},
 }) {
   const apiBase = String(config.apiBase || 'https://dota2.ai').replace(/\/+$/, '');
@@ -105,39 +111,77 @@ export function createDshService({
 
   const models = createDshModelRegistry({ ctx, primitives: llmPrimitives });
 
-  /** Fetch and cache raw match detail (OpenDota first for full lane arrays, falling back to apiBase coach report). */
+  // Short-TTL in-memory match cache + in-flight dedup + OpenDota outage cooldown so CN/blocked networks
+  // never stall repeatedly for 15s on api.opendota.com when dota2.ai (/api/coach/:id) is reachable.
+  const MATCH_MEMO_TTL_MS = 5 * 60_000;
+  const MATCH_MEMO_MAX = 128;
+  const matchMemo = new Map();
+  const matchInFlight = new Map();
+  let openDotaBackoffUntil = 0;
+
+  const memoPut = (id, data) => {
+    matchMemo.set(id, { data, expiresAt: now() + MATCH_MEMO_TTL_MS });
+    while (matchMemo.size > MATCH_MEMO_MAX) matchMemo.delete(matchMemo.keys().next().value);
+  };
+
+  /** Fetch and cache raw match detail (fast-bounded OpenDota first, falling back cleanly to apiBase coach report). */
   async function getMatchDetail(matchId) {
-    const id = String(matchId);
-    if (!MATCH_ID.test(id)) throw Object.assign(new Error('Invalid match ID'), { code: 'INVALID_INPUT', status: 400 });
+    const id = normalizeMatchId(matchId);
+    if (!id) throw Object.assign(new Error('Invalid match ID'), { code: 'INVALID_INPUT', status: 400 });
     const cached = await matchDocs.get(`${id}.raw.json`);
     if (cached && Number(cached.match_id) === Number(id)) return cached;
 
-    try {
-      const res = await fetchImpl(`${openDotaBase}/matches/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(15_000) });
-      if (res.ok) {
-        const raw = await res.json();
-        if (raw && Number(raw.match_id) === Number(id) && Array.isArray(raw.players)) {
-          // Cache once OpenDota has per-minute gold (`gold_t`), or keep best-effort in memory for unparsed games.
-          if (Array.isArray(raw.players[0]?.gold_t)) await matchDocs.put(`${id}.raw.json`, raw);
-          return raw;
+    const memoHit = matchMemo.get(id);
+    if (memoHit && memoHit.expiresAt > now()) return memoHit.data;
+    if (memoHit) matchMemo.delete(id);
+
+    const existingFlight = matchInFlight.get(id);
+    if (existingFlight) return existingFlight;
+
+    const task = (async () => {
+      if (now() >= openDotaBackoffUntil) {
+        try {
+          const res = await fetchImpl(`${openDotaBase}/matches/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(openDotaTimeoutMs) });
+          if (res.ok) {
+            const raw = await res.json();
+            if (raw && Number(raw.match_id) === Number(id) && Array.isArray(raw.players) && raw.players.length > 0) {
+              // Cache on disk once OpenDota has per-minute gold (`gold_t`), and memoize unparsed games in memory.
+              if (Array.isArray(raw.players[0]?.gold_t)) await matchDocs.put(`${id}.raw.json`, raw);
+              memoPut(id, raw);
+              return raw;
+            }
+          } else if (res.status === 429 || res.status >= 500) {
+            openDotaBackoffUntil = now() + openDotaCooldownMs;
+          }
+        } catch {
+          // OpenDota timed out or is unreachable (common on CN networks): cool down and fall through to apiBase.
+          openDotaBackoffUntil = now() + openDotaCooldownMs;
         }
       }
-    } catch {
-      // Fall through to apiBase coach report when OpenDota is blocked or rate-limited.
-    }
 
-    const report = await fetchCoachReportRemote(id);
-    return synthesizeMatchFromCoachReport(report);
+      const report = await fetchCoachReportRemote(id);
+      const synth = synthesizeMatchFromCoachReport(report);
+      if (synth) memoPut(id, synth);
+      return synth;
+    })().finally(() => {
+      if (matchInFlight.get(id) === task) matchInFlight.delete(id);
+    });
+
+    matchInFlight.set(id, task);
+    return task;
   }
 
   async function fetchCoachReportRemote(matchId, query = '', signal) {
-    const id = String(matchId);
+    const id = normalizeMatchId(matchId);
+    if (!id) throw Object.assign(new Error('Invalid match ID'), { code: 'INVALID_INPUT', status: 400 });
     const cacheKey = `${id}${query ? `.${query.replace(/[^A-Za-z0-9_-]/g, '_')}` : ''}.coach.json`;
     if (!query) {
       const hit = await matchDocs.get(cacheKey);
       if (hit?.schema && hit.match?.parsed) return hit;
     }
-    const res = await fetchImpl(`${apiBase}/api/coach/${encodeURIComponent(id)}${query ? `?${query}` : ''}`, { signal });
+    const timeoutSig = AbortSignal.timeout(apiTimeoutMs);
+    const bounded = signal ? AbortSignal.any([signal, timeoutSig]) : timeoutSig;
+    const res = await fetchImpl(`${apiBase}/api/coach/${encodeURIComponent(id)}${query ? `?${query}` : ''}`, { signal: bounded });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw Object.assign(new Error(body.error ?? `HTTP ${res.status}`), {
@@ -150,7 +194,7 @@ export function createDshService({
     return body;
   }
 
-  const pipeline = createDshTracePipeline({
+  const rawPipeline = createDshTracePipeline({
     apiBase,
     fetchImpl,
     traceStore: traces,
@@ -158,6 +202,16 @@ export function createDshService({
     extractorBin: config.extractorBin || env.DOTA_EXTRACT_BIN || '',
     log,
   });
+  const inFlightParse = new Map();
+  const pipeline = {
+    run(matchId, opts) {
+      const id = String(matchId);
+      const p = rawPipeline.run(id, opts);
+      inFlightParse.set(id, p);
+      p.finally(() => { if (inFlightParse.get(id) === p) inFlightParse.delete(id); });
+      return p;
+    },
+  };
 
   const agent = createAgentService({
     traces,
@@ -208,8 +262,37 @@ export function createDshService({
     }
   }
 
+  /** Best-effort replay trace availability check for `dota2ai_coach_cases` unparsed-match guidance (local first, then remote apiBase). */
+  async function replayAvailabilityForCases(matchId) {
+    const id = normalizeMatchId(matchId);
+    if (!id) return null;
+    const local = await agent.availability(id);
+    if (local.trace) return { trace: true, can_parse: true };
+    if (config.extractorBin || env.DOTA_EXTRACT_BIN) {
+      return { trace: false, can_parse: Boolean(local.can_parse) };
+    }
+    try {
+      const res = await fetchImpl(`${apiBase}/api/agent/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(3_000) });
+      if (!res.ok) return { trace: null, can_parse: local.can_parse ? true : null };
+      const remote = await res.json().catch(() => null);
+      if (!remote || typeof remote !== 'object') return { trace: null, can_parse: local.can_parse ? true : null };
+      return {
+        trace: typeof remote.trace === 'boolean' ? remote.trace : null,
+        can_parse: typeof remote.can_parse === 'boolean' ? (remote.can_parse || Boolean(remote.trace)) : (local.can_parse ? true : null),
+      };
+    } catch {
+      return { trace: null, can_parse: local.can_parse ? true : null };
+    }
+  }
+
   // Base coach handlers (recent_matches, coach_report, coach_cases, hero_matchup) with local Host LLM overrides!
-  const baseCoach = createCoachHandlers({ env: { ...env, DOTA2AI_API_BASE: apiBase }, fetchImpl });
+  const baseCoach = createCoachHandlers({
+    env: { ...env, DOTA2AI_API_BASE: apiBase },
+    fetchImpl,
+    surface: 'native_dsh',
+    toolPrefix: 'dota2ai_',
+    replayAvailability: replayAvailabilityForCases,
+  });
   const coach = {
     ...baseCoach,
     hero_matchup: async (args) => {
@@ -221,30 +304,35 @@ export function createDshService({
       const lang = normalizeUiLang(args?.lang);
       const question = String(args?.question ?? '').trim();
       if (!question || question.length > 500) throw Object.assign(new Error('Invalid question'), { code: 'INVALID_INPUT' });
+      const matchId = normalizeMatchId(args?.match_id);
+      if (!matchId) throw Object.assign(new Error(`Not a match id: ${String(args?.match_id ?? '').trim() || '(empty)'}`), { code: 'INVALID_INPUT' });
       // Prefer deep replay-backed chat (`runChat` + 20+ trace tools + `verifyText`) when this match's trace is cached!
-      const avail = await agent.availability(String(args?.match_id ?? ''));
+      const avail = await agent.availability(matchId);
       const resolvedHero = avail.trace ? resolveHero(avail.heroes, args?.hero) : null;
       if (avail.trace && resolvedHero && models.isConfigured()) {
-        const out = await agent.chat({ matchId: String(args.match_id), hero: resolvedHero.hero, lang, question, history: [], signal });
+        const out = await agent.chat({ matchId, hero: resolvedHero.hero, lang, question, history: [], signal });
         if (out.status === 'ok') {
           return {
-            match_id: Number(args.match_id),
+            match_id: Number(matchId),
             hero: resolvedHero.hero,
             lang,
             answer: out.text,
             source: 'replay',
+            surface: 'native_dsh',
             unverified: out.unverified,
             ...(out.usage ? { usage: out.usage } : {}),
             ...('usage_source' in out ? { usage_source: out.usage_source } : {}),
           };
         }
       }
-      const report = await fetchCoachReportRemote(args?.match_id, '', signal);
+      const report = await fetchCoachReportRemote(matchId, '', signal);
       const seat = findSeat(report, args?.hero);
       const res = await askReportWithHostModel({ report, slot: seat, lang, question, signal });
-      return { match_id: report.match.id, seat, lang, answer: res.text, ...(res.usage ? { usage: res.usage } : {}), ...(res.fallback ? { fallback: true } : {}) };
+      return { match_id: report.match.id, seat, lang, surface: 'native_dsh', answer: res.text, ...(res.usage ? { usage: res.usage } : {}), ...(res.fallback ? { fallback: true } : {}) };
     },
     goal_check: async (args) => {
+      const matchId = normalizeMatchId(args?.match_id);
+      if (!matchId) throw Object.assign(new Error(`Not a match id: ${String(args?.match_id ?? '').trim() || '(empty)'}`), { code: 'INVALID_INPUT' });
       let goal = args?.goal;
       if (!goal || (typeof goal === 'object' && Object.keys(goal).length === 0)) {
         const profile = await getProfile();
@@ -253,17 +341,17 @@ export function createDshService({
       if (!goal || typeof goal !== 'object') {
         throw Object.assign(new Error('No goal provided and no active goal saved in DSH'), { code: 'INVALID_INPUT' });
       }
-      const report = await fetchCoachReportRemote(args?.match_id);
+      const report = await fetchCoachReportRemote(matchId);
       const seat = findSeat(report, args?.hero);
       let replaySummary = null;
       if (goal.kind === 'replay_habit') {
-        const avail = await agent.availability(String(args?.match_id ?? ''));
+        const avail = await agent.availability(matchId);
         if (avail.trace) {
           const heroCandidate = report.players?.[seat]?.hero?.id ?? report.players?.[seat]?.hero?.slug ?? args?.hero;
           const resolvedHero = resolveHero(avail.heroes, heroCandidate);
           const ref = resolvedHero ? habitRef(goal, resolvedHero.hero) : null;
           if (ref) {
-            const ev = await agent.evidence(String(args.match_id), resolvedHero.hero, 'en', ref);
+            const ev = await agent.evidence(matchId, resolvedHero.hero, 'en', ref);
             if (ev.status === 'ok') replaySummary = ev.record;
           }
         }
@@ -287,6 +375,7 @@ export function createDshService({
         : '';
     return {
       ...rest,
+      surface: 'native_dsh',
       cache_scope: 'dsh_local',
       panel_route: `/r/${out.match_id}?hero=${encodeURIComponent(out.hero)}&lang=${out.lang}`,
       note: `Times and numbers were checked against the replay. Quote them as given and say what the review cannot see (blind_spots). It was written on the user's own DSH model and is kept on this machine (local private DSH cache, separate from the public dota2.ai web cache; replay traces can be reused, while local reviews are never auto-published): point them to the dota2.ai panel in the DSH sidebar (the tool card's button opens it at panel_route), which has every piece of evidence and a coach to ask. The public dota2.ai link would not show this review.${staleHint}`,
@@ -298,13 +387,38 @@ export function createDshService({
     async review(args) {
       await models.refresh();
       return localReview(await replayReview({
+        surface: 'native_dsh',
+        toolName: 'dota2ai_replay_review',
+        coachToolName: 'dota2ai_coach_report',
         read: () => ({ ok: true }),
         validMatch: (id) => MATCH_ID.test(String(id)),
         availability: (id) => agent.availability(String(id)),
         status: (id, hero, lang) => agent.status(String(id), hero, normalizeUiLang(lang), null, null),
         lastFailure: (id, hero, lang) => agent.lastFailure(String(id), hero, normalizeUiLang(lang), null, null),
         prepare: async (id) => {
-          const out = await agent.prepare(String(id));
+          const matchId = String(id);
+          const out = await agent.prepare(matchId);
+          // Brief grace window when a remote trace is already ready on dota2.ai (~300ms download)
+          // or fails immediately (e.g. replay_gone / rate_limited / no_replay_url), avoiding a bogus 20s poll wait.
+          if (out.status === 'running' && prepareGraceMs > 0) {
+            const pending = inFlightParse.get(matchId);
+            if (pending) {
+              let timer;
+              const settled = await Promise.race([
+                pending.then(() => true, () => true),
+                new Promise((r) => { timer = setTimeout(() => r(false), prepareGraceMs); timer.unref?.(); }),
+              ]);
+              clearTimeout(timer);
+              if (settled) await new Promise((r) => setTimeout(r, 0));
+            } else {
+              // Parse may have already settled before `agent.prepare` resolved: yield once so `executeParse` finishes updating state.
+              await new Promise((r) => setTimeout(r, 0));
+            }
+            const after = await agent.availability(matchId);
+            if (after.trace) return { status: 200, body: { status: 'ready' } };
+            if (after.parse?.status === 'failed') return { status: 200, body: after.parse };
+            if (after.parse?.status === 'running') return { status: 202, body: after.parse };
+          }
           return { status: out.status === 'running' ? 202 : out.status === 'unavailable' ? 503 : 200, body: out };
         },
         start: async (id, hero, lang, opts) => {

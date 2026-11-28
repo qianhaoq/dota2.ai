@@ -41,9 +41,96 @@ describe('replay_review: one call at a time, never blocking', () => {
     return { api, calls };
   };
 
-  it('names a hero by key, English or Chinese name, scoreboard slug or id', () => {
-    for (const v of ['queen_of_pain', 'Queen of Pain', '痛苦女王', 'queenofpain', 'npc_dota_hero_queenofpain', 39, '39']) expect(resolveHero(heroes, v)?.hero).toBe('queen_of_pain');
-    for (const v of ['pudge', '', null, undefined, 'queen']) expect(resolveHero(heroes, v)).toBeNull();
+  it('names a hero by key, English or Chinese name, scoreboard slug, CN/EN alias or id', () => {
+    const extended = [
+      ...heroes,
+      { hero: 'enchantress', team: 'radiant', hero_id: 58, en: 'Enchantress', zh: '魅惑魔女' },
+      { hero: 'skeleton_king', team: 'dire', hero_id: 42, en: 'Wraith King', zh: '冥魂大帝' },
+      { hero: 'sand_king', team: 'radiant', hero_id: 16, en: 'Sand King', zh: '沙王' },
+      { hero: 'storm_spirit', team: 'dire', hero_id: 17, en: 'Storm Spirit', zh: '风暴之灵' },
+      { hero: 'razor', team: 'radiant', hero_id: 15, en: 'Razor', zh: '剃刀' },
+      { hero: 'obsidian_destroyer', team: 'dire', hero_id: 76, en: 'Outworld Devourer', zh: '殁境神蚀者' },
+    ];
+    for (const v of ['queen_of_pain', 'Queen of Pain', '痛苦女王', '女王', 'QOP', 'queenofpain', 'npc_dota_hero_queenofpain', 39, '39']) expect(resolveHero(extended, v)?.hero).toBe('queen_of_pain');
+    for (const v of ['小鹿', '魅惑魔女', 'Enchantress', 58]) expect(resolveHero(extended, v)?.hero).toBe('enchantress');
+    for (const v of ['骷髅王', '冥魂大帝', 'WK', 'Wraith King', 'skeleton_king']) expect(resolveHero(extended, v)?.hero).toBe('skeleton_king');
+    for (const v of ['沙王', 'SK', 'Sand King']) expect(resolveHero(extended, v)?.hero).toBe('sand_king');
+    for (const v of ['蓝猫', '风暴之灵', 'Storm Spirit']) expect(resolveHero(extended, v)?.hero).toBe('storm_spirit');
+    // Reconciles static-heroes.json vs names.json translations (雷泽/剃刀, Outworld Destroyer/Devourer).
+    for (const v of ['雷泽', '剃刀', '电棍']) expect(resolveHero(extended, v)?.hero).toBe('razor');
+    for (const v of ['Outworld Destroyer', 'Outworld Devourer', '黑鸟', 'OD']) expect(resolveHero(extended, v)?.hero).toBe('obsidian_destroyer');
+    for (const v of ['pudge', '', null, undefined, 'queen']) expect(resolveHero(extended, v)).toBeNull();
+  });
+
+  it('normalizes dota2.ai / OpenDota / Dotabuff / STRATZ URLs and surfaces stage/surface diagnostics across states (#485)', async () => {
+    for (const rawId of [
+      `  ${MATCH}  `,
+      `#${MATCH}`,
+      `https://dota2.ai/r/${MATCH}?hero=beastmaster&lang=zh`,
+      `https://www.opendota.com/matches/${MATCH}`,
+      `https://www.dotabuff.com/matches/${MATCH}/builds`,
+      `https://stratz.com/matches/${MATCH}`,
+    ]) {
+      const { api } = fake();
+      const picked = await replayReview(api, { match_id: rawId });
+      expect(picked).toMatchObject({ status: 'pick_hero', surface: 'remote_mcp', match_id: MATCH });
+    }
+    for (const badId of ['https://evil.test/matches/9100904020', 'https://evildota2.ai/r/9100904020', 'javascript:1']) {
+      const { api } = fake();
+      await expect(replayReview(api, { match_id: badId })).rejects.toBeInstanceOf(ReplayToolError);
+    }
+
+    // Parsing reports exact remote stage (`extracting`) and surface; prepare returning `ready` skips the extra poll.
+    const extracting = fake({
+      availability: async () => ({ trace: false, can_parse: true, model_configured: true, heroes: [], parse: { status: 'running', stage: 'extracting' } }),
+    });
+    expect(await replayReview(extracting.api, { match_id: MATCH, hero: 'beastmaster' })).toMatchObject({
+      status: 'parsing',
+      surface: 'remote_mcp',
+      stage: 'extracting',
+      poll_after_sec: 20,
+    });
+
+    let availChecks = 0;
+    const readyRace = fake({
+      availability: async () => {
+        availChecks += 1;
+        return availChecks === 1
+          ? { trace: false, can_parse: true, model_configured: true, heroes: [], parse: { status: 'none' } }
+          : { trace: true, can_parse: true, model_configured: true, heroes };
+      },
+      prepare: async () => ({ status: 200, body: { status: 'ready' } }),
+    });
+    expect(await replayReview(readyRace.api, { match_id: MATCH, hero: '兽王', lang: 'zh' })).toMatchObject({
+      status: 'reviewing',
+      surface: 'remote_mcp',
+      stage: 'review',
+      hero: 'beastmaster',
+    });
+
+    // Review failure carries stage: 'review' and retryable: true, distinct from parse failure (`stage: 'parse'`).
+    const reviewFail = fake({ status: async () => ({ status: 'failed', reason: 'timeout' }) });
+    expect(await replayReview(reviewFail.api, { match_id: MATCH, hero: 'beastmaster' })).toMatchObject({
+      status: 'failed',
+      surface: 'remote_mcp',
+      stage: 'review',
+      reason: 'timeout',
+      retryable: true,
+    });
+
+    // Native DSH surface labels unavailable model errors for DSH settings instead of blaming a remote server.
+    const dshNoModel = fake({
+      surface: 'native_dsh',
+      availability: async () => ({ trace: true, can_parse: true, model_configured: false, heroes }),
+    });
+    const unavailOut = await replayReview(dshNoModel.api, { match_id: MATCH, hero: 'beastmaster' });
+    expect(unavailOut).toMatchObject({
+      status: 'unavailable',
+      surface: 'native_dsh',
+      stage: 'review',
+      reason: 'model_not_configured',
+    });
+    expect((unavailOut as any).message).toContain('DSH');
   });
 
   it('no replay yet: starts the parse and says to come back, asking for the hero meanwhile', async () => {

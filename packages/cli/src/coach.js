@@ -13,6 +13,7 @@
  *            { section, value } with --section.
  * Exit codes: 0 ok, 2 invalid input, 3 match missing / no data, 4 upstream.
  */
+import { normalizeMatchId } from '@dota2ai/review-engine';
 import { createCoachApi, findSeat, EXIT } from './coachApi.js';
 
 const USAGE = 'Usage: dota2ai coach <matchId> [--hero slug|name|id] [--section summary|why|lane|deaths|items|fights|plan|all] [--lang en|zh] [--json]';
@@ -20,8 +21,9 @@ export const SECTIONS = ['summary', 'why', 'lane', 'deaths', 'items', 'fights', 
 const CHAPTER_OF = { lane: 'laning', deaths: 'deaths', items: 'items', fights: 'fights' };
 
 export function parseCoachArgs(args) {
-  const opts = { matchId: args[1], hero: null, lang: 'en', json: false, section: null };
-  if (!opts.matchId || !/^[1-9]\d{0,12}$/.test(opts.matchId)) throw usage(USAGE);
+  const matchId = normalizeMatchId(args[1]);
+  const opts = { matchId, hero: null, lang: 'en', json: false, section: null };
+  if (!opts.matchId) throw usage(USAGE);
   for (let i = 2; i < args.length; i++) {
     const flag = args[i];
     if (flag === '--json') opts.json = true;

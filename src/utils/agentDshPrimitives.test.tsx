@@ -634,6 +634,35 @@ describe('DSH frontend runtime, ShareBar safety, analytics silence, and client t
     );
     expect(cachedZh.getByText('缓存 v75')).toBeTruthy();
     expect(cachedZh.container.querySelector('.dota2ai-tool-cache-note')?.textContent).toContain('本机 DSH 私有缓存');
+    cachedZh.unmount();
+
+    // Canonical hero key from tool output overrides Chinese alias input, and diagnostic statuses show clear badges + guidance (#485).
+    const openedAlias: string[] = [];
+    const aliasCard = render(
+      <ToolCard
+        toolName="dota2ai_coach_cases"
+        block={{
+          call: { argsRaw: JSON.stringify({ match_id: 'https://dota2.ai/r/9091400302', hero: '小鹿', lang: 'zh' }) },
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              status: 'no_parsed_match',
+              surface: 'native_dsh',
+              match_id: '9091400302',
+              hero: 'enchantress',
+              message: 'OpenDota has basic scoreboard only; call dota2ai_replay_review.',
+            }),
+          }],
+        }}
+        t={(k) => dshZh[k]}
+        openPath={(p) => openedAlias.push(p)}
+      />,
+    );
+    expect(aliasCard.getByText('仅基础数据')).toBeTruthy();
+    expect(aliasCard.getByText('OpenDota has basic scoreboard only; call dota2ai_replay_review.')).toBeTruthy();
+    fireEvent.click(aliasCard.getByRole('button', { name: /在 dota2\.ai 页面打开/ }));
+    expect(openedAlias).toEqual(['/r/9091400302?lang=zh&hero=enchantress']);
+    aliasCard.unmount();
   });
 
   it('notifies already-mounted CoachHome consumers when async profile hydration resolves, without echoing saveProfile', async () => {

@@ -11,6 +11,7 @@ import { createCoachService } from '../../../lib/coach/service.js';
 import { createSlidingWindowLimiter } from '../../../lib/rateLimiter.js';
 
 const coachMatch = JSON.parse(readFileSync(new URL('../../../src/fixtures/coach/match9091400302.parsed.json', import.meta.url), 'utf8'));
+const unparsedMatch = JSON.parse(readFileSync(new URL('../../../src/fixtures/coach/match9091400302.unparsed.json', import.meta.url), 'utf8'));
 const ALL = ['review_match', 'get_evidence', 'recent_matches', 'coach_report', 'coach_cases', 'coach_ask', 'goal_check', 'hero_matchup'];
 
 const servers = [];
@@ -21,12 +22,12 @@ afterEach(async () => {
 });
 
 /** One server: web coach routes + remote /mcp on one coach service. Caller IP comes from x-test-ip. */
-async function start({ limit = 100, recentCalls = [] } = {}) {
+async function start({ limit = 100, recentCalls = [], matchData = coachMatch, replayAvailability } = {}) {
   let upstream = 0;
   const getMatchDetail = async (id) => {
     upstream++;
     if (Number(id) !== 9091400302) throw Object.assign(new Error('HTTP 404'), { status: 404 });
-    return structuredClone(coachMatch);
+    return structuredClone(matchData);
   };
   const resolveClientIp = (req) => String(req.headers['x-test-ip'] ?? '127.0.0.1');
   const mapError = (e) => ({ status: e?.status === 404 ? 404 : 502, body: { error: 'x' } });
@@ -34,6 +35,7 @@ async function start({ limit = 100, recentCalls = [] } = {}) {
     getMatchDetail,
     resolveClientIp,
     mapError,
+    ...(replayAvailability ? { replayAvailability } : {}),
     recent: { get: async (accountId) => { recentCalls.push(accountId); return { account_id: accountId, matches: [] }; } },
     limiter: createSlidingWindowLimiter({ limit, globalLimit: 10_000, windowMs: 60_000 }),
   });
@@ -221,5 +223,54 @@ describe('coach tool errors tell the agent what to do', () => {
     expect(recent.content[0].text).toBe('Could not load recent games right now (temporary; retry later)');
     const report = await client.callTool({ name: 'coach_report', arguments: { match_id: 9091400302 } });
     expect(report.content[0].text).toBe('Could not load the match right now (temporary; retry later)');
+  });
+
+  it('distinguishes unparsed OpenDota matches with replay_trace_available guidance, URL match IDs, and Chinese hero aliases (#485)', async () => {
+    const { base } = await start({
+      matchData: unparsedMatch,
+      replayAvailability: async () => ({ trace: true, can_parse: true }),
+    });
+    const client = await connect(base);
+
+    // `coach_cases` does not fail opaquely on unparsed OpenDota matches: returns structured `no_parsed_match` with `surface: 'remote_mcp'`.
+    const cases = await client.callTool({
+      name: 'coach_cases',
+      arguments: { match_id: 'https://dota2.ai/r/9091400302?lang=zh', hero: '潮汐', lang: 'zh' },
+    });
+    expect(cases.isError).toBeFalsy();
+    expect(cases.structuredContent).toMatchObject({
+      status: 'no_parsed_match',
+      reason: 'needs_parse',
+      surface: 'remote_mcp',
+      match_id: '9091400302',
+      hero: 'tidehunter',
+      match_parsed: false,
+      basic_report_available: true,
+      replay_trace_available: true,
+      replay_review_available: true,
+      next_tool: 'replay_review',
+    });
+    expect(cases.structuredContent.message).toContain('replay_review');
+
+    // `coach_report` marks `report_scope: 'basic_scoreboard_only'` and points to `replay_review`.
+    const why = await client.callTool({
+      name: 'coach_report',
+      arguments: { match_id: 'https://www.opendota.com/matches/9091400302', hero: '拍拍熊', section: 'why' },
+    });
+    expect(why.isError).toBeFalsy();
+    expect(why.structuredContent).toMatchObject({
+      section: 'why',
+      surface: 'remote_mcp',
+      report_scope: 'basic_scoreboard_only',
+      parsed: false,
+      next_tool: 'replay_review',
+    });
+    expect(why.structuredContent.data_gaps.length).toBeGreaterThan(0);
+
+    // `hero_matchup` resolves CN aliases consistently with DSH and Web.
+    const mu = await client.callTool({ name: 'hero_matchup', arguments: { hero: '小鹿', vs: '骷髅王' } });
+    expect(mu.isError).toBeFalsy();
+    expect(mu.structuredContent.hero.id).toBe(58);
+    expect(mu.structuredContent.vs.id).toBe(42);
   });
 });

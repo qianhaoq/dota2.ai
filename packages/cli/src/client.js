@@ -1,16 +1,17 @@
-import { buildReview, STATIC_HEROES, validateReview } from '@dota2ai/review-engine';
+import { buildReview, heroByInput, normalizeMatchId, validateReview } from '@dota2ai/review-engine';
 
 export const invalid = (message = 'Invalid input') => Object.assign(new Error(message), { code: 'INVALID_INPUT' });
 export function normalizeInput({ match_id, hero, lang = 'en' } = {}) {
-  if (!['string', 'number'].includes(typeof match_id) || !/^[1-9]\d*$/.test(String(match_id)) || Number(match_id) > 2 ** 40) throw invalid('Invalid match ID');
+  const idStr = normalizeMatchId(match_id);
+  if (!idStr) throw invalid('Invalid match ID');
   if (!['en', 'zh'].includes(lang)) throw invalid('Language must be en or zh');
   let heroId;
-  if (hero != null) {
+  if (hero != null && hero !== '') {
     if (!['string', 'number'].includes(typeof hero)) throw invalid('Invalid hero');
-    heroId = Object.values(STATIC_HEROES).find(h => String(h.id) === String(hero) || h.internalSlug === hero)?.id;
+    heroId = heroByInput(hero)?.id;
     if (!heroId) throw invalid('Unknown hero');
   }
-  return { matchId: Number(match_id), heroId, lang };
+  return { matchId: Number(idStr), heroId, lang };
 }
 /** Shared API/offline adapter. Offline reads only OpenDota configuration. */
 export function createReviewClient({ offline = false, env = process.env, fetchImpl = globalThis.fetch, fetchMatch, now = () => new Date().toISOString() } = {}) {

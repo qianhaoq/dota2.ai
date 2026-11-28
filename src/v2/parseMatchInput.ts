@@ -11,10 +11,12 @@
  */
 
 const MATCH_URL_HOSTS = ['opendota.com', 'dotabuff.com', 'stratz.com'];
+const DOTA2AI_HOSTS = ['dota2.ai'];
 const BARE_ID_RE = /^\d{1,20}$/;
 // The id must end at a path boundary, so a 21-digit id is rejected outright
 // instead of being silently truncated to its first 20 digits.
 const URL_ID_RE = /\/matches\/(\d{1,20})(?=\/|$)/i;
+const DOTA2AI_ID_RE = /^\/(?:r|match)\/(\d{1,20})(?=\/|$)/i;
 const MAX_SAFE_ID = BigInt(Number.MAX_SAFE_INTEGER);
 
 /** True when a bare digit id is well-formed AND a positive integer within the
@@ -52,8 +54,13 @@ export function parseMatchInput(input: unknown): string | null {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
 
   const host = url.hostname.toLowerCase().replace(/\.$/, '');
-  if (!MATCH_URL_HOSTS.some((d) => host === d || host.endsWith(`.${d}`))) return null;
-
-  const match = url.pathname.match(URL_ID_RE);
-  return match && isSafeMatchId(match[1]) ? match[1] : null;
+  if (MATCH_URL_HOSTS.some((d) => host === d || host.endsWith(`.${d}`))) {
+    const match = url.pathname.match(URL_ID_RE);
+    return match && isSafeMatchId(match[1]) ? match[1] : null;
+  }
+  if (DOTA2AI_HOSTS.some((d) => host === d || host.endsWith(`.${d}`))) {
+    const match = url.pathname.match(DOTA2AI_ID_RE);
+    return match && isSafeMatchId(match[1]) ? match[1] : null;
+  }
+  return null;
 }
