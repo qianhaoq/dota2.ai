@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { buildCheck } from '../../lib/agent/situationTools.js';
+import { attackOf, buildCheck } from '../../lib/agent/situationTools.js';
 import { reviewToolkit, verifyReview } from '../../lib/agent/deepReview.js';
 import { withHeroNames } from '../../lib/agent/review/toolkit.js';
 import { unnamedHeroes } from '../../lib/agent/review/verify.js';
@@ -111,5 +111,50 @@ describe('build_check: the shop\'s items that act on the damage that killed the 
     expect(pd.items.ghost.abilities[0].description).toMatch(/more vulnerable to magic damage/);
     expect([...ANSWERS.magic.core, ...ANSWERS.magic.support]).not.toContain('ghost');
     expect([...ANSWERS.physical.core, ...ANSWERS.physical.support]).toContain('ghost');
+  });
+});
+
+// Owner, 2026-11-28: no fixed pick; the tools give how each item meets this enemy's kit — Blink starts the fight, Heaven's
+// Halberd disarms the melee attacker, Eul's Scepter on him dispels his buff — and the model weighs them in the game.
+describe('build_check: how each item meets the enemy who killed the player', () => {
+  const r: any = buildCheck(trace, { hero: 'beastmaster' }, { lang: 'en', match });
+  const [pa, necro] = r.answers_to_top_killers;
+  const items = JSON.parse(readFileSync(new URL('../../lib/data/constants/items.json', import.meta.url), 'utf8'));
+  const by = (k: any) => Object.fromEntries(k.items_acting_on_their_damage.items.map((i: any) => [i.item, i]));
+
+  it('how the enemy attacks, how each of their abilities is cast, and the big items they held with when', () => {
+    const heroes = JSON.parse(readFileSync(new URL('../../lib/data/constants/heroes.json', import.meta.url), 'utf8'));
+    expect(pa.their_attack).toEqual({ type: 'melee', range: heroes['44'].attack_range });
+    expect(necro.their_attack.type).toBe('ranged');
+    expect(pa.their_abilities.find((a: any) => a.ability === 'phantom_assassin_phantom_strike')).toMatchObject({ cast: 'Unit Target', dispelled_by: 'basic' });
+    expect(pa.their_big_items.find((i: any) => i.item === 'black_king_bar')).toEqual({ item: 'black_king_bar', name: 'Black King Bar', first_held: '21:29' });
+    const ts = pa.their_big_items.map((i: any) => i.first_held.split(':').reduce((m: number, s: string) => m * 60 + Number(s), 0));
+    expect(ts).toEqual([...ts].sort((a: number, b: number) => a - b));
+  });
+
+  it('a dispel says on whom it lands, and which of the enemy\'s abilities Valve marks removable by it', () => {
+    const a = by(pa);
+    // Eul's: cast on an enemy (Valve: "can only be cast on enemy units or yourself"), a basic dispel.
+    expect(a.cyclone).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'an_enemy_target' });
+    expect(a.cyclone.their_abilities_marked_removable_by_it).toEqual(pa.their_abilities.filter((x: any) => x.dispelled_by === 'basic').map((x: any) => x.name));
+    expect(a.nullifier.dispel_lands_on).toBe('an_enemy_target');
+    // Black King Bar's dispel is on the player, never on the enemy.
+    expect(a.black_king_bar).toMatchObject({ applies_dispel: 'basic', dispel_lands_on: 'self_or_allies' });
+    expect(a.aeon_disk).toMatchObject({ applies_dispel: 'strong', dispel_lands_on: 'self_or_allies' });
+    // Halberd: Valve's disarm durations for this patch.
+    const pd = patchForGame(trace.match_id, match);
+    const disarm = pd.items.heavens_halberd.attrib.find((x: any) => x.key === 'disarm_melee');
+    expect(a.heavens_halberd.disarm_seconds.melee).toBe(Number(disarm.value));
+    // No dispel, no dispel fields: nothing is said that the data does not hold.
+    expect(a.force_staff).not.toHaveProperty('applies_dispel');
+    expect(items.force_staff.abilities.some((x: any) => /dispel/i.test(x.description))).toBe(false);
+  });
+
+  it('a hero the constants do not hold, or hold without an attack type, has no attack: unknown, not a guess', () => {
+    expect(attackOf(44)).toMatchObject({ type: 'melee' });
+    expect(attackOf(99999)).toBeNull();
+    expect(attackOf(null)).toBeNull();
+    expect(attackOf(44, { 44: { attack_range: 150 } })).toBeNull();
+    expect(attackOf(44, { 44: { attack_type: 'Melee' } })).toEqual({ type: 'melee' });
   });
 });
