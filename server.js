@@ -1,13 +1,11 @@
 // MUST stay the first import: wraps console.* with secret redaction before any
 // dependency (openai SDK, express, …) can log raw provider output to stdout.
 import './lib/installConsoleRedaction.js';
-import { createReplayIngest } from './lib/matchReview/replayIngest/index.js';
-import { createReplayIngestHandler } from './lib/matchReview/replayIngest/endpoint.js';
-import { createV1Router } from './routes/v1/index.js';
-import { securityHeaders } from './routes/v1/support.js';
+import { attachMcp } from '@dota2ai/mcp';
+import { securityHeaders } from './lib/securityHeaders.js';
+import { LLMS_TXT } from './lib/llmsTxt.js';
 import { internalErrorHandler } from './lib/asyncHandler.js';
 
-import { createPhrasingCompletion } from './lib/matchReview/phrasingCompletion.js';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
@@ -117,10 +115,6 @@ const PORT = process.env.PORT || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(securityHeaders);
-app.use('/api/v1', express.json(), (error, req, res, next) => {
-  if ([400, 413].includes(error?.status)) return res.status(400).json({ code: 'INVALID_INPUT', retryable: false, message_key: 'err.invalid_input' });
-  next(error);
-});
 app.use(express.json());
 // Malformed/oversized JSON bodies get a JSON error here (Express's default is
 // an HTML "Bad Request" page). Registered as an error handler right after the
@@ -726,9 +720,8 @@ const matchDetailCache = createMatchDetailCache({
   log: (msg) => console.warn(`[match-detail-cache] ${msg}`),
 });
 
-const replayIngest = createReplayIngest();
 async function getMatchDetail(matchId, fetchOptions = {}) {
-  return replayIngest.overlay(await matchDetailCache.get(matchId, fetchOptions));
+  return matchDetailCache.get(matchId, fetchOptions);
 }
 
 // OpenDota POST /request/{match_id} dedup/rate-limit state (per match),
@@ -1050,22 +1043,17 @@ app.use(createSiteFeedbackRouter({
   log: (msg) => console.log(`[site-feedback] ${msg}`),
 }));
 
-// Review v1 API, OpenAPI/llms docs and the remote MCP endpoint (/mcp), whose
-// coach tools run in process through coachService.
-app.use(createV1Router({
-  fetchMatch: getMatchDetail,
-  replayIngest,
-  phrasingCompletion: openai ? createPhrasingCompletion({ client: openai }) : undefined,
+// Remote MCP endpoint (/mcp) and agent discovery doc (/llms.txt).
+attachMcp(app, {
   coachForRequest: coachService.forRequest,
   // MCP replay_review: the agent's deep review, under the same per-caller limits as the page (lib/agent/replayTool.js).
   replayForRequest: (req) => { const api = agentRouter.forRequest(req); return { review: (args) => replayReview(api, args) }; },
-}));
+});
+app.get('/llms.txt', (_req, res) => res.type('text/plain').send(LLMS_TXT));
 
 // Explicit OpenDota parse submission — the ONLY path that calls submitParseRequest
 // (facts load and review stream report parse status read-only). GET gets a JSON
 // 405 so it never falls through to the SPA index.html fallback.
-app.post('/api/review/:matchId/replay-ingest', createReplayIngestHandler({ingest:replayIngest,getMatchDetail,resolveClientIp}));
-app.get('/api/review/:matchId/replay-ingest', rejectParseRequestGet);
 app.post('/api/review/:matchId/parse-request', handleMatchReviewParseRequest);
 app.get('/api/review/:matchId/parse-request', rejectParseRequestGet);
 

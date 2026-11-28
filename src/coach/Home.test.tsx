@@ -142,7 +142,7 @@ describe('home: where to use it', () => {
     expect(ways.querySelector('pre')?.textContent).toBe(`claude mcp add --transport http dota2ai ${MCP_URL}`);
     expect(ways.textContent).toContain('replay_review is the full review');
     expect(ways.textContent).toContain('daily limit');
-    expect(MCP_TOOLS).toHaveLength(9);
+    expect(MCP_TOOLS).toHaveLength(7);
     expect(ways.id).toBe('ways');
     expect(ways.querySelector('#ways-dsh')).not.toBeNull();
     fireEvent.click(within(ways).getByRole('tab', { name: 'CLI' }));
